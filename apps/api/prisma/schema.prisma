@@ -9638,6 +9638,81 @@ model UnionRemittance {
   @@map("union_remittances")
 }
 
+/// PAY-24: a legal entity's statutory bonus for one accounting year (Payment of Bonus Act). Draft → submitted →
+/// approved (by someone other than its makers) → sent (one-time pay in an off-cycle bonus run).
+model BonusComputation {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  legalEntityId    String    @map("legal_entity_id") @db.Uuid
+  yearStart        DateTime  @map("year_start") @db.Date
+  yearEnd          DateTime  @map("year_end") @db.Date
+  dueOn            DateTime  @map("due_on") @db.Date
+  status           String    @default("draft") @db.VarChar(10)
+  rules            Json
+  availableSurplus Decimal?  @map("available_surplus") @db.Decimal(16, 2)
+  allocableSurplus Decimal?  @map("allocable_surplus") @db.Decimal(16, 2)
+  openingSetOn     Decimal   @default(0) @map("opening_set_on") @db.Decimal(16, 2)
+  openingSetOff    Decimal   @default(0) @map("opening_set_off") @db.Decimal(16, 2)
+  chosenRate       Decimal?  @map("chosen_rate") @db.Decimal(5, 2)
+  supportedRate    Decimal   @map("supported_rate") @db.Decimal(5, 2)
+  rate             Decimal   @db.Decimal(5, 2)
+  /// { setOnIn, setOffIn, setOnUsed, setOffSettled }: amounts by the year they came from.
+  carry            Json
+  setOnMade        Decimal   @default(0) @map("set_on_made") @db.Decimal(16, 2)
+  setOffMade       Decimal   @default(0) @map("set_off_made") @db.Decimal(16, 2)
+  people           Int       @default(0)
+  eligible         Int       @default(0)
+  salaryTotal      Decimal   @default(0) @map("salary_total") @db.Decimal(16, 2)
+  bonusTotal       Decimal   @default(0) @map("bonus_total") @db.Decimal(16, 2)
+  deductionTotal   Decimal   @default(0) @map("deduction_total") @db.Decimal(16, 2)
+  payableTotal     Decimal   @default(0) @map("payable_total") @db.Decimal(16, 2)
+  createdBy        String    @map("created_by") @db.Uuid
+  updatedBy        String    @map("updated_by") @db.Uuid
+  computedAt       DateTime  @map("computed_at") @db.Timestamptz(3)
+  submittedBy      String?   @map("submitted_by") @db.Uuid
+  submittedAt      DateTime? @map("submitted_at") @db.Timestamptz(3)
+  approvedBy       String?   @map("approved_by") @db.Uuid
+  approvedAt       DateTime? @map("approved_at") @db.Timestamptz(3)
+  returnedReason   String?   @map("returned_reason") @db.VarChar(500)
+  runId            String?   @map("run_id") @db.Uuid
+  sentBy           String?   @map("sent_by") @db.Uuid
+  sentAt           DateTime? @map("sent_at") @db.Timestamptz(3)
+  version          Int       @default(1)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, legalEntityId, yearStart], map: "bonus_computations_year_key")
+  @@map("bonus_computations")
+}
+
+/// PAY-24: one employee's bonus in a computation (rebuilt from the payslips while it is a draft; deductions are kept).
+model BonusComputationRow {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  legalEntityId  String  @map("legal_entity_id") @db.Uuid
+  computationId  String  @map("computation_id") @db.Uuid
+  employeeId     String  @map("employee_id") @db.Uuid
+  employmentId   String  @map("employment_id") @db.Uuid
+  /// [{ month: "2025-04", wage: "18000.00" }]
+  months         Json
+  workingDays    Decimal @map("working_days") @db.Decimal(6, 2)
+  minimumWage    Decimal @map("minimum_wage") @db.Decimal(12, 2)
+  ceiling        Decimal @db.Decimal(12, 2)
+  eligibleMonths Int     @map("eligible_months") @db.SmallInt
+  eligible       Boolean
+  reason         String? @db.VarChar(200)
+  bonusSalary    Decimal @map("bonus_salary") @db.Decimal(14, 2)
+  bonus          Decimal @db.Decimal(14, 2)
+  pujaPaid       Decimal @default(0) @map("puja_paid") @db.Decimal(14, 2)
+  misconductLoss Decimal @default(0) @map("misconduct_loss") @db.Decimal(14, 2)
+  disqualified   Boolean @default(false)
+  adjustReason   String? @map("adjust_reason") @db.VarChar(300)
+  deductions     Decimal @db.Decimal(14, 2)
+  payable        Decimal @db.Decimal(14, 2)
+
+  @@unique([organizationId, computationId, employmentId], map: "bonus_computation_rows_employment_key")
+  @@map("bonus_computation_rows")
+}
+
 model WageSettlement {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid

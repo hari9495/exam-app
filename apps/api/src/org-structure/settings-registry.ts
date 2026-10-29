@@ -244,6 +244,18 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // Founder decision 8 (29 Oct 2026): a loan or advance is capped at months of gross pay, and only after probation by default.
   'payroll.loan.max_gross_months': { label: 'A loan or advance may be at most (months of gross pay)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['none', '1', '2', '3', '4', '6', '12'], default: '2' },
   'payroll.loan.after_probation': { label: 'Who may ask for a loan or advance', scopes: ['tenant', 'legal_entity'], dated: false, values: ['confirmed', 'everyone'], default: 'confirmed' },
+  // PAY-24 statutory bonus (Payment of Bonus Act, 1965; founder rule: policy is configurable). Defaults are the Act's
+  // values; a company may only be more generous (a higher limit or ceiling, fewer days), never below the Act.
+  'payroll.bonus.year_start_month': { label: 'The bonus accounting year starts in (month number)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'], default: '4' },
+  'payroll.bonus.eligibility_wage': { label: 'Bonus is paid to people whose wage a month is at most (₹)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['21000', '25000', '30000', '35000', '40000', '50000'], default: '21000' },
+  'payroll.bonus.calculation_ceiling': { label: 'Bonus is worked out on the wage up to (₹ a month, or the minimum wage if higher)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['7000', '10000', '15000', '21000'], default: '7000' },
+  'payroll.bonus.min_rate': { label: 'Lowest bonus rate (%)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['8.33', '10', '12', '15', '20'], default: '8.33' },
+  'payroll.bonus.max_rate': { label: 'Highest bonus rate (%)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['8.33', '10', '12', '15', '20'], default: '20' },
+  'payroll.bonus.min_working_days': { label: 'Working days in the year needed for bonus', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '15', '30'], default: '30' },
+  'payroll.bonus.min_amount': { label: 'Least bonus for a whole year (₹)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['100', '500', '1000'], default: '100' },
+  'payroll.bonus.allocable_percent': { label: 'Allocable surplus is this share of the available surplus (%)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['60', '67'], default: '60' },
+  'payroll.bonus.carry_years': { label: 'Set-on and set-off are carried for (years)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['4'], default: '4' },
+  'payroll.bonus.due_months': { label: 'Bonus is paid within (months after the year end)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '2', '3', '4', '5', '6', '7', '8'], default: '8' },
   'payroll.mid_period.join': { label: 'Joining in the middle of a month is paid', scopes: ['tenant', 'legal_entity'], dated: false, values: ['segments', 'cutoff', 'next_month_arrears'], default: 'segments' },
   'payroll.mid_period.exit': { label: 'Leaving in the middle of a month is paid', scopes: ['tenant', 'legal_entity'], dated: false, values: ['segments', 'cutoff'], default: 'segments' },
   'payroll.mid_period.revision': { label: 'A pay change in the middle of a month is paid', scopes: ['tenant', 'legal_entity'], dated: false, values: ['segments', 'cutoff', 'next_month_arrears'], default: 'segments' },

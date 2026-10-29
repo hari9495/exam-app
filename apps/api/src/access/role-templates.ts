@@ -43,8 +43,9 @@ const PAY_ADMIN_5E = ['tax.workspace.view', 'tax.proof.verify', 'tax.regime.over
 const PAY_ADMIN_5F = ['statutory.filing.view', 'statutory.filing.generate', 'statutory.filing.download', 'statutory.challan.manage'];
 const COMPLIANCE_5F = ['statutory.filing.view', 'statutory.filing.generate', 'statutory.filing.download', 'statutory.filing.mark_filed', 'statutory.challan.manage', 'statutory.register.sign', 'statutory.advisory.review'];
 // Batch 5g: off-cycle runs, arrears worksheets and F&F settlements; approvers also approve arrears and write off overpayments.
-const PAY_ADMIN_5G = ['payroll.offcycle.prepare', 'payroll.arrears.approve', 'payroll.fnf.manage', 'payroll.notice.waive'];
-const PAY_APPROVER_5G = ['payroll.arrears.approve', 'payroll.writeoff.approve'];
+const PAY_ADMIN_5G = ['payroll.offcycle.prepare', 'payroll.arrears.approve', 'payroll.fnf.manage', 'payroll.notice.waive', 'payroll.bonus.manage'];
+// PAY-24 statutory bonus: Payroll Admin works it out and pays it; Payroll Approver approves it (never its maker).
+const PAY_APPROVER_5G = ['payroll.arrears.approve', 'payroll.writeoff.approve', 'payroll.bonus.approve'];
 // Batch 5h: the consultant register and invoices (payroll); approving consultant invoices (approvers, finance).
 const PAY_ADMIN_5H = ['consultant.manage'];
 const PAY_APPROVER_5H = ['consultant.invoice.approve'];

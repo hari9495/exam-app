@@ -76,6 +76,9 @@ export const PAY_KEYS = [
   'payroll.special.manage',
   'payroll.ewa.manage',
   'payroll.equity.manage',
+  // PAY-24 statutory bonus.
+  'payroll.bonus.manage',
+  'payroll.bonus.approve',
 ] as const;
 export type PayKey = (typeof PAY_KEYS)[number];
 
