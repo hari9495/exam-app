@@ -4127,7 +4127,7 @@
       "4. Change Report to Unpaid leave (LOP) to payroll, then Ledger.",
       "5. In Ledger, open \"All entities\" and choose Kaveri Foods Pvt Ltd (Tamil Nadu)."
     ],
-    "expected": "Step 2: one row: \"Search by name or code\", \"All entities\", \"All locations\", \"All departments\" (each only as wide as its text), and Columns and the density button at the right of the same row. The table header sits right under it and at least 6 rows show without page scroll. Step 3: the same one row each time; Leave liability shows its KPIs (or the days note) above and still at least 6 rows. Step 4: the Month filter is the only thing that moves to a second row; Columns and density stay on the first row at the right; at least 6 rows show. Step 5: the entity box grows to fit the longer name; the filters still line up and nothing overlaps.",
+    "expected": "Step 2: one row: \"Search by name or code\", \"All entities\", \"All locations\", \"All departments\" (each only as wide as its text), and Columns and the density button at the right of the same row. The table header sits right under it and at least 6 rows show without page scroll. Step 3: the same one row each time; Leave liability shows its KPIs (or the days note) above and still at least 6 rows. Step 4: the Month picker sits next to Report at the top right of the page (not in the table toolbar); the toolbar is still one row with Columns and density at the right; at least 6 rows show. Change the month: the list and the page subtitle change to that month. Step 5: the entity box grows to fit the longer name; the filters still line up and nothing overlaps.",
     "stories": [
       "TIM-30 Balances",
       "TIM-30 Leave taken",
@@ -4151,7 +4151,7 @@
       "4. Make the window narrow (about 700 px wide), then phone width (about 390 px).",
       "5. Open Report."
     ],
-    "expected": "Step 2: the KPIs, then one toolbar row with search, three filters and Columns / density at the right; the table header and at least 6 rows show without page scroll. Step 3: the list narrows to Finance and back; the row does not jump to several lines. Step 4: the filters wrap onto more rows only when they no longer fit; no filter is stretched across the full width on a laptop; on a phone the filters take the full width above the table and nothing runs off the screen. Step 5: only Leave liability is listed.",
+    "expected": "Step 2: the KPIs, then one toolbar row with search, three filters and Columns / density at the right; the table header and at least 6 rows show without page scroll. Step 3: the list narrows to Finance and back; the row does not jump to several lines. Step 4: the filters wrap onto more rows only when they no longer fit; no filter is stretched across the full width; on a phone the filters sit above the list in rows and nothing runs off the screen sideways. Step 5: only Leave liability is listed.",
     "stories": [
       "TIM-30 Payroll · liability"
     ],
