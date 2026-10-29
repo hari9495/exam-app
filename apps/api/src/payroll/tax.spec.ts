@@ -1,4 +1,5 @@
 import { readFileSync } from 'fs';
+import { Prisma } from '@prisma/client';
 import { join } from 'path';
 import type { RuleSet } from '../statutory/evaluator';
 import { calculatePayslip } from './calc';
@@ -63,6 +64,17 @@ describe('income tax projection (PAY-5.02 … 5.07)', () => {
     expect(Number(verified.tax.total) - Number(declared.tax.total)).toBe(31200); // 1,00,000 less deduction at 30% + 4% cess
     expect(Number(verified.monthTds) - Number(declared.monthTds)).toBe(10400); // spread over the 3 periods left
     expect(verified.notes.join(' ')).toMatch(/only verified proofs count/);
+  });
+
+  it('founder decision 6: an approved Form 12B adds the previous employer’s pay and counts its TDS as already deducted', () => {
+    const a = projectTax(base(), TAX, april);
+    const b = projectTax(base({ previous: { gross: '300000', exemptions: '0', tds: '60000', pt: '0' } }), TAX, april);
+    expect(a.taxable).toBe('1725000.00');
+    expect(b.income.previousEmployers).toBe('300000.00');
+    expect(b.taxable).toBe('2025000.00');
+    expect(Number(b.tax.total)).toBeGreaterThan(Number(a.tax.total));
+    // The year's tax less what the previous employer deducted, over the 12 periods left.
+    expect(b.monthTds).toBe(new Prisma.Decimal(b.tax.total).sub(60000).div(12).toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP).toFixed(2));
   });
 
   it('M05 change 3: taxable salary paid outside payroll counts as salary for the year', () => {
