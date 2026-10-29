@@ -24,20 +24,25 @@ Verdicts: **wire design** (a live page and the API exist for this job; the page 
 | | pages | live | live, gap | wire | wire, gap | feature not built | phone view | ? | sub-pages |
 |---|---|---|---|---|---|---|---|---|---|
 | A. Runs and payments | 10 | 55 | 8 | 0 | 0 | 0 | 0 | 0 | 63 |
-| B. Inputs, loans, recoveries, queries | 8 | 43 | 9 | 0 | 0 | 0 | 2 | 0 | 54 |
+| B. Inputs, loans, recoveries, queries | 8 | 45 | 7 | 0 | 0 | 0 | 2 | 0 | 54 |
 | C. Structures and set-up | 6 | 41 | 2 | 0 | 0 | 0 | 0 | 0 | 43 |
-| D. Employee pay and tax | 6 | 28 | 10 | 0 | 0 | 1 | 9 | 0 | 48 |
+| D. Employee pay and tax | 6 | 32 | 7 | 0 | 0 | 1 | 9 | 0 | 49 |
 | E. Special pay, earned wage access, actuarial, benefits | 14 | 77 | 8 | 0 | 0 | 6 | 8 | 0 | 99 |
 | F. Reports | 1 | 13 | 1 | 0 | 0 | 0 | 0 | 0 | 14 |
 | G. Records | 3 | 44 | 0 | 0 | 0 | 0 | 0 | 0 | 44 |
-| H. New designs, made live | 5 | 46 | 3 | 0 | 0 | 0 | 0 | 0 | 49 |
-| **All** | **53** | **347** | **41** | **0** | **0** | **7** | **19** | **0** | **414** |
+| H. New designs, made live | 5 | 49 | 1 | 0 | 0 | 0 | 0 | 0 | 50 |
+| **All** | **53** | **356** | **34** | **0** | **0** | **7** | **19** | **0** | **416** |
 
 Reports builder (30 Oct 2026, branch `feat/yukthix-pay-reports`): PAY-25 is live (13 stories made live, 1 state story
 added first; No access is live with a gap); F and All recounted from the PAY-25 rows below.
 
 Bonus builder (29 Oct 2026, branch `feat/yukthix-pay-bonus`): PAY-24 is live (4 stories made live, 6 state stories added
 first); E and All recounted from the PAY-24 rows below.
+
+Follow-ups builder A (30 Oct 2026, branch `feat/yukthix-pay-followups-a`, founder answers 1-6, 9, 16, 19, 22, 23): B, D, H and
+All recounted by hand from the rows changed below (PAY-17 Record, PreClose; PAY-21 Desktop and the new WithdrawQuery
+story; PAY-22 Locked, NonResident; PAY-56 LoadError, NoAccess and the new SessionEnded story). Status and API in
+"Follow-ups builder A status" at the end.
 
 Counted by script (coordinator, 29 Oct 2026, after builders 1, 2, 3 and round 2 of builders 1 and 2, compliance and bonus were merged into the test
 app): every `export const` story in the 53 `pay-NN-*.stories.tsx` files, and the verdict row each story has in section 4
@@ -386,10 +391,10 @@ Live page: /yx/payroll/loans
 | story (sub-page) | verdict | note |
 |---|---|---|
 | List · List · filters | live | status and type filters, search; open loans and the exact amount left in the header |
-| Record · Loan record · EMI schedule | live, gap | the record shows amount, instalment, left to repay, repaid so far; the month-by-month schedule is a gap: the loan API has no repayment list |
+| Record · Loan record · EMI schedule | live | founder answer 5: GET payroll/loans/:id/repayments; recovered months from the approved payslips, then scheduled from the balance (paused months shown); the company rate on the loan |
 | Paused · EMIs paused | live | "paused until" from the API |
 | PauseDialog · Pause EMIs with reason | live | POST loans/:id/schedule-changes (pause); also "Change instalment" (reschedule) kept from the copy |
-| PreClose · Pre-closure | live, gap | closes the loan with a reason (marked repaid; collected outside payroll). Gap: interest to the closing day and "recover in the next run" are not in the API |
+| PreClose · Pre-closure | live | founder answer 5: outstanding, interest to today (days at the loan's rate, from the month after the last recovery) and the total, worked out by the server and kept with the change. Collected outside payroll; "recover in the next run" not built (question) |
 | Empty · Empty | live |  |
 | Loading · Loading | live |  |
 | LoadError · Error · retry | live | and no access ("your payroll admin") |
@@ -400,7 +405,7 @@ Live page: /yx/me/loans
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Advance · Salary advance · schedule preview | live | instalment preview exact for interest-free (rounded up, as the API); with interest an estimate |
+| Advance · Salary advance · schedule preview | live | instalment preview exact for interest-free (rounded up, as the API); with interest an estimate. Founder answer 1: no rate field; the company's rate per loan type (settings `payroll.loan.interest_rate.advance` / `.loan`, default 0) is shown and applied by the server, which refuses a rate sent by the client |
 | OverLimit · Personal loan · over limit | live | founder decision 8: GET payroll/loans/rules; the server refuses too |
 | NotEligible · Not eligible · new joiner on probation | live | founder decision 8: on probation, the reason and the end day |
 | Submitted · Submitted · approval steps | live, gap | toast and "Waiting for approval" in Your loans; the step-by-step approval timeline is in Approvals (the loan view has no steps) |
@@ -544,9 +549,10 @@ Live page: /yx/me/payslips
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Desktop · Net first · why this number | live, gap | net first, lines explained, reimbursements, year to date from the payslips. Gap: the days strip (the payslip API has no day list) |
+| Desktop · Net first · why this number | live | net first, lines explained, reimbursements, year to date from the payslips. Founder answer 6: the days strip from GET payroll/payslips/:id `days` (attendance days and approved leave, as the feed counts them; the frozen feed's paid / unpaid totals); none for off-cycle |
 | RaiseQuery · Raise a query on a line | live |  |
 | QuerySent · Query sent | live | a 5-second toast (house rule) instead of the inline alert |
+| WithdrawQuery · Your query · withdraw | live | new story (founder answer 16): the person's own queries on the payslip; Withdraw asks first, closes it with no reply needed (PATCH payroll/queries/:id status closed; the server already allowed it), 5-second toast |
 | Document · Payslip PDF | live, gap | the PDF downloads; no in-page preview (the API streams the file) |
 | Held · Salary on hold | live |  |
 | NotPublished · Empty · not published yet | live | "No payslips yet" |
@@ -563,10 +569,10 @@ Live page: /yx/me/tax and /yx/me/tax-declarations (founder Q5)
 |---|---|---|
 | Overview · Overview · TDS explanation | live, gap | from GET tax/me/tax-sheet. Gap: the "tax by month" chart (the sheet has no month list) |
 | Declarations · Declarations · choose regime | live | regime as a Segment; rent is a monthly amount, as the API takes it |
-| Locked · Regime locked after cut-off | live, gap | locked text shown. Gap: "Ask HR to change regime" (no request API; payroll changes it with a reason) |
+| Locked · Regime locked after cut-off | live | founder answer 3: "Ask HR to change regime" with a reason (POST tax/me/regime-request) goes to Approvals (tax.regime.override, never the person); pending and turned-down states; approved changes the regime (audited) |
 | Proofs · Proofs · old-regime variant, rejected line | live |  |
 | Previous · Previous employer (Form 12B) | live | founder decision 6: GET/POST tax/me/form12b; counts in tax once payroll approves it; other income through the workspace |
-| NonResident · Residential status · non-resident | live, gap | saved through the workspace. Gap: TRC upload, Form 10F and HR review (the API saves the status at once) |
+| NonResident · Residential status · non-resident | live | founder answer 2: sent with the TRC (PDF), its last day and Form 10F filed (POST tax/me/residency); waits for payroll in the proof queue (PAY-23, tax.proof.verify, never one's own); pending and rejected states; the workspace changes only on approval |
 | NoPan · PAN inoperative warning | live, gap | warning shown. Gap: the "link PAN" proof upload (no API) |
 | Loading · Loading | live |  |
 | ErrorState · Error | live |  |
@@ -972,8 +978,9 @@ Live page: /yx/consultant/[org] (sign-in stays the designed T9 one)
 | NoPan · No working PAN | live | |
 | Empty · Empty | live | |
 | Loading · Loading | live | |
-| LoadError · Error · retry | live, gap | the page goes from loading to ready; a failed session stays on sign-in |
-| NoAccess · No access | live, gap | same: sign-in refuses instead |
+| LoadError · Error · retry | live | founder answer 9: a failed load after sign-in shows the error with Retry |
+| NoAccess · No access | live | a 403 on the load shows no access |
+| SessionEnded · Session ended · sign in again | live | new story (founder answer 9): any call answered 401 part-way shows "Your session ended" with Sign in again |
 
 #### PAY-57 · Equity
 
@@ -1066,11 +1073,11 @@ the guard key by file and name so the six hidden copies show up in `known.json`.
 **Migration:** `20261307000000_pay_form12b` (table `form12b_submissions`, forced RLS, tenant + support + pay guard
 policies, self-verify trigger); proved on a fresh database from zero plus `migrate status`.
 
-**Gaps (states the live page cannot reach yet; reasons in section 4):** PAY-17 schedule and pre-close interest; PAY-18
-approval timeline; PAY-21 days strip and PDF preview; PAY-22 tax-by-month chart, "ask HR to change regime", TRC /
-Form 10F / HR review, PAN link upload; PAY-23 in-page document viewer, own-proof state (never listed); PAY-27
+**Gaps (states the live page cannot reach yet; reasons in section 4):** PAY-18 approval timeline; PAY-21 PDF preview;
+PAY-22 tax-by-month chart, PAN link upload; PAY-23 in-page document viewer, own-proof state (never listed); PAY-27
 deferred / F&F recoveries and reconciliation; PAY-33 quarter and tier breakdown; PAY-39 own-CTC marker; PAY-41 what-if
-inputs; PAY-56 error and no-access; PAY-58 no-access.
+inputs; PAY-58 no-access. (Closed 30 Oct by follow-ups builder A: PAY-17 schedule and pre-close interest, PAY-21 days
+strip, PAY-22 "ask HR to change regime" and TRC / Form 10F / HR review, PAY-56 error and no-access.)
 
 ## 6. Questions for the founder
 
@@ -1230,7 +1237,7 @@ Copies deleted: `StatutoryHubScreen`, `RegistersScreen`, `AdvisoriesScreen`, `Ta
 of live/setup.tsx); stories pay-ops-live, pay-5h-live, pay-5b-live and the Statutory story of pay-5j-live; tests
 pay-ops-live.test.tsx and the statutory case of pay-5j-live.test.tsx (ported). `FormDrawer` and `FileButton` moved to
 `pay-kit.tsx`; the dead live/special.tsx is deleted. 12 lines left `known.json` (6 live copies, 6 not live). Still in
-`known.json` from this area: "ops: MissingIdsScreen" (CMP-07) and "ops: StatutorySetupScreen" (CMP-02).
+`known.json` from this area: "ops: StatutorySetupScreen" (CMP-02). ("ops: MissingIdsScreen" left on 30 Oct: CMP-07 is live.)
 
 ### Counts (sub-pages = stories)
 
@@ -1239,15 +1246,15 @@ pay-ops-live.test.tsx and the statutory case of pay-5j-live.test.tsx (ported). `
 | CMP-01 Statutory hub | 4 | 1 | 0 | 0 | 0 | 5 |
 | CMP-02 Statutory set-up | 0 | 0 | 5 | 0 | 0 | 5 |
 | CMP-03 Registers | 3 | 4 | 0 | 0 | 0 | 7 |
-| CMP-04 TDS challan sheet | 3 | 1 | 0 | 0 | 0 | 4 |
+| CMP-04 TDS challan sheet | 4 | 0 | 0 | 0 | 0 | 4 |
 | CMP-05 TDS return wizard | 4 | 3 | 0 | 0 | 0 | 7 |
 | CMP-06 Form 16 | 2 | 3 | 0 | 0 | 0 | 5 |
-| CMP-07 Missing IDs | 0 | 0 | 0 | 4 | 0 | 4 |
+| CMP-07 Missing IDs | 4 | 0 | 0 | 0 | 0 | 4 |
 | CMP-08 Rules & updates | 4 | 1 | 0 | 0 | 0 | 5 |
 | CMP-09 … 11 IC console, POSH | 0 | 0 | 0 | 0 | 20 | 20 |
-| CMP-12 Supplementary filing | 0 | 4 | 0 | 0 | 0 | 4 |
+| CMP-12 Supplementary filing | 4 | 0 | 0 | 0 | 0 | 4 |
 | CMP-13 Consultant TDS (new) | 15 | 0 | 0 | 0 | 0 | 15 |
-| **All** | **35** | **17** | **5** | **4** | **20** | **81** |
+| **All** | **47** | **12** | **5** | **0** | **20** | **81** |
 
 ### CMP-01 · Statutory hub
 
@@ -1264,7 +1271,7 @@ Live page: /yx/payroll/statutory
 ### CMP-02 · Statutory set-up
 
 Live page: none of its own. Registrations and legal options are live in PAY-16 `PayrollSetupScreen` (/yx/payroll/setup).
-The Compliance menu item "Statutory set-up" opens /yx/payroll/statutory-rules (Q1).
+The Compliance menu item "Statutory rules" (renamed from "Statutory set-up", founder answer 19) opens /yx/payroll/statutory-rules.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
@@ -1296,7 +1303,7 @@ Live page: /yx/payroll/statutory (Open challan sheet on the TDS challan card)
 |---|---|---|
 | OnTime · Pre-filled, on time | live | TDS from the approved run; BSR, serial, date; pressed too early shows errors |
 | LateInterest · Late deposit · interest computed | live | interest from the API |
-| EditedNeedsReason · Amount changed · reason required | live (gap) | PATCH statutory/challans takes no amount; changing it with a reason needs the API (S). Receipt upload with reading the BSR code is not built |
+| EditedNeedsReason · Amount changed · reason required | live | founder answer 23: the amount is editable with "Payroll says …"; a change needs a reason (focus there), is audited (statutory.challan.corrected: from, to, payroll figure, reason) and is refused for the person who prepared the challan. Receipt upload with reading the BSR code is not built |
 | Consultants · Consultant section 194J | live | CMP-13 Challans tab, one row per section |
 
 ### CMP-05 · TDS return wizard
@@ -1329,10 +1336,10 @@ Live page: /yx/payroll/certificates
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| PayrollAdmin · Payroll admin | design only, feature not built | needs GET people missing UAN, ESI IP, PAN, bank check (M); the run checks show some today |
-| Hr · HR (import option) | design only, feature not built | |
-| AllClear · Empty (all IDs complete) | design only, feature not built | |
-| Loading · Loading | design only, feature not built | |
+| PayrollAdmin · Payroll admin | live | /yx/payroll/missing-ids (menu Missing IDs, statutory.filing.view): GET statutory/missing-ids; PAN for everyone (missing or inoperative), UAN unless the profile says no PF, ESI IP when ESI applies, salary bank account missing or waiting; counts per ID drill to its people; Fix opens the person. Bulk "Ask n to update" not built (no API) |
+| Hr · HR (import option) | live | same page for HR with statutory.filing.view; "Import from file" not built |
+| AllClear · Empty (all IDs complete) | live | "Every statutory ID is in place." with the head count |
+| Loading · Loading | live | |
 
 ### CMP-08 · Statutory rules & updates
 
@@ -1356,10 +1363,10 @@ Live page: /yx/payroll/statutory
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| ChildCards · Child cards under the original month | live (gap) | GET statutory/hub returns no supplementary filings; FilingRow has `kind` but the hub cards do not group them (M) |
-| PfSupplementary · Supplementary ECR · interest and damages | live (gap) | same; interest and damages lines need the API |
-| EsiPastPeriod · ESI past-period contribution | live (gap) | same |
-| ExcessRefund · Excess remittance refund request | live (gap) | refund requests not built |
+| ChildCards · Child cards under the original month | live | founder answer 22: GET statutory/hub cards carry `children` (supplementary filings and excess records); "Correct this month" on a filed PF / ESI card makes one |
+| PfSupplementary · Supplementary ECR · interest and damages | live | the panel shows reason, people, shares, caused by and the 7Q / 14B lines; download, mark uploaded, mark filed |
+| EsiPastPeriod · ESI past-period contribution | live | same for ESI |
+| ExcessRefund · Excess remittance refund request | live | recorded with amount and reason ("Paid too much · refund"); paying it back to employees through payroll is not built |
 
 ### CMP-13 · Consultant TDS (new design)
 
@@ -1485,3 +1492,36 @@ reports (`payroll.reports.view`).
 - **Gaps:** scheduled reports and "Request access" are design only; CSV only (no XLSX or PDF); the reconciliation bridge
   does not yet split revisions, unpaid leave, arrears and statutory changes (APX-C RPT-PAY-02); year to date has one row per
   employment (a rehired person's employments are not combined).
+
+
+## Follow-ups builder A status (founder answers 1-6, 9, 16, 19, 22, 23; branch `feat/yukthix-pay-followups-a`, 30 Oct 2026)
+
+- **1 Loan interest:** settings `payroll.loan.interest_rate.advance` and `payroll.loan.interest_rate.loan` (company or
+  legal entity, HR's `org.settings.manage`; values 0 … 12, default 0 = interest-free). `GET payroll/loans/rules` returns
+  `interestRate`; `POST payroll/loans` refuses any `interestRate` from the client (400) and keeps the company rate on the
+  loan; the Approvals summary shows it. PAY-18 and the PAY-17 Add loan drawer have no rate field. No settings screen
+  for the loan settings yet (as for the loan limit): question 1.
+- **5 Loan repayments:** `GET payroll/loans/:id/repayments` (own loan, or `payroll.loan.manage` over its entity; else
+  404): recovered months from `loan_repayments` and their payslips, then the schedule from the balance (paused through
+  `pausedUntil`), and `closing` (interest at the loan's rate, simple, 365-day year, from the month after the last
+  recovery to today). A pre-closure records interest, total and day with the schedule change and the audit.
+- **2 Residential status:** table `tax_residency_requests`; `POST tax/me/residency` (multipart: status, TRC PDF checked by
+  content, valid-until not past, treaty country, Form 10F filed); one open request; `GET tax/residency`,
+  `GET tax/residency/:id/file`, `POST tax/residency/:id/decision` (`tax.proof.verify`, entity scope, never one's own;
+  trigger too). `PATCH tax/me/workspace` refuses a status or treaty change (409). PAY-22 pending / rejected; PAY-23 rows.
+- **3 Regime after the cut-off:** table `tax_regime_requests`; `POST tax/me/regime-request` (after the cut-off, reason
+  10+ letters, one open) → Approvals type `tax.regime_change`, approvers hold `tax.regime.override` in the entity, never
+  the requester or the person; approved sets the regime as payroll's override (audited `tax.regime.overridden`).
+- **4 My pay menu:** `myPayPanel` has "Pay documents" and "My equity"; PAY-54 and PAY-58 highlight their own item.
+- **6 Payslip days:** `GET payroll/payslips/:id` returns `days` (regular monthly payslips): one cell per day employed,
+  from attendance days and approved leave as the feed counts them, plus the frozen feed's totals.
+- **9 Consultant portal:** 401 part-way → "Your session ended" (new PAY-56 story); load error with Retry; 403 no access.
+- **16 Withdraw a query:** the server already allowed it (own query, `status: closed`, no reply); PAY-21 lists the
+  person's queries with Withdraw (new story). Payroll still replies before closing.
+- **19 Menu:** "Statutory set-up" → "Statutory rules" (nav test).
+- **22 CMP-12 then CMP-07:** hub `children`; Correct this month (supplementary / refund / adjustment); panel actions;
+  `GET statutory/missing-ids` and /yx/payroll/missing-ids (menu Missing IDs).
+- **23 Challan correction:** see CMP-04 EditedNeedsReason.
+- **Migration:** `20261309000000_pay_tax_requests` (two tables, forced RLS with tenant, support-exclusion and pay-guard
+  policies, self-decision triggers, one-open partial unique indexes). No new permission keys, so no grant migration.
+- **Manual steps:** MT-PAY-F-01 … MT-PAY-F-10 in `docs/yukthix/tracker/manual-tests.json`.

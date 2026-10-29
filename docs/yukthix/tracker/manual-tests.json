@@ -6153,5 +6153,206 @@
       "PAY-24 Approve"
     ],
     "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-F-01",
+    "area": "Pay · Follow-ups (30 Oct 2026)",
+    "screen": "Loan interest is the company's (PAY-18, founder answer 1)",
+    "url": "http://localhost:3000/yx/me/loans",
+    "account": "panel@demo-org.test (Manager - Divya). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Me › Loans and advances. Look for an interest field.",
+      "2. Choose Personal loan. Read the Effect on your pay panel.",
+      "3. Have HR (hr@demo-org.test) set \"payroll.loan.interest_rate.loan\" to 8.5 for the company (no settings screen yet: PUT /api/v1/org/settings, as for the loan limit). Sign back in as Divya and reload.",
+      "4. Enter ₹60,000, 12 instalments, a reason; press Send request.",
+      "5. Try the same setting change as payroll@demo-org.test."
+    ],
+    "expected": "Step 1: no interest field at all. Step 2: Interest \"Interest-free\" (default). Step 3: Interest \"8.5% a year\"; the instalment shows \"(about)\". Step 4: a 5-second toast; Your loans shows it Waiting for approval; in Approvals the request summary shows \"8.5% a year (company rate)\". Negative: Step 5 is refused (only HR changes it); a request sent with a rate by any other client is refused \"The interest rate is set by the company…\".",
+    "stories": [
+      "PAY-18 Advance",
+      "PAY-18 OverLimit"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-F-02",
+    "area": "Pay · Follow-ups (30 Oct 2026)",
+    "screen": "Loan schedule and pre-closure (PAY-17, founder answer 5)",
+    "url": "http://localhost:3000/yx/payroll/loans",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Payroll › Loans and advances; open an active loan.",
+      "2. Read the Schedule table.",
+      "3. Press Pre-close; read the figures; press Pre-close loan with no reason.",
+      "4. Type \"Paid back from a bonus\"; press Pre-close loan.",
+      "5. Open your own loan (if any) or sign in as Divya and open hers under Me › Loans."
+    ],
+    "expected": "Step 2: one row per month: No., month, EMI, interest, balance, status (Recovered / Paused / Scheduled); months paid in an approved run are Recovered; the last row ends at ₹0. Step 3: Outstanding principal, Interest to today with the days and rate (or \"None (interest-free)\"), Total to collect; error under Reason with focus. Step 4: toast \"…loan is closed\"; the loan shows Closed. Negative: your own loan has no Change buttons (\"Someone else in payroll changes it\"); another company's loan id gives \"Not found\".",
+    "stories": [
+      "PAY-17 Record",
+      "PAY-17 PreClose"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-F-03",
+    "area": "Pay · Follow-ups (30 Oct 2026)",
+    "screen": "Ask HR to change my regime (PAY-22, founder answer 3)",
+    "url": "http://localhost:3000/yx/me/tax-declarations",
+    "account": "panel@demo-org.test (Manager - Divya). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Me › Tax declarations (the regime is locked after the company cut-off).",
+      "2. Press Ask HR to change regime; type \"short\"; press Send request.",
+      "3. Type a full reason (\"Home loan taken in August\"); press Send request.",
+      "4. Press Ask HR again (it should not be offered).",
+      "5. Sign in as payroll@demo-org.test; Approvals: open the request and press Not approve with no reason; then Approve.",
+      "6. Back as Divya, reload the tax workspace."
+    ],
+    "expected": "Step 1: \"New regime, locked on …\" with Ask HR to change regime. Step 2: error under Reason, focus there, nothing sent. Step 3: toast; \"Request sent to HR\" with the date. Step 4: no second Ask while one waits. Step 5: Not approve needs a reason; Approve works; Suresh never sees his own request. Step 6: the regime is the other one, \"(set by payroll)\"; the audit log shows tax.regime.overridden. Negative: before the cut-off the API answers \"You can still change your regime yourself…\".",
+    "stories": [
+      "PAY-22 Locked"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-F-04",
+    "area": "Pay · Follow-ups (30 Oct 2026)",
+    "screen": "Residential status waits for payroll (PAY-22, PAY-23, founder answer 2)",
+    "url": "http://localhost:3000/yx/me/tax",
+    "account": "panel@demo-org.test (Manager - Divya). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Me › Tax › Residential status; press Send TRC to HR.",
+      "2. Choose Non-resident; press Send for HR review with nothing else.",
+      "3. Attach a PDF TRC, valid until 31 Mar next year, treaty country SG, tick Form 10F; press Send for HR review.",
+      "4. Reload the page.",
+      "5. Sign in as payroll@demo-org.test; Payroll › Proof checking: open the Residential status row; open the TRC; choose Reject and press Reject change with no comment; then Approve.",
+      "6. Back as Divya, reload."
+    ],
+    "expected": "Step 1: \"Resident is already your status…\" with focus on the choice. Step 2: errors for the TRC, the valid-until day and Form 10F. Step 3: toast \"Sent for HR review\"; nothing changes yet. Step 4: \"Sent for HR review\" with the date and file, no form; the header says \"(change with payroll)\". Step 5: the TRC downloads; reject needs a comment (focus there); approve gives a toast. Step 6: Non-resident, \"approved by HR\". Negative: a TRC already ended, or a non-PDF, is refused; Suresh never sees his own request in the queue.",
+    "stories": [
+      "PAY-22 NonResident",
+      "PAY-23 Line"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-F-05",
+    "area": "Pay · Follow-ups (30 Oct 2026)",
+    "screen": "Payslip days strip and withdrawing a query (PAY-21, founder answers 6 and 16)",
+    "url": "http://localhost:3000/yx/me/payslips",
+    "account": "panel@demo-org.test (Manager - Divya). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Me › Payslips (a regular month with attendance).",
+      "2. Read the Days section.",
+      "3. Press Raise a query, write a question, Send query.",
+      "4. Under \"Your queries on this payslip\" press Withdraw query; press Cancel; then press it again and Withdraw query.",
+      "5. Open an off-cycle payslip."
+    ],
+    "expected": "Step 2: one cell per day (paid, unpaid, holiday, weekly off, paid leave, not yet) with counts, the unpaid dates and \"N paid days of M\". Step 3: toast; the query shows \"Waiting for payroll\" with Withdraw query. Step 4: Cancel keeps it; Withdraw closes it with a 5-second toast \"Query withdrawn\" and the button goes. Negative: a closed query has no Withdraw; an off-cycle payslip has no days strip; payroll (Suresh) still cannot close a query without replying.",
+    "stories": [
+      "PAY-21 Desktop",
+      "PAY-21 QuerySent",
+      "PAY-21 WithdrawQuery"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-F-06",
+    "area": "Pay · Follow-ups (30 Oct 2026)",
+    "screen": "My pay menu and Statutory rules menu (founder answers 4 and 19)",
+    "url": "http://localhost:3000/yx/me/pay-documents",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Me › My pay documents; look at the My pay menu.",
+      "2. Open Me › My equity; look at the menu.",
+      "3. Open the Compliance menu."
+    ],
+    "expected": "Step 1: \"Pay documents\" is the highlighted item. Step 2: \"My equity\" is highlighted (not My incentives). Step 3: \"Statutory rules\" opens the rules page; \"Statutory set-up\" is gone from Compliance; registrations stay in Settings › Payroll set-up. Negative: an employee without payroll keys sees no Compliance area.",
+    "stories": [
+      "PAY-54 Default",
+      "PAY-58 Default"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-F-07",
+    "area": "Pay · Follow-ups (30 Oct 2026)",
+    "screen": "Consultant portal: session ended, error, no access (PAY-56, founder answer 9)",
+    "url": "http://localhost:3000/yx/consultant/demo-org",
+    "account": "A consultant's email from Payroll › Consultants (one-time code by email). Use a normal browser tab, never the built-in pane.",
+    "steps": [
+      "1. Sign in with the emailed code; see your invoices.",
+      "2. Leave the tab for 31 minutes, then press Payment advice.",
+      "3. Press Sign in again.",
+      "4. Stop the API, sign in again with a new code."
+    ],
+    "expected": "Step 1: invoices, PAN line, certificates. Step 2: \"Your session ended\" with Sign in again (no blank page, no staff sign-in redirect). Step 3: the code sign-in screen. Step 4: \"We couldn't load your invoices.\" with Retry. Negative: a consultant the company removed sees \"You don't have access to your invoices\".",
+    "stories": [
+      "PAY-56 LoadError",
+      "PAY-56 NoAccess",
+      "PAY-56 SessionEnded"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-F-08",
+    "area": "Pay · Follow-ups (30 Oct 2026)",
+    "screen": "Supplementary filings (CMP-12, founder answer 22)",
+    "url": "http://localhost:3000/yx/payroll/statutory",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Statutory hub on a month whose PF is Filed.",
+      "2. Press Correct this month; press Make supplementary filing with no reason.",
+      "3. Type a reason and press Make supplementary filing (after a payslip of that month was revised).",
+      "4. Open the child card's Open filing.",
+      "5. Correct this month again: choose \"Paid too much · refund\", press Record excess without an amount; then enter 1500 and a reason."
+    ],
+    "expected": "Step 2: error under Why with focus. Step 3: toast; a child card \"Supplementary ECR · <month>\" under PF. Step 4: the panel with reason, people, shares, caused by, interest and damages lines, Download file and Mark uploaded. Step 5: amount error; then a toast and an \"Excess remittance refund request\" child. Negative: with nothing changed since the return the server says \"Nothing changed since the filed return.\"; PT and not-yet-filed cards have no Correct this month.",
+    "stories": [
+      "CMP-12 ChildCards",
+      "CMP-12 PfSupplementary",
+      "CMP-12 EsiPastPeriod",
+      "CMP-12 ExcessRefund"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-F-09",
+    "area": "Pay · Follow-ups (30 Oct 2026)",
+    "screen": "Missing IDs (CMP-07, founder answer 22)",
+    "url": "http://localhost:3000/yx/payroll/missing-ids",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Compliance › Missing IDs.",
+      "2. Press \"View uan missing\" on its card.",
+      "3. Press Fix on a row.",
+      "4. Back; press Show everyone.",
+      "5. Sign in as panel@demo-org.test and open the same address."
+    ],
+    "expected": "Step 1: four counts (UAN, ESI IP, PAN, bank) and one row per person and missing ID, with what it affects and Blocks / Changes tax; no ID numbers anywhere. Step 2: only the UAN rows, \"Showing: UAN missing\". Step 3: the person's record opens. Step 4: everyone again. Negative: Step 5 shows no access; another entity's id gives Not found; when all IDs are in place: \"Every statutory ID is in place.\"",
+    "stories": [
+      "CMP-07 PayrollAdmin",
+      "CMP-07 AllClear",
+      "CMP-07 Loading"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-F-10",
+    "area": "Pay · Follow-ups (30 Oct 2026)",
+    "screen": "Challan amount correction (CMP-04, founder answer 23)",
+    "url": "http://localhost:3000/yx/payroll/statutory",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh) prepares; hr@demo-org.test or a second payroll person with statutory.challan.manage corrects. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As Suresh: Prepare challan, Open challan sheet; change TDS deducted; fill BSR, serial, date; press Save challan.",
+      "2. Type a reason and Save challan.",
+      "3. Sign in as the second person; open the sheet; change the amount, give a reason, fill the deposit, Save challan."
+    ],
+    "expected": "Step 1: \"Payroll says ₹…\" under the amount; error under the reason with focus. Step 2: refused: \"You prepared this challan, so someone else in payroll corrects its amount.\" (the sheet stays open). Step 3: toast \"…recorded with the corrected amount.\"; the audit log shows statutory.challan.corrected with from, to and the reason. Negative: an unchanged amount needs no reason; a deposited challan cannot change.",
+    "stories": [
+      "CMP-04 EditedNeedsReason",
+      "CMP-04 OnTime"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
   }
 ]
