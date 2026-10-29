@@ -205,6 +205,9 @@ describe('Payroll batch 5e (income tax)', () => {
   });
 
   it('workspace: the regime is the employee’s until the cut-off; after it only payroll changes it, with a reason', async () => {
+    // A first visit asks for several things at once; none may collide while the workspace is created (was 409).
+    const first = await Promise.all(['/tax/me/workspace', '/tax/me/tax-sheet', '/tax/me/declarations', '/tax/me/workspace'].map((u) => api('emp1', 'get', u)));
+    expect(first.map((r) => r.status)).toEqual([200, 200, 200, 200]);
     const ws = (await api('emp1', 'get', '/tax/me/workspace').expect(200)).body;
     expect(ws).toMatchObject({ taxYear: ty, regime: 'new', lawVersion: Number(ty.slice(0, 4)) >= 2026 ? 'IT-2025' : 'IT-1961' });
     ids.ws1 = ws.id;

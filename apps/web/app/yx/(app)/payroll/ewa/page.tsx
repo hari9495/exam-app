@@ -22,7 +22,8 @@ export default function YxPayEwaPage() {
   return (
     <EwaAdminScreen
       live={{
-        state: payState(entities),
+        // Policies and draws need payroll.ewa.manage: a refusal makes the page "no access", not an endless loading table.
+        state: entityId ? payState(entities, policies, draws) : payState(entities),
         onRetry: () => void entities.refetch(),
         entities: entities.data ?? [],
         entityId,

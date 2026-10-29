@@ -16,7 +16,8 @@ export default function YxPayLoansPage() {
   return (
     <LoansScreen
       live={{
-        state: payState(loans),
+        // GET /loans also answers employees (their own requests), so this payroll page checks the key itself.
+        state: perms.data === undefined ? 'loading' : !perms.has('payroll.loan.manage') ? 'no-access' : payState(loans),
         onRetry: () => void loans.refetch(),
         loans: loans.data ?? null,
         nameOf,

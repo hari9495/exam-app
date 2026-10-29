@@ -190,11 +190,14 @@ export class TaxService {
     });
     if (!e) throw new NotFoundException('You have no current employment here.');
     const taxYear = taxYearOf(today.slice(0, 7));
-    const ws =
-      (await tx.taxWorkspace.findFirst({ where: { organizationId: c.organizationId, employmentId: e.id, taxYear } })) ??
-      (await tx.taxWorkspace.create({
-        data: { organizationId: c.organizationId, legalEntityId: e.legalEntityId, employeeId: e.employeeId, employmentId: e.id, taxYear, lawVersion: lawVersionFor(taxYear) },
-      }));
+    const where = { organizationId: c.organizationId, employmentId: e.id, taxYear };
+    // The tax page asks for several things at once on a first visit: insert-if-absent, so the parallel calls don't collide.
+    if (!(await tx.taxWorkspace.findFirst({ where })))
+      await tx.taxWorkspace.createMany({
+        data: [{ organizationId: c.organizationId, legalEntityId: e.legalEntityId, employeeId: e.employeeId, employmentId: e.id, taxYear, lawVersion: lawVersionFor(taxYear) }],
+        skipDuplicates: true,
+      });
+    const ws = (await tx.taxWorkspace.findFirst({ where }))!;
     return { ws, dates: await taxDates(tx, c, e.legalEntityId, taxYear), today };
   }
 
