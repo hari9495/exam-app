@@ -24,6 +24,23 @@ Counted from the stories and the rows below by script (29 Oct 2026, after leave 
 
 Kit (24 stories) are shared parts, not pages; section E lists which live screens use them.
 
+## Founder decisions, 29 Oct 2026 (all eight suggestions accepted: "all OK")
+
+1. **Long absence and block dates.** Design a "Record long absence" dialog on the HR leave home and a "Company block dates"
+   card on the leave policy page, in the house style, then make both live.
+2. **Notice period per leave type.** Each leave type has its own notice days, with a company default; sick leave defaults to 0.
+3. **Leave liability report reads pay from Payroll.** Money shows only to people allowed to see pay (HR, Payroll); everyone else
+   sees days only.
+4. **Month lock: one step by default** (HR locks after a confirm and an authenticator code). Two steps (HR sends, Payroll
+   approves) is a company setting. No change needed.
+5. **A separate permission, "Approve attendance lock"** (`attendance.lock.approve`), given to the Payroll role by default; it no
+   longer reuses `payroll.correction.approve`.
+6. **Withdraw consent stays, with a proper design.** A confirm dialog says what happens: tracking stops, the location trail is
+   deleted, attendance days stay (pay needs them). Same rule for the field-force tracking consent.
+7. **Design "Reopen a locked month"** (reason + authenticator code, audit-logged) **and a list of past strikes and lockouts**,
+   then make both live.
+8. **Menu: "Registers"** (legal forms for inspectors) **and "Attendance reports"** (numbers for managers). No change needed.
+
 ## A. Attendance
 
 ### 1. Live pages
