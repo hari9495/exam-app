@@ -54,6 +54,8 @@ const PAY_ADMIN_5I = ['payroll.special.manage', 'payroll.ewa.manage', 'payroll.e
 // Founder decision 5 (29 Oct 2026): payroll approves the attendance lock HR sends (two-step flow, TIM-11); founder
 // answer A: payroll reads the leave liability report only (not the whole of leave.view).
 const PAY_ADMIN_TIME = ['attendance.lock.approve', 'leave.liability.view'];
+// PAY-25 payroll reports: whoever prepares or approves runs (Payroll Admin, Payroll Approver, Finance Approver).
+const PAY_REPORTS = ['payroll.reports.view'];
 const PAY_APPROVER_5A = ['payroll.period.view', 'payroll.period.reopen', 'payroll.document.view', 'payroll.file.view', 'payroll.file.release'];
 
 const DESK_AGENT = ['desk.ticket.view', 'desk.ticket.work', 'desk.ticket.note', 'desk.ticket.export', 'desk.task.work', 'desk.kb.view_internal', 'desk.kb.author', 'desk.chat.work', 'desk.hr_summary.view', 'desk.ticket.move'];
@@ -98,7 +100,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     // changing pay) and does not approve bank or identity changes (HR does).
     // Founder 28 Oct 2026: job changes (salary revisions included) are approved by HR only.
     cannot: 'HR settings, job changes or approving them, adding people, probation decisions, approving bank and identity changes.',
-    permissions: [...HR_VIEW, 'employee.salary.view', 'employee.salary.manage', 'employee.identity.view', 'pay.range.view', 'pay.range.manage', 'org.entity.statutory.manage', ...PAY_ADMIN_5A, ...PAY_ADMIN_5B, ...PAY_ADMIN_5C, ...PAY_ADMIN_5D, ...PAY_ADMIN_5E, ...PAY_ADMIN_5F, ...PAY_ADMIN_5G, ...PAY_ADMIN_5H, ...PAY_ADMIN_5I, ...PAY_ADMIN_TIME],
+    permissions: [...HR_VIEW, 'employee.salary.view', 'employee.salary.manage', 'employee.identity.view', 'pay.range.view', 'pay.range.manage', 'org.entity.statutory.manage', ...PAY_ADMIN_5A, ...PAY_ADMIN_5B, ...PAY_ADMIN_5C, ...PAY_ADMIN_5D, ...PAY_ADMIN_5E, ...PAY_ADMIN_5F, ...PAY_ADMIN_5G, ...PAY_ADMIN_5H, ...PAY_ADMIN_5I, ...PAY_ADMIN_TIME, ...PAY_REPORTS],
   },
   {
     key: 'payroll_approver',
@@ -107,7 +109,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     summary: 'Checks and approves payroll runs, loans and payroll files prepared by others; the first check of a request to reopen a locked month.',
     // Founder 28 Oct 2026: job changes (salary revisions included) are approved by HR only.
     cannot: 'Prepare pay changes, approve job changes.',
-    permissions: [...HR_VIEW, 'employee.salary.view', 'employee.identity.view', ...PAY_APPROVER_5A, 'payroll.run.view', 'payroll.run.approve', 'payroll.loan.approve', 'payroll.bankfile.release', 'payroll.payment_mode.approve', ...PAY_APPROVER_5G, ...PAY_APPROVER_5H],
+    permissions: [...HR_VIEW, 'employee.salary.view', 'employee.identity.view', ...PAY_APPROVER_5A, 'payroll.run.view', 'payroll.run.approve', 'payroll.loan.approve', 'payroll.bankfile.release', 'payroll.payment_mode.approve', ...PAY_APPROVER_5G, ...PAY_APPROVER_5H, ...PAY_REPORTS],
   },
   {
     key: 'finance',
@@ -123,7 +125,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     typicalScope: 'legal_entity',
     summary: 'The final approval to reopen a locked pay month; releases payroll files prepared by others.',
     cannot: 'Prepare pay, or see individual tax workspaces.',
-    permissions: ['expense.finance.review', 'expense.payout.manage', 'expense.report.view', 'org.structure.view', 'payroll.period.view', 'payroll.period.reopen.approve', 'payroll.file.view', 'payroll.file.release', 'payroll.run.view', 'payroll.run.approve', 'payroll.journal.export', 'payroll.cost_rate.view', 'payroll.bankfile.release', 'consultant.invoice.approve'],
+    permissions: ['expense.finance.review', 'expense.payout.manage', 'expense.report.view', 'org.structure.view', 'payroll.period.view', 'payroll.period.reopen.approve', 'payroll.file.view', 'payroll.file.release', 'payroll.run.view', 'payroll.run.approve', 'payroll.journal.export', 'payroll.cost_rate.view', 'payroll.bankfile.release', 'consultant.invoice.approve', ...PAY_REPORTS],
   },
   {
     key: 'expense_setup',
