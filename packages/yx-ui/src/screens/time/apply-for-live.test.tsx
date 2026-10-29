@@ -51,16 +51,17 @@ describe('Apply for someone (TIM-17 HR → TIM-18, live)', () => {
     expect(screen.queryByRole('button', { name: 'Apply for someone' })).toBeNull();
   });
 
-  it('Send too early shows "Choose the person." and focuses the error summary, which leads to the person; never disabled', async () => {
+  it('Send too early shows "Choose the person." and focuses the person field, and the error summary leads there too; never disabled', async () => {
     const a = live();
     const dlg = await open(a);
     expect(within(dlg).getByText('Pick the employee to see their leave types and balances.')).toBeInTheDocument();
     const send = within(dlg).getByRole('button', { name: 'Send request' });
     expect(send).toBeEnabled();
     await ue.click(send);
-    // The house error summary takes focus; its first line is the person and moves focus to that field.
+    // Focus goes to the first bad field (the form moves it there; the summary no longer takes it from a field). The
+    // summary's first line is the person and also leads to that field.
+    expect(within(dlg).getByLabelText('Search employee')).toHaveFocus();
     const summary = within(dlg).getByRole('alert');
-    expect(summary).toHaveFocus();
     await ue.click(within(summary).getByRole('link', { name: 'Choose the person.' }));
     expect(within(dlg).getByLabelText('Search employee')).toHaveFocus();
     expect(a.onApply).not.toHaveBeenCalled();

@@ -190,9 +190,13 @@ export function useTooEarly(errors: { fieldId: string; message: string }[]) {
 export function ErrorSummary({ errors, title = 'Fix these before saving' }: { errors: FormErrorItem[]; title?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const prev = useRef(0);
-  // Focus only when the list grows (a Save that failed), never when fixing a field shrinks it mid-typing.
+  // Focus only when the list grows (a Save that failed), never when fixing a field shrinks it mid-typing. A list that
+  // grows while the person is typing (clearing a field, "2." on the way to "2.5") must not take the focus either: the
+  // next key would be lost. A failed Save leaves focus on the button, or on the first bad field the form chose.
   useEffect(() => {
-    if (errors.length > prev.current) ref.current?.focus();
+    const el = document.activeElement as HTMLElement | null;
+    const typing = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+    if (errors.length > prev.current && !typing) ref.current?.focus();
     prev.current = errors.length;
   }, [errors.length]);
   if (!errors.length) return null;
