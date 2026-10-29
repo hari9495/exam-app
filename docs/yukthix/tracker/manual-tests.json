@@ -3758,5 +3758,124 @@
       "TIM-32 Consent withdrawn · no trail"
     ],
     "note": "The phone dialog is designed (phone view); the mobile app is not built."
+  },
+  {
+    "id": "MT-TR-01",
+    "area": "Time · Roster fix (29 Oct 2026)",
+    "screen": "Roster (HR) - all 7 days and Hours fit",
+    "url": "http://localhost:3000/yx/time/roster",
+    "account": "hr-tester (HR, no employee record)",
+    "steps": [
+      "Set the browser to a laptop at 150 % (window 1278 x 635) with the left menu open.",
+      "Open Time > Roster.",
+      "Look at the title, the buttons at the top right and the right edge of the grid.",
+      "Positive: click Auto-roster."
+    ],
+    "expected": "Step 3: the title is \"Roster · Everyone\"; Previous week, Next week, Copy last week, Swap shifts and Auto-roster sit in one row level with the title. The grid shows Person, Mon to Sun and Hours; Sunday is fully visible next to Hours, no sideways scroll bar on the grid and none on the page. Step 4: the Auto-roster page opens.",
+    "stories": [
+      "TIM-05 Hr"
+    ],
+    "note": "POSITIVE. Before the fix the days were 117 px wide and Sunday sat under the Hours column."
+  },
+  {
+    "id": "MT-TR-02",
+    "area": "Time · Roster fix (29 Oct 2026)",
+    "screen": "Roster (manager) - header and grid width",
+    "url": "http://localhost:3000/yx/time/roster",
+    "account": "kavya@demo-org.test (Manager - Kavya)",
+    "steps": [
+      "Window 1278 x 635, left menu open. Open Time > Roster.",
+      "Go to a week where someone is on leave (a cell says \"On leave · full day\").",
+      "Negative: make the window narrower (about 900 wide) and scroll the grid sideways."
+    ],
+    "expected": "Step 1: title \"Roster · Your team\" with the Auto-roster button; all 7 days and Hours fit. Step 2: the long leave text wraps inside its cell; the day does not get wider and Sunday stays in view. Step 3: if the days no longer fit, the grid scrolls sideways inside its own frame; the Person column stays on the left; the page itself never scrolls sideways; nothing is cut off.",
+    "stories": [
+      "TIM-05 Draft"
+    ],
+    "note": "POSITIVE + NEGATIVE."
+  },
+  {
+    "id": "MT-TR-03",
+    "area": "Time · Roster fix (29 Oct 2026)",
+    "screen": "Roster (employee) - no planner header",
+    "url": "http://localhost:3000/yx/time/roster",
+    "account": "arjun@demo-org.test (Employee)",
+    "steps": [
+      "Open Time > Team roster (or type the address)."
+    ],
+    "expected": "Arjun sees his own read-only week (title \"Roster\"), with no Auto-roster, Copy last week or Swap shifts buttons; only \"Ask to swap a shift\".",
+    "stories": [
+      "TIM-05 Staff"
+    ],
+    "note": "NEGATIVE: the planner header is not shown to someone who plans no one."
+  },
+  {
+    "id": "MT-TR-04",
+    "area": "Time · Roster fix (29 Oct 2026)",
+    "screen": "Auto-roster (HR, several locations) - one action row",
+    "url": "http://localhost:3000/yx/time/auto-roster",
+    "account": "hr-tester (HR, no employee record)",
+    "steps": [
+      "Window 1278 x 635, left menu open. Open Time > Roster > Auto-roster.",
+      "Look at the header on each tab: Demand, Coverage and draft, Rules.",
+      "Positive: open the Location picker under the subtitle and choose Hosur plant.",
+      "Negative: pick a location with no demand set (Not set up) and click Generate."
+    ],
+    "expected": "Step 2: the title \"Auto-roster · <location>\"; the week arrows and Generate (or Run again and Approve draft) are in one row at the top right, level with the title, on every tab. The Location picker sits under the subtitle line, starting at the title's left edge. Step 3: the title changes to \"Auto-roster · Hosur plant\" and the page loads that plant. Step 4: the badge says \"Not set up\"; Generate opens the Demand tab with \"Set the people needed first\" and the cursor in the first number; Generate stays in the top row.",
+    "stories": [
+      "TIM-34 Demand",
+      "TIM-34 Draft"
+    ],
+    "note": "POSITIVE + NEGATIVE. Before the fix the picker filled the action area and pushed Generate under it."
+  },
+  {
+    "id": "MT-TR-05",
+    "area": "Time · Roster fix (29 Oct 2026)",
+    "screen": "Auto-roster (manager, one location) - no picker",
+    "url": "http://localhost:3000/yx/time/auto-roster",
+    "account": "kavya@demo-org.test (Manager - Kavya)",
+    "steps": [
+      "Open Time > Roster > Auto-roster."
+    ],
+    "expected": "Title \"Auto-roster · Hosur plant\"; no Location picker (one place only); actions in one row level with the title.",
+    "stories": [
+      "TIM-34 Draft"
+    ],
+    "note": "NEGATIVE: the picker appears only with more than one location."
+  },
+  {
+    "id": "MT-TR-06",
+    "area": "Time · Roster fix (29 Oct 2026)",
+    "screen": "Office days (HR) - title and subtitle",
+    "url": "http://localhost:3000/yx/time/hybrid",
+    "account": "hr-tester (HR, no employee record)",
+    "steps": [
+      "Open Time > Office days.",
+      "Read the title and the line under it.",
+      "Positive: on the Policy tab set Whole company to 2 office days a week and save; reload."
+    ],
+    "expected": "Step 2: the title is \"Office days · Everyone\" (not \"My office days\"); with no rule the line says \"No office-day rule yet. HR sets one on the Policy tab.\" Step 3: the line says \"Whole company · 2 office days a week\" (plus anchor days if set).",
+    "stories": [
+      "TIM-41 Compliance",
+      "TIM-41 Policy"
+    ],
+    "note": "POSITIVE + NEGATIVE (no rule). A scoped HR (attendance.view for one location) sees \"Office days · The people you see\"."
+  },
+  {
+    "id": "MT-TR-07",
+    "area": "Time · Roster fix (29 Oct 2026)",
+    "screen": "Office days (manager and employee) - titles",
+    "url": "http://localhost:3000/yx/time/hybrid",
+    "account": "kavya@demo-org.test (Manager - Kavya); then arjun@demo-org.test (Employee)",
+    "steps": [
+      "As kavya@ open Time > Office days and read the title.",
+      "Sign out; as arjun@ open My time > My office days."
+    ],
+    "expected": "Step 1: \"Office days · Your team\" with her rule under it (\"N office days a week · anchor day …\"), or \"No office-day rule yet. HR sets one on the Policy tab.\" when none applies. Step 2: \"My office days\" with Arjun's rule line; no Compliance or Policy tab.",
+    "stories": [
+      "TIM-41 Manager",
+      "TIM-41 Employee"
+    ],
+    "note": "POSITIVE + NEGATIVE (employee sees no team or policy)."
   }
 ]
