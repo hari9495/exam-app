@@ -4653,5 +4653,307 @@
       "PAY-48 Cannot add a nominee"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-S-01",
+    "area": "Pay · Compensation",
+    "screen": "Compensation and revision (PAY-12, PAY-42)",
+    "url": "http://localhost:3000/yx/payroll/compensation",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635, sidebar open. Then arjun@demo-org.test (Employee - Arjun), for the negative step.",
+    "steps": [
+      "1. Open Payroll › Compensation.",
+      "2. Type one letter in the person search and press Search.",
+      "3. Search \"Arjun\" and choose him.",
+      "4. Press Revise, then press Send for approval with every field empty.",
+      "5. Fill an effective date, Annual CTC 12,00,000, a template and reason \"Annual review\"; press Work out the breakup.",
+      "6. Press Suggest split, then Use with no option picked; then pick one and press Use.",
+      "7. Press Send for approval.",
+      "8. Sign out; sign in as arjun@demo-org.test and open /yx/payroll/compensation."
+    ],
+    "expected": "Step 1: the designed PAY-12 screen (same header, tabs and tables as the story), no page scroll. Step 2: a field error asks for at least 2 letters. Step 4: field errors show and focus moves to the first bad field (the button was never greyed out). Step 5: the Effect panel lists each line with the rule it follows. Step 6: a field error, then the split fills the lines. Step 7: a 5-second toast says it went for approval. Step 8: no access; nothing about Arjun's pay is shown.",
+    "stories": [
+      "PAY-12 Revision",
+      "PAY-42 Options"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-S-02",
+    "area": "Pay · Compensation",
+    "screen": "Statutory profile and revision letter (PAY-12)",
+    "url": "http://localhost:3000/yx/payroll/compensation",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Payroll › Compensation and choose an employee with an approved revision.",
+      "2. Open the Statutory profile tab, change VPF and press Save with no reason.",
+      "3. Enter a reason of 5 letters or more and Save.",
+      "4. Press Revision letter, press Issue with no signatory, then pick a signatory and Issue.",
+      "5. Look for a Revise button."
+    ],
+    "expected": "Step 2: the reason field shows an error and takes focus. Step 3: a toast; the profile shows the new VPF. Step 4: a field error, then a toast with the letter's reference. Step 5: there is no Revise button for Payroll (only HR changes pay).",
+    "stories": [
+      "PAY-12 HrPersona"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-S-03",
+    "area": "Pay · Templates",
+    "screen": "Salary template builder (PAY-13)",
+    "url": "http://localhost:3000/yx/payroll/templates",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Payroll › Salary templates.",
+      "2. Press New template, then Create with an empty name.",
+      "3. Name it \"Plant staff 2027\" and create it.",
+      "4. In a formula type \"basic * 0.5 + nosuch\" and leave the field.",
+      "5. Make HRA = \"hra\", which refers to itself, and press Validate and publish.",
+      "6. Fix the formula, enter a sample CTC and press Validate and publish, then confirm."
+    ],
+    "expected": "Step 1: the PAY-13 formula editor look. Step 2: a field error with focus. Step 4: the formula check names the unknown code. Step 5: the circular-formula error from the design. Step 6: the sample breakup and the code-wage flag show; after confirming, a toast says the new version is published from the chosen date.",
+    "stories": [
+      "PAY-13 Default",
+      "PAY-13 Cycle",
+      "PAY-13 Published"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-S-04",
+    "area": "Pay · Components",
+    "screen": "Component library (PAY-14)",
+    "url": "http://localhost:3000/yx/payroll/components",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Payroll › Components.",
+      "2. If the list is empty, press Install starter set.",
+      "3. Press Add component and Save with nothing filled.",
+      "4. Add \"Night allowance\", code \"night_allow\", type Earning, taxable on, PF off; Save.",
+      "5. Add another component with the same code.",
+      "6. Open Basic (a statutory component) and try to change its flags."
+    ],
+    "expected": "Step 2: a toast says how many components were added. Step 3: field errors, focus on the first. Step 4: a toast; the row appears grouped under Earnings with the flag columns. Step 5: an error that the code is already used. Step 6: the flags are locked; only the name and \"Shown on payslip\" can change.",
+    "stories": [
+      "PAY-14 List",
+      "PAY-14 Edit",
+      "PAY-14 Statutory"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-S-05",
+    "area": "Pay · Payslip layout",
+    "screen": "Payslip layout editor (PAY-15)",
+    "url": "http://localhost:3000/yx/payroll/payslip-layout",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Payroll › Payslip layout.",
+      "2. Press Publish layout before saving anything.",
+      "3. Turn on Year to date and a second language (Tamil); press Save draft.",
+      "4. Press Preview PDF.",
+      "5. Press Publish layout and confirm."
+    ],
+    "expected": "Step 1: the PAY-15 editor with the preview on the right, no page scroll. Step 2: a message says to save and preview first. Step 3: a toast. Step 4: a PDF opens in a new tab with the layout. Step 5: a toast; the version shows as Published.",
+    "stories": [
+      "PAY-15 Draft",
+      "PAY-15 Bilingual",
+      "PAY-15 Published"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-S-06",
+    "area": "Pay · Set-up",
+    "screen": "Payroll set-up wizard: registrations and legal options (PAY-16)",
+    "url": "http://localhost:3000/yx/payroll/setup",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Payroll › Set-up.",
+      "2. On Registrations, add a Professional tax registration with no state and press Save.",
+      "3. Set status Registered with no number and Save.",
+      "4. Fill the state and number; Save.",
+      "5. In Legal options change one option with a valid-from date; Save."
+    ],
+    "expected": "Step 1: the PAY-16 wizard with its steps on the left. Step 2: a field error asks for the state code and takes focus. Step 3: a field error asks for the number. Step 4: a toast; the completeness check updates. Step 5: a toast; the option shows its valid-from date.",
+    "stories": [
+      "PAY-16 Registrations",
+      "PAY-16 LegalOptions"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-S-07",
+    "area": "Pay · Set-up",
+    "screen": "Pay groups step (PAY-16)",
+    "url": "http://localhost:3000/yx/payroll/pay-groups",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Payroll › Pay groups.",
+      "2. Press Add a group and Save with cut-off day 31.",
+      "3. Make a monthly group \"Plant weekly test\" with cut-off 25 and pay day 1; Save.",
+      "4. Open the group, add Arjun as a member from the 1st of next month.",
+      "5. Open the calendar for this year."
+    ],
+    "expected": "Step 1: the wizard opens at the Pay group step. Step 2: an error that the cut-off day must be 1 to 28. Step 3: a toast; the group is listed. Step 4: a toast; Arjun is listed with the from date. Step 5: each month's cut-off and pay date show as \"3 Nov 2026\".",
+    "stories": [
+      "PAY-16 PayGroups",
+      "PAY-16 PayGroupAdd",
+      "PAY-16 PayGroupMembers"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-S-08",
+    "area": "Pay · Set-up",
+    "screen": "Opening balances step (PAY-16)",
+    "url": "http://localhost:3000/yx/payroll/imports",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Payroll › Imports.",
+      "2. Upload a CSV with one bad row (a missing employee code).",
+      "3. Press Commit.",
+      "4. Fix the row, upload again and Commit.",
+      "5. Run the go-live check for next month."
+    ],
+    "expected": "Step 1: the wizard opens at Opening balances. Step 2: the bad row is listed with what is wrong. Step 3: commit is refused while a row has a problem; the message says which row. Step 4: a toast. Step 5: the check lists what is left before that month.",
+    "stories": [
+      "PAY-16 OpeningRowErrors",
+      "PAY-16 OpeningChecked"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-S-09",
+    "area": "Pay · Set-up",
+    "screen": "Go-live step: parallel run (PAY-16, new)",
+    "url": "http://localhost:3000/yx/payroll/go-live",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open. Then admin@demo-org.test (System Admin) to sign off.",
+    "steps": [
+      "1. Open Payroll › Go-live.",
+      "2. On a calculated run, upload the old payroll's register CSV.",
+      "3. As the same person, press Sign off.",
+      "4. Sign in as admin@demo-org.test, open Go-live, press Waive with an empty reason.",
+      "5. Press Sign off with a reason of 5 letters or more."
+    ],
+    "expected": "Step 1: the wizard opens at the Go-live step with the readiness list. Step 2: the person-by-person comparison shows. Step 3: refused: the person who uploaded cannot sign off. Step 4: a field error on the reason, with focus. Step 5: a toast; the step shows Signed off.",
+    "stories": [
+      "PAY-16 GoLiveCompare",
+      "PAY-16 GoLiveSignOffDialog",
+      "PAY-16 GoLiveSignedOff"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-S-10",
+    "area": "Pay · Special pay",
+    "screen": "Special pay home: postings, lay-off, VRS (PAY-50, new)",
+    "url": "http://localhost:3000/yx/payroll/special-pay",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open. Then arjun@demo-org.test (Employee - Arjun), for the negative step.",
+    "steps": [
+      "1. Open Payroll › Special pay; choose the legal entity and this month.",
+      "2. Press Lay-off days and Save with no person.",
+      "3. Record 3 lay-off days for a Hosur plant worker; Save.",
+      "4. Press Pay VRS, enter an amount of 6,00,000 for a person and look at the exemption.",
+      "5. Open each tab: Piece rates, Incentives, Tips, On-call, Unions, Settlements.",
+      "6. Sign in as arjun@demo-org.test and open /yx/payroll/special-pay."
+    ],
+    "expected": "Step 1: the PAY-50 home lists the sheets sent to payroll with status, no page scroll. Step 2: field errors, focus on the person. Step 3: a toast. Step 4: the drawer shows the exempt part (at most Rs 5,00,000 in a lifetime) and the taxable rest. Step 5: each tab is the designed PAY-31 … 37 screen. Step 6: no access.",
+    "stories": [
+      "PAY-50 Ready",
+      "PAY-50 LayOff",
+      "PAY-50 Vrs"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-S-11",
+    "area": "Pay · Special pay",
+    "screen": "Piece rates, incentives, tips, on-call, unions (PAY-31 … 36)",
+    "url": "http://localhost:3000/yx/payroll/special-pay",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Piece rates: add a rate card with no rate; then a card \"Packing, Rs 4 a box\"; key output for a worker; send the month.",
+      "2. Incentives: add a plan with tiers 0-100 and 50-150 (overlapping) and Save.",
+      "3. Fix the tiers, Save, enter a result and send the month.",
+      "4. Tips: add a pool \"paid by customers directly\" split by hours.",
+      "5. On-call: add a rule, then a slot; send.",
+      "6. Unions: add a union, authorise a worker, withdraw it; open the remittance statement."
+    ],
+    "expected": "Step 1: a field error first, then toasts. Step 2: the overlapping-tiers error from PAY-32. Step 3: toasts. Step 4: the pool is recorded only (nothing paid through payroll). Step 5 and 6: toasts; the withdrawn authorisation shows as Withdrawn; the statement lists each union's total.",
+    "stories": [
+      "PAY-31 Cards",
+      "PAY-32 Overlap",
+      "PAY-34 Hours",
+      "PAY-35 Weekday",
+      "PAY-36 Authorisations"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-S-12",
+    "area": "Pay · Arrears",
+    "screen": "Arrears worksheets: base confirmation and approval (PAY-28)",
+    "url": "http://localhost:3000/yx/payroll/arrears",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open. Then hr@demo-org.test to approve.",
+    "steps": [
+      "1. Open Payroll › Arrears and recoveries.",
+      "2. Open a worksheet with a month missing and press Approve.",
+      "3. Confirm the base with an empty reason.",
+      "4. Enter the as-paid lines and a reason; confirm.",
+      "5. As the person who confirmed it, press Approve.",
+      "6. Sign in as hr@demo-org.test and approve it.",
+      "7. Open the Recoveries tab and write off an overpayment with no reason."
+    ],
+    "expected": "Step 1: the PAY-28 worksheet list, no page scroll. Step 2: approval is blocked until the base is confirmed. Step 3: a field error with focus. Step 4: a toast; the worksheet shows Base confirmed. Step 5: refused (maker is not checker). Step 6: a toast. Step 7: a field error on the reason.",
+    "stories": [
+      "PAY-28 List",
+      "PAY-28 Missing",
+      "PAY-28 Confirmed",
+      "PAY-28 Computed"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-S-13",
+    "area": "Pay · Actuarial",
+    "screen": "Actuarial census and valuation (PAY-38)",
+    "url": "http://localhost:3000/yx/payroll/actuarial",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open. Then hr@demo-org.test to post.",
+    "steps": [
+      "1. Open Payroll › Actuarial valuation.",
+      "2. Make a census as of 31 Mar for Ind AS 19 and download it.",
+      "3. Record a gratuity valuation with no closing figure.",
+      "4. Record it with a closing figure and the PDF report.",
+      "5. As the same person, press Post journal.",
+      "6. Sign in as someone else with journal export and post it."
+    ],
+    "expected": "Step 2: a toast; the census is listed with its date and downloads. Step 3: a field error with focus. Step 4: a toast; the valuation is listed. Step 5: refused: someone else posts it. Step 6: a toast; the journal shows as posted.",
+    "stories": [
+      "PAY-38 Census",
+      "PAY-38 Upload",
+      "PAY-38 Posted"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-S-14",
+    "area": "Pay · Country packs",
+    "screen": "Country packs (PAY-51, new)",
+    "url": "http://localhost:3000/yx/payroll/country-packs",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Payroll › Country packs; choose an India entity.",
+      "2. Choose a UAE entity; press Switch on and Save with an empty setting.",
+      "3. Fill the settings and switch on; record WPS ids for a person; make the provision for a month and the WPS file for an approved run.",
+      "4. Choose a US entity; record a W-9 with a bad TIN; then a good one; make the 1099-NEC file for a year."
+    ],
+    "expected": "Step 1: \"Nothing to switch on\" for India. Step 2: a field error naming the setting. Step 3: toasts; the provision shows the total and head count; the WPS file downloads. Step 4: a field error for the TIN, then a toast; the 1099-NEC file downloads.",
+    "stories": [
+      "PAY-51 India",
+      "PAY-51 SwitchOn",
+      "PAY-51 UaeOn",
+      "PAY-51 UsW9"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
   }
 ]
