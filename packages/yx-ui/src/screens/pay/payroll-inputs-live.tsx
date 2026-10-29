@@ -589,7 +589,7 @@ const holdReason = (c: string) => HOLD_REASON[c] ?? c;
 
 /** Where released held pay goes (PAY-06 "Pay through"). */
 export type HoldRoute = 'next_bank_file' | 'offcycle';
-const ROUTE_TEXT: Record<HoldRoute, string> = { next_bank_file: 'released into the next bank file of its run', offcycle: 'released for an off-cycle payment now' };
+const ROUTE_TEXT: Record<HoldRoute, string> = { next_bank_file: 'released into the next monthly run’s bank file', offcycle: 'released for an off-cycle payment now' };
 
 /** PAY-06 in live: open and released holds, the ageing chart from each hold's age, hold and release. */
 export function LiveHoldsPanel({ live }: { live: LiveInputs }) {
@@ -693,7 +693,7 @@ export function LiveHoldsPanel({ live }: { live: LiveInputs }) {
               />
               <p className="yx-pay-note">
                 {route === 'next_bank_file'
-                  ? 'Pays every held payslip in the next bank file made for its run. Releasing twice has no effect.'
+                  ? 'Pays every held payslip in the bank file of the next monthly run (not the run it was held in). Releasing twice has no effect.'
                   : 'Pays the held payslips now: make an off-cycle bank file from the run’s Payments page.'}
               </p>
               <FormField id="hr-why" label="Reason for release" required error={releaseShown.errorOf('hr-why')} helper="Saved in the audit trail.">
@@ -707,7 +707,7 @@ export function LiveHoldsPanel({ live }: { live: LiveInputs }) {
           open={confirmRelease}
           onOpenChange={setConfirmRelease}
           title={release ? `Release ${release.amount ? `${money(release.amount)} to ` : 'the salary of '}${live.nameOf(release.employeeId)}?` : ''}
-          consequence={`${route === 'next_bank_file' ? 'Paid in the next bank file made for its run.' : 'Paid now by an off-cycle bank file from its run.'} The reason is saved in the audit trail.`}
+          consequence={`${route === 'next_bank_file' ? 'Paid in the next monthly run’s bank file.' : 'Paid now by an off-cycle bank file from its run.'} The reason is saved in the audit trail.`}
           confirmLabel="Release"
           onConfirm={async () => {
             const r = release!;

@@ -125,6 +125,19 @@ describe('Payroll › Inputs (PAY-04 … 06 live)', () => {
     await waitFor(() => expect(live.lop.onSave).toHaveBeenCalledWith([{ employeeId: 'p1', lopDays: '2', reason: 'Absent' }], 'upload'));
   });
 
+  it('holds (item 10): "Next bank file" says it pays in the next monthly run, not the run it was held in', async () => {
+    const live = inputs({ tab: 'holds' });
+    render(<OneTimePayScreen live={live} />);
+    await ue.click(screen.getByRole('button', { name: 'Release' }));
+    expect(screen.getByText(/bank file of the next monthly run \(not the run it was held in\)/)).toBeInTheDocument();
+    await ue.type(screen.getByRole('textbox', { name: /Reason for release/ }), 'Clearance done today');
+    await ue.click(screen.getByRole('button', { name: /^Release ₹42,000/ }));
+    expect(screen.getByText(/Paid in the next monthly run’s bank file/)).toBeInTheDocument();
+    await ue.click(within(screen.getAllByRole('dialog').at(-1)!).getByRole('button', { name: 'Release' }));
+    await waitFor(() => expect(live.holds.onRelease).toHaveBeenCalledWith('h1', { reason: 'Clearance done today', route: 'next_bank_file' }));
+    expect((await screen.findAllByText(/released into the next monthly run’s bank file/)).length).toBeGreaterThan(0);
+  });
+
   it('holds: a refused release (nothing held yet for off-cycle) says why and stays open', async () => {
     const live = inputs({ tab: 'holds' });
     live.holds.onRelease = vi.fn(async () => {
@@ -150,7 +163,7 @@ describe('Payroll › Inputs (PAY-04 … 06 live)', () => {
     await ue.click(screen.getByRole('button', { name: /^Release ₹42,000/ }));
     expect((await screen.findAllByText('Say why the hold ends, in a few words.')).length).toBeGreaterThan(0);
     expect(screen.getByRole('textbox', { name: /Reason for release/ })).toHaveFocus();
-    expect(screen.queryByText(/Paid in the next bank file/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Paid in the next monthly run/)).not.toBeInTheDocument();
     // Positive: a reason and the off-cycle route (one Segment).
     await ue.type(screen.getByRole('textbox', { name: /Reason for release/ }), 'Clearance done today');
     await ue.click(screen.getByRole('radio', { name: 'Off-cycle payment now' }));
