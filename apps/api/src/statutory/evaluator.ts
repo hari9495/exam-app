@@ -404,7 +404,8 @@ export function due(rs: RuleSet, i: { key: string; month: string }) {
   const rule = item.march && i.month.endsWith('-03') ? item.march : item;
   const d = new Date(`${i.month}-01T00:00:00Z`);
   d.setUTCMonth(d.getUTCMonth() + rule.monthOffset);
-  d.setUTCDate(rule.dueDay);
+  // A due day past the month's end (31 for "the last day") is that month's last day.
+  d.setUTCDate(Math.min(rule.dueDay, new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate()));
   return { due: d.toISOString().slice(0, 10), citation: cite(rs) };
 }
 

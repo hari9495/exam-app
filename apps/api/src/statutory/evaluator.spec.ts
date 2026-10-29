@@ -2,7 +2,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import fc from 'fast-check';
 import { Prisma } from '@prisma/client';
-import { checkShape, esi, inForce, minWage, minWageTableFor, pf, pt, runGolden, tds, type GoldenCase, type RuleSet } from './evaluator';
+import { checkShape, due, esi, inForce, minWage, minWageTableFor, pf, pt, runGolden, tds, type GoldenCase, type RuleSet } from './evaluator';
 
 // PAY-2.02 / 2.03: every golden case of the India pack passes; the migration that loads the pack carries every rule set
 // of the JSON (no drift); shape checks; property tests over the statutory maths (§16.3).
@@ -134,5 +134,34 @@ describe('run rules (batch 5c pack)', () => {
       expect({ v: rs.statute, problems: [...checkShape(rs), ...rs.golden.flatMap((g) => runGolden(rs, g))] }).toEqual({ v: rs.statute, problems: [] });
       expect(rs.verify).toBe(true);
     }
+  });
+});
+
+describe('state due dates for PT and LWF (founder item 12, packs/in-dues.json)', () => {
+  const dues = (JSON.parse(readFileSync(join(__dirname, 'packs', 'in-dues.json'), 'utf8')) as { ruleSets: (RuleSet & { golden: GoldenCase[] })[] }).ruleSets;
+  it('every state calendar passes its checks and golden cases, is marked verify, and covers each state the India pack taxes', () => {
+    for (const rs of dues) {
+      expect({ j: rs.jurisdiction, problems: [...checkShape(rs), ...rs.golden.flatMap((g) => runGolden(rs, g))] }).toEqual({ j: rs.jurisdiction, problems: [] });
+      expect([rs.statute, rs.verify]).toEqual(['IN.CALENDAR', true]);
+    }
+    const covered = (key: string) => new Set(dues.filter((rs) => (rs.values.items as { key: string }[]).some((x) => x.key === key)).map((rs) => rs.jurisdiction));
+    for (const s of sets.filter((x) => x.statute === 'IN.PT' && x.values.kind === 'pt' && (x.values.slabs as unknown[]).length)) expect({ pt: s.jurisdiction, dated: covered('pt').has(s.jurisdiction) }).toEqual({ pt: s.jurisdiction, dated: true });
+    for (const s of sets.filter((x) => x.statute === 'IN.LWF')) expect({ lwf: s.jurisdiction, dated: covered('lwf').has(s.jurisdiction) }).toEqual({ lwf: s.jurisdiction, dated: true });
+  });
+  it('a state calendar is found by the state, never as the national one', () => {
+    const all = [...sets, ...dues];
+    expect(inForce(all, 'IN.CALENDAR', ['IN-KA'], '2026-09-01')?.version).toBe('KA-2025-v1');
+    expect(inForce(all, 'IN.CALENDAR', ['IN'], '2026-09-01')?.jurisdiction).toBe('IN');
+    expect(inForce(all, 'IN.CALENDAR', ['IN-GJ'], '2026-09-01')).toBeNull();
+  });
+  it('a due day past the month end is the last day (leap year too); the national dates do not move', () => {
+    const mh = dues.find((x) => x.jurisdiction === 'IN-MH')!;
+    expect(due(mh, { key: 'pt', month: '2028-02' }).due).toBe('2028-02-29');
+    expect(due(mh, { key: 'pt', month: '2026-04' }).due).toBe('2026-04-30');
+    expect(due(mh, { key: 'pt', month: '2026-12' }).due).toBe('2026-12-31');
+    const national = sets.find((x) => x.statute === 'IN.CALENDAR' && x.jurisdiction === 'IN')!;
+    expect(due(national, { key: 'tds_deposit', month: '2026-03' }).due).toBe('2026-04-30');
+    expect(due(national, { key: 'pf_ecr', month: '2026-01' }).due).toBe('2026-02-15');
+    expect(() => due(dues.find((x) => x.jurisdiction === 'IN-DL')!, { key: 'pt', month: '2026-09' })).toThrow(/No due date for pt/);
   });
 });

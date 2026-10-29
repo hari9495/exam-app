@@ -1,0 +1,110 @@
+{
+  "pack": "in-dues",
+  "note": "State-wise due dates for professional tax and the labour welfare fund (founder 30 Oct 2026, item 12): one IN.CALENDAR rule set per state, items 'pt' and 'lwf'. A due day past the month's end means its last day. Loaded by two staff through the console flow (scripts/load-rule-pack.ts, the seed). Every set is marked verify until the compliance owner and the partner CA confirm it.",
+  "ruleSets": [
+    {
+      "statute": "IN.CALENDAR",
+      "jurisdiction": "IN-KA",
+      "version": "KA-2025-v1",
+      "validFrom": "2025-04-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Karnataka Tax on Professions, Trades, Callings and Employments Act, 1976 s.6 and rules (tax deducted from salary paid by the 20th of the next month); Karnataka Labour Welfare Fund Act, 1965 s.7A (yearly contribution for the calendar year paid by 15 January).",
+      "values": {
+        "kind": "calendar",
+        "items": [
+          { "key": "pt", "label": "Professional tax (Karnataka)", "dueDay": 20, "monthOffset": 1 },
+          { "key": "lwf", "label": "Labour welfare fund (Karnataka)", "dueDay": 15, "monthOffset": 1 }
+        ]
+      },
+      "golden": [
+        { "name": "September PT is due 20 October", "fn": "calendar", "input": { "key": "pt", "month": "2026-09" }, "expected": { "due": "2026-10-20" } },
+        { "name": "December LWF is due 15 January", "fn": "calendar", "input": { "key": "lwf", "month": "2026-12" }, "expected": { "due": "2027-01-15" } }
+      ]
+    },
+    {
+      "statute": "IN.CALENDAR",
+      "jurisdiction": "IN-MH",
+      "version": "MH-2025-v1",
+      "validFrom": "2025-04-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Maharashtra State Tax on Professions, Trades, Callings and Employments Act, 1975 and rules (monthly return and payment by the last day of the month); Maharashtra Labour Welfare Fund Act, 1953 s.6BB (June and December contributions paid by the 15th of the next month).",
+      "values": {
+        "kind": "calendar",
+        "items": [
+          { "key": "pt", "label": "Professional tax (Maharashtra)", "dueDay": 31, "monthOffset": 0 },
+          { "key": "lwf", "label": "Labour welfare fund (Maharashtra)", "dueDay": 15, "monthOffset": 1 }
+        ]
+      },
+      "golden": [
+        { "name": "February PT is due on the last day of February", "fn": "calendar", "input": { "key": "pt", "month": "2026-02" }, "expected": { "due": "2026-02-28" } },
+        { "name": "September PT is due 30 September", "fn": "calendar", "input": { "key": "pt", "month": "2026-09" }, "expected": { "due": "2026-09-30" } },
+        { "name": "June LWF is due 15 July", "fn": "calendar", "input": { "key": "lwf", "month": "2026-06" }, "expected": { "due": "2026-07-15" } }
+      ]
+    },
+    {
+      "statute": "IN.CALENDAR",
+      "jurisdiction": "IN-TN",
+      "version": "TN-2025-v1",
+      "validFrom": "2025-04-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Tamil Nadu Urban Local Bodies Act, 1998 s.198 and the professional tax rules (half-yearly tax deducted in September and March, paid by the end of that month); Tamil Nadu Labour Welfare Fund Act, 1972 s.15 (yearly contribution paid by 31 January).",
+      "values": {
+        "kind": "calendar",
+        "items": [
+          { "key": "pt", "label": "Professional tax (Tamil Nadu)", "dueDay": 31, "monthOffset": 0 },
+          { "key": "lwf", "label": "Labour welfare fund (Tamil Nadu)", "dueDay": 31, "monthOffset": 1 }
+        ]
+      },
+      "golden": [
+        { "name": "September half-year PT is due 30 September", "fn": "calendar", "input": { "key": "pt", "month": "2026-09" }, "expected": { "due": "2026-09-30" } },
+        { "name": "December LWF is due 31 January", "fn": "calendar", "input": { "key": "lwf", "month": "2026-12" }, "expected": { "due": "2027-01-31" } }
+      ]
+    },
+    {
+      "statute": "IN.CALENDAR",
+      "jurisdiction": "IN-TS",
+      "version": "TS-2025-v1",
+      "validFrom": "2025-04-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Telangana Tax on Professions, Trades, Callings and Employments Act, 1987 (as adapted) and rules (tax deducted from salary paid by the 10th of the next month); Telangana Labour Welfare Fund Act, 1987 (as adapted) (yearly contribution paid by 31 January).",
+      "values": {
+        "kind": "calendar",
+        "items": [
+          { "key": "pt", "label": "Professional tax (Telangana)", "dueDay": 10, "monthOffset": 1 },
+          { "key": "lwf", "label": "Labour welfare fund (Telangana)", "dueDay": 31, "monthOffset": 1 }
+        ]
+      },
+      "golden": [
+        { "name": "September PT is due 10 October", "fn": "calendar", "input": { "key": "pt", "month": "2026-09" }, "expected": { "due": "2026-10-10" } },
+        { "name": "December LWF is due 31 January", "fn": "calendar", "input": { "key": "lwf", "month": "2026-12" }, "expected": { "due": "2027-01-31" } }
+      ]
+    },
+    {
+      "statute": "IN.CALENDAR",
+      "jurisdiction": "IN-DL",
+      "version": "DL-2025-v1",
+      "validFrom": "2025-04-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Bombay Labour Welfare Fund Act, 1953 as extended to Delhi (June and December contributions paid by the 15th of the next month). Delhi levies no professional tax on salaries.",
+      "values": {
+        "kind": "calendar",
+        "items": [
+          { "key": "lwf", "label": "Labour welfare fund (Delhi)", "dueDay": 15, "monthOffset": 1 }
+        ]
+      },
+      "golden": [
+        { "name": "December LWF is due 15 January", "fn": "calendar", "input": { "key": "lwf", "month": "2026-12" }, "expected": { "due": "2027-01-15" } }
+      ]
+    }
+  ]
+}

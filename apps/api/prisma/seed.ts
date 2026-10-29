@@ -396,6 +396,9 @@ async function main() {
       // Batch 5f: damages on late PF / ESI and the register formats (verify), by the same flow.
       const filingRules = (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', 'in-filing.json'), 'utf8')) as { ruleSets: RuleFileSet[] }).ruleSets;
       await loadRuleSets(tx, filingRules, anand.id, reviewer.id);
+      // Founder 30 Oct 2026 (item 12): state due dates for PT and LWF (verify), by the same flow.
+      const dueRules = (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', 'in-dues.json'), 'utf8')) as { ruleSets: RuleFileSet[] }).ruleSets;
+      await loadRuleSets(tx, dueRules, anand.id, reviewer.id);
       // Batch 5g: retrenchment under the IR Code (verify), by the same flow.
       const exitRules = (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', 'in-exit.json'), 'utf8')) as { ruleSets: RuleFileSet[] }).ruleSets;
       await loadRuleSets(tx, exitRules, anand.id, reviewer.id);
