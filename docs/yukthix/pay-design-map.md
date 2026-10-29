@@ -100,6 +100,16 @@ yet; each builder adds its design exports there.
 11. Guard fixed first (commit ed0708c8): it follows the web's imports, so same-name copies now count.
 12. Me › Pay documents: its story is accepted as the design, moved into `employee-pay.tsx` with `MyPayFrame`.
 
+
+**Founder answers to builders 1 and 2 (29 Oct, "all ok"):** (1) taller pages accepted where the content needs it
+(Payroll home with runs, set-up wizard, payslip layout); (2) build the small server additions: statutory dues on the
+home, one stage row per pay group, re-pay a failed payment (reason, audited), record "Show pay" views, release hold with
+reason and off-cycle choice, reassign a query, retry only failed, compensation history, suggest-split stale flag,
+minimum-wage top-up read, mark union dues remitted; (3) later: hourly pay basis, actuary detail rows, reopen requests in
+Approvals; (4) "New settlement" drawer on PAY-37, design first; (5) fix the shared form bug (a key typed after an
+error shows is lost) with a guard test; (6) a payslip query is closed only after a reply; (7) builder 1 wires PAY-11
+(off-cycle and F&F run) on the run pages.
+
 ## 1. Live pages
 
 One row per live Pay page. "Keep" is what the live copy does that the design does not show yet: states, actions,
