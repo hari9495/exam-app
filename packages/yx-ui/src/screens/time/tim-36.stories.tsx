@@ -9,3 +9,5 @@ export const Employee: S = { name: 'Employee · what was recorded', args: { open
 export const Hr: S = { name: 'HR', args: { persona: 'hr' } };
 export const NoConsent: S = { name: 'No consent', args: { consent: 'none', openId: 'me0' } };
 export const Withdrawn: S = { name: 'Consent withdrawn · manager', args: { persona: 'mgr', consent: 'withdrawn', openId: 'f1' } };
+// Founder decision 6 (29 Oct 2026): withdrawing says what happens first (tracking stops, the trail is deleted, the days stay).
+export const WithdrawConsent: S = { name: 'Employee · withdraw consent', args: { dialog: 'withdraw' } };

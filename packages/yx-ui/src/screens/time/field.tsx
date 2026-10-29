@@ -46,6 +46,31 @@ const StoryLink = ({ to, children, ...rest }: { to: keyof typeof STORY; children
   <Button asChild {...rest}><a href={storyHref(STORY[to])} target="_top">{children}</a></Button>
 );
 
+/**
+ * Withdraw consent (founder decision 6, 29 Oct 2026; DPDP Act 2023 s.6(4): as easy as giving). Says what happens before
+ * it happens. One dialog for presence (TIM-36) and field tracking (TIM-33); the server follows the same rule for both.
+ */
+export function WithdrawConsentDialog({ open, onOpenChange, kind, onConfirm }: { open: boolean; onOpenChange: (open: boolean) => void; kind: 'presence' | 'field'; onConfirm: () => unknown }) {
+  return (
+    <ConfirmDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      destructive
+      title="Withdraw your consent?"
+      consequence="You can give it again at any time."
+      confirmLabel="Withdraw consent"
+      cancelLabel="Keep it"
+      onConfirm={async () => { await onConfirm(); }}
+    >
+      <ul className="yx-tim-steps" aria-label="What happens">
+        <li>{kind === 'presence' ? 'Presence tracking stops now.' : 'Location tracking stops now.'}</li>
+        <li>{kind === 'presence' ? 'Your presence trail (the times you were active, idle or offline) is deleted.' : 'Your location trail is deleted.'}</li>
+        <li>{kind === 'presence' ? 'Your attendance days stay, because pay needs them.' : 'Your attendance days and visit check-ins stay, because pay needs them.'}</li>
+      </ul>
+    </ConfirmDialog>
+  );
+}
+
 /* =====================================================================
    TIM-12 · Mobile check-in sheet
    ===================================================================== */
@@ -793,7 +818,7 @@ function FieldForceView({ persona: personaProp, openId, state: stateProp, live }
    TIM-33 · Visit check-in, beat plan & distance conveyance (phone)
    ===================================================================== */
 
-export type FieldPhoneView = 'consent' | 'beat' | 'visit' | 'visit_outside' | 'photo' | 'conveyance' | 'withdrawn' | 'pwa';
+export type FieldPhoneView = 'consent' | 'beat' | 'visit' | 'visit_outside' | 'photo' | 'conveyance' | 'withdrawn' | 'pwa' | 'withdraw';
 
 const MY_VISITS = visitsOf('v');
 const UNPLANNED: FieldVisit = { id: 'u', person: 'v', place: 'Unplanned visit', time: '', status: 'On site', planned: false, detail: '' };
@@ -824,7 +849,9 @@ const startMin = (t: string) => {
 
 export function FieldVisitPhone({ view = 'beat' }: { view?: FieldPhoneView }) {
   const { say, toast } = useSay();
-  const [v, setV] = useState<FieldPhoneView>(view);
+  // 'withdraw': the beat plan with the withdraw dialog open.
+  const [v, setV] = useState<FieldPhoneView>(view === 'withdraw' ? 'beat' : view);
+  const [asking, setAsking] = useState(view === 'withdraw');
   const [consent, setConsent] = useState<'on' | 'off' | 'withdrawn'>(view === 'withdrawn' ? 'withdrawn' : view === 'consent' ? 'off' : 'on');
   const [checkedIn, setCheckedIn] = useState(view === 'visit' || view === 'photo');
   /** Where the open visit is: outside its site (480 m away) or inside it. */
@@ -903,11 +930,20 @@ export function FieldVisitPhone({ view = 'beat' }: { view?: FieldPhoneView }) {
   const visitLine = (x: FieldVisit) => [x.time, !x.planned && 'Unplanned', x.detail].filter(Boolean).join(' · ');
   return (
     <PhoneFrame tab="time" title={title} back={back} hideTabs={onVisit}>
+      <WithdrawConsentDialog
+        open={asking}
+        onOpenChange={setAsking}
+        kind="field"
+        onConfirm={() => {
+          setConsent('withdrawn');
+          toast({ tone: 'success', title: 'Consent withdrawn', description: 'Location tracking has stopped and your location trail is deleted.' });
+        }}
+      />
       {tracking && !onVisit && v !== 'consent' && (
         <InlineAlert
           tone="info"
           title={v === 'pwa' ? 'Tracking only while this page is open' : 'Location tracking is on'}
-          actions={v === 'pwa' ? <Button size="sm" onClick={() => say(installAsked && 'Follow your browser’s prompt.', () => setInstallAsked(true))}>{installAsked ? 'Follow your browser’s prompt' : 'Install the app'}</Button> : undefined}
+          actions={v === 'pwa' ? <Button size="sm" onClick={() => say(installAsked && 'Follow your browser’s prompt.', () => setInstallAsked(true))}>{installAsked ? 'Follow your browser’s prompt' : 'Install the app'}</Button> : <Button size="sm" onClick={() => setAsking(true)}>Withdraw consent</Button>}
         >
           {v === 'pwa' ? 'You are using the web app: location is recorded only while this page is open. Install the app for background tracking.' : `Location is recorded ${TRACKING_RULE}.`}
         </InlineAlert>
@@ -1090,12 +1126,15 @@ const TEAM_PRESENCE: PresenceDay[] = ([
 
 /** `consent`: 'none' is the employee who never gave it; 'withdrawn' marks the story about Fathima's withdrawal (the withdrawal itself holds in every view). `openId`: a day whose drawer starts open. */
 /** TIM-36 · Presence-based attendance. The app passes `live` (Time › Presence days); stories show the sample. */
-export function PresenceDayScreen(p: { persona?: 'emp' | 'mgr' | 'hr'; consent?: 'given' | 'none' | 'withdrawn'; openId?: string; live?: LivePresence }) {
+export function PresenceDayScreen(p: { persona?: 'emp' | 'mgr' | 'hr'; consent?: 'given' | 'none' | 'withdrawn'; openId?: string; /** 'withdraw': the employee's withdraw dialog is open. */ dialog?: 'withdraw'; live?: LivePresence }) {
   return p.live ? <LivePresenceScreen live={p.live} /> : <SamplePresenceDay {...p} />;
 }
 
-function SamplePresenceDay({ persona = 'emp', consent = 'given', openId: openInit }: { persona?: 'emp' | 'mgr' | 'hr'; consent?: 'given' | 'none' | 'withdrawn'; openId?: string }) {
+function SamplePresenceDay({ persona = 'emp', consent = 'given', openId: openInit, dialog }: { persona?: 'emp' | 'mgr' | 'hr'; consent?: 'given' | 'none' | 'withdrawn'; openId?: string; dialog?: 'withdraw' }) {
   const isEmp = persona === 'emp';
+  const { toast } = useToast();
+  const [asking, setAsking] = useState(dialog === 'withdraw');
+  const [withdrawnNow, setWithdrawnNow] = useState(false);
   const [dept, setDept] = useState<string | null>('all');
   const [showRecord, setShowRecord] = useState(false);
   const all = isEmp ? MY_PRESENCE : persona === 'mgr' ? TEAM_PRESENCE.filter((d) => TEAM.some((t) => t.name === d.person && t.reportsTo === ME.name)) : TEAM_PRESENCE;
@@ -1120,7 +1159,20 @@ function SamplePresenceDay({ persona = 'emp', consent = 'given', openId: openIni
   const fmtDay = formatDate;
   return (
     <TimePage active={isEmp ? 'My attendance' : 'Muster'} user={persona === 'hr' ? HR_ADMIN : ME}>
-      <PageHeader title={isEmp ? 'My work-from-home days' : persona === 'mgr' ? 'Presence days · My team' : 'Presence days'} description={consent === 'none' ? 'Work-from-home days, from your web check-in and check-out' : 'Work-from-home days, from Teams status and the YukthiX desktop app'} />
+      <PageHeader
+        title={isEmp ? 'My work-from-home days' : persona === 'mgr' ? 'Presence days · My team' : 'Presence days'}
+        description={consent === 'none' || withdrawnNow ? 'Work-from-home days, from your web check-in and check-out' : 'Work-from-home days, from Teams status and the YukthiX desktop app'}
+        actions={isEmp && consent === 'given' && !withdrawnNow ? <Button size="sm" onClick={() => setAsking(true)}>Withdraw consent</Button> : undefined}
+      />
+      <WithdrawConsentDialog
+        open={asking}
+        onOpenChange={setAsking}
+        kind="presence"
+        onConfirm={() => {
+          setWithdrawnNow(true);
+          toast({ tone: 'success', title: 'Consent withdrawn', description: 'Presence tracking has stopped and your presence trail is deleted.' });
+        }}
+      />
       <div className="yx-tim-stack">
         {persona === 'hr' && (
           <FormField label="Department">
@@ -1327,15 +1379,16 @@ function LivePresenceScreen({ live }: { live: LivePresence }) {
         )}
       </Drawer>
       <ConfirmDialog
-        open={!!ask}
+        open={ask === 'give'}
         onOpenChange={(o) => !o && setAsk(null)}
-        title={ask === 'give' ? 'Let presence decide your work-from-home days?' : 'Withdraw your consent?'}
-        consequence={ask === 'give' ? `${live.mine?.notice ?? 'Presence notice'}. You can withdraw it at any time; from then on nothing more is read.` : 'From now on no presence is read: your web check-in and check-out decide your work-from-home days.'}
-        confirmLabel={ask === 'give' ? 'Give consent' : 'Withdraw consent'}
-        onConfirm={async () => { await live.onConsent!(ask!); }}
+        title="Let presence decide your work-from-home days?"
+        consequence={`${live.mine?.notice ?? 'Presence notice'}. You can withdraw it at any time; from then on nothing more is read.`}
+        confirmLabel="Give consent"
+        onConfirm={async () => { await live.onConsent!('give'); }}
       >
-        {ask === 'give' ? recorded : null}
+        {recorded}
       </ConfirmDialog>
+      <WithdrawConsentDialog open={ask === 'withdraw'} onOpenChange={(o) => !o && setAsk(null)} kind="presence" onConfirm={() => live.onConsent!('withdraw')} />
     </TimePage>
   );
 }

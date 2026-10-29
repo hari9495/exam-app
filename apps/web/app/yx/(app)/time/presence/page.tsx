@@ -18,7 +18,7 @@ function YxPresenceInner() {
   const write = useTimeWrite();
   return me ? (
     <PresenceDayScreen
-      live={{ state: timeState(mine), onRetry: () => void mine.refetch(), month, onMonth: setMonth, mine: mine.data ?? null, onConsent: (action) => write('/me/presence/consent', 'POST', { action }, true, action === 'give' ? 'Consent given' : 'Consent withdrawn') }}
+      live={{ state: timeState(mine), onRetry: () => void mine.refetch(), month, onMonth: setMonth, mine: mine.data ?? null, onConsent: (action) => write('/me/presence/consent', 'POST', { action }, true, action === 'give' ? 'Consent given' : 'Consent withdrawn. Tracking has stopped and your presence trail is deleted.') }}
     />
   ) : (
     <PresenceDayScreen live={{ state: timeState(team), onRetry: () => void team.refetch(), month, onMonth: setMonth, team: team.data ?? null, musterHref: '/yx/time/muster' }} />
