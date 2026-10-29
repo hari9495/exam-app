@@ -12,15 +12,15 @@ live page cannot reach yet (the reason is given).
 
 | | live | feature not built | phone view | gap |
 |---|---|---|---|---|
-| Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 67 | 21 | 19 | 5 |
-| Leave (TIM-17…25) | 39 | 0 | 11 | 3 |
-| Set-up (TIM-26…29, 31, 42) | 20 | 12 | 0 | 1 |
-| Rosters and shifts (TIM-05, 06, 08, 34, 35, 38…41) | 19 | 21 | 10 | 3 |
-| Overtime, periods, reports, timesheets (TIM-09, 11, 15, 16, 30, 37, 43) | 44 | 4 | 3 | 0 |
-| Field force (TIM-32, 33) | 0 | 7 | 9 | 0 |
-| **All 45 design groups (317 sub-pages counted)** | **189** | **65** | **52** | **12** |
+| Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 81 | 6 | 19 | 6 |
+| Leave (TIM-17…25) | 41 | 0 | 11 | 3 |
+| Set-up (TIM-26…29, 31, 42) | 22 | 12 | 0 | 1 |
+| Rosters and shifts (TIM-05, 06, 08, 34, 35, 38…41) | 43 | 2 | 10 | 1 |
+| Overtime, periods, reports, timesheets (TIM-09, 11, 15, 16, 30, 37, 43) | 49 | 0 | 3 | 0 |
+| Field force (TIM-32, 33) | 7 | 0 | 9 | 0 |
+| **All 45 design groups (326 sub-pages counted)** | **243** | **20** | **52** | **11** |
 
-Counted from the stories and the rows below by script (29 Oct 2026, after leave v2 and time ops were merged; +5 stories for founder decisions 6 and 7: TIM-11 OpenAgain, TIM-36 WithdrawConsent, TIM-37 List / ListEmpty / ListLoading live; TIM-33 WithdrawConsent phone view). 312, not 311: TIM-36 "Manager · status and total only" sits on the same line as another story and was missed before.
+Counted from the stories and the rows below by script (29 Oct 2026, after rosters/devices/field, the roster fixes and founder decisions 1-7 were merged into the test app). Section counts further down may be older; this table is the current one.
 
 Kit (24 stories) are shared parts, not pages; section E lists which live screens use them.
 
