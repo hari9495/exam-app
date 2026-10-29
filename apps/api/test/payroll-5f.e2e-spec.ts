@@ -368,12 +368,44 @@ describe('Payroll batch 5f (statutory files, returns, registers)', () => {
           .expect(201)
       ).body,
     ).toMatchObject({ status: 'recorded' });
+    // CMP-12 (founder answer 22): both sit under the filed month's PF card, with their shares, people and penalties.
+    const card = ((await api('payAdmin', 'get', `/statutory/hub?entityId=${ids.entity}&month=${month}`).expect(200)).body.cards as { statute: string; status: string; children: Record<string, unknown>[] }[]).find((c) => c.statute === 'IN.PF')!;
+    expect(card.status).toBe('filed');
+    expect(card.children).toEqual([
+      expect.objectContaining({ id: sup.id, kind: 'supplementary', status: 'generated', people: 1, reason: 'Arrears paid after the return', fileId: sup.fileId, causedBy: [expect.any(String)] }),
+      expect.objectContaining({ kind: 'excess_adjustment', status: 'recorded', amount: '150.00', reason: 'Paid twice for one person', people: null }),
+    ]);
+    const supChild = card.children[0] as { employeeShare: string; employerShare: string; penalties: { amount: string }[] };
+    expect(Number(supChild.employeeShare) + Number(supChild.employerShare)).toBe(2400);
+    expect(supChild.penalties.map((p) => p.amount)).toEqual(sup.penalties.map((p: { amount: string }) => p.amount));
+    // The ESI card has no children of PF's.
+    expect(((await api('payAdmin', 'get', `/statutory/hub?entityId=${ids.entity}&month=${month}`).expect(200)).body.cards as { statute: string; children: unknown[] }[]).find((c) => c.statute === 'IN.ESI')!.children).toEqual([]);
+  });
+
+  it('CMP-07 Missing IDs (founder answer 22): who lacks a PAN, UAN, ESI IP or bank account, in scope; no ID values; scoped', async () => {
+    const r = (await api('payAdmin', 'get', `/statutory/missing-ids?entityId=${ids.entity}`).expect(200)).body as { people: number; counts: Record<string, number>; rows: { employeeId: string; issue: string; blocks: boolean }[] };
+    expect(r.people).toBeGreaterThanOrEqual(2);
+    expect(r.rows).toEqual(expect.arrayContaining([expect.objectContaining({ employeeId: ids.emp2, issue: 'pan_missing', blocks: false })]));
+    expect(r.rows.some((x) => x.employeeId === ids.emp1 && x.issue === 'pan_missing')).toBe(false);
+    for (const k of ['pan', 'uan', 'esi', 'bank']) expect(r.counts[k]).toBe(r.rows.filter((x) => x.issue.startsWith(k)).length);
+    expect(JSON.stringify(r)).not.toContain(PAN1);
+    await api('payAdminB', 'get', `/statutory/missing-ids?entityId=${ids.entity}`).expect(404);
+    await api('emp1', 'get', `/statutory/missing-ids?entityId=${ids.entity}`).expect(403);
+    await api('payAdmin', 'get', '/statutory/missing-ids?entityId=nope').expect(400);
   });
 
   it('TDS: the challan pre-filled and deposited; the quarterly return reconciled to zero, its annexure, filed; a correction', async () => {
     const ch = (await api('payAdmin', 'post', '/statutory/challans').send({ entityId: ids.entity, month }).expect(201)).body;
     expect(Number(ch.tds)).toBeGreaterThan(0);
     await api('payAdmin', 'patch', `/statutory/challans/${ch.id}`).send({ tds: '1.00' }).expect(400);
+    // Founder answer 23: the amount is corrected with a reason (audited), never by the person who prepared it.
+    expect((await api('payAdmin', 'patch', `/statutory/challans/${ch.id}`).send({ tds: '1.00', reason: 'One person paid by self-assessment' }).expect(403)).body.message).toBe('You prepared this challan, so someone else in payroll corrects its amount.');
+    expect((await api('compliance', 'patch', `/statutory/challans/${ch.id}`).send({ tds: '1.00', reason: 'One person paid by self-assessment' }).expect(200)).body).toMatchObject({ tds: '1.00', payrollTds: ch.tds, editReason: 'One person paid by self-assessment' });
+    await api('compliance', 'patch', `/statutory/challans/${ch.id}`).send({ tds: ch.tds }).expect(400);
+    await api('compliance', 'patch', `/statutory/challans/${ch.id}`).send({ tds: ch.tds, reason: 'Checked again: payroll was right' }).expect(200);
+    const corrected = await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, action: 'statutory.challan.corrected', entityId: ch.id }, orderBy: { createdAt: 'asc' }, select: { actorUserId: true, metadataJson: true } }));
+    expect(corrected.map((a) => [a.actorUserId, (JSON.parse(a.metadataJson ?? '{}') as { to: string }).to])).toEqual([[users.compliance, '1.00'], [users.compliance, ch.tds]]);
+    await api('payAdminB', 'patch', `/statutory/challans/${ch.id}`).send({ tds: '1.00', reason: 'Another company here' }).expect(404);
     const ret = (await api('payAdmin', 'post', '/statutory/tds-returns').send({ entityId: ids.entity, taxYear: ty, quarter }).expect(201)).body;
     expect(ret).toMatchObject({ formCode: Number(ty.slice(0, 4)) >= 2026 ? '138' : '24Q', status: 'draft' });
     expect(ret.deductees.find((d: { employeeCode: string }) => d.employeeCode === 'P5F-001')).toMatchObject({ panLast4: '234F', noPan: false });

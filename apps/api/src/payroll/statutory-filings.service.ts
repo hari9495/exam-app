@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { OrgSecretsCryptoService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
@@ -278,6 +278,41 @@ export class StatutoryFilingsService {
         if (!rs || !(rs.values.items as { key: string }[]).some((x) => x.key === key)) return null;
         return due(rs, { key, month }).due as string;
       };
+      // CMP-12 (founder answer 22): supplementary filings and excess records sit under the month's card they correct.
+      const extra = filings.filter((x) => x.kind !== 'original');
+      const penalties = extra.length ? await tx.statutoryPenaltyLine.findMany({ where: { organizationId: org, filingId: { in: extra.map((x) => x.id) } }, orderBy: { kind: 'asc' } }) : [];
+      const basisOf = (x: (typeof extra)[number]) => (x.basis ?? {}) as Record<string, { amounts: Record<string, string> }>;
+      const slipIds = [...new Set(extra.flatMap((x) => Object.keys(basisOf(x))))];
+      const slipPeople = slipIds.length ? await tx.payslip.findMany({ where: { organizationId: org, id: { in: slipIds } }, select: { id: true, employeeId: true } }) : [];
+      const names = slipPeople.length ? await tx.employee.findMany({ where: { organizationId: org, id: { in: slipPeople.map((s) => s.employeeId) } }, select: { id: true, givenName: true, familyName: true } }) : [];
+      const nameOfSlip = (id: string) => {
+        const p = names.find((n) => n.id === slipPeople.find((s) => s.id === id)?.employeeId);
+        return p ? `${p.givenName} ${p.familyName ?? ''}`.trim() : 'Someone';
+      };
+      const children = (statute: string, state: string | null) =>
+        extra
+          .filter((x) => x.statute === statute && x.state === state)
+          .map((x) => {
+            const basis = basisOf(x);
+            const employee = Object.values(basis).reduce((t, b) => t.add(b.amounts.employee ?? '0'), ZERO);
+            const all = Object.values(basis).reduce((t, b) => Object.values(b.amounts).reduce((u, a) => u.add(a), t), ZERO);
+            return {
+              id: x.id,
+              kind: x.kind as 'supplementary' | 'excess_adjustment' | 'excess_refund',
+              status: x.status,
+              amount: x.amount?.toFixed(2) ?? null,
+              reason: x.reason,
+              people: x.kind === 'supplementary' ? Object.keys(basis).length : null,
+              employeeShare: employee.toFixed(2),
+              employerShare: all.sub(employee).toFixed(2),
+              causedBy: Object.keys(basis).slice(0, 20).map(nameOfSlip),
+              reference: x.reference,
+              fileId: x.exchangeFileId,
+              correctsId: x.correctsId,
+              createdAt: x.createdAt,
+              penalties: penalties.filter((p) => p.filingId === x.id).map((p) => ({ kind: p.kind, daysLate: p.daysLate, base: p.base.toFixed(2), rate: p.rate, amount: p.amount.toFixed(2), ruleVersion: p.ruleVersion })),
+            };
+          });
       const card = (statute: string, state: string | null, amount: Prisma.Decimal, calKey: string | null, interestItem: string | null) => {
         const f = filings.filter((x) => x.statute === statute && x.state === state && x.kind === 'original').pop();
         const dueOn = state ? stateDue(state, statute === 'IN.PT' ? 'pt' : 'lwf') : cal && calKey ? (due(cal, { key: calKey, month }).due as string) : null;
@@ -294,6 +329,7 @@ export class StatutoryFilingsService {
           late: Boolean(late),
           penaltyEstimate: estimate,
           verifyDueDate: !dueOn,
+          children: children(statute, state),
         };
       };
       const total = (key: string, jur?: string) => m.slips.reduce((t, s) => t.add(m.sum(s.id, m.codes(key), jur)), ZERO);
@@ -321,6 +357,68 @@ export class StatutoryFilingsService {
         cards,
         tds: { amount: tdsTotal.toFixed(2), dueOn: tdsDue, challanStatus: challan?.status ?? 'not_prepared', late: Boolean(tdsDue && today > tdsDue && challan?.status !== 'deposited') },
       };
+    });
+  }
+
+  /**
+   * CMP-07 Missing IDs (founder answer 22): the people working in the entity today whose statutory IDs or bank account
+   * block a filing or change their tax, in scope only: PAN for everyone (missing, or recorded inoperative this tax year);
+   * UAN unless their statutory profile says no PF; ESI IP when ESI applies (their profile says yes, or their latest
+   * approved payslip took ESI); a salary bank account (missing, or a new one still in its waiting time). No ID values,
+   * only what is missing. statutory.filing.view over the entity.
+   */
+  async missingIds(ctx: TenantContext, user: ScopeUser, entityId: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      await this.entity(tx, c, v, 'statutory.filing.view', entityId);
+      const today = localDate(new Date(), await entityTimeZone(tx, org, entityId));
+      const on = asDate(today);
+      const jobs = await tx.employment.findMany({
+        where: { organizationId: org, legalEntityId: entityId, joinedOn: { lte: on }, OR: [{ exitedOn: null }, { exitedOn: { gte: on } }] },
+        select: { id: true, employeeId: true, employeeCode: true },
+        orderBy: { employeeCode: 'asc' },
+        take: 10_000,
+      });
+      const ids = jobs.map((j) => j.employeeId);
+      const [people, idents, banks, profiles, asg] = await Promise.all([
+        tx.employee.findMany({ where: { organizationId: org, id: { in: ids } }, select: { id: true, givenName: true, familyName: true } }),
+        tx.employeeIdentifiers.findMany({ where: { organizationId: org, employeeId: { in: ids } }, select: { employeeId: true, panHash: true, uanHash: true, esicHash: true } }),
+        tx.employeeBankAccount.findMany({ where: { organizationId: org, employeeId: { in: ids }, purpose: 'salary', validTo: null }, select: { employeeId: true, usableFrom: true } }),
+        tx.employeeStatutory.findMany({ where: { organizationId: org, employmentId: { in: jobs.map((j) => j.id) }, validFrom: { lte: on }, OR: [{ validTo: null }, { validTo: { gte: on } }] }, select: { employmentId: true, pf: true, esi: true, validFrom: true }, orderBy: { validFrom: 'asc' } }),
+        tx.employeeAssignment.findMany({ where: { organizationId: org, employeeId: { in: ids }, supersededAt: null, validFrom: { lte: on }, OR: [{ validTo: null }, { validTo: { gte: on } }] }, select: { employeeId: true, departmentId: true } }),
+      ]);
+      const depts = await tx.department.findMany({ where: { organizationId: org, id: { in: [...new Set(asg.map((a) => a.departmentId).filter((x): x is string => !!x))] } }, select: { id: true, name: true } });
+      const inoperative = new Set((await tx.taxWorkspace.findMany({ where: { organizationId: org, employeeId: { in: ids }, taxYear: taxYearOf(today.slice(0, 7)), panStatus: 'inoperative' }, select: { employeeId: true } })).map((w) => w.employeeId));
+      // The latest approved payslip of each person in the entity: ESI taken there means ESI applies.
+      const latest = await tx.$queryRaw<{ id: string; employeeId: string }[]>`
+        SELECT DISTINCT ON (employee_id) id::text, employee_id::text AS "employeeId" FROM payslips
+        WHERE organization_id = ${org}::uuid AND legal_entity_id = ${entityId}::uuid AND status = 'approved' AND employee_id = ANY(${ids}::uuid[])
+        ORDER BY employee_id, period_start DESC`;
+      const esiCodes = ['esi_employee', ...(await tx.payComponent.findMany({ where: { organizationId: org, statutory: 'esi_employee' }, select: { code: true } })).map((x) => x.code)];
+      const withEsi = new Set(
+        latest.length && esiCodes.length
+          ? (await tx.payslipLine.findMany({ where: { organizationId: org, payslipId: { in: latest.map((l) => l.id) }, componentCode: { in: esiCodes }, amount: { gt: 0 } }, select: { employeeId: true } })).map((l) => l.employeeId)
+          : [],
+      );
+      const now = new Date();
+      const rows: { id: string; employeeId: string; name: string; code: string; department: string | null; issue: 'pan_missing' | 'pan_inoperative' | 'uan_missing' | 'esi_missing' | 'bank_missing' | 'bank_waiting'; blocks: boolean }[] = [];
+      for (const j of jobs) {
+        const p = people.find((x) => x.id === j.employeeId);
+        const i = idents.find((x) => x.employeeId === j.employeeId);
+        const prof = profiles.filter((x) => x.employmentId === j.id).pop();
+        const bank = banks.find((b) => b.employeeId === j.employeeId);
+        const base = { employeeId: j.employeeId, name: p ? `${p.givenName} ${p.familyName ?? ''}`.trim() : '', code: j.employeeCode, department: depts.find((d) => d.id === asg.find((a) => a.employeeId === j.employeeId)?.departmentId)?.name ?? null };
+        const add = (issue: (typeof rows)[number]['issue'], blocks: boolean) => rows.push({ id: `${j.employeeId}:${issue}`, ...base, issue, blocks });
+        if (!i?.panHash) add('pan_missing', false);
+        else if (inoperative.has(j.employeeId)) add('pan_inoperative', false);
+        if (prof?.pf !== 'no' && !i?.uanHash) add('uan_missing', true);
+        if ((prof?.esi === 'yes' || withEsi.has(j.employeeId)) && !i?.esicHash) add('esi_missing', true);
+        if (!bank) add('bank_missing', true);
+        else if (bank.usableFrom > now) add('bank_waiting', true);
+      }
+      const count = (k: string) => rows.filter((r) => r.issue.startsWith(k)).length;
+      return { entityId, people: jobs.length, counts: { pan: count('pan'), uan: count('uan'), esi: count('esi'), bank: count('bank') }, rows };
     });
   }
 
@@ -645,6 +743,8 @@ export class StatutoryFilingsService {
       depositDate: x.depositDate ? dateOf(x.depositDate) : null,
       status: x.status,
       editReason: x.editReason,
+      // Founder answer 23: what payroll's payslips say, beside a corrected amount.
+      payrollTds: (x.prefill as { tds?: string }).tds ?? null,
     };
   }
 
@@ -667,7 +767,7 @@ export class StatutoryFilingsService {
       const key = { organizationId: org, legalEntityId: entityId, depositMonth: asDate(`${month}-01`), subjectKey: 'salary_tds' };
       const old = await tx.tdsChallan.findFirst({ where: key });
       if (old?.status === 'deposited') throw new ConflictException('This challan is deposited.');
-      const prefill = { tds: tds.toFixed(2), payslips: m.slips.length, at: new Date().toISOString() };
+      const prefill = { tds: tds.toFixed(2), payslips: m.slips.length, at: new Date().toISOString(), by: v.userId! };
       const row = old
         ? await tx.tdsChallan.update({ where: { id: old.id }, data: { tds, prefill, editReason: null, updatedBy: v.userId!, updatedAt: new Date() } })
         : await tx.tdsChallan.create({ data: { ...key, lawVersion: lawVersionFor(taxYearOf(month)), tds, prefill, updatedBy: v.userId! } });
@@ -690,7 +790,12 @@ export class StatutoryFilingsService {
       if (x.status === 'deposited') throw new ConflictException('This challan is deposited.');
       const tds = dto.tds !== undefined ? D(dto.tds) : x.tds;
       const pre = D((x.prefill as { tds?: string }).tds ?? '0');
-      if (!tds.eq(pre) && !dto.reason) throw new BadRequestException('The amount differs from the payslips: say why.');
+      // Founder answer 23: payroll may correct the amount with a reason (audited), never the person who prepared the challan.
+      // A deposit after a correction carries the corrected amount and needs no second reason.
+      const corrected = !tds.eq(x.tds);
+      if (corrected && !dto.reason) throw new BadRequestException(tds.eq(pre) ? 'Say why the amount changes back.' : 'The amount differs from the payslips: say why.');
+      if (corrected && ((x.prefill as { by?: string }).by ?? x.updatedBy) === v.userId)
+        throw new ForbiddenException('You prepared this challan, so someone else in payroll corrects its amount.');
       const month = dateOf(x.depositMonth).slice(0, 7);
       const data: Prisma.TdsChallanUpdateInput = { tds, editReason: dto.reason ?? x.editReason, updatedBy: v.userId!, updatedAt: new Date() };
       let interest = ZERO;
@@ -707,6 +812,7 @@ export class StatutoryFilingsService {
         Object.assign(data, { challanNo: dto.challanNo, bsrCode: dto.bsrCode, depositDate: asDate(dto.depositDate), status: 'deposited', interest });
       }
       const row = await tx.tdsChallan.update({ where: { id }, data });
+      if (corrected) await audit(tx, c, 'statutory.challan.corrected', 'tds_challan', id, { month, from: x.tds.toFixed(2), to: tds.toFixed(2), payroll: pre.toFixed(2), reason: dto.reason ?? null });
       await audit(tx, c, row.status === 'deposited' ? 'statutory.challan.deposited' : 'statutory.challan.edited', 'tds_challan', id, {
         month,
         tds: tds.toFixed(2),

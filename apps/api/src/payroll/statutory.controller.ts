@@ -119,6 +119,13 @@ export class StatutoryController {
     return this.filings.transmit(ctx, this.user(req), id);
   }
 
+  /** CMP-07 Missing IDs (founder answer 22): who in the entity lacks a statutory ID or a usable bank account (no values). */
+  @Get('missing-ids')
+  @RequirePermissions('statutory.filing.view')
+  missingIds(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: EntityDto) {
+    return this.filings.missingIds(ctx, this.user(req), q.entityId);
+  }
+
   // ------------------------------------------------------------------------------------------ TDS challans and returns
 
   @Get('challans')
