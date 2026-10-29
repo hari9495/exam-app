@@ -20,7 +20,8 @@ import { PayslipDocument, type PayslipData, type PayslipOptions } from '../../co
 import { ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { useNarrow } from '../../components/stepper';
 import { DataTable, tableToCsv, type TableColumn } from '../../components/table';
-import { formatDate } from '../../lib/format';
+import { Timeline, type TimelineItem } from '../../components/timeline';
+import { formatDate, formatINR } from '../../lib/format';
 import { useRun } from '../org/org-kit';
 import { FactRow, SectionTitle } from './pay-kit';
 import { EntityPicker, statuteText } from './live/setup';
@@ -136,6 +137,49 @@ export interface SplitSuggestion {
   codeWageAddBack?: string;
   belowMinimumWage?: boolean;
   problem?: string;
+  /** When the options were worked out (PAY-42: a law published after this makes them stale). */
+  madeAt?: string;
+}
+
+/** PAY-12 history: an approved salary, or a pay request still waiting or turned down. */
+export interface CompensationHistoryItem {
+  kind: 'salary' | 'request';
+  changeId: string;
+  status: string;
+  validFrom: string | null;
+  validTo: string | null;
+  annualCtc: string | null;
+  previousCtc: string | null;
+  reason: string | null;
+  requestedBy: { userId: string; name: string | null } | null;
+  requestedAt: string | null;
+  decidedBy: { userId: string; name: string | null } | null;
+  decidedAt: string | null;
+  template: { name: string | null; version: number | string } | null;
+}
+
+/** PAY-42: statutory rules published after the options were made, in force on the date. */
+export interface SplitFreshness {
+  stale: boolean;
+  changes: { statute: string; jurisdiction: string; version: string; validFrom: string; publishedAt: string }[];
+}
+
+/** One history row as the design's timeline line: who did what, when. */
+export function historyItems(items: CompensationHistoryItem[]): TimelineItem[] {
+  return items.map((h) => {
+    const ctc = h.annualCtc ? formatINR(Number(h.annualCtc)) : 'the salary';
+    const from = h.validFrom ? ` from ${dateText(h.validFrom)}` : '';
+    const pct = h.previousCtc && h.annualCtc && Number(h.previousCtc) > 0 ? Math.round(((Number(h.annualCtc) - Number(h.previousCtc)) / Number(h.previousCtc)) * 100) : null;
+    const why = [h.reason, pct != null ? `${pct >= 0 ? '+' : ''}${pct}%` : null].filter(Boolean).join(', ');
+    const tpl = h.template?.name ? ` · ${h.template.name} v${h.template.version}` : '';
+    const action =
+      h.kind === 'salary'
+        ? `${h.previousCtc ? 'revised CTC to' : 'set CTC'} ${ctc}${from}${why ? ` (${why})` : ''}${tpl}${h.decidedBy?.name ? ` · approved by ${h.decidedBy.name}` : ''}`
+        : h.status === 'rejected'
+          ? `asked for CTC ${ctc}${from}${why ? ` (${why})` : ''}: turned down${h.decidedBy?.name ? ` by ${h.decidedBy.name}` : ''}`
+          : `asked for CTC ${ctc}${from}${why ? ` (${why})` : ''}: waiting for approval`;
+    return { id: `${h.kind}-${h.changeId}`, actor: { name: h.requestedBy?.name ?? 'Someone' }, action, at: new Date(h.decidedAt ?? h.requestedAt ?? `${h.validFrom}T00:00:00`) };
+  });
 }
 
 export interface LiveCompensation {
@@ -155,11 +199,37 @@ export interface LiveCompensation {
   onSaveProfile: (p: { validFrom: string; pf: 'yes' | 'no'; esi: 'yes' | 'no' | 'by_wage'; vpfPercent?: string; reason: string }) => Promise<unknown>;
   /** PAY-42: the same CTC worked out with every template the person can use (nothing is kept). */
   onSuggest?: (annualCtc: string, effectiveDate: string) => Promise<SplitSuggestion[]>;
+  /** PAY-42: whether a law changed after the options were made (checked before an option is used). */
+  onCheckSplit?: (madeAt: string, effectiveDate: string) => Promise<SplitFreshness>;
+  /** PAY-12: the person's salaries and pay requests, newest first (null while loading). */
+  history?: CompensationHistoryItem[] | null;
 }
 
 /** PAY-42 · Suggest split, live: each template the person can use, side by side; ones that fail a check are not offered. */
-export function LiveSuggestSplitDrawer({ open, onOpenChange, suggestions, annualCtc, onUse }: { open: boolean; onOpenChange: (o: boolean) => void; suggestions: SplitSuggestion[]; annualCtc: string; onUse: (s: SplitSuggestion) => void }) {
+export function LiveSuggestSplitDrawer({
+  open,
+  onOpenChange,
+  suggestions,
+  annualCtc,
+  onUse,
+  onCheck,
+  onRefresh,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  suggestions: SplitSuggestion[];
+  annualCtc: string;
+  onUse: (s: SplitSuggestion) => void;
+  /** PAY-42: asked before an option is used; a law published since makes the options stale. */
+  onCheck?: (madeAt: string) => Promise<SplitFreshness>;
+  /** Work the options out again on today's rules. */
+  onRefresh?: () => Promise<unknown>;
+}) {
   const [chosen, setChosen] = useState<string | null>(null);
+  const [fresh, setFresh] = useState<SplitFreshness | null>(null);
+  const [checking, setChecking] = useState(false);
+  const stale = !!fresh?.stale;
+  useEffect(() => setFresh(null), [suggestions]);
   const offered = suggestions.filter((s) => !s.problem && !s.belowMinimumWage);
   const hidden = suggestions.filter((s) => s.problem || s.belowMinimumWage);
   const pick = offered.find((s) => s.templateVersionId === chosen);
@@ -176,8 +246,20 @@ export function LiveSuggestSplitDrawer({ open, onOpenChange, suggestions, annual
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button
             variant="primary"
-            onClick={() => {
+            loading={checking}
+            onClick={async () => {
               if (early.stop() || !pick) return;
+              if (stale) return;
+              if (onCheck && pick.madeAt) {
+                setChecking(true);
+                try {
+                  const f = await onCheck(pick.madeAt);
+                  setFresh(f);
+                  if (f.stale) return;
+                } finally {
+                  setChecking(false);
+                }
+              }
               onUse(pick);
               onOpenChange(false);
             }}
@@ -188,6 +270,15 @@ export function LiveSuggestSplitDrawer({ open, onOpenChange, suggestions, annual
       }
     >
       <div className="yx-pay-stack">
+        {stale && fresh && (
+          <InlineAlert
+            tone="warning"
+            title="These suggestions are out of date"
+            actions={onRefresh ? <Button size="sm" loading={checking} onClick={() => void (async () => { setChecking(true); try { await onRefresh(); } finally { setChecking(false); } })()}>Refresh</Button> : undefined}
+          >
+            {fresh.changes.map((c) => `${statuteText(c.statute)} (${c.jurisdiction}) changed from ${dateText(c.validFrom)}`).join('; ')} after these options were made. Refresh to get options that meet the new rules.
+          </InlineAlert>
+        )}
         <p className="yx-pay-muted">
           Every option passes company CTC rules, the Code wage 50% rule, state minimum wage and PF / ESI limits. {plural(hidden.length, 'option')} failed a check and {hidden.length === 1 ? 'is' : 'are'} not offered. Nothing is saved until you send the revision.
         </p>
@@ -401,6 +492,12 @@ export function LiveCompensationScreen({ live: p }: { live: LiveCompensation }) 
                         {rupees(cur.annualCtc)} a year from {dateText(cur.validFrom)}. Set a breakup before payroll runs.
                       </InlineAlert>
                     )}
+                    {p.history !== undefined && (
+                      <section className="yx-pay-panel" aria-label="Compensation history">
+                        <SectionTitle>History</SectionTitle>
+                        {p.history === null ? <Skeleton height={64} /> : p.history.length ? <Timeline aria-label="Compensation changes" today={day(p.today)} items={historyItems(p.history)} /> : <p className="yx-pay-muted">No earlier salaries.</p>}
+                      </section>
+                    )}
                   </div>
                   <section className="yx-pay-panel" aria-label="Revision letter">
                     <SectionTitle>Revision letter</SectionTitle>
@@ -586,6 +683,8 @@ export function LiveCompensationScreen({ live: p }: { live: LiveCompensation }) 
           suggestions={split}
           annualCtc={form.annualCtc ?? '0'}
           onUse={(s) => change({ templateVersionId: s.templateVersionId })}
+          onCheck={p.onCheckSplit ? (madeAt) => p.onCheckSplit!(madeAt, form.effectiveDate) : undefined}
+          onRefresh={p.onSuggest ? async () => setSplit(await p.onSuggest!(form.annualCtc!, form.effectiveDate)) : undefined}
         />
       )}
     </div>

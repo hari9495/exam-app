@@ -53,12 +53,12 @@ export { PaymentModesPanel, type LivePayments, type LiveRunPayments, type LivePa
 export { PayrollSetupScreen } from '../comp-setup';
 export type { LivePayrollSetup, SetupStep, SetupLink, GroupInput, GoLiveReadiness, ReadinessItem, ParallelRunView } from '../setup-live';
 export { CompensationScreen, TemplateBuilderScreen, ComponentLibraryScreen, PayslipLayoutScreen } from '../comp-setup';
-export { type LiveCompensation, type LiveTemplates, type LiveComponentLibrary, type LivePayslipLayout, type SplitSuggestion } from '../comp-setup-live';
+export { type LiveCompensation, type LiveTemplates, type LiveComponentLibrary, type LivePayslipLayout, type SplitSuggestion, type CompensationHistoryItem, type SplitFreshness } from '../comp-setup-live';
 export { ArrearsBaseScreen, ActuarialScreen } from '../offcycle';
 export type { LiveArrears, LiveActuarial } from '../offcycle-live';
 export { CountryPacksScreen, type LiveCountryPacks, type W9Input, type WpsIdsInput } from '../country-packs';
 export { SpecialPayHomeScreen } from '../special-pay';
-export type { LiveSpecialPay, PieceOutput, TipPoolView, UnionRemittance } from '../special-pay-live';
+export type { LiveSpecialPay, PieceOutput, TipPoolView, UnionRemittance, PieceCheck } from '../special-pay-live';
 export { EquityScreen, MyEquityScreen, type LiveEquity, type LiveMyEquity } from '../equity';
 // Employee pay and tax designs (PAY-17, 18, 21 … 23, 26, 27, 33, 39 … 41, 54 · builder 3): designed screens with `live`.
 export {

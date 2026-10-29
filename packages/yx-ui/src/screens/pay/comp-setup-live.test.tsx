@@ -345,3 +345,65 @@ describe('Payslip layout (PAY-15 live)', () => {
     expect(onRetry).toHaveBeenCalled();
   });
 });
+
+// ------------------------------------------------------------------------------------------ round 2 (founder answer 2)
+
+describe('Compensation history and the stale split (PAY-12, PAY-42 live)', () => {
+  const HISTORY = [
+    { kind: 'request' as const, changeId: 'ch3', status: 'pending', validFrom: '2026-12-01', validTo: null, annualCtc: '1500000.00', previousCtc: null, reason: 'Promotion', requestedBy: { userId: 'u1', name: 'Lakshmi Rao' }, requestedAt: '2026-10-20T05:00:00.000Z', decidedBy: null, decidedAt: null, template: null },
+    { kind: 'salary' as const, changeId: 'ch2', status: 'approved', validFrom: '2026-04-01', validTo: null, annualCtc: '1400000.00', previousCtc: '1250000.00', reason: 'Annual review', requestedBy: { userId: 'u1', name: 'Lakshmi Rao' }, requestedAt: '2026-03-20T05:00:00.000Z', decidedBy: { userId: 'u2', name: 'Meera Iyer' }, decidedAt: '2026-03-28T05:00:00.000Z', template: { name: 'Staff standard', version: 3 } },
+  ];
+  it('lists the salaries and the waiting request with who asked and approved (positive)', () => {
+    render(<CompensationScreen live={compLive({ history: HISTORY })} />);
+    const h = screen.getByRole('region', { name: 'Compensation history' });
+    expect(h).toHaveTextContent(/revised CTC to ₹14,00,000 from 1 Apr 2026 \(Annual review, \+12%\) · Staff standard v3 · approved by Meera Iyer/);
+    expect(h).toHaveTextContent(/asked for CTC ₹15,00,000 from 1 Dec 2026 \(Promotion\): waiting for approval/);
+    expect(within(h).getAllByText('Lakshmi Rao').length).toBeGreaterThan(0);
+  });
+
+  it('no history yet says so; a failed history read leaves the panel out (negative)', () => {
+    const { unmount } = render(<CompensationScreen live={compLive({ history: [] })} />);
+    expect(screen.getByText('No earlier salaries.')).toBeInTheDocument();
+    unmount();
+    render(<CompensationScreen live={compLive({ history: undefined })} />);
+    expect(screen.queryByRole('region', { name: 'Compensation history' })).toBeNull();
+  });
+
+  const openSplit = async () => {
+    const dialog = await openRevise();
+    await ue.type(within(dialog).getByRole('textbox', { name: /New annual CTC/ }), '726000');
+    await ue.click(within(dialog).getByRole('button', { name: 'Suggest split' }));
+    return screen.findByRole('dialog', { name: 'Suggest split' });
+  };
+  const SUGGESTED = vi.fn(async () => [{ templateVersionId: 'v2', template: 'Staff standard · version 2', monthlyGross: '58700.00', takeHomeBeforeTax: '56700.00', codeWageAddBack: '0.00', madeAt: '2026-10-29T05:00:00.000Z' }]);
+
+  it('a law published after the options were made: Use is stopped, the warning says what changed, Refresh works them out again (negative then positive)', async () => {
+    const onSuggest = vi.fn(SUGGESTED);
+    const onCheckSplit = vi.fn().mockResolvedValueOnce({ stale: true, changes: [{ statute: 'IN.MW', jurisdiction: 'IN-KA', version: '2026-10', validFrom: '2026-10-01', publishedAt: '2026-10-29T06:00:00.000Z' }] }).mockResolvedValue({ stale: false, changes: [] });
+    render(<CompensationScreen live={compLive({ onSuggest, onCheckSplit })} />);
+    const split = await openSplit();
+    await ue.click(within(split).getByRole('radio', { name: 'Staff standard · version 2' }));
+    await ue.click(within(split).getByRole('button', { name: /^Use Staff standard/ }));
+    expect(await within(split).findByText('These suggestions are out of date')).toBeInTheDocument();
+    expect(within(split).getByText(/changed from 1 Oct 2026 after these options were made/)).toBeInTheDocument();
+    expect(onCheckSplit).toHaveBeenCalledWith('2026-10-29T05:00:00.000Z', expect.any(String));
+    expect(screen.getByRole('dialog', { name: 'Suggest split' })).toBeInTheDocument();
+    await ue.click(within(split).getByRole('button', { name: 'Refresh' }));
+    await waitFor(() => expect(onSuggest).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(within(screen.getByRole('dialog', { name: 'Suggest split' })).queryByText('These suggestions are out of date')).toBeNull());
+    const fresh = screen.getByRole('dialog', { name: 'Suggest split' });
+    await ue.click(within(fresh).getByRole('radio', { name: 'Staff standard · version 2' }));
+    await ue.click(within(fresh).getByRole('button', { name: /^Use Staff standard/ }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Suggest split' })).toBeNull());
+  });
+
+  it('fresh options are used straight away after the check (positive)', async () => {
+    const onCheckSplit = vi.fn(async () => ({ stale: false, changes: [] }));
+    render(<CompensationScreen live={compLive({ onSuggest: SUGGESTED, onCheckSplit })} />);
+    const split = await openSplit();
+    await ue.click(within(split).getByRole('radio', { name: 'Staff standard · version 2' }));
+    await ue.click(within(split).getByRole('button', { name: /^Use Staff standard/ }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Suggest split' })).toBeNull());
+    expect(onCheckSplit).toHaveBeenCalledTimes(1);
+  });
+});

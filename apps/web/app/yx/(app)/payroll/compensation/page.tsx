@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { CompensationScreen, type Breakup, type CompensationInForce, type EmployeeHit, type SalaryTemplate, type StatutoryProfile } from '@yukthix/ui/pay';
-import type { LiveCompensation, SplitSuggestion } from '@yukthix/ui/pay';
+import type { CompensationHistoryItem, LiveCompensation, SplitFreshness, SplitSuggestion } from '@yukthix/ui/pay';
 import { payState, usePay, usePayWrite } from '../../../../../lib/yx-pay';
 import { usePeopleSearch } from '../../../../../lib/yx-pay-5b';
 import { todayIndia } from '../../../../../lib/yx-time';
@@ -15,6 +15,7 @@ export default function YxPayCompensationPage() {
   const id = employee ? encodeURIComponent(employee.id) : null;
   const current = usePay<CompensationInForce | null>(id ? `/employees/${id}/compensation` : null);
   const profile = usePay<StatutoryProfile>(id ? `/employees/${id}/statutory-profile` : null);
+  const history = usePay<CompensationHistoryItem[]>(id ? `/employees/${id}/compensation-history` : null);
   const templates = usePay<SalaryTemplate[]>('/templates');
   const write = usePayWrite();
   const search = usePeopleSearch();
@@ -32,6 +33,9 @@ export default function YxPayCompensationPage() {
     templates: templates.data ?? null,
     today: todayIndia(),
     onSuggest: employee ? (annualCtc, effectiveDate) => write<SplitSuggestion[]>('/compensations/suggest', { employeeId: employee.id, annualCtc, effectiveDate }) : undefined,
+    onCheckSplit: employee ? (madeAt, effectiveDate) => write<SplitFreshness>('/compensations/suggest/check', { employeeId: employee.id, madeAt, effectiveDate }) : undefined,
+    // A failed history read leaves the panel out; the salary in force still shows.
+    history: history.isError ? undefined : (history.data ?? null),
     onPreview: (c) => write<Breakup>('/compensations/preview', { ...c, employeeId: employee!.id }),
     onSubmit: changesPay ? (c) => write<{ changeId: string; status: string }>(`/employees/${id}/compensation-changes`, { ...c, employeeId: employee!.id }) : undefined,
     onLetter: (changeId, signatory) =>

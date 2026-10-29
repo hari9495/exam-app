@@ -1,7 +1,7 @@
 // Off-cycle and annual processes: PAY-11 off-cycle run (F&F, bonus, arrears only, correction), PAY-24 bonus computation,
 // PAY-28 arrears worksheet base confirmation, PAY-37 wage-settlement arrears, PAY-38 actuarial census and valuation.
 import { useState } from 'react';
-import { BellRing, Download, Eye, FileText, Send } from 'lucide-react';
+import { BellRing, Download, Eye, FileText, Plus, Send } from 'lucide-react';
 import { Button, Link } from '../../components/button';
 import { Badge } from '../../components/display';
 import { EmptyState, InlineAlert, NoAccessState } from '../../components/feedback';
@@ -23,7 +23,7 @@ import { EXIT_CASES, SCHEDULED } from '../people/people-data';
 
 const storyHref = (id: string) => `/?path=/story/${id}`;
 import { arrearsTotal, gratuity, retrenchmentCompensation, statutoryBonus, type ArrearMonth } from './pay-logic';
-import { LiveSettlementArrears } from './settlement-live';
+import { LiveSettlementArrears, NewSettlementDrawer, type NewSettlementInput } from './settlement-live';
 import { LiveOffCycleRunScreen, type LiveOffCycleRun } from './offcycle-run-live';
 import type { LiveSpecialPay } from './special-pay-live';
 
@@ -590,11 +590,53 @@ function SampleArrearsBase({ confirmed = false, embedded = false, computed: comp
 /* ================================================================== PAY-37 Wage-settlement arrears */
 
 /** PAY-37 · Wage-settlement arrears: settlement → categories → affected employees → arrears worksheet. */
-export function SettlementArrearsScreen({ live, ...story }: { step?: string; /** The live app's /yx/payroll/special-pay Settlements tab. */ live?: LiveSpecialPay }) {
+/** PAY-37 "New settlement" drawer states in the stories. */
+export type NewSettlementStory = 'empty' | 'filled' | 'too-early' | 'refused';
+
+export function SettlementArrearsScreen({ live, ...story }: { step?: string; /** No settlement yet. */ empty?: boolean; newSettlement?: NewSettlementStory; /** The live app's /yx/payroll/special-pay Settlements tab. */ live?: LiveSpecialPay }) {
   return live ? <LiveSettlementArrears live={live} /> : <SampleSettlementArrears {...story} />;
 }
 
-function SampleSettlementArrears({ step = 'categories' }: { step?: string }) {
+const SAMPLE_SETTLEMENT: NewSettlementInput = {
+  title: 'Long-term settlement 2026',
+  unionId: 'u-kaveri',
+  signedOn: '2026-09-18',
+  effectiveFrom: '2026-04-01',
+  rates: [
+    { category: 'skilled', monthlyIncrease: '1500' },
+    { category: 'semi_skilled', monthlyIncrease: '1350' },
+    { category: 'unskilled', monthlyIncrease: '1200' },
+  ],
+};
+
+function SampleSettlementArrears({ step = 'categories', empty = false, newSettlement }: { step?: string; empty?: boolean; newSettlement?: NewSettlementStory }) {
+  const [adding, setAdding] = useState(!!newSettlement);
+  const today = `${TODAY.getFullYear()}-${String(TODAY.getMonth() + 1).padStart(2, '0')}-${String(TODAY.getDate()).padStart(2, '0')}`;
+  const newButton = (
+    <Button icon={Plus} onClick={() => setAdding(true)}>
+      New settlement
+    </Button>
+  );
+  const drawer = adding && (
+    <NewSettlementDrawer
+      open
+      onOpenChange={setAdding}
+      unions={[{ id: 'u-kaveri', name: 'Kaveri Foods Workers Union' }]}
+      today={today}
+      initial={newSettlement === 'filled' || newSettlement === 'refused' ? SAMPLE_SETTLEMENT : newSettlement === 'too-early' ? { title: 'LTS', rates: [{ category: 'skilled', monthlyIncrease: '1500' }, { category: 'skilled', monthlyIncrease: '' }] } : undefined}
+      revealErrors={newSettlement === 'too-early'}
+      serverError={newSettlement === 'refused' ? 'Each worker category once.' : null}
+      onSave={async () => undefined}
+    />
+  );
+  if (empty)
+    return (
+      <PayFrame page="runs">
+        <PageHeader title="Wage settlements" description="Long-term settlements with a union, and the arrears they bring." actions={newButton} />
+        <EmptyState title="No wage settlements yet" description="A long-term settlement with a union sets a monthly increase per worker category from an effective date; its arrears are worked out here." action={newButton} />
+        {drawer}
+      </PayFrame>
+    );
   const cats = [
     { cat: 'Category A · machine operators', increase: 1_500, count: 42 },
     { cat: 'Category B · helpers and loaders', increase: 1_200, count: 58 },
@@ -603,7 +645,17 @@ function SampleSettlementArrears({ step = 'categories' }: { step?: string }) {
   const months = SETTLEMENT.months.length;
   return (
     <PayFrame page="runs">
-      <PageHeader title="Long-term settlement 2026" description={`Kaveri Foods Workers Union · settlement signed ${formatDate(SETTLEMENT.signed)} · effective ${formatDate(SETTLEMENT.effective)}`} actions={<Link href="#case">Open collective dispute case</Link>} />
+      <PageHeader
+        title="Long-term settlement 2026"
+        description={`Kaveri Foods Workers Union · settlement signed ${formatDate(SETTLEMENT.signed)} · effective ${formatDate(SETTLEMENT.effective)}`}
+        actions={
+          <>
+            <Link href="#case">Open collective dispute case</Link>
+            {newButton}
+          </>
+        }
+      />
+      {drawer}
       <Stepper
         title="Settlement arrears"
         defaultCurrent={step}

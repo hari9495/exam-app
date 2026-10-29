@@ -2,13 +2,13 @@
 // with the API's data for /yx/payroll/special-pay. Same tabs, tables, texts and drawers as the designs, without the
 // PayFrame (the app shell gives the menu). Every action is checked again by the API (payroll.special.manage, the legal
 // entity, maker is not checker, the database pay guard).
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Download, Plus, Trash2, Upload } from 'lucide-react';
 import { Button, IconButton } from '../../components/button';
 import { Badge } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, InlineAlert, Skeleton } from '../../components/feedback';
-import { FieldRow, FormField, FormSection, type FormErrorItem } from '../../components/field';
+import { FieldRow, FormField, FormSection, useTooEarly, type FormErrorItem } from '../../components/field';
 import { TextField } from '../../components/inputs';
 import { Checkbox } from '../../components/choice';
 import { Segment } from '../../components/segment';
@@ -65,6 +65,15 @@ export interface UnionRemittance {
   approved: boolean;
   members: { employeeId: string; amount: string }[];
   total: string;
+  /** PAY-36: when the dues were paid to the union (null: not yet). */
+  remitted?: { amount: string; paidOn: string; reference: string; recordedBy: string; recordedAt: string } | null;
+}
+/** GET payroll/special/piece/check: the month's piece pay and minimum-wage top-up per person, before it is sent. */
+export interface PieceCheck {
+  month: string;
+  sent: 'pending' | 'approved' | null;
+  people: { employeeId: string; daysWorked: number; minimumDaily: string; earnings: string; minimum: string; topUp: string }[];
+  totalTopUp: string;
 }
 
 export interface LiveSpecialPay {
@@ -101,6 +110,14 @@ export interface LiveSpecialPay {
   onRevoke?: (authorisationId: string, revokedOn: string) => Promise<unknown>;
   /** A union's dues of the month, for the statement sent with the remittance. */
   onRemittance?: (unionId: string) => Promise<UnionRemittance>;
+  /** PAY-36: the union was paid the month's approved dues (the server takes the amount from the check-off). */
+  onMarkRemitted?: (unionId: string, x: { paidOn: string; reference: string }) => Promise<unknown>;
+  /** PAY-31: the earnings check of the month, before it is sent (nothing is kept). */
+  onPieceCheck?: () => Promise<PieceCheck>;
+  /** Today in India (yyyy-mm-dd): the latest "paid on" date. */
+  today?: string;
+  /** PAY-37: a new wage settlement (POST payroll/special/settlements); the page adds the legal entity. */
+  onAddSettlement?: (x: import('./settlement-live').NewSettlementInput) => Promise<unknown>;
   onLayoff: (x: { employeeId: string; days: string }) => Promise<unknown>;
   onVrs: (x: { employeeId: string; amount: string; priorExemption: string }) => Promise<unknown>;
   /** Sends the month's sheet of a kind to payroll: piece, oncall, union, layoff, clawbacks; or a plan, pool or settlement by id. */
@@ -282,11 +299,76 @@ export function LivePieceRate({ live }: { live: LiveSpecialPay }) {
           <DataTable label="Output this period" columns={outCols} rows={live.outputs ?? []} getRowId={(r) => r.id} state={tableState(live.outputs)} empty={<EmptyState compact title={`No output for ${month} yet`} description="Key it per worker and day, or import the output file." />} />
         </TabsContent>
         <TabsContent value="check">
-          <InlineAlert tone="info">Where piece earnings are below the time-rate minimum wage for the days worked, a named minimum-wage top-up line is added when you send the month. The lines show under Sent to payroll on the Home tab.</InlineAlert>
+          <LivePieceCheck live={live} />
         </TabsContent>
       </Tabs>
       {card && <CardDrawer onClose={() => setCard(false)} onSave={live.onAddCard} />}
       {output && <OutputDrawer cards={live.cards ?? []} onSearch={live.onSearch} onClose={() => setOutput(false)} onSave={live.onSaveOutput} />}
+    </div>
+  );
+}
+
+/** PAY-31 Earnings check, live: what sending the month would pay, with the minimum-wage top-up, read before it is sent. */
+function LivePieceCheck({ live }: { live: LiveSpecialPay }) {
+  const [data, setData] = useState<PieceCheck | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!live.onPieceCheck) return;
+    let on = true;
+    setData(null);
+    setError(null);
+    live.onPieceCheck().then(
+      (d) => on && setData(d),
+      (e: unknown) => on && setError(e instanceof Error ? e.message : 'The earnings check did not load.'),
+    );
+    return () => {
+      on = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when the entity or month changes, or on Retry
+  }, [live.entityId, live.month, tick]);
+  if (!live.onPieceCheck)
+    return <InlineAlert tone="info">Where piece earnings are below the time-rate minimum wage for the days worked, a named minimum-wage top-up line is added when you send the month.</InlineAlert>;
+  type Row = PieceCheck['people'][number];
+  const cols: TableColumn<Row>[] = [
+    { key: 'n', header: 'Worker', type: 'person', value: (r) => live.nameOf(r.employeeId), person: (r) => ({ name: live.nameOf(r.employeeId) }), width: 220 },
+    { key: 'days', header: 'Days worked', type: 'number', value: (r) => r.daysWorked, width: 100 },
+    { key: 'earned', header: 'Piece earnings', type: 'money', value: (r) => Number(r.earnings), total: 'sum', width: 130 },
+    { key: 'min', header: 'Time-rate minimum', type: 'money', value: (r) => Number(r.minimum), width: 150 },
+    { key: 'top', header: 'Minimum-wage top-up', type: 'money', value: (r) => Number(r.topUp), total: 'sum', width: 170 },
+    { key: 'total', header: 'Pay', type: 'money', value: (r) => Number(r.earnings) + Number(r.topUp), total: 'sum', width: 120 },
+  ];
+  const daily = data?.people.find((r) => Number(r.minimumDaily) > 0)?.minimumDaily;
+  const exportCheck = () =>
+    data &&
+    saveFile(
+      `piece-rate-check-${data.month}.csv`,
+      ['Worker,Days worked,Piece earnings,Time-rate minimum,Minimum-wage top-up,Pay', ...data.people.map((r) => [live.nameOf(r.employeeId), r.daysWorked, r.earnings, r.minimum, r.topUp, (Number(r.earnings) + Number(r.topUp)).toFixed(2)].join(','))].join('\n'),
+    );
+  return (
+    <div className="yx-pay-stack">
+      {error ? (
+        <InlineAlert tone="danger" title="The earnings check could not be worked out" actions={<Button size="sm" onClick={() => setTick((t) => t + 1)}>Try again</Button>}>
+          {error}
+        </InlineAlert>
+      ) : (
+        <InlineAlert tone="info">
+          Where piece earnings are below the time-rate minimum wage for days worked, a named minimum-wage top-up line is added.
+          {daily ? ` Daily minimum ${formatINR(Number(daily))} at the place of work.` : ''}
+          {data?.sent ? ` ${monthName(data.month)} is already sent to payroll (${data.sent === 'approved' ? 'approved' : 'waiting for approval'}).` : ''}
+        </InlineAlert>
+      )}
+      {!error && (
+        <DataTable
+          label="Piece-rate earnings check"
+          columns={cols}
+          rows={data?.people ?? []}
+          getRowId={(r) => r.employeeId}
+          state={data ? 'ready' : 'loading'}
+          onExport={data?.people.length ? exportCheck : undefined}
+          empty={<EmptyState compact title={`No output for ${monthName(live.month)} yet`} description="Key or import output first; the check works it out from there." />}
+        />
+      )}
     </div>
   );
 }
@@ -929,6 +1011,133 @@ function saveFile(name: string, text: string) {
   URL.revokeObjectURL(a.href);
 }
 
+/** PAY-36 Remittance, live: each union's approved dues for the month, its statement, and "Mark remitted" once paid. */
+function LiveRemittance({ live, unions, onStatement }: { live: LiveSpecialPay; unions: UnionsView['unions'] | null; onStatement: (r: UnionRemittance) => void }) {
+  const { toast } = useToast();
+  const { busy, run } = useRun();
+  const month = monthName(live.month);
+  const [rows, setRows] = useState<Record<string, UnionRemittance | 'error'>>({});
+  const [tick, setTick] = useState(0);
+  const [marking, setMarking] = useState<{ union: UnionsView['unions'][number]; paidOn: string; reference: string } | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const today = live.today ?? new Date().toISOString().slice(0, 10);
+  useEffect(() => {
+    if (!unions || !live.onRemittance) return;
+    let on = true;
+    setRows({});
+    for (const x of unions)
+      live.onRemittance(x.id).then(
+        (r) => on && setRows((m) => ({ ...m, [x.id]: r })),
+        () => on && setRows((m) => ({ ...m, [x.id]: 'error' })),
+      );
+    return () => {
+      on = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload per month, entity, union list or after marking
+  }, [unions, live.month, live.entityId, tick]);
+  const errors: FormErrorItem[] = marking
+    ? [
+        ...(!DAY.test(marking.paidOn) ? [{ fieldId: 'rm-on', message: 'Enter the date it was paid.' }] : marking.paidOn > today ? [{ fieldId: 'rm-on', message: 'The date it was paid cannot be in the future.' }] : marking.paidOn < `${live.month}-01` ? [{ fieldId: 'rm-on', message: `Dues for ${month} are paid on or after 1 ${month}.` }] : []),
+        ...(marking.reference.trim().length < 3 ? [{ fieldId: 'rm-ref', message: 'Enter the payment reference.' }] : !/^[\w\-/. ]+$/.test(marking.reference.trim()) ? [{ fieldId: 'rm-ref', message: 'Use letters, digits, spaces and - / . only.' }] : []),
+      ]
+    : [];
+  const early = useTooEarly(errors);
+  type U = UnionsView['unions'][number];
+  const st = (x: U) => rows[x.id];
+  const cols: TableColumn<U>[] = [
+    { key: 'union', header: 'Union', value: (x) => x.name, render: (x) => <div>{x.name}{x.registrationNo && <p className="yx-pay-note">{x.registrationNo}</p>}</div>, width: 220 },
+    { key: 'members', header: 'Members', type: 'number', value: (x) => x.members, total: 'sum', width: 100 },
+    { key: 'total', header: 'Amount', type: 'money', value: (x) => { const r = st(x); return r && r !== 'error' ? Number(r.total) : 0; }, total: 'sum', width: 110 },
+    {
+      key: 'status',
+      header: 'Status',
+      type: 'status',
+      value: (x) => { const r = st(x); return !r ? 'Loading' : r === 'error' ? 'Could not load' : r.remitted ? 'Remitted' : r.approved ? 'Not remitted' : 'Not approved yet'; },
+      render: (x) => {
+        const r = st(x);
+        if (!r) return <Skeleton width={90} height={20} />;
+        if (r === 'error') return <Badge tone="danger">Could not load</Badge>;
+        if (r.remitted)
+          return (
+            <div>
+              <Badge tone="success">Remitted</Badge>
+              <p className="yx-pay-note">{dateText(r.remitted.paidOn)} · {r.remitted.reference}</p>
+            </div>
+          );
+        return r.approved ? <Badge tone="neutral">Not remitted</Badge> : <Badge tone="warning">Not approved yet</Badge>;
+      },
+      width: 170,
+    },
+  ];
+  return (
+    <div className="yx-pay-stack">
+      <InlineAlert tone="info">Dues are paid to each union once the month's check-off is approved in payroll. Mark a union remitted after the payment leaves the bank.</InlineAlert>
+      <DataTable
+        label={`Remittance per union, ${month}`}
+        columns={cols}
+        rows={unions ?? []}
+        getRowId={(x) => x.id}
+        state={unions ? 'ready' : 'loading'}
+        rowNoun={['union', 'unions']}
+        empty={<EmptyState compact title="No unions yet" description="Add a union and record the workers' authorisations first." />}
+        rowButtons={(x) => {
+          const r = st(x);
+          return (
+            <span className="yx-pay-row">
+              {live.onRemittance && (
+                <Button size="sm" icon={Download} loading={busy === x.id} onClick={() => void run(x.id, async () => onStatement(await live.onRemittance!(x.id)))}>
+                  Statement
+                </Button>
+              )}
+              {live.onMarkRemitted && r && r !== 'error' && r.approved && !r.remitted && Number(r.total) > 0 && (
+                <Button size="sm" onClick={() => { early.reset(); setFailed(null); setMarking({ union: x, paidOn: '', reference: '' }); }}>
+                  Mark remitted
+                </Button>
+              )}
+            </span>
+          );
+        }}
+      />
+      <ConfirmDialog
+        open={!!marking}
+        onOpenChange={(o) => !o && setMarking(null)}
+        title={marking ? `Mark ${marking.union.name} dues remitted?` : ''}
+        consequence={marking ? (() => { const r = st(marking.union); return r && r !== 'error' ? `${formatINR(Number(r.total))} for ${month}. This is recorded once and cannot be changed here.` : undefined; })() : undefined}
+        confirmLabel="Mark remitted"
+        onConfirm={async () => {
+          if (!marking || early.stop()) return false;
+          setFailed(null);
+          try {
+            await live.onMarkRemitted!(marking.union.id, { paidOn: marking.paidOn, reference: marking.reference.trim() });
+          } catch (e) {
+            setFailed(e instanceof Error ? e.message : 'It was not marked remitted. Try again.');
+            return false;
+          }
+          toast({ tone: 'success', title: `${marking.union.name} dues for ${month} marked remitted.` });
+          setMarking(null);
+          setTick((t) => t + 1);
+        }}
+      >
+        {marking && (
+          <div className="yx-pay-stack">
+            {failed && (
+              <InlineAlert tone="danger" title="Not marked remitted">
+                {failed}
+              </InlineAlert>
+            )}
+            <FormField id="rm-on" label="Paid on" required error={early.errorOf('rm-on')}>
+              <TextField type="date" value={marking.paidOn} onChange={(paidOn) => setMarking({ ...marking, paidOn })} />
+            </FormField>
+            <FormField id="rm-ref" label="Payment reference" required helper="The bank (NEFT / RTGS) or cheque reference." error={early.errorOf('rm-ref')}>
+              <TextField value={marking.reference} onChange={(reference) => setMarking({ ...marking, reference })} />
+            </FormField>
+          </div>
+        )}
+      </ConfirmDialog>
+    </div>
+  );
+}
+
 export function LiveUnionCheckoff({ live }: { live: LiveSpecialPay }) {
   const [union, setUnion] = useState(false);
   const [auth, setAuth] = useState(false);
@@ -1018,24 +1227,7 @@ export function LiveUnionCheckoff({ live }: { live: LiveSpecialPay }) {
             </div>
           </TabsContent>
           <TabsContent value="remit">
-            <DataTable
-              label={`Remittance per union, ${month}`}
-              columns={[
-                { key: 'union', header: 'Union', value: (x: UnionsView['unions'][number]) => x.name, render: (x) => <div>{x.name}{x.registrationNo && <p className="yx-pay-note">{x.registrationNo}</p>}</div>, width: 240 },
-                { key: 'members', header: 'Members paying dues', type: 'number', value: (x) => x.members, total: 'sum', width: 170 },
-              ]}
-              rows={u?.unions ?? []}
-              getRowId={(x) => x.id}
-              state={u ? 'ready' : 'loading'}
-              rowNoun={['union', 'unions']}
-              rowButtons={(x) =>
-                live.onRemittance ? (
-                  <Button size="sm" icon={Download} loading={busy === x.id} onClick={() => void run(x.id, async () => setStatement(await live.onRemittance!(x.id)))}>
-                    Statement
-                  </Button>
-                ) : null
-              }
-            />
+            <LiveRemittance live={live} unions={u?.unions ?? null} onStatement={setStatement} />
           </TabsContent>
         </Tabs>
       )}

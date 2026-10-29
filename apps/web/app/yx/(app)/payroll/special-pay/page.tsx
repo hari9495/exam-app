@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { SpecialPayHomeScreen, type IncentivePlanView, type PieceOutput, type TipPoolView, type UnionRemittance, type OncallRuleView, type RateCard, type SetupEntity, type SpecialPosting, type UnionsView } from '@yukthix/ui/pay';
+import { SpecialPayHomeScreen, type IncentivePlanView, type PieceOutput, type TipPoolView, type UnionRemittance, type PieceCheck, type OncallRuleView, type RateCard, type SetupEntity, type SpecialPosting, type UnionsView } from '@yukthix/ui/pay';
 import { useOrg } from '../../../../../lib/yx-org';
 import { payState, usePay, usePayRead } from '../../../../../lib/yx-pay';
 import { useApiWrite, useNames } from '../../../../../lib/yx-pay-5j';
@@ -70,6 +70,10 @@ export default function YxPaySpecialPage() {
         onAuthorise: (x) => sp('union-authorisations', x),
         onRevoke: (id, revokedOn) => sp(`union-authorisations/${e(id)}/revoke`, { revokedOn }),
         onRemittance: (unionId) => read<UnionRemittance>(`/special/unions/${e(unionId)}/remittance?month=${month}`),
+        onMarkRemitted: (unionId, x) => sp(`unions/${e(unionId)}/remittance`, { month, ...x }),
+        onPieceCheck: () => read<PieceCheck>(`/special/piece/check?legalEntityId=${e(entityId!)}&month=${month}`),
+        today: todayIndia(),
+        onAddSettlement: (x) => sp('settlements', { legalEntityId: entityId, ...x }),
         onLayoff: (x) => sp(`entities/${e(entityId!)}/layoff-days`, { ...x, month }),
         onVrs: (x) => sp(`entities/${e(entityId!)}/vrs`, { ...x, month }),
         onPost: (what) => {

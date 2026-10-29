@@ -389,3 +389,137 @@ describe('Settlements tab (PAY-37 live)', () => {
     expect(screen.getByText('No wage settlements yet')).toBeInTheDocument();
   });
 });
+
+// ------------------------------------------------------------------------------------------ round 2 (founder answers 2 and 4)
+
+describe('Earnings check (PAY-31 live, GET piece/check)', () => {
+  const CHECK = { month: '2026-10', sent: null, totalTopUp: '150.00', people: [{ employeeId: 'p1', daysWorked: 24, minimumDaily: '600.00', earnings: '14250.00', minimum: '14400.00', topUp: '150.00' }, { employeeId: 'p2', daysWorked: 2, minimumDaily: '600.00', earnings: '1200.00', minimum: '1200.00', topUp: '0.00' }] };
+  it('shows each worker’s piece pay, the time-rate minimum and the top-up before the month is sent (positive)', async () => {
+    const onPieceCheck = vi.fn(async () => ({ ...CHECK, people: [...CHECK.people] }));
+    render(<SpecialPayHomeScreen live={live({ onPieceCheck })} />);
+    await tab('Piece-rate');
+    await ue.click(screen.getByRole('tab', { name: 'Earnings check' }));
+    const t = await screen.findByRole('table', { name: 'Piece-rate earnings check' });
+    await within(t).findByText('Lakshmi Devi');
+    expect(t).toHaveTextContent('₹14,250');
+    expect(t).toHaveTextContent('₹150');
+    expect(screen.getByText(/Daily minimum ₹600/)).toBeInTheDocument();
+    expect(onPieceCheck).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the API refusal (an output with no rate) and tries again (negative)', async () => {
+    const onPieceCheck = vi.fn().mockRejectedValueOnce(new Error('No piece rate in force for NOPE on 2026-10-03.')).mockResolvedValue({ ...CHECK, people: [...CHECK.people] });
+    render(<SpecialPayHomeScreen live={live({ onPieceCheck })} />);
+    await tab('Piece-rate');
+    await ue.click(screen.getByRole('tab', { name: 'Earnings check' }));
+    expect(await screen.findByText('No piece rate in force for NOPE on 2026-10-03.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByRole('table', { name: 'Piece-rate earnings check' })).toBeInTheDocument();
+    expect(onPieceCheck).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('Mark remitted (PAY-36 live)', () => {
+  const remit = (o: object = {}) => vi.fn(async () => ({ union: 'Garment Workers Union', month: '2026-10', approved: true, members: [{ employeeId: 'p1', amount: '50.00' }], total: '50.00', remitted: null, ...o }));
+  it('marks an approved month remitted; pressed too early the fields say what is missing and the first takes focus (positive and negative)', async () => {
+    const onMarkRemitted = ok();
+    render(<SpecialPayHomeScreen live={live({ onRemittance: remit(), onMarkRemitted, today: '2026-11-05' })} />);
+    await tab('Union dues');
+    await tab('Remittance');
+    const t = screen.getByRole('table', { name: 'Remittance per union, October 2026' });
+    expect(await within(t).findByText('Not remitted')).toBeInTheDocument();
+    await ue.click(within(t).getByRole('button', { name: 'Mark remitted' }));
+    const dlg = screen.getAllByRole('dialog').at(-1)!;
+    await ue.click(within(dlg).getByRole('button', { name: 'Mark remitted' }));
+    expect(within(dlg).getAllByText('Enter the date it was paid.').length).toBeGreaterThan(0);
+    expect(within(dlg).getByLabelText(/Paid on/)).toHaveFocus();
+    await ue.type(within(dlg).getByLabelText(/Paid on/), '2026-12-01');
+    await ue.type(within(dlg).getByLabelText(/Payment reference/), 'NEFT 1');
+    await ue.click(within(dlg).getByRole('button', { name: 'Mark remitted' }));
+    expect(within(dlg).getAllByText('The date it was paid cannot be in the future.').length).toBeGreaterThan(0);
+    expect(onMarkRemitted).not.toHaveBeenCalled();
+    await ue.clear(within(dlg).getByLabelText(/Paid on/));
+    await ue.type(within(dlg).getByLabelText(/Paid on/), '2026-11-04');
+    await ue.click(within(dlg).getByRole('button', { name: 'Mark remitted' }));
+    await waitFor(() => expect(onMarkRemitted).toHaveBeenCalledWith('u1', { paidOn: '2026-11-04', reference: 'NEFT 1' }));
+    expect((await screen.findAllByText('Garment Workers Union dues for October 2026 marked remitted.')).length).toBeGreaterThan(0);
+  });
+
+  it('a remitted union shows the date and reference with no button; a month not approved has no button; a refusal stays in the dialog', async () => {
+    const { unmount } = render(<SpecialPayHomeScreen live={live({ onRemittance: remit({ remitted: { amount: '50.00', paidOn: '2026-11-04', reference: 'NEFT 1', recordedBy: 'x', recordedAt: '' } }), onMarkRemitted: ok() })} />);
+    await tab('Union dues');
+    await tab('Remittance');
+    expect(await screen.findByText('Remitted')).toBeInTheDocument();
+    expect(screen.getByText('4 Nov 2026 · NEFT 1')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Mark remitted' })).not.toBeInTheDocument();
+    unmount();
+    const r2 = render(<SpecialPayHomeScreen live={live({ onRemittance: remit({ approved: false }), onMarkRemitted: ok() })} />);
+    await tab('Union dues');
+    await tab('Remittance');
+    expect(await screen.findByText('Not approved yet')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Mark remitted' })).not.toBeInTheDocument();
+    r2.unmount();
+    const onMarkRemitted = vi.fn().mockRejectedValue(new Error('This month is already marked as remitted to this union.'));
+    render(<SpecialPayHomeScreen live={live({ onRemittance: remit(), onMarkRemitted, today: '2026-11-05' })} />);
+    await tab('Union dues');
+    await tab('Remittance');
+    await ue.click(await screen.findByRole('button', { name: 'Mark remitted' }));
+    const dlg = screen.getAllByRole('dialog').at(-1)!;
+    await ue.type(within(dlg).getByLabelText(/Paid on/), '2026-11-04');
+    await ue.type(within(dlg).getByLabelText(/Payment reference/), 'NEFT 2');
+    await ue.click(within(dlg).getByRole('button', { name: 'Mark remitted' }));
+    expect(await within(dlg).findByText('This month is already marked as remitted to this union.')).toBeInTheDocument();
+  });
+});
+
+describe('New settlement (PAY-37 live)', () => {
+  it('adds a settlement; pressed too early the fields say what is missing; categories once each (positive and negative)', async () => {
+    const onAddSettlement = ok();
+    render(<SpecialPayHomeScreen live={live({ onAddSettlement, today: '2026-10-30' })} />);
+    await tab('Settlements');
+    await ue.click(screen.getByRole('button', { name: 'New settlement' }));
+    await ue.click(within(drawer()).getByRole('button', { name: 'Save settlement' }));
+    expect(within(drawer()).getAllByText(/Name the settlement/).length).toBeGreaterThan(0);
+    expect(within(drawer()).getByRole('textbox', { name: /Name/ })).toHaveFocus();
+    expect(onAddSettlement).not.toHaveBeenCalled();
+    await ue.type(within(drawer()).getByRole('textbox', { name: /Name/ }), 'Long-term settlement 2026');
+    await ue.type(within(drawer()).getByLabelText(/Signed on/), '2026-09-18');
+    await ue.type(within(drawer()).getByLabelText(/Increase from/), '2026-04-01');
+    await ue.click(within(drawer()).getByRole('combobox', { name: 'Category, row 1' }));
+    await ue.click(await screen.findByRole('option', { name: 'Skilled' }));
+    await ue.type(within(drawer()).getByRole('textbox', { name: /Increase a month/ }), '1500');
+    await ue.click(within(drawer()).getByRole('button', { name: 'Add a category' }));
+    await ue.click(within(drawer()).getByRole('combobox', { name: 'Category, row 2' }));
+    await ue.click(await screen.findByRole('option', { name: 'Skilled' }));
+    await ue.click(within(drawer()).getByRole('button', { name: 'Save settlement' }));
+    expect(within(drawer()).getAllByText('Row 2: each category once.').length).toBeGreaterThan(0);
+    expect(onAddSettlement).not.toHaveBeenCalled();
+    await ue.click(within(drawer()).getByRole('button', { name: 'Remove row 2' }));
+    await ue.click(within(drawer()).getByRole('button', { name: 'Save settlement' }));
+    await waitFor(() => expect(onAddSettlement).toHaveBeenCalledWith({ title: 'Long-term settlement 2026', signedOn: '2026-09-18', effectiveFrom: '2026-04-01', rates: [{ category: 'skilled', monthlyIncrease: '1500' }] }));
+    expect((await screen.findAllByText('Long-term settlement 2026 saved.')).length).toBeGreaterThan(0);
+  });
+
+  it('a refusal from the server stays in the drawer; with no settlement the empty state offers New settlement', async () => {
+    const onAddSettlement = vi.fn().mockRejectedValue(new Error('Each worker category once.'));
+    render(<SpecialPayHomeScreen live={live({ onAddSettlement, today: '2026-10-30', unions: { unions: [{ id: 'u1', name: 'Garment Workers Union', registrationNo: 'KA-123', members: 2 }], authorisations: [], settlements: [] } })} />);
+    await tab('Settlements');
+    expect(screen.getByText('No wage settlements yet')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'New settlement' }));
+    await ue.type(within(drawer()).getByRole('textbox', { name: /Name/ }), 'LTS 2026');
+    await ue.type(within(drawer()).getByLabelText(/Signed on/), '2026-09-18');
+    await ue.type(within(drawer()).getByLabelText(/Increase from/), '2026-04-01');
+    await ue.click(within(drawer()).getByRole('combobox', { name: 'Category, row 1' }));
+    await ue.click(await screen.findByRole('option', { name: 'Unskilled' }));
+    await ue.type(within(drawer()).getByRole('textbox', { name: /Increase a month/ }), '1200');
+    await ue.click(within(drawer()).getByRole('button', { name: 'Save settlement' }));
+    expect(await within(drawer()).findByText('Each worker category once.')).toBeInTheDocument();
+    expect(drawer()).toBeInTheDocument();
+  });
+
+  it('without the right to add, there is no New settlement button', async () => {
+    render(<SpecialPayHomeScreen live={live({ onAddSettlement: undefined })} />);
+    await tab('Settlements');
+    expect(screen.queryByRole('button', { name: 'New settlement' })).not.toBeInTheDocument();
+  });
+});
