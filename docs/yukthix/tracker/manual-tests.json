@@ -5611,5 +5611,147 @@
       "PAY-37 NewSettlementRefused"
     ],
     "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-C-01",
+    "area": "Pay · Compliance",
+    "screen": "Statutory hub (CMP-01, CMP-04 challan sheet)",
+    "url": "http://localhost:3000/yx/payroll/statutory",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Compliance › Statutory hub. Kaveri Foods and last month are chosen.",
+      "2. Look at the cards and the Due-date calendar tab.",
+      "3. On a card with \"Generate file\", press it.",
+      "4. On a \"File made\" card press Mark uploaded, then Save with nothing typed.",
+      "5. Type the portal reference TRRN-5554443 and Save.",
+      "6. Press Mark filed; press the confirm button without typing; then type the phrase shown and confirm.",
+      "7. On the TDS challan card press Prepare challan, then Open challan sheet; press Save challan with nothing filled.",
+      "8. Fill BSR 0510308, serial 11207, deposit date today; Save challan."
+    ],
+    "expected": "Step 1-2: one card per statute with amount, due badge (overdue in red with a banner) and progress; the calendar shows the due days. Step 3: a 5-second toast \"… file made.\" Step 4: field error, focus in Portal reference, nothing sent. Step 5: toast; the card moves to Uploaded. Step 6: nothing happens until the phrase is typed; then the card shows Filed and a toast. Step 7: errors under BSR code, serial and date, focus on the first. Step 8: toast \"Challan deposit recorded.\"; the card shows Deposited. Negative: signed in as an HR user without statutory keys there is no make/upload/file button; a server refusal shows its message on the page.",
+    "stories": [
+      "CMP-01 Cards",
+      "CMP-01 Calendar",
+      "CMP-01 Loading",
+      "CMP-04 OnTime",
+      "CMP-04 LateInterest"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-C-02",
+    "area": "Pay · Compliance",
+    "screen": "TDS returns tab (CMP-05)",
+    "url": "http://localhost:3000/yx/payroll/statutory",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Statutory hub › TDS returns.",
+      "2. Choose this tax year and Q2; press Start return.",
+      "3. Open the new return; press Reconcile.",
+      "4. On \"Validate (FVU)\" press Make return file, then Download return file.",
+      "5. Open \"File and acknowledgement\"; press Mark return filed with no token.",
+      "6. Type token TKN123456 and press Mark return filed (return not validated yet).",
+      "7. Upload a .fvu file, then Mark return filed again and type the phrase."
+    ],
+    "expected": "Step 2: toast; the return is listed as Draft. Step 3: \"Every challan matches\" or the difference in red. Step 4: the file downloads. Step 5: error under the token field, focus there. Step 6: \"Upload the .fvu file the FVU made first\". Step 7: the confirm sheet; after the phrase the return shows Filed with the token and a toast. Negative: a second Start for the same quarter shows the server refusal.",
+    "stories": [
+      "CMP-05 Completeness",
+      "CMP-05 Reconciliation",
+      "CMP-05 Fvu",
+      "CMP-05 Filed"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-C-03",
+    "area": "Pay · Compliance",
+    "screen": "Statutory registers (CMP-03)",
+    "url": "http://localhost:3000/yx/payroll/registers",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Compliance › Registers for last month.",
+      "2. If empty, press Make registers.",
+      "3. Press Freeze on one register; Cancel; press Freeze again and confirm.",
+      "4. Press Upload signed PDF on the frozen one and choose a PDF.",
+      "5. Press Make a new version, then the confirm button with no reason; then type \"Late overtime approval\" and confirm.",
+      "6. Press Inspection pack."
+    ],
+    "expected": "Step 1: the register table (Register, Version, Rows, Status) or \"No register for … yet.\" Step 2: toast; rows appear. Step 3: Cancel changes nothing; confirm shows Frozen and a toast. Step 4: Signed, toast. Step 5: error \"Say why…\", focus in Why; then a new version. Step 6: a ZIP downloads. Negative: as a user with view only, no Make/Freeze/Upload buttons; a register of another legal entity is never listed.",
+    "stories": [
+      "CMP-03 Epf",
+      "CMP-03 Empty",
+      "CMP-03 Loading",
+      "CMP-03 Error"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-C-04",
+    "area": "Pay · Compliance",
+    "screen": "TDS & Form 16 (CMP-06)",
+    "url": "http://localhost:3000/yx/payroll/certificates",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Compliance › TDS & Form 16; choose last tax year (Segment).",
+      "2. Look at \"Link the Q4 return\".",
+      "3. On \"Import Part A\" upload the TRACES ZIP (demo ZIP with one unknown PAN).",
+      "4. Attach a Part A PDF for a person marked Missing.",
+      "5. Open \"Issue certificates\" and press Issue n ready; press the confirm button without typing; then type the phrase."
+    ],
+    "expected": "Step 2: the filed Q4 return with its token, or a warning that it is not filed yet. Step 3: toast \"x of y Part A files matched\" and a warning listing the unmatched file. Step 4: toast; Part A shows Imported. Step 5: nothing happens until the phrase; then a toast and \"n issued\". Negative: with no ready certificate, Issue says \"No certificate is ready: attach Part A first.\"; a user without statutory.register.sign is told who may issue.",
+    "stories": [
+      "CMP-06 PartA",
+      "CMP-06 Publish",
+      "CMP-06 WrongQuarter"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-C-05",
+    "area": "Pay · Compliance",
+    "screen": "Rules & updates (CMP-08)",
+    "url": "http://localhost:3000/yx/payroll/advisories",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Compliance › Rules & updates (Labour-law updates tab).",
+      "2. Press Read update on the banner.",
+      "3. Press Mark reviewed on an update; press Mark reviewed in the dialog with no note.",
+      "4. Type \"Raised two salaries in Mysuru\" and confirm.",
+      "5. Open the Rules tab (or Compliance › Statutory set-up); press Source and values on Professional tax."
+    ],
+    "expected": "Step 1-2: updates as cards with To review / Reviewed, the source link opens in a new tab. Step 3: error \"Say what you did…\", focus in the note. Step 4: toast \"Marked reviewed.\"; the card shows Reviewed with the note. Step 5: a drawer with dates, source, values and version history; nothing editable. Negative: a reviewer without payroll set-up sees no Rules tab; a non-https source never shows as a link.",
+    "stories": [
+      "CMP-08 Rules",
+      "CMP-08 History",
+      "CMP-08 Updates",
+      "CMP-08 MarkReviewed",
+      "CMP-08 NoUpdates"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-C-06",
+    "area": "Pay · Compliance",
+    "screen": "Consultant TDS (CMP-13, new design)",
+    "url": "http://localhost:3000/yx/payroll/consultant-tds",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Compliance › Consultant TDS returns.",
+      "2. Challans tab: press Prepare challans with no month; then choose last month and press it.",
+      "3. Quarterly returns tab: start Q2, open it, press Reconcile.",
+      "4. Make return file; open \"File and acknowledgement\"; press Mark return filed with no token; type TKN998877 and confirm with the phrase.",
+      "5. Certificates tab: upload the TRACES ZIP for this tax year, Q2."
+    ],
+    "expected": "Step 2: error \"Choose the month.\" with focus; then one row per section with TDS and status, and a toast. Step 3: the reconciliation table per month and section. Step 4: token error first; then the return shows Filed with its token and a toast. Step 5: toast and \"n Form 131 certificates issued\", unmatched files listed. Negative: a user with only statutory.filing.view sees only Quarterly returns with no Start or file buttons; a server refusal shows its message.",
+    "stories": [
+      "CMP-13 Returns",
+      "CMP-13 MarkFiled",
+      "CMP-13 MarkFiledTooEarly",
+      "CMP-13 ChallansTooEarly",
+      "CMP-13 Certificates",
+      "CMP-13 Refused",
+      "CMP-13 ReadOnly"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
   }
 ]

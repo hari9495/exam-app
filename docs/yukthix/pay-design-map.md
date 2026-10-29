@@ -59,8 +59,8 @@ screen, so the guard counts them as "designed and live". They need the same wiri
 | /yx/payroll/loans, /yx/me/loans (fixed: PAY-17, PAY-18) | `LoansScreen` (live/operations.tsx, deleted) | PAY-17 `LoansScreen` (admin-tax-loans.tsx) |
 | /yx/payroll/ewa (fixed: PAY-27) | `EwaAdminScreen` (live/special.tsx, deleted) | PAY-27 `EwaAdminScreen` (admin-tax-loans.tsx) |
 | /yx/payroll/actuarial (done, builder 2) | `ActuarialScreen` (live/special.tsx) | PAY-38 `ActuarialScreen` (offcycle.tsx) |
-| /yx/payroll/statutory | `StatutoryHubScreen` (live/compliance.tsx) | CMP-01 `StatutoryHubScreen` (ops/compliance.tsx) |
-| /yx/payroll/registers | `RegistersScreen` (live/operations.tsx) | CMP-03 `RegistersScreen` (ops/compliance.tsx) |
+| /yx/payroll/statutory (fixed: CMP-01) | `StatutoryHubScreen` (live/compliance.tsx, deleted) | CMP-01 `StatutoryHubScreen` (ops/compliance.tsx) |
+| /yx/payroll/registers (fixed: CMP-03) | `RegistersScreen` (live/operations.tsx, deleted) | CMP-03 `RegistersScreen` (ops/compliance.tsx) |
 | /yx/me/pay-documents (fixed: PAY-54) | `MyPayDocumentsScreen` (live/documents.tsx, moved) | its own story "Screens/Pay/Me · Pay documents" (not titled Live, so the guard takes it as a design) |
 
 Also: `@yukthix/ui/pay` (`live/index.ts`) exports only live screens today. No designed Pay screen is exported to the app
@@ -127,12 +127,12 @@ permissions. The wiring must keep all of it.
 | /yx/me/earned-pay | `MyEwaScreen` (live/special.tsx) | PAY-26 (desktop stories) | live (builder 3) | draw an amount; tick "I understand … is taken from this month's pay"; my draws. Has no error state today (the design's states fix it) |
 | /yx/me/incentives | `MyIncentivesScreen` (live/special.tsx) | PAY-33 | live (builder 3) | results and clawbacks. Has no error state today |
 | /yx/performance/pay-band | `MyPayBandScreen` (performance/live/comp.tsx) | PAY-39 | live (builder 3) | loading / error / retry; nothing shown when the company turns bands off |
-| /yx/payroll/statutory | `StatutoryHubScreen` (live/compliance.tsx, hidden copy) | CMP-01, CMP-04, CMP-05, CMP-12 (ops area) | wire design, not in this plan (Q4) | entity and month; make, upload, file each return (second factor + typed phrase); TDS challan; quarterly TDS return (reconcile, file, .fvu, filed) |
-| /yx/payroll/registers | `RegistersScreen` (live/operations.tsx, hidden copy) | CMP-03 | wire design, not in this plan (Q4) | make, download, freeze, sign with the company token, inspection pack; `can.generate / sign / download` |
-| /yx/payroll/certificates | `TaxCertificatesScreen` (live/operations.tsx) | CMP-06 Form 16 bulk | wire design, not in this plan (Q4) | Part A ZIP import or one PDF; issue one or all (with `Confirmation`); tax year |
-| /yx/payroll/statutory-rules | `StatutoryRulesScreen` (live/setup.tsx) | CMP-08 "Rules" | wire design, not in this plan (Q4) | legal entity; read only |
-| /yx/payroll/advisories | `AdvisoriesScreen` (live/operations.tsx) | CMP-08 "Updates" | wire design, not in this plan (Q4) | legal entity; mark reviewed with a note |
-| /yx/payroll/consultant-tds | `ConsultantTaxScreen` (live/consultants.tsx) | CMP-04 / CMP-05 (for Form 140, 131) | wire design, not in this plan (Q4) | challans per section; draft, reconcile, make file, filed (token, `Confirmation`); import Form 131 certificates |
+| /yx/payroll/statutory | `StatutoryHubScreen` (live/compliance.tsx, hidden copy) | CMP-01, CMP-04, CMP-05, CMP-12 (ops area) | live (Compliance builder, see "Compliance") | entity and month; make, upload, file each return (second factor + typed phrase); TDS challan; quarterly TDS return (reconcile, file, .fvu, filed) |
+| /yx/payroll/registers | `RegistersScreen` (live/operations.tsx, hidden copy) | CMP-03 | live (Compliance builder, see "Compliance") | make, download, freeze, sign with the company token, inspection pack; `can.generate / sign / download` |
+| /yx/payroll/certificates | `TaxCertificatesScreen` (live/operations.tsx) | CMP-06 Form 16 bulk | live (Compliance builder, see "Compliance") | Part A ZIP import or one PDF; issue one or all (with `Confirmation`); tax year |
+| /yx/payroll/statutory-rules | `StatutoryRulesScreen` (live/setup.tsx) | CMP-08 "Rules" | live (Compliance builder, see "Compliance") | legal entity; read only |
+| /yx/payroll/advisories | `AdvisoriesScreen` (live/operations.tsx) | CMP-08 "Updates" | live (Compliance builder, see "Compliance") | legal entity; mark reviewed with a note |
+| /yx/payroll/consultant-tds | `ConsultantTaxScreen` (live/consultants.tsx) | CMP-04 / CMP-05 (for Form 140, 131) | live (Compliance builder, see "Compliance") | challans per section; draft, reconcile, make file, filed (token, `Confirmation`); import Form 131 certificates |
 | /yx/payroll/fnf | `FnfCalculator` (people, PPL-22) | PPL-22 | live already | (see Q2 for PAY-11) |
 | /yx/people/pay-access | `PayAccessRequests` (frame, PPL-50) | PPL-50 | live already | |
 | /yx/time/payroll-feed | `AttendanceReportsScreen` with `live` | TIM-16 | live already | |
@@ -1165,3 +1165,198 @@ PAY-19 OrderPanel, CarryForwards, Cap.
 (3) State-wise PT and LWF due dates in the rule files: *yes, size S*. (4) Read unfiled dues back three months: *yes*.
 (5) The retrenchment permission reference stays in People › Exits, not typed on the run: *yes*. (6) Re-pay "off-cycle"
 is a one-person bank file on the same run: *accept*. (7) An employee may still withdraw their own query without a reply: *yes*.
+
+## Compliance (founder decision 5; branch `feat/yukthix-pay-compliance`, 29 Oct 2026)
+
+The six Compliance pages now render the CMP designs (`packages/yx-ui/src/screens/ops/compliance.tsx`) with `live`;
+the live parts sit in `ops/compliance-live.tsx`, tests in `ops/compliance-live.test.tsx` (22). The designs are exported
+from `@yukthix/ui/pay`. Routes and the menu are unchanged.
+
+| page | design | was (copy, deleted) |
+|---|---|---|
+| /yx/payroll/statutory | CMP-01 `StatutoryHubScreen` (cards, due-date calendar); CMP-04 `TdsChallanScreen` as the sheet over it; CMP-05 `TdsReturnWizardScreen` in its "TDS returns" tab | `StatutoryHubScreen` (live/compliance.tsx) |
+| /yx/payroll/registers | CMP-03 `RegistersScreen` | `RegistersScreen` (live/operations.tsx) |
+| /yx/payroll/certificates | CMP-06 `Form16BulkScreen` | `TaxCertificatesScreen` (live/operations.tsx) |
+| /yx/payroll/statutory-rules | CMP-08 `RulesBrowserScreen`, Rules tab | `StatutoryRulesScreen` (live/setup.tsx) |
+| /yx/payroll/advisories | CMP-08 `RulesBrowserScreen`, Labour-law updates tab | `AdvisoriesScreen` (live/operations.tsx) |
+| /yx/payroll/consultant-tds | CMP-13 `ConsultantTdsScreen` (new design; its returns tab is the CMP-05 wizard with Form 140 / 26Q) | `ConsultantTaxScreen` (live/consultants.tsx) |
+
+Kept from the copies: entity and month; make, make again (reason), download, mark uploaded (portal reference), mark
+filed (typed phrase, second step); prepare the TDS challan and record its deposit; start, reconcile, make file, download,
+upload .fvu and mark filed a return (token, phrase); registers made, new version (reason), freeze (asks first), signed PDF,
+inspection pack; Part A ZIP import with unmatched files, one Part A PDF, issue one or all (phrase); rules read only with
+source and values; mark an update reviewed with a note, only https sources as links; consultant challans per section,
+Form 140 / 26Q and Form 131 / 16A import. Permissions as before (`can` from the same keys); the API checks every call
+and the entity scope. New: toasts (5 s) for every finished action; pressed-too-early field errors with focus (the old
+consultant page disabled its buttons; the CMP-04 design disabled Save); "Rules" tab only for payroll set-up holders on
+the updates page; certificates page reads the year's Q4 return to show the CMP-06 link.
+
+Copies deleted: `StatutoryHubScreen`, `RegistersScreen`, `AdvisoriesScreen`, `TaxCertificatesScreen`,
+`StatutoryRulesScreen`, `ConsultantTaxScreen` (files live/compliance.tsx, operations.tsx, consultants.tsx; the rules part
+of live/setup.tsx); stories pay-ops-live, pay-5h-live, pay-5b-live and the Statutory story of pay-5j-live; tests
+pay-ops-live.test.tsx and the statutory case of pay-5j-live.test.tsx (ported). `FormDrawer` and `FileButton` moved to
+`pay-kit.tsx`; the dead live/special.tsx is deleted. 12 lines left `known.json` (6 live copies, 6 not live). Still in
+`known.json` from this area: "ops: MissingIdsScreen" (CMP-07) and "ops: StatutorySetupScreen" (CMP-02).
+
+### Counts (sub-pages = stories)
+
+| group | live | live, gap | wire, gap | feature not built | not Pay | sub-pages |
+|---|---|---|---|---|---|---|
+| CMP-01 Statutory hub | 4 | 1 | 0 | 0 | 0 | 5 |
+| CMP-02 Statutory set-up | 0 | 0 | 5 | 0 | 0 | 5 |
+| CMP-03 Registers | 3 | 4 | 0 | 0 | 0 | 7 |
+| CMP-04 TDS challan sheet | 3 | 1 | 0 | 0 | 0 | 4 |
+| CMP-05 TDS return wizard | 4 | 3 | 0 | 0 | 0 | 7 |
+| CMP-06 Form 16 | 2 | 3 | 0 | 0 | 0 | 5 |
+| CMP-07 Missing IDs | 0 | 0 | 0 | 4 | 0 | 4 |
+| CMP-08 Rules & updates | 4 | 1 | 0 | 0 | 0 | 5 |
+| CMP-09 … 11 IC console, POSH | 0 | 0 | 0 | 0 | 20 | 20 |
+| CMP-12 Supplementary filing | 0 | 4 | 0 | 0 | 0 | 4 |
+| CMP-13 Consultant TDS (new) | 15 | 0 | 0 | 0 | 0 | 15 |
+| **All** | **35** | **17** | **5** | **4** | **20** | **81** |
+
+### CMP-01 · Statutory hub
+
+Live page: /yx/payroll/statutory
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Cards · Cards per statute (overdue with penalty) | live | penalty from the hub's estimate; the TDS challan is a card |
+| Calendar · Due-date calendar | live | the month after the pay month |
+| AllOnTrack · All on track | live | |
+| SetupNeeded · Empty (set-up needed) | live (gap) | the page shows "Nothing to file for this month"; the hub API does not say which registrations are missing (S: add `setupMissing` to GET statutory/hub) |
+| Loading · Loading | live | |
+
+### CMP-02 · Statutory set-up
+
+Live page: none of its own. Registrations and legal options are live in PAY-16 `PayrollSetupScreen` (/yx/payroll/setup).
+The Compliance menu item "Statutory set-up" opens /yx/payroll/statutory-rules (Q1).
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Complete · Registrations complete | wire design (gap) | same data as PAY-16 Registrations step (Q1) |
+| Incomplete · Missing deductor details | wire design (gap) | Q1 |
+| SwitchOnCheck · Switch on statute · completeness check | wire design (gap) | needs a completeness check read (S) |
+| LegalOptions · Legal options | wire design (gap) | live in PAY-16 |
+| FilingMode · Filing mode | wire design (gap) | no filing-mode setting in the API (self / partner); partner connector not built |
+
+### CMP-03 · Statutory registers
+
+Live page: /yx/payroll/registers
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Epf · EPF (covered / not covered) | live (gap) | the live page lists the month's register documents (wages, deductions, overtime …) with make, freeze, sign, inspection pack; per-employee EPF rows, the 6-month chart and filters need GET statutory/registers/:kind/rows (M) |
+| Esic · ESIC (not covered above ceiling) | live (gap) | same |
+| Pt · PT | live (gap) | same |
+| LwfNotDue · LWF (not due this month) | live (gap) | same |
+| Empty · Empty | live | "No register for … yet." with Make registers |
+| Loading · Loading | live | |
+| Error · Error | live | |
+
+### CMP-04 · TDS challan sheet
+
+Live page: /yx/payroll/statutory (Open challan sheet on the TDS challan card)
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| OnTime · Pre-filled, on time | live | TDS from the approved run; BSR, serial, date; pressed too early shows errors |
+| LateInterest · Late deposit · interest computed | live | interest from the API |
+| EditedNeedsReason · Amount changed · reason required | live (gap) | PATCH statutory/challans takes no amount; changing it with a reason needs the API (S). Receipt upload with reading the BSR code is not built |
+| Consultants · Consultant section 194J | live | CMP-13 Challans tab, one row per section |
+
+### CMP-05 · TDS return wizard
+
+Live page: /yx/payroll/statutory › TDS returns (salary); /yx/payroll/consultant-tds › Quarterly returns (Form 140)
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Completeness · Completeness (prior-month rows imported) | live (gap) | deductee row count; PAN warnings are not in the return API (S) |
+| MissingMonth · Blocked · prior-month rows missing | live (gap) | "No deductee rows" shows; importing prior-month rows is not built (M) |
+| Reconciliation · Reconciliation · small difference flagged | live | |
+| Fvu · Self-file · FVU validation | live | make file, download, upload .fvu, validation result |
+| Partner · Filing partner | live (gap) | filing partner connector not built |
+| Filed · Filed and locked | live | token and phrase |
+| Correction24Q · Correction return (24Q, old quarter) | live | corrections are listed as returns ("· correction"); starting one (POST tds-returns/:id/correction exists) is not on the page yet, S |
+
+### CMP-06 · Form 16
+
+Live page: /yx/payroll/certificates
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| PartA · Part A import (1 missing) | live | ZIP import, unmatched files, one PDF per person |
+| WrongQuarter · Q2 return linked · blocked | live (gap) | the page shows the year's filed Q4 return or warns; the API does not link a return to the certificates, so it cannot block (S) |
+| Sign · Sign with DSC | live (gap) | DSC signing not built; the step says Part B is made at issue |
+| Publish · Publish | live | Issue n ready with the typed phrase |
+| NotYetAvailable · Form 130 · not available yet | live (gap) | an empty list shows "No certificates yet"; no "available after" date from the API |
+
+### CMP-07 · Missing IDs
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| PayrollAdmin · Payroll admin | design only, feature not built | needs GET people missing UAN, ESI IP, PAN, bank check (M); the run checks show some today |
+| Hr · HR (import option) | design only, feature not built | |
+| AllClear · Empty (all IDs complete) | design only, feature not built | |
+| Loading · Loading | design only, feature not built | |
+
+### CMP-08 · Statutory rules & updates
+
+Live pages: /yx/payroll/statutory-rules (Rules tab), /yx/payroll/advisories (Labour-law updates tab)
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Rules · Rules browser + updates banner | live | |
+| History · Rule history and source | live | values shown as stored |
+| Updates · Labour-law updates feed | live | severity is not in the API: "To review" / "Reviewed" and "Check the source" |
+| MarkReviewed · Mark reviewed with note | live (gap) | note required; "Create a task" and "Share with HR admins" need the API (S) |
+| NoUpdates · No unreviewed updates | live | |
+
+### CMP-09 … CMP-11 · IC console, POSH complaint, POSH case (20 stories)
+
+Not Pay: People / Helpdesk area, out of this plan.
+
+### CMP-12 · Supplementary filing
+
+Live page: /yx/payroll/statutory
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| ChildCards · Child cards under the original month | live (gap) | GET statutory/hub returns no supplementary filings; FilingRow has `kind` but the hub cards do not group them (M) |
+| PfSupplementary · Supplementary ECR · interest and damages | live (gap) | same; interest and damages lines need the API |
+| EsiPastPeriod · ESI past-period contribution | live (gap) | same |
+| ExcessRefund · Excess remittance refund request | live (gap) | refund requests not built |
+
+### CMP-13 · Consultant TDS (new design)
+
+Live page: /yx/payroll/consultant-tds
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Returns · Quarterly returns (Form 140) | live | |
+| ReturnOpen · A return opened · wizard | live | |
+| Difference · Return with a challan difference | live | |
+| MarkFiled · Mark filed · type the phrase (sheet) | live | |
+| MarkFiledTooEarly · Mark filed · pressed with no token | live | |
+| Challans · Challans for a month | live | |
+| ChallansTooEarly · Challans · pressed with no month | live | |
+| Certificates · Certificates from TRACES | live | |
+| Refused · Server refusal | live | |
+| ReadOnly · Read only (returns only) | live | |
+| Empty · Empty · no returns yet | live | |
+| Loading · Loading | live | |
+| Error · Error | live | |
+| NoAccess · No access | live | |
+| ChallansTab · Tabs · challans opened from returns | live | |
+
+### Questions for the founder (suggested answers)
+
+1. The menu item "Statutory set-up" opens the rules browser (/yx/payroll/statutory-rules). Rename it "Statutory rules"
+   and leave registrations in Payroll set-up (PAY-16)? *Yes*; CMP-02 then waits as "wire design (gap)".
+2. Registers: the API keeps register documents (wages, deductions, overtime), the design shows EPF / ESIC / PT / LWF rows
+   per person. Add a read of those rows from the payslips (size M) so CMP-03's tabs go live? *Yes, later*.
+3. TDS returns live in the hub's "TDS returns" tab, Form 16 on "TDS & Form 16". Move the returns tab to "TDS & Form 16"
+   (as the CMP-04 page shows them)? *No for now*: the hub is where the challan is.
+4. Supplementary filings (CMP-12) and the Missing IDs page (CMP-07): build next, in that order? *Yes*, both M.
+5. Changing the challan amount with a reason (CMP-04) and a filing-partner connector (CMP-05 Partner): *amount yes (S);
+   partner waits*.
