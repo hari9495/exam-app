@@ -112,3 +112,25 @@ export function toCsv(rows: readonly (readonly (string | number | null)[])[]): s
   };
   return rows.map((r) => r.map(cell).join(',')).join('\r\n');
 }
+
+/**
+ * Founder decision 2 (29 Oct 2026): the notice a leave type asks for. Its own number when set; otherwise sick leave
+ * asks for none and every other type for the company default (leave.notice_days.default).
+ */
+export const noticeDaysFor = (own: number | null | undefined, kind: string, companyDefault: number) => own ?? (kind === 'sick' ? 0 : companyDefault);
+
+/** "1 day's" / "7 days'" (notice). */
+export const noticeText = (n: number) => (n === 1 ? "1 day's" : `${n} days'`);
+
+/**
+ * Founder decision 3: daily pay for the leave liability, to the paisa: monthly pay ÷ 26, ÷ 30, or ÷ the days in the
+ * month of `on` (yyyy-mm-dd) for "calendar".
+ */
+export function dailyPay(monthly: number, divisor: string, on: string): number {
+  const [y, m] = on.split('-').map(Number);
+  const n = divisor === 'calendar' ? new Date(Date.UTC(y!, m!, 0)).getUTCDate() : Number(divisor);
+  return Math.round((monthly / n) * 100) / 100;
+}
+
+/** Founder decision 1: does a company block date stop this leave type? HR's chosen types; none chosen: planned leave only. */
+export const blockDateStops = (types: readonly string[], typeId: string, kind: string) => (types.length ? types.includes(typeId) : !BLOCK_DATE_EXEMPT.includes(kind));

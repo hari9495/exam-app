@@ -32,7 +32,7 @@ import {
 import { CountedDay, accrualsDue, addDays, applyFloors, countLeaveDays, daysBetween, leaveYearOf, yearEndSplit } from './time-maths';
 import { ScheduleBook, assertOpen, lockedDates } from './schedule';
 import { MaternityCase, daysWorked, eligibilityWindow, maternityChecks } from './time-rules';
-import { BLOCK_DATE_EXEMPT, factoriesElEligible, lastDayAfterLeave, optionalLimitAfterMove, probationAllows } from './leave-rules';
+import { BLOCK_DATE_EXEMPT, blockDateStops, factoriesElEligible, lastDayAfterLeave, noticeDaysFor, noticeText, optionalLimitAfterMove, probationAllows } from './leave-rules';
 
 // M02 Part A leave on the shared engines: requests route through P03 (manager, then HR by the type's rule), the
 // ledger is the only balance (YX-LV-01), days are counted with the location's holidays and weekly offs (YX-LV-03),
@@ -46,6 +46,8 @@ type Req = Prisma.LeaveRequestGetPayload<object>;
 type LeaveTypeRow = Prisma.LeaveTypeGetPayload<object>;
 
 const fmt = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+/** "3 Nov 2026" (founder rule 8). */
+const fullDate = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 const daysText = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`;
 const rangeText = (from: string, to: string) => (from === to ? fmt(from) : `${fmt(from)} to ${fmt(to)}`);
 
@@ -85,6 +87,10 @@ export interface Plan {
   notice: { lastDay: string; newLastDay: string } | null;
   /** Leave v2: shorter notice than the type asks (the type's noticeMode says block or warn). */
   shortNotice: boolean;
+  /** Founder decision 2: the notice this type asks for (its own, or the company default; sick leave 0). */
+  noticeDays: number;
+  /** HR applied for someone with shorter notice and the company skips notice then (audited). */
+  noticeSkipped: boolean;
 }
 
 @Injectable()
@@ -204,8 +210,19 @@ export class LeaveService implements OnModuleInit {
     const v2 = await this.v2Checks(tx, c, f, t, counted.days.filter((x) => x.portion > 0).map((x) => x.on), counted.total, dto, today, warnings);
     blocks.push(...v2.blocks);
     if (dto.from < addDays(today, -60)) blocks.push('Leave more than 60 days back needs HR. Ask them to record it.');
-    const shortNotice = Boolean(rules.noticeDays && daysBetween(today, dto.from) < rules.noticeDays);
-    if (shortNotice) (rules.noticeMode === 'warn' ? warnings : blocks).push(rules.noticeMode === 'warn' ? `Short notice: ${t.name} asks for ${daysText(rules.noticeDays)} notice. Your approver sees this.` : `${t.name} needs ${daysText(rules.noticeDays)} notice.`);
+    // Founder decision 2: the type's own notice, else the company default (sick leave 0). HR applying for someone skips
+    // it unless the company says it applies (leave.notice.on_behalf); applyIn audits the skip.
+    const noticeDays = noticeDaysFor(rules.noticeDays, t.kind, Number(await settingOn(tx, c, 'leave.notice_days.default', f, dto.from)));
+    const short = noticeDays > 0 && daysBetween(today, dto.from) < noticeDays;
+    const onBehalf = Boolean(c.userId) && c.userId !== f.userId;
+    const noticeSkipped = short && onBehalf && (await settingOn(tx, c, 'leave.notice.on_behalf', f, dto.from)) === 'skip';
+    const shortNotice = short && !noticeSkipped;
+    if (shortNotice)
+      (rules.noticeMode === 'warn' ? warnings : blocks).push(
+        rules.noticeMode === 'warn'
+          ? `Short notice: ${t.name} asks for ${noticeText(noticeDays)} notice. Your approver sees this.`
+          : `${t.name} needs ${noticeText(noticeDays)} notice. Pick a date on or after ${fullDate(addDays(today, noticeDays))}, or ask your manager.`,
+      );
     if (rules.minDays !== null && total > 0 && total < rules.minDays) blocks.push(`${t.name} is at least ${daysText(rules.minDays)} at a time.`);
     if (rules.maxDays !== null && total > rules.maxDays) blocks.push(`${t.name} is at most ${daysText(rules.maxDays)} at a time.`);
     // DECISION NEEDED: P05 documents are not built yet, so a certificate is not uploaded here: the employee confirms
@@ -240,7 +257,7 @@ export class LeaveService implements OnModuleInit {
           WHERE d.organization_id = ${org}::uuid AND d.active AND d.portion > 0 AND d.employee_id <> ${f.employeeId}::uuid
             AND d.leave_on BETWEEN ${dto.from}::date AND ${dto.to}::date`
       : [{ n: 0 }];
-    return { type: { id: t.id, code: t.code, name: t.name, kind: t.kind, rules }, days: counted.days, total, holidaysExcluded, sandwichDays, balance, balanceAfter, othersOff: n, certificateNeeded, blocks, warnings, blockDates: v2.blockDates, notice: v2.notice, shortNotice };
+    return { type: { id: t.id, code: t.code, name: t.name, kind: t.kind, rules }, days: counted.days, total, holidaysExcluded, sandwichDays, balance, balanceAfter, othersOff: n, certificateNeeded, blocks, warnings, blockDates: v2.blockDates, notice: v2.notice, shortNotice, noticeDays, noticeSkipped };
   }
 
   /**
@@ -253,20 +270,20 @@ export class LeaveService implements OnModuleInit {
     const blocks: string[] = [];
     const setting = (key: string) => settingOn(tx, c, key, f, dto.from);
     const override = await tx.leaveEligibilityOverride.findFirst({ where: { organizationId: org, employeeId: f.employeeId, leaveTypeId: t.id, validUntil: { gte: asDate(today) } }, select: { id: true } });
-    // Company block dates (planned leave only: never sick or per-event leave).
+    // Company block dates: the leave types HR chose; none chosen means planned leave only (never sick or per-event leave).
     let blockDates: Plan['blockDates'] = [];
-    if (!BLOCK_DATE_EXEMPT.includes(t.kind) && leaveOn.length) {
-      const rows = await tx.$queryRaw<{ from: string; to: string; reason: string }[]>`
-        SELECT from_on::text AS "from", to_on::text AS "to", reason FROM leave_block_dates
+    if (leaveOn.length) {
+      const rows = await tx.$queryRaw<{ from: string; to: string; reason: string; types: string[] }[]>`
+        SELECT from_on::text AS "from", to_on::text AS "to", reason, leave_type_ids::text[] AS types FROM leave_block_dates
         WHERE organization_id = ${org}::uuid AND removed_at IS NULL AND from_on <= ${leaveOn[leaveOn.length - 1]}::date AND to_on >= ${leaveOn[0]}::date
           AND (scope_type = 'tenant' OR (scope_type = 'legal_entity' AND scope_id = ${f.legalEntityId}::uuid) OR (scope_type = 'location' AND scope_id = ${f.locationId}::uuid))
         ORDER BY from_on`;
-      blockDates = rows.filter((b) => leaveOn.some((d) => d >= b.from && d <= b.to));
+      blockDates = rows.filter((b) => blockDateStops(b.types, t.id, t.kind) && leaveOn.some((d) => d >= b.from && d <= b.to)).map(({ from, to, reason }) => ({ from, to, reason }));
       if (blockDates.length) {
         const b = blockDates[0];
         const text = `${rangeText(b.from, b.to)} is a company block date (${b.reason}).`;
         if ((await setting('leave.block_dates.mode')) === 'warn') warnings.push(`${text} Your approver sees this.`);
-        else blocks.push(`${text} Planned leave can't be taken on it. Choose other dates or ask HR.`);
+        else blocks.push(`${text} ${t.name} can't be taken on it. Choose other dates or ask HR.`);
       }
     }
     // Probation (the planned end date of the employment's probation).
@@ -421,6 +438,27 @@ export class LeaveService implements OnModuleInit {
     return res;
   }
 
+  /**
+   * Founder decision 2: HR applies leave for someone in their leave.balance.adjust scope (never their own: My leave).
+   * The request still goes to the person's manager; the notice rule follows leave.notice.on_behalf (skip by default,
+   * audited on the request).
+   */
+  async applyFor(ctx: TenantContext, user: ScopeUser, employeeId: string, dto: ApplyLeaveDto) {
+    const v = await this.viewer(user);
+    if (v.actingForOther) throw new ForbiddenException('Not available while acting for someone else.');
+    const notices: Notice[] = [];
+    const res = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const own = v.userId ? ((await tx.employee.findFirst({ where: { organizationId: c.organizationId, userId: v.userId }, select: { id: true } }))?.id ?? null) : null;
+      if (!(await grantCovers(tx, c, v, own, 'leave.balance.adjust', employeeId, todayIn('Asia/Kolkata')))) throw new NotFoundException('Not found');
+      if (employeeId === own) throw new ForbiddenException('Apply for your own leave in My leave.');
+      const f = (await factsOn(tx, c.organizationId, employeeId, todayIn('Asia/Kolkata'))) ?? (await factsOn(tx, c.organizationId, employeeId, dto.from));
+      if (!f) throw new BadRequestException('That person has no job on those dates.');
+      return this.applyIn(tx, c, f, todayIn(f.zone), dto, notices);
+    });
+    await this.engine.send(ctx, notices);
+    return res;
+  }
+
   /** The request for `f`, raised by the signed-in person (c.userId; null for an import or the demo seed). */
   async applyIn(tx: Tx, c: CompanyContext, f: Facts, today: string, dto: ApplyLeaveDto, notices: Notice[]) {
     {
@@ -474,7 +512,8 @@ export class LeaveService implements OnModuleInit {
         ...(p.type.kind === 'maternity' && dto.expectedOn ? [{ label: 'Expected date', value: fmt(dto.expectedOn) }] : []),
         { label: 'Team', value: p.othersOff ? `${p.othersOff} ${p.othersOff === 1 ? 'other is' : 'others are'} off then` : 'No one else in the team is off then' },
         ...(p.balanceAfter !== null ? [{ label: 'Balance after', value: String(p.balanceAfter) }] : []),
-        ...(p.shortNotice ? [{ label: 'Notice', value: `Short notice: the type asks for ${daysText(p.type.rules.noticeDays)}` }] : []),
+        ...(p.shortNotice ? [{ label: 'Notice', value: `Short notice: the type asks for ${daysText(p.noticeDays)}` }] : []),
+        ...(p.noticeSkipped ? [{ label: 'Notice', value: `Applied by HR: ${noticeText(p.noticeDays)} notice not needed` }] : []),
         ...(p.blockDates.length ? [{ label: 'Company block date', value: `${rangeText(p.blockDates[0].from, p.blockDates[0].to)} (${p.blockDates[0].reason})` }] : []),
         ...(p.notice ? [{ label: 'Last working day', value: p.notice.newLastDay === p.notice.lastDay ? `Stays ${fmt(p.notice.lastDay)}` : `Moves from ${fmt(p.notice.lastDay)} to ${fmt(p.notice.newLastDay)}` }] : []),
         // YX-LV-09: approvers see the certificate's status only, never the file; a medical reason never.
@@ -499,7 +538,7 @@ export class LeaveService implements OnModuleInit {
       });
       notices.push(...sub.notices);
       await tx.leaveRequest.update({ where: { id: req.id }, data: { wfRequestId: sub.id } });
-      await audit(tx, c, 'leave.request.submitted', 'leave_request', req.id, { employeeId: f.employeeId, type: p.type.code, from: dto.from, to: dto.to, days: p.total, wfRequestId: sub.id });
+      await audit(tx, c, 'leave.request.submitted', 'leave_request', req.id, { employeeId: f.employeeId, type: p.type.code, from: dto.from, to: dto.to, days: p.total, wfRequestId: sub.id, ...(c.userId !== f.userId ? { raisedFor: true } : {}), ...(p.noticeSkipped ? { noticeSkipped: p.noticeDays } : {}) });
       return { id: req.id, status: (await tx.leaveRequest.findFirstOrThrow({ where: { id: req.id } })).status, days: p.total, wfRequestId: sub.id };
     }
   }

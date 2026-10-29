@@ -4,6 +4,7 @@ import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platfor
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { buildViewer, tenantWide, type ScopeUser } from '../access/scope';
 import { todayIst } from '../org-structure/org-validation';
+import { SETTINGS, resolveSetting } from '../org-structure/settings-registry';
 import { AssignPolicyDto, AttendanceRuleDto, CalendarDto, HolidayDto, LeaveTypeDto, PolicyDto, PolicyVersionDto } from './dto';
 import { LeaveService } from './leave.service';
 import { DEFAULT_RULE, LeaveRules, asDate, dateOf, parseLines, parseRules } from './time-core';
@@ -57,6 +58,9 @@ export class TimeSetupService {
       ]);
       const scopeName = await this.scopeNames(tx, org, assignments.map((a) => ({ type: a.scopeType, id: a.scopeId })));
       const today = todayIst();
+      // Founder decision 2: the notice a type without its own number asks for (company value; sick leave 0).
+      const noticeRows = await tx.setting.findMany({ where: { organizationId: org, key: 'leave.notice_days.default' } });
+      const noticeDefault = Number(resolveSetting(SETTINGS['leave.notice_days.default'], noticeRows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: null })), { tenant: org }, today).value);
       return {
         today,
         types: types.map((t) => ({ id: t.id, code: t.code, name: t.name, kind: t.kind, paid: t.paid, colour: t.colour, active: t.active, rules: t.rules as unknown as LeaveRules, version: t.version })),
@@ -90,6 +94,7 @@ export class TimeSetupService {
           };
         }),
         entities,
+        noticeDefault,
         statutory: statutory.map((s) => ({ jurisdiction: s.jurisdiction, version: s.version, validFrom: dateOf(s.validFrom), values: s.values, source: s.source, verify: s.verify })),
       };
     });

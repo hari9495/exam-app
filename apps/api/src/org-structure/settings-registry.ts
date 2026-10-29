@@ -157,6 +157,13 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'leave.encashment.max_days': { label: 'Most days cashed in a year', scopes: ['tenant', 'legal_entity'], dated: false, values: ['5', '7', '10', '15', '20', '30'], default: '7' },
   'leave.encashment.min_left': { label: 'Days that must stay after cashing in', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '5', '7', '10', '15', '30'], default: '7' },
   'leave.encashment.divisor': { label: 'Daily rate for cashing in: monthly pay divided by', scopes: ['tenant', 'legal_entity'], dated: false, values: ['26', '30'], default: '26' },
+  // Founder decision 2 (29 Oct 2026): a leave type with no notice of its own asks for this many days (sick leave: 0 unless
+  // the type sets its own); when HR applies for someone the notice is skipped (audited) unless the company says it applies.
+  'leave.notice_days.default': { label: 'Apply leave at least this many days ahead (types without their own number)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['0', '1', '2', '3', '5', '7', '10', '14', '15', '21', '30'], default: '0' },
+  'leave.notice.on_behalf': { label: 'Notice when HR applies leave for someone', scopes: ['tenant', 'legal_entity'], dated: false, values: ['skip', 'apply'], default: 'skip' },
+  // Founder decision 3: the leave liability is unused encashable days x daily pay; daily pay = monthly pay (basis:
+  // payroll.leave_encashment_basis) divided by 26, 30 or the days in the month.
+  'leave.liability.divisor': { label: 'Daily pay for the leave liability: monthly pay divided by', scopes: ['tenant', 'legal_entity'], dated: false, values: ['26', '30', 'calendar'], default: '26' },
   // TIM-25: sabbatical and long unpaid leave earn leave or not (maternity always counts as service: Maternity Benefit Act).
   'leave.long_absence.accrues': { label: 'Leave is earned during a sabbatical or long unpaid leave', scopes: ['tenant', 'legal_entity'], dated: false, values: ['no', 'yes'], default: 'no' },
   // TIM-23: optional holidays are prorated by the months left after a move to another calendar.

@@ -10,13 +10,15 @@ import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
 import { LeaveService } from './leave.service';
 import { LeaveV2Service } from './leave-v2.service';
-import { BlockDateDto, BlockPlanDto, CompOffClaimDto, DateNoteDto, EncashDto, FeedDecideDto, FeedDto, LongAbsenceDto, PauseDto, ReportQueryDto } from './leave-v2.dto';
+import { ApplyLeaveDto } from './dto';
+import { BlockDateDto, BlockPlanDto, CompOffClaimDto, DateNoteDto, EncashDto, FeedDecideDto, FeedDto, LongAbsenceCheckDto, LongAbsenceDto, PauseDto, ReportQueryDto } from './leave-v2.dto';
 
 // Leave v2 routes. Permissions (P02 YX-SEC-01), checked on the server for every row:
 //   no key (self)              my ledger, comp-off claims, encashment, my long absence and its return date
 //   implicit manager view      block-leave planner rows of their team (read only)
 //   leave.view                 HR leave home, leave reports and export, long absences, block-leave planning and nudges
-//   leave.balance.adjust       record, extend or end a long absence early (never one's own)
+//   leave.balance.adjust       record, extend or end a long absence early; apply leave for someone (never one's own)
+//   + employee.salary.view     the money columns of the leave liability report (per legal entity; others get days only)
 //   leave.settings.manage      company block dates and public-holiday feeds
 // Acting for someone else is refused on every write.
 @Controller('time')
@@ -117,14 +119,29 @@ export class LeaveV2Controller {
     return `﻿${out.csv}`;
   }
 
+  /** Founder decision 2: HR applies leave for someone in scope; notice follows leave.notice.on_behalf (skip by default). */
+  @Post('hr/leave/:employeeId')
+  @RequirePermissions('leave.balance.adjust')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  applyFor(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) id: string, @Body() dto: ApplyLeaveDto) {
+    return this.leave.applyFor(ctx, this.user(req), id, dto);
+  }
+
   @Get('hr/long-absences')
   @RequirePermissions('leave.view')
   absences(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     return this.v2.hrAbsences(ctx, this.user(req));
   }
 
+  @Get('hr/long-absences/check')
+  @RequirePermissions('leave.balance.adjust')
+  checkAbsence(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: LongAbsenceCheckDto) {
+    return this.v2.checkAbsence(ctx, this.user(req), q);
+  }
+
   @Post('hr/long-absences')
   @RequirePermissions('leave.balance.adjust')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
   recordAbsence(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: LongAbsenceDto) {
     return this.v2.recordAbsence(ctx, this.user(req), dto);
   }

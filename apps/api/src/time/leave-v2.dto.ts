@@ -51,6 +51,13 @@ export class BlockDateDto {
   @IsOptional()
   @IsUUID()
   scopeId?: string;
+
+  /** The leave types it stops; none: planned leave only (not sick, maternity, paternity or unpaid leave). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsUUID('all', { each: true })
+  leaveTypeIds?: string[];
 }
 
 export class LongAbsenceDto {
@@ -70,6 +77,18 @@ export class LongAbsenceDto {
   @MinLength(10)
   @MaxLength(500)
   note!: string;
+}
+
+/** GET hr/long-absences/check: the effect and what stops it, before Record. */
+export class LongAbsenceCheckDto {
+  @IsUUID()
+  employeeId!: string;
+
+  @IsDateString(DATE)
+  from!: string;
+
+  @IsDateString(DATE)
+  to!: string;
 }
 
 export class DateNoteDto {
@@ -113,8 +132,8 @@ export class FeedDecideDto {
 }
 
 export class ReportQueryDto {
-  @IsIn(['balances', 'taken', 'ledger', 'lop', 'negative'])
-  report!: 'balances' | 'taken' | 'ledger' | 'lop' | 'negative';
+  @IsIn(['balances', 'taken', 'ledger', 'lop', 'negative', 'liability'])
+  report!: 'balances' | 'taken' | 'ledger' | 'lop' | 'negative' | 'liability';
 
   @IsOptional()
   @IsUUID()

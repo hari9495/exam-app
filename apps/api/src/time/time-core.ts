@@ -32,7 +32,8 @@ export interface LeaveRules {
   halfDays: boolean;
   minDays: number | null;
   maxDays: number | null;
-  noticeDays: number;
+  /** Apply at least this many days ahead; null: the company default (leave.notice_days.default; sick leave 0). */
+  noticeDays: number | null;
   /** Leave v2: shorter notice is refused (block) or allowed with a note to the approver (warn). */
   noticeMode: 'block' | 'warn';
   /** A certificate is needed when a request is longer than this many days (null: never). */
@@ -60,7 +61,7 @@ export interface PayStep {
   percent: number;
 }
 
-export const DEFAULT_RULES: LeaveRules = { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: 0, noticeMode: 'block', certificateAfterDays: null, medical: false, negativeLimit: 0, encashable: false, hrApprovalAboveDays: null, eligibleGenders: null, paySteps: null, payWindow: 'leave_year' };
+export const DEFAULT_RULES: LeaveRules = { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: null, noticeMode: 'block', certificateAfterDays: null, medical: false, negativeLimit: 0, encashable: false, hrApprovalAboveDays: null, eligibleGenders: null, paySteps: null, payWindow: 'leave_year' };
 export const GENDER_VALUES = ['female', 'male', 'transgender', 'non_binary', 'prefer_not_to_say'];
 
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
@@ -78,7 +79,7 @@ export function parseRules(input: unknown): LeaveRules {
   for (const k of ['minDays', 'maxDays', 'certificateAfterDays', 'hrApprovalAboveDays'] as const) {
     if (r[k] !== null && !halfStep(r[k], 0, 366)) throw new BadRequestException('Days are 0 to 366, in half days.');
   }
-  if (!Number.isInteger(r.noticeDays) || r.noticeDays < 0 || r.noticeDays > 90) throw new BadRequestException('Notice is 0 to 90 days.');
+  if (r.noticeDays !== null && (!Number.isInteger(r.noticeDays) || r.noticeDays < 0 || r.noticeDays > 90)) throw new BadRequestException('Notice is 0 to 90 days.');
   if (r.noticeMode !== 'block' && r.noticeMode !== 'warn') throw new BadRequestException('Choose whether short notice is refused or only flagged.');
   if (!halfStep(r.negativeLimit, 0, 30)) throw new BadRequestException('The balance may go below zero by 0 to 30 days.');
   if (r.minDays !== null && r.maxDays !== null && r.minDays > r.maxDays) throw new BadRequestException('The least days per request is more than the most.');

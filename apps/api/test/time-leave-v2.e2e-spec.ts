@@ -198,7 +198,7 @@ describe('Leave v2', () => {
       const el = (await preview('emp', ids.EL, work(1))).body;
       expect(el).toMatchObject({ shortNotice: true, blocks: [] });
       expect(el.warnings.join(' ')).toMatch(/Short notice/);
-      expect((await preview('emp', ids.CL, work(1))).body.blocks.join(' ')).toMatch(/needs 2 days notice/);
+      expect((await preview('emp', ids.CL, work(1))).body.blocks.join(' ')).toMatch(/needs 2 days' notice. Pick a date on or after/);
       expect((await preview('emp', ids.EL, work(5))).body.shortNotice).toBe(false);
     });
 

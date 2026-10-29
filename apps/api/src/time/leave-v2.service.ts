@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { SETTINGS, resolveSetting } from '../org-structure/settings-registry';
 import { Viewer, has, type ScopeUser, inEntitySql } from '../access/scope';
@@ -8,12 +8,13 @@ import { ApprovalsEngine, Notice } from '../workflow/approvals-engine.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { escapeHtml } from '../notifications/notification-email-render';
 import { payOn } from '../payroll/fnf.service';
+import { entitiesFor, payViewer, withPayScope } from '../payroll/pay-access';
 import { DayEngine } from './day-engine.service';
 import { LeaveService } from './leave.service';
 import { Facts, LeaveRules, asDate, dateOf, factsOn, grantCovers, hasBalance, holidaysFor, hrApprovers, num, rulesFor, settingOn, todayIn, visibleSql } from './time-core';
 import { addDays, daysBetween, leaveYearOf } from './time-maths';
-import { ScheduleBook } from './schedule';
-import { CompOffCredit, compOffExpiries, compOffUseBy, encashAmount, encashMax, encashWindowOpen, longestRun, toCsv } from './leave-rules';
+import { ScheduleBook, lockedDates } from './schedule';
+import { BLOCK_DATE_EXEMPT, CompOffCredit, compOffExpiries, compOffUseBy, dailyPay, encashAmount, encashMax, encashWindowOpen, longestRun, toCsv } from './leave-rules';
 import { FEED_STATES, HOLIDAY_PROVIDER, HolidayProvider } from './holiday-feed.provider';
 import type { BlockDateDto, CompOffClaimDto, DateNoteDto, EncashDto, FeedDecideDto, LongAbsenceDto, ReportQueryDto } from './leave-v2.dto';
 
@@ -30,6 +31,7 @@ type Alias = (typeof ALIASES)[number];
 const fmt = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 const days = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`;
 const r2 = (n: number) => Math.round(n * 100) / 100;
+const ABSENCE_NAME: Record<string, string> = { maternity: 'maternity leave', sabbatical: 'sabbatical', lwp: 'long leave without pay' };
 /** The start of today in India (IST), as an instant. */
 const istDayStart = () => new Date(Date.parse(`${todayIn('Asia/Kolkata')}T00:00:00+05:30`));
 const name = (alias: string) => Prisma.raw(`concat_ws(' ', coalesce(${alias}.preferred_name, ${alias}.given_name), ${alias}.family_name)`);
@@ -43,6 +45,7 @@ type EncashRow = Prisma.LeaveEncashmentGetPayload<object>;
 export class LeaveV2Service implements OnModuleInit {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
+    private readonly prisma: PrismaService,
     private readonly leave: LeaveService,
     private readonly engine: ApprovalsEngine,
     private readonly dayEngine: DayEngine,
@@ -66,10 +69,10 @@ export class LeaveV2Service implements OnModuleInit {
     if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
   }
 
-  /** A company-wide setting (tenant scope only). */
-  private async tenantSetting(tx: Tx, c: CompanyContext, key: string): Promise<string> {
+  /** A company setting (the company's value, or a legal entity's own when `entityId` is given). */
+  private async tenantSetting(tx: Tx, c: CompanyContext, key: string, entityId?: string): Promise<string> {
     const rows = await tx.setting.findMany({ where: { organizationId: c.organizationId, key } });
-    return String(resolveSetting(SETTINGS[key], rows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: r.validFrom ? dateOf(r.validFrom) : null })), { tenant: c.organizationId }, todayIn('Asia/Kolkata')).value);
+    return String(resolveSetting(SETTINGS[key], rows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: r.validFrom ? dateOf(r.validFrom) : null })), { tenant: c.organizationId, ...(entityId ? { legal_entity: entityId } : {}) }, todayIn('Asia/Kolkata')).value);
   }
 
   private async compOffType(tx: Tx, org: string) {
@@ -438,20 +441,62 @@ export class LeaveV2Service implements OnModuleInit {
     if (employeeId === own) throw new ForbiddenException('You cannot change your own absence. Ask another HR admin.');
   }
 
+  /**
+   * Founder decision 1: what recording a long absence would do (accrual, the first day back) and what stops it: not
+   * employed on the first day (joiners), past the exit date or the last working day of someone on notice, a locked
+   * month, another long absence, or leave already asked for or approved on those dates (never cancelled silently).
+   */
+  private async absenceCheck(tx: Tx, c: CompanyContext, dto: { employeeId: string; from: string; to: string }) {
+    const org = c.organizationId;
+    if (dto.to < dto.from || daysBetween(dto.from, dto.to) > 731) throw new BadRequestException('The last day is on or after the first day, within two years.');
+    const f = await factsOn(tx, org, dto.employeeId, dto.from);
+    if (!f) return { name: null, accrues: false, comesBackOn: addDays(dto.to, 1), leave: [], problems: [{ conflict: false, text: `That person has no job on ${fmt(dto.from)}. Start the absence on or after their joining day.` }] };
+    const problems: { conflict: boolean; text: string }[] = [];
+    if (f.exitedOn && dto.to > f.exitedOn) problems.push({ conflict: false, text: `${f.name} leaves on ${fmt(f.exitedOn)}. End the absence on or before that day.` });
+    const [exit] = await tx.$queryRaw<{ lwd: string }[]>`
+      SELECT coalesce(approved_lwd, standard_lwd)::text AS lwd FROM exit_cases
+      WHERE organization_id = ${org}::uuid AND employee_id = ${dto.employeeId}::uuid AND status IN ('submitted', 'accepted') ORDER BY submitted_on DESC LIMIT 1`;
+    if (exit && dto.to > exit.lwd) problems.push({ conflict: false, text: `${f.name} is on notice. The last working day is ${fmt(exit.lwd)}, so end the absence on or before it.` });
+    const locked = [...(await lockedDates(tx, org, dto.employeeId, dto.from, dto.to))].sort();
+    if (locked.length) problems.push({ conflict: false, text: `${new Date(`${locked[0]}T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })} is locked for attendance and leave. Start the absence after it, or reopen the month first.` });
+    const other = await tx.longAbsence.findFirst({ where: { organizationId: org, employeeId: dto.employeeId, fromOn: { lte: asDate(dto.to) }, toOn: { gte: asDate(dto.from) } } });
+    if (other) problems.push({ conflict: true, text: `These dates overlap ${f.name}'s ${ABSENCE_NAME[other.kind] ?? 'long absence'} (${fmt(dateOf(other.fromOn))} – ${fmt(dateOf(other.toOn))}). Change the dates, or extend that absence instead.` });
+    const leave = await tx.$queryRaw<{ id: string; type: string; from: string; to: string; status: string }[]>`
+      SELECT r.id::text, t.name AS type, r.from_on::text AS "from", r.to_on::text AS "to", r.status FROM leave_requests r
+      JOIN leave_types t ON t.organization_id = r.organization_id AND t.id = r.leave_type_id
+      WHERE r.organization_id = ${org}::uuid AND r.employee_id = ${dto.employeeId}::uuid AND r.status = ANY(${WAITING}::text[])
+        AND EXISTS (SELECT 1 FROM leave_request_days d WHERE d.organization_id = r.organization_id AND d.request_id = r.id AND d.active AND d.portion > 0 AND d.leave_on BETWEEN ${dto.from}::date AND ${dto.to}::date)
+      ORDER BY r.from_on LIMIT 20`;
+    if (leave.length) problems.push({ conflict: true, text: `${f.name} already has leave on these dates: ${leave.map((l) => `${l.type} ${fmt(l.from)} – ${fmt(l.to)} (${l.status === 'pending' ? 'waiting' : 'approved'})`).join('; ')}. Withdraw or cancel it first, then record the absence.` });
+    const accrues = (await settingOn(tx, c, 'leave.long_absence.accrues', f, dto.from)) === 'yes';
+    return { name: f.name, accrues, comesBackOn: addDays(dto.to, 1), leave, problems };
+  }
+
+  /** GET hr/long-absences/check: the effect and the problems, shown in the Record long absence dialog before Record. */
+  async checkAbsence(ctx: TenantContext, user: ScopeUser, dto: { employeeId: string; from: string; to: string }) {
+    const v = await this.leave.viewer(user);
+    if (v.actingForOther) throw new ForbiddenException('Not available while acting for someone else.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      await this.hrMayChange(tx, c, v, dto.employeeId);
+      const out = await this.absenceCheck(tx, c, dto);
+      return { ...out, problems: out.problems.map((p) => p.text) };
+    });
+  }
+
   /** POST hr/long-absences: HR records a sabbatical or long unpaid leave; earning leave follows leave.long_absence.accrues. */
   async recordAbsence(ctx: TenantContext, user: ScopeUser, dto: LongAbsenceDto) {
     const v = await this.leave.viewer(user);
     if (v.actingForOther) throw new ForbiddenException('Not available while acting for someone else.');
-    if (dto.to < dto.from || daysBetween(dto.from, dto.to) > 731) throw new BadRequestException('The last day is on or after the first day, within two years.');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       await this.hrMayChange(tx, c, v, dto.employeeId);
-      const f = await factsOn(tx, c.organizationId, dto.employeeId, dto.from);
-      if (!f) throw new BadRequestException('That person is not employed on the first day.');
-      if (await tx.longAbsence.findFirst({ where: { organizationId: c.organizationId, employeeId: dto.employeeId, fromOn: { lte: asDate(dto.to) }, toOn: { gte: asDate(dto.from) } }, select: { id: true } })) throw new ConflictException('These dates overlap another long absence of this person.');
-      const accrues = (await settingOn(tx, c, 'leave.long_absence.accrues', f, dto.from)) === 'yes';
-      const a = await tx.longAbsence.create({ data: { organizationId: c.organizationId, employeeId: dto.employeeId, kind: dto.kind, fromOn: asDate(dto.from), toOn: asDate(dto.to), plannedToOn: asDate(dto.to), accrues, note: dto.note.trim(), createdBy: c.userId ?? null } });
-      await audit(tx, c, 'leave.long_absence.recorded', 'long_absence', a.id, { employeeId: dto.employeeId, kind: dto.kind, from: dto.from, to: dto.to, accrues, note: dto.note.trim() });
-      return this.absenceView(a, f.name);
+      // One write per person at a time, so two HR admins cannot record overlapping absences together.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`leave:${c.organizationId}:${dto.employeeId}`}))`;
+      const chk = await this.absenceCheck(tx, c, dto);
+      const first = chk.problems.find((p) => p.conflict) ?? chk.problems[0];
+      if (first) throw first.conflict ? new ConflictException({ statusCode: 409, message: first.text, problems: chk.problems.map((p) => p.text) }) : new BadRequestException({ statusCode: 400, message: first.text, problems: chk.problems.map((p) => p.text) });
+      const a = await tx.longAbsence.create({ data: { organizationId: c.organizationId, employeeId: dto.employeeId, kind: dto.kind, fromOn: asDate(dto.from), toOn: asDate(dto.to), plannedToOn: asDate(dto.to), accrues: chk.accrues, note: dto.note.trim(), createdBy: c.userId ?? null } });
+      await audit(tx, c, 'leave.long_absence.recorded', 'long_absence', a.id, { employeeId: dto.employeeId, kind: dto.kind, from: dto.from, to: dto.to, accrues: chk.accrues, note: dto.note.trim() });
+      return this.absenceView(a, chk.name ?? undefined);
     });
   }
 
@@ -494,23 +539,69 @@ export class LeaveV2Service implements OnModuleInit {
 
   // ------------------------------------------------------------------------------------------ company block dates
 
+  /**
+   * Leave already asked for or approved on a block's dates, of the types it stops, by people where it applies. A new
+   * block never cancels it (founder decision 1): HR sees who is affected and talks to them.
+   */
+  private async blockAffected(tx: Tx, org: string, b: { fromOn: Date; toOn: Date; scopeType: string; scopeId: string | null; leaveTypeIds: string[] }) {
+    return tx.$queryRaw<{ id: string; name: string; type: string; from: string; to: string; status: string }[]>`
+      SELECT DISTINCT r.id::text, ${name('e')} AS name, t.name AS type, r.from_on::text AS "from", r.to_on::text AS "to", r.status
+      FROM leave_request_days d
+      JOIN leave_requests r ON r.organization_id = d.organization_id AND r.id = d.request_id AND r.status = ANY(${WAITING}::text[])
+      JOIN leave_types t ON t.organization_id = r.organization_id AND t.id = r.leave_type_id
+      JOIN employees e ON e.organization_id = d.organization_id AND e.id = d.employee_id
+      JOIN employee_assignments a ON a.organization_id = d.organization_id AND a.employee_id = d.employee_id AND a.superseded_at IS NULL AND d.leave_on <@ daterange(a.valid_from, a.valid_to, '[]')
+      WHERE d.organization_id = ${org}::uuid AND d.active AND d.portion > 0 AND d.leave_on BETWEEN ${dateOf(b.fromOn)}::date AND ${dateOf(b.toOn)}::date
+        AND (${b.scopeType} = 'tenant' OR (${b.scopeType} = 'legal_entity' AND a.legal_entity_id = ${b.scopeId}::uuid) OR (${b.scopeType} = 'location' AND a.location_id = ${b.scopeId}::uuid))
+        AND (CASE WHEN cardinality(${b.leaveTypeIds}::uuid[]) = 0 THEN t.kind <> ALL(${BLOCK_DATE_EXEMPT}::text[]) ELSE t.id = ANY(${b.leaveTypeIds}::uuid[]) END)
+      ORDER BY 4, 2 LIMIT 50`;
+  }
+
+  /** GET setup/block-dates: the dates, who already has leave on them, and the choices for adding one. */
   listBlockDates(ctx: TenantContext) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const rows = await tx.leaveBlockDate.findMany({ where: { organizationId: c.organizationId, removedAt: null, toOn: { gte: asDate(addDays(todayIn('Asia/Kolkata'), -31)) } }, orderBy: { fromOn: 'asc' } });
-      return { mode: await this.tenantSetting(tx, c, 'leave.block_dates.mode'), dates: rows.map((r) => ({ id: r.id, from: dateOf(r.fromOn), to: dateOf(r.toOn), reason: r.reason, scopeType: r.scopeType, scopeId: r.scopeId })) };
+      const org = c.organizationId;
+      const rows = await tx.leaveBlockDate.findMany({ where: { organizationId: org, removedAt: null, toOn: { gte: asDate(addDays(todayIn('Asia/Kolkata'), -31)) } }, orderBy: { fromOn: 'asc' }, take: 200 });
+      const [types, entities, locations] = await Promise.all([
+        tx.leaveType.findMany({ where: { organizationId: org, active: true }, orderBy: [{ kind: 'asc' }, { code: 'asc' }], select: { id: true, name: true, kind: true } }),
+        tx.legalEntity.findMany({ where: { organizationId: org, archivedAt: null }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
+        tx.location.findMany({ where: { organizationId: org, archivedAt: null }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
+      ]);
+      const scopeName = new Map([...entities, ...locations].map((x) => [x.id, String(x.name)]));
+      const dates = [];
+      for (const r of rows)
+        dates.push({ id: r.id, from: dateOf(r.fromOn), to: dateOf(r.toOn), reason: r.reason, scopeType: r.scopeType, scopeId: r.scopeId, scopeName: r.scopeId ? (scopeName.get(r.scopeId) ?? null) : null, leaveTypeIds: r.leaveTypeIds, affected: await this.blockAffected(tx, org, r) });
+      return {
+        mode: await this.tenantSetting(tx, c, 'leave.block_dates.mode'),
+        dates,
+        // Planned leave is stopped when HR picks no types; maternity leave can never be stopped (Maternity Benefit Act).
+        types: types.map((t) => ({ ...t, stoppedByDefault: !BLOCK_DATE_EXEMPT.includes(t.kind), canStop: t.kind !== 'maternity' })),
+        entities: entities.map((x) => ({ id: x.id, name: String(x.name) })),
+        locations: locations.map((x) => ({ id: x.id, name: String(x.name) })),
+      };
     });
   }
 
   addBlockDate(ctx: TenantContext, dto: BlockDateDto) {
     if (dto.to < dto.from || daysBetween(dto.from, dto.to) > 31) throw new BadRequestException('A block is 1 to 32 days, the last day on or after the first.');
     if ((dto.scopeType === 'tenant') !== !dto.scopeId) throw new BadRequestException(dto.scopeType === 'tenant' ? 'A company-wide block has no entity or location.' : 'Choose the entity or location.');
+    const typeIds = [...new Set(dto.leaveTypeIds ?? [])];
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
       if (dto.from < todayIn('Asia/Kolkata')) throw new BadRequestException('Block dates start today or later.');
-      if (dto.scopeType === 'legal_entity' && !(await tx.legalEntity.findFirst({ where: { organizationId: c.organizationId, id: dto.scopeId }, select: { id: true } }))) throw new BadRequestException('Choose a legal entity of this company.');
-      if (dto.scopeType === 'location' && !(await tx.location.findFirst({ where: { organizationId: c.organizationId, id: dto.scopeId }, select: { id: true } }))) throw new BadRequestException('Choose a location of this company.');
-      const r = await tx.leaveBlockDate.create({ data: { organizationId: c.organizationId, fromOn: asDate(dto.from), toOn: asDate(dto.to), reason: dto.reason.trim(), scopeType: dto.scopeType, scopeId: dto.scopeId ?? null, createdBy: c.userId ?? null } });
-      await audit(tx, c, 'leave.block_date.added', 'leave_block_date', r.id, { from: dto.from, to: dto.to, reason: dto.reason.trim(), scopeType: dto.scopeType, scopeId: dto.scopeId ?? null });
-      return { id: r.id };
+      if (dto.scopeType === 'legal_entity' && !(await tx.legalEntity.findFirst({ where: { organizationId: org, id: dto.scopeId }, select: { id: true } }))) throw new BadRequestException('Choose a legal entity of this company.');
+      if (dto.scopeType === 'location' && !(await tx.location.findFirst({ where: { organizationId: org, id: dto.scopeId }, select: { id: true } }))) throw new BadRequestException('Choose a location of this company.');
+      const types = typeIds.length ? await tx.leaveType.findMany({ where: { organizationId: org, active: true, id: { in: typeIds } }, select: { id: true, name: true, kind: true } }) : [];
+      if (types.length !== typeIds.length) throw new BadRequestException('Choose leave types of this company that are in use.');
+      const maternity = types.find((t) => t.kind === 'maternity');
+      if (maternity) throw new BadRequestException(`${maternity.name} can't be blocked: the Maternity Benefit Act sets when it is taken. Untick it.`);
+      // The same dates, reason and place twice (a double click) is one block.
+      const same = await tx.leaveBlockDate.findFirst({ where: { organizationId: org, removedAt: null, fromOn: asDate(dto.from), toOn: asDate(dto.to), scopeType: dto.scopeType, scopeId: dto.scopeId ?? null, reason: dto.reason.trim() }, select: { id: true } });
+      if (same) throw new ConflictException('These block dates are already there.');
+      const r = await tx.leaveBlockDate.create({ data: { organizationId: org, fromOn: asDate(dto.from), toOn: asDate(dto.to), reason: dto.reason.trim(), scopeType: dto.scopeType, scopeId: dto.scopeId ?? null, leaveTypeIds: typeIds, createdBy: c.userId ?? null } });
+      const affected = await this.blockAffected(tx, org, r);
+      await audit(tx, c, 'leave.block_date.added', 'leave_block_date', r.id, { from: dto.from, to: dto.to, reason: dto.reason.trim(), scopeType: dto.scopeType, scopeId: dto.scopeId ?? null, leaveTypes: types.map((t) => t.name), affected: affected.length });
+      return { id: r.id, affected };
     });
   }
 
@@ -621,13 +712,13 @@ export class LeaveV2Service implements OnModuleInit {
   }
 
   /** The report rows (paged), or every row (export, up to 10 000). */
-  private async reportRows(tx: Tx, c: CompanyContext, scope: (alias: Alias) => Prisma.Sql, q: ReportQueryDto, all: boolean) {
+  private async reportRows(tx: Tx, c: CompanyContext, scope: (alias: Alias) => Prisma.Sql, q: ReportQueryDto, all: boolean, pay: string[] = []) {
     const org = c.organizationId;
     const today = todayIn('Asia/Kolkata');
     const size = all ? 10_000 : (q.pageSize ?? 50);
     const offset = all ? 0 : ((q.page ?? 1) - 1) * size;
     const year = leaveYearOf(today, Number(await this.tenantSetting(tx, c, 'leave.year_start_month')));
-    const types = (await tx.leaveType.findMany({ where: { organizationId: org, active: true }, orderBy: [{ kind: 'asc' }, { code: 'asc' }] })).map((t) => ({ id: t.id, code: t.code, name: t.name, kind: t.kind, hasBalance: hasBalance(t.kind), paid: t.paid }));
+    const types = (await tx.leaveType.findMany({ where: { organizationId: org, active: true }, orderBy: [{ kind: 'asc' }, { code: 'asc' }] })).map((t) => ({ id: t.id, code: t.code, name: t.name, kind: t.kind, hasBalance: hasBalance(t.kind), paid: t.paid, encashable: Boolean((t.rules as unknown as LeaveRules).encashable) }));
     const people = Prisma.sql`
       FROM employees e
       JOIN employee_assignments a ON a.organization_id = e.organization_id AND a.employee_id = e.id AND a.superseded_at IS NULL AND ${today}::date <@ daterange(a.valid_from, a.valid_to, '[]')
@@ -670,6 +761,7 @@ export class LeaveV2Service implements OnModuleInit {
           JOIN leave_types t ON t.organization_id = r.organization_id AND t.id = r.leave_type_id AND t.kind = 'lop' WHERE d.organization_id = e.organization_id AND d.employee_id = e.id AND d.active AND d.leave_on BETWEEN ${from}::date AND ${to}::date))`;
       return { report: q.report, month, types, total, rows: rows.map((r) => ({ ...r, days: r.lopLeave + r.absent })) };
     }
+    if (q.report === 'liability') return this.liabilityRows(tx, c, people, types.filter((t) => t.hasBalance && t.encashable), size, offset, today, pay);
     // Balances, negatives and leave taken: one row per person, a column per leave type.
     const negative = q.report === 'negative' ? Prisma.sql`AND EXISTS (SELECT 1 FROM leave_ledger l WHERE l.organization_id = e.organization_id AND l.employee_id = e.id GROUP BY l.leave_type_id HAVING sum(l.days) < 0)` : Prisma.empty;
     const [{ total }] = await tx.$queryRaw<{ total: number }[]>`SELECT count(*)::int AS total ${people} ${negative}`;
@@ -702,10 +794,61 @@ export class LeaveV2Service implements OnModuleInit {
     return { report: q.report, year, types: shown, total, rows: base.map((b) => ({ ...b, values: Object.fromEntries(shown.map((t) => [t.id, cells.get(b.employeeId)?.[t.id] ?? 0])) })) };
   }
 
+  /** The legal entities whose pay this person may see (employee.salary.view; never while acting for someone else). */
+  private async payEntities(tx: Tx, c: CompanyContext, pv: Viewer | null, q: ReportQueryDto) {
+    return pv && q.report === 'liability' ? entitiesFor(tx, c, pv, 'employee.salary.view') : [];
+  }
+
+  /**
+   * Founder decision 3: the leave liability. Unused days of the leave types that can be cashed in, and (only for the
+   * legal entities whose pay the viewer may see) daily pay x days. Pay comes from Payroll (payOn: the compensation in
+   * force today) through the pay guard; daily pay = monthly pay on payroll.leave_encashment_basis ÷ leave.liability.divisor.
+   * shortcut: pay is read per person (4 queries each), fine for a page of 200 or an export of a few thousand; a payroll
+   * snapshot table is the upgrade if exports of 10,000 people get slow.
+   */
+  private async liabilityRows(tx: Tx, c: CompanyContext, people: Prisma.Sql, types: { id: string; name: string }[], size: number, offset: number, today: string, pay: string[]) {
+    const org = c.organizationId;
+    const [{ total }] = await tx.$queryRaw<{ total: number }[]>`SELECT count(*)::int AS total ${people}`;
+    const typeIds = types.map((t) => t.id);
+    const [{ days: allDays }] = await tx.$queryRaw<{ days: number | null }[]>`
+      SELECT sum(greatest(x.n, 0))::float AS days FROM (SELECT l.employee_id, l.leave_type_id, sum(l.days) AS n FROM leave_ledger l
+        WHERE l.organization_id = ${org}::uuid AND l.leave_type_id = ANY(${typeIds}::uuid[]) AND l.employee_id IN (SELECT e.id ${people}) GROUP BY 1, 2) x`;
+    const base = await tx.$queryRaw<{ employeeId: string; name: string; code: string | null; location: string | null; department: string | null; entityId: string; employmentId: string }[]>`
+      SELECT e.id::text AS "employeeId", ${name('e')} AS name, m.employee_code::text AS code, lo.name AS location, de.name AS department, a.legal_entity_id::text AS "entityId", m.id::text AS "employmentId" ${people}
+      ORDER BY name, e.id LIMIT ${size} OFFSET ${offset}`;
+    const sums = base.length && typeIds.length
+      ? await tx.$queryRaw<{ employeeId: string; typeId: string; n: number }[]>`
+          SELECT l.employee_id::text AS "employeeId", l.leave_type_id::text AS "typeId", sum(l.days)::float AS n FROM leave_ledger l
+          WHERE l.organization_id = ${org}::uuid AND l.employee_id = ANY(${base.map((b) => b.employeeId)}::uuid[]) AND l.leave_type_id = ANY(${typeIds}::uuid[]) GROUP BY 1, 2`
+      : [];
+    const rule = new Map<string, { basis: string; divisor: string }>();
+    for (const id of new Set(base.map((b) => b.entityId)))
+      if (pay.includes(id)) rule.set(id, { basis: await this.tenantSetting(tx, c, 'payroll.leave_encashment_basis', id), divisor: await this.tenantSetting(tx, c, 'leave.liability.divisor', id) });
+    const rows = [];
+    for (const b of base) {
+      // A negative balance owes nothing: it counts as 0 days.
+      const values = Object.fromEntries(types.map((t) => [t.id, r2(Math.max(0, sums.find((x) => x.employeeId === b.employeeId && x.typeId === t.id)?.n ?? 0))]));
+      const days = r2(Object.values(values).reduce((a, n) => a + n, 0));
+      const { entityId: _e, employmentId, ...shown } = b;
+      const r = rule.get(b.entityId);
+      if (!r) {
+        rows.push({ ...shown, values, days });
+        continue;
+      }
+      const p = await withPayScope(tx, pay, () => payOn(tx, org, employmentId, today));
+      const monthly = Number(r.basis === 'gross' ? p.gross : p.gratuityWage);
+      const daily = monthly > 0 ? dailyPay(monthly, r.divisor, today) : null;
+      rows.push({ ...shown, values, days, dailyPay: daily, amount: daily === null ? null : r2(daily * days), noPay: daily === null });
+    }
+    const company = { basis: await this.tenantSetting(tx, c, 'payroll.leave_encashment_basis'), divisor: await this.tenantSetting(tx, c, 'leave.liability.divisor') };
+    return { report: 'liability' as const, types, total, rows, money: pay.length > 0, totalDays: r2(allDays ?? 0), ...(pay.length ? { dailyPayRule: company } : {}) };
+  }
+
   /** GET hr/leave-report: one page of a report for the people in leave.view scope, with the filters. */
-  report(ctx: TenantContext, user: ScopeUser, q: ReportQueryDto) {
+  async report(ctx: TenantContext, user: ScopeUser, q: ReportQueryDto) {
+    const pv = q.report === 'liability' ? await payViewer(this.prisma, this.tenantPrisma, user) : null;
     return this.inScope(ctx, user, async (tx, c, scope) => {
-      const out = await this.reportRows(tx, c, scope, q, false);
+      const out = await this.reportRows(tx, c, scope, q, false, await this.payEntities(tx, c, pv, q));
       // The filter lists (entities, locations, departments of this company).
       const org = { organizationId: c.organizationId };
       const filters = {
@@ -718,16 +861,18 @@ export class LeaveV2Service implements OnModuleInit {
   }
 
   /** GET hr/leave-report/export: the whole report as CSV (up to 10 000 rows), audited. */
-  export(ctx: TenantContext, user: ScopeUser, q: ReportQueryDto) {
+  async export(ctx: TenantContext, user: ScopeUser, q: ReportQueryDto) {
+    const pv = q.report === 'liability' ? await payViewer(this.prisma, this.tenantPrisma, user) : null;
     return this.inScope(ctx, user, async (tx, c, scope) => {
-      const out = await this.reportRows(tx, c, scope, q, true);
+      const out = await this.reportRows(tx, c, scope, q, true, await this.payEntities(tx, c, pv, q));
       if (out.total > 10_000) throw new BadRequestException(`This report has ${out.total} rows. Filter it to 10,000 rows or fewer to export.`);
       const head = ['Employee', 'Code'];
       let lines: (string | number | null)[][];
-      if (out.report === 'ledger') lines = [[...head, 'Date', 'Leave', 'Change', 'Reason'], ...(out.rows as { name: string; code: string | null; on: string; type: string; days: number; reason: string }[]).map((r) => [r.name, r.code, r.on, r.type, r.days, r.reason])];
+      if (out.report === 'liability') lines = liabilityCsv(out as Liability);
+      else if (out.report === 'ledger') lines = [[...head, 'Date', 'Leave', 'Change', 'Reason'], ...(out.rows as { name: string; code: string | null; on: string; type: string; days: number; reason: string }[]).map((r) => [r.name, r.code, r.on, r.type, r.days, r.reason])];
       else if (out.report === 'lop') lines = [[...head, 'Location', 'Department', 'Unpaid leave days', 'Absent days', 'Total unpaid days'], ...(out.rows as { name: string; code: string | null; location: string | null; department: string | null; lopLeave: number; absent: number; days: number }[]).map((r) => [r.name, r.code, r.location, r.department, r.lopLeave, r.absent, r.days])];
       else lines = [[...head, 'Location', 'Department', ...out.types.map((t) => t.name)], ...(out.rows as { name: string; code: string | null; location: string | null; department: string | null; values: Record<string, number> }[]).map((r) => [r.name, r.code, r.location, r.department, ...out.types.map((t) => r.values[t.id] ?? 0)])];
-      await audit(tx, c, 'leave.report.exported', 'leave_report', c.organizationId, { report: q.report, rows: out.total, filters: { entityId: q.entityId ?? null, locationId: q.locationId ?? null, departmentId: q.departmentId ?? null, month: q.month ?? null } });
+      await audit(tx, c, 'leave.report.exported', 'leave_report', c.organizationId, { report: q.report, rows: out.total, ...(out.report === 'liability' ? { pay: (out as Liability).money } : {}), filters: { entityId: q.entityId ?? null, locationId: q.locationId ?? null, departmentId: q.departmentId ?? null, month: q.month ?? null } });
       return { filename: `leave-${q.report}-${todayIn('Asia/Kolkata')}.csv`, csv: toCsv(lines) };
     });
   }
@@ -1015,4 +1160,11 @@ export class LeaveV2Service implements OnModuleInit {
     }
     return { accepted: out.accepted, ignored: out.ignored, leaveReturned: out.leaveReturned };
   }
+}
+
+type Liability = { types: { id: string; name: string }[]; money: boolean; rows: { name: string; code: string | null; location: string | null; department: string | null; values: Record<string, number>; days: number; dailyPay?: number | null; amount?: number | null; noPay?: boolean }[] };
+/** The liability CSV: money columns only for a viewer who may see pay; a row outside their pay scope stays blank. */
+function liabilityCsv(out: Liability): (string | number | null)[][] {
+  const head = ['Employee', 'Code', 'Location', 'Department', ...out.types.map((t) => `${t.name} days`), 'Days', ...(out.money ? ['Daily pay', 'Amount'] : [])];
+  return [head, ...out.rows.map((r) => [r.name, r.code, r.location, r.department, ...out.types.map((t) => r.values[t.id] ?? 0), r.days, ...(out.money ? (r.noPay ? ['No pay set', 'No pay set'] : [r.dailyPay ?? null, r.amount ?? null]) : [])])];
 }

@@ -5023,6 +5023,8 @@ model LeaveBlockDate {
   reason         String    @db.VarChar(200)
   scopeType      String    @default("tenant") @map("scope_type") @db.VarChar(20)
   scopeId        String?   @map("scope_id") @db.Uuid
+  /// The leave types it stops; empty: planned leave only (not sick, maternity, paternity or unpaid leave).
+  leaveTypeIds   String[]  @default([]) @map("leave_type_ids") @db.Uuid
   removedAt      DateTime? @map("removed_at") @db.Timestamptz(3)
   createdBy      String?   @map("created_by") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
