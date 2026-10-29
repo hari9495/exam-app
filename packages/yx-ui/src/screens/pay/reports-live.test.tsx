@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { PayrollReportsScreen } from './admin-tax-loans';
-import type { LivePayrollReports, PayReport, ReportOptions } from './reports-live';
+import { defaultMonth, effectiveFilters, fitWidth, textPx, type LivePayrollReports, type PayReport, type PayReportKind, type ReportFilters, type ReportOptions } from './reports-live';
 
 // The designed PAY-25 screen with the live page's data: the server's totals, filters on one row, paging, export with its
 // toast, the empty, loading, error and no-access states.
@@ -33,6 +33,7 @@ const REGISTER: PayReport = {
   page: 1,
   pageSize: 200,
 };
+const NONE: ReportFilters = { legalEntityId: null, from: null, to: null, departmentId: null, locationId: null };
 const live = (x: Partial<LivePayrollReports> = {}): LivePayrollReports => ({
   state: 'ready',
   options: OPTIONS,
@@ -89,13 +90,101 @@ describe('PAY-25 payroll reports (live)', () => {
     expect((await screen.findAllByText('Salary register downloaded as CSV.')).length).toBeGreaterThan(0);
   });
 
-  it('empty: no data for the filters, export off, clear filters', async () => {
+  it('empty: no data for the filters, clear filters; Export stays enabled and says there is nothing to export', async () => {
     const l = live({ report: { ...REGISTER, rows: [], total: 0 } });
     render(<PayrollReportsScreen live={l} />);
     expect(screen.getByText('No data for these filters.')).toBeTruthy();
-    expect((screen.getByRole('button', { name: 'Export CSV' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/Filters: Salary register · September 2026\./)).toBeTruthy();
+    const exp = screen.getByRole('button', { name: 'Export CSV' }) as HTMLButtonElement;
+    expect(exp.disabled).toBe(false);
+    expect(screen.queryByText('Nothing to export for these filters')).toBeNull();
+    await ue.click(exp);
+    expect((await screen.findAllByText('Nothing to export for these filters.')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Try a different month/).length).toBeGreaterThan(0);
+    expect(l.onExport).not.toHaveBeenCalled();
     await ue.click(screen.getByRole('button', { name: 'Clear filters' }));
     expect(l.onFilters).toHaveBeenCalledWith({ legalEntityId: null, from: null, to: null, departmentId: null, locationId: null });
+  });
+
+  it('export is never disabled, also while the report loads; pressed then, nothing is downloaded', async () => {
+    const l = live({ report: null, reportState: 'loading' });
+    render(<PayrollReportsScreen live={l} />);
+    const exp = screen.getByRole('button', { name: 'Export CSV' }) as HTMLButtonElement;
+    expect(exp.disabled).toBe(false);
+    await ue.click(exp);
+    expect(l.onExport).not.toHaveBeenCalled();
+  });
+
+  it('default month: the latest month with approved payslips; a range report runs from it to itself', () => {
+    render(<PayrollReportsScreen live={live()} />);
+    expect(within(screen.getByRole('combobox', { name: 'From month' })).getByText('From Sep 2026')).toBeTruthy();
+    expect(within(screen.getByRole('combobox', { name: 'To month' })).getByText('To Sep 2026')).toBeTruthy();
+    expect(effectiveFilters('register', NONE, OPTIONS)).toEqual({ ...NONE, from: '2026-09', to: '2026-09' });
+    expect(effectiveFilters('variance', NONE, OPTIONS)).toEqual({ ...NONE, from: null, to: '2026-09' });
+    expect(effectiveFilters('holds', { ...NONE, to: '2026-08' }, OPTIONS)).toEqual(NONE);
+  });
+
+  it('default month with no approved payslips in scope: last month (never "no month yet")', () => {
+    const none = { ...OPTIONS, months: [] };
+    expect(defaultMonth({ months: [], today: '2026-10-30' })).toBe('2026-09');
+    expect(defaultMonth({ months: [], today: '2027-01-05' })).toBe('2026-12');
+    render(<PayrollReportsScreen live={live({ options: none, report: { ...REGISTER, rows: [], total: 0 } })} />);
+    expect(within(screen.getByRole('combobox', { name: 'To month' })).getByText('To Sep 2026')).toBeTruthy();
+    expect(screen.queryByText(/no month yet/)).toBeNull();
+  });
+
+  it('negative: a chosen month is kept; a start after the end is pulled back to the end', () => {
+    expect(effectiveFilters('register', { ...NONE, from: '2026-08', to: '2026-09' }, OPTIONS)).toMatchObject({ from: '2026-08', to: '2026-09' });
+    expect(effectiveFilters('register', { ...NONE, from: '2026-10', to: '2026-09' }, OPTIONS)).toMatchObject({ from: '2026-09', to: '2026-09' });
+  });
+
+  it('month labels: range reports say From and To; one-month reports have one Month select with the full month', () => {
+    const { unmount } = render(<PayrollReportsScreen live={live({ kind: 'gratuity', report: null, reportState: 'loading' })} />);
+    expect(within(screen.getByRole('combobox', { name: 'Month' })).getByText('September 2026')).toBeTruthy();
+    expect(screen.queryByRole('combobox', { name: 'From month' })).toBeNull();
+    expect(screen.queryByRole('combobox', { name: 'To month' })).toBeNull();
+    unmount();
+    render(<PayrollReportsScreen live={live({ kind: 'loans', report: null, reportState: 'loading' })} />);
+    expect(screen.getByRole('combobox', { name: 'From month' })).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: 'To month' })).toBeTruthy();
+    expect(screen.queryByRole('combobox', { name: 'Month' })).toBeNull();
+  });
+
+  it('filter widths: each select fits its longest choice or placeholder, and the row fits 1278 x 635 for every report', () => {
+    // Measured in Storybook at 1278 x 635: the filter row is 895 px wide with 12 px between selects. In the browser each
+    // select is sized from its texts measured in its own font; tests have no layout, so they use the 0.55 em estimate.
+    const ROW = 895;
+    const px = (w: string) => Number(/calc\((\d+)px \+ var\(--yx-space-12\)\)/.exec(w)![1]) + 48;
+    const chars = (n: number) => Math.ceil(n * 7.7) + 48;
+    const row = (o: ReportOptions, kind: PayReportKind) => {
+      const { container, unmount } = render(<PayrollReportsScreen live={live({ kind, options: o, report: null, reportState: 'loading' })} />);
+      const cells = ([...container.querySelector('[data-testid="report-filters"]')!.children] as HTMLElement[]).map((c) => [c.querySelector('[role="combobox"]')!.getAttribute('aria-label')!, { w: px(c.style.width), shrink: c.style.flex.split(' ')[1] }] as const);
+      unmount();
+      return { cells: Object.fromEntries(cells), total: cells.reduce((a, [, x]) => a + x.w, 0) + 12 * (cells.length - 1) };
+    };
+    const demo: ReportOptions = { ...OPTIONS, entities: [{ id: 'ka', name: 'Kaveri Foods Pvt Ltd', shortName: 'KF-KA' }, { id: 'tn', name: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', shortName: 'KF-TN' }], departments: [{ id: 'd', name: 'Operations' }, { id: 'f', name: 'Finance' }], locations: [{ id: 'l', name: 'Bengaluru', legalEntityId: 'ka' }] };
+    for (const kind of ['register', 'variance', 'holds'] as const) {
+      const r = row(demo, kind);
+      expect(r.total).toBeLessThanOrEqual(ROW);
+      // Positive: every select is as wide as its longest text (no cut text).
+      expect(r.cells.Report.w).toBe(chars('Gratuity provision'.length));
+      expect(r.cells['Legal entity'].w).toBe(chars('Entity'.length));
+      expect(r.cells.Department.w).toBe(chars('Department'.length));
+      expect(r.cells.Location.w).toBe(chars('Bengaluru'.length));
+      if (kind === 'register') expect([r.cells['From month'].w, r.cells['To month'].w]).toEqual([chars('From Sep 2026'.length), chars('To Sep 2026'.length)]);
+      if (kind === 'variance') expect(r.cells.Month.w).toBe(chars('September 2026'.length));
+    }
+    // Negative: a company's very long names. Report and months never shrink (their text is never cut); only the entity,
+    // department and location fields give way, so the row stays on one line at 1278 px.
+    const long: ReportOptions = { ...demo, entities: [{ id: 'a', name: 'A very long legal entity name', shortName: 'LONG-ENTITY-NAME' }, { id: 'b', name: 'B' }], departments: [{ id: 'x', name: 'Customer Success and Onboarding' }], locations: [{ id: 'y', name: 'Bengaluru head office, Tower B', legalEntityId: 'ka' }] };
+    const r = row(long, 'register');
+    expect([r.cells.Report.shrink, r.cells['From month'].shrink, r.cells['To month'].shrink]).toEqual(['0', '0', '0']);
+    expect([r.cells['Legal entity'].shrink, r.cells.Department.shrink, r.cells.Location.shrink]).toEqual(['1', '1', '1']);
+    expect(r.cells.Department.w).toBe(chars('Customer Success and Onboarding'.length));
+    const { container, unmount } = render(<PayrollReportsScreen live={live({ options: long, report: null, reportState: 'loading' })} />);
+    expect((container.querySelector('[data-testid="report-filters"]') as HTMLElement).style.flexWrap).toBe('nowrap');
+    unmount();
+    expect(fitWidth(textPx(['Entity', 'KF-KA'], null))).toBe(fitWidth(textPx(['Entity'], null)));
   });
 
   it('pages a long report', async () => {

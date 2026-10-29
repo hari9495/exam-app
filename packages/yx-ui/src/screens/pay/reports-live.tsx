@@ -1,7 +1,7 @@
 // PAY-25 · Payroll reports: the one view the design stories and the live page both render. The stories pass sample data
 // built from the design fixtures (admin-tax-loans.tsx); the app passes the API's data (GET payroll/reports/:kind). Money
 // arrives as decimal strings and is only formatted here; the totals above each table are the server's, over every row.
-import type { ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Download } from 'lucide-react';
 import { Button } from '../../components/button';
 import { EmptyState, ErrorState, Pagination, Skeleton } from '../../components/feedback';
@@ -19,9 +19,9 @@ import type { LoadState } from './live/types';
 export type PayReportKind = 'register' | 'recon' | 'variance' | 'ctc' | 'arrears' | 'ytd' | 'bank' | 'holds' | 'gratuity' | 'loans';
 
 /** The reports in the picker, in the design's order. */
-export const PAY_REPORTS: { id: PayReportKind; name: string; desc: string; months: 'range' | 'one' | 'none' }[] = [
+export const PAY_REPORTS: { id: PayReportKind; name: string; /** Shorter name in the picker. */ short?: string; desc: string; months: 'range' | 'one' | 'none' }[] = [
   { id: 'register', name: 'Salary register', desc: 'Every payslip line by employee for the months chosen', months: 'range' },
-  { id: 'recon', name: 'Payroll reconciliation', desc: 'This month against the month before: people, gross, deductions, net', months: 'one' },
+  { id: 'recon', name: 'Payroll reconciliation', short: 'Reconciliation', desc: 'This month against the month before: people, gross, deductions, net', months: 'one' },
   { id: 'arrears', name: 'Arrears', desc: 'Arrears paid in the months, by person and cause', months: 'range' },
   { id: 'ytd', name: 'Year to date', desc: 'Earnings, deductions and tax per employee from April', months: 'one' },
   { id: 'ctc', name: 'CTC report', desc: 'Cost to company by department', months: 'range' },
@@ -116,8 +116,9 @@ export interface LivePayrollReports {
 const money = (x: string | null | undefined) => (x == null ? '—' : formatINR(Number(x)));
 const n = (x: string) => Number(x);
 const signed = (x: string) => `${Number(x) > 0 ? '+' : ''}${money(x)}`;
+const MON3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 export const monthLabel = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
-const shortMonth = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' });
+const shortMonth = (m: string) => MON3[Number(m.slice(5, 7)) - 1];
 const dayLabel = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 const plural = (k: number, one: string, many = `${one}s`) => `${k} ${k === 1 ? one : many}`;
 const person = <R extends Person>(width = 220): TableColumn<R> => ({ key: 'name', header: 'Employee', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: r.code }), width });
@@ -125,6 +126,37 @@ export const HOLD_REASON: Record<string, string> = { bank_missing: 'No bank acco
 const LOAN_TYPE: Record<string, string> = { advance: 'Salary advance', loan: 'Loan', expense: 'Expense advance' };
 const STATUS: Record<string, string> = { pending: 'Waiting', paid: 'Paid', failed: 'Failed', returned: 'Returned', held: 'Held', cash: 'Cash', active: 'Active', paused: 'Paused', closed: 'Closed' };
 const AGE: Record<string, string> = { '0-30': '0–30 days', '31-60': '31–60 days', '61+': 'Over 60 days' };
+
+/** "Sep 2026" (three letters always; some browsers say "Sept"). */
+const monthShortYear = (m: string) => `${MON3[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
+
+/** The month a report opens on: the latest with approved payslips in scope, else last month. */
+export function defaultMonth(o: Pick<ReportOptions, 'months' | 'today'>): string {
+  if (o.months[0]) return o.months[0];
+  const [y, m] = o.today.split('-').map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+}
+
+/** The filters the report is asked for: a missing month is the default month; a range report runs from that month to itself; hold ageing has no month. */
+export function effectiveFilters(kind: PayReportKind, f: ReportFilters, o: Pick<ReportOptions, 'months' | 'today'>): ReportFilters {
+  const span = PAY_REPORTS.find((r) => r.id === kind)!.months;
+  if (span === 'none') return { ...f, from: null, to: null };
+  const to = f.to ?? defaultMonth(o);
+  return { ...f, to, from: span === 'range' ? (f.from && f.from <= to ? f.from : to) : null };
+}
+
+let canvas: CanvasRenderingContext2D | null | undefined;
+/** The widest of these texts in the select's own font, measured by the browser; tests (no layout) estimate 0.55 em a character at 14 px. */
+export function textPx(labels: string[], font: string | null): number {
+  if (canvas === undefined) canvas = typeof document === 'undefined' || /jsdom/i.test(navigator.userAgent) ? null : document.createElement('canvas').getContext('2d');
+  if (canvas && font) {
+    canvas.font = font;
+    return Math.max(0, ...labels.map((l) => canvas!.measureText(l).width));
+  }
+  return Math.max(0, ...labels.map((l) => l.length)) * 7.7;
+}
+/** A filter select as wide as its longest choice or placeholder plus its padding and chevron, so nothing is cut at 1278 px. */
+export const fitWidth = (px: number) => `calc(${Math.ceil(px)}px + var(--yx-space-12))`;
 
 /** True when a report has nothing to show for the filters. */
 export function reportEmpty(r: PayReport): boolean {
@@ -138,15 +170,31 @@ export function ReportsView({ live }: { live: LivePayrollReports }) {
   const narrow = useNarrow();
   const { toast } = useToast();
   const { busy, error, run } = useRun();
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [font, setFont] = useState<string | null>(null);
+  // The selects' font, read once the row is on screen (and again when web fonts finish loading).
+  useLayoutEffect(() => {
+    const read = () => {
+      const v = rowRef.current?.querySelector('.yx-select__value');
+      if (!v) return;
+      const cs = getComputedStyle(v);
+      setFont(`${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`);
+    };
+    read();
+    void document.fonts?.ready.then(read);
+  }, [live.options != null, live.state]); // eslint-disable-line react-hooks/exhaustive-deps
   const meta = PAY_REPORTS.find((r) => r.id === live.kind)!;
   const o = live.options;
   const f = live.filters;
   const r = live.report;
   const hasData = live.reportState === 'ready' && !!r && r.kind === live.kind && !reportEmpty(r);
   const set = (x: Partial<ReportFilters>) => live.onFilters({ ...f, ...x });
-  const months = (o?.months ?? []).map((m) => ({ value: m, label: monthLabel(m) }));
   const exportCsv = () =>
     run('export', async () => {
+      if (!hasData) {
+        toast({ tone: 'warning', title: 'Nothing to export for these filters.', description: 'Try a different month, legal entity, department or location.' });
+        return;
+      }
       await live.onExport();
       toast({ tone: 'success', title: `${meta.name} downloaded as CSV.` });
     });
@@ -159,8 +207,7 @@ export function ReportsView({ live }: { live: LivePayrollReports }) {
         live.state === 'ready' ? (
           <>
             {live.schedule}
-            {!hasData && live.reportState === 'ready' && <span className="yx-pay-muted">Nothing to export for these filters</span>}
-            <Button icon={Download} disabled={!hasData} loading={busy === 'export'} onClick={() => void exportCsv()}>
+            <Button icon={Download} loading={busy === 'export'} onClick={() => void exportCsv()}>
               Export CSV
             </Button>
           </>
@@ -181,19 +228,30 @@ export function ReportsView({ live }: { live: LivePayrollReports }) {
         )}
       </div>
     );
-  const cell = (child: ReactNode, grow = 1) => <div style={{ flex: narrow ? '1 1 100%' : `${grow} 1 0`, minWidth: 0 }}>{child}</div>;
+  // Each select is as wide as its longest choice or placeholder; on a phone each takes the full row.
+  // Report and months never shrink; a company's very long entity, department or location name gives way first.
+  const cell = (child: ReactNode, labels: string[], shrink = false) => <div style={narrow ? { flex: '1 1 100%', minWidth: 0 } : { flex: `0 ${shrink ? 1 : 0} auto`, width: fitWidth(textPx(labels, font)), minWidth: shrink ? 'var(--yx-space-16)' : undefined }}>{child}</div>;
   const locations = o.locations.filter((l) => !f.legalEntityId || l.legalEntityId === f.legalEntityId);
-  const to = f.to ?? o.months[0] ?? null;
+  const e = effectiveFilters(live.kind, f, o);
+  const to = e.to;
+  const def = defaultMonth(o);
+  const monthList = o.months.includes(def) ? o.months : [def, ...o.months];
+  const entityLabel = (x: { name: string; shortName?: string }) => x.shortName || x.name;
+  // Range reports: "From Sep 2026" and "To Oct 2026" (the list shows full month names); one-month reports: one "Month" select.
+  const fromText = (m: string) => `From ${monthShortYear(m)}`;
+  const toText = (m: string) => `To ${monthShortYear(m)}`;
+  const monthOptions = monthList.map((m) => ({ value: m, label: monthLabel(m) }));
   return (
     <div className="yx-pay-stack">
       {header}
-      <div className="yx-pay-row">
-        {cell(<Select aria-label="Report" value={live.kind} onChange={(v) => v && live.onKind(v as PayReportKind)} options={PAY_REPORTS.map((x) => ({ value: x.id, label: x.name, description: x.desc }))} />, 1.6)}
-        {o.entities.length > 1 && cell(<Select aria-label="Legal entity" placeholder="All legal entities" clearable value={f.legalEntityId} onChange={(v) => set({ legalEntityId: v, locationId: null })} options={o.entities.map((e) => ({ value: e.id, label: e.name }))} />)}
-        {meta.months === 'range' && cell(<Select aria-label="From month" placeholder="From" value={f.from ?? to} onChange={(v) => v && set({ from: v, to: f.to && f.to < v ? v : f.to })} options={months} />)}
-        {meta.months !== 'none' && cell(<Select aria-label={meta.months === 'range' ? 'To month' : 'Month'} placeholder="Month" value={to} onChange={(v) => v && set({ to: v, from: f.from && f.from > v ? v : f.from })} options={months} />)}
-        {cell(<Select aria-label="Department" placeholder="All departments" clearable value={f.departmentId} onChange={(v) => set({ departmentId: v })} options={o.departments.map((d) => ({ value: d.id, label: d.name }))} />)}
-        {cell(<Select aria-label="Location" placeholder="All locations" clearable value={f.locationId} onChange={(v) => set({ locationId: v })} options={locations.map((l) => ({ value: l.id, label: l.name }))} />)}
+      <div className="yx-pay-row" data-testid="report-filters" ref={rowRef} style={narrow ? undefined : { flexWrap: 'nowrap' }}>
+        {cell(<Select aria-label="Report" value={live.kind} onChange={(v) => v && live.onKind(v as PayReportKind)} options={PAY_REPORTS.map((x) => ({ value: x.id, label: x.short ?? x.name, description: x.desc }))} />, PAY_REPORTS.map((x) => x.short ?? x.name))}
+        {o.entities.length > 1 && cell(<Select aria-label="Legal entity" placeholder="Entity" clearable value={f.legalEntityId} onChange={(v) => set({ legalEntityId: v, locationId: null })} options={o.entities.map((x) => ({ value: x.id, label: entityLabel(x), description: x.shortName && x.shortName !== x.name ? x.name : undefined }))} />, ['Entity', ...o.entities.map(entityLabel)], true)}
+        {meta.months === 'range' && cell(<Select aria-label="From month" value={e.from} renderValue={(x) => fromText(x.value)} onChange={(v) => v && set({ from: v, to: to && to < v ? v : to })} options={monthOptions} />, monthList.map(fromText))}
+        {meta.months === 'range' && cell(<Select aria-label="To month" value={to} renderValue={(x) => toText(x.value)} onChange={(v) => v && set({ to: v, from: e.from && e.from > v ? v : e.from })} options={monthOptions} />, monthList.map(toText))}
+        {meta.months === 'one' && cell(<Select aria-label="Month" value={to} onChange={(v) => v && set({ to: v, from: null })} options={monthOptions} />, monthList.map(monthLabel))}
+        {cell(<Select aria-label="Department" placeholder="Department" clearable value={f.departmentId} onChange={(v) => set({ departmentId: v })} options={o.departments.map((d) => ({ value: d.id, label: d.name }))} />, ['Department', ...o.departments.map((d) => d.name)], true)}
+        {cell(<Select aria-label="Location" placeholder="Location" clearable value={f.locationId} onChange={(v) => set({ locationId: v })} options={locations.map((l) => ({ value: l.id, label: l.name }))} />, ['Location', ...locations.map((l) => l.name)], true)}
       </div>
       {error && <p className="yx-pay-muted" role="alert">{error}</p>}
       <section className="yx-pay-stack" aria-label={meta.name}>
@@ -204,7 +262,7 @@ export function ReportsView({ live }: { live: LivePayrollReports }) {
             {null}
           </StateBlock>
         ) : !hasData ? (
-          <EmptyState title="No data for these filters." description={`Filters: ${meta.name}${meta.months === 'none' ? '' : ` · ${to ? monthLabel(to) : 'no month yet'}`}. Try another month, legal entity, department or location.`} action={<Button onClick={clearFilters}>Clear filters</Button>} />
+          <EmptyState title="No data for these filters." description={`Filters: ${meta.name}${!to ? '' : e.from && e.from !== to ? ` · ${monthLabel(e.from)} to ${monthLabel(to)}` : ` · ${monthLabel(to)}`}. Try a different month, legal entity, department or location.`} action={<Button onClick={clearFilters}>Clear filters</Button>} />
         ) : (
           <ReportBody r={r} />
         )}

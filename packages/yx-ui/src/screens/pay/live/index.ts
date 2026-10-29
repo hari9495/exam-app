@@ -41,6 +41,7 @@ export { type LiveCompensation, type LiveTemplates, type LiveComponentLibrary, t
 export { ArrearsBaseScreen, ActuarialScreen, BonusComputationScreen } from '../offcycle';
 export type { LiveArrears, LiveActuarial } from '../offcycle-live';
 // PAY-25 payroll reports (design with `live`).
+export { defaultMonth, effectiveFilters } from '../reports-live';
 export type { LivePayrollReports, PayReport, PayReportKind, ReportFilters, ReportOptions } from '../reports-live';
 // PAY-24 statutory bonus (design with `live`).
 export type { LiveBonus, BonusOverview, BonusComputation, BonusRow, BonusRules, BonusYear, BonusChange, BonusRowChange } from '../bonus-live';
