@@ -4006,11 +4006,112 @@
       "Negative: payroll-tester@demo-org.test opens the same address.",
       "Negative: arjun@demo-org.test opens the same address."
     ],
-    "expected": "Step 2: KPIs \"Unused days that can be cashed in\", \"Liability, people on this page\" and \"Daily pay: Basic + DA ÷ 26 (company setting)\"; columns Earned leave days, Daily pay, Liability. The demo company has no pay set up yet, so every row shows \"No pay set\" (never ₹0). Step 3: the CSV has \"Daily pay\" and \"Amount\" columns with \"No pay set\". Step 4: no access (the Payroll Admin profile has no leave.view; see the question in the report). Step 5: no access.",
+    "expected": "Step 2: KPIs \"Unused days that can be cashed in\", \"Liability, people on this page\" and \"Daily pay: Basic + DA ÷ 26 (company setting)\"; columns Earned leave days, Daily pay, Liability. The demo company has no pay set up yet, so every row shows \"No pay set\" (never ₹0). Step 3: the CSV has \"Daily pay\" and \"Amount\" columns with \"No pay set\". Step 4: Payroll opens the leave liability report only (founder answer A, 29 Oct 2026; see MT-TL-08). Step 5: no access.",
     "stories": [
       "TIM-30 Liability",
       "TIM-30 LiabilityDays"
     ],
     "note": "Days only: someone with leave.view but not \"View employee pay\" sees only the days and the line \"The money shows only to people who may see pay\"; the API never sends the money fields (e2e). The demo has no such account; give one a role without pay to try it."
+  },
+  {
+    "id": "MT-TL-08",
+    "area": "Time · Leave reports",
+    "screen": "Leave liability for Payroll (founder answer A)",
+    "url": "http://localhost:3000/yx/time/balances",
+    "account": "payroll-tester@demo-org.test (Payroll Admin: \"View leave liability\" and \"View employee pay\", no leave.view)",
+    "steps": [
+      "1. Open the Time menu.",
+      "2. Click \"Leave liability\".",
+      "3. Open the Report picker.",
+      "4. Read the KPIs and the table; look at the end of each row.",
+      "5. Click Export CSV and open the file.",
+      "6. Filter Location to one office, then clear the filter."
+    ],
+    "expected": "Step 1: the menu has \"Leave liability\" (not \"Leave balances\", \"Leave\", \"Team leave\" or \"Block leave\"). Step 2: /yx/time/balances opens on \"Leave reports\", description \"Unused leave that can be cashed in, as of today\". Step 3: the only report is \"Leave liability\". Step 4: KPIs \"Unused days that can be cashed in\", \"Liability, people on this page\", \"Daily pay: Basic + DA ÷ 26 (company setting)\"; columns Earned leave days, Daily pay, Liability; demo rows show \"No pay set\" (no pay set up in the demo), never ₹0; no \"Open leave card\" button. Step 5: the CSV has \"Daily pay\" and \"Amount\". Step 6: the rows narrow to that office and come back.",
+    "stories": [
+      "TIM-30 Liability"
+    ],
+    "note": "Positive. The money needs \"View employee pay\" too; a role with \"View leave liability\" alone sees the days only (e2e)."
+  },
+  {
+    "id": "MT-TL-09",
+    "area": "Time · Leave reports",
+    "screen": "Leave liability for Payroll: what Payroll may not open (founder answer A)",
+    "url": "http://localhost:3000/yx/time/balances?person=x",
+    "account": "payroll-tester@demo-org.test, then arjun@demo-org.test, then hr-tester@demo-org.test",
+    "steps": [
+      "1. As payroll-tester, open http://localhost:3000/yx/time/balances?person=x (a leave card address).",
+      "2. As payroll-tester, open http://localhost:3000/yx/time/leave-home.",
+      "3. Sign out; as arjun (employee), open the Time menu, then http://localhost:3000/yx/time/balances.",
+      "4. Sign out; as hr-tester, open Time › Leave balances and the Report picker."
+    ],
+    "expected": "Step 1: the liability report shows, not a leave card (the API refuses other reports and leave cards with 403). Step 2: no access (leave.view needed). Step 3: no \"Leave liability\" or \"Leave balances\" link; the page says he has no access. Step 4: HR still sees \"Leave balances\" with all six reports and \"Open leave card\" on each row.",
+    "stories": [
+      "TIM-30 Liability",
+      "TIM-30 Balances"
+    ],
+    "note": "Negative. Another company's entity, location or department in the filters is 404 (e2e: time-leave-decisions)."
+  },
+  {
+    "id": "MT-TL-10",
+    "area": "Time · Leave",
+    "screen": "Apply for someone (founder answer B)",
+    "url": "http://localhost:3000/yx/time/leave-home",
+    "account": "hr-tester@demo-org.test (HR Admin: leave.balance.adjust), then divya (Arjun's manager)",
+    "steps": [
+      "1. Time › Leave. Click \"Apply for someone\".",
+      "2. Type \"Arj\" in Employee and choose Arjun.",
+      "3. Open Leave type.",
+      "4. Choose Casual leave, From = next Wednesday, To empty, Reason \"Called in: family function\".",
+      "5. Read the Summary on the right.",
+      "6. Click Send request.",
+      "7. Sign in as Divya, open Approvals and the new request."
+    ],
+    "expected": "Step 1: the drawer \"Apply leave for someone\" opens with only the Employee field and \"Pick the employee to see their leave types and balances.\" Step 3: only Arjun's leave types, each with \"N days available\". Step 5: Days counted 1, Balance after (his available less 1), \"Their team\", and \"Goes to their manager for approval, marked \\\"Applied by HR\\\".\" When the type asks for notice and the date is sooner, a row \"Notice: Applied by HR: N days' notice not needed\". Step 6: the drawer closes; toast for 5 s \"Leave applied for Arjun … · sent for approval\". Step 7: the request shows \"Applied by: HR, on their behalf\" and waits for Divya.",
+    "stories": [
+      "TIM-17 HR · apply for someone",
+      "TIM-18 Earned leave · sandwich counted"
+    ],
+    "note": "Positive. The request appears as pending on Arjun's My leave."
+  },
+  {
+    "id": "MT-TL-11",
+    "area": "Time · Leave",
+    "screen": "Apply for someone: too early and refusals (founder answer B)",
+    "url": "http://localhost:3000/yx/time/leave-home",
+    "account": "hr-tester@demo-org.test",
+    "steps": [
+      "1. Click \"Apply for someone\", then Send request at once.",
+      "2. Click the line \"Choose the person.\" in the red box.",
+      "3. Choose Arjun and click Send request.",
+      "4. Choose the same date as in MT-TL-10 (Casual leave) and click Send request.",
+      "5. Choose Casual leave for two whole weeks and click Send request.",
+      "6. (If the company has a block date) choose a date inside it for Earned leave and click Send request."
+    ],
+    "expected": "Step 1: Send is not greyed out; the red box \"Check these before sending\" lists \"Choose the person.\" and takes focus. Step 2: the cursor moves to the Employee search. Step 3: \"Choose the first day.\" Step 4: \"Arjun … already has leave on <date>.\" and nothing is sent. Step 5: \"Not enough Casual leave: N available, M asked.\" Step 6: \"<date> is a company block date (<reason>). Earned leave can't be taken on it. Choose other dates or ask HR.\" The drawer stays open each time.",
+    "stories": [
+      "TIM-17 HR · apply for someone · refused"
+    ],
+    "note": "Negative. A locked month says \"<Month> is locked for attendance and leave. Ask HR to record it.\" (same rule as the employee form)."
+  },
+  {
+    "id": "MT-TL-12",
+    "area": "Time · Leave",
+    "screen": "Apply for someone: who may, and the approval setting (founder answer B)",
+    "url": "http://localhost:3000/yx/time/leave-home",
+    "account": "hr-tester@demo-org.test, payroll-tester@demo-org.test, arjun@demo-org.test",
+    "steps": [
+      "1. As hr-tester, Apply for someone and search your own name.",
+      "2. As payroll-tester and as arjun, open http://localhost:3000/yx/time/leave-home.",
+      "3. As hr-tester (or an admin), Settings › Company rules: set \"Leave HR applies for someone\" to \"approved\".",
+      "4. Apply for someone: Arjun, Casual leave, a free day; Send request.",
+      "5. Set \"Leave HR applies for someone\" back to \"chain\"."
+    ],
+    "expected": "Step 1: if you appear and are chosen, Send says \"Apply for your own leave in My leave.\" (403). Step 2: no access, no \"Apply for someone\" button. Step 4: the summary says \"Approved at once (company setting), marked \\\"Applied by HR\\\".\"; the toast says \"Leave approved for Arjun …\"; Arjun's balance drops at once and Divya gets no task. Step 5: the next one goes to Divya again.",
+    "stories": [
+      "TIM-17 HR",
+      "TIM-17 HR · apply for someone"
+    ],
+    "note": "Positive and negative. \"approved\" needs the HR person to hold leave.approve over the person too; otherwise it still goes to the manager (e2e). Another company's person is 404 (e2e)."
   }
 ]

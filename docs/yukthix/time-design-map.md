@@ -13,12 +13,12 @@ live page cannot reach yet (the reason is given).
 | | live | feature not built | phone view | gap |
 |---|---|---|---|---|
 | Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 81 | 6 | 19 | 6 |
-| Leave (TIM-17…25) | 41 | 0 | 11 | 3 |
+| Leave (TIM-17…25) | 43 | 0 | 11 | 3 |
 | Set-up (TIM-26…29, 31, 42) | 22 | 12 | 0 | 1 |
 | Rosters and shifts (TIM-05, 06, 08, 34, 35, 38…41) | 43 | 2 | 10 | 1 |
 | Overtime, periods, reports, timesheets (TIM-09, 11, 15, 16, 30, 37, 43) | 49 | 0 | 3 | 0 |
 | Field force (TIM-32, 33) | 7 | 0 | 9 | 0 |
-| **All 45 design groups (326 sub-pages counted)** | **243** | **20** | **52** | **11** |
+| **All 45 design groups (328 sub-pages counted)** | **245** | **20** | **52** | **11** |
 
 Counted from the stories and the rows below by script (29 Oct 2026, after rosters/devices/field, the roster fixes and founder decisions 1-7 were merged into the test app). Section counts further down may be older; this table is the current one.
 
@@ -44,6 +44,35 @@ Status (branch `feat/yukthix-time-decisions-att`): 5 done (key `attendance.lock.
 "Open the month again" for a frozen month; TIM-37 "Past events" list). Rows below say where each story shows.
 
 8. **Menu: "Registers"** (legal forms for inspectors) **and "Attendance reports"** (numbers for managers). No change needed.
+
+### Founder answers A and B, 29 Oct 2026 (both "yes"; builder "timeleave", branch `feat/yukthix-time-leave-onbehalf`)
+
+**A. Payroll reads the leave liability report, least privilege.** New key `leave.liability.view` ("View leave liability"),
+migration `20261306000000_leave_liability_view` (adds the key; roles that follow the Payroll Admin template get it at
+start-up, the demo seeds carry it; role template history regenerated). With it and without `leave.view`: `GET
+hr/leave-report?report=liability` and its export only (every other report 403 "You can open the leave liability report
+only."; the leave home and leave cards 403); scope (entity/location grants) as for `leave.view`; money only where the
+person holds `employee.salary.view` (Payroll Admin does). A filter naming another company's entity, location or
+department is 404 (every report). Web: menu link **"Leave liability"** (people with `leave.view` keep "Leave balances");
+the page opens on the liability report with a one-report picker and no "Open leave card".
+
+**B. "Apply for someone" is live** on /yx/time/leave-home (TIM-17 HR, the design's button) for people with
+`leave.balance.adjust`; the drawer is the employee's TIM-18 live drawer with an Employee field first (one component).
+
+| rule | source | setting · default |
+|---|---|---|
+| HR applies only for people in their `leave.balance.adjust` scope; never their own record (403 "Apply for your own leave in My leave."); never while acting for someone else (403); another company's person 404 | product (P02) | — |
+| Only that person's leave types (their policy) are offered, with their balances; the summary is the server's own rules for that person | product | — |
+| The notice a type asks for is skipped when HR applies, and the approver sees "Applied by HR: N days' notice not needed" (audited `noticeSkipped`) | company | `leave.notice.on_behalf` · skip |
+| **Decision: the request goes through the person's normal approval chain** (manager, then HR above the type's limit) with "Applied by: HR, on their behalf". A company may approve it at once instead, and only when the HR person also holds `leave.approve` over them (else it still goes to the chain); audited `approvedAtOnce` | company | `leave.on_behalf.approval` · chain |
+| Every other rule is the employee's: balance, block dates, overlap, locked month, probation, notice period, certificate; refusals name the person ("Arjun Kumar already has leave on 3 Nov.") | product | — |
+
+**API:** `GET /time/hr/leave/:employeeId` (the person, their types and balances, the approval route), `POST
+/time/hr/leave/:employeeId/preview`, `POST /time/hr/leave/:employeeId`; all `leave.balance.adjust` in scope.
+**States:** no person yet, their leave did not load, summary waiting for dates, refused (red box / "Not sent"), sent
+(toast). **Spacing (script, 1278 x 635):** form blocks 16 px apart, one left edge (578) and one right edge (914), the
+summary column on its own edge; drawer full height, no page scroll. Attachment: none in the design (a certificate
+tick, as for the employee). **Tests:** e2e time-leave-decisions 29 (A 4, B 6 new); UI apply-for-live 6, liability-only 1.
 
 ### Feature sheet: decisions 1, 2 and 3, leave side (builder "timeleave", 29 Oct 2026, BUILD-STANDARD §1)
 
@@ -377,7 +406,9 @@ dev-fake answers until a provider is chosen).
 |---|---|
 | Employee | /yx/time/leave: balance cards, My requests, Upcoming holidays, Optional holidays, plus My leave card, Claim comp-off, Encash leave, the long-absence card and "Waiting for approval" (claims, encashment) |
 | Manager | gap: no manager leave home. Managers use /yx/time/team (TIM-20) and answer requests in /yx/approvals |
-| HR | /yx/time/leave-home: pending leave with managers (approvers, age, Remind approver once a day), away this week, Needs HR (negative balances, certificates, long absences, year-end); Record long absence button |
+| HR | /yx/time/leave-home: pending leave with managers (approvers, age, Remind approver once a day), away this week, Needs HR (negative balances, certificates, long absences, year-end); Record long absence and Apply for someone buttons (leave.balance.adjust). Adjust balance lives on /yx/time/balances → Open leave card |
+| HR · apply for someone (new, founder answer B) | /yx/time/leave-home → Apply for someone: the TIM-18 drawer (the employee's own live drawer, `forSomeone`): Employee search, then only that person's leave types and balances, dates and halves, reason, certificate tick when needed (no delegate); Summary from the server (days, balance after, "Notice: Applied by HR: N days' notice not needed", their team, "Goes to their manager … marked \"Applied by HR\"" or "Approved at once (company setting)"); toast "Leave applied for X · sent for approval" |
+| HR · apply for someone · refused (new) | same drawer when the rules refuse (block date, overlap "X already has leave on …", balance, locked month, notice when the company applies it): the red box on Send, or "Not sent" with the API's message; nothing is sent |
 | HR · record long absence | /yx/time/leave-home → Record long absence: person (HR scope search), Sabbatical / Long leave without pay, first and last day, reason; "What this does" (days, unpaid, leave credits by the company setting, back at work); toast "Long absence recorded" |
 | HR · record long absence · leave in the way | same, when the check finds leave waiting or approved, another absence, notice, a joining day or a locked month: the red box says why and Record does nothing |
 | Employee · no requests yet | /yx/time/leave for a new joiner |
@@ -473,7 +504,7 @@ dev-fake answers until a provider is chosen).
 
 ### Counts
 
-55 sub-pages: 41 live, 0 not built, 11 phone, 3 gaps (TIM-17 Manager, TIM-19 Manager ×2).
+57 sub-pages: 43 live, 0 not built, 11 phone, 3 gaps (TIM-17 Manager, TIM-19 Manager ×2).
 
 ### Questions (defaults chosen, marked)
 
@@ -853,7 +884,7 @@ Also not live from this design: "Copy last week" (the API returns only last week
 | Balances (`Balances`) | /yx/time/balances: everyone in leave.view scope × leave types, filters (entity, location, department, name), 50 a page with Previous / Next, Export CSV (every row, up to 10,000), Open leave card per row |
 | Leave taken (`Taken`) | /yx/time/balances → Report: Leave taken (this leave year) |
 | Unpaid leave (LOP) to payroll (`Lop`) | /yx/time/balances → Report: Unpaid leave (LOP), by month: unpaid leave days and absent days with no leave |
-| Payroll · liability (`Liability`) | /yx/time/balances → Report: Leave liability, for someone with leave.view who may see pay: KPIs (unused days, liability of the people on the page, the daily-pay rule), days per type, Daily pay, Liability, "No pay set"; Export CSV with the money. Partial gap: the "by month" chart and "Change vs last month" need monthly snapshots (not built) |
+| Payroll · liability (`Liability`) | /yx/time/balances → Report: Leave liability, for someone with leave.view, or with leave.liability.view alone (Payroll: menu link "Leave liability", the picker lists this report only, no leave cards; founder answer A), who may see pay: KPIs (unused days, liability of the people on the page, the daily-pay rule), days per type, Daily pay, Liability, "No pay set"; Export CSV with the money. Partial gap: the "by month" chart and "Change vs last month" need monthly snapshots (not built) |
 | Liability · days only (`LiabilityDays`) | same report for someone without pay access: the days only and "The money shows only to people who may see pay"; the API sends no money fields |
 | Negative balances (`Negative`) | /yx/time/balances → Report: Negative balances |
 | Ledger (`Ledger`) | /yx/time/balances → Report: Ledger, by month |
