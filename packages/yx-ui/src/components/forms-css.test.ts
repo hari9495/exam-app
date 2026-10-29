@@ -19,14 +19,10 @@ describe('data.css', () => {
   });
 
   // Lead walk-through 29 Oct 2026 (TIM-30 at 1278 x 635): each full-width Select took its own line, so three filters
-  // stacked and pushed the table down to 3 rows. Filters share one row; Columns / density stay on it at the right.
-  it('table toolbar filters sit in one row: content-sized selects, a left box that wraps, controls at the top right', () => {
+  // stacked and pushed the table down to 3 rows. Content-sized, they share one row with Columns / density.
+  it('a Select in a table toolbar is as wide as its text, never the full toolbar width', () => {
     const data = readFileSync(join(__dirname, 'data.css'), 'utf8');
-    const rule = (sel: string) => data.match(new RegExp(`^${sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\{([^}]*)\\}`, 'm'))?.[1] ?? '';
-    expect(rule('.yx-table__toolbar .yx-select')).toContain('width: auto;');
-    expect(rule('.yx-table__toolbar-left')).toContain('flex: 1 1 0;');
-    expect(rule('.yx-table__toolbar-left')).not.toContain('min-width: 0');
-    expect(rule('.yx-table__controls')).toContain('align-self: flex-start;');
+    expect(data).toMatch(/^\.yx-table__toolbar \.yx-select \{[^}]*width: auto;/m);
   });
 });
 

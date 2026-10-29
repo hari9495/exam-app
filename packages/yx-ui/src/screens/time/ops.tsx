@@ -1773,6 +1773,8 @@ function LiveLeaveReports({ live }: { live: LiveLeaveReports }) {
         actions={
           <div className="yx-tim-row">
             <div className="yx-tim-picker"><Select aria-label="Report" value={q.report} onChange={(v) => v && set({ report: v as LeaveReportKind })} options={REPORT_OPTIONS.filter((o) => !live.reports || live.reports.includes(o.value))} /></div>
+            {/* The month is the report's period, so it sits by Report: in the toolbar it pushed Columns to a second row at 1278 px. */}
+            {(q.report === 'ledger' || q.report === 'lop') && <div className="yx-tim-picker"><Select aria-label="Month" value={q.month ?? months[0]!.value} onChange={(v) => v && set({ month: v })} options={months} /></div>}
             {live.state === 'ready' && <Button icon={Download} loading={busy === 'export'} onClick={() => void run('export', () => live.onExport(q))}>Export CSV</Button>}
           </div>
         }
@@ -1808,7 +1810,6 @@ function LiveLeaveReports({ live }: { live: LiveLeaveReports }) {
               <Select aria-label="Legal entity" value={q.entityId ?? ''} onChange={(v) => set({ entityId: v || undefined })} options={[...all('All entities'), ...(d?.filters.entities ?? []).map((x) => ({ value: x.id, label: x.name }))]} />
               <Select aria-label="Location" value={q.locationId ?? ''} onChange={(v) => set({ locationId: v || undefined })} options={[...all('All locations'), ...(d?.filters.locations ?? []).map((x) => ({ value: x.id, label: x.name }))]} />
               <Select aria-label="Department" value={q.departmentId ?? ''} onChange={(v) => set({ departmentId: v || undefined })} options={[...all('All departments'), ...(d?.filters.departments ?? []).map((x) => ({ value: x.id, label: x.name }))]} />
-              {(q.report === 'ledger' || q.report === 'lop') && <Select aria-label="Month" value={q.month ?? months[0]!.value} onChange={(v) => v && set({ month: v })} options={months} />}
             </div>
           }
           rowButtons={q.report === 'ledger' || !live.onOpenCard ? undefined : (x) => <Button size="sm" onClick={() => live.onOpenCard!(x.employeeId)}>Open leave card</Button>}
