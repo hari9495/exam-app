@@ -57,8 +57,10 @@ export function stepIndex(step: FilingStep, mode: 'self' | 'partner'): number {
   if (mode === 'partner') return { due: 0, generated: 1, transmitted: 2, 'filed-by-partner': 4, acknowledged: 3, filed: 4, uploaded: 2, rejected: 2 }[step];
   return { due: 0, generated: 1, uploaded: 3, acknowledged: 4, filed: 5, transmitted: 2, 'filed-by-partner': 5, rejected: 2 }[step];
 }
-function statusFor(item: { due: Date; step: FilingStep }, today: Date): { tone: BadgeTone; text: string } {
+function statusFor(item: { due: Date; step: FilingStep; amount?: number }, today: Date): { tone: BadgeTone; text: string } {
   if (item.step === 'filed' || item.step === 'filed-by-partner') return { tone: 'success', text: 'Filed' };
+  // Nothing to pay this month is never overdue.
+  if (item.step === 'due' && item.amount === 0) return { tone: 'neutral', text: 'Nothing due' };
   if (item.step === 'rejected') return { tone: 'danger', text: 'Rejected by partner' };
   const left = daysBetween(today, item.due);
   if (left < 0) return { tone: 'danger', text: `Overdue by ${-left} days` };
@@ -95,7 +97,7 @@ export function StatuteCard({ item, today, onOpenChild, onAction, actions }: { i
         )}
         {item.excluded && <p className="yx-ops-muted">{item.excluded}</p>}
         {item.problems && <InlineAlert tone="warning">{item.problems}. Fix before generating.</InlineAlert>}
-        {item.estimatedPenalty && <p className="yx-ops-muted">Estimate from {item.penaltyRule}. Final amount depends on the payment date.</p>}
+        {!!item.estimatedPenalty && <p className="yx-ops-muted">Estimate from {item.penaltyRule}. Final amount depends on the payment date.</p>}
         <StatusTrail steps={steps.map((label) => ({ label }))} current={stepIndex(item.step, item.mode)} label={`${item.title} progress`} />
         {item.reference && (
           <p className="yx-ops-muted">

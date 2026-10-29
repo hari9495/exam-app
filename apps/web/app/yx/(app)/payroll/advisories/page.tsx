@@ -26,13 +26,14 @@ export default function YxPayAdvisoriesPage() {
       advisories={[]}
       tab="updates"
       live={{
-        state: payState(entities),
+        // A refusal of the updates themselves is "no access", not "No updates".
+        state: entityId ? payState(entities, advisories) : payState(entities),
         onRetry: () => void entities.refetch(),
         entities: entities.data ?? [],
         entityId,
         onEntity: setEntityId,
         rules: rules.data ?? null,
-        advisories: advisories.data ?? (advisories.isError ? [] : null),
+        advisories: advisories.data ?? null,
         can: { rules: seeRules, updates: true },
         onReview: (a, note) => write(`/statutory/advisories/${encodeURIComponent(a.code)}/review`, { entityId, note }),
         today: todayIndia(),

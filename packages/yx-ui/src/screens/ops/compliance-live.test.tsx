@@ -44,6 +44,15 @@ const hub = (o: Partial<LiveStatutoryHub> = {}): LiveStatutoryHub => ({
 const showHub = (o?: Partial<LiveStatutoryHub>) => render(<StatutoryHubScreen items={[]} today={new Date()} live={hub(o)} />);
 
 describe('CMP-01 statutory hub (live)', () => {
+  it('a statute with nothing to pay is never overdue, and no stray 0 penalty shows', () => {
+    const zero = { ...HUB.cards[0], amount: '0.00', status: 'not_generated', dueOn: '2026-01-15', late: true, penaltyEstimate: '0.00' } as (typeof HUB.cards)[number];
+    showHub({ hub: { ...HUB, today: '2026-10-29', cards: [zero] }, filings: [] });
+    const card = screen.getByRole('article', { name: new RegExp(zero.label) });
+    expect(within(card).getAllByText('Nothing due').length).toBeGreaterThan(0);
+    expect(within(card).queryByText(/Overdue/)).toBeNull();
+    expect(within(card).queryByText(/^0$/)).toBeNull();
+  });
+
   it('helpers: tax year of a month, month choices keep an old month, a hub card becomes a statute card', () => {
     expect(taxYearOf('2026-09')).toBe('2026-27');
     expect(taxYearOf('2027-02')).toBe('2026-27');

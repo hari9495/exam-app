@@ -110,8 +110,8 @@ export function hubItem(c: HubCard, f: FilingRow | null, month: string, entity: 
     mode: 'self',
     step: STEP[c.status] ?? 'due',
     reference: f?.reference ? `Portal reference ${f.reference}` : undefined,
-    estimatedPenalty: c.late && c.penaltyEstimate ? Number(c.penaltyEstimate) : undefined,
-    penaltyRule: c.late && c.penaltyEstimate ? 'the published interest rule' : undefined,
+    estimatedPenalty: c.late && Number(c.penaltyEstimate) > 0 ? Number(c.penaltyEstimate) : undefined,
+    penaltyRule: c.late && Number(c.penaltyEstimate) > 0 ? 'the published interest rule' : undefined,
   };
 }
 
@@ -143,9 +143,9 @@ export function LiveStatutoryHubScreen({ live: p }: { live: LiveStatutoryHub }) 
         }
       : null;
   const all = [...items.map((x) => x.item), ...(tdsItem ? [tdsItem] : [])];
-  const overdue = all.filter((i) => !i.step.startsWith('filed') && i.due < today);
+  const overdue = all.filter((i) => !i.step.startsWith('filed') && i.due < today && !(i.step === 'due' && i.amount === 0));
   const dueMonth = new Date(Number(p.month.slice(0, 4)), Number(p.month.slice(5, 7)), 1);
-  const due: DueItem[] = all.filter((i) => i.due.getMonth() === dueMonth.getMonth() && i.due.getFullYear() === dueMonth.getFullYear()).map((i) => ({ date: i.due, label: i.title, tone: i.step.startsWith('filed') ? 'success' : i.due < today ? 'danger' : 'warning' }));
+  const due: DueItem[] = all.filter((i) => i.due.getMonth() === dueMonth.getMonth() && i.due.getFullYear() === dueMonth.getFullYear()).map((i) => ({ date: i.due, label: i.title, tone: i.step.startsWith('filed') || (i.step === 'due' && i.amount === 0) ? 'success' : i.due < today ? 'danger' : 'warning' }));
   const phrase = (f: FilingRow) => `FILED ${f.statute.slice(3)} ${p.month}`;
   const go = (key: string, fn: () => Promise<unknown>, done: string) => void run(key, async () => (await fn(), toast({ tone: 'success', title: done })));
 
