@@ -57,6 +57,23 @@ screen, so the guard counts them as "designed and live". They need the same wiri
 Also: `@yukthix/ui/pay` (`live/index.ts`) exports only live screens today. No designed Pay screen is exported to the app
 yet; each builder adds its design exports there.
 
+## Founder decisions, 29 Oct 2026 ("all OK": every suggestion in section 6 accepted)
+
+1. Payroll home: PAY-01 shows on `/yx/payroll/runs`, run list under it; menu "Runs" becomes "Payroll home".
+2. F&F: the People settlement calculator (PPL-22) works out the amount; PAY-11 F&F stories are the off-cycle run that pays it.
+3. The 12 live screens with no design get a design story first (new PAY groups), then go live. Order: periods,
+   consultants, audit, documents, go-live (inside PAY-16), payment modes (inside PAY-10), special pay home, equity,
+   country packs.
+4. Special pay home: new group "PAY-50 · Special pay home" (lay-off days, VRS, postings), linking PAY-31…37.
+5. Compliance pages (CMP-01…08 in ops/compliance.tsx): their own map and builder after these three.
+6. Form 12B: employee enters previous-employer income in the tax workspace; payroll checks it in PAY-23.
+7. Court orders: a tab on `/yx/payroll/arrears` ("Arrears and recoveries").
+8. Loans: company settings with defaults, at most 2 months' gross and only after probation; HR can change both.
+9. Features not built: bonus (PAY-24) first, then reports (PAY-25); group health, EWA partner, payslip chat wait.
+10. Phone views wait for the mobile app.
+11. Guard fixed first (commit ed0708c8): it follows the web's imports, so same-name copies now count.
+12. Me › Pay documents: its story is accepted as the design, moved into `employee-pay.tsx` with `MyPayFrame`.
+
 ## 1. Live pages
 
 One row per live Pay page. "Keep" is what the live copy does that the design does not show yet: states, actions,
