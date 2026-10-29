@@ -118,6 +118,8 @@ the page; export up to 10,000 rows).
 `locations`), `GET hr/leave-report?report=liability` and its export. Migration `20261305100000_leave_block_types`
 (adds `leave_block_dates.leave_type_ids`, empty = planned leave only). No external provider.
 
+Later on 29 Oct ("both OK", then "OK"): the Ledger and LOP month picker stays in the page header beside the report picker; "Adjust balance" is live on the HR leave home (design TIM-17 HR). It loads only the chosen person's balances (`GET people/:id/balances`). HR can pick themselves, and the server refuses that, as Apply for someone does.
+
 ## A. Attendance
 
 ### 1. Live pages
