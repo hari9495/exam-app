@@ -42,7 +42,15 @@ for (const f of files(join(UI, 'src'), (p) => p.endsWith('.tsx') && !/\.(stories
     if (name && /^[A-Z]/.test(name)) RENDERS.set(name, new Set([...(RENDERS.get(name) ?? []), ...rendered(n as ts.SourceFile)]));
   });
 /** Designed: rendered by a story, or inside something a story renders (a primitive inside a designed screen). */
-const IN_STORIES = new Set(STORIES.flatMap((f) => [...rendered(parse(f))]));
+/** A story file's meta `component: X` is rendered by Storybook for every args-only story (the PAY stories). */
+const metaComponent = (src: ts.SourceFile) => {
+  const out: string[] = [];
+  walk(src, (n) => {
+    if (ts.isPropertyAssignment(n) && ts.isIdentifier(n.name) && n.name.text === 'component' && ts.isIdentifier(n.initializer)) out.push(n.initializer.text);
+  });
+  return out;
+};
+const IN_STORIES = new Set(STORIES.flatMap((f) => [...rendered(parse(f)), ...metaComponent(parse(f))]));
 for (const todo = [...IN_STORIES]; todo.length; )
   for (const c of RENDERS.get(todo.pop()!) ?? [])
     if (!IN_STORIES.has(c)) {
