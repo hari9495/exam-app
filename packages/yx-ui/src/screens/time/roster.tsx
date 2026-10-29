@@ -472,6 +472,8 @@ export interface LiveRoster {
   onPublish: (week: string, reason?: string) => Promise<unknown>;
   /** The Open shifts tab (TIM-35), when the page loads it. */
   openShifts?: LiveOpenShifts;
+  /** Where the header's "Auto-roster" goes (TIM-34), for people who plan. */
+  autoRosterHref?: string;
 }
 
 /** TIM-05 Staff (founder decision 29 Oct 2026): the employee's read-only week, with their team's when the company allows it. */
@@ -606,8 +608,9 @@ function LiveRosterScreen({ live: p }: { live: LiveRoster }) {
   return (
     <TimePage active="Roster">
       <PageHeader
-        title="Roster"
-        description={`${d ? `${SCOPE_TEXT[d.scope]} · ` : ''}Week of ${formatDate(start)} · minimum rest ${rules.minRestHours} h${limits ? ` · max ${limits.maxDailyHours} h a day, ${limits.maxWeeklyHours} h a week` : ''} · changes are drafts until you publish them`}
+        // The design's "Roster · <place>": the API gives the reach, not one place, so the reach names it ("Everyone", "Your team").
+        title={d ? `Roster · ${SCOPE_TEXT[d.scope]}` : 'Roster'}
+        description={`Week of ${formatDate(start)} · minimum rest ${rules.minRestHours} h${limits ? ` · max ${limits.maxDailyHours} h a day, ${limits.maxWeeklyHours} h a week` : ''} · changes are drafts until you publish them`}
         status={ready && d ? d.drafts > 0 ? <Badge tone="warning">{`Draft · ${d.drafts} ${d.drafts === 1 ? 'change' : 'changes'} not visible to staff`}</Badge> : <Badge tone="success">Published</Badge> : undefined}
         actions={
           <div className="yx-tim-row">
@@ -615,6 +618,7 @@ function LiveRosterScreen({ live: p }: { live: LiveRoster }) {
             <IconButton icon={ChevronRight} label="Next week" size="sm" onClick={() => p.onWeek(isoPlus(p.week, 7))} />
             {ready && <Button icon={Copy} onClick={() => setDlg('copy')}>Copy last week</Button>}
             {ready && <Button onClick={why(!people.length && 'No one to plan this week', () => setDlg('swap'))}>Swap shifts</Button>}
+            {ready && p.autoRosterHref && <Button asChild><a href={p.autoRosterHref}>Auto-roster</a></Button>}
           </div>
         }
       />

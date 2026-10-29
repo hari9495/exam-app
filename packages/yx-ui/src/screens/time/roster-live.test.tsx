@@ -1,5 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { RosterScreen, type LiveRoster } from './roster';
 import { ShiftEditorScreen } from './roster';
@@ -52,7 +54,7 @@ describe('TIM-05 Roster, live (YX-AT-07)', () => {
   it('shows the planned week and the server’s checks; publish calls the API', async () => {
     const live = roster();
     render(<RosterScreen live={live} />);
-    expect(screen.getByRole('heading', { name: 'Roster' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Roster · Your team' })).toBeInTheDocument();
     expect(screen.getByText('Murugan Selvam')).toBeInTheDocument();
     expect(screen.getByRole('list', { name: 'Roster checks' })).toHaveTextContent('No night-work consent on file');
     expect(screen.getByText(/Draft · 1 change not visible to staff/)).toBeInTheDocument();
@@ -60,6 +62,39 @@ describe('TIM-05 Roster, live (YX-AT-07)', () => {
     const confirm = screen.getAllByRole('button', { name: 'Publish roster' });
     await ue.click(confirm[confirm.length - 1]);
     await waitFor(() => expect(live.onPublish).toHaveBeenCalledWith('2026-10-12'));
+  });
+
+  it('names the reach in the title like the design ("Roster · <place>") and offers Auto-roster to planners', () => {
+    const { unmount } = render(<RosterScreen live={roster({ data: { ...ROSTER, scope: 'company' }, autoRosterHref: '/yx/time/auto-roster' })} />);
+    expect(screen.getByRole('heading', { level: 1, name: 'Roster · Everyone' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Auto-roster' })).toHaveAttribute('href', '/yx/time/auto-roster');
+    unmount();
+    render(<RosterScreen live={roster({ data: { ...ROSTER, scope: 'granted' } })} />);
+    expect(screen.getByRole('heading', { level: 1, name: 'Roster · The people you plan' })).toBeInTheDocument();
+    // Negative: no link given, no button.
+    expect(screen.queryByRole('link', { name: 'Auto-roster' })).not.toBeInTheDocument();
+  });
+
+  it('renders Person, all 7 days and Hours inside the grid frame (no clipped Sunday)', () => {
+    const { container } = render(<RosterScreen live={roster()} />);
+    const frame = container.querySelector('.yx-roster__scroll')!;
+    const heads = within(frame as HTMLElement).getAllByRole('columnheader').map((h) => h.textContent);
+    expect(heads).toHaveLength(9);
+    expect(heads[0]).toBe('Person');
+    expect(heads.slice(1, 8).map((h) => h!.slice(0, 3))).toEqual(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
+    expect(heads[8]).toBe('Hours');
+  });
+
+  it('keeps the grid CSS that makes 7 days + Hours fit at 1278 x 635 (measured: 100 px days, like the design)', () => {
+    const css = readFileSync(resolve(__dirname, '../../components/roster.css'), 'utf8');
+    const rule = (sel: string) => css.split(`\n${sel} {`)[1]?.split('}')[0] ?? '';
+    // max-content made long warnings ("On leave · full day") widen every day until Sunday went under Hours.
+    expect(rule('.yx-roster__grid')).toContain('min-width: min-content');
+    expect(css).toMatch(/\.yx-roster__warn \{[^}]*white-space: normal;[^}]*\}/);
+    expect(css).toMatch(/\.yx-roster__cell \{[^}]*min-width: 0;[^}]*\}/);
+    // Not enough room: the frame scrolls sideways, Person stays.
+    expect(rule('.yx-roster__scroll')).toContain('overflow-x: auto');
+    expect(css).toMatch(/\.yx-roster__person \{[^}]*position: sticky;[^}]*left: 0;/);
   });
 
   it('moves a week back and forward', async () => {

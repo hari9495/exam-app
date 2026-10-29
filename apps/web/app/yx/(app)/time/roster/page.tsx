@@ -27,6 +27,7 @@ export default function YxRosterPage() {
         onCells: (cells) => write('/roster/cells', 'PUT', { cells }),
         onCopy: (fromWeek, toWeek) => write('/roster/copy', 'POST', { fromWeek, toWeek }, true, 'Last week copied as a draft'),
         onPublish: (w, reason) => write('/roster/publish', 'POST', { week: w, ...(reason ? { reason } : {}) }, true, 'Roster published'),
+        autoRosterHref: '/yx/time/auto-roster',
         openShifts: planner
           ? {
               state: timeState(open),
