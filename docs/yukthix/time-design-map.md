@@ -581,26 +581,27 @@ day), over the limit (rules 1–4), already done (claimed, awarded, revoked), so
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Draft (Manager · draft with conflicts) | /yx/time/roster, a week with unpublished changes: "Draft · N changes not visible to staff" badge, conflicts in the grid, server checks in "Law and rule checks" |
+| Draft (Manager · draft with conflicts) | /yx/time/roster, a week with unpublished changes: "Draft · N changes not visible to staff" badge, conflicts in the grid, server checks in "Law and rule checks" (rest, overlap, hours a day / week, spread-over, weekly off, licence, night work, leave, holiday); publishing is refused with the first rule break a draft adds (REST_GUARD, HOURS_GUARD, WEEKLY_OFF_GUARD, LICENCE_GUARD, NIGHT_GUARD) |
 | Published | /yx/time/roster, a week with no drafts: "Published" badge |
 | CopyWeek (Copy last week) | /yx/time/roster → Copy last week → confirm dialog (refusal shows in the dialog) |
 | Swap (Swap shifts) | /yx/time/roster → Swap shifts → dialog with cover, rest, leave and night-consent checks (no role check: the API sends no roles) |
 | Hr | /yx/time/roster as HR with roster.manage ("The people you plan" / "Everyone") |
-| Staff (Employee · read-only) | gap: the API gives an employee only their own shifts, so the employee page is /yx/time/shifts (TIM-08 My shifts list), not the team grid |
+| Staff (Employee · read-only) | /yx/time/roster for anyone who plans no one (nav "Team roster"): their published week read-only, "You" first; with `roster.staff_see_team` on (off by default, founder decision 29 Oct 2026) their team's (same manager) rows too, a colleague's leave only as "Away"; off: own row and a note. GET /time/roster/team |
+| Notice (Publish · changes inside the notice) | /yx/time/roster → Publish roster when a change starts inside `roster.change_notice_hours` → "Some changes start too soon" dialog: Reason required (field error + focus when pressed too early), published with the reason (kept on the day, in the audit, the people told). New design story 29 Oct 2026 |
 | Empty (Empty week) | /yx/time/roster with no one to plan → "No one to plan" empty state (a week with people but no plan shows the grid on pattern defaults) |
 | Loading | /yx/time/roster while loading |
 | Failed (Error) | /yx/time/roster when the load fails → Retry |
 | Phone (Phone · my shifts) | phone view, mobile app not built |
 
-Inside RosterScreen the Open shifts and Bids tabs and the Auto-roster button: feature not built (hidden in live).
+Inside RosterScreen: the Open shifts tab is live (the TIM-35 panel); the Bids tab (pattern bid windows) is not built (hidden in live); Auto-roster is its own page /yx/time/auto-roster.
 
 ### TIM-06 · Shift editor and patterns
 
 | story (sub-page) | where it shows live |
 |---|---|
 | Fixed (Fixed shift · preview) | /yx/time/shifts-setup → Shift tab: shift list, editor form, preview |
-| Flexi (Flexi with core hours) | feature not built (shifts have no type or core hours in the API) |
-| Split (Split shift) | feature not built (no split shifts in the API) |
+| Flexi (Flexi with core hours) | feature not built: shifts have no type or core hours, and the day engine (the attendance builder's) judges fixed times only; needs a shift type + core hours in shift versions and the day engine to count core hours (Question for the lead: which builder) |
+| Split (Split shift) | feature not built: a shift version has one start and end; a split needs a second part in shift versions, the day engine, rest and roster checks |
 | Night (Night shift · law notice) | /yx/time/shifts-setup → a shift ending next morning, or Night allowance on → law notice, "(next day)" |
 | Patterns (Patterns · N-day cycle) | /yx/time/shifts-setup → Patterns tab: new pattern (weekly or N-day cycle), saved pattern with "Who follows it" and apply form, 14-day preview |
 | SaveError (Save error) | /yx/time/shifts-setup → Save shift with half day ≥ full day (or other missing fields) → error summary + field error |
@@ -613,14 +614,14 @@ Extra live tabs with no design (Question below): Overtime (rules list + add draw
 | story (sub-page) | where it shows live |
 |---|---|
 | Request (Swap request) | /yx/time/shifts → Ask to swap on a day → "Shift change or swap" sheet (field errors on Send) |
-| RestBlocked (Blocked · rest rule) | gap: the API does not check rest when a swap is asked (only night work and same shift) |
+| RestBlocked (Blocked · rest rule) | /yx/time/shifts → Send a swap that would leave less than `attendance.min_rest_hours` rest (or break hours, weekly off or licence) for either person → the server's REST_GUARD refusal shows in the sheet ("Not sent"); checked again when the manager approves |
 | NightBlocked (Blocked · no night-work consent) | /yx/time/shifts → Send → the server's night-work refusal shows in the sheet ("Not sent") |
 | Consent (Colleague consent card) | the colleague sees "X asks to swap" on /yx/time/shifts; they agree or decline in Approvals (P03 step "Colleague agrees") |
 | Accepted (Consent given) | Approvals (P03) after agreeing; /yx/time/shifts keeps "Swap pending" until the manager decides |
 | Phone (Phone · request) | phone view, mobile app not built |
 | PhoneConsent (Phone · consent card) | phone view, mobile app not built |
 
-"Change my shift" (the second Request option): gap, the API has swaps only; live shows the swap form only.
+"Change my shift" (the second Request option): gap, the API has swaps only; live shows the swap form only (Question: build "ask my manager for another shift"?).
 
 ### TIM-34 · Auto-roster
 
@@ -689,15 +690,18 @@ Standby allowance per slot and call-out pay rates are payroll's (PAY on-call rul
 
 ### Counts
 
-53 sub-pages: live 19 · feature not built 21 · phone view 10 · gaps 3 (TIM-05 Staff, TIM-08 RestBlocked, TIM-39 Suspend).
-Live 19 = TIM-05 8, TIM-06 5, TIM-08 4 (Consent and Accepted through Approvals), TIM-39 2. Also a gap inside TIM-08 Request: "Change my shift".
+56 sub-pages (3 new stories: TIM-05 Notice, TIM-38 SetStandby, TIM-40 Record): live 40 · feature not built 5 · phone view 10 · gaps 1.
+Live 40 = TIM-05 10, TIM-06 5, TIM-08 5, TIM-34 5, TIM-35 3, TIM-38 4, TIM-40 4, TIM-41 4. Not built 5 = TIM-06 Flexi and Split, TIM-39 ×3
+(not in this scope). Gap 1 = TIM-40 Blocked (shown on the roster instead). Also gaps inside live stories, listed in the rows (TIM-08 "Change my shift",
+TIM-34 OT forecast / CSV import / AI summary, TIM-35 bid windows, TIM-40 Skill).
 
 ### Questions
 
 - Question: Overtime rules, Timesheet projects and Night-work records have no design. They stay as extra tabs of the live TIM-06 screen, built from the same Card / Drawer / table parts. They need designs.
-- Question: should an employee see the whole team's published roster (TIM-05 Staff)? The API gives only their own shifts today, so /yx/time/shifts shows TIM-08's list.
+- Decided 29 Oct 2026 (founder): employees see their team's published roster only when HR turns on `roster.staff_see_team` (off by default).
 - Question: a saved pattern can't be edited (the API has create, apply and remove only). Live shows its days read-only and says "add a new one for a new rhythm".
-- Question: "Change my shift" (ask the manager for another shift, no colleague) and a rest check on swap requests are not in the API.
+- Question: "Change my shift" (ask the manager for another shift, no colleague) is not in the API. The rest check on swaps is built (REST_GUARD).
+- Question: a location's usual shift has no shift id, so a swap of a "usual shift" day is written as a weekly off when approved (older behaviour, unchanged); the rule checks judge it as the person's own usual shift. Fix by giving the location's shift an id?
 
 ## E. Overtime, periods, reports, timesheets, Kit
 
@@ -754,7 +758,7 @@ Builder E, 29 Oct 2026.
 | Phone · sent back, resubmit (`PhoneSentBack`) | Phone view, mobile app not built. |
 | Phone · day list, submit week (`Phone`) | Phone view, mobile app not built. |
 
-Also not live from this design: "Copy last week" (the API returns only last weeks' totals, not their lines) and "Pre-fill from my tools" (TIM-43, not built).
+Also not live from this design: "Copy last week" (the API returns only last weeks' totals, not their lines). "Pre-fill from my tools" is live since 29 Oct 2026 (TIM-43 drawer, work-tool providers: to decide).
 
 #### TIM-16 · Attendance reports
 
@@ -839,7 +843,7 @@ Question: there is no list of past events in the design; the API has GET /time/i
 - Gaps: 0. Partial gaps noted in the rows: sent-back reason, locked-week correction, register rows on the page, night-register pick-up and drop.
 - Kit: 24 shared parts (listed above), not counted as pages.
 
-## F. Field force (no live page)
+## F. Field force (live page /yx/time/field-force since 29 Oct 2026)
 
 ### TIM-32 · Field-force map
 

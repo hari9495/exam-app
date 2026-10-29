@@ -3581,5 +3581,81 @@
       "Sign in as an employee without Time settings (for example arjun@demo-org.test) and open /yx/time/setup/licences."
     ],
     "expected": "Step 1: toasts \"Morning no longer needs First aid\", \"Morning at <location> now needs First aid\", \"Saved First aid\" with \"Reminders go out 60, 30 and 7 days before expiry.\"; the row shows \"Morning at <location>\". Step 2: the second window shows \"Someone else changed this licence. Reload to see their change.\" in the dialog, which stays open. Step 3: the roster shows a Licence conflict under Law and rule checks and refuses the placement / publish (LICENCE_GUARD) with the person's name, the licence and the date. Step 4: the no-access page (no table); the Licences link is not in the menu."
+  },
+  {
+    "id": "MT-TIM-05-01",
+    "area": "Time · Roster",
+    "screen": "Roster - rule checks and publish",
+    "url": "http://localhost:3000/yx/time/roster",
+    "account": "panel@demo-org.test (Divya, manager of Arjun, Meera, Kiran)",
+    "steps": [
+      "Go to next week with the arrow.",
+      "Positive: set Arjun to Morning on Tuesday and leave the other days. Click Publish roster and confirm.",
+      "Negative: set Arjun to Night (10 pm – 6 am) on Wednesday and Morning (6 am) on Thursday. Look at \"Law and rule checks\".",
+      "Click Publish roster and confirm.",
+      "Negative: set Arjun to a shift on Sunday too, so the week has no day off, and publish.",
+      "Fix it: set Thursday back to empty (pattern) and Sunday to Off, then publish again."
+    ],
+    "expected": "Step 2: toast \"Roster published\"; Arjun's Tuesday shows Morning. Step 3: Thursday shows a \"Rest\" check (\"Only 0 h rest after the shift before (at least 11 h)\"). Step 4: nothing is published; a red alert says Arjun's Thursday breaks the rest rule. Step 5: refused with \"No weekly off in the week of …\". Step 6: published.",
+    "stories": [
+      "TIM-05 Draft",
+      "TIM-05 Published"
+    ],
+    "note": "Rules: attendance.min_rest_hours (11), roster.max_daily_hours (9), roster.max_weekly_hours (48), roster.max_spread_over_hours (10.5), roster.min_weekly_offs (1)."
+  },
+  {
+    "id": "MT-TIM-05-02",
+    "area": "Time · Roster",
+    "screen": "Roster - change inside the notice",
+    "url": "http://localhost:3000/yx/time/roster",
+    "account": "panel@demo-org.test (Divya)",
+    "steps": [
+      "Stay on this week. Change Meera's shift for tomorrow (published) to Off.",
+      "Click Publish roster and confirm.",
+      "Negative: in \"Some changes start too soon\", click Publish with reason without typing.",
+      "Type \"Machine breakdown on line 2\" and click Publish with reason."
+    ],
+    "expected": "Step 2: the dialog \"Some changes start too soon\" opens (nothing published yet). Step 3: \"Say why, in at least 5 letters\" under Reason and the cursor is in the box. Step 4: toast \"Roster published\"; Meera gets a notice that her shifts changed.",
+    "stories": [
+      "TIM-05 Notice"
+    ],
+    "note": "Setting roster.change_notice_hours (24). A change to a day more than 24 h away publishes without the dialog."
+  },
+  {
+    "id": "MT-TIM-05-03",
+    "area": "Time · Roster",
+    "screen": "Roster - Staff view (team roster setting)",
+    "url": "http://localhost:3000/yx/time/roster",
+    "account": "arjun@demo-org.test (Arjun, employee) and hr@demo-org.test (Lakshmi)",
+    "steps": [
+      "As Arjun open Time › Team roster.",
+      "Negative: look for colleagues' rows and for a Publish button.",
+      "As Lakshmi open Settings › Company rules and set \"Employees can see their team's published roster\" to On for the company.",
+      "As Arjun reload Team roster.",
+      "Check a day on which Meera has approved leave."
+    ],
+    "expected": "Step 1: only Arjun's own week (marked You), read-only, with the note that the company shows only your own roster. Step 2: no colleagues, no Publish, no rule checks. Step 4: Meera and Kiran (same manager) appear, published shifts only (drafts not shown). Step 5: Meera's day shows \"Away\", never the leave type. \"Ask to swap a shift\" opens My shifts.",
+    "stories": [
+      "TIM-05 Staff"
+    ],
+    "note": "Setting roster.staff_see_team, off by default (founder decision 29 Oct 2026)."
+  },
+  {
+    "id": "MT-TIM-08-01",
+    "area": "Time · My shifts",
+    "screen": "Shift swap - blocked by the rest rule",
+    "url": "http://localhost:3000/yx/time/shifts",
+    "account": "arjun@demo-org.test (Arjun) after Divya published a Night for Arjun on Wednesday and a Morning for Meera on Thursday",
+    "steps": [
+      "Click Ask to swap on Thursday and choose Meera.",
+      "Type a reason and click Send.",
+      "Positive: choose a day on which both have day shifts (e.g. Friday, Arjun General, Meera Morning) and send."
+    ],
+    "expected": "Step 2: \"Not sent\": the server says Arjun would have only 0 h rest after the shift before (at least 11 h); no request is created. Step 3: sent; Meera sees \"Arjun asks to swap\" in Approvals.",
+    "stories": [
+      "TIM-08 RestBlocked",
+      "TIM-08 Request"
+    ],
+    "note": "The same check runs again when the manager approves."
   }
 ]
