@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { BonusComputationScreen, type BonusOverview, type SetupEntity } from '@yukthix/ui/pay';
-import { payState, usePay } from '../../../../../lib/yx-pay';
+import { payState, usePay, usePayDownload } from '../../../../../lib/yx-pay';
 import { useApiWrite } from '../../../../../lib/yx-pay-5j';
 
 // Payroll › Statutory bonus (PAY-24, Payment of Bonus Act; founder decision 9): work it out per legal entity and
-// accounting year, approve it (someone other than its makers) and send it to an off-cycle bonus run. Every write carries
-// the computation's version; the API refuses a stale one.
+// accounting year, approve it (someone other than its makers) and send it to an off-cycle bonus run; once approved, its
+// Form C register downloads (audited). Every write carries the computation's version; the API refuses a stale one.
 export default function YxPayBonusPage() {
   const entities = usePay<SetupEntity[]>('/bonus/entities');
   const [entityId, setEntityId] = useState<string | null>(null);
@@ -18,6 +18,7 @@ export default function YxPayBonusPage() {
   const e = encodeURIComponent;
   const data = usePay<BonusOverview>(entityId ? `/bonus?legalEntityId=${e(entityId)}${yearStart ? `&yearStart=${e(yearStart)}` : ''}` : null);
   const write = useApiWrite();
+  const download = usePayDownload();
   const c = data.data?.computation;
   const at = (path = '') => `/payroll/bonus/${e(c!.id)}${path}`;
   return (
@@ -40,6 +41,7 @@ export default function YxPayBonusPage() {
         onApprove: () => write(at('/approve'), { version: c!.version }),
         onReturn: (reason) => write(at('/return'), { version: c!.version, reason }),
         onSend: () => write(at('/send'), { version: c!.version }),
+        onFormC: () => download(at('/form-c'), `form-c-bonus-${c!.year.label}.csv`),
         runHref: (runId) => `/yx/payroll/runs/${e(runId)}`,
       }}
     />

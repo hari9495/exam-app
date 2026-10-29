@@ -128,6 +128,8 @@ export interface LiveBonus {
   onApprove: () => Promise<unknown>;
   onReturn: (reason: string) => Promise<unknown>;
   onSend: () => Promise<unknown>;
+  /** Downloads Form C, the bonus register (approved or sent; GET payroll/bonus/:id/form-c, audited). */
+  onFormC: () => Promise<unknown>;
   /** Where the off-cycle run opens. */
   runHref: (runId: string) => string;
   /** Stories only: open on a step, show the pressed-too-early errors, or show a refusal the server sent. */
@@ -342,7 +344,7 @@ export function LiveBonusScreen({ live }: { live: LiveBonus }) {
                 empty={<EmptyState compact title="No one was employed in this legal entity during the year" description="Bonus is worked out from the approved payslips of the year." />}
               />
               <p className="yx-pay-note">
-                Eligibility: bonus wage up to {money(c.rules.eligibilityWage)} a month and at least {c.rules.minWorkingDays} working days in the year. Each month is counted up to the higher of {money(c.rules.calculationCeiling)} and the minimum wage; people who worked part of the year get bonus for the months worked (at least {money(c.rules.minAmount)} a year, cut down for part of the year).
+                Eligibility: a monthly salary rate (the full month, not what a part month earned) up to {money(c.rules.eligibilityWage)} and at least {c.rules.minWorkingDays} working days in the year. Each month is counted up to the higher of {money(c.rules.calculationCeiling)} and the minimum wage; people who worked part of the year get bonus for the months worked (at least {money(c.rules.minAmount)} a year, cut down for part of the year).
               </p>
             </div>
           ),
@@ -373,6 +375,21 @@ export function LiveBonusScreen({ live }: { live: LiveBonus }) {
               {c.status === 'submitted' && can.approve && !c.madeByMe && (
                 <div className="yx-pay-row">
                   <Button onClick={() => setReturning(true)}>Send back</Button>
+                </div>
+              )}
+              {(c.status === 'approved' || c.status === 'sent') && (
+                <div className="yx-pay-row">
+                  <Button
+                    loading={busy === 'formc'}
+                    onClick={() =>
+                      void run('formc', async () => {
+                        await live.onFormC();
+                        toast({ tone: 'success', title: `Form C for ${c.year.label} downloaded.` });
+                      })
+                    }
+                  >
+                    Download Form C (bonus register)
+                  </Button>
                 </div>
               )}
               <p className="yx-pay-muted">Sending it creates one-time bonus pay for each person in an off-cycle bonus run, with its own approval and bank file.</p>

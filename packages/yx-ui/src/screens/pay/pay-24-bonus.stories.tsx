@@ -12,6 +12,7 @@ export const Approve: S = { name: 'Approve and pay', args: { view: 'submitted' }
 export const Empty: S = { name: 'Empty · not worked out yet', args: { view: 'empty' } };
 export const TooEarly: S = { name: 'Send for approval · pressed too early (field error)', args: { tooEarly: true } };
 export const Refused: S = { name: 'Approve · refused by the server (own bonus)', args: { view: 'submitted', refused: true } };
+export const Approved: S = { name: 'Approved · Form C register ready to download', args: { view: 'approved' } };
 export const Sent: S = { name: 'Sent to the off-cycle bonus run', args: { view: 'sent' } };
 export const Loading: S = { name: 'Loading', args: { state: 'loading' } };
 export const ErrorState: S = { name: 'Error', args: { state: 'error' } };

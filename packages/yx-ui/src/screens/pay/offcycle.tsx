@@ -328,8 +328,9 @@ function sampleBonus({ step = 'compute', pct = 8.33, view = 'draft', state = 're
     onApprove: done,
     onReturn: done,
     onSend: done,
+    onFormC: done,
     runHref: (id) => `#${id}`,
-    story: { step: view === 'submitted' || view === 'sent' ? 'approve' : step, tooEarly, ...(refused ? { refused: 'You worked on this bonus, so someone else approves it.' } : {}) },
+    story: { step: view === 'submitted' || view === 'approved' || view === 'sent' ? 'approve' : step, tooEarly, ...(refused ? { refused: 'You worked on this bonus, so someone else approves it.' } : {}) },
   };
 }
 
