@@ -110,6 +110,18 @@ describe('Hybrid office days (TIM-41 live)', () => {
     await waitFor(() => expect(live.onPolicy).toHaveBeenCalledWith({ scopeType: 'tenant', scopeId: null }, { officeDays: '3', anchors: 'mon,wed', evidence: 'geofence,network,kiosk' }));
     expect((await screen.findAllByText('Policy saved'))[0]).toBeInTheDocument();
   });
+
+  it('titles the page by who is looking: employee, manager, HR company-wide, HR in a scope', () => {
+    const t = (o: Partial<LiveHybrid>) => { const r = render(<HybridPlannerScreen live={hybrid(o)} />); const h = screen.getByRole('heading', { level: 1 }).textContent; const d = r.container.querySelector('.yx-page-header__desc')?.textContent; r.unmount(); return [h, d]; };
+    expect(t({})).toEqual(['My office days', '3 office days a week · anchor day Wed']);
+    expect(t({ me: { state: 'ready', data: { ...ME, can: { team: true, compliance: true, policy: false } } }, team: { state: 'ready', data: TEAM }, compliance: { state: 'ready', data: COMPLIANCE } })).toEqual(['Office days · Your team', '3 office days a week · anchor day Wed']);
+    const hrMe = { ...ME, employee: null, rule: null, days: [] };
+    const company = (officeDays: number) => ({ state: 'ready' as const, data: { groups: [{ scopeType: 'tenant' as const, scopeId: null, label: 'Whole company', own: { officeDays: officeDays ? String(officeDays) : null, anchors: null, evidence: null }, applies: { officeDays, anchors: officeDays ? [0] : [], evidence: ['geofence' as const] } }] } });
+    // HR (hr-tester, no employee record) saw "My office days" over everyone's compliance (lead walk 29 Oct 2026).
+    expect(t({ me: { state: 'ready', data: { ...hrMe, can: { team: false, compliance: true, policy: true, everyone: true } } }, compliance: { state: 'ready', data: COMPLIANCE }, policy: company(0) })).toEqual(['Office days · Everyone', 'No office-day rule yet. HR sets one on the Policy tab.']);
+    expect(t({ me: { state: 'ready', data: { ...hrMe, can: { team: false, compliance: true, policy: true, everyone: true } } }, compliance: { state: 'ready', data: COMPLIANCE }, policy: company(2) })).toEqual(['Office days · Everyone', 'Whole company · 2 office days a week · anchor day Mon']);
+    expect(t({ me: { state: 'ready', data: { ...hrMe, can: { team: false, compliance: true, policy: false, everyone: false } } }, compliance: { state: 'ready', data: COMPLIANCE } })).toEqual(['Office days · The people you see', 'No office-day rule yet. HR sets one on the Policy tab.']);
+  });
 });
 
 describe('Timesheet pre-fill from my tools (TIM-43 live)', () => {

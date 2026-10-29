@@ -35,7 +35,8 @@ export interface HybridMe {
   rule: HybridRule | null;
   days: HybridDay[];
   colleagues: { on: string; names: string[] }[];
-  can: { team: boolean; compliance: boolean; policy: boolean };
+  /** everyone: compliance reaches the whole company (else the people in the viewer's scope). */
+  can: { team: boolean; compliance: boolean; policy: boolean; everyone?: boolean };
 }
 export interface HybridTeam { week: string; people: { employeeId: string; name: string; rule: HybridRule; days: HybridDay[] }[] }
 export interface HybridCompliance {
@@ -429,12 +430,19 @@ export function LiveHybridScreen({ live }: { live: LiveHybrid }) {
     ...(me?.can.policy && policyForm ? [{ value: 'policy', label: 'Policy', body: policyForm }] : []),
   ];
   const onlyPolicy = tabs.length === 1 && tabs[0].value === 'policy';
-  const title = onlyPolicy ? 'Hybrid policy' : mgr ? 'Office days · Your team' : 'My office days';
+  // The design's "Office days · <team>": a manager plans their team; HR (compliance without a team) sees everyone in reach.
+  const wide = !mgr && !!me?.can.compliance;
+  const title = onlyPolicy ? 'Hybrid policy' : mgr ? 'Office days · Your team' : wide ? `Office days · ${me?.can.everyone ? 'Everyone' : 'The people you see'}` : 'My office days';
+  const ruleText = (r: HybridRule) => `${plural(r.officeDays, 'office day')} a week${r.anchors.length ? ` · anchor ${r.anchors.length === 1 ? 'day' : 'days'} ${dayList(r.anchors)}` : ''}`;
+  const company = live.policy?.data?.groups.find((g) => g.scopeType === 'tenant');
+  const groupRules = live.policy?.data?.groups.filter((g) => g.scopeType !== 'tenant' && g.own.officeDays !== null).length ?? 0;
   const description = onlyPolicy
     ? group ? `Policy: ${policyText(group)}` : 'Office days per group'
-    : rule?.officeDays ? `${rule.officeDays} office days a week${anchors.length ? ` · anchor ${anchors.length === 1 ? 'day' : 'days'} ${dayList(anchors)}` : ''}` : 'No office-day rule';
+    : wide && company?.applies.officeDays ? `Whole company · ${ruleText(company.applies)}`
+    : wide && groupRules ? `Office-day rules for ${plural(groupRules, 'group')} · see the Policy tab`
+    : rule?.officeDays ? ruleText(rule) : 'No office-day rule yet. HR sets one on the Policy tab.';
   return (
-    <TimePage active={mgr || onlyPolicy ? 'Office days' : 'My office days'}>
+    <TimePage active={mgr || wide || onlyPolicy ? 'Office days' : 'My office days'}>
       <PageHeader title={title} description={me ? description : undefined} />
       <LiveGate state={live.me.state} onRetry={live.me.onRetry} what="your office days">
         {me && (tabs.length > 1 ? (

@@ -151,9 +151,11 @@ describe('Time · hybrid office days and timesheet suggestions (TIM-41 / TIM-43)
       expect(me.days[2]).toMatchObject({ anchor: true, place: 'office', closed: null });
       expect(me.days[3]).toMatchObject({ closed: 'holiday', note: 'Founders Day' });
       expect(me.days[4]).toMatchObject({ closed: 'leave' });
-      expect(me.can).toEqual({ team: false, compliance: false, policy: false });
-      expect((await api('mgr', 'get', '/time/hybrid/me').expect(200)).body.can).toEqual({ team: true, compliance: true, policy: false });
-      expect((await api('adminA', 'get', '/time/hybrid/me').expect(200)).body).toMatchObject({ employee: null, can: { policy: true } });
+      expect(me.can).toEqual({ team: false, compliance: false, policy: false, everyone: false });
+      expect((await api('mgr', 'get', '/time/hybrid/me').expect(200)).body.can).toEqual({ team: true, compliance: true, policy: false, everyone: false });
+      // everyone: the page title says "Office days · Everyone" only when compliance reaches the whole company.
+      expect((await api('hrExec', 'get', '/time/hybrid/me').expect(200)).body.can).toMatchObject({ team: false, compliance: true, everyone: true });
+      expect((await api('adminA', 'get', '/time/hybrid/me').expect(200)).body).toMatchObject({ employee: null, can: { policy: true, compliance: true, everyone: true } });
       await api('emp', 'get', `/time/hybrid/me?week=${lastWeek}`).expect(400);
       await api('emp', 'get', '/time/hybrid/me?week=31-12-2026').expect(400);
     });

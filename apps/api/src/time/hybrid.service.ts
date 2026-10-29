@@ -4,7 +4,7 @@ import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platfor
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
 import { SETTINGS, resolveSetting } from '../org-structure/settings-registry';
-import { Viewer, buildViewer, has, implicitSql, type ScopeUser } from '../access/scope';
+import { Viewer, buildViewer, has, implicitSql, tenantWide, type ScopeUser } from '../access/scope';
 import { NotificationsService } from '../notifications/notifications.service';
 import { escapeHtml } from '../notifications/notification-email-render';
 import { CLOSED_TEXT, WEEKDAY_NAMES, closedWhy, isEvidence, ruleOf, weekCompliance, type Closed, type DayFacts, type HybridRule, type Place } from './hybrid-rules';
@@ -140,7 +140,8 @@ export class HybridService {
         const own = await this.ownId(tx, c, v);
         const today = todayIst();
         const team = own ? (await this.reach(tx, c, v, own, null, today, 1)).length > 0 : false;
-        const can = { team, compliance: team || has(v, 'attendance.view'), policy: has(v, 'org.settings.manage') && !v.actingForOther };
+        // everyone: compliance reaches the whole company (the page title says "Everyone", not "Your team").
+        const can = { team, compliance: team || has(v, 'attendance.view'), policy: has(v, 'org.settings.manage') && !v.actingForOther, everyone: tenantWide(v, 'attendance.view') };
         const f = own ? await factsOn(tx, org, own, today) : null;
         if (!f) {
           const week = weekIn ? mondayOf(weekIn) : mondayOf(today);
