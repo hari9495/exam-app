@@ -332,6 +332,14 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       ORDER BY em.id`;
   }
 
+  /** In an off-cycle bonus run: the employments whose approved items in it are all bonus lines (item 29). */
+  private async bonusOnly(tx: Tx, org: string, run: Run): Promise<Set<string>> {
+    if (run.runType !== 'offcycle' || run.offcycleKind !== 'bonus') return new Set();
+    const items = await withPayScope(tx, [run.legalEntityId], () => tx.oneTimePay.findMany({ where: { organizationId: org, runId: run.id, status: 'approved', holdReason: null }, select: { employmentId: true, componentCode: true } }));
+    const other = new Set(items.filter((x) => x.componentCode !== 'bonus').map((x) => x.employmentId));
+    return new Set(items.map((x) => x.employmentId).filter((x) => !other.has(x)));
+  }
+
   // ------------------------------------------------------------------------------------------ validations (PAY-3.03)
 
   /** The pre-run checks of YX-PAY-05, stored for the next calculation (waivers carry over by check and person). */
@@ -357,9 +365,11 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       if (!i?.panHash) found.push({ employeeId: m.employeeId, checkKey: 'pan_missing', severity: 'warn', message: `${m.name}: no PAN on file (tax is deducted at the higher rate when it applies).` });
       if (!i?.uanHash) found.push({ employeeId: m.employeeId, checkKey: 'uan_missing', severity: 'warn', message: `${m.name}: no UAN on file.` });
     }
-    // No compensation: that person is left out of this run.
+    // No compensation: that person is left out of this run. Founder 30 Oct 2026 (item 29): an off-cycle bonus run pays a
+    // leaver's bonus, so someone whose items in it are all bonus lines needs no salary this month.
     const comps = await withPayScope(tx, [run.legalEntityId], () => tx.compensation.findMany({ where: { organizationId: org, employmentId: { in: members.map((m) => m.employmentId) }, supersededAt: null, validFrom: { lte: run.periodEnd }, OR: [{ validTo: null }, { validTo: { gte: run.periodStart } }] }, select: { employmentId: true } }));
-    for (const m of members) if (!comps.some((x) => x.employmentId === m.employmentId)) found.push({ employeeId: m.employeeId, checkKey: 'no_compensation', severity: 'block', waivable: false, message: `${m.name}: no salary for this month; left out of the run until one is approved.` });
+    const bonusOnly = await this.bonusOnly(tx, org, run);
+    for (const m of members) if (!bonusOnly.has(m.employmentId) && !comps.some((x) => x.employmentId === m.employmentId)) found.push({ employeeId: m.employeeId, checkKey: 'no_compensation', severity: 'block', waivable: false, message: `${m.name}: no salary for this month; left out of the run until one is approved.` });
     // 5c-D2: without a skill class on the job, the minimum-wage check uses the lowest class of the state table.
     const noSkill = await tx.employeeAssignment.findMany({ where: { organizationId: org, employeeId: { in: ids }, supersededAt: null, skillClass: null, validFrom: { lte: run.periodEnd }, OR: [{ validTo: null }, { validTo: { gte: run.periodEnd } }] }, select: { employeeId: true } });
     for (const x of noSkill) found.push({ employeeId: x.employeeId, checkKey: 'skill_missing', severity: 'warn', message: `${nameOf(x.employeeId)}: no skill class on the job; the minimum-wage check uses the lowest class.` });
@@ -645,26 +655,45 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
     const exitOn = em.exitedOn ? dateOf(em.exitedOn) : fnf ? dateOf(fnf.lwd) : null;
     const start = dateOf(em.joinedOn) > (sub?.from ?? from) ? dateOf(em.joinedOn) : (sub?.from ?? from);
     const end = exitOn && exitOn < (sub?.to ?? to) ? exitOn : (sub?.to ?? to);
-    if (start > end) throw new NotReady('employment', 'Not employed in this pay period.');
+    // Founder 30 Oct 2026 (item 29): a leaver's statutory bonus is paid in the off-cycle bonus run. With no salary or job
+    // this month their last ones stand in; only the bonus line is worked out (an items-only run pays no salary).
+    const lastOnly = itemsOnly && run.offcycleKind === 'bonus' && (await reads.once(`bonusOnly:${run.id}`, () => this.bonusOnly(tx, org, run))).has(employmentId);
+    if (start > end && !lastOnly) throw new NotReady('employment', 'Not employed in this pay period.');
     const group = await reads.once('group', () => tx.payGroup.findFirstOrThrow({ where: { organizationId: org, id: run.payGroupId } }));
     const inRange = <T extends { validFrom: Date; validTo: Date | null }>(rows: T[]) => rows.filter((x) => dateOf(x.validFrom) <= end && (!x.validTo || dateOf(x.validTo) >= start));
     const allComps = await reads.once('compensations', () => tx.compensation.findMany({ where: { organizationId: org, employmentId: { in: ids }, supersededAt: null, ...overlaps }, orderBy: { validFrom: 'asc' } }));
-    const comps = inRange(mine(allComps));
-    const assigns = inRange(mine(await reads.once('assignments', () => tx.employeeAssignment.findMany({ where: { organizationId: org, employmentId: { in: ids }, supersededAt: null, ...overlaps }, orderBy: { validFrom: 'asc' } }))));
+    let comps = inRange(mine(allComps));
+    let assigns = inRange(mine(await reads.once('assignments', () => tx.employeeAssignment.findMany({ where: { organizationId: org, employmentId: { in: ids }, supersededAt: null, ...overlaps }, orderBy: { validFrom: 'asc' } }))));
+    const standIn = lastOnly && (start > end || !comps.length || !assigns.length);
+    if (standIn) {
+      const lastComp = await tx.compensation.findFirst({ where: { organizationId: org, employmentId, supersededAt: null, validFrom: { lte: asDate(to) } }, orderBy: { validFrom: 'desc' } });
+      const lastAsg = await tx.employeeAssignment.findFirst({ where: { organizationId: org, employmentId, supersededAt: null, validFrom: { lte: asDate(to) } }, orderBy: { validFrom: 'desc' } });
+      comps = lastComp ? [lastComp] : [];
+      assigns = lastAsg ? [lastAsg] : [];
+    }
     const allComponents = await reads.once('components', () => tx.payComponent.findMany({ where: { organizationId: org } }));
-    const packages = await reads.once('packages', () => tx.compensationPackage.findMany({ where: { organizationId: org, changeId: { in: allComps.map((x) => x.changeId) } } }));
-    const packageLines = await reads.once('packageLines', () => tx.compensationLine.findMany({ where: { organizationId: org, packageId: { in: packages.map((x) => x.id) } } }));
+    let packages = await reads.once('packages', () => tx.compensationPackage.findMany({ where: { organizationId: org, changeId: { in: allComps.map((x) => x.changeId) } } }));
+    let packageLines = await reads.once('packageLines', () => tx.compensationLine.findMany({ where: { organizationId: org, packageId: { in: packages.map((x) => x.id) } } }));
     const locations = await reads.once('locations', () => tx.location.findMany({ where: { organizationId: org }, select: { id: true, state: true, minWageZone: true } }));
-    if (!comps.length) throw new NotReady('compensation', 'No salary for this month.');
+    if (!comps.length) throw new NotReady('compensation', standIn ? 'No salary was ever recorded for this leaver. Pay their bonus through the F&F settlement.' : 'No salary for this month.');
     if (!assigns.length) throw new NotReady('assignment', 'No job details for this month.');
-    const cuts = [...new Set([start, ...comps.map((x) => dateOf(x.validFrom)), ...assigns.map((x) => dateOf(x.validFrom))].filter((d) => d >= start && d <= end))].sort();
+    if (standIn) {
+      const pkg = await tx.compensationPackage.findFirst({ where: { organizationId: org, changeId: comps[0].changeId } });
+      // Copies: the chunk's shared reads stay as read.
+      if (pkg && !packages.some((x) => x.id === pkg.id)) {
+        packages = [...packages, pkg];
+        packageLines = [...packageLines, ...(await tx.compensationLine.findMany({ where: { organizationId: org, packageId: pkg.id } }))];
+      }
+    }
+    // A stand-in salary and job cover the whole month (one segment; the items-only run pays no salary from it).
+    const cuts = standIn ? [from] : [...new Set([start, ...comps.map((x) => dateOf(x.validFrom)), ...assigns.map((x) => dateOf(x.validFrom))].filter((d) => d >= start && d <= end))].sort();
     const covering = <T extends { validFrom: Date; validTo: Date | null }>(rows: T[], d: string) => rows.find((x) => dateOf(x.validFrom) <= d && (!x.validTo || dateOf(x.validTo) >= d));
     const segments: Segment[] = [];
     for (let i = 0; i < cuts.length; i++) {
       const sFrom = cuts[i];
-      const sTo = i + 1 < cuts.length ? addDays(cuts[i + 1], -1) : end;
-      const comp = covering(comps, sFrom);
-      const asg = covering(assigns, sFrom);
+      const sTo = standIn ? to : i + 1 < cuts.length ? addDays(cuts[i + 1], -1) : end;
+      const comp = standIn ? comps[0] : covering(comps, sFrom);
+      const asg = standIn ? assigns[0] : covering(assigns, sFrom);
       if (!comp || !asg) throw new NotReady('compensation', `No salary or job details on ${sFrom}.`);
       const pkg = packages.find((x) => x.changeId === comp.changeId);
       if (!pkg) throw new NotReady('compensation', `The salary from ${dateOf(comp.validFrom)} has no breakup. Revise it in Payroll › Compensation.`);
