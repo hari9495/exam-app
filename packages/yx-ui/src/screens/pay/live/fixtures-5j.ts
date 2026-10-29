@@ -1,4 +1,4 @@
-import type { GoLiveReadiness, ParallelRunView } from './golive';
+import type { GoLiveReadiness, ParallelRunView } from '../setup-live';
 import type { BankFileRow, FilingRow, FnfSettlementView, MyPayslip, PayRun, PayslipDetail, RunPayslip, RunPerson, RunReadiness, RunVariance, StatutoryHub, TdsReturnRow, Worksheet, Recovery } from './types-5j';
 
 // Sample data for the batch 5j screens' stories and tests (Kaveri Foods, September 2026).

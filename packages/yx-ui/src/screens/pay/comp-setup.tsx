@@ -5,7 +5,7 @@ import { AlertCircle, ArrowDown, ArrowUp, GripVertical, Lock, Plus } from 'lucid
 import { Button, IconButton, type ButtonProps } from '../../components/button';
 import { Badge } from '../../components/display';
 import { Drawer } from '../../components/drawer';
-import { InlineAlert } from '../../components/feedback';
+import { InlineAlert, NoAccessState } from '../../components/feedback';
 import { ErrorSummary, FieldRow, FormField, FormSection } from '../../components/field';
 import { CurrencyField, NumberField, TextArea, TextField } from '../../components/inputs';
 import { Checkbox, RadioGroup, Switch } from '../../components/choice';
@@ -24,6 +24,10 @@ import { FactRow, PayFrame, PaySettingsFrame, SectionTitle, StateBlock, type Vie
 import { COMPONENTS, FIN_APPROVER, HR_ADMIN, LETTERHEAD, MY_PAYSLIP, PAYROLL_ADMIN, RUN_ROWS, d, type ComponentRow } from './pay-data';
 import { EMPLOYEES } from '../_kit/data';
 import { checkSplit, codeWageAddBack, compareRegimes, esiContribution, NO_DEDUCTIONS, pfContribution, type SplitOption } from './pay-logic';
+import { GoLivePart, GroupsPart, ImportsPart, LegalOptionsPart, LivePayrollSetupScreen, SAMPLE_CALLS, type GoLiveReadiness, type LivePayrollSetup, type ParallelRunView } from './setup-live';
+import type { ImportBatch, LegalOption, PayGroup } from './live/types-5b';
+import type { PayRun } from './live/types-5j';
+import { LiveCompensationScreen, LiveComponentLibraryScreen, LivePayslipLayoutScreen, LiveTemplateBuilderScreen, type LiveCompensation, type LiveComponentLibrary, type LivePayslipLayout, type LiveTemplates } from './comp-setup-live';
 
 /* ================================================================== shared */
 
@@ -255,7 +259,11 @@ function annualBreakup(ctc: number): [string, number][] {
 }
 
 /** PAY-12 · Compensation tab (timeline, pay basis, breakup) and revision sheet with arrears preview. */
-export function CompensationScreen({
+export function CompensationScreen({ live, ...story }: Parameters<typeof SampleCompensationScreen>[0] & { /** The live app's /yx/payroll/compensation. */ live?: LiveCompensation }) {
+  return live ? <LiveCompensationScreen live={live} /> : <SampleCompensationScreen {...story} />;
+}
+
+function SampleCompensationScreen({
   variant = 'default',
   persona = 'pa',
   state = 'ready',
@@ -620,7 +628,11 @@ type TestId = keyof typeof TEST_EMPLOYEES;
 const COMPONENT_ID: Record<string, string> = Object.fromEntries(COMPONENTS.map((c) => [c.code, c.id]));
 
 /** PAY-13 · Template builder / CTC designer: ordered lines, formula editor with autocomplete, live test employee. */
-export function TemplateBuilderScreen({ variant = 'default' }: { variant?: 'default' | 'autocomplete' | 'cycle' | 'add-back' | 'saved' }) {
+export function TemplateBuilderScreen({ live, ...story }: { variant?: 'default' | 'autocomplete' | 'cycle' | 'add-back' | 'saved'; /** The live app's /yx/payroll/templates. */ live?: LiveTemplates }) {
+  return live ? <LiveTemplateBuilderScreen live={live} /> : <SampleTemplateBuilderScreen {...story} />;
+}
+
+function SampleTemplateBuilderScreen({ variant = 'default' }: { variant?: 'default' | 'autocomplete' | 'cycle' | 'add-back' | 'saved' }) {
   const [lines, setLines] = useState(() =>
     TEMPLATE_LINES.map((l) =>
       variant === 'cycle' && l.code === 'BASIC'
@@ -870,7 +882,11 @@ const FLAGS: [FlagKey, string, string, string, number][] = [
 ];
 
 /** PAY-14 · Component library (T2) with flag columns and an edit drawer; statutory components are locked. */
-export function ComponentLibraryScreen({ state = 'ready', editId }: { state?: ViewState; editId?: string }) {
+export function ComponentLibraryScreen({ live, ...story }: { state?: ViewState; editId?: string; /** The live app's /yx/payroll/components. */ live?: LiveComponentLibrary }) {
+  return live ? <LiveComponentLibraryScreen live={live} /> : <SampleComponentLibraryScreen {...story} />;
+}
+
+function SampleComponentLibraryScreen({ state = 'ready', editId }: { state?: ViewState; editId?: string }) {
   const compact = useNarrow(1399);
   const [rows, setRows] = useState(COMPONENTS);
   const initial = COMPONENTS.find((c) => c.id === editId) ?? null;
@@ -1110,7 +1126,11 @@ function FitPreview({ children }: { children: ReactNode }) {
 const A4_PX = 794;
 
 /** PAY-15 · Payslip layout editor per entity with sample-employee preview; statutory wage-slip fields locked. */
-export function PayslipLayoutScreen({ variant = 'default' }: { variant?: 'default' | 'bilingual' | 'published' }) {
+export function PayslipLayoutScreen({ live, ...story }: { variant?: 'default' | 'bilingual' | 'published'; /** The live app's /yx/payroll/payslip-layout. */ live?: LivePayslipLayout }) {
+  return live ? <LivePayslipLayoutScreen live={live} sample={LAYOUT_SAMPLE} /> : <SamplePayslipLayoutScreen {...story} />;
+}
+
+function SamplePayslipLayoutScreen({ variant = 'default' }: { variant?: 'default' | 'bilingual' | 'published' }) {
   // The draft adds the tax summary (and Kannada in the bilingual story).
   const start: Layout = { ...VERSION_4, tax: true, lang: variant === 'bilingual' ? 'Kannada' : null };
   const [live, setLive] = useState(variant === 'published' ? 5 : 4);
@@ -1251,8 +1271,95 @@ const MAPPING: [string, string][] = [
 ];
 const PAN_RE = /^[A-Z]{5}\d{4}[A-Z]$/;
 
-/** PAY-16 · Payroll set-up wizard (per entity): registrations, pay group, template, bank, accounting, opening balances. */
-export function PayrollSetupScreen({ step = 'reg', incomplete = true, imported: importedInitially = false }: { step?: string; incomplete?: boolean; /** Opening balances already uploaded. */ imported?: boolean }) {
+/* Sample data for the PAY-16 parts the live wizard shares (pay groups, legal options, imports, go-live). */
+const SETUP_ENTITY = 'le-kfpl';
+const SAMPLE_GROUPS: PayGroup[] = [
+  { id: 'pg-m', legalEntityId: SETUP_ENTITY, name: 'Monthly · Kaveri Foods Pvt Ltd', frequency: 'monthly', currency: 'INR', dayBasis: 'calendar', cutOffDay: 25, payDay: 0, bankFormat: null, status: 'active', version: 3 },
+  { id: 'pg-w', legalEntityId: SETUP_ENTITY, name: 'Weekly · Hosur plant', frequency: 'weekly', anchorDate: '2026-04-06', currency: 'INR', dayBasis: '26', cutOffDay: 25, payDay: 0, bankFormat: null, status: 'active', version: 1 },
+];
+const SAMPLE_MEMBERS = EMPLOYEES.slice(1, 6).map((e, i) => ({ employeeId: e.id, employmentId: `em-${e.id}`, employeeCode: e.code, name: e.name, validFrom: i < 3 ? '2026-04-01' : '2026-08-01', validTo: null }));
+const SAMPLE_CALENDAR = Array.from({ length: 12 }, (_, i) => {
+  const m = `2026-${String(i + 1).padStart(2, '0')}`;
+  const last = new Date(Date.UTC(2026, i + 1, 0)).getUTCDate();
+  return { month: m, periodStart: `${m}-01`, periodEnd: `${m}-${last}`, cutOff: `${m}-25`, payDate: `${m}-${last}` };
+});
+const SAMPLE_OPTIONS: LegalOption[] = [
+  { id: 'lo1', optionKey: 'pf.on_actual_wage', value: 'no', validFrom: '2026-04-01', validTo: null },
+  { id: 'lo2', optionKey: 'bonus.payment', value: 'annual', validFrom: '2026-04-01', validTo: null },
+  { id: 'lo3', optionKey: 'gratuity.provisioning', value: 'actuarial', validFrom: '2025-04-01', validTo: null },
+];
+const SAMPLE_BATCH: ImportBatch = { id: 'ib1', kind: 'as_paid_lines', rows: 1488, valid: 1488, errors: [], status: 'staged' };
+const SAMPLE_BATCH_ERRORS: ImportBatch = {
+  ...SAMPLE_BATCH,
+  valid: 1485,
+  errors: [
+    { row: 214, message: `No employee with the code ${EMPLOYEES[40].code.replace('KF', 'KH')} in this legal entity.` },
+    { row: 902, message: 'Month 2026-13 is not a month.' },
+    { row: 1311, message: 'No component with the code spl_allow; the library has special.' },
+  ],
+};
+const SAMPLE_RUN: PayRun = { id: 'run-sep', legalEntityId: SETUP_ENTITY, payGroupId: 'pg-m', month: '2026-09', runType: 'regular', offcycleKind: null, status: 'calculated', calcVersion: 2, totals: null, approvedAt: null, publishedAt: null, voidReason: null, createdAt: '2026-09-26T05:30:00Z' };
+const readiness = (ready: boolean): GoLiveReadiness => ({
+  entityId: SETUP_ENTITY,
+  people: 248,
+  ready,
+  items: [
+    { key: 'registrations', label: 'Statutory registrations recorded', ok: true, detail: 'PF, ESI, PT Karnataka, LWF Karnataka, TDS' },
+    { key: 'banks', label: 'Everyone has a salary bank account', ok: true, detail: '248 of 248' },
+    { key: 'uan', label: 'UAN on file', ok: ready, detail: ready ? '248 of 248' : '241 of 248 (the PF file lists people by UAN)' },
+    { key: 'parallel', label: 'A parallel run signed off', ok: ready, detail: ready ? 'September 2026, signed off by Ramesh Krishnan' : 'Pay one month in the old payroll too, upload its register on the run and have someone else sign it off.' },
+    { key: 'rules', label: 'Statutory rules marked verify', ok: true, info: true, detail: '31 published rule sets are marked verify.' },
+  ],
+});
+const comparison = (status: ParallelRunView['status']): ParallelRunView => ({
+  id: 'pr1',
+  runId: SAMPLE_RUN.id,
+  status,
+  people: 248,
+  matched: 246,
+  differences: 2,
+  rows: [
+    { employeeCode: EMPLOYEES[12].code, name: EMPLOYEES[12].name, field: 'deductions', ours: '2000.00', theirs: '2200.00', difference: '-200.00' },
+    { employeeCode: EMPLOYEES[57].code, name: EMPLOYEES[57].name, field: 'net', ours: '31850.00', theirs: '31650.00', difference: '200.00' },
+  ],
+  reason: status === 'signed_off' ? 'The old payroll rounded professional tax wrongly for two people.' : status === 'waived' ? 'The old payroll vendor closed in August; no register for September.' : null,
+  createdBy: 'u-pa',
+  createdAt: '2026-10-02T06:00:00Z',
+});
+export type GoLiveSample = 'ready' | 'compare' | 'signed-off' | 'waived' | 'empty';
+const GOLIVE: Record<GoLiveSample, { r: GoLiveReadiness; p: ParallelRunView[] }> = {
+  compare: { r: readiness(false), p: [comparison('compared')] },
+  'signed-off': { r: readiness(true), p: [comparison('signed_off')] },
+  waived: { r: { ...readiness(true), items: readiness(true).items.map((i) => (i.key === 'parallel' ? { ...i, detail: 'Waived by Ramesh Krishnan' } : i)) }, p: [comparison('waived')] },
+  ready: { r: readiness(true), p: [comparison('signed_off')] },
+  empty: { r: readiness(false), p: [] },
+};
+
+export interface PayrollSetupStoryProps {
+  step?: string;
+  incomplete?: boolean;
+  /** Opening balances already uploaded. */
+  imported?: boolean;
+  /** Registrations step: the dated legal options under the statutes. */
+  options?: boolean;
+  /** Pay group step: the list of groups, one group's members and calendar, or the editor for a new group. */
+  groups?: 'list' | 'members' | 'add';
+  /** Opening balances step: a CSV checked, all rows ready or some with a problem. */
+  opening?: 'checked' | 'row-errors';
+  /** Go-live step (founder decision 3): readiness and the parallel run. */
+  golive?: GoLiveSample;
+  /** Go-live: the sign-off or waive dialog open. */
+  decide?: 'signed_off' | 'waived';
+  /** The page's load state. */
+  state?: ViewState | 'no-access';
+}
+
+/** PAY-16 · Payroll set-up wizard (per entity): registrations, pay group, template, bank, accounting, opening balances, go-live. */
+export function PayrollSetupScreen({ live, ...story }: PayrollSetupStoryProps & { /** The live app's /yx/payroll/setup, /pay-groups, /imports and /go-live. */ live?: LivePayrollSetup }) {
+  return live ? <LivePayrollSetupScreen live={live} /> : <SamplePayrollSetupScreen {...story} />;
+}
+
+function SamplePayrollSetupScreen({ step = 'reg', incomplete = true, imported: importedInitially = false, options = false, groups, opening: openingView, golive = 'compare', decide, state = 'ready' }: PayrollSetupStoryProps) {
   const phone = useNarrow(599);
   const [lwf, setLwf] = useState(incomplete ? '' : 'LWF/KA/BNG/20417');
   const [tdsPan, setTdsPan] = useState(incomplete ? '' : 'AKMPN7135L');
@@ -1339,9 +1446,12 @@ export function PayrollSetupScreen({ step = 'reg', incomplete = true, imported: 
           </table>
         </div>
       )}
+      {options && <LegalOptionsPart options={SAMPLE_OPTIONS} onSet={async () => undefined} />}
     </div>
   );
-  const group = (
+  const group = groups ? (
+    <GroupsPart entityId={SETUP_ENTITY} groups={SAMPLE_GROUPS} today="2026-10-29" onSave={SAMPLE_CALLS.onSave} onMembers={async () => SAMPLE_MEMBERS} onAddMembers={SAMPLE_CALLS.onAddMembers} onSearch={async () => EMPLOYEES.slice(6, 9).map((e) => ({ id: e.id, name: e.name, employeeCode: e.code }))} onCalendar={async () => SAMPLE_CALENDAR} openId={groups === 'members' ? 'pg-m' : undefined} adding={groups === 'add'} />
+  ) : (
     <div className="yx-pay-stack">
       <FieldRow>
         <FormField label="Pay group name" required>
@@ -1414,7 +1524,9 @@ export function PayrollSetupScreen({ step = 'reg', incomplete = true, imported: 
       </table>
     </div>
   );
-  const opening = (
+  const opening = openingView ? (
+    <ImportsPart entityId={SETUP_ENTITY} today="2026-10-29" onStage={async () => SAMPLE_BATCH} onCommit={SAMPLE_CALLS.onCommit} onGoLiveCheck={async () => ({ fyStart: '2026-04-01', goLiveMonth: '2026-10', ready: true, missing: [] })} batch={openingView === 'checked' ? SAMPLE_BATCH : SAMPLE_BATCH_ERRORS} />
+  ) : (
     <div className="yx-pay-stack">
       <p className="yx-pay-muted">Import month-wise as-paid lines per component for April–September 2026 for employees paid before go-live. They become the base for YTD tax and for arrears across go-live.</p>
       <FileUpload
@@ -1434,7 +1546,13 @@ export function PayrollSetupScreen({ step = 'reg', incomplete = true, imported: 
   return (
     <PayFrame page="home">
       <PageHeader title="Set up payroll" description="Kaveri Foods Pvt Ltd (Karnataka). You can save and come back." />
-      {phase === 'live' ? (
+      {state === 'no-access' ? (
+        <NoAccessState grantedBy="your payroll admin" what="payroll set-up" />
+      ) : state !== 'ready' ? (
+        <StateBlock state={state} errorTitle="We couldn't load payroll set-up." rows={6}>
+          {null}
+        </StateBlock>
+      ) : phase === 'live' ? (
         <InlineAlert tone="success" title="Payroll is on for Kaveri Foods Pvt Ltd (Karnataka)" actions={<StoryButton size="sm" to={PAY_HOME}>Open runs</StoryButton>}>
           The October 2026 run is open: cut-off {cutoff ?? 25} Oct, pay day on the {payDayLabel}.
         </InlineAlert>
@@ -1471,6 +1589,15 @@ export function PayrollSetupScreen({ step = 'reg', incomplete = true, imported: 
             { id: 'bank', title: 'Bank format', content: bank, summary: <p>Cauvery Co-operative Bank bulk salary</p> },
             { id: 'acct', title: 'Accounting mapping', content: acct, summary: <p>{MAPPING.length} ledgers mapped</p> },
             { id: 'opening', title: 'Opening balances', description: 'YTD and as-paid lines', status: imported ? undefined : 'error', statusNote: imported ? undefined : 'Not imported yet', content: opening, summary: <p>{imported ? 'Imported April–September · August missing for 3 employees' : 'Not imported yet'}</p> },
+            {
+              id: 'golive',
+              title: 'Go-live',
+              description: 'Readiness and parallel run',
+              status: GOLIVE[golive].r.ready ? undefined : 'open',
+              statusNote: GOLIVE[golive].r.ready ? undefined : '2 to do',
+              content: <GoLivePart entityId={SETUP_ENTITY} readiness={GOLIVE[golive].r} runs={[SAMPLE_RUN]} parallel={GOLIVE[golive].p} me="u-fin" can={{ upload: true, decide: true }} onUpload={SAMPLE_CALLS.onUpload} onDecide={SAMPLE_CALLS.onDecide} deciding={decide} />,
+              summary: <p>{GOLIVE[golive].r.ready ? 'Ready for the first live month' : '2 to do: UAN on file, a parallel run signed off'}</p>,
+            },
           ]}
         />
       )}

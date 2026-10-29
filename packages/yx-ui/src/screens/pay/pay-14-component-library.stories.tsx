@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { ComponentLibraryScreen } from './comp-setup';
 
-const meta: Meta<typeof ComponentLibraryScreen> = { title: 'Screens/Pay/PAY-14 · Component library', component: ComponentLibraryScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof ComponentLibraryScreen> = { title: 'Screens/Pay/PAY-14 · Component library', component: ComponentLibraryScreen, render: (args) => <ComponentLibraryScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof ComponentLibraryScreen>;
 

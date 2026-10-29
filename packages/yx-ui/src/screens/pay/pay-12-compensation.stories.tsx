@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { CompensationScreen } from './comp-setup';
 
-const meta: Meta<typeof CompensationScreen> = { title: 'Screens/Pay/PAY-12 · Compensation and revision', component: CompensationScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof CompensationScreen> = { title: 'Screens/Pay/PAY-12 · Compensation and revision', component: CompensationScreen, render: (args) => <CompensationScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof CompensationScreen>;
 

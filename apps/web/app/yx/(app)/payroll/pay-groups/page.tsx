@@ -1,34 +1,9 @@
 'use client';
 
-import { PayGroupsScreen, type EmployeeHit, type PayCalendarMonth, type PayGroup, type PayGroupMember, type SetupEntity } from '@yukthix/ui/pay';
-import { payState, usePay, usePayRead, usePayWrite } from '../../../../../lib/yx-pay';
-import { usePeopleSearch } from '../../../../../lib/yx-pay-5b';
-import { todayIndia } from '../../../../../lib/yx-time';
+import { PayrollSetupScreen } from '@yukthix/ui/pay';
+import { usePaySetupLive } from '../../../../../lib/yx-pay-setup';
 
-// Payroll › Pay groups (PAY-2.05): groups per legal entity, dated membership and the pay calendar.
-export default function YxPayGroupsPage() {
-  const entities = usePay<SetupEntity[]>('/setup/entities');
-  const groups = usePay<PayGroup[]>('/pay-groups');
-  const read = usePayRead();
-  const write = usePayWrite();
-  const search = usePeopleSearch();
-  return (
-    <PayGroupsScreen
-      state={payState(entities, groups)}
-      onRetry={() => void groups.refetch()}
-      entities={(entities.data ?? []).filter((x) => x.keys.includes('payroll.setup.manage'))}
-      groups={groups.data ?? null}
-      today={todayIndia()}
-      onSave={(id, g) => (id ? write(`/pay-groups/${encodeURIComponent(id)}`, g, 'PATCH') : write('/pay-groups', g))}
-      onMembers={(id) => read<PayGroupMember[]>(`/pay-groups/${encodeURIComponent(id)}/members`)}
-      onAddMembers={(id, employeeIds, from) =>
-        write(`/pay-groups/${encodeURIComponent(id)}/members`, {
-          employeeIds,
-          from,
-        })
-      }
-      onSearch={(q) => search(q) as Promise<EmployeeHit[]>}
-      onCalendar={(id, year) => read<PayCalendarMonth[]>(`/pay-groups/${encodeURIComponent(id)}/calendar?year=${year}`)}
-    />
-  );
+// Payroll › Pay groups (PAY-16 Pay group step, PAY-2.05): groups, members from a date, the pay calendar. The designed PAY-16 set-up wizard, opened at this step.
+export default function YxPayPayGroupsPage() {
+  return <PayrollSetupScreen live={usePaySetupLive('group')} />;
 }

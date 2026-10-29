@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { CompensationLiveScreen, type Breakup, type CompensationInForce, type EmployeeHit, type SalaryTemplate, type StatutoryProfile } from '@yukthix/ui/pay';
-import type { SplitSuggestion } from '@yukthix/ui/pay';
+import { CompensationScreen, type Breakup, type CompensationInForce, type EmployeeHit, type SalaryTemplate, type StatutoryProfile } from '@yukthix/ui/pay';
+import type { LiveCompensation, SplitSuggestion } from '@yukthix/ui/pay';
 import { payState, usePay, usePayWrite } from '../../../../../lib/yx-pay';
 import { usePeopleSearch } from '../../../../../lib/yx-pay-5b';
 import { todayIndia } from '../../../../../lib/yx-time';
@@ -22,35 +22,28 @@ export default function YxPayCompensationPage() {
   // the statutory profile.
   const perms = useYxPermissions();
   const changesPay = perms.has('employee.salary.manage') && perms.has('employee.change.manage');
-  return (
-    <CompensationLiveScreen
-      onSearch={search}
-      employee={employee}
-      onEmployee={setEmployee}
-      state={payState(current)}
-      onRetry={() => void current.refetch()}
-      current={current.data ?? null}
-      templates={templates.data ?? null}
-      today={todayIndia()}
-      onSuggest={employee ? (annualCtc, effectiveDate) => write<SplitSuggestion[]>('/compensations/suggest', { employeeId: employee.id, annualCtc, effectiveDate }) : undefined}
-      onPreview={(c) =>
-        write<Breakup>('/compensations/preview', {
-          ...c,
-          employeeId: employee!.id,
-        })
-      }
-      {...(changesPay ? { onSubmit: (c: Parameters<NonNullable<React.ComponentProps<typeof CompensationLiveScreen>['onSubmit']>>[0]) => write<{ changeId: string; status: string }>(`/employees/${id}/compensation-changes`, { ...c, employeeId: employee!.id }) } : {})}
-      onLetter={(changeId, signatory) =>
-        write<{ referenceNo: string }>(`/compensation-changes/${encodeURIComponent(changeId)}/letter`, {
-          signatory,
-          confirmation: {
-            phrase: 'ISSUE RL',
-            impact: [{ label: 'Person', value: employee!.name }],
-          },
-        })
-      }
-      profile={profile.data ?? null}
-      onSaveProfile={(p) => write(`/employees/${id}/statutory-profile`, p, 'PUT')}
-    />
-  );
+  const live: LiveCompensation = {
+    onSearch: search,
+    employee,
+    onEmployee: setEmployee,
+    state: payState(current),
+    onRetry: () => void current.refetch(),
+    current: current.data ?? null,
+    templates: templates.data ?? null,
+    today: todayIndia(),
+    onSuggest: employee ? (annualCtc, effectiveDate) => write<SplitSuggestion[]>('/compensations/suggest', { employeeId: employee.id, annualCtc, effectiveDate }) : undefined,
+    onPreview: (c) => write<Breakup>('/compensations/preview', { ...c, employeeId: employee!.id }),
+    onSubmit: changesPay ? (c) => write<{ changeId: string; status: string }>(`/employees/${id}/compensation-changes`, { ...c, employeeId: employee!.id }) : undefined,
+    onLetter: (changeId, signatory) =>
+      write<{ referenceNo: string }>(`/compensation-changes/${encodeURIComponent(changeId)}/letter`, {
+        signatory,
+        confirmation: {
+          phrase: 'ISSUE RL',
+          impact: [{ label: 'Person', value: employee!.name }],
+        },
+      }),
+    profile: profile.data ?? null,
+    onSaveProfile: (p) => write(`/employees/${id}/statutory-profile`, p, 'PUT'),
+  };
+  return <CompensationScreen live={live} />;
 }
