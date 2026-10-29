@@ -32,6 +32,23 @@ const KIND: Record<string, FileKind> = { 'IN.PF': 'ecr', 'IN.ESI': 'esi', 'IN.PT
 const LABEL: Record<string, string> = { 'IN.PF': 'PF (ECR)', 'IN.ESI': 'ESI contributions', 'IN.PT': 'Professional tax', 'IN.LWF': 'Labour welfare fund' };
 const CAL: Record<string, string> = { 'IN.PF': 'pf_ecr', 'IN.ESI': 'esi' };
 const daysBetween = (from: string, to: string) => Math.max(0, Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000));
+/**
+ * PAY-01 dues (founder 30 Oct 2026, item 13): this month and the three before it. The month before falls due this month,
+ * so its filed items still show (as Filed); the two older months only while something is owed and not filed.
+ */
+export function homeDueMonths(month: string): { months: string[]; unfiledOnly: string[] } {
+  const [y, m] = month.split('-').map(Number);
+  const back = (n: number) => new Date(Date.UTC(y, m - 1 - n, 1)).toISOString().slice(0, 7);
+  return { months: [back(3), back(2), back(1), month], unfiledOnly: [back(3), back(2)] };
+}
+
+/** A read-back month's hub with only what is owed and not filed; none when nothing is left. */
+export function onlyUnfiled<T extends { cards: { amount: string; status: string }[]; tds: { amount: string; challanStatus: string } }>(d: T): T[] {
+  const cards = d.cards.filter((c) => c.status !== 'filed' && D(c.amount).gt(0));
+  const tdsOwed = D(d.tds.amount).gt(0) && d.tds.challanStatus !== 'deposited';
+  return cards.length || tdsOwed ? [{ ...d, cards }] : [];
+}
+
 /** The deductor of an e-TDS return (salary or non-salary), adding what is missing to `problems`. */
 export async function etdsDeductor(tx: Tx, org: string, entityId: string, problems: string[]): Promise<Deductor | null> {
   const e = await tx.legalEntity.findFirstOrThrow({ where: { organizationId: org, id: entityId }, select: { name: true, pan: true, tan: true, registeredAddress: true } });
@@ -254,9 +271,16 @@ export class StatutoryFilingsService {
       });
       const cal = inForce(rules, 'IN.CALENDAR', ['IN'], `${month}-01`);
       const pen = inForce(rules, 'IN.PENALTY', ['IN'], `${month}-01`);
+      // Founder 30 Oct 2026 (item 12): PT and LWF fall due by the state's own calendar (packs/in-dues.json); a state
+      // without one (or without that item) shows no date and the card asks to verify it.
+      const stateDue = (state: string, key: 'pt' | 'lwf') => {
+        const rs = inForce(rules, 'IN.CALENDAR', [state], `${month}-01`);
+        if (!rs || !(rs.values.items as { key: string }[]).some((x) => x.key === key)) return null;
+        return due(rs, { key, month }).due as string;
+      };
       const card = (statute: string, state: string | null, amount: Prisma.Decimal, calKey: string | null, interestItem: string | null) => {
         const f = filings.filter((x) => x.statute === statute && x.state === state && x.kind === 'original').pop();
-        const dueOn = cal && calKey ? (due(cal, { key: calKey, month }).due as string) : null;
+        const dueOn = state ? stateDue(state, statute === 'IN.PT' ? 'pt' : 'lwf') : cal && calKey ? (due(cal, { key: calKey, month }).due as string) : null;
         const late = dueOn && today > dueOn && f?.status !== 'filed';
         const estimate = late && pen && interestItem ? penalty(pen, { item: interestItem, amount: amount.toFixed(2), days: daysBetween(dueOn, today) }).amount.toFixed(2) : null;
         return {
