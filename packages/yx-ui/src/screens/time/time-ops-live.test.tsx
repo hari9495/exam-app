@@ -45,6 +45,19 @@ describe('TIM-01 Today board (live)', () => {
     expect(await screen.findByRole('button', { name: 'Everyone nudged' })).toBeInTheDocument();
   });
 
+  it('On site now lists only people checked in and not out (assumed present and checked-out people are left out)', async () => {
+    const extra: TodayBoard['people'] = [
+      { ...data.people[0]!, id: 'x', name: 'Assumed Person', status: 'in', inAt: null, onSite: false, mode: 'Assumed present', source: null },
+      { ...data.people[0]!, id: 'o', name: 'Gone Home', inAt: '08:00', onSite: false },
+    ];
+    render(<TodayBoardScreen live={board({ data: { ...data, scope: 'company', people: [...data.people, ...extra] } })} />);
+    await ue.click(screen.getByRole('tab', { name: /On site now/ }));
+    expect(screen.getByText('Arun Prakash')).toBeInTheDocument();
+    expect(screen.getByText('In 9:20 am')).toBeInTheDocument();
+    expect(screen.queryByText('Assumed Person')).not.toBeInTheDocument();
+    expect(screen.queryByText('Gone Home')).not.toBeInTheDocument();
+  });
+
   it('empty, error and no access', async () => {
     const onRetry = vi.fn();
     const { rerender } = render(<TodayBoardScreen live={board({ data: { ...data, people: [] } })} />);

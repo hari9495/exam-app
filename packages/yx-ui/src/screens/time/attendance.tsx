@@ -1027,7 +1027,8 @@ function SampleTodayBoard({ persona = 'mgr', state: stateProp = 'ready', default
 }
 
 /** One person on the board: the design's person, plus the live day they missed a check-out on (else the story's). */
-type BoardPerson = TeamPerson & { missedOutOn?: string | null };
+/** `onSite` (live): checked in at a site and not checked out yet; assumed-present people have no check-in. */
+type BoardPerson = TeamPerson & { missedOutOn?: string | null; onSite?: boolean };
 /** Where the board's buttons go: story links in Storybook, app paths live (null: not built, so no button). */
 interface BoardLinks { exceptions?: string | null; muster?: string | null; roster?: string | null; fieldMap?: string | null }
 
@@ -1209,6 +1210,7 @@ function LiveTodayBoardScreen({ live }: { live: LiveTodayBoard }) {
     mode: p.mode,
     reportsTo: '',
     missedOutOn: p.missedOutOn,
+    onSite: p.onSite,
   }));
   const nudged = [...new Set([...sent, ...(d?.people ?? []).filter((p) => p.nudged).map((p) => p.id)])];
   const nudge = async (ids: string[]) => {
@@ -1253,8 +1255,8 @@ function LiveTodayBoardScreen({ live }: { live: LiveTodayBoard }) {
 }
 
 /** Employees checked in at each site now (same people as the board), plus visitors signed in (Visitors module). */
-function OnSiteNow({ people, sites: liveSites, visitors = true }: { people: TeamPerson[]; sites?: string[]; visitors?: boolean }) {
-  const here = people.filter((p) => ['in', 'late', 'missing'].includes(p.status));
+function OnSiteNow({ people, sites: liveSites, visitors = true }: { people: BoardPerson[]; sites?: string[]; visitors?: boolean }) {
+  const here = people.filter((p) => (p.onSite ?? ['in', 'late', 'missing'].includes(p.status)) && p.inAt);
   // Live: visitors come from the Visitors module, which is not built yet, so only employees are listed.
   const guests = visitors ? VISITS.filter((v) => v.status === 'On site') : [];
   const sites = (liveSites ?? LOCATIONS.map((l) => l.name)).filter((s) => here.some((p) => p.location === s) || guests.some((v) => v.location === s));
