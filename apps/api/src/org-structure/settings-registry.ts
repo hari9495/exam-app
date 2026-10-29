@@ -244,6 +244,10 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // Founder decision 8 (29 Oct 2026): a loan or advance is capped at months of gross pay, and only after probation by default.
   'payroll.loan.max_gross_months': { label: 'A loan or advance may be at most (months of gross pay)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['none', '1', '2', '3', '4', '6', '12'], default: '2' },
   'payroll.loan.after_probation': { label: 'Who may ask for a loan or advance', scopes: ['tenant', 'legal_entity'], dated: false, values: ['confirmed', 'everyone'], default: 'confirmed' },
+  // Founder answer 1 (30 Oct 2026): the yearly interest rate is the company's, per loan type; employees never type it.
+  // Interest-free by default (no perquisite question); the rate in force on the day of the request is kept on the loan.
+  'payroll.loan.interest_rate.advance': { label: 'Interest on a salary advance (% a year)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '4', '5', '6', '7', '7.5', '8', '8.5', '9', '10', '12'], default: '0' },
+  'payroll.loan.interest_rate.loan': { label: 'Interest on a personal loan (% a year)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '4', '5', '6', '7', '7.5', '8', '8.5', '9', '10', '12'], default: '0' },
   // PAY-24 statutory bonus (Payment of Bonus Act, 1965; founder rule: policy is configurable). Defaults are the Act's
   // values; a company may only be more generous (a higher limit or ceiling, fewer days), never below the Act.
   'payroll.bonus.year_start_month': { label: 'The bonus accounting year starts in (month number)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'], default: '4' },

@@ -292,6 +292,23 @@ describe('PAY-18 · Me › Loans and advances (live, founder decision 8)', () =>
     expect(await screen.findByText(/The most you can ask for is ₹70,000.00/)).toBeInTheDocument();
   });
 
+  it('founder answer 1: no interest field; the company rate per type is shown, used for the preview and never sent', async () => {
+    const onRequest = fn();
+    render(<LoanRequestScreen live={live({ onRequest, rules: { ...RULES, interestRate: { advance: '0', loan: '8.5' } } })} />);
+    expect(screen.queryByRole('textbox', { name: /Interest/ })).not.toBeInTheDocument();
+    expect(screen.getByText('Interest-free')).toBeInTheDocument();
+    await ue.click(screen.getByRole('radio', { name: 'Personal loan' }));
+    expect(screen.getByText('8.5% a year')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: /Interest/ })).not.toBeInTheDocument();
+    await ue.type(screen.getByRole('textbox', { name: /Amount/ }), '60000');
+    await ue.type(screen.getByRole('textbox', { name: /Number of instalments/ }), '12');
+    expect(screen.getByText('Instalment (about)')).toBeInTheDocument();
+    await ue.type(screen.getByRole('textbox', { name: /Reason/ }), 'House repairs');
+    await ue.click(screen.getByRole('button', { name: 'Send request' }));
+    await waitFor(() => expect(onRequest).toHaveBeenCalled());
+    expect((onRequest.mock.calls[0] as unknown[])[0]).not.toHaveProperty('interestRate');
+  });
+
   it('on probation: no form, the reason and the day probation ends', () => {
     render(<LoanRequestScreen live={live({ rules: { ...RULES, eligible: false, reason: 'You can ask for a loan or advance after your probation is confirmed. Your probation ends on 14 Dec 2026.', probationEndsOn: '2026-12-14' } })} />);
     expect(screen.getByText(/after your probation is confirmed/)).toBeInTheDocument();

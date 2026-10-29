@@ -1,8 +1,8 @@
 'use client';
 
-import { LoansScreen, type LoanView } from '@yukthix/ui/pay';
+import { LoansScreen, type LoanRepayments, type LoanView } from '@yukthix/ui/pay';
 import { useYxPermissions } from '../../../../../lib/yx-org';
-import { payState, usePay, usePayWrite } from '../../../../../lib/yx-pay';
+import { payState, usePay, usePayRead, usePayWrite } from '../../../../../lib/yx-pay';
 import { useNames } from '../../../../../lib/yx-pay-5j';
 import { usePeopleSearch } from '../../../../../lib/yx-pay-5b';
 
@@ -11,6 +11,7 @@ export default function YxPayLoansPage() {
   const perms = useYxPermissions();
   const loans = usePay<LoanView[]>('/loans');
   const write = usePayWrite();
+  const read = usePayRead();
   const search = usePeopleSearch();
   const nameOf = useNames();
   return (
@@ -25,6 +26,7 @@ export default function YxPayLoansPage() {
         onSearch: search,
         onRequest: (x) => write('/loans', x),
         onChange: (l, x) => write(`/loans/${encodeURIComponent(l.id)}/schedule-changes`, x),
+        onRepayments: (l) => read<LoanRepayments>(`/loans/${encodeURIComponent(l.id)}/repayments`),
       }}
     />
   );

@@ -46,6 +46,8 @@ export interface LoanView {
   employeeId: string;
   loanType: 'advance' | 'loan' | 'expense';
   principal: string;
+  /** The company's yearly rate, kept on the loan when it was asked for (founder answer 1). */
+  interestRate?: string;
   emi: string;
   outstanding: string;
   firstMonth: string;
@@ -54,12 +56,21 @@ export interface LoanView {
   mine: boolean;
 }
 
+/** GET payroll/loans/:id/repayments (founder answer 5): month by month, and what a pre-closure today comes to. */
+export interface LoanRepayments {
+  loanId: string;
+  interestRate: string;
+  recovered: string;
+  rows: { no: number; month: string; emi: string; interest: string; principal: string; balance: string; status: 'recovered' | 'paused' | 'scheduled' }[];
+  closing: { on: string; interestFrom: string; days: number; principal: string; interest: string; total: string } | null;
+}
+
+/** The interest rate is the company's per loan type (founder answer 1); a request never carries one. */
 export interface LoanRequestInput {
   employeeId?: string;
   loanType: 'advance' | 'loan';
   principal: string;
   instalments: number;
-  interestRate?: string;
   firstMonth: string;
   reason: string;
 }

@@ -10,7 +10,7 @@ import { ApprovalsEngine, type Notice } from '../workflow/approvals-engine.servi
 import { CourtOrderDto, HoldDto, HoldReleaseDto, LoanChangeDto, LoanRequestDto, LopRowDto, OneTimeDto, SpecialDaysDto } from './dto-5c';
 import { PayKey, entitiesFor, payHolders, payScope, payViewer, requireEntity, requireSelf, withPayScope } from './pay-access';
 import { inr, payOn } from './fnf.service';
-import { dayMonYear, loanRoom, maxMonthsOf } from './loan-rules';
+import { closingInterest, dayMonYear, interestFrom, loanRoom, loanSchedule, maxMonthsOf } from './loan-rules';
 
 // Payroll inputs and recoveries (M03-BUILD-DESIGN §10, PAY-3.02, 3.11 … 3.14, 3.17): manual LOP for assumed-present
 // groups (D1), one-time pay (above a company amount it is approved through P03), special days, holds (idempotent release,
@@ -265,6 +265,7 @@ export class PayInputsService implements OnModuleInit {
       outstanding: (await tx.loan.aggregate({ where: { organizationId: org, employeeId: e.employeeId, status: { in: ['requested', 'active', 'paused'] } }, _sum: { outstanding: true } }))._sum.outstanding ?? D(0),
     }));
     const room = loanRoom(gross, months, outstanding);
+    const interestRate = { advance: await settingFor(tx, c, 'payroll.loan.interest_rate.advance', lev), loan: await settingFor(tx, c, 'payroll.loan.interest_rate.loan', lev) };
     const name = forSelf ? '' : ((await tx.employee.findFirst({ where: { organizationId: org, id: e.employeeId }, select: { givenName: true } }))?.givenName ?? 'This person');
     let reason: string | null = null;
     let refusal: 'probation' | 'no_pay' | null = null;
@@ -278,7 +279,7 @@ export class PayInputsService implements OnModuleInit {
       refusal = 'no_pay';
       reason = forSelf ? "Your pay is not set up yet, so the loan limit can't be worked out. Ask HR." : `${name}'s pay is not set up yet, so the loan limit can't be worked out. Ask HR.`;
     }
-    return { afterProbation, months, onProbation, probationEndsOn, gross, outstanding, ...room, reason, refusal };
+    return { afterProbation, months, onProbation, probationEndsOn, gross, outstanding, ...room, interestRate, reason, refusal };
   }
 
   /** The signed-in person's own loan rules (GET /payroll/loans/rules): the same checks and words as a request. */
@@ -299,12 +300,15 @@ export class PayInputsService implements OnModuleInit {
         limit: r.limit?.toFixed(2) ?? null,
         outstanding: r.outstanding.toFixed(2),
         available: r.available?.toFixed(2) ?? null,
+        interestRate: r.interestRate,
       };
     });
   }
 
   /** A request for oneself (implicit), or by payroll for someone in scope; approved by someone else through P03. */
   async requestLoan(ctx: TenantContext, user: ScopeUser, dto: LoanRequestDto) {
+    // Founder answer 1: the company sets the rate per loan type; a rate sent by the client is refused, never used.
+    if (dto.interestRate !== undefined) throw new BadRequestException('The interest rate is set by the company for each loan type. Send the request without it.');
     const v = await this.viewer(user);
     const notices: Notice[] = [];
     const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
@@ -327,16 +331,17 @@ export class PayInputsService implements OnModuleInit {
         throw new BadRequestException(`The most you can ask for is ${inr(rule.available)}: ${n} ${n === 1 ? "month's" : "months'"} gross pay${owed}.`);
       }
       await payScope(tx, forSelf ? [] : [e.legalEntityId]);
-      const emi = loanEmi(principal, D(dto.interestRate ?? '0'), dto.instalments);
+      const rate = D(rule.interestRate[dto.loanType]);
+      const emi = loanEmi(principal, rate, dto.instalments);
       const approvers = await this.approversFor(tx, org, 'payroll.loan.approve', e.legalEntityId, v.userId!, employeeId);
       if (!approvers.length) throw new BadRequestException('No one can approve this request yet. A payroll approver needs "payroll.loan.approve".');
       const [row] = await tx.$queryRaw<{ id: string }[]>`
         INSERT INTO loans (organization_id, legal_entity_id, employee_id, employment_id, loan_type, principal, interest_rate, emi, first_month, outstanding, reason, requested_by)
-        VALUES (${org}::uuid, ${e.legalEntityId}::uuid, ${employeeId}::uuid, ${e.id}::uuid, ${dto.loanType}, ${principal}, ${D(dto.interestRate ?? '0')}, ${emi}, ${on}::date, ${principal}, ${dto.reason}, ${v.userId}::uuid) RETURNING id::text`;
-      const sub = await this.engine.submit(tx, c, { type: LOAN, subjectType: 'loan', subjectId: row.id, title: `${dto.loanType === 'loan' ? 'Loan' : 'Salary advance'} of ₹${principal.toFixed(2)}`, summary: [{ label: 'Instalments', value: `${dto.instalments} of ₹${emi.toFixed(2)} from ${dto.firstMonth}` }, { label: 'Why', value: dto.reason.slice(0, 200) }], subjectPersonId: null, requesterUserId: v.userId!, raisedByUserId: v.userId!, steps: [{ name: 'Payroll approval', approvers: [{ kind: 'users', userIds: approvers }], mode: 'any', remindAfterHours: 24 }], payload: {}, payloadFields: [], fallbackUserIds: [] });
+        VALUES (${org}::uuid, ${e.legalEntityId}::uuid, ${employeeId}::uuid, ${e.id}::uuid, ${dto.loanType}, ${principal}, ${rate}, ${emi}, ${on}::date, ${principal}, ${dto.reason}, ${v.userId}::uuid) RETURNING id::text`;
+      const sub = await this.engine.submit(tx, c, { type: LOAN, subjectType: 'loan', subjectId: row.id, title: `${dto.loanType === 'loan' ? 'Loan' : 'Salary advance'} of ₹${principal.toFixed(2)}`, summary: [{ label: 'Instalments', value: `${dto.instalments} of ₹${emi.toFixed(2)} from ${dto.firstMonth}` }, { label: 'Interest', value: rate.isZero() ? 'Interest-free' : `${rate.toString()}% a year (company rate)` }, { label: 'Why', value: dto.reason.slice(0, 200) }], subjectPersonId: null, requesterUserId: v.userId!, raisedByUserId: v.userId!, steps: [{ name: 'Payroll approval', approvers: [{ kind: 'users', userIds: approvers }], mode: 'any', remindAfterHours: 24 }], payload: {}, payloadFields: [], fallbackUserIds: [] });
       notices.push(...sub.notices);
       await tx.loan.update({ where: { id: row.id }, data: { wfRequestId: sub.id } });
-      await audit(tx, c, 'payroll.loan.requested', 'loan', row.id, { employeeId, loanType: dto.loanType, instalments: dto.instalments, forSelf, rule: { maxGrossMonths: rule.months, afterProbation: rule.afterProbation }, limit: rule.limit?.toFixed(2) ?? null, available: rule.available?.toFixed(2) ?? null });
+      await audit(tx, c, 'payroll.loan.requested', 'loan', row.id, { employeeId, loanType: dto.loanType, instalments: dto.instalments, interestRate: rate.toFixed(2), forSelf, rule: { maxGrossMonths: rule.months, afterProbation: rule.afterProbation }, limit: rule.limit?.toFixed(2) ?? null, available: rule.available?.toFixed(2) ?? null });
       return { id: row.id, status: 'requested', emi: emi.toFixed(2) };
     });
     await this.engine.send(ctx, notices);
@@ -357,7 +362,53 @@ export class PayInputsService implements OnModuleInit {
       await payScope(tx, ids);
       const me = await tx.employee.findFirst({ where: { organizationId: c.organizationId, userId: v.userId! }, select: { id: true } });
       const rows = await tx.loan.findMany({ where: { organizationId: c.organizationId, OR: [{ legalEntityId: { in: ids } }, ...(me ? [{ employeeId: me.id }] : [])] }, orderBy: { createdAt: 'desc' }, take: 500 });
-      return rows.map((l) => ({ id: l.id, employeeId: l.employeeId, loanType: l.loanType, principal: l.principal.toFixed(2), emi: l.emi.toFixed(2), outstanding: l.outstanding.toFixed(2), firstMonth: dateOf(l.firstMonth).slice(0, 7), status: l.status, pausedUntil: l.pausedUntil ? dateOf(l.pausedUntil).slice(0, 7) : null, mine: l.employeeId === me?.id }));
+      return rows.map((l) => ({ id: l.id, employeeId: l.employeeId, loanType: l.loanType, principal: l.principal.toFixed(2), interestRate: l.interestRate.toFixed(2), emi: l.emi.toFixed(2), outstanding: l.outstanding.toFixed(2), firstMonth: dateOf(l.firstMonth).slice(0, 7), status: l.status, pausedUntil: l.pausedUntil ? dateOf(l.pausedUntil).slice(0, 7) : null, mine: l.employeeId === me?.id }));
+    });
+  }
+
+  /** What a loan's repayments and pre-closure come to (shared by the read and the pre-closure, so both agree). */
+  private async loanMonths(tx: Tx, org: string, l: Prisma.LoanGetPayload<object>) {
+    const paid = await tx.loanRepayment.findMany({ where: { organizationId: org, loanId: l.id }, orderBy: { createdAt: 'asc' }, select: { payslipId: true, amount: true } });
+    const slips = await tx.payslip.findMany({ where: { organizationId: org, id: { in: paid.map((p) => p.payslipId) } }, select: { id: true, periodStart: true } });
+    const repayments = paid.map((p) => ({ month: dateOf(slips.find((s) => s.id === p.payslipId)?.periodStart ?? l.firstMonth).slice(0, 7), amount: p.amount }));
+    const open = ['active', 'paused'].includes(l.status);
+    const rows = loanSchedule({
+      principal: l.principal,
+      ratePct: l.interestRate,
+      emi: l.emi,
+      outstanding: l.outstanding,
+      firstMonth: dateOf(l.firstMonth).slice(0, 7),
+      pausedUntil: l.pausedUntil ? dateOf(l.pausedUntil).slice(0, 7) : null,
+      open,
+      repayments,
+    });
+    const today = todayIst();
+    const from = interestFrom(dateOf(l.firstMonth).slice(0, 7), repayments.length ? repayments.reduce((m, r) => (r.month > m ? r.month : m), repayments[0].month) : null);
+    const close = closingInterest(l.outstanding, l.interestRate, from, today);
+    return { rows, closing: open && l.outstanding.gt(0) ? { on: today, interestFrom: from, days: close.days, principal: l.outstanding, interest: close.interest, total: l.outstanding.add(close.interest) } : null };
+  }
+
+  /**
+   * PAY-17 (founder answer 5): the loan's month by month: recovered (from the approved payslips) and scheduled (from the
+   * balance), and what a pre-closure today comes to. The person's own loan, or payroll.loan.manage over its entity.
+   */
+  async loanRepayments(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const ids = await entitiesFor(tx, c, v, 'payroll.loan.manage');
+      await payScope(tx, ids);
+      const me = await tx.employee.findFirst({ where: { organizationId: c.organizationId, userId: v.userId! }, select: { id: true } });
+      const l = await tx.loan.findFirst({ where: { organizationId: c.organizationId, id, OR: [{ legalEntityId: { in: ids } }, ...(me ? [{ employeeId: me.id }] : [])] } });
+      if (!l) throw new NotFoundException('Not found');
+      const m = await this.loanMonths(tx, c.organizationId, l);
+      const rec = m.rows.filter((r) => r.status === 'recovered');
+      return {
+        loanId: l.id,
+        interestRate: l.interestRate.toFixed(2),
+        recovered: rec.reduce((t, r) => t.add(r.emi), D(0)).toFixed(2),
+        rows: m.rows,
+        closing: m.closing && { on: m.closing.on, interestFrom: m.closing.interestFrom, days: m.closing.days, principal: m.closing.principal.toFixed(2), interest: m.closing.interest.toFixed(2), total: m.closing.total.toFixed(2) },
+      };
     });
   }
 
@@ -378,10 +429,13 @@ export class PayInputsService implements OnModuleInit {
         if (!dto.emi || D(dto.emi).lte(0) || D(dto.emi).gt(l.outstanding)) throw new BadRequestException('Give a new instalment above zero and not more than the balance.');
         data = { emi: dto.emi };
       } else data = { status: 'closed', outstanding: 0 };
+      // Pre-closure: the interest to today is worked out here (never taken from the client) and kept with the change.
+      const closing = dto.kind === 'preclose' ? (await this.loanMonths(tx, c.organizationId, l)).closing : null;
+      const settled = closing ? { interest: closing.interest.toFixed(2), interestFrom: closing.interestFrom, closedOn: closing.on, total: closing.total.toFixed(2) } : {};
       await tx.loan.update({ where: { id }, data });
-      await tx.loanScheduleChange.create({ data: { organizationId: c.organizationId, legalEntityId: l.legalEntityId, employeeId: l.employeeId, loanId: id, kind: dto.kind, detail: { pauseUntil: dto.pauseUntil ?? null, emi: dto.emi ?? null, outstandingBefore: l.outstanding.toFixed(2) }, reason: dto.reason, changedBy: v.userId! } });
-      await audit(tx, c, 'payroll.loan.changed', 'loan', id, { kind: dto.kind, reason: dto.reason });
-      return { id, kind: dto.kind };
+      await tx.loanScheduleChange.create({ data: { organizationId: c.organizationId, legalEntityId: l.legalEntityId, employeeId: l.employeeId, loanId: id, kind: dto.kind, detail: { pauseUntil: dto.pauseUntil ?? null, emi: dto.emi ?? null, outstandingBefore: l.outstanding.toFixed(2), ...settled }, reason: dto.reason, changedBy: v.userId! } });
+      await audit(tx, c, 'payroll.loan.changed', 'loan', id, { kind: dto.kind, reason: dto.reason, outstandingBefore: l.outstanding.toFixed(2), ...settled });
+      return { id, kind: dto.kind, ...settled };
     });
   }
 

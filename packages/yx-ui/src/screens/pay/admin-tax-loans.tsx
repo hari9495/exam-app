@@ -1,5 +1,5 @@
 // Payroll admin: PAY-17 loans & advances, PAY-23 proof verification queue, PAY-27 EWA admin, PAY-25 payroll reports.
-import { useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Download, Pause, Play, Plus, Send } from 'lucide-react';
 import { Button, Link } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
@@ -11,12 +11,12 @@ import { useRun } from '../org/org-kit';
 import { dateText } from '../time/live/kit';
 import { PayFormDrawer, PayPageState, fromPaise, paise, rupees, sumMoney } from './consultants';
 import { FindPerson, type PersonHit } from './equity';
-import { LOAN_STATE, LOAN_TYPE_TEXT, monthName, previewEmi, subjectText } from './employee-pay';
+import { LOAN_STATE, LOAN_TYPE_TEXT, monthName, previewEmi, rateText, subjectText } from './employee-pay';
 import { EntityPicker } from './live/setup';
 import type { LoadState } from './live/types';
 import type { SetupEntity } from './live/types-5b';
 import type { EwaDrawView, EwaPolicyView } from './live/types-5i';
-import type { LoanChangeInput, LoanRequestInput, LoanView, ProofDecision, ProofQueueLine } from './live/types-ops';
+import type { LoanChangeInput, LoanRepayments, LoanRequestInput, LoanView, ProofDecision, ProofQueueLine } from './live/types-ops';
 import { CurrencyField, NumberField, TextArea, TextField } from '../../components/inputs';
 import { RadioGroup, Switch } from '../../components/choice';
 import { Select } from '../../components/select';
@@ -1508,6 +1508,52 @@ export interface LiveLoans {
   onSearch: (q: string) => Promise<PersonHit[]>;
   onRequest: (x: LoanRequestInput) => Promise<unknown>;
   onChange: (loan: LoanView, x: LoanChangeInput) => Promise<unknown>;
+  /** GET payroll/loans/:id/repayments (founder answer 5): the schedule and the pre-closure today. */
+  onRepayments: (loan: LoanView) => Promise<LoanRepayments>;
+}
+
+const LIVE_SCHED: Record<LoanRepayments['rows'][number]['status'], string> = { recovered: 'Recovered', paused: 'Paused', scheduled: 'Scheduled' };
+
+/** The loan's months as the PAY-17 design shows them (No., month, EMI, interest, balance, status), from the API. */
+function LiveSchedule({ data }: { data: LoanRepayments | null | 'error' }) {
+  if (data === 'error') return <InlineAlert tone="danger">The schedule didn't load. Close the loan and open it again.</InlineAlert>;
+  if (!data) return <p className="yx-pay-muted" role="status">Loading the schedule…</p>;
+  if (!data.rows.length) return <p className="yx-pay-note">No instalments yet. They start once the loan is approved.</p>;
+  return (
+    <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Schedule, scrolls sideways on small screens">
+      <table className="yx-pay-table">
+        <caption>Schedule</caption>
+        <thead>
+          <tr>
+            <th scope="col">No.</th>
+            <th scope="col">Month</th>
+            <th scope="col" data-num>
+              EMI
+            </th>
+            <th scope="col" data-num>
+              Interest
+            </th>
+            <th scope="col" data-num>
+              Balance
+            </th>
+            <th scope="col">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.rows.map((r) => (
+            <tr key={r.no} data-state={r.status === 'paused' ? 'flag' : undefined}>
+              <td>{r.no}</td>
+              <th scope="row">{monthName(r.month)}</th>
+              <td data-num>{rupees(r.emi)}</td>
+              <td data-num>{rupees(r.interest)}</td>
+              <td data-num>{rupees(r.balance)}</td>
+              <td>{LIVE_SCHED[r.status]}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 const LIVE_LOAN_FILTERS: FilterValue[] = [
@@ -1522,6 +1568,13 @@ function LiveLoans({ live }: { live: LiveLoans }) {
   const [dialog, setDialog] = useState<'pause' | 'reschedule' | 'preclose' | 'add' | null>(null);
   const [filters, setFilters] = useState<FilterValue[]>(LIVE_LOAN_FILTERS);
   const [q, setQ] = useState('');
+  const [months, setMonths] = useState<LoanRepayments | null | 'error'>(null);
+  useEffect(() => {
+    setMonths(null);
+    if (!openId) return;
+    const loan = all.find((l) => l.id === openId);
+    if (loan) live.onRepayments(loan).then(setMonths, () => setMonths('error'));
+  }, [openId]); // eslint-disable-line react-hooks/exhaustive-deps
   const query = q.trim().toLowerCase();
   const typeOf = (l: LoanView) => LOAN_TYPE_TEXT[l.loanType] ?? l.loanType;
   const stateOf = (l: LoanView) => LOAN_STATE[l.status]?.label ?? l.status;
@@ -1618,15 +1671,17 @@ function LiveLoans({ live }: { live: LiveLoans }) {
             <FactRow
               items={[
                 { label: 'Amount', value: rupees(open.principal) },
+                { label: 'Interest', value: rateText(open.interestRate) },
                 { label: 'Instalment', value: rupees(open.emi) },
                 { label: 'Left to repay', value: rupees(open.outstanding) },
-                { label: 'Repaid so far', value: rupees(fromPaise(paise(open.principal) - paise(open.outstanding))) },
               ]}
             />
             {open.pausedUntil && <InlineAlert tone="warning">Instalments are paused until {monthName(open.pausedUntil)}. They start again that month.</InlineAlert>}
             {open.status === 'requested' && <InlineAlert tone="info">Waiting for approval. The approver decides in Approvals; the first instalment is recovered in {monthName(open.firstMonth)} once approved.</InlineAlert>}
             {open.mine && <InlineAlert tone="info">This is your own loan. Someone else in payroll changes it.</InlineAlert>}
             {open.loanType === 'expense' && <p className="yx-pay-note">An expense advance that was not settled in time, recovered from pay like a salary advance.</p>}
+            {months && months !== 'error' && <p className="yx-pay-muted">Recovered in payroll so far: {rupees(months.recovered)}.</p>}
+            <LiveSchedule data={months} />
           </div>
         )}
       </Drawer>
@@ -1637,14 +1692,14 @@ function LiveLoans({ live }: { live: LiveLoans }) {
         <LoanChange loan={open} who={live.nameOf(open.employeeId)} kind="reschedule" onClose={() => setDialog(null)} onSave={(x) => live.onChange(open, x)} />
       )}
       {open && dialog === 'preclose' && (
-        <LoanChange loan={open} who={live.nameOf(open.employeeId)} kind="preclose" onClose={() => setDialog(null)} onSave={(x) => live.onChange(open, x)} />
+        <LoanChange loan={open} who={live.nameOf(open.employeeId)} kind="preclose" closing={months && months !== 'error' ? months.closing : null} onClose={() => setDialog(null)} onSave={(x) => live.onChange(open, x)} />
       )}
       {dialog === 'add' && <AddLoanDrawer onSearch={live.onSearch} onClose={() => setDialog(null)} onSave={live.onRequest} />}
     </PayFrame>
   );
 }
 
-function LoanChange({ loan, who, kind, onClose, onSave }: { loan: LoanView; who: string; kind: LoanChangeInput['kind']; onClose: () => void; onSave: (x: LoanChangeInput) => Promise<unknown> }) {
+function LoanChange({ loan, who, kind, closing, onClose, onSave }: { loan: LoanView; who: string; kind: LoanChangeInput['kind']; closing?: LoanRepayments['closing']; onClose: () => void; onSave: (x: LoanChangeInput) => Promise<unknown> }) {
   const [until, setUntil] = useState(nextMonthOf());
   const [emi, setEmi] = useState('');
   const [reason, setReason] = useState('');
@@ -1668,7 +1723,7 @@ function LoanChange({ loan, who, kind, onClose, onSave }: { loan: LoanView; who:
       {(errorOf) => (
         <>
           {kind === 'pause' && (
-            <FormField id="lc-until" label="Paused until" required error={errorOf('lc-until')} helper="Instalments start again in this month.">
+            <FormField id="lc-until" label="Paused until" required error={errorOf('lc-until')} helper="No instalment up to and including this month; they start again the month after.">
               <TextField type="month" value={until} onChange={setUntil} />
             </FormField>
           )}
@@ -1678,9 +1733,18 @@ function LoanChange({ loan, who, kind, onClose, onSave }: { loan: LoanView; who:
             </FormField>
           )}
           {kind === 'preclose' && (
-            <InlineAlert tone="warning" title="Closing writes off nothing">
-              The balance of {rupees(loan.outstanding)} is marked repaid now. Collect it outside payroll first.
-            </InlineAlert>
+            <>
+              <DescriptionList
+                items={[
+                  { label: 'Outstanding principal', value: rupees(closing?.principal ?? loan.outstanding) },
+                  { label: closing ? `Interest to ${dateText(closing.on)}` : 'Interest to today', value: !closing ? '—' : Number(closing.interest) ? `${rupees(closing.interest)} · ${closing.days} ${closing.days === 1 ? 'day' : 'days'} at ${rateText(loan.interestRate)}` : 'None (interest-free)' },
+                  { label: 'Total to collect', value: <strong>{rupees(closing?.total ?? loan.outstanding)}</strong> },
+                ]}
+              />
+              <InlineAlert tone="warning" title="Closing writes off nothing">
+                The loan is marked repaid now. Collect {rupees(closing?.total ?? loan.outstanding)} outside payroll first.
+              </InlineAlert>
+            </>
           )}
           <FormField id="lc-why" label="Reason" required error={errorOf('lc-why')}>
             <TextArea rows={2} value={reason} onChange={setReason} maxLength={300} />
@@ -1696,7 +1760,6 @@ function AddLoanDrawer({ onSearch, onClose, onSave }: { onSearch: LiveLoans['onS
   const [type, setType] = useState<'advance' | 'loan'>('advance');
   const [amount, setAmount] = useState('');
   const [count, setCount] = useState('');
-  const [rate, setRate] = useState('');
   const [first, setFirst] = useState(nextMonthOf());
   const [reason, setReason] = useState('');
   const n = Number(count);
@@ -1704,11 +1767,11 @@ function AddLoanDrawer({ onSearch, onClose, onSave }: { onSearch: LiveLoans['onS
     ...(!who ? [{ fieldId: 'ln-who', message: 'Choose the person.' }] : []),
     ...(!MONEY_RX.test(amount.trim()) || paise(amount.trim()) <= 0n ? [{ fieldId: 'ln-amount', message: 'Enter the amount in rupees.' }] : []),
     ...(!Number.isInteger(n) || n < 1 || n > 120 ? [{ fieldId: 'ln-count', message: 'Enter 1 to 120 instalments.' }] : []),
-    ...(type === 'loan' && rate.trim() && !/^\d{1,2}(\.\d{1,2})?$/.test(rate.trim()) ? [{ fieldId: 'ln-rate', message: 'Interest is a yearly percentage, like 8.5.' }] : []),
     ...(!MONTH_RX.test(first) ? [{ fieldId: 'ln-first', message: 'Choose the month of the first instalment.' }] : []),
     ...(reason.trim().length < 5 ? [{ fieldId: 'ln-why', message: 'Give a reason (at least 5 letters).' }] : []),
   ];
-  const emi = Number.isInteger(n) && n >= 1 ? previewEmi(amount.trim(), type === 'loan' ? rate.trim() : '', n) : null;
+  // Founder answer 1: the interest is the company's rate for the type in the person's entity, applied by the server.
+  const emi = Number.isInteger(n) && n >= 1 ? previewEmi(amount.trim(), '', n) : null;
   return (
     <PayFormDrawer
       title="Add loan or advance"
@@ -1717,7 +1780,7 @@ function AddLoanDrawer({ onSearch, onClose, onSave }: { onSearch: LiveLoans['onS
       done="Sent for approval. The approver decides in Approvals."
       errors={errors}
       onClose={onClose}
-      onSave={() => onSave({ employeeId: who!.id, loanType: type, principal: amount.trim(), instalments: n, ...(type === 'loan' && rate.trim() ? { interestRate: rate.trim() } : {}), firstMonth: first, reason: reason.trim() })}
+      onSave={() => onSave({ employeeId: who!.id, loanType: type, principal: amount.trim(), instalments: n, firstMonth: first, reason: reason.trim() })}
     >
       {(errorOf) => (
         <>
@@ -1741,20 +1804,14 @@ function AddLoanDrawer({ onSearch, onClose, onSave }: { onSearch: LiveLoans['onS
               <TextField value={count} onChange={setCount} inputMode="numeric" maxLength={3} />
             </FormField>
           </FieldRow>
-          <FieldRow>
-            {type === 'loan' && (
-              <FormField id="ln-rate" label="Interest a year" optional error={errorOf('ln-rate')} helper="Leave empty for an interest-free loan.">
-                <TextField value={rate} onChange={setRate} suffix="%" inputMode="decimal" maxLength={5} />
-              </FormField>
-            )}
-            <FormField id="ln-first" label="First instalment in" required error={errorOf('ln-first')}>
-              <TextField type="month" value={first} onChange={setFirst} />
-            </FormField>
-          </FieldRow>
+          <FormField id="ln-first" label="First instalment in" required error={errorOf('ln-first')}>
+            <TextField type="month" value={first} onChange={setFirst} />
+          </FormField>
           <FormField id="ln-why" label="Reason" required error={errorOf('ln-why')}>
             <TextArea rows={2} value={reason} onChange={setReason} maxLength={300} />
           </FormField>
-          {emi && paise(emi.emi) > 0n && <p className="yx-pay-muted">{emi.exact ? 'Instalment' : 'Instalment about'} {rupees(emi.emi)} a month from {MONTH_RX.test(first) ? monthName(first) : 'the first month'}.</p>}
+          {emi && paise(emi.emi) > 0n && <p className="yx-pay-muted">Instalment {rupees(emi.emi)} a month from {MONTH_RX.test(first) ? monthName(first) : 'the first month'}, before interest.</p>}
+          <p className="yx-pay-note">Interest is the company's rate for this loan type (Settings). It is added when the request is made.</p>
         </>
       )}
     </PayFormDrawer>

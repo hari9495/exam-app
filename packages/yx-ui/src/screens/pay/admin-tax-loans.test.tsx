@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { EwaAdminScreen, LoansScreen, ProofQueueScreen, type Form12bRow, type LiveEwaAdmin, type LiveLoans, type LiveProofQueue } from './admin-tax-loans';
+import type { LoanRepayments } from './live/types-ops';
 import { PEOPLE } from './live/fixtures-5j';
 import { LOANS, PROOFS } from './live/fixtures-ops';
 
@@ -13,7 +14,66 @@ const nameOf = (id: string) => PEOPLE.find((p) => p.employeeId === id)?.name ?? 
 const search = async () => PEOPLE.map((p) => ({ id: p.employeeId, name: p.name, employeeCode: p.employeeCode ?? undefined }));
 
 describe('PAY-17 · Payroll › Loans and advances (live)', () => {
-  const live = (over: Partial<LiveLoans> = {}): LiveLoans => ({ state: 'ready', loans: LOANS, nameOf, can: { manage: true }, onSearch: search, onRequest: fn(), onChange: fn(), ...over });
+  const MONTHS: LoanRepayments = {
+    loanId: 'l1',
+    interestRate: '6.00',
+    recovered: '10000.00',
+    rows: [
+      { no: 1, month: '2026-09', emi: '10000.00', interest: '150.00', principal: '9850.00', balance: '20150.00', status: 'recovered' },
+      { no: 2, month: '2026-10', emi: '0.00', interest: '0.00', principal: '0.00', balance: '20150.00', status: 'paused' },
+      { no: 3, month: '2026-11', emi: '10000.00', interest: '100.75', principal: '9899.25', balance: '10250.75', status: 'scheduled' },
+    ],
+    closing: { on: '2026-10-30', interestFrom: '2026-10-01', days: 30, principal: '20000.00', interest: '98.63', total: '20098.63' },
+  };
+  const live = (over: Partial<LiveLoans> = {}): LiveLoans => ({ state: 'ready', loans: LOANS, nameOf, can: { manage: true }, onSearch: search, onRequest: fn(), onChange: fn(), onRepayments: vi.fn(async () => MONTHS), ...over });
+
+  it('founder answer 5: the record shows the month-by-month schedule from the API, recovered, paused and scheduled', async () => {
+    const onRepayments = vi.fn(async () => MONTHS);
+    render(<LoansScreen live={live({ onRepayments })} />);
+    await ue.click(screen.getByRole('button', { name: 'Change the loan of Arjun Kulkarni' }));
+    const d = screen.getByRole('dialog');
+    const table = await within(d).findByRole('table', { name: 'Schedule' });
+    expect(onRepayments).toHaveBeenCalledWith(LOANS[0]);
+    expect(within(table).getAllByRole('row')).toHaveLength(4);
+    expect(within(table).getByText('Recovered')).toBeInTheDocument();
+    expect(within(table).getByText('Paused')).toBeInTheDocument();
+    expect(within(table).getByText('Scheduled')).toBeInTheDocument();
+    expect(within(d).getByText('Recovered in payroll so far: ₹10,000.00.')).toBeInTheDocument();
+  });
+
+  it('a schedule that fails to load says so (no blank table)', async () => {
+    render(<LoansScreen live={live({ onRepayments: vi.fn(async () => Promise.reject(new Error('x'))) })} />);
+    await ue.click(screen.getByRole('button', { name: 'Change the loan of Arjun Kulkarni' }));
+    expect(await within(screen.getByRole('dialog')).findByText(/The schedule didn't load/)).toBeInTheDocument();
+    expect(within(screen.getByRole('dialog')).queryByRole('table', { name: 'Schedule' })).not.toBeInTheDocument();
+  });
+
+  it('pre-closure shows the interest to the closing day from the API and the total; a reason is required', async () => {
+    const onChange = fn();
+    render(<LoansScreen live={live({ onChange })} />);
+    await ue.click(screen.getByRole('button', { name: 'Change the loan of Arjun Kulkarni' }));
+    await within(screen.getByRole('dialog')).findByRole('table', { name: 'Schedule' });
+    await ue.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Pre-close' }));
+    const d = await screen.findByRole('dialog', { name: /^Pre-close/ });
+    expect(within(d).getByText('Interest to 30 Oct 2026')).toBeInTheDocument();
+    expect(within(d).getByText(/₹98.63 · 30 days/)).toBeInTheDocument();
+    expect(within(d).getAllByText(/₹20,098.63/).length).toBeGreaterThan(0);
+    await ue.click(within(d).getByRole('button', { name: 'Pre-close loan' }));
+    expect(onChange).not.toHaveBeenCalled();
+    expect(within(d).getByRole('textbox', { name: /Reason/ })).toHaveFocus();
+    await ue.type(within(d).getByRole('textbox', { name: /Reason/ }), 'Paid back from a bonus');
+    await ue.click(within(d).getByRole('button', { name: 'Pre-close loan' }));
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith(LOANS[0], { kind: 'preclose', reason: 'Paid back from a bonus' }));
+  });
+
+  it('founder answer 1: payroll asking for someone types no interest; the company rate applies', async () => {
+    render(<LoansScreen live={live()} />);
+    await ue.click(screen.getByRole('button', { name: 'Add loan' }));
+    const d = screen.getByRole('dialog');
+    await ue.click(within(d).getByRole('radio', { name: 'Personal loan' }));
+    expect(within(d).queryByRole('textbox', { name: /Interest/ })).not.toBeInTheDocument();
+    expect(within(d).getByText(/Interest is the company's rate for this loan type/)).toBeInTheDocument();
+  });
 
   it('payroll asks for someone else with a person; pressed too early the person is required', async () => {
     const onRequest = fn();

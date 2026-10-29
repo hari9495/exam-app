@@ -235,6 +235,12 @@ export class Payroll5cController {
     return this.inputs.requestLoan(ctx, this.user(req), dto);
   }
 
+  /** A loan's months, recovered and scheduled, and its pre-closure today (founder answer 5): your own, or payroll.loan.manage in scope. */
+  @Get('loans/:id/repayments')
+  loanRepayments(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.inputs.loanRepayments(ctx, this.user(req), id);
+  }
+
   @Post('loans/:id/schedule-changes')
   @RequirePermissions('payroll.loan.manage')
   changeLoan(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: LoanChangeDto) {

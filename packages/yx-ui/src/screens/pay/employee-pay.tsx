@@ -2845,6 +2845,8 @@ export interface LoanRules {
   limit: string | null;
   outstanding: string;
   available: string | null;
+  /** Founder answer 1: the company's yearly rate per loan type ('0' = interest-free); the employee never types it. */
+  interestRate?: { advance: string; loan: string };
 }
 
 export interface LiveLoanRequest {
@@ -2864,7 +2866,8 @@ export const LOAN_STATE: Record<string, { label: string; tone: BadgeTone }> = {
   closed: { label: 'Closed', tone: 'success' },
   rejected: { label: 'Turned down', tone: 'neutral' },
 };
-const RATE_RE = /^\d{1,2}(\.\d{1,2})?$/;
+/** "Interest-free" or "8.5% a year". */
+export const rateText = (rate: string | undefined) => (!rate || Number(rate) === 0 ? 'Interest-free' : `${Number(rate)}% a year`);
 
 /** The instalment the API will set: interest-free = the principal over the months, rounded up to the rupee (exact); with interest, an estimate. */
 export function previewEmi(principal: string, ratePct: string, months: number): { emi: string; exact: boolean } {
@@ -2892,32 +2895,31 @@ function LiveLoanRequest({ live }: { live: LiveLoanRequest }) {
   const [type, setType] = useState<'advance' | 'loan'>('advance');
   const [amount, setAmount] = useState('');
   const [count, setCount] = useState('');
-  const [rate, setRate] = useState('');
   const [first, setFirst] = useState(nextMonthIso());
   const [reason, setReason] = useState('');
   const { busy, error, run } = useRun();
   const n = Number(count);
+  // Founder answer 1: the company's rate for the type, shown and used for the preview; never typed or sent.
+  const rate = rules?.interestRate?.[type] ?? '0';
   const over = rules?.available != null && MONEY_RE.test(amount.trim()) && paise(amount.trim()) > paise(rules.available);
   const limitText = rules?.limit != null && rules.maxGrossMonths != null ? `${rules.maxGrossMonths} ${rules.maxGrossMonths === 1 ? "month's" : "months'"} gross pay` : null;
   const errors: FormErrorItem[] = [
     ...(!MONEY_RE.test(amount.trim()) || paise(amount.trim()) <= 0n ? [{ fieldId: 'lr-amount', message: 'Enter the amount in rupees.' }] : over ? [{ fieldId: 'lr-amount', message: `Enter ${rupees(rules!.available)} or less. That is the most you can ask for now.` }] : []),
     ...(!Number.isInteger(n) || n < 1 || n > 120 ? [{ fieldId: 'lr-count', message: 'Enter 1 to 120 instalments.' }] : []),
-    ...(type === 'loan' && rate.trim() && !RATE_RE.test(rate.trim()) ? [{ fieldId: 'lr-rate', message: 'Interest is a yearly percentage, like 8.5.' }] : []),
     ...(!MONTH_RE.test(first) ? [{ fieldId: 'lr-first', message: 'Choose the month of the first instalment.' }] : []),
     ...(reason.trim().length < 5 ? [{ fieldId: 'lr-why', message: 'Give a reason (at least 5 letters).' }] : []),
   ];
   const early = useTooEarly(errors);
-  const emi = Number.isInteger(n) && n >= 1 ? previewEmi(amount.trim(), type === 'loan' ? rate.trim() : '', n) : null;
+  const emi = Number.isInteger(n) && n >= 1 ? previewEmi(amount.trim(), rate, n) : null;
   const send = () => {
     if (early.stop()) return;
     void run('send', () =>
-      live.onRequest({ loanType: type, principal: amount.trim(), instalments: n, ...(type === 'loan' && rate.trim() ? { interestRate: rate.trim() } : {}), firstMonth: first, reason: reason.trim() }),
+      live.onRequest({ loanType: type, principal: amount.trim(), instalments: n, firstMonth: first, reason: reason.trim() }),
     ).then((ok) => {
       if (!ok) return;
       early.reset();
       setAmount('');
       setCount('');
-      setRate('');
       setReason('');
       toast({ title: 'Request sent', description: "It goes to payroll's approver. You get a notification at each step.", tone: 'success' });
     });
@@ -2956,16 +2958,9 @@ function LiveLoanRequest({ live }: { live: LiveLoanRequest }) {
                     <TextField value={count} onChange={setCount} inputMode="numeric" maxLength={3} />
                   </FormField>
                 </FieldRow>
-                <FieldRow>
-                  {type === 'loan' && (
-                    <FormField id="lr-rate" label="Interest a year" optional error={early.errorOf('lr-rate')} helper="Leave empty for an interest-free loan.">
-                      <TextField value={rate} onChange={setRate} suffix="%" inputMode="decimal" maxLength={5} />
-                    </FormField>
-                  )}
-                  <FormField id="lr-first" label="First instalment in" required error={early.errorOf('lr-first')}>
-                    <TextField type="month" value={first} onChange={setFirst} />
-                  </FormField>
-                </FieldRow>
+                <FormField id="lr-first" label="First instalment in" required error={early.errorOf('lr-first')}>
+                  <TextField type="month" value={first} onChange={setFirst} />
+                </FormField>
                 <FormField id="lr-why" label="Reason" required error={early.errorOf('lr-why')}>
                   <TextArea rows={2} value={reason} onChange={setReason} maxLength={300} />
                 </FormField>
@@ -2980,6 +2975,7 @@ function LiveLoanRequest({ live }: { live: LiveLoanRequest }) {
                 <FactRow
                   items={[
                     { label: emi?.exact === false ? 'Instalment (about)' : 'Instalment', value: emi && paise(emi.emi) > 0n ? rupees(emi.emi) : '—' },
+                    { label: 'Interest', value: rateText(rate) },
                     { label: 'First instalment', value: MONTH_RE.test(first) ? `${monthName(first)} payslip` : '—' },
                   ]}
                 />
@@ -2997,7 +2993,7 @@ function LiveLoanRequest({ live }: { live: LiveLoanRequest }) {
                     The company allows at most {limitText ?? 'its limit'}, less what you still have to repay.
                   </InlineAlert>
                 )}
-                <p className="yx-pay-note">Payroll's approver decides. The instalment is set when it is approved; with interest, the amount shown is an estimate.</p>
+                <p className="yx-pay-note">Payroll's approver decides. The company sets the interest for each loan type. The instalment is set when it is approved; with interest, the amount shown is an estimate.</p>
               </aside>
             </div>
           )}
