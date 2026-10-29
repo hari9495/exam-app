@@ -27,11 +27,11 @@ Verdicts: **wire design** (a live page and the API exist for this job; the page 
 | B. Inputs, loans, recoveries, queries | 8 | 43 | 9 | 0 | 0 | 0 | 2 | 0 | 54 |
 | C. Structures and set-up | 6 | 41 | 2 | 0 | 0 | 0 | 0 | 0 | 43 |
 | D. Employee pay and tax | 6 | 28 | 10 | 0 | 0 | 1 | 9 | 0 | 48 |
-| E. Special pay, earned wage access, actuarial, benefits | 14 | 76 | 8 | 0 | 0 | 6 | 8 | 0 | 98 |
+| E. Special pay, earned wage access, actuarial, benefits | 14 | 77 | 8 | 0 | 0 | 6 | 8 | 0 | 99 |
 | F. Reports | 1 | 13 | 1 | 0 | 0 | 0 | 0 | 0 | 14 |
 | G. Records | 3 | 44 | 0 | 0 | 0 | 0 | 0 | 0 | 44 |
 | H. New designs, made live | 5 | 46 | 3 | 0 | 0 | 0 | 0 | 0 | 49 |
-| **All** | **53** | **346** | **41** | **0** | **0** | **7** | **19** | **0** | **413** |
+| **All** | **53** | **347** | **41** | **0** | **0** | **7** | **19** | **0** | **414** |
 
 Reports builder (30 Oct 2026, branch `feat/yukthix-pay-reports`): PAY-25 is live (13 stories made live, 1 state story
 added first; No access is live with a gap); F and All recounted from the PAY-25 rows below.
