@@ -38,8 +38,10 @@ export { PayrollSetupScreen } from '../comp-setup';
 export type { LivePayrollSetup, SetupStep, SetupLink, GroupInput, GoLiveReadiness, ReadinessItem, ParallelRunView } from '../setup-live';
 export { CompensationScreen, TemplateBuilderScreen, ComponentLibraryScreen, PayslipLayoutScreen } from '../comp-setup';
 export { type LiveCompensation, type LiveTemplates, type LiveComponentLibrary, type LivePayslipLayout, type SplitSuggestion, type CompensationHistoryItem, type SplitFreshness } from '../comp-setup-live';
-export { ArrearsBaseScreen, ActuarialScreen } from '../offcycle';
+export { ArrearsBaseScreen, ActuarialScreen, BonusComputationScreen } from '../offcycle';
 export type { LiveArrears, LiveActuarial } from '../offcycle-live';
+// PAY-24 statutory bonus (design with `live`).
+export type { LiveBonus, BonusOverview, BonusComputation, BonusRow, BonusRules, BonusYear, BonusChange, BonusRowChange } from '../bonus-live';
 export { CountryPacksScreen, type LiveCountryPacks, type W9Input, type WpsIdsInput } from '../country-packs';
 export { SpecialPayHomeScreen } from '../special-pay';
 export type { LiveSpecialPay, PieceOutput, TipPoolView, UnionRemittance, PieceCheck } from '../special-pay-live';

@@ -7,7 +7,7 @@ import { Badge } from '../../components/display';
 import { EmptyState, InlineAlert, NoAccessState } from '../../components/feedback';
 import { Drawer } from '../../components/drawer';
 import { FieldRow, FormField } from '../../components/field';
-import { CurrencyField, NumberField, TextArea, TextField } from '../../components/inputs';
+import { CurrencyField, TextArea, TextField } from '../../components/inputs';
 import { RadioGroup } from '../../components/choice';
 import { FileUpload } from '../../components/upload';
 import { DescriptionList, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
@@ -25,6 +25,8 @@ const storyHref = (id: string) => `/?path=/story/${id}`;
 import { arrearsTotal, gratuity, retrenchmentCompensation, statutoryBonus, type ArrearMonth } from './pay-logic';
 import { LiveSettlementArrears, NewSettlementDrawer, type NewSettlementInput } from './settlement-live';
 import { LiveOffCycleRunScreen, type LiveOffCycleRun } from './offcycle-run-live';
+import { LiveBonusScreen, type BonusComputation, type BonusRow, type BonusRules, type LiveBonus } from './bonus-live';
+import type { LoadState } from './live/types';
 import type { LiveSpecialPay } from './special-pay-live';
 
 /* ================================================================== PAY-11 Off-cycle run */
@@ -240,7 +242,7 @@ function SampleOffCycleRun({ kind = 'fnf', step = 'lines', permission = false }:
 
 /* ================================================================== PAY-24 Bonus computation */
 
-export interface BonusRow {
+interface SampleBonusRow {
   id: string;
   name: string;
   code: string;
@@ -248,80 +250,87 @@ export interface BonusRow {
   months: number;
   minimumWage: number;
 }
-export const BONUS_ROWS: BonusRow[] = EMPLOYEES.filter((e) => e.department === 'Operations')
+export const BONUS_ROWS: SampleBonusRow[] = EMPLOYEES.filter((e) => e.department === 'Operations')
   .slice(0, 14)
   .map((e, i) => ({ id: e.id, name: e.name, code: e.code, wage: [14_800, 16_200, 18_900, 21_000, 22_400, 15_600, 17_300, 19_800, 14_520, 20_600, 23_900, 16_800, 18_100, 15_200][i], months: i === 5 ? 7 : 12, minimumWage: 14_520 }));
 
+/** PAY-24 sub-pages in the stories: which state of the computation the sample shows. */
+export type BonusStoryView = 'empty' | 'draft' | 'submitted' | 'approved' | 'sent';
+
 /** PAY-24 · Statutory bonus computation (annual, Payment of Bonus Act rules in P07). */
-export function BonusComputationScreen({ step = 'compute', pct = 8.33 }: { step?: string; pct?: number }) {
-  const [rate, setRate] = useState<number | null>(pct);
-  const rows = BONUS_ROWS.map((r) => ({ ...r, ...statutoryBonus(r.wage, r.months, rate ?? 8.33, r.minimumWage) }));
-  const total = rows.reduce((a, r) => a + r.amount, 0);
-  const cols: TableColumn<(typeof rows)[number]>[] = [
-    { key: 'n', header: 'Employee', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: r.code }), width: 220 },
-    { key: 'w', header: 'Monthly wage', type: 'money', value: (r) => r.wage, width: 120 },
-    { key: 'e', header: 'Eligible', value: (r) => (r.eligible ? 'Yes' : 'No: wage above ₹21,000'), width: 180 },
-    { key: 'b', header: 'Bonus base', type: 'money', value: (r) => r.base, width: 110 },
-    { key: 'm', header: 'Months', type: 'number', value: (r) => r.months, width: 80 },
-    { key: 'a', header: 'Bonus', type: 'money', value: (r) => r.amount, total: 'sum', width: 110 },
-  ];
-  return (
+export function BonusComputationScreen({ live, ...story }: { step?: string; pct?: number; view?: BonusStoryView; state?: LoadState; tooEarly?: boolean; refused?: boolean; /** The live app's /yx/payroll/bonus. */ live?: LiveBonus }) {
+  return live ? (
+    <LiveBonusScreen live={live} />
+  ) : (
     <PayFrame page="runs">
-      <PageHeader title="Statutory bonus · 2025-26" description="Kaveri Foods Pvt Ltd · payment method: annual, after year close (with monthly provision)" status={<Badge tone="warning">Due by 30 Nov 2026</Badge>} />
-      <Stepper
-        title="Bonus computation"
-        defaultCurrent={step}
-        finishLabel="Send for approval"
-        steps={[
-          {
-            id: 'surplus',
-            title: 'Allocable surplus',
-            description: 'Set-on and set-off',
-            content: (
-              <div className="yx-pay-stack">
-                <DescriptionList
-                  columns={2}
-                  items={[
-                    { label: 'Available surplus 2025-26', value: formatINR(48_20_000) },
-                    { label: 'Allocable surplus (60%)', value: formatINR(28_92_000) },
-                    { label: 'Set-on carried from 2024-25', value: formatINR(2_10_000) },
-                    { label: 'Set-off carried', value: '—' },
-                  ]}
-                />
-              </div>
-            ),
-          },
-          {
-            id: 'compute',
-            title: 'Compute',
-            description: `Rate ${rate}%`,
-            content: (
-              <div className="yx-pay-stack">
-                <FieldRow>
-                  <FormField label="Bonus rate" required helper="Between 8.33% and 20%.">
-                    <NumberField value={rate} onChange={setRate} min={8.33} max={20} decimals suffix="%" />
-                  </FormField>
-                  <FormField label="Calculation ceiling">
-                    <TextField value="Higher of ₹7,000 and the minimum wage (₹14,520)" readOnly />
-                  </FormField>
-                </FieldRow>
-                <FactRow
-                  items={[
-                    { label: 'Eligible', value: `${rows.filter((r) => r.eligible).length} of ${rows.length}` },
-                    { label: 'Total bonus', value: formatINR(total) },
-                    { label: 'Provision booked', value: formatINR(total - 3_400) },
-                  ]}
-                />
-                <DataTable label="Bonus by employee" columns={cols} rows={rows} getRowId={(r) => r.id} onExport={() => {}} />
-                <p className="yx-pay-note">Eligibility: wage up to ₹21,000 a month and at least 30 working days in the year. Employees who worked part of the year get bonus for the months worked.</p>
-              </div>
-            ),
-          },
-          { id: 'approve', title: 'Approve and pay', description: 'Off-cycle bonus run', content: <p className="yx-pay-muted">Creates an off-cycle bonus run with its own bank file and the bonus register (Form C equivalent from P07).</p> },
-        ]}
-      />
+      <LiveBonusScreen key={JSON.stringify(story)} live={sampleBonus(story)} />
     </PayFrame>
   );
+}
+
+const BONUS_YEAR = { start: '2025-04-01', end: '2026-03-31', label: '2025-26', dueOn: '2026-11-30' };
+const ACT: BonusRules = { yearStartMonth: 4, eligibilityWage: '21000', calculationCeiling: '7000', minRate: '8.33', maxRate: '20', minWorkingDays: 30, minAmount: '100', allocablePercent: '60', carryYears: 4, dueMonths: 8 };
+
+/** The design's sample: Kaveri Foods operations staff for 2025-26, in the shape the API returns. */
+function sampleBonus({ step = 'compute', pct = 8.33, view = 'draft', state = 'ready', tooEarly = false, refused = false }: { step?: string; pct?: number; view?: BonusStoryView; state?: LoadState; tooEarly?: boolean; refused?: boolean }): LiveBonus {
+  const rows: BonusRow[] = BONUS_ROWS.map((r) => {
+    const b = statutoryBonus(r.wage, r.months, pct, r.minimumWage);
+    const f = (n: number) => n.toFixed(2);
+    return { employmentId: r.id, employeeId: r.id, employeeCode: r.code, name: r.name, wageTotal: f(r.wage * r.months), workingDays: String(r.months === 12 ? 296 : 172), minimumWage: f(r.minimumWage), ceiling: f(Math.max(7_000, r.minimumWage)), eligibleMonths: b.eligible ? r.months : 0, eligible: b.eligible, reason: b.eligible ? null : 'Wage above ₹21,000 a month all year.', bonusSalary: f(b.base * r.months), bonus: f(b.amount), pujaPaid: '0.00', misconductLoss: '0.00', disqualified: false, adjustReason: null, deductions: '0.00', payable: f(b.amount) };
+  });
+  const total = rows.reduce((a, r) => a + Number(r.bonus), 0).toFixed(2);
+  const status = view === 'empty' ? 'draft' : view;
+  const surplus = tooEarly ? null : pct >= 20 ? '4820000.00' : '200000.00';
+  const at = '2026-10-20T10:30:00Z';
+  const computation: BonusComputation = {
+    id: 'bonus-2025',
+    year: BONUS_YEAR,
+    status,
+    version: 3,
+    overdue: false,
+    rules: ACT,
+    availableSurplus: surplus,
+    allocableSurplus: surplus && (Number(surplus) * 0.6).toFixed(2),
+    openingSetOn: '0.00',
+    openingSetOff: '0.00',
+    firstYear: false,
+    setOnIn: '210000.00',
+    setOffIn: '0.00',
+    setOnUsed: '0.00',
+    setOffSettled: '0.00',
+    setOnMade: pct >= 20 ? '96000.00' : '0.00',
+    setOffMade: '0.00',
+    supportedRate: String(pct),
+    chosenRate: null,
+    rate: String(pct),
+    totals: { people: rows.length, eligible: rows.filter((r) => r.eligible).length, salary: rows.reduce((a, r) => a + Number(r.bonusSalary), 0).toFixed(2), bonus: total, deductions: '0.00', payable: total },
+    createdBy: { id: 'u-pa', name: PAYROLL_ADMIN.name },
+    submitted: status === 'draft' ? null : { by: PAYROLL_ADMIN.name, at },
+    approved: status === 'approved' || status === 'sent' ? { by: FIN_APPROVER.name, at: '2026-10-22T09:00:00Z' } : null,
+    sent: status === 'sent' ? { by: PAYROLL_ADMIN.name, at: '2026-10-23T09:00:00Z', runId: 'run-bonus', runStatus: 'draft', runMonth: '2026-10' } : null,
+    returnedReason: null,
+    madeByMe: view !== 'submitted' || refused,
+    rows,
+  };
+  const can = view === 'submitted' && !refused ? { manage: false, approve: true } : { manage: true, approve: refused };
+  const done = async () => undefined;
+  return {
+    state,
+    entities: [{ id: 'kfpl', name: 'Kaveri Foods Pvt Ltd', shortName: 'KFPL', keys: [] }],
+    entityId: 'kfpl',
+    onEntity: () => {},
+    onYear: () => {},
+    data: { years: [2025, 2024, 2023, 2022, 2021].map((y) => ({ start: `${y}-04-01`, end: `${y + 1}-03-31`, label: `${y}-${String(y + 1).slice(2)}`, dueOn: `${y + 1}-11-30`, ended: true })), year: { ...BONUS_YEAR, ended: true }, rules: ACT, can, computation: view === 'empty' ? null : computation },
+    onCompute: done,
+    onChange: done,
+    onRow: done,
+    onSubmit: done,
+    onApprove: done,
+    onReturn: done,
+    onSend: done,
+    runHref: (id) => `#${id}`,
+    story: { step: view === 'submitted' || view === 'sent' ? 'approve' : step, tooEarly, ...(refused ? { refused: 'You worked on this bonus, so someone else approves it.' } : {}) },
+  };
 }
 
 /* ================================================================== PAY-28 Arrears worksheet: base confirmation */

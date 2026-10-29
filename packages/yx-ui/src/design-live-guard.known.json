@@ -216,7 +216,6 @@
     "ops: VisitorKioskScreen",
     "ops: VisitorLogScreen",
     "ops: WorkersScreen",
-    "pay: BonusComputationScreen",
     "pay: FirstUse",
     "pay: GroupHealthScreen",
     "pay: PayrollReportsScreen",
