@@ -1,7 +1,7 @@
 // Pay-area building blocks (M03 §7): frames with the Pay panel (APX-D §1.2), net-first money summary,
 // days strip, "why this number" lines, run stage track, due-date strip, per-employee progress and the
 // irreversible-action sheet (APX-D §6.4). Token-only CSS in pay.css.
-import { useEffect, useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { AlertCircle, CheckCircle2, Circle, CircleDot, ExternalLink, Lock, RotateCcw, Send } from 'lucide-react';
 import type { IconComponent } from '../../components/foundations';
 import { TODAY } from '../_kit/data';
@@ -11,13 +11,14 @@ import { Button } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, ErrorState, InlineAlert, Skeleton } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { ErrorSummary, FormField, useSaveErrors, type FormErrorItem } from '../../components/field';
 import { TextArea, TextField } from '../../components/inputs';
 import { Icon } from '../../components/foundations';
 import { Link } from '../../components/button';
 import { cx } from '../../lib/cx';
 import { formatDate, formatINR, groupIndian } from '../../lib/format';
 import { confirmPhraseMatches } from './pay-logic';
+import { useRun } from '../org/org-kit';
 import './pay.css';
 
 /* ------------------------------------------------------------------ Frames */
@@ -927,5 +928,76 @@ export function PartnerLink({ children, href = 'https://partner.example.in' }: {
         {children} <Icon icon={ExternalLink} label="opens the partner's site" />
       </a>
     </Button>
+  );
+}
+
+/* ------------------------------------------------------------------ Form drawer and file button (moved from the live copies) */
+
+/** A drawer with a form: errors show only after Save is pressed (no red while typing); the first bad field takes focus. */
+export function FormDrawer({ title, subtitle, confirm, errors, onClose, onSave, children }: { title: string; subtitle?: string; confirm: string; errors: FormErrorItem[]; onClose: () => void; onSave: () => Promise<unknown>; children: (errorOf: (id: string) => string | undefined) => ReactNode }) {
+  const { busy, error, run } = useRun();
+  const save = useSaveErrors(errors);
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={title}
+      subtitle={subtitle}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant="primary"
+            loading={busy === 'save'}
+            onClick={() => {
+              if (errors.length) {
+                save.reveal();
+                // Founder rule: the first bad field takes focus (after the error summary's own focus on show).
+                return void setTimeout(() => document.getElementById(errors[0].fieldId)?.focus());
+              }
+              void run('save', async () => {
+                await onSave();
+                onClose();
+              });
+            }}
+          >
+            {confirm}
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-tim-form">
+        <ErrorSummary errors={save.shownErrors} />
+        {error && (
+          <InlineAlert tone="danger" title="This didn't go through">
+            {error}
+          </InlineAlert>
+        )}
+        {children(save.errorOf)}
+      </div>
+    </Drawer>
+  );
+}
+
+/** A button that opens the file chooser (a real button, so it looks and behaves like one). */
+export function FileButton({ label, accept, ariaLabel, loading, onFile }: { label: string; accept: string; ariaLabel: string; loading?: boolean; onFile: (f: File) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  return (
+    <>
+      <Button size="sm" loading={loading} aria-label={ariaLabel} onClick={() => input.current?.click()}>
+        {label}
+      </Button>
+      <input
+        ref={input}
+        type="file"
+        accept={accept}
+        hidden
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) onFile(file);
+          e.target.value = '';
+        }}
+      />
+    </>
   );
 }
