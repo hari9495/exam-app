@@ -89,6 +89,19 @@ export interface LeavePlan {
   blockDates?: { from: string; to: string; reason: string }[];
   notice?: { lastDay: string; newLastDay: string } | null;
   shortNotice?: boolean;
+  /** HR applying for someone: the notice the type asks for was not needed (leave.notice.on_behalf). */
+  noticeSkipped?: boolean;
+  noticeDays?: number;
+  /** HR applying for someone: the normal approvers decide ('chain'), or it is approved at once (company setting). */
+  approval?: 'chain' | 'approved';
+}
+
+/** Founder answer B: what the Apply-for-someone dialog loads for the person picked (GET /time/hr/leave/:employeeId). */
+export interface ApplyForForm {
+  employee: { id: string; name: string; code: string | null };
+  today: string;
+  balances: LeaveBalanceRow[];
+  approval: 'chain' | 'approved';
 }
 
 export type PunchKind = 'in' | 'out' | 'break_start' | 'break_end';

@@ -23,7 +23,7 @@ import { formatDate, formatINR } from '../../lib/format';
 import { useRun } from '../org/org-kit';
 import { LivePicker } from '../desk/service-form';
 import { LEAVE_STATUS, LeaveStatusBadge } from './live/kit';
-import type { HrBalances, HrLeaveHome, LeaveInput, LeavePlan, LeaveRequestRow as LiveRequest, LedgerRow, LoadState, LongAbsenceCheck, LongAbsenceInput, LongAbsenceRow, MaternityCase, MyCompOff, MyEncashment, MyLeave, MyLeaveCard, PersonOption as LivePersonOption, TeamCalendar as LiveCalendarData } from './live/types';
+import type { ApplyForForm, HrBalances, HrLeaveHome, LeaveInput, LeavePlan, LeaveRequestRow as LiveRequest, LedgerRow, LoadState, LongAbsenceCheck, LongAbsenceInput, LongAbsenceRow, MaternityCase, MyCompOff, MyEncashment, MyLeave, MyLeaveCard, PersonOption as LivePersonOption, TeamCalendar as LiveCalendarData } from './live/types';
 import {
   BALANCES,
   CLAIM,
@@ -436,7 +436,8 @@ export function ApplyLeaveForm({ type: t0 = 'EL', from: f0 = DEFAULT_FROM, to: t
     total,
     balance: bal.paid && !noBal ? bal.balance - pendingDays : 999,
     negativeLimit: type === 'EL' ? 2 : 0,
-    noticeDays: type === 'EL' ? 7 : 0,
+    // Founder decision 2: HR applying for someone skips the notice (leave.notice.on_behalf, skip by default).
+    noticeDays: type === 'EL' && own ? 7 : 0,
     // A past start date on a type with no notice rule (sick leave) is not short notice.
     daysAhead: Math.max(0, daysAhead),
     maxPerRequest: type === 'CL' ? 3 : 15,
@@ -555,6 +556,7 @@ export function ApplyLeaveForm({ type: t0 = 'EL', from: f0 = DEFAULT_FROM, to: t
           <dl className="yx-tim-stack">
             <div className="yx-tim-effect__row"><dt>Days counted</dt><dd>{total}{sw > 0 ? ` (incl. ${plural(sw, sandwichHolidays ? 'weekend or holiday day' : 'weekend day', sandwichHolidays ? 'weekend and holiday days' : 'weekend days')})` : ''}</dd></div>
             {(count?.excluded ?? 0) > 0 && <div className="yx-tim-effect__row"><dt>Holidays / weekly offs not counted</dt><dd>{count?.excluded}</dd></div>}
+            {!own && type === 'EL' && daysAhead < 7 && <div className="yx-tim-effect__row"><dt>Notice</dt><dd>Applied by HR: 7 days' notice not needed</dd></div>}
             <div className="yx-tim-effect__row">
               <dt>{bal.paid ? 'Balance after' : 'Unpaid days this year (with this)'}</dt>
               <dd>{noBal ? 'Not available' : !bal.paid ? bal.taken + total : w.balanceAfter < 0 ? <Badge tone="danger">{`−${-w.balanceAfter} (short by ${-w.balanceAfter})`}</Badge> : w.balanceAfter}</dd>
@@ -568,6 +570,7 @@ export function ApplyLeaveForm({ type: t0 = 'EL', from: f0 = DEFAULT_FROM, to: t
             </ul>
           )}
           {warnings.map((x) => <InlineAlert key={x} tone="warning">{x}</InlineAlert>)}
+          {!own && <p className="yx-tim-note">Goes to {approver} for approval, marked "Applied by HR".</p>}
           <p className="yx-tim-note">Approver: {approver}{approverAway ? ` (also on leave ${span(approverAway.from, approverAway.to)})` : ''} · {othersLine(overlap, own && isLead ? 'Your reports also off' : 'Also off')}</p>
         </section>
       </div>
@@ -584,8 +587,9 @@ const pickPeople = (hr: boolean): PickPerson[] => (hr ? TEAM : myReports()).map(
  * Apply leave in a drawer (desk) or bottom sheet (phone): Send is blocked while the form has errors; sent shows what happens next.
  * With `forSomeone` (a manager's reports, or everyone for HR), the first field picks the employee; their balances and approver are used.
  */
-export function ApplyLeavePanel({ open, onOpenChange, surface = 'desk', sent: sent0 = false, forSomeone, self = ME.name, live, ...p }:ApplyLeaveProps & { open: boolean; onOpenChange: (o: boolean) => void; surface?: 'desk' | 'phone'; sent?: boolean; forSomeone?: PickPerson[]; /** The app: my own leave, with the server's summary. */ live?: { data: MyLeave; live: LiveLeaveHome } }) {
+export function ApplyLeavePanel({ open, onOpenChange, surface = 'desk', sent: sent0 = false, forSomeone, picked: picked0 = null, self = ME.name, live, liveFor, ...p }:ApplyLeaveProps & { open: boolean; onOpenChange: (o: boolean) => void; surface?: 'desk' | 'phone'; sent?: boolean; forSomeone?: PickPerson[]; /** With `forSomeone`: the person already picked (stories). */ picked?: string | null; /** The app: my own leave, with the server's summary. */ live?: { data: MyLeave; live: LiveLeaveHome }; /** The app: HR applies for someone (founder answer B). */ liveFor?: LiveApplyFor }) {
   if (live) return open ? <LiveApplyLeavePanel {...live} onClose={() => onOpenChange(false)} /> : null;
+  if (liveFor) return open ? <LiveApplyLeavePanel forSomeone={liveFor} onClose={() => onOpenChange(false)} /> : null;
   const [draft, setDraft] = useState<LeaveDraft>(() => {
     const type = p.type ?? 'EL';
     const from = p.from ?? DEFAULT_FROM;
@@ -596,7 +600,7 @@ export function ApplyLeavePanel({ open, onOpenChange, surface = 'desk', sent: se
   const [sent, setSent] = useState(sent0);
   const [view, setView] = useState<ReqAction | 'view' | null>(null);
   const [other, setOther] = useState<LeaveRequestRow | null>(null);
-  const [picked, setPicked] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string | null>(picked0);
   const person = forSomeone ? picked : self;
   const approver = (person && managerOf(person)) ?? ME.manager;
   const request: LeaveRequestRow = {
@@ -786,11 +790,11 @@ const CO_USE_DAY = new Date(2026, 9, 5);
 const applyTypeProps = (t?: LeaveCode): ApplyLeaveProps => (t === 'CO' ? { type: 'CO', from: CO_USE_DAY, to: CO_USE_DAY } : t ? { type: t } : {});
 
 /** TIM-17: the story shows the sample (persona, state); the app passes `live` (My leave, the signed-in employee). */
-export function LeaveHomeScreen({ persona = 'emp', state = 'ready', live, hrLive, dialog }: { persona?: LeavePersona; state?: ViewState; live?: LiveLeaveHome; /** The app: HR's view of leave in their scope (TIM-17 HR). */ hrLive?: LiveHrLeaveHome; /** HR stories: Record long absence open, filled in (`absence-conflict`: leave in the way). */ dialog?: 'absence' | 'absence-conflict' }) {
+export function LeaveHomeScreen({ persona = 'emp', state = 'ready', live, hrLive, dialog }: { persona?: LeavePersona; state?: ViewState; live?: LiveLeaveHome; /** The app: HR's view of leave in their scope (TIM-17 HR). */ hrLive?: LiveHrLeaveHome; /** HR stories: Record long absence open, filled in (`absence-conflict`: leave in the way); Apply for someone open for Arun (`apply-refused`: a company block date in the way). */ dialog?: 'absence' | 'absence-conflict' | 'apply' | 'apply-refused' }) {
   if (hrLive) return <LiveHrLeaveHomeScreen live={hrLive} />;
   if (live) return <LiveLeaveHomeScreen live={live} />;
   const user: TimeUser = persona === 'hr' ? HR_ADMIN : ME;
-  const [apply, setApply] = useState(false);
+  const [apply, setApply] = useState(dialog === 'apply' || dialog === 'apply-refused');
   // "Use comp-off" opens Apply leave on Comp-off; the header button on the default type.
   const [applyType, setApplyType] = useState<LeaveCode | undefined>(undefined);
   const startApply = (t?: LeaveCode) => {
@@ -798,7 +802,7 @@ export function LeaveHomeScreen({ persona = 'emp', state = 'ready', live, hrLive
     setApply(true);
   };
   const [adjust, setAdjust] = useState(false);
-  const [recording, setRecording] = useState(Boolean(dialog));
+  const [recording, setRecording] = useState(dialog === 'absence' || dialog === 'absence-conflict');
   const [holidays, setHolidays] = useState(false);
   // No requests yet: no optional holiday taken either.
   const [optional, setOptional] = useState(state === 'empty' ? [] : OPTIONAL_DEFAULT);
@@ -938,7 +942,7 @@ export function LeaveHomeScreen({ persona = 'emp', state = 'ready', live, hrLive
           )}
         </>
       )}
-      <ApplyLeavePanel key={`${apply}-${applyType}`} open={apply} onOpenChange={setApply} {...applyTypeProps(applyType)} forSomeone={persona === 'emp' ? undefined : pickPeople(persona === 'hr')} />
+      <ApplyLeavePanel key={`${apply}-${applyType}`} open={apply} onOpenChange={setApply} {...applyTypeProps(applyType)} forSomeone={persona === 'emp' ? undefined : pickPeople(persona === 'hr')} picked={dialog === 'apply' || dialog === 'apply-refused' ? 'Arun Prakash' : null} blocked={dialog === 'apply-refused'} />
       {persona === 'hr' && (
         <RecordAbsenceDialog
           open={recording}
@@ -2059,6 +2063,14 @@ export interface LiveAbsence {
   /** HR: a new last day, or the first day back. */
   onChange?: (how: 'extend' | 'early', on: string, note: string, version: number) => Promise<unknown>;
 }
+/** Founder answer B: HR applies leave for someone in the TIM-18 drawer (leave.balance.adjust; the API checks each person). */
+export interface LiveApplyFor {
+  onFindPeople: (q: string) => Promise<LivePersonOption[]>;
+  /** The person's leave types and balances, and how the request is approved. */
+  onLoad: (employeeId: string) => Promise<ApplyForForm>;
+  onPreview: (employeeId: string, input: Omit<LeaveInput, 'reason' | 'delegateUserId' | 'certificate'>) => Promise<LeavePlan>;
+  onApply: (employeeId: string, input: LeaveInput) => Promise<unknown>;
+}
 /** HR › Leave (TIM-17 HR). */
 export interface LiveHrLeaveHome {
   state: LoadState;
@@ -2071,6 +2083,8 @@ export interface LiveHrLeaveHome {
   absences?: { data: LongAbsenceRow[] | null; onChange: (id: string, how: 'extend' | 'early', on: string, note: string, version: number) => Promise<unknown> };
   /** Founder decision 1: Record long absence (leave.balance.adjust; the API checks each person). */
   record?: RecordAbsenceProps;
+  /** Founder answer B: Apply for someone (leave.balance.adjust). */
+  applyFor?: LiveApplyFor;
 }
 /** Me › My leave card (TIM-21 employee). */
 export interface LiveMyLeaveCard {
@@ -2387,8 +2401,16 @@ const MATERNITY_CASES: { value: MaternityCase; label: string }[] = [
 const COUNTED_AS: Record<LeavePlan['days'][number]['countedAs'], string> = { leave: 'Leave', sandwich: 'Between leave days · counted', holiday: 'Holiday · not counted', weekly_off: 'Weekly off · not counted' };
 
 /** TIM-18 in the app: the design's form and summary; the summary comes from the server's own rules. */
-function LiveApplyLeavePanel({ data, live, onClose }: { data: MyLeave; live: LiveLeaveHome; onClose: () => void }) {
-  const types = data.balances;
+/**
+ * TIM-18 in the app: my own leave (`data`, `live`), or HR applying for someone (`forSomeone`, founder answer B): the
+ * first field picks the person, then the same form with their leave types, balances and the server's summary.
+ */
+function LiveApplyLeavePanel({ data, live, forSomeone, onClose }: { data?: MyLeave; live?: LiveLeaveHome; forSomeone?: LiveApplyFor; onClose: () => void }) {
+  const [personId, setPersonId] = useState<string | null>(null);
+  const [target, setTarget] = useState<ApplyForForm | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const types = forSomeone ? (target?.balances ?? []) : data!.balances;
+  const today = forSomeone ? target?.today : data!.today;
   const [typeId, setTypeId] = useState<string | null>(types[0]?.leaveTypeId ?? null);
   const [from, setFrom] = useState<Date | null>(null);
   const [to, setTo] = useState<Date | null>(null);
@@ -2402,6 +2424,27 @@ function LiveApplyLeavePanel({ data, live, onClose }: { data: MyLeave; live: Liv
   const [certificate, setCertificate] = useState(false);
   const [plan, setPlan] = useState<LeavePlan | null>(null);
   const { busy, error, run } = useRun();
+  const { toast } = useToast();
+  // A new person: load their leave types and balances (only theirs are offered).
+  useEffect(() => {
+    if (!forSomeone) return;
+    setTarget(null);
+    setLoadError(null);
+    setTypeId(null);
+    if (!personId) return;
+    let on = true;
+    forSomeone.onLoad(personId).then(
+      (x) => {
+        if (!on) return;
+        setTarget(x);
+        setTypeId(x.balances[0]?.leaveTypeId ?? null);
+      },
+      (e: unknown) => on && setLoadError(e instanceof Error ? e.message : 'Their leave did not load.'),
+    );
+    return () => {
+      on = false;
+    };
+  }, [personId]); // eslint-disable-line react-hooks/exhaustive-deps
   const chosen = types.find((t) => t.leaveTypeId === typeId);
   const maternity = chosen?.kind === 'maternity';
   const f = from ? isoOf(from) : '';
@@ -2412,10 +2455,11 @@ function LiveApplyLeavePanel({ data, live, onClose }: { data: MyLeave; live: Liv
   // The live summary comes from the server once the dates make sense; no error while typing.
   useEffect(() => {
     setPlan(null);
-    if (!typeId || !f || !end || end < f) return;
+    if (!typeId || !f || !end || end < f || (forSomeone && !target)) return;
     let on = true;
     const h = setTimeout(() => {
-      void live.onPreview({ leaveTypeId: typeId, from: f, to: end, fromHalf, toHalf, ...extra })
+      const input = { leaveTypeId: typeId, from: f, to: end, fromHalf, toHalf, ...extra };
+      void (forSomeone ? forSomeone.onPreview(target!.employee.id, input) : live!.onPreview(input))
         .then((x) => on && setPlan(x))
         .catch(() => on && setPlan(null));
     }, 300);
@@ -2423,17 +2467,18 @@ function LiveApplyLeavePanel({ data, live, onClose }: { data: MyLeave; live: Liv
       on = false;
       clearTimeout(h);
     };
-  }, [typeId, f, end, fromHalf, toHalf, expectedOn, mCase]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [typeId, f, end, fromHalf, toHalf, expectedOn, mCase, target]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const errors = useMemo(() => {
     const e: { fieldId: string; message: string }[] = [];
-    if (!typeId) e.push({ fieldId: 'lv-type', message: 'Choose the kind of leave.' });
+    if (forSomeone && !personId) e.push({ fieldId: 'lv-person', message: 'Choose the person.' });
+    if (!typeId && (!forSomeone || personId)) e.push({ fieldId: 'lv-type', message: 'Choose the kind of leave.' });
     if (!f) e.push({ fieldId: 'lv-from', message: 'Choose the first day.' });
     if (f && end < f) e.push({ fieldId: 'lv-to', message: 'The last day is before the first day.' });
     if (plan?.certificateNeeded && !certificate) e.push({ fieldId: 'lv-cert', message: 'Tick that you will give a certificate to HR.' });
     for (const b of plan?.blocks ?? []) e.push({ fieldId: 'lv-from', message: b });
     return e;
-  }, [typeId, f, end, plan, certificate]);
+  }, [typeId, f, end, plan, certificate, personId]); // eslint-disable-line react-hooks/exhaustive-deps
   const saveErrors = useSaveErrors(errors);
   const { errorOf } = saveErrors;
   const send = () => {
@@ -2443,24 +2488,37 @@ function LiveApplyLeavePanel({ data, live, onClose }: { data: MyLeave; live: Liv
       return;
     }
     void run('apply', async () => {
-      await live.onApply({ leaveTypeId: typeId!, from: f, to: end, fromHalf, toHalf, reason: reason.trim() || undefined, delegateUserId: delegate ?? undefined, certificate: certificate || undefined, ...extra });
+      const input = { leaveTypeId: typeId!, from: f, to: end, fromHalf, toHalf, reason: reason.trim() || undefined, delegateUserId: delegate ?? undefined, certificate: certificate || undefined, ...extra };
+      if (forSomeone && target) {
+        await forSomeone.onApply(target.employee.id, input);
+        toast({ tone: 'success', title: plan?.approval === 'approved' ? `Leave approved for ${target.employee.name}` : `Leave applied for ${target.employee.name} · sent for approval` });
+      } else await live!.onApply(input);
       onClose();
     });
   };
+  const their = (mine: string, theirs: string) => (forSomeone ? theirs : mine);
   const halves = plan?.type.rules.halfDays !== false && f !== '';
   return (
     <Drawer
       open
       onOpenChange={(o) => !o && onClose()}
-      title="Apply leave"
+      title={forSomeone ? 'Apply leave for someone' : 'Apply leave'}
       size="lg"
-      dirty={Boolean(f || reason)}
+      dirty={Boolean(f || reason || personId)}
       footer={<DrawerFoot rest={<Button onClick={onClose}>Cancel</Button>} main={<Button variant="primary" loading={busy === 'apply'} onClick={send}>Send request</Button>} />}
     >
       <div className="yx-tim-editor">
         <div className="yx-tim-form">
           <ErrorSummary errors={saveErrors.shownErrors} title="Check these before sending" />
           {error && <InlineAlert tone="danger" title="Not sent">{error}</InlineAlert>}
+          {forSomeone && (
+            <FormField id="lv-person" label="Employee" required error={errorOf('lv-person')}>
+              <LivePicker kind="people" label="Employee" value={personId} onChange={setPersonId} onPick={(_k, q) => forSomeone.onFindPeople(q)} />
+            </FormField>
+          )}
+          {forSomeone && loadError && <InlineAlert tone="danger" title="Their leave did not load">{loadError} Pick the person again.</InlineAlert>}
+          {forSomeone && !target ? <p className="yx-tim-muted">Pick the employee to see their leave types and balances.</p> : (
+          <>
           <FormField id="lv-type" label="Leave type" required error={errorOf('lv-type')}>
             <Select value={typeId} onChange={setTypeId} options={types.map((t) => ({ value: t.leaveTypeId, label: t.name, description: t.hasBalance ? `${daysWord(t.available)} available` : t.kind === 'lop' ? `${t.takenThisYear} taken this year` : undefined }))} />
           </FormField>
@@ -2476,7 +2534,7 @@ function LiveApplyLeavePanel({ data, live, onClose }: { data: MyLeave; live: Liv
           )}
           <FieldRow>
             <FormField id="lv-from" label="From" required error={errorOf('lv-from')}>
-              <DatePicker value={from} onChange={setFrom} min={addDays(isoDate(data.today), -60)} />
+              <DatePicker value={from} onChange={setFrom} min={today ? addDays(isoDate(today), -60) : undefined} />
             </FormField>
             <FormField id="lv-to" label="To" helper="Leave empty for one day" error={errorOf('lv-to')}>
               <DatePicker value={to} onChange={setTo} min={from ?? undefined} />
@@ -2499,22 +2557,26 @@ function LiveApplyLeavePanel({ data, live, onClose }: { data: MyLeave; live: Liv
               <FormField label="Last day"><Select value={toHalf} onChange={(v) => v && setToHalf(v as 'full' | 'first')} options={[{ value: 'full', label: 'Full day' }, { value: 'first', label: 'First half only' }]} /></FormField>
             </FieldRow>
           ) : null)}
-          <FormField id="lv-reason" label="Reason" optional helper={plan?.type.rules.medical ? 'Only you and HR can read this.' : 'Your approvers see this.'}>
+          <FormField id="lv-reason" label="Reason" optional helper={plan?.type.rules.medical ? their('Only you and HR can read this.', 'Only they and HR can read this.') : their('Your approvers see this.', 'Their approvers see this.')}>
             <TextArea rows={2} value={reason} onChange={setReason} maxLength={1000} />
           </FormField>
           {plan?.certificateNeeded && (
             <FormField id="lv-cert" label="Medical certificate" error={errorOf('lv-cert')}>
-              <Checkbox label="I will give a certificate to HR" description="Only HR sees it; your manager sees only whether it's in and verified." checked={certificate} onChange={setCertificate} />
+              <Checkbox label={their('I will give a certificate to HR', 'They will give a certificate to HR')} description={their("Only HR sees it; your manager sees only whether it's in and verified.", "Only HR sees it; their manager sees only whether it's in and verified.")} checked={certificate} onChange={setCertificate} />
             </FormField>
           )}
-          <FormField id="lv-delegate" label="Delegate to" optional helper="If you approve requests, they go to this person on your leave days. Otherwise they go to your manager.">
-            <LivePicker kind="people" label="Colleague" value={delegate} onChange={setDelegate} onPick={(_k, q) => live.onFindPeople(q)} />
-          </FormField>
+          {!forSomeone && (
+            <FormField id="lv-delegate" label="Delegate to" optional helper="If you approve requests, they go to this person on your leave days. Otherwise they go to your manager.">
+              <LivePicker kind="people" label="Colleague" value={delegate} onChange={setDelegate} onPick={(_k, q) => live!.onFindPeople(q)} />
+            </FormField>
+          )}
+          </>
+          )}
         </div>
         <div className="yx-tim-sticky" style={{ maxWidth: 'var(--yx-form-max)', minWidth: 0 }}>
           <section className="yx-tim-effect" aria-live="polite" aria-label="Leave summary">
             <strong>Summary</strong>
-            {!plan ? <p className="yx-tim-muted">Pick the dates to see the days counted and your balance after.</p> : (
+            {!plan ? <p className="yx-tim-muted">{forSomeone && !target ? 'Pick the person, then the dates, to see the days counted and their balance after.' : `Pick the dates to see the days counted and ${their('your', 'their')} balance after.`}</p> : (
               <>
                 <dl className="yx-tim-stack">
                   <div className="yx-tim-effect__row"><dt>Days counted</dt><dd>{plan.total}{plan.sandwichDays > 0 ? ` (incl. ${plural(plan.sandwichDays, 'day')} between leave days)` : ''}</dd></div>
@@ -2522,15 +2584,17 @@ function LiveApplyLeavePanel({ data, live, onClose }: { data: MyLeave; live: Liv
                   {plan.balanceAfter !== null && <div className="yx-tim-effect__row"><dt>Balance after</dt><dd>{plan.balanceAfter < 0 ? <Badge tone="danger">{`${plan.balanceAfter}`}</Badge> : plan.balanceAfter}</dd></div>}
                   {plan.balanceAfter === null && chosen && !chosen.paid && <div className="yx-tim-effect__row"><dt>Unpaid days this year (with this)</dt><dd>{chosen.takenThisYear + plan.total}</dd></div>}
                   {plan.notice && <div className="yx-tim-effect__row"><dt>Last working day</dt><dd>{plan.notice.newLastDay === plan.notice.lastDay ? `Stays ${fd(plan.notice.lastDay)}` : `${fd(plan.notice.lastDay)} → ${fd(plan.notice.newLastDay)}`}</dd></div>}
-                  <div className="yx-tim-effect__row"><dt>Your team</dt><dd>{plan.othersOff ? `${plan.othersOff} ${plan.othersOff === 1 ? 'other is' : 'others are'} off then` : 'No one else is off then'}</dd></div>
+                  {plan.noticeSkipped && <div className="yx-tim-effect__row"><dt>Notice</dt><dd>Applied by HR: {daysWord(plan.noticeDays ?? 0)}' notice not needed</dd></div>}
+                  <div className="yx-tim-effect__row"><dt>{their('Your team', 'Their team')}</dt><dd>{plan.othersOff ? `${plan.othersOff} ${plan.othersOff === 1 ? 'other is' : 'others are'} off then` : 'No one else is off then'}</dd></div>
                 </dl>
-                {plan.sandwichDays > 0 && <p className="yx-tim-note">Weekends and holidays between leave days count as leave under your policy.</p>}
+                {plan.sandwichDays > 0 && <p className="yx-tim-note">Weekends and holidays between leave days count as leave under {their('your', 'the')} policy.</p>}
                 {plan.days.length > 0 && (
                   <ul className="yx-tim-days">
                     {plan.days.map((x) => <li key={x.on}><DayDate date={isoDate(x.on)} /><span>{x.countedAs === 'leave' && x.portion === 0.5 ? 'Half day' : COUNTED_AS[x.countedAs]}</span></li>)}
                   </ul>
                 )}
                 {plan.warnings.map((w) => <InlineAlert key={w} tone="warning">{w}</InlineAlert>)}
+                {forSomeone && <p className="yx-tim-note">{plan.approval === 'approved' ? 'Approved at once (company setting), marked "Applied by HR".' : 'Goes to their manager for approval, marked "Applied by HR".'}</p>}
               </>
             )}
           </section>
@@ -2940,6 +3004,7 @@ function LiveHrLeaveHomeScreen({ live }: { live: LiveHrLeaveHome }) {
   const [error, setError] = useState<string | null>(null);
   const [absence, setAbsence] = useState<LongAbsenceRow | null>(null);
   const [recording, setRecording] = useState(false);
+  const [applying, setApplying] = useState(false);
   const today = d ? isoDate(d.today) : TODAY0;
   const absences = live.absences?.data ?? [];
   const remind = (id: string) => {
@@ -2948,7 +3013,7 @@ function LiveHrLeaveHomeScreen({ live }: { live: LiveHrLeaveHome }) {
   };
   return (
     <TimePage active="Team leave">
-      <PageHeader title="Leave" description={d ? `Leave year ends ${fd(d.yearEnd.nextOn)}` : undefined} actions={live.record && <Button variant="primary" onClick={() => setRecording(true)}>Record long absence</Button>} />
+      <PageHeader title="Leave" description={d ? `Leave year ends ${fd(d.yearEnd.nextOn)}` : undefined} actions={(live.record || live.applyFor) && <div className="yx-tim-row">{live.record && <Button onClick={() => setRecording(true)}>Record long absence</Button>}{live.applyFor && <Button variant="primary" icon={CalendarPlus} onClick={() => setApplying(true)}>Apply for someone</Button>}</div>} />
       <LiveStates state={live.state} onRetry={live.onRetry} what="Leave">
         {d && (
           <div className="yx-tim-grid">
@@ -3011,6 +3076,7 @@ function LiveHrLeaveHomeScreen({ live }: { live: LiveHrLeaveHome }) {
       </LiveStates>
       {absence && d && live.absences && <LongAbsenceCard live={{ absence, persona: 'hr', today: d.today, onClose: () => setAbsence(null), onChange: (how, on, note, version) => live.absences!.onChange(absence.id, how, on, note, version) }} />}
       {live.record && <RecordAbsenceDialog open={recording} onOpenChange={setRecording} {...live.record} />}
+      {live.applyFor && <ApplyLeavePanel key={String(applying)} open={applying} onOpenChange={setApplying} liveFor={live.applyFor} />}
     </TimePage>
   );
 }

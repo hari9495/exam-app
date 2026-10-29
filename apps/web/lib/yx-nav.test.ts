@@ -88,6 +88,10 @@ describe('buildNav: Time, Pay, Compliance', () => {
     expect(labels(nav([], { employee: true }), 'time')).toEqual(['My attendance', 'My leave', 'My shifts', 'Team roster', 'Office days', 'My timesheet', 'My overtime', 'My work-from-home days']);
     expect(labels(nav([], { employee: true, manager: true }), 'time').slice(0, 6)).toEqual(['Today', 'Muster', 'Exceptions', 'Roster', 'Open shifts', 'Auto-roster']);
     expect(sections(nav(['leave.settings.manage']), 'time')).toEqual(['Time settings']);
+    // Founder answer A: Payroll with leave.liability.view alone gets one link, "Leave liability"; HR keeps "Leave balances".
+    expect(labels(nav(['leave.liability.view']), 'time')).toEqual(['Leave liability']);
+    expect(labels(nav(['leave.view', 'leave.liability.view']), 'time')).toContain('Leave balances');
+    expect(labels(nav(['leave.view', 'leave.liability.view']), 'time')).not.toContain('Leave liability');
   });
 
   it('payroll set-up pages sit in Settings › Payroll & Statutory, by the batch-5b keys', () => {

@@ -176,4 +176,13 @@ describe('Leave liability (TIM-30, live)', () => {
     expect(within(table).queryByText('Liability')).toBeNull();
     expect(within(table).queryByText('Daily pay')).toBeNull();
   });
+  it('Payroll with the liability key only: one report in the picker, no leave cards, Export still there (founder answer A)', async () => {
+    const { onOpenCard: _no, ...l } = live({ ...base, money: true, dailyPayRule: { basis: 'basic_da', divisor: '26' }, rows: [{ employeeId: 'e1', name: 'Arjun Kulkarni', code: 'KF-1', values: { el: 12 }, days: 12, dailyPay: 1000, amount: 12000, noPay: false }] });
+    wrap(<LeaveReportsScreen live={{ ...l, reports: ['liability'] }} />);
+    await ue.click(screen.getByRole('combobox', { name: 'Report' }));
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['Leave liability']);
+    await ue.keyboard('{Escape}');
+    expect(screen.queryByRole('button', { name: 'Open leave card' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeInTheDocument();
+  });
 });

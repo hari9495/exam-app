@@ -287,7 +287,7 @@ type Access = (typeof ACCESS)[number];
 
 export const PERMISSION_GROUPS: { module: string; perms: { key: string; label: string }[] }[] = [
   { module: 'People', perms: [{ key: 'employee.view', label: 'View employee records' }, { key: 'employee.edit', label: 'Edit employee records' }, { key: 'employee.bank.edit', label: 'Change bank details' }] },
-  { module: 'Time', perms: [{ key: 'leave.approve', label: 'Approve leave' }, { key: 'attendance.lock', label: 'Lock attendance periods' }, { key: 'attendance.lock.approve', label: 'Approve attendance lock' }] },
+  { module: 'Time', perms: [{ key: 'leave.approve', label: 'Approve leave' }, { key: 'attendance.lock', label: 'Lock attendance periods' }, { key: 'attendance.lock.approve', label: 'Approve attendance lock' }, { key: 'leave.liability.view', label: 'View leave liability' }] },
   { module: 'Pay', perms: [{ key: 'payroll.run.prepare', label: 'Prepare payroll run' }, { key: 'payroll.run.approve', label: 'Approve payroll run' }, { key: 'bank.file.create', label: 'Create bank file' }, { key: 'bank.file.release', label: 'Release bank file' }] },
   { module: 'Administration', perms: [{ key: 'role.manage', label: 'Manage roles' }, { key: 'request.raise_on_behalf', label: 'Raise requests on behalf of others' }] },
 ];

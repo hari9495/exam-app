@@ -166,6 +166,8 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(manager || has('attendance.view'), L('overtime-review', 'Overtime', '/yx/time/overtime-review')),
         ...when(manager || has('leave.view'), L('block-leave', 'Block leave', '/yx/time/block-leave')),
         ...when(has('leave.view'), L('leave-balances', 'Leave balances', '/yx/time/balances')),
+        // Founder answer A: Payroll (leave.liability.view without leave.view) opens the same page on the liability report only.
+        ...when(!has('leave.view') && has('leave.liability.view'), L('leave-liability', 'Leave liability', '/yx/time/balances')),
         ...when(has('attendance.lock') || has('attendance.lock.approve'), L('periods', 'Periods', '/yx/time/periods')),
         ...when(has('attendance.lock'), L('device-punches', 'Device punches', '/yx/time/device-punches'), L('industrial-action', 'Industrial action', '/yx/time/industrial-action')),
         ...when(manager || has('attendance.view'), L('attendance-reports', 'Attendance reports', '/yx/time/reports'), L('presence', 'Presence days', '/yx/time/presence')),

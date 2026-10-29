@@ -1600,14 +1600,17 @@ export function LeaveReportsScreen({ report = 'balances', persona = 'hr', state 
   ];
   const lopDays = LOP.reduce((a, x) => a + x.days, 0);
   const takenTotals = (['CL', 'SL', 'EL', 'CO', 'LWP'] as LeaveCode[]).map((c) => PERSON_ROWS.reduce((a, x) => a + x.taken[c], 0));
-  const options: { value: LeaveReport; label: string }[] = [
-    { value: 'balances', label: 'Balances' },
-    { value: 'ledger', label: 'Ledger' },
-    { value: 'taken', label: 'Leave taken' },
-    { value: 'lop', label: 'Unpaid leave (LOP) to payroll' },
-    { value: 'liability' as const, label: 'Leave liability' },
-    { value: 'negative', label: 'Negative balances' },
-  ];
+  // Founder answer A: Payroll holds leave.liability.view, not leave.view, so the liability is its only report.
+  const options: { value: LeaveReport; label: string }[] = (
+    [
+      { value: 'balances', label: 'Balances' },
+      { value: 'ledger', label: 'Ledger' },
+      { value: 'taken', label: 'Leave taken' },
+      { value: 'lop', label: 'Unpaid leave (LOP) to payroll' },
+      { value: 'liability' as const, label: 'Leave liability' },
+      { value: 'negative', label: 'Negative balances' },
+    ] as { value: LeaveReport; label: string }[]
+  ).filter((o) => !fin || o.value === 'liability');
   const description = r === 'ledger' ? 'Entries in September 2026' : r === 'taken' ? `Days taken or approved in 2026, as of ${asOf}` : r === 'lop' ? 'September 2026' : `Balances as of ${asOf}`;
   const sample = <p className="yx-tim-note">Showing {r === 'negative' ? people.length : PERSON_ROWS.length} of {EMPLOYEES.length} people. Export has everyone.</p>;
   const reportLabel = options.find((o) => o.value === r)?.label ?? 'Leave report';
@@ -1679,7 +1682,10 @@ export interface LiveLeaveReports {
   onQuery: (q: LeaveReportQuery) => void;
   /** Downloads the whole report (every page) as CSV. */
   onExport: (q: LeaveReportQuery) => Promise<unknown>;
-  onOpenCard: (employeeId: string) => void;
+  /** Opens the person's leave card (leave.view); left out for someone who may read the liability only. */
+  onOpenCard?: (employeeId: string) => void;
+  /** The reports this person may open (founder answer A: leave.liability.view alone opens the liability only). */
+  reports?: LeaveReportKind[];
 }
 
 const REPORT_OPTIONS: { value: LeaveReportKind; label: string }[] = [
@@ -1766,7 +1772,7 @@ function LiveLeaveReports({ live }: { live: LiveLeaveReports }) {
         description={q.report === 'ledger' || q.report === 'lop' ? months.find((m) => m.value === (q.month ?? months[0]!.value))?.label : q.report === 'liability' ? 'Unused leave that can be cashed in, as of today' : 'Balances as of today · leave taken in this leave year'}
         actions={
           <div className="yx-tim-row">
-            <div className="yx-tim-picker"><Select aria-label="Report" value={q.report} onChange={(v) => v && set({ report: v as LeaveReportKind })} options={REPORT_OPTIONS} /></div>
+            <div className="yx-tim-picker"><Select aria-label="Report" value={q.report} onChange={(v) => v && set({ report: v as LeaveReportKind })} options={REPORT_OPTIONS.filter((o) => !live.reports || live.reports.includes(o.value))} /></div>
             {live.state === 'ready' && <Button icon={Download} loading={busy === 'export'} onClick={() => void run('export', () => live.onExport(q))}>Export CSV</Button>}
           </div>
         }
@@ -1805,13 +1811,13 @@ function LiveLeaveReports({ live }: { live: LiveLeaveReports }) {
               {(q.report === 'ledger' || q.report === 'lop') && <Select aria-label="Month" value={q.month ?? months[0]!.value} onChange={(v) => v && set({ month: v })} options={months} />}
             </div>
           }
-          rowButtons={q.report === 'ledger' ? undefined : (x) => <Button size="sm" onClick={() => live.onOpenCard(x.employeeId)}>Open leave card</Button>}
+          rowButtons={q.report === 'ledger' || !live.onOpenCard ? undefined : (x) => <Button size="sm" onClick={() => live.onOpenCard!(x.employeeId)}>Open leave card</Button>}
           empty={
             filtered ? <EmptyState title="No one matches these filters" description="Change or clear the filters." action={<Button onClick={() => { setSearch(''); live.onQuery({ report: q.report, month: q.month, page: 1, pageSize: q.pageSize }); }}>Clear filters</Button>} />
             : q.report === 'negative' ? <EmptyState title="No one is below zero" description="No one has used more leave than they have." />
             : q.report === 'lop' ? <EmptyState title="No unpaid days this month" description="Nothing goes to payroll for unpaid leave this month." />
             : q.report === 'ledger' ? <EmptyState title="No ledger entries" description="No leave was taken, credited or adjusted this month." />
-            : <EmptyState title="Nothing to show" description="People in your HR scope appear here." />
+            : <EmptyState title="Nothing to show" description="People in your scope appear here." />
           }
         />
       )}

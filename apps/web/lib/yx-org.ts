@@ -73,6 +73,8 @@ export const YX_KEYS = [
   'leave.settings.manage',
   'leave.view',
   'leave.balance.adjust',
+  // Founder answer A (29 Oct 2026): Payroll reads the leave liability report only.
+  'leave.liability.view',
   'attendance.view',
   // Step 4 batch 2: rosters in scope and locking attendance months.
   'roster.manage',
