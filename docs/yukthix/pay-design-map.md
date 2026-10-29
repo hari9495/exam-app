@@ -27,13 +27,16 @@ Verdicts: **wire design** (a live page and the API exist for this job; the page 
 | B. Inputs, loans, recoveries, queries | 8 | 43 | 9 | 0 | 0 | 0 | 2 | 0 | 54 |
 | C. Structures and set-up | 6 | 41 | 2 | 0 | 0 | 0 | 0 | 0 | 43 |
 | D. Employee pay and tax | 6 | 28 | 10 | 0 | 0 | 1 | 9 | 0 | 48 |
-| E. Special pay, earned wage access, actuarial, benefits | 14 | 66 | 8 | 0 | 0 | 10 | 8 | 0 | 92 |
+| E. Special pay, earned wage access, actuarial, benefits | 14 | 76 | 8 | 0 | 0 | 6 | 8 | 0 | 98 |
 | F. Reports | 1 | 0 | 0 | 0 | 0 | 13 | 0 | 0 | 13 |
 | G. Records | 3 | 44 | 0 | 0 | 0 | 0 | 0 | 0 | 44 |
 | H. New designs, made live | 5 | 46 | 3 | 0 | 0 | 0 | 0 | 0 | 49 |
-| **All** | **53** | **323** | **40** | **0** | **0** | **24** | **19** | **0** | **406** |
+| **All** | **53** | **333** | **40** | **0** | **0** | **20** | **19** | **0** | **412** |
 
-Counted by script (coordinator, 29 Oct 2026, after builders 1, 2, 3 and round 2 of builders 1 and 2 were merged into the test
+Bonus builder (29 Oct 2026, branch `feat/yukthix-pay-bonus`): PAY-24 is live (4 stories made live, 6 state stories added
+first); E and All recounted from the PAY-24 rows below.
+
+Counted by script (coordinator, 29 Oct 2026, after builders 1, 2, 3 and round 2 of builders 1 and 2, compliance and bonus were merged into the test
 app): every `export const` story in the 53 `pay-NN-*.stories.tsx` files, and the verdict row each story has in section 4
 (the script checks one row per story; no story is missing a row). "wire, gap" in C and E = the page renders the design
 but this state needs an API first (builder 2's wording); read it as "live, gap". The Kit (9 stories) is not counted.
@@ -167,7 +170,7 @@ Until then they stay in `known.json`.
 
 | design | what it needs | size |
 |---|---|---|
-| PAY-24 Bonus computation (4) | Payment of Bonus Act: eligible employees and bonus wage (the `bonusWage` flag exists), 8.33 % to 20 %, allocable surplus from the accounts (an input), set-on and set-off over 4 years; a `bonus_computations` table; pays through the existing off-cycle "bonus" run | M |
+| ~~PAY-24 Bonus computation (4)~~ | Built (bonus builder, 29 Oct 2026): see "Bonus builder status" at the end. | — |
 | PAY-25 Payroll reports (13) | `GET payroll/reports/:kind` with filters and export, read only, behind the pay guard and a new `payroll.report.view` key: salary register, reconciliation, variance, CTC by department, arrears, YTD, bank advice, hold ageing, gratuity provision, loan ledger. The data is already in payslips, holds, loans, journal and actuarial | L |
 | PAY-43 Group health (5) | an insurance broker partner (licensed), quotes, disclosure acknowledgement, policy and endorsements, minimum headcount rule; new tables. Blocked on choosing a partner | L |
 | PAY-27 "Partner connection" (1) | partner-funded earned wage access (connector P10); today draws are employer-funded only | M |
@@ -608,14 +611,20 @@ Live page: /yx/me/tax (Compare regimes)
 
 #### PAY-24 · Bonus computation
 
-Live page: none
+Live page: /yx/payroll/bonus
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Minimum · Compute at 8.33% | design only, feature not built |  |
-| Higher · Compute at 20% | design only, feature not built |  |
-| Surplus · Allocable surplus step | design only, feature not built |  |
-| Approve · Approve and pay | design only, feature not built |  |
+| Minimum · Compute at 8.33% | live |  |
+| Higher · Compute at 20% | live |  |
+| Surplus · Allocable surplus step | live |  |
+| Approve · Approve and pay | live |  |
+| Empty · Empty · not worked out yet | live | new state story |
+| TooEarly · Send for approval · pressed too early (field error) | live | new state story |
+| Refused · Approve · refused by the server (own bonus) | live | new state story |
+| Sent · Sent to the off-cycle bonus run | live | new state story |
+| Loading · Loading | live | new state story |
+| ErrorState · Error | live | new state story |
 
 #### PAY-26 · Earned wage access request
 
@@ -1360,3 +1369,34 @@ Live page: /yx/payroll/consultant-tds
 4. Supplementary filings (CMP-12) and the Missing IDs page (CMP-07): build next, in that order? *Yes*, both M.
 5. Changing the challan amount with a reason (CMP-04) and a filing-partner connector (CMP-05 Partner): *amount yes (S);
    partner waits*.
+
+## Bonus builder status (PAY-24 statutory bonus; branch `feat/yukthix-pay-bonus`, 29 Oct 2026)
+
+Founder decision 9: bonus first. `/yx/payroll/bonus` renders the designed `BonusComputationScreen` with `live`; the design
+stories feed the same screen with sample data. Menu: Pay › Statutory bonus (`payroll.bonus.manage` or `payroll.bonus.approve`).
+
+- **Rules (Payment of Bonus Act):** eligibility at most the limit a month (a month above it earns nothing) and at least the
+  working days in the year (paid days plus lay-off days from the payroll feed; a paid month with no feed counts the days
+  employed); bonus wage = the `bonusWage` components of approved payslips (imported history for months with no payslip),
+  each month up to the higher of the ceiling and the minimum wage at the place of work; rate from the allocable surplus
+  between the lowest and highest rate (a higher rate is the company's choice); at least ₹100 a year, cut down by months;
+  set-on (capped at 20 % of the bonus wage) and set-off, oldest first, carried for 4 years; puja / customary bonus and
+  misconduct loss deducted with a reason; a s.9 dismissal pays nothing; due 8 months after the year end (badge, overdue).
+- **Settings (HR, company or legal entity; the Act's values are the defaults, only more generous values offered):**
+  `payroll.bonus.year_start_month` 4, `eligibility_wage` 21000, `calculation_ceiling` 7000, `min_rate` 8.33, `max_rate` 20,
+  `min_working_days` 30, `min_amount` 100, `allocable_percent` 60, `carry_years` 4, `due_months` 8.
+- **Workflow:** compute (only after the year ends; once per entity and year) → change surplus, rate, deductions (draft,
+  rebuilt from payroll each time) → submit → approve or send back (`payroll.bonus.approve`, never by anyone who computed,
+  changed or submitted it, from the audit trail; the table also checks) → send: one-time `bonus` pay per person into a
+  draft off-cycle bonus run (new one in the entity's first pay group this month, or a chosen draft one); the run's own
+  approval and bank file follow. Every write carries the version (stale = 409). Audited: computed, changed, row_changed,
+  submitted, returned, approved, sent.
+- **API:** `GET payroll/bonus/entities`, `GET payroll/bonus?legalEntityId&yearStart`, `GET payroll/bonus/:id`,
+  `POST payroll/bonus`, `PATCH payroll/bonus/:id`, `PATCH payroll/bonus/:id/rows/:employmentId`, `POST …/submit`,
+  `POST …/approve`, `POST …/return`, `POST …/send`.
+- **Data:** `bonus_computations`, `bonus_computation_rows` (RLS: tenant, support exclusion, pay guard); migrations
+  `20261308000000_pay_bonus`, `20261308000100_pay_bonus_source`.
+- **Gaps:** an off-cycle run pays only people with a salary in the run month, so a leaver owed bonus is held by the run's
+  `no_compensation` check (pay them through F&F for now); no bonus register (Form C) export or approver notification yet;
+  bonus for employees under 15 (₹60) and the new-establishment exemption (s.16) are not modelled.
+

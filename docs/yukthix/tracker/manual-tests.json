@@ -5753,5 +5753,143 @@
       "CMP-13 ReadOnly"
     ],
     "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-B-01",
+    "area": "Pay · Bonus",
+    "screen": "Statutory bonus: menu, entity and year (PAY-24)",
+    "url": "http://localhost:3000/yx/payroll/bonus",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Pay in the menu; find Statutory bonus. Open it.",
+      "2. Look at the header and the Accounting year control; pick 2026-27, then 2025-26.",
+      "3. Sign in as panel@demo-org.test (an employee) and open http://localhost:3000/yx/payroll/bonus directly."
+    ],
+    "expected": "Step 1: \"Statutory bonus\" is under Pay; the page opens on the last ended year (2025-26) with the legal entity chosen. Step 2: the year is a joined Segment (one choice); 2026-27 shows \"This accounting year ends on 31 Mar 2027. Work out its bonus after that day.\"; 2025-26 shows \"No bonus worked out for 2025-26\" with Work out bonus. Step 3: no menu item; the page says you do not have access. Negative: no page scroll sideways at 1278 x 635.",
+    "stories": [
+      "PAY-24 Empty",
+      "PAY-24 Loading",
+      "PAY-24 ErrorState"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-B-02",
+    "area": "Pay · Bonus",
+    "screen": "Work out the bonus (PAY-24 Compute)",
+    "url": "http://localhost:3000/yx/payroll/bonus",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Before: the demo legal entity needs pay for 1 Apr 2025 to 31 Mar 2026 (approved payslips, or as-paid lines imported in Payroll set-up › Imports). Without it every row says \"No bonus wage paid in the year.\"",
+      "1. Pick 2026-27 and press Work out bonus.",
+      "2. Pick 2025-26 and press Work out bonus.",
+      "3. Look at the Compute step: Eligible, Total bonus, the table and the note under it.",
+      "4. Find someone with a wage above ₹21,000 a month, and someone who joined in the last month of the year.",
+      "5. Reload the page."
+    ],
+    "expected": "Step 1: refused in a red alert: \"The 2026-27 accounting year ends on 2027-03-31. Work out its bonus after that day.\" Nothing is made. Step 2: a 5-second toast \"Bonus for 2025-26 worked out. Enter the surplus next.\"; header badge \"Due by 30 Nov 2026\". Step 3: rate 8.33%; each eligible row: bonus = bonus base x 8.33%, rounded to the rupee. Step 4: \"No: Wage above ₹21,000 a month all year.\" and \"No: Worked 29 days; at least 30 are needed.\" (eligible with 30 days or more). Step 5: the same computation opens; Work out bonus does not show again (a second one for the same year is refused).",
+    "stories": [
+      "PAY-24 Minimum"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-B-03",
+    "area": "Pay · Bonus",
+    "screen": "Allocable surplus, rate, set-on and set-off (PAY-24 Surplus)",
+    "url": "http://localhost:3000/yx/payroll/bonus",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open the Allocable surplus step; press Save surplus with the field empty.",
+      "2. Enter Available surplus 0 and save.",
+      "3. Enter 1,00,00,000 and save.",
+      "4. Open Compute; clear Bonus rate and press Work out at this rate.",
+      "5. Type 10 and press it; then 25; then 20.",
+      "6. Open the page in a second tab, save a different surplus there, then save in the first tab."
+    ],
+    "expected": "Step 1: field error \"Enter the available surplus from the accounts (it may be 0).\", focus on the field, nothing saved. Step 2: toast; rate 8.33%; \"Set-off carried forward\" equals the total bonus. Step 3: allocable 60% shown; rate 20%; \"Set-on carried forward\" is 20% of the bonus base total; no set-off. Step 4: field error on Bonus rate, focus there. Step 5: 10 is refused (\"The surplus supports 20%, so the bonus rate must be between 20% and 20%.\"); 25 is refused; 20 gives a toast. Step 6: \"Someone else changed this bonus a moment ago. Reload it to see their change, then try again.\"",
+    "stories": [
+      "PAY-24 Surplus",
+      "PAY-24 Higher"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-B-04",
+    "area": "Pay · Bonus",
+    "screen": "Deductions per person (PAY-24 Compute, drawer)",
+    "url": "http://localhost:3000/yx/payroll/bonus",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. In the table press Deductions on an eligible person.",
+      "2. Enter Puja or customary bonus 1,000 and press Save with no reason.",
+      "3. Add the reason \"Diwali puja bonus\" and Save.",
+      "4. Open another person; set Dismissed for fraud, violence or theft to Yes, reason \"Dismissed for theft on 3 Mar\", Save.",
+      "5. Measure the drawer by script: blocks never touch, edges line up."
+    ],
+    "expected": "Step 2: field error \"Give the reason (at least 5 characters).\" and focus on Reason; nothing saved. Step 3: 5-second toast; the drawer closes; that row's To pay is ₹1,000 less and the Deductions total grows. Step 4: the person shows \"No: Dismissed for fraud, violence or theft (section 9): no bonus.\" and To pay ₹0. Step 5: spacing from tokens. Negative: the dismissal is a joined Yes / No Segment, never two chips that look stackable.",
+    "stories": [
+      "PAY-24 Minimum"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-B-05",
+    "area": "Pay · Bonus",
+    "screen": "Send for approval, send back, approve (PAY-24 Approve)",
+    "url": "http://localhost:3000/yx/payroll/bonus",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open. Second browser: payroll-approver@demo-org.test (Payroll Approver - Meena). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As Suresh, on a bonus with no surplus saved, open Approve and pay and press Send for approval.",
+      "2. Save a surplus, open Approve and pay, press Send for approval.",
+      "3. As Suresh, try to save the surplus again.",
+      "4. As Meena, open the page: press Send back; press Send back in the drawer with nothing typed; then type \"Check the puja amounts\" and send back.",
+      "5. As Suresh, read the alert and send it for approval again. As Meena, press Approve bonus.",
+      "6. With a user who holds both bonus keys: change a row, send it for approval, then press Approve bonus as the same user."
+    ],
+    "expected": "Step 1: the surplus step opens with the field error and focus; the button is never greyed out. Step 2: toast \"Bonus for 2025-26 sent for approval.\"; status \"Waiting for approval\". Step 3: refused: \"This bonus is waiting for approval. Ask the approver to send it back before changing it.\" Step 4: the drawer shows its field error first; then a toast and the status is Draft. Step 5: Suresh sees \"Sent back by the approver: Check the puja amounts\"; after Meena approves: toast \"Bonus for 2025-26 approved.\", status Approved with her name. Step 6: \"You worked on this bonus, so someone else approves it.\" Nothing changes.",
+    "stories": [
+      "PAY-24 Approve",
+      "PAY-24 TooEarly",
+      "PAY-24 Refused"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-B-06",
+    "area": "Pay · Bonus",
+    "screen": "Send to the off-cycle bonus run (PAY-24 to PAY-11)",
+    "url": "http://localhost:3000/yx/payroll/bonus",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open. Also: payroll-approver@demo-org.test (Payroll Approver - Meena). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. On an approved bonus, as Meena (approver only), press Send to off-cycle run.",
+      "2. As Suresh press Send to off-cycle run; read the dialog; confirm.",
+      "3. Press the Off-cycle run link; calculate the run.",
+      "4. Come back to the bonus and press Sent."
+    ],
+    "expected": "Step 1: \"Payroll sends the approved bonus to an off-cycle run.\"; nothing sent. Step 2: the dialog names the total, the number of people, the year and the rate; after confirming, a 5-second toast and the badge \"Sent to off-cycle run\". Step 3: a draft off-cycle Bonus run of this month lists only the people with bonus to pay; each payslip has a Bonus line equal to their To pay. Step 4: \"This bonus is already in an off-cycle run.\" Negative: someone with no salary in the run month (a leaver) is held by the run's own check, never paid silently.",
+    "stories": [
+      "PAY-24 Sent"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-B-07",
+    "area": "Pay · Bonus",
+    "screen": "Bonus settings belong to the company (HR)",
+    "url": "http://localhost:3000/yx/payroll/bonus",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi), then payroll@demo-org.test (Payroll Admin - Suresh).",
+    "steps": [
+      "1. As Lakshmi open the company settings and find the bonus settings; read the defaults.",
+      "2. Set \"Working days in the year needed for bonus\" to 15 for the demo legal entity.",
+      "3. As Suresh, on a draft bonus, save the surplus again and look at the person with 29 days.",
+      "4. As Lakshmi look at the values offered for \"Bonus is paid to people whose wage a month is at most\".",
+      "5. Put the working days back to 30."
+    ],
+    "expected": "Step 1: the Act's values: year from April, ₹21,000, ₹7,000, 8.33% to 20%, 30 days, ₹100, 60%, 4 years, 8 months. Step 3: the person is now eligible; the note under the table says 15 working days. Step 4: no value below the Act is offered, only more generous ones. Negative: Suresh (Payroll Admin) cannot change these settings.",
+    "stories": [
+      "PAY-24 Minimum"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
   }
 ]
