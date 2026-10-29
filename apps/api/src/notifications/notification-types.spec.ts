@@ -60,6 +60,7 @@ describe('notification catalog', () => {
       'exit.deprovisioning.failed',
       'payroll.fnf.due',
       'payroll.overpayment.consent',
+      'payroll.bonus.submitted',
       'expense.trip.update',
       'expense.advance.update',
       'expense.payment.update',

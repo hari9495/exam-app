@@ -15,7 +15,8 @@ import { markSteppedUp } from './fixtures/step-up';
 // PAY-24 statutory bonus end to end against the real database: every route, positive and negative, with the boundaries
 // (exactly the eligibility limit and ₹0.01 above it, 29 and 30 working days), the company settings, maker ≠ checker,
 // stale versions, another company and another legal entity (key scope and the database pay guard), and the hand-off to
-// an off-cycle bonus run.
+// an off-cycle bonus run. Founder 30 Oct 2026: eligibility on the full-month salary rate (24), a leaver paid in the
+// off-cycle bonus run (29), the approver told on send, and the Form C register (30).
 describe('Payroll statutory bonus (PAY-24)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
@@ -128,14 +129,31 @@ describe('Payroll statutory bonus (PAY-24)', () => {
     ids.chitra = await hire('Chitra', 'BN-003', yearStart); // ₹21,000.01: not eligible
     ids.dev = await hire('Dev', 'BN-004', `${Y + 1}-03-03`); // 29 days in the year
     ids.esha = await hire('Esha', 'BN-005', `${Y + 1}-03-02`); // 30 days
+    ids.farah = await hire('Farah', 'BN-006', yearStart); // earned 15,000 a month on a salary rate above 21,000: not eligible
+    ids.gopal = await hire('Gopal', 'BN-007', yearStart); // left at the year end: paid in the off-cycle bonus run
     await api('payAdmin', 'post', '/payroll/components/starter').expect(201);
     // Asha and Bala have a salary this month (an off-cycle run pays only people with one); the others do not.
     const version = ((await api('payAdmin', 'get', '/payroll/templates').expect(200)).body as { versions: { id: string }[] }[])[0].versions[0].id;
-    for (const emp of [ids.asha, ids.bala]) {
-      const ch = (await api('payAdmin', 'post', `/payroll/employees/${emp}/compensation-changes`).send({ employeeId: emp, effectiveDate: `${today.slice(0, 7)}-01`, templateVersionId: version, entryMode: 'ctc', annualCtc: '240000', reason: 'Salary' }).expect(201)).body;
+    // A template in force from the start of the year, so salaries can be recorded for all of it: basic is half the CTC.
+    const yearly = (await api('payAdmin', 'post', '/payroll/templates').send({ name: `Year ${run}`, legalEntityId: ids.entity }).expect(201)).body;
+    const fromStart = (
+      await api('payAdmin', 'post', `/payroll/templates/${yearly.id}/versions`)
+        .send({ validFrom: yearStart, lines: [{ code: 'basic', formula: 'round(monthly_ctc * 0.5)' }, { code: 'special', formula: '0' }], balancing: 'special', employerPfInCtc: true, employerEsiInCtc: true, gratuityInCtc: false, sample: { annualCtc: '600000', state: 'IN-KA', age: 30 } })
+        .expect(201)
+    ).body.id as string;
+    for (const [emp, from, ctc] of [
+      [ids.asha, `${today.slice(0, 7)}-01`, '240000'],
+      [ids.bala, `${today.slice(0, 7)}-01`, '240000'],
+      // Salaries recorded all through the year: Farah's rate is far above the limit, Gopal's below it.
+      [ids.farah, yearStart, '1200000'],
+      [ids.gopal, yearStart, '240000'],
+    ]) {
+      const ch = (await api('payAdmin', 'post', `/payroll/employees/${emp}/compensation-changes`).send({ employeeId: emp, effectiveDate: from, templateVersionId: from === yearStart ? fromStart : version, entryMode: 'ctc', annualCtc: ctc, reason: 'Salary' }).expect(201)).body;
       await markSteppedUp(tenantPrisma, token.approver);
       await api('approver', 'post', `/people/changes/${ch.changeId}/approve`).send({ confirmRebase: true }).expect(201);
     }
+    // Gopal left on the last day of the year (no salary this month).
+    await inA((tx) => tx.employment.update({ where: { id: ids.em_Gopal }, data: { exitedOn: new Date(`${yearEnd}T00:00:00Z`) } }));
     // The year's pay: imported history (basic is a bonus-wage component); Asha's April also has an approved payslip, which wins.
     await payScoped(async (tx) => {
       const o = { organizationId: org.A.id, legalEntityId: ids.entity };
@@ -146,6 +164,8 @@ describe('Payroll statutory bonus (PAY-24)', () => {
           ...months.map((m) => line('asha', m, m === months[0] ? '9999' : '6000')),
           ...months.map((m) => line('bala', m, '21000')),
           ...months.map((m) => line('chitra', m, '21000.01')),
+          ...months.map((m) => line('farah', m, '15000')),
+          ...months.map((m) => line('gopal', m, '6000')),
           line('dev', months[11], '6000'),
           line('esha', months[11], '6000'),
           // House rent is not bonus wage.
@@ -212,7 +232,7 @@ describe('Payroll statutory bonus (PAY-24)', () => {
   it('compute: eligibility at the limit and the 30-day rule, the bonus wage from payslips first, then imported history', async () => {
     const r = keep((await api('payAdmin', 'post', '/payroll/bonus').send({ legalEntityId: ids.entity, yearStart }).expect(201)).body);
     expect(r).toMatchObject({ status: 'draft', year: { start: yearStart, end: yearEnd, label, dueOn: `${Y + 1}-11-30` }, supportedRate: '8.33', rate: '8.33', availableSurplus: null, firstYear: true, madeByMe: true });
-    expect(r.totals).toMatchObject({ people: 5, eligible: 3 });
+    expect(r.totals).toMatchObject({ people: 7, eligible: 4 });
     const asha = rowOf(r, 'asha');
     // April's payslip (6,000) wins over the imported 9,999; HRA is not bonus wage.
     expect(asha).toMatchObject({ eligible: true, bonusSalary: '72000.00', bonus: '5998.00', payable: '5998.00' });
@@ -223,6 +243,19 @@ describe('Payroll statutory bonus (PAY-24)', () => {
     expect(rowOf(r, 'chitra')).toMatchObject({ eligible: false, reason: 'Wage above ₹21,000 a month all year.', payable: '0.00' });
     expect(rowOf(r, 'dev')).toMatchObject({ eligible: false, workingDays: '29', reason: 'Worked 29 days; at least 30 are needed.' });
     expect(rowOf(r, 'esha')).toMatchObject({ eligible: true, workingDays: '30', bonus: '500.00' });
+    // Item 24: Farah earned 15,000 a month, but her full-month salary rate (bonus-wage lines) is above 21,000.
+    const farahRate = await payScoped(async (tx) => {
+      const pkg = await tx.compensationPackage.findFirstOrThrow({ where: { employeeId: ids.farah }, orderBy: { createdAt: 'desc' } });
+      const lines = await tx.compensationLine.findMany({ where: { packageId: pkg.id } });
+      const bw = new Set((await tx.payComponent.findMany({ where: { bonusWage: true }, select: { id: true } })).map((x) => x.id));
+      return lines.filter((l) => bw.has(l.componentId)).reduce((t, l) => t.add(l.monthly), D('0'));
+    });
+    expect(farahRate.gt(21000)).toBe(true);
+    const farah = (r.rows as (Row & { months: { month: string; wage: string; rate?: string }[] })[]).find((x) => x.employeeId === ids.farah)!;
+    expect(farah).toMatchObject({ eligible: false, reason: 'Wage above ₹21,000 a month all year.', payable: '0.00' });
+    expect(farah.months[0]).toEqual({ month: months[0], wage: '15000.00', rate: farahRate.toFixed(2) });
+    // Gopal's rate is below the limit: eligible like anyone else, though he has left.
+    expect(rowOf(r, 'gopal')).toMatchObject({ eligible: true, bonus: '5998.00' });
     // Once per year and entity.
     expect((await api('payAdmin', 'post', '/payroll/bonus').send({ legalEntityId: ids.entity, yearStart }).expect(409)).body.message).toBe(`The bonus for ${label} is already worked out. Open it instead.`);
     expect((await api('payAdmin', 'get', `/payroll/bonus?legalEntityId=${ids.entity}`).expect(200)).body.computation.id).toBe(comp.id);
@@ -281,13 +314,20 @@ describe('Payroll statutory bonus (PAY-24)', () => {
     r = keep((await api('payAdmin', 'patch', `/payroll/bonus/${comp.id}/rows/${ids.em_Esha}`).send({ version: v(), pujaPaid: '0', misconductLoss: '0', disqualified: true, reason: 'Dismissed for theft on 3 Mar' }).expect(200)).body);
     expect(rowOf(r, 'esha')).toMatchObject({ eligible: false, payable: '0.00' });
     await api('payAdmin', 'patch', `/payroll/bonus/${comp.id}/rows/${randomUUID()}`).send({ version: v(), pujaPaid: '0', misconductLoss: '0', disqualified: false }).expect(404);
-    expect(r.totals.eligible).toBe(2);
+    expect(r.totals.eligible).toBe(3);
   });
 
   it('submit, send back with a reason, submit again; nothing changes while it waits', async () => {
     await api('approver', 'post', `/payroll/bonus/${comp.id}/approve`).send({ version: v() }).expect(409);
+    // No Form C before approval.
+    expect((await api('payAdmin', 'get', `/payroll/bonus/${comp.id}/form-c`).expect(409)).body.message).toBe('Form C is made once the bonus is approved.');
     let r = keep((await api('payAdmin', 'post', `/payroll/bonus/${comp.id}/submit`).send({ version: v() }).expect(200)).body);
     expect(r.status).toBe('submitted');
+    // Item 30: the approver is told in the app; never a maker (payAdmin made it, 'both' changed a row), never someone
+    // whose key is on another legal entity.
+    const told = await inA((tx) => tx.userNotification.findMany({ where: { type: 'payroll.bonus.submitted', entityId: comp.id }, select: { recipientUserId: true, contextText: true, linkPath: true } }));
+    expect(told.map((n) => n.recipientUserId)).toEqual([users.approver]);
+    expect(told[0]).toMatchObject({ contextText: `The statutory bonus for ${label} (Bonus Foods) waits for your approval.`, linkPath: '/yx/payroll/bonus' });
     expect((await api('payAdmin', 'patch', `/payroll/bonus/${comp.id}`).send({ version: v(), availableSurplus: '1' }).expect(409)).body.message).toBe('This bonus is waiting for approval. Ask the approver to send it back before changing it.');
     await api('payAdmin', 'post', `/payroll/bonus/${comp.id}/return`).send({ version: v(), reason: 'Check the puja amounts' }).expect(403);
     await api('approver', 'post', `/payroll/bonus/${comp.id}/return`).send({ version: v(), reason: 'no' }).expect(400);
@@ -305,6 +345,24 @@ describe('Payroll statutory bonus (PAY-24)', () => {
     expect(r.status).toBe('approved');
     expect(r.approved.by).toBe(`approver ${run}`);
     expect((await api('approver', 'post', `/payroll/bonus/${comp.id}/approve`).send({ version: v() }).expect(409)).body.message).toBe('This bonus is already approved.');
+    // Item 30: Form C, the bonus register, once approved: either key in scope; another entity or company 404, no key 403.
+    const formC = await api('approver', 'get', `/payroll/bonus/${comp.id}/form-c`).expect(200);
+    expect(formC.headers['content-type']).toMatch(/text\/csv/);
+    expect(formC.headers['content-disposition']).toBe(`attachment; filename="form-c-bonus-${label}.csv"`);
+    const csv = formC.text.replace(/^\uFEFF/, '').trim().split(/\r?\n/);
+    expect(csv[0]).toMatch(/^Form C: bonus paid to employees for the accounting year 1 Apr \d{4} to 31 Mar \d{4} at \d+\.\d{2}%$/);
+    expect(csv[1].startsWith('Sl. No.,Employee code,Name of the employee,')).toBe(true);
+    // Eligible people only (Asha, Bala, Gopal; Esha was dismissed, the others are not eligible).
+    expect(csv.slice(2).map((l) => l.split(',')[1]).sort()).toEqual(['BN-001', 'BN-002', 'BN-007']);
+    const asha = csv.find((l) => l.split(',')[1] === 'BN-001')!.split(',');
+    expect([asha[9], asha[12]]).toEqual(['1000.00', '250.50']);
+    await api('payAdmin', 'get', `/payroll/bonus/${comp.id}/form-c`).expect(200);
+    await api('tnAdmin', 'get', `/payroll/bonus/${comp.id}/form-c`).expect(404);
+    await api('payAdminB', 'get', `/payroll/bonus/${comp.id}/form-c`).expect(404);
+    await api('noPay', 'get', `/payroll/bonus/${comp.id}/form-c`).expect(403);
+    const exported = await inA((tx) => tx.auditLog.findMany({ where: { action: 'payroll.bonus.register_exported', entityId: comp.id } }));
+    expect(exported).toHaveLength(2);
+    expect(JSON.parse(exported[0].metadataJson ?? '{}')).toMatchObject({ form: 'C', rows: 3 });
     await api('payAdmin', 'patch', `/payroll/bonus/${comp.id}/rows/${ids.em_Asha}`).send({ version: v(), pujaPaid: '0', misconductLoss: '0', disqualified: false }).expect(409);
   });
 
@@ -337,9 +395,11 @@ describe('Payroll statutory bonus (PAY-24)', () => {
       r = (await api('payAdmin', 'get', `/payroll/runs/${runId}`)).body;
     }
     expect(r.status).toBe('calculated');
-    // Asha and Bala are the two with bonus to pay (Chitra and Dev are not eligible, Esha was dismissed).
+    // Asha, Bala and Gopal have bonus to pay (Chitra, Dev and Farah are not eligible, Esha was dismissed). Item 29: Gopal
+    // left before this month and has no salary in it, yet his bonus is paid here (no "no salary this month" block).
+    expect(ready.checks.filter((c: { checkKey: string }) => c.checkKey === 'no_compensation')).toEqual([]);
     const items = await payScoped((tx) => tx.oneTimePay.findMany({ where: { runId } }));
-    expect(items.map((x) => x.employeeId).sort()).toEqual([ids.asha, ids.bala].sort());
+    expect(items.map((x) => x.employeeId).sort()).toEqual([ids.asha, ids.bala, ids.gopal].sort());
     const slips = (await api('payAdmin', 'get', `/payroll/runs/${runId}/payslips`).expect(200)).body as { id: string; employeeId: string }[];
     expect(slips.map((x) => x.employeeId).sort()).toEqual(items.map((x) => x.employeeId).sort());
     for (const slip of slips) {
@@ -354,7 +414,7 @@ describe('Payroll statutory bonus (PAY-24)', () => {
     // Without the pay scope the rows are invisible even inside the company; another company never sees them.
     expect(await inA((tx) => tx.bonusComputation.count())).toBe(0);
     expect(await inA((tx) => tx.bonusComputationRow.count())).toBe(0);
-    expect(await payScoped((tx) => tx.bonusComputationRow.count({ where: { computationId: comp.id } }))).toBe(5);
+    expect(await payScoped((tx) => tx.bonusComputationRow.count({ where: { computationId: comp.id } }))).toBe(7);
     expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`;
       return tx.bonusComputation.count();

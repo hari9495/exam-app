@@ -1,14 +1,17 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { stringify } from 'csv-stringify/sync';
+import { createHash } from 'crypto';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
 import { settingFor } from '../people/probation';
 import type { ScopeUser, Viewer } from '../access/scope';
 import { StatutoryRulesService } from '../statutory/statutory.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { inForce, minWage, minWageTableFor } from '../statutory/evaluator';
 import { asDate, dateOf, monthRange } from '../time/time-core';
-import { entitiesFor, payScope, payViewer, requireSelf } from './pay-access';
+import { entitiesFor, payHolders, payScope, payViewer, requireSelf } from './pay-access';
 import { accountingYear, allocableSurplus, carriesInto, carryTotal, employeeBonus, rateProblem, settleYear, supportedRate, yearMonths, yearOf, type BonusRules, type Carry, type EarlierYear } from './bonus';
 import type { BonusCreateDto, BonusPatchDto, BonusReturnDto, BonusRowDto, BonusSendDto } from './dto-bonus';
 
@@ -36,6 +39,8 @@ const NO_CARRY: CarryJson = { setOnIn: [], setOffIn: [], setOnUsed: [], setOffSe
 const EDITABLE_RUN = ['draft', 'calculated', 'in_review', 'reopened'];
 /** One decision at a time on a computation. */
 const lock = (tx: Tx, key: string) => tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
+/** "3 Nov 2026" (the house date format). */
+const dateText = (iso: string) => asDate(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 const prevYear = (start: string) => `${Number(start.slice(0, 4)) - 1}${start.slice(4)}`;
 
 const SETTING_KEYS = {
@@ -59,6 +64,7 @@ export class BonusService {
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly statutory: StatutoryRulesService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   private async viewer(user: ScopeUser) {
@@ -287,7 +293,25 @@ export class BonusService {
     const wage = new Map<string, Prisma.Decimal>();
     for (const w of slipWages) wage.set(w.employmentId + w.month, D(w.wage));
     for (const w of imported) if (!slipMonths.has(w.employmentId + w.month)) wage.set(w.employmentId + w.month, D(w.wage));
+    // s.2(13) eligibility on the full-month salary rate (founder 30 Oct 2026, item 24): the bonusWage lines of the monthly
+    // salary in force on the month's last day employed. No salary record (imported history) or an hourly or daily rate:
+    // none, and the month's earned wage is tested instead.
+    const comps = await tx.compensation.findMany({ where: { organizationId: org, employmentId: { in: ems.map((e) => e.id) }, supersededAt: null, validFrom: { lte: asDate(end) }, OR: [{ validTo: null }, { validTo: { gte: asDate(start) } }] }, select: { employmentId: true, validFrom: true, validTo: true, changeId: true } });
+    const pkgs = await tx.compensationPackage.findMany({ where: { organizationId: org, changeId: { in: comps.map((x) => x.changeId) }, payBasis: 'monthly' }, select: { id: true, changeId: true } });
+    const bonusComps = new Set((await tx.payComponent.findMany({ where: { organizationId: org, bonusWage: true }, select: { id: true } })).map((x) => x.id));
+    const pkgRate = new Map<string, Prisma.Decimal>();
+    for (const l of await tx.compensationLine.findMany({ where: { organizationId: org, packageId: { in: pkgs.map((p) => p.id) } }, select: { packageId: true, componentId: true, monthly: true } }))
+      if (bonusComps.has(l.componentId)) pkgRate.set(l.packageId, (pkgRate.get(l.packageId) ?? ZERO).add(l.monthly));
+    const rateOf = (employmentId: string, exited: string | null, month: string): Prisma.Decimal | null => {
+      const last = monthRange(month).to;
+      const day = exited && exited < last ? exited : last;
+      const cmp = comps.find((x) => x.employmentId === employmentId && dateOf(x.validFrom) <= day && (!x.validTo || dateOf(x.validTo) >= day));
+      const pkg = cmp && pkgs.find((p) => p.changeId === cmp.changeId);
+      return pkg ? (pkgRate.get(pkg.id) ?? ZERO) : null;
+    };
     // s.14 working days: the payroll feed's paid and lay-off days; a paid month with no feed counts the days employed.
+    // Maternity leave (s.14(c)) counts only through the feed's paid days: the feed has no column for maternity days paid
+    // as an ESI benefit instead of salary (founder item 25, gap recorded in the Pay design map).
     const feed = new Map((await tx.$queryRaw<{ k: string; days: string }[]>`
       SELECT employee_id::text || to_char(period_start, 'YYYY-MM') AS k, sum(paid_days + layoff_days)::text AS days FROM payroll_feed_rows
       WHERE organization_id = ${org}::uuid AND legal_entity_id = ${entity}::uuid AND superseded_at IS NULL AND period_start BETWEEN ${start}::date AND ${end}::date
@@ -323,7 +347,8 @@ export class BonusService {
           const to = exited && exited < r.to ? exited : r.to;
           if (from <= to) days = days.add((Date.parse(to) - Date.parse(from)) / 86_400_000 + 1);
         }
-        return { month, wage: w.toFixed(2) };
+        const rate = rateOf(em.id, exited, month);
+        return { month, wage: w.toFixed(2), ...(rate ? { rate: rate.toFixed(2) } : {}) };
       });
       const k = kept.get(em.id);
       return { em, ms, days, minimumWage: minimumOf(em.id), adjust: { disqualified: k?.disqualified ?? false, pujaPaid: k?.pujaPaid ?? ZERO, misconductLoss: k?.misconductLoss ?? ZERO, reason: k?.adjustReason ?? null } };
@@ -453,19 +478,35 @@ export class BonusService {
     });
   }
 
-  /** Worked out again from today's payroll records, then frozen for the approver. */
+  /**
+   * Worked out again from today's payroll records, then frozen for the approver. Everyone who may approve it (the key
+   * on its legal entity, never one of its makers) is told in the app and by email (founder 30 Oct 2026, item 30).
+   */
   async submit(ctx: TenantContext, user: ScopeUser, id: string, version: number) {
     const v = await this.viewer(user);
-    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+    let notice: { to: string[]; label: string; entity: string } | null = null;
+    const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const s = await this.scope(tx, c, v);
       const comp = await this.locked(tx, c, id, s.manage, version);
       this.draftOnly(comp);
       if (comp.availableSurplus === null) throw new BadRequestException('Enter the available surplus from the accounts first (it may be 0).');
       const built = await this.build(tx, c, v, comp, {});
       const done = await tx.bonusComputation.update({ where: { id: comp.id }, data: { status: 'submitted', submittedBy: v.userId!, submittedAt: new Date(), returnedReason: null, version: { increment: 1 } } });
-      await audit(tx, c, 'payroll.bonus.submitted', 'bonus_computation', comp.id, { rate: built.rate.toFixed(2), eligible: built.eligible, payable: built.payableTotal.toFixed(2) });
+      const makers = await this.makers(tx, c, done);
+      const to = (await payHolders(tx, c.organizationId, 'payroll.bonus.approve', comp.legalEntityId, todayIst())).filter((u) => !makers.includes(u));
+      await audit(tx, c, 'payroll.bonus.submitted', 'bonus_computation', comp.id, { rate: built.rate.toFixed(2), eligible: built.eligible, payable: built.payableTotal.toFixed(2), notified: to.length });
+      const e = await tx.legalEntity.findFirstOrThrow({ where: { organizationId: c.organizationId, id: comp.legalEntityId }, select: { name: true } });
+      notice = { to, label: accountingYear(Number(dateOf(comp.yearStart).slice(0, 4)), comp.rules as unknown as BonusRules).label, entity: e.name };
       return this.view(tx, c, done, v);
     });
+    const n = notice as { to: string[]; label: string; entity: string } | null;
+    if (n?.to.length) {
+      const text = `The statutory bonus for ${n.label} (${n.entity}) waits for your approval.`;
+      await this.notifications
+        .notifySystem(ctx, n.to, 'payroll.bonus.submitted', { entityType: 'bonus_computation', entityId: id, contextText: text, linkPath: '/yx/payroll/bonus' }, { subject: `Statutory bonus ${n.label} waits for your approval`, html: `<p>${text}</p><p>Open YukthiX to approve it or send it back.</p>` }, v.userId ?? null)
+        .catch(() => undefined);
+    }
+    return out;
   }
 
   // ------------------------------------------------------------------------------------------ approve
@@ -541,6 +582,57 @@ export class BonusService {
       const done = await tx.bonusComputation.update({ where: { id: comp.id }, data: { status: 'sent', runId: run.id, sentBy: v.userId!, sentAt: new Date(), version: { increment: 1 } } });
       await audit(tx, c, 'payroll.bonus.sent', 'bonus_computation', comp.id, { runId: run.id, people: rows.length, payable: comp.payableTotal.toFixed(2) });
       return this.view(tx, c, done, v);
+    });
+  }
+  // ------------------------------------------------------------------------------------------ Form C register (item 30)
+
+  /**
+   * Form C (Payment of Bonus Rules, 1975, rule 4(c)): the bonus register of an approved computation, as CSV, one row per
+   * eligible employee. Income tax and the amount actually paid come from the off-cycle bonus run once its payslips are
+   * approved and paid. Father's name is not held in YukthiX and stays blank. Every download is audited with its hash.
+   */
+  async formC(ctx: TenantContext, user: ScopeUser, id: string): Promise<{ file: Buffer; name: string }> {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const s = await this.scope(tx, c, v);
+      const comp = await this.compIn(tx, c, id, [...s.manage, ...s.approve]);
+      if (comp.status !== 'approved' && comp.status !== 'sent') throw new ConflictException('Form C is made once the bonus is approved.');
+      const view = await this.view(tx, c, comp, v);
+      const rows = view.rows.filter((r) => r.eligible);
+      const start = dateOf(comp.yearStart);
+      const end = dateOf(comp.yearEnd);
+      const people = await tx.employeePersonalDetails.findMany({ where: { organizationId: org, employeeId: { in: rows.map((r) => r.employeeId) } }, select: { employeeId: true, dateOfBirth: true } });
+      const asgs = await tx.employeeAssignment.findMany({ where: { organizationId: org, employmentId: { in: rows.map((r) => r.employmentId) }, supersededAt: null, validFrom: { lte: asDate(end) } }, orderBy: { validFrom: 'desc' }, select: { employmentId: true, designationId: true } });
+      const titles = new Map((await tx.designation.findMany({ where: { organizationId: org, id: { in: [...new Set(asgs.map((a) => a.designationId))] } }, select: { id: true, name: true } })).map((d) => [d.id, d.name]));
+      // The off-cycle bonus run's approved payslips: income tax deducted and, once the bank says so, the day it was paid.
+      const slips = comp.runId ? await tx.payslip.findMany({ where: { organizationId: org, runId: comp.runId, status: 'approved' }, select: { id: true, employmentId: true, paymentStatus: true } }) : [];
+      const tdsCodes = (await tx.payComponent.findMany({ where: { organizationId: org, statutory: 'tds' }, select: { code: true } })).map((x) => x.code);
+      const tds = new Map<string, Prisma.Decimal>();
+      for (const l of await tx.payslipLine.findMany({ where: { organizationId: org, payslipId: { in: slips.map((x) => x.id) }, componentCode: { in: tdsCodes } }, select: { payslipId: true, amount: true } })) tds.set(l.payslipId, (tds.get(l.payslipId) ?? ZERO).add(l.amount));
+      const paidOn = new Map((await tx.paymentRecord.findMany({ where: { organizationId: org, payslipId: { in: slips.map((x) => x.id) }, status: 'paid' }, select: { payslipId: true, recordedAt: true } })).map((p) => [p.payslipId, p.recordedAt]));
+      const fifteenAt = (dob: Date | null | undefined) => {
+        if (!dob) return '';
+        const d = dateOf(dob);
+        return `${Number(d.slice(0, 4)) + 15}${d.slice(4)}` <= start ? 'Yes' : 'No';
+      };
+      const header = ['Sl. No.', 'Employee code', 'Name of the employee', "Father's name", 'Completed 15 years of age at the beginning of the accounting year', 'Designation', 'Number of days worked in the year', 'Total salary or wage for the year (section 12)', 'Bonus payable under section 10 or 11', 'Puja or other customary bonus paid during the year', 'Interim bonus or bonus paid in advance', 'Income tax deducted', 'Deduction for financial loss caused by misconduct', 'Total deducted', 'Net amount payable', 'Amount actually paid', 'Date paid', 'Signature or thumb impression of the employee'];
+      const body = rows.map((r, i) => {
+        const slip = slips.find((x) => x.employmentId === r.employmentId);
+        const paid = slip && slip.paymentStatus === 'paid' ? paidOn.get(slip.id) : undefined;
+        const asg = asgs.find((a) => a.employmentId === r.employmentId);
+        return [i + 1, r.employeeCode, r.name, '', fifteenAt(people.find((p) => p.employeeId === r.employeeId)?.dateOfBirth), (asg && titles.get(asg.designationId)) ?? '', r.workingDays, r.bonusSalary, r.bonus, r.pujaPaid, '0.00', slip ? (tds.get(slip.id) ?? ZERO).toFixed(2) : '', r.misconductLoss, r.deductions, r.payable, paid ? r.payable : '', paid ? dateOf(paid) : '', ''];
+      });
+      const safe = (x: unknown) => {
+        const t = x === null || x === undefined ? '' : String(x);
+        return /^[=+\-@\t\r]/.test(t) ? `'${t}` : t; // CSV injection: formula-looking text is defused.
+      };
+      const title = `Form C: bonus paid to employees for the accounting year ${dateText(start)} to ${dateText(end)} at ${comp.rate.toFixed(2)}%`;
+      const csv = stringify([[safe(title)], header, ...body.map((r) => r.map(safe))]);
+      const file = Buffer.from(`\uFEFF${csv}`, 'utf8');
+      const sha256 = createHash('sha256').update(file).digest('hex');
+      await audit(tx, c, 'payroll.bonus.register_exported', 'bonus_computation', comp.id, { form: 'C', rows: body.length, sha256 });
+      return { file, name: `form-c-bonus-${view.year.label}.csv` };
     });
   }
 }
