@@ -207,12 +207,13 @@ export function LiveAutoRosterScreen({ live: p }: { live: LiveAutoRoster }) {
       <PageHeader
         title={`Auto-roster · ${d.location.name}`}
         description={`Week of ${formatDate(start)} · ${plural(d.people.count, 'person', 'people')} you plan · ${lastRun}`}
+        // The location picker (HR with several places) sits under the subtitle, so the actions stay one row level with the title, as designed.
+        facts={d.locations.length > 1 ? <Select className="yx-tim-place" aria-label="Location" size="sm" value={d.location.id} onChange={(v) => v && p.onLocation(v)} options={d.locations.map((l) => ({ value: l.id, label: l.name }))} /> : undefined}
         status={running ? <Badge tone="neutral">Generating</Badge> : !setUp ? <Badge tone="neutral">Not set up</Badge> : run?.status === 'failed' ? <Badge tone="danger">Failed</Badge> : !result ? <Badge tone="neutral">Not generated</Badge> : <Badge tone={published || approved ? 'success' : 'warning'}>{published ? 'Published' : approved ? 'Approved · ready to publish' : 'Draft'}</Badge>}
         actions={
           <div className="yx-tim-row">
             <IconButton icon={ChevronLeft} label="Previous week" size="sm" onClick={() => p.onWeek(plusDays(p.week, -7))} />
             <IconButton icon={ChevronRight} label="Next week" size="sm" onClick={() => p.onWeek(plusDays(p.week, 7))} />
-            {d.locations.length > 1 && <Select value={d.location.id} onChange={(v) => v && p.onLocation(v)} options={d.locations.map((l) => ({ value: l.id, label: l.name }))} />}
             {(blocked || (result && approveBlocked)) && <span className="yx-tim-muted">{blocked || approveBlocked}</span>}
             <Button icon={Play} loading={busy === 'generate'} onClick={why(blocked, runAgain)}>{run ? 'Run again' : 'Generate'}</Button>
             {result && !published && (approved

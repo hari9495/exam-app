@@ -157,4 +157,30 @@ describe('TIM-34 Auto-roster, live', () => {
     render(<AutoRosterScreen live={live({ state: 'no-access', data: null })} />);
     expect(screen.queryByText('Coverage and draft')).not.toBeInTheDocument();
   });
+
+  it('header: the actions are one row level with the title; the location picker sits under the subtitle (HR, several places)', async () => {
+    const many = { ...DATA, locations: [DATA.location, { id: 'loc2', name: 'Bengaluru head office' }] };
+    const onLocation = vi.fn();
+    const { container } = render(<AutoRosterScreen live={live({ data: many, onLocation })} />);
+    const actions = container.querySelector('.yx-page-header__actions') as HTMLElement;
+    const facts = container.querySelector('.yx-page-header__facts') as HTMLElement;
+    expect(screen.getByRole('heading', { level: 1, name: 'Auto-roster · Hosur' })).toBeInTheDocument();
+    expect(within(actions).getByRole('button', { name: 'Run again' })).toBeInTheDocument();
+    expect(within(actions).getByRole('button', { name: 'Approve draft' })).toBeInTheDocument();
+    // The picker was in the actions, full width, and pushed Generate under it (lead walk 29 Oct 2026).
+    expect(within(actions).queryByRole('combobox')).not.toBeInTheDocument();
+    const picker = within(facts).getByRole('combobox', { name: 'Location' });
+    expect(picker).toHaveClass('yx-tim-place');
+    await ue.click(picker);
+    await ue.click(await screen.findByRole('option', { name: 'Bengaluru head office' }));
+    expect(onLocation).toHaveBeenCalledWith('loc2');
+  });
+
+  it('header: one location, no picker; not set up keeps Generate in the action row', () => {
+    const { container } = render(<AutoRosterScreen live={live({ data: { ...DATA, demand: [], run: null } })} />);
+    expect(container.querySelector('.yx-page-header__facts')).toBeNull();
+    expect(screen.queryByRole('combobox', { name: 'Location' })).not.toBeInTheDocument();
+    expect(within(container.querySelector('.yx-page-header__actions') as HTMLElement).getByRole('button', { name: 'Generate' })).toBeInTheDocument();
+    expect(screen.getByText('Not set up')).toBeInTheDocument();
+  });
 });
