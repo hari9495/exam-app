@@ -105,6 +105,57 @@ export class ProofQueueDto {
   status?: string;
 }
 
+/** Form 12B fields sent with the file (multipart, so all text); the service checks them with plain messages. */
+export class Form12bDto {
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(200)
+  employerName?: string;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(20)
+  employerTan?: string;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(20)
+  gross?: string;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(20)
+  exemptions?: string;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(20)
+  tds?: string;
+}
+
+export class Form12bQueueDto {
+  @IsOptional()
+  @IsIn(['pending', 'approved', 'rejected'])
+  status?: 'pending' | 'approved' | 'rejected';
+}
+
+export class Form12bDecisionDto {
+  @IsIn(['approve', 'reject'])
+  decision!: 'approve' | 'reject';
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(500)
+  comment?: string;
+}
+
 export class RegimeOverrideDto {
   @IsIn(['new', 'old'])
   regime!: 'new' | 'old';

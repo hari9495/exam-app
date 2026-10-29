@@ -12,7 +12,8 @@ import { inForce } from '../statutory/evaluator';
 import { asDate, dateOf } from '../time/time-core';
 import type { CalcComponent, Segment } from './calc';
 import type { ConfirmationDto } from './dto';
-import type { DeclarationLineDto, PerquisiteDto, ProofDecisionDto, WorkspacePatchDto } from './dto-5e';
+import type { DeclarationLineDto, Form12bDecisionDto, Form12bDto, PerquisiteDto, ProofDecisionDto, WorkspacePatchDto } from './dto-5e';
+import { dayMonYear } from './loan-rules';
 import { PayDocumentsService } from './documents.service';
 import { PayFileStore, sha256 } from './pay-file-store';
 import { PayKey, entitiesFor, payScope, payViewer, requireEntity, requireSelf, withPayScope } from './pay-access';
@@ -34,6 +35,9 @@ const PROOF_TYPES: [string, (b: Buffer) => boolean][] = [
 ];
 type Workspace = Prisma.TaxWorkspaceGetPayload<object>;
 type ProofFile = { ref: string; name: string; sha256: string; size: number; contentType: string; at: string };
+type Form12b = Prisma.Form12bSubmissionGetPayload<object>;
+const TAN = /^[A-Z]{4}\d{5}[A-Z]$/;
+const RUPEES = /^\d{1,12}(\.\d{1,2})?$/;
 
 /** The company's tax dates for a tax year (settings, P04 reminders go before each). */
 export async function taxDates(tx: Tx, c: CompanyContext, legalEntityId: string, taxYear: string) {
@@ -84,7 +88,11 @@ export async function buildTaxInputs(
     const ptCodes = new Set(codes('pt'));
     const byMonth = new Map<string, Set<string>>();
     for (const s of slips) byMonth.set(dateOf(s.periodStart).slice(0, 7), new Set([...(byMonth.get(dateOf(s.periodStart).slice(0, 7)) ?? []), s.id]));
-    const prev = await tx.previousEmploymentIncome.findMany({ where: { organizationId: org, employeeId: a.employeeId, fy: taxYear } });
+    const prev: { gross: Prisma.Decimal; exemptions: Prisma.Decimal; tds: Prisma.Decimal }[] = [
+      ...(await tx.previousEmploymentIncome.findMany({ where: { organizationId: org, employeeId: a.employeeId, fy: taxYear } })),
+      // Founder decision 6: the employee's own Form 12B counts once payroll has approved it (pending or rejected never).
+      ...(await tx.form12bSubmission.findMany({ where: { organizationId: org, employeeId: a.employeeId, taxYear, status: 'approved' } })),
+    ];
     const opening = await tx.openingBalance.findMany({ where: { organizationId: org, employeeId: a.employeeId, fy: taxYear } });
     const head = (h: string) => opening.filter((o) => o.head === h).reduce((t, o) => t.add(o.amount), ZERO);
     const perqs = await tx.perquisite.findMany({ where: { organizationId: org, employeeId: a.employeeId, taxYear, cancelledAt: null } });
@@ -476,6 +484,149 @@ export class TaxService {
       });
       await audit(tx, c, 'tax.proof.verified', 'tax_declaration_line', l.id, { employeeId: l.employeeId, subjectKey: l.subjectKey, status, approvedAmount: approved?.toFixed(2) ?? null });
       return { lineId: l.id, proofStatus: status, approvedAmount: approved?.toFixed(2) ?? null };
+    });
+  }
+
+  // ------------------------------------------------------------------------------------------ Form 12B (founder decision 6)
+
+  private form12bView(f: Form12b) {
+    const file = f.file as unknown as ProofFile;
+    return {
+      id: f.id,
+      employerName: f.employerName,
+      employerTan: f.employerTan,
+      gross: f.gross.toFixed(2),
+      exemptions: f.exemptions.toFixed(2),
+      tds: f.tds.toFixed(2),
+      status: f.status as 'pending' | 'approved' | 'rejected',
+      comment: f.verifierComment,
+      file: { name: file.name, size: file.size, at: file.at },
+      submittedAt: file.at,
+      verifiedAt: f.verifiedAt,
+    };
+  }
+
+  /** The employee's previous-employer income for this tax year (PAY-22): sent until the proof cut-off. */
+  async myForm12b(ctx: TenantContext, user: ScopeUser) {
+    await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const { ws, dates, today } = await this.ownWorkspace(tx, c);
+      const f = await tx.form12bSubmission.findFirst({ where: { organizationId: c.organizationId, employmentId: ws.employmentId, taxYear: ws.taxYear } });
+      return { taxYear: ws.taxYear, open: today <= dates.proofCutoff, closesOn: dates.proofCutoff, submission: f ? this.form12bView(f) : null };
+    });
+  }
+
+  /** Sends or replaces the Form 12B (a PDF, checked by content) while it is not yet approved; payroll checks it next. */
+  async submitForm12b(ctx: TenantContext, user: ScopeUser, dto: Form12bDto, file: { buffer: Buffer; originalname?: string } | undefined) {
+    const v = await this.viewer(user);
+    const tan = (dto.employerTan ?? '').toUpperCase();
+    if (!TAN.test(tan)) throw new BadRequestException("Enter the previous employer's TAN: 4 letters, 5 digits and a letter, like BLRA12345B.");
+    const money = (x: string | undefined, label: string, optional = false) => {
+      if (optional && !x) return ZERO;
+      if (!x || !RUPEES.test(x)) throw new BadRequestException(`Enter ${label} in rupees, like 125000.50.`);
+      return D(x);
+    };
+    const gross = money(dto.gross, 'the gross salary');
+    const exemptions = money(dto.exemptions, 'the exemptions', true);
+    const tds = money(dto.tds, 'the tax deducted');
+    if (tds.gt(gross)) throw new BadRequestException('The tax deducted cannot be more than the gross salary.');
+    if (!file?.buffer?.length) throw new BadRequestException('Attach your Form 12B as a PDF.');
+    if (file.buffer.subarray(0, 5).toString('latin1') !== '%PDF-') throw new BadRequestException('Form 12B must be a PDF file.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const { ws, dates, today } = await this.ownWorkspace(tx, c);
+      if (today > dates.proofCutoff) throw new ConflictException(`Previous employer income could be sent until ${dayMonYear(dates.proofCutoff)}.`);
+      const approved = () => new ConflictException('Payroll has already checked your Form 12B. Ask payroll to change it.');
+      const existing = await tx.form12bSubmission.findFirst({ where: { organizationId: org, employmentId: ws.employmentId, taxYear: ws.taxYear } });
+      if (existing?.status === 'approved') throw approved();
+      const ref = await this.files.put(`tax-form12b/${org}/${ws.legalEntityId}/${randomBytes(12).toString('hex')}`, file.buffer);
+      const entry: ProofFile = {
+        ref,
+        name: (file.originalname ?? 'form12b.pdf').replace(/[^A-Za-z0-9._ -]/g, '_').slice(0, 100),
+        sha256: sha256(file.buffer),
+        size: file.buffer.length,
+        contentType: 'application/pdf',
+        at: new Date().toISOString(),
+      };
+      const data = { employerName: dto.employerName || null, employerTan: tan, gross, exemptions, tds, file: entry as unknown as Prisma.InputJsonValue, submittedBy: v.userId!, updatedAt: new Date() };
+      let id: string;
+      if (existing) {
+        // Guarded on the status, so an approval in between wins (never overwritten).
+        const n = await tx.form12bSubmission.updateMany({
+          where: { id: existing.id, status: { in: ['pending', 'rejected'] } },
+          data: { ...data, status: 'pending', verifierId: null, verifierComment: null, verifiedAt: null },
+        });
+        if (!n.count) throw approved();
+        id = existing.id;
+      } else {
+        try {
+          id = (await tx.form12bSubmission.create({ data: { ...data, organizationId: org, legalEntityId: ws.legalEntityId, employeeId: ws.employeeId, employmentId: ws.employmentId, taxYear: ws.taxYear } })).id;
+        } catch (e) {
+          if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('Your Form 12B was just sent from another window. Open it again to see it.');
+          throw e;
+        }
+      }
+      await audit(tx, c, 'tax.form12b.submitted', 'form12b_submission', id, { taxYear: ws.taxYear, sha256: entry.sha256, replaced: Boolean(existing) });
+      return this.form12bView(await tx.form12bSubmission.findFirstOrThrow({ where: { id } }));
+    });
+  }
+
+  /** Payroll's Form 12B queue (PAY-23): the entities in scope, never the viewer's own. */
+  async form12bQueue(ctx: TenantContext, user: ScopeUser, status: 'pending' | 'approved' | 'rejected' = 'pending') {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const ids = await entitiesFor(tx, c, v, 'tax.proof.verify');
+      await payScope(tx, ids);
+      const rows = await tx.form12bSubmission.findMany({
+        where: { organizationId: c.organizationId, legalEntityId: { in: ids }, status, employeeId: { notIn: await this.mine(tx) } },
+        orderBy: { updatedAt: 'asc' },
+        take: 300,
+      });
+      const people = await tx.employee.findMany({ where: { organizationId: c.organizationId, id: { in: rows.map((r) => r.employeeId) } }, select: { id: true, givenName: true, familyName: true } });
+      return rows.map((f) => {
+        const p = people.find((x) => x.id === f.employeeId);
+        const { verifiedAt: _verifiedAt, ...rest } = this.form12bView(f);
+        return { ...rest, employeeId: f.employeeId, employeeName: p ? `${p.givenName} ${p.familyName ?? ''}`.trim() : '', legalEntityId: f.legalEntityId, taxYear: f.taxYear };
+      });
+    });
+  }
+
+  /** A submission the key reaches (else "not found"), never the viewer's own. */
+  private async form12bFor(tx: Tx, c: CompanyContext, v: Viewer, id: string) {
+    const ids = await entitiesFor(tx, c, v, 'tax.proof.verify');
+    await payScope(tx, ids);
+    const f = await tx.form12bSubmission.findFirst({ where: { organizationId: c.organizationId, id } });
+    if (!f || !ids.includes(f.legalEntityId)) throw new NotFoundException('Not found');
+    if ((await this.mine(tx)).includes(f.employeeId)) throw new ForbiddenException('Someone else checks your own Form 12B.');
+    return f;
+  }
+
+  async form12bFile(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const f = await this.form12bFor(tx, c, v, id);
+      const meta = f.file as unknown as ProofFile;
+      const file = await this.files.get(meta.ref);
+      if (sha256(file) !== meta.sha256) throw new ConflictException('This Form 12B does not match the file that was sent.');
+      await audit(tx, c, 'tax.form12b.viewed', 'form12b_submission', f.id, { sha256: meta.sha256 });
+      return { file, name: meta.name, contentType: meta.contentType };
+    });
+  }
+
+  /** Approve, or reject with a comment, a pending Form 12B; approved amounts count in the tax projection from the next run. */
+  async decideForm12b(ctx: TenantContext, user: ScopeUser, id: string, dto: Form12bDecisionDto) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const f = await this.form12bFor(tx, c, v, id);
+      if (dto.decision === 'reject' && !dto.comment) throw new BadRequestException('Say why, so the employee can fix it.');
+      const status = dto.decision === 'approve' ? 'approved' : 'rejected';
+      const n = await tx.form12bSubmission.updateMany({
+        where: { id: f.id, status: 'pending' },
+        data: { status, verifierId: v.userId!, verifierComment: dto.comment ?? null, verifiedAt: new Date(), updatedAt: new Date() },
+      });
+      if (!n.count) throw new ConflictException('This Form 12B is not waiting for a check.');
+      await audit(tx, c, 'tax.form12b.verified', 'form12b_submission', f.id, { employeeId: f.employeeId, taxYear: f.taxYear, status, gross: f.gross.toFixed(2), tds: f.tds.toFixed(2) });
+      return this.form12bView(await tx.form12bSubmission.findFirstOrThrow({ where: { id: f.id } }));
     });
   }
 

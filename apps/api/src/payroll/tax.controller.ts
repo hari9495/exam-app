@@ -10,14 +10,14 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
-import { CertificateDto, CertificateListDto, DeclarationsDto, IssueCertificateDto, PanStatusDto, PerquisiteDto, ProofDecisionDto, ProofQueueDto, RegimeOverrideDto, WorkspaceListDto, WorkspacePatchDto } from './dto-5e';
+import { CertificateDto, CertificateListDto, DeclarationsDto, Form12bDecisionDto, Form12bDto, Form12bQueueDto, IssueCertificateDto, PanStatusDto, PerquisiteDto, ProofDecisionDto, ProofQueueDto, RegimeOverrideDto, WorkspaceListDto, WorkspacePatchDto } from './dto-5e';
 import { TaxService } from './tax.service';
 
 // Payroll batch 5e, income tax (M03-BUILD-DESIGN §14.5). Every route declares its key (YX-SEC-01) or is the signed-in
 // person's own (no key: their workspace, declarations, proofs, tax sheet and certificates, checked against their employee
 // records by the pay guard); the service checks the key's legal entities again and refuses one's own tax.
 //   tax.workspace.view          employees' tax workspaces
-//   tax.proof.verify            proof queue and decisions, PAN status, perquisites (Form 12BA)
+//   tax.proof.verify            proof queue and decisions, Form 12B checks, PAN status, perquisites (Form 12BA)
 //   tax.regime.override         the regime after the cut-off, with a reason
 //   payroll.document.issue ⚡    the year-end certificate (Form 16 / Form 130)
 
@@ -81,6 +81,19 @@ export class TaxController {
     return this.tax.addProof(ctx, this.user(req), lineId, file);
   }
 
+  // Founder decision 6: previous-employer income (Form 12B) entered by the employee, checked by payroll.
+  @Get('me/form12b')
+  myForm12b(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.tax.myForm12b(ctx, this.user(req));
+  }
+
+  @Post('me/form12b')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024, files: 1 } }))
+  submitForm12b(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: Form12bDto, @UploadedFile() file?: { buffer: Buffer; originalname?: string }) {
+    return this.tax.submitForm12b(ctx, this.user(req), dto, file);
+  }
+
   @Get('me/certificates')
   myCertificates(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     return this.tax.myCertificates(ctx, this.user(req));
@@ -139,6 +152,26 @@ export class TaxController {
   @RequirePermissions('tax.proof.verify')
   decide(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('workspaceId', ParseUUIDPipe) w: string, @Param('lineId', ParseUUIDPipe) l: string, @Body() dto: ProofDecisionDto) {
     return this.tax.decide(ctx, this.user(req), w, l, dto);
+  }
+
+  @Get('form12b')
+  @RequirePermissions('tax.proof.verify')
+  form12bQueue(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: Form12bQueueDto) {
+    return this.tax.form12bQueue(ctx, this.user(req), q.status);
+  }
+
+  @Get('form12b/:id/file')
+  @RequirePermissions('tax.proof.verify')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  async form12bFile(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return send(res, await this.tax.form12bFile(ctx, this.user(req), id));
+  }
+
+  @Post('form12b/:id/decision')
+  @HttpCode(200)
+  @RequirePermissions('tax.proof.verify')
+  decideForm12b(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: Form12bDecisionDto) {
+    return this.tax.decideForm12b(ctx, this.user(req), id, dto);
   }
 
   @Get('perquisites')

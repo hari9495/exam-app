@@ -7883,6 +7883,32 @@ model TaxDeclarationLine {
   @@map("tax_declaration_lines")
 }
 
+/// Founder decision 6: previous-employer income (Form 12B) the employee enters; counts in the tax projection once approved.
+model Form12bSubmission {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  legalEntityId   String    @map("legal_entity_id") @db.Uuid
+  employeeId      String    @map("employee_id") @db.Uuid
+  employmentId    String    @map("employment_id") @db.Uuid
+  taxYear         String    @map("tax_year") @db.VarChar(7)
+  employerName    String?   @map("employer_name") @db.VarChar(200)
+  employerTan     String    @map("employer_tan") @db.VarChar(10)
+  gross           Decimal   @db.Decimal(14, 2)
+  exemptions      Decimal   @default(0) @db.Decimal(14, 2)
+  tds             Decimal   @db.Decimal(14, 2)
+  file            Json
+  status          String    @default("pending") @db.VarChar(8)
+  verifierId      String?   @map("verifier_id") @db.Uuid
+  verifierComment String?   @map("verifier_comment") @db.VarChar(500)
+  verifiedAt      DateTime? @map("verified_at") @db.Timestamptz(3)
+  submittedBy     String    @map("submitted_by") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, employmentId, taxYear], map: "form12b_submissions_key")
+  @@map("form12b_submissions")
+}
+
 model TdsProjection {
   payslipId      String   @id @map("payslip_id") @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid
