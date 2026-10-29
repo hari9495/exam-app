@@ -67,7 +67,11 @@ export function FormDrawer({ title, subtitle, confirm, errors, onClose, onSave, 
             variant="primary"
             loading={busy === 'save'}
             onClick={() => {
-              if (errors.length) return save.reveal();
+              if (errors.length) {
+                save.reveal();
+                // Founder rule: the first bad field takes focus (after the error summary's own focus on show).
+                return void setTimeout(() => document.getElementById(errors[0].fieldId)?.focus());
+              }
               void run('save', async () => {
                 await onSave();
                 onClose();

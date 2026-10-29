@@ -1,12 +1,14 @@
 // Special pay types and marketplace: PAY-31 piece-rate, PAY-32 incentive / commission plan builder, PAY-34 tips pool,
-// PAY-35 on-call & standby rules, PAY-36 union check-off, PAY-43 group health (licensed partner only).
-import { useEffect, useMemo, useState } from 'react';
+// PAY-35 on-call & standby rules, PAY-36 union check-off, PAY-43 group health (licensed partner only), PAY-50 special pay
+// home. Each designed screen takes `live` (the app's data and actions, special-pay-live.tsx) in place of its sample.
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Download, Plus, Trash2, Upload } from 'lucide-react';
 import { Button, IconButton, Link } from '../../components/button';
 import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
 import { Drawer } from '../../components/drawer';
-import { EmptyState, InlineAlert } from '../../components/feedback';
-import { ErrorSummary, FieldRow, FormField, FormSection } from '../../components/field';
+import { EmptyState, InlineAlert, NoAccessState } from '../../components/feedback';
+import { useToast } from '../../components/notify';
+import { ErrorSummary, FieldRow, FormField, FormSection, type FormErrorItem } from '../../components/field';
 import { CurrencyField, NumberField, TextField } from '../../components/inputs';
 import { Checkbox } from '../../components/choice';
 import { Select } from '../../components/select';
@@ -25,6 +27,11 @@ import { Segment } from '../people/people-kit';
 import { DueBadge } from '../time/time-kit';
 import { d, ON_CALL_RULES, SALES_COMMISSION_PLAN } from './pay-data';
 import { commission, onCallPay, pieceRatePay, splitPool, type CommissionTier } from './pay-logic';
+import { FormDrawer } from './live/operations';
+import { PersonPicker, type PersonHit } from './live/inputs';
+import type { SpecialKind, SpecialPosting } from './live/types-5i';
+import { monthName } from './settlement-live';
+import { LiveIncentivePlans, LiveOnCallRules, LivePieceRate, LiveSpecialPayHome, LiveTipsPool, LiveUnionCheckoff, type LiveSpecialPay } from './special-pay-live';
 
 const tableState = (s: ViewState) => (s === 'loading' ? 'loading' : s === 'error' ? 'error' : 'ready');
 const storyHref = (id: string) => `/?path=/story/${id}`;
@@ -74,7 +81,11 @@ export const PIECE_WORKERS: PieceWorker[] = PLANT_WORKERS.slice(0, 10)
   .map((e, i) => ({ id: e.id, name: e.name, code: e.code, days: 26 - (i % 3), outputs: [{ qty: 180 + i * 17, rate: 42 }, { qty: 120 + i * 9, rate: 18 }, { qty: i === 2 ? 60 : 900 + i * 40, rate: 1.5 }] }));
 
 /** PAY-31 · Piece-rate cards and output import with minimum-wage top-up check. */
-export function PieceRateScreen({ tab = 'check', upload, state = 'ready' }: { tab?: 'cards' | 'output' | 'check'; upload?: boolean; state?: ViewState }) {
+export function PieceRateScreen({ live, ...story }: { tab?: 'cards' | 'output' | 'check'; upload?: boolean; state?: ViewState; /** The live app's /yx/payroll/special-pay tab. */ live?: LiveSpecialPay }) {
+  return live ? <LivePieceRate live={live} /> : <SamplePieceRate {...story} />;
+}
+
+function SamplePieceRate({ tab = 'check', upload, state = 'ready' }: { tab?: 'cards' | 'output' | 'check'; upload?: boolean; state?: ViewState }) {
   const [showUpload, setShowUpload] = useState(!!upload);
   const [sent, setSent] = useState(false);
   const [cards, setCards] = useState<RateCard[]>(RATE_CARDS);
@@ -289,7 +300,11 @@ const quartersSince = (from: Date) => {
 };
 
 /** PAY-32 · Incentive / commission plan builder: targets, slabs, accelerators, caps, clawback, effective dates. */
-export function IncentivePlanScreen({ variant = 'draft', state = 'ready' }: { variant?: 'draft' | 'overlap' | 'published'; state?: ViewState }) {
+export function IncentivePlanScreen({ live, ...story }: { variant?: 'draft' | 'overlap' | 'published'; state?: ViewState; /** The live app's /yx/payroll/special-pay tab. */ live?: LiveSpecialPay }) {
+  return live ? <LiveIncentivePlans live={live} /> : <SampleIncentivePlan {...story} />;
+}
+
+function SampleIncentivePlan({ variant = 'draft', state = 'ready' }: { variant?: 'draft' | 'overlap' | 'published'; state?: ViewState }) {
   const narrow = useNarrow(599);
   const [status, setStatus] = useState<'draft' | 'published'>(variant === 'published' ? 'published' : 'draft');
   const ro = status === 'published';
@@ -624,7 +639,11 @@ function BasisChoice({ value, onChange, narrow }: { value: TipBasis; onChange: (
 }
 
 /** PAY-34 · Tips pool: pool period, collections, distribution basis, shares, send to run. */
-export function TipsPoolScreen({ openId, state = 'ready' }: { openId?: string; state?: ViewState }) {
+export function TipsPoolScreen({ live, ...story }: { openId?: string; state?: ViewState; /** The live app's /yx/payroll/special-pay tab. */ live?: LiveSpecialPay }) {
+  return live ? <LiveTipsPool live={live} /> : <SampleTipsPool {...story} />;
+}
+
+function SampleTipsPool({ openId, state = 'ready' }: { openId?: string; state?: ViewState }) {
   const narrow = useNarrow(599);
   const [pools, setPools] = useState<TipPool[]>(state === 'empty' ? [] : TIP_POOLS);
   const [openPoolId, setOpenPoolId] = useState<string | null>(openId ?? null);
@@ -835,7 +854,11 @@ const slotChanges = (before: OnCallSlot[], after: OnCallSlot[]) =>
   });
 
 /** PAY-35 · On-call & standby rules: rates per slot and call-out, minimum paid hours, link to the roster slot type. */
-export function OnCallRulesScreen({ variant = 'default', state = 'ready' }: { variant?: 'default' | 'holiday'; state?: ViewState }) {
+export function OnCallRulesScreen({ live, ...story }: { variant?: 'default' | 'holiday'; state?: ViewState; /** The live app's /yx/payroll/special-pay tab. */ live?: LiveSpecialPay }) {
+  return live ? <LiveOnCallRules live={live} /> : <SampleOnCallRules {...story} />;
+}
+
+function SampleOnCallRules({ variant = 'default', state = 'ready' }: { variant?: 'default' | 'holiday'; state?: ViewState }) {
   const narrow = useNarrow(599);
   const [slots, setSlots] = useState<OnCallSlot[]>(state === 'empty' ? [] : ON_CALL_SLOTS);
   const [savedSlots, setSavedSlots] = useState<OnCallSlot[]>(slots);
@@ -1069,7 +1092,11 @@ const UNIONS = Array.from(new Set(CHECKOFF.map((c) => c.union)));
 const UNION_DUES: Record<string, number> = Object.fromEntries(CHECKOFF.map((c) => [c.union, c.dues]));
 
 /** PAY-36 · Union check-off: authorisations, monthly deduction list, remittance per union. */
-export function UnionCheckoffScreen({ tab = 'auth', state = 'ready' }: { tab?: 'auth' | 'deductions' | 'remit'; state?: ViewState }) {
+export function UnionCheckoffScreen({ live, ...story }: { tab?: 'auth' | 'deductions' | 'remit'; state?: ViewState; /** The live app's /yx/payroll/special-pay tab. */ live?: LiveSpecialPay }) {
+  return live ? <LiveUnionCheckoff live={live} /> : <SampleUnionCheckoff {...story} />;
+}
+
+function SampleUnionCheckoff({ tab = 'auth', state = 'ready' }: { tab?: 'auth' | 'deductions' | 'remit'; state?: ViewState }) {
   const [rows, setRows] = useState<CheckoffRow[]>(CHECKOFF);
   const [adding, setAdding] = useState<{ id: string | null; union: string; signed: Date | null; file: boolean } | null>(null);
   const deducting = rows.filter((c) => c.status === 'Authorised');
@@ -1454,5 +1481,252 @@ export function GroupHealthScreen({ variant = 'quotes' }: { variant?: GroupHealt
         </div>
       )}
     </PaySettingsFrame>
+  );
+}
+
+/* ================================================================== PAY-50 Special pay home */
+
+/** The tabs of the special pay page: the home, then one per special pay type (PAY-31 … 37). */
+export type SpecialTab = 'home' | 'piece' | 'incentives' | 'tips' | 'oncall' | 'unions' | 'settlements';
+export const SPECIAL_TYPES: { tab: Exclude<SpecialTab, 'home'>; label: string; kinds: SpecialKind[]; note: string; story: string }[] = [
+  { tab: 'piece', label: 'Piece-rate pay', kinds: ['piece'], note: 'Rate cards and output', story: 'screens-pay-pay-31-·-piece-rate-cards-and-output--cards' },
+  { tab: 'incentives', label: 'Incentives', kinds: ['incentive'], note: 'Plans, results, clawbacks', story: 'screens-pay-pay-32-·-incentive-plan-builder--draft' },
+  { tab: 'tips', label: 'Tips', kinds: ['tips'], note: 'Pools per outlet', story: 'screens-pay-pay-34-·-tips-pool--pools' },
+  { tab: 'oncall', label: 'On-call pay', kinds: ['oncall'], note: 'Standby and call-outs', story: 'screens-pay-pay-35-·-on-call-and-standby-rules--weekday' },
+  { tab: 'unions', label: 'Union dues', kinds: ['union'], note: 'Check-off and remittance', story: 'screens-pay-pay-36-·-union-check-off--authorisations' },
+  { tab: 'settlements', label: 'Settlement arrears', kinds: ['settle'], note: 'Wage settlements', story: 'screens-pay-pay-37-·-wage-settlement-arrears--categories' },
+];
+export const SPECIAL_KIND_TEXT: Record<SpecialKind, string> = { piece: 'Piece-rate pay', incentive: 'Incentives', tips: 'Tips', oncall: 'On-call pay', union: 'Union dues', settle: 'Settlement arrears', layoff: 'Lay-off pay', vrs: 'VRS' };
+export const POSTING_STATUS: Record<SpecialPosting['status'], { label: string; tone: BadgeTone }> = { pending: { label: 'Waiting for approval', tone: 'warning' }, approved: { label: 'Approved, in payroll', tone: 'success' }, rejected: { label: 'Turned down', tone: 'danger' }, cancelled: { label: 'Cancelled', tone: 'neutral' } };
+/** Income-tax Act s. 10(10C): VRS compensation is exempt up to ₹5,00,000 in a lifetime (all employers together). Law, not company policy. */
+export const VRS_EXEMPT_LIMIT = 5_00_000;
+const MONEY_RE = /^\d{1,10}(\.\d{1,2})?$/;
+
+/** Sheets sent to payroll this month, the special pay types, and lay-off and VRS. The sample story and the live page show this same body. */
+export function SpecialPayHomeBody({ month, postings, nameOf, openType, onLayoff, onVrs, onSendLayoff }: {
+  month: string;
+  postings: SpecialPosting[];
+  nameOf: (employeeId: string) => string;
+  /** The Open control of a special pay type: a story link in Storybook, a tab switch in the app. */
+  openType: (tab: Exclude<SpecialTab, 'home'>, label: string) => ReactNode;
+  onLayoff: () => void;
+  onVrs: () => void;
+  onSendLayoff: () => Promise<unknown>;
+}) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState<SpecialPosting | null>(null);
+  const people = (p: SpecialPosting) => new Set(p.lines.map((l) => l.employeeId)).size;
+  const cols: TableColumn<SpecialPosting>[] = [
+    { key: 'sheet', header: 'Sheet', value: (p) => SPECIAL_KIND_TEXT[p.kind], render: (p) => <div>{SPECIAL_KIND_TEXT[p.kind]}{p.madeByMe && <p className="yx-pay-note">Sent by you</p>}</div>, width: 200 },
+    { key: 'people', header: 'People', type: 'number', value: (p) => people(p), width: 90 },
+    { key: 'total', header: 'Total', type: 'money', value: (p) => Number(p.total), total: 'sum', width: 130 },
+    { key: 'status', header: 'Status', type: 'status', value: (p) => POSTING_STATUS[p.status].label, statusTone: (v) => Object.values(POSTING_STATUS).find((s) => s.label === v)?.tone ?? 'neutral', width: 190 },
+  ];
+  const typeStatus = (kinds: SpecialKind[]) => {
+    const mine = postings.filter((p) => kinds.includes(p.kind) && p.status !== 'cancelled');
+    if (!mine.length) return <Badge tone="neutral">Not sent</Badge>;
+    const s = mine.some((p) => p.status === 'pending') ? 'pending' : mine.some((p) => p.status === 'rejected') ? 'rejected' : 'approved';
+    return <Badge tone={POSTING_STATUS[s].tone}>{POSTING_STATUS[s].label}</Badge>;
+  };
+  return (
+    <div className="yx-pay-split">
+      <div className="yx-pay-stack">
+        <SectionTitle>Sent to payroll · {monthName(month)}</SectionTitle>
+        <DataTable
+          label={`Special pay sent to payroll, ${monthName(month)}`}
+          columns={cols}
+          rows={postings}
+          getRowId={(p) => p.id}
+          rowNoun={['sheet', 'sheets']}
+          empty={<EmptyState compact title="Nothing sent to payroll this month" description="Each special pay type sends its month's sheet when it is ready. A payroll approver who did not make it, and is not paid in it, approves it." />}
+          rowButtons={(p) => (
+            <Button size="sm" onClick={() => setOpen(p)}>
+              Lines
+            </Button>
+          )}
+        />
+        <p className="yx-pay-note">Approved sheets are paid as named lines in the {monthName(month)} run.</p>
+      </div>
+      <div className="yx-pay-stack">
+        <aside className="yx-pay-panel" aria-label="Special pay types">
+          <SectionTitle>Special pay types</SectionTitle>
+          <ul className="yx-pay-cards">
+            {SPECIAL_TYPES.map((t) => (
+              <li key={t.tab}>
+                <div className="yx-pay-cards__row">
+                  <strong>{t.label}</strong>
+                  {openType(t.tab, t.label)}
+                </div>
+                <div className="yx-pay-cards__row">
+                  <span className="yx-pay-muted">{t.note}</span>
+                  {typeStatus(t.kinds)}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </aside>
+        <aside className="yx-pay-panel" aria-label="Lay-off and VRS">
+          <SectionTitle actions={typeStatus(['layoff', 'vrs'])}>Lay-off and VRS</SectionTitle>
+          <div className="yx-pay-row">
+            <Button onClick={onLayoff}>Record lay-off days</Button>
+            <ConfirmDialog
+              trigger={<Button>Send lay-off pay</Button>}
+              title={`Send ${monthName(month)} lay-off pay to payroll?`}
+              consequence="Every lay-off day recorded for the month goes to payroll as one sheet, for a payroll approver to approve."
+              confirmLabel="Send to payroll"
+              onConfirm={async () => {
+                await onSendLayoff();
+                toast({ tone: 'success', title: `${monthName(month)} lay-off pay sent to payroll for approval.` });
+              }}
+            />
+            <Button onClick={onVrs}>Pay VRS</Button>
+          </div>
+        </aside>
+      </div>
+      <Drawer open={!!open} onOpenChange={(o) => !o && setOpen(null)} title={open ? `${SPECIAL_KIND_TEXT[open.kind]} · ${monthName(open.month)}` : ''} subtitle={open ? POSTING_STATUS[open.status].label : undefined}>
+        {open && (
+          <table className="yx-pay-table" aria-label="Posting lines">
+            <thead>
+              <tr>
+                <th scope="col">Person</th>
+                <th scope="col">Line</th>
+                <th scope="col" data-num>
+                  Amount
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {open.lines.map((l, i) => (
+                <tr key={i}>
+                  <th scope="row">{nameOf(l.employeeId)}</th>
+                  <td>{l.label}</td>
+                  <td data-num>{formatINR(Number(l.amount))}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <th scope="row">Total</th>
+                <td />
+                <td data-num>{formatINR(Number(open.total))}</td>
+              </tr>
+            </tfoot>
+          </table>
+        )}
+      </Drawer>
+    </div>
+  );
+}
+
+/** Lay-off compensation days for one person and month (Industrial Disputes Act s. 25C: half of basic and DA a day; the API works out the amount). */
+export function LayoffDrawer({ month, onSearch, onClose, onSave }: { month: string; onSearch: (q: string) => Promise<PersonHit[]>; onClose: () => void; onSave: (x: { employeeId: string; days: string }) => Promise<unknown> }) {
+  const { toast } = useToast();
+  const [who, setWho] = useState<PersonHit | null>(null);
+  const [days, setDays] = useState('');
+  const errors: FormErrorItem[] = [...(!who ? [{ fieldId: 'lo-who', message: 'Choose the person.' }] : []), ...(!/^\d{1,2}(\.5)?$/.test(days) || Number(days) <= 0 ? [{ fieldId: 'lo-days', message: 'Lay-off days in whole or half days, like 3 or 2.5.' }] : [])];
+  return (
+    <FormDrawer
+      title={`Lay-off days · ${monthName(month)}`}
+      subtitle="Paid at half of basic and DA for each day laid off. Recording the same person again replaces the days."
+      confirm="Save days"
+      errors={errors}
+      onClose={onClose}
+      onSave={async () => {
+        await onSave({ employeeId: who!.id, days });
+        toast({ tone: 'success', title: `${days} lay-off ${Number(days) === 1 ? 'day' : 'days'} saved for ${who!.name}.` });
+      }}
+    >
+      {(errorOf) => (
+        <>
+          <PersonPicker id="lo-who" label="Person" value={who} onChange={setWho} onSearch={onSearch} error={errorOf('lo-who')} />
+          <FormField id="lo-days" label="Days laid off" required error={errorOf('lo-days')} helper="Whole or half days.">
+            <TextField value={days} onChange={setDays} inputMode="decimal" />
+          </FormField>
+        </>
+      )}
+    </FormDrawer>
+  );
+}
+
+/** VRS compensation with the s. 10(10C) exemption worked out before it is sent to payroll. */
+export function VrsDrawer({ month, onSearch, onClose, onSave }: { month: string; onSearch: (q: string) => Promise<PersonHit[]>; onClose: () => void; onSave: (x: { employeeId: string; amount: string; priorExemption: string }) => Promise<unknown> }) {
+  const { toast } = useToast();
+  const [who, setWho] = useState<PersonHit | null>(null);
+  const [amount, setAmount] = useState('');
+  const [prior, setPrior] = useState('0');
+  const errors: FormErrorItem[] = [...(!who ? [{ fieldId: 'vr-who', message: 'Choose the person.' }] : []), ...(!MONEY_RE.test(amount) || Number(amount) <= 0 ? [{ fieldId: 'vr-amount', message: 'The VRS compensation, above zero.' }] : []), ...(!MONEY_RE.test(prior) ? [{ fieldId: 'vr-prior', message: 'VRS exemption claimed before, 0 if none.' }] : [])];
+  const left = Math.max(0, VRS_EXEMPT_LIMIT - (Number(prior) || 0));
+  const exempt = Math.min(Number(amount) || 0, left);
+  return (
+    <FormDrawer
+      title={`Pay VRS · ${monthName(month)}`}
+      subtitle="Exempt up to what is left of the ₹5,00,000 lifetime limit; the rest is taxed as salary. Sent to payroll for approval."
+      confirm="Send to payroll"
+      errors={errors}
+      onClose={onClose}
+      onSave={async () => {
+        await onSave({ employeeId: who!.id, amount, priorExemption: prior });
+        toast({ tone: 'success', title: `VRS for ${who!.name} sent to payroll for approval.` });
+      }}
+    >
+      {(errorOf) => (
+        <>
+          <PersonPicker id="vr-who" label="Person" value={who} onChange={setWho} onSearch={onSearch} error={errorOf('vr-who')} />
+          <FormField id="vr-amount" label="VRS compensation (₹)" required error={errorOf('vr-amount')}>
+            <TextField value={amount} onChange={setAmount} inputMode="decimal" />
+          </FormField>
+          <FormField id="vr-prior" label="Exemption claimed before (₹)" required error={errorOf('vr-prior')} helper="From the person's declaration, any employer.">
+            <TextField value={prior} onChange={setPrior} inputMode="decimal" />
+          </FormField>
+          <FactRow
+            items={[
+              { label: 'Exempt', value: formatINR(exempt) },
+              { label: 'Taxed as salary', value: formatINR(Math.max(0, (Number(amount) || 0) - exempt)) },
+            ]}
+          />
+        </>
+      )}
+    </FormDrawer>
+  );
+}
+
+const SP_MONTH = '2026-09';
+const spPerson = (i: number) => PLANT_WORKERS[i] ?? EMPLOYEES[i];
+const SAMPLE_POSTINGS: SpecialPosting[] = [
+  { id: 'sp1', kind: 'piece', month: SP_MONTH, sourceRef: 'piece', lines: [0, 1, 2].map((i) => ({ employeeId: spPerson(i).id, componentCode: 'piece_pay', amount: String(14_250 + i * 410), label: `Piece-rate pay for ${26 - i} days in September.` })), total: String(14_250 * 3 + 410 * 3), status: 'pending', madeByMe: true, createdAt: '2026-09-26T05:00:00.000Z' },
+  { id: 'sp2', kind: 'union', month: SP_MONTH, sourceRef: 'union', lines: [0, 1].map((i) => ({ employeeId: spPerson(i).id, componentCode: 'union_dues', amount: '75.00', label: 'Kaveri Foods Workers Union dues.' })), total: '150.00', status: 'approved', madeByMe: false, createdAt: '2026-09-24T05:00:00.000Z' },
+  { id: 'sp3', kind: 'tips', month: SP_MONTH, sourceRef: 'tips', lines: [{ employeeId: spPerson(3).id, componentCode: 'tips', amount: '10000.00', label: 'Tips pool September: 3 points.' }], total: '10000.00', status: 'rejected', madeByMe: false, createdAt: '2026-09-23T05:00:00.000Z' },
+  { id: 'sp4', kind: 'layoff', month: SP_MONTH, sourceRef: 'layoff', lines: [{ employeeId: spPerson(4).id, componentCode: 'layoff_pay', amount: '2340.00', label: 'Lay-off compensation for 4 days.' }], total: '2340.00', status: 'pending', madeByMe: true, createdAt: '2026-09-27T05:00:00.000Z' },
+];
+const samplePeople = async (q: string): Promise<PersonHit[]> => PLANT_WORKERS.filter((e) => `${e.name} ${e.code}`.toLowerCase().includes(q.toLowerCase())).slice(0, 5).map((e) => ({ id: e.id, name: e.name, employeeCode: e.code }));
+const sampleName = (id: string) => EMPLOYEES.find((e) => e.id === id)?.name ?? 'Someone';
+const storyLink = (t: Exclude<SpecialTab, 'home'>, label: string) => (
+  <Link href={storyHref(SPECIAL_TYPES.find((x) => x.tab === t)!.story)} target="_top">
+    Open {label.toLowerCase()}
+  </Link>
+);
+
+/** PAY-50 · Special pay home: this month's sheets sent to payroll, the special pay types (PAY-31 … 37), lay-off and VRS. */
+export function SpecialPayHomeScreen({ live, ...story }: { state?: ViewState | 'no-access'; drawer?: 'layoff' | 'vrs'; /** The live app's /yx/payroll/special-pay. */ live?: LiveSpecialPay }) {
+  return live ? <LiveSpecialPayHome live={live} /> : <SampleSpecialPayHome {...story} />;
+}
+
+function SampleSpecialPayHome({ state = 'ready', drawer }: { state?: ViewState | 'no-access'; drawer?: 'layoff' | 'vrs' }) {
+  const [open, setOpen] = useState(drawer ?? null);
+  const ok = async () => ({});
+  const body = (postings: SpecialPosting[]) => <SpecialPayHomeBody month={SP_MONTH} postings={postings} nameOf={sampleName} openType={storyLink} onLayoff={() => setOpen('layoff')} onVrs={() => setOpen('vrs')} onSendLayoff={ok} />;
+  return (
+    <PayFrame page="compensation">
+      <PageHeader title="Special pay" description={`${ENTITIES[0].name} · ${monthName(SP_MONTH)}. Each month's sheet goes to payroll once a payroll approver who did not make it, and is not paid in it, approves it.`} />
+      {state === 'no-access' ? (
+        <NoAccessState grantedBy="your payroll admin" what="special pay" />
+      ) : (
+        <StateBlock state={state} errorTitle="Couldn't load special pay." empty={body([])}>
+          {body(SAMPLE_POSTINGS)}
+        </StateBlock>
+      )}
+      {open === 'layoff' && <LayoffDrawer month={SP_MONTH} onSearch={samplePeople} onClose={() => setOpen(null)} onSave={ok} />}
+      {open === 'vrs' && <VrsDrawer month={SP_MONTH} onSearch={samplePeople} onClose={() => setOpen(null)} onSave={ok} />}
+    </PayFrame>
   );
 }

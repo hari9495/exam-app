@@ -1,0 +1,710 @@
+// PAY-28 · Arrears and recoveries and PAY-38 · Actuarial valuation, live: the designed ArrearsBaseScreen (list view and
+// its worksheet drawer) and ActuarialScreen (census, valuation, provision posting) with the API's data. Same tabs,
+// steps, tables and texts as the designs; the API checks every action again (keys, entity scope, maker ≠ checker).
+import { useState, type ReactNode } from 'react';
+import { Download, FileText } from 'lucide-react';
+import { Button } from '../../components/button';
+import { Badge, type BadgeTone } from '../../components/display';
+import { Drawer } from '../../components/drawer';
+import { EmptyState, InlineAlert } from '../../components/feedback';
+import { FieldRow, FormField, useTooEarly } from '../../components/field';
+import { CurrencyField, TextArea } from '../../components/inputs';
+import { DatePicker } from '../../components/date';
+import { useToast } from '../../components/notify';
+import { ConfirmDialog } from '../../components/overlay';
+import { Segment } from '../../components/segment';
+import { Select } from '../../components/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
+import { Stepper } from '../../components/stepper';
+import { DataTable, type TableColumn } from '../../components/table';
+import { FileUpload } from '../../components/upload';
+import { formatINR } from '../../lib/format';
+import { useRun } from '../org/org-kit';
+import { LivePage, dateText } from '../time/live/kit';
+import { FactRow, SectionTitle, StateBlock } from './pay-kit';
+import { EntityPicker } from './live/setup';
+import type { LoadState } from './live/types';
+import type { SetupEntity } from './live/types-5b';
+import type { ActuarialView } from './live/types-5i';
+import type { Recovery, Worksheet, WorksheetLine } from './live/types-5j';
+
+const money = (x: string | null | undefined) => (x == null || x === '' ? '—' : formatINR(Number(x)));
+/** "Aug 2026" from yyyy-mm (the design's month labels). */
+const monthText = (m: string) => new Date(`${m.slice(0, 7)}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+const isoDay = (x: Date) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+const Failed = ({ error }: { error: string | null }) =>
+  error ? (
+    <InlineAlert tone="danger" title="That did not go through">
+      {error}
+    </InlineAlert>
+  ) : null;
+
+/* ================================================================== PAY-28 Arrears and recoveries */
+
+export interface LiveArrears {
+  state: LoadState;
+  onRetry?: () => void;
+  worksheets: Worksheet[] | null;
+  recoveries: Recovery[] | null;
+  nameOf: (employeeId: string) => string;
+  /** The signed-in user: whoever made a worksheet does not approve it. */
+  me: string | null;
+  can: { approve: boolean; writeOff: boolean };
+  onApprove: (w: Worksheet, runId?: string) => Promise<unknown>;
+  onCancel: (w: Worksheet) => Promise<unknown>;
+  onConfirmBase: (w: Worksheet, period: string, lines: { componentCode: string; asPaid: string }[], reason: string) => Promise<unknown>;
+  onWriteOff: (r: Recovery, reason: string) => Promise<unknown>;
+  /**
+   * Slot for the PAY-19 tabs (court orders, carry-forwards, overpayments, deduction cap) that builder 1 builds in
+   * payroll-inputs.tsx. Until the page passes it, the Recoveries tab shows the overpayments with their write-off.
+   */
+  recoveryTabs?: ReactNode;
+}
+
+const sheetStatus = (w: Worksheet): { label: string; tone: BadgeTone } =>
+  w.status === 'approved' ? { label: 'Approved', tone: 'success' } : w.status === 'cancelled' ? { label: 'Cancelled', tone: 'neutral' } : w.missing ? { label: 'Base needed', tone: 'warning' } : { label: 'Ready to approve', tone: 'info' };
+const BASE: Record<WorksheetLine['base'], { label: string; tone: BadgeTone }> = {
+  payslip: { label: 'YukthiX run', tone: 'neutral' },
+  import: { label: 'Imported', tone: 'info' },
+  confirmed: { label: 'Confirmed', tone: 'success' },
+  missing: { label: 'Missing: confirm base', tone: 'warning' },
+};
+const RECOVERY: Record<string, { label: string; tone: BadgeTone }> = {
+  proposed: { label: 'Waiting for the employee', tone: 'warning' },
+  active: { label: 'Recovering', tone: 'info' },
+  declined: { label: 'Declined', tone: 'neutral' },
+  recovered: { label: 'Recovered', tone: 'success' },
+  written_off: { label: 'Written off', tone: 'neutral' },
+};
+
+export function LiveArrearsScreen({ live }: { live: LiveArrears }) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  const open = live.worksheets?.find((w) => w.id === openId) ?? null;
+  const months = (w: Worksheet) => (w.from === w.to ? monthText(w.from) : `${monthText(w.from)}–${monthText(w.to)}`);
+  const cols: TableColumn<Worksheet>[] = [
+    { key: 'person', header: 'Person', value: (w) => live.nameOf(w.employeeId) },
+    { key: 'months', header: 'Months', value: months },
+    { key: 'owed', header: 'Owed to the employee', type: 'money', value: (w) => Number(w.total) },
+    { key: 'status', header: 'Status', type: 'status', value: (w) => sheetStatus(w).label, statusTone: (_v, w) => sheetStatus(w).tone },
+  ];
+  return (
+    <LivePage title="Arrears and recoveries" description="Arrears worksheets (corrected minus as paid, per month and component), court orders and overpayments." state={live.state} onRetry={live.onRetry} what="arrears" grantedBy="your payroll admin">
+      <Tabs defaultValue="arrears">
+        <TabsList aria-label="Arrears and recoveries">
+          <TabsTrigger value="arrears" count={live.worksheets?.length || undefined}>
+            Arrears worksheets
+          </TabsTrigger>
+          <TabsTrigger value="recoveries">Recoveries</TabsTrigger>
+        </TabsList>
+        <TabsContent value="arrears">
+          <DataTable
+            label="Arrears worksheets"
+            columns={cols}
+            rows={live.worksheets ?? []}
+            state={live.worksheets ? 'ready' : 'loading'}
+            getRowId={(w) => w.id}
+            onRowClick={(w) => setOpenId(w.id)}
+            activeRowId={openId}
+            rowButtons={(w) => (
+              <Button size="sm" onClick={() => setOpenId(w.id)}>
+                Open
+              </Button>
+            )}
+            empty={<EmptyState title="No arrears worksheets" description="A past-dated pay change or a wage settlement makes one." />}
+          />
+        </TabsContent>
+        <TabsContent value="recoveries">{live.recoveryTabs ?? <Overpayments live={live} />}</TabsContent>
+      </Tabs>
+      <Drawer open={!!open} onOpenChange={(o) => !o && setOpenId(null)} title={`${open ? live.nameOf(open.employeeId) : ''} · arrears`} subtitle={open?.reason} size="lg" footer={<Button onClick={() => setOpenId(null)}>Close</Button>}>
+        {open && <WorksheetBase key={open.id} w={open} live={live} />}
+      </Drawer>
+    </LivePage>
+  );
+}
+
+/** One worksheet: the design's base step (months, as paid, base source, arrear), confirm a missing month, approve or cancel. */
+function WorksheetBase({ w, live }: { w: Worksheet; live: LiveArrears }) {
+  const { toast } = useToast();
+  const { busy, error, run } = useRun();
+  const [paid, setPaid] = useState<Record<string, number | null>>({});
+  const [reason, setReason] = useState('');
+  const [cancelling, setCancelling] = useState(false);
+  const missing = [...new Set(w.lines.filter((l) => l.base === 'missing').map((l) => l.period))];
+  const period = missing[0] ?? null;
+  const baseLines = w.lines.filter((l) => l.period === period && l.base === 'missing');
+  const check = useTooEarly([
+    ...baseLines.filter((l) => paid[l.componentCode] == null).map((l) => ({ fieldId: `wb-${l.componentCode}`, message: `${l.componentCode}: enter what was paid in ${monthText(l.period)}.` })),
+    ...(reason.trim().length < 5 ? [{ fieldId: 'wb-why', message: 'Name the document or register (at least 5 characters).' }] : []),
+  ]);
+  const draft = w.status === 'draft';
+  const mine = !!live.me && w.createdBy === live.me;
+  const name = live.nameOf(w.employeeId);
+  return (
+    <div className="yx-pay-stack">
+      <Failed error={error} />
+      {draft ? (
+        <InlineAlert tone={missing.length ? 'warning' : 'success'} title={missing.length ? `Confirm the as-paid base for ${missing.map(monthText).join(', ')}` : 'Base confirmed for every month'}>
+          {missing.length ? 'No pay lines exist for this month. Arrears can’t be approved until you confirm what was paid, with a reason.' : 'You can approve the arrears; they are paid with the next run.'}
+        </InlineAlert>
+      ) : (
+        <Badge tone={sheetStatus(w).tone}>{sheetStatus(w).label}</Badge>
+      )}
+      <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Worksheet lines">
+        <table className="yx-pay-table">
+          <thead>
+            <tr>
+              <th scope="col">Month</th>
+              <th scope="col">Component</th>
+              <th scope="col" data-num>
+                Corrected
+              </th>
+              <th scope="col" data-num>
+                As paid
+              </th>
+              <th scope="col">Base source</th>
+              <th scope="col" data-num>
+                Arrear
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {w.lines.map((l) => (
+              <tr key={l.id} data-state={l.base === 'missing' ? 'flag' : undefined}>
+                <th scope="row">{monthText(l.period)}</th>
+                <td>
+                  {l.componentCode} {l.kind !== 'earning' && <Badge tone="neutral">{l.kind === 'deduction' ? 'employee share' : 'company cost'}</Badge>}
+                </td>
+                <td data-num>{money(l.corrected)}</td>
+                <td data-num>{money(l.asPaid)}</td>
+                <td>
+                  <Badge tone={BASE[l.base].tone}>{BASE[l.base].label}</Badge>
+                </td>
+                <td data-num>{money(l.difference)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <th scope="row" colSpan={5}>
+                {missing.length ? `Arrears so far for ${name} (${missing.map(monthText).join(', ')} not included)` : `Arrears for ${name}`}
+              </th>
+              <td data-num>{money(w.total)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      {draft && period && (
+        <section className="yx-pay-panel" aria-label={`Confirm ${monthText(period)} base`}>
+          <SectionTitle>Confirm the as-paid base for {monthText(period)}</SectionTitle>
+          <FieldRow>
+            {baseLines.map((l) => (
+              <FormField key={l.id} id={`wb-${l.componentCode}`} label={`${l.componentCode} as paid in ${monthText(period)}`} required error={check.errorOf(`wb-${l.componentCode}`)}>
+                <CurrencyField allowPaise value={paid[l.componentCode] ?? null} onChange={(v) => setPaid({ ...paid, [l.componentCode]: v })} />
+              </FormField>
+            ))}
+          </FieldRow>
+          <FormField id="wb-why" label="Where this figure comes from" required helper="Name the document or register (at least 5 characters). Stored with the audit event." error={check.errorOf('wb-why')}>
+            <TextArea value={reason} onChange={setReason} rows={2} />
+          </FormField>
+          <div className="yx-pay-row">
+            <Button
+              variant="primary"
+              loading={busy === 'base'}
+              onClick={() => {
+                if (check.stop()) return;
+                void run('base', async () => {
+                  await live.onConfirmBase(
+                    w,
+                    period,
+                    baseLines.map((l) => ({ componentCode: l.componentCode, asPaid: String(paid[l.componentCode]) })),
+                    reason.trim(),
+                  );
+                  check.reset();
+                  toast({ tone: 'success', title: `Base confirmed for ${monthText(period)}.` });
+                });
+              }}
+            >
+              Confirm base
+            </Button>
+          </div>
+        </section>
+      )}
+      {!missing.length && (
+        <section className="yx-pay-panel" aria-label="Computed arrears">
+          <SectionTitle>Computed arrears for {name}</SectionTitle>
+          <FactRow
+            items={[
+              { label: 'Owed to the employee', value: money(w.total) },
+              { label: 'Extra company cost (PF, ESI)', value: money(w.employerCost) },
+            ]}
+          />
+          {draft && (
+            <div className="yx-pay-row">
+              {live.can.approve &&
+                (mine ? (
+                  <p className="yx-pay-note">You made this worksheet, so someone else approves it.</p>
+                ) : (
+                  <Button
+                    variant="approve"
+                    loading={busy === 'approve'}
+                    onClick={() =>
+                      void run('approve', async () => {
+                        await live.onApprove(w);
+                        toast({ tone: 'success', title: `Arrears for ${name} approved; they are paid with the next run.` });
+                      })
+                    }
+                  >
+                    Approve
+                  </Button>
+                ))}
+              <Button onClick={() => setCancelling(true)}>Cancel worksheet</Button>
+            </div>
+          )}
+        </section>
+      )}
+      {draft && missing.length > 0 && (
+        <div className="yx-pay-row">
+          <Button onClick={() => setCancelling(true)}>Cancel worksheet</Button>
+        </div>
+      )}
+      <ConfirmDialog
+        open={cancelling}
+        onOpenChange={setCancelling}
+        title="Cancel this worksheet?"
+        consequence={`No arrears are paid to ${name} from it. A new pay change makes a new worksheet.`}
+        confirmLabel="Cancel worksheet"
+        cancelLabel="Keep it"
+        destructive
+        onConfirm={async () => {
+          await live.onCancel(w);
+          toast({ tone: 'success', title: 'Worksheet cancelled.' });
+        }}
+      />
+    </div>
+  );
+}
+
+/** Interim Recoveries tab (until builder 1's PAY-19 tabs fill the slot): overpayments in the PAY-19 "Overpayments" look. */
+function Overpayments({ live }: { live: LiveArrears }) {
+  const { toast } = useToast();
+  const [writing, setWriting] = useState<Recovery | null>(null);
+  const [why, setWhy] = useState('');
+  const check = useTooEarly(why.trim().length < 5 ? [{ fieldId: 'wo-why', message: 'Say why (at least 5 characters).' }] : []);
+  const cols: TableColumn<Recovery>[] = [
+    { key: 'person', header: 'Person', value: (r) => live.nameOf(r.employeeId), render: (r) => <>{live.nameOf(r.employeeId)} {r.crossYear && <Badge tone="info">Earlier tax year {r.originTaxYear}</Badge>}</> },
+    { key: 'reason', header: 'Why', value: (r) => r.reason, optional: true },
+    { key: 'amount', header: 'Amount', type: 'money', value: (r) => Number(r.amount) },
+    { key: 'left', header: 'Left', type: 'money', value: (r) => Number(r.balance) },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => RECOVERY[r.status]?.label ?? r.status, statusTone: (_v, r) => RECOVERY[r.status]?.tone ?? 'neutral' },
+  ];
+  return (
+    <div className="yx-pay-stack">
+      <InlineAlert tone="info">An overpayment is recovered only by a plan the employee acknowledges. A write-off needs a reason.</InlineAlert>
+      <DataTable
+        label="Overpayment plans"
+        columns={cols}
+        rows={live.recoveries ?? []}
+        state={live.recoveries ? 'ready' : 'loading'}
+        getRowId={(r) => r.id}
+        rowButtons={(r) =>
+          live.can.writeOff && ['proposed', 'active', 'declined'].includes(r.status) ? (
+            <Button size="sm" variant="review" onClick={() => setWriting(r)}>
+              Write off
+            </Button>
+          ) : null
+        }
+        empty={<EmptyState title="No overpayments" description="An overpayment found after a run shows here with its recovery plan." />}
+      />
+      <ConfirmDialog
+        open={!!writing}
+        onOpenChange={(o) => {
+          if (!o) {
+            setWriting(null);
+            setWhy('');
+            check.reset();
+          }
+        }}
+        title="Write off what is left?"
+        consequence={writing ? `${money(writing.balance)} of ${money(writing.amount)} for ${live.nameOf(writing.employeeId)} is not recovered.` : undefined}
+        confirmLabel="Write off"
+        onConfirm={async () => {
+          if (check.stop()) return false;
+          await live.onWriteOff(writing!, why.trim());
+          toast({ tone: 'success', title: `Written off for ${live.nameOf(writing!.employeeId)}.` });
+          setWhy('');
+        }}
+      >
+        <FormField id="wo-why" label="Why" required error={check.errorOf('wo-why')}>
+          <TextArea value={why} onChange={setWhy} rows={2} />
+        </FormField>
+      </ConfirmDialog>
+    </div>
+  );
+}
+
+/* ================================================================== PAY-38 Actuarial census and valuation */
+
+type Standard = 'IND_AS_19' | 'AS_15';
+export interface LiveActuarial {
+  state: LoadState;
+  onRetry?: () => void;
+  entities: SetupEntity[];
+  entityId: string | null;
+  onEntity: (id: string | null) => void;
+  data: ActuarialView | null;
+  can: { census: boolean; journal: boolean };
+  onCensus: (asOf: string, standard: Standard) => Promise<unknown>;
+  onDownload: (fileId: string, name: string) => Promise<unknown>;
+  onRecord: (x: { asOf: string; standard: Standard; kind: 'gratuity' | 'leave'; closing: string; censusId?: string }, report: File | null) => Promise<unknown>;
+  onPost: (id: string) => Promise<unknown>;
+}
+
+const STANDARDS = [
+  { value: 'IND_AS_19' as const, label: 'Ind AS 19' },
+  { value: 'AS_15' as const, label: 'AS 15' },
+];
+const stdText = (s: string) => STANDARDS.find((x) => x.value === s)?.label ?? s;
+type Valuation = ActuarialView['valuations'][number];
+
+export function LiveActuarialScreen({ live }: { live: LiveActuarial }) {
+  const { toast } = useToast();
+  const { busy, error, run } = useRun();
+  const [step, setStep] = useState('census');
+  const [asOf, setAsOf] = useState<Date | null>(null);
+  const [standard, setStandard] = useState<Standard>('IND_AS_19');
+  const [rec, setRec] = useState<{ kind: 'gratuity' | 'leave'; standard: Standard; asOf: Date | null; closing: number | null; census: string | null }>({ kind: 'gratuity', standard: 'IND_AS_19', asOf: null, closing: null, census: null });
+  const [report, setReport] = useState<File | null>(null);
+  const [uploadKey, setUploadKey] = useState(0);
+  const [journal, setJournal] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [finishNote, setFinishNote] = useState<string | null>(null);
+  const censusCheck = useTooEarly(asOf ? [] : [{ fieldId: 'ac-asof', message: 'Choose the date the census is as at.' }]);
+  const recordCheck = useTooEarly([
+    ...(rec.asOf ? [] : [{ fieldId: 'rv-asof', message: 'Choose the valuation date.' }]),
+    ...(rec.closing == null ? [{ fieldId: 'rv-closing', message: 'Enter the closing obligation from the report.' }] : []),
+  ]);
+  const d = live.data;
+  const entity = live.entities.find((x) => x.id === live.entityId)?.name;
+  const censuses = d?.censuses ?? [];
+  // The latest figure of each obligation that is recorded but not posted yet: what the journal books.
+  const latest = (k: 'gratuity' | 'leave') => d?.valuations.filter((v) => v.kind === k).sort((a, b) => b.valuedOn.localeCompare(a.valuedOn))[0];
+  const current = [latest('gratuity'), latest('leave')].filter((v): v is Valuation => !!v);
+  const toPost = current.filter((v) => v.status === 'recorded');
+  const postable = toPost.filter((v) => !v.madeByMe);
+  const total = postable.reduce((a, v) => a + Number(v.delta), 0);
+  const cell = (k: 'gratuity' | 'leave', f: (v: Valuation) => string) => {
+    const v = toPost.find((x) => x.kind === k);
+    return v ? money(f(v)) : '—';
+  };
+
+  const finish = () => {
+    setFinishNote(null);
+    if (!live.can.journal) return setFinishNote('Only a finance approver posts the provision journal.');
+    if (!toPost.length) return setFinishNote(current.length ? 'Every recorded figure is already posted.' : 'Record the actuary’s figures first.');
+    if (!postable.length) return setFinishNote('You recorded these figures, so someone else posts the journal.');
+    setConfirming(true);
+  };
+
+  const steps = [
+    {
+      id: 'census',
+      title: 'Census',
+      description: censuses[0] ? `Latest as at ${dateText(censuses[0].asOf)}` : 'Not made yet',
+      status: censuses.length ? ('done' as const) : undefined,
+      content: (
+        <div className="yx-pay-stack">
+          {censuses.length ? (
+            <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Census versions">
+              <table className="yx-pay-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Version</th>
+                    <th scope="col">As at</th>
+                    <th scope="col" data-num>
+                      Employees
+                    </th>
+                    <th scope="col">Standard</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">
+                      <span className="yx-visually-hidden">Download</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {censuses.map((c, i) => (
+                    <tr key={c.id}>
+                      <th scope="row" style={{ whiteSpace: 'nowrap' }}>
+                        Version {censuses.length - i}
+                      </th>
+                      <td style={{ whiteSpace: 'nowrap' }}>{dateText(c.asOf)}</td>
+                      <td data-num>{c.rows}</td>
+                      <td>{stdText(c.standard)}</td>
+                      <td>{i === 0 ? <Badge tone="success">Current</Badge> : <Badge>Replaced</Badge>}</td>
+                      <td>
+                        <Button size="sm" icon={Download} aria-label={`Download version ${censuses.length - i} census as XLSX`} loading={busy === c.id} onClick={() => void run(c.id, () => live.onDownload(c.fileId, `actuarial-census-${c.asOf}.xlsx`))}>
+                          XLSX
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState compact title="No census yet" description="Make one as at the valuation date and send it to the actuary." />
+          )}
+          {live.can.census && (
+            <section className="yx-pay-panel" aria-label="Make a census">
+              <SectionTitle>Make a census</SectionTitle>
+              <FieldRow>
+                <FormField id="ac-asof" label="As at" required error={censusCheck.errorOf('ac-asof')}>
+                  <DatePicker id="ac-asof" value={asOf} onChange={setAsOf} />
+                </FormField>
+                <FormField label="Standard">
+                  <Segment label="Standard" value={standard} onChange={setStandard} options={STANDARDS} />
+                </FormField>
+              </FieldRow>
+              <div className="yx-pay-row">
+                <Button
+                  variant="primary"
+                  loading={busy === 'census'}
+                  onClick={() => {
+                    if (censusCheck.stop()) return;
+                    void run('census', async () => {
+                      await live.onCensus(isoDay(asOf!), standard);
+                      censusCheck.reset();
+                      toast({ tone: 'success', title: `Census made as at ${dateText(isoDay(asOf!))}.` });
+                    });
+                  }}
+                >
+                  Make census
+                </Button>
+              </div>
+            </section>
+          )}
+          <p className="yx-pay-note">Columns: employee ID, date of birth, gender, joining date, service, wage for gratuity (basic + DA), encashable leave by type, the year&apos;s exits with payouts. Restricted: payroll and finance only.</p>
+        </div>
+      ),
+    },
+    {
+      id: 'valuation',
+      title: 'Valuation',
+      description: "Actuary's report and figures",
+      content: (
+        <div className="yx-pay-stack">
+          {live.can.journal && (
+            <section className="yx-pay-panel" aria-label="Record the actuary's figures">
+              <SectionTitle>Record the actuary&apos;s figures</SectionTitle>
+              <FileUpload
+                key={uploadKey}
+                upload={async () => {}}
+                accept={['.pdf']}
+                multiple={false}
+                onItemsChange={(items) => setReport(items.find((i) => i.status === 'done')?.file ?? null)}
+              />
+              <FieldRow>
+                <FormField label="Obligation">
+                  <Segment
+                    label="Obligation"
+                    value={rec.kind}
+                    onChange={(kind) => setRec({ ...rec, kind })}
+                    options={[
+                      { value: 'gratuity', label: 'Gratuity' },
+                      { value: 'leave', label: 'Leave encashment' },
+                    ]}
+                  />
+                </FormField>
+                <FormField label="Valuation standard">
+                  <Segment label="Valuation standard" value={rec.standard} onChange={(s) => setRec({ ...rec, standard: s })} options={STANDARDS} />
+                </FormField>
+              </FieldRow>
+              <FieldRow>
+                <FormField id="rv-asof" label="As at" required error={recordCheck.errorOf('rv-asof')}>
+                  <DatePicker id="rv-asof" value={rec.asOf} onChange={(x) => setRec({ ...rec, asOf: x })} />
+                </FormField>
+                <FormField id="rv-closing" label="Closing obligation" required error={recordCheck.errorOf('rv-closing')}>
+                  <CurrencyField allowPaise value={rec.closing} onChange={(closing) => setRec({ ...rec, closing })} />
+                </FormField>
+                {censuses.length > 0 && (
+                  <FormField label="From the census" optional>
+                    <Select value={rec.census} onChange={(census) => setRec({ ...rec, census })} clearable placeholder="Choose a census" options={censuses.map((c) => ({ value: c.id, label: `As at ${dateText(c.asOf)}` }))} />
+                  </FormField>
+                )}
+              </FieldRow>
+              <div className="yx-pay-row">
+                <Button
+                  variant="primary"
+                  loading={busy === 'record'}
+                  onClick={() => {
+                    if (recordCheck.stop()) return;
+                    void run('record', async () => {
+                      await live.onRecord({ asOf: isoDay(rec.asOf!), standard: rec.standard, kind: rec.kind, closing: String(rec.closing), ...(rec.census ? { censusId: rec.census } : {}) }, report);
+                      recordCheck.reset();
+                      setRec({ ...rec, asOf: null, closing: null });
+                      setReport(null);
+                      setUploadKey((k) => k + 1);
+                      toast({ tone: 'success', title: `${rec.kind === 'gratuity' ? 'Gratuity' : 'Leave'} figures recorded. Someone else posts the journal.` });
+                    });
+                  }}
+                >
+                  Record figures
+                </Button>
+              </div>
+            </section>
+          )}
+          {d?.valuations.length ? (
+            <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Valuations">
+              <table className="yx-pay-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Figure</th>
+                    <th scope="col" data-num>
+                      Opening obligation
+                    </th>
+                    <th scope="col" data-num>
+                      Closing obligation
+                    </th>
+                    <th scope="col" data-num>
+                      Change
+                    </th>
+                    <th scope="col">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {d.valuations.map((v) => (
+                    <tr key={v.id}>
+                      <th scope="row">
+                        {v.kind === 'gratuity' ? 'Gratuity' : 'Leave'} · {dateText(v.valuedOn)} · {stdText(v.standard)}
+                      </th>
+                      <td data-num>{money(v.opening)}</td>
+                      <td data-num>{money(v.closing)}</td>
+                      <td data-num>{money(v.delta)}</td>
+                      <td>{v.status === 'posted' ? <Badge tone="success">Posted</Badge> : <Badge tone="warning">To post</Badge>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState compact title="No valuations recorded" description="Record the closing obligation from the actuary's report." />
+          )}
+          <p className="yx-pay-note">The journal books the change since the last posted figure.</p>
+        </div>
+      ),
+    },
+    {
+      id: 'post',
+      title: 'Provision posting',
+      description: 'Journal to accounting',
+      content: (
+        <div className="yx-pay-stack">
+          {finishNote && (
+            <InlineAlert tone="warning" title="Nothing posted">
+              {finishNote}
+            </InlineAlert>
+          )}
+          {current.length > 0 && !toPost.length && <InlineAlert tone="success" title="Journal posted">The latest gratuity and leave figures are in the books.</InlineAlert>}
+          {toPost.length > 0 && (
+            <>
+              <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Provision against the valuation">
+                <table className="yx-pay-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Figure</th>
+                      <th scope="col" data-num>
+                        Gratuity
+                      </th>
+                      <th scope="col" data-num>
+                        Leave
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <th scope="row">Provision in books</th>
+                      <td data-num>{cell('gratuity', (v) => v.opening)}</td>
+                      <td data-num>{cell('leave', (v) => v.opening)}</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Closing obligation</th>
+                      <td data-num>{cell('gratuity', (v) => v.closing)}</td>
+                      <td data-num>{cell('leave', (v) => v.closing)}</td>
+                    </tr>
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <th scope="row">Journal: debit expense</th>
+                      <td data-num>{cell('gratuity', (v) => v.delta)}</td>
+                      <td data-num>{cell('leave', (v) => v.delta)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+              {toPost.some((v) => v.madeByMe) && <p className="yx-pay-note">You recorded {postable.length ? 'some of these figures' : 'these figures'}, so someone else posts {postable.length ? 'those' : 'the journal'}.</p>}
+              <div className="yx-pay-row">
+                <Button icon={FileText} aria-expanded={journal} onClick={() => setJournal(!journal)}>
+                  {journal ? 'Hide journal' : 'Preview journal'}
+                </Button>
+              </div>
+              {journal && (
+                <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Provision journal preview">
+                  <table className="yx-pay-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Account</th>
+                        <th scope="col" data-num>
+                          Debit
+                        </th>
+                        <th scope="col" data-num>
+                          Credit
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {toPost.flatMap((v) =>
+                        v.journal.map((j, i) => (
+                          <tr key={`${v.id}-${i}`}>
+                            <th scope="row">{j.account}</th>
+                            <td data-num>{j.debit ? money(j.debit) : ''}</td>
+                            <td data-num>{j.credit ? money(j.credit) : ''}</td>
+                          </tr>
+                        )),
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <LivePage title="Actuarial valuation" description={entity ? `Gratuity and leave liability for ${entity}` : 'Gratuity and leave liability: the census for the actuary and the provision journal.'} state={live.state} onRetry={live.onRetry} what="actuarial valuations" grantedBy="your payroll admin">
+      <div className="yx-pay-row">
+        <EntityPicker entities={live.entities} value={live.entityId} onChange={live.onEntity} />
+      </div>
+      <Failed error={error} />
+      {!live.entityId ? (
+        <EmptyState title="No legal entity chosen" description="The census and valuation are kept per legal entity. Choose one above." />
+      ) : !d ? (
+        <StateBlock state="loading">{null}</StateBlock>
+      ) : (
+        <Stepper title="Actuarial valuation" current={step} onCurrentChange={setStep} anyOrder finishLabel="Post provision journal" finishing={busy === 'post'} onFinish={finish} steps={steps} />
+      )}
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title={`Post ${formatINR(total)} provision journal to accounting?`}
+        consequence={postable.map((v) => `${v.kind === 'gratuity' ? 'Gratuity' : 'Leave'} ${money(v.delta)}, dated ${dateText(v.valuedOn)}`).join(' · ')}
+        confirmLabel="Post journal"
+        onConfirm={async () => {
+          for (const v of postable) await live.onPost(v.id);
+          toast({ tone: 'success', title: `Provision journal of ${formatINR(total)} posted to accounting.` });
+        }}
+      />
+    </LivePage>
+  );
+}

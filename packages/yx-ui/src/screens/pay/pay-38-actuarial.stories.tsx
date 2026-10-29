@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { ActuarialScreen } from './offcycle';
 
-const meta: Meta<typeof ActuarialScreen> = { title: 'Screens/Pay/PAY-38 · Actuarial census and valuation', component: ActuarialScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof ActuarialScreen> = { title: 'Screens/Pay/PAY-38 · Actuarial census and valuation', component: ActuarialScreen, render: (args) => <ActuarialScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof ActuarialScreen>;
 
@@ -11,3 +11,6 @@ export const Uploaded: S = { name: 'Valuation uploaded', args: { step: 'valuatio
 export const Posting: S = { name: 'Provision posting', args: { step: 'post', uploaded: true } };
 export const JournalPreview: S = { name: 'Provision posting · journal preview', args: { step: 'post', uploaded: true, journalOpen: true } };
 export const Posted: S = { name: 'Journal posted', args: { step: 'post', uploaded: true, posted: true } };
+export const Loading: S = { name: 'Loading', args: { state: 'loading' } };
+export const ErrorState: S = { name: 'Error', args: { state: 'error' } };
+export const NoAccess: S = { name: 'No access', args: { state: 'no-access' } };

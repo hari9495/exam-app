@@ -4,23 +4,27 @@ import { useState } from 'react';
 import { BellRing, Download, Eye, FileText, Send } from 'lucide-react';
 import { Button, Link } from '../../components/button';
 import { Badge } from '../../components/display';
-import { InlineAlert } from '../../components/feedback';
+import { EmptyState, InlineAlert, NoAccessState } from '../../components/feedback';
+import { Drawer } from '../../components/drawer';
 import { FieldRow, FormField } from '../../components/field';
 import { CurrencyField, NumberField, TextArea, TextField } from '../../components/inputs';
 import { RadioGroup } from '../../components/choice';
 import { FileUpload } from '../../components/upload';
-import { DescriptionList, PageHeader } from '../../components/shell';
+import { DescriptionList, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { Stepper, useNarrow, type StepperStep } from '../../components/stepper';
 import { ConfirmDialog } from '../../components/overlay';
 import { DataTable, type TableColumn } from '../../components/table';
 import { formatDate, formatINR } from '../../lib/format';
-import { FactRow, PayFrame, SectionTitle } from './pay-kit';
+import { FactRow, PayFrame, SectionTitle, StateBlock, type ViewState } from './pay-kit';
+import { LiveActuarialScreen, LiveArrearsScreen, type LiveActuarial, type LiveArrears } from './offcycle-live';
 import { EMPLOYEES, TODAY } from '../_kit/data';
 import { d, FIN_APPROVER, PAYROLL_ADMIN, RUN_PICKS, RUN_ROWS } from './pay-data';
 import { EXIT_CASES, SCHEDULED } from '../people/people-data';
 
 const storyHref = (id: string) => `/?path=/story/${id}`;
 import { arrearsTotal, gratuity, retrenchmentCompensation, statutoryBonus, type ArrearMonth } from './pay-logic';
+import { LiveSettlementArrears } from './settlement-live';
+import type { LiveSpecialPay } from './special-pay-live';
 
 /* ================================================================== PAY-11 Off-cycle run */
 
@@ -345,8 +349,78 @@ const sourceBadge = (m: ArrearMonth) =>
     <Badge tone="warning">Missing: confirm base</Badge>
   );
 
+/** Worksheets on the PAY-28 list (sample): the settlement's category A workers, one still missing a month's base. */
+const SAMPLE_SHEETS = EMPLOYEES.filter((e) => e.location === 'Hosur plant' && e.department === 'Operations' && !e.role.startsWith('Head'))
+  .slice(0, 4)
+  .map((e, i) => ({ id: `ws-${i}`, person: `${e.name} · ${e.code}`, months: SETTLEMENT.span, owed: 7_500 + i * 300, status: i === 0 ? 'Base needed' : i === 3 ? 'Approved' : 'Ready to approve' }));
+const SHEET_TONE: Record<string, 'warning' | 'info' | 'success' | 'neutral'> = { 'Base needed': 'warning', 'Ready to approve': 'info', Approved: 'success', Cancelled: 'neutral' };
+type SampleSheet = (typeof SAMPLE_SHEETS)[number];
+
+/**
+ * PAY-28 · Arrears and recoveries (/yx/payroll/arrears). `view="list"`: the worksheets, each opening its base
+ * confirmation in a drawer; the Recoveries tab holds PAY-19 (court orders, carry-forwards, overpayments).
+ * `live`: the page's real worksheets and overpayments (offcycle-live.tsx).
+ */
+export function ArrearsBaseScreen({ live, view, state = 'ready', openId, ...story }: { confirmed?: boolean; embedded?: boolean; computed?: boolean; /** The worksheet list (the page) instead of one worksheet's base step. */ view?: 'list'; state?: ViewState | 'no-access'; /** A worksheet open in its drawer (list view). */ openId?: string; /** The live app's /yx/payroll/arrears. */ live?: LiveArrears }) {
+  if (live) return <LiveArrearsScreen live={live} />;
+  if (view === 'list') return <SampleArrearsList state={state} openId={openId} />;
+  return <SampleArrearsBase {...story} />;
+}
+
+function SampleArrearsList({ state, openId }: { state: ViewState | 'no-access'; openId?: string }) {
+  const [open, setOpen] = useState<SampleSheet | null>(SAMPLE_SHEETS.find((w) => w.id === openId) ?? null);
+  const cols: TableColumn<SampleSheet>[] = [
+    { key: 'person', header: 'Person', value: (w) => w.person },
+    { key: 'months', header: 'Months', value: (w) => w.months },
+    { key: 'owed', header: 'Owed to the employee', type: 'money', value: (w) => w.owed },
+    { key: 'status', header: 'Status', type: 'status', value: (w) => w.status, statusTone: (v) => SHEET_TONE[String(v)] ?? 'neutral' },
+  ];
+  return (
+    <PayFrame page="loans">
+      <PageHeader title="Arrears and recoveries" description="Arrears worksheets (corrected minus as paid, per month and component), court orders and overpayments." />
+      {state === 'no-access' ? (
+        <NoAccessState grantedBy="your payroll admin" what="arrears" />
+      ) : (
+        <StateBlock state={state} rows={6} empty={<EmptyState title="No arrears worksheets" description="A past-dated pay change or a wage settlement makes one." />}>
+          <Tabs defaultValue="arrears">
+            <TabsList aria-label="Arrears and recoveries">
+              <TabsTrigger value="arrears" count={SAMPLE_SHEETS.length}>
+                Arrears worksheets
+              </TabsTrigger>
+              <TabsTrigger value="recoveries">Recoveries</TabsTrigger>
+            </TabsList>
+            <TabsContent value="arrears">
+              <DataTable
+                label="Arrears worksheets"
+                columns={cols}
+                rows={SAMPLE_SHEETS}
+                getRowId={(w) => w.id}
+                onRowClick={setOpen}
+                activeRowId={open?.id}
+                rowButtons={(w) => (
+                  <Button size="sm" onClick={() => setOpen(w)}>
+                    Open
+                  </Button>
+                )}
+              />
+            </TabsContent>
+            <TabsContent value="recoveries">
+              <InlineAlert tone="info" title="Court orders, carry-forwards and overpayments">
+                These are the PAY-19 tabs. An overpayment is recovered only by a plan the employee acknowledges; a write-off needs approval with a reason.
+              </InlineAlert>
+            </TabsContent>
+          </Tabs>
+        </StateBlock>
+      )}
+      <Drawer open={!!open} onOpenChange={(o) => !o && setOpen(null)} title={`${open?.person ?? ''} · arrears`} subtitle={`Union settlement · ${SETTLEMENT.span}`} size="lg" footer={<Button onClick={() => setOpen(null)}>Close</Button>}>
+        {open && <SampleArrearsBase embedded confirmed={open.status !== 'Base needed'} computed={open.status !== 'Base needed'} />}
+      </Drawer>
+    </PayFrame>
+  );
+}
+
 /** PAY-28 · Arrears worksheet base-confirmation step (months before go-live use imported as-paid lines). */
-export function ArrearsBaseScreen({ confirmed = false, embedded = false, computed: computedAtStart = false }: { confirmed?: boolean; embedded?: boolean; /** Start with the arrears computed (stories). */ computed?: boolean }) {
+function SampleArrearsBase({ confirmed = false, embedded = false, computed: computedAtStart = false }: { confirmed?: boolean; embedded?: boolean; /** Start with the arrears computed (stories). */ computed?: boolean }) {
   const narrow = useNarrow();
   const [base, setBase] = useState<number | null>(confirmed ? 25_000 : null);
   const [reason, setReason] = useState(confirmed ? 'Old payroll register for August 2026, page 14' : '');
@@ -511,7 +585,11 @@ export function ArrearsBaseScreen({ confirmed = false, embedded = false, compute
 /* ================================================================== PAY-37 Wage-settlement arrears */
 
 /** PAY-37 · Wage-settlement arrears: settlement → categories → affected employees → arrears worksheet. */
-export function SettlementArrearsScreen({ step = 'categories' }: { step?: string }) {
+export function SettlementArrearsScreen({ live, ...story }: { step?: string; /** The live app's /yx/payroll/special-pay Settlements tab. */ live?: LiveSpecialPay }) {
+  return live ? <LiveSettlementArrears live={live} /> : <SampleSettlementArrears {...story} />;
+}
+
+function SampleSettlementArrears({ step = 'categories' }: { step?: string }) {
   const cats = [
     { cat: 'Category A · machine operators', increase: 1_500, count: 42 },
     { cat: 'Category B · helpers and loaders', increase: 1_200, count: 58 },
@@ -603,7 +681,12 @@ const dayNo = (x: Date) => Date.UTC(x.getFullYear(), x.getMonth(), x.getDate()) 
 type Figure = { g: number | null; l: number | null };
 
 /** PAY-38 · Actuarial census export and valuation upload (census versions, valuation results, provision posting). */
-export function ActuarialScreen({ step = 'census', uploaded = false, journalOpen = false, posted: postedAtStart = false }: { step?: string; uploaded?: boolean; journalOpen?: boolean; /** Start with the journal posted (stories). */ posted?: boolean }) {
+/** PAY-38 · Actuarial census and valuation. `live`: the page's real censuses and valuations (offcycle-live.tsx). */
+export function ActuarialScreen({ live, ...story }: { step?: string; uploaded?: boolean; journalOpen?: boolean; posted?: boolean; state?: Exclude<ViewState, 'empty'> | 'no-access'; /** The live app's /yx/payroll/actuarial. */ live?: LiveActuarial }) {
+  return live ? <LiveActuarialScreen live={live} /> : <SampleActuarial {...story} />;
+}
+
+function SampleActuarial({ step = 'census', uploaded = false, journalOpen = false, posted: postedAtStart = false, state = 'ready' }: { step?: string; uploaded?: boolean; journalOpen?: boolean; /** Start with the journal posted (stories). */ posted?: boolean; state?: Exclude<ViewState, 'empty'> | 'no-access' }) {
   const narrow = useNarrow();
   const g = gratuity(48_000, 80);
   const [cur, setCur] = useState(step);
@@ -647,6 +730,13 @@ export function ActuarialScreen({ step = 'census', uploaded = false, journalOpen
       </Badge>
     );
   const asAt = formatDate(new Date(2026, 2, 31));
+  if (state !== 'ready')
+    return (
+      <PayFrame page="reports" persona="fin">
+        <PageHeader title="Actuarial valuation" description="Gratuity and leave liability for Kaveri Foods Pvt Ltd" />
+        {state === 'no-access' ? <NoAccessState grantedBy="your payroll admin" what="actuarial valuations" /> : <StateBlock state={state} rows={6}>{null}</StateBlock>}
+      </PayFrame>
+    );
   return (
     <PayFrame page="reports" persona="fin">
       <PageHeader

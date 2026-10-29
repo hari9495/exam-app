@@ -14,21 +14,12 @@ export { PortalSignInScreen, type LiveOtpSignIn } from '../../portals/portals-ki
 // the component library, salary templates and compensation.
 export * from './types-5b';
 export {
-  PaySetupScreen,
-  PayGroupsScreen,
-  PayslipLayoutLiveScreen,
   StatutoryRulesScreen,
-  PayImportsScreen,
   EntityPicker,
   parseCsv,
   statuteText,
-  type PaySetupScreenProps,
-  type PayGroupsScreenProps,
-  type PayslipLayoutLiveProps,
   type StatutoryRulesScreenProps,
-  type PayImportsScreenProps,
 } from './setup';
-export { ComponentLibraryLiveScreen, TemplatesLiveScreen, CompensationLiveScreen, BreakupTable, type ComponentLibraryLiveProps, type TemplatesLiveProps, type CompensationLiveProps, type SplitSuggestion } from './structures';
 // Batch 5j (PAY-10.01 … 10.04): runs, inputs, the employee's payslips and the compliance screens, wired.
 export * from './types-5j';
 // Payroll operations (PAY-10.09 … 10.16): payments, loans, payslip queries, tax declarations and proofs, registers,
@@ -52,14 +43,13 @@ export {
 export { PayslipLines, ReasonDrawer, RunStatusBadge, rupees, runName } from './runs';
 export { PersonPicker, type PersonHit, type LopRow, type HoldRow } from './inputs';
 export { MyPayslipsScreen, MyTaxScreen, payDiff, type MyPayslipsScreenProps, type MyTaxScreenProps, type MyTaxWorkspace, type RegimeComparison, type PayDiffRow } from './employee';
-export { StatutoryHubScreen, ArrearsScreen, type StatutoryHubScreenProps, type ArrearsScreenProps } from './compliance';
-export { GoLiveScreen, type GoLiveScreenProps, type GoLiveReadiness, type ReadinessItem, type ParallelRunView } from './golive';
+export { StatutoryHubScreen, type StatutoryHubScreenProps } from './compliance';
 // Batch 5h (PAY-8.01 … 8.04): consultants, their invoices and payments, Form 140 / 131 and the consultant's own page.
 export * from './types-5h';
 export { ConsultantsScreen, ConsultantTaxScreen, ConsultantPortalScreen, InvoiceStatusBadge, type ConsultantsScreenProps, type ConsultantTaxScreenProps, type ConsultantPortalScreenProps } from './consultants';
 // Batch 5i (PAY-9.01 … 9.12): special pay, earned wage access, equity, actuarial valuation and country packs.
 export * from './types-5i';
-export { SpecialPayScreen, MyIncentivesScreen, EwaAdminScreen, MyEwaScreen, EquityScreen, MyEquityScreen, ActuarialScreen, CountryPacksScreen, type SpecialPayScreenProps, type EwaAdminScreenProps, type EquityScreenProps, type ActuarialScreenProps, type CountryPacksScreenProps } from './special';
+export { MyIncentivesScreen, EwaAdminScreen, MyEwaScreen, EquityScreen, MyEquityScreen, type EwaAdminScreenProps, type EquityScreenProps } from './special';
 export { RunWorkspaceScreen } from '../payroll-run';
 export type { LiveRunWorkspaceData } from '../run-workspace-live';
 export { PayrollHomeScreen, CoverageMonitorPanel } from '../payroll-run';
@@ -72,3 +62,12 @@ export type { LiveInputs, LiveQueries, LiveRecoveriesData, LiveCourtOrder, Court
 // PAY-10 · Payments and files (design with `live`): a run's payments, every payroll file and the payment modes.
 export { PaymentsScreen, type PaymentsProps } from '../payroll-inputs';
 export { PaymentModesPanel, type LivePayments, type LiveRunPayments, type LivePayrollFiles, type LivePaymentModes, type RunJournal, type JournalFormat, type PaymentModeRequest } from '../payments-live';
+export { PayrollSetupScreen } from '../comp-setup';
+export type { LivePayrollSetup, SetupStep, SetupLink, GroupInput, GoLiveReadiness, ReadinessItem, ParallelRunView } from '../setup-live';
+export { CompensationScreen, TemplateBuilderScreen, ComponentLibraryScreen, PayslipLayoutScreen } from '../comp-setup';
+export { type LiveCompensation, type LiveTemplates, type LiveComponentLibrary, type LivePayslipLayout, type SplitSuggestion } from '../comp-setup-live';
+export { ArrearsBaseScreen, ActuarialScreen } from '../offcycle';
+export type { LiveArrears, LiveActuarial } from '../offcycle-live';
+export { CountryPacksScreen, type LiveCountryPacks, type W9Input, type WpsIdsInput } from '../country-packs';
+export { SpecialPayHomeScreen } from '../special-pay';
+export type { LiveSpecialPay, PieceOutput, TipPoolView, UnionRemittance } from '../special-pay-live';

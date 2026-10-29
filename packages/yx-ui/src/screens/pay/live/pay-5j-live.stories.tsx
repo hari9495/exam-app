@@ -1,9 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { ArrearsScreen, StatutoryHubScreen } from './compliance';
+import { StatutoryHubScreen } from './compliance';
 import { FnfCalculator } from '../../people/exits';
 import { MyPayslipsScreen, MyTaxScreen } from './employee';
-import { GoLiveScreen } from './golive';
-import { DETAIL, FILINGS, FNF, GO_LIVE, HUB, MY_PAYSLIPS, PARALLEL, PEOPLE, PREVIOUS, RECOVERIES, RETURNS, RUN, WORKSHEETS } from './fixtures-5j';
+import { DETAIL, FILINGS, FNF, HUB, MY_PAYSLIPS, PEOPLE, PREVIOUS, RETURNS, RUN } from './fixtures-5j';
 
 // Batch 5j wired payroll screens with sample data (the affordance guard opens these in light and dark).
 const ok = async () => ({}) as never;
@@ -67,28 +66,6 @@ export const Fnf: S = {
     <FnfCalculator
       today={new Date(2026, 9, 19)}
       live={{ state: 'ready', onRetry: () => undefined, settlements: FNF, nameOf, can: { manage: true, waiveNotice: true, prepare: true }, onOpenRun: () => undefined, onRecalculate: ok, onSubmit: ok, onHold: ok, onAdd: ok, onWaiveNotice: ok, onSecondRun: async () => ({ runId: 'r10' }) }}
-    />
-  ),
-};
-export const Arrears: S = {
-  name: 'PAY-28 · Arrears and recoveries',
-  render: () => <ArrearsScreen state="ready" worksheets={WORKSHEETS} recoveries={RECOVERIES} nameOf={nameOf} me="u-me" can={{ approve: true, writeOff: true }} onApprove={ok} onCancel={ok} onConfirmBase={ok} onWriteOff={ok} />,
-};
-export const GoLive: S = {
-  name: 'PAY-10.07 · Go-live readiness and parallel run',
-  render: () => (
-    <GoLiveScreen
-      state="ready"
-      entities={[{ id: 'e1', name: 'Kaveri Foods Pvt Ltd', shortName: 'KFPL', keys: [] }]}
-      entityId="e1"
-      onEntity={() => undefined}
-      readiness={GO_LIVE}
-      runs={[RUN]}
-      parallel={PARALLEL}
-      me="u-me"
-      can={{ upload: true, decide: true }}
-      onUpload={ok}
-      onDecide={ok}
     />
   ),
 };
