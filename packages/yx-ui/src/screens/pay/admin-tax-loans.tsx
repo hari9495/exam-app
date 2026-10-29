@@ -1,5 +1,5 @@
 // Payroll admin: PAY-17 loans & advances, PAY-23 proof verification queue, PAY-27 EWA admin, PAY-25 payroll reports.
-import { useMemo, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Download, Pause, Play, Plus, Send } from 'lucide-react';
 import { Button, Link } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
@@ -25,15 +25,16 @@ import { DocumentViewer } from '../../components/document';
 import { DescriptionList, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { FilterBar } from '../../components/filters';
-import { BarChart, LineChart } from '../../components/charts';
 import { useNarrow } from '../../components/stepper';
 import { formatDate, formatINR } from '../../lib/format';
 import { matchesFilter, type FilterValue } from '../../lib/table';
 import { DesktopFrame, SCREEN_RAIL } from '../_kit/frames';
 import { EMPLOYEES, HR_ADMIN, ME, PAY_CALENDAR, TODAY } from '../_kit/data';
 import { Segment } from '../people/people-kit';
+import { ReportsView, PAY_REPORTS, type LivePayrollReports, type PayReport, type PayReportKind, type ReportFilters, type ReportOptions } from './reports-live';
 import { FactRow, PayFrame, PaySettingsFrame, SectionTitle, StateBlock, type PayPersona, type ViewState } from './pay-kit';
 import {
+  ENTITY_KA,
   ENTITY_TN,
   EWA_DRAWS,
   HOLDS,
@@ -977,26 +978,9 @@ function SampleEwaAdmin({ tab = 'draws', persona = 'pa', state = 'ready', partne
 
 /* ================================================================== PAY-25 Payroll reports */
 
-export const REPORTS = [
-  { id: 'register', name: 'Salary register', desc: 'Every payslip line by employee for a run' },
-  { id: 'recon', name: 'Payroll reconciliation', desc: 'This run vs last: headcount, gross, deductions, net' },
-  { id: 'arrears', name: 'Arrears', desc: 'Arrears paid in this run, by month and cause' },
-  { id: 'ytd', name: 'Year to date', desc: 'YTD earnings, deductions and tax per employee' },
-  { id: 'ctc', name: 'CTC report', desc: 'Cost to company by department' },
-  { id: 'variance', name: 'Variance', desc: 'Employees whose net pay changed by more than 10% from August' },
-  { id: 'bank', name: 'Bank advice', desc: 'Payment list for the bank' },
-  { id: 'holds', name: 'Hold ageing', desc: 'Held salaries by age and reason' },
-  { id: 'gratuity', name: 'Gratuity provision', desc: 'Monthly provision and liability' },
-  { id: 'loans', name: 'Loan ledger', desc: 'Loans, EMIs and balances' },
-] as const;
-export type ReportId = (typeof REPORTS)[number]['id'];
+export type ReportId = PayReportKind;
 export type ReportPeriod = 'sep' | 'aug';
 export type ReportGroup = 'ka' | 'tn';
-const PERIOD_LABEL: Record<ReportPeriod, string> = { sep: 'September 2026', aug: 'August 2026' };
-const GROUP_LABEL: Record<ReportGroup, string> = { ka: RUN.payGroup, tn: `Monthly · ${ENTITY_TN.name}` };
-const GROUP_SHORT: Record<ReportGroup, string> = { ka: 'Karnataka', tn: 'Tamil Nadu' };
-/** Reports built from payslip lines; the others are Karnataka run totals. */
-const LINE_REPORTS: ReportId[] = ['register', 'variance', 'bank', 'gratuity', 'arrears', 'ytd'];
 
 interface MonthPay {
   gross: number;
@@ -1170,9 +1154,6 @@ function monthsOf(l: PayLine): (MonthPay | null)[] {
   });
 }
 
-const signedPct = (p: number) => `${p > 0 ? '+' : p < 0 ? '−' : ''}${Math.abs(p).toFixed(1)}%`;
-const signedINR = (v: number) => `${v < 0 ? '−' : '+'}${formatINR(Math.abs(v))}`;
-const mask = (account: string) => `••••${account.slice(-4)}`;
 const serviceMonths = (joined: Date) => (TODAY.getFullYear() - joined.getFullYear()) * 12 + TODAY.getMonth() - joined.getMonth() - (TODAY.getDate() < joined.getDate() ? 1 : 0);
 /** Gratuity wage: basic (no DA here) plus the Code add-back that lifts wages to half of pay. */
 const gratuityWage = (l: PayLine) => codeWageAddBack(l.basic, l.regular.gross).codeWage;
@@ -1184,339 +1165,229 @@ const AGE_BUCKETS = [
   { id: 'b3', label: 'Over 60 days', from: 61, to: Infinity },
 ];
 
-/** PAY-25 · Payroll reports (T7): filters, table, chart, export, "View as table". */
+/* The design's sample data for the one reports view (reports-live.tsx): the September Karnataka run and Divya's Tamil
+   Nadu payslip, in the shape the API sends. August is locked here, so its reports are empty. */
+const SEP = '2026-09';
+const AUG = '2026-08';
+const s2 = (x: number) => x.toFixed(2);
+const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const SAMPLE_PAGE = (total: number) => ({ total, page: 1, pageSize: 200 });
+const BLR = 'blr';
+const CHE = 'che';
+const SAMPLE_OPTIONS: ReportOptions = {
+  entities: [
+    { id: ENTITY_KA.id, name: ENTITY_KA.name },
+    { id: ENTITY_TN.id, name: ENTITY_TN.name },
+  ],
+  departments: [...new Set([...RUN_ROWS.map((r) => r.department), ME.department])].sort().map((d) => ({ id: d, name: d })),
+  locations: [
+    { id: BLR, name: 'Bengaluru', legalEntityId: ENTITY_KA.id },
+    { id: CHE, name: 'Chennai', legalEntityId: ENTITY_TN.id },
+  ],
+  months: [SEP, AUG],
+  today: isoDay(TODAY),
+};
+/** The register's columns: one per pay part, as the API sends one per component. */
+const REGISTER_PARTS: [string, string, string, (l: PayLine) => number][] = [
+  ['basic', 'Basic', 'earning', (l) => l.basic],
+  ['hra', 'HRA', 'earning', (l) => l.hra],
+  ['special', 'Special and other', 'earning', (l) => l.special],
+  ['one_time', 'One-time and arrears', 'earning', (l) => l.oneTime],
+  ['pf_employee', 'Provident fund', 'deduction', (l) => l.pf],
+  ['esi_employee', 'ESI', 'deduction', (l) => l.esi],
+  ['pt', 'Professional tax', 'deduction', (l) => l.pt],
+  ['tds', 'TDS', 'deduction', (l) => l.tds],
+  ['lop', 'Unpaid leave', 'deduction', (l) => l.lop],
+  ['loans', 'Loan EMIs', 'deduction', (l) => l.loans],
+];
+const employerOf = (l: PayLine) => RUN_ROWS.find((r) => r.id === l.id)?.employerCost ?? l.gross;
+const monthOf = (short: string) => `2026-${String(MON.indexOf(short) + 1).padStart(2, '0')}`;
+const deptOfCode = (code: string) => RUN_ROWS.find((r) => r.code === code)?.department ?? '';
+
+function sampleReport(kind: ReportId, f: ReportFilters): PayReport {
+  const to = f.to ?? SEP;
+  const inSep = (f.from ?? to) <= SEP && to >= SEP;
+  const deptOk = (d: string) => !f.departmentId || d === f.departmentId;
+  const lines = !inSep ? [] : [...(f.legalEntityId !== ENTITY_TN.id && f.locationId !== CHE ? KA_LINES : []), ...(f.legalEntityId !== ENTITY_KA.id && f.locationId !== BLR ? [DIVYA_LINE] : [])].filter((l) => deptOk(l.department));
+  // The run totals, holds and loans are the Karnataka run's.
+  const ka = inSep && f.legalEntityId !== ENTITY_TN.id && f.locationId !== CHE;
+  const who = (l: PayLine) => ({ id: l.id, employeeId: l.id, name: l.name, code: l.code });
+  const sum = (xs: PayLine[], g: (l: PayLine) => number) => s2(sumBy(xs, g));
+  switch (kind) {
+    case 'register':
+      return {
+        kind,
+        components: REGISTER_PARTS.map(([code, name, k]) => ({ code, name, kind: k })),
+        rows: lines.map((l) => ({ ...who(l), department: l.department, month: SEP, runType: 'regular', gross: s2(l.gross), deductions: s2(l.deductions), net: s2(l.net), employerCost: s2(employerOf(l)), lines: Object.fromEntries(REGISTER_PARTS.map(([code, , , get]) => [code, s2(get(l))])) })),
+        totals: { gross: sum(lines, (l) => l.gross), deductions: sum(lines, (l) => l.deductions), net: sum(lines, (l) => l.net), employerCost: sum(lines, employerOf), lines: Object.fromEntries(REGISTER_PARTS.map(([code, , , get]) => [code, sum(lines, get)])) },
+        ...SAMPLE_PAGE(lines.length),
+      };
+    case 'recon': {
+      // August's totals are the whole Karnataka run's, so the sample has no department split.
+      const ls = ka && !f.departmentId ? KA_LINES : [];
+      const aug = RUN_HISTORY.find((h) => h.month === 'Aug')!;
+      const sepGross = sumBy(ls, (l) => l.gross);
+      const sepNet = sumBy(ls, (l) => l.net);
+      const joiners = ls.filter((l) => l.joined > new Date(2026, 7, 31));
+      const joinGross = sumBy(joiners, (l) => l.regular.gross);
+      const row = (item: string, label: string, a: number, b: number, isMoney = true) => ({ item, label, previous: isMoney ? s2(a) : String(a), current: isMoney ? s2(b) : String(b), difference: isMoney ? s2(b - a) : String(b - a) });
+      return {
+        kind,
+        month: SEP,
+        previous: AUG,
+        rows: [
+          row('employees', 'Employees', aug.employees, ls.length, false),
+          row('gross', 'Gross', aug.gross, sepGross),
+          row('deductions', 'Deductions', aug.gross - aug.net, sumBy(ls, (l) => l.deductions)),
+          row('net', 'Net', aug.net, sepNet),
+          row('employerCost', 'Cost to company', RUN.lastEmployerCost, ls.length ? RUN.employerCost : 0),
+        ],
+        bridge: {
+          joiners: { count: joiners.length, gross: s2(joinGross) },
+          leavers: { count: 0, gross: '0.00' },
+          changed: { count: ls.filter((l) => l.oneTime > 0 || l.lop > 0 || l.prevNet !== l.net).length, gross: s2(sepGross - aug.gross - joinGross) },
+        },
+        trend: RUN_HISTORY.map((h) => ({ month: monthOf(h.month), gross: s2(h.month === 'Sep' ? sepGross : h.gross), net: s2(h.month === 'Sep' ? sepNet : h.net) })),
+      };
+    }
+    case 'variance': {
+      const all = lines.map((l) => ({ l, v: variance(l.net, l.prevNet) }));
+      const flagged = all.filter((x) => x.v.flagged);
+      return {
+        kind,
+        month: SEP,
+        threshold: '10',
+        buckets: { below: all.filter((x) => x.v.pct < -10).length, down: all.filter((x) => x.v.pct >= -10 && x.v.pct < 0).length, up: all.filter((x) => x.v.pct >= 0 && x.v.pct <= 10).length, above: all.filter((x) => x.v.pct > 10).length },
+        rows: flagged.map(({ l, v }) => ({ ...who(l), previous: s2(l.prevNet), current: s2(l.net), difference: s2(l.net - l.prevNet), change: v.pct.toFixed(1), cause: l.reason ?? null })),
+        ...SAMPLE_PAGE(flagged.length),
+      };
+    }
+    case 'ctc': {
+      const rs = ka ? RUN_ROWS.filter((r) => r.code !== ME.code && deptOk(r.department)) : [];
+      const depts = [...new Set(rs.map((r) => r.department))].sort();
+      const rows = depts.map((d) => {
+        const xs = rs.filter((r) => r.department === d);
+        return { id: d, department: d, people: xs.length, gross: s2(sumBy(xs, (r) => r.gross)), employer: s2(sumBy(xs, (r) => r.employerCost - r.gross)), ctc: s2(sumBy(xs, (r) => r.employerCost)) };
+      });
+      return { kind, rows, totals: { gross: s2(sumBy(rs, (r) => r.gross)), employer: s2(sumBy(rs, (r) => r.employerCost - r.gross)), ctc: s2(sumBy(rs, (r) => r.employerCost)) } };
+    }
+    case 'arrears': {
+      const rows = (ka ? ARREARS : []).filter((a) => deptOk(deptOfCode(a.code))).map((a) => ({ id: a.id, employeeId: a.id, name: a.name, code: a.code, fromMonth: AUG, toMonth: AUG, payMonth: SEP, reason: a.cause, amount: s2(a.amount), employerCost: '0.00', runStatus: 'approved' }));
+      return { kind, rows, totals: { amount: s2(sumBy(rows, (r) => Number(r.amount))), employerCost: '0.00' }, ...SAMPLE_PAGE(rows.length) };
+    }
+    case 'ytd': {
+      const rows = lines.map((l) => {
+        const ms = monthsOf(l).filter((m): m is MonthPay => m != null);
+        return { ...who(l), months: ms.length, gross: s2(sumBy(ms, (m) => m.gross)), tds: s2(sumBy(ms, (m) => m.tds)), deductions: s2(sumBy(ms, (m) => m.ded)), net: s2(sumBy(ms, (m) => m.net)) };
+      });
+      const perMonth = FY_MONTHS.map((_, i) => lines.map((l) => monthsOf(l)[i]).filter((m): m is MonthPay => m != null));
+      let [g, n] = [0, 0];
+      const trend = lines.length ? perMonth.map((ms, i) => ({ month: monthOf(FY_MONTHS[i]), gross: s2((g += sumBy(ms, (m) => m.gross))), net: s2((n += sumBy(ms, (m) => m.net))) })) : [];
+      const tot = (k: 'gross' | 'tds' | 'deductions' | 'net') => s2(sumBy(rows, (r) => Number(r[k])));
+      return { kind, yearStart: '2026-04', rows, totals: { gross: tot('gross'), tds: tot('tds'), deductions: tot('deductions'), net: tot('net') }, trend, ...SAMPLE_PAGE(rows.length) };
+    }
+    case 'bank': {
+      const paid = lines.filter((l) => l.mode === 'Bank' && l.status !== 'Held' && l.status !== 'Failed');
+      return { kind, rows: paid.map((l) => ({ ...who(l), month: SEP, ifsc: l.ifsc, account: l.account.slice(-4), amount: s2(l.net), status: 'pending' })), totals: { count: paid.length, amount: sum(paid, (l) => l.net) }, left: lines.length - paid.length, ...SAMPLE_PAGE(paid.length) };
+    }
+    case 'holds': {
+      // Holds are as on today: the month does not apply.
+      const ka2 = f.legalEntityId !== ENTITY_TN.id && f.locationId !== CHE;
+      const open = (ka2 ? HOLDS : []).filter((h) => h.status !== 'Released' && deptOk(deptOfCode(h.code)));
+      const reasons = [...new Set(open.map((h) => h.reason))];
+      return {
+        kind,
+        asOn: SAMPLE_OPTIONS.today,
+        buckets: AGE_BUCKETS.map((b) => {
+          const hs = open.filter((h) => h.ageDays >= b.from && h.ageDays <= b.to);
+          return { id: b.id, count: hs.length, amount: s2(sumBy(hs, (h) => h.amount)) };
+        }),
+        reasons: reasons.map((reason) => ({ reason, count: open.filter((h) => h.reason === reason).length, amount: s2(sumBy(open.filter((h) => h.reason === reason), (h) => h.amount)) })),
+        rows: open.map((h) => ({ id: h.id, employeeId: h.id, name: h.employee, code: h.code, reason: h.reason, since: isoDay(h.since), ageDays: h.ageDays, amount: s2(h.amount) })),
+        totals: { count: open.length, amount: s2(sumBy(open, (h) => h.amount)) },
+        ...SAMPLE_PAGE(open.length),
+      };
+    }
+    case 'gratuity': {
+      const rows = lines.map((l) => ({ ...who(l), joined: isoDay(l.joined), serviceMonths: serviceMonths(l.joined), eligible: gratuity(gratuityWage(l), serviceMonths(l.joined)).eligible, thisMonth: s2(Math.round((gratuityWage(l) * 15) / 26 / 12)), toDate: s2(gratuityLiability(l)) }));
+      return { kind, month: SEP, minYears: 5, rows, totals: { thisMonth: s2(sumBy(rows, (r) => Number(r.thisMonth))), toDate: s2(sumBy(rows, (r) => Number(r.toDate))) }, ...SAMPLE_PAGE(rows.length) };
+    }
+    case 'loans': {
+      const rows = (ka ? LEDGER_LOANS : [])
+        .filter((l) => l.status !== 'Waiting for approval' && deptOk(deptOfCode(l.code)))
+        .map((l) => {
+          const r = runRow(l);
+          const recovered = r?.status === 'due' ? r.emi : 0;
+          const closing = r ? r.balance : l.outstanding;
+          return { id: l.id, employeeId: l.id, name: l.employee, code: l.code, type: l.type, principal: s2(l.principal), emi: s2(l.emi), opening: s2(closing + recovered), recovered: s2(recovered), closing: s2(closing), status: l.status };
+        });
+      const tot = (k: 'principal' | 'opening' | 'recovered' | 'closing') => s2(sumBy(rows, (r) => Number(r[k])));
+      return { kind, rows, totals: { principal: tot('principal'), opening: tot('opening'), recovered: tot('recovered'), closing: tot('closing') }, ...SAMPLE_PAGE(rows.length) };
+    }
+  }
+}
+
+/** PAY-25 · Payroll reports (T7): the report picker, filters on one row, the report's chart and table, CSV export. The app passes `live`. */
 export function PayrollReportsScreen({
+  live,
   report = 'register',
   persona = 'pa',
   state = 'ready',
-  period: initialPeriod = 'sep',
-  group: initialGroup = 'ka',
+  period = 'sep',
+  group = 'ka',
 }: {
+  /** The live app's /yx/payroll/reports. */
+  live?: LivePayrollReports;
   report?: ReportId;
   persona?: PayPersona;
   state?: ViewState;
   period?: ReportPeriod;
   group?: ReportGroup;
 }) {
-  const narrow = useNarrow();
-  const [current, setCurrent] = useState<ReportId>(report);
-  const [period, setPeriod] = useState<ReportPeriod>(initialPeriod);
-  const [group, setGroup] = useState<ReportGroup>(initialGroup);
-  const [notice, setNotice] = useState<string | null>(null);
+  if (live) return live.state === 'no-access' ? <ReportsNoAccess live /> : <ReportsView live={live} />;
+  return (
+    <PayFrame page="reports" persona={persona}>
+      <SampleReports key={`${report}${state}${period}${group}`} report={report} state={state} period={period} group={group} />
+    </PayFrame>
+  );
+}
+
+function SampleReports({ report, state, period, group }: { report: ReportId; state: ViewState; period: ReportPeriod; group: ReportGroup }) {
+  const [kind, setKind] = useState<ReportId>(report);
+  const [filters, setFilters] = useState<ReportFilters>({ legalEntityId: group === 'tn' ? ENTITY_TN.id : ENTITY_KA.id, from: null, to: period === 'aug' ? AUG : SEP, departmentId: null, locationId: null });
   const [scheduling, setScheduling] = useState(false);
   const [frequency, setFrequency] = useState<'run' | 'month'>('run');
-  const meta = REPORTS.find((r) => r.id === current)!;
-  const depts = ['Engineering', 'Operations', 'Finance', 'People', 'Sales', 'Quality'];
-  const byDept = useMemo(() => depts.map((dep) => RUN_ROWS.filter((r) => r.department === dep)), []); // eslint-disable-line react-hooks/exhaustive-deps
-  // Only the September run is loaded here; August is locked and its registers are archived with the August run.
-  const lines = period !== 'sep' ? [] : group === 'ka' ? KA_LINES : [DIVYA_LINE];
-  const hasData = state === 'ready' && lines.length > 0 && (group === 'ka' || LINE_REPORTS.includes(current));
-  const fileName = (ext: string) => `${meta.name} · ${PERIOD_LABEL[period]} · ${GROUP_LABEL[group]}.${ext}`;
-  const download = (ext: string) => setNotice(`${fileName(ext)} downloaded.`);
-  const clearFilters = () => {
-    setPeriod('sep');
-    setGroup('ka');
-  };
-  const body = () => {
-    if (state !== 'ready') return <StateBlock state={state} rows={8}>{null}</StateBlock>;
-    if (!hasData)
-      return (
-        <EmptyState
-          title="No data for these filters."
-          description={`Filters: ${meta.name} · ${PERIOD_LABEL[period]} · ${GROUP_LABEL[group]}. ${
-            period === 'aug' ? 'August 2026 is locked; its reports are archived with the August run.' : `${meta.name} is built from the Karnataka run, so ${GROUP_SHORT[group]} has none.`
-          }`}
-          action={<Button onClick={clearFilters}>Clear filters</Button>}
-        />
-      );
-    switch (current) {
-      case 'register':
-        return (
-          <DataTable
-            label="Salary register"
-            columns={[
-              { key: 'name', header: 'Employee', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: r.code }), width: 190 },
-              { key: 'dept', header: 'Department', value: (r) => r.department, groupable: true, width: 130, optional: true },
-              { key: 'days', header: 'Days', type: 'number', value: (r) => r.days, width: 80, optional: true },
-              { key: 'basic', header: 'Basic', type: 'money', value: (r) => r.basic, total: 'sum', width: 110, optional: true },
-              { key: 'hra', header: 'HRA', type: 'money', value: (r) => r.hra, total: 'sum', width: 100, optional: true },
-              { key: 'spl', header: 'Special and other', type: 'money', value: (r) => r.special, total: 'sum', width: 120, optional: true },
-              { key: 'one', header: 'One-time and arrears', type: 'money', value: (r) => r.oneTime, total: 'sum', width: 130, optional: true },
-              { key: 'gross', header: 'Gross', type: 'money', value: (r) => r.gross, total: 'sum', width: 110 },
-              { key: 'stat', header: 'PF, ESI, PT', type: 'money', value: (r) => r.pf + r.esi + r.pt, total: 'sum', width: 110 },
-              { key: 'tds', header: 'TDS', type: 'money', value: (r) => r.tds, total: 'sum', width: 100 },
-              { key: 'lop', header: 'LOP', type: 'money', value: (r) => r.lop, total: 'sum', width: 90 },
-              { key: 'loans', header: 'Loan EMIs', type: 'money', value: (r) => r.loans, total: 'sum', width: 100 },
-              { key: 'ded', header: 'Deductions', type: 'money', value: (r) => r.deductions, total: 'sum', width: 120 },
-              { key: 'net', header: 'Net', type: 'money', value: (r) => r.net, total: 'sum', width: 120 },
-            ]}
-            rows={lines}
-            getRowId={(r) => r.id}
-            pageSize={25}
-            onExport={(f) => download(f)}
-          />
-        );
-      case 'variance': {
-        const pcts = lines.map((l) => variance(l.net, l.prevNet).pct);
-        const buckets = [pcts.filter((p) => p < -10).length, pcts.filter((p) => p >= -10 && p < 0).length, pcts.filter((p) => p >= 0 && p <= 10).length, pcts.filter((p) => p > 10).length];
-        return (
-          <div className="yx-pay-stack">
-            <BarChart title="Employees by net change" description="September vs August" categories={['Below −10%', '−10% to 0', '0 to +10%', 'Above +10%']} series={[{ name: 'Employees', values: buckets }]} xLabel="Change" height={200} />
-            <DataTable
-              label="Net changes above 10%"
-              columns={[
-                { key: 'name', header: 'Employee', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: r.code }), width: 220 },
-                { key: 'aug', header: 'August', type: 'money', value: (r) => r.prevNet, width: 110, optional: true },
-                { key: 'sep', header: 'September', type: 'money', value: (r) => r.net, width: 110 },
-                { key: 'pct', header: 'Change', type: 'number', value: (r) => variance(r.net, r.prevNet).pct, render: (r) => signedPct(variance(r.net, r.prevNet).pct), width: 90 },
-                { key: 'cause', header: 'Cause', value: (r) => r.reason ?? 'Not explained yet', width: 280 },
-              ]}
-              rows={lines.filter((l) => variance(l.net, l.prevNet).flagged)}
-              getRowId={(r) => r.id}
-              cardSummary
-              empty={<EmptyState title="No net change above 10%." />}
-              onExport={(f) => download(f)}
-            />
-          </div>
-        );
-      }
-      case 'recon': {
-        const aug = RUN_HISTORY.find((h) => h.month === 'Aug')!;
-        const sep = RUN_HISTORY.find((h) => h.month === 'Sep')!;
-        const sepGross = sumBy(lines, (l) => l.gross);
-        const sepNet = sumBy(lines, (l) => l.net);
-        const recon = [
-          { id: 'emp', item: 'Employees', a: aug.employees, b: sep.employees, money: false },
-          { id: 'gross', item: 'Gross', a: aug.gross, b: sepGross, money: true },
-          { id: 'ded', item: 'Deductions', a: aug.gross - aug.net, b: sumBy(lines, (l) => l.deductions), money: true },
-          { id: 'net', item: 'Net', a: aug.net, b: sepNet, money: true },
-        ];
-        const fmt = (v: number, money: boolean) => (money ? formatINR(v) : String(v));
-        // Gross change, part by part: joiners since the August run, one-time pay and arrears, and the rest.
-        const joiners = lines.filter((l) => l.joined > new Date(2026, 7, 31));
-        const joinGross = sumBy(joiners, (l) => l.regular.gross);
-        const oneTime = sumBy(lines, (l) => l.oneTime);
-        const diff = sepGross - aug.gross;
-        const other = diff - joinGross - oneTime;
-        return (
-          <div className="yx-pay-stack">
-            <LineChart
-              title="Gross and net by run"
-              categories={RUN_HISTORY.map((h) => h.month)}
-              series={[
-                { name: 'Gross', values: RUN_HISTORY.map((h) => (h.month === 'Sep' ? sepGross : h.gross)) },
-                { name: 'Net', values: RUN_HISTORY.map((h) => (h.month === 'Sep' ? sepNet : h.net)) },
-              ]}
-              money
-              xLabel="Month"
-              height={200}
-            />
-            <DataTable
-              label="August vs September"
-              columns={[
-                { key: 'item', header: 'Item', value: (r) => r.item, width: 140 },
-                { key: 'a', header: 'August', type: 'number', value: (r) => r.a, render: (r) => fmt(r.a, r.money), width: 140 },
-                { key: 'b', header: 'September', type: 'number', value: (r) => r.b, render: (r) => fmt(r.b, r.money), width: 140 },
-                { key: 'd', header: 'Difference', type: 'number', value: (r) => r.b - r.a, render: (r) => `${r.b - r.a >= 0 ? '+' : '−'}${fmt(Math.abs(r.b - r.a), r.money)}`, width: 140 },
-              ]}
-              rows={recon}
-              getRowId={(r) => r.id}
-            />
-            <p className="yx-pay-muted">
-              Gross change {signedINR(diff)}:{joiners.length > 0 && ` ${joiners.length} joiner${joiners.length === 1 ? '' : 's'} since the August run (${signedINR(joinGross)}),`} one-time pay and arrears ({signedINR(oneTime)}), {joiners.length === 0 && sep.employees > aug.employees ? 'the new joiner, ' : ''}revisions, increments and other changes ({signedINR(other)}).
-            </p>
-          </div>
-        );
-      }
-      case 'ytd': {
-        const ytd = lines.map((l) => {
-          const ms = monthsOf(l).filter((m): m is MonthPay => m != null);
-          return { id: l.id, name: l.name, code: l.code, months: ms.length, gross: sumBy(ms, (m) => m.gross), ded: sumBy(ms, (m) => m.ded), tds: sumBy(ms, (m) => m.tds), net: sumBy(ms, (m) => m.net) };
-        });
-        const perMonth = FY_MONTHS.map((_, i) => lines.map((l) => monthsOf(l)[i]).filter((m): m is MonthPay => m != null));
-        const cumulative = (f: (m: MonthPay) => number) => perMonth.map((ms) => sumBy(ms, f)).map((_, i, all) => all.slice(0, i + 1).reduce((a, v) => a + v, 0));
-        return (
-          <div className="yx-pay-stack">
-            <LineChart title="Year to date, cumulative gross and net" categories={FY_MONTHS} series={[{ name: 'Gross', values: cumulative((m) => m.gross) }, { name: 'Net', values: cumulative((m) => m.net) }]} money xLabel="Month" height={200} />
-            <p className="yx-pay-muted">April to September 2026. Earlier months use each person's regular monthly pay; September is this run, with one-time pay and unpaid leave.</p>
-            <DataTable
-              label="Year to date, April to September 2026"
-              columns={[
-                { key: 'name', header: 'Employee', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: r.code }), width: 220 },
-                { key: 'months', header: 'Months paid', type: 'number', value: (r) => r.months, width: 110, optional: true },
-                { key: 'gross', header: 'Gross', type: 'money', value: (r) => r.gross, total: 'sum', width: 130 },
-                { key: 'tds', header: 'TDS', type: 'money', value: (r) => r.tds, total: 'sum', width: 120 },
-                { key: 'ded', header: 'All deductions', type: 'money', value: (r) => r.ded, total: 'sum', width: 130 },
-                { key: 'net', header: 'Net', type: 'money', value: (r) => r.net, total: 'sum', width: 130 },
-              ]}
-              rows={ytd}
-              getRowId={(r) => r.id}
-              pageSize={25}
-              cardSummary
-              onExport={(f) => download(f)}
-            />
-          </div>
-        );
-      }
-      case 'ctc':
-        return (
-          <BarChart
-            title="Cost to company by department, September"
-            categories={depts}
-            series={[{ name: 'Gross', values: byDept.map((rs) => rs.reduce((a, r) => a + r.gross, 0)) }, { name: 'Employer contributions', values: byDept.map((rs) => rs.reduce((a, r) => a + (r.employerCost - r.gross), 0)) }]}
-            stacked
-            money
-            xLabel="Department"
-            groupSizes={byDept.map((rs) => rs.length)}
-            minGroupSize={3}
-            height={240}
-          />
-        );
-      case 'holds': {
-        const open = HOLDS.filter((h) => h.status !== 'Released');
-        const reasons = [...new Set(open.map((h) => h.reason))];
-        const ages = AGE_BUCKETS.map((b) => {
-          const hs = open.filter((h) => h.ageDays >= b.from && h.ageDays <= b.to);
-          return { id: b.id, label: b.label, count: hs.length, amount: sumBy(hs, (h) => h.amount) };
-        });
-        return (
-          <div className="yx-pay-stack">
-            <DataTable
-              label="Open holds by age"
-              columns={[
-                { key: 'age', header: 'Age', value: (r) => r.label, width: 160 },
-                { key: 'count', header: 'Salaries held', type: 'number', value: (r) => r.count, total: 'sum', width: 130 },
-                { key: 'amount', header: 'Amount held', type: 'money', value: (r) => r.amount, total: 'sum', width: 140 },
-              ]}
-              rows={ages}
-              getRowId={(r) => r.id}
-              rowNoun={['age band', 'age bands']}
-              cardSummary
-            />
-            <BarChart title="Open holds by reason" description="Amount held" categories={reasons} series={[{ name: 'Amount held', values: reasons.map((label) => sumBy(open.filter((h) => h.reason === label), (h) => h.amount)) }]} orientation="horizontal" money xLabel="Reason" />
-          </div>
-        );
-      }
-      case 'gratuity':
-        return (
-          <div className="yx-pay-stack">
-            <p className="yx-pay-muted">Gratuity wage is basic plus the Code add-back that brings wages to half of pay. The liability builds from the joining date at 15 days' wages (wage ÷ 26) a year and becomes payable after 5 years' service.</p>
-            <DataTable
-              label="Gratuity provision"
-              columns={[
-                { key: 'name', header: 'Employee', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: r.code }), width: 220 },
-                { key: 'svc', header: 'Service', type: 'number', value: (r) => serviceMonths(r.joined), render: (r) => `${Math.floor(serviceMonths(r.joined) / 12)} y ${serviceMonths(r.joined) % 12} m`, width: 100 },
-                { key: 'wage', header: 'Gratuity wage', type: 'money', value: (r) => gratuityWage(r), width: 130, optional: true },
-                { key: 'elig', header: 'Payable now', value: (r) => (gratuity(gratuityWage(r), serviceMonths(r.joined)).eligible ? 'Yes' : 'Not yet'), width: 110 },
-                { key: 'liab', header: 'Liability to date', type: 'money', value: (r) => gratuityLiability(r), total: 'sum', width: 140 },
-                { key: 'prov', header: 'September provision', type: 'money', value: (r) => Math.round((gratuityWage(r) * 15) / 26 / 12), total: 'sum', width: 140 },
-              ]}
-              rows={lines}
-              getRowId={(r) => r.id}
-              pageSize={25}
-              cardSummary
-              onExport={(f) => download(f)}
-            />
-          </div>
-        );
-      case 'loans':
-        return <LoansLedger />;
-      case 'arrears':
-        return (
-          <DataTable
-            label="Arrears"
-            columns={[
-              { key: 'name', header: 'Employee', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: r.code }), width: 220 },
-              { key: 'month', header: 'Month', value: (r) => r.month, width: 100 },
-              { key: 'cause', header: 'Cause', value: (r) => r.cause, width: 280 },
-              { key: 'amount', header: 'Arrears', type: 'money', value: (r) => r.amount, total: 'sum', width: 120 },
-            ]}
-            rows={group === 'ka' ? ARREARS : []}
-            getRowId={(r) => r.id}
-            empty={<EmptyState title="No arrears in this run." />}
-            onExport={(f) => download(f)}
-          />
-        );
-      case 'bank': {
-        const paid = lines.filter((l) => l.mode === 'Bank' && l.status !== 'Held' && l.status !== 'Failed');
-        const left = lines.length - paid.length;
-        return (
-          <div className="yx-pay-stack">
-            <p className="yx-pay-muted">
-              {paid.length} payments · {formatINR(paid.reduce((a, l) => a + l.net, 0))} in the bank file.
-              {left > 0 && ` ${left} not in the file: held, failed or paid by cash or cheque.`}
-            </p>
-            <DataTable
-              label="Bank advice"
-              columns={[
-                { key: 'name', header: 'Employee', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: r.code }), width: 220 },
-                { key: 'bank', header: 'Bank', value: (r) => r.bank, width: 200, optional: true },
-                { key: 'ifsc', header: 'IFSC', type: 'id', value: (r) => r.ifsc, width: 120, optional: true },
-                { key: 'acct', header: 'Account', type: 'id', value: (r) => mask(r.account), width: 110 },
-                { key: 'net', header: 'Amount', type: 'money', value: (r) => r.net, total: 'sum', width: 120 },
-              ]}
-              rows={paid}
-              getRowId={(r) => r.id}
-              pageSize={25}
-              onExport={(f) => download(f)}
-            />
-          </div>
-        );
-      }
-    }
-  };
-  const periodOptions = (['sep', 'aug'] as const).map((p) => ({ value: p, label: PERIOD_LABEL[p] }));
-  const groupOptions = (['ka', 'tn'] as const).map((g) => ({ value: g, label: narrow ? GROUP_LABEL[g] : GROUP_SHORT[g] }));
+  const { toast } = useToast();
+  const narrow = useNarrow();
+  const meta = PAY_REPORTS.find((r) => r.id === kind)!;
+  const entity = SAMPLE_OPTIONS.entities.find((e) => e.id === filters.legalEntityId)?.name ?? 'all legal entities';
   const frequencyOptions = [
     { value: 'run' as const, label: 'When each run is locked' },
     { value: 'month' as const, label: 'On the 1st of every month' },
   ];
   return (
-    <PayFrame page="reports" persona={persona}>
-      <PageHeader
-        title="Payroll reports"
-        description="Figures follow your access: payroll and finance see all employees in their scope."
-        actions={
-          <>
-            <Button onClick={() => setScheduling(true)}>Schedule</Button>
-            {!hasData && state === 'ready' && <span className="yx-pay-muted">Nothing to export for these filters</span>}
-            <Button icon={Download} disabled={!hasData} onClick={() => download('xlsx')}>
-              Export XLSX
-            </Button>
-          </>
-        }
+    <>
+      <ReportsView
+        live={{
+          state: 'ready',
+          options: SAMPLE_OPTIONS,
+          kind,
+          onKind: setKind,
+          filters,
+          onFilters: setFilters,
+          page: 1,
+          onPage: () => undefined,
+          report: state === 'ready' ? sampleReport(kind, filters) : null,
+          reportState: state === 'error' ? 'error' : state === 'ready' ? 'ready' : 'loading',
+          onExport: async () => undefined,
+          schedule: <Button onClick={() => setScheduling(true)}>Schedule</Button>,
+        }}
       />
-      <div className="yx-pay-row">
-        <div style={{ flex: narrow ? '1 1 100%' : '0 1 calc(var(--yx-space-16) * 5)', minWidth: 0 }}>
-          <Select aria-label="Report" value={current} onChange={(v) => v && setCurrent(v as ReportId)} options={REPORTS.map((r) => ({ value: r.id, label: r.name, description: r.desc }))} />
-        </div>
-        {narrow ? (
-          <>
-            <div style={{ flex: '1 1 100%', minWidth: 0 }}>
-              <Select aria-label="Period" value={period} onChange={(v) => v && setPeriod(v as ReportPeriod)} options={periodOptions} />
-            </div>
-            <div style={{ flex: '1 1 100%', minWidth: 0 }}>
-              <Select aria-label="Pay group" value={group} onChange={(v) => v && setGroup(v as ReportGroup)} options={groupOptions} />
-            </div>
-          </>
-        ) : (
-          <>
-            <Segment label="Period" value={period} onChange={setPeriod} options={periodOptions} />
-            <Segment label="Pay group" value={group} onChange={setGroup} options={groupOptions} />
-          </>
-        )}
-      </div>
-      {notice && <InlineAlert tone="success">{notice}</InlineAlert>}
-      <section className="yx-pay-stack" aria-label={meta.name}>
-        <SectionTitle>{meta.name}</SectionTitle>
-        <p className="yx-pay-muted">{meta.desc}</p>
-        {body()}
-      </section>
       <Dialog
         open={scheduling}
         onOpenChange={setScheduling}
         title={`Schedule ${meta.name.toLowerCase()}?`}
-        description={`Emailed to ${PAYROLL_ADMIN.name} as XLSX for ${GROUP_LABEL[group]}.`}
+        description={`Emailed to ${PAYROLL_ADMIN.name} as CSV for ${entity}.`}
         footer={
           <>
             <Button onClick={() => setScheduling(false)}>Cancel</Button>
@@ -1524,7 +1395,7 @@ export function PayrollReportsScreen({
               variant="primary"
               onClick={() => {
                 setScheduling(false);
-                setNotice(`${meta.name} scheduled: emailed to ${PAYROLL_ADMIN.name} ${frequency === 'run' ? 'when each run is locked' : 'on the 1st of every month'}.`);
+                toast({ tone: 'success', title: `${meta.name} scheduled: emailed to ${PAYROLL_ADMIN.name} ${frequency === 'run' ? 'when each run is locked' : 'on the 1st of every month'}.` });
               }}
             >
               Schedule report
@@ -1536,50 +1407,36 @@ export function PayrollReportsScreen({
           {narrow ? <Select value={frequency} onChange={(v) => v && setFrequency(v as 'run' | 'month')} options={frequencyOptions} /> : <Segment label="Send" value={frequency} onChange={setFrequency} options={frequencyOptions} />}
         </FormField>
       </Dialog>
-    </PayFrame>
+    </>
   );
 }
 
-/** September loan ledger: opening = balance after the August EMI; closing follows each loan's schedule. Loans not yet disbursed are left out. */
-function LoansLedger() {
-  const rows = LEDGER_LOANS.filter((l) => l.status !== 'Waiting for approval').map((l) => {
-    const r = runRow(l);
-    return { ...l, opening: l.outstanding, sepEmi: r?.status === 'due' ? r.emi : 0, interest: r ? r.interest : 0, closing: r ? r.balance : l.outstanding };
-  });
-  return (
-    <DataTable
-      label="Loan ledger"
-      columns={[
-        { key: 'employee', header: 'Employee', type: 'person', value: (r) => r.employee, person: (r) => ({ name: r.employee, secondary: r.code }), width: 220 },
-        { key: 'type', header: 'Type', value: (r) => r.type, width: 150, optional: true },
-        { key: 'open', header: 'Opening', type: 'money', value: (r) => r.opening, total: 'sum', width: 120 },
-        { key: 'int', header: 'Interest', type: 'money', value: (r) => r.interest, total: 'sum', width: 110, optional: true },
-        { key: 'rec', header: 'September EMI', type: 'money', value: (r) => r.sepEmi, total: 'sum', width: 130 },
-        { key: 'close', header: 'Closing', type: 'money', value: (r) => r.closing, total: 'sum', width: 120 },
-      ]}
-      rows={rows}
-      getRowId={(r) => r.id}
-      cardSummary
-    />
-  );
-}
-
-/** Report page when a person has no payroll scope (P02): shown instead of figures, with only the page they opened in the panel. */
-export function ReportsNoAccess() {
+/** Report page when a person has no payroll scope (P02): shown instead of figures. The app passes `live` (its own shell around it). */
+export function ReportsNoAccess({ live }: { live?: boolean }) {
   const [sent, setSent] = useState(false);
+  const body = (
+    <>
+      <PageHeader title="Payroll reports" />
+      {live ? (
+        <EmptyState title="You don't have access to payroll reports" description="Payroll reports need payroll access for a legal entity. Ask your payroll admin or a system admin to give it to you." />
+      ) : (
+        <EmptyState
+          title="You don't have access to payroll reports"
+          description={sent ? `Request sent to ${PAYROLL_ADMIN.name} on 29 Sep 2026. You'll get a notification when it's decided.` : `Ask ${PAYROLL_ADMIN.name}, your payroll admin, for access.`}
+          action={
+            <Button variant="primary" icon={Send} disabled={sent} onClick={() => setSent(true)}>
+              {sent ? 'Request sent' : 'Request access'}
+            </Button>
+          }
+        />
+      )}
+    </>
+  );
+  if (live) return <div className="yx-pay-stack">{body}</div>;
   const rail = SCREEN_RAIL.filter((r) => ['home', 'people', 'time', 'pay', 'compliance', 'performance', 'helpdesk', 'analytics', 'settings'].includes(r.id));
   return (
     <DesktopFrame area="pay" panelTitle="Pay" panel={[{ label: 'Pay', items: [{ label: 'Reports', active: true }] }]} railItems={rail} user={HR_ADMIN}>
-      <PageHeader title="Payroll reports" />
-      <EmptyState
-        title="You don't have access to payroll reports"
-        description={sent ? `Request sent to ${PAYROLL_ADMIN.name} on 29 Sep 2026. You'll get a notification when it's decided.` : `Ask ${PAYROLL_ADMIN.name}, your payroll admin, for access.`}
-        action={
-          <Button variant="primary" icon={Send} disabled={sent} onClick={() => setSent(true)}>
-            {sent ? 'Request sent' : 'Request access'}
-          </Button>
-        }
-      />
+      {body}
     </DesktopFrame>
   );
 }

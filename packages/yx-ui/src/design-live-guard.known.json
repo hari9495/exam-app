@@ -218,8 +218,6 @@
     "ops: WorkersScreen",
     "pay: FirstUse",
     "pay: GroupHealthScreen",
-    "pay: PayrollReportsScreen",
-    "pay: ReportsNoAccess",
     "pay: RunReadinessScreen",
     "people: AssetAcknowledgePhone",
     "people: BfsiPhone",

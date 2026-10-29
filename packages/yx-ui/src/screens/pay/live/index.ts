@@ -40,6 +40,8 @@ export { CompensationScreen, TemplateBuilderScreen, ComponentLibraryScreen, Pays
 export { type LiveCompensation, type LiveTemplates, type LiveComponentLibrary, type LivePayslipLayout, type SplitSuggestion, type CompensationHistoryItem, type SplitFreshness } from '../comp-setup-live';
 export { ArrearsBaseScreen, ActuarialScreen, BonusComputationScreen } from '../offcycle';
 export type { LiveArrears, LiveActuarial } from '../offcycle-live';
+// PAY-25 payroll reports (design with `live`).
+export type { LivePayrollReports, PayReport, PayReportKind, ReportFilters, ReportOptions } from '../reports-live';
 // PAY-24 statutory bonus (design with `live`).
 export type { LiveBonus, BonusOverview, BonusComputation, BonusRow, BonusRules, BonusYear, BonusChange, BonusRowChange } from '../bonus-live';
 export { CountryPacksScreen, type LiveCountryPacks, type W9Input, type WpsIdsInput } from '../country-packs';
@@ -78,7 +80,7 @@ export {
   type MyPayBand,
   type LiveMyPayDocuments,
 } from '../employee-pay';
-export { LoansScreen, ProofQueueScreen, EwaAdminScreen, type LiveLoans, type LiveProofQueue, type ProofStatusFilter, type Form12bRow, type LiveEwaAdmin } from '../admin-tax-loans';
+export { LoansScreen, ProofQueueScreen, EwaAdminScreen, PayrollReportsScreen, type LiveLoans, type LiveProofQueue, type ProofStatusFilter, type Form12bRow, type LiveEwaAdmin } from '../admin-tax-loans';
 // PAY-11 · Off-cycle run (design with `live`): a new off-cycle run, and an off-cycle run's page.
 export { OffCycleRunScreen } from '../offcycle';
 export type { LiveOffCycleRun } from '../offcycle-run-live';
