@@ -16,6 +16,16 @@ export class HubDto {
   month!: string;
 }
 
+/** Payroll home (PAY-01): the statutory dues falling in a month, optionally for one legal entity. */
+export class HomeDuesDto {
+  @Matches(MONTH)
+  month!: string;
+
+  @IsOptional()
+  @IsUUID()
+  legalEntityId?: string;
+}
+
 export class EntityDto {
   @IsUUID()
   entityId!: string;

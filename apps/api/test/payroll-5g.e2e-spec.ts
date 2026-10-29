@@ -581,4 +581,25 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     const bank = (await api('payAdmin', 'post', `/payroll/runs/${f.runId}/bank-files`).send({ debitAccount: '0050200012345678' }).expect(201)).body;
     expect(bank).toMatchObject({ rows: 2, total: done.net, excluded: [] });
   });
+  // PAY-01 "Due this month" (round 2): the statutory hubs of the month before and this month, in the person's scope.
+  it('Payroll home dues: statutory.filing.view only, own entities only, read only; refused without the key', async () => {
+    const [y, m] = month.split('-').map(Number);
+    const before = new Date(Date.UTC(y, m - 2, 1)).toISOString().slice(0, 7);
+    const mine = (await api('payAdmin', 'get', `/statutory/home-dues?month=${month}`).expect(200)).body as { entityId: string; month: string; cards: Record<string, unknown>[]; tds: { amount: string } }[];
+    const ours = mine.filter((d) => d.entityId === ids.entity);
+    expect(ours.map((d) => d.month).sort()).toEqual([before, month]);
+    const pf = ours.find((d) => d.month === month)!.cards.find((c) => c.statute === 'IN.PF')!;
+    expect(Number(pf.amount)).toBeGreaterThan(0);
+    // Internal ids never leave: the home links to the hub.
+    expect(pf).not.toHaveProperty('filingId');
+    expect(pf).not.toHaveProperty('verifyDueDate');
+    // One legal entity by the top bar; an unknown or another company's entity is empty, never someone else's data.
+    expect((await api('payAdmin', 'get', `/statutory/home-dues?month=${month}&legalEntityId=${ids.entity}`).expect(200)).body).toHaveLength(2);
+    expect((await api('payAdmin', 'get', `/statutory/home-dues?month=${month}&legalEntityId=${randomUUID()}`).expect(200)).body).toEqual([]);
+    const other = (await api('payAdminB', 'get', `/statutory/home-dues?month=${month}`).expect(200)).body as { entityId: string }[];
+    expect(other.some((d) => d.entityId === ids.entity)).toBe(false);
+    // Negative: no key, a bad month.
+    await api('emp1', 'get', `/statutory/home-dues?month=${month}`).expect(403);
+    await api('payAdmin', 'get', '/statutory/home-dues?month=2026-13').expect(400);
+  });
 });

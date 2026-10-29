@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
@@ -18,6 +18,7 @@ import {
   ConfirmDto5f,
   EntityDto,
   FilingDto,
+  HomeDuesDto,
   HubDto,
   PartADto,
   RegisterDto,
@@ -64,6 +65,22 @@ export class StatutoryController {
   @RequirePermissions('statutory.filing.view')
   hub(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: HubDto) {
     return this.filings.hub(ctx, this.user(req), q.entityId, q.month);
+  }
+
+  /**
+   * Payroll home (PAY-01 "Due this month"): PF, ESI, PT, LWF and TDS of the month before (they fall due in this month)
+   * and of this month, per legal entity in the person's statutory.filing.view scope. Read only; the same hub figures
+   * the finance home shows.
+   */
+  @Get('home-dues')
+  @RequirePermissions('statutory.filing.view')
+  async homeDues(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: HomeDuesDto) {
+    const [y, m] = q.month.split('-').map(Number);
+    const before = new Date(Date.UTC(y, m - 2, 1)).toISOString().slice(0, 7);
+    const dues = await this.filings.homeDues(ctx, this.user(req), [before, q.month], q.legalEntityId ?? null);
+    // Null: acting for someone else (the route's key is checked by the guard).
+    if (!dues) throw new ForbiddenException('You do not have access to statutory dues.');
+    return dues.map((d) => ({ entity: d.entity, entityId: d.entityId, month: d.month, today: d.today, cards: d.cards.map(({ filingId: _f, penaltyEstimate, verifyDueDate: _v, ...c }) => ({ ...c, penaltyEstimate })), tds: d.tds }));
   }
 
   // ------------------------------------------------------------------------------------------ filings
