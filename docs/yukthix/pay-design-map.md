@@ -96,6 +96,24 @@ Approvals; (4) "New settlement" drawer on PAY-37, design first; (5) fix the shar
 error shows is lost) with a guard test; (6) a payslip query is closed only after a reply; (7) builder 1 wires PAY-11
 (off-cycle and F&F run) on the run pages.
 
+
+**Founder answers, 30 Oct 2026 ("all OK" to all 30):** loans and tax: (1) loan interest is a company setting per loan
+type, not typed by employees; (2) a residential-status change waits for HR approval with the certificate (TRC, Form 10F);
+(3) after the regime cut-off, an "ask HR to change my regime" request through Approvals; (4) My pay menu gets "Pay
+documents" and "My equity"; (5) expose a loan's repayments for the PAY-17 schedule; (6) payslip days strip from the
+attendance feed; (7) Form 12B counts only once approved; (8) equity approvals stay in Approvals; (9) consultant portal
+"session ended, sign in again" page. Runs: (10) a released hold goes into the next regular run's bank file; (11)
+input-source table also in the run's Validations tab; (12) state-wise PT and LWF due dates in the rule files; (13)
+unfiled dues read back three months; (14) retrenchment permission stays in People › Exits; (15) a one-person re-pay
+file on the same run is fine; (16) an employee may withdraw their own query. Union dues: (17) one call per union until a
+company has more than about 10; (18) no extra stale warning on send. Compliance: (19) menu "Statutory set-up" becomes
+"Statutory rules"; (20) per-person register rows later (M); (21) TDS returns stay on the hub; (22) build supplementary
+filings (CMP-12) then Missing IDs (CMP-07); (23) payroll may correct a challan amount with an audited reason. Bonus:
+(24) eligibility on the full-month salary rate; (25) the 30 days count paid and lay-off days (maternity when its feed
+exists); (26) the Rs 100 minimum scales by eligible months; (27) any rate from the supported rate up to 20 %; (28) the
+4-year carry stays fixed; (29) leavers' bonus is paid in the off-cycle bonus run; (30) notify the approver on send, and a
+Form C register export.
+
 ## 1. Live pages
 
 One row per live Pay page. "Keep" is what the live copy does that the design does not show yet: states, actions,
