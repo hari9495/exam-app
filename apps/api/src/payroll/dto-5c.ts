@@ -285,3 +285,15 @@ export class CostRateListDto {
   @Matches(MONTH)
   month!: string;
 }
+
+/** PAY-06 release (founder 29 Oct 2026): a reason (kept in the audit trail) and where the held pay goes. */
+export class HoldReleaseDto {
+  @trim()
+  @IsString()
+  @Length(5, 300)
+  reason!: string;
+
+  /** next_bank_file: the next bank file made for the held run pays it; offcycle: paid now, an off-cycle bank file from that run. */
+  @IsIn(['next_bank_file', 'offcycle'])
+  route!: 'next_bank_file' | 'offcycle';
+}

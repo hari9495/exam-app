@@ -7,7 +7,7 @@ import { RequireStepUp } from '../auth/step-up.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import type { ScopeUser } from '../access/scope';
-import { AckDto, CostRateListDto, CourtOrderDto, HoldDto, JournalExportDto, LoanChangeDto, LoanRequestDto, LopInputsDto, OneTimeDto, OneTimeListDto, ReasonDto, RunCreateDto, RunDecisionDto, RunListDto, SpecialDaysDto, SubmitRunDto } from './dto-5c';
+import { AckDto, CostRateListDto, CourtOrderDto, HoldDto, HoldReleaseDto, JournalExportDto, LoanChangeDto, LoanRequestDto, LopInputsDto, OneTimeDto, OneTimeListDto, ReasonDto, RunCreateDto, RunDecisionDto, RunListDto, SpecialDaysDto, SubmitRunDto } from './dto-5c';
 import { PayInputsService } from './inputs.service';
 import { PayRunsService } from './runs.service';
 import { LedgerService } from './ledger.service';
@@ -83,6 +83,21 @@ export class Payroll5cController {
   @RequirePermissions('payroll.run.prepare')
   calculate(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.runs.calculate(ctx, this.user(req), id);
+  }
+
+  /** PAY-03 "Failed": calculates again only the people whose last calculation failed (the rest keep their payslips). */
+  @Post('runs/:id/retry-failed')
+  @HttpCode(202)
+  @RequirePermissions('payroll.run.prepare')
+  retryFailed(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.runs.retryFailed(ctx, this.user(req), id);
+  }
+
+  /** PAY-03 "Inputs": what feeds the run, per source (people and amounts), for the run's month and people. */
+  @Get('runs/:id/input-sources')
+  @RequireAnyPermission(...RUN_VIEW)
+  inputSources(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.runs.inputSources(ctx, this.user(req), id);
   }
 
   @Get('runs/:id/progress')
@@ -198,8 +213,8 @@ export class Payroll5cController {
   @Post('holds/:id/release')
   @HttpCode(200)
   @RequirePermissions('payroll.hold.manage')
-  releaseHold(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
-    return this.inputs.releaseHold(ctx, this.user(req), id);
+  releaseHold(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: HoldReleaseDto) {
+    return this.inputs.releaseHold(ctx, this.user(req), id, dto);
   }
 
   /** Your own requests and, with payroll.loan.manage, the loans of the entities in scope. */

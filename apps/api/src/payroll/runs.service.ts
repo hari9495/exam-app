@@ -484,6 +484,69 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
     return { runId: out.runId, calcVersion: out.version, queued: out.ids.length };
   }
 
+  /** PAY-03 "Failed": queues again only the people whose last calculation failed, in the same calculation (the others
+   * keep their draft payslips); the checks of that calculation stand. One at a time (the run's advisory lock). */
+  async retryFailed(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
+    const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const run0 = await this.runIn(tx, c, v, id, ['payroll.run.prepare']);
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`run:${run0.id}`}))`;
+      const run = await tx.payrollRun.findFirstOrThrow({ where: { id: run0.id } });
+      if (run.status === 'calculating') throw new ConflictException('The run is calculating. Wait until it finishes.');
+      const failed = run.status === 'draft' && run.calcVersion ? await tx.runEmployee.findMany({ where: { organizationId: org, runId: run.id, calcVersion: run.calcVersion, state: 'failed' } }) : [];
+      if (!failed.length) throw new ConflictException('No one failed in the last calculation. Use Calculate to work out the whole run again.');
+      await tx.runEmployee.updateMany({ where: { organizationId: org, id: { in: failed.map((f) => f.id) }, state: 'failed' }, data: { state: 'queued', failure: Prisma.DbNull, updatedAt: new Date() } });
+      await tx.payrollRun.update({ where: { id: run.id }, data: { status: 'calculating', version: { increment: 1 } } });
+      await audit(tx, c, 'payroll.run.retry_failed', 'payroll_run', run.id, { calcVersion: run.calcVersion, people: failed.length, employeeIds: failed.map((f) => f.employeeId) });
+      return { org, runId: run.id, version: run.calcVersion, ids: failed.map((f) => f.employmentId) };
+    }, RUN_TX);
+    // Job ids must differ from the first calculation's (BullMQ keeps finished ids and skips a repeat) and keep three ":" parts (BullMQ refuses more).
+    const tag = Date.now();
+    for (let i = 0; i < out.ids.length; i += CHUNK) await this.queue.add('calc', { org: out.org, runId: out.runId, version: out.version, ids: out.ids.slice(i, i + CHUNK) }, { jobId: `${out.runId}:${out.version}r${tag}:${i / CHUNK}`, removeOnComplete: 1000, removeOnFail: 1000 });
+    return { runId: out.runId, calcVersion: out.version, queued: out.ids.length };
+  }
+
+  /** PAY-03 "Inputs": what feeds the run, per source, for its month and people (the same reads as the calculation). */
+  async inputSources(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const run = await this.runIn(tx, c, v, id, VIEW);
+      const members = await this.members(tx, org, run);
+      const ids = members.map((m) => m.employmentId);
+      const people = <T extends { employmentId: string }>(rows: T[]) => new Set(rows.map((r) => r.employmentId)).size;
+      const sum = <T>(rows: T[], f: (r: T) => Prisma.Decimal) => rows.reduce((t, r) => t.add(f(r)), D(0)).toFixed(2);
+      const regular = run.runType === 'regular';
+      const period = regular ? await tx.payPeriod.findFirst({ where: { organizationId: org, legalEntityId: run.legalEntityId, payGroupId: null, periodStart: run.periodStart } }) : null;
+      const feed = period ? await tx.payrollFeedRow.findMany({ where: { organizationId: org, payPeriodId: period.id, employeeId: { in: members.map((m) => m.employeeId) }, supersededAt: null } }) : [];
+      const lop = regular ? await tx.lopInput.findMany({ where: { organizationId: org, employmentId: { in: ids }, periodStart: run.rangeStart ?? run.periodStart } }) : [];
+      const oneTime = await tx.oneTimePay.findMany({
+        where: regular ? { organizationId: org, employmentId: { in: ids }, status: 'approved', runId: null, holdReason: null, OR: [{ periodStart: run.periodStart, endOn: null }, { periodStart: { lte: run.periodStart }, endOn: { gte: run.periodStart } }] } : { organizationId: org, employmentId: { in: ids }, status: 'approved', runId: run.id, holdReason: null },
+      });
+      const holds = await tx.payrollWithhold.findMany({ where: { organizationId: org, employmentId: { in: ids }, releasedAt: null } });
+      const loans = regular ? await tx.loan.findMany({ where: { organizationId: org, employmentId: { in: ids }, status: 'active', firstMonth: { lte: run.periodStart }, outstanding: { gt: 0 }, OR: [{ pausedUntil: null }, { pausedUntil: { lt: run.periodStart } }] } }) : [];
+      const courts = regular ? await tx.courtOrder.findMany({ where: { organizationId: org, employmentId: { in: ids }, status: 'active', priorityDate: { lte: run.periodEnd }, OR: [{ endOn: null }, { endOn: { gte: run.periodStart } }] } }) : [];
+      const overpaid = regular ? await tx.overpaymentRecovery.findMany({ where: { organizationId: org, employmentId: { in: ids }, status: 'active' } }) : [];
+      const carries = regular ? await tx.payCarryForward.findMany({ where: { organizationId: org, employmentId: { in: ids }, status: 'open' } }) : [];
+      const feedPeople = new Set(feed.map((r) => r.employeeId)).size;
+      return {
+        runId: run.id,
+        people: members.length,
+        sources: [
+          ...(regular ? [{ key: 'attendance', label: 'Attendance from Time', people: feedPeople, days: feed.reduce((t, r) => t.add(r.lopDays), D(0)).toFixed(2), amount: null, note: period ? (feed.length ? null : 'Copied when the run is calculated') : 'The month is not frozen yet' }] : []),
+          ...(regular ? [{ key: 'lop', label: 'Loss of pay entered by payroll', people: people(lop), days: sum(lop, (r) => r.lopDays), amount: null, note: null }] : []),
+          { key: 'one_time', label: 'One-time pay', people: people(oneTime), days: null, amount: sum(oneTime, (r) => r.amount), note: null },
+          { key: 'holds', label: 'Salary holds', people: people(holds), days: null, amount: null, note: null },
+          ...(regular ? [{ key: 'loans', label: 'Loan and advance instalments', people: people(loans), days: null, amount: sum(loans, (r) => (r.emi.gt(r.outstanding) ? r.outstanding : r.emi)), note: null }] : []),
+          ...(regular ? [{ key: 'court_orders', label: 'Court orders', people: people(courts), days: null, amount: null, note: null }] : []),
+          ...(regular ? [{ key: 'overpayments', label: 'Overpayment recoveries', people: people(overpaid), days: null, amount: sum(overpaid, (r) => r.instalment), note: null }] : []),
+          ...(regular ? [{ key: 'carry_forwards', label: 'Carried from last month (negative net)', people: people(carries), days: null, amount: null, note: null }] : []),
+        ],
+      };
+    });
+  }
+
   /** One job: each person in its own transaction; a failure is recorded with what to fix and the others go on. */
   async calculateChunk(job: { org: string; runId: string; version: number; ids: string[] }) {
     const c = { organizationId: job.org, isSuperAdmin: false, userId: null } as unknown as CompanyContext;

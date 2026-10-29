@@ -36,7 +36,7 @@ export default function YxPayInputsPage() {
           state: payState(holds),
           rows: holds.data ?? null,
           onAdd: (row) => write('/holds', row),
-          onRelease: (id) => write(`/holds/${encodeURIComponent(id)}/release`),
+          onRelease: (id, body) => write(`/holds/${encodeURIComponent(id)}/release`, body),
         },
       }}
     />

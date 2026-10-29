@@ -69,6 +69,54 @@ describe('PAY-03 run workspace, live', () => {
     await waitFor(() => expect(l.onWaive).toHaveBeenCalledWith('c1', 'Bank details next week'));
   });
 
+  it('PAY-03 Failed: a calculation that failed for some people names them and retries only them', async () => {
+    const failed = { status: 'draft', calcVersion: 2, total: 3, ok: 2, failed: 1, skipped: 0, queued: 0, failures: [{ employeeId: 'p3', field: 'bank', message: 'Add a salary bank account' }] } as LiveRunWorkspaceData['progress'];
+    const l = live({ run: { ...RUN, status: 'draft', totals: { ...RUN.totals!, failed: 1 } }, progress: failed, onRetryFailed: vi.fn(async () => ({})) });
+    show(l);
+    expect(screen.getByText(/Calculating payslips finished: 1 payslip failed/)).toBeInTheDocument();
+    expect(screen.getByText(/bank: Add a salary bank account/)).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Retry 1 failed' }));
+    await waitFor(() => expect(l.onRetryFailed).toHaveBeenCalledTimes(1));
+    expect((await screen.findAllByText('Calculating 1 failed person again')).length).toBeGreaterThan(0);
+  });
+
+  it('PAY-03 Failed: no retry without the prepare key; a refused retry says why', async () => {
+    const failed = { status: 'draft', calcVersion: 2, total: 3, ok: 2, failed: 1, skipped: 0, queued: 0, failures: [{ employeeId: 'p3', field: null, message: 'The calculation failed for this person.' }] } as LiveRunWorkspaceData['progress'];
+    const run = { ...RUN, status: 'draft' as const, totals: { ...RUN.totals!, failed: 1 } };
+    const { unmount } = show(live({ run, progress: failed, onRetryFailed: vi.fn(async () => ({})), can: { prepare: false, approve: true, bankGenerate: false, bankRelease: false, publish: false, offcycle: false } }));
+    expect(screen.queryByRole('button', { name: /Retry/ })).not.toBeInTheDocument();
+    unmount();
+    const l = live({ run, progress: failed, onRetryFailed: vi.fn(async () => Promise.reject(new Error('The run is calculating. Wait until it finishes.'))) });
+    show(l);
+    await ue.click(screen.getByRole('button', { name: 'Retry 1 failed' }));
+    expect((await screen.findAllByText('The run is calculating. Wait until it finishes.')).length).toBeGreaterThan(0);
+  });
+
+  it('PAY-03 Inputs: the per-source table (people, days or amount); without the read it says where inputs come from', async () => {
+    const sources = {
+      runId: RUN.id,
+      people: 3,
+      sources: [
+        { key: 'attendance', label: 'Attendance from Time', people: 3, days: '2.00', amount: null, note: null },
+        { key: 'one_time', label: 'One-time pay', people: 1, days: null, amount: '5000.00', note: null },
+        { key: 'loans', label: 'Loan and advance instalments', people: 1, days: null, amount: '3000.00', note: null },
+        { key: 'court_orders', label: 'Court orders', people: 0, days: null, amount: null, note: null },
+      ],
+    };
+    const { unmount } = show(live({ inputSources: sources }));
+    await ue.click(screen.getByRole('tab', { name: /^Inputs/ }));
+    const t = screen.getByRole('table', { name: 'Inputs for this period' });
+    expect(within(t).getByRole('rowheader', { name: 'Attendance from Time' })).toBeInTheDocument();
+    expect(within(t).getByText('2 days')).toBeInTheDocument();
+    expect(within(t).getByText('₹5,000')).toBeInTheDocument();
+    expect(screen.getByText('Recoveries')).toBeInTheDocument();
+    unmount();
+    show(live({ inputSources: null }));
+    await ue.click(screen.getByRole('tab', { name: /^Inputs/ }));
+    expect(screen.queryByRole('table', { name: 'Inputs for this period' })).not.toBeInTheDocument();
+    expect(screen.getByText(/are read when the run is calculated/)).toBeInTheDocument();
+  });
+
   it('checks: with nothing blocking, Calculate calculates', async () => {
     const l = live({ run: { ...RUN, status: 'draft' }, readiness: { ...READINESS, checks: READINESS.checks.map((c) => ({ ...c, waived: true, waiverReason: 'Bank next week' })) } });
     show(l);

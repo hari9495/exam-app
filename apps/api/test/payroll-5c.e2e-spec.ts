@@ -35,6 +35,12 @@ describe('Payroll batch 5c', () => {
   const api = (who: Who, method: 'get' | 'post' | 'put' | 'patch', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const inA = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false }, fn);
   const stepUp = (who: Who) => markSteppedUp(tenantPrisma, token[who]);
+  /** Company A with its pay guard opened to the test entity (test set-up only). */
+  const scoped = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) =>
+    inA(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`;
+      return fn(tx);
+    });
   const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
   const month = today.slice(0, 7);
   const first = `${month}-01`;
@@ -282,6 +288,43 @@ describe('Payroll batch 5c', () => {
     expect(await inA((tx) => tx.payslip.count())).toBe(0);
   });
 
+  it('PAY-03 retry only the failed people (founder 29 Oct 2026): only after failures, prepare key, in scope, audited', async () => {
+    // Nobody failed: refused, so a whole recalculation goes through Calculate.
+    expect((await api('payAdmin', 'post', `/payroll/runs/${ids.run}/retry-failed`).expect(409)).body.message).toMatch(/No one failed/);
+    await api('emp1', 'post', `/payroll/runs/${ids.run}/retry-failed`).expect(403);
+    await api('finance', 'post', `/payroll/runs/${ids.run}/retry-failed`).expect(403);
+    await api('payAdminB', 'post', `/payroll/runs/${ids.run}/retry-failed`).expect(404);
+    await api('payAdmin', 'post', '/payroll/runs/not-a-uuid/retry-failed').expect(400);
+    // The calculation failed for emp1 (as a missing input does): the run goes back to draft with that person failed.
+    await scoped(async (tx) => {
+      const r = await tx.payrollRun.findFirstOrThrow({ where: { id: ids.run } });
+      await tx.payslip.updateMany({ where: { runId: ids.run, employeeId: ids.emp1, calcVersion: r.calcVersion, status: 'draft' }, data: { status: 'void', voidReason: 'test: failed' } });
+      await tx.runEmployee.updateMany({ where: { runId: ids.run, employeeId: ids.emp1, calcVersion: r.calcVersion }, data: { state: 'failed', failure: { field: 'bank', message: 'Add a salary bank account' } } });
+      await tx.payrollRun.update({ where: { id: ids.run }, data: { status: 'draft' } });
+    });
+    const before = (await api('payAdmin', 'get', `/payroll/runs/${ids.run}`).expect(200)).body.calcVersion;
+    expect((await api('payAdmin', 'post', `/payroll/runs/${ids.run}/retry-failed`).expect(202)).body).toMatchObject({ queued: 1, calcVersion: before });
+    const done = await waitFor(ids.run, 'calculated');
+    expect(done).toMatchObject({ calcVersion: before, totals: { people: 2, failed: 0 } });
+    expect((await api('payAdmin', 'get', `/payroll/runs/${ids.run}/progress`).expect(200)).body).toMatchObject({ ok: 2, failed: 0, queued: 0 });
+    const slips = (await api('payAdmin', 'get', `/payroll/runs/${ids.run}/payslips`).expect(200)).body as { id: string; employeeId: string }[];
+    expect(slips).toHaveLength(2);
+    ids.slip1 = slips.find((s) => s.employeeId === ids.emp1)!.id;
+    expect(await inA((tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'payroll.run.retry_failed', entityId: ids.run } }))).toBe(1);
+    // A repeat once nothing has failed is refused again.
+    await api('payAdmin', 'post', `/payroll/runs/${ids.run}/retry-failed`).expect(409);
+  });
+
+  it('PAY-03 input sources: per source for the run month and people; read keys only, never another company', async () => {
+    const x = (await api('approver1', 'get', `/payroll/runs/${ids.run}/input-sources`).expect(200)).body as { people: number; sources: { key: string; people: number; amount: string | null; days: string | null }[] };
+    expect(x.people).toBe(2);
+    expect(x.sources.map((s) => s.key)).toEqual(['attendance', 'lop', 'one_time', 'holds', 'loans', 'court_orders', 'overpayments', 'carry_forwards']);
+    expect(x.sources.find((s) => s.key === 'loans')).toMatchObject({ people: 1, amount: '3000.00' });
+    expect(x.sources.find((s) => s.key === 'court_orders')).toMatchObject({ people: 1 });
+    await api('emp1', 'get', `/payroll/runs/${ids.run}/input-sources`).expect(403);
+    await api('payAdminB', 'get', `/payroll/runs/${ids.run}/input-sources`).expect(404);
+  });
+
   it('submit and approve: maker ≠ checker, step-up, the typed phrase, nobody approves two steps; approval locks the month', async () => {
     await api('approver1', 'post', `/payroll/runs/${ids.run}/submit`).send({}).expect(403);
     expect((await api('payAdmin', 'post', `/payroll/runs/${ids.run}/submit`).send({}).expect(200)).body).toMatchObject({ status: 'submitted', approvers: 2 });
@@ -379,9 +422,21 @@ describe('Payroll batch 5c', () => {
   it('holds: one open hold per person; release is idempotent', async () => {
     const h = (await api('payAdmin', 'post', '/payroll/holds').send({ employeeId: ids.emp1, reasonCode: 'investigation', note: 'Pending enquiry' }).expect(201)).body;
     expect((await api('payAdmin', 'post', '/payroll/holds').send({ employeeId: ids.emp1, reasonCode: 'other', note: 'Second try' }).expect(201)).body).toEqual({ id: h.id, created: false });
-    const a = (await api('payAdmin', 'post', `/payroll/holds/${h.id}/release`).expect(200)).body;
-    const b = (await api('payAdmin', 'post', `/payroll/holds/${h.id}/release`).expect(200)).body;
+    // Founder 29 Oct 2026: a reason (5 to 300 letters) and a route are required.
+    await api('payAdmin', 'post', `/payroll/holds/${h.id}/release`).send({}).expect(400);
+    await api('payAdmin', 'post', `/payroll/holds/${h.id}/release`).send({ reason: 'ok', route: 'next_bank_file' }).expect(400);
+    await api('payAdmin', 'post', `/payroll/holds/${h.id}/release`).send({ reason: 'Enquiry closed', route: 'cash' }).expect(400);
+    await api('emp2', 'post', `/payroll/holds/${h.id}/release`).send({ reason: 'Enquiry closed', route: 'next_bank_file' }).expect(403);
+    await api('payAdminB', 'post', `/payroll/holds/${h.id}/release`).send({ reason: 'Enquiry closed', route: 'next_bank_file' }).expect(404);
+    // Nothing is held in an approved run yet (the hold came after approval): an off-cycle payment has nothing to pay.
+    expect((await api('payAdmin', 'post', `/payroll/holds/${h.id}/release`).send({ reason: 'Enquiry closed', route: 'offcycle' }).expect(400)).body.message).toMatch(/Nothing is held/);
+    const a = (await api('payAdmin', 'post', `/payroll/holds/${h.id}/release`).send({ reason: 'Enquiry closed', route: 'next_bank_file' }).expect(200)).body;
+    expect(a).toMatchObject({ released: true, route: 'next_bank_file', payslips: 0 });
+    const b = (await api('payAdmin', 'post', `/payroll/holds/${h.id}/release`).send({ reason: 'Enquiry closed again', route: 'offcycle' }).expect(200)).body;
     expect(b.releasedAt).toBe(a.releasedAt);
+    const logged = await inA((tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, action: 'payroll.hold.released', entityId: ids.emp1 } }));
+    expect(logged).toHaveLength(1);
+    expect(JSON.parse(logged[0].metadataJson ?? '{}')).toMatchObject({ holdId: h.id, reason: 'Enquiry closed', route: 'next_bank_file' });
   });
 
   it('a reopened month: the run recalculates, a new approval revises the earlier payslips (kept)', async () => {
@@ -468,5 +523,21 @@ describe('Payroll batch 5c', () => {
     await api('approver1', 'post', `/people/changes/${ch.id}/approve`).send({ confirmRebase: true }).expect(201);
     const asOf = (await api('adminA', 'get', `/people/employees/${ids.emp2}/as-of?date=${today}`).expect(200)).body;
     expect(JSON.stringify(asOf)).toMatch(/"skillClass":"skilled"/);
+  });
+
+  it('PAY-06 release pays what the hold held (off-cycle now), never what a missing bank account held', async () => {
+    const h = (await api('payAdmin', 'post', '/payroll/holds').send({ employeeId: ids.emp2, reasonCode: 'investigation', note: 'Backdated for the test' }).expect(201)).body;
+    // The hold was open before the run was approved, so the approved payslip is held by it (and by the waived bank check).
+    await scoped((tx) => tx.payrollWithhold.update({ where: { id: h.id }, data: { createdAt: new Date(Date.parse(first) - 86_400_000) } }));
+    const bankOnly = (await api('payAdmin', 'post', `/payroll/holds/${h.id}/release`).send({ reason: 'Still checking the bank', route: 'offcycle' }).expect(400)).body;
+    expect(bankOnly.message).toMatch(/Nothing is held/);
+    // Bank details arrived (the check no longer waived): now the hold alone holds the payslip, and the release frees it.
+    await scoped((tx) => tx.runValidation.updateMany({ where: { runId: ids.run, employeeId: ids.emp2, checkKey: 'bank_missing' }, data: { waivedBy: null, waiverReason: null, waivedAt: null } }));
+    const r = (await api('payAdmin', 'post', `/payroll/holds/${h.id}/release`).send({ reason: 'Enquiry closed, pay now', route: 'offcycle' }).expect(200)).body;
+    expect(r).toMatchObject({ route: 'offcycle', payslips: 1, runIds: [ids.run] });
+    const slip = await scoped((tx) => tx.payslip.findFirstOrThrow({ where: { runId: ids.run, employeeId: ids.emp2, status: 'approved' } }));
+    expect(slip).toMatchObject({ held: false, paymentStatus: 'pending' });
+    const log = await inA((tx) => tx.auditLog.findFirst({ where: { organizationId: org.A.id, action: 'payroll.hold.released', entityId: ids.emp2 } }));
+    expect(JSON.parse(log?.metadataJson ?? '{}')).toMatchObject({ reason: 'Enquiry closed, pay now', route: 'offcycle', payslips: 1 });
   });
 });

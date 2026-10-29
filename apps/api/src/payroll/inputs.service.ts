@@ -7,7 +7,7 @@ import { settingFor } from '../people/probation';
 import type { ScopeUser, Viewer } from '../access/scope';
 import { asDate, dateOf, monthRange } from '../time/time-core';
 import { ApprovalsEngine, type Notice } from '../workflow/approvals-engine.service';
-import { CourtOrderDto, HoldDto, LoanChangeDto, LoanRequestDto, LopRowDto, OneTimeDto, SpecialDaysDto } from './dto-5c';
+import { CourtOrderDto, HoldDto, HoldReleaseDto, LoanChangeDto, LoanRequestDto, LopRowDto, OneTimeDto, SpecialDaysDto } from './dto-5c';
 import { PayKey, entitiesFor, payHolders, payScope, payViewer, requireEntity, requireSelf, withPayScope } from './pay-access';
 import { inr, payOn } from './fnf.service';
 import { dayMonYear, loanRoom, maxMonthsOf } from './loan-rules';
@@ -209,19 +209,32 @@ export class PayInputsService implements OnModuleInit {
     });
   }
 
-  /** Releases a hold (idempotent: a second release changes nothing); the held pay goes in the next payment. */
-  async releaseHold(ctx: TenantContext, user: ScopeUser, id: string) {
+  /** Releases a hold with a reason (founder 29 Oct 2026; kept in the audit trail) and a route. Idempotent: a second
+   * release changes nothing. The payslips held while it was open become payable again: `next_bank_file` waits for the
+   * next bank file made for their run; `offcycle` is paid now by an off-cycle bank file from that run (so it needs a
+   * held payslip in an approved run). A hold with nothing held yet simply stops holding the next run. */
+  async releaseHold(ctx: TenantContext, user: ScopeUser, id: string, dto: HoldReleaseDto) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
       await payScope(tx, await entitiesFor(tx, c, v, 'payroll.hold.manage'));
-      const h = await tx.payrollWithhold.findFirst({ where: { organizationId: c.organizationId, id } });
+      const h = await tx.payrollWithhold.findFirst({ where: { organizationId: org, id } });
       if (!h) throw new NotFoundException('Not found');
-      if (await this.isSelf(tx, c.organizationId, v, h.employeeId)) throw new ForbiddenException('Someone else releases a hold on your pay.');
-      if (h.releasedAt) return { id, released: true, releasedAt: h.releasedAt };
-      const n = await tx.payrollWithhold.updateMany({ where: { id, releasedAt: null }, data: { releasedAt: new Date(), releasedBy: v.userId } });
-      if (n.count) await audit(tx, c, 'payroll.hold.released', 'employee', h.employeeId, { holdId: id, amount: h.amount?.toFixed(2) ?? null });
+      if (await this.isSelf(tx, org, v, h.employeeId)) throw new ForbiddenException('Someone else releases a hold on your pay.');
+      if (h.releasedAt) return { id, released: true, releasedAt: h.releasedAt, route: null, payslips: 0, runIds: [] as string[] };
+      const slips = await tx.payslip.findMany({ where: { organizationId: org, employmentId: h.employmentId, status: 'approved', held: true, paymentStatus: 'held', approvedAt: { gte: h.createdAt } }, select: { id: true, runId: true, calcVersion: true, net: true } });
+      // A payslip held because its bank account was missing (a waived check) stays held: this release is not about it.
+      const noBank = await tx.runValidation.findMany({ where: { organizationId: org, employeeId: h.employeeId, checkKey: 'bank_missing', waivedBy: { not: null }, runId: { in: slips.map((x) => x.runId).filter((x): x is string => !!x) } }, select: { runId: true, calcVersion: true } });
+      const held = slips.filter((x) => !noBank.some((b) => b.runId === x.runId && b.calcVersion === x.calcVersion));
+      if (dto.route === 'offcycle' && !held.length) throw new BadRequestException('Nothing is held in an approved run yet. Release into the next bank file: the next run pays as usual.');
+      const n = await tx.payrollWithhold.updateMany({ where: { id, releasedAt: null }, data: { releasedAt: new Date(), releasedBy: v.userId, releasedRunId: held[0]?.runId ?? null } });
+      if (!n.count) return { id, released: true, releasedAt: (await tx.payrollWithhold.findFirstOrThrow({ where: { id } })).releasedAt, route: null, payslips: 0, runIds: [] as string[] };
+      if (held.length) await tx.payslip.updateMany({ where: { organizationId: org, id: { in: held.map((x) => x.id) }, paymentStatus: 'held' }, data: { held: false, paymentStatus: 'pending' } });
+      const runIds = [...new Set(held.map((x) => x.runId).filter((x): x is string => !!x))];
+      const amount = held.reduce((t, x) => t + Number(x.net), 0).toFixed(2);
+      await audit(tx, c, 'payroll.hold.released', 'employee', h.employeeId, { holdId: id, reason: dto.reason, route: dto.route, payslips: held.length, runIds, amount: held.length ? amount : (h.amount?.toFixed(2) ?? null) });
       const after = await tx.payrollWithhold.findFirstOrThrow({ where: { id } });
-      return { id, released: true, releasedAt: after.releasedAt };
+      return { id, released: true, releasedAt: after.releasedAt, route: dto.route, payslips: held.length, runIds };
     });
   }
 

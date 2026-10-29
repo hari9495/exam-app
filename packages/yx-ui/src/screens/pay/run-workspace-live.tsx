@@ -59,6 +59,21 @@ export interface LiveRunWorkspaceData {
   /** Opens the run's payments (bank results, cash and cheque, journal) once it is approved. */
   onPayments?: () => void;
   onAddItem?: (item: { employeeId: string; componentCode: string; amount: string; reason: string; label?: string }) => Promise<unknown>;
+  /** PAY-03 Inputs tab: what feeds the run, per source (GET runs/:id/input-sources). */
+  inputSources?: RunInputSources | null;
+  /** PAY-03 "Failed": calculates again only the people whose last calculation failed (payroll.run.prepare). */
+  onRetryFailed?: () => Promise<unknown>;
+  /** PAY-11 off-cycle run: the design's own title, line and badge in place of the run's. */
+  heading?: { name: string; secondary: string; status?: React.ReactNode };
+  /** PAY-11: the off-cycle run's own part (settlement lines, deadline, payees), above the tabs. */
+  lead?: React.ReactNode;
+}
+
+/** GET /payroll/runs/:id/input-sources: per source, the people it touches and its days or amount. */
+export interface RunInputSources {
+  runId: string;
+  people: number;
+  sources: { key: string; label: string; people: number; days: string | null; amount: string | null; note: string | null }[];
 }
 
 type Tab = 'inputs' | 'payslips' | 'variance' | 'validations' | 'approvals' | 'files';
@@ -127,6 +142,18 @@ export function LiveRunWorkspace({ live: p }: { live: LiveRunWorkspaceData }) {
       return say(`Fix or waive ${count(calcBlocks.length, 'check')} first.`, 'default');
     }
     void run('calc', p.onCalculate).then((ok) => (ok ? say(`Calculating ${month}`) : undefined));
+  };
+  const retryFailed = () => {
+    const n = p.progress?.failed ?? 0;
+    void run('retry', async () => {
+      try {
+        await p.onRetryFailed!();
+        say(`Calculating ${count(n, 'failed person', 'failed people')} again`);
+      } catch (e) {
+        say(errText(e), 'error');
+        throw e;
+      }
+    });
   };
   const submit = (selfApprovalReason?: string) =>
     run('submit', async () => {
@@ -205,14 +232,15 @@ export function LiveRunWorkspace({ live: p }: { live: LiveRunWorkspaceData }) {
   return (
     <div className="yx-auth__page yx-pay-stack">
       <ObjectHeader
-        name={r ? runName(r) : 'Payroll run'}
+        name={p.heading?.name ?? (r ? runName(r) : 'Payroll run')}
         icon={FileText}
-        secondary={r ? `${r.entityName ?? ''}${r.calcVersion ? ` · Calculation ${r.calcVersion}` : ''}` : undefined}
+        secondary={p.heading?.secondary ?? (r ? `${r.entityName ?? ''}${r.calcVersion ? ` · Calculation ${r.calcVersion}` : ''}` : undefined)}
         status={
           r ? (
             <>
               <RunStatusBadge status={r.status} />
               {locked && <Badge tone="neutral">Period locked</Badge>}
+              {p.heading?.status}
             </>
           ) : undefined
         }
@@ -256,6 +284,7 @@ export function LiveRunWorkspace({ live: p }: { live: LiveRunWorkspaceData }) {
         {r && (
           <>
             <RunStageTrack current={stageOf(r.status, p.published)} complete={p.published} blocked={r.totals?.failed ? `${count(r.totals.failed, 'payslip')} failed` : undefined} />
+            {p.lead}
             {r.status === 'void' && (
               <InlineAlert tone="info" title="This run is void">
                 {r.voidReason}
@@ -268,6 +297,17 @@ export function LiveRunWorkspace({ live: p }: { live: LiveRunWorkspaceData }) {
                 total={p.progress.total}
                 failures={p.progress.failures.map((f) => ({ employee: nameOf(f.employeeId), code: codeOf(f.employeeId), record: 'Payslip', field: f.field ? `${f.field}: ${f.message}` : f.message, fix: 'See the check' }))}
                 onFix={() => setTab('validations')}
+              />
+            )}
+            {r.status === 'draft' && !!r.totals?.failed && p.progress && p.progress.failed > 0 && (
+              <RunProgress
+                action="Calculating payslips"
+                finished
+                done={p.progress.ok + p.progress.skipped}
+                total={p.progress.total}
+                failures={p.progress.failures.map((f) => ({ employee: nameOf(f.employeeId), code: codeOf(f.employeeId) || f.employeeId, record: 'Payslip', field: f.field ? `${f.field}: ${f.message}` : f.message, fix: 'See the check' }))}
+                onFix={() => setTab('validations')}
+                onRetryFailed={p.can.prepare && p.onRetryFailed ? retryFailed : undefined}
               />
             )}
             {made && (
@@ -526,6 +566,50 @@ function ValidationsPanel({ p, checks, calcBlocks, editable, nameOf }: { p: Live
 
 /* ------------------------------------------------------------------ Inputs (off-cycle items) */
 
+/** PAY-03 Inputs: the design's Source · People · Amount table, from the run's input sources. */
+export function InputSourcesTable({ data }: { data: RunInputSources }) {
+  const oneTime = data.sources.find((x) => x.key === 'one_time')?.amount;
+  const recoveries = data.sources.filter((x) => x.key === 'loans' || x.key === 'overpayments').reduce((t, x) => t + Number(x.amount ?? 0), 0);
+  return (
+    <div className="yx-pay-stack">
+      <FactRow
+        items={[
+          { label: 'People in the run', value: String(data.people) },
+          { label: 'One-time pay', value: money(oneTime) },
+          { label: 'Recoveries', value: formatINR(recoveries) },
+        ]}
+      />
+      <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
+        <table className="yx-pay-table" aria-label="Inputs for this period">
+          <thead>
+            <tr>
+              <th scope="col">Source</th>
+              <th scope="col" data-num>
+                People
+              </th>
+              <th scope="col" data-num>
+                Days or amount
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.sources.map((x) => (
+              <tr key={x.key}>
+                <th scope="row">
+                  {x.label}
+                  {x.note && <span className="yx-pay-note"> · {x.note}</span>}
+                </th>
+                <td data-num>{x.people}</td>
+                <td data-num>{x.amount != null ? money(x.amount) : x.days != null ? `${Number(x.days)} ${Number(x.days) === 1 ? 'day' : 'days'}` : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function InputsPanel({ p, run: r, editable }: { p: LiveRunWorkspaceData; run: PayRun; editable: boolean }) {
   const { toast } = useToast();
   const [q, setQ] = useState('');
@@ -551,10 +635,12 @@ function InputsPanel({ p, run: r, editable }: { p: LiveRunWorkspaceData; run: Pa
       ]}
     />
   );
+  const sources = p.inputSources ? <InputSourcesTable data={p.inputSources} /> : null;
   if (r.runType !== 'offcycle' || r.offcycleKind === 'fnf')
     return (
       <div className="yx-pay-stack">
         {facts}
+        {sources}
         <p className="yx-pay-muted">Attendance, loss of pay, one-time pay, holds, loans and claims are read when the run is calculated. Change them in Payroll › Inputs before calculating.</p>
       </div>
     );
@@ -562,12 +648,14 @@ function InputsPanel({ p, run: r, editable }: { p: LiveRunWorkspaceData; run: Pa
     return (
       <div className="yx-pay-stack">
         {facts}
+        {sources}
         <InlineAlert tone="info" title="Items are added while the run is a draft or in review." />
       </div>
     );
   return (
     <div className="yx-pay-stack">
       {facts}
+      {sources}
       <section className="yx-pay-panel" aria-label="Add an item to this run">
         <SectionTitle>Add an item to this run</SectionTitle>
         <div className="yx-pay-stack">

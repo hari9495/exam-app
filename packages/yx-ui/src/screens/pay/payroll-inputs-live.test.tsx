@@ -125,14 +125,40 @@ describe('Payroll › Inputs (PAY-04 … 06 live)', () => {
     await waitFor(() => expect(live.lop.onSave).toHaveBeenCalledWith([{ employeeId: 'p1', lopDays: '2', reason: 'Absent' }], 'upload'));
   });
 
+  it('holds: a refused release (nothing held yet for off-cycle) says why and stays open', async () => {
+    const live = inputs({ tab: 'holds' });
+    live.holds.onRelease = vi.fn(async () => {
+      throw new Error('Nothing is held in an approved run yet. Release into the next bank file: the next run pays as usual.');
+    });
+    render(<OneTimePayScreen live={live} />);
+    await ue.click(screen.getByRole('button', { name: 'Release' }));
+    await ue.type(screen.getByRole('textbox', { name: /Reason for release/ }), 'Clearance done today');
+    await ue.click(screen.getByRole('radio', { name: 'Off-cycle payment now' }));
+    await ue.click(screen.getByRole('button', { name: /^Release ₹42,000/ }));
+    await ue.click(within(screen.getAllByRole('dialog').at(-1)!).getByRole('button', { name: 'Release' }));
+    expect((await screen.findAllByText(/Nothing is held in an approved run yet/)).length).toBeGreaterThan(0);
+    // Nothing closed: the confirm stays open over the drawer, and the hold is still open.
+    expect(within(screen.getAllByRole('dialog').at(-1)!).getByRole('button', { name: 'Release' })).toBeInTheDocument();
+  });
+
   it('holds: the ageing chart counts open holds; release asks first; holding needs a reason code and a note', async () => {
     const live = inputs({ tab: 'holds' });
     render(<OneTimePayScreen live={live} />);
     expect(screen.getByText('Hold ageing')).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Release' }));
+    // Negative: no reason yet. The button is not disabled; the error shows and the reason box takes focus.
     await ue.click(screen.getByRole('button', { name: /^Release ₹42,000/ }));
+    expect((await screen.findAllByText('Say why the hold ends, in a few words.')).length).toBeGreaterThan(0);
+    expect(screen.getByRole('textbox', { name: /Reason for release/ })).toHaveFocus();
+    expect(screen.queryByText(/Paid in the next bank file/)).not.toBeInTheDocument();
+    // Positive: a reason and the off-cycle route (one Segment).
+    await ue.type(screen.getByRole('textbox', { name: /Reason for release/ }), 'Clearance done today');
+    await ue.click(screen.getByRole('radio', { name: 'Off-cycle payment now' }));
+    await ue.click(screen.getByRole('button', { name: /^Release ₹42,000/ }));
+    expect(screen.getByText(/Paid now by an off-cycle bank file/)).toBeInTheDocument();
     await ue.click(within(screen.getAllByRole('dialog').at(-1)!).getByRole('button', { name: 'Release' }));
-    await waitFor(() => expect(live.holds.onRelease).toHaveBeenCalledWith('h1'));
+    await waitFor(() => expect(live.holds.onRelease).toHaveBeenCalledWith('h1', { reason: 'Clearance done today', route: 'offcycle' }));
+    expect((await screen.findAllByText(/released for an off-cycle payment now/)).length).toBeGreaterThan(0);
     await ue.click(screen.getAllByRole('button', { name: 'Hold a salary' })[0]);
     const d = screen.getByRole('dialog');
     await ue.click(within(d).getByRole('button', { name: 'Hold salary' }));
@@ -179,6 +205,35 @@ describe('Payroll › Payslip queries (PAY-20 live)', () => {
     await waitFor(() => expect(live.onAssign).toHaveBeenCalledWith(QUERIES[1], 'u1'));
     await ue.click(within(d).getByRole('button', { name: 'Mark resolved' }));
     await waitFor(() => expect(live.onClose).toHaveBeenCalledWith(QUERIES[1]));
+  });
+
+  it('reassign to a named colleague: pressed with nobody chosen it says so (negative), then sends their id (positive)', async () => {
+    const onHandlers = vi.fn(async () => [
+      { userId: 'u1', name: 'Meera', me: true },
+      { userId: 'u2', name: 'Karthik Subramanian', me: false },
+    ]);
+    const live = queries({ onHandlers, queries: [{ ...QUERIES[0], assigneeUserId: 'u1' }] });
+    render(<QueryQueueScreen live={live} />);
+    await ue.click(screen.getAllByText('Arjun Kulkarni')[0]);
+    const d = screen.getByRole('dialog');
+    await waitFor(() => expect(onHandlers).toHaveBeenCalled());
+    await ue.click(within(d).getByRole('button', { name: 'Reassign' }));
+    expect(within(d).getByText('Choose who to reassign the query to.')).toBeInTheDocument();
+    expect(live.onAssign).not.toHaveBeenCalled();
+    await ue.click(within(d).getByRole('combobox', { name: /Reassign to/ }));
+    await ue.click(await screen.findByRole('option', { name: 'Karthik Subramanian' }));
+    await ue.click(within(d).getByRole('button', { name: 'Reassign' }));
+    await waitFor(() => expect(live.onAssign).toHaveBeenCalledWith(expect.objectContaining({ id: QUERIES[0].id }), 'u2'));
+    expect((await screen.findAllByText('Query from Arjun Kulkarni reassigned to Karthik Subramanian')).length).toBeGreaterThan(0);
+  });
+
+  it('the drawer shows the line amount and its explanation from the API; none for a whole-payslip query', async () => {
+    const withLine = { ...QUERIES[0], line: { name: 'House rent allowance', amount: '24200.00', explanation: '40% of basic (non-metro).' } };
+    render(<QueryQueueScreen live={queries({ queries: [withLine] })} />);
+    await ue.click(screen.getAllByText('Arjun Kulkarni')[0]);
+    const d = screen.getByRole('dialog');
+    expect(within(d).getByText('₹24,200')).toBeInTheDocument();
+    expect(within(d).getByText('40% of basic (non-metro).')).toBeInTheDocument();
   });
 
   it('the status is one pick-one Segment; an error shows retry', async () => {

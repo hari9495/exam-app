@@ -1,7 +1,7 @@
 // PAY-04 / 05 / 06 · Payroll inputs, PAY-20 · Payslip queries and PAY-19 · Court orders and recoveries, live: the
 // designed screens of payroll-inputs.tsx with the API's rows. Same tables, drawers, texts and confirms as the stories;
 // what the API cannot give yet is left out and listed as a gap in docs/yukthix/pay-design-map.md.
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Plus, Upload } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
@@ -90,7 +90,7 @@ export interface LiveInputs {
   tab?: 'lop' | 'onetime' | 'holds';
   lop: { state: LoadState; rows: LopRow[] | null; onSave: (rows: { employeeId: string; lopDays: string; reason: string }[], source: 'manual' | 'upload') => Promise<unknown> };
   oneTime: { rows: OneTimeItem[] | null; onAdd: (row: { employeeId: string; componentCode: string; amount: string; month: string; reason: string; endOn?: string }) => Promise<{ status: string }>; onCancel: (id: string) => Promise<unknown> };
-  holds: { state: LoadState; rows: HoldRow[] | null; onAdd: (row: { employeeId: string; reasonCode: string; note: string }) => Promise<unknown>; onRelease: (id: string) => Promise<unknown> };
+  holds: { state: LoadState; rows: HoldRow[] | null; onAdd: (row: { employeeId: string; reasonCode: string; note: string }) => Promise<unknown>; onRelease: (id: string, body: { reason: string; route: HoldRoute }) => Promise<unknown> };
 }
 
 /** The inputs page: loss of pay (PAY-04), one-time pay (PAY-05) and salary holds (PAY-06) as tabs, for one month. */
@@ -587,12 +587,25 @@ function OneTimeDrawer({ live, onClose, onSaved }: { live: LiveInputs; onClose: 
 const HOLD_REASON: Record<string, string> = { absconding: 'Absconding', exit_pending: 'Exit pending', investigation: 'Investigation', employee_request: 'Employee asked', other: 'Other' };
 const holdReason = (c: string) => HOLD_REASON[c] ?? c;
 
+/** Where released held pay goes (PAY-06 "Pay through"). */
+export type HoldRoute = 'next_bank_file' | 'offcycle';
+const ROUTE_TEXT: Record<HoldRoute, string> = { next_bank_file: 'released into the next bank file of its run', offcycle: 'released for an off-cycle payment now' };
+
 /** PAY-06 in live: open and released holds, the ageing chart from each hold's age, hold and release. */
 export function LiveHoldsPanel({ live }: { live: LiveInputs }) {
   const say = useSay();
   const [adding, setAdding] = useState(false);
   const [release, setRelease] = useState<HoldRow | null>(null);
   const [confirmRelease, setConfirmRelease] = useState(false);
+  const [route, setRoute] = useState<HoldRoute>('next_bank_file');
+  const [why, setWhy] = useState('');
+  const releaseErrors = why.trim().length < 5 ? [{ fieldId: 'hr-why', message: 'Say why the hold ends, in a few words.' }] : [];
+  const releaseShown = useSaveErrors(releaseErrors);
+  const openRelease = (h: HoldRow) => {
+    setRelease(h);
+    setRoute('next_bank_file');
+    setWhy('');
+  };
   const holds = live.holds.rows ?? [];
   const open = holds.filter((h) => !h.released);
   const age = (h: HoldRow) => h.ageDays ?? 0;
@@ -625,8 +638,8 @@ export function LiveHoldsPanel({ live }: { live: LiveInputs }) {
               rows={holds}
               getRowId={(r) => r.id}
               state={live.holds.rows ? 'ready' : 'loading'}
-              onRowClick={(r) => !r.released && setRelease(r)}
-              rowButtons={(r) => (!r.released ? <Button size="sm" onClick={() => setRelease(r)}>Release</Button> : null)}
+              onRowClick={(r) => !r.released && openRelease(r)}
+              rowButtons={(r) => (!r.released ? <Button size="sm" onClick={() => openRelease(r)}>Release</Button> : null)}
               toolbar={<Button size="sm" icon={Plus} onClick={() => setAdding(true)}>Hold a salary</Button>}
               empty={<EmptyState title="No salaries on hold." description="Holds are raised automatically for absconding, returned payments and pending exit clearance, or manually with a reason." action={<Button icon={Plus} onClick={() => setAdding(true)}>Hold a salary</Button>} />}
             />
@@ -645,7 +658,17 @@ export function LiveHoldsPanel({ live }: { live: LiveInputs }) {
           footer={
             <>
               <Button onClick={() => setRelease(null)}>Cancel</Button>
-              <Button variant="primary" onClick={() => setConfirmRelease(true)}>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  if (releaseErrors.length) {
+                    releaseShown.reveal();
+                    document.getElementById('hr-why')?.focus();
+                    return;
+                  }
+                  setConfirmRelease(true);
+                }}
+              >
                 Release {release?.amount ? money(release.amount) : 'salary'}
               </Button>
             </>
@@ -656,10 +679,26 @@ export function LiveHoldsPanel({ live }: { live: LiveInputs }) {
               <DescriptionList
                 items={[
                   { label: 'Net held', value: money(release.amount) },
-                  { label: 'Pay through', value: 'The next bank file. Releasing twice has no effect.' },
                   { label: 'Note', value: release.note },
                 ]}
               />
+              <Segment
+                label="Pay through"
+                value={route}
+                onChange={(v) => setRoute(v as HoldRoute)}
+                options={[
+                  { value: 'next_bank_file', label: 'Next bank file' },
+                  { value: 'offcycle', label: 'Off-cycle payment now' },
+                ]}
+              />
+              <p className="yx-pay-note">
+                {route === 'next_bank_file'
+                  ? 'Pays every held payslip in the next bank file made for its run. Releasing twice has no effect.'
+                  : 'Pays the held payslips now: make an off-cycle bank file from the run’s Payments page.'}
+              </p>
+              <FormField id="hr-why" label="Reason for release" required error={releaseShown.errorOf('hr-why')} helper="Saved in the audit trail.">
+                <TextArea value={why} onChange={setWhy} rows={2} maxLength={300} />
+              </FormField>
               <p className="yx-pay-muted">Someone else releases a hold on your own pay.</p>
             </div>
           )}
@@ -668,13 +707,18 @@ export function LiveHoldsPanel({ live }: { live: LiveInputs }) {
           open={confirmRelease}
           onOpenChange={setConfirmRelease}
           title={release ? `Release ${release.amount ? `${money(release.amount)} to ` : 'the salary of '}${live.nameOf(release.employeeId)}?` : ''}
-          consequence="Paid in the next bank file. The release is saved in the audit trail."
+          consequence={`${route === 'next_bank_file' ? 'Paid in the next bank file made for its run.' : 'Paid now by an off-cycle bank file from its run.'} The reason is saved in the audit trail.`}
           confirmLabel="Release"
           onConfirm={async () => {
             const r = release!;
-            await live.holds.onRelease(r.id);
+            try {
+              await live.holds.onRelease(r.id, { reason: why.trim(), route });
+            } catch (e) {
+              say(e instanceof Error && e.message ? e.message : 'The salary was not released. Nothing has changed.', 'error');
+              throw e;
+            }
             setRelease(null);
-            say(`Salary for ${live.nameOf(r.employeeId)} released into the next bank file`);
+            say(`Salary for ${live.nameOf(r.employeeId)} ${ROUTE_TEXT[route]}`);
           }}
         />
         {adding && <HoldDrawer live={live} onClose={() => setAdding(false)} onSaved={(t, tone) => say(t, tone)} />}
@@ -765,7 +809,16 @@ export interface LiveQueries {
   onReply: (q: PayslipQueryView, text: string) => Promise<unknown>;
   onClose: (q: PayslipQueryView) => Promise<unknown>;
   onAssign: (q: PayslipQueryView, userId: string) => Promise<unknown>;
+  /** People the query can be assigned to (they handle payslip queries for its legal entity; never the asker). */
+  onHandlers?: (q: PayslipQueryView) => Promise<QueryHandler[]>;
 }
+export interface QueryHandler {
+  userId: string;
+  name: string;
+  me: boolean;
+}
+/** The API adds the line the query is about: its name, amount and the saved explanation. */
+type QueryRow = PayslipQueryView & { line?: { name: string; amount: string; explanation: string | null } | null };
 
 /** Reply target: 2 working days (Mon–Fri) after the query came in; days from today. */
 export function replyDueIn(raised: string, today: string) {
@@ -881,10 +934,36 @@ export function LiveQueryQueue({ live }: { live: LiveQueries }) {
   );
 }
 
-function QueryDrawer({ q, live, status, assignee, replied, onClose, onFailed, say }: { q: PayslipQueryView | null; live: LiveQueries; status: QStatus; assignee: string; replied: boolean; onClose: () => void; onFailed: (e: unknown) => void; say: ReturnType<typeof useSay> }) {
+function QueryDrawer({ q, live, status, assignee: assigneeText, replied, onClose, onFailed, say }: { q: QueryRow | null; live: LiveQueries; status: QStatus; assignee: string; replied: boolean; onClose: () => void; onFailed: (e: unknown) => void; say: ReturnType<typeof useSay> }) {
   const { busy, error, run } = useRun();
   const [sent, setSent] = useState(false);
+  const [handlers, setHandlers] = useState<QueryHandler[]>([]);
+  const [assignTo, setAssignTo] = useState<string | null>(null);
+  const [assignError, setAssignError] = useState<string | undefined>();
+  const qid = q?.id;
+  useEffect(() => {
+    if (!q || q.status === 'closed' || !live.onHandlers) return;
+    live.onHandlers(q).then(setHandlers, () => setHandlers([]));
+  }, [qid]); // eslint-disable-line react-hooks/exhaustive-deps
   const who = q ? live.nameOf(q.employeeId) : '';
+  const assignee = q?.assigneeUserId && q.assigneeUserId !== live.me.id ? (handlers.find((h) => h.userId === q.assigneeUserId)?.name ?? assigneeText) : assigneeText;
+  const verb = q?.assigneeUserId ? 'Reassign' : 'Assign';
+  const choices = handlers.filter((h) => h.userId !== q?.assigneeUserId);
+  // Never disabled: pressed with nobody chosen, the field says so and takes focus.
+  const assign = () => {
+    if (!q) return;
+    if (!assignTo) {
+      setAssignError(`Choose who to ${verb.toLowerCase()} the query to.`);
+      document.getElementById('pq-assign')?.focus();
+      return;
+    }
+    const name = handlers.find((h) => h.userId === assignTo)?.name ?? 'them';
+    void run('reassign', async () => {
+      await live.onAssign(q, assignTo);
+      setAssignTo(null);
+      say(`Query from ${who} ${verb === 'Assign' ? 'assigned' : 'reassigned'} to ${name}`);
+    });
+  };
   return (
     <Drawer
       open={!!q}
@@ -896,6 +975,11 @@ function QueryDrawer({ q, live, status, assignee, replied, onClose, onFailed, sa
       footer={
         <>
           <Button onClick={onClose}>Close</Button>
+          {q && q.status !== 'closed' && live.onHandlers && (
+            <Button loading={busy === 'reassign'} onClick={assign}>
+              {verb}
+            </Button>
+          )}
           {q && q.status !== 'closed' && q.assigneeUserId !== live.me.id && (
             <Button loading={busy === 'assign'} onClick={() => void run('assign', async () => (await live.onAssign(q, live.me.id), say(`Query from ${who} assigned to you`)))}>
               Assign to me
@@ -930,12 +1014,17 @@ function QueryDrawer({ q, live, status, assignee, replied, onClose, onFailed, sa
           <DescriptionList
             columns={2}
             items={[
-              { label: 'Line', value: q.lineCode ?? 'Whole payslip' },
-              { label: 'Status', value: status },
+              { label: 'Line', value: q.line?.name ?? q.lineCode ?? 'Whole payslip' },
+              { label: 'Amount on payslip', value: q.line ? formatINR(Number(q.line.amount)) : '—' },
+              { label: 'Explanation', value: q.line?.explanation || '—' },
               { label: 'Assignee', value: assignee },
-              { label: 'Last change', value: formatDate(day(q.updatedAt)) },
             ]}
           />
+          {q.status !== 'closed' && live.onHandlers && (
+            <FormField id="pq-assign" label={verb === 'Assign' ? 'Assign to' : 'Reassign to'} error={assignError} helper={choices.length ? undefined : 'Nobody else handles payslip queries for this entity.'}>
+              <Select value={assignTo} onChange={(v) => (setAssignTo(v), setAssignError(undefined))} options={choices.map((h) => ({ value: h.userId, label: h.me ? `${h.name} (you)` : h.name }))} />
+            </FormField>
+          )}
           <CommentThread
             currentUser={{ id: live.me.id, name: live.me.name }}
             people={[]}
