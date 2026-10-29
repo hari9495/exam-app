@@ -434,6 +434,15 @@ describe('Payroll batch 5c', () => {
       ).body.id as string;
     const payAdminEmp = await hireAs('payAdmin', 'P5C-003');
     const approverEmp = await hireAs('approver1', 'P5C-004');
+    // Founder decision 8: a loan is capped at months of gross pay, so the approver gets a salary (someone else approves it).
+    const version = ((await api('payAdmin', 'get', '/payroll/templates').expect(200)).body as { versions: { id: string }[] }[])[0].versions[0].id;
+    const pay = (
+      await api('payAdmin', 'post', `/payroll/employees/${approverEmp}/compensation-changes`)
+        .send({ employeeId: approverEmp, effectiveDate: today, templateVersionId: version, entryMode: 'ctc', annualCtc: '600000', reason: 'Joining salary' })
+        .expect(201)
+    ).body;
+    await stepUp('approver2');
+    await api('approver2', 'post', `/people/changes/${pay.changeId}/approve`).send({ confirmRebase: true }).expect(201);
     await api('payAdmin', 'post', '/payroll/holds').send({ employeeId: payAdminEmp, reasonCode: 'other', note: 'My own hold' }).expect(403);
     await api('payAdmin', 'put', '/payroll/special-days').send({ employeeId: payAdminEmp, month: '2099-01', kind: 'injury', days: '2', note: 'My own days' }).expect(403);
     await api('payAdmin', 'post', '/payroll/court-orders').send({ employeeId: payAdminEmp, orderRef: 'X 1/2026', amount: '1', priorityDate: '2026-01-01', payee: 'Account 123456789' }).expect(403);
