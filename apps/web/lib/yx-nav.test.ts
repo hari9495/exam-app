@@ -85,8 +85,8 @@ describe('buildNav: People', () => {
 
 describe('buildNav: Time, Pay, Compliance', () => {
   it('an employee has My time; a manager adds the team pages', () => {
-    expect(labels(nav([], { employee: true }), 'time')).toEqual(['My attendance', 'My leave', 'My shifts', 'My timesheet', 'My overtime', 'My work-from-home days']);
-    expect(labels(nav([], { employee: true, manager: true }), 'time').slice(0, 6)).toEqual(['Today', 'Muster', 'Exceptions', 'Roster', 'Team leave', 'Overtime']);
+    expect(labels(nav([], { employee: true }), 'time')).toEqual(['My attendance', 'My leave', 'My shifts', 'Team roster', 'Office days', 'My timesheet', 'My overtime', 'My work-from-home days']);
+    expect(labels(nav([], { employee: true, manager: true }), 'time').slice(0, 6)).toEqual(['Today', 'Muster', 'Exceptions', 'Roster', 'Open shifts', 'Auto-roster']);
     expect(sections(nav(['leave.settings.manage']), 'time')).toEqual(['Time settings']);
   });
 
