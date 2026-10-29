@@ -13,3 +13,5 @@ export const Empty: S = { name: 'Empty', args: { state: 'empty' } };
 export const Loading: S = { name: 'Loading', args: { state: 'loading' } };
 export const LoadError: S = { name: 'Error · retry', args: { state: 'error' } };
 export const NoAccess: S = { name: 'No access', args: { state: 'no-access' } };
+/** Founder answer 9 (30 Oct 2026): the 30-minute session ended part-way; a new sign-in carries on. */
+export const SessionEnded: S = { name: 'Session ended · sign in again', args: { ended: true } };

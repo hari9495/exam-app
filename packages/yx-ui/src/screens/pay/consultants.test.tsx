@@ -205,4 +205,25 @@ describe('PAY-56 Consultant portal, live', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.getAllByText('Sign in again to send an invoice').length).toBeGreaterThan(0);
   });
+
+  it('founder answer 9: a session that ends part-way shows the sign-in-again page, and its button starts a new sign-in', async () => {
+    const onSignInAgain = vi.fn();
+    render(<ConsultantPortalScreen live={me({ ended: true, onSignInAgain })} />);
+    expect(screen.getByText('Your session ended')).toBeInTheDocument();
+    expect(screen.queryByRole('table', { name: 'Your invoices' })).not.toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Sign in again' }));
+    expect(onSignInAgain).toHaveBeenCalled();
+  });
+
+  it('a failed load shows the error with Retry; a refusal shows no access (both reachable live)', async () => {
+    const onRetry = vi.fn();
+    const { unmount } = render(<ConsultantPortalScreen live={me({ data: null, state: 'error', onRetry })} />);
+    expect(screen.getByText("We couldn't load your invoices.")).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: /Try again|Retry/ }));
+    expect(onRetry).toHaveBeenCalled();
+    unmount();
+    render(<ConsultantPortalScreen live={me({ data: null, state: 'no-access' })} />);
+    expect(screen.getByText("You don't have access to your invoices")).toBeInTheDocument();
+    expect(screen.queryByRole('status', { name: 'Loading your invoices' })).not.toBeInTheDocument();
+  });
 });

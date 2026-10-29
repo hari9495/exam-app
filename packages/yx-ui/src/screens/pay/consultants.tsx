@@ -864,10 +864,16 @@ export interface LiveConsultantPortal {
   onAdvice: (i: ConsultantInvoice) => Promise<unknown>;
   onCertificate: (c: ConsultantMe['certificates'][number]) => Promise<unknown>;
   onSignOut: () => void;
+  /** After sign-in: loading until the data is in; 'error' (could not load, retry) or 'no-access' (the company refused). */
+  state?: PayLiveState;
+  onRetry?: () => void;
+  /** The 30-minute session ended part-way (any call answered 401): the "sign in again" page. */
+  ended?: boolean;
+  onSignInAgain?: () => void;
 }
 
 /** PAY-56 · Consultant portal: the consultant's invoices, payment advices and TDS certificates, in the T9 portal frame. */
-export function ConsultantPortalScreen({ live, state = 'ready', dialog, upload = 'open', pan = 'operative' }: { live?: LiveConsultantPortal; state?: PayLiveState; /** Story only: the upload drawer open. */ dialog?: 'upload'; /** Story only: 'closed' when the sign-in is older than 10 minutes. */ upload?: 'open' | 'closed'; /** Story only: no working PAN on file. */ pan?: 'operative' | 'missing' }) {
+export function ConsultantPortalScreen({ live, state = 'ready', dialog, upload = 'open', pan = 'operative', ended = false }: { live?: LiveConsultantPortal; state?: PayLiveState; /** Story only: the upload drawer open. */ dialog?: 'upload'; /** Story only: 'closed' when the sign-in is older than 10 minutes. */ upload?: 'open' | 'closed'; /** Story only: no working PAN on file. */ pan?: 'operative' | 'missing'; /** Story only: the session ended part-way. */ ended?: boolean }) {
   const [shown, setShown] = useState(state);
   const sample: LiveConsultantPortal = {
     tenant: 'Kaveri Foods Pvt Ltd',
@@ -891,6 +897,21 @@ export function ConsultantPortalScreen({ live, state = 'ready', dialog, upload =
   const { busy, act } = useRowAction();
   const { toast } = useToast();
   const company = d?.me.company ?? v.tenant;
+  // Founder answer 9 (30 Oct 2026): a session that ends part-way says so and offers a new sign-in, never a blank page.
+  if (live ? live.ended : ended)
+    return (
+      <TenantPortal tenant={company} portal="Consultants" noLanguage={Boolean(live)} access={{ kind: 'note', text: 'Signed in with a one-time code · ends after 30 minutes' }} footer={{ privacy: 'Privacy notice for consultants (G-09)', ...(live ? { hrefs: LEGAL_LINKS } : {}) }}>
+        <EmptyState
+          title="Your session ended"
+          description="For your safety, a session lasts 30 minutes. Nothing you sent is lost. Sign in again with a new code to carry on."
+          action={
+            <Button variant="primary" onClick={live?.onSignInAgain}>
+              Sign in again
+            </Button>
+          }
+        />
+      </TenantPortal>
+    );
   return (
     <TenantPortal tenant={company} portal="Consultants" noLanguage={Boolean(live)} access={{ kind: 'note', text: 'Signed in with a one-time code · ends after 30 minutes' }} footer={{ privacy: 'Privacy notice for consultants (G-09)', ...(live ? { hrefs: LEGAL_LINKS } : {}) }}>
       <div className="yx-pay-stack">
@@ -908,8 +929,8 @@ export function ConsultantPortalScreen({ live, state = 'ready', dialog, upload =
             </>
           }
         />
-        {/* Live, the page shows loading until the consultant's own data is in; sign-in failures stay on the sign-in screen. */}
-        <PayPageState state={live ? (d ? 'ready' : 'loading') : shown} onRetry={() => setShown('ready')} what="your invoices" grantedBy={company}>
+        {/* Live, the page shows loading until the consultant's own data is in, or the error / no-access state of that load. */}
+        <PayPageState state={live ? (live.state && live.state !== 'ready' ? live.state : d ? 'ready' : 'loading') : shown} onRetry={live ? live.onRetry : () => setShown('ready')} what="your invoices" grantedBy={company}>
           {d && (
           <>
             {!d.canUpload && (

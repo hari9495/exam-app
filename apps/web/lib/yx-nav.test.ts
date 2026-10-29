@@ -97,7 +97,10 @@ describe('buildNav: Time, Pay, Compliance', () => {
   it('payroll set-up pages sit in Settings › Payroll & Statutory, by the batch-5b keys', () => {
     const n = nav(['payroll.setup.manage', 'payroll.template.manage', 'employee.salary.manage']);
     expect(labels(n, 'settings')).toEqual(['Payroll set-up', 'Pay groups', 'Payslip layout', 'Country packs', 'Salary templates']);
-    expect(labels(n, 'compliance')).toEqual(['Statutory set-up', 'Statutory coverage']);
+    // Founder answer 19 (30 Oct 2026): the item opens the rules page, so it is "Statutory rules"; registrations stay in Payroll set-up.
+    expect(labels(n, 'compliance')).toEqual(['Statutory rules', 'Statutory coverage']);
+    expect(activeLink(n, '/yx/payroll/statutory-rules')?.link.label).toBe('Statutory rules');
+    expect(labels(n, 'settings')).toContain('Payroll set-up');
     expect(labels(n, 'pay')).toEqual(['Go-live readiness', 'Compensation']);
   });
 

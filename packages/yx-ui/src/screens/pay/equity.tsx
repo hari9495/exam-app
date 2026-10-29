@@ -475,7 +475,7 @@ export function MyEquityScreen({ live, state = 'ready', dialog }: { live?: LiveM
   const [exercising, setExercising] = useState<GrantView | null>(!live && dialog === 'exercise' ? (SAMPLE_MY_GRANTS.find((g) => g.exercisable > 0) ?? null) : null);
   const grants = v.data ?? [];
   return (
-    <MyPayFrame page="incentives">
+    <MyPayFrame page="equity">
       <PageHeader title="My equity" description="Your grants, how they vest, and exercising vested units. An exercise is taxed in its month as a perquisite." />
       <PayPageState state={v.state} onRetry={v.onRetry} what="your equity" grantedBy="HR">
         {!grants.length ? (

@@ -1,6 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import { MyPayDocumentsScreen } from './employee-pay';
 import { EquityScreen, MyEquityScreen, SAMPLE_EQUITY, SAMPLE_GRANTS, pricePayable, type LiveEquity, type LiveMyEquity } from './equity';
 
 // PAY-57 / PAY-58 with the live app's data: what the live pages must do.
@@ -168,5 +169,17 @@ describe('PAY-58 My equity, live', () => {
   it('no Exercise button when nothing is vested to exercise', () => {
     render(<MyEquityScreen live={mine({ data: [SAMPLE_GRANTS[2]!] })} />);
     expect(screen.queryByRole('button', { name: 'Exercise' })).not.toBeInTheDocument();
+  });
+});
+
+describe('My pay menu (founder answer 4)', () => {
+  it('PAY-58 highlights "My equity" and PAY-54 "Pay documents", each its own item', () => {
+    const { unmount } = render(<MyEquityScreen />);
+    expect(screen.getByRole('link', { name: 'My equity' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'My incentives' })).not.toHaveAttribute('aria-current');
+    unmount();
+    render(<MyPayDocumentsScreen />);
+    expect(screen.getByRole('link', { name: 'Pay documents' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('link', { name: 'Form 130' })).not.toHaveAttribute('aria-current');
   });
 });

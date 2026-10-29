@@ -63,7 +63,7 @@ export function payPanel(active: PayPage, persona: PayPersona = 'pa', counts: { 
   ];
 }
 
-export type MyPayPage = 'payslips' | 'tax' | 'form130' | 'loans' | 'ewa' | 'incentives' | 'band';
+export type MyPayPage = 'payslips' | 'tax' | 'form130' | 'loans' | 'ewa' | 'incentives' | 'band' | 'documents' | 'equity';
 
 /** Employee view of Pay (Me › My pay; mobile Pay tab, APX-D §5). */
 export function myPayPanel(active: MyPayPage, show: { /** false for people on no incentive plan */ incentives?: boolean; /** false when band visibility is off */ band?: boolean } = {}): PanelSection[] {
@@ -79,6 +79,9 @@ export function myPayPanel(active: MyPayPage, show: { /** false for people on no
         { label: 'Get paid early', active: a('ewa') },
         ...(show.incentives === false ? [] : [{ label: 'My incentives', active: a('incentives') }]),
         ...(show.band === false ? [] : [{ label: 'My pay band', active: a('band') }]),
+        // Founder answer 4 (30 Oct 2026): PAY-54 and PAY-58 highlight their own item.
+        { label: 'Pay documents', active: a('documents') },
+        { label: 'My equity', active: a('equity') },
       ],
     },
   ];
