@@ -208,6 +208,12 @@ export class Payroll5cController {
     return this.inputs.loans(ctx, this.user(req));
   }
 
+  /** Your own loan rules (no key): may you ask, and how much (founder decision 8). Declared before any ':id' route. */
+  @Get('loans/rules')
+  loanRules(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.inputs.myLoanRules(ctx, this.user(req));
+  }
+
   /** For yourself (no key); for someone else the service requires payroll.loan.manage over them. */
   @Post('loans')
   requestLoan(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: LoanRequestDto) {

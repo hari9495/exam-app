@@ -8,7 +8,9 @@ import type { ScopeUser, Viewer } from '../access/scope';
 import { asDate, dateOf, monthRange } from '../time/time-core';
 import { ApprovalsEngine, type Notice } from '../workflow/approvals-engine.service';
 import { CourtOrderDto, HoldDto, LoanChangeDto, LoanRequestDto, LopRowDto, OneTimeDto, SpecialDaysDto } from './dto-5c';
-import { PayKey, entitiesFor, payHolders, payScope, payViewer, requireEntity, requireSelf } from './pay-access';
+import { PayKey, entitiesFor, payHolders, payScope, payViewer, requireEntity, requireSelf, withPayScope } from './pay-access';
+import { inr, payOn } from './fnf.service';
+import { dayMonYear, loanRoom, maxMonthsOf } from './loan-rules';
 
 // Payroll inputs and recoveries (M03-BUILD-DESIGN §10, PAY-3.02, 3.11 … 3.14, 3.17): manual LOP for assumed-present
 // groups (D1), one-time pay (above a company amount it is approved through P03), special days, holds (idempotent release,
@@ -225,6 +227,68 @@ export class PayInputsService implements OnModuleInit {
 
   // ------------------------------------------------------------------------------------------ loans and advances (Q4)
 
+  /**
+   * Founder decision 8: who may ask (after probation unless the company allows everyone) and how much (months of gross
+   * pay, less what the person still owes on open loans). Gross and loans are read with the pay guard opened to the
+   * company's entities for this one server-side check (a transfer keeps the old entity's loan), then put back.
+   */
+  private async loanRules(tx: Tx, c: CompanyContext, e: Prisma.EmploymentGetPayload<object>, forSelf: boolean) {
+    const org = c.organizationId;
+    const today = todayIst();
+    const lev = { legalEntityId: e.legalEntityId };
+    const afterProbation = await settingFor(tx, c, 'payroll.loan.after_probation', lev);
+    const months = maxMonthsOf(await settingFor(tx, c, 'payroll.loan.max_gross_months', lev));
+    const status = await tx.employmentStatusPeriod.findFirst({
+      where: { organizationId: org, employmentId: e.id, supersededAt: null, validFrom: { lte: asDate(today) }, OR: [{ validTo: null }, { validTo: { gte: asDate(today) } }] },
+      orderBy: { validFrom: 'desc' },
+    });
+    const onProbation = status?.status === 'probation';
+    const plan = onProbation ? await tx.probation.findFirst({ where: { organizationId: org, employmentId: e.id } }) : null;
+    const probationEndsOn = plan ? dateOf(plan.plannedEndOn) : null;
+    const all = (await tx.legalEntity.findMany({ where: { organizationId: org }, select: { id: true } })).map((x) => x.id);
+    const { gross, outstanding } = await withPayScope(tx, all, async () => ({
+      gross: (await payOn(tx, org, e.id, today)).gross,
+      outstanding: (await tx.loan.aggregate({ where: { organizationId: org, employeeId: e.employeeId, status: { in: ['requested', 'active', 'paused'] } }, _sum: { outstanding: true } }))._sum.outstanding ?? D(0),
+    }));
+    const room = loanRoom(gross, months, outstanding);
+    const name = forSelf ? '' : ((await tx.employee.findFirst({ where: { organizationId: org, id: e.employeeId }, select: { givenName: true } }))?.givenName ?? 'This person');
+    let reason: string | null = null;
+    let refusal: 'probation' | 'no_pay' | null = null;
+    if (afterProbation === 'confirmed' && onProbation) {
+      refusal = 'probation';
+      const until = probationEndsOn ? dayMonYear(probationEndsOn) : null;
+      reason = forSelf
+        ? `You can ask for a loan or advance after your probation is confirmed.${until ? ` Your probation ends on ${until}.` : ''}`
+        : `${name} is on probation${until ? ` until ${until}` : ''}. The company allows loans only after probation.`;
+    } else if (months !== null && gross.isZero()) {
+      refusal = 'no_pay';
+      reason = forSelf ? "Your pay is not set up yet, so the loan limit can't be worked out. Ask HR." : `${name}'s pay is not set up yet, so the loan limit can't be worked out. Ask HR.`;
+    }
+    return { afterProbation, months, onProbation, probationEndsOn, gross, outstanding, ...room, reason, refusal };
+  }
+
+  /** The signed-in person's own loan rules (GET /payroll/loans/rules): the same checks and words as a request. */
+  async myLoanRules(ctx: TenantContext, user: ScopeUser) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const me = await tx.employee.findFirst({ where: { organizationId: c.organizationId, userId: v.userId! }, select: { id: true } });
+      if (!me) throw new ForbiddenException('Only employees request loans for themselves.');
+      const e = await tx.employment.findFirst({ where: { organizationId: c.organizationId, employeeId: me.id, exitedOn: null }, orderBy: { joinedOn: 'desc' } });
+      if (!e) throw new NotFoundException('Not found');
+      const r = await this.loanRules(tx, c, e, true);
+      return {
+        eligible: !r.reason,
+        reason: r.reason,
+        probationEndsOn: r.onProbation ? r.probationEndsOn : null,
+        monthlyGross: r.gross.isZero() ? null : r.gross.toFixed(2),
+        maxGrossMonths: r.months,
+        limit: r.limit?.toFixed(2) ?? null,
+        outstanding: r.outstanding.toFixed(2),
+        available: r.available?.toFixed(2) ?? null,
+      };
+    });
+  }
+
   /** A request for oneself (implicit), or by payroll for someone in scope; approved by someone else through P03. */
   async requestLoan(ctx: TenantContext, user: ScopeUser, dto: LoanRequestDto) {
     const v = await this.viewer(user);
@@ -239,8 +303,16 @@ export class PayInputsService implements OnModuleInit {
       const e = await tx.employment.findFirst({ where: { organizationId: org, employeeId, exitedOn: null }, orderBy: { joinedOn: 'desc' } });
       if (!e) throw new NotFoundException('Not found');
       if (!forSelf) await requireEntity(tx, c, v, 'payroll.loan.manage', e.legalEntityId);
-      await payScope(tx, forSelf ? [] : [e.legalEntityId]);
       const principal = D(dto.principal);
+      const rule = await this.loanRules(tx, c, e, forSelf);
+      if (rule.refusal === 'probation') throw new ForbiddenException(rule.reason);
+      if (rule.refusal) throw new BadRequestException(rule.reason);
+      if (rule.available && principal.gt(rule.available)) {
+        const n = rule.months!;
+        const owed = rule.outstanding.gt(0) ? `, less ${inr(rule.outstanding)} still to repay` : '';
+        throw new BadRequestException(`The most you can ask for is ${inr(rule.available)}: ${n} ${n === 1 ? "month's" : "months'"} gross pay${owed}.`);
+      }
+      await payScope(tx, forSelf ? [] : [e.legalEntityId]);
       const emi = loanEmi(principal, D(dto.interestRate ?? '0'), dto.instalments);
       const approvers = await this.approversFor(tx, org, 'payroll.loan.approve', e.legalEntityId, v.userId!, employeeId);
       if (!approvers.length) throw new BadRequestException('No one can approve this request yet. A payroll approver needs "payroll.loan.approve".');
@@ -250,7 +322,7 @@ export class PayInputsService implements OnModuleInit {
       const sub = await this.engine.submit(tx, c, { type: LOAN, subjectType: 'loan', subjectId: row.id, title: `${dto.loanType === 'loan' ? 'Loan' : 'Salary advance'} of ₹${principal.toFixed(2)}`, summary: [{ label: 'Instalments', value: `${dto.instalments} of ₹${emi.toFixed(2)} from ${dto.firstMonth}` }, { label: 'Why', value: dto.reason.slice(0, 200) }], subjectPersonId: null, requesterUserId: v.userId!, raisedByUserId: v.userId!, steps: [{ name: 'Payroll approval', approvers: [{ kind: 'users', userIds: approvers }], mode: 'any', remindAfterHours: 24 }], payload: {}, payloadFields: [], fallbackUserIds: [] });
       notices.push(...sub.notices);
       await tx.loan.update({ where: { id: row.id }, data: { wfRequestId: sub.id } });
-      await audit(tx, c, 'payroll.loan.requested', 'loan', row.id, { employeeId, loanType: dto.loanType, instalments: dto.instalments, forSelf });
+      await audit(tx, c, 'payroll.loan.requested', 'loan', row.id, { employeeId, loanType: dto.loanType, instalments: dto.instalments, forSelf, rule: { maxGrossMonths: rule.months, afterProbation: rule.afterProbation }, limit: rule.limit?.toFixed(2) ?? null, available: rule.available?.toFixed(2) ?? null });
       return { id: row.id, status: 'requested', emi: emi.toFixed(2) };
     });
     await this.engine.send(ctx, notices);

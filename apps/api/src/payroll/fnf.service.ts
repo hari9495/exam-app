@@ -60,7 +60,7 @@ const r2 = (x: Prisma.Decimal) => x.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF
 // Indian grouping of whole rupees ("1,23,456") from the digits themselves (no floats).
 const grouped = (i: string) => (i.length > 3 ? `${i.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ',')},${i.slice(-3)}` : i);
 // "₹1,23,456.78" for the statement letter.
-const inr = (x: Prisma.Decimal) => {
+export const inr = (x: Prisma.Decimal) => {
   const [i, f] = x.toFixed(2).split('.');
   return `₹${grouped(i)}.${f}`;
 };
