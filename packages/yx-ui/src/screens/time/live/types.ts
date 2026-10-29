@@ -808,6 +808,14 @@ export interface IndustrialEvent {
   version: number;
   today: string;
 }
+/** Decision 7b: past strikes, lockouts and lay-offs in scope, newest first, one page (25 / 50 / 100). */
+export interface IndustrialList {
+  events: IndustrialEvent[];
+  total: number;
+  page: number;
+  pageSize: number;
+  today: string;
+}
 export interface IndustrialOptions {
   today: string;
   locations: { id: string; name: string; state: string; people: number; departments: { id: string; name: string; people: number }[] }[];

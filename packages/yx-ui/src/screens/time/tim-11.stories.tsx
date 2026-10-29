@@ -14,3 +14,5 @@ export const Lock: S = { name: 'Payroll Admin · approve lock (1 Oct)', args: { 
 export const Summary: S = { name: 'Lock summary · filed month', args: { openId: 'aug' } };
 // A filed month can't be reopened: its Lock summary says why, so there is no separate refused story.
 export const ReopenAllowed: S = { name: 'Reopen request · September locked 1 Oct', args: { openId: 'sep', dialog: 'reopen', reopenable: true, after: true } };
+// Founder decision 7a (29 Oct 2026): HR opens a month it froze again, with a reason and the authenticator code.
+export const OpenAgain: S = { name: 'HR · open a frozen month again (1 Oct)', args: { openId: 'sep', dialog: 'open_again', after: true } };

@@ -7,7 +7,7 @@ import { Button } from '../../components/button';
 import { Badge, DayDate, PersonLabel, type BadgeTone } from '../../components/display';
 import { formatDate } from '../../lib/format';
 import { Drawer } from '../../components/drawer';
-import { EmptyState, InlineAlert, Skeleton } from '../../components/feedback';
+import { EmptyState, InlineAlert, Pagination, Skeleton } from '../../components/feedback';
 import { BottomSheet, ConfirmDialog, Dialog } from '../../components/overlay';
 import { Card, PageHeader } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
@@ -30,7 +30,7 @@ import { canReopen, daysUntil, fmt12, fmtDuration, otCapFlag, regularisationRout
 import type { ViewState } from './attendance';
 // useToast, useTooEarly and useRun come from the import lines above (shared with the TIM-07 region).
 import { LiveGate, isoDate, liveTable, monthText, shiftMonth } from './ops';
-import type { DeviceBatch, DeviceDayView, DevicePreview, IndustrialEvent, IndustrialInput, IndustrialOptions, LoadState, MyOvertime, OtCategory, OtClaim, OtReview, Periods, Preflight } from './live/types';
+import type { DeviceBatch, DeviceDayView, DevicePreview, IndustrialEvent, IndustrialInput, IndustrialList, IndustrialOptions, LoadState, MyOvertime, OtCategory, OtClaim, OtReview, Periods, Preflight } from './live/types';
 // TIM-08 live (Me › My shifts).
 import { useSaveErrors } from '../../components/field';
 import type { MyShifts } from './live/types';
@@ -1972,12 +1972,14 @@ export interface LivePeriods {
   onPreflight: (legalEntityId: string, month: string) => Promise<Preflight>;
   onLock: (legalEntityId: string, month: string) => Promise<unknown>;
   onUnlock: (legalEntityId: string, month: string, reason: string) => Promise<unknown>;
+  /** Decision 7a: HR opens a month it froze again (a reason and the authenticator code). */
+  onUnfreeze?: (legalEntityId: string, month: string, reason: string) => Promise<unknown>;
   /** TIM-11 two-step flow (company setting attendance.lock_flow): HR sends, payroll approves the lock. */
   onSend?: (legalEntityId: string, month: string) => Promise<unknown>;
   onApproveLock?: (legalEntityId: string, month: string) => Promise<unknown>;
 }
 type LiveMonth = Periods['entities'][number]['months'][number];
-type LiveTarget = { entity: Periods['entities'][number]; m: LiveMonth; view: 'checklist' | 'reopen' };
+type LiveTarget = { entity: Periods['entities'][number]; m: LiveMonth; view: 'checklist' | 'reopen' | 'open_again' };
 /** Sent to payroll and still frozen: payroll approves it next. */
 const withPayroll = (m: LiveMonth) => Boolean(m.sentAt) && liveOpen(m);
 const liveOpen = (m: LiveMonth) => m.stage === 'open' || m.stage === 'frozen';
@@ -2029,6 +2031,7 @@ function LivePeriodsScreen({ live }: { live: LivePeriods }) {
                     <div className="yx-tim-row">
                       <Button size="sm" onClick={() => setTarget({ entity: e, m, view: 'checklist' })}>{liveOpen(m) ? 'Pre-lock checklist' : 'Lock summary'}</Button>
                       {m.stage === 'locked' && !m.reopenAsked && <Button size="sm" icon={Unlock} onClick={() => setTarget({ entity: e, m, view: 'reopen' })}>Request reopen</Button>}
+                      {m.stage === 'frozen' && e.canLock && live.onUnfreeze && <Button size="sm" icon={Unlock} onClick={() => setTarget({ entity: e, m, view: 'open_again' })}>Open the month again</Button>}
                       {m.stage === 'locked' && m.reopenAsked && <span className="yx-tim-muted">Waiting for two approvals</span>}
                       {m.stage === 'filed' && <span className="yx-tim-muted">Filed: corrections only</span>}
                     </div>
@@ -2041,6 +2044,9 @@ function LivePeriodsScreen({ live }: { live: LivePeriods }) {
       {target?.view === 'checklist' && (liveOpen(target.m) ? <LiveLockDrawer target={target} live={live} onClose={() => setTarget(null)} /> : <LiveLockSummary target={target} onClose={() => setTarget(null)} onReopen={() => setTarget({ ...target, view: 'reopen' })} />)}
       {target?.view === 'reopen' && (
         <ReopenDialog name={`${monthText(target.m.month)} · ${target.entity.name}`} check={{ ok: true }} minLength={10} onClose={() => setTarget(null)} onSend={(reason) => live.onUnlock(target.entity.id, target.m.month, reason)} />
+      )}
+      {target?.view === 'open_again' && live.onUnfreeze && (
+        <ReopenDialog kind="open_again" name={`${monthText(target.m.month)} · ${target.entity.name}`} check={{ ok: true }} minLength={10} onClose={() => setTarget(null)} onSend={(reason) => live.onUnfreeze!(target.entity.id, target.m.month, reason)} />
       )}
     </TimePage>
   );
@@ -2166,7 +2172,7 @@ function LiveLockSummary({ target, onClose, onReopen }: { target: LiveTarget; on
 }
 
 export function PeriodsScreen({ persona = 'hr', openId, dialog, reopenable = false, after = false, live }: {
-  persona?: 'hr' | 'pa'; openId?: string; dialog?: 'lock' | 'send' | 'reopen';
+  persona?: 'hr' | 'pa'; openId?: string; dialog?: 'lock' | 'send' | 'reopen' | 'open_again';
   /** September locked on 1 Oct with payroll not yet run, so it can still be reopened. Use with `after`. */
   reopenable?: boolean;
   /** 1 Oct: September's inputs are frozen and every item is done, so it can be locked. */
@@ -2178,13 +2184,15 @@ export function PeriodsScreen({ persona = 'hr', openId, dialog, reopenable = fal
   return <SamplePeriods persona={persona} openId={openId} dialog={dialog} reopenable={reopenable} after={after} />;
 }
 
-function SamplePeriods({ persona, openId, dialog, reopenable, after }: { persona: 'hr' | 'pa'; openId?: string; dialog?: 'lock' | 'send' | 'reopen'; reopenable: boolean; after: boolean }) {
+function SamplePeriods({ persona, openId, dialog, reopenable, after }: { persona: 'hr' | 'pa'; openId?: string; dialog?: 'lock' | 'send' | 'reopen' | 'open_again'; reopenable: boolean; after: boolean }) {
   const { toast } = useToast();
   const today = after ? new Date(2026, 9, 1, 10, 0) : TODAY;
   const [lockedIds, setLockedIds] = useState<string[]>([]);
+  /** Frozen months HR opened again (decision 7a). */
+  const [openedIds, setOpenedIds] = useState<string[]>([]);
   const periods = PERIODS.map((p) =>
     (reopenable && p.id === 'sep') || lockedIds.includes(p.id) ? { ...p, stage: 'locked' as const, locked: { on: dayStart(today), by: PAYROLL_ADMIN.name } }
-      : after && p.id === 'sep' ? { ...p, stage: 'frozen' as const } : p,
+      : after && p.id === 'sep' && !openedIds.includes(p.id) ? { ...p, stage: 'frozen' as const } : p,
   );
   const counts = (p: Period) => (after && p.id === 'sep' ? NONE : checklist(p.m));
   const [open, setOpen] = useState<Period | null>(openId ? periods.find((p) => p.id === openId) ?? null : null);
@@ -2268,6 +2276,7 @@ function SamplePeriods({ persona, openId, dialog, reopenable, after }: { persona
                 <Button size="sm" onClick={() => setOpen(p)}>{live(p) ? 'Pre-lock checklist' : 'Lock summary'}</Button>
                 {/* Never disabled: when it can't be reopened, the dialog says why. */}
                 {p.stage === 'locked' && <Button size="sm" icon={Unlock} onClick={() => { setOpen(p); setDlg('reopen'); }}>Request reopen</Button>}
+                {p.stage === 'frozen' && persona === 'hr' && <Button size="sm" icon={Unlock} onClick={() => { setOpen(p); setDlg('open_again'); }}>Open the month again</Button>}
                 {p.stage === 'locked' && !reopen.ok && <span className="yx-tim-muted">{reopen.reason}</span>}
               </div>
             </Card>
@@ -2275,7 +2284,7 @@ function SamplePeriods({ persona, openId, dialog, reopenable, after }: { persona
         })}
       </div>
       <Drawer
-        open={!!open && dlg !== 'reopen'}
+        open={!!open && dlg !== 'reopen' && dlg !== 'open_again'}
         onOpenChange={(o) => !o && setOpen(null)}
         // Wide enough that each checklist label, badge and fix button share one line on desktop.
         size="lg"
@@ -2345,6 +2354,20 @@ function SamplePeriods({ persona, openId, dialog, reopenable, after }: { persona
           onConfirm={() => { setLockedIds([...lockedIds, open.id]); setDlg(undefined); setOpen(null); }}
         />
       )}
+      {open && dlg === 'open_again' && (
+        <ReopenDialog
+          kind="open_again"
+          name={monthName(open)}
+          check={{ ok: true }}
+          minLength={10}
+          onClose={() => { setDlg(undefined); setOpen(null); }}
+          onSend={() => {
+            setOpenedIds([...openedIds, open.id]);
+            setSentOn(null);
+            toast({ tone: 'success', title: `${monthName(open)} is open again`, description: 'Fixes and requests can change it. Freeze it again before it is locked.' });
+          }}
+        />
+      )}
       {open && dlg === 'reopen' && (
         <ReopenDialog
           name={monthName(open)}
@@ -2357,8 +2380,12 @@ function SamplePeriods({ persona, openId, dialog, reopenable, after }: { persona
   );
 }
 
-/** Sent, it closes and says so with a toast (the live page's write toasts; the story toasts here). */
-function ReopenDialog({ name, check, minLength = 1, onSend, onClose }: { name: string; check: { ok: boolean; reason?: string }; minLength?: number; onSend: (reason: string) => unknown; onClose: () => void }) {
+/**
+ * Sent, it closes and says so with a toast (the live page's write toasts; the story toasts here). `open_again`: HR opens a
+ * month it froze (founder decision 7a, 29 Oct 2026): a reason, then the authenticator code, like Lock.
+ */
+function ReopenDialog({ name, check, minLength = 1, onSend, onClose, kind = 'reopen' }: { name: string; check: { ok: boolean; reason?: string }; minLength?: number; onSend: (reason: string) => unknown; onClose: () => void; kind?: 'reopen' | 'open_again' }) {
+  const again = kind === 'open_again';
   const [reason, setReason] = useState('');
   const { busy, error, run } = useRun();
   const early = useTooEarly(reason.trim().length < minLength ? [{ fieldId: 'reopen-why', message: minLength > 1 ? `Give the reason in a sentence (at least ${minLength} letters).` : 'Enter a reason' }] : []);
@@ -2377,18 +2404,20 @@ function ReopenDialog({ name, check, minLength = 1, onSend, onClose }: { name: s
           });
         }}
       >
-        Send reopen request
+        {again ? 'Open the month again' : 'Send reopen request'}
       </Button>
     </>
   ) : <Button onClick={onClose}>Close</Button>;
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()} title={`Request reopen · ${name}`} footer={footer}>
+    <Dialog open onOpenChange={(o) => !o && onClose()} title={again ? `Open ${name} again?` : `Request reopen · ${name}`} footer={footer}>
       {!check.ok ? (
         <InlineAlert tone="danger" title="This period can't be reopened">{check.reason}</InlineAlert>
       ) : (
         <div className="yx-tim-stack">
-          {error && <InlineAlert tone="danger" title="Not sent">{error}</InlineAlert>}
-          <p>Reopen is a high-risk request. It needs a payroll check, then Finance or a System Admin, and you can't approve your own request. Once approved, the month's frozen payroll figures are set aside (kept for the record).</p>
+          {error && <InlineAlert tone="danger" title={again ? 'Not opened' : 'Not sent'}>{error}</InlineAlert>}
+          {again ? (
+            <p>The month goes back to open: fixes and requests can change its days again. If it was sent to payroll, it comes back to you. Freeze it again before it is locked. You'll be asked for your authenticator code.</p>
+          ) : <p>Reopen is a high-risk request. It needs a payroll check, then Finance or a System Admin, and you can't approve your own request. Once approved, the month's frozen payroll figures are set aside (kept for the record).</p>}
           <FormField id="reopen-why" label="Reason" required error={early.errorOf('reopen-why')}><TextArea rows={3} value={reason} onChange={setReason} maxLength={500} /></FormField>
         </div>
       )}
@@ -2424,9 +2453,76 @@ const iaDays = (from: Date | null, to: Date | null) => (from && to ? daysUntil(t
 /** One date check for the form and the Edit dates dialog. */
 const iaDateError = (from: Date | null, to: Date | null) => (!from || !to ? 'Pick both dates' : iaDays(from, to) < 1 ? 'To must be on or after From' : null);
 
+/** One row of the past-events list (decision 7b, 29 Oct 2026). */
+interface IaListRow { id: string; kind: IaType; from: Date; to: Date; days: number; place: string; group: string; workers: number; legality: Legality; status: 'active' | 'cancelled' }
+const LEGALITY_LABEL: Record<Legality, string> = { legal: 'Legal', illegal: 'Illegal', undetermined: 'Undetermined' };
+const IA_LIST_STORY = 'screens-time-tim-37-·-industrial-action-event--list';
+
+/** "Past strikes and lockouts": every event in scope, newest first, 25 / 50 / 100 a page (server paging when live). */
+function IndustrialActionList({ rows, state, onRetry, total, page, pageSize, onPage, onPageSize, openHref, recordHref }: {
+  rows: IaListRow[]; state: 'ready' | 'loading' | 'error'; onRetry?: () => void;
+  total: number; page: number; pageSize: number; onPage: (page: number) => void; onPageSize: (size: number) => void;
+  openHref: (row: IaListRow) => string; recordHref: string;
+}) {
+  const record = <Button variant="primary" asChild><a href={recordHref} target="_top">Record event</a></Button>;
+  const cols: TableColumn<IaListRow>[] = [
+    { key: 'kind', header: 'Type', value: (r) => IA_LABEL[r.kind] },
+    { key: 'dates', header: 'Dates', type: 'date', value: (r) => r.from.getTime(), render: (r) => (r.days === 1 ? dm(r.from) : `${dm(r.from)} – ${dm(r.to)}`) },
+    { key: 'days', header: 'Days', type: 'number', value: (r) => r.days },
+    { key: 'place', header: 'Establishment', value: (r) => r.place },
+    { key: 'workers', header: 'Workers', value: (r) => r.workers, render: (r) => `${r.group} · ${plural(r.workers, 'worker')}` },
+    { key: 'legality', header: 'Legality', type: 'status', value: (r) => LEGALITY_LABEL[r.legality], statusTone: (v) => (v === 'Undetermined' ? 'warning' : 'neutral') },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => (r.status === 'cancelled' ? 'Cancelled' : 'Active'), statusTone: (v) => (v === 'Active' ? 'info' : 'neutral') },
+  ];
+  return (
+    <TimePage active="Requests" user={HR_ADMIN}>
+      <PageHeader title="Industrial action" description="Past strikes, lockouts and lay-offs at your establishments, newest first" actions={record} />
+      <DataTable
+        label="Past strikes and lockouts"
+        columns={cols}
+        rows={rows}
+        getRowId={(r) => r.id}
+        state={state}
+        onRetry={onRetry}
+        rowNoun={['event', 'events']}
+        empty={<EmptyState title="No strikes, lockouts or lay-offs yet" description="Recorded events show here, newest first, with their legality and pay status." action={record} />}
+        rowButtons={(r) => <Button size="sm" asChild><a href={openHref(r)} target="_top">Open</a></Button>}
+      />
+      {total > pageSize && <Pagination page={page} pageSize={pageSize} total={total} onPageChange={onPage} onPageSizeChange={onPageSize} />}
+    </TimePage>
+  );
+}
+
+/** Sample events: the lay-off of the record story, an earlier strike and a cancelled lockout (Hosur plant). */
+const IA_SAMPLE: IaListRow[] = [
+  { id: 'e1', kind: 'layoff', from: new Date(2026, 9, 5), to: new Date(2026, 9, 7), days: 3, place: 'Hosur plant (Tamil Nadu)', group: 'Operations · Line workers', workers: 120, legality: 'legal', status: 'active' },
+  { id: 'e2', kind: 'lockout', from: new Date(2026, 7, 24), to: new Date(2026, 7, 24), days: 1, place: 'Hosur plant (Tamil Nadu)', group: 'Operations · Maintenance', workers: 14, legality: 'undetermined', status: 'cancelled' },
+  { id: 'e3', kind: 'strike', from: new Date(2026, 6, 14), to: new Date(2026, 6, 15), days: 2, place: 'Hosur plant (Tamil Nadu)', group: 'Operations · Line workers', workers: 120, legality: 'illegal', status: 'active' },
+];
+
+function SampleIndustrialList({ state }: { state: 'ready' | 'empty' | 'loading' }) {
+  const [pageSize, setPageSize] = useState(25);
+  const [page, setPage] = useState(1);
+  const rows = state === 'ready' ? IA_SAMPLE : [];
+  return (
+    <IndustrialActionList
+      rows={rows}
+      state={state === 'loading' ? 'loading' : 'ready'}
+      total={rows.length}
+      page={page}
+      pageSize={pageSize}
+      onPage={setPage}
+      onPageSize={(n) => { setPageSize(n); setPage(1); }}
+      openHref={(r) => storyHref(r.legality === 'undetermined' ? 'screens-time-tim-37-·-industrial-action-event--record-undetermined' : 'screens-time-tim-37-·-industrial-action-event--record')}
+      recordHref={storyHref('screens-time-tim-37-·-industrial-action-event--form')}
+    />
+  );
+}
+
 /** TIM-37 · Industrial action. The app passes `live` (Time › Industrial action); stories show the sample. */
-export function IndustrialActionScreen(p: { view?: 'form' | 'record'; legality?: Legality; live?: LiveIndustrialAction }) {
-  return p.live ? <LiveIndustrialActionScreen live={p.live} /> : <SampleIndustrialAction {...p} />;
+export function IndustrialActionScreen(p: { view?: 'form' | 'record' | 'list'; legality?: Legality; /** The list's state (view "list"). */ listState?: 'ready' | 'empty' | 'loading'; live?: LiveIndustrialAction }) {
+  if (p.live) return <LiveIndustrialActionScreen live={p.live} />;
+  return p.view === 'list' ? <SampleIndustrialList state={p.listState ?? 'ready'} /> : <SampleIndustrialAction view={p.view} legality={p.legality} />;
 }
 
 function SampleIndustrialAction({ view = 'form', legality = 'undetermined' }: { view?: 'form' | 'record'; legality?: Legality }) {
@@ -2456,6 +2552,7 @@ function SampleIndustrialAction({ view = 'form', legality = 'undetermined' }: { 
         type={type} from={from} to={to} count={count} group={g.label} notice={notice} legality={leg} setOn={setOn}
         onLegality={(l) => { setLeg(l); setSetOn(l === 'undetermined' ? null : dayStart(TODAY)); }}
         onDates={(f, t) => { setFrom(f); setTo(t); }}
+        listHref={storyHref(IA_LIST_STORY)}
       />
     );
   return (
@@ -2486,8 +2583,8 @@ function SampleIndustrialAction({ view = 'form', legality = 'undetermined' }: { 
         <div className="yx-tim-stack">
           {block && <p className="yx-tim-muted">{block}</p>}
           <div className="yx-tim-row">
-            {/* Cancel leaves the form for Time > Requests. */}
-            <Button asChild><a href={storyHref('screens-time-tim-09-·-ot-review--hr')} target="_top">Cancel</a></Button>
+            {/* Cancel goes back to the list of past events. */}
+            <Button asChild><a href={storyHref(IA_LIST_STORY)} target="_top">Cancel</a></Button>
             <Button variant="primary" onClick={() => (block ? setTried(true) : setConfirm(true))}>Record event</Button>
           </div>
         </div>
@@ -2506,8 +2603,10 @@ function SampleIndustrialAction({ view = 'form', legality = 'undetermined' }: { 
   );
 }
 
-function IndustrialActionRecord({ type, from, to, count, group, notice, legality, setOn, onLegality, onDates, place = 'Hosur plant', today: now = TODAY, onCancel, cancelled: cancelledStart = false, links }: {
+function IndustrialActionRecord({ type, from, to, count, group, notice, legality, setOn, onLegality, onDates, place = 'Hosur plant', today: now = TODAY, onCancel, cancelled: cancelledStart = false, links, listHref }: {
   type: IaType; from: Date; to: Date; count: number; group: string; notice: string; legality: Legality; setOn: Date | null;
+  /** Back to the list of past events (decision 7b). */
+  listHref?: string;
   /** The live record awaits the server; a refusal stays in the dialog. */
   onLegality: (l: Legality) => void | Promise<unknown>; onDates: (from: Date, to: Date) => void | Promise<unknown>;
   /** Live: the establishment, today, cancelling on the server and the app's links. */
@@ -2554,11 +2653,12 @@ function IndustrialActionRecord({ type, from, to, count, group, notice, legality
           </span>
         }
         description={`${range(from, to)} · ${count} workers · ${legText}`}
-        actions={cancelled ? undefined : (
+        actions={(
           <>
-            {!ended && <Button onClick={() => { setEFrom(from); setETo(to); setEditing(true); }}>Edit dates</Button>}
-            {!ended && <Button onClick={() => setCancelAsk(true)}>Cancel event</Button>}
-            {!unset && <Button onClick={openLegality}>Change legality</Button>}
+            {listHref && <Button asChild><a href={listHref} target="_top">All events</a></Button>}
+            {!cancelled && !ended && <Button onClick={() => { setEFrom(from); setETo(to); setEditing(true); }}>Edit dates</Button>}
+            {!cancelled && !ended && <Button onClick={() => setCancelAsk(true)}>Cancel event</Button>}
+            {!cancelled && !unset && <Button onClick={openLegality}>Change legality</Button>}
           </>
         )}
       />
@@ -2657,10 +2757,40 @@ export interface LiveIndustrialAction {
   onLegality: (id: string, legality: Legality, version: number) => Promise<IndustrialEvent>;
   onDates: (id: string, from: string, to: string, version: number) => Promise<IndustrialEvent>;
   onCancel: (id: string, version: number) => Promise<IndustrialEvent>;
-  links: { cancel: string; people: string; muster: string };
+  links: { cancel: string; people: string; muster: string; /** The list of past events (decision 7b). */ list?: string };
+  /** The page's landing view: past strikes and lockouts (decision 7b). Undefined on the form and record views. */
+  list?: { data: IndustrialList | null; page: number; pageSize: number; onPage: (page: number) => void; onPageSize: (size: number) => void; openHref: (id: string) => string; recordHref: string };
 }
 
 function LiveIndustrialActionScreen({ live }: { live: LiveIndustrialAction }) {
+  return live.list ? <LiveIndustrialList live={live} list={live.list} /> : <LiveIndustrialForm live={live} />;
+}
+
+function LiveIndustrialList({ live, list }: { live: LiveIndustrialAction; list: NonNullable<LiveIndustrialAction['list']> }) {
+  const rows: IaListRow[] = (list.data?.events ?? []).map((e) => ({
+    id: e.id, kind: e.kind, from: isoDay(e.from), to: isoDay(e.to), days: e.days,
+    place: `${e.location.name}${STATE_NAME[e.location.state] ? ` (${STATE_NAME[e.location.state]})` : ''}`,
+    group: e.department ? e.department.name : 'Everyone', workers: e.workers, legality: e.legality, status: e.status,
+  }));
+  if (live.state === 'no-access' || live.state === 'no-record')
+    return <TimePage active="Requests" user={HR_ADMIN}><PageHeader title="Industrial action" /><LiveGate state={live.state} onRetry={live.onRetry} what="industrial action">{null}</LiveGate></TimePage>;
+  return (
+    <IndustrialActionList
+      rows={rows}
+      state={live.state === 'loading' ? 'loading' : live.state === 'error' ? 'error' : 'ready'}
+      onRetry={live.onRetry}
+      total={list.data?.total ?? 0}
+      page={list.page}
+      pageSize={list.pageSize}
+      onPage={list.onPage}
+      onPageSize={list.onPageSize}
+      openHref={(r) => list.openHref(r.id)}
+      recordHref={list.recordHref}
+    />
+  );
+}
+
+function LiveIndustrialForm({ live }: { live: LiveIndustrialAction }) {
   const [event, setEvent] = useState<IndustrialEvent | null>(live.event);
   useEffect(() => setEvent(live.event), [live.event]);
   const locations = live.options?.locations ?? [];
@@ -2695,6 +2825,7 @@ function LiveIndustrialActionScreen({ live }: { live: LiveIndustrialAction }) {
         today={isoDay(ev.today)}
         cancelled={ev.status === 'cancelled'}
         links={{ people: live.links.people, muster: live.links.muster }}
+        listHref={live.links.list}
         onLegality={async (l) => setEvent(await live.onLegality(ev.id, l, ev.version))}
         onDates={async (f, t) => setEvent(await live.onDates(ev.id, isoOf(f), isoOf(t), ev.version))}
         onCancel={async () => setEvent(await live.onCancel(ev.id, ev.version))}
