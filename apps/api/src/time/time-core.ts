@@ -9,7 +9,7 @@ import type { MaternityValues } from './time-rules';
 // Shared loaders for leave and attendance: the employee's dated facts, the location's calendar and rules, the
 // policy in force (scoped and dated, YX-ORG-18), statutory floors (P07) and who may see whom (P02).
 
-export const TIME_KEYS = ['leave.settings.manage', 'leave.view', 'leave.balance.adjust', 'leave.approve', 'leave.medical.view', 'attendance.view', 'roster.manage', 'attendance.lock', 'leave.eligibility.override'] as const;
+export const TIME_KEYS = ['leave.settings.manage', 'leave.view', 'leave.balance.adjust', 'leave.approve', 'leave.medical.view', 'attendance.view', 'roster.manage', 'attendance.lock', 'leave.eligibility.override', 'leave.liability.view'] as const;
 export type TimeKey = (typeof TIME_KEYS)[number];
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);

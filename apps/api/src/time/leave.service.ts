@@ -191,7 +191,10 @@ export class LeaveService implements OnModuleInit {
     if (dto.from === dto.to && fromHalf === 'second' && toHalf === 'first') throw new BadRequestException('Choose the first half or the second half of that day, not both.');
     const balances = await this.balancesIn(tx, c, f, dto.from < today ? today : dto.from);
     const balance = balances.find((b) => b.leaveTypeId === t.id) ?? null;
-    if (!balance) blocks.push(`${t.name} is not part of your leave policy.`);
+    // Someone else applying (HR): the messages name the person instead of "you".
+    const onBehalf = Boolean(c.userId) && c.userId !== f.userId;
+    const whose = onBehalf ? `${f.name}'s` : 'your';
+    if (!balance) blocks.push(`${t.name} is not part of ${whose} leave policy.`);
     const { map } = await holidaysFor(tx, org, f.locationId, dto.from, dto.to, f.employeeId);
     // Weekly offs per date from the person's roster, pattern or location (Q1, YX-LV-03).
     const book = await ScheduleBook.load(tx, org);
@@ -202,7 +205,7 @@ export class LeaveService implements OnModuleInit {
     const total = counted.total;
     if (!rules.halfDays && (fromHalf !== 'full' || toHalf !== 'full')) blocks.push(`${t.name} is taken in whole days.`);
     if (total === 0) blocks.push('Those days are holidays or weekly offs. Nothing to apply for.');
-    if (dto.from < f.joinedOn || (f.exitedOn && dto.to > f.exitedOn)) blocks.push('Some of those days are outside your employment.');
+    if (dto.from < f.joinedOn || (f.exitedOn && dto.to > f.exitedOn)) blocks.push(`Some of those days are outside ${whose} employment.`);
     // P08: a locked month takes an HR correction (YX-LV-08).
     const locked = [...(await lockedDates(tx, org, f.employeeId, dto.from, dto.to))].sort();
     if (locked.length) blocks.push(`${new Date(`${locked[0]}T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })} is locked for attendance and leave. Ask HR to record it.`);
@@ -214,14 +217,13 @@ export class LeaveService implements OnModuleInit {
     // it unless the company says it applies (leave.notice.on_behalf); applyIn audits the skip.
     const noticeDays = noticeDaysFor(rules.noticeDays, t.kind, Number(await settingOn(tx, c, 'leave.notice_days.default', f, dto.from)));
     const short = noticeDays > 0 && daysBetween(today, dto.from) < noticeDays;
-    const onBehalf = Boolean(c.userId) && c.userId !== f.userId;
     const noticeSkipped = short && onBehalf && (await settingOn(tx, c, 'leave.notice.on_behalf', f, dto.from)) === 'skip';
     const shortNotice = short && !noticeSkipped;
     if (shortNotice)
       (rules.noticeMode === 'warn' ? warnings : blocks).push(
         rules.noticeMode === 'warn'
           ? `Short notice: ${t.name} asks for ${noticeText(noticeDays)} notice. Your approver sees this.`
-          : `${t.name} needs ${noticeText(noticeDays)} notice. Pick a date on or after ${fullDate(addDays(today, noticeDays))}, or ask your manager.`,
+          : `${t.name} needs ${noticeText(noticeDays)} notice. Pick a date on or after ${fullDate(addDays(today, noticeDays))}${onBehalf ? '' : ', or ask your manager'}.`,
       );
     if (rules.minDays !== null && total > 0 && total < rules.minDays) blocks.push(`${t.name} is at least ${daysText(rules.minDays)} at a time.`);
     if (rules.maxDays !== null && total > rules.maxDays) blocks.push(`${t.name} is at most ${daysText(rules.maxDays)} at a time.`);
@@ -237,7 +239,7 @@ export class LeaveService implements OnModuleInit {
         AND (d.part = 'full' OR d.part = ANY(${counted.days.filter((x) => x.portion > 0).map((x) => (x.part === 'full' ? ['first', 'second', 'full'] : [x.part])).flat()}::text[]))
         AND d.leave_on = ANY(${counted.days.filter((x) => x.portion > 0).map((x) => x.on)}::date[])
       ORDER BY 1 LIMIT 1`;
-    if (clash.length) blocks.push(`You already have leave on ${fmt(clash[0].on)}.`);
+    if (clash.length) blocks.push(`${onBehalf ? `${f.name} already has` : 'You already have'} leave on ${fmt(clash[0].on)}.`);
     let balanceAfter: number | null = null;
     if (balance?.hasBalance) {
       balanceAfter = Math.round((balance.available - total) * 100) / 100;
@@ -439,28 +441,56 @@ export class LeaveService implements OnModuleInit {
   }
 
   /**
-   * Founder decision 2: HR applies leave for someone in their leave.balance.adjust scope (never their own: My leave).
-   * The request still goes to the person's manager; the notice rule follows leave.notice.on_behalf (skip by default,
-   * audited on the request).
+   * Founder decision 2: HR applies leave for someone in their leave.balance.adjust scope (never their own: My leave),
+   * never while acting for someone else; another company's person is 404. The notice rule follows
+   * leave.notice.on_behalf (skip by default, audited on the request). Founder answer B: the request goes through the
+   * person's normal approval chain with an "Applied by HR" note, unless leave.on_behalf.approval says "approved" and the
+   * HR person also holds leave.approve over them (then it is approved at once, audited).
    */
   async applyFor(ctx: TenantContext, user: ScopeUser, employeeId: string, dto: ApplyLeaveDto) {
-    const v = await this.viewer(user);
-    if (v.actingForOther) throw new ForbiddenException('Not available while acting for someone else.');
     const notices: Notice[] = [];
-    const res = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const own = v.userId ? ((await tx.employee.findFirst({ where: { organizationId: c.organizationId, userId: v.userId }, select: { id: true } }))?.id ?? null) : null;
-      if (!(await grantCovers(tx, c, v, own, 'leave.balance.adjust', employeeId, todayIn('Asia/Kolkata')))) throw new NotFoundException('Not found');
-      if (employeeId === own) throw new ForbiddenException('Apply for your own leave in My leave.');
-      const f = (await factsOn(tx, c.organizationId, employeeId, todayIn('Asia/Kolkata'))) ?? (await factsOn(tx, c.organizationId, employeeId, dto.from));
-      if (!f) throw new BadRequestException('That person has no job on those dates.');
-      return this.applyIn(tx, c, f, todayIn(f.zone), dto, notices);
-    });
+    const res = await this.forSomeone(ctx, user, employeeId, (tx, c, f, today, v, own) => this.applyIn(tx, c, f, today, dto, notices, { v, own }), dto.from);
     await this.engine.send(ctx, notices);
     return res;
   }
 
+  /** GET hr/leave/:employeeId: what the Apply-for-someone dialog needs: the person, their leave types and balances. */
+  applyForForm(ctx: TenantContext, user: ScopeUser, employeeId: string) {
+    return this.forSomeone(ctx, user, employeeId, async (tx, c, f, today, v, own) => ({
+      employee: { id: f.employeeId, name: f.name, code: f.code },
+      today,
+      balances: await this.balancesIn(tx, c, f, today),
+      approval: await this.hrApproval(tx, c, f, today, v, own),
+    }));
+  }
+
+  /** POST hr/leave/:employeeId/preview: the same summary the person would see, with HR's notice rule and approval. */
+  previewFor(ctx: TenantContext, user: ScopeUser, employeeId: string, dto: LeavePlanDto) {
+    return this.forSomeone(ctx, user, employeeId, async (tx, c, f, today, v, own) => ({ ...(await this.plan(tx, c, f, dto, today)), approval: await this.hrApproval(tx, c, f, today, v, own) }), dto.from);
+  }
+
+  private async forSomeone<T>(ctx: TenantContext, user: ScopeUser, employeeId: string, fn: (tx: Tx, c: CompanyContext, f: Facts, today: string, v: Viewer, own: string | null) => Promise<T>, on?: string) {
+    const v = await this.viewer(user);
+    if (v.actingForOther) throw new ForbiddenException('Not available while acting for someone else.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const own = await this.ownId(tx, c, v);
+      const today = todayIn('Asia/Kolkata');
+      if (!(await grantCovers(tx, c, v, own, 'leave.balance.adjust', employeeId, today))) throw new NotFoundException('Not found');
+      if (employeeId === own) throw new ForbiddenException('Apply for your own leave in My leave.');
+      const f = (await factsOn(tx, c.organizationId, employeeId, today)) ?? (on ? await factsOn(tx, c.organizationId, employeeId, on) : null);
+      if (!f) throw new BadRequestException('That person has no job on those dates.');
+      return fn(tx, c, f, todayIn(f.zone), v, own);
+    });
+  }
+
+  /** 'chain': the normal approvers decide; 'approved': approved at once (setting + HR holds leave.approve over them). */
+  private async hrApproval(tx: Tx, c: CompanyContext, f: Facts, today: string, v: Viewer, own: string | null): Promise<'chain' | 'approved'> {
+    if ((await settingOn(tx, c, 'leave.on_behalf.approval', f, today)) !== 'approved') return 'chain';
+    return (await grantCovers(tx, c, v, own, 'leave.approve', f.employeeId, today)) ? 'approved' : 'chain';
+  }
+
   /** The request for `f`, raised by the signed-in person (c.userId; null for an import or the demo seed). */
-  async applyIn(tx: Tx, c: CompanyContext, f: Facts, today: string, dto: ApplyLeaveDto, notices: Notice[]) {
+  async applyIn(tx: Tx, c: CompanyContext, f: Facts, today: string, dto: ApplyLeaveDto, notices: Notice[], raiser?: { v: Viewer; own: string | null }) {
     {
       const org = c.organizationId;
       // One request at a time per person: the overlap and balance checks must see each other.
@@ -472,6 +502,7 @@ export class LeaveService implements OnModuleInit {
         else if (!(await tx.user.findFirst({ where: { organizationId: org, id: dto.delegateUserId, status: 'active' }, select: { id: true } }))) p.blocks.push('Choose an active colleague to approve while you are away.');
       }
       if (p.blocks.length) throw new BadRequestException({ statusCode: 400, code: 'LEAVE_RULES', message: p.blocks[0], blocks: p.blocks });
+      const atOnce = raiser ? (await this.hrApproval(tx, c, f, today, raiser.v, raiser.own)) === 'approved' : false;
       const reason = dto.reason?.trim() || null;
       const req = await tx.leaveRequest.create({
         data: {
@@ -494,8 +525,9 @@ export class LeaveService implements OnModuleInit {
       await tx.leaveRequestDay.createMany({ data: p.days.map((d) => ({ organizationId: org, requestId: req.id, employeeId: f.employeeId, leaveOn: asDate(d.on), part: d.part, portion: d.portion, countedAs: d.countedAs })) });
       const hr = p.type.rules.hrApprovalAboveDays;
       const hrUsers = await hrApprovers(tx, org, f.employeeId, today, f.userId);
-      const steps: StepSpec[] = [{ name: 'Manager', approvers: [{ kind: 'manager' }], mode: 'any', remindAfterHours: 24, timeoutHours: 72, onTimeout: 'escalate' }];
-      if (hr !== null) {
+      // Founder answer B: approved at once (no steps) only when the company says so and HR may approve this person.
+      const steps: StepSpec[] = atOnce ? [] : [{ name: 'Manager', approvers: [{ kind: 'manager' }], mode: 'any', remindAfterHours: 24, timeoutHours: 72, onTimeout: 'escalate' }];
+      if (hr !== null && !atOnce) {
         steps.push({
           name: 'HR',
           approvers: [{ kind: 'users', userIds: hrUsers }],
@@ -513,6 +545,7 @@ export class LeaveService implements OnModuleInit {
         { label: 'Team', value: p.othersOff ? `${p.othersOff} ${p.othersOff === 1 ? 'other is' : 'others are'} off then` : 'No one else in the team is off then' },
         ...(p.balanceAfter !== null ? [{ label: 'Balance after', value: String(p.balanceAfter) }] : []),
         ...(p.shortNotice ? [{ label: 'Notice', value: `Short notice: the type asks for ${daysText(p.noticeDays)}` }] : []),
+        ...(raiser ? [{ label: 'Applied by', value: atOnce ? 'HR, on their behalf · approved at once (company setting)' : 'HR, on their behalf' }] : []),
         ...(p.noticeSkipped ? [{ label: 'Notice', value: `Applied by HR: ${noticeText(p.noticeDays)} notice not needed` }] : []),
         ...(p.blockDates.length ? [{ label: 'Company block date', value: `${rangeText(p.blockDates[0].from, p.blockDates[0].to)} (${p.blockDates[0].reason})` }] : []),
         ...(p.notice ? [{ label: 'Last working day', value: p.notice.newLastDay === p.notice.lastDay ? `Stays ${fmt(p.notice.lastDay)}` : `Moves from ${fmt(p.notice.lastDay)} to ${fmt(p.notice.newLastDay)}` }] : []),
@@ -538,7 +571,7 @@ export class LeaveService implements OnModuleInit {
       });
       notices.push(...sub.notices);
       await tx.leaveRequest.update({ where: { id: req.id }, data: { wfRequestId: sub.id } });
-      await audit(tx, c, 'leave.request.submitted', 'leave_request', req.id, { employeeId: f.employeeId, type: p.type.code, from: dto.from, to: dto.to, days: p.total, wfRequestId: sub.id, ...(c.userId !== f.userId ? { raisedFor: true } : {}), ...(p.noticeSkipped ? { noticeSkipped: p.noticeDays } : {}) });
+      await audit(tx, c, 'leave.request.submitted', 'leave_request', req.id, { employeeId: f.employeeId, type: p.type.code, from: dto.from, to: dto.to, days: p.total, wfRequestId: sub.id, ...(c.userId !== f.userId ? { raisedFor: true } : {}), ...(p.noticeSkipped ? { noticeSkipped: p.noticeDays } : {}), ...(atOnce ? { approvedAtOnce: true } : {}) });
       return { id: req.id, status: (await tx.leaveRequest.findFirstOrThrow({ where: { id: req.id } })).status, days: p.total, wfRequestId: sub.id };
     }
   }

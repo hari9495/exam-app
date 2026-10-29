@@ -50,8 +50,9 @@ const PAY_ADMIN_5H = ['consultant.manage'];
 const PAY_APPROVER_5H = ['consultant.invoice.approve'];
 // Batch 5i: special pay sent to payroll, earned wage access and equity plans (payroll); approvers approve postings with payroll.run.approve.
 const PAY_ADMIN_5I = ['payroll.special.manage', 'payroll.ewa.manage', 'payroll.equity.manage'];
-// Founder decision 5 (29 Oct 2026): payroll approves the attendance lock HR sends (two-step flow, TIM-11).
-const PAY_ADMIN_TIME = ['attendance.lock.approve'];
+// Founder decision 5 (29 Oct 2026): payroll approves the attendance lock HR sends (two-step flow, TIM-11); founder
+// answer A: payroll reads the leave liability report only (not the whole of leave.view).
+const PAY_ADMIN_TIME = ['attendance.lock.approve', 'leave.liability.view'];
 const PAY_APPROVER_5A = ['payroll.period.view', 'payroll.period.reopen', 'payroll.document.view', 'payroll.file.view', 'payroll.file.release'];
 
 const DESK_AGENT = ['desk.ticket.view', 'desk.ticket.work', 'desk.ticket.note', 'desk.ticket.export', 'desk.task.work', 'desk.kb.view_internal', 'desk.kb.author', 'desk.chat.work', 'desk.hr_summary.view', 'desk.ticket.move'];

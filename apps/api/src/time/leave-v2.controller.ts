@@ -5,19 +5,21 @@ import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
-import { RequirePermissions } from '../rbac/permissions.decorator';
+import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
 import { LeaveService } from './leave.service';
 import { LeaveV2Service } from './leave-v2.service';
-import { ApplyLeaveDto } from './dto';
+import { ApplyLeaveDto, LeavePlanDto } from './dto';
 import { BlockDateDto, BlockPlanDto, CompOffClaimDto, DateNoteDto, EncashDto, FeedDecideDto, FeedDto, LongAbsenceCheckDto, LongAbsenceDto, PauseDto, ReportQueryDto } from './leave-v2.dto';
 
 // Leave v2 routes. Permissions (P02 YX-SEC-01), checked on the server for every row:
 //   no key (self)              my ledger, comp-off claims, encashment, my long absence and its return date
 //   implicit manager view      block-leave planner rows of their team (read only)
 //   leave.view                 HR leave home, leave reports and export, long absences, block-leave planning and nudges
-//   leave.balance.adjust       record, extend or end a long absence early; apply leave for someone (never one's own)
+//   leave.balance.adjust       record, extend or end a long absence early; apply leave for someone (never one's own),
+//                              with its form and preview (founder answer B)
+//   leave.liability.view       the leave liability report and its export only (founder answer A: Payroll; other reports 403)
 //   + employee.salary.view     the money columns of the leave liability report (per legal entity; others get days only)
 //   leave.settings.manage      company block dates and public-holiday feeds
 // Acting for someone else is refused on every write.
@@ -103,13 +105,13 @@ export class LeaveV2Controller {
   }
 
   @Get('hr/leave-report')
-  @RequirePermissions('leave.view')
+  @RequireAnyPermission('leave.view', 'leave.liability.view')
   report(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: ReportQueryDto) {
     return this.v2.report(ctx, this.user(req), q);
   }
 
   @Get('hr/leave-report/export')
-  @RequirePermissions('leave.view')
+  @RequireAnyPermission('leave.view', 'leave.liability.view')
   @Throttle(MODERATE_UPLOAD_THROTTLE)
   @Header('Cache-Control', 'no-store')
   async export(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: ReportQueryDto, @Res({ passthrough: true }) res: Response) {
@@ -117,6 +119,21 @@ export class LeaveV2Controller {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${out.filename}"`);
     return `﻿${out.csv}`;
+  }
+
+  /** Founder answer B: the Apply-for-someone dialog: the person, their leave types and balances, and how it is approved. */
+  @Get('hr/leave/:employeeId')
+  @RequirePermissions('leave.balance.adjust')
+  applyForForm(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) id: string) {
+    return this.leave.applyForForm(ctx, this.user(req), id);
+  }
+
+  /** The summary before HR sends it (the server's own rules, HR's notice rule). */
+  @Post('hr/leave/:employeeId/preview')
+  @HttpCode(200)
+  @RequirePermissions('leave.balance.adjust')
+  previewFor(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) id: string, @Body() dto: LeavePlanDto) {
+    return this.leave.previewFor(ctx, this.user(req), id, dto);
   }
 
   /** Founder decision 2: HR applies leave for someone in scope; notice follows leave.notice.on_behalf (skip by default). */

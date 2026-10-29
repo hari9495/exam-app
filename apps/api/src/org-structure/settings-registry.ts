@@ -161,6 +161,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // the type sets its own); when HR applies for someone the notice is skipped (audited) unless the company says it applies.
   'leave.notice_days.default': { label: 'Apply leave at least this many days ahead (types without their own number)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['0', '1', '2', '3', '5', '7', '10', '14', '15', '21', '30'], default: '0' },
   'leave.notice.on_behalf': { label: 'Notice when HR applies leave for someone', scopes: ['tenant', 'legal_entity'], dated: false, values: ['skip', 'apply'], default: 'skip' },
+  // Founder answer B (29 Oct 2026): leave HR applies for someone goes to the person's normal approvers with an "Applied by
+  // HR" note; a company may have it approved at once instead (only when that HR person also holds leave.approve over them).
+  'leave.on_behalf.approval': { label: 'Leave HR applies for someone', scopes: ['tenant', 'legal_entity'], dated: false, values: ['chain', 'approved'], default: 'chain' },
   // Founder decision 3: the leave liability is unused encashable days x daily pay; daily pay = monthly pay (basis:
   // payroll.leave_encashment_basis) divided by 26, 30 or the days in the month.
   'leave.liability.divisor': { label: 'Daily pay for the leave liability: monthly pay divided by', scopes: ['tenant', 'legal_entity'], dated: false, values: ['26', '30', 'calendar'], default: '26' },

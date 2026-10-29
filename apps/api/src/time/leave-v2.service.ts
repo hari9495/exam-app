@@ -11,7 +11,7 @@ import { payOn } from '../payroll/fnf.service';
 import { entitiesFor, payViewer, withPayScope } from '../payroll/pay-access';
 import { DayEngine } from './day-engine.service';
 import { LeaveService } from './leave.service';
-import { Facts, LeaveRules, asDate, dateOf, factsOn, grantCovers, hasBalance, holidaysFor, hrApprovers, num, rulesFor, settingOn, todayIn, visibleSql } from './time-core';
+import { Facts, LeaveRules, asDate, dateOf, factsOn, grantCovers, hasBalance, holidaysFor, hrApprovers, num, rulesFor, settingOn, todayIn, visibleSql, type TimeKey } from './time-core';
 import { addDays, daysBetween, leaveYearOf } from './time-maths';
 import { ScheduleBook, lockedDates } from './schedule';
 import { BLOCK_DATE_EXEMPT, CompOffCredit, compOffExpiries, compOffUseBy, dailyPay, encashAmount, encashMax, encashWindowOpen, longestRun, toCsv } from './leave-rules';
@@ -40,6 +40,9 @@ export const ENCASH_TAX_NOTE = 'Cashed-in leave while you work is taxed as salar
 
 type ClaimRow = Prisma.CompOffClaimGetPayload<object>;
 type EncashRow = Prisma.LeaveEncashmentGetPayload<object>;
+
+/** Founder answer A: the liability report opens with leave.view or leave.liability.view; every other report needs leave.view. */
+const reportKeys = (q: ReportQueryDto): TimeKey[] => (q.report === 'liability' ? ['leave.view', 'leave.liability.view'] : ['leave.view']);
 
 @Injectable()
 export class LeaveV2Service implements OnModuleInit {
@@ -618,18 +621,35 @@ export class LeaveV2Service implements OnModuleInit {
 
   // ------------------------------------------------------------------------------------------ scope helper (HR)
 
-  /** Runs `fn` with an SQL test "this employee is in my leave.view scope" (explicit grants, never the team view). */
-  private async inScope<T>(ctx: TenantContext, user: ScopeUser, fn: (tx: Tx, c: CompanyContext, scope: (alias: Alias) => Prisma.Sql, v: Viewer, own: string | null) => Promise<T>, team = false) {
+  /**
+   * Runs `fn` with an SQL test "this employee is in my scope" for the keys held of `keys` (explicit grants, never the
+   * team view; leave.view by default). The liability report also takes leave.liability.view (founder answer A: payroll).
+   */
+  private async inScope<T>(ctx: TenantContext, user: ScopeUser, fn: (tx: Tx, c: CompanyContext, scope: (alias: Alias) => Prisma.Sql, v: Viewer, own: string | null) => Promise<T>, team = false, keys: readonly TimeKey[] = ['leave.view']) {
     const v = await this.leave.viewer(user);
-    if (!team && !has(v, 'leave.view')) throw new ForbiddenException('You need leave.view (HR) for this.');
+    const held = keys.filter((k) => has(v, k));
+    if (!team && !held.length) throw new ForbiddenException(has(v, 'leave.liability.view') ? 'You can open the leave liability report only.' : 'You need leave.view (HR) for this.');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const own = await this.own(tx, c, v);
       const today = todayIn('Asia/Kolkata');
       // Built once per column alias (it reads the viewer's grants); `team` adds the implicit manager view.
       const scopes = new Map<Alias, Prisma.Sql>();
-      for (const alias of ALIASES) scopes.set(alias, await visibleSql(tx, c, v, own, 'leave.view', Prisma.raw(alias), today, team));
+      for (const alias of ALIASES) {
+        const parts = await Promise.all((held.length ? held : ['leave.view' as const]).map((k) => visibleSql(tx, c, v, own, k, Prisma.raw(alias), today, team)));
+        scopes.set(alias, Prisma.sql`(${Prisma.join(parts, ' OR ')})`);
+      }
       return fn(tx, c, (alias) => scopes.get(alias)!, v, own);
     });
+  }
+
+  /** The report's filters must be this company's own (another company's entity, location or department: 404). */
+  private async ownFilters(tx: Tx, c: CompanyContext, q: ReportQueryDto) {
+    const o = { organizationId: c.organizationId };
+    const missing =
+      (q.entityId && !(await tx.legalEntity.findFirst({ where: { ...o, id: q.entityId }, select: { id: true } }))) ||
+      (q.locationId && !(await tx.location.findFirst({ where: { ...o, id: q.locationId }, select: { id: true } }))) ||
+      (q.departmentId && !(await tx.department.findFirst({ where: { ...o, id: q.departmentId }, select: { id: true } })));
+    if (missing) throw new NotFoundException('Not found');
   }
 
   // ------------------------------------------------------------------------------------------ TIM-17 HR leave home
@@ -848,6 +868,7 @@ export class LeaveV2Service implements OnModuleInit {
   async report(ctx: TenantContext, user: ScopeUser, q: ReportQueryDto) {
     const pv = q.report === 'liability' ? await payViewer(this.prisma, this.tenantPrisma, user) : null;
     return this.inScope(ctx, user, async (tx, c, scope) => {
+      await this.ownFilters(tx, c, q);
       const out = await this.reportRows(tx, c, scope, q, false, await this.payEntities(tx, c, pv, q));
       // The filter lists (entities, locations, departments of this company).
       const org = { organizationId: c.organizationId };
@@ -857,13 +878,14 @@ export class LeaveV2Service implements OnModuleInit {
         departments: (await tx.department.findMany({ where: org, select: { id: true, name: true }, orderBy: { name: 'asc' } })).map((x) => ({ id: x.id, name: String(x.name) })),
       };
       return { ...out, filters, page: q.page ?? 1, pageSize: q.pageSize ?? 50 };
-    });
+    }, false, reportKeys(q));
   }
 
   /** GET hr/leave-report/export: the whole report as CSV (up to 10 000 rows), audited. */
   async export(ctx: TenantContext, user: ScopeUser, q: ReportQueryDto) {
     const pv = q.report === 'liability' ? await payViewer(this.prisma, this.tenantPrisma, user) : null;
     return this.inScope(ctx, user, async (tx, c, scope) => {
+      await this.ownFilters(tx, c, q);
       const out = await this.reportRows(tx, c, scope, q, true, await this.payEntities(tx, c, pv, q));
       if (out.total > 10_000) throw new BadRequestException(`This report has ${out.total} rows. Filter it to 10,000 rows or fewer to export.`);
       const head = ['Employee', 'Code'];
@@ -874,7 +896,7 @@ export class LeaveV2Service implements OnModuleInit {
       else lines = [[...head, 'Location', 'Department', ...out.types.map((t) => t.name)], ...(out.rows as { name: string; code: string | null; location: string | null; department: string | null; values: Record<string, number> }[]).map((r) => [r.name, r.code, r.location, r.department, ...out.types.map((t) => r.values[t.id] ?? 0)])];
       await audit(tx, c, 'leave.report.exported', 'leave_report', c.organizationId, { report: q.report, rows: out.total, ...(out.report === 'liability' ? { pay: (out as Liability).money } : {}), filters: { entityId: q.entityId ?? null, locationId: q.locationId ?? null, departmentId: q.departmentId ?? null, month: q.month ?? null } });
       return { filename: `leave-${q.report}-${todayIn('Asia/Kolkata')}.csv`, csv: toCsv(lines) };
-    });
+    }, false, reportKeys(q));
   }
 
   // ------------------------------------------------------------------------------------------ TIM-39 block leave
