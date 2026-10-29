@@ -157,7 +157,8 @@ export class PayReportsService {
     if (!to) {
       const [last] = await tx.$queryRaw<{ m: string | null }[]>`
         SELECT to_char(max(period_start), 'YYYY-MM') AS m FROM payslips WHERE organization_id = ${org}::uuid AND legal_entity_id = ANY(${entities}::uuid[]) AND status = 'approved'`;
-      to = last?.m ?? todayIst().slice(0, 7);
+      // No approved payslips in scope yet: last month (the page shows the same default).
+      to = last?.m ?? addMonths(todayIst().slice(0, 7), -1);
     }
     const from = q.from ?? to;
     if (from > to) throw new BadRequestException('The first month is after the last month.');

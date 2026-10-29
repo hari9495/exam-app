@@ -360,6 +360,17 @@ describe('Payroll reports (PAY-25)', () => {
     expect((await api('tnOnly', `/payroll/reports/loans?from=${M}&to=${M}`).expect(200)).body.total).toBe(0);
   });
 
+  it('default month: the latest with approved payslips in scope; none in scope: last month', async () => {
+    const a = (await api('payAdmin', `/payroll/reports/register?${KA()}`).expect(200)).body;
+    expect([a.filters.from, a.filters.to, a.total]).toEqual([M, M, 5]);
+    const lastMonth = (() => {
+      const [y, m] = today.split('-').map(Number);
+      return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+    })();
+    const b = (await api('payAdminB', '/payroll/reports/register').expect(200)).body;
+    expect([b.filters.from, b.filters.to, b.total]).toEqual([lastMonth, lastMonth, 0]);
+  });
+
   it('bad input: unknown report, months the wrong way round or badly written, too many months, a page too big', async () => {
     await api('payAdmin', '/payroll/reports/payslips').expect(400);
     await api('payAdmin', `/payroll/reports/register?from=${M}&to=${P}`).expect(400);
