@@ -45,6 +45,35 @@ describe('one employee', () => {
     const above = employeeBonus({ months: twelve('21000.01'), days: 300, minimumWage: '0' }, R, '8.33');
     expect([above.eligible, above.reason, s(above.payable)]).toEqual([false, 'Wage above ₹21,000 a month all year.', '0.00']);
   });
+  // Founder 30 Oct 2026 (item 24): the limit is tested on the full-month salary rate, not on what a part month earned.
+  it('the limit is tested on the full-month rate: exactly ₹21,000 is eligible, ₹21,000.01 is not, whatever was earned', () => {
+    const at = (rate: string, wage: string) => yearMonths(accountingYear(2025, R)).map((month) => ({ month, wage, rate }));
+    const limit = employeeBonus({ months: at('21000', '21000'), days: 300, minimumWage: '0' }, R, '8.33');
+    expect([limit.eligible, limit.eligibleMonths]).toEqual([true, 12]);
+    // A part month (unpaid days) earned ₹10,000 on a ₹21,000.01 rate: still above the limit.
+    const part = employeeBonus({ months: at('21000.01', '10000'), days: 300, minimumWage: '0' }, R, '8.33');
+    expect([part.eligible, part.reason, s(part.payable)]).toEqual([false, 'Wage above ₹21,000 a month all year.', '0.00']);
+  });
+  it('earned more than the limit in a month (arrears of bonus wage) on a rate at the limit: still eligible', () => {
+    const months = yearMonths(accountingYear(2025, R)).map((month, i) => ({ month, wage: i === 0 ? '25000' : '21000', rate: '21000' }));
+    const b = employeeBonus({ months, days: 300, minimumWage: '0' }, R, '8.33');
+    // Each month counts up to the ₹7,000 ceiling.
+    expect([b.eligible, b.eligibleMonths, s(b.bonusSalary)]).toEqual([true, 12, '84000.00']);
+  });
+  it('a raise above the limit mid-year: the months on the higher rate earn nothing', () => {
+    const months = yearMonths(accountingYear(2025, R)).map((month, i) => ({ month, wage: i < 9 ? '20000' : '21500', rate: i < 9 ? '20000' : '21500' }));
+    expect(employeeBonus({ months, days: 300, minimumWage: '0' }, R, '8.33').eligibleMonths).toBe(9);
+  });
+  it('a month with no rate (imported history) is tested on what it earned', () => {
+    const months = yearMonths(accountingYear(2025, R)).map((month, i) => ({ month, wage: '21000.01', rate: i < 6 ? '21000' : null }));
+    expect(employeeBonus({ months, days: 300, minimumWage: '0' }, R, '8.33').eligibleMonths).toBe(6);
+  });
+  it('the limit follows the company setting (a more generous one)', () => {
+    const at = (rate: string) => yearMonths(accountingYear(2025, R)).map((month) => ({ month, wage: '15000', rate }));
+    const rules: BonusRules = { ...R, eligibilityWage: '25000' };
+    expect(employeeBonus({ months: at('25000'), days: 300, minimumWage: '0' }, rules, '8.33').eligible).toBe(true);
+    expect(employeeBonus({ months: at('25000.01'), days: 300, minimumWage: '0' }, rules, '8.33').eligible).toBe(false);
+  });
   it('months above the limit earn nothing; the other months still do', () => {
     const months = twelve('20000').map((m, i) => (i >= 6 ? { ...m, wage: '22000' } : m));
     const b = employeeBonus({ months, days: 300, minimumWage: '0' }, R, '8.33');

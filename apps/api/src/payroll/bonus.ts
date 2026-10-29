@@ -1,7 +1,8 @@
 import { Prisma } from '@prisma/client';
 
 // PAY-24 statutory bonus (Payment of Bonus Act, 1965; M03 YX-PAY-16, Q8). Pure maths, exact decimals, no floats.
-//   s.2(13) eligibility   bonus wage at most the eligibility limit a month (₹21,000); a month above it earns no bonus.
+//   s.2(13) eligibility   salary at most the eligibility limit a month (₹21,000), tested on the full-month salary rate,
+//                         not on what a part month earned (founder 30 Oct 2026, item 24); a month above it earns no bonus.
 //   s.8                   at least 30 working days in the accounting year (s.14: paid days and lay-off days count).
 //   s.12                  bonus is worked out on the wage up to the calculation ceiling: ₹7,000 or the minimum wage if higher.
 //   s.10, s.11, s.13      at least 8.33 % (and at least ₹100, cut down for part of a year), at most 20 %, in proportion
@@ -94,8 +95,11 @@ export function yearMonths(year: AccountingYear): string[] {
 // ------------------------------------------------------------------------------------------ one employee
 
 export interface EmployeeInput {
-  /** The bonus wage earned each month of the year (bonusWage components). */
-  months: { month: string; wage: Prisma.Decimal.Value }[];
+  /**
+   * The bonus wage earned each month of the year (bonusWage components), and the full-month salary rate of those
+   * components that month (absent: no salary record, e.g. imported history; the earned wage is tested instead).
+   */
+  months: { month: string; wage: Prisma.Decimal.Value; rate?: Prisma.Decimal.Value | null }[];
   /** Working days in the year (paid and lay-off days). */
   days: Prisma.Decimal.Value;
   /** The scheduled minimum wage a month at their place of work (0 when none applies). */
@@ -127,7 +131,7 @@ export function employeeBonus(i: EmployeeInput, rules: BonusRules, rate: Prisma.
   const limit = D(rules.eligibilityWage);
   const ceiling = Prisma.Decimal.max(D(rules.calculationCeiling), D(i.minimumWage));
   const paid = i.months.filter((x) => D(x.wage).gt(0));
-  const ok = paid.filter((x) => D(x.wage).lte(limit));
+  const ok = paid.filter((x) => D(x.rate ?? x.wage).lte(limit));
   const bonusSalary = sum(ok.map((x) => Prisma.Decimal.min(D(x.wage), ceiling)));
   const none = (reason: string): EmployeeBonus => ({ eligible: false, reason, eligibleMonths: ok.length, ceiling, bonusSalary, bonus: ZERO, deductions: ZERO, payable: ZERO });
   if (i.disqualified) return none('Dismissed for fraud, violence or theft (section 9): no bonus.');
