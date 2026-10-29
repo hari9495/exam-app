@@ -253,7 +253,6 @@
     "pay: PayrollReportsScreen",
     "pay: PayslipViewerScreen",
     "pay: ProofQueueScreen",
-    "pay: RecoveriesScreen",
     "pay: RegimeCompareScreen",
     "pay: RegistersScreen",
     "pay: ReportsNoAccess",
