@@ -23,7 +23,7 @@ import { formatDate, formatINR } from '../../lib/format';
 import { useRun } from '../org/org-kit';
 import { LivePicker } from '../desk/service-form';
 import { LEAVE_STATUS, LeaveStatusBadge } from './live/kit';
-import type { ApplyForForm, HrBalances, HrLeaveHome, LeaveInput, LeavePlan, LeaveRequestRow as LiveRequest, LedgerRow, LoadState, LongAbsenceCheck, LongAbsenceInput, LongAbsenceRow, MaternityCase, MyCompOff, MyEncashment, MyLeave, MyLeaveCard, PersonOption as LivePersonOption, TeamCalendar as LiveCalendarData } from './live/types';
+import type { ApplyForForm, HrBalances, HrLeaveHome, LeaveBalanceRow, LeaveInput, LeavePlan, LeaveRequestRow as LiveRequest, LedgerRow, LoadState, LongAbsenceCheck, LongAbsenceInput, LongAbsenceRow, MaternityCase, MyCompOff, MyEncashment, MyLeave, MyLeaveCard, PersonOption as LivePersonOption, TeamCalendar as LiveCalendarData } from './live/types';
 import {
   BALANCES,
   CLAIM,
@@ -686,7 +686,7 @@ const PEOPLE_WITH_BALANCES = [ME.name, ...Object.keys(PERSON_BALANCES)];
 type AdjBalance = Pick<LeaveBalance, 'code' | 'name' | 'balance' | 'pending' | 'paid'>;
 type AdjPost = { person: string; code: string; delta: number; reason: string };
 
-function AdjustBalanceDialog({ open, onOpenChange, person: fixedPerson, onPost, balancesOf = balancesFor, people: peopleArg }: {
+function AdjustBalanceDialog({ open, onOpenChange, person: fixedPerson, onPost, balancesOf = balancesFor, people: peopleArg, live }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   person?: string;
@@ -694,14 +694,34 @@ function AdjustBalanceDialog({ open, onOpenChange, person: fixedPerson, onPost, 
   onPost?: (e: AdjPost) => void | Promise<unknown>;
   balancesOf?: (person: string) => AdjBalance[];
   people?: { id: string; name: string; role?: string; department?: string }[];
+  /** The app with no fixed person (HR leave home): find someone in scope, then load their balances. */
+  live?: LiveAdjust;
 }) {
   const [person, setPerson] = useState(fixedPerson ?? 'Priya Shankar');
-  const balances = balancesOf(fixedPerson ?? person).filter((b) => b.paid);
+  const [picked, setPicked] = useState<string | null>(null);
+  const [names, setNames] = useState<Record<string, string>>({});
+  const [loaded, setLoaded] = useState<{ id: string; rows: AdjBalance[] } | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  useEffect(() => {
+    setLoadError(null);
+    if (!live || !picked) return;
+    let on = true;
+    live.onLoad(picked).then(
+      (rows) => on && setLoaded({ id: picked, rows: rows.filter((r) => r.hasBalance).map((r) => ({ code: r.leaveTypeId, name: r.name, balance: r.balance, pending: r.pending, paid: true })) }),
+      (e: unknown) => on && setLoadError(e instanceof Error && e.message ? e.message : "Their balances didn't load. Try again."),
+    );
+    return () => {
+      on = false;
+    };
+  }, [picked]); // eslint-disable-line react-hooks/exhaustive-deps
+  const loading = Boolean(live && picked && loaded?.id !== picked);
+  const balances = live ? (loading || !loaded ? [] : loaded.rows) : balancesOf(fixedPerson ?? person).filter((b) => b.paid);
   const [code, setCode] = useState('EL');
   const [dir, setDir] = useState('add');
-  const [days, setDays] = useState<number | null>(fixedPerson && peopleArg ? null : 2);
+  const [days, setDays] = useState<number | null>((fixedPerson && peopleArg) || live ? null : 2);
   const [reason, setReason] = useState('');
   const { busy, error, run } = useRun();
+  const { toast } = useToast();
   const b = balances.find((x) => x.code === code) ?? balances[0];
   // Same "available" figure as the balance cards: days held for a pending request can't be deducted.
   const free = (x: AdjBalance) => (x.code === 'CO' ? x.balance : x.balance - x.pending);
@@ -710,7 +730,7 @@ function AdjustBalanceDialog({ open, onOpenChange, person: fixedPerson, onPost, 
   const overDeduct = dir === 'deduct' && !!b && (days ?? 0) > avail;
   // Never a disabled Post: pressed too early, the errors show and the first field takes focus.
   const tooEarly = useTooEarly([
-    ...(!b ? [{ fieldId: 'adj-type', message: 'This person has no leave with a balance to adjust.' }] : []),
+    ...(live && !picked ? [{ fieldId: 'adj-person', message: 'Choose the person.' }] : loading ? [{ fieldId: 'adj-type', message: 'Their balances are still loading.' }] : !b ? [{ fieldId: 'adj-type', message: 'This person has no leave with a balance to adjust.' }] : []),
     ...(!days ? [{ fieldId: 'adj-days', message: 'Enter the days.' }] : overDeduct ? [{ fieldId: 'adj-days', message: `Only ${plural(avail, 'day')} available to deduct.` }] : []),
     ...(reason.trim().length < 3 ? [{ fieldId: 'adj-reason', message: 'Say why (it goes on the ledger and the audit log).' }] : []),
   ]);
@@ -722,7 +742,10 @@ function AdjustBalanceDialog({ open, onOpenChange, person: fixedPerson, onPost, 
   const post = () => {
     if (tooEarly.stop()) return;
     void run('post', async () => {
-      await onPost?.({ person, code: b!.code, delta, reason: reason.trim() });
+      if (live) {
+        await live.onAdjust(picked!, { leaveTypeId: b!.code, days: delta, reason: reason.trim() });
+        toast({ tone: 'success', title: `Posted ${delta > 0 ? '+' : ''}${delta} ${b!.name} for ${names[picked!] ?? 'the person'}` });
+      } else await onPost?.({ person, code: b!.code, delta, reason: reason.trim() });
       onOpenChange(false);
       setReason('');
     });
@@ -742,7 +765,12 @@ function AdjustBalanceDialog({ open, onOpenChange, person: fixedPerson, onPost, 
     >
       <div className="yx-tim-stack">
         {error && <InlineAlert tone="danger" title="Not posted">{error}</InlineAlert>}
-        {!fixedPerson && <FormField label="Employee" required><PersonPicker aria-label="Employee" value={person} onChange={(v) => v && setPerson(v)} people={people} /></FormField>}
+        {live && loadError && <InlineAlert tone="danger" title="Balances not loaded">{loadError}</InlineAlert>}
+        {live ? (
+          <FormField id="adj-person" label="Employee" required error={tooEarly.errorOf('adj-person')}>
+            <LivePicker kind="people" label="Employee" value={picked} onChange={setPicked} names={names} onPick={(_k, q) => live.onFindPeople(q).then((r) => (setNames((n) => ({ ...n, ...Object.fromEntries(r.map((p) => [p.id, p.label])) })), r))} />
+          </FormField>
+        ) : !fixedPerson && <FormField label="Employee" required><PersonPicker aria-label="Employee" value={person} onChange={(v) => v && setPerson(v)} people={people} /></FormField>}
         <FormField id="adj-type" label="Leave type" required error={tooEarly.errorOf('adj-type')}><Select value={b?.code ?? code} onChange={(v) => v && setCode(v)} options={balances.map((x) => ({ value: x.code, label: `${x.name} · ${plural(free(x), 'day')} available` }))} /></FormField>
         <FormField label="Direction"><Segment label="Direction" value={dir} onChange={setDir} options={[{ value: 'add', label: 'Add' }, { value: 'deduct', label: 'Deduct' }]} /></FormField>
         <FormField id="adj-days" label="Days" required helper="Half days are fine, e.g. 1.5." error={tooEarly.errorOf('adj-days')}><NumberField value={days} decimals min={0} max={100} onChange={setDays} /></FormField>
@@ -2071,6 +2099,12 @@ export interface LiveApplyFor {
   onPreview: (employeeId: string, input: Omit<LeaveInput, 'reason' | 'delegateUserId' | 'certificate'>) => Promise<LeavePlan>;
   onApply: (employeeId: string, input: LeaveInput) => Promise<unknown>;
 }
+/** Adjust balance from the HR leave home (TIM-17 HR, founder-approved): find a person in scope, load their balances, post. */
+export interface LiveAdjust {
+  onFindPeople: (q: string) => Promise<LivePersonOption[]>;
+  onLoad: (employeeId: string) => Promise<LeaveBalanceRow[]>;
+  onAdjust: (employeeId: string, input: { leaveTypeId: string; days: number; reason: string }) => Promise<unknown>;
+}
 /** HR › Leave (TIM-17 HR). */
 export interface LiveHrLeaveHome {
   state: LoadState;
@@ -2085,6 +2119,8 @@ export interface LiveHrLeaveHome {
   record?: RecordAbsenceProps;
   /** Founder answer B: Apply for someone (leave.balance.adjust). */
   applyFor?: LiveApplyFor;
+  /** Adjust balance for someone in scope (leave.balance.adjust; the API checks each person). */
+  adjust?: LiveAdjust;
 }
 /** Me › My leave card (TIM-21 employee). */
 export interface LiveMyLeaveCard {
@@ -3005,6 +3041,7 @@ function LiveHrLeaveHomeScreen({ live }: { live: LiveHrLeaveHome }) {
   const [absence, setAbsence] = useState<LongAbsenceRow | null>(null);
   const [recording, setRecording] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [adjusting, setAdjusting] = useState(false);
   const today = d ? isoDate(d.today) : TODAY0;
   const absences = live.absences?.data ?? [];
   const remind = (id: string) => {
@@ -3013,7 +3050,7 @@ function LiveHrLeaveHomeScreen({ live }: { live: LiveHrLeaveHome }) {
   };
   return (
     <TimePage active="Team leave">
-      <PageHeader title="Leave" description={d ? `Leave year ends ${fd(d.yearEnd.nextOn)}` : undefined} actions={(live.record || live.applyFor) && <div className="yx-tim-row">{live.record && <Button onClick={() => setRecording(true)}>Record long absence</Button>}{live.applyFor && <Button variant="primary" icon={CalendarPlus} onClick={() => setApplying(true)}>Apply for someone</Button>}</div>} />
+      <PageHeader title="Leave" description={d ? `Leave year ends ${fd(d.yearEnd.nextOn)}` : undefined} actions={(live.record || live.adjust || live.applyFor) && <div className="yx-tim-row">{live.record && <Button onClick={() => setRecording(true)}>Record long absence</Button>}{live.adjust && <Button onClick={() => setAdjusting(true)}>Adjust balance</Button>}{live.applyFor && <Button variant="primary" icon={CalendarPlus} onClick={() => setApplying(true)}>Apply for someone</Button>}</div>} />
       <LiveStates state={live.state} onRetry={live.onRetry} what="Leave">
         {d && (
           <div className="yx-tim-grid">
@@ -3076,6 +3113,7 @@ function LiveHrLeaveHomeScreen({ live }: { live: LiveHrLeaveHome }) {
       </LiveStates>
       {absence && d && live.absences && <LongAbsenceCard live={{ absence, persona: 'hr', today: d.today, onClose: () => setAbsence(null), onChange: (how, on, note, version) => live.absences!.onChange(absence.id, how, on, note, version) }} />}
       {live.record && <RecordAbsenceDialog open={recording} onOpenChange={setRecording} {...live.record} />}
+      {live.adjust && adjusting && <AdjustBalanceDialog open onOpenChange={setAdjusting} live={live.adjust} />}
       {live.applyFor && <ApplyLeavePanel key={String(applying)} open={applying} onOpenChange={setApplying} liveFor={live.applyFor} />}
     </TimePage>
   );

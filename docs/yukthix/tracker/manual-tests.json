@@ -4115,6 +4115,45 @@
     "note": "Positive and negative. \"approved\" needs the HR person to hold leave.approve over the person too; otherwise it still goes to the manager (e2e). Another company's person is 404 (e2e)."
   },
   {
+    "id": "MT-TL-13",
+    "area": "Time · Leave",
+    "screen": "Adjust balance from the HR leave home (founder-approved)",
+    "url": "http://localhost:3000/yx/time/leave-home",
+    "account": "hr-tester@demo-org.test (HR Admin: leave.balance.adjust). Browser window 1278 x 635 (laptop at 150 %), sidebar open.",
+    "steps": [
+      "1. Time › Leave. Look at the buttons at the top right.",
+      "2. Click \"Adjust balance\".",
+      "3. Type \"Arj\" in Employee and choose Arjun.",
+      "4. Open Leave type.",
+      "5. Leave Direction on Add, type 2 in Days, Reason \"Opening balance correction\".",
+      "6. Click Post adjustment.",
+      "7. Time › Reports › Leave balances, open Arjun's leave card."
+    ],
+    "expected": "Step 1: three buttons in this order: Record long absence, Adjust balance (white, bordered), Apply for someone (blue, primary); no page scroll. Step 2: the dialog \"Adjust balance\" opens with Employee (search + list), Leave type, Direction, Days (empty), Reason; Post adjustment is not greyed out. Step 4: only Arjun's leave types that have a balance, each with \"N days available\". Step 5: \"Available after: N+2 days\" under the fields. Step 6: the dialog closes; toast for 5 s \"Posted +2 Earned leave for Arjun …\" (the type you chose). Step 7: Earned leave is 2 days higher and the history has \"Adjusted by HR +2 EL · Opening balance correction\".",
+    "stories": [
+      "TIM-17 HR"
+    ],
+    "note": "Positive. Deduct works the same way and shows \"Posted -N …\"."
+  },
+  {
+    "id": "MT-TL-14",
+    "area": "Time · Leave",
+    "screen": "Adjust balance from the HR leave home: too early and refusals",
+    "url": "http://localhost:3000/yx/time/leave-home",
+    "account": "hr-tester@demo-org.test, then payroll-tester@demo-org.test and arjun@demo-org.test",
+    "steps": [
+      "1. Click \"Adjust balance\", then Post adjustment at once.",
+      "2. Choose Arjun, Direction Deduct, Days 999, Reason \"Recover\"; Post adjustment.",
+      "3. Choose yourself in Employee (if listed), Add 1 day, Reason \"Test\"; Post adjustment.",
+      "4. As payroll-tester and as arjun, open http://localhost:3000/yx/time/leave-home."
+    ],
+    "expected": "Step 1: red messages \"Choose the person.\", \"Enter the days.\" and \"Say why (it goes on the ledger and the audit log).\" under their fields; the cursor moves to Employee; nothing is posted. Step 2: \"Only N days available to deduct.\" under Days. Step 3: a red box \"Not posted\" inside the dialog: \"You cannot adjust your own balance. Ask another HR admin.\"; the dialog stays open. Step 4: no \"Adjust balance\" button (no access page or no button).",
+    "stories": [
+      "TIM-17 HR"
+    ],
+    "note": "Negative. A person outside the HR person's grant scope or in another company is refused by the API (404, e2e: time-leave-decisions)."
+  },
+  {
     "id": "MT-TF-01",
     "area": "Time · Leave",
     "screen": "Leave reports: filters in one row (HR, every report)",

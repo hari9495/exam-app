@@ -26,7 +26,7 @@ describe('Leave decisions (29 Oct 2026)', () => {
   const server = () => app.getHttpServer();
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'adminA' | 'adminB' | 'hrPay' | 'hrNoPay' | 'hrExec' | 'mgr' | 'emp' | 'peer' | 'joiner' | 'empB' | 'payroll' | 'liabOnly' | 'hrAdjust';
+  type Who = 'adminA' | 'adminB' | 'hrPay' | 'hrNoPay' | 'hrExec' | 'mgr' | 'emp' | 'peer' | 'joiner' | 'empB' | 'payroll' | 'liabOnly' | 'hrAdjust' | 'hrScoped';
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
@@ -86,6 +86,8 @@ describe('Leave decisions (29 Oct 2026)', () => {
       ['liabOnly', 'A', 'panel', ['leave.liability.view']],
       // Founder answer B: may apply for someone (leave.balance.adjust) but not approve leave.
       ['hrAdjust', 'A', 'panel', ['leave.view', 'leave.balance.adjust']],
+      // Adjust balance on the HR leave home: the keys only through a role grant on a department (set in the test).
+      ['hrScoped', 'A', 'panel', null],
     ];
     for (const [who, k, role, keys] of roster) {
       const o = org[k].id;
@@ -488,6 +490,27 @@ describe('Leave decisions (29 Oct 2026)', () => {
       await form('hrNoPay', 'nope').expect(400);
       await pre('hrNoPay', ids.peerEmp, { ...body, from: 'soon' }).expect(400);
       await pre('hrNoPay', ids.peerEmp, { ...body, leaveTypeId: ids.BCL }).expect(404);
+    });
+  });
+
+  describe('Adjust balance from the HR leave home (founder-approved)', () => {
+    it("a department grant reaches only its people: outside it the person's balances and the post are refused; inside they work", async () => {
+      const profileId = (await inA((tx) => tx.permissionProfile.create({ data: { organizationId: org.A.id, name: `adjust-grant-${run}`, permissionsJson: JSON.stringify(['leave.view', 'leave.balance.adjust']) } }))).id;
+      const empty = randomUUID();
+      await inA((tx) => tx.department.create({ data: { organizationId: org.A.id, id: empty, name: 'Bakery', code: 'BAK', path: `/${empty}/` } }));
+      const grant = (departmentId: string) => inA((tx) => tx.roleGrant.create({ data: { organizationId: org.A.id, userId: users.hrScoped, permissionProfileId: profileId, scopeType: 'department_subtree', departmentId, validFrom: new Date(`${d(-30)}T00:00:00Z`), status: 'active', reason: 'Bakery HR' } }));
+      const body = { leaveTypeId: ids.EL, days: 1, reason: 'Correction' };
+      // No grant at all: the endpoint key is missing.
+      await api('hrScoped', 'post', `/time/people/${ids.peerEmp}/adjust`).send(body).expect(403);
+      await grant(empty);
+      await api('hrScoped', 'get', `/time/people/${ids.peerEmp}/balances`).expect(404);
+      await api('hrScoped', 'post', `/time/people/${ids.peerEmp}/adjust`).send(body).expect(404);
+      await grant(ids.deptA);
+      const el = (await api('hrScoped', 'get', `/time/people/${ids.peerEmp}/balances`).expect(200)).body.balances.find((b: { leaveTypeId: string }) => b.leaveTypeId === ids.EL);
+      await api('hrScoped', 'post', `/time/people/${ids.peerEmp}/adjust`).send(body).expect(201);
+      expect((await api('hrScoped', 'get', `/time/people/${ids.peerEmp}/balances`).expect(200)).body.balances.find((b: { leaveTypeId: string }) => b.leaveTypeId === ids.EL).balance).toBe(el.balance + 1);
+      // Another company's person is not found, even with the key company-wide.
+      await api('hrAdjust', 'post', `/time/people/${ids.empBEmp}/adjust`).send(body).expect(404);
     });
   });
 

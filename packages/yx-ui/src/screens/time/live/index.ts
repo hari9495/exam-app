@@ -1,7 +1,7 @@
 // Time and leave, wired to the API (M02 step 4 batch 1): Me › Leave, Me › Attendance, team leave, the muster,
 // leave balances, and HR set-up. Import the stylesheet once: '@yukthix/ui/styles.css'.
 export * from './types';
-export { LeaveHomeScreen, TeamLeaveCalendarScreen, LeaveCardScreen, type LiveLeaveHome, type LiveTeamLeave, type LiveLeaveCard, type LiveHrLeaveHome, type LiveMyLeaveCard, type LiveCompOff, type LiveEncash, type LiveApplyFor } from '../leave';
+export { LeaveHomeScreen, TeamLeaveCalendarScreen, LeaveCardScreen, type LiveLeaveHome, type LiveTeamLeave, type LiveLeaveCard, type LiveHrLeaveHome, type LiveMyLeaveCard, type LiveCompOff, type LiveEncash, type LiveApplyFor, type LiveAdjust } from '../leave';
 // Me › Attendance (calendar + today's clock), Home's clock card and the muster: the designed screens, each with `live`.
 export { AttendanceCalendarScreen, MyAttendanceTodayScreen, HomeClockCard, MusterScreen, TodayBoardScreen, ExceptionsScreen, type LiveMyAttendance, type LiveMusterData, type LiveTodayBoard, type LiveExceptions, type ExceptionsQuery } from '../attendance';
 // HR set-up: the designed TIM-26 / 27 / 28 / 29 / 31 screens, each with `live`.

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { LeaveHomeScreen, type ApplyForForm, type HrLeaveHome, type LeavePlan, type LeaveReport, type LongAbsenceCheck, type LongAbsenceRow } from '@yukthix/ui/time';
+import { LeaveHomeScreen, type ApplyForForm, type HrLeaveHome, type LeaveBalanceRow, type LeavePlan, type LeaveReport, type LongAbsenceCheck, type LongAbsenceRow } from '@yukthix/ui/time';
 import { timeState, useTime, useTimeRead, useTimeWrite } from '../../../../../lib/yx-time';
 import { useYxPermissions } from '../../../../../lib/yx-org';
 
@@ -10,7 +10,8 @@ const id = encodeURIComponent;
 // HR › Leave (TIM-17 HR): requests waiting with managers, who is away, what needs HR, long absences. leave.view in
 // scope; recording, extending or ending a long absence needs leave.balance.adjust (checked by the API for each person).
 // Record long absence (founder decision 1) and Apply for someone (founder answer B, leave.balance.adjust) find people in
-// the HR leave scope through the leave report search; the API checks each person again.
+// the HR leave scope through the leave report search; the API checks each person again. Adjust balance (founder-approved,
+// leave.balance.adjust) uses the same search, then that person's balances and the leave card's adjust endpoint.
 export default function YxHrLeaveHomePage() {
   const router = useRouter();
   const home = useTime<HrLeaveHome>('/hr/leave-home');
@@ -37,6 +38,12 @@ export default function YxHrLeaveHomePage() {
           onFindPeople: findPeople,
           onCheck: (q) => read<LongAbsenceCheck>(`/hr/long-absences/check?employeeId=${id(q.employeeId)}&from=${id(q.from)}&to=${id(q.to)}`),
           onRecord: (input) => write('/hr/long-absences', 'POST', input, true, 'Long absence recorded'),
+        } : undefined,
+        adjust: adjust ? {
+          onFindPeople: findPeople,
+          onLoad: async (eid) => (await read<{ balances: LeaveBalanceRow[] }>(`/people/${id(eid)}/balances`)).balances,
+          // The dialog says "done" with its own toast (it names the person).
+          onAdjust: (eid, input) => write(`/people/${id(eid)}/adjust`, 'POST', input, true),
         } : undefined,
         applyFor: adjust ? {
           onFindPeople: findPeople,
