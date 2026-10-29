@@ -74,6 +74,36 @@ describe('PAY-21 / PAY-40 · Me › Payslips (live)', () => {
     expect(onRetry).toHaveBeenCalled();
   });
 
+  it('founder answer 6: the days strip comes from the payslip’s feed days, with the paid and unpaid totals', async () => {
+    const days = { list: Array.from({ length: 30 }, (_, i) => ({ day: i + 1, kind: (i === 11 ? 'lop' : i % 7 === 6 ? 'off' : 'paid') as 'lop' | 'off' | 'paid' })), calendarDays: 30, paidDays: '29.00', lopDays: '1.00' };
+    render(<PayslipViewerScreen live={live({ onOpen: async (id) => (id === 's0' ? PREVIOUS : { ...DETAIL, days }) })} />);
+    const strip = await screen.findByRole('region', { name: 'Days' });
+    expect(within(strip).getByRole('figure', { name: /Days in September 2026/ })).toBeInTheDocument();
+    expect(within(strip).getByText('Unpaid days: 12 September')).toBeInTheDocument();
+    expect(within(strip).getByText('29 paid days of 30 · 1 unpaid')).toBeInTheDocument();
+  });
+
+  it('no days strip without days (off-cycle or a payslip from before the feed)', async () => {
+    render(<PayslipViewerScreen live={live({ onOpen: async (id) => (id === 's0' ? PREVIOUS : { ...DETAIL, days: null }) })} />);
+    await screen.findByText('Special allowance');
+    expect(screen.queryByRole('region', { name: 'Days' })).not.toBeInTheDocument();
+  });
+
+  it('founder answer 16: the employee withdraws their own query (asks first, then a toast); a closed one has no Withdraw', async () => {
+    const q = { id: 'q1', payslipId: 's1', employeeId: 'e1', lineCode: 'basic', text: 'Why did my basic change?', status: 'open' as const, assigneeUserId: null, replies: [], createdAt: '2026-10-01T10:00:00Z', updatedAt: '2026-10-01T10:00:00Z', mine: true };
+    const onWithdraw = fn();
+    render(<PayslipViewerScreen live={live({ queries: [q, { ...q, id: 'q2', status: 'closed', text: 'An older question', lineCode: null }, { ...q, id: 'q3', mine: false, text: 'Someone else' }], onWithdraw })} />);
+    const mine = await screen.findByRole('region', { name: 'Your queries on this payslip' });
+    expect(within(mine).queryByText('Someone else')).not.toBeInTheDocument();
+    expect(within(mine).getAllByRole('button', { name: 'Withdraw query' })).toHaveLength(1);
+    await ue.click(within(mine).getByRole('button', { name: 'Withdraw query' }));
+    expect(onWithdraw).not.toHaveBeenCalled();
+    const dialog = screen.getByRole('dialog', { name: 'Withdraw this query?' });
+    await ue.click(within(dialog).getByRole('button', { name: 'Withdraw query' }));
+    await waitFor(() => expect(onWithdraw).toHaveBeenCalledWith(q));
+    expect((await screen.findAllByText('Query withdrawn')).length).toBeGreaterThan(0);
+  });
+
   it('an off-cycle payslip has no "why different" and the PDF downloads with a toast', async () => {
     const onPdf = fn();
     render(<PayslipViewerScreen live={live({ payslips: [{ ...MY_PAYSLIPS[0], runType: 'offcycle' }, MY_PAYSLIPS[1]], onPdf })} />);
@@ -116,6 +146,8 @@ describe('PAY-22 / PAY-41 · Me › Tax (live)', () => {
     onProof: fn(),
     onPartA: fn(),
     onForm12b: fn(),
+    onRegimeRequest: fn(),
+    onResidency: fn(),
     ...over,
   });
 
@@ -151,10 +183,34 @@ describe('PAY-22 / PAY-41 · Me › Tax (live)', () => {
     await waitFor(() => expect(onPatch).toHaveBeenCalledWith({ regime: 'old' }));
   });
 
-  it('after the cut-off the regime is locked and only payroll changes it', () => {
-    render(<TaxWorkspaceScreen live={live({ tab: 'declarations', workspace: { ...WS, canChooseRegime: false, dates: { regimeCutoff: '2026-05-31' } } })} />);
+  it('after the cut-off the regime is locked; "Ask HR to change regime" needs a reason, then sends the other regime (founder answer 3)', async () => {
+    const onRegimeRequest = fn();
+    render(<TaxWorkspaceScreen live={live({ tab: 'declarations', onRegimeRequest, workspace: { ...WS, canChooseRegime: false, dates: { regimeCutoff: '2026-05-31' } } })} />);
     expect(screen.getByText(/New regime, locked on 31 May 2026/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save my regime' })).not.toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Ask HR to change regime' }));
+    const d = screen.getByRole('dialog', { name: 'Ask HR to change your regime' });
+    expect(within(d).getByText('From new to old regime for 2026-27')).toBeInTheDocument();
+    await ue.type(within(d).getByRole('textbox', { name: /Reason/ }), 'Too short');
+    await ue.click(within(d).getByRole('button', { name: 'Send request' }));
+    expect(onRegimeRequest).not.toHaveBeenCalled();
+    expect(within(d).getByRole('textbox', { name: /Reason/ })).toHaveFocus();
+    await ue.type(within(d).getByRole('textbox', { name: /Reason/ }), ': home loan taken in August');
+    await ue.click(within(d).getByRole('button', { name: 'Send request' }));
+    await waitFor(() => expect(onRegimeRequest).toHaveBeenCalledWith({ regime: 'old', reason: 'Too short: home loan taken in August' }));
+  });
+
+  it('a regime request waiting with HR shows as sent, with no second Ask; a turned-down one says so', () => {
+    const req = { id: 'rq1', from: 'new' as const, to: 'old' as const, reason: 'Home loan', requestedAt: '2026-10-20T10:00:00Z', decidedAt: null };
+    const locked = { ...WS, canChooseRegime: false, dates: { regimeCutoff: '2026-05-31' } };
+    const { unmount } = render(<TaxWorkspaceScreen live={live({ tab: 'declarations', workspace: { ...locked, regimeRequest: { ...req, status: 'pending' } } })} />);
+    expect(screen.getByText('Request sent to HR')).toBeInTheDocument();
+    expect(screen.getByText(/switch to the old regime on 20 Oct 2026/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ask HR to change regime' })).not.toBeInTheDocument();
+    unmount();
+    render(<TaxWorkspaceScreen live={live({ tab: 'declarations', workspace: { ...locked, regimeRequest: { ...req, status: 'rejected' } } })} />);
+    expect(screen.getByText(/HR did not approve your last request/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ask HR to change regime' })).toBeInTheDocument();
   });
 
   it('declare rent: it asks for the months and the city and sends the monthly rent', async () => {
@@ -217,14 +273,48 @@ describe('PAY-22 / PAY-41 · Me › Tax (live)', () => {
     expect(screen.getByRole('button', { name: 'Send again' })).toBeInTheDocument();
   });
 
-  it('residential status and other income save through the workspace', async () => {
+  it('residential status: non-resident needs the TRC, its end day and Form 10F; then it goes to HR, never saved at once (founder answer 2)', async () => {
+    const onResidency = fn();
     const onPatch = fn();
-    render(<TaxWorkspaceScreen live={live({ tab: 'residential', onPatch })} />);
-    await ue.click(screen.getByRole('button', { name: 'Save residential status' }));
-    expect(onPatch).not.toHaveBeenCalled();
+    render(<TaxWorkspaceScreen live={live({ tab: 'residential', onResidency, onPatch })} />);
+    await ue.click(screen.getByRole('button', { name: 'Send TRC to HR' }));
+    expect(onResidency).not.toHaveBeenCalled();
+    expect(screen.getByText('Resident is already your status. Choose non-resident to change it.')).toBeInTheDocument();
     await ue.click(screen.getByRole('radio', { name: 'Non-resident' }));
-    await ue.click(screen.getByRole('button', { name: 'Save residential status' }));
-    await waitFor(() => expect(onPatch).toHaveBeenCalledWith({ residentialStatus: 'non_resident' }));
+    await ue.click(screen.getByRole('button', { name: 'Send for HR review' }));
+    expect(onResidency).not.toHaveBeenCalled();
+    expect(screen.getByText('Attach your tax residency certificate (TRC) as a PDF.')).toBeInTheDocument();
+    expect(screen.getByText('Enter the last day your certificate is valid.')).toBeInTheDocument();
+    expect(screen.getByText('File Form 10F on the income-tax portal first, then tick this.')).toBeInTheDocument();
+    const pdf = new File(['%PDF-1.4'], 'trc.pdf', { type: 'application/pdf' });
+    await ue.upload(screen.getByLabelText(/Tax residency certificate/, { selector: 'input' }), pdf);
+    await ue.type(screen.getByLabelText(/Certificate valid until/), '2099-03-31');
+    await ue.type(screen.getByRole('textbox', { name: /Treaty country/ }), 'sg');
+    await ue.click(screen.getByRole('checkbox', { name: /I have filed Form 10F/ }));
+    await ue.click(screen.getByRole('button', { name: 'Send for HR review' }));
+    await waitFor(() => expect(onResidency).toHaveBeenCalledWith({ residentialStatus: 'non_resident', trcValidTo: '2099-03-31', form10fFiled: true, dtaaCountry: 'SG' }, pdf));
+    expect(onPatch).not.toHaveBeenCalled();
+    expect((await screen.findAllByText('Sent for HR review')).length).toBeGreaterThan(0);
+  });
+
+  it('residential status: a pending request shows its state and no form; a rejection shows payroll’s comment', () => {
+    const req = { id: 'r1', from: 'resident' as const, residentialStatus: 'non_resident' as const, trcValidTo: '2027-03-31', dtaaCountry: 'SG', file: { name: 'trc.pdf', size: 10, at: '2026-10-20T10:00:00Z' }, comment: null, submittedAt: '2026-10-20T10:00:00Z' };
+    const { unmount } = render(<TaxWorkspaceScreen live={live({ tab: 'residential', workspace: { ...WS, residencyRequest: { ...req, status: 'pending' } } })} />);
+    expect(screen.getByText('Sent for HR review')).toBeInTheDocument();
+    expect(screen.getByText(/be non-resident on 20 Oct 2026, with trc.pdf/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Send/ })).not.toBeInTheDocument();
+    unmount();
+    render(<TaxWorkspaceScreen live={live({ tab: 'residential', workspace: { ...WS, residencyRequest: { ...req, status: 'rejected', comment: 'The TRC is for last year.' } } })} />);
+    expect(screen.getByText(/Payroll: The TRC is for last year./)).toBeInTheDocument();
+  });
+
+  it('back to resident from non-resident: no certificate needed, still sent for HR review', async () => {
+    const onResidency = fn();
+    render(<TaxWorkspaceScreen live={live({ tab: 'residential', onResidency, workspace: { ...WS, residentialStatus: 'non_resident' } })} />);
+    expect(screen.getByText('Non-resident, approved by HR')).toBeInTheDocument();
+    await ue.click(screen.getByRole('radio', { name: 'Resident' }));
+    await ue.click(screen.getByRole('button', { name: 'Send for HR review' }));
+    await waitFor(() => expect(onResidency).toHaveBeenCalledWith({ residentialStatus: 'resident' }, null));
   });
 
   it('an inoperative PAN is shown, and the Part A downloads from the header', async () => {

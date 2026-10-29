@@ -1838,6 +1838,24 @@ export interface Form12bRow {
   submittedAt: string;
 }
 
+/** GET tax/residency (founder answer 2): residential-status changes sent with the TRC, for payroll to approve. */
+export interface ResidencyRow {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  legalEntityId: string;
+  taxYear: string;
+  from: 'resident' | 'non_resident';
+  residentialStatus: 'resident' | 'non_resident';
+  trcValidTo: string | null;
+  dtaaCountry: string | null;
+  form10fFiled: boolean;
+  file: { name: string; size: number; at: string } | null;
+  status: 'pending' | 'approved' | 'rejected';
+  comment: string | null;
+  submittedAt: string;
+}
+
 export type ProofStatusFilter = 'pending' | 'approved' | 'partly' | 'rejected';
 
 export interface LiveProofQueue {
@@ -1852,9 +1870,16 @@ export interface LiveProofQueue {
   onDecide: (line: ProofQueueLine, d: ProofDecision) => Promise<unknown>;
   onForm12bFile: (row: Form12bRow) => Promise<unknown>;
   onForm12bDecide: (row: Form12bRow, d: { decision: 'approve' | 'reject'; comment?: string }) => Promise<unknown>;
+  /** Residential-status changes in the same status (none for "partly"). */
+  residency?: ResidencyRow[] | null;
+  onResidencyFile?: (row: ResidencyRow) => Promise<unknown>;
+  onResidencyDecide?: (row: ResidencyRow, d: { decision: 'approve' | 'reject'; comment?: string }) => Promise<unknown>;
 }
 
-type QueueRow = { kind: 'line'; id: string; line: ProofQueueLine } | { kind: 'form12b'; id: string; row: Form12bRow };
+type QueueRow = { kind: 'line'; id: string; line: ProofQueueLine } | { kind: 'form12b'; id: string; row: Form12bRow } | { kind: 'residency'; id: string; res: ResidencyRow };
+const RES_LABEL = { resident: 'Resident', non_resident: 'Non-resident' } as const;
+const itemText = (r: QueueRow) => (r.kind === 'line' ? subjectText(r.line.subjectKey, r.line.section) : r.kind === 'form12b' ? 'Previous employer (Form 12B)' : 'Residential status');
+const statusOf = (r: QueueRow) => (r.kind === 'line' ? r.line.proofStatus : r.kind === 'form12b' ? r.row.status : r.res.status);
 const LIVE_PROOF_STATE: Record<string, { label: string; tone: BadgeTone }> = {
   pending: { label: 'Waiting', tone: 'warning' },
   approved: { label: 'Approved', tone: 'success' },
@@ -1865,9 +1890,13 @@ const LIVE_PROOF_STATE: Record<string, { label: string; tone: BadgeTone }> = {
 function LiveProofQueue({ live }: { live: LiveProofQueue }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [q, setQ] = useState('');
-  const rows: QueueRow[] = [...(live.lines ?? []).map((l) => ({ kind: 'line' as const, id: `l-${l.id}`, line: l })), ...(live.form12b ?? []).map((r) => ({ kind: 'form12b' as const, id: `f-${r.id}`, row: r }))];
+  const rows: QueueRow[] = [
+    ...(live.lines ?? []).map((l) => ({ kind: 'line' as const, id: `l-${l.id}`, line: l })),
+    ...(live.form12b ?? []).map((r) => ({ kind: 'form12b' as const, id: `f-${r.id}`, row: r })),
+    ...(live.residency ?? []).map((r) => ({ kind: 'residency' as const, id: `r-${r.id}`, res: r })),
+  ];
   const query = q.trim().toLowerCase();
-  const nameOf = (r: QueueRow) => (r.kind === 'line' ? r.line.employeeName : r.row.employeeName) || 'Someone';
+  const nameOf = (r: QueueRow) => (r.kind === 'line' ? r.line.employeeName : r.kind === 'form12b' ? r.row.employeeName : r.res.employeeName) || 'Someone';
   const shown = rows.filter((r) => !query || nameOf(r).toLowerCase().includes(query));
   const open = rows.find((r) => r.id === openId) ?? null;
   const cols: TableColumn<QueueRow>[] = [
@@ -1875,22 +1904,24 @@ function LiveProofQueue({ live }: { live: LiveProofQueue }) {
     {
       key: 'item',
       header: 'Line',
-      value: (r) => (r.kind === 'line' ? subjectText(r.line.subjectKey, r.line.section) : 'Previous employer (Form 12B)'),
+      value: itemText,
       render: (r) => (
         <div>
-          <div>{r.kind === 'line' ? subjectText(r.line.subjectKey, r.line.section) : 'Previous employer (Form 12B)'}</div>
-          <div className="yx-pay-note">{r.kind === 'line' ? `${r.line.proofs.length} ${r.line.proofs.length === 1 ? 'file' : 'files'}` : `${r.row.employerName ?? r.row.employerTan} · ${r.row.taxYear}`}</div>
+          <div>{itemText(r)}</div>
+          <div className="yx-pay-note">
+            {r.kind === 'line' ? `${r.line.proofs.length} ${r.line.proofs.length === 1 ? 'file' : 'files'}` : r.kind === 'form12b' ? `${r.row.employerName ?? r.row.employerTan} · ${r.row.taxYear}` : `${RES_LABEL[r.res.from]} to ${RES_LABEL[r.res.residentialStatus].toLowerCase()} · ${r.res.taxYear}`}
+          </div>
         </div>
       ),
       width: 260,
     },
-    { key: 'declared', header: 'Declared', type: 'money', value: (r) => Number(r.kind === 'line' ? r.line.amount : r.row.gross), render: (r) => (r.kind === 'line' ? `${rupees(r.line.amount)}${r.line.subjectKey === 'hra' ? ' a month' : ''}` : `${rupees(r.row.gross)} salary`), width: 170 },
+    { key: 'declared', header: 'Declared', type: 'money', value: (r) => Number(r.kind === 'line' ? r.line.amount : r.kind === 'form12b' ? r.row.gross : 0), render: (r) => (r.kind === 'line' ? `${rupees(r.line.amount)}${r.line.subjectKey === 'hra' ? ' a month' : ''}` : r.kind === 'form12b' ? `${rupees(r.row.gross)} salary` : '—'), width: 170 },
     { key: 'accepted', header: 'Approved', type: 'money', value: (r) => (r.kind === 'line' && r.line.approvedAmount ? Number(r.line.approvedAmount) : 0), render: (r) => (r.kind === 'line' && r.line.approvedAmount ? rupees(r.line.approvedAmount) : '—'), width: 120, optional: true },
-    { key: 'status', header: 'Status', type: 'status', value: (r) => LIVE_PROOF_STATE[r.kind === 'line' ? r.line.proofStatus : r.row.status]?.label, statusTone: (_v, r) => LIVE_PROOF_STATE[r.kind === 'line' ? r.line.proofStatus : r.row.status]?.tone ?? 'neutral', width: 140 },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => LIVE_PROOF_STATE[statusOf(r)]?.label, statusTone: (_v, r) => LIVE_PROOF_STATE[statusOf(r)]?.tone ?? 'neutral', width: 140 },
   ];
   return (
     <PayFrame page="tax" counts={live.status === 'pending' ? { tax: rows.length } : undefined}>
-      <PageHeader title="Proof verification" description="Proofs employees sent for their tax declarations, and previous employers' Form 12B. What you approve counts in their tax; a line rejected goes back with your comment. Your own proofs never show here." facts={live.state === 'ready' ? `${rows.length} ${live.status === 'pending' ? 'waiting' : 'lines'}` : undefined} />
+      <PageHeader title="Proof verification" description="Proofs employees sent for their tax declarations, previous employers' Form 12B and residential-status changes. What you approve counts in their tax; a line rejected goes back with your comment. Your own proofs never show here." facts={live.state === 'ready' ? `${rows.length} ${live.status === 'pending' ? 'waiting' : 'lines'}` : undefined} />
       <PayPageState state={live.state} onRetry={live.onRetry} what="proofs" grantedBy="your payroll admin">
         <DataTable
           label="Proof lines"
@@ -1903,8 +1934,8 @@ function LiveProofQueue({ live }: { live: LiveProofQueue }) {
           filtered={!!query}
           onClearFilters={() => setQ('')}
           rowButtons={(r) =>
-            (r.kind === 'line' ? r.line.proofStatus : r.row.status) === 'pending' ? (
-              <Button size="sm" onClick={() => setOpenId(r.id)} aria-label={`Decide on ${nameOf(r)}'s ${r.kind === 'line' ? subjectText(r.line.subjectKey) : 'Form 12B'}`}>
+            statusOf(r) === 'pending' ? (
+              <Button size="sm" onClick={() => setOpenId(r.id)} aria-label={`Decide on ${nameOf(r)}'s ${r.kind === 'line' ? subjectText(r.line.subjectKey) : r.kind === 'form12b' ? 'Form 12B' : 'residential status'}`}>
                 Decide
               </Button>
             ) : null
@@ -1930,6 +1961,9 @@ function LiveProofQueue({ live }: { live: LiveProofQueue }) {
       </PayPageState>
       {open?.kind === 'line' && <ProofDecisionDrawer line={open.line} onFile={live.onFile} onClose={() => setOpenId(null)} onSave={(d) => live.onDecide(open.line, d)} />}
       {open?.kind === 'form12b' && <Form12bDecisionDrawer row={open.row} onFile={live.onForm12bFile} onClose={() => setOpenId(null)} onSave={(d) => live.onForm12bDecide(open.row, d)} />}
+      {open?.kind === 'residency' && live.onResidencyDecide && (
+        <ResidencyDecisionDrawer row={open.res} onFile={live.onResidencyFile} onClose={() => setOpenId(null)} onSave={(d) => live.onResidencyDecide!(open.res, d)} />
+      )}
     </PayFrame>
   );
 }
@@ -2076,6 +2110,76 @@ function Form12bDecisionDrawer({ row, onFile, onClose, onSave }: { row: Form12bR
             />
           </FormField>
           <FormField id="fb-why" label="Comment to employee" required={decision === 'reject'} optional={decision === 'approve'} error={errorOf('fb-why')}>
+            <TextArea rows={3} value={comment} onChange={setComment} maxLength={500} />
+          </FormField>
+        </>
+      )}
+    </PayFormDrawer>
+  );
+}
+
+/** Founder answer 2: a residential-status change with its TRC; approving it changes the person's tax from the next run. */
+function ResidencyDecisionDrawer({ row, onFile, onClose, onSave }: { row: ResidencyRow; onFile?: LiveProofQueue['onResidencyFile']; onClose: () => void; onSave: (d: { decision: 'approve' | 'reject'; comment?: string }) => Promise<unknown> }) {
+  const [decision, setDecision] = useState<'approve' | 'reject'>('approve');
+  const [comment, setComment] = useState('');
+  const { busy, run } = useRun();
+  const errors: FormErrorItem[] = decision === 'reject' && comment.trim().length < 3 ? [{ fieldId: 'rs-why', message: 'Add a comment for the employee, so they can fix it.' }] : [];
+  const body = (
+    <>
+      <FactRow
+        items={[
+          { label: 'From', value: RES_LABEL[row.from] },
+          { label: 'To', value: RES_LABEL[row.residentialStatus] },
+          { label: 'TRC valid until', value: row.trcValidTo ? dateText(row.trcValidTo) : '—' },
+          { label: 'Treaty country', value: row.dtaaCountry ?? '—' },
+        ]}
+      />
+      {row.residentialStatus === 'non_resident' && <p className="yx-pay-note">The employee confirmed Form 10F is filed. No rebate applies to a non-resident; a treaty rate is handled by hand.</p>}
+      {row.file && onFile && (
+        <div className="yx-pay-row">
+          <Button size="sm" icon={Download} loading={busy === 'file'} onClick={() => void run('file', () => onFile(row))} aria-label={`Open ${row.file.name}`}>
+            {row.file.name}
+          </Button>
+          <span className="yx-pay-note">Sent {dateText(row.submittedAt.slice(0, 10))}. Check the name, tax year and country on the certificate.</span>
+        </div>
+      )}
+    </>
+  );
+  if (row.status !== 'pending')
+    return (
+      <Drawer open onOpenChange={(o) => !o && onClose()} title="Residential status" subtitle={`${row.employeeName} · ${row.taxYear}`} meta={<Badge tone={LIVE_PROOF_STATE[row.status]?.tone ?? 'neutral'}>{LIVE_PROOF_STATE[row.status]?.label}</Badge>} size="lg" footer={<Button onClick={onClose}>Close</Button>}>
+        <div className="yx-pay-stack">
+          {body}
+          {row.comment && <p className="yx-pay-note">Comment: {row.comment}</p>}
+        </div>
+      </Drawer>
+    );
+  return (
+    <PayFormDrawer
+      title="Residential status"
+      subtitle={`${row.employeeName} · ${row.taxYear}`}
+      confirm={decision === 'approve' ? 'Approve change' : 'Reject change'}
+      done={`${row.employeeName} · residential status ${decision === 'approve' ? 'approved: their tax uses it from the next payslip' : 'rejected'}.`}
+      errors={errors}
+      onClose={onClose}
+      size="lg"
+      onSave={() => onSave({ decision, ...(comment.trim() ? { comment: comment.trim() } : {}) })}
+    >
+      {(errorOf) => (
+        <>
+          {body}
+          <FormField id="rs-decision" label="Decision" required>
+            <Segment
+              label="Decision"
+              value={decision}
+              onChange={setDecision}
+              options={[
+                { value: 'approve', label: 'Approve' },
+                { value: 'reject', label: 'Reject' },
+              ]}
+            />
+          </FormField>
+          <FormField id="rs-why" label="Comment to employee" required={decision === 'reject'} optional={decision === 'approve'} error={errorOf('rs-why')}>
             <TextArea rows={3} value={comment} onChange={setComment} maxLength={500} />
           </FormField>
         </>

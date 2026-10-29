@@ -116,6 +116,11 @@ export interface PayslipLine {
 
 export interface PayslipDetail extends RunPayslip {
   lines: PayslipLine[];
+  /**
+   * Founder answer 6 (PAY-21): the month's days from the attendance feed, with the frozen feed's totals. Null for
+   * off-cycle and weekly payslips.
+   */
+  days?: { list: { day: number; kind: 'paid' | 'lop' | 'holiday' | 'off' | 'leave' | 'future' }[]; calendarDays: number | null; paidDays: string | null; lopDays: string | null } | null;
 }
 
 export interface RunVariance {

@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { EwaAdminScreen, LoansScreen, ProofQueueScreen, type Form12bRow, type LiveEwaAdmin, type LiveLoans, type LiveProofQueue } from './admin-tax-loans';
+import { EwaAdminScreen, LoansScreen, ProofQueueScreen, type Form12bRow, type LiveEwaAdmin, type LiveLoans, type LiveProofQueue, type ResidencyRow } from './admin-tax-loans';
 import type { LoanRepayments } from './live/types-ops';
 import { PEOPLE } from './live/fixtures-5j';
 import { LOANS, PROOFS } from './live/fixtures-ops';
@@ -182,6 +182,26 @@ describe('PAY-23 · Payroll › Proof checking (live)', () => {
     await ue.click(within(d).getByRole('radio', { name: 'Approve' }));
     await ue.click(within(d).getByRole('button', { name: 'Approve Form 12B' }));
     await waitFor(() => expect(onForm12bDecide).toHaveBeenCalledWith(F12B, { decision: 'approve' }));
+  });
+
+  it('founder answer 2: a residential-status change is in the same queue; the TRC opens; reject needs a comment; approve sends', async () => {
+    const RES: ResidencyRow = { id: 'r1', employeeId: 'p2', employeeName: 'Divya Raghunathan', legalEntityId: 'e1', taxYear: '2026-27', from: 'resident', residentialStatus: 'non_resident', trcValidTo: '2027-03-31', dtaaCountry: 'SG', form10fFiled: true, file: { name: 'trc.pdf', size: 900, at: '2026-10-20T10:00:00Z' }, status: 'pending', comment: null, submittedAt: '2026-10-20T10:00:00Z' };
+    const onResidencyDecide = fn();
+    const onResidencyFile = fn();
+    render(<ProofQueueScreen live={live({ form12b: [], residency: [RES], onResidencyDecide, onResidencyFile })} />);
+    expect(screen.getByText('Resident to non-resident · 2026-27')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: "Decide on Divya Raghunathan's residential status" }));
+    const d = screen.getByRole('dialog');
+    expect(within(d).getByText('31 Mar 2027')).toBeInTheDocument();
+    await ue.click(within(d).getByRole('button', { name: 'Open trc.pdf' }));
+    await waitFor(() => expect(onResidencyFile).toHaveBeenCalledWith(RES));
+    await ue.click(within(d).getByRole('radio', { name: 'Reject' }));
+    await ue.click(within(d).getByRole('button', { name: 'Reject change' }));
+    expect(onResidencyDecide).not.toHaveBeenCalled();
+    expect(within(d).getByRole('textbox', { name: /Comment/ })).toHaveFocus();
+    await ue.type(within(d).getByRole('textbox', { name: /Comment/ }), 'The TRC is for last year');
+    await ue.click(within(d).getByRole('button', { name: 'Reject change' }));
+    await waitFor(() => expect(onResidencyDecide).toHaveBeenCalledWith(RES, { decision: 'reject', comment: 'The TRC is for last year' }));
   });
 
   it('the status filter is one Segment; an empty queue says so', async () => {

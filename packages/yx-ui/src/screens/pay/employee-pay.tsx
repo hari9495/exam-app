@@ -13,7 +13,7 @@ import { useRun } from '../org/org-kit';
 import { PayFormDrawer, PayPageState, fromPaise, paise, rupees, sumMoney } from './consultants';
 import type { LoadState } from './live/types';
 import type { MyPayslip, PayslipDetail, PayslipLine } from './live/types-5j';
-import type { DeclarationInput, DeclarationLine, LoanRequestInput, LoanView, MyCertificate, MyDeclarations } from './live/types-ops';
+import type { DeclarationInput, DeclarationLine, LoanRequestInput, LoanView, MyCertificate, MyDeclarations, PayslipQueryView } from './live/types-ops';
 import type { EwaDrawView, MyEwa, MyIncentives } from './live/types-5i';
 import type { PayDocument } from './live/types';
 import { FindPerson, type PersonHit } from './equity';
@@ -23,7 +23,7 @@ import { dateText } from '../time/live/kit';
 import { CurrencyField, NumberField, TextArea, TextField } from '../../components/inputs';
 import { Checkbox, RadioGroup } from '../../components/choice';
 import { Select } from '../../components/select';
-import { BottomSheet } from '../../components/overlay';
+import { BottomSheet, ConfirmDialog } from '../../components/overlay';
 import { AssistantPanel } from '../../components/notify';
 import { PayslipDocument } from '../../components/print';
 import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
@@ -295,7 +295,7 @@ export function PayDiffPanel({ diffs, previous, current, onQuery, chat, labels =
 
 /* ================================================================== PAY-21 Payslip viewer */
 
-export type PayslipVariant = 'default' | 'query' | 'query-sent' | 'held' | 'not-published' | 'document' | 'why' | 'why-unexplained' | 'why-chat' | 'why-same';
+export type PayslipVariant = 'default' | 'query' | 'query-sent' | 'query-withdraw' | 'held' | 'not-published' | 'document' | 'why' | 'why-unexplained' | 'why-chat' | 'why-same';
 
 /** PAY-21 · Payslip viewer: net first, days strip, why-this-number, raise a query. Hosts PAY-40. The app passes `live` (Me › Payslips). */
 export function PayslipViewerScreen(p: { layout?: Layout; variant?: PayslipVariant; state?: ViewState; live?: LivePayslips }) {
@@ -305,6 +305,9 @@ export function PayslipViewerScreen(p: { layout?: Layout; variant?: PayslipVaria
 function SamplePayslipViewer({ layout = 'desktop', variant = 'default', state = 'ready' }: { layout?: Layout; variant?: PayslipVariant; state?: ViewState }) {
   const [query, setQuery] = useState<string | null>(variant === 'query' ? 'Unpaid leave, 1 day' : null);
   const [sent, setSent] = useState(variant === 'query-sent');
+  // Founder answer 16: the employee may withdraw their own query, answered or not.
+  const [withdrawing, setWithdrawing] = useState(variant === 'query-withdraw');
+  const [withdrawn, setWithdrawn] = useState(false);
   const [why, setWhy] = useState(variant.startsWith('why'));
   const [doc, setDoc] = useState(variant === 'document');
   const [pdfSaved, setPdfSaved] = useState(false);
@@ -392,6 +395,33 @@ function SamplePayslipViewer({ layout = 'desktop', variant = 'default', state = 
             Suresh Pillai will reply here within 2 working days. You'll get a notification in the app.
           </InlineAlert>
         )}
+        {(sent || variant === 'query-withdraw') && !withdrawn && (
+          <section className="yx-pay-panel" aria-label="Your queries on this payslip">
+            <SectionTitle>Your queries on this payslip</SectionTitle>
+            <ul className="yx-pay-cards">
+              <li>
+                <div className="yx-pay-cards__row">
+                  <strong>Unpaid leave, 1 day</strong>
+                  <Badge tone="warning">Waiting for payroll</Badge>
+                </div>
+                <span className="yx-pay-muted">I applied for casual leave on {LOP_DATE}. Why is it unpaid?</span>
+                <div className="yx-pay-row">
+                  <Button size="sm" onClick={() => setWithdrawing(true)}>
+                    Withdraw query
+                  </Button>
+                </div>
+              </li>
+            </ul>
+          </section>
+        )}
+        <ConfirmDialog
+          open={withdrawing}
+          onOpenChange={setWithdrawing}
+          title="Withdraw this query?"
+          consequence="Payroll stops working on it and it closes. You can raise a new one any time."
+          confirmLabel="Withdraw query"
+          onConfirm={() => setWithdrawn(true)}
+        />
         <section className="yx-pay-panel" aria-label="Days">
           <SectionTitle>Days in September</SectionTitle>
           <DaysStrip days={MY_DAYS} periodLabel="September 2026" />
@@ -1150,7 +1180,7 @@ function SampleTaxWorkspace({ layout = 'desktop', tab = 'overview', variant = 'd
                   <FormField label={resChanged ? 'Tax residency certificate (TRC)' : 'Add TRC for treaty rate'} required={resChanged} optional={!resChanged} helper="Valid for the tax year.">
                     <FileUpload upload={async () => {}} accept={['.pdf']} multiple={false} onItemsChange={(items) => setTrc(uploaded(items))} />
                   </FormField>
-                  <Checkbox checked={form10f} onChange={setForm10f} label="I have filed Form 10F on the income-tax portal" />
+                  <Checkbox id="rs-10f" checked={form10f} onChange={setForm10f} label="I have filed Form 10F on the income-tax portal" />
                 </>
               )}
               <p className="yx-pay-muted">
@@ -1816,7 +1846,17 @@ export interface LivePayslips {
   onOpen: (id: string) => Promise<PayslipDetail>;
   onPdf: (id: string, month: string) => Promise<unknown>;
   onQuery: (id: string, text: string, lineCode?: string) => Promise<unknown>;
+  /** The person's own payslip queries (GET payroll/queries, `mine`). */
+  queries?: PayslipQueryView[] | null;
+  /** Founder answer 16: withdraw one's own query (PATCH payroll/queries/:id, status closed, no reply needed). */
+  onWithdraw?: (q: PayslipQueryView) => Promise<unknown>;
 }
+
+const QUERY_STATE: Record<PayslipQueryView['status'], { label: string; tone: BadgeTone }> = {
+  open: { label: 'Waiting for payroll', tone: 'warning' },
+  answered: { label: 'Answered', tone: 'info' },
+  closed: { label: 'Closed', tone: 'neutral' },
+};
 
 export interface PayDiffRow {
   code: string;
@@ -1883,6 +1923,7 @@ function LivePayslipViewer({ live }: { live: LivePayslips }) {
   const [details, setDetails] = useState<Record<string, PayslipDetail>>({});
   const [why, setWhy] = useState(false);
   const [query, setQuery] = useState<string | null>(null);
+  const [withdraw, setWithdraw] = useState<PayslipQueryView | null>(null);
   const { busy, error, run } = useRun();
   const load = async (id: string) => {
     if (details[id]) return details[id];
@@ -1960,6 +2001,48 @@ function LivePayslipViewer({ live }: { live: LivePayslips }) {
               status={<Badge tone={slip.paymentStatus === 'paid' ? 'success' : held || slip.paymentStatus === 'failed' || slip.paymentStatus === 'returned' ? 'warning' : 'neutral'}>{held ? 'On hold' : PAYMENT_TEXT[slip.paymentStatus] ?? slip.paymentStatus}</Badge>}
               change={prev && netChange != null ? (netChange === 0n ? `Same as ${monthName(prev.month)}` : `${rupees(fromPaise(netChange < 0n ? -netChange : netChange))} ${netChange < 0n ? 'less' : 'more'} than ${monthName(prev.month)}`) : undefined}
             />
+            {slip && (live.queries ?? []).some((q) => q.mine && q.payslipId === slip.id) && (
+              <section className="yx-pay-panel" aria-label="Your queries on this payslip">
+                <SectionTitle>Your queries on this payslip</SectionTitle>
+                <ul className="yx-pay-cards">
+                  {(live.queries ?? [])
+                    .filter((q) => q.mine && q.payslipId === slip.id)
+                    .map((q) => (
+                      <li key={q.id}>
+                        <div className="yx-pay-cards__row">
+                          <strong>{(q.lineCode && d?.lines.find((l) => l.code === q.lineCode)?.name) || 'Whole payslip'}</strong>
+                          <Badge tone={QUERY_STATE[q.status].tone}>{QUERY_STATE[q.status].label}</Badge>
+                        </div>
+                        <span className="yx-pay-muted">{q.text}</span>
+                        {q.replies?.filter((r) => r.side === 'payroll').slice(-1).map((r) => (
+                          <span key={r.at} className="yx-pay-note">
+                            Payroll ({r.byName}): {r.text}
+                          </span>
+                        ))}
+                        {q.status !== 'closed' && live.onWithdraw && (
+                          <div className="yx-pay-row">
+                            <Button size="sm" onClick={() => setWithdraw(q)}>
+                              Withdraw query
+                            </Button>
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                </ul>
+              </section>
+            )}
+            {d?.days && d.days.list.length > 0 && (
+              <section className="yx-pay-panel" aria-label="Days">
+                <SectionTitle>Days in {monthName(slip.month).split(' ')[0]}</SectionTitle>
+                <DaysStrip days={d.days.list} periodLabel={monthName(slip.month)} />
+                {d.days.paidDays != null && d.days.calendarDays != null && (
+                  <p className="yx-pay-muted">
+                    {daysText(d.days.paidDays)} paid days of {d.days.calendarDays}
+                    {d.days.lopDays && Number(d.days.lopDays) > 0 ? ` · ${daysText(d.days.lopDays)} unpaid` : ''}
+                  </p>
+                )}
+              </section>
+            )}
             <div className="yx-pay-split">
               <section className="yx-pay-panel" aria-label="Why this number">
                 <SectionTitle>How your pay was worked out</SectionTitle>
@@ -2032,9 +2115,25 @@ function LivePayslipViewer({ live }: { live: LivePayslips }) {
         </Drawer>
       )}
       {slip && query != null && <QueryDrawer slip={slip} period={period} lines={d?.lines ?? []} lineCode={query} onClose={() => setQuery(null)} onSend={live.onQuery} />}
+      <ConfirmDialog
+        open={!!withdraw}
+        onOpenChange={(o) => !o && setWithdraw(null)}
+        title="Withdraw this query?"
+        consequence="Payroll stops working on it and it closes. You can raise a new one any time."
+        confirmLabel="Withdraw query"
+        onConfirm={async () => {
+          if (!withdraw || !live.onWithdraw) return;
+          await live.onWithdraw(withdraw);
+          setWithdraw(null);
+          toast({ title: 'Query withdrawn', description: 'It is closed. Raise a new one any time.', tone: 'success' });
+        }}
+      />
     </MyPayFrame>
   );
 }
+
+/** "26.00" → "26", "0.50" → "0.5". */
+const daysText = (x: string) => String(Number(x));
 
 function QueryDrawer({ slip, period, lines, lineCode, onClose, onSend }: { slip: MyPayslip; period: string; lines: PayslipLine[]; lineCode: string; onClose: () => void; onSend: LivePayslips['onQuery'] }) {
   const [about, setAbout] = useState<string | null>(lineCode || 'whole');
@@ -2083,6 +2182,28 @@ export interface MyTaxWorkspace {
   canChooseRegime?: boolean;
   canDeclare?: boolean;
   canSendProofs?: boolean;
+  /** Founder answer 3: the latest "ask HR to change my regime" request (Approvals). */
+  regimeRequest?: { id: string; from: 'new' | 'old'; to: 'new' | 'old'; reason: string; status: 'pending' | 'approved' | 'rejected'; requestedAt: string; decidedAt: string | null } | null;
+  /** Founder answer 2: the latest residential-status request (payroll approves it with the TRC). */
+  residencyRequest?: {
+    id: string;
+    from: 'resident' | 'non_resident';
+    residentialStatus: 'resident' | 'non_resident';
+    trcValidTo: string | null;
+    dtaaCountry: string | null;
+    file: { name: string; size: number; at: string } | null;
+    status: 'pending' | 'approved' | 'rejected';
+    comment: string | null;
+    submittedAt: string;
+  } | null;
+}
+
+/** POST tax/me/residency (multipart with the TRC): the change payroll approves. */
+export interface ResidencyInput {
+  residentialStatus: 'resident' | 'non_resident';
+  trcValidTo?: string;
+  dtaaCountry?: string;
+  form10fFiled?: boolean;
 }
 
 /** POST tax/me/regime-compare: both regimes on the latest payslip's figures, with the same function as the TDS. */
@@ -2153,7 +2274,11 @@ export interface LiveTax {
   certificates: MyCertificate[] | null;
   form12b: MyForm12b | null;
   onCompare: () => Promise<RegimeComparison>;
-  onPatch: (x: { regime?: 'new' | 'old'; residentialStatus?: 'resident' | 'non_resident'; otherIncome?: { kind: 'interest' | 'rent' | 'other'; amount: string }[] }) => Promise<unknown>;
+  onPatch: (x: { regime?: 'new' | 'old'; otherIncome?: { kind: 'interest' | 'rent' | 'other'; amount: string }[] }) => Promise<unknown>;
+  /** Founder answer 3: after the cut-off, POST tax/me/regime-request (goes to Approvals). */
+  onRegimeRequest: (x: { regime: 'new' | 'old'; reason: string }) => Promise<unknown>;
+  /** Founder answer 2: POST tax/me/residency with the TRC (non-resident). */
+  onResidency: (x: ResidencyInput, file: File | null) => Promise<unknown>;
   onDeclare: (line: DeclarationInput) => Promise<unknown>;
   onProof: (lineId: string, file: File) => Promise<unknown>;
   onPartA: (c: MyCertificate) => Promise<unknown>;
@@ -2206,7 +2331,7 @@ function LiveTaxWorkspace({ live }: { live: LiveTax }) {
               { label: `Monthly TDS (${s.remainingPeriods} ${s.remainingPeriods === 1 ? 'month' : 'months'} left)`, value: rupees(s.monthTds) },
             ]
           : []),
-        { label: 'Residential status', value: w.residentialStatus === 'non_resident' ? 'Non-resident' : 'Resident' },
+        { label: 'Residential status', value: `${w.residentialStatus === 'non_resident' ? 'Non-resident' : 'Resident'}${w.residencyRequest?.status === 'pending' ? ' (change with payroll)' : ''}` },
       ]
     : undefined;
   const status = w && cutOff ? locked ? <Badge tone="neutral">Regime locked on {dateText(cutOff)}</Badge> : <Badge tone="info">You can change your regime until {dateText(cutOff)}</Badge> : undefined;
@@ -2309,7 +2434,7 @@ function LiveTaxWorkspace({ live }: { live: LiveTax }) {
                 <PreviousEmployer live={live} w={w} />
               </TabsContent>
               <TabsContent value="residential">
-                <Residential w={w} onPatch={live.onPatch} />
+                <Residential w={w} onSend={live.onResidency} />
               </TabsContent>
             </Tabs>
           </div>
@@ -2402,6 +2527,7 @@ function TaxDeclarations({ live, w }: { live: LiveTax; w: MyTaxWorkspace }) {
   const [regime, setRegime] = useState<'new' | 'old'>(w.regime);
   const [editing, setEditing] = useState<DeclarationLine | 'new' | null>(null);
   const [regimeError, setRegimeError] = useState<string | undefined>();
+  const [askHr, setAskHr] = useState(false);
   const { busy, error, run } = useRun();
   useEffect(() => setRegime(w.regime), [w.regime]);
   const verified = (l: DeclarationLine) => ['approved', 'partly'].includes(l.proofStatus);
@@ -2447,11 +2573,25 @@ function TaxDeclarations({ live, w }: { live: LiveTax; w: MyTaxWorkspace }) {
               {w.dates?.regimeCutoff && <span className="yx-pay-note">You can change it until {dateText(w.dates.regimeCutoff)}.</span>}
             </div>
           </>
+        ) : w.regimeRequest?.status === 'pending' ? (
+          <InlineAlert tone="success" title="Request sent to HR">
+            You asked to switch to the {w.regimeRequest.to} regime on {dateText(w.regimeRequest.requestedAt.slice(0, 10))}. HR reviews it in Approvals; you get a notification in the app.
+          </InlineAlert>
         ) : (
-          <InlineAlert tone="info" title={`${regimeText(w.regime)}, locked${w.dates?.regimeCutoff ? ` on ${dateText(w.dates.regimeCutoff)}` : ''}`}>
-            The company cut-off has passed. Only payroll can change your regime now, with a reason.
+          <InlineAlert
+            tone="info"
+            title={`${regimeText(w.regime)}, locked${w.dates?.regimeCutoff ? ` on ${dateText(w.dates.regimeCutoff)}` : ''}`}
+            actions={
+              <Button size="sm" onClick={() => setAskHr(true)}>
+                Ask HR to change regime
+              </Button>
+            }
+          >
+            The company cut-off has passed. Only HR can change your regime now, with a reason.
+            {w.regimeRequest?.status === 'rejected' ? ' HR did not approve your last request.' : ''}
           </InlineAlert>
         )}
+        {askHr && <AskHrRegime w={w} onClose={() => setAskHr(false)} onSend={live.onRegimeRequest} />}
         {w.regime === 'new' && <p className="yx-pay-note">In the new regime, the declarations below don't reduce your tax. Keep them if you might switch.</p>}
       </section>
       {d && !open && (
@@ -2787,45 +2927,126 @@ function OtherIncome({ w, onPatch }: { w: MyTaxWorkspace; onPatch: LiveTax['onPa
   );
 }
 
-function Residential({ w, onPatch }: { w: MyTaxWorkspace; onPatch: LiveTax['onPatch'] }) {
+/** PAY-22 "Ask HR to change your regime" (founder answer 3): the other regime, with a reason; it goes to Approvals. */
+function AskHrRegime({ w, onClose, onSend }: { w: MyTaxWorkspace; onClose: () => void; onSend: LiveTax['onRegimeRequest'] }) {
+  const to = w.regime === 'new' ? 'old' : 'new';
+  const [reason, setReason] = useState('');
+  return (
+    <PayFormDrawer
+      title="Ask HR to change your regime"
+      subtitle={`From ${w.regime} to ${to} regime for ${w.taxYear}`}
+      confirm="Send request"
+      done="Request sent to HR. You get a notification when they decide."
+      errors={reason.trim().length < 10 ? [{ fieldId: 'rr-why', message: 'Give a reason HR can check (at least 10 letters).' }] : []}
+      onClose={onClose}
+      onSave={() => onSend({ regime: to, reason: reason.trim() })}
+    >
+      {(errorOf) => (
+        <FormField id="rr-why" label="Reason" required helper="For example, a home loan taken after the cut-off. HR reviews it; the change is recorded." error={errorOf('rr-why')}>
+          <TextArea rows={3} value={reason} onChange={setReason} maxLength={500} />
+        </FormField>
+      )}
+    </PayFormDrawer>
+  );
+}
+
+const RES_TEXT = { resident: 'Resident', non_resident: 'Non-resident' } as const;
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** PAY-22 residential status (founder answer 2): a change waits for payroll with the TRC and Form 10F; pending shows here. */
+function Residential({ w, onSend }: { w: MyTaxWorkspace; onSend: LiveTax['onResidency'] }) {
   const { toast } = useToast();
   const saved = w.residentialStatus ?? 'resident';
+  const req = w.residencyRequest ?? null;
   const [res, setRes] = useState<'resident' | 'non_resident'>(saved);
-  const [same, setSame] = useState<string | undefined>();
+  const [trc, setTrc] = useState<File | null>(null);
+  const [trcTo, setTrcTo] = useState('');
+  const [country, setCountry] = useState('');
+  const [form10f, setForm10f] = useState(false);
   const { busy, error, run } = useRun();
-  const save = () => {
-    if (res === saved) {
-      setSame(`${res === 'resident' ? 'Resident' : 'Non-resident'} is already saved. Choose the other one to change it.`);
+  const nr = res === 'non_resident';
+  const changed = res !== saved;
+  const errors: FormErrorItem[] = [
+    ...(!changed && !nr ? [{ fieldId: 'rs-status', message: 'Resident is already your status. Choose non-resident to change it.' }] : []),
+    ...(nr && !trc ? [{ fieldId: 'rs-trc', message: 'Attach your tax residency certificate (TRC) as a PDF.' }] : []),
+    ...(nr && !DAY_RE.test(trcTo) ? [{ fieldId: 'rs-trc-to', message: 'Enter the last day your certificate is valid.' }] : nr && trcTo < todayIso() ? [{ fieldId: 'rs-trc-to', message: 'This certificate has ended. Send one that is still valid.' }] : []),
+    ...(nr && country.trim() && !/^[A-Za-z]{2}$/.test(country.trim()) ? [{ fieldId: 'rs-country', message: 'Enter the 2-letter country code, like SG, or leave it empty.' }] : []),
+    ...(nr && !form10f ? [{ fieldId: 'rs-10f', message: 'File Form 10F on the income-tax portal first, then tick this.' }] : []),
+  ];
+  const early = useTooEarly(errors);
+  const send = () => {
+    if (early.stop()) {
+      // The joined Segment takes focus on its first choice (the field's own id is its group).
+      if (errors[0]?.fieldId === 'rs-status') document.getElementById('rs-status')?.querySelector<HTMLElement>('[role="radio"]')?.focus();
       return;
     }
-    setSame(undefined);
-    void run('res', () => onPatch({ residentialStatus: res })).then((ok) => ok && toast({ title: 'Residential status saved', description: 'Your next payslip uses it.', tone: 'success' }));
+    void run('res', () => onSend({ residentialStatus: res, ...(nr ? { trcValidTo: trcTo, form10fFiled: true, ...(country.trim() ? { dtaaCountry: country.trim().toUpperCase() } : {}) } : {}) }, nr ? trc : null)).then((ok) => {
+      if (!ok) return;
+      early.reset();
+      toast({ title: 'Sent for HR review', description: 'Your TDS changes from the payslip after payroll approves it.', tone: 'success' });
+    });
   };
+  if (req?.status === 'pending')
+    return (
+      <div className="yx-pay-stack">
+        <InlineAlert tone="success" title="Sent for HR review">
+          You asked to be {RES_TEXT[req.residentialStatus].toLowerCase()} on {dateText(req.submittedAt.slice(0, 10))}
+          {req.file ? `, with ${req.file.name}` : ''}. Payroll checks it. Your TDS changes from the payslip after they approve.
+        </InlineAlert>
+        <p className="yx-pay-muted">Until then your tax uses: {RES_TEXT[saved]}.</p>
+      </div>
+    );
   return (
     <div className="yx-pay-stack">
+      {req?.status === 'rejected' && (
+        <InlineAlert tone="danger" title="Your last request was not approved">
+          {req.comment ? `Payroll: ${req.comment}` : 'Payroll did not approve it.'} Fix it and send it again.
+        </InlineAlert>
+      )}
+      {saved === 'non_resident' && (
+        <InlineAlert tone="info" title="Non-resident, approved by HR">
+          Your tax is worked out without the rebate. To get a lower treaty rate, add your tax residency certificate and file Form 10F.
+        </InlineAlert>
+      )}
       {error && (
-        <InlineAlert tone="danger" title="Not saved">
+        <InlineAlert tone="danger" title="Not sent">
           {error}
         </InlineAlert>
       )}
-      <FormField id="rs-status" label="Residential status this tax year" error={same} helper="Resident: in India 182 days or more in the tax year, or another residence test applies. Non-resident: no rebate; a treaty rate needs a tax residency certificate, which payroll handles by hand.">
+      <FormField id="rs-status" label="Residential status this tax year" error={early.errorOf('rs-status')} helper="Resident: in India 182 days or more in the tax year, or another residence test applies. Non-resident: no rebate; a treaty rate only with a valid tax residency certificate and Form 10F.">
         <Segment
           label="Residential status this tax year"
           value={res}
-          onChange={(x) => {
-            setRes(x);
-            setSame(undefined);
-          }}
+          onChange={(x) => setRes(x)}
           options={[
             { value: 'resident', label: 'Resident' },
             { value: 'non_resident', label: 'Non-resident' },
           ]}
         />
       </FormField>
+      {nr && (
+        <>
+          <FormField id="rs-trc" label={changed ? 'Tax residency certificate (TRC)' : 'Add TRC for treaty rate'} required helper="A PDF, valid for the tax year." error={early.errorOf('rs-trc')}>
+            <FileUpload id="rs-trc" accept={['.pdf']} multiple={false} upload={async (x) => setTrc(x)} onItemsChange={(items) => !items.length && setTrc(null)} />
+          </FormField>
+          <FieldRow>
+            <FormField id="rs-trc-to" label="Certificate valid until" required error={early.errorOf('rs-trc-to')}>
+              <TextField type="date" value={trcTo} onChange={setTrcTo} />
+            </FormField>
+            <FormField id="rs-country" label="Treaty country" optional helper="Only if you claim a treaty rate, like SG." error={early.errorOf('rs-country')}>
+              <TextField value={country} onChange={setCountry} maxLength={2} autoCapitalize="characters" />
+            </FormField>
+          </FieldRow>
+          <FormField id="rs-10f" label="Form 10F" required error={early.errorOf('rs-10f')}>
+            <Checkbox checked={form10f} onChange={setForm10f} label="I have filed Form 10F on the income-tax portal" />
+          </FormField>
+        </>
+      )}
       <div className="yx-pay-row">
-        <Button variant="primary" loading={busy === 'res'} onClick={save}>
-          Save residential status
+        <Button variant="primary" loading={busy === 'res'} onClick={send}>
+          {changed ? 'Send for HR review' : 'Send TRC to HR'}
         </Button>
+        <span className="yx-pay-note">Payroll approves it; nothing changes until then.</span>
       </div>
     </div>
   );
@@ -3370,7 +3591,7 @@ export function MyPayDocumentsScreen({ live, state = 'ready', variant }: { live?
   const { busy, error, run } = useRun();
   const docs = v.data ?? [];
   return (
-    <MyPayFrame page="form130">
+    <MyPayFrame page="documents">
       <PageHeader title="My pay documents" description="Your payslips and letters as issued. Anyone you give one to can check it with its code." />
       <PayPageState state={v.state} onRetry={v.onRetry} what="your pay documents">
         <div className="yx-pay-stack">

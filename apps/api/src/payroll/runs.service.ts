@@ -20,6 +20,7 @@ import { ApprovalsEngine, type Notice, type StepSpec } from '../workflow/approva
 import { ENGINE_VERSION, calculatePayslip, hashOf, type CalcComponent, type Segment, type Snapshot } from './calc';
 import type { ConfirmationDto } from './dto';
 import { principalPart } from './inputs.service';
+import { dayKinds } from './payslip-days';
 import { buildTaxInputs } from './tax.service';
 import { taxYearOf } from './tax';
 import { PayKey, entitiesFor, payHolders, payScope, payViewer, requireEntity, requireSelf, systemAdmins, withPayScope } from './pay-access';
@@ -873,8 +874,42 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       if (!staff && !(s.status === 'approved' && (await published()))) throw new NotFoundException('Not found');
       const lines = await tx.payslipLine.findMany({ where: { organizationId: c.organizationId, payslipId: s.id }, orderBy: { position: 'asc' } });
       if (staff) await audit(tx, c, 'payroll.payslip.viewed', 'payslip', s.id, { employeeId: s.employeeId });
-      return { ...this.slipView(s), ruleVersions: s.ruleVersions, lines: lines.map((l) => ({ code: l.componentCode, name: l.name, kind: l.kind, segmentNo: l.segmentNo, amount: l.amount.toFixed(2), quantity: l.quantity?.toFixed(2) ?? null, rate: l.rate?.toFixed(4) ?? null, explanation: l.explanation, rule: l.rule, verify: l.verify })) };
+      return { ...this.slipView(s), days: await this.dayStrip(tx, c.organizationId, s), ruleVersions: s.ruleVersions, lines: lines.map((l) => ({ code: l.componentCode, name: l.name, kind: l.kind, segmentNo: l.segmentNo, amount: l.amount.toFixed(2), quantity: l.quantity?.toFixed(2) ?? null, rate: l.rate?.toFixed(4) ?? null, explanation: l.explanation, rule: l.rule, verify: l.verify })) };
     });
+  }
+
+  /**
+   * Founder answer 6 (PAY-21): a regular monthly payslip's days, from the attendance days and approved leave the payroll
+   * feed counts payable days from, with the feed's frozen totals. Null for off-cycle and weekly payslips.
+   */
+  private async dayStrip(tx: Tx, org: string, s: Prisma.PayslipGetPayload<object>) {
+    if (s.runType !== 'regular' || s.subPeriod !== 0) return null;
+    const month = dateOf(s.periodStart).slice(0, 7);
+    const { from, to } = monthRange(month);
+    const e = await tx.employment.findFirst({ where: { organizationId: org, id: s.employmentId }, select: { joinedOn: true, exitedOn: true } });
+    if (!e) return null;
+    const rows = await tx.attendanceDay.findMany({ where: { organizationId: org, employeeId: s.employeeId, workOn: { gte: asDate(from), lte: asDate(to) } }, select: { workOn: true, status: true, leavePart: true } });
+    const leave = await tx.$queryRaw<{ on: string; paid: boolean }[]>`
+      SELECT d.leave_on::text AS on, bool_and(t.paid) AS paid FROM leave_request_days d
+      JOIN leave_requests r ON r.organization_id = d.organization_id AND r.id = d.request_id AND r.status IN ('approved', 'cancel_pending')
+      JOIN leave_types t ON t.organization_id = r.organization_id AND t.id = r.leave_type_id
+      WHERE d.organization_id = ${org}::uuid AND d.employee_id = ${s.employeeId}::uuid AND d.active AND d.portion > 0 AND d.leave_on BETWEEN ${from}::date AND ${to}::date
+      GROUP BY 1`;
+    const feed = await tx.payrollFeedRow.findFirst({ where: { organizationId: org, employeeId: s.employeeId, periodStart: s.periodStart, supersededAt: null }, select: { calendarDays: true, paidDays: true, lopDays: true } });
+    return {
+      list: dayKinds({
+        from,
+        to,
+        joinedOn: dateOf(e.joinedOn),
+        exitedOn: e.exitedOn ? dateOf(e.exitedOn) : null,
+        today: todayIst(),
+        rows: new Map(rows.map((r) => [dateOf(r.workOn), { status: r.status, leavePart: r.leavePart }])),
+        leavePaid: new Map(leave.map((l) => [l.on, l.paid])),
+      }),
+      calendarDays: feed?.calendarDays ?? null,
+      paidDays: feed?.paidDays.toFixed(2) ?? null,
+      lopDays: feed?.lopDays.toFixed(2) ?? null,
+    };
   }
 
   /** YX-PAY-06: net change above the threshold, or a component added or removed, against the last approved payslip. */
