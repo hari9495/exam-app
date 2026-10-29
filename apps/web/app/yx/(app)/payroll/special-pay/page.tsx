@@ -35,7 +35,8 @@ export default function YxPaySpecialPage() {
   return (
     <SpecialPayHomeScreen
       live={{
-        state: payState(entities),
+        // Postings need payroll.special.manage: without it the whole page is "no access", not an empty home tab.
+        state: entityId ? payState(entities, postings) : payState(entities),
         onRetry: () => void entities.refetch(),
         entities: entities.data ?? [],
         entityId,

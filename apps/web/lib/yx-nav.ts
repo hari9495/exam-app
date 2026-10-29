@@ -196,7 +196,7 @@ export function buildNav(n: NavInput): NavArea[] {
           ]),
           ...sec(undefined, [
             ...when(has('employee.salary.manage'), L('pay-compensation', 'Compensation', '/yx/payroll/compensation')),
-            ...when(has('payroll.special.manage'), L('pay-special', 'One-time pay & holds', '/yx/payroll/special-pay')),
+            ...when(has('payroll.special.manage'), L('pay-special', 'Special pay', '/yx/payroll/special-pay')),
             ...when(has('payroll.equity.manage'), L('pay-equity', 'Equity', '/yx/payroll/equity')),
             ...when(any('consultant.manage', 'consultant.invoice.approve'), L('pay-consultants', 'Consultants', '/yx/payroll/consultants')),
             ...when(has('tax.proof.verify'), L('pay-proofs', 'Tax centre', '/yx/payroll/proofs')),

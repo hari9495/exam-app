@@ -111,7 +111,8 @@ export function PayPeriodsScreen(p: Partial<LivePayPeriods> & { live?: LivePayPe
       header: 'Actions',
       value: () => '',
       render: (m) => (
-        <span className="yx-pay-row">
+        // One row: two small buttons stacked looked like two separate rows of the table.
+        <span className="yx-pay-row" style={{ flexWrap: 'nowrap' }}>
           {m.periodId && (
             <Button size="sm" onClick={() => setHistory(m.periodId)}>
               History
@@ -128,7 +129,7 @@ export function PayPeriodsScreen(p: Partial<LivePayPeriods> & { live?: LivePayPe
           ) : null}
         </span>
       ),
-      width: 240,
+      width: 260,
       sortable: false,
     },
   ];
