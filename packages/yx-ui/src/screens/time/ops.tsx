@@ -1727,7 +1727,7 @@ function LiveLeaveReports({ live }: { live: LiveLeaveReports }) {
     },
   }));
   // Founder decision 3: the API sends money fields only to people who may see pay; "No pay set" is never shown as 0.
-  const money = (key: 'dailyPay' | 'amount', header: string, total?: 'sum'): TableColumn<LeaveReportRow> => ({ key, header, type: 'money', width: 140, total, value: (x) => x[key] ?? null, render: (x) => (x.noPay ? <Badge tone="neutral">No pay set</Badge> : x[key] == null ? '—' : formatINR(x[key]!)) });
+  const money = (key: 'dailyPay' | 'amount', header: string, total?: 'sum'): TableColumn<LeaveReportRow> => ({ key, header, type: 'money', width: 140, total, value: (x) => x[key] ?? null, render: (x) => (x.noPay ? <Badge tone="neutral">No pay set</Badge> : x[key] == null ? '—' : formatINR(x[key]!, { decimals: 2 })) }); // one column, one format: ₹4,487.00 beside ₹3,461.50
   const liabilityCols: TableColumn<LeaveReportRow>[] = [
     person,
     { key: 'department', header: 'Department', value: (x) => x.department, optional: true },
