@@ -4195,5 +4195,463 @@
       "TIM-30 Payroll · liability"
     ],
     "note": "Positive and negative. Negative: a full-width filter on its own line, or Columns floating halfway down the toolbar, is a fail."
+  },
+  {
+    "id": "MT-PAY-R-01",
+    "area": "Pay · Runs",
+    "screen": "Payroll home: this month's run, checks, dates, run list",
+    "url": "http://localhost:3000/yx/payroll/runs",
+    "account": "payroll-tester@demo-org.test (Payroll Admin). Browser window 1278 x 635.",
+    "steps": [
+      "1. Open Pay › Payroll home.",
+      "2. Read the header facts and the stage track.",
+      "3. Look at What needs attention and Due this month.",
+      "4. Open the Weekly and Fortnightly tabs of Pay runs.",
+      "5. Click a run row."
+    ],
+    "expected": "Step 1: the menu item reads Payroll home and the title reads Payroll. Step 2: pay group · employees · Cut-off · Pay date for this month; the current stage is marked, and a run with blocking checks says how many block it. Step 3: one line per kind of check with Blocks calculation / Blocks approval / Warning and Open run checks; cut-off and pay date carry an 'in N days' badge. Step 4: each tab lists that frequency's runs with their status (Void and Reopened included) or says none yet. Step 5: the run workspace opens.",
+    "stories": [
+      "PAY-01 In review · blocked",
+      "PAY-29 Run list · weekly"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-PAY-R-02",
+    "area": "Pay · Runs",
+    "screen": "Payroll home: start a run, pressed too early",
+    "url": "http://localhost:3000/yx/payroll/runs",
+    "account": "payroll-tester@demo-org.test (Payroll Admin). A month with no run yet chosen in the top bar.",
+    "steps": [
+      "1. Press Start <month> payroll.",
+      "2. Choose a weekly pay group and press Create run without a pay period.",
+      "3. Choose a pay period and press Create run.",
+      "4. Press Start <month> payroll again for the same group and month and press Create run."
+    ],
+    "expected": "Step 2: 'Choose the pay period.' shows under the field and focus moves to it; nothing is created. Step 3: toast 'Run created' (5 s) and the new run opens. Step 4: the drawer stays open with the server's reason (already exists); no second run.",
+    "stories": [
+      "PAY-01 Draft · new month"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-R-03",
+    "area": "Pay · Runs",
+    "screen": "Payroll home as finance approver, and not set up",
+    "url": "http://localhost:3000/yx/payroll/runs",
+    "account": "finance-approver@demo-org.test (payroll.run.approve only); then an org with no pay group.",
+    "steps": [
+      "1. Open Payroll home as the finance approver while a run waits for approval.",
+      "2. Look for Start off-cycle run / Start payroll.",
+      "3. In the org with no pay group, open Payroll home."
+    ],
+    "expected": "Step 1: description 'Runs waiting for your approval…', a '1 run is waiting for approval' notice and Review and approve. The page does not say no access. Step 2: no start buttons. Step 3: 'Payroll isn't set up for this entity yet.' with Set up payroll (opens /yx/payroll/setup).",
+    "stories": [
+      "PAY-01 Finance approver",
+      "PAY-01 Empty · payroll not set up"
+    ],
+    "note": "Negative: a no-access page for the approver, or a start button for them, is a fail."
+  },
+  {
+    "id": "MT-PAY-R-04",
+    "area": "Pay · Runs",
+    "screen": "Statutory coverage",
+    "url": "http://localhost:3000/yx/payroll/coverage",
+    "account": "payroll-tester@demo-org.test (payroll.setup.manage); then an account without it.",
+    "steps": [
+      "1. Open Compliance › Statutory coverage.",
+      "2. Read a covered row and an approaching row.",
+      "3. Press Open statutory set-up.",
+      "4. Open the page with the account without payroll.setup.manage."
+    ],
+    "expected": "Step 2: entity, statute, 'Employees', head count / threshold, status badge; covered rows say 'Covered since <date>; stays covered'; no Switch on buttons. Step 3: /yx/payroll/setup opens. Step 4: no-access message naming your payroll admin.",
+    "stories": [
+      "PAY-30 Approaching only"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-R-10",
+    "area": "Pay · Runs",
+    "screen": "Run workspace: checks and calculate (PAY-02, PAY-03)",
+    "url": "http://localhost:3000/yx/payroll/runs/<id>",
+    "account": "payroll admin (payroll.run.prepare). Window 1278 x 635.",
+    "steps": [
+      "1. Open a draft run that has a 'no salary bank account' check.",
+      "2. Press Calculate.",
+      "3. On Validations press Waive, then Waive with reason with the box empty.",
+      "4. Type 'Bank details next week' and press Waive with reason.",
+      "5. Press Calculate."
+    ],
+    "expected": "Step 2: the button is not greyed; a toast says 'Fix or waive 1 check first.' and Validations opens; nothing calculates. Step 3: 'Reason: at least 5 characters.' and the box has focus. Step 4: toast 'Check waived'; the row shows Waived with the reason. Step 5: progress names each person worked out; then Payslips opens.",
+    "stories": [
+      "PAY-02 Blocked",
+      "PAY-02 Waive dialog",
+      "PAY-03 Calculating"
+    ],
+    "note": "Positive and negative. A disabled Calculate button is a fail."
+  },
+  {
+    "id": "MT-PAY-R-11",
+    "area": "Pay · Runs",
+    "screen": "Run workspace: payslips, variance and submit (PAY-03)",
+    "url": "http://localhost:3000/yx/payroll/runs/<id>",
+    "account": "payroll admin (payroll.run.prepare)",
+    "steps": [
+      "1. Open a calculated run with an unacknowledged pay change.",
+      "2. Press Submit for approval.",
+      "3. On Variance press Acknowledge, then Acknowledge with no note.",
+      "4. Press Submit for approval.",
+      "5. On Payslips click a person, then open a line under Deductions."
+    ],
+    "expected": "Step 2: toast 'Acknowledge 1 pay change first.'; Variance opens; nothing is sent. Step 3: the row shows Acknowledged. Step 4: toast 'Sent for approval'; status 'Waiting for approval'. Step 5: the drawer shows net, gross, deductions, and the line's explanation and rule.",
+    "stories": [
+      "PAY-03 Payslips",
+      "PAY-03 Why drawer",
+      "PAY-03 Variance"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-R-12",
+    "area": "Pay · Runs",
+    "screen": "Approve and lock (PAY-07); maker is not checker",
+    "url": "http://localhost:3000/yx/payroll/runs/<id>",
+    "account": "finance approver (payroll.run.approve), not the preparer; then the preparer",
+    "steps": [
+      "1. As the preparer, open the submitted run.",
+      "2. As the approver, press Approve and lock, then Approve and lock in the sheet without typing.",
+      "3. Type the phrase shown and confirm.",
+      "4. As another approver on a second run, press Send back with an empty reason, then with 'Arrears missing'."
+    ],
+    "expected": "Step 1: 'You prepared this run, so someone else approves it.' and no approve button. Step 2: the sheet says to type the phrase exactly, in capitals; nothing is sent. Step 3: toast '<Month> approved and locked'; badge 'Period locked'; Files opens. Step 4: empty shows 'What to change: at least 5 characters.'; then toast 'Run sent back'.",
+    "stories": [
+      "PAY-07 Ready",
+      "PAY-07 Same person",
+      "PAY-07 Done"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-R-13",
+    "area": "Pay · Runs",
+    "screen": "Bank file and publish (PAY-08, PAY-09)",
+    "url": "http://localhost:3000/yx/payroll/runs/<id>",
+    "account": "payroll admin (bankfile.generate), then a second person (bankfile.release, payslip.publish)",
+    "steps": [
+      "1. On an approved run press Make bank file, then Make bank file in the dialog with no account.",
+      "2. Enter a 16-digit account and make the file.",
+      "3. As the same person look at Files.",
+      "4. As the second person press Release bank file, type the phrase, confirm, then Download.",
+      "5. Press Publish payslips, type 'PUBLISH <n>', confirm."
+    ],
+    "expected": "Step 1: 'Enter the account the bank debits (6 to 20 digits).' with focus. Step 2: toast; an alert lists anyone not in the file. Step 3: 'Someone else releases it', no Release button. Step 4: toast 'Bank file released'; the row shows Released with the date; the download starts. Step 5: toast '<n> payslips published'; Files shows Published.",
+    "stories": [
+      "PAY-08 Ready",
+      "PAY-08 Released",
+      "PAY-09 Ready",
+      "PAY-09 Published"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-R-20",
+    "area": "Pay · Inputs",
+    "screen": "Payroll inputs: one-time pay",
+    "url": "http://localhost:3000/yx/payroll/inputs",
+    "account": "payroll admin with payroll.input.manage. Window 1278 x 635.",
+    "steps": [
+      "1. Open Inputs; month = this month.",
+      "2. Press Add one-time pay, then press Add one-time pay in the drawer with nothing filled.",
+      "3. Search an employee, pick them, Type Bonus, amount 5000, reason 'Spot award', press Add.",
+      "4. Add another for the same person with an amount above the company limit (payroll.one_time_review_above).",
+      "5. Press Cancel on the first item and confirm."
+    ],
+    "expected": "Step 2: field errors show and the Employee field takes focus; nothing is sent. Step 3: a 5-second toast; the row shows Approved. Step 4: the toast says it waits for approval; the row shows Awaiting approval and an approval request reaches someone else. Step 5: the row shows Cancelled. No page scroll.",
+    "stories": [
+      "PAY-05 List",
+      "PAY-05 AddSheet"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-R-21",
+    "area": "Pay · Inputs",
+    "screen": "Payroll inputs: a locked month and recurring pay",
+    "url": "http://localhost:3000/yx/payroll/inputs",
+    "account": "payroll admin",
+    "steps": [
+      "1. Choose a month that is locked in Pay periods.",
+      "2. Add one-time pay for any person.",
+      "3. Choose an open month; tick Recurring, end date three months on, amount 3000; look at Effect; press Add."
+    ],
+    "expected": "Step 2: the drawer stays open with the API's refusal (the month is locked); nothing is added. Step 3: Effect lists each month (the last one prorated) and the total; the row shows 'Until <end date>'.",
+    "stories": [
+      "PAY-04 Frozen",
+      "PAY-05 Recurring"
+    ],
+    "note": "Negative then positive."
+  },
+  {
+    "id": "MT-PAY-R-22",
+    "area": "Pay · Inputs",
+    "screen": "Payroll inputs: loss of pay and CSV upload",
+    "url": "http://localhost:3000/yx/payroll/inputs",
+    "account": "payroll admin",
+    "steps": [
+      "1. Open the Loss of pay tab; press Save LOP with nothing changed.",
+      "2. Add loss of pay: pick a person, 40 days, reason 'Absent', Save.",
+      "3. Change it to 2 days and Save.",
+      "4. In the table, change their days to 1 and Save LOP.",
+      "5. Bulk upload: press Import before choosing a file; then upload a CSV with one good row, one unknown ID and one with 40 days."
+    ],
+    "expected": "Step 1: a toast says there is nothing to save. Step 2: 'Enter 30 days or fewer' (or 31) and focus on Unpaid days. Steps 3-4: toast, Source shows Manual. Step 5: 'Upload a file first', then '1 rows ready · 2 rows with errors' with a reason for each; Import imports 1 row, Source Upload.",
+    "stories": [
+      "PAY-04 Default",
+      "PAY-04 BulkUpload"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-R-23",
+    "area": "Pay · Inputs",
+    "screen": "Payroll inputs: salary holds",
+    "url": "http://localhost:3000/yx/payroll/inputs",
+    "account": "payroll admin with payroll.hold.manage (and a second one for step 4)",
+    "steps": [
+      "1. Open Salary holds; press Hold a salary, then Hold salary with nothing filled.",
+      "2. Pick a person, Reason code Investigation, note 'Pending enquiry', Hold salary, confirm.",
+      "3. Hold the same person again.",
+      "4. Sign in as the held person (if they have the key) and try Release on their own hold.",
+      "5. As someone else, Release and confirm."
+    ],
+    "expected": "Step 1: errors, focus on Employee. Step 2: toast; the row shows On hold; the Hold ageing chart counts it under 0-30 days. Step 3: toast 'already has an open hold; nothing changed'. Step 4: refused: 'Someone else releases a hold on your pay.' Step 5: toast; Status Released.",
+    "stories": [
+      "PAY-06 Default",
+      "PAY-06 AddHold",
+      "PAY-06 Release"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-R-24",
+    "area": "Pay · Queries",
+    "screen": "Payslip queries",
+    "url": "http://localhost:3000/yx/payroll/payslip-queries",
+    "account": "payroll admin with payroll.query.handle; an employee who raised a query on a published payslip",
+    "steps": [
+      "1. Open Payslip queries (Show = Waiting for payroll).",
+      "2. Open a query; press Mark resolved before replying.",
+      "3. Write a reply and send it; press Assign to me.",
+      "4. Press Mark resolved.",
+      "5. Raise a query on your own payslip, then look in the queue."
+    ],
+    "expected": "Step 2: toast 'Reply to the employee first'; status unchanged. Step 3: toast 'Reply sent'; Assignee 'You'; the employee sees the reply. Step 4: it moves to Resolved. Step 5: your own query is never in the queue. Reply due shows 2 working days, weekend skipped.",
+    "stories": [
+      "PAY-20 Open",
+      "PAY-20 Thread",
+      "PAY-20 InProgress"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-R-25",
+    "area": "Pay · Arrears and recoveries",
+    "screen": "Court orders and overpayments tabs (after builder 2 wires the page)",
+    "url": "http://localhost:3000/yx/payroll/arrears",
+    "account": "payroll admin with payroll.input.manage and payroll.writeoff.approve; a second account without payroll.input.manage",
+    "steps": [
+      "1. Open Court orders; Add court order; press Add with nothing filled.",
+      "2. Pick a person, reference MC 301/2026, order date today, fixed 5000 a month, paid to an account and bank code; Add.",
+      "3. Overpayments: Write off, then Approve write-off with no reason.",
+      "4. Add a reason, approve (with step-up).",
+      "5. As the second account, open the page."
+    ],
+    "expected": "Step 1: errors, focus on Employee. Step 2: toast; the row shows priority by date. Step 3: 'Say why, in a few words.'; nothing sent. Step 4: status Written off. Step 5: the Court orders tab shows no access; no Add button.",
+    "stories": [
+      "PAY-19 CourtOrders",
+      "PAY-19 Overpayments"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-R-30",
+    "area": "Pay · Payments",
+    "screen": "Run payments: bank results and cash/cheque",
+    "url": "http://localhost:3000/yx/payroll/runs/<approved run id>/payments",
+    "account": "Payroll admin with payroll.payment.record. Browser 1278 x 635.",
+    "steps": [
+      "1. Open an approved September run, then Payments.",
+      "2. Press Show pay, then Hide pay.",
+      "3. On a row press Record result, choose Failed, press Record with no reason.",
+      "4. Type 'Account closed' and press Record.",
+      "5. Open Cash and cheque, press Record payment, choose Cheque, enter a paid-on day, press Record payment without a cheque number.",
+      "6. Type 123456 and press Record payment."
+    ],
+    "expected": "Step 1: header 'Payments & files', tabs Payment status / Cash and cheque / Bank files (Journal export only with that right); no page scroll. Step 2: amounts show as ₹ ••• until Show pay. Step 3: the reason field shows 'Say what the bank gave as the reason.' and takes focus; nothing is saved. Step 4: a 5 s toast 'Bank result recorded for …'; the row shows Failed. Step 5: 'A cheque number is 6 to 10 digits.' shows. Step 6: toast; the row shows Paid with the day.",
+    "stories": [
+      "PAY-10 Payment status · failures",
+      "PAY-10 Disbursement register · cash and cheque"
+    ],
+    "note": "Positive and negative. Negative: a run that is not approved shows 'Payments are recorded once the run is approved.' and no Record buttons; a user without payroll.payment.record sees no Record or Upload buttons."
+  },
+  {
+    "id": "MT-PAY-R-31",
+    "area": "Pay · Payments",
+    "screen": "Upload bank response (all or nothing)",
+    "url": "http://localhost:3000/yx/payroll/runs/<approved run id>/payments",
+    "account": "Payroll admin with payroll.payment.record.",
+    "steps": [
+      "1. Press Upload bank response.",
+      "2. Upload a CSV with one good row and one row with an unknown employee_code.",
+      "3. Fix the file and upload again."
+    ],
+    "expected": "Step 2: the upload shows the API's message and row problem; nothing is recorded (statuses unchanged). Step 3: toast 'Bank response applied · N payments updated'.",
+    "stories": [
+      "PAY-10 Payment status · failures"
+    ],
+    "note": "Negative first, then positive."
+  },
+  {
+    "id": "MT-PAY-R-32",
+    "area": "Pay · Payments",
+    "screen": "Payroll files: download and release by a second person",
+    "url": "http://localhost:3000/yx/payroll/files",
+    "account": "Payroll admin A (made the bank file) then payroll admin B.",
+    "steps": [
+      "1. As A, open Payroll files.",
+      "2. As B, press Release on the same file, then press Release the file without typing.",
+      "3. Type the phrase shown (RELEASE n) and press Release the file.",
+      "4. Press Download on any file."
+    ],
+    "expected": "Step 1: A sees no Release button on their own file. Step 2: the sheet says the phrase is needed; nothing is released. Step 3: toast '<file> is released'; status Released. Step 4: the file downloads (a single-use link).",
+    "stories": [
+      "PAY-10 Bank files",
+      "PAY-08 Release bank file"
+    ],
+    "note": "Positive and negative (maker is not checker)."
+  },
+  {
+    "id": "MT-PAY-R-33",
+    "area": "Pay · Payments",
+    "screen": "Payment modes: ask for cash or cheque",
+    "url": "http://localhost:3000/yx/payroll/payment-modes",
+    "account": "Payroll admin with payroll.payment.record; a second approver for Approvals.",
+    "steps": [
+      "1. Open Payment modes.",
+      "2. Press Ask for a payment mode, then Send for approval with nothing filled.",
+      "3. Search and choose a person, choose Cheque (Segment), give a From day and a reason, then Send for approval.",
+      "4. As the second approver, approve it in Approvals and reopen Payment modes."
+    ],
+    "expected": "Step 1: list with Paid by, From, Why, Status (or 'Everyone is paid by bank transfer'). Step 2: field errors show, focus goes to Person, nothing is sent. Step 3: toast 'Sent for approval'; the row shows 'Waiting for approval'. Step 4: the row shows Approved.",
+    "stories": [
+      "PAY-10 Payment modes · cash and cheque people",
+      "PAY-10 Payment modes · ask for a mode (drawer)",
+      "PAY-10 Payment modes · empty, everyone by bank"
+    ],
+    "note": "Negative: a user without payroll.payment.record sees no Ask button; a user without the page's key sees the no-access state."
+  },
+  {
+    "id": "MT-PAY-R-40",
+    "area": "Pay · Periods",
+    "screen": "Pay periods (PAY-49): stages and asking to reopen",
+    "url": "http://localhost:3000/yx/payroll/periods",
+    "account": "payroll@demo-org.test (payroll.period.view, payroll.period.reopen). Window 1278 x 635.",
+    "steps": [
+      "1. Open Pay › Pay periods.",
+      "2. Find a Locked month and press Ask to reopen.",
+      "3. Press Send for approval with Why empty.",
+      "4. Type a reason of at least 10 letters and press Send for approval.",
+      "5. Press Next year while the current year is shown."
+    ],
+    "expected": "Step 1: one table per legal entity with Month, Stage, Last change, Corrections; no page scroll. Step 3: 'Say why in a sentence' shows and the Why box takes focus; nothing is sent. Step 4: the drawer closes, a toast says 'Sent for approval: reopen <month>', and the row shows Reopen asked. Step 5: a toast says the year has not started; the year stays.",
+    "stories": [
+      "PAY-49 Pay periods · stage per legal entity",
+      "PAY-49 Ask to reopen · reason (drawer)"
+    ],
+    "note": "Positive and negative. Negative: an Open month showing Ask to reopen, or a greyed-out button, is a fail."
+  },
+  {
+    "id": "MT-PAY-R-41",
+    "area": "Pay · Periods",
+    "screen": "Pay periods: history, and someone who may not ask",
+    "url": "http://localhost:3000/yx/payroll/periods",
+    "account": "hr-tester@demo-org.test (payroll.period.view only).",
+    "steps": [
+      "1. Open Pay periods.",
+      "2. Press History on a locked month.",
+      "3. Look for Ask to reopen on any row."
+    ],
+    "expected": "Step 2: the drawer shows stage changes with dates like '2 Oct 2026' and the corrections table (or 'No corrections for this month.'). Step 3: no Ask to reopen anywhere.",
+    "stories": [
+      "PAY-49 A month’s history and corrections (drawer)",
+      "PAY-49 Pay periods · cannot ask to reopen"
+    ],
+    "note": "Negative: an Ask to reopen button for this account is a fail (the server would refuse too)."
+  },
+  {
+    "id": "MT-PAY-R-42",
+    "area": "Pay · Periods",
+    "screen": "Reopen requests (PAY-49): two approvals, maker is not checker",
+    "url": "http://localhost:3000/yx/payroll/reopen-requests",
+    "account": "First payroll@demo-org.test (asks), then payroll-tester@demo-org.test (approves step 1), then admin@demo-org.test (approves step 2).",
+    "steps": [
+      "1. As payroll@, ask to reopen a locked month (MT-PAY-R-40), then open Reopen requests.",
+      "2. As payroll-tester@, press Approve, then press Approve in the sheet without typing the phrase.",
+      "3. Type the phrase shown and press Approve; complete the second sign-in step.",
+      "4. As admin@, approve step 2 the same way.",
+      "5. On another request, press Turn down with Why empty, then give a reason."
+    ],
+    "expected": "Step 1: the request shows 'Asked by you' and 'You asked for this, so two other people approve it.'; no Approve button. Step 2: the phrase field says what to type, nothing is sent. Step 3: toast 'You approved reopening …'; step 1 shows Approved. Step 4: the request is Approved and the month shows Open in Pay periods. Step 5: the reason error shows first; with a reason the request shows Not approved.",
+    "stories": [
+      "PAY-49 Reopen requests · asked by me (two others approve)",
+      "PAY-49 Approve a reopen · type the phrase (sheet)",
+      "PAY-49 Turn down a reopen · reason (drawer)"
+    ],
+    "note": "Positive and negative. Negative: the asker seeing Approve, or approval without the phrase, is a fail."
+  },
+  {
+    "id": "MT-PAY-R-43",
+    "area": "Pay · Audit",
+    "screen": "Audit log (PAY-46): chain check, filters, timeline, export",
+    "url": "http://localhost:3000/yx/payroll/audit",
+    "account": "admin@demo-org.test (audit.view, audit.export). Then payroll-tester@demo-org.test without audit.export.",
+    "steps": [
+      "1. Open the audit log.",
+      "2. Press Check now.",
+      "3. Type 'payroll.period' in What happened and press Search.",
+      "4. Press Record timeline on a row; then click a row to open its details.",
+      "5. Press Export (recorded).",
+      "6. Sign in as payroll-tester@ and open the page."
+    ],
+    "expected": "Step 2: toast 'Chain checked'; Chain OK with the last-checked time. Step 3: only matching events; 'No results for these filters' with a clear option if none. Step 4: the timeline lists business events; details of a salary event show pay values masked. Step 5: a CSV downloads and a new 'export' event appears at the top after reload. Step 6: no Export button.",
+    "stories": [
+      "PAY-46 Events · chain OK, export allowed",
+      "PAY-46 A record’s timeline (drawer)",
+      "PAY-46 Events · read only (no export, no Check now)"
+    ],
+    "note": "Positive and negative. Negative: unmasked pay values for someone without pay access, or Export for payroll-tester@, is a fail."
+  },
+  {
+    "id": "MT-PAY-R-44",
+    "area": "Pay · Documents",
+    "screen": "Pay documents (PAY-48) and adding a nominee",
+    "url": "http://localhost:3000/yx/payroll/documents",
+    "account": "payroll@demo-org.test (payroll.document.issue). Then hr-tester@demo-org.test without it.",
+    "steps": [
+      "1. Open Pay documents; pick one legal entity, then clear it.",
+      "2. Press Download PDF on an issued payslip; open its verify code link.",
+      "3. Press Add a nominee, then Add nominee with nothing filled.",
+      "4. Search and pick Arjun, give a name, the email 'abc' and a past date; press Add nominee.",
+      "5. Fix the email to name@example.com and the date to next month; press Add nominee.",
+      "6. As hr-tester@ open the page."
+    ],
+    "expected": "Step 1: the list narrows and comes back. Step 2: the PDF downloads; the verify page says the document is current. Step 3: every field shows its error and the first takes focus; nothing sent. Step 4: email and date errors; nothing sent. Step 5: toast '<name> can now read Arjun …'s pay documents'. Step 6: no Add a nominee button.",
+    "stories": [
+      "PAY-48 Issued, superseded, awaiting signature, purged",
+      "PAY-48 Add a nominee (drawer)",
+      "PAY-48 Cannot add a nominee"
+    ],
+    "note": "Positive and negative."
   }
 ]

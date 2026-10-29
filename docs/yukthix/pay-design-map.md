@@ -4,30 +4,34 @@ This is the plan to make every Pay page in the web app render its designed PAY s
 separate "Live" copy it renders today. Founder rule: never build a second, simpler version of a designed screen; make
 the designed one live. Time was done this way (see `time-design-map.md`); Pay follows the same pattern.
 
-Today **no Pay page renders a PAY design**. The guard (`packages/yx-ui/src/design-live-guard.known.json`) lists 38 Pay
+Builder 1 (29 Oct 2026) made the runs, inputs, payments, queries and coverage pages live, and designed and wired periods, reopen requests, audit, documents and payment modes; see "Builder 1 status" at the end. The rest of this paragraph is the plan as written: The guard (`packages/yx-ui/src/design-live-guard.known.json`) lists 38 Pay
 live copies and 36 designed Pay screens that no page reaches. Six more live copies hide from the guard (see "Hidden
 copies" below).
 
 Verdicts: **wire design** (a live page and the API exist for this job; the page should render the design) ·
 **wire design (gap)** (the same, but one part of the story needs a small API or rule first; the note says what) ·
 **design only, feature not built** (the API has nothing for it) · **phone view, mobile app not built** ·
-**live already**.
+**live already**. After builder 1: **live** (the page renders the design and reaches this state) · **live (gap)** (the design is live; this state is not reachable yet, the note says why) · **wire design (ready)** (the component takes `live`; another builder's page renders it).
 
 ## Counts (sub-pages = stories)
 
-| | wire design | wire, with a gap | feature not built | phone view | live already | all |
-|---|---|---|---|---|---|---|
-| A. Runs and payments (PAY-01, 02, 03, 07, 08, 09, 10, 11, 29, 30) | 55 | 3 | 0 | 0 | 0 | 58 |
-| B. Inputs, loans, recoveries, queries (PAY-04, 05, 06, 17, 18, 19, 20, 28) | 40 | 4 | 2 | 2 | 0 | 48 |
-| C. Structures and set-up (PAY-12, 13, 14, 15, 16, 42) | 28 | 0 | 0 | 0 | 0 | 28 |
-| D. Employee pay and tax (PAY-21, 22, 23, 39, 40, 41) | 36 | 2 | 1 | 9 | 0 | 48 |
-| E. Special pay, EWA, actuarial, benefits (PAY-24, 26, 27, 31, 32, 33, 34, 35, 36, 37, 38, 43) | 47 | 1 | 10 | 8 | 0 | 66 |
-| F. Reports (PAY-25) | 0 | 0 | 13 | 0 | 0 | 13 |
-| **All 43 design groups (261 sub-pages counted)** | **206** | **10** | **26** | **19** | **0** | **261** |
+| | live | live, with a gap | wire design | wire, with a gap | feature not built | phone view | all |
+|---|---|---|---|---|---|---|---|
+| A. Runs and payments (PAY-01, 02, 03, 07, 08, 09, 10, 11, 29, 30) | 47 | 9 | 4 | 2 | 0 | 0 | 62 |
+| B. Inputs, loans, recoveries, queries (PAY-04, 05, 06, 17, 18, 19, 20, 28) | 20 | 5 | 16 | 3 | 2 | 2 | 48 |
+| C. Structures and set-up (PAY-12, 13, 14, 15, 16, 42) | 0 | 0 | 28 | 0 | 0 | 0 | 28 |
+| D. Employee pay and tax (PAY-21, 22, 23, 39, 40, 41) | 0 | 0 | 36 | 2 | 1 | 9 | 48 |
+| E. Special pay, EWA, actuarial, benefits (PAY-24, 26, 27, 31, 32, 33, 34, 35, 36, 37, 38, 43) | 0 | 0 | 47 | 1 | 10 | 8 | 66 |
+| F. Reports (PAY-25) | 0 | 0 | 0 | 0 | 13 | 0 | 13 |
+| G. Records, new designs (PAY-46, 48, 49) | 44 | 0 | 0 | 0 | 0 | 0 | 44 |
+| **All 46 design groups (309 sub-pages counted)** | **111** | **14** | **131** | **8** | **26** | **19** | **309** |
 
-Counted by script from the 43 PAY story files (`pay-01-*.stories.tsx` … `pay-43-*.stories.tsx`, every `export const`
-story) and the verdict of each story in the tables below, 29 Oct 2026. The Kit (`pay-kit.stories.tsx`, 9 stories) is
-shared parts, not pages, and is not counted. "live already" is 0: no designed Pay screen is rendered by a live page yet.
+Recounted by script after builder 1 (branch `feat/yukthix-pay-runs`, 29 Oct 2026) from the 46 PAY story files (every
+`export const` story) and the verdict of each story row below; the script also checks that every story file has exactly
+one row per story. New since the plan: PAY-10 "Payment modes" (4 stories) and the new groups PAY-46, 48, 49 (44 stories).
+"live" = the live page renders the designed screen and reaches this state; "live, with a gap" = the designed screen is
+live but this state is not reachable yet (the note says why). PAY-19 "wire design (ready)" rows count as wire design:
+the component takes `live`, builder 2's /yx/payroll/arrears page renders it. The Kit (`pay-kit.stories.tsx`) is not counted.
 
 ## How to wire (same as Time)
 
@@ -81,12 +85,12 @@ permissions. The wiring must keep all of it.
 
 | page | live screen today | design that replaces it | verdict | keep (live copy has, design lacks) |
 |---|---|---|---|---|
-| /yx/payroll/runs | `PayRunsScreen` (live/runs.tsx) | PAY-01 home + PAY-29 run list + PAY-11 "Choose run type" | wire design | list of runs by month with 9 statuses (incl. Void, Reopened); New run drawer: monthly or off-cycle (bonus, arrears, correction, payment), pay group, month, sub-period for weekly groups; `canPrepare`, `canOffcycle`; "No payroll runs yet" |
-| /yx/payroll/runs/[id] | `PayRunScreen` (live/runs.tsx) | PAY-02, PAY-03, PAY-07, PAY-08, PAY-09 (PAY-30 inside the checks) | wire design | void a run with reason ("This run is void"); add an item to the run; confirm a pay change with a note; reject with reason; typed phrase + second factor (`Confirmation`) on approve, bank release, publish; bank file made by one person, released by another; `can.prepare / approve / bankGenerate / bankRelease / publish / offcycle`; "Calculate the run first" |
-| /yx/payroll/runs/[id]/payments | `RunPaymentsScreen` (live/operations.tsx) | PAY-10 | wire design | record bank results row by row or by file (all or nothing, row errors shown); cash and cheque entry; `can.record`; back to the run |
-| /yx/payroll/files | `ExchangeFilesScreen` (live/documents.tsx) | PAY-10 "Bank files" tab (partly) | wire design | every payroll file (not only bank files) with hash, rows, totals; single-use download link; release by a second person with `Confirmation` |
-| /yx/payroll/inputs | `PayInputsScreen` (live/inputs.tsx) | PAY-04, PAY-05, PAY-06 | wire design | month picker; person search; LOP days with reason; one-time pay returns "needs review" above the company limit (`payroll.one_time_review_above`); cancel one-time pay; hold with reason code, release; a locked month takes no inputs |
-| /yx/payroll/payslip-queries | `PayslipQueriesScreen` (live/operations.tsx) | PAY-20 | wire design | filter open / answered / closed; reply; close; never one's own query |
+| /yx/payroll/runs | `PayRunsScreen` (live/runs.tsx) | PAY-01 home + PAY-29 run list + PAY-11 "Choose run type" | live: PAY-01 home + PAY-29 run list (builder 1) | list of runs by month with 9 statuses (incl. Void, Reopened); New run drawer: monthly or off-cycle (bonus, arrears, correction, payment), pay group, month, sub-period for weekly groups; `canPrepare`, `canOffcycle`; "No payroll runs yet" |
+| /yx/payroll/runs/[id] | `PayRunScreen` (live/runs.tsx) | PAY-02, PAY-03, PAY-07, PAY-08, PAY-09 (PAY-30 inside the checks) | live: PAY-03 workspace with PAY-02 checks, PAY-07, 08, 09 (builder 1) | void a run with reason ("This run is void"); add an item to the run; confirm a pay change with a note; reject with reason; typed phrase + second factor (`Confirmation`) on approve, bank release, publish; bank file made by one person, released by another; `can.prepare / approve / bankGenerate / bankRelease / publish / offcycle`; "Calculate the run first" |
+| /yx/payroll/runs/[id]/payments | `RunPaymentsScreen` (live/operations.tsx) | PAY-10 | live: PAY-10 (builder 1) | record bank results row by row or by file (all or nothing, row errors shown); cash and cheque entry; `can.record`; back to the run |
+| /yx/payroll/files | `ExchangeFilesScreen` (live/documents.tsx) | PAY-10 "Bank files" tab (partly) | live: PAY-10 Bank files, every payroll file (builder 1) | every payroll file (not only bank files) with hash, rows, totals; single-use download link; release by a second person with `Confirmation` |
+| /yx/payroll/inputs | `PayInputsScreen` (live/inputs.tsx) | PAY-04, PAY-05, PAY-06 | live: PAY-04, 05, 06 as tabs (builder 1) | month picker; person search; LOP days with reason; one-time pay returns "needs review" above the company limit (`payroll.one_time_review_above`); cancel one-time pay; hold with reason code, release; a locked month takes no inputs |
+| /yx/payroll/payslip-queries | `PayslipQueriesScreen` (live/operations.tsx) | PAY-20 | live: PAY-20 (builder 1) | filter open / answered / closed; reply; close; never one's own query |
 | /yx/payroll/loans | `LoansScreen` (live/operations.tsx, hidden copy) | PAY-17 | wire design | request for someone (person search); pause, pre-close, reschedule; "expense" loan (overdue expense advance, M05); `can.manage` |
 | /yx/me/loans | `LoansScreen` with `mine` (hidden copy) | PAY-18 | wire design | ask for a loan or advance (instalments, interest, first month); what is left to repay; approval goes to the Approvals inbox |
 | /yx/payroll/arrears | `ArrearsScreen` (live/compliance.tsx) | PAY-28 + PAY-19 "Overpayments" | wire design | worksheet list; confirm base with as-paid lines and reason; approve into an off-cycle run; cancel; overpayment write-off with reason; `can.approve / writeOff`; maker is not checker (`me`) |
@@ -97,7 +101,7 @@ permissions. The wiring must keep all of it.
 | /yx/payroll/setup | `PaySetupScreen` (live/setup.tsx) | PAY-16 (registrations also CMP-02) | wire design | legal entity picker; checklist steps that open other pages; registrations; legal options with a valid-from date |
 | /yx/payroll/pay-groups | `PayGroupsScreen` (live/setup.tsx) | PAY-16 "Pay group and cut-off" + PAY-29 | wire design | add and edit groups (day basis, cut-off, pay day, monthly / weekly / fortnightly, anchor date, version); members from a date; calendar per year |
 | /yx/payroll/imports | `PayImportsScreen` (live/setup.tsx) | PAY-16 "Opening balances" | wire design | stage a CSV per kind, commit; go-live check for a month |
-| /yx/payroll/coverage | `CoverageLiveScreen` (live/setup.tsx) | PAY-30 | wire design | legal entity column; read only |
+| /yx/payroll/coverage | `CoverageLiveScreen` (live/setup.tsx) | PAY-30 | live: PAY-30 (builder 1) | legal entity column; read only |
 | /yx/payroll/proofs | `ProofCheckScreen` (live/operations.tsx) | PAY-23 | wire design | filter pending / approved / part / rejected; open file n of a line; decide with comment |
 | /yx/payroll/ewa | `EwaAdminScreen` (live/special.tsx, hidden copy) | PAY-27 | wire design | legal entity and month; policy editor (share %, least and most a draw, draws a month, closed days, fee and who pays); mark paid with bank reference; mark failed with reason |
 | /yx/payroll/special-pay | `SpecialPayScreen` (live/special.tsx) | PAY-31, 32, 34, 35, 36, 37 | wire design | legal entity and month; list of postings sent to payroll with status; rate cards; key output and CSV import; plans, results, send a month; tip pools (hours, points, shifts; "paid by customers directly" record only); on-call rules and slots; unions, authorisations, revoke, remittance; wage settlements; **lay-off days and VRS (no design, Q9)** |
@@ -119,7 +123,8 @@ permissions. The wiring must keep all of it.
 | /yx/time/payroll-feed | `AttendanceReportsScreen` with `live` | TIM-16 | live already | |
 | /yx/pay-portal/[org], /yx/verify/[code] | T9 portal sign-in, alumni and nominee tabs, verify page | T9-02, T9-08 | live already | |
 | /yx/me/pay-documents | `MyPayDocumentsScreen` (live/documents.tsx) | its own story "Me · Pay documents" | live already (by the guard; Q10) | |
-| /yx/payroll/go-live, country-packs, consultants, audit, equity, documents, periods, reopen-requests, payment-modes; /yx/me/equity; /yx/consultant/[org] | live copies | none | no design (section 2) | |
+| /yx/payroll/audit, documents, periods, reopen-requests, payment-modes | designed first, then live (builder 1) | PAY-46, PAY-48, PAY-49, PAY-10 "Payment modes" | live | everything the copies did, see section 2 |
+| /yx/payroll/go-live, country-packs, consultants, equity; /yx/me/equity; /yx/consultant/[org] | live copies | none | no design (section 2) | |
 
 ## 2. Live pages with no design
 
@@ -132,14 +137,14 @@ Until then they stay in `known.json`.
 | /yx/payroll/country-packs | `CountryPacksScreen` | switch on a country pack per entity; UAE end-of-service provision and WPS ids and file; US W-9 and 1099-NEC | **new group** (PAY-44 · Country packs); it is a separate job and grows per country |
 | /yx/payroll/consultants | `ConsultantsScreen` | consultant register, bank check, lower-TDS certificate (197), invoices with TDS, payout batches (made by one, released by another), results | **new group** (PAY-45 · Consultants) |
 | /yx/consultant/[org] | `ConsultantPortalScreen` | the consultant's own page after a one-time code: upload invoices, payment advices, TDS certificates | a story in **PAY-45** with the T9 portal frame (sign-in is already the designed T9 one) |
-| /yx/payroll/audit | `AuditScreen` | business events with Confidential values masked, a record's timeline, daily chain check and "Check now", export (itself recorded) | **new group** (PAY-46 · Audit log). Could later serve other areas too |
+| /yx/payroll/audit | `AuditScreen` | business events with Confidential values masked, a record's timeline, daily chain check and "Check now", export (itself recorded) | **done: PAY-46 · Audit log** (13 stories), live |
 | /yx/payroll/equity, /yx/me/equity | `EquityScreen`, `MyEquityScreen` | plans (ESOP, RSU, SAR), valuations (FMV), grants and vesting, confirm vesting, exercise paid, cap table; the person's grants and exercising | **new group** (PAY-47 · Equity), admin and employee stories |
-| /yx/payroll/documents | `PayDocumentsScreen` + `NomineeDrawer` | issued pay documents (never change; superseded by a correction), reference, SHA-256, verify code; add a nominee for the pay portal | **new group** (PAY-48 · Pay documents), with the nominee drawer as one story |
-| /yx/payroll/periods, /yx/payroll/reopen-requests | `PayPeriodsScreen`, `ReopenRequestsScreen` | stage of every month per legal entity, its history; ask to reopen; two-approval reopen (maker is not checker, second factor, typed phrase) | **new group** (PAY-49 · Pay periods), copying the look of TIM-11 Periods |
-| /yx/payroll/payment-modes | `PaymentModesScreen` | who is paid by cash or cheque instead of the bank; asked for here, approved by someone else | add a story to **PAY-10** (a "Payment modes" tab next to "Disbursement register") |
+| /yx/payroll/documents | `PayDocumentsScreen` + `NomineeDrawer` | issued pay documents (never change; superseded by a correction), reference, SHA-256, verify code; add a nominee for the pay portal | **done: PAY-48 · Pay documents** (10 stories, nominee drawer inside the screen), live |
+| /yx/payroll/periods, /yx/payroll/reopen-requests | `PayPeriodsScreen`, `ReopenRequestsScreen` | stage of every month per legal entity, its history; ask to reopen; two-approval reopen (maker is not checker, second factor, typed phrase) | **done: PAY-49 · Pay periods** (21 stories, reopen requests included), live |
+| /yx/payroll/payment-modes | `PaymentModesScreen` | who is paid by cash or cheque instead of the bank; asked for here, approved by someone else | **done: PAY-10 "Payment modes" tab** (4 stories), live |
 | /yx/payroll/special-pay (part) | lay-off days, VRS, postings list in `SpecialPayScreen` | lay-off compensation days per entity, VRS payment with exemption; the month's special pay sent to payroll | **new group** (PAY-50 · Special pay home): postings list, lay-off, VRS; it links to PAY-31…37 |
 
-(The numbers PAY-44 … PAY-50 are suggestions.)
+(PAY-46, 48, 49 are used by builder 1; PAY-44, 45, 47 are left unused; builder 2 uses PAY-50 … 53, builder 3 PAY-54 and up.)
 
 ## 3. Designs with no live page or API
 
@@ -164,15 +169,15 @@ Live page: /yx/payroll/runs (founder Q1)
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| InReviewBlocked · In review · blocked (payroll admin) | wire design |  |
-| FinanceApprover · Finance approver | wire design | as a person with payroll.run.approve |
-| ReadyToApprove · Nothing blocking (finance approver) | wire design |  |
-| Approved · Approved · bank file next | wire design |  |
-| Paid · Paid · publish next | wire design |  |
-| Draft · Draft · new month | wire design |  |
-| FirstUse · Empty · payroll not set up | wire design | no pay group yet: link to /yx/payroll/setup |
-| Loading · Loading | wire design |  |
-| ErrorState · Error | wire design |  |
+| InReviewBlocked · In review · blocked (payroll admin) | live |  |
+| FinanceApprover · Finance approver | live | as a person with payroll.run.approve |
+| ReadyToApprove · Nothing blocking (finance approver) | live |  |
+| Approved · Approved · bank file next | live |  |
+| Paid · Paid · publish next | live |  |
+| Draft · Draft · new month | live |  |
+| FirstUse · Empty · payroll not set up | live | no pay group yet: link to /yx/payroll/setup |
+| Loading · Loading | live |  |
+| ErrorState · Error | live |  |
 
 #### PAY-02 · Run readiness
 
@@ -180,11 +185,11 @@ Live page: /yx/payroll/runs/[id] (Checks step)
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Blocked · Blocking items | wire design |  |
-| WaiveDialog · Waive with reason (dialog open) | wire design | POST runs/:id/validations/:vid/waive |
-| AllClear · Ready to calculate | wire design |  |
-| Loading · Loading | wire design |  |
-| ErrorState · Error | wire design |  |
+| Blocked · Blocking items | live (gap) | inside the run workspace (Validations tab); no API for the attendance-group and input-source tables; only blocking checks can be waived |
+| WaiveDialog · Waive with reason (dialog open) | live | POST runs/:id/validations/:vid/waive |
+| AllClear · Ready to calculate | live |  |
+| Loading · Loading | live |  |
+| ErrorState · Error | live |  |
 
 #### PAY-03 · Run workspace
 
@@ -192,17 +197,17 @@ Live page: /yx/payroll/runs/[id]
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Payslips · Payslips tab · in review | wire design |  |
-| WhyDrawer · Payslip why-this-number drawer | wire design | GET payslips/:id (lines with rule cited) |
-| Calculating · Calculating · per-employee progress | wire design | GET runs/:id/progress |
-| Failed · Calculation failed · named fixes | wire design |  |
-| Variance · Variance tab · acknowledge | wire design |  |
-| Inputs · Inputs tab | wire design | run items: POST runs/:id/items |
-| Validations · Validations tab | wire design |  |
-| Approvals · Approvals tab (finance approver) | wire design |  |
-| Files · Files tab · approved | wire design | bank files of the run |
-| Loading · Loading | wire design |  |
-| ErrorState · Error | wire design |  |
+| Payslips · Payslips tab · in review | live |  |
+| WhyDrawer · Payslip why-this-number drawer | live | GET payslips/:id (lines with rule cited) |
+| Calculating · Calculating · per-employee progress | live | GET runs/:id/progress |
+| Failed · Calculation failed · named fixes | live (gap) | failures are named in the progress panel; no "retry the failed only" call in the API |
+| Variance · Variance tab · acknowledge | live |  |
+| Inputs · Inputs tab | live (gap) | no per-source input summary in the API; shows the run facts and, for off-cycle runs, Add item |
+| Validations · Validations tab | live |  |
+| Approvals · Approvals tab (finance approver) | live |  |
+| Files · Files tab · approved | live (gap) | no journal or statutory rows with links; one "Payments and journal" row opens the payments page |
+| Loading · Loading | live |  |
+| ErrorState · Error | live |  |
 
 #### PAY-07 · Approve run and lock period
 
@@ -210,11 +215,11 @@ Live page: /yx/payroll/runs/[id] (Approve)
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Ready · Impact preview · type to confirm | wire design |  |
-| Blocked · Blocked · attendance exceptions open | wire design |  |
-| SamePerson · Maker is checker · refused | wire design | API refuses maker = checker |
-| SelfApproval · Sole approver · self-approval with reason | wire design | submit with selfApprovalReason |
-| Done · Approved and locked | wire design |  |
+| Ready · Impact preview · type to confirm | live |  |
+| Blocked · Blocked · attendance exceptions open | live |  |
+| SamePerson · Maker is checker · refused | live | API refuses maker = checker |
+| SelfApproval · Sole approver · self-approval with reason | live | asked when sending for approval (submit with selfApprovalReason), not in the approve sheet |
+| Done · Approved and locked | live |  |
 
 #### PAY-08 · Release bank file
 
@@ -222,9 +227,9 @@ Live page: /yx/payroll/runs/[id] (Bank file)
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Ready · Impact preview · type to confirm | wire design |  |
-| Regenerate · Regenerate with reason | wire design | POST runs/:id/bank-files with reason |
-| Released · Released · download | wire design |  |
+| Ready · Impact preview · type to confirm | live |  |
+| Regenerate · Regenerate with reason | live | "Make a new bank file" with a required reason |
+| Released · Released · download | live |  |
 
 #### PAY-09 · Publish payslips
 
@@ -232,9 +237,9 @@ Live page: /yx/payroll/runs/[id] (Publish)
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Ready · Impact preview · type to confirm | wire design |  |
-| SelfApproval · Sole payroll admin · reason required | wire design |  |
-| Published · Published · progress finished | wire design |  |
+| Ready · Impact preview · type to confirm | live |  |
+| SelfApproval · Sole payroll admin · reason required | live (gap) | the API has no publish self-approval reason |
+| Published · Published · progress finished | live |  |
 
 #### PAY-10 · Payments and files
 
@@ -242,14 +247,18 @@ Live page: /yx/payroll/runs/[id]/payments
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Status · Payment status · failures | wire design |  |
-| Failure · Returned payment · re-pay route | wire design |  |
-| FailedIfsc · Failed payment · waiting for corrected IFSC | wire design (gap) | the bank detail fix is in People; the API has no "waiting for a new IFSC" status |
-| Register · Disbursement register · cash and cheque | wire design |  |
-| Files · Bank files | wire design | also /yx/payroll/files (ExchangeFilesScreen) today |
-| Journal · Journal export (finance approver) | wire design | GET runs/:id/journal, export |
-| Loading · Loading | wire design |  |
-| ErrorState · Error | wire design |  |
+| Status · Payment status · failures | live |  |
+| Failure · Returned payment · re-pay route | live (gap) | no re-pay endpoint (next bank file / off-cycle / reimbursement account); live shows the status and Record result |
+| FailedIfsc · Failed payment · waiting for corrected IFSC | live (gap) | the API has no "waiting for a new IFSC" status |
+| Register · Disbursement register · cash and cheque | live |  |
+| Files · Bank files | live | also /yx/payroll/files: every payroll file, second-person release |
+| Journal · Journal export (finance approver) | live | GET runs/:id/journal and export; "Send to accounting system" has no API, live offers Tally, CSV, Zoho Books |
+| Loading · Loading | live |  |
+| ErrorState · Error | live |  |
+| PaymentModes · Payment modes · cash and cheque people | live | new (founder decision 3); /yx/payroll/payment-modes |
+| PaymentModesAsk · Payment modes · ask for a mode (drawer) | live | new |
+| PaymentModesEmpty · Payment modes · empty, everyone by bank | live | new |
+| PaymentModesNoAccess · Payment modes · no access | live | new |
 
 #### PAY-11 · Off-cycle run
 
@@ -270,10 +279,10 @@ Live page: /yx/payroll/runs (weekly and fortnightly groups)
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| WeeklyList · Run list · weekly | wire design |  |
-| FortnightlyList · Run list · fortnightly | wire design |  |
-| WeeklyRun · Weekly run · payslips step | wire design |  |
-| Loading · Loading | wire design |  |
+| WeeklyList · Run list · weekly | live | run list under the PAY-01 home on /yx/payroll/runs; no pay date per run in the API |
+| FortnightlyList · Run list · fortnightly | live |  |
+| WeeklyRun · Weekly run · payslips step | live (gap) | a weekly run opens the PAY-03 run workspace, not this step view |
+| Loading · Loading | live |  |
 
 #### PAY-30 · Coverage monitor
 
@@ -281,10 +290,10 @@ Live page: /yx/payroll/coverage (and inside PAY-02 checks)
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Crossed · Threshold crossed · blocks approval | wire design |  |
-| Approaching · Approaching only | wire design |  |
-| Empty · Empty · nothing near a threshold | wire design |  |
-| Loading · Loading | wire design |  |
+| Crossed · Threshold crossed · blocks approval | live (gap) | the API status has no "crossed, set-up needed"; the page is read only, so Switch on / Record applied never show |
+| Approaching · Approaching only | live | /yx/payroll/coverage; "Counting" always Employees (no basis in the API) |
+| Empty · Empty · nothing near a threshold | live |  |
+| Loading · Loading | live |  |
 
 ### B. Inputs, loans, recoveries, queries
 
@@ -294,12 +303,12 @@ Live page: /yx/payroll/inputs (Loss of pay)
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Default · Inline entry · one row with an error | wire design |  |
-| BulkUpload · Bulk upload · row validation | wire design | CSV read in the page, one PUT lop-inputs/:month |
-| Frozen · Period frozen · late request only | wire design | locked month: POST corrections (paid next month) |
-| Empty · Empty · no Assumed-present groups | wire design |  |
-| Loading · Loading | wire design |  |
-| ErrorState · Error | wire design |  |
+| Default · Inline entry · one row with an error | live |  |
+| BulkUpload · Bulk upload · row validation | live | CSV read in the page, one PUT lop-inputs/:month |
+| Frozen · Period frozen · late request only | live (gap) | the inputs API does not return the month stage; a locked month shows as the refusal on save; no late-request form |
+| Empty · Empty · no Assumed-present groups | live |  |
+| Loading · Loading | live |  |
+| ErrorState · Error | live |  |
 
 #### PAY-05 · One-time pay
 
@@ -307,13 +316,13 @@ Live page: /yx/payroll/inputs (One-time pay)
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| List · List · filters and bulk actions | wire design |  |
-| AddSheet · Add one-time pay · effect summary | wire design |  |
-| Recurring · Add recurring item · prorated months | wire design | API has a recurring end date (dto-5c); the live copy has no recurring form today |
-| BulkUpload · Bulk upload · row validation | wire design | CSV read in the page, one POST each row |
-| Empty · Empty · first use | wire design |  |
-| Loading · Loading | wire design |  |
-| ErrorState · Error | wire design |  |
+| List · List · filters and bulk actions | live (gap) | filters and search work; bulk "send for approval" / "delete drafts" have no API (items are never drafts) |
+| AddSheet · Add one-time pay · effect summary | live (gap) | no TDS, PF, ESI effect preview in the API; the panel shows the month or recurring plan and the approval rule |
+| Recurring · Add recurring item · prorated months | live | API has a recurring end date (dto-5c); the live copy has no recurring form today |
+| BulkUpload · Bulk upload · row validation | live | CSV read in the page, one POST each row |
+| Empty · Empty · first use | live |  |
+| Loading · Loading | live |  |
+| ErrorState · Error | live |  |
 
 #### PAY-06 · Salary holds and releases
 
@@ -321,12 +330,12 @@ Live page: /yx/payroll/inputs (Holds)
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Default · Holds by reason · ageing chart | wire design (gap) | ageing chart: work out from hold dates in the page; no ageing endpoint |
-| Release · Release sheet · next bank file or off-cycle | wire design |  |
-| AddHold · Hold a salary · reason code | wire design |  |
-| AsTab · Tab on One-time pay and holds | wire design |  |
-| Loading · Loading | wire design |  |
-| ErrorState · Error | wire design |  |
+| Default · Holds by reason · ageing chart | live | ageing worked out in the page from hold dates |
+| Release · Release sheet · next bank file or off-cycle | live (gap) | the API releases into the next bank file only; no off-cycle choice, no release reason |
+| AddHold · Hold a salary · reason code | live |  |
+| AsTab · Tab on One-time pay and holds | live |  |
+| Loading · Loading | live |  |
+| ErrorState · Error | live |  |
 
 #### PAY-17 · Loans and advances
 
@@ -362,12 +371,12 @@ Live page: /yx/payroll/arrears (founder Q6)
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| CourtOrders · Court orders | wire design | GET/POST court-orders exist; no live page shows them today |
-| OrderPanel · Court order record · remittances | wire design (gap) | remittances per order: no endpoint |
-| CarryForwards · Carry-forwards (negative net) | wire design (gap) | negative net is carried in calc; no list endpoint |
-| Overpayments · Overpayments · consent and write-off | wire design | today on /yx/payroll/arrears |
-| Cap · Deduction cap check · EMI deferred | wire design (gap) | cap check runs in calc; no read endpoint |
-| Loading · Loading | wire design |  |
+| CourtOrders · Court orders | wire design (ready) | RecoveriesScreen takes `live`; builder 2 renders it on /yx/payroll/arrears |
+| OrderPanel · Court order record · remittances | wire design (gap) | no remittances endpoint; shows remitted against cap only |
+| CarryForwards · Carry-forwards (negative net) | wire design (gap) | no list endpoint; tab left out of live |
+| Overpayments · Overpayments · consent and write-off | wire design (ready) | write-off with reason; "Send reminder" has no API |
+| Cap · Deduction cap check · EMI deferred | wire design (gap) | no read endpoint; tab left out of live |
+| Loading · Loading | wire design (ready) |  |
 
 #### PAY-20 · Payslip query queue
 
@@ -375,12 +384,12 @@ Live page: /yx/payroll/payslip-queries
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Open · Open queries | wire design |  |
-| Thread · Query drawer · reply in app | wire design |  |
-| InProgress · Query in progress | wire design |  |
-| Empty · Empty | wire design |  |
-| Loading · Loading | wire design |  |
-| ErrorState · Error | wire design |  |
+| Open · Open queries | live |  |
+| Thread · Query drawer · reply in app | live (gap) | reply, assign to me, resolve work; line amount and reassign to a named colleague have no API |
+| InProgress · Query in progress | live |  |
+| Empty · Empty | live |  |
+| Loading · Loading | live |  |
+| ErrorState · Error | live |  |
 
 #### PAY-28 · Arrears base confirmation
 
@@ -730,6 +739,75 @@ Live page: none
 | Loading · Loading | design only, feature not built |  |
 | NoAccess · No access (HR without payroll scope) | design only, feature not built |  |
 
+### G. Records (new designs, founder decision 3; builder 1)
+
+Designed first in `payroll-records.tsx` (data-driven: the stories pass sample data, the pages pass `live`), then made live. PAY-44, 45 and 47 are not used.
+
+#### PAY-46 · Audit log
+
+Live page: /yx/payroll/audit
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Ready · Events · chain OK, export allowed | live |  |
+| ReadOnly · Events · read only (no export, no Check now) | live |  |
+| Broken · Chain check found a break | live |  |
+| NotChecked · Chain not checked yet | live |  |
+| Details · An event’s details · pay values masked (drawer) | live |  |
+| Timeline · A record’s timeline (drawer) | live |  |
+| Checking · Check now · checking | live |  |
+| CheckRefused · Check now · refused | live |  |
+| NothingFound · Empty · nothing matches the filters | live |  |
+| Empty · Empty · no events yet | live |  |
+| Loading · Loading | live |  |
+| LoadError · Error | live |  |
+| NoAccess · No access | live |  |
+
+#### PAY-48 · Pay documents
+
+Live page: /yx/payroll/documents (nominee drawer included)
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Ready · Issued, superseded, awaiting signature, purged | live |  |
+| OneEntity · Filtered to one legal entity | live |  |
+| ReadOnly · Cannot add a nominee | live |  |
+| DownloadRefused · Download refused | live |  |
+| Nominee · Add a nominee (drawer) | live |  |
+| NomineeMissing · Add a nominee · pressed with nothing filled | live |  |
+| Empty · Empty · no documents yet | live |  |
+| Loading · Loading | live |  |
+| LoadError · Error | live |  |
+| NoAccess · No access | live |  |
+
+#### PAY-49 · Pay periods
+
+Live page: /yx/payroll/periods and /yx/payroll/reopen-requests
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Periods · Pay periods · stage per legal entity | live |  |
+| ReadOnly · Pay periods · cannot ask to reopen | live |  |
+| History · A month’s history and corrections (drawer) | live |  |
+| AskReopen · Ask to reopen · reason (drawer) | live |  |
+| AskReopenMissing · Ask to reopen · sent with no reason | live |  |
+| AskReopenRefused · Ask to reopen · the server refuses | live |  |
+| Empty · Empty · no legal entity in scope | live |  |
+| Loading · Loading | live |  |
+| LoadError · Error | live |  |
+| NoAccess · No access | live |  |
+| Requests · Reopen requests · one waiting for me | live |  |
+| RequestMine · Reopen requests · asked by me (two others approve) | live |  |
+| Approve · Approve a reopen · type the phrase (sheet) | live |  |
+| ApproveMissing · Approve a reopen · pressed without the phrase | live |  |
+| ApproveRefused · Approve a reopen · second sign-in step timed out | live |  |
+| TurnDown · Turn down a reopen · reason (drawer) | live |  |
+| TurnDownMissing · Turn down a reopen · pressed with no reason | live |  |
+| RequestsEmpty · Reopen requests · empty | live |  |
+| RequestsLoading · Reopen requests · loading | live |  |
+| RequestsError · Reopen requests · error | live |  |
+| RequestsNoAccess · Reopen requests · no access | live |  |
+
 ## 5. Split into 3 builders
 
 Split by design file, so each builder owns its own design files and its own page files.
@@ -801,3 +879,54 @@ the guard key by file and name so the six hidden copies show up in `known.json`.
     of Bonus Act) and reports are used every month; the other three need a partner or wave 5.
 12. **Phone views (19 stories).** *Suggested: leave them for the mobile app,* as Time did. Why: the web pages wire the
     desktop stories; the phone stories are the mobile app's design.
+
+## Builder 1 status (Runs; branch `feat/yukthix-pay-runs`, 29 Oct 2026)
+
+**Live, rendering the design with `live`** (each live part sits in a sibling `*-live.tsx`, like Time's `devices-live.tsx`):
+
+| page | design | live file | tests |
+|---|---|---|---|
+| /yx/payroll/runs | PAY-01 `PayrollHomeScreen` + PAY-29 run list | `payroll-home-live.tsx` | `payroll-home-live.test.tsx` (12) |
+| /yx/payroll/coverage | PAY-30 `CoverageMonitorPanel` | `payroll-home-live.tsx` | same file |
+| /yx/payroll/runs/[id] | PAY-03 `RunWorkspaceScreen` (PAY-02 checks in Validations, PAY-07, 08, 09 sheets) | `run-workspace-live.tsx` | `run-workspace-live.test.tsx` (17) |
+| /yx/payroll/runs/[id]/payments, /files, /payment-modes | PAY-10 `PaymentsScreen` | `payments-live.tsx` | `payments-live.test.tsx` (15) |
+| /yx/payroll/inputs | PAY-05 `OneTimePayScreen` with Loss of pay (PAY-04), One-time pay, Salary holds (PAY-06) tabs | `payroll-inputs-live.tsx` | `payroll-inputs-live.test.tsx` (13) |
+| /yx/payroll/payslip-queries | PAY-20 `QueryQueueScreen` | `payroll-inputs-live.tsx` | same file |
+| /yx/payroll/periods, /reopen-requests, /audit, /documents | PAY-49, PAY-46, PAY-48 (`payroll-records.tsx`) | the design itself (data-driven) | `payroll-records.test.tsx` (19) |
+
+Menu: "Runs" is now "Payroll home" (`yx-nav.ts`, nav test added).
+
+**Copies deleted:** `PayRunsScreen`, `NewRunDrawer`, `PayRunScreen` and its tabs (live/runs.tsx; the shared `rupees`,
+`RunStatusBadge`, `runName`, `PayslipLines`, `ReasonDrawer` stay for other copies); `PayInputsScreen` (live/inputs.tsx;
+`PersonPicker` stays); `PayslipQueriesScreen`, `RunPaymentsScreen`, `PaymentModesScreen`, `NomineeDrawer`
+(live/operations.tsx); `ExchangeFilesScreen`, `PayDocumentsScreen` (live/documents.tsx; `MyPayDocumentsScreen` stays for
+builder 3); `CoverageLiveScreen` (live/setup.tsx); `PayPeriodsScreen`, `ReopenRequestsScreen`, `StageBadge`
+(live/periods.tsx keeps only `monthText`); `AuditScreen` (live/audit.tsx deleted); `pay-5a-live.stories.tsx` deleted; their
+Live stories and test cases moved to the new test files. 21 lines left `known.json`.
+
+**For builder 2 (PAY-19 on /yx/payroll/arrears):** render `RecoveriesScreen` with
+`live={{ orders: { state, rows, canAdd: perms.has('payroll.input.manage'), onAdd: (x) => write('/court-orders', x) },
+overpayments: { state, rows, canWriteOff: perms.has('payroll.writeoff.approve'), onWriteOff: (r, reason) =>
+write(`/overpayments/${id}/write-off`, { reason }) }, nameOf, onSearch, today, onRetry }}` (types `LiveRecoveriesData`,
+`LiveCourtOrder`, `CourtOrderInput` from `@yukthix/ui/pay`; optional `tab: 'court' | 'over'`). Then "pay: RecoveriesScreen"
+leaves `notLive`.
+
+**Still in `known.json` from this scope:** "pay: RunReadinessScreen" (PAY-02's own wizard; its content shows inside the
+run workspace, see question 1) and "pay: RecoveriesScreen" (until builder 2).
+
+**Guard change:** `design-guard.test.ts` (a) now also counts a story file's `component: X` as rendered, so args-only PAY
+stories are seen as designs.
+
+**Questions for the founder (suggested answers):**
+1. PAY-02 readiness shows inside the run workspace's Validations tab, not as its own wizard page. Accept that? *Yes*: one page per run.
+2. Coverage (PAY-30) inside the run's checks: read `/coverage` on the run page? *Yes*, small.
+3. Statutory dues (PF, ESI, TDS, PT) in the home's "Due this month": add a read-only call? *Yes*, size S.
+4. Several pay groups: one stage-track row per group on Payroll home? *Yes*, compact rows.
+5. Payroll home with the run list under it needs more than 1278 x 635. *Accept the scroll*, the content needs it.
+6. Re-pay a failed payment (next bank file / off-cycle / reimbursement account): *yes*, `POST payslips/:id/repay` with route and reason, audited.
+7. Record each "Show pay" on the payments page: *yes*, a light audit event.
+8. Hold release: required reason and an off-cycle choice in the API: *yes*, size S.
+9. Reassign a payslip query to a named colleague: *yes*, a list of people with `payroll.query.handle`.
+10. Close a query without a reply: *no*, keep the design rule (reply first).
+11. Retry only the failed people in a calculation, and a per-source input summary: *yes*, both S.
+12. Reopen requests also in the Approvals inbox: *yes, later* (API change).
