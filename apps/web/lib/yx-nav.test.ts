@@ -101,6 +101,13 @@ describe('buildNav: Time, Pay, Compliance', () => {
     expect(labels(n, 'pay')).toEqual(['Go-live readiness', 'Compensation']);
   });
 
+  it('PAY-01: the runs page is "Payroll home" (founder decision 1, 29 Oct 2026); same route', () => {
+    const n = nav(['payroll.run.view']);
+    expect(labels(n, 'pay')[0]).toBe('Payroll home');
+    expect(labels(n, 'pay')).not.toContain('Runs');
+    expect(activeLink(n, '/yx/payroll/runs/r1')?.link.label).toBe('Payroll home');
+  });
+
   it('payroll operations follow their own keys (PAY-10.09 … 10.16)', () => {
     const n = nav(['payroll.loan.manage', 'statutory.advisory.review']);
     expect(labels(n, 'pay')).toEqual(['Loans and advances']);

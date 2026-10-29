@@ -187,7 +187,7 @@ export function buildNav(n: NavInput): NavArea[] {
       ? []
       : [
           ...sec('Payroll', [
-            ...when(any('payroll.run.view', 'payroll.run.prepare', 'payroll.run.approve', 'payroll.offcycle.prepare'), L('pay-runs', 'Runs', '/yx/payroll/runs')),
+            ...when(any('payroll.run.view', 'payroll.run.prepare', 'payroll.run.approve', 'payroll.offcycle.prepare'), L('pay-runs', 'Payroll home', '/yx/payroll/runs')),
             ...when(has('payroll.input.manage'), L('pay-inputs', 'Inputs', '/yx/payroll/inputs')),
             ...when(has('payroll.query.handle'), L('pay-queries', 'Queries', '/yx/payroll/payslip-queries', 'payslipQueries')),
             ...when(any('payroll.fnf.manage', 'payroll.notice.waive'), L('pay-fnf', 'Full and final', '/yx/payroll/fnf')),
