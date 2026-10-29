@@ -480,10 +480,10 @@ export interface DueItem {
 const DUE_TONE: Record<DueItem['status'], BadgeTone> = { done: 'success', due: 'warning', overdue: 'danger', 'not-due': 'neutral' };
 
 /** Relative badge from today: "9 days overdue", "Due tomorrow", "Due in 8 days"; filed items say Filed. */
-function dueText(it: DueItem) {
+function dueText(it: DueItem, today: Date = TODAY) {
   if (it.status === 'done') return 'Filed';
   const day = (x: Date) => Date.UTC(x.getFullYear(), x.getMonth(), x.getDate());
-  const days = Math.round((day(it.due) - day(TODAY)) / 86_400_000);
+  const days = Math.round((day(it.due) - day(today)) / 86_400_000);
   if (days < 0) return `${-days} day${days === -1 ? '' : 's'} overdue`;
   if (days === 0) return 'Due today';
   if (days === 1) return 'Due tomorrow';
@@ -491,7 +491,7 @@ function dueText(it: DueItem) {
 }
 
 /** Compliance calendar items for the month (P07 calendar via SCH-07). Due and overdue items carry their next step. */
-export function DueDateStrip({ items }: { items: DueItem[] }) {
+export function DueDateStrip({ items, today }: { items: DueItem[]; /** Live pages pass the real day (stories use the sample day). */ today?: Date }) {
   return (
     <ul className="yx-pay-due" aria-label="Statutory due dates">
       {items.map((it) => (
@@ -499,7 +499,7 @@ export function DueDateStrip({ items }: { items: DueItem[] }) {
           <span className="yx-pay-due__statute">{it.statute}</span>
           <span className="yx-pay-due__what">{it.what}</span>
           <span className="yx-pay-due__date">{formatDate(it.due)}</span>
-          <Badge tone={DUE_TONE[it.status]}>{dueText(it)}</Badge>
+          <Badge tone={DUE_TONE[it.status]}>{dueText(it, today)}</Badge>
           {it.penalty != null && it.status === 'overdue' && <span className="yx-pay-due__pen">Penalty if filed today: about {formatINR(it.penalty)}</span>}
           {it.action && (it.status === 'due' || it.status === 'overdue') && (
             <span className="yx-pay-due__action">

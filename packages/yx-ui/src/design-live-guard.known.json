@@ -229,7 +229,6 @@
     "pay: BonusComputationScreen",
     "pay: FirstUse",
     "pay: GroupHealthScreen",
-    "pay: OffCycleRunScreen",
     "pay: PayrollReportsScreen",
     "pay: RegistersScreen",
     "pay: ReportsNoAccess",

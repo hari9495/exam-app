@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { PayrollHomeScreen } from './payroll-run';
+import { HOME_GROUPS, PayrollHomeScreen } from './payroll-run';
 
 const meta: Meta<typeof PayrollHomeScreen> = { title: 'Screens/Pay/PAY-01 · Payroll home', component: PayrollHomeScreen, parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -14,3 +14,4 @@ export const Draft: S = { name: 'Draft · new month', args: { stage: 'Draft', bl
 export const FirstUse: S = { name: 'Empty · payroll not set up', args: { state: 'empty' } };
 export const Loading: S = { name: 'Loading', args: { state: 'loading' } };
 export const ErrorState: S = { name: 'Error', args: { state: 'error' } };
+export const SeveralGroups: S = { name: 'Several pay groups · one stage row each', args: { stage: 'In review', groups: HOME_GROUPS } };

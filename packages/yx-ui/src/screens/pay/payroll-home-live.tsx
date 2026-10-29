@@ -23,13 +23,13 @@ import { formatDate, groupIndian } from '../../lib/format';
 import { useRun } from '../org/org-kit';
 import { DueBadge } from '../time/time-kit';
 import { dateText } from '../time/live/kit';
-import { RunStageTrack, SectionTitle, StateBlock, type RunStage } from './pay-kit';
-import { CoveragePanel, FrequencyRunsScreen, type CoverageRow as DesignCoverageRow } from './payroll-run';
+import { DueDateStrip, RunStageTrack, SectionTitle, StateBlock, type DueItem, type RunStage } from './pay-kit';
+import { CoveragePanel, FrequencyRunsScreen, GroupRunRows, type CoverageRow as DesignCoverageRow } from './payroll-run';
 import { RunStatusBadge, runName } from './live/runs';
 import { statuteText } from './live/setup';
 import type { LoadState } from './live/types';
 import type { CoverageRow, SetupEntity } from './live/types-5b';
-import { periodsOf, type OffcycleKind, type PayGroupRef, type PayRun, type RunReadiness, type RunStatus } from './live/types-5j';
+import { periodsOf, type HubCard, type OffcycleKind, type PayGroupRef, type PayRun, type RunReadiness, type RunStatus, type StatutoryHub } from './live/types-5j';
 
 const monthLabel = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 const shortMonth = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' });
@@ -51,6 +51,36 @@ function LiveStates({ state, onRetry, what, children }: { state: LoadState; onRe
 
 /* ================================================================== PAY-01 Payroll home */
 
+/** GET /statutory/home-dues: each legal entity's hub for the month before and this month (statutory.filing.view). */
+export type HomeDues = Omit<StatutoryHub, 'cards'> & { entity: string; cards: Omit<HubCard, 'filingId' | 'verifyDueDate'>[] };
+const STATUTE: Record<string, string> = { 'IN.PF': 'PF', 'IN.ESI': 'ESI', 'IN.PT': 'Professional tax', 'IN.LWF': 'Labour welfare fund' };
+const WHAT: Record<string, string> = { 'IN.PF': 'PF return and payment', 'IN.ESI': 'ESI contribution', 'IN.PT': 'Professional tax return', 'IN.LWF': 'Labour welfare fund' };
+
+/**
+ * PAY-01 "Due this month" from the statutory hubs: what falls due in `month`, and anything still late. Nothing owed
+ * (zero, not filed) is left out; filed items show as Filed. PT and LWF have no due date in the rules: counted apart.
+ */
+export function homeDueItems(dues: HomeDues[], month: string, href: string): { items: DueItem[]; undated: number } {
+  const several = new Set(dues.map((d) => d.entityId)).size > 1;
+  const items: DueItem[] = [];
+  let undated = 0;
+  for (const d of dues) {
+    const of = `for ${monthLabel(d.month).split(' ')[0]}${several ? ` · ${d.entity}` : ''}`;
+    const add = (id: string, statute: string, what: string, amount: string, dueOn: string | null, done: boolean, late: boolean, penalty?: string | null) => {
+      if (!done && num(amount) <= 0) return;
+      if (!dueOn) {
+        if (!done) undated++;
+        return;
+      }
+      if (dueOn.slice(0, 7) !== month && !(late && !done)) return;
+      items.push({ id, statute, what: `${what} ${of}`, due: day(dueOn), status: done ? 'done' : late ? 'overdue' : 'due', ...(late && penalty ? { penalty: num(penalty) } : {}), ...(done ? {} : { action: { label: 'Open statutory hub', href } }) });
+    };
+    for (const c of d.cards) add(`${d.entityId}-${d.month}-${c.statute}-${c.state ?? ''}`, `${STATUTE[c.statute] ?? c.label}${c.state ? ` (${c.state})` : ''}`, WHAT[c.statute] ?? c.label, c.amount, c.dueOn, c.status === 'filed', c.late, c.penaltyEstimate);
+    add(`${d.entityId}-${d.month}-tds`, 'TDS', 'TDS challan', d.tds.amount, d.tds.dueOn, d.tds.challanStatus === 'deposited', d.tds.late);
+  }
+  return { items: items.sort((a, b) => a.due.getTime() - b.due.getTime()), undated };
+}
+
 export interface LivePayrollHome {
   state: LoadState;
   onRetry?: () => void;
@@ -64,6 +94,10 @@ export interface LivePayrollHome {
   today: string;
   /** Checks of this month's run (null when there is none or they did not load). */
   readiness: RunReadiness | null;
+  /** Checks of every pay group's run this month, by run id (several pay groups). */
+  readinessByRun?: Record<string, RunReadiness>;
+  /** Statutory dues (GET /statutory/home-dues); undefined without statutory.filing.view, null while loading. */
+  dues?: HomeDues[] | null;
   /** Cut-off and pay date of this month's run, from its pay group's calendar. */
   calendar: { cutOff: string; payDate: string } | null;
   canPrepare: boolean;
@@ -75,10 +109,20 @@ export interface LivePayrollHome {
   runHref: (id: string) => string;
   onCreate: (payGroupId: string, month: string, offcycleKind: Exclude<OffcycleKind, 'fnf'> | null, subPeriod?: number | null) => Promise<{ id: string }>;
   onOpen: (id: string) => void;
+  /** PAY-11: "Start off-cycle run" opens the designed off-cycle run page (else the drawer's off-cycle choice). */
+  onNewOffcycle?: () => void;
 }
 
 /** This month's run: the first regular run of the month that is not void (the top bar narrows it to one company). */
 export const currentRun = (runs: PayRun[], month: string) => runs.find((r) => r.month === month && r.runType === 'regular' && r.status !== 'void') ?? null;
+
+/** Each pay group's run this month (the latest period of a weekly group); groups with no run yet come last. */
+export function groupRuns(runs: PayRun[], groups: PayGroupRef[] | null, month: string): { groupId: string; run: PayRun | null }[] {
+  const out = new Map<string, PayRun | null>();
+  for (const r of runs) if (r.month === month && r.runType === 'regular' && r.status !== 'void' && !out.has(r.payGroupId)) out.set(r.payGroupId, r);
+  for (const g of groups ?? []) if (!out.has(g.id)) out.set(g.id, null);
+  return [...out].map(([groupId, run]) => ({ groupId, run }));
+}
 
 export function LivePayrollHomeScreen({ live }: { live: LivePayrollHome }) {
   return (
@@ -96,7 +140,14 @@ function LiveHome({ live }: { live: LivePayrollHome }) {
   const groupOf = (r: PayRun) => live.groups?.find((g) => g.id === r.payGroupId)?.name;
   const isFin = !live.canPrepare && live.canApprove;
   const notSetUp = live.groups !== null && live.groups.length === 0;
-  const checks = (live.readiness?.checks ?? []).filter((c) => !c.waived && c.severity !== 'info');
+  const perGroup = groupRuns(runs, live.groups, live.month);
+  const several = perGroup.length > 1;
+  const readinessOf = (id: string) => live.readinessByRun?.[id] ?? (live.readiness?.run.id === id ? live.readiness : undefined);
+  // Several pay groups: what needs attention covers every group's run; each check opens its own run.
+  const sources = several ? perGroup.flatMap((g) => (g.run && readinessOf(g.run.id) ? [readinessOf(g.run.id)!] : [])) : live.readiness ? [live.readiness] : [];
+  const checks = sources.flatMap((x) => x.checks.map((c) => ({ ...c, runId: x.run.id }))).filter((c) => !c.waived && c.severity !== 'info');
+  const blockingOf = (id: string) => (readinessOf(id)?.checks ?? []).filter((c) => !c.waived && c.severity === 'block').length;
+  const due = live.dues ? homeDueItems(live.dues, live.month, live.statutoryHref) : null;
   // One line per kind of check; a check about many people names the first and counts the rest.
   const findings = Object.values(
     checks.reduce<Record<string, typeof checks>>((a, c) => ({ ...a, [c.checkKey]: [...(a[c.checkKey] ?? []), c] }), {}),
@@ -142,7 +193,7 @@ function LiveHome({ live }: { live: LivePayrollHome }) {
         actions={
           live.state === 'ready' ? (
             <>
-              {live.canOffcycle && !notSetUp && <Button onClick={() => setCreating('offcycle')}>Start off-cycle run</Button>}
+              {live.canOffcycle && !notSetUp && <Button onClick={() => (live.onNewOffcycle ? live.onNewOffcycle() : setCreating('offcycle'))}>Start off-cycle run</Button>}
               {primary}
             </>
           ) : undefined
@@ -189,6 +240,30 @@ function LiveHome({ live }: { live: LivePayrollHome }) {
                 Open a run to see who approves it next. Approvers decide on the run's own page.
               </InlineAlert>
             )}
+            {several ? (
+              <section className="yx-pay-stack" aria-label="Runs this month">
+                <SectionTitle>{`${monthLabel(live.month).split(' ')[0]} runs · ${plural(perGroup.length, 'pay group')}`}</SectionTitle>
+                <GroupRunRows
+                  rows={perGroup.map(({ groupId, run: r }) => ({
+                    id: groupId,
+                    group: live.groups?.find((g) => g.id === groupId)?.name ?? (r ? runName(r) : 'Pay group'),
+                    run: r ? runName(r) : null,
+                    stage: r ? stageOf(r.status, Boolean(r.publishedAt)) : null,
+                    blocking: r ? blockingOf(r.id) : 0,
+                    status: r && ['void', 'reopened', 'calculating', 'submitted'].includes(r.status) ? <RunStatusBadge status={r.status} /> : undefined,
+                    action: r ? (
+                      <Button size="sm" onClick={() => live.onOpen(r.id)}>
+                        Open run
+                      </Button>
+                    ) : live.canPrepare ? (
+                      <Button size="sm" onClick={() => setCreating('regular')}>
+                        Start run
+                      </Button>
+                    ) : null,
+                  }))}
+                />
+              </section>
+            ) : (
             <section className="yx-pay-stack" aria-label="Current run">
               <SectionTitle actions={cur ? <RunStatusBadge status={cur.status} /> : undefined}>{cur ? runName(cur) : `Payroll · ${monthLabel(live.month)}`}</SectionTitle>
               {cur && stage ? (
@@ -202,11 +277,12 @@ function LiveHome({ live }: { live: LivePayrollHome }) {
                 </p>
               )}
             </section>
+            )}
             <div className="yx-pay-grid">
               <div data-span="7" className="yx-pay-panel">
                 <SectionTitle>What needs attention</SectionTitle>
                 {!cur || findings.length === 0 ? (
-                  <p className="yx-pay-muted">{cur ? 'Nothing is blocking this run.' : 'Nothing to check until the run is started.'}</p>
+                  <p className="yx-pay-muted">{cur ? `Nothing is blocking ${several ? 'these runs' : 'this run'}.` : 'Nothing to check until the run is started.'}</p>
                 ) : (
                   <ul className="yx-pay-findings">
                     {findings.slice(0, 4).map((g) => {
@@ -221,7 +297,7 @@ function LiveHome({ live }: { live: LivePayrollHome }) {
                             </p>
                           </div>
                           <div className="yx-pay-findings__acts">
-                            <Button size="sm" onClick={() => live.onOpen(cur.id)}>
+                            <Button size="sm" onClick={() => live.onOpen(g[0].runId)}>
                               Open run checks
                             </Button>
                           </div>
@@ -234,8 +310,8 @@ function LiveHome({ live }: { live: LivePayrollHome }) {
               </div>
               <div data-span="5" className="yx-pay-panel">
                 <SectionTitle>Due this month</SectionTitle>
-                {live.calendar ? (
-                  <ul className="yx-pay-stack" aria-label="Due this month">
+                {live.calendar && !several ? (
+                  <ul className="yx-pay-stack" aria-label="Pay dates">
                     {[
                       { what: 'Attendance and inputs cut-off', on: live.calendar.cutOff },
                       { what: 'Salaries paid', on: live.calendar.payDate },
@@ -247,12 +323,18 @@ function LiveHome({ live }: { live: LivePayrollHome }) {
                       </li>
                     ))}
                   </ul>
-                ) : (
+                ) : !several ? (
                   <p className="yx-pay-muted">The cut-off and pay date show once this month's run has a pay group calendar.</p>
+                ) : null}
+                {due && due.items.length > 0 && <DueDateStrip items={due.items} today={day(live.today)} />}
+                {due && due.items.length === 0 && <p className="yx-pay-muted">No PF, ESI or TDS falls due in {monthLabel(live.month)}.</p>}
+                {due && due.undated > 0 && <p className="yx-pay-muted">Professional tax and labour welfare fund dates depend on the state. See them in the statutory hub.</p>}
+                {live.dues === null && <p className="yx-pay-muted">Loading statutory dues…</p>}
+                {(live.dues === undefined || due?.items.length === 0 || (due?.undated ?? 0) > 0) && (
+                  <Button size="sm" asChild>
+                    <a href={live.statutoryHref}>PF, ESI, TDS and PT dues</a>
+                  </Button>
                 )}
-                <Button size="sm" asChild>
-                  <a href={live.statutoryHref}>PF, ESI, TDS and PT dues</a>
-                </Button>
               </div>
             </div>
             {last?.totals && (
@@ -341,7 +423,7 @@ function NewRunDrawer({ live, groups, initial, onClose }: { live: LivePayrollHom
             {error}
           </InlineAlert>
         )}
-        {live.canPrepare && live.canOffcycle && (
+        {live.canPrepare && live.canOffcycle && !live.onNewOffcycle && (
           <Segment
             label="Kind of run"
             value={kind}

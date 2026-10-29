@@ -28,6 +28,7 @@ import {
   IrreversibleSheet,
   PayFrame,
   RunProgress,
+  RUN_STAGES,
   RunStageTrack,
   SectionTitle,
   StateBlock,
@@ -127,6 +128,12 @@ export const HOME_BLOCKERS: Blocker[] = [
   { id: 'b3', severity: 'warn', title: '3 employees without a verified PAN', detail: 'Not a block. TDS will be deducted at 20% or the slab rate, whichever is higher, until PAN is verified.', action: 'View employees', to: STORY.readiness },
   { id: 'b4', severity: 'warn', title: `${plural(FLAGGED_ROWS.length, 'variance line')} need acknowledgement`, detail: 'Net change above 10% or a new component since August.', action: 'Review variance', to: STORY.variance },
 ];
+/** PAY-01 story "Several pay groups": three groups of Kaveri Foods in September. */
+export const HOME_GROUPS: GroupRunRow[] = [
+  { id: 'g1', group: 'Monthly staff · Bengaluru head office', run: 'September 2026 · monthly', stage: 'In review', blocking: 2 },
+  { id: 'g2', group: 'Plant workers · Hosur (weekly)', run: '22 to 28 Sep 2026', stage: 'Calculated', blocking: 0 },
+  { id: 'g3', group: 'Monthly staff · Kaveri Foods (Tamil Nadu)', run: null, stage: null, blocking: 0 },
+];
 const MONTH_NAME: Record<string, string> = { Apr: 'April', May: 'May', Jun: 'June', Jul: 'July', Aug: 'August', Sep: 'September' };
 /** Cost to company for a past month, scaled like that month's gross. */
 const ctcAt = (i: number) => Math.round((RUN.employerCost * RUN_HISTORY[i].gross) / RUN.gross);
@@ -137,6 +144,49 @@ export interface PayrollHomeProps {
   stage?: RunStage;
   blockers?: Blocker[];
   due?: DueItem[];
+  /** Several pay groups: one compact stage row per group's run of the month, in place of the single stage track. */
+  groups?: GroupRunRow[];
+}
+
+/** One pay group's run of the month on Payroll home (PAY-01, several pay groups). */
+export interface GroupRunRow {
+  id: string;
+  group: string;
+  /** The run's name, or null when the group's run is not started. */
+  run: string | null;
+  stage: RunStage | null;
+  /** Checks that block the run. */
+  blocking: number;
+  status?: ReactNode;
+  /** Open the run (or start it). */
+  action?: ReactNode;
+}
+
+/** PAY-01, several pay groups: a compact stage row per group (six-step bar, stage in words, what blocks it, open). */
+export function GroupRunRows({ rows }: { rows: GroupRunRow[] }) {
+  return (
+    <ul className="yx-pay-grouprows" aria-label="Runs by pay group">
+      {rows.map((r) => {
+        const idx = r.stage ? RUN_STAGES.indexOf(r.stage) : -1;
+        return (
+          <li key={r.id}>
+            <span className="yx-pay-grouprows__name">
+              <strong>{r.group}</strong>
+              <span className="yx-pay-muted">{r.run ?? 'Not started'}</span>
+            </span>
+            <ol className="yx-pay-grouprows__bar" aria-label={r.stage ? `Stage: ${r.stage}, step ${idx + 1} of ${RUN_STAGES.length}` : 'Not started'}>
+              {RUN_STAGES.map((st, i) => (
+                <li key={st} data-state={i < idx ? 'done' : i === idx ? (r.blocking ? 'blocked' : 'current') : 'todo'} title={st} />
+              ))}
+            </ol>
+            <span className="yx-pay-grouprows__stage">{r.stage ?? 'Not started'}</span>
+            <span>{r.status ?? (r.stage ? <Badge tone={r.blocking ? 'danger' : 'info'}>{r.blocking ? `${r.blocking} blocking` : 'On track'}</Badge> : null)}</span>
+            <span className="yx-pay-grouprows__act">{r.action}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
 
 /** PAY-01 · Payroll home (T6): run stepper, blockers, due-date strip, last totals. */
@@ -144,7 +194,7 @@ export function PayrollHomeScreen(p: PayrollHomeProps & { live?: LivePayrollHome
   return p.live ? <LivePayrollHomeScreen live={p.live} /> : <SamplePayrollHome {...p} />;
 }
 
-function SamplePayrollHome({ state = 'ready', persona = 'pa', stage = 'In review', blockers = HOME_BLOCKERS, due = DUE_ITEMS }: PayrollHomeProps) {
+function SamplePayrollHome({ state = 'ready', persona = 'pa', stage = 'In review', blockers = HOME_BLOCKERS, due = DUE_ITEMS, groups }: PayrollHomeProps) {
   const blocking = blockers.filter((b) => b.severity === 'block');
   const isFin = persona === 'fin';
   const [help, setHelp] = useState(false);
@@ -240,10 +290,17 @@ function SamplePayrollHome({ state = 'ready', persona = 'pa', stage = 'In review
           />
         }
       >
-        <section className="yx-pay-stack" aria-label="Current run">
-          <SectionTitle actions={<Badge tone={blocking.length ? 'danger' : 'info'}>{blocking.length ? `${blocking.length} blocking` : 'On track'}</Badge>}>{RUN.name}</SectionTitle>
-          <RunStageTrack current={stage} blocked={stage === 'In review' && blocking.length ? 'Approval blocked' : undefined} />
-        </section>
+        {groups && groups.length > 1 ? (
+          <section className="yx-pay-stack" aria-label="Runs this month">
+            <SectionTitle>{`September runs · ${plural(groups.length, 'pay group')}`}</SectionTitle>
+            <GroupRunRows rows={groups.map((g) => ({ ...g, action: <StoryButton size="sm" to={g.run ? STORY.workspace : STORY.readiness}>{g.run ? 'Open run' : 'Start run'}</StoryButton> }))} />
+          </section>
+        ) : (
+          <section className="yx-pay-stack" aria-label="Current run">
+            <SectionTitle actions={<Badge tone={blocking.length ? 'danger' : 'info'}>{blocking.length ? `${blocking.length} blocking` : 'On track'}</Badge>}>{RUN.name}</SectionTitle>
+            <RunStageTrack current={stage} blocked={stage === 'In review' && blocking.length ? 'Approval blocked' : undefined} />
+          </section>
+        )}
         <div className="yx-pay-grid">
           <div data-span="7" className="yx-pay-panel">
             <SectionTitle>What needs attention</SectionTitle>

@@ -24,6 +24,7 @@ import { EXIT_CASES, SCHEDULED } from '../people/people-data';
 const storyHref = (id: string) => `/?path=/story/${id}`;
 import { arrearsTotal, gratuity, retrenchmentCompensation, statutoryBonus, type ArrearMonth } from './pay-logic';
 import { LiveSettlementArrears } from './settlement-live';
+import { LiveOffCycleRunScreen, type LiveOffCycleRun } from './offcycle-run-live';
 import type { LiveSpecialPay } from './special-pay-live';
 
 /* ================================================================== PAY-11 Off-cycle run */
@@ -64,8 +65,12 @@ const FNF_BASE = fnfLines(FNF_LEAVER);
 /** F&F net payable (earnings − deductions) for FNF_LEAVER: PAY-10's bank-file row reads it. */
 export const FNF_NET = FNF_BASE.reduce((a, l) => a + (l.kind === 'Earning' ? l.amount : l.kind === 'Deduction' ? -l.amount : 0), 0);
 
-/** PAY-11 · Off-cycle run wizard. F&F runs are created automatically on the approved last working day. */
-export function OffCycleRunScreen({ kind = 'fnf', step = 'lines', permission = false }: { kind?: OffCycleKind; step?: string; permission?: boolean }) {
+/** PAY-11 · Off-cycle run wizard. F&F runs are created automatically on the approved last working day. The app passes `live` (new off-cycle run, or an off-cycle run's page); stories show the sample. */
+export function OffCycleRunScreen(p: { kind?: OffCycleKind; step?: string; permission?: boolean; live?: LiveOffCycleRun }) {
+  return p.live ? <LiveOffCycleRunScreen live={p.live} /> : <SampleOffCycleRun {...p} />;
+}
+
+function SampleOffCycleRun({ kind = 'fnf', step = 'lines', permission = false }: { kind?: OffCycleKind; step?: string; permission?: boolean }) {
   const [type, setType] = useState<OffCycleKind>(kind);
   const fnf = type === 'fnf' || type === 'retrenchment' || type === 'death';
   const person = type === 'death' ? DECEASED : type === 'retrenchment' ? RETRENCHED : FNF_LEAVER;

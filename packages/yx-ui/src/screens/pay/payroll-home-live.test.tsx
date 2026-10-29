@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { CoverageMonitorPanel, PayrollHomeScreen } from './payroll-run';
-import { coverageRows, currentRun, stageOf, type LivePayrollHome } from './payroll-home-live';
+import { coverageRows, currentRun, groupRuns, homeDueItems, stageOf, type HomeDues, type LivePayrollHome } from './payroll-home-live';
 import { COVERAGE, SETUP_ENTITIES } from './live/fixtures-5ab';
 import { READINESS, RUN } from './live/fixtures-5j';
 import type { PayRun } from './live/types-5j';
@@ -48,7 +48,7 @@ describe('PAY-01 Payroll home, live', () => {
     expect(within(screen.getByRole('list', { name: 'Pay run stages' })).getByText('1 check blocks the run')).toBeInTheDocument();
     expect(screen.getByText(/Sridhar Fernandes: no salary bank account/)).toBeInTheDocument();
     expect(screen.getByText('Blocks calculation')).toBeInTheDocument();
-    expect(within(screen.getByRole('list', { name: 'Due this month' })).getByText('Salaries paid')).toBeInTheDocument();
+    expect(within(screen.getByRole('list', { name: 'Pay dates' })).getByText('Salaries paid')).toBeInTheDocument();
     // The run list: void and off-cycle runs stay listed with their badge.
     const table = screen.getByRole('table', { name: 'Monthly runs' });
     expect(within(table).getByText('Void')).toBeInTheDocument();
@@ -152,5 +152,97 @@ describe('PAY-30 Coverage, live', () => {
     rerender(<CoverageMonitorPanel live={{ state: 'error', onRetry, entities: [], rows: null, setupHref: '/setup' }} />);
     await ue.click(screen.getByRole('button', { name: /Try again|Retry/ }));
     expect(onRetry).toHaveBeenCalled();
+  });
+});
+
+// Round 2 (founder answers 29 Oct): statutory dues in "Due this month" and one stage row per pay group.
+const DUES: HomeDues[] = [
+  {
+    entity: 'Kaveri Foods',
+    entityId: 'e1',
+    month: '2026-08',
+    today: '2026-09-20',
+    cards: [
+      { statute: 'IN.PF', state: null, label: 'PF (ECR)', amount: '24000.00', dueOn: '2026-09-15', status: 'not_generated', late: true, penaltyEstimate: '1250.00' },
+      { statute: 'IN.ESI', state: null, label: 'ESI contributions', amount: '5200.00', dueOn: '2026-09-15', status: 'filed', late: false, penaltyEstimate: null },
+      { statute: 'IN.LWF', state: 'KA', label: 'Labour welfare fund · KA', amount: '0.00', dueOn: null, status: 'not_generated', late: false, penaltyEstimate: null },
+      { statute: 'IN.PT', state: 'KA', label: 'Professional tax · KA', amount: '600.00', dueOn: null, status: 'not_generated', late: false, penaltyEstimate: null },
+    ],
+    tds: { amount: '18000.00', dueOn: '2026-09-07', challanStatus: 'deposited', late: false },
+  },
+  // September's own dues fall in October: not "due this month" unless late.
+  { entity: 'Kaveri Foods', entityId: 'e1', month: '2026-09', today: '2026-09-20', cards: [{ statute: 'IN.PF', state: null, label: 'PF (ECR)', amount: '25000.00', dueOn: '2026-10-15', status: 'not_generated', late: false, penaltyEstimate: null }], tds: { amount: '0.00', dueOn: '2026-10-07', challanStatus: 'not_prepared', late: false } },
+];
+
+describe('PAY-01 Payroll home, live: statutory dues and pay groups (round 2)', () => {
+  it('works out what falls due this month: late with its penalty, filed as Filed, nothing owed left out, PT without a date counted apart', () => {
+    const { items, undated } = homeDueItems(DUES, '2026-09', '/statutory');
+    expect(items.map((i) => [i.statute, i.status])).toEqual([
+      ['TDS', 'done'],
+      ['PF', 'overdue'],
+      ['ESI', 'done'],
+    ]);
+    expect(items[1]).toMatchObject({ what: 'PF return and payment for August', penalty: 1250, action: { href: '/statutory' } });
+    expect(items[0].action).toBeUndefined();
+    expect(undated).toBe(1);
+    // October: the September PF falls due; the late August PF still shows; the zero TDS does not.
+    expect(homeDueItems(DUES, '2026-10', '/s').items.map((i) => i.id)).toEqual(['e1-2026-08-IN.PF-', 'e1-2026-09-IN.PF-']);
+  });
+
+  it('shows the dues strip with the penalty and the hub link (positive)', () => {
+    render(<PayrollHomeScreen live={home({ dues: DUES })} />);
+    const strip = screen.getByRole('list', { name: 'Statutory due dates' });
+    expect(within(strip).getByText('PF return and payment for August')).toBeInTheDocument();
+    expect(within(strip).getByText('5 days overdue')).toBeInTheDocument();
+    expect(within(strip).getByText(/Penalty if filed today/)).toBeInTheDocument();
+    expect(within(strip).getAllByText('Filed')).toHaveLength(2);
+    expect(within(strip).getByRole('link', { name: 'Open statutory hub' })).toHaveAttribute('href', '/statutory');
+    expect(screen.getByText(/Professional tax and labour welfare fund dates depend on the state/)).toBeInTheDocument();
+  });
+
+  it('without statutory access no dues are shown, only the link to the hub (negative)', () => {
+    render(<PayrollHomeScreen live={home({ dues: undefined })} />);
+    expect(screen.queryByRole('list', { name: 'Statutory due dates' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'PF, ESI, TDS and PT dues' })).toBeInTheDocument();
+  });
+
+  it('several pay groups: one stage row each, blocking counted per run, open or start (positive)', async () => {
+    const weekly: PayRun = { ...RUN, id: 'r5', payGroupId: 'g2', status: 'calculated' };
+    const live = home({
+      runs: [SEP, weekly, AUG],
+      groups: [
+        { id: 'g1', name: 'Monthly staff', legalEntityId: 'e1' },
+        { id: 'g2', name: 'Plant workers', legalEntityId: 'e1', frequency: 'weekly' },
+        { id: 'g3', name: 'Tamil Nadu staff', legalEntityId: 'e2' },
+      ],
+      readinessByRun: { r1: READINESS, r5: { ...READINESS, run: weekly, checks: [] } },
+    });
+    expect(groupRuns(live.runs!, live.groups, '2026-09').map((g) => [g.groupId, g.run?.id ?? null])).toEqual([
+      ['g1', 'r1'],
+      ['g2', 'r5'],
+      ['g3', null],
+    ]);
+    render(<PayrollHomeScreen live={live} />);
+    const list = screen.getByRole('list', { name: 'Runs by pay group' });
+    const rows = [...list.children] as HTMLElement[];
+    expect(rows).toHaveLength(3);
+    expect(within(rows[0]).getByText('1 blocking')).toBeInTheDocument();
+    expect(within(rows[1]).getByText('On track')).toBeInTheDocument();
+    expect(within(rows[1]).getByRole('list', { name: 'Stage: Calculated, step 2 of 6' })).toBeInTheDocument();
+    expect(within(rows[2]).getAllByText('Not started').length).toBeGreaterThan(0);
+    await ue.click(within(rows[1]).getByRole('button', { name: 'Open run' }));
+    expect(live.onOpen).toHaveBeenCalledWith('r5');
+    await ue.click(within(rows[2]).getByRole('button', { name: 'Start run' }));
+    expect(await screen.findByRole('dialog', { name: 'Start a payroll run' })).toBeInTheDocument();
+  });
+
+  it('one pay group keeps the single stage track; a finance approver gets no Start run (negative)', () => {
+    const { unmount } = render(<PayrollHomeScreen live={home()} />);
+    expect(screen.queryByRole('list', { name: 'Runs by pay group' })).not.toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Pay run stages' })).toBeInTheDocument();
+    unmount();
+    render(<PayrollHomeScreen live={home({ canPrepare: false, canApprove: true, groups: [{ id: 'g1', name: 'Monthly staff', legalEntityId: 'e1' }, { id: 'g3', name: 'Tamil Nadu staff', legalEntityId: 'e2' }] })} />);
+    expect(screen.getByRole('list', { name: 'Runs by pay group' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Start run' })).not.toBeInTheDocument();
   });
 });
