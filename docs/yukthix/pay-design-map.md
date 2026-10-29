@@ -227,7 +227,7 @@ Live page: /yx/payroll/runs/[id] (Checks step)
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Blocked · Blocking items | live (gap) | inside the run workspace (Validations tab); no API for the attendance-group and input-source tables; only blocking checks can be waived |
+| Blocked · Blocking items | live (gap) | inside the run workspace (Validations tab); the input-source table shows there too (founder item 11, 30 Oct 2026); no API for the attendance-group table; only blocking checks can be waived |
 | WaiveDialog · Waive with reason (dialog open) | live | POST runs/:id/validations/:vid/waive |
 | AllClear · Ready to calculate | live |  |
 | Loading · Loading | live |  |
@@ -373,7 +373,7 @@ Live page: /yx/payroll/inputs (Holds)
 | story (sub-page) | verdict | note |
 |---|---|---|
 | Default · Holds by reason · ageing chart | live | ageing worked out in the page from hold dates |
-| Release · Release sheet · next bank file or off-cycle | live | reason required + route, audited `payroll.hold.released`; "next bank file" is the next file of the held payslip's own run |
+| Release · Release sheet · next bank file or off-cycle | live | reason required + route, audited `payroll.hold.released`; "next bank file" pays in the entity's next regular run's bank file, never the held payslip's own run's (founder item 10, 30 Oct 2026): the hold keeps no run until that file claims it (`releasedRunId`), results recorded on that run settle both |
 | AddHold · Hold a salary · reason code | live |  |
 | AsTab · Tab on One-time pay and holds | live |  |
 | Loading · Loading | live |  |
@@ -643,6 +643,7 @@ Live page: /yx/payroll/bonus
 | Empty · Empty · not worked out yet | live | new state story |
 | TooEarly · Send for approval · pressed too early (field error) | live | new state story |
 | Refused · Approve · refused by the server (own bonus) | live | new state story |
+| Approved · Form C register ready to download | live | new state story (item 30): "Download Form C (bonus register)" once approved or sent |
 | Sent · Sent to the off-cycle bonus run | live | new state story |
 | Loading · Loading | live | new state story |
 | ErrorState · Error | live | new state story |
@@ -1420,9 +1421,43 @@ stories feed the same screen with sample data. Menu: Pay › Statutory bonus (`p
   `POST …/approve`, `POST …/return`, `POST …/send`.
 - **Data:** `bonus_computations`, `bonus_computation_rows` (RLS: tenant, support exclusion, pay guard); migrations
   `20261308000000_pay_bonus`, `20261308000100_pay_bonus_source`.
-- **Gaps:** an off-cycle run pays only people with a salary in the run month, so a leaver owed bonus is held by the run's
-  `no_compensation` check (pay them through F&F for now); no bonus register (Form C) export or approver notification yet;
-  bonus for employees under 15 (₹60) and the new-establishment exemption (s.16) are not modelled.
+- **Gaps:** bonus for employees under 15 (₹60) and the new-establishment exemption (s.16) are not modelled. See "Pay
+  follow-ups B" below for what changed on 30 Oct 2026.
+
+## Pay follow-ups B (founder items 10, 11, 12, 13, 24, 25, 29, 30; branch `feat/yukthix-pay-followups-b`, 30 Oct 2026)
+
+- **10 Held pay.** A hold released to "next bank file" is paid in the bank file of the entity's next regular run (period
+  after the held payslip's), not its own run's. The hold keeps `releasedRunId` empty until a regular run's bank file
+  claims it (then that run); the own run's file leaves it out (409 "Nobody in this run is waiting to be paid by bank." when
+  nothing else waits). The bank file's audit lists `releasedHeldPay`; the result is recorded on the run that paid it and
+  both runs settle. A hold released before this change (own run kept) or to "off-cycle" stays with its own run. Re-pay
+  and off-cycle files never carry another run's payslips. PAY-06 release sheet text updated.
+- **11 Input sources.** The PAY-02 "Inputs for this period" table (GET runs/:id/input-sources) also shows in the run's
+  Validations tab, above the checks, as the design places it.
+- **12 PT and LWF due dates.** `src/statutory/packs/in-dues.json`: one `IN.CALENDAR` rule set per state (KA, MH, TN, TS,
+  DL), items `pt` and `lwf`, all marked verify; `due()` takes a day past the month end as its last day. The hub dates PT
+  and LWF cards from the state's calendar; a state without one still shows no date. Loaded by the seed; on an existing
+  database run `npx ts-node scripts/load-rule-pack.ts src/statutory/packs/in-dues.json <drafter> <publisher>` (two staff).
+  Not loaded into examapp_org by the builder.
+- **13 Unfiled dues.** GET statutory/home-dues reads this month and the three before it; of the two oldest months only
+  items owed and not filed (and an undeposited TDS challan) are sent (`homeDueMonths`, `onlyUnfiled`).
+- **24 Bonus eligibility.** The ₹21,000 limit (company setting) is tested on the full-month salary rate: the bonus-wage
+  lines of the monthly salary in force on the month's last day employed. A month with no salary record (imported history)
+  or an hourly or daily basis is tested on what it earned. Each row's months carry `rate`.
+- **25 Bonus 30 days.** Still paid days plus lay-off days from the payroll feed. Gap: the feed has no column for maternity
+  days; paid maternity leave is already inside paid days, but maternity days paid as an ESI benefit instead of salary
+  (`special_days` kind maternity) are not counted. Needs a feed column (a migration) when its feed exists.
+- **29 Leavers' bonus.** In an off-cycle bonus run, someone whose items are all bonus lines has no "no salary this month"
+  check; with no salary or job in the month their last salary and job stand in (one segment; the items-only run pays no
+  salary). Someone with any other item still needs a salary that month. No salary ever recorded: "No salary was ever
+  recorded for this leaver. Pay their bonus through the F&F settlement."
+- **30 Approver notice and Form C.** On send for approval, everyone with `payroll.bonus.approve` on the entity (never a
+  maker) gets the in-app notice `payroll.bonus.submitted` and an email. GET payroll/bonus/:id/form-c (either bonus key in
+  scope; approved or sent, else 409 "Form C is made once the bonus is approved."; rate limited) returns the Form C CSV:
+  one row per eligible employee, income tax and the amount paid from the off-cycle run once known, Father's name blank
+  (not held in YukthiX). Audited `payroll.bonus.register_exported` (rows, SHA-256).
+- **Migrations:** none.
+- **Tests:** see the builder report; manual steps MT-PAY-G-01 … 06.
 
 ## Reports builder status (PAY-25 payroll reports; branch `feat/yukthix-pay-reports`, 30 Oct 2026)
 

@@ -6036,5 +6036,122 @@
       "PAY-25 Register"
     ],
     "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-G-01",
+    "area": "Pay · Runs",
+    "screen": "Released held pay goes into the next monthly run (PAY-06 Release, item 10)",
+    "url": "http://localhost:3000/yx/payroll/inputs",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open. Second browser: payroll-approver@demo-org.test (Payroll Approver - Meena). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Before: a monthly run for last month that is approved, with one person (for example Arjun) whose salary was held by a hold added before it was approved; and this month's monthly run calculated and approved.",
+      "1. Open Payroll › Inputs › Holds. Press Release on Arjun's hold. Read the text under \"Pay through\" with \"Next bank file\" chosen.",
+      "2. Press Release with no reason typed.",
+      "3. Type \"Enquiry closed\", keep \"Next bank file\", press Release, then Release in the dialog.",
+      "4. Open last month's run › Files and press Make bank file.",
+      "5. Open this month's run › Files and make its bank file (give a reason if it already has one). Open the file.",
+      "6. As Meena release that bank file. As Suresh record Arjun's result as paid on this month's run (Payments page).",
+      "7. Open last month's run."
+    ],
+    "expected": "Step 1: \"Pays every held payslip in the bank file of the next monthly run (not the run it was held in).\" Step 2: the field error \"Say why the hold ends, in a few words.\" and the focus is on the reason box; nothing is released. Step 3: the dialog says \"Paid in the next monthly run’s bank file.\"; toast \"Salary for Arjun ... released into the next monthly run’s bank file\" (gone after 5 seconds). Step 4 (negative): refused: \"Nobody in this run is waiting to be paid by bank.\" Step 5: the file has Arjun's held salary at last month's net, narration \"Salary <last month>\". Step 6: Arjun's payslip shows Paid. Step 7: last month's run is Paid.",
+    "stories": [
+      "PAY-06 Release"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-G-02",
+    "area": "Pay · Runs",
+    "screen": "Input sources in the Validations tab (PAY-02, item 11)",
+    "url": "http://localhost:3000/yx/payroll/runs",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open this month's monthly run. Open the Validations tab.",
+      "2. Compare the \"Inputs for this period\" table with the Inputs tab of the same run.",
+      "3. Sign in as panel@demo-org.test (an employee) and open the same run address."
+    ],
+    "expected": "Step 1: above the Validations list, a panel \"Inputs for this period\" with Source, People and Days or amount (attendance, one-time pay, loans, ...), as in the PAY-02 story. Step 2: the same numbers. No page scroll sideways at 1278 x 635. Step 3 (negative): no access; no figures shown.",
+    "stories": [
+      "PAY-02 Blocked",
+      "PAY-03 Inputs"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-G-03",
+    "area": "Pay · Runs",
+    "screen": "PT and LWF due dates and unfiled dues on Payroll home (PAY-01, items 12 and 13)",
+    "url": "http://localhost:3000/yx/payroll/runs",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Before: the state due dates are loaded (npx ts-node scripts/load-rule-pack.ts src/statutory/packs/in-dues.json super@platform.test rules@platform.test, run once by the lead); the demo entity has approved payslips with Karnataka professional tax.",
+      "1. Open Payroll home and read \"Due this month\".",
+      "2. Leave a PF return of three months ago unfiled (do not file it in the statutory hub). Reload Payroll home.",
+      "3. File that return in the statutory hub (upload, then mark filed). Reload Payroll home.",
+      "4. Sign in as panel@demo-org.test (an employee) and open Payroll home."
+    ],
+    "expected": "Step 1: \"Professional tax (IN-KA)\" shows with a date (20th of the month after the wage month), like PF, ESI and TDS; the line \"dates depend on the state\" is gone for Karnataka. Step 2: the unfiled PF of three months ago shows as overdue with its penalty estimate. Step 3 (negative): it no longer shows; filed items of months before last month never show. Step 4 (negative): no dues are shown.",
+    "stories": [
+      "PAY-01 Draft"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail. Every due date is marked \"verify\" until the compliance owner confirms it."
+  },
+  {
+    "id": "MT-PAY-G-04",
+    "area": "Pay · Bonus",
+    "screen": "Bonus eligibility on the full-month salary (PAY-24 Compute, items 24 and 25)",
+    "url": "http://localhost:3000/yx/payroll/bonus",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Before: two people in the demo legal entity with salaries recorded for 2025-26: one on a monthly basic of ₹21,000 who took unpaid days in one month, one on a monthly basic of ₹21,000.01 or more who took 10 unpaid days every month.",
+      "1. Work out (or save the surplus again on) the 2025-26 bonus and find both people.",
+      "2. Read the note under the table."
+    ],
+    "expected": "Step 1: the first person is eligible for all 12 months (the unpaid days lower what the month earned, not the salary rate). Negative: the second person is not eligible: \"Wage above ₹21,000 a month all year.\" even though each month earned less than ₹21,000. Step 2: \"Eligibility: a monthly salary rate (the full month, not what a part month earned) up to ₹21,000 and at least 30 working days in the year.\" Working days are paid plus lay-off days (maternity days paid by ESI are not counted yet: known gap).",
+    "stories": [
+      "PAY-24 Minimum"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-G-05",
+    "area": "Pay · Bonus",
+    "screen": "A leaver's bonus is paid in the off-cycle bonus run (item 29)",
+    "url": "http://localhost:3000/yx/payroll/bonus",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open. Second browser: payroll-approver@demo-org.test (Payroll Approver - Meena). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Before: someone who left the demo legal entity before this month, eligible for the 2025-26 bonus.",
+      "1. Approve the 2025-26 bonus (Meena) and send it to an off-cycle run (Suresh).",
+      "2. Open the off-cycle bonus run › Validations.",
+      "3. Calculate the run and open the leaver's payslip.",
+      "4. In the same run, add an arrears item for the leaver and open Validations again."
+    ],
+    "expected": "Step 2: no \"no salary for this month\" block for the leaver. Step 3: the payslip has only the bonus line (and TDS if any); no salary. Step 4 (negative): with a non-bonus item the leaver is blocked again: \"<name>: no salary for this month; left out of the run until one is approved.\"",
+    "stories": [
+      "PAY-24 Sent",
+      "PAY-03 Inputs"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-G-06",
+    "area": "Pay · Bonus",
+    "screen": "The approver is told; Form C register (PAY-24 Approve, item 30)",
+    "url": "http://localhost:3000/yx/payroll/bonus",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open. Second browser: payroll-approver@demo-org.test (Payroll Approver - Meena). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As Suresh, look for \"Download Form C (bonus register)\" on a draft bonus (Approve and pay).",
+      "2. As Suresh, send the bonus for approval. As Meena, open the bell.",
+      "3. As Suresh, open his own bell.",
+      "4. As Meena, approve it, then press \"Download Form C (bonus register)\" and open the file.",
+      "5. Open Payroll › Audit log and search for the export.",
+      "6. Sign in as panel@demo-org.test (an employee) and open http://localhost:3000/api/v1/payroll/bonus/<id>/form-c."
+    ],
+    "expected": "Step 1 (negative): no button before approval. Step 2: Meena has \"The statutory bonus for 2025-26 (<entity>) waits for your approval.\" with a link to the bonus page, and an email. Step 3 (negative): Suresh (who made it) is not told. Step 4: toast \"Form C for 2025-26 downloaded.\"; the CSV has the Form C columns (Sl. No. to Signature), one row per eligible employee, amounts with two decimals; Father's name is blank (not held in YukthiX). Step 5: \"payroll.bonus.register_exported\" with the row count. Step 6: refused (no access).",
+    "stories": [
+      "PAY-24 Approved",
+      "PAY-24 Approve"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
   }
 ]
