@@ -1,9 +1,9 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { AdvisoriesScreen, LoansScreen, MyDeclarationsScreen, NomineeDrawer, PayslipQueriesScreen, ProofCheckScreen, RegistersScreen, RunPaymentsScreen, TaxCertificatesScreen } from './operations';
-import { PAYSLIPS, PEOPLE, RUN } from './fixtures-5j';
-import { ADVISORIES, CERTIFICATES, DECLARATIONS, DISBURSEMENTS, ENTITIES, LOANS, PROOFS, QUERIES, REGISTERS } from './fixtures-ops';
+import { AdvisoriesScreen, LoansScreen, MyDeclarationsScreen, ProofCheckScreen, RegistersScreen, TaxCertificatesScreen } from './operations';
+import { PEOPLE } from './fixtures-5j';
+import { ADVISORIES, CERTIFICATES, DECLARATIONS, ENTITIES, LOANS, PROOFS, REGISTERS } from './fixtures-ops';
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const fn = () => vi.fn(async () => ({}) as never);
@@ -11,63 +11,6 @@ const nameOf = (id: string) => PEOPLE.find((p) => p.employeeId === id)?.name ?? 
 const search = async () => PEOPLE.map((p) => ({ id: p.employeeId, name: p.name, employeeCode: p.employeeCode ?? undefined }));
 
 describe('payroll operations screens', () => {
-  it('payments: a failed bank result needs the bank’s reason, shown only after trying to save', async () => {
-    const onResults = fn();
-    render(
-      <RunPaymentsScreen
-        state="ready"
-        run={{ ...RUN, status: 'approved' }}
-        payslips={PAYSLIPS}
-        disbursements={DISBURSEMENTS}
-        nameOf={nameOf}
-        can={{ record: true }}
-        onBack={vi.fn()}
-        onResults={onResults}
-        onUploadResults={vi.fn(async () => ({ recorded: 1 }))}
-        onDisburse={fn()}
-      />,
-    );
-    // s3 is paid in cash, so it is not in the bank list.
-    expect(within(screen.getByRole('table', { name: 'Bank payments' })).queryByText('Sridhar Fernandes')).not.toBeInTheDocument();
-    await ue.click(screen.getByRole('button', { name: 'Record the bank result for Arjun Kulkarni' }));
-    await ue.click(screen.getByRole('radio', { name: 'Failed' }));
-    expect(screen.queryByText(/Fix these/)).not.toBeInTheDocument();
-    await ue.click(screen.getByRole('button', { name: 'Record' }));
-    expect(screen.getByText(/Fix these/)).toBeInTheDocument();
-    expect(onResults).not.toHaveBeenCalled();
-    await ue.type(screen.getByRole('textbox', { name: /Reason from the bank/ }), 'Account closed');
-    await ue.click(screen.getByRole('button', { name: 'Record' }));
-    await waitFor(() => expect(onResults).toHaveBeenCalledWith([{ payslipId: 's1', status: 'failed', reason: 'Account closed' }]));
-  });
-
-  it('payments: a paid result entered by hand says how it is known; the API’s row problems are shown', async () => {
-    const onResults = vi.fn(async () => {
-      throw Object.assign(new Error('Nothing was recorded. Fix these rows first.'), { body: { problems: ['Row 1: the payslip is pending, not waiting for a bank result.'] } });
-    });
-    render(<RunPaymentsScreen state="ready" run={{ ...RUN, status: 'approved' }} payslips={PAYSLIPS} disbursements={[]} nameOf={nameOf} can={{ record: true }} onBack={vi.fn()} onResults={onResults} onUploadResults={vi.fn(async () => ({ recorded: 0 }))} onDisburse={fn()} />);
-    await ue.click(screen.getByRole('button', { name: 'Record the bank result for Arjun Kulkarni' }));
-    await ue.click(screen.getByRole('button', { name: 'Record' }));
-    expect(onResults).not.toHaveBeenCalled();
-    await ue.type(screen.getByRole('textbox', { name: /How you know/ }), 'Seen on the statement');
-    await ue.click(screen.getByRole('button', { name: 'Record' }));
-    expect(await screen.findByText(/not waiting for a bank result/)).toBeInTheDocument();
-    expect(onResults).toHaveBeenCalledWith([{ payslipId: 's1', status: 'paid', reason: 'Seen on the statement' }]);
-  });
-
-  it('cash and cheque: a cheque needs its number; cash records the day', async () => {
-    const onDisburse = fn();
-    render(<RunPaymentsScreen state="ready" run={{ ...RUN, status: 'approved' }} payslips={PAYSLIPS} disbursements={DISBURSEMENTS} nameOf={nameOf} can={{ record: true }} onBack={vi.fn()} onResults={fn()} onUploadResults={vi.fn(async () => ({ recorded: 0 }))} onDisburse={onDisburse} />);
-    await ue.click(screen.getByRole('tab', { name: 'Cash and cheque' }));
-    await ue.click(screen.getByRole('button', { name: 'Record the payment to Sridhar Fernandes' }));
-    await ue.click(screen.getByRole('radio', { name: 'Cheque' }));
-    await ue.type(screen.getByLabelText(/Paid on/), '2026-10-01');
-    await ue.click(screen.getByRole('button', { name: 'Record payment' }));
-    expect(screen.getAllByText('A cheque number is 6 to 10 digits.').length).toBeGreaterThan(0);
-    await ue.type(screen.getByRole('textbox', { name: /Cheque number/ }), '123456');
-    await ue.click(screen.getByRole('button', { name: 'Record payment' }));
-    await waitFor(() => expect(onDisburse).toHaveBeenCalledWith({ payslipId: 's3', mode: 'cheque', chequeNo: '123456', paidOn: '2026-10-01' }));
-  });
-
   it('loans: payroll asks for someone else with a person; their own loan cannot be changed by them', async () => {
     const onRequest = fn();
     render(<LoansScreen state="ready" loans={LOANS} nameOf={nameOf} can={{ manage: true }} onSearch={search} onRequest={onRequest} onChange={fn()} />);
@@ -112,19 +55,6 @@ describe('payroll operations screens', () => {
     await ue.click(screen.getByRole('button', { name: 'Ask for an advance or loan' }));
     expect(screen.queryByRole('radiogroup', { name: 'For' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Search' })).not.toBeInTheDocument();
-  });
-
-  it('payslip queries: payroll replies and closes; its own queries are not here', async () => {
-    const onReply = fn();
-    const onClose = fn();
-    render(<PayslipQueriesScreen state="ready" queries={[...QUERIES, { ...QUERIES[0], id: 'q9', mine: true, employeeId: 'p3' }]} nameOf={nameOf} status="open" onStatus={vi.fn()} onReply={onReply} onClose={onClose} />);
-    expect(screen.queryByText('Sridhar Fernandes')).not.toBeInTheDocument();
-    await ue.click(screen.getByRole('button', { name: 'Open the query from Arjun Kulkarni' }));
-    await ue.type(screen.getByRole('textbox', { name: /Reply/ }), 'HRA follows the new basic from September.');
-    await ue.click(screen.getByRole('button', { name: 'Send reply' }));
-    await waitFor(() => expect(onReply).toHaveBeenCalledWith(QUERIES[0], 'HRA follows the new basic from September.'));
-    await ue.click(screen.getByRole('button', { name: 'Close query' }));
-    await waitFor(() => expect(onClose).toHaveBeenCalledWith(QUERIES[0]));
   });
 
   it('declarations: rent asks for its months and city; a turned-down proof shows the reason', async () => {
@@ -223,19 +153,5 @@ describe('payroll operations screens', () => {
     await ue.click(confirm);
     await waitFor(() => expect(onIssueAll).toHaveBeenCalledWith(expect.objectContaining({ phrase: 'ISSUE FORM16 2025-26' })));
     expect(await screen.findByText('1 issued')).toBeInTheDocument();
-  });
-
-  it('nominee: whose documents, an email and a day after today', async () => {
-    const onSave = fn();
-    render(<NomineeDrawer onSearch={search} onClose={vi.fn()} onSave={onSave} />);
-    await ue.click(screen.getByRole('button', { name: 'Add nominee' }));
-    expect(onSave).not.toHaveBeenCalled();
-    await ue.click(screen.getByRole('button', { name: 'Search' }));
-    await ue.click(await screen.findByRole('button', { name: /Arjun Kulkarni/ }));
-    await ue.type(screen.getByRole('textbox', { name: /Nominee's name/ }), 'Lakshmi Kulkarni');
-    await ue.type(screen.getByRole('textbox', { name: /Nominee's email/ }), 'lakshmi@example.com');
-    await ue.type(screen.getByLabelText(/Access until/), '2099-12-31');
-    await ue.click(screen.getByRole('button', { name: 'Add nominee' }));
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ employeeId: 'p1', name: 'Lakshmi Kulkarni', email: 'lakshmi@example.com', validUntil: '2099-12-31' }));
   });
 });

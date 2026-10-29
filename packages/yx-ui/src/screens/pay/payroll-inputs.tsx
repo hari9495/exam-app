@@ -27,6 +27,8 @@ import { Amount, FactRow, PayFrame, SectionTitle, StateBlock, type PayPersona, t
 import { FIN_APPROVER, HOLDS, HR_HEAD, LOP_ROWS, MY_LOP_DAY, ONE_TIME, PAYROLL_ADMIN, QUERIES, RUN, RUN_HISTORY, RUN_ROWS, d, type HoldRow, type LopRow, type OneTimeRow, type QueryRow } from './pay-data';
 import { FNF_LEAVER, FNF_NET } from './offcycle';
 import { applyDeductionCap, computeTax, esiContribution, pfContribution, type DeductionLine } from './pay-logic';
+import { LiveHoldsPanel, LiveInputsScreen, LiveLopPanel, LiveQueryQueue, LiveRecoveries, type LiveInputs, type LiveQueries, type LiveRecoveriesData } from './payroll-inputs-live';
+import { LivePaymentsScreen, SamplePaymentModes, type LivePayments } from './payments-live';
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MONTH_NAME = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -98,6 +100,7 @@ export function BulkUploadDrawer({
   columns = ['Employee ID', 'Employee name', 'Value', 'Reason'],
   results,
   onImport,
+  onFile,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
@@ -106,10 +109,14 @@ export function BulkUploadDrawer({
   /** Header row of the downloadable template. */
   columns?: string[];
   results?: UploadRowResult[];
-  onImport: () => void;
+  onImport: () => void | Promise<void>;
+  /** Live: reads the picked file and sets `results`; reject with an Error whose message says what to fix. */
+  onFile?: (file: File) => Promise<void>;
 }) {
   const bad = results?.filter((r) => r.error) ?? [];
   const good = (results?.length ?? 0) - bad.length;
+  const [early, setEarly] = useState(false);
+  const [importing, setImporting] = useState(false);
   return (
     <Drawer
       open={open}
@@ -121,7 +128,20 @@ export function BulkUploadDrawer({
         <>
           {!results && <span className="yx-pay-muted">Upload a file to check the rows.</span>}
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button variant="primary" disabled={!results || good === 0} onClick={onImport}>
+          <Button
+            variant="primary"
+            loading={importing}
+            onClick={async () => {
+              // Never disabled: pressed before there is a valid row, it says what is missing.
+              if (!results || good === 0) return setEarly(true);
+              setImporting(true);
+              try {
+                await onImport();
+              } finally {
+                setImporting(false);
+              }
+            }}
+          >
             {results ? `Import ${good} valid rows` : 'Import rows'}
           </Button>
         </>
@@ -133,7 +153,12 @@ export function BulkUploadDrawer({
             Download {template} template (CSV)
           </Button>
         </div>
-        <FileUpload upload={okUpload} accept={['.csv', '.xlsx']} multiple={false} />
+        <FileUpload upload={onFile ? (f) => (setEarly(false), onFile(f)) : okUpload} accept={onFile ? ['.csv'] : ['.csv', '.xlsx']} multiple={false} />
+        {early && (!results || good === 0) && (
+          <InlineAlert tone="danger" title={results ? 'No row is ready to import' : 'Upload a file first'}>
+            {results ? 'Fix the rows with errors in the file and upload it again.' : 'Pick the filled-in template; its rows are checked before anything is imported.'}
+          </InlineAlert>
+        )}
         {results && (
           <>
             <InlineAlert tone={bad.length ? 'warning' : 'success'} title={`${good} rows ready · ${bad.length} rows with errors`}>
@@ -182,8 +207,13 @@ export const LOP_UPLOAD: UploadRowResult[] = [
   { row: 6, employee: lopWho(5), value: 'LOP 1', error: 'Reason is empty. Add a reason for each row with LOP.' },
 ];
 
-/** PAY-04 · Manual LOP / payable-days input for Assumed-present groups (+ bulk upload). */
-export function LopInputScreen({ state = 'ready', upload, locked, rows: initial = LOP_ROWS }: { state?: ViewState; upload?: boolean; locked?: boolean; rows?: LopRow[] }) {
+type LopInputProps = { state?: ViewState; upload?: boolean; locked?: boolean; rows?: LopRow[] };
+/** PAY-04 · Manual LOP / payable-days input for Assumed-present groups (+ bulk upload). The app passes `live` (the Loss of pay tab of Payroll › Inputs). */
+export function LopInputScreen(p: LopInputProps & { live?: LiveInputs }) {
+  return p.live ? <LiveLopPanel live={p.live} /> : <SampleLopInputScreen {...p} />;
+}
+
+function SampleLopInputScreen({ state = 'ready', upload, locked, rows: initial = LOP_ROWS }: LopInputProps) {
   const [rows, setRows] = useState(initial);
   const [showUpload, setShowUpload] = useState(!!upload);
   const [done, setDone] = useState<string | null>(null);
@@ -305,7 +335,7 @@ const OTP_UPLOAD: { row: number; item: Pick<OneTimeRow, 'employee' | 'code' | 't
 const payeeLabel = (p: { name: string; code: string }) => `${p.name} · ${p.code}`;
 
 /** Prorated months of a recurring item: part month at the start, full months, part month at the end. */
-function recurringPlan(amount: number, start: Date, end: Date) {
+export function recurringPlan(amount: number, start: Date, end: Date) {
   const apart = monthsApart(start, end);
   if (apart < 1 || end <= start) return null;
   const firstDays = daysIn(start) - start.getDate() + 1;
@@ -324,8 +354,14 @@ function recurringPlan(amount: number, start: Date, end: Date) {
 
 type Hold = HoldRow & { /** New hold: applies from the October run (September's bank file is already released). */ fromOct?: boolean };
 
-/** PAY-05 · One-time pay: list, bulk upload, recurring, add sheet with effect summary. */
-export function OneTimePayScreen({ state = 'ready', sheet, upload, rows: initialRows = ONE_TIME_ROWS, tab = 'onetime' }: { state?: ViewState; sheet?: 'add' | 'recurring'; upload?: boolean; rows?: OneTimeRow[]; tab?: 'onetime' | 'holds' }) {
+type OneTimePayProps = { state?: ViewState; sheet?: 'add' | 'recurring'; upload?: boolean; rows?: OneTimeRow[]; tab?: 'onetime' | 'holds' };
+/** PAY-05 · One-time pay: list, bulk upload, recurring, add sheet with effect summary. The app passes `live`: Payroll ›
+ * Inputs, with the loss of pay (PAY-04) and salary holds (PAY-06) as tabs next to it. */
+export function OneTimePayScreen(p: OneTimePayProps & { live?: LiveInputs }) {
+  return p.live ? <LiveInputsScreen live={p.live} lopPanel={<LopInputScreen key={p.live.month} live={p.live} />} holdsPanel={<SalaryHoldsScreen live={p.live} />} /> : <SampleOneTimePayScreen {...p} />;
+}
+
+function SampleOneTimePayScreen({ state = 'ready', sheet, upload, rows: initialRows = ONE_TIME_ROWS, tab = 'onetime' }: OneTimePayProps) {
   const ready = state === 'ready';
   // Before the upload is imported, its bonus (o7) is not in the list yet.
   const [rows, setRows] = useState(upload ? initialRows.filter((r) => r.id !== O7.id) : initialRows);
@@ -953,8 +989,13 @@ function HoldsPanel({ state, holds, setHolds, releaseId, addOpen }: { state: Vie
   );
 }
 
-/** PAY-06 · Salary holds & releases (reason codes, hold ageing). Lives on the One-time pay & holds page. */
-export function SalaryHoldsScreen({ state = 'ready', releaseId, addOpen }: { state?: ViewState; releaseId?: string; addOpen?: boolean }) {
+type SalaryHoldsProps = { state?: ViewState; releaseId?: string; addOpen?: boolean };
+/** PAY-06 · Salary holds & releases (reason codes, hold ageing). Lives on the One-time pay & holds page; the app passes `live` (the Salary holds tab of Payroll › Inputs). */
+export function SalaryHoldsScreen(p: SalaryHoldsProps & { live?: LiveInputs }) {
+  return p.live ? <LiveHoldsPanel live={p.live} /> : <SampleSalaryHoldsScreen {...p} />;
+}
+
+function SampleSalaryHoldsScreen({ state = 'ready', releaseId, addOpen }: SalaryHoldsProps) {
   const [holds, setHolds] = useState<Hold[]>(HOLDS);
   const open = openHolds(holds);
   return (
@@ -1100,8 +1141,23 @@ const REPAY_ROUTE = {
 } as const;
 type RepayRoute = keyof typeof REPAY_ROUTE;
 
-/** PAY-10 · Payments & files: payment status and failures, disbursement register, journal export. */
-export function PaymentsScreen({ persona = 'pa', tab = 'status', state = 'ready', failure: openStatus }: { persona?: PayPersona; tab?: 'status' | 'register' | 'files' | 'journal'; state?: ViewState; failure?: 'Returned' | 'Failed' }) {
+export interface PaymentsProps {
+  persona?: PayPersona;
+  tab?: 'status' | 'register' | 'files' | 'journal' | 'modes';
+  state?: ViewState;
+  failure?: 'Returned' | 'Failed';
+  /** "Payment modes" tab (founder decision 3): its own states and the ask drawer. */
+  modes?: 'ready' | 'empty' | 'no-access';
+  asking?: boolean;
+}
+
+/** PAY-10 · Payments & files: payment status and failures, disbursement register, bank files, journal export and
+ * payment modes. The app passes `live` (a run's payments, every payroll file, or the payment modes); stories show the sample. */
+export function PaymentsScreen(p: PaymentsProps & { live?: LivePayments }) {
+  return p.live ? <LivePaymentsScreen live={p.live} /> : <SamplePayments {...p} />;
+}
+
+function SamplePayments({ persona = 'pa', tab = 'status', state = 'ready', failure: openStatus, modes = 'ready', asking = false }: PaymentsProps) {
   // After Retry on the error state the panel loads (StateBlock waits 1.2 s), so the header follows it.
   const [retried, setRetried] = useState(false);
   const ready = state === 'ready' || (state === 'error' && retried);
@@ -1249,7 +1305,11 @@ export function PaymentsScreen({ persona = 'pa', tab = 'status', state = 'ready'
             Bank files
           </TabsTrigger>
           <TabsTrigger value="journal">Journal export</TabsTrigger>
+          <TabsTrigger value="modes">Payment modes</TabsTrigger>
         </TabsList>
+        <TabsContent value="modes">
+          <SamplePaymentModes variant={modes} asking={asking} />
+        </TabsContent>
         <TabsContent value="status">
           <div className="yx-pay-stack">
             <DataTable
@@ -1559,8 +1619,14 @@ export const RECOVERIES: Recovery[] = [
   { id: 'r4', employee: SPARE[4].name, code: SPARE[4].code, kind: 'Overpayment', origin: 'Incentive paid twice, Feb 2025', balance: 2_300, plan: 'Write off', note: 'Below the cost of recovery', consent: 'Not needed', status: 'Write-off asked' },
 ];
 
-/** PAY-19 · Court orders, carry-forwards & overpayment recoveries (T2 / T3) with the deduction-cap preview. */
-export function RecoveriesScreen({ tab = 'court', state = 'ready', openId }: { tab?: 'court' | 'carry' | 'over' | 'cap'; state?: ViewState; openId?: string }) {
+type RecoveriesProps = { tab?: 'court' | 'carry' | 'over' | 'cap'; state?: ViewState; openId?: string };
+/** PAY-19 · Court orders, carry-forwards & overpayment recoveries (T2 / T3) with the deduction-cap preview. The app passes
+ * `live`: the court orders and overpayments tabs on Payroll › Arrears and recoveries (founder decision 7). */
+export function RecoveriesScreen(p: RecoveriesProps & { live?: LiveRecoveriesData }) {
+  return p.live ? <LiveRecoveries live={p.live} /> : <SampleRecoveriesScreen {...p} />;
+}
+
+function SampleRecoveriesScreen({ tab = 'court', state = 'ready', openId }: RecoveriesProps) {
   const [orders, setOrders] = useState(COURT_ORDERS);
   const [openRef, setOpenRef] = useState<string | null>(COURT_ORDERS.find((c) => c.id === openId)?.id ?? null);
   const open = orders.find((c) => c.id === openRef) ?? null;
@@ -1963,8 +2029,13 @@ const dueText = (q: QueryRow) => {
   return n < 0 ? `Overdue ${plural(-n, 'day')}` : n === 0 ? 'Today' : `In ${plural(n, 'day')}`;
 };
 
-/** PAY-20 · Payslip query queue (T2) with in-app reply thread. */
-export function QueryQueueScreen({ state = 'ready', openId, rows: initialRows = QUERY_ROWS }: { state?: ViewState; openId?: string; rows?: QueryRow[] }) {
+type QueryQueueProps = { state?: ViewState; openId?: string; rows?: QueryRow[] };
+/** PAY-20 · Payslip query queue (T2) with in-app reply thread. The app passes `live` (Payroll › Payslip queries). */
+export function QueryQueueScreen(p: QueryQueueProps & { live?: LiveQueries }) {
+  return p.live ? <LiveQueryQueue live={p.live} /> : <SampleQueryQueueScreen {...p} />;
+}
+
+function SampleQueryQueueScreen({ state = 'ready', openId, rows: initialRows = QUERY_ROWS }: QueryQueueProps) {
   const [rows, setRows] = useState(initialRows);
   const [openRef, setOpenRef] = useState<string | null>(initialRows.find((q) => q.id === openId)?.id ?? null);
   const open = rows.find((q) => q.id === openRef) ?? null;

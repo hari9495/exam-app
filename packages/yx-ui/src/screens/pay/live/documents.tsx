@@ -1,16 +1,13 @@
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { Button } from '../../../components/button';
 import { Badge, type BadgeTone } from '../../../components/display';
 import { EmptyState, InlineAlert } from '../../../components/feedback';
 import { FormField, useTooEarly } from '../../../components/field';
 import { CodeField, TextField } from '../../../components/inputs';
-import { Select } from '../../../components/select';
 import { Card } from '../../../components/shell';
 import { useRun } from '../../org/org-kit';
 import { LivePage, dateText } from '../../time/live/kit';
-import { IrreversibleSheet } from '../pay-kit';
-import { monthText } from './periods';
-import type { Confirmation, ExchangeFile, ExchangeFiles, LoadState, PayDocument, PayDocuments } from './types';
+import type { LoadState, PayDocument } from './types';
 
 // Pay documents (P05, PAY-1.09 / 1.10) and exchange files (PAY-1.11): issued documents never change (a correction
 // supersedes them), each has a reference without gaps, a SHA-256 and a public verify code; files carry their hash, rows
@@ -24,68 +21,8 @@ const DOC_STATUS: Record<PayDocument['status'], { label: string; tone: BadgeTone
     tone: 'warning',
   },
 };
-const FILE_STATUS: Record<ExchangeFile['status'], { label: string; tone: BadgeTone }> = {
-  generated: { label: 'Waiting for release', tone: 'info' },
-  release_pending: { label: 'Release asked', tone: 'info' },
-  released: { label: 'Released', tone: 'success' },
-  superseded: { label: 'Replaced', tone: 'neutral' },
-};
-const short = (h: string) => `${h.slice(0, 8)}…${h.slice(-6)}`;
-const rupees = (v: string) => {
-  const [i, f = '00'] = v.split('.');
-  const head = i.slice(0, -3);
-  return `₹${head ? `${head.replace(/\B(?=(\d{2})+(?!\d))/g, ',')},` : ''}${i.slice(-3)}.${f.padEnd(2, '0')}`;
-};
 
-// ------------------------------------------------------------------------------------------ documents
-
-export interface PayDocumentsScreenProps {
-  state: LoadState;
-  onRetry?: () => void;
-  data: PayDocuments | null;
-  entityId: string | null;
-  onEntity: (id: string | null) => void;
-  onDownload: (doc: PayDocument) => Promise<unknown>;
-  verifyUrl: (code: string) => string;
-  /** Header actions, such as adding a nominee for the pay portal. */
-  actions?: ReactNode;
-}
-
-export function PayDocumentsScreen(p: PayDocumentsScreenProps) {
-  const d = p.data;
-  const { busy, error, run } = useRun();
-  return (
-    <LivePage
-      title="Pay documents"
-      description="Payslips, letters and advices as issued. An issued document never changes; a correction issues a new one that supersedes it. Every view of someone else's document is recorded."
-      state={p.state}
-      onRetry={p.onRetry}
-      what="pay documents"
-      grantedBy="your payroll admin"
-      actions={p.actions}
-    >
-      {d && (
-        <>
-          <FormField id="pd-entity" label="Legal entity">
-            <Select value={p.entityId} onChange={p.onEntity} clearable placeholder="All in your scope" options={d.entities.map((e) => ({ value: e.id, label: e.name }))} />
-          </FormField>
-          {error && (
-            <InlineAlert tone="danger" title="Not downloaded">
-              {error}
-            </InlineAlert>
-          )}
-          <Card title="Documents">
-            {d.documents.length ? (
-              <DocTable docs={d.documents} showPerson busy={busy} onDownload={(x) => void run(x.id, () => p.onDownload(x))} verifyUrl={p.verifyUrl} />
-            ) : (
-              <EmptyState compact title="No documents yet" description="Payslips appear here when payroll issues them." />
-            )}
-          </Card>
-        </>
-      )}
-    </LivePage>
-  );
-}
+// ------------------------------------------------------------------------------------------ documents (the payroll list is the PAY-48 design: ../payroll-records.tsx)
 
 function DocTable({ docs, showPerson, busy, onDownload, verifyUrl }: { docs: PayDocument[]; showPerson?: boolean; busy: string | null; onDownload: (d: PayDocument) => void; verifyUrl: (code: string) => string }) {
   return (
@@ -158,149 +95,6 @@ export function MyPayDocumentsScreen(p: MyPayDocumentsScreenProps) {
         </InlineAlert>
       )}
       {p.data && (p.data.length ? <DocTable docs={p.data} busy={busy} onDownload={(x) => void run(x.id, () => p.onDownload(x))} verifyUrl={p.verifyUrl} /> : <EmptyState compact title="No pay documents yet" />)}
-    </LivePage>
-  );
-}
-
-// ------------------------------------------------------------------------------------------ exchange files
-
-export interface ExchangeFilesScreenProps {
-  state: LoadState;
-  onRetry?: () => void;
-  data: ExchangeFiles | null;
-  me: string;
-  onDownload: (file: ExchangeFile) => Promise<unknown>;
-  onRelease: (file: ExchangeFile, confirmation: Confirmation) => Promise<unknown>;
-}
-
-export function ExchangeFilesScreen(p: ExchangeFilesScreenProps) {
-  const d = p.data;
-  const [releasing, setReleasing] = useState<ExchangeFile | null>(null);
-  const [done, setDone] = useState<string | null>(null);
-  const { busy, error, run, clearError } = useRun();
-  const entity = (id: string) => d?.entities.find((e) => e.id === id)?.name ?? '';
-  return (
-    <LivePage
-      title="Payroll files"
-      description="Bank, statutory and accounting files as generated, with their hash, rows and totals. They never change. Someone other than the person who made a file releases it."
-      state={p.state}
-      onRetry={p.onRetry}
-      what="payroll files"
-      grantedBy="your payroll admin"
-    >
-      {done && (
-        <InlineAlert tone="success" title="Released">
-          {done}
-        </InlineAlert>
-      )}
-      {error && !releasing && (
-        <InlineAlert tone="danger" title="That didn't work">
-          {error}
-        </InlineAlert>
-      )}
-      {d &&
-        (d.files.length ? (
-          <Card title="Files">
-            <table className="yx-tim-table" aria-label="Payroll files">
-              <thead>
-                <tr>
-                  <th scope="col">File</th>
-                  <th scope="col">Legal entity</th>
-                  <th scope="col">Month</th>
-                  <th scope="col">Rows</th>
-                  <th scope="col">Total</th>
-                  <th scope="col">SHA-256</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">
-                    <span className="yx-visually-hidden">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {d.files.map((f) => (
-                  <tr key={f.id}>
-                    <th scope="row">
-                      {f.kindLabel}
-                      <div className="yx-tim-note">
-                        {f.fileName} · made by {f.generatedBy}
-                        {f.releasedBy ? ` · released by ${f.releasedBy}` : ''}
-                      </div>
-                    </th>
-                    <td>{entity(f.legalEntityId)}</td>
-                    <td>{f.month ? monthText(f.month) : ''}</td>
-                    <td>{f.rows}</td>
-                    <td>{f.totals.amount ? rupees(f.totals.amount) : ''}</td>
-                    <td className="yx-tim-note" title={f.sha256}>
-                      {short(f.sha256)}
-                    </td>
-                    <td>
-                      <Badge tone={FILE_STATUS[f.status].tone}>{FILE_STATUS[f.status].label}</Badge>
-                    </td>
-                    <td>
-                      <div className="yx-tim-row">
-                        <Button size="sm" loading={busy === f.id} onClick={() => void run(f.id, () => p.onDownload(f))}>
-                          Download
-                        </Button>
-                        {f.canRelease && (
-                          <Button size="sm" variant="primary" onClick={() => setReleasing(f)}>
-                            Release
-                          </Button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
-        ) : (
-          <EmptyState title="No payroll files yet" description="Bank and statutory files appear here when payroll generates them." />
-        ))}
-      {releasing && (
-        <IrreversibleSheet
-          open
-          onOpenChange={(o) => {
-            if (!o) {
-              setReleasing(null);
-              clearError();
-            }
-          }}
-          title={`Release ${releasing.kindLabel.toLowerCase()}`}
-          subtitle={releasing.fileName}
-          impact={[
-            { label: 'Rows', value: String(releasing.rows) },
-            {
-              label: 'Total',
-              value: releasing.totals.amount ? rupees(releasing.totals.amount) : '—',
-            },
-            { label: 'SHA-256', value: short(releasing.sha256) },
-            { label: 'Made by', value: releasing.generatedBy },
-          ]}
-          cannotUndo="A released file is final: the month can no longer be reopened."
-          correction="A mistake found later is paid as a correction in the next payroll."
-          phrase={`RELEASE ${releasing.rows}`}
-          maker={releasing.generatedBy}
-          checker={p.me}
-          confirmLabel="Release the file"
-          confirmVariant="primary"
-          error={error}
-          onConfirm={() =>
-            void run('release', async () => {
-              const f = releasing;
-              await p.onRelease(f, {
-                phrase: `RELEASE ${f.rows}`,
-                impact: [
-                  { label: 'Rows', value: String(f.rows) },
-                  { label: 'Total', value: f.totals.amount ?? '' },
-                  { label: 'SHA-256', value: f.sha256 },
-                ],
-              });
-              setReleasing(null);
-              setDone(`${f.fileName} is released.`);
-            })
-          }
-        />
-      )}
     </LivePage>
   );
 }

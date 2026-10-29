@@ -1,13 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { PayInputsScreen, type HoldRow, type LopRow, type OneTimeItem } from '@yukthix/ui/pay';
+import { OneTimePayScreen, type HoldRow, type LopRow, type OneTimeItem } from '@yukthix/ui/pay';
 import { payState, usePay, usePayWrite } from '../../../../../lib/yx-pay';
 import { usePeopleSearch } from '../../../../../lib/yx-pay-5b';
 import { useNames } from '../../../../../lib/yx-pay-5j';
 import { todayIndia } from '../../../../../lib/yx-time';
 
-// Payroll › Inputs (PAY-10.01, PAY-04 … PAY-06): loss of pay, one-time pay and holds for a month.
+// Payroll › Inputs: the designed PAY-05 one-time pay screen with PAY-04 loss of pay and PAY-06 salary holds as tabs.
 export default function YxPayInputsPage() {
   const [month, setMonth] = useState(todayIndia().slice(0, 7));
   const lop = usePay<LopRow[]>(`/lop-inputs/${month}`);
@@ -17,21 +17,28 @@ export default function YxPayInputsPage() {
   const search = usePeopleSearch();
   const nameOf = useNames();
   return (
-    <PayInputsScreen
-      state={payState(oneTime)}
-      onRetry={() => void oneTime.refetch()}
-      month={month}
-      onMonth={setMonth}
-      nameOf={nameOf}
-      lop={lop.data ?? (lop.isError ? [] : null)}
-      oneTime={oneTime.data ?? null}
-      holds={holds.data ?? (holds.isError ? [] : null)}
-      onSearch={(q) => search(q)}
-      onSaveLop={(row) => write(`/lop-inputs/${month}`, { rows: [row] }, 'PUT')}
-      onAddOneTime={(row) => write<{ status: string }>('/one-time-pays', row)}
-      onCancelOneTime={(id) => write(`/one-time-pays/${encodeURIComponent(id)}/cancel`, undefined, 'PATCH')}
-      onAddHold={(row) => write('/holds', row)}
-      onReleaseHold={(id) => write(`/holds/${encodeURIComponent(id)}/release`)}
+    <OneTimePayScreen
+      live={{
+        state: payState(oneTime),
+        onRetry: () => void Promise.all([oneTime.refetch(), lop.refetch(), holds.refetch()]),
+        month,
+        onMonth: setMonth,
+        today: todayIndia(),
+        nameOf,
+        onSearch: (q) => search(q),
+        lop: { state: payState(lop), rows: lop.data ?? null, onSave: (rows, source) => write(`/lop-inputs/${month}`, { rows, source }, 'PUT') },
+        oneTime: {
+          rows: oneTime.data ?? null,
+          onAdd: (row) => write<{ status: string }>('/one-time-pays', row),
+          onCancel: (id) => write(`/one-time-pays/${encodeURIComponent(id)}/cancel`, undefined, 'PATCH'),
+        },
+        holds: {
+          state: payState(holds),
+          rows: holds.data ?? null,
+          onAdd: (row) => write('/holds', row),
+          onRelease: (id) => write(`/holds/${encodeURIComponent(id)}/release`),
+        },
+      }}
     />
   );
 }
