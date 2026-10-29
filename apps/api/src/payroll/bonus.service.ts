@@ -50,6 +50,7 @@ const SETTING_KEYS = {
   carryYears: 'payroll.bonus.carry_years',
   dueMonths: 'payroll.bonus.due_months',
 } as const;
+const MAKER_ACTIONS = ['payroll.bonus.computed', 'payroll.bonus.changed', 'payroll.bonus.row_changed', 'payroll.bonus.submitted'];
 const NUMERIC: (keyof BonusRules)[] = ['yearStartMonth', 'minWorkingDays', 'carryYears', 'dueMonths'];
 
 @Injectable()
@@ -98,6 +99,12 @@ export class BonusService {
     return comp;
   }
 
+  /** Everyone who worked it out, changed it or submitted it (from the audit trail): none of them approves it. */
+  private async makers(tx: Tx, c: CompanyContext, comp: Comp): Promise<string[]> {
+    const rows = await tx.auditLog.findMany({ where: { organizationId: c.organizationId, entityType: 'bonus_computation', entityId: comp.id, action: { in: MAKER_ACTIONS } }, select: { actorUserId: true } });
+    return [...new Set([comp.createdBy, comp.updatedBy, ...(comp.submittedBy ? [comp.submittedBy] : []), ...rows.map((r) => r.actorUserId).filter((x): x is string => !!x)])];
+  }
+
   private draftOnly(comp: Comp) {
     if (comp.status === 'submitted') throw new ConflictException('This bonus is waiting for approval. Ask the approver to send it back before changing it.');
     if (comp.status !== 'draft') throw new ConflictException(`This bonus is already ${comp.status === 'sent' ? 'sent to an off-cycle run' : 'approved'} and can no longer change.`);
@@ -143,7 +150,7 @@ export class BonusService {
     const users = new Map((await tx.user.findMany({ where: { organizationId: org, id: { in: userIds } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
     const run = comp.runId ? await tx.payrollRun.findFirst({ where: { organizationId: org, id: comp.runId }, select: { id: true, status: true, periodStart: true } }) : null;
     const earlier = await tx.bonusComputation.count({ where: { organizationId: org, legalEntityId: comp.legalEntityId, yearStart: { lt: comp.yearStart }, status: { in: ['approved', 'sent'] } } });
-    const makers = [comp.createdBy, comp.updatedBy, comp.submittedBy].filter((x): x is string => !!x);
+    const makers = await this.makers(tx, c, comp);
     const carry = comp.carry as unknown as CarryJson;
     const start = dateOf(comp.yearStart);
     const year = accountingYear(Number(start.slice(0, 4)), comp.rules as unknown as BonusRules);
@@ -459,7 +466,7 @@ export class BonusService {
       const s = await this.scope(tx, c, v);
       const comp = await this.locked(tx, c, id, s.approve, version);
       if (comp.status !== 'submitted') throw new ConflictException(comp.status === 'draft' ? 'This bonus has not been sent for approval yet.' : 'This bonus is already approved.');
-      if ([comp.createdBy, comp.updatedBy, comp.submittedBy].includes(v.userId!)) throw new ForbiddenException('You worked on this bonus, so someone else approves it.');
+      if ((await this.makers(tx, c, comp)).includes(v.userId!)) throw new ForbiddenException('You worked on this bonus, so someone else approves it.');
       const done = await tx.bonusComputation.update({ where: { id: comp.id }, data: { status: 'approved', approvedBy: v.userId!, approvedAt: new Date(), version: { increment: 1 } } });
       await audit(tx, c, 'payroll.bonus.approved', 'bonus_computation', comp.id, { rate: comp.rate.toFixed(2), payable: comp.payableTotal.toFixed(2) });
       return this.view(tx, c, done, v);
