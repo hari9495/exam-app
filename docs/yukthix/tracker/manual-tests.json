@@ -3657,5 +3657,106 @@
       "TIM-08 Request"
     ],
     "note": "The same check runs again when the manager approves."
+  },
+  {
+    "id": "MT-TD-01",
+    "area": "Time · Periods",
+    "screen": "Approve attendance lock (two-step) - Payroll may, HR may not",
+    "url": "http://localhost:3000/yx/time/periods",
+    "account": "hr-tester@demo-org.test (HR) and payroll-tester@demo-org.test (Payroll). Before: as HR, Settings › Company rules › Locking an attendance month = Two steps (Kaveri Foods Pvt Ltd).",
+    "steps": [
+      "1. Positive: as HR, open Periods. September 2026 (Kaveri Foods Pvt Ltd) → Pre-lock checklist → Send for approval → confirm.",
+      "2. Sign out. As Payroll, open the Time menu: Periods is there. Open Periods → September 2026 shows 'With payroll'.",
+      "3. Positive: Pre-lock checklist → Approve lock → confirm → enter the authenticator code.",
+      "4. Negative: as HR, open September's checklist: there is no Approve lock button (HR sent it). In a second tab, as HR, call the approve route (any API client): POST /api/v1/time/periods/approve-lock with the entity and month.",
+      "5. Negative: in Settings › Roles, make a test role with only 'payroll.correction.approve', give it to a test user, sign in as that user: the Time menu has no Periods, and /yx/time/periods says you have no access."
+    ],
+    "expected": "Step 1: toast 'Sent for payroll approval'. Step 3: toast 'Month locked'; the card shows Locked 'by Payroll'. Step 4: 403 Forbidden. Step 5: no Periods link; no-access page (payroll.correction.approve alone no longer approves a lock).",
+    "stories": [
+      "TIM-11 PayrollAdmin",
+      "TIM-11 Lock"
+    ],
+    "note": "Founder decision 5 (29 Oct 2026): key attendance.lock.approve, given to the Payroll role by migration 20261305000000."
+  },
+  {
+    "id": "MT-TD-02",
+    "area": "Time · Periods",
+    "screen": "Open a frozen month again (reason + authenticator code)",
+    "url": "http://localhost:3000/yx/time/periods",
+    "account": "hr-tester@demo-org.test (HR). Before: Muster → September 2026 → Freeze inputs (or Send for approval in the two-step flow) so the month is Frozen.",
+    "steps": [
+      "1. On the Frozen September card click 'Open the month again'.",
+      "2. Negative: click 'Open the month again' in the dialog with the reason empty.",
+      "3. Negative: type 'fix' (too short) and click it again.",
+      "4. Positive: type 'A missed fix for Arjun on 4 Sep' and click it; enter the authenticator code when asked.",
+      "5. Negative: cancel the authenticator prompt on a second try (freeze again first).",
+      "6. Negative: as payroll-tester@demo-org.test open Periods: no 'Open the month again' button on a frozen month."
+    ],
+    "expected": "Step 2 and 3: the button stays clickable; 'Give the reason in a sentence (at least 10 letters).' under Reason and the cursor is in the box; nothing is sent. Step 4: toast 'Month opened again. Freeze it again before it is locked.'; the card shows Open with 'reopened … by HR: A missed fix…'. Step 5: the month stays Frozen. Step 6: no button. The audit log has 'time.period.unfrozen' with the reason.",
+    "stories": [
+      "TIM-11 OpenAgain"
+    ],
+    "note": "Founder decision 7a. A locked month still uses 'Request reopen' (two approvals)."
+  },
+  {
+    "id": "MT-TD-03",
+    "area": "Time · Industrial action",
+    "screen": "Past strikes and lockouts list",
+    "url": "http://localhost:3000/yx/time/industrial-action",
+    "account": "hr-tester@demo-org.test (HR, attendance.lock)",
+    "steps": [
+      "1. Open Time › Industrial action. The demo company has no events yet.",
+      "2. Click Record event, record a Strike at Hosur (or any establishment) for two days next week with notice 'Union notice dated 29 Oct 2026', confirm.",
+      "3. Click All events. Then Open on the row.",
+      "4. Negative: as arjun@demo-org.test (employee) open /yx/time/industrial-action.",
+      "5. Negative: as kavya@demo-org.test (manager) open the same address."
+    ],
+    "expected": "Step 1: 'No strikes, lockouts or lay-offs yet' with a Record event button. Step 2: toast 'Event recorded', the record opens. Step 3: the list shows the event: Strike, dates like '3 Nov 2026 – 4 Nov 2026', 2 days, the establishment, 'Everyone · N workers', Undetermined, Active; Open goes back to the record. Steps 4–5: no access (needs Lock attendance). With more than 25 events the pager offers 25 / 50 / 100.",
+    "stories": [
+      "TIM-37 List",
+      "TIM-37 ListEmpty",
+      "TIM-37 ListLoading"
+    ],
+    "note": "Founder decision 7b. The page now opens on the list; ?new=1 is the form."
+  },
+  {
+    "id": "MT-TD-04",
+    "area": "Time · Presence days",
+    "screen": "Withdraw presence consent",
+    "url": "http://localhost:3000/yx/time/presence?view=me",
+    "account": "arjun@demo-org.test (employee). Before: as hr-tester@demo-org.test, Settings › Company rules › Presence-based attendance on work-from-home days = On.",
+    "steps": [
+      "1. As Arjun open My work-from-home days and click 'Review and give consent' → Give consent.",
+      "2. Click 'Withdraw consent' in the page header and read the dialog.",
+      "3. Negative: click 'Keep it'.",
+      "4. Positive: click 'Withdraw consent' again, then the red 'Withdraw consent'.",
+      "5. Positive: click 'Review and give consent' again → Give consent.",
+      "6. Negative: in a second tab still on the old page (before step 5), click Withdraw consent → Withdraw consent after it was already withdrawn."
+    ],
+    "expected": "Step 2: the dialog says: presence tracking stops now; your presence trail is deleted; your attendance days stay, because pay needs them. Step 3: nothing changes, consent still given. Step 4: toast 'Consent withdrawn. Tracking has stopped and your presence trail is deleted.'; the button changes to 'Review and give consent'; past work-from-home days keep their status. Step 5: consent given again. Step 6: the dialog shows 'You have not given consent, so there is nothing to withdraw.' The audit log has 'attendance.presence.consent_withdrawn' with the number of states deleted.",
+    "stories": [
+      "TIM-36 WithdrawConsent"
+    ],
+    "note": "Founder decision 6, DPDP Act 2023 s.6(4)."
+  },
+  {
+    "id": "MT-TD-05",
+    "area": "Time · Field force",
+    "screen": "Withdraw field-tracking consent (API; the phone app is not built)",
+    "url": "http://localhost:3000/yx/time/field-force",
+    "account": "arjun@demo-org.test (employee) and kavya@demo-org.test (manager). Before: HR sets Settings › Company rules › Field tracking = On.",
+    "steps": [
+      "1. As Arjun (API client with his session): POST /api/v1/time/me/field/consent {\"noticeVersion\":\"2026-10\"}; check in; send a few readings to POST /api/v1/time/me/field/pings.",
+      "2. As Kavya open Field force → Open on Arjun: the trail shows.",
+      "3. Positive: as Arjun POST /api/v1/time/me/field/consent/withdraw.",
+      "4. Negative: repeat step 3; send another reading.",
+      "5. As Kavya open Arjun again."
+    ],
+    "expected": "Step 3: 200 with erasedPings = the number of readings. Step 4: 409 'nothing to withdraw'; the reading is refused with 403 'You have not agreed to location tracking'. Step 5: 'No trail: consent withdrawn at …'; visits and attendance stay.",
+    "stories": [
+      "TIM-33 WithdrawConsent",
+      "TIM-32 Consent withdrawn · no trail"
+    ],
+    "note": "The phone dialog is designed (phone view); the mobile app is not built."
   }
 ]

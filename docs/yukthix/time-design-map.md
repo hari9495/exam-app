@@ -12,15 +12,15 @@ live page cannot reach yet (the reason is given).
 
 | | live | feature not built | phone view | gap |
 |---|---|---|---|---|
-| Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 66 | 21 | 19 | 5 |
+| Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 67 | 21 | 19 | 5 |
 | Leave (TIM-17…25) | 39 | 0 | 11 | 3 |
 | Set-up (TIM-26…29, 31, 42) | 20 | 12 | 0 | 1 |
 | Rosters and shifts (TIM-05, 06, 08, 34, 35, 38…41) | 19 | 21 | 10 | 3 |
-| Overtime, periods, reports, timesheets (TIM-09, 11, 15, 16, 30, 37, 43) | 40 | 4 | 3 | 0 |
-| Field force (TIM-32, 33) | 0 | 7 | 8 | 0 |
-| **All 45 design groups (312 sub-pages counted)** | **184** | **65** | **51** | **12** |
+| Overtime, periods, reports, timesheets (TIM-09, 11, 15, 16, 30, 37, 43) | 44 | 4 | 3 | 0 |
+| Field force (TIM-32, 33) | 0 | 7 | 9 | 0 |
+| **All 45 design groups (317 sub-pages counted)** | **189** | **65** | **52** | **12** |
 
-Counted from the stories and the rows below by script (29 Oct 2026, after leave v2 and time ops were merged). 312, not 311: TIM-36 "Manager · status and total only" sits on the same line as another story and was missed before.
+Counted from the stories and the rows below by script (29 Oct 2026, after leave v2 and time ops were merged; +5 stories for founder decisions 6 and 7: TIM-11 OpenAgain, TIM-36 WithdrawConsent, TIM-37 List / ListEmpty / ListLoading live; TIM-33 WithdrawConsent phone view). 312, not 311: TIM-36 "Manager · status and total only" sits on the same line as another story and was missed before.
 
 Kit (24 stories) are shared parts, not pages; section E lists which live screens use them.
 
@@ -39,6 +39,10 @@ Kit (24 stories) are shared parts, not pages; section E lists which live screens
    deleted, attendance days stay (pay needs them). Same rule for the field-force tracking consent.
 7. **Design "Reopen a locked month"** (reason + authenticator code, audit-logged) **and a list of past strikes and lockouts**,
    then make both live.
+Status (branch `feat/yukthix-time-decisions-att`): 5 done (key `attendance.lock.approve`, migration `20261305000000_time_decisions_att`);
+6 done (one designed dialog for TIM-36 and TIM-33; the server deletes the trail, keeps the days, audits counts); 7 done (TIM-11
+"Open the month again" for a frozen month; TIM-37 "Past events" list). Rows below say where each story shows.
+
 8. **Menu: "Registers"** (legal forms for inspectors) **and "Attendance reports"** (numbers for managers). No change needed.
 
 ## A. Attendance
@@ -199,8 +203,9 @@ Live at /yx/kiosk (outside the app shell; set up with HR's one-time key). Face s
 | Hr | /yx/time/presence with attendance.view: department filter, View consent record |
 | NoConsent | /yx/time/presence?view=me without consent: Review and give consent (company switch attendance.presence must be on) |
 | Withdrawn · Consent withdrawn · manager | /yx/time/presence → a day after the person withdrew: "Consent withdrawn on …" |
+| WithdrawConsent · Employee · withdraw consent | /yx/time/presence?view=me → Withdraw consent (page header) → the designed dialog (tracking stops, presence trail deleted, attendance days stay; Withdraw consent / Keep it) → toast. Days presence decided before keep their status and active time (from the day record). |
 
-Provider: to decide (Teams presence). The YukthiX desktop app posts the person's own states to POST /time/me/presence/signals; the app itself is not built. Question: Withdraw consent sits on the page header (the design's consent page is a phone view).
+Provider: to decide (Teams presence). The YukthiX desktop app posts the person's own states to POST /time/me/presence/signals; the app itself is not built. Withdraw consent sits on the page header, in the design too (founder decision 6).
 
 ### Extra · Attendance calendar
 
@@ -241,11 +246,11 @@ Provider: to decide (Teams presence). The YukthiX desktop app posts the person's
 
 ### 3. Counts
 
-- Sub-pages live: 65 (time ops, 29 Oct 2026: +36)
+- Sub-pages live: 66 (time ops, 29 Oct 2026: +36; decision 6: TIM-36 WithdrawConsent)
 - Feature not built: 21
 - Phone view: 19
 - Gaps: 5 (Extra · Manager one person; Extra · today OutsideNetwork, ChoseWfh, ShiftNotStarted, WithNote)
-- Total: 110 stories (TIM-36 "Manager · status and total only" was not counted before)
+- Total: 111 stories (TIM-36 "Manager · status and total only" was not counted before)
 
 ### Gaps and questions
 
@@ -755,13 +760,14 @@ Builder E, 29 Oct 2026.
 | story (sub-page) | where it shows live |
 |---|---|
 | HR · month cards (`Hr`) | /yx/time/periods: month cards per legal entity (newest first), stage badge, "Locked 2 Sep 2026 by …". Year arrows: Next at this year and Previous before 2025 stay clickable and say why (toast). |
-| Payroll Admin (`PayrollAdmin`) | /yx/time/periods as payroll (payroll.correction.approve) when the company's attendance.lock_flow = two_step: "With payroll" cards, Approve lock (authenticator step; never the person who sent it). |
+| Payroll Admin (`PayrollAdmin`) | /yx/time/periods as payroll (attendance.lock.approve, "Approve attendance lock"; founder decision 5) when the company's attendance.lock_flow = two_step: "With payroll" cards, Approve lock (authenticator step; never the person who sent it). |
 | Pre-lock checklist · blocked (`Checklist`) | /yx/time/periods → "Pre-lock checklist" on an open month: exceptions and each waiting request kind with counts; "Lock the month" pressed says "Settle what is still waiting…" and focuses the list. |
 | October · month not over (`NotEnded`) | /yx/time/periods → current month card "Can be locked from the 2nd of the next month"; in its checklist, Lock pressed says "October 2026 can be locked from 2 Oct 2026." |
 | HR · send for payroll approval (`Send`) | /yx/time/periods (two_step) → checklist → Send for approval (freezes the month; refused while anything is open). Setting attendance.lock_flow, default one_step (HR locks). |
 | Payroll Admin · approve lock (`Lock`) | /yx/time/periods → checklist (all done) → "Lock the month" (one step) or "Approve lock" (two step) → plain confirmation → the authenticator step (founder OK, 29 Oct 2026; the story no longer types a name). |
 | Lock summary · filed month (`Summary`) | /yx/time/periods → "Lock summary" on a locked or filed month: lock date and person, stage, whether reopen is allowed. |
 | Reopen request · September locked 1 Oct (`ReopenAllowed`) | /yx/time/periods → "Request reopen" on a locked month (card or summary) → dialog; reason of 10+ letters; sent → toast; the card then shows "Reopen asked · Waiting for two approvals". A filed month shows "Filed: corrections only". |
+| HR · open a frozen month again (`OpenAgain`) | /yx/time/periods → "Open the month again" on a Frozen card (attendance.lock over the entity) → dialog: reason of 10+ letters (pressed early: field error and focus, never disabled), then the authenticator code → toast; the card shows Open and "reopened … : reason". Payroll-frozen months are refused with the reason (founder decision 7a). |
 
 #### TIM-15 · Timesheets
 
@@ -812,7 +818,11 @@ Also not live from this design: "Copy last week" (the API returns only last week
 | Event record · lay-off (`Record`) | /yx/time/industrial-action?id=… : KPIs, pay and attendance treatment, Edit dates, Cancel event, Change legality (version-checked) |
 | Event record · legality not set (`RecordUndetermined`) | same, undetermined: "Pay for N worker-days is on hold" with Set legality |
 
-Question: there is no list of past events in the design; the API has GET /time/industrial-actions. Recorded events open by link (?id=).
+| Past events · list (`List`) | /yx/time/industrial-action (the page now opens here; founder decision 7b): events in scope newest first, dates "3 Nov 2026 – 5 Nov 2026", establishment, workers, legality, status; Open → ?id=; Record event → ?new=1; server paging 25 / 50 / 100 |
+| Past events · none yet (`ListEmpty`) | same, no events: "No strikes, lockouts or lay-offs yet" with Record event |
+| Past events · loading (`ListLoading`) | same, while loading |
+
+The record has "All events" back to the list; the form's Cancel goes to the list. No phone stories in this group.
 
 #### TIM-43 · Timesheet pre-fill from my tools
 
@@ -854,7 +864,7 @@ Question: there is no list of past events in the design; the API has GET /time/i
 
 ### 3. Counts (groups TIM-09, 11, 15, 16, 30, 37, 43)
 
-- Sub-pages live: 33 (TIM-09: 8, TIM-11: 8, TIM-15: 5, TIM-16: 8, TIM-37: 4)
+- Sub-pages live: 37 (TIM-09: 8, TIM-11: 9, TIM-15: 5, TIM-16: 8, TIM-37: 7)
 - Feature not built: 11 (TIM-30: 8, TIM-43: 3)
 - Phone view: 3 (TIM-15: 2, TIM-43: 1)
 - Gaps: 0. Partial gaps noted in the rows: sent-back reason, locked-week correction, register rows on the page, night-register pick-up and drop.
@@ -872,7 +882,7 @@ Question: there is no list of past events in the design; the API has GET /time/i
 | Integrity flag | live: mock location / impossible speed (> 200 km/h) flag and "Mark reviewed" (toast); gap: "Ask … for a note" (no note request feature yet) |
 | Tracking off for group | live: no one in reach has `field.tracking` on → HR: "Open settings" (Settings › Company rules); gap: the manager's "Ask HR" button (no request-to-HR feature yet) |
 | Person not checked in | live: "Not checked in" badge and "Not on duty yet" panel, no location; gap: "Message …" button (no messaging from here yet) |
-| Consent withdrawn · no trail | live: "No trail: consent withdrawn at …" (withdrawal erases the trail); also "has not agreed" for people who never consented |
+| Consent withdrawn · no trail | live: "No trail: consent withdrawn at …" (withdrawal deletes the trail, keeps attendance days and visits; founder decision 6); also "has not agreed" for people who never consented |
 
 ### TIM-33 · Visit check-in and beat plan
 
@@ -884,7 +894,8 @@ Question: there is no list of past events in the design; the API has GET /time/i
 | Visit · outside site | phone view, mobile app not built; API live: the same check-in answers inside: false (shown "Outside site" in the Visit log) |
 | Camera photo | phone view, mobile app not built; gap: no visit photo in the API yet |
 | Distance → draft mileage | phone view, mobile app not built; gap: distance is shown on the map, no mileage claim link yet |
-| Consent withdrawn | phone view, mobile app not built; API live: POST /time/me/field/consent/withdraw (tracking stops, trail erased) |
+| Consent withdrawn | phone view, mobile app not built; API live: POST /time/me/field/consent/withdraw (tracking stops, trail deleted, days and visits kept, audited with counts) |
+| Withdraw consent · confirm (`WithdrawConsent`) | phone view, mobile app not built: the tracking banner's Withdraw consent opens the same dialog as TIM-36 (founder decision 6) |
 | Web app · only while open | phone view, mobile app not built |
 
 ## G. Time ops feature sheet (attendance, overtime, periods) · 29 Oct 2026
@@ -916,7 +927,7 @@ Law (P07 data on the compliance verify list, never code; the code falls back to 
 Company policy (a setting with a default; HR changes it per company or legal entity):
 | setting | default | what it does |
 |---|---|---|
-| `attendance.lock_flow` (new) | `one_step` | one step: whoever holds attendance.lock locks; two step: HR sends, payroll (payroll.correction.approve) approves, never the same person |
+| `attendance.lock_flow` (new) | `one_step` | one step: whoever holds attendance.lock locks; two step: HR sends, payroll (attendance.lock.approve, decision 5) approves, never the same person |
 | `attendance.late_marks_free` (new) | 3 | late marks a month without a deduction (the day card's "Late mark N of 3 free" now reads it) |
 | `attendance.late_mark_penalty` (new) | 0 | days of pay each late mark over the free ones costs (0, 0.5, 1); goes into the feed's unpaid days (`late_lop_days`) |
 | `attendance.presence` (new) | off | presence-based attendance on work-from-home days |
@@ -947,14 +958,14 @@ Product defaults (decided here; questions below):
 | Resolve, bulk mark present | leave.approve over the person | never one's own day; not while acting for someone |
 | Decide OT on the review page | the holder of the claim's open approval task | same engine and rules as Approvals |
 | Freeze, open again, send, lock (one step) | attendance.lock over the legal entity | lock and approve need the authenticator step |
-| Approve lock (two step) | payroll.correction.approve over the legal entity | never the person who sent it |
+| Approve lock (two step) | attendance.lock.approve over the legal entity (Payroll role by default; decision 5) | never the person who sent it |
 | Industrial action, device punches | attendance.lock over the legal entity | device apply needs the authenticator step |
 | Night-shift register | attendance.view | HR only |
 | Presence consent and states | the person only | their own times; others see status and total |
 
 ### API routes (AttendanceOpsController, `/api/v1/time`)
 GET `today`, GET `exceptions`, POST `exceptions/resolve` (leave.approve), POST `muster/mark-present` (leave.approve),
-POST `periods/freeze` | `unfreeze` | `send` (attendance.lock), POST `periods/approve-lock` (payroll.correction.approve,
+POST `periods/freeze` | `unfreeze` | `send` (attendance.lock), POST `periods/approve-lock` (attendance.lock.approve,
 step-up), POST `overtime/:id/decide`, GET `reports/attendance`, GET `reports/night` (attendance.view), GET/POST
 `industrial-actions` (+ `options`, `:id`, `:id/legality`, `:id/dates`, `:id/cancel`; attendance.lock), GET
 `me/presence`, POST `me/presence/consent`, POST `me/presence/signals`, GET `presence`, GET `device-batches`
@@ -973,10 +984,10 @@ closed, batch changed since review); acting for someone else refused.
 ### Questions (sensible defaults taken)
 1. Default lock flow is one step (keeps today's behaviour); the founder's "HR sends, Payroll Admin approves" is one
    setting away. Should two step be the default for new companies?
-2. Payroll's approval key is `payroll.correction.approve` (the Payroll Admin role has it). A separate key?
+2. ~~Payroll's approval key~~ Decided (5): `attendance.lock.approve`; `unfreeze` now also asks for the second step (7a); GET `industrial-actions` is paged (7b).
 3. "Deduct leave" in the resolve dialog needs an HR-leave-on-behalf API from the Leave builder; not offered live.
 4. Reminders for past-day exceptions ("Remind all" on TIM-04): the nudge API covers today's check-in only; not offered.
-5. No design for: opening a frozen month again, a list of industrial-action events, withdrawing presence consent on
+5. Decided (6, 7): designs added and live. Was: no design for opening a frozen month again, a list of industrial-action events, withdrawing presence consent on
    the web (the consent page is a phone design). The API exists for each; the UI has only what the designs show, plus
    Withdraw consent on the presence page header (consent must be withdrawable).
 6. Visitors on site (TIM-01) and the field map (TIM-32) wait for their modules.
