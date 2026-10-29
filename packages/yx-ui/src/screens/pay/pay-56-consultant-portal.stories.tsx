@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { ConsultantPortalScreen } from './consultants';
 
-const meta: Meta<typeof ConsultantPortalScreen> = { title: 'Screens/Pay/PAY-56 · Consultant portal', component: ConsultantPortalScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof ConsultantPortalScreen> = { title: 'Screens/Pay/PAY-56 · Consultant portal', component: ConsultantPortalScreen, render: (args) => <ConsultantPortalScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof ConsultantPortalScreen>;
 

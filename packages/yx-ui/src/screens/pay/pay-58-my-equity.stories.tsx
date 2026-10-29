@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { MyEquityScreen } from './equity';
 
-const meta: Meta<typeof MyEquityScreen> = { title: 'Screens/Pay/PAY-58 · My equity', component: MyEquityScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof MyEquityScreen> = { title: 'Screens/Pay/PAY-58 · My equity', component: MyEquityScreen, render: (args) => <MyEquityScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof MyEquityScreen>;
 
