@@ -47,6 +47,8 @@ import { Payroll5iController } from './payroll-5i.controller';
 import { Payroll5iMoreController } from './payroll-5i-more.controller';
 import { PayrollBonusController } from './payroll-bonus.controller';
 import { BonusService } from './bonus.service';
+import { PayrollReportsController } from './payroll-reports.controller';
+import { PayReportsService } from './reports.service';
 import { EwaService } from './ewa.service';
 import { EquityService } from './equity.service';
 import { ActuarialService } from './actuarial.service';
@@ -58,8 +60,8 @@ import { CountryPackService } from './country-packs.service';
 // reopen request (the step-4 unlock became it) and nothing here depends on time's services.
 @Module({
   imports: [AuditModule, CryptoModule, StorageModule, WorkflowModule, NotificationsModule, EmailModule, AuthModule, EmployeeHistoryModule, RulesEngineModule, DocumentsModule],
-  controllers: [PayrollController, PublicPayController, Payroll5bController, Payroll5cController, Payroll5dController, TaxController, StatutoryController, Payroll5gController, Payroll5jController, Payroll5hController, PublicConsultantController, Payroll5iController, Payroll5iMoreController, PayrollBonusController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, { provide: DSC_ROOTS, useClass: PublishedCcaRoots }, { provide: DSC_REVOCATION, useClass: OnlineRevocationChecker }, PayFileStore, PayPeriodsService, PayAuditService, PayDocumentsService, ExchangeFilesService, PaySetupService, PayStructuresService, PayImportsService, PayRunsService, PayInputsService, PayoutService, PayslipsService, TaxService, LedgerService, StatutoryFilingsService, StatutoryRegistersService, FvuRunner, ArrearsService, FnfService, GoLiveService, PayrollIntakeService, PayrollJobs, ConsultantsService, SpecialPayService, EwaService, EquityService, ActuarialService, CountryPackService, BonusService],
+  controllers: [PayrollController, PublicPayController, Payroll5bController, Payroll5cController, Payroll5dController, TaxController, StatutoryController, Payroll5gController, Payroll5jController, Payroll5hController, PublicConsultantController, Payroll5iController, Payroll5iMoreController, PayrollBonusController, PayrollReportsController],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, { provide: DSC_ROOTS, useClass: PublishedCcaRoots }, { provide: DSC_REVOCATION, useClass: OnlineRevocationChecker }, PayFileStore, PayPeriodsService, PayAuditService, PayDocumentsService, ExchangeFilesService, PaySetupService, PayStructuresService, PayImportsService, PayRunsService, PayInputsService, PayoutService, PayslipsService, TaxService, LedgerService, StatutoryFilingsService, StatutoryRegistersService, FvuRunner, ArrearsService, FnfService, GoLiveService, PayrollIntakeService, PayrollJobs, ConsultantsService, SpecialPayService, EwaService, EquityService, ActuarialService, CountryPackService, BonusService, PayReportsService],
   exports: [PayPeriodsService, PayDocumentsService, ExchangeFilesService, PayrollIntakeService],
 })
 export class PayrollModule {}
