@@ -3877,5 +3877,140 @@
       "TIM-41 Employee"
     ],
     "note": "POSITIVE + NEGATIVE (employee sees no team or policy)."
+  },
+  {
+    "id": "MT-TL-01",
+    "area": "Time · HR leave home",
+    "screen": "Record long absence (founder decision 1) - positive",
+    "url": "http://localhost:3000/yx/time/leave-home",
+    "account": "hr-tester@demo-org.test (HR Admin)",
+    "steps": [
+      "Click Record long absence (top right).",
+      "Person: type \"Karthik\" and choose Karthik Raja. Type: Sabbatical. First day away: 2 Dec 2026. Last day away: 31 Mar 2027. Reason: \"Sabbatical for a diploma course\".",
+      "Read the \"What this does\" box.",
+      "Click Record absence."
+    ],
+    "expected": "Step 3: Days away 120 days; Pay \"Not paid: the days go to payroll as unpaid days\"; Leave credits \"No leave earned for these days (company setting)\"; Back at work 1 Apr 2027; no red box. Step 4: the dialog closes, toast \"Long absence recorded\" (5 s); Needs HR lists \"Karthik Raja · Sabbatical 2 Dec 2026 – 31 Mar 2027\" with Open status.",
+    "stories": [
+      "TIM-17 RecordAbsence",
+      "TIM-25 Sabbatical"
+    ],
+    "note": "Audit log: leave.long_absence.recorded with the dates, the accrual and the reason."
+  },
+  {
+    "id": "MT-TL-02",
+    "area": "Time · HR leave home",
+    "screen": "Record long absence - negative (too early, leave in the way, overlap, notice, own record)",
+    "url": "http://localhost:3000/yx/time/leave-home",
+    "account": "hr-tester@demo-org.test (HR Admin); arjun@demo-org.test first applies Earned leave for a day in December",
+    "steps": [
+      "Click Record long absence and click Record absence straight away.",
+      "Choose Arjun Kulkarni, Long leave without pay, 1 Dec 2026 – 31 Jan 2027, reason \"Long unpaid leave for family care\".",
+      "Click Record absence.",
+      "Change the person to Karthik Raja with 1 Jan 2027 – 28 Feb 2027 (overlaps MT-TL-01).",
+      "Choose the person who is on notice in the demo company with a last day after their last working day."
+    ],
+    "expected": "Step 1: the button stays enabled; \"Choose the person.\", \"Choose the first day away.\", \"Choose the last day away.\" and \"Write the reason in at least 10 characters.\" show and the Person search takes focus. Steps 2-3: a red box \"This can't be recorded yet\": \"Arjun Kulkarni already has leave on these dates: Earned leave … (waiting). Withdraw or cancel it first, then record the absence.\"; Record does nothing; Arjun's request is still pending in Approvals. Step 4: \"These dates overlap Karthik Raja's sabbatical (…). Change the dates, or extend that absence instead.\" Step 5: \"… is on notice. The last working day is …, so end the absence on or before it.\"",
+    "stories": [
+      "TIM-17 RecordAbsenceConflict"
+    ],
+    "note": "HR cannot record their own absence (refused by the API, \"Ask another HR admin\")."
+  },
+  {
+    "id": "MT-TL-03",
+    "area": "Time · HR leave home",
+    "screen": "Record long absence - wrong role",
+    "url": "http://localhost:3000/yx/time/leave-home",
+    "account": "arjun@demo-org.test (employee), then kavya@demo-org.test (manager of Murugan Selvam)",
+    "steps": [
+      "Open the address as Arjun.",
+      "Open the address as Kavya."
+    ],
+    "expected": "Both: the page says you have no access (leave.view); there is no Record long absence button. The API answers 403 for GET /time/hr/long-absences/check and POST /time/hr/long-absences.",
+    "stories": [
+      "TIM-17 HR"
+    ]
+  },
+  {
+    "id": "MT-TL-04",
+    "area": "Time · Leave policies",
+    "screen": "Company block dates - add (positive) and what employees see",
+    "url": "http://localhost:3000/yx/time/setup",
+    "account": "hr-tester@demo-org.test (HR Admin); then arjun@demo-org.test",
+    "steps": [
+      "Open the Company block dates tab, click Add block dates.",
+      "From 26 Nov 2026, To 26 Nov 2026, Reason \"Year-end stock count\", Where: Whole company; leave the ticked types as they are (Earned, Casual, Comp-off ticked; Sick and Leave without pay not ticked; Maternity not listed). Click Add block dates.",
+      "As Arjun open My leave › Apply leave, Earned leave on 26 Nov 2026.",
+      "Change the type to Sick leave on the same day."
+    ],
+    "expected": "Step 2: toast \"Block dates added\"; the row shows \"26 Nov 2026 · Year-end stock count\" and \"Whole company · Planned leave (not sick, maternity, paternity or unpaid leave)\". Step 3: refused: \"26 Nov 2026 is a company block date (Year-end stock count). Earned leave can't be taken on it. Choose other dates or ask HR.\" Step 4: no block-date message (sick leave is never stopped unless HR ticks it).",
+    "stories": [
+      "TIM-28 BlockDatesAdd",
+      "TIM-28 List",
+      "TIM-18 Company block date"
+    ],
+    "note": "Setting \"Planned leave on company block dates\" (Settings › Company rules) turns the refusal into a note for the approver."
+  },
+  {
+    "id": "MT-TL-05",
+    "area": "Time · Leave policies",
+    "screen": "Company block dates - negative (too early, place not chosen, people already on leave, repeat, remove)",
+    "url": "http://localhost:3000/yx/time/setup",
+    "account": "hr-tester@demo-org.test (HR Admin); arjun@demo-org.test has an Earned leave request for 3 Dec 2026",
+    "steps": [
+      "Company block dates tab › Add block dates › click Add block dates straight away.",
+      "Fill 3 Dec 2026 – 3 Dec 2026, reason \"Audit\", choose Where: A location and click Add block dates without choosing one.",
+      "Choose Bengaluru (Arjun's office) and click Add block dates.",
+      "Add the same dates, reason and place again.",
+      "Click Remove on the 3 Dec row and confirm."
+    ],
+    "expected": "Step 1: the button stays enabled; \"Choose the first date.\", \"Choose the last date.\" and \"Enter a reason people will see.\" show; From takes focus. Step 2: \"Choose the location.\" Step 3: toast \"Block dates added\"; the row says \"Already on leave then (their leave stays): Arjun Kulkarni · Earned leave 3 Dec 2026 (waiting)\"; Arjun's request is still pending. Step 4: \"These block dates are already there.\" Step 5: toast \"Block dates removed\"; the row goes.",
+    "stories": [
+      "TIM-28 BlockDatesAdd",
+      "TIM-28 BlockDatesNone"
+    ],
+    "note": "arjun@ and kavya@ get no access to /yx/time/setup (leave.settings.manage)."
+  },
+  {
+    "id": "MT-TL-06",
+    "area": "Time · Leave type editor + Apply leave",
+    "screen": "Notice per leave type with a company default (founder decision 2)",
+    "url": "http://localhost:3000/yx/time/setup",
+    "account": "hr-tester@demo-org.test (HR Admin); then arjun@demo-org.test",
+    "steps": [
+      "Leave types › Earned leave › Rules: \"Apply at least (days ahead)\" shows 3 with \"Leave blank to use the company default.\" Clear the box.",
+      "Read the helper, then Save.",
+      "Settings › Company rules: set \"Apply leave at least this many days ahead (types without their own number)\" to 7.",
+      "As Arjun: Apply leave › Earned leave for tomorrow.",
+      "Change to Sick leave for tomorrow.",
+      "Negative: as HR type 91 in the notice box and Save.",
+      "Put Earned leave back to 3 and the company rule back to 0."
+    ],
+    "expected": "Step 2: helper \"Blank: the company default, 0 days.\"; saved (toast). Step 4: refused: \"Earned leave needs 7 days' notice. Pick a date on or after <today + 7, e.g. 5 Nov 2026>, or ask your manager.\" Step 5: no notice message (sick leave asks for none unless its type sets a number). Step 6: \"Notice is 0 to 90 days.\"",
+    "stories": [
+      "TIM-27 Rules",
+      "TIM-18 Short notice warning"
+    ],
+    "note": "HR applying for someone skips the notice by default (setting \"Notice when HR applies leave for someone\"), audited on the request; that route (POST /time/hr/leave/:employeeId) has no screen yet (question in the report), so it is covered by the e2e only."
+  },
+  {
+    "id": "MT-TL-07",
+    "area": "Time · Leave reports",
+    "screen": "Leave liability with pay from Payroll (founder decision 3)",
+    "url": "http://localhost:3000/yx/time/balances",
+    "account": "hr-tester@demo-org.test (HR Admin profile in the demo, which includes \"View employee pay\")",
+    "steps": [
+      "Report: choose Leave liability.",
+      "Read the KPIs and the table.",
+      "Click Export CSV and open the file.",
+      "Negative: payroll-tester@demo-org.test opens the same address.",
+      "Negative: arjun@demo-org.test opens the same address."
+    ],
+    "expected": "Step 2: KPIs \"Unused days that can be cashed in\", \"Liability, people on this page\" and \"Daily pay: Basic + DA ÷ 26 (company setting)\"; columns Earned leave days, Daily pay, Liability. The demo company has no pay set up yet, so every row shows \"No pay set\" (never ₹0). Step 3: the CSV has \"Daily pay\" and \"Amount\" columns with \"No pay set\". Step 4: no access (the Payroll Admin profile has no leave.view; see the question in the report). Step 5: no access.",
+    "stories": [
+      "TIM-30 Liability",
+      "TIM-30 LiabilityDays"
+    ],
+    "note": "Days only: someone with leave.view but not \"View employee pay\" sees only the days and the line \"The money shows only to people who may see pay\"; the API never sends the money fields (e2e). The demo has no such account; give one a role without pay to try it."
   }
 ]

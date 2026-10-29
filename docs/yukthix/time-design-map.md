@@ -45,6 +45,50 @@ Status (branch `feat/yukthix-time-decisions-att`): 5 done (key `attendance.lock.
 
 8. **Menu: "Registers"** (legal forms for inspectors) **and "Attendance reports"** (numbers for managers). No change needed.
 
+### Feature sheet: decisions 1, 2 and 3, leave side (builder "timeleave", 29 Oct 2026, BUILD-STANDARD §1)
+
+**Design first, then live** (the live page renders the same component):
+
+| decision | design group · new or changed stories | live page |
+|---|---|---|
+| 1 Long absence | TIM-17 · "HR · record long absence", "HR · record long absence · leave in the way" (new); "HR" has the Record long absence button | /yx/time/leave-home → Record long absence (`RecordAbsenceDialog`, also in the design) |
+| 1 Block dates | TIM-28 · "Company block dates · add", "Company block dates · none yet" (new); "Policies and rules" has the Policies / Company block dates tabs | /yx/time/setup → Company block dates tab (`BlockDatesCard`) |
+| 2 Notice per type | TIM-27 · "Rules" (the notice field names the company default) | /yx/time/setup/types/<id> → Rules |
+| 3 Liability | TIM-30 · "Payroll · liability" (daily pay, No pay set), "Liability · days only (no pay access)" (new) | /yx/time/balances → Report: Leave liability |
+
+**Rules** (company choices are settings with a default; HR changes them in Settings › Company rules):
+
+| rule | source | setting · default |
+|---|---|---|
+| A long absence (sabbatical, long leave without pay) is refused (409) while the person has leave waiting or approved on those days, or another long absence; nothing is cancelled silently, the leave is listed with "withdraw or cancel it first" | product | — |
+| Refused (400) before the joining day, after the exit date, after the last working day of someone on notice, or in a month locked for attendance | product + P08 lock | — |
+| Pay effect: the days are unpaid (payroll gets them as unpaid days); leave credits stop unless the company says so; maternity is unchanged (law) | company | `leave.long_absence.accrues` · no |
+| Block dates stop the leave types HR ticks; none ticked = planned leave only. Sick leave is never stopped unless ticked; maternity leave can never be stopped (Maternity Benefit Act) | law + company | per block date · planned leave |
+| A new block date never cancels leave already asked for or approved: the card lists those people ("their leave stays") and the audit row counts them | product | — |
+| Planned leave on a block date is refused, or allowed with a note to the approver | company | `leave.block_dates.mode` · refused |
+| Each leave type has its own "apply at least N days ahead"; a type without a number uses the company default; sick leave without a number asks for none. Stored numbers are kept (no data change); new types start blank | company | `leave.notice_days.default` · 0 |
+| The refusal says the fact and the next step: "Earned leave needs 7 days' notice. Pick a date on or after 12 Nov 2026, or ask your manager." | product | type rule `noticeMode` · refused |
+| HR applying for someone (`POST hr/leave/:employeeId`) skips the notice; the approver sees "Applied by HR: 7 days' notice not needed" and the audit row records it | company | `leave.notice.on_behalf` · skip |
+| Liability = unused days of the leave types that can be cashed in × daily pay; a negative balance counts as 0 | product | — |
+| Daily pay = monthly pay from Payroll (`payOn`, the compensation in force today, read through the pay guard) on the encashment basis ÷ the divisor; named on the report | company | `payroll.leave_encashment_basis` · Basic + DA; `leave.liability.divisor` · 26 (or 30, or the days in the month) |
+| No pay set up → "No pay set", never 0 | product | — |
+
+**Who** (checked on the server): Record long absence and its check, HR applying for someone: `leave.balance.adjust` in scope,
+never one's own record, never while acting for someone else (403); another company's person → 404. Block dates:
+`leave.settings.manage`. Liability: `leave.view` for the rows; the money fields only for the legal entities where the
+viewer holds `employee.salary.view` (others get days only and the API sends no money fields; the export the same).
+Managers and employees: refused.
+
+**States:** dialog empty / checking / effect / problems / not checked (Retry by changing a field); card loading, could
+not load, none yet, list, removed; report with money, days only, No pay set. **Edge cases:** two HR admins recording at
+once (per-person lock), double click on Add block dates (409 "already there"), very large reports (pay read per row of
+the page; export up to 10,000 rows).
+
+**API routes** (all /api/v1/time): `GET hr/long-absences/check`, `POST hr/long-absences` (now with the checks),
+`POST hr/leave/:employeeId`, `GET|POST setup/block-dates` (`leaveTypeIds`, `affected`, `types`, `entities`,
+`locations`), `GET hr/leave-report?report=liability` and its export. Migration `20261305100000_leave_block_types`
+(adds `leave_block_dates.leave_type_ids`, empty = planned leave only). No external provider.
+
 ## A. Attendance
 
 ### 1. Live pages
@@ -279,8 +323,8 @@ location in Settings, key in brackets):
 | 5 | Carry forward up to the policy cap (never below the state floor), the rest lapses at year end | company + law | per policy |
 | 6 | Year end lists requests still waiting with days in the closing year; posting is refused (409) unless HR ticks Post anyway, and they stay pending | product | — |
 | 7 | Half days, minimum / maximum days, negative balance limit, sandwich rule, certificate after N days | company (leave type rules) | per type |
-| 8 | Short notice: refused, or allowed and flagged to the approver | company (type rule `noticeMode`) | refused |
-| 9 | Company block dates: planned leave on them is refused or flagged; sick, maternity, paternity and unpaid leave are never stopped | company (`leave.block_dates.mode`) | refused |
+| 8 | Short notice: refused, or allowed and flagged to the approver; each type its own notice days, blank = the company default (sick leave 0); HR applying for someone skips it | company (type rule `noticeMode`, `leave.notice_days.default`, `leave.notice.on_behalf`) | refused, 0, skip |
+| 9 | Company block dates: the leave types HR ticks are refused or flagged; none ticked = planned leave (not sick, maternity, paternity or unpaid); maternity never | company (`leave.block_dates.mode`, per block date) | refused, planned leave |
 | 10 | Leave during the notice period: last day stays, last day moves by the leave days (a half day moves it a day), or only sick and unpaid leave; leave can't pass the last working day | company (`leave.notice_period.leave`) | last day stays |
 | 11 | Probation: every type, casual / sick / unpaid only, or unpaid only (an HR eligibility override lets one person through) | company (`leave.probation.leave`) | every type |
 | 12 | Gender eligibility (maternity / paternity) with a plain "ask HR" message and HR override; maternity weeks and 80 days worked | law (Maternity Benefit Act) + company | existing |
@@ -333,7 +377,9 @@ dev-fake answers until a provider is chosen).
 |---|---|
 | Employee | /yx/time/leave: balance cards, My requests, Upcoming holidays, Optional holidays, plus My leave card, Claim comp-off, Encash leave, the long-absence card and "Waiting for approval" (claims, encashment) |
 | Manager | gap: no manager leave home. Managers use /yx/time/team (TIM-20) and answer requests in /yx/approvals |
-| HR | /yx/time/leave-home: pending leave with managers (approvers, age, Remind approver once a day), away this week, Needs HR (negative balances, certificates, long absences, year-end) |
+| HR | /yx/time/leave-home: pending leave with managers (approvers, age, Remind approver once a day), away this week, Needs HR (negative balances, certificates, long absences, year-end); Record long absence button |
+| HR · record long absence | /yx/time/leave-home → Record long absence: person (HR scope search), Sabbatical / Long leave without pay, first and last day, reason; "What this does" (days, unpaid, leave credits by the company setting, back at work); toast "Long absence recorded" |
+| HR · record long absence · leave in the way | same, when the check finds leave waiting or approved, another absence, notice, a joining day or a locked month: the red box says why and Record does nothing |
 | Employee · no requests yet | /yx/time/leave for a new joiner |
 | Loading | /yx/time/leave while it loads |
 | Error | /yx/time/leave when the API fails: Retry |
@@ -421,19 +467,21 @@ dev-fake answers until a provider is chosen).
 | story (sub-page) | where it shows live |
 |---|---|
 | Employee · maternity | /yx/time/leave: approved maternity leave starts the status; Open status → progress, return, pay and accrual, Tell HR my return date changed |
-| HR · sabbatical | /yx/time/leave-home → Needs HR → Open status: Extend / Record early return (reason, version-checked). Recording a new sabbatical is API only (`POST hr/long-absences`): question below |
+| HR · sabbatical | /yx/time/leave-home → Needs HR → Open status: Extend / Record early return (reason, version-checked). A new one is recorded with Record long absence (TIM-17) |
 | HR · long LWP | same as HR · sabbatical |
 | Phone · maternity | phone view, mobile app not built |
 
 ### Counts
 
-53 sub-pages: 39 live, 0 not built, 11 phone, 3 gaps (TIM-17 Manager, TIM-19 Manager ×2).
+55 sub-pages: 41 live, 0 not built, 11 phone, 3 gaps (TIM-17 Manager, TIM-19 Manager ×2).
 
 ### Questions (defaults chosen, marked)
 
-- Recording a new sabbatical or long unpaid leave, and managing company block dates, have APIs but no designed HR
+- Done 29 Oct (founder decision 1): Record long absence on the HR leave home and Company block dates on Leave policies.
+- (was) Recording a new sabbatical or long unpaid leave, and managing company block dates, have APIs but no designed HR
   screen yet. Proposed: a "Record long absence" dialog on the HR leave home and a "Company block dates" card in TIM-26.
 - The notice-period choice is a company setting; TIM-27 drew it per leave type. Default kept company-wide; per type if wanted.
+  (Leave during the notice period stays a company setting. Notice days to apply ahead are per leave type with a company default since founder decision 2.)
 - "Last working day moves": shown to the employee and the approver; the exit case's date itself is changed by HR in the exit flow.
 - The block-leave access pause is recorded and audited; turning access off on those dates belongs to the access area (not built).
 
@@ -470,7 +518,7 @@ the three new pages are reachable only by address.
 | Counting · Counting · live example | /yx/time/setup/types/<id> → Counting tab (weekly offs/holidays rule, applies to, half days) with the live example over the next weekend |
 | Basics | → Basics tab: name, code (fixed once saved), kind (Question: kept from the old page), pay (paid/unpaid; "partially paid" not built), colour, in use. Save with a bad code / no name / paid "without pay" → field errors, Basics tab opens |
 | Crediting | → Crediting tab: read-only, each policy's days and how it credits (set in the policy) |
-| Rules | → Rules tab: notice days, least/most days, document after, below zero, HR approval above, medical. "Most days in a month" and "dates when no one can take it": feature not built |
+| Rules | → Rules tab: notice days (blank = the company default, named in the helper; sick leave none), least/most days, document after, below zero, HR approval above, medical. "Most days in a month": feature not built; "dates when no one can take it" is now the company block dates on Leave policies (TIM-28), with the leave types picked there |
 | YearEnd · Year end | → Year end tab: each policy's carry-forward (read-only) and "can be cashed in". Encash limits and payout formula: feature not built |
 | Notice · Absence & notice | feature not built |
 | Statutory · Statutory template · maternity | feature not built (statutory types are not locked by law in the API) |
@@ -479,7 +527,9 @@ the three new pages are reachable only by address.
 
 | story (sub-page) | where it shows live |
 |---|---|
-| List · Policies and rules | /yx/time/setup → table (policy, leave types, who gets it + dates, "Changes from" badge) and the law's minimums. Order arrows, grades, overrides and "people match no policy": feature not built |
+| List · Policies and rules | /yx/time/setup → Policies tab: table (policy, leave types, who gets it + dates, "Changes from" badge) and the law's minimums. Order arrows, grades, overrides and "people match no policy": feature not built |
+| Company block dates · add (`BlockDatesAdd`) | /yx/time/setup → Company block dates tab: each block (dates, reason, where, the leave types it stops, "Already on leave then (their leave stays)"), Remove with a confirm; Add block dates: from, to, reason, Where (Segment: whole company / a legal entity / a location), the leave types (planned leave ticked, sick not, maternity not offered); field errors and focus; toasts |
+| Company block dates · none yet (`BlockDatesNone`) | same tab with no block dates: "No block dates" + Add block dates; loading and could not load (Retry) inside the card |
 | Open · Policy drawer | /yx/time/setup → click a policy (or New policy): entitlements (days, carry forward, credited, joiners' share), Applies from, Who gets this policy (remove a future one; Apply to dialog: scope + from, "Choose one." error); New policy without a name → field error |
 | Empty | /yx/time/setup with no policies → "No leave policies yet" + New policy (templates not built) |
 | Loading | /yx/time/setup while loading (also error with Retry, and no access) |
@@ -520,7 +570,7 @@ Letters and notices step: feature not built (left out live).
 
 ### Counts
 
-33 stories: live 24 (TIM-26: 3, TIM-27: 5, TIM-28: 4, TIM-29: 7, TIM-31: 2, TIM-42: 3) · feature not built 8 (TIM-26: 2,
+35 stories: live 26 (TIM-26: 3, TIM-27: 5, TIM-28: 6, TIM-29: 7, TIM-31: 2, TIM-42: 3) · feature not built 8 (TIM-26: 2,
 TIM-27: 2, TIM-29: 3, TIM-31: 1) · phone 0 · gaps 1 (TIM-31 IpError).
 
 ## D. Rosters and shifts
@@ -803,7 +853,8 @@ Also not live from this design: "Copy last week" (the API returns only last week
 | Balances (`Balances`) | /yx/time/balances: everyone in leave.view scope × leave types, filters (entity, location, department, name), 50 a page with Previous / Next, Export CSV (every row, up to 10,000), Open leave card per row |
 | Leave taken (`Taken`) | /yx/time/balances → Report: Leave taken (this leave year) |
 | Unpaid leave (LOP) to payroll (`Lop`) | /yx/time/balances → Report: Unpaid leave (LOP), by month: unpaid leave days and absent days with no leave |
-| Payroll · liability (`Liability`) | Feature not built: needs each person's pay (payroll role); question for payroll |
+| Payroll · liability (`Liability`) | /yx/time/balances → Report: Leave liability, for someone with leave.view who may see pay: KPIs (unused days, liability of the people on the page, the daily-pay rule), days per type, Daily pay, Liability, "No pay set"; Export CSV with the money. Partial gap: the "by month" chart and "Change vs last month" need monthly snapshots (not built) |
+| Liability · days only (`LiabilityDays`) | same report for someone without pay access: the days only and "The money shows only to people who may see pay"; the API sends no money fields |
 | Negative balances (`Negative`) | /yx/time/balances → Report: Negative balances |
 | Ledger (`Ledger`) | /yx/time/balances → Report: Ledger, by month |
 | Loading (`Loading`) | /yx/time/balances while loading |
@@ -864,8 +915,8 @@ The record has "All events" back to the list; the form's Cancel goes to the list
 
 ### 3. Counts (groups TIM-09, 11, 15, 16, 30, 37, 43)
 
-- Sub-pages live: 37 (TIM-09: 8, TIM-11: 9, TIM-15: 5, TIM-16: 8, TIM-37: 7)
-- Feature not built: 11 (TIM-30: 8, TIM-43: 3)
+- Sub-pages live: 39 (TIM-09: 8, TIM-11: 9, TIM-15: 5, TIM-16: 8, TIM-30: 2, TIM-37: 7); TIM-30 Payroll · liability and Liability · days only are live since 29 Oct (founder decision 3)
+- Feature not built: 10 (TIM-30: 7, TIM-43: 3)
 - Phone view: 3 (TIM-15: 2, TIM-43: 1)
 - Gaps: 0. Partial gaps noted in the rows: sent-back reason, locked-week correction, register rows on the page, night-register pick-up and drop.
 - Kit: 24 shared parts (listed above), not counted as pages.
