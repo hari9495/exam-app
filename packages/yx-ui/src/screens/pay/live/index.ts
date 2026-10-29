@@ -42,7 +42,6 @@ export {
 } from './operations';
 export { PayslipLines, ReasonDrawer, RunStatusBadge, rupees, runName } from './runs';
 export { PersonPicker, type PersonHit, type LopRow, type HoldRow } from './inputs';
-export { MyPayslipsScreen, MyTaxScreen, payDiff, type MyPayslipsScreenProps, type MyTaxScreenProps, type MyTaxWorkspace, type RegimeComparison, type PayDiffRow } from './employee';
 export { StatutoryHubScreen, type StatutoryHubScreenProps } from './compliance';
 // Batch 5h (PAY-8.01 … 8.04): consultants, their invoices and payments, Form 140 / 131 and the consultant's own page.
 export * from './types-5h';
@@ -73,3 +72,5 @@ export { CountryPacksScreen, type LiveCountryPacks, type W9Input, type WpsIdsInp
 export { SpecialPayHomeScreen } from '../special-pay';
 export type { LiveSpecialPay, PieceOutput, TipPoolView, UnionRemittance } from '../special-pay-live';
 export { EquityScreen, MyEquityScreen, type LiveEquity, type LiveMyEquity } from '../equity';
+// Employee pay and tax designs (PAY-21, 22, 40, 41 … builder 3): the designed screens, made live with `live`.
+export { PayslipViewerScreen, TaxWorkspaceScreen, RegimeCompareScreen, payDiff, monthName, type LivePayslips, type PayDiffRow, type LiveTax, type TaxTab, type LiveRegimeCompare, type MyTaxWorkspace, type RegimeComparison, type MyTaxSheet, type MyForm12b, type Form12bInput } from '../employee-pay';

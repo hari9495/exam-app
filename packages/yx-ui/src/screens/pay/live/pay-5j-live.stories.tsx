@@ -1,8 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { StatutoryHubScreen } from './compliance';
 import { FnfCalculator } from '../../people/exits';
-import { MyPayslipsScreen, MyTaxScreen } from './employee';
-import { DETAIL, FILINGS, FNF, HUB, MY_PAYSLIPS, PEOPLE, PREVIOUS, RETURNS, RUN } from './fixtures-5j';
+import { DETAIL, FILINGS, FNF, HUB, PEOPLE, RETURNS, RUN } from './fixtures-5j';
 
 // Batch 5j wired payroll screens with sample data (the affordance guard opens these in light and dark).
 const ok = async () => ({}) as never;
@@ -11,26 +10,7 @@ const meta: Meta = { title: 'Screens/Pay/Live 5j', parameters: { layout: 'fullsc
 export default meta;
 type S = StoryObj;
 
-export const MyPayslips: S = {
-  name: 'PAY-21 · My payslips',
-  render: () => <MyPayslipsScreen state="ready" payslips={MY_PAYSLIPS} onOpen={async (id) => (id === 's0' ? PREVIOUS : DETAIL)} onPdf={ok} onQuery={ok} />,
 };
-export const MyTax: S = {
-  name: 'PAY-41 · My tax',
-  render: () => (
-    <MyTaxScreen
-      state="ready"
-      workspace={{ taxYear: '2026-27', regime: 'new', canChooseRegime: true, dates: { regimeCutoff: '2026-05-31' }, panStatus: 'ok' }}
-      onCompare={async () => ({
-        taxYear: '2026-27',
-        current: 'new',
-        lower: 'new',
-        regimes: [
-          { regime: 'new', taxable: '651000.00', annualTax: '0.00', monthTds: '0.00' },
-          { regime: 'old', taxable: '626000.00', annualTax: '38220.00', monthTds: '3185.00' },
-        ],
-      })}
-      onChooseRegime={ok}
     />
   ),
 };

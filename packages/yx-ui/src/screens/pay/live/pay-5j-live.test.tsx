@@ -3,9 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { StatutoryHubScreen } from './compliance';
 import { FnfCalculator, type LiveFnf } from '../../people/exits';
-import { MyPayslipsScreen, payDiff } from './employee';
 import { rupees } from './runs';
-import { DETAIL, FILINGS, FNF, HUB, MY_PAYSLIPS, PEOPLE, PREVIOUS, RETURNS, RUN } from './fixtures-5j';
+import { DETAIL, FILINGS, FNF, HUB, PEOPLE, RETURNS, RUN } from './fixtures-5j';
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const ok = vi.fn(async () => ({}) as never);
@@ -13,18 +12,7 @@ describe('batch 5j payroll screens', () => {
   it('rupees: Indian grouping from the API string', () => {
     expect(rupees('1234567.5')).toBe('₹12,34,567.50');
     expect(rupees('-200.00')).toBe('−₹200.00');
-  });
 
-  it('my payslip: what changed since last month, worked out only from the two payslips', async () => {
-    expect(payDiff(PREVIOUS.lines, DETAIL.lines).map((r) => [r.name, r.before, r.after])).toEqual([
-      ['Special allowance', 13125, 15125],
-      ['Income tax (TDS)', 2980, 3120],
-    ]);
-    render(<MyPayslipsScreen state="ready" payslips={MY_PAYSLIPS} onOpen={async (id) => (id === 's0' ? PREVIOUS : DETAIL)} onPdf={ok} onQuery={ok} />);
-    await ue.click(screen.getByRole('button', { name: 'Open payslip for September 2026' }));
-    expect(await screen.findByRole('region', { name: 'Reimbursements' })).toHaveTextContent(/not of gross earnings/);
-    await ue.click(screen.getByRole('button', { name: 'Show what changed' }));
-    expect(await screen.findByRole('table', { name: 'What changed' })).toHaveTextContent('Special allowance');
   });
 
   it('statutory hub: an uploaded filing is marked filed with its phrase; the TDS return waits for the filer’s .fvu', async () => {

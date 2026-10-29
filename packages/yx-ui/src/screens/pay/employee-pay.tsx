@@ -1,14 +1,22 @@
 // Employee pay (desktop Me › My pay and mobile Pay tab): PAY-21 payslip viewer, PAY-40 "Why is my pay different?",
 // PAY-22 tax workspace, PAY-41 compare tax regimes, PAY-18 loan / advance request, PAY-26 earned wage access,
 // PAY-33 my incentive statement, PAY-39 my pay band.
-import { useState, type ReactNode } from 'react';
-import { ChevronLeft, Download, FileText, HelpCircle, MessageSquare } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { ChevronLeft, Download, FileText, HelpCircle, MessageSquare, Plus } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { Button, IconButton, Link } from '../../components/button';
 import { AiBadge, Badge, type BadgeTone } from '../../components/display';
 import { Drawer } from '../../components/drawer';
-import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FieldRow, FormField } from '../../components/field';
+import { EmptyState, InlineAlert, Skeleton } from '../../components/feedback';
+import { useToast } from '../../components/notify';
+import { useRun } from '../org/org-kit';
+import { PayFormDrawer, PayPageState, fromPaise, paise, rupees, sumMoney } from './consultants';
+import type { LoadState } from './live/types';
+import type { MyPayslip, PayslipDetail, PayslipLine } from './live/types-5j';
+import type { DeclarationInput, DeclarationLine, MyCertificate, MyDeclarations } from './live/types-ops';
+import { FieldRow, FormField, useTooEarly, type FormErrorItem } from '../../components/field';
+import { Segment } from '../../components/segment';
+import { dateText } from '../time/live/kit';
 import { CurrencyField, NumberField, TextArea, TextField } from '../../components/inputs';
 import { Checkbox, RadioGroup } from '../../components/choice';
 import { Select } from '../../components/select';
@@ -210,7 +218,7 @@ export const PAY_DIFFS: PayDiff[] = [
 export const UNEXPLAINED: PayDiff = { id: 'other', line: 'Canteen recovery', change: -1_000, cause: null };
 
 /** PAY-40 · diff cards per changed line; anything without a payroll record is "not explained" with a query action. */
-export function PayDiffPanel({ diffs, previous, current, onQuery, chat }: { diffs: PayDiff[]; previous: number; current: number; onQuery: (line: string) => void; chat?: boolean }) {
+export function PayDiffPanel({ diffs, previous, current, onQuery, chat, labels = { previous: 'August', current: 'September' } }: { diffs: PayDiff[]; previous: number; current: number; onQuery: (line: string) => void; chat?: boolean; /** Month names of the two payslips (live: from the payslips). */ labels?: { previous: string; current: string } }) {
   const [messages, setMessages] = useState([
     { id: 'm1', role: 'user' as const, text: 'Why did my pay go down this month?' },
     {
@@ -228,14 +236,14 @@ export function PayDiffPanel({ diffs, previous, current, onQuery, chat }: { diff
     <div className="yx-pay-stack">
       <FactRow
         items={[
-          { label: 'August net', value: formatINR(previous) },
-          { label: 'September net', value: formatINR(current) },
+          { label: `${labels.previous} net`, value: formatINR(previous) },
+          { label: `${labels.current} net`, value: formatINR(current) },
           { label: 'Difference', value: <Amount value={total} signed /> },
         ]}
       />
       {diffs.length === 0 ? (
         <InlineAlert tone="success" title="Your pay is the same as last month">
-          No line changed between August and September.
+          No line changed between {labels.previous} and {labels.current}.
         </InlineAlert>
       ) : (
         <ul className="yx-pay-diff" aria-label="Changed lines">
@@ -286,8 +294,12 @@ export function PayDiffPanel({ diffs, previous, current, onQuery, chat }: { diff
 
 export type PayslipVariant = 'default' | 'query' | 'query-sent' | 'held' | 'not-published' | 'document' | 'why' | 'why-unexplained' | 'why-chat' | 'why-same';
 
-/** PAY-21 · Payslip viewer: net first, days strip, why-this-number, raise a query. Hosts PAY-40. */
-export function PayslipViewerScreen({ layout = 'desktop', variant = 'default', state = 'ready' }: { layout?: Layout; variant?: PayslipVariant; state?: ViewState }) {
+/** PAY-21 · Payslip viewer: net first, days strip, why-this-number, raise a query. Hosts PAY-40. The app passes `live` (Me › Payslips). */
+export function PayslipViewerScreen(p: { layout?: Layout; variant?: PayslipVariant; state?: ViewState; live?: LivePayslips }) {
+  return p.live ? <LivePayslipViewer live={p.live} /> : <SamplePayslipViewer {...p} />;
+}
+
+function SamplePayslipViewer({ layout = 'desktop', variant = 'default', state = 'ready' }: { layout?: Layout; variant?: PayslipVariant; state?: ViewState }) {
   const [query, setQuery] = useState<string | null>(variant === 'query' ? 'Unpaid leave, 1 day' : null);
   const [sent, setSent] = useState(variant === 'query-sent');
   const [why, setWhy] = useState(variant.startsWith('why'));
@@ -687,8 +699,12 @@ export function RegimeComparePanel({
   );
 }
 
-/** PAY-41 as a standalone screen (desktop panel or phone). */
-export function RegimeCompareScreen({ layout = 'desktop', props, state = 'ready' }: { layout?: Layout; props?: RegimeCompareProps; state?: ViewState }) {
+/** PAY-41 as a standalone screen (desktop panel or phone). Live, it is the Compare tab of the tax workspace. */
+export function RegimeCompareScreen(p: { layout?: Layout; props?: RegimeCompareProps; state?: ViewState; live?: LiveRegimeCompare }) {
+  return p.live ? <LiveRegimeCompare live={p.live} /> : <SampleRegimeCompare {...p} />;
+}
+
+function SampleRegimeCompare({ layout = 'desktop', props, state = 'ready' }: { layout?: Layout; props?: RegimeCompareProps; state?: ViewState }) {
   return (
     <EmpFrame layout={layout} page="tax" title="Compare regimes" back={STORY.taxPhone} backLabel="Back to Tax">
       {layout === 'desktop' && <PageHeader title="Compare tax regimes" description={MY_TAX.taxYear} />}
@@ -721,8 +737,12 @@ const PROOFS_OPEN = TODAY.getTime() >= MY_TAX.proofWindow.from.getTime() && TODA
 
 export type TaxVariant = 'declare' | 'locked' | 'proofs' | 'non-resident' | 'no-pan';
 
-/** PAY-22 · Tax workspace: regime compare, declarations, proofs, TDS explanation, Form 12B, residential status. */
-export function TaxWorkspaceScreen({ layout = 'desktop', tab = 'overview', variant = 'declare', state = 'ready' }: { layout?: Layout; tab?: string; variant?: TaxVariant; state?: ViewState }) {
+/** PAY-22 · Tax workspace: regime compare, declarations, proofs, TDS explanation, Form 12B, residential status. The app passes `live`. */
+export function TaxWorkspaceScreen(p: { layout?: Layout; tab?: string; variant?: TaxVariant; state?: ViewState; live?: LiveTax }) {
+  return p.live ? <LiveTaxWorkspace live={p.live} /> : <SampleTaxWorkspace {...p} />;
+}
+
+function SampleTaxWorkspace({ layout = 'desktop', tab = 'overview', variant = 'declare', state = 'ready' }: { layout?: Layout; tab?: string; variant?: TaxVariant; state?: ViewState }) {
   const phone = layout === 'phone';
   const ready = state === 'ready';
   const proofsStory = variant === 'proofs';
@@ -1758,3 +1778,1036 @@ export function PayBandScreen({ layout = 'desktop', variant = 'default', state =
   );
 }
 
+
+/* ================================================================== Live (the app passes `live`; stories show the sample above) */
+
+/** "2026-09" → "September 2026". */
+export const monthName = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+/** An exact API amount as a number for the Kit's display parts (no money is added up from it). */
+const num = (v: string | null | undefined) => (v ? Number(paise(v)) / 100 : 0);
+const PAYMENT_TEXT: Record<string, string> = { pending: 'Not paid yet', sent: 'Sent to the bank', held: 'On hold', cash: 'Paid by cash or cheque', paid: 'Paid', failed: 'Payment failed', returned: 'Payment came back' };
+
+/* ------------------------------------------------------------------ PAY-21 + PAY-40 live: Me › Payslips */
+
+export interface LivePayslips {
+  state: LoadState;
+  onRetry?: () => void;
+  /** Published payslips, newest first. */
+  payslips: MyPayslip[] | null;
+  onOpen: (id: string) => Promise<PayslipDetail>;
+  onPdf: (id: string, month: string) => Promise<unknown>;
+  onQuery: (id: string, text: string, lineCode?: string) => Promise<unknown>;
+}
+
+export interface PayDiffRow {
+  code: string;
+  name: string;
+  kind: PayslipLine['kind'];
+  before: string;
+  after: string;
+  /** Effect on net pay (earnings and reimbursements add, deductions take away). */
+  netEffect: string;
+  explanation: string;
+}
+
+/** Line by line, what moved between two payslips, worked out only from their own lines (exact, in paise). Employer lines and notes are left out. */
+export function payDiff(prev: PayslipLine[], cur: PayslipLine[]): PayDiffRow[] {
+  const sum = (ls: PayslipLine[]) => {
+    const m = new Map<string, { name: string; kind: PayslipLine['kind']; amount: bigint; explanation: string }>();
+    for (const l of ls.filter((x) => x.kind === 'earning' || x.kind === 'deduction' || x.kind === 'reimbursement')) {
+      const o = m.get(l.code) ?? { name: l.name, kind: l.kind, amount: 0n, explanation: '' };
+      o.amount += paise(l.amount);
+      o.explanation = l.explanation;
+      m.set(l.code, o);
+    }
+    return m;
+  };
+  const a = sum(prev);
+  const b = sum(cur);
+  return [...new Set([...a.keys(), ...b.keys()])]
+    .map((code) => {
+      const x = (b.get(code) ?? a.get(code))!;
+      const before = a.get(code)?.amount ?? 0n;
+      const after = b.get(code)?.amount ?? 0n;
+      const effect = x.kind === 'deduction' ? before - after : after - before;
+      const size = effect < 0n ? -effect : effect;
+      return { row: { code, name: x.name, kind: x.kind, before: fromPaise(before), after: fromPaise(after), netEffect: fromPaise(effect), explanation: b.get(code) ? x.explanation : 'Not on this payslip.' }, size };
+    })
+    .filter((r) => r.size > 0n)
+    .sort((x, y) => (y.size > x.size ? 1 : y.size < x.size ? -1 : 0))
+    .map((r) => r.row);
+}
+
+const lineId = (l: PayslipLine, i: number) => `${l.code}-${i}`;
+const toExplained = (lines: PayslipLine[]): ExplainedLine[] =>
+  lines.flatMap((l, i) =>
+    l.kind === 'earning' || l.kind === 'deduction' || l.kind === 'employer'
+      ? [
+          {
+            id: lineId(l, i),
+            label: l.name,
+            amount: num(l.amount),
+            kind: l.kind,
+            formula: l.explanation || undefined,
+            inputs: l.quantity && l.rate ? `${l.quantity} × ${rupees(l.rate)}` : undefined,
+            rule: l.rule ? `${l.rule.statute} ${l.rule.jurisdiction} ${l.rule.version}${l.rule.verify || l.verify ? ' (to verify)' : ''}` : undefined,
+          },
+        ]
+      : [],
+  );
+
+function LivePayslipViewer({ live }: { live: LivePayslips }) {
+  const { toast } = useToast();
+  const slips = live.payslips ?? [];
+  const [openId, setOpenId] = useState<string | null>(null);
+  const slip = slips.find((s) => s.id === openId) ?? slips[0] ?? null;
+  const [details, setDetails] = useState<Record<string, PayslipDetail>>({});
+  const [why, setWhy] = useState(false);
+  const [query, setQuery] = useState<string | null>(null);
+  const { busy, error, run } = useRun();
+  const load = async (id: string) => {
+    if (details[id]) return details[id];
+    const got = await live.onOpen(id);
+    setDetails((m) => ({ ...m, [id]: got }));
+    return got;
+  };
+  useEffect(() => {
+    if (slip && !details[slip.id]) void run('load', () => load(slip.id));
+  }, [slip?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const d = slip ? details[slip.id] : undefined;
+  // The month before, only between regular payslips (an off-cycle payslip has no "last month").
+  const prev = slip?.runType === 'regular' ? slips.filter((x) => x.runType === 'regular' && x.month < slip.month).sort((x, y) => y.month.localeCompare(x.month))[0] : undefined;
+  const prevD = prev ? details[prev.id] : undefined;
+  const period = slip ? `${monthName(slip.month)}${slip.runType === 'offcycle' ? ' (off-cycle)' : ''}` : '';
+  const netChange = slip && prev ? paise(slip.net) - paise(prev.net) : null;
+  // Year to date: the tax year (April–March) of this payslip, up to and including it.
+  const fyStart = slip ? `${Number(slip.month.slice(5)) >= 4 ? slip.month.slice(0, 4) : Number(slip.month.slice(0, 4)) - 1}-04` : '';
+  const ytd = slip ? slips.filter((x) => x.month >= fyStart && x.month <= slip.month) : [];
+  const reimbursements = d?.lines.filter((l) => l.kind === 'reimbursement') ?? [];
+  const diffs: PayDiff[] = d && prevD ? payDiff(prevD.lines, d.lines).map((r) => ({ id: r.code, line: r.name, change: num(r.netEffect), cause: r.explanation.trim() || null })) : [];
+  const held = d?.held || slip?.paymentStatus === 'held';
+  const openWhy = () => {
+    if (!prev) return;
+    void run('why', async () => {
+      await load(prev.id);
+      setWhy(true);
+    });
+  };
+  const actions = slip && (
+    <>
+      {prev && (
+        <Button variant="primary" icon={HelpCircle} loading={busy === 'why'} onClick={openWhy}>
+          Why is my pay different?
+        </Button>
+      )}
+      <Button icon={MessageSquare} onClick={() => setQuery('')}>
+        Raise a query
+      </Button>
+      <Button
+        icon={Download}
+        loading={busy === 'pdf'}
+        onClick={() => void run('pdf', () => live.onPdf(slip.id, slip.month)).then((ok) => ok && toast({ title: 'Payslip downloaded', description: `Your payslip for ${period} is in your downloads.`, tone: 'success' }))}
+      >
+        Download PDF
+      </Button>
+    </>
+  );
+  return (
+    <MyPayFrame page="payslips">
+      <PageHeader title={slip ? `Payslip for ${period}` : 'My payslips'} description="Your published payslips. Open a line to see how it was worked out." actions={live.state === 'ready' ? actions : undefined} />
+      <PayPageState state={live.state} onRetry={live.onRetry} what="your payslips">
+        {!slip ? (
+          <EmptyState title="No payslips yet." description="Payroll publishes payslips after the run is approved and paid. You get a notification in the app." />
+        ) : (
+          <div className="yx-pay-stack">
+            {error && (
+              <InlineAlert tone="danger" title="That did not work">
+                {error}
+              </InlineAlert>
+            )}
+            {held && (
+              <InlineAlert tone="warning" title="Your net pay is on hold">
+                Tax and PF are still deducted as usual. Payroll tells you when your pay is released.
+              </InlineAlert>
+            )}
+            <MoneySummary
+              period={period}
+              net={num(slip.net)}
+              gross={num(slip.gross)}
+              deductions={num(slip.deductions)}
+              employerCost={d ? num(d.employerCost) : undefined}
+              payDate={new Date()}
+              payLabel={PAYMENT_TEXT[slip.paymentStatus] ?? slip.paymentStatus}
+              status={<Badge tone={slip.paymentStatus === 'paid' ? 'success' : held || slip.paymentStatus === 'failed' || slip.paymentStatus === 'returned' ? 'warning' : 'neutral'}>{held ? 'On hold' : PAYMENT_TEXT[slip.paymentStatus] ?? slip.paymentStatus}</Badge>}
+              change={prev && netChange != null ? (netChange === 0n ? `Same as ${monthName(prev.month)}` : `${rupees(fromPaise(netChange < 0n ? -netChange : netChange))} ${netChange < 0n ? 'less' : 'more'} than ${monthName(prev.month)}`) : undefined}
+            />
+            <div className="yx-pay-split">
+              <section className="yx-pay-panel" aria-label="Why this number">
+                <SectionTitle>How your pay was worked out</SectionTitle>
+                {!d ? (
+                  <Skeleton height={200} />
+                ) : (
+                  <div className="yx-pay-stack">
+                    <WhyThisNumber lines={toExplained(d.lines)} onQuery={(l) => setQuery(d.lines.find((x, i) => lineId(x, i) === l.id)?.code ?? '')} />
+                    <section aria-label="Reimbursements">
+                      <SectionTitle>Reimbursements</SectionTitle>
+                      {reimbursements.length ? (
+                        <DescriptionList items={reimbursements.map((l) => ({ label: l.name, value: rupees(l.amount) }))} />
+                      ) : (
+                        <p className="yx-pay-note">None this month. Approved expense claims paid with salary show here; they are part of net pay, not of gross earnings.</p>
+                      )}
+                    </section>
+                  </div>
+                )}
+              </section>
+              <div className="yx-pay-stack">
+                <Card title="Year to date">
+                  <DescriptionList
+                    items={[
+                      { label: 'Gross earnings', value: rupees(sumMoney(ytd.map((x) => x.gross))) },
+                      { label: 'Deductions', value: rupees(sumMoney(ytd.map((x) => x.deductions))) },
+                      { label: 'Net pay', value: rupees(sumMoney(ytd.map((x) => x.net))) },
+                    ]}
+                  />
+                  <p className="yx-pay-note">
+                    {monthName(fyStart)} to {monthName(slip.month)}, {ytd.length} {ytd.length === 1 ? 'payslip' : 'payslips'}.
+                  </p>
+                </Card>
+                {slips.length > 1 && (
+                  <Card title="Other payslips">
+                    <ul className="yx-pay-cards">
+                      {slips
+                        .filter((x) => x.id !== slip.id)
+                        .slice(0, 12)
+                        .map((x) => (
+                          <li key={x.id}>
+                            <div className="yx-pay-cards__row">
+                              <Button size="sm" icon={FileText} onClick={() => setOpenId(x.id)} aria-label={`Open payslip for ${monthName(x.month)}${x.runType === 'offcycle' ? ' (off-cycle)' : ''}`}>
+                                {monthName(x.month)}
+                                {x.runType === 'offcycle' ? ' · off-cycle' : ''}
+                              </Button>
+                              <span>{rupees(x.net)}</span>
+                            </div>
+                          </li>
+                        ))}
+                    </ul>
+                  </Card>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </PayPageState>
+      {slip && prev && (
+        <Drawer open={why} onOpenChange={setWhy} title="Why is my pay different?" subtitle={`${monthName(slip.month)} compared with ${monthName(prev.month)}`} size="lg" footer={<Button onClick={() => setWhy(false)}>Close</Button>}>
+          <PayDiffPanel
+            diffs={diffs}
+            previous={num(prev.net)}
+            current={num(slip.net)}
+            labels={{ previous: monthName(prev.month), current: monthName(slip.month) }}
+            onQuery={(line) => {
+              setWhy(false);
+              setQuery(d?.lines.find((l) => l.name === line)?.code ?? prevD?.lines.find((l) => l.name === line)?.code ?? '');
+            }}
+          />
+        </Drawer>
+      )}
+      {slip && query != null && <QueryDrawer slip={slip} period={period} lines={d?.lines ?? []} lineCode={query} onClose={() => setQuery(null)} onSend={live.onQuery} />}
+    </MyPayFrame>
+  );
+}
+
+function QueryDrawer({ slip, period, lines, lineCode, onClose, onSend }: { slip: MyPayslip; period: string; lines: PayslipLine[]; lineCode: string; onClose: () => void; onSend: LivePayslips['onQuery'] }) {
+  const [about, setAbout] = useState<string | null>(lineCode || 'whole');
+  const [text, setText] = useState('');
+  const seen = new Set<string>();
+  const options = [
+    { value: 'whole', label: 'Whole payslip' },
+    ...lines.filter((l) => l.kind !== 'employer' && l.kind !== 'info' && !seen.has(l.code) && seen.add(l.code)).map((l) => ({ value: l.code, label: l.name })),
+  ];
+  return (
+    <PayFormDrawer
+      title="Raise a query on this payslip"
+      subtitle={`${period}. Your question goes to payroll; the reply stays in the app.`}
+      confirm="Send query"
+      done="Query sent to payroll. You get the reply in the app."
+      errors={text.trim().length < 5 ? [{ fieldId: 'q-text', message: 'Write your question (at least 5 letters).' }] : []}
+      onClose={onClose}
+      onSave={() => onSend(slip.id, text.trim(), about && about !== 'whole' ? about : undefined)}
+    >
+      {(errorOf) => (
+        <>
+          <FormField id="q-about" label="About">
+            <Select value={about} onChange={setAbout} options={options} />
+          </FormField>
+          <FormField id="q-text" label="Your question" required helper="Say what you expected, for example the leave you applied for." error={errorOf('q-text')}>
+            <TextArea rows={4} value={text} onChange={setText} maxLength={1000} />
+          </FormField>
+        </>
+      )}
+    </PayFormDrawer>
+  );
+}
+
+/* ------------------------------------------------------------------ PAY-22 + PAY-41 live: Me › Tax, Me › Tax declarations */
+
+/** GET tax/me/workspace. */
+export interface MyTaxWorkspace {
+  id?: string;
+  taxYear: string;
+  regime: 'new' | 'old';
+  regimeOverridden?: boolean;
+  residentialStatus?: 'resident' | 'non_resident';
+  panStatus: string;
+  otherIncome?: { kind: 'interest' | 'rent' | 'other'; amount: string }[] | null;
+  dates?: { regimeCutoff: string; proofWindowOpens?: string; proofCutoff?: string };
+  canChooseRegime?: boolean;
+  canDeclare?: boolean;
+  canSendProofs?: boolean;
+}
+
+/** POST tax/me/regime-compare: both regimes on the latest payslip's figures, with the same function as the TDS. */
+export interface RegimeComparison {
+  taxYear: string;
+  current: 'new' | 'old';
+  lower: 'new' | 'old';
+  regimes: { regime: 'new' | 'old'; taxable: string; annualTax: string; monthTds: string }[];
+}
+
+/** GET tax/me/tax-sheet: the projection behind the latest payslip's TDS (null before the first payslip of the year). */
+export interface MyTaxSheet {
+  taxYear: string;
+  month?: string;
+  message?: string;
+  sheet: {
+    regime: 'new' | 'old';
+    income: { salary: string; previousEmployers: string; perquisites: string; other: string; total: string };
+    exemptions: { standardDeduction: string; hra: string; professionalTax: string; previousEmployers: string };
+    deductions: { key: string; claimed: string; allowed: string }[];
+    taxable: string;
+    tax: { slab: string; rebate: string; surcharge: string; total: string; noPanApplied: boolean };
+    alreadyDeducted: string;
+    remainingPeriods: number;
+    monthTds: string;
+    notes: string[];
+  } | null;
+}
+
+/** GET tax/me/form12b (founder decision 6): previous employer income, checked by payroll before it counts. */
+export interface MyForm12b {
+  taxYear: string;
+  open: boolean;
+  closesOn: string;
+  submission: null | {
+    id: string;
+    employerName: string | null;
+    employerTan: string;
+    gross: string;
+    exemptions: string;
+    tds: string;
+    status: 'pending' | 'approved' | 'rejected';
+    comment: string | null;
+    file: { name: string; size: number; at: string };
+    submittedAt: string;
+    verifiedAt: string | null;
+  };
+}
+
+export interface Form12bInput {
+  employerName?: string;
+  employerTan: string;
+  gross: string;
+  exemptions?: string;
+  tds: string;
+}
+
+export type TaxTab = 'overview' | 'compare' | 'declarations' | 'proofs' | 'previous' | 'residential';
+
+export interface LiveTax {
+  state: LoadState;
+  onRetry?: () => void;
+  /** The tab the page opens on (Me › Tax: overview; Me › Tax declarations: declarations). */
+  tab?: TaxTab;
+  workspace: MyTaxWorkspace | null;
+  sheet: MyTaxSheet | null;
+  declarations: MyDeclarations | null;
+  certificates: MyCertificate[] | null;
+  form12b: MyForm12b | null;
+  onCompare: () => Promise<RegimeComparison>;
+  onPatch: (x: { regime?: 'new' | 'old'; residentialStatus?: 'resident' | 'non_resident'; otherIncome?: { kind: 'interest' | 'rent' | 'other'; amount: string }[] }) => Promise<unknown>;
+  onDeclare: (line: DeclarationInput) => Promise<unknown>;
+  onProof: (lineId: string, file: File) => Promise<unknown>;
+  onPartA: (c: MyCertificate) => Promise<unknown>;
+  onForm12b: (x: Form12bInput, file: File) => Promise<unknown>;
+}
+
+const SUBJECT: Record<string, string> = {
+  hra: 'Rent paid (HRA)',
+  sec80c: 'Investments and payments (80C)',
+  sec80ccd1b: 'Own NPS contribution (80CCD(1B))',
+  sec80ccd2: "Employer's NPS contribution (80CCD(2))",
+  sec80d_self: 'Health insurance, self and family (80D)',
+  sec80d_self_senior: 'Health insurance, self and family, senior citizen (80D)',
+  sec80d_parents: 'Health insurance, parents (80D)',
+  sec80d_parents_senior: 'Health insurance, senior citizen parents (80D)',
+  sec80e: 'Education loan interest (80E)',
+  sec24b: 'Home loan interest (24(b))',
+};
+export const subjectText = (key: string, section?: string | null) => SUBJECT[key] ?? (section ? `${key} (${section})` : key);
+const PROOF_STATE: Record<string, { label: string; tone: BadgeTone }> = {
+  none: { label: 'No proof yet', tone: 'neutral' },
+  pending: { label: 'Proof being checked', tone: 'warning' },
+  approved: { label: 'Accepted', tone: 'success' },
+  partly: { label: 'Partly accepted', tone: 'info' },
+  rejected: { label: 'Not accepted', tone: 'danger' },
+};
+const proofBadge = (s: string) => <Badge tone={PROOF_STATE[s]?.tone ?? 'neutral'}>{PROOF_STATE[s]?.label ?? s}</Badge>;
+const MONEY_RE = /^\d{1,10}(\.\d{1,2})?$/;
+const MONTH_RE = /^\d{4}-\d{2}$/;
+const TAN_RE = /^[A-Z]{4}\d{5}[A-Z]$/;
+const todayIso = () => new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
+const regimeText = (r: 'new' | 'old') => (r === 'new' ? 'New regime' : 'Old regime');
+
+function LiveTaxWorkspace({ live }: { live: LiveTax }) {
+  const { toast } = useToast();
+  const w = live.workspace;
+  const decl = live.declarations;
+  const s = live.sheet?.sheet ?? null;
+  const [tab, setTab] = useState<TaxTab>(live.tab ?? 'overview');
+  const { busy, error, run } = useRun();
+  const cutOff = w?.dates?.regimeCutoff;
+  const locked = w ? !w.canChooseRegime : false;
+  const facts = w
+    ? [
+        { label: 'Regime', value: `${regimeText(w.regime)}${w.regimeOverridden ? ' (set by payroll)' : ''}` },
+        ...(s
+          ? [
+              { label: 'Projected tax', value: rupees(s.tax.total) },
+              { label: 'Deducted so far', value: rupees(s.alreadyDeducted) },
+              { label: `Monthly TDS (${s.remainingPeriods} ${s.remainingPeriods === 1 ? 'month' : 'months'} left)`, value: rupees(s.monthTds) },
+            ]
+          : []),
+        { label: 'Residential status', value: w.residentialStatus === 'non_resident' ? 'Non-resident' : 'Resident' },
+      ]
+    : undefined;
+  const status = w && cutOff ? locked ? <Badge tone="neutral">Regime locked on {dateText(cutOff)}</Badge> : <Badge tone="info">You can change your regime until {dateText(cutOff)}</Badge> : undefined;
+  const certButtons = (live.certificates ?? []).map((c) => (
+    <Button
+      key={c.id}
+      icon={Download}
+      loading={busy === `a-${c.id}`}
+      onClick={() => void run(`a-${c.id}`, () => live.onPartA(c)).then((ok) => ok && toast({ title: 'Part A downloaded', tone: 'success' }))}
+      aria-label={`Download Part A of ${c.form === 'form130' ? 'Form 130' : 'Form 16'} for ${c.taxYear}`}
+    >
+      {c.form === 'form130' ? 'Form 130' : 'Form 16'} Part A, {c.taxYear}
+    </Button>
+  ));
+  return (
+    <MyPayFrame page="tax">
+      <ObjectHeader
+        name={`Tax workspace${w ? ` · ${w.taxYear}` : ''}`}
+        icon={FileText}
+        secondary="Your regime, declarations, proofs and how your monthly tax is worked out."
+        status={live.state === 'ready' ? status : undefined}
+        facts={live.state === 'ready' ? facts : undefined}
+        actions={live.state === 'ready' && certButtons.length ? <>{certButtons}</> : undefined}
+      />
+      <PayPageState state={live.state} onRetry={live.onRetry} what="your tax workspace">
+        {w && (
+          <div className="yx-pay-stack">
+            {error && (
+              <InlineAlert tone="danger" title="That did not work">
+                {error}
+              </InlineAlert>
+            )}
+            {w.panStatus === 'inoperative' && (
+              <InlineAlert tone="warning" title="Your PAN is inoperative">
+                Tax is taken at the higher of 20% or your slab rate until your PAN is linked with Aadhaar. Link it on the income-tax e-filing portal, then tell payroll so they can check it.
+              </InlineAlert>
+            )}
+            <Tabs value={tab} onValueChange={(v) => setTab(v as TaxTab)}>
+              <TabsList aria-label="Tax workspace">
+                <TabsTrigger value="overview">Overview</TabsTrigger>
+                <TabsTrigger value="compare">Compare regimes</TabsTrigger>
+                <TabsTrigger value="declarations" count={decl?.lines.length}>
+                  Declarations
+                </TabsTrigger>
+                <TabsTrigger value="proofs">Proofs</TabsTrigger>
+                <TabsTrigger value="previous">Previous employer</TabsTrigger>
+                <TabsTrigger value="residential">Residential status</TabsTrigger>
+              </TabsList>
+              <TabsContent value="overview">
+                {!s ? (
+                  <InlineAlert tone="info" title="No tax sheet yet">
+                    {live.sheet?.message ?? 'Your tax sheet appears with your first payslip of the tax year.'}
+                  </InlineAlert>
+                ) : (
+                  <section className="yx-pay-panel" aria-label="How your monthly tax is worked out">
+                    <SectionTitle>How your monthly tax is worked out</SectionTitle>
+                    <ol className="yx-pay-muted">
+                      <li>
+                        Projected income for the year: {rupees(s.income.total)} = salary {rupees(s.income.salary)}
+                        {paise(s.income.previousEmployers) ? ` + previous employer ${rupees(s.income.previousEmployers)}` : ''}
+                        {paise(s.income.perquisites) ? ` + perquisites ${rupees(s.income.perquisites)}` : ''}
+                        {paise(s.income.other) ? ` + other income ${rupees(s.income.other)}` : ''}.
+                      </li>
+                      <li>
+                        {regimeText(s.regime)}: standard deduction {rupees(s.exemptions.standardDeduction)}
+                        {paise(s.exemptions.hra) ? `, HRA exemption ${rupees(s.exemptions.hra)}` : ''}
+                        {paise(s.exemptions.professionalTax) ? `, professional tax ${rupees(s.exemptions.professionalTax)}` : ''}
+                        {s.deductions.length ? `, deductions allowed ${rupees(sumMoney(s.deductions.map((x) => x.allowed)))}` : ''}; taxable {rupees(s.taxable)}.
+                      </li>
+                      <li>
+                        Tax on slabs {rupees(s.tax.slab)}
+                        {paise(s.tax.rebate) ? ` − rebate ${rupees(s.tax.rebate)}` : ''}
+                        {paise(s.tax.surcharge) ? ` + surcharge ${rupees(s.tax.surcharge)}` : ''}, with cess: {rupees(s.tax.total)} for the year{s.tax.noPanApplied ? ' (higher rate: PAN inoperative)' : ''}.
+                      </li>
+                      <li>
+                        Deducted so far {rupees(s.alreadyDeducted)}; the rest is spread over the {s.remainingPeriods} {s.remainingPeriods === 1 ? 'month' : 'months'} left: <strong>{rupees(s.monthTds)}</strong> a month.
+                      </li>
+                    </ol>
+                    {s.notes.length > 0 && (
+                      <ul className="yx-pay-note">
+                        {s.notes.map((n) => (
+                          <li key={n}>{n}</li>
+                        ))}
+                      </ul>
+                    )}
+                    <p className="yx-pay-note">The tax shown here and the tax on your payslip come from the same calculation{live.sheet?.month ? `, the payslip for ${monthName(live.sheet.month)}` : ''}.</p>
+                  </section>
+                )}
+              </TabsContent>
+              <TabsContent value="compare">
+                <RegimeCompareScreen live={{ current: w.regime, resident: w.residentialStatus !== 'non_resident', cutOff, locked, onCompare: live.onCompare, onOpenDeclarations: () => setTab('declarations') }} />
+              </TabsContent>
+              <TabsContent value="declarations">
+                <TaxDeclarations live={live} w={w} />
+              </TabsContent>
+              <TabsContent value="proofs">
+                <TaxProofs live={live} w={w} />
+              </TabsContent>
+              <TabsContent value="previous">
+                <PreviousEmployer live={live} w={w} />
+              </TabsContent>
+              <TabsContent value="residential">
+                <Residential w={w} onPatch={live.onPatch} />
+              </TabsContent>
+            </Tabs>
+          </div>
+        )}
+      </PayPageState>
+    </MyPayFrame>
+  );
+}
+
+export interface LiveRegimeCompare {
+  current: 'new' | 'old';
+  resident: boolean;
+  cutOff?: string;
+  locked: boolean;
+  onCompare: () => Promise<RegimeComparison>;
+  onOpenDeclarations: () => void;
+}
+
+/** PAY-41 inside the workspace: both regimes from the API (the same function as the monthly TDS). Never chooses for the person. */
+function LiveRegimeCompare({ live }: { live: LiveRegimeCompare }) {
+  const [cmp, setCmp] = useState<RegimeComparison | null>(null);
+  const { busy, error, run } = useRun();
+  const of = (r: 'new' | 'old') => cmp?.regimes.find((x) => x.regime === r);
+  const diff = cmp && of('new') && of('old') ? paise(of('new')!.annualTax) - paise(of('old')!.annualTax) : null;
+  return (
+    <section className="yx-pay-panel" aria-label="Compare tax regimes">
+      <SectionTitle actions={<Badge tone="info">Estimate, not tax advice</Badge>}>Compare tax regimes</SectionTitle>
+      <p className="yx-pay-muted">Worked out on your latest payslip with the same rules as your monthly tax. This tool never chooses a regime for you.</p>
+      {error && (
+        <InlineAlert tone="danger" title="That did not work">
+          {error}
+        </InlineAlert>
+      )}
+      {!cmp ? (
+        <div className="yx-pay-row">
+          <Button variant="primary" loading={busy === 'cmp'} onClick={() => void run('cmp', async () => setCmp(await live.onCompare()))}>
+            Compare the two regimes
+          </Button>
+        </div>
+      ) : (
+        <>
+          <CompareBars
+            label="Tax for the year under each regime"
+            items={(['new', 'old'] as const).map((r) => ({ label: regimeText(r), value: num(of(r)?.annualTax), note: live.current === r ? '(your choice)' : undefined, emphasis: live.current === r }))}
+          />
+          <p aria-live="polite">{diff === 0n ? 'Both regimes give the same tax.' : diff != null ? `Tax is ${rupees(fromPaise(diff < 0n ? -diff : diff))} lower under the ${diff < 0n ? 'new' : 'old'} regime with your figures.` : ''}</p>
+          <table className="yx-pay-table" aria-label="Regimes compared">
+            <thead>
+              <tr>
+                <th scope="col">Regime</th>
+                <th scope="col" data-num>
+                  Taxable income
+                </th>
+                <th scope="col" data-num>
+                  Tax for the year
+                </th>
+                <th scope="col" data-num>
+                  Tax this month
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {cmp.regimes.map((r) => (
+                <tr key={r.regime}>
+                  <th scope="row">
+                    {regimeText(r.regime)} {cmp.lower === r.regime && <Badge tone="success">Lower tax</Badge>}
+                  </th>
+                  <td data-num>{rupees(r.taxable)}</td>
+                  <td data-num>{rupees(r.annualTax)}</td>
+                  <td data-num>{rupees(r.monthTds)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+      <div className="yx-pay-row">
+        <Button onClick={live.onOpenDeclarations}>Open Declarations</Button>
+        {live.cutOff && <span className="yx-pay-muted">{live.locked ? `Your regime was locked on ${dateText(live.cutOff)}. Only payroll can change it now, with a reason.` : `You choose your regime in Declarations. You can change it until ${dateText(live.cutOff)}.`}</span>}
+      </div>
+      {!live.resident && <InlineAlert tone="info">As a non-resident this year, the rebate doesn't apply in either regime.</InlineAlert>}
+      <p className="yx-pay-note">Only you can see this comparison. Your manager never sees it, and payroll sees only the regime you choose and your declarations.</p>
+    </section>
+  );
+}
+
+function TaxDeclarations({ live, w }: { live: LiveTax; w: MyTaxWorkspace }) {
+  const { toast } = useToast();
+  const d = live.declarations;
+  const [regime, setRegime] = useState<'new' | 'old'>(w.regime);
+  const [editing, setEditing] = useState<DeclarationLine | 'new' | null>(null);
+  const [regimeError, setRegimeError] = useState<string | undefined>();
+  const { busy, error, run } = useRun();
+  useEffect(() => setRegime(w.regime), [w.regime]);
+  const verified = (l: DeclarationLine) => ['approved', 'partly'].includes(l.proofStatus);
+  const open = w.canDeclare ?? (d ? todayIso() <= d.proofCutoff : false);
+  const saveRegime = () => {
+    if (regime === w.regime) {
+      setRegimeError(`${regimeText(w.regime)} is already your regime. Choose the other one to change it.`);
+      document.getElementById('tx-regime')?.querySelector<HTMLElement>('[role="radio"]')?.focus();
+      return;
+    }
+    setRegimeError(undefined);
+    void run('regime', () => live.onPatch({ regime })).then((ok) => ok && toast({ title: `${regimeText(regime)} saved`, description: 'Your next payslip uses it.', tone: 'success' }));
+  };
+  return (
+    <div className="yx-pay-stack">
+      {error && (
+        <InlineAlert tone="danger" title="That did not work">
+          {error}
+        </InlineAlert>
+      )}
+      <section className="yx-pay-panel" aria-label="Regime">
+        <SectionTitle>Your regime for {w.taxYear}</SectionTitle>
+        {w.canChooseRegime ? (
+          <>
+            <FormField id="tx-regime" label="Regime" error={regimeError} helper="New regime: lower slab rates, most deductions not allowed. Old regime: higher rates, with 80C, 80D, HRA and home-loan interest.">
+              <Segment
+                label="Regime"
+                value={regime}
+                onChange={(v) => {
+                  setRegime(v);
+                  setRegimeError(undefined);
+                }}
+                options={[
+                  { value: 'new', label: 'New regime (default)' },
+                  { value: 'old', label: 'Old regime' },
+                ]}
+              />
+            </FormField>
+            <div className="yx-pay-row">
+              <Button variant="primary" loading={busy === 'regime'} onClick={saveRegime}>
+                Save my regime
+              </Button>
+              {w.dates?.regimeCutoff && <span className="yx-pay-note">You can change it until {dateText(w.dates.regimeCutoff)}.</span>}
+            </div>
+          </>
+        ) : (
+          <InlineAlert tone="info" title={`${regimeText(w.regime)}, locked${w.dates?.regimeCutoff ? ` on ${dateText(w.dates.regimeCutoff)}` : ''}`}>
+            The company cut-off has passed. Only payroll can change your regime now, with a reason.
+          </InlineAlert>
+        )}
+        {w.regime === 'new' && <p className="yx-pay-note">In the new regime, the declarations below don't reduce your tax. Keep them if you might switch.</p>}
+      </section>
+      {d && !open && (
+        <InlineAlert tone="info" title="Declarations are closed">
+          They closed on {dateText(d.proofCutoff)}. Anything else is claimed in your own tax return.
+        </InlineAlert>
+      )}
+      {d && !d.lines.length && <EmptyState compact title="Nothing declared yet." description="Declare rent, investments and insurance to lower the tax taken from your pay." />}
+      {d && d.lines.length > 0 && (
+        <table className="yx-pay-table" aria-label="Declarations">
+          <thead>
+            <tr>
+              <th scope="col">Item and section</th>
+              <th scope="col" data-num>
+                Declared
+              </th>
+              <th scope="col">Proof</th>
+              <th scope="col" aria-label="Actions" />
+            </tr>
+          </thead>
+          <tbody>
+            {d.lines.map((l) => (
+              <tr key={l.id}>
+                <td>
+                  <strong>{subjectText(l.subjectKey, l.section)}</strong>
+                  {l.subjectKey === 'hra' && l.rentFrom && l.rentTo && (
+                    <>
+                      <br />
+                      <span className="yx-pay-muted">
+                        {monthName(l.rentFrom)} to {monthName(l.rentTo)} · {l.metro ? 'metro city' : 'other city'}
+                      </span>
+                    </>
+                  )}
+                </td>
+                <td data-num>
+                  {rupees(l.amount)}
+                  {l.subjectKey === 'hra' ? ' a month' : ''}
+                </td>
+                <td>{proofBadge(l.proofStatus)}</td>
+                <td>
+                  {open && !verified(l) && (
+                    <Button size="sm" onClick={() => setEditing(l)} aria-label={`Change ${subjectText(l.subjectKey, l.section)}`}>
+                      Change
+                    </Button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {d && open && (
+        <div className="yx-pay-row">
+          {d.subjects.some((x) => !d.lines.some((l) => l.subjectKey === x.key)) && (
+            <Button icon={Plus} onClick={() => setEditing('new')}>
+              Add declaration
+            </Button>
+          )}
+          <span className="yx-pay-note">
+            {d.form}. Proofs are sent from {dateText(d.proofWindowOpens)} to {dateText(d.proofCutoff)}.
+          </span>
+        </div>
+      )}
+      {editing && d && <DeclareDrawer line={editing === 'new' ? null : editing} subjects={d.subjects.filter((x) => editing !== 'new' || !d.lines.some((l) => l.subjectKey === x.key))} taxYear={d.taxYear} onClose={() => setEditing(null)} onSave={live.onDeclare} />}
+    </div>
+  );
+}
+
+function DeclareDrawer({ line, subjects, taxYear, onClose, onSave }: { line: DeclarationLine | null; subjects: MyDeclarations['subjects']; taxYear: string; onClose: () => void; onSave: (x: DeclarationInput) => Promise<unknown> }) {
+  const [key, setKey] = useState<string | null>(line?.subjectKey ?? null);
+  const [amount, setAmount] = useState(line?.amount ?? '');
+  const [from, setFrom] = useState(line?.rentFrom ?? '');
+  const [to, setTo] = useState(line?.rentTo ?? '');
+  const [metro, setMetro] = useState<'yes' | 'no'>(line?.metro ? 'yes' : 'no');
+  const [landlord, setLandlord] = useState(line?.landlordName ?? '');
+  const [pan, setPan] = useState('');
+  const y = Number(taxYear.slice(0, 4));
+  const hra = key === 'hra';
+  const errors: FormErrorItem[] = [
+    ...(!key ? [{ fieldId: 'dc-what', message: 'Choose what you are declaring.' }] : []),
+    ...(!MONEY_RE.test(amount.trim()) ? [{ fieldId: 'dc-amount', message: hra ? 'Give the rent for one month in rupees.' : 'Give the amount for the year in rupees.' }] : []),
+    ...(hra && (!MONTH_RE.test(from) || from < `${y}-04` || from > `${y + 1}-03`) ? [{ fieldId: 'dc-from', message: `A month from April ${y} to March ${y + 1}.` }] : []),
+    ...(hra && (!MONTH_RE.test(to) || to < from || to > `${y + 1}-03`) ? [{ fieldId: 'dc-to', message: 'A month after the first, up to March.' }] : []),
+    ...(hra && pan.trim() && !/^[A-Z]{5}\d{4}[A-Z]$/.test(pan.trim().toUpperCase()) ? [{ fieldId: 'dc-pan', message: "The landlord's PAN is 10 letters and digits, like ABCDE1234F." }] : []),
+  ];
+  return (
+    <PayFormDrawer
+      title={line ? `Change ${subjectText(line.subjectKey, line.section)}` : 'Add declaration'}
+      subtitle="Enter 0 to remove a line."
+      confirm="Save declaration"
+      done="Declaration saved. Your next payslip uses it."
+      errors={errors}
+      onClose={onClose}
+      onSave={() =>
+        onSave({
+          subjectKey: key!,
+          amount: amount.trim(),
+          ...(hra ? { rentFrom: from, rentTo: to, metro: metro === 'yes', ...(landlord.trim() ? { landlordName: landlord.trim() } : {}), ...(pan.trim() ? { landlordPan: pan.trim().toUpperCase() } : {}) } : {}),
+        })
+      }
+    >
+      {(errorOf) => (
+        <>
+          {!line && (
+            <FormField id="dc-what" label="What" required error={errorOf('dc-what')}>
+              <Select value={key} onChange={setKey} placeholder="Choose" options={subjects.map((x) => ({ value: x.key, label: subjectText(x.key, x.section) }))} />
+            </FormField>
+          )}
+          {/* The API takes rent as a monthly amount and works out the year from the months. */}
+          <FormField id="dc-amount" label={hra ? 'Rent a month' : 'Amount for the year'} required error={errorOf('dc-amount')}>
+            <TextField value={amount} onChange={setAmount} prefix="₹" inputMode="decimal" maxLength={13} />
+          </FormField>
+          {hra && (
+            <>
+              <FieldRow>
+                <FormField id="dc-from" label="Rent paid from" required error={errorOf('dc-from')}>
+                  <TextField type="month" value={from} onChange={setFrom} />
+                </FormField>
+                <FormField id="dc-to" label="Rent paid to" required error={errorOf('dc-to')}>
+                  <TextField type="month" value={to} onChange={setTo} />
+                </FormField>
+              </FieldRow>
+              <FormField id="dc-metro" label="City">
+                <Segment
+                  label="City"
+                  value={metro}
+                  onChange={setMetro}
+                  options={[
+                    { value: 'yes', label: 'Delhi, Mumbai, Kolkata or Chennai' },
+                    { value: 'no', label: 'Elsewhere' },
+                  ]}
+                />
+              </FormField>
+              <FormField id="dc-landlord" label="Landlord's name" optional>
+                <TextField value={landlord} onChange={setLandlord} maxLength={200} />
+              </FormField>
+              <FormField id="dc-pan" label="Landlord's PAN" optional helper="Needed when the rent is more than ₹1,00,000 a year." error={errorOf('dc-pan')}>
+                <TextField value={pan} onChange={setPan} maxLength={10} autoCapitalize="characters" />
+              </FormField>
+            </>
+          )}
+        </>
+      )}
+    </PayFormDrawer>
+  );
+}
+
+function TaxProofs({ live, w }: { live: LiveTax; w: MyTaxWorkspace }) {
+  const d = live.declarations;
+  if (!d) return null;
+  const today = todayIso();
+  const windowOpen = w.canSendProofs ?? (today >= d.proofWindowOpens && today <= d.proofCutoff);
+  const rejected = d.lines.filter((l) => l.proofStatus === 'rejected').length;
+  const partly = d.lines.filter((l) => l.proofStatus === 'partly').length;
+  return (
+    <div className="yx-pay-stack">
+      {w.regime === 'new' ? (
+        <InlineAlert tone="info" title="No proofs needed in the new regime">
+          These declarations don't reduce your tax in the new regime, so payroll doesn't ask for proofs.
+        </InlineAlert>
+      ) : today < d.proofWindowOpens ? (
+        <InlineAlert tone="info" title={`Proofs open on ${dateText(d.proofWindowOpens)}`}>
+          Send them from then until {dateText(d.proofCutoff)}. Until payroll checks a proof, what you declared is used.
+        </InlineAlert>
+      ) : (
+        <InlineAlert tone={rejected + partly ? 'warning' : 'info'} title={rejected + partly ? `${rejected} not accepted, ${partly} partly accepted` : `Proof window: ${dateText(d.proofWindowOpens)} to ${dateText(d.proofCutoff)}`}>
+          {windowOpen ? `Send a proof for each line by ${dateText(d.proofCutoff)}. After that day, only what payroll accepted counts and the extra tax is spread over the months left.` : `The proof window closed on ${dateText(d.proofCutoff)}.`}
+        </InlineAlert>
+      )}
+      {!d.lines.length ? (
+        <EmptyState compact title="Nothing declared yet." description="Add a declaration first; its proof goes here." />
+      ) : (
+        <ul className="yx-pay-cards" aria-label="Proofs">
+          {d.lines.map((l) => {
+            const canSend = w.regime === 'old' && windowOpen && !['approved', 'partly'].includes(l.proofStatus);
+            return (
+              <li key={l.id}>
+                <div className="yx-pay-cards__row">
+                  <strong>{subjectText(l.subjectKey, l.section)}</strong>
+                  {w.regime === 'old' && proofBadge(l.proofStatus)}
+                </div>
+                <span className="yx-pay-muted">
+                  {l.approvedAmount && l.proofStatus === 'partly' ? `Accepted ${rupees(l.approvedAmount)} of ${rupees(l.amount)}` : `Declared ${rupees(l.amount)}${l.subjectKey === 'hra' ? ' a month' : ''}`}
+                  {l.proofs.length ? ` · ${l.proofs.length} ${l.proofs.length === 1 ? 'file' : 'files'} sent` : ''}
+                </span>
+                {l.comment && <span className="yx-pay-note">Payroll: {l.comment}</span>}
+                {canSend && (
+                  <FormField id={`pf-${l.id}`} label={`Proof for ${subjectText(l.subjectKey, l.section)}`} hideLabel>
+                    <FileUpload accept={['.pdf', '.jpg', '.jpeg', '.png']} upload={(f) => live.onProof(l.id, f).then(() => undefined)} />
+                  </FormField>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+const F12B_STATE: Record<'pending' | 'approved' | 'rejected', { label: string; tone: BadgeTone }> = {
+  pending: { label: 'Payroll is checking it', tone: 'warning' },
+  approved: { label: 'Checked: counted in your tax', tone: 'success' },
+  rejected: { label: 'Not accepted', tone: 'danger' },
+};
+
+function PreviousEmployer({ live, w }: { live: LiveTax; w: MyTaxWorkspace }) {
+  const { toast } = useToast();
+  const f = live.form12b;
+  const sub = f?.submission ?? null;
+  const editable = !!f?.open && sub?.status !== 'approved';
+  const [name, setName] = useState(sub?.employerName ?? '');
+  const [tan, setTan] = useState(sub?.employerTan ?? '');
+  const [gross, setGross] = useState(sub?.gross ?? '');
+  const [exempt, setExempt] = useState(sub && sub.exemptions !== '0.00' ? sub.exemptions : '');
+  const [tds, setTds] = useState(sub?.tds ?? '');
+  const [file, setFile] = useState<File | null>(null);
+  const { busy, error, run } = useRun();
+  const T = tan.trim().toUpperCase();
+  const errors: FormErrorItem[] = [
+    ...(!TAN_RE.test(T) ? [{ fieldId: 'pe-tan', message: "Enter the previous employer's TAN: 4 letters, 5 digits and a letter, like BLRA12345B." }] : []),
+    ...(!MONEY_RE.test(gross.trim()) ? [{ fieldId: 'pe-gross', message: 'Enter the gross salary in rupees, like 450000.' }] : []),
+    ...(exempt.trim() && !MONEY_RE.test(exempt.trim()) ? [{ fieldId: 'pe-exempt', message: 'Enter the exemptions in rupees, or leave it empty.' }] : []),
+    ...(!MONEY_RE.test(tds.trim())
+      ? [{ fieldId: 'pe-tds', message: 'Enter the tax deducted in rupees (0 if none).' }]
+      : MONEY_RE.test(gross.trim()) && paise(tds.trim()) > paise(gross.trim())
+        ? [{ fieldId: 'pe-tds', message: 'The tax deducted cannot be more than the gross salary.' }]
+        : []),
+    ...(!file ? [{ fieldId: 'pe-file', message: 'Attach your Form 12B as a PDF.' }] : []),
+  ];
+  const early = useTooEarly(errors);
+  const send = () => {
+    if (early.stop()) return;
+    void run('send', () => live.onForm12b({ ...(name.trim() ? { employerName: name.trim() } : {}), employerTan: T, gross: gross.trim(), ...(exempt.trim() ? { exemptions: exempt.trim() } : {}), tds: tds.trim() }, file!)).then((ok) => {
+      if (!ok) return;
+      early.reset();
+      toast({ title: 'Form 12B sent to payroll', description: 'It counts in your tax once payroll checks it.', tone: 'success' });
+    });
+  };
+  return (
+    <div className="yx-pay-stack">
+      <p className="yx-pay-muted">If you worked for another employer earlier in {w.taxYear}, enter the figures from their Form 12B. Payroll checks the form; once it is accepted, your monthly tax counts that salary and the tax already taken.</p>
+      {sub && (
+        <InlineAlert tone={F12B_STATE[sub.status].tone === 'danger' ? 'danger' : sub.status === 'approved' ? 'success' : 'info'} title={F12B_STATE[sub.status].label}>
+          {sub.employerName ?? sub.employerTan}: salary {rupees(sub.gross)}, tax deducted {rupees(sub.tds)}. Sent {dateText(sub.submittedAt.slice(0, 10))}.
+          {sub.comment ? ` Payroll: ${sub.comment}` : ''}
+          {sub.status === 'approved' ? ' To change it, ask payroll.' : sub.status === 'rejected' ? ' Fix it and send it again.' : ''}
+        </InlineAlert>
+      )}
+      {f && !f.open && <InlineAlert tone="info">Previous employer income could be sent until {dateText(f.closesOn)}.</InlineAlert>}
+      {error && (
+        <InlineAlert tone="danger" title="Not sent">
+          {error}
+        </InlineAlert>
+      )}
+      {editable && (
+        <>
+          <FieldRow>
+            <FormField id="pe-name" label="Previous employer" optional>
+              <TextField value={name} onChange={setName} maxLength={200} />
+            </FormField>
+            <FormField id="pe-tan" label="Their TAN" required error={early.errorOf('pe-tan')}>
+              <TextField value={tan} onChange={setTan} maxLength={10} autoCapitalize="characters" />
+            </FormField>
+          </FieldRow>
+          <FieldRow>
+            <FormField id="pe-gross" label="Salary from previous employer" required error={early.errorOf('pe-gross')}>
+              <TextField value={gross} onChange={setGross} prefix="₹" inputMode="decimal" maxLength={13} />
+            </FormField>
+            <FormField id="pe-exempt" label="Exemptions they allowed" optional error={early.errorOf('pe-exempt')}>
+              <TextField value={exempt} onChange={setExempt} prefix="₹" inputMode="decimal" maxLength={13} />
+            </FormField>
+            <FormField id="pe-tds" label="Tax deducted by previous employer" required error={early.errorOf('pe-tds')}>
+              <TextField value={tds} onChange={setTds} prefix="₹" inputMode="decimal" maxLength={13} />
+            </FormField>
+          </FieldRow>
+          <FormField id="pe-file" label="Form 12B from previous employer" required helper="A PDF signed by the previous employer." error={early.errorOf('pe-file')}>
+            <FileUpload
+              id="pe-file"
+              accept={['.pdf']}
+              multiple={false}
+              upload={async (x) => setFile(x)}
+              onItemsChange={(items) => !items.length && setFile(null)}
+            />
+          </FormField>
+          <div className="yx-pay-row">
+            <Button variant="primary" loading={busy === 'send'} onClick={send}>
+              {sub ? 'Send again' : 'Send to payroll'}
+            </Button>
+            <span className="yx-pay-note">You can send it until {f ? dateText(f.closesOn) : 'the proof cut-off'}.</span>
+          </div>
+        </>
+      )}
+      <OtherIncome w={w} onPatch={live.onPatch} />
+    </div>
+  );
+}
+
+function OtherIncome({ w, onPatch }: { w: MyTaxWorkspace; onPatch: LiveTax['onPatch'] }) {
+  const { toast } = useToast();
+  const amountOf = (k: 'interest' | 'rent' | 'other') => w.otherIncome?.find((o) => o.kind === k)?.amount ?? '';
+  const [v, setV] = useState({ interest: amountOf('interest'), rent: amountOf('rent'), other: amountOf('other') });
+  const { busy, error, run } = useRun();
+  const errors: FormErrorItem[] = (['interest', 'rent', 'other'] as const).filter((k) => v[k].trim() && !MONEY_RE.test(v[k].trim())).map((k) => ({ fieldId: `oi-${k}`, message: 'Enter rupees, like 18000, or leave it empty.' }));
+  const early = useTooEarly(errors);
+  const save = () => {
+    if (early.stop()) return;
+    const otherIncome = (['interest', 'rent', 'other'] as const).filter((k) => v[k].trim() && paise(v[k].trim()) > 0n).map((k) => ({ kind: k, amount: v[k].trim() }));
+    void run('oi', () => onPatch({ otherIncome })).then((ok) => ok && toast({ title: 'Other income saved', description: 'Your next payslip includes it in the projection.', tone: 'success' }));
+  };
+  const label = { interest: 'Interest', rent: 'Rent you receive', other: 'Other income' } as const;
+  return (
+    <section className="yx-pay-panel" aria-label="Other income">
+      <SectionTitle>Other income for the year</SectionTitle>
+      {error && (
+        <InlineAlert tone="danger" title="Not saved">
+          {error}
+        </InlineAlert>
+      )}
+      <FieldRow>
+        {(['interest', 'rent', 'other'] as const).map((k) => (
+          <FormField key={k} id={`oi-${k}`} label={label[k]} optional error={early.errorOf(`oi-${k}`)}>
+            <TextField value={v[k]} onChange={(x) => setV({ ...v, [k]: x })} prefix="₹" inputMode="decimal" maxLength={13} />
+          </FormField>
+        ))}
+      </FieldRow>
+      <div className="yx-pay-row">
+        <Button loading={busy === 'oi'} onClick={save}>
+          Save other income
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+function Residential({ w, onPatch }: { w: MyTaxWorkspace; onPatch: LiveTax['onPatch'] }) {
+  const { toast } = useToast();
+  const saved = w.residentialStatus ?? 'resident';
+  const [res, setRes] = useState<'resident' | 'non_resident'>(saved);
+  const [same, setSame] = useState<string | undefined>();
+  const { busy, error, run } = useRun();
+  const save = () => {
+    if (res === saved) {
+      setSame(`${res === 'resident' ? 'Resident' : 'Non-resident'} is already saved. Choose the other one to change it.`);
+      return;
+    }
+    setSame(undefined);
+    void run('res', () => onPatch({ residentialStatus: res })).then((ok) => ok && toast({ title: 'Residential status saved', description: 'Your next payslip uses it.', tone: 'success' }));
+  };
+  return (
+    <div className="yx-pay-stack">
+      {error && (
+        <InlineAlert tone="danger" title="Not saved">
+          {error}
+        </InlineAlert>
+      )}
+      <FormField id="rs-status" label="Residential status this tax year" error={same} helper="Resident: in India 182 days or more in the tax year, or another residence test applies. Non-resident: no rebate; a treaty rate needs a tax residency certificate, which payroll handles by hand.">
+        <Segment
+          label="Residential status this tax year"
+          value={res}
+          onChange={(x) => {
+            setRes(x);
+            setSame(undefined);
+          }}
+          options={[
+            { value: 'resident', label: 'Resident' },
+            { value: 'non_resident', label: 'Non-resident' },
+          ]}
+        />
+      </FormField>
+      <div className="yx-pay-row">
+        <Button variant="primary" loading={busy === 'res'} onClick={save}>
+          Save residential status
+        </Button>
+      </div>
+    </div>
+  );
+}
