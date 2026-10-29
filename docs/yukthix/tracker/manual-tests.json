@@ -5288,5 +5288,210 @@
       "PAY-58 Exercise units"
     ],
     "note": "Positive and negative. A person with no grants sees the empty state."
+  },
+  {
+    "id": "MT-PAY-R-50",
+    "area": "Pay · Runs",
+    "screen": "Start an off-cycle run (PAY-11 Choose run type)",
+    "url": "http://localhost:3000/yx/payroll/runs/off-cycle",
+    "account": "payroll-tester@demo-org.test (payroll.offcycle.prepare). Window 1278 x 635.",
+    "steps": [
+      "1. On Payroll home press Start off-cycle run.",
+      "2. Choose Full and final settlement and press Continue.",
+      "3. Choose Arrears only, press Continue, clear the pay group if possible and press Create run.",
+      "4. Choose a pay group and this month; press Create run."
+    ],
+    "expected": "Step 1: the Off-cycle run page opens on Run type with five choices. Step 2: 'A full and final run starts from the settlement' with Open full and final; nothing is created. Step 3: 'Choose a pay group.' under the field; the button is never greyed; nothing is created. Step 4: toast 'Off-cycle run created' (5 s) and the run opens titled 'Off-cycle run · Arrears only · <month>'.",
+    "stories": [
+      "PAY-11 Choose run type (arrears only, correction)"
+    ],
+    "note": "Positive and negative. Negative: an account without payroll.offcycle.prepare sees 'You can't start an off-cycle run' and no form."
+  },
+  {
+    "id": "MT-PAY-R-51",
+    "area": "Pay · Runs",
+    "screen": "F&F run page (PAY-11 F&F, death in service)",
+    "url": "http://localhost:3000/yx/payroll/runs/<F&F run id>",
+    "account": "payroll-tester@demo-org.test (payroll.fnf.manage, payroll.run.prepare); then an account with payroll.run.view only.",
+    "steps": [
+      "1. From Full and final, open a settlement's F&F run.",
+      "2. Read the header, alert and lines.",
+      "3. Press Submit for approval (or Calculate if it is a draft).",
+      "4. Open the F&F run of a death in service case.",
+      "5. Open the same F&F run as the view-only account."
+    ],
+    "expected": "Step 2: 'Full and final: <name>', badge 'Due <date>', alert 'Pay by <date> (2 working days after last working day)'; lines with Type, Amount, Why and the Net payable. Step 3: the workspace steps work as for a monthly run (toast). Step 4: 'Late <name>' and the nominee shares table, or 'No nominees recorded yet'. Step 5: no settlement lines, only 'Full and final run' with a link.",
+    "stories": [
+      "PAY-11 F&F · 2-working-day deadline",
+      "PAY-11 F&F on death in service · nominee shares"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-R-52",
+    "area": "Pay · Runs",
+    "screen": "F&F retrenchment: blocked until the government permission is granted",
+    "url": "http://localhost:3000/yx/payroll/runs/<retrenchment F&F run id>",
+    "account": "payroll-tester@demo-org.test; HR with exit rights for step 3.",
+    "steps": [
+      "1. Open the F&F run of a retrenchment whose permission is not granted.",
+      "2. Read the badge and the lines.",
+      "3. In People › Exits record the permission as granted; reopen the settlement and the run."
+    ],
+    "expected": "Step 2: badge 'Permission needed', a red alert that compensation can't be paid yet; the compensation line shows Held; undisputed wages can still be approved. Step 3: no block; the 'Pay by' deadline alert shows instead.",
+    "stories": [
+      "PAY-11 F&F retrenchment · blocked without permission",
+      "PAY-11 F&F retrenchment · permission recorded"
+    ],
+    "note": "Negative then positive."
+  },
+  {
+    "id": "MT-PAY-R-55",
+    "area": "Pay · Runs",
+    "screen": "Payroll home: statutory dues in Due this month",
+    "url": "http://localhost:3000/yx/payroll/runs",
+    "account": "payroll-tester@demo-org.test (Payroll Admin, statutory.filing.view). Window 1278 x 635.",
+    "steps": [
+      "1. Choose a month whose previous month's run is approved, in the top bar.",
+      "2. Read Due this month.",
+      "3. Press Open statutory hub on a PF or ESI line.",
+      "4. Choose one legal entity in the top bar.",
+      "5. Open the page as an account without statutory.filing.view."
+    ],
+    "expected": "Step 2: the cut-off and pay date, then PF, ESI and TDS lines for last month's wages with due date and Due in N days / N days overdue / Filed; an overdue line shows the penalty estimate; PT says its dates depend on the state. Step 3: the statutory hub opens. Step 4: only that entity's dues. Step 5: no dues list, only the dues link; the page still loads.",
+    "stories": [
+      "PAY-01 In review · blocked"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-R-56",
+    "area": "Pay · Runs",
+    "screen": "Payroll home: one stage row per pay group",
+    "url": "http://localhost:3000/yx/payroll/runs",
+    "account": "payroll-tester@demo-org.test in an org with two or more pay groups; then a finance approver (payroll.run.approve only).",
+    "steps": [
+      "1. Start this month's run for one pay group only.",
+      "2. Open Payroll home.",
+      "3. Press Open run on the started group's row; go back.",
+      "4. Press Start run on a group with no run.",
+      "5. Open the page as the finance approver."
+    ],
+    "expected": "Step 2: one row per group: name, run or 'Not started', the stage bar, 'N blocking' or 'On track'. Step 3: that run opens. Step 4: the Start a payroll run drawer opens. Step 5: rows show with no Start run button. With one pay group the single stage track shows instead.",
+    "stories": [
+      "PAY-01 Several pay groups · one stage row each"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-R-58",
+    "area": "Pay · Payments",
+    "screen": "Re-pay a failed or returned payment",
+    "url": "http://localhost:3000/yx/payroll/runs/<approved run id>/payments",
+    "account": "Payroll admin with payroll.payment.record and payroll.bankfile.generate; a second person with payroll.bankfile.release. Window 1278 x 635.",
+    "steps": [
+      "1. Record a bank result of Returned (reason 'Name mismatch') for one person.",
+      "2. Press Re-pay on that row, then 'Add to the next bank file' with Reason empty.",
+      "3. Type 'Account fixed by HR' and press 'Add to the next bank file'.",
+      "4. For a second returned person choose 'Off-cycle payment now', give a reason, press 'Create off-cycle payment' with no debit account.",
+      "5. Enter a 16-digit debit account and press it again; as the second person release the new bank file."
+    ],
+    "expected": "Step 2: the reason error shows and the Reason box has focus; nothing sent. Step 3: toast '<name> is paid in the next bank file'; status Pending. Step 4: 'Enter the account the bank debits (6 to 20 digits).' with focus. Step 5: toast 'Bank file made for <name>; someone else releases it'; release works only for the second person.",
+    "stories": [
+      "PAY-10 Returned payment · re-pay route"
+    ],
+    "note": "Positive and negative. Negative: without payroll.bankfile.generate only 'Next bank file' is offered; re-paying again is refused ('already waiting to be paid')."
+  },
+  {
+    "id": "MT-PAY-R-59",
+    "area": "Pay · Payments",
+    "screen": "Show pay is recorded",
+    "url": "http://localhost:3000/yx/payroll/runs/<approved run id>/payments",
+    "account": "Payroll admin; then an admin with audit.view.",
+    "steps": [
+      "1. Press Show pay, Hide pay, Show pay.",
+      "2. Open Pay › Audit log and search 'payroll.pay.shown'."
+    ],
+    "expected": "Step 1: 'Pay is showing. Each time you show it is recorded.' while shown. Step 2: two events for this run, by you, with the time.",
+    "stories": [
+      "PAY-10 Payment status · failures"
+    ],
+    "note": "Positive and negative. Negative: Hide pay adds no event."
+  },
+  {
+    "id": "MT-PAY-R-60",
+    "area": "Pay · Queries",
+    "screen": "Reassign a payslip query; close only after a reply",
+    "url": "http://localhost:3000/yx/payroll/payslip-queries",
+    "account": "Payroll admin with payroll.query.handle; a second payroll person with the same key; an employee who raised a query on a line.",
+    "steps": [
+      "1. Open the query; read Line, Amount on payslip and Explanation.",
+      "2. Press Reassign with nobody chosen.",
+      "3. Choose the second payroll person and press Reassign.",
+      "4. Press Mark resolved before any reply.",
+      "5. Reply, then Mark resolved."
+    ],
+    "expected": "Step 1: the line's name, amount and explanation. Step 2: 'Choose who to reassign the query to.' and the picker has focus. Step 3: toast '... reassigned to <colleague>'; the asker is never in the list. Step 4: refused: reply first (the server also refuses with 409). Step 5: the query moves to Resolved.",
+    "stories": [
+      "PAY-20 Query drawer · reply in app",
+      "PAY-20 Query in progress"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-R-63",
+    "area": "Pay · Runs",
+    "screen": "Run workspace: retry only the failed people (PAY-03 Failed)",
+    "url": "http://localhost:3000/yx/payroll/runs/<id>",
+    "account": "payroll admin (payroll.run.prepare); then a finance approver without it. Window 1278 x 635.",
+    "steps": [
+      "1. Open a draft run whose last calculation failed for one person (for example no salary, then add it in Compensation).",
+      "2. Read the progress panel.",
+      "3. Press Retry 1 failed.",
+      "4. Press it again while it calculates.",
+      "5. Open the same run as the finance approver."
+    ],
+    "expected": "Step 2: the panel says 1 payslip failed and names the person with what to fix. Step 3: toast; only that person is calculated again; the run ends Calculated. Step 4: toast 'The run is calculating. Wait until it finishes.' Step 5: no Retry button.",
+    "stories": [
+      "PAY-03 Failed · Calculation failed · named fixes"
+    ],
+    "note": "Positive and negative. A disabled Retry button, or recalculating everyone, is a fail."
+  },
+  {
+    "id": "MT-PAY-R-64",
+    "area": "Pay · Runs",
+    "screen": "Run workspace: inputs per source (PAY-03 Inputs)",
+    "url": "http://localhost:3000/yx/payroll/runs/<id>",
+    "account": "payroll admin, then finance approver (payroll.run.approve), then an employee",
+    "steps": [
+      "1. Open a calculated monthly run and the Inputs tab.",
+      "2. Compare One-time pay and Loan instalments with Payroll › Inputs for that month.",
+      "3. As the finance approver, open the same tab.",
+      "4. As an employee, open /yx/payroll/runs/<id>."
+    ],
+    "expected": "Step 1: facts and a table per source (attendance, loss of pay, one-time pay, holds, loan instalments, court orders, overpayment recoveries, carried from last month) with people and days or amount. Step 2: the numbers match. Step 3: same table, read only. Step 4: no access.",
+    "stories": [
+      "PAY-03 Inputs · Inputs tab"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-R-65",
+    "area": "Pay · Inputs",
+    "screen": "Salary holds: release with a reason and a route (PAY-06 Release)",
+    "url": "http://localhost:3000/yx/payroll/inputs",
+    "account": "payroll admin with payroll.hold.manage; a second payroll admin who is the held person",
+    "steps": [
+      "1. Salary holds › Release on an open hold; press Release with no reason.",
+      "2. Choose Off-cycle payment now, type 'Enquiry closed', Release, confirm, for a hold placed after the last approved run.",
+      "3. Choose Next bank file instead and confirm.",
+      "4. Release the same hold again (refresh first).",
+      "5. As the held person, try to release your own hold."
+    ],
+    "expected": "Step 1: 'Say why the hold ends, in a few words.' and the box takes focus; nothing sent. Step 2: refused: nothing is held in an approved run yet; the dialog stays. Step 3: toast; Status Released; the audit log shows reason and route. Step 4: no change. Step 5: 'Someone else releases a hold on your pay.'",
+    "stories": [
+      "PAY-06 Release · Release sheet"
+    ],
+    "note": "Positive and negative."
   }
 ]

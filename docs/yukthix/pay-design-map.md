@@ -21,22 +21,22 @@ Verdicts: **wire design** (a live page and the API exist for this job; the page 
 
 ## Counts (sub-pages = stories)
 
-**Counts: recounted by the coordinator after all three builders; see "Counts after builders 1, 2 and 3" below.**
+| | pages | live | live, gap | wire | wire, gap | feature not built | phone view | ? | sub-pages |
+|---|---|---|---|---|---|---|---|---|---|
+| A. Runs and payments | 10 | 55 | 8 | 0 | 0 | 0 | 0 | 0 | 63 |
+| B. Inputs, loans, recoveries, queries | 8 | 43 | 9 | 0 | 0 | 0 | 2 | 0 | 54 |
+| C. Structures and set-up | 6 | 39 | 0 | 0 | 4 | 0 | 0 | 0 | 43 |
+| D. Employee pay and tax | 6 | 28 | 10 | 0 | 0 | 1 | 9 | 0 | 48 |
+| E. Special pay, earned wage access, actuarial, benefits | 14 | 59 | 3 | 0 | 7 | 10 | 8 | 0 | 87 |
+| F. Reports | 1 | 0 | 0 | 0 | 0 | 13 | 0 | 0 | 13 |
+| G. Records | 3 | 44 | 0 | 0 | 0 | 0 | 0 | 0 | 44 |
+| H. New designs, made live | 5 | 46 | 3 | 0 | 0 | 0 | 0 | 0 | 49 |
+| **All** | **53** | **314** | **33** | **0** | **11** | **24** | **19** | **0** | **401** |
 
-| | wire design | wire, with a gap | live | live, gap | feature not built | phone view | all |
-|---|---|---|---|---|---|---|---|
-| A. Runs and payments (PAY-01, 02, 03, 07, 08, 09, 10, 11, 29, 30) | 55 | 3 | 0 | 0 | 0 | 0 | 58 |
-| B. Inputs, loans, recoveries, queries (PAY-04, 05, 06, 17, 18, 19, 20, 28) | 30 | 4 | 9 | 3 | 0 | 2 | 48 |
-| C. Structures and set-up (PAY-12, 13, 14, 15, 16, 42) | 28 | 0 | 0 | 0 | 0 | 0 | 28 |
-| D. Employee pay and tax (PAY-21, 22, 23, 39, 40, 41) | 0 | 0 | 28 | 10 | 1 | 9 | 48 |
-| E. Special pay, EWA, actuarial, benefits (PAY-24, 26, 27, 31, 32, 33, 34, 35, 36, 37, 38, 43) | 36 | 0 | 9 | 3 | 10 | 8 | 66 |
-| F. Reports (PAY-25) | 0 | 0 | 0 | 0 | 13 | 0 | 13 |
-| G. New designs (PAY-54, 55, 56, 57, 58) | 0 | 0 | 46 | 3 | 0 | 0 | 49 |
-| **All 48 design groups (310 sub-pages counted)** | **149** | **7** | **92** | **19** | **24** | **19** | **310** |
-
-Recounted by script (builder 3, 29 Oct 2026) from the story tables in section 4 after PAY-17, 18, 21, 22, 23, 26, 27, 33, 39, 40, 41 went live and PAY-54 … 58 were added; "live" and "live, gap" are rendered by a live page now (a gap is a state the page cannot reach yet, with its reason in the note). Earlier: counted by script from the 43 PAY story files (`pay-01-*.stories.tsx` … `pay-43-*.stories.tsx`, every `export const`
-story) and the verdict of each story in the tables below, 29 Oct 2026. The Kit (`pay-kit.stories.tsx`, 9 stories) is
-shared parts, not pages, and is not counted.
+Counted by script (coordinator, 29 Oct 2026, after builders 1, 2, 3 and builder 1's round 2 were merged into the test
+app): every `export const` story in the 53 `pay-NN-*.stories.tsx` files, and the verdict row each story has in section 4
+(the script checks one row per story; no story is missing a row). "wire, gap" in C and E = the page renders the design
+but this state needs an API first (builder 2's wording); read it as "live, gap". The Kit (9 stories) is not counted.
 
 ## How to wire (same as Time)
 
@@ -186,7 +186,7 @@ Live page: /yx/payroll/runs (founder Q1)
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| InReviewBlocked · In review · blocked (payroll admin) | live |  |
+| InReviewBlocked · In review · blocked (payroll admin) | live | "Due this month" shows PF, ESI, TDS, PT dues (GET statutory/home-dues, statutory.filing.view) |
 | FinanceApprover · Finance approver | live | as a person with payroll.run.approve |
 | ReadyToApprove · Nothing blocking (finance approver) | live |  |
 | Approved · Approved · bank file next | live |  |
@@ -195,6 +195,7 @@ Live page: /yx/payroll/runs (founder Q1)
 | FirstUse · Empty · payroll not set up | live | no pay group yet: link to /yx/payroll/setup |
 | Loading · Loading | live |  |
 | ErrorState · Error | live |  |
+| SeveralGroups · Several pay groups · one stage row each | live | new story (round 2) |
 
 #### PAY-02 · Run readiness
 
@@ -217,9 +218,9 @@ Live page: /yx/payroll/runs/[id]
 | Payslips · Payslips tab · in review | live |  |
 | WhyDrawer · Payslip why-this-number drawer | live | GET payslips/:id (lines with rule cited) |
 | Calculating · Calculating · per-employee progress | live | GET runs/:id/progress |
-| Failed · Calculation failed · named fixes | live (gap) | failures are named in the progress panel; no "retry the failed only" call in the API |
+| Failed · Calculation failed · named fixes | live | "Retry N failed": POST runs/:id/retry-failed (payroll.run.prepare, audited) |
 | Variance · Variance tab · acknowledge | live |  |
-| Inputs · Inputs tab | live (gap) | no per-source input summary in the API; shows the run facts and, for off-cycle runs, Add item |
+| Inputs · Inputs tab | live | GET runs/:id/input-sources: people and days or amount per source |
 | Validations · Validations tab | live |  |
 | Approvals · Approvals tab (finance approver) | live |  |
 | Files · Files tab · approved | live (gap) | no journal or statutory rows with links; one "Payments and journal" row opens the payments page |
@@ -265,7 +266,7 @@ Live page: /yx/payroll/runs/[id]/payments
 | story (sub-page) | verdict | note |
 |---|---|---|
 | Status · Payment status · failures | live |  |
-| Failure · Returned payment · re-pay route | live (gap) | no re-pay endpoint (next bank file / off-cycle / reimbursement account); live shows the status and Record result |
+| Failure · Returned payment · re-pay route | live | POST payslips/:id/repay (route + reason, audited `payroll.payment.repay`); off-cycle is a one-person bank file released by someone else |
 | FailedIfsc · Failed payment · waiting for corrected IFSC | live (gap) | the API has no "waiting for a new IFSC" status |
 | Register · Disbursement register · cash and cheque | live |  |
 | Files · Bank files | live | also /yx/payroll/files: every payroll file, second-person release |
@@ -283,12 +284,12 @@ Live page: /yx/payroll/runs (New run) and /yx/payroll/runs/[id] for an off-cycle
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Fnf · F&F · 2-working-day deadline | wire design | F&F run; the settlement itself is the designed PPL-22 page /yx/payroll/fnf |
-| Retrenchment · F&F retrenchment · blocked without permission | wire design (gap) | the permission is recorded in People exits (lifecycle); the run does not read it yet |
-| RetrenchmentOk · F&F retrenchment · permission recorded | wire design (gap) | same as above |
-| Death · F&F on death in service · nominee shares | wire design | POST fnf/:id/payees (nominee shares) |
-| Bonus · Bonus run | wire design |  |
-| ChooseType · Choose run type (arrears only, correction) | wire design |  |
+| Fnf · F&F · 2-working-day deadline | live | /yx/payroll/runs/[id] of an F&F run renders OffCycleRunScreen (live): deadline, settlement lines, then the workspace tabs |
+| Retrenchment · F&F retrenchment · blocked without permission | live (gap) | "Permission needed" from the settlement's held lines; the permission reference is recorded in People › Exits, not typed on the run |
+| RetrenchmentOk · F&F retrenchment · permission recorded | live | same as above |
+| Death · F&F on death in service · nominee shares | live | nominee shares read from the settlement; edited in People's death in service case |
+| Bonus · Bonus run | live (gap) | the bonus lines show in the workspace Inputs and Payslips tabs, not the design's own table |
+| ChooseType · Choose run type (arrears only, correction) | live | /yx/payroll/runs/off-cycle ("Start off-cycle run"); Full and final points to /yx/payroll/fnf |
 
 #### PAY-29 · Weekly and fortnightly runs
 
@@ -348,7 +349,7 @@ Live page: /yx/payroll/inputs (Holds)
 | story (sub-page) | verdict | note |
 |---|---|---|
 | Default · Holds by reason · ageing chart | live | ageing worked out in the page from hold dates |
-| Release · Release sheet · next bank file or off-cycle | live (gap) | the API releases into the next bank file only; no off-cycle choice, no release reason |
+| Release · Release sheet · next bank file or off-cycle | live | reason required + route, audited `payroll.hold.released`; "next bank file" is the next file of the held payslip's own run |
 | AddHold · Hold a salary · reason code | live |  |
 | AsTab · Tab on One-time pay and holds | live |  |
 | Loading · Loading | live |  |
@@ -388,12 +389,12 @@ Live page: /yx/payroll/arrears (founder Q6)
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| CourtOrders · Court orders | wire design (ready) | RecoveriesScreen takes `live`; builder 2 renders it on /yx/payroll/arrears |
-| OrderPanel · Court order record · remittances | wire design (gap) | no remittances endpoint; shows remitted against cap only |
-| CarryForwards · Carry-forwards (negative net) | wire design (gap) | no list endpoint; tab left out of live |
-| Overpayments · Overpayments · consent and write-off | wire design (ready) | write-off with reason; "Send reminder" has no API |
-| Cap · Deduction cap check · EMI deferred | wire design (gap) | no read endpoint; tab left out of live |
-| Loading · Loading | wire design (ready) |  |
+| CourtOrders · Court orders | live | tab on /yx/payroll/arrears (RecoveriesScreen in the recoveryTabs slot) |
+| OrderPanel · Court order record · remittances | live (gap) | no remittances endpoint; shows remitted against cap only |
+| CarryForwards · Carry-forwards (negative net) | live (gap) | no list endpoint; tab left out of live |
+| Overpayments · Overpayments · consent and write-off | live | write-off with reason; "Send reminder" has no API |
+| Cap · Deduction cap check · EMI deferred | live (gap) | no read endpoint; tab left out of live |
+| Loading · Loading | live |  |
 
 #### PAY-20 · Payslip query queue
 
@@ -402,7 +403,7 @@ Live page: /yx/payroll/payslip-queries
 | story (sub-page) | verdict | note |
 |---|---|---|
 | Open · Open queries | live |  |
-| Thread · Query drawer · reply in app | live (gap) | reply, assign to me, resolve work; line amount and reassign to a named colleague have no API |
+| Thread · Query drawer · reply in app | live | line, amount and explanation; reassign to a colleague with payroll.query.handle; closing needs a reply (server, 409) |
 | InProgress · Query in progress | live |  |
 | Empty · Empty | live |  |
 | Loading · Loading | live |  |
@@ -880,11 +881,30 @@ Live page: /yx/payroll/periods and /yx/payroll/reopen-requests
 | RequestsLoading · Reopen requests · loading | live |  |
 | RequestsError · Reopen requests · error | live |  |
 | RequestsNoAccess · Reopen requests · no access | live |  |
+
+### H. New designs, made live (builder 3, founder decisions 3 and 12)
+
+#### PAY-54 · My pay documents
+
+Live page: /yx/me/pay-documents (and the nominee drawer on /yx/payroll/documents)
+
+| story (sub-page) | verdict | note |
+|---|---|---|
 | Documents · Current and superseded | live | founder decision 12: the accepted story, now a design in My pay |
 | Purged · One deleted after its retention period | live | |
 | DownloadFailed · Download refused | live | |
 | Empty · Empty · none yet | live | |
+| Loading · Loading | live | |
 | LoadError · Error · retry | live | |
+| NoAccess · No access | live | |
+| Nominee · Add a nominee (HR) | live | /yx/payroll/documents, payroll.document.issue and the second factor |
+
+#### PAY-55 · Consultants
+
+Live page: /yx/payroll/consultants
+
+| story (sub-page) | verdict | note |
+|---|---|---|
 | Invoices · Invoices · TDS and what to pay | live | |
 | Register · Register · PAN and bank check | live | |
 | BankFiles · Bank files · made by one, released by another | live | |
@@ -897,13 +917,31 @@ Live page: /yx/payroll/periods and /yx/payroll/reopen-requests
 | Results · Record bank results | live | |
 | ViewOnly · Release only (no consultant key) | live | |
 | Empty · Empty | live | |
+| Loading · Loading | live | |
 | LoadError · Error · retry | live | |
+| NoAccess · No access | live | |
+
+#### PAY-56 · Consultant portal
+
+Live page: /yx/consultant/[org] (sign-in stays the designed T9 one)
+
+| story (sub-page) | verdict | note |
+|---|---|---|
 | Invoices · Your invoices · advices and certificates | live | |
 | Upload · Send an invoice | live | |
 | UploadClosed · Sign in again to send | live | |
 | NoPan · No working PAN | live | |
 | Empty · Empty | live | |
+| Loading · Loading | live | |
 | LoadError · Error · retry | live, gap | the page goes from loading to ready; a failed session stays on sign-in |
+| NoAccess · No access | live, gap | same: sign-in refuses instead |
+
+#### PAY-57 · Equity
+
+Live page: /yx/payroll/equity
+
+| story (sub-page) | verdict | note |
+|---|---|---|
 | Grants · Grants · vesting and exercises | live | grant and exercise approval is in Approvals |
 | Plans · Plans · pools and cap table | live | |
 | Valuations · Valuations | live | |
@@ -913,11 +951,22 @@ Live page: /yx/payroll/periods and /yx/payroll/reopen-requests
 | ConfirmVesting · Confirm milestone vesting | live | |
 | PriceReceived · Exercise price received | live | |
 | Empty · Empty | live | |
+| Loading · Loading | live | |
 | LoadError · Error · retry | live | |
+| NoAccess · No access | live | |
+
+#### PAY-58 · My equity
+
+Live page: /yx/me/equity
+
+| story (sub-page) | verdict | note |
+|---|---|---|
 | Grants · My grants · vesting | live | |
 | Exercise · Exercise units | live | the exact price payable |
 | Empty · Empty | live | |
+| Loading · Loading | live | |
 | LoadError · Error · retry | live | |
+| NoAccess · No access | live, gap | /me/equity has no permission key, so no 403 |
 
 ## 5. Split into 3 builders
 
@@ -1077,3 +1126,37 @@ stories are seen as designs.
 10. Close a query without a reply: *no*, keep the design rule (reply first).
 11. Retry only the failed people in a calculation, and a per-source input summary: *yes*, both S.
 12. Reopen requests also in the Approvals inbox: *yes, later* (API change).
+
+## Builder 1, round 2 (branch `feat/yukthix-pay-runs-2`, 29 Oct 2026)
+
+**PAY-11 live:** "Start off-cycle run" opens `/yx/payroll/runs/off-cycle` (ChooseType); an off-cycle run's page
+(`runType === 'offcycle'`) renders `OffCycleRunScreen` with `live` (PAY-11 header and settlement lines, then the run
+workspace tabs). Change in builder 2's `offcycle.tsx`: one import of `LiveOffCycleRunScreen` from
+`offcycle-run-live.tsx`; `OffCycleRunScreen` takes `live?`; the old body is renamed `SampleOffCycleRun`.
+
+**Server additions (no migrations):**
+
+| route | permission | audit |
+|---|---|---|
+| GET statutory/home-dues?month&legalEntityId | statutory.filing.view, in scope; another company gets nothing; 403 when acting for someone | read only |
+| POST payslips/:id/repay { route, reason, debitAccount? } | payroll.payment.record (+ payroll.bankfile.generate to pay now); failed or returned only; a repeat is 409 | `payroll.payment.repay` |
+| POST runs/:id/pay-views | anyone who may read the run's pay | `payroll.pay.shown` |
+| GET queries/:id/handlers; PATCH queries/:id { assigneeId } | payroll.query.handle; never the asker | audited with the query |
+| PATCH queries/:id (close) | payroll closes only after a payroll reply (409 "Reply to the employee before closing the query.") | |
+| POST runs/:id/retry-failed | payroll.run.prepare; a draft run with failures; 409 while calculating | `payroll.run.retry_failed` |
+| GET runs/:id/input-sources | run read, in scope | read only |
+| POST holds/:id/release { reason, route } | payroll.hold.manage; never one's own hold | `payroll.hold.released` (reason, route, amount) |
+
+One stage row per pay group on Payroll home uses existing reads (new PAY-01 story "SeveralGroups").
+
+**Gaps closed:** PAY-01 statutory dues and several pay groups; PAY-03 Failed and Inputs; PAY-06 Release; PAY-10
+Failure (and "Show pay is recorded"); PAY-20 Thread; PAY-19 tabs are live on /yx/payroll/arrears. **Still open:** PAY-02
+Blocked (attendance-group table), PAY-03 Files, PAY-09 SelfApproval, PAY-10 FailedIfsc, PAY-29 WeeklyRun, PAY-30 Crossed,
+PAY-04 Frozen, PAY-05 List and AddSheet, PAY-11 Retrenchment (reference recorded in People) and Bonus (own table),
+PAY-19 OrderPanel, CarryForwards, Cap.
+
+**Questions (suggested answers):** (1) "Next bank file" on hold release should use the next regular run's file:
+*yes, a small follow-up in payout.service*. (2) Show the input-source table in Validations too (PAY-02): *yes*.
+(3) State-wise PT and LWF due dates in the rule files: *yes, size S*. (4) Read unfiled dues back three months: *yes*.
+(5) The retrenchment permission reference stays in People › Exits, not typed on the run: *yes*. (6) Re-pay "off-cycle"
+is a one-person bank file on the same run: *accept*. (7) An employee may still withdraw their own query without a reply: *yes*.
