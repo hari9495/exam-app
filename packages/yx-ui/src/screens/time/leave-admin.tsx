@@ -13,7 +13,7 @@ import { Breadcrumbs, Card, DescriptionList, PageHeader, Tabs, TabsContent, Tabs
 import { DataTable, type TableColumn } from '../../components/table';
 import { Checkbox, RadioGroup, Switch } from '../../components/choice';
 import { NumberField, TextArea, TextField, TimeField } from '../../components/inputs';
-import { ErrorSummary, FieldRow, FormField, FormSection, useSaveErrors } from '../../components/field';
+import { ErrorSummary, FieldRow, FormField, FormSection, useSaveErrors, useTooEarly } from '../../components/field';
 import { PersonPicker, Select, type SelectOption } from '../../components/select';
 import { DatePicker } from '../../components/date';
 import { Stepper, useNarrow } from '../../components/stepper';
@@ -23,7 +23,7 @@ import { EMPLOYEES, ENTITIES, LOCATIONS, entityHeadcount, locationHeadcount } fr
 import { DueBadge, GeoMap, Kpis, TimePage, type TimeNav } from './time-kit';
 import { formatDate } from '../../lib/format';
 import { errorText, useRun } from '../org/org-kit';
-import type { HolidayFeeds, HolidayRow, LeaveRules, LeaveTypeRow, LoadState, LocationRule, PolicyLine, TimeSetup, YearEndPreview } from './live/types';
+import type { BlockDateInput, BlockDates, HolidayFeeds, HolidayRow, LeaveRules, LeaveTypeRow, LoadState, LocationRule, PolicyLine, TimeSetup, YearEndPreview } from './live/types';
 import { EL_ENCASH_MAX, EL_ENCASH_MIN_LEFT, HR_ADMIN, LEAVE_REQUESTS, TODAY, balancesFor, elEncashLeftAtYearEnd } from './time-data';
 import { countLeaveDays, yearEndSplit, type YearEndRow } from './time-logic';
 import type { ViewState } from './attendance';
@@ -723,7 +723,7 @@ function SampleLeaveTypeEditor({ section = 'counting', statutory = false }: { se
               <TabsContent value="rules">
                 <FormSection title="Rules">
                   <FieldRow>
-                    <FormField label="Apply at least (days ahead)"><Num initial={7} onDirty={touch} /></FormField>
+                    <FormField label="Apply at least (days ahead)" helper="Leave blank to use the company default (3 days). Sick leave: none unless set here."><Num initial={7} onDirty={touch} /></FormField>
                     <FormField label="Most days in one request" error={limitErr}><NumberField aria-label="Most days in one request" value={maxRequest} min={1} onChange={(v) => { setMaxRequest(v); touch(); }} /></FormField>
                     <FormField label="Most days in a month"><NumberField aria-label="Most days in a month" value={maxMonth} min={1} onChange={(v) => { setMaxMonth(v); touch(); }} /></FormField>
                   </FieldRow>
@@ -993,11 +993,12 @@ function PolicyDrawerBody({ p, isNew, onChange, from, onFrom, today }: { p: Poli
 }
 
 /** TIM-28. Stories show the sample; the app passes `live` (the company's policies and where they apply). */
-export function LeavePoliciesScreen({ live, ...sample }: { state?: ViewState; openId?: string; live?: LiveLeavePolicies }) {
+export function LeavePoliciesScreen({ live, ...sample }: { state?: ViewState; openId?: string; /** Stories: the block dates card with Add open, or with none yet. */ blockDates?: 'add' | 'empty'; live?: LiveLeavePolicies }) {
   return live ? <LivePolicies live={live} /> : <SampleLeavePolicies {...sample} />;
 }
 
-function SampleLeavePolicies({ state = 'ready', openId }: { state?: ViewState; openId?: string }) {
+function SampleLeavePolicies({ state = 'ready', openId, blockDates }: { state?: ViewState; openId?: string; blockDates?: 'add' | 'empty' }) {
+  const [blocks, setBlocks] = useState(() => sampleBlockDates(blockDates === 'empty'));
   const { toast } = useToast();
   const [rows, setRows] = useState<PolicyRow[]>(POLICIES);
   const [draft, setDraft] = useState<PolicyRow | null>(openId ? POLICIES.find((p) => p.id === openId) ?? null : null);
@@ -1096,6 +1097,22 @@ function SampleLeavePolicies({ state = 'ready', openId }: { state?: ViewState; o
       <Button onClick={() => openPolicy(newPolicy({ name: 'Staff · Karnataka', ents: POLICIES[1].ents.map((e) => ({ ...e })), rule: { entity: 'kf-ka', grade: 'all' } }), true)}>Use the Karnataka template</Button>
     </div>
   );
+  const blockCard = (
+    <BlockDatesCard
+      state={state === 'loading' ? 'loading' : state === 'error' ? 'error' : 'ready'}
+      data={blocks}
+      today="2026-09-30"
+      addOpen={blockDates === 'add'}
+      onAdd={async (x) => {
+        setBlocks((b) => ({ ...b, dates: [...b.dates, { id: `bd${Date.now()}`, ...x, scopeId: x.scopeId ?? null, scopeName: [...b.entities, ...b.locations].find((p) => p.id === x.scopeId)?.name ?? null, leaveTypeIds: x.leaveTypeIds ?? [], affected: [] }] }));
+        toast({ tone: 'success', title: 'Block dates added' });
+      }}
+      onRemove={async (id) => {
+        setBlocks((b) => ({ ...b, dates: b.dates.filter((x) => x.id !== id) }));
+        toast({ tone: 'success', title: 'Block dates removed' });
+      }}
+    />
+  );
   return (
     <TimePage active="Leave types & policies" user={HR_ADMIN}>
       <PageHeader
@@ -1103,6 +1120,7 @@ function SampleLeavePolicies({ state = 'ready', openId }: { state?: ViewState; o
         description="Each policy is a set of leave types given to people by rule (entity, location, grade or employee type). When someone matches more than one rule, the policy higher in the order wins."
         actions={<Button variant="primary" icon={Plus} onClick={() => openPolicy(newPolicy(), true)}>New policy</Button>}
       />
+      <PoliciesAndBlocks start={blockDates ? 'blocks' : 'policies'} blocks={state === 'empty' ? null : blockCard}>
       {ready && uncovered > 0 && (
         <InlineAlert
           tone="warning"
@@ -1144,6 +1162,7 @@ function SampleLeavePolicies({ state = 'ready', openId }: { state?: ViewState; o
           <span className="yx-tim-muted">{pendingOrder.ids.map((id, i) => `#${i + 1} ${rows.find((r) => r.id === id)?.name ?? ''}`).join(' · ')}</span>
         </div>
       )}
+      </PoliciesAndBlocks>
       <ConfirmDialog
         open={orderSave}
         onOpenChange={setOrderSave}
@@ -1919,6 +1938,8 @@ export interface LiveLeavePolicies extends SetupLive {
   onRemoveAssignment: (id: string) => Promise<unknown>;
   /** Opens TIM-27 for a type, or 'new'. */
   onOpenType: (id: string) => void;
+  /** Founder decision 1: the company block dates card. */
+  blockDates?: LiveBlockDates;
 }
 export interface LiveLeaveTypeEditor extends SetupLive {
   /** A leave type's id, or 'new'. */
@@ -1969,7 +1990,7 @@ const KINDS = [
 ];
 const kindText = (k: string) => KINDS.find((x) => x.value === k)?.label ?? k;
 const COLOURS = ['blue', 'green', 'teal', 'purple', 'orange', 'pink', 'grey', 'red'].map((c) => ({ value: c, label: c[0].toUpperCase() + c.slice(1) }));
-const DEFAULT_RULES: LeaveRules = { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: 0, noticeMode: 'block', certificateAfterDays: null, medical: false, negativeLimit: 0, encashable: false, hrApprovalAboveDays: null };
+const DEFAULT_RULES: LeaveRules = { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: null, noticeMode: 'block', certificateAfterDays: null, medical: false, negativeLimit: 0, encashable: false, hrApprovalAboveDays: null };
 const STATE_TEXT: Record<string, string> = { 'IN-KA': 'Karnataka', 'IN-TN': 'Tamil Nadu' };
 const HOLIDAY_KINDS = [
   { value: 'national', label: 'National holiday' },
@@ -2036,6 +2057,182 @@ function Statutory({ d }: { d: TimeSetup }) {
   );
 }
 
+/* ---------------- Founder decision 1 (29 Oct 2026): company block dates on Leave policies ---------------- */
+
+/** The app: company block dates (leave.settings.manage). Adding never cancels leave already asked for: the card lists it. */
+export interface LiveBlockDates {
+  state: LoadState;
+  onRetry?: () => void;
+  data: BlockDates | null;
+  onAdd: (input: BlockDateInput) => Promise<unknown>;
+  onRemove: (id: string) => Promise<unknown>;
+}
+const BLOCK_WHERE = [
+  { value: 'tenant' as const, label: 'Whole company' },
+  { value: 'legal_entity' as const, label: 'A legal entity' },
+  { value: 'location' as const, label: 'A location' },
+];
+const blockSpan = (a: string, b: string) => (a === b ? isoDay(a) : `${isoDay(a)} – ${isoDay(b)}`);
+
+/** Leave policies and company block dates as two tabs, so the page fits 1278 x 635 without scrolling. */
+function PoliciesAndBlocks({ blocks, start = 'policies', children }: { blocks: ReactNode; start?: 'policies' | 'blocks'; children: ReactNode }) {
+  const [tab, setTab] = useState<string>(start);
+  if (!blocks) return <>{children}</>;
+  return (
+    <Tabs value={tab} onValueChange={setTab}>
+      <TabsList aria-label="Leave policies and block dates">
+        <TabsTrigger value="policies">Policies</TabsTrigger>
+        <TabsTrigger value="blocks">Company block dates</TabsTrigger>
+      </TabsList>
+      <TabsContent value="policies"><div className="yx-tim-stack">{children}</div></TabsContent>
+      <TabsContent value="blocks">{blocks}</TabsContent>
+    </Tabs>
+  );
+}
+
+function BlockDatesCard({ state, onRetry, data, onAdd, onRemove, today, addOpen = false }: LiveBlockDates & { today: string; /** Story: the Add dialog open. */ addOpen?: boolean }) {
+  const [adding, setAdding] = useState(addOpen);
+  const [removing, setRemoving] = useState<BlockDates['dates'][number] | null>(null);
+  const add = <Button size="sm" icon={Plus} onClick={() => setAdding(true)}>Add block dates</Button>;
+  const typeText = (ids: string[]) => (ids.length ? ids.map((id) => data?.types.find((t) => t.id === id)?.name ?? 'A removed leave type').join(', ') : 'Planned leave (not sick, maternity, paternity or unpaid leave)');
+  return (
+    <Card title="Company block dates" actions={state === 'ready' && data ? add : undefined}>
+      {state === 'loading' ? (
+        <div role="status" aria-busy="true" aria-label="Loading the block dates"><Skeleton height={72} /></div>
+      ) : state === 'error' || !data ? (
+        <ErrorState title="The block dates didn't load" description="Nothing has changed. Try again." onRetry={onRetry} />
+      ) : (
+        <div className="yx-tim-stack">
+          <p className="yx-tim-muted">{data.mode === 'warn' ? 'Leave on these dates is allowed; the approver sees a note.' : 'Leave on these dates is refused.'} Sick leave is never stopped unless you pick it.</p>
+          {data.dates.length === 0 ? (
+            <EmptyState compact title="No block dates" description="Add the days when the company needs everyone in, such as a stock count or an audit." action={add} />
+          ) : (
+            <ul className="yx-tim-list">
+              {data.dates.map((b) => (
+                <li key={b.id}>
+                  <span className="yx-tim-list__main">
+                    <strong>{blockSpan(b.from, b.to)} · {b.reason}</strong>
+                    <span className="yx-tim-muted">{b.scopeType === 'tenant' ? 'Whole company' : (b.scopeName ?? 'One place')} · {typeText(b.leaveTypeIds)}</span>
+                    {b.affected.length > 0 && (
+                      <span className="yx-tim-note">
+                        Already on leave then (their leave stays): {b.affected.map((a) => `${a.name} · ${a.type} ${blockSpan(a.from, a.to)} (${a.status === 'pending' ? 'waiting' : 'approved'})`).join('; ')}
+                      </span>
+                    )}
+                  </span>
+                  {b.to >= today && <Button size="sm" onClick={() => setRemoving(b)}>Remove</Button>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+      {data && <AddBlockDatesDialog open={adding} onOpenChange={setAdding} data={data} today={today} onAdd={onAdd} />}
+      <ConfirmDialog
+        open={!!removing}
+        onOpenChange={(o) => !o && setRemoving(null)}
+        title="Remove these block dates?"
+        consequence={removing ? `${blockSpan(removing.from, removing.to)} (${removing.reason}): people can take leave on these dates again.` : undefined}
+        confirmLabel="Remove"
+        destructive
+        onConfirm={async () => {
+          await onRemove(removing!.id);
+          setRemoving(null);
+        }}
+      />
+    </Card>
+  );
+}
+
+function AddBlockDatesDialog({ open, onOpenChange, data, today, onAdd }: { open: boolean; onOpenChange: (o: boolean) => void; data: BlockDates; today: string; onAdd: LiveBlockDates['onAdd'] }) {
+  const defaults = () => data.types.filter((t) => t.canStop && t.stoppedByDefault).map((t) => t.id);
+  const [from, setFrom] = useState<Date | null>(null);
+  const [to, setTo] = useState<Date | null>(null);
+  const [reason, setReason] = useState('');
+  const [where, setWhere] = useState<BlockDateInput['scopeType']>('tenant');
+  const [scopeId, setScopeId] = useState<string | null>(null);
+  const [types, setTypes] = useState<string[]>(defaults);
+  const long = from && to && (to.getTime() - from.getTime()) / 86_400_000 > 31;
+  const early = useTooEarly([
+    ...(from ? [] : [{ fieldId: 'bd-from', message: 'Choose the first date.' }]),
+    ...(!to ? [{ fieldId: 'bd-to', message: 'Choose the last date.' }] : from && to < from ? [{ fieldId: 'bd-to', message: 'The last date is on or after the first.' }] : long ? [{ fieldId: 'bd-to', message: 'Block at most 32 days at a time.' }] : []),
+    ...(reason.trim().length >= 3 ? [] : [{ fieldId: 'bd-reason', message: 'Enter a reason people will see.' }]),
+    ...(where !== 'tenant' && !scopeId ? [{ fieldId: 'bd-scope', message: where === 'location' ? 'Choose the location.' : 'Choose the legal entity.' }] : []),
+    ...(types.length ? [] : [{ fieldId: 'bd-types', message: 'Pick at least one leave type.' }]),
+  ]);
+  const reset = () => {
+    setFrom(null);
+    setTo(null);
+    setReason('');
+    setWhere('tenant');
+    setScopeId(null);
+    setTypes(defaults());
+    early.reset();
+  };
+  const places = where === 'location' ? data.locations : data.entities;
+  return (
+    <ConfirmDialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) reset();
+        onOpenChange(o);
+      }}
+      title="Add block dates"
+      consequence="Leave already asked for or approved on these dates stays; it is listed on the card so you can talk to the people."
+      confirmLabel="Add block dates"
+      onConfirm={async () => {
+        if (early.stop()) return false;
+        // The default set is sent as "none picked", so leave types added later follow the default too.
+        const same = types.length === defaults().length && types.every((t) => defaults().includes(t));
+        await onAdd({ from: isoOf(from!), to: isoOf(to!), reason: reason.trim(), scopeType: where, ...(where === 'tenant' ? {} : { scopeId: scopeId! }), ...(same ? {} : { leaveTypeIds: types }) });
+        reset();
+      }}
+    >
+      <div className="yx-tim-form">
+        <FieldRow>
+          <FormField id="bd-from" label="From" required error={early.errorOf('bd-from')}><DatePicker value={from} onChange={setFrom} min={dateOfIso(today)} /></FormField>
+          <FormField id="bd-to" label="To" required error={early.errorOf('bd-to')}><DatePicker value={to} onChange={setTo} min={from ?? dateOfIso(today)} /></FormField>
+        </FieldRow>
+        <FormField id="bd-reason" label="Reason" required helper="People see this when they pick a blocked date." error={early.errorOf('bd-reason')}><TextField value={reason} onChange={setReason} maxLength={200} /></FormField>
+        <FormField label="Where"><Segment label="Where" value={where} onChange={(v) => { setWhere(v); setScopeId(null); }} options={BLOCK_WHERE} /></FormField>
+        {where !== 'tenant' && (
+          <FormField id="bd-scope" label={where === 'location' ? 'Location' : 'Legal entity'} required error={early.errorOf('bd-scope')}>
+            <Select value={scopeId} onChange={setScopeId} options={places.map((x) => ({ value: x.id, label: x.name }))} placeholder="Choose" />
+          </FormField>
+        )}
+        <FormField id="bd-types" label="Leave types it stops" required helper="Sick leave is not stopped unless you tick it. Maternity leave can never be stopped (Maternity Benefit Act)." error={early.errorOf('bd-types')}>
+          <div id="bd-types" tabIndex={-1} role="group" aria-label="Leave types it stops" className="yx-tim-row">
+            {data.types.filter((t) => t.canStop).map((t) => (
+              <Checkbox key={t.id} label={t.name} checked={types.includes(t.id)} onChange={(on) => setTypes((x) => (on ? [...x, t.id] : x.filter((y) => y !== t.id)))} />
+            ))}
+          </div>
+        </FormField>
+      </div>
+    </ConfirmDialog>
+  );
+}
+
+/** Stories: Kaveri Foods' block dates (the year-end stock count at the Chennai office; Arun already has leave then). */
+const SAMPLE_BLOCK_TYPES: BlockDates['types'] = [
+  { id: 'EL', name: 'Earned leave', kind: 'earned', stoppedByDefault: true, canStop: true },
+  { id: 'CL', name: 'Casual leave', kind: 'casual', stoppedByDefault: true, canStop: true },
+  { id: 'CO', name: 'Comp-off', kind: 'comp_off', stoppedByDefault: true, canStop: true },
+  { id: 'SL', name: 'Sick leave', kind: 'sick', stoppedByDefault: false, canStop: true },
+  { id: 'LWP', name: 'Leave without pay', kind: 'lop', stoppedByDefault: false, canStop: true },
+  { id: 'ML', name: 'Maternity leave', kind: 'maternity', stoppedByDefault: false, canStop: false },
+];
+const sampleBlockDates = (empty: boolean): BlockDates => ({
+  mode: 'block',
+  types: SAMPLE_BLOCK_TYPES,
+  entities: ENTITIES.map((e) => ({ id: e.id, name: e.name })),
+  locations: LOCATIONS.map((l) => ({ id: l.id, name: l.name })),
+  dates: empty
+    ? []
+    : [
+        { id: 'bd1', from: '2026-11-25', to: '2026-11-26', reason: 'Year-end stock count', scopeType: 'location', scopeId: 'maa', scopeName: 'Chennai office', leaveTypeIds: [], affected: [{ id: 'lr9', name: 'Arun Prakash', type: 'Earned leave', from: '2026-11-25', to: '2026-11-25', status: 'approved' }] },
+        { id: 'bd2', from: '2027-03-29', to: '2027-03-31', reason: 'Financial year-end close', scopeType: 'tenant', scopeId: null, scopeName: null, leaveTypeIds: ['EL', 'CL'], affected: [] },
+      ],
+});
+
 /* ---------------- TIM-28 live ---------------- */
 
 const POLICIES_TEXT = 'Each policy gives leave types to the people where it applies: the whole company, a legal entity or a location. The most specific one wins: a location over its legal entity, an entity over the whole company.';
@@ -2096,6 +2293,7 @@ function LivePolicies({ live }: { live: LiveLeavePolicies }) {
                 </div>
               }
             />
+            <PoliciesAndBlocks blocks={live.blockDates ? <BlockDatesCard {...live.blockDates} today={d.today} /> : null}>
             <Statutory d={d} />
             <DataTable
               label="Leave policies"
@@ -2107,6 +2305,7 @@ function LivePolicies({ live }: { live: LiveLeavePolicies }) {
               activeRowId={openId}
               empty={<EmptyState title="No leave policies yet" description="No one gets leave until you add a policy and apply it." action={newPolicy} />}
             />
+            </PoliciesAndBlocks>
             {openId && (openId === 'new' || policy) && (
               <LivePolicyDrawer key={openId} d={d} policy={policy} live={live} onOpen={setOpenId} onClose={() => setOpenId(null)} />
             )}
@@ -2409,8 +2608,8 @@ function LiveTypeForm({ d, row, live, crumbs }: { d: TimeSetup; row: LeaveTypeRo
             <TabsContent value="rules">
               <FormSection title="Rules">
                 <FieldRow>
-                  <FormField id="lt-notice" label="Apply at least (days ahead)" helper="0 for none."><NumberField value={r.noticeDays} onChange={(v) => set('noticeDays', v ?? 0)} min={0} max={90} /></FormField>
-                  {r.noticeDays > 0 && <FormField label="Shorter notice"><Segment label="Shorter notice" value={r.noticeMode ?? 'block'} onChange={(v) => set('noticeMode', v)} options={[{ value: 'block' as const, label: 'Refuse it' }, { value: 'warn' as const, label: 'Allow and flag to the approver' }]} /></FormField>}
+                  <FormField id="lt-notice" label="Apply at least (days ahead)" helper={r.noticeDays !== null ? 'Leave blank to use the company default.' : kind === 'sick' ? 'Blank: no notice (sick leave).' : `Blank: the company default, ${plural(d.noticeDefault ?? 0, 'day')}.`}><NumberField value={r.noticeDays} onChange={(v) => set('noticeDays', v)} min={0} max={90} /></FormField>
+                  {(r.noticeDays ?? (kind === 'sick' ? 0 : (d.noticeDefault ?? 0))) > 0 && <FormField label="Shorter notice"><Segment label="Shorter notice" value={r.noticeMode ?? 'block'} onChange={(v) => set('noticeMode', v)} options={[{ value: 'block' as const, label: 'Refuse it' }, { value: 'warn' as const, label: 'Allow and flag to the approver' }]} /></FormField>}
                   {numField('minDays', 'Least days in one request', 'Leave empty for no minimum.')}
                   {numField('maxDays', 'Most days in one request', 'Leave empty for no maximum.')}
                 </FieldRow>

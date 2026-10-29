@@ -1498,6 +1498,10 @@ const PERSON_W = 220;
 /** Earned leave liability per person: payroll only (R1). */
 const LIABILITY: Record<string, number> = { 'Divya Raghunathan': 25846, 'Arun Prakash': 30115, 'Meera Krishnan': 0, 'Rahul Deshpande': 41538, 'Kavitha Sundaram': 8123, 'Priya Shankar': 11950 };
 const PEOPLE = ['Divya Raghunathan', 'Arun Prakash', 'Meera Krishnan', 'Rahul Deshpande', 'Kavitha Sundaram', 'Priya Shankar'];
+/** Founder decision 3: pay comes from Payroll; Priya joined last week and Payroll has not set her pay yet. */
+const NO_PAY = new Set(['Priya Shankar']);
+/** The company setting the liability names: (Basic + DA) ÷ 26. */
+const DAILY_PAY_RULE = '(Basic + DA) ÷ 26 (company setting)';
 const fromData = (name: string, field: 'balance' | 'taken'): Bal => {
   const out: Bal = { CL: 0, SL: 0, EL: 0, CO: 0, LWP: 0 };
   balancesFor(name).forEach((b) => { if (b.code in out) out[b.code as LeaveCode] = b[field]; });
@@ -1550,7 +1554,8 @@ export function LeaveReportsScreen({ report = 'balances', persona = 'hr', state 
   const person: TableColumn<PersonRow> = { key: 'name', header: 'Employee', type: 'person', width: PERSON_W, value: (x) => x.name, person: (x) => ({ name: x.name }) };
   const earned: TableColumn<PersonRow> = { key: 'EL', header: 'Earned', type: 'number', value: (x) => x.bal.EL, total: 'sum', render: earnedCell };
   const unpaidTaken: TableColumn<PersonRow> = { key: 'LWP', header: 'Unpaid taken', type: 'number', value: (x) => x.taken.LWP, total: 'sum', optional: true };
-  const liability: TableColumn<PersonRow> = { key: 'liability', header: 'Earned leave liability', type: 'money', value: (x) => x.liability, total: 'sum' };
+  const liability: TableColumn<PersonRow> = { key: 'liability', header: 'Earned leave liability', type: 'money', value: (x) => (NO_PAY.has(x.name) ? 0 : x.liability), total: 'sum', render: (x) => (NO_PAY.has(x.name) ? <Badge tone="neutral">No pay set</Badge> : formatINR(x.liability)) };
+  const dailyPay: TableColumn<PersonRow> = { key: 'dailyPay', header: 'Daily pay', type: 'money', value: (x) => (NO_PAY.has(x.name) || x.bal.EL <= 0 ? null : Math.round((x.liability / x.bal.EL) * 100) / 100), render: (x) => (NO_PAY.has(x.name) ? <Badge tone="neutral">No pay set</Badge> : x.bal.EL <= 0 ? '—' : formatINR(Math.round((x.liability / x.bal.EL) * 100) / 100)) };
   // Phones: the balances are one inline line under the name. Earned leads and keeps its value next to it; unpaid days taken show only when there are some.
   const personSummary: TableColumn<PersonRow> = {
     ...person,
@@ -1576,7 +1581,8 @@ export function LeaveReportsScreen({ report = 'balances', persona = 'hr', state 
   const negCols: TableColumn<PersonRow>[] = [person, { ...earned, total: undefined }, { ...unpaidTaken, optional: false, total: undefined }];
   const tk = (x: PersonRow) => x.taken;
   const takenCols: TableColumn<PersonRow>[] = [person, num('CL', 'Casual', tk), num('SL', 'Sick', tk), num('EL', 'Earned', tk), num('CO', 'Comp-off', tk, true), num('LWP', 'Unpaid', tk, true)];
-  const liabCols: TableColumn<PersonRow>[] = [person, { ...earned, header: 'Earned balance' }, liability];
+  // Founder decision 3: money only for people who may see pay; everyone else gets the days.
+  const liabCols: TableColumn<PersonRow>[] = fin ? [person, { ...earned, header: 'Earned balance' }, dailyPay, liability] : [person, { ...earned, header: 'Earned balance' }];
   const ledgerCols: TableColumn<LedgerRow>[] = [
     { key: 'date', header: 'Date', type: 'date', width: 90, value: (x) => x.date, render: (x) => dayMonth(x.date) },
     { key: 'name', header: 'Employee', type: 'person', width: PERSON_W, value: (x) => x.name, person: (x) => ({ name: x.name }) },
@@ -1599,7 +1605,7 @@ export function LeaveReportsScreen({ report = 'balances', persona = 'hr', state 
     { value: 'ledger', label: 'Ledger' },
     { value: 'taken', label: 'Leave taken' },
     { value: 'lop', label: 'Unpaid leave (LOP) to payroll' },
-    ...(fin ? [{ value: 'liability' as const, label: 'Leave liability' }] : []),
+    { value: 'liability' as const, label: 'Leave liability' },
     { value: 'negative', label: 'Negative balances' },
   ];
   const description = r === 'ledger' ? 'Entries in September 2026' : r === 'taken' ? `Days taken or approved in 2026, as of ${asOf}` : r === 'lop' ? 'September 2026' : `Balances as of ${asOf}`;
@@ -1618,9 +1624,10 @@ export function LeaveReportsScreen({ report = 'balances', persona = 'hr', state 
         description={description}
         actions={<div className="yx-tim-picker"><Select aria-label="Report" value={r} onChange={(v) => v && setR(v as LeaveReport)} options={options} /></div>}
       />
-      {r === 'liability' && (
+      {r === 'liability' && !fin && <p className="yx-tim-note">Unused earned leave that can be cashed in, in days. The money shows only to people who may see pay (Payroll, or HR with pay access).</p>}
+      {r === 'liability' && fin && (
         <>
-          <Kpis items={[{ label: 'Earned leave liability (all entities)', value: formatINR(4812600) }, { label: 'People', value: EMPLOYEES.length }, { label: 'Change vs August', value: '+₹1,12,400' }]} />
+          <Kpis items={[{ label: 'Earned leave liability (all entities)', value: formatINR(4812600) }, { label: 'People', value: EMPLOYEES.length }, { label: 'Change vs August', value: '+₹1,12,400' }, { label: 'Daily pay', value: DAILY_PAY_RULE }]} />
           <LineChart title="Leave liability by month" money categories={['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep']} series={[{ name: 'Liability', values: [4210000, 4330500, 4452000, 4588300, 4700200, 4812600] }]} xLabel="Month" />
         </>
       )}
@@ -1681,7 +1688,10 @@ const REPORT_OPTIONS: { value: LeaveReportKind; label: string }[] = [
   { value: 'taken', label: 'Leave taken' },
   { value: 'lop', label: 'Unpaid leave (LOP) to payroll' },
   { value: 'negative', label: 'Negative balances' },
+  { value: 'liability', label: 'Leave liability' },
 ];
+const BASIS_TEXT: Record<string, string> = { basic_da: 'Basic + DA', gross: 'Gross pay' };
+const divisorText = (d: string) => (d === 'calendar' ? 'the days in the month' : d);
 const LEDGER_KIND: Record<string, string> = { opening: 'Opening balance', accrual: 'Credited', taken: 'Leave taken', cancelled: 'Leave given back', adjustment: 'Adjusted by HR', carry_forward: 'Carried forward', lapse: 'Lapsed', comp_off: 'Comp-off credited', encashed: 'Cashed in' };
 const isoMonth = (iso: string) => {
   const [y, m] = iso.split('-').map(Number);
@@ -1710,8 +1720,18 @@ function LiveLeaveReports({ live }: { live: LiveLeaveReports }) {
       return v < 0 ? <Badge tone="danger">{String(v)}</Badge> : v;
     },
   }));
+  // Founder decision 3: the API sends money fields only to people who may see pay; "No pay set" is never shown as 0.
+  const money = (key: 'dailyPay' | 'amount', header: string, total?: 'sum'): TableColumn<LeaveReportRow> => ({ key, header, type: 'money', width: 140, total, value: (x) => x[key] ?? null, render: (x) => (x.noPay ? <Badge tone="neutral">No pay set</Badge> : x[key] == null ? '—' : formatINR(x[key]!)) });
+  const liabilityCols: TableColumn<LeaveReportRow>[] = [
+    person,
+    { key: 'department', header: 'Department', value: (x) => x.department, optional: true },
+    ...typeCols.map((c) => ({ ...c, header: `${c.header} days` })),
+    ...(d?.money ? [money('dailyPay', 'Daily pay'), money('amount', 'Liability', 'sum')] : [{ key: 'days', header: 'Days', type: 'number' as const, width: 96, value: (x: LeaveReportRow) => x.days, total: 'sum' as const }]),
+  ];
   const cols: TableColumn<LeaveReportRow>[] =
-    q.report === 'ledger'
+    q.report === 'liability'
+      ? liabilityCols
+      : q.report === 'ledger'
       ? [
           { key: 'on', header: 'Date', type: 'date', width: 110, value: (x) => (x.on ? isoMonth(x.on) : null), render: (x) => (x.on ? formatDate(new Date(`${x.on}T00:00:00`)) : '') },
           person,
@@ -1743,7 +1763,7 @@ function LiveLeaveReports({ live }: { live: LiveLeaveReports }) {
     <TimePage active="Reports">
       <PageHeader
         title="Leave reports"
-        description={q.report === 'ledger' || q.report === 'lop' ? months.find((m) => m.value === (q.month ?? months[0]!.value))?.label : 'Balances as of today · leave taken in this leave year'}
+        description={q.report === 'ledger' || q.report === 'lop' ? months.find((m) => m.value === (q.month ?? months[0]!.value))?.label : q.report === 'liability' ? 'Unused leave that can be cashed in, as of today' : 'Balances as of today · leave taken in this leave year'}
         actions={
           <div className="yx-tim-row">
             <div className="yx-tim-picker"><Select aria-label="Report" value={q.report} onChange={(v) => v && set({ report: v as LeaveReportKind })} options={REPORT_OPTIONS} /></div>
@@ -1752,6 +1772,19 @@ function LiveLeaveReports({ live }: { live: LiveLeaveReports }) {
         }
       />
       {error && <InlineAlert tone="danger" title="Not exported">{error}</InlineAlert>}
+      {q.report === 'liability' && d && (
+        d.money ? (
+          <Kpis
+            items={[
+              { label: 'Unused days that can be cashed in', value: d.totalDays ?? 0 },
+              { label: 'Liability, people on this page', value: formatINR((d.rows ?? []).reduce((a, x) => a + (x.amount ?? 0), 0)) },
+              { label: 'Daily pay', value: d.dailyPayRule ? `${BASIS_TEXT[d.dailyPayRule.basis] ?? d.dailyPayRule.basis} ÷ ${divisorText(d.dailyPayRule.divisor)} (company setting)` : '—' },
+            ]}
+          />
+        ) : (
+          <p className="yx-tim-note">{d.totalDays ?? 0} unused days that can be cashed in. The money shows only to people who may see pay (Payroll, or HR with pay access).</p>
+        )
+      )}
       {live.state === 'no-access' ? <NoAccessState grantedBy="HR" what="leave reports" /> : (
         <DataTable
           key={q.report}

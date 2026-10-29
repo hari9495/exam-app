@@ -23,7 +23,7 @@ import { formatDate, formatINR } from '../../lib/format';
 import { useRun } from '../org/org-kit';
 import { LivePicker } from '../desk/service-form';
 import { LEAVE_STATUS, LeaveStatusBadge } from './live/kit';
-import type { HrBalances, HrLeaveHome, LeaveInput, LeavePlan, LeaveRequestRow as LiveRequest, LedgerRow, LoadState, LongAbsenceRow, MaternityCase, MyCompOff, MyEncashment, MyLeave, MyLeaveCard, PersonOption as LivePersonOption, TeamCalendar as LiveCalendarData } from './live/types';
+import type { HrBalances, HrLeaveHome, LeaveInput, LeavePlan, LeaveRequestRow as LiveRequest, LedgerRow, LoadState, LongAbsenceCheck, LongAbsenceInput, LongAbsenceRow, MaternityCase, MyCompOff, MyEncashment, MyLeave, MyLeaveCard, PersonOption as LivePersonOption, TeamCalendar as LiveCalendarData } from './live/types';
 import {
   BALANCES,
   CLAIM,
@@ -786,7 +786,7 @@ const CO_USE_DAY = new Date(2026, 9, 5);
 const applyTypeProps = (t?: LeaveCode): ApplyLeaveProps => (t === 'CO' ? { type: 'CO', from: CO_USE_DAY, to: CO_USE_DAY } : t ? { type: t } : {});
 
 /** TIM-17: the story shows the sample (persona, state); the app passes `live` (My leave, the signed-in employee). */
-export function LeaveHomeScreen({ persona = 'emp', state = 'ready', live, hrLive }: { persona?: LeavePersona; state?: ViewState; live?: LiveLeaveHome; /** The app: HR's view of leave in their scope (TIM-17 HR). */ hrLive?: LiveHrLeaveHome }) {
+export function LeaveHomeScreen({ persona = 'emp', state = 'ready', live, hrLive, dialog }: { persona?: LeavePersona; state?: ViewState; live?: LiveLeaveHome; /** The app: HR's view of leave in their scope (TIM-17 HR). */ hrLive?: LiveHrLeaveHome; /** HR stories: Record long absence open, filled in (`absence-conflict`: leave in the way). */ dialog?: 'absence' | 'absence-conflict' }) {
   if (hrLive) return <LiveHrLeaveHomeScreen live={hrLive} />;
   if (live) return <LiveLeaveHomeScreen live={live} />;
   const user: TimeUser = persona === 'hr' ? HR_ADMIN : ME;
@@ -798,6 +798,7 @@ export function LeaveHomeScreen({ persona = 'emp', state = 'ready', live, hrLive
     setApply(true);
   };
   const [adjust, setAdjust] = useState(false);
+  const [recording, setRecording] = useState(Boolean(dialog));
   const [holidays, setHolidays] = useState(false);
   // No requests yet: no optional holiday taken either.
   const [optional, setOptional] = useState(state === 'empty' ? [] : OPTIONAL_DEFAULT);
@@ -835,7 +836,7 @@ export function LeaveHomeScreen({ persona = 'emp', state = 'ready', live, hrLive
       <PageHeader
         title={persona === 'emp' ? 'My leave' : persona === 'mgr' ? 'Team leave' : 'Leave · Kaveri Foods'}
         description={persona === 'hr' ? 'Leave year Jan–Dec 2026 · 248 people · 3 policies' : 'Leave year Jan–Dec 2026 · Chennai office holiday calendar'}
-        actions={<div className="yx-tim-row">{persona === 'hr' && <Button onClick={() => setAdjust(true)}>Adjust balance</Button>}<Button variant="primary" icon={CalendarPlus} onClick={() => startApply()}>{persona === 'emp' ? 'Apply leave' : 'Apply for someone'}</Button></div>}
+        actions={<div className="yx-tim-row">{persona === 'hr' && <Button onClick={() => setRecording(true)}>Record long absence</Button>}{persona === 'hr' && <Button onClick={() => setAdjust(true)}>Adjust balance</Button>}<Button variant="primary" icon={CalendarPlus} onClick={() => startApply()}>{persona === 'emp' ? 'Apply leave' : 'Apply for someone'}</Button></div>}
       />
       {st === 'loading' ? <LoadingBlock rows={8} /> : st === 'error' ? (
         <ErrorState title={persona === 'emp' ? "Your leave didn't load" : "Leave didn't load"} description={persona === 'emp' ? 'Try again. Your requests are safe.' : 'Try again. No requests were changed.'} onRetry={retry} reference="LV-8820" />
@@ -938,6 +939,16 @@ export function LeaveHomeScreen({ persona = 'emp', state = 'ready', live, hrLive
         </>
       )}
       <ApplyLeavePanel key={`${apply}-${applyType}`} open={apply} onOpenChange={setApply} {...applyTypeProps(applyType)} forSomeone={persona === 'emp' ? undefined : pickPeople(persona === 'hr')} />
+      {persona === 'hr' && (
+        <RecordAbsenceDialog
+          open={recording}
+          onOpenChange={setRecording}
+          {...sampleRecordAbsence}
+          onRecord={async (x) => setMsg(`${x.kind === 'lwp' ? 'Long leave without pay' : 'Sabbatical'} recorded · ${TEAM.find((t) => t.id === x.employeeId)?.name ?? ''}, ${formatDate(isoDate(x.from))} – ${formatDate(isoDate(x.to))}`)}
+          names={Object.fromEntries(TEAM.map((t) => [t.id, t.name]))}
+          initial={dialog === 'absence' ? { employeeId: 't6', kind: 'sabbatical', from: new Date(2026, 10, 2), to: new Date(2027, 3, 30), note: 'Sabbatical for a course in quality systems' } : dialog === 'absence-conflict' ? { employeeId: 't1', kind: 'lwp', from: new Date(2026, 9, 15), to: new Date(2026, 11, 31), note: 'Long unpaid leave to care for a parent' } : undefined}
+        />
+      )}
       {persona === 'hr' && <AdjustBalanceDialog open={adjust} onOpenChange={setAdjust} onPost={(e) => setMsg(`Posted ${e.delta > 0 ? '+' : ''}${e.delta} ${LEAVE_NAME[e.code]} for ${e.person}`)} />}
       {persona === 'emp' && <OptionalHolidaysPanel key={optional.join()} open={holidays} onOpenChange={setHolidays} chosen={optional} onSave={(s) => { setMsg(optionalSavedText(optional, s)); setOptional(s); }} />}
       {open && <LeaveRequestView key={`${open.r.id}-${open.action}`} r={open.r} viewer={open.viewer} action={open.action} open onOpenChange={(o) => !o && setOpen(null)} onDecided={decided(open.r.id)} />}
@@ -2058,6 +2069,8 @@ export interface LiveHrLeaveHome {
   hrefs: { approvals: string; calendar: string; negative: string; yearEnd: string; request: (id: string) => string };
   /** TIM-25 HR: long absences now and coming, each opening its status to extend or end early. */
   absences?: { data: LongAbsenceRow[] | null; onChange: (id: string, how: 'extend' | 'early', on: string, note: string, version: number) => Promise<unknown> };
+  /** Founder decision 1: Record long absence (leave.balance.adjust; the API checks each person). */
+  record?: RecordAbsenceProps;
 }
 /** Me › My leave card (TIM-21 employee). */
 export interface LiveMyLeaveCard {
@@ -2776,12 +2789,157 @@ const ABSENCE_TITLE: Record<LongAbsenceRow['kind'], string> = { maternity: 'Mate
 const hm = (mins: number) => `${Math.floor(mins / 60)} h${mins % 60 ? ` ${mins % 60} min` : ''}`;
 const daysBetweenIso = (a: string, b: string) => Math.round((isoDate(b).getTime() - isoDate(a).getTime()) / 86_400_000);
 
+/* =====================================================================
+   Founder decision 1 (29 Oct 2026) · Record long absence (TIM-17 HR): a sabbatical or long leave without pay for
+   someone in HR's scope. The effect (pay, leave credits, the day back) and anything in the way (leave already asked
+   for, another absence, notice, a joining day, a locked month) show before Record; nothing is cancelled silently.
+   ===================================================================== */
+
+export interface RecordAbsenceProps {
+  onFindPeople: (q: string) => Promise<LivePersonOption[]>;
+  onCheck: (q: { employeeId: string; from: string; to: string }) => Promise<LongAbsenceCheck>;
+  onRecord: (input: LongAbsenceInput) => Promise<unknown>;
+}
+const ABSENCE_KINDS = [
+  { value: 'sabbatical' as const, label: 'Sabbatical' },
+  { value: 'lwp' as const, label: 'Long leave without pay' },
+];
+
+function RecordAbsenceDialog({ open, onOpenChange, onFindPeople, onCheck, onRecord, initial, names }: RecordAbsenceProps & {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  /** Stories: the dialog filled in. */
+  initial?: { employeeId: string; kind: LongAbsenceInput['kind']; from: Date; to: Date; note: string };
+  names?: Record<string, string>;
+}) {
+  const [person, setPerson] = useState<string | null>(initial?.employeeId ?? null);
+  const [kind, setKind] = useState<LongAbsenceInput['kind']>(initial?.kind ?? 'sabbatical');
+  const [from, setFrom] = useState<Date | null>(initial?.from ?? null);
+  const [to, setTo] = useState<Date | null>(initial?.to ?? null);
+  const [note, setNote] = useState(initial?.note ?? '');
+  const [check, setCheck] = useState<LongAbsenceCheck | null>(null);
+  const [checkError, setCheckError] = useState<string | null>(null);
+  const ready = Boolean(person && from && to && to >= from);
+  useEffect(() => {
+    setCheck(null);
+    setCheckError(null);
+    if (!ready) return;
+    let live = true;
+    onCheck({ employeeId: person!, from: isoOf(from!), to: isoOf(to!) }).then(
+      (c) => live && setCheck(c),
+      (e: unknown) => live && setCheckError(e instanceof Error ? e.message : 'The dates could not be checked. Try again.'),
+    );
+    return () => {
+      live = false;
+    };
+  }, [person, from?.getTime(), to?.getTime()]); // eslint-disable-line react-hooks/exhaustive-deps
+  const early = useTooEarly([
+    ...(person ? [] : [{ fieldId: 'la-person', message: 'Choose the person.' }]),
+    ...(from ? [] : [{ fieldId: 'la-from', message: 'Choose the first day away.' }]),
+    ...(!to ? [{ fieldId: 'la-to', message: 'Choose the last day away.' }] : from && to < from ? [{ fieldId: 'la-to', message: 'The last day is on or after the first day.' }] : []),
+    ...(note.trim().length >= 10 ? [] : [{ fieldId: 'la-note', message: 'Write the reason in at least 10 characters.' }]),
+  ]);
+  const days = from && to && to >= from ? daysUntil(to, from) + 1 : null;
+  const reset = () => {
+    setPerson(null);
+    setFrom(null);
+    setTo(null);
+    setNote('');
+    setKind('sabbatical');
+    early.reset();
+  };
+  return (
+    <ConfirmDialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) reset();
+        onOpenChange(o);
+      }}
+      size="md"
+      title="Record long absence"
+      consequence="For a sabbatical or long leave without pay. Maternity leave starts from the person's own leave request."
+      confirmLabel="Record absence"
+      onConfirm={async () => {
+        if (early.stop()) return false;
+        // The problems are on screen already; Record says so again instead of sending.
+        if (!check || check.problems.length) {
+          document.getElementById('la-effect')?.focus();
+          return false;
+        }
+        await onRecord({ employeeId: person!, kind, from: isoOf(from!), to: isoOf(to!), note: note.trim() });
+        reset();
+      }}
+    >
+      <div className="yx-tim-form">
+        <FormField id="la-person" label="Person" required error={early.errorOf('la-person')}>
+          <LivePicker kind="people" label="Person" value={person} onChange={setPerson} onPick={(_k, q) => onFindPeople(q)} names={names} />
+        </FormField>
+        <FormField label="Type"><Segment label="Type" value={kind} onChange={setKind} options={ABSENCE_KINDS} /></FormField>
+        <FieldRow>
+          <FormField id="la-from" label="First day away" required error={early.errorOf('la-from')}><DatePicker value={from} onChange={setFrom} /></FormField>
+          <FormField id="la-to" label="Last day away" required error={early.errorOf('la-to')}><DatePicker value={to} onChange={setTo} min={from ?? undefined} /></FormField>
+        </FieldRow>
+        <FormField id="la-note" label="Reason" required helper="HR and the person's manager see this." error={early.errorOf('la-note')}><TextArea rows={2} value={note} onChange={setNote} maxLength={500} /></FormField>
+        <section id="la-effect" tabIndex={-1} className="yx-tim-effect" aria-live="polite" aria-label="What this does">
+          <strong>What this does</strong>
+          {!ready ? (
+            <p className="yx-tim-muted">Choose the person and the dates to see the effect on pay and leave.</p>
+          ) : checkError ? (
+            <InlineAlert tone="danger" title="Not checked">{checkError}</InlineAlert>
+          ) : !check ? (
+            <p className="yx-tim-muted">Checking the dates…</p>
+          ) : (
+            <>
+              <dl className="yx-tim-stack">
+                <div className="yx-tim-effect__row"><dt>Days away</dt><dd>{daysWord(days!)}</dd></div>
+                <div className="yx-tim-effect__row"><dt>Pay</dt><dd>Not paid: the days go to payroll as unpaid days</dd></div>
+                <div className="yx-tim-effect__row"><dt>Leave credits</dt><dd>{check.accrues ? 'Keeps earning leave (company setting)' : 'No leave earned for these days (company setting)'}</dd></div>
+                <div className="yx-tim-effect__row"><dt>Back at work</dt><dd>{fd(check.comesBackOn)}</dd></div>
+              </dl>
+              {check.problems.length > 0 && (
+                <InlineAlert tone="danger" title="This can't be recorded yet">
+                  <ul className="yx-tim-stack">{check.problems.map((p) => <li key={p}>{p}</li>)}</ul>
+                </InlineAlert>
+              )}
+            </>
+          )}
+        </section>
+      </div>
+    </ConfirmDialog>
+  );
+}
+
+/** Stories: the people and checks the dialog shows (Arun's earned leave 19–23 Oct is in the way of an October start). */
+const SAMPLE_ABSENCE_PEOPLE = TEAM.map((t) => ({ id: t.id, label: t.name, detail: `${t.role} · ${t.location}` }));
+const sampleRecordAbsence: RecordAbsenceProps = {
+  onFindPeople: async (q) => SAMPLE_ABSENCE_PEOPLE.filter((p) => p.label.toLowerCase().includes(q.toLowerCase())).slice(0, 8),
+  onCheck: async ({ employeeId, from, to }) => {
+    const name = TEAM.find((t) => t.id === employeeId)?.name ?? 'This person';
+    const f = isoDate(from);
+    const t = isoDate(to);
+    const leave = LEAVE_REQUESTS.filter((r) => r.person === name && r.status !== 'Rejected' && r.from <= t && r.to >= f);
+    const lwd = ON_NOTICE[name]?.lastDay;
+    return {
+      name,
+      accrues: false,
+      comesBackOn: isoAdd(to, 1),
+      leave: leave.map((r) => ({ id: r.id, type: r.type, from: isoOf(r.from), to: isoOf(r.to), status: r.status === 'Pending' ? 'pending' : 'approved' })),
+      problems: [
+        ...(lwd && t > lwd ? [`${name} is on notice. The last working day is ${formatDate(lwd)}, so end the absence on or before it.`] : []),
+        ...(leave.length ? [`${name} already has leave on these dates: ${leave.map((r) => `${r.type} ${formatDate(r.from)} – ${formatDate(r.to)} (${r.status === 'Pending' ? 'waiting' : 'approved'})`).join('; ')}. Withdraw or cancel it first, then record the absence.`] : []),
+      ],
+    };
+  },
+  onRecord: async () => undefined,
+};
+
 /** TIM-17 HR in the app: requests waiting with their approvers, who is away this week, what needs HR. */
 function LiveHrLeaveHomeScreen({ live }: { live: LiveHrLeaveHome }) {
   const d = live.data;
   const [reminded, setReminded] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [absence, setAbsence] = useState<LongAbsenceRow | null>(null);
+  const [recording, setRecording] = useState(false);
   const today = d ? isoDate(d.today) : TODAY0;
   const absences = live.absences?.data ?? [];
   const remind = (id: string) => {
@@ -2790,7 +2948,7 @@ function LiveHrLeaveHomeScreen({ live }: { live: LiveHrLeaveHome }) {
   };
   return (
     <TimePage active="Team leave">
-      <PageHeader title="Leave" description={d ? `Leave year ends ${fd(d.yearEnd.nextOn)}` : undefined} />
+      <PageHeader title="Leave" description={d ? `Leave year ends ${fd(d.yearEnd.nextOn)}` : undefined} actions={live.record && <Button variant="primary" onClick={() => setRecording(true)}>Record long absence</Button>} />
       <LiveStates state={live.state} onRetry={live.onRetry} what="Leave">
         {d && (
           <div className="yx-tim-grid">
@@ -2852,6 +3010,7 @@ function LiveHrLeaveHomeScreen({ live }: { live: LiveHrLeaveHome }) {
         )}
       </LiveStates>
       {absence && d && live.absences && <LongAbsenceCard live={{ absence, persona: 'hr', today: d.today, onClose: () => setAbsence(null), onChange: (how, on, note, version) => live.absences!.onChange(absence.id, how, on, note, version) }} />}
+      {live.record && <RecordAbsenceDialog open={recording} onOpenChange={setRecording} {...live.record} />}
     </TimePage>
   );
 }

@@ -274,7 +274,8 @@ export interface LeaveRules {
   halfDays: boolean;
   minDays: number | null;
   maxDays: number | null;
-  noticeDays: number;
+  /** Apply at least this many days ahead; null: the company default (sick leave 0). */
+  noticeDays: number | null;
   /** Shorter notice is refused (block) or allowed and flagged to the approver (warn). */
   noticeMode?: 'block' | 'warn';
   certificateAfterDays: number | null;
@@ -322,6 +323,8 @@ export interface TimeSetup {
   calendars: { id: string; name: string; locationId: string | null; halfDayOpenHalf: 'first' | 'second'; optionalLimit: number; holidays: HolidayRow[] }[];
   locations: { id: string; name: string; state: string; timezone: string; geofence: { lat: number; lng: number; radiusM: number } | null; ipRanges: string[]; rule: LocationRule; upcoming: LocationRule[] }[];
   entities: { id: string; name: string }[];
+  /** Founder decision 2: days' notice for a leave type without its own number (company setting; sick leave 0). */
+  noticeDefault?: number;
   statutory: { jurisdiction: string; version: string; validFrom: string; values: { floors?: { kinds: string[]; days: number }[]; carry?: Record<string, number> }; source: string; verify: boolean }[];
 }
 
@@ -672,7 +675,7 @@ export interface HrLeaveHome {
   yearEnd: { on: string; posted: boolean; nextOn: string };
 }
 
-export type LeaveReportKind = 'balances' | 'taken' | 'ledger' | 'lop' | 'negative';
+export type LeaveReportKind = 'balances' | 'taken' | 'ledger' | 'lop' | 'negative' | 'liability';
 export interface LeaveReportQuery {
   report: LeaveReportKind;
   entityId?: string;
@@ -693,6 +696,12 @@ export interface LeaveReport {
   month?: string;
   filters: { entities: { id: string; name: string }[]; locations: { id: string; name: string }[]; departments: { id: string; name: string }[] };
   rows: LeaveReportRow[];
+  /** Liability: the viewer may see pay for at least one legal entity (else no money fields are sent). */
+  money?: boolean;
+  /** Liability: unused days that can be cashed in, everyone in scope. */
+  totalDays?: number;
+  /** Liability, pay viewers only: daily pay = monthly pay on this basis ÷ this divisor (company settings). */
+  dailyPayRule?: { basis: string; divisor: string };
 }
 export interface LeaveReportRow {
   employeeId: string;
@@ -709,7 +718,32 @@ export interface LeaveReportRow {
   reason?: string;
   lopLeave?: number;
   absent?: number;
+  /** Liability, pay viewers only (absent for others): null with noPay when the person has no pay set up. */
+  dailyPay?: number | null;
+  amount?: number | null;
+  noPay?: boolean;
 }
+
+/** Founder decision 1: GET /time/hr/long-absences/check (before Record long absence). */
+export interface LongAbsenceCheck {
+  name: string | null;
+  accrues: boolean;
+  comesBackOn: string;
+  leave: { id: string; type: string; from: string; to: string; status: string }[];
+  /** Why it can't be recorded, in plain English (empty: fine). */
+  problems: string[];
+}
+export type LongAbsenceInput = { employeeId: string; kind: 'sabbatical' | 'lwp'; from: string; to: string; note: string };
+
+/** Founder decision 1: GET /time/setup/block-dates. */
+export interface BlockDates {
+  mode: 'block' | 'warn';
+  dates: { id: string; from: string; to: string; reason: string; scopeType: 'tenant' | 'legal_entity' | 'location'; scopeId: string | null; scopeName: string | null; leaveTypeIds: string[]; affected: { id: string; name: string; type: string; from: string; to: string; status: string }[] }[];
+  types: { id: string; name: string; kind: string; stoppedByDefault: boolean; canStop: boolean }[];
+  entities: { id: string; name: string }[];
+  locations: { id: string; name: string }[];
+}
+export type BlockDateInput = { from: string; to: string; reason: string; scopeType: 'tenant' | 'legal_entity' | 'location'; scopeId?: string; leaveTypeIds?: string[] };
 
 /** GET /time/hr/block-leave (TIM-39). */
 export interface BlockLeaveList {
