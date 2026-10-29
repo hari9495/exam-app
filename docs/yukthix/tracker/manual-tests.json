@@ -4113,5 +4113,48 @@
       "TIM-17 HR · apply for someone"
     ],
     "note": "Positive and negative. \"approved\" needs the HR person to hold leave.approve over the person too; otherwise it still goes to the manager (e2e). Another company's person is 404 (e2e)."
+  },
+  {
+    "id": "MT-TF-01",
+    "area": "Time · Leave",
+    "screen": "Leave reports: filters in one row (HR, every report)",
+    "url": "http://localhost:3000/yx/time/balances",
+    "account": "hr-tester@demo-org.test (HR Admin). Browser window 1278 x 635 (laptop at 150 %), sidebar open.",
+    "steps": [
+      "1. Time › Reports › Leave balances. Report = Balances.",
+      "2. Look at the table toolbar.",
+      "3. Change Report to Leave taken, then Negative balances, then Leave liability.",
+      "4. Change Report to Unpaid leave (LOP) to payroll, then Ledger.",
+      "5. In Ledger, open \"All entities\" and choose Kaveri Foods Pvt Ltd (Tamil Nadu)."
+    ],
+    "expected": "Step 2: one row: \"Search by name or code\", \"All entities\", \"All locations\", \"All departments\" (each only as wide as its text), and Columns and the density button at the right of the same row. The table header sits right under it and at least 6 rows show without page scroll. Step 3: the same one row each time; Leave liability shows its KPIs (or the days note) above and still at least 6 rows. Step 4: the Month filter is the only thing that moves to a second row; Columns and density stay on the first row at the right; at least 6 rows show. Step 5: the entity box grows to fit the longer name; the filters still line up and nothing overlaps.",
+    "stories": [
+      "TIM-30 Balances",
+      "TIM-30 Leave taken",
+      "TIM-30 Unpaid leave (LOP) to payroll",
+      "TIM-30 Liability · days only (no pay access)",
+      "TIM-30 Negative balances",
+      "TIM-30 Ledger"
+    ],
+    "note": "Positive. Live addition: the designs have no filter row; the filters must not push the table down (lead walk-through 29 Oct 2026)."
+  },
+  {
+    "id": "MT-TF-02",
+    "area": "Time · Leave",
+    "screen": "Leave reports: Payroll liability filters, and a narrow window",
+    "url": "http://localhost:3000/yx/time/balances",
+    "account": "payroll-tester@demo-org.test (Payroll: leave.liability.view). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Leave liability from the menu.",
+      "2. Look at the table toolbar.",
+      "3. Choose Department = Finance, then clear it back to All departments.",
+      "4. Make the window narrow (about 700 px wide), then phone width (about 390 px).",
+      "5. Open Report."
+    ],
+    "expected": "Step 2: the KPIs, then one toolbar row with search, three filters and Columns / density at the right; the table header and at least 6 rows show without page scroll. Step 3: the list narrows to Finance and back; the row does not jump to several lines. Step 4: the filters wrap onto more rows only when they no longer fit; no filter is stretched across the full width on a laptop; on a phone the filters take the full width above the table and nothing runs off the screen. Step 5: only Leave liability is listed.",
+    "stories": [
+      "TIM-30 Payroll · liability"
+    ],
+    "note": "Positive and negative. Negative: a full-width filter on its own line, or Columns floating halfway down the toolbar, is a fail."
   }
 ]

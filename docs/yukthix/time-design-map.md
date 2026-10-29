@@ -881,13 +881,13 @@ Also not live from this design: "Copy last week" (the API returns only last week
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Balances (`Balances`) | /yx/time/balances: everyone in leave.view scope × leave types, filters (entity, location, department, name), 50 a page with Previous / Next, Export CSV (every row, up to 10,000), Open leave card per row |
+| Balances (`Balances`) | /yx/time/balances: everyone in leave.view scope × leave types, filters (entity, location, department, name) in one toolbar row with Columns / density at the right (live addition to the design; fixed 29 Oct in the shared table toolbar: content-sized selects, the filters wrap before the controls do; at 1278 x 635 the toolbar is 63 px, was 195 px, and 8 rows show, was 5), 50 a page with Previous / Next, Export CSV (every row, up to 10,000), Open leave card per row |
 | Leave taken (`Taken`) | /yx/time/balances → Report: Leave taken (this leave year) |
 | Unpaid leave (LOP) to payroll (`Lop`) | /yx/time/balances → Report: Unpaid leave (LOP), by month: unpaid leave days and absent days with no leave |
 | Payroll · liability (`Liability`) | /yx/time/balances → Report: Leave liability, for someone with leave.view, or with leave.liability.view alone (Payroll: menu link "Leave liability", the picker lists this report only, no leave cards; founder answer A), who may see pay: KPIs (unused days, liability of the people on the page, the daily-pay rule), days per type, Daily pay, Liability, "No pay set"; Export CSV with the money. Partial gap: the "by month" chart and "Change vs last month" need monthly snapshots (not built) |
 | Liability · days only (`LiabilityDays`) | same report for someone without pay access: the days only and "The money shows only to people who may see pay"; the API sends no money fields |
 | Negative balances (`Negative`) | /yx/time/balances → Report: Negative balances |
-| Ledger (`Ledger`) | /yx/time/balances → Report: Ledger, by month |
+| Ledger (`Ledger`) | /yx/time/balances → Report: Ledger, by month (with LOP, the only reports whose Month filter wraps to a second toolbar row at 1278 x 635: out of room; Columns / density stay on the first row; 7 rows show) |
 | Loading (`Loading`) | /yx/time/balances while loading |
 | Error (`Failed`) | /yx/time/balances when the API fails: Retry |
 
