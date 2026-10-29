@@ -137,6 +137,9 @@ export const YX_KEYS = [
   'statutory.filing.mark_filed',
   'statutory.challan.manage',
   'payroll.notice.waive',
+  // PAY-24 statutory bonus.
+  'payroll.bonus.manage',
+  'payroll.bonus.approve',
   // Payroll operations screens (PAY-10.09 … 10.16).
   'payroll.payment.record',
   'payroll.loan.manage',

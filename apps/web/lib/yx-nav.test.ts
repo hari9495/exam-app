@@ -114,6 +114,16 @@ describe('buildNav: Time, Pay, Compliance', () => {
     expect(labels(n, 'compliance')).toEqual(['Rules & updates']);
   });
 
+  it('PAY-24 Statutory bonus: payroll who works it out and the approver see it; nobody else does', () => {
+    for (const key of ['payroll.bonus.manage', 'payroll.bonus.approve']) {
+      const n = nav([key]);
+      expect(labels(n, 'pay')).toEqual(['Statutory bonus']);
+      expect(activeLink(n, '/yx/payroll/bonus')?.link.id).toBe('pay-bonus');
+    }
+    expect(labels(nav(['payroll.special.manage']), 'pay')).not.toContain('Statutory bonus');
+    expect(labels(nav([], { employee: true }), 'pay')).not.toContain('Statutory bonus');
+  });
+
   it('Expenses sit under Pay (founder decision 15 Oct 2026), each by its key', () => {
     expect(labels(nav(['expense.payout.manage', 'expense.report.view', 'expense.policy.manage']), 'pay')).toEqual(['To pay', 'Expense reports', 'Expense policy']);
     expect(labels(nav([], { employee: true }), 'pay')).toContain('Claims');

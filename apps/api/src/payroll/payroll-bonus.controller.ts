@@ -28,6 +28,12 @@ export class PayrollBonusController {
     return this.bonus.overview(ctx, this.user(req), legalEntityId, yearStart || undefined);
   }
 
+  @Get('entities')
+  @RequireAnyPermission('payroll.bonus.manage', 'payroll.bonus.approve')
+  entities(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.bonus.entities(ctx, this.user(req));
+  }
+
   @Get(':id')
   @RequireAnyPermission('payroll.bonus.manage', 'payroll.bonus.approve')
   get(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {

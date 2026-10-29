@@ -181,6 +181,17 @@ describe('Payroll statutory bonus (PAY-24)', () => {
     await api('payAdmin', 'get', `/payroll/bonus?legalEntityId=${ids.entity}&yearStart=2001-04-01`).expect(400);
   });
 
+  it('the entity picker lists only the entities each person reaches', async () => {
+    // By name: "Bonus Foods", then "Bonus Foods TN".
+    expect((await api('payAdmin', 'get', '/payroll/bonus/entities').expect(200)).body.map((e: { id: string; keys: string[] }) => [e.id, e.keys])).toEqual([
+      [ids.entity, ['payroll.bonus.manage']],
+      [ids.tn, ['payroll.bonus.manage']],
+    ]);
+    expect((await api('tnAdmin', 'get', '/payroll/bonus/entities').expect(200)).body.map((e: { id: string }) => e.id)).toEqual([ids.tn]);
+    expect((await api('payAdminB', 'get', '/payroll/bonus/entities').expect(200)).body).toEqual([]);
+    await api('noPay', 'get', '/payroll/bonus/entities').expect(403);
+  });
+
   it('who may look: no key 403; another company or another legal entity 404', async () => {
     await api('noPay', 'get', `/payroll/bonus?legalEntityId=${ids.entity}`).expect(403);
     await api('payAdminB', 'get', `/payroll/bonus?legalEntityId=${ids.entity}`).expect(404);

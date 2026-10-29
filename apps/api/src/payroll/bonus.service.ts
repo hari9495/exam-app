@@ -112,6 +112,16 @@ export class BonusService {
 
   // ------------------------------------------------------------------------------------------ read
 
+  /** The legal entities whose bonus this person works out or approves (the page's picker). */
+  async entities(ctx: TenantContext, user: ScopeUser) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const s = await this.scope(tx, c, v);
+      const rows = await tx.legalEntity.findMany({ where: { organizationId: c.organizationId, id: { in: [...s.manage, ...s.approve] }, archivedAt: null }, select: { id: true, name: true, shortName: true }, orderBy: { name: 'asc' } });
+      return rows.map((e) => ({ ...e, keys: [...(s.manage.includes(e.id) ? ['payroll.bonus.manage'] : []), ...(s.approve.includes(e.id) ? ['payroll.bonus.approve'] : [])] }));
+    });
+  }
+
   async overview(ctx: TenantContext, user: ScopeUser, legalEntityId: string, yearStart?: string) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
