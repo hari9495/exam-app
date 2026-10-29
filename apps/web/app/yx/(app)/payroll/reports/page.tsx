@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { PayrollReportsScreen, type PayReport, type PayReportKind, type ReportFilters, type ReportOptions } from '@yukthix/ui/pay';
+import { PayrollReportsScreen, effectiveFilters, type PayReport, type PayReportKind, type ReportFilters, type ReportOptions } from '@yukthix/ui/pay';
 import { payState, usePay, usePayDownload } from '../../../../../lib/yx-pay';
 
 // Payroll › Payroll reports (PAY-25): read-only reports for the legal entities the person's payroll.reports.view
@@ -14,7 +14,9 @@ export default function YxPayReportsPage() {
   const [kind, setKind] = useState<PayReportKind>('register');
   const [filters, setFilters] = useState<ReportFilters>(NO_FILTERS);
   const [page, setPage] = useState(1);
-  const query = new URLSearchParams(Object.entries(filters).filter((x): x is [string, string] => !!x[1])).toString();
+  // The months asked for are the ones the page shows: the latest month with approved payslips (else last month) by default.
+  const asked = options.data ? effectiveFilters(kind, filters, options.data) : filters;
+  const query = new URLSearchParams(Object.entries(asked).filter((x): x is [string, string] => !!x[1])).toString();
   const path = `/reports/${kind}?${query}${query ? '&' : ''}`;
   const report = usePay<PayReport>(options.data ? `${path}page=${page}` : null);
   const download = usePayDownload();
