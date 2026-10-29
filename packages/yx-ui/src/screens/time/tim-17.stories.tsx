@@ -11,6 +11,9 @@ export const Manager: S = { name: 'Manager', args: { persona: 'mgr' } };
 export const Hr: S = { name: 'HR', args: { persona: 'hr' } };
 export const RecordAbsence: S = { name: 'HR · record long absence', args: { persona: 'hr', dialog: 'absence' } };
 export const RecordAbsenceConflict: S = { name: 'HR · record long absence · leave in the way', args: { persona: 'hr', dialog: 'absence-conflict' } };
+// Founder answer B: HR applies leave for someone (their types and balances, notice skipped, goes to their manager).
+export const ApplyForSomeone: S = { name: 'HR · apply for someone', args: { persona: 'hr', dialog: 'apply' } };
+export const ApplyForSomeoneRefused: S = { name: 'HR · apply for someone · refused', args: { persona: 'hr', dialog: 'apply-refused' } };
 export const Empty: S = { name: 'Employee · no requests yet', args: { state: 'empty' } };
 export const Loading: S = { name: 'Loading', args: { state: 'loading' } };
 export const Failed: S = { name: 'Error', args: { state: 'error' } };
