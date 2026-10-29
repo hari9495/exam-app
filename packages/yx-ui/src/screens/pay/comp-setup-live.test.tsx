@@ -144,6 +144,12 @@ describe('Compensation (PAY-12 live)', () => {
     expect(screen.queryByRole('button', { name: 'Revise compensation' })).toBeNull();
   });
 
+  it('no salary key: no access before anyone is chosen, and no person search', () => {
+    render(<CompensationScreen live={compLive({ employee: null, state: 'no-access' })} />);
+    expect(screen.getByText(/You don't have access/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Search' })).toBeNull();
+  });
+
   it('no person yet, no access, and a load error with retry', async () => {
     const { rerender } = render(<CompensationScreen live={compLive({ employee: null })} />);
     expect(screen.getByText('Find a person to see their pay')).toBeInTheDocument();

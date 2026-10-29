@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { QueryQueueScreen, type PayslipQueryView, type QueryHandler } from '@yukthix/ui/pay';
 import { useCurrentUser } from '../../../../../lib/hooks/useCurrentUser';
+import { useYxPermissions } from '../../../../../lib/yx-org';
 import { payState, usePay, usePayRead, usePayWrite } from '../../../../../lib/yx-pay';
 import { useNames } from '../../../../../lib/yx-pay-5j';
 import { todayIndia } from '../../../../../lib/yx-time';
@@ -12,6 +13,7 @@ import { todayIndia } from '../../../../../lib/yx-time';
 export default function YxPayslipQueriesPage() {
   const [status, setStatus] = useState<'open' | 'answered' | 'closed'>('open');
   const me = useCurrentUser();
+  const perms = useYxPermissions();
   const queries = usePay<PayslipQueryView[]>(`/queries?status=${status}`);
   const write = usePayWrite();
   const read = usePayRead();
@@ -20,7 +22,8 @@ export default function YxPayslipQueriesPage() {
   return (
     <QueryQueueScreen
       live={{
-        state: payState(queries),
+        // GET /queries also answers employees (their own questions), so this payroll queue checks the key itself.
+        state: perms.data === undefined ? 'loading' : !perms.has('payroll.query.handle') ? 'no-access' : payState(queries),
         onRetry: () => void queries.refetch(),
         queries: queries.data ?? null,
         nameOf,

@@ -27,7 +27,8 @@ export default function YxPayCompensationPage() {
     onSearch: search,
     employee,
     onEmployee: setEmployee,
-    state: payState(current),
+    // Someone with no salary key gets "no access" up front, not an empty person search.
+    state: perms.data === undefined ? 'loading' : !perms.has('employee.salary.view') && !perms.has('employee.salary.manage') ? 'no-access' : payState(current),
     onRetry: () => void current.refetch(),
     current: current.data ?? null,
     templates: templates.data ?? null,

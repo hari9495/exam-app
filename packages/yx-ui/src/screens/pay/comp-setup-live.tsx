@@ -383,9 +383,18 @@ export function LiveCompensationScreen({ live: p }: { live: LiveCompensation }) 
   const grossDiff = preview && cur?.package ? Number(preview.monthlyGross) - Number(cur.package.monthlyGross) : null;
   const profileNow = p.profile?.history.find((h) => !h.validTo) ?? null;
   const workOut = () => run('preview', async () => setPreview(await p.onPreview(form)));
+  const header = <PageHeader title="Compensation" description="A new or revised salary is a dated change that someone else approves. Its breakup is kept with it." />;
+  // No salary key: say so up front instead of offering a person search that can't show anything.
+  if (p.state === 'no-access')
+    return (
+      <div className="yx-pay-stack">
+        {header}
+        <Gate state="no-access" what="compensation">{null}</Gate>
+      </div>
+    );
   return (
     <div className="yx-pay-stack">
-      <PageHeader title="Compensation" description="A new or revised salary is a dated change that someone else approves. Its breakup is kept with it." />
+      {header}
       <section className="yx-pay-panel" aria-label="Find a person">
         <FieldRow>
           <FormField id="cp-q" label="Find a person" error={searchEarly.errorOf('cp-q')}>
