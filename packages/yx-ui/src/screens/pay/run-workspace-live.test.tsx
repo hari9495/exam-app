@@ -117,6 +117,23 @@ describe('PAY-03 run workspace, live', () => {
     expect(screen.getByText(/are read when the run is calculated/)).toBeInTheDocument();
   });
 
+  it('PAY-02 Validations (item 11): the same per-source table above the checks; none while it is not read', async () => {
+    const sources = { runId: RUN.id, people: 3, sources: [{ key: 'attendance', label: 'Attendance from Time', people: 3, days: '2.00', amount: null, note: null }, { key: 'one_time', label: 'One-time pay', people: 1, days: null, amount: '5000.00', note: null }] };
+    const { unmount } = show(live({ inputSources: sources }));
+    await ue.click(screen.getByRole('tab', { name: /^Validations/ }));
+    const panel = screen.getByRole('region', { name: 'Inputs' });
+    const t = within(panel).getByRole('table', { name: 'Inputs for this period' });
+    expect(within(t).getByRole('rowheader', { name: 'One-time pay' })).toBeInTheDocument();
+    expect(within(t).getByText('₹5,000')).toBeInTheDocument();
+    // No facts row here (the Inputs tab has it); the checks still follow.
+    expect(within(panel).queryByText('People in the run')).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Validations' })).toBeInTheDocument();
+    unmount();
+    show(live({ inputSources: null }));
+    await ue.click(screen.getByRole('tab', { name: /^Validations/ }));
+    expect(screen.queryByRole('region', { name: 'Inputs' })).not.toBeInTheDocument();
+  });
+
   it('checks: with nothing blocking, Calculate calculates', async () => {
     const l = live({ run: { ...RUN, status: 'draft' }, readiness: { ...READINESS, checks: READINESS.checks.map((c) => ({ ...c, waived: true, waiverReason: 'Bank next week' })) } });
     show(l);

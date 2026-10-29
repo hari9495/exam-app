@@ -519,6 +519,13 @@ function ValidationsPanel({ p, checks, calcBlocks, editable, nameOf }: { p: Live
           Every blocking item is resolved or waived with a reason.
         </InlineAlert>
       )}
+      {/* Founder 30 Oct 2026 (item 11): the input sources show here too, where the PAY-02 design puts them. */}
+      {p.inputSources && (
+        <section className="yx-pay-panel" aria-label="Inputs">
+          <SectionTitle>Inputs for this period</SectionTitle>
+          <InputSourcesTable data={p.inputSources} facts={false} />
+        </section>
+      )}
       <section className="yx-pay-panel" aria-label="Validations">
         <SectionTitle>Validations</SectionTitle>
         {checks.length ? (
@@ -566,19 +573,21 @@ function ValidationsPanel({ p, checks, calcBlocks, editable, nameOf }: { p: Live
 
 /* ------------------------------------------------------------------ Inputs (off-cycle items) */
 
-/** PAY-03 Inputs: the design's Source · People · Amount table, from the run's input sources. */
-export function InputSourcesTable({ data }: { data: RunInputSources }) {
+/** PAY-03 Inputs (and PAY-02 Validations, without the facts): the design's Source · People · Amount table. */
+export function InputSourcesTable({ data, facts = true }: { data: RunInputSources; facts?: boolean }) {
   const oneTime = data.sources.find((x) => x.key === 'one_time')?.amount;
   const recoveries = data.sources.filter((x) => x.key === 'loans' || x.key === 'overpayments').reduce((t, x) => t + Number(x.amount ?? 0), 0);
   return (
     <div className="yx-pay-stack">
-      <FactRow
-        items={[
-          { label: 'People in the run', value: String(data.people) },
-          { label: 'One-time pay', value: money(oneTime) },
-          { label: 'Recoveries', value: formatINR(recoveries) },
-        ]}
-      />
+      {facts && (
+        <FactRow
+          items={[
+            { label: 'People in the run', value: String(data.people) },
+            { label: 'One-time pay', value: money(oneTime) },
+            { label: 'Recoveries', value: formatINR(recoveries) },
+          ]}
+        />
+      )}
       <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
         <table className="yx-pay-table" aria-label="Inputs for this period">
           <thead>
