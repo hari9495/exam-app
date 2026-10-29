@@ -9,32 +9,16 @@ export { PortalSignInScreen, type LiveOtpSignIn } from '../../portals/portals-ki
 // Batch 5b (PAY-2.04 … 2.13): payroll set-up, pay groups, the payslip layout, statutory rules and coverage, imports,
 // the component library, salary templates and compensation.
 export * from './types-5b';
-export {
-  StatutoryRulesScreen,
-  EntityPicker,
-  parseCsv,
-  statuteText,
-  type StatutoryRulesScreenProps,
-} from './setup';
+export { EntityPicker, parseCsv, statuteText } from './setup';
 // Batch 5j (PAY-10.01 … 10.04): runs, inputs, the employee's payslips and the compliance screens, wired.
 export * from './types-5j';
 // Payroll operations (PAY-10.09 … 10.16): payments, loans, payslip queries, tax declarations and proofs, registers,
 // advisories, certificates and nominees.
 export * from './types-ops';
-export {
-  RegistersScreen,
-  AdvisoriesScreen,
-  TaxCertificatesScreen,
-  type RegistersScreenProps,
-  type AdvisoriesScreenProps,
-  type TaxCertificatesScreenProps,
-} from './operations';
 export { PayslipLines, ReasonDrawer, RunStatusBadge, rupees, runName } from './runs';
 export { PersonPicker, type PersonHit, type LopRow, type HoldRow } from './inputs';
-export { StatutoryHubScreen, type StatutoryHubScreenProps } from './compliance';
 // Batch 5h (PAY-8.01 … 8.04): consultants, their invoices and payments, Form 140 / 131 and the consultant's own page.
 export * from './types-5h';
-export { ConsultantTaxScreen, InvoiceStatusBadge, type ConsultantTaxScreenProps } from './consultants';
 export { ConsultantsScreen, ConsultantPortalScreen, type LiveConsultants, type LiveConsultantPortal } from '../consultants';
 // Batch 5i (PAY-9.01 … 9.12): special pay, earned wage access, equity, actuarial valuation and country packs.
 export * from './types-5i';
@@ -101,3 +85,6 @@ export { groupRuns, homeDueItems, type HomeDues } from '../payroll-home-live';
 export type { RunInputSources } from '../run-workspace-live';
 export type { QueryHandler } from '../payroll-inputs-live';
 export type { RepayInput, RepayRoute } from '../payments-live';
+// Compliance (CMP-01, 03, 04, 05, 06, 08, 13 · ops/compliance.tsx): designed screens with `live`.
+export { StatutoryHubScreen, RegistersScreen, Form16BulkScreen, RulesBrowserScreen, ConsultantTdsScreen } from '../../ops/compliance';
+export type { LiveStatutoryHub, LiveRegisters, LiveForm16, LiveRules, LiveConsultantTds, LiveTdsReturns, LiveChallanSheet, SectionChallan, CertificateImport } from '../../ops/compliance-live';

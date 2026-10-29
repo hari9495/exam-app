@@ -1,7 +1,8 @@
 // Compliance screens (M03 statutory, P07): CMP-01 statutory hub, CMP-12 supplementary filing panel, CMP-02 statutory set-up,
 // CMP-03 registers, CMP-04 TDS challan sheet, CMP-05 TDS return wizard, CMP-06 Form 16 bulk, CMP-07 missing IDs,
-// CMP-08 statutory rules browser + labour-law updates.
-import { useMemo, useState } from 'react';
+// CMP-08 statutory rules browser + labour-law updates, CMP-13 consultant TDS. Each takes `live` (compliance-live.tsx): the
+// app's pages render these designs with real data.
+import { useMemo, useState, type ReactNode } from 'react';
 import { Building2, Download, ExternalLink, Lock, Upload } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
@@ -26,6 +27,27 @@ import { Actions, CardGrid, CheckList, DueMonth, Facts, OpsDesk, StatusTrail, ty
 import { daysBetween, lateFilingFee, tdsLateInterest } from './ops-rules';
 import type { ListState } from './helpdesk';
 import type { FilingStep, RegisterRow, RuleSetRow, StatuteItem, SupplementaryFiling } from './compliance-data';
+import { CONSULTANT_CHALLANS, CONSULTANT_ENTITIES, CONSULTANT_RETURNS } from './compliance-data';
+import { useTooEarly } from '../../components/field';
+import {
+  ConsultantTdsBody,
+  LiveChallanSheet,
+  LiveConsultantTdsScreen,
+  LiveForm16Screen,
+  LiveRegistersScreen,
+  LiveRulesScreen,
+  LiveStatutoryHubScreen,
+  LiveTdsReturns,
+  type LiveChallanSheet as LiveChallan,
+  type LiveConsultantTds,
+  type LiveForm16,
+  type LiveRegisters,
+  type LiveRules,
+  type LiveStatutoryHub,
+  type LiveTdsReturns as LiveReturns,
+} from './compliance-live';
+import { LivePage } from '../time/live/kit';
+import type { LoadState } from '../pay/live/types';
 
 /* ---------------- Statute card (hub) ---------------- */
 
@@ -44,7 +66,7 @@ function statusFor(item: { due: Date; step: FilingStep }, today: Date): { tone: 
   return { tone: 'neutral', text: `Due ${formatDate(item.due)}` };
 }
 
-export function StatuteCard({ item, today, onOpenChild, onAction }: { item: StatuteItem; today: Date; onOpenChild?: (c: SupplementaryFiling) => void; onAction?: (item: StatuteItem) => void }) {
+export function StatuteCard({ item, today, onOpenChild, onAction, actions }: { item: StatuteItem; today: Date; onOpenChild?: (c: SupplementaryFiling) => void; onAction?: (item: StatuteItem) => void; /** Live: the card's real actions, in place of the sample buttons. */ actions?: ReactNode }) {
   const st = statusFor(item, today);
   const steps = item.mode === 'partner' ? PARTNER_STEPS : SELF_STEPS;
   const done = item.step === 'filed' || item.step === 'filed-by-partner';
@@ -81,7 +103,9 @@ export function StatuteCard({ item, today, onOpenChild, onAction }: { item: Stat
           </p>
         )}
         <Actions>
-          {item.statute === 'Registers' ? (
+          {actions !== undefined ? (
+            actions
+          ) : item.statute === 'Registers' ? (
             <>
               <Button size="sm" icon={Download}>
                 PDF
@@ -147,8 +171,13 @@ export interface StatutoryHubScreenProps {
   /** CMP-04: challan sheet open over the hub. */
   challanOpen?: boolean;
   setupNeeded?: boolean;
+  /** The live app's /yx/payroll/statutory (compliance-live.tsx). */
+  live?: LiveStatutoryHub;
 }
-export function StatutoryHubScreen({ items, today, state = 'ready', view = 'cards', openFiling = null, setupNeeded }: StatutoryHubScreenProps) {
+export function StatutoryHubScreen({ live, ...story }: StatutoryHubScreenProps) {
+  return live ? <LiveStatutoryHubScreen live={live} /> : <SampleStatutoryHub {...story} />;
+}
+function SampleStatutoryHub({ items, today, state = 'ready', view = 'cards', openFiling = null, setupNeeded }: StatutoryHubScreenProps) {
   const [tab, setTab] = useState(view);
   const [month, setMonth] = useState<string | null>('2026-09');
   const [filing, setFiling] = useState<SupplementaryFiling | null>(openFiling);
@@ -427,8 +456,13 @@ export interface RegistersScreenProps {
   kind?: RegisterKind;
   state?: ListState;
   lwfNotDue?: boolean;
+  /** The live app's /yx/payroll/registers (compliance-live.tsx). */
+  live?: LiveRegisters;
 }
-export function RegistersScreen({ rows, kind = 'EPF', state = 'ready', lwfNotDue }: RegistersScreenProps) {
+export function RegistersScreen({ live, ...story }: RegistersScreenProps) {
+  return live ? <LiveRegistersScreen live={live} /> : <SampleRegisters {...story} />;
+}
+function SampleRegisters({ rows, kind = 'EPF', state = 'ready', lwfNotDue }: RegistersScreenProps) {
   const [tab, setTab] = useState<RegisterKind>(kind);
   const [filters, setFilters] = useState<FilterValue[]>([]);
   const fields: FilterFieldDef[] = [
@@ -521,11 +555,17 @@ export interface TdsChallanSheetProps {
   depositOn?: Date;
   edited?: boolean;
   items: StatuteItem[];
+  /** Live: the sheet opened over the statutory hub with the month's real challan (compliance-live.tsx). */
+  live?: LiveChallan;
 }
-export function TdsChallanScreen({ challan, today, depositOn, edited, items }: TdsChallanSheetProps) {
+export function TdsChallanScreen({ live, ...story }: TdsChallanSheetProps) {
+  return live ? <LiveChallanSheet live={live} /> : <SampleTdsChallan {...story} />;
+}
+function SampleTdsChallan({ challan, today, depositOn, edited, items }: TdsChallanSheetProps) {
   const [deposit, setDeposit] = useState<Date | null>(depositOn ?? today);
   const [amount, setAmount] = useState<number | null>(edited ? challan.tds - 1200 : challan.tds);
   const [reason, setReason] = useState('');
+  const reasonCheck = useTooEarly(amount !== challan.tds && !reason.trim() ? [{ fieldId: 'tc-reason', message: 'Say why the amount differs from payroll. The change is audited.' }] : []);
   const interest = deposit ? tdsLateInterest(amount ?? 0, challan.deductedOn, challan.dueOn, deposit) : 0;
   const changed = amount !== challan.tds;
   const total = (amount ?? 0) + challan.surcharge + challan.cess + interest;
@@ -550,7 +590,7 @@ export function TdsChallanScreen({ challan, today, depositOn, edited, items }: T
         footer={
           <>
             <Button>Cancel</Button>
-            <Button variant="primary" disabled={changed && !reason.trim()}>
+            <Button variant="primary" onClick={() => reasonCheck.stop()}>
               Save challan
             </Button>
           </>
@@ -567,8 +607,8 @@ export function TdsChallanScreen({ challan, today, depositOn, edited, items }: T
             </FormField>
           </FieldRow>
           {changed && (
-            <FormField label="Reason for changing the amount" required error={reason.trim() ? null : 'Say why the amount differs from payroll. The change is audited.'}>
-              <TextArea value={reason} onChange={setReason} rows={2} />
+            <FormField id="tc-reason" label="Reason for changing the amount" required helper="Say why the amount differs from payroll. The change is audited." error={reasonCheck.errorOf('tc-reason')}>
+              <TextArea id="tc-reason" value={reason} onChange={setReason} rows={2} />
             </FormField>
           )}
           <DescriptionList
@@ -602,7 +642,7 @@ export function TdsChallanScreen({ challan, today, depositOn, edited, items }: T
  * ======================================================================================= */
 
 export interface TdsReturnWizardProps {
-  form?: 'Form 138' | '24Q';
+  form?: 'Form 138' | '24Q' | 'Form 140' | '26Q';
   quarter: string;
   months: { month: string; rows: number; status: string }[];
   current?: 'completeness' | 'reconcile' | 'validate' | 'file' | 'corrections';
@@ -610,8 +650,13 @@ export interface TdsReturnWizardProps {
   difference?: number;
   mode?: 'self' | 'partner';
   filed?: boolean;
+  /** Live: the entity's returns with the wizard of the one opened (compliance-live.tsx); salary on the hub, consultants on CMP-13. */
+  live?: LiveReturns;
 }
-export function TdsReturnWizardScreen({ form = 'Form 138', quarter, months, current = 'completeness', missingMonth, difference = 0, mode = 'self', filed }: TdsReturnWizardProps) {
+export function TdsReturnWizardScreen({ live, ...story }: TdsReturnWizardProps) {
+  return live ? <LiveTdsReturns live={live} /> : <SampleTdsReturnWizard {...story} />;
+}
+function SampleTdsReturnWizard({ form = 'Form 138', quarter, months, current = 'completeness', missingMonth, difference = 0, mode = 'self', filed }: TdsReturnWizardProps) {
   const monthRows: CheckRow[] = months.map((m, i) => ({
     id: m.month,
     status: missingMonth && i === 0 ? 'fail' : 'pass',
@@ -731,7 +776,7 @@ export function TdsReturnWizardScreen({ form = 'Form 138', quarter, months, curr
   ];
   return (
     <OpsDesk area="compliance" active="TDS & Form 16">
-      <PageHeader title={`${form} · ${quarter}`} description={form === 'Form 138' ? 'Salary TDS return under the Income-tax Act 2025.' : 'Correction of a quarter up to 31 Mar 2026, filed under the 1961 Act form.'} status={filed ? <Badge tone="success">Filed</Badge> : <Badge tone="warning">Draft</Badge>} />
+      <PageHeader title={`${form} · ${quarter}`} description={form === 'Form 138' ? 'Salary TDS return under the Income-tax Act 2025.' : form === 'Form 140' ? 'Non-salary TDS return (consultants) under the Income-tax Act 2025.' : 'Correction of a quarter up to 31 Mar 2026, filed under the 1961 Act form.'} status={filed ? <Badge tone="success">Filed</Badge> : <Badge tone="warning">Draft</Badge>} />
       <Stepper key={current} title={`${form} ${quarter}`} steps={steps} defaultCurrent={current} finishLabel="Mark return filed" onContinue={(id) => !(id === 'completeness' && missingMonth) && !(id === 'reconcile' && difference)} />
     </OpsDesk>
   );
@@ -750,7 +795,10 @@ export interface F16Row {
   signed: boolean;
   published: boolean;
 }
-export function Form16BulkScreen({ rows, current = 'partA', notYet, q2Linked }: { rows: F16Row[]; current?: string; notYet?: boolean; q2Linked?: boolean }) {
+export function Form16BulkScreen({ live, ...story }: { rows: F16Row[]; current?: string; notYet?: boolean; q2Linked?: boolean; /** The live app's /yx/payroll/certificates (compliance-live.tsx). */ live?: LiveForm16 }) {
+  return live ? <LiveForm16Screen live={live} /> : <SampleForm16Bulk {...story} />;
+}
+function SampleForm16Bulk({ rows, current = 'partA', notYet, q2Linked }: { rows: F16Row[]; current?: string; notYet?: boolean; q2Linked?: boolean }) {
   const [publishOpen, setPublishOpen] = useState(false);
   if (notYet)
     return (
@@ -891,7 +939,19 @@ export interface Advisory {
   impact: string;
   reviewed: boolean;
 }
-export function RulesBrowserScreen({ rules, advisories, tab = 'rules', openRuleId = null, reviewId = null }: { rules: RuleSetRow[]; advisories: Advisory[]; tab?: 'rules' | 'updates'; openRuleId?: string | null; reviewId?: string | null }) {
+export interface RulesBrowserProps {
+  rules: RuleSetRow[];
+  advisories: Advisory[];
+  tab?: 'rules' | 'updates';
+  openRuleId?: string | null;
+  reviewId?: string | null;
+  /** The live app's /yx/payroll/statutory-rules (tab rules) and /yx/payroll/advisories (tab updates). */
+  live?: LiveRules;
+}
+export function RulesBrowserScreen({ live, ...story }: RulesBrowserProps) {
+  return live ? <LiveRulesScreen live={live} tab={story.tab ?? 'rules'} /> : <SampleRulesBrowser {...story} />;
+}
+function SampleRulesBrowser({ rules, advisories, tab = 'rules', openRuleId = null, reviewId = null }: RulesBrowserProps) {
   const [current, setCurrent] = useState(tab);
   const [open, setOpen] = useState<string | null>(openRuleId);
   const [review, setReview] = useState<string | null>(reviewId);
@@ -1031,3 +1091,55 @@ export function RulesBrowserScreen({ rules, advisories, tab = 'rules', openRuleI
   );
 }
 
+
+/* =========================================================================================
+ * CMP-13 · Consultant TDS (new design, 29 Oct 2026: the live page had no Compliance design). Challans per section for a
+ * month, the quarterly non-salary return (the CMP-05 wizard with Form 140 / 26Q) and the Form 131 / 16A certificates.
+ * The stories and the live page render the same body; the stories pass sample data and sample answers.
+ * ======================================================================================= */
+
+export interface ConsultantTdsScreenProps {
+  state?: LoadState;
+  tab?: 'challans' | 'returns' | 'certificates';
+  /** Sample: every action is refused with this message (server refusal stories). */
+  refuse?: string;
+  /** Sample: no returns and nothing deducted. */
+  empty?: boolean;
+  /** Sample: the viewer only sees returns (no challans, no filing, no certificates). */
+  readOnly?: boolean;
+  /** The live app's /yx/payroll/consultant-tds (compliance-live.tsx). */
+  live?: LiveConsultantTds;
+}
+export function ConsultantTdsScreen({ live, ...story }: ConsultantTdsScreenProps) {
+  return live ? <LiveConsultantTdsScreen live={live} tab={story.tab} /> : <SampleConsultantTds {...story} />;
+}
+function SampleConsultantTds({ state = 'ready', tab, refuse, empty, readOnly }: ConsultantTdsScreenProps) {
+  const [entityId, setEntityId] = useState<string | null>(CONSULTANT_ENTITIES[0].id);
+  async function answer<T>(value: T): Promise<T> {
+    if (refuse) throw new Error(refuse);
+    return value;
+  }
+  const sample: LiveConsultantTds = {
+    state,
+    onRetry: () => undefined,
+    entities: CONSULTANT_ENTITIES,
+    entityId,
+    onEntity: setEntityId,
+    returns: empty ? [] : CONSULTANT_RETURNS,
+    can: readOnly ? { view: true, challans: false, file: false, certificates: false } : { view: true, challans: true, file: true, certificates: true },
+    onPrepareChallans: () => answer(empty ? [] : CONSULTANT_CHALLANS),
+    onDraft: () => answer(undefined),
+    onReconcile: () => answer(undefined),
+    onMakeFile: () => answer(undefined),
+    onDownload: () => answer(undefined),
+    onFiled: () => answer(undefined),
+    onImport: () => answer({ formCode: '131', matched: [{ name: 'Asha Rao' }, { name: 'Brightline Studio LLP' }], unmatched: ['AAAPZ9999Q_Q2.pdf'] }),
+  };
+  return (
+    <OpsDesk area="compliance" active="TDS & Form 16">
+      <LivePage title="Consultant TDS" description="TDS deducted from consultants: the month's challans per section, the quarterly return (Form 140; 26Q until March 2026) and the certificates from TRACES." state={state} onRetry={() => undefined} what="consultant TDS returns" grantedBy="your payroll admin">
+        <ConsultantTdsBody live={sample} tab={tab} />
+      </LivePage>
+    </OpsDesk>
+  );
+}

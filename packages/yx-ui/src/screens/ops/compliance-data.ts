@@ -1,4 +1,7 @@
 // Fictional statutory data for Compliance screens (M03 statutory, P07). Kaveri Foods Pvt Ltd, period Sep 2026.
+import type { SetupEntity } from '../pay/live/types-5b';
+import type { ConsultantSection, NonSalaryReturn } from '../pay/live/types-5h';
+
 const d = (day: number, month = 8, year = 2026) => new Date(year, month, day);
 
 export type FilingMode = 'self' | 'partner';
@@ -232,4 +235,19 @@ export const DEDUCTEE_GAPS = [
   { month: 'Jul 2026', rows: 214, status: 'Imported from YTD' },
   { month: 'Aug 2026', rows: 216, status: 'Imported from YTD' },
   { month: 'Sep 2026', rows: 218, status: 'From payroll' },
+];
+
+// CMP-13 · Consultant TDS samples (the live page's shapes).
+export const CONSULTANT_ENTITIES: SetupEntity[] = [
+  { id: 'e1', name: 'Kaveri Foods Pvt Ltd', shortName: 'KFPL', keys: [] },
+  { id: 'e2', name: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', shortName: 'KFPL-TN', keys: [] },
+];
+export const CONSULTANT_RETURNS: NonSalaryReturn[] = [
+  { id: 'cr2', formCode: '140', taxYear: '2026-27', quarter: 2, status: 'reconciled', tokenNo: null, reconciliation: { ok: true, lines: [{ month: '2026-07', section: '194J_B', deducted: '29530.00', deposited: '29530.00', difference: '0.00' }, { month: '2026-08', section: '194J_B', deducted: '30000.00', deposited: '30000.00', difference: '0.00' }] }, fileId: 'cf2', rows: 6, tds: '59530.00' },
+  { id: 'cr3', formCode: '140', taxYear: '2026-27', quarter: 3, status: 'draft', tokenNo: null, reconciliation: { ok: false, lines: [{ month: '2026-10', section: '194C', deducted: '8400.00', deposited: '8000.00', difference: '400.00' }] }, fileId: null, rows: 2, tds: '8400.00' },
+  { id: 'cr1', formCode: '140', taxYear: '2026-27', quarter: 1, status: 'filed', tokenNo: 'TKN872310', reconciliation: { ok: true, lines: [] }, fileId: 'cf1', rows: 5, tds: '41200.00' },
+];
+export const CONSULTANT_CHALLANS: { section: ConsultantSection; tds: string; status: string }[] = [
+  { section: '194J_B', tds: '30000.00', status: 'draft' },
+  { section: '194C', tds: '8400.00', status: 'deposited' },
 ];

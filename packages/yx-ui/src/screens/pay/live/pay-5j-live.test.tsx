@@ -1,7 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { StatutoryHubScreen } from './compliance';
 import { FnfCalculator, type LiveFnf } from '../../people/exits';
 import { rupees } from './runs';
 import { DETAIL, FILINGS, FNF, HUB, MY_PAYSLIPS, PEOPLE, PREVIOUS, RETURNS, RUN } from './fixtures-5j';
@@ -12,38 +11,6 @@ describe('batch 5j payroll screens', () => {
   it('rupees: Indian grouping from the API string', () => {
     expect(rupees('1234567.5')).toBe('₹12,34,567.50');
     expect(rupees('-200.00')).toBe('−₹200.00');
-  });
-
-  it('statutory hub: an uploaded filing is marked filed with its phrase; the TDS return waits for the filer’s .fvu', async () => {
-    const onFiled = vi.fn(async () => ({}));
-    render(
-      <StatutoryHubScreen
-        state="ready"
-        entities={[{ id: 'e1', name: 'Kaveri Foods Pvt Ltd', shortName: 'KFPL', keys: [] }]}
-        entityId="e1"
-        onEntity={vi.fn()}
-        month="2026-09"
-        onMonth={vi.fn()}
-        hub={HUB}
-        filings={FILINGS}
-        returns={RETURNS}
-        can={{ generate: true, markFiled: true }}
-        onGenerate={ok}
-        onUploaded={ok}
-        onFiled={onFiled}
-        onDownload={ok}
-        onCreateReturn={ok}
-        onReconcile={ok}
-        onReturnFile={ok}
-        onUploadFvu={ok}
-        onReturnFiled={ok}
-      />,
-    );
-    expect(screen.getByRole('table', { name: 'Statutory dues' })).toHaveTextContent('Late');
-    await ue.click(screen.getByRole('button', { name: 'Mark filed' }));
-    await ue.type(screen.getByRole('textbox', { name: /Type/ }), 'FILED PF 2026-09');
-    await ue.click(screen.getAllByRole('button', { name: 'Mark filed' }).pop()!);
-    await waitFor(() => expect(onFiled).toHaveBeenCalledWith('fl1', expect.objectContaining({ phrase: 'FILED PF 2026-09' })));
   });
 
   // PPL-22: the live Full and final page is the designed calculator with the real settlement.

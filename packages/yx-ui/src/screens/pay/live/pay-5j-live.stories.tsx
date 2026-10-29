@@ -1,5 +1,4 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { StatutoryHubScreen } from './compliance';
 import { FnfCalculator } from '../../people/exits';
 import { DETAIL, FILINGS, FNF, HUB, MY_PAYSLIPS, PEOPLE, PREVIOUS, RETURNS, RUN } from './fixtures-5j';
 
@@ -9,32 +8,6 @@ const nameOf = (id: string) => PEOPLE.find((p) => p.employeeId === id)?.name ?? 
 const meta: Meta = { title: 'Screens/Pay/Live 5j', parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj;
-export const Statutory: S = {
-  name: 'CMP-01 · Statutory filings',
-  render: () => (
-    <StatutoryHubScreen
-      state="ready"
-      entities={[{ id: 'e1', name: 'Kaveri Foods Pvt Ltd', shortName: 'KFPL', keys: [] }]}
-      entityId="e1"
-      onEntity={() => undefined}
-      month="2026-09"
-      onMonth={() => undefined}
-      hub={HUB}
-      filings={FILINGS}
-      returns={RETURNS}
-      can={{ generate: true, markFiled: true }}
-      onGenerate={ok}
-      onUploaded={ok}
-      onFiled={ok}
-      onDownload={ok}
-      onCreateReturn={ok}
-      onReconcile={ok}
-      onReturnFile={ok}
-      onUploadFvu={ok}
-      onReturnFiled={ok}
-    />
-  ),
-};
 export const Fnf: S = {
   name: 'PPL-22 · Full and final',
   render: () => (
