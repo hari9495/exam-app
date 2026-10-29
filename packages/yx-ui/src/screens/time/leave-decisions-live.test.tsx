@@ -176,6 +176,12 @@ describe('Leave liability (TIM-30, live)', () => {
     expect(within(table).queryByText('Liability')).toBeNull();
     expect(within(table).queryByText('Daily pay')).toBeNull();
   });
+  it('the search and the entity, location and department filters share one toolbar row (never one line each)', () => {
+    wrap(<LeaveReportsScreen live={live({ ...base, rows: [{ employeeId: 'e1', name: 'Arjun Kulkarni', code: 'KF-1', values: { el: 12 }, days: 12 }] })} />);
+    const row = screen.getByRole('textbox', { name: 'Search by name or code' }).closest('.yx-table__toolbar-left > *');
+    expect(row).not.toBeNull();
+    for (const name of ['Legal entity', 'Location', 'Department']) expect(screen.getByRole('combobox', { name }).parentElement).toBe(row);
+  });
   it('Payroll with the liability key only: one report in the picker, no leave cards, Export still there (founder answer A)', async () => {
     const { onOpenCard: _no, ...l } = live({ ...base, money: true, dailyPayRule: { basis: 'basic_da', divisor: '26' }, rows: [{ employeeId: 'e1', name: 'Arjun Kulkarni', code: 'KF-1', values: { el: 12 }, days: 12, dailyPay: 1000, amount: 12000, noPay: false }] });
     wrap(<LeaveReportsScreen live={{ ...l, reports: ['liability'] }} />);

@@ -200,11 +200,16 @@
   padding: var(--yx-space-3);
   border-bottom: var(--yx-border-width) solid var(--yx-color-border);
 }
-.yx-table__toolbar-left { flex: 1 1 auto; min-width: 0; }
+/* Basis 0: when out of room the filters wrap inside this box and Columns / density stay on the first row at the right.
+   No min-width 0: a box that cannot wrap (a Segment) still pushes the controls down instead of running under them. */
+.yx-table__toolbar-left { flex: 1 1 0; }
 /* Phones: the filter bar takes the full toolbar width whether or not the table has rows. */
 @media (max-width: 599px) { .yx-table__toolbar-left { flex-basis: 100%; } }
 .yx-table[data-layout="cards"] .yx-table__toolbar-left { flex-basis: 100%; }
-.yx-table__controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-2); margin-left: auto; }
+/* A filter choice in the toolbar is as wide as its text: full width stacked each one on its own line (TIM-30, 29 Oct 2026). */
+.yx-table__toolbar .yx-select { width: auto; }
+/* Top-aligned with the first filter row (one control high), never floating in the middle when the filters wrap. */
+.yx-table__controls { display: flex; flex-wrap: wrap; align-items: center; align-self: flex-start; min-height: var(--yx-control-md); gap: var(--yx-space-2); margin-left: auto; }
 .yx-table__bulk { flex: 1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-2); min-height: var(--yx-control-sm); }
 .yx-table__bulk-count { font-weight: var(--yx-weight-semibold); margin-right: var(--yx-space-2); }
 .yx-table__scroll { overflow: auto; position: relative; scrollbar-width: thin; }
