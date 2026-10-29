@@ -46,10 +46,11 @@ export { MyPayslipsScreen, MyTaxScreen, payDiff, type MyPayslipsScreenProps, typ
 export { StatutoryHubScreen, type StatutoryHubScreenProps } from './compliance';
 // Batch 5h (PAY-8.01 … 8.04): consultants, their invoices and payments, Form 140 / 131 and the consultant's own page.
 export * from './types-5h';
-export { ConsultantsScreen, ConsultantTaxScreen, ConsultantPortalScreen, InvoiceStatusBadge, type ConsultantsScreenProps, type ConsultantTaxScreenProps, type ConsultantPortalScreenProps } from './consultants';
+export { ConsultantTaxScreen, InvoiceStatusBadge, type ConsultantTaxScreenProps } from './consultants';
+export { ConsultantsScreen, ConsultantPortalScreen, type LiveConsultants, type LiveConsultantPortal } from '../consultants';
 // Batch 5i (PAY-9.01 … 9.12): special pay, earned wage access, equity, actuarial valuation and country packs.
 export * from './types-5i';
-export { MyIncentivesScreen, EwaAdminScreen, MyEwaScreen, EquityScreen, MyEquityScreen, type EwaAdminScreenProps, type EquityScreenProps } from './special';
+export { MyIncentivesScreen, EwaAdminScreen, MyEwaScreen, type EwaAdminScreenProps } from './special';
 export { RunWorkspaceScreen } from '../payroll-run';
 export type { LiveRunWorkspaceData } from '../run-workspace-live';
 export { PayrollHomeScreen, CoverageMonitorPanel } from '../payroll-run';
@@ -71,3 +72,4 @@ export type { LiveArrears, LiveActuarial } from '../offcycle-live';
 export { CountryPacksScreen, type LiveCountryPacks, type W9Input, type WpsIdsInput } from '../country-packs';
 export { SpecialPayHomeScreen } from '../special-pay';
 export type { LiveSpecialPay, PieceOutput, TipPoolView, UnionRemittance } from '../special-pay-live';
+export { EquityScreen, MyEquityScreen, type LiveEquity, type LiveMyEquity } from '../equity';

@@ -38,20 +38,23 @@ export default function YxConsultantPortalPage() {
     );
   return (
     <ConsultantPortalScreen
-      data={me}
-      onUpload={async (x, pdf) => {
-        const form = new FormData();
-        for (const [k, v] of Object.entries(x)) if (v !== undefined) form.append(k, String(v));
-        form.append('file', pdf);
-        await apiFetch(`${base}/invoices`, { method: 'POST', body: form, headers: headers(token) });
-        await load(token);
-      }}
-      onAdvice={(i) => file(`/invoices/${encodeURIComponent(i.id)}/advice`, `payment-advice-${i.invoiceNo}.pdf`)}
-      onCertificate={(c) => file(`/certificates/${encodeURIComponent(c.id)}/file`, `${c.form}-${c.taxYear}-q${c.quarter}.pdf`)}
-      onSignOut={() => {
-        void apiFetch(`${base}/sign-out`, { method: 'POST', headers: headers(token) }).catch(() => undefined);
-        setToken(null);
-        setMe(null);
+      live={{
+        tenant: org,
+        data: me,
+        onUpload: async (x, pdf) => {
+          const form = new FormData();
+          for (const [k, v] of Object.entries(x)) if (v !== undefined) form.append(k, String(v));
+          form.append('file', pdf);
+          await apiFetch(`${base}/invoices`, { method: 'POST', body: form, headers: headers(token) });
+          await load(token);
+        },
+        onAdvice: (i) => file(`/invoices/${encodeURIComponent(i.id)}/advice`, `payment-advice-${i.invoiceNo}.pdf`),
+        onCertificate: (c) => file(`/certificates/${encodeURIComponent(c.id)}/file`, `${c.form}-${c.taxYear}-q${c.quarter}.pdf`),
+        onSignOut: () => {
+          void apiFetch(`${base}/sign-out`, { method: 'POST', headers: headers(token) }).catch(() => undefined);
+          setToken(null);
+          setMe(null);
+        },
       }}
     />
   );
