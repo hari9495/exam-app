@@ -140,6 +140,8 @@ export const YX_KEYS = [
   // PAY-24 statutory bonus.
   'payroll.bonus.manage',
   'payroll.bonus.approve',
+  // PAY-25 payroll reports.
+  'payroll.reports.view',
   // Payroll operations screens (PAY-10.09 … 10.16).
   'payroll.payment.record',
   'payroll.loan.manage',

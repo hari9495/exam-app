@@ -124,6 +124,14 @@ describe('buildNav: Time, Pay, Compliance', () => {
     expect(labels(nav([], { employee: true }), 'pay')).not.toContain('Statutory bonus');
   });
 
+  it('PAY-25 Payroll reports: shown with payroll.reports.view only (not to HR without payroll scope or employees)', () => {
+    const n = nav(['payroll.reports.view']);
+    expect(labels(n, 'pay')).toEqual(['Payroll reports']);
+    expect(activeLink(n, '/yx/payroll/reports')?.link.id).toBe('pay-reports');
+    expect(labels(nav(['employee.profile.view', 'employee.salary.view']), 'pay')).not.toContain('Payroll reports');
+    expect(labels(nav([], { employee: true }), 'pay')).not.toContain('Payroll reports');
+  });
+
   it('Expenses sit under Pay (founder decision 15 Oct 2026), each by its key', () => {
     expect(labels(nav(['expense.payout.manage', 'expense.report.view', 'expense.policy.manage']), 'pay')).toEqual(['To pay', 'Expense reports', 'Expense policy']);
     expect(labels(nav([], { employee: true }), 'pay')).toContain('Claims');

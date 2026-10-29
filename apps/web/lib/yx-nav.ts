@@ -220,6 +220,7 @@ export function buildNav(n: NavInput): NavArea[] {
             ...when(has('payroll.document.view'), L('pay-documents', 'Pay documents', '/yx/payroll/documents')),
           ]),
           ...sec('Reports', [
+            ...when(has('payroll.reports.view'), L('pay-reports', 'Payroll reports', '/yx/payroll/reports')),
             ...when(any('payroll.special.manage', 'payroll.journal.export'), L('pay-actuarial', 'Actuarial valuation', '/yx/payroll/actuarial')),
             ...when(has('audit.view'), L('pay-audit', 'Audit log', '/yx/payroll/audit')),
           ]),
