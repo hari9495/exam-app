@@ -167,6 +167,7 @@ describe('Payroll loan rules (founder decision 8)', () => {
       limit: D(r.monthlyGross).mul(2).toFixed(2),
       outstanding: '0.00',
       available: D(r.monthlyGross).mul(2).toFixed(2),
+      interestRate: { advance: '0', loan: '0' },
     });
     ids.gross = r.monthlyGross;
     // Someone with no employee record never asks for themselves.
@@ -201,7 +202,7 @@ describe('Payroll loan rules (founder decision 8)', () => {
   it('no pay in force: refused, the person named when asked on their behalf', async () => {
     const r = (await api('noPay', 'get', '/payroll/loans/rules').expect(200)).body;
     const msg = "Your pay is not set up yet, so the loan limit can't be worked out. Ask HR.";
-    expect(r).toEqual({ eligible: false, reason: msg, probationEndsOn: null, monthlyGross: null, maxGrossMonths: 2, limit: '0.00', outstanding: '0.00', available: '0.00' });
+    expect(r).toEqual({ eligible: false, reason: msg, probationEndsOn: null, monthlyGross: null, maxGrossMonths: 2, limit: '0.00', outstanding: '0.00', available: '0.00', interestRate: { advance: '0', loan: '0' } });
     expect((await ask('noPay', '1').expect(400)).body.message).toBe(msg);
     expect((await ask('payAdmin', '1', ids.noPay).expect(400)).body.message).toBe("noPay's pay is not set up yet, so the loan limit can't be worked out. Ask HR.");
   });
