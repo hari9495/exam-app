@@ -3,10 +3,6 @@
 // Import the stylesheet once: '@yukthix/ui/styles.css'.
 export * from './types';
 export { monthText } from './periods';
-export {
-  MyPayDocumentsScreen,
-  type MyPayDocumentsScreenProps,
-} from './documents';
 // The public verify page (T9-08), the pay documents portal (T9-02 tabs, nominee page) and its sign-in: designed screens with live paths.
 export { VerifyPageScreen, AlumniPortalScreen, NomineePortalScreen, type LiveVerifyPage, type LiveAlumniPortal, type LivePortalDoc } from '../../portals/t9-workforce';
 export { PortalSignInScreen, type LiveOtpSignIn } from '../../portals/portals-kit';
@@ -26,16 +22,9 @@ export * from './types-5j';
 // advisories, certificates and nominees.
 export * from './types-ops';
 export {
-  LoansScreen,
-  MyDeclarationsScreen,
-  ProofCheckScreen,
   RegistersScreen,
   AdvisoriesScreen,
   TaxCertificatesScreen,
-  subjectText,
-  type LoansScreenProps,
-  type MyDeclarationsScreenProps,
-  type ProofCheckScreenProps,
   type RegistersScreenProps,
   type AdvisoriesScreenProps,
   type TaxCertificatesScreenProps,
@@ -49,7 +38,6 @@ export { ConsultantTaxScreen, InvoiceStatusBadge, type ConsultantTaxScreenProps 
 export { ConsultantsScreen, ConsultantPortalScreen, type LiveConsultants, type LiveConsultantPortal } from '../consultants';
 // Batch 5i (PAY-9.01 … 9.12): special pay, earned wage access, equity, actuarial valuation and country packs.
 export * from './types-5i';
-export { MyIncentivesScreen, EwaAdminScreen, MyEwaScreen, type EwaAdminScreenProps } from './special';
 export { RunWorkspaceScreen } from '../payroll-run';
 export type { LiveRunWorkspaceData } from '../run-workspace-live';
 export { PayrollHomeScreen, CoverageMonitorPanel } from '../payroll-run';
@@ -72,5 +60,36 @@ export { CountryPacksScreen, type LiveCountryPacks, type W9Input, type WpsIdsInp
 export { SpecialPayHomeScreen } from '../special-pay';
 export type { LiveSpecialPay, PieceOutput, TipPoolView, UnionRemittance } from '../special-pay-live';
 export { EquityScreen, MyEquityScreen, type LiveEquity, type LiveMyEquity } from '../equity';
-// Employee pay and tax designs (PAY-21, 22, 40, 41 … builder 3): the designed screens, made live with `live`.
-export { PayslipViewerScreen, TaxWorkspaceScreen, RegimeCompareScreen, payDiff, monthName, type LivePayslips, type PayDiffRow, type LiveTax, type TaxTab, type LiveRegimeCompare, type MyTaxWorkspace, type RegimeComparison, type MyTaxSheet, type MyForm12b, type Form12bInput } from '../employee-pay';
+// Employee pay and tax designs (PAY-17, 18, 21 … 23, 26, 27, 33, 39 … 41, 54 · builder 3): designed screens with `live`.
+export {
+  PayslipViewerScreen,
+  TaxWorkspaceScreen,
+  RegimeCompareScreen,
+  LoanRequestScreen,
+  EwaRequestScreen,
+  IncentiveStatementScreen,
+  PayBandScreen,
+  MyPayDocumentsScreen,
+  payDiff,
+  previewEmi,
+  monthName,
+  subjectText,
+  type LivePayslips,
+  type PayDiffRow,
+  type LiveTax,
+  type TaxTab,
+  type LiveRegimeCompare,
+  type MyTaxWorkspace,
+  type RegimeComparison,
+  type MyTaxSheet,
+  type MyForm12b,
+  type Form12bInput,
+  type LiveLoanRequest,
+  type LoanRules,
+  type LiveEwaRequest,
+  type LiveIncentives,
+  type LivePayBand,
+  type MyPayBand,
+  type LiveMyPayDocuments,
+} from '../employee-pay';
+export { LoansScreen, ProofQueueScreen, EwaAdminScreen, type LiveLoans, type LiveProofQueue, type ProofStatusFilter, type Form12bRow, type LiveEwaAdmin } from '../admin-tax-loans';

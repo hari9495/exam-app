@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { ProofQueueScreen } from './admin-tax-loans';
 
-const meta: Meta<typeof ProofQueueScreen> = { title: 'Screens/Pay/PAY-23 · Proof verification queue', component: ProofQueueScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof ProofQueueScreen> = { title: 'Screens/Pay/PAY-23 · Proof verification queue', component: ProofQueueScreen, render: (args) => <ProofQueueScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof ProofQueueScreen>;
 

@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { CompSheetScreen, MyPayBandScreen, type CompSheetScreenProps } from './comp';
+import { CompSheetScreen, type CompSheetScreenProps } from './comp';
 import type { CompProposal } from './types';
 
 // Performance batch PM7 screens (M06-BUILD-DESIGN §12; PRF-10, PAY-39; PM-7.07).
@@ -48,10 +48,4 @@ describe('Comp review (PM7)', () => {
     expect(p.onApply).toHaveBeenCalled();
   });
 
-  it('my pay band says where I sit, or that there is no range', () => {
-    const { rerender } = render(<MyPayBandScreen state="ready" band={{ visible: true, currency: 'INR', range: { min: 600_000, mid: 800_000, max: 1_000_000 }, position: 'within', quartile: 3 }} />);
-    expect(screen.getByText('You are within the range, in quarter 3 of 4.')).toBeInTheDocument();
-    rerender(<MyPayBandScreen state="ready" band={{ visible: true, range: null }} />);
-    expect(screen.getByText('No range is set for your grade yet.')).toBeInTheDocument();
-  });
 });

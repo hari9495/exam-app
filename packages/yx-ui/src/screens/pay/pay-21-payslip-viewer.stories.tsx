@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { PayslipViewerScreen } from './employee-pay';
 
-const meta: Meta<typeof PayslipViewerScreen> = { title: 'Screens/Pay/PAY-21 · Payslip viewer', component: PayslipViewerScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof PayslipViewerScreen> = { title: 'Screens/Pay/PAY-21 · Payslip viewer', component: PayslipViewerScreen, render: (args) => <PayslipViewerScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof PayslipViewerScreen>;
 const phone = { globals: { viewport: { value: 'mobile2', isRotated: false } } };

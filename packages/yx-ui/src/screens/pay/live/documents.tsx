@@ -25,7 +25,6 @@ const DOC_STATUS: Record<PayDocument['status'], { label: string; tone: BadgeTone
 // ------------------------------------------------------------------------------------------ documents (the payroll list is the PAY-48 design: ../payroll-records.tsx)
 
 function DocTable({ docs, showPerson, busy, onDownload, verifyUrl }: { docs: PayDocument[]; showPerson?: boolean; busy: string | null; onDownload: (d: PayDocument) => void; verifyUrl: (code: string) => string }) {
-  return (
     <table className="yx-tim-table" aria-label="Pay documents">
       <thead>
         <tr>
@@ -75,26 +74,8 @@ function DocTable({ docs, showPerson, busy, onDownload, verifyUrl }: { docs: Pay
   );
 }
 
-export interface MyPayDocumentsScreenProps {
-  state: LoadState;
-  onRetry?: () => void;
-  data: PayDocument[] | null;
-  onDownload: (doc: PayDocument) => Promise<unknown>;
-  verifyUrl: (code: string) => string;
-  title?: string;
 }
 
-/** Me › Pay documents, and the alumni / nominee portal's list. */
-export function MyPayDocumentsScreen(p: MyPayDocumentsScreenProps) {
-  const { busy, error, run } = useRun();
   return (
-    <LivePage title={p.title ?? 'My pay documents'} description="Your payslips and letters as issued. Anyone you give one to can check it with its code." state={p.state} onRetry={p.onRetry} what="your pay documents">
-      {error && (
-        <InlineAlert tone="danger" title="Not downloaded">
-          {error}
-        </InlineAlert>
-      )}
-      {p.data && (p.data.length ? <DocTable docs={p.data} busy={busy} onDownload={(x) => void run(x.id, () => p.onDownload(x))} verifyUrl={p.verifyUrl} /> : <EmptyState compact title="No pay documents yet" />)}
-    </LivePage>
   );
 }

@@ -1,11 +1,22 @@
 // Payroll admin: PAY-17 loans & advances, PAY-23 proof verification queue, PAY-27 EWA admin, PAY-25 payroll reports.
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Download, Pause, Play, Plus, Send } from 'lucide-react';
 import { Button, Link } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FieldRow, FormField, FormSection } from '../../components/field';
+import { FieldRow, FormField, FormSection, useTooEarly, type FormErrorItem } from '../../components/field';
+import { useToast } from '../../components/notify';
+import { useRun } from '../org/org-kit';
+import { dateText } from '../time/live/kit';
+import { PayFormDrawer, PayPageState, fromPaise, paise, rupees, sumMoney } from './consultants';
+import { FindPerson, type PersonHit } from './equity';
+import { LOAN_STATE, LOAN_TYPE_TEXT, monthName, previewEmi, subjectText } from './employee-pay';
+import { EntityPicker } from './live/setup';
+import type { LoadState } from './live/types';
+import type { SetupEntity } from './live/types-5b';
+import type { EwaDrawView, EwaPolicyView } from './live/types-5i';
+import type { LoanChangeInput, LoanRequestInput, LoanView, ProofDecision, ProofQueueLine } from './live/types-ops';
 import { CurrencyField, NumberField, TextArea, TextField } from '../../components/inputs';
 import { RadioGroup, Switch } from '../../components/choice';
 import { Select } from '../../components/select';
@@ -133,8 +144,12 @@ const EMPTY_LOAN_FILTERS: FilterValue[] = [
   { key: 'type', type: 'multi', values: [] },
 ];
 
-/** PAY-17 · Loans & advances (T2 / T3): schedule, pre-closure, EMI pause. */
-export function LoansScreen({ state = 'ready', openId, action, rows = LOANS }: { state?: ViewState; openId?: string; action?: 'pause' | 'preclose'; rows?: LoanRow[] }) {
+/** PAY-17 · Loans & advances (T2 / T3): schedule, pre-closure, EMI pause. The app passes `live` (Payroll › Loans and advances). */
+export function LoansScreen(p: { state?: ViewState; openId?: string; action?: 'pause' | 'preclose'; rows?: LoanRow[]; live?: LiveLoans }) {
+  return p.live ? <LiveLoans live={p.live} /> : <SampleLoans {...p} />;
+}
+
+function SampleLoans({ state = 'ready', openId, action, rows = LOANS }: { state?: ViewState; openId?: string; action?: 'pause' | 'preclose'; rows?: LoanRow[] }) {
   const narrow = useNarrow(599);
   const [view, setView] = useState<ViewState>(state);
   const [list, setList] = useState<Loan[]>(() => withPerquisite(rows.map((l) => ({ ...l, pause: LOAN_PAUSES[l.id] }))));
@@ -564,8 +579,12 @@ const DEFAULT_PROOF_FILTERS: FilterValue[] = [
   { key: 'section', type: 'multi', values: [] },
 ];
 
-/** PAY-23 · Proof verification queue: each line approved, rejected or partly approved with a comment. */
-export function ProofQueueScreen({ state = 'ready', openId, decision, rows = PROOF_ROWS }: { state?: ViewState; openId?: string; decision?: 'partial' | 'reject'; rows?: ProofRow[] }) {
+/** PAY-23 · Proof verification queue: each line approved, rejected or partly approved with a comment. The app passes `live`. */
+export function ProofQueueScreen(p: { state?: ViewState; openId?: string; decision?: 'partial' | 'reject'; rows?: ProofRow[]; live?: LiveProofQueue }) {
+  return p.live ? <LiveProofQueue live={p.live} /> : <SampleProofQueue {...p} />;
+}
+
+function SampleProofQueue({ state = 'ready', openId, decision, rows = PROOF_ROWS }: { state?: ViewState; openId?: string; decision?: 'partial' | 'reject'; rows?: ProofRow[] }) {
   const narrow = useNarrow(599);
   const [list, setList] = useState<ProofRow[]>(rows);
   const [openKey, setOpenKey] = useState<string | null>(openId ?? null);
@@ -772,8 +791,12 @@ export function ProofQueueScreen({ state = 'ready', openId, decision, rows = PRO
 
 const DRAW_TONE: Record<EwaDraw['status'], BadgeTone> = { Disbursed: 'info', Failed: 'danger', Recovered: 'success', Requested: 'warning' };
 
-/** PAY-27 · EWA admin: policy, partner connection, draws, recoveries in payroll, reconciliation. */
-export function EwaAdminScreen({ tab = 'draws', persona = 'pa', state = 'ready', partner = 'connected' }: { tab?: 'policy' | 'partner' | 'draws' | 'recoveries' | 'recon'; persona?: PayPersona; state?: ViewState; partner?: 'connected' | 'not-connected' }) {
+/** PAY-27 · EWA admin: policy, partner connection, draws, recoveries in payroll, reconciliation. The app passes `live`. */
+export function EwaAdminScreen(p: { tab?: 'policy' | 'partner' | 'draws' | 'recoveries' | 'recon'; persona?: PayPersona; state?: ViewState; partner?: 'connected' | 'not-connected'; live?: LiveEwaAdmin }) {
+  return p.live ? <LiveEwaAdmin live={p.live} /> : <SampleEwaAdmin {...p} />;
+}
+
+function SampleEwaAdmin({ tab = 'draws', persona = 'pa', state = 'ready', partner = 'connected' }: { tab?: 'policy' | 'partner' | 'draws' | 'recoveries' | 'recon'; persona?: PayPersona; state?: ViewState; partner?: 'connected' | 'not-connected' }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [requested, setRequested] = useState(false);
   const cols: TableColumn<EwaDraw>[] = [
@@ -1558,5 +1581,815 @@ export function ReportsNoAccess() {
         }
       />
     </DesktopFrame>
+  );
+}
+
+/* ================================================================== Live (the app passes `live`; stories show the samples above) */
+
+const MONEY_RX = /^\d{1,10}(\.\d{1,2})?$/;
+const MONTH_RX = /^\d{4}-\d{2}$/;
+const DAY_RX = /^\d{4}-\d{2}-\d{2}$/;
+const nextMonthOf = () => {
+  const t = new Date(Date.now() + 330 * 60_000);
+  return new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 1)).toISOString().slice(0, 7);
+};
+
+/** A short decision with fields in a dialog: the confirm button is never disabled; pressed too early the errors show and the first field takes focus; done is a 5-second toast. */
+function FormDialog({ title, description, confirm, done, errors, tone = 'primary', onClose, onSave, children }: { title: string; description?: ReactNode; confirm: string; done: string; errors: FormErrorItem[]; tone?: 'primary' | 'danger'; onClose: () => void; onSave: () => Promise<unknown>; children: (errorOf: (id: string) => string | undefined) => ReactNode }) {
+  const { toast } = useToast();
+  const early = useTooEarly(errors);
+  const { busy, error, run } = useRun();
+  return (
+    <Dialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={title}
+      description={description}
+      size="md"
+      preventClose={busy != null}
+      notice={
+        error && (
+          <InlineAlert tone="danger" title="That did not work">
+            {error}
+          </InlineAlert>
+        )
+      }
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant={tone}
+            loading={busy === 'save'}
+            onClick={() => {
+              if (early.stop()) return;
+              void run('save', onSave).then((ok) => {
+                if (!ok) return;
+                toast({ title: done, tone: 'success' });
+                onClose();
+              });
+            }}
+          >
+            {confirm}
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-pay-stack">{children(early.errorOf)}</div>
+    </Dialog>
+  );
+}
+
+/* ------------------------------------------------------------------ PAY-17 live: Payroll › Loans and advances */
+
+export interface LiveLoans {
+  state: LoadState;
+  onRetry?: () => void;
+  loans: LoanView[] | null;
+  nameOf: (employeeId: string) => string;
+  /** payroll.loan.manage: asks for someone and changes loans (never one's own; the API checks both again). */
+  can: { manage: boolean };
+  onSearch: (q: string) => Promise<PersonHit[]>;
+  onRequest: (x: LoanRequestInput) => Promise<unknown>;
+  onChange: (loan: LoanView, x: LoanChangeInput) => Promise<unknown>;
+}
+
+const LIVE_LOAN_FILTERS: FilterValue[] = [
+  { key: 'status', type: 'multi', values: [] },
+  { key: 'type', type: 'multi', values: [] },
+];
+
+function LiveLoans({ live }: { live: LiveLoans }) {
+  const all = live.loans ?? [];
+  const [openId, setOpenId] = useState<string | null>(null);
+  const open = all.find((l) => l.id === openId) ?? null;
+  const [dialog, setDialog] = useState<'pause' | 'reschedule' | 'preclose' | 'add' | null>(null);
+  const [filters, setFilters] = useState<FilterValue[]>(LIVE_LOAN_FILTERS);
+  const [q, setQ] = useState('');
+  const query = q.trim().toLowerCase();
+  const typeOf = (l: LoanView) => LOAN_TYPE_TEXT[l.loanType] ?? l.loanType;
+  const stateOf = (l: LoanView) => LOAN_STATE[l.status]?.label ?? l.status;
+  const shown = all.filter((l) => filters.every((f) => matchesFilter(f.key === 'status' ? stateOf(l) : typeOf(l), f)) && (!query || live.nameOf(l.employeeId).toLowerCase().includes(query)));
+  const openLoans = all.filter((l) => ['requested', 'active', 'paused'].includes(l.status));
+  const canChange = (l: LoanView) => live.can.manage && !l.mine && ['active', 'paused'].includes(l.status);
+  const cols: TableColumn<LoanView>[] = [
+    { key: 'employee', header: 'Employee', type: 'person', value: (r) => live.nameOf(r.employeeId), person: (r) => ({ name: live.nameOf(r.employeeId), secondary: r.mine ? 'You' : undefined }), width: 210 },
+    { key: 'type', header: 'Type', value: typeOf, width: 190 },
+    { key: 'principal', header: 'Amount', type: 'money', value: (r) => Number(r.principal), render: (r) => rupees(r.principal), width: 130 },
+    { key: 'emi', header: 'Instalment', type: 'money', value: (r) => Number(r.emi), render: (r) => rupees(r.emi), width: 120 },
+    { key: 'out', header: 'Left to repay', type: 'money', value: (r) => Number(r.outstanding), render: (r) => rupees(r.outstanding), width: 140 },
+    { key: 'from', header: 'From', value: (r) => r.firstMonth, render: (r) => monthName(r.firstMonth), width: 140, optional: true },
+    { key: 'status', header: 'Status', type: 'status', value: stateOf, statusTone: (_v, r) => LOAN_STATE[r.status]?.tone ?? 'neutral', width: 180 },
+  ];
+  const addButton = live.can.manage && (
+    <Button variant="primary" icon={Plus} onClick={() => setDialog('add')}>
+      Add loan
+    </Button>
+  );
+  return (
+    <PayFrame page="loans">
+      <PageHeader
+        title="Loans and advances"
+        description="Requests go to Approvals. Instalments are recovered in payroll; balances left at exit go to the final settlement."
+        facts={live.state === 'ready' && all.length > 0 ? `${openLoans.length} open · ${rupees(sumMoney(openLoans.map((l) => l.outstanding)))} left to repay` : undefined}
+        actions={live.state === 'ready' ? addButton : undefined}
+      />
+      <PayPageState state={live.state} onRetry={live.onRetry} what="loans" grantedBy="your payroll admin">
+        <DataTable
+          label="Loans and advances"
+          columns={cols}
+          rows={shown}
+          getRowId={(r) => r.id}
+          onRowClick={(r) => setOpenId(r.id)}
+          activeRowId={open?.id}
+          filtered={shown.length !== all.length}
+          onClearFilters={() => {
+            setFilters(LIVE_LOAN_FILTERS);
+            setQ('');
+          }}
+          cardSummary
+          rowButtons={(r) =>
+            canChange(r) ? (
+              <Button size="sm" onClick={() => setOpenId(r.id)} aria-label={`Change the loan of ${live.nameOf(r.employeeId)}`}>
+                Change
+              </Button>
+            ) : null
+          }
+          toolbar={
+            <FilterBar
+              fields={[
+                { key: 'status', label: 'Status', type: 'multi', options: Object.values(LOAN_STATE).map((s) => ({ value: s.label, label: s.label })) },
+                { key: 'type', label: 'Type', type: 'multi', options: Object.values(LOAN_TYPE_TEXT).map((t) => ({ value: t, label: t })) },
+              ]}
+              value={filters}
+              onChange={setFilters}
+              search={q}
+              onSearchChange={setQ}
+              searchPlaceholder="Search employee"
+            />
+          }
+          empty={<EmptyState title="No loans or advances yet." description="Employees ask for them in My pay; requests appear here and in Approvals." action={addButton || undefined} />}
+        />
+      </PayPageState>
+      <Drawer
+        open={!!open && dialog == null}
+        onOpenChange={(o) => !o && setOpenId(null)}
+        title={open ? `${typeOf(open)} · ${live.nameOf(open.employeeId)}` : ''}
+        subtitle={open ? `First instalment ${monthName(open.firstMonth)}` : undefined}
+        meta={open && <Badge tone={LOAN_STATE[open.status]?.tone ?? 'neutral'}>{stateOf(open)}</Badge>}
+        size="lg"
+        footer={
+          open && (
+            <>
+              <Button onClick={() => setOpenId(null)}>Close</Button>
+              {canChange(open) && (
+                <>
+                  <Button icon={Pause} onClick={() => setDialog('pause')}>
+                    Pause EMIs
+                  </Button>
+                  <Button onClick={() => setDialog('reschedule')}>Change instalment</Button>
+                  <Button variant="primary" onClick={() => setDialog('preclose')}>
+                    Pre-close
+                  </Button>
+                </>
+              )}
+            </>
+          )
+        }
+      >
+        {open && (
+          <div className="yx-pay-stack">
+            <FactRow
+              items={[
+                { label: 'Amount', value: rupees(open.principal) },
+                { label: 'Instalment', value: rupees(open.emi) },
+                { label: 'Left to repay', value: rupees(open.outstanding) },
+                { label: 'Repaid so far', value: rupees(fromPaise(paise(open.principal) - paise(open.outstanding))) },
+              ]}
+            />
+            {open.pausedUntil && <InlineAlert tone="warning">Instalments are paused until {monthName(open.pausedUntil)}. They start again that month.</InlineAlert>}
+            {open.status === 'requested' && <InlineAlert tone="info">Waiting for approval. The approver decides in Approvals; the first instalment is recovered in {monthName(open.firstMonth)} once approved.</InlineAlert>}
+            {open.mine && <InlineAlert tone="info">This is your own loan. Someone else in payroll changes it.</InlineAlert>}
+            {open.loanType === 'expense' && <p className="yx-pay-note">An expense advance that was not settled in time, recovered from pay like a salary advance.</p>}
+          </div>
+        )}
+      </Drawer>
+      {open && dialog === 'pause' && (
+        <LoanChange loan={open} who={live.nameOf(open.employeeId)} kind="pause" onClose={() => setDialog(null)} onSave={(x) => live.onChange(open, x)} />
+      )}
+      {open && dialog === 'reschedule' && (
+        <LoanChange loan={open} who={live.nameOf(open.employeeId)} kind="reschedule" onClose={() => setDialog(null)} onSave={(x) => live.onChange(open, x)} />
+      )}
+      {open && dialog === 'preclose' && (
+        <LoanChange loan={open} who={live.nameOf(open.employeeId)} kind="preclose" onClose={() => setDialog(null)} onSave={(x) => live.onChange(open, x)} />
+      )}
+      {dialog === 'add' && <AddLoanDrawer onSearch={live.onSearch} onClose={() => setDialog(null)} onSave={live.onRequest} />}
+    </PayFrame>
+  );
+}
+
+function LoanChange({ loan, who, kind, onClose, onSave }: { loan: LoanView; who: string; kind: LoanChangeInput['kind']; onClose: () => void; onSave: (x: LoanChangeInput) => Promise<unknown> }) {
+  const [until, setUntil] = useState(nextMonthOf());
+  const [emi, setEmi] = useState('');
+  const [reason, setReason] = useState('');
+  const errors: FormErrorItem[] = [
+    ...(kind === 'pause' && !MONTH_RX.test(until) ? [{ fieldId: 'lc-until', message: 'Choose the month instalments start again.' }] : []),
+    ...(kind === 'reschedule' && (!MONEY_RX.test(emi.trim()) || paise(emi.trim()) <= 0n || paise(emi.trim()) > paise(loan.outstanding)) ? [{ fieldId: 'lc-emi', message: `Enter a new instalment above zero and not more than ${rupees(loan.outstanding)}.` }] : []),
+    ...(reason.trim().length < 5 ? [{ fieldId: 'lc-why', message: 'Give a reason (at least 5 letters).' }] : []),
+  ];
+  const title = kind === 'pause' ? 'Pause EMIs?' : kind === 'reschedule' ? 'Change the instalment?' : `Pre-close ${who}'s loan?`;
+  return (
+    <FormDialog
+      title={title}
+      description={`${who} · ${rupees(loan.outstanding)} left, ${rupees(loan.emi)} a month`}
+      confirm={kind === 'pause' ? 'Pause EMIs' : kind === 'reschedule' ? 'Save instalment' : 'Pre-close loan'}
+      done={kind === 'pause' ? `EMIs paused for ${who}.` : kind === 'reschedule' ? `New instalment saved for ${who}.` : `${who}'s loan is closed.`}
+      tone={kind === 'preclose' ? 'danger' : 'primary'}
+      errors={errors}
+      onClose={onClose}
+      onSave={() => onSave({ kind, reason: reason.trim(), ...(kind === 'pause' ? { pauseUntil: until } : {}), ...(kind === 'reschedule' ? { emi: emi.trim() } : {}) })}
+    >
+      {(errorOf) => (
+        <>
+          {kind === 'pause' && (
+            <FormField id="lc-until" label="Paused until" required error={errorOf('lc-until')} helper="Instalments start again in this month.">
+              <TextField type="month" value={until} onChange={setUntil} />
+            </FormField>
+          )}
+          {kind === 'reschedule' && (
+            <FormField id="lc-emi" label="New instalment" required error={errorOf('lc-emi')}>
+              <TextField value={emi} onChange={setEmi} prefix="₹" inputMode="decimal" maxLength={13} />
+            </FormField>
+          )}
+          {kind === 'preclose' && (
+            <InlineAlert tone="warning" title="Closing writes off nothing">
+              The balance of {rupees(loan.outstanding)} is marked repaid now. Collect it outside payroll first.
+            </InlineAlert>
+          )}
+          <FormField id="lc-why" label="Reason" required error={errorOf('lc-why')}>
+            <TextArea rows={2} value={reason} onChange={setReason} maxLength={300} />
+          </FormField>
+        </>
+      )}
+    </FormDialog>
+  );
+}
+
+function AddLoanDrawer({ onSearch, onClose, onSave }: { onSearch: LiveLoans['onSearch']; onClose: () => void; onSave: LiveLoans['onRequest'] }) {
+  const [who, setWho] = useState<PersonHit | null>(null);
+  const [type, setType] = useState<'advance' | 'loan'>('advance');
+  const [amount, setAmount] = useState('');
+  const [count, setCount] = useState('');
+  const [rate, setRate] = useState('');
+  const [first, setFirst] = useState(nextMonthOf());
+  const [reason, setReason] = useState('');
+  const n = Number(count);
+  const errors: FormErrorItem[] = [
+    ...(!who ? [{ fieldId: 'ln-who', message: 'Choose the person.' }] : []),
+    ...(!MONEY_RX.test(amount.trim()) || paise(amount.trim()) <= 0n ? [{ fieldId: 'ln-amount', message: 'Enter the amount in rupees.' }] : []),
+    ...(!Number.isInteger(n) || n < 1 || n > 120 ? [{ fieldId: 'ln-count', message: 'Enter 1 to 120 instalments.' }] : []),
+    ...(type === 'loan' && rate.trim() && !/^\d{1,2}(\.\d{1,2})?$/.test(rate.trim()) ? [{ fieldId: 'ln-rate', message: 'Interest is a yearly percentage, like 8.5.' }] : []),
+    ...(!MONTH_RX.test(first) ? [{ fieldId: 'ln-first', message: 'Choose the month of the first instalment.' }] : []),
+    ...(reason.trim().length < 5 ? [{ fieldId: 'ln-why', message: 'Give a reason (at least 5 letters).' }] : []),
+  ];
+  const emi = Number.isInteger(n) && n >= 1 ? previewEmi(amount.trim(), type === 'loan' ? rate.trim() : '', n) : null;
+  return (
+    <PayFormDrawer
+      title="Add loan or advance"
+      subtitle="For someone in your scope. It waits for approval before the first instalment; the company's loan rules apply."
+      confirm="Send for approval"
+      done="Sent for approval. The approver decides in Approvals."
+      errors={errors}
+      onClose={onClose}
+      onSave={() => onSave({ employeeId: who!.id, loanType: type, principal: amount.trim(), instalments: n, ...(type === 'loan' && rate.trim() ? { interestRate: rate.trim() } : {}), firstMonth: first, reason: reason.trim() })}
+    >
+      {(errorOf) => (
+        <>
+          <FindPerson id="ln-who" label="Employee" value={who} onChange={setWho} onSearch={onSearch} error={errorOf('ln-who')} />
+          <FormField id="ln-type" label="Type" required>
+            <Segment
+              label="Type"
+              value={type}
+              onChange={setType}
+              options={[
+                { value: 'advance', label: 'Salary advance' },
+                { value: 'loan', label: 'Personal loan' },
+              ]}
+            />
+          </FormField>
+          <FieldRow>
+            <FormField id="ln-amount" label="Amount" required error={errorOf('ln-amount')}>
+              <TextField value={amount} onChange={setAmount} prefix="₹" inputMode="decimal" maxLength={13} />
+            </FormField>
+            <FormField id="ln-count" label="Instalments" required error={errorOf('ln-count')}>
+              <TextField value={count} onChange={setCount} inputMode="numeric" maxLength={3} />
+            </FormField>
+          </FieldRow>
+          <FieldRow>
+            {type === 'loan' && (
+              <FormField id="ln-rate" label="Interest a year" optional error={errorOf('ln-rate')} helper="Leave empty for an interest-free loan.">
+                <TextField value={rate} onChange={setRate} suffix="%" inputMode="decimal" maxLength={5} />
+              </FormField>
+            )}
+            <FormField id="ln-first" label="First instalment in" required error={errorOf('ln-first')}>
+              <TextField type="month" value={first} onChange={setFirst} />
+            </FormField>
+          </FieldRow>
+          <FormField id="ln-why" label="Reason" required error={errorOf('ln-why')}>
+            <TextArea rows={2} value={reason} onChange={setReason} maxLength={300} />
+          </FormField>
+          {emi && paise(emi.emi) > 0n && <p className="yx-pay-muted">{emi.exact ? 'Instalment' : 'Instalment about'} {rupees(emi.emi)} a month from {MONTH_RX.test(first) ? monthName(first) : 'the first month'}.</p>}
+        </>
+      )}
+    </PayFormDrawer>
+  );
+}
+
+/* ------------------------------------------------------------------ PAY-23 live: Payroll › Proof checking (and Form 12B, founder decision 6) */
+
+/** GET tax/form12b: previous employer income sent by employees, for payroll to check. */
+export interface Form12bRow {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  legalEntityId: string;
+  taxYear: string;
+  employerName: string | null;
+  employerTan: string;
+  gross: string;
+  exemptions: string;
+  tds: string;
+  status: 'pending' | 'approved' | 'rejected';
+  comment: string | null;
+  file: { name: string; size: number; at: string };
+  submittedAt: string;
+}
+
+export type ProofStatusFilter = 'pending' | 'approved' | 'partly' | 'rejected';
+
+export interface LiveProofQueue {
+  state: LoadState;
+  onRetry?: () => void;
+  status: ProofStatusFilter;
+  onStatus: (s: ProofStatusFilter) => void;
+  lines: ProofQueueLine[] | null;
+  /** Form 12B in the same status (none for "partly"). */
+  form12b: Form12bRow[] | null;
+  onFile: (line: ProofQueueLine, n: number, name: string) => Promise<unknown>;
+  onDecide: (line: ProofQueueLine, d: ProofDecision) => Promise<unknown>;
+  onForm12bFile: (row: Form12bRow) => Promise<unknown>;
+  onForm12bDecide: (row: Form12bRow, d: { decision: 'approve' | 'reject'; comment?: string }) => Promise<unknown>;
+}
+
+type QueueRow = { kind: 'line'; id: string; line: ProofQueueLine } | { kind: 'form12b'; id: string; row: Form12bRow };
+const LIVE_PROOF_STATE: Record<string, { label: string; tone: BadgeTone }> = {
+  pending: { label: 'Waiting', tone: 'warning' },
+  approved: { label: 'Approved', tone: 'success' },
+  partly: { label: 'Partly approved', tone: 'info' },
+  rejected: { label: 'Rejected', tone: 'danger' },
+};
+
+function LiveProofQueue({ live }: { live: LiveProofQueue }) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [q, setQ] = useState('');
+  const rows: QueueRow[] = [...(live.lines ?? []).map((l) => ({ kind: 'line' as const, id: `l-${l.id}`, line: l })), ...(live.form12b ?? []).map((r) => ({ kind: 'form12b' as const, id: `f-${r.id}`, row: r }))];
+  const query = q.trim().toLowerCase();
+  const nameOf = (r: QueueRow) => (r.kind === 'line' ? r.line.employeeName : r.row.employeeName) || 'Someone';
+  const shown = rows.filter((r) => !query || nameOf(r).toLowerCase().includes(query));
+  const open = rows.find((r) => r.id === openId) ?? null;
+  const cols: TableColumn<QueueRow>[] = [
+    { key: 'employee', header: 'Employee', type: 'person', value: nameOf, person: (r) => ({ name: nameOf(r) }), width: 200 },
+    {
+      key: 'item',
+      header: 'Line',
+      value: (r) => (r.kind === 'line' ? subjectText(r.line.subjectKey, r.line.section) : 'Previous employer (Form 12B)'),
+      render: (r) => (
+        <div>
+          <div>{r.kind === 'line' ? subjectText(r.line.subjectKey, r.line.section) : 'Previous employer (Form 12B)'}</div>
+          <div className="yx-pay-note">{r.kind === 'line' ? `${r.line.proofs.length} ${r.line.proofs.length === 1 ? 'file' : 'files'}` : `${r.row.employerName ?? r.row.employerTan} · ${r.row.taxYear}`}</div>
+        </div>
+      ),
+      width: 260,
+    },
+    { key: 'declared', header: 'Declared', type: 'money', value: (r) => Number(r.kind === 'line' ? r.line.amount : r.row.gross), render: (r) => (r.kind === 'line' ? `${rupees(r.line.amount)}${r.line.subjectKey === 'hra' ? ' a month' : ''}` : `${rupees(r.row.gross)} salary`), width: 170 },
+    { key: 'accepted', header: 'Approved', type: 'money', value: (r) => (r.kind === 'line' && r.line.approvedAmount ? Number(r.line.approvedAmount) : 0), render: (r) => (r.kind === 'line' && r.line.approvedAmount ? rupees(r.line.approvedAmount) : '—'), width: 120, optional: true },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => LIVE_PROOF_STATE[r.kind === 'line' ? r.line.proofStatus : r.row.status]?.label, statusTone: (_v, r) => LIVE_PROOF_STATE[r.kind === 'line' ? r.line.proofStatus : r.row.status]?.tone ?? 'neutral', width: 140 },
+  ];
+  return (
+    <PayFrame page="tax" counts={live.status === 'pending' ? { tax: rows.length } : undefined}>
+      <PageHeader title="Proof verification" description="Proofs employees sent for their tax declarations, and previous employers' Form 12B. What you approve counts in their tax; a line rejected goes back with your comment. Your own proofs never show here." facts={live.state === 'ready' ? `${rows.length} ${live.status === 'pending' ? 'waiting' : 'lines'}` : undefined} />
+      <PayPageState state={live.state} onRetry={live.onRetry} what="proofs" grantedBy="your payroll admin">
+        <DataTable
+          label="Proof lines"
+          columns={cols}
+          rows={shown}
+          getRowId={(r) => r.id}
+          onRowClick={(r) => setOpenId(r.id)}
+          activeRowId={open?.id}
+          cardSummary
+          filtered={!!query}
+          onClearFilters={() => setQ('')}
+          rowButtons={(r) =>
+            (r.kind === 'line' ? r.line.proofStatus : r.row.status) === 'pending' ? (
+              <Button size="sm" onClick={() => setOpenId(r.id)} aria-label={`Decide on ${nameOf(r)}'s ${r.kind === 'line' ? subjectText(r.line.subjectKey) : 'Form 12B'}`}>
+                Decide
+              </Button>
+            ) : null
+          }
+          toolbar={
+            <div className="yx-pay-row">
+              <Segment
+                label="Show"
+                value={live.status}
+                onChange={live.onStatus}
+                options={[
+                  { value: 'pending', label: 'Waiting' },
+                  { value: 'approved', label: 'Approved' },
+                  { value: 'partly', label: 'Partly approved' },
+                  { value: 'rejected', label: 'Rejected' },
+                ]}
+              />
+              <TextField value={q} onChange={setQ} placeholder="Search employee" aria-label="Search employee" />
+            </div>
+          }
+          empty={<EmptyState title={live.status === 'pending' ? 'No proofs to verify yet.' : 'Nothing here.'} description="Proofs appear when employees send them in their tax workspace." />}
+        />
+      </PayPageState>
+      {open?.kind === 'line' && <ProofDecisionDrawer line={open.line} onFile={live.onFile} onClose={() => setOpenId(null)} onSave={(d) => live.onDecide(open.line, d)} />}
+      {open?.kind === 'form12b' && <Form12bDecisionDrawer row={open.row} onFile={live.onForm12bFile} onClose={() => setOpenId(null)} onSave={(d) => live.onForm12bDecide(open.row, d)} />}
+    </PayFrame>
+  );
+}
+
+function ProofDecisionDrawer({ line, onFile, onClose, onSave }: { line: ProofQueueLine; onFile: LiveProofQueue['onFile']; onClose: () => void; onSave: (d: ProofDecision) => Promise<unknown> }) {
+  const [decision, setDecision] = useState<ProofDecision['decision']>('approve');
+  const [amount, setAmount] = useState('');
+  const [comment, setComment] = useState('');
+  const { busy, run } = useRun();
+  const pending = line.proofStatus === 'pending';
+  const errors: FormErrorItem[] = [
+    ...(decision === 'partly' && (!MONEY_RX.test(amount.trim()) || paise(amount.trim()) <= 0n || paise(amount.trim()) >= paise(line.amount)) ? [{ fieldId: 'pf-amount', message: `Enter an amount above zero and below ${rupees(line.amount)}.` }] : []),
+    ...(decision !== 'approve' && comment.trim().length < 3 ? [{ fieldId: 'pf-why', message: 'Add a comment for the employee, so they can fix it.' }] : []),
+  ];
+  const label = subjectText(line.subjectKey, line.section);
+  const files = (
+    <section aria-label="Files">
+      <SectionTitle>Files sent</SectionTitle>
+      <div className="yx-pay-row">
+        {line.proofs.map((f) => (
+          <Button key={f.n} size="sm" icon={Download} loading={busy === `f-${f.n}`} onClick={() => void run(`f-${f.n}`, () => onFile(line, f.n, f.name))} aria-label={`Open ${f.name}`}>
+            {f.name}
+          </Button>
+        ))}
+      </div>
+    </section>
+  );
+  const facts = (
+    <FactRow
+      items={[
+        { label: 'Declared', value: `${rupees(line.amount)}${line.subjectKey === 'hra' ? ' a month' : ''}` },
+        ...(line.approvedAmount ? [{ label: 'Approved', value: rupees(line.approvedAmount) }] : []),
+        { label: 'Files', value: String(line.proofs.length) },
+      ]}
+    />
+  );
+  if (!pending)
+    return (
+      <Drawer open onOpenChange={(o) => !o && onClose()} title={label} subtitle={line.employeeName || 'Someone'} meta={<Badge tone={LIVE_PROOF_STATE[line.proofStatus]?.tone ?? 'neutral'}>{LIVE_PROOF_STATE[line.proofStatus]?.label}</Badge>} size="lg" footer={<Button onClick={onClose}>Close</Button>}>
+        <div className="yx-pay-stack">
+          {facts}
+          {line.comment && <p className="yx-pay-note">Comment: {line.comment}</p>}
+          {files}
+        </div>
+      </Drawer>
+    );
+  return (
+    <PayFormDrawer
+      title={label}
+      subtitle={`${line.employeeName || 'Someone'} · declared ${rupees(line.amount)}${line.subjectKey === 'hra' ? ' a month' : ''}`}
+      confirm={decision === 'approve' ? 'Approve line' : decision === 'partly' ? 'Approve part' : 'Reject line'}
+      done={`${line.employeeName || 'Someone'} · ${label}: ${decision === 'approve' ? 'approved' : decision === 'partly' ? 'part approved' : 'rejected'}.`}
+      errors={errors}
+      onClose={onClose}
+      size="lg"
+      onSave={() => onSave({ decision, ...(decision === 'partly' ? { amount: amount.trim() } : {}), ...(comment.trim() ? { comment: comment.trim() } : {}) })}
+    >
+      {(errorOf) => (
+        <>
+          {facts}
+          {files}
+          {line.subjectKey === 'hra' && line.landlordPan && <p className="yx-pay-note">Landlord {line.landlordName ?? ''} · PAN {line.landlordPan}</p>}
+          <FormField id="pf-decision" label="Decision" required>
+            <Segment
+              label="Decision"
+              value={decision}
+              onChange={setDecision}
+              options={[
+                { value: 'approve', label: 'Approve in full' },
+                { value: 'partly', label: 'Approve part' },
+                { value: 'reject', label: 'Reject' },
+              ]}
+            />
+          </FormField>
+          {decision === 'partly' && (
+            <FormField id="pf-amount" label="Approved amount" required error={errorOf('pf-amount')}>
+              <TextField value={amount} onChange={setAmount} prefix="₹" inputMode="decimal" maxLength={13} />
+            </FormField>
+          )}
+          <FormField id="pf-why" label="Comment to employee" required={decision !== 'approve'} optional={decision === 'approve'} helper="The employee sees this on the line." error={errorOf('pf-why')}>
+            <TextArea rows={3} value={comment} onChange={setComment} maxLength={500} />
+          </FormField>
+        </>
+      )}
+    </PayFormDrawer>
+  );
+}
+
+function Form12bDecisionDrawer({ row, onFile, onClose, onSave }: { row: Form12bRow; onFile: LiveProofQueue['onForm12bFile']; onClose: () => void; onSave: (d: { decision: 'approve' | 'reject'; comment?: string }) => Promise<unknown> }) {
+  const [decision, setDecision] = useState<'approve' | 'reject'>('approve');
+  const [comment, setComment] = useState('');
+  const { busy, run } = useRun();
+  const errors: FormErrorItem[] = decision === 'reject' && comment.trim().length < 3 ? [{ fieldId: 'fb-why', message: 'Add a comment for the employee, so they can fix it.' }] : [];
+  const body = (
+    <>
+      <FactRow
+        items={[
+          { label: 'Salary', value: rupees(row.gross) },
+          { label: 'Exemptions', value: rupees(row.exemptions) },
+          { label: 'Tax deducted', value: rupees(row.tds) },
+          { label: 'TAN', value: row.employerTan },
+        ]}
+      />
+      <div className="yx-pay-row">
+        <Button size="sm" icon={Download} loading={busy === 'file'} onClick={() => void run('file', () => onFile(row))} aria-label={`Open ${row.file.name}`}>
+          {row.file.name}
+        </Button>
+        <span className="yx-pay-note">Sent {dateText(row.submittedAt.slice(0, 10))}. Check the figures against the signed Form 12B.</span>
+      </div>
+    </>
+  );
+  if (row.status !== 'pending')
+    return (
+      <Drawer open onOpenChange={(o) => !o && onClose()} title="Previous employer (Form 12B)" subtitle={`${row.employeeName} · ${row.employerName ?? row.employerTan}`} meta={<Badge tone={LIVE_PROOF_STATE[row.status]?.tone ?? 'neutral'}>{LIVE_PROOF_STATE[row.status]?.label}</Badge>} size="lg" footer={<Button onClick={onClose}>Close</Button>}>
+        <div className="yx-pay-stack">
+          {body}
+          {row.comment && <p className="yx-pay-note">Comment: {row.comment}</p>}
+        </div>
+      </Drawer>
+    );
+  return (
+    <PayFormDrawer
+      title="Previous employer (Form 12B)"
+      subtitle={`${row.employeeName} · ${row.employerName ?? row.employerTan} · ${row.taxYear}`}
+      confirm={decision === 'approve' ? 'Approve Form 12B' : 'Reject Form 12B'}
+      done={`${row.employeeName} · Form 12B ${decision === 'approve' ? 'approved: it counts in their tax from the next payslip' : 'rejected'}.`}
+      errors={errors}
+      onClose={onClose}
+      size="lg"
+      onSave={() => onSave({ decision, ...(comment.trim() ? { comment: comment.trim() } : {}) })}
+    >
+      {(errorOf) => (
+        <>
+          {body}
+          <FormField id="fb-decision" label="Decision" required>
+            <Segment
+              label="Decision"
+              value={decision}
+              onChange={setDecision}
+              options={[
+                { value: 'approve', label: 'Approve' },
+                { value: 'reject', label: 'Reject' },
+              ]}
+            />
+          </FormField>
+          <FormField id="fb-why" label="Comment to employee" required={decision === 'reject'} optional={decision === 'approve'} error={errorOf('fb-why')}>
+            <TextArea rows={3} value={comment} onChange={setComment} maxLength={500} />
+          </FormField>
+        </>
+      )}
+    </PayFormDrawer>
+  );
+}
+
+/* ------------------------------------------------------------------ PAY-27 live: Payroll › Earned wage access */
+
+export interface LiveEwaAdmin {
+  state: LoadState;
+  onRetry?: () => void;
+  entities: SetupEntity[];
+  entityId: string | null;
+  onEntity: (id: string | null) => void;
+  month: string;
+  onMonth: (m: string) => void;
+  nameOf: (employeeId: string) => string;
+  policies: EwaPolicyView[] | null;
+  draws: EwaDrawView[] | null;
+  onPolicy: (x: Omit<EwaPolicyView, 'id'>) => Promise<unknown>;
+  onPaid: (d: EwaDrawView, reference: string) => Promise<unknown>;
+  onFailed: (d: EwaDrawView, reason: string) => Promise<unknown>;
+}
+
+const LIVE_DRAW: Record<EwaDrawView['status'], { label: string; tone: BadgeTone }> = { requested: { label: 'To pay', tone: 'warning' }, paid: { label: 'Paid, recovered in payroll', tone: 'success' }, failed: { label: 'Failed', tone: 'danger' }, cancelled: { label: 'Cancelled', tone: 'neutral' } };
+
+function LiveEwaAdmin({ live }: { live: LiveEwaAdmin }) {
+  const [tab, setTab] = useState<'draws' | 'policy' | 'partner' | 'recoveries'>('draws');
+  const [policyOpen, setPolicyOpen] = useState(false);
+  const [paying, setPaying] = useState<EwaDrawView | null>(null);
+  const [failing, setFailing] = useState<EwaDrawView | null>(null);
+  const draws = live.draws ?? [];
+  const current = live.policies?.[0] ?? null;
+  const paid = draws.filter((d) => d.status === 'paid');
+  const toPay = draws.filter((d) => d.status === 'requested');
+  const cols: TableColumn<EwaDrawView>[] = [
+    { key: 'employee', header: 'Employee', type: 'person', value: (r) => live.nameOf(r.employeeId), person: (r) => ({ name: live.nameOf(r.employeeId) }), width: 210 },
+    { key: 'req', header: 'Requested', value: (r) => r.createdAt, render: (r) => dateText(r.createdAt.slice(0, 10)), width: 130 },
+    { key: 'available', header: 'Available then', type: 'money', value: (r) => Number(r.available), render: (r) => rupees(r.available), width: 140, optional: true },
+    { key: 'amount', header: 'Draw', type: 'money', value: (r) => Number(r.amount), render: (r) => rupees(r.amount), width: 120 },
+    { key: 'fee', header: 'Fee', type: 'money', value: (r) => Number(r.fee), render: (r) => rupees(r.fee), width: 100 },
+    { key: 'payer', header: 'Fee paid by', value: (r) => (r.feePayer === 'employee' ? 'Employee' : 'Company'), width: 120 },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => LIVE_DRAW[r.status].label, statusTone: (_v, r) => LIVE_DRAW[r.status].tone, width: 200 },
+  ];
+  return (
+    <PayFrame page="loans">
+      <PageHeader
+        title="Earned wage access"
+        description="People draw part of the pay they have already earned this month; payroll pays it and recovers it in the month's payroll."
+        facts={live.state === 'ready' && live.entityId ? `${draws.length} draws in ${monthName(live.month)} · ${rupees(sumMoney(paid.map((d) => d.amount)))} paid · ${toPay.length} to pay` : undefined}
+      />
+      <PayPageState state={live.state} onRetry={live.onRetry} what="earned wage access" grantedBy="your payroll admin">
+        <div className="yx-pay-stack">
+          <div className="yx-pay-row">
+            <EntityPicker entities={live.entities} value={live.entityId} onChange={live.onEntity} />
+            <FormField id="ewa-month" label="Month">
+              <TextField type="month" value={live.month} onChange={live.onMonth} />
+            </FormField>
+          </div>
+          {live.entityId && (
+            <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
+              <TabsList aria-label="Earned wage access">
+                <TabsTrigger value="draws" count={draws.length}>
+                  Draws
+                </TabsTrigger>
+                <TabsTrigger value="policy">Policy</TabsTrigger>
+                <TabsTrigger value="partner">Partner</TabsTrigger>
+                <TabsTrigger value="recoveries">Recoveries in payroll</TabsTrigger>
+              </TabsList>
+              <TabsContent value="draws">
+                <DataTable
+                  label={`EWA draws, ${monthName(live.month)}`}
+                  columns={cols}
+                  rows={draws}
+                  getRowId={(r) => r.id}
+                  state={live.draws ? 'ready' : 'loading'}
+                  cardSummary
+                  rowButtons={(r) =>
+                    r.status === 'requested' ? (
+                      <div className="yx-pay-row">
+                        <Button size="sm" variant="primary" onClick={() => setPaying(r)} aria-label={`Record payment to ${live.nameOf(r.employeeId)}`}>
+                          Record payment
+                        </Button>
+                        <Button size="sm" onClick={() => setFailing(r)} aria-label={`Payment to ${live.nameOf(r.employeeId)} failed`}>
+                          Failed
+                        </Button>
+                      </div>
+                    ) : r.failureReason ? (
+                      <span className="yx-pay-note">{r.failureReason}</span>
+                    ) : r.paidRef ? (
+                      <span className="yx-pay-note">Ref {r.paidRef}</span>
+                    ) : null
+                  }
+                  empty={<EmptyState title={`No draws in ${monthName(live.month)}.`} description={current?.enabled ? 'Draws show here when people ask for them.' : 'Nobody can draw until a policy is switched on.'} />}
+                />
+              </TabsContent>
+              <TabsContent value="policy">
+                <div className="yx-pay-grid">
+                  <div data-span="7" className="yx-pay-stack">
+                    {!current ? (
+                      <InlineAlert tone="info" title="Off">
+                        Nobody can draw until a policy is switched on.
+                      </InlineAlert>
+                    ) : (
+                      <DescriptionList
+                        columns={2}
+                        items={[
+                          { label: 'Status', value: current.enabled ? <Badge tone="success">On</Badge> : <Badge tone="neutral">Off</Badge> },
+                          { label: 'From', value: dateText(current.validFrom) },
+                          { label: 'Share of earned pay', value: `${current.percentAvailable}%` },
+                          { label: 'Least and most a draw', value: `${rupees(current.minAmount)} to ${rupees(current.maxAmount)}` },
+                          { label: 'Draws a month', value: String(current.drawsPerMonth) },
+                          { label: 'Closed before cut-off', value: `${current.blackoutDays} days` },
+                          { label: 'Fee a draw', value: `${rupees(current.fee)}, paid by the ${current.feePayer === 'employee' ? 'person' : 'company'}` },
+                        ]}
+                      />
+                    )}
+                    <div className="yx-pay-row">
+                      <Button variant="primary" onClick={() => setPolicyOpen(true)}>
+                        {current ? 'Change from a date' : 'Set up the policy'}
+                      </Button>
+                    </div>
+                  </div>
+                  <div data-span="5" className="yx-pay-panel">
+                    <SectionTitle>How it works</SectionTitle>
+                    <p className="yx-pay-muted">Earned so far = expected net pay ÷ days in the month × days worked, less earlier draws and dues. A person can take the policy's share of that, within the least and most a draw.</p>
+                  </div>
+                </div>
+              </TabsContent>
+              <TabsContent value="partner">
+                <EmptyState title="No EWA partner connected." description="Draws are paid by the company from payroll today. A partner who pays people and is repaid from payroll is not available yet." />
+              </TabsContent>
+              <TabsContent value="recoveries">
+                <div className="yx-pay-stack">
+                  <FactRow
+                    items={[
+                      { label: 'Paid this month', value: rupees(sumMoney(paid.map((d) => d.amount))) },
+                      { label: 'Fees paid by people', value: rupees(sumMoney(paid.filter((d) => d.feePayer === 'employee').map((d) => d.fee))) },
+                      { label: 'To recover in payroll', value: rupees(sumMoney(paid.map((d) => (d.feePayer === 'employee' ? fromPaise(paise(d.amount) + paise(d.fee)) : d.amount)))) },
+                    ]}
+                  />
+                  <p className="yx-pay-note">Each paid draw (and the person's fee) is taken back as "Earned wage access" on that month's payslip. A balance left at exit goes to the final settlement.</p>
+                </div>
+              </TabsContent>
+            </Tabs>
+          )}
+        </div>
+      </PayPageState>
+      {policyOpen && <EwaPolicyDrawer onClose={() => setPolicyOpen(false)} onSave={live.onPolicy} />}
+      {paying && <EwaTextDialog title={`Payment to ${live.nameOf(paying.employeeId)}`} label="Bank reference" pattern={/^[A-Za-z0-9/-]{4,60}$/} hint="Enter the reference of the transfer (4 to 60 letters, digits, / or -)." confirm="Record payment" done={`Payment to ${live.nameOf(paying.employeeId)} recorded.`} onClose={() => setPaying(null)} onSave={(ref) => live.onPaid(paying, ref)} />}
+      {failing && <EwaTextDialog title="Payment failed" label="Why" pattern={/^[\s\S]{5,300}$/} hint="Say why (at least 5 letters)." confirm="Record failure" done="Failure recorded. Nothing is recovered for this draw." onClose={() => setFailing(null)} onSave={(why) => live.onFailed(failing, why)} />}
+    </PayFrame>
+  );
+}
+
+function EwaPolicyDrawer({ onClose, onSave }: { onClose: () => void; onSave: LiveEwaAdmin['onPolicy'] }) {
+  const [x, setX] = useState({ validFrom: '', enabled: true, percentAvailable: '50', minAmount: '500', maxAmount: '20000', drawsPerMonth: '3', blackoutDays: '3', fee: '0', feePayer: 'employer' as 'employee' | 'employer' });
+  const errors: FormErrorItem[] = [
+    ...(!DAY_RX.test(x.validFrom) ? [{ fieldId: 'ep-from', message: 'Choose the first day it applies.' }] : []),
+    ...(!/^\d{1,3}(\.\d{1,2})?$/.test(x.percentAvailable) || Number(x.percentAvailable) > 100 || Number(x.percentAvailable) <= 0 ? [{ fieldId: 'ep-pct', message: 'Enter a per cent above 0, at most 100.' }] : []),
+    ...(!MONEY_RX.test(x.minAmount) ? [{ fieldId: 'ep-min', message: 'Enter the least a draw can be, in rupees.' }] : []),
+    ...(!MONEY_RX.test(x.maxAmount) || (MONEY_RX.test(x.minAmount) && paise(x.maxAmount) < paise(x.minAmount)) ? [{ fieldId: 'ep-max', message: 'Enter the most a draw can be, not less than the least.' }] : []),
+    ...(!/^\d{1,2}$/.test(x.drawsPerMonth) || Number(x.drawsPerMonth) < 1 ? [{ fieldId: 'ep-draws', message: 'Enter 1 or more draws a month.' }] : []),
+    ...(!/^\d{1,2}$/.test(x.blackoutDays) ? [{ fieldId: 'ep-blackout', message: 'Enter the days (0 for none).' }] : []),
+    ...(!MONEY_RX.test(x.fee) ? [{ fieldId: 'ep-fee', message: 'Enter the fee a draw (0 for none).' }] : []),
+  ];
+  return (
+    <PayFormDrawer
+      title="Earned wage access policy"
+      subtitle="From a date; the earlier policy applies until then."
+      confirm="Save policy"
+      done="Policy saved. It applies from the date you chose."
+      errors={errors}
+      onClose={onClose}
+      onSave={() => onSave({ ...x, drawsPerMonth: Number(x.drawsPerMonth), blackoutDays: Number(x.blackoutDays) })}
+    >
+      {(errorOf) => (
+        <>
+          <FormField id="ep-on" label="Earned wage access">
+            <Segment label="Earned wage access" value={x.enabled ? 'on' : 'off'} onChange={(v) => setX({ ...x, enabled: v === 'on' })} options={[{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }]} />
+          </FormField>
+          <FormField id="ep-from" label="From" required error={errorOf('ep-from')}>
+            <TextField type="date" value={x.validFrom} onChange={(validFrom) => setX({ ...x, validFrom })} />
+          </FormField>
+          <FieldRow>
+            <FormField id="ep-pct" label="Share of earned pay" required error={errorOf('ep-pct')}>
+              <TextField value={x.percentAvailable} onChange={(percentAvailable) => setX({ ...x, percentAvailable })} suffix="%" inputMode="decimal" />
+            </FormField>
+            <FormField id="ep-draws" label="Draws a month" required error={errorOf('ep-draws')}>
+              <TextField value={x.drawsPerMonth} onChange={(drawsPerMonth) => setX({ ...x, drawsPerMonth })} inputMode="numeric" maxLength={2} />
+            </FormField>
+          </FieldRow>
+          <FieldRow>
+            <FormField id="ep-min" label="Least a draw" required error={errorOf('ep-min')}>
+              <TextField value={x.minAmount} onChange={(minAmount) => setX({ ...x, minAmount })} prefix="₹" inputMode="decimal" />
+            </FormField>
+            <FormField id="ep-max" label="Most a draw" required error={errorOf('ep-max')}>
+              <TextField value={x.maxAmount} onChange={(maxAmount) => setX({ ...x, maxAmount })} prefix="₹" inputMode="decimal" />
+            </FormField>
+          </FieldRow>
+          <FormField id="ep-blackout" label="Closed before payroll cut-off" required helper="No draws in these days before the cut-off." error={errorOf('ep-blackout')}>
+            <TextField value={x.blackoutDays} onChange={(blackoutDays) => setX({ ...x, blackoutDays })} suffix="days" inputMode="numeric" maxLength={2} />
+          </FormField>
+          <FieldRow>
+            <FormField id="ep-fee" label="Fee a draw" required error={errorOf('ep-fee')}>
+              <TextField value={x.fee} onChange={(fee) => setX({ ...x, fee })} prefix="₹" inputMode="decimal" />
+            </FormField>
+            <FormField id="ep-payer" label="Fee paid by">
+              <Segment label="Fee paid by" value={x.feePayer} onChange={(feePayer) => setX({ ...x, feePayer })} options={[{ value: 'employer', label: 'The company' }, { value: 'employee', label: 'The person' }]} />
+            </FormField>
+          </FieldRow>
+        </>
+      )}
+    </PayFormDrawer>
+  );
+}
+
+function EwaTextDialog({ title, label, pattern, hint, confirm, done, onClose, onSave }: { title: string; label: string; pattern: RegExp; hint: string; confirm: string; done: string; onClose: () => void; onSave: (v: string) => Promise<unknown> }) {
+  const [v, setV] = useState('');
+  return (
+    <FormDialog title={title} confirm={confirm} done={done} errors={pattern.test(v.trim()) ? [] : [{ fieldId: 'ew-v', message: hint }]} onClose={onClose} onSave={() => onSave(v.trim())}>
+      {(errorOf) => (
+        <FormField id="ew-v" label={label} required error={errorOf('ew-v')}>
+          <TextField value={v} onChange={setV} maxLength={300} />
+        </FormField>
+      )}
+    </FormDialog>
   );
 }

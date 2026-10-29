@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { IncentiveStatementScreen } from './employee-pay';
 
-const meta: Meta<typeof IncentiveStatementScreen> = { title: 'Screens/Pay/PAY-33 · My incentive statement', component: IncentiveStatementScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof IncentiveStatementScreen> = { title: 'Screens/Pay/PAY-33 · My incentive statement', component: IncentiveStatementScreen, render: (args) => <IncentiveStatementScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof IncentiveStatementScreen>;
 const phone = { globals: { viewport: { value: 'mobile2', isRotated: false } } };

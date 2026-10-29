@@ -13,7 +13,10 @@ import { useRun } from '../org/org-kit';
 import { PayFormDrawer, PayPageState, fromPaise, paise, rupees, sumMoney } from './consultants';
 import type { LoadState } from './live/types';
 import type { MyPayslip, PayslipDetail, PayslipLine } from './live/types-5j';
-import type { DeclarationInput, DeclarationLine, MyCertificate, MyDeclarations } from './live/types-ops';
+import type { DeclarationInput, DeclarationLine, LoanRequestInput, LoanView, MyCertificate, MyDeclarations } from './live/types-ops';
+import type { EwaDrawView, MyEwa, MyIncentives } from './live/types-5i';
+import type { PayDocument } from './live/types';
+import { FindPerson, type PersonHit } from './equity';
 import { FieldRow, FormField, useTooEarly, type FormErrorItem } from '../../components/field';
 import { Segment } from '../../components/segment';
 import { dateText } from '../time/live/kit';
@@ -1286,8 +1289,12 @@ function SampleTaxWorkspace({ layout = 'desktop', tab = 'overview', variant = 'd
 
 export type LoanVariant = 'form' | 'over-limit' | 'not-eligible' | 'submitted';
 
-/** PAY-18 · Loan / salary-advance request (T4) with EMI schedule preview. */
-export function LoanRequestScreen({ layout = 'desktop', variant = 'form' }: { layout?: Layout; variant?: LoanVariant }) {
+/** PAY-18 · Loan / salary-advance request (T4) with EMI schedule preview. The app passes `live` (Me › Loans and advances). */
+export function LoanRequestScreen(p: { layout?: Layout; variant?: LoanVariant; live?: LiveLoanRequest }) {
+  return p.live ? <LiveLoanRequest live={p.live} /> : <SampleLoanRequest {...p} />;
+}
+
+function SampleLoanRequest({ layout = 'desktop', variant = 'form' }: { layout?: Layout; variant?: LoanVariant }) {
   const [type, setType] = useState<string>(variant === 'form' ? 'advance' : 'loan');
   const [amount, setAmount] = useState<number | null>(variant === 'over-limit' ? 3_50_000 : type === 'advance' ? 30_000 : 1_50_000);
   const [emis, setEmis] = useState<number | null>(variant === 'form' ? 3 : 12);
@@ -1441,8 +1448,12 @@ export function LoanRequestScreen({ layout = 'desktop', variant = 'form' }: { la
 
 export type EwaVariant = 'available' | 'confirm' | 'disbursed' | 'blackout' | 'on-hold' | 'draws-used' | 'off';
 
-/** PAY-26 · Earned wage access request: available amount, partner fee, terms, recovery preview. */
-export function EwaRequestScreen({ layout = 'phone', variant = 'available' }: { layout?: Layout; variant?: EwaVariant }) {
+/** PAY-26 · Earned wage access request: available amount, partner fee, terms, recovery preview. The app passes `live` (desktop). */
+export function EwaRequestScreen(p: { layout?: Layout; variant?: EwaVariant; live?: LiveEwaRequest }) {
+  return p.live ? <LiveEwaRequest live={p.live} /> : <SampleEwaRequest {...p} />;
+}
+
+function SampleEwaRequest({ layout = 'phone', variant = 'available' }: { layout?: Layout; variant?: EwaVariant }) {
   const input: EwaInput =
     variant === 'blackout' ? { ...EWA_INPUT, daysEarned: 27, daysToCutOff: 2 } : variant === 'on-hold' ? { ...EWA_INPUT, onHold: true } : variant === 'draws-used' ? { ...EWA_INPUT, drawsThisPeriod: 3, drawnThisPeriod: 4_000 } : EWA_INPUT;
   const policy = variant === 'off' ? { ...EWA_STARTER, on: false } : EWA_STARTER;
@@ -1550,8 +1561,12 @@ interface StatementRow {
   clawback: number;
 }
 
-/** PAY-33 · My incentive / commission statement: earned, paid, held, clawbacks per period, worked out from the plan. */
-export function IncentiveStatementScreen({ layout = 'desktop', variant = 'default' }: { layout?: Layout; variant?: IncentiveVariant }) {
+/** PAY-33 · My incentive / commission statement: earned, paid, held, clawbacks per period, worked out from the plan. The app passes `live`. */
+export function IncentiveStatementScreen(p: { layout?: Layout; variant?: IncentiveVariant; live?: LiveIncentives }) {
+  return p.live ? <LiveIncentiveStatement live={p.live} /> : <SampleIncentiveStatement {...p} />;
+}
+
+function SampleIncentiveStatement({ layout = 'desktop', variant = 'default' }: { layout?: Layout; variant?: IncentiveVariant }) {
   const phone = layout === 'phone';
   const claw = variant === 'clawback';
   const quarters = SALES_QUARTERS.map((q) => {
@@ -1728,8 +1743,12 @@ export function IncentiveStatementScreen({ layout = 'desktop', variant = 'defaul
 
 /* ================================================================== PAY-39 My pay band */
 
-/** PAY-39 · My pay band: own grade range and position in range (only when the company turns visibility on). */
-export function PayBandScreen({ layout = 'desktop', variant = 'default', state = 'ready' }: { layout?: Layout; variant?: 'default' | 'above' | 'off'; state?: ViewState }) {
+/** PAY-39 · My pay band: own grade range and position in range (only when the company turns visibility on). The app passes `live`. */
+export function PayBandScreen(p: { layout?: Layout; variant?: 'default' | 'above' | 'off'; state?: ViewState; live?: LivePayBand }) {
+  return p.live ? <LivePayBand live={p.live} /> : <SamplePayBand {...p} />;
+}
+
+function SamplePayBand({ layout = 'desktop', variant = 'default', state = 'ready' }: { layout?: Layout; variant?: 'default' | 'above' | 'off'; state?: ViewState }) {
   // Divya's CTC is the same on every screen (₹1,50,000 a month). The above-band story uses a lower band instead.
   const ctc = MY_MONTHLY_CTC * 12;
   const [min, mid, max] = variant === 'above' ? [12_00_000, 14_40_000, 16_80_000] : [15_00_000, 19_50_000, 24_00_000];
@@ -2809,5 +2828,656 @@ function Residential({ w, onPatch }: { w: MyTaxWorkspace; onPatch: LiveTax['onPa
         </Button>
       </div>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ PAY-18 live: Me › Loans and advances */
+
+/** GET payroll/loans/rules (founder decision 8): the company's loan rules for the signed-in person. */
+export interface LoanRules {
+  eligible: boolean;
+  /** Why not, in plain words (on probation, or no pay set up yet). */
+  reason: string | null;
+  probationEndsOn: string | null;
+  monthlyGross: string | null;
+  /** null: the company sets no limit. */
+  maxGrossMonths: number | null;
+  limit: string | null;
+  outstanding: string;
+  available: string | null;
+}
+
+export interface LiveLoanRequest {
+  state: LoadState;
+  onRetry?: () => void;
+  /** The person's own loans (GET payroll/loans, `mine`). */
+  loans: LoanView[] | null;
+  rules: LoanRules | null;
+  onRequest: (x: LoanRequestInput) => Promise<unknown>;
+}
+
+export const LOAN_TYPE_TEXT: Record<string, string> = { advance: 'Salary advance', loan: 'Personal loan', expense: 'Expense advance recovery' };
+export const LOAN_STATE: Record<string, { label: string; tone: BadgeTone }> = {
+  requested: { label: 'Waiting for approval', tone: 'warning' },
+  active: { label: 'Being repaid', tone: 'info' },
+  paused: { label: 'Paused', tone: 'warning' },
+  closed: { label: 'Closed', tone: 'success' },
+  rejected: { label: 'Turned down', tone: 'neutral' },
+};
+const RATE_RE = /^\d{1,2}(\.\d{1,2})?$/;
+
+/** The instalment the API will set: interest-free = the principal over the months, rounded up to the rupee (exact); with interest, an estimate. */
+export function previewEmi(principal: string, ratePct: string, months: number): { emi: string; exact: boolean } {
+  if (!MONEY_RE.test(principal) || months < 1) return { emi: '0.00', exact: true };
+  const p = paise(principal);
+  if (!ratePct || Number(ratePct) === 0) {
+    const per = BigInt(months) * 100n;
+    return { emi: fromPaise(((p + per - 1n) / per) * 100n), exact: true };
+  }
+  const r = Number(ratePct) / 1200;
+  const f = (1 + r) ** months;
+  return { emi: `${Math.ceil((Number(p) / 100) * r * f / (f - 1))}.00`, exact: false };
+}
+
+/** "2026-11" for the month after today (IST). */
+const nextMonthIso = () => {
+  const t = new Date(Date.now() + 330 * 60_000);
+  return new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 1)).toISOString().slice(0, 7);
+};
+
+function LiveLoanRequest({ live }: { live: LiveLoanRequest }) {
+  const { toast } = useToast();
+  const rules = live.rules;
+  const mine = (live.loans ?? []).filter((l) => l.mine);
+  const [type, setType] = useState<'advance' | 'loan'>('advance');
+  const [amount, setAmount] = useState('');
+  const [count, setCount] = useState('');
+  const [rate, setRate] = useState('');
+  const [first, setFirst] = useState(nextMonthIso());
+  const [reason, setReason] = useState('');
+  const { busy, error, run } = useRun();
+  const n = Number(count);
+  const over = rules?.available != null && MONEY_RE.test(amount.trim()) && paise(amount.trim()) > paise(rules.available);
+  const limitText = rules?.limit != null && rules.maxGrossMonths != null ? `${rules.maxGrossMonths} ${rules.maxGrossMonths === 1 ? "month's" : "months'"} gross pay` : null;
+  const errors: FormErrorItem[] = [
+    ...(!MONEY_RE.test(amount.trim()) || paise(amount.trim()) <= 0n ? [{ fieldId: 'lr-amount', message: 'Enter the amount in rupees.' }] : over ? [{ fieldId: 'lr-amount', message: `Enter ${rupees(rules!.available)} or less. That is the most you can ask for now.` }] : []),
+    ...(!Number.isInteger(n) || n < 1 || n > 120 ? [{ fieldId: 'lr-count', message: 'Enter 1 to 120 instalments.' }] : []),
+    ...(type === 'loan' && rate.trim() && !RATE_RE.test(rate.trim()) ? [{ fieldId: 'lr-rate', message: 'Interest is a yearly percentage, like 8.5.' }] : []),
+    ...(!MONTH_RE.test(first) ? [{ fieldId: 'lr-first', message: 'Choose the month of the first instalment.' }] : []),
+    ...(reason.trim().length < 5 ? [{ fieldId: 'lr-why', message: 'Give a reason (at least 5 letters).' }] : []),
+  ];
+  const early = useTooEarly(errors);
+  const emi = Number.isInteger(n) && n >= 1 ? previewEmi(amount.trim(), type === 'loan' ? rate.trim() : '', n) : null;
+  const send = () => {
+    if (early.stop()) return;
+    void run('send', () =>
+      live.onRequest({ loanType: type, principal: amount.trim(), instalments: n, ...(type === 'loan' && rate.trim() ? { interestRate: rate.trim() } : {}), firstMonth: first, reason: reason.trim() }),
+    ).then((ok) => {
+      if (!ok) return;
+      early.reset();
+      setAmount('');
+      setCount('');
+      setRate('');
+      setReason('');
+      toast({ title: 'Request sent', description: "It goes to payroll's approver. You get a notification at each step.", tone: 'success' });
+    });
+  };
+  return (
+    <MyPayFrame page="loans">
+      <PageHeader title="Loans and advances" description="Recovered from your salary each month. If you leave, the balance is recovered in your final settlement." />
+      <PayPageState state={live.state} onRetry={live.onRetry} what="your loans">
+        <div className="yx-pay-stack">
+          {rules && !rules.eligible ? (
+            <EmptyState title={rules.reason ?? "You can't ask for a loan or advance right now."} description={rules.probationEndsOn ? `Your probation ends on ${dateText(rules.probationEndsOn)}. The company allows loans and salary advances after probation.` : 'Ask HR if you think this is wrong.'} />
+          ) : (
+            <div className="yx-pay-split">
+              <section className="yx-pay-stack" aria-label="Ask for a loan or advance">
+                {error && (
+                  <InlineAlert tone="danger" title="Not sent">
+                    {error}
+                  </InlineAlert>
+                )}
+                <FormField id="lr-type" label="Type" required>
+                  <Segment
+                    label="Type"
+                    value={type}
+                    onChange={setType}
+                    options={[
+                      { value: 'advance', label: 'Salary advance' },
+                      { value: 'loan', label: 'Personal loan' },
+                    ]}
+                  />
+                </FormField>
+                <FieldRow>
+                  <FormField id="lr-amount" label="Amount" required error={early.errorOf('lr-amount')} helper={rules?.available != null ? `Up to ${rupees(rules.available)}` : undefined}>
+                    <TextField value={amount} onChange={setAmount} prefix="₹" inputMode="decimal" maxLength={13} />
+                  </FormField>
+                  <FormField id="lr-count" label="Number of instalments" required error={early.errorOf('lr-count')}>
+                    <TextField value={count} onChange={setCount} inputMode="numeric" maxLength={3} />
+                  </FormField>
+                </FieldRow>
+                <FieldRow>
+                  {type === 'loan' && (
+                    <FormField id="lr-rate" label="Interest a year" optional error={early.errorOf('lr-rate')} helper="Leave empty for an interest-free loan.">
+                      <TextField value={rate} onChange={setRate} suffix="%" inputMode="decimal" maxLength={5} />
+                    </FormField>
+                  )}
+                  <FormField id="lr-first" label="First instalment in" required error={early.errorOf('lr-first')}>
+                    <TextField type="month" value={first} onChange={setFirst} />
+                  </FormField>
+                </FieldRow>
+                <FormField id="lr-why" label="Reason" required error={early.errorOf('lr-why')}>
+                  <TextArea rows={2} value={reason} onChange={setReason} maxLength={300} />
+                </FormField>
+                <div className="yx-pay-row">
+                  <Button variant="primary" loading={busy === 'send'} onClick={send}>
+                    Send request
+                  </Button>
+                </div>
+              </section>
+              <aside className="yx-pay-panel" aria-label="Effect on your pay">
+                <SectionTitle>Effect on your pay</SectionTitle>
+                <FactRow
+                  items={[
+                    { label: emi?.exact === false ? 'Instalment (about)' : 'Instalment', value: emi && paise(emi.emi) > 0n ? rupees(emi.emi) : '—' },
+                    { label: 'First instalment', value: MONTH_RE.test(first) ? `${monthName(first)} payslip` : '—' },
+                  ]}
+                />
+                {rules && (
+                  <DescriptionList
+                    items={[
+                      ...(rules.limit != null ? [{ label: `Company limit (${limitText})`, value: rupees(rules.limit) }] : [{ label: 'Company limit', value: 'No limit set' }]),
+                      { label: 'Still to repay on your loans', value: rupees(rules.outstanding) },
+                      ...(rules.available != null ? [{ label: 'Most you can ask for now', value: rupees(rules.available) }] : []),
+                    ]}
+                  />
+                )}
+                {over && (
+                  <InlineAlert tone="warning" title="Over the limit">
+                    The company allows at most {limitText ?? 'its limit'}, less what you still have to repay.
+                  </InlineAlert>
+                )}
+                <p className="yx-pay-note">Payroll's approver decides. The instalment is set when it is approved; with interest, the amount shown is an estimate.</p>
+              </aside>
+            </div>
+          )}
+          <section aria-label="Your loans and advances">
+            <SectionTitle>Your loans and advances</SectionTitle>
+            {!mine.length ? (
+              <p className="yx-pay-note">None yet.</p>
+            ) : (
+              <table className="yx-pay-table" aria-label="My loans and advances">
+                <thead>
+                  <tr>
+                    <th scope="col">Type</th>
+                    <th scope="col" data-num>
+                      Amount
+                    </th>
+                    <th scope="col" data-num>
+                      Instalment
+                    </th>
+                    <th scope="col" data-num>
+                      Left to repay
+                    </th>
+                    <th scope="col">From</th>
+                    <th scope="col">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {mine.map((l) => (
+                    <tr key={l.id}>
+                      <th scope="row">{LOAN_TYPE_TEXT[l.loanType] ?? l.loanType}</th>
+                      <td data-num>{rupees(l.principal)}</td>
+                      <td data-num>{rupees(l.emi)}</td>
+                      <td data-num>{rupees(l.outstanding)}</td>
+                      <td>{monthName(l.firstMonth)}</td>
+                      <td>
+                        <Badge tone={LOAN_STATE[l.status]?.tone ?? 'neutral'}>{LOAN_STATE[l.status]?.label ?? l.status}</Badge>
+                        {l.pausedUntil && <span className="yx-pay-note"> until {monthName(l.pausedUntil)}</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </section>
+        </div>
+      </PayPageState>
+    </MyPayFrame>
+  );
+}
+
+/* ------------------------------------------------------------------ PAY-26 live: Me › Get paid early (desktop) */
+
+export interface LiveEwaRequest {
+  state: LoadState;
+  onRetry?: () => void;
+  data: MyEwa | null;
+  /** Asks for the amount; the person has accepted the fee and the recovery. */
+  onDraw: (amount: string) => Promise<unknown>;
+}
+
+const DRAW_STATE: Record<EwaDrawView['status'], { label: string; tone: BadgeTone }> = {
+  requested: { label: 'Being paid', tone: 'info' },
+  paid: { label: 'Paid to your account', tone: 'success' },
+  failed: { label: 'Failed', tone: 'danger' },
+  cancelled: { label: 'Cancelled', tone: 'neutral' },
+};
+
+function LiveEwaRequest({ live }: { live: LiveEwaRequest }) {
+  const { toast } = useToast();
+  const d = live.data;
+  const [step, setStep] = useState<'form' | 'confirm'>('form');
+  const [amount, setAmount] = useState('');
+  const [agree, setAgree] = useState(false);
+  const { busy, error, run } = useRun();
+  const policy = d?.policy ?? null;
+  const quote = d?.quote ?? null;
+  const fee = policy && policy.feePayer === 'employee' ? policy.fee : '0.00';
+  const a = amount.trim();
+  const errors: FormErrorItem[] =
+    policy && quote
+      ? [
+          ...(!MONEY_RE.test(a)
+            ? [{ fieldId: 'ew-amount', message: `Enter an amount from ${rupees(policy.minAmount)} to ${rupees(quote.available)}.` }]
+            : paise(a) < paise(policy.minAmount)
+              ? [{ fieldId: 'ew-amount', message: `The least you can take is ${rupees(policy.minAmount)}.` }]
+              : paise(a) > paise(quote.available)
+                ? [{ fieldId: 'ew-amount', message: `Enter ${rupees(quote.available)} or less.` }]
+                : []),
+        ]
+      : [];
+  const early = useTooEarly(errors);
+  const agreeEarly = useTooEarly(agree ? [] : [{ fieldId: 'ew-agree', message: 'Tick the box to accept the fee and the recovery.' }]);
+  const recovered = MONEY_RE.test(a) ? fromPaise(paise(a) + paise(fee)) : '0.00';
+  const ask = () => {
+    if (agreeEarly.stop()) return;
+    void run('draw', () => live.onDraw(a)).then((ok) => {
+      if (!ok) return;
+      toast({ title: `${rupees(a)} asked for`, description: 'It is paid to your salary account and taken back from this month’s payslip.', tone: 'success' });
+      setStep('form');
+      setAmount('');
+      setAgree(false);
+      agreeEarly.reset();
+    });
+  };
+  return (
+    <MyPayFrame page="ewa">
+      <PageHeader title="Get paid early" description="Take part of the salary you have already earned this month, before payday. It is taken back in full from this month's payslip." />
+      <PayPageState state={live.state} onRetry={live.onRetry} what="earned wage access">
+        {d && (
+          <div className="yx-pay-stack">
+            {error && (
+              <InlineAlert tone="danger" title="Not sent">
+                {error}
+              </InlineAlert>
+            )}
+            {!d.open || !policy || !quote ? (
+              <InlineAlert tone="info" title="Not available right now">
+                {d.reasons.length ? d.reasons.join(' ') : 'Your company has not turned this on for your pay group.'}
+              </InlineAlert>
+            ) : (
+              <>
+                <section className="yx-pay-panel" aria-label="Available">
+                  <p className="yx-pay-muted">You can take up to</p>
+                  <p className="yx-pay-money__figure">{rupees(quote.available)}</p>
+                  <p className="yx-pay-note">
+                    Earned so far {rupees(quote.earned)}: expected net {rupees(quote.expectedNet)} ÷ {quote.monthDays} days × {quote.payableDays} days worked, less what you took already ({rupees(quote.drawn)}) and dues ({rupees(quote.deductionsDue)}).
+                  </p>
+                </section>
+                {step === 'form' ? (
+                  <>
+                    <FormField id="ew-amount" label="Amount" required helper={`${rupees(policy.minAmount)} to ${rupees(quote.available)}`} error={early.errorOf('ew-amount')}>
+                      <TextField value={amount} onChange={setAmount} prefix="₹" inputMode="decimal" maxLength={13} />
+                    </FormField>
+                    <div className="yx-pay-row">
+                      <Button variant="primary" onClick={() => !early.stop() && setStep('confirm')}>
+                        Continue
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <section className="yx-pay-disclosure" aria-label="Fee and recovery">
+                      <p>
+                        <strong>You get {rupees(a)}</strong> in your salary account.
+                      </p>
+                      <p>
+                        <strong>Fee {rupees(fee)}</strong>
+                        {policy.feePayer === 'employee' ? ', paid by you.' : '. The company pays the fee.'}
+                      </p>
+                      <p>
+                        <strong>Recovery:</strong> {rupees(recovered)} is taken from this month's payslip. If you leave, it is recovered in your final settlement.
+                      </p>
+                    </section>
+                    <FormField id="ew-agree" label="Fee and recovery" error={agreeEarly.errorOf('ew-agree')} hideLabel>
+                      <Checkbox checked={agree} onChange={setAgree} label={`I understand ${rupees(recovered)} is taken from this month's pay`} />
+                    </FormField>
+                    <div className="yx-pay-row">
+                      <Button onClick={() => setStep('form')}>Back</Button>
+                      <Button variant="primary" loading={busy === 'draw'} onClick={ask}>
+                        Get {rupees(a)}
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+            <section aria-label="Your draws">
+              <SectionTitle>Your draws</SectionTitle>
+              {!d.draws.length ? (
+                <p className="yx-pay-note">None yet.</p>
+              ) : (
+                <table className="yx-pay-table" aria-label="My draws">
+                  <thead>
+                    <tr>
+                      <th scope="col">Asked on</th>
+                      <th scope="col" data-num>
+                        Amount
+                      </th>
+                      <th scope="col" data-num>
+                        Fee
+                      </th>
+                      <th scope="col">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {d.draws.map((x) => (
+                      <tr key={x.id}>
+                        <th scope="row">{dateText(x.createdAt.slice(0, 10))}</th>
+                        <td data-num>{rupees(x.amount)}</td>
+                        <td data-num>{x.feePayer === 'employee' ? rupees(x.fee) : 'Paid by the company'}</td>
+                        <td>
+                          <Badge tone={DRAW_STATE[x.status].tone}>{DRAW_STATE[x.status].label}</Badge>
+                          {x.failureReason && <span className="yx-pay-note"> {x.failureReason}</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </section>
+          </div>
+        )}
+      </PayPageState>
+    </MyPayFrame>
+  );
+}
+
+/* ------------------------------------------------------------------ PAY-33 live: Me › My incentives */
+
+export interface LiveIncentives {
+  state: LoadState;
+  onRetry?: () => void;
+  data: MyIncentives | null;
+}
+
+function LiveIncentiveStatement({ live }: { live: LiveIncentives }) {
+  const d = live.data;
+  const results = [...(d?.results ?? [])].sort((x, y) => y.month.localeCompare(x.month));
+  const claw = d?.clawbacks ?? [];
+  const earned = sumMoney(results.map((r) => r.amount));
+  const inPayroll = sumMoney(results.filter((r) => r.sentToPayroll).map((r) => r.amount));
+  const clawed = sumMoney(claw.map((c) => c.amount));
+  return (
+    <MyPayFrame page="incentives" show={{ incentives: true }}>
+      <PageHeader title="My incentives" description="Your incentive and commission results, what went to payroll, and any clawbacks." />
+      <PayPageState state={live.state} onRetry={live.onRetry} what="your incentives">
+        {d && !results.length && !claw.length ? (
+          <EmptyState title="No incentive results yet." description="If you are on an incentive plan, your results show here once payroll records them. If you think you should be on one, ask HR." />
+        ) : (
+          d && (
+            <div className="yx-pay-stack">
+              {claw.length > 0 && (
+                <InlineAlert tone="warning" title={`Clawback: ${rupees(clawed)}`}>
+                  {claw.map((c) => `${monthName(c.month)}: ${rupees(c.amount)} (${c.reason})`).join(' · ')}. It is taken from your payslip.
+                </InlineAlert>
+              )}
+              <FactRow
+                items={[
+                  { label: 'Earned', value: rupees(earned) },
+                  { label: 'Sent to payroll', value: rupees(inPayroll) },
+                  { label: 'Being checked', value: rupees(fromPaise(paise(earned) - paise(inPayroll))) },
+                  ...(claw.length ? [{ label: 'Clawed back', value: `−${rupees(clawed)}` }] : []),
+                ]}
+              />
+              <table className="yx-pay-table" aria-label="My incentive results">
+                <thead>
+                  <tr>
+                    <th scope="col">Month</th>
+                    <th scope="col">Plan</th>
+                    <th scope="col" data-num>
+                      Quota
+                    </th>
+                    <th scope="col" data-num>
+                      Achieved
+                    </th>
+                    <th scope="col" data-num>
+                      Incentive
+                    </th>
+                    <th scope="col">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {results.map((r) => (
+                    <tr key={r.id}>
+                      <th scope="row">{monthName(r.month)}</th>
+                      <td>{r.plan ?? '—'}</td>
+                      <td data-num>{r.quota}</td>
+                      <td data-num>
+                        {r.actual}
+                        {r.workings?.attainment ? ` (${r.workings.attainment}%)` : ''}
+                      </td>
+                      <td data-num>{rupees(r.amount)}</td>
+                      <td>{r.sentToPayroll ? <Badge tone="success">In payroll</Badge> : <Badge tone="neutral">Being checked</Badge>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="yx-pay-note">Incentives are salary income; tax is deducted through your payslip.</p>
+            </div>
+          )
+        )}
+      </PayPageState>
+    </MyPayFrame>
+  );
+}
+
+/* ------------------------------------------------------------------ PAY-39 live: Performance › My pay band */
+
+/** GET performance/me/pay-band: the range of the person's grade and where they sit (never their own figure). */
+export interface MyPayBand {
+  visible: boolean;
+  currency?: string;
+  range?: { min: number; mid: number; max: number } | null;
+  position?: 'below' | 'within' | 'above';
+  quartile?: 1 | 2 | 3 | 4 | null;
+}
+
+export interface LivePayBand {
+  state: LoadState;
+  onRetry?: () => void;
+  band: MyPayBand | null;
+}
+
+function LivePayBand({ live }: { live: LivePayBand }) {
+  const b = live.band;
+  const where = !b?.position ? '' : b.position === 'within' ? `You are within the range${b.quartile ? `, in quarter ${b.quartile} of 4` : ''}.` : b.position === 'below' ? 'You are below the range.' : 'You are above the range.';
+  return (
+    <MyPayFrame page="band">
+      <PageHeader title="My pay band" description="Your grade's range and where your pay sits in it. Only you see this." />
+      <PayPageState state={live.state} onRetry={live.onRetry} what="your pay band">
+        {b && !b.visible ? (
+          <EmptyState title="Your company doesn't share pay bands." description="Ask HR if you want to know how your pay compares." />
+        ) : b && !b.range ? (
+          <EmptyState title="No range is set for your grade yet." description="HR sets the ranges. Ask HR if you have a question about your pay." />
+        ) : (
+          b?.range && (
+            <div className="yx-pay-stack">
+              <section className="yx-pay-panel" aria-label="Your position in the band">
+                <SectionTitle>Where your pay sits</SectionTitle>
+                <FactRow
+                  items={[
+                    { label: 'Band', value: `${formatINR(b.range.min)} – ${formatINR(b.range.max)}` },
+                    { label: 'Midpoint', value: formatINR(b.range.mid) },
+                    { label: 'Where you sit', value: b.position === 'within' ? `Within${b.quartile ? `, quarter ${b.quartile} of 4` : ''}` : b.position === 'below' ? 'Below the range' : 'Above the range' },
+                  ]}
+                />
+                <p>{where}</p>
+                {b.position === 'above' ? (
+                  <InlineAlert tone="info">Your pay is above the band maximum. Future increases may be smaller or paid as one-time amounts; your manager can explain.</InlineAlert>
+                ) : (
+                  <p className="yx-pay-muted">Midpoint is the market rate for a fully proficient person in this grade. Being below it is normal while you grow in the role.</p>
+                )}
+              </section>
+              <p className="yx-pay-note">You see only your own band. Other people's pay is never shown.</p>
+            </div>
+          )
+        )}
+      </PayPageState>
+    </MyPayFrame>
+  );
+}
+
+/* ================================================================== PAY-54 · My pay documents (founder decision 12) */
+
+const DOC_STATE: Record<PayDocument['status'], { label: string; tone: BadgeTone }> = {
+  issued: { label: 'Issued', tone: 'success' },
+  superseded: { label: 'Superseded', tone: 'neutral' },
+  awaiting_signature: { label: 'Waiting for the company signature', tone: 'warning' },
+};
+
+export interface LiveMyPayDocuments {
+  state: LoadState;
+  onRetry?: () => void;
+  data: PayDocument[] | null;
+  onDownload: (doc: PayDocument) => Promise<unknown>;
+  verifyUrl: (code: string) => string;
+}
+
+const SAMPLE_DOCS: PayDocument[] = [
+  { id: 'd3', kind: 'payslip', kindLabel: 'Payslip', title: 'Payslip, September 2026', referenceNo: 'KFPL/PS/2026-27/000412', status: 'issued', signature: 'none', issuedAt: '2026-09-30T12:00:00Z', verifyCode: 'K7P2-QX9M', sha256: 'a'.repeat(64), month: '2026-09', supersedesId: 'd2', supersededById: null, purged: false },
+  { id: 'd2', kind: 'payslip', kindLabel: 'Payslip', title: 'Payslip, September 2026', referenceNo: 'KFPL/PS/2026-27/000398', status: 'superseded', signature: 'none', issuedAt: '2026-09-29T12:00:00Z', verifyCode: 'M4D8-RT2C', sha256: 'b'.repeat(64), month: '2026-09', supersedesId: null, supersededById: 'd3', purged: false },
+  { id: 'd1', kind: 'revision_letter', kindLabel: 'Pay revision letter', title: 'Pay revision letter, April 2026', referenceNo: 'KFPL/RL/2026-27/000021', status: 'issued', signature: 'signed', issuedAt: '2026-04-02T10:00:00Z', verifyCode: 'H3N6-WB5Z', sha256: 'c'.repeat(64), month: null, supersedesId: null, supersededById: null, purged: false },
+];
+
+/** PAY-54 · Me › Pay documents: one's own payslips and letters as issued, with their verify codes. One implementation: the app passes `live`; stories get sample documents. */
+export function MyPayDocumentsScreen({ live, state = 'ready', variant }: { live?: LiveMyPayDocuments; state?: LoadState; /** Story only. */ variant?: 'purged' | 'download-failed' | 'empty' }) {
+  const v: LiveMyPayDocuments = live ?? {
+    state,
+    onRetry: () => undefined,
+    data: state !== 'ready' ? null : variant === 'empty' ? [] : variant === 'purged' ? [{ ...SAMPLE_DOCS[2]!, purged: true }, SAMPLE_DOCS[0]!] : SAMPLE_DOCS,
+    onDownload: variant === 'download-failed' ? () => Promise.reject(new Error('Your session ended after 30 minutes. Sign in again to download.')) : () => Promise.resolve(),
+    verifyUrl: (c) => `https://kaverifoods.yukthix.test/verify/${c}`,
+  };
+  const { toast } = useToast();
+  const { busy, error, run } = useRun();
+  const docs = v.data ?? [];
+  return (
+    <MyPayFrame page="form130">
+      <PageHeader title="My pay documents" description="Your payslips and letters as issued. Anyone you give one to can check it with its code." />
+      <PayPageState state={v.state} onRetry={v.onRetry} what="your pay documents">
+        <div className="yx-pay-stack">
+          {error && (
+            <InlineAlert tone="danger" title="Not downloaded">
+              {error}
+            </InlineAlert>
+          )}
+          {!docs.length ? (
+            <EmptyState title="No pay documents yet." description="Your payslips and letters show here once payroll issues them." />
+          ) : (
+            <table className="yx-pay-table" aria-label="Pay documents">
+              <thead>
+                <tr>
+                  <th scope="col">Document</th>
+                  <th scope="col">Reference</th>
+                  <th scope="col">Issued</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Check it</th>
+                  <th scope="col" aria-label="Actions" />
+                </tr>
+              </thead>
+              <tbody>
+                {docs.map((x) => (
+                  <tr key={x.id}>
+                    <th scope="row">{x.title}</th>
+                    <td className="yx-pay-note">{x.referenceNo}</td>
+                    <td>{dateText(x.issuedAt.slice(0, 10))}</td>
+                    <td>
+                      <Badge tone={DOC_STATE[x.status].tone}>{DOC_STATE[x.status].label}</Badge>
+                    </td>
+                    <td className="yx-pay-note">
+                      {x.verifyCode && (
+                        <Link href={v.verifyUrl(x.verifyCode)} target="_blank" rel="noreferrer">
+                          {x.verifyCode}
+                        </Link>
+                      )}
+                    </td>
+                    <td>
+                      {x.purged ? (
+                        <span className="yx-pay-note">Deleted after its retention period</span>
+                      ) : (
+                        <Button size="sm" icon={Download} loading={busy === x.id} onClick={() => void run(x.id, () => v.onDownload(x)).then((ok) => ok && toast({ title: 'Document downloaded', description: x.title, tone: 'success' }))} aria-label={`Download ${x.title}, ${x.referenceNo}`}>
+                          Download PDF
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <p className="yx-pay-note">An issued document never changes. A correction issues a new one and the old one shows as superseded.</p>
+        </div>
+      </PayPageState>
+    </MyPayFrame>
+  );
+}
+
+export interface NomineeInput {
+  employeeId: string;
+  name: string;
+  email: string;
+  validUntil: string;
+}
+
+/** PAY-54 · Add a nominee (HR, Payroll › Pay documents): they sign in to the pay portal with a code sent by email and can only read the person's pay documents. */
+export function NomineeDrawer({ onSearch, onClose, onSave }: { onSearch: (q: string) => Promise<PersonHit[]>; onClose: () => void; onSave: (x: NomineeInput) => Promise<unknown> }) {
+  const [who, setWho] = useState<PersonHit | null>(null);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [until, setUntil] = useState('');
+  const today = todayIso();
+  const errors: FormErrorItem[] = [
+    ...(!who ? [{ fieldId: 'nm-who', message: 'Choose whose documents.' }] : []),
+    ...(name.trim().length < 2 ? [{ fieldId: 'nm-name', message: "Give the nominee's name." }] : []),
+    ...(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ? [{ fieldId: 'nm-email', message: 'Give an email address like name@example.com.' }] : []),
+    ...(!/^\d{4}-\d{2}-\d{2}$/.test(until) || until <= today ? [{ fieldId: 'nm-until', message: 'Choose a day after today.' }] : []),
+  ];
+  return (
+    <PayFormDrawer
+      title="Add a nominee"
+      subtitle="They sign in to the pay portal with a code sent to this email, and can only read."
+      confirm="Add nominee"
+      done="Nominee added. They can sign in to the pay portal with a code sent to their email."
+      errors={errors}
+      onClose={onClose}
+      onSave={() => onSave({ employeeId: who!.id, name: name.trim(), email: email.trim(), validUntil: until })}
+    >
+      {(errorOf) => (
+        <>
+          <FindPerson id="nm-who" label="Whose documents" value={who} onChange={setWho} onSearch={onSearch} error={errorOf('nm-who')} />
+          <FormField id="nm-name" label="Nominee's name" required error={errorOf('nm-name')}>
+            <TextField value={name} onChange={setName} maxLength={200} />
+          </FormField>
+          <FormField id="nm-email" label="Nominee's email" required error={errorOf('nm-email')}>
+            <TextField type="email" value={email} onChange={setEmail} maxLength={200} />
+          </FormField>
+          <FormField id="nm-until" label="Access until" required error={errorOf('nm-until')}>
+            <TextField type="date" value={until} onChange={setUntil} />
+          </FormField>
+        </>
+      )}
+    </PayFormDrawer>
   );
 }

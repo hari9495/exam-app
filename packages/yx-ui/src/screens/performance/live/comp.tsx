@@ -16,7 +16,7 @@ import { DataTable, type TableColumn } from '../../../components/table';
 import { dayKey } from '../../../lib/dates';
 import { errorText, useRun } from '../../org/org-kit';
 import { LivePage, dateText } from '../../time/live/kit';
-import type { Choice, CompCycle, CompMatrix, CompProposal, CompSheet, LoadState, MyPayBand, PayEquity } from './types';
+import type { Choice, CompCycle, CompMatrix, CompProposal, CompSheet, LoadState, PayEquity } from './types';
 
 // Performance batch PM7, wired (M06-BUILD-DESIGN §12; PRF-10 comp review, PAY-39 my pay band, YX-PERF-18 pay equity).
 // Amounts are rupees per year. A manager sees their team's pay only inside a comp cycle; every look is recorded.
@@ -370,22 +370,5 @@ function BudgetsDialog({ departments, current, onClose, onSave }: { departments:
         <NumberField value={bonus} onChange={setBonus} min={0} decimals />
       </FormField>
     </ConfirmDialog>
-  );
-}
-
-// ------------------------------------------------------------------------------------------ my pay band (PAY-39)
-
-export function MyPayBandScreen({ state, onRetry, band }: { state: LoadState; onRetry?: () => void; band: MyPayBand | null }) {
-  return (
-    <LivePage title="My pay band" description="Your grade's range and where you sit in it. Only you see this." state={state} onRetry={onRetry} what="your pay band">
-      {band && !band.visible && <EmptyState compact title="Your company does not show pay bands." />}
-      {band?.visible && !band.range && <EmptyState compact title="No range is set for your grade yet." />}
-      {band?.visible && band.range && (
-        <Card title={`${inr(band.range.min)} to ${inr(band.range.max)}`}>
-          <Text as="p">{`Midpoint ${inr(band.range.mid)}.`}</Text>
-          <Text as="p">{band.position === 'within' ? `You are within the range, in quarter ${band.quartile} of 4.` : band.position === 'below' ? 'You are below the range.' : 'You are above the range.'}</Text>
-        </Card>
-      )}
-    </LivePage>
   );
 }

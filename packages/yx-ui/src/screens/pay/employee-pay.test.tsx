@@ -1,9 +1,10 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { PayslipViewerScreen, TaxWorkspaceScreen, payDiff, type LivePayslips, type LiveTax, type MyTaxWorkspace } from './employee-pay';
+import { EwaRequestScreen, IncentiveStatementScreen, LoanRequestScreen, MyPayDocumentsScreen, NomineeDrawer, PayBandScreen, PayslipViewerScreen, TaxWorkspaceScreen, payDiff, previewEmi, type LiveEwaRequest, type LiveLoanRequest, type LivePayslips, type LiveTax, type LoanRules, type MyTaxWorkspace } from './employee-pay';
 import { DETAIL, MY_PAYSLIPS, PREVIOUS } from './live/fixtures-5j';
-import { DECLARATIONS } from './live/fixtures-ops';
+import { DECLARATIONS, LOANS } from './live/fixtures-ops';
+import { PAY_DOCUMENTS } from './live/fixtures-5ab';
 
 // The employee's designed Pay screens with the live app's data (moved from live/pay-5j-live.test.tsx and
 // live/pay-ops-live.test.tsx, plus the new paths): positive and negative cases per page.
@@ -240,5 +241,175 @@ describe('PAY-22 / PAY-41 · Me › Tax (live)', () => {
     unmount();
     render(<TaxWorkspaceScreen live={live({ state: 'loading', workspace: null })} />);
     expect(screen.getByRole('status', { name: 'Loading your tax workspace' })).toBeInTheDocument();
+  });
+});
+
+describe('PAY-18 · Me › Loans and advances (live, founder decision 8)', () => {
+  const RULES: LoanRules = { eligible: true, reason: null, probationEndsOn: null, monthlyGross: '40000.00', maxGrossMonths: 2, limit: '80000.00', outstanding: '5000.00', available: '75000.00' };
+  const live = (over: Partial<LiveLoanRequest> = {}): LiveLoanRequest => ({ state: 'ready', loans: LOANS, rules: RULES, onRequest: fn(), ...over });
+
+  it('the instalment preview is exact for an interest-free advance (rounded up to the rupee, as the API)', () => {
+    expect(previewEmi('10000', '', 3)).toEqual({ emi: '3334.00', exact: true });
+    expect(previewEmi('12000', '', 4)).toEqual({ emi: '3000.00', exact: true });
+    expect(previewEmi('100000', '12', 12).exact).toBe(false);
+  });
+
+  it('shows only my loans and the company limit, then sends a request within it', async () => {
+    const onRequest = fn();
+    render(<LoanRequestScreen live={live({ onRequest })} />);
+    expect(within(screen.getByRole('table', { name: 'My loans and advances' })).getAllByRole('row')).toHaveLength(2);
+    expect(screen.getByText("Company limit (2 months' gross pay)")).toBeInTheDocument();
+    expect(screen.getAllByText('₹75,000.00').length).toBeGreaterThan(0);
+    await ue.type(screen.getByRole('textbox', { name: /Amount/ }), '75000');
+    await ue.type(screen.getByRole('textbox', { name: /Number of instalments/ }), '5');
+    await ue.type(screen.getByRole('textbox', { name: /Reason/ }), 'Medical bills');
+    await ue.click(screen.getByRole('button', { name: 'Send request' }));
+    await waitFor(() => expect(onRequest).toHaveBeenCalledWith(expect.objectContaining({ loanType: 'advance', principal: '75000', instalments: 5, reason: 'Medical bills' })));
+    expect((onRequest.mock.calls[0] as unknown[])[0]).not.toHaveProperty('employeeId');
+  });
+
+  it('over the limit: refused before sending, with the reason; pressed too early the amount takes focus', async () => {
+    const onRequest = fn();
+    render(<LoanRequestScreen live={live({ onRequest })} />);
+    await ue.click(screen.getByRole('button', { name: 'Send request' }));
+    expect(screen.getByRole('textbox', { name: /Amount/ })).toHaveFocus();
+    await ue.type(screen.getByRole('textbox', { name: /Amount/ }), '75000.01');
+    await ue.type(screen.getByRole('textbox', { name: /Number of instalments/ }), '5');
+    await ue.type(screen.getByRole('textbox', { name: /Reason/ }), 'Medical bills');
+    await ue.click(screen.getByRole('button', { name: 'Send request' }));
+    expect(onRequest).not.toHaveBeenCalled();
+    expect(screen.getByText(/Enter ₹75,000.00 or less/)).toBeInTheDocument();
+    expect(screen.getByText('Over the limit')).toBeInTheDocument();
+  });
+
+  it('a refusal from the server is shown in plain words', async () => {
+    const onRequest = vi.fn(async () => Promise.reject(new Error("The most you can ask for is ₹70,000.00: 2 months' gross pay, less ₹10,000.00 still to repay.")));
+    render(<LoanRequestScreen live={live({ onRequest })} />);
+    await ue.type(screen.getByRole('textbox', { name: /Amount/ }), '72000');
+    await ue.type(screen.getByRole('textbox', { name: /Number of instalments/ }), '6');
+    await ue.type(screen.getByRole('textbox', { name: /Reason/ }), 'School fees');
+    await ue.click(screen.getByRole('button', { name: 'Send request' }));
+    expect(await screen.findByText(/The most you can ask for is ₹70,000.00/)).toBeInTheDocument();
+  });
+
+  it('on probation: no form, the reason and the day probation ends', () => {
+    render(<LoanRequestScreen live={live({ rules: { ...RULES, eligible: false, reason: 'You can ask for a loan or advance after your probation is confirmed. Your probation ends on 14 Dec 2026.', probationEndsOn: '2026-12-14' } })} />);
+    expect(screen.getByText(/after your probation is confirmed/)).toBeInTheDocument();
+    expect(screen.getByText(/Your probation ends on 14 Dec 2026. The company allows/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Send request' })).not.toBeInTheDocument();
+  });
+});
+
+describe('PAY-26 · Me › Get paid early (live)', () => {
+  const DATA = { open: true, reasons: [], policy: { minAmount: '500.00', maxAmount: '20000.00', fee: '49.00', feePayer: 'employee' as const, drawsPerMonth: 3 }, quote: { expectedNet: '30000.00', payableDays: '12.00', monthDays: 30, drawn: '0.00', deductionsDue: '0.00', earned: '12000.00', available: '6000.00' }, draws: [] };
+  const live = (over: Partial<LiveEwaRequest> = {}): LiveEwaRequest => ({ state: 'ready', data: DATA, onDraw: fn(), ...over });
+
+  it('a draw stays within what is available and needs the recovery accepted, with the exact amount taken back', async () => {
+    const onDraw = fn();
+    render(<EwaRequestScreen live={live({ onDraw })} />);
+    await ue.type(screen.getByRole('textbox', { name: /Amount/ }), '7000');
+    await ue.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(screen.getByText('Enter ₹6,000.00 or less.')).toBeInTheDocument();
+    await ue.clear(screen.getByRole('textbox', { name: /Amount/ }));
+    await ue.type(screen.getByRole('textbox', { name: /Amount/ }), '5000');
+    await ue.click(screen.getByRole('button', { name: 'Continue' }));
+    await ue.click(screen.getByRole('button', { name: 'Get ₹5,000.00' }));
+    expect(onDraw).not.toHaveBeenCalled();
+    expect(screen.getByText('Tick the box to accept the fee and the recovery.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('checkbox', { name: /₹5,049.00 is taken from this month's pay/ }));
+    await ue.click(screen.getByRole('button', { name: 'Get ₹5,000.00' }));
+    await waitFor(() => expect(onDraw).toHaveBeenCalledWith('5000'));
+  });
+
+  it('not open: the reasons; and the error state', () => {
+    const { unmount } = render(<EwaRequestScreen live={live({ data: { ...DATA, open: false, reasons: ['Draws close 3 days before the payroll cut-off.'] } })} />);
+    expect(screen.getByText('Draws close 3 days before the payroll cut-off.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
+    unmount();
+    render(<EwaRequestScreen live={live({ state: 'error', data: null })} />);
+    expect(screen.getByText("We couldn't load earned wage access.")).toBeInTheDocument();
+  });
+});
+
+describe('PAY-33 · Me › My incentives (live)', () => {
+  it('results with what went to payroll and clawbacks, exact totals', () => {
+    render(
+      <IncentiveStatementScreen
+        live={{
+          state: 'ready',
+          data: {
+            results: [
+              { id: 'r1', plan: 'South sales 2026-27', month: '2026-09', quota: '100000.00', actual: '120000.00', amount: '26000.10', sentToPayroll: true, workings: { attainment: '120.00' } },
+              { id: 'r2', plan: 'South sales 2026-27', month: '2026-10', quota: '100000.00', actual: '90000.00', amount: '9000.20', sentToPayroll: false, workings: { attainment: '90.00' } },
+            ],
+            clawbacks: [{ id: 'k1', month: '2026-10', amount: '2000.00', reason: 'Order 4471 cancelled within 90 days' }],
+          },
+        }}
+      />,
+    );
+    expect(screen.getByText('₹35,000.30')).toBeInTheDocument();
+    expect(screen.getByText('Clawback: ₹2,000.00')).toBeInTheDocument();
+    expect(screen.getByText('₹9,000.20', { selector: 'dd, dd *' })).toBeInTheDocument();
+  });
+
+  it('not on a plan: the empty state; loading has a status', () => {
+    const { unmount } = render(<IncentiveStatementScreen live={{ state: 'ready', data: { results: [], clawbacks: [] } }} />);
+    expect(screen.getByText('No incentive results yet.')).toBeInTheDocument();
+    unmount();
+    render(<IncentiveStatementScreen live={{ state: 'loading', data: null }} />);
+    expect(screen.getByRole('status', { name: 'Loading your incentives' })).toBeInTheDocument();
+  });
+});
+
+describe('PAY-39 · My pay band (live)', () => {
+  it('says where I sit, or that there is no range, or that bands are not shared', () => {
+    const { rerender } = render(<PayBandScreen live={{ state: 'ready', band: { visible: true, currency: 'INR', range: { min: 600_000, mid: 800_000, max: 1_000_000 }, position: 'within', quartile: 3 } }} />);
+    expect(screen.getByText('You are within the range, in quarter 3 of 4.')).toBeInTheDocument();
+    rerender(<PayBandScreen live={{ state: 'ready', band: { visible: true, range: null } }} />);
+    expect(screen.getByText('No range is set for your grade yet.')).toBeInTheDocument();
+    rerender(<PayBandScreen live={{ state: 'ready', band: { visible: false } }} />);
+    expect(screen.getByText("Your company doesn't share pay bands.")).toBeInTheDocument();
+  });
+
+  it('error with retry', async () => {
+    const onRetry = vi.fn();
+    render(<PayBandScreen live={{ state: 'error', onRetry, band: null }} />);
+    await ue.click(screen.getByRole('button', { name: /Try again|Retry/ }));
+    expect(onRetry).toHaveBeenCalled();
+  });
+});
+
+describe('PAY-54 · My pay documents and the nominee drawer', () => {
+  const MINE = PAY_DOCUMENTS.documents.filter((x) => x.employeeId === 'e-arjun').map(({ person: _p, ...x }) => x);
+
+  it('lists my documents with their verify codes; a deleted one cannot be downloaded; a refused download says why', async () => {
+    const onDownload = vi.fn(async () => Promise.reject(new Error('Your session ended. Sign in again to download.')));
+    render(<MyPayDocumentsScreen live={{ state: 'ready', data: [{ ...MINE[0]!, purged: true }, ...MINE.slice(1)], onDownload, verifyUrl: (c) => `/yx/verify/${c}` }} />);
+    expect(screen.getByText('Deleted after its retention period')).toBeInTheDocument();
+    await ue.click(screen.getAllByRole('button', { name: /^Download/ })[0]!);
+    expect(await screen.findByText('Your session ended. Sign in again to download.')).toBeInTheDocument();
+  });
+
+  it('none yet', () => {
+    render(<MyPayDocumentsScreen live={{ state: 'ready', data: [], onDownload: fn(), verifyUrl: (c) => c }} />);
+    expect(screen.getByText('No pay documents yet.')).toBeInTheDocument();
+  });
+
+  it('nominee: whose documents, an email and a day after today', async () => {
+    const onSave = fn();
+    render(<NomineeDrawer onSearch={async () => [{ id: 'p1', name: 'Arjun Kulkarni', employeeCode: 'KF-0142' }]} onClose={vi.fn()} onSave={onSave} />);
+    await ue.click(screen.getByRole('button', { name: 'Add nominee' }));
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.getByText('Choose whose documents.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Search' }));
+    await ue.click(await screen.findByRole('button', { name: /Arjun Kulkarni/ }));
+    await ue.type(screen.getByRole('textbox', { name: /Nominee's name/ }), 'Lakshmi Kulkarni');
+    await ue.type(screen.getByRole('textbox', { name: /Nominee's email/ }), 'lakshmi@example');
+    await ue.type(screen.getByLabelText(/Access until/), '2099-12-31');
+    await ue.click(screen.getByRole('button', { name: 'Add nominee' }));
+    expect(onSave).not.toHaveBeenCalled();
+    await ue.type(screen.getByRole('textbox', { name: /Nominee's email/ }), '.com');
+    await ue.click(screen.getByRole('button', { name: 'Add nominee' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ employeeId: 'p1', name: 'Lakshmi Kulkarni', email: 'lakshmi@example.com', validUntil: '2099-12-31' }));
   });
 });

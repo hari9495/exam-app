@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { CompCyclesScreen, CompSheetScreen, MyPayBandScreen, type CompSheetScreenProps } from './comp';
+import { CompCyclesScreen, CompSheetScreen, type CompSheetScreenProps } from './comp';
 import type { CompCycle, CompProposal } from './types';
 
 // Comp review, wired (batch PM7; PRF-10, PAY-39, YX-PERF-18). In the affordance guard set ('screens-performance-live').
@@ -27,4 +27,3 @@ const sheet: CompSheetScreenProps = {
 export const Cycles: S = { render: () => <CompCyclesScreen state="ready" cycles={[cycle]} canManage matrices={[{ id: 'm1', name: 'Merit matrix', axis: 'compa_ratio', status: 'active', starter: true, version: 1, cells: [] }]} entities={[{ value: 'le1', label: 'Kaveri Foods' }]} reviewCycles={[{ value: 'r1', label: 'FY26 annual' }]} onStarterMatrix={ok} onCreate={ok} onOpen={noop} /> };
 export const ManagerSheet: S = { render: () => <CompSheetScreen {...sheet} /> };
 export const HrSheetWithEquity: S = { render: () => <CompSheetScreen {...sheet} sheet={{ ...sheet.sheet!, role: 'hr', can: { edit: true, submit: false, apply: true } }} equity={{ dimension: 'gender', before: [{ group: 'Female', count: 12, suppressed: false, meanGapPct: -6.2, medianGapPct: -4.1, adjustedGapPct: -1.3 }, { group: 'Other', count: null, suppressed: true }], after: [{ group: 'Female', count: 12, suppressed: false, meanGapPct: -4.8, medianGapPct: -3.0, adjustedGapPct: -0.6 }, { group: 'Other', count: null, suppressed: true }], flagged: [{ employeeId: 'e9', employee: 'Meena Pillai' }], threshold: 10, min: 5 }} onEquity={ok} /> };
-export const MyBand: S = { render: () => <MyPayBandScreen state="ready" band={{ visible: true, currency: 'INR', range: { min: 600_000, mid: 800_000, max: 1_000_000 }, position: 'within', quartile: 3 }} /> };

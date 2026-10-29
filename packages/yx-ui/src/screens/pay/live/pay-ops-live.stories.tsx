@@ -11,16 +11,10 @@ const meta: Meta = { title: 'Screens/Pay/Live ops', parameters: { layout: 'fulls
 export default meta;
 type S = StoryObj;
 
-export const Loans: S = { name: 'PAY-17 · Loans and advances', render: () => <LoansScreen state="ready" loans={LOANS} nameOf={nameOf} can={{ manage: true }} onSearch={search} onRequest={ok} onChange={ok} /> };
 
-export const MyLoans: S = { name: 'PAY-18 · My loans', render: () => <LoansScreen state="ready" loans={LOANS} nameOf={nameOf} mine can={{ manage: false }} onRequest={ok} onChange={ok} /> };
 
-export const Declarations: S = {
-  name: 'PAY-22 · My tax declarations',
-  render: () => <MyDeclarationsScreen state="ready" data={DECLARATIONS} certificates={[{ id: 'c3', taxYear: '2025-26', form: 'form16', payDocumentId: 'pd1' }]} onDeclare={ok} onProof={ok} onPartA={ok} />,
 };
 
-export const Proofs: S = { name: 'PAY-23 · Proof checking', render: () => <ProofCheckScreen state="ready" lines={PROOFS} status="pending" onStatus={() => undefined} onFile={ok} onDecide={ok} /> };
 
 export const Registers: S = {
   name: 'CMP-09 · Statutory registers',

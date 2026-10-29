@@ -6,7 +6,6 @@ import { EmptyState, InlineAlert } from '../../../components/feedback';
 import { ErrorSummary, FormField, useSaveErrors, type FormErrorItem } from '../../../components/field';
 import { TextArea, TextField } from '../../../components/inputs';
 import { Segment } from '../../../components/segment';
-import { Select } from '../../../components/select';
 import { Card, Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/shell';
 import { useRun } from '../../org/org-kit';
 import { LivePage, dateText } from '../../time/live/kit';
@@ -21,16 +20,7 @@ import type { SetupEntity } from './types-5b';
 import type {
   AdvisoryView,
   CertificateRow,
-  DeclarationInput,
-  DeclarationLine,
-  LoanChangeInput,
-  LoanRequestInput,
-  LoanView,
-  MyCertificate,
-  MyDeclarations,
   PartAImport,
-  ProofDecision,
-  ProofQueueLine,
   RegisterRow,
 } from './types-ops';
 
@@ -38,7 +28,6 @@ import type {
 // cheque register, payment modes, loans and advances, payslip queries for payroll, tax declarations with proofs and their
 // checking, statutory registers, advisories, Part A and the year-end certificates, and adding a nominee for the pay portal.
 
-const MONEY = /^\d{1,10}(\.\d{1,2})?$/;
 const MONTH = /^\d{4}-\d{2}$/;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -52,16 +41,13 @@ function Failed({ error }: { error: string | null }) {
 
 /** A drawer with a form: errors show only after Save is pressed (no red while typing). */
 export function FormDrawer({ title, subtitle, confirm, errors, onClose, onSave, children }: { title: string; subtitle?: string; confirm: string; errors: FormErrorItem[]; onClose: () => void; onSave: () => Promise<unknown>; children: (errorOf: (id: string) => string | undefined) => ReactNode }) {
-  const { busy, error, run } = useRun();
   const save = useSaveErrors(errors);
-  return (
     <Drawer
       open
       onOpenChange={(o) => !o && onClose()}
       title={title}
       subtitle={subtitle}
       footer={
-        <>
           <Button onClick={onClose}>Cancel</Button>
           <Button
             variant="primary"
@@ -80,9 +66,7 @@ export function FormDrawer({ title, subtitle, confirm, errors, onClose, onSave, 
           >
             {confirm}
           </Button>
-        </>
       }
-    >
       <div className="yx-tim-form">
         <ErrorSummary errors={save.shownErrors} />
         <Failed error={error} />
@@ -94,21 +78,16 @@ export function FormDrawer({ title, subtitle, confirm, errors, onClose, onSave, 
 
 /** Asks before a step that cannot be undone and has nothing to type (freezing a register). */
 function ConfirmDrawer({ title, children, confirm, onClose, onConfirm }: { title: string; children: ReactNode; confirm: string; onClose: () => void; onConfirm: () => Promise<unknown> }) {
-  const { busy, error, run } = useRun();
-  return (
     <Drawer
       open
       onOpenChange={(o) => !o && onClose()}
       title={title}
       footer={
-        <>
           <Button onClick={onClose}>Cancel</Button>
           <Button variant="primary" loading={busy === 'go'} onClick={() => void run('go', async () => (await onConfirm(), onClose()))}>
             {confirm}
           </Button>
-        </>
       }
-    >
       <div className="yx-tim-stack">
         <Failed error={error} />
         {children}
@@ -117,564 +96,55 @@ function ConfirmDrawer({ title, children, confirm, onClose, onConfirm }: { title
   );
 }
 
-// ------------------------------------------------------------------------------------------ loans (PAY-17, PAY-18)
 
-// An 'expense' loan recovers an overdue expense advance from salary (M05 §11.3), never a salary advance.
-export const LOAN_TYPE: Record<string, string> = { advance: 'Salary advance', loan: 'Loan', expense: 'Expense advance recovery' };
 
-const LOAN_STATUS: Record<string, { label: string; tone: BadgeTone }> = {
-  requested: { label: 'Waiting for approval', tone: 'warning' },
-  active: { label: 'Being repaid', tone: 'info' },
-  paused: { label: 'Paused', tone: 'warning' },
-  closed: { label: 'Closed', tone: 'success' },
-  rejected: { label: 'Turned down', tone: 'neutral' },
 };
 
-export interface LoansScreenProps {
-  state: LoadState;
-  onRetry?: () => void;
-  loans: LoanView[] | null;
-  nameOf: (employeeId: string) => string;
-  /** The employee's own page shows only their loans and asks only for themselves. */
-  mine?: boolean;
-  can: { manage: boolean };
-  onSearch?: (q: string) => Promise<PersonHit[]>;
-  onRequest: (x: LoanRequestInput) => Promise<unknown>;
-  onChange: (loan: LoanView, x: LoanChangeInput) => Promise<unknown>;
 }
 
-/** Salary advances and loans: asked for, approved in Approvals, recovered from pay; payroll pauses, reschedules or closes. */
-export function LoansScreen(p: LoansScreenProps) {
-  const [asking, setAsking] = useState(false);
-  const [changing, setChanging] = useState<LoanView | null>(null);
-  const rows = (p.loans ?? []).filter((l) => (p.mine ? l.mine : true));
-  return (
-    <LivePage
-      title={p.mine ? 'My loans and advances' : 'Loans and advances'}
-      description="An advance or loan is approved by payroll and recovered in instalments from pay. On exit, what is left is recovered in the final settlement."
-      state={p.state}
-      onRetry={p.onRetry}
-      what="loans"
-      grantedBy="your payroll admin"
-      actions={<Button variant="primary" onClick={() => setAsking(true)}>{p.mine ? 'Ask for an advance or loan' : 'New advance or loan'}</Button>}
-    >
-      {p.loans && !rows.length && <EmptyState title="No loans or advances" description={p.mine ? 'Ask for one and payroll approves it.' : 'Requests appear here, and in Approvals for the approver.'} />}
-      {rows.length > 0 && (
-        <table className="yx-tim-table" aria-label="Loans and advances">
-          <thead>
-            <tr>
-              {!p.mine && <th scope="col">Person</th>}
-              <th scope="col">Type</th>
-              <th scope="col">Amount</th>
-              <th scope="col">Instalment</th>
-              <th scope="col">Left to repay</th>
-              <th scope="col">From</th>
-              <th scope="col">Status</th>
-              {!p.mine && (
-                <th scope="col">
-                  <span className="yx-visually-hidden">Change</span>
-                </th>
-              )}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((l) => (
-              <tr key={l.id}>
-                {!p.mine && <th scope="row">{p.nameOf(l.employeeId)}</th>}
-                <td>{LOAN_TYPE[l.loanType] ?? l.loanType}</td>
-                <td>{rupees(l.principal)}</td>
-                <td>{rupees(l.emi)}</td>
-                <td>{rupees(l.outstanding)}</td>
-                <td>{monthText(l.firstMonth)}</td>
-                <td>
-                  <Badge tone={LOAN_STATUS[l.status]?.tone ?? 'neutral'}>{LOAN_STATUS[l.status]?.label ?? l.status}</Badge>
-                  {l.pausedUntil && <span className="yx-tim-note"> until {monthText(l.pausedUntil)}</span>}
-                </td>
-                {!p.mine && (
-                  <td>
-                    {p.can.manage && !l.mine && ['active', 'paused'].includes(l.status) && (
-                      <Button size="sm" onClick={() => setChanging(l)} aria-label={`Change the loan of ${p.nameOf(l.employeeId)}`}>
-                        Change
-                      </Button>
-                    )}
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      {asking && <LoanDrawer forOthers={!p.mine && p.can.manage} onSearch={p.onSearch} onClose={() => setAsking(false)} onSave={p.onRequest} />}
-      {changing && <LoanChangeDrawer loan={changing} who={p.nameOf(changing.employeeId)} onClose={() => setChanging(null)} onSave={(x) => p.onChange(changing, x)} />}
-    </LivePage>
   );
 }
 
-function LoanDrawer({ forOthers, onSearch, onClose, onSave }: { forOthers: boolean; onSearch?: LoansScreenProps['onSearch']; onClose: () => void; onSave: LoansScreenProps['onRequest'] }) {
-  const [whose, setWhose] = useState<'me' | 'other'>(forOthers ? 'other' : 'me');
-  const [who, setWho] = useState<PersonHit | null>(null);
-  const [type, setType] = useState<'advance' | 'loan'>('advance');
-  const [amount, setAmount] = useState('');
-  const [count, setCount] = useState('');
-  const [rate, setRate] = useState('');
-  const [first, setFirst] = useState('');
-  const [reason, setReason] = useState('');
-  const n = Number(count);
-  const errors: FormErrorItem[] = [
-    ...(whose === 'other' && !who ? [{ fieldId: 'ln-who', message: 'Choose the person.' }] : []),
-    ...(!MONEY.test(amount.trim()) || Number(amount) <= 0 ? [{ fieldId: 'ln-amount', message: 'Give the amount in rupees.' }] : []),
-    ...(!Number.isInteger(n) || n < 1 || n > 120 ? [{ fieldId: 'ln-count', message: 'Instalments: 1 to 120.' }] : []),
-    ...(type === 'loan' && rate.trim() && !/^\d{1,2}(\.\d{1,2})?$/.test(rate.trim()) ? [{ fieldId: 'ln-rate', message: 'Interest is a yearly percentage, like 8.5.' }] : []),
-    ...(!MONTH.test(first) ? [{ fieldId: 'ln-first', message: 'Choose the month of the first instalment.' }] : []),
-    ...(reason.trim().length < 5 ? [{ fieldId: 'ln-why', message: 'Why: at least 5 letters.' }] : []),
-  ];
-  return (
-    <FormDrawer
-      title="Advance or loan"
-      subtitle="Sent to payroll's approver; recovered from pay once approved."
-      confirm="Send for approval"
-      errors={errors}
-      onClose={onClose}
-      onSave={() =>
-        onSave({
-          ...(whose === 'other' ? { employeeId: who!.id } : {}),
-          loanType: type,
-          principal: amount.trim(),
-          instalments: n,
-          ...(type === 'loan' && rate.trim() ? { interestRate: rate.trim() } : {}),
-          firstMonth: first,
-          reason: reason.trim(),
-        })
       }
-    >
-      {(errorOf) => (
-        <>
-          {forOthers && (
-            <FormField id="ln-whose" label="For">
-              <Segment
-                label="For"
-                value={whose}
-                onChange={setWhose}
-                options={[
-                  { value: 'other', label: 'Someone else' },
-                  { value: 'me', label: 'Myself' },
-                ]}
               />
-            </FormField>
-          )}
-          {whose === 'other' && onSearch && <PersonPicker id="ln-who" label="Person" value={who} onChange={setWho} onSearch={onSearch} error={errorOf('ln-who')} />}
-          <FormField id="ln-type" label="Type">
-            <Segment
-              label="Type"
-              value={type}
-              onChange={setType}
-              options={[
-                { value: 'advance', label: 'Salary advance' },
-                { value: 'loan', label: 'Loan' },
-              ]}
             />
-          </FormField>
-          <FormField id="ln-amount" label="Amount" required error={errorOf('ln-amount')}>
-            <TextField value={amount} onChange={setAmount} prefix="₹" inputMode="decimal" maxLength={13} />
-          </FormField>
-          <FormField id="ln-count" label="Instalments" required error={errorOf('ln-count')}>
-            <TextField value={count} onChange={setCount} inputMode="numeric" maxLength={3} />
-          </FormField>
-          {type === 'loan' && (
-            <FormField id="ln-rate" label="Interest a year" optional error={errorOf('ln-rate')} helper="Leave empty for an interest-free loan.">
-              <TextField value={rate} onChange={setRate} suffix="%" inputMode="decimal" maxLength={5} />
-            </FormField>
-          )}
-          <FormField id="ln-first" label="First instalment in" required error={errorOf('ln-first')}>
-            <TextField type="month" value={first} onChange={setFirst} />
-          </FormField>
-          <FormField id="ln-why" label="Why" required error={errorOf('ln-why')}>
-            <TextArea value={reason} onChange={setReason} rows={2} maxLength={300} />
-          </FormField>
-        </>
-      )}
-    </FormDrawer>
   );
 }
 
-function LoanChangeDrawer({ loan, who, onClose, onSave }: { loan: LoanView; who: string; onClose: () => void; onSave: (x: LoanChangeInput) => Promise<unknown> }) {
-  const [kind, setKind] = useState<LoanChangeInput['kind']>('pause');
-  const [until, setUntil] = useState('');
-  const [emi, setEmi] = useState('');
-  const [reason, setReason] = useState('');
-  const errors: FormErrorItem[] = [
-    ...(kind === 'pause' && !MONTH.test(until) ? [{ fieldId: 'lc-until', message: 'Choose the month instalments start again.' }] : []),
-    ...(kind === 'reschedule' && (!MONEY.test(emi.trim()) || Number(emi) <= 0 || Number(emi) > Number(loan.outstanding)) ? [{ fieldId: 'lc-emi', message: 'A new instalment above zero and not more than what is left.' }] : []),
-    ...(reason.trim().length < 5 ? [{ fieldId: 'lc-why', message: 'Why: at least 5 letters.' }] : []),
-  ];
-  return (
-    <FormDrawer
-      title={`Change ${who}'s ${(LOAN_TYPE[loan.loanType] ?? 'loan').toLowerCase()}`}
-      subtitle={`${rupees(loan.outstanding)} left, ${rupees(loan.emi)} a month`}
-      confirm="Save change"
-      errors={errors}
-      onClose={onClose}
-      onSave={() => onSave({ kind, reason: reason.trim(), ...(kind === 'pause' ? { pauseUntil: until } : {}), ...(kind === 'reschedule' ? { emi: emi.trim() } : {}) })}
-    >
-      {(errorOf) => (
-        <>
-          <FormField id="lc-kind" label="Change">
-            <Segment
-              label="Change"
-              value={kind}
-              onChange={setKind}
-              options={[
-                { value: 'pause', label: 'Pause' },
-                { value: 'reschedule', label: 'New instalment' },
-                { value: 'preclose', label: 'Close now' },
-              ]}
             />
-          </FormField>
-          {kind === 'pause' && (
-            <FormField id="lc-until" label="Paused until" required error={errorOf('lc-until')}>
-              <TextField type="month" value={until} onChange={setUntil} />
-            </FormField>
-          )}
-          {kind === 'reschedule' && (
-            <FormField id="lc-emi" label="New instalment" required error={errorOf('lc-emi')}>
-              <TextField value={emi} onChange={setEmi} prefix="₹" inputMode="decimal" maxLength={13} />
-            </FormField>
-          )}
-          {kind === 'preclose' && <InlineAlert tone="warning" title="Closing writes off nothing">The balance is marked repaid now; collect it outside payroll first.</InlineAlert>}
-          <FormField id="lc-why" label="Why" required error={errorOf('lc-why')}>
-            <TextArea value={reason} onChange={setReason} rows={2} maxLength={300} />
-          </FormField>
-        </>
-      )}
-    </FormDrawer>
   );
 }
 
-// ------------------------------------------------------------------------------------------ tax declarations and proofs (PAY-22, PAY-23)
 
-const SUBJECT: Record<string, string> = {
-  hra: 'Rent paid (HRA)',
-  sec80c: 'Investments and payments (80C)',
-  sec80ccd1b: 'Own NPS contribution (80CCD(1B))',
-  sec80ccd2: "Employer's NPS contribution (80CCD(2))",
-  sec80d_self: 'Health insurance, self and family (80D)',
-  sec80d_self_senior: 'Health insurance, self and family, senior citizen (80D)',
-  sec80d_parents: 'Health insurance, parents (80D)',
-  sec80d_parents_senior: 'Health insurance, senior citizen parents (80D)',
-  sec80e: 'Education loan interest (80E)',
-  sec24b: 'Home loan interest (24(b))',
 };
-export const subjectText = (key: string, section?: string | null) => SUBJECT[key] ?? (section ? `${key} (${section})` : key);
 
-const PROOF: Record<string, { label: string; tone: BadgeTone }> = {
-  none: { label: 'No proof yet', tone: 'neutral' },
-  pending: { label: 'Proof being checked', tone: 'warning' },
-  approved: { label: 'Accepted', tone: 'success' },
-  partly: { label: 'Partly accepted', tone: 'info' },
-  rejected: { label: 'Not accepted', tone: 'danger' },
 };
-const proofBadge = (s: string) => <Badge tone={PROOF[s]?.tone ?? 'neutral'}>{PROOF[s]?.label ?? s}</Badge>;
 
-export interface MyDeclarationsScreenProps {
-  state: LoadState;
-  onRetry?: () => void;
-  data: MyDeclarations | null;
-  certificates: MyCertificate[] | null;
-  onDeclare: (line: DeclarationInput) => Promise<unknown>;
-  onProof: (lineId: string, file: File) => Promise<unknown>;
-  onPartA: (c: MyCertificate) => Promise<unknown>;
 }
 
-/** The employee's tax declarations and proofs for the year, and their year-end certificates. */
-export function MyDeclarationsScreen(p: MyDeclarationsScreenProps) {
-  const [editing, setEditing] = useState<DeclarationLine | 'new' | null>(null);
   const { busy, error, run } = useRun();
-  const d = p.data;
-  const today = new Date().toISOString().slice(0, 10);
-  const open = d ? today <= d.proofCutoff : false;
-  const proofs = d ? today >= d.proofWindowOpens && open : false;
-  const locked = (l: DeclarationLine) => ['approved', 'partly'].includes(l.proofStatus);
-  return (
-    <LivePage
-      title="My tax declarations"
-      description={d ? `Tax year ${d.taxYear} · ${d.form}. What you declare lowers the tax taken each month; add proofs before ${dateText(d.proofCutoff)} or the full tax is taken.` : undefined}
-      state={p.state}
-      onRetry={p.onRetry}
-      what="your tax declarations"
-      actions={open ? <Button variant="primary" onClick={() => setEditing('new')}>Declare</Button> : undefined}
-    >
-      <Failed error={error} />
-      {d && open && !proofs && <InlineAlert tone="info" title={`Proofs open on ${dateText(d.proofWindowOpens)}`}>Declare now; send the proofs from then until {dateText(d.proofCutoff)}.</InlineAlert>}
-      {d && !open && <InlineAlert tone="info" title="Declarations are closed">They closed on {dateText(d.proofCutoff)}. Anything else is claimed in your own tax return.</InlineAlert>}
-      {d && !d.lines.length && <EmptyState title="Nothing declared" description="Declare rent, investments and insurance to lower the tax taken from your pay." compact />}
-      {d && d.lines.length > 0 && (
-        <table className="yx-tim-table" aria-label="Declarations">
-          <thead>
-            <tr>
-              <th scope="col">What</th>
-              <th scope="col">Declared</th>
-              <th scope="col">Proof</th>
-              <th scope="col">
-                <span className="yx-visually-hidden">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {d.lines.map((l) => (
-              <tr key={l.id}>
-                <th scope="row">{subjectText(l.subjectKey, l.section)}</th>
-                <td>
-                  {rupees(l.amount)}
-                  {l.approvedAmount && l.proofStatus === 'partly' ? ` (${rupees(l.approvedAmount)} accepted)` : ''}
-                </td>
-                <td>
-                  {proofBadge(l.proofs.length || l.proofStatus !== 'none' ? l.proofStatus : 'none')}
-                  {l.proofs.length > 0 && <span className="yx-tim-note"> {l.proofs.length} {l.proofs.length === 1 ? 'file' : 'files'}</span>}
-                  {l.comment && <p className="yx-tim-note">{l.comment}</p>}
-                </td>
-                <td>
-                  {open && !locked(l) && (
-                    <div className="yx-tim-row">
-                      {proofs && (
-                        <FileButton label="Add proof" accept=".pdf,.jpg,.jpeg,.png" ariaLabel={`Add a proof for ${subjectText(l.subjectKey, l.section)}`} loading={busy === `p-${l.id}`} onFile={(f) => void run(`p-${l.id}`, () => p.onProof(l.id, f))} />
-                      )}
-                      <Button size="sm" onClick={() => setEditing(l)} aria-label={`Change ${subjectText(l.subjectKey, l.section)}`}>
-                        Change
-                      </Button>
-                    </div>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      <section aria-label="Tax certificates">
-        <h3 className="yx-pay-section-title">Tax certificates</h3>
-        {!p.certificates?.length ? (
-          <p className="yx-tim-note">Your Form 16 (or Form 130) appears here after the tax year ends. Part B is also in My pay documents.</p>
-        ) : (
-          <ul className="yx-tim-list">
-            {p.certificates.map((c) => (
-              <li key={c.id}>
-                {c.form === 'form130' ? 'Form 130' : 'Form 16'} · {c.taxYear}{' '}
-                <Button size="sm" loading={busy === `a-${c.id}`} onClick={() => void run(`a-${c.id}`, () => p.onPartA(c))} aria-label={`Download Part A for ${c.taxYear}`}>
-                  Download Part A
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-      {editing && d && (
-        <DeclareDrawer
-          line={editing === 'new' ? null : editing}
-          subjects={d.subjects.filter((s) => editing !== 'new' || !d.lines.some((l) => l.subjectKey === s.key))}
-          taxYear={d.taxYear}
-          onClose={() => setEditing(null)}
-          onSave={p.onDeclare}
         />
-      )}
-    </LivePage>
   );
 }
 
-function DeclareDrawer({ line, subjects, taxYear, onClose, onSave }: { line: DeclarationLine | null; subjects: MyDeclarations['subjects']; taxYear: string; onClose: () => void; onSave: (x: DeclarationInput) => Promise<unknown> }) {
-  const [key, setKey] = useState<string | null>(line?.subjectKey ?? null);
-  const [amount, setAmount] = useState(line?.amount ?? '');
-  const [from, setFrom] = useState(line?.rentFrom ?? '');
-  const [to, setTo] = useState(line?.rentTo ?? '');
-  const [metro, setMetro] = useState<'yes' | 'no'>(line?.metro ? 'yes' : 'no');
-  const [landlord, setLandlord] = useState(line?.landlordName ?? '');
-  const [pan, setPan] = useState('');
-  const y = Number(taxYear.slice(0, 4));
-  const hra = key === 'hra';
-  const errors: FormErrorItem[] = [
-    ...(!key ? [{ fieldId: 'dc-what', message: 'Choose what you are declaring.' }] : []),
-    ...(!MONEY.test(amount.trim()) ? [{ fieldId: 'dc-amount', message: 'Give the yearly amount in rupees.' }] : []),
-    ...(hra && (!MONTH.test(from) || from < `${y}-04` || from > `${y + 1}-03`) ? [{ fieldId: 'dc-from', message: `A month from April ${y} to March ${y + 1}.` }] : []),
-    ...(hra && (!MONTH.test(to) || to < from || to > `${y + 1}-03`) ? [{ fieldId: 'dc-to', message: 'A month after the first, up to March.' }] : []),
-    ...(hra && pan.trim() && !/^[A-Z]{5}\d{4}[A-Z]$/.test(pan.trim().toUpperCase()) ? [{ fieldId: 'dc-pan', message: "The landlord's PAN is 10 letters and digits, like ABCDE1234F." }] : []),
-  ];
-  return (
-    <FormDrawer
-      title={line ? `Change ${subjectText(line.subjectKey, line.section)}` : 'Declare'}
-      subtitle="The yearly amount. Enter 0 to remove it."
-      confirm="Save"
-      errors={errors}
-      onClose={onClose}
-      onSave={() =>
-        onSave({
-          subjectKey: key!,
-          amount: amount.trim(),
-          ...(hra ? { rentFrom: from, rentTo: to, metro: metro === 'yes', ...(landlord.trim() ? { landlordName: landlord.trim() } : {}), ...(pan.trim() ? { landlordPan: pan.trim().toUpperCase() } : {}) } : {}),
-        })
       }
     >
-      {(errorOf) => (
-        <>
-          {!line && (
-            <FormField id="dc-what" label="What" required error={errorOf('dc-what')}>
-              <Select value={key} onChange={setKey} placeholder="Choose" options={subjects.map((s) => ({ value: s.key, label: subjectText(s.key, s.section) }))} />
-            </FormField>
-          )}
-          <FormField id="dc-amount" label={hra ? 'Rent for the year' : 'Amount for the year'} required error={errorOf('dc-amount')}>
-            <TextField value={amount} onChange={setAmount} prefix="₹" inputMode="decimal" maxLength={13} />
-          </FormField>
-          {hra && (
-            <>
-              <FormField id="dc-from" label="Rent paid from" required error={errorOf('dc-from')}>
-                <TextField type="month" value={from} onChange={setFrom} />
-              </FormField>
-              <FormField id="dc-to" label="Rent paid to" required error={errorOf('dc-to')}>
-                <TextField type="month" value={to} onChange={setTo} />
-              </FormField>
-              <FormField id="dc-metro" label="City">
-                <Segment
-                  label="City"
-                  value={metro}
-                  onChange={setMetro}
-                  options={[
-                    { value: 'yes', label: 'Delhi, Mumbai, Kolkata or Chennai' },
-                    { value: 'no', label: 'Elsewhere' },
-                  ]}
                 />
-              </FormField>
-              <FormField id="dc-landlord" label="Landlord's name" optional>
-                <TextField value={landlord} onChange={setLandlord} maxLength={200} />
-              </FormField>
-              <FormField id="dc-pan" label="Landlord's PAN" optional helper="Needed when the rent is more than ₹1,00,000 a year." error={errorOf('dc-pan')}>
-                <TextField value={pan} onChange={setPan} maxLength={10} autoCapitalize="characters" />
-              </FormField>
-            </>
-          )}
-        </>
-      )}
-    </FormDrawer>
   );
 }
 
-export interface ProofCheckScreenProps {
-  state: LoadState;
-  onRetry?: () => void;
-  lines: ProofQueueLine[] | null;
-  status: 'pending' | 'approved' | 'partly' | 'rejected';
-  onStatus: (s: ProofCheckScreenProps['status']) => void;
-  onFile: (line: ProofQueueLine, n: number, name: string) => Promise<unknown>;
-  onDecide: (line: ProofQueueLine, d: ProofDecision) => Promise<unknown>;
 }
 
-/** Checking employees' proofs line by line: accept, accept part, or turn down with a reason (never one's own). */
-export function ProofCheckScreen(p: ProofCheckScreenProps) {
-  const [deciding, setDeciding] = useState<ProofQueueLine | null>(null);
   const { busy, error, run } = useRun();
-  return (
-    <LivePage title="Proof checking" description="Proofs employees sent for their tax declarations. What you accept lowers their tax; a line turned down goes back with your reason." state={p.state} onRetry={p.onRetry} what="proofs" grantedBy="your payroll admin">
-      <Segment
-        label="Show"
-        value={p.status}
-        onChange={p.onStatus}
-        options={[
-          { value: 'pending', label: 'To check' },
-          { value: 'approved', label: 'Accepted' },
-          { value: 'partly', label: 'Partly accepted' },
-          { value: 'rejected', label: 'Not accepted' },
-        ]}
       />
-      <Failed error={error} />
-      {p.lines && !p.lines.length && <EmptyState title="Nothing here" description="Proofs appear when employees send them." compact />}
-      {p.lines && p.lines.length > 0 && (
-        <table className="yx-tim-table" aria-label="Proofs">
-          <thead>
-            <tr>
-              <th scope="col">Person</th>
-              <th scope="col">What</th>
-              <th scope="col">Declared</th>
-              <th scope="col">Files</th>
-              <th scope="col">
-                <span className="yx-visually-hidden">Decide</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {p.lines.map((l) => (
-              <tr key={l.id}>
-                <th scope="row">{l.employeeName || 'Someone'}</th>
-                <td>{subjectText(l.subjectKey, l.section)}</td>
-                <td>
-                  {rupees(l.amount)}
-                  {l.approvedAmount && l.proofStatus === 'partly' ? ` (${rupees(l.approvedAmount)} accepted)` : ''}
-                </td>
-                <td>
-                  <div className="yx-tim-row">
-                    {l.proofs.map((f) => (
-                      <Button key={f.n} size="sm" loading={busy === `${l.id}-${f.n}`} onClick={() => void run(`${l.id}-${f.n}`, () => p.onFile(l, f.n, f.name))} aria-label={`Open ${f.name}`}>
-                        {f.name}
-                      </Button>
-                    ))}
-                  </div>
-                </td>
-                <td>
-                  {l.proofStatus === 'pending' ? (
-                    <Button size="sm" onClick={() => setDeciding(l)} aria-label={`Decide on ${l.employeeName}'s ${subjectText(l.subjectKey)}`}>
-                      Decide
-                    </Button>
-                  ) : (
-                    proofBadge(l.proofStatus)
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      {deciding && <ProofDrawer line={deciding} onClose={() => setDeciding(null)} onSave={(d) => p.onDecide(deciding, d)} />}
-    </LivePage>
   );
 }
 
-function ProofDrawer({ line, onClose, onSave }: { line: ProofQueueLine; onClose: () => void; onSave: (d: ProofDecision) => Promise<unknown> }) {
-  const [decision, setDecision] = useState<ProofDecision['decision']>('approve');
-  const [amount, setAmount] = useState('');
-  const [comment, setComment] = useState('');
-  const errors: FormErrorItem[] = [
-    ...(decision === 'partly' && (!MONEY.test(amount.trim()) || Number(amount) <= 0 || Number(amount) >= Number(line.amount)) ? [{ fieldId: 'pf-amount', message: 'An amount above zero and below what was declared.' }] : []),
-    ...(decision !== 'approve' && comment.trim().length < 3 ? [{ fieldId: 'pf-why', message: 'Say why, so they can fix it.' }] : []),
-  ];
   return (
-    <FormDrawer
-      title={`${line.employeeName || 'Someone'} · ${subjectText(line.subjectKey, line.section)}`}
-      subtitle={`Declared ${rupees(line.amount)}`}
-      confirm="Save decision"
-      errors={errors}
-      onClose={onClose}
-      onSave={() => onSave({ decision, ...(decision === 'partly' ? { amount: amount.trim() } : {}), ...(comment.trim() ? { comment: comment.trim() } : {}) })}
     >
-      {(errorOf) => (
         <>
-          <FormField id="pf-decision" label="Decision">
-            <Segment
-              label="Decision"
-              value={decision}
-              onChange={setDecision}
-              options={[
-                { value: 'approve', label: 'Accept' },
-                { value: 'partly', label: 'Accept part' },
-                { value: 'reject', label: 'Turn down' },
-              ]}
             />
-          </FormField>
-          {decision === 'partly' && (
-            <FormField id="pf-amount" label="Amount accepted" required error={errorOf('pf-amount')}>
-              <TextField value={amount} onChange={setAmount} prefix="₹" inputMode="decimal" maxLength={13} />
-            </FormField>
-          )}
-          <FormField id="pf-why" label="Comment for the employee" required={decision !== 'approve'} optional={decision === 'approve'} error={errorOf('pf-why')}>
-            <TextArea value={comment} onChange={setComment} rows={3} maxLength={500} />
-          </FormField>
         </>
-      )}
-    </FormDrawer>
   );
 }
 
@@ -782,7 +252,6 @@ export function RegistersScreen(p: RegistersScreenProps) {
             </table>
           )}
         </>
-      )}
       {remaking && <ReasonDrawer title="Make a new version?" subtitle="The earlier version stays as it is; the new one replaces it for signing." label="Why" confirm="Make new version" onClose={() => setRemaking(false)} onSave={(why) => p.onGenerate(why)} />}
       {freezing && (
         <ConfirmDrawer title={`Freeze the ${registerName(freezing.registerType)} register?`} confirm="Freeze" onClose={() => setFreezing(null)} onConfirm={() => p.onFreeze(freezing)}>

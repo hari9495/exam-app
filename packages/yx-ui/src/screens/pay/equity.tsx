@@ -335,14 +335,14 @@ function ValuationDrawer({ onClose, onSave }: { onClose: () => void; onSave: Liv
   );
 }
 
-/** Find a person by name or employee code. */
-function FindPerson({ id, value, onChange, onSearch, error }: { id: string; value: PersonHit | null; onChange: (p: PersonHit) => void; onSearch: LiveEquity['onSearch']; error?: string }) {
+/** Find a person by name or employee code (also used by PAY-17 and PAY-54). */
+export function FindPerson({ id, label = 'Person', value, onChange, onSearch, error }: { id: string; label?: string; value: PersonHit | null; onChange: (p: PersonHit) => void; onSearch: LiveEquity['onSearch']; error?: string }) {
   const [q, setQ] = useState('');
   const [hits, setHits] = useState<PersonHit[] | null>(null);
   const { busy, error: failed, run } = useRun();
   return (
     <>
-      <FormField id={id} label="Person" required error={error} helper={value ? `Chosen: ${value.name}${value.employeeCode ? ` · ${value.employeeCode}` : ''}` : 'Search by name or employee code.'}>
+      <FormField id={id} label={label} required error={error} helper={value ? `Chosen: ${value.name}${value.employeeCode ? ` · ${value.employeeCode}` : ''}` : 'Search by name or employee code.'}>
         <div className="yx-pay-row">
           <TextField value={q} onChange={setQ} aria-label="Find a person" />
           <Button loading={busy === 'find'} onClick={() => void run('find', async () => setHits(await onSearch(q)))}>

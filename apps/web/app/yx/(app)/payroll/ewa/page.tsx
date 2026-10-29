@@ -6,7 +6,7 @@ import { payState, usePay } from '../../../../../lib/yx-pay';
 import { useApiWrite, useNames } from '../../../../../lib/yx-pay-5j';
 import { todayIndia } from '../../../../../lib/yx-time';
 
-// Payroll › Earned wage access (PAY-9.05, PAY-27): the policy, and paying the month's draws.
+// Payroll › Earned wage access (PAY-27): the policy, and paying and recovering the month's draws.
 export default function YxPayEwaPage() {
   const entities = usePay<SetupEntity[]>('/setup/entities');
   const [entityId, setEntityId] = useState<string | null>(null);
@@ -21,19 +21,21 @@ export default function YxPayEwaPage() {
   const nameOf = useNames();
   return (
     <EwaAdminScreen
-      state={payState(entities)}
-      onRetry={() => void entities.refetch()}
-      entities={entities.data ?? []}
-      entityId={entityId}
-      onEntity={setEntityId}
-      month={month}
-      onMonth={setMonth}
-      nameOf={nameOf}
-      policies={policies.data ?? null}
-      draws={draws.data ?? null}
-      onPolicy={(x) => write('/payroll/ewa/policies', { legalEntityId: entityId, ...x })}
-      onPaid={(d, reference) => write(`/payroll/ewa/draws/${e(d.id)}/paid`, { reference })}
-      onFailed={(d, reason) => write(`/payroll/ewa/draws/${e(d.id)}/failed`, { reason })}
+      live={{
+        state: payState(entities),
+        onRetry: () => void entities.refetch(),
+        entities: entities.data ?? [],
+        entityId,
+        onEntity: setEntityId,
+        month,
+        onMonth: setMonth,
+        nameOf,
+        policies: policies.data ?? null,
+        draws: draws.data ?? null,
+        onPolicy: (x) => write('/payroll/ewa/policies', { legalEntityId: entityId, ...x }),
+        onPaid: (d, reference) => write(`/payroll/ewa/draws/${e(d.id)}/paid`, { reference }),
+        onFailed: (d, reason) => write(`/payroll/ewa/draws/${e(d.id)}/failed`, { reason }),
+      }}
     />
   );
 }
