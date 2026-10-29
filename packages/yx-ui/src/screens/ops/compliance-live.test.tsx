@@ -458,7 +458,7 @@ describe('CMP-07 Missing IDs (live, founder answer 22)', () => {
     render(<MissingIdsScreen rows={[]} live={live({ onOpenPerson })} />);
     const table = screen.getByRole('table', { name: 'People with missing or invalid IDs' });
     expect(within(table).getAllByRole('row')).toHaveLength(4);
-    await ue.click(screen.getByRole('link', { name: /View uan missing/ }));
+    await ue.click(screen.getByRole('link', { name: /View people without UAN/ }));
     expect(screen.getByText('Showing: UAN missing')).toBeInTheDocument();
     expect(within(screen.getByRole('table', { name: 'People with missing or invalid IDs' })).getAllByRole('row')).toHaveLength(2);
     await ue.click(screen.getByRole('button', { name: 'Fix UAN missing for Divya Raghunathan' }));

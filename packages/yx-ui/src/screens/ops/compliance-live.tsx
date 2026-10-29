@@ -622,13 +622,15 @@ const ISSUE: Record<MissingIdView['issue'], { group: IdGroup; label: string; det
   bank_waiting: { group: 'bank', label: 'Bank account not usable yet', detail: 'A new salary account is in its waiting time; pay into it starts after that.', impact: 'Blocks pay' },
 };
 const GROUP_TEXT: Record<IdGroup, string> = { uan: 'UAN missing', esi: 'ESI IP missing', pan: 'PAN missing or inoperative', bank: 'Bank account missing or not usable yet' };
+/** The design's link wording (CMP-07); lower-casing the card label broke the abbreviations ("View uan missing"). */
+const DRILL_TEXT: Record<IdGroup, string> = { uan: 'View people without UAN', esi: 'View people without IP number', pan: 'View PAN issues', bank: 'View bank issues' };
 
 /** CMP-07 with the live app's data: who in the entity lacks a statutory ID or a usable bank account, with drill-down to the people. */
 export function LiveMissingIdsScreen({ live: p }: { live: LiveMissingIds }) {
   const [group, setGroup] = useState<IdGroup | null>(null);
   const d = p.data;
   const rows = (d?.rows ?? []).filter((r) => !group || ISSUE[r.issue].group === group);
-  const drill = (g: IdGroup) => ({ label: `View ${GROUP_TEXT[g].toLowerCase()}`, href: `#${g}`, onClick: (e: { preventDefault: () => void }) => (e.preventDefault(), setGroup(g)) });
+  const drill = (g: IdGroup) => ({ label: DRILL_TEXT[g], href: `#${g}`, onClick: (e: { preventDefault: () => void }) => (e.preventDefault(), setGroup(g)) });
   return (
     <LivePage
       title="Missing IDs"
