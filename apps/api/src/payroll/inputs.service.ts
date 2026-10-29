@@ -210,9 +210,10 @@ export class PayInputsService implements OnModuleInit {
   }
 
   /** Releases a hold with a reason (founder 29 Oct 2026; kept in the audit trail) and a route. Idempotent: a second
-   * release changes nothing. The payslips held while it was open become payable again: `next_bank_file` waits for the
-   * next bank file made for their run; `offcycle` is paid now by an off-cycle bank file from that run (so it needs a
-   * held payslip in an approved run). A hold with nothing held yet simply stops holding the next run. */
+   * release changes nothing. The payslips held while it was open become payable again: `next_bank_file` goes into the
+   * bank file of the entity's next regular run, not its own run's (founder 30 Oct 2026, item 10; the hold keeps no run
+   * until that file claims it, see PayoutService.routed); `offcycle` is paid now by an off-cycle bank file from its own
+   * run (so it needs a held payslip in an approved run). A hold with nothing held yet simply stops holding the next run. */
   async releaseHold(ctx: TenantContext, user: ScopeUser, id: string, dto: HoldReleaseDto) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
@@ -227,11 +228,11 @@ export class PayInputsService implements OnModuleInit {
       const noBank = await tx.runValidation.findMany({ where: { organizationId: org, employeeId: h.employeeId, checkKey: 'bank_missing', waivedBy: { not: null }, runId: { in: slips.map((x) => x.runId).filter((x): x is string => !!x) } }, select: { runId: true, calcVersion: true } });
       const held = slips.filter((x) => !noBank.some((b) => b.runId === x.runId && b.calcVersion === x.calcVersion));
       if (dto.route === 'offcycle' && !held.length) throw new BadRequestException('Nothing is held in an approved run yet. Release into the next bank file: the next run pays as usual.');
-      const n = await tx.payrollWithhold.updateMany({ where: { id, releasedAt: null }, data: { releasedAt: new Date(), releasedBy: v.userId, releasedRunId: held[0]?.runId ?? null } });
+      const n = await tx.payrollWithhold.updateMany({ where: { id, releasedAt: null }, data: { releasedAt: new Date(), releasedBy: v.userId, releasedRunId: dto.route === 'offcycle' ? (held[0]?.runId ?? null) : null } });
       if (!n.count) return { id, released: true, releasedAt: (await tx.payrollWithhold.findFirstOrThrow({ where: { id } })).releasedAt, route: null, payslips: 0, runIds: [] as string[] };
       if (held.length) await tx.payslip.updateMany({ where: { organizationId: org, id: { in: held.map((x) => x.id) }, paymentStatus: 'held' }, data: { held: false, paymentStatus: 'pending' } });
       const runIds = [...new Set(held.map((x) => x.runId).filter((x): x is string => !!x))];
-      const amount = held.reduce((t, x) => t + Number(x.net), 0).toFixed(2);
+      const amount = held.reduce((t, x) => t.add(x.net), new Prisma.Decimal(0)).toFixed(2);
       await audit(tx, c, 'payroll.hold.released', 'employee', h.employeeId, { holdId: id, reason: dto.reason, route: dto.route, payslips: held.length, runIds, amount: held.length ? amount : (h.amount?.toFixed(2) ?? null) });
       const after = await tx.payrollWithhold.findFirstOrThrow({ where: { id } });
       return { id, released: true, releasedAt: after.releasedAt, route: dto.route, payslips: held.length, runIds };

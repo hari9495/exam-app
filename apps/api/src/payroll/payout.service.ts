@@ -77,6 +77,23 @@ export class PayoutService implements OnModuleInit {
     return tx.payslip.findMany({ where: { organizationId: org, runId: run.id, calcVersion: run.calcVersion, status: 'approved', ...where }, orderBy: { createdAt: 'asc' } });
   }
 
+  /**
+   * Founder 30 Oct 2026 (item 10): payslips freed by a hold released to "next bank file" are paid in the bank file of
+   * the entity's next regular run, not their own run's. Such a hold keeps no run (releasedRunId null) until a regular run's
+   * bank file claims it; a hold released before this rule (its own run kept) or to an off-cycle payment stays with its run.
+   * Each row: an approved, unheld payslip still waiting to be paid that was approved while the hold was open.
+   */
+  private routed(tx: Tx, org: string, legalEntityId: string) {
+    return tx.$queryRaw<{ payslipId: string; runId: string; holdId: string; to: string | null; periodStart: Date }[]>`
+      SELECT p.id::text AS "payslipId", p.run_id::text AS "runId", w.id::text AS "holdId", w.released_run_id::text AS "to", p.period_start AS "periodStart"
+      FROM payroll_withholds w
+      JOIN payslips p ON p.organization_id = w.organization_id AND p.employment_id = w.employment_id
+      WHERE w.organization_id = ${org}::uuid AND w.legal_entity_id = ${legalEntityId}::uuid AND w.released_at IS NOT NULL
+        AND p.status = 'approved' AND NOT p.held AND p.payment_status IN ('pending', 'failed', 'returned') AND p.run_id IS NOT NULL
+        AND p.approved_at >= w.created_at AND p.approved_at <= w.released_at
+        AND (w.released_run_id IS NULL OR w.released_run_id <> p.run_id)`;
+  }
+
   /** The signed-in person's employee records, merged persons included (nobody pays, records or releases their own pay). */
   private async ownEmployeeIds(tx: Tx) {
     const [{ ids }] = await tx.$queryRaw<{ ids: string[] }[]>`SELECT app_current_employee_ids()::text[] AS ids`;
@@ -151,7 +168,13 @@ export class PayoutService implements OnModuleInit {
       const fmt = inForce(await this.rules.published(), 'IN.BANKFMT', [key], payDate);
       // Founder decision 5d-D1 (9 Oct 2026): only the generic format for now; the pilot's bank format is loaded as data (a bank-format rule set) once a real sample file is checked (M03 §19.4).
       if (!fmt) throw new ConflictException(`No published bank format "${key}" is in force on ${payDate}.`);
-      const slips = await this.slips(tx, org, run, { held: false, paymentStatus: { in: REPAYABLE }, net: { gt: 0 }, ...(only ? { id: only.payslipId } : {}) });
+      const routed = await this.routed(tx, org, run.legalEntityId);
+      const away = routed.filter((x) => x.runId === run.id && x.to !== run.id).map((x) => x.payslipId);
+      const own = await this.slips(tx, org, run, { held: false, paymentStatus: { in: REPAYABLE }, net: { gt: 0 }, ...(only ? { id: only.payslipId } : { id: { notIn: away } }) });
+      // Item 10: released held pay of earlier months joins the next regular run's file (never a re-pay or off-cycle file).
+      const into = only || run.runType !== 'regular' ? [] : routed.filter((x) => x.runId !== run.id && (x.to === null || x.to === run.id) && x.periodStart < run.periodStart);
+      const carried = into.length ? await tx.payslip.findMany({ where: { organizationId: org, id: { in: into.map((x) => x.payslipId) }, net: { gt: 0 } }, orderBy: { createdAt: 'asc' } }) : [];
+      const slips = [...own, ...carried];
       const employments = await tx.employment.findMany({ where: { organizationId: org, id: { in: slips.map((s) => s.employmentId) } }, select: { id: true, employeeCode: true } });
       const modeOf = await this.modesOn(
         tx,
@@ -195,7 +218,7 @@ export class PayoutService implements OnModuleInit {
             name: a.holderName,
             amount: s.net.toFixed(2),
             code: employments.find((e) => e.id === s.employmentId)?.employeeCode ?? '',
-            narration: `Salary ${dateOf(run.periodStart).slice(0, 7)}`,
+            narration: `Salary ${dateOf(s.periodStart).slice(0, 7)}`,
           });
       }
       if (!rows.length) throw new ConflictException({ statusCode: 409, message: 'Nobody in this run is waiting to be paid by bank.', excluded });
@@ -236,8 +259,11 @@ export class PayoutService implements OnModuleInit {
           generatedBy: v.userId!,
         },
       });
+      const claimed = into.filter((x) => bf.payslipIds.includes(x.payslipId));
+      if (claimed.length) await tx.payrollWithhold.updateMany({ where: { organizationId: org, id: { in: [...new Set(claimed.map((x) => x.holdId))] }, releasedRunId: null }, data: { releasedRunId: run.id } });
       await audit(tx, c, 'payroll.bankfile.generated', 'bank_file', bf.id, {
         runId: run.id,
+        releasedHeldPay: claimed.map((x) => x.payslipId),
         fileId: f.id,
         format: `${key} ${fmt.version}`,
         rows: rows.length,
@@ -358,7 +384,11 @@ export class PayoutService implements OnModuleInit {
       const run = await this.runFor(tx, c, v, runId, ['payroll.payment.record']);
       this.requireApproved(run);
       await tx.$queryRaw`SELECT id FROM payroll_runs WHERE organization_id = ${org}::uuid AND id = ${run.id}::uuid FOR UPDATE`;
-      const slips = await this.slips(tx, org, run);
+      const files0 = await tx.bankFile.findMany({ where: { organizationId: org, runId: run.id }, select: { payslipIds: true } });
+      const own = await this.slips(tx, org, run);
+      // Item 10: released held pay of earlier runs that this run's bank file carried.
+      const carried = await tx.payslip.findMany({ where: { organizationId: org, status: 'approved', runId: { not: run.id }, id: { in: [...new Set(files0.flatMap((f) => f.payslipIds))] } }, orderBy: { createdAt: 'asc' } });
+      const slips = [...own, ...carried];
       const codes = await tx.employment.findMany({ where: { organizationId: org, id: { in: slips.map((s) => s.employmentId) } }, select: { id: true, employeeCode: true } });
       const me = await this.ownEmployeeIds(tx);
       const problems: string[] = [];
@@ -414,6 +444,7 @@ export class PayoutService implements OnModuleInit {
         failed: todo.filter((t) => t.r.status !== 'paid').length,
       });
       await this.settle(tx, c, run);
+      for (const other of await tx.payrollRun.findMany({ where: { organizationId: org, id: { in: [...new Set(todo.map((t) => t.s.runId).filter((x): x is string => !!x && x !== run.id))] } } })) await this.settle(tx, c, other);
       return { recorded: todo.length, runStatus: (await tx.payrollRun.findFirstOrThrow({ where: { id: run.id }, select: { status: true } })).status };
     });
     await this.send(ctx.organizationId!, notices);

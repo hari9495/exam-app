@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
+import { Prisma } from '@prisma/client';
 import * as argon2 from 'argon2';
 import cookieParser from 'cookie-parser';
 import ExcelJS from 'exceljs';
@@ -561,5 +562,41 @@ describe('Payroll batch 5d', () => {
     await api('payAdminB', 'post', `/payroll/runs/${ids.run}/pay-views`).expect(404);
     await api('emp1', 'post', `/payroll/runs/${ids.run}/pay-views`).expect(403);
     expect(await inA((tx) => tx.auditLog.count({ where: { action: 'payroll.pay.shown', entityId: ids.run } }))).toBe(2);
+  });
+  // Founder 30 Oct 2026 (item 10): a hold released to "next bank file" is paid in the next regular run's bank file, never
+  // its own run's; the claim is kept on the hold, the own run settles once the result is recorded on the later run.
+  it('released held pay goes into the next regular run bank file, not into its own run file', async () => {
+    const prev = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 2, 1)).toISOString().slice(0, 10);
+    const prevEnd = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 0)).toISOString().slice(0, 10);
+    const h = (await api('payAdmin', 'post', '/payroll/holds').send({ employeeId: ids.emp1, reasonCode: 'investigation', note: 'Held last month for the test' }).expect(201)).body;
+    // Last month's approved run held emp1's net pay while the hold was open (test set-up).
+    const { runA, slipA } = await scoped(async (tx) => {
+      await tx.payrollWithhold.update({ where: { id: h.id }, data: { createdAt: new Date(Date.now() - 2 * 3_600_000) } });
+      const r = await tx.payrollRun.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity, payGroupId: ids.group, periodStart: new Date(`${prev}T00:00:00Z`), periodEnd: new Date(`${prevEnd}T00:00:00Z`), preparedBy: users.payAdmin, approvedBy: users.approver1, approvedAt: new Date(Date.now() - 3_600_000), status: 'approved', calcVersion: 1 } });
+      const em = await tx.employment.findFirstOrThrow({ where: { employeeId: ids.emp1 } });
+      const sl = await tx.payslip.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity, runId: r.id, employmentId: em.id, employeeId: ids.emp1, periodStart: new Date(`${prev}T00:00:00Z`), calcVersion: 1, status: 'approved', gross: new Prisma.Decimal('41000'), deductions: new Prisma.Decimal('1000'), net: new Prisma.Decimal('40000.50'), employerCost: new Prisma.Decimal('41000'), ruleVersions: {}, snapshotHash: 'd'.repeat(64), resultHash: 'e'.repeat(64), held: true, paymentStatus: 'held', approvedAt: new Date(Date.now() - 3_600_000) } });
+      return { runA: r.id, slipA: sl.id };
+    });
+    const rel = (await api('payAdmin', 'post', `/payroll/holds/${h.id}/release`).send({ reason: 'Enquiry closed', route: 'next_bank_file' }).expect(200)).body;
+    expect(rel).toMatchObject({ route: 'next_bank_file', payslips: 1, runIds: [runA] });
+    expect(await scoped((tx) => tx.payrollWithhold.findFirstOrThrow({ where: { id: h.id } }))).toMatchObject({ releasedRunId: null });
+    // Negative: its own run's file never pays it.
+    expect((await api('payAdmin', 'post', `/payroll/runs/${runA}/bank-files`).send({ debitAccount: '0050200012345678' }).expect(409)).body.message).toBe('Nobody in this run is waiting to be paid by bank.');
+    // Positive: the next regular run's file does, at its own amount and month; the hold now names that run.
+    const g = (await api('payAdmin', 'post', `/payroll/runs/${ids.run}/bank-files`).send({ debitAccount: '0050200012345678', reason: 'Released held pay' }).expect(201)).body;
+    const bf = await scoped((tx) => tx.bankFile.findFirstOrThrow({ where: { id: g.id } }));
+    expect(bf.payslipIds).toContain(slipA);
+    expect(g.rows).toBe(bf.payslipIds.length);
+    expect(await scoped((tx) => tx.payrollWithhold.findFirstOrThrow({ where: { id: h.id } }))).toMatchObject({ releasedRunId: ids.run });
+    const log = await inA((tx) => tx.auditLog.findFirst({ where: { action: 'payroll.bankfile.generated', entityId: g.id } }));
+    expect(JSON.parse(log?.metadataJson ?? '{}')).toMatchObject({ releasedHeldPay: [slipA] });
+    // Claimed: still never in its own run's file.
+    await api('payAdmin', 'post', `/payroll/runs/${runA}/bank-files`).send({ debitAccount: '0050200012345678', reason: 'Try again' }).expect(409);
+    expect((await release('approver1', g.id, g.rows)).status).toBe(200);
+    expect((await scoped((tx) => tx.payslip.findFirstOrThrow({ where: { id: slipA } }))).paymentStatus).toBe('sent');
+    // The result is recorded on the run that paid it; then last month's run is paid too.
+    await api('payAdmin', 'post', `/payroll/runs/${ids.run}/payment-results`).send({ rows: [{ payslipId: slipA, status: 'paid', bankReference: 'UTR-9', reason: 'Bank statement line 3' }] }).expect(200);
+    expect((await scoped((tx) => tx.payslip.findFirstOrThrow({ where: { id: slipA } }))).paymentStatus).toBe('paid');
+    expect((await api('payAdmin', 'get', `/payroll/runs/${runA}`).expect(200)).body.status).toBe('paid');
   });
 });
