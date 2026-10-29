@@ -26,7 +26,7 @@ import {
   ReturnFiledDto,
   UploadedDto,
 } from './dto-5f';
-import { StatutoryFilingsService } from './statutory-filings.service';
+import { StatutoryFilingsService, homeDueMonths, onlyUnfiled } from './statutory-filings.service';
 import { StatutoryRegistersService } from './statutory-registers.service';
 
 // Payroll batch 5f (M03-BUILD-DESIGN §14.6). Every route declares its key (YX-SEC-01); the services check the key's
@@ -68,16 +68,15 @@ export class StatutoryController {
   }
 
   /**
-   * Payroll home (PAY-01 "Due this month"): PF, ESI, PT, LWF and TDS of the month before (they fall due in this month)
-   * and of this month, per legal entity in the person's statutory.filing.view scope. Read only; the same hub figures
-   * the finance home shows.
+   * Payroll home (PAY-01 "Due this month"): PF, ESI, PT, LWF and TDS of this month and the three before it (founder 30 Oct
+   * 2026, item 13: what was never filed stays visible), per legal entity in the person's statutory.filing.view scope.
+   * Of the earlier months only the unfiled items are sent. Read only; the same hub figures the finance home shows.
    */
   @Get('home-dues')
   @RequirePermissions('statutory.filing.view')
   async homeDues(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: HomeDuesDto) {
-    const [y, m] = q.month.split('-').map(Number);
-    const before = new Date(Date.UTC(y, m - 2, 1)).toISOString().slice(0, 7);
-    const dues = await this.filings.homeDues(ctx, this.user(req), [before, q.month], q.legalEntityId ?? null);
+    const { months, unfiledOnly } = homeDueMonths(q.month);
+    const dues = (await this.filings.homeDues(ctx, this.user(req), months, q.legalEntityId ?? null))?.flatMap((d) => (unfiledOnly.includes(d.month) ? onlyUnfiled(d) : [d]));
     // Null: acting for someone else (the route's key is checked by the guard).
     if (!dues) throw new ForbiddenException('You do not have access to statutory dues.');
     return dues.map((d) => ({ entity: d.entity, entityId: d.entityId, month: d.month, today: d.today, cards: d.cards.map(({ filingId: _f, penaltyEstimate, verifyDueDate: _v, ...c }) => ({ ...c, penaltyEstimate })), tds: d.tds }));

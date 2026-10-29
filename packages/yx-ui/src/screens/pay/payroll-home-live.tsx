@@ -51,14 +51,15 @@ function LiveStates({ state, onRetry, what, children }: { state: LoadState; onRe
 
 /* ================================================================== PAY-01 Payroll home */
 
-/** GET /statutory/home-dues: each legal entity's hub for the month before and this month (statutory.filing.view). */
+/** GET /statutory/home-dues: each legal entity's hub for this month and the three before it, the two oldest only while unfiled (statutory.filing.view). */
 export type HomeDues = Omit<StatutoryHub, 'cards'> & { entity: string; cards: Omit<HubCard, 'filingId' | 'verifyDueDate'>[] };
 const STATUTE: Record<string, string> = { 'IN.PF': 'PF', 'IN.ESI': 'ESI', 'IN.PT': 'Professional tax', 'IN.LWF': 'Labour welfare fund' };
 const WHAT: Record<string, string> = { 'IN.PF': 'PF return and payment', 'IN.ESI': 'ESI contribution', 'IN.PT': 'Professional tax return', 'IN.LWF': 'Labour welfare fund' };
 
 /**
- * PAY-01 "Due this month" from the statutory hubs: what falls due in `month`, and anything still late. Nothing owed
- * (zero, not filed) is left out; filed items show as Filed. PT and LWF have no due date in the rules: counted apart.
+ * PAY-01 "Due this month" from the statutory hubs: what falls due in `month`, and anything still late (read back three
+ * months). Nothing owed (zero, not filed) is left out; filed items show as Filed. PT and LWF fall due by the state's
+ * calendar; a state without one has no date and is counted apart.
  */
 export function homeDueItems(dues: HomeDues[], month: string, href: string): { items: DueItem[]; undated: number } {
   const several = new Set(dues.map((d) => d.entityId)).size > 1;
@@ -327,7 +328,7 @@ function LiveHome({ live }: { live: LivePayrollHome }) {
                   <p className="yx-pay-muted">The cut-off and pay date show once this month's run has a pay group calendar.</p>
                 ) : null}
                 {due && due.items.length > 0 && <DueDateStrip items={due.items} today={day(live.today)} />}
-                {due && due.items.length === 0 && <p className="yx-pay-muted">No PF, ESI or TDS falls due in {monthLabel(live.month)}.</p>}
+                {due && due.items.length === 0 && <p className="yx-pay-muted">No statutory dues fall due in {monthLabel(live.month)}.</p>}
                 {due && due.undated > 0 && <p className="yx-pay-muted">Professional tax and labour welfare fund dates depend on the state. See them in the statutory hub.</p>}
                 {live.dues === null && <p className="yx-pay-muted">Loading statutory dues…</p>}
                 {(live.dues === undefined || due?.items.length === 0 || (due?.undated ?? 0) > 0) && (

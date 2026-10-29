@@ -189,6 +189,20 @@ describe('PAY-01 Payroll home, live: statutory dues and pay groups (round 2)', (
     expect(homeDueItems(DUES, '2026-10', '/s').items.map((i) => i.id)).toEqual(['e1-2026-08-IN.PF-', 'e1-2026-09-IN.PF-']);
   });
 
+  it('item 12 and 13: a state PT date shows like any other; an unfiled due from three months back still shows as overdue', () => {
+    const back: HomeDues[] = [
+      { entity: 'Kaveri Foods', entityId: 'e1', month: '2026-06', today: '2026-09-20', cards: [{ statute: 'IN.PT', state: 'IN-KA', label: 'Professional tax · IN-KA', amount: '4200.00', dueOn: '2026-07-20', status: 'not_generated', late: true, penaltyEstimate: null }], tds: { amount: '0.00', dueOn: '2026-07-07', challanStatus: 'not_prepared', late: false } },
+      { entity: 'Kaveri Foods', entityId: 'e1', month: '2026-08', today: '2026-09-20', cards: [{ statute: 'IN.PT', state: 'IN-KA', label: 'Professional tax · IN-KA', amount: '4400.00', dueOn: '2026-09-20', status: 'not_generated', late: false, penaltyEstimate: null }], tds: { amount: '0.00', dueOn: '2026-09-07', challanStatus: 'not_prepared', late: false } },
+    ];
+    const { items, undated } = homeDueItems(back, '2026-09', '/s');
+    expect(items.map((i) => [i.what, i.status, `${i.due.getMonth() + 1}-${i.due.getDate()}`])).toEqual([
+      ['Professional tax return for June', 'overdue', '7-20'],
+      ['Professional tax return for August', 'due', '9-20'],
+    ]);
+    expect(items[0].statute).toBe('Professional tax (IN-KA)');
+    expect(undated).toBe(0);
+  });
+
   it('shows the dues strip with the penalty and the hub link (positive)', () => {
     render(<PayrollHomeScreen live={home({ dues: DUES })} />);
     const strip = screen.getByRole('list', { name: 'Statutory due dates' });
