@@ -156,6 +156,40 @@ export class Form12bDecisionDto {
   comment?: string;
 }
 
+/** Founder answer 2: a residential-status change, sent with the TRC (multipart, field `file`) for payroll to approve. */
+export class ResidencyRequestDto {
+  @IsIn(['resident', 'non_resident'])
+  residentialStatus!: 'resident' | 'non_resident';
+
+  /** The TRC's last day (non-resident). */
+  @IsOptional()
+  @Matches(DATE)
+  trcValidTo?: string;
+
+  /** The treaty country, if relief is claimed (ISO 3166 alpha-2). */
+  @IsOptional()
+  @trim()
+  @Matches(/^[A-Z]{2}$/)
+  dtaaCountry?: string;
+
+  /** "true" once Form 10F is filed on the income-tax portal (multipart sends text). */
+  @IsOptional()
+  @IsIn(['true', 'false'])
+  form10fFiled?: 'true' | 'false';
+}
+
+/** Founder answer 3: after the cut-off, ask HR to change the regime, with a reason. */
+export class RegimeRequestDto {
+  @IsIn(['new', 'old'])
+  regime!: 'new' | 'old';
+
+  @trim()
+  @IsString()
+  @MinLength(10)
+  @MaxLength(500)
+  reason!: string;
+}
+
 export class RegimeOverrideDto {
   @IsIn(['new', 'old'])
   regime!: 'new' | 'old';

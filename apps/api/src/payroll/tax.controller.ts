@@ -10,15 +10,15 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
-import { CertificateDto, CertificateListDto, DeclarationsDto, Form12bDecisionDto, Form12bDto, Form12bQueueDto, IssueCertificateDto, PanStatusDto, PerquisiteDto, ProofDecisionDto, ProofQueueDto, RegimeOverrideDto, WorkspaceListDto, WorkspacePatchDto } from './dto-5e';
+import { CertificateDto, CertificateListDto, DeclarationsDto, Form12bDecisionDto, Form12bDto, Form12bQueueDto, IssueCertificateDto, PanStatusDto, PerquisiteDto, ProofDecisionDto, ProofQueueDto, RegimeOverrideDto, RegimeRequestDto, ResidencyRequestDto, WorkspaceListDto, WorkspacePatchDto } from './dto-5e';
 import { TaxService } from './tax.service';
 
 // Payroll batch 5e, income tax (M03-BUILD-DESIGN §14.5). Every route declares its key (YX-SEC-01) or is the signed-in
 // person's own (no key: their workspace, declarations, proofs, tax sheet and certificates, checked against their employee
 // records by the pay guard); the service checks the key's legal entities again and refuses one's own tax.
 //   tax.workspace.view          employees' tax workspaces
-//   tax.proof.verify            proof queue and decisions, Form 12B checks, PAN status, perquisites (Form 12BA)
-//   tax.regime.override         the regime after the cut-off, with a reason
+//   tax.proof.verify            proof queue and decisions, Form 12B and residential-status checks, PAN status, perquisites (Form 12BA)
+//   tax.regime.override         the regime after the cut-off, with a reason (and approving an employee's request in Approvals)
 //   payroll.document.issue ⚡    the year-end certificate (Form 16 / Form 130)
 
 const send = (res: Response, out: { file: Buffer; name: string; contentType: string }) => {
@@ -92,6 +92,21 @@ export class TaxController {
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024, files: 1 } }))
   submitForm12b(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: Form12bDto, @UploadedFile() file?: { buffer: Buffer; originalname?: string }) {
     return this.tax.submitForm12b(ctx, this.user(req), dto, file);
+  }
+
+  // Founder answer 3: after the cut-off, ask HR to change the regime (Approvals).
+  @Post('me/regime-request')
+  @HttpCode(201)
+  requestRegime(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: RegimeRequestDto) {
+    return this.tax.requestRegime(ctx, this.user(req), dto);
+  }
+
+  // Founder answer 2: a residential-status change with the TRC, approved by payroll in the proof queue.
+  @Post('me/residency')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024, files: 1 } }))
+  requestResidency(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: ResidencyRequestDto, @UploadedFile() file?: { buffer: Buffer; originalname?: string }) {
+    return this.tax.requestResidency(ctx, this.user(req), dto, file);
   }
 
   @Get('me/certificates')
@@ -172,6 +187,26 @@ export class TaxController {
   @RequirePermissions('tax.proof.verify')
   decideForm12b(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: Form12bDecisionDto) {
     return this.tax.decideForm12b(ctx, this.user(req), id, dto);
+  }
+
+  @Get('residency')
+  @RequirePermissions('tax.proof.verify')
+  residencyQueue(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: Form12bQueueDto) {
+    return this.tax.residencyQueue(ctx, this.user(req), q.status);
+  }
+
+  @Get('residency/:id/file')
+  @RequirePermissions('tax.proof.verify')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  async residencyFile(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return send(res, await this.tax.residencyFile(ctx, this.user(req), id));
+  }
+
+  @Post('residency/:id/decision')
+  @HttpCode(200)
+  @RequirePermissions('tax.proof.verify')
+  decideResidency(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: Form12bDecisionDto) {
+    return this.tax.decideResidency(ctx, this.user(req), id, dto);
   }
 
   @Get('perquisites')

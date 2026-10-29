@@ -72,6 +72,7 @@ export {
   type MyTaxSheet,
   type MyForm12b,
   type Form12bInput,
+  type ResidencyInput,
   type LiveLoanRequest,
   type LoanRules,
   type LiveEwaRequest,
@@ -80,7 +81,7 @@ export {
   type MyPayBand,
   type LiveMyPayDocuments,
 } from '../employee-pay';
-export { LoansScreen, ProofQueueScreen, EwaAdminScreen, PayrollReportsScreen, type LiveLoans, type LiveProofQueue, type ProofStatusFilter, type Form12bRow, type LiveEwaAdmin } from '../admin-tax-loans';
+export { LoansScreen, ProofQueueScreen, EwaAdminScreen, PayrollReportsScreen, type LiveLoans, type LiveProofQueue, type ProofStatusFilter, type Form12bRow, type ResidencyRow, type LiveEwaAdmin } from '../admin-tax-loans';
 // PAY-11 · Off-cycle run (design with `live`): a new off-cycle run, and an off-cycle run's page.
 export { OffCycleRunScreen } from '../offcycle';
 export type { LiveOffCycleRun } from '../offcycle-run-live';

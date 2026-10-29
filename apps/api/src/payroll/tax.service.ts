@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { OrgSecretsCryptoService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
@@ -12,11 +12,12 @@ import { inForce } from '../statutory/evaluator';
 import { asDate, dateOf } from '../time/time-core';
 import type { CalcComponent, Segment } from './calc';
 import type { ConfirmationDto } from './dto';
-import type { DeclarationLineDto, Form12bDecisionDto, Form12bDto, PerquisiteDto, ProofDecisionDto, WorkspacePatchDto } from './dto-5e';
+import type { DeclarationLineDto, Form12bDecisionDto, Form12bDto, PerquisiteDto, ProofDecisionDto, RegimeRequestDto, ResidencyRequestDto, WorkspacePatchDto } from './dto-5e';
+import { ApprovalsEngine, type Notice } from '../workflow/approvals-engine.service';
 import { dayMonYear } from './loan-rules';
 import { PayDocumentsService } from './documents.service';
 import { PayFileStore, sha256 } from './pay-file-store';
-import { PayKey, entitiesFor, payScope, payViewer, requireEntity, requireSelf, withPayScope } from './pay-access';
+import { PayKey, entitiesFor, payHolders, payScope, payViewer, requireEntity, requireSelf, withPayScope } from './pay-access';
 import { lawVersionFor, projectTax, taxForms, taxYearOf, type TaxInputs, type TaxProjection } from './tax';
 
 // Income tax (M03-BUILD-DESIGN §8.5, §8.6, PAY-5.01 … 5.08): the employee's tax workspace (regime until the company's
@@ -36,6 +37,10 @@ const PROOF_TYPES: [string, (b: Buffer) => boolean][] = [
 type Workspace = Prisma.TaxWorkspaceGetPayload<object>;
 type ProofFile = { ref: string; name: string; sha256: string; size: number; contentType: string; at: string };
 type Form12b = Prisma.Form12bSubmissionGetPayload<object>;
+type Residency = Prisma.TaxResidencyRequestGetPayload<object>;
+type RegimeRequest = Prisma.TaxRegimeRequestGetPayload<object>;
+/** Founder answer 3: the Approvals request type for a regime change after the cut-off. */
+export const REGIME_CHANGE = 'tax.regime_change';
 const TAN = /^[A-Z]{4}\d{5}[A-Z]$/;
 const RUPEES = /^\d{1,12}(\.\d{1,2})?$/;
 
@@ -160,7 +165,7 @@ export async function buildTaxInputs(
 }
 
 @Injectable()
-export class TaxService {
+export class TaxService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
@@ -168,7 +173,19 @@ export class TaxService {
     private readonly files: PayFileStore,
     private readonly crypto: OrgSecretsCryptoService,
     private readonly documents: PayDocumentsService,
+    private readonly engine: ApprovalsEngine,
   ) {}
+
+  onModuleInit() {
+    this.engine.register({ key: REGIME_CHANGE, label: 'Tax regime change', risk: 'normal', autoActions: false, onDecided: (tx, req, o) => this.regimeDecided(tx, req, o), requesterLink: () => '/yx/me/tax-declarations' });
+  }
+
+  /** The latest regime and residency requests of a workspace (PAY-22 shows the one waiting, or the last decision). */
+  private async requestsOf(tx: Tx, ws: Workspace) {
+    const where = { organizationId: ws.organizationId, workspaceId: ws.id };
+    const [regime, residency] = await Promise.all([tx.taxRegimeRequest.findFirst({ where, orderBy: { createdAt: 'desc' } }), tx.taxResidencyRequest.findFirst({ where, orderBy: { createdAt: 'desc' } })]);
+    return { regimeRequest: regime ? this.regimeRequestView(regime) : null, residencyRequest: residency ? this.residencyView(residency) : null };
+  }
 
   private async viewer(user: ScopeUser) {
     const v = await payViewer(this.prisma, this.tenantPrisma, user);
@@ -240,7 +257,7 @@ export class TaxService {
     await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const { ws, dates, today } = await this.ownWorkspace(tx, c);
-      return this.view(ws, dates, today);
+      return { ...this.view(ws, dates, today), ...(await this.requestsOf(tx, ws)) };
     });
   }
 
@@ -251,11 +268,12 @@ export class TaxService {
       const { ws, dates, today } = await this.ownWorkspace(tx, c);
       if (dto.regime && dto.regime !== ws.regime && today > dates.regimeCutoff)
         throw new ConflictException(`The regime could be changed until ${dates.regimeCutoff}. Ask payroll to change it, with a reason.`);
+      // Founder answer 2: residential status and treaty details change only through a request payroll approves.
+      const trcNow = ws.trcValidTo ? dateOf(ws.trcValidTo) : null;
+      if ((dto.residentialStatus && dto.residentialStatus !== ws.residentialStatus) || (dto.trcValidTo !== undefined && dto.trcValidTo !== trcNow) || (dto.dtaaCountry !== undefined && dto.dtaaCountry !== ws.dtaaCountry))
+        throw new ConflictException('Residential status and treaty details change once payroll approves them. Send the change with your tax residency certificate from Residential status.');
       const data: Prisma.TaxWorkspaceUpdateInput = { updatedAt: new Date(), version: { increment: 1 } };
       if (dto.regime && dto.regime !== ws.regime) Object.assign(data, { regime: dto.regime, regimeSetAt: new Date() });
-      if (dto.residentialStatus) data.residentialStatus = dto.residentialStatus;
-      if (dto.trcValidTo !== undefined) data.trcValidTo = dto.trcValidTo ? asDate(dto.trcValidTo) : null;
-      if (dto.dtaaCountry !== undefined) data.dtaaCountry = dto.dtaaCountry;
       if (dto.otherIncome) data.otherIncome = dto.otherIncome as unknown as Prisma.InputJsonValue;
       const row = await tx.taxWorkspace.update({ where: { id: ws.id }, data });
       await audit(tx, c, 'tax.workspace.updated', 'tax_workspace', ws.id, {
@@ -263,7 +281,199 @@ export class TaxService {
         residentialStatus: dto.residentialStatus ?? null,
         otherIncome: dto.otherIncome ? dto.otherIncome.length : null,
       });
-      return this.view(row, dates, today);
+      return { ...this.view(row, dates, today), ...(await this.requestsOf(tx, row)) };
+    });
+  }
+
+  // ------------------------------------------------------------------------------------------ regime after the cut-off (founder answer 3)
+
+  private regimeRequestView(r: RegimeRequest) {
+    return { id: r.id, taxYear: r.taxYear, from: r.fromRegime as 'new' | 'old', to: r.toRegime as 'new' | 'old', reason: r.reason, status: r.status as 'pending' | 'approved' | 'rejected', requestedAt: r.createdAt, decidedAt: r.decidedAt };
+  }
+
+  /** "Ask HR to change my regime": only after the cut-off, with a reason; approved in Approvals by tax.regime.override, never by the person. */
+  async requestRegime(ctx: TenantContext, user: ScopeUser, dto: RegimeRequestDto) {
+    const v = await this.viewer(user);
+    const notices: Notice[] = [];
+    const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const { ws, dates, today } = await this.ownWorkspace(tx, c);
+      if (today <= dates.regimeCutoff) throw new ConflictException(`You can still change your regime yourself until ${dayMonYear(dates.regimeCutoff)}, in Declarations.`);
+      if (dto.regime === ws.regime) throw new BadRequestException(`The ${dto.regime} regime is already yours. Ask only to change it.`);
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`tax-regime:${ws.id}`}))`;
+      if (await tx.taxRegimeRequest.count({ where: { organizationId: org, workspaceId: ws.id, status: 'pending' } })) throw new ConflictException('Your earlier request is still with HR. Wait for their answer.');
+      const subject = (await tx.employee.findFirst({ where: { organizationId: org, id: ws.employeeId }, select: { userId: true } }))?.userId;
+      const approvers = (await payHolders(tx, org, 'tax.regime.override', ws.legalEntityId, today)).filter((u) => u !== v.userId && u !== subject);
+      if (!approvers.length) throw new BadRequestException('No one can approve this yet. Someone in payroll needs "tax.regime.override". Ask HR.');
+      const row = await tx.taxRegimeRequest.create({ data: { organizationId: org, legalEntityId: ws.legalEntityId, employeeId: ws.employeeId, workspaceId: ws.id, taxYear: ws.taxYear, fromRegime: ws.regime, toRegime: dto.regime, reason: dto.reason, requestedBy: v.userId! } });
+      const sub = await this.engine.submit(tx, c, {
+        type: REGIME_CHANGE,
+        subjectType: 'tax_regime_request',
+        subjectId: row.id,
+        title: `Tax regime change to the ${dto.regime} regime, ${ws.taxYear}`,
+        summary: [
+          { label: 'From', value: `${ws.regime === 'new' ? 'New' : 'Old'} regime` },
+          { label: 'To', value: `${dto.regime === 'new' ? 'New' : 'Old'} regime` },
+          { label: 'Why', value: dto.reason.slice(0, 200) },
+        ],
+        subjectPersonId: ws.employeeId,
+        requesterUserId: v.userId!,
+        raisedByUserId: v.userId!,
+        steps: [{ name: 'Payroll approval', approvers: [{ kind: 'users', userIds: approvers }], mode: 'any', remindAfterHours: 24 }],
+        payload: {},
+        payloadFields: [],
+        fallbackUserIds: [],
+      });
+      notices.push(...sub.notices);
+      await tx.taxRegimeRequest.update({ where: { id: row.id }, data: { wfRequestId: sub.id } });
+      await audit(tx, c, 'tax.regime.requested', 'tax_regime_request', row.id, { workspaceId: ws.id, taxYear: ws.taxYear, from: ws.regime, to: dto.regime, reason: dto.reason });
+      return this.regimeRequestView({ ...row, wfRequestId: sub.id });
+    });
+    await this.engine.send(ctx, notices);
+    return out;
+  }
+
+  /** Approvals decided (exactly once, in its transaction): approved changes the regime, as payroll's override does. */
+  private async regimeDecided(tx: Tx, wf: Prisma.WfRequestGetPayload<object>, outcome: 'approved' | 'rejected') {
+    const org = wf.organizationId;
+    const all = (await tx.legalEntity.findMany({ where: { organizationId: org }, select: { id: true } })).map((e) => e.id);
+    await withPayScope(tx, all, async () => {
+      const r = await tx.taxRegimeRequest.findFirst({ where: { organizationId: org, id: wf.subjectId } });
+      if (!r || r.status !== 'pending') return;
+      const by = (await tx.wfAction.findFirst({ where: { organizationId: org, requestId: wf.id, action: { in: ['approved', 'rejected'] } }, orderBy: { createdAt: 'desc' }, select: { actorUserId: true } }))?.actorUserId ?? null;
+      await tx.taxRegimeRequest.update({ where: { id: r.id }, data: { status: outcome, decidedBy: by, decidedAt: new Date() } });
+      const c = { organizationId: org, isSuperAdmin: false, userId: by };
+      if (outcome === 'approved') {
+        const ws = await tx.taxWorkspace.findFirstOrThrow({ where: { organizationId: org, id: r.workspaceId } });
+        await tx.taxWorkspace.update({
+          where: { id: ws.id },
+          data: { regime: r.toRegime, regimeSetAt: new Date(), regimeOverrideBy: by, regimeOverrideReason: `Employee's request approved: ${r.reason}`.slice(0, 500), updatedAt: new Date(), version: { increment: 1 } },
+        });
+        await audit(tx, c, 'tax.regime.overridden', 'tax_workspace', ws.id, { employeeId: ws.employeeId, from: ws.regime, to: r.toRegime, reason: r.reason, requestId: r.id });
+      }
+      await audit(tx, c, `tax.regime.request_${outcome}`, 'tax_regime_request', r.id, { from: r.fromRegime, to: r.toRegime });
+    });
+  }
+
+  // ------------------------------------------------------------------------------------------ residential status (founder answer 2)
+
+  private residencyView(r: Residency) {
+    const file = r.file as unknown as ProofFile | null;
+    return {
+      id: r.id,
+      taxYear: r.taxYear,
+      from: r.fromStatus as 'resident' | 'non_resident',
+      residentialStatus: r.residentialStatus as 'resident' | 'non_resident',
+      trcValidTo: r.trcValidTo ? dateOf(r.trcValidTo) : null,
+      dtaaCountry: r.dtaaCountry,
+      form10fFiled: r.form10fFiled,
+      file: file ? { name: file.name, size: file.size, at: file.at } : null,
+      status: r.status as 'pending' | 'approved' | 'rejected',
+      comment: r.verifierComment,
+      submittedAt: r.createdAt,
+      verifiedAt: r.verifiedAt,
+    };
+  }
+
+  /**
+   * Sends a residential-status change (or, staying non-resident, a new TRC for treaty relief) for payroll to approve.
+   * Non-resident needs the TRC as a PDF (checked by content), its last day not before today, and Form 10F filed.
+   */
+  async requestResidency(ctx: TenantContext, user: ScopeUser, dto: ResidencyRequestDto, file: { buffer: Buffer; originalname?: string } | undefined) {
+    const v = await this.viewer(user);
+    const nr = dto.residentialStatus === 'non_resident';
+    if (!nr && (dto.trcValidTo || dto.dtaaCountry)) throw new BadRequestException('A tax residency certificate and treaty country go only with non-resident.');
+    if (nr) {
+      if (!file?.buffer?.length) throw new BadRequestException('Attach your tax residency certificate (TRC) as a PDF.');
+      if (file.buffer.subarray(0, 5).toString('latin1') !== '%PDF-') throw new BadRequestException('The tax residency certificate must be a PDF file.');
+      if (!dto.trcValidTo) throw new BadRequestException("Enter the last day your tax residency certificate is valid.");
+      if (dto.form10fFiled !== 'true') throw new BadRequestException('File Form 10F on the income-tax portal first, then tick that you have filed it.');
+    }
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const { ws, today } = await this.ownWorkspace(tx, c);
+      if (nr && dto.trcValidTo! < today) throw new BadRequestException(`Your tax residency certificate ended on ${dayMonYear(dto.trcValidTo!)}. Send one that is still valid.`);
+      if (!nr && ws.residentialStatus !== 'non_resident') throw new ConflictException('You are already resident. Nothing to change.');
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`tax-residency:${ws.id}`}))`;
+      if (await tx.taxResidencyRequest.count({ where: { organizationId: org, workspaceId: ws.id, status: 'pending' } })) throw new ConflictException('Your earlier request is still with payroll. Wait for their answer.');
+      let entry: ProofFile | null = null;
+      if (nr && file) {
+        const ref = await this.files.put(`tax-residency/${org}/${ws.legalEntityId}/${randomBytes(12).toString('hex')}`, file.buffer);
+        entry = { ref, name: (file.originalname ?? 'trc.pdf').replace(/[^A-Za-z0-9._ -]/g, '_').slice(0, 100), sha256: sha256(file.buffer), size: file.buffer.length, contentType: 'application/pdf', at: new Date().toISOString() };
+      }
+      const row = await tx.taxResidencyRequest.create({
+        data: {
+          organizationId: org,
+          legalEntityId: ws.legalEntityId,
+          employeeId: ws.employeeId,
+          employmentId: ws.employmentId,
+          workspaceId: ws.id,
+          taxYear: ws.taxYear,
+          fromStatus: ws.residentialStatus,
+          residentialStatus: dto.residentialStatus,
+          trcValidTo: nr ? asDate(dto.trcValidTo!) : null,
+          dtaaCountry: nr ? (dto.dtaaCountry ?? null) : null,
+          form10fFiled: nr,
+          file: (entry ?? Prisma.DbNull) as unknown as Prisma.InputJsonValue,
+          submittedBy: v.userId!,
+        },
+      });
+      await audit(tx, c, 'tax.residency.requested', 'tax_residency_request', row.id, { taxYear: ws.taxYear, from: ws.residentialStatus, to: dto.residentialStatus, sha256: entry?.sha256 ?? null, dtaaCountry: row.dtaaCountry });
+      return this.residencyView(row);
+    });
+  }
+
+  /** Payroll's queue (PAY-23, beside Form 12B): the entities in scope, never the viewer's own. */
+  async residencyQueue(ctx: TenantContext, user: ScopeUser, status: 'pending' | 'approved' | 'rejected' = 'pending') {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const ids = await entitiesFor(tx, c, v, 'tax.proof.verify');
+      await payScope(tx, ids);
+      const rows = await tx.taxResidencyRequest.findMany({ where: { organizationId: c.organizationId, legalEntityId: { in: ids }, status, employeeId: { notIn: await this.mine(tx) } }, orderBy: { updatedAt: 'asc' }, take: 300 });
+      const people = await tx.employee.findMany({ where: { organizationId: c.organizationId, id: { in: rows.map((r) => r.employeeId) } }, select: { id: true, givenName: true, familyName: true } });
+      return rows.map((r) => {
+        const p = people.find((x) => x.id === r.employeeId);
+        return { ...this.residencyView(r), employeeId: r.employeeId, employeeName: p ? `${p.givenName} ${p.familyName ?? ''}`.trim() : '', legalEntityId: r.legalEntityId };
+      });
+    });
+  }
+
+  /** A request the key reaches (else "not found"), never the viewer's own. */
+  private async residencyFor(tx: Tx, c: CompanyContext, v: Viewer, id: string) {
+    const ids = await entitiesFor(tx, c, v, 'tax.proof.verify');
+    await payScope(tx, ids);
+    const r = await tx.taxResidencyRequest.findFirst({ where: { organizationId: c.organizationId, id } });
+    if (!r || !ids.includes(r.legalEntityId)) throw new NotFoundException('Not found');
+    if ((await this.mine(tx)).includes(r.employeeId)) throw new ForbiddenException('Someone else checks your own residential status.');
+    return r;
+  }
+
+  async residencyFile(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const r = await this.residencyFor(tx, c, v, id);
+      const meta = r.file as unknown as ProofFile | null;
+      if (!meta) throw new NotFoundException('This request has no certificate.');
+      const got = await this.files.get(meta.ref);
+      if (sha256(got) !== meta.sha256) throw new ConflictException('This certificate does not match the file that was sent.');
+      await audit(tx, c, 'tax.residency.viewed', 'tax_residency_request', r.id, { sha256: meta.sha256 });
+      return { file: got, name: meta.name, contentType: meta.contentType };
+    });
+  }
+
+  /** Approve (the workspace changes from the next run) or reject with a comment. */
+  async decideResidency(ctx: TenantContext, user: ScopeUser, id: string, dto: Form12bDecisionDto) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const r = await this.residencyFor(tx, c, v, id);
+      if (dto.decision === 'reject' && !dto.comment) throw new BadRequestException('Say why, so the employee can fix it.');
+      const status = dto.decision === 'approve' ? 'approved' : 'rejected';
+      const n = await tx.taxResidencyRequest.updateMany({ where: { id: r.id, status: 'pending' }, data: { status, verifierId: v.userId!, verifierComment: dto.comment ?? null, verifiedAt: new Date(), updatedAt: new Date() } });
+      if (!n.count) throw new ConflictException('This request is not waiting for a check.');
+      if (status === 'approved')
+        await tx.taxWorkspace.update({ where: { id: r.workspaceId }, data: { residentialStatus: r.residentialStatus, trcValidTo: r.trcValidTo, dtaaCountry: r.dtaaCountry, updatedAt: new Date(), version: { increment: 1 } } });
+      await audit(tx, c, 'tax.residency.verified', 'tax_residency_request', r.id, { employeeId: r.employeeId, taxYear: r.taxYear, status, from: r.fromStatus, to: r.residentialStatus, comment: dto.comment ?? null });
+      return this.residencyView(await tx.taxResidencyRequest.findFirstOrThrow({ where: { id: r.id } }));
     });
   }
 

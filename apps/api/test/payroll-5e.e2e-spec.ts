@@ -226,14 +226,22 @@ describe('Payroll batch 5e (income tax)', () => {
           .expect(200)
       ).body.otherIncome,
     ).toEqual([{ kind: 'interest', amount: '12000' }]);
-    // 5e-D3: a treaty claim is kept and flagged for payroll to handle by hand (a run check too).
-    expect(
-      (
-        await api('emp2', 'patch', '/tax/me/workspace')
-          .send({ dtaaCountry: 'SG', trcValidTo: `${Number(ty.slice(0, 4)) + 1}-03-31` })
-          .expect(200)
-      ).body,
-    ).toMatchObject({ dtaaCountry: 'SG', treatyHandledByHand: true });
+    // 5e-D3: a treaty claim is kept and flagged for payroll to handle by hand (a run check too). Founder answer 2 (30 Oct
+    // 2026): it goes to payroll with the TRC and counts only once approved; the workspace is never patched directly.
+    const trcTo = `${Number(ty.slice(0, 4)) + 1}-03-31`;
+    await api('emp2', 'patch', '/tax/me/workspace').send({ dtaaCountry: 'SG', trcValidTo: trcTo }).expect(409);
+    const rq = (
+      await api('emp2', 'post', '/tax/me/residency')
+        .field('residentialStatus', 'non_resident')
+        .field('trcValidTo', trcTo)
+        .field('dtaaCountry', 'SG')
+        .field('form10fFiled', 'true')
+        .attach('file', Buffer.from('%PDF-1.4 tax residency certificate'), 'trc.pdf')
+        .expect(201)
+    ).body;
+    expect((await api('emp2', 'get', '/tax/me/workspace').expect(200)).body).toMatchObject({ dtaaCountry: null, residencyRequest: { id: rq.id, status: 'pending' } });
+    await api('payAdmin', 'post', `/tax/residency/${rq.id}/decision`).send({ decision: 'approve' }).expect(200);
+    expect((await api('emp2', 'get', '/tax/me/workspace').expect(200)).body).toMatchObject({ dtaaCountry: 'SG', residentialStatus: 'non_resident', treatyHandledByHand: true });
     expect((await api('payAdminB', 'get', '/tax/workspaces').expect(200)).body).toEqual([]);
   });
 

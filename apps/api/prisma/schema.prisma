@@ -7909,6 +7909,53 @@ model Form12bSubmission {
   @@map("form12b_submissions")
 }
 
+/// Founder answer 2 (30 Oct 2026): a residential-status change waits for payroll's approval with the TRC and Form 10F.
+model TaxResidencyRequest {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  legalEntityId     String    @map("legal_entity_id") @db.Uuid
+  employeeId        String    @map("employee_id") @db.Uuid
+  employmentId      String    @map("employment_id") @db.Uuid
+  workspaceId       String    @map("workspace_id") @db.Uuid
+  taxYear           String    @map("tax_year") @db.VarChar(7)
+  fromStatus        String    @map("from_status") @db.VarChar(12)
+  residentialStatus String    @map("residential_status") @db.VarChar(12)
+  trcValidTo        DateTime? @map("trc_valid_to") @db.Date
+  dtaaCountry       String?   @map("dtaa_country") @db.Char(2)
+  form10fFiled      Boolean   @default(false) @map("form10f_filed")
+  file              Json?
+  status            String    @default("pending") @db.VarChar(8)
+  verifierId        String?   @map("verifier_id") @db.Uuid
+  verifierComment   String?   @map("verifier_comment") @db.VarChar(500)
+  verifiedAt        DateTime? @map("verified_at") @db.Timestamptz(3)
+  submittedBy       String    @map("submitted_by") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@map("tax_residency_requests")
+}
+
+/// Founder answer 3 (30 Oct 2026): after the cut-off, "ask HR to change my regime" through Approvals.
+model TaxRegimeRequest {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  workspaceId    String    @map("workspace_id") @db.Uuid
+  taxYear        String    @map("tax_year") @db.VarChar(7)
+  fromRegime     String    @map("from_regime") @db.VarChar(3)
+  toRegime       String    @map("to_regime") @db.VarChar(3)
+  reason         String    @db.VarChar(500)
+  status         String    @default("pending") @db.VarChar(8)
+  wfRequestId    String?   @map("wf_request_id") @db.Uuid
+  decidedBy      String?   @map("decided_by") @db.Uuid
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+  requestedBy    String    @map("requested_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("tax_regime_requests")
+}
+
 model TdsProjection {
   payslipId      String   @id @map("payslip_id") @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid
