@@ -1,0 +1,478 @@
+// PAY-01 · Payroll home, PAY-29 · run list and PAY-30 · coverage, live: the designed screens (payroll-run.tsx) with the
+// API's runs, the month's run checks, the pay group's calendar and the daily coverage check. Same header, stage track,
+// "What needs attention" list, totals, chart, frequency tabs and coverage table as the stories; the New run drawer
+// (monthly or off-cycle, pay group, month, pay period for weekly groups) is kept from the old live page. The API checks
+// every call again (keys, entity scope).
+import { useMemo, useState } from 'react';
+import { AlertCircle, AlertTriangle, Plus } from 'lucide-react';
+import { Button } from '../../components/button';
+import { Badge } from '../../components/display';
+import { Drawer } from '../../components/drawer';
+import { EmptyState, ErrorState, InlineAlert, NoAccessState } from '../../components/feedback';
+import { FormField, useTooEarly } from '../../components/field';
+import { Icon } from '../../components/foundations';
+import { TextField } from '../../components/inputs';
+import { useToast, ToastProvider } from '../../components/notify';
+import { Dialog } from '../../components/overlay';
+import { Segment } from '../../components/segment';
+import { Select } from '../../components/select';
+import { PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
+import { DataTable, type TableColumn } from '../../components/table';
+import { LineChart, StatCard } from '../../components/charts';
+import { formatDate, groupIndian } from '../../lib/format';
+import { useRun } from '../org/org-kit';
+import { DueBadge } from '../time/time-kit';
+import { dateText } from '../time/live/kit';
+import { RunStageTrack, SectionTitle, StateBlock, type RunStage } from './pay-kit';
+import { CoveragePanel, FrequencyRunsScreen, type CoverageRow as DesignCoverageRow } from './payroll-run';
+import { RunStatusBadge, runName } from './live/runs';
+import { statuteText } from './live/setup';
+import type { LoadState } from './live/types';
+import type { CoverageRow, SetupEntity } from './live/types-5b';
+import { periodsOf, type OffcycleKind, type PayGroupRef, type PayRun, type RunReadiness, type RunStatus } from './live/types-5j';
+
+const monthLabel = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+const shortMonth = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' });
+const day = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00`);
+const num = (v: string | null | undefined) => Number(v ?? 0);
+const plural = (n: number, one: string, many = `${one}s`) => `${groupIndian(n)} ${n === 1 ? one : many}`;
+
+/** The design's six stages from the API's nine statuses (Void and Reopened show as their badge). */
+export const stageOf = (s: RunStatus, published: boolean): RunStage =>
+  published ? 'Published' : s === 'paid' ? 'Paid' : s === 'approved' ? 'Approved and locked' : s === 'submitted' || s === 'in_review' || s === 'reopened' ? 'In review' : s === 'calculated' ? 'Calculated' : 'Draft';
+
+/** Loading, error and no-access for a live pay page; the design's StateBlock draws the skeleton. */
+function LiveStates({ state, onRetry, what, children }: { state: LoadState; onRetry?: () => void; what: string; children: React.ReactNode }) {
+  if (state === 'loading') return <StateBlock state="loading" rows={6}>{null}</StateBlock>;
+  if (state === 'error') return <ErrorState title={`We couldn't load ${what}.`} description="Nothing has changed. Try again in a moment." onRetry={onRetry} />;
+  if (state === 'no-access') return <NoAccessState grantedBy="your payroll admin" what={what} />;
+  return <>{children}</>;
+}
+
+/* ================================================================== PAY-01 Payroll home */
+
+export interface LivePayrollHome {
+  state: LoadState;
+  onRetry?: () => void;
+  /** The latest runs, every month (newest first). */
+  runs: PayRun[] | null;
+  /** Null when the person may not read pay groups (then "set up" cannot be told). */
+  groups: PayGroupRef[] | null;
+  /** The month chosen in the top bar, "2026-10". */
+  month: string;
+  /** Today in India, "2026-10-29". */
+  today: string;
+  /** Checks of this month's run (null when there is none or they did not load). */
+  readiness: RunReadiness | null;
+  /** Cut-off and pay date of this month's run, from its pay group's calendar. */
+  calendar: { cutOff: string; payDate: string } | null;
+  canPrepare: boolean;
+  canOffcycle: boolean;
+  canApprove: boolean;
+  setupHref: string;
+  statutoryHref: string;
+  /** Link to one run's page (the stat cards' drill links). */
+  runHref: (id: string) => string;
+  onCreate: (payGroupId: string, month: string, offcycleKind: Exclude<OffcycleKind, 'fnf'> | null, subPeriod?: number | null) => Promise<{ id: string }>;
+  onOpen: (id: string) => void;
+}
+
+/** This month's run: the first regular run of the month that is not void (the top bar narrows it to one company). */
+export const currentRun = (runs: PayRun[], month: string) => runs.find((r) => r.month === month && r.runType === 'regular' && r.status !== 'void') ?? null;
+
+export function LivePayrollHomeScreen({ live }: { live: LivePayrollHome }) {
+  return (
+    <ToastProvider>
+      <LiveHome live={live} />
+    </ToastProvider>
+  );
+}
+
+function LiveHome({ live }: { live: LivePayrollHome }) {
+  const [creating, setCreating] = useState<'regular' | 'offcycle' | null>(null);
+  const [help, setHelp] = useState(false);
+  const runs = live.runs ?? [];
+  const cur = currentRun(runs, live.month);
+  const groupOf = (r: PayRun) => live.groups?.find((g) => g.id === r.payGroupId)?.name;
+  const isFin = !live.canPrepare && live.canApprove;
+  const notSetUp = live.groups !== null && live.groups.length === 0;
+  const checks = (live.readiness?.checks ?? []).filter((c) => !c.waived && c.severity !== 'info');
+  // One line per kind of check; a check about many people names the first and counts the rest.
+  const findings = Object.values(
+    checks.reduce<Record<string, typeof checks>>((a, c) => ({ ...a, [c.checkKey]: [...(a[c.checkKey] ?? []), c] }), {}),
+  ).sort((a, b) => (a[0].severity === b[0].severity ? 0 : a[0].severity === 'block' ? -1 : 1));
+  const blocking = checks.filter((c) => c.severity === 'block').length;
+  const stage = cur ? stageOf(cur.status, Boolean(cur.publishedAt)) : null;
+  const waiting = runs.filter((r) => r.status === 'submitted');
+  // Totals: the last regular run with totals that is approved or later, against the one before it in the same pay group.
+  const done = runs.filter((r) => r.runType === 'regular' && r.totals && ['approved', 'paid'].includes(r.status));
+  const last = done[0];
+  const history = last ? done.filter((r) => r.payGroupId === last.payGroupId).slice(0, 12).reverse() : [];
+  const prev = history.length > 1 ? history[history.length - 2] : undefined;
+  const open = (r: PayRun, label: string) => ({ label, href: live.runHref(r.id), onClick: (e: { preventDefault: () => void }) => (e.preventDefault(), live.onOpen(r.id)) });
+  const primary = !cur ? (
+    live.canPrepare && !notSetUp ? (
+      <Button variant="primary" icon={Plus} onClick={() => setCreating('regular')}>
+        Start {monthLabel(live.month).split(' ')[0]} payroll
+      </Button>
+    ) : null
+  ) : (
+    <Button variant="primary" onClick={() => live.onOpen(cur.id)}>
+      {cur.status === 'submitted' && live.canApprove && !cur.preparedByMe
+        ? 'Review and approve'
+        : cur.status === 'approved'
+          ? 'Release bank file'
+          : cur.status === 'paid' && !cur.publishedAt
+            ? 'Publish payslips'
+            : 'Open run workspace'}
+    </Button>
+  );
+  return (
+    <div className="yx-auth__page yx-pay-stack">
+      <PageHeader
+        title="Payroll"
+        description={isFin ? 'Runs waiting for your approval, payments and statutory dues.' : 'Current run, what blocks it, and what is due this month.'}
+        facts={
+          live.state === 'ready' && cur
+            ? [groupOf(cur) ?? cur.entityName, cur.totals ? plural(cur.totals.people, 'employee') : null, live.calendar ? `Cut-off ${formatDate(day(live.calendar.cutOff))}` : null, live.calendar ? `Pay date ${formatDate(day(live.calendar.payDate))}` : null]
+                .filter(Boolean)
+                .join(' · ')
+            : undefined
+        }
+        actions={
+          live.state === 'ready' ? (
+            <>
+              {live.canOffcycle && !notSetUp && <Button onClick={() => setCreating('offcycle')}>Start off-cycle run</Button>}
+              {primary}
+            </>
+          ) : undefined
+        }
+      />
+      <Dialog
+        open={help}
+        onOpenChange={setHelp}
+        title="What you need before you start"
+        description="Keep these at hand. You can save the set-up and come back to it."
+        footer={
+          <>
+            <Button onClick={() => setHelp(false)}>Close</Button>
+            <Button variant="primary" asChild>
+              <a href={live.setupHref}>Set up payroll</a>
+            </Button>
+          </>
+        }
+      >
+        <ul className="yx-pay-stack">
+          <li>PF, ESI and professional tax registration numbers for the entity</li>
+          <li>Pay group, pay day and the monthly attendance cut-off</li>
+          <li>Salary structure: the components and how each is worked out</li>
+          <li>The salary account and the bank's bulk upload format</li>
+          <li>Pay already given this tax year, if you are moving from another system mid-year</li>
+        </ul>
+      </Dialog>
+      <LiveStates state={live.state} onRetry={live.onRetry} what="payroll">
+        {notSetUp ? (
+          <EmptyState
+            title="Payroll isn't set up for this entity yet."
+            description="Set up registrations, pay group, salary template and bank format. It takes about 30 minutes; you can save and come back."
+            action={
+              <Button variant="primary" asChild>
+                <a href={live.setupHref}>Set up payroll</a>
+              </Button>
+            }
+            help={<Button size="sm" onClick={() => setHelp(true)}>What you need before you start</Button>}
+          />
+        ) : (
+          <>
+            {waiting.length > 0 && (
+              <InlineAlert tone="info" title={`${plural(waiting.length, 'run is', 'runs are')} waiting for approval`}>
+                Open a run to see who approves it next. Approvers decide on the run's own page.
+              </InlineAlert>
+            )}
+            <section className="yx-pay-stack" aria-label="Current run">
+              <SectionTitle actions={cur ? <RunStatusBadge status={cur.status} /> : undefined}>{cur ? runName(cur) : `Payroll · ${monthLabel(live.month)}`}</SectionTitle>
+              {cur && stage ? (
+                <>
+                  <RunStageTrack current={stage} complete={stage === 'Published'} blocked={blocking && (stage === 'Draft' || stage === 'In review') ? `${plural(blocking, 'check')} ${blocking === 1 ? 'blocks' : 'block'} the run` : undefined} />
+                  {cur.status === 'reopened' && <p className="yx-pay-muted">This run was reopened after approval. It is checked and approved again.</p>}
+                </>
+              ) : (
+                <p className="yx-pay-muted">
+                  No payroll run for {monthLabel(live.month)} yet.{live.canPrepare ? ' Start it when the month\'s inputs are in.' : ''}
+                </p>
+              )}
+            </section>
+            <div className="yx-pay-grid">
+              <div data-span="7" className="yx-pay-panel">
+                <SectionTitle>What needs attention</SectionTitle>
+                {!cur || findings.length === 0 ? (
+                  <p className="yx-pay-muted">{cur ? 'Nothing is blocking this run.' : 'Nothing to check until the run is started.'}</p>
+                ) : (
+                  <ul className="yx-pay-findings">
+                    {findings.slice(0, 4).map((g) => {
+                      const block = g[0].severity === 'block';
+                      return (
+                        <li key={g[0].checkKey} data-sev={block ? 'block' : 'warn'}>
+                          <Icon icon={block ? AlertCircle : AlertTriangle} label={block ? 'Blocks' : 'Warning'} />
+                          <div>
+                            <p className="yx-pay-findings__title">{g.length > 1 ? `${g[0].message} And ${plural(g.length - 1, 'more')}.` : g[0].message}</p>
+                            <p className="yx-pay-findings__desc">
+                              <Badge tone={block ? 'danger' : 'warning'}>{block ? (g[0].blocks === 'approval' ? 'Blocks approval' : 'Blocks calculation') : 'Warning'}</Badge> {g[0].waivable ? 'Fix it, or waive it with a reason in the run checks.' : 'Fix it before the run goes on.'}
+                            </p>
+                          </div>
+                          <div className="yx-pay-findings__acts">
+                            <Button size="sm" onClick={() => live.onOpen(cur.id)}>
+                              Open run checks
+                            </Button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                    {findings.length > 4 && <li className="yx-pay-muted">{plural(findings.length - 4, 'more kind of check', 'more kinds of check')} in the run.</li>}
+                  </ul>
+                )}
+              </div>
+              <div data-span="5" className="yx-pay-panel">
+                <SectionTitle>Due this month</SectionTitle>
+                {live.calendar ? (
+                  <ul className="yx-pay-stack" aria-label="Due this month">
+                    {[
+                      { what: 'Attendance and inputs cut-off', on: live.calendar.cutOff },
+                      { what: 'Salaries paid', on: live.calendar.payDate },
+                    ].map((x) => (
+                      <li key={x.what} className="yx-pay-row">
+                        <span>{x.what}</span>
+                        <span className="yx-pay-muted">{formatDate(day(x.on))}</span>
+                        <DueBadge date={day(x.on)} today={day(live.today)} />
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="yx-pay-muted">The cut-off and pay date show once this month's run has a pay group calendar.</p>
+                )}
+                <Button size="sm" asChild>
+                  <a href={live.statutoryHref}>PF, ESI, TDS and PT dues</a>
+                </Button>
+              </div>
+            </div>
+            {last?.totals && (
+              <section aria-label="Last run totals" className="yx-pay-grid">
+                <div data-span="3">
+                  <StatCard label={`Net pay, ${monthLabel(last.month)}`} value={num(last.totals.net)} money previous={prev?.totals ? num(prev.totals.net) : undefined} previousLabel={prev ? monthLabel(prev.month) : undefined} trend={history.map((r) => num(r.totals!.net))} drill={open(last, `View ${plural(last.totals.people, 'payslip')}`)} />
+                </div>
+                <div data-span="3">
+                  <StatCard label={`Gross pay, ${monthLabel(last.month)}`} value={num(last.totals.gross)} money previous={prev?.totals ? num(prev.totals.gross) : undefined} previousLabel={prev ? monthLabel(prev.month) : undefined} drill={open(last, 'View gross pay by person')} />
+                </div>
+                <div data-span="3">
+                  <StatCard label={`Cost to company, ${monthLabel(last.month)}`} value={num(last.totals.employerCost)} money previous={prev?.totals ? num(prev.totals.employerCost) : undefined} previousLabel={prev ? monthLabel(prev.month) : undefined} drill={open(last, 'View employer cost by person')} />
+                </div>
+                <div data-span="3">
+                  <StatCard label={`Employees paid, ${monthLabel(last.month)}`} value={last.totals.people} previous={prev?.totals?.people} previousLabel={prev ? monthLabel(prev.month) : undefined} drill={open(last, 'View employees paid')} />
+                </div>
+                {history.length > 1 && (
+                  <div data-span="12">
+                    <LineChart
+                      title="Gross and net pay, recent months"
+                      description={`Monthly runs for ${groupOf(last) ?? last.entityName ?? 'this pay group'}.`}
+                      categories={history.map((r) => shortMonth(r.month))}
+                      series={[
+                        { name: 'Gross', values: history.map((r) => num(r.totals!.gross)) },
+                        { name: 'Net', values: history.map((r) => num(r.totals!.net)) },
+                      ]}
+                      money
+                      xLabel="Month"
+                      height={200}
+                    />
+                  </div>
+                )}
+              </section>
+            )}
+            <FrequencyRunsScreen live={{ runs, groups: live.groups ?? [], onOpen: live.onOpen }} />
+          </>
+        )}
+      </LiveStates>
+      {creating && <NewRunDrawer live={live} groups={live.groups ?? []} initial={creating} onClose={() => setCreating(null)} />}
+    </div>
+  );
+}
+
+/** New run: monthly payroll or an off-cycle run (the F&F run starts from the settlement); weekly groups pick a period. */
+function NewRunDrawer({ live, groups, initial, onClose }: { live: LivePayrollHome; groups: PayGroupRef[]; initial: 'regular' | 'offcycle'; onClose: () => void }) {
+  const [kind, setKind] = useState<'regular' | 'offcycle'>(live.canPrepare ? initial : 'offcycle');
+  const [off, setOff] = useState<Exclude<OffcycleKind, 'fnf'>>('bonus');
+  const [group, setGroup] = useState<string | null>(groups[0]?.id ?? null);
+  const [month, setMonth] = useState(live.month);
+  const [period, setPeriod] = useState<string | null>(null);
+  const { busy, error, run } = useRun();
+  const { toast } = useToast();
+  const g = groups.find((x) => x.id === group);
+  // PAY-9.01: a weekly or fortnightly group's regular run is for one period of the month.
+  const periods = kind === 'regular' && g?.frequency && g.frequency !== 'monthly' && g.anchorDate && /^\d{4}-\d{2}$/.test(month) ? periodsOf(g.frequency, g.anchorDate, month) : null;
+  const errors = [...(!group ? [{ fieldId: 'nr-group', message: 'Choose a pay group.' }] : []), ...(!/^\d{4}-\d{2}$/.test(month) ? [{ fieldId: 'nr-month', message: 'Choose the month.' }] : []), ...(periods && !periods.some((x) => String(x.k) === period) ? [{ fieldId: 'nr-period', message: 'Choose the pay period.' }] : [])];
+  const save = useTooEarly(errors);
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={kind === 'regular' ? 'Start a payroll run' : 'Start an off-cycle run'}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant="primary"
+            loading={busy === 'create'}
+            onClick={() => {
+              if (save.stop()) return;
+              void run('create', async () => {
+                const r = await live.onCreate(group!, month, kind === 'regular' ? null : off, periods ? Number(period) : null);
+                toast({ title: 'Run created', tone: 'success' });
+                live.onOpen(r.id);
+              });
+            }}
+          >
+            Create run
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-pay-stack">
+        {error && (
+          <InlineAlert tone="danger" title="Not created">
+            {error}
+          </InlineAlert>
+        )}
+        {live.canPrepare && live.canOffcycle && (
+          <Segment
+            label="Kind of run"
+            value={kind}
+            onChange={setKind}
+            options={[
+              { value: 'regular', label: 'Monthly payroll' },
+              { value: 'offcycle', label: 'Off-cycle' },
+            ]}
+          />
+        )}
+        {kind === 'offcycle' && (
+          <Segment
+            label="Pays"
+            value={off}
+            onChange={setOff}
+            options={[
+              { value: 'bonus', label: 'Bonus' },
+              { value: 'arrears', label: 'Arrears' },
+              { value: 'correction', label: 'Correction' },
+              { value: 'payment', label: 'Payment' },
+            ]}
+          />
+        )}
+        <FormField id="nr-group" label="Pay group" required error={save.errorOf('nr-group')}>
+          <Select value={group} onChange={setGroup} options={groups.map((x) => ({ value: x.id, label: x.name }))} placeholder="Choose a pay group" />
+        </FormField>
+        <FormField id="nr-month" label="Month" required error={save.errorOf('nr-month')} helper="The month the run pays.">
+          <TextField type="month" value={month} onChange={setMonth} />
+        </FormField>
+        {periods && (
+          <FormField id="nr-period" label="Pay period" required error={save.errorOf('nr-period')} helper="The month's items, PT and TDS go in the run that ends the month.">
+            <Select value={period} onChange={setPeriod} placeholder="Choose the pay period" options={periods.map((x) => ({ value: String(x.k), label: `${dateText(x.from)} to ${dateText(x.to)}` }))} />
+          </FormField>
+        )}
+        {kind === 'offcycle' && (
+          <InlineAlert tone="info" title="An off-cycle run pays only what you add to it">
+            It never changes the month's regular payslip and can run after the month is locked. Tax on it is the extra tax the payment adds for the year. A full and final run starts from the settlement.
+          </InlineAlert>
+        )}
+      </div>
+    </Drawer>
+  );
+}
+
+/* ================================================================== PAY-29 run list per frequency */
+
+export interface LiveRunList {
+  runs: PayRun[];
+  groups: PayGroupRef[];
+  onOpen: (id: string) => void;
+}
+type Freq = 'Monthly' | 'Weekly' | 'Fortnightly';
+const FREQ: Record<string, Freq> = { monthly: 'Monthly', weekly: 'Weekly', fortnightly: 'Fortnightly' };
+
+/** The PAY-29 frequency tabs and table, under Payroll home: every run (all nine statuses), opened by a click. */
+export function LiveRunListPanel({ live }: { live: LiveRunList }) {
+  const group = (r: PayRun) => live.groups.find((g) => g.id === r.payGroupId);
+  const freqOf = (r: PayRun): Freq => FREQ[group(r)?.frequency ?? 'monthly'] ?? 'Monthly';
+  const byFreq = useMemo(() => {
+    const out: Record<Freq, PayRun[]> = { Monthly: [], Weekly: [], Fortnightly: [] };
+    for (const r of live.runs) out[freqOf(r)].push(r);
+    return out;
+  }, [live.runs, live.groups]); // eslint-disable-line react-hooks/exhaustive-deps
+  const first = (['Monthly', 'Weekly', 'Fortnightly'] as const).find((f) => byFreq[f].length) ?? 'Monthly';
+  const cols: TableColumn<PayRun>[] = [
+    { key: 'period', header: 'Run', value: (r) => runName(r), width: 280 },
+    { key: 'group', header: 'Pay group', value: (r) => group(r)?.name ?? r.entityName ?? '', width: 220, optional: true },
+    { key: 'emp', header: 'Employees', type: 'number', value: (r) => r.totals?.people ?? null, width: 100 },
+    { key: 'net', header: 'Net pay', type: 'money', value: (r) => (r.totals ? num(r.totals.net) : null), width: 140 },
+    { key: 'status', header: 'Status', value: (r) => r.status, render: (r) => <RunStatusBadge status={r.status} />, width: 170 },
+  ];
+  return (
+    <section className="yx-pay-stack" aria-label="Pay runs">
+      <SectionTitle>Pay runs</SectionTitle>
+      <Tabs defaultValue={first}>
+        <TabsList aria-label="Frequency">
+          {(['Monthly', 'Weekly', 'Fortnightly'] as const).map((f) => (
+            <TabsTrigger key={f} value={f} count={byFreq[f].length}>
+              {f}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        {(['Monthly', 'Weekly', 'Fortnightly'] as const).map((f) => (
+          <TabsContent key={f} value={f}>
+            <DataTable
+              label={`${f} runs`}
+              columns={cols}
+              rows={byFreq[f]}
+              getRowId={(r) => r.id}
+              cardSummary
+              onRowClick={(r) => live.onOpen(r.id)}
+              empty={<EmptyState title={f === 'Monthly' ? 'No payroll runs yet' : `No ${f.toLowerCase()} runs yet.`} description={f === 'Monthly' ? "Start this month's payroll for a pay group. Its people, salaries and attendance are checked before anything is calculated." : `Add a pay group with a ${f.toLowerCase()} calendar in Settings › Pay groups & calendars.`} />}
+            />
+          </TabsContent>
+        ))}
+      </Tabs>
+    </section>
+  );
+}
+
+/* ================================================================== PAY-30 coverage, live */
+
+export interface LiveCoverage {
+  state: LoadState;
+  onRetry?: () => void;
+  entities: SetupEntity[];
+  rows: CoverageRow[] | null;
+  setupHref: string;
+}
+const COVER_STATUS: Record<CoverageRow['status'], DesignCoverageRow['status']> = { not_covered: 'Below', approaching: 'Approaching', covered: 'Covered' };
+
+/** The API's daily coverage rows in the design's shape: entity, statute, head count against the threshold. */
+export const coverageRows = (rows: CoverageRow[], entities: SetupEntity[]): DesignCoverageRow[] =>
+  rows.map((r) => ({
+    entity: entities.find((e) => e.id === r.legalEntityId)?.name ?? '',
+    statute: statuteText(r.statute),
+    basis: 'Employees',
+    headcount: r.headcount,
+    threshold: r.threshold,
+    status: COVER_STATUS[r.status],
+    due: r.status === 'covered' ? (r.crossedOn ? `Covered since ${dateText(r.crossedOn)}; stays covered` : 'Covered') : r.status === 'approaching' ? `Checked ${dateText(r.evaluatedAt.slice(0, 10))}` : undefined,
+  }));
+
+/** Payroll › Statutory coverage (PAY-30): the coverage panel, read only; switching a law on is done in statutory set-up. */
+export function LiveCoverageScreen({ live }: { live: LiveCoverage }) {
+  return (
+    <div className="yx-auth__page yx-pay-stack">
+      <PageHeader title="Statutory coverage" description="Head count of each legal entity against the legal thresholds, checked every day. Once covered, an establishment stays covered." />
+      <LiveStates state={live.state} onRetry={live.onRetry} what="statutory coverage">
+        <CoveragePanel rows={coverageRows(live.rows ?? [], live.entities)} setupHref={live.setupHref} />
+      </LiveStates>
+    </div>
+  );
+}

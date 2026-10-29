@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../../../components/button';
-import { Badge, type BadgeTone } from '../../../components/display';
+import { Badge } from '../../../components/display';
 import { Drawer } from '../../../components/drawer';
 import { EmptyState, InlineAlert } from '../../../components/feedback';
 import { FormField, useTooEarly } from '../../../components/field';
@@ -14,7 +14,6 @@ import { LivePage, dateText } from '../../time/live/kit';
 import { monthText } from './periods';
 import type { LoadState } from './types';
 import type {
-  CoverageRow,
   EmployeeHit,
   GoLiveCheck,
   ImportBatch,
@@ -786,61 +785,6 @@ export function StatutoryRulesScreen(p: StatutoryRulesScreenProps) {
           </div>
         )}
       </Drawer>
-    </LivePage>
-  );
-}
-
-// ------------------------------------------------------------------------------------------ coverage (PAY-30)
-
-const COVER: Record<CoverageRow['status'], { label: string; tone: BadgeTone }> = {
-  not_covered: { label: 'Not covered', tone: 'neutral' },
-  approaching: { label: 'Approaching', tone: 'warning' },
-  covered: { label: 'Covered', tone: 'success' },
-};
-
-export function CoverageLiveScreen(p: { state: LoadState; onRetry?: () => void; entities: SetupEntity[]; rows: CoverageRow[] | null }) {
-  const name = (id: string) => p.entities.find((e) => e.id === id)?.name ?? '';
-  return (
-    <LivePage
-      title="Statutory coverage"
-      description="Head count of each legal entity against the PF and ESI thresholds, checked every day. Once covered, an establishment stays covered."
-      state={p.state}
-      onRetry={p.onRetry}
-      what="statutory coverage"
-      grantedBy="your payroll admin"
-    >
-      <Card className="yx-pay-card" title="Coverage">
-        {p.rows?.length ? (
-          <table className="yx-tim-table" aria-label="Statutory coverage">
-            <thead>
-              <tr>
-                <th scope="col">Legal entity</th>
-                <th scope="col">Statute</th>
-                <th scope="col">Head count</th>
-                <th scope="col">Threshold</th>
-                <th scope="col">Status</th>
-                <th scope="col">Covered since</th>
-              </tr>
-            </thead>
-            <tbody>
-              {p.rows.map((r) => (
-                <tr key={`${r.legalEntityId}-${r.statute}`}>
-                  <th scope="row">{name(r.legalEntityId)}</th>
-                  <td>{statuteText(r.statute)}</td>
-                  <td>{r.headcount}</td>
-                  <td>{r.threshold}</td>
-                  <td>
-                    <Badge tone={COVER[r.status].tone}>{COVER[r.status].label}</Badge>
-                  </td>
-                  <td>{r.crossedOn ? dateText(r.crossedOn) : '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <EmptyState compact title="Not checked yet" description="The daily check fills this in." />
-        )}
-      </Card>
     </LivePage>
   );
 }

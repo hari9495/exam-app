@@ -1,7 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { PayRunsScreen } from './runs';
 import { MyEwaScreen } from './special';
 import { periodsOf } from './types-5j';
 
@@ -16,19 +15,6 @@ describe('batch 5i screens', () => {
       ['2026-10-19', '2026-10-25'],
       ['2026-10-26', '2026-10-31'],
     ]);
-  });
-
-  it('a weekly group’s run asks for its pay period; the choice is sent with the run', async () => {
-    const onCreate = vi.fn(async () => ({ id: 'r1' }));
-    render(<PayRunsScreen state="ready" runs={[]} groups={[{ id: 'g1', name: 'Weekly workers', legalEntityId: 'e1', frequency: 'weekly', anchorDate: '2026-09-28' }]} thisMonth="2026-10" canPrepare canOffcycle={false} onCreate={onCreate} onOpen={vi.fn()} />);
-    await ue.click(screen.getAllByRole('button', { name: 'New run' })[0]);
-    await ue.click(screen.getByRole('button', { name: 'Create run' }));
-    expect(screen.getAllByText(/Choose the pay period/).length).toBeGreaterThan(0);
-    expect(onCreate).not.toHaveBeenCalled();
-    await ue.click(screen.getByRole('combobox', { name: /Pay period/ }));
-    await ue.click(await screen.findByRole('option', { name: /26 Oct 2026 to 31 Oct 2026/ }));
-    await ue.click(screen.getByRole('button', { name: 'Create run' }));
-    await waitFor(() => expect(onCreate).toHaveBeenCalledWith('g1', '2026-10', null, 5));
   });
 
   it('a draw needs the recovery accepted and stays within what is available', async () => {

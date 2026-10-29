@@ -1,13 +1,12 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { userEvent, within } from 'storybook/test';
 import { fails, never, ok, pick, play, press, pressFirst, see, type } from '../../_kit/story-play';
-import { CoverageLiveScreen, PayGroupsScreen, PayImportsScreen, PaySetupScreen, PayslipLayoutLiveScreen, StatutoryRulesScreen, type PayGroupsScreenProps, type PayImportsScreenProps, type PaySetupScreenProps, type PayslipLayoutLiveProps } from './setup';
+import { PayGroupsScreen, PayImportsScreen, PaySetupScreen, PayslipLayoutLiveScreen, StatutoryRulesScreen, type PayGroupsScreenProps, type PayImportsScreenProps, type PaySetupScreenProps, type PayslipLayoutLiveProps } from './setup';
 import { CompensationLiveScreen, ComponentLibraryLiveScreen, TemplatesLiveScreen, type CompensationLiveProps, type ComponentLibraryLiveProps, type TemplatesLiveProps } from './structures';
 import {
   BREAKUP,
   BREAKUP_BELOW,
   COMPONENTS,
-  COVERAGE,
   GO_LIVE_MISSING,
   GO_LIVE_READY,
   GROUP_MEMBERS,
@@ -79,10 +78,6 @@ export const RulesValues: S = { name: 'Statutory rules · source and values', re
 export const RulesEmpty: S = { name: 'Statutory rules · none published', render: () => <StatutoryRulesScreen state="ready" entities={SETUP_ENTITIES} entityId="le-kfpl" onEntity={() => undefined} rules={[]} /> };
 export const RulesLoading: S = { name: 'Statutory rules · loading', render: () => <StatutoryRulesScreen state="loading" entities={SETUP_ENTITIES} entityId="le-kfpl" onEntity={() => undefined} rules={null} /> };
 export const RulesError: S = { name: 'Statutory rules · could not load', render: () => <StatutoryRulesScreen state="error" onRetry={() => undefined} entities={SETUP_ENTITIES} entityId="le-kfpl" onEntity={() => undefined} rules={null} /> };
-export const Coverage: S = { name: 'Statutory coverage', render: () => <CoverageLiveScreen state="ready" entities={SETUP_ENTITIES} rows={COVERAGE} /> };
-export const CoverageEmpty: S = { name: 'Statutory coverage · not worked out yet', render: () => <CoverageLiveScreen state="ready" entities={SETUP_ENTITIES} rows={[]} /> };
-export const CoverageLoading: S = { name: 'Statutory coverage · loading', render: () => <CoverageLiveScreen state="loading" entities={SETUP_ENTITIES} rows={null} /> };
-export const CoverageError: S = { name: 'Statutory coverage · could not load', render: () => <CoverageLiveScreen state="error" onRetry={() => undefined} entities={SETUP_ENTITIES} rows={null} /> };
 
 // ------------------------------------------------------------------ PAY-2.12 Imports
 const imports = (over: Partial<PayImportsScreenProps> = {}) => <PayImportsScreen state="ready" entities={SETUP_ENTITIES} today={TODAY} onStage={async () => IMPORT_OK} onCommit={ok} onGoLive={async () => GO_LIVE_READY} {...over} />;

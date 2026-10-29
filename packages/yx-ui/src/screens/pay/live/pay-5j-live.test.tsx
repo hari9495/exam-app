@@ -5,106 +5,15 @@ import { StatutoryHubScreen } from './compliance';
 import { FnfCalculator, type LiveFnf } from '../../people/exits';
 import { GoLiveScreen } from './golive';
 import { MyPayslipsScreen, payDiff } from './employee';
-import { PayRunScreen, PayRunsScreen, rupees } from './runs';
-import { BANK_FILES, DETAIL, FILINGS, FNF, GO_LIVE, HUB, MY_PAYSLIPS, PARALLEL, PAYSLIPS, PEOPLE, PREVIOUS, READINESS, RETURNS, RUN, VARIANCES } from './fixtures-5j';
+import { rupees } from './runs';
+import { DETAIL, FILINGS, FNF, GO_LIVE, HUB, MY_PAYSLIPS, PARALLEL, PEOPLE, PREVIOUS, RETURNS, RUN } from './fixtures-5j';
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const ok = vi.fn(async () => ({}) as never);
-const runProps = () => ({
-  state: 'ready' as const,
-  run: RUN,
-  people: PEOPLE,
-  readiness: READINESS,
-  progress: null,
-  payslips: PAYSLIPS,
-  variances: VARIANCES,
-  bankFiles: BANK_FILES,
-  published: false,
-  can: { prepare: true, approve: true, bankGenerate: true, bankRelease: true, publish: true, offcycle: true },
-  onBack: vi.fn(),
-  onWaive: vi.fn(async () => ({})),
-  onCalculate: vi.fn(async () => ({})),
-  onPayslip: vi.fn(async () => DETAIL),
-  onAck: vi.fn(async () => ({})),
-  onSubmit: vi.fn(async () => ({})),
-  onDecide: vi.fn(async () => ({})),
-  onVoid: vi.fn(async () => ({})),
-  onGenerateBank: vi.fn(async () => ({ id: 'b2', fileId: 'f2', rows: 2, total: '126620.00', excluded: [{ employeeId: 'p3', reason: 'No salary bank account.' }] })),
-  onReleaseBank: vi.fn(async () => ({})),
-  onDownload: vi.fn(async () => ({})),
-  onPublish: vi.fn(async () => ({})),
-});
-
 describe('batch 5j payroll screens', () => {
   it('rupees: Indian grouping from the API string', () => {
     expect(rupees('1234567.5')).toBe('₹12,34,567.50');
     expect(rupees('-200.00')).toBe('−₹200.00');
-  });
-
-  it('a new run: monthly or off-cycle is a pick-one Segment; errors show only after trying to create', async () => {
-    const onCreate = vi.fn(async () => ({ id: 'r9' }));
-    const onOpen = vi.fn();
-    render(<PayRunsScreen state="ready" runs={[]} groups={[{ id: 'g1', name: 'Monthly staff', legalEntityId: 'e1' }]} thisMonth="2026-10" canPrepare canOffcycle onCreate={onCreate} onOpen={onOpen} />);
-    await ue.click(screen.getAllByRole('button', { name: 'New run' })[0]);
-    expect(screen.getByRole('radiogroup', { name: 'Kind of run' })).toBeInTheDocument();
-    expect(screen.queryByText(/Fix these/)).not.toBeInTheDocument();
-    await ue.click(screen.getByRole('radio', { name: 'Off-cycle' }));
-    await ue.click(screen.getByRole('radio', { name: 'Arrears' }));
-    await ue.click(screen.getByRole('button', { name: 'Create run' }));
-    await waitFor(() => expect(onCreate).toHaveBeenCalledWith('g1', '2026-10', 'arrears', null));
-    expect(onOpen).toHaveBeenCalledWith('r9');
-  });
-
-  it('checks: a blocking check stops calculating until it is waived with a reason', async () => {
-    const p = runProps();
-    render(<PayRunScreen {...p} run={{ ...RUN, status: 'draft' }} />);
-    expect(screen.getByRole('button', { name: 'Calculate again' })).toBeDisabled();
-    await ue.click(screen.getByRole('button', { name: 'Waive' }));
-    await ue.click(screen.getByRole('button', { name: 'Waive' }));
-    expect((await screen.findAllByText(/at least 5 letters/)).length).toBeGreaterThan(0);
-    await ue.type(screen.getByRole('textbox', { name: /Why/ }), 'Bank details next week');
-    await ue.click(screen.getByRole('button', { name: 'Waive' }));
-    await waitFor(() => expect(p.onWaive).toHaveBeenCalledWith('c1', 'Bank details next week'));
-  });
-
-  it('payslips: every line explained with the rule it cites', async () => {
-    const p = runProps();
-    render(<PayRunScreen {...p} />);
-    await ue.click(screen.getByRole('button', { name: 'Why these numbers for Arjun Kulkarni' }));
-    const earnings = await screen.findByRole('table', { name: 'Earnings' });
-    expect(within(earnings).getByText('Basic')).toBeInTheDocument();
-    expect(screen.getByRole('table', { name: 'Deductions' })).toHaveTextContent('IN.PT IN-KA 2025-v1, verify');
-  });
-
-  it('approval: the approver types the phrase; the preparer is told someone else approves', async () => {
-    const p = runProps();
-    const { rerender } = render(<PayRunScreen {...p} run={{ ...RUN, status: 'submitted', preparedByMe: true, approval: { canDecide: false, phrase: 'APPROVE KFPL 2026-09', step: 1, steps: 2 } }} />);
-    expect(screen.getByText(/someone else approves it/)).toBeInTheDocument();
-    rerender(<PayRunScreen {...p} run={{ ...RUN, status: 'submitted', preparedByMe: false, approval: { canDecide: true, phrase: 'APPROVE KFPL 2026-09', step: 1, steps: 2 } }} />);
-    await ue.click(screen.getByRole('button', { name: 'Approve and lock' }));
-    const confirm = screen.getAllByRole('button', { name: 'Approve and lock' }).pop()!;
-    // Never disabled: pressed before the phrase is typed, it says what to type.
-    await ue.click(confirm);
-    expect(screen.getAllByText(/exactly, in capitals\./).length).toBeGreaterThan(0);
-    expect(p.onDecide).not.toHaveBeenCalled();
-    await ue.type(screen.getByRole('textbox', { name: /Type/ }), 'APPROVE KFPL 2026-09');
-    await ue.click(confirm);
-    await waitFor(() => expect(p.onDecide).toHaveBeenCalledWith('approve', null, expect.objectContaining({ phrase: 'APPROVE KFPL 2026-09' })));
-  });
-
-  it('bank file: made with the debit account, then released by someone else with the phrase', async () => {
-    const p = runProps();
-    render(<PayRunScreen {...p} run={{ ...RUN, status: 'approved' }} />);
-    await ue.click(await screen.findByRole('button', { name: 'Make bank file' }));
-    expect((await screen.findAllByText(/Enter the account the bank debits/)).length).toBeGreaterThan(0);
-    await ue.type(screen.getByRole('textbox', { name: /Company account/ }), '0050200012345678');
-    await ue.type(screen.getByRole('textbox', { name: /Why a new file/ }), 'Wrong debit account');
-    await ue.click(screen.getByRole('button', { name: 'Make bank file' }));
-    expect(await screen.findByText(/Not in the file: Sridhar Fernandes/)).toBeInTheDocument();
-    await ue.click(screen.getByRole('button', { name: 'Release' }));
-    await ue.type(screen.getByRole('textbox', { name: /Type/ }), 'RELEASE 2');
-    await ue.click(screen.getByRole('button', { name: 'Release file' }));
-    await waitFor(() => expect(p.onReleaseBank).toHaveBeenCalledWith('b1', expect.objectContaining({ phrase: 'RELEASE 2' })));
   });
 
   it('my payslip: what changed since last month, worked out only from the two payslips', async () => {

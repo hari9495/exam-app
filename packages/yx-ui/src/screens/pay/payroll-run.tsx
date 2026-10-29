@@ -42,6 +42,8 @@ import {
 import { CONFIRM_PHRASE, DUE_ITEMS, EWA_REMITTANCE, FIN_APPROVER, PAYROLL_ADMIN, RUN, RUN_HISTORY, RUN_PICKS, RUN_ROWS, d, type RunRow } from './pay-data';
 import { variance } from './pay-logic';
 import { DueBadge } from '../time/time-kit';
+import { LiveRunWorkspace, type LiveRunWorkspaceData } from './run-workspace-live';
+import { LiveCoverageScreen, LivePayrollHomeScreen, LiveRunListPanel, type LiveCoverage, type LivePayrollHome, type LiveRunList } from './payroll-home-live';
 
 /** Story ids this file links to (review/pay-story-ids.txt). */
 const STORY = {
@@ -138,7 +140,11 @@ export interface PayrollHomeProps {
 }
 
 /** PAY-01 · Payroll home (T6): run stepper, blockers, due-date strip, last totals. */
-export function PayrollHomeScreen({ state = 'ready', persona = 'pa', stage = 'In review', blockers = HOME_BLOCKERS, due = DUE_ITEMS }: PayrollHomeProps) {
+export function PayrollHomeScreen(p: PayrollHomeProps & { live?: LivePayrollHome }) {
+  return p.live ? <LivePayrollHomeScreen live={p.live} /> : <SamplePayrollHome {...p} />;
+}
+
+function SamplePayrollHome({ state = 'ready', persona = 'pa', stage = 'In review', blockers = HOME_BLOCKERS, due = DUE_ITEMS }: PayrollHomeProps) {
   const blocking = blockers.filter((b) => b.severity === 'block');
   const isFin = persona === 'fin';
   const [help, setHelp] = useState(false);
@@ -391,7 +397,12 @@ export const COVERAGE: CoverageRow[] = [
 const COVER_TONE: Record<CoverageRow['status'], BadgeTone> = { Below: 'neutral', Approaching: 'warning', Covered: 'success', 'Covered permanently': 'success', 'Crossed: set-up needed': 'danger' };
 
 /** PAY-30 · Coverage monitor panel (T1 panel on run readiness). */
-export function CoverageMonitorPanel({ rows: initial = COVERAGE, state = 'ready', onChange }: { rows?: CoverageRow[]; state?: ViewState; onChange?: (rows: CoverageRow[]) => void }) {
+export function CoverageMonitorPanel(p: { rows?: CoverageRow[]; state?: ViewState; onChange?: (rows: CoverageRow[]) => void; live?: LiveCoverage }) {
+  return p.live ? <LiveCoverageScreen live={p.live} /> : <CoveragePanel {...p} />;
+}
+
+/** The coverage panel itself. Live: `setupHref` opens statutory set-up; empty means the daily check has not run yet. */
+export function CoveragePanel({ rows: initial = COVERAGE, state = 'ready', onChange, setupHref }: { rows?: CoverageRow[]; state?: ViewState; onChange?: (rows: CoverageRow[]) => void; setupHref?: string }) {
   const phone = useNarrow(599);
   const [rows, setRows] = useState(initial);
   const [switching, setSwitching] = useState<{ row: CoverageRow; applied: boolean } | null>(null);
@@ -416,7 +427,19 @@ export function CoverageMonitorPanel({ rows: initial = COVERAGE, state = 'ready'
   const canSave = !!from && (switching?.applied || regNo.trim().length >= 5);
   return (
     <section className="yx-pay-panel" aria-label="Coverage monitor">
-      <SectionTitle actions={<StoryButton size="sm" to={STORY.setup}>Open statutory set-up</StoryButton>}>Coverage monitor</SectionTitle>
+      <SectionTitle
+        actions={
+          setupHref ? (
+            <Button size="sm" asChild>
+              <a href={setupHref}>Open statutory set-up</a>
+            </Button>
+          ) : (
+            <StoryButton size="sm" to={STORY.setup}>Open statutory set-up</StoryButton>
+          )
+        }
+      >
+        Coverage monitor
+      </SectionTitle>
       <p className="yx-pay-muted">Sites within 2 employees (or 90%) of a legal threshold. A crossed threshold blocks run approval until the law is switched on for that site.</p>
       <Dialog
         open={!!switching}
@@ -450,7 +473,7 @@ export function CoverageMonitorPanel({ rows: initial = COVERAGE, state = 'ready'
           </FormField>
         </div>
       </Dialog>
-      <StateBlock state={rows.length ? state : 'empty'} empty={<p className="yx-pay-muted">No site is near a threshold.</p>}>
+      <StateBlock state={rows.length ? state : 'empty'} empty={<p className="yx-pay-muted">{setupHref ? 'Not checked yet. The daily check fills this in.' : 'No site is near a threshold.'}</p>}>
         {phone ? (
           <ul className="yx-pay-cards" aria-label="Coverage">
             {rows.map((r) => (
@@ -854,8 +877,13 @@ const PHASE_STAGE: Record<RunPhase, RunStage> = { calculating: 'Draft', failed: 
 const EXCEPTION_FILTER = ['Flagged', 'Held', 'Failed'];
 type Notice = { tone: 'success' | 'info' | 'warning' | 'danger'; title: string; body?: ReactNode; action?: ReactNode };
 
-/** PAY-03 · Run workspace (T3 / T5): Inputs · Payslips · Variance · Validations · Approvals · Files. */
-export function RunWorkspaceScreen({ persona = 'pa', tab = 'payslips', phase: initialPhase = 'review', rows: inputRows = RUN_ROWS, openRowId, sheet: initialSheet = null, sheetVariant = 'ready', state = 'ready', exceptionsOpen: exceptionsProp }: RunWorkspaceProps) {
+/** PAY-03 · Run workspace (T3 / T5): Inputs · Payslips · Variance · Validations · Approvals · Files. The app passes `live`
+ * (/yx/payroll/runs/[id]: PAY-02 checks, PAY-07 approve, PAY-08 bank file, PAY-09 publish inside it); stories show the sample. */
+export function RunWorkspaceScreen(p: RunWorkspaceProps & { live?: LiveRunWorkspaceData }) {
+  return p.live ? <LiveRunWorkspace live={p.live} /> : <SampleRunWorkspace {...p} />;
+}
+
+function SampleRunWorkspace({ persona = 'pa', tab = 'payslips', phase: initialPhase = 'review', rows: inputRows = RUN_ROWS, openRowId, sheet: initialSheet = null, sheetVariant = 'ready', state = 'ready', exceptionsOpen: exceptionsProp }: RunWorkspaceProps) {
   const isFin = persona === 'fin';
   const approvingDone = initialSheet === 'approve' && sheetVariant === 'done';
   const [phase, setPhase] = useState<RunPhase>(approvingDone ? 'approved' : initialPhase);
@@ -1678,7 +1706,11 @@ export const FREQ_RUNS: FrequencyRun[] = [
 const RUN_TONE: Record<FrequencyRun['status'], BadgeTone> = { Draft: 'neutral', 'In review': 'warning', Approved: 'info', Paid: 'success', Published: 'success' };
 
 /** PAY-29 · Weekly / fortnightly pay run (T2 run list per frequency + T5 steps, frequency shown on every step). */
-export function FrequencyRunsScreen({ view = 'list', frequency = 'Weekly', state = 'ready' }: { view?: 'list' | 'run'; frequency?: 'Weekly' | 'Fortnightly'; state?: ViewState }) {
+export function FrequencyRunsScreen(p: { view?: 'list' | 'run'; frequency?: 'Weekly' | 'Fortnightly'; state?: ViewState; live?: LiveRunList }) {
+  return p.live ? <LiveRunListPanel live={p.live} /> : <SampleFrequencyRuns {...p} />;
+}
+
+function SampleFrequencyRuns({ view = 'list', frequency = 'Weekly', state = 'ready' }: { view?: 'list' | 'run'; frequency?: 'Weekly' | 'Fortnightly'; state?: ViewState }) {
   const runs = FREQ_RUNS.filter((r) => r.frequency === frequency);
   const phone = useNarrow(599);
   /** Not yet paid: the pay date gets a relative badge ("in 1 day"). */
