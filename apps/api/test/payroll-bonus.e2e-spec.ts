@@ -423,7 +423,7 @@ describe('Payroll statutory bonus (PAY-24)', () => {
     expect(pdf.headers['content-disposition']).toBe(`attachment; filename="form-c-bonus-${label}.pdf"`);
     const text = pdfText(pdf.body as Buffer);
     expect(text).toContain('Bonus Foods');
-    expect(text).toContain('Form C, Payment of Bonus Act, 1965, Rule 4');
+    expect(text).toContain('Form C, Payment of Bonus Rules, 1975, Rule 4');
     for (const code of ['BN-001', 'BN-002', 'BN-007']) expect(text).toContain(code);
     for (const code of ['BN-003', 'BN-004', 'BN-005', 'BN-006']) expect(text).not.toContain(code);
     const total = (col: number) => csv.slice(2).reduce((t, l) => t.add(l.split(',')[col]), D('0')).toFixed(2);

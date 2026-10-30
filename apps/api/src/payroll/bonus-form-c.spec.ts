@@ -27,7 +27,7 @@ describe('Form C PDF', () => {
     const text = pdfText(pdf);
     expect(text).toContain('Bonus Foods Pvt Ltd');
     expect(text).toContain('12 MG Road, Bengaluru 560001');
-    expect(text).toContain('Form C, Payment of Bonus Act, 1965, Rule 4');
+    expect(text).toContain('Form C, Payment of Bonus Rules, 1975, Rule 4');
     expect(text).toContain('1 Apr 2025 to 31 Mar 2026 at 8.33%');
     for (const x of ['BN-001', 'Asha Rao', '5998.00', 'BN-002', 'Bala Iyer', '6497.00', 'Total', '156000.00', '12995.00', '12495.00']) expect(text).toContain(x);
     expect(text).toContain('Signature of the employer or authorised person, for Bonus Foods Pvt Ltd');

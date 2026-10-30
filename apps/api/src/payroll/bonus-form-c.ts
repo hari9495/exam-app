@@ -58,7 +58,7 @@ export function renderFormC(d: FormCPdf): Promise<Buffer> {
     // Letterhead.
     doc.font('Helvetica-Bold').fontSize(14).text(d.entityName, left, 36, { width: full });
     doc.font('Helvetica').fontSize(8).fillColor('#444').text(d.address.length ? d.address.join(', ') : 'Registered address not recorded', { width: full }).fillColor('#000');
-    doc.moveDown(0.6).font('Helvetica-Bold').fontSize(11).text('Form C, Payment of Bonus Act, 1965, Rule 4', { width: full, align: 'center' });
+    doc.moveDown(0.6).font('Helvetica-Bold').fontSize(11).text('Form C, Payment of Bonus Rules, 1975, Rule 4', { width: full, align: 'center' });
     doc.font('Helvetica').fontSize(9).text(d.title, { width: full, align: 'center' }).moveDown(0.6);
     // The register: each row as tall as its tallest cell; the header repeats on a new page.
     const width = full / FORM_C_HEADER.length;
