@@ -136,6 +136,11 @@ changes a challan amount; (7) back to resident needs HR approval, no document; (
 daily interest; (9) "Correct this month" only on PF and ESI cards; (10) a PAY-23 design story for the residency row
 first, then the live row matches it.
 
+
+**Founder answers, 30 Oct 2026:** (a) PDFs print Indian-language names correctly: Noto fonts (open font licence) bundled
+in the app, chosen per script by one shared PDF helper used by every pay PDF (payslips, registers, Form C, Form 16);
+(b) HR saving a lowest bonus rate above the highest is refused at save time.
+
 ## 1. Live pages
 
 One row per live Pay page. "Keep" is what the live copy does that the design does not show yet: states, actions,
