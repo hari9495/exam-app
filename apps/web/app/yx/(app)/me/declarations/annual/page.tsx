@@ -1,6 +1,6 @@
 'use client';
 
-import { EmptyState, useToast } from '@yukthix/ui';
+import { useToast } from '@yukthix/ui';
 import { BfsiDeclarations, type BfsiHolding, type BfsiRelated } from '@yukthix/ui/frame';
 import { todayIst } from '../../../../../../lib/yx-org';
 import { usePeople, usePeopleWrite } from '../../../../../../lib/yx-people';
@@ -28,14 +28,13 @@ export default function YxAnnualDeclarationsPage() {
   const write = usePeopleWrite();
   const m = mine.data;
   const ready = Boolean(m?.designated);
-  if (m && !m.designated) return <EmptyState title="No declarations for you" description="Only designated persons make these declarations. The compliance officer names them." />;
   return (
     <BfsiDeclarations
       switcher={switcher}
       key={m ? `${m.cycle}-${m.status}` : 'loading'}
       today={day(todayIst())}
       live={{
-        state: mine.isError ? 'error' : ready ? 'ready' : 'loading',
+        state: mine.isError ? 'error' : m && !m.designated ? 'not-designated' : ready ? 'ready' : 'loading',
         onRetry: () => void mine.refetch(),
         cycle: m?.cycle ?? '',
         due: day(m?.due ?? todayIst()),

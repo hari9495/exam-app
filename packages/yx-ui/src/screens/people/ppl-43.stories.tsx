@@ -13,3 +13,4 @@ export const Attest: S = { name: 'Employee · attestation with OTP', render: () 
 export const Switch: S = { name: 'Employee · under Me › Declarations (switch)', render: () => <BfsiDeclarations switcher={<DeclarationsSwitch value="annual" onChange={() => {}} due={1} />} /> };
 export const Officer: S = { name: 'Compliance officer · register', render: () => <BfsiComplianceList /> };
 export const Phone: S = { name: '· phone', ...phone, render: () => <BfsiPhone /> };
+export const NotDesignated: S = { name: 'Employee · not a designated person (nothing to declare)', render: () => <BfsiDeclarations notDesignated /> };

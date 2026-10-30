@@ -835,7 +835,8 @@ export interface BfsiHolding { id: string; security: string; quantity: number; h
 export interface BfsiRelated { id: string; name: string; relation: string; pan: string | null; holdings: string | null }
 /** PPL-43 live: my annual declaration as a designated person (the page shows the toasts). */
 export interface LiveBfsi {
-  state: 'loading' | 'error' | 'ready';
+  /** not-designated: the compliance officer has not named this person (PPL-43 empty). */
+  state: 'loading' | 'error' | 'ready' | 'not-designated';
   onRetry: () => void;
   cycle: string;
   due: Date;
@@ -919,14 +920,29 @@ function RelatedDialog({ onAdd, onClose }: { onAdd: LiveBfsi['onAddRelated']; on
   );
 }
 
+/** PPL-43 / PPL-44 empty: someone the compliance officer has not named a designated person. */
+function NotDesignated({ what }: { what: 'annual' | 'preclearance' }) {
+  return (
+    <MeFrame active="Declarations">
+      <PageHeader title={what === 'annual' ? 'Annual declarations' : 'Trading pre-clearance'} />
+      {what === 'annual' ? (
+        <EmptyState title="No declarations for you" description="Only designated persons make these declarations. The compliance officer names them; ask them if you think you should." />
+      ) : (
+        <EmptyState title="No pre-clearance for you" description="Only designated persons ask for pre-clearance before they trade. The compliance officer names them; ask them if you think you should." />
+      )}
+    </MeFrame>
+  );
+}
+
 // PPL-43
-export function BfsiDeclarations({ tab = 'holdings', otpSent = false, today, live, switcher }: { tab?: 'holdings' | 'related' | 'coi' | 'attest'; otpSent?: boolean; today?: Date; live?: LiveBfsi; switcher?: ReactNode }) {
+export function BfsiDeclarations({ tab = 'holdings', otpSent = false, today, live, switcher, notDesignated = false }: { tab?: 'holdings' | 'related' | 'coi' | 'attest'; otpSent?: boolean; today?: Date; live?: LiveBfsi; switcher?: ReactNode; notDesignated?: boolean }) {
   const [t, setT] = useState(tab);
   const [adding, setAdding] = useState<'holding' | 'related' | null>(null);
   const [coi, setCoi] = useState<'yes' | 'no' | null>(live?.coi?.answer ?? null);
   const [details, setDetails] = useState(live?.coi?.details ?? '');
   const [agreed, setAgreed] = useState(false);
   const { run, busy, error } = useRun();
+  if (notDesignated || live?.state === 'not-designated') return <NotDesignated what="annual" />;
   if (live && live.state !== 'ready')
     return <MeFrame active="Declarations">{live.state === 'error' ? <ErrorState title="We couldn't load your declarations" description="Check your connection and try again." onRetry={live.onRetry} /> : <ListSkeleton label="Loading your declarations" />}</MeFrame>;
   const done = Boolean(live?.submittedAt);
@@ -1214,7 +1230,8 @@ export interface PreclearanceInput {
 }
 /** PPL-44 live: my pre-clearances (the page shows the toasts). */
 export interface LivePreclearance {
-  state: 'loading' | 'error' | 'ready';
+  /** not-designated: the API refuses (403) someone who is not a designated person (PPL-44 empty). */
+  state: 'loading' | 'error' | 'ready' | 'not-designated';
   onRetry: () => void;
   rules: PreclearanceRules;
   requests: PreclearanceItem[];
@@ -1348,7 +1365,8 @@ function LivePreclearancePage({ today, live, switcher }: { today: Date; live: Li
 }
 
 // PPL-44
-export function TradingPreclearance({ view = 'request', today, live, switcher }: { view?: PreclearView; today: Date; live?: LivePreclearance; switcher?: ReactNode }) {
+export function TradingPreclearance({ view = 'request', today, live, switcher, notDesignated = false }: { view?: PreclearView; today: Date; live?: LivePreclearance; switcher?: ReactNode; notDesignated?: boolean }) {
+  if (notDesignated || live?.state === 'not-designated') return <NotDesignated what="preclearance" />;
   if (live) return <LivePreclearancePage today={today} live={live} switcher={switcher} />;
   const approvedOn = view === 'expired' ? new Date(2026, 8, 14) : new Date(2026, 8, 28);
   const state = preclearanceState(approvedOn, 7, today, view === 'report', view === 'blocked');
