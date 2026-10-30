@@ -6,6 +6,7 @@ import { Button } from '../../components/button';
 import { Card, ObjectHeader, PageHeader } from '../../components/shell';
 import { KanbanBoard, type KanbanCard, type KanbanColumn } from '../../components/kanban';
 import { DataTable, type TableColumn } from '../../components/table';
+import { PlainTable } from '../../components/plain-table';
 import { Drawer } from '../../components/drawer';
 import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { Badge } from '../../components/display';
@@ -226,33 +227,16 @@ function LiveRehireImpactCard({ live }: { live: LiveRehireImpact }) {
         {changed.length === 0 ? 'Everything follows company policy.' : `${changed.length} ${changed.length === 1 ? 'option differs' : 'options differ'} from company policy. Give a reason below.`}
       </Text>
       {p.rehireEligible === false && <InlineAlert tone="warning" title="Marked not eligible for rehire">You may still go ahead; the choice is recorded.</InlineAlert>}
-      <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-      <table className="yx-ppl__impact">
-        <thead>
-          <tr>
-            <th scope="col">Option</th>
-            <th scope="col">Company policy</th>
-            <th scope="col">For this rehire</th>
-          </tr>
-        </thead>
-        <tbody>
-          {view.options.map((o) => (
-            <tr key={o.key}>
-              <th scope="row">
-                <span className="yx-ppl__row">
-                  {o.label}
-                  {values[o.key] !== o.policy && <Badge tone="warning">Changed</Badge>}
-                </span>
-              </th>
-              <td>{choiceLabel(o.policy)}</td>
-              <td>
-                <Select aria-label={`${o.label} for this rehire`} size="sm" options={o.choices.map((c) => ({ value: c, label: choiceLabel(c) }))} value={values[o.key]} onChange={(v) => live.onChange(o.key, v ?? o.policy)} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      </div>
+      <PlainTable
+        label="Rehire impact preview"
+        columns={[
+          { key: 'option', header: 'Option', rowHeader: true, cell: (o: RehireView['options'][number]) => <span className="yx-ppl__row">{o.label}{values[o.key] !== o.policy && <Badge tone="warning">Changed</Badge>}</span> },
+          { key: 'policy', header: 'Company policy', cell: (o: RehireView['options'][number]) => choiceLabel(o.policy) },
+          { key: 'choice', header: 'For this rehire', cell: (o: RehireView['options'][number]) => <Select aria-label={`${o.label} for this rehire`} size="sm" options={o.choices.map((c) => ({ value: c, label: choiceLabel(c) }))} value={values[o.key]} onChange={(v) => live.onChange(o.key, v ?? o.policy)} /> },
+        ]}
+        rows={view.options}
+        getRowId={(o) => o.key}
+      />
       {changed.length > 0 && (
         <FormField id="ro-rehire-why" label="Reason for changing the policy default" required error={live.reasonError}>
           <TextArea rows={2} value={live.reason} onChange={live.onReason} maxLength={300} />
@@ -279,33 +263,16 @@ function SampleRehireImpact({ overridden }: { overridden: boolean }) {
       <Text size="sm" tone={changed.length ? 'warning' : 'secondary'} as="p">
         {changed.length === 0 ? 'Everything follows company policy.' : `${changed.length} ${changed.length === 1 ? 'option differs' : 'options differ'} from company policy. Give a reason below.`}
       </Text>
-      <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-      <table className="yx-ppl__impact">
-        <thead>
-          <tr>
-            <th scope="col">Option</th>
-            <th scope="col">Company policy</th>
-            <th scope="col">For this rehire</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.option}>
-              <th scope="row">
-                <span className="yx-ppl__row">
-                  {r.option}
-                  {r.choice !== r.result && <Badge tone="warning">Changed</Badge>}
-                </span>
-              </th>
-              <td>{r.policy}</td>
-              <td>
-                <Select aria-label={`${r.option} for this rehire`} size="sm" options={r.choices.map((c) => ({ value: c, label: c }))} value={r.choice} onChange={(v) => setRows((xs) => xs.map((x) => (x.option === r.option ? { ...x, choice: v ?? x.choice } : x)))} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      </div>
+      <PlainTable
+        label="Rehire impact preview"
+        columns={[
+          { key: 'option', header: 'Option', rowHeader: true, cell: (r: (typeof rows)[number]) => <span className="yx-ppl__row">{r.option}{r.choice !== r.result && <Badge tone="warning">Changed</Badge>}</span> },
+          { key: 'policy', header: 'Company policy', cell: (r: (typeof rows)[number]) => r.policy },
+          { key: 'choice', header: 'For this rehire', cell: (r: (typeof rows)[number]) => <Select aria-label={`${r.option} for this rehire`} size="sm" options={r.choices.map((c) => ({ value: c, label: c }))} value={r.choice} onChange={(v) => setRows((xs) => xs.map((x) => (x.option === r.option ? { ...x, choice: v ?? x.choice } : x)))} /> },
+        ]}
+        rows={rows}
+        getRowId={(r) => r.option}
+      />
       {changed.length > 0 && (
         <FormField label="Reason for changing the policy default" required error={overridden ? 'Enter a reason. Overrides are audited.' : null}>
           <TextArea rows={2} defaultValue="" />
@@ -1194,27 +1161,17 @@ function PreboardingActionDrawer({ who, live, onClose }: { who: string; live: Li
             <FormField label="New joining date" required error={tried && !date ? 'Pick the new joining date.' : null}>
               <DatePicker value={date} onChange={setDate} min={live.today} />
             </FormField>
-            <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Open tasks re-anchor; done tasks stay, scrolls sideways on small screens">
-              <table className="yx-ppl__impact">
-                <caption className="yx-ppl__sub">Open tasks re-anchor; done tasks stay</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Task</th>
-                    <th scope="col" data-date>Was due</th>
-                    <th scope="col" data-date>Now due</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tasks.map((t) => (
-                    <tr key={t.id}>
-                      <td>{t.title}</td>
-                      <td data-date>{formatDate(t.dueOn)}</td>
-                      <td data-date data-changed={(!t.done && Boolean(date)) || undefined}>{t.done ? 'Done' : date ? formatDate(addDays(t.dueOn, shift)) : '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <PlainTable
+              label="Open tasks re-anchor; done tasks stay"
+              caption={<span className="yx-ppl__sub">Open tasks re-anchor; done tasks stay</span>}
+              columns={[
+                { key: 'title', header: 'Task', cell: (t: (typeof tasks)[number]) => t.title },
+                { key: 'was', header: 'Was due', date: true, cell: (t: (typeof tasks)[number]) => formatDate(t.dueOn) },
+                { key: 'now', header: 'Now due', date: true, changed: (t: (typeof tasks)[number]) => !t.done && Boolean(date), cell: (t: (typeof tasks)[number]) => (t.done ? 'Done' : date ? formatDate(addDays(t.dueOn, shift)) : '—') },
+              ]}
+              rows={tasks}
+              getRowId={(t) => t.id}
+            />
           </>
         )}
         {unwind && (

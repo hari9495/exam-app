@@ -63,3 +63,16 @@ describe('UI rules guard (Time, Pay, Helpdesk)', () => {
     for (const k of Object.keys(ALLOWED)) expect(readFileSync(join(SCREENS, k.split(': ')[0]!), 'utf8')).toContain(k.split(': ')[1]);
   });
 });
+
+// Rule 18 (founder 30 Oct 2026): a small read-only table is the kit's PlainTable, never a hand-drawn <table>. People and
+// the T9 workforce portal still hold older ones; this count only goes down (lower it as each is replaced).
+describe('kit: no new hand-drawn tables in People and the T9 portal', () => {
+  const RAW_TABLES_LEFT = 25;
+  it(`at most ${RAW_TABLES_LEFT} raw <table> tags remain, and the rehire impact, Privacy and postpone tables use PlainTable`, () => {
+    const scoped = [...files(join(SCREENS, 'people')), join(SCREENS, 'portals', 't9-workforce.tsx')];
+    const count = scoped.reduce((n, f) => n + (readFileSync(f, 'utf8').match(/<table[\s>]/g)?.length ?? 0), 0);
+    expect(count).toBeLessThanOrEqual(RAW_TABLES_LEFT);
+    expect(readFileSync(join(SCREENS, 'people', 'onboarding.tsx'), 'utf8').match(/<PlainTable/g)).toHaveLength(3);
+    expect(readFileSync(join(SCREENS, 'people', 'selfservice.tsx'), 'utf8').match(/<PlainTable/g)).toHaveLength(2);
+  });
+});

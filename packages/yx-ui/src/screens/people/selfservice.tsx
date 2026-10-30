@@ -6,6 +6,7 @@ import { PhoneFrame } from '../_kit/frames';
 import { Button } from '../../components/button';
 import { Card, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
+import { PlainTable } from '../../components/plain-table';
 import { Badge } from '../../components/display';
 import { EmptyState, ErrorState, InlineAlert } from '../../components/feedback';
 import { ErrorSummary, FormField, useSaveErrors, type FormErrorItem } from '../../components/field';
@@ -374,28 +375,17 @@ function LiveMyDataScreen({ live, tab }: { live: LiveMyData; tab: 'data' | 'acce
           </TabsList>
           <TabsContent value="data">
             <div className="yx-ppl__stack">
-              <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-                <table className="yx-ppl__impact">
-                  <thead>
-                    <tr>
-                      <th scope="col">What we hold</th>
-                      <th scope="col">Class</th>
-                      <th scope="col">Why</th>
-                      {log.retention && <th scope="col">How long</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {LIVE_HELD.map((h) => (
-                      <tr key={h.what}>
-                        <td>{h.what}</td>
-                        <td><ClassBadge cls={h.cls} /></td>
-                        <td>{h.why}</td>
-                        {log.retention && <td>{keepText(h.cls, log.retention)}</td>}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <PlainTable
+                label="What we hold"
+                columns={[
+                  { key: 'what', header: 'What we hold', cell: (h: (typeof LIVE_HELD)[number]) => h.what },
+                  { key: 'cls', header: 'Class', cell: (h: (typeof LIVE_HELD)[number]) => <ClassBadge cls={h.cls} /> },
+                  { key: 'why', header: 'Why', cell: (h: (typeof LIVE_HELD)[number]) => h.why },
+                  ...(log.retention ? [{ key: 'keep', header: 'How long', cell: (h: (typeof LIVE_HELD)[number]) => keepText(h.cls, log.retention!) }] : []),
+                ]}
+                rows={LIVE_HELD}
+                getRowId={(h) => h.what}
+              />
               {error && (
                 <InlineAlert tone="danger" title="That didn't work">
                   {error}
@@ -452,28 +442,17 @@ function SampleMyDataScreen({ tab = 'data', viewOff = false }: { tab?: 'data' | 
         </TabsList>
         <TabsContent value="data">
           <div className="yx-ppl__stack">
-            <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-            <table className="yx-ppl__impact">
-              <thead>
-                <tr>
-                  <th scope="col">What we hold</th>
-                  <th scope="col">Class</th>
-                  <th scope="col">Why</th>
-                  <th scope="col">How long</th>
-                </tr>
-              </thead>
-              <tbody>
-                {HELD.map((h) => (
-                  <tr key={h.what}>
-                    <td>{h.what}</td>
-                    <td><ClassBadge cls={h.cls} /></td>
-                    <td>{h.why}</td>
-                    <td>{h.keep}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
+            <PlainTable
+              label="What we hold"
+              columns={[
+                { key: 'what', header: 'What we hold', cell: (h: (typeof HELD)[number]) => h.what },
+                { key: 'cls', header: 'Class', cell: (h: (typeof HELD)[number]) => <ClassBadge cls={h.cls} /> },
+                { key: 'why', header: 'Why', cell: (h: (typeof HELD)[number]) => h.why },
+                { key: 'keep', header: 'How long', cell: (h: (typeof HELD)[number]) => h.keep },
+              ]}
+              rows={HELD}
+              getRowId={(h) => h.what}
+            />
             <div className="yx-ppl__row">
               <Button icon={Download}>Download my data (PDF)</Button>
               <Button icon={Download}>Download my data (JSON)</Button>
