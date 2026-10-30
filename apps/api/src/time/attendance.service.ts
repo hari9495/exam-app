@@ -107,9 +107,8 @@ export class AttendanceService implements OnModuleInit {
         zone: f.zone,
         mode: await settingOn(tx, c, 'attendance.mode', f, today),
         // Today's shift from the roster / pattern / location (Q1); null on a weekly off.
-        shift: day.shift ? { name: day.shift.name, start: day.shift.shiftStart, end: day.shift.shiftEnd, grace: day.shift.graceMinutes, checkIn: rule.checkIn, off: false } : { name: 'Weekly off', start: rule.shiftStart, end: rule.shiftEnd, grace: rule.graceMinutes, checkIn: rule.checkIn, off: true },
-        // ShiftNotStarted: check-in opens this many minutes before the shift (null: any time; the server refuses earlier).
-        opensBefore: opens === 'any' ? null : Number(opens),
+        // ShiftNotStarted: check-in opens `opensBefore` minutes before the shift (null: any time; the server refuses earlier).
+        shift: { ...(day.shift ? { name: day.shift.name, start: day.shift.shiftStart, end: day.shift.shiftEnd, grace: day.shift.graceMinutes, checkIn: rule.checkIn, off: false } : { name: 'Weekly off', start: rule.shiftStart, end: rule.shiftEnd, grace: rule.graceMinutes, checkIn: rule.checkIn, off: true }), opensBefore: opens === 'any' ? null : Number(opens) },
         // OutsideNetwork: "inside" on an office network; "outside" when only networks decide and this one isn't one of
         // them; "unknown" when the location (geofence) decides at the punch, or nothing restricts it.
         network: networkOf(fences, ip, rule.checkIn),
@@ -355,7 +354,7 @@ export class AttendanceService implements OnModuleInit {
       if (r.status !== 'pending') throw new ConflictException('Only a request still waiting for approval can be withdrawn.');
       if (r.wfRequestId) await this.engine.withdraw(tx, c, r.wfRequestId, c.userId ?? null, 'Withdrawn by the employee');
       await tx.attendanceRequest.update({ where: { id: r.id }, data: { status: 'withdrawn', decidedAt: new Date(), version: { increment: 1 }, updatedAt: new Date() } });
-      if (r.kind === 'wfh') await this.dropWfhPunches(tx, c, r.employeeId, dateOf(r.workOn), 'Work from home was withdrawn');
+      if (r.kind === 'wfh') await this.dropWfhPunches(tx, c, r.employeeId, dateOf(r.workOn));
       return { id: r.id, status: 'withdrawn' };
     });
   }
@@ -367,18 +366,15 @@ export class AttendanceService implements OnModuleInit {
     const on = dateOf(r.workOn);
     const c = { organizationId: wf.organizationId, isSuperAdmin: false };
     if (outcome === 'approved') await this.days.evaluate(tx, c, r.employeeId, on, on);
-    else if (r.kind === 'wfh') await this.dropWfhPunches(tx, c, r.employeeId, on, 'Work from home was not approved');
+    else if (r.kind === 'wfh') await this.dropWfhPunches(tx, c, r.employeeId, on);
   }
 
   /**
-   * ChoseWfh: work from home not approved (or withdrawn): web punches of that day taken from outside under the WFH
-   * request ("field" at a restricted place) stop counting, with the reason, and the day is worked out again.
+   * ChoseWfh: work from home not approved (or withdrawn): the day is worked out again, and the day engine leaves out the
+   * web punches taken from outside under it (punches are append-only, so they stay as recorded).
    */
-  private async dropWfhPunches(tx: Tx, c: CompanyContext, employeeId: string, on: string, why: string) {
-    const f = await factsOn(tx, c.organizationId, employeeId, on);
-    if (!f || (await rulesFor(tx, c.organizationId, f.locationId, on))(on).checkIn !== 'restricted') return;
-    const n = await tx.punch.updateMany({ where: { organizationId: c.organizationId, employeeId, workOn: asDate(on), accepted: true, verdict: 'field', source: 'web' }, data: { accepted: false, refusal: why } });
-    if (n.count) await this.days.evaluate(tx, c, employeeId, on, on);
+  private async dropWfhPunches(tx: Tx, c: CompanyContext, employeeId: string, on: string) {
+    await this.days.evaluate(tx, c, employeeId, on, on);
   }
 
   /**

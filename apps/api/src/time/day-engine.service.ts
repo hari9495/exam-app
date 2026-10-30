@@ -21,6 +21,13 @@ export class DayEngine {
     const approved = await tx.attendanceRequest.findMany({ where: { organizationId: org, employeeId, status: 'approved', workOn: { gte: asDate(from), lte: asDate(to) } }, orderBy: { decidedAt: 'asc' } });
     const fixes = approved.filter((x) => x.kind !== 'wfh');
     const wfh = new Set(approved.filter((x) => x.kind === 'wfh').map((x) => x.workOn.toISOString().slice(0, 10)));
+    // ChoseWfh: a work-from-home day clocked in from outside and then not approved (or withdrawn): its web punches taken
+    // under it ("field" at a restricted place) do not count. Punches are never changed (append-only), the day is.
+    const turnedDown = new Set(
+      (await tx.attendanceRequest.findMany({ where: { organizationId: org, employeeId, kind: 'wfh', status: { in: ['rejected', 'withdrawn'] }, workOn: { gte: asDate(from), lte: asDate(to) } }, select: { workOn: true } }))
+        .map((x) => x.workOn.toISOString().slice(0, 10))
+        .filter((on) => !wfh.has(on)),
+    );
     const sheets = await this.approvedMinutes(tx, org, employeeId, from, to);
     const locked = await lockedDates(tx, org, employeeId, from, to);
     // Time ops: HR resolutions (the latest per day wins), industrial-action events and presence (TIM-04, 37, 36).
@@ -54,6 +61,7 @@ export class DayEngine {
       const daySignals = signals.filter((x) => x.workOn.toISOString().slice(0, 10) === on);
       const kept = inForce?.withdrawnAt && !daySignals.length ? before?.get(on) : undefined;
       const presence = !consented ? null : kept?.firstIn && kept.workedMinutes !== null ? { first: kept.firstIn, last: kept.lastOut ?? kept.firstIn, activeMinutes: kept.workedMinutes } : presenceDay(daySignals.map((x) => ({ at: x.at, state: x.state as 'active' })));
+      const dropWfh = turnedDown.has(on) && (await sched.locationDay(f, on)).base.checkIn !== 'field';
       const r = evaluateDay({
         on,
         zone: f.zone,
@@ -61,7 +69,7 @@ export class DayEngine {
         weeklyOff: day.weeklyOff,
         holiday: holidays.get(f.locationId)!.get(on) ?? null,
         leave: leave.get(on) ?? null,
-        punches: punches.filter((p) => p.workOn.toISOString().slice(0, 10) === on).map((p) => ({ at: p.punchedAt, kind: p.kind as PunchKind })),
+        punches: punches.filter((p) => p.workOn.toISOString().slice(0, 10) === on && !(dropWfh && p.source === 'web' && p.verdict === 'field')).map((p) => ({ at: p.punchedAt, kind: p.kind as PunchKind })),
         fix: fix ? { kind: fix.kind as 'missed_in', inMinute: fix.inMinute, outMinute: fix.outMinute } : null,
         rule,
         now,
