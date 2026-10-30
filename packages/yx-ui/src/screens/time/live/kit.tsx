@@ -51,6 +51,8 @@ export const LEAVE_STATUS: Record<LeaveStatus, { label: string; tone: BadgeTone 
   withdrawn: { label: 'Withdrawn', tone: 'neutral' },
   cancel_pending: { label: 'Cancellation waiting', tone: 'warning' },
   cancelled: { label: 'Cancelled', tone: 'neutral' },
+  sent_back: { label: 'Sent back for changes', tone: 'warning' },
+  resent: { label: 'Changed and sent again', tone: 'neutral' },
 };
 export const LeaveStatusBadge = ({ status }: { status: LeaveStatus }) => <Badge tone={LEAVE_STATUS[status].tone}>{LEAVE_STATUS[status].label}</Badge>;
 

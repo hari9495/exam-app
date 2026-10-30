@@ -11,7 +11,7 @@ export interface TeamDecision {
   title: string;
   type: string;
   requester: string;
-  decision: 'approved' | 'rejected';
+  decision: 'approved' | 'rejected' | 'sent_back';
   by: string | null;
   byMe: boolean;
   onBehalfOf: string | null;
@@ -22,7 +22,7 @@ export interface TeamDecision {
   requestStatus: string;
 }
 
-const STATUS: Record<string, ApprovalRow['status']> = { pending: 'Waiting', approved: 'Approved', rejected: 'Rejected', withdrawn: 'Withdrawn', cancelled: 'Withdrawn' };
+const STATUS: Record<string, ApprovalRow['status']> = { pending: 'Waiting', approved: 'Approved', rejected: 'Rejected', withdrawn: 'Withdrawn', cancelled: 'Withdrawn', sent_back: 'Sent back' };
 /** A request's plain dates (2026-11-22) read as everywhere else: 22 Nov 2026. */
 const shown = (v: string) => (/^\d{4}-\d{2}-\d{2}$/.test(v) ? formatDate(new Date(`${v}T00:00:00`)) : v);
 const ref = (id: string) => id.slice(0, 8).toUpperCase();
@@ -54,6 +54,7 @@ export function waitingRow(t: ApprovalTask): ApprovalRow {
     status: 'Waiting',
     context: t.summary.map((s) => `${s.label}: ${shown(s.value)}`),
     decideAt: t.decideAt ?? null,
+    canSendBack: Boolean(t.canSendBack),
     timeline: [
       { id: 's', label: t.raisedBy ? `Submitted by ${t.raisedBy} for ${t.requester}` : 'Submitted', status: 'done', approver: t.raisedBy ?? t.requester, at: new Date(t.submittedAt) },
       { id: 'c', label: `${t.step.name} (step ${t.step.index} of ${t.step.of})`, status: 'current', approver: t.onBehalfOf ? `You (for ${t.onBehalfOf})` : 'You' },
@@ -86,7 +87,7 @@ export function sentRow(r: ApprovalHistory['sent'][number]): ApprovalRow {
 /** One decision in Team history (row id is the decision id). */
 export function teamRow(h: TeamDecision): ApprovalRow {
   const who = h.byMe ? 'you' : (h.by ?? 'someone');
-  const verb = h.decision === 'approved' ? 'Approved' : 'Not approved';
+  const verb = h.decision === 'approved' ? 'Approved' : h.decision === 'sent_back' ? 'Sent back for changes' : 'Not approved';
   return {
     id: h.id,
     ref: ref(h.requestId),
@@ -100,11 +101,11 @@ export function teamRow(h: TeamDecision): ApprovalRow {
     step: '',
     lowRisk: false,
     policy: { ok: true },
-    status: h.decision === 'approved' ? 'Approved' : 'Rejected',
+    status: h.decision === 'approved' ? 'Approved' : h.decision === 'sent_back' ? 'Sent back' : 'Rejected',
     context: h.reason ? [`Reason: ${h.reason}`] : [],
     timeline: [
       { id: 's', label: 'Submitted', status: 'done', approver: h.requester, at: new Date(h.submittedAt) },
-      { id: 'd', label: verb, status: h.decision === 'approved' ? 'done' : 'rejected', approver: h.by ?? '', at: new Date(h.at), ...(h.reason ? { comment: h.reason } : {}) },
+      { id: 'd', label: verb, status: h.decision === 'rejected' ? 'rejected' : 'done', approver: h.by ?? '', at: new Date(h.at), ...(h.reason ? { comment: h.reason } : {}) },
     ],
   };
 }

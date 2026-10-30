@@ -60,6 +60,7 @@ describe('approvalSubject (email subjects in plain words, founder review 19 Oct 
     expect(approvalSubject({ ...leave, text: 'Escalated to you: Manager', type: 'workflow.approval.needed' }, 'Arjun Kulkarni', false)).toBe('Escalated to you: Arjun Kulkarni asks for Casual leave, 21 Oct (1 day)');
     expect(approvalSubject({ ...leave, text: 'Approved', type: 'workflow.approval.decided' }, 'Arjun Kulkarni', true)).toBe('Casual leave, 21 Oct (1 day) approved');
     expect(approvalSubject({ ...leave, text: 'Not approved', type: 'workflow.approval.decided', reason: 'Team is short that week' }, 'Arjun Kulkarni', true)).toBe('Casual leave, 21 Oct (1 day) not approved: Team is short that week');
+    expect(approvalSubject({ ...leave, text: 'Sent back for changes', type: 'workflow.approval.decided', reason: 'Move it by a week' }, 'Arjun Kulkarni', true)).toBe('Casual leave, 21 Oct (1 day) sent back for changes: Move it by a week');
     // Founder test 26 Oct 2026 (PPL-28): what, for whom, and why; never "your request for … to approve".
     expect(approvalSubject({ title: 'Appointment letter for Arjun Kulkarni', text: 'Not approved', type: 'workflow.approval.decided', reason: 'test only' }, 'Lakshmi Venkatesan', true)).toBe('Appointment letter for Arjun Kulkarni not approved: test only');
   });

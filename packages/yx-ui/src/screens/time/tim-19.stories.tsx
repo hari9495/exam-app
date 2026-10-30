@@ -13,5 +13,7 @@ export const Cancel: S = { name: 'Past approved leave · report an error', args:
 export const AskCancel: S = { name: 'Employee · ask to cancel future leave', args: { id: 'lr6', action: 'cancel' } };
 export const Manager: S = { name: 'Manager · with team availability', args: { id: 'lr3', persona: 'mgr' } };
 export const Approve: S = { name: 'Manager · approve', args: { id: 'lr4', persona: 'mgr', action: 'approve' } };
+export const SendBack: S = { name: 'Manager · send back for changes', args: { id: 'lr4', persona: 'mgr', action: 'sendback' } };
+export const SentBack: S = { name: 'Employee · sent back, change and send again', args: { id: 'lr7' } };
 export const Phone: S = { name: 'Phone', args: { surface: 'phone' }, ...phone };
 export const PhoneManager: S = { name: 'Phone · manager', args: { surface: 'phone', id: 'lr3', persona: 'mgr' }, ...phone };

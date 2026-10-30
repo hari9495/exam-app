@@ -384,7 +384,7 @@ export interface LeaveRequestRow {
   from: Date;
   to: Date;
   days: number;
-  status: 'Pending' | 'Approved' | 'Rejected' | 'Withdrawn' | 'Cancel requested';
+  status: 'Pending' | 'Approved' | 'Rejected' | 'Withdrawn' | 'Cancel requested' | 'Sent back';
   applied: Date;
   reason: string;
   cert?: 'verified' | 'pending';
@@ -392,7 +392,11 @@ export interface LeaveRequestRow {
   approver: string;
   /** When it was approved or rejected. */
   decided?: Date;
+  /** Sent back: what the approver asked to change. */
+  note?: string;
 }
+/** TIM-19 "Sent back for changes" (30 Oct 2026): Divya's request her manager returned; kept out of the lists' counts. */
+export const SENT_BACK_REQUEST: LeaveRequestRow = { id: 'lr7', person: 'Divya Raghunathan', type: 'Casual leave', from: new Date(2026, 10, 9), to: new Date(2026, 10, 10), days: 2, status: 'Sent back', applied: new Date(2026, 8, 28), reason: 'Cousin wedding in Trichy', approver: ME.manager, decided: new Date(2026, 8, 29, 9, 40), note: 'The audit runs on 9 Nov. Can you move it by a week?' };
 export const LEAVE_REQUESTS: LeaveRequestRow[] = [
   { id: 'lr1', person: 'Divya Raghunathan', type: 'Earned leave', from: new Date(2026, 9, 12), to: new Date(2026, 9, 13), days: 2, status: 'Pending', applied: new Date(2026, 8, 27), reason: 'Family function in Madurai', approver: ME.manager },
   { id: 'lr2', person: 'Divya Raghunathan', type: 'Casual leave', from: new Date(2026, 8, 16), to: new Date(2026, 8, 17), days: 2, status: 'Approved', applied: new Date(2026, 8, 9), reason: 'Personal work', approver: ME.manager, decided: new Date(2026, 8, 10, 11, 5) },

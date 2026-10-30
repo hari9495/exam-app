@@ -33,6 +33,7 @@ import {
   HOLIDAYS,
   HR_ADMIN,
   LEAVE_REQUESTS,
+  SENT_BACK_REQUEST,
   ME,
   NEGATIVE_BALANCES,
   ON_NOTICE,
@@ -78,6 +79,7 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 const isOff = (d: Date) => d.getDay() === 0 || ALT_SAT.some((s) => same(s, d)) || holidayDates.some((h) => same(h, d));
 
 const LEAVE_NAME: Record<string, string> = { CL: 'Casual leave', SL: 'Sick leave', EL: 'Earned leave', CO: 'Comp-off', LWP: 'Leave without pay' };
+const leaveCodeOf = (name: string) => (Object.keys(LEAVE_NAME).find((k) => LEAVE_NAME[k] === name) ?? 'CL') as LeaveCode;
 const memberName = (id: string) => TEAM_MEMBERS.find((m) => m.id === id)?.name ?? id;
 /** The pending request of `person` that overlaps start–end (decided ids in `gone` no longer count). */
 const pendingRequest = (person: string, start: Date, end: Date = start, gone: string[] = []) =>
@@ -118,7 +120,7 @@ function DrawerFoot({ hint, main, rest }: { hint?: ReactNode; main?: ReactNode; 
 /** Lets the text column take the row before the badges and buttons, so they wrap under it on phones. */
 const MAIN = { flex: '1 1 16rem' };
 /** Pending is information (neutral) until the leave starts within 3 days. */
-const statusTone = (r: LeaveRequestRow) => (r.status === 'Approved' ? 'success' : r.status === 'Pending' && daysUntil(r.from, TODAY) >= 0 && daysUntil(r.from, TODAY) <= 3 ? 'warning' : 'neutral');
+const statusTone = (r: LeaveRequestRow) => (r.status === 'Approved' ? 'success' : r.status === 'Sent back' || (r.status === 'Pending' && daysUntil(r.from, TODAY) >= 0 && daysUntil(r.from, TODAY) <= 3) ? 'warning' : 'neutral');
 
 /** Absences split into working-day pieces, so no leave sits on a holiday or weekly off (TIM-20). */
 type Absence = { memberId: string; start: Date; end: Date; code: string; name?: string; pending?: boolean };
@@ -263,6 +265,8 @@ export function LeaveRequestView({
   const [note, setNote] = useState('');
   const [tried, setTried] = useState(false);
   const [done, setDone] = useState<string | null>(null);
+  // Sent back: "Change and send again" opens Apply leave with this request's type and dates.
+  const [resend, setResend] = useState(false);
   const close = () => {
     setDlg(undefined);
     setNote('');
@@ -306,6 +310,7 @@ export function LeaveRequestView({
           { label: balLabel, value: balValue },
         ]}
       />
+      {r.status === 'Sent back' && r.note && <InlineAlert tone="warning" title={`${r.approver} sent it back for changes`}>{r.note}</InlineAlert>}
       <p><strong>Reason:</strong> {r.reason}</p>
       {r.cert && <div className="yx-tim-row"><Badge tone={r.cert === 'verified' ? 'success' : 'neutral'}>{certText(r.cert)}</Badge></div>}
       {viewer === 'mgr' && <InlineAlert tone="info" title={othersTitle(overlap.length)}>{overlap.length > 0 ? overlap.map((o) => o.text).join(', ') : undefined}</InlineAlert>}
@@ -313,7 +318,7 @@ export function LeaveRequestView({
         now={TODAY}
         steps={[
           { id: 'a', label: 'Requested', status: 'done', approver: r.person, at: appliedAt(r) },
-          { id: 'b', label: 'Manager approval', status: r.status === 'Approved' ? 'done' : r.status === 'Rejected' ? 'rejected' : 'current', approver: r.approver, at: r.decided },
+          { id: 'b', label: r.status === 'Sent back' ? 'Sent back for changes' : 'Manager approval', status: r.status === 'Approved' ? 'done' : r.status === 'Rejected' ? 'rejected' : r.status === 'Sent back' ? 'done' : 'current', approver: r.approver, at: r.decided },
         ]}
       />
     </div>
@@ -341,6 +346,7 @@ export function LeaveRequestView({
       <DrawerFoot hint={`${r.status}${r.decided ? ` on ${formatDate(r.decided)}` : ''}`} rest={closeBtn} />
     );
   } else if (r.status === 'Pending') footer = <DrawerFoot main={<Button variant="danger" onClick={() => setDlg('withdraw')}>Withdraw request</Button>} />;
+  else if (r.status === 'Sent back') footer = <DrawerFoot main={<Button variant="primary" onClick={() => setResend(true)}>Change and send again</Button>} rest={<Button onClick={() => setDlg('withdraw')}>Withdraw</Button>} />;
   else if (r.status === 'Approved' && past) footer = <DrawerFoot hint="Leave already taken" main={<Button onClick={() => setDlg('report')}>Report an error</Button>} />;
   else if (r.status === 'Approved') footer = <DrawerFoot main={<Button variant="danger" onClick={() => setDlg('cancel')}>Ask to cancel</Button>} />;
 
@@ -349,7 +355,8 @@ export function LeaveRequestView({
   );
   const dialogs = (
     <>
-      <ConfirmDialog open={dlg === 'withdraw'} onOpenChange={(o) => !o && close()} title="Withdraw this request?" consequence={`It hasn't been approved yet, so it's withdrawn at once and your ${plural(r.days, 'pending day')} ${r.days === 1 ? 'returns' : 'return'} to your balance.`} confirmLabel="Withdraw request" cancelLabel="Keep request" destructive onConfirm={() => { close(); finish('Request withdrawn', 'withdraw'); }} />
+      <ApplyLeavePanel open={resend} onOpenChange={setResend} type={leaveCodeOf(r.type)} from={r.from} to={r.to} />
+      <ConfirmDialog open={dlg === 'withdraw'} onOpenChange={(o) => !o && close()} title="Withdraw this request?" consequence={r.status === 'Sent back' ? 'It was sent back, so it holds no days. Withdrawn, it stays in your history.' : `It hasn't been approved yet, so it's withdrawn at once and your ${plural(r.days, 'pending day')} ${r.days === 1 ? 'returns' : 'return'} to your balance.`} confirmLabel="Withdraw request" cancelLabel="Keep request" destructive onConfirm={() => { close(); finish('Request withdrawn', 'withdraw'); }} />
       <ConfirmDialog open={dlg === 'cancel'} onOpenChange={(o) => !o && close()} title="Ask to cancel approved leave?" consequence={locked ? `${monthName(r.from)} payroll is locked, so this becomes a late correction: any loss of pay is reversed in the next payroll.` : `${r.approver} needs to approve the cancellation. Once approved, the ${plural(r.days, 'day')} ${r.days === 1 ? 'goes' : 'go'} back to your balance.`} confirmLabel="Send cancellation" cancelLabel="Keep leave" destructive onConfirm={() => { close(); finish(`Cancellation sent to ${r.approver}`, 'cancel'); }} />
       <ConfirmDialog open={dlg === 'report'} onOpenChange={(o) => !o && close()} title="Report an error in this leave?" consequence={`This leave was already taken, so it goes to HR as an attendance correction. ${locked ? `${monthName(r.from)} payroll is locked: the change lands in the next payroll.` : `Fixed before ${monthName(r.from)} locks, the change lands in ${monthName(r.from)} pay; after that, in ${monthName(nextMonth)} pay.`}`} confirmLabel="Send to HR" onConfirm={() => { setTried(true); if (!note.trim()) return false; close(); finish('Sent to HR as an attendance correction', 'report'); }}>
         {!locked && <div className="yx-tim-row"><span className="yx-tim-muted">{monthName(r.from)} locks {dm(lockDay)}</span><DueBadge date={lockDay} /></div>}
@@ -587,7 +594,7 @@ const pickPeople = (hr: boolean): PickPerson[] => (hr ? TEAM : myReports()).map(
  * Apply leave in a drawer (desk) or bottom sheet (phone): Send is blocked while the form has errors; sent shows what happens next.
  * With `forSomeone` (a manager's reports, or everyone for HR), the first field picks the employee; their balances and approver are used.
  */
-export function ApplyLeavePanel({ open, onOpenChange, surface = 'desk', sent: sent0 = false, forSomeone, picked: picked0 = null, self = ME.name, live, liveFor, ...p }:ApplyLeaveProps & { open: boolean; onOpenChange: (o: boolean) => void; surface?: 'desk' | 'phone'; sent?: boolean; forSomeone?: PickPerson[]; /** With `forSomeone`: the person already picked (stories). */ picked?: string | null; /** The app: my own leave, with the server's summary. */ live?: { data: MyLeave; live: LiveLeaveHome }; /** The app: HR applies for someone (founder answer B). */ liveFor?: LiveApplyFor }) {
+export function ApplyLeavePanel({ open, onOpenChange, surface = 'desk', sent: sent0 = false, forSomeone, picked: picked0 = null, self = ME.name, live, liveFor, ...p }:ApplyLeaveProps & { open: boolean; onOpenChange: (o: boolean) => void; surface?: 'desk' | 'phone'; sent?: boolean; forSomeone?: PickPerson[]; /** With `forSomeone`: the person already picked (stories). */ picked?: string | null; /** The app: my own leave, with the server's summary. */ live?: { data: MyLeave; live: LiveLeaveHome; resend?: LiveRequest }; /** The app: HR applies for someone (founder answer B). */ liveFor?: LiveApplyFor }) {
   if (live) return open ? <LiveApplyLeavePanel {...live} onClose={() => onOpenChange(false)} /> : null;
   if (liveFor) return open ? <LiveApplyLeavePanel forSomeone={liveFor} onClose={() => onOpenChange(false)} /> : null;
   const [draft, setDraft] = useState<LeaveDraft>(() => {
@@ -663,8 +670,8 @@ export function ApplyLeavePanel({ open, onOpenChange, surface = 'desk', sent: se
   );
 }
 
-export function ApplyLeaveSheet({ live, ...p }: ApplyLeaveProps & { surface?: 'desk' | 'phone'; sent?: boolean; /** The app: the request drawer on My leave. */ live?: { data: MyLeave; live: LiveLeaveHome; onClose: () => void } }) {
-  if (live) return <ApplyLeavePanel open onOpenChange={(o) => !o && live.onClose()} live={{ data: live.data, live: live.live }} />;
+export function ApplyLeaveSheet({ live, ...p }: ApplyLeaveProps & { surface?: 'desk' | 'phone'; sent?: boolean; /** The app: the request drawer on My leave (`resend`: a request sent back, changed and sent again). */ live?: { data: MyLeave; live: LiveLeaveHome; onClose: () => void; resend?: LiveRequest } }) {
+  if (live) return <ApplyLeavePanel open onOpenChange={(o) => !o && live.onClose()} live={{ data: live.data, live: live.live, resend: live.resend }} />;
   const [open, setOpen] = useState(true);
   if (p.surface === 'phone') return <PhoneFrame tab="time" title="Leave"><ApplyLeavePanel {...p} open={open} onOpenChange={setOpen} /></PhoneFrame>;
   const n = p.self && p.self !== ME.name ? ON_NOTICE[p.self] : undefined;
@@ -1119,7 +1126,7 @@ export function LeaveHomePhone({ persona = 'emp' }: { persona?: 'emp' | 'mgr' })
 export function LeaveRequestDetail({ id = 'lr1', persona = 'emp', action, surface = 'desk', live }: { id?: string; persona?: 'emp' | 'mgr'; action?: ReqAction; surface?: 'desk' | 'phone'; /** The app: one of my requests in a drawer. */ live?: LiveRequestProps }) {
   if (live) return <LeaveRequestView live={live} />;
   const base = persona === 'emp' ? LEAVE_REQUESTS.filter((x) => x.person === ME.name) : LEAVE_REQUESTS.filter((x) => x.approver === ME.name);
-  const [cur, setCur] = useState<{ r: LeaveRequestRow; action?: ReqAction } | null>({ r: LEAVE_REQUESTS.find((x) => x.id === id)!, action });
+  const [cur, setCur] = useState<{ r: LeaveRequestRow; action?: ReqAction } | null>({ r: [...LEAVE_REQUESTS, SENT_BACK_REQUEST].find((x) => x.id === id)!, action });
   // Decisions made in the drawer update the list behind it: new status, or gone (withdrawn, sent back).
   const [changed, setChanged] = useState<Record<string, ReqAction>>({});
   const { toast } = useToast();
@@ -2058,6 +2065,8 @@ export interface LiveLeaveHome {
   onApply: (input: LeaveInput) => Promise<unknown>;
   onWithdraw: (id: string) => Promise<unknown>;
   onCancel: (id: string, reason: string) => Promise<unknown>;
+  /** A request sent back for changes, changed and sent again (a new request; the server checks every rule again). */
+  onResend?: (id: string, input: LeaveInput) => Promise<unknown>;
   onChooseHoliday: (holidayId: string, choose: boolean) => Promise<unknown>;
   onFindPeople: (q: string) => Promise<LivePersonOption[]>;
   /** Opens Apply leave at once (a link from Home, Ctrl K › N L). */
@@ -2131,7 +2140,7 @@ export interface LiveMgrLeaveHome {
   /** One request: team availability, the balance after it and my approval task (TIM-19 Manager). */
   onOpen: (id: string) => Promise<LeaveRequestDetailView>;
   /** Decides my approval task (the approvals inbox's own call; it checks I hold the task). */
-  onDecide: (taskId: string, decision: 'approve' | 'reject', reason?: string) => Promise<unknown>;
+  onDecide: (taskId: string, decision: 'approve' | 'reject' | 'send_back', reason?: string) => Promise<unknown>;
   onNavigate: (href: string) => void;
   hrefs: { approvals: string; calendar: string };
   /** Opens this request at once (a link from Approvals or a notification). */
@@ -2229,6 +2238,8 @@ function LiveLeaveHomeScreen({ live }: { live: LiveLeaveHome }) {
     if (live.startApplying) setApply(true);
   }, [live.startApplying]);
   const [open, setOpen] = useState<{ r: LiveRequest; action?: 'withdraw' | 'cancel' } | null>(null);
+  // Sent back for changes: Apply leave starts from that request and sends it again.
+  const [resend, setResend] = useState<LiveRequest | null>(null);
   const [holidays, setHolidays] = useState(false);
   const [sheet, setSheet] = useState<'comp-off' | 'encash' | 'absence' | null>(null);
   const [withdraw, setWithdraw] = useState<{ kind: 'claim' | 'encash'; id: string; text: string } | null>(null);
@@ -2310,6 +2321,7 @@ function LiveLeaveHomeScreen({ live }: { live: LiveLeaveHome }) {
                           <span className="yx-tim-row">
                             <Button size="sm" onClick={() => setOpen({ r })}>View</Button>
                             {r.status === 'pending' && <Button size="sm" onClick={() => setOpen({ r, action: 'withdraw' })}>Withdraw</Button>}
+                            {r.status === 'sent_back' && live.onResend && <Button size="sm" variant="primary" onClick={() => setResend(r)}>Change and send again</Button>}
                             {cancellable(r, d.today) && <Button size="sm" onClick={() => setOpen({ r, action: 'cancel' })}>Ask to cancel</Button>}
                           </span>
                         </li>
@@ -2341,7 +2353,8 @@ function LiveLeaveHomeScreen({ live }: { live: LiveLeaveHome }) {
               </div>
             </div>
             {apply && <ApplyLeaveSheet live={{ data: d, live, onClose: () => setApply(false) }} />}
-            {open && <LeaveRequestDetail key={`${open.r.id}-${open.action}`} live={{ r: open.r, data: d, action: open.action, live, onClose: () => setOpen(null) }} />}
+            {resend && <ApplyLeaveSheet key={resend.id} live={{ data: d, live, resend, onClose: () => setResend(null) }} />}
+            {open && <LeaveRequestDetail key={`${open.r.id}-${open.action}`} live={{ r: open.r, data: d, action: open.action, live, onClose: () => setOpen(null), onResend: () => { setOpen(null); setResend(open.r); } }} />}
             {holidays && <OptionalHolidaysSheet live={{ data: d, onChoose: live.onChooseHoliday, onClose: () => setHolidays(false) }} />}
             {sheet === 'comp-off' && live.compOff && <CompOffClaim live={{ ...live.compOff, onClose: () => setSheet(null) }} />}
             {sheet === 'encash' && live.encash && <EncashmentRequest live={{ ...live.encash, onClose: () => setSheet(null) }} />}
@@ -2367,9 +2380,9 @@ function LiveLeaveHomeScreen({ live }: { live: LiveLeaveHome }) {
   );
 }
 
-type LiveRequestProps = { r: LiveRequest; data: MyLeave; action?: 'withdraw' | 'cancel'; live: LiveLeaveHome; onClose: () => void };
+type LiveRequestProps = { r: LiveRequest; data: MyLeave; action?: 'withdraw' | 'cancel'; live: LiveLeaveHome; onClose: () => void; /** Sent back: open Apply leave from this request. */ onResend?: () => void };
 /** TIM-19 in the app: the request in a drawer; withdraw (pending) or ask to cancel with a reason (approved). */
-function LiveLeaveRequestView({ r, data, action, live, onClose }: LiveRequestProps) {
+function LiveLeaveRequestView({ r, data, action, live, onClose, onResend }: LiveRequestProps) {
   const [dlg, setDlg] = useState<'withdraw' | 'cancel' | undefined>(action);
   const [note, setNote] = useState('');
   const [tried, setTried] = useState(false);
@@ -2381,6 +2394,7 @@ function LiveLeaveRequestView({ r, data, action, live, onClose }: LiveRequestPro
   };
   const footer =
     r.status === 'pending' ? <DrawerFoot rest={<Button onClick={onClose}>Close</Button>} main={<Button variant="danger" onClick={() => setDlg('withdraw')}>Withdraw request</Button>} />
+    : r.status === 'sent_back' && onResend && live.onResend ? <DrawerFoot main={<Button variant="primary" onClick={onResend}>Change and send again</Button>} rest={<><Button onClick={() => setDlg('withdraw')}>Withdraw</Button><Button onClick={onClose}>Close</Button></>} />
     : cancellable(r, data.today) ? <DrawerFoot rest={<Button onClick={onClose}>Close</Button>} main={<Button variant="danger" onClick={() => setDlg('cancel')}>Ask to cancel</Button>} />
     : <DrawerFoot hint={`${LEAVE_STATUS[r.status].label}${r.decidedAt ? ` on ${formatDate(new Date(r.decidedAt))}` : ''}`} rest={<Button onClick={onClose}>Close</Button>} />;
   return (
@@ -2399,6 +2413,7 @@ function LiveLeaveRequestView({ r, data, action, live, onClose }: LiveRequestPro
               { label: bal?.hasBalance ? `${bal.name} available now` : 'Balance', value: bal?.hasBalance ? bal.available : 'Not counted' },
             ]}
           />
+          {r.sentBack && <InlineAlert tone="warning" title={`${r.sentBack.by ?? 'Your approver'} sent it back for changes`}>{r.sentBack.reason}</InlineAlert>}
           <p><strong>Reason:</strong> {r.reason || 'None given'}</p>
           {r.certificate !== 'none' && <div className="yx-tim-row"><Badge tone={r.certificate === 'verified' ? 'success' : 'neutral'}>{r.certificate === 'verified' ? 'Certificate verified by HR' : 'Certificate to give HR'}</Badge></div>}
           <p className="yx-tim-muted">Sent {formatDate(new Date(r.createdAt || Date.now()))}{r.decidedAt ? ` · decided ${formatDate(new Date(r.decidedAt))}` : ''}</p>
@@ -2408,7 +2423,7 @@ function LiveLeaveRequestView({ r, data, action, live, onClose }: LiveRequestPro
         open={dlg === 'withdraw'}
         onOpenChange={(o) => !o && close()}
         title="Withdraw this request?"
-        consequence={`It hasn't been approved yet, so it's withdrawn at once and your ${plural(r.days, 'pending day')} ${r.days === 1 ? 'returns' : 'return'} to your balance.`}
+        consequence={r.status === 'sent_back' ? 'It was sent back, so it holds no days. Withdrawn, it stays in your history.' : `It hasn't been approved yet, so it's withdrawn at once and your ${plural(r.days, 'pending day')} ${r.days === 1 ? 'returns' : 'return'} to your balance.`}
         confirmLabel="Withdraw request"
         cancelLabel="Keep request"
         destructive
@@ -2457,18 +2472,18 @@ const COUNTED_AS: Record<LeavePlan['days'][number]['countedAs'], string> = { lea
  * TIM-18 in the app: my own leave (`data`, `live`), or HR applying for someone (`forSomeone`, founder answer B): the
  * first field picks the person, then the same form with their leave types, balances and the server's summary.
  */
-function LiveApplyLeavePanel({ data, live, forSomeone, onClose }: { data?: MyLeave; live?: LiveLeaveHome; forSomeone?: LiveApplyFor; onClose: () => void }) {
+function LiveApplyLeavePanel({ data, live, forSomeone, resend, onClose }: { data?: MyLeave; live?: LiveLeaveHome; forSomeone?: LiveApplyFor; /** Sent back for changes: starts from that request; Send sends it again. */ resend?: LiveRequest; onClose: () => void }) {
   const [personId, setPersonId] = useState<string | null>(null);
   const [target, setTarget] = useState<ApplyForForm | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const types = forSomeone ? (target?.balances ?? []) : data!.balances;
   const today = forSomeone ? target?.today : data!.today;
-  const [typeId, setTypeId] = useState<string | null>(types[0]?.leaveTypeId ?? null);
-  const [from, setFrom] = useState<Date | null>(null);
-  const [to, setTo] = useState<Date | null>(null);
-  const [fromHalf, setFromHalf] = useState<'full' | 'second'>('full');
-  const [toHalf, setToHalf] = useState<'full' | 'first'>('full');
-  const [reason, setReason] = useState('');
+  const [typeId, setTypeId] = useState<string | null>(resend?.type?.id ?? types[0]?.leaveTypeId ?? null);
+  const [from, setFrom] = useState<Date | null>(resend ? isoDate(resend.from) : null);
+  const [to, setTo] = useState<Date | null>(resend && resend.to !== resend.from ? isoDate(resend.to) : null);
+  const [fromHalf, setFromHalf] = useState<'full' | 'second'>(resend?.fromHalf ?? 'full');
+  const [toHalf, setToHalf] = useState<'full' | 'first'>(resend?.toHalf ?? 'full');
+  const [reason, setReason] = useState(resend?.reason ?? '');
   // Maternity (YX-LV-10): the expected date and the case decide the weeks and the eligibility window.
   const [expectedOn, setExpectedOn] = useState<Date | null>(null);
   const [mCase, setMCase] = useState<MaternityCase>('birth');
@@ -2543,8 +2558,9 @@ function LiveApplyLeavePanel({ data, live, forSomeone, onClose }: { data?: MyLea
       const input = { leaveTypeId: typeId!, from: f, to: end, fromHalf, toHalf, reason: reason.trim() || undefined, delegateUserId: delegate ?? undefined, certificate: certificate || undefined, ...extra };
       if (forSomeone && target) {
         await forSomeone.onApply(target.employee.id, input);
-        toast({ tone: 'success', title: plan?.approval === 'approved' ? `Leave approved for ${target.employee.name}` : `Leave applied for ${target.employee.name} · sent for approval` });
-      } else await live!.onApply(input);
+        toast({ tone: 'success', title: plan?.approval === 'approved' ? `Leave applied for ${target.employee.name}` : `Leave applied for ${target.employee.name} · sent for approval` });
+      } else if (resend && live?.onResend) await live.onResend(resend.id, input);
+      else await live!.onApply(input);
       onClose();
     });
   };
@@ -2554,14 +2570,15 @@ function LiveApplyLeavePanel({ data, live, forSomeone, onClose }: { data?: MyLea
     <Drawer
       open
       onOpenChange={(o) => !o && onClose()}
-      title={forSomeone ? 'Apply leave for someone' : 'Apply leave'}
+      title={forSomeone ? 'Apply leave for someone' : resend ? 'Change and send again' : 'Apply leave'}
       size="lg"
       dirty={Boolean(f || reason || personId)}
-      footer={<DrawerFoot rest={<Button onClick={onClose}>Cancel</Button>} main={<Button variant="primary" loading={busy === 'apply'} onClick={send}>Send request</Button>} />}
+      footer={<DrawerFoot rest={<Button onClick={onClose}>Cancel</Button>} main={<Button variant="primary" loading={busy === 'apply'} onClick={send}>{resend ? 'Send again' : 'Send request'}</Button>} />}
     >
       <div className="yx-tim-editor">
         <div className="yx-tim-form">
           <ErrorSummary errors={saveErrors.shownErrors} title="Check these before sending" />
+          {resend?.sentBack && <InlineAlert tone="warning" title={`${resend.sentBack.by ?? 'Your approver'} asked for changes`}>{resend.sentBack.reason}</InlineAlert>}
           {error && <InlineAlert tone="danger" title="Not sent">{error}</InlineAlert>}
           {forSomeone && (
             <FormField id="lv-person" label="Employee" required error={errorOf('lv-person')}>
@@ -3059,6 +3076,8 @@ function LiveMgrLeaveHomeScreen({ live }: { live: LiveMgrLeaveHome }) {
   const { toast } = useToast();
   const [gone, setGone] = useState<string[]>([]);
   const [openId, setOpenId] = useState<string | null>(live.openId ?? null);
+  // "Send back" on a row opens the request with the send-back step open (TIM-17 Manager).
+  const [openAction, setOpenAction] = useState<'sendback' | undefined>(undefined);
   const { busy, error, run } = useRun();
   const waiting = (d?.waiting ?? []).filter((r) => !gone.includes(r.id));
   const done = (id: string, msg: string) => {
@@ -3090,6 +3109,7 @@ function LiveMgrLeaveHomeScreen({ live }: { live: LiveMgrLeaveHome }) {
                         </span>
                         <span className="yx-tim-row">
                           <Button size="sm" onClick={() => setOpenId(r.id)}>View</Button>
+                          {r.canSendBack !== false && <Button size="sm" onClick={() => { setOpenAction('sendback'); setOpenId(r.id); }}>Send back</Button>}
                           <Button variant="approve" size="sm" loading={busy === `a${r.id}`} onClick={() => approve(r)}>Approve</Button>
                         </span>
                       </li>
@@ -3110,21 +3130,28 @@ function LiveMgrLeaveHomeScreen({ live }: { live: LiveMgrLeaveHome }) {
           </div>
         )}
       </LiveStates>
-      {openId && <LiveMgrRequestView key={openId} id={openId} live={live} onClose={() => setOpenId(null)} onDone={done} />}
+      {openId && <LiveMgrRequestView key={`${openId}-${openAction ?? ''}`} id={openId} action={openAction} live={live} onClose={() => { setOpenId(null); setOpenAction(undefined); }} onDone={done} />}
     </TimePage>
   );
 }
 
 /** TIM-19 Manager, live: someone's request with team availability and the balance after it; Approve or Reject when it is my task. */
-function LiveMgrRequestView({ id, live, onClose, onDone }: { id: string; live: LiveMgrLeaveHome; onClose: () => void; onDone: (id: string, msg: string) => void }) {
+function LiveMgrRequestView({ id, action, live, onClose, onDone }: { id: string; /** 'sendback': opens with Send back for changes. */ action?: 'sendback'; live: LiveMgrLeaveHome; onClose: () => void; onDone: (id: string, msg: string) => void }) {
   const [r, setR] = useState<LeaveRequestDetailView | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [dlg, setDlg] = useState<'approve' | 'reject' | null>(null);
+  const [dlg, setDlg] = useState<'approve' | 'reject' | 'sendback' | null>(null);
   const [note, setNote] = useState('');
   const [tried, setTried] = useState(false);
   useEffect(() => {
     let on = true;
-    live.onOpen(id).then((x) => on && setR(x), (e: unknown) => on && setLoadError(e instanceof Error ? e.message : 'This request did not load.'));
+    live.onOpen(id).then(
+      (x) => {
+        if (!on) return;
+        setR(x);
+        if (action === 'sendback' && x.team?.taskId && x.status === 'pending' && x.team.canSendBack !== false) setDlg('sendback');
+      },
+      (e: unknown) => on && setLoadError(e instanceof Error ? e.message : 'This request did not load.'),
+    );
     return () => {
       on = false;
     };
@@ -3134,7 +3161,7 @@ function LiveMgrRequestView({ id, live, onClose, onDone }: { id: string; live: L
   const taskId = r?.team?.taskId ?? null;
   const dates = r ? `${isoSpan(r.from, r.to)}${halvesText(r)}` : '';
   const footer = !r ? <Button onClick={onClose}>Close</Button>
-    : taskId && r.status === 'pending' ? <DrawerFoot main={<Button variant="approve" onClick={() => setDlg('approve')}>Approve</Button>} rest={<><Button variant="danger" onClick={() => { setTried(false); setNote(''); setDlg('reject'); }}>Reject</Button><Button onClick={onClose}>Close</Button></>} />
+    : taskId && r.status === 'pending' ? <DrawerFoot main={<Button variant="approve" onClick={() => setDlg('approve')}>Approve</Button>} rest={<>{r.team?.canSendBack !== false && <Button onClick={() => { setTried(false); setNote(''); setDlg('sendback'); }}>Send back</Button>}<Button variant="danger" onClick={() => { setTried(false); setNote(''); setDlg('reject'); }}>Reject</Button><Button onClick={onClose}>Close</Button></>} />
       : r.status === 'pending' ? <DrawerFoot hint="Waiting for another approver: only they can decide it" rest={<Button onClick={onClose}>Close</Button>} />
         : <DrawerFoot hint={`${LEAVE_STATUS[r.status].label}${r.decidedAt ? ` on ${formatDate(new Date(r.decidedAt))}` : ''}`} rest={<Button onClick={onClose}>Close</Button>} />;
   return (
@@ -3192,6 +3219,27 @@ function LiveMgrRequestView({ id, live, onClose, onDone }: { id: string; live: L
           >
             <FormField id="lv-mgr-reason" label="Reason" required error={tried && !note.trim() ? 'Enter a reason.' : null}>
               <TextArea rows={2} value={note} onChange={setNote} maxLength={1000} placeholder="For example: audit week, the team is short" />
+            </FormField>
+          </ConfirmDialog>
+          <ConfirmDialog
+            open={dlg === 'sendback'}
+            onOpenChange={(o) => !o && setDlg(null)}
+            title={`Send back to ${first(who)}?`}
+            consequence={`${first(who)} gets your note and can change the request and send it again.`}
+            confirmLabel="Send back"
+            onConfirm={async () => {
+              setTried(true);
+              if (!note.trim()) {
+                document.getElementById('lv-mgr-change')?.focus();
+                return false;
+              }
+              await live.onDecide(taskId, 'send_back', note.trim());
+              onDone(r.id, `Sent back to ${who}`);
+              onClose();
+            }}
+          >
+            <FormField id="lv-mgr-change" label="What to change" required error={tried && !note.trim() ? 'Enter what to change.' : null}>
+              <TextArea rows={2} value={note} onChange={setNote} maxLength={1000} placeholder={r.certificate !== 'none' ? 'For example: attach the certificate' : 'For example: move it by a week'} />
             </FormField>
           </ConfirmDialog>
         </>

@@ -144,6 +144,31 @@ describe('Leave request (TIM-19 live)', () => {
     await waitFor(() => expect(live.onCancel).toHaveBeenCalledWith('r2', 'Trip called off'));
   });
 
+  it('Sent back for changes: the note shows; Change and send again starts from the request and resends it; refused, it says why', async () => {
+    const back = { id: 'r3', employeeId: 'e1', type: EL, from: '2026-11-09', to: '2026-11-10', fromHalf: 'full' as const, toHalf: 'full' as const, days: 2, status: 'sent_back' as const, certificate: 'none' as const, reason: 'Cousin wedding', createdAt: '2026-10-01T05:00:00Z', decidedAt: '2026-10-02T05:00:00Z', sentBack: { reason: 'The audit runs that week. Move it by a week?', by: 'Kavya Rao', at: '2026-10-02T05:00:00Z' } };
+    const onResend = vi.fn().mockRejectedValueOnce(new Error('You already have leave on 16 Nov 2026.')).mockResolvedValueOnce({});
+    const live = home({ onResend, data: { ...LEAVE, requests: [back, ...LEAVE.requests] } });
+    render(<LeaveHomeScreen live={live} />);
+    const list = screen.getByRole('list', { name: 'My leave requests' });
+    expect(within(list).getByText('Sent back for changes')).toBeInTheDocument();
+    await ue.click(within(list).getAllByRole('button', { name: 'View' })[0]!);
+    const drawer = await screen.findByRole('dialog', { name: /Earned leave · Arjun Kulkarni/ });
+    expect(within(drawer).getByText('Kavya Rao sent it back for changes')).toBeInTheDocument();
+    expect(within(drawer).getByText('The audit runs that week. Move it by a week?')).toBeInTheDocument();
+    await ue.click(within(drawer).getByRole('button', { name: 'Change and send again' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Change and send again' });
+    expect(within(sheet).getByText('Kavya Rao asked for changes')).toBeInTheDocument();
+    await typeDate(within(sheet).getByLabelText(/^From/), '16 Nov 2026');
+    await typeDate(within(sheet).getByLabelText(/^To/), '17 Nov 2026');
+    await within(sheet).findByText('1 other is off then');
+    await ue.click(within(sheet).getByRole('button', { name: 'Send again' }));
+    // Negative: the server refuses (overlap): the reason stays in the sheet.
+    expect(await within(sheet).findByText('You already have leave on 16 Nov 2026.')).toBeInTheDocument();
+    await ue.click(within(sheet).getByRole('button', { name: 'Send again' }));
+    await waitFor(() => expect(onResend).toHaveBeenLastCalledWith('r3', expect.objectContaining({ leaveTypeId: 'el', from: '2026-11-16', to: '2026-11-17', reason: 'Cousin wedding' })));
+    expect(live.onApply).not.toHaveBeenCalled();
+  });
+
   it('a withdraw the server refuses says why', async () => {
     const live = home({ onWithdraw: vi.fn(async () => Promise.reject(new Error('This request was approved a moment ago; cancel it instead.'))) });
     render(<LeaveHomeScreen live={live} />);

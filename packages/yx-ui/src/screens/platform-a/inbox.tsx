@@ -428,17 +428,19 @@ const DECISION_TEXT: Record<Exclude<Decision, null>, { title: string; field: str
  * Approval decision (founder review 30 Sep 2026): the body shows the request; every decision sits in the footer
  * (Approve, Send back, Reject; Ask and Reassign under ⋯). Approving outside policy asks for a reason for the audit trail.
  */
-/** Live: the engine decides (approve, or do not approve with a reason the requester sees). */
-type LiveDecide = (decision: 'approve' | 'reject', reason: string) => Promise<unknown>;
+/** Live: the engine decides (approve, do not approve with a reason the requester sees, or send back for changes). */
+type LiveDecide = (decision: 'approve' | 'reject' | 'send_back', reason: string) => Promise<unknown>;
 /** Live wording: "Do not approve" with a reason (founder 26 Oct 2026), never "Reject". */
 const LIVE_REJECT = { title: 'Do not approve this request?', field: 'Reason', confirm: 'Do not approve', done: 'Not approved' };
+/** Live send back (founder 30 Oct 2026): the person changes the request and sends it again as a new one. */
+const LIVE_SENDBACK = { title: 'Send back for changes', field: 'What to change', confirm: 'Send back', done: 'Sent back for changes' };
 
 function useApprovalDecision(row: ApprovalRow, defaultDecision: Decision, onDone: (text: string) => void, actionable: boolean, live?: { decide: LiveDecide; today: Date }) {
   const [decision, setDecision] = useState<Decision>(defaultDecision);
   const [reason, setReason] = useState('');
   const [to, setTo] = useState<string | null>(null);
   const [tried, setTried] = useState(false);
-  const [busy, setBusy] = useState<'approve' | 'reject' | null>(null);
+  const [busy, setBusy] = useState<'approve' | 'reject' | 'send_back' | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const pick = (d: Decision) => {
     setDecision(d);
@@ -446,13 +448,13 @@ function useApprovalDecision(row: ApprovalRow, defaultDecision: Decision, onDone
     setTried(false);
     setFailed(null);
   };
-  const send = async (d: 'approve' | 'reject') => {
+  const send = async (d: 'approve' | 'reject' | 'send_back') => {
     if (!live) return;
     setBusy(d);
     setFailed(null);
     try {
       await live.decide(d, reason.trim());
-      onDone(d === 'approve' ? 'Approved' : 'Not approved');
+      onDone(d === 'approve' ? 'Approved' : d === 'send_back' ? LIVE_SENDBACK.done : 'Not approved');
     } catch (e) {
       setFailed(e instanceof Error && e.message ? e.message : 'That did not work. Try again.');
     } finally {
@@ -466,10 +468,10 @@ function useApprovalDecision(row: ApprovalRow, defaultDecision: Decision, onDone
       setTimeout(() => document.getElementById('ap-reason')?.focus(), 0);
       return;
     }
-    if (live) return void send('reject');
+    if (live) return void send(decision === 'sendback' ? 'send_back' : 'reject');
     onDone(decision ? DECISION_TEXT[decision].done : 'Approved');
   };
-  const text = decision ? (live ? LIVE_REJECT : DECISION_TEXT[decision]) : null;
+  const text = decision ? (live ? (decision === 'sendback' ? LIVE_SENDBACK : LIVE_REJECT) : DECISION_TEXT[decision]) : null;
   const body = (
     <div className="yx-plt-stack">
       {failed && (
@@ -534,8 +536,8 @@ function useApprovalDecision(row: ApprovalRow, defaultDecision: Decision, onDone
               id="ap-reason"
               label={text.field}
               required
-              error={tried && reason.trim().length < (live ? 1 : 5) ? (live ? 'Say why, so the person who asked knows.' : decision === 'exception' ? 'Say why this is fine; it is kept in the audit trail.' : 'Write a reason the requester can act on.') : null}
-              helper={decision === 'sendback' ? 'The requester edits and resubmits. Unchanged requests resume at your step.' : decision === 'exception' ? 'Kept with the request for finance and audit.' : undefined}
+              error={tried && reason.trim().length < (live ? 1 : 5) ? (live ? (decision === 'sendback' ? 'Say what to change, so the person who asked knows.' : 'Say why, so the person who asked knows.') : decision === 'exception' ? 'Say why this is fine; it is kept in the audit trail.' : 'Write a reason the requester can act on.') : null}
+              helper={decision === 'sendback' ? (live ? 'They change the request and send it again.' : 'The requester edits and resubmits. Unchanged requests resume at your step.') : decision === 'exception' ? 'Kept with the request for finance and audit.' : undefined}
             >
               <TextArea value={reason} onChange={setReason} rows={3} />
             </FormField>
@@ -555,14 +557,15 @@ function useApprovalDecision(row: ApprovalRow, defaultDecision: Decision, onDone
   ) : decision && text ? (
     <div className="yx-plt-decide">
       <Button onClick={() => pick(null)}>Cancel</Button>
-      <Button variant={decision === 'reject' ? 'danger' : 'primary'} loading={busy === 'reject'} onClick={confirm}>
+      <Button variant={decision === 'reject' ? 'danger' : 'primary'} loading={busy === 'reject' || busy === 'send_back'} onClick={confirm}>
         {text.confirm}
       </Button>
     </div>
   ) : live ? (
-    // Live: the engine approves or does not approve; send back, ask and reassign wait for their backend.
+    // Live: the engine approves, does not approve, or sends back (where the type has it); ask and reassign wait for their backend.
     <div className="yx-plt-decide">
       <span className="yx-plt-decide__gap" />
+      {row.canSendBack && <Button onClick={() => pick('sendback')}>Send back</Button>}
       <Button onClick={() => pick('reject')}>Do not approve</Button>
       <Button variant="approve" icon={Check} loading={busy === 'approve'} onClick={() => void send('approve')}>
         Approve
@@ -653,7 +656,7 @@ export interface LiveApprovals {
   today: Date;
   onRetry?: () => void;
   /** Approve, or do not approve with a reason the requester sees. */
-  onDecide: (row: ApprovalRow, decision: 'approve' | 'reject', reason: string) => Promise<unknown>;
+  onDecide: (row: ApprovalRow, decision: 'approve' | 'reject' | 'send_back', reason: string) => Promise<unknown>;
   /** Approve several: the server checks each again. Returns the ones it refused, with why. */
   onBulkApprove: (rows: ApprovalRow[]) => Promise<{ id: string; message: string }[]>;
   /** "Set up delegation" opens "When I am away": the designed delegation form (PLT-07). */

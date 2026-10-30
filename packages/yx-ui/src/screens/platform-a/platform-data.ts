@@ -70,6 +70,8 @@ export interface ApprovalRow {
   timeline?: ApprovalStep[];
   /** Live: decided on its own page with a fresh sign-in check (reopening a pay month). */
   decideAt?: string | null;
+  /** Live: the approver may send it back for changes (leave; the company allows it). */
+  canSendBack?: boolean;
 }
 
 export const APPROVALS: ApprovalRow[] = [

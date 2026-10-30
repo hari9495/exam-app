@@ -112,6 +112,8 @@ export interface ApprovalTask {
   submittedAt: string;
   /** Irreversible requests (e.g. reopening a locked pay month) are decided on their own page, with a fresh second step. */
   decideAt?: string | null;
+  /** The approver may send it back for changes (the type has it and the company allows it). */
+  canSendBack?: boolean;
 }
 export interface ApprovalHistory {
   decided: { requestId: string; title: string; type: string; decision: string; at: string; requestStatus: string }[];

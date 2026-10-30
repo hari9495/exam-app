@@ -602,12 +602,15 @@ export class LeaveService implements OnModuleInit {
   }
 
   private async sendBackAllowed(tx: Tx, wf: Prisma.WfRequestGetPayload<object>): Promise<boolean> {
-    const c: CompanyContext = { organizationId: wf.organizationId, isSuperAdmin: false };
     const r = await tx.leaveRequest.findFirst({ where: { organizationId: wf.organizationId, id: wf.subjectId }, select: { employeeId: true, status: true } });
-    if (!r || r.status !== 'pending') return false;
+    return Boolean(r && r.status === 'pending' && (await this.sendBackOn(tx, wf.organizationId, r.employeeId)));
+  }
+
+  /** The company lets approvers send this person's leave back for changes (setting leave.send_back, default on). */
+  private async sendBackOn(tx: Tx, org: string, employeeId: string): Promise<boolean> {
     const today = todayIn('Asia/Kolkata');
-    const f = await factsOn(tx, wf.organizationId, r.employeeId, today);
-    return f ? (await settingOn(tx, c, 'leave.send_back', f, today)) === 'on' : false;
+    const f = await factsOn(tx, org, employeeId, today);
+    return f ? (await settingOn(tx, { organizationId: org, isSuperAdmin: false }, 'leave.send_back', f, today)) === 'on' : false;
   }
 
   /** Sent back for changes (P03): the request stops holding its days and waits for the employee to change it and send it again. */
@@ -791,13 +794,13 @@ export class LeaveService implements OnModuleInit {
       const route = r.wfRequestId ? await this.engine.viewIn(tx, c.organizationId, await tx.wfRequest.findFirstOrThrow({ where: { organizationId: c.organizationId, id: r.wfRequestId } })) : null;
       // TIM-19 Manager: team availability (the requester's colleagues under the same manager whom the viewer may see),
       // the balance after it, and the viewer's own open approval task (decided through the one approvals engine).
-      let team: { others: { name: string; type: string }[]; balanceAfter: number | null; taskId: string | null } | null = null;
+      let team: { others: { name: string; type: string }[]; balanceAfter: number | null; taskId: string | null; canSendBack: boolean } | null = null;
       if (rel !== 'self' && f) {
         const seen = await visibleSql(tx, c, v, own, 'leave.view', Prisma.sql`d.employee_id`, today);
         const off = f.managerEmployeeId ? await this.offIn(tx, c, dateOf(r.fromOn), dateOf(r.toOn), Prisma.sql`${seen} AND d.employee_id IN (SELECT a.employee_id FROM employee_assignments a WHERE a.organization_id = ${c.organizationId}::uuid AND a.superseded_at IS NULL AND ${today}::date <@ daterange(a.valid_from, a.valid_to, '[]') AND a.manager_employee_id = ${f.managerEmployeeId}::uuid)`) : [];
         const bal = t && hasBalance(t.kind) ? (await this.balancesIn(tx, c, f, today)).find((b) => b.leaveTypeId === t.id) : undefined;
         const task = r.wfRequestId && v.userId && !v.actingForOther ? await tx.wfTask.findFirst({ where: { organizationId: c.organizationId, requestId: r.wfRequestId, status: 'open', assigneeUserId: v.userId }, select: { id: true } }) : null;
-        team = { others: offBetween(off, dateOf(r.fromOn), dateOf(r.toOn), r.employeeId), balanceAfter: bal ? bal.available : null, taskId: task?.id ?? null };
+        team = { others: offBetween(off, dateOf(r.fromOn), dateOf(r.toOn), r.employeeId), balanceAfter: bal ? bal.available : null, taskId: task?.id ?? null, canSendBack: Boolean(task) && r.status === 'pending' && (await this.sendBackOn(tx, c.organizationId, r.employeeId)) };
       }
       const sentBack = (await this.sentBackNotes(tx, c.organizationId, [r])).get(r.id) ?? null;
       return { ...this.requestView(r, t ?? undefined, withReason), sentBack, person: f ? { name: f.name, code: f.code } : null, route: route ? { status: route.status, steps: route.steps, log: route.log } : null, team };
@@ -844,13 +847,15 @@ export class LeaveService implements OnModuleInit {
       const teamOff = (from: string, to: string) => inTeam('d.employee_id').then((w) => this.offIn(tx, c, from, to, w));
       const span = rows.length ? await teamOff(rows.reduce((a, x) => (x.from < a ? x.from : a), rows[0].from), rows.reduce((a, x) => (x.to > a ? x.to : a), rows[0].to)) : [];
       const week = await teamOff(monday, addDays(monday, 6));
+      const back = new Map<string, boolean>();
+      for (const x of rows) if (!back.has(x.employeeId)) back.set(x.employeeId, await this.sendBackOn(tx, org, x.employeeId));
       const away = [...new Map(week.map((o) => [o.employeeId, o])).values()].map((o) => {
         const mine = week.filter((x) => x.employeeId === o.employeeId);
         return { employeeId: o.employeeId, name: o.name, type: o.type, from: mine[0].on, to: mine[mine.length - 1].on };
       });
       return {
         today,
-        waiting: rows.map((x) => ({ ...x, sent: x.sent.toISOString(), others: offBetween(span, x.from, x.to, x.employeeId) })),
+        waiting: rows.map((x) => ({ ...x, sent: x.sent.toISOString(), others: offBetween(span, x.from, x.to, x.employeeId), canSendBack: back.get(x.employeeId) ?? false })),
         otherWaiting: other,
         away,
       };

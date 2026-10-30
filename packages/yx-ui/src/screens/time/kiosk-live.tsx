@@ -55,8 +55,8 @@ export interface LiveKiosk {
 }
 
 type View = 'code' | 'qr' | 'pin' | 'menu' | 'checked_in' | 'status' | 'training' | 'leave';
-const STATUS_TONE: Record<string, 'success' | 'warning' | 'danger' | 'neutral'> = { approved: 'success', pending: 'warning', rejected: 'danger', cancelled: 'neutral', cancel_pending: 'warning', withdrawn: 'neutral' };
-const STATUS_TEXT: Record<string, string> = { approved: 'Approved', pending: 'Pending', rejected: 'Not approved', cancelled: 'Cancelled', cancel_pending: 'Cancel asked', withdrawn: 'Withdrawn' };
+const STATUS_TONE: Record<string, 'success' | 'warning' | 'danger' | 'neutral'> = { approved: 'success', pending: 'warning', rejected: 'danger', cancelled: 'neutral', cancel_pending: 'warning', withdrawn: 'neutral', sent_back: 'warning', resent: 'neutral' };
+const STATUS_TEXT: Record<string, string> = { approved: 'Approved', pending: 'Pending', rejected: 'Not approved', cancelled: 'Cancelled', cancel_pending: 'Cancel asked', withdrawn: 'Withdrawn', sent_back: 'Sent back for changes', resent: 'Changed and sent again' };
 const local = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
 const range = (a: string, b: string) => (a === b ? formatDate(local(a)) : `${formatDate(local(a))} – ${formatDate(local(b))}`);
 const clock = (iso: string, zone: string) => new Date(iso).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: zone }).toLowerCase();

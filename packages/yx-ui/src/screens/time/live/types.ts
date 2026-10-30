@@ -23,7 +23,7 @@ export interface LeaveBalanceRow {
   atYearStart?: number;
 }
 
-export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn' | 'cancel_pending' | 'cancelled';
+export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn' | 'cancel_pending' | 'cancelled' | 'sent_back' | 'resent';
 
 export interface LeaveRequestRow {
   id: string;
@@ -39,6 +39,8 @@ export interface LeaveRequestRow {
   reason: string | null;
   createdAt: string;
   decidedAt: string | null;
+  /** Sent back for changes: what the approver asked to change, and who. */
+  sentBack?: { reason: string | null; by: string | null; at: string } | null;
 }
 
 export interface HolidayRow {
@@ -737,7 +739,7 @@ export interface HrLeaveHome {
 export interface TeamLeaveHome {
   today: string;
   /** Leave waiting for my decision: `taskId` is my approval task (decided through the approvals inbox's API). */
-  waiting: { id: string; taskId: string; employeeId: string; name: string; type: string; from: string; to: string; fromHalf: 'full' | 'second'; toHalf: 'full' | 'first'; days: number; certificate: 'none' | 'pending' | 'verified'; sent: string; others: { name: string; type: string }[] }[];
+  waiting: { id: string; taskId: string; employeeId: string; name: string; type: string; from: string; to: string; fromHalf: 'full' | 'second'; toHalf: 'full' | 'first'; days: number; certificate: 'none' | 'pending' | 'verified'; sent: string; others: { name: string; type: string }[]; /** False when the company turned send back off. */ canSendBack?: boolean }[];
   /** Other approvals waiting for me (attendance, overtime, comp-off …). */
   otherWaiting: number;
   away: { employeeId: string; name: string; type: string; from: string; to: string }[];
@@ -746,7 +748,7 @@ export interface TeamLeaveHome {
 /** TIM-19 Manager: GET /time/requests/:id as someone else's request (team availability, balance after, my task). */
 export interface LeaveRequestDetailView extends LeaveRequestRow {
   person: { name: string; code: string | null } | null;
-  team: { others: { name: string; type: string }[]; balanceAfter: number | null; taskId: string | null } | null;
+  team: { others: { name: string; type: string }[]; balanceAfter: number | null; taskId: string | null; /** False when the company turned send back off. */ canSendBack?: boolean } | null;
 }
 
 export type LeaveReportKind = 'balances' | 'taken' | 'ledger' | 'lop' | 'negative' | 'liability';

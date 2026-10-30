@@ -32,6 +32,7 @@ function MyLeave() {
         data: leave.data ?? null,
         onPreview: (input) => write<LeavePlan>('/me/leave/preview', 'POST', input, false),
         onApply: (input) => write('/me/leave', 'POST', input, true, 'Leave sent for approval'),
+        onResend: (rid, input) => write(`/me/leave/${id(rid)}/resend`, 'POST', input, true, 'Changed and sent again for approval'),
         onWithdraw: (rid) => write(`/me/leave/${id(rid)}/withdraw`, 'POST', undefined, true, 'Leave request withdrawn'),
         onCancel: (rid, reason) => write(`/me/leave/${id(rid)}/cancel`, 'POST', { reason }, true, 'Cancellation sent to your manager'),
         onChooseHoliday: (hid, choose) => write(`/me/holidays/${id(hid)}/${choose ? 'choose' : 'unchoose'}`, 'POST', undefined, true, choose ? 'Optional holiday taken' : 'Optional holiday given back'),

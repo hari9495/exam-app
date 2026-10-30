@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ApprovalsInboxScreen, MyRequestsScreen, NotificationsInboxScreen, RequestSheetScreen, type LiveApprovals } from './inbox';
 import { APPROVALS, MY_REQUESTS, NOTIFICATIONS, SENT_BY_ME, type ApprovalRow } from './platform-data';
@@ -126,6 +126,26 @@ describe('PLT-04 live (the approvals engine)', () => {
     await u.type(within(panel).getByRole('textbox'), 'Not this quarter');
     await u.click(within(panel).getByRole('button', { name: 'Do not approve' }));
     expect(l.onDecide).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }), 'reject', 'Not this quarter');
+  });
+
+  it('Send back for changes (leave): offered only where the server allows it; what to change is required, then it is sent', async () => {
+    const u = userEvent.setup({ pointerEventsCheck: 0 });
+    const l = live();
+    const { unmount } = render(<ApprovalsInboxScreen waiting={[row('a')]} sent={[]} history={[]} openId="a" live={l} />);
+    // Negative: a type without send back (or the company turned it off) shows no Send back.
+    expect(within(await screen.findByRole('dialog')).queryByRole('button', { name: 'Send back' })).toBeNull();
+    unmount();
+    render(<ApprovalsInboxScreen waiting={[row('b', { type: 'Leave', canSendBack: true })]} sent={[]} history={[]} openId="b" live={l} />);
+    const panel = await screen.findByRole('dialog');
+    await u.click(within(panel).getByRole('button', { name: 'Send back' }));
+    expect(within(panel).getByText('They change the request and send it again.')).toBeInTheDocument();
+    await u.click(within(panel).getByRole('button', { name: 'Send back' }));
+    expect(within(panel).getByText('Say what to change, so the person who asked knows.')).toBeInTheDocument();
+    expect(l.onDecide).not.toHaveBeenCalled();
+    await u.type(within(panel).getByRole('textbox'), 'Move it by a week');
+    await u.click(within(panel).getByRole('button', { name: 'Send back' }));
+    expect(l.onDecide).toHaveBeenCalledWith(expect.objectContaining({ id: 'b' }), 'send_back', 'Move it by a week');
+    await waitFor(() => expect(l.onDone).toHaveBeenCalledWith(expect.stringMatching(/^Sent back for changes/)));
   });
 
   it('bulk approve: the refused ones stay listed with why; the rest say done', async () => {

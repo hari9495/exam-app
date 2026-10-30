@@ -92,6 +92,30 @@ describe('TIM-19 Manager (live)', () => {
     await waitFor(() => expect(l.onDecide).toHaveBeenCalledWith('t1', 'reject', 'Audit week'));
   });
 
+  it('Send back for changes: from the row; what to change is required; then my task is sent back and the row goes', async () => {
+    const l = mgr();
+    render(<LeaveHomeScreen mgrLive={l} />);
+    await ue.click(within(firstRow()).getByRole('button', { name: 'Send back' }));
+    const confirm = await screen.findByRole('dialog', { name: 'Send back to Arjun?' });
+    expect(within(confirm).getByText('Arjun gets your note and can change the request and send it again.')).toBeInTheDocument();
+    // Negative: pressed too early, the field says why and takes focus; nothing is sent.
+    await ue.click(within(confirm).getByRole('button', { name: 'Send back' }));
+    expect(within(confirm).getByText('Enter what to change.')).toBeInTheDocument();
+    expect(within(confirm).getByLabelText(/^What to change/)).toHaveFocus();
+    expect(l.onDecide).not.toHaveBeenCalled();
+    await ue.type(within(confirm).getByLabelText(/^What to change/), 'Move it by a week');
+    await ue.click(within(confirm).getByRole('button', { name: 'Send back' }));
+    await waitFor(() => expect(l.onDecide).toHaveBeenCalledWith('t1', 'send_back', 'Move it by a week'));
+    expect(await screen.findByText('Leave waiting for you (1)')).toBeInTheDocument();
+  });
+
+  it('Send back is not offered when the company turned it off', async () => {
+    render(<LeaveHomeScreen mgrLive={mgr({ openId: 'lr1', data: { ...HOME, waiting: HOME.waiting.map((w) => ({ ...w, canSendBack: false })) }, onOpen: vi.fn(async () => ({ ...DETAIL, team: { ...DETAIL.team!, canSendBack: false } })) })} />);
+    const drawer = await screen.findByRole('dialog', { name: /Casual leave · Arjun Kulkarni/ });
+    expect(within(drawer).queryByRole('button', { name: 'Send back' })).toBeNull();
+    expect(within(drawer).getByRole('button', { name: 'Reject' })).toBeInTheDocument();
+  });
+
   it("not my task: no Approve, it says who decides; someone outside my team: the server's answer shows", async () => {
     const { unmount } = render(<LeaveHomeScreen mgrLive={mgr({ openId: 'lr1', onOpen: vi.fn(async () => ({ ...DETAIL, team: { ...DETAIL.team!, taskId: null } })) })} />);
     const drawer = await screen.findByRole('dialog', { name: /Casual leave · Arjun Kulkarni/ });
