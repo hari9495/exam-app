@@ -6834,5 +6834,242 @@
       "TIM-39"
     ],
     "note": "POSITIVE + NEGATIVE (no cancel once started; sign-in refused during the block)"
+  },
+  {
+    "id": "MT-TIM-S-01",
+    "area": "Time · Holiday calendars",
+    "screen": "Holiday calendars · state template (positive)",
+    "url": "http://localhost:3000/yx/time/setup/holidays",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Open Time › Holiday calendars.",
+      "Pick a location tab with no calendar whose state has a template (e.g. Tamil Nadu).",
+      "Click \"Start from the Tamil Nadu template\", then \"Use template\".",
+      "Click \"Publish <location> calendar\"."
+    ],
+    "expected": "A toast says the draft was created; the tab shows \"Draft · not published\" with the state's holidays from today to 31 Dec. After Publish a toast says the calendar is published, the Draft badge is replaced by \"Published <date>\" and employees there see the holidays in My leave.",
+    "stories": [
+      "TIM-26"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-S-02",
+    "area": "Time · Holiday calendars",
+    "screen": "Holiday calendars · template refused (negative)",
+    "url": "http://localhost:3000/yx/time/setup/holidays",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Open a location tab that already has holidays from today.",
+      "Ask for the template through a location whose state has no template (e.g. a location with state IN-ZZ): its tab shows only \"Add a calendar for <location>\"."
+    ],
+    "expected": "No template button where the state has none; the tab offers \"Add a calendar\". A location with holidays already shows its table, not the template.",
+    "stories": [
+      "TIM-26"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-S-03",
+    "area": "Time · Holiday calendars",
+    "screen": "Holiday calendars · clone to next year (positive)",
+    "url": "http://localhost:3000/yx/time/setup/holidays",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Open a tab whose calendar has this year's holidays and no feed changes waiting.",
+      "Click \"Clone <location> to <next year>\", read the dialog, click \"Clone to <next year>\".",
+      "Click \"Open <next year> draft\"; for each row with \"Confirm date\" click it, choose the date, \"Confirm date\".",
+      "Click \"Publish <location> <next year> calendar\"."
+    ],
+    "expected": "The dialog says fixed days move to next year and festivals need confirming. The draft shows \"N festival dates to confirm\". After confirming all, Publish works with a toast; the page shows \"Published\" and nothing showed to employees before.",
+    "stories": [
+      "TIM-26"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-S-04",
+    "area": "Time · Holiday calendars",
+    "screen": "Holiday calendars · clone and publish refused (negative)",
+    "url": "http://localhost:3000/yx/time/setup/holidays",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "On a tab with feed changes waiting, click \"Clone <location> to <next year>\".",
+      "On a next-year draft with festival dates still to confirm, click Publish.",
+      "In Confirm date, clear the date and click \"Confirm date\"."
+    ],
+    "expected": "Clone does nothing and the note says \"Review the feed changes first\"; Publish does nothing and says \"Confirm the N festival dates first\"; the date dialog shows \"Choose the <year> date.\" and stays open.",
+    "stories": [
+      "TIM-26"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-S-05",
+    "area": "Time · Holiday calendars",
+    "screen": "Holiday calendars · rules and change date (positive)",
+    "url": "http://localhost:3000/yx/time/setup/holidays",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "On a tab, choose \"Substitute day off\" under Holiday on a weekly off and \"New office calendar from the move\" under When someone moves; click Save rules.",
+      "On a future holiday open the row menu › Change date, choose another day this year, click \"Change date\"."
+    ],
+    "expected": "\"Calendar rules saved\" toast and \"No changes to save\" next to the button after reload. A holiday on a weekly off now gives the next working day off when an employee applies leave for it (preview counts 0). The holiday moves with a toast; leave already on the new date goes back to the balance.",
+    "stories": [
+      "TIM-26"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-S-06",
+    "area": "Time · Holiday calendars",
+    "screen": "Holiday calendars · change date refused (negative)",
+    "url": "http://localhost:3000/yx/time/setup/holidays",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Open Change date on a future holiday and pick a date that is already a holiday.",
+      "Click Save rules with nothing changed."
+    ],
+    "expected": "Change date shows \"That date is already a holiday on this calendar.\" and nothing moves; Save rules with nothing changed does nothing and says \"No changes to save\".",
+    "stories": [
+      "TIM-26"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-S-07",
+    "area": "Time · Leave policies",
+    "screen": "Leave policies · order, coverage, grades (positive)",
+    "url": "http://localhost:3000/yx/time/setup",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Open Time › Leave types & policies with two policies.",
+      "Read the people count under each policy and the \"people covered\" line.",
+      "Click the down arrow on the first policy; click \"Save order\", keep today, click \"Save from <today>\".",
+      "Open a policy › Apply to › A grade, pick a grade and a date, Apply."
+    ],
+    "expected": "Each row shows #order, people today and overrides. After saving, a toast says \"Policy order saved\" and the table keeps the new order; people who match both policies now count under the one higher up. The grade assignment is listed under Who gets this policy.",
+    "stories": [
+      "TIM-28"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-S-08",
+    "area": "Time · Leave policies",
+    "screen": "Leave policies · order refused, no-policy alert (negative)",
+    "url": "http://localhost:3000/yx/time/setup",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Click the up arrow on the first policy.",
+      "Change the order, Save order, clear the date and click Save.",
+      "Make sure some people match no policy (a new location with no policy) and reload."
+    ],
+    "expected": "\"<policy> is already first.\" toast and nothing moves; the dialog shows \"Choose the date the new order starts.\"; the warning \"N people match no policy\" appears with Show them listing them.",
+    "stories": [
+      "TIM-28"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-S-09",
+    "area": "Time · Kiosk",
+    "screen": "Kiosk · unknown code (negative)",
+    "url": "http://localhost:3000/yx/kiosk",
+    "account": "the kiosk tablet at /yx/kiosk (set up with a key from Devices and kiosks), a person with a kiosk PIN",
+    "steps": [
+      "Type a code no one has (e.g. 9999) and tap Next.",
+      "Tap Next again.",
+      "Delete a digit."
+    ],
+    "expected": "\"No one with code KF-9999 · Check the code on your ID card and try again.\" before any PIN; Next again says \"This code is not known. Check it and type it again.\"; deleting a digit clears the alert.",
+    "stories": [
+      "TIM-13"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-S-10",
+    "area": "Time · Kiosk",
+    "screen": "Kiosk · known code goes to the PIN (positive)",
+    "url": "http://localhost:3000/yx/kiosk",
+    "account": "the kiosk tablet at /yx/kiosk (set up with a key from Devices and kiosks), a person with a kiosk PIN",
+    "steps": [
+      "Type the person's code and tap Next.",
+      "Type the PIN and tap Continue."
+    ],
+    "expected": "The PIN screen opens (no name shown), then \"Hello, <first name>\" with Check in, Training, Apply leave, My requests.",
+    "stories": [
+      "TIM-13"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-S-11",
+    "area": "Time · Kiosk",
+    "screen": "Kiosk · training check-in (positive)",
+    "url": "http://localhost:3000/yx/kiosk",
+    "account": "the kiosk tablet at /yx/kiosk (set up with a key from Devices and kiosks), a person with a kiosk PIN; HR added a session today at this location (POST /time/devices/training) starting within 15 minutes",
+    "steps": [
+      "Sign in at the kiosk, tap Training.",
+      "Tap \"Mark me present\".",
+      "Tap Training again and Mark me present again."
+    ],
+    "expected": "The session shows title, time and room; \"Marked present\" appears; marking again still shows Marked present and HR's list counts the person once.",
+    "stories": [
+      "TIM-13"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-S-12",
+    "area": "Time · Kiosk",
+    "screen": "Kiosk · training not open / none (negative)",
+    "url": "http://localhost:3000/yx/kiosk",
+    "account": "the kiosk tablet at /yx/kiosk (set up with a key from Devices and kiosks), a person with a kiosk PIN; a session starting in 2 hours",
+    "steps": [
+      "Sign in, tap Training, tap Mark me present.",
+      "Ask HR to cancel the session, then tap Training again."
+    ],
+    "expected": "\"Training opens at <time>.\" and \"Opens at <time>\" under the buttons, nothing recorded; after cancelling, \"No training here today.\"",
+    "stories": [
+      "TIM-13"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-S-13",
+    "area": "Time · Kiosk",
+    "screen": "Kiosk · apply leave (positive)",
+    "url": "http://localhost:3000/yx/kiosk",
+    "account": "the kiosk tablet at /yx/kiosk (set up with a key from Devices and kiosks), a person with a kiosk PIN and casual leave days left",
+    "steps": [
+      "Sign in, tap Apply leave.",
+      "Tap the first day, then the last day.",
+      "Tap \"Send leave request\"."
+    ],
+    "expected": "Types show days left after pending; the summary shows the days, balance after and who it goes to; after sending \"Sent\" with \"Sent to <manager>\"; My requests lists it as Pending and the manager gets it in Approvals.",
+    "stories": [
+      "TIM-13"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-S-14",
+    "area": "Time · Kiosk",
+    "screen": "Kiosk · apply leave refused (negative)",
+    "url": "http://localhost:3000/yx/kiosk",
+    "account": "the kiosk tablet at /yx/kiosk (set up with a key from Devices and kiosks), a person with a kiosk PIN",
+    "steps": [
+      "In Apply leave tap Send without picking a day.",
+      "Tap a Weekly off tile.",
+      "Pick more days than are left and tap Send.",
+      "Tap a leave type with 0 left."
+    ],
+    "expected": "\"Pick at least one day.\", \"You cannot pick this day: Weekly off.\", \"Not enough leave left for these days.\" and \"No days of this leave are left.\"; nothing is sent.",
+    "stories": [
+      "TIM-13"
+    ],
+    "note": ""
   }
 ]

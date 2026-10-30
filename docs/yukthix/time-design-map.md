@@ -12,15 +12,18 @@ live page cannot reach yet (the reason is given).
 
 | | live | feature not built | phone view | gap |
 |---|---|---|---|---|
-| Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 85 | 6 | 19 | 2 |
+| Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 89 | 4 | 19 | 1 |
 | Leave (TIM-17…25) | 46 | 0 | 11 | 0 |
-| Set-up (TIM-26…29, 31, 42) | 23 | 12 | 0 | 0 |
+| Set-up (TIM-26…29, 31, 42) | 27 | 8 | 0 | 0 |
 | Rosters and shifts (TIM-05, 06, 08, 34, 35, 38…41) | 44 | 2 | 10 | 0 |
 | Overtime, periods, reports, timesheets (TIM-09, 11, 15, 16, 30, 37, 43) | 49 | 0 | 3 | 0 |
 | Field force (TIM-32, 33) | 7 | 0 | 9 | 0 |
-| **All 45 design groups (328 sub-pages counted)** | **254** | **20** | **52** | **2** |
+| **All 45 design groups (329 sub-pages counted)** | **262** | **14** | **52** | **1** |
 
 Counted from the stories and the rows below by script (29 Oct 2026, after rosters/devices/field, the roster fixes and founder decisions 1-7 were merged into the test app). Section counts further down may be older; this table is the current one.
+Recounted by script on 30 Oct 2026 (time small items: TIM-13 Training, Leave, UnknownCode and the new TrainingNone story live; TIM-26 Clone and
+Template live). The script reads every story row under each TIM heading; it found the Set-up row stale (26 live, 8 not built
+before this work, as the Set-up section counts say), so Set-up is now 28 / 6 and All is the sum of the rows.
 
 30 Oct 2026 (branch `feat/yukthix-time-gaps`): 9 gaps made live, recounted by script over the story rows (each row's
 "where it shows live" starting with "gap" / "feature not built" / "phone view", else live): Attendance gaps 6 → 2
@@ -247,20 +250,21 @@ made once (offline sync safe, 72 h back / 2 min ahead).
 
 ### TIM-13 · Kiosk
 
-Live at /yx/kiosk (outside the app shell; set up with HR's one-time key). Face sign-in: API only (kiosk.methods
+Live at /yx/kiosk (outside the app shell; set up with HR's one-time key). Small items (30 Oct 2026): training check-in, leave at the kiosk and the unknown-code refusal are live. Face sign-in: API only (kiosk.methods
 "face", consent on record), provider: to decide (dev-fake adapter `KIOSK_FACE_PROVIDER`), no design story for it.
 
 | story (sub-page) | where it shows live |
 |---|---|
 | Code · Employee code | /yx/kiosk: keypad with the company's code prefix ("KF-____") |
-| UnknownCode | gap: an unknown code is told apart from a wrong PIN on purpose (same answer, so codes cannot be probed); it shows as WrongPin |
+| UnknownCode | /yx/kiosk → type an unknown code, Next: "No one with code KF-9999 · Check the code on your ID card and try again" before the PIN (POST /kiosk/code; founder decision; company setting `kiosk.tell_unknown_code`, default yes; with it off the PIN answer stays the same as before) |
 | Qr · Scan ID card QR | /yx/kiosk → Scan ID card (the tablet camera, where the browser can read QR codes) |
 | Pin | /yx/kiosk after Next: "Enter your PIN" (no name before the PIN, same reason as UnknownCode) |
 | WrongPin | /yx/kiosk: "Code or PIN didn't match. After 5 wrong tries a code locks for 15 minutes…" with Scan ID card |
 | Menu | /yx/kiosk after the PIN: "Hello, <first name>", Check in / Check out, My requests, signing out in 30 s (the balance tiles and supervisor banner: gap, no kiosk API for balances yet) |
 | CheckedIn | /yx/kiosk after Check in / out: badge, time, location, shift; clears itself |
-| Training | feature not built (no training attendance API; hidden in live) |
-| Leave · Apply leave | feature not built (leave at the kiosk; hidden in live) |
+| Training | /yx/kiosk → Training: today's session at this kiosk's location (title, time, room), Mark me present; before it opens "Training opens at 8:45 am" (setting `kiosk.training_opens_minutes`, default 15); marked once; HR adds sessions with POST /time/devices/training (no HR screen yet: gap, Question 1) |
+| TrainingNone · Training · none today (new story) | /yx/kiosk → Training with no session today: "No training here today." |
+| Leave · Apply leave | /yx/kiosk → Apply leave: earned, casual and comp-off with days left after pending requests, sick leave "ask <approver> to record", the next 10 days (weekly off / on leave / requested locked, holiday shift hint), first then last day, balance after, Send leave request → "Sent to <manager>"; the normal leave rules and approval chain (setting `kiosk.leave`, default on) |
 | Status · Request status | /yx/kiosk → My requests: leave and attendance requests of the last 30 days with status |
 
 ### TIM-14 · Devices and kiosks
@@ -544,9 +548,9 @@ the three new pages are reachable only by address.
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Chennai · Chennai office · rules | /yx/time/setup/holidays → a location tab: holidays table (weekday, date, due badge, type, "on a weekly off") and "Rules for this calendar" (optional holidays each person chooses; plus the half-day rule, Question). Add holiday dialog (name, date, type, half day) with field errors; Remove holiday (future only) with confirm. "Holiday on a weekly off" and "When someone moves" rules: feature not built |
-| Clone · Clone to next year | feature not built (no clone or publish/draft in the API) |
-| Template · Start from state template | feature not built (no state templates); the live empty tab offers "Add a calendar for <location>" instead |
+| Chennai · Chennai office · rules | /yx/time/setup/holidays → a location tab: holidays table (weekday, date, due badge, type, "on a weekly off"), Published badge, feed changes waiting (Review changes → holiday feeds), "Rules for this calendar": Holiday on a weekly off (no extra day / substitute day off in the holiday lookup / comp-off credit by the daily job), optional holidays each person chooses, When someone moves (the location's value of `leave.optional_holiday.prorate_on_move`), plus the half-day rule (Question). Add holiday; Change date and Remove holiday (future only) with confirm; leave on a new holiday date goes back to the balance |
+| Clone · Clone to next year | /yx/time/setup/holidays → Clone <location> to <next year> (waits while feed changes are waiting) → "<year> draft created" → Open draft: Confirm date for each festival, Publish (refused until every festival date is confirmed); drafts never reach employees |
+| Template · Start from state template | /yx/time/setup/holidays → a location with no calendar → Start from the <state> template (the holiday feed provider, dev-fake until decided; today to 31 Dec) → draft → Publish; "Add holidays one by one" beside it; a state with no template keeps "Add a calendar for <location>" |
 | NoCalendar · Location without a calendar | /yx/time/setup/holidays → tab of a location with no calendar → "Add a calendar for <location>" |
 | Empty | /yx/time/setup/holidays, company with no calendars (each tab as above); no locations at all → "No locations yet" |
 
@@ -566,7 +570,7 @@ the three new pages are reachable only by address.
 
 | story (sub-page) | where it shows live |
 |---|---|
-| List · Policies and rules | /yx/time/setup → Policies tab: table (policy, leave types, who gets it + dates, "Changes from" badge) and the law's minimums. Order arrows, grades, overrides and "people match no policy": feature not built |
+| List · Policies and rules | /yx/time/setup → Policies tab: table (#order, policy, arrows, leave types, who gets it + dates, people today, overrides = per-person assignments, "Changes from" badge), "N people match no policy" (Show them), "N people covered by M policies", the law's minimums; arrows make a draft order, Save order from a date (a later order shows "New order from …"); Apply to: whole company, a legal entity, a location or a grade. The design's combined rule (entity AND grade) is not built: a grade applies company-wide (Question 3) |
 | Company block dates · add (`BlockDatesAdd`) | /yx/time/setup → Company block dates tab: each block (dates, reason, where, the leave types it stops, "Already on leave then (their leave stays)"), Remove with a confirm; Add block dates: from, to, reason, Where (Segment: whole company / a legal entity / a location), the leave types (planned leave ticked, sick not, maternity not offered); field errors and focus; toasts |
 | Company block dates · none yet (`BlockDatesNone`) | same tab with no block dates: "No block dates" + Add block dates; loading and could not load (Retry) inside the card |
 | Open · Policy drawer | /yx/time/setup → click a policy (or New policy): entitlements (days, carry forward, credited, joiners' share), Applies from, Who gets this policy (remove a future one; Apply to dialog: scope + from, "Choose one." error); New policy without a name → field error |
@@ -609,8 +613,7 @@ Letters and notices step: feature not built (left out live).
 
 ### Counts
 
-35 stories: live 26 (TIM-26: 3, TIM-27: 5, TIM-28: 6, TIM-29: 7, TIM-31: 2, TIM-42: 3) · feature not built 8 (TIM-26: 2,
-TIM-27: 2, TIM-29: 3, TIM-31: 1) · phone 0 · gaps 0 (TIM-31 IpError made live 30 Oct 2026, so TIM-31: 3 live).
+35 stories: TIM-26 template, clone and Chennai rules made live and TIM-31 IpError made live (30 Oct 2026); see the counts table for totals.
 
 ## D. Rosters and shifts
 
