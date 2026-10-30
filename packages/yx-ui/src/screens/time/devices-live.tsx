@@ -1,7 +1,8 @@
 // TIM-14 · Devices and kiosks, live: the designed DevicesScreen (ops.tsx) with the API's kiosks, phone requests and
 // phones. Same tabs, tables, texts and dialogs; the set-up key HR must type on the tablet stays on screen until closed.
 import { useState } from 'react';
-import { Check, LogOut, Plus } from 'lucide-react';
+import { FilterToggle } from '../../components/filter-toggle';
+import { LogOut, Plus } from 'lucide-react';
 import { Segment } from '../people/people-kit';
 import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
@@ -246,10 +247,9 @@ export function LiveDevicesScreen({ live }: { live: LiveDevices }) {
               onRetry={live.onRetry}
               toolbar={
                 <FilterBar fields={[]} value={[]} onChange={() => {}} search={q} onSearchChange={setQ} searchPlaceholder="Search name or phone">
-                  <button type="button" className="yx-ppl__chip yx-ppl__chip--toggle" aria-pressed={onlyIssues} onClick={() => setOnlyIssues(!onlyIssues)}>
-                    {onlyIssues && <Icon icon={Check} size="sm" />}
-                    Only lost or inactive ({issueCount})
-                  </button>
+                  <FilterToggle pressed={onlyIssues} onPressedChange={setOnlyIssues}>
+Only lost or inactive ({issueCount})
+</FilterToggle>
                 </FilterBar>
               }
               filtered={!!q.trim() || onlyIssues}

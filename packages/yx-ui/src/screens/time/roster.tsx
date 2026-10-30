@@ -1,7 +1,8 @@
 // Rostering: roster, shift editor + patterns, auto-roster, open shifts & bids, standby, block leave,
 // licences, hybrid office days. TIM-05, TIM-06, TIM-34, TIM-35, TIM-38, TIM-39, TIM-40, TIM-41.
 import { useMemo, useRef, useState, type ReactNode } from 'react';
-import { ArrowDown, ArrowUp, Check, ChevronLeft, ChevronRight, Copy, Lock, Play, Plus, Send, Trash2 } from 'lucide-react';
+import { FilterToggle } from '../../components/filter-toggle';
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Copy, Lock, Play, Plus, Send, Trash2 } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { locationHeadcount } from '../_kit/data';
 import { Button, IconButton } from '../../components/button';
@@ -2652,10 +2653,9 @@ function SampleLicenceRequirements({ state = 'ready', blocked = false, record = 
         onRetry={() => {}}
         toolbar={
           state === 'ready' && (
-            <button type="button" className="yx-ppl__chip yx-ppl__chip--toggle" aria-pressed={onlyAction} onClick={() => setOnlyAction(!onlyAction)}>
-              {onlyAction && <Icon icon={Check} size="sm" />}
-              Only needing action ({lics.filter(act).length})
-            </button>
+            <FilterToggle pressed={onlyAction} onPressedChange={setOnlyAction}>
+Only needing action ({lics.filter(act).length})
+</FilterToggle>
           )
         }
         rowButtons={(r) => <><Button size="sm" onClick={() => setHolders(r)}>Who needs action</Button><Button size="sm" onClick={() => openEdit(r)}>Edit</Button></>}

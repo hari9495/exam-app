@@ -4,7 +4,8 @@
 // type; its requirements (roles or shifts, at all or one location) are listed and changed in the Edit dialog. "Skill" has no
 // data model, so the Segment offers Role and Shift. Every rule is checked again by the API (and by the roster on placement).
 import { useState } from 'react';
-import { Check, Plus, Trash2 } from 'lucide-react';
+import { FilterToggle } from '../../components/filter-toggle';
+import { Plus, Trash2 } from 'lucide-react';
 import { Button, IconButton } from '../../components/button';
 import { Badge, PersonLabel } from '../../components/display';
 import { Drawer } from '../../components/drawer';
@@ -310,10 +311,9 @@ export function LiveLicencesScreen({ live: p }: { live: LiveLicences }) {
         onRetry={p.onRetry ?? (() => {})}
         toolbar={
           p.state === 'ready' && (
-            <button type="button" className="yx-ppl__chip yx-ppl__chip--toggle" aria-pressed={onlyAction} onClick={() => setOnlyAction(!onlyAction)}>
-              {onlyAction && <Icon icon={Check} size="sm" />}
-              Only needing action ({types.filter(act).length})
-            </button>
+            <FilterToggle pressed={onlyAction} onPressedChange={setOnlyAction}>
+Only needing action ({types.filter(act).length})
+</FilterToggle>
           )
         }
         rowButtons={(t) => <><Button size="sm" onClick={() => { setDrawerError(null); setOpenId(t.id); }}>Who needs action</Button><Button size="sm" onClick={() => openEdit(t)}>Edit</Button></>}

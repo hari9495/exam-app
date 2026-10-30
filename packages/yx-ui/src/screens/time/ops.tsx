@@ -1,6 +1,7 @@
 // Devices, timesheets, reports, timesheet pre-fill. TIM-14, TIM-15, TIM-16, TIM-30, TIM-43.
 import { useEffect, useState, type ReactNode } from 'react';
-import { ArrowLeft, Check, Download, Link2, LogOut, Plus } from 'lucide-react';
+import { FilterToggle } from '../../components/filter-toggle';
+import { ArrowLeft, Download, Link2, LogOut, Plus } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { EMPLOYEES, ENTITIES } from '../_kit/data';
 import { Segment } from '../people/people-kit';
@@ -299,10 +300,9 @@ function SampleDevicesScreen({ persona = 'hr', tab = 'kiosks', signOut = false, 
             getRowId={(r) => r.id}
             toolbar={
               <FilterBar fields={[]} value={[]} onChange={() => {}} search={q} onSearchChange={setQ} searchPlaceholder="Search name or phone">
-                <button type="button" className="yx-ppl__chip yx-ppl__chip--toggle" aria-pressed={onlyIssues} onClick={() => setOnlyIssues(!onlyIssues)}>
-                  {onlyIssues && <Icon icon={Check} size="sm" />}
-                  Only lost or inactive ({issueCount})
-                </button>
+                <FilterToggle pressed={onlyIssues} onPressedChange={setOnlyIssues}>
+Only lost or inactive ({issueCount})
+</FilterToggle>
               </FilterBar>
             }
             filtered={!!q.trim() || onlyIssues}

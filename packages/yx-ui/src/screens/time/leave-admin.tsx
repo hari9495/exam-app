@@ -1,6 +1,7 @@
 // Leave and location set-up for HR. TIM-26, TIM-27, TIM-28, TIM-29, TIM-31, TIM-42.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ArrowDown, ArrowUp, Check, Copy, Plus, RefreshCw } from 'lucide-react';
+import { FilterToggle } from '../../components/filter-toggle';
+import { ArrowDown, ArrowUp, Copy, Plus, RefreshCw } from 'lucide-react';
 import { Icon } from '../../components/foundations';
 import { Button, IconButton } from '../../components/button';
 import { Badge, DayDate } from '../../components/display';
@@ -27,7 +28,6 @@ import type { BlockDateInput, BlockDates, HolidayFeeds, HolidayRow, LeaveRules, 
 import { EL_ENCASH_MAX, EL_ENCASH_MIN_LEFT, HR_ADMIN, LEAVE_REQUESTS, TODAY, balancesFor, elEncashLeftAtYearEnd } from './time-data';
 import { countLeaveDays, yearEndSplit, type YearEndRow } from './time-logic';
 import type { ViewState } from './attendance';
-import '../people/people.css'; // shared toggle chip (yx-ppl__chip--toggle), as roster.tsx and ops.tsx use
 import './time.css';
 
 /* ---------------- small local helpers ---------------- */
@@ -1384,10 +1384,9 @@ function SampleYearEndWizard({ mode = 'yearend', current = 'scope', confirm = fa
           onClearFilters={() => { setQ(''); setOnlyLosing(false); }}
           toolbar={
             <FilterBar fields={[]} value={[]} onChange={() => {}} search={q} onSearchChange={setQ} searchPlaceholder="Search by name">
-              <button type="button" className="yx-ppl__chip yx-ppl__chip--toggle" aria-pressed={onlyLosing} onClick={() => setOnlyLosing(!onlyLosing)}>
-                {onlyLosing && <Icon icon={Check} size="sm" />}
-                Only people losing days ({yeAll.filter((r) => r.lapse > 0).length})
-              </button>
+              <FilterToggle pressed={onlyLosing} onPressedChange={setOnlyLosing}>
+Only people losing days ({yeAll.filter((r) => r.lapse > 0).length})
+</FilterToggle>
             </FilterBar>
           }
         />
@@ -3240,10 +3239,9 @@ function LiveYearEndBody({ d, live }: { d: TimeSetup; live: LiveYearEnd }) {
                   onClearFilters={() => { setQ(''); setOnlyLosing(false); }}
                   toolbar={
                     <FilterBar fields={[]} value={[]} onChange={() => {}} search={q} onSearchChange={setQ} searchPlaceholder="Search by name">
-                      <button type="button" className="yx-ppl__chip yx-ppl__chip--toggle" aria-pressed={onlyLosing} onClick={() => setOnlyLosing(!onlyLosing)}>
-                        {onlyLosing && <Icon icon={Check} size="sm" />}
-                        Only people losing days ({losing.length})
-                      </button>
+                      <FilterToggle pressed={onlyLosing} onPressedChange={setOnlyLosing}>
+Only people losing days ({losing.length})
+</FilterToggle>
                     </FilterBar>
                   }
                 />
