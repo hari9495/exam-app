@@ -8,6 +8,12 @@ describe('YukthiX sign-in words', () => {
     expect(TOO_MANY_TRIES).toBe('Too many tries. Wait a minute and try again.');
   });
 
+  it('TIM-39 Suspend: the paused-for-block-leave refusal reaches the person word for word', () => {
+    const paused = 'Your access is paused for block leave until 7 Nov 2026. Ask HR if you need access sooner.';
+    expect(yxAuthMessage(httpError(401, paused), 'x')).toBe(paused);
+    expect(yxAuthMessage(httpError(401, 'This account has been deactivated'), 'x')).toBe('This account has been deactivated');
+  });
+
   it('the account / IP lock: wait a few minutes', () => {
     expect(yxAuthMessage(httpError(429, 'Too many sign-in attempts. Please wait and try again.'), 'x')).toBe(ACCOUNT_LOCKED);
     expect(ACCOUNT_LOCKED).toBe('Too many tries. Wait a few minutes and try again.');

@@ -44,6 +44,7 @@ import { emailDomain } from './identity-providers';
 import { action, appUrl, details, passwordResetEmail, text } from '../email/account-emails';
 import { EmailLookService } from '../email/email-look.service';
 import { PASSWORD_RESET_EXPIRY_MINUTES, issuePasswordToken } from './password-tokens';
+import { inactiveAccountError } from './paused-access';
 
 interface TokenPair {
   accessToken: string;
@@ -316,7 +317,7 @@ export class AuthService {
 
     if (user.status !== 'active') {
       await this.sessions.recordLoginEvent({ ...attempt, organizationId, userId: user.id, result: 'failed', reason: 'account_inactive' });
-      throw new UnauthorizedException('This account has been deactivated');
+      throw await inactiveAccountError(this.tenantPrisma, user);
     }
     // The password is right: its guess counter is cleared (the device is trusted only once the
     // whole sign-in, second factor included, has succeeded).
@@ -669,7 +670,7 @@ export class AuthService {
     }
     if (user.status !== 'active') {
       await this.sessions.recordLoginEvent({ ...event, result: 'failed', method: pending.method, reason: 'account_inactive' });
-      throw new UnauthorizedException('This account has been deactivated');
+      throw await inactiveAccountError(this.tenantPrisma, user);
     }
     if (!(await staffDeskIpAllowed(this.tenantPrisma, user, meta.ip))) {
       await this.sessions.recordLoginEvent({ ...event, result: 'failed', method: pending.method, reason: 'ip_not_allowed' });
@@ -893,7 +894,7 @@ export class AuthService {
       throw error;
     };
     const org = user.organizationId ? await this.prisma.organization.findUnique({ where: { id: user.organizationId } }) : null;
-    if (user.status !== 'active') return refuse('account_inactive', new UnauthorizedException('This account has been deactivated'));
+    if (user.status !== 'active') return refuse('account_inactive', await inactiveAccountError(this.tenantPrisma, user));
     if (!org || !isOrganizationActive(org.status)) return refuse('organization_inactive', new UnauthorizedException(ORGANIZATION_INACTIVE_MESSAGE));
     const policy = await loadTenantSecurityPolicy(this.tenantPrisma, org.id);
     if (policy.ssoOnly || !policy.otpSignInChannels.includes(proven.channel)) {
