@@ -160,6 +160,22 @@ export class JoinerDto {
   batchId?: string | null;
 }
 
+/** PPL-12: a joiner from an accepted offer; a rehire may carry the choices HR changed in the impact preview. */
+export class OfferJoinerDto extends JoinerDto {
+  @IsOptional()
+  @IsObject()
+  rehire?: Record<string, { value: string; reason?: string | null }>;
+}
+
+/** PPL-12: the rehire impact preview for a legal entity and joining day picked in the Create drawer. */
+export class RehirePreviewQuery {
+  @IsUUID()
+  legalEntityId!: string;
+
+  @Matches(ISO)
+  joiningOn!: string;
+}
+
 export class JoinerImportDto {
   @IsString()
   @MaxLength(262_144)

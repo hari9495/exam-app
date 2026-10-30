@@ -1,6 +1,6 @@
 // PPL-11 Onboarding board · PPL-12 Ready to onboard · PPL-13 Journey record · PPL-14 Pre-boarding batches
 // PPL-15 Pre-boarding actions · PPL-16 Probation queue · PPL-17 Probation review · PPL-41 Buddy panel (M01 §3.4, §3.5, §3.11).
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { CalendarClock, Check, FileText, Lock, Plus, Upload, UserPlus } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Card, ObjectHeader, PageHeader } from '../../components/shell';
@@ -22,7 +22,8 @@ import { formatDate } from '../../lib/format';
 import { useNarrow } from '../../components/stepper';
 import { TODAY } from '../_kit/data';
 import { addDays, daysBetween, journeyProgress, overdueTasks, probationState, taskDue, type JourneyTask, type Persona } from './people-logic';
-import type { JoinerInput, JoinerPlaces, Journey as LiveJourneyData } from './live/types';
+import type { JoinerInput, JoinerPlaces, Journey as LiveJourneyData, RehireView } from './live/types';
+import { choiceLabel } from './live/special';
 import { TaskDialog, type TaskActions, type TaskAsk } from './live/lifecycle';
 import { taskButtons, taskRow } from './checklists';
 import { useRun } from '../org/org-kit';
@@ -205,8 +206,72 @@ const REHIRE_OPTIONS: { option: string; policy: string; result: string; choice: 
   { option: 'Prior warnings and PIP', policy: 'HR only', result: 'HR only', choice: 'HR only', choices: ['Visible to new manager', 'HR only', 'Hidden'] },
 ];
 
+/** PPL-12 live: the server's preview for the chosen entity and day, the choices HR made here and the one reason. */
+export interface LiveRehireImpact {
+  view: RehireView;
+  values: Record<string, string>;
+  onChange: (key: string, value: string) => void;
+  reason: string;
+  onReason: (reason: string) => void;
+  reasonError: string | null;
+}
+
+function LiveRehireImpactCard({ live }: { live: LiveRehireImpact }) {
+  const { view, values } = live;
+  const changed = view.options.filter((o) => values[o.key] !== o.policy);
+  const p = view.previous;
+  return (
+    <Card title="Rehire impact preview">
+      <Text size="sm" tone={changed.length ? 'warning' : 'secondary'} as="p">
+        {changed.length === 0 ? 'Everything follows company policy.' : `${changed.length} ${changed.length === 1 ? 'option differs' : 'options differ'} from company policy. Give a reason below.`}
+      </Text>
+      {p.rehireEligible === false && <InlineAlert tone="warning" title="Marked not eligible for rehire">You may still go ahead; the choice is recorded.</InlineAlert>}
+      <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
+      <table className="yx-ppl__impact">
+        <thead>
+          <tr>
+            <th scope="col">Option</th>
+            <th scope="col">Company policy</th>
+            <th scope="col">For this rehire</th>
+          </tr>
+        </thead>
+        <tbody>
+          {view.options.map((o) => (
+            <tr key={o.key}>
+              <th scope="row">
+                <span className="yx-ppl__row">
+                  {o.label}
+                  {values[o.key] !== o.policy && <Badge tone="warning">Changed</Badge>}
+                </span>
+              </th>
+              <td>{choiceLabel(o.policy)}</td>
+              <td>
+                <Select aria-label={`${o.label} for this rehire`} size="sm" options={o.choices.map((c) => ({ value: c, label: choiceLabel(c) }))} value={values[o.key]} onChange={(v) => live.onChange(o.key, v ?? o.policy)} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      </div>
+      {changed.length > 0 && (
+        <FormField id="ro-rehire-why" label="Reason for changing the policy default" required error={live.reasonError}>
+          <TextArea rows={2} value={live.reason} onChange={live.onReason} maxLength={300} />
+        </FormField>
+      )}
+      <Text size="sm" tone="secondary" as="p">
+        {`Worked here ${formatDate(new Date(`${p.joinedOn}T00:00:00`))} to ${formatDate(new Date(`${p.exitedOn}T00:00:00`))} as ${p.employeeCode}${p.exitType ? ` (${p.exitType.replace(/_/g, ' ')})` : ''}, a break of ${plural(p.breakMonths, 'month')}. A new employment opens on the existing record.`}
+      </Text>
+    </Card>
+  );
+}
+
 /** Rehire impact preview (YX-LC-18): policy defaults, per-rehire override with a reason. */
-export function RehireImpact({ overridden = false }: { overridden?: boolean }) {
+export function RehireImpact({ overridden = false, live }: { overridden?: boolean; live?: LiveRehireImpact }) {
+  if (live) return <LiveRehireImpactCard live={live} />;
+  return <SampleRehireImpact overridden={overridden} />;
+}
+
+function SampleRehireImpact({ overridden }: { overridden: boolean }) {
   const [rows, setRows] = useState(REHIRE_OPTIONS.map((r, i) => (overridden && i === 3 ? { ...r, choice: 'Break counted' } : r)));
   const changed = rows.filter((r) => r.choice !== r.result);
   return (
@@ -262,7 +327,10 @@ export interface LiveReady {
   onRetry: () => void;
   today: Date;
   places: JoinerPlaces;
-  onCreate: (row: ReadyRow, input: Omit<JoinerInput, 'email' | 'phone'>) => Promise<void>;
+  /** rehire: the choices that differ from the company policy (an ex-employee), each with the reason. */
+  onCreate: (row: ReadyRow, input: Omit<JoinerInput, 'email' | 'phone'>, rehire?: Record<string, { value: string; reason: string }>) => Promise<void>;
+  /** PPL-12: the rehire impact for an ex-employee's offer, for the entity and joining day chosen in the drawer. */
+  onRehirePreview?: (row: ReadyRow, legalEntityId: string, joiningOn: string) => Promise<RehireView>;
   /** A current employee moves by a job change, never onboarding. */
   onJobChange: () => void;
 }
@@ -424,14 +492,42 @@ function CreateFromOffer({ row, live, onClose }: { row: ReadyRow; live: LiveRead
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
-  const missing = { date: !date, entity: !entity, location: !location };
+  // PPL-12: an ex-employee's rehire impact, once the entity and day are known (the policy is per legal entity).
+  const rehire = row.personType === 'Ex-employee rehire' && live.onRehirePreview ? live.onRehirePreview : null;
+  // The page passes new functions and rows on each render; the preview is asked again only when the entity or day moves.
+  const ask = useRef({ rehire, row });
+  ask.current = { rehire, row };
+  const hasRehire = Boolean(rehire);
+  const [preview, setPreview] = useState<{ key: string; view: RehireView | null; error: string | null } | null>(null);
+  const [choices, setChoices] = useState<Record<string, string>>({});
+  const [why, setWhy] = useState('');
+  const previewKey = entity && date ? `${entity}|${dayKeyOf(date)}` : null;
+  useEffect(() => {
+    const { rehire: get, row: r } = ask.current;
+    if (!get || !previewKey) return;
+    let gone = false;
+    const [e, d] = previewKey.split('|');
+    get(r, e, d).then(
+      (view) => !gone && (setPreview({ key: previewKey, view, error: null }), setChoices(Object.fromEntries(view.options.map((o) => [o.key, o.value])))),
+      (err) => !gone && setPreview({ key: previewKey, view: null, error: err instanceof Error ? err.message : 'The rehire impact could not be worked out.' }),
+    );
+    return () => void (gone = true);
+  }, [hasRehire, previewKey]);
+  const view = preview?.key === previewKey ? preview.view : null;
+  const changed = view ? view.options.filter((o) => choices[o.key] !== o.policy) : [];
+  const missing = { date: !date, entity: !entity, location: !location, why: changed.length > 0 && why.trim().length < 3 };
   const create = async () => {
     setTried(true);
-    if (missing.date || missing.entity || missing.location) return;
+    if (missing.date || missing.entity || missing.location || missing.why) {
+      // The first field with an error takes the cursor.
+      requestAnimationFrame(() => document.querySelector<HTMLElement>('[role="dialog"] .yx-field[data-invalid] :is(input, textarea, button)')?.focus());
+      return;
+    }
     setBusy(true);
     setFailed(null);
     try {
-      await live.onCreate(row, { givenName: first, familyName: rest.join(' ') || null, joiningOn: dayKeyOf(date!), legalEntityId: entity!, locationId: location!, departmentId: dept, designationId: desig, employmentTypeId: type, managerEmployeeId: manager });
+      const overrides = changed.length ? Object.fromEntries(changed.map((o) => [o.key, { value: choices[o.key], reason: why.trim() }])) : undefined;
+      await live.onCreate(row, { givenName: first, familyName: rest.join(' ') || null, joiningOn: dayKeyOf(date!), legalEntityId: entity!, locationId: location!, departmentId: dept, designationId: desig, employmentTypeId: type, managerEmployeeId: manager }, overrides);
       onClose();
     } catch (e) {
       setFailed(e instanceof Error ? e.message : 'The joiner was not created. Try again.');
@@ -486,11 +582,20 @@ function CreateFromOffer({ row, live, onClose }: { row: ReadyRow; live: LiveRead
             <Select aria-label="Manager" value={manager} onChange={setManager} options={places.managers} clearable searchable />
           </FormField>
         </div>
-        {row.personType === 'Ex-employee rehire' && (
-          <InlineAlert tone="info" title="Worked here before">
-            After you create the joiner, choose the rehire options (code, PF, service, leave) on their checklist.
-          </InlineAlert>
-        )}
+        {row.personType === 'Ex-employee rehire' &&
+          (!rehire ? (
+            <InlineAlert tone="info" title="Worked here before">
+              After you create the joiner, choose the rehire options (code, PF, service, leave) on their checklist.
+            </InlineAlert>
+          ) : !previewKey ? (
+            <InlineAlert tone="info" title="Worked here before">Choose the legal entity and joining date to see the rehire impact.</InlineAlert>
+          ) : preview?.key === previewKey && preview.error ? (
+            <InlineAlert tone="warning" title="The rehire impact could not be worked out">{`${preview.error} You can still create the joiner and choose the rehire options on their checklist.`}</InlineAlert>
+          ) : view ? (
+            <RehireImpact live={{ view, values: choices, onChange: (k, v) => setChoices((c) => ({ ...c, [k]: v })), reason: why, onReason: setWhy, reasonError: tried && missing.why ? 'Enter a reason. Changes from the policy are recorded.' : null }} />
+          ) : (
+            <ListSkeleton label="Working out the rehire impact" />
+          ))}
       </div>
     </Drawer>
   );

@@ -13,6 +13,7 @@ import { JoinersService } from './joiners.service';
 import { PreboardingPortalService } from './portal.service';
 import { LifecycleJourneysService } from './journeys.service';
 import { lookedAfter } from './people-registers.service';
+import { REHIRE_OPTIONS, offerRehire, rehireOverridesIn } from './rehire-policy';
 
 // Lifecycle batch 6e, the onboarding special cases (M01 §3.5; design §16.5):
 //   rehire   (LIFE-5.01, YX-LC-11 / 18) someone who worked here before joins on the same employee record; the
@@ -24,7 +25,7 @@ import { lookedAfter } from './people-registers.service';
 //            checklist's buddy tasks (the day-30 check-in) go to them.
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
-export const REHIRE_OPTIONS = ['code', 'pf', 'same_fy_tax', 'service', 'gratuity', 'leave', 'probation', 'prior_records'] as const;
+export { REHIRE_OPTIONS };
 type RehireOption = (typeof REHIRE_OPTIONS)[number];
 const MEANING: Record<string, string> = {
   'code:reuse': 'Keeps their old employee code.',
@@ -85,7 +86,7 @@ export class OnboardingExtrasService {
   // ------------------------------------------------------------------------------------------ rehire (LIFE-5.01)
 
   /** The policy default of each option, this rehire's choice, and what it means (the impact preview). */
-  async rehireOptionsIn(tx: Tx, c: CompanyContext, pb: Prisma.PreboardingGetPayload<object>) {
+  async rehireOptionsIn(tx: Tx, c: CompanyContext, pb: Pick<Prisma.PreboardingGetPayload<object>, 'rehireOf' | 'rehireOverrides' | 'legalEntityId' | 'joiningOn'>) {
     const prev = await tx.employment.findFirstOrThrow({ where: { organizationId: c.organizationId, id: pb.rehireOf! } });
     const overrides = (pb.rehireOverrides ?? {}) as Record<string, { value: string; reason: string }>;
     const options = [];
@@ -104,20 +105,40 @@ export class OnboardingExtrasService {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const pb = await this.joiner(tx, c, v, id);
       if (pb.personType !== 'rehire') throw new NotFoundException('This joiner is not a rehire.');
-      const o = await this.rehireOptionsIn(tx, c, pb);
-      const k = await tx.exitCase.findFirst({ where: { organizationId: c.organizationId, employmentId: o.prev.id }, orderBy: { createdAt: 'desc' } });
-      // YX-LC-29: HR sees whether they are eligible for rehire (yes / no; the reasons stay with the confidential key).
-      let eligible: boolean | null = null;
-      if (k) {
-        await tx.$executeRaw`SELECT set_config('app.lifecycle_confidential', 'on', true)`;
-        eligible = (await tx.exitCaseHr.findUnique({ where: { exitCaseId: k.id }, select: { rehireEligible: true } }))?.rehireEligible ?? null;
-        await tx.$executeRaw`SELECT set_config('app.lifecycle_confidential', 'off', true)`;
-      }
-      return {
-        previous: { employeeCode: o.prev.employeeCode, joinedOn: iso(o.prev.joinedOn), exitedOn: o.exitedOn, exitType: k?.exitType ?? null, rehireEligible: eligible, breakMonths: o.breakMonths, sameEntityFy: o.sameEntityFy },
-        options: o.options,
-        version: pb.version,
-      };
+      return this.rehireViewIn(tx, c, pb, pb.version);
+    });
+  }
+
+  /** The impact preview: the earlier spell, and each option's policy and choice. */
+  private async rehireViewIn(tx: Tx, c: CompanyContext, pb: Parameters<OnboardingExtrasService['rehireOptionsIn']>[2], version: number) {
+    const o = await this.rehireOptionsIn(tx, c, pb);
+    const k = await tx.exitCase.findFirst({ where: { organizationId: c.organizationId, employmentId: o.prev.id }, orderBy: { createdAt: 'desc' } });
+    // YX-LC-29: HR sees whether they are eligible for rehire (yes / no; the reasons stay with the confidential key).
+    let eligible: boolean | null = null;
+    if (k) {
+      await tx.$executeRaw`SELECT set_config('app.lifecycle_confidential', 'on', true)`;
+      eligible = (await tx.exitCaseHr.findUnique({ where: { exitCaseId: k.id }, select: { rehireEligible: true } }))?.rehireEligible ?? null;
+      await tx.$executeRaw`SELECT set_config('app.lifecycle_confidential', 'off', true)`;
+    }
+    return {
+      previous: { employeeCode: o.prev.employeeCode, joinedOn: iso(o.prev.joinedOn), exitedOn: o.exitedOn, exitType: k?.exitType ?? null, rehireEligible: eligible, breakMonths: o.breakMonths, sameEntityFy: o.sameEntityFy },
+      options: o.options,
+      version,
+    };
+  }
+
+  /**
+   * PPL-12: the same preview for an accepted offer, before the joiner exists, for the entity and joining day HR picked in
+   * the Create drawer. Refused for a new person (404) and a current employee (409, a job change).
+   */
+  async rehirePreview(ctx: TenantContext, user: ScopeUser, offerId: string, legalEntityId: string, joiningOn: string) {
+    const v = await this.viewer(user);
+    if (v.actingForOther || !v.grants.has('lifecycle.onboarding.manage')) throw new ForbiddenException('You cannot onboard joiners.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const { rehire } = await offerRehire(tx, c.organizationId, offerId);
+      if (!rehire) throw new NotFoundException('This offer is for someone new, not a rehire.');
+      if (!(await tx.legalEntity.findFirst({ where: { organizationId: c.organizationId, id: legalEntityId }, select: { id: true } }))) throw new BadRequestException('No such legal entity.');
+      return this.rehireViewIn(tx, c, { rehireOf: rehire.employmentId, rehireOverrides: {}, legalEntityId, joiningOn: new Date(`${joiningOn}T00:00:00Z`) }, 0);
     });
   }
 
@@ -127,14 +148,7 @@ export class OnboardingExtrasService {
       const pb = await this.joiner(tx, c, v, id);
       if (pb.personType !== 'rehire' || pb.status !== 'invited') throw new ConflictException('Only a rehire waiting to join has rehire options.');
       if (pb.version !== dto.version) throw new ConflictException('Someone else changed this joiner. Reload it.');
-      const next: Record<string, { value: string; reason: string }> = {};
-      for (const [key, x] of Object.entries(dto.overrides)) {
-        if (!(REHIRE_OPTIONS as readonly string[]).includes(key) || !SETTINGS[`rehire.${key}`].values.includes(x.value)) throw new BadRequestException(`No such rehire choice: ${key}.`);
-        const policy = await settingFor(tx, c, `rehire.${key}`, { legalEntityId: pb.legalEntityId });
-        if (x.value === policy) continue;
-        if (!x.reason || x.reason.trim().length < 3) throw new BadRequestException(`Say why "${key.replace(/_/g, ' ')}" differs from the company policy.`);
-        next[key] = { value: x.value, reason: x.reason.trim().slice(0, 300) };
-      }
+      const next = await rehireOverridesIn(tx, c, pb.legalEntityId, dto.overrides);
       await tx.preboarding.update({ where: { id }, data: { rehireOverrides: next, version: { increment: 1 } } });
       await audit(tx, c, 'preboarding.rehire.options', 'preboarding', id, { overrides: Object.fromEntries(Object.entries(next).map(([k, x]) => [k, { value: x.value, reason: x.reason }])) });
     });

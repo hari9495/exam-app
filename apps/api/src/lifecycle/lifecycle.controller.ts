@@ -11,7 +11,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
-import { BgvCheckDto, BgvUpdateDto, CancelJoinerDto, CompleteTaskDto, JoinDto, JoinerDto, JoinerImportDto, PlanDto, PostponeDto, ReassignTaskDto, SkipTaskDto, StarterDto, TemplateDto } from './dto';
+import { BgvCheckDto, BgvUpdateDto, CancelJoinerDto, CompleteTaskDto, JoinDto, JoinerDto, JoinerImportDto, OfferJoinerDto, PlanDto, PostponeDto, ReassignTaskDto, SkipTaskDto, StarterDto, TemplateDto } from './dto';
 import { JoiningService } from './joining.service';
 import { JoinersService } from './joiners.service';
 import { LifecycleJourneysService } from './journeys.service';
@@ -212,7 +212,7 @@ export class LifecycleController {
 
   @Post('ready-to-onboard/:offerId')
   @RequirePermissions('lifecycle.onboarding.manage')
-  fromOffer(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('offerId', ParseUUIDPipe) offerId: string, @Body() dto: JoinerDto) {
+  fromOffer(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('offerId', ParseUUIDPipe) offerId: string, @Body() dto: OfferJoinerDto) {
     return this.joiners.fromOffer(ctx, this.user(req), offerId, dto);
   }
 }

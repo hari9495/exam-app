@@ -14,7 +14,7 @@ const ROW: SamePersonRow = {
 };
 
 describe('PPL-36 possible same person, live', () => {
-  const queue = (o: Partial<LiveSamePerson> = {}): LiveSamePerson => ({ state: 'ready', onRetry: vi.fn(), rows: [ROW], onNotSame: vi.fn(async () => undefined), onReviewMerge: vi.fn(), ...o });
+  const queue = (o: Partial<LiveSamePerson> = {}): LiveSamePerson => ({ state: 'ready', onRetry: vi.fn(), rows: [ROW], onNotSame: vi.fn(async () => undefined), onReviewMerge: vi.fn(), merged: [], onOpenMerged: vi.fn(), ...o });
 
   it('lists the proposal and its basis; Compare shows the evidence with the matching rows marked', async () => {
     const live = queue();
@@ -49,6 +49,29 @@ describe('PPL-36 possible same person, live', () => {
     render(<SamePersonQueue rows={[]} live={live} />);
     await ue.click(screen.getByRole('button', { name: /Retry|Try again/ }));
     expect(live.onRetry).toHaveBeenCalled();
+  });
+});
+
+describe('PPL-37 merged records (unmerge later), live', () => {
+  const queue = (o: Partial<LiveSamePerson> = {}): LiveSamePerson => ({ state: 'ready', onRetry: vi.fn(), rows: [ROW], onNotSame: vi.fn(async () => undefined), onReviewMerge: vi.fn(), merged: [], onOpenMerged: vi.fn(), ...o });
+  const MERGED = { personId: 'p9', name: 'Meera Iyer', intoName: 'Meera R Iyer', mergedAt: '2026-10-12T10:20:00.000Z', mergedBy: 'Lakshmi Venkatesan', note: 'Help desk contact is the employee', canUnmerge: true };
+
+  it('the Merged view lists past merges with who and when; Open goes to the merge record with Unmerge', async () => {
+    const live = queue({ merged: [MERGED] });
+    render(<SamePersonQueue rows={[]} live={live} />);
+    await ue.click(screen.getByRole('radio', { name: 'Merged (1)' }));
+    expect(screen.getByRole('row', { name: /Meera Iyer into Meera R Iyer 12 Oct 2026 Lakshmi Venkatesan/ })).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Open to unmerge' }));
+    expect(live.onOpenMerged).toHaveBeenCalledWith('p9');
+  });
+
+  it('a record linked before merges could be undone opens read only; no merges says so', async () => {
+    const { unmount } = render(<SamePersonQueue rows={[]} view="merged" live={queue({ merged: [{ ...MERGED, canUnmerge: false }] })} />);
+    expect(screen.getByRole('button', { name: 'Open' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open to unmerge' })).toBeNull();
+    unmount();
+    render(<SamePersonQueue rows={[]} view="merged" live={queue()} />);
+    expect(screen.getByText('No merged records')).toBeInTheDocument();
   });
 });
 

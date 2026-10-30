@@ -12,6 +12,7 @@ import { showDate } from '../people/employee-import';
 import { joinerInScope, ownOf } from '../documents/person-access';
 import { LifecycleJourneysService } from './journeys.service';
 import { PreboardingPortalService } from './portal.service';
+import { offerRehire, rehireOverridesIn } from './rehire-policy';
 
 // LIFE-1.07 joiners before day one (M01 §3.5, Q1, D3; founder D2): HR adds a joiner by hand or imports many, the
 // P01 person is found or made (an email or phone that already belongs to someone is never linked silently), and the
@@ -35,6 +36,8 @@ export interface JoinerInput {
   templateId?: string | null;
   /** Lifecycle 6e: a campus batch the joiner belongs to. */
   batchId?: string | null;
+  /** PPL-12 (from an offer only): rehire choices changed from the company policy, each with a reason. */
+  rehire?: Record<string, { value: string; reason?: string | null }>;
 }
 
 const CSV_COLUMNS = ['given_name', 'family_name', 'email', 'phone', 'joining_on', 'legal_entity', 'location', 'department', 'designation', 'employment_type', 'manager_code'] as const;
@@ -146,15 +149,20 @@ export class JoinersService {
   async fromOffer(ctx: TenantContext, user: ScopeUser, offerId: string, dto: JoinerInput) {
     const v = await this.journeys.viewer(user);
     const res = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const o = await tx.offer.findFirst({ where: { organizationId: c.organizationId, id: offerId, status: 'accepted' } });
-      if (!o) throw new NotFoundException('No accepted offer with this id.');
+      const { email, rehire } = await offerRehire(tx, c.organizationId, offerId);
       if (await tx.preboarding.findFirst({ where: { organizationId: c.organizationId, offerId, status: { not: 'cancelled' } }, select: { id: true } })) throw new ConflictException('This offer already has a joiner.');
-      const cand = await tx.candidate.findFirstOrThrow({ where: { organizationId: c.organizationId, id: o.candidateId }, select: { email: true } });
-      const emp = await tx.employee.findFirst({ where: { organizationId: c.organizationId, workEmail: cand.email }, select: { id: true } });
-      if (emp && (await tx.employment.findFirst({ where: { organizationId: c.organizationId, employeeId: emp.id, exitedOn: null }, select: { id: true } }))) {
-        throw new ConflictException('This is a current employee. Their move is a transfer or promotion on their record (People › Job changes), not onboarding (YX-LC-11).');
+      if (dto.rehire && !rehire) throw new BadRequestException('Rehire choices are only for someone who worked here before.');
+      // An ex-employee joins on their own record (a rehire), never as a second person (PPL-12).
+      const res = await this.addIn(tx, c, v, { ...dto, email: dto.email ?? email, personId: rehire?.personId ?? dto.personId }, 'offer', offerId);
+      // PPL-12: choices HR changed in the Create drawer's impact preview, each with its reason (as on the checklist).
+      if (dto.rehire && Object.keys(dto.rehire).length) {
+        const overrides = await rehireOverridesIn(tx, c, dto.legalEntityId, dto.rehire);
+        if (Object.keys(overrides).length) {
+          res.pb = await tx.preboarding.update({ where: { id: res.pb.id }, data: { rehireOverrides: overrides, version: { increment: 1 } } });
+          await audit(tx, c, 'preboarding.rehire.options', 'preboarding', res.pb.id, { overrides });
+        }
       }
-      return this.addIn(tx, c, v, { ...dto, email: dto.email ?? cand.email }, 'offer', offerId);
+      return res;
     });
     await this.afterAdd(ctx as CompanyContext, user, [res]);
     return { id: res.pb.id, journeyId: res.journeyId };

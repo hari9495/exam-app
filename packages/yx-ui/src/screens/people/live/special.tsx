@@ -27,7 +27,7 @@ const focusFirstError = () => {
   return false as const;
 };
 const SHARE = /^\d{1,3}(\.\d{1,2})?$/;
-const choiceLabel = (c: string) => c.replace(/_/g, ' ').replace(/^./, (x) => x.toUpperCase()).replace(' lt 6m', ' if the break was under 6 months');
+export const choiceLabel = (c: string) => c.replace(/_/g, ' ').replace(/^./, (x) => x.toUpperCase()).replace(' lt 6m', ' if the break was under 6 months');
 
 // ------------------------------------------------------------------------------------------ rehire (LIFE-5.01)
 
