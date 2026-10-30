@@ -96,7 +96,7 @@ describe('buildNav: Time, Pay, Compliance', () => {
 
   it('payroll set-up pages sit in Settings › Payroll & Statutory, by the batch-5b keys', () => {
     const n = nav(['payroll.setup.manage', 'payroll.template.manage', 'employee.salary.manage']);
-    expect(labels(n, 'settings')).toEqual(['Payroll set-up', 'Pay groups', 'Payslip layout', 'Country packs', 'Salary templates']);
+    expect(labels(n, 'settings')).toEqual(['Payroll set-up', 'Payroll rules', 'Pay groups', 'Payslip layout', 'Country packs', 'Salary templates']);
     // Founder answer 19 (30 Oct 2026): the item opens the rules page, so it is "Statutory rules"; registrations stay in Payroll set-up.
     expect(labels(n, 'compliance')).toEqual(['Statutory rules', 'Statutory coverage']);
     expect(activeLink(n, '/yx/payroll/statutory-rules')?.link.label).toBe('Statutory rules');
@@ -159,7 +159,9 @@ describe('buildNav: Settings', () => {
   });
 
   it('the settings admin gets company rules, Countries and Translations; set-up pages follow their keys', () => {
-    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['Legal entities', 'Locations', 'Structure', 'Company rules', 'Countries', 'Translations', 'Access and privacy', 'Custom fields']);
+    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['Legal entities', 'Locations', 'Structure', 'Company rules', 'Countries', 'Translations', 'Access and privacy', 'Custom fields', 'Payroll rules']);
+    // Founder 30 Oct 2026 (last 10, item 5): Payroll rules for HR (org.settings.manage) or payroll set-up, never for others.
+    expect(labels(nav(['payroll.run.view']), 'settings')).not.toContain('Payroll rules');
     expect(labels(nav(['perf.setup.manage']), 'settings')).toEqual(['Performance']);
     expect(labels(nav(['access.role.manage']), 'settings')).toEqual(['Roles & access']);
   });
