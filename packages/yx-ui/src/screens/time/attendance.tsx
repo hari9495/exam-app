@@ -61,6 +61,9 @@ import './time.css';
 export type ViewState = 'ready' | 'loading' | 'error' | 'empty';
 export type Persona = 'emp' | 'mgr' | 'hr';
 
+/** "Plant day shift" stays as it is; "General" becomes "General shift" (no "shift shift"). */
+export const shiftLabel = (name: string) => (/(^|\s)shift$/i.test(name.trim()) ? name.trim() : `${name.trim()} shift`);
+
 export function LoadingBlock({ rows = 6 }: { rows?: number }) {
   return (
     <div className="yx-tim-stack" role="status" aria-busy="true" aria-label="Loading">
@@ -2554,7 +2557,7 @@ function LiveAttendanceCalendar({ live }: { live: LiveMyAttendance }) {
     <TimePage active="My attendance">
       <PageHeader
         title="My attendance"
-        description={d ? `${MODE_TEXT[d.mode] ?? d.mode} · ${d.shift.off ? 'Weekly off today' : `${d.shift.name} shift ${fmt12(hm(d.shift.start))} – ${fmt12(hm(d.shift.end))}`}` : undefined}
+        description={d ? `${MODE_TEXT[d.mode] ?? d.mode} · ${d.shift.off ? 'Weekly off today' : `${shiftLabel(d.shift.name)} ${fmt12(hm(d.shift.start))} – ${fmt12(hm(d.shift.end))}`}` : undefined}
         actions={
           ready ? (
             <div className="yx-tim-row">
@@ -2749,7 +2752,7 @@ function LiveAttendanceToday({ live }: { live: LiveMyAttendance }) {
     const row = d.days.find((x) => x.on === on);
     const code = days.find((x) => isoOf(x.date) === on)?.code ?? (on > d.today ? 'FUT' : undefined);
     if (on === d.today) return d.next === 'out' ? (d.onBreak ? 'On a break' : 'Working') : d.punches.some((p) => p.accepted) ? 'Done for the day' : 'Not in yet';
-    if (code === 'FUT' || !code) return `${d.shift.name} shift`;
+    if (code === 'FUT' || !code) return shiftLabel(d.shift.name);
     const inAt = row?.firstIn ? zoneTime(new Date(row.firstIn), d.zone).hhmm : null;
     const outAt = row?.lastOut ? zoneTime(new Date(row.lastOut), d.zone).hhmm : null;
     return (code === 'P' || code === 'L' || code === 'WFH') && inAt && outAt ? `${DAY_CODE_LABEL[code]} · ${fmt12(inAt)} – ${fmt12(outAt)}` : DAY_CODE_LABEL[code];
