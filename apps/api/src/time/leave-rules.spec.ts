@@ -1,5 +1,5 @@
 import { accrualsDue } from './time-maths';
-import { compOffExpiries, compOffUseBy, encashAmount, encashMax, encashWindowOpen, factoriesElEligible, lastDayAfterLeave, longestRun, optionalLimitAfterMove, probationAllows, toCsv } from './leave-rules';
+import { pickPolicy, compOffExpiries, compOffUseBy, encashAmount, encashMax, encashWindowOpen, factoriesElEligible, lastDayAfterLeave, longestRun, optionalLimitAfterMove, probationAllows, toCsv } from './leave-rules';
 
 describe('leave v2 rules', () => {
   describe('comp-off expiry (oldest first)', () => {
@@ -111,5 +111,28 @@ describe('leave v2 rules', () => {
 
   it('writes CSV that a spreadsheet will not run', () => {
     expect(toCsv([['Name', 'Days'], ['=cmd()', 2], ['A "B"', null], ['-3', -3]])).toBe('"Name","Days"\r\n"\'=cmd()","2"\r\n"A ""B""",""\r\n"\'-3","-3"');
+  });
+
+  describe('policy order (TIM-28)', () => {
+    const rows = [
+      { scopeType: 'legal_entity', scopeId: 'tn', value: 'staff', validFrom: '2026-01-01' },
+      { scopeType: 'grade', scopeId: 's5', value: 'trainee', validFrom: '2026-01-01' },
+      { scopeType: 'grade', scopeId: 's5', value: 'trainee-2', validFrom: '2026-12-01' },
+    ];
+    const ctx = { tenant: 'org', legal_entity: 'tn', grade: 's5', employee: 'e1' };
+    it('without an order the most specific scope wins (the fallback)', () => {
+      expect(pickPolicy(rows, ctx, '2026-10-30', { value: 'trainee', scopeType: 'grade' }, null)).toBe('trainee');
+    });
+    it('with an order the one higher in the order wins', () => {
+      expect(pickPolicy(rows, ctx, '2026-10-30', { value: 'trainee', scopeType: 'grade' }, ['staff', 'trainee'])).toBe('staff');
+    });
+    it('uses the assignment in force on the date', () => {
+      expect(pickPolicy(rows, ctx, '2026-12-05', { value: 'trainee-2', scopeType: 'grade' }, ['trainee-2', 'staff'])).toBe('trainee-2');
+    });
+    it('a per-person override always wins; policies outside the order fall back', () => {
+      expect(pickPolicy(rows, ctx, '2026-10-30', { value: 'own', scopeType: 'employee' }, ['staff'])).toBe('own');
+      expect(pickPolicy(rows, ctx, '2026-10-30', { value: 'trainee', scopeType: 'grade' }, ['other'])).toBe('trainee');
+      expect(pickPolicy([], ctx, '2026-10-30', { value: '', scopeType: 'default' }, ['staff'])).toBeNull();
+    });
   });
 });

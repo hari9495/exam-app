@@ -9,8 +9,9 @@ import { RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
 import { AttendanceService } from './attendance.service';
-import { AdjustDto, ApplyLeaveDto, AssignPolicyDto, AttendanceRuleDto, CalendarDto, EntityFilterDto, HolidayDto, LeavePlanDto, LeaveTypeDto, MonthEntityQueryDto, MonthQueryDto, NetworksDto, PolicyDto, PolicyVersionDto, PunchDto, RangeEntityQueryDto, RangeQueryDto, ReasonDto, RegulariseDto, WfhDto, YearEndDto, YearEndRunDto } from './dto';
+import { AdjustDto, ApplyLeaveDto, AssignPolicyDto, AttendanceRuleDto, CalendarDto, CalendarTemplateDto, EntityFilterDto, HolidayDateDto, HolidayDto, LeavePlanDto, LeaveTypeDto, MonthEntityQueryDto, MonthQueryDto, NetworksDto, PolicyDto, PolicyOrderDto, PolicyVersionDto, PublishDraftDto, PunchDto, RangeEntityQueryDto, RangeQueryDto, ReasonDto, RegulariseDto, WfhDto, YearEndDto, YearEndRunDto } from './dto';
 import { LeaveService } from './leave.service';
+import { LeaveV2Service } from './leave-v2.service';
 import { TimeSetupService } from './setup.service';
 import { TimeJobs } from './time-jobs';
 
@@ -31,6 +32,7 @@ export class TimeController {
     private readonly attendance: AttendanceService,
     private readonly setup: TimeSetupService,
     private readonly jobs: TimeJobs,
+    private readonly v2: LeaveV2Service,
   ) {}
 
   private user(req: Request) {
@@ -247,6 +249,49 @@ export class TimeController {
   @RequirePermissions('leave.settings.manage')
   addHoliday(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: HolidayDto) {
     return this.setup.addHoliday(ctx, this.user(req), id, dto);
+  }
+
+  @Post('setup/holidays/:id/date')
+  @HttpCode(200)
+  @RequirePermissions('leave.settings.manage')
+  changeHoliday(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: HolidayDateDto) {
+    return this.setup.changeHoliday(ctx, this.user(req), id, dto.on);
+  }
+
+  // TIM-26 drafts: a state template or a clone to next year waits as a draft until HR publishes it.
+  @Post('setup/calendars/template')
+  @RequirePermissions('leave.settings.manage')
+  calendarTemplate(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: CalendarTemplateDto) {
+    return this.setup.run(ctx, this.user(req), true, (tx, c) => this.v2.templateIn(tx, c, dto.locationId));
+  }
+
+  @Post('setup/calendars/:id/clone')
+  @RequirePermissions('leave.settings.manage')
+  cloneCalendar(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.setup.run(ctx, this.user(req), true, (tx, c) => this.v2.cloneIn(tx, c, id));
+  }
+
+  @Post('setup/holiday-drafts/:id/confirm')
+  @HttpCode(200)
+  @RequirePermissions('leave.settings.manage')
+  confirmDraft(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: HolidayDateDto) {
+    return this.setup.run(ctx, this.user(req), true, (tx, c) => this.v2.confirmDraftIn(tx, c, id, dto.on));
+  }
+
+  @Post('setup/calendars/:id/publish')
+  @HttpCode(200)
+  @RequirePermissions('leave.settings.manage')
+  async publishDraft(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PublishDraftDto) {
+    const told: { userId: string; on: string; requestId: string }[] = [];
+    const out = await this.setup.run(ctx, this.user(req), true, (tx, c) => this.v2.publishDraftIn(tx, c, id, dto.year, told));
+    await this.v2.tellHolidayAdded(ctx, told);
+    return out;
+  }
+
+  @Post('setup/policy-order')
+  @RequirePermissions('leave.settings.manage')
+  policyOrder(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: PolicyOrderDto) {
+    return this.setup.saveOrder(ctx, this.user(req), dto);
   }
 
   @Post('setup/holidays/:id/remove')

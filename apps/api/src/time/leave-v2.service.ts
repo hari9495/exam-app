@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService, revokeStaffSessions } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
@@ -12,7 +12,8 @@ import { entitiesFor, payViewer, withPayScope } from '../payroll/pay-access';
 import { DayEngine } from './day-engine.service';
 import { LeaveService } from './leave.service';
 import { Facts, LeaveRules, asDate, dateOf, factsOn, grantCovers, hasBalance, holidaysFor, hrApprovers, num, rulesFor, settingOn, todayIn, visibleSql, type TimeKey } from './time-core';
-import { addDays, daysBetween, leaveYearOf } from './time-maths';
+import { addDays, daysBetween, isWeeklyOff, leaveYearOf } from './time-maths';
+import { cloneToYear, templateRows } from './holiday-rules';
 import { ScheduleBook, lockedDates } from './schedule';
 import { BLOCK_DATE_EXEMPT, CompOffCredit, compOffExpiries, compOffUseBy, dailyPay, encashAmount, encashMax, encashWindowOpen, longestRun, toCsv } from './leave-rules';
 import { FEED_STATES, HOLIDAY_PROVIDER, HolidayProvider } from './holiday-feed.provider';
@@ -1191,34 +1192,166 @@ export class LeaveV2Service implements OnModuleInit {
           if (r.holidayId) await tx.holiday.deleteMany({ where: { organizationId: org, id: r.holidayId } });
         } else {
           await tx.holiday.create({ data: { organizationId: org, calendarId: r.calendarId, holidayOn: r.holidayOn, name: r.name, kind: 'state', createdBy: c.userId ?? null } });
-          for (const d of await this.leaveOnDate(tx, org, r.calendarId, on)) {
-            await tx.leaveRequestDay.update({ where: { organizationId_requestId_leaveOn: { organizationId: org, requestId: d.requestId, leaveOn: r.holidayOn } }, data: { portion: 0, countedAs: 'holiday' } });
-            const before = await tx.leaveRequest.findFirstOrThrow({ where: { id: d.requestId } });
-            if (num(before.days) - d.portion > 0) await tx.leaveRequest.update({ where: { id: d.requestId }, data: { days: { decrement: d.portion }, version: { increment: 1 }, updatedAt: new Date() } });
-            else {
-              // Every day of the request is now a holiday: nothing is left to take, so it ends (a waiting one is withdrawn).
-              if (d.status === 'pending' && before.wfRequestId) await this.engine.withdraw(tx, c, before.wfRequestId, c.userId ?? null, 'Every day of this leave is now a public holiday');
-              await tx.leaveRequest.update({ where: { id: d.requestId }, data: { status: d.status === 'pending' ? 'withdrawn' : 'cancelled', decidedAt: new Date(), version: { increment: 1 }, updatedAt: new Date() } });
-              await tx.leaveRequestDay.updateMany({ where: { organizationId: org, requestId: d.requestId }, data: { active: false } });
-            }
-            if (d.status !== 'pending' && hasBalance(d.kind)) {
-              const req = await tx.leaveRequest.findFirstOrThrow({ where: { id: d.requestId } });
-              await tx.leaveLedgerEntry.createMany({ data: [{ organizationId: org, employeeId: d.employeeId, leaveTypeId: req.leaveTypeId, entryOn: r.holidayOn, kind: 'cancelled', days: d.portion, requestId: d.requestId, periodKey: `h:${on}:${d.requestId.slice(0, 24)}`, reason: `${r.name} on ${fmt(on)} is now a holiday` }], skipDuplicates: true });
-            }
-            await this.dayEngine.evaluate(tx, c, d.employeeId, on, on);
-            returned += 1;
-            if (d.userId) told.push({ userId: d.userId, on, requestId: d.requestId });
-          }
+          returned += await this.holidayAdded(tx, c, r.calendarId, on, r.name, told);
         }
         await audit(tx, c, accept ? 'holiday.feed.accepted' : 'holiday.feed.ignored', 'holiday_feed_change', r.id, { calendarId: r.calendarId, action: r.action, on, name: r.name });
       }
       return { accepted: dto.accept.length, ignored: dto.ignore.length, leaveReturned: returned, told };
     });
-    for (const t of out.told) {
+    await this.tellHolidayAdded(ctx, out.told);
+    return { accepted: out.accepted, ignored: out.ignored, leaveReturned: out.leaveReturned };
+  }
+
+  // ------------------------------------------------------------------------------------------ TIM-26 drafts (clone, template)
+  // Called inside TimeSetupService.run (company-wide leave.settings.manage). Drafts are never seen by employees;
+  // publishing copies them into the calendar, and leave already on a new holiday goes back to the balance.
+
+  /** Start a location's calendar from its state's public holidays (the feed provider), today to 31 Dec, as a draft. */
+  async templateIn(tx: Tx, c: CompanyContext, locationId: string) {
+    const org = c.organizationId;
+    const loc = await tx.location.findFirst({ where: { organizationId: org, id: locationId, archivedAt: null } });
+    if (!loc) throw new NotFoundException('No such location.');
+    const stateName = FEED_STATES[loc.state];
+    if (!stateName) throw new ConflictException(`There is no state template for ${loc.name}. Add its holidays one by one.`);
+    const today = todayIn('Asia/Kolkata');
+    let cal = await tx.holidayCalendar.findFirst({ where: { organizationId: org, locationId } });
+    if (cal && (await tx.holiday.count({ where: { organizationId: org, calendarId: cal.id, holidayOn: { gte: asDate(today) } } }))) throw new ConflictException(`${loc.name} already has holidays from today. Add or remove them one by one.`);
+    if (cal && (await tx.holidayDraft.count({ where: { organizationId: org, calendarId: cal.id } }))) throw new ConflictException(`${loc.name} already has a draft. Publish it first.`);
+    let feed: { on: string; name: string }[];
+    try {
+      feed = await this.provider.holidays(loc.state, Number(today.slice(0, 4)));
+    } catch {
+      throw new ServiceUnavailableException(`The ${stateName} holiday list could not be fetched. Try again in a few minutes.`);
+    }
+    const rows = templateRows(feed, today);
+    if (!rows.length) throw new ConflictException(`The ${stateName} template has no holidays left this year.`);
+    if (!cal) {
+      cal = await tx.holidayCalendar.create({ data: { organizationId: org, name: `${loc.name} holidays`.slice(0, 100), locationId, createdBy: c.userId ?? null } });
+      await audit(tx, c, 'holiday.calendar.created', 'holiday_calendar', cal.id, { name: cal.name, locationId });
+    }
+    const calendarId = cal.id;
+    await tx.holidayDraft.createMany({ data: rows.map((h) => ({ organizationId: org, calendarId, holidayOn: asDate(h.on), name: h.name, kind: h.kind, halfDay: h.halfDay, source: 'template', createdBy: c.userId ?? null })), skipDuplicates: true });
+    await audit(tx, c, 'holiday.calendar.template', 'holiday_calendar', calendarId, { state: loc.state, provider: this.provider.name, from: today, days: rows.length });
+    return { calendarId, year: Number(today.slice(0, 4)), added: rows.length };
+  }
+
+  /** Copy this year's holidays to next year as a draft; festivals keep last year's date until HR confirms it. */
+  async cloneIn(tx: Tx, c: CompanyContext, calendarId: string) {
+    const org = c.organizationId;
+    const cal = await tx.holidayCalendar.findFirst({ where: { organizationId: org, id: calendarId } });
+    if (!cal) throw new NotFoundException('No such calendar.');
+    const year = Number(todayIn('Asia/Kolkata').slice(0, 4));
+    const next = year + 1;
+    const waiting = await tx.holidayFeedChange.count({ where: { organizationId: org, calendarId, status: 'waiting' } });
+    if (waiting) throw new ConflictException(`Review the holiday feed ${waiting === 1 ? 'change' : 'changes'} first, so ${next} starts from the right dates.`);
+    if (await tx.holidayDraft.count({ where: { organizationId: org, calendarId, holidayOn: { gte: asDate(`${next}-01-01`), lte: asDate(`${next}-12-31`) } } })) throw new ConflictException(`${cal.name} already has a ${next} draft. Open it to confirm and publish.`);
+    const rows = await tx.holiday.findMany({ where: { organizationId: org, calendarId, holidayOn: { gte: asDate(`${year}-01-01`), lte: asDate(`${year}-12-31`) } } });
+    if (!rows.length) throw new ConflictException(`${cal.name} has no ${year} holidays to copy. Add them first.`);
+    const have = new Set((await tx.holiday.findMany({ where: { organizationId: org, calendarId, holidayOn: { gte: asDate(`${next}-01-01`), lte: asDate(`${next}-12-31`) } }, select: { holidayOn: true } })).map((h) => dateOf(h.holidayOn)));
+    const out = cloneToYear(rows.map((h) => ({ on: dateOf(h.holidayOn), name: h.name, kind: h.kind, halfDay: h.halfDay })), next).filter((h) => !have.has(h.on));
+    if (!out.length) throw new ConflictException(`${cal.name} already has every ${next} holiday.`);
+    await tx.holidayDraft.createMany({ data: out.map((h) => ({ organizationId: org, calendarId, holidayOn: asDate(h.on), name: h.name, kind: h.kind, halfDay: h.halfDay, confirm: h.confirm, source: 'clone', createdBy: c.userId ?? null })) });
+    const toConfirm = out.filter((h) => h.confirm).length;
+    await audit(tx, c, 'holiday.calendar.cloned', 'holiday_calendar', calendarId, { year: next, days: out.length, toConfirm });
+    return { calendarId, year: next, added: out.length, toConfirm };
+  }
+
+  /** Confirm (or change) a draft festival's date; it stays in the draft's year and must not clash. */
+  async confirmDraftIn(tx: Tx, c: CompanyContext, id: string, on: string) {
+    const org = c.organizationId;
+    const d = await tx.holidayDraft.findFirst({ where: { organizationId: org, id } });
+    if (!d) throw new NotFoundException('Not found');
+    const year = dateOf(d.holidayOn).slice(0, 4);
+    if (on.slice(0, 4) !== year) throw new BadRequestException(`Choose a date in ${year}.`);
+    if (on < todayIn('Asia/Kolkata')) throw new BadRequestException('Choose today or a later date.');
+    if (on !== dateOf(d.holidayOn) && (await tx.holidayDraft.findFirst({ where: { organizationId: org, calendarId: d.calendarId, holidayOn: asDate(on) } }))) throw new ConflictException(`${fmt(on)} is already a holiday in this draft.`);
+    await tx.holidayDraft.update({ where: { id }, data: { holidayOn: asDate(on), confirm: false } });
+    await audit(tx, c, 'holiday.draft.confirmed', 'holiday_calendar', d.calendarId, { name: d.name, from: dateOf(d.holidayOn), to: on });
+    return { id, on };
+  }
+
+  /** Publish a calendar's draft for a year: every festival date confirmed first; days already past are left out. */
+  async publishDraftIn(tx: Tx, c: CompanyContext, calendarId: string, year: number, told: { userId: string; on: string; requestId: string }[]) {
+    const org = c.organizationId;
+    const cal = await tx.holidayCalendar.findFirst({ where: { organizationId: org, id: calendarId } });
+    if (!cal) throw new NotFoundException('No such calendar.');
+    const drafts = await tx.holidayDraft.findMany({ where: { organizationId: org, calendarId, holidayOn: { gte: asDate(`${year}-01-01`), lte: asDate(`${year}-12-31`) } }, orderBy: { holidayOn: 'asc' } });
+    if (!drafts.length) throw new NotFoundException(`${cal.name} has no ${year} draft.`);
+    const open = drafts.filter((d) => d.confirm).length;
+    if (open) throw new ConflictException(`Confirm the ${open === 1 ? 'festival date' : `${open} festival dates`} first.`);
+    const today = todayIn('Asia/Kolkata');
+    const have = new Set((await tx.holiday.findMany({ where: { organizationId: org, calendarId, holidayOn: { gte: asDate(`${year}-01-01`), lte: asDate(`${year}-12-31`) } }, select: { holidayOn: true } })).map((h) => dateOf(h.holidayOn)));
+    const put = drafts.filter((d) => dateOf(d.holidayOn) >= today && !have.has(dateOf(d.holidayOn)));
+    let returned = 0;
+    for (const d of put) {
+      await tx.holiday.create({ data: { organizationId: org, calendarId, holidayOn: d.holidayOn, name: d.name, kind: d.kind, halfDay: d.halfDay, createdBy: c.userId ?? null } });
+      if (d.kind !== 'optional' && d.kind !== 'restricted') returned += await this.holidayAdded(tx, c, calendarId, dateOf(d.holidayOn), d.name, told);
+    }
+    await tx.holidayDraft.deleteMany({ where: { organizationId: org, id: { in: drafts.map((d) => d.id) } } });
+    await tx.holidayCalendar.update({ where: { id: calendarId }, data: { publishedAt: new Date(), version: { increment: 1 }, updatedAt: new Date() } });
+    await audit(tx, c, 'holiday.calendar.published', 'holiday_calendar', calendarId, { year, added: put.length, leftOut: drafts.length - put.length, leaveReturned: returned });
+    return { calendarId, year, added: put.length, leaveReturned: returned };
+  }
+
+  /** TIM-26 rule "Holiday on a weekly off: comp-off credit": a comp-off day for each person at that location (daily job, once each). */
+  async creditHolidayOnWeeklyOff(org: string, now = new Date()): Promise<number> {
+    const c: CompanyContext = { organizationId: org, isSuperAdmin: false };
+    return this.tenantPrisma.forTenant(c, async (tx) => {
+      const t = await this.compOffType(tx, org);
+      const cals = await tx.holidayCalendar.findMany({ where: { organizationId: org, onWeeklyOff: 'comp_off', locationId: { not: null } } });
+      if (!t || !cals.length) return 0;
+      const today = todayIn('Asia/Kolkata', now);
+      let n = 0;
+      for (const cal of cals) {
+        // The last week, so a missed run catches up; the period key makes a repeat do nothing.
+        const hols = await tx.holiday.findMany({ where: { organizationId: org, calendarId: cal.id, holidayOn: { gte: asDate(addDays(today, -7)), lte: asDate(today) }, kind: { in: ['national', 'state', 'festival'] }, halfDay: false } });
+        const ruleOn = await rulesFor(tx, org, cal.locationId!, today);
+        for (const h of hols) {
+          const on = dateOf(h.holidayOn);
+          if (!isWeeklyOff(on, ruleOn(on).weeklyOffs)) continue;
+          const people = await tx.$queryRaw<{ id: string }[]>`
+            SELECT DISTINCT a.employee_id::text AS id FROM employee_assignments a
+            WHERE a.organization_id = ${org}::uuid AND a.superseded_at IS NULL AND a.location_id = ${cal.locationId}::uuid AND ${on}::date <@ daterange(a.valid_from, a.valid_to, '[]')`;
+          if (!people.length) continue;
+          n += (await tx.leaveLedgerEntry.createMany({ data: people.map((p) => ({ organizationId: org, employeeId: p.id, leaveTypeId: t.id, entryOn: h.holidayOn, kind: 'comp_off', days: 1, periodKey: `hw:${h.id}`, reason: `${h.name} on ${fmt(on)} fell on a weekly off` })), skipDuplicates: true })).count;
+        }
+      }
+      if (n) await audit(tx, c, 'leave.comp_off.holiday_on_weekly_off', 'leave_ledger', org, { entries: n });
+      return n;
+    });
+  }
+
+  /** People whose leave went back to the balance because the day became a holiday (after the transaction). */
+  async tellHolidayAdded(ctx: TenantContext, told: { userId: string; on: string; requestId: string }[]) {
+    for (const t of told) {
       const text = `${fmt(t.on)} is now a public holiday, so your leave that day went back to your balance.`;
       await this.notifications.notifySystem(ctx, [t.userId], 'leave.holiday_added', { entityType: 'leave_request', entityId: t.requestId, contextText: text, linkPath: '/yx/time/leave' }, { subject: 'Your leave day is now a holiday', html: `<p>${escapeHtml(text)}</p>` });
     }
-    return { accepted: out.accepted, ignored: out.ignored, leaveReturned: out.leaveReturned };
+  }
+
+  /** A holiday was added on `on`: leave already on that date goes back to the balance; returns how many days. */
+  async holidayAdded(tx: Tx, c: CompanyContext, calendarId: string, on: string, holidayName: string, told: { userId: string; on: string; requestId: string }[]): Promise<number> {
+    const org = c.organizationId;
+    let returned = 0;
+    for (const d of await this.leaveOnDate(tx, org, calendarId, on)) {
+      await tx.leaveRequestDay.update({ where: { organizationId_requestId_leaveOn: { organizationId: org, requestId: d.requestId, leaveOn: asDate(on) } }, data: { portion: 0, countedAs: 'holiday' } });
+      const before = await tx.leaveRequest.findFirstOrThrow({ where: { id: d.requestId } });
+      if (num(before.days) - d.portion > 0) await tx.leaveRequest.update({ where: { id: d.requestId }, data: { days: { decrement: d.portion }, version: { increment: 1 }, updatedAt: new Date() } });
+      else {
+        // Every day of the request is now a holiday: nothing is left to take, so it ends (a waiting one is withdrawn).
+        if (d.status === 'pending' && before.wfRequestId) await this.engine.withdraw(tx, c, before.wfRequestId, c.userId ?? null, 'Every day of this leave is now a public holiday');
+        await tx.leaveRequest.update({ where: { id: d.requestId }, data: { status: d.status === 'pending' ? 'withdrawn' : 'cancelled', decidedAt: new Date(), version: { increment: 1 }, updatedAt: new Date() } });
+        await tx.leaveRequestDay.updateMany({ where: { organizationId: org, requestId: d.requestId }, data: { active: false } });
+      }
+      if (d.status !== 'pending' && hasBalance(d.kind)) {
+        const req = await tx.leaveRequest.findFirstOrThrow({ where: { id: d.requestId } });
+        await tx.leaveLedgerEntry.createMany({ data: [{ organizationId: org, employeeId: d.employeeId, leaveTypeId: req.leaveTypeId, entryOn: asDate(on), kind: 'cancelled', days: d.portion, requestId: d.requestId, periodKey: `h:${on}:${d.requestId.slice(0, 24)}`, reason: `${holidayName} on ${fmt(on)} is now a holiday` }], skipDuplicates: true });
+      }
+      await this.dayEngine.evaluate(tx, c, d.employeeId, on, on);
+      returned += 1;
+      if (d.userId) told.push({ userId: d.userId, on, requestId: d.requestId });
+    }
+    return returned;
   }
 }
 

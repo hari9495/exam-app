@@ -56,9 +56,9 @@ export class TimeJobs implements OnModuleInit, OnModuleDestroy {
     let n = 0;
     for (const org of await this.companies()) {
       try {
-        // Comp-off expiry runs with the accruals (both idempotent by period key).
+        // Comp-off expiry and the holiday-on-a-weekly-off credit run with the accruals (all idempotent by period key).
         // TIM-39: block-leave access pauses start and end with the hourly day run.
-        n += name === 'accrue' ? (await this.leave.accrue(org)) + (await this.leaveV2.expireCompOff(org)) : (await this.attendance.evaluateCompany(org)) + (await this.leaveV2.applyAccessPauses(org));
+        n += name === 'accrue' ? (await this.leave.accrue(org)) + (await this.leaveV2.expireCompOff(org)) + (await this.leaveV2.creditHolidayOnWeeklyOff(org)) : (await this.attendance.evaluateCompany(org)) + (await this.leaveV2.applyAccessPauses(org));
       } catch (e) {
         this.logger.warn(`${name} ${org}: ${(e as Error).message}`);
       }

@@ -254,6 +254,16 @@ export class CalendarDto {
   @Min(0)
   @Max(20)
   optionalLimit?: number;
+
+  /** TIM-26: a holiday on the location's weekly off gives nothing extra, the next working day off, or a comp-off day. */
+  @IsOptional()
+  @IsIn(['none', 'substitute', 'comp_off'])
+  onWeeklyOff?: 'none' | 'substitute' | 'comp_off';
+
+  /** TIM-26: optional holidays after a move to this office: split by months, or this office's full number. */
+  @IsOptional()
+  @IsIn(['share', 'reset'])
+  onMove?: 'share' | 'reset';
 }
 
 export class HolidayDto {
@@ -272,6 +282,34 @@ export class HolidayDto {
   @IsOptional()
   @IsBoolean()
   halfDay?: boolean;
+}
+
+export class HolidayDateDto {
+  @IsDateString(DATE)
+  on!: string;
+}
+
+export class CalendarTemplateDto {
+  @IsUUID()
+  locationId!: string;
+}
+
+export class PublishDraftDto {
+  @IsInt()
+  @Min(2000)
+  @Max(2100)
+  year!: number;
+}
+
+export class PolicyOrderDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @IsUUID('all', { each: true })
+  policyIds!: string[];
+
+  @IsDateString(DATE)
+  validFrom!: string;
 }
 
 export class AttendanceRuleDto {

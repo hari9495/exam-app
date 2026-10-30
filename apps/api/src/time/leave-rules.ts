@@ -134,3 +134,20 @@ export function dailyPay(monthly: number, divisor: string, on: string): number {
 
 /** Founder decision 1: does a company block date stop this leave type? HR's chosen types; none chosen: planned leave only. */
 export const blockDateStops = (types: readonly string[], typeId: string, kind: string) => (types.length ? types.includes(typeId) : !BLOCK_DATE_EXEMPT.includes(kind));
+
+/**
+ * TIM-28: the leave policy for a person on a date. `rows` are the policy assignments (value = policy id), `fallback`
+ * the most-specific-scope answer (YX-ORG-18). With a saved policy order, the person's current assignment highest in
+ * the order wins instead; a per-person assignment (an override) always wins; policies left out of the order follow it.
+ */
+export function pickPolicy(rows: readonly { scopeType: string; scopeId: string; value: string; validFrom: string | null }[], ctx: Readonly<Record<string, string | undefined>>, on: string, fallback: { value: string; scopeType: string }, order: readonly string[] | null): string | null {
+  if (!order?.length || fallback.scopeType === 'employee') return fallback.value || null;
+  const current: string[] = [];
+  for (const [t, id] of Object.entries(ctx)) {
+    if (!id || t === 'employee') continue;
+    const at = rows.filter((r) => r.scopeType === t && r.scopeId === id && r.validFrom !== null && r.validFrom <= on);
+    if (at.length) current.push(at.reduce((a, b) => (a.validFrom! >= b.validFrom! ? a : b)).value);
+  }
+  const ranked = current.filter((p) => order.includes(p)).sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  return ranked[0] ?? (fallback.value || null);
+}

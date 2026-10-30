@@ -7,7 +7,10 @@ import { isCidr, todayIst } from '../org-structure/org-validation';
 import { SETTINGS, resolveSetting } from '../org-structure/settings-registry';
 import { AssignPolicyDto, AttendanceRuleDto, CalendarDto, HolidayDto, LeaveTypeDto, PolicyDto, PolicyVersionDto } from './dto';
 import { LeaveService } from './leave.service';
-import { DEFAULT_RULE, LeaveRules, asDate, dateOf, parseLines, parseRules } from './time-core';
+import { DEFAULT_RULE, LeaveRules, asDate, dateOf, parseLines, parseRules, policyFor } from './time-core';
+import { FEED_STATES } from './holiday-feed.provider';
+
+const MOVE_KEY = 'leave.optional_holiday.prorate_on_move';
 import { WeeklyOffRule } from './time-maths';
 
 // HR › Leave set-up (TIM-26 / 27 / 28) and the attendance basics of each location: company configuration, so the
@@ -58,6 +61,12 @@ export class TimeSetupService {
       ]);
       const scopeName = await this.scopeNames(tx, org, assignments.map((a) => ({ type: a.scopeType, id: a.scopeId })));
       const today = todayIst();
+      const grades = await tx.grade.findMany({ where: { organizationId: org }, orderBy: { name: 'asc' }, select: { id: true, name: true } });
+      const [moveRows, drafts, feedWaiting] = await Promise.all([
+        tx.setting.findMany({ where: { organizationId: org, key: MOVE_KEY } }),
+        tx.holidayDraft.findMany({ where: { organizationId: org }, orderBy: { holidayOn: 'asc' } }),
+        tx.holidayFeedChange.groupBy({ by: ['calendarId'], where: { organizationId: org, status: 'waiting' }, _count: { _all: true } }),
+      ]);
       // Founder decision 2: the notice a type without its own number asks for (company value; sick leave 0).
       const noticeRows = await tx.setting.findMany({ where: { organizationId: org, key: 'leave.notice_days.default' } });
       const noticeDefault = Number(resolveSetting(SETTINGS['leave.notice_days.default'], noticeRows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: null })), { tenant: org }, today).value);
@@ -71,14 +80,24 @@ export class TimeSetupService {
           versions: versions.filter((v) => v.policyId === p.id).map((v) => ({ id: v.id, validFrom: dateOf(v.validFrom), lines: v.lines, note: v.note })),
           assignments: assignments.filter((a) => a.policyId === p.id).map((a) => ({ id: a.id, scopeType: a.scopeType, scopeId: a.scopeId, scopeName: a.scopeType === 'tenant' ? 'Whole company' : (scopeName.get(a.scopeId) ?? ''), validFrom: dateOf(a.validFrom), removable: dateOf(a.validFrom) > today })),
         })),
-        calendars: calendars.map((cal) => ({
-          id: cal.id,
-          name: cal.name,
-          locationId: cal.locationId,
-          halfDayOpenHalf: cal.halfDayOpenHalf,
-          optionalLimit: cal.optionalLimit,
-          holidays: holidays.filter((h) => h.calendarId === cal.id).map((h) => ({ id: h.id, on: dateOf(h.holidayOn), name: h.name, kind: h.kind, halfDay: h.halfDay })),
-        })),
+        calendars: calendars.map((cal) => {
+          const loc = locations.find((l) => l.id === cal.locationId);
+          return {
+            id: cal.id,
+            name: cal.name,
+            locationId: cal.locationId,
+            halfDayOpenHalf: cal.halfDayOpenHalf,
+            optionalLimit: cal.optionalLimit,
+            onWeeklyOff: cal.onWeeklyOff,
+            // Founder decision (TIM-26): optional holidays after a move, per location (the company value until set).
+            onMove: resolveSetting(SETTINGS[MOVE_KEY], moveRows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: null })), { tenant: org, ...(loc ? { location: loc.id, legal_entity: loc.legalEntityId ?? undefined } : {}) }, today).value === 'no' ? 'reset' : 'share',
+            publishedAt: cal.publishedAt,
+            waitingFeedChanges: feedWaiting.find((w) => w.calendarId === cal.id)?._count._all ?? 0,
+            holidays: holidays.filter((h) => h.calendarId === cal.id).map((h) => ({ id: h.id, on: dateOf(h.holidayOn), name: h.name, kind: h.kind, halfDay: h.halfDay })),
+            drafts: drafts.filter((h) => h.calendarId === cal.id).map((h) => ({ id: h.id, on: dateOf(h.holidayOn), name: h.name, kind: h.kind, halfDay: h.halfDay, confirm: h.confirm, source: h.source })),
+          };
+        }),
+        templates: Object.fromEntries(locations.filter((l) => FEED_STATES[l.state]).map((l) => [l.id, FEED_STATES[l.state]])),
         locations: locations.map((l) => {
           const mine = rules.filter((r) => r.locationId === l.id);
           const now = mine.find((r) => dateOf(r.validFrom) <= today);
@@ -94,9 +113,66 @@ export class TimeSetupService {
           };
         }),
         entities,
+        grades,
+        ...(await this.coverage(tx, org, today, assignments, policies)),
         noticeDefault,
         statutory: statutory.map((s) => ({ jurisdiction: s.jurisdiction, version: s.version, validFrom: dateOf(s.validFrom), values: s.values, source: s.source, verify: s.verify })),
       };
+    });
+  }
+
+  /**
+   * TIM-28: who each policy covers today (with the saved order), the per-person overrides, the people no policy covers
+   * (first 50 by joining date), and the order today and any saved for later.
+   */
+  private async coverage(tx: Tx, org: string, today: string, assignments: Prisma.LeavePolicyAssignmentGetPayload<object>[], policies: { id: string; archivedAt: Date | null }[]) {
+    const orders = await tx.leavePolicyOrder.findMany({ where: { organizationId: org }, orderBy: { validFrom: 'desc' } });
+    const now = orders.find((o) => dateOf(o.validFrom) <= today) ?? null;
+    const later = orders.find((o) => dateOf(o.validFrom) > today) ?? null;
+    const people = await tx.$queryRaw<{ id: string; name: string; code: string | null; joinedOn: Date; entity: string; location: string; department: string; designation: string; grade: string | null; type: string }[]>`
+      SELECT DISTINCT ON (e.id) e.id::text, concat_ws(' ', coalesce(e.preferred_name, e.given_name), e.family_name) AS name, m.employee_code::text AS code,
+             m.joined_on AS "joinedOn", a.legal_entity_id::text AS entity, a.location_id::text AS location, a.department_id::text AS department,
+             a.designation_id::text AS designation, a.grade_id::text AS grade, a.employment_type_id::text AS type
+      FROM employees e
+      JOIN employee_assignments a ON a.organization_id = e.organization_id AND a.employee_id = e.id AND a.superseded_at IS NULL AND ${today}::date <@ daterange(a.valid_from, a.valid_to, '[]')
+      JOIN employments m ON m.organization_id = e.organization_id AND m.id = a.employment_id AND (m.exited_on IS NULL OR m.exited_on >= ${today}::date)
+      WHERE e.organization_id = ${org}::uuid
+      ORDER BY e.id, a.valid_from DESC`;
+    const count = new Map<string, number>();
+    const uncovered: { id: string; name: string; code: string | null; joinedOn: string }[] = [];
+    for (const p of people) {
+      const ctx = { tenant: org, employee: p.id, designation: p.designation, grade: p.grade ?? undefined, employment_type: p.type, department: p.department, location: p.location, legal_entity: p.entity };
+      const id = policyFor(assignments, now?.policyIds ?? null, ctx, today);
+      if (id) count.set(id, (count.get(id) ?? 0) + 1);
+      else uncovered.push({ id: p.id, name: p.name, code: p.code, joinedOn: dateOf(p.joinedOn) });
+    }
+    uncovered.sort((a, b) => b.joinedOn.localeCompare(a.joinedOn));
+    const overrides = new Map<string, number>();
+    for (const a of assignments) if (a.scopeType === 'employee' && dateOf(a.validFrom) <= today) overrides.set(a.policyId, (overrides.get(a.policyId) ?? 0) + 1);
+    const live = new Set(policies.filter((p) => !p.archivedAt).map((p) => p.id));
+    return {
+      coverage: Object.fromEntries([...live].map((id) => [id, { people: count.get(id) ?? 0, overrides: overrides.get(id) ?? 0 }])),
+      covered: people.length - uncovered.length,
+      uncovered: { count: uncovered.length, people: uncovered.slice(0, 50) },
+      order: { current: now ? now.policyIds.filter((id) => live.has(id)) : null, currentFrom: now ? dateOf(now.validFrom) : null, upcoming: later ? { validFrom: dateOf(later.validFrom), policyIds: later.policyIds.filter((id) => live.has(id)) } : null },
+    };
+  }
+
+  /** TIM-28: the policy order from a date; a saved later order may be redone, one in force never changes (P06). */
+  saveOrder(ctx: TenantContext, user: ScopeUser, dto: { policyIds: string[]; validFrom: string }) {
+    return this.run(ctx, user, true, async (tx, c) => {
+      const org = c.organizationId;
+      const today = todayIst();
+      if (dto.validFrom < today) throw new BadRequestException('Choose today or a later date: earlier months stay as they were.');
+      if (new Set(dto.policyIds).size !== dto.policyIds.length) throw new BadRequestException('Each policy appears once in the order.');
+      const live = await tx.leavePolicy.findMany({ where: { organizationId: org, archivedAt: null }, select: { id: true } });
+      if (dto.policyIds.length !== live.length || dto.policyIds.some((id) => !live.some((p) => p.id === id))) throw new BadRequestException('The order must list every policy once. Reload the page and try again.');
+      const existing = await tx.leavePolicyOrder.findFirst({ where: { organizationId: org, validFrom: asDate(dto.validFrom) } });
+      if (existing && dto.validFrom <= today) throw new ConflictException('An order is already in force from today. Save the change from a later date.');
+      if (existing) await tx.leavePolicyOrder.update({ where: { id: existing.id }, data: { policyIds: dto.policyIds, createdBy: c.userId ?? null } });
+      else await tx.leavePolicyOrder.create({ data: { organizationId: org, validFrom: asDate(dto.validFrom), policyIds: dto.policyIds, createdBy: c.userId ?? null } });
+      await audit(tx, c, 'leave.policy.order_saved', 'leave_policy', org, { validFrom: dto.validFrom, policyIds: dto.policyIds, replaced: existing?.policyIds ?? null });
+      return { validFrom: dto.validFrom, policyIds: dto.policyIds };
     });
   }
 
@@ -228,8 +304,17 @@ export class TimeSetupService {
       const cal = await tx.holidayCalendar.findFirst({ where: { organizationId: c.organizationId, id } });
       if (!cal) throw new NotFoundException('No such calendar.');
       if ((dto.locationId ?? null) !== cal.locationId) throw new BadRequestException('A calendar stays with its location.');
-      await tx.holidayCalendar.update({ where: { id }, data: { name: dto.name, halfDayOpenHalf: dto.halfDayOpenHalf ?? cal.halfDayOpenHalf, optionalLimit: dto.optionalLimit ?? cal.optionalLimit, version: { increment: 1 }, updatedAt: new Date() } });
-      await audit(tx, c, 'holiday.calendar.changed', 'holiday_calendar', id, { name: dto.name, halfDayOpenHalf: dto.halfDayOpenHalf, optionalLimit: dto.optionalLimit });
+      await tx.holidayCalendar.update({ where: { id }, data: { name: dto.name, halfDayOpenHalf: dto.halfDayOpenHalf ?? cal.halfDayOpenHalf, optionalLimit: dto.optionalLimit ?? cal.optionalLimit, onWeeklyOff: dto.onWeeklyOff ?? cal.onWeeklyOff, version: { increment: 1 }, updatedAt: new Date() } });
+      if (dto.onMove) {
+        // "When someone moves" is the location's value of the company setting (TIM-23 prorating), kept per location.
+        if (!cal.locationId) throw new BadRequestException('The company calendar follows the company setting for moves. Change it in Settings.');
+        const where = { organizationId: c.organizationId, key: MOVE_KEY, scopeType: 'location', scopeId: cal.locationId };
+        const row = await tx.setting.findFirst({ where });
+        const value = dto.onMove === 'share' ? 'yes' : 'no';
+        if (row) await tx.setting.update({ where: { id: row.id }, data: { value, updatedBy: c.userId ?? null } });
+        else await tx.setting.create({ data: { ...where, value, updatedBy: c.userId ?? null } });
+      }
+      await audit(tx, c, 'holiday.calendar.changed', 'holiday_calendar', id, { name: dto.name, halfDayOpenHalf: dto.halfDayOpenHalf, optionalLimit: dto.optionalLimit, onWeeklyOff: dto.onWeeklyOff, onMove: dto.onMove });
       return { id };
     });
   }
@@ -243,6 +328,24 @@ export class TimeSetupService {
       const h = await tx.holiday.create({ data: { organizationId: c.organizationId, calendarId, holidayOn: asDate(dto.on), name: dto.name, kind: dto.kind, halfDay: dto.halfDay ?? false, createdBy: c.userId ?? null } });
       await audit(tx, c, 'holiday.added', 'holiday', h.id, { calendarId, on: dto.on, name: dto.name, kind: dto.kind, halfDay: dto.halfDay ?? false });
       return { id: h.id };
+    });
+  }
+
+  /** TIM-26 "Change date": a future holiday moves to another future date of the same year (no clash). */
+  changeHoliday(ctx: TenantContext, user: ScopeUser, id: string, on: string) {
+    return this.run(ctx, user, true, async (tx, c) => {
+      const h = await tx.holiday.findFirst({ where: { organizationId: c.organizationId, id } });
+      if (!h) throw new NotFoundException('Not found');
+      const was = dateOf(h.holidayOn);
+      const today = todayIst();
+      if (was < today) throw new ConflictException('That holiday has passed, so its date stays.');
+      if (on < today) throw new BadRequestException('Choose today or a later date.');
+      if (on.slice(0, 4) !== was.slice(0, 4)) throw new BadRequestException(`Choose a date in ${was.slice(0, 4)}.`);
+      if (on === was) return { id, on };
+      if (await tx.holiday.findFirst({ where: { organizationId: c.organizationId, calendarId: h.calendarId, holidayOn: asDate(on) } })) throw new ConflictException('That date is already a holiday on this calendar.');
+      await tx.holiday.update({ where: { id }, data: { holidayOn: asDate(on) } });
+      await audit(tx, c, 'holiday.date_changed', 'holiday', id, { calendarId: h.calendarId, name: h.name, from: was, to: on });
+      return { id, on };
     });
   }
 

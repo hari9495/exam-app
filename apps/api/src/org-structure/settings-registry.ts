@@ -178,7 +178,7 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // TIM-25: sabbatical and long unpaid leave earn leave or not (maternity always counts as service: Maternity Benefit Act).
   'leave.long_absence.accrues': { label: 'Leave is earned during a sabbatical or long unpaid leave', scopes: ['tenant', 'legal_entity'], dated: false, values: ['no', 'yes'], default: 'no' },
   // TIM-23: optional holidays are prorated by the months left after a move to another calendar.
-  'leave.optional_holiday.prorate_on_move': { label: 'Prorate optional holidays after a move to another office', scopes: ['tenant', 'legal_entity'], dated: false, values: ['yes', 'no'], default: 'yes' },
+  'leave.optional_holiday.prorate_on_move': { label: 'Prorate optional holidays after a move to another office', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['yes', 'no'], default: 'yes' },
   // TIM-39: people in these designations or departments take a block of consecutive working days off each leave year.
   'leave.block_leave.required': { label: 'Block leave is required', scopes: ['tenant', 'legal_entity', 'location', 'department', 'designation'], dated: false, values: ['no', 'yes'], default: 'no' },
   'leave.block_leave.days': { label: 'Block leave length (working days in a row)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['5', '10', '15'], default: '10' },
@@ -219,6 +219,11 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'attendance.phone_binding': { label: 'Phone check-in only from an approved phone', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['off', 'on'], default: 'off', guard: 'access.role.manage' },
   // TIM-13: how people identify themselves at a kiosk, and wrong PIN tries before a 15-minute lock.
   'kiosk.methods': { label: 'At a kiosk people sign in with', scopes: ['tenant', 'legal_entity', 'location'], dated: false, multi: true, values: ['pin', 'qr', 'face'], default: 'pin,qr' },
+  // TIM-13 (30 Oct 2026): what the kiosk offers besides check-in. Founder: an unknown employee code is refused as unknown
+  // (codes are printed on ID cards; the kiosk secret and the rate limit stop probing); a company may hide it again.
+  'kiosk.tell_unknown_code': { label: 'Kiosk says when an employee code is unknown', scopes: ['tenant'], dated: false, values: ['yes', 'no'], default: 'yes', guard: 'access.role.manage' },
+  'kiosk.leave': { label: 'People can apply leave at a kiosk', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['on', 'off'], default: 'on' },
+  'kiosk.training_opens_minutes': { label: 'Training check-in at a kiosk opens this many minutes before the start', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['0', '5', '10', '15', '30', '60'], default: '15' },
   'kiosk.pin_tries': { label: 'Wrong kiosk PIN tries before a 15-minute lock', scopes: ['tenant'], dated: false, values: ['3', '5', '10'], default: '5', guard: 'access.role.manage' },
   // TIM-32 (DPDP Act 2023): location tracking of field staff, only on duty and with consent; how long the trail is kept,
   // how often a moving phone reports, and the least accurate fix kept on the trail.

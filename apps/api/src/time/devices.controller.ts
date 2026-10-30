@@ -8,7 +8,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
-import { BindRequestDto, FaceConsentDto, PhonePunchDto, PhoneSyncDto, PinDto, ReasonDto, RegisterKioskDto } from './devices.dto';
+import { BindRequestDto, FaceConsentDto, PhonePunchDto, PhoneSyncDto, PinDto, ReasonDto, RegisterKioskDto, TrainingSessionDto } from './devices.dto';
 import { DevicesService } from './devices.service';
 
 // TIM-14 Devices and kiosks (HR) and the person's own devices (TIM-12 phone, TIM-13 kiosk PIN / card / face).
@@ -29,6 +29,25 @@ export class DevicesController {
   @RequirePermissions('leave.settings.manage')
   overview(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     return this.devices.overview(ctx, this.user(req));
+  }
+
+  @Get('training')
+  @RequirePermissions('leave.settings.manage')
+  training(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.devices.trainingSessions(ctx, this.user(req));
+  }
+
+  @Post('training')
+  @RequirePermissions('leave.settings.manage')
+  addTraining(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: TrainingSessionDto) {
+    return this.devices.addTrainingSession(ctx, this.user(req), dto);
+  }
+
+  @Post('training/:id/cancel')
+  @HttpCode(200)
+  @RequirePermissions('leave.settings.manage')
+  cancelTraining(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.devices.cancelTrainingSession(ctx, this.user(req), id);
   }
 
   @Post('kiosks')

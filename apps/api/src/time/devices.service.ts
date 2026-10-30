@@ -135,6 +135,49 @@ export class DevicesService {
   // ------------------------------------------------------------------------------------------ HR: kiosks
 
   /** Registers a kiosk; the one-time set-up code is shown once (only its SHA-256 is kept) and works for 30 minutes. */
+  // ------------------------------------------------------------------------------------------ training sessions (TIM-13)
+
+  /** HR: training sessions from 7 days back, with how many people marked themselves present at the kiosk. */
+  trainingSessions(ctx: TenantContext, user: ScopeUser) {
+    return this.setup.run(ctx, user, false, async (tx, c) => {
+      const org = c.organizationId;
+      const rows = await tx.trainingSession.findMany({ where: { organizationId: org, endsAt: { gte: new Date(Date.now() - 7 * 86_400_000) } }, orderBy: { startsAt: 'asc' }, take: 200 });
+      const [locs, marks] = await Promise.all([
+        tx.location.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.locationId) } }, select: { id: true, name: true } }),
+        tx.trainingAttendance.groupBy({ by: ['sessionId'], where: { organizationId: org, sessionId: { in: rows.map((r) => r.id) } }, _count: { _all: true } }),
+      ]);
+      return rows.map((r) => ({ id: r.id, title: r.title, room: r.room, location: { id: r.locationId, name: locs.find((l) => l.id === r.locationId)?.name ?? '' }, startsAt: r.startsAt, endsAt: r.endsAt, cancelled: Boolean(r.cancelledAt), present: marks.find((m) => m.sessionId === r.id)?._count._all ?? 0 }));
+    });
+  }
+
+  addTrainingSession(ctx: TenantContext, user: ScopeUser, dto: { locationId: string; title: string; room?: string; startsAt: string; endsAt: string }) {
+    return this.setup.run(ctx, user, true, async (tx, c) => {
+      const org = c.organizationId;
+      const starts = new Date(dto.startsAt);
+      const ends = new Date(dto.endsAt);
+      if (!(ends > starts)) throw new BadRequestException('The end must be after the start.');
+      if (ends.getTime() - starts.getTime() > 12 * 3_600_000) throw new BadRequestException('A session is at most 12 hours. Add one session per day.');
+      if (ends.getTime() < Date.now()) throw new BadRequestException('That time has passed. Choose a time from now.');
+      const loc = await tx.location.findFirst({ where: { organizationId: org, id: dto.locationId, archivedAt: null } });
+      if (!loc) throw new NotFoundException('Choose a location of this company.');
+      const s = await tx.trainingSession.create({ data: { organizationId: org, locationId: loc.id, title: dto.title, room: dto.room || null, startsAt: starts, endsAt: ends, createdBy: c.userId ?? null } });
+      await audit(tx, c, 'time.training.created', 'training_session', s.id, { title: dto.title, location: loc.name, startsAt: dto.startsAt, endsAt: dto.endsAt });
+      return { id: s.id };
+    });
+  }
+
+  cancelTrainingSession(ctx: TenantContext, user: ScopeUser, id: string) {
+    return this.setup.run(ctx, user, true, async (tx, c) => {
+      const s = await tx.trainingSession.findFirst({ where: { organizationId: c.organizationId, id } });
+      if (!s) throw new NotFoundException('Not found');
+      if (s.cancelledAt) throw new ConflictException('That session is already cancelled.');
+      if (s.endsAt.getTime() < Date.now()) throw new ConflictException('That session has ended, so it stays on record.');
+      await tx.trainingSession.update({ where: { id }, data: { cancelledAt: new Date() } });
+      await audit(tx, c, 'time.training.cancelled', 'training_session', id, { title: s.title });
+      return { id };
+    });
+  }
+
   registerKiosk(ctx: TenantContext, user: ScopeUser, dto: RegisterKioskDto) {
     return this.setup.run(ctx, user, true, async (tx, c) => {
       const org = c.organizationId;

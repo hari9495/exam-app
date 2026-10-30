@@ -1,8 +1,8 @@
-import { Body, Controller, Get, Headers, HttpCode, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { SkipGlobalThrottle } from '../fail-open-throttler.guard';
 import { PUBLIC_API_THROTTLE, STRICT_WALK_IN_THROTTLE } from '../rate-limit-tiers';
-import { DevicePunchDto, KioskIdentifyDto, KioskPunchDto, KioskSetupDto, KioskSyncDto } from './devices.dto';
+import { DevicePunchDto, KioskCodeDto, KioskIdentifyDto, KioskLeaveDto, KioskPersonDto, KioskPunchDto, KioskSetupDto, KioskSyncDto } from './devices.dto';
 import { CurrentKiosk, KioskGuard, KioskThrottlerGuard } from './kiosk.guard';
 import { KioskService, type Kiosk } from './kiosk.service';
 
@@ -34,6 +34,39 @@ export class KioskController {
   @Throttle(PUBLIC_API_THROTTLE)
   identify(@CurrentKiosk() k: Kiosk, @Body() dto: KioskIdentifyDto) {
     return this.kiosks.identify(k, dto);
+  }
+
+  @Post('code')
+  @HttpCode(200)
+  @UseGuards(KioskGuard)
+  @Throttle(PUBLIC_API_THROTTLE)
+  code(@CurrentKiosk() k: Kiosk, @Body() dto: KioskCodeDto) {
+    return this.kiosks.checkCode(k, dto.code);
+  }
+
+  @Get('person/leave')
+  @UseGuards(KioskGuard)
+  leave(@CurrentKiosk() k: Kiosk, @Headers('x-kiosk-person') person?: string) {
+    return this.kiosks.leave(k, person);
+  }
+
+  @Post('person/leave')
+  @UseGuards(KioskGuard)
+  applyLeave(@CurrentKiosk() k: Kiosk, @Body() dto: KioskLeaveDto) {
+    return this.kiosks.applyLeave(k, dto);
+  }
+
+  @Get('person/training')
+  @UseGuards(KioskGuard)
+  training(@CurrentKiosk() k: Kiosk, @Headers('x-kiosk-person') person?: string) {
+    return this.kiosks.training(k, person);
+  }
+
+  @Post('person/training/:id')
+  @HttpCode(200)
+  @UseGuards(KioskGuard)
+  markTraining(@CurrentKiosk() k: Kiosk, @Param('id', ParseUUIDPipe) id: string, @Body() dto: KioskPersonDto) {
+    return this.kiosks.markTraining(k, dto.person, id);
   }
 
   @Get('person/today')

@@ -1,4 +1,5 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { DateTime } from 'luxon';
 import * as argon2 from 'argon2';
 import { SignJWT, jwtVerify } from 'jose';
 import { TenantPrismaService } from '@exam-platform/shared';
@@ -6,9 +7,11 @@ import { CompanyContext, Tx, audit } from '../org-structure/org-structure.servic
 import { DevicesService, type PunchResult } from './devices.service';
 import { DevicePunchDto, KioskIdentifyDto, KioskSyncItemDto } from './devices.dto';
 import { KIOSK_PERSON_SECONDS, afterWrongPin, normalSetupCode, newDeviceToken, pinLocked, sha256, tokenOrg } from './device-rules';
-import { Facts, asDate, dateOf, factsOn, todayIn } from './time-core';
+import { SETTINGS } from '../org-structure/settings-registry';
+import { LeaveService } from './leave.service';
+import { Facts, asDate, dateOf, factsOn, holidaysFor, leaveDays, settingOn, todayIn } from './time-core';
 import { ScheduleBook } from './schedule';
-import { localDate } from './time-maths';
+import { addDays, localDate } from './time-maths';
 
 // TIM-13 Kiosk (feature sheet rule 14): a shared tablet with no user sign-in. HR's one-time set-up code becomes the
 // kiosk's own secret (only its SHA-256 is kept); every call carries it. A person is identified by employee code and
@@ -32,6 +35,7 @@ const CARD_AUDIENCE = 'yx-kiosk-card';
 const BAD_SETUP = 'This set-up code is not right or has expired. Ask HR for a new code on Devices and kiosks.';
 const NOT_SET_UP = 'This kiosk is not set up, or HR reset it. Ask HR for a set-up code.';
 const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? '';
+const clock = (at: Date, zone: string) => DateTime.fromJSDate(at, { zone }).toFormat('h:mm a').toLowerCase();
 const ctxOf = (k: Kiosk): CompanyContext => ({ organizationId: k.org, isSuperAdmin: false, userId: null, role: null, supportSessionId: null });
 
 /** A stored argon2id hash nothing matches: an unknown code costs the same time as a wrong PIN. */
@@ -43,6 +47,7 @@ export class KioskService {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly devices: DevicesService,
+    private readonly leaves: LeaveService,
   ) {}
 
   // ------------------------------------------------------------------------------------------ set-up and the guard
@@ -233,6 +238,144 @@ export class KioskService {
           ...fixes.map((r) => ({ id: r.id, kind: r.kind === 'wfh' ? 'wfh' : 'fix', label: r.kind === 'wfh' ? 'Work from home' : 'Attendance fix', from: dateOf(r.workOn), to: dateOf(r.workOn), days: 1, status: r.status })),
         ],
       };
+    });
+  }
+
+  // ------------------------------------------------------------------------------------------ unknown code (TIM-13)
+
+  /**
+   * Before the PIN: is this employee code known here? Founder decision (30 Oct 2026): an unknown code is told apart
+   * (kiosk.tell_unknown_code, default yes); the kiosk secret and the per-kiosk rate limit stop anyone probing codes.
+   * With the setting off every code goes on to the PIN, and an unknown one gets the PIN answer.
+   */
+  async checkCode(k: Kiosk, code: string) {
+    this.attendanceOnly(k);
+    const c = ctxOf(k);
+    return this.tenantPrisma.forTenant(c, async (tx) => {
+      const methods = await this.devices.methodsAt(tx, k.org, k.locationId);
+      if (!methods.includes('pin')) throw new ForbiddenException('This kiosk does not take code and PIN sign-in. Ask HR which to use here.');
+      const tell = await tx.setting.findFirst({ where: { organizationId: k.org, key: 'kiosk.tell_unknown_code', scopeType: 'tenant' } });
+      if (String(tell?.value ?? SETTINGS['kiosk.tell_unknown_code'].default) !== 'yes') return { known: true };
+      const [emp] = await tx.$queryRaw<{ id: string }[]>`
+        SELECT m.employee_id::text AS id FROM employments m
+        WHERE m.organization_id = ${k.org}::uuid AND m.employee_code = ${code} AND (m.exited_on IS NULL OR m.exited_on >= current_date) LIMIT 1`;
+      if (emp) return { known: true };
+      await audit(tx, c, 'time.kiosk.sign_in_refused', 'time_device', k.deviceId, { reason: 'unknown_code' });
+      throw new NotFoundException({ statusCode: 404, code: 'UNKNOWN_CODE', message: `No one with code ${code}. Check the code on your ID card and try again.` });
+    });
+  }
+
+  // ------------------------------------------------------------------------------------------ leave at the kiosk (TIM-13)
+
+  /** Kinds a person applies for at a kiosk; sick leave is recorded by the supervisor, special leave goes through HR. */
+  private static readonly KIOSK_KINDS = ['earned', 'casual', 'comp_off'];
+
+  private async leaveFacts(tx: Tx, k: Kiosk, id: string) {
+    const f = await this.factsNow(tx, k, id);
+    if ((await settingOn(tx, ctxOf(k), 'kiosk.leave', f, todayIn(f.zone))) !== 'on') throw new ForbiddenException({ statusCode: 403, code: 'KIOSK_LEAVE_OFF', message: 'Leave is not applied at this kiosk. Ask your supervisor.' });
+    return f;
+  }
+
+  /** What Apply leave shows: the types with days left (after pending requests), sick leave, the approver, the next 10 days. */
+  async leave(k: Kiosk, token: string | undefined) {
+    this.attendanceOnly(k);
+    const id = await this.person(k, token);
+    return this.tenantPrisma.forTenant(ctxOf(k), async (tx) => {
+      const f = await this.leaveFacts(tx, k, id);
+      const today = todayIn(f.zone);
+      const balances = (await this.leaves.balancesIn(tx, ctxOf(k), f, today)).filter((b) => b.hasBalance);
+      const from = addDays(today, 1);
+      const to = addDays(today, 10);
+      const { map } = await holidaysFor(tx, k.org, f.locationId, from, to, f.employeeId);
+      const book = await ScheduleBook.load(tx, k.org);
+      await book.prime([f.employeeId], from, to);
+      const [approved, pending] = await Promise.all([leaveDays(tx, k.org, f.employeeId, from, to), leaveDays(tx, k.org, f.employeeId, from, to, ['pending'])]);
+      const days = [];
+      for (let d = from; d <= to; d = addDays(d, 1)) {
+        const day = await book.day(f, d);
+        const holiday = map.get(d)?.name ?? null;
+        const note = approved.has(d) ? 'On leave' : pending.has(d) ? 'Requested' : day.weeklyOff ? 'Weekly off' : holiday && !day.shift ? 'Holiday' : null;
+        days.push({ on: d, note, holiday, hint: !note && holiday ? 'Holiday shift' : null });
+      }
+      const [boss] = f.managerEmployeeId ? await tx.$queryRaw<{ name: string }[]>`SELECT concat_ws(' ', coalesce(preferred_name, given_name), family_name) AS name FROM employees WHERE organization_id = ${k.org}::uuid AND id = ${f.managerEmployeeId}::uuid` : [];
+      const sick = balances.find((b) => b.kind === 'sick');
+      return {
+        firstName: firstName(f.name),
+        today,
+        types: balances.filter((b) => KioskService.KIOSK_KINDS.includes(b.kind)).map((b) => ({ id: b.leaveTypeId, name: b.name, kind: b.kind, available: b.available, pending: b.pending })),
+        sick: sick ? { name: sick.name, available: sick.available } : null,
+        approver: boss?.name ?? null,
+        days,
+      };
+    });
+  }
+
+  /** Apply leave at the kiosk: whole days from tomorrow, a kiosk kind, then the normal rules and approval chain. */
+  async applyLeave(k: Kiosk, dto: { person: string; leaveTypeId: string; from: string; to: string }) {
+    this.attendanceOnly(k);
+    const id = await this.person(k, dto.person);
+    const f = await this.tenantPrisma.forTenant(ctxOf(k), async (tx) => {
+      const facts = await this.leaveFacts(tx, k, id);
+      const today = todayIn(facts.zone);
+      if (dto.from <= today) throw new BadRequestException('Pick days from tomorrow. For today, ask your supervisor.');
+      if (dto.to < dto.from) throw new BadRequestException('Tap the first day, then the last day.');
+      if (dto.to > addDays(today, 30)) throw new BadRequestException('At the kiosk you can apply up to 30 days ahead. For later dates use the app or ask your supervisor.');
+      const t = await tx.leaveType.findFirst({ where: { organizationId: k.org, id: dto.leaveTypeId, active: true }, select: { kind: true } });
+      if (!t) throw new NotFoundException('No such leave type.');
+      if (!KioskService.KIOSK_KINDS.includes(t.kind)) throw new BadRequestException(t.kind === 'sick' ? 'Ask your supervisor to record sick days.' : 'This leave is applied through HR. Ask your supervisor.');
+      return facts;
+    });
+    const res = await this.leaves.applyAtKiosk(ctxOf(k), f, { leaveTypeId: dto.leaveTypeId, from: dto.from, to: dto.to, reason: `Applied at kiosk ${k.code}` });
+    return res;
+  }
+
+  // ------------------------------------------------------------------------------------------ training (TIM-13)
+
+  private async opensMinutes(tx: Tx, k: Kiosk, f: Facts) {
+    return Number(await settingOn(tx, ctxOf(k), 'kiosk.training_opens_minutes', f, todayIn(f.zone)));
+  }
+
+  /** Today's training sessions at this kiosk's location that have not ended, with when check-in opens. */
+  async training(k: Kiosk, token: string | undefined) {
+    this.attendanceOnly(k);
+    const id = await this.person(k, token);
+    return this.tenantPrisma.forTenant(ctxOf(k), async (tx) => {
+      const f = await this.factsNow(tx, k, id);
+      const now = new Date();
+      const opens = await this.opensMinutes(tx, k, f);
+      const zone = (await tx.location.findFirst({ where: { organizationId: k.org, id: k.locationId }, select: { timezone: true } }))?.timezone ?? 'Asia/Kolkata';
+      const today = todayIn(zone);
+      const rows = await tx.trainingSession.findMany({ where: { organizationId: k.org, locationId: k.locationId, cancelledAt: null, endsAt: { gt: now } }, orderBy: { startsAt: 'asc' }, take: 20 });
+      const mine = new Set((await tx.trainingAttendance.findMany({ where: { organizationId: k.org, employeeId: id, sessionId: { in: rows.map((r) => r.id) } }, select: { sessionId: true } })).map((x) => x.sessionId));
+      return {
+        zone,
+        sessions: rows
+          .filter((r) => localDate(r.startsAt, zone) === today)
+          .map((r) => ({ id: r.id, title: r.title, room: r.room, startsAt: r.startsAt, endsAt: r.endsAt, opensAt: new Date(r.startsAt.getTime() - opens * 60_000), marked: mine.has(r.id) })),
+      };
+    });
+  }
+
+  /** Mark the person present at a session: only at its location, from the opening time until it ends; once. */
+  async markTraining(k: Kiosk, person: string, sessionId: string) {
+    this.attendanceOnly(k);
+    const id = await this.person(k, person);
+    const c = ctxOf(k);
+    return this.tenantPrisma.forTenant(c, async (tx) => {
+      const f = await this.factsNow(tx, k, id);
+      const s = await tx.trainingSession.findFirst({ where: { organizationId: k.org, id: sessionId, locationId: k.locationId, cancelledAt: null } });
+      if (!s) throw new NotFoundException('No such training here today.');
+      const now = new Date();
+      const opensAt = new Date(s.startsAt.getTime() - (await this.opensMinutes(tx, k, f)) * 60_000);
+      const zone = (await tx.location.findFirst({ where: { organizationId: k.org, id: k.locationId }, select: { timezone: true } }))?.timezone ?? 'Asia/Kolkata';
+      if (now < opensAt) throw new ConflictException({ statusCode: 409, code: 'TRAINING_NOT_OPEN', message: `Training opens at ${clock(opensAt, zone)}.` });
+      if (now >= s.endsAt) throw new ConflictException({ statusCode: 409, code: 'TRAINING_ENDED', message: 'This training has ended.' });
+      const done = await tx.trainingAttendance.findUnique({ where: { organizationId_sessionId_employeeId: { organizationId: k.org, sessionId, employeeId: id } } });
+      if (!done) {
+        await tx.trainingAttendance.create({ data: { organizationId: k.org, sessionId, employeeId: id, deviceId: k.deviceId } });
+        await audit(tx, c, 'time.training.marked', 'training_session', sessionId, { employeeId: id, kiosk: k.code });
+      }
+      return { sessionId, title: s.title, startsAt: s.startsAt, markedAt: done?.markedAt ?? now, repeat: Boolean(done) };
     });
   }
 

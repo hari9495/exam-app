@@ -204,3 +204,55 @@ export class PhoneSyncDto {
   @Type(() => PhonePunchItemDto)
   items!: PhonePunchItemDto[];
 }
+
+/** TIM-13: is this employee code known here (before the PIN)? */
+export class KioskCodeDto {
+  @trim()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(40)
+  code!: string;
+}
+
+/** TIM-13: the person at the kiosk (the short-lived pass from identify). */
+export class KioskPersonDto {
+  @IsString()
+  @MaxLength(2000)
+  person!: string;
+}
+
+/** TIM-13: leave applied at the kiosk, whole days only. */
+export class KioskLeaveDto extends KioskPersonDto {
+  @IsUUID()
+  leaveTypeId!: string;
+
+  @IsDateString({ strict: true })
+  from!: string;
+
+  @IsDateString({ strict: true })
+  to!: string;
+}
+
+/** TIM-13: a training session HR sets up at a location (people mark themselves present at its kiosk). */
+export class TrainingSessionDto {
+  @IsUUID()
+  locationId!: string;
+
+  @trim()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  title!: string;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(80)
+  room?: string;
+
+  @IsDateString({ strict: true })
+  startsAt!: string;
+
+  @IsDateString({ strict: true })
+  endsAt!: string;
+}

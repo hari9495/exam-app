@@ -1,0 +1,59 @@
+import { addDays } from './time-maths';
+
+// TIM-26 holiday calendar rules, pure and unit-tested: clone to next year, a state template, and the substitute day
+// off for a holiday on a weekly off. Dates are ISO calendar dates (yyyy-mm-dd).
+
+export interface HolidayRow {
+  on: string;
+  name: string;
+  kind: string;
+  halfDay: boolean;
+}
+
+/** Kinds whose date changes from year to year (festivals; optional and restricted days are mostly festivals). */
+const MOVES = new Set(['festival', 'optional', 'restricted']);
+
+/**
+ * A calendar copied to `year`: the same day and month (29 Feb becomes 28 Feb). Festivals keep the copied date as a
+ * draft HR must confirm, since their dates change every year; fixed-date days are ready.
+ */
+export function cloneToYear(rows: readonly HolidayRow[], year: number): (HolidayRow & { confirm: boolean })[] {
+  const seen = new Set<string>();
+  const out: (HolidayRow & { confirm: boolean })[] = [];
+  for (const h of [...rows].sort((a, b) => a.on.localeCompare(b.on))) {
+    const md = h.on.slice(5) === '02-29' ? '02-28' : h.on.slice(5);
+    const on = `${year}-${md}`;
+    if (seen.has(on)) continue;
+    seen.add(on);
+    out.push({ on, name: h.name, kind: h.kind, halfDay: h.halfDay, confirm: MOVES.has(h.kind) });
+  }
+  return out;
+}
+
+/** A state template from `from` to the end of that year: the feed's days, one per date, as state holidays. */
+export function templateRows(feed: readonly { on: string; name: string }[], from: string): HolidayRow[] {
+  const end = `${from.slice(0, 4)}-12-31`;
+  const seen = new Set<string>();
+  return [...feed]
+    .sort((a, b) => a.on.localeCompare(b.on))
+    .filter((h) => h.on >= from && h.on <= end && !seen.has(h.on) && seen.add(h.on))
+    .map((h) => ({ on: h.on, name: h.name.slice(0, 100), kind: 'state', halfDay: false }));
+}
+
+/**
+ * Substitute days off (E19 / YX-AT-11, calendar rule "substitute"): a whole-day holiday on a weekly off gives the next
+ * day that is neither a weekly off nor a holiday nor another substitute. Optional and restricted days give none.
+ */
+export function substituteDays(holidays: readonly HolidayRow[], isOff: (on: string) => boolean): { on: string; name: string; forOn: string }[] {
+  const taken = new Set(holidays.map((h) => h.on));
+  const out: { on: string; name: string; forOn: string }[] = [];
+  for (const h of [...holidays].sort((a, b) => a.on.localeCompare(b.on))) {
+    if (h.halfDay || h.kind === 'optional' || h.kind === 'restricted' || !isOff(h.on)) continue;
+    let d = addDays(h.on, 1);
+    // A week of weekly offs and holidays in a row is not a real calendar; stop rather than loop.
+    for (let i = 0; i < 14 && (isOff(d) || taken.has(d)); i++) d = addDays(d, 1);
+    taken.add(d);
+    out.push({ on: d, name: `${h.name} (substitute day off)`, forOn: h.on });
+  }
+  return out;
+}

@@ -3,7 +3,9 @@ import { Prisma } from '@prisma/client';
 import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { ScopeContext, SETTINGS, SettingDef, resolveSetting } from '../org-structure/settings-registry';
 import { Viewer, has, implicitSql, inScopeSql, tenantWide } from '../access/scope';
-import { DayRule, Floor, HolidayOn, WeeklyOffRule, eachDay, localDate } from './time-maths';
+import { DayRule, Floor, HolidayOn, WeeklyOffRule, addDays, eachDay, isWeeklyOff, localDate } from './time-maths';
+import { substituteDays } from './holiday-rules';
+import { pickPolicy } from './leave-rules';
 import type { MaternityValues } from './time-rules';
 
 // Shared loaders for leave and attendance: the employee's dated facts, the location's calendar and rules, the
@@ -228,12 +230,21 @@ export async function settingOn(tx: Tx, c: CompanyContext, key: string, f: Facts
 // belongs to one entity, so it is the more specific scope). Leave policies follow the shared order until decided.
 const POLICY_DEF: SettingDef = { label: 'Leave policy', scopes: ['employee', 'designation', 'grade', 'employment_type', 'department', 'location', 'legal_entity', 'tenant'], dated: true, values: [], default: '' };
 
+/** The policy id for one person's scopes on a date: the saved order (TIM-28) or the most specific scope. */
+export function policyFor(assignments: readonly { id: string; scopeType: string; scopeId: string; policyId: string; validFrom: Date }[], order: readonly string[] | null, ctx: ScopeContext, on: string): string | null {
+  const rows = assignments.map((a) => ({ id: a.id, scopeType: a.scopeType, scopeId: a.scopeId, value: a.policyId, validFrom: iso(a.validFrom) }));
+  const r = resolveSetting(POLICY_DEF, rows, ctx, on);
+  return pickPolicy(rows, ctx as Record<string, string | undefined>, on, { value: String(r.value), scopeType: r.source.scopeType }, order);
+}
+
 /** The policy version in force for the employee on `on`, with its lines; null when no policy applies. */
 export async function policyOn(tx: Tx, c: CompanyContext, f: Facts, on: string): Promise<{ policyId: string; name: string; lines: PolicyLine[] } | null> {
-  const rows = await tx.leavePolicyAssignment.findMany({ where: { organizationId: c.organizationId } });
-  const r = resolveSetting(POLICY_DEF, rows.map((a) => ({ id: a.id, scopeType: a.scopeType, scopeId: a.scopeId, value: a.policyId, validFrom: iso(a.validFrom) })), scopeContext(c, f), on);
-  if (!r.value) return null;
-  const policyId = String(r.value);
+  const [rows, order] = await Promise.all([
+    tx.leavePolicyAssignment.findMany({ where: { organizationId: c.organizationId } }),
+    tx.leavePolicyOrder.findFirst({ where: { organizationId: c.organizationId, validFrom: { lte: asDate(on) } }, orderBy: { validFrom: 'desc' } }),
+  ]);
+  const policyId = policyFor(rows, order?.policyIds ?? null, scopeContext(c, f), on);
+  if (!policyId) return null;
   const [policy, version] = await Promise.all([
     tx.leavePolicy.findFirst({ where: { organizationId: c.organizationId, id: policyId } }),
     tx.leavePolicyVersion.findFirst({ where: { organizationId: c.organizationId, policyId, validFrom: { lte: asDate(on) } }, orderBy: { validFrom: 'desc' } }),
@@ -267,6 +278,14 @@ export async function holidaysFor(tx: Tx, org: string, locationId: string, from:
   for (const h of rows) {
     if ((h.kind === 'optional' || h.kind === 'restricted') && !chosen.has(h.id)) continue;
     map.set(iso(h.holidayOn), { name: h.name, halfDay: h.halfDay, openHalf: cal.halfDayOpenHalf as 'first' | 'second' });
+  }
+  // TIM-26 calendar rule: a holiday on the location's weekly off gives the next working day off (two weeks back
+  // covers a substitute that lands in the range).
+  if (cal.onWeeklyOff === 'substitute') {
+    const back = await tx.holiday.findMany({ where: { organizationId: org, calendarId: cal.id, holidayOn: { gte: asDate(addDays(from, -14)), lte: asDate(addDays(to, 14)) } } });
+    const ruleOn = await rulesFor(tx, org, locationId, addDays(to, 14));
+    const subs = substituteDays(back.map((h) => ({ on: iso(h.holidayOn), name: h.name, kind: h.kind, halfDay: h.halfDay })), (d) => isWeeklyOff(d, ruleOn(d).weeklyOffs));
+    for (const s of subs) if (s.on >= from && s.on <= to && !map.has(s.on)) map.set(s.on, { name: s.name, halfDay: false, openHalf: cal.halfDayOpenHalf as 'first' | 'second' });
   }
   return { map, calendarId: cal.id };
 }

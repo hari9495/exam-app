@@ -446,6 +446,17 @@ export class LeaveService implements OnModuleInit {
   }
 
   /**
+   * TIM-13: leave the person applies at a kiosk after code and PIN (or the ID card): as if they applied themselves
+   * (the same rules, notice and approval chain), so the request and its audit name them.
+   */
+  async applyAtKiosk(c: CompanyContext, f: Facts, dto: ApplyLeaveDto) {
+    const notices: Notice[] = [];
+    const res = await this.tenantPrisma.forTenant(c, (tx) => this.applyIn(tx, { ...c, userId: f.userId }, f, todayIn(f.zone), dto, notices));
+    await this.engine.send(c as TenantContext, notices);
+    return res;
+  }
+
+  /**
    * Founder decision 2: HR applies leave for someone in their leave.balance.adjust scope (never their own: My leave),
    * never while acting for someone else; another company's person is 404. The notice rule follows
    * leave.notice.on_behalf (skip by default, audited on the request). Founder answer B: the request goes through the
