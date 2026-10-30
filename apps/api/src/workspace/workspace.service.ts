@@ -463,8 +463,11 @@ export class WorkspaceService {
         WHERE i.organization_id = ${org}::uuid AND i.status = 'open' AND k.status IN ('accepted', 'cleared', 'exited')
           AND (i.owner_user_id = ${me}::uuid OR i.owner_group_id IN (SELECT g.group_id FROM user_group_members g WHERE g.organization_id = i.organization_id AND g.user_id = ${me}::uuid))`);
       if (linksPeople) {
-        // PPL-36: the designed list's own pairs (People › More › Possible same person).
-        out.possibleSamePerson = await one(Prisma.sql`SELECT count(*) AS n FROM (${samePersonPairs(org)}) pairs`);
+        // PPL-36: the designed list's own pairs (People › More › Possible same person). The menu item shows while a pair
+        // waits, and for 90 days after any merge so Merged › Unmerge stays easy to find (founder, 30 Oct 2026).
+        const waiting = await one(Prisma.sql`SELECT count(*) AS n FROM (${samePersonPairs(org)}) pairs`);
+        const show = waiting > 0 || (await tx.personLinkLog.count({ where: { organizationId: org, action: 'merge', createdAt: { gte: new Date(Date.now() - 90 * 86_400_000) } } })) > 0;
+        if (show) out.possibleSamePerson = waiting;
       }
       if (keys.has('lifecycle.exit.manage') || keys.has('lifecycle.exit.view')) out.exitCases = await tx.exitCase.count({ where: { organizationId: org, status: { in: ['submitted', 'accepted', 'cleared'] } } });
       if (!support && keys.has('payroll.query.handle')) out.payslipQueries = await tx.payslipQuery.count({ where: { organizationId: org, status: 'open' } });

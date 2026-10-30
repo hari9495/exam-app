@@ -252,7 +252,8 @@ describe('Workspace search and counts (design shell step 1; P02 §4.3, YX-SEC-05
     expect(arjun.possibleSamePerson).toBeUndefined();
     expect(hr.readyToOnboard).toBeUndefined(); // no lifecycle.onboarding.manage
     expect(hr.probationsDue).toBe(0); // company-wide profile grant
-    expect(hr.possibleSamePerson).toBe(0);
+    // Nothing waits and no merge in the last 90 days: no count, so no menu item (people-followups covers the 90 days).
+    expect(hr.possibleSamePerson).toBeUndefined();
     expect(hr.clearanceToDo).toBe(0);
     // Possible same person is company-wide HR work: a scoped HR gets no count, so no menu item (PPL-36 audit).
     const plant = (await api('plantHrA', 'get', '/workspace/counts').expect(200)).body;

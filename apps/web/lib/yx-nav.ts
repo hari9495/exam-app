@@ -45,6 +45,9 @@ export interface NavInput {
   designated?: boolean;
 }
 
+/** Possible same person is in the menu when the server sends its count: company-wide HR while a pair waits or for 90 days after any merge, even at 0. */
+export const samePersonInMenu = (counts: Partial<Record<CountKey, number>> | undefined) => counts?.possibleSamePerson !== undefined;
+
 const L = (id: string, label: string, href: string, count?: CountKey): NavLink => ({ id, label, href, ...(count ? { count } : {}) });
 const when = <T,>(ok: boolean, ...items: T[]): T[] => (ok ? items : []);
 const sec = (label: string | undefined, items: NavLink[]): NavSection[] => (items.length ? [{ ...(label ? { label } : {}), items }] : []);

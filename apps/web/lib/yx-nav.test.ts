@@ -1,4 +1,4 @@
-import { accountLinks, activeLink, buildNav, panelOf, type NavInput } from './yx-nav';
+import { accountLinks, activeLink, buildNav, panelOf, samePersonInMenu, type NavInput } from './yx-nav';
 
 // The menu by product area (design audit step 1). These replace the old WorkspaceShell menu tests: each link shows to
 // exactly the people who may open its page, by the same keys as before.
@@ -43,6 +43,14 @@ describe('buildNav: People', () => {
   it('a menu item never shows where the page says no access: Possible same person only when the server counts it', () => {
     expect(labels(nav(['employee.profile.view', 'employee.change.manage']), 'people')).not.toContain('Possible same person');
     expect(labels(nav(['employee.profile.view', 'employee.change.manage'], { samePerson: true }), 'people')).toContain('Possible same person');
+  });
+
+  it('Possible same person stays after a merge with nothing waiting (the server sends a count of 0 for 90 days); a support session never sees it', () => {
+    const hr = ['employee.profile.view', 'employee.change.manage'];
+    expect(labels(nav(hr, { samePerson: samePersonInMenu({ possibleSamePerson: 0 }) }), 'people')).toContain('Possible same person');
+    expect(labels(nav(hr, { samePerson: samePersonInMenu({}) }), 'people')).not.toContain('Possible same person');
+    expect(samePersonInMenu(undefined)).toBe(false);
+    expect(labels(nav(hr, { samePerson: true, support: true }), 'people')).not.toContain('Possible same person');
   });
 
   it('HR sees the designed sections: Onboarding, Changes and the rest by key', () => {

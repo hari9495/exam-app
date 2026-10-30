@@ -22,7 +22,7 @@ import { todayIst, useOrg, useYxPermissions, type Reference } from '../../../lib
 import { hiddenToday, hideForToday, localStore } from '../../../lib/yx-notice';
 import { usePeople } from '../../../lib/yx-people';
 import { useLife } from '../../../lib/yx-lifecycle';
-import { ME_SECURITY, accountLinks, activeLink, buildNav, panelOf, withAccount, type NavArea } from '../../../lib/yx-nav';
+import { ME_SECURITY, accountLinks, activeLink, buildNav, panelOf, samePersonInMenu, withAccount, type NavArea } from '../../../lib/yx-nav';
 import { ScopeProvider, recentMonths, useScope, useWorkspaceCounts } from '../../../lib/yx-shell';
 import { DeskHelp } from './desk-help';
 
@@ -101,7 +101,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         clearance: Boolean(myClearance.data?.rows.length),
         tasks: Boolean(myTasks.data?.tasks.length),
         firstDays: Boolean(firstDays.data?.card),
-        samePerson: counts.data?.possibleSamePerson !== undefined,
+        samePerson: samePersonInMenu(counts.data),
         designated: counts.data?.declarationsDue !== undefined,
       }),
     // perms.data drives perms.has
