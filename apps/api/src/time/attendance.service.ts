@@ -515,8 +515,19 @@ export class AttendanceService implements OnModuleInit {
       const p = book.patternOn(f, on);
       const monday = addDays(on, -((new Date(`${on}T00:00:00Z`).getUTCDay() + 6) % 7));
       const day = await book.day(f, on);
+      const [place, role] = await Promise.all([
+        tx.location.findFirst({ where: { organizationId: org, id: f.locationId }, select: { name: true } }),
+        tx.designation.findFirst({ where: { organizationId: org, id: f.designationId }, select: { name: true } }),
+      ]);
       return {
         month,
+        // Extra · Attendance calendar, Manager · one person: who, every day of the month, waiting fixes and locked days.
+        employee: { id: f.employeeId, name: f.name, code: f.code, role: role?.name ?? null, location: place?.name ?? null },
+        today,
+        zone: f.zone,
+        days: days.map((d) => ({ on: dateOf(d.workOn), status: d.status, leavePart: d.leavePart, firstIn: d.firstIn, lastOut: d.lastOut, workedMinutes: d.workedMinutes, lateMinutes: d.lateMinutes, regularised: d.regularised })),
+        requests: fixes.filter((r) => r.status === 'pending').map((r) => ({ id: r.id, on: dateOf(r.workOn), kind: r.kind, status: r.status })),
+        locked: from <= today ? [...(await lockedDates(tx, org, employeeId, from, to < today ? to : today))].sort() : [],
         present: days.reduce((n, d) => n + (d.status === 'present' ? 1 : d.status === 'half_day' ? 0.5 : 0), 0),
         late: days.filter((d) => (d.lateMinutes ?? 0) > 0).map((d) => dateOf(d.workOn)),
         missing: missing.map((d) => {

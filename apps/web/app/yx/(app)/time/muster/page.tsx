@@ -33,6 +33,7 @@ export default function YxMusterPage() {
         onResolve: (input) => write('/exceptions/resolve', 'POST', input, true, 'Exception resolved'),
         onDecideOt: (id, decision, reason) => write(`/overtime/${encodeURIComponent(id)}/decide`, 'POST', { decision, ...(reason ? { reason } : {}) }, true, decision === 'reject' ? 'Overtime rejected' : decision === 'comp_off' ? 'Comp-off given' : 'Overtime approved'),
         exceptionsHref: '/yx/time/exceptions',
+        personHref: (employeeId, m) => `/yx/time/muster/${encodeURIComponent(employeeId)}?month=${m}`,
       }}
     />
   );

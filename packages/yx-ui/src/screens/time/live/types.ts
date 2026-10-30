@@ -144,6 +144,20 @@ export interface DayRow {
 
 export type FixKind = 'missed_in' | 'missed_out' | 'wrong_time' | 'full_day';
 
+/** Extra · Attendance calendar, Manager · one person: GET /time/people/:id/attendance (their manager, or attendance.view in scope). */
+export interface PersonAttendance {
+  month: string;
+  employee: { id: string; name: string; code: string | null; role: string | null; location: string | null };
+  today: string;
+  zone: string;
+  days: DayRow[];
+  /** Fixes still waiting for approval this month. */
+  requests: { id: string; on: string; kind: FixKind | 'wfh'; status: 'pending' }[];
+  /** Days of the month in a frozen or locked period. */
+  locked: string[];
+  shift: { pattern: string | null; weekOf: string; name: string | null; start: number | null; end: number | null };
+}
+
 export interface FixRow {
   id: string;
   on: string;

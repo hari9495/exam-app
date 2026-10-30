@@ -8,7 +8,7 @@ import { Badge, DayDate, type BadgeTone } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, ErrorState, InlineAlert, NoAccessState, Pagination, Skeleton } from '../../components/feedback';
 import { BottomSheet, ConfirmDialog, Dialog } from '../../components/overlay';
-import { Card, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
+import { Breadcrumbs, Card, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { FilterBar } from '../../components/filters';
 import { RadioGroup, Switch } from '../../components/choice';
@@ -55,7 +55,7 @@ import { VISITS } from '../ops/visitors-data';
 import { useRun } from '../org/org-kit';
 import { AttendanceRequestSheet } from './requests';
 import { MODE_TEXT } from './live/kit';
-import type { DayCard, DayRow, ExceptionsList, LateCorrectionInput, TodayBoard, FixInput, FixRow, LoadState, Muster, MyAttendance, MyNightWork, NightCodeSent, Pin, PunchKind, PunchResult, PunchRow, ResolveInput, WfhInput } from './live/types';
+import type { DayCard, DayRow, ExceptionsList, LateCorrectionInput, TodayBoard, FixInput, FixRow, LoadState, Muster, MyAttendance, MyNightWork, NightCodeSent, PersonAttendance, Pin, PunchKind, PunchResult, PunchRow, ResolveInput, WfhInput } from './live/types';
 import './time.css';
 
 export type ViewState = 'ready' | 'loading' | 'error' | 'empty';
@@ -733,8 +733,12 @@ function exportMonth(who: string, label: string, days: AttendanceDay[]) {
   ]);
 }
 
-/** Extra · Attendance calendar. The app passes `live` (Me › Attendance); stories show the sample. */
-export function AttendanceCalendarScreen(p: AttendanceCalendarProps & { live?: LiveMyAttendance }) {
+/**
+ * Extra · Attendance calendar. The app passes `live` (Me › Attendance) or `personLive` (Manager · one person, from the
+ * muster); stories show the sample.
+ */
+export function AttendanceCalendarScreen(p: AttendanceCalendarProps & { live?: LiveMyAttendance; personLive?: LivePersonAttendance }) {
+  if (p.personLive) return <LivePersonCalendar live={p.personLive} />;
   return p.live ? <LiveAttendanceCalendar live={p.live} /> : <SampleAttendanceCalendar {...p} />;
 }
 
@@ -2170,6 +2174,24 @@ export interface LiveMyAttendance {
   now?: Date;
 }
 
+/** Manager · one person (Extra · Attendance calendar): one of my team's months; the server answers 404 outside my scope. */
+export interface LivePersonAttendance {
+  state: LoadState;
+  onRetry?: () => void;
+  data: PersonAttendance | null;
+  /** "2026-10" */
+  month: string;
+  onMonth: (month: string) => void;
+  /** The people the viewer may open (the muster's list: a manager's team). */
+  people: { id: string; name: string; role?: string }[];
+  onPick: (employeeId: string) => void;
+  /** The person's day card (TIM-03). */
+  onOpenDay: (on: string) => Promise<DayCard>;
+  musterHref: string;
+  /** TIM-04 exceptions, searched for this person. */
+  exceptionsHref?: string;
+}
+
 /** What the muster gets from the app (TIM-02): the people in my scope this month, and a day card per cell. */
 export interface LiveMusterData {
   state: LoadState;
@@ -2194,6 +2216,8 @@ export interface LiveMusterData {
   onDecideOt?: (claimId: string, decision: 'approve' | 'reject' | 'comp_off', reason?: string) => Promise<unknown>;
   /** Where "Open exceptions" goes (TIM-04). */
   exceptionsHref?: string;
+  /** Manager · one person: the person's month page (opened from their day card). */
+  personHref?: (employeeId: string, month: string) => string;
 }
 
 const LIVE_SOURCES: Punch['source'][] = ['web', 'mobile', 'biometric', 'kiosk', 'teams', 'desktop', 'field'];
@@ -2607,6 +2631,104 @@ function LiveAttendanceCalendar({ live }: { live: LiveMyAttendance }) {
   );
 }
 
+/** Manager · one person, live: the attendance calendar design on one of my team's months (read only, day cards open). */
+function LivePersonCalendar({ live }: { live: LivePersonAttendance }) {
+  const d = live.data;
+  const ready = live.state === 'ready' && !!d;
+  const say = useSay();
+  const narrow = useNarrow();
+  const [openOn, setOpenOn] = useState<string | null>(null);
+  const pending = new Set((d?.requests ?? []).filter((r) => r.kind !== 'wfh').map((r) => r.on));
+  const days = d ? liveMonth(live.month, d.days, d.today, pending) : [];
+  const label = monthLong(live.month);
+  const who = d?.employee.name ?? '';
+  const toFix = days.filter((x) => fixable(x.code));
+  const locked = !!d && d.locked.length > 0 && d.locked.length >= days.filter((x) => isoOf(x.date) <= d.today).length;
+  const open = openOn ? days.find((x) => isoOf(x.date) === openOn) ?? null : null;
+  const goMonth = (n: number) => {
+    if (!d) return;
+    if (n > 0 && live.month >= d.today.slice(0, 7)) return say(`${monthLong(shiftMonth(live.month, 1))} has not started yet.`, 'default');
+    setOpenOn(null);
+    live.onMonth(shiftMonth(live.month, n));
+  };
+  const picker = live.people.some((p) => p.id === d?.employee.id) ? live.people : d ? [{ id: d.employee.id, name: d.employee.name, role: d.employee.role ?? undefined }, ...live.people] : live.people;
+  return (
+    <TimePage active="Muster">
+      <PageHeader
+        title={d ? `Attendance · ${who}` : 'Attendance'}
+        description={d ? [d.employee.role, d.employee.location].filter(Boolean).join(' · ') : undefined}
+        breadcrumbs={<Breadcrumbs items={[{ label: 'Muster', href: live.musterHref }, ...(d ? [{ label: who }] : [])]} />}
+        actions={
+          <div className="yx-tim-row">
+            {picker.length > 0 && (
+              <div className="yx-tim-picker">
+                <PersonPicker aria-label="Person" value={d?.employee.id ?? null} onChange={(v) => { if (v && v !== d?.employee.id) { setOpenOn(null); live.onPick(v); } }} people={picker.map((p) => ({ id: p.id, name: p.name, role: p.role }))} />
+              </div>
+            )}
+            {ready && <Button icon={Download} onClick={() => exportMonth(who, label, days)}>Export month</Button>}
+          </div>
+        }
+      />
+      {ready && (
+        <div className="yx-tim-row yx-tim-monthnav">
+          <IconButton icon={ChevronLeft} label="Previous month" variant="secondary" onClick={() => goMonth(-1)} />
+          <h2 className="yx-tim-h2" aria-live="polite">{label}</h2>
+          <IconButton icon={ChevronRight} label="Next month" variant="secondary" onClick={() => goMonth(1)} />
+          {locked ? <Badge tone="neutral"><Lock size={12} aria-hidden="true" /> Locked</Badge> : <Badge tone="success">Open</Badge>}
+        </div>
+      )}
+      <LiveStates state={live.state} onRetry={live.onRetry} what={`${who || 'this person'}'s attendance`}>
+        {d && (
+          <div className="yx-tim-grid">
+            <div data-span="8">
+              <AttendanceMonth month={isoDay(`${live.month}-01`)} days={days} compact={narrow} selected={open?.date} onDayClick={(x) => setOpenOn(isoOf(x.date))} />
+            </div>
+            <div data-span="4" className="yx-tim-stack">
+              <Card title={`${label} totals`}>
+                <AttendanceLegend days={days} locked={locked} />
+              </Card>
+              {!locked && (
+                <Card title="Open exceptions">
+                  {toFix.length === 0 ? (
+                    <p className="yx-tim-muted">Nothing open for {who.split(' ')[0]} this month.</p>
+                  ) : (
+                    <ul className="yx-tim-list" aria-label="Open exceptions">
+                      {toFix.map((x) => (
+                        <li key={x.date.getTime()}>
+                          <span className="yx-tim-list__main"><strong>{shortDate(x.date)} · {DAY_CODE_LABEL[x.code]}</strong><span className="yx-tim-muted">{x.note ?? 'Not fixed yet'}</span></span>
+                          <Button size="sm" onClick={() => setOpenOn(isoOf(x.date))}>View</Button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {live.exceptionsHref && <Button size="sm" asChild><a href={live.exceptionsHref}>Open exceptions</a></Button>}
+                </Card>
+              )}
+            </div>
+          </div>
+        )}
+      </LiveStates>
+      <Drawer open={!!open && !!d} onOpenChange={(o) => !o && setOpenOn(null)} title={open ? <DayDate date={open.date} /> : ''} subtitle={`${who} · day card`} size="lg">
+        {open && d && openOn && (
+          <DayPanel
+            key={openOn}
+            live={{
+              load: () => live.onOpenDay(openOn),
+              day: open,
+              viewer: 'mgr',
+              person: who,
+              employeeId: d.employee.id,
+              approver: 'you',
+              monthDays: days,
+              fallbackShift: d.shift.start !== null && d.shift.end !== null ? { name: d.shift.name ?? 'Shift', start: hm(d.shift.start), end: hm(d.shift.end), graceMin: 0 } : { name: 'No shift', start: '00:00', end: '00:00', graceMin: 0 },
+            }}
+          />
+        )}
+      </Drawer>
+    </TimePage>
+  );
+}
+
 /** Me › Attendance › Today, live: the "My attendance today" design (web clock-in page) on my day. */
 function LiveAttendanceToday({ live }: { live: LiveMyAttendance }) {
   const d = live.data;
@@ -2921,7 +3043,14 @@ function LiveMusterScreen({ live }: { live: LiveMusterData }) {
       <BottomSheet open={!!sheetRow} onOpenChange={(o) => !o && setMonthOf(null)} title={sheetRow ? `${sheetRow.name} · ${label}` : ''}>
         {sheetRow && <AttendanceMonth month={monthDays[0].date} days={sheetRow.days} compact onDayClick={(x) => { setMonthOf(null); setCell([sheetRow.id, x.date.getDate() - 1]); }} />}
       </BottomSheet>
-      <Drawer open={!!day} onOpenChange={(o) => !o && setCell(null)} title={day && row ? `${row.name} · ${formatDate(day.date)}` : ''} subtitle={person ? [person.code, person.location].filter(Boolean).join(' · ') : 'Day card'} size="lg">
+      <Drawer
+        open={!!day}
+        onOpenChange={(o) => !o && setCell(null)}
+        title={day && row ? `${row.name} · ${formatDate(day.date)}` : ''}
+        subtitle={person ? [person.code, person.location].filter(Boolean).join(' · ') : 'Day card'}
+        size="lg"
+        footer={row && person && !person.me && live.personHref ? <Button asChild><a href={live.personHref(row.id, live.month)}>Open {person.name.split(' ')[0]}'s month</a></Button> : undefined}
+      >
         {day && row && person && (
           <DayPanel
             key={`${row.id}-${cell![1]}`}

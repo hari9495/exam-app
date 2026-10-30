@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { AttendanceCalendarScreen, MusterScreen, MyAttendanceTodayScreen, type LiveMusterData, type LiveMyAttendance } from './attendance';
-import type { DayCard, MyAttendance, Muster } from './live/types';
+import { AttendanceCalendarScreen, MusterScreen, MyAttendanceTodayScreen, type LiveMusterData, type LiveMyAttendance, type LivePersonAttendance } from './attendance';
+import type { DayCard, MyAttendance, Muster, PersonAttendance } from './live/types';
 
 // The designed attendance screens with `live` (Me › Attendance, its clock page, and Time › Muster), as the app renders
 // them: real data in, calls out. Ported from the old live copies' tests, plus the sub-pages' field errors and limits.
@@ -290,6 +290,12 @@ describe('Time › Muster (live)', () => {
     expect(screen.queryByRole('button', { name: /Resolve with reason|Nudge to fix/ })).toBeNull();
   });
 
+  it("Manager · one person: the day card links to the person's month", async () => {
+    render(<MusterScreen live={muster({ data: { ...data, scope: 'team' }, personHref: (eid, m) => `/yx/time/muster/${eid}?month=${m}` })} />);
+    await ue.click(screen.getByRole('button', { name: /Kavya Reddy, 1 Oct 2026: Present/ }));
+    expect(await screen.findByRole('link', { name: "Open Kavya's month" })).toHaveAttribute('href', '/yx/time/muster/k?month=2026-10');
+  });
+
   it('a day that cannot be opened says why', async () => {
     render(<MusterScreen live={muster({ onOpenDay: vi.fn(async () => { throw new Error('This person moved out of your team on 20 Oct.'); }) })} />);
     await ue.click(screen.getByRole('button', { name: /Kavya Reddy, 2 Oct 2026: Missing check-in/ }));
@@ -303,5 +309,45 @@ describe('Time › Muster (live)', () => {
     rerender(<MusterScreen live={muster({ state: 'error', data: null, onRetry })} />);
     await ue.click(screen.getByRole('button', { name: /Try again|Retry/ }));
     expect(onRetry).toHaveBeenCalled();
+  });
+});
+
+describe('Muster › one person (Extra · Attendance calendar, Manager · one person, live)', () => {
+  const pa: PersonAttendance = {
+    month: '2026-10',
+    employee: { id: 'k', name: 'Kavya Reddy', code: 'KFT-0031', role: 'Line supervisor', location: 'Hosur plant' },
+    today: '2026-10-09',
+    zone: 'Asia/Kolkata',
+    days: [
+      { on: '2026-10-01', status: 'present', leavePart: null, firstIn: '2026-10-01T04:00:00Z', lastOut: '2026-10-01T12:40:00Z', workedMinutes: 490, lateMinutes: 12, regularised: false },
+      { on: '2026-10-02', status: 'missing_out', leavePart: null, workedMinutes: null, lateMinutes: null, regularised: false },
+    ],
+    requests: [],
+    locked: [],
+    shift: { pattern: null, weekOf: '2026-10-05', name: 'Day', start: 540, end: 1080 },
+  };
+  const card: DayCard = { person: { name: 'Kavya Reddy', code: null }, on: '2026-10-02', zone: 'Asia/Kolkata', shift: { name: 'Day', start: 540, end: 1080, grace: 10 }, day: { status: 'missing_out', leavePart: null, workedMinutes: null, lateMinutes: null, regularised: false }, punches: [] };
+  const person = (over: Partial<LivePersonAttendance> = {}): LivePersonAttendance => ({ state: 'ready', data: pa, month: '2026-10', onMonth: vi.fn(), people: [{ id: 'k', name: 'Kavya Reddy' }, { id: 'r', name: 'Ravi Kumar' }], onPick: vi.fn(), onOpenDay: vi.fn(async () => card), musterHref: '/yx/time/muster', exceptionsHref: '/yx/time/exceptions?search=Kavya', ...over });
+
+  it("shows the person's month, totals and open exceptions; a day opens their day card; the picker moves to another of the team", async () => {
+    const l = person();
+    render(<AttendanceCalendarScreen personLive={l} />);
+    expect(screen.getByRole('heading', { name: 'Attendance · Kavya Reddy' })).toBeInTheDocument();
+    expect(screen.getByText('Line supervisor · Hosur plant')).toBeInTheDocument();
+    expect(within(screen.getByRole('list', { name: 'Open exceptions' })).getByText(/2 Oct 2026 · Missing check-out/)).toBeInTheDocument();
+    // Read only: a manager does not regularise for someone here.
+    expect(screen.queryByRole('button', { name: /Regularise/ })).toBeNull();
+    await ue.click(screen.getByRole('button', { name: 'Next month' }));
+    expect(l.onMonth).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('button', { name: 'Previous month' }));
+    expect(l.onMonth).toHaveBeenCalledWith('2026-09');
+    await ue.click(within(screen.getByRole('list', { name: 'Open exceptions' })).getByRole('button', { name: 'View' }));
+    expect(l.onOpenDay).toHaveBeenCalledWith('2026-10-02');
+  });
+
+  it('someone outside the team (the server answers 404): no access, no data shown', () => {
+    render(<AttendanceCalendarScreen personLive={person({ state: 'no-access', data: null })} />);
+    expect(screen.queryByText('Kavya Reddy')).toBeNull();
+    expect(screen.getByText(/this person's attendance/i)).toBeInTheDocument();
   });
 });
