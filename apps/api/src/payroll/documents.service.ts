@@ -63,7 +63,7 @@ const MONEY = /^\d{1,10}(\.\d{1,2})?$/;
 export function money(s: string): string {
   const [i, f] = new Prisma.Decimal(s).toFixed(2).split('.');
   const head = i.slice(0, -3);
-  return `Rs. ${head ? `${head.replace(/\B(?=(\d{2})+(?!\d))/g, ',')},` : ''}${i.slice(-3)}.${f}`;
+  return `₹${head ? `${head.replace(/\B(?=(\d{2})+(?!\d))/g, ',')},` : ''}${i.slice(-3)}.${f}`;
 }
 
 const tokenHash = (t: string) => createHash('sha256').update(t).digest('hex');

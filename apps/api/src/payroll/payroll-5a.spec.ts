@@ -55,9 +55,9 @@ describe('masking Confidential values in audit details', () => {
 
 describe('documents and confirmations', () => {
   it('writes rupees in the Indian grouping from Decimal text', () => {
-    expect(money('55380')).toBe('Rs. 55,380.00');
-    expect(money('1234567.5')).toBe('Rs. 12,34,567.50');
-    expect(money('999')).toBe('Rs. 999.00');
+    expect(money('55380')).toBe('₹55,380.00');
+    expect(money('1234567.5')).toBe('₹12,34,567.50');
+    expect(money('999')).toBe('₹999.00');
   });
 
   it('asks for the entity and month in capitals to reopen', () => {

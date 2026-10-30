@@ -47,6 +47,13 @@ describe('writeText (Indian scripts in PDFs)', () => {
     expect(pdf.toString('latin1')).toMatch(/NotoSansTamil-Bold/);
   });
 
+  it('money prints the rupee sign (founder 30 Oct 2026: ₹, not Rs.) in NotoSans, beside Helvetica text', async () => {
+    const pdf = await render((d) => writeText(d, 'Net pay  ₹12,34,567.50'));
+    // pdf.js puts a space between two fonts' runs when reading text back; on the page the sign sits next to the digits.
+    expect(pdfText(pdf)).toMatch(/₹ ?12,34,567.50/);
+    expect(pdf.toString('latin1')).toMatch(/NotoSans-Regular/);
+  });
+
   it('negative: the same names written with plain doc.text (Helvetica) fail the check', async () => {
     const pdf = await render((d) => d.text(INDIC_NAMES.Tamil));
     expect(() => expectNamesIn(pdf, [INDIC_NAMES.Tamil])).toThrow();
