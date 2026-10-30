@@ -22,7 +22,7 @@ import { OrgScopeService } from '../access/org-scope.service';
 //   employee.identity.view    work authorisations, numbers masked (PPL-45); employee.identity.manage adds one
 //   employee.disability.view  disability declarations, the HR diversity role (PPL-38); the person keeps their own
 //   employee.change.manage    possible same person, merge and unmerge (PPL-36/37), company-wide only (the service checks)
-//   org.settings.manage       the Special data erasure dry run and last run (counts only), company-wide only
+//   org.settings.manage       the Special data erasure dry run (counts and who: name, code, last day) and last run, company-wide only
 @Controller('people')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class PersonPanelsController {
@@ -102,7 +102,7 @@ export class PersonPanelsController {
     return this.disability.list(ctx, await this.viewer(req));
   }
 
-  /** Follow-up 12: what the nightly erasure would delete today (dry run) and what the last run deleted. */
+  /** Follow-up 12: what the nightly erasure would delete today and from whom (dry run, not audited) and what the last run deleted. */
   @Get('privacy-erasure')
   @RequirePermissions('org.settings.manage')
   async erasureReport(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {

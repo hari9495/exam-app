@@ -9,7 +9,8 @@ import type { DisabilityDto } from './person-panels.dto';
 // PPL-38 Disability declaration (Special class, P02 §4.4; RPwD Act 2016). Voluntary: the person declares with consent
 // and may withdraw at any time, which clears what they declared (the audit trail keeps only that it happened). The HR
 // diversity role (employee.disability.view, in scope) sees the list, each look recorded for "Who accessed my data";
-// managers and everyone else never do. Category, percentage and adjustments are sealed to the person.
+// managers and everyone else never do. Category, percentage and adjustments are sealed to the person. Special data
+// erasure (founder 30 Oct 2026) clears the details and certificate of someone long gone; the answer stays (erased_at).
 
 const CERT = 'disability_certificate';
 interface Details {
@@ -73,7 +74,7 @@ export class DisabilityService {
         if (!(await tx.document.findFirst({ where: { organizationId: org, id: dto.certificateDocumentId, personId: e.personId, typeKey: CERT } }))) throw new BadRequestException('That certificate is not your disability certificate.');
       }
       const details: Details | null = yes ? { category: dto.category!, percent: dto.percent!, adjustments: dto.adjustments?.trim() || null } : null;
-      const data = { answer: dto.answer, detailsEnc: details ? sealValue(this.crypto, org, employeeId, JSON.stringify(details)) : null, certificateDocumentId: dto.certificateDocumentId ?? null, consentAt: new Date(), withdrawnAt: null };
+      const data = { answer: dto.answer, detailsEnc: details ? sealValue(this.crypto, org, employeeId, JSON.stringify(details)) : null, certificateDocumentId: dto.certificateDocumentId ?? null, consentAt: new Date(), withdrawnAt: null, erasedAt: null };
       await tx.disabilityDeclaration.upsert({ where: { organizationId_employeeId: { organizationId: org, employeeId } }, create: { organizationId: org, employeeId, ...data }, update: data });
       await audit(tx, c, 'employee.disability.declared', 'employee', employeeId, { answer: dto.answer });
       return { saved: true };
@@ -97,7 +98,7 @@ export class DisabilityService {
     return this.history.run(ctx, async (tx, c) => {
       const org = c.organizationId;
       if (v.actingForOther) return { rows: [] };
-      const rows = await tx.disabilityDeclaration.findMany({ where: { organizationId: org, answer: 'yes', withdrawnAt: null } });
+      const rows = await tx.disabilityDeclaration.findMany({ where: { organizationId: org, answer: 'yes', withdrawnAt: null, erasedAt: null } });
       const reached = await this.history.reachedIds(tx, c, v, 'employee.disability.view', rows.map((r) => r.employeeId));
       const mine = await this.history.ownEmployeeId(tx, c, v);
       const shown = rows.filter((r) => reached.has(r.employeeId) && r.employeeId !== mine);
