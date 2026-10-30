@@ -396,7 +396,9 @@ export class LifecycleJourneysService implements OnModuleInit {
       const a = await this.access(tx, c, v, j);
       if (!a.see) throw new ForbiddenException('You cannot see this checklist.');
       const all = (await tx.journeyTask.findMany({ where: { organizationId: org, journeyId: id } })).sort((x, y) => x.sortOrder - y.sortOrder);
-      const tasks = a.full ? all : all.filter((x) => this.canDo(x, v, a) || (a.manager && (x.ownerType === 'manager' || x.ownerType === 'buddy')));
+      // PPL-13 is the joining checklist: life events and leaving keep showing every task (the person's survey as "answered").
+      const ownOnly = !a.full && j.kind === 'onboarding';
+      const tasks = !ownOnly ? all : all.filter((x) => this.canDo(x, v, a) || (a.manager && (x.ownerType === 'manager' || x.ownerType === 'buddy')));
       const n = await this.names(tx, org, [...tasks.map((t) => t.assigneeUserId), ...tasks.map((t) => t.completedBy), j.ownerUserId], tasks.map((t) => t.assigneeGroupId));
       const p = await tx.person.findFirstOrThrow({ where: { organizationId: org, id: j.personId } });
       const t = await tx.journeyTemplate.findFirst({ where: { organizationId: org, id: j.templateId }, select: { name: true } });
@@ -424,7 +426,7 @@ export class LifecycleJourneysService implements OnModuleInit {
         owner: n.user(j.ownerUserId),
         canManage: a.manage,
         // PPL-13: the viewer sees only their own tasks, out of this many.
-        ownTasksOnly: !a.full,
+        ownTasksOnly: ownOnly,
         taskTotal: all.filter((x) => x.status !== 'cancelled').length,
         today,
         tasks: tasks.map((x) => ({ ...this.taskView(x, n, this.canDo(x, v, a), today, a.manage || (v.userId !== null && x.completedBy === v.userId)), title: words.step(j.id, x.key, x.title), documentStatus: docStatus(x) })),
