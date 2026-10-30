@@ -115,6 +115,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'privacy.retention.internal_years': { label: 'Keep employment records after someone leaves (years)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['3', '5', '8', '10'], default: '8', guard: 'access.role.manage' },
   'privacy.retention.personal_years': { label: 'Keep personal details after someone leaves (years)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '3', '5', '8'], default: '3', guard: 'access.role.manage' },
   'privacy.retention.special_years': { label: 'Keep Special data (Aadhaar, background checks) after someone leaves (years)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '1', '3'], default: '1', guard: 'access.role.manage' },
+  // Founder 30 Oct 2026 (item 12): the nightly job deletes Special data past privacy.retention.special_years. Off until HR
+  // has read the dry run (Settings › Access and privacy); pay records keep their own period.
+  'privacy.erasure.enabled': { label: 'Delete Special data when its period ends', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // PLT-02 / settings 2.2 Home page (19 Oct 2026): employees see their own latest net pay on Home, hidden until they ask.
   'home.pay_on_employee_home': { label: 'Show net pay on the employee home', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // P02 §4.5 fraud guard: a new bank account is used for payouts only after this cooling period (starter, D17).

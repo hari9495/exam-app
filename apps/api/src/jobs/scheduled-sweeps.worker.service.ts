@@ -1,4 +1,5 @@
 import { EmployeeImportDraftsService } from '../people/employee-import-drafts.service';
+import { ErasureService } from '../people/erasure.service';
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Job, Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
@@ -52,6 +53,7 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
     hiringBoard: HiringBoardService,
     scorecards: ScorecardsService,
     importDrafts: EmployeeImportDraftsService,
+    erasure: ErasureService,
   ) {
     // Keys MUST match SWEEP_SCHEDULE ids.
     this.handlers = {
@@ -73,6 +75,8 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
       // M10 AT5: rejection messages after their undo window, and scorecard reminders at 24 h / 48 h.
       'hiring-due': () => Promise.all([hiringBoard.sendDue(), scorecards.remind()]),
       'import-drafts-retention': () => importDrafts.prune(),
+      // People follow-up 12: Special data past privacy.retention.special_years, companies that turned it on.
+      'privacy-erasure': () => erasure.sweep(),
     };
     this.worker = logBullErrors(new Worker(SCHEDULED_SWEEPS_QUEUE_NAME, (job) => this.dispatch(job), bullOpts(this.connection)), SCHEDULED_SWEEPS_QUEUE_NAME);
     this.worker.on('failed', (job, err) => this.logger.error(`Sweep "${job?.name}" failed: ${msg(err)}`));

@@ -50,4 +50,6 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   { id: 'hiring-due', cron: '*/5 * * * *' },
   // PPL-07: saved employee imports are deleted 30 days after they were saved.
   { id: 'import-drafts-retention', cron: '15 22 * * *' },
+  // People follow-up 12: Special data past its period is deleted, only for companies that turned it on (04:15 IST).
+  { id: 'privacy-erasure', cron: '45 22 * * *' },
 ];

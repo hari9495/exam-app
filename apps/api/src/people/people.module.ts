@@ -22,6 +22,7 @@ import { IdentityChecksService } from './identity-checks.service';
 import { WorkAuthService } from './work-auth.service';
 import { DisabilityService } from './disability.service';
 import { SamePersonService } from './same-person.service';
+import { ErasureService } from './erasure.service';
 import { BfsiService } from './bfsi.service';
 import { BfsiController } from './bfsi.controller';
 import { PreclearanceService } from './preclearance.service';
@@ -29,14 +30,15 @@ import { PersonPanelsController } from './person-panels.controller';
 import { PayAccessController } from './pay-access.controller';
 import { PayAccessService } from './pay-access.service';
 import { WorkflowModule } from '../workflow/workflow.module';
+import { OrgStructureModule } from '../org-structure/org-structure.module';
 
 // People core on top of the P06 history engine (step 2c): directory, org chart, team, persons, probation and
 // bulk changes; the record by sensitivity class with self-service and identity / bank change requests (step 2d,
 // P02 §4.4–4.5). Exports PeopleService for the daily probation sweep.
 @Module({
-  imports: [EmployeeHistoryModule, CryptoModule, EmailModule, DocumentsModule, CustomFieldsModule, NotificationsModule, WorkflowModule],
-  providers: [PeopleService, BulkChangesService, ProfileService, WorkforceService, WorkforceJobs, EmployeeImportService, EmployeeImportDraftsService, RestructureService, IdentityChecksService, WorkAuthService, DisabilityService, SamePersonService, BfsiService, PreclearanceService, PayAccessService, { provide: REDIS_CONNECTION, useFactory: createRedisConnection }],
+  imports: [EmployeeHistoryModule, CryptoModule, EmailModule, DocumentsModule, CustomFieldsModule, NotificationsModule, WorkflowModule, OrgStructureModule],
+  providers: [PeopleService, BulkChangesService, ProfileService, WorkforceService, WorkforceJobs, EmployeeImportService, EmployeeImportDraftsService, RestructureService, IdentityChecksService, WorkAuthService, DisabilityService, SamePersonService, ErasureService, BfsiService, PreclearanceService, PayAccessService, { provide: REDIS_CONNECTION, useFactory: createRedisConnection }],
   controllers: [PeopleController, WorkforceController, EmployeeImportController, RestructureController, PersonPanelsController, BfsiController, PayAccessController],
-  exports: [PeopleService, ProfileService, EmployeeImportDraftsService],
+  exports: [PeopleService, ProfileService, EmployeeImportDraftsService, ErasureService],
 })
 export class PeopleModule {}

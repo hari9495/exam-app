@@ -13,6 +13,8 @@ import { AttestDto, DisabilityDto, MergeDto, PersonPairDto, ReverifyDto, Unmerge
 import { SamePersonService } from './same-person.service';
 import { DisabilityService } from './disability.service';
 import { WorkAuthService } from './work-auth.service';
+import { ErasureService } from './erasure.service';
+import { OrgScopeService } from '../access/org-scope.service';
 
 // The person record's panels beyond its core (P02 §4.4 classes, each key checked again per person by the service):
 //   employee.aadhaar.view     the Identity panel (Special class), every look recorded (PPL-34)
@@ -20,6 +22,7 @@ import { WorkAuthService } from './work-auth.service';
 //   employee.identity.view    work authorisations, numbers masked (PPL-45); employee.identity.manage adds one
 //   employee.disability.view  disability declarations, the HR diversity role (PPL-38); the person keeps their own
 //   employee.change.manage    possible same person, merge and unmerge (PPL-36/37), company-wide only (the service checks)
+//   org.settings.manage       the Special data erasure dry run and last run (counts only), company-wide only
 @Controller('people')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class PersonPanelsController {
@@ -29,6 +32,8 @@ export class PersonPanelsController {
     private readonly workAuth: WorkAuthService,
     private readonly disability: DisabilityService,
     private readonly samePerson: SamePersonService,
+    private readonly erasure: ErasureService,
+    private readonly orgScope: OrgScopeService,
   ) {}
 
   private viewer(req: Request) {
@@ -95,6 +100,16 @@ export class PersonPanelsController {
   async disabilityDeclarations(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     ownSession(req);
     return this.disability.list(ctx, await this.viewer(req));
+  }
+
+  /** Follow-up 12: what the nightly erasure would delete today (dry run) and what the last run deleted. */
+  @Get('privacy-erasure')
+  @RequirePermissions('org.settings.manage')
+  async erasureReport(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    ownSession(req);
+    // The same rule as changing a company-wide setting: org.settings.manage for the whole company.
+    await this.orgScope.require(req, 'org.settings.manage', null);
+    return this.erasure.report(ctx);
   }
 
   @Get('same-person')
