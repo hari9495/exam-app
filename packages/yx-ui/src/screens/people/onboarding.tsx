@@ -1,7 +1,8 @@
 // PPL-11 Onboarding board · PPL-12 Ready to onboard · PPL-13 Journey record · PPL-14 Pre-boarding batches
 // PPL-15 Pre-boarding actions · PPL-16 Probation queue · PPL-17 Probation review · PPL-41 Buddy panel (M01 §3.4, §3.5, §3.11).
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { CalendarClock, Check, FileText, Lock, Plus, Upload, UserPlus } from 'lucide-react';
+import { FilterToggle } from '../../components/filter-toggle';
+import { CalendarClock, FileText, Lock, Plus, Upload, UserPlus } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Card, ObjectHeader, PageHeader } from '../../components/shell';
 import { KanbanBoard, type KanbanCard, type KanbanColumn } from '../../components/kanban';
@@ -178,10 +179,9 @@ export function OnboardingBoard({ columns, state = 'ready', live }: { columns: K
             <span className="yx-ppl__head-select">
               <Select aria-label="Next task owner" size="sm" options={[{ value: 'all', label: 'Next task: anyone' }, ...owners.map((o) => ({ value: o, label: `Next task: ${o}` }))]} value={owner ?? 'all'} onChange={(v) => setOwner(v === 'all' || !v ? null : v)} />
             </span>
-            <button type="button" className="yx-ppl__chip yx-ppl__chip--toggle" aria-pressed={overdueOnly} onClick={() => setOverdueOnly(!overdueOnly)}>
-              {overdueOnly && <Icon icon={Check} size="sm" />}
-              Only overdue ({overdue})
-            </button>
+            <FilterToggle pressed={overdueOnly} onPressedChange={setOverdueOnly}>
+Only overdue ({overdue})
+</FilterToggle>
           </div>
           <KanbanBoard key={filterKey} aria-label="Onboarding board" defaultColumns={shown} noun="joiner" readOnly={Boolean(live)} onOpenCard={live ? live.onOpenCard : () => {}} />
         </>

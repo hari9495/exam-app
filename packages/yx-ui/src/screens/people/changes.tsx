@@ -1,7 +1,8 @@
 // PPL-04 Change action · PPL-05 Scheduled changes · PPL-06 Bulk changes wizard · PPL-07 Employee import
 // PPL-09 Bulk transfer / restructure wizard (P06 §4.3–4.4, §7; M01 §3.3; P01 YX-ORG-17 / 22).
 import { useMemo, useState, type ReactNode } from 'react';
-import { Check, Download, Eye, EyeOff, FileSpreadsheet, FileText, Pencil, Plus, XCircle } from 'lucide-react';
+import { FilterToggle } from '../../components/filter-toggle';
+import { Download, Eye, EyeOff, FileSpreadsheet, FileText, Pencil, Plus, XCircle } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Card, PageHeader } from '../../components/shell';
 import { Drawer } from '../../components/drawer';
@@ -570,10 +571,9 @@ export function ScheduledChangesScreen({ rows, today, defaultWindow = 30, defaul
       {live?.state !== 'no-access' && (
         <div className="yx-ppl__filterbar">
           <Segment label="Window" value={win} onChange={setWin} options={([30, 60, 90] as Win[]).map((w) => ({ value: w, label: `Next ${w} days (${inWin(w).length})` }))} />
-        <button type="button" className="yx-ppl__chip yx-ppl__chip--toggle" aria-pressed={pendingOnly} onClick={() => setPendingOnly(!pendingOnly)}>
-          {pendingOnly && <Icon icon={Check} size="sm" />}
-            Only pending approval ({pending.length})
-          </button>
+        <FilterToggle pressed={pendingOnly} onPressedChange={setPendingOnly}>
+Only pending approval ({pending.length})
+</FilterToggle>
         </div>
       )}
       {showPay && <Text size="sm" tone="secondary" as="p">Pay is showing. Each time you show it is recorded.</Text>}
