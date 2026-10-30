@@ -493,3 +493,13 @@ td .yx-badge, .yx-table td[data-type="date"] { white-space: nowrap; }
 .yx-table__sort { border-radius: var(--yx-radius-control); }
 .yx-table__sort:hover { background: var(--yx-color-bg-subtle); }
 .yx-table__group-toggle:hover { text-decoration: underline; text-underline-offset: var(--yx-space-half); }
+
+/* PlainTable: a small read-only table. Long values wrap; headings and badges wrap only between words. */
+.yx-plain-table { width: 100%; border-collapse: collapse; font-size: var(--yx-text-sm); }
+.yx-plain-table th, .yx-plain-table td { text-align: start; vertical-align: top; padding: var(--yx-space-2) var(--yx-space-3); border-bottom: var(--yx-border-width) solid var(--yx-color-border); overflow-wrap: anywhere; }
+.yx-plain-table thead th { color: var(--yx-color-text-secondary); font-weight: var(--yx-weight-medium); }
+.yx-plain-table thead th, .yx-plain-table .yx-badge { overflow-wrap: normal; }
+.yx-plain-table [data-date] { white-space: nowrap; }
+.yx-plain-table [data-changed] { font-weight: var(--yx-weight-medium); }
+.yx-plain-table .yx-number-field, .yx-plain-table input { min-width: 0; }
+.yx-plain-table__caption { caption-side: top; text-align: start; padding-bottom: var(--yx-space-2); color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); }

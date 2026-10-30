@@ -17,6 +17,7 @@ export * from './components/feedback';
 export * from './components/drawer';
 export * from './components/filters';
 export * from './components/table';
+export * from './components/plain-table';
 export * from './components/timesheet';
 export * from './components/shell';
 export * from './components/overlay';
