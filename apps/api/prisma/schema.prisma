@@ -4933,6 +4933,10 @@ model TrainingSession {
   cancelledAt    DateTime? @map("cancelled_at") @db.Timestamptz(3)
   createdBy      String?   @map("created_by") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// Who: empty = everyone at the location; otherwise only these employees.
+  invitees       String[]  @default([]) @db.Uuid
+  version        Int       @default(1)
+  updatedAt      DateTime? @map("updated_at") @db.Timestamptz(3)
 
   @@unique([organizationId, id])
   @@map("training_sessions")

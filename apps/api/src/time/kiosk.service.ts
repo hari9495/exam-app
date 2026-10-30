@@ -345,7 +345,8 @@ export class KioskService {
       const opens = await this.opensMinutes(tx, k, f);
       const zone = (await tx.location.findFirst({ where: { organizationId: k.org, id: k.locationId }, select: { timezone: true } }))?.timezone ?? 'Asia/Kolkata';
       const today = todayIn(zone);
-      const rows = await tx.trainingSession.findMany({ where: { organizationId: k.org, locationId: k.locationId, cancelledAt: null, endsAt: { gt: now } }, orderBy: { startsAt: 'asc' }, take: 20 });
+      // Who: sessions for everyone here, or the ones this person is invited to.
+      const rows = await tx.trainingSession.findMany({ where: { organizationId: k.org, locationId: k.locationId, cancelledAt: null, endsAt: { gt: now }, OR: [{ invitees: { isEmpty: true } }, { invitees: { has: id } }] }, orderBy: { startsAt: 'asc' }, take: 20 });
       const mine = new Set((await tx.trainingAttendance.findMany({ where: { organizationId: k.org, employeeId: id, sessionId: { in: rows.map((r) => r.id) } }, select: { sessionId: true } })).map((x) => x.sessionId));
       return {
         zone,
@@ -363,7 +364,7 @@ export class KioskService {
     const c = ctxOf(k);
     return this.tenantPrisma.forTenant(c, async (tx) => {
       const f = await this.factsNow(tx, k, id);
-      const s = await tx.trainingSession.findFirst({ where: { organizationId: k.org, id: sessionId, locationId: k.locationId, cancelledAt: null } });
+      const s = await tx.trainingSession.findFirst({ where: { organizationId: k.org, id: sessionId, locationId: k.locationId, cancelledAt: null, OR: [{ invitees: { isEmpty: true } }, { invitees: { has: id } }] } });
       if (!s) throw new NotFoundException('No such training here today.');
       const now = new Date();
       const opensAt = new Date(s.startsAt.getTime() - (await this.opensMinutes(tx, k, f)) * 60_000);

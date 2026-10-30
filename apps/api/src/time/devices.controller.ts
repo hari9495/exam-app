@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { TenantContext } from '@exam-platform/shared';
@@ -8,7 +8,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
-import { BindRequestDto, FaceConsentDto, PhonePunchDto, PhoneSyncDto, PinDto, ReasonDto, RegisterKioskDto, TrainingSessionDto } from './devices.dto';
+import { BindRequestDto, FaceConsentDto, PhonePunchDto, PhoneSyncDto, PinDto, ReasonDto, RegisterKioskDto, TrainingPeopleQueryDto, TrainingSessionDto, TrainingSessionEditDto } from './devices.dto';
 import { DevicesService } from './devices.service';
 
 // TIM-14 Devices and kiosks (HR) and the person's own devices (TIM-12 phone, TIM-13 kiosk PIN / card / face).
@@ -41,6 +41,18 @@ export class DevicesController {
   @RequirePermissions('leave.settings.manage')
   addTraining(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: TrainingSessionDto) {
     return this.devices.addTrainingSession(ctx, this.user(req), dto);
+  }
+
+  @Get('training/people')
+  @RequirePermissions('leave.settings.manage')
+  trainingPeople(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: TrainingPeopleQueryDto) {
+    return this.devices.trainingPeople(ctx, this.user(req), q.q ?? '');
+  }
+
+  @Put('training/:id')
+  @RequirePermissions('leave.settings.manage')
+  editTraining(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: TrainingSessionEditDto) {
+    return this.devices.editTrainingSession(ctx, this.user(req), id, dto);
   }
 
   @Post('training/:id/cancel')

@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsDateString, IsIn, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { MAX_SYNC_ITEMS } from './device-rules';
 
 // TIM-12 / 13 / 14 inputs. Every text is bounded; secrets (PINs, set-up codes, card tokens) are never echoed back.
@@ -255,4 +255,25 @@ export class TrainingSessionDto {
 
   @IsDateString({ strict: true })
   endsAt!: string;
+
+  /** Who: none = everyone at the location; otherwise these employees only. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200)
+  @IsUUID('all', { each: true })
+  invitees?: string[];
+}
+
+export class TrainingPeopleQueryDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  q?: string;
+}
+
+/** A change to a session: the same fields, plus the version the HR person saw (two people never overwrite each other). */
+export class TrainingSessionEditDto extends TrainingSessionDto {
+  @IsInt()
+  @Min(1)
+  version!: number;
 }

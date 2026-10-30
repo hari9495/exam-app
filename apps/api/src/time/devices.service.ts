@@ -12,7 +12,7 @@ import { AttendanceService } from './attendance.service';
 import { TimeSetupService } from './setup.service';
 import { Facts, factsOn, myEmployeeId, settingOn, todayIn } from './time-core';
 import { localDate } from './time-maths';
-import { BindRequestDto, DevicePunchDto, FaceConsentDto, PhonePunchDto, PhonePunchItemDto, PhoneSyncDto, RegisterKioskDto } from './devices.dto';
+import { BindRequestDto, DevicePunchDto, FaceConsentDto, PhonePunchDto, PhonePunchItemDto, PhoneSyncDto, RegisterKioskDto, TrainingSessionDto, TrainingSessionEditDto } from './devices.dto';
 import { SETUP_CODE_MS, kioskHealth, newSetupCode, normalSetupCode, phoneInactive, pinProblem, punchTimeProblem, sha256 } from './device-rules';
 import { FACE_MATCH, type FaceMatchProvider } from './providers/face-match';
 
@@ -137,32 +137,90 @@ export class DevicesService {
   /** Registers a kiosk; the one-time set-up code is shown once (only its SHA-256 is kept) and works for 30 minutes. */
   // ------------------------------------------------------------------------------------------ training sessions (TIM-13)
 
-  /** HR: training sessions from 7 days back, with how many people marked themselves present at the kiosk. */
+  /**
+   * HR (TIM-14 Training): sessions from 7 days back, with who they are for and how many people marked themselves
+   * present at the kiosk. `version` goes back with a change, so two HR people never overwrite each other.
+   */
   trainingSessions(ctx: TenantContext, user: ScopeUser) {
     return this.setup.run(ctx, user, false, async (tx, c) => {
       const org = c.organizationId;
       const rows = await tx.trainingSession.findMany({ where: { organizationId: org, endsAt: { gte: new Date(Date.now() - 7 * 86_400_000) } }, orderBy: { startsAt: 'asc' }, take: 200 });
-      const [locs, marks] = await Promise.all([
-        tx.location.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.locationId) } }, select: { id: true, name: true } }),
-        tx.trainingAttendance.groupBy({ by: ['sessionId'], where: { organizationId: org, sessionId: { in: rows.map((r) => r.id) } }, _count: { _all: true } }),
-      ]);
-      return rows.map((r) => ({ id: r.id, title: r.title, room: r.room, location: { id: r.locationId, name: locs.find((l) => l.id === r.locationId)?.name ?? '' }, startsAt: r.startsAt, endsAt: r.endsAt, cancelled: Boolean(r.cancelledAt), present: marks.find((m) => m.sessionId === r.id)?._count._all ?? 0 }));
+      const locs = await tx.location.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.locationId) } }, select: { id: true, name: true, timezone: true } });
+      const marks = await tx.trainingAttendance.groupBy({ by: ['sessionId'], where: { organizationId: org, sessionId: { in: rows.map((r) => r.id) } }, _count: { _all: true } });
+      const names = await this.names(tx, org, rows.flatMap((r) => r.invitees));
+      const now = Date.now();
+      return rows.map((r) => {
+        const l = locs.find((x) => x.id === r.locationId);
+        return {
+          id: r.id,
+          title: r.title,
+          room: r.room,
+          location: { id: r.locationId, name: l?.name ?? '', zone: l?.timezone ?? 'Asia/Kolkata' },
+          startsAt: r.startsAt,
+          endsAt: r.endsAt,
+          invitees: r.invitees.map((id) => ({ id, name: names.get(id) ?? 'Former employee' })),
+          cancelled: Boolean(r.cancelledAt),
+          present: marks.find((m) => m.sessionId === r.id)?._count._all ?? 0,
+          state: r.cancelledAt ? 'cancelled' : r.endsAt.getTime() <= now ? 'ended' : r.startsAt.getTime() <= now ? 'running' : 'upcoming',
+          version: r.version,
+        };
+      });
     });
   }
 
-  addTrainingSession(ctx: TenantContext, user: ScopeUser, dto: { locationId: string; title: string; room?: string; startsAt: string; endsAt: string }) {
+  /** The checks a new or changed session passes: times, its location, and who (employees of this company). */
+  private async trainingInput(tx: Tx, org: string, dto: TrainingSessionDto) {
+    const starts = new Date(dto.startsAt);
+    const ends = new Date(dto.endsAt);
+    if (!(ends > starts)) throw new BadRequestException('The end must be after the start.');
+    if (ends.getTime() - starts.getTime() > 12 * 3_600_000) throw new BadRequestException('A session is at most 12 hours. Add one session per day.');
+    if (starts.getTime() < Date.now() - 5 * 60_000) throw new BadRequestException('That time has passed. Choose a time from now.');
+    const loc = await tx.location.findFirst({ where: { organizationId: org, id: dto.locationId, archivedAt: null } });
+    if (!loc) throw new NotFoundException('Choose a location of this company.');
+    const invitees = [...new Set(dto.invitees ?? [])];
+    if (invitees.length && (await tx.employee.count({ where: { organizationId: org, id: { in: invitees } } })) !== invitees.length) throw new BadRequestException('Choose people of this company.');
+    return { starts, ends, loc, invitees };
+  }
+
+  addTrainingSession(ctx: TenantContext, user: ScopeUser, dto: TrainingSessionDto) {
     return this.setup.run(ctx, user, true, async (tx, c) => {
       const org = c.organizationId;
-      const starts = new Date(dto.startsAt);
-      const ends = new Date(dto.endsAt);
-      if (!(ends > starts)) throw new BadRequestException('The end must be after the start.');
-      if (ends.getTime() - starts.getTime() > 12 * 3_600_000) throw new BadRequestException('A session is at most 12 hours. Add one session per day.');
-      if (ends.getTime() < Date.now()) throw new BadRequestException('That time has passed. Choose a time from now.');
-      const loc = await tx.location.findFirst({ where: { organizationId: org, id: dto.locationId, archivedAt: null } });
-      if (!loc) throw new NotFoundException('Choose a location of this company.');
-      const s = await tx.trainingSession.create({ data: { organizationId: org, locationId: loc.id, title: dto.title, room: dto.room || null, startsAt: starts, endsAt: ends, createdBy: c.userId ?? null } });
-      await audit(tx, c, 'time.training.created', 'training_session', s.id, { title: dto.title, location: loc.name, startsAt: dto.startsAt, endsAt: dto.endsAt });
-      return { id: s.id };
+      const { starts, ends, loc, invitees } = await this.trainingInput(tx, org, dto);
+      const s = await tx.trainingSession.create({ data: { organizationId: org, locationId: loc.id, title: dto.title, room: dto.room || null, startsAt: starts, endsAt: ends, invitees, createdBy: c.userId ?? null } });
+      await audit(tx, c, 'time.training.created', 'training_session', s.id, { title: dto.title, location: loc.name, startsAt: dto.startsAt, endsAt: dto.endsAt, invitees: invitees.length });
+      return { id: s.id, version: s.version };
+    });
+  }
+
+  /** HR changes a session that has not started yet (once started, it is cancelled or left as it is). */
+  editTrainingSession(ctx: TenantContext, user: ScopeUser, id: string, dto: TrainingSessionEditDto) {
+    return this.setup.run(ctx, user, true, async (tx, c) => {
+      const org = c.organizationId;
+      const s = await tx.trainingSession.findFirst({ where: { organizationId: org, id } });
+      if (!s) throw new NotFoundException('Not found');
+      if (s.cancelledAt) throw new ConflictException('That session is cancelled. Add a new one instead.');
+      if (s.startsAt.getTime() <= Date.now()) throw new ConflictException('That session has started, so it cannot be changed. Cancel it or add a new one.');
+      const { starts, ends, loc, invitees } = await this.trainingInput(tx, org, dto);
+      const done = await tx.trainingSession.updateMany({ where: { organizationId: org, id, version: dto.version, cancelledAt: null }, data: { locationId: loc.id, title: dto.title, room: dto.room || null, startsAt: starts, endsAt: ends, invitees, version: { increment: 1 }, updatedAt: new Date() } });
+      if (!done.count) throw new ConflictException('Someone else changed this session. Reload to see their change.');
+      await audit(tx, c, 'time.training.changed', 'training_session', id, {
+        before: { title: s.title, room: s.room, locationId: s.locationId, startsAt: s.startsAt.toISOString(), endsAt: s.endsAt.toISOString(), invitees: s.invitees.length },
+        after: { title: dto.title, room: dto.room || null, locationId: loc.id, startsAt: starts.toISOString(), endsAt: ends.toISOString(), invitees: invitees.length },
+      });
+      return { id, version: dto.version + 1 };
+    });
+  }
+
+  /** People to pick for "Who" (active employees of this company by name or code, 20 at most). */
+  trainingPeople(ctx: TenantContext, user: ScopeUser, q: string) {
+    return this.setup.run(ctx, user, false, async (tx, c) => {
+      const like = `%${q.trim().replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
+      return tx.$queryRaw<{ id: string; label: string; detail: string }[]>`
+        SELECT e.id::text AS id, concat_ws(' ', coalesce(e.preferred_name, e.given_name), e.family_name) AS label, m.employee_code::text AS detail
+        FROM employees e JOIN employments m ON m.organization_id = e.organization_id AND m.employee_id = e.id AND m.exited_on IS NULL
+        WHERE e.organization_id = ${c.organizationId}::uuid
+          AND (concat_ws(' ', e.given_name, e.preferred_name, e.family_name) ILIKE ${like} OR m.employee_code::text ILIKE ${like})
+        ORDER BY 2 LIMIT 20`;
     });
   }
 
