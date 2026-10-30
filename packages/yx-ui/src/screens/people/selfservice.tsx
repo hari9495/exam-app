@@ -339,6 +339,14 @@ type LiveAccess = AccessLog['entries'][number];
 // What the record holds (P02 classes). The design's Special row named a health check-up, which YukthiX does not hold.
 const LIVE_HELD = HELD.map((h) => (h.cls === 'Special' ? { ...h, what: 'Aadhaar (masked), background check reports', why: 'Identity check, background check' } : h));
 
+/** PPL-33: how long a class is kept, from the company's retention settings ("Exit + 3 years"). */
+function keepText(cls: (typeof HELD)[number]['cls'], r: NonNullable<AccessLog['retention']>) {
+  const after = (n: number) => (n === 0 ? 'Deleted when you leave' : `Exit + ${n} ${n === 1 ? 'year' : 'years'}`);
+  if (cls === 'Public') return 'While you work here';
+  if (cls === 'Confidential') return `${r.confidential} years (pay and tax records)`;
+  return after(cls === 'Internal' ? r.internal : cls === 'Personal' ? r.personal : r.special);
+}
+
 function LiveMyDataScreen({ live, tab }: { live: LiveMyData; tab: 'data' | 'access' }) {
   const [t, setT] = useState(tab);
   const { busy, error, run } = useRun();
@@ -373,6 +381,7 @@ function LiveMyDataScreen({ live, tab }: { live: LiveMyData; tab: 'data' | 'acce
                       <th scope="col">What we hold</th>
                       <th scope="col">Class</th>
                       <th scope="col">Why</th>
+                      {log.retention && <th scope="col">How long</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -381,6 +390,7 @@ function LiveMyDataScreen({ live, tab }: { live: LiveMyData; tab: 'data' | 'acce
                         <td>{h.what}</td>
                         <td><ClassBadge cls={h.cls} /></td>
                         <td>{h.why}</td>
+                        {log.retention && <td>{keepText(h.cls, log.retention)}</td>}
                       </tr>
                     ))}
                   </tbody>

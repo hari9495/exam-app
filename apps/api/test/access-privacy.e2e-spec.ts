@@ -771,7 +771,7 @@ ${ids.arjunCode},KFPL,redesignation,${addDays(today, 20)},Re-titled,AN
       await api('outsider', 'get', '/people/me/data').expect(404);
       await up('adminA');
       await api('adminA', 'put', '/org/settings').send({ key: 'privacy.who_accessed', scopeType: 'tenant', value: 'off' }).expect(200);
-      expect((await api('imranU', 'get', '/people/me/access-log').expect(200)).body).toEqual({ enabled: false, company: log.company, entries: [] });
+      expect((await api('imranU', 'get', '/people/me/access-log').expect(200)).body).toEqual({ enabled: false, company: log.company, retention: { internal: 8, personal: 3, confidential: 8, special: 1 }, entries: [] });
       await api('outsider', 'get', '/people/me/access-log').expect(404);
     });
 

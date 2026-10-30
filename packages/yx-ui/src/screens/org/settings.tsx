@@ -40,6 +40,11 @@ function rates(): Record<string, string> {
   return Object.fromEntries(['4', '5', '6', '7', '7.5', '8', '8.5', '9', '10', '12'].map((v) => [v, `${v}% a year`]));
 }
 
+/** Year counts as words ("1 year", "3 years"). */
+function years(values: string[]): Record<string, string> {
+  return Object.fromEntries(values.map((v) => [v, v === '1' ? '1 year' : `${v} years`]));
+}
+
 /** Words for the stored values; anything unlisted shows as stored (numbers). */
 const VALUE_LABEL: Record<string, Record<string, string>> = {
   'employee_change.retro_limit': { current_fy: 'Start of this financial year', previous_fy: 'Start of last financial year' },
@@ -52,6 +57,9 @@ const VALUE_LABEL: Record<string, Record<string, string>> = {
   'attendance.missing_punch_effect': { block_payroll_approval: 'Hold payroll approval', warning_only: 'Warn only' },
   'attendance.factories_act': { covered: 'Covered: overtime is paid', not_covered: 'Not covered' },
   'work.normal_week_hours': { pack: 'From the country pack' },
+  'privacy.retention.internal_years': years(['3', '5', '8', '10']),
+  'privacy.retention.personal_years': years(['1', '3', '5', '8']),
+  'privacy.retention.special_years': { '0': 'Delete when they leave', ...years(['1', '3']) },
   'contract.max_years': { '1': '1 year', '2': '2 years', '3': '3 years', '4': '4 years', '5': '5 years', none: 'No limit' },
   'pay.band.above_max': { warn: 'Warn only', cap: 'Cap at the maximum', block: 'Block' },
   'promotion.must_change': { either: 'Designation or grade', both: 'Both', grade: 'Grade only', designation: 'Designation only' },
@@ -119,7 +127,7 @@ export const SETTING_SECTIONS: Record<SettingsArea, SettingsSection[]> = {
   access: [
     { title: 'Manager access', description: 'Managers always see their own reports. The company can narrow it.', keys: ['access.manager.view_scope'] },
     { title: 'Special permissions', description: 'A role that opens identity or bank data for many people asks for a confirmation first.', keys: ['access.risk.confidential_threshold'] },
-    { title: 'Privacy', description: 'Every look at identity, bank and pay data is recorded either way.', keys: ['privacy.who_accessed'] },
+    { title: 'Privacy', description: 'Every look at identity, bank and pay data is recorded either way. Employees see how long each kind of data is kept on their Privacy page; pay documents follow the payroll rule.', keys: ['privacy.who_accessed', 'privacy.retention.internal_years', 'privacy.retention.personal_years', 'privacy.retention.special_years'] },
     { title: 'Bank details', description: 'Protects pay from a hijacked account change.', keys: ['employee.bank_change.cooling_hours'] },
     { title: 'Home page', description: 'What employees see on their home. When net pay is shown, the amount stays hidden until the person selects Show amount, and hides again on every visit. Only their own pay, never anyone else’s.', keys: ['home.pay_on_employee_home'] },
   ],

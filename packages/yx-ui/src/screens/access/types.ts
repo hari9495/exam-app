@@ -203,6 +203,8 @@ export interface AccessLog {
   enabled: boolean;
   /** The company's name, for the Privacy page heading (PPL-33). */
   company: string;
+  /** PPL-33: years each class is kept after the person leaves (company policy); missing on an older API. */
+  retention?: { internal: number; personal: number; confidential: number; special: number };
   /** role: who they are to me ("Your manager", their designation); context: where they saw it. */
   entries: { id: string; at: string; who: string; role: string | null; what: string; context: string; className: 'confidential' | 'special' }[];
 }

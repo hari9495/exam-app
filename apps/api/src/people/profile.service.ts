@@ -911,7 +911,11 @@ export class ProfileService {
       const org = c.organizationId;
       const company = (await tx.organization.findUniqueOrThrow({ where: { id: org }, select: { name: true } })).name;
       const enabled = (await settingFor(tx, c, 'privacy.who_accessed', { legalEntityId: '' })) === 'on';
-      if (!enabled) return { enabled, company, entries: [] };
+      // PPL-33: how long each class is kept after the person leaves (company policy, per legal entity), in years.
+      const entity = (await tx.employment.findFirst({ where: { organizationId: org, employeeId: own }, orderBy: { joinedOn: 'desc' }, select: { legalEntityId: true } }))?.legalEntityId ?? '';
+      const years = async (key: string) => Number(await settingFor(tx, c, key, { legalEntityId: entity }));
+      const retention = { internal: await years('privacy.retention.internal_years'), personal: await years('privacy.retention.personal_years'), confidential: await years('payroll.document_retention_years'), special: await years('privacy.retention.special_years') };
+      if (!enabled) return { enabled, company, retention, entries: [] };
       // PPL-33: looks at my Confidential documents (PAN card, bank proof…) count too.
       const me = await tx.employee.findFirstOrThrow({ where: { organizationId: org, id: own }, select: { personId: true } });
       const docs = me.personId ? await tx.document.findMany({ where: { organizationId: org, personId: me.personId }, select: { id: true, typeKey: true } }) : [];
@@ -947,6 +951,7 @@ export class ProfileService {
       return {
         enabled,
         company,
+        retention,
         entries: rows.map((r) => {
           const meta = r.metadataJson ? (JSON.parse(r.metadataJson) as Record<string, unknown>) : {};
           const doc = r.entityType === 'document';
