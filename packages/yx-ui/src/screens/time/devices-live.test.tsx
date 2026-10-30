@@ -220,6 +220,18 @@ describe('Kiosk (TIM-13 live)', () => {
     ],
   };
 
+  it('kiosk.leave off for the person here: the menu has no Apply leave (on: it has)', async () => {
+    const today = { firstName: 'Kavitha', today: '2026-10-29', shift: null, punches: [], next: 'in' as const, requests: [] };
+    const { unmount } = render(<KioskScreen live={kiosk({ onLeave: vi.fn(async () => LEAVE), onToday: vi.fn(async () => ({ ...today, leave: false })) })} />);
+    await signIn();
+    expect(screen.queryByRole('button', { name: 'Apply leave' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'My requests' })).toBeInTheDocument();
+    unmount();
+    render(<KioskScreen live={kiosk({ onLeave: vi.fn(async () => LEAVE), onToday: vi.fn(async () => ({ ...today, leave: true })) })} />);
+    await signIn();
+    expect(screen.getByRole('button', { name: 'Apply leave' })).toBeInTheDocument();
+  });
+
   it('apply leave: picks days, refuses too many and locked days, then sends to the approver', async () => {
     const onApplyLeave = vi.fn(async () => ({ id: 'r1' }));
     render(<KioskScreen live={kiosk({ onLeave: vi.fn(async () => LEAVE), onApplyLeave })} />);

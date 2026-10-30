@@ -252,7 +252,7 @@ export function MobileCheckInSheet({ scenario = 'inside', saved: savedInit = fal
    TIM-13 · Kiosk
    ===================================================================== */
 
-export type KioskView = 'code' | 'unknown_code' | 'pin' | 'menu' | 'checked_in' | 'training' | 'training_none' | 'leave' | 'status' | 'wrong_pin' | 'qr';
+export type KioskView = 'code' | 'unknown_code' | 'pin' | 'menu' | 'menu_leave_off' | 'checked_in' | 'training' | 'training_none' | 'leave' | 'status' | 'wrong_pin' | 'qr';
 
 /** The kiosk's sample person and her data (TEAM t10, balances from time-data). */
 const KAVITHA = TEAM.find((t) => t.id === 't10')!;
@@ -400,14 +400,15 @@ function SampleKioskScreen({ view = 'code' }: { view?: KioskView }) {
           </div>
         </div>
       )}
-      {v === 'menu' && (
+      {(v === 'menu' || v === 'menu_leave_off') && (
         <div className="yx-tim-kiosk-card">
           <p className="yx-tim-big">Hello, {KAVITHA.name.split(' ')[0]}</p>
           <InlineAlert tone="info" title={`${SUPERVISOR} applied leave for you`}>Casual leave on {dayLabel(KIOSK_LEAVE_ON)} was approved on 25 Sep. You'll also get an SMS.</InlineAlert>
           <div className="yx-tim-kiosk-grid">
             <Button variant="primary" onClick={() => setV('checked_in')}>Check in</Button>
             <Button onClick={() => setV('training')}>Training</Button>
-            <Button onClick={() => setV('leave')}>Apply leave</Button>
+            {/* kiosk.leave off for this person's place: no Apply leave (founder, 30 Oct 2026). */}
+            {v !== 'menu_leave_off' && <Button onClick={() => setV('leave')}>Apply leave</Button>}
             <Button onClick={() => setV('status')}>My requests</Button>
           </div>
           <Kpis

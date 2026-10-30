@@ -230,6 +230,8 @@ export class KioskService {
         firstName: firstName(f.name),
         today,
         zone: f.zone,
+        // The menu offers Apply leave only where the company allows it here (setting kiosk.leave, default on).
+        leave: (await settingOn(tx, ctxOf(k), 'kiosk.leave', f, today)) === 'on',
         shift: day.shift ? { name: day.shift.name, start: day.shift.shiftStart, end: day.shift.shiftEnd, grace: day.shift.graceMinutes } : null,
         punches: punches.map((p) => ({ kind: p.kind, at: p.punchedAt })),
         next: last && last !== 'out' ? 'out' : 'in',

@@ -22,6 +22,8 @@ export interface KioskToday {
   punches: { kind: string; at: string }[];
   next: 'in' | 'out';
   requests: { id: string; kind: string; label: string; from: string; to: string; days: number; status: string }[];
+  /** Setting kiosk.leave for this person here: false hides Apply leave. */
+  leave?: boolean;
 }
 export interface KioskPunched { accepted: boolean; message: string; at: string; kind: string }
 /** Apply leave at the kiosk: the kinds offered with days left (after pending requests), sick leave, the approver, the next days. */
@@ -404,7 +406,7 @@ export function LiveKioskScreen({ live }: { live: LiveKiosk }) {
         <div className="yx-tim-kiosk-grid">
           <Button variant="primary" loading={busy} onClick={() => void punch(today.next)}>{today.next === 'in' ? 'Check in' : 'Check out'}</Button>
           {live.onTraining && <Button onClick={() => void openTraining()}>Training</Button>}
-          {live.onLeave && <Button onClick={() => void openLeave()}>Apply leave</Button>}
+          {live.onLeave && today.leave !== false && <Button onClick={() => void openLeave()}>Apply leave</Button>}
           <Button onClick={() => { touch(); setV('status'); }}>My requests</Button>
           <Button onClick={clear}>Done</Button>
         </div>
