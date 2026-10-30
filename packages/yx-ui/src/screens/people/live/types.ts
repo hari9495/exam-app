@@ -89,6 +89,9 @@ export interface Journey {
   joiner?: { status: string; outcome: string | null; joined: boolean } | null;
   owner: string | null;
   canManage: boolean;
+  /** PPL-13: a task owner or the joiner's manager gets only their own tasks, out of `taskTotal`. */
+  ownTasksOnly?: boolean;
+  taskTotal?: number;
   today: string;
   tasks: JourneyTask[];
 }

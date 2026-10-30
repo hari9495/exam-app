@@ -321,7 +321,7 @@ export class LifecycleJourneysService implements OnModuleInit {
   // ------------------------------------------------------------------------------------------ access
 
   /** What the viewer may do on a journey: HR in scope runs it; the manager and assignees see it. */
-  async access(tx: Tx, c: CompanyContext, v: Viewer, j: Journey): Promise<{ manage: boolean; see: boolean; own: { employeeId: string | null; personId: string | null }; groups: string[] }> {
+  async access(tx: Tx, c: CompanyContext, v: Viewer, j: Journey): Promise<{ manage: boolean; see: boolean; full: boolean; manager: boolean; own:{ employeeId: string | null; personId: string | null }; groups: string[] }> {
     const own = await ownOf(tx, c, v);
     const groups = v.userId ? (await tx.userGroupMember.findMany({ where: { organizationId: c.organizationId, userId: v.userId }, select: { groupId: true } })).map((g) => g.groupId) : [];
     const reach = async (key: string) => {
@@ -334,10 +334,13 @@ export class LifecycleJourneysService implements OnModuleInit {
       return Boolean(e && covers(started(await grantPeriods(tx, c, v, key, e.id, own.employeeId), todayIst()), todayIst()));
     };
     const manage = !v.actingForOther && own.personId !== j.personId && (await reach('lifecycle.onboarding.manage'));
-    let see = manage || (await reach('lifecycle.onboarding.view'));
+    // PPL-13: HR (manage or view in scope) sees every task; a task owner (IT, Admin, a named person) or the joiner's manager
+    // opens the checklist too, but sees only their own tasks (the manager also the buddy's).
+    const full = manage || (await reach('lifecycle.onboarding.view'));
+    const manager = Boolean(own.employeeId && j.subjectType === 'preboarding' && (await tx.preboarding.findFirst({ where: { organizationId: c.organizationId, id: j.subjectId, managerEmployeeId: own.employeeId }, select: { id: true } })));
+    let see = full || manager;
     if (!see && v.userId) see = Boolean(await tx.journeyTask.findFirst({ where: { organizationId: c.organizationId, journeyId: j.id, OR: [{ assigneeUserId: v.userId }, ...(groups.length ? [{ assigneeGroupId: { in: groups } }] : [])] }, select: { id: true } }));
-    if (!see && own.employeeId && j.subjectType === 'preboarding') see = Boolean(await tx.preboarding.findFirst({ where: { organizationId: c.organizationId, id: j.subjectId, managerEmployeeId: own.employeeId }, select: { id: true } }));
-    return { manage, see, own, groups };
+    return { manage, see, full, manager, own, groups };
   }
 
   private canDo(t: Task, v: Viewer, a: { manage: boolean; groups: string[] }) {
@@ -392,7 +395,8 @@ export class LifecycleJourneysService implements OnModuleInit {
       if (!j) throw new NotFoundException('No such checklist.');
       const a = await this.access(tx, c, v, j);
       if (!a.see) throw new ForbiddenException('You cannot see this checklist.');
-      const tasks = (await tx.journeyTask.findMany({ where: { organizationId: org, journeyId: id } })).sort((x, y) => x.sortOrder - y.sortOrder);
+      const all = (await tx.journeyTask.findMany({ where: { organizationId: org, journeyId: id } })).sort((x, y) => x.sortOrder - y.sortOrder);
+      const tasks = a.full ? all : all.filter((x) => this.canDo(x, v, a) || (a.manager && (x.ownerType === 'manager' || x.ownerType === 'buddy')));
       const n = await this.names(tx, org, [...tasks.map((t) => t.assigneeUserId), ...tasks.map((t) => t.completedBy), j.ownerUserId], tasks.map((t) => t.assigneeGroupId));
       const p = await tx.person.findFirstOrThrow({ where: { organizationId: org, id: j.personId } });
       const t = await tx.journeyTemplate.findFirst({ where: { organizationId: org, id: j.templateId }, select: { name: true } });
@@ -419,6 +423,9 @@ export class LifecycleJourneysService implements OnModuleInit {
         joiner: pb ? { status: pb.status, outcome: pb.outcome, joined: Boolean(pb.joinedAt) } : null,
         owner: n.user(j.ownerUserId),
         canManage: a.manage,
+        // PPL-13: the viewer sees only their own tasks, out of this many.
+        ownTasksOnly: !a.full,
+        taskTotal: all.filter((x) => x.status !== 'cancelled').length,
         today,
         tasks: tasks.map((x) => ({ ...this.taskView(x, n, this.canDo(x, v, a), today, a.manage || (v.userId !== null && x.completedBy === v.userId)), title: words.step(j.id, x.key, x.title), documentStatus: docStatus(x) })),
       };

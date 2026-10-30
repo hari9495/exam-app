@@ -639,7 +639,11 @@ function LiveJourneyRecord({ live, today }: { live: LiveJourney; today: Date }) 
         </InlineAlert>
       )}
       {late.length > 0 && !letterLate && j.canManage && <InlineAlert tone="warning">{plural(late.length, 'task is', 'tasks are')} past the due date.</InlineAlert>}
-      {!j.canManage && <Text as="p" className="yx-ppl__muted">You can do the tasks that have a button. HR runs the rest.</Text>}
+      {j.ownTasksOnly ? (
+        <Text as="p" className="yx-ppl__muted">You see the {plural(tasks.length, 'task')} you own. HR sees all {j.taskTotal ?? tasks.length}.</Text>
+      ) : (
+        !j.canManage && <Text as="p" className="yx-ppl__muted">You can do the tasks that have a button. HR runs the rest.</Text>
+      )}
       <div className="yx-ppl__phases">
         {phases.map((ph) => {
           const items = tasks.filter((t) => ph.test(t.dueOffsetDays));

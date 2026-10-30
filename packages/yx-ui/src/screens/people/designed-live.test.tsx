@@ -184,6 +184,15 @@ describe('Checklist record (PPL-13)', () => {
     wrap(<JourneyRecord tasks={[]} joining={day('2026-10-19')} today={day('2026-10-21')} live={{ ...live(), journey: { ...JOURNEY, joiner: { status: 'joined', outcome: null, joined: true } } }} />);
     expect(screen.getByText(/joined 19 Oct 2026/)).toBeInTheDocument();
   });
+
+  it('PPL-13: an IT or manager owner sees how many of the tasks are theirs; HR does not get the line', () => {
+    const own = { ...JOURNEY, canManage: false, ownTasksOnly: true, taskTotal: 9 };
+    const { unmount } = wrap(<JourneyRecord tasks={[]} joining={day('2026-10-19')} today={day('2026-10-09')} live={{ ...live(), journey: own }} />);
+    expect(screen.getByText(`You see the ${JOURNEY.tasks.filter((t) => t.status !== 'cancelled').length} tasks you own. HR sees all 9.`)).toBeInTheDocument();
+    unmount();
+    wrap(<JourneyRecord tasks={[]} joining={day('2026-10-19')} today={day('2026-10-09')} live={live()} />);
+    expect(screen.queryByText(/tasks you own/)).toBeNull();
+  });
 });
 
 describe('My checklist tasks (PPL-47) and Life events (PPL-48)', () => {
