@@ -19,6 +19,7 @@ const LINKS: StoryLink[] = [
   { id: 'structure', label: 'Structure', href: '#structure', group: 'Organisation' },
   { id: 'company-rules', label: 'Company rules', href: '#rules', group: 'Organisation' },
   { id: 'access-settings', label: 'Access and privacy', href: '#privacy', group: 'Access' },
+  { id: 'payroll-rules', label: 'Payroll rules', href: '#payroll-rules', group: 'Payroll & Statutory' },
 ];
 const Frame = ({ active, children }: { active: StoryLink['id']; children: React.ReactNode }) => (
   <LinksFrame active={active} links={LINKS}>
@@ -144,6 +145,63 @@ export const AccessAndPrivacyGuarded: S = {
   render: () => (
     <Frame active="access-settings">
       <CompanySettingsScreen section="access" {...settings} heldGuards={[]} />
+    </Frame>
+  ),
+};
+
+/** Group 4 · Payroll rules (founder 30 Oct 2026, last 10, items 1 and 5): statutory bonus and loans and advances, per company or legal entity. */
+export const PayrollRules: S = {
+  render: () => (
+    <Frame active="payroll-rules">
+      <CompanySettingsScreen section="payroll" {...settings} />
+    </Frame>
+  ),
+};
+
+/** Payroll rules: changing a loan interest rate; Save pressed before a value was chosen shows the field error and focuses it. */
+export const PayrollRulesLoanTooEarly: S = {
+  name: 'Payroll rules · loan interest · pressed too early',
+  render: () => (
+    <Frame active="payroll-rules">
+      <CompanySettingsScreen section="payroll" {...settings} story={{ editing: 'payroll.loan.interest_rate.loan', tooEarly: true }} />
+    </Frame>
+  ),
+};
+
+/** Payroll rules: the bonus eligibility rule editor (last day, first day or the highest rate in the month). */
+export const PayrollRulesBonusRule: S = {
+  name: 'Payroll rules · bonus eligibility rule editor',
+  render: () => (
+    <Frame active="payroll-rules">
+      <CompanySettingsScreen section="payroll" {...settings} story={{ editing: 'payroll.bonus.eligibility_rate_on' }} />
+    </Frame>
+  ),
+};
+
+/** Someone who may see the payroll rules but not change them: no Change buttons. */
+export const PayrollRulesReadOnly: S = {
+  name: 'Payroll rules · read only',
+  render: () => (
+    <Frame active="payroll-rules">
+      <CompanySettingsScreen section="payroll" {...settings} canManage={false} />
+    </Frame>
+  ),
+};
+
+export const PayrollRulesLoading: S = {
+  name: 'Payroll rules · loading',
+  render: () => (
+    <Frame active="payroll-rules">
+      <CompanySettingsScreen section="payroll" {...settings} state="loading" />
+    </Frame>
+  ),
+};
+
+export const PayrollRulesError: S = {
+  name: 'Payroll rules · error',
+  render: () => (
+    <Frame active="payroll-rules">
+      <CompanySettingsScreen section="payroll" {...settings} state="error" onRetry={() => {}} />
     </Frame>
   ),
 };

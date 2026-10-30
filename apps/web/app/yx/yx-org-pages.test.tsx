@@ -13,6 +13,7 @@ import YxStructurePage from './(app)/settings/structure/page';
 import YxCompanyRulesPage from './(app)/settings/company-rules/page';
 import YxAccessSettingsPage from './(app)/settings/access-settings/page';
 import YxCustomFieldsPage from './(app)/settings/custom-fields/page';
+import YxPayrollRulesPage from './(app)/settings/payroll-rules/page';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn() }));
@@ -183,6 +184,58 @@ describe('/yx/settings/company-rules and /yx/settings/access-settings (P01 §4.6
     route({ ...lists, 'GET /org/settings': forbidden(), [`GET ${PERMS_PATH}`]: [] });
     wrap(<YxCompanyRulesPage />);
     expect(await screen.findByText("You don't have access to the company rules")).toBeInTheDocument();
+  });
+});
+
+describe('/yx/settings/payroll-rules (founder 30 Oct 2026, last 10, items 1 and 5)', () => {
+  const REGISTRY = {
+    'payroll.bonus.eligibility_rate_on': { label: 'Bonus eligibility uses the salary rate on', scopes: ['tenant', 'legal_entity'], dated: false, values: ['last_day', 'first_day', 'highest_in_month'], default: 'last_day' },
+    'payroll.loan.after_probation': { label: 'Who may ask for a loan or advance', scopes: ['tenant', 'legal_entity'], dated: false, values: ['confirmed', 'everyone'], default: 'confirmed' },
+    'payroll.loan.interest_rate.loan': { label: 'Interest on a personal loan (% a year)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '7.5', '8'], default: '0' },
+  };
+  const lists = { 'GET /org/legal-entities': [ENTITY], 'GET /org/locations': [LOCATION], 'GET /org/masters/departments': [], 'GET /org/masters/employment-types': [], 'GET /org/masters/grades': [GRADE] };
+
+  it('payroll set-up sees the bonus and loan panels with defaults; Save too early shows the error and focuses it; a save is sent and toasted', async () => {
+    const put = jest.fn().mockResolvedValue({ id: 's-9' });
+    route({ ...lists, 'GET /org/settings': { registry: REGISTRY, overrides: [{ id: 's-1', key: 'payroll.loan.interest_rate.loan', scopeType: 'legal_entity', scopeId: 'le-1', value: '8', validFrom: null }] }, 'PUT /org/settings': (_p: string, init: RequestInit) => put(JSON.parse(String(init.body))), [`GET ${PERMS_PATH}`]: ['org.structure.view', 'payroll.setup.manage'] });
+    wrap(<YxPayrollRulesPage />);
+    expect(await screen.findByRole('heading', { name: 'Statutory bonus' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Loans and advances' })).toBeInTheDocument();
+    expect(screen.getByText("Rate on the month's last day")).toBeInTheDocument();
+    expect(screen.getByText('Interest-free')).toBeInTheDocument();
+    expect(within(screen.getByRole('table', { name: /Interest on a personal loan/ })).getByText('8% a year')).toBeInTheDocument();
+    const block = screen.getByText('Who may ask for a loan or advance').closest('.yx-org__rule') as HTMLElement;
+    await userEvent.click(within(block).getByRole('button', { name: 'Change' }));
+    const drawer = await screen.findByRole('dialog');
+    expect(within(drawer).getByText('Starter value: Confirmed employees only (after probation)')).toBeInTheDocument();
+    await userEvent.click(within(drawer).getByRole('button', { name: 'Save' }));
+    expect((await within(drawer).findAllByText('Choose the value')).length).toBeGreaterThan(0);
+    await waitFor(() => expect(within(drawer).getByText('New value').closest('.yx-field')?.contains(document.activeElement)).toBe(true));
+    expect(put).not.toHaveBeenCalled();
+    await userEvent.click(within(drawer).getByRole('radio', { name: 'Everyone, during probation too' }));
+    await userEvent.click(within(drawer).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(put).toHaveBeenCalledWith({ key: 'payroll.loan.after_probation', scopeType: 'tenant', value: 'everyone' }));
+    expect((await screen.findAllByText('Saved.'))[0]).toBeInTheDocument();
+  });
+
+  it('a reader without either key gets no Change buttons; a 403 shows no access; a refused save shows why', async () => {
+    route({ ...lists, 'GET /org/settings': { registry: REGISTRY, overrides: [] }, [`GET ${PERMS_PATH}`]: ['org.structure.view'] });
+    const { unmount } = wrap(<YxPayrollRulesPage />);
+    await screen.findAllByText('Starter value');
+    expect(screen.queryByRole('button', { name: 'Change' })).toBeNull();
+    unmount();
+    route({ ...lists, 'GET /org/settings': forbidden(), [`GET ${PERMS_PATH}`]: [] });
+    const r2 = wrap(<YxPayrollRulesPage />);
+    expect(await screen.findByText("You don't have access to the payroll rules")).toBeInTheDocument();
+    r2.unmount();
+    route({ ...lists, 'GET /org/settings': { registry: REGISTRY, overrides: [] }, 'PUT /org/settings': Object.assign(new Error('Who may ask for a loan or advance is one of: confirmed, everyone'), { status: 400 }), [`GET ${PERMS_PATH}`]: ['payroll.setup.manage'] });
+    wrap(<YxPayrollRulesPage />);
+    const block = (await screen.findByText('Who may ask for a loan or advance')).closest('.yx-org__rule') as HTMLElement;
+    await userEvent.click(within(block).getByRole('button', { name: 'Change' }));
+    const drawer = await screen.findByRole('dialog');
+    await userEvent.click(within(drawer).getByRole('radio', { name: 'Everyone, during probation too' }));
+    await userEvent.click(within(drawer).getByRole('button', { name: 'Save' }));
+    expect(await within(drawer).findByText('Who may ask for a loan or advance is one of: confirmed, everyone')).toBeInTheDocument();
   });
 });
 

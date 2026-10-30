@@ -145,6 +145,22 @@ export const SETTING_REGISTRY: Record<string, SettingDef> = {
   'attendance.mode': { label: 'Attendance mode', scopes: ['tenant', 'legal_entity', 'location', 'department', 'employment_type'], dated: true, values: ['punch', 'assumed_present', 'timesheet'], default: 'punch' },
   'attendance.missing_punch_effect': { label: 'Missing punches', scopes: ['tenant', 'legal_entity', 'location', 'department', 'employment_type'], dated: true, values: ['block_payroll_approval', 'warning_only'], default: 'block_payroll_approval' },
   'attendance.factories_act': { label: 'Factories Act (overtime is paid at the legal rate)', scopes: ['tenant', 'legal_entity', 'location', 'department', 'employment_type'], dated: true, values: ['covered', 'not_covered'], default: 'not_covered' },
+  // Settings › Payroll & Statutory › Payroll rules (the API's registry entries, founder 30 Oct 2026 last 10, items 1 and 5).
+  'payroll.bonus.eligibility_rate_on': { label: 'Bonus eligibility uses the salary rate on', scopes: ['tenant', 'legal_entity'], dated: false, values: ['last_day', 'first_day', 'highest_in_month'], default: 'last_day' },
+  'payroll.bonus.eligibility_wage': { label: 'Bonus is paid to people whose wage a month is at most (₹)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['21000', '25000', '30000', '35000', '40000', '50000'], default: '21000' },
+  'payroll.bonus.calculation_ceiling': { label: 'Bonus is worked out on the wage up to (₹ a month, or the minimum wage if higher)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['7000', '10000', '15000', '21000'], default: '7000' },
+  'payroll.bonus.min_rate': { label: 'Lowest bonus rate (%)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['8.33', '10', '12', '15', '20'], default: '8.33' },
+  'payroll.bonus.max_rate': { label: 'Highest bonus rate (%)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['8.33', '10', '12', '15', '20'], default: '20' },
+  'payroll.bonus.min_working_days': { label: 'Working days in the year needed for bonus', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '15', '30'], default: '30' },
+  'payroll.bonus.min_amount': { label: 'Least bonus for a whole year (₹)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['100', '500', '1000'], default: '100' },
+  'payroll.bonus.allocable_percent': { label: 'Allocable surplus is this share of the available surplus (%)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['60', '67'], default: '60' },
+  'payroll.bonus.carry_years': { label: 'Set-on and set-off are carried for (years)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['4'], default: '4' },
+  'payroll.bonus.year_start_month': { label: 'The bonus accounting year starts in (month number)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'], default: '4' },
+  'payroll.bonus.due_months': { label: 'Bonus is paid within (months after the year end)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '2', '3', '4', '5', '6', '7', '8'], default: '8' },
+  'payroll.loan.max_gross_months': { label: 'A loan or advance may be at most (months of gross pay)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['none', '1', '2', '3', '4', '6', '12'], default: '2' },
+  'payroll.loan.after_probation': { label: 'Who may ask for a loan or advance', scopes: ['tenant', 'legal_entity'], dated: false, values: ['confirmed', 'everyone'], default: 'confirmed' },
+  'payroll.loan.interest_rate.advance': { label: 'Interest on a salary advance (% a year)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '4', '5', '6', '7', '7.5', '8', '8.5', '9', '10', '12'], default: '0' },
+  'payroll.loan.interest_rate.loan': { label: 'Interest on a personal loan (% a year)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '4', '5', '6', '7', '7.5', '8', '8.5', '9', '10', '12'], default: '0' },
 };
 
 export const SETTING_OVERRIDES: SettingOverride[] = [
@@ -154,6 +170,11 @@ export const SETTING_OVERRIDES: SettingOverride[] = [
   { id: 's-4', key: 'attendance.mode', scopeType: 'location', scopeId: 'loc-blr', value: 'assumed_present', validFrom: '2026-04-01' },
   { id: 's-5', key: 'attendance.mode', scopeType: 'location', scopeId: 'loc-hsr', value: 'timesheet', validFrom: '2026-11-01' },
   { id: 's-6', key: 'access.manager.view_scope', scopeType: 'tenant', scopeId: 'org', value: 'direct_reports', validFrom: null },
+  // Kaveri Foods: personal loans at 7.5 % a year (8 % in Tamil Nadu), up to 3 months' gross; bonus on the highest rate in Tamil Nadu.
+  { id: 's-7', key: 'payroll.loan.interest_rate.loan', scopeType: 'tenant', scopeId: 'org', value: '7.5', validFrom: null },
+  { id: 's-8', key: 'payroll.loan.interest_rate.loan', scopeType: 'legal_entity', scopeId: 'le-tn', value: '8', validFrom: null },
+  { id: 's-9', key: 'payroll.loan.max_gross_months', scopeType: 'tenant', scopeId: 'org', value: '3', validFrom: null },
+  { id: 's-10', key: 'payroll.bonus.eligibility_rate_on', scopeType: 'legal_entity', scopeId: 'le-tn', value: 'highest_in_month', validFrom: null },
 ];
 
 export const SETTING_CHOICES: SettingScopeChoices = {

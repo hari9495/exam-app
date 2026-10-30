@@ -327,6 +327,7 @@ export function buildNav(n: NavInput): NavArea[] {
       ]),
       ...sec('Payroll & Statutory', when(pay, ...[
         ...when(any('payroll.setup.manage', 'payroll.statutory.setup'), L('pay-setup', 'Payroll set-up', '/yx/payroll/setup')),
+        ...when(any('payroll.setup.manage', 'org.settings.manage'), L('payroll-rules', 'Payroll rules', '/yx/settings/payroll-rules')),
         ...when(has('payroll.setup.manage'), L('pay-groups', 'Pay groups', '/yx/payroll/pay-groups'), L('pay-layout', 'Payslip layout', '/yx/payroll/payslip-layout'), L('pay-country-packs', 'Country packs', '/yx/payroll/country-packs')),
         ...when(has('payroll.component.manage'), L('pay-components', 'Component library', '/yx/payroll/components')),
         ...when(has('payroll.template.manage'), L('pay-templates', 'Salary templates', '/yx/payroll/templates')),

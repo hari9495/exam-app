@@ -35,6 +35,11 @@ export const SCOPE_LABEL: Record<SettingScope, string> = {
 /** Broadest first, as the table lists them. */
 const SCOPES = Object.keys(SCOPE_LABEL) as SettingScope[];
 
+/** Loan interest values (stored as numbers) as "% a year". */
+function rates(): Record<string, string> {
+  return Object.fromEntries(['4', '5', '6', '7', '7.5', '8', '8.5', '9', '10', '12'].map((v) => [v, `${v}% a year`]));
+}
+
 /** Words for the stored values; anything unlisted shows as stored (numbers). */
 const VALUE_LABEL: Record<string, Record<string, string>> = {
   'employee_change.retro_limit': { current_fy: 'Start of this financial year', previous_fy: 'Start of last financial year' },
@@ -60,6 +65,22 @@ const VALUE_LABEL: Record<string, Record<string, string>> = {
   'pay_access.days': { '7': '7 days', '15': '15 days', '30': '30 days', '60': '60 days', '90': '90 days' },
   'employee.personal.required': { dateOfBirth: 'Date of birth', gender: 'Gender', maritalStatus: 'Marital status', personalEmail: 'Personal email', personalPhone: 'Personal phone', addressLine1: 'Address', addressLine2: 'Address line 2', city: 'City', stateCode: 'State', postalCode: 'PIN code' },
   'people.language': { en: 'English', hi: 'हिन्दी (Hindi)', ta: 'தமிழ் (Tamil)', te: 'తెలుగు (Telugu)' },
+  // Settings › Payroll & Statutory › Payroll rules.
+  'payroll.bonus.eligibility_rate_on': { last_day: "Rate on the month's last day", first_day: "Rate on the month's first day", highest_in_month: 'Highest rate in the month' },
+  'payroll.bonus.year_start_month': { '1': 'January', '2': 'February', '3': 'March', '4': 'April', '5': 'May', '6': 'June', '7': 'July', '8': 'August', '9': 'September', '10': 'October', '11': 'November', '12': 'December' },
+  'payroll.bonus.eligibility_wage': { '21000': '₹21,000', '25000': '₹25,000', '30000': '₹30,000', '35000': '₹35,000', '40000': '₹40,000', '50000': '₹50,000' },
+  'payroll.bonus.calculation_ceiling': { '7000': '₹7,000', '10000': '₹10,000', '15000': '₹15,000', '21000': '₹21,000' },
+  'payroll.bonus.min_rate': { '8.33': '8.33%', '10': '10%', '12': '12%', '15': '15%', '20': '20%' },
+  'payroll.bonus.max_rate': { '8.33': '8.33%', '10': '10%', '12': '12%', '15': '15%', '20': '20%' },
+  'payroll.bonus.min_working_days': { '1': '1 day', '15': '15 days', '30': '30 days' },
+  'payroll.bonus.min_amount': { '100': '₹100', '500': '₹500', '1000': '₹1,000' },
+  'payroll.bonus.allocable_percent': { '60': '60%', '67': '67% (some companies, section 2(4))' },
+  'payroll.bonus.carry_years': { '4': '4 years' },
+  'payroll.bonus.due_months': Object.fromEntries(Array.from({ length: 8 }, (_, i) => [String(i + 1), `${i + 1} ${i ? 'months' : 'month'}`])),
+  'payroll.loan.max_gross_months': { none: 'No limit', '1': '1 month', '2': '2 months', '3': '3 months', '4': '4 months', '6': '6 months', '12': '12 months' },
+  'payroll.loan.after_probation': { confirmed: 'Confirmed employees only (after probation)', everyone: 'Everyone, during probation too' },
+  'payroll.loan.interest_rate.advance': { '0': 'Interest-free', ...rates() },
+  'payroll.loan.interest_rate.loan': { '0': 'Interest-free', ...rates() },
 };
 export const valueLabel = (key: string, value: unknown) => {
   const v = String(value);
@@ -77,8 +98,10 @@ export interface SettingsSection {
   keys: string[];
 }
 
-/** Settings group 1 (Organisation) and group 2 (People & Access). Codes and master ownership live on Legal entities. */
-export const SETTING_SECTIONS: Record<'organisation' | 'access', SettingsSection[]> = {
+export type SettingsArea = 'organisation' | 'access' | 'payroll';
+
+/** Settings group 1 (Organisation), group 2 (People & Access) and group 4's Payroll rules. Codes and master ownership live on Legal entities. */
+export const SETTING_SECTIONS: Record<SettingsArea, SettingsSection[]> = {
   organisation: [
     { title: 'Job changes', description: 'How far back HR may date a change without a System Admin, and what a promotion must change (a new designation, a new grade, or both).', keys: ['employee_change.retro_limit', 'promotion.must_change'] },
     { title: 'Inter-entity transfer defaults', description: 'Applied to every move between legal entities (People › Restructure, and one person in Change action). HR can change them for one transfer.', keys: ['transfer.leave', 'transfer.service', 'transfer.code', 'transfer.salary'] },
@@ -98,6 +121,25 @@ export const SETTING_SECTIONS: Record<'organisation' | 'access', SettingsSection
     { title: 'Bank details', description: 'Protects pay from a hijacked account change.', keys: ['employee.bank_change.cooling_hours'] },
     { title: 'Home page', description: 'What employees see on their home. When net pay is shown, the amount stays hidden until the person selects Show amount, and hides again on every visit. Only their own pay, never anyone else’s.', keys: ['home.pay_on_employee_home'] },
   ],
+  // Founder 30 Oct 2026 (last 10, items 1 and 5). The starter values are the Act's; a company may only be more generous.
+  payroll: [
+    {
+      title: 'Statutory bonus',
+      description: 'Payment of Bonus Act rules used when payroll works out the yearly bonus (Payroll › Statutory bonus). A change applies the next time a bonus is worked out; an approved bonus keeps the rules it was worked out with.',
+      keys: ['payroll.bonus.eligibility_rate_on', 'payroll.bonus.eligibility_wage', 'payroll.bonus.calculation_ceiling', 'payroll.bonus.min_rate', 'payroll.bonus.max_rate', 'payroll.bonus.min_working_days', 'payroll.bonus.min_amount', 'payroll.bonus.allocable_percent', 'payroll.bonus.carry_years', 'payroll.bonus.year_start_month', 'payroll.bonus.due_months'],
+    },
+    {
+      title: 'Loans and advances',
+      description: 'The most a person may borrow, who may ask, and the yearly interest for each type. Employees never type the interest: a new request uses the rate in force that day, and loans already given keep theirs.',
+      keys: ['payroll.loan.max_gross_months', 'payroll.loan.after_probation', 'payroll.loan.interest_rate.advance', 'payroll.loan.interest_rate.loan'],
+    },
+  ],
+};
+
+const AREA: Record<SettingsArea, { group: string; title: string; description: string; what: string }> = {
+  organisation: { group: 'Organisation', title: 'Company rules', description: 'Rules that apply to everyone unless an entity, employment type or grade has its own.', what: 'the company rules' },
+  access: { group: 'People & Access', title: 'Access and privacy', description: 'Who sees what beyond the roles you grant, and what employees see about their own data.', what: 'the access settings' },
+  payroll: { group: 'Payroll & Statutory', title: 'Payroll rules', description: 'Statutory bonus and loan rules for the whole company, or for one legal entity where it differs.', what: 'the payroll rules' },
 };
 
 /** The company-wide value in force on `today`, and its row (none: the starter value). */
@@ -125,7 +167,17 @@ export function settingInput(key: string, def: SettingDef, d: Draft): { input: S
   return { input: { key, scopeType: d.scopeType, ...(d.scopeType === 'tenant' ? {} : { scopeId: d.scopeId! }), value: d.value ?? '', ...(def.dated ? { validFrom: from! } : {}) }, errors };
 }
 
-function SettingEditor({ settingKey, def, current, choices, today, onClose, onSave }: { settingKey: string; def: SettingDef; current?: string; choices: SettingScopeChoices; today: string; onClose: () => void; onSave: (input: SettingInput) => Promise<void> }) {
+/** Focuses a form field by its FormField id: the control itself, or the first control inside it. */
+function focusField(id: string | undefined) {
+  if (!id) return;
+  const el = document.getElementById(id);
+  if (el?.matches('input, select, textarea, button')) return el.focus();
+  // A control with no id of its own (Segment, Select): the first tabbable control in the field.
+  const field = el?.closest('.yx-field') ?? document.querySelector(`label[for="${id}"]`)?.closest('.yx-field');
+  field?.querySelector<HTMLElement>('input:not([type="hidden"]), select, textarea, button:not([tabindex="-1"]), [tabindex="0"]')?.focus();
+}
+
+function SettingEditor({ settingKey, def, current, choices, today, tooEarly = false, onClose, onSave }: { settingKey: string; def: SettingDef; current?: string; choices: SettingScopeChoices; today: string; tooEarly?: boolean; onClose: () => void; onSave: (input: SettingInput) => Promise<void> }) {
   // Only scopes with records to name (pay groups and people are set elsewhere).
   const scopes = def.scopes.filter((s) => s === 'tenant' || (choices[s]?.length ?? 0) > 0);
   // A multi setting starts from the company's current list (the starter value until one is set).
@@ -139,10 +191,15 @@ function SettingEditor({ settingKey, def, current, choices, today, onClose, onSa
   };
   const { input, errors } = settingInput(settingKey, def, draft);
   const from = draft.validFrom ? dayKey(draft.validFrom) : null;
-  const saveErrors = useSaveErrors(errors);
+  const saveErrors = useSaveErrors(errors, tooEarly);
   const { errorOf } = saveErrors;
   const save = () => {
-    if (!input) return saveErrors.reveal();
+    if (!input) {
+      saveErrors.reveal();
+      // Pressed too early: the first field with an error takes focus, after the error summary has rendered.
+      const first = errors[0]?.fieldId;
+      return void setTimeout(() => focusField(first));
+    }
     void run('save', () => onSave(input)).then((ok) => ok && onClose());
   };
   return (
@@ -246,8 +303,8 @@ function SettingBlock({ settingKey, def, rows, names, canEdit, blockedReason, to
 }
 
 export interface CompanySettingsScreenProps {
-  /** Group 1 (Organisation) or group 2 (People & Access). */
-  section: 'organisation' | 'access';
+  /** Group 1 (Organisation), group 2 (People & Access) or group 4's Payroll rules. */
+  section: SettingsArea;
   state: LoadState;
   onRetry?: () => void;
   registry: Record<string, SettingDef>;
@@ -262,25 +319,27 @@ export interface CompanySettingsScreenProps {
   today: string;
   onSave: (input: SettingInput) => Promise<void>;
   onRemove: (id: string) => Promise<void>;
+  /** Stories only: open the editor of a key, with the pressed-too-early errors shown. */
+  story?: { editing?: string; tooEarly?: boolean };
 }
 
 /** Settings › Organisation › Company rules, and Settings › People & Access › Access and privacy (P01 §4.6, P02 §4.2, §7). */
 export function CompanySettingsScreen(props: CompanySettingsScreenProps) {
-  const [editing, setEditing] = useState<{ key: string; n: number } | null>(null);
+  const [editing, setEditing] = useState<{ key: string; n: number } | null>(props.story?.editing ? { key: props.story.editing, n: 0 } : null);
   const [dialog, ask] = useConfirm();
   const { toast } = useToast();
-  const access = props.section === 'access';
+  const area = AREA[props.section];
   const name = (r: SettingOverride) => (r.scopeType === 'tenant' ? 'Whole company' : (props.choices[r.scopeType]?.find((c) => c.value === r.scopeId)?.label ?? 'Archived record'));
   const editDef = editing ? props.registry[editing.key] : null;
   return (
     <OrgPage
-      group={access ? 'People & Access' : 'Organisation'}
-      crumb={access ? 'Access and privacy' : 'Company rules'}
-      title={access ? 'Access and privacy' : 'Company rules'}
-      description={access ? 'Who sees what beyond the roles you grant, and what employees see about their own data.' : 'Rules that apply to everyone unless an entity, employment type or grade has its own.'}
+      group={area.group}
+      crumb={area.title}
+      title={area.title}
+      description={area.description}
       state={props.state}
       onRetry={props.onRetry}
-      what={access ? 'the access settings' : 'the company rules'}
+      what={area.what}
     >
       {SETTING_SECTIONS[props.section].map((s) => {
         const keys = s.keys.filter((k) => props.registry[k]);
@@ -323,7 +382,7 @@ export function CompanySettingsScreen(props: CompanySettingsScreenProps) {
         );
       })}
       {dialog}
-      {editing && editDef && <SettingEditor key={editing.n} settingKey={editing.key} def={editDef} current={String(companyValue(editDef, props.overrides.filter((r) => r.key === editing.key), props.today).value)} choices={props.choices} today={props.today} onClose={() => setEditing(null)} onSave={async (input) => {
+      {editing && editDef && <SettingEditor key={editing.n} settingKey={editing.key} def={editDef} current={String(companyValue(editDef, props.overrides.filter((r) => r.key === editing.key), props.today).value)} choices={props.choices} today={props.today} tooEarly={props.story?.tooEarly} onClose={() => setEditing(null)} onSave={async (input) => {
         await props.onSave(input);
         toast({ tone: 'success', title: 'Saved.' });
       }} />}

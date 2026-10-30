@@ -464,4 +464,20 @@ describe('Company rules and access settings (P01 §4.6; YX-ORG-12/18)', () => {
     expect(onSave).not.toHaveBeenCalled();
     expect(within(dialog).getAllByText('Choose the value').length).toBeGreaterThan(0);
   });
+
+  it('Payroll rules (founder last 10, items 1 and 5): bonus and loan panels, values in words, entity overrides; too early focuses the value', async () => {
+    render(<ToastProvider><CompanySettingsScreen {...base} section="payroll" /></ToastProvider>);
+    expect(screen.getByRole('heading', { name: 'Payroll rules' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Statutory bonus' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Loans and advances' })).toBeInTheDocument();
+    expect(screen.getAllByText("Rate on the month's last day").length).toBeGreaterThan(0);
+    expect(screen.getByText('Highest rate in the month')).toBeInTheDocument(); // the Tamil Nadu override
+    expect(screen.getAllByText('7.5% a year').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('3 months').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Probation lasts (months)')).toBeNull(); // only payroll keys here
+    // The story state: the loan interest editor pressed too early shows the error.
+    const { unmount } = render(<ToastProvider><CompanySettingsScreen {...base} section="payroll" story={{ editing: 'payroll.loan.interest_rate.loan', tooEarly: true }} /></ToastProvider>);
+    expect(within(await screen.findByRole('dialog')).getAllByText('Choose the value').length).toBeGreaterThan(0);
+    unmount();
+  });
 });
