@@ -41,6 +41,14 @@ export function templateRows(feed: readonly { on: string; name: string }[], from
 }
 
 /**
+ * TIM-26 "Holiday on a weekly off: comp-off credit": due when the holiday is the person's own weekly off (their roster,
+ * shift pattern or location, as resolveDay decides). Rostered to work, the holiday rule applies instead (no credit).
+ */
+export function holidayCompOffDue(day: { weeklyOff: boolean; shift: unknown | null }): boolean {
+  return day.weeklyOff && !day.shift;
+}
+
+/**
  * Substitute days off (E19 / YX-AT-11, calendar rule "substitute"): a whole-day holiday on a weekly off gives the next
  * day that is neither a weekly off nor a holiday nor another substitute. Optional and restricted days give none.
  */

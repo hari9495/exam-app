@@ -12,8 +12,8 @@ import { entitiesFor, payViewer, withPayScope } from '../payroll/pay-access';
 import { DayEngine } from './day-engine.service';
 import { LeaveService } from './leave.service';
 import { Facts, LeaveRules, asDate, dateOf, factsOn, grantCovers, hasBalance, holidaysFor, hrApprovers, num, rulesFor, settingOn, todayIn, visibleSql, type TimeKey } from './time-core';
-import { addDays, daysBetween, isWeeklyOff, leaveYearOf } from './time-maths';
-import { cloneToYear, templateRows } from './holiday-rules';
+import { addDays, daysBetween, leaveYearOf } from './time-maths';
+import { cloneToYear, holidayCompOffDue, templateRows } from './holiday-rules';
 import { ScheduleBook, lockedDates } from './schedule';
 import { BLOCK_DATE_EXEMPT, CompOffCredit, compOffExpiries, compOffUseBy, dailyPay, encashAmount, encashMax, encashWindowOpen, longestRun, toCsv } from './leave-rules';
 import { FEED_STATES, HOLIDAY_PROVIDER, HolidayProvider } from './holiday-feed.provider';
@@ -1320,7 +1320,11 @@ export class LeaveV2Service implements OnModuleInit {
     return { calendarId, year, added: put.length, leaveReturned: returned };
   }
 
-  /** TIM-26 rule "Holiday on a weekly off: comp-off credit": a comp-off day for each person at that location (daily job, once each). */
+  /**
+   * TIM-26 rule "Holiday on a weekly off: comp-off credit" (daily job, once each): a comp-off day for each person at the
+   * location whose own day is a weekly off by their roster, shift pattern or (with neither) the location (founder,
+   * 30 Oct 2026). People rostered to work that day get the holiday rule instead (no credit here).
+   */
   async creditHolidayOnWeeklyOff(org: string, now = new Date()): Promise<number> {
     const c: CompanyContext = { organizationId: org, isSuperAdmin: false };
     return this.tenantPrisma.forTenant(c, async (tx) => {
@@ -1328,19 +1332,25 @@ export class LeaveV2Service implements OnModuleInit {
       const cals = await tx.holidayCalendar.findMany({ where: { organizationId: org, onWeeklyOff: 'comp_off', locationId: { not: null } } });
       if (!t || !cals.length) return 0;
       const today = todayIn('Asia/Kolkata', now);
+      const book = await ScheduleBook.load(tx, org);
       let n = 0;
       for (const cal of cals) {
         // The last week, so a missed run catches up; the period key makes a repeat do nothing.
         const hols = await tx.holiday.findMany({ where: { organizationId: org, calendarId: cal.id, holidayOn: { gte: asDate(addDays(today, -7)), lte: asDate(today) }, kind: { in: ['national', 'state', 'festival'] }, halfDay: false } });
-        const ruleOn = await rulesFor(tx, org, cal.locationId!, today);
         for (const h of hols) {
           const on = dateOf(h.holidayOn);
-          if (!isWeeklyOff(on, ruleOn(on).weeklyOffs)) continue;
           const people = await tx.$queryRaw<{ id: string }[]>`
             SELECT DISTINCT a.employee_id::text AS id FROM employee_assignments a
             WHERE a.organization_id = ${org}::uuid AND a.superseded_at IS NULL AND a.location_id = ${cal.locationId}::uuid AND ${on}::date <@ daterange(a.valid_from, a.valid_to, '[]')`;
           if (!people.length) continue;
-          n += (await tx.leaveLedgerEntry.createMany({ data: people.map((p) => ({ organizationId: org, employeeId: p.id, leaveTypeId: t.id, entryOn: h.holidayOn, kind: 'comp_off', days: 1, periodKey: `hw:${h.id}`, reason: `${h.name} on ${fmt(on)} fell on a weekly off` })), skipDuplicates: true })).count;
+          await book.prime(people.map((p) => p.id), on, on);
+          const due: string[] = [];
+          for (const p of people) {
+            const f = await factsOn(tx, org, p.id, on);
+            if (f && holidayCompOffDue(await book.day(f, on))) due.push(p.id);
+          }
+          if (!due.length) continue;
+          n += (await tx.leaveLedgerEntry.createMany({ data: due.map((id) => ({ organizationId: org, employeeId: id, leaveTypeId: t.id, entryOn: h.holidayOn, kind: 'comp_off', days: 1, periodKey: `hw:${h.id}`, reason: `${h.name} on ${fmt(on)} fell on a weekly off` })), skipDuplicates: true })).count;
         }
       }
       if (n) await audit(tx, c, 'leave.comp_off.holiday_on_weekly_off', 'leave_ledger', org, { entries: n });

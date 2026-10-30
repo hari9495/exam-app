@@ -1,7 +1,26 @@
-import { cloneToYear, substituteDays, templateRows } from './holiday-rules';
+import { cloneToYear, holidayCompOffDue, substituteDays, templateRows } from './holiday-rules';
 import { isWeeklyOff } from './time-maths';
+import { resolveDay } from './time-rules';
 
 const h = (on: string, name: string, kind = 'national', halfDay = false) => ({ on, name, kind, halfDay });
+
+// TIM-26 comp-off for a holiday on a weekly off follows each person's own day (founder, 30 Oct 2026).
+describe('holidayCompOffDue (roster, pattern, then location)', () => {
+  const shift = { shiftId: 's1', name: 'Morning', night: false, shiftStart: 360, shiftEnd: 840, graceMinutes: 10, halfDayMinutes: 240, fullDayMinutes: 480, breakMinutes: 30, breakAboveMinutes: 300 };
+  const loc = (weeklyOff: boolean) => ({ rule: shift, weeklyOff });
+  const day = (roster: { shiftId: string | null; isOff: boolean } | null, pattern: string | null | undefined, locOff: boolean) => holidayCompOffDue(resolveDay({ roster, pattern, location: loc(locOff), shiftOn: () => shift }));
+  it('rostered off on the holiday: credit, even when the location works that day', () => expect(day({ shiftId: null, isOff: true }, undefined, false)).toBe(true));
+  it('rostered to work on the location weekly off: no credit (the holiday rule applies)', () => expect(day({ shiftId: 's1', isOff: false }, undefined, true)).toBe(false));
+  it('a pattern off day: credit; a pattern work day on the location weekly off: none', () => {
+    expect(day(null, null, false)).toBe(true);
+    expect(day(null, 's1', true)).toBe(false);
+  });
+  it('no roster and no pattern: the location decides', () => {
+    expect(day(null, undefined, true)).toBe(true);
+    expect(day(null, undefined, false)).toBe(false);
+  });
+  it('a roster entry with no shift counts as off', () => expect(day({ shiftId: null, isOff: false }, 's1', false)).toBe(true));
+});
 
 describe('holiday calendar rules (TIM-26)', () => {
   it('clone keeps day and month, asks to confirm festivals only', () => {
