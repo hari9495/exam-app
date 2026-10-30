@@ -12,15 +12,21 @@ live page cannot reach yet (the reason is given).
 
 | | live | feature not built | phone view | gap |
 |---|---|---|---|---|
-| Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 81 | 6 | 19 | 6 |
-| Leave (TIM-17…25) | 43 | 0 | 11 | 3 |
-| Set-up (TIM-26…29, 31, 42) | 22 | 12 | 0 | 1 |
-| Rosters and shifts (TIM-05, 06, 08, 34, 35, 38…41) | 43 | 2 | 10 | 1 |
+| Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 85 | 6 | 19 | 2 |
+| Leave (TIM-17…25) | 46 | 0 | 11 | 0 |
+| Set-up (TIM-26…29, 31, 42) | 23 | 12 | 0 | 0 |
+| Rosters and shifts (TIM-05, 06, 08, 34, 35, 38…41) | 44 | 2 | 10 | 0 |
 | Overtime, periods, reports, timesheets (TIM-09, 11, 15, 16, 30, 37, 43) | 49 | 0 | 3 | 0 |
 | Field force (TIM-32, 33) | 7 | 0 | 9 | 0 |
-| **All 45 design groups (328 sub-pages counted)** | **245** | **20** | **52** | **11** |
+| **All 45 design groups (328 sub-pages counted)** | **254** | **20** | **52** | **2** |
 
 Counted from the stories and the rows below by script (29 Oct 2026, after rosters/devices/field, the roster fixes and founder decisions 1-7 were merged into the test app). Section counts further down may be older; this table is the current one.
+
+30 Oct 2026 (branch `feat/yukthix-time-gaps`): 9 gaps made live, recounted by script over the story rows (each row's
+"where it shows live" starting with "gap" / "feature not built" / "phone view", else live): Attendance gaps 6 → 2
+(Manager · one person, OutsideNetwork, ChoseWfh, ShiftNotStarted live), Leave 3 → 0 (TIM-17 Manager, TIM-19 Manager ×2),
+Set-up 1 → 0 (TIM-31 IpError), Rosters 1 → 0 (TIM-39 Suspend). Gaps left: TIM-13 UnknownCode (another builder's) and
+Extra · today WithNote (migration written, not applied).
 
 Kit (24 stories) are shared parts, not pages; section E lists which live screens use them.
 
@@ -291,7 +297,7 @@ Provider: to decide (Teams presence). The YukthiX desktop app posts the person's
 | DayOpenPending · regularisation pending | /yx/time/attendance → a day with a waiting fix (View in "Waiting for approval"), Withdraw there |
 | Locked · August | /yx/time/attendance on a frozen or locked month (the day card and the request sheet say so) |
 | LockedDay · locked day card | /yx/time/attendance → a day of a locked month: "is locked", Raise late request |
-| Manager · one person | gap: managers open a person's day from the muster; no one-person month page for managers |
+| Manager · one person | /yx/time/muster → a cell → "Open <name>'s month" → /yx/time/muster/<id> (`AttendanceCalendarScreen personLive`): the person's month, totals, open exceptions (each opens the day card), Person picker (the muster's people), Export month. GET /time/people/:id/attendance (team or attendance.view scope; anyone else 404). Gaps 30 Oct 2026 |
 | ManagerDay · day card | /yx/time/muster (manager) → a cell |
 | Loading | /yx/time/attendance while loading |
 | Failed · Error | /yx/time/attendance when the API fails (Try again) |
@@ -309,11 +315,11 @@ Provider: to decide (Teams presence). The YukthiX desktop app posts the person's
 | OnBreak | same, after Start break |
 | ClockedOut · already clocked out | same, after Clock out (pressing Clock in says why) |
 | LeftEarly | same, out before the shift end |
-| OutsideNetwork · blocked outside office network | gap: the server decides; a refused punch shows "Not recorded: reason" with Retry location |
-| ChoseWfh · outside → clock in as WFH | gap: WFH is asked for ahead (TIM-07 sheet); an approved WFH day shows the badge |
-| ShiftNotStarted | gap: the server decides when check-in opens |
+| OutsideNetwork · blocked outside office network | /yx/time/attendance?view=today off the office network: "Not on <office> Wi-Fi" before any punch (GET me/attendance `network` from the request IP when the location's networks decide; a geofence still decides at the punch), Check again reloads; Clock in says why |
+| ChoseWfh · outside → clock in as WFH | same, "Clock in as WFH" (setting attendance.wfh_same_day, default on): "WFH · needs <manager>'s approval · N of M used this month"; Clock in sends `wfh` and raises today's request with the punch. Rejected or withdrawn, the day engine leaves those web punches out (punches stay append-only). On duty: not offered (no on-duty request in the API) |
+| ShiftNotStarted | /yx/time/attendance?view=today before check-in opens (setting attendance.check_in_opens_minutes, default any): "Your shift has not started yet · Clock-in opens at …"; the server refuses earlier check-ins with the same words |
 | DeviceNotApproved | feature not built (no device binding API) |
-| WithNote · Note open | gap: the punch API takes no note, so the live card offers none |
+| WithNote · Note open | gap: needs a `note` column on punches. Migration written, NOT applied: docs/yukthix/pending-migrations/20261310000000_punch_note (with the wiring steps); the live card offers no note until it is applied |
 | Live · ticking clock | /yx/time/attendance?view=today (always ticks) |
 | RegulariseOpen · Regularise → sheet | /yx/time/attendance?view=today → Regularise (TIM-07 sheet) |
 | HomeWidget · not clocked in | /yx/home (clock card) |
@@ -324,7 +330,7 @@ Provider: to decide (Teams presence). The YukthiX desktop app posts the person's
 - Sub-pages live: 66 (time ops, 29 Oct 2026: +36; decision 6: TIM-36 WithdrawConsent)
 - Feature not built: 21
 - Phone view: 19
-- Gaps: 5 (Extra · Manager one person; Extra · today OutsideNetwork, ChoseWfh, ShiftNotStarted, WithNote)
+- Gaps: 1 here (Extra · today WithNote: migration written, not applied). 30 Oct 2026: Manager one person, OutsideNetwork, ChoseWfh and ShiftNotStarted made live
 - Total: 111 stories (TIM-36 "Manager · status and total only" was not counted before)
 
 ### Gaps and questions
@@ -407,7 +413,7 @@ dev-fake answers until a provider is chosen).
 | story (sub-page) | where it shows live |
 |---|---|
 | Employee | /yx/time/leave: balance cards, My requests, Upcoming holidays, Optional holidays, plus My leave card, Claim comp-off, Encash leave, the long-absence card and "Waiting for approval" (claims, encashment) |
-| Manager | gap: no manager leave home. Managers use /yx/time/team (TIM-20) and answer requests in /yx/approvals |
+| Manager | /yx/time/team-leave (nav "Leave to approve", `LeaveHomeScreen mgrLive`): "Leave waiting for you (N)" from the manager's own team only (GET /time/team/leave-home: their open approval tasks), who else in the team is off, certificate, View and Approve (toast); "Also in Requests: N attendance or overtime requests"; Away this week; Open leave calendar. Not live: Send back (the approvals engine has approve and reject only) and Apply for someone (HR's, leave.balance.adjust) |
 | HR | /yx/time/leave-home: pending leave with managers (approvers, age, Remind approver once a day), away this week, Needs HR (negative balances, certificates, long absences, year-end); Record long absence, Adjust balance and Apply for someone buttons, as in the design (leave.balance.adjust). Adjust balance (founder-approved, 29 Oct 2026) is the leave card's `AdjustBalanceDialog`: Employee search (HR scope), then that person's balances (`GET people/:id/balances`), Days empty, `POST people/:id/adjust`; toast "Posted ±N <type> for X". The leave card (/yx/time/balances → Open leave card) keeps its own Adjust |
 | HR · apply for someone (new, founder answer B) | /yx/time/leave-home → Apply for someone: the TIM-18 drawer (the employee's own live drawer, `forSomeone`): Employee search, then only that person's leave types and balances, dates and halves, reason, certificate tick when needed (no delegate); Summary from the server (days, balance after, "Notice: Applied by HR: N days' notice not needed", their team, "Goes to their manager … marked \"Applied by HR\"" or "Approved at once (company setting)"); toast "Leave applied for X · sent for approval" |
 | HR · apply for someone · refused (new) | same drawer when the rules refuse (block date, overlap "X already has leave on …", balance, locked month, notice when the company applies it): the red box on Send, or "Not sent" with the API's message; nothing is sent |
@@ -443,8 +449,8 @@ dev-fake answers until a provider is chosen).
 | Employee · approved | /yx/time/leave → View on approved leave |
 | Past approved leave · report an error | /yx/time/leave → Ask to cancel on last month's leave; a locked month is refused ("ask HR") |
 | Employee · ask to cancel future leave | /yx/time/leave → Ask to cancel (reason required) |
-| Manager · with team availability | gap: managers review leave in /yx/approvals (P03) |
-| Manager · approve | gap: approving happens in /yx/approvals (P03) |
+| Manager · with team availability | /yx/time/team-leave → View (or ?open=<id>): GET /time/requests/:id adds `team`: who else under the same manager is off (people the viewer may see), "<name>'s balance after", the viewer's open task; someone outside the team 404 |
+| Manager · approve | same → Approve (confirm, toast) or Reject (reason required) through POST /workflow/approvals/tasks/:id/decide (only the task holder); waiting on someone else: "Waiting for another approver" |
 | Phone | phone view, mobile app not built |
 | Phone · manager | phone view, mobile app not built |
 
@@ -506,7 +512,7 @@ dev-fake answers until a provider is chosen).
 
 ### Counts
 
-57 sub-pages: 43 live, 0 not built, 11 phone, 3 gaps (TIM-17 Manager, TIM-19 Manager ×2).
+57 sub-pages: 46 live, 0 not built, 11 phone, 0 gaps (TIM-17 Manager and TIM-19 Manager ×2 made live 30 Oct 2026).
 
 ### Questions (defaults chosen, marked)
 
@@ -591,7 +597,7 @@ Letters and notices step: feature not built (left out live).
 | Edit · Geofence and IP ranges | /yx/time/setup/locations → location picker, map of the point and radius, check-in mode, shift and weekly offs from a date (errors: start = end, no date), point and networks read-only with a link to Settings › Locations (where they are edited) |
 | Multi · Multiple points | feature not built (one point per location) |
 | Field · Field mode | → choose Field in Check-in mode, Save |
-| IpError · Invalid IP range | gap: IP ranges are edited in Settings › Locations (org design), not here |
+| IpError · Invalid IP range | /yx/time/setup/locations → Office network: IP ranges, one per line; Save office network checks each line ("Line 2: 10.20.300.0/24 is not a valid range…", field focused) and the server again (POST /time/setup/locations/:id/networks, leave.settings.manage, audited) |
 
 ### TIM-42 · Holiday feed settings
 
@@ -604,7 +610,7 @@ Letters and notices step: feature not built (left out live).
 ### Counts
 
 35 stories: live 26 (TIM-26: 3, TIM-27: 5, TIM-28: 6, TIM-29: 7, TIM-31: 2, TIM-42: 3) · feature not built 8 (TIM-26: 2,
-TIM-27: 2, TIM-29: 3, TIM-31: 1) · phone 0 · gaps 1 (TIM-31 IpError).
+TIM-27: 2, TIM-29: 3, TIM-31: 1) · phone 0 · gaps 0 (TIM-31 IpError made live 30 Oct 2026, so TIM-31: 3 live).
 
 ## D. Rosters and shifts
 
@@ -771,7 +777,7 @@ Standby allowance per slot and call-out pay rates are payroll's (PAY on-call rul
 |---|---|
 | Hr (HR · compliance view) | /yx/time/block-leave (new): people whose role needs it (setting), taken / planned / not planned, Nudge to plan, Plan block leave |
 | Manager | /yx/time/block-leave as a manager: the team's rows, read only |
-| Suspend (Access suspension confirmation) | gap: Schedule access pause is recorded and audited; turning access off on those dates is not built (access area) |
+| Suspend (Access suspension confirmation) | /yx/time/block-leave → Schedule access pause → the confirmation ("paused from <first day>, 12:00 am and restored on <day after>"). The hourly time job pauses sign-in on the first day (user status "paused", sessions and refresh tokens revoked, audited) and restores it after the last day; an HR exception (access turned back on) sticks. From the first day the row shows "Access paused" and the pause can no longer be cancelled or re-planned |
 
 ### TIM-40 · Licence requirements
 

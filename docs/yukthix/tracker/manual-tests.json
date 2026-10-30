@@ -6621,5 +6621,218 @@
       "PPL-49 MakePermanent"
     ],
     "note": "Positive and negative. Setting contract.max_years: 1, 2, 3 (default), 4, 5 years or No limit; per company, legal entity or employment type."
+  },
+  {
+    "id": "MT-TIM-G-01",
+    "area": "Time · Design gaps made live (30 Oct 2026)",
+    "screen": "Muster › one person (Manager · one person) · positive",
+    "url": "http://localhost:3000/yx/time/muster",
+    "account": "kavya@demo-org.test (Manager - Kavya)",
+    "steps": [
+      "Open Time › Muster.",
+      "Click any day in Murugan Selvam's row.",
+      "In the day card, click \"Open Murugan's month\".",
+      "Use Previous month, then Next month twice.",
+      "Pick another person of your team in the Person picker, if you have one.",
+      "Click a day in the calendar, then a day under Open exceptions (if any)."
+    ],
+    "expected": "The page reads \"Attendance · Murugan Selvam\" with his role and site, the month calendar, the month's totals and Open exceptions. Next month past this month says it has not started yet. Each day opens his day card. There is no Regularise button (the manager only reads).",
+    "stories": [
+      "Extra · Attendance calendar"
+    ],
+    "note": "POSITIVE"
+  },
+  {
+    "id": "MT-TIM-G-02",
+    "area": "Time · Design gaps made live (30 Oct 2026)",
+    "screen": "Muster › one person · negative (someone outside the team)",
+    "url": "http://localhost:3000/yx/time/muster",
+    "account": "kavya@demo-org.test (Manager - Kavya); you need Arjun Kulkarni's employee id (as hr@demo-org.test open People › Arjun and copy the id from the address bar)",
+    "steps": [
+      "As kavya@ open Murugan's month as in MT-TIM-G-01.",
+      "In the address bar replace Murugan's id after /yx/time/muster/ with Arjun's id and press Enter.",
+      "Then replace it with a made-up id such as 00000000-0000-0000-0000-000000000000."
+    ],
+    "expected": "Both times the page shows the no-access message and no name, days or totals of Arjun (Arjun is in Divya's team, not Kavya's). The server answers 404.",
+    "stories": [
+      "Extra · Attendance calendar"
+    ],
+    "note": "NEGATIVE"
+  },
+  {
+    "id": "MT-TIM-G-03",
+    "area": "Time · Design gaps made live (30 Oct 2026)",
+    "screen": "My attendance today · OutsideNetwork",
+    "url": "http://localhost:3000/yx/time/setup/locations",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi), then arjun@demo-org.test (Employee)",
+    "steps": [
+      "As hr@ open Time › Set-up › Locations, pick Arjun's location, and in Office network type 10.20.4.0/24 (a network your computer is not on). Save office network.",
+      "Make sure that location has no check-in point (Settings › Locations), so the network decides.",
+      "As arjun@ open Me › Attendance › Clock in or out (/yx/time/attendance?view=today).",
+      "Click Clock in.",
+      "Click Check again."
+    ],
+    "expected": "Before any punch the card says \"Not on <location> Wi-Fi\" with \"Clock in as WFH\" and Check again. Clock in does not record anything; it says why. Check again reloads and still says the same. Afterwards hr@ puts the real office network back.",
+    "stories": [
+      "Extra · My attendance today"
+    ],
+    "note": "POSITIVE + NEGATIVE (Clock in refused off the network)"
+  },
+  {
+    "id": "MT-TIM-G-04",
+    "area": "Time · Design gaps made live (30 Oct 2026)",
+    "screen": "My attendance today · ChoseWfh",
+    "url": "http://localhost:3000/yx/time/attendance?view=today",
+    "account": "arjun@demo-org.test (Employee), then panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "Set up as in MT-TIM-G-03 so Arjun is off the office network.",
+      "As arjun@ click \"Clock in as WFH\".",
+      "Read the line under the badges, then click Clock in.",
+      "As panel@ open Approvals and find \"Arjun Kulkarni: work from home on <today>\". Reject it with a reason.",
+      "As arjun@ reload Me › Attendance and open today's day card."
+    ],
+    "expected": "After Clock in as WFH the card shows the Work from home badge and \"WFH · needs Divya Menon's approval · N of 4 used this month\" with Change. Clock in is recorded (toast/announcement), and Divya gets the request. After Divya rejects it, today no longer counts the check-in (no first-in on the day) and the next clock-out from outside is refused.",
+    "stories": [
+      "Extra · My attendance today"
+    ],
+    "note": "POSITIVE + NEGATIVE (rejected WFH stops counting)"
+  },
+  {
+    "id": "MT-TIM-G-05",
+    "area": "Time · Design gaps made live (30 Oct 2026)",
+    "screen": "My attendance today · ChoseWfh switched off",
+    "url": "http://localhost:3000/yx/settings",
+    "account": "hr@demo-org.test (HR Admin), then arjun@demo-org.test",
+    "steps": [
+      "As hr@ open Settings › Company rules, set \"Clock in as work from home on the day (sent for approval)\" to off. Save.",
+      "As arjun@, off the office network (MT-TIM-G-03), open the clock page."
+    ],
+    "expected": "The block offers only Check again (no Clock in as WFH); the note about monthly WFH limits is gone. Afterwards hr@ sets it back to on.",
+    "stories": [
+      "Extra · My attendance today"
+    ],
+    "note": "NEGATIVE"
+  },
+  {
+    "id": "MT-TIM-G-06",
+    "area": "Time · Design gaps made live (30 Oct 2026)",
+    "screen": "My attendance today · ShiftNotStarted",
+    "url": "http://localhost:3000/yx/settings",
+    "account": "hr@demo-org.test (HR Admin), then arjun@demo-org.test (before his shift)",
+    "steps": [
+      "As hr@ open Settings › Company rules, set \"Check-in opens before the shift starts (minutes)\" to 60. Save.",
+      "As arjun@, more than an hour before his shift (or with his location's shift moved later in Time › Set-up › Locations from today), open the clock page.",
+      "Click Clock in.",
+      "Within the hour before the shift, reload and click Clock in."
+    ],
+    "expected": "Early: \"Your shift has not started yet\" with \"<shift> shift starts at 9:30 am. Clock-in opens at 8:30 am.\" Clock in records nothing and says why. Within the hour, Clock in works. Afterwards hr@ sets the setting back to any.",
+    "stories": [
+      "Extra · My attendance today"
+    ],
+    "note": "POSITIVE + NEGATIVE"
+  },
+  {
+    "id": "MT-TIM-G-07",
+    "area": "Time · Design gaps made live (30 Oct 2026)",
+    "screen": "Leave to approve (TIM-17 Manager) · positive",
+    "url": "http://localhost:3000/yx/time/team-leave",
+    "account": "panel@demo-org.test (Manager - Divya); before: arjun@demo-org.test and meera (her team) apply for overlapping casual leave next week",
+    "steps": [
+      "As arjun@ apply for 1 day of casual leave next week; as Meera apply for the same day.",
+      "As panel@ open Time › Leave to approve.",
+      "Read Arjun's row, then click Approve on it.",
+      "Click Open leave calendar."
+    ],
+    "expected": "\"Leave waiting for you (2)\" lists Arjun and Meera; Arjun's row says \"Also off: Meera … (Casual leave)\". Approve shows a toast \"Approved · Arjun Kulkarni, <date>\" for 5 seconds and the row goes; the count drops to 1. Away this week lists the team's leave this week. Open leave calendar opens Time › Team leave.",
+    "stories": [
+      "TIM-17"
+    ],
+    "note": "POSITIVE"
+  },
+  {
+    "id": "MT-TIM-G-08",
+    "area": "Time · Design gaps made live (30 Oct 2026)",
+    "screen": "Leave to approve (TIM-17 Manager) · negative",
+    "url": "http://localhost:3000/yx/time/team-leave",
+    "account": "kavya@demo-org.test (Manager - Kavya), arjun@demo-org.test",
+    "steps": [
+      "With Arjun's leave from MT-TIM-G-07 still waiting (apply a new one if needed), open Time › Leave to approve as kavya@.",
+      "As arjun@ open /yx/time/team-leave."
+    ],
+    "expected": "Kavya does not see Arjun's request (he is not in her team); she sees only her own team's (or \"Nothing waiting for you\"). Arjun, who manages no one, sees no menu link and an empty \"Nothing waiting for you\".",
+    "stories": [
+      "TIM-17"
+    ],
+    "note": "NEGATIVE"
+  },
+  {
+    "id": "MT-TIM-G-09",
+    "area": "Time · Design gaps made live (30 Oct 2026)",
+    "screen": "Leave request (TIM-19 Manager) · view, approve, reject",
+    "url": "http://localhost:3000/yx/time/team-leave",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "Click View on a waiting request.",
+      "Read the drawer: Type, Dates, Days, \"<name>'s balance after\", Reason and the team box.",
+      "Click Reject, then Reject again with the reason empty.",
+      "Type a reason and click Reject.",
+      "On another request click View, then Approve, then Approve."
+    ],
+    "expected": "The drawer shows the balance after the leave and \"1 other in the team is off then\" (or \"No one else in the team is off then\") with names. Reject with no reason shows \"Enter a reason.\" under the field and puts the cursor there (the button is never greyed out). With a reason it is rejected (toast). Approve asks first, then approves (toast).",
+    "stories": [
+      "TIM-19"
+    ],
+    "note": "POSITIVE + NEGATIVE (empty reason)"
+  },
+  {
+    "id": "MT-TIM-G-10",
+    "area": "Time · Design gaps made live (30 Oct 2026)",
+    "screen": "Leave request (TIM-19 Manager) · outside the team",
+    "url": "http://localhost:3000/yx/time/team-leave?open=<id>",
+    "account": "kavya@demo-org.test (Manager - Kavya); the id of Arjun's waiting leave request (from Divya's /yx/time/team-leave?open=… or Approvals)",
+    "steps": [
+      "As kavya@ open /yx/time/team-leave?open=<Arjun's request id>."
+    ],
+    "expected": "The drawer says \"Not found\" and shows nothing of Arjun's leave (the server answers 404).",
+    "stories": [
+      "TIM-19"
+    ],
+    "note": "NEGATIVE"
+  },
+  {
+    "id": "MT-TIM-G-11",
+    "area": "Time · Design gaps made live (30 Oct 2026)",
+    "screen": "Locations · IpError (TIM-31)",
+    "url": "http://localhost:3000/yx/time/setup/locations",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi), then panel@demo-org.test",
+    "steps": [
+      "Pick a location. In Office network add a second line 10.20.300.0/24 and click Save office network.",
+      "Replace it with 10.20.5.0/24 and click Save office network.",
+      "As panel@ open /yx/time/setup/locations."
+    ],
+    "expected": "The bad line shows \"Line 2: 10.20.300.0/24 is not a valid range. Each part must be 0–255, e.g. 10.20.4.0/24.\" under the field with the cursor in it, and nothing is saved. The good one saves with the toast \"Office network saved\" and shows again after reload (and in Settings › Locations). Divya (no leave.settings.manage) gets no access.",
+    "stories": [
+      "TIM-31"
+    ],
+    "note": "POSITIVE + NEGATIVE"
+  },
+  {
+    "id": "MT-TIM-G-12",
+    "area": "Time · Design gaps made live (30 Oct 2026)",
+    "screen": "Block leave · Suspend (TIM-39)",
+    "url": "http://localhost:3000/yx/time/block-leave",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi); a person in a block-leave role with a planned block starting tomorrow (Settings › Company rules › Block leave is required = yes for their department)",
+    "steps": [
+      "Click Schedule access pause on the person's row and read the confirmation.",
+      "Confirm.",
+      "Click Cancel pause, then Schedule access pause again.",
+      "The next day (or after the hourly job on the block's first day) reload the page; try to sign in as that person.",
+      "The day after the block's last day, sign in as that person again."
+    ],
+    "expected": "The confirmation says \"<name>'s access to YukthiX is paused from <first day>, 12:00 am and restored on <day after the last day>…\". Scheduled, the row says \"Access pause scheduled from …\" with Cancel pause (toast each time). From the first day the row shows \"Access paused\" with no Cancel, and the person cannot sign in (their open sessions end). After the block they can sign in again.",
+    "stories": [
+      "TIM-39"
+    ],
+    "note": "POSITIVE + NEGATIVE (no cancel once started; sign-in refused during the block)"
   }
 ]
