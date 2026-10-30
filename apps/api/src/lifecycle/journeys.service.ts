@@ -161,6 +161,11 @@ export class LifecycleJourneysService implements OnModuleInit {
         if (!n.count) throw new ConflictException('Someone else changed this checklist. Reload it.');
         t = await tx.journeyTemplate.findFirstOrThrow({ where: { organizationId: org, id } });
       } else {
+        // A starter is copied once per company (the copy is edited, never a second one); the lock makes a double click safe.
+        if (dto.starterKey) {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`journey-starter:${org}:${dto.starterKey}`}))`;
+          if (await tx.journeyTemplate.findFirst({ where: { organizationId: org, starterKey: dto.starterKey }, select: { id: true } })) throw new ConflictException('You already have a copy of this starter. Reload the page to see it.');
+        }
         t = await tx.journeyTemplate.create({ data: { organizationId: org, kind: dto.kind, name: dto.name, legalEntityId: dto.legalEntityId ?? null, locationId: dto.locationId ?? null, departmentId: dto.departmentId ?? null, starterKey: dto.starterKey ?? null, active: dto.active, createdBy: c.userId ?? null } });
       }
       // Only the law's tasks are locked, and they stay in every copy of a starter, locked; only their owner and day may change.

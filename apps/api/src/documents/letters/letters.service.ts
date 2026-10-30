@@ -426,6 +426,12 @@ export class LettersService implements OnModuleInit {
       const row = await tx.signatory.findFirst({ where: { organizationId: c.organizationId, id, active: true } });
       if (!row) throw new NotFoundException('No such signatory.');
       this.requireKey(v, 'letter.signatory.manage', row.legalEntityId);
+      // Letters waiting for approval wait for this signatory (they approve and sign them): they are decided first.
+      const waiting = await tx.letterIssue.count({ where: { organizationId: c.organizationId, signatoryId: id, status: 'pending_approval' } });
+      if (waiting) {
+        const who = await tx.user.findFirst({ where: { organizationId: c.organizationId, id: row.userId }, select: { name: true, email: true } });
+        throw new ConflictException(`${who?.name || who?.email || 'This signatory'} signs ${waiting === 1 ? '1 letter' : `${waiting} letters`} waiting for approval. Approve or withdraw them first.`);
+      }
       const n = await tx.signatory.updateMany({ where: { organizationId: c.organizationId, id, active: true }, data: { active: false } });
       if (!n.count) throw new NotFoundException('No such signatory.');
       await audit(tx, c, 'letter.signatory.removed', 'signatory', id);
