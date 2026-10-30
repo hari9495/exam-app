@@ -5245,6 +5245,7 @@ model Punch {
   locationId     String?  @map("location_id") @db.Uuid
   ip             String?  @db.VarChar(45)
   device         String?  @db.VarChar(200)
+  note           String?  @db.VarChar(200)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("punches")

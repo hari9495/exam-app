@@ -127,6 +127,14 @@ export class PunchDto {
   @IsOptional()
   @IsBoolean()
   wfh?: boolean;
+
+  /** WithNote: a short note kept with this punch (never changed afterwards). */
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MinLength(1, { message: 'Write a note, or leave the note out.' })
+  @MaxLength(200, { message: 'Keep the note to 200 characters.' })
+  note?: string;
 }
 
 export class WfhDto {

@@ -28,7 +28,7 @@ function YxMyAttendanceInner() {
     month,
     onMonth: setMonth,
     getLocation: browserLocation,
-    onPunch: (kind, pin, opts) => write<PunchResult>('/me/punch', 'POST', { kind, ...(pin ?? {}), ...(opts?.wfh ? { wfh: true } : {}) }),
+    onPunch: (kind, pin, opts) => write<PunchResult>('/me/punch', 'POST', { kind, ...(pin ?? {}), ...(opts?.wfh ? { wfh: true } : {}), ...(opts?.note ? { note: opts.note } : {}) }),
     onFix: (input) => write('/me/regularise', 'POST', input),
     onWithdrawFix: (rid) => write(`/me/regularise/${encodeURIComponent(rid)}/withdraw`),
     onOpenDay: (on) => read<DayCard>(`/people/${encodeURIComponent(att.data!.employee.id)}/days/${on}`),

@@ -72,6 +72,30 @@ describe('Me › Attendance today (live clock page)', () => {
     await waitFor(() => expect(onPunch).toHaveBeenCalledWith('break_end', null));
   });
 
+  it('WithNote: Add note, Save, and the note goes with the next punch; an empty note is never saved; a refused punch keeps it', async () => {
+    const at = { id: 'p1', kind: 'in' as const, at: '2026-10-09T03:58:00Z', source: 'web', accepted: true, refusal: null, verdict: 'network', distanceM: null, accuracyM: null, where: 'Bengaluru head office' };
+    const onPunch = vi.fn()
+      .mockResolvedValueOnce({ accepted: false, duplicate: false, kind: 'out' as const, message: 'Not on Bengaluru head office Wi-Fi', verdict: 'outside', distanceM: null })
+      .mockResolvedValueOnce({ accepted: true, duplicate: false, kind: 'out' as const, message: 'Checked out', verdict: 'network', distanceM: null });
+    render(<MyAttendanceTodayScreen live={live({ onPunch, data: { ...ATT, next: 'out', punches: [at] } })} />);
+    await ue.click(screen.getByRole('button', { name: 'Add note' }));
+    // Negative: Save with nothing typed keeps the box open and says why.
+    await ue.click(screen.getByRole('button', { name: 'Save' }));
+    expect(screen.getByText('Type a note')).toBeInTheDocument();
+    await ue.type(screen.getByLabelText(/Note for your next punch/), '  Client call ran late  ');
+    await ue.click(screen.getByRole('button', { name: 'Save' }));
+    expect(screen.getByText('Note saved for your clock-out')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Clock out' }));
+    await waitFor(() => expect(onPunch).toHaveBeenLastCalledWith('out', null, { note: 'Client call ran late' }));
+    // Refused: the note stays for the retry.
+    expect(await screen.findByText('Not on Bengaluru head office Wi-Fi')).toBeInTheDocument();
+    expect(screen.getByText('Note saved for your clock-out')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Clock out' }));
+    await waitFor(() => expect(onPunch).toHaveBeenCalledTimes(2));
+    expect(onPunch).toHaveBeenLastCalledWith('out', null, { note: 'Client call ran late' });
+    await waitFor(() => expect(screen.queryByText('Note saved for your clock-out')).not.toBeInTheDocument());
+  });
+
   it('OutsideNetwork: off the office network the card says so before any punch; Check again asks the server again', async () => {
     const onRetry = vi.fn();
     const onPunch = vi.fn();

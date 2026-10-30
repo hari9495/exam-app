@@ -75,7 +75,7 @@ export class AttendanceService implements OnModuleInit {
   }
 
   private punchView(p: Prisma.PunchGetPayload<object>, names: Map<string, string>) {
-    return { id: p.id, kind: p.kind, at: p.punchedAt, source: p.source, accepted: p.accepted, refusal: p.refusal, verdict: p.verdict, distanceM: p.distanceM, accuracyM: p.accuracyM, where: p.locationId ? (names.get(p.locationId) ?? null) : null };
+    return { id: p.id, kind: p.kind, at: p.punchedAt, source: p.source, accepted: p.accepted, refusal: p.refusal, verdict: p.verdict, distanceM: p.distanceM, accuracyM: p.accuracyM, note: p.note, where: p.locationId ? (names.get(p.locationId) ?? null) : null };
   }
 
   /**
@@ -150,7 +150,7 @@ export class AttendanceService implements OnModuleInit {
         const asked = await tx.attendanceRequest.findFirst({ where: { organizationId: c.organizationId, employeeId: f.employeeId, workOn: asDate(today), kind: 'wfh', status: { in: ['pending', 'approved'] } }, select: { id: true } });
         if (!asked) notices.push(...(await this.raiseWfh(tx, c, f, today, today, 'Clocked in from outside the office as work from home')).notices);
       }
-      const { punchId: _id, ...out } = await this.record(tx, c, f, { kind: dto.kind, at: new Date(), source: 'web', pin: pinGiven ? { lat: dto.lat!, lng: dto.lng!, accuracyM: dto.accuracyM } : null, ip, device });
+      const { punchId: _id, ...out } = await this.record(tx, c, f, { kind: dto.kind, at: new Date(), source: 'web', pin: pinGiven ? { lat: dto.lat!, lng: dto.lng!, accuracyM: dto.accuracyM } : null, ip, device, note: dto.note });
       return out;
     });
     await this.engine.send(ctx, notices);
@@ -162,7 +162,7 @@ export class AttendanceService implements OnModuleInit {
    * punches of TIM-12 / 13 (`at` may be up to 72 h old when a device syncs; a locked month is refused). A kiosk's
    * place decides where it was (its location must be one of the person's places, unless they work in the field).
    */
-  async record(tx: Tx, c: CompanyContext, f: Facts, p: { kind: PunchDto['kind']; at: Date; source: 'web' | 'kiosk' | 'mobile'; pin: { lat: number; lng: number; accuracyM?: number } | null; ip: string | null; device: string | null; kioskLocationId?: string }) {
+  async record(tx: Tx, c: CompanyContext, f: Facts, p: { kind: PunchDto['kind']; at: Date; source: 'web' | 'kiosk' | 'mobile'; pin: { lat: number; lng: number; accuracyM?: number } | null; ip: string | null; device: string | null; kioskLocationId?: string; note?: string }) {
     const org = c.organizationId;
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`punch:${org}:${f.employeeId}`}))`;
     const now = p.at;
@@ -175,7 +175,7 @@ export class AttendanceService implements OnModuleInit {
     for (const d of [addDays(today, -1), today]) shifts.set(d, (await book.day(f, d)).shift);
     // The latest punch up to this one (a device's offline punch may arrive after later ones).
     const last = await tx.punch.findFirst({ where: { organizationId: org, employeeId: f.employeeId, accepted: true, punchedAt: { lte: now } }, orderBy: { punchedAt: 'desc' } });
-    if (last && last.kind === p.kind && now.getTime() - last.punchedAt.getTime() < 60_000) return { accepted: true, duplicate: true, kind: p.kind, at: last.punchedAt, verdict: last.verdict, message: ALREADY[p.kind], distanceM: last.distanceM, punchId: last.id };
+    if (last && last.kind === p.kind && now.getTime() - last.punchedAt.getTime() < 60_000) return { accepted: true, duplicate: true, kind: p.kind, at: last.punchedAt, verdict: last.verdict, message: ALREADY[p.kind], distanceM: last.distanceM, note: last.note, punchId: last.id };
     // A break belongs to the day a check-out now would close (a break across midnight stays on the night shift's
     // day). It starts while working that day and ends while on it.
     const workOn = workOnForPunch(now, f.zone, p.kind === 'in' ? 'in' : 'out', (d) => shifts.get(d) ?? null);
@@ -221,10 +221,11 @@ export class AttendanceService implements OnModuleInit {
         locationId: v.locationId,
         ip: p.ip?.slice(0, 45) ?? null,
         device: p.device?.slice(0, 200) ?? null,
+        note: p.note ?? null,
       },
     });
     if (v.accepted) await this.days.evaluate(tx, c, f.employeeId, workOn, workOn, new Date());
-    return { accepted: v.accepted, duplicate: false, kind: p.kind, at: now, verdict: v.verdict, message: v.accepted ? `${DONE[p.kind]}. ${v.message}` : v.message, distanceM: v.distanceM, punchId: row.id };
+    return { accepted: v.accepted, duplicate: false, kind: p.kind, at: now, verdict: v.verdict, message: v.accepted ? `${DONE[p.kind]}. ${v.message}` : v.message, distanceM: v.distanceM, note: row.note, punchId: row.id };
   }
 
   /** A fix for a day (M02 §B4, Q5), through P03: the manager, and HR too beyond the monthly limit. */

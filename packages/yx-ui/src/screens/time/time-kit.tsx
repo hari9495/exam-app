@@ -455,7 +455,7 @@ export interface ClockCardProps {
   /** Work mode chosen after an outside prompt (the card then allows clock-in). */
   defaultWorkMode?: 'office' | 'wfh' | 'on_duty';
   /** Live app: records the punch on the server (with the work mode chosen on the card); the card shows the refusal, the parent reloads the day. */
-  onPunch?: (kind: Punch['kind'], mode: 'office' | 'wfh' | 'on_duty') => Promise<{ accepted: boolean; message: string }>;
+  onPunch?: (kind: Punch['kind'], mode: 'office' | 'wfh' | 'on_duty', note?: string) => Promise<{ accepted: boolean; message: string }>;
   /** Live app: the ways round a block this person may take (default all the design shows). */
   alternatives?: ('wfh' | 'on_duty' | 'retry' | 'ask_hr' | 'regularise')[];
   /** Live app: who approves work from home and this month's days, for the "needs approval" line. */
@@ -590,9 +590,16 @@ export function ClockCard(p: ClockCardProps) {
       setLastAct(a);
       setRefused(null);
       setPunching(kind);
+      // WithNote: the saved note goes with this punch and is kept with it on the server.
+      const sent = note.trim() || undefined;
       void p
-        .onPunch(kind, workMode)
-        .then((r) => (r.accepted ? setAnnounce(`${KIND_LABEL[kind]} recorded.`) : setRefused(r.message)))
+        .onPunch(kind, workMode, sent)
+        .then((r) => {
+          if (!r.accepted) return setRefused(r.message);
+          setAnnounce(`${KIND_LABEL[kind]} recorded${sent ? ' with a note' : ''}.`);
+          setNote('');
+          setNoteOpen(false);
+        })
         .catch((e: unknown) => setRefused(e instanceof Error ? e.message : 'That did not work. Try again.'))
         .finally(() => setPunching(null));
       return;
@@ -615,9 +622,8 @@ export function ClockCard(p: ClockCardProps) {
 
   const primary: ClockAction | null = actions.includes('clock_in') ? 'clock_in' : actions.includes('clock_out') ? 'clock_out' : null;
   const breakAct: ClockAction | null = !breaks ? null : actions.includes('start_break') ? 'start_break' : actions.includes('end_break') ? 'end_break' : null;
-  // A note attaches to a punch, so it is offered once today has one.
-  // The live app has nowhere to keep a note yet (the punch API takes none), so it offers none.
-  const canNote = variant !== 'home' && !p.onPunch && punches.length > 0 && (primary !== null || breakAct !== null);
+  // A note attaches to a punch, so it is offered once today has one (the live app sends it with the next punch).
+  const canNote = variant !== 'home' && punches.length > 0 && (primary !== null || breakAct !== null);
   const statusId = useId();
 
   return (

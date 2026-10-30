@@ -2152,8 +2152,8 @@ export interface LiveMyAttendance {
   onMonth: (month: string) => void;
   /** The browser's location, or null with the reason (permission refused, no GPS). */
   getLocation: () => Promise<{ pin: Pin | null; problem?: string }>;
-  /** `wfh`: ChoseWfh, clocking in from outside the office as work from home today (a request goes to the manager). */
-  onPunch: (kind: PunchKind, pin: Pin | null, opts?: { wfh?: boolean }) => Promise<PunchResult>;
+  /** `wfh`: ChoseWfh, clocking in from outside the office as work from home today (a request goes to the manager). `note`: WithNote. */
+  onPunch: (kind: PunchKind, pin: Pin | null, opts?: { wfh?: boolean; note?: string }) => Promise<PunchResult>;
   onFix: (input: FixInput) => Promise<unknown>;
   onWithdrawFix: (id: string) => Promise<unknown>;
   /** A day card with every punch of that day (TIM-03). */
@@ -2323,9 +2323,10 @@ function liveClock(d: MyAttendance, now: Date, getLocation: LiveMyAttendance['ge
     wfhToday: d.wfhToday,
     dayOff,
     lateMarksBefore: d.days.filter((x) => x.on < d.today && (x.lateMinutes ?? 0) > 0).length,
-    onPunch: async (kind, mode) => {
+    onPunch: async (kind, mode, note) => {
       const loc = await getLocation();
-      const r = kind === 'in' && mode === 'wfh' && !d.wfhToday ? await onPunch(kind, loc.pin, { wfh: true }) : await onPunch(kind, loc.pin);
+      const wfh = kind === 'in' && mode === 'wfh' && !d.wfhToday;
+      const r = wfh || note ? await onPunch(kind, loc.pin, { ...(wfh ? { wfh: true } : {}), ...(note ? { note } : {}) }) : await onPunch(kind, loc.pin);
       // The browser's own reason (location off, not found) is the clearer one; never two messages run together.
       return { accepted: r.accepted, message: r.accepted ? r.message : (loc.problem ?? r.message) };
     },
