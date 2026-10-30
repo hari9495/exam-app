@@ -277,6 +277,18 @@ describe('Payroll statutory bonus (PAY-24)', () => {
     await api('adminA', 'put', '/org/settings').send({ key: 'payroll.bonus.eligibility_wage', scopeType: 'tenant', value: '15000' }).expect(400);
   });
 
+  it('the lowest bonus rate is never saved above the highest (founder 30 Oct 2026), at the same scope or against the company value', async () => {
+    const put = (key: string, value: string, scope: object = { scopeType: 'tenant' }) => api('adminA', 'put', '/org/settings').send({ key, value, ...scope });
+    await put('payroll.bonus.max_rate', '12').expect(200);
+    expect((await put('payroll.bonus.min_rate', '15').expect(400)).body.message).toMatch(/lowest bonus rate \(15%\) can't be above the highest \(12%\)/);
+    // A legal entity inherits the company's highest rate.
+    expect((await put('payroll.bonus.min_rate', '20', { scopeType: 'legal_entity', scopeId: ids.entity }).expect(400)).body.message).toMatch(/above the highest \(12%\)/);
+    await put('payroll.bonus.min_rate', '10').expect(200);
+    expect((await put('payroll.bonus.max_rate', '8.33').expect(400)).body.message).toMatch(/highest bonus rate \(8.33%\) can't be below the lowest \(10%\)/);
+    await put('payroll.bonus.max_rate', '20').expect(200);
+    await put('payroll.bonus.min_rate', '8.33').expect(200);
+  });
+
   it('the eligibility rate rule (founder last 10, item 1): a company or entity setting, the default last day, read into the rules', async () => {
     expect((await api('payAdmin', 'get', `/payroll/bonus?legalEntityId=${ids.entity}`).expect(200)).body.rules.eligibilityRateOn).toBe('last_day');
     // HR changes payroll rules (Settings › Payroll & Statutory › Payroll rules) per legal entity; payroll only reads them.

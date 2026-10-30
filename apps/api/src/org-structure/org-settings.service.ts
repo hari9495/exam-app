@@ -60,6 +60,22 @@ async function rekeyEmployeeCodes(tx: Tx, c: CompanyContext, scope: unknown): Pr
   }
 }
 
+/** Founder 30 Oct 2026: the lowest bonus rate may not be saved above the highest (and the reverse), at the same scope or
+ * against the company-wide value it inherits. Refused at save, not only when the bonus is worked out. */
+const RATE_PAIR: Record<string, string> = { 'payroll.bonus.min_rate': 'payroll.bonus.max_rate', 'payroll.bonus.max_rate': 'payroll.bonus.min_rate' };
+async function bonusRatesInOrder(tx: Tx, org: string, key: string, value: string, scopeType: ScopeType, scopeId: string) {
+  const other = RATE_PAIR[key];
+  if (!other) return;
+  const here = await tx.setting.findFirst({ where: { organizationId: org, key: other, scopeType, scopeId } });
+  const company = here ?? (scopeType === 'tenant' ? null : await tx.setting.findFirst({ where: { organizationId: org, key: other, scopeType: 'tenant' } }));
+  const otherValue = Number(company?.value ?? SETTINGS[other].default);
+  const [min, max] = key === 'payroll.bonus.min_rate' ? [Number(value), otherValue] : [otherValue, Number(value)];
+  if (min > max)
+    throw new BadRequestException(
+      key === 'payroll.bonus.min_rate' ? `The lowest bonus rate (${value}%) can't be above the highest (${otherValue}%). Lower it, or raise the highest first.` : `The highest bonus rate (${value}%) can't be below the lowest (${otherValue}%). Raise it, or lower the lowest first.`,
+    );
+}
+
 @Injectable()
 export class OrgSettingsService {
   constructor(private readonly tenantPrisma: TenantPrismaService) {}
@@ -100,6 +116,7 @@ export class OrgSettingsService {
       const validFrom = dto.validFrom ? asDate(dto.validFrom) : null;
       const where = { organizationId: c.organizationId, key: dto.key, scopeType, scopeId, validFrom };
       const existing = await tx.setting.findFirst({ where });
+      await bonusRatesInOrder(tx, c.organizationId, dto.key, dto.value, scopeType, scopeId);
       if (existing && def.dated && dto.validFrom! <= todayIst()) {
         throw new ConflictException('That value is already in force. Add the new value from a later date instead (YX-HIS-07).');
       }
