@@ -331,24 +331,6 @@ export class TimeSetupService {
     });
   }
 
-  /** TIM-26 "Change date": a future holiday moves to another future date of the same year (no clash). */
-  changeHoliday(ctx: TenantContext, user: ScopeUser, id: string, on: string) {
-    return this.run(ctx, user, true, async (tx, c) => {
-      const h = await tx.holiday.findFirst({ where: { organizationId: c.organizationId, id } });
-      if (!h) throw new NotFoundException('Not found');
-      const was = dateOf(h.holidayOn);
-      const today = todayIst();
-      if (was < today) throw new ConflictException('That holiday has passed, so its date stays.');
-      if (on < today) throw new BadRequestException('Choose today or a later date.');
-      if (on.slice(0, 4) !== was.slice(0, 4)) throw new BadRequestException(`Choose a date in ${was.slice(0, 4)}.`);
-      if (on === was) return { id, on };
-      if (await tx.holiday.findFirst({ where: { organizationId: c.organizationId, calendarId: h.calendarId, holidayOn: asDate(on) } })) throw new ConflictException('That date is already a holiday on this calendar.');
-      await tx.holiday.update({ where: { id }, data: { holidayOn: asDate(on) } });
-      await audit(tx, c, 'holiday.date_changed', 'holiday', id, { calendarId: h.calendarId, name: h.name, from: was, to: on });
-      return { id, on };
-    });
-  }
-
   removeHoliday(ctx: TenantContext, user: ScopeUser, id: string) {
     return this.run(ctx, user, true, async (tx, c) => {
       const h = await tx.holiday.findFirst({ where: { organizationId: c.organizationId, id } });

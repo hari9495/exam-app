@@ -12,14 +12,14 @@ import type { TimeSetup } from './live/types';
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const wrap = (ui: ReactElement) => render(<ToastProvider>{ui}</ToastProvider>);
 const base = { state: 'ready' as const, data: TIME_SETUP };
-const policies = (over = {}) => ({ ...base, onCreatePolicy: vi.fn(async () => ({ id: 'pol-new' })), onAddVersion: vi.fn(async () => ({})), onAssign: vi.fn(async () => ({})), onRemoveAssignment: vi.fn(async () => ({})), onOpenType: vi.fn(), ...over });
+const policies = (over = {}) => ({ ...base, onCreatePolicy: vi.fn(async () => ({ id: 'pol-new' })), onAddVersion: vi.fn(async () => ({})), onAssign: vi.fn(async () => ({})), onRemoveAssignment: vi.fn(async () => ({})), onSaveOrder: vi.fn(async () => ({})), onOpenType: vi.fn(), ...over });
 
 describe('Loading, could not load and no access (every set-up page)', () => {
   it('shows each state', async () => {
     const onRetry = vi.fn();
     const { rerender } = wrap(<LeavePoliciesScreen live={policies({ state: 'loading', data: null })} />);
     expect(screen.getByRole('status', { name: 'Loading the leave set-up' })).toBeInTheDocument();
-    rerender(<ToastProvider><HolidayCalendarsScreen live={{ state: 'error', data: null, onRetry, onCreateCalendar: vi.fn(), onUpdateCalendar: vi.fn(), onAddHoliday: vi.fn(), onRemoveHoliday: vi.fn() }} /></ToastProvider>);
+    rerender(<ToastProvider><HolidayCalendarsScreen live={{ state: 'error', data: null, onRetry, onCreateCalendar: vi.fn(), onUpdateCalendar: vi.fn(), onAddHoliday: vi.fn(), onRemoveHoliday: vi.fn(), onChangeHoliday: vi.fn(), onTemplate: vi.fn(), onClone: vi.fn(), onConfirmDraft: vi.fn(), onRemoveDraft: vi.fn(), onPublish: vi.fn() }} /></ToastProvider>);
     await ue.click(screen.getByRole('button', { name: 'Retry' }));
     expect(onRetry).toHaveBeenCalled();
     rerender(<ToastProvider><YearEndWizard live={{ state: 'no-access', data: null, onYearEndPreview: vi.fn(), onYearEndRun: vi.fn() }} /></ToastProvider>);
@@ -35,6 +35,39 @@ describe('TIM-28 Leave policies, live', () => {
     expect(within(table).getByText('Earned 18 · Casual 8 · Sick 7')).toBeInTheDocument();
     expect(within(table).getByText(/Hosur plant from 1 Apr 2026/)).toBeInTheDocument();
     expect(screen.getByText(/Tamil Nadu: Earned 12 days a year/)).toBeInTheDocument();
+  });
+
+  it('shows people per policy, the overrides and who matches no policy', async () => {
+    const id = TIME_SETUP.policies[0]!.id;
+    wrap(<LeavePoliciesScreen live={policies({ data: { ...TIME_SETUP, coverage: { [id]: { people: 41, overrides: 2 } }, covered: 41, uncovered: { count: 2, people: [{ id: 'e9', name: 'Ravi Kumar', code: 'KF-0901', joinedOn: '2026-10-01' }, { id: 'e8', name: 'Sita Devi', code: null, joinedOn: '2026-09-15' }] } } })} />);
+    expect(screen.getByText('41 people')).toBeInTheDocument();
+    expect(screen.getByText('2 overrides')).toBeInTheDocument();
+    expect(screen.getByText('2 people match no policy')).toBeInTheDocument();
+    expect(screen.queryByText(/Ravi Kumar/)).not.toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Show them' }));
+    expect(screen.getByText('Ravi Kumar · KF-0901')).toBeInTheDocument();
+    expect(screen.getByText(/41 people covered by/)).toBeInTheDocument();
+  });
+
+  it('the order arrows change a draft order; it is saved from a date, and the first arrow says it is first', async () => {
+    const two = { ...TIME_SETUP, policies: [TIME_SETUP.policies[0]!, { ...TIME_SETUP.policies[0]!, id: 'pol-2', name: 'Plant workers', assignments: [] }] };
+    const live = policies({ data: two });
+    wrap(<LeavePoliciesScreen live={live} />);
+    await ue.click(screen.getByRole('button', { name: `Move ${TIME_SETUP.policies[0]!.name} up` }));
+    expect((await screen.findAllByText(`${TIME_SETUP.policies[0]!.name} is already first.`)).length).toBeGreaterThan(0);
+    expect(screen.queryByText('Order changed, not saved yet')).not.toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Move Plant workers up' }));
+    expect(screen.getByText('Order changed, not saved yet')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Save order' }));
+    const dialog = screen.getByRole('dialog');
+    await ue.click(within(dialog).getByRole('button', { name: /^Save from/ }));
+    await waitFor(() => expect(live.onSaveOrder).toHaveBeenCalledWith(['pol-2', TIME_SETUP.policies[0]!.id], '2026-10-28'));
+  });
+
+  it('a saved later order is shown with its date', () => {
+    const id = TIME_SETUP.policies[0]!.id;
+    wrap(<LeavePoliciesScreen live={policies({ data: { ...TIME_SETUP, order: { current: null, currentFrom: null, upcoming: { validFrom: '2026-12-01', policyIds: [id] } } } })} />);
+    expect(screen.getByText('New order from 1 Dec 2026')).toBeInTheDocument();
   });
 
   it('a new policy needs a name; then it is added with its entitlements and stays open', async () => {
@@ -118,7 +151,7 @@ describe('TIM-27 Leave type editor, live', () => {
 });
 
 describe('TIM-26 Holiday calendars, live', () => {
-  const cals = (over: Partial<TimeSetup> = {}) => ({ ...base, data: { ...TIME_SETUP, ...over }, onCreateCalendar: vi.fn(async () => ({})), onUpdateCalendar: vi.fn(async () => ({})), onAddHoliday: vi.fn(async () => ({})), onRemoveHoliday: vi.fn(async () => ({})) });
+  const cals = (over: Partial<TimeSetup> = {}) => ({ ...base, data: { ...TIME_SETUP, ...over }, onCreateCalendar: vi.fn(async () => ({})), onUpdateCalendar: vi.fn(async () => ({})), onAddHoliday: vi.fn(async () => ({})), onRemoveHoliday: vi.fn(async () => ({})), onChangeHoliday: vi.fn(async () => ({})), onTemplate: vi.fn(async () => ({})), onClone: vi.fn(async () => ({})), onConfirmDraft: vi.fn(async () => ({})), onRemoveDraft: vi.fn(async () => ({})), onPublish: vi.fn(async () => ({})), onReviewFeed: vi.fn() });
 
   it('a location without a calendar gets one; another location shows its holidays', async () => {
     const live = cals();
@@ -150,7 +183,88 @@ describe('TIM-26 Holiday calendars, live', () => {
     await ue.clear(choose);
     await ue.type(choose, '1');
     await ue.click(screen.getByRole('button', { name: 'Save rules' }));
-    await waitFor(() => expect(live.onUpdateCalendar).toHaveBeenCalledWith('cal-blr', { name: 'Bengaluru head office holidays', optionalLimit: 1, halfDayOpenHalf: 'first' }));
+    await waitFor(() => expect(live.onUpdateCalendar).toHaveBeenCalledWith('cal-blr', { name: 'Bengaluru head office holidays', optionalLimit: 1, halfDayOpenHalf: 'first', onWeeklyOff: 'none', onMove: 'share' }));
+  });
+
+  it('the weekly-off and move rules are saved with the calendar', async () => {
+    const live = cals();
+    wrap(<HolidayCalendarsScreen live={live} />);
+    await ue.click(screen.getByRole('radio', { name: 'Substitute day off' }));
+    expect(screen.getByText('People get the next working day off.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Save rules' }));
+    await waitFor(() => expect(live.onUpdateCalendar).toHaveBeenCalledWith('cal-blr', expect.objectContaining({ onWeeklyOff: 'substitute', onMove: 'share' })));
+  });
+
+  it('Change date: a future holiday moves after a date is chosen', async () => {
+    const live = cals();
+    wrap(<HolidayCalendarsScreen live={live} />);
+    const table = screen.getByRole('table', { name: 'Bengaluru head office holidays' });
+    await ue.click(within(table).getAllByRole('button', { name: /Actions|More/ })[0]!);
+    await ue.click(screen.getByRole('menuitem', { name: 'Change date' }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText(/becomes a working day/)).toBeInTheDocument();
+    await ue.click(within(dialog).getByRole('button', { name: 'Change date' }));
+    await waitFor(() => expect(live.onChangeHoliday).toHaveBeenCalledWith('h1', '2026-11-01'));
+  });
+
+  it('a location with a state template starts from it (or one by one)', async () => {
+    const live = cals({ templates: { 'loc-hosur': 'Tamil Nadu' } });
+    wrap(<HolidayCalendarsScreen live={live} />);
+    await ue.click(screen.getByRole('tab', { name: /Hosur plant/ }));
+    expect(screen.getByText('Hosur plant has no 2026 calendar')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add holidays one by one' })).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Start from the Tamil Nadu template' }));
+    const dialog = screen.getByRole('dialog', { name: 'Start Hosur plant from the Tamil Nadu template?' });
+    await ue.click(within(dialog).getByRole('button', { name: 'Use template' }));
+    await waitFor(() => expect(live.onTemplate).toHaveBeenCalledWith('loc-hosur', 'Hosur plant'));
+  });
+
+  it('a draft shows as not published and is published with one click', async () => {
+    const drafts = [{ id: 'd1', on: '2026-12-31', name: 'New Year Eve', kind: 'state' as const, halfDay: false, confirm: false, source: 'template' as const }];
+    const live = cals({ calendars: [{ ...TIME_SETUP.calendars[0]!, drafts }] });
+    wrap(<HolidayCalendarsScreen live={live} />);
+    expect(screen.getByText('Draft · not published')).toBeInTheDocument();
+    expect(screen.getByText('New Year Eve')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Publish Bengaluru head office calendar' }));
+    await waitFor(() => expect(live.onPublish).toHaveBeenCalledWith('cal-blr', 'Bengaluru head office', 2026));
+  });
+
+  it('Clone waits while feed changes are waiting; then clones to next year', async () => {
+    const live = cals({ calendars: [{ ...TIME_SETUP.calendars[0]!, waitingFeedChanges: 1 }] });
+    const { unmount } = wrap(<HolidayCalendarsScreen live={live} />);
+    expect(screen.getByText('Review the feed changes first')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Clone Bengaluru head office to 2027' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Review changes' }));
+    expect(live.onReviewFeed).toHaveBeenCalled();
+    unmount();
+    const ok = cals();
+    wrap(<HolidayCalendarsScreen live={ok} />);
+    await ue.click(screen.getByRole('button', { name: 'Clone Bengaluru head office to 2027' }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText(/3 festivals with changing dates are added as drafts/)).toBeInTheDocument();
+    await ue.click(within(dialog).getByRole('button', { name: 'Clone to 2027' }));
+    await waitFor(() => expect(ok.onClone).toHaveBeenCalledWith('cal-blr', 'Bengaluru head office', 2027));
+  });
+
+  it('next year draft: festival dates are confirmed before publishing', async () => {
+    const drafts = [
+      { id: 'd1', on: '2027-01-26', name: 'Republic Day', kind: 'national' as const, halfDay: false, confirm: false, source: 'clone' as const },
+      { id: 'd2', on: '2027-11-09', name: 'Balipadyami', kind: 'festival' as const, halfDay: false, confirm: true, source: 'clone' as const },
+    ];
+    const live = cals({ calendars: [{ ...TIME_SETUP.calendars[0]!, drafts }] });
+    wrap(<HolidayCalendarsScreen live={live} />);
+    await ue.click(screen.getByRole('button', { name: 'Open 2027 draft' }));
+    expect(screen.getByRole('heading', { name: 'Bengaluru head office · 2027' })).toBeInTheDocument();
+    expect(screen.getByText('1 festival date to confirm before you publish')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Publish Bengaluru head office 2027 calendar' }));
+    expect(live.onPublish).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('button', { name: 'Confirm date' }));
+    const dialog = screen.getByRole('dialog');
+    await ue.click(within(dialog).getByRole('button', { name: 'Confirm date' }));
+    await waitFor(() => expect(live.onConfirmDraft).toHaveBeenCalledWith('d2', '2027-11-09'));
+    await ue.click(screen.getByRole('button', { name: 'Back to 2026' }));
+    expect(screen.getByRole('heading', { name: 'Holiday calendars · 2026' })).toBeInTheDocument();
   });
 
   it('no locations: says where to add them', () => {

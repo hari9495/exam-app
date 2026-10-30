@@ -354,7 +354,31 @@ export interface TimeSetup {
   today: string;
   types: LeaveTypeRow[];
   policies: { id: string; name: string; archived: boolean; versions: { id: string; validFrom: string; lines: PolicyLine[]; note: string | null }[]; assignments: { id: string; scopeType: string; scopeId: string; scopeName: string; validFrom: string; removable: boolean }[] }[];
-  calendars: { id: string; name: string; locationId: string | null; halfDayOpenHalf: 'first' | 'second'; optionalLimit: number; holidays: HolidayRow[] }[];
+  calendars: {
+    id: string;
+    name: string;
+    locationId: string | null;
+    halfDayOpenHalf: 'first' | 'second';
+    optionalLimit: number;
+    /** TIM-26 rules: a holiday on a weekly off; optional holidays after a move to this office. */
+    onWeeklyOff?: 'none' | 'substitute' | 'comp_off';
+    onMove?: 'share' | 'reset';
+    /** When a draft was last published (null: holidays added one by one). */
+    publishedAt?: string | null;
+    /** TIM-42 changes from the holiday feed waiting for review. */
+    waitingFeedChanges?: number;
+    holidays: HolidayRow[];
+    /** Clone to next year or a state template, waiting to be published (never seen by employees). */
+    drafts?: (HolidayRow & { confirm: boolean; source: 'clone' | 'template' })[];
+  }[];
+  /** TIM-26: location id → state name, for locations with a state template. */
+  templates?: Record<string, string>;
+  /** TIM-28: grades for "Apply to", people per policy today, people no policy covers, the policy order. */
+  grades?: { id: string; name: string }[];
+  coverage?: Record<string, { people: number; overrides: number }>;
+  covered?: number;
+  uncovered?: { count: number; people: { id: string; name: string; code: string | null; joinedOn: string }[] };
+  order?: { current: string[] | null; currentFrom: string | null; upcoming: { validFrom: string; policyIds: string[] } | null };
   locations: { id: string; name: string; state: string; timezone: string; geofence: { lat: number; lng: number; radiusM: number } | null; ipRanges: string[]; rule: LocationRule; upcoming: LocationRule[] }[];
   entities: { id: string; name: string }[];
   /** Founder decision 2: days' notice for a leave type without its own number (company setting; sick leave 0). */

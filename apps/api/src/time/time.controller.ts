@@ -254,8 +254,18 @@ export class TimeController {
   @Post('setup/holidays/:id/date')
   @HttpCode(200)
   @RequirePermissions('leave.settings.manage')
-  changeHoliday(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: HolidayDateDto) {
-    return this.setup.changeHoliday(ctx, this.user(req), id, dto.on);
+  async changeHoliday(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: HolidayDateDto) {
+    const told: { userId: string; on: string; requestId: string }[] = [];
+    const out = await this.setup.run(ctx, this.user(req), true, (tx, c) => this.v2.changeHolidayIn(tx, c, id, dto.on, told));
+    await this.v2.tellHolidayAdded(ctx, told);
+    return out;
+  }
+
+  @Post('setup/holiday-drafts/:id/remove')
+  @HttpCode(200)
+  @RequirePermissions('leave.settings.manage')
+  removeDraft(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.setup.run(ctx, this.user(req), true, (tx, c) => this.v2.removeDraftIn(tx, c, id));
   }
 
   // TIM-26 drafts: a state template or a clone to next year waits as a draft until HR publishes it.

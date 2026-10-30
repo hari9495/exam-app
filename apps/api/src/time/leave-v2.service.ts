@@ -1270,6 +1270,33 @@ export class LeaveV2Service implements OnModuleInit {
     return { id, on };
   }
 
+  /** Remove one day from a draft (nothing changes for employees). */
+  async removeDraftIn(tx: Tx, c: CompanyContext, id: string) {
+    const d = await tx.holidayDraft.findFirst({ where: { organizationId: c.organizationId, id } });
+    if (!d) throw new NotFoundException('Not found');
+    await tx.holidayDraft.delete({ where: { id } });
+    await audit(tx, c, 'holiday.draft.removed', 'holiday_calendar', d.calendarId, { name: d.name, on: dateOf(d.holidayOn) });
+    return { id };
+  }
+
+  /** "Change date": a future holiday moves to another future date of its year; leave on the new date goes back. */
+  async changeHolidayIn(tx: Tx, c: CompanyContext, id: string, on: string, told: { userId: string; on: string; requestId: string }[]) {
+    const org = c.organizationId;
+    const h = await tx.holiday.findFirst({ where: { organizationId: org, id } });
+    if (!h) throw new NotFoundException('Not found');
+    const was = dateOf(h.holidayOn);
+    const today = todayIn('Asia/Kolkata');
+    if (was < today) throw new ConflictException('That holiday has passed, so its date stays.');
+    if (on < today) throw new BadRequestException('Choose today or a later date.');
+    if (on.slice(0, 4) !== was.slice(0, 4)) throw new BadRequestException(`Choose a date in ${was.slice(0, 4)}.`);
+    if (on === was) return { id, on, leaveReturned: 0 };
+    if (await tx.holiday.findFirst({ where: { organizationId: org, calendarId: h.calendarId, holidayOn: asDate(on) } })) throw new ConflictException('That date is already a holiday on this calendar.');
+    await tx.holiday.update({ where: { id }, data: { holidayOn: asDate(on) } });
+    const returned = h.kind === 'optional' || h.kind === 'restricted' ? 0 : await this.holidayAdded(tx, c, h.calendarId, on, h.name, told);
+    await audit(tx, c, 'holiday.date_changed', 'holiday', id, { calendarId: h.calendarId, name: h.name, from: was, to: on, leaveReturned: returned });
+    return { id, on, leaveReturned: returned };
+  }
+
   /** Publish a calendar's draft for a year: every festival date confirmed first; days already past are left out. */
   async publishDraftIn(tx: Tx, c: CompanyContext, calendarId: string, year: number, told: { userId: string; on: string; requestId: string }[]) {
     const org = c.organizationId;

@@ -87,7 +87,7 @@ describe('Company block dates (TIM-28, live)', () => {
     locations: [{ id: 'loc', name: 'Chennai office' }],
     dates: [{ id: 'b1', from: '2026-11-25', to: '2026-11-26', reason: 'Stock count', scopeType: 'location', scopeId: 'loc', scopeName: 'Chennai office', leaveTypeIds: [], affected: [{ id: 'r1', name: 'Arjun Kulkarni', type: 'Earned leave', from: '2026-11-25', to: '2026-11-25', status: 'approved' }] }],
   };
-  const policies = (blockDates: LiveBlockDates) => ({ state: 'ready' as const, data: TIME_SETUP, onCreatePolicy: vi.fn(), onAddVersion: vi.fn(), onAssign: vi.fn(), onRemoveAssignment: vi.fn(), onOpenType: vi.fn(), blockDates });
+  const policies = (blockDates: LiveBlockDates) => ({ state: 'ready' as const, data: TIME_SETUP, onCreatePolicy: vi.fn(), onAddVersion: vi.fn(), onAssign: vi.fn(), onRemoveAssignment: vi.fn(), onSaveOrder: vi.fn(), onOpenType: vi.fn(), blockDates });
 
   it('lists the dates, where, which leave and who already has leave then (their leave stays); Remove asks first', async () => {
     const onRemove = vi.fn(async () => ({}));

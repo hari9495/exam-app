@@ -24,6 +24,7 @@ export default function YxTimeSetupPage() {
         onAddVersion: (pid, input) => write(`/setup/policies/${id(pid)}/versions`, 'POST', input, true, 'Policy change saved'),
         onAssign: (pid, input) => write(`/setup/policies/${id(pid)}/assign`, 'POST', input, true, 'Policy applied'),
         onRemoveAssignment: (aid) => write(`/setup/assignments/${id(aid)}/remove`, 'POST', undefined, true, 'Policy removed from there'),
+        onSaveOrder: (policyIds, validFrom) => write('/setup/policy-order', 'POST', { policyIds, validFrom }, true, 'Policy order saved'),
         onOpenType: (tid) => router.push(`/yx/time/setup/types/${id(tid)}`),
         blockDates: {
           state: timeState(blocks),

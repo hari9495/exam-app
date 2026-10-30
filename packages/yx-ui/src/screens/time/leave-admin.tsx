@@ -1936,6 +1936,8 @@ export interface LiveLeavePolicies extends SetupLive {
   onAddVersion: (policyId: string, input: { validFrom: string; lines: PolicyLine[] }) => Promise<unknown>;
   onAssign: (policyId: string, input: { scopeType: string; scopeId?: string; validFrom: string }) => Promise<unknown>;
   onRemoveAssignment: (id: string) => Promise<unknown>;
+  /** TIM-28: the policy order (every policy, first wins) from a date. */
+  onSaveOrder: (policyIds: string[], validFrom: string) => Promise<unknown>;
   /** Opens TIM-27 for a type, or 'new'. */
   onOpenType: (id: string) => void;
   /** Founder decision 1: the company block dates card. */
@@ -1951,9 +1953,20 @@ export interface LiveLeaveTypeEditor extends SetupLive {
 }
 export interface LiveHolidayCalendars extends SetupLive {
   onCreateCalendar: (input: { name: string; locationId?: string; optionalLimit: number }) => Promise<unknown>;
-  onUpdateCalendar: (id: string, input: { name: string; optionalLimit: number; halfDayOpenHalf: 'first' | 'second' }) => Promise<unknown>;
+  onUpdateCalendar: (id: string, input: { name: string; optionalLimit: number; halfDayOpenHalf: 'first' | 'second'; onWeeklyOff?: 'none' | 'substitute' | 'comp_off'; onMove?: 'share' | 'reset' }) => Promise<unknown>;
   onAddHoliday: (calendarId: string, input: { on: string; name: string; kind: string; halfDay: boolean }) => Promise<unknown>;
   onRemoveHoliday: (id: string) => Promise<unknown>;
+  /** "Change date" of a holiday in force (a draft's date goes through onConfirmDraft). */
+  onChangeHoliday: (id: string, on: string) => Promise<unknown>;
+  /** A location's calendar from its state template, as a draft. */
+  onTemplate: (locationId: string, name: string) => Promise<unknown>;
+  /** This year's holidays copied to next year as a draft. */
+  onClone: (calendarId: string, name: string, year: number) => Promise<unknown>;
+  onConfirmDraft: (id: string, on: string) => Promise<unknown>;
+  onRemoveDraft: (id: string) => Promise<unknown>;
+  onPublish: (calendarId: string, name: string, year: number) => Promise<unknown>;
+  /** TIM-42 Review changes (the holiday feed page). */
+  onReviewFeed?: () => void;
 }
 export interface LiveYearEnd extends SetupLive {
   onYearEndPreview: (yearEnd: string) => Promise<YearEndPreview>;
@@ -2237,30 +2250,75 @@ const sampleBlockDates = (empty: boolean): BlockDates => ({
 
 /* ---------------- TIM-28 live ---------------- */
 
-const POLICIES_TEXT = 'Each policy gives leave types to the people where it applies: the whole company, a legal entity or a location. The most specific one wins: a location over its legal entity, an entity over the whole company.';
+const POLICIES_TEXT = 'Each policy is a set of leave types given to people by rule (the whole company, a legal entity, a location or a grade). When someone matches more than one rule, the policy higher in the order wins.';
 
 function LivePolicies({ live }: { live: LiveLeavePolicies }) {
   const [openId, setOpenId] = useState<string | null>(null);
+  // The arrows change a draft order; it applies only after "Save order" with a date.
+  const [order, setOrder] = useState<string[] | null>(null);
+  const [orderSave, setOrderSave] = useState(false);
+  const [orderFrom, setOrderFrom] = useState<Date | null>(null);
+  const [triedOrder, setTriedOrder] = useState(false);
+  const [showUncovered, setShowUncovered] = useState(false);
+  const { toast } = useToast();
   return (
     <SetupGate live={live} active="Leave types & policies" header={<PageHeader title="Leave policies" description={POLICIES_TEXT} />}>
       {(d) => {
         const policy = openId && openId !== 'new' ? d.policies.find((p) => p.id === openId) ?? null : null;
+        const all = d.policies.filter((p) => !p.archived);
+        // Today's order (saved, else the API's order by name), then any policy added since it was saved.
+        const saved = d.order?.current ?? [];
+        const base = [...saved.map((id) => all.find((p) => p.id === id)).filter((p): p is SetupPolicy => !!p), ...all.filter((p) => !saved.includes(p.id))];
+        const shown = order ? order.map((id) => all.find((p) => p.id === id)).filter((p): p is SetupPolicy => !!p) : base;
+        const move = (id: string, by: -1 | 1) => {
+          const ids = shown.map((r) => r.id);
+          const i = ids.indexOf(id);
+          const j = i + by;
+          if (j < 0 || j >= ids.length) return;
+          [ids[i], ids[j]] = [ids[j]!, ids[i]!];
+          setOrder(ids.join() === base.map((r) => r.id).join() ? null : ids);
+        };
+        const cov = (id: string) => d.coverage?.[id] ?? { people: 0, overrides: 0 };
+        const nowrap = { whiteSpace: 'nowrap' } as const;
+        const uncovered = d.uncovered?.count ?? 0;
         const cols: TableColumn<SetupPolicy>[] = [
-          { key: 'name', header: 'Policy', value: (r) => r.name, render: (r) => <strong>{r.name}</strong> },
+          {
+            key: 'name', header: 'Policy (order)', value: (r) => r.name,
+            render: (r) => {
+              const i = shown.indexOf(r);
+              return (
+                <span className="yx-tim-row" style={{ flexWrap: 'nowrap', alignItems: 'flex-start' }}>
+                  <Badge tone="neutral">#{i + 1}</Badge>
+                  <strong style={{ flex: 1, minWidth: 0 }}>{r.name}</strong>
+                  {/* Arrows reorder; they must not also open the drawer. At the top or bottom they say why nothing moved. */}
+                  <span className="yx-tim-row" style={{ flexWrap: 'nowrap', flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+                    <IconButton icon={ArrowUp} label={`Move ${r.name} up`} size="sm" onClick={() => (i === 0 ? toast({ title: `${r.name} is already first.` }) : move(r.id, -1))} />
+                    <IconButton icon={ArrowDown} label={`Move ${r.name} down`} size="sm" onClick={() => (i === shown.length - 1 ? toast({ title: `${r.name} is already last.` }) : move(r.id, 1))} />
+                  </span>
+                </span>
+              );
+            },
+          },
           {
             key: 'types', header: 'Leave types',
             value: (r) => versionToday(r, d.today)?.lines.map((l) => `${typeShort(d, l.leaveTypeId)} ${num(l.annualDays)}`).join(' · ') || 'No leave types yet',
           },
           {
             key: 'rule', header: 'Who gets it',
-            value: (r) => r.assignments.map((a) => a.scopeName).join(', ') || 'No one yet',
+            value: (r) => r.assignments.filter((a) => a.scopeType !== 'employee').map((a) => a.scopeName).join(', ') || 'No one yet',
             render: (r) => {
               const v = versionToday(r, d.today);
               const later = r.versions.find((x) => x.validFrom > d.today);
+              const rules = r.assignments.filter((a) => a.scopeType !== 'employee');
+              const c = cov(r.id);
               return (
                 <span className="yx-tim-list__main" style={{ flex: 'none' }}>
-                  <span>{r.assignments.length ? r.assignments.map((a) => `${a.scopeName} from ${isoDay(a.validFrom)}`).join(' · ') : 'Not applied to anyone yet'}</span>
-                  {v && <span className="yx-tim-muted">Entitlements from {isoDay(v.validFrom)}</span>}
+                  <span>{rules.length ? rules.map((a) => `${a.scopeName} from ${isoDay(a.validFrom)}`).join(' · ') : 'Not applied to anyone yet'}</span>
+                  <span className="yx-tim-muted">
+                    <span style={nowrap}>{plural(c.people, 'person', 'people')}</span>
+                    {c.overrides > 0 && <> · <span style={nowrap}>{plural(c.overrides, 'override')}</span></>}
+                    {v && <> · <span style={nowrap}>entitlements from {isoDay(v.validFrom)}</span></>}
+                  </span>
                   {later && <span><Badge tone="neutral">Changes from {isoDay(later.validFrom)}</Badge></span>}
                 </span>
               );
@@ -2268,6 +2326,7 @@ function LivePolicies({ live }: { live: LiveLeavePolicies }) {
           },
         ];
         const newPolicy = <Button variant="primary" icon={Plus} onClick={() => setOpenId('new')}>New policy</Button>;
+        const upcoming = d.order?.upcoming;
         return (
           <>
             <PageHeader
@@ -2297,17 +2356,63 @@ function LivePolicies({ live }: { live: LiveLeavePolicies }) {
             />
             <PoliciesAndBlocks blocks={live.blockDates ? <BlockDatesCard {...live.blockDates} today={d.today} /> : null}>
             <Statutory d={d} />
+            {uncovered > 0 && (
+              <InlineAlert
+                tone="warning"
+                title={`${plural(uncovered, 'person matches', 'people match')} no policy`}
+                actions={<Button size="sm" onClick={() => setShowUncovered((s) => !s)}>{showUncovered ? 'Hide them' : 'Show them'}</Button>}
+              >
+                They get no leave until a policy covers them. Apply a policy to their legal entity, location or grade.
+                {showUncovered && (
+                  <ul className="yx-tim-days">
+                    {d.uncovered!.people.map((p) => <li key={p.id}><span>{p.name}{p.code ? ` · ${p.code}` : ''}</span><strong>Joined {isoDay(p.joinedOn)}</strong></li>)}
+                    {uncovered > d.uncovered!.people.length && <li><span className="yx-tim-muted">and {uncovered - d.uncovered!.people.length} more</span></li>}
+                  </ul>
+                )}
+              </InlineAlert>
+            )}
+            {d.covered !== undefined && <p className="yx-tim-muted">{plural(d.covered, 'person', 'people')} covered by {plural(all.length, 'policy', 'policies')}{uncovered > 0 ? ` · ${uncovered} not covered` : ''}</p>}
             <DataTable
               label="Leave policies"
               columns={cols}
-              rows={d.policies.filter((p) => !p.archived)}
+              rows={shown}
               getRowId={(r) => r.id}
               rowNoun={['policy', 'policies']}
               onRowClick={(r) => setOpenId(r.id)}
               activeRowId={openId}
               empty={<EmptyState title="No leave policies yet" description="No one gets leave until you add a policy and apply it." action={newPolicy} />}
             />
+            {order && (
+              <div className="yx-tim-row">
+                <span className="yx-tim-muted">Order changed, not saved yet</span>
+                <Button onClick={() => setOrder(null)}>Cancel</Button>
+                <Button variant="primary" onClick={() => (setTriedOrder(false), setOrderFrom(dateOfIso(d.today)), setOrderSave(true))}>Save order</Button>
+              </div>
+            )}
+            {upcoming && !order && (
+              <div className="yx-tim-row">
+                <Badge tone="neutral">New order from {isoDay(upcoming.validFrom)}</Badge>
+                <span className="yx-tim-muted">{upcoming.policyIds.map((id, i) => `#${i + 1} ${all.find((p) => p.id === id)?.name ?? ''}`).join(' · ')}</span>
+              </div>
+            )}
             </PoliciesAndBlocks>
+            <ConfirmDialog
+              open={orderSave}
+              onOpenChange={setOrderSave}
+              title="Save the new policy order?"
+              consequence="People who match more than one policy get the one higher in the order from that date. A per-person override always wins. Earlier months stay as they were."
+              confirmLabel={orderFrom ? `Save from ${day(orderFrom)}` : 'Save order'}
+              onConfirm={async () => {
+                setTriedOrder(true);
+                if (!orderFrom || !order) return false;
+                await live.onSaveOrder(order, isoOf(orderFrom));
+                setOrder(null);
+              }}
+            >
+              <FormField label="Applies from" required error={triedOrder && !orderFrom ? 'Choose the date the new order starts.' : null}>
+                <DatePicker value={orderFrom} onChange={setOrderFrom} min={dateOfIso(d.today)} />
+              </FormField>
+            </ConfirmDialog>
             {openId && (openId === 'new' || policy) && (
               <LivePolicyDrawer key={openId} d={d} policy={policy} live={live} onOpen={setOpenId} onClose={() => setOpenId(null)} />
             )}
@@ -2326,7 +2431,7 @@ function LivePolicyDrawer({ d, policy, live, onOpen, onClose }: { d: TimeSetup; 
   const [from, setFrom] = useState<Date | null>(dateOfIso(d.today));
   const [editing, setEditing] = useState<string | null>(null);
   const [dirty, setDirty] = useState(!policy);
-  const [assigning, setAssigning] = useState<{ scopeType: 'tenant' | 'legal_entity' | 'location'; scopeId: string | null; from: Date | null } | null>(null);
+  const [assigning, setAssigning] = useState<{ scopeType: 'tenant' | 'legal_entity' | 'location' | 'grade'; scopeId: string | null; from: Date | null } | null>(null);
   const [triedAssign, setTriedAssign] = useState(false);
   const { busy, error, run } = useRun();
   const errors = [...(!policy && !name.trim() ? [{ fieldId: 'pol-name', message: 'Name the policy.' }] : []), ...(!from ? [{ fieldId: 'pol-from', message: 'Choose the date the entitlements apply from.' }] : [])];
@@ -2355,7 +2460,7 @@ function LivePolicyDrawer({ d, policy, live, onOpen, onClose }: { d: TimeSetup; 
       else onOpen(id);
     });
   };
-  const scopeOptions = assigning?.scopeType === 'legal_entity' ? d.entities.map((e) => ({ value: e.id, label: e.name })) : d.locations.map((l) => ({ value: l.id, label: l.name }));
+  const scopeOptions = assigning?.scopeType === 'legal_entity' ? d.entities.map((e) => ({ value: e.id, label: e.name })) : assigning?.scopeType === 'grade' ? (d.grades ?? []).map((g) => ({ value: g.id, label: g.name })) : d.locations.map((l) => ({ value: l.id, label: l.name }));
   return (
     <Drawer
       open
@@ -2445,7 +2550,7 @@ function LivePolicyDrawer({ d, policy, live, onOpen, onClose }: { d: TimeSetup; 
           open={!!assigning}
           onOpenChange={(o) => !o && setAssigning(null)}
           title={`Apply ${policy?.name ?? 'this policy'}`}
-          consequence="The most specific rule wins: a location over its legal entity, an entity over the whole company."
+          consequence="When someone matches more than one policy, the one higher in the order on Leave policies wins."
           confirmLabel="Apply"
           onConfirm={async () => {
             setTriedAssign(true);
@@ -2456,10 +2561,10 @@ function LivePolicyDrawer({ d, policy, live, onOpen, onClose }: { d: TimeSetup; 
           {assigning && (
             <div className="yx-tim-form">
               <FormField label="Apply to">
-                <Segment label="Apply to" value={assigning.scopeType} onChange={(v) => setAssigning({ ...assigning, scopeType: v, scopeId: null })} options={[{ value: 'tenant', label: 'Whole company' }, { value: 'legal_entity', label: 'A legal entity' }, { value: 'location', label: 'A location' }]} />
+                <Segment label="Apply to" value={assigning.scopeType} onChange={(v) => setAssigning({ ...assigning, scopeType: v, scopeId: null })} options={[{ value: 'tenant', label: 'Whole company' }, { value: 'legal_entity', label: 'A legal entity' }, { value: 'location', label: 'A location' }, ...(d.grades?.length ? [{ value: 'grade' as const, label: 'A grade' }] : [])]} />
               </FormField>
               {assigning.scopeType !== 'tenant' && (
-                <FormField label={assigning.scopeType === 'legal_entity' ? 'Legal entity' : 'Location'} required error={triedAssign && !assigning.scopeId ? 'Choose one.' : null}>
+                <FormField label={assigning.scopeType === 'legal_entity' ? 'Legal entity' : assigning.scopeType === 'grade' ? 'Grade' : 'Location'} required error={triedAssign && !assigning.scopeId ? 'Choose one.' : null}>
                   <Select value={assigning.scopeId} onChange={(v) => setAssigning({ ...assigning, scopeId: v })} options={scopeOptions} />
                 </FormField>
               )}
@@ -2661,66 +2766,205 @@ function LiveHolidays({ live }: { live: LiveHolidayCalendars }) {
 }
 
 type CalTab = { key: string; name: string; loc?: SetupLocation; cal?: SetupCalendar };
+/** A row of the calendar table: a holiday in force, or one waiting in a draft (template or clone). */
+type CalRow = HolidayRow & { draft?: boolean; confirm?: boolean };
+const inYear = <T extends { on: string }>(rows: T[] | undefined, year: string) => (rows ?? []).filter((h) => h.on.startsWith(`${year}-`));
+const WEEKLY_OFF_RULES = [
+  { value: 'none', label: 'No extra day off (default)' },
+  { value: 'substitute', label: 'Substitute day off' },
+  { value: 'comp_off', label: 'Comp-off credit' },
+];
+const kindLabel = (h: CalRow) => (choosable(h.kind) ? 'Optional' : HOLIDAY_KINDS.find((k) => k.value === h.kind)?.label ?? 'Holiday');
 
 function LiveHolidayTabs({ d, live }: { d: TimeSetup; live: LiveHolidayCalendars }) {
   const year = d.today.slice(0, 4);
+  const next = String(Number(year) + 1);
   // One tab per location, then any calendar not tied to one (the company calendar for locations without their own).
   const tabs: CalTab[] = [
     ...d.locations.map((l) => ({ key: l.id, name: l.name, loc: l, cal: d.calendars.find((c) => c.locationId === l.id) })),
     ...d.calendars.filter((c) => !c.locationId || !d.locations.some((l) => l.id === c.locationId)).map((c) => ({ key: c.id, name: c.name, cal: c })),
   ];
   const [tab, setTab] = useState(tabs[0]?.key ?? '');
-  const shown = (c?: SetupCalendar) => (c?.holidays ?? []).filter((h) => h.on >= `${year}-01-01`);
+  const [nextView, setNextView] = useState(false);
+  const [cloning, setCloning] = useState(false);
+  const cur = tabs.find((t) => t.key === tab);
+  const cal = cur?.cal;
+  const thisYear = inYear(cal?.holidays, year);
+  const nextDrafts = inYear(cal?.drafts, next);
+  const nextRows = inYear(cal?.holidays, next);
+  const hasNext = nextDrafts.length > 0 || nextRows.length > 0;
+  const waiting = cal?.waitingFeedChanges ?? 0;
+  const movers = thisYear.filter((h) => ['festival', 'optional', 'restricted'].includes(h.kind)).length;
+  const showNext = nextView && !!cal && hasNext;
   return (
     <>
-      <PageHeader title={`Holiday calendars · ${year}`} description={CALENDARS_TEXT} />
-      {tabs.length === 0 ? (
+      <PageHeader
+        title={showNext ? `${cur!.name} · ${next}` : `Holiday calendars · ${year}`}
+        description={CALENDARS_TEXT}
+        actions={
+          showNext ? (
+            <Button onClick={() => setNextView(false)}>Back to {year}</Button>
+          ) : cal && thisYear.length > 0 && !hasNext ? (
+            <div className="yx-tim-row">
+              {waiting > 0 && <span className="yx-tim-muted">Review the feed changes first</span>}
+              {/* Never greyed out: with feed changes waiting it does nothing, and the note beside it says why. */}
+              <Button variant="primary" icon={Copy} onClick={() => waiting === 0 && setCloning(true)}>Clone {cur!.name} to {next}</Button>
+            </div>
+          ) : undefined
+        }
+      />
+      {showNext ? (
+        <NextYearPanel key={`${cal!.id}-${next}`} d={d} name={cur!.name} cal={cal!} year={next} live={live} />
+      ) : tabs.length === 0 ? (
         <EmptyState title="No locations yet" description="Each location gets its own holiday calendar. Add your offices in Settings › Locations first." />
       ) : (
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList aria-label="Locations">
-            {tabs.map((t) => <TabsTrigger key={t.key} value={t.key} count={shown(t.cal).length}>{t.name}</TabsTrigger>)}
-          </TabsList>
-          {tabs.map((t) => (
-            <TabsContent key={t.key} value={t.key}>
-              <CalendarPanel key={t.cal?.id ?? t.key} live={{ d, t, rows: shown(t.cal), live }} />
-            </TabsContent>
-          ))}
-        </Tabs>
+        <>
+          {cal && hasNext && (
+            <InlineAlert tone="info" title={nextDrafts.length ? `${next} draft created for ${cur!.name}` : `${cur!.name} ${next} calendar published`} actions={<Button size="sm" onClick={() => setNextView(true)}>{nextDrafts.length ? `Open ${next} draft` : `Open ${next} calendar`}</Button>}>
+              {nextDrafts.length ? `${plural(nextDrafts.filter((h) => h.confirm).length, 'festival date')} to confirm. Employees see nothing until you publish the ${next} calendar.` : `Employees at ${cur!.name} see the ${next} holidays.`}
+            </InlineAlert>
+          )}
+          <Tabs value={tab} onValueChange={(v) => (setTab(v), setNextView(false))}>
+            <TabsList aria-label="Locations">
+              {tabs.map((t) => <TabsTrigger key={t.key} value={t.key} count={inYear(t.cal?.holidays, year).length + inYear(t.cal?.drafts, year).length}>{t.name}</TabsTrigger>)}
+            </TabsList>
+            {tabs.map((t) => (
+              <TabsContent key={t.key} value={t.key}>
+                <CalendarPanel key={t.cal?.id ?? t.key} live={{ d, t, rows: [...inYear(t.cal?.holidays, year), ...inYear(t.cal?.drafts, year).map((h) => ({ ...h, draft: true }))], live }} />
+              </TabsContent>
+            ))}
+          </Tabs>
+        </>
       )}
+      <ConfirmDialog
+        open={cloning && !!cal}
+        onOpenChange={setCloning}
+        title={`Clone ${cur?.name ?? ''} calendar to ${next}?`}
+        consequence={`Fixed-date holidays move to their ${next} dates. ${plural(movers, 'festival')} with changing dates ${movers === 1 ? 'is' : 'are'} added as drafts for you to confirm. Nothing is visible to employees until you publish.`}
+        confirmLabel={`Clone to ${next}`}
+        onConfirm={async () => {
+          await live.onClone(cal!.id, cur!.name, Number(next));
+          setNextView(true);
+        }}
+      />
     </>
   );
 }
 
-type LiveCalendarPanelProps = { d: TimeSetup; t: CalTab; rows: HolidayRow[]; live: LiveHolidayCalendars };
+/** Next year's calendar: the clone's draft (festival dates to confirm, then publish), or the published days. */
+function NextYearPanel({ d, name, cal, year, live }: { d: TimeSetup; name: string; cal: SetupCalendar; year: string; live: LiveHolidayCalendars }) {
+  const drafts = inYear(cal.drafts, year);
+  const rows: CalRow[] = [...inYear(cal.holidays, year), ...drafts.map((h) => ({ ...h, draft: true }))];
+  const toConfirm = drafts.filter((h) => h.confirm).length;
+  const [confirming, setConfirming] = useState<{ row: CalRow; date: Date | null } | null>(null);
+  const [triedDate, setTriedDate] = useState(false);
+  const { busy, error, run } = useRun();
+  return (
+    <div className="yx-tim-stack">
+      {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
+      {drafts.length ? (
+        <div className="yx-tim-row">
+          <Badge tone="neutral">Draft · not published</Badge>
+          {toConfirm > 0 && <span className="yx-tim-muted">{plural(toConfirm, 'festival date')} to confirm before you publish</span>}
+        </div>
+      ) : (
+        <div className="yx-tim-row"><Badge tone="success">Published</Badge><span className="yx-tim-muted">Employees at {name} now see the {year} holidays.</span></div>
+      )}
+      <DataTable
+        label={`${name} ${year} holidays`}
+        columns={[
+          { key: 'name', header: 'Holiday', value: (r: CalRow) => r.name },
+          { key: 'date', header: 'Date', type: 'date', value: (r: CalRow) => dateOfIso(r.on), render: (r: CalRow) => <DayDate date={dateOfIso(r.on)} /> },
+          { key: 'kind', header: 'Type', type: 'status', value: (r: CalRow) => (r.confirm ? 'Confirm date' : kindLabel(r)), statusTone: (v) => (v === 'Confirm date' ? 'warning' : v === 'Optional' ? 'info' : 'neutral') },
+        ]}
+        rows={rows}
+        getRowId={(r) => r.id}
+        defaultSort={{ key: 'date', dir: 'asc' }}
+        rowButtons={(r) => (r.confirm ? <Button size="sm" onClick={() => (setTriedDate(false), setConfirming({ row: r, date: dateOfIso(r.on) }))}>Confirm date</Button> : null)}
+      />
+      {drafts.length > 0 && (
+        <div className="yx-tim-row">
+          <Button variant="primary" loading={busy === 'publish'} onClick={() => toConfirm === 0 && void run('publish', () => live.onPublish(cal.id, name, Number(year)))}>Publish {name} {year} calendar</Button>
+          <span className="yx-tim-muted">{toConfirm > 0 ? `Confirm the ${plural(toConfirm, 'festival date')} first` : 'Employees see these holidays only after you publish'}</span>
+        </div>
+      )}
+      <ConfirmDialog
+        open={!!confirming}
+        onOpenChange={(o) => !o && setConfirming(null)}
+        title={`Confirm the ${year} date of ${confirming?.row.name ?? ''}`}
+        consequence={`Check the date in the state's ${year} holiday notification. The draft copied last year's day and month.`}
+        confirmLabel="Confirm date"
+        onConfirm={async () => {
+          setTriedDate(true);
+          if (!confirming?.date) return false;
+          await live.onConfirmDraft(confirming.row.id, isoOf(confirming.date));
+        }}
+      >
+        {confirming && (
+          <FormField label="Date" required error={triedDate && !confirming.date ? `Choose the ${year} date.` : null}>
+            <DatePicker value={confirming.date} onChange={(v) => setConfirming({ ...confirming, date: v })} min={dateOfIso(`${year}-01-01` < d.today ? d.today : `${year}-01-01`)} max={dateOfIso(`${year}-12-31`)} />
+          </FormField>
+        )}
+      </ConfirmDialog>
+    </div>
+  );
+}
+
+type LiveCalendarPanelProps = { d: TimeSetup; t: CalTab; rows: CalRow[]; live: LiveHolidayCalendars };
 
 function LiveCalendarPanel({ d, t, rows, live }: LiveCalendarPanelProps) {
   const cal = t.cal;
+  const year = d.today.slice(0, 4);
+  const state = t.loc ? d.templates?.[t.loc.id] : undefined;
   const [choose, setChoose] = useState<number | null>(cal?.optionalLimit ?? 2);
   const [half, setHalf] = useState<string | null>(cal?.halfDayOpenHalf ?? 'first');
+  const [onOff, setOnOff] = useState<string>(cal?.onWeeklyOff ?? 'none');
+  const [onMove, setOnMove] = useState<string | null>(cal?.onMove ?? 'share');
   const [hol, setHol] = useState<{ name: string; date: Date | null; kind: string | null; halfDay: boolean } | null>(null);
   const [triedHol, setTriedHol] = useState(false);
-  const [removing, setRemoving] = useState<HolidayRow | null>(null);
+  const [moving, setMoving] = useState<{ row: CalRow; date: Date | null } | null>(null);
+  const [triedMove, setTriedMove] = useState(false);
+  const [removing, setRemoving] = useState<CalRow | null>(null);
+  const [templating, setTemplating] = useState(false);
   const { busy, error, run } = useRun();
   const offs = t.loc?.rule.weeklyOffs ?? [];
   const isOff = (iso: string) => offUnder(iso, offs);
+  const templateDialog = state && t.loc && (
+    <ConfirmDialog
+      open={templating}
+      onOpenChange={setTemplating}
+      title={`Start ${t.name} from the ${state} template?`}
+      consequence={`Adds the ${state} public holidays from ${isoDay(d.today)} to 31 Dec ${year}, using the holiday feed's latest dates. Holidays before today are left out, so past attendance does not change. You can edit them before publishing.`}
+      confirmLabel="Use template"
+      onConfirm={async () => { await live.onTemplate(t.loc!.id, t.name); }}
+    />
+  );
+  const templateButton = state && <Button variant="primary" onClick={() => setTemplating(true)}>Start from the {state} template</Button>;
   if (!cal) {
     return (
       <div className="yx-tim-stack">
         {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
-        {/* Question: the design starts from a state template; templates are not built, so the calendar starts empty. */}
         <EmptyState
-          title={`${t.name} has no holiday calendar`}
-          description="People there see no holidays until you add a calendar and its holidays."
-          action={<Button variant="primary" loading={busy === 'cal'} onClick={() => void run('cal', () => live.onCreateCalendar({ name: `${t.name} holidays`, locationId: t.loc?.id, optionalLimit: 2 }))}>Add a calendar for {t.name}</Button>}
+          title={`${t.name} has no ${year} calendar`}
+          description={state ? `People there see no holidays until you add and publish a calendar. Start from the ${state} template, then edit it before publishing.` : 'People there see no holidays until you add a calendar and its holidays.'}
+          action={
+            <div className="yx-tim-row">
+              {templateButton}
+              <Button variant={state ? 'secondary' : 'primary'} loading={busy === 'cal'} onClick={() => void run('cal', () => live.onCreateCalendar({ name: `${t.name} holidays`, locationId: t.loc?.id, optionalLimit: 2 }))}>{state ? 'Add holidays one by one' : `Add a calendar for ${t.name}`}</Button>
+            </div>
+          }
         />
+        {templateDialog}
       </div>
     );
   }
+  const drafts = rows.filter((h) => h.draft);
   const optionalCount = rows.filter((h) => choosable(h.kind)).length;
-  const dirty = choose !== cal.optionalLimit || half !== cal.halfDayOpenHalf;
-  const onOff = rows.filter((h) => isOff(h.on));
-  const cols: TableColumn<HolidayRow>[] = [
+  const optionalOff = rows.filter((h) => choosable(h.kind) && h.on >= d.today && isOff(h.on));
+  const dirty = choose !== cal.optionalLimit || half !== cal.halfDayOpenHalf || onOff !== (cal.onWeeklyOff ?? 'none') || (!!cal.locationId && onMove !== (cal.onMove ?? 'share'));
+  const onWeeklyOff = rows.filter((h) => isOff(h.on));
+  const waiting = cal.waitingFeedChanges ?? 0;
+  const cols: TableColumn<CalRow>[] = [
     { key: 'name', header: 'Holiday', value: (h) => `${h.name}${h.halfDay ? ' (half day)' : ''}` },
     {
       key: 'date', header: 'Date', type: 'date', value: (h) => dateOfIso(h.on),
@@ -2733,14 +2977,20 @@ function LiveCalendarPanel({ d, t, rows, live }: LiveCalendarPanelProps) {
     },
     {
       key: 'kind', header: 'Type', type: 'status',
-      value: (h) => `${choosable(h.kind) ? 'Optional' : HOLIDAY_KINDS.find((k) => k.value === h.kind)?.label ?? 'Holiday'}${isOff(h.on) ? ' · on a weekly off' : ''}`,
+      value: (h) => `${kindLabel(h)}${isOff(h.on) ? ' · on a weekly off' : ''}`,
       statusTone: (v) => (String(v).startsWith('Optional') ? 'info' : 'neutral'),
     },
   ];
   return (
     <div className="yx-tim-stack">
       {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
+      {waiting > 0 && (
+        <InlineAlert tone="warning" title={`${plural(waiting, 'change')} from the holiday feed ${waiting === 1 ? 'is' : 'are'} waiting`} actions={live.onReviewFeed && <Button size="sm" onClick={live.onReviewFeed}>Review changes</Button>}>
+          This calendar keeps the old dates until you accept the changes in Review changes.
+        </InlineAlert>
+      )}
       <div className="yx-tim-row">
+        {drafts.length > 0 ? <Badge tone="neutral">Draft · not published</Badge> : cal.publishedAt ? <Badge tone="success">Published {isoDay(cal.publishedAt.slice(0, 10))}</Badge> : null}
         <Button icon={Plus} onClick={() => (setTriedHol(false), setHol({ name: '', date: null, kind: 'festival', halfDay: false }))}>Add holiday</Button>
       </div>
       {rows.some((h) => h.on < d.today) && <p className="yx-tim-muted">Holidays before today are locked: they are already in attendance records.</p>}
@@ -2752,30 +3002,53 @@ function LiveCalendarPanel({ d, t, rows, live }: LiveCalendarPanelProps) {
           rows={rows}
           getRowId={(h) => h.id}
           defaultSort={{ key: 'date', dir: 'asc' }}
-          rowActions={(h) => (h.on < d.today ? null : <MenuItem destructive onSelect={() => setRemoving(h)}>Remove holiday</MenuItem>)}
-          empty={<EmptyState compact title="No holidays yet" description="Add each holiday of the year with Add holiday." />}
+          rowActions={(h) =>
+            h.on < d.today ? null : (
+              <>
+                <MenuItem onSelect={() => (setTriedMove(false), setMoving({ row: h, date: dateOfIso(h.on) }))}>Change date</MenuItem>
+                <MenuItem destructive onSelect={() => setRemoving(h)}>Remove holiday</MenuItem>
+              </>
+            )
+          }
+          empty={<EmptyState compact title="No holidays yet" description={state ? `Add each holiday with Add holiday, or start from the ${state} template.` : 'Add each holiday of the year with Add holiday.'} action={templateButton || undefined} />}
         />
         <div className="yx-tim-stack">
           <Card title="Rules for this calendar">
             <div className="yx-tim-form">
-              <FormField label="Optional holidays each person chooses" helper={`People choose ${choose ?? 0} of the ${plural(optionalCount, 'optional holiday')} this year.`}>
+              <FormField label="Holiday on a weekly off" helper={onOff === 'substitute' ? 'People get the next working day off.' : onOff === 'comp_off' ? 'People at this location get a comp-off day to use later.' : undefined}>
+                <RadioGroup aria-label="Holiday on a weekly off" value={onOff} onChange={setOnOff} options={WEEKLY_OFF_RULES} />
+              </FormField>
+              <FormField label="Optional holidays each person chooses" helper={`People choose ${choose ?? 0} of the ${plural(optionalCount, 'optional holiday')} this year.${optionalOff.map((h) => ` ${h.name} falls on a weekly off, so people can't pick it in My leave.`).join('')}`}>
                 <NumberField value={choose} onChange={setChoose} min={0} max={20} />
               </FormField>
+              {cal.locationId && (
+                <FormField label="When someone moves to another office">
+                  <Select value={onMove} onChange={setOnMove} options={[{ value: 'share', label: 'Split by months at each office' }, { value: 'reset', label: 'New office calendar from the move' }]} />
+                </FormField>
+              )}
               {/* Question: not in the design; the calendar's half-day rule is kept from the set-up page. */}
               <FormField label="On a half-day holiday">
                 <Select value={half} onChange={setHalf} options={[{ value: 'first', label: 'The morning is worked' }, { value: 'second', label: 'The afternoon is worked' }]} />
               </FormField>
               <div className="yx-tim-row">
-                <Button variant="primary" loading={busy === 'rules'} onClick={() => dirty && void run('rules', () => live.onUpdateCalendar(cal.id, { name: cal.name, optionalLimit: choose ?? 0, halfDayOpenHalf: half === 'second' ? 'second' : 'first' }))}>Save rules</Button>
+                {/* Never greyed out: with nothing changed it does nothing, and the note beside it says so. */}
+                <Button variant="primary" loading={busy === 'rules'} onClick={() => dirty && void run('rules', () => live.onUpdateCalendar(cal.id, { name: cal.name, optionalLimit: choose ?? 0, halfDayOpenHalf: half === 'second' ? 'second' : 'first', onWeeklyOff: onOff as 'none' | 'substitute' | 'comp_off', ...(cal.locationId ? { onMove: onMove === 'reset' ? 'reset' : 'share' } : {}) }))}>Save rules</Button>
                 {!dirty && <span className="yx-tim-muted">No changes to save</span>}
               </div>
             </div>
           </Card>
           <p className="yx-tim-note">
-            {onOff.length === 0 ? 'No holiday falls on a weekly off this year.' : `${plural(onOff.length, 'holiday')} ${onOff.length === 1 ? 'falls' : 'fall'} on a weekly off this year (${onOff.map((h) => h.name).join(', ')}).`}
+            {onWeeklyOff.length === 0 ? 'No holiday falls on a weekly off this year.' : `${plural(onWeeklyOff.length, 'holiday')} ${onWeeklyOff.length === 1 ? 'falls' : 'fall'} on a weekly off this year (${onWeeklyOff.map((h) => h.name).join(', ')}).`}
           </p>
         </div>
       </div>
+      {drafts.length > 0 && (
+        <div className="yx-tim-row">
+          <Button variant="primary" loading={busy === 'publish'} onClick={() => void run('publish', () => live.onPublish(cal.id, t.name, Number(year)))}>Publish {t.name} calendar</Button>
+          <span className="yx-tim-muted">Employees see these holidays only after you publish</span>
+        </div>
+      )}
+      {templateDialog}
       <ConfirmDialog
         open={!!hol}
         onOpenChange={(o) => !o && setHol(null)}
@@ -2801,14 +3074,32 @@ function LiveCalendarPanel({ d, t, rows, live }: LiveCalendarPanelProps) {
         )}
       </ConfirmDialog>
       <ConfirmDialog
+        open={!!moving}
+        onOpenChange={(o) => !o && setMoving(null)}
+        title={`Change the date of ${moving?.row.name ?? ''}?`}
+        consequence={moving ? `${isoDay(moving.row.on)} becomes a working day. People with leave on ${moving.date ? day(moving.date) : 'the new date'} get that day back${moving.row.draft ? ' when you publish' : ''}.` : undefined}
+        confirmLabel="Change date"
+        onConfirm={async () => {
+          setTriedMove(true);
+          if (!moving?.date) return false;
+          await (moving.row.draft ? live.onConfirmDraft(moving.row.id, isoOf(moving.date)) : live.onChangeHoliday(moving.row.id, isoOf(moving.date)));
+        }}
+      >
+        {moving && (
+          <FormField label="Date" required helper="Only today or later, in the same year." error={triedMove && !moving.date ? 'Choose the date.' : null}>
+            <DatePicker value={moving.date} onChange={(v) => setMoving({ ...moving, date: v })} min={dateOfIso(d.today)} max={dateOfIso(`${moving.row.on.slice(0, 4)}-12-31`)} />
+          </FormField>
+        )}
+      </ConfirmDialog>
+      <ConfirmDialog
         open={!!removing}
         onOpenChange={(o) => !o && setRemoving(null)}
         title={`Remove ${removing?.name ?? ''} from the ${t.name} calendar?`}
-        consequence={removing ? `${isoDay(removing.on)} becomes a working day. Leave already applied for that day is counted again.` : undefined}
+        consequence={removing ? (removing.draft ? `${isoDay(removing.on)} leaves the draft. Nothing changes for employees.` : `${isoDay(removing.on)} becomes a working day. Leave already applied for that day is counted again.`) : undefined}
         confirmLabel="Remove holiday"
         destructive
         onConfirm={async () => {
-          if (removing) await live.onRemoveHoliday(removing.id);
+          if (removing) await (removing.draft ? live.onRemoveDraft(removing.id) : live.onRemoveHoliday(removing.id));
         }}
       />
     </div>
