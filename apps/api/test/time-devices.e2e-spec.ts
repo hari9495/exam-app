@@ -389,6 +389,99 @@ describe('Time devices and kiosks', () => {
     expect(actions).toEqual(expect.arrayContaining(['time.phone.bind_requested', 'time.phone.approved', 'time.phone.refused', 'time.phone.reported_lost', 'time.phone.signed_out', 'time.kiosk.key_reset', 'time.kiosk.revoked']));
   });
 
+  // ------------------------------------------------------------------------------------------ TIM-13 small items (30 Oct 2026)
+
+  const pass = async () => (await kiosk(kioskToken, 'post', '/identify').send({ method: 'pin', code: codes.emp, pin: '4071' }).expect(200)).body.person as string;
+  const dayAhead = (n: number) => new Date(Date.now() + n * 86_400_000 + 5.5 * 3_600_000).toISOString().slice(0, 10);
+
+  it('code check: an unknown code is told apart before the PIN; a known code goes on; the company can turn it off', async () => {
+    const unknown = await kiosk(kioskToken, 'post', '/code').send({ code: 'ZZ-9999' }).expect(404);
+    expect(unknown.body).toEqual(expect.objectContaining({ code: 'UNKNOWN_CODE', message: 'No one with code ZZ-9999. Check the code on your ID card and try again.' }));
+    expect((await kiosk(kioskToken, 'post', '/code').send({ code: codes.emp }).expect(200)).body).toEqual({ known: true });
+    await kiosk(kioskToken, 'post', '/code').send({ code: '' }).expect(400);
+    await kiosk('nonsense', 'post', '/code').send({ code: codes.emp }).expect(401);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'time.kiosk.sign_in_refused', entityId: kioskId } }))).toBeGreaterThan(0);
+    const row = await setting('kiosk.tell_unknown_code', 'no');
+    expect((await kiosk(kioskToken, 'post', '/code').send({ code: 'ZZ-9999' }).expect(200)).body).toEqual({ known: true });
+    await inA((tx) => tx.setting.delete({ where: { id: row.id } }));
+  });
+
+  it('training: HR adds a session (company-wide key); the kiosk shows it, refuses before it opens, then marks once', async () => {
+    const soon = { locationId: ids.locA, title: 'Food safety refresher', room: 'Training room 1', startsAt: new Date(Date.now() + 2 * 3_600_000).toISOString(), endsAt: new Date(Date.now() + 3 * 3_600_000).toISOString() };
+    await api('hrExec', 'post', '/time/devices/training').send(soon).expect(403);
+    await api('emp', 'get', '/time/devices/training').expect(403);
+    await api('hrAdmin', 'post', '/time/devices/training').send({ ...soon, endsAt: soon.startsAt }).expect(400);
+    await api('hrAdmin', 'post', '/time/devices/training').send({ ...soon, title: '' }).expect(400);
+    await api('hrAdmin', 'post', '/time/devices/training').send({ ...soon, locationId: ids.locB }).expect(404);
+    const later = (await api('hrAdmin', 'post', '/time/devices/training').send(soon).expect(201)).body.id as string;
+    const now = (await api('hrAdmin', 'post', '/time/devices/training').send({ ...soon, title: 'Fire drill', startsAt: new Date(Date.now() + 5 * 60_000).toISOString() }).expect(201)).body.id as string;
+    const elsewhere = (await api('hrAdmin', 'post', '/time/devices/training').send({ ...soon, locationId: ids.loc2A, title: 'Elsewhere' }).expect(201)).body.id as string;
+    const p = await pass();
+    const list = (await kiosk(kioskToken, 'get', '/person/training').set('x-kiosk-person', p).expect(200)).body;
+    expect(list.sessions.map((s: { title: string }) => s.title).sort()).toEqual(expect.arrayContaining(['Fire drill']));
+    expect(list.sessions.some((s: { id: string }) => s.id === elsewhere)).toBe(false);
+    await kiosk(kioskToken, 'get', '/person/training').expect(403);
+    if (list.sessions.some((s: { id: string }) => s.id === later)) {
+      const early = await kiosk(kioskToken, 'post', `/person/training/${later}`).send({ person: p }).expect(409);
+      expect(early.body.code).toBe('TRAINING_NOT_OPEN');
+      expect(early.body.message).toMatch(/^Training opens at \d{1,2}:\d{2} (am|pm)\.$/);
+    }
+    await kiosk(kioskToken, 'post', `/person/training/${elsewhere}`).send({ person: p }).expect(404);
+    await kiosk(kioskToken, 'post', `/person/training/${now}`).send({ person: 'forged' }).expect(403);
+    expect((await kiosk(kioskToken, 'post', `/person/training/${now}`).send({ person: p }).expect(200)).body.repeat).toBe(false);
+    expect((await kiosk(kioskToken, 'post', `/person/training/${now}`).send({ person: p }).expect(200)).body.repeat).toBe(true);
+    expect(await inA((tx) => tx.trainingAttendance.count({ where: { sessionId: now } }))).toBe(1);
+    const hr = (await api('hrAdmin', 'get', '/time/devices/training').expect(200)).body;
+    expect(hr.find((s: { id: string }) => s.id === now)).toEqual(expect.objectContaining({ present: 1, cancelled: false }));
+    expect((await api('adminB', 'get', '/time/devices/training').expect(200)).body).toEqual([]);
+    await api('adminB', 'post', `/time/devices/training/${later}/cancel`).expect(404);
+    await api('hrAdmin', 'post', `/time/devices/training/${later}/cancel`).expect(200);
+    await api('hrAdmin', 'post', `/time/devices/training/${later}/cancel`).expect(409);
+    await kiosk(kioskToken, 'post', `/person/training/${later}`).send({ person: p }).expect(404);
+  });
+
+  it('leave at the kiosk: the person sees days left and the next days, applies (rules and approval as usual); refusals in plain words', async () => {
+    const [cl, sl, mat] = await inA(async (tx) => {
+      const o = { organizationId: org.A.id, paid: true, rules: { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: null, noticeMode: 'block', certificateAfterDays: null, medical: false, negativeLimit: 0, encashable: false, hrApprovalAboveDays: null } };
+      const c = await tx.leaveType.create({ data: { ...o, code: 'CL', name: 'Casual leave', kind: 'casual' } });
+      const s = await tx.leaveType.create({ data: { ...o, code: 'SL', name: 'Sick leave', kind: 'sick' } });
+      const m = await tx.leaveType.create({ data: { ...o, code: 'ML', name: 'Maternity leave', kind: 'maternity' } });
+      for (const t of [c, s]) await tx.leaveLedgerEntry.create({ data: { organizationId: org.A.id, employeeId: ids.emp, leaveTypeId: t.id, entryOn: new Date(`${dayAhead(-30)}T00:00:00Z`), kind: 'opening', days: 2, reason: 'Opening balance' } });
+      return [c.id, s.id, m.id];
+    });
+    const p = await pass();
+    const view = (await kiosk(kioskToken, 'get', '/person/leave').set('x-kiosk-person', p).expect(200)).body;
+    expect(view.types).toEqual([expect.objectContaining({ id: cl, name: 'Casual leave', available: 2, pending: 0 })]);
+    expect(view.sick).toEqual({ name: 'Sick leave', available: 2 });
+    expect(view.days).toHaveLength(10);
+    expect(view.days[0].on).toBe(dayAhead(1));
+    await kiosk(kioskToken, 'post', '/person/leave').send({ person: p, leaveTypeId: sl, from: dayAhead(3), to: dayAhead(3) }).expect(400);
+    await kiosk(kioskToken, 'post', '/person/leave').send({ person: p, leaveTypeId: mat, from: dayAhead(3), to: dayAhead(3) }).expect(400);
+    expect((await kiosk(kioskToken, 'post', '/person/leave').send({ person: p, leaveTypeId: cl, from: dayAhead(0), to: dayAhead(0) }).expect(400)).body.message).toBe('Pick days from tomorrow. For today, ask your supervisor.');
+    await kiosk(kioskToken, 'post', '/person/leave').send({ person: p, leaveTypeId: cl, from: dayAhead(40), to: dayAhead(40) }).expect(400);
+    await kiosk(kioskToken, 'post', '/person/leave').send({ person: p, leaveTypeId: cl, from: dayAhead(3), to: dayAhead(5) }).expect(400);
+    await kiosk(kioskToken, 'post', '/person/leave').send({ person: 'forged', leaveTypeId: cl, from: dayAhead(3), to: dayAhead(3) }).expect(403);
+    const ok = await kiosk(kioskToken, 'post', '/person/leave').send({ person: p, leaveTypeId: cl, from: dayAhead(3), to: dayAhead(3) }).expect(201);
+    expect(ok.body).toEqual(expect.objectContaining({ status: 'pending', days: 1 }));
+    const req = await inA((tx) => tx.leaveRequest.findFirst({ where: { id: ok.body.id } }));
+    expect(req).toEqual(expect.objectContaining({ employeeId: ids.emp, raisedBy: users.emp, reason: 'Applied at kiosk HSR-K1' }));
+    const again = (await kiosk(kioskToken, 'get', '/person/leave').set('x-kiosk-person', p).expect(200)).body;
+    expect(again.types[0]).toEqual(expect.objectContaining({ available: 1, pending: 1 }));
+    expect(again.days.find((d: { on: string }) => d.on === dayAhead(3)).note).toBe('Requested');
+    const off = await setting('kiosk.leave', 'off');
+    expect((await kiosk(kioskToken, 'get', '/person/leave').set('x-kiosk-person', p).expect(403)).body.code).toBe('KIOSK_LEAVE_OFF');
+    await kiosk(kioskToken, 'post', '/person/leave').send({ person: p, leaveTypeId: cl, from: dayAhead(4), to: dayAhead(4) }).expect(403);
+    await inA((tx) => tx.setting.delete({ where: { id: off.id } }));
+  });
+
+  it('forced RLS on the training tables', async () => {
+    const forced = await prisma.$queryRaw<{ relforcerowsecurity: boolean }[]>`SELECT relforcerowsecurity FROM pg_class WHERE relname IN ('training_sessions', 'training_attendance')`;
+    expect(forced).toHaveLength(2);
+    expect(forced.every((r) => r.relforcerowsecurity)).toBe(true);
+    expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.trainingSession.count({ where: { organizationId: org.A.id } }))).toBe(0);
+    await expect(inA((tx) => tx.trainingAttendance.deleteMany({}))).rejects.toThrow();
+  });
+
   it('a revoked kiosk stops at once', async () => {
     await api('hrAdmin', 'post', `/time/devices/kiosks/${kioskId}/revoke`).expect(200);
     await kiosk(kioskToken, 'get', '/me').expect(401);

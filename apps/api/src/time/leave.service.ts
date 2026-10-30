@@ -242,7 +242,7 @@ export class LeaveService implements OnModuleInit {
       WHERE d.organization_id = ${org}::uuid AND d.employee_id = ${f.employeeId}::uuid AND d.active AND d.portion > 0
         AND r.status = ANY(${ACTIVE}::text[]) AND d.leave_on BETWEEN ${dto.from}::date AND ${dto.to}::date
         AND (d.part = 'full' OR d.part = ANY(${counted.days.filter((x) => x.portion > 0).map((x) => (x.part === 'full' ? ['first', 'second', 'full'] : [x.part])).flat()}::text[]))
-        AND d.leave_on = ANY(${counted.days.filter((x) => x.portion > 0).map((x) => x.on)}::date[])
+        AND d.leave_on = ANY(${counted.days.filter((x) => x.portion > 0).map((x) => x.on)}::text[]::date[])
       ORDER BY 1 LIMIT 1`;
     if (clash.length) blocks.push(`${onBehalf ? `${f.name} already has` : 'You already have'} leave on ${fmt(clash[0].on)}.`);
     let balanceAfter: number | null = null;
