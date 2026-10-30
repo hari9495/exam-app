@@ -432,6 +432,8 @@ describe('Lifecycle batch 6b', () => {
     await api('hr', 'post', `/lifecycle/joiners/${j.id}/cancel`).send({ outcome: 'reneged', reason: 'Took another offer', version: pb.version }).expect(200);
     const after = await inA((tx) => tx.preboarding.findFirstOrThrow({ where: { id: j.id } }));
     expect(after).toMatchObject({ status: 'cancelled', outcome: 'reneged' });
+    // Special data erasure counts a never-joined person's period from this day (founder 30 Oct 2026).
+    expect(after.cancelledOn?.toISOString().slice(0, 10)).toBe(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date()));
     expect((await inA((tx) => tx.journey.findFirstOrThrow({ where: { id: j.journeyId } }))).status).toBe('cancelled');
     await portal('get', '/me', t).expect(401);
   });
