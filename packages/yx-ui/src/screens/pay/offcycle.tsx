@@ -258,7 +258,7 @@ export const BONUS_ROWS: SampleBonusRow[] = EMPLOYEES.filter((e) => e.department
 export type BonusStoryView = 'empty' | 'draft' | 'submitted' | 'approved' | 'sent';
 
 /** PAY-24 · Statutory bonus computation (annual, Payment of Bonus Act rules in P07). */
-export function BonusComputationScreen({ live, ...story }: { step?: string; pct?: number; view?: BonusStoryView; state?: LoadState; tooEarly?: boolean; refused?: boolean; /** The live app's /yx/payroll/bonus. */ live?: LiveBonus }) {
+export function BonusComputationScreen({ live, ...story }: { step?: string; pct?: number; view?: BonusStoryView; state?: LoadState; tooEarly?: boolean; refused?: boolean; rateOn?: BonusRules['eligibilityRateOn']; formCOpen?: boolean; /** The live app's /yx/payroll/bonus. */ live?: LiveBonus }) {
   return live ? (
     <LiveBonusScreen live={live} />
   ) : (
@@ -269,10 +269,11 @@ export function BonusComputationScreen({ live, ...story }: { step?: string; pct?
 }
 
 const BONUS_YEAR = { start: '2025-04-01', end: '2026-03-31', label: '2025-26', dueOn: '2026-11-30' };
-const ACT: BonusRules = { yearStartMonth: 4, eligibilityWage: '21000', calculationCeiling: '7000', minRate: '8.33', maxRate: '20', minWorkingDays: 30, minAmount: '100', allocablePercent: '60', carryYears: 4, dueMonths: 8 };
+const ACT: BonusRules = { yearStartMonth: 4, eligibilityWage: '21000', calculationCeiling: '7000', minRate: '8.33', maxRate: '20', minWorkingDays: 30, minAmount: '100', allocablePercent: '60', carryYears: 4, dueMonths: 8, eligibilityRateOn: 'last_day' };
 
 /** The design's sample: Kaveri Foods operations staff for 2025-26, in the shape the API returns. */
-function sampleBonus({ step = 'compute', pct = 8.33, view = 'draft', state = 'ready', tooEarly = false, refused = false }: { step?: string; pct?: number; view?: BonusStoryView; state?: LoadState; tooEarly?: boolean; refused?: boolean }): LiveBonus {
+function sampleBonus({ step = 'compute', pct = 8.33, view = 'draft', state = 'ready', tooEarly = false, refused = false, rateOn = 'last_day', formCOpen = false }: { step?: string; pct?: number; view?: BonusStoryView; state?: LoadState; tooEarly?: boolean; refused?: boolean; rateOn?: BonusRules['eligibilityRateOn']; formCOpen?: boolean }): LiveBonus {
+  const rules: BonusRules = { ...ACT, eligibilityRateOn: rateOn };
   const rows: BonusRow[] = BONUS_ROWS.map((r) => {
     const b = statutoryBonus(r.wage, r.months, pct, r.minimumWage);
     const f = (n: number) => n.toFixed(2);
@@ -288,7 +289,7 @@ function sampleBonus({ step = 'compute', pct = 8.33, view = 'draft', state = 're
     status,
     version: 3,
     overdue: false,
-    rules: ACT,
+    rules,
     availableSurplus: surplus,
     allocableSurplus: surplus && (Number(surplus) * 0.6).toFixed(2),
     openingSetOn: '0.00',
@@ -320,7 +321,7 @@ function sampleBonus({ step = 'compute', pct = 8.33, view = 'draft', state = 're
     entityId: 'kfpl',
     onEntity: () => {},
     onYear: () => {},
-    data: { years: [2025, 2024, 2023, 2022, 2021].map((y) => ({ start: `${y}-04-01`, end: `${y + 1}-03-31`, label: `${y}-${String(y + 1).slice(2)}`, dueOn: `${y + 1}-11-30`, ended: true })), year: { ...BONUS_YEAR, ended: true }, rules: ACT, can, computation: view === 'empty' ? null : computation },
+    data: { years: [2025, 2024, 2023, 2022, 2021].map((y) => ({ start: `${y}-04-01`, end: `${y + 1}-03-31`, label: `${y}-${String(y + 1).slice(2)}`, dueOn: `${y + 1}-11-30`, ended: true })), year: { ...BONUS_YEAR, ended: true }, rules, can, computation: view === 'empty' ? null : computation },
     onCompute: done,
     onChange: done,
     onRow: done,
@@ -330,7 +331,7 @@ function sampleBonus({ step = 'compute', pct = 8.33, view = 'draft', state = 're
     onSend: done,
     onFormC: done,
     runHref: (id) => `#${id}`,
-    story: { step: view === 'submitted' || view === 'approved' || view === 'sent' ? 'approve' : step, tooEarly, ...(refused ? { refused: 'You worked on this bonus, so someone else approves it.' } : {}) },
+    story: { step: view === 'submitted' || view === 'approved' || view === 'sent' ? 'approve' : step, tooEarly, formCOpen, ...(refused ? { refused: 'You worked on this bonus, so someone else approves it.' } : {}) },
   };
 }
 

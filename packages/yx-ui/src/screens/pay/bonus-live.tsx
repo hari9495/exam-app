@@ -4,6 +4,8 @@
 import { useEffect, useState } from 'react';
 import { Button, Link } from '../../components/button';
 import { Badge } from '../../components/display';
+import { Menu, MenuContent, MenuItem, MenuTrigger } from '../../components/menu';
+import { Download } from 'lucide-react';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, InlineAlert } from '../../components/feedback';
 import { FieldRow, FormField, useTooEarly } from '../../components/field';
@@ -41,6 +43,8 @@ export interface BonusRules {
   allocablePercent: string;
   carryYears: number;
   dueMonths: number;
+  /** HR setting payroll.bonus.eligibility_rate_on (absent on older computations: the last day). */
+  eligibilityRateOn?: 'last_day' | 'first_day' | 'highest_in_month';
 }
 export interface BonusRow {
   employmentId: string;
@@ -128,13 +132,17 @@ export interface LiveBonus {
   onApprove: () => Promise<unknown>;
   onReturn: (reason: string) => Promise<unknown>;
   onSend: () => Promise<unknown>;
-  /** Downloads Form C, the bonus register (approved or sent; GET payroll/bonus/:id/form-c, audited). */
-  onFormC: () => Promise<unknown>;
+  /** Downloads Form C, the bonus register, as a PDF or a spreadsheet (approved or sent; GET payroll/bonus/:id/form-c?format=, audited). */
+  onFormC: (format: 'pdf' | 'csv') => Promise<unknown>;
   /** Where the off-cycle run opens. */
   runHref: (runId: string) => string;
   /** Stories only: open on a step, show the pressed-too-early errors, or show a refusal the server sent. */
-  story?: { step?: string; tooEarly?: boolean; refused?: string };
+  story?: { step?: string; tooEarly?: boolean; refused?: string; formCOpen?: boolean };
 }
+
+/** The company's eligibility rule in words (Settings › Payroll & Statutory › Payroll rules). */
+export const RATE_ON_TEXT = { last_day: "the salary rate on the month's last day", first_day: "the salary rate on the month's first day", highest_in_month: 'the highest salary rate in force during the month' } as const;
+const rateOnText = (r: BonusRules) => RATE_ON_TEXT[r.eligibilityRateOn ?? 'last_day'];
 
 const money = (x: string | null | undefined) => (x == null || x === '' ? '—' : formatINR(Number(x)));
 const pct = (x: string) => `${Number(x)}%`;
@@ -317,6 +325,9 @@ export function LiveBonusScreen({ live }: { live: LiveBonus }) {
                   </Button>
                 </div>
               )}
+              <p className="yx-pay-note" data-testid="bn-rate-rule">
+                Eligibility rule: {rateOnText(c.rules)}. HR sets it in Settings › Payroll rules.
+              </p>
               <FactRow
                 items={[
                   { label: 'Eligible', value: `${c.totals.eligible} of ${c.totals.people}` },
@@ -344,7 +355,7 @@ export function LiveBonusScreen({ live }: { live: LiveBonus }) {
                 empty={<EmptyState compact title="No one was employed in this legal entity during the year" description="Bonus is worked out from the approved payslips of the year." />}
               />
               <p className="yx-pay-note">
-                Eligibility: a monthly salary rate (the full month, not what a part month earned) up to {money(c.rules.eligibilityWage)} and at least {c.rules.minWorkingDays} working days in the year. Each month is counted up to the higher of {money(c.rules.calculationCeiling)} and the minimum wage; people who worked part of the year get bonus for the months worked (at least {money(c.rules.minAmount)} a year, cut down for part of the year).
+                Eligibility: a full-month salary rate (not what a part month earned) up to {money(c.rules.eligibilityWage)} and at least {c.rules.minWorkingDays} working days in the year. Each month is counted up to the higher of {money(c.rules.calculationCeiling)} and the minimum wage; people who worked part of the year get bonus for the months worked (at least {money(c.rules.minAmount)} a year, cut down for part of the year).
               </p>
             </div>
           ),
@@ -379,17 +390,28 @@ export function LiveBonusScreen({ live }: { live: LiveBonus }) {
               )}
               {(c.status === 'approved' || c.status === 'sent') && (
                 <div className="yx-pay-row">
-                  <Button
-                    loading={busy === 'formc'}
-                    onClick={() =>
-                      void run('formc', async () => {
-                        await live.onFormC();
-                        toast({ tone: 'success', title: `Form C for ${c.year.label} downloaded.` });
-                      })
-                    }
-                  >
-                    Download Form C (bonus register)
-                  </Button>
+                  <Menu defaultOpen={live.story?.formCOpen}>
+                    <MenuTrigger asChild>
+                      <Button icon={Download} loading={busy === 'formc'}>
+                        Download Form C
+                      </Button>
+                    </MenuTrigger>
+                    <MenuContent align="start">
+                      {(['pdf', 'csv'] as const).map((f) => (
+                        <MenuItem
+                          key={f}
+                          onSelect={() =>
+                            void run('formc', async () => {
+                              await live.onFormC(f);
+                              toast({ tone: 'success', title: `Form C for ${c.year.label} downloaded as ${f === 'pdf' ? 'a PDF' : 'a spreadsheet'}.` });
+                            })
+                          }
+                        >
+                          {f === 'pdf' ? 'PDF (to sign and keep)' : 'Spreadsheet (CSV)'}
+                        </MenuItem>
+                      ))}
+                    </MenuContent>
+                  </Menu>
                 </div>
               )}
               <p className="yx-pay-muted">Sending it creates one-time bonus pay for each person in an off-cycle bonus run, with its own approval and bank file.</p>

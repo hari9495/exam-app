@@ -204,25 +204,39 @@ describe('Statutory bonus (PAY-24 live)', () => {
     expect(screen.getByRole('link', { name: 'Bonus run · 2026-10' }).getAttribute('href')).toBe('/yx/payroll/runs/r9');
   });
 
-  it('Form C (bonus register): only once approved; downloads with a toast; a refusal is shown as it came', async () => {
+  it('Form C (bonus register): only once approved; PDF or spreadsheet, each with a toast; a refusal is shown as it came', async () => {
     const { unmount } = render(<BonusComputationScreen live={live({ data: overview({ status: 'submitted', availableSurplus: '0.00' }, { manage: true, approve: true }), story: { step: 'approve' } })} />);
-    expect(screen.queryByRole('button', { name: 'Download Form C (bonus register)' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Download Form C' })).toBeNull();
     unmount();
     const l = live({ data: overview({ status: 'approved', availableSurplus: '0.00', madeByMe: false }, { manage: false, approve: true }), story: { step: 'approve' } });
     const r2 = render(<BonusComputationScreen live={l} />);
-    await ue.click(screen.getByRole('button', { name: 'Download Form C (bonus register)' }));
-    expect(l.onFormC).toHaveBeenCalled();
-    expect((await screen.findAllByText('Form C for 2025-26 downloaded.'))[0]).toBeTruthy();
+    await ue.click(screen.getByRole('button', { name: 'Download Form C' }));
+    await ue.click(await screen.findByRole('menuitem', { name: 'PDF (to sign and keep)' }));
+    await waitFor(() => expect(l.onFormC).toHaveBeenCalledWith('pdf'));
+    expect((await screen.findAllByText('Form C for 2025-26 downloaded as a PDF.'))[0]).toBeTruthy();
+    await ue.click(screen.getByRole('button', { name: 'Download Form C' }));
+    await ue.click(await screen.findByRole('menuitem', { name: 'Spreadsheet (CSV)' }));
+    await waitFor(() => expect(l.onFormC).toHaveBeenCalledWith('csv'));
+    expect((await screen.findAllByText('Form C for 2025-26 downloaded as a spreadsheet.'))[0]).toBeTruthy();
     r2.unmount();
     const refused = live({ data: overview({ status: 'sent', availableSurplus: '0.00' }), story: { step: 'approve' }, onFormC: vi.fn(async () => Promise.reject(new Error('Form C is made once the bonus is approved.'))) });
     render(<BonusComputationScreen live={refused} />);
-    await ue.click(screen.getByRole('button', { name: 'Download Form C (bonus register)' }));
+    await ue.click(screen.getByRole('button', { name: 'Download Form C' }));
+    await ue.click(await screen.findByRole('menuitem', { name: 'PDF (to sign and keep)' }));
     expect(await screen.findByText('Form C is made once the bonus is approved.')).toBeTruthy();
+  });
+
+  it('the eligibility rule note follows the company setting (last day when the computation has none)', () => {
+    const { unmount } = render(<BonusComputationScreen live={live()} />);
+    expect(screen.getByTestId('bn-rate-rule').textContent).toBe("Eligibility rule: the salary rate on the month's last day. HR sets it in Settings › Payroll rules.");
+    unmount();
+    render(<BonusComputationScreen live={live({ data: overview({ rules: { ...RULES, eligibilityRateOn: 'highest_in_month' } }) })} />);
+    expect(screen.getByTestId('bn-rate-rule').textContent).toContain('the highest salary rate in force during the month');
   });
 
   it('the eligibility note says the limit is on the full-month salary rate', () => {
     render(<BonusComputationScreen live={live()} />);
-    expect(screen.getByText(/a monthly salary rate \(the full month, not what a part month earned\) up to ₹21,000/)).toBeTruthy();
+    expect(screen.getByText(/a full-month salary rate \(not what a part month earned\) up to ₹21,000/)).toBeTruthy();
   });
 
   it('loading, error with retry, and no legal entity chosen', async () => {

@@ -7,7 +7,7 @@ import { useApiWrite } from '../../../../../lib/yx-pay-5j';
 
 // Payroll › Statutory bonus (PAY-24, Payment of Bonus Act; founder decision 9): work it out per legal entity and
 // accounting year, approve it (someone other than its makers) and send it to an off-cycle bonus run; once approved, its
-// Form C register downloads (audited). Every write carries the computation's version; the API refuses a stale one.
+// Form C register downloads as a PDF or a spreadsheet (audited). Every write carries the computation's version; the API refuses a stale one.
 export default function YxPayBonusPage() {
   const entities = usePay<SetupEntity[]>('/bonus/entities');
   const [entityId, setEntityId] = useState<string | null>(null);
@@ -41,7 +41,7 @@ export default function YxPayBonusPage() {
         onApprove: () => write(at('/approve'), { version: c!.version }),
         onReturn: (reason) => write(at('/return'), { version: c!.version, reason }),
         onSend: () => write(at('/send'), { version: c!.version }),
-        onFormC: () => download(at('/form-c'), `form-c-bonus-${c!.year.label}.csv`),
+        onFormC: (format) => download(at(`/form-c?format=${format}`), `form-c-bonus-${c!.year.label}.${format}`),
         runHref: (runId) => `/yx/payroll/runs/${e(runId)}`,
       }}
     />
