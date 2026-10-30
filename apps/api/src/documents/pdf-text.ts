@@ -66,11 +66,18 @@ export function writeText(doc: PDFKit.PDFDocument, text: string, x?: number | PD
   const latin = currentFont(doc);
   const bold = /bold/i.test(latin);
   // Every run sits on the current font's baseline (PDFKit otherwise hangs each font from its own, taller, ascender).
-  const f = doc as unknown as { _font: { ascender: number }; _fontSize: number };
+  const f = doc as unknown as {
+    _font: { ascender: number };
+    _fontSize: number;
+  };
   const baseline = options?.baseline ?? -(f._font.ascender / 1000) * f._fontSize;
   runs.forEach((r, i) => {
     doc.font(r.script ? fontFile(r.script, bold) : latin);
-    const o = { ...options, baseline, continued: i < runs.length - 1 || !!options?.continued };
+    const o = {
+      ...options,
+      baseline,
+      continued: i < runs.length - 1 || !!options?.continued,
+    };
     // ActualText keeps copy and search in the typed order (a pre-base vowel sign is drawn before its consonant).
     if (r.script) doc.markContent('Span', { actual: r.text } as never);
     if (i === 0) write(r.text, o);

@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { Prisma } from '@prisma/client';
 import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
+import { writeText } from '../documents/pdf-text';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
@@ -647,7 +648,7 @@ export class PeriodsService {
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
       doc.fontSize(13).text(head.title);
-      doc.fontSize(8).text(head.form).text(`Establishment: ${head.establishment}`).text(`Period: ${head.period}${head.draft ? ' · DRAFT: the month is not locked yet' : ''}`);
+      writeText(doc.fontSize(8).text(head.form), `Establishment: ${head.establishment}`).text(`Period: ${head.period}${head.draft ? ' · DRAFT: the month is not locked yet' : ''}`);
       doc.moveDown(0.5);
       const width = doc.page.width - 48;
       const narrow = cols.filter((c) => /^d\d+$/.test(c.key)).length;
@@ -662,7 +663,7 @@ export class PeriodsService {
         doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(6);
         let h = 0;
         cells.forEach((t, i) => {
-          doc.text(t, x + 1, y, { width: widths[i] - 2, lineBreak: true });
+          writeText(doc, t, x + 1, y, { width: widths[i] - 2, lineBreak: true });
           h = Math.max(h, doc.y - y);
           x += widths[i];
         });

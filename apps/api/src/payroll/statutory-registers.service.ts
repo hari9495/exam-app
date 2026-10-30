@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Inject, Injectable, NotFoundExc
 import { Prisma } from '@prisma/client';
 import JSZip from 'jszip';
 import PDFDocument from 'pdfkit';
+import { writeText } from '../documents/pdf-text';
 import { randomBytes } from 'crypto';
 import { OrgSecretsCryptoService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
@@ -26,7 +27,7 @@ import { TaxService } from './tax.service';
 const STATUTORY_CODES = new Set(['pf_employee', 'esi_employee', 'pt', 'lwf_employee', 'tds', 'vpf']);
 type RegisterType = { key: string; title: string; columns: string[] };
 
-function renderRegister(title: string, entity: string, month: string, place: string | null, columns: string[], rows: string[][], note: string): Promise<Buffer> {
+export function renderRegister(title: string, entity: string, month: string, place: string | null, columns: string[], rows: string[][], note: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 36, info: { Title: `${title} ${month}` } });
     const out: Buffer[] = [];
@@ -34,11 +35,8 @@ function renderRegister(title: string, entity: string, month: string, place: str
       .on('data', (b: Buffer) => out.push(b))
       .on('end', () => resolve(Buffer.concat(out)))
       .on('error', reject);
-    doc
-      .fontSize(14)
-      .text(title)
-      .fontSize(10)
-      .text(`${entity}${place ? ` · ${place}` : ''} · ${month}`)
+    doc.fontSize(14).text(title);
+    writeText(doc.fontSize(10), `${entity}${place ? ` · ${place}` : ''} · ${month}`)
       .fontSize(8)
       .fillColor('#555')
       .text(note)
@@ -47,12 +45,7 @@ function renderRegister(title: string, entity: string, month: string, place: str
     const width = (doc.page.width - 72) / columns.length;
     const line = (cells: string[], bold = false) => {
       const y = doc.y;
-      cells.forEach((cell, i) =>
-        doc
-          .font(bold ? 'Helvetica-Bold' : 'Helvetica')
-          .fontSize(8)
-          .text(cell, 36 + i * width, y, { width: width - 4 }),
-      );
+      cells.forEach((cell, i) => writeText(doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(8), cell, 36 + i * width, y, { width: width - 4 }));
       doc.moveDown(0.6);
       if (doc.y > doc.page.height - 50) doc.addPage();
     };

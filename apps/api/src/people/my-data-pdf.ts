@@ -1,4 +1,5 @@
 import PDFDocument from 'pdfkit';
+import { writeText } from '../documents/pdf-text';
 
 // PPL-33: my data as a plain PDF: one heading per part, one line per value. Nested parts and lists print as they come.
 
@@ -12,7 +13,7 @@ export function myDataPdf(data: Record<string, unknown>): Promise<Buffer> {
     doc.on('data', (c) => chunks.push(c));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
-    doc.fontSize(18).text(`My data at ${text(data.company)}`);
+    writeText(doc.fontSize(18), `My data at ${text(data.company)}`);
     doc.fontSize(10).fillColor('#555').text(`Exported on ${text(data.exportedOn)}`).fillColor('#000');
     for (const [key, value] of Object.entries(data)) {
       if (key === 'company' || key === 'exportedOn') continue;
@@ -20,9 +21,9 @@ export function myDataPdf(data: Record<string, unknown>): Promise<Buffer> {
         doc.moveDown().fontSize(13).text(words(key));
         const rows = Array.isArray(value) ? value.map((v) => ['', v] as const) : Object.entries(value as Record<string, unknown>);
         if (!rows.length) doc.fontSize(10).text('Nothing on file.');
-        for (const [k, v] of rows) doc.fontSize(10).text(k ? `${words(k)}: ${text(v)}` : text(v));
+        for (const [k, v] of rows) writeText(doc.fontSize(10), k ? `${words(k)}: ${text(v)}` : text(v));
       } else {
-        doc.fontSize(10).text(`${words(key)}: ${text(value)}`);
+        writeText(doc.fontSize(10), `${words(key)}: ${text(value)}`);
       }
     }
     doc.end();

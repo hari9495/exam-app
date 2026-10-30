@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import JSZip from 'jszip';
 import PDFDocument from 'pdfkit';
+import { writeText } from '../documents/pdf-text';
 import { OrgSecretsCryptoService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { entityTimeZone, localDate, todayIst } from '../org-structure/org-validation';
@@ -634,8 +635,8 @@ export class ConsultantsService implements OnModuleInit {
     const parts: Buffer[] = [];
     doc.on('data', (b: Buffer) => parts.push(b));
     const done = new Promise<Buffer>((res) => doc.on('end', () => res(Buffer.concat(parts))));
-    doc.fontSize(16).text('Payment advice').moveDown(0.5).fontSize(10).text(e.name).moveDown();
-    const line = (label: string, value: string) => doc.text(`${label}: ${value}`);
+    writeText(doc.fontSize(16).text('Payment advice').moveDown(0.5).fontSize(10), e.name).moveDown();
+    const line = (label: string, value: string) => writeText(doc, `${label}: ${value}`);
     line('Paid to', k.name);
     line('Invoice', `${inv.invoiceNo} of ${dateOf(inv.invoiceDate)}`);
     line('Value before GST', money(inv.taxableValue.toFixed(2)));

@@ -2,7 +2,11 @@ import { fontFile, scriptRuns } from '../../src/documents/pdf-text';
 import { pdfActualTexts, pdfText } from './pdf-text';
 // fontkit is what pdfkit lays text out with (a dependency of pdfkit).
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const fontkit = require('fontkit') as { openSync(p: string): { layout(t: string): { glyphs: { id: number; codePoints: number[] }[] } } };
+const fontkit = require('fontkit') as {
+  openSync(p: string): {
+    layout(t: string): { glyphs: { id: number; codePoints: number[] }[] };
+  };
+};
 
 /** A real name in each Indian script the PDFs carry a font for (Hindi with a conjunct too). */
 export const INDIC_NAMES: Record<string, string> = {
@@ -36,7 +40,10 @@ export function expectNamesIn(pdf: Buffer, names: string[]) {
   const text = pdfText(pdf);
   const actual = pdfActualTexts(pdf).join('');
   for (const n of names) {
-    expect({ n, drawn: text.includes(drawnOrder(n)!) }).toEqual({ n, drawn: true });
+    expect({ n, drawn: text.includes(drawnOrder(n)!) }).toEqual({
+      n,
+      drawn: true,
+    });
     expect({ n, typed: actual.includes(n) }).toEqual({ n, typed: true });
   }
 }

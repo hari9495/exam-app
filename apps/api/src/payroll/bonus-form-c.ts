@@ -1,4 +1,5 @@
 import PDFDocument from 'pdfkit';
+import { heightOfText, writeText } from '../documents/pdf-text';
 
 // PAY-24 Form C as a PDF (founder 30 Oct 2026, last 10, item 2), drawn like the statutory registers (pdfkit, A4
 // landscape): the legal entity's letterhead, the register columns, a totals row, and the employer's signature and date.
@@ -56,22 +57,22 @@ export function renderFormC(d: FormCPdf): Promise<Buffer> {
     const left = 36;
     const full = doc.page.width - 72;
     // Letterhead.
-    doc.font('Helvetica-Bold').fontSize(14).text(d.entityName, left, 36, { width: full });
-    doc.font('Helvetica').fontSize(8).fillColor('#444').text(d.address.length ? d.address.join(', ') : 'Registered address not recorded', { width: full }).fillColor('#000');
+    writeText(doc.font('Helvetica-Bold').fontSize(14), d.entityName, left, 36, { width: full });
+    writeText(doc.font('Helvetica').fontSize(8).fillColor('#444'), d.address.length ? d.address.join(', ') : 'Registered address not recorded', { width: full }).fillColor('#000');
     doc.moveDown(0.6).font('Helvetica-Bold').fontSize(11).text('Form C, Payment of Bonus Rules, 1975, Rule 4', { width: full, align: 'center' });
-    doc.font('Helvetica').fontSize(9).text(d.title, { width: full, align: 'center' }).moveDown(0.6);
+    writeText(doc.font('Helvetica').fontSize(9), d.title, { width: full, align: 'center' }).moveDown(0.6);
     // The register: each row as tall as its tallest cell; the header repeats on a new page.
     const width = full / FORM_C_HEADER.length;
     const line = (cells: (string | number)[], bold = false) => {
       doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(6);
       const texts = cells.map((c) => (c === null || c === undefined ? '' : String(c)));
-      const h = Math.max(...texts.map((t) => doc.heightOfString(t || ' ', { width: width - 4 }))) + 4;
+      const h = Math.max(...texts.map((t) => heightOfText(doc, t || ' ', { width: width - 4 }))) + 4;
       if (doc.y + h > doc.page.height - 110) {
         doc.addPage();
         if (!bold) line(FORM_C_HEADER, true);
       }
       const y = doc.y;
-      texts.forEach((t, i) => doc.text(t, left + i * width + 2, y + 2, { width: width - 4, lineBreak: true }));
+      texts.forEach((t, i) => writeText(doc, t, left + i * width + 2, y + 2, { width: width - 4, lineBreak: true }));
       doc.moveTo(left, y + h).lineTo(left + full, y + h).lineWidth(0.3).strokeColor('#999').stroke();
       doc.x = left;
       doc.y = y + h;
@@ -85,7 +86,7 @@ export function renderFormC(d: FormCPdf): Promise<Buffer> {
     const y = doc.y + 36;
     doc.font('Helvetica').fontSize(9);
     doc.moveTo(left, y).lineTo(left + 220, y).lineWidth(0.5).strokeColor('#000').stroke();
-    doc.text(`Signature of the employer or authorised person, for ${d.entityName}`, left, y + 4, { width: 300 });
+    writeText(doc, `Signature of the employer or authorised person, for ${d.entityName}`, left, y + 4, { width: 300 });
     doc.moveTo(left + full - 160, y).lineTo(left + full, y).stroke();
     doc.text('Date', left + full - 160, y + 4, { width: 160 });
     doc.end();
