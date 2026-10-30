@@ -77,6 +77,23 @@ describe('Devices and kiosks (TIM-14 live)', () => {
     await waitFor(() => expect(live.onApprove).toHaveBeenCalledWith('r2'));
   });
 
+  it('Training tab (TIM-14): the sessions from the API; Add sends to the API with the location from the kiosks data', async () => {
+    const onAdd = vi.fn(async () => ({}));
+    const rows = [{ id: 's1', title: 'Fire drill', room: null, location: { id: 'l1', name: 'Hosur plant', zone: 'Asia/Kolkata' }, startsAt: '2026-11-03T04:00:00Z', endsAt: '2026-11-03T05:00:00Z', invitees: [], present: 0, state: 'upcoming' as const, version: 1 }];
+    render(<DevicesScreen live={devices({ training: { rows, onFindPeople: vi.fn(async () => []), onAdd, onEdit: vi.fn(), onCancel: vi.fn() } })} />);
+    await ue.click(screen.getByRole('tab', { name: 'Training' }));
+    expect(await screen.findByText('Fire drill')).toBeInTheDocument();
+    await ue.click(screen.getAllByRole('button', { name: 'Add training' })[0]!);
+    const drawer = await screen.findByRole('dialog', { name: 'Add training' });
+    await ue.click(within(drawer).getByRole('combobox', { name: /Location/ }));
+    expect(await screen.findByRole('option', { name: 'Chennai office' })).toBeInTheDocument();
+  });
+
+  it('no Training tab when the app does not pass it', () => {
+    render(<DevicesScreen live={devices()} />);
+    expect(screen.queryByRole('tab', { name: 'Training' })).toBeNull();
+  });
+
   it('signs out a lost phone remotely', async () => {
     const live = devices();
     render(<DevicesScreen live={live} />);

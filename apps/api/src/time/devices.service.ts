@@ -119,7 +119,7 @@ export class DevicesService {
         phones: phones
           .filter((p) => p.status !== 'pending')
           .map((p) => ({ id: p.id, employeeId: p.employeeId, person: people.get(p.employeeId!) ?? '', model: p.model ?? '', appVersion: p.appVersion, lastSeenAt: p.lastSeenAt, status: p.status === 'active' && phoneInactive(p.lastSeenAt, p.decidedAt ?? p.createdAt, now) ? 'inactive' : p.status })),
-        locations: locations.map((l) => ({ id: l.id, name: l.name, entity: entities.get(l.legalEntityId) ?? '' })),
+        locations: locations.map((l) => ({ id: l.id, name: l.name, entity: entities.get(l.legalEntityId) ?? '', zone: l.timezone })),
         entities: entities.size,
         company: (await tx.organization.findUnique({ where: { id: org }, select: { name: true } }))?.name ?? '',
       };

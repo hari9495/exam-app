@@ -21,6 +21,7 @@ export { DAY_STATUS, LEAVE_STATUS, dayText, rangeText } from './kit';
 export { DevicesScreen } from '../ops';
 export { KioskScreen } from '../field';
 export type { LiveDevices, DevicesData, KioskKey } from '../devices-live';
+export type { TrainingRow, TrainingInput, TrainingPerson } from '../training-tab';
 export type { LiveKiosk, KioskInfo, KioskToday, KioskPunched, KioskLeave, KioskTraining } from '../kiosk-live';
 // Field force (TIM-32): the designed map with `live`.
 export { FieldForceScreen } from '../field';

@@ -21,13 +21,14 @@ import { TimePage } from './time-kit';
 import { relativeDue } from './time-logic';
 import { useRun } from '../org/org-kit';
 import type { LoadState } from './live/types';
+import { TrainingTab, type TrainingTabProps } from './training-tab';
 
 export type KioskHealth = 'not_set_up' | 'online' | 'stale' | 'offline';
 export interface DevicesData {
   kiosks: { id: string; code: string; place: string; locationId: string; location: string; entity: string; mode: 'attendance' | 'visitor'; status: KioskHealth; lastSeenAt: string | null; setupExpiresAt: string | null; checkInsToday: number | null }[];
   requests: { id: string; employeeId: string; person: string; site: string; model: string; oldModel: string | null; oldLastSeenAt: string | null; oldPhoneLost: boolean; reason: string; raisedAt: string }[];
   phones: { id: string; employeeId: string; person: string; model: string; appVersion: string | null; lastSeenAt: string | null; status: 'active' | 'inactive' | 'lost' | 'revoked' }[];
-  locations: { id: string; name: string; entity: string }[];
+  locations: { id: string; name: string; entity: string; zone?: string }[];
   /** Legal entities of the company: more than one shows the Entity column. */
   entities: number;
   company?: string;
@@ -44,6 +45,8 @@ export interface LiveDevices {
   onApprove: (requestId: string) => Promise<unknown>;
   onRefuse: (requestId: string, reason: string) => Promise<unknown>;
   onSignOut: (phoneId: string) => Promise<unknown>;
+  /** TIM-14 Training: sessions, and HR adds, changes and cancels them (GET/POST/PUT /time/devices/training). */
+  training?: Omit<TrainingTabProps, 'locations' | 'open'>;
   /** For tests. */
   now?: Date;
 }
@@ -197,6 +200,7 @@ export function LiveDevicesScreen({ live }: { live: LiveDevices }) {
             <TabsTrigger value="kiosks">Kiosks</TabsTrigger>
             <TabsTrigger value="binds" count={binds.length}>{narrow ? 'Requests' : 'New phone requests'}</TabsTrigger>
             <TabsTrigger value="phones">{narrow ? 'Phones' : 'Employee phones'}</TabsTrigger>
+            {live.training && <TabsTrigger value="training">Training</TabsTrigger>}
           </TabsList>
           <TabsContent value="kiosks">
             <div className="yx-tim-stack">
@@ -260,6 +264,11 @@ export function LiveDevicesScreen({ live }: { live: LiveDevices }) {
               }
             />
           </TabsContent>
+          {live.training && (
+            <TabsContent value="training">
+              <TrainingTab {...live.training} locations={(d?.locations ?? []).map((l) => ({ id: l.id, name: l.name, zone: l.zone ?? 'Asia/Kolkata' }))} />
+            </TabsContent>
+          )}
         </Tabs>
       )}
       <ConfirmDialog

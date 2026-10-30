@@ -30,6 +30,7 @@ import type { ViewState } from './attendance';
 import type { AttendanceReport, LeaveReport as LiveLeaveReport, LeaveReportKind, LeaveReportQuery, LeaveReportRow, LoadState, MyTimesheet, NightRegister, PayrollFeed, Registers, TimesheetLineInput } from './live/types';
 import { useRun } from '../org/org-kit';
 import { LiveDevicesScreen, type LiveDevices } from './devices-live';
+import { TrainingTab, type TrainingRow, type TrainingTabProps } from './training-tab';
 import { LivePrefillDrawer, type LivePrefill, type PrefillProject } from './prefill-live';
 import './time.css';
 
@@ -93,6 +94,17 @@ const KIOSKS: Kiosk[] = [
   { id: 'k5', code: 'KF-CBE-K1', place: 'Packing hall', location: 'Coimbatore unit', entity: ENTITIES[1].name, mode: 'Attendance', lastSeen: '4 min ago', status: 'Online', uses: 22 },
 ];
 const SITE_CODE: Record<string, string> = { 'Hosur plant': 'HSR', 'Chennai office': 'MAA', 'Bengaluru head office': 'BLR', 'Coimbatore unit': 'CBE' };
+/** TIM-14 Training (30 Oct 2026): sessions around the design's today (29 Sep 2026, 9:42 am), times in India. */
+const TRAINING_SITES = Object.keys(SITE_CODE).map((name) => ({ id: SITE_CODE[name]!, name, zone: 'Asia/Kolkata' }));
+const site = (code: string) => TRAINING_SITES.find((l) => l.id === code)!;
+const TRAINING: TrainingRow[] = [
+  { id: 'tr1', title: 'Food safety refresher', room: 'Training room 1', location: site('HSR'), startsAt: '2026-09-29T03:30:00Z', endsAt: '2026-09-29T05:00:00Z', invitees: [], present: 18, state: 'running', version: 1 },
+  { id: 'tr2', title: 'Forklift licence renewal', room: 'Bay 3', location: site('HSR'), startsAt: '2026-09-30T08:30:00Z', endsAt: '2026-09-30T11:30:00Z', invitees: [{ id: 'e7', name: 'Arvind Natarajan' }, { id: 'e8', name: 'Rahul Deshpande' }, { id: 'e9', name: 'Priya Shankar' }], present: 0, state: 'upcoming', version: 1 },
+  { id: 'tr3', title: 'Fire drill', room: null, location: site('MAA'), startsAt: '2026-10-01T05:30:00Z', endsAt: '2026-10-01T06:00:00Z', invitees: [], present: 0, state: 'upcoming', version: 2 },
+  { id: 'tr4', title: 'POSH awareness', room: 'Board room', location: site('BLR'), startsAt: '2026-09-25T09:30:00Z', endsAt: '2026-09-25T11:00:00Z', invitees: [], present: 26, state: 'ended', version: 1 },
+  { id: 'tr5', title: 'First aid basics', room: 'Training room 2', location: site('MAA'), startsAt: '2026-09-28T04:30:00Z', endsAt: '2026-09-28T06:30:00Z', invitees: [], present: 0, state: 'cancelled', version: 2 },
+];
+const TRAINING_PEOPLE = EMPLOYEES.map((e) => ({ id: e.id, label: e.name, detail: null }));
 interface BindReq { id: string; person: string; site: string; from: string; to: string; lost: boolean; reason: string; raised: Date }
 const BINDS: BindReq[] = [
   { id: 'b1', person: 'Meera Krishnan', site: 'Chennai office', from: 'Redmi Note 11', to: 'Samsung Galaxy M34', lost: true, reason: 'Old phone lost on 26 Sep', raised: new Date(2026, 8, 27) },
@@ -116,11 +128,11 @@ const KIOSK_W = 320;
 // flex: none — the kit class's 256px flex-basis turns into a min-height when phone cards stack the cell.
 const pad = { paddingBlock: 'var(--yx-space-1)', flex: 'none' } as const;
 
-export function DevicesScreen({ live, ...story }: { persona?: 'hr' | 'sa'; tab?: 'kiosks' | 'binds' | 'phones'; signOut?: boolean; state?: ViewState; /** The live app's /time/setup/devices. */ live?: LiveDevices }) {
+export function DevicesScreen({ live, ...story }: { persona?: 'hr' | 'sa'; tab?: 'kiosks' | 'binds' | 'phones' | 'training'; signOut?: boolean; state?: ViewState; /** Training stories: the add form, a session's edit form, or its cancel confirmation. */ training?: TrainingTabProps['open']; /** The live app's /time/setup/devices. */ live?: LiveDevices }) {
   return live ? <LiveDevicesScreen live={live} /> : <SampleDevicesScreen {...story} />;
 }
 
-function SampleDevicesScreen({ persona = 'hr', tab = 'kiosks', signOut = false, state = 'ready' }: { persona?: 'hr' | 'sa'; tab?: 'kiosks' | 'binds' | 'phones'; signOut?: boolean; state?: ViewState }) {
+function SampleDevicesScreen({ persona = 'hr', tab = 'kiosks', signOut = false, state = 'ready', training }: { persona?: 'hr' | 'sa'; tab?: 'kiosks' | 'binds' | 'phones' | 'training'; signOut?: boolean; state?: ViewState; training?: TrainingTabProps['open'] }) {
   const sa = persona === 'sa';
   const narrow = useNarrow(599);
   // The story opens the sign-out confirmation for Meera's lost Redmi.
@@ -140,6 +152,7 @@ function SampleDevicesScreen({ persona = 'hr', tab = 'kiosks', signOut = false, 
   const setKioskNote = (title: string) => toast({ tone: 'success', title });
   const setBindNote = setKioskNote;
   const [added, setAdded] = useState<Phone[]>([]);
+  const [sessions, setSessions] = useState(TRAINING);
   const [q, setQ] = useState('');
   const [onlyIssues, setOnlyIssues] = useState(false);
   const mine = (k: Kiosk) => sa || k.entity === ENTITIES[0].name;
@@ -239,6 +252,7 @@ function SampleDevicesScreen({ persona = 'hr', tab = 'kiosks', signOut = false, 
           {/* Short labels on phones so all three tabs fit without scrolling. */}
           <TabsTrigger value="binds" count={binds.length}>{narrow ? 'Requests' : 'New phone requests'}</TabsTrigger>
           <TabsTrigger value="phones">{narrow ? 'Phones' : 'Employee phones'}</TabsTrigger>
+          <TabsTrigger value="training">Training</TabsTrigger>
         </TabsList>
         <TabsContent value="kiosks">
           <div className="yx-tim-stack">
@@ -301,6 +315,18 @@ function SampleDevicesScreen({ persona = 'hr', tab = 'kiosks', signOut = false, 
                 <Button size="sm" icon={LogOut} onClick={() => setSo(r)}>Sign out phone</Button>
               ) : null
             }
+          />
+        </TabsContent>
+        <TabsContent value="training">
+          <TrainingTab
+            rows={state === 'empty' ? [] : sessions}
+            locations={TRAINING_SITES.filter((l) => sites.includes(l.name))}
+            state={state === 'loading' ? 'loading' : state === 'error' ? 'error' : 'ready'}
+            onFindPeople={async (q) => TRAINING_PEOPLE.filter((p) => p.label.toLowerCase().includes(q.trim().toLowerCase())).slice(0, 20)}
+            onAdd={async (x) => setSessions((list) => [...list, { id: `tr${list.length + 1}`, title: x.title, room: x.room ?? null, location: TRAINING_SITES.find((l) => l.id === x.locationId)!, startsAt: x.startsAt, endsAt: x.endsAt, invitees: x.invitees.map((id) => ({ id, name: TRAINING_PEOPLE.find((p) => p.id === id)?.label ?? '' })), present: 0, state: 'upcoming', version: 1 }])}
+            onEdit={async (r, x) => setSessions((list) => list.map((s) => (s.id === r.id ? { ...s, title: x.title, room: x.room ?? null, location: TRAINING_SITES.find((l) => l.id === x.locationId)!, startsAt: x.startsAt, endsAt: x.endsAt, invitees: x.invitees.map((id) => ({ id, name: TRAINING_PEOPLE.find((p) => p.id === id)?.label ?? s.invitees.find((i) => i.id === id)?.name ?? '' })), version: s.version + 1 } : s)))}
+            onCancel={async (r) => setSessions((list) => list.map((s) => (s.id === r.id ? { ...s, state: 'cancelled' } : s)))}
+            open={training}
           />
         </TabsContent>
       </Tabs>
