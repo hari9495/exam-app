@@ -4867,6 +4867,7 @@ model HolidayCalendar {
   halfDayOpenHalf String   @default("first") @map("half_day_open_half") @db.VarChar(6)
   optionalLimit   Int      @default(2) @map("optional_limit") @db.SmallInt
   onWeeklyOff     String   @default("none") @map("on_weekly_off") @db.VarChar(10)
+  publishedAt     DateTime? @map("published_at") @db.Timestamptz(3)
   version         Int      @default(1)
   createdBy       String?  @map("created_by") @db.Uuid
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -4887,6 +4888,65 @@ model Holiday {
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("holidays")
+}
+
+/// TIM-26: holidays waiting for HR to publish (clone to next year, or a state template); employees never see them.
+model HolidayDraft {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  calendarId     String   @map("calendar_id") @db.Uuid
+  holidayOn      DateTime @map("holiday_on") @db.Date
+  name           String   @db.VarChar(100)
+  kind           String   @db.VarChar(10)
+  halfDay        Boolean  @default(false) @map("half_day")
+  confirm        Boolean  @default(false)
+  source         String   @db.VarChar(8)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, calendarId, holidayOn])
+  @@map("holiday_drafts")
+}
+
+/// TIM-28: the policy order from a date (the policy higher in the order wins when a person matches more than one).
+model LeavePolicyOrder {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  validFrom      DateTime @map("valid_from") @db.Date
+  policyIds      String[] @map("policy_ids") @db.Uuid
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, validFrom])
+  @@map("leave_policy_orders")
+}
+
+/// TIM-13: a training session at a location; people mark themselves present at that location's kiosk.
+model TrainingSession {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  locationId     String    @map("location_id") @db.Uuid
+  title          String    @db.VarChar(120)
+  room           String?   @db.VarChar(80)
+  startsAt       DateTime  @map("starts_at") @db.Timestamptz(3)
+  endsAt         DateTime  @map("ends_at") @db.Timestamptz(3)
+  cancelledAt    DateTime? @map("cancelled_at") @db.Timestamptz(3)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("training_sessions")
+}
+
+model TrainingAttendance {
+  organizationId String   @map("organization_id") @db.Uuid
+  sessionId      String   @map("session_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  deviceId       String?  @map("device_id") @db.Uuid
+  markedAt       DateTime @default(now()) @map("marked_at") @db.Timestamptz(3)
+
+  @@id([organizationId, sessionId, employeeId])
+  @@map("training_attendance")
 }
 
 model OptionalHolidayChoice {
