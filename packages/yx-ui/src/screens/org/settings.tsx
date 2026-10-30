@@ -3,7 +3,7 @@ import { Checkbox } from '../../components/choice';
 import { Badge } from '../../components/display';
 import { Button } from '../../components/button';
 import { DatePicker } from '../../components/date';
-import { InlineAlert } from '../../components/feedback';
+import { EmptyState, InlineAlert } from '../../components/feedback';
 import { FormField, FormSection, type FormErrorItem, useSaveErrors } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { MenuItem } from '../../components/menu';
@@ -16,7 +16,7 @@ import { PlainTable } from '../../components/plain-table';
 import { formatDate } from '../../lib/format';
 import { dayKey } from '../../lib/dates';
 import { EditorDrawer, OrgPage, dateLabel, useConfirm, useRun } from './org-kit';
-import type { ErasureCounts, ErasureReport, LoadState, SettingDef, SettingInput, SettingOverride, SettingScope, SettingScopeChoices } from './types';
+import type { ErasureCounts, ErasurePerson, ErasureReport, LoadState, SettingDef, SettingInput, SettingOverride, SettingScope, SettingScopeChoices } from './types';
 
 // Settings › company rules (P01 §4.6): every registered key with the value in force, where it comes from
 // (YX-ORG-12), and the overrides per entity, location, department, employment type or grade, most specific
@@ -340,16 +340,21 @@ export interface CompanySettingsScreenProps {
 }
 
 const ERASED: { key: keyof ErasureCounts; what: string }[] = [
-  { key: 'people', what: 'People who left (past the period)' },
-  { key: 'aadhaar', what: 'Aadhaar numbers on their records' },
-  { key: 'documents', what: 'Aadhaar copies and background check reports' },
+  { key: 'people', what: 'People past the period (left, or never joined)' },
+  { key: 'aadhaar', what: 'Aadhaar numbers on their records and joining forms' },
+  { key: 'documents', what: 'Aadhaar copies, background check reports and disability certificates' },
   { key: 'backgroundChecks', what: 'Background check notes' },
+  { key: 'disability', what: 'Disability details (the yes or no answer stays)' },
 ];
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-/** Follow-up 12: what the nightly job would delete today, what it keeps, and its last run. Counts only. */
+/**
+ * Follow-up 12 and the founder's answers (30 Oct 2026): what the nightly job would delete today and from whom (name,
+ * employee code, last day or the day the joining was cancelled; never a value), what it keeps, and its last run.
+ */
 function ErasureCard({ report }: { report: ErasureReport }) {
   const last = report.lastRun;
+  const due = report.enabled ? 'Due at the next run' : 'If it ran today, it would delete';
   return (
     <Card title="Deleting Special data" className="yx-org__group">
       <Text as="p" tone="secondary" size="sm" className="yx-org__group-desc">
@@ -358,8 +363,8 @@ function ErasureCard({ report }: { report: ErasureReport }) {
           : 'Off. Nothing is deleted. Check what it would delete today, then turn it on above.'}
       </Text>
       <PlainTable
-        label={report.enabled ? 'Due at the next run' : 'If it ran today, it would delete'}
-        caption={report.enabled ? 'Due at the next run' : 'If it ran today, it would delete'}
+        label={due}
+        caption={due}
         columns={[
           { key: 'what', header: 'What', rowHeader: true, cell: (r: (typeof ERASED)[number]) => r.what },
           { key: 'count', header: 'How many', cell: (r: (typeof ERASED)[number]) => report.due[r.key] },
@@ -367,12 +372,27 @@ function ErasureCard({ report }: { report: ErasureReport }) {
         rows={ERASED}
         getRowId={(r) => r.key}
       />
+      {report.who.length ? (
+        <PlainTable
+          label="Whose data"
+          caption="Whose data"
+          columns={[
+            { key: 'name', header: 'Name', rowHeader: true, cell: (p: ErasurePerson) => p.name },
+            { key: 'code', header: 'Employee code', cell: (p: ErasurePerson) => p.employeeCode ?? 'None (never joined)' },
+            { key: 'day', header: 'Last day', date: true, cell: (p: ErasurePerson) => (p.neverJoined ? `Joining cancelled ${dateLabel(p.day)}` : dateLabel(p.day)) },
+          ]}
+          rows={report.who}
+          getRowId={(p) => `${p.name}-${p.employeeCode ?? ''}-${p.day}`}
+        />
+      ) : (
+        <EmptyState compact title="No one's data is due." description="People appear here once their period has passed." />
+      )}
       <Text as="p" tone="secondary" size="sm">
-        Kept: pay records (payslips, tax and filings) follow the payroll period; disability declarations and consent records are not deleted by this job.
+        Kept: consent records, background check results (clear or discrepancy), and pay records and filings, Aadhaar included (they follow the payroll period).
       </Text>
       <Text as="p" size="sm">
         {last
-          ? `Last run ${formatDate(new Date(last.at))}: ${plural(last.people, 'person', 'people')}, ${plural(last.aadhaar, 'Aadhaar number', 'Aadhaar numbers')}, ${plural(last.documents, 'document', 'documents')}, ${plural(last.backgroundChecks, 'check note', 'check notes')}.`
+          ? `Last run ${formatDate(new Date(last.at))}: ${plural(last.people, 'person', 'people')}, ${plural(last.aadhaar, 'Aadhaar number', 'Aadhaar numbers')}, ${plural(last.documents, 'document', 'documents')}, ${plural(last.backgroundChecks, 'check note', 'check notes')}, ${plural(last.disability, 'disability declaration', 'disability declarations')}.`
           : 'It has not run yet.'}
       </Text>
       {last && last.failed > 0 && (

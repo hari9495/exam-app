@@ -191,7 +191,23 @@ export const SETTING_CHOICES: SettingScopeChoices = {
   grade: MASTERS.grades.map((g) => ({ value: g.id, label: g.name })),
 };
 
-/** Settings › Access and privacy: the Special data erasure, off, before HR's first run (dry run only). */
-export const ERASURE_DRY_RUN: ErasureReport = { enabled: false, due: { people: 4, aadhaar: 4, documents: 6, backgroundChecks: 3 }, lastRun: null };
-/** On, after a night's run in which one person could not be done. */
-export const ERASURE_ON: ErasureReport = { enabled: true, due: { people: 0, aadhaar: 0, documents: 0, backgroundChecks: 0 }, lastRun: { at: '2026-10-29T22:45:00Z', people: 4, aadhaar: 4, documents: 6, backgroundChecks: 3, failed: 1 } };
+const ERASURE_WHO: ErasureReport['who'] = [
+  { name: 'Ravi Kumar', employeeCode: 'YX-0142', day: '2024-03-31', neverJoined: false },
+  { name: 'Meena Iyer', employeeCode: 'YX-0207', day: '2024-08-15', neverJoined: false },
+  { name: 'Farhan Ali', employeeCode: null, day: '2025-01-10', neverJoined: true },
+  { name: 'Sunita Rao', employeeCode: 'YX-0311', day: '2025-06-30', neverJoined: false },
+];
+/** Settings › Access and privacy: the Special data erasure, off, before HR's first run (dry run only, with who). */
+export const ERASURE_DRY_RUN: ErasureReport = { enabled: false, due: { people: 4, aadhaar: 4, documents: 7, backgroundChecks: 3, disability: 1 }, who: ERASURE_WHO, lastRun: null };
+/** On, after a night's run in which one person could not be done; no one is due now. */
+export const ERASURE_ON: ErasureReport = { enabled: true, due: { people: 0, aadhaar: 0, documents: 0, backgroundChecks: 0, disability: 0 }, who: [], lastRun: { at: '2026-10-29T22:45:00Z', people: 4, aadhaar: 4, documents: 7, backgroundChecks: 3, disability: 1, failed: 1 } };
+/** On, with two people due at the next run (one an offer that never joined). */
+export const ERASURE_ON_DUE: ErasureReport = {
+  enabled: true,
+  due: { people: 2, aadhaar: 2, documents: 2, backgroundChecks: 1, disability: 0 },
+  who: [
+    { name: 'Arjun Mehta', employeeCode: 'YX-0388', day: '2025-10-28', neverJoined: false },
+    { name: 'Divya Nair', employeeCode: null, day: '2025-10-29', neverJoined: true },
+  ],
+  lastRun: { at: '2026-10-29T22:45:00Z', people: 4, aadhaar: 4, documents: 7, backgroundChecks: 3, disability: 1, failed: 0 },
+};

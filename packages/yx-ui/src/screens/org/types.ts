@@ -187,15 +187,27 @@ export interface SettingInput {
 /** The records each scope can name, by scope. */
 export type SettingScopeChoices = Partial<Record<SettingScope, { value: string; label: string }[]>>;
 
-/** GET people/privacy-erasure: what the nightly Special data erasure would delete today, and its last run (counts only). */
+/** GET people/privacy-erasure: what the nightly Special data erasure would delete today and from whom, and its last run (counts only). */
 export interface ErasureCounts {
   people: number;
   aadhaar: number;
   documents: number;
   backgroundChecks: number;
+  /** Disability declarations whose details and certificate go (the yes/no answer stays). */
+  disability: number;
+}
+/** One person in the dry run: never a value, only who. */
+export interface ErasurePerson {
+  name: string;
+  /** Null for an offer that never joined. */
+  employeeCode: string | null;
+  /** YYYY-MM-DD: the last day, or the day the joining was cancelled. */
+  day: string;
+  neverJoined: boolean;
 }
 export interface ErasureReport {
   enabled: boolean;
   due: ErasureCounts;
+  who: ErasurePerson[];
   lastRun: (ErasureCounts & { at: string; failed: number }) | null;
 }

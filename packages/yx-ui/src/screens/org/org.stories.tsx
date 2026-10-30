@@ -4,7 +4,7 @@ import { LegalEntitiesScreen } from './entities';
 import { LocationsScreen } from './locations';
 import { StructureScreen } from './structure';
 import { CompanySettingsScreen, type CompanySettingsScreenProps } from './settings';
-import { ENTITIES, ERASURE_DRY_RUN, ERASURE_ON, LOCATIONS, MASTERS, PAY_RANGES, RULES, SETTING_CHOICES, SETTING_OVERRIDES, SETTING_REGISTRY, STATES, TODAY_ISO } from './data';
+import { ENTITIES, ERASURE_DRY_RUN, ERASURE_ON, ERASURE_ON_DUE, LOCATIONS, MASTERS, PAY_RANGES, RULES, SETTING_CHOICES, SETTING_OVERRIDES, SETTING_REGISTRY, STATES, TODAY_ISO } from './data';
 
 const meta: Meta = { title: 'Screens/Settings/Organisation', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -140,9 +140,11 @@ export const AccessAndPrivacy: S = {
   ),
 };
 
-/** Follow-up 12: Special data erasure is off; HR reads the dry run (what it would delete today) before turning it on. */
+const ERASURE_SWITCH_ON = { id: 's-erase', key: 'privacy.erasure.enabled', scopeType: 'tenant' as const, scopeId: 'org', value: 'on', validFrom: null };
+
+/** Follow-up 12: Special data erasure is off; HR reads the dry run (what it would delete today, and whose) before turning it on. */
 export const AccessAndPrivacyErasureDryRun: S = {
-  name: 'Access and privacy · Special data erasure · dry run (off)',
+  name: 'Access and privacy · Special data erasure · dry run (off), whose data',
   render: () => (
     <Frame active="access-settings">
       <CompanySettingsScreen section="access" {...settings} erasure={ERASURE_DRY_RUN} />
@@ -150,12 +152,32 @@ export const AccessAndPrivacyErasureDryRun: S = {
   ),
 };
 
-/** Erasure on: nothing due; the last night's run, with one person not done (tried again the next night). */
+/** Erasure on: no one due (empty list); the last night's run, with one person not done (tried again the next night). */
 export const AccessAndPrivacyErasureOn: S = {
-  name: 'Access and privacy · Special data erasure · on, last run',
+  name: 'Access and privacy · Special data erasure · on, no one due, last run',
   render: () => (
     <Frame active="access-settings">
-      <CompanySettingsScreen section="access" {...settings} overrides={[...SETTING_OVERRIDES, { id: 's-erase', key: 'privacy.erasure.enabled', scopeType: 'tenant', scopeId: 'org', value: 'on', validFrom: null }]} erasure={ERASURE_ON} />
+      <CompanySettingsScreen section="access" {...settings} overrides={[...SETTING_OVERRIDES, ERASURE_SWITCH_ON]} erasure={ERASURE_ON} />
+    </Frame>
+  ),
+};
+
+/** Erasure on: two people due at the next run, one an offer that never joined (counted from the day it was cancelled). */
+export const AccessAndPrivacyErasureOnDue: S = {
+  name: 'Access and privacy · Special data erasure · on, people due at the next run',
+  render: () => (
+    <Frame active="access-settings">
+      <CompanySettingsScreen section="access" {...settings} overrides={[...SETTING_OVERRIDES, ERASURE_SWITCH_ON]} erasure={ERASURE_ON_DUE} />
+    </Frame>
+  ),
+};
+
+/** Without company-wide settings rights the dry run is not sent, so the card is not drawn (the switch still shows, read-only). */
+export const AccessAndPrivacyErasureNoAccess: S = {
+  name: 'Access and privacy · Special data erasure · no company-wide settings rights (no card)',
+  render: () => (
+    <Frame active="access-settings">
+      <CompanySettingsScreen section="access" {...settings} canManage={false} />
     </Frame>
   ),
 };

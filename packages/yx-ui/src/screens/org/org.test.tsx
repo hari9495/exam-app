@@ -7,7 +7,7 @@ import { StructureScreen, masterInput, payRangeErrors, subtree, type StructureSc
 import { addressDraft, ownershipLabel } from './org-kit';
 import { CompanySettingsScreen, companyValue, settingInput, type CompanySettingsScreenProps } from './settings';
 import { ToastProvider } from '../../components/notify';
-import { ENTITIES, ERASURE_DRY_RUN, ERASURE_ON, LOCATIONS, MASTERS, PAY_RANGES, RULES, SETTING_CHOICES, SETTING_OVERRIDES, SETTING_REGISTRY, STATES, TODAY_ISO } from './data';
+import { ENTITIES, ERASURE_DRY_RUN, ERASURE_ON, ERASURE_ON_DUE, LOCATIONS, MASTERS, PAY_RANGES, RULES, SETTING_CHOICES, SETTING_OVERRIDES, SETTING_REGISTRY, STATES, TODAY_ISO } from './data';
 
 const ok = () => vi.fn().mockResolvedValue(undefined);
 
@@ -486,9 +486,23 @@ describe('Company rules and access settings (P01 §4.6; YX-ORG-12/18)', () => {
     // Not an access guard: HR who manage settings change it.
     expect(within(block).getByRole('button', { name: 'Change' })).toBeEnabled();
     const dry = screen.getByRole('table', { name: 'If it ran today, it would delete' });
-    expect(within(dry).getAllByRole('row').slice(1).map((r) => r.textContent)).toEqual(['People who left (past the period)4', 'Aadhaar numbers on their records4', 'Aadhaar copies and background check reports6', 'Background check notes3']);
+    expect(within(dry).getAllByRole('row').slice(1).map((r) => r.textContent)).toEqual([
+      'People past the period (left, or never joined)4',
+      'Aadhaar numbers on their records and joining forms4',
+      'Aadhaar copies, background check reports and disability certificates7',
+      'Background check notes3',
+      'Disability details (the yes or no answer stays)1',
+    ]);
+    // Whose data: name, employee code (none for an offer that never joined), last day or the day the joining was cancelled.
+    const who = screen.getByRole('table', { name: 'Whose data' });
+    expect(within(who).getAllByRole('row').slice(1).map((r) => r.textContent)).toEqual([
+      'Ravi KumarYX-014231 Mar 2024',
+      'Meena IyerYX-020715 Aug 2024',
+      'Farhan AliNone (never joined)Joining cancelled 10 Jan 2025',
+      'Sunita RaoYX-031130 Jun 2025',
+    ]);
     expect(screen.getByText('It has not run yet.')).toBeInTheDocument();
-    expect(screen.getByText(/Kept: pay records/)).toBeInTheDocument();
+    expect(screen.getByText(/^Kept: consent records, background check results \(clear or discrepancy\), and pay records and filings, Aadhaar included/)).toBeInTheDocument();
     await userEvent.click(within(block).getByRole('button', { name: 'Change' }));
     const dialog = await screen.findByRole('dialog');
     await userEvent.click(within(dialog).getByRole('radio', { name: 'On: deleted every night' }));
@@ -497,10 +511,17 @@ describe('Company rules and access settings (P01 §4.6; YX-ORG-12/18)', () => {
     expect(await within(screen.getByRole('region', { name: 'Notifications' })).findByText('Saved.')).toBeInTheDocument();
     unmount();
     const again = render(<ToastProvider><CompanySettingsScreen {...base} section="access" erasure={ERASURE_ON} /></ToastProvider>);
-    expect(screen.getByText(/^Last run \d+ Oct 2026: 4 people, 4 Aadhaar numbers, 6 documents, 3 check notes\.$/)).toBeInTheDocument();
+    expect(screen.getByText(/^Last run \d+ Oct 2026: 4 people, 4 Aadhaar numbers, 7 documents, 3 check notes, 1 disability declaration\.$/)).toBeInTheDocument();
     expect(screen.getByText('1 person was not done')).toBeInTheDocument();
     expect(screen.getByRole('table', { name: 'Due at the next run' })).toBeInTheDocument();
+    // On, no one due: an empty state, no list.
+    expect(screen.getByText("No one's data is due.")).toBeInTheDocument();
+    expect(screen.queryByRole('table', { name: 'Whose data' })).toBeNull();
     again.unmount();
+    const due = render(<ToastProvider><CompanySettingsScreen {...base} section="access" erasure={ERASURE_ON_DUE} /></ToastProvider>);
+    expect(within(screen.getByRole('table', { name: 'Whose data' })).getAllByRole('row')).toHaveLength(3);
+    expect(screen.queryByText('1 person was not done')).toBeNull();
+    due.unmount();
     render(<ToastProvider><CompanySettingsScreen {...base} section="access" /></ToastProvider>);
     expect(screen.queryByText('Deleting Special data')).toBeNull();
   });
