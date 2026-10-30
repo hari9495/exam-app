@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { KioskScreen, type KioskInfo, type KioskPunched, type KioskToday } from '@yukthix/ui/time';
+import { KioskScreen, type KioskInfo, type KioskLeave, type KioskPunched, type KioskToday, type KioskTraining } from '@yukthix/ui/time';
 import { API_BASE } from '../../../lib/api-client';
 
 // TIM-13: the kiosk on a site tablet, outside the signed-in app. HR's one-time set-up key becomes this tablet's own
@@ -50,7 +50,8 @@ export default function YxKioskPage() {
         setToken(null);
         setInfo(null);
       }
-      if (!r.ok) throw new Error((Array.isArray(body?.message) ? body.message[0] : body?.message) ?? 'That did not work. Try again.');
+      // The code (e.g. UNKNOWN_CODE) travels with the message so the screen can show the designed state.
+      if (!r.ok) throw Object.assign(new Error((Array.isArray(body?.message) ? body.message[0] : body?.message) ?? 'That did not work. Try again.'), { code: body?.code });
       return body as T;
     },
     [token],
@@ -81,6 +82,11 @@ export default function YxKioskPage() {
         },
         onIdentify: (input) => call<{ person: string; firstName: string }>('/identify', { method: 'POST', body: input }),
         onToday: (person) => call<KioskToday>('/person/today', { person }),
+        onCheckCode: (code) => call('/code', { method: 'POST', body: { code } }),
+        onTraining: (person) => call<KioskTraining>('/person/training', { person }),
+        onMarkTraining: (person, id) => call(`/person/training/${encodeURIComponent(id)}`, { method: 'POST', body: { person } }),
+        onLeave: (person) => call<KioskLeave>('/person/leave', { person }),
+        onApplyLeave: (person, input) => call('/person/leave', { method: 'POST', body: { person, ...input } }),
         onPunch: async (person, kind) => {
           // One id per punch: a retry after a dropped connection is answered once, never a second punch.
           const item = { person, kind, clientRef: crypto.randomUUID(), punchedAt: new Date().toISOString() };

@@ -139,6 +139,108 @@ describe('Kiosk (TIM-13 live)', () => {
     expect(screen.queryByText(/Kavitha/)).not.toBeInTheDocument();
   });
 
+  it('an unknown code is refused before the PIN with the design message; typing again clears it', async () => {
+    const live = kiosk({ onCheckCode: vi.fn(async () => { throw Object.assign(new Error('No one with code KF-9999.'), { code: 'UNKNOWN_CODE' }); }) });
+    render(<KioskScreen live={live} />);
+    await type('9999');
+    await ue.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByText('No one with code KF-9999')).toBeInTheDocument();
+    expect(screen.getByText('Check the code on your ID card and try again.')).toBeInTheDocument();
+    expect(screen.queryByText('Enter your PIN')).not.toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByText('This code is not known. Check it and type it again.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(screen.queryByText('No one with code KF-9999')).not.toBeInTheDocument();
+  });
+
+  const signIn = async () => {
+    await type('0142');
+    await ue.click(screen.getByRole('button', { name: 'Next' }));
+    await type('4071');
+    await ue.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByText('Hello, Kavitha');
+  };
+
+  it('training: before it opens it says when; once open the person is marked present', async () => {
+    const soon = new Date(Date.now() + 3_600_000).toISOString();
+    const session = (opensAt: string) => ({ zone: 'Asia/Kolkata', sessions: [{ id: 's1', title: 'Food safety refresher', room: 'Training room 1', startsAt: soon, endsAt: new Date(Date.now() + 7_200_000).toISOString(), opensAt, marked: false }] });
+    const onTraining = vi.fn().mockResolvedValueOnce(session(soon)).mockResolvedValue(session(new Date(Date.now() - 60_000).toISOString()));
+    const onMarkTraining = vi.fn(async () => ({}));
+    const live = kiosk({ onCheckCode: vi.fn(async () => ({ known: true })), onTraining, onMarkTraining });
+    render(<KioskScreen live={live} />);
+    await signIn();
+    await ue.click(screen.getByRole('button', { name: 'Training' }));
+    expect(await screen.findByText('Mark training attendance')).toBeInTheDocument();
+    expect(screen.getByText('Food safety refresher')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Mark me present' }));
+    expect(screen.getByText(/^Training opens at/)).toBeInTheDocument();
+    expect(onMarkTraining).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('button', { name: 'Back' }));
+    await ue.click(screen.getByRole('button', { name: 'Training' }));
+    await ue.click(await screen.findByRole('button', { name: 'Mark me present' }));
+    await waitFor(() => expect(onMarkTraining).toHaveBeenCalledWith('pass', 's1'));
+    expect(await screen.findByText('Marked present')).toBeInTheDocument();
+  });
+
+  it('training: none today says so', async () => {
+    render(<KioskScreen live={kiosk({ onTraining: vi.fn(async () => ({ zone: 'Asia/Kolkata', sessions: [] })), onMarkTraining: vi.fn() })} />);
+    await signIn();
+    await ue.click(screen.getByRole('button', { name: 'Training' }));
+    expect(await screen.findByText('No training here today.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Mark me present' })).not.toBeInTheDocument();
+  });
+
+  const LEAVE = {
+    today: '2026-10-29',
+    types: [{ id: 'cl', name: 'Casual leave', kind: 'casual', available: 1, pending: 2 }, { id: 'el', name: 'Earned leave', kind: 'earned', available: 0, pending: 0 }],
+    sick: { name: 'Sick leave', available: 7 },
+    approver: 'Ramesh Iyer',
+    days: [
+      { on: '2026-10-30', note: null, holiday: null, hint: null },
+      { on: '2026-10-31', note: null, holiday: null, hint: null },
+      { on: '2026-11-01', note: 'Weekly off' as const, holiday: null, hint: null },
+      { on: '2026-11-02', note: null, holiday: 'Kannada Rajyotsava', hint: 'Holiday shift' },
+    ],
+  };
+
+  it('apply leave: picks days, refuses too many and locked days, then sends to the approver', async () => {
+    const onApplyLeave = vi.fn(async () => ({ id: 'r1' }));
+    render(<KioskScreen live={kiosk({ onLeave: vi.fn(async () => LEAVE), onApplyLeave })} />);
+    await signIn();
+    await ue.click(screen.getByRole('button', { name: 'Apply leave' }));
+    expect(await screen.findByText('Apply leave')).toBeInTheDocument();
+    expect(screen.getByText(/ask Ramesh Iyer to record sick days/)).toBeInTheDocument();
+    expect(screen.getByText(/is a holiday \(Kannada Rajyotsava\) you are rostered to work/)).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Send leave request' }));
+    expect(screen.getByText('Pick at least one day.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: /Earned · 0 left/ }));
+    expect(screen.getByText('No days of this leave are left.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: /Weekly off/ }));
+    expect(screen.getByText('You cannot pick this day: Weekly off.')).toBeInTheDocument();
+    const tiles = within(screen.getByRole('group', { name: 'Leave dates' })).getAllByRole('button');
+    await ue.click(tiles[0]!);
+    await ue.click(tiles[1]!);
+    await ue.click(screen.getByRole('button', { name: 'Send leave request' }));
+    expect(screen.getByText('Not enough leave left for these days.')).toBeInTheDocument();
+    expect(onApplyLeave).not.toHaveBeenCalled();
+    await ue.click(tiles[0]!);
+    await ue.click(screen.getByRole('button', { name: 'Send leave request' }));
+    await waitFor(() => expect(onApplyLeave).toHaveBeenCalledWith('pass', { leaveTypeId: 'cl', from: '2026-10-30', to: '2026-10-30' }));
+    expect(await screen.findByText('Sent')).toBeInTheDocument();
+    expect(screen.getByText(/Sent to Ramesh Iyer/)).toBeInTheDocument();
+  });
+
+  it('apply leave: a refusal from the server shows in plain words', async () => {
+    const onApplyLeave = vi.fn(async () => { throw new Error('Casual leave needs 2 days notice.'); });
+    render(<KioskScreen live={kiosk({ onLeave: vi.fn(async () => LEAVE), onApplyLeave })} />);
+    await signIn();
+    await ue.click(screen.getByRole('button', { name: 'Apply leave' }));
+    const tiles = within(await screen.findByRole('group', { name: 'Leave dates' })).getAllByRole('button');
+    await ue.click(tiles[0]!);
+    await ue.click(screen.getByRole('button', { name: 'Send leave request' }));
+    expect(await screen.findByText('Casual leave needs 2 days notice.')).toBeInTheDocument();
+  });
+
   it('a wrong code or PIN shows the same plain refusal', async () => {
     const live = kiosk({ onIdentify: vi.fn(async () => { throw new Error("Code or PIN didn't match. After 5 wrong tries a code locks for 15 minutes."); }) });
     render(<KioskScreen live={live} />);

@@ -1,11 +1,12 @@
 // TIM-13 · Kiosk, live: the designed KioskScreen (field.tsx) on a real tablet. Same frame, keypad, cards and texts;
 // a person is identified by code + PIN or the ID-card QR, sees only their first name, checks in or out, sees their
-// requests, and the screen clears itself. Not here yet (feature not built): training attendance and leave at the kiosk.
+// requests, marks training attendance, applies leave, and the screen clears itself. An unknown employee code is told
+// apart before the PIN (founder decision, company setting kiosk.tell_unknown_code).
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowLeft, Delete, QrCode } from 'lucide-react';
 import { KioskFrame } from '../_kit/frames';
-import { Button } from '../../components/button';
-import { Badge } from '../../components/display';
+import { Button, ButtonGroup } from '../../components/button';
+import { Badge, DayDate } from '../../components/display';
 import { InlineAlert } from '../../components/feedback';
 import { FormField } from '../../components/field';
 import { TextField } from '../../components/inputs';
@@ -23,6 +24,16 @@ export interface KioskToday {
   requests: { id: string; kind: string; label: string; from: string; to: string; days: number; status: string }[];
 }
 export interface KioskPunched { accepted: boolean; message: string; at: string; kind: string }
+/** Apply leave at the kiosk: the kinds offered with days left (after pending requests), sick leave, the approver, the next days. */
+export interface KioskLeave {
+  today: string;
+  types: { id: string; name: string; kind: string; available: number; pending: number }[];
+  sick: { name: string; available: number } | null;
+  approver: string | null;
+  days: { on: string; note: 'On leave' | 'Requested' | 'Weekly off' | 'Holiday' | null; holiday: string | null; hint: string | null }[];
+}
+/** Today's training sessions at this kiosk's location. */
+export interface KioskTraining { zone: string; sessions: { id: string; title: string; room: string | null; startsAt: string; endsAt: string; opensAt: string; marked: boolean }[] }
 export interface LiveKiosk {
   /** setup: no secret on this tablet yet; loading: reading the kiosk; ready. */
   state: 'setup' | 'loading' | 'ready';
@@ -33,11 +44,17 @@ export interface LiveKiosk {
   onIdentify: (input: { method: 'pin'; code: string; pin: string } | { method: 'qr'; qr: string }) => Promise<{ person: string; firstName: string }>;
   onToday: (person: string) => Promise<KioskToday>;
   onPunch: (person: string, kind: 'in' | 'out') => Promise<KioskPunched>;
+  /** Before the PIN: rejects (code UNKNOWN_CODE) when no one has this code. */
+  onCheckCode?: (code: string) => Promise<unknown>;
+  onTraining?: (person: string) => Promise<KioskTraining>;
+  onMarkTraining?: (person: string, sessionId: string) => Promise<unknown>;
+  onLeave?: (person: string) => Promise<KioskLeave>;
+  onApplyLeave?: (person: string, input: { leaveTypeId: string; from: string; to: string }) => Promise<unknown>;
   /** Seconds before a screen with a person on it clears itself (30). */
   clearAfter?: number;
 }
 
-type View = 'code' | 'qr' | 'pin' | 'menu' | 'checked_in' | 'status';
+type View = 'code' | 'qr' | 'pin' | 'menu' | 'checked_in' | 'status' | 'training' | 'leave';
 const STATUS_TONE: Record<string, 'success' | 'warning' | 'danger' | 'neutral'> = { approved: 'success', pending: 'warning', rejected: 'danger', cancelled: 'neutral', cancel_pending: 'warning', withdrawn: 'neutral' };
 const STATUS_TEXT: Record<string, string> = { approved: 'Approved', pending: 'Pending', rejected: 'Not approved', cancelled: 'Cancelled', cancel_pending: 'Cancel asked', withdrawn: 'Withdrawn' };
 const local = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
@@ -45,6 +62,12 @@ const range = (a: string, b: string) => (a === b ? formatDate(local(a)) : `${for
 const clock = (iso: string, zone: string) => new Date(iso).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: zone }).toLowerCase();
 const more = (n: number) => (n === 1 ? '1 more digit' : `${n} more digits`);
 const reqRow = { flexWrap: 'nowrap' } as const;
+const daysText = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`;
+const short = (name: string) => name.replace(/ leave$/i, '');
+/** Equal-width day tiles: five across on the kiosk, two on a phone (as the design). */
+const dayGrid = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(calc(var(--yx-space-16) * 1.75), 1fr))', gap: 'var(--yx-space-2)', width: '100%' } as const;
+const dayTile = { height: 'auto', minHeight: 'var(--yx-control-lg)', padding: 'var(--yx-space-2)', width: '100%' } as const;
+const errCode = (e: unknown) => (e as { code?: string } | null)?.code;
 
 /** The camera reads the ID-card QR where the browser can (BarcodeDetector); otherwise it says so. */
 function QrReader({ onCode }: { onCode: (text: string) => void }) {
@@ -144,6 +167,14 @@ export function LiveKioskScreen({ live }: { live: LiveKiosk }) {
   const [today, setToday] = useState<KioskToday | null>(null);
   const [punched, setPunched] = useState<KioskPunched | null>(null);
   const [busy, setBusy] = useState(false);
+  const [unknown, setUnknown] = useState(false);
+  const [training, setTraining] = useState<KioskTraining | null>(null);
+  const [marked, setMarked] = useState<string | null>(null);
+  const [leave, setLeave] = useState<KioskLeave | null>(null);
+  const [leaveType, setLeaveType] = useState<string | null>(null);
+  const [from, setFrom] = useState<string | null>(null);
+  const [to, setTo] = useState<string | null>(null);
+  const [sent, setSent] = useState<{ type: string; days: string[] } | null>(null);
   const [touched, setTouched] = useState(Date.now());
   const [left, setLeft] = useState(live.clearAfter ?? 30);
   const clearAfter = live.clearAfter ?? 30;
@@ -156,6 +187,13 @@ export function LiveKioskScreen({ live }: { live: LiveKiosk }) {
     setToday(null);
     setPunched(null);
     setProblem(null);
+    setUnknown(false);
+    setTraining(null);
+    setMarked(null);
+    setLeave(null);
+    setSent(null);
+    setFrom(null);
+    setTo(null);
   };
   // Any screen past the code clears itself after a short time without a touch.
   useEffect(() => {
@@ -185,6 +223,7 @@ export function LiveKioskScreen({ live }: { live: LiveKiosk }) {
   const max = onCode ? digits : 4;
   const press = (k: string) => {
     setProblem(null);
+    setUnknown(false);
     touch();
     const set = onCode ? setCode : setPin;
     set(k === 'del' ? value.slice(0, -1) : value.length < max ? value + k : value);
@@ -200,11 +239,73 @@ export function LiveKioskScreen({ live }: { live: LiveKiosk }) {
       )}
     </div>
   );
-  const nextCode = () => {
+  const nextCode = async () => {
     if (code.length < digits) return setProblem(`Type all ${digits} digits of your code.`);
+    if (unknown) return setProblem('This code is not known. Check it and type it again.');
     setProblem(null);
+    if (live.onCheckCode) {
+      setBusy(true);
+      try {
+        await live.onCheckCode(`${info?.codePrefix ?? ''}${code}`);
+      } catch (e) {
+        if (errCode(e) === 'UNKNOWN_CODE') setUnknown(true);
+        else fail(e);
+        return;
+      } finally {
+        setBusy(false);
+      }
+    }
     touch();
     setV('pin');
+  };
+  const openTraining = async () => {
+    if (!who || !live.onTraining) return;
+    setBusy(true);
+    setProblem(null);
+    try {
+      setTraining(await live.onTraining(who.person));
+      setMarked(null);
+      touch();
+      setV('training');
+    } catch (e) {
+      fail(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const mark = async (id: string) => {
+    if (!who || !live.onMarkTraining) return;
+    setBusy(true);
+    setProblem(null);
+    try {
+      await live.onMarkTraining(who.person, id);
+      setMarked(id);
+      touch();
+    } catch (e) {
+      fail(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const openLeave = async () => {
+    if (!who || !live.onLeave) return;
+    setBusy(true);
+    setProblem(null);
+    try {
+      const l = await live.onLeave(who.person);
+      setLeave(l);
+      // Opens on the first type with days left.
+      setLeaveType((l.types.find((t) => t.available > 0) ?? l.types[0])?.id ?? null);
+      setFrom(null);
+      setTo(null);
+      setSent(null);
+      touch();
+      setV('leave');
+    } catch (e) {
+      fail(e);
+    } finally {
+      setBusy(false);
+    }
   };
   const sendPin = async () => {
     if (pin.length < 4) return setProblem('Type all 4 digits of your PIN.');
@@ -254,11 +355,13 @@ export function LiveKioskScreen({ live }: { live: LiveKiosk }) {
         <p className="yx-tim-big">Enter your employee code</p>
         <p className="yx-tim-big yx-tim-code" aria-live="polite">{info?.codePrefix}{code.padEnd(digits, '_')}</p>
         {keypad}
-        {problem ? <InlineAlert tone="danger" title={problem.startsWith('Type all') ? 'Code not complete' : "That didn't work"}>{problem}</InlineAlert> : <p className="yx-tim-muted">{code.length < digits ? more(digits - code.length) : 'Code complete'}</p>}
+        {unknown ? (
+          <InlineAlert tone="danger" title={`No one with code ${info?.codePrefix ?? ''}${code}`}>{problem ?? 'Check the code on your ID card and try again.'}</InlineAlert>
+        ) : problem ? <InlineAlert tone="danger" title={problem.startsWith('Type all') ? 'Code not complete' : "That didn't work"}>{problem}</InlineAlert> : <p className="yx-tim-muted">{code.length < digits ? more(digits - code.length) : 'Code complete'}</p>}
         {live.offline && <InlineAlert tone="warning" title="No connection">Check-ins resume when the tablet is back online. Check the Wi-Fi.</InlineAlert>}
         <div className="yx-tim-row">
           {useQr && <Button icon={QrCode} onClick={() => { setProblem(null); touch(); setV('qr'); }}>Scan ID card</Button>}
-          <Button variant="primary" onClick={nextCode}>Next</Button>
+          <Button variant="primary" loading={busy} onClick={() => void nextCode()}>Next</Button>
         </div>
         <p className="yx-tim-muted">{nowText}</p>
       </div>
@@ -300,6 +403,8 @@ export function LiveKioskScreen({ live }: { live: LiveKiosk }) {
         {problem && <InlineAlert tone="danger" title="That didn't work">{problem}</InlineAlert>}
         <div className="yx-tim-kiosk-grid">
           <Button variant="primary" loading={busy} onClick={() => void punch(today.next)}>{today.next === 'in' ? 'Check in' : 'Check out'}</Button>
+          {live.onTraining && <Button onClick={() => void openTraining()}>Training</Button>}
+          {live.onLeave && <Button onClick={() => void openLeave()}>Apply leave</Button>}
           <Button onClick={() => { touch(); setV('status'); }}>My requests</Button>
           <Button onClick={clear}>Done</Button>
         </div>
@@ -317,7 +422,122 @@ export function LiveKioskScreen({ live }: { live: LiveKiosk }) {
         <p className="yx-tim-muted" aria-live="polite">Signing out in {left} s</p>
       </div>
     );
-  else if (v === 'status' && today)
+  else if (v === 'training' && training) {
+    const s = training.sessions.find((x) => x.id === marked) ?? training.sessions.find((x) => !x.marked) ?? training.sessions[0];
+    const open = s ? new Date(s.opensAt).getTime() <= Date.now() : false;
+    body =
+      s && (marked === s.id || s.marked) ? (
+        <div className="yx-tim-kiosk-card" role="status">
+          <Badge tone="success">Marked present</Badge>
+          <p className="yx-tim-big">{s.title} · {clock(s.startsAt, zone)}</p>
+          <Button onClick={() => { setMarked(null); touch(); setV('menu'); }}>Done</Button>
+          <p className="yx-tim-muted" aria-live="polite">Signing out in {left} s</p>
+        </div>
+      ) : (
+        <div className="yx-tim-kiosk-card">
+          <p className="yx-tim-big">Mark training attendance</p>
+          {s ? <p><strong>{s.title}</strong> · {clock(s.startsAt, zone)}{s.room ? ` · ${s.room}` : ''}</p> : <p className="yx-tim-muted">No training here today.</p>}
+          {problem && <InlineAlert tone="danger" title="That didn't work">{problem}</InlineAlert>}
+          <div className="yx-tim-row">
+            <Button icon={ArrowLeft} onClick={() => { setProblem(null); touch(); setV('menu'); }}>Back</Button>
+            {s && <Button variant="primary" loading={busy} onClick={() => (open ? void mark(s.id) : setProblem(`Training opens at ${clock(s.opensAt, zone)}.`))}>Mark me present</Button>}
+          </div>
+          {s && !open && <p className="yx-tim-muted">Opens at {clock(s.opensAt, zone)}</p>}
+          <p className="yx-tim-muted" aria-live="polite">Signing out in {left} s</p>
+        </div>
+      );
+  } else if (v === 'leave' && leave && sent) {
+    const t = leave.types.find((x) => x.id === sent.type);
+    body = (
+      <div className="yx-tim-kiosk-card" role="status">
+        <Badge tone="success">Sent</Badge>
+        <p className="yx-tim-big">{t?.name} · {sent.days.map((d) => formatDate(local(d))).join(', ')} · {daysText(sent.days.length)}</p>
+        <p className="yx-tim-muted">{leave.approver ? `Sent to ${leave.approver}` : 'Sent for approval'} · see the answer in My requests.</p>
+        <Button onClick={() => { setSent(null); touch(); if (who) void live.onToday(who.person).then(setToday, () => undefined); setV('menu'); }}>Done</Button>
+        <p className="yx-tim-muted" aria-live="polite">Signing out in {left} s</p>
+      </div>
+    );
+  } else if (v === 'leave' && leave) {
+    const type = leave.types.find((x) => x.id === leaveType) ?? null;
+    const booked = (n: string | null) => n === 'On leave' || n === 'Requested';
+    const end = to ?? from;
+    const picked = leave.days.filter((d) => !d.note && from && end && d.on >= from && d.on <= end).map((d) => d.on);
+    const after = type ? type.available - picked.length : 0;
+    const pickDay = (on: string) => {
+      setProblem(null);
+      touch();
+      // A range can't run across leave that is already booked: start a new range instead.
+      if (!from || to || on < from || leave.days.some((x) => booked(x.note) && x.on > from && x.on < on)) {
+        setFrom(on);
+        setTo(null);
+      } else setTo(on);
+    };
+    const send = async () => {
+      if (!who || !type || !live.onApplyLeave) return;
+      if (picked.length === 0) return setProblem('Pick at least one day.');
+      if (after < 0) return setProblem('Not enough leave left for these days.');
+      setBusy(true);
+      setProblem(null);
+      try {
+        await live.onApplyLeave(who.person, { leaveTypeId: type.id, from: picked[0]!, to: picked[picked.length - 1]! });
+        setSent({ type: type.id, days: picked });
+        setFrom(null);
+        setTo(null);
+        touch();
+      } catch (e) {
+        fail(e);
+      } finally {
+        setBusy(false);
+      }
+    };
+    const pending = leave.types.filter((x) => x.pending > 0);
+    body = (
+      <div className="yx-tim-kiosk-card">
+        <p className="yx-tim-big">Apply leave</p>
+        {leave.types.length === 0 ? (
+          <p className="yx-tim-muted">No leave you can apply for here. Ask your supervisor.</p>
+        ) : (
+          <ButtonGroup aria-label="Leave type">
+            {leave.types.map((x) => (
+              <Button key={x.id} size="lg" aria-pressed={leaveType === x.id} onClick={() => (x.available <= 0 ? setProblem('No days of this leave are left.') : (setProblem(null), touch(), setLeaveType(x.id)))}>
+                {short(x.name)} · {x.available} left
+              </Button>
+            ))}
+          </ButtonGroup>
+        )}
+        <p className="yx-tim-muted">
+          {pending.map((x) => `${daysText(x.pending)} of ${x.name.toLowerCase()} waiting for approval. `).join('')}
+          {leave.sick ? `${leave.sick.name} (${daysText(leave.sick.available)} left): ask ${leave.approver ?? 'your supervisor'} to record sick days.` : ''}
+        </p>
+        <p className="yx-tim-muted">Tap the first day, then the last day.</p>
+        <div style={dayGrid} role="group" aria-label="Leave dates">
+          {leave.days.map((d) => {
+            const on = !!from && !!end && d.on >= from && d.on <= end && !d.note;
+            const line2 = d.note ?? d.hint;
+            return (
+              <Button key={d.on} size="lg" style={dayTile} variant={on ? 'primary' : 'secondary'} aria-pressed={on} onClick={() => (d.note ? setProblem(`You cannot pick this day: ${d.note}.`) : pickDay(d.on))}>
+                <span style={{ display: 'flex', flexDirection: 'column' }}>
+                  <DayDate date={local(d.on)} stacked />
+                  {line2 && <span className="yx-tim-note" style={{ color: 'inherit' }}>{line2}</span>}
+                </span>
+              </Button>
+            );
+          })}
+        </div>
+        {leave.days.some((d) => d.hint) && <p className="yx-tim-muted">{leave.days.filter((d) => d.hint).map((d) => `${formatDate(local(d.on))} is a holiday (${d.holiday}) you are rostered to work.`).join(' ')}</p>}
+        <p className="yx-tim-muted">
+          {picked.length === 0 ? 'No working days picked' : `${picked.map((d) => formatDate(local(d))).join(', ')} · ${daysText(picked.length)} · balance after: ${daysText(after)}`}{leave.approver ? ` · goes to ${leave.approver}` : ''}
+        </p>
+        {problem && <InlineAlert tone="danger" title="That didn't work">{problem}</InlineAlert>}
+        <div className="yx-tim-row">
+          <Button icon={ArrowLeft} onClick={() => { setProblem(null); touch(); setV('menu'); }}>Back</Button>
+          {type && <Button variant="primary" loading={busy} onClick={() => void send()}>Send leave request</Button>}
+        </div>
+        {type && after < 0 && <p className="yx-tim-muted">Not enough {type.name.toLowerCase()} for these days ({type.available} left after pending requests)</p>}
+        <p className="yx-tim-muted" aria-live="polite">Signing out in {left} s</p>
+      </div>
+    );
+  } else if (v === 'status' && today)
     body = (
       <div className="yx-tim-kiosk-card">
         <p className="yx-tim-big">My requests</p>

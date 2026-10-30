@@ -252,7 +252,7 @@ export function MobileCheckInSheet({ scenario = 'inside', saved: savedInit = fal
    TIM-13 · Kiosk
    ===================================================================== */
 
-export type KioskView = 'code' | 'unknown_code' | 'pin' | 'menu' | 'checked_in' | 'training' | 'leave' | 'status' | 'wrong_pin' | 'qr';
+export type KioskView = 'code' | 'unknown_code' | 'pin' | 'menu' | 'checked_in' | 'training' | 'training_none' | 'leave' | 'status' | 'wrong_pin' | 'qr';
 
 /** The kiosk's sample person and her data (TEAM t10, balances from time-data). */
 const KAVITHA = TEAM.find((t) => t.id === 't10')!;
@@ -445,6 +445,13 @@ function SampleKioskScreen({ view = 'code' }: { view?: KioskView }) {
             <Button variant="primary" onClick={() => say(toMin(KIOSK_IN) < toMin(TRAINING_OPENS) && `Training opens at ${fmt12(TRAINING_OPENS)}.`, () => setMarked(true))}>Mark me present</Button>
           </div>
           {toMin(KIOSK_IN) < toMin(TRAINING_OPENS) && <p className="yx-tim-muted">Opens at {fmt12(TRAINING_OPENS)}</p>}
+        </div>
+      )}
+      {v === 'training_none' && (
+        <div className="yx-tim-kiosk-card">
+          <p className="yx-tim-big">Mark training attendance</p>
+          <p className="yx-tim-muted">No training here today.</p>
+          <Button icon={ArrowLeft} onClick={() => setV('menu')}>Back</Button>
         </div>
       )}
       {v === 'leave' && confirm && sentLeave && (

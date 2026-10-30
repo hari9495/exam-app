@@ -13,5 +13,6 @@ export const WrongPin: S = { name: 'Wrong PIN', args: { view: 'wrong_pin' } };
 export const Menu: S = { name: 'Menu · balance, proxy request banner', args: { view: 'menu' } };
 export const CheckedIn: S = { name: 'Checked in', args: { view: 'checked_in' } };
 export const Training: S = { name: 'Training attendance', args: { view: 'training' } };
+export const TrainingNone: S = { name: 'Training · none today', args: { view: 'training_none' } };
 export const Leave: S = { name: 'Apply leave', args: { view: 'leave' } };
 export const Status: S = { name: 'Request status', args: { view: 'status' } };
