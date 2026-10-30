@@ -6739,6 +6739,92 @@
     "note": "Positive and negative. The job runs only for companies whose privacy.erasure.enabled is on."
   },
   {
+    "id": "MT-PPL-E-01",
+    "area": "People · Special data erasure scope (30 Oct 2026)",
+    "screen": "Dry run lists whose data (name, employee code, last day or joining cancelled)",
+    "url": "http://localhost:3000/yx/settings/access-settings",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi); the developer sets up the people named below and runs the nightly job once (privacy-erasure). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Ask the developer for: Ravi (left more than a year ago, Aadhaar and a disability declaration with a certificate), Farhan (an offer whose joining was cancelled more than a year ago, Aadhaar typed in the joining form), Neel (joining cancelled last month), Noor (serving notice, last day next week).",
+      "2. With the job Off, open Settings › Access and privacy and find the card Deleting Special data.",
+      "3. Read the tables If it ran today, it would delete and Whose data.",
+      "4. Ask the developer to check the audit log for the last few minutes."
+    ],
+    "expected": "Step 3: Whose data lists Ravi with his employee code and last day, and Farhan with None (never joined) and Joining cancelled <date>; dates look like 3 Nov 2026. The counts include 1 disability detail. No Aadhaar digits or check notes anywhere. Negative: Neel (cancelled last month) and Noor (on notice) are not listed. Negative, step 4: opening the card wrote nothing to the audit log.",
+    "stories": [
+      "Organisation AccessAndPrivacyErasureDryRun"
+    ],
+    "note": "Positive and negative. GET people/privacy-erasure, company-wide org.settings.manage."
+  },
+  {
+    "id": "MT-PPL-E-02",
+    "area": "People · Special data erasure scope (30 Oct 2026)",
+    "screen": "Only company-wide settings managers see the dry run",
+    "url": "http://localhost:3000/yx/settings/access-settings",
+    "account": "A plant HR who manages settings for one legal entity only, and an employee (ask the developer for the demo logins). Browser window 1278 x 635.",
+    "steps": [
+      "1. Sign in as the plant HR and open Settings › Access and privacy.",
+      "2. Sign in as an employee and open the same address.",
+      "3. Sign in as the second demo company's admin and open the page."
+    ],
+    "expected": "Negative, step 1: no Deleting Special data card (turning the switch on is refused). Negative, step 2: no access to the page. Step 3: the second company sees only its own people; none of the first company's names.",
+    "stories": [
+      "Organisation AccessAndPrivacyErasureNoAccess"
+    ],
+    "note": "Negative. The API answers 403 to anyone without company-wide org.settings.manage."
+  },
+  {
+    "id": "MT-PPL-E-03",
+    "area": "People · Special data erasure scope (30 Oct 2026)",
+    "screen": "The run: disability details and certificate go, the yes stays",
+    "url": "http://localhost:3000/yx/settings/access-settings",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi); the developer sets up the people named below and runs the nightly job once (privacy-erasure). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Turn the job On (Change, On: deleted every night, Save).",
+      "2. Ask the developer to run the job once. Reload.",
+      "3. As the HR diversity role, open the disability declarations list.",
+      "4. Ask the developer to read Ravi's declaration row and Documents."
+    ],
+    "expected": "Step 1: toast Saved. (5 s). Step 2: Last run: … 1 disability declaration; Whose data shows No one's data is due. Step 3: Ravi is no longer listed (no details to show). Step 4: the answer is still yes, the details and the certificate are gone, the certificate file is gone. Negative: Noor (on notice) still has her details and certificate.",
+    "stories": [
+      "Organisation AccessAndPrivacyErasureOn"
+    ],
+    "note": "Positive and negative. Founder answer (1)."
+  },
+  {
+    "id": "MT-PPL-E-04",
+    "area": "People · Special data erasure scope (30 Oct 2026)",
+    "screen": "The run: an offer that never joined, counted from the cancellation day",
+    "url": "http://localhost:3000/yx/settings/access-settings",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi); the developer sets up the people named below and runs the nightly job once (privacy-erasure). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. After the run in MT-PPL-E-03, ask the developer to open Farhan's joining (pre-boarding) and documents.",
+      "2. Ask the same for Neel.",
+      "3. In the second demo company (job Off), ask for its never-joined offer."
+    ],
+    "expected": "Step 1: Farhan's Aadhaar copy is gone; the Aadhaar in his joining form is gone, his PAN and address are still there; the background check shows its result (clear or discrepancy) without the note. Negative, step 2: Neel (cancelled last month) is untouched. Negative, step 3: the other company is untouched.",
+    "stories": [
+      "Organisation AccessAndPrivacyErasureOnDue"
+    ],
+    "note": "Positive and negative. Founder answer (4). The cancellation day is recorded when HR cancels a joiner."
+  },
+  {
+    "id": "MT-PPL-E-05",
+    "area": "People · Special data erasure scope (30 Oct 2026)",
+    "screen": "Kept after a run: consent records, check results, Aadhaar in pay records and filings",
+    "url": "http://localhost:3000/yx/settings/access-settings",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi); the developer sets up the people named below and runs the nightly job once (privacy-erasure). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. After the run, open Ravi in People and look at his payslips and Form 16 / PF filings (Pay).",
+      "2. Ask the developer for Ravi's and Farhan's consent records and background check rows."
+    ],
+    "expected": "Step 1: payslips and filings still show his Aadhaar where they did before. Step 2: both consent records are still there; each check still shows Clear or Discrepancy. Negative: none of these changed after a second run.",
+    "stories": [
+      "Organisation AccessAndPrivacyErasureOn"
+    ],
+    "note": "Positive and negative. Founder answers (2), (3), (5)."
+  },
+  {
     "id": "MT-TIM-G-01",
     "area": "Time · Design gaps made live (30 Oct 2026)",
     "screen": "Muster › one person (Manager · one person) · positive",

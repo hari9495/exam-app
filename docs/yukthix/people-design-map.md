@@ -77,6 +77,22 @@ counted from the day the joining was cancelled; (5) Aadhaar inside pay records a
 its own period); (6) the dry run lists name, employee code and last day, not only counts; (7) keep the narrow owner
 database function rather than delete rights for the app role.
 
+**Built (branch `feat/yukthix-erasure-scope`, 30 Oct 2026):**
+
+| answer | what the job does now | where | tests |
+|---|---|---|---|
+| (1) disability | the yes/no answer stays (`disability_declarations.answer`); after the period the sealed details go and `erased_at` is set; the `disability_certificate` document goes with its file. The HR diversity list skips erased rows (no details to show) | `erasure.service.ts`; migration `20261311000200_privacy_erasure_scope` (column `erased_at`, details check allows an erased "yes", owner function adds the certificate type and clears the declaration's link) | e2e "scope: the run deletes the disability details…" |
+| (2) consent records | kept | not touched by the job | same e2e: count stays 1 |
+| (3) check result | kept (clear / discrepancy); note and report link go | as before | same e2e: `clear` and `discrepancy` stay |
+| (4) never joined | included, counted from the cancellation day (`preboardings.cancelled_on`, set by the cancel action; filled from `updated_at` for older ones). The Aadhaar typed in the pre-boarding portal (sealed answers) goes too, for leavers as well; the other answers stay sealed | owner function: "former employee" also accepts a cancelled joining with no employment; the period runs from the cancellation day at that joining's legal entity | e2e: Nora (2024) erased, Neel (a month ago) and Bina (company B) untouched; the function refuses Neel (period), a stranger, someone joining again; lifecycle-6b checks the cancellation day |
+| (5) Aadhaar in pay | never erased (payroll's own period; the job cannot even read pay tables) | — | e2e: payslip snapshot and PF filing keep it |
+| (6) dry run lists people | `GET people/privacy-erasure` adds `who`: name, employee code (null if never joined), last day or cancellation day; company-wide `org.settings.manage` only; reading it is never audited | card "Deleting Special data", table "Whose data" | e2e: exact list, audit count unchanged, emp/plant HR 403, company B sees only its own; yx-ui `org.test.tsx`; web `yx-org-pages.test.tsx` |
+| (7) owner function | kept narrow: `CREATE OR REPLACE`, every guard of `20261311000100` kept (switched off, working or on notice, period not passed) | migration `20261311000200` | e2e (existing and new) |
+
+Stories (Organisation): `AccessAndPrivacyErasureDryRun` (off, whose data, live), `AccessAndPrivacyErasureOn` (on, no one due:
+empty state, last run with one failure, live), `AccessAndPrivacyErasureOnDue` (on, people due incl. a never-joined offer,
+live), `AccessAndPrivacyErasureNoAccess` (no company-wide settings rights: no card, live). Manual steps MT-PPL-E-01 … 05.
+
 ## Founder answers, 30 Oct 2026 (People small-gap follow-ups, "all ok")
 (10) "Possible same person" stays in the menu for 90 days after any merge; (11) "When a fixed-term contract ends"
 (contract_end.action) joins the Fixed-term contracts settings; (12) an erasure job deletes personal data when its
@@ -1177,7 +1193,7 @@ deletes (`joining-live.test.tsx` for the portal; the history tests for `ChangeDr
    module.
    *Suggested: leave them as "feature not built" until that module is planned;* they need agencies and deployments, a
    separate job (L).
-9. **Special data erasure (follow-up 12): what counts as Special data?** Built only what the setting names ("Aadhaar,
+9. **Answered 30 Oct 2026, built (see "Founder answers, 30 Oct 2026 (what Special data erasure deletes)").** Special data erasure (follow-up 12): what counts as Special data? Built only what the setting names ("Aadhaar,
    background checks"): the Aadhaar on the record, the `aadhaar` and `bgv_report` documents, background check notes.
    Not built, waiting for an answer:
    - disability declarations and the `disability_certificate` document (Special by class; the RPwD rules may need the
@@ -1189,7 +1205,7 @@ deletes (`joining-live.test.tsx` for the portal; the history tests for `ChangeDr
    - joiners who never joined (cancelled pre-boarding) and their checks. *Suggested: the same job, counted from the
      cancellation day.*
    - Aadhaar inside pay records and statutory filings. *Suggested: never; pay records keep payroll's own period.*
-10. **Erasure dry run: counts only, or also names?** HR sees four counts. *Suggested: add a list of the people (name,
+10. **Answered 30 Oct 2026, built (names, code, last day).** Erasure dry run: counts only, or also names? HR sees four counts. *Suggested: add a list of the people (name,
     code, last day) for HR to check before turning it on;* names of former employees are already visible to HR.
 
 ## Appendix: the count script
