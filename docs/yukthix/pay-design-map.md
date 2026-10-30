@@ -122,6 +122,17 @@ exists); (26) the Rs 100 minimum scales by eligible months; (27) any rate from t
 4-year carry stays fixed; (29) leavers' bonus is paid in the off-cycle bonus run; (30) notify the approver on send, and a
 Form C register export.
 
+
+**Founder answers, 30 Oct 2026 (last 10):** (1) bonus eligibility uses the salary on the month's last day by default,
+and HR can change the rule per company (a setting: last day, first day, or the highest rate in the month); (2) Form C as
+both CSV and a PDF (letterhead, signature boxes) now; (3) Form C lists eligible employees only. Managers above the
+Rs 21,000 limit get no statutory bonus; a company's own performance or festival bonus for them is paid through one-time
+pay or an incentive plan, not this register; (4) a released hold goes into the next regular run of the same legal
+entity; (5) loan interest and limit settings get a screen in Settings > Payroll & Statutory; (6) the preparer never
+changes a challan amount; (7) back to resident needs HR approval, no document; (8) early-closure interest stays simple
+daily interest; (9) "Correct this month" only on PF and ESI cards; (10) a PAY-23 design story for the residency row
+first, then the live row matches it.
+
 ## 1. Live pages
 
 One row per live Pay page. "Keep" is what the live copy does that the design does not show yet: states, actions,
