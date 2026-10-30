@@ -186,3 +186,16 @@ export interface SettingInput {
 
 /** The records each scope can name, by scope. */
 export type SettingScopeChoices = Partial<Record<SettingScope, { value: string; label: string }[]>>;
+
+/** GET people/privacy-erasure: what the nightly Special data erasure would delete today, and its last run (counts only). */
+export interface ErasureCounts {
+  people: number;
+  aadhaar: number;
+  documents: number;
+  backgroundChecks: number;
+}
+export interface ErasureReport {
+  enabled: boolean;
+  due: ErasureCounts;
+  lastRun: (ErasureCounts & { at: string; failed: number }) | null;
+}

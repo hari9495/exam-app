@@ -1,6 +1,6 @@
 // Story and test data in the YukthiX story world (review/RULES.md "Data facts"): Kaveri Foods, fictional
 // identifiers, documentation IP ranges. TODAY is 29 Sep 2026.
-import type { CompanyRules, LegalEntity, MasterLists, OrgLocation, PayRange, SettingDef, SettingOverride, SettingScopeChoices, StateOption } from './types';
+import type { CompanyRules, ErasureReport, LegalEntity, MasterLists, OrgLocation, PayRange, SettingDef, SettingOverride, SettingScopeChoices, StateOption } from './types';
 
 export const TODAY_ISO = '2026-09-29';
 
@@ -125,6 +125,7 @@ export const SETTING_REGISTRY: Record<string, SettingDef> = {
   'privacy.retention.internal_years': { label: 'Keep employment records after someone leaves (years)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['3', '5', '8', '10'], default: '8', guard: 'access.role.manage' },
   'privacy.retention.personal_years': { label: 'Keep personal details after someone leaves (years)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '3', '5', '8'], default: '3', guard: 'access.role.manage' },
   'privacy.retention.special_years': { label: 'Keep Special data (Aadhaar, background checks) after someone leaves (years)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '1', '3'], default: '1', guard: 'access.role.manage' },
+  'privacy.erasure.enabled': { label: 'Delete Special data when its period ends', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   'contract.max_years': { label: 'A fixed-term contract lasts at most (years from joining)', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['1', '2', '3', '4', '5', 'none'], default: '3' },
   'contract_end.action': { label: 'When a fixed-term contract ends', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['alert', 'auto_exit'], default: 'alert' },
   'probation.max_total_months': { label: 'Probation with extensions lasts at most (months)', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['6', '9', '12', '18', '24'], default: '12' },
@@ -189,3 +190,8 @@ export const SETTING_CHOICES: SettingScopeChoices = {
   employment_type: MASTERS['employment-types'].map((t) => ({ value: t.id, label: t.name })),
   grade: MASTERS.grades.map((g) => ({ value: g.id, label: g.name })),
 };
+
+/** Settings › Access and privacy: the Special data erasure, off, before HR's first run (dry run only). */
+export const ERASURE_DRY_RUN: ErasureReport = { enabled: false, due: { people: 4, aadhaar: 4, documents: 6, backgroundChecks: 3 }, lastRun: null };
+/** On, after a night's run in which one person could not be done. */
+export const ERASURE_ON: ErasureReport = { enabled: true, due: { people: 0, aadhaar: 0, documents: 0, backgroundChecks: 0 }, lastRun: { at: '2026-10-29T22:45:00Z', people: 4, aadhaar: 4, documents: 6, backgroundChecks: 3, failed: 1 } };

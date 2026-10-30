@@ -4,7 +4,7 @@ import { LegalEntitiesScreen } from './entities';
 import { LocationsScreen } from './locations';
 import { StructureScreen } from './structure';
 import { CompanySettingsScreen, type CompanySettingsScreenProps } from './settings';
-import { ENTITIES, LOCATIONS, MASTERS, PAY_RANGES, RULES, SETTING_CHOICES, SETTING_OVERRIDES, SETTING_REGISTRY, STATES, TODAY_ISO } from './data';
+import { ENTITIES, ERASURE_DRY_RUN, ERASURE_ON, LOCATIONS, MASTERS, PAY_RANGES, RULES, SETTING_CHOICES, SETTING_OVERRIDES, SETTING_REGISTRY, STATES, TODAY_ISO } from './data';
 
 const meta: Meta = { title: 'Screens/Settings/Organisation', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -136,6 +136,26 @@ export const AccessAndPrivacy: S = {
   render: () => (
     <Frame active="access-settings">
       <CompanySettingsScreen section="access" {...settings} />
+    </Frame>
+  ),
+};
+
+/** Follow-up 12: Special data erasure is off; HR reads the dry run (what it would delete today) before turning it on. */
+export const AccessAndPrivacyErasureDryRun: S = {
+  name: 'Access and privacy · Special data erasure · dry run (off)',
+  render: () => (
+    <Frame active="access-settings">
+      <CompanySettingsScreen section="access" {...settings} erasure={ERASURE_DRY_RUN} />
+    </Frame>
+  ),
+};
+
+/** Erasure on: nothing due; the last night's run, with one person not done (tried again the next night). */
+export const AccessAndPrivacyErasureOn: S = {
+  name: 'Access and privacy · Special data erasure · on, last run',
+  render: () => (
+    <Frame active="access-settings">
+      <CompanySettingsScreen section="access" {...settings} overrides={[...SETTING_OVERRIDES, { id: 's-erase', key: 'privacy.erasure.enabled', scopeType: 'tenant', scopeId: 'org', value: 'on', validFrom: null }]} erasure={ERASURE_ON} />
     </Frame>
   ),
 };

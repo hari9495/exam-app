@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { Checkbox } from '../../components/choice';
 import { Badge } from '../../components/display';
 import { Button } from '../../components/button';
@@ -12,9 +12,11 @@ import { Select } from '../../components/select';
 import { useToast } from '../../components/notify';
 import { Card } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
+import { PlainTable } from '../../components/plain-table';
+import { formatDate } from '../../lib/format';
 import { dayKey } from '../../lib/dates';
 import { EditorDrawer, OrgPage, dateLabel, useConfirm, useRun } from './org-kit';
-import type { LoadState, SettingDef, SettingInput, SettingOverride, SettingScope, SettingScopeChoices } from './types';
+import type { ErasureCounts, ErasureReport, LoadState, SettingDef, SettingInput, SettingOverride, SettingScope, SettingScopeChoices } from './types';
 
 // Settings › company rules (P01 §4.6): every registered key with the value in force, where it comes from
 // (YX-ORG-12), and the overrides per entity, location, department, employment type or grade, most specific
@@ -60,6 +62,7 @@ const VALUE_LABEL: Record<string, Record<string, string>> = {
   'privacy.retention.internal_years': years(['3', '5', '8', '10']),
   'privacy.retention.personal_years': years(['1', '3', '5', '8']),
   'privacy.retention.special_years': { '0': 'Delete when they leave', ...years(['1', '3']) },
+  'privacy.erasure.enabled': { off: 'Off: nothing is deleted', on: 'On: deleted every night' },
   'contract.max_years': { '1': '1 year', '2': '2 years', '3': '3 years', '4': '4 years', '5': '5 years', none: 'No limit' },
   'contract_end.action': { alert: 'Remind HR to extend, convert or exit', auto_exit: 'Start the exit by itself a week before the end' },
   'pay.band.above_max': { warn: 'Warn only', cap: 'Cap at the maximum', block: 'Block' },
@@ -128,7 +131,7 @@ export const SETTING_SECTIONS: Record<SettingsArea, SettingsSection[]> = {
   access: [
     { title: 'Manager access', description: 'Managers always see their own reports. The company can narrow it.', keys: ['access.manager.view_scope'] },
     { title: 'Special permissions', description: 'A role that opens identity or bank data for many people asks for a confirmation first.', keys: ['access.risk.confidential_threshold'] },
-    { title: 'Privacy', description: 'Every look at identity, bank and pay data is recorded either way. Employees see how long each kind of data is kept on their Privacy page; pay documents follow the payroll rule.', keys: ['privacy.who_accessed', 'privacy.retention.internal_years', 'privacy.retention.personal_years', 'privacy.retention.special_years'] },
+    { title: 'Privacy', description: 'Every look at identity, bank and pay data is recorded either way. Employees see how long each kind of data is kept on their Privacy page; pay documents follow the payroll rule. Special data is deleted only once you turn that on; read what it would delete below first.', keys: ['privacy.who_accessed', 'privacy.retention.internal_years', 'privacy.retention.personal_years', 'privacy.retention.special_years', 'privacy.erasure.enabled'] },
     { title: 'Bank details', description: 'Protects pay from a hijacked account change.', keys: ['employee.bank_change.cooling_hours'] },
     { title: 'Home page', description: 'What employees see on their home. When net pay is shown, the amount stays hidden until the person selects Show amount, and hides again on every visit. Only their own pay, never anyone else’s.', keys: ['home.pay_on_employee_home'] },
   ],
@@ -332,6 +335,53 @@ export interface CompanySettingsScreenProps {
   onRemove: (id: string) => Promise<void>;
   /** Stories only: open the editor of a key, with the pressed-too-early errors shown. */
   story?: { editing?: string; tooEarly?: boolean };
+  /** Access and privacy: the Special data erasure's dry run and last run (company-wide settings managers only). */
+  erasure?: ErasureReport;
+}
+
+const ERASED: { key: keyof ErasureCounts; what: string }[] = [
+  { key: 'people', what: 'People who left (past the period)' },
+  { key: 'aadhaar', what: 'Aadhaar numbers on their records' },
+  { key: 'documents', what: 'Aadhaar copies and background check reports' },
+  { key: 'backgroundChecks', what: 'Background check notes' },
+];
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** Follow-up 12: what the nightly job would delete today, what it keeps, and its last run. Counts only. */
+function ErasureCard({ report }: { report: ErasureReport }) {
+  const last = report.lastRun;
+  return (
+    <Card title="Deleting Special data" className="yx-org__group">
+      <Text as="p" tone="secondary" size="sm" className="yx-org__group-desc">
+        {report.enabled
+          ? 'On. Every night, Special data past its period is deleted for good, and each deletion is recorded with counts only.'
+          : 'Off. Nothing is deleted. Check what it would delete today, then turn it on above.'}
+      </Text>
+      <PlainTable
+        label={report.enabled ? 'Due at the next run' : 'If it ran today, it would delete'}
+        caption={report.enabled ? 'Due at the next run' : 'If it ran today, it would delete'}
+        columns={[
+          { key: 'what', header: 'What', rowHeader: true, cell: (r: (typeof ERASED)[number]) => r.what },
+          { key: 'count', header: 'How many', cell: (r: (typeof ERASED)[number]) => report.due[r.key] },
+        ]}
+        rows={ERASED}
+        getRowId={(r) => r.key}
+      />
+      <Text as="p" tone="secondary" size="sm">
+        Kept: pay records (payslips, tax and filings) follow the payroll period; disability declarations and consent records are not deleted by this job.
+      </Text>
+      <Text as="p" size="sm">
+        {last
+          ? `Last run ${formatDate(new Date(last.at))}: ${plural(last.people, 'person', 'people')}, ${plural(last.aadhaar, 'Aadhaar number', 'Aadhaar numbers')}, ${plural(last.documents, 'document', 'documents')}, ${plural(last.backgroundChecks, 'check note', 'check notes')}.`
+          : 'It has not run yet.'}
+      </Text>
+      {last && last.failed > 0 && (
+        <InlineAlert tone="warning" title={`${plural(last.failed, 'person was', 'people were')} not done`}>
+          It tries again tomorrow night. If it keeps failing, contact YukthiX support.
+        </InlineAlert>
+      )}
+    </Card>
+  );
 }
 
 /** Settings › Organisation › Company rules, and Settings › People & Access › Access and privacy (P01 §4.6, P02 §4.2, §7). */
@@ -356,40 +406,43 @@ export function CompanySettingsScreen(props: CompanySettingsScreenProps) {
         const keys = s.keys.filter((k) => props.registry[k]);
         if (!keys.length) return null;
         return (
-          <Card key={s.title} title={s.title} className="yx-org__group">
-            {s.description && <Text as="p" tone="secondary" size="sm" className="yx-org__group-desc">{s.description}</Text>}
-            <div className="yx-org__rules">
-              {keys.map((k) => {
-                const def = props.registry[k];
-                const guard = def.guard && !props.heldGuards.includes(def.guard);
-                return (
-                  <SettingBlock
-                    key={k}
-                    settingKey={k}
-                    def={def}
-                    rows={props.overrides.filter((r) => r.key === k).sort((x, y) => SCOPES.indexOf(x.scopeType) - SCOPES.indexOf(y.scopeType) || (x.validFrom ?? '').localeCompare(y.validFrom ?? ''))}
-                    names={name}
-                    canEdit={props.canManage}
-                    blockedReason={props.canManage && guard ? 'Only an admin who manages roles and access changes this' : null}
-                    today={props.today}
-                    onEdit={() => setEditing({ key: k, n: Date.now() })}
-                    onRemove={(r) =>
-                      ask({
-                        title: `Remove this value for ${name(r)}?`,
-                        consequence: r.scopeType === 'tenant' ? `The company goes back to the starter value, ${valueLabel(k, def.default)}.` : 'It takes the value set above it again.',
-                        confirmLabel: 'Remove',
-                        destructive: true,
-                        action: async () => {
-                          await props.onRemove(r.id);
-                          toast({ tone: 'success', title: r.scopeType === 'tenant' ? 'Back to the starter value.' : 'Removed.' });
-                        },
-                      })
-                    }
-                  />
-                );
-              })}
-            </div>
-          </Card>
+          <Fragment key={s.title}>
+            <Card title={s.title} className="yx-org__group">
+              {s.description && <Text as="p" tone="secondary" size="sm" className="yx-org__group-desc">{s.description}</Text>}
+              <div className="yx-org__rules">
+                {keys.map((k) => {
+                  const def = props.registry[k];
+                  const guard = def.guard && !props.heldGuards.includes(def.guard);
+                  return (
+                    <SettingBlock
+                      key={k}
+                      settingKey={k}
+                      def={def}
+                      rows={props.overrides.filter((r) => r.key === k).sort((x, y) => SCOPES.indexOf(x.scopeType) - SCOPES.indexOf(y.scopeType) || (x.validFrom ?? '').localeCompare(y.validFrom ?? ''))}
+                      names={name}
+                      canEdit={props.canManage}
+                      blockedReason={props.canManage && guard ? 'Only an admin who manages roles and access changes this' : null}
+                      today={props.today}
+                      onEdit={() => setEditing({ key: k, n: Date.now() })}
+                      onRemove={(r) =>
+                        ask({
+                          title: `Remove this value for ${name(r)}?`,
+                          consequence: r.scopeType === 'tenant' ? `The company goes back to the starter value, ${valueLabel(k, def.default)}.` : 'It takes the value set above it again.',
+                          confirmLabel: 'Remove',
+                          destructive: true,
+                          action: async () => {
+                            await props.onRemove(r.id);
+                            toast({ tone: 'success', title: r.scopeType === 'tenant' ? 'Back to the starter value.' : 'Removed.' });
+                          },
+                        })
+                      }
+                    />
+                  );
+                })}
+              </div>
+            </Card>
+            {s.title === 'Privacy' && props.erasure && <ErasureCard report={props.erasure} />}
+          </Fragment>
         );
       })}
       {dialog}

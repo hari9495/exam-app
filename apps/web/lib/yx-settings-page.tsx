@@ -1,6 +1,9 @@
 'use client';
 
-import { CompanySettingsScreen, type LegalEntity, type SettingsArea, type MasterRecord, type OrgLocation, type SettingDef, type SettingOverride } from '@yukthix/ui/org';
+import { useQuery } from '@tanstack/react-query';
+import { CompanySettingsScreen, type ErasureReport, type LegalEntity, type SettingsArea, type MasterRecord, type OrgLocation, type SettingDef, type SettingOverride } from '@yukthix/ui/org';
+import { apiFetch } from './api-client';
+import { useAuth } from './auth-context';
 import { loadState, todayIst, useOrg, useOrgWrite, useYxPermissions } from './yx-org';
 
 const opts = (rows: { id: string; name: string; archivedAt?: string | null }[] | undefined) => (rows ?? []).filter((r) => !r.archivedAt).map((r) => ({ value: r.id, label: r.name }));
@@ -20,6 +23,15 @@ export function CompanySettingsPage({ section }: { section: SettingsArea }) {
   const types = useOrg<MasterRecord[]>('/masters/employment-types');
   const grades = useOrg<MasterRecord[]>('/masters/grades');
   const write = useOrgWrite();
+  const { accessToken } = useAuth();
+  // Access and privacy: the Special data erasure dry run, for company-wide settings managers (a 403 hides the card).
+  // Under ['yx', 'org'] so saving the switch refreshes it.
+  const erasure = useQuery<ErasureReport>({
+    queryKey: ['yx', 'org', 'people-privacy-erasure'],
+    queryFn: () => apiFetch('/people/privacy-erasure', {}, accessToken ?? undefined),
+    enabled: Boolean(accessToken) && section === 'access' && perms.has('org.settings.manage'),
+    retry: false,
+  });
   return (
     <CompanySettingsScreen
       section={section}
@@ -33,6 +45,7 @@ export function CompanySettingsPage({ section }: { section: SettingsArea }) {
       today={todayIst()}
       onSave={async (input) => void (await write('PUT', '/settings', input))}
       onRemove={async (settingId) => void (await write('DELETE', `/settings/${encodeURIComponent(settingId)}`))}
+      erasure={erasure.data}
     />
   );
 }

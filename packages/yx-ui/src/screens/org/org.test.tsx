@@ -7,7 +7,7 @@ import { StructureScreen, masterInput, payRangeErrors, subtree, type StructureSc
 import { addressDraft, ownershipLabel } from './org-kit';
 import { CompanySettingsScreen, companyValue, settingInput, type CompanySettingsScreenProps } from './settings';
 import { ToastProvider } from '../../components/notify';
-import { ENTITIES, LOCATIONS, MASTERS, PAY_RANGES, RULES, SETTING_CHOICES, SETTING_OVERRIDES, SETTING_REGISTRY, STATES, TODAY_ISO } from './data';
+import { ENTITIES, ERASURE_DRY_RUN, ERASURE_ON, LOCATIONS, MASTERS, PAY_RANGES, RULES, SETTING_CHOICES, SETTING_OVERRIDES, SETTING_REGISTRY, STATES, TODAY_ISO } from './data';
 
 const ok = () => vi.fn().mockResolvedValue(undefined);
 
@@ -423,7 +423,8 @@ describe('Company rules and access settings (P01 §4.6; YX-ORG-12/18)', () => {
 
   it('YX-SEC-02: guarded settings are disabled with the reason without access management; view-only has no buttons', () => {
     const { unmount } = render(<ToastProvider><CompanySettingsScreen {...base} section="access" heldGuards={[]} /></ToastProvider>);
-    const buttons = screen.getAllByRole('button', { name: 'Change' }).filter((b) => !b.closest('.yx-org__rule')?.textContent?.includes('net pay'));
+    // Net pay on the home and the erasure switch are HR's settings, not access guards.
+    const buttons = screen.getAllByRole('button', { name: 'Change' }).filter((b) => !/net pay|Delete Special data/.test(b.closest('.yx-org__rule')?.textContent ?? ''));
     // 4 access guards + the 3 privacy retention periods (PPL-33).
     expect(buttons).toHaveLength(7);
     buttons.forEach((b) => expect(b).toBeDisabled());
@@ -475,6 +476,33 @@ describe('Company rules and access settings (P01 §4.6; YX-ORG-12/18)', () => {
     const def = SETTING_REGISTRY['contract_end.action'];
     expect(settingInput('contract_end.action', def, { scopeType: 'tenant', scopeId: null, value: 'convert', validFrom: null }).input).toBeNull();
     expect(settingInput('contract_end.action', def, { scopeType: 'employment_type', scopeId: null, value: 'auto_exit', validFrom: null }).errors.map((e) => e.fieldId)).toEqual(['set-scope-id']);
+  });
+
+  it('Special data erasure (follow-up 12): off by default with the dry run counts; HR turns it on with a toast; never shown without the report', async () => {
+    const onSave = ok();
+    const { unmount } = render(<ToastProvider><CompanySettingsScreen {...base} section="access" heldGuards={[]} erasure={ERASURE_DRY_RUN} onSave={onSave} /></ToastProvider>);
+    const block = screen.getByText('Delete Special data when its period ends').closest('.yx-org__rule') as HTMLElement;
+    expect(within(block).getByText('Off: nothing is deleted')).toBeInTheDocument();
+    // Not an access guard: HR who manage settings change it.
+    expect(within(block).getByRole('button', { name: 'Change' })).toBeEnabled();
+    const dry = screen.getByRole('table', { name: 'If it ran today, it would delete' });
+    expect(within(dry).getAllByRole('row').slice(1).map((r) => r.textContent)).toEqual(['People who left (past the period)4', 'Aadhaar numbers on their records4', 'Aadhaar copies and background check reports6', 'Background check notes3']);
+    expect(screen.getByText('It has not run yet.')).toBeInTheDocument();
+    expect(screen.getByText(/Kept: pay records/)).toBeInTheDocument();
+    await userEvent.click(within(block).getByRole('button', { name: 'Change' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('radio', { name: 'On: deleted every night' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ key: 'privacy.erasure.enabled', scopeType: 'tenant', value: 'on' }));
+    expect(await within(screen.getByRole('region', { name: 'Notifications' })).findByText('Saved.')).toBeInTheDocument();
+    unmount();
+    const again = render(<ToastProvider><CompanySettingsScreen {...base} section="access" erasure={ERASURE_ON} /></ToastProvider>);
+    expect(screen.getByText(/^Last run \d+ Oct 2026: 4 people, 4 Aadhaar numbers, 6 documents, 3 check notes\.$/)).toBeInTheDocument();
+    expect(screen.getByText('1 person was not done')).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: 'Due at the next run' })).toBeInTheDocument();
+    again.unmount();
+    render(<ToastProvider><CompanySettingsScreen {...base} section="access" /></ToastProvider>);
+    expect(screen.queryByText('Deleting Special data')).toBeNull();
   });
 
   it('the editor refuses to save without a value', async () => {

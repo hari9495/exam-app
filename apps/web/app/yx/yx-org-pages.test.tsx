@@ -180,6 +180,28 @@ describe('/yx/settings/company-rules and /yx/settings/access-settings (P01 §4.6
     expect(screen.queryByRole('button', { name: 'Change' })).toBeNull();
   });
 
+  it('Access and privacy: company-wide settings managers see the Special data erasure dry run; turning it on saves and refreshes it; a 403 hides the card', async () => {
+    const reg = { ...REGISTRY, 'privacy.erasure.enabled': { label: 'Delete Special data when its period ends', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' } };
+    const put = jest.fn().mockResolvedValue({ id: 's-9' });
+    const report = jest.fn().mockResolvedValue({ enabled: false, due: { people: 2, aadhaar: 2, documents: 3, backgroundChecks: 1 }, lastRun: null });
+    route({ ...lists, 'GET /org/settings': { registry: reg, overrides: [] }, 'GET /people/privacy-erasure': report, 'PUT /org/settings': (_p: string, init: RequestInit) => put(JSON.parse(String(init.body))), [`GET ${PERMS_PATH}`]: ['org.structure.view', 'org.settings.manage'] });
+    const { unmount } = wrap(<YxAccessSettingsPage />);
+    const dry = await screen.findByRole('table', { name: 'If it ran today, it would delete' });
+    expect(within(dry).getByText('Aadhaar copies and background check reports').closest('tr')?.textContent).toContain('3');
+    const block = screen.getByText('Delete Special data when its period ends').closest('.yx-org__rule') as HTMLElement;
+    await userEvent.click(within(block).getByRole('button', { name: 'Change' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('radio', { name: 'On: deleted every night' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(put).toHaveBeenCalledWith({ key: 'privacy.erasure.enabled', scopeType: 'tenant', value: 'on' }));
+    await waitFor(() => expect(report).toHaveBeenCalledTimes(2));
+    unmount();
+    route({ ...lists, 'GET /org/settings': { registry: reg, overrides: [] }, 'GET /people/privacy-erasure': forbidden(), [`GET ${PERMS_PATH}`]: ['org.structure.view', 'org.settings.manage'] });
+    wrap(<YxAccessSettingsPage />);
+    await screen.findByText('Delete Special data when its period ends');
+    expect(screen.queryByText('Deleting Special data')).toBeNull();
+  });
+
   it('a 403 on the settings shows no access', async () => {
     route({ ...lists, 'GET /org/settings': forbidden(), [`GET ${PERMS_PATH}`]: [] });
     wrap(<YxCompanyRulesPage />);
