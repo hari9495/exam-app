@@ -64,12 +64,28 @@ export interface LiveSamePerson {
   rows: SamePersonRow[];
   onNotSame: (row: SamePersonRow) => Promise<void>;
   onReviewMerge: (row: SamePersonRow) => void;
+  /** PPL-37: records merged earlier (still merged); Open goes to the merge record, where Unmerge is. */
+  merged: MergedRecord[];
+  onOpenMerged: (personId: string) => void;
+}
+
+/** A merged record as the "Merged" view lists it. */
+export interface MergedRecord {
+  personId: string;
+  name: string;
+  intoName: string;
+  mergedAt: string;
+  mergedBy: string | null;
+  note: string | null;
+  canUnmerge: boolean;
 }
 
 const sideKeys = (s: PersonSide): Match['left'] => ({ name: s.name, dob: s.dob ? formatDate(new Date(`${s.dob}T00:00:00`)) : '', email: s.email ?? '', phone: s.phone ?? '', pan: s.pan ?? '', uan: s.uan ?? '', role: s.role });
 
 // PPL-36
-export function SamePersonQueue({ rows, defaultOpenId, live }: { rows: Match[]; defaultOpenId?: string; live?: LiveSamePerson }) {
+export function SamePersonQueue({ rows, defaultOpenId, live, view: startView = 'check', merged: sampleMerged = [] }: { rows: Match[]; defaultOpenId?: string; live?: LiveSamePerson; view?: 'check' | 'merged'; merged?: MergedRecord[] }) {
+  const [view, setView] = useState(startView);
+  const merged = live ? live.merged : sampleMerged;
   const [openId, setOpenId] = useState<string | null>(defaultOpenId ?? null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
@@ -82,6 +98,16 @@ export function SamePersonQueue({ rows, defaultOpenId, live }: { rows: Match[]; 
     { key: 'left', header: 'Record A', value: (r) => r.left.name, render: (r) => <span>{r.left.name}<Text size="sm" tone="secondary" as="div">{r.left.role}</Text></span>, width: 260 },
     { key: 'right', header: 'Record B', value: (r) => r.right.name, render: (r) => <span>{r.right.name}<Text size="sm" tone="secondary" as="div">{r.right.role}</Text></span>, width: 260 },
     { key: 'basis', header: 'Why proposed', value: (r) => r.result.basis.join(', '), width: 280 },
+  ];
+  const viewOptions = [
+    { value: 'check' as const, label: `To check (${proposals.length})` },
+    { value: 'merged' as const, label: `Merged (${merged.length})` },
+  ];
+  const mergedCols: TableColumn<MergedRecord>[] = [
+    { key: 'name', header: 'Merged record', value: (r) => r.name, render: (r) => <span>{r.name}<Text size="sm" tone="secondary" as="div">into {r.intoName}</Text></span>, width: 260 },
+    { key: 'mergedAt', header: 'Merged on', value: (r) => r.mergedAt, render: (r) => formatDate(new Date(r.mergedAt)), width: 140 },
+    { key: 'mergedBy', header: 'By', value: (r) => r.mergedBy ?? '', width: 180 },
+    { key: 'note', header: 'Note', value: (r) => r.note ?? '', width: 280, optional: true },
   ];
   const close = () => (setOpenId(null), setFailed(null));
   const notSame = async () => {
@@ -106,7 +132,22 @@ export function SamePersonQueue({ rows, defaultOpenId, live }: { rows: Match[]; 
         <ErrorState title="We couldn't load the proposals" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : live?.state === 'loading' ? (
         <ListSkeleton label="Loading the proposals" />
+      ) : view === 'merged' ? (
+        <>
+          <Segment label="Show" value={view} onChange={setView} options={viewOptions} />
+          <DataTable
+            label="Merged records"
+            columns={mergedCols}
+            rows={merged}
+            getRowId={(r) => r.personId}
+            onRowClick={(r) => live?.onOpenMerged(r.personId)}
+            rowButtons={(r) => <Button size="sm" onClick={() => live?.onOpenMerged(r.personId)}>{r.canUnmerge ? 'Open to unmerge' : 'Open'}</Button>}
+            empty={<EmptyState title="No merged records" description="Records you merge are listed here, so you can undo a merge later." />}
+          />
+        </>
       ) : (
+        <>
+        <Segment label="Show" value={view} onChange={setView} options={viewOptions} />
         <DataTable
           label="Proposed matches"
           columns={cols}
@@ -117,6 +158,7 @@ export function SamePersonQueue({ rows, defaultOpenId, live }: { rows: Match[]; 
           rowButtons={(r) => <Button size="sm" onClick={() => setOpenId(r.id)}>Compare</Button>}
           empty={<EmptyState title="No possible matches" description="New proposals appear when a new record looks like an existing person." />}
         />
+        </>
       )}
       <Drawer
         open={!!open}

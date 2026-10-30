@@ -780,3 +780,9 @@ export const LIVE_BATCH: Batch = {
   members: [{ id: 'bm1', personId: 'p-ananya', name: 'Ananya Das', status: 'invited', joiningOn: '2026-10-19' }],
 };
 export const WAITING_JOINERS: Choice[] = [{ value: 'pb-rahul', label: 'Rahul Verma, joins 26 Oct 2026' }, { value: 'pb-meena', label: 'Meena Iyer, joins 2 Nov 2026' }];
+
+// PPL-37 · Merge and unmerge: records merged earlier, listed so Unmerge can be found later (people small gaps).
+export const MERGED_RECORDS = [
+  { personId: 'p-suresh-login', name: 'Suresh Nair', intoName: 'Suresh K Nair', mergedAt: '2026-10-12T10:20:00.000Z', mergedBy: 'Lakshmi Venkatesan', note: 'Same person: the login email is his work email.', canUnmerge: true },
+  { personId: 'p-meera-desk', name: 'Meera Iyer', intoName: 'Meera Iyer', mergedAt: '2026-09-03T06:45:00.000Z', mergedBy: 'Lakshmi Venkatesan', note: 'Help desk contact is the employee.', canUnmerge: false },
+];

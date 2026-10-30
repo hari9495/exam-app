@@ -168,6 +168,28 @@ export class SamePersonService {
     });
   }
 
+  /** Merged records still merged (an unmerged one leaves the list), newest merge first; the last 200. */
+  mergedList(ctx: TenantContext, v: Viewer) {
+    this.hr(v);
+    return this.history.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const people = await tx.person.findMany({ where: { organizationId: org, status: 'merged', mergedInto: { not: null } }, select: { id: true, givenName: true, familyName: true, mergedInto: true } });
+      const logs = await tx.personLinkLog.findMany({ where: { organizationId: org, action: 'merge', personId: { in: people.map((p) => p.id) } }, orderBy: { createdAt: 'desc' } });
+      const into = await tx.person.findMany({ where: { organizationId: org, id: { in: people.map((p) => p.mergedInto!) } }, select: { id: true, givenName: true, familyName: true } });
+      const by = await tx.user.findMany({ where: { organizationId: org, id: { in: logs.map((l) => l.decidedBy).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true, email: true } });
+      const rows = [];
+      for (const p of people) {
+        const log = logs.find((l) => l.personId === p.id);
+        if (!log) continue;
+        const u = by.find((x) => x.id === log.decidedBy);
+        const i = into.find((x) => x.id === p.mergedInto);
+        // A Service Desk link made before merges could be undone has no saved "before": it cannot be unmerged here.
+        rows.push({ personId: p.id, name: name(p), intoName: i ? name(i) : '', mergedAt: log.createdAt.toISOString(), mergedBy: u ? u.name || u.email : null, note: log.reason, canUnmerge: Boolean((log.before as unknown as Before | null)?.roleIds) });
+      }
+      return { rows: rows.sort((x, y) => y.mergedAt.localeCompare(x.mergedAt)).slice(0, 200) };
+    });
+  }
+
   /** Unmerge: the roles and the field values return, the login leaves the employee record again; both actions stay logged. */
   unmerge(ctx: TenantContext, v: Viewer, personId: string, note: string) {
     this.hr(v);

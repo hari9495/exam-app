@@ -119,6 +119,14 @@ export class PersonPanelsController {
     return this.samePerson.merge(ctx, await this.viewer(req), dto);
   }
 
+  /** PPL-37: every merged record, newest first, so Unmerge can be found after the day of the merge. */
+  @Get('same-person/merged')
+  @RequirePermissions('employee.change.manage')
+  async mergedList(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    ownSession(req);
+    return this.samePerson.mergedList(ctx, await this.viewer(req));
+  }
+
   @Get('persons/:id/merge')
   @RequirePermissions('employee.change.manage')
   async personMerge(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
