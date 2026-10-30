@@ -2558,7 +2558,7 @@ function LiveApplyLeavePanel({ data, live, forSomeone, resend, onClose }: { data
       const input = { leaveTypeId: typeId!, from: f, to: end, fromHalf, toHalf, reason: reason.trim() || undefined, delegateUserId: delegate ?? undefined, certificate: certificate || undefined, ...extra };
       if (forSomeone && target) {
         await forSomeone.onApply(target.employee.id, input);
-        toast({ tone: 'success', title: plan?.approval === 'approved' ? `Leave applied for ${target.employee.name}` : `Leave applied for ${target.employee.name} · sent for approval` });
+        toast({ tone: 'success', title: plan?.approval === 'approved' ? `Leave approved for ${target.employee.name}` : `Leave applied for ${target.employee.name} · sent for approval` });
       } else if (resend && live?.onResend) await live.onResend(resend.id, input);
       else await live!.onApply(input);
       onClose();

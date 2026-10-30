@@ -468,10 +468,54 @@ describe('Time devices and kiosks', () => {
     const again = (await kiosk(kioskToken, 'get', '/person/leave').set('x-kiosk-person', p).expect(200)).body;
     expect(again.types[0]).toEqual(expect.objectContaining({ available: 1, pending: 1 }));
     expect(again.days.find((d: { on: string }) => d.on === dayAhead(3)).note).toBe('Requested');
+    // The person's menu says whether Apply leave shows (kiosk.leave, default on).
+    expect((await kiosk(kioskToken, 'get', '/person/today').set('x-kiosk-person', p).expect(200)).body.leave).toBe(true);
     const off = await setting('kiosk.leave', 'off');
+    expect((await kiosk(kioskToken, 'get', '/person/today').set('x-kiosk-person', p).expect(200)).body.leave).toBe(false);
     expect((await kiosk(kioskToken, 'get', '/person/leave').set('x-kiosk-person', p).expect(403)).body.code).toBe('KIOSK_LEAVE_OFF');
     await kiosk(kioskToken, 'post', '/person/leave').send({ person: p, leaveTypeId: cl, from: dayAhead(4), to: dayAhead(4) }).expect(403);
     await inA((tx) => tx.setting.delete({ where: { id: off.id } }));
+  });
+
+  it('training (TIM-14 Training tab): who it is for, people search, change before it starts (version-checked), audited', async () => {
+    const at = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString();
+    const base = { locationId: ids.locA, title: 'Hygiene briefing', startsAt: at(0.1), endsAt: at(1) };
+    // Who: chosen people only; someone of another company is refused.
+    await api('hrAdmin', 'post', '/time/devices/training').send({ ...base, invitees: [ids.empB] }).expect(400);
+    await api('hrAdmin', 'post', '/time/devices/training').send({ ...base, invitees: ['nope'] }).expect(400);
+    const forPeer = (await api('hrAdmin', 'post', '/time/devices/training').send({ ...base, invitees: [ids.peer] }).expect(201)).body;
+    const forEmp = (await api('hrAdmin', 'post', '/time/devices/training').send({ ...base, title: 'Line safety', invitees: [ids.emp, ids.emp] }).expect(201)).body;
+    const list = (await api('hrAdmin', 'get', '/time/devices/training').expect(200)).body;
+    expect(list.find((s: { id: string }) => s.id === forEmp.id)).toEqual(expect.objectContaining({ invitees: [expect.objectContaining({ id: ids.emp })], state: 'upcoming', version: 1, location: expect.objectContaining({ id: ids.locA, zone: expect.any(String) }) }));
+    // The kiosk shows a person only the sessions for everyone or for them; marking another's is refused as not found.
+    const p = await pass();
+    const seen = (await kiosk(kioskToken, 'get', '/person/training').set('x-kiosk-person', p).expect(200)).body.sessions.map((s: { id: string }) => s.id);
+    expect(seen).toContain(forEmp.id);
+    expect(seen).not.toContain(forPeer.id);
+    await kiosk(kioskToken, 'post', `/person/training/${forPeer.id}`).send({ person: p }).expect(404);
+    // People search: this company only, by name; wrong role refused.
+    const found = (await api('hrAdmin', 'get', '/time/devices/training/people?q=emp').expect(200)).body as { id: string }[];
+    expect(found.map((x) => x.id)).toContain(ids.emp);
+    expect(found.map((x) => x.id)).not.toContain(ids.empB);
+    await api('hrExec', 'get', '/time/devices/training/people?q=emp').expect(403);
+    // Change: the version HR saw; a stale one is a conflict; another company 404; wrong role 403; bad input 400.
+    const later = (await api('hrAdmin', 'post', '/time/devices/training').send({ ...base, title: 'Fire warden', startsAt: at(5), endsAt: at(6) }).expect(201)).body;
+    const edit = { ...base, title: 'Fire warden (east)', startsAt: at(6), endsAt: at(7), invitees: [ids.emp], version: 1 };
+    expect((await api('hrAdmin', 'put', `/time/devices/training/${later.id}`).send(edit).expect(200)).body).toEqual({ id: later.id, version: 2 });
+    expect((await api('hrAdmin', 'put', `/time/devices/training/${later.id}`).send(edit).expect(409)).body.message).toBe('Someone else changed this session. Reload to see their change.');
+    await api('adminB', 'put', `/time/devices/training/${later.id}`).send({ ...edit, version: 2 }).expect(404);
+    await api('hrExec', 'put', `/time/devices/training/${later.id}`).send({ ...edit, version: 2 }).expect(403);
+    await api('hrAdmin', 'put', `/time/devices/training/${later.id}`).send({ ...edit, version: 2, endsAt: edit.startsAt }).expect(400);
+    await api('hrAdmin', 'put', `/time/devices/training/${later.id}`).send({ ...edit, version: 0 }).expect(400);
+    const changed = await inA((tx) => tx.auditLog.findFirst({ where: { action: 'time.training.changed', entityId: later.id } }));
+    expect(JSON.parse(changed?.metadataJson ?? '{}')).toEqual(expect.objectContaining({ before: expect.objectContaining({ title: 'Fire warden' }), after: expect.objectContaining({ title: 'Fire warden (east)', invitees: 1 }) }));
+    // Started: it can be cancelled, not changed; a cancelled one cannot be changed.
+    await inA((tx) => tx.trainingSession.update({ where: { id: forEmp.id }, data: { startsAt: new Date(Date.now() - 60_000) } }));
+    await api('hrAdmin', 'put', `/time/devices/training/${forEmp.id}`).send({ ...edit, version: 1 }).expect(409);
+    await api('hrAdmin', 'post', `/time/devices/training/${later.id}/cancel`).expect(200);
+    expect((await api('hrAdmin', 'put', `/time/devices/training/${later.id}`).send({ ...edit, version: 2 }).expect(409)).body.message).toBe('That session is cancelled. Add a new one instead.');
+    // A time already passed is refused.
+    await api('hrAdmin', 'post', '/time/devices/training').send({ ...base, startsAt: at(-2), endsAt: at(-1) }).expect(400);
   });
 
   it('forced RLS on the training tables', async () => {
