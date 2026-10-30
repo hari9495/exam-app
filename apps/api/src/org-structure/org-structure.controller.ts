@@ -32,13 +32,11 @@ import { OrgScopeService } from '../access/org-scope.service';
 //   org.settings.manage          change them and scoped settings (HR / System Admin)
 //   org.entity.statutory.manage  the Confidential entity identifiers (P02 §4.4)
 //   pay.range.view / .manage     grade pay ranges (founder rule R1: pay is private)
-//   payroll.setup.manage         also reads the settings and changes the payroll ones (keys starting "payroll."), for
-//                                Settings › Payroll & Statutory › Payroll rules (founder 30 Oct 2026, last 10, item 5)
+//   payroll.setup.manage         reads the settings (Settings › Payroll & Statutory › Payroll rules, founder 30 Oct 2026,
+//                                last 10, item 5); changing them stays HR's (MT-PAY-B-07: payroll never changes policy)
 // Each key may be held for the whole company or one legal entity (P02 §4.3): writes and pay / Confidential
 // reads are checked against the record's entity here (OrgScopeService) before the service runs.
 const VIEW = ['org.structure.view', 'org.settings.manage'] as const;
-const SETTING_KEYS = ['org.settings.manage', 'payroll.setup.manage'] as const;
-const PAYROLL_SETTING = (key: string) => key.startsWith('payroll.');
 const KIND = new ParseEnumPipe(Object.fromEntries(MASTER_KINDS.map((k) => [k, k])));
 
 interface RequestUser {
@@ -66,16 +64,6 @@ export class OrgStructureController {
 
   private manage(req: Request, entityId: string | null) {
     return this.scope.require(req, 'org.settings.manage', entityId);
-  }
-
-  /** A setting: org.settings.manage on its entity; a payroll one also by payroll.setup.manage on it. */
-  private async manageSetting(req: Request, key: string, entityId: string | null) {
-    if (!PAYROLL_SETTING(key)) return this.manage(req, entityId);
-    try {
-      await this.manage(req, entityId);
-    } catch {
-      await this.scope.require(req, 'payroll.setup.manage', entityId);
-    }
   }
 
   /** Settings that loosen an access or fraud guard also need their guard key, company-wide (P02 §4.2, YX-SEC-02). */
@@ -354,21 +342,21 @@ export class OrgStructureController {
   }
 
   @Put('settings')
-  @RequireAnyPermission(...SETTING_KEYS)
+  @RequirePermissions('org.settings.manage')
   async setSetting(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: SettingDto) {
     ownSession(req);
-    await this.manageSetting(req, dto.key, await this.scope.settingEntity(ctx, dto.scopeType, dto.scopeId));
+    await this.manage(req, await this.scope.settingEntity(ctx, dto.scopeType, dto.scopeId));
     await this.settingGuard(req, dto.key);
     return this.settings.set(ctx, dto);
   }
 
   @Delete('settings/:id')
   @HttpCode(204)
-  @RequireAnyPermission(...SETTING_KEYS)
+  @RequirePermissions('org.settings.manage')
   async removeSetting(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     ownSession(req);
     const row = await this.scope.settingById(ctx, id);
-    await this.manageSetting(req, row.key, row.entityId);
+    await this.manage(req, row.entityId);
     await this.settingGuard(req, row.key);
     await this.settings.remove(ctx, id);
   }

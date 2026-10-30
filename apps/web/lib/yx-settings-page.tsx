@@ -8,7 +8,7 @@ const opts = (rows: { id: string; name: string; archivedAt?: string | null }[] |
 /**
  * Settings › Company rules (group 1), Access and privacy (group 2) and Payroll rules (group 4), P01 §4.6 / P02 §4.2:
  * the registry and every override from the API; the records an override can name from the structure lists. The API
- * checks org.settings.manage per entity (payroll.setup.manage also for payroll keys) and the guard key on access and
+ * checks org.settings.manage per entity (payroll set-up only reads the payroll rules) and the guard key on access and
  * fraud settings.
  */
 export function CompanySettingsPage({ section }: { section: SettingsArea }) {
@@ -28,7 +28,7 @@ export function CompanySettingsPage({ section }: { section: SettingsArea }) {
       registry={settings.data?.registry ?? {}}
       overrides={settings.data?.overrides ?? []}
       choices={{ legal_entity: opts(entities.data), location: opts(locations.data), department: opts(departments.data), employment_type: opts(types.data), grade: opts(grades.data) }}
-      canManage={perms.has('org.settings.manage') || (section === 'payroll' && perms.has('payroll.setup.manage'))}
+      canManage={perms.has('org.settings.manage')}
       heldGuards={perms.has('access.role.manage') ? ['access.role.manage'] : []}
       today={todayIst()}
       onSave={async (input) => void (await write('PUT', '/settings', input))}

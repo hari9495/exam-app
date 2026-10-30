@@ -6360,17 +6360,17 @@
     "area": "Pay · Last four (30 Oct 2026)",
     "screen": "Payroll rules: statutory bonus and the eligibility rule (Settings › Payroll & Statutory, founder last 10, item 1)",
     "url": "http://localhost:3000/yx/settings/payroll-rules",
-    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi), then payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
     "steps": [
       "1. Open Settings › Payroll & Statutory › Payroll rules.",
       "2. In Statutory bonus, read \"Bonus eligibility uses the salary rate on\". Press Change.",
       "3. Without choosing a value, press Save.",
       "4. Choose \"Highest rate in the month\" for the whole company; press Save.",
-      "5. Open Payroll › Statutory bonus, the last ended year; press Work out bonus (or open the one already worked out) and read the note above the table.",
+      "5. As Suresh open Payroll › Statutory bonus, the last ended year; press Work out bonus (or open the one already worked out) and read the note above the table.",
       "6. Back on Payroll rules, press Change on \"Highest bonus rate (%)\", choose \"Legal entity\", leave the entity empty and press Save.",
-      "7. Sign in as panel@demo-org.test (Divya, no payroll or HR keys) and open /yx/settings/payroll-rules."
+      "7. As Suresh open Settings › Payroll & Statutory › Payroll rules; then sign in as panel@demo-org.test (Divya, no payroll or HR keys) and open /yx/settings/payroll-rules."
     ],
-    "expected": "Step 1: two panels, Statutory bonus and Loans and advances; every value in words with \"Starter value\" where untouched. Step 2: the drawer says \"Starter value: Rate on the month's last day\". Step 3: \"Choose the value\" under New value, focus on the first choice, nothing saved, Save never disabled. Step 4: a 5-second \"Saved.\" toast; the value reads \"Highest rate in the month\", \"Set for your company\". Step 5: the note reads \"Eligibility rule: the highest salary rate in force during the month. HR sets it in Settings › Payroll rules.\" Negative: Step 6 shows \"Choose the legal entity\" with focus; Step 7 has no Payroll rules menu item and the page says you don't have access. Put the rule back to the last day after the test.",
+    "expected": "Step 1: two panels, Statutory bonus and Loans and advances; every value in words with \"Starter value\" where untouched. Step 2: the drawer says \"Starter value: Rate on the month's last day\". Step 3: \"Choose the value\" under New value, focus on the first choice, nothing saved, Save never disabled. Step 4: a 5-second \"Saved.\" toast; the value reads \"Highest rate in the month\", \"Set for your company\". Step 5: the note reads \"Eligibility rule: the highest salary rate in force during the month. HR sets it in Settings › Payroll rules.\" Negative: Step 6 shows \"Choose the legal entity\" with focus; Step 7: Suresh sees the same values with no Change buttons (payroll never changes company policy); Divya has no Payroll rules menu item and the page says you don't have access. Put the rule back to the last day after the test.",
     "stories": [
       "Settings/Organisation PayrollRules",
       "Settings/Organisation PayrollRulesBonusRule",
@@ -6383,12 +6383,12 @@
     "area": "Pay · Last four (30 Oct 2026)",
     "screen": "Bonus eligibility rule changes who is eligible (PAY-24, founder last 10, item 1)",
     "url": "http://localhost:3000/yx/payroll/bonus",
-    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh); hr@demo-org.test (HR Admin - Lakshmi) changes the rule. Browser window 1278 x 635, sidebar open.",
     "steps": [
       "1. In People, find someone whose salary was raised from below ₹21,000 to above it (bonus-wage parts) on the 15th of a month in the last ended accounting year (HR records it with a past date if the demo has none).",
-      "2. Payroll rules: set the eligibility rule to \"Rate on the month's first day\". On Statutory bonus press Work out at this rate (a draft) and open the person's row.",
-      "3. Set the rule to \"Rate on the month's last day\" and work it out again.",
-      "4. Set it to \"Highest rate in the month\" and work it out again."
+      "2. As Lakshmi, Payroll rules: set the eligibility rule to \"Rate on the month's first day\". As Suresh, on Statutory bonus press Work out at this rate (a draft) and open the person's row.",
+      "3. Lakshmi sets the rule to \"Rate on the month's last day\"; Suresh works it out again.",
+      "4. Lakshmi sets it to \"Highest rate in the month\"; Suresh works it out again."
     ],
     "expected": "Step 2: the raise month counts (the rate on the 1st was below ₹21,000); eligible months include it. Step 3: the raise month no longer counts (the rate on the last day is above the limit). Step 4: same as step 3. Months before the raise count in all three; months after count in none. Negative: an approved bonus keeps the rule it was worked out with (change the rule after approval and reopen: nothing changes).",
     "stories": [
@@ -6423,7 +6423,7 @@
     "area": "Pay · Last four (30 Oct 2026)",
     "screen": "Loans and advances settings (Settings › Payroll & Statutory › Payroll rules, founder last 10, item 5)",
     "url": "http://localhost:3000/yx/settings/payroll-rules",
-    "account": "payroll@demo-org.test (Payroll Admin - Suresh), then hr@demo-org.test (HR Admin - Lakshmi), then panel@demo-org.test (Manager - Divya). Browser window 1278 x 635, sidebar open.",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi), then payroll@demo-org.test (Payroll Admin - Suresh), then panel@demo-org.test (Manager - Divya). Browser window 1278 x 635, sidebar open.",
     "steps": [
       "1. Open Payroll rules; read the Loans and advances panel.",
       "2. On \"Interest on a personal loan (% a year)\" press Change; press Save without choosing.",
@@ -6431,9 +6431,9 @@
       "4. On \"A loan or advance may be at most (months of gross pay)\" choose 3 months for the whole company; Save.",
       "5. As Divya open Me › Loans and advances and choose Personal loan.",
       "6. Remove the Tamil Nadu value (row menu › Remove › Remove).",
-      "7. As Lakshmi (HR) change \"Who may ask for a loan or advance\" to Everyone; then as Divya open /yx/settings/payroll-rules."
+      "7. As Suresh open Payroll rules; as Divya open /yx/settings/payroll-rules."
     ],
-    "expected": "Step 1: four settings with their starter values: 2 months, Confirmed employees only (after probation), Interest-free, Interest-free. Step 2: \"Choose the value\" with focus on the value; Save is never disabled. Step 3: 5-second \"Saved.\" toast; a table under the setting lists Kaveri Foods Pvt Ltd (Tamil Nadu) · 8% a year. Step 4: \"3 months\", \"Set for your company\". Step 5: the limit and interest follow the new values (her entity's rate). Step 6: \"Removed.\" toast; the row is gone. Step 7: HR can change it too (toast); Divya sees no Change buttons (or no access). Negative: values outside the list cannot be chosen, and the API refuses them (400); every change is in the audit log with before and after.",
+    "expected": "Step 1: four settings with their starter values: 2 months, Confirmed employees only (after probation), Interest-free, Interest-free. Step 2: \"Choose the value\" with focus on the value; Save is never disabled. Step 3: 5-second \"Saved.\" toast; a table under the setting lists Kaveri Foods Pvt Ltd (Tamil Nadu) · 8% a year. Step 4: \"3 months\", \"Set for your company\". Step 5: the limit and interest follow the new values (her entity's rate). Step 6: \"Removed.\" toast; the row is gone. Step 7: Suresh sees the values and no Change buttons (only HR changes them; the API refuses payroll with 403); Divya has no access. Negative: values outside the list cannot be chosen, and the API refuses them (400); every change is in the audit log with before and after.",
     "stories": [
       "Settings/Organisation PayrollRules",
       "Settings/Organisation PayrollRulesLoanTooEarly",

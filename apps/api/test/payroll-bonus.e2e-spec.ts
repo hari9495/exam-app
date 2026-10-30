@@ -279,41 +279,42 @@ describe('Payroll statutory bonus (PAY-24)', () => {
 
   it('the eligibility rate rule (founder last 10, item 1): a company or entity setting, the default last day, read into the rules', async () => {
     expect((await api('payAdmin', 'get', `/payroll/bonus?legalEntityId=${ids.entity}`).expect(200)).body.rules.eligibilityRateOn).toBe('last_day');
-    // Payroll set-up changes payroll rules (Settings › Payroll & Statutory › Payroll rules) per legal entity.
-    const set = (await api('payAdmin', 'put', '/org/settings').send({ key: 'payroll.bonus.eligibility_rate_on', scopeType: 'legal_entity', scopeId: ids.entity, value: 'highest_in_month' }).expect(200)).body;
+    // HR changes payroll rules (Settings › Payroll & Statutory › Payroll rules) per legal entity; payroll only reads them.
+    await api('payAdmin', 'put', '/org/settings').send({ key: 'payroll.bonus.eligibility_rate_on', scopeType: 'legal_entity', scopeId: ids.entity, value: 'highest_in_month' }).expect(403);
+    const set = (await api('adminA', 'put', '/org/settings').send({ key: 'payroll.bonus.eligibility_rate_on', scopeType: 'legal_entity', scopeId: ids.entity, value: 'highest_in_month' }).expect(200)).body;
     let r = keep((await api('payAdmin', 'patch', `/payroll/bonus/${comp.id}`).send({ version: v() }).expect(200)).body);
     expect(r.rules.eligibilityRateOn).toBe('highest_in_month');
     // Salaries here do not change within a month, so every rule gives the same people.
     expect(r.totals).toMatchObject({ people: 7, eligible: 4 });
     expect(rowOf(r, 'gopal').eligible).toBe(true);
-    // Negative: an unknown value, someone without either key, a non-payroll setting through payroll set-up, and
-    // payroll set-up of another company.
-    expect((await api('payAdmin', 'put', '/org/settings').send({ key: 'payroll.bonus.eligibility_rate_on', scopeType: 'tenant', value: 'average' }).expect(400)).body.message).toBe('Bonus eligibility uses the salary rate on is one of: last_day, first_day, highest_in_month');
+    // Negative: an unknown value, someone without the key, and HR of another company.
+    expect((await api('adminA', 'put', '/org/settings').send({ key: 'payroll.bonus.eligibility_rate_on', scopeType: 'tenant', value: 'average' }).expect(400)).body.message).toBe('Bonus eligibility uses the salary rate on is one of: last_day, first_day, highest_in_month');
     await api('noPay', 'put', '/org/settings').send({ key: 'payroll.bonus.eligibility_rate_on', scopeType: 'tenant', value: 'first_day' }).expect(403);
-    await api('payAdmin', 'put', '/org/settings').send({ key: 'probation.default_months', scopeType: 'tenant', value: '3' }).expect(403);
-    await api('payAdminB', 'put', '/org/settings').send({ key: 'payroll.bonus.eligibility_rate_on', scopeType: 'legal_entity', scopeId: ids.entity, value: 'first_day' }).expect(404);
+    await api('adminB', 'put', '/org/settings').send({ key: 'payroll.bonus.eligibility_rate_on', scopeType: 'legal_entity', scopeId: ids.entity, value: 'first_day' }).expect(404);
     // Every change is audited with before and after; back to the default by removing it.
     const logged = await inA((tx) => tx.auditLog.findFirstOrThrow({ where: { action: 'org.setting.changed', entityId: set.id } }));
     expect(JSON.parse(logged.metadataJson ?? '{}')).toMatchObject({ key: 'payroll.bonus.eligibility_rate_on', from: null, to: 'highest_in_month' });
-    await api('payAdmin', 'delete', `/org/settings/${set.id}`).expect(204);
+    await api('payAdmin', 'delete', `/org/settings/${set.id}`).expect(403);
+    await api('adminA', 'delete', `/org/settings/${set.id}`).expect(204);
     r = keep((await api('payAdmin', 'patch', `/payroll/bonus/${comp.id}`).send({ version: v() }).expect(200)).body);
     expect(r.rules.eligibilityRateOn).toBe('last_day');
   });
 
-  it('loan settings (founder last 10, item 5): payroll set-up sets them per company or entity, within their ranges, audited', async () => {
+  it('loan settings (founder last 10, item 5): HR sets them per company or entity, within their ranges, audited; payroll reads them', async () => {
     const put = (who: Who, body: object) => api(who, 'put', '/org/settings').send(body);
-    const set = (await put('payAdmin', { key: 'payroll.loan.max_gross_months', scopeType: 'legal_entity', scopeId: ids.entity, value: '3' }).expect(200)).body;
+    const set = (await put('adminA', { key: 'payroll.loan.max_gross_months', scopeType: 'legal_entity', scopeId: ids.entity, value: '3' }).expect(200)).body;
     expect(set).toMatchObject({ key: 'payroll.loan.max_gross_months', scopeType: 'legal_entity', value: '3' });
-    await put('payAdmin', { key: 'payroll.loan.interest_rate.loan', scopeType: 'tenant', value: '7.5' }).expect(200);
-    await put('payAdmin', { key: 'payroll.loan.after_probation', scopeType: 'tenant', value: 'everyone' }).expect(200);
-    await put('payAdmin', { key: 'payroll.loan.interest_rate.advance', scopeType: 'tenant', value: '0' }).expect(200);
+    await put('adminA', { key: 'payroll.loan.interest_rate.loan', scopeType: 'tenant', value: '7.5' }).expect(200);
+    await put('adminA', { key: 'payroll.loan.after_probation', scopeType: 'tenant', value: 'everyone' }).expect(200);
+    await put('adminA', { key: 'payroll.loan.interest_rate.advance', scopeType: 'tenant', value: '0' }).expect(200);
     // Out of range, not offered, or not a scope it takes.
-    await put('payAdmin', { key: 'payroll.loan.max_gross_months', scopeType: 'tenant', value: '24' }).expect(400);
-    await put('payAdmin', { key: 'payroll.loan.interest_rate.loan', scopeType: 'tenant', value: '-1' }).expect(400);
-    await put('payAdmin', { key: 'payroll.loan.interest_rate.loan', scopeType: 'tenant', value: '13' }).expect(400);
-    await put('payAdmin', { key: 'payroll.loan.after_probation', scopeType: 'location', scopeId: ids.loc, value: 'everyone' }).expect(400);
-    await put('noPay', { key: 'payroll.loan.interest_rate.loan', scopeType: 'tenant', value: '8' }).expect(403);
-    // HR (org.settings.manage) may change them too.
+    await put('adminA', { key: 'payroll.loan.max_gross_months', scopeType: 'tenant', value: '24' }).expect(400);
+    await put('adminA', { key: 'payroll.loan.interest_rate.loan', scopeType: 'tenant', value: '-1' }).expect(400);
+    await put('adminA', { key: 'payroll.loan.interest_rate.loan', scopeType: 'tenant', value: '13' }).expect(400);
+    await put('adminA', { key: 'payroll.loan.after_probation', scopeType: 'location', scopeId: ids.loc, value: 'everyone' }).expect(400);
+    // Payroll (and anyone else without the HR key) cannot change company policy.
+    await put('payAdmin', { key: 'payroll.loan.interest_rate.loan', scopeType: 'tenant', value: '9' }).expect(403);
+    await put('noPay', { key: 'payroll.loan.interest_rate.loan', scopeType: 'tenant', value: '9' }).expect(403);
     await put('adminA', { key: 'payroll.loan.interest_rate.loan', scopeType: 'tenant', value: '8' }).expect(200);
     const listed = (await api('payAdmin', 'get', '/org/settings').expect(200)).body as { registry: Record<string, { default: string }>; overrides: { id: string; key: string; value: string }[] };
     expect(listed.registry['payroll.loan.max_gross_months'].default).toBe('2');
@@ -321,7 +322,7 @@ describe('Payroll statutory bonus (PAY-24)', () => {
     const trail = await inA((tx) => tx.auditLog.findMany({ where: { action: 'org.setting.changed' }, orderBy: { createdAt: 'asc' }, select: { metadataJson: true } }));
     expect(trail.map((t) => JSON.parse(t.metadataJson ?? '{}')).filter((m) => m.key === 'payroll.loan.interest_rate.loan').map((m) => [m.from, m.to])).toEqual([[null, '7.5'], ['7.5', '8']]);
     // Leave the loan rules as they were.
-    for (const o of listed.overrides.filter((x) => x.key.startsWith('payroll.loan.'))) await api('payAdmin', 'delete', `/org/settings/${o.id}`).expect(204);
+    for (const o of listed.overrides.filter((x) => x.key.startsWith('payroll.loan.'))) await api('adminA', 'delete', `/org/settings/${o.id}`).expect(204);
   });
 
   it('surplus: the rate follows it between 8.33% and 20%; set-off below the minimum, set-on above the highest', async () => {

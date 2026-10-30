@@ -1570,9 +1570,9 @@ reports (`payroll.reports.view`).
   `.after_probation`, `.interest_rate.advance`, `.interest_rate.loan`). Each per company or legal entity, starter value
   shown, values only from the registry list (the API refuses others, 400). Save pressed too early: field error, focus
   on the field, never disabled; saved: 5 s toast; every change audited (`org.setting.changed`, before and after).
-  Who: `org.settings.manage` (HR) for every setting, and now also `payroll.setup.manage` for keys starting `payroll.`
-  (on the entity, or company-wide for a company value); GET settings is open to `payroll.setup.manage` too. Menu item
-  for either key. Stories: Settings/Organisation PayrollRules, LoanTooEarly, BonusRule, ReadOnly, Loading, Error.
+  Who: changing stays HR's (`org.settings.manage`, on the entity or company-wide), as before (MT-PAY-B-07, MT-PAY-F-01:
+  payroll never changes company policy); `payroll.setup.manage` may now read the settings (GET org/settings) and sees
+  the page read only. Menu item for either key. Question 1 in the report: should payroll set-up edit them instead? Stories: Settings/Organisation PayrollRules, LoanTooEarly, BonusRule, ReadOnly, Loading, Error.
 - **10 PAY-23 residency row.** Six new stories (above), then the live row and drawer render them.
 - **Migrations:** none (settings are registry rows; no schema change).
 - **Gaps:** the lowest bonus rate above the highest is not refused when saved (the bonus computation refuses it with a

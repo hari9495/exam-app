@@ -195,9 +195,9 @@ describe('/yx/settings/payroll-rules (founder 30 Oct 2026, last 10, items 1 and 
   };
   const lists = { 'GET /org/legal-entities': [ENTITY], 'GET /org/locations': [LOCATION], 'GET /org/masters/departments': [], 'GET /org/masters/employment-types': [], 'GET /org/masters/grades': [GRADE] };
 
-  it('payroll set-up sees the bonus and loan panels with defaults; Save too early shows the error and focuses it; a save is sent and toasted', async () => {
+  it('HR sees the bonus and loan panels with defaults; Save too early shows the error and focuses it; a save is sent and toasted', async () => {
     const put = jest.fn().mockResolvedValue({ id: 's-9' });
-    route({ ...lists, 'GET /org/settings': { registry: REGISTRY, overrides: [{ id: 's-1', key: 'payroll.loan.interest_rate.loan', scopeType: 'legal_entity', scopeId: 'le-1', value: '8', validFrom: null }] }, 'PUT /org/settings': (_p: string, init: RequestInit) => put(JSON.parse(String(init.body))), [`GET ${PERMS_PATH}`]: ['org.structure.view', 'payroll.setup.manage'] });
+    route({ ...lists, 'GET /org/settings': { registry: REGISTRY, overrides: [{ id: 's-1', key: 'payroll.loan.interest_rate.loan', scopeType: 'legal_entity', scopeId: 'le-1', value: '8', validFrom: null }] }, 'PUT /org/settings': (_p: string, init: RequestInit) => put(JSON.parse(String(init.body))), [`GET ${PERMS_PATH}`]: ['org.structure.view', 'org.settings.manage'] });
     wrap(<YxPayrollRulesPage />);
     expect(await screen.findByRole('heading', { name: 'Statutory bonus' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Loans and advances' })).toBeInTheDocument();
@@ -218,8 +218,8 @@ describe('/yx/settings/payroll-rules (founder 30 Oct 2026, last 10, items 1 and 
     expect((await screen.findAllByText('Saved.'))[0]).toBeInTheDocument();
   });
 
-  it('a reader without either key gets no Change buttons; a 403 shows no access; a refused save shows why', async () => {
-    route({ ...lists, 'GET /org/settings': { registry: REGISTRY, overrides: [] }, [`GET ${PERMS_PATH}`]: ['org.structure.view'] });
+  it('payroll set-up reads the rules but gets no Change buttons; a 403 shows no access; a refused save shows why', async () => {
+    route({ ...lists, 'GET /org/settings': { registry: REGISTRY, overrides: [] }, [`GET ${PERMS_PATH}`]: ['org.structure.view', 'payroll.setup.manage'] });
     const { unmount } = wrap(<YxPayrollRulesPage />);
     await screen.findAllByText('Starter value');
     expect(screen.queryByRole('button', { name: 'Change' })).toBeNull();
@@ -228,7 +228,7 @@ describe('/yx/settings/payroll-rules (founder 30 Oct 2026, last 10, items 1 and 
     const r2 = wrap(<YxPayrollRulesPage />);
     expect(await screen.findByText("You don't have access to the payroll rules")).toBeInTheDocument();
     r2.unmount();
-    route({ ...lists, 'GET /org/settings': { registry: REGISTRY, overrides: [] }, 'PUT /org/settings': Object.assign(new Error('Who may ask for a loan or advance is one of: confirmed, everyone'), { status: 400 }), [`GET ${PERMS_PATH}`]: ['payroll.setup.manage'] });
+    route({ ...lists, 'GET /org/settings': { registry: REGISTRY, overrides: [] }, 'PUT /org/settings': Object.assign(new Error('Who may ask for a loan or advance is one of: confirmed, everyone'), { status: 400 }), [`GET ${PERMS_PATH}`]: ['org.settings.manage'] });
     wrap(<YxPayrollRulesPage />);
     const block = (await screen.findByText('Who may ask for a loan or advance')).closest('.yx-org__rule') as HTMLElement;
     await userEvent.click(within(block).getByRole('button', { name: 'Change' }));
