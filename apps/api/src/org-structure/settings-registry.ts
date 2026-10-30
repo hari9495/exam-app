@@ -97,6 +97,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'retirement.alert_months': { label: 'Open the retirement exit this many months before', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '3', '6'], default: '6' },
   // YX-LC-19: at the end of a fixed-term contract: remind HR and the manager (30 and 7 days before), or also exit on the day.
   'contract_end.action': { label: 'When a fixed-term contract ends', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['alert', 'auto_exit'], default: 'alert' },
+  // PPL-49 (founder Q4, 30 Oct 2026): the longest a fixed-term contract may run from the joining day; setting or extending
+  // an end past it is refused. Default 3 years; HR may change it per entity or employment type.
+  'contract.max_years': { label: 'A fixed-term contract lasts at most (years from joining)', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['1', '2', '3', '4', '5', 'none'], default: '3' },
   // P02 Q2 (decided): managers view their whole reporting subtree by default; the company may narrow it.
   'access.manager.view_scope': { label: 'Managers can view', scopes: ['tenant'], dated: false, values: ['all_reports', 'direct_reports'], default: 'all_reports', guard: 'access.role.manage' },
   // Founder 28 Oct 2026: a manager's access to their team's pay lasts this long, and covers the whole team or the one person

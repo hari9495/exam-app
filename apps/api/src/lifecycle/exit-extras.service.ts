@@ -16,6 +16,7 @@ import { DEATH_CLAIMS, addDaysIso } from './exit-rules';
 import { freezeSettlementIn } from './settlement';
 import { withPayScope } from '../payroll/pay-access';
 import { showDate } from '../people/employee-import';
+import { contractLimitProblem } from './contract-limit';
 
 // Lifecycle batch 6e, the exit special cases (M01 §3.7; design §16.5):
 //   death         (LIFE-5.04, YX-LC-16) the payees: the nominations, else legal heirs with a succession certificate;
@@ -515,6 +516,9 @@ export class ExitExtrasService {
       }
       if (!dto.contractEndOn || dto.contractEndOn < iso(e.joinedOn)) throw new BadRequestException('Give a contract end on or after the joining day.');
       if (dto.action === 'extend' && e.contractEndOn && dto.contractEndOn <= iso(e.contractEndOn)) throw new BadRequestException('An extension moves the end later.');
+      const type = (await tx.employeeAssignment.findFirst({ where: { organizationId: c.organizationId, employmentId: e.id, supersededAt: null }, orderBy: { validFrom: 'desc' }, select: { employmentTypeId: true } }))?.employmentTypeId;
+      const tooLong = contractLimitProblem(iso(e.joinedOn), dto.contractEndOn, String(await settingFor(tx, c, 'contract.max_years', { legalEntityId: e.legalEntityId, employmentTypeId: type })));
+      if (tooLong) throw new BadRequestException(tooLong);
       await tx.employment.update({ where: { id: e.id }, data: { contractEndOn: asDate(dto.contractEndOn), contractReminded: [] } });
       await audit(tx, c, `employment.contract_${dto.action === 'set' ? 'set' : 'extended'}`, 'employee', employeeId, { contractEndOn: dto.contractEndOn, reason: dto.reason.trim() });
       return { convert: false };
