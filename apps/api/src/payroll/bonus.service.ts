@@ -12,7 +12,8 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { inForce, minWage, minWageTableFor } from '../statutory/evaluator';
 import { asDate, dateOf, monthRange } from '../time/time-core';
 import { entitiesFor, payHolders, payScope, payViewer, requireSelf } from './pay-access';
-import { accountingYear, allocableSurplus, carriesInto, carryTotal, employeeBonus, rateProblem, settleYear, supportedRate, yearMonths, yearOf, type BonusRules, type Carry, type EarlierYear } from './bonus';
+import { accountingYear, allocableSurplus, carriesInto, carryTotal, employeeBonus, rateInMonth, rateProblem, settleYear, supportedRate, yearMonths, yearOf, type BonusRules, type Carry, type EarlierYear } from './bonus';
+import { FORM_C_HEADER, renderFormC } from './bonus-form-c';
 import type { BonusCreateDto, BonusPatchDto, BonusReturnDto, BonusRowDto, BonusSendDto } from './dto-bonus';
 
 // PAY-24 statutory bonus (Payment of Bonus Act; founder decision 9). The maths is in bonus.ts; here:
@@ -54,6 +55,7 @@ const SETTING_KEYS = {
   allocablePercent: 'payroll.bonus.allocable_percent',
   carryYears: 'payroll.bonus.carry_years',
   dueMonths: 'payroll.bonus.due_months',
+  eligibilityRateOn: 'payroll.bonus.eligibility_rate_on',
 } as const;
 const MAKER_ACTIONS = ['payroll.bonus.computed', 'payroll.bonus.changed', 'payroll.bonus.row_changed', 'payroll.bonus.submitted'];
 const NUMERIC: (keyof BonusRules)[] = ['yearStartMonth', 'minWorkingDays', 'carryYears', 'dueMonths'];
@@ -294,7 +296,8 @@ export class BonusService {
     for (const w of slipWages) wage.set(w.employmentId + w.month, D(w.wage));
     for (const w of imported) if (!slipMonths.has(w.employmentId + w.month)) wage.set(w.employmentId + w.month, D(w.wage));
     // s.2(13) eligibility on the full-month salary rate (founder 30 Oct 2026, item 24): the bonusWage lines of the monthly
-    // salary in force on the month's last day employed. No salary record (imported history) or an hourly or daily rate:
+    // salary in force on the day the company's rule names (last day, first day, or the highest in the month; founder 30 Oct
+    // 2026, last 10, item 1), within the days employed. No salary record (imported history) or an hourly or daily rate:
     // none, and the month's earned wage is tested instead.
     const comps = await tx.compensation.findMany({ where: { organizationId: org, employmentId: { in: ems.map((e) => e.id) }, supersededAt: null, validFrom: { lte: asDate(end) }, OR: [{ validTo: null }, { validTo: { gte: asDate(start) } }] }, select: { employmentId: true, validFrom: true, validTo: true, changeId: true } });
     const pkgs = await tx.compensationPackage.findMany({ where: { organizationId: org, changeId: { in: comps.map((x) => x.changeId) }, payBasis: 'monthly' }, select: { id: true, changeId: true } });
@@ -302,13 +305,13 @@ export class BonusService {
     const pkgRate = new Map<string, Prisma.Decimal>();
     for (const l of await tx.compensationLine.findMany({ where: { organizationId: org, packageId: { in: pkgs.map((p) => p.id) } }, select: { packageId: true, componentId: true, monthly: true } }))
       if (bonusComps.has(l.componentId)) pkgRate.set(l.packageId, (pkgRate.get(l.packageId) ?? ZERO).add(l.monthly));
-    const rateOf = (employmentId: string, exited: string | null, month: string): Prisma.Decimal | null => {
-      const last = monthRange(month).to;
-      const day = exited && exited < last ? exited : last;
-      const cmp = comps.find((x) => x.employmentId === employmentId && dateOf(x.validFrom) <= day && (!x.validTo || dateOf(x.validTo) >= day));
-      const pkg = cmp && pkgs.find((p) => p.changeId === cmp.changeId);
-      return pkg ? (pkgRate.get(pkg.id) ?? ZERO) : null;
-    };
+    const periodsOf = (employmentId: string) =>
+      comps
+        .filter((x) => x.employmentId === employmentId)
+        .map((x) => {
+          const pkg = pkgs.find((p) => p.changeId === x.changeId);
+          return { from: dateOf(x.validFrom), to: x.validTo ? dateOf(x.validTo) : null, rate: pkg ? (pkgRate.get(pkg.id) ?? ZERO) : null };
+        });
     // s.14 working days: the payroll feed's paid and lay-off days; a paid month with no feed counts the days employed.
     // Maternity leave (s.14(c)) counts only through the feed's paid days: the feed has no column for maternity days paid
     // as an ESI benefit instead of salary (founder item 25, gap recorded in the Pay design map).
@@ -336,6 +339,7 @@ export class BonusService {
     const inputs = ems.map((em) => {
       const joined = dateOf(em.joinedOn);
       const exited = em.exitedOn ? dateOf(em.exitedOn) : null;
+      const periods = periodsOf(em.id);
       let days = ZERO;
       const ms = months.map((month) => {
         const w = wage.get(em.id + month) ?? ZERO;
@@ -347,7 +351,7 @@ export class BonusService {
           const to = exited && exited < r.to ? exited : r.to;
           if (from <= to) days = days.add((Date.parse(to) - Date.parse(from)) / 86_400_000 + 1);
         }
-        const rate = rateOf(em.id, exited, month);
+        const rate = rateInMonth(periods, month, joined, exited, rules.eligibilityRateOn);
         return { month, wage: w.toFixed(2), ...(rate ? { rate: rate.toFixed(2) } : {}) };
       });
       const k = kept.get(em.id);
@@ -587,11 +591,12 @@ export class BonusService {
   // ------------------------------------------------------------------------------------------ Form C register (item 30)
 
   /**
-   * Form C (Payment of Bonus Rules, 1975, rule 4(c)): the bonus register of an approved computation, as CSV, one row per
-   * eligible employee. Income tax and the amount actually paid come from the off-cycle bonus run once its payslips are
+   * Form C (Payment of Bonus Rules, 1975, rule 4(c)): the bonus register of an approved computation, one row per eligible
+   * employee, as CSV or as a PDF on the legal entity's letterhead with totals and the employer's signature (founder 30 Oct
+   * 2026, last 10, item 2). Income tax and the amount actually paid come from the off-cycle bonus run once its payslips are
    * approved and paid. Father's name is not held in YukthiX and stays blank. Every download is audited with its hash.
    */
-  async formC(ctx: TenantContext, user: ScopeUser, id: string): Promise<{ file: Buffer; name: string }> {
+  async formC(ctx: TenantContext, user: ScopeUser, id: string, format: 'csv' | 'pdf' = 'csv'): Promise<{ file: Buffer; name: string; contentType: string }> {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
@@ -616,23 +621,30 @@ export class BonusService {
         const d = dateOf(dob);
         return `${Number(d.slice(0, 4)) + 15}${d.slice(4)}` <= start ? 'Yes' : 'No';
       };
-      const header = ['Sl. No.', 'Employee code', 'Name of the employee', "Father's name", 'Completed 15 years of age at the beginning of the accounting year', 'Designation', 'Number of days worked in the year', 'Total salary or wage for the year (section 12)', 'Bonus payable under section 10 or 11', 'Puja or other customary bonus paid during the year', 'Interim bonus or bonus paid in advance', 'Income tax deducted', 'Deduction for financial loss caused by misconduct', 'Total deducted', 'Net amount payable', 'Amount actually paid', 'Date paid', 'Signature or thumb impression of the employee'];
       const body = rows.map((r, i) => {
         const slip = slips.find((x) => x.employmentId === r.employmentId);
         const paid = slip && slip.paymentStatus === 'paid' ? paidOn.get(slip.id) : undefined;
         const asg = asgs.find((a) => a.employmentId === r.employmentId);
         return [i + 1, r.employeeCode, r.name, '', fifteenAt(people.find((p) => p.employeeId === r.employeeId)?.dateOfBirth), (asg && titles.get(asg.designationId)) ?? '', r.workingDays, r.bonusSalary, r.bonus, r.pujaPaid, '0.00', slip ? (tds.get(slip.id) ?? ZERO).toFixed(2) : '', r.misconductLoss, r.deductions, r.payable, paid ? r.payable : '', paid ? dateOf(paid) : '', ''];
       });
-      const safe = (x: unknown) => {
-        const t = x === null || x === undefined ? '' : String(x);
-        return /^[=+\-@\t\r]/.test(t) ? `'${t}` : t; // CSV injection: formula-looking text is defused.
-      };
-      const title = `Form C: bonus paid to employees for the accounting year ${dateText(start)} to ${dateText(end)} at ${comp.rate.toFixed(2)}%`;
-      const csv = stringify([[safe(title)], header, ...body.map((r) => r.map(safe))]);
-      const file = Buffer.from(`\uFEFF${csv}`, 'utf8');
+      const period = `the accounting year ${dateText(start)} to ${dateText(end)} at ${comp.rate.toFixed(2)}%`;
+      let file: Buffer;
+      if (format === 'pdf') {
+        const e = await tx.legalEntity.findFirstOrThrow({ where: { organizationId: org, id: comp.legalEntityId }, select: { name: true, registeredAddress: true } });
+        const reg = e.registeredAddress as { lines?: string[]; city?: string; postalCode?: string | null } | null;
+        const address = reg ? [...(reg.lines ?? []), [reg.city, reg.postalCode].filter(Boolean).join(' ')].filter(Boolean) : [];
+        file = await renderFormC({ entityName: e.name, address, title: `Bonus paid to employees for ${period}`, rows: body });
+      } else {
+        const safe = (x: unknown) => {
+          const t = x === null || x === undefined ? '' : String(x);
+          return /^[=+\-@\t\r]/.test(t) ? `'${t}` : t; // CSV injection: formula-looking text is defused.
+        };
+        const csv = stringify([[safe(`Form C: bonus paid to employees for ${period}`)], FORM_C_HEADER, ...body.map((r) => r.map(safe))]);
+        file = Buffer.from(`\uFEFF${csv}`, 'utf8');
+      }
       const sha256 = createHash('sha256').update(file).digest('hex');
-      await audit(tx, c, 'payroll.bonus.register_exported', 'bonus_computation', comp.id, { form: 'C', rows: body.length, sha256 });
-      return { file, name: `form-c-bonus-${view.year.label}.csv` };
+      await audit(tx, c, 'payroll.bonus.register_exported', 'bonus_computation', comp.id, { form: 'C', format, rows: body.length, sha256 });
+      return { file, name: `form-c-bonus-${view.year.label}.${format}`, contentType: format === 'pdf' ? 'application/pdf' : 'text/csv; charset=utf-8' };
     });
   }
 }

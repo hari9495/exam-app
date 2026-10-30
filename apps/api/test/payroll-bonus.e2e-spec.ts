@@ -11,6 +11,7 @@ import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { markSteppedUp } from './fixtures/step-up';
+import { pdfText } from './fixtures/pdf-text';
 
 // PAY-24 statutory bonus end to end against the real database: every route, positive and negative, with the boundaries
 // (exactly the eligibility limit and ₹0.01 above it, 29 and 30 working days), the company settings, maker ≠ checker,
@@ -31,7 +32,7 @@ describe('Payroll statutory bonus (PAY-24)', () => {
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
-  const api = (who: Who, method: 'get' | 'post' | 'put' | 'patch', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+  const api = (who: Who, method: 'get' | 'post' | 'put' | 'patch' | 'delete', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const inA = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false }, fn);
   const payScoped = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) =>
     inA(async (tx) => {
@@ -194,7 +195,7 @@ describe('Payroll statutory bonus (PAY-24)', () => {
     const r = (await api('payAdmin', 'get', `/payroll/bonus?legalEntityId=${ids.entity}`).expect(200)).body;
     expect(r.years).toHaveLength(5);
     expect(r.year).toMatchObject({ start: yearStart, end: yearEnd, label, ended: true, dueOn: `${Y + 1}-11-30` });
-    expect(r.rules).toEqual({ yearStartMonth: 4, eligibilityWage: '21000', calculationCeiling: '7000', minRate: '8.33', maxRate: '20', minWorkingDays: 30, minAmount: '100', allocablePercent: '60', carryYears: 4, dueMonths: 8 });
+    expect(r.rules).toEqual({ yearStartMonth: 4, eligibilityWage: '21000', calculationCeiling: '7000', minRate: '8.33', maxRate: '20', minWorkingDays: 30, minAmount: '100', allocablePercent: '60', carryYears: 4, dueMonths: 8, eligibilityRateOn: 'last_day' });
     expect(r.can).toEqual({ manage: true, approve: false });
     expect(r.computation).toBeNull();
     expect((await api('approver', 'get', `/payroll/bonus?legalEntityId=${ids.entity}`).expect(200)).body.can).toEqual({ manage: false, approve: true });
@@ -276,6 +277,53 @@ describe('Payroll statutory bonus (PAY-24)', () => {
     await api('adminA', 'put', '/org/settings').send({ key: 'payroll.bonus.eligibility_wage', scopeType: 'tenant', value: '15000' }).expect(400);
   });
 
+  it('the eligibility rate rule (founder last 10, item 1): a company or entity setting, the default last day, read into the rules', async () => {
+    expect((await api('payAdmin', 'get', `/payroll/bonus?legalEntityId=${ids.entity}`).expect(200)).body.rules.eligibilityRateOn).toBe('last_day');
+    // Payroll set-up changes payroll rules (Settings › Payroll & Statutory › Payroll rules) per legal entity.
+    const set = (await api('payAdmin', 'put', '/org/settings').send({ key: 'payroll.bonus.eligibility_rate_on', scopeType: 'legal_entity', scopeId: ids.entity, value: 'highest_in_month' }).expect(200)).body;
+    let r = keep((await api('payAdmin', 'patch', `/payroll/bonus/${comp.id}`).send({ version: v() }).expect(200)).body);
+    expect(r.rules.eligibilityRateOn).toBe('highest_in_month');
+    // Salaries here do not change within a month, so every rule gives the same people.
+    expect(r.totals).toMatchObject({ people: 7, eligible: 4 });
+    expect(rowOf(r, 'gopal').eligible).toBe(true);
+    // Negative: an unknown value, someone without either key, a non-payroll setting through payroll set-up, and
+    // payroll set-up of another company.
+    expect((await api('payAdmin', 'put', '/org/settings').send({ key: 'payroll.bonus.eligibility_rate_on', scopeType: 'tenant', value: 'average' }).expect(400)).body.message).toBe('Bonus eligibility uses the salary rate on is one of: last_day, first_day, highest_in_month');
+    await api('noPay', 'put', '/org/settings').send({ key: 'payroll.bonus.eligibility_rate_on', scopeType: 'tenant', value: 'first_day' }).expect(403);
+    await api('payAdmin', 'put', '/org/settings').send({ key: 'probation.default_months', scopeType: 'tenant', value: '3' }).expect(403);
+    await api('payAdminB', 'put', '/org/settings').send({ key: 'payroll.bonus.eligibility_rate_on', scopeType: 'legal_entity', scopeId: ids.entity, value: 'first_day' }).expect(404);
+    // Every change is audited with before and after; back to the default by removing it.
+    const logged = await inA((tx) => tx.auditLog.findFirstOrThrow({ where: { action: 'org.setting.changed', entityId: set.id } }));
+    expect(JSON.parse(logged.metadataJson ?? '{}')).toMatchObject({ key: 'payroll.bonus.eligibility_rate_on', from: null, to: 'highest_in_month' });
+    await api('payAdmin', 'delete', `/org/settings/${set.id}`).expect(204);
+    r = keep((await api('payAdmin', 'patch', `/payroll/bonus/${comp.id}`).send({ version: v() }).expect(200)).body);
+    expect(r.rules.eligibilityRateOn).toBe('last_day');
+  });
+
+  it('loan settings (founder last 10, item 5): payroll set-up sets them per company or entity, within their ranges, audited', async () => {
+    const put = (who: Who, body: object) => api(who, 'put', '/org/settings').send(body);
+    const set = (await put('payAdmin', { key: 'payroll.loan.max_gross_months', scopeType: 'legal_entity', scopeId: ids.entity, value: '3' }).expect(200)).body;
+    expect(set).toMatchObject({ key: 'payroll.loan.max_gross_months', scopeType: 'legal_entity', value: '3' });
+    await put('payAdmin', { key: 'payroll.loan.interest_rate.loan', scopeType: 'tenant', value: '7.5' }).expect(200);
+    await put('payAdmin', { key: 'payroll.loan.after_probation', scopeType: 'tenant', value: 'everyone' }).expect(200);
+    await put('payAdmin', { key: 'payroll.loan.interest_rate.advance', scopeType: 'tenant', value: '0' }).expect(200);
+    // Out of range, not offered, or not a scope it takes.
+    await put('payAdmin', { key: 'payroll.loan.max_gross_months', scopeType: 'tenant', value: '24' }).expect(400);
+    await put('payAdmin', { key: 'payroll.loan.interest_rate.loan', scopeType: 'tenant', value: '-1' }).expect(400);
+    await put('payAdmin', { key: 'payroll.loan.interest_rate.loan', scopeType: 'tenant', value: '13' }).expect(400);
+    await put('payAdmin', { key: 'payroll.loan.after_probation', scopeType: 'location', scopeId: ids.loc, value: 'everyone' }).expect(400);
+    await put('noPay', { key: 'payroll.loan.interest_rate.loan', scopeType: 'tenant', value: '8' }).expect(403);
+    // HR (org.settings.manage) may change them too.
+    await put('adminA', { key: 'payroll.loan.interest_rate.loan', scopeType: 'tenant', value: '8' }).expect(200);
+    const listed = (await api('payAdmin', 'get', '/org/settings').expect(200)).body as { registry: Record<string, { default: string }>; overrides: { id: string; key: string; value: string }[] };
+    expect(listed.registry['payroll.loan.max_gross_months'].default).toBe('2');
+    expect(listed.overrides.find((o) => o.key === 'payroll.loan.interest_rate.loan')?.value).toBe('8');
+    const trail = await inA((tx) => tx.auditLog.findMany({ where: { action: 'org.setting.changed' }, orderBy: { createdAt: 'asc' }, select: { metadataJson: true } }));
+    expect(trail.map((t) => JSON.parse(t.metadataJson ?? '{}')).filter((m) => m.key === 'payroll.loan.interest_rate.loan').map((m) => [m.from, m.to])).toEqual([[null, '7.5'], ['7.5', '8']]);
+    // Leave the loan rules as they were.
+    for (const o of listed.overrides.filter((x) => x.key.startsWith('payroll.loan.'))) await api('payAdmin', 'delete', `/org/settings/${o.id}`).expect(204);
+  });
+
   it('surplus: the rate follows it between 8.33% and 20%; set-off below the minimum, set-on above the highest', async () => {
     // A stale version is a conflict, never a lost change.
     expect((await api('payAdmin', 'patch', `/payroll/bonus/${comp.id}`).send({ version: v() - 1, availableSurplus: '0' }).expect(409)).body.message).toMatch(/^Someone else changed this bonus/);
@@ -319,8 +367,9 @@ describe('Payroll statutory bonus (PAY-24)', () => {
 
   it('submit, send back with a reason, submit again; nothing changes while it waits', async () => {
     await api('approver', 'post', `/payroll/bonus/${comp.id}/approve`).send({ version: v() }).expect(409);
-    // No Form C before approval.
+    // No Form C before approval, as a spreadsheet or a PDF.
     expect((await api('payAdmin', 'get', `/payroll/bonus/${comp.id}/form-c`).expect(409)).body.message).toBe('Form C is made once the bonus is approved.');
+    expect((await api('payAdmin', 'get', `/payroll/bonus/${comp.id}/form-c?format=pdf`).expect(409)).body.message).toBe('Form C is made once the bonus is approved.');
     let r = keep((await api('payAdmin', 'post', `/payroll/bonus/${comp.id}/submit`).send({ version: v() }).expect(200)).body);
     expect(r.status).toBe('submitted');
     // Item 30: the approver is told in the app; never a maker (payAdmin made it, 'both' changed a row), never someone
@@ -360,9 +409,32 @@ describe('Payroll statutory bonus (PAY-24)', () => {
     await api('tnAdmin', 'get', `/payroll/bonus/${comp.id}/form-c`).expect(404);
     await api('payAdminB', 'get', `/payroll/bonus/${comp.id}/form-c`).expect(404);
     await api('noPay', 'get', `/payroll/bonus/${comp.id}/form-c`).expect(403);
-    const exported = await inA((tx) => tx.auditLog.findMany({ where: { action: 'payroll.bonus.register_exported', entityId: comp.id } }));
-    expect(exported).toHaveLength(2);
-    expect(JSON.parse(exported[0].metadataJson ?? '{}')).toMatchObject({ form: 'C', rows: 3 });
+    // Founder last 10, item 2: the same register as a PDF on the entity's letterhead, with totals and the signature block.
+    const pdf = await api('approver', 'get', `/payroll/bonus/${comp.id}/form-c?format=pdf`)
+      .buffer(true)
+      .parse((res, cb) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (c: Buffer) => chunks.push(c));
+        res.on('end', () => cb(null, Buffer.concat(chunks)));
+      })
+      .expect(200);
+    expect(pdf.headers['content-type']).toBe('application/pdf');
+    expect(pdf.headers['content-disposition']).toBe(`attachment; filename="form-c-bonus-${label}.pdf"`);
+    const text = pdfText(pdf.body as Buffer);
+    expect(text).toContain('Bonus Foods');
+    expect(text).toContain('Form C, Payment of Bonus Act, 1965, Rule 4');
+    for (const code of ['BN-001', 'BN-002', 'BN-007']) expect(text).toContain(code);
+    for (const code of ['BN-003', 'BN-004', 'BN-005', 'BN-006']) expect(text).not.toContain(code);
+    const total = (col: number) => csv.slice(2).reduce((t, l) => t.add(l.split(',')[col]), D('0')).toFixed(2);
+    expect(text).toContain(`Total ${total(7)} ${total(8)}`);
+    expect(text).toContain(total(14));
+    expect(text).toContain('Signature of the employer or authorised person, for Bonus Foods');
+    await api('approver', 'get', `/payroll/bonus/${comp.id}/form-c?format=xlsx`).expect(400);
+    await api('tnAdmin', 'get', `/payroll/bonus/${comp.id}/form-c?format=pdf`).expect(404);
+    await api('noPay', 'get', `/payroll/bonus/${comp.id}/form-c?format=pdf`).expect(403);
+    const exported = await inA((tx) => tx.auditLog.findMany({ where: { action: 'payroll.bonus.register_exported', entityId: comp.id }, orderBy: { createdAt: 'asc' } }));
+    expect(exported).toHaveLength(3);
+    expect(exported.map((e) => JSON.parse(e.metadataJson ?? '{}'))).toEqual([expect.objectContaining({ form: 'C', format: 'csv', rows: 3 }), expect.objectContaining({ format: 'csv' }), expect.objectContaining({ format: 'pdf', rows: 3 })]);
     await api('payAdmin', 'patch', `/payroll/bonus/${comp.id}/rows/${ids.em_Asha}`).send({ version: v(), pujaPaid: '0', misconductLoss: '0', disqualified: false }).expect(409);
   });
 

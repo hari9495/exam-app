@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { ACT_RULES, accountingYear, allocableSurplus, carriesInto, employeeBonus, rateProblem, settleYear, supportedRate, yearMonths, yearOf, type BonusRules } from './bonus';
+import { ACT_RULES, accountingYear, allocableSurplus, carriesInto, employeeBonus, rateInMonth, rateProblem, settleYear, supportedRate, yearMonths, yearOf, type BonusRules, type RatePeriod } from './bonus';
 
 // PAY-24 Payment of Bonus Act maths: positive and negative cases, with the boundaries (the eligibility limit, 29 and 30
 // days, the lowest and highest rate, the ceiling, set-on and set-off over four years).
@@ -198,5 +198,59 @@ describe('set-on and set-off', () => {
   it('an opening amount from before YukthiX counts as made the year before', () => {
     const earlier = [{ year: y(2024), setOnMade: [{ year: y(2023), amount: '7000' }], setOffMade: [], setOnUsed: [{ year: y(2023), amount: '2000' }], setOffSettled: [] }];
     expect(carriesInto(y(2025), earlier, R).setOn).toEqual([{ year: y(2023), amount: '5000.00' }]);
+  });
+});
+
+describe('the eligibility rate rule (company setting payroll.bonus.eligibility_rate_on)', () => {
+  // A raise on 15 Jun 2025 from ₹20,000 to ₹22,000: it crosses the ₹21,000 limit in the middle of the month.
+  const raise: RatePeriod[] = [
+    { from: '2025-04-01', to: '2025-06-14', rate: '20000' },
+    { from: '2025-06-15', to: null, rate: '22000' },
+  ];
+  const r = (rule: 'last_day' | 'first_day' | 'highest_in_month', periods: RatePeriod[] = raise, joined = '2024-01-01', exited: string | null = null, month = '2025-06') => rateInMonth(periods, month, joined, exited, rule)?.toFixed(2) ?? null;
+  const eligible = (rate: string | null) => employeeBonus({ months: [{ month: '2025-06', wage: '21000', rate }], days: 30, minimumWage: 0 }, R, R.minRate).eligible;
+
+  it('last day (the default): the raise counts, so June is not eligible', () => {
+    expect(r('last_day')).toBe('22000.00');
+    expect(eligible(r('last_day'))).toBe(false);
+    expect(rateInMonth(raise, '2025-06', '2024-01-01', null)?.toFixed(2)).toBe('22000.00'); // no rule given: last day
+  });
+  it('first day: the rate before the raise, so June is eligible', () => {
+    expect(r('first_day')).toBe('20000.00');
+    expect(eligible(r('first_day'))).toBe(true);
+  });
+  it('highest in the month: the raise counts, so June is not eligible', () => {
+    expect(r('highest_in_month')).toBe('22000.00');
+    expect(eligible(r('highest_in_month'))).toBe(false);
+  });
+  it('the months either side of the raise are the same under every rule', () => {
+    for (const rule of ['last_day', 'first_day', 'highest_in_month'] as const) {
+      expect(r(rule, raise, '2024-01-01', null, '2025-05')).toBe('20000.00');
+      expect(r(rule, raise, '2024-01-01', null, '2025-07')).toBe('22000.00');
+    }
+  });
+  it('a raise on the 1st: every rule sees the new rate; a cut on the last day: only last day and highest differ', () => {
+    const onFirst = [{ from: '2025-04-01', to: '2025-05-31', rate: '20000' }, { from: '2025-06-01', to: null, rate: '22000' }];
+    for (const rule of ['last_day', 'first_day', 'highest_in_month'] as const) expect(r(rule, onFirst)).toBe('22000.00');
+    const cut = [{ from: '2025-04-01', to: '2025-06-29', rate: '22000' }, { from: '2025-06-30', to: null, rate: '20000' }];
+    expect([r('last_day', cut), r('first_day', cut), r('highest_in_month', cut)]).toEqual(['20000.00', '22000.00', '22000.00']);
+  });
+  it('the limit itself: ₹21,000 is eligible, ₹21,000.01 is not', () => {
+    expect(eligible('21000')).toBe(true);
+    expect(eligible('21000.01')).toBe(false);
+  });
+  it('joined or left during the month: only the days employed count', () => {
+    // Joined 20 Jun (after the raise): first day is the 20th, so the new rate.
+    expect(r('first_day', raise, '2025-06-20')).toBe('22000.00');
+    // Left on 10 Jun (before the raise): last day is the 10th, and the highest in force while employed is the old rate.
+    expect(r('last_day', raise, '2024-01-01', '2025-06-10')).toBe('20000.00');
+    expect(r('highest_in_month', raise, '2024-01-01', '2025-06-10')).toBe('20000.00');
+  });
+  it('no monthly salary on the day: null (the earned wage is tested instead)', () => {
+    const gap = [{ from: '2025-06-10', to: null, rate: '15000' }];
+    expect(r('first_day', gap)).toBeNull();
+    expect(r('last_day', gap)).toBe('15000.00');
+    expect(r('highest_in_month', [{ from: '2025-04-01', to: null, rate: null }])).toBeNull();
+    expect(r('last_day', [])).toBeNull();
   });
 });

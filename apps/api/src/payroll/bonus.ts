@@ -3,6 +3,8 @@ import { Prisma } from '@prisma/client';
 // PAY-24 statutory bonus (Payment of Bonus Act, 1965; M03 YX-PAY-16, Q8). Pure maths, exact decimals, no floats.
 //   s.2(13) eligibility   salary at most the eligibility limit a month (₹21,000), tested on the full-month salary rate,
 //                         not on what a part month earned (founder 30 Oct 2026, item 24); a month above it earns no bonus.
+//                         Which day's rate is a company setting (founder 30 Oct 2026, last 10, item 1): the month's last
+//                         day (default), its first day, or the highest rate in force during the month.
 //   s.8                   at least 30 working days in the accounting year (s.14: paid days and lay-off days count).
 //   s.12                  bonus is worked out on the wage up to the calculation ceiling: ₹7,000 or the minimum wage if higher.
 //   s.10, s.11, s.13      at least 8.33 % (and at least ₹100, cut down for part of a year), at most 20 %, in proportion
@@ -40,10 +42,14 @@ export interface BonusRules {
   dueMonths: number;
   /** 1 … 12, the month the accounting year starts. */
   yearStartMonth: number;
+  /** Which salary rate the eligibility test uses each month (absent on computations made before the setting: last_day). */
+  eligibilityRateOn?: EligibilityRateOn;
 }
 
+export type EligibilityRateOn = 'last_day' | 'first_day' | 'highest_in_month';
+
 /** The Act's values: the defaults of the company settings. */
-export const ACT_RULES: BonusRules = { eligibilityWage: '21000', calculationCeiling: '7000', minRate: '8.33', maxRate: '20', minWorkingDays: 30, minAmount: '100', allocablePercent: '60', carryYears: 4, dueMonths: 8, yearStartMonth: 4 };
+export const ACT_RULES: BonusRules = { eligibilityWage: '21000', calculationCeiling: '7000', minRate: '8.33', maxRate: '20', minWorkingDays: 30, minAmount: '100', allocablePercent: '60', carryYears: 4, dueMonths: 8, yearStartMonth: 4, eligibilityRateOn: 'last_day' };
 
 // ------------------------------------------------------------------------------------------ the accounting year
 
@@ -90,6 +96,36 @@ export function yearMonths(year: AccountingYear): string[] {
     const [a, b] = addMonths(y, m, i);
     return `${a}-${pad(b)}`;
   });
+}
+
+// ------------------------------------------------------------------------------------------ the month's salary rate
+
+/** A salary record: in force from `from` to `to` (inclusive; null: open), its monthly bonus-wage rate (null: not a monthly salary). */
+export interface RatePeriod {
+  from: string;
+  to: string | null;
+  rate: Prisma.Decimal.Value | null;
+}
+
+/**
+ * The salary rate a month's eligibility is tested on, within the days employed that month (joined … exited): the rate on
+ * the last day, on the first day, or the highest rate in force on any day. Null: no monthly salary on that day (the
+ * month's earned wage is tested instead).
+ */
+export function rateInMonth(periods: readonly RatePeriod[], month: string, joined: string, exited: string | null, rule: EligibilityRateOn = 'last_day'): Prisma.Decimal | null {
+  const [y, m] = month.split('-').map(Number);
+  const first = `${month}-01`;
+  const last = `${month}-${pad(lastDay(y, m))}`;
+  const from = joined > first ? joined : first;
+  const to = exited && exited < last ? exited : last;
+  const on = (day: string) => {
+    const p = periods.find((x) => x.from <= day && (!x.to || x.to >= day));
+    return p && p.rate != null ? D(p.rate) : null;
+  };
+  if (rule === 'first_day') return on(from);
+  if (rule === 'last_day') return on(to);
+  const rates = periods.filter((x) => x.rate != null && x.from <= to && (!x.to || x.to >= from)).map((x) => D(x.rate!));
+  return rates.length ? rates.reduce((a, b) => Prisma.Decimal.max(a, b)) : null;
 }
 
 // ------------------------------------------------------------------------------------------ one employee

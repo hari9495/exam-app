@@ -10,13 +10,13 @@ import type { ScopeUser } from '../access/scope';
 import { BonusService } from './bonus.service';
 import { file } from './payroll.controller';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
-import { BonusCreateDto, BonusPatchDto, BonusReturnDto, BonusRowDto, BonusSendDto, BonusVersionDto } from './dto-bonus';
+import { BonusCreateDto, BonusFormCQueryDto, BonusPatchDto, BonusReturnDto, BonusRowDto, BonusSendDto, BonusVersionDto } from './dto-bonus';
 
 // PAY-24 statutory bonus. Every route declares its key (YX-SEC-01); the service checks the legal entity again and the
 // database pay guard is the second layer.
 //   payroll.bonus.manage    work it out, enter the surplus and deductions, send it for approval, send it to a run
 //   payroll.bonus.approve   approve or send back (never one's own: maker ≠ checker)
-//   either key              read it, and download the Form C register once it is approved (audited)
+//   either key              read it, and download the Form C register (CSV or PDF) once it is approved (audited)
 @Controller('payroll/bonus')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class PayrollBonusController {
@@ -41,8 +41,8 @@ export class PayrollBonusController {
   @Get(':id/form-c')
   @RequireAnyPermission('payroll.bonus.manage', 'payroll.bonus.approve')
   @Throttle(MODERATE_UPLOAD_THROTTLE)
-  async formC(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
-    return file(res, { ...(await this.bonus.formC(ctx, this.user(req), id)), contentType: 'text/csv; charset=utf-8' });
+  async formC(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Query() q: BonusFormCQueryDto) {
+    return file(res, await this.bonus.formC(ctx, this.user(req), id, q.format ?? 'csv'));
   }
 
   @Get(':id')

@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsInt, IsOptional, IsString, IsUUID, Length, Matches, Min, ValidateIf } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Matches, Min, ValidateIf } from 'class-validator';
 
 // PAY-24 statutory bonus request bodies. Amounts are rupees as decimal strings (exact, never floats); every write carries
 // the computation's version, so two people changing it at once get a clear conflict instead of a lost change.
@@ -77,4 +77,11 @@ export class BonusSendDto extends Versioned {
   @IsOptional()
   @IsUUID()
   runId?: string;
+}
+
+/** Form C as a spreadsheet (CSV, the default) or a PDF. */
+export class BonusFormCQueryDto {
+  @IsOptional()
+  @IsIn(['csv', 'pdf'], { message: 'Form C downloads as csv or pdf.' })
+  format?: 'csv' | 'pdf';
 }
