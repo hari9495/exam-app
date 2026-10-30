@@ -1965,6 +1965,8 @@ export interface LiveYearEnd extends SetupLive {
 }
 export interface LiveLocations extends SetupLive {
   onSetRule: (locationId: string, input: LocationRuleInput) => Promise<unknown>;
+  /** TIM-31 IpError: save the location's office networks (one IP range per line; the server checks each again). */
+  onSetNetworks?: (locationId: string, ipRanges: string[]) => Promise<unknown>;
   /** Settings › Locations, where the point, radius and office networks are set. */
   settingsHref: string;
 }
@@ -3013,6 +3015,15 @@ function LiveLocationForm({ d, loc, live, picker }: { d: TimeSetup; loc: SetupLo
   const [grace, setGrace] = useState<number | null>(r.graceMinutes);
   const [offs, setOffs] = useState(r.weeklyOffs);
   const { busy, error, run } = useRun();
+  const [ips, setIps] = useState(loc.ipRanges.join('\n'));
+  const [ipsTried, setIpsTried] = useState(false);
+  // The server checks each line again; its "Line N: …" answer shows on the field too.
+  const ipErr = (ipsTried ? ipRangeError(ips) : null) ?? (error?.startsWith('Line ') ? error : null);
+  const saveNetworks = () => {
+    setIpsTried(true);
+    if (ipRangeError(ips)) return void document.getElementById('rl-ips')?.focus();
+    void run('ips', () => live.onSetNetworks!(loc.id, ips.split('\n').map((l) => l.trim()).filter(Boolean)));
+  };
   const toggle = (wd: number, on: boolean) => setOffs((x) => (on ? [...x.filter((o) => o.weekday !== wd), { weekday: wd }] : x.filter((o) => o.weekday !== wd)));
   const sat = offs.find((o) => o.weekday === 6);
   const errors = [
@@ -3082,9 +3093,18 @@ function LiveLocationForm({ d, loc, live, picker }: { d: TimeSetup; loc: SetupLo
             )}
           </FormSection>
           <FormSection title="Office network (web check-in)">
-            <p className="yx-tim-muted">{loc.ipRanges.length ? loc.ipRanges.join(', ') : 'No office network yet.'}</p>
-            {/* The point, radius and networks belong to the location record (Settings › Locations), which payroll and people also use. */}
-            <span><Button size="sm" asChild><a href={live.settingsHref}>Change the point and network in Settings › Locations</a></Button></span>
+            {live.onSetNetworks ? (
+              <>
+                <FormField id="rl-ips" label="IP ranges" helper="One range per line, e.g. 10.20.4.0/24" error={ipErr}>
+                  <TextArea value={ips} onChange={setIps} rows={3} />
+                </FormField>
+                <span><Button size="sm" loading={busy === 'ips'} onClick={saveNetworks}>Save office network</Button></span>
+              </>
+            ) : (
+              <p className="yx-tim-muted">{loc.ipRanges.length ? loc.ipRanges.join(', ') : 'No office network yet.'}</p>
+            )}
+            {/* The point and radius belong to the location record (Settings › Locations), which payroll and people also use. */}
+            <span><Button size="sm" asChild><a href={live.settingsHref}>Change the point in Settings › Locations</a></Button></span>
           </FormSection>
           <FormField id="rl-from" label="Changes apply from" required error={saveErrors.errorOf('rl-from')}>
             <DatePicker value={from} onChange={setFrom} min={dateOfIso(d.today)} />

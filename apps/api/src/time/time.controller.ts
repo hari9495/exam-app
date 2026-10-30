@@ -9,7 +9,7 @@ import { RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
 import { AttendanceService } from './attendance.service';
-import { AdjustDto, ApplyLeaveDto, AssignPolicyDto, AttendanceRuleDto, CalendarDto, EntityFilterDto, HolidayDto, LeavePlanDto, LeaveTypeDto, MonthEntityQueryDto, MonthQueryDto, PolicyDto, PolicyVersionDto, PunchDto, RangeEntityQueryDto, RangeQueryDto, ReasonDto, RegulariseDto, WfhDto, YearEndDto, YearEndRunDto } from './dto';
+import { AdjustDto, ApplyLeaveDto, AssignPolicyDto, AttendanceRuleDto, CalendarDto, EntityFilterDto, HolidayDto, LeavePlanDto, LeaveTypeDto, MonthEntityQueryDto, MonthQueryDto, NetworksDto, PolicyDto, PolicyVersionDto, PunchDto, RangeEntityQueryDto, RangeQueryDto, ReasonDto, RegulariseDto, WfhDto, YearEndDto, YearEndRunDto } from './dto';
 import { LeaveService } from './leave.service';
 import { TimeSetupService } from './setup.service';
 import { TimeJobs } from './time-jobs';
@@ -254,6 +254,14 @@ export class TimeController {
   @RequirePermissions('leave.settings.manage')
   setRule(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AttendanceRuleDto) {
     return this.setup.setRule(ctx, this.user(req), id, dto);
+  }
+
+  /** TIM-31 IpError: the location's office networks (web check-in), each range checked; a bad one is refused by line. */
+  @Post('setup/locations/:id/networks')
+  @HttpCode(200)
+  @RequirePermissions('leave.settings.manage')
+  setNetworks(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: NetworksDto) {
+    return this.setup.setNetworks(ctx, this.user(req), id, dto.ipRanges);
   }
 
   @Get('setup/year-end')

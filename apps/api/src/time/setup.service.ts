@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { buildViewer, tenantWide, type ScopeUser } from '../access/scope';
-import { todayIst } from '../org-structure/org-validation';
+import { isCidr, todayIst } from '../org-structure/org-validation';
 import { SETTINGS, resolveSetting } from '../org-structure/settings-registry';
 import { AssignPolicyDto, AttendanceRuleDto, CalendarDto, HolidayDto, LeaveTypeDto, PolicyDto, PolicyVersionDto } from './dto';
 import { LeaveService } from './leave.service';
@@ -271,6 +271,21 @@ export class TimeSetupService {
       const r = await tx.locationAttendanceRule.create({ data: { ...at, shiftName: dto.shiftName ?? 'General', shiftStart: dto.shiftStart, shiftEnd: dto.shiftEnd, graceMinutes: dto.graceMinutes, weeklyOffs: offs as unknown as Prisma.InputJsonValue, checkIn: dto.checkIn, createdBy: c.userId ?? null } });
       await audit(tx, c, 'attendance.rule.added', 'location', locationId, { validFrom: dto.validFrom, shiftStart: dto.shiftStart, shiftEnd: dto.shiftEnd, graceMinutes: dto.graceMinutes, weeklyOffs: offs, checkIn: dto.checkIn });
       return { id: r.id };
+    });
+  }
+
+  /** TIM-31: the office networks of a location (the same field Settings › Locations edits), each line a valid range. */
+  setNetworks(ctx: TenantContext, user: ScopeUser, locationId: string, input: string[]) {
+    const lines = input.map((r) => r.trim());
+    const bad = lines.findIndex((r) => r !== '' && !isCidr(r));
+    if (bad >= 0) throw new BadRequestException(`Line ${bad + 1}: ${lines[bad]} is not a valid range. Each part must be 0–255, e.g. 10.20.4.0/24.`);
+    const ipRanges = [...new Set(lines.filter(Boolean))];
+    return this.run(ctx, user, true, async (tx, c) => {
+      const row = await tx.location.findFirst({ where: { organizationId: c.organizationId, id: locationId, archivedAt: null } });
+      if (!row) throw new NotFoundException('No such location.');
+      await tx.location.update({ where: { id: locationId }, data: { ipRanges } });
+      await audit(tx, c, 'org.location.networks_changed', 'location', locationId, { before: row.ipRanges, after: ipRanges });
+      return { id: locationId, ipRanges };
     });
   }
 

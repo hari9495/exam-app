@@ -740,3 +740,12 @@ export class EligibilityOverrideDto {
   @MaxLength(500)
   reason!: string;
 }
+
+/** TIM-31: a location's office networks for web check-in, one IP range per line (checked again on the server). */
+export class NetworksDto {
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsString({ each: true })
+  @MaxLength(43, { each: true })
+  ipRanges!: string[];
+}

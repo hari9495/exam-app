@@ -225,4 +225,27 @@ describe('TIM-31 Locations, live', () => {
     expect(screen.getAllByText('The shift ends at a different time from when it starts.').length).toBeGreaterThan(0);
     expect(onSetRule).toHaveBeenCalledTimes(1);
   });
+
+  it('IpError: a bad IP range is refused by line and focused; good ranges are saved', async () => {
+    const onSetNetworks = vi.fn(async () => ({}));
+    wrap(<GeofenceEditorScreen live={{ ...base, settingsHref: '/yx/settings/locations', onSetRule: vi.fn(), onSetNetworks }} />);
+    const ips = screen.getByLabelText(/^IP ranges/);
+    expect(ips).toHaveValue('10.20.0.0/16');
+    await ue.type(ips, '{Enter}10.20.300.0/24');
+    await ue.click(screen.getByRole('button', { name: 'Save office network' }));
+    expect(screen.getByText('Line 2: 10.20.300.0/24 is not a valid range. Each part must be 0–255, e.g. 10.20.4.0/24.')).toBeInTheDocument();
+    expect(ips).toHaveFocus();
+    expect(onSetNetworks).not.toHaveBeenCalled();
+    await ue.clear(ips);
+    await ue.type(ips, '10.20.4.0/24{Enter}{Enter}10.20.5.0/24');
+    await ue.click(screen.getByRole('button', { name: 'Save office network' }));
+    await waitFor(() => expect(onSetNetworks).toHaveBeenCalledWith('loc-blr', ['10.20.4.0/24', '10.20.5.0/24']));
+  });
+
+  it("IpError: the server's line error shows on the field", async () => {
+    const onSetNetworks = vi.fn(async () => { throw new Error('Line 1: 10.0.0.0/33 is not a valid range. Each part must be 0–255, e.g. 10.20.4.0/24.'); });
+    wrap(<GeofenceEditorScreen live={{ ...base, settingsHref: '/yx/settings/locations', onSetRule: vi.fn(), onSetNetworks }} />);
+    await ue.click(screen.getByRole('button', { name: 'Save office network' }));
+    expect((await screen.findAllByText(/Line 1: 10.0.0.0\/33 is not a valid range/)).length).toBeGreaterThan(0);
+  });
 });
