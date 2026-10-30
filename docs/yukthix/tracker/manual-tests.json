@@ -6623,6 +6623,122 @@
     "note": "Positive and negative. Setting contract.max_years: 1, 2, 3 (default), 4, 5 years or No limit; per company, legal entity or employment type."
   },
   {
+    "id": "MT-PPL-F-01",
+    "area": "People · Follow-ups (30 Oct 2026)",
+    "screen": "Side menu: Possible same person stays 90 days after a merge",
+    "url": "http://localhost:3000/yx/people/same-person",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi, company-wide employee.change.manage); then arjun@demo-org.test (Employee). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As Lakshmi, open People › More. Note whether Possible same person is there and its count.",
+      "2. If a pair waits, open it, press Review merge, keep the values, give a note and Merge. If none waits, ask the developer to make one (a help-desk login with Arjun's work email).",
+      "3. Reload. Open People › More and read the Possible same person item and its count.",
+      "4. Open Possible same person › Merged and find the record you merged.",
+      "5. Sign in as Arjun and open the People menu."
+    ],
+    "expected": "Step 3: Possible same person is still in the menu with the count 0 (nothing waits), and stays for 90 days after the merge. Step 4: the merged record is listed with Unmerge. Negative, step 5: Arjun has no Possible same person item. Negative (developer check): a company whose last merge was more than 90 days ago, with nothing waiting, has no such item.",
+    "stories": [
+      "PPL-36 Queue",
+      "PPL-37 MergedList"
+    ],
+    "note": "Positive and negative. API: GET workspace/counts sends possibleSamePerson only while a pair waits or a merge happened in the last 90 days."
+  },
+  {
+    "id": "MT-PPL-F-02",
+    "area": "People · Follow-ups (30 Oct 2026)",
+    "screen": "Settings › Company rules › Fixed-term contracts: when a contract ends",
+    "url": "http://localhost:3000/yx/settings/company-rules",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi, org.settings.manage); then arjun@demo-org.test (Employee). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. In Fixed-term contracts, read the two rules: the longest contract and When a fixed-term contract ends.",
+      "2. Press Change on When a fixed-term contract ends. Choose Start the exit by itself a week before the end. Save.",
+      "3. Press Change again, set Applies to Employment type, leave the employment type empty, and press Save.",
+      "4. Choose an employment type, choose Remind HR to extend, convert or exit, Save.",
+      "5. Sign in as Arjun and open /yx/settings/company-rules."
+    ],
+    "expected": "Step 1: both rules sit in one card; When a fixed-term contract ends shows Remind HR to extend, convert or exit and Starter value. Step 2: a toast says Saved. (5 s) and the line shows the new choice, Set for your company. Negative, step 3: Save shows the field error under the employment type and focuses it (the button is never greyed out). Step 4: the table lists the employment type with its own value. Negative, step 5: Arjun gets the no-access page.",
+    "stories": [
+      "Organisation CompanyRules"
+    ],
+    "note": "Positive and negative. API: PUT org/settings key contract_end.action (alert, auto_exit) refuses other values (400) and people without org.settings.manage (403)."
+  },
+  {
+    "id": "MT-PPL-F-03",
+    "area": "People · Follow-ups (30 Oct 2026)",
+    "screen": "Kit tables: rehire impact, Privacy and postpone tasks (PlainTable)",
+    "url": "http://localhost:3000/yx/me/privacy",
+    "account": "arjun@demo-org.test (Employee) for Privacy; hr@demo-org.test (Lakshmi) for the joiner pages. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As Arjun open Privacy › My data and read the table.",
+      "2. Narrow the window to 375 px wide and scroll the table sideways with the keyboard (Tab to it, then the arrow keys).",
+      "3. As Lakshmi open People › Onboarding, open a joiner who worked here before (rehire), and read Rehire impact preview; change one option.",
+      "4. On a joiner, open Change status, choose Postpone, pick a later date, and read the task table.",
+      "5. In Storybook open Data › Plain table."
+    ],
+    "expected": "Step 1: columns What we hold, Class, Why, How long; four rows; long text wraps; no line touches the next block. Step 2: the table scrolls inside its own box with a focus ring; the page does not scroll sideways. Step 3: the changed option shows a Changed badge and the reason box appears. Step 4: done tasks say Done; open tasks show the new due date in bold; dates never break across lines. Step 5: three stories with the same look as steps 1-4. Negative: a screen reader reads each table by its name, and nothing in the read-only rows is a button.",
+    "stories": [
+      "Data/Plain table Basic",
+      "Data/Plain table ChangedCells",
+      "Data/Plain table WithCaptionAndDates",
+      "PPL-33 MyData",
+      "PPL-12 RehireImpact"
+    ],
+    "note": "Positive and negative. Five hand-drawn tables became the kit PlainTable; 25 raw tables remain in People (listed in the design map)."
+  },
+  {
+    "id": "MT-PPL-F-04",
+    "area": "People · Follow-ups (30 Oct 2026)",
+    "screen": "Settings › Access and privacy: Special data erasure dry run (off)",
+    "url": "http://localhost:3000/yx/settings/access-settings",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi, company-wide org.settings.manage); then a plant HR (org.settings.manage for one legal entity; ask the developer); then arjun@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As Lakshmi, scroll to Privacy and read Delete Special data when its period ends.",
+      "2. Read the Deleting Special data card under it.",
+      "3. Sign in as the plant HR and open the same page.",
+      "4. Sign in as Arjun and open the same page."
+    ],
+    "expected": "Step 1: Off: nothing is deleted, Starter value. Step 2: the card says Off. Nothing is deleted; a table If it ran today, it would delete with four counts (people who left past the period, Aadhaar numbers, Aadhaar copies and background check reports, background check notes) and no names or numbers; the Kept line names pay records; It has not run yet. Negative, step 3: no Deleting Special data card, and changing the switch is refused (it needs the setting for the whole company). Negative, step 4: no access.",
+    "stories": [
+      "Organisation AccessAndPrivacyErasureDryRun"
+    ],
+    "note": "Positive and negative. API: GET people/privacy-erasure answers 403 to a plant HR and an employee; counts only."
+  },
+  {
+    "id": "MT-PPL-F-05",
+    "area": "People · Follow-ups (30 Oct 2026)",
+    "screen": "Special data erasure: turn on, nightly run, nothing younger touched",
+    "url": "http://localhost:3000/yx/settings/access-settings",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi); the developer runs the nightly job once (privacy-erasure) and sets up two former employees. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Ask the developer for two former employees: one who left more than a year ago (Ravi) and one who left three months ago (Asha), both with an Aadhaar and an Aadhaar copy. Note the dry run counts.",
+      "2. Press Change on Delete Special data when its period ends, choose On: deleted every night, Save.",
+      "3. Ask the developer to run the job once. Reload.",
+      "4. Open Ravi's record: Identity and Documents. Then Asha's.",
+      "5. Ask the developer to run the job again. Reload."
+    ],
+    "expected": "Step 2: toast Saved. (5 s); the card says On. Step 3: Last run (today): 1 person, 1 Aadhaar number, 1 document and its check note; the due table shows 0. Step 4: Ravi has no Aadhaar and no Aadhaar copy; his passport, payslips and tax papers are still there. Negative: Asha (younger than the period) still has both. Negative, step 5 (repeat run): nothing more is deleted; the audit log has one Special data erased entry for Ravi with counts only (no Aadhaar number).",
+    "stories": [
+      "Organisation AccessAndPrivacyErasureOn"
+    ],
+    "note": "Positive and negative. Audit actions privacy.special.erased (per person) and privacy.erasure.run (per company)."
+  },
+  {
+    "id": "MT-PPL-F-06",
+    "area": "People · Follow-ups (30 Oct 2026)",
+    "screen": "Special data erasure: turning it off stops it; another company untouched",
+    "url": "http://localhost:3000/yx/settings/access-settings",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi); the admin of a second demo company (ask the developer). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. With the job on, press Change, choose Off: nothing is deleted, Save.",
+      "2. Ask the developer to make another former employee past the period, then run the job once. Reload.",
+      "3. Sign in as the second company's admin and open the same page."
+    ],
+    "expected": "Step 1: toast Saved.; the card says Off. Negative, step 2: nothing is deleted; the due table counts the new person; Last run does not change. Negative, step 3: the second company's card shows only its own counts and It has not run yet; its people's data was never touched.",
+    "stories": [
+      "Organisation AccessAndPrivacyErasureDryRun"
+    ],
+    "note": "Positive and negative. The job runs only for companies whose privacy.erasure.enabled is on."
+  },
+  {
     "id": "MT-TIM-G-01",
     "area": "Time · Design gaps made live (30 Oct 2026)",
     "screen": "Muster › one person (Manager · one person) · positive",

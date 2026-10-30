@@ -75,6 +75,29 @@ checklist. Nothing to build; the group number stays unused (Q6).
 retention period ends, special data first, as its own task; (13) a small read-only table goes into the kit and replaces
 the three hand-drawn tables (rehire impact, Privacy, impact).
 
+**Built (branch `feat/yukthix-people-followups`, 30 Oct 2026):**
+- (10) `GET workspace/counts` sends `possibleSamePerson` while a pair waits or a merge happened in the last 90 days
+  (`person_link_log` action `merge`); the menu item follows it (`samePersonInMenu` in `apps/web/lib/yx-nav.ts`).
+- (11) Settings › Organisation › Fixed-term contracts holds `contract.max_years` and `contract_end.action` ("Remind HR to
+  extend, convert or exit" / "Start the exit by itself a week before the end"), company, entity or employment type.
+- (13) Kit: `PlainTable` (Data › Plain table, 3 stories, `components/plain-table.test.tsx`). It replaced five hand-drawn
+  tables: PPL-12 rehire impact (live `LiveRehireImpactCard` and the design's `SampleRehireImpact`), PPL-33 What we hold
+  (live `LiveMyDataScreen` and the design), and the joiner Postpone task table (`onboarding.tsx`, "Open tasks re-anchor").
+  25 raw `<table>`s remain (changes.tsx 3, exits.tsx 4, import.tsx 1, increment.tsx 1, people-kit.tsx 1 (`yx-ppl__compare`),
+  record.tsx 5, relations.tsx 1, restructure.tsx 1, selfservice.tsx 4, portals/t9-workforce.tsx 3 (`yx-ps-slabgrid`));
+  `ui-rules-guard.test.ts` holds the count at 25 so it only goes down.
+- (12) Special data erasure, off by default (`privacy.erasure.enabled`, company only, HR with `org.settings.manage`).
+  Nightly sweep `privacy-erasure` (04:15 IST) per company that turned it on, for people with no open job and not joining
+  again, once `privacy.retention.special_years` (their last entity's value) has passed since the last day: clears the
+  Aadhaar on the record (sealed value, hash, last four), deletes documents of type `aadhaar` and `bgv_report` (stored file
+  first, then the owner's function `erase_special_documents`, migration `20261311000000_privacy_erasure`), clears
+  background check notes and report links (type and status stay). Pay records untouched. Audit `privacy.special.erased`
+  per person and `privacy.erasure.run` per company, counts only. Dry run and last run: Settings › People & Access ›
+  Access and privacy, card "Deleting Special data" (`GET people/privacy-erasure`, company-wide `org.settings.manage`).
+  Stories: Organisation `AccessAndPrivacyErasureDryRun`, `AccessAndPrivacyErasureOn`. What counts as Special data is
+  question 9 below.
+- Manual steps MT-PPL-F-01 … 06.
+
 ## 1. Live pages
 
 One row per live People page (the People menu in `apps/web/lib/yx-nav.ts`, the People part of Me, the People part of
@@ -810,7 +833,7 @@ Live page: /yx/people/directory/[id] (record side panel "Person roles", shown wh
 
 #### PPL-36 · Possible same person
 
-Live page: /yx/people/same-person (menu People › More › Possible same person, shown only while there is one; employee.change.manage, company-wide)
+Live page: /yx/people/same-person (menu People › More › Possible same person, shown while a pair waits and for 90 days after any merge; employee.change.manage, company-wide)
 
 | story (sub-page) | verdict | note |
 |---|---|---|
@@ -982,7 +1005,7 @@ Live page: /yx/people/upcoming-exits (menu "Retirements and contracts"; exit vie
 | ExtendContract · Extend the contract · for one person | live | row action Extend |
 | MakePermanent · Make permanent · new employment type | live | row action; the move goes for approval |
 | ContractMissing · Set a contract end · Save pressed with nothing filled | live | the dialog's own field errors |
-| ContractFailed · Extend the contract · the server refuses | live | the API refuses e.g. "An extension moves the end later.", an end before joining, or an end past the fixed-term limit (company setting `contract.max_years`, default 3 years from joining; Settings › Organisation › Fixed-term contracts) |
+| ContractFailed · Extend the contract · the server refuses | live | the API refuses e.g. "An extension moves the end later.", an end before joining, or an end past the fixed-term limit (company setting `contract.max_years`, default 3 years from joining; Settings › Organisation › Fixed-term contracts, which also holds `contract_end.action`: remind HR, or start the exit a week before the end) |
 
 #### PPL-50 · Team pay access
 
@@ -1146,6 +1169,20 @@ deletes (`joining-live.test.tsx` for the portal; the history tests for `ChangeDr
    module.
    *Suggested: leave them as "feature not built" until that module is planned;* they need agencies and deployments, a
    separate job (L).
+9. **Special data erasure (follow-up 12): what counts as Special data?** Built only what the setting names ("Aadhaar,
+   background checks"): the Aadhaar on the record, the `aadhaar` and `bgv_report` documents, background check notes.
+   Not built, waiting for an answer:
+   - disability declarations and the `disability_certificate` document (Special by class; the RPwD rules may need the
+     employer's register kept). *Suggested: keep the declaration's yes/no for the register, erase the sealed details and
+     the certificate with the same period.*
+   - consent records (proof of consent for background checks). *Suggested: keep them; they prove lawful processing and
+     hold no Special values.*
+   - a background check's status (clear, discrepancy). *Suggested: keep it; it is a fact about the hiring decision.*
+   - joiners who never joined (cancelled pre-boarding) and their checks. *Suggested: the same job, counted from the
+     cancellation day.*
+   - Aadhaar inside pay records and statutory filings. *Suggested: never; pay records keep payroll's own period.*
+10. **Erasure dry run: counts only, or also names?** HR sees four counts. *Suggested: add a list of the people (name,
+    code, last day) for HR to check before turning it on;* names of former employees are already visible to HR.
 
 ## Appendix: the count script
 
