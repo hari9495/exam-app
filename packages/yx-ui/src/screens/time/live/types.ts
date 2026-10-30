@@ -161,7 +161,14 @@ export interface MyAttendance {
   zone: string;
   mode: 'punch' | 'assumed_present' | 'timesheet';
   /** Today's shift from the roster, pattern or location (off: a weekly off today). */
-  shift: { name: string; start: number; end: number; grace: number; checkIn: 'restricted' | 'field'; off?: boolean };
+  shift: { name: string; start: number; end: number; grace: number; checkIn: 'restricted' | 'field'; off?: boolean; /** Check-in opens this many minutes before the start (null: any time). */ opensBefore?: number | null };
+  /** Is this computer on the office network: "outside" blocks clock-in before a punch; "unknown" leaves it to the punch. */
+  network?: 'inside' | 'outside' | 'unknown';
+  /** The manager who approves work from home. */
+  manager?: string | null;
+  /** The company lets people clock in as work from home on the day (ChoseWfh), and today's request still waiting. */
+  wfhSameDay?: boolean;
+  wfhPendingToday?: boolean;
   fences: { name: string; lat: number; lng: number; radiusM: number }[];
   punches: PunchRow[];
   next: 'in' | 'out';

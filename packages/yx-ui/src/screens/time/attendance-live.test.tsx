@@ -72,6 +72,46 @@ describe('Me › Attendance today (live clock page)', () => {
     await waitFor(() => expect(onPunch).toHaveBeenCalledWith('break_end', null));
   });
 
+  it('OutsideNetwork: off the office network the card says so before any punch; Check again asks the server again', async () => {
+    const onRetry = vi.fn();
+    const onPunch = vi.fn();
+    render(<MyAttendanceTodayScreen live={live({ onRetry, onPunch, data: { ...ATT, network: 'outside', wfhSameDay: false } })} />);
+    expect(screen.getByText('Not on Bengaluru head office Wi-Fi')).toBeInTheDocument();
+    expect(screen.getByText('Connect to the office network, then check again.')).toBeInTheDocument();
+    // Negative: no work-from-home or on-duty way round when the company does not allow it.
+    expect(screen.queryByRole('button', { name: 'Clock in as WFH' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Clock in on duty' })).not.toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Clock in' }));
+    expect(onPunch).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('button', { name: 'Check again' }));
+    expect(onRetry).toHaveBeenCalled();
+  });
+
+  it('ChoseWfh: outside, Clock in as WFH shows who approves and this month; Clock in sends it as work from home', async () => {
+    const onPunch = vi.fn(async () => ({ accepted: true, duplicate: false, kind: 'in' as const, message: 'Checked in. Working from home today, location recorded', verdict: 'field', distanceM: null }));
+    render(<MyAttendanceTodayScreen live={live({ onPunch, data: { ...ATT, network: 'outside', wfhSameDay: true, manager: 'Kavya Rao', wfh: { limit: 4, used: 1 } } })} />);
+    await ue.click(screen.getByRole('button', { name: 'Clock in as WFH' }));
+    expect(screen.getByText("WFH · needs Kavya Rao's approval · 1 of 4 used this month")).toBeInTheDocument();
+    expect(screen.queryByText('Not on Bengaluru head office Wi-Fi')).not.toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Clock in' }));
+    await waitFor(() => expect(onPunch).toHaveBeenCalledWith('in', null, { wfh: true }));
+  });
+
+  it('ShiftNotStarted: before check-in opens the card says when; inside the window it lets you clock in', async () => {
+    const onPunch = vi.fn(async () => ({ accepted: true, duplicate: false, kind: 'in' as const, message: 'Checked in', verdict: 'network', distanceM: null }));
+    const early = new Date('2026-10-09T02:20:00Z'); // 7:50 am in India; the shift starts 9:30, check-in opens 8:30
+    const { unmount } = render(<MyAttendanceTodayScreen live={live({ onPunch, now: early, data: { ...ATT, shift: { ...ATT.shift, opensBefore: 60 } } })} />);
+    expect(screen.getByText('Your shift has not started yet')).toBeInTheDocument();
+    expect(screen.getByText('General shift starts at 9:30 am. Clock-in opens at 8:30 am.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Clock in' }));
+    expect(onPunch).not.toHaveBeenCalled();
+    unmount();
+    render(<MyAttendanceTodayScreen live={live({ onPunch, now: new Date('2026-10-09T03:05:00Z'), data: { ...ATT, shift: { ...ATT.shift, opensBefore: 60 } } })} />);
+    expect(screen.queryByText('Your shift has not started yet')).not.toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Clock in' }));
+    await waitFor(() => expect(onPunch).toHaveBeenCalledWith('in', null));
+  });
+
   it('the rules come from the server; a day to fix is offered', async () => {
     render(<MyAttendanceTodayScreen live={live()} />);
     expect(screen.getByText('1 of 4 used this month')).toBeInTheDocument();

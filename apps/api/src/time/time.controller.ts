@@ -83,8 +83,8 @@ export class TimeController {
   // ------------------------------------------------------------------------------------------ me › attendance
 
   @Get('me/attendance')
-  myAttendance(@CurrentTenant() ctx: TenantContext, @Query() q: MonthQueryDto) {
-    return this.attendance.me(ctx, q.month);
+  myAttendance(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: MonthQueryDto) {
+    return this.attendance.me(ctx, q.month, req.ip ?? null);
   }
 
   @Post('me/punch')

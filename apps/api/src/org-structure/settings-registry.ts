@@ -188,6 +188,11 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'attendance.regularise_monthly_limit': { label: 'Fixes a month with manager approval only', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '2', '3', '4', '5', '6', '8', '10'], default: '4' },
   // TIM-07 / settings 3.5 (19 Oct 2026): work-from-home days a month with manager approval only; beyond that HR approves too.
   'attendance.wfh_monthly_limit': { label: 'Work from home days a month with manager approval only', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '1', '2', '3', '4', '5', '6', '8', '10', '15', '22'], default: '4' },
+  // Extra · My attendance today, ChoseWfh (30 Oct 2026): someone outside the office may clock in as work from home on the
+  // day; the request goes to their manager as usual, and if it is not approved those punches no longer count.
+  'attendance.wfh_same_day': { label: 'Clock in as work from home on the day (sent for approval)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['on', 'off'], default: 'on' },
+  // Extra · My attendance today, ShiftNotStarted: check-in opens this long before the shift starts (any: no limit).
+  'attendance.check_in_opens_minutes': { label: 'Check-in opens before the shift starts (minutes)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['any', '15', '30', '60', '90', '120', '180'], default: 'any' },
   // M02 §B2 / YX-AT-07: the least rest between two shifts of one person; the roster flags anything shorter. Founder
   // decision 9 Oct 2026: 11 hours by default, company-configurable.
   'attendance.min_rest_hours': { label: 'Least rest between shifts (hours)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['0', '8', '9', '10', '11', '12'], default: '11' },

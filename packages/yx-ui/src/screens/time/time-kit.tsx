@@ -454,8 +454,12 @@ export interface ClockCardProps {
   onRegularise?: () => void;
   /** Work mode chosen after an outside prompt (the card then allows clock-in). */
   defaultWorkMode?: 'office' | 'wfh' | 'on_duty';
-  /** Live app: records the punch on the server; the card shows the refusal, the parent reloads the day. */
-  onPunch?: (kind: Punch['kind']) => Promise<{ accepted: boolean; message: string }>;
+  /** Live app: records the punch on the server (with the work mode chosen on the card); the card shows the refusal, the parent reloads the day. */
+  onPunch?: (kind: Punch['kind'], mode: 'office' | 'wfh' | 'on_duty') => Promise<{ accepted: boolean; message: string }>;
+  /** Live app: the ways round a block this person may take (default all the design shows). */
+  alternatives?: ('wfh' | 'on_duty' | 'retry' | 'ask_hr' | 'regularise')[];
+  /** Live app: who approves work from home and this month's days, for the "needs approval" line. */
+  wfhAsk?: { approver: string; used: number; limit: number };
   /** Breaks are punched (Start break / End break). */
   breaks?: boolean;
   /** Where "Today's punches" opens on the home card. */
@@ -538,7 +542,16 @@ export function ClockCard(p: ClockCardProps) {
     outAt,
   };
   const evaluated = evaluateClock(ctx);
-  const { actions, block } = dayOff ? { actions: [] as ClockAction[], block: null } : evaluated;
+  const { actions, block: rawBlock } = dayOff ? { actions: [] as ClockAction[], block: null } : evaluated;
+  // Live: only the ways round the block this person has (say, no on-duty requests), and the words to match.
+  const alts = p.alternatives;
+  const block = rawBlock && alts
+    ? {
+        ...rawBlock,
+        options: rawBlock.options.filter((o) => alts.includes(o)),
+        message: rawBlock.code === 'outside' ? (alts.includes('wfh') ? `${state === 'not_in' ? 'Clock in' : 'Clock out'} as work from home instead? Your manager approves it.` : 'Connect to the office network, then check again.') : rawBlock.message,
+      }
+    : rawBlock;
 
   const firstIn = punches.find((x) => x.kind === 'in')?.time;
   const lastBreak = [...punches].reverse().find((x) => x.kind === 'break_start')?.time;
@@ -578,7 +591,7 @@ export function ClockCard(p: ClockCardProps) {
       setRefused(null);
       setPunching(kind);
       void p
-        .onPunch(kind)
+        .onPunch(kind, workMode)
         .then((r) => (r.accepted ? setAnnounce(`${KIND_LABEL[kind]} recorded.`) : setRefused(r.message)))
         .catch((e: unknown) => setRefused(e instanceof Error ? e.message : 'That did not work. Try again.'))
         .finally(() => setPunching(null));
@@ -637,7 +650,7 @@ export function ClockCard(p: ClockCardProps) {
           {workMode !== 'office' && state === 'not_in' && !p.wfhToday && (
             <p className="yx-tim-row">
               <span className="yx-tim-muted">
-                {workMode === 'wfh' ? 'WFH' : 'On duty'} · needs {ME.manager}'s approval · {usedOf(workMode === 'wfh' ? 'WFH' : 'OD')} of 4 used this month
+                {workMode === 'wfh' ? 'WFH' : 'On duty'} · needs {p.wfhAsk?.approver ?? ME.manager}'s approval · {p.wfhAsk ? p.wfhAsk.used : usedOf(workMode === 'wfh' ? 'WFH' : 'OD')} of {p.wfhAsk?.limit ?? 4} used this month
               </span>
               <Button size="sm" onClick={() => setWorkMode('office')}>Change</Button>
             </p>
@@ -680,7 +693,7 @@ export function ClockCard(p: ClockCardProps) {
               {block.options.includes('regularise') && <Button size="sm" onClick={onRegularise}>Regularise today</Button>}
             </div>
           )}
-          {block.code === 'outside' && <p className="yx-tim-note">WFH and on-duty days count towards your monthly limits (4 each). Your manager approves them.</p>}
+          {block.code === 'outside' && (p.wfhAsk ? block.options.includes('wfh') && <p className="yx-tim-note">Work from home days count towards your monthly limit ({p.wfhAsk.limit} without HR). Your manager approves them.</p> : <p className="yx-tim-note">WFH and on-duty days count towards your monthly limits (4 each). Your manager approves them.</p>)}
         </InlineAlert>
       )}
 

@@ -122,6 +122,11 @@ export class PunchDto {
   @Min(0)
   @Max(100000)
   accuracyM?: number;
+
+  /** ChoseWfh: outside the office, clock in as work from home today (a request goes to the manager). */
+  @IsOptional()
+  @IsBoolean()
+  wfh?: boolean;
 }
 
 export class WfhDto {

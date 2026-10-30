@@ -129,7 +129,7 @@ export default function YxHomePage() {
         data={attendance.data}
         now={new Date()}
         getLocation={browserLocation}
-        onPunch={(kind, pin) => write<PunchResult>('/me/punch', 'POST', { kind, ...(pin ?? {}) })}
+        onPunch={(kind, pin, opts) => write<PunchResult>('/me/punch', 'POST', { kind, ...(pin ?? {}), ...(opts?.wfh ? { wfh: true } : {}) })}
         attendanceHref="/yx/time/attendance?view=today"
         onRegularise={() => router.push('/yx/time/attendance?view=today&request=regularise')}
       />
