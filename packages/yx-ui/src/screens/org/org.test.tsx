@@ -455,6 +455,28 @@ describe('Company rules and access settings (P01 §4.6; YX-ORG-12/18)', () => {
     expect(within(dialog).getByRole('radiogroup', { name: 'Applies to' })).toBeInTheDocument();
   });
 
+  it('Fixed-term contracts: what happens when a contract ends sits next to the limit, a pick-one HR saves with a toast', async () => {
+    const onSave = ok();
+    render(<ToastProvider><CompanySettingsScreen {...base} onSave={onSave} /></ToastProvider>);
+    const block = screen.getByText('When a fixed-term contract ends').closest('.yx-org__rule') as HTMLElement;
+    const panel = block.parentElement as HTMLElement;
+    expect(within(panel).getByText('A fixed-term contract lasts at most (years from joining)')).toBeInTheDocument();
+    expect(within(block).getByText('Remind HR to extend, convert or exit')).toBeInTheDocument();
+    expect(within(block).getByText('Starter value')).toBeInTheDocument();
+    await userEvent.click(within(block).getByRole('button', { name: 'Change' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('radio', { name: 'Start the exit by itself a week before the end' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ key: 'contract_end.action', scopeType: 'tenant', value: 'auto_exit' }));
+    expect(await within(screen.getByRole('region', { name: 'Notifications' })).findByText('Saved.')).toBeInTheDocument();
+  });
+
+  it('Fixed-term contracts: only listed values are taken for what happens at the end', () => {
+    const def = SETTING_REGISTRY['contract_end.action'];
+    expect(settingInput('contract_end.action', def, { scopeType: 'tenant', scopeId: null, value: 'convert', validFrom: null }).input).toBeNull();
+    expect(settingInput('contract_end.action', def, { scopeType: 'employment_type', scopeId: null, value: 'auto_exit', validFrom: null }).errors.map((e) => e.fieldId)).toEqual(['set-scope-id']);
+  });
+
   it('the editor refuses to save without a value', async () => {
     const onSave = ok();
     render(<ToastProvider><CompanySettingsScreen {...base} onSave={onSave} /></ToastProvider>);
