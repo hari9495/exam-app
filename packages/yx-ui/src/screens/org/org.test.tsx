@@ -424,9 +424,10 @@ describe('Company rules and access settings (P01 §4.6; YX-ORG-12/18)', () => {
   it('YX-SEC-02: guarded settings are disabled with the reason without access management; view-only has no buttons', () => {
     const { unmount } = render(<ToastProvider><CompanySettingsScreen {...base} section="access" heldGuards={[]} /></ToastProvider>);
     const buttons = screen.getAllByRole('button', { name: 'Change' }).filter((b) => !b.closest('.yx-org__rule')?.textContent?.includes('net pay'));
-    expect(buttons).toHaveLength(4);
+    // 4 access guards + the 3 privacy retention periods (PPL-33).
+    expect(buttons).toHaveLength(7);
     buttons.forEach((b) => expect(b).toBeDisabled());
-    expect(screen.getAllByText(/Only an admin who manages roles and access changes this/)).toHaveLength(4);
+    expect(screen.getAllByText(/Only an admin who manages roles and access changes this/)).toHaveLength(7);
     unmount();
     render(<ToastProvider><CompanySettingsScreen {...base} canManage={false} /></ToastProvider>);
     expect(screen.queryByRole('button', { name: 'Change' })).toBeNull();
