@@ -524,7 +524,7 @@ describe('Leave v2', () => {
       await api('hrAdmin', 'post', '/time/setup/holiday-feeds/decide').send({ accept: [], ignore: [] }).expect(400);
       await api('hrAdmin', 'post', '/time/setup/holiday-feeds/decide').send({ accept: [add.id], ignore: [add.id] }).expect(400);
       await api('hrB', 'post', '/time/setup/holiday-feeds/decide').send({ accept: [add.id], ignore: [] }).expect(404);
-      expect((await api('hrAdmin', 'post', '/time/setup/holiday-feeds/decide').send({ accept: [add.id], ignore: [other.id] }).expect(200)).body).toEqual({ accepted: 1, ignored: 1, leaveReturned: 1 });
+      expect((await api('hrAdmin', 'post', '/time/setup/holiday-feeds/decide').send({ accept: [add.id], ignore: [other.id] }).expect(200)).body).toEqual({ accepted: 1, ignored: 1, leaveReturned: 1, leaveRecounted: 0 });
       expect((await balance('emp', 'EL')).balance).toBe(before + 1);
       await api('hrAdmin', 'post', '/time/setup/holiday-feeds/decide').send({ accept: [add.id], ignore: [] }).expect(409);
       expect(await inA((tx) => tx.holiday.count({ where: { organizationId: org.A.id, calendarId: ids.cal, holidayOn: new Date(`${add.on}T00:00:00Z`) } }))).toBe(1);

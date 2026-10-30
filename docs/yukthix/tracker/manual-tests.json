@@ -7187,5 +7187,287 @@
       "TIM-13"
     ],
     "note": ""
+  },
+  {
+    "id": "MT-TIM-F-01",
+    "area": "Time · My attendance today",
+    "screen": "Clock card · add a note to the next punch (positive)",
+    "url": "http://localhost:3000/yx/time/attendance?view=today",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
+    "steps": [
+      "Check in first if you have no punch today.",
+      "Click \"Add note\".",
+      "Type \"Client call ran late\" and click Save.",
+      "Click Clock out (or Start break)."
+    ],
+    "expected": "\"Note saved for your clock-out\" shows after Save; after the punch the note line goes away and the punch is recorded. In the database (or the API answer) the punch carries the note.",
+    "stories": [
+      "Extra · My attendance today"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-F-02",
+    "area": "Time · My attendance today",
+    "screen": "Clock card · note refused (negative)",
+    "url": "http://localhost:3000/yx/time/attendance?view=today",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
+    "steps": [
+      "Click \"Add note\" and click Save with nothing typed.",
+      "Type 200+ characters.",
+      "Before any punch today, look for \"Add note\"."
+    ],
+    "expected": "\"Type a note\" shows and the box stays open; the box stops at 200 characters; with no punch today there is no \"Add note\" (a note goes with a punch). The API refuses a blank note or one over 200 characters with 400.",
+    "stories": [
+      "Extra · My attendance today"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-F-03",
+    "area": "Security · Sign in",
+    "screen": "Sign in · paused for block leave (positive)",
+    "url": "http://localhost:3000/yx/sign-in",
+    "account": "an employee whose block leave runs today with \"Pause access\" scheduled (TIM-39), after the hourly job paused them",
+    "steps": [
+      "Sign in with their email and the right password."
+    ],
+    "expected": "The sign-in says \"Your access is paused for block leave until <last day, e.g. 7 Nov 2026>. Ask HR if you need access sooner.\" It never says \"deactivated\".",
+    "stories": [
+      "SEC-01"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-F-04",
+    "area": "Security · Sign in",
+    "screen": "Sign in · paused, wrong password or deactivated (negative)",
+    "url": "http://localhost:3000/yx/sign-in",
+    "account": "the paused employee from MT-TIM-F-03, and a deactivated account",
+    "steps": [
+      "Sign in as the paused person with a wrong password.",
+      "Sign in as a deactivated account with the right password."
+    ],
+    "expected": "A wrong password says only that the email or password is wrong (nothing about the pause). The deactivated account says \"This account has been deactivated\".",
+    "stories": [
+      "SEC-01"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-F-05",
+    "area": "Time · Team leave",
+    "screen": "Team leave · send back for changes (positive)",
+    "url": "http://localhost:3000/yx/time/team-leave",
+    "account": "panel@demo-org.test (Manager - Divya). Arjun has a leave request waiting.",
+    "steps": [
+      "On a waiting row click \"Send back\".",
+      "Type \"The audit runs that week. Move it by a week?\" in What to change.",
+      "Click Send back."
+    ],
+    "expected": "The dialog is \"Send back to Arjun?\"; after Send back a toast says \"Sent back to Arjun Kulkarni\" and the row leaves \"Leave waiting for you\". Arjun gets a notice that it was sent back for changes, with your note.",
+    "stories": [
+      "TIM-17",
+      "TIM-19"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-F-06",
+    "area": "Time · Team leave",
+    "screen": "Team leave · send back refused (negative)",
+    "url": "http://localhost:3000/yx/time/team-leave",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "Open a waiting request (View), click Send back, then Send back with nothing typed.",
+      "As HR, turn the setting \"Approvers can send leave back for changes\" off, then reload Team leave as Divya."
+    ],
+    "expected": "\"Enter what to change.\" shows under the field and the field takes focus; nothing is sent. With the setting off there is no Send back button (only Approve, Reject); the API refuses a send back with 400.",
+    "stories": [
+      "TIM-17",
+      "TIM-19"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-F-07",
+    "area": "Approvals",
+    "screen": "Approvals inbox · send back a leave request (positive)",
+    "url": "http://localhost:3000/yx/approvals",
+    "account": "panel@demo-org.test (Manager - Divya). Arjun has a leave request waiting.",
+    "steps": [
+      "Open the leave request in the side panel.",
+      "Click Send back, type what to change, click Send back."
+    ],
+    "expected": "The card says \"They change the request and send it again.\"; a toast says \"Sent back for changes\"; the row leaves the list. Team history shows \"Sent back for changes by you\" with the note.",
+    "stories": [
+      "PLT-04"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-F-08",
+    "area": "Approvals",
+    "screen": "Approvals inbox · send back not offered (negative)",
+    "url": "http://localhost:3000/yx/approvals",
+    "account": "panel@demo-org.test (Manager - Divya). A non-leave request (e.g. a service request) is waiting.",
+    "steps": [
+      "Open the non-leave request.",
+      "Open a leave request, click Send back and then Send back with nothing typed."
+    ],
+    "expected": "The non-leave request has no Send back (Approve, Do not approve only). On the leave request, \"Say what to change, so the person who asked knows.\" shows and nothing is sent.",
+    "stories": [
+      "PLT-04"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-F-09",
+    "area": "Time · My leave",
+    "screen": "My leave · change and send again (positive)",
+    "url": "http://localhost:3000/yx/time/leave",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya) with a request Divya sent back (MT-TIM-F-05).",
+    "steps": [
+      "In My requests find the request \"Sent back for changes\" and click View.",
+      "Read the note, click \"Change and send again\".",
+      "Move the dates a week later and click \"Send again\"."
+    ],
+    "expected": "The drawer shows \"Divya Raghunathan sent it back for changes\" with her note. Apply leave opens titled \"Change and send again\" with the old type, dates and reason. After Send again a toast says \"Changed and sent again for approval\"; the old row shows \"Changed and sent again\" and a new request waits for Divya.",
+    "stories": [
+      "TIM-19"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-F-10",
+    "area": "Time · My leave",
+    "screen": "My leave · send again refused (negative)",
+    "url": "http://localhost:3000/yx/time/leave",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
+    "steps": [
+      "Open the sent-back request, Change and send again, pick dates that overlap another leave (or more days than are left) and click Send again.",
+      "Try the request already sent again (it now reads \"Changed and sent again\")."
+    ],
+    "expected": "The server's reason shows in the drawer (e.g. \"You already have leave on …\" or \"Not enough Casual leave …\") and nothing changes. A request already sent again has no \"Change and send again\"; the API answers 409 \"You already sent this request again.\"",
+    "stories": [
+      "TIM-19"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-F-11",
+    "area": "Time · Devices and kiosks",
+    "screen": "Training tab · add, change, cancel (positive)",
+    "url": "http://localhost:3000/yx/time/setup/devices",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Open the Training tab and click \"Add training\".",
+      "Title \"Food safety refresher\", location Hosur plant, room \"Training room 1\", tomorrow 9:30 am to 11:00 am, Who: Everyone at Hosur plant. Click Add training.",
+      "Click Edit on it, change the end to 11:30 am, Who: Chosen people, pick two people, Save changes.",
+      "Click \"Cancel session\" and confirm."
+    ],
+    "expected": "Toasts \"Training added · Food safety refresher\", \"Training changed · Food safety refresher\", \"Training cancelled · Food safety refresher\". The table shows the date (e.g. \"31 Oct 2026\"), 9:30 am – 11:30 am, the two names under Who, then Status Cancelled with no buttons.",
+    "stories": [
+      "TIM-14"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-F-12",
+    "area": "Time · Devices and kiosks",
+    "screen": "Training tab · refused (negative)",
+    "url": "http://localhost:3000/yx/time/setup/devices",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi); a second browser with the same account",
+    "steps": [
+      "Click Add training and press Add training with nothing filled in.",
+      "Fill it in with the end before the start.",
+      "Open the same session in two browsers, save a change in one, then save in the other.",
+      "Sign in as Divya (no set-up access) and open /yx/time/setup/devices."
+    ],
+    "expected": "Each empty field says what is missing and the first takes focus; \"The end must be after the start.\"; the second save shows \"Someone else changed this session. Reload to see their change.\" in the form; Divya gets the no-access state (the API answers 403).",
+    "stories": [
+      "TIM-14"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-F-13",
+    "area": "Time · Kiosk",
+    "screen": "Kiosk · training for chosen people only (positive and negative)",
+    "url": "http://localhost:3000/yx/kiosk",
+    "account": "the kiosk tablet at /yx/kiosk (set up with a key from Devices and kiosks), a person with a kiosk PIN. HR added a session today at this location for chosen people that include this person, and one that does not.",
+    "steps": [
+      "Sign in at the kiosk with code and PIN, tap Training."
+    ],
+    "expected": "Only the session for this person (and any for everyone here) shows; the other one does not. Mark me present works once it opens.",
+    "stories": [
+      "TIM-13",
+      "TIM-14"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-F-14",
+    "area": "Time · Kiosk",
+    "screen": "Kiosk · Apply leave hidden where leave is off (positive and negative)",
+    "url": "http://localhost:3000/yx/kiosk",
+    "account": "the kiosk tablet at /yx/kiosk (set up with a key from Devices and kiosks), a person with a kiosk PIN. As HR set \"People can apply leave at a kiosk\" off for this location.",
+    "steps": [
+      "Sign in at the kiosk with code and PIN.",
+      "Set the setting back on and sign in again."
+    ],
+    "expected": "With leave off the menu has Check in, Training, My requests and Done but no Apply leave; with it on, Apply leave is back.",
+    "stories": [
+      "TIM-13"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-F-15",
+    "area": "Time · Holiday calendars",
+    "screen": "Comp-off for a holiday on a weekly off follows each person (positive and negative)",
+    "url": "http://localhost:3000/yx/time/setup/holidays",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). A location calendar with \"Holiday on a weekly off: comp-off credit\"; a holiday last week on the location's weekly off; one person rostered to work that day, one with no roster.",
+    "steps": [
+      "Let the daily job run (or run it from the job list).",
+      "Open each person's leave card (Time › Balances › Open leave card)."
+    ],
+    "expected": "The person with no roster (the location's weekly off) and anyone rostered off that day get 1 Comp-off day \"… fell on a weekly off\"; the person rostered to work gets none (the holiday rule applies). A second run adds nothing.",
+    "stories": [
+      "TIM-26"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-F-16",
+    "area": "Time · Holiday calendars",
+    "screen": "Remove or move a holiday · leave counts that day again (positive)",
+    "url": "http://localhost:3000/yx/time/setup/holidays",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Arjun has approved leave across a future holiday (e.g. the day before to the day after).",
+    "steps": [
+      "Click Remove holiday on that holiday and confirm.",
+      "On another future holiday with leave across it, click Change date and move it to a later free date."
+    ],
+    "expected": "Arjun's request now counts that day (e.g. 2 days become 3) and his balance drops by 1; he gets \"… is no longer a holiday, so your leave that day counts again.\" Moving a holiday does the same for the old date (and leave on the new date goes back). The audit log shows \"leave.request.recounted\".",
+    "stories": [
+      "TIM-26"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-F-17",
+    "area": "Time · Holiday calendars",
+    "screen": "Remove a holiday · refused (negative)",
+    "url": "http://localhost:3000/yx/time/setup/holidays",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi); also panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "Try Remove holiday on a holiday that has passed.",
+      "As Divya, open /yx/time/setup/holidays."
+    ],
+    "expected": "\"That holiday has passed, so it stays on the calendar.\" and nothing changes; Divya gets the no-access state (the API answers 403).",
+    "stories": [
+      "TIM-26"
+    ],
+    "note": ""
   }
 ]

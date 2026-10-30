@@ -12,13 +12,13 @@ live page cannot reach yet (the reason is given).
 
 | | live | feature not built | phone view | gap |
 |---|---|---|---|---|
-| Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 89 | 4 | 19 | 1 |
-| Leave (TIM-17…25) | 46 | 0 | 11 | 0 |
-| Set-up (TIM-26…29, 31, 42) | 27 | 8 | 0 | 0 |
+| Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 96 | 4 | 19 | 0 |
+| Leave (TIM-17…25) | 48 | 0 | 11 | 0 |
+| Set-up (TIM-26…29, 31, 42) | 29 | 6 | 0 | 0 |
 | Rosters and shifts (TIM-05, 06, 08, 34, 35, 38…41) | 44 | 2 | 10 | 0 |
 | Overtime, periods, reports, timesheets (TIM-09, 11, 15, 16, 30, 37, 43) | 49 | 0 | 3 | 0 |
 | Field force (TIM-32, 33) | 7 | 0 | 9 | 0 |
-| **All 45 design groups (329 sub-pages counted)** | **262** | **14** | **52** | **1** |
+| **All 45 design groups (337 sub-pages counted)** | **273** | **12** | **52** | **0** |
 
 Counted from the stories and the rows below by script (29 Oct 2026, after rosters/devices/field, the roster fixes and founder decisions 1-7 were merged into the test app). Section counts further down may be older; this table is the current one.
 Recounted by script on 30 Oct 2026 (time small items: TIM-13 Training, Leave, UnknownCode and the new TrainingNone story live; TIM-26 Clone and
@@ -30,6 +30,13 @@ before this work, as the Set-up section counts say), so Set-up is now 28 / 6 and
 (Manager · one person, OutsideNetwork, ChoseWfh, ShiftNotStarted live), Leave 3 → 0 (TIM-17 Manager, TIM-19 Manager ×2),
 Set-up 1 → 0 (TIM-31 IpError), Rosters 1 → 0 (TIM-39 Suspend). Gaps left: TIM-13 UnknownCode (another builder's) and
 Extra · today WithNote (migration written, not applied).
+
+30 Oct 2026 (branch `feat/yukthix-time-followups`, the founder's "all ok" follow-ups): recounted by script over the story
+rows (same rule as above). New stories, all live: TIM-13 MenuLeaveOff, TIM-14 Training / TrainingAdd / TrainingEdit /
+TrainingCancel / TrainingEmpty, TIM-19 SendBack and SentBack. Extra · today WithNote made live (the last gap). The script
+found Set-up at 29 live / 6 not built (the table had 27 / 8), so the table now matches the rows: 337 sub-pages, 273 live,
+12 not built, 52 phone, 0 gaps. Outside Time, new stories also live: SEC-01 "Sign in · access paused for block leave" and
+PLT-04 "Approvals · send back for changes".
 
 Kit (24 stories) are shared parts, not pages; section E lists which live screens use them.
 
@@ -271,8 +278,9 @@ Live at /yx/kiosk (outside the app shell; set up with HR's one-time key). Small 
 | WrongPin | /yx/kiosk: "Code or PIN didn't match. After 5 wrong tries a code locks for 15 minutes…" with Scan ID card |
 | Menu | /yx/kiosk after the PIN: "Hello, <first name>", Check in / Check out, My requests, signing out in 30 s (the balance tiles and supervisor banner: gap, no kiosk API for balances yet) |
 | CheckedIn | /yx/kiosk after Check in / out: badge, time, location, shift; clears itself |
-| Training | /yx/kiosk → Training: today's session at this kiosk's location (title, time, room), Mark me present; before it opens "Training opens at 8:45 am" (setting `kiosk.training_opens_minutes`, default 15); marked once; HR adds sessions with POST /time/devices/training (no HR screen yet: gap, Question 1) |
+| Training | /yx/kiosk → Training: today's sessions at this kiosk's location that are for everyone there or for this person (TIM-14 Training "Who"), title, time, room, Mark me present; before it opens "Training opens at 8:45 am" (setting `kiosk.training_opens_minutes`, default 15); marked once; HR adds, changes and cancels sessions on the TIM-14 Training tab (30 Oct 2026) |
 | TrainingNone · Training · none today (new story) | /yx/kiosk → Training with no session today: "No training here today." |
+| MenuLeaveOff · Menu · leave off at this kiosk (new story, 30 Oct 2026) | /yx/kiosk after the PIN where `kiosk.leave` is off for the person here: no Apply leave (GET /kiosk/person/today sends `leave`); the leave routes refuse too (KIOSK_LEAVE_OFF) |
 | Leave · Apply leave | /yx/kiosk → Apply leave: earned, casual and comp-off with days left after pending requests, sick leave "ask <approver> to record", the next 10 days (weekly off / on leave / requested locked, holiday shift hint), first then last day, balance after, Send leave request → "Sent to <manager>"; the normal leave rules and approval chain (setting `kiosk.leave`, default on) |
 | Status · Request status | /yx/kiosk → My requests: leave and attendance requests of the last 30 days with status |
 
@@ -287,6 +295,11 @@ Live at /yx/kiosk (outside the app shell; set up with HR's one-time key). Small 
 | SystemAdmin | /yx/time/setup/devices: the Entity column shows when the company has more than one legal entity (set-up is company-wide) |
 | Empty | /yx/time/setup/devices with no kiosks: "No kiosks registered" |
 | Loading | /yx/time/setup/devices while loading |
+| Training · sessions (new story, 30 Oct 2026) | /yx/time/setup/devices, Training tab (`TrainingTab`, kit parts only): sessions from 7 days back and all coming ones, When (date, start – end at the location), Location, Who ("Everyone at <location>" or the people), Marked present, Status (Upcoming / On now / Ended / Cancelled). GET /time/devices/training (leave.settings.manage) |
+| TrainingAdd · Training · add a session (new story) | same → Add training: title, location, room, date, start, end, Who (Segment: everyone at the location / chosen people, searched by name or code, GET training/people); pressed too early each field says what is missing and takes focus; POST /time/devices/training; toast "Training added · <title>" |
+| TrainingEdit · Training · change a session (new story) | same → Edit (upcoming only): the form from the session; PUT /time/devices/training/:id with the version seen (409 "Someone else changed this session" stays in the form); a started session is refused; audited before → after; toast |
+| TrainingCancel · Training · cancel a session (new story) | same → Cancel session (upcoming or on now): confirm ("the N already marked stay on record"), POST training/:id/cancel; an ended one is refused with the reason in the dialog; toast |
+| TrainingEmpty · Training · none yet (new story) | same tab with no sessions: "No training sessions" with Add training |
 
 ### TIM-36 · Presence-based attendance
 
@@ -332,7 +345,7 @@ Provider: to decide (Teams presence). The YukthiX desktop app posts the person's
 | ChoseWfh · outside → clock in as WFH | same, "Clock in as WFH" (setting attendance.wfh_same_day, default on): "WFH · needs <manager>'s approval · N of M used this month"; Clock in sends `wfh` and raises today's request with the punch. Rejected or withdrawn, the day engine leaves those web punches out (punches stay append-only). On duty: not offered (no on-duty request in the API) |
 | ShiftNotStarted | /yx/time/attendance?view=today before check-in opens (setting attendance.check_in_opens_minutes, default any): "Your shift has not started yet · Clock-in opens at …"; the server refuses earlier check-ins with the same words |
 | DeviceNotApproved | feature not built (no device binding API) |
-| WithNote · Note open | gap: needs a `note` column on punches. Migration written, NOT applied: docs/yukthix/pending-migrations/20261310000000_punch_note (with the wiring steps); the live card offers no note until it is applied |
+| WithNote · Note open | /yx/time/attendance?view=today once today has a punch → Add note: the note (1–200 characters, trimmed; Save with nothing typed says "Type a note") goes with the next punch (POST /time/me/punch `note`, kept with the punch and never changed; migration 20261310200000_punch_note); a refused punch keeps it for the retry (30 Oct 2026) |
 | Live · ticking clock | /yx/time/attendance?view=today (always ticks) |
 | RegulariseOpen · Regularise → sheet | /yx/time/attendance?view=today → Regularise (TIM-07 sheet) |
 | HomeWidget · not clocked in | /yx/home (clock card) |
@@ -343,7 +356,7 @@ Provider: to decide (Teams presence). The YukthiX desktop app posts the person's
 - Sub-pages live: 66 (time ops, 29 Oct 2026: +36; decision 6: TIM-36 WithdrawConsent)
 - Feature not built: 21
 - Phone view: 19
-- Gaps: 1 here (Extra · today WithNote: migration written, not applied). 30 Oct 2026: Manager one person, OutsideNetwork, ChoseWfh and ShiftNotStarted made live
+- Gaps: 0 here (30 Oct 2026 follow-ups: Extra · today WithNote live; TIM-13 MenuLeaveOff and TIM-14 Training ×5 added and live). 30 Oct 2026: Manager one person, OutsideNetwork, ChoseWfh and ShiftNotStarted made live
 - Total: 111 stories (TIM-36 "Manager · status and total only" was not counted before)
 
 ### Gaps and questions
@@ -425,8 +438,8 @@ dev-fake answers until a provider is chosen).
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Employee | /yx/time/leave: balance cards, My requests, Upcoming holidays, Optional holidays, plus My leave card, Claim comp-off, Encash leave, the long-absence card and "Waiting for approval" (claims, encashment) |
-| Manager | /yx/time/team-leave (nav "Leave to approve", `LeaveHomeScreen mgrLive`): "Leave waiting for you (N)" from the manager's own team only (GET /time/team/leave-home: their open approval tasks), who else in the team is off, certificate, View and Approve (toast); "Also in Requests: N attendance or overtime requests"; Away this week; Open leave calendar. Not live: Send back (the approvals engine has approve and reject only) and Apply for someone (HR's, leave.balance.adjust) |
+| Employee | /yx/time/leave: balance cards, My requests (a request sent back shows "Sent back for changes" with Change and send again), Upcoming holidays, Optional holidays, plus My leave card, Claim comp-off, Encash leave, the long-absence card and "Waiting for approval" (claims, encashment) |
+| Manager | /yx/time/team-leave (nav "Leave to approve", `LeaveHomeScreen mgrLive`): "Leave waiting for you (N)" from the manager's own team only (GET /time/team/leave-home: their open approval tasks), who else in the team is off, certificate, View and Approve (toast), Send back (opens TIM-19 Manager with "Send back to <name>?": What to change, required; shown while the company setting `leave.send_back`, default on, allows it); "Also in Requests: N attendance or overtime requests"; Away this week; Open leave calendar. Not here: Apply for someone (HR's, leave.balance.adjust) |
 | HR | /yx/time/leave-home: pending leave with managers (approvers, age, Remind approver once a day), away this week, Needs HR (negative balances, certificates, long absences, year-end); Record long absence, Adjust balance and Apply for someone buttons, as in the design (leave.balance.adjust). Adjust balance (founder-approved, 29 Oct 2026) is the leave card's `AdjustBalanceDialog`: Employee search (HR scope), then that person's balances (`GET people/:id/balances`), Days empty, `POST people/:id/adjust`; toast "Posted ±N <type> for X". The leave card (/yx/time/balances → Open leave card) keeps its own Adjust |
 | HR · apply for someone (new, founder answer B) | /yx/time/leave-home → Apply for someone: the TIM-18 drawer (the employee's own live drawer, `forSomeone`): Employee search, then only that person's leave types and balances, dates and halves, reason, certificate tick when needed (no delegate); Summary from the server (days, balance after, "Notice: Applied by HR: N days' notice not needed", their team, "Goes to their manager … marked \"Applied by HR\"" or "Approved at once (company setting)"); toast "Leave applied for X · sent for approval" |
 | HR · apply for someone · refused (new) | same drawer when the rules refuse (block date, overlap "X already has leave on …", balance, locked month, notice when the company applies it): the red box on Send, or "Not sent" with the API's message; nothing is sent |
@@ -464,6 +477,8 @@ dev-fake answers until a provider is chosen).
 | Employee · ask to cancel future leave | /yx/time/leave → Ask to cancel (reason required) |
 | Manager · with team availability | /yx/time/team-leave → View (or ?open=<id>): GET /time/requests/:id adds `team`: who else under the same manager is off (people the viewer may see), "<name>'s balance after", the viewer's open task; someone outside the team 404 |
 | Manager · approve | same → Approve (confirm, toast) or Reject (reason required) through POST /workflow/approvals/tasks/:id/decide (only the task holder); waiting on someone else: "Waiting for another approver" |
+| SendBack · Manager · send back for changes (new story, 30 Oct 2026) | same → Send back: "Send back to <first name>?", What to change (required: pressed too early, the field says so and takes focus), decision `send_back` through the approvals engine (reason required, audited `workflow.request.sent_back` and `leave.request.sent_back`; the request's days stop waiting; the employee is told). Also in the approvals inbox (PLT-04 · send back for changes) where the type allows it. Setting `leave.send_back` (default on) |
+| SentBack · Employee · sent back, change and send again (new story) | /yx/time/leave → a request "Sent back for changes" → View: who sent it back and what to change, Change and send again (Apply leave from the request; every rule again; POST /time/me/leave/:id/resend raises a new request, the old one becomes "Changed and sent again"; once only) or Withdraw |
 | Phone | phone view, mobile app not built |
 | Phone · manager | phone view, mobile app not built |
 
@@ -525,7 +540,7 @@ dev-fake answers until a provider is chosen).
 
 ### Counts
 
-57 sub-pages: 46 live, 0 not built, 11 phone, 0 gaps (TIM-17 Manager and TIM-19 Manager ×2 made live 30 Oct 2026).
+59 sub-pages: 48 live, 0 not built, 11 phone, 0 gaps (TIM-17 Manager and TIM-19 Manager ×2 made live 30 Oct 2026; TIM-19 SendBack and SentBack added and live in the follow-ups).
 
 ### Questions (defaults chosen, marked)
 
@@ -557,7 +572,7 @@ the three new pages are reachable only by address.
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Chennai · Chennai office · rules | /yx/time/setup/holidays → a location tab: holidays table (weekday, date, due badge, type, "on a weekly off"), Published badge, feed changes waiting (Review changes → holiday feeds), "Rules for this calendar": Holiday on a weekly off (no extra day / substitute day off in the holiday lookup / comp-off credit by the daily job), optional holidays each person chooses, When someone moves (the location's value of `leave.optional_holiday.prorate_on_move`), plus the half-day rule (Question). Add holiday; Change date and Remove holiday (future only) with confirm; leave on a new holiday date goes back to the balance |
+| Chennai · Chennai office · rules | /yx/time/setup/holidays → a location tab: holidays table (weekday, date, due badge, type, "on a weekly off"), Published badge, feed changes waiting (Review changes → holiday feeds), "Rules for this calendar": Holiday on a weekly off (no extra day / substitute day off in the holiday lookup / comp-off credit by the daily job: since 30 Oct 2026 for each person whose own day is off by their roster, pattern or else the location; people rostered to work get the holiday rule instead), optional holidays each person chooses, When someone moves (the location's value of `leave.optional_holiday.prorate_on_move`), plus the half-day rule (Question). Add holiday; Change date and Remove holiday (future only) with confirm; leave on a new holiday date goes back to the balance, and leave across the old date (or a removed holiday) counts that day again: a working day is leave again as booked, approved leave takes it from the balance, audited `leave.request.recounted`, the person is told (30 Oct 2026; the same on an accepted feed removal) |
 | Clone · Clone to next year | /yx/time/setup/holidays → Clone <location> to <next year> (waits while feed changes are waiting) → "<year> draft created" → Open draft: Confirm date for each festival, Publish (refused until every festival date is confirmed); drafts never reach employees |
 | Template · Start from state template | /yx/time/setup/holidays → a location with no calendar → Start from the <state> template (the holiday feed provider, dev-fake until decided; today to 31 Dec) → draft → Publish; "Add holidays one by one" beside it; a state with no template keeps "Add a calendar for <location>" |
 | NoCalendar · Location without a calendar | /yx/time/setup/holidays → tab of a location with no calendar → "Add a calendar for <location>" |
