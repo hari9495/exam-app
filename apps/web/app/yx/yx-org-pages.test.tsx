@@ -180,14 +180,25 @@ describe('/yx/settings/company-rules and /yx/settings/access-settings (P01 §4.6
     expect(screen.queryByRole('button', { name: 'Change' })).toBeNull();
   });
 
-  it('Access and privacy: company-wide settings managers see the Special data erasure dry run; turning it on saves and refreshes it; a 403 hides the card', async () => {
+  it('Access and privacy: company-wide settings managers see the Special data erasure dry run and whose data; turning it on saves and refreshes it; a 403 hides the card', async () => {
     const reg = { ...REGISTRY, 'privacy.erasure.enabled': { label: 'Delete Special data when its period ends', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' } };
     const put = jest.fn().mockResolvedValue({ id: 's-9' });
-    const report = jest.fn().mockResolvedValue({ enabled: false, due: { people: 2, aadhaar: 2, documents: 3, backgroundChecks: 1 }, lastRun: null });
+    const report = jest.fn().mockResolvedValue({
+      enabled: false,
+      due: { people: 2, aadhaar: 2, documents: 3, backgroundChecks: 1, disability: 1 },
+      who: [
+        { name: 'Ravi Kumar', employeeCode: 'YX-0142', day: '2024-03-31', neverJoined: false },
+        { name: 'Farhan Ali', employeeCode: null, day: '2025-01-10', neverJoined: true },
+      ],
+      lastRun: null,
+    });
     route({ ...lists, 'GET /org/settings': { registry: reg, overrides: [] }, 'GET /people/privacy-erasure': report, 'PUT /org/settings': (_p: string, init: RequestInit) => put(JSON.parse(String(init.body))), [`GET ${PERMS_PATH}`]: ['org.structure.view', 'org.settings.manage'] });
     const { unmount } = wrap(<YxAccessSettingsPage />);
     const dry = await screen.findByRole('table', { name: 'If it ran today, it would delete' });
-    expect(within(dry).getByText('Aadhaar copies and background check reports').closest('tr')?.textContent).toContain('3');
+    expect(within(dry).getByText('Aadhaar copies, background check reports and disability certificates').closest('tr')?.textContent).toContain('3');
+    expect(within(dry).getByText('Disability details (the yes or no answer stays)').closest('tr')?.textContent).toContain('1');
+    const who = screen.getByRole('table', { name: 'Whose data' });
+    expect(within(who).getAllByRole('row').slice(1).map((r) => r.textContent)).toEqual(['Ravi KumarYX-014231 Mar 2024', 'Farhan AliNone (never joined)Joining cancelled 10 Jan 2025']);
     const block = screen.getByText('Delete Special data when its period ends').closest('.yx-org__rule') as HTMLElement;
     await userEvent.click(within(block).getByRole('button', { name: 'Change' }));
     const dialog = await screen.findByRole('dialog');
