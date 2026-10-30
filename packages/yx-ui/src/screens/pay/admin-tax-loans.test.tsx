@@ -184,24 +184,72 @@ describe('PAY-23 · Payroll › Proof checking (live)', () => {
     await waitFor(() => expect(onForm12bDecide).toHaveBeenCalledWith(F12B, { decision: 'approve' }));
   });
 
-  it('founder answer 2: a residential-status change is in the same queue; the TRC opens; reject needs a comment; approve sends', async () => {
+  it('founder answer 2: a residential-status change is in the same queue; the TRC opens; refuse needs a reason; approve sends', async () => {
     const RES: ResidencyRow = { id: 'r1', employeeId: 'p2', employeeName: 'Divya Raghunathan', legalEntityId: 'e1', taxYear: '2026-27', from: 'resident', residentialStatus: 'non_resident', trcValidTo: '2027-03-31', dtaaCountry: 'SG', form10fFiled: true, file: { name: 'trc.pdf', size: 900, at: '2026-10-20T10:00:00Z' }, status: 'pending', comment: null, submittedAt: '2026-10-20T10:00:00Z' };
     const onResidencyDecide = fn();
     const onResidencyFile = fn();
     render(<ProofQueueScreen live={live({ form12b: [], residency: [RES], onResidencyDecide, onResidencyFile })} />);
-    expect(screen.getByText('Resident to non-resident · 2026-27')).toBeInTheDocument();
+    expect(screen.getByText('Resident → non-resident · TRC until 31 Mar 2027 · SG · 2026-27')).toBeInTheDocument();
+    expect(screen.getByText('Certificate sent')).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: "Decide on Divya Raghunathan's residential status" }));
     const d = screen.getByRole('dialog');
     expect(within(d).getByText('31 Mar 2027')).toBeInTheDocument();
+    expect(within(d).getByText('Filed (the employee confirmed)')).toBeInTheDocument();
     await ue.click(within(d).getByRole('button', { name: 'Open trc.pdf' }));
     await waitFor(() => expect(onResidencyFile).toHaveBeenCalledWith(RES));
-    await ue.click(within(d).getByRole('radio', { name: 'Reject' }));
-    await ue.click(within(d).getByRole('button', { name: 'Reject change' }));
+    await ue.click(within(d).getByRole('radio', { name: 'Refuse' }));
+    await ue.click(within(d).getByRole('button', { name: 'Refuse change' }));
     expect(onResidencyDecide).not.toHaveBeenCalled();
-    expect(within(d).getByRole('textbox', { name: /Comment/ })).toHaveFocus();
-    await ue.type(within(d).getByRole('textbox', { name: /Comment/ }), 'The TRC is for last year');
-    await ue.click(within(d).getByRole('button', { name: 'Reject change' }));
+    expect(within(d).getByText('Give the reason, so the employee can fix it.')).toBeInTheDocument();
+    expect(within(d).getByRole('textbox', { name: /Reason for the employee/ })).toHaveFocus();
+    await ue.type(within(d).getByRole('textbox', { name: /Reason for the employee/ }), 'The TRC is for last year');
+    await ue.click(within(d).getByRole('button', { name: 'Refuse change' }));
     await waitFor(() => expect(onResidencyDecide).toHaveBeenCalledWith(RES, { decision: 'reject', comment: 'The TRC is for last year' }));
+    expect((await screen.findAllByText('Divya Raghunathan · change refused.'))[0]).toBeInTheDocument();
+  });
+
+  it('founder last 10, item 7: back to resident shows no document; approve sends with a toast', async () => {
+    const BACK: ResidencyRow = { id: 'r2', employeeId: 'p3', employeeName: 'Rahul Menon', legalEntityId: 'e1', taxYear: '2026-27', from: 'non_resident', residentialStatus: 'resident', trcValidTo: null, dtaaCountry: null, form10fFiled: false, file: null, status: 'pending', comment: null, submittedAt: '2026-10-27T10:00:00Z' };
+    const onResidencyDecide = fn();
+    render(<ProofQueueScreen live={live({ lines: [], form12b: [], residency: [BACK], onResidencyDecide, onResidencyFile: fn() })} />);
+    expect(screen.getByText('Non-resident → resident · no document needed · 2026-27')).toBeInTheDocument();
+    expect(screen.getByText('No document')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: "Decide on Rahul Menon's residential status" }));
+    const d = screen.getByRole('dialog');
+    expect(within(d).getByText('None needed: going back to resident only needs your approval.')).toBeInTheDocument();
+    expect(within(d).queryByText('Tax residency certificate')).toBeNull();
+    await ue.click(within(d).getByRole('button', { name: 'Approve change' }));
+    await waitFor(() => expect(onResidencyDecide).toHaveBeenCalledWith(BACK, { decision: 'approve' }));
+    expect((await screen.findAllByText('Rahul Menon · now resident from the next payslip.'))[0]).toBeInTheDocument();
+  });
+
+  it('founder last 10, item 10: the designed states render (approved, refused with its reason, own refused by the server)', async () => {
+    const { unmount } = render(<ProofQueueScreen residency="refused" />);
+    const d = await screen.findByRole('dialog');
+    expect(within(d).getByText('Refused', { selector: '.yx-badge, .yx-badge *' })).toBeInTheDocument();
+    expect(within(d).getByText('The certificate is for 2025-26. Send the one for 2026-27.')).toBeInTheDocument();
+    expect(within(d).queryByRole('button', { name: 'Refuse change' })).toBeNull();
+    expect(screen.getAllByText('Refused: The certificate is for 2025-26. Send the one for 2026-27.').length).toBeGreaterThan(0);
+    unmount();
+    const r2 = render(<ProofQueueScreen residency="approved" />);
+    const ad = await screen.findByRole('dialog');
+    expect(within(ad).getAllByRole('button', { name: 'Close' }).length).toBeGreaterThan(0);
+    expect(within(ad).queryByRole('button', { name: 'Approve change' })).toBeNull();
+    expect(within(ad).getByText('25 Oct 2026')).toBeInTheDocument();
+    r2.unmount();
+    render(<ProofQueueScreen residency="own" />);
+    expect(within(await screen.findByRole('dialog')).getByText('Someone else checks your own residential status.')).toBeInTheDocument();
+  });
+
+  it('a refusal from the server stays in the drawer and nothing is toasted', async () => {
+    const RES: ResidencyRow = { id: 'r3', employeeId: 'p4', employeeName: 'Me Myself', legalEntityId: 'e1', taxYear: '2026-27', from: 'non_resident', residentialStatus: 'resident', trcValidTo: null, dtaaCountry: null, form10fFiled: false, file: null, status: 'pending', comment: null, submittedAt: '2026-10-27T10:00:00Z' };
+    const onResidencyDecide = vi.fn(async () => Promise.reject(new Error('Someone else checks your own residential status.')));
+    render(<ProofQueueScreen live={live({ lines: [], form12b: [], residency: [RES], onResidencyDecide, onResidencyFile: fn() })} />);
+    await ue.click(screen.getByRole('button', { name: "Decide on Me Myself's residential status" }));
+    const d = screen.getByRole('dialog');
+    await ue.click(within(d).getByRole('button', { name: 'Approve change' }));
+    expect(await within(d).findByText('Someone else checks your own residential status.')).toBeInTheDocument();
+    expect(screen.queryByText(/now resident from the next payslip/)).toBeNull();
   });
 
   it('the status filter is one Segment; an empty queue says so', async () => {

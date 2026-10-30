@@ -581,8 +581,38 @@ const DEFAULT_PROOF_FILTERS: FilterValue[] = [
 ];
 
 /** PAY-23 · Proof verification queue: each line approved, rejected or partly approved with a comment. The app passes `live`. */
-export function ProofQueueScreen(p: { state?: ViewState; openId?: string; decision?: 'partial' | 'reject'; rows?: ProofRow[]; live?: LiveProofQueue }) {
-  return p.live ? <LiveProofQueue live={p.live} /> : <SampleProofQueue {...p} />;
+export function ProofQueueScreen(p: { state?: ViewState; openId?: string; decision?: 'partial' | 'reject'; rows?: ProofRow[]; /** Stories: the residential-status row (founder last 10, items 7 and 10). */ residency?: ResidencyStory; live?: LiveProofQueue }) {
+  return p.live ? <LiveProofQueue live={p.live} /> : p.residency ? <LiveProofQueue key={p.residency} live={sampleResidencyQueue(p.residency)} /> : <SampleProofQueue {...p} />;
+}
+
+/** PAY-23 residency design states. */
+export type ResidencyStory = 'pending-trc' | 'back-to-resident' | 'approved' | 'refused' | 'own' | 'queue';
+
+/** Kaveri Foods' residency requests for 2026-27, in the shape GET tax/residency returns. */
+function sampleResidencyQueue(view: ResidencyStory): LiveProofQueue {
+  const base = { legalEntityId: 'kf-ka', taxYear: '2026-27', comment: null, verifiedAt: null } as const;
+  const trc: ResidencyRow = { ...base, id: 'rs-1', employeeId: 'e-41', employeeName: 'Meera Krishnan', from: 'resident', residentialStatus: 'non_resident', trcValidTo: '2027-03-31', dtaaCountry: 'United Arab Emirates', form10fFiled: true, file: { name: 'TRC-UAE-2026.pdf', size: 184_320, at: '2026-10-24T09:12:00Z' }, status: 'pending', submittedAt: '2026-10-24T09:12:00Z' };
+  const back: ResidencyRow = { ...base, id: 'rs-2', employeeId: 'e-57', employeeName: 'Rahul Menon', from: 'non_resident', residentialStatus: 'resident', trcValidTo: null, dtaaCountry: null, form10fFiled: false, file: null, status: 'pending', submittedAt: '2026-10-27T15:40:00Z' };
+  const approved: ResidencyRow = { ...trc, id: 'rs-3', employeeName: 'Divya Raman', status: 'approved', verifiedAt: '2026-10-25T11:00:00Z' };
+  const refused: ResidencyRow = { ...trc, id: 'rs-4', employeeName: 'Arvind Shetty', status: 'rejected', comment: 'The certificate is for 2025-26. Send the one for 2026-27.', verifiedAt: '2026-10-26T10:05:00Z', trcValidTo: '2026-03-31' };
+  const rows = view === 'approved' ? [approved] : view === 'refused' ? [refused] : view === 'queue' ? [trc, back] : view === 'back-to-resident' ? [back] : [trc];
+  const status = view === 'approved' ? 'approved' : view === 'refused' ? 'rejected' : 'pending';
+  const done = async () => undefined;
+  return {
+    state: 'ready',
+    status,
+    onStatus: () => {},
+    lines: [],
+    form12b: [],
+    residency: rows,
+    onFile: done,
+    onDecide: done,
+    onForm12bFile: done,
+    onForm12bDecide: done,
+    onResidencyFile: done,
+    onResidencyDecide: done,
+    story: view === 'queue' ? undefined : { openId: `r-${rows[0].id}`, ...(view === 'own' ? { refused: 'Someone else checks your own residential status.' } : {}) },
+  };
 }
 
 function SampleProofQueue({ state = 'ready', openId, decision, rows = PROOF_ROWS }: { state?: ViewState; openId?: string; decision?: 'partial' | 'reject'; rows?: ProofRow[] }) {
@@ -1854,6 +1884,8 @@ export interface ResidencyRow {
   status: 'pending' | 'approved' | 'rejected';
   comment: string | null;
   submittedAt: string;
+  /** When payroll decided (approved or refused). */
+  verifiedAt?: string | null;
 }
 
 export type ProofStatusFilter = 'pending' | 'approved' | 'partly' | 'rejected';
@@ -1874,12 +1906,23 @@ export interface LiveProofQueue {
   residency?: ResidencyRow[] | null;
   onResidencyFile?: (row: ResidencyRow) => Promise<unknown>;
   onResidencyDecide?: (row: ResidencyRow, d: { decision: 'approve' | 'reject'; comment?: string }) => Promise<unknown>;
+  /** Stories only: open a row, and show a refusal the server sent. */
+  story?: { openId?: string; refused?: string };
 }
 
 type QueueRow = { kind: 'line'; id: string; line: ProofQueueLine } | { kind: 'form12b'; id: string; row: Form12bRow } | { kind: 'residency'; id: string; res: ResidencyRow };
 const RES_LABEL = { resident: 'Resident', non_resident: 'Non-resident' } as const;
+/** The residency row's second line: the change, then the document (a TRC, or none going back to resident). */
+export const residencyNote = (r: ResidencyRow) =>
+  [`${RES_LABEL[r.from]} → ${RES_LABEL[r.residentialStatus].toLowerCase()}`, r.residentialStatus === 'resident' ? 'no document needed' : r.trcValidTo ? `TRC until ${dateText(r.trcValidTo)}${r.dtaaCountry ? ` · ${r.dtaaCountry}` : ''}` : 'TRC', r.taxYear].join(' · ');
 const itemText = (r: QueueRow) => (r.kind === 'line' ? subjectText(r.line.subjectKey, r.line.section) : r.kind === 'form12b' ? 'Previous employer (Form 12B)' : 'Residential status');
 const statusOf = (r: QueueRow) => (r.kind === 'line' ? r.line.proofStatus : r.kind === 'form12b' ? r.row.status : r.res.status);
+/** A residency request is approved or refused (founder last 10, item 7). */
+const RES_STATE: Record<string, { label: string; tone: BadgeTone }> = {
+  pending: { label: 'Waiting', tone: 'warning' },
+  approved: { label: 'Approved', tone: 'success' },
+  rejected: { label: 'Refused', tone: 'danger' },
+};
 const LIVE_PROOF_STATE: Record<string, { label: string; tone: BadgeTone }> = {
   pending: { label: 'Waiting', tone: 'warning' },
   approved: { label: 'Approved', tone: 'success' },
@@ -1888,7 +1931,7 @@ const LIVE_PROOF_STATE: Record<string, { label: string; tone: BadgeTone }> = {
 };
 
 function LiveProofQueue({ live }: { live: LiveProofQueue }) {
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(live.story?.openId ?? null);
   const [q, setQ] = useState('');
   const rows: QueueRow[] = [
     ...(live.lines ?? []).map((l) => ({ kind: 'line' as const, id: `l-${l.id}`, line: l })),
@@ -1909,15 +1952,16 @@ function LiveProofQueue({ live }: { live: LiveProofQueue }) {
         <div>
           <div>{itemText(r)}</div>
           <div className="yx-pay-note">
-            {r.kind === 'line' ? `${r.line.proofs.length} ${r.line.proofs.length === 1 ? 'file' : 'files'}` : r.kind === 'form12b' ? `${r.row.employerName ?? r.row.employerTan} · ${r.row.taxYear}` : `${RES_LABEL[r.res.from]} to ${RES_LABEL[r.res.residentialStatus].toLowerCase()} · ${r.res.taxYear}`}
+            {r.kind === 'line' ? `${r.line.proofs.length} ${r.line.proofs.length === 1 ? 'file' : 'files'}` : r.kind === 'form12b' ? `${r.row.employerName ?? r.row.employerTan} · ${r.row.taxYear}` : residencyNote(r.res)}
           </div>
+          {r.kind === 'residency' && r.res.status === 'rejected' && r.res.comment && <div className="yx-pay-note">Refused: {r.res.comment}</div>}
         </div>
       ),
       width: 260,
     },
-    { key: 'declared', header: 'Declared', type: 'money', value: (r) => Number(r.kind === 'line' ? r.line.amount : r.kind === 'form12b' ? r.row.gross : 0), render: (r) => (r.kind === 'line' ? `${rupees(r.line.amount)}${r.line.subjectKey === 'hra' ? ' a month' : ''}` : r.kind === 'form12b' ? `${rupees(r.row.gross)} salary` : '—'), width: 170 },
+    { key: 'declared', header: 'Declared', type: 'money', value: (r) => Number(r.kind === 'line' ? r.line.amount : r.kind === 'form12b' ? r.row.gross : 0), render: (r) => (r.kind === 'line' ? `${rupees(r.line.amount)}${r.line.subjectKey === 'hra' ? ' a month' : ''}` : r.kind === 'form12b' ? `${rupees(r.row.gross)} salary` : r.res.file ? 'Certificate sent' : 'No document'), width: 170 },
     { key: 'accepted', header: 'Approved', type: 'money', value: (r) => (r.kind === 'line' && r.line.approvedAmount ? Number(r.line.approvedAmount) : 0), render: (r) => (r.kind === 'line' && r.line.approvedAmount ? rupees(r.line.approvedAmount) : '—'), width: 120, optional: true },
-    { key: 'status', header: 'Status', type: 'status', value: (r) => LIVE_PROOF_STATE[statusOf(r)]?.label, statusTone: (_v, r) => LIVE_PROOF_STATE[statusOf(r)]?.tone ?? 'neutral', width: 140 },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => (r.kind === 'residency' ? RES_STATE : LIVE_PROOF_STATE)[statusOf(r)]?.label, statusTone: (_v, r) => LIVE_PROOF_STATE[statusOf(r)]?.tone ?? 'neutral', width: 140 },
   ];
   return (
     <PayFrame page="tax" counts={live.status === 'pending' ? { tax: rows.length } : undefined}>
@@ -1962,7 +2006,7 @@ function LiveProofQueue({ live }: { live: LiveProofQueue }) {
       {open?.kind === 'line' && <ProofDecisionDrawer line={open.line} onFile={live.onFile} onClose={() => setOpenId(null)} onSave={(d) => live.onDecide(open.line, d)} />}
       {open?.kind === 'form12b' && <Form12bDecisionDrawer row={open.row} onFile={live.onForm12bFile} onClose={() => setOpenId(null)} onSave={(d) => live.onForm12bDecide(open.row, d)} />}
       {open?.kind === 'residency' && live.onResidencyDecide && (
-        <ResidencyDecisionDrawer row={open.res} onFile={live.onResidencyFile} onClose={() => setOpenId(null)} onSave={(d) => live.onResidencyDecide!(open.res, d)} />
+        <ResidencyDecisionDrawer row={open.res} refused={live.story?.refused} onFile={live.onResidencyFile} onClose={() => setOpenId(null)} onSave={(d) => live.onResidencyDecide!(open.res, d)} />
       )}
     </PayFrame>
   );
@@ -2118,73 +2162,112 @@ function Form12bDecisionDrawer({ row, onFile, onClose, onSave }: { row: Form12bR
   );
 }
 
-/** Founder answer 2: a residential-status change with its TRC; approving it changes the person's tax from the next run. */
-function ResidencyDecisionDrawer({ row, onFile, onClose, onSave }: { row: ResidencyRow; onFile?: LiveProofQueue['onResidencyFile']; onClose: () => void; onSave: (d: { decision: 'approve' | 'reject'; comment?: string }) => Promise<unknown> }) {
+/**
+ * Founder answer 2 and last 10, items 7 and 10: a residential-status change. To non-resident it comes with the TRC and
+ * Form 10F; back to resident needs HR approval only, no document. Approving changes the person's tax from the next run;
+ * a refusal needs the reason. Nobody decides their own (the server refuses it; the queue never lists it).
+ */
+function ResidencyDecisionDrawer({ row, refused, onFile, onClose, onSave }: { row: ResidencyRow; refused?: string; onFile?: LiveProofQueue['onResidencyFile']; onClose: () => void; onSave: (d: { decision: 'approve' | 'reject'; comment?: string }) => Promise<unknown> }) {
+  const { toast } = useToast();
   const [decision, setDecision] = useState<'approve' | 'reject'>('approve');
   const [comment, setComment] = useState('');
-  const { busy, run } = useRun();
-  const errors: FormErrorItem[] = decision === 'reject' && comment.trim().length < 3 ? [{ fieldId: 'rs-why', message: 'Add a comment for the employee, so they can fix it.' }] : [];
-  const body = (
-    <>
-      <FactRow
-        items={[
-          { label: 'From', value: RES_LABEL[row.from] },
-          { label: 'To', value: RES_LABEL[row.residentialStatus] },
-          { label: 'TRC valid until', value: row.trcValidTo ? dateText(row.trcValidTo) : '—' },
-          { label: 'Treaty country', value: row.dtaaCountry ?? '—' },
-        ]}
-      />
-      {row.residentialStatus === 'non_resident' && <p className="yx-pay-note">The employee confirmed Form 10F is filed. No rebate applies to a non-resident; a treaty rate is handled by hand.</p>}
-      {row.file && onFile && (
-        <div className="yx-pay-row">
-          <Button size="sm" icon={Download} loading={busy === 'file'} onClick={() => void run('file', () => onFile(row))} aria-label={`Open ${row.file.name}`}>
-            {row.file.name}
-          </Button>
-          <span className="yx-pay-note">Sent {dateText(row.submittedAt.slice(0, 10))}. Check the name, tax year and country on the certificate.</span>
-        </div>
-      )}
-    </>
-  );
-  if (row.status !== 'pending')
-    return (
-      <Drawer open onOpenChange={(o) => !o && onClose()} title="Residential status" subtitle={`${row.employeeName} · ${row.taxYear}`} meta={<Badge tone={LIVE_PROOF_STATE[row.status]?.tone ?? 'neutral'}>{LIVE_PROOF_STATE[row.status]?.label}</Badge>} size="lg" footer={<Button onClick={onClose}>Close</Button>}>
-        <div className="yx-pay-stack">
-          {body}
-          {row.comment && <p className="yx-pay-note">Comment: {row.comment}</p>}
-        </div>
-      </Drawer>
-    );
+  const { busy, error, run } = useRun();
+  const early = useTooEarly(decision === 'reject' && comment.trim().length < 3 ? [{ fieldId: 'rs-why', message: 'Give the reason, so the employee can fix it.' }] : []);
+  const toNr = row.residentialStatus === 'non_resident';
+  const pending = row.status === 'pending';
+  const state = RES_STATE[row.status] ?? { label: row.status, tone: 'neutral' as const };
+  const shown = error ?? refused ?? null;
+  const save = () => {
+    if (early.stop()) return;
+    void run('save', () => onSave({ decision, ...(comment.trim() ? { comment: comment.trim() } : {}) })).then((ok) => {
+      if (!ok) return;
+      toast({ tone: 'success', title: `${row.employeeName} · ${decision === 'approve' ? 'now ' + RES_LABEL[row.residentialStatus].toLowerCase() + ' from the next payslip' : 'change refused'}.` });
+      onClose();
+    });
+  };
   return (
-    <PayFormDrawer
-      title="Residential status"
-      subtitle={`${row.employeeName} · ${row.taxYear}`}
-      confirm={decision === 'approve' ? 'Approve change' : 'Reject change'}
-      done={`${row.employeeName} · residential status ${decision === 'approve' ? 'approved: their tax uses it from the next payslip' : 'rejected'}.`}
-      errors={errors}
-      onClose={onClose}
-      size="lg"
-      onSave={() => onSave({ decision, ...(comment.trim() ? { comment: comment.trim() } : {}) })}
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title="Residential status change"
+      subtitle={`${row.employeeName} · tax year ${row.taxYear}`}
+      meta={<Badge tone={state.tone}>{state.label}</Badge>}
+      size="md"
+      notice={
+        shown && (
+          <InlineAlert tone="danger" title="That did not go through">
+            {shown}
+          </InlineAlert>
+        )
+      }
+      footer={
+        pending ? (
+          <>
+            <Button onClick={onClose}>Cancel</Button>
+            <Button variant="primary" loading={busy === 'save'} onClick={save}>
+              {decision === 'approve' ? 'Approve change' : 'Refuse change'}
+            </Button>
+          </>
+        ) : (
+          <Button onClick={onClose}>Close</Button>
+        )
+      }
     >
-      {(errorOf) => (
-        <>
-          {body}
-          <FormField id="rs-decision" label="Decision" required>
-            <Segment
-              label="Decision"
-              value={decision}
-              onChange={setDecision}
-              options={[
-                { value: 'approve', label: 'Approve' },
-                { value: 'reject', label: 'Reject' },
-              ]}
-            />
-          </FormField>
-          <FormField id="rs-why" label="Comment to employee" required={decision === 'reject'} optional={decision === 'approve'} error={errorOf('rs-why')}>
-            <TextArea rows={3} value={comment} onChange={setComment} maxLength={500} />
-          </FormField>
-        </>
-      )}
-    </PayFormDrawer>
+      <div className="yx-pay-stack">
+        <DescriptionList
+          columns={1}
+          items={[
+            { label: 'Change', value: `${RES_LABEL[row.from]} → ${RES_LABEL[row.residentialStatus]}` },
+            { label: 'Sent', value: dateText(row.submittedAt.slice(0, 10)) },
+            ...(toNr
+              ? [
+                  {
+                    label: 'Tax residency certificate',
+                    value:
+                      row.file && onFile ? (
+                        <Button size="sm" icon={Download} loading={busy === 'file'} onClick={() => void run('file', () => onFile(row))} aria-label={`Open ${row.file.name}`}>
+                          {row.file.name}
+                        </Button>
+                      ) : (
+                        (row.file?.name ?? 'Not attached')
+                      ),
+                  },
+                  { label: 'Valid until', value: row.trcValidTo ? dateText(row.trcValidTo) : '—' },
+                  { label: 'Treaty country', value: row.dtaaCountry ?? '—' },
+                  { label: 'Form 10F', value: row.form10fFiled ? 'Filed (the employee confirmed)' : 'Not confirmed' },
+                ]
+              : [{ label: 'Document', value: 'None needed: going back to resident only needs your approval.' }]),
+            ...(row.verifiedAt ? [{ label: row.status === 'approved' ? 'Approved' : 'Refused', value: dateText(row.verifiedAt.slice(0, 10)) }] : []),
+            ...(row.status === 'rejected' && row.comment ? [{ label: 'Reason', value: row.comment }] : []),
+          ]}
+        />
+        {pending && (
+          <p className="yx-pay-note">
+            {toNr
+              ? 'Check the name, tax year and country on the certificate. Once approved, no rebate applies from the next payslip; a treaty rate is handled by hand.'
+              : 'Once approved, their tax is worked out as a resident from the next payslip.'}
+          </p>
+        )}
+        {pending && (
+          <>
+            <FormField id="rs-decision" label="Decision" required>
+              <Segment
+                label="Decision"
+                value={decision}
+                onChange={setDecision}
+                options={[
+                  { value: 'approve', label: 'Approve' },
+                  { value: 'reject', label: 'Refuse' },
+                ]}
+              />
+            </FormField>
+            <FormField id="rs-why" label="Reason for the employee" required={decision === 'reject'} optional={decision === 'approve'} helper="The employee sees this with the decision." error={early.errorOf('rs-why')}>
+              <TextArea id="rs-why" rows={3} value={comment} onChange={setComment} maxLength={500} />
+            </FormField>
+          </>
+        )}
+      </div>
+    </Drawer>
   );
 }
 

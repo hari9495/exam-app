@@ -13,3 +13,10 @@ export const Reject: S = { name: 'Reject with comment', args: { openId: 'pr1', d
 export const OwnProof: S = { name: 'Own proof · cannot verify', args: { openId: 'pr-own' } };
 export const Empty: S = { name: 'Empty · nothing submitted', args: { rows: [] } };
 export const Loading: S = { name: 'Loading', args: { state: 'loading' } };
+// Founder 30 Oct 2026 (last 10, items 7 and 10): the residential-status request row and its decision drawer.
+export const ResidencyQueue: S = { name: 'Residency · in the queue (TRC and back to resident)', args: { residency: 'queue' } };
+export const ResidencyPendingTrc: S = { name: 'Residency · to non-resident with a TRC · decide', args: { residency: 'pending-trc' } };
+export const ResidencyBackToResident: S = { name: 'Residency · back to resident · no document', args: { residency: 'back-to-resident' } };
+export const ResidencyApproved: S = { name: 'Residency · approved', args: { residency: 'approved' } };
+export const ResidencyRefused: S = { name: 'Residency · refused with a reason', args: { residency: 'refused' } };
+export const ResidencyOwn: S = { name: 'Residency · deciding your own · refused', args: { residency: 'own' } };
