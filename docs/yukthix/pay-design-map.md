@@ -26,12 +26,15 @@ Verdicts: **wire design** (a live page and the API exist for this job; the page 
 | A. Runs and payments | 10 | 55 | 8 | 0 | 0 | 0 | 0 | 0 | 63 |
 | B. Inputs, loans, recoveries, queries | 8 | 45 | 7 | 0 | 0 | 0 | 2 | 0 | 54 |
 | C. Structures and set-up | 6 | 41 | 2 | 0 | 0 | 0 | 0 | 0 | 43 |
-| D. Employee pay and tax | 6 | 32 | 7 | 0 | 0 | 1 | 9 | 0 | 49 |
-| E. Special pay, earned wage access, actuarial, benefits | 14 | 77 | 8 | 0 | 0 | 6 | 8 | 0 | 99 |
+| D. Employee pay and tax | 6 | 37 | 8 | 0 | 0 | 1 | 9 | 0 | 55 |
+| E. Special pay, earned wage access, actuarial, benefits | 14 | 80 | 8 | 0 | 0 | 6 | 8 | 0 | 102 |
 | F. Reports | 1 | 13 | 1 | 0 | 0 | 0 | 0 | 0 | 14 |
 | G. Records | 3 | 44 | 0 | 0 | 0 | 0 | 0 | 0 | 44 |
 | H. New designs, made live | 5 | 49 | 1 | 0 | 0 | 0 | 0 | 0 | 50 |
-| **All** | **53** | **356** | **34** | **0** | **0** | **7** | **19** | **0** | **416** |
+| **All** | **53** | **364** | **35** | **0** | **0** | **7** | **19** | **0** | **425** |
+
+Pay last four (30 Oct 2026, branch `feat/yukthix-pay-last`): PAY-23 gets 6 residency stories (5 live, 1 live with a gap), PAY-24 3 new
+ state stories (live); D, E and All recounted by hand from those rows.
 
 Reports builder (30 Oct 2026, branch `feat/yukthix-pay-reports`): PAY-25 is live (13 stories made live, 1 state story
 added first; No access is live with a gap); F and All recounted from the PAY-25 rows below.
@@ -604,6 +607,12 @@ Live page: /yx/payroll/proofs
 | OwnProof · Own proof · cannot verify | live, gap | cannot occur live: the API never lists one's own proofs (and refuses them) |
 | Empty · Empty · nothing submitted | live |  |
 | Loading · Loading | live |  |
+| ResidencyQueue · Residency · in the queue (TRC and back to resident) | live | founder last 10, item 10: designed first; the row says the change, then the TRC (valid until, treaty country) or "no document needed"; Declared shows "Certificate sent" / "No document" |
+| ResidencyPendingTrc · Residency · to non-resident with a TRC · decide | live | its own drawer (description list, not the Form 12B layout): change, sent, certificate button, valid until, treaty country, Form 10F; Approve / Refuse (Segment); a refusal needs the reason (error and focus) |
+| ResidencyBackToResident · Residency · back to resident · no document | live | founder last 10, item 7: "None needed: going back to resident only needs your approval." |
+| ResidencyApproved · Residency · approved | live | read only, with the day decided |
+| ResidencyRefused · Residency · refused with a reason | live | the row shows "Refused: <reason>"; status label "Refused" |
+| ResidencyOwn · Residency · deciding your own · refused | live, gap | the server refuses it ("Someone else checks your own residential status."); live it only shows if someone forces the call, since the queue never lists one's own |
 
 #### PAY-39 · My pay band
 
@@ -660,7 +669,10 @@ Live page: /yx/payroll/bonus
 | Empty · Empty · not worked out yet | live | new state story |
 | TooEarly · Send for approval · pressed too early (field error) | live | new state story |
 | Refused · Approve · refused by the server (own bonus) | live | new state story |
-| Approved · Form C register ready to download | live | new state story (item 30): "Download Form C (bonus register)" once approved or sent |
+| Approved · Form C register ready to download | live | new state story (item 30); founder last 10, item 2: "Download Form C" opens PDF or Spreadsheet (CSV), once approved or sent |
+| FormCChoices · Approved · Download Form C: PDF or spreadsheet | live | new state story (last 10, item 2): the menu open; each choice downloads with a 5 s toast; every download audited with its format |
+| RateRuleHighest · Compute · eligibility on the highest rate in the month | live | new state story (last 10, item 1): the note above the table names the company's rule |
+| RateRuleFirstDay · Compute · eligibility on the month's first day | live | new state story (last 10, item 1) |
 | Sent · Sent to the off-cycle bonus run | live | new state story |
 | Loading · Loading | live | new state story |
 | ErrorState · Error | live | new state story |
@@ -1536,3 +1548,34 @@ reports (`payroll.reports.view`).
 - **Migration:** `20261309000000_pay_tax_requests` (two tables, forced RLS with tenant, support-exclusion and pay-guard
   policies, self-decision triggers, one-open partial unique indexes). No new permission keys, so no grant migration.
 - **Manual steps:** MT-PAY-F-01 … MT-PAY-F-10 in `docs/yukthix/tracker/manual-tests.json`.
+
+
+## Pay last four (founder answers, 30 Oct 2026, last 10: items 1, 2, 5, 10; branch `feat/yukthix-pay-last`)
+
+- **1 Bonus eligibility rule.** Setting `payroll.bonus.eligibility_rate_on` (company or legal entity; `last_day` default,
+  `first_day`, `highest_in_month`). `rateInMonth` in `bonus.ts` (pure) takes the salary records in force and the days
+  employed that month (joined … left): the rate on the last day, on the first day, or the highest in force on any day.
+  Read into the computation's rules (so an approved bonus keeps its rule); PAY-24 shows "Eligibility rule: …" above the
+  table. Unit tests: a raise on the 15th from ₹20,000 to ₹22,000 under each rule, a raise on the 1st, a cut on the last
+  day, the limit and limit + ₹0.01, joiners and leavers mid-month, no monthly salary.
+- **2 Form C PDF.** `GET payroll/bonus/:id/form-c?format=pdf|csv` (default csv; anything else 400). The PDF follows the
+  register house pattern (pdfkit, A4 landscape): letterhead (legal entity name and registered address), "Form C, Payment
+  of Bonus Act, 1965, Rule 4", the year and rate, the 18 register columns (eligible employees only), a Total row
+  (money columns, paise-exact), the employer signature line and a Date box; the header repeats on each page. Approved or
+  sent only (409 before); either bonus key in the entity (403 / 404 otherwise); rate limited; every download audited
+  (`payroll.bonus.register_exported` with `format`, rows, SHA-256). PAY-24: "Download Form C" → PDF / Spreadsheet (CSV).
+- **5 Loan settings screen.** New page **Settings › Payroll & Statutory › Payroll rules** (`/yx/settings/payroll-rules`):
+  the designed company-settings screen (`CompanySettingsScreen section="payroll"`) with two panels: Statutory bonus
+  (all 11 bonus settings, which had no screen) and Loans and advances (`payroll.loan.max_gross_months`,
+  `.after_probation`, `.interest_rate.advance`, `.interest_rate.loan`). Each per company or legal entity, starter value
+  shown, values only from the registry list (the API refuses others, 400). Save pressed too early: field error, focus
+  on the field, never disabled; saved: 5 s toast; every change audited (`org.setting.changed`, before and after).
+  Who: `org.settings.manage` (HR) for every setting, and now also `payroll.setup.manage` for keys starting `payroll.`
+  (on the entity, or company-wide for a company value); GET settings is open to `payroll.setup.manage` too. Menu item
+  for either key. Stories: Settings/Organisation PayrollRules, LoanTooEarly, BonusRule, ReadOnly, Loading, Error.
+- **10 PAY-23 residency row.** Six new stories (above), then the live row and drawer render them.
+- **Migrations:** none (settings are registry rows; no schema change).
+- **Gaps:** the lowest bonus rate above the highest is not refused when saved (the bonus computation refuses it with a
+  clear message); the Form C PDF uses the built-in Helvetica font, so names outside Latin-1 (Tamil, Hindi) print wrongly
+  (the registers have the same limit); father's name stays blank (not held); OwnProof / ResidencyOwn cannot occur live.
+- **Manual steps:** MT-PAY-L-01 … MT-PAY-L-05 in `docs/yukthix/tracker/manual-tests.json`.

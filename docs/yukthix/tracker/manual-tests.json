@@ -6354,5 +6354,117 @@
       "CMP-04 OnTime"
     ],
     "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-L-01",
+    "area": "Pay · Last four (30 Oct 2026)",
+    "screen": "Payroll rules: statutory bonus and the eligibility rule (Settings › Payroll & Statutory, founder last 10, item 1)",
+    "url": "http://localhost:3000/yx/settings/payroll-rules",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Settings › Payroll & Statutory › Payroll rules.",
+      "2. In Statutory bonus, read \"Bonus eligibility uses the salary rate on\". Press Change.",
+      "3. Without choosing a value, press Save.",
+      "4. Choose \"Highest rate in the month\" for the whole company; press Save.",
+      "5. Open Payroll › Statutory bonus, the last ended year; press Work out bonus (or open the one already worked out) and read the note above the table.",
+      "6. Back on Payroll rules, press Change on \"Highest bonus rate (%)\", choose \"Legal entity\", leave the entity empty and press Save.",
+      "7. Sign in as panel@demo-org.test (Divya, no payroll or HR keys) and open /yx/settings/payroll-rules."
+    ],
+    "expected": "Step 1: two panels, Statutory bonus and Loans and advances; every value in words with \"Starter value\" where untouched. Step 2: the drawer says \"Starter value: Rate on the month's last day\". Step 3: \"Choose the value\" under New value, focus on the first choice, nothing saved, Save never disabled. Step 4: a 5-second \"Saved.\" toast; the value reads \"Highest rate in the month\", \"Set for your company\". Step 5: the note reads \"Eligibility rule: the highest salary rate in force during the month. HR sets it in Settings › Payroll rules.\" Negative: Step 6 shows \"Choose the legal entity\" with focus; Step 7 has no Payroll rules menu item and the page says you don't have access. Put the rule back to the last day after the test.",
+    "stories": [
+      "Settings/Organisation PayrollRules",
+      "Settings/Organisation PayrollRulesBonusRule",
+      "PAY-24 RateRuleHighest"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-L-02",
+    "area": "Pay · Last four (30 Oct 2026)",
+    "screen": "Bonus eligibility rule changes who is eligible (PAY-24, founder last 10, item 1)",
+    "url": "http://localhost:3000/yx/payroll/bonus",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. In People, find someone whose salary was raised from below ₹21,000 to above it (bonus-wage parts) on the 15th of a month in the last ended accounting year (HR records it with a past date if the demo has none).",
+      "2. Payroll rules: set the eligibility rule to \"Rate on the month's first day\". On Statutory bonus press Work out at this rate (a draft) and open the person's row.",
+      "3. Set the rule to \"Rate on the month's last day\" and work it out again.",
+      "4. Set it to \"Highest rate in the month\" and work it out again."
+    ],
+    "expected": "Step 2: the raise month counts (the rate on the 1st was below ₹21,000); eligible months include it. Step 3: the raise month no longer counts (the rate on the last day is above the limit). Step 4: same as step 3. Months before the raise count in all three; months after count in none. Negative: an approved bonus keeps the rule it was worked out with (change the rule after approval and reopen: nothing changes).",
+    "stories": [
+      "PAY-24 Minimum",
+      "PAY-24 RateRuleFirstDay",
+      "PAY-24 RateRuleHighest"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-L-03",
+    "area": "Pay · Last four (30 Oct 2026)",
+    "screen": "Form C as a PDF or a spreadsheet (PAY-24 Approve, founder last 10, item 2)",
+    "url": "http://localhost:3000/yx/payroll/bonus",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Second browser: payroll-approver@demo-org.test (Payroll Approver - Meena). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. On a bonus that is still a draft or waiting for approval, open the Approve and pay step and look for Download Form C.",
+      "2. Have Meena approve it. Reload; on Approve and pay press Download Form C.",
+      "3. Choose PDF (to sign and keep). Open the file.",
+      "4. Press Download Form C again; choose Spreadsheet (CSV). Open it.",
+      "5. Ask the developer to read the audit log for payroll.bonus.register_exported on this bonus."
+    ],
+    "expected": "Step 1: no Download Form C button (a direct link to …/form-c?format=pdf answers \"Form C is made once the bonus is approved.\"). Step 2: a menu with two choices, PDF and Spreadsheet (CSV). Step 3: a 5-second toast \"Form C for … downloaded as a PDF.\"; the PDF has the legal entity's name and registered address at the top, \"Form C, Payment of Bonus Act, 1965, Rule 4\", the year and rate, one row per eligible employee only (people above ₹21,000 or under 30 days are not in it), a Total row, and the employer signature line with a Date box. Step 4: the same rows and amounts as the PDF. Step 5: one entry per download with its format (pdf, csv) and file hash. Negative: someone without a bonus key (panel@demo-org.test) cannot open the page; another legal entity's payroll gets \"Not found\".",
+    "stories": [
+      "PAY-24 Approved",
+      "PAY-24 FormCChoices"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-L-04",
+    "area": "Pay · Last four (30 Oct 2026)",
+    "screen": "Loans and advances settings (Settings › Payroll & Statutory › Payroll rules, founder last 10, item 5)",
+    "url": "http://localhost:3000/yx/settings/payroll-rules",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh), then hr@demo-org.test (HR Admin - Lakshmi), then panel@demo-org.test (Manager - Divya). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Payroll rules; read the Loans and advances panel.",
+      "2. On \"Interest on a personal loan (% a year)\" press Change; press Save without choosing.",
+      "3. Choose Legal entity, pick Kaveri Foods Pvt Ltd (Tamil Nadu), choose 8% a year; press Save.",
+      "4. On \"A loan or advance may be at most (months of gross pay)\" choose 3 months for the whole company; Save.",
+      "5. As Divya open Me › Loans and advances and choose Personal loan.",
+      "6. Remove the Tamil Nadu value (row menu › Remove › Remove).",
+      "7. As Lakshmi (HR) change \"Who may ask for a loan or advance\" to Everyone; then as Divya open /yx/settings/payroll-rules."
+    ],
+    "expected": "Step 1: four settings with their starter values: 2 months, Confirmed employees only (after probation), Interest-free, Interest-free. Step 2: \"Choose the value\" with focus on the value; Save is never disabled. Step 3: 5-second \"Saved.\" toast; a table under the setting lists Kaveri Foods Pvt Ltd (Tamil Nadu) · 8% a year. Step 4: \"3 months\", \"Set for your company\". Step 5: the limit and interest follow the new values (her entity's rate). Step 6: \"Removed.\" toast; the row is gone. Step 7: HR can change it too (toast); Divya sees no Change buttons (or no access). Negative: values outside the list cannot be chosen, and the API refuses them (400); every change is in the audit log with before and after.",
+    "stories": [
+      "Settings/Organisation PayrollRules",
+      "Settings/Organisation PayrollRulesLoanTooEarly",
+      "Settings/Organisation PayrollRulesReadOnly"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PAY-L-05",
+    "area": "Pay · Last four (30 Oct 2026)",
+    "screen": "Residency request rows in the proof queue (PAY-23, founder last 10, items 7 and 10)",
+    "url": "http://localhost:3000/yx/payroll/proofs",
+    "account": "panel@demo-org.test (Manager - Divya) sends; payroll@demo-org.test (Payroll Admin - Suresh) decides. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As Divya, in Me › Tax › Residential status, send Non-resident with a TRC PDF valid to 31 Mar 2027, country United Arab Emirates, Form 10F ticked.",
+      "2. As Suresh open Payroll › Proof checking (Waiting). Read Divya's Residential status row.",
+      "3. Press Decide. Read the drawer; open the certificate. Choose Refuse and press Refuse change with no reason.",
+      "4. Type \"The certificate is for last year\"; press Refuse change. Switch the filter to Rejected and read the row.",
+      "5. As Divya send the change again with the right TRC; as Suresh approve it.",
+      "6. As Divya (now non-resident) send \"Back to resident\". As Suresh open the row and approve it.",
+      "7. Ask the developer to call POST /api/v1/tax/residency/<id>/decision as the person who sent it (with a payroll key)."
+    ],
+    "expected": "Step 2: the row reads \"Residential status\", then \"Resident → non-resident · TRC until 31 Mar 2027 · United Arab Emirates · 2026-27\", Declared \"Certificate sent\", Status Waiting. Step 3: drawer \"Residential status change\" with Change, Sent, Tax residency certificate (a button), Valid until, Treaty country, Form 10F; refusing with no reason shows \"Give the reason, so the employee can fix it.\" with focus there. Step 4: toast \"… · change refused.\"; the row shows Refused and \"Refused: The certificate is for last year\". Step 5: toast \"… · now non-resident from the next payslip.\"; Approved filter shows it. Step 6: the row reads \"Non-resident → resident · no document needed\", Declared \"No document\"; the drawer says \"None needed: going back to resident only needs your approval.\"; approve gives a toast. Negative: Step 7 is refused \"Someone else checks your own residential status.\" and one's own requests never appear in the queue.",
+    "stories": [
+      "PAY-23 ResidencyQueue",
+      "PAY-23 ResidencyPendingTrc",
+      "PAY-23 ResidencyBackToResident",
+      "PAY-23 ResidencyApproved",
+      "PAY-23 ResidencyRefused",
+      "PAY-23 ResidencyOwn"
+    ],
+    "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
   }
 ]
