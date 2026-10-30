@@ -6466,5 +6466,160 @@
       "PAY-23 ResidencyOwn"
     ],
     "note": "Positive and negative. The page must be the designed screen (compare with the story); a different, simpler screen is a fail."
+  },
+  {
+    "id": "MT-PPL-S-01",
+    "area": "People · Small gaps (30 Oct 2026)",
+    "screen": "Settings › Checklists: copy a starter once",
+    "url": "http://localhost:3000/yx/settings/checklists",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Second tab: the same account. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open the Leaving tab. Find a starter that is not copied yet and press Use this starter.",
+      "2. In the second tab (opened before step 1, not reloaded), press Use this starter on the same starter.",
+      "3. Reload the second tab and read the Leaving tab."
+    ],
+    "expected": "Step 1: a toast says the checklist was added; the starter shows as copied. Negative, step 2: the box says \"You already have a copy of this starter. Reload the page to see it.\" and no second checklist is made. Step 3: one checklist of that starter only.",
+    "stories": [
+      "Me and set-up ChecklistsLeaving",
+      "Me and set-up ChecklistsStarterFailed"
+    ],
+    "note": "Positive and negative. API: POST lifecycle/journey-templates/from-starter answers 409 the second time."
+  },
+  {
+    "id": "MT-PPL-S-02",
+    "area": "People · Small gaps (30 Oct 2026)",
+    "screen": "Settings › Letter templates › Signatories: remove with letters waiting",
+    "url": "http://localhost:3000/yx/settings/letters",
+    "account": "hr@demo-org.test (Lakshmi, letter.signatory.manage); the signatory is admin@demo-org.test (Ramesh). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Make sure a letter template that needs approval is active (Settings › Letter templates). In People › Letters, issue that letter for Arjun so it waits for approval with Ramesh as the signatory.",
+      "2. Open Signatories. On Ramesh's row open More actions › Remove and confirm (enter the second-factor code when asked).",
+      "3. As admin@demo-org.test approve or reject the waiting letter (Approvals). As Lakshmi try Remove again."
+    ],
+    "expected": "Negative, step 2: the drawer says \"Ramesh … signs 1 letter waiting for approval. Approve or withdraw them first.\" and Ramesh stays in the list. Positive, step 3: a toast says the signatory was removed and the row leaves the list.",
+    "stories": [
+      "Me and set-up Signatories",
+      "Me and set-up SignatoriesRemoveFailed"
+    ],
+    "note": "Positive and negative. API: POST letters/signatories/:id/remove answers 409 while a letter is pending approval with that signatory."
+  },
+  {
+    "id": "MT-PPL-S-03",
+    "area": "People · Small gaps (30 Oct 2026)",
+    "screen": "Onboarding checklist: IT and the manager see only their own tasks (PPL-13)",
+    "url": "http://localhost:3000/yx/people/my-tasks",
+    "account": "First hr@demo-org.test (Lakshmi), then an IT and Admin team member (ask the developer which demo login is in the IT team), then panel@demo-org.test (Manager - Divya), then arjun@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As Lakshmi add a joiner on the Onboarding board with Divya as manager. Open the joiner's checklist and count the tasks.",
+      "2. As the IT team member open People › My checklist tasks and press Open checklist on the joiner.",
+      "3. As Divya do the same.",
+      "4. As Arjun paste the checklist address from step 1 into the address bar."
+    ],
+    "expected": "Step 1: every task, with no \"tasks you own\" line. Step 2: only IT and Admin tasks, and the line \"You see the N tasks you own. HR sees all M.\" (M = the count from step 1). Step 3: only manager and buddy tasks with the same line. Negative, step 4: \"You don't have access\" (no tasks shown).",
+    "stories": [
+      "PPL-13 Hr",
+      "PPL-13 It",
+      "PPL-13 Manager"
+    ],
+    "note": "Positive and negative. The server filters the tasks (GET lifecycle/journeys/:id: ownTasksOnly, taskTotal)."
+  },
+  {
+    "id": "MT-PPL-S-04",
+    "area": "People · Small gaps (30 Oct 2026)",
+    "screen": "Ready to onboard: rehire impact in the Create drawer (PPL-12)",
+    "url": "http://localhost:3000/yx/people/ready-to-onboard",
+    "account": "hr@demo-org.test (Lakshmi). Before: an accepted offer for someone who left (Hiring › an offer to a former employee's email, accepted; ask the developer if there is none in the demo data). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open the row marked Ex-employee rehire and press Create employee.",
+      "2. Choose the legal entity and joining date. Read the Rehire impact preview.",
+      "3. Change Gratuity service to Add prior. Choose the location. Press Create and start pre-boarding with no reason.",
+      "4. Type \"Agreed in the offer\" and press Create and start pre-boarding.",
+      "5. Open the new joiner's checklist and read the Rehire card."
+    ],
+    "expected": "Step 2: \"Everything follows company policy.\", a row per option (Employee code, PF, tax, service, gratuity, leave, probation, earlier warnings) with the company policy and a choice, and \"Worked here … to … as <code> … a break of N months\". Negative, step 3: \"1 option differs…\", the error \"Enter a reason. Changes from the policy are recorded.\" under the reason and the cursor in it; nothing is created. Step 4: toast \"… is now a joiner\". Step 5: Gratuity service shows \"Changed for this rehire\" with the reason; the person is on their old record (same code if the policy reuses it).",
+    "stories": [
+      "PPL-12 Rehire",
+      "PPL-12 RehireOverride"
+    ],
+    "note": "Positive and negative. Before this change, an ex-employee's offer stopped with \"That email or phone already belongs to a person…\"."
+  },
+  {
+    "id": "MT-PPL-S-05",
+    "area": "People · Small gaps (30 Oct 2026)",
+    "screen": "Possible same person › Merged: unmerge later (PPL-37)",
+    "url": "http://localhost:3000/yx/people/same-person?view=merged",
+    "account": "hr@demo-org.test (Lakshmi, company-wide employee.change.manage), then arjun@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Merge a proposed pair on Possible same person (or use one merged earlier). Next day, open People › Possible same person and press Merged.",
+      "2. Read the row; press Open to unmerge. Unmerge with the note \"Different people after all\".",
+      "3. Go back to Merged.",
+      "4. As Arjun open http://localhost:3000/yx/people/same-person?view=merged."
+    ],
+    "expected": "Step 2: the row shows the merged record, \"into <name>\", the merge date (like 30 Oct 2026), who merged it and the note; Open goes to the merge record with Unmerge; a toast after unmerge. Step 3: the unmerged record is no longer listed (or \"No merged records\"). Negative, step 4: no access (the API answers 403).",
+    "stories": [
+      "PPL-37 MergedList",
+      "PPL-37 MergedEmpty",
+      "PPL-37 Unmerge"
+    ],
+    "note": "Positive and negative. The menu item \"Possible same person\" shows only while a proposal waits; the Merged view is reached by that page or its address."
+  },
+  {
+    "id": "MT-PPL-S-06",
+    "area": "People · Small gaps (30 Oct 2026)",
+    "screen": "Me › Privacy: how long each kind of data is kept (PPL-33)",
+    "url": "http://localhost:3000/yx/me/privacy",
+    "account": "arjun@demo-org.test; then admin@demo-org.test (System Admin) in Settings › People & Access › Privacy. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As Arjun open Privacy › My data and read the How long column.",
+      "2. As the admin set \"Keep personal details after someone leaves (years)\" to 5 for the whole company.",
+      "3. As Arjun reload Privacy.",
+      "4. As hr@demo-org.test (no access admin key) open the same setting."
+    ],
+    "expected": "Step 1: Public \"While you work here\", Internal \"Exit + 8 years\", Personal \"Exit + 3 years\", Confidential \"8 years (pay and tax records)\", Special \"Exit + 1 year\". Step 3: Personal reads \"Exit + 5 years\". Negative, step 4: the setting shows but cannot be changed (\"Only an admin who manages roles and access changes this\").",
+    "stories": [
+      "PPL-33 MyData"
+    ],
+    "note": "Positive and negative. Request a correction and Nominate someone are not built (map: live (gap))."
+  },
+  {
+    "id": "MT-PPL-S-07",
+    "area": "People · Small gaps (30 Oct 2026)",
+    "screen": "Me › Declarations: not a designated person (PPL-43, PPL-44)",
+    "url": "http://localhost:3000/yx/me/declarations/annual",
+    "account": "arjun@demo-org.test (not a designated person); then a designated person (People › Regulated declarations › Designate, as the compliance officer). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As Arjun open http://localhost:3000/yx/me/declarations/annual.",
+      "2. Open http://localhost:3000/yx/me/declarations/pre-clearance.",
+      "3. As a designated person open both pages."
+    ],
+    "expected": "Negative, steps 1 and 2: inside the Me frame, \"Annual declarations\" with \"No declarations for you\", and \"Trading pre-clearance\" with \"No pre-clearance for you\", each saying the compliance officer names designated persons. Positive, step 3: the holdings tabs and the request form.",
+    "stories": [
+      "PPL-43 NotDesignated",
+      "PPL-43 Holdings",
+      "PPL-44 NotDesignated",
+      "PPL-44 Request"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-S-08",
+    "area": "People · Small gaps (30 Oct 2026)",
+    "screen": "Retirements and contracts: the fixed-term limit (PPL-49, company setting)",
+    "url": "http://localhost:3000/yx/people/upcoming-exits",
+    "account": "hr@demo-org.test (Lakshmi); admin@demo-org.test for Settings › Organisation › Fixed-term contracts. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Press Set a contract end, choose Arjun, set the end to 3 years minus a day after his joining date, reason \"Project contract\", Save.",
+      "2. On his row press Extend; set the end one day later than the 3-year limit; Save.",
+      "3. As the admin, in Settings › Organisation › Fixed-term contracts, set the limit to 5 years. As Lakshmi try step 2 again.",
+      "4. Set the limit back to 3 years. On Arjun's row press Make permanent."
+    ],
+    "expected": "Step 1: toast, the row shows the contract end. Negative, step 2: \"The new end is after the 3-year limit for fixed-term contracts. The latest end is <date>; make them permanent instead, or HR changes the limit in Settings.\" under the dialog; nothing saved. Step 3: saved with a toast. Step 4: Make permanent is never limited; it goes for approval.",
+    "stories": [
+      "PPL-49 SetContract",
+      "PPL-49 ExtendContract",
+      "PPL-49 ContractFailed",
+      "PPL-49 MakePermanent"
+    ],
+    "note": "Positive and negative. Setting contract.max_years: 1, 2, 3 (default), 4, 5 years or No limit; per company, legal entity or employment type."
   }
 ]

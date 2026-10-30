@@ -19,18 +19,18 @@ API) · **phone view, mobile app not built**.
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Directory, record and changes | 9 | 114 | 0 | 6 | 2 | 0 | 122 |
-| B. Onboarding and probation | 7 | 65 | 6 | 0 | 0 | 0 | 71 |
+| B. Onboarding and probation | 7 | 69 | 2 | 0 | 0 | 0 | 71 |
 | C. Exits | 7 | 47 | 3 | 0 | 0 | 3 | 53 |
 | D. Assets, documents, letters and self-service | 9 | 50 | 4 | 0 | 0 | 9 | 63 |
-| E. Identity, same person and records | 6 | 12 | 7 | 0 | 2 | 0 | 21 |
-| F. Declarations, relations, special cases and checklists | 11 | 64 | 1 | 2 | 0 | 3 | 70 |
-| **All PPL groups (A–F)** | **49** | **352** | **21** | **8** | **4** | **15** | **400** |
-| G. Other People stories (no PPL number) | 4 | 42 | 2 | 0 | 0 | 0 | 44 |
+| E. Identity, same person and records | 6 | 14 | 7 | 0 | 2 | 0 | 23 |
+| F. Declarations, relations, special cases and checklists | 11 | 66 | 1 | 2 | 0 | 3 | 72 |
+| **All PPL groups (A–F)** | **49** | **360** | **17** | **8** | **4** | **15** | **404** |
+| G. Other People stories (no PPL number) | 4 | 44 | 0 | 0 | 0 | 0 | 44 |
 
 Counted by script (30 Oct 2026, on `test/yukthix-main`; the script is in the appendix): every `export const` story in the 49 `ppl-NN.stories.tsx`
 files (PPL-01 … 50; PPL-10 has no story) and in the four other People story files, against the rows in section 4. The
 script fails unless each story file has exactly one row per story, in file order, and every verdict is one of the five
-words. 49 groups, 400 stories; the other People stories (section G) are 44 more and are counted on their own line.
+words. 49 groups, 404 stories (400 before the small gaps added four: PPL-37 MergedList and MergedEmpty, PPL-43 and PPL-44 NotDesignated); the other People stories (section G) are 44 more and are counted on their own line.
 The Kit (`people-kit.stories.tsx`, 10 stories) is shared parts, not pages, and is not counted. T9-01 (the pre-boarding
 portal) is a Portals design, not a People one; its 21 stories are in their own section below and are not counted here.
 
@@ -148,7 +148,7 @@ Not People: /yx/me/requests (inbox design), /yx/settings/access-settings and com
 | /yx/people/directory/[id] | "Ask … to upload a document" and "Send … back to …?" dialogs (web `person-record.tsx`) | HR asks for a document type; sends one back with a message | add both to the PPL-03 Documents tab stories |
 | /yx/people/directory/[id] | `UploadDocDialog` (web `people/upload-doc-dialog.tsx`) | HR uploads a document for the person: type, file, expiry | add "Upload for the person" to PPL-03; move it into `people/documents.tsx` |
 | /yx/people/directory/[id] Pay tab | account abroad card | PPL-46 `OnPayTab` draws it; the live Pay tab never passes `international` | pass it (S); the person's own desktop view is the phone design (Q5) |
-| /yx/me/declarations/annual, /pre-clearance | "No declarations for you" / "No pre-clearance for you" (someone who is not designated) | plain empty page | add an empty story to PPL-43 and PPL-44 |
+| /yx/me/declarations/annual, /pre-clearance | "No declarations for you" / "No pre-clearance for you" (someone who is not designated) | done (small gaps): stories PPL-43 and PPL-44 NotDesignated; the screens take state 'not-designated' | — |
 
 ## 3. Designs with no live page or API
 
@@ -163,15 +163,15 @@ Not People: /yx/me/requests (inbox design), /yx/settings/access-settings and com
 | PPL-27 automated checks (2) | PAN check and bank penny drop on employee documents; needs a provider (Pay's payout penny drop may be reusable) | M |
 | PPL-36 proposals (1) | propose "possible same person" on name + date of birth, PAN, UAN, not only a shared email | M |
 | PPL-28 Held (1) | a "held" letter status (a relieving letter waits for clearance) | M |
-| PPL-33 (1) | "How long we keep it" per data class (S); "Request a correction" and "Nominate someone" (M) | S to M |
+| PPL-33 (1) | "How long" is done (small gaps: company settings per class); "Request a correction" and "Nominate someone" (M) | M |
 | PPL-44 Blocked (1) | a trading-window calendar (closed periods set by the compliance officer), refused requests inside it | M |
 | PPL-46 SplitPay, OverSplit (2) | pay split over several accounts, in the bank file too | L |
 | PPL-22 absconding F&F (1) | a recovery-only F&F mode: "held until they claim it", no deadline while held | M |
-| PPL-12 rehire preview (1) | show the rehire impact in the Create drawer (the `RehireCard` already exists on the checklist) | S |
-| PPL-13 IT, Manager, New hire views (3) | a "your tasks" filter for a non-HR owner (S); the new hire's view is the portal (T9-01) and My first 30 days | S |
+| PPL-12 rehire preview (1) | done (small gaps): impact preview in the Create drawer, choices with a reason sent with the create | — |
+| PPL-13 New hire view (1) | IT and Manager are done (small gaps: the API sends a non-HR owner only their tasks); the new hire's view is the portal (T9-01) and My first 30 days | — |
 | PPL-20 HR all departments, Blocked (2) | an HR view by leaver on /yx/people/clearance (S); a "blocked" clearance status with a reason (S) | S |
-| PPL-37 Unmerge later (1) | a "Merged records" list or a link on the record, so Unmerge can be found after the day of the merge | S |
-| Me and set-up: starter copied twice, signatory with letters waiting (2) | `copyStarter` refuses a second copy; `removeSignatory` refuses while letters wait for that signatory | S |
+| PPL-37 Unmerge later | done (small gaps): Possible same person › Merged lists every merged record | — |
+| Me and set-up: starter copied twice, signatory with letters waiting (2) | done (small gaps): both refused with 409 | — |
 
 ## T9-01 · Pre-boarding portal (/yx/join/[org]): the stand-in and the design
 
@@ -455,8 +455,8 @@ Live page: /yx/people/ready-to-onboard (menu People › Onboarding › Ready to 
 |---|---|---|
 | Queue · Queue by person type | live | GET lifecycle/ready-to-onboard: New person, Ex-employee rehire, Current employee (that one goes to Change action) |
 | CreateNew · Create employee (new person) | live | row → `CreateFromOffer` drawer; POST lifecycle/ready-to-onboard/:offerId |
-| Rehire · Create employee (rehire impact preview) | live (gap) | live drawer has no impact table; it says "choose the rehire options on their checklist" (PPL-13 Rehire card) |
-| RehireOverride · Rehire with an override (reason required) | live (gap) | as above: the override with reason is on the checklist's Rehire card, not in this drawer |
+| Rehire · Create employee (rehire impact preview) | live | an ex-employee offer: the Create drawer shows the policy per option for the chosen entity and the earlier spell (GET lifecycle/ready-to-onboard/:offerId/rehire); the offer joins on their own record as a rehire |
+| RehireOverride · Rehire with an override (reason required) | live | change a choice in the drawer: Create without a reason shows the field error and focuses it; POST ready-to-onboard/:offerId takes `rehire` choices with the reason (also on the checklist's Rehire card) |
 | Conversion · Contract worker conversion | live (gap) | the API has no contract-worker person type (contract workers module not built); only new, ex_employee, internal |
 | Empty · · empty | live | no accepted offers waiting |
 
@@ -467,8 +467,8 @@ Live page: /yx/people/onboarding/[id] (open a card on the Onboarding board, or a
 | story (sub-page) | verdict | note |
 |---|---|---|
 | Hr · HR · all tasks with owners and relative dates | live | HR with `lifecycle.onboarding.manage`; tasks in before / day / after phases |
-| It · IT · own tasks | live (gap) | a task owner can open it (API `access`: any task assigned to them or their group) but sees every task, with buttons only on theirs; no "own tasks" filter |
-| Manager · Manager · manager and buddy tasks | live (gap) | the joiner's manager can open it (preboarding `managerEmployeeId`); all tasks shown, not filtered to manager and buddy tasks |
+| It · IT · own tasks | live | an IT or Admin team member opens the checklist from My checklist tasks: the API sends only tasks assigned to them or their team (`ownTasksOnly`, `taskTotal`); "You see the N tasks you own. HR sees all M." |
+| Manager · Manager · manager and buddy tasks | live | the joiner's manager (preboarding `managerEmployeeId`) gets only the manager and buddy tasks |
 | NewHire · New hire · own tasks | live (gap) | the joiner never sees this record: before day one the /yx/join portal (stand-in), after it /yx/me/first-30-days |
 | LetterOverdue · Appointment letter overdue (compliance alert) | live | a locked letter task past due shows the red alert with "Issue letter" (`letter.issue`) |
 | Cancelled · Live · cancelled joiner (reneged) | live | after Change status › Reneged; badge "Cancelled: reneged" |
@@ -776,7 +776,7 @@ Live page: /yx/me/privacy (menu People › Me › Privacy)
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| MyData · My data (classes, retention, download, correction) | live (gap) | classes and download (PDF, JSON: GET people/me/data) are live; no "How long" (retention) column, no "Request a correction", no "Nominate someone" (no API; corrections go through Change requests) |
+| MyData · My data (classes, retention, download, correction) | live (gap) | classes, download (PDF, JSON: GET people/me/data) and the "How long" column (company settings `privacy.retention.*`, Confidential from `payroll.document_retention_years`, sent by GET people/me/access-log) are live; no "Request a correction", no "Nominate someone" (no API; corrections go through Change requests) |
 | Accessed · Who accessed my data | live | GET people/me/access-log: views of my Confidential and Special data |
 | Off · Who accessed · turned off by the company | live | the API returns enabled=false when the company turns the view off; the page says so |
 | Phone · · phone | phone view, mobile app not built | `WhoAccessedPhone` in known.json |
@@ -821,8 +821,10 @@ Live pages: /yx/people/same-person/merge?a=&b= (from Review merge) and /yx/peopl
 |---|---|---|
 | Merge · HR · field-by-field merge | live | pick per field; the live merge offers name, primary email and primary phone only (the rest stays with the kept record) |
 | NoteMissing · Audit note missing | live | Merge with an empty note shows the error |
-| Unmerge · Unmerge restores the split | live | the merged page opens right after a merge; POST persons/:id/unmerge. No list of past merges, so later only by URL |
+| Unmerge · Unmerge restores the split | live | the merged page opens right after a merge, and later from Possible same person › Merged; POST persons/:id/unmerge |
 | UnmergeConfirm · Unmerge · confirm with note | live | Unmerge asks for a note; empty note shows the error |
+| MergedList · Unmerge later · merged records list | live | /yx/people/same-person?view=merged (switch To check / Merged): GET people/same-person/merged, records still merged, newest first; Open goes to the merge record (a pre-undo Service Desk link opens read only) |
+| MergedEmpty · Unmerge later · no merged records | live | Merged view with no merges: "No merged records" |
 
 #### PPL-45 · Work authorisations tab
 
@@ -911,13 +913,14 @@ Live page: /yx/me/declarations/annual (designated person), /yx/people/regulated-
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Holdings · Employee · holdings | live | GET me/bfsi; add (dialog) and remove holdings; a person who is not designated gets a plain "No declarations for you" (no design) |
+| Holdings · Employee · holdings | live | GET me/bfsi; add (dialog) and remove holdings; a person who is not designated gets the NotDesignated state |
 | Related · Employee · related persons | live | Related tab: add and remove |
 | Conflict · Employee · conflict of interest | live | Conflicts tab: PUT me/bfsi/coi (Save draft) |
 | Attest · Employee · attestation with OTP | live | POST me/bfsi/submit has `@RequireStepUp`: the app's second-factor prompt asks the code, not the inline OTP field; the code-of-conduct text is generic (no version or document in the API) |
 | Switch · Employee · under Me › Declarations (switch) | live | switch shows for a designated person (workspace counts `declarationsDue`) |
 | Officer · Compliance officer · register | live | /yx/people/regulated-declarations: register, remind, review a submission, designate and undesignate, CSV export |
 | Phone · · phone | phone view, mobile app not built | `BfsiPhone` is in known.json |
+| NotDesignated · Employee · not a designated person (nothing to declare) | live | GET me/bfsi returns designated false: live state 'not-designated' inside the Me frame |
 
 #### PPL-44 · Trading pre-clearance
 
@@ -925,7 +928,7 @@ Live page: /yx/me/declarations/pre-clearance (designated person; old /yx/me/pre-
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Request · Employee · request | live | POST me/pre-clearance; a person who is not designated gets 403 and a plain "No pre-clearance for you" (no design) |
+| Request · Employee · request | live | POST me/pre-clearance; a person who is not designated gets 403 and the NotDesignated state |
 | Approved · Approved · validity window and trade report | live | after the officer approves (validUntil set); trade report with contract note upload |
 | Blocked · Blocked · trading window closed | live (gap) | the API has no trading-window calendar (closed periods); the rule text in live leaves out "never during a closed window" |
 | Expired · Expired without report | live | the service marks an approved, unreported request past validUntil as Expired |
@@ -933,6 +936,7 @@ Live page: /yx/me/declarations/pre-clearance (designated person; old /yx/me/pre-
 | Switch · Employee · under Me › Declarations (switch) | live | designated person only |
 | Officer · Compliance officer · decisions | live | /yx/people/pre-clearance: approve or reject with note |
 | Phone · · phone | phone view, mobile app not built | `PreclearancePhone` is in known.json |
+| NotDesignated · Employee · not a designated person (no pre-clearance) | live | GET me/pre-clearance answers 403: live state 'not-designated' inside the Me frame |
 
 #### PPL-47 · My checklist tasks
 
@@ -972,7 +976,7 @@ Live page: /yx/people/upcoming-exits (menu "Retirements and contracts"; exit vie
 | ExtendContract · Extend the contract · for one person | live | row action Extend |
 | MakePermanent · Make permanent · new employment type | live | row action; the move goes for approval |
 | ContractMissing · Set a contract end · Save pressed with nothing filled | live | the dialog's own field errors |
-| ContractFailed · Extend the contract · the server refuses | live | the API refuses e.g. "An extension moves the end later." or an end before joining; the story's 3-year fixed-term limit is not a rule in the API |
+| ContractFailed · Extend the contract · the server refuses | live | the API refuses e.g. "An extension moves the end later.", an end before joining, or an end past the fixed-term limit (company setting `contract.max_years`, default 3 years from joining; Settings › Organisation › Fixed-term contracts) |
 
 #### PPL-50 · Team pay access
 
@@ -1055,7 +1059,7 @@ Live pages: /yx/me/assets (`MyAssetsScreen`; not in the six-item Me menu, it is 
 | Checklists · Checklists · joining | live | /yx/settings/checklists |
 | ChecklistsLeaving · Checklists · leaving, the starter to copy | live | "Leaving" tab with the offboarding starter not yet copied (`starters[].copied` false) |
 | ChecklistsLife · Checklists · life events | live | "Life events" tab; a copied life-event checklist starts switched off (copyStarter) |
-| ChecklistsStarterFailed · Checklists · copying the starter refused | live (gap) | the refusal box shows on a 403 or a bad key, but the API never refuses a second copy: `copyStarter` makes another one (the story's "You already have a copy" cannot happen) |
+| ChecklistsStarterFailed · Checklists · copying the starter refused | live | copy a starter that is already copied (two tabs, or a double click): `copyStarter` answers 409 "You already have a copy of this starter. Reload the page to see it." |
 | ChecklistsEmpty · Checklists · none yet | live | a company with no templates; starters list also empty only if `STARTERS` were empty, so in practice the starters still show |
 | ChecklistsLoading · Checklists · loading | live |  |
 | ChecklistsError · Checklists · could not load | live |  |
@@ -1065,7 +1069,7 @@ Live pages: /yx/me/assets (`MyAssetsScreen`; not in the six-item Me menu, it is 
 | EditChecklistFailed · Edit a checklist · the server refuses | live | 409 "Someone else changed this checklist. Reload it." (version check in `saveTemplate`) |
 | Signatories · Signatories · open | live | /yx/settings/letters › Signatories (only with `letter.signatory.manage`) |
 | SignatoriesEmpty · Signatories · no one yet | live | a company with no active signatory |
-| SignatoriesRemoveFailed · Signatories · Remove refused | live (gap) | the refusal shows on 403 (other entity) or 404, but the API has no rule "signs letters waiting for approval": `removeSignatory` always deactivates. Needs that check (S) |
+| SignatoriesRemoveFailed · Signatories · Remove refused | live | remove a signatory who signs letters waiting for approval: `removeSignatory` answers 409 "… signs N letters waiting for approval. Approve or withdraw them first." |
 | AddSignatory · Add a signatory · open | live |  |
 | AddSignatoryFilled · Add a signatory · filled | live |  |
 | AddSignatoryMissing · Add a signatory · Add pressed with nothing filled | live | form check before `POST` |
@@ -1088,6 +1092,8 @@ first.
 
 Not in this round (founder to decide, section 3): contract workers module, learning, face match, automated document
 checks, held letters, trading-window calendar, split pay, absconding recovery-only F&F, privacy correction requests.
+
+**Builder 3 done (branch `feat/yukthix-people-small`, 30 Oct 2026):** starter copied once (409); signatory kept while letters wait for approval (409); PPL-13 own tasks (API filter); PPL-12 rehire impact in the Create drawer (an ex-employee's offer now joins as a rehire); PPL-37 Merged list; PPL-33 How long (settings `privacy.retention.internal_years` 8, `personal_years` 3, `special_years` 1); PPL-43/44 NotDesignated; fixed-term limit `contract.max_years` (default 3, Settings › Organisation › Fixed-term contracts). No migrations. Left: PPL-46 account abroad on the Pay tab needs `record.tsx` and lands after builder 2.
 
 **Shared files and how to avoid conflicts**
 
@@ -1122,7 +1128,7 @@ deletes (`joining-live.test.tsx` for the portal; the history tests for `ChangeDr
    *Suggested: yes.* One form for one job (the founder rule); the live one's rules (promotion must change designation
    and grade, inter-entity move, drafts) move into the design.
 4. **Fixed-term contracts: how long at most?** PPL-49 shows a refusal at 3 years; the app has no limit.
-   *Suggested: a company setting, default 3 years, HR can change it* (company policy is configurable).
+   *Suggested: a company setting, default 3 years, HR can change it* (company policy is configurable). **Accepted and built** (`contract.max_years`).
 5. **Account abroad for the person themselves** shows the phone layout on the web (there is no desktop design).
    *Suggested: accept it;* it is a short form and works at web width. Add a desktop story only if the founder wants one.
 6. **PPL-10 (continuity checklist) has no story of its own;** it is drawn and live inside PPL-09. Keep the number unused?
