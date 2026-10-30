@@ -13,7 +13,7 @@ import { DayEngine } from './day-engine.service';
 import { LeaveService } from './leave.service';
 import { Facts, LeaveRules, asDate, dateOf, factsOn, grantCovers, hasBalance, holidaysFor, hrApprovers, num, rulesFor, settingOn, todayIn, visibleSql, type TimeKey } from './time-core';
 import { addDays, daysBetween, leaveYearOf } from './time-maths';
-import { cloneToYear, holidayCompOffDue, templateRows } from './holiday-rules';
+import { cloneToYear, holidayCompOffDue, recountedDay, templateRows } from './holiday-rules';
 import { ScheduleBook, lockedDates } from './schedule';
 import { BLOCK_DATE_EXEMPT, CompOffCredit, compOffExpiries, compOffUseBy, dailyPay, encashAmount, encashMax, encashWindowOpen, longestRun, toCsv } from './leave-rules';
 import { FEED_STATES, HOLIDAY_PROVIDER, HolidayProvider } from './holiday-feed.provider';
@@ -1181,7 +1181,9 @@ export class LeaveV2Service implements OnModuleInit {
       if (rows.some((r) => r.status !== 'waiting')) throw new ConflictException('Some of those changes were already decided. Reload to see the latest.');
       const today = todayIn('Asia/Kolkata');
       const told: { userId: string; on: string; requestId: string }[] = [];
+      const back: { userId: string; on: string; requestId: string }[] = [];
       let returned = 0;
+      let recounted = 0;
       for (const r of rows) {
         const accept = dto.accept.includes(r.id);
         const on = dateOf(r.holidayOn);
@@ -1189,17 +1191,22 @@ export class LeaveV2Service implements OnModuleInit {
         await tx.holidayFeedChange.update({ where: { id: r.id }, data: { status: accept ? 'accepted' : 'ignored', decidedBy: c.userId ?? null, decidedAt: new Date() } });
         if (!accept) continue;
         if (r.action === 'remove') {
-          if (r.holidayId) await tx.holiday.deleteMany({ where: { organizationId: org, id: r.holidayId } });
+          const gone = r.holidayId ? await tx.holiday.findFirst({ where: { organizationId: org, id: r.holidayId } }) : null;
+          if (gone) {
+            await tx.holiday.delete({ where: { id: gone.id } });
+            if (gone.kind !== 'optional' && gone.kind !== 'restricted') recounted += await this.holidayRemoved(tx, c, gone.calendarId, dateOf(gone.holidayOn), gone.name, back);
+          }
         } else {
           await tx.holiday.create({ data: { organizationId: org, calendarId: r.calendarId, holidayOn: r.holidayOn, name: r.name, kind: 'state', createdBy: c.userId ?? null } });
           returned += await this.holidayAdded(tx, c, r.calendarId, on, r.name, told);
         }
         await audit(tx, c, accept ? 'holiday.feed.accepted' : 'holiday.feed.ignored', 'holiday_feed_change', r.id, { calendarId: r.calendarId, action: r.action, on, name: r.name });
       }
-      return { accepted: dto.accept.length, ignored: dto.ignore.length, leaveReturned: returned, told };
+      return { accepted: dto.accept.length, ignored: dto.ignore.length, leaveReturned: returned, leaveRecounted: recounted, told, back };
     });
     await this.tellHolidayAdded(ctx, out.told);
-    return { accepted: out.accepted, ignored: out.ignored, leaveReturned: out.leaveReturned };
+    await this.tellHolidayRemoved(ctx, out.back);
+    return { accepted: out.accepted, ignored: out.ignored, leaveReturned: out.leaveReturned, leaveRecounted: out.leaveRecounted };
   }
 
   // ------------------------------------------------------------------------------------------ TIM-26 drafts (clone, template)
@@ -1280,7 +1287,7 @@ export class LeaveV2Service implements OnModuleInit {
   }
 
   /** "Change date": a future holiday moves to another future date of its year; leave on the new date goes back. */
-  async changeHolidayIn(tx: Tx, c: CompanyContext, id: string, on: string, told: { userId: string; on: string; requestId: string }[]) {
+  async changeHolidayIn(tx: Tx, c: CompanyContext, id: string, on: string, told: { userId: string; on: string; requestId: string }[], back: { userId: string; on: string; requestId: string }[] = []) {
     const org = c.organizationId;
     const h = await tx.holiday.findFirst({ where: { organizationId: org, id } });
     if (!h) throw new NotFoundException('Not found');
@@ -1289,12 +1296,15 @@ export class LeaveV2Service implements OnModuleInit {
     if (was < today) throw new ConflictException('That holiday has passed, so its date stays.');
     if (on < today) throw new BadRequestException('Choose today or a later date.');
     if (on.slice(0, 4) !== was.slice(0, 4)) throw new BadRequestException(`Choose a date in ${was.slice(0, 4)}.`);
-    if (on === was) return { id, on, leaveReturned: 0 };
+    if (on === was) return { id, on, leaveReturned: 0, leaveRecounted: 0 };
     if (await tx.holiday.findFirst({ where: { organizationId: org, calendarId: h.calendarId, holidayOn: asDate(on) } })) throw new ConflictException('That date is already a holiday on this calendar.');
     await tx.holiday.update({ where: { id }, data: { holidayOn: asDate(on) } });
-    const returned = h.kind === 'optional' || h.kind === 'restricted' ? 0 : await this.holidayAdded(tx, c, h.calendarId, on, h.name, told);
-    await audit(tx, c, 'holiday.date_changed', 'holiday', id, { calendarId: h.calendarId, name: h.name, from: was, to: on, leaveReturned: returned });
-    return { id, on, leaveReturned: returned };
+    const public_ = h.kind !== 'optional' && h.kind !== 'restricted';
+    const returned = public_ ? await this.holidayAdded(tx, c, h.calendarId, on, h.name, told) : 0;
+    // Leave across the old date counts that day again.
+    const recounted = public_ ? await this.holidayRemoved(tx, c, h.calendarId, was, h.name, back) : 0;
+    await audit(tx, c, 'holiday.date_changed', 'holiday', id, { calendarId: h.calendarId, name: h.name, from: was, to: on, leaveReturned: returned, leaveRecounted: recounted });
+    return { id, on, leaveReturned: returned, leaveRecounted: recounted };
   }
 
   /** Publish a calendar's draft for a year: every festival date confirmed first; days already past are left out. */
@@ -1382,13 +1392,76 @@ export class LeaveV2Service implements OnModuleInit {
       }
       if (d.status !== 'pending' && hasBalance(d.kind)) {
         const req = await tx.leaveRequest.findFirstOrThrow({ where: { id: d.requestId } });
-        await tx.leaveLedgerEntry.createMany({ data: [{ organizationId: org, employeeId: d.employeeId, leaveTypeId: req.leaveTypeId, entryOn: asDate(on), kind: 'cancelled', days: d.portion, requestId: d.requestId, periodKey: `h:${on}:${d.requestId.slice(0, 24)}`, reason: `${holidayName} on ${fmt(on)} is now a holiday` }], skipDuplicates: true });
+        // The request's version in the key: a holiday removed and added again credits again (each change is its own entry).
+        await tx.leaveLedgerEntry.createMany({ data: [{ organizationId: org, employeeId: d.employeeId, leaveTypeId: req.leaveTypeId, entryOn: asDate(on), kind: 'cancelled', days: d.portion, requestId: d.requestId, periodKey: `h:${on}:${d.requestId.slice(0, 18)}:${req.version}`, reason: `${holidayName} on ${fmt(on)} is now a holiday` }], skipDuplicates: true });
       }
       await this.dayEngine.evaluate(tx, c, d.employeeId, on, on);
       returned += 1;
       if (d.userId) told.push({ userId: d.userId, on, requestId: d.requestId });
     }
     return returned;
+  }
+
+  /**
+   * A holiday left `on` (removed, or moved to another date; founder, 30 Oct 2026): leave booked across that date counts
+   * it again, the reverse of holidayAdded. Each such day is recounted: a working day for the person is leave again (a
+   * full or half day as booked; approved leave takes it from the balance), their weekly off stays not counted. Requests
+   * that ended because every day was a holiday stay ended. Each recount is audited; returns how many.
+   */
+  async holidayRemoved(tx: Tx, c: CompanyContext, calendarId: string, on: string, holidayName: string, told: { userId: string; on: string; requestId: string }[]): Promise<number> {
+    const org = c.organizationId;
+    const cal = await tx.holidayCalendar.findFirst({ where: { organizationId: org, id: calendarId } });
+    if (!cal) return 0;
+    const rows = await tx.$queryRaw<{ requestId: string; employeeId: string; part: 'full' | 'first' | 'second'; status: string; kind: string; userId: string | null }[]>`
+      SELECT d.request_id::text AS "requestId", d.employee_id::text AS "employeeId", d.part, r.status, t.kind, e.user_id::text AS "userId"
+      FROM leave_request_days d JOIN leave_requests r ON r.organization_id = d.organization_id AND r.id = d.request_id AND r.status = ANY(${WAITING}::text[])
+      JOIN leave_types t ON t.organization_id = r.organization_id AND t.id = r.leave_type_id
+      JOIN employees e ON e.organization_id = d.organization_id AND e.id = d.employee_id
+      JOIN employee_assignments a ON a.organization_id = d.organization_id AND a.employee_id = d.employee_id AND a.superseded_at IS NULL AND ${on}::date <@ daterange(a.valid_from, a.valid_to, '[]')
+      WHERE d.organization_id = ${org}::uuid AND d.active AND d.portion = 0 AND d.counted_as = 'holiday' AND d.leave_on = ${on}::date
+        AND (a.location_id = ${cal.locationId}::uuid OR (${cal.locationId}::uuid IS NULL AND NOT EXISTS (SELECT 1 FROM holiday_calendars hc WHERE hc.organization_id = a.organization_id AND hc.location_id = a.location_id)))`;
+    if (!rows.length) return 0;
+    const book = await ScheduleBook.load(tx, org);
+    let n = 0;
+    for (const d of rows) {
+      const f = await factsOn(tx, org, d.employeeId, on);
+      if (!f) continue;
+      // Still a holiday for this person (a substitute day, or their chosen optional day): nothing changes.
+      if ((await holidaysFor(tx, org, f.locationId, on, on, f.employeeId)).map.has(on)) continue;
+      const { portion, countedAs } = recountedDay(d.part, (await book.day(f, on)).weeklyOff);
+      await tx.leaveRequestDay.update({ where: { organizationId_requestId_leaveOn: { organizationId: org, requestId: d.requestId, leaveOn: asDate(on) } }, data: { portion, countedAs } });
+      if (!portion) continue;
+      const req = await tx.leaveRequest.update({ where: { id: d.requestId }, data: { days: { increment: portion }, version: { increment: 1 }, updatedAt: new Date() } });
+      if (d.status !== 'pending' && hasBalance(d.kind)) {
+        await tx.leaveLedgerEntry.create({ data: { organizationId: org, employeeId: d.employeeId, leaveTypeId: req.leaveTypeId, entryOn: asDate(on), kind: 'taken', days: -portion, requestId: d.requestId, periodKey: `hr:${on}:${d.requestId.slice(0, 18)}:${req.version}`, reason: `${holidayName} on ${fmt(on)} is no longer a holiday` } });
+      }
+      await audit(tx, c, 'leave.request.recounted', 'leave_request', d.requestId, { employeeId: d.employeeId, on, days: portion, why: `${holidayName} is no longer a holiday on this date` });
+      await this.dayEngine.evaluate(tx, c, d.employeeId, on, on);
+      n++;
+      if (d.userId) told.push({ userId: d.userId, on, requestId: d.requestId });
+    }
+    return n;
+  }
+
+  /** People whose leave counts again because the day is no longer a holiday (after the transaction). */
+  async tellHolidayRemoved(ctx: TenantContext, told: { userId: string; on: string; requestId: string }[]) {
+    for (const t of told) {
+      const text = `${fmt(t.on)} is no longer a holiday, so your leave that day counts again.`;
+      await this.notifications.notifySystem(ctx, [t.userId], 'leave.holiday_removed', { entityType: 'leave_request', entityId: t.requestId, contextText: text, linkPath: '/yx/time/leave' }, { subject: 'Your leave day is no longer a holiday', html: `<p>${escapeHtml(text)}</p>` });
+    }
+  }
+
+  /** HR removes a holiday that has not passed; leave booked across it counts that day again (holidayRemoved). */
+  async removeHolidayIn(tx: Tx, c: CompanyContext, id: string, back: { userId: string; on: string; requestId: string }[]) {
+    const h = await tx.holiday.findFirst({ where: { organizationId: c.organizationId, id } });
+    if (!h) throw new NotFoundException('Not found');
+    const on = dateOf(h.holidayOn);
+    // A holiday already passed has shaped balances and attendance; it stays.
+    if (on < todayIn('Asia/Kolkata')) throw new ConflictException('That holiday has passed, so it stays on the calendar.');
+    await tx.holiday.delete({ where: { id } });
+    const recounted = h.kind === 'optional' || h.kind === 'restricted' ? 0 : await this.holidayRemoved(tx, c, h.calendarId, on, h.name, back);
+    await audit(tx, c, 'holiday.removed', 'holiday', id, { calendarId: h.calendarId, on, name: h.name, leaveRecounted: recounted });
+    return { id, leaveRecounted: recounted };
   }
 }
 

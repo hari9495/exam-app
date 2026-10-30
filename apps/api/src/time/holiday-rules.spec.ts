@@ -1,4 +1,4 @@
-import { cloneToYear, holidayCompOffDue, substituteDays, templateRows } from './holiday-rules';
+import { cloneToYear, holidayCompOffDue, recountedDay, substituteDays, templateRows } from './holiday-rules';
 import { isWeeklyOff } from './time-maths';
 import { resolveDay } from './time-rules';
 
@@ -20,6 +20,15 @@ describe('holidayCompOffDue (roster, pattern, then location)', () => {
     expect(day(null, undefined, false)).toBe(false);
   });
   it('a roster entry with no shift counts as off', () => expect(day({ shiftId: null, isOff: false }, 's1', false)).toBe(true));
+});
+
+describe('recountedDay (a holiday removed or moved off a leave day)', () => {
+  it('a working day is leave again as booked: full or half', () => {
+    expect(recountedDay('full', false)).toEqual({ portion: 1, countedAs: 'leave' });
+    expect(recountedDay('first', false)).toEqual({ portion: 0.5, countedAs: 'leave' });
+    expect(recountedDay('second', false)).toEqual({ portion: 0.5, countedAs: 'leave' });
+  });
+  it("the person's weekly off stays not counted", () => expect(recountedDay('full', true)).toEqual({ portion: 0, countedAs: 'weekly_off' }));
 });
 
 describe('holiday calendar rules (TIM-26)', () => {

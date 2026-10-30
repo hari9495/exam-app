@@ -48,6 +48,11 @@ export function holidayCompOffDue(day: { weeklyOff: boolean; shift: unknown | nu
   return day.weeklyOff && !day.shift;
 }
 
+/** A leave day whose holiday went away: leave again on a working day (as booked: full or half), not counted on a weekly off. */
+export function recountedDay(part: 'full' | 'first' | 'second', weeklyOff: boolean): { portion: 0 | 0.5 | 1; countedAs: 'leave' | 'weekly_off' } {
+  return weeklyOff ? { portion: 0, countedAs: 'weekly_off' } : { portion: part === 'full' ? 1 : 0.5, countedAs: 'leave' };
+}
+
 /**
  * Substitute days off (E19 / YX-AT-11, calendar rule "substitute"): a whole-day holiday on a weekly off gives the next
  * day that is neither a weekly off nor a holiday nor another substitute. Optional and restricted days give none.

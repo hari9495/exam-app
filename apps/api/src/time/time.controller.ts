@@ -263,8 +263,10 @@ export class TimeController {
   @RequirePermissions('leave.settings.manage')
   async changeHoliday(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: HolidayDateDto) {
     const told: { userId: string; on: string; requestId: string }[] = [];
-    const out = await this.setup.run(ctx, this.user(req), true, (tx, c) => this.v2.changeHolidayIn(tx, c, id, dto.on, told));
+    const back: { userId: string; on: string; requestId: string }[] = [];
+    const out = await this.setup.run(ctx, this.user(req), true, (tx, c) => this.v2.changeHolidayIn(tx, c, id, dto.on, told, back));
     await this.v2.tellHolidayAdded(ctx, told);
+    await this.v2.tellHolidayRemoved(ctx, back);
     return out;
   }
 
@@ -314,8 +316,11 @@ export class TimeController {
   @Post('setup/holidays/:id/remove')
   @HttpCode(200)
   @RequirePermissions('leave.settings.manage')
-  removeHoliday(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
-    return this.setup.removeHoliday(ctx, this.user(req), id);
+  async removeHoliday(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    const back: { userId: string; on: string; requestId: string }[] = [];
+    const out = await this.setup.run(ctx, this.user(req), true, (tx, c) => this.v2.removeHolidayIn(tx, c, id, back));
+    await this.v2.tellHolidayRemoved(ctx, back);
+    return out;
   }
 
   @Post('setup/locations/:id/rule')

@@ -331,17 +331,6 @@ export class TimeSetupService {
     });
   }
 
-  removeHoliday(ctx: TenantContext, user: ScopeUser, id: string) {
-    return this.run(ctx, user, true, async (tx, c) => {
-      const h = await tx.holiday.findFirst({ where: { organizationId: c.organizationId, id } });
-      if (!h) throw new NotFoundException('Not found');
-      // A holiday already passed has shaped balances and attendance; it stays.
-      if (dateOf(h.holidayOn) < todayIst()) throw new ConflictException('That holiday has passed, so it stays on the calendar.');
-      await tx.holiday.delete({ where: { id } });
-      await audit(tx, c, 'holiday.removed', 'holiday', id, { calendarId: h.calendarId, on: dateOf(h.holidayOn), name: h.name });
-    });
-  }
-
   // ------------------------------------------------------------------------------------------ attendance basics per location
 
   setRule(ctx: TenantContext, user: ScopeUser, locationId: string, dto: AttendanceRuleDto) {
