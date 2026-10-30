@@ -162,6 +162,8 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(manager || has('roster.manage'), L('auto-roster', 'Auto-roster', '/yx/time/auto-roster'), L('standby', 'Standby & call-outs', '/yx/time/standby')),
         ...when(manager || has('attendance.view'), L('field-force', 'Field force', '/yx/time/field-force')),
         ...when(has('leave.view'), L('hr-leave', 'Leave', '/yx/time/leave-home')),
+        // TIM-17 Manager: a manager's own team's leave waiting for them (HR has its own Leave page above).
+        ...when(manager, L('team-leave-home', 'Leave to approve', '/yx/time/team-leave')),
         ...when(manager || has('leave.view'), L('team-leave', 'Team leave', '/yx/time/team')),
         ...when(manager || has('attendance.view'), L('overtime-review', 'Overtime', '/yx/time/overtime-review')),
         ...when(manager || has('leave.view'), L('block-leave', 'Block leave', '/yx/time/block-leave')),

@@ -23,7 +23,7 @@ import { formatDate, formatINR } from '../../lib/format';
 import { useRun } from '../org/org-kit';
 import { LivePicker } from '../desk/service-form';
 import { LEAVE_STATUS, LeaveStatusBadge } from './live/kit';
-import type { ApplyForForm, HrBalances, HrLeaveHome, LeaveBalanceRow, LeaveInput, LeavePlan, LeaveRequestRow as LiveRequest, LedgerRow, LoadState, LongAbsenceCheck, LongAbsenceInput, LongAbsenceRow, MaternityCase, MyCompOff, MyEncashment, MyLeave, MyLeaveCard, PersonOption as LivePersonOption, TeamCalendar as LiveCalendarData } from './live/types';
+import type { ApplyForForm, HrBalances, HrLeaveHome, LeaveRequestDetailView, TeamLeaveHome, LeaveBalanceRow, LeaveInput, LeavePlan, LeaveRequestRow as LiveRequest, LedgerRow, LoadState, LongAbsenceCheck, LongAbsenceInput, LongAbsenceRow, MaternityCase, MyCompOff, MyEncashment, MyLeave, MyLeaveCard, PersonOption as LivePersonOption, TeamCalendar as LiveCalendarData } from './live/types';
 import {
   BALANCES,
   CLAIM,
@@ -818,8 +818,9 @@ const CO_USE_DAY = new Date(2026, 9, 5);
 const applyTypeProps = (t?: LeaveCode): ApplyLeaveProps => (t === 'CO' ? { type: 'CO', from: CO_USE_DAY, to: CO_USE_DAY } : t ? { type: t } : {});
 
 /** TIM-17: the story shows the sample (persona, state); the app passes `live` (My leave, the signed-in employee). */
-export function LeaveHomeScreen({ persona = 'emp', state = 'ready', live, hrLive, dialog }: { persona?: LeavePersona; state?: ViewState; live?: LiveLeaveHome; /** The app: HR's view of leave in their scope (TIM-17 HR). */ hrLive?: LiveHrLeaveHome; /** HR stories: Record long absence open, filled in (`absence-conflict`: leave in the way); Apply for someone open for Arun (`apply-refused`: a company block date in the way). */ dialog?: 'absence' | 'absence-conflict' | 'apply' | 'apply-refused' }) {
+export function LeaveHomeScreen({ persona = 'emp', state = 'ready', live, hrLive, mgrLive, dialog }: { persona?: LeavePersona; state?: ViewState; live?: LiveLeaveHome; /** The app: HR's view of leave in their scope (TIM-17 HR). */ hrLive?: LiveHrLeaveHome; /** The app: a manager's own team (TIM-17 Manager, TIM-19 Manager). */ mgrLive?: LiveMgrLeaveHome; /** HR stories: Record long absence open, filled in (`absence-conflict`: leave in the way); Apply for someone open for Arun (`apply-refused`: a company block date in the way). */ dialog?: 'absence' | 'absence-conflict' | 'apply' | 'apply-refused' }) {
   if (hrLive) return <LiveHrLeaveHomeScreen live={hrLive} />;
+  if (mgrLive) return <LiveMgrLeaveHomeScreen live={mgrLive} />;
   if (live) return <LiveLeaveHomeScreen live={live} />;
   const user: TimeUser = persona === 'hr' ? HR_ADMIN : ME;
   const [apply, setApply] = useState(dialog === 'apply' || dialog === 'apply-refused');
@@ -2122,6 +2123,21 @@ export interface LiveHrLeaveHome {
   /** Adjust balance for someone in scope (leave.balance.adjust; the API checks each person). */
   adjust?: LiveAdjust;
 }
+/** Team leave in the app (TIM-17 Manager, TIM-19 Manager): the manager's own team only; the server checks each step. */
+export interface LiveMgrLeaveHome {
+  state: LoadState;
+  onRetry?: () => void;
+  data: TeamLeaveHome | null;
+  /** One request: team availability, the balance after it and my approval task (TIM-19 Manager). */
+  onOpen: (id: string) => Promise<LeaveRequestDetailView>;
+  /** Decides my approval task (the approvals inbox's own call; it checks I hold the task). */
+  onDecide: (taskId: string, decision: 'approve' | 'reject', reason?: string) => Promise<unknown>;
+  onNavigate: (href: string) => void;
+  hrefs: { approvals: string; calendar: string };
+  /** Opens this request at once (a link from Approvals or a notification). */
+  openId?: string;
+}
+
 /** Me › My leave card (TIM-21 employee). */
 export interface LiveMyLeaveCard {
   state: LoadState;
@@ -3034,6 +3050,156 @@ const sampleRecordAbsence: RecordAbsenceProps = {
 };
 
 /** TIM-17 HR in the app: requests waiting with their approvers, who is away this week, what needs HR. */
+/** "Also off: Ravi Kumar (Casual leave), …" from the server's team availability. */
+const offLine = (others: { name: string; type: string }[], label = 'Also off') => othersLine(others.map((o) => ({ text: `${o.name} (${o.type})` })), label);
+
+/** TIM-17 Manager, live: my team's leave waiting for me (approve here or open it), other approvals, who is away. */
+function LiveMgrLeaveHomeScreen({ live }: { live: LiveMgrLeaveHome }) {
+  const d = live.data;
+  const { toast } = useToast();
+  const [gone, setGone] = useState<string[]>([]);
+  const [openId, setOpenId] = useState<string | null>(live.openId ?? null);
+  const { busy, error, run } = useRun();
+  const waiting = (d?.waiting ?? []).filter((r) => !gone.includes(r.id));
+  const done = (id: string, msg: string) => {
+    setGone((g) => [...g, id]);
+    toast({ title: msg, tone: 'success' });
+  };
+  const approve = (r: TeamLeaveHome['waiting'][number]) =>
+    void run(`a${r.id}`, async () => {
+      await live.onDecide(r.taskId, 'approve');
+      done(r.id, `Approved · ${r.name}, ${isoSpan(r.from, r.to)}`);
+    });
+  return (
+    <TimePage active="Team leave">
+      <PageHeader title="Team leave" description={d ? 'Leave from your team waiting for you, and who is away this week' : undefined} />
+      <LiveStates state={live.state} onRetry={live.onRetry} what="your team's leave">
+        {d && (
+          <div className="yx-tim-grid">
+            <div data-span="7">
+              <Card title={`Leave waiting for you (${waiting.length})`} actions={<Button size="sm" onClick={() => live.onNavigate(live.hrefs.approvals)}>All requests</Button>}>
+                {d.otherWaiting > 0 && <p className="yx-tim-note">Also in Requests: {plural(d.otherWaiting, 'attendance or overtime request')}</p>}
+                {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
+                {waiting.length === 0 ? <EmptyState compact title="Nothing waiting for you" description="New requests from your team show here." /> : (
+                  <ul className="yx-tim-list" aria-label="Leave waiting for you">
+                    {waiting.map((r) => (
+                      <li key={r.id}>
+                        <span className="yx-tim-list__main" style={MAIN}>
+                          <PersonLabel name={r.name} secondary={`${r.type} · ${isoSpan(r.from, r.to)}`} />
+                          <span className="yx-tim-muted">{offLine(r.others)}{r.certificate !== 'none' ? ` · certificate ${r.certificate === 'verified' ? 'verified by HR' : 'to give HR'}` : ''}</span>
+                        </span>
+                        <span className="yx-tim-row">
+                          <Button size="sm" onClick={() => setOpenId(r.id)}>View</Button>
+                          <Button variant="approve" size="sm" loading={busy === `a${r.id}`} onClick={() => approve(r)}>Approve</Button>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Card>
+            </div>
+            <div data-span="5" className="yx-tim-stack">
+              <Card title="Away this week" actions={<Button size="sm" onClick={() => live.onNavigate(live.hrefs.calendar)}>Open leave calendar</Button>}>
+                {d.away.length === 0 ? <p className="yx-tim-muted">No one in your team is away this week.</p> : (
+                  <ul className="yx-tim-list">
+                    {d.away.map((a) => <li key={`${a.employeeId}-${a.from}`}><PersonLabel name={a.name} secondary={`${a.type} · ${isoSpan(a.from, a.to)}`} /></li>)}
+                  </ul>
+                )}
+              </Card>
+            </div>
+          </div>
+        )}
+      </LiveStates>
+      {openId && <LiveMgrRequestView key={openId} id={openId} live={live} onClose={() => setOpenId(null)} onDone={done} />}
+    </TimePage>
+  );
+}
+
+/** TIM-19 Manager, live: someone's request with team availability and the balance after it; Approve or Reject when it is my task. */
+function LiveMgrRequestView({ id, live, onClose, onDone }: { id: string; live: LiveMgrLeaveHome; onClose: () => void; onDone: (id: string, msg: string) => void }) {
+  const [r, setR] = useState<LeaveRequestDetailView | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [dlg, setDlg] = useState<'approve' | 'reject' | null>(null);
+  const [note, setNote] = useState('');
+  const [tried, setTried] = useState(false);
+  useEffect(() => {
+    let on = true;
+    live.onOpen(id).then((x) => on && setR(x), (e: unknown) => on && setLoadError(e instanceof Error ? e.message : 'This request did not load.'));
+    return () => {
+      on = false;
+    };
+  }, [id, live]);
+  const who = r?.person?.name ?? 'Leave';
+  const others = r?.team?.others ?? [];
+  const taskId = r?.team?.taskId ?? null;
+  const dates = r ? `${isoSpan(r.from, r.to)}${halvesText(r)}` : '';
+  const footer = !r ? <Button onClick={onClose}>Close</Button>
+    : taskId && r.status === 'pending' ? <DrawerFoot main={<Button variant="approve" onClick={() => setDlg('approve')}>Approve</Button>} rest={<><Button variant="danger" onClick={() => { setTried(false); setNote(''); setDlg('reject'); }}>Reject</Button><Button onClick={onClose}>Close</Button></>} />
+      : r.status === 'pending' ? <DrawerFoot hint="Waiting for another approver: only they can decide it" rest={<Button onClick={onClose}>Close</Button>} />
+        : <DrawerFoot hint={`${LEAVE_STATUS[r.status].label}${r.decidedAt ? ` on ${formatDate(new Date(r.decidedAt))}` : ''}`} rest={<Button onClick={onClose}>Close</Button>} />;
+  return (
+    <>
+      <Drawer open={!dlg} onOpenChange={(o) => !o && onClose()} title={r ? `${r.type?.name ?? 'Leave'} · ${who}` : 'Leave request'} subtitle={r ? isoSpan(r.from, r.to) : undefined} footer={footer}>
+        {loadError ? <InlineAlert tone="danger" title="Not loaded">{loadError}</InlineAlert> : !r ? <LoadingBlock rows={4} /> : (
+          <div className="yx-tim-stack">
+            <div className="yx-tim-row"><LeaveStatusBadge status={r.status} /></div>
+            <Kpis
+              items={[
+                { label: 'Type', value: r.type?.name ?? 'Leave' },
+                { label: 'Dates', value: dates },
+                { label: 'Days', value: r.days },
+                { label: r.status === 'pending' ? `${first(who)}'s balance after` : `${r.type?.name ?? 'Leave'} balance now`, value: r.team?.balanceAfter ?? 'Not counted' },
+              ]}
+            />
+            <p><strong>Reason:</strong> {r.reason ?? (r.type?.medical ? 'Medical: only HR sees the reason' : 'None given')}</p>
+            {r.certificate !== 'none' && <div className="yx-tim-row"><Badge tone={r.certificate === 'verified' ? 'success' : 'neutral'}>{r.certificate === 'verified' ? 'Certificate verified by HR' : 'Certificate to give HR'}</Badge></div>}
+            <InlineAlert tone="info" title={othersTitle(others.length)}>{others.length > 0 ? others.map((o) => `${o.name} (${o.type})`).join(', ') : undefined}</InlineAlert>
+          </div>
+        )}
+      </Drawer>
+      {r && taskId && (
+        <>
+          <ConfirmDialog
+            open={dlg === 'approve'}
+            onOpenChange={(o) => !o && setDlg(null)}
+            title={`Approve ${who}'s ${(r.type?.name ?? 'leave').toLowerCase()}?`}
+            consequence={`${plural(r.days, 'day')}, ${dates}. ${offLine(others)}.`}
+            confirmLabel="Approve"
+            confirmVariant="approve"
+            onConfirm={async () => {
+              await live.onDecide(taskId, 'approve');
+              onDone(r.id, `Approved · ${who}, ${isoSpan(r.from, r.to)}`);
+              onClose();
+            }}
+          />
+          <ConfirmDialog
+            open={dlg === 'reject'}
+            onOpenChange={(o) => !o && setDlg(null)}
+            title={`Reject ${who}'s ${(r.type?.name ?? 'leave').toLowerCase()}?`}
+            consequence={`The ${plural(r.days, 'pending day')} ${r.days === 1 ? 'goes' : 'go'} back to ${first(who)}'s balance. ${first(who)} sees your reason.`}
+            confirmLabel="Reject"
+            destructive
+            onConfirm={async () => {
+              setTried(true);
+              if (!note.trim()) {
+                document.getElementById('lv-mgr-reason')?.focus();
+                return false;
+              }
+              await live.onDecide(taskId, 'reject', note.trim());
+              onDone(r.id, `Rejected · ${who}, ${isoSpan(r.from, r.to)}`);
+              onClose();
+            }}
+          >
+            <FormField id="lv-mgr-reason" label="Reason" required error={tried && !note.trim() ? 'Enter a reason.' : null}>
+              <TextArea rows={2} value={note} onChange={setNote} maxLength={1000} placeholder="For example: audit week, the team is short" />
+            </FormField>
+          </ConfirmDialog>
+        </>
+      )}
+    </>
+  );
+}
+
 function LiveHrLeaveHomeScreen({ live }: { live: LiveHrLeaveHome }) {
   const d = live.data;
   const [reminded, setReminded] = useState<string[]>([]);

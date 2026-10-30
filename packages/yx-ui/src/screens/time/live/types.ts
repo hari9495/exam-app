@@ -709,6 +709,22 @@ export interface HrLeaveHome {
   yearEnd: { on: string; posted: boolean; nextOn: string };
 }
 
+/** TIM-17 Manager: GET /time/team/leave-home (the manager's own team only). */
+export interface TeamLeaveHome {
+  today: string;
+  /** Leave waiting for my decision: `taskId` is my approval task (decided through the approvals inbox's API). */
+  waiting: { id: string; taskId: string; employeeId: string; name: string; type: string; from: string; to: string; fromHalf: 'full' | 'second'; toHalf: 'full' | 'first'; days: number; certificate: 'none' | 'pending' | 'verified'; sent: string; others: { name: string; type: string }[] }[];
+  /** Other approvals waiting for me (attendance, overtime, comp-off …). */
+  otherWaiting: number;
+  away: { employeeId: string; name: string; type: string; from: string; to: string }[];
+}
+
+/** TIM-19 Manager: GET /time/requests/:id as someone else's request (team availability, balance after, my task). */
+export interface LeaveRequestDetailView extends LeaveRequestRow {
+  person: { name: string; code: string | null } | null;
+  team: { others: { name: string; type: string }[]; balanceAfter: number | null; taskId: string | null } | null;
+}
+
 export type LeaveReportKind = 'balances' | 'taken' | 'ledger' | 'lop' | 'negative' | 'liability';
 export interface LeaveReportQuery {
   report: LeaveReportKind;

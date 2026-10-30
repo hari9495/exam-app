@@ -121,6 +121,12 @@ export class TimeController {
     return this.leave.teamCalendar(ctx, this.user(req), q.from, q.to, q.legalEntityId);
   }
 
+  /** TIM-17 Manager: my own team's leave waiting for my decision, who else is off, and who is away this week. */
+  @Get('team/leave-home')
+  teamLeaveHome(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.leave.teamHome(ctx, this.user(req));
+  }
+
   @Get('requests/:id')
   request(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.leave.detail(ctx, this.user(req), id);

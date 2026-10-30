@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { employeeLanguage, translated } from '../global/global-data';
-import { Viewer, buildViewer, has, tenantWide, type ScopeUser, inEntitySql } from '../access/scope';
+import { Viewer, buildViewer, has, implicitSql, tenantWide, type ScopeUser, inEntitySql } from '../access/scope';
 import { ApprovalsEngine, Notice, StepSpec } from '../workflow/approvals-engine.service';
 import { DayEngine } from './day-engine.service';
 import { ApplyLeaveDto, AdjustDto, LeavePlanDto } from './dto';
@@ -42,6 +42,11 @@ import { BLOCK_DATE_EXEMPT, blockDateStops, factoriesElEligible, lastDayAfterLea
 export const LEAVE_REQUEST = 'leave.request';
 export const LEAVE_CANCEL = 'leave.cancel';
 const ACTIVE = ['pending', 'approved', 'cancel_pending'];
+const NAME = Prisma.raw(`concat_ws(' ', coalesce(e.preferred_name, e.given_name), e.family_name)`);
+type Off = { employeeId: string; name: string; on: string; type: string };
+/** Who else is off on any day from `from` to `to` (names once each, with their leave type), leaving out `except`. */
+const offBetween = (off: Off[], from: string, to: string, except: string) =>
+  [...new Map(off.filter((o) => o.employeeId !== except && o.on >= from && o.on <= to).map((o) => [o.employeeId, { name: o.name, type: o.type }])).values()];
 type Req = Prisma.LeaveRequestGetPayload<object>;
 type LeaveTypeRow = Prisma.LeaveTypeGetPayload<object>;
 
@@ -713,7 +718,70 @@ export class LeaveService implements OnModuleInit {
       }
       const f = await factsOn(tx, c.organizationId, r.employeeId, dateOf(r.fromOn));
       const route = r.wfRequestId ? await this.engine.viewIn(tx, c.organizationId, await tx.wfRequest.findFirstOrThrow({ where: { organizationId: c.organizationId, id: r.wfRequestId } })) : null;
-      return { ...this.requestView(r, t ?? undefined, withReason), person: f ? { name: f.name, code: f.code } : null, route: route ? { status: route.status, steps: route.steps, log: route.log } : null };
+      // TIM-19 Manager: team availability (the requester's colleagues under the same manager whom the viewer may see),
+      // the balance after it, and the viewer's own open approval task (decided through the one approvals engine).
+      let team: { others: { name: string; type: string }[]; balanceAfter: number | null; taskId: string | null } | null = null;
+      if (rel !== 'self' && f) {
+        const seen = await visibleSql(tx, c, v, own, 'leave.view', Prisma.sql`d.employee_id`, today);
+        const off = f.managerEmployeeId ? await this.offIn(tx, c, dateOf(r.fromOn), dateOf(r.toOn), Prisma.sql`${seen} AND d.employee_id IN (SELECT a.employee_id FROM employee_assignments a WHERE a.organization_id = ${c.organizationId}::uuid AND a.superseded_at IS NULL AND ${today}::date <@ daterange(a.valid_from, a.valid_to, '[]') AND a.manager_employee_id = ${f.managerEmployeeId}::uuid)`) : [];
+        const bal = t && hasBalance(t.kind) ? (await this.balancesIn(tx, c, f, today)).find((b) => b.leaveTypeId === t.id) : undefined;
+        const task = r.wfRequestId && v.userId && !v.actingForOther ? await tx.wfTask.findFirst({ where: { organizationId: c.organizationId, requestId: r.wfRequestId, status: 'open', assigneeUserId: v.userId }, select: { id: true } }) : null;
+        team = { others: offBetween(off, dateOf(r.fromOn), dateOf(r.toOn), r.employeeId), balanceAfter: bal ? bal.available : null, taskId: task?.id ?? null };
+      }
+      return { ...this.requestView(r, t ?? undefined, withReason), person: f ? { name: f.name, code: f.code } : null, route: route ? { status: route.status, steps: route.steps, log: route.log } : null, team };
+    });
+  }
+
+  /** Active leave days (pending or approved) from `from` to `to` of the people `where` (on `d.employee_id`) allows. */
+  private offIn(tx: Tx, c: CompanyContext, from: string, to: string, where: Prisma.Sql): Promise<Off[]> {
+    return tx.$queryRaw<Off[]>`
+      SELECT d.employee_id::text AS "employeeId", ${NAME} AS name, d.leave_on::text AS on, t.name AS type
+      FROM leave_request_days d JOIN leave_requests r ON r.organization_id = d.organization_id AND r.id = d.request_id AND r.status = ANY(${ACTIVE}::text[])
+      JOIN leave_types t ON t.organization_id = r.organization_id AND t.id = r.leave_type_id
+      JOIN employees e ON e.organization_id = d.organization_id AND e.id = d.employee_id
+      WHERE d.organization_id = ${c.organizationId}::uuid AND d.active AND d.portion > 0 AND d.leave_on BETWEEN ${from}::date AND ${to}::date AND ${where}
+      ORDER BY 3, 2 LIMIT 2000`;
+  }
+
+  /**
+   * TIM-17 Manager (GET team/leave-home): leave of the viewer's own team (the implicit manager view, YX-SEC-04; never an
+   * HR grant, HR has its own home) waiting for their decision (their open approval task), with who else in the team is
+   * off then; how many other approvals wait for them; and who in the team is away this week.
+   */
+  async teamHome(ctx: TenantContext, user: ScopeUser) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const own = await this.ownId(tx, c, v);
+      const today = todayIn('Asia/Kolkata');
+      const monday = addDays(today, -((new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7));
+      if (!own || !v.userId) return { today, waiting: [], otherWaiting: 0, away: [] };
+      const inTeam = (col: string) => implicitSql(tx, c, own, Prisma.raw(col), Prisma.sql`${today}::date`);
+      const rows = await tx.$queryRaw<{ id: string; taskId: string; employeeId: string; name: string; type: string; from: string; to: string; fromHalf: string; toHalf: string; days: number; certificate: string; sent: Date }[]>`
+        SELECT r.id::text, k.id::text AS "taskId", r.employee_id::text AS "employeeId", ${NAME} AS name, t.name AS type, r.from_on::text AS "from", r.to_on::text AS "to",
+               r.from_half AS "fromHalf", r.to_half AS "toHalf", r.days::float AS days, r.certificate, r.created_at AS sent
+        FROM leave_requests r
+        JOIN wf_tasks k ON k.organization_id = r.organization_id AND k.request_id = r.wf_request_id AND k.status = 'open' AND k.assignee_user_id = ${v.userId}::uuid
+        JOIN employees e ON e.organization_id = r.organization_id AND e.id = r.employee_id
+        JOIN leave_types t ON t.organization_id = r.organization_id AND t.id = r.leave_type_id
+        WHERE r.organization_id = ${org}::uuid AND r.status = 'pending' AND r.employee_id <> ${own}::uuid AND ${await inTeam('r.employee_id')}
+        ORDER BY r.from_on, r.created_at LIMIT 50`;
+      const [{ other }] = await tx.$queryRaw<{ other: number }[]>`
+        SELECT count(*)::int AS other FROM wf_tasks k JOIN wf_requests q ON q.organization_id = k.organization_id AND q.id = k.request_id
+        WHERE k.organization_id = ${org}::uuid AND k.assignee_user_id = ${v.userId}::uuid AND k.status = 'open' AND q.request_type <> ${LEAVE_REQUEST}`;
+      const teamOff = (from: string, to: string) => inTeam('d.employee_id').then((w) => this.offIn(tx, c, from, to, w));
+      const span = rows.length ? await teamOff(rows.reduce((a, x) => (x.from < a ? x.from : a), rows[0].from), rows.reduce((a, x) => (x.to > a ? x.to : a), rows[0].to)) : [];
+      const week = await teamOff(monday, addDays(monday, 6));
+      const away = [...new Map(week.map((o) => [o.employeeId, o])).values()].map((o) => {
+        const mine = week.filter((x) => x.employeeId === o.employeeId);
+        return { employeeId: o.employeeId, name: o.name, type: o.type, from: mine[0].on, to: mine[mine.length - 1].on };
+      });
+      return {
+        today,
+        waiting: rows.map((x) => ({ ...x, sent: x.sent.toISOString(), others: offBetween(span, x.from, x.to, x.employeeId) })),
+        otherWaiting: other,
+        away,
+      };
     });
   }
 
