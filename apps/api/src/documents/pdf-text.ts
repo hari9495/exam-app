@@ -71,18 +71,43 @@ export function writeText(doc: PDFKit.PDFDocument, text: string, x?: number | PD
     _fontSize: number;
   };
   const baseline = options?.baseline ?? -(f._font.ascender / 1000) * f._fontSize;
-  runs.forEach((r, i) => {
-    doc.font(r.script ? fontFile(r.script, bold) : latin);
-    const o = {
-      ...options,
-      baseline,
-      continued: i < runs.length - 1 || !!options?.continued,
-    };
-    // ActualText keeps copy and search in the typed order (a pre-base vowel sign is drawn before its consonant).
+  const fontOf = (r: Run) => doc.font(r.script ? fontFile(r.script, bold) : latin);
+  // ActualText keeps copy and search in the typed order (a pre-base vowel sign is drawn before its consonant).
+  const marked = (r: Run, draw: () => void) => {
     if (r.script) doc.markContent('Span', { actual: r.text } as never);
-    if (i === 0) write(r.text, o);
-    else doc.text(r.text, o);
+    draw();
     if (r.script) doc.endMarkedContent();
+  };
+  if (options?.align === 'center' || options?.align === 'right') {
+    // PDFKit centres each continued run on its own, so centred and right-aligned text is broken into lines here and each
+    // line is placed as a whole.
+    const left = x ?? doc.x;
+    let top = y ?? doc.y;
+    const width = options.width ?? doc.page.width - left - doc.page.margins.right;
+    const measure = (t: string) => scriptRuns(t).reduce((w, r) => w + fontOf(r).widthOfString(r.text), 0);
+    const lineHeight = Math.max(...runs.map((r) => fontOf(r).currentLineHeight(true))) + (options.lineGap ?? 0);
+    const lines: string[] = [];
+    for (const word of String(text).split(/(?<=\s)/)) {
+      if (lines.length && measure(lines[lines.length - 1] + word.trimEnd()) <= width) lines[lines.length - 1] += word;
+      else lines.push(word);
+    }
+    for (const line of lines.map((l) => l.trimEnd())) {
+      let cx = left + (width - measure(line)) * (options.align === 'center' ? 0.5 : 1);
+      for (const r of scriptRuns(line)) {
+        fontOf(r);
+        marked(r, () => doc.text(r.text, cx, top, { lineBreak: false, baseline }));
+        cx += doc.widthOfString(r.text);
+      }
+      top += lineHeight;
+    }
+    doc.x = left;
+    doc.y = top;
+    return doc.font(latin);
+  }
+  runs.forEach((r, i) => {
+    fontOf(r);
+    const o = { ...options, baseline, continued: i < runs.length - 1 || !!options?.continued };
+    marked(r, () => (i === 0 ? write(r.text, o) : doc.text(r.text, o)));
   });
   return doc.font(latin);
 }

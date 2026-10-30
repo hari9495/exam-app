@@ -77,3 +77,44 @@ describe('writeText (Indian scripts in PDFs)', () => {
     expect(pdfText(pdf)).toContain(drawnOrder(INDIC_NAMES.Tamil)!);
   });
 });
+
+describe('writeText centred and right-aligned', () => {
+  const fragments = (f: (d: PDFKit.PDFDocument) => void) =>
+    new Promise<number[][]>((resolve) => {
+      const doc = new PDFDocument({ size: 'A4', margin: 40, compress: false });
+      const chunks: Buffer[] = [];
+      doc.on('data', (b: Buffer) => chunks.push(b));
+      doc.on('end', () =>
+        resolve(
+          [
+            ...Buffer.concat(chunks)
+              .toString('latin1')
+              .matchAll(/1 0 0 1 ([\d.]+) ([\d.]+) Tm/g),
+          ].map((m) => [Number(m[1]), Number(m[2])]),
+        ),
+      );
+      f(doc);
+      doc.end();
+    });
+
+  it('places a mixed line as a whole: runs left to right on one baseline, centred in the width', async () => {
+    const xs = await fragments((d) => writeText(d.fontSize(12), `Ravi ${INDIC_NAMES.Tamil} downloaded`, 100, 100, { width: 400, align: 'center' }));
+    expect(xs).toHaveLength(3);
+    expect(xs[0][0]).toBeGreaterThan(150); // centred, not at the left edge
+    expect(xs[1][0]).toBeGreaterThan(xs[0][0]);
+    expect(xs[2][0]).toBeGreaterThan(xs[1][0]);
+    expect(new Set(xs.map((p) => p[1])).size).toBe(1);
+    const right = await fragments((d) => writeText(d.fontSize(12), `Ravi ${INDIC_NAMES.Tamil}`, 100, 100, { width: 400, align: 'right' }));
+    expect(right[0][0]).toBeGreaterThan(xs[0][0]);
+  });
+
+  it('wraps a long centred line into lines, each below the last', async () => {
+    let after = 0;
+    const xs = await fragments((d) => {
+      writeText(d.fontSize(28), `${INDIC_NAMES.Tamil} · downloaded 30 Oct 2026 10:00 IST`, 60, 400, { width: 480, align: 'center' });
+      after = d.y;
+    });
+    expect(new Set(xs.map((p) => p[1])).size).toBe(2);
+    expect(after).toBeGreaterThan(450);
+  });
+});
