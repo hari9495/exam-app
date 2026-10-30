@@ -1,22 +1,13 @@
-import { join } from 'path';
+import { writeText } from './pdf-text';
 
 // Payslip languages (founder decision 5b-D2, 9 Oct 2026): English is the default; a layout may add Hindi, Tamil, Telugu or
-// Kannada, and the wage slip then shows each label in that script with the English beside it. Google Noto fonts (SIL Open
-// Font Licence, assets/fonts/OFL.txt), cut down to the glyphs these labels use by scripts/subset-payslip-fonts.ts (fonttools); the
-// PDF embeds only the glyphs it prints. Changing a label below means running that script again (a test checks it).
+// Kannada, and the wage slip then shows each label in that script with the English beside it. The labels print through
+// writeText (pdf-text.ts) with the full Google Noto fonts, so names and values in any Indian script print as well.
 // The wording should be read once by a native speaker before go-live.
 
 export const PAYSLIP_LANGUAGES = ['en', 'hi', 'ta', 'te', 'kn'] as const;
 export type PayslipLanguage = (typeof PAYSLIP_LANGUAGES)[number];
 export type LocalLanguage = Exclude<PayslipLanguage, 'en'>;
-
-export const FONT_DIR = join(__dirname, '..', '..', 'assets', 'fonts');
-export const FONT_FILE: Record<LocalLanguage, string> = {
-  hi: 'NotoSansDevanagari-Regular.subset.ttf',
-  ta: 'NotoSansTamil-Regular.subset.ttf',
-  te: 'NotoSansTelugu-Regular.subset.ttf',
-  kn: 'NotoSansKannada-Regular.subset.ttf',
-};
 
 /** The wage-slip particulars and headings, by language. */
 export const LABELS: Record<LocalLanguage, Record<string, string>> = {
@@ -81,14 +72,8 @@ export const LABELS: Record<LocalLanguage, Record<string, string>> = {
 /** The regional language of a layout's list (the first one that is not English), if any. */
 export const localOf = (languages: readonly string[] | null | undefined): LocalLanguage | null => (languages ?? []).find((l): l is LocalLanguage => l !== 'en' && l in LABELS) ?? null;
 
-/** Every character the labels of a language use (what the font subset must keep). */
-export const labelText = (lang: LocalLanguage) => Object.values(LABELS[lang]).join('');
-
 /** Writes "label: value", with the regional label first when the payslip has a second language. */
 export function writeLabel(doc: PDFKit.PDFDocument, local: LocalLanguage | null, key: string, english: string, value: string) {
   const own = local ? LABELS[local][key] : undefined;
-  if (own) {
-    doc.font(join(FONT_DIR, FONT_FILE[local!])).text(`${own} `, { continued: true });
-    doc.font('Helvetica').text(`/ ${english}${value ? `: ${value}` : ''}`);
-  } else doc.font('Helvetica').text(value ? `${english}: ${value}` : english);
+  writeText(doc.font('Helvetica'), `${own ? `${own} / ` : ''}${english}${value ? `: ${value}` : ''}`);
 }

@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
-import { join } from 'path';
-import { FONT_DIR, FONT_FILE, LABELS, localOf, writeLabel, type LocalLanguage } from '../documents/payslip-languages';
+import { LABELS, localOf, writeLabel, type LocalLanguage } from '../documents/payslip-languages';
+import { writeText } from '../documents/pdf-text';
 import { Prisma } from '@prisma/client';
 import PDFDocument from 'pdfkit';
 import { createHash, randomBytes } from 'crypto';
@@ -124,8 +124,8 @@ export class PayDocumentsService {
       doc.on('data', (c) => chunks.push(c));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
-      if (local) doc.fontSize(15).font(join(FONT_DIR, FONT_FILE[local])).text(LABELS[local].payslip).font('Helvetica');
-      doc.fontSize(15).text(title);
+      if (local) writeText(doc.fontSize(15), LABELS[local].payslip);
+      writeText(doc.fontSize(15), title);
       doc.fontSize(9).fillColor('#444').text(`Reference ${referenceNo}`).fillColor('#000').moveDown();
       for (const f of required) {
         const v = fields[f.key];
@@ -137,7 +137,7 @@ export class PayDocumentsService {
         const lines = (fields[k] as { label: string; amount: string }[] | undefined) ?? [];
         doc.moveDown(0.5).fontSize(11);
         writeLabel(doc, local, k, k === 'earnings' ? 'Earnings' : 'Deductions', '');
-        for (const l of lines) doc.fontSize(10).text(`${l.label}  ${money(l.amount)}`);
+        for (const l of lines) writeText(doc.fontSize(10), `${l.label}  ${money(l.amount)}`);
         if (!lines.length) doc.fontSize(10).text('None');
       }
       doc.moveDown();

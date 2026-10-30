@@ -1,3 +1,5 @@
+import { expectNamesIn, INDIC_NAMES } from '../../test/fixtures/indic-names';
+import { LABELS } from '../documents/payslip-languages';
 import { payslipValues, renderPayslipPdf, type SlipData } from './payslip-pdf';
 
 const slip: SlipData = {
@@ -55,5 +57,17 @@ describe('payslip PDF (PAY-4.04)', () => {
     const locked = await renderPayslipPdf(blocks, {}, null, payslipValues(slip), { title: 'Payslip', password: '01011990' });
     expect(locked.toString('latin1')).toContain('/Encrypt');
     expect(locked.toString('latin1')).toContain('/CFM /AESV3');
+  });
+
+  it('names in every Indian script print on the payslip, with or without a regional language (and in the watermark)', async () => {
+    const blocks = ['employerName', 'employeeName', 'designation', 'netPay'].map((key) => ({ key, shown: true }));
+    for (const [key, name] of Object.entries(INDIC_NAMES)) {
+      const values = { ...payslipValues(slip), employerName: `${name} Pvt Ltd`, employeeName: name, designation: `Analyst ${name}` };
+      for (const local of [null, 'ta', 'hi'] as const) {
+        const pdf = await renderPayslipPdf(blocks, {}, local, values, { title: key, watermark: `${name} · 2026-11-01 10:00 IST` });
+        expectNamesIn(pdf, [name, ...(local ? [LABELS[local].employeeName] : [])]);
+        expect(pdf.length).toBeLessThan(40_000); // only the glyphs used are embedded
+      }
+    }
   });
 });
