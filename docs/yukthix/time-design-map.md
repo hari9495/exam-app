@@ -136,6 +136,12 @@ the page; export up to 10,000 rows).
 
 Later on 29 Oct ("both OK", then "OK"): the Ledger and LOP month picker stays in the page header beside the report picker; "Adjust balance" is live on the HR leave home (design TIM-17 HR). It loads only the chosen person's balances (`GET people/:id/balances`). HR can pick themselves, and the server refuses that, as Apply for someone does.
 
+## Founder answers, 30 Oct 2026 (Time follow-up questions, "all ok")
+(1) training "Who" is who attends (everyone at a location, or chosen people); a trainer name field later if needed;
+(2) a sent-back leave request that is resent goes through the whole approval chain again; (3) expense claims move onto
+the shared approvals-engine "send back" decision, as its own small task; (4) the employee sees their punch note on the
+day card: a small design addition first, then live.
+
 ## Founder answers, 30 Oct 2026 (Time follow-ups, "all ok")
 (1) "Clock in as WFH" on by default, HR can turn it off; (2) check-in opens any time by default, a company may set a
 limit; (3) a person paused for block leave sees "Your access is paused for block leave until <date>", not "deactivated";
