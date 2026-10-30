@@ -248,4 +248,20 @@ describe('People follow-ups', () => {
     await expect(inOrg('A', (tx) => tx.$queryRaw`SELECT erase_special_documents(${org.B.id}::uuid, ${working.personId}::uuid)`)).rejects.toThrow(/own company/);
     await expect(inOrg('A', (tx) => tx.$queryRaw`SELECT erase_special_documents(${org.A.id}::uuid, ${working.personId}::uuid)`)).rejects.toThrow(/former employee/);
   });
+
+  it('erasure: the database function itself refuses notice-period staff, a period not yet passed, and a company with erasure off', async () => {
+    const day = (n: number) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+    const call = (k: 'A' | 'B', personId: string) => inOrg(k, (tx) => tx.$queryRaw`SELECT erase_special_documents(${org[k].id}::uuid, ${personId}::uuid)`);
+    await api('hr', 'put', '/org/settings').send({ key: 'privacy.erasure.enabled', scopeType: 'tenant', value: 'on' }).expect(200);
+    // Serving notice: the last day is still ahead, so they are not "former" yet (the first version allowed this).
+    const notice = await person('A', 'Notice', day(10));
+    await expect(call('A', notice.personId)).rejects.toThrow(/former employee/);
+    // Left a month ago with a 3-year period: too early, whatever the app asks.
+    await api('adminA', 'put', '/org/settings').send({ key: 'privacy.retention.special_years', scopeType: 'tenant', value: '3' }).expect(200);
+    const recent = await person('A', 'Recent', day(-30));
+    await expect(call('A', recent.personId)).rejects.toThrow(/period has not passed/);
+    // Company B never switched erasure on: refused even for someone long gone.
+    const gone = await person('B', 'Gone', '2021-01-31');
+    await expect(call('B', gone.personId)).rejects.toThrow(/switched off/);
+  });
 });
