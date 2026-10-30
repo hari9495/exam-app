@@ -58,6 +58,13 @@ export class TimeController {
     return this.leave.apply(ctx, this.user(req), dto);
   }
 
+  /** A request sent back for changes, changed and sent again (all the rules again; a new request to the approvers). */
+  @Post('me/leave/:id/resend')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  resend(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ApplyLeaveDto) {
+    return this.leave.resend(ctx, this.user(req), id, dto);
+  }
+
   @Post('me/leave/:id/withdraw')
   @HttpCode(200)
   withdraw(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {

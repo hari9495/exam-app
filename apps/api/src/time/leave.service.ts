@@ -111,7 +111,16 @@ export class LeaveService implements OnModuleInit {
 
   onModuleInit() {
     // Leave never decides itself after a timeout: it escalates (P03 Q2).
-    this.engine.register({ key: LEAVE_REQUEST, label: 'Leave', risk: 'normal', autoActions: false, onDecided: (tx, req, outcome) => this.requestDecided(tx, req, outcome), requesterLink: () => '/yx/time/leave' });
+    this.engine.register({
+      key: LEAVE_REQUEST,
+      label: 'Leave',
+      risk: 'normal',
+      autoActions: false,
+      onDecided: (tx, req, outcome) => this.requestDecided(tx, req, outcome),
+      requesterLink: () => '/yx/time/leave',
+      // Founder (30 Oct 2026): "Send back for changes" (setting leave.send_back, default on).
+      sendBack: { allowed: (tx, req) => this.sendBackAllowed(tx, req), apply: (tx, req, reason) => this.sentBack(tx, req, reason) },
+    });
     this.engine.register({ key: LEAVE_CANCEL, label: 'Leave cancellation', risk: 'normal', autoActions: false, onDecided: (tx, req, outcome) => this.cancelDecided(tx, req, outcome), requesterLink: () => '/yx/time/leave' });
   }
 
@@ -405,7 +414,7 @@ export class LeaveService implements OnModuleInit {
         today,
         year,
         balances,
-        requests: requests.map((r) => this.requestView(r, types.get(r.leaveTypeId), true)),
+        requests: await this.sentBackNotes(tx, org, requests).then((notes) => requests.map((r) => ({ ...this.requestView(r, types.get(r.leaveTypeId), true), sentBack: notes.get(r.id) ?? null }))),
         holidays: {
           calendar: cal && limit ? { id: cal.id, name: cal.name, optionalLimit: limit.limit, yearlyLimit: cal.optionalLimit, movedOn: limit.movedOn } : null,
           list: holidays.map((h) => ({ id: h.id, on: dateOf(h.holidayOn), name: h.name, kind: h.kind, halfDay: h.halfDay, chosen: chosen.has(h.id) })),
@@ -592,6 +601,57 @@ export class LeaveService implements OnModuleInit {
     }
   }
 
+  private async sendBackAllowed(tx: Tx, wf: Prisma.WfRequestGetPayload<object>): Promise<boolean> {
+    const c: CompanyContext = { organizationId: wf.organizationId, isSuperAdmin: false };
+    const r = await tx.leaveRequest.findFirst({ where: { organizationId: wf.organizationId, id: wf.subjectId }, select: { employeeId: true, status: true } });
+    if (!r || r.status !== 'pending') return false;
+    const today = todayIn('Asia/Kolkata');
+    const f = await factsOn(tx, wf.organizationId, r.employeeId, today);
+    return f ? (await settingOn(tx, c, 'leave.send_back', f, today)) === 'on' : false;
+  }
+
+  /** Sent back for changes (P03): the request stops holding its days and waits for the employee to change it and send it again. */
+  private async sentBack(tx: Tx, wf: Prisma.WfRequestGetPayload<object>, reason: string) {
+    const c: CompanyContext = { organizationId: wf.organizationId, isSuperAdmin: false };
+    const done = await tx.leaveRequest.updateMany({ where: { organizationId: wf.organizationId, id: wf.subjectId, status: 'pending' }, data: { status: 'sent_back', decidedAt: new Date(), version: { increment: 1 }, updatedAt: new Date() } });
+    if (!done.count) throw new ConflictException('This leave request is no longer waiting for approval.');
+    await tx.leaveRequestDay.updateMany({ where: { organizationId: wf.organizationId, requestId: wf.subjectId }, data: { active: false } });
+    await audit(tx, c, 'leave.request.sent_back', 'leave_request', wf.subjectId, { wfRequestId: wf.id, reason });
+  }
+
+  /**
+   * The employee changes a request that was sent back and sends it again: every rule is checked again and a new
+   * request goes to the approvers; the old one is marked "resent" (it stays in the history with the approver's note).
+   */
+  async resend(ctx: TenantContext, user: ScopeUser, id: string, dto: ApplyLeaveDto) {
+    if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
+    const notices: Notice[] = [];
+    const res = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const { f, today } = await this.meFacts(tx, c, c.userId);
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`leave:${c.organizationId}:${f.employeeId}`}))`;
+      const old = await tx.leaveRequest.findFirst({ where: { organizationId: c.organizationId, id, employeeId: f.employeeId } });
+      if (!old) throw new NotFoundException('No such leave request.');
+      if (old.status !== 'sent_back') throw new ConflictException(old.status === 'resent' ? 'You already sent this request again.' : 'Only a request sent back for changes can be changed and sent again.');
+      await tx.leaveRequest.update({ where: { id: old.id }, data: { status: 'resent', version: { increment: 1 }, updatedAt: new Date() } });
+      const out = await this.applyIn(tx, c, f, today, dto, notices);
+      await audit(tx, c, 'leave.request.resent', 'leave_request', old.id, { employeeId: f.employeeId, newRequestId: out.id, from: dto.from, to: dto.to });
+      return { ...out, replaces: old.id };
+    });
+    await this.engine.send(ctx, notices);
+    return res;
+  }
+
+  /** What the approver asked to change, for requests sent back (the latest send-back on each one's approval). */
+  private async sentBackNotes(tx: Tx, org: string, reqs: Req[]): Promise<Map<string, { reason: string | null; by: string | null; at: string }>> {
+    const wf = reqs.filter((r) => (r.status === 'sent_back' || r.status === 'resent') && r.wfRequestId).map((r) => r.wfRequestId!);
+    if (!wf.length) return new Map();
+    const acts = await tx.wfAction.findMany({ where: { organizationId: org, requestId: { in: wf }, action: 'sent_back' }, orderBy: { createdAt: 'asc' } });
+    const ids = [...new Set(acts.map((a) => a.actorUserId).filter((x): x is string => Boolean(x)))];
+    const names = new Map((ids.length ? await tx.user.findMany({ where: { organizationId: org, id: { in: ids } }, select: { id: true, name: true, email: true } }) : []).map((u) => [u.id, u.name?.trim() || u.email]));
+    const byWf = new Map(acts.map((a) => [a.requestId, { reason: a.reason, by: a.actorUserId ? (names.get(a.actorUserId) ?? null) : null, at: a.createdAt.toISOString() }]));
+    return new Map(reqs.filter((r) => r.wfRequestId && byWf.has(r.wfRequestId)).map((r) => [r.id, byWf.get(r.wfRequestId!)!]));
+  }
+
   /** P03 effect, exactly once in the decision's transaction (YX-WF-10): the ledger debit, delegation, attendance. */
   private async requestDecided(tx: Tx, wf: Prisma.WfRequestGetPayload<object>, outcome: 'approved' | 'rejected') {
     const c: CompanyContext = { organizationId: wf.organizationId, isSuperAdmin: false };
@@ -655,7 +715,7 @@ export class LeaveService implements OnModuleInit {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`leave:${c.organizationId}:${mine}`}))`;
       const r = await tx.leaveRequest.findFirst({ where: { organizationId: c.organizationId, id, employeeId: mine } });
       if (!r) throw new NotFoundException('No such leave request.');
-      if (r.status !== 'pending') throw new ConflictException('Only a request still waiting for approval can be withdrawn.');
+      if (r.status !== 'pending' && r.status !== 'sent_back') throw new ConflictException('Only a request still waiting for approval, or sent back for changes, can be withdrawn.');
       if (r.wfRequestId) await this.engine.withdraw(tx, c, r.wfRequestId, c.userId ?? null, 'Withdrawn by the employee');
       await tx.leaveRequest.update({ where: { id: r.id }, data: { status: 'withdrawn', decidedAt: new Date(), version: { increment: 1 }, updatedAt: new Date() } });
       await tx.leaveRequestDay.updateMany({ where: { organizationId: c.organizationId, requestId: r.id }, data: { active: false } });
@@ -739,7 +799,8 @@ export class LeaveService implements OnModuleInit {
         const task = r.wfRequestId && v.userId && !v.actingForOther ? await tx.wfTask.findFirst({ where: { organizationId: c.organizationId, requestId: r.wfRequestId, status: 'open', assigneeUserId: v.userId }, select: { id: true } }) : null;
         team = { others: offBetween(off, dateOf(r.fromOn), dateOf(r.toOn), r.employeeId), balanceAfter: bal ? bal.available : null, taskId: task?.id ?? null };
       }
-      return { ...this.requestView(r, t ?? undefined, withReason), person: f ? { name: f.name, code: f.code } : null, route: route ? { status: route.status, steps: route.steps, log: route.log } : null, team };
+      const sentBack = (await this.sentBackNotes(tx, c.organizationId, [r])).get(r.id) ?? null;
+      return { ...this.requestView(r, t ?? undefined, withReason), sentBack, person: f ? { name: f.name, code: f.code } : null, route: route ? { status: route.status, steps: route.steps, log: route.log } : null, team };
     });
   }
 

@@ -183,6 +183,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // TIM-23: optional holidays are prorated by the months left after a move to another calendar.
   'leave.optional_holiday.prorate_on_move': { label: 'Prorate optional holidays after a move to another office', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['yes', 'no'], default: 'yes' },
   // TIM-39: people in these designations or departments take a block of consecutive working days off each leave year.
+  // Founder (30 Oct 2026): a manager may send a leave request back for changes (with what to change) instead of rejecting it.
+  'leave.send_back': { label: 'Approvers can send leave back for changes', scopes: ['tenant', 'legal_entity'], dated: false, values: ['on', 'off'], default: 'on' },
   'leave.block_leave.required': { label: 'Block leave is required', scopes: ['tenant', 'legal_entity', 'location', 'department', 'designation'], dated: false, values: ['no', 'yes'], default: 'no' },
   'leave.block_leave.days': { label: 'Block leave length (working days in a row)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['5', '10', '15'], default: '10' },
   // TIM-42: public-holiday feeds (provider: to decide; dev-fake until then).

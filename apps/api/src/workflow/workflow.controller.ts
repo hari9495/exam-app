@@ -15,8 +15,8 @@ import { ApprovalsEngine } from './approvals-engine.service';
 // requests and delegations. Decisions are made by the person themselves, never while acting for someone else.
 
 export class DecideDto {
-  @IsIn(['approve', 'reject'])
-  decision!: 'approve' | 'reject';
+  @IsIn(['approve', 'reject', 'send_back'])
+  decision!: 'approve' | 'reject' | 'send_back';
 
   @IsOptional()
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
@@ -25,7 +25,17 @@ export class DecideDto {
   reason?: string;
 }
 
-export class DecideManyDto extends DecideDto {
+export class DecideManyDto {
+  // Bulk: approve, or do not approve with one reason; sending back is one request at a time.
+  @IsIn(['approve', 'reject'])
+  decision!: 'approve' | 'reject';
+
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(1000)
+  reason?: string;
+
   @IsArray()
   @ArrayMinSize(1)
   @ArrayMaxSize(100)
