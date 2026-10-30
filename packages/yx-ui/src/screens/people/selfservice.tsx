@@ -330,7 +330,8 @@ type Access = (typeof ACCESS_LOG)[number];
 
 /** The live Privacy page (PPL-33): what the company holds about me, my data as a file, who viewed my sensitive data. */
 export interface LiveMyData {
-  state: 'ready' | 'loading' | 'error';
+  /** 'no-record': the sign-in has no employee record (an admin-only account), so there is no personal data to show. */
+  state: 'ready' | 'loading' | 'error' | 'no-record';
   onRetry: () => void;
   log: AccessLog | null;
   onDownload: (format: 'pdf' | 'json') => Promise<unknown>;
@@ -361,7 +362,9 @@ function LiveMyDataScreen({ live, tab }: { live: LiveMyData; tab: 'data' | 'acce
   return (
     <MeFrame active="Privacy">
       <PageHeader title="Privacy" description={`What ${log?.company ?? 'your company'} holds about you, and who viewed your Confidential or Special data.`} />
-      {live.state === 'error' ? (
+      {live.state === 'no-record' ? (
+        <EmptyState title="You have no employee record here" description="Your sign-in is not linked to an employee, so the company holds no personal data about you to show. Ask HR to link your sign-in if this is wrong." />
+      ) : live.state === 'error' ? (
         <ErrorState title="We couldn't load your privacy page" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : live.state === 'loading' || !log ? (
         <ListSkeleton label="Loading your privacy page" />

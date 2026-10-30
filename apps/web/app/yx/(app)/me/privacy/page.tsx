@@ -13,7 +13,8 @@ export default function YxPrivacyPage() {
   return (
     <MyDataScreen
       live={{
-        state: log.isError ? 'error' : log.data ? 'ready' : 'loading',
+        // 404: the sign-in has no employee record (an admin-only account); say so instead of "check your connection".
+        state: log.isError ? ((log.error as { status?: number } | null)?.status === 404 ? 'no-record' : 'error') : log.data ? 'ready' : 'loading',
         onRetry: () => void log.refetch(),
         log: log.data ?? null,
         onDownload: (format) => download(`/people/me/data?format=${format}`, `my-data.${format}`),

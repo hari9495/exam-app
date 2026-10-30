@@ -29,6 +29,12 @@ function page(over: Partial<LiveMyData> = {}, tab?: 'data' | 'access') {
 }
 
 describe('PPL-33 my data and who accessed it, live', () => {
+  it('a sign-in with no employee record is told so, not "check your connection"', () => {
+    page({ state: 'no-record', log: null });
+    expect(screen.getByText('You have no employee record here')).toBeInTheDocument();
+    expect(screen.queryByText(/check your connection/i)).toBeNull();
+  });
+
   it('my data: the classes we hold and why; downloads as PDF or JSON', async () => {
     const live = page();
     expect(screen.getByText(/What Kaveri Foods holds about you/)).toBeInTheDocument();
