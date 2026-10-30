@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { PrismaService, TenantContext, TenantPrismaService, revokeStaffSessions } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { SETTINGS, resolveSetting } from '../org-structure/settings-registry';
 import { Viewer, has, type ScopeUser, inEntitySql } from '../access/scope';
@@ -972,6 +972,7 @@ export class LeaveV2Service implements OnModuleInit {
       if (span.size < need) throw new BadRequestException(`Only ${days(span.size)} working days. Block leave is ${need} working days in a row.`);
       if (span.size > s.earnedLeft) throw new BadRequestException(`Only ${days(s.earnedLeft)} of earned leave left for a ${days(span.size)} block.`);
       const plan = await tx.blockLeavePlan.findFirst({ where: { organizationId: c.organizationId, employeeId, yearStart: asDate(year.start) } });
+      if (plan?.accessPause === 'scheduled' && plan.fromOn && dateOf(plan.fromOn) <= today) throw new ConflictException('Access is paused for the current block. Plan again after it ends.');
       if (plan) await tx.blockLeavePlan.update({ where: { id: plan.id }, data: { fromOn: asDate(dto.from), toOn: asDate(dto.to), accessPause: 'none', version: { increment: 1 }, updatedAt: new Date() } });
       else await tx.blockLeavePlan.create({ data: { organizationId: c.organizationId, employeeId, yearStart: asDate(year.start), fromOn: asDate(dto.from), toOn: asDate(dto.to), createdBy: c.userId ?? null } });
       await audit(tx, c, 'leave.block.planned', 'block_leave_plan', employeeId, { from: dto.from, to: dto.to, workingDays: span.size });
@@ -1010,10 +1011,47 @@ export class LeaveV2Service implements OnModuleInit {
       const plan = await tx.blockLeavePlan.findFirst({ where: { organizationId: c.organizationId, employeeId, yearStart: asDate(year.start) } });
       if (!plan?.fromOn) throw new ConflictException('Plan the block leave first.');
       const want = pause ? 'scheduled' : 'none';
+      // Only before the first day: from then the hourly job pauses access, and it comes back by itself after the block.
+      if (dateOf(plan.fromOn) <= todayIn('Asia/Kolkata')) throw new ConflictException(plan.accessPause === 'scheduled' ? 'Access is already paused for this block. It comes back after the last day.' : 'This block has started. An access pause is set before the first day.');
       if (plan.accessPause === want) throw new ConflictException(pause ? 'The access pause is already scheduled.' : 'No access pause is scheduled.');
       await tx.blockLeavePlan.update({ where: { id: plan.id }, data: { accessPause: want, version: { increment: 1 }, updatedAt: new Date() } });
       await audit(tx, c, pause ? 'leave.block.pause_scheduled' : 'leave.block.pause_cancelled', 'block_leave_plan', employeeId, { from: dateOf(plan.fromOn), to: dateOf(plan.toOn!) });
       return { employeeId, accessPause: want };
+    });
+  }
+
+  /**
+   * TIM-39 Suspend (hourly job): a scheduled access pause starts on the block's first day (IST): the person's sign-in is
+   * paused (user status "paused", every session and refresh token revoked), once per plan (an audit row marks it, so HR
+   * turning access back on as an exception sticks). The day after the last day access comes back (only a "paused"
+   * account: one deactivated meanwhile stays so) and the plan's pause is cleared. Safe to re-run.
+   */
+  async applyAccessPauses(org: string, now = new Date()): Promise<number> {
+    const c: CompanyContext = { organizationId: org, isSuperAdmin: false };
+    const today = todayIn('Asia/Kolkata', now);
+    return this.tenantPrisma.forTenant(c, async (tx) => {
+      let n = 0;
+      const due = await tx.blockLeavePlan.findMany({ where: { organizationId: org, accessPause: 'scheduled', fromOn: { lte: asDate(today) } } });
+      for (const plan of due) {
+        const userId = (await tx.employee.findFirst({ where: { organizationId: org, id: plan.employeeId }, select: { userId: true } }))?.userId ?? null;
+        const span = { from: dateOf(plan.fromOn!), to: dateOf(plan.toOn!) };
+        if (span.to < today) {
+          const restored = userId ? (await tx.user.updateMany({ where: { organizationId: org, id: userId, status: 'paused' }, data: { status: 'active' } })).count : 0;
+          await tx.blockLeavePlan.update({ where: { id: plan.id }, data: { accessPause: 'none', version: { increment: 1 }, updatedAt: now } });
+          await audit(tx, c, 'leave.block.access_restored', 'block_leave_plan', plan.employeeId, { ...span, restored: restored > 0 });
+          n++;
+          continue;
+        }
+        if (await tx.auditLog.findFirst({ where: { organizationId: org, action: 'leave.block.access_paused', entityId: plan.employeeId, createdAt: { gte: plan.updatedAt } }, select: { id: true } })) continue;
+        const paused = userId ? (await tx.user.updateMany({ where: { organizationId: org, id: userId, status: 'active' }, data: { status: 'paused' } })).count : 0;
+        if (paused) {
+          await tx.refreshToken.updateMany({ where: { userId: userId!, revokedAt: null }, data: { revokedAt: now } });
+          await revokeStaffSessions(tx, { userId: userId! }, 'block_leave_access_pause');
+        }
+        await audit(tx, c, 'leave.block.access_paused', 'block_leave_plan', plan.employeeId, { ...span, paused: paused > 0 });
+        n++;
+      }
+      return n;
     });
   }
 

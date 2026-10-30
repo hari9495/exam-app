@@ -3150,7 +3150,9 @@ function LiveBlockLeavePlanner({ live }: { live: LiveBlockLeave }) {
                           <Button size="sm" onClick={() => { setTried(false); setPFrom(null); setPTo(null); setPlanFor(r); }}>Plan block leave</Button>
                         </>
                       )}
-                      {r.canPlan && r.plan && r.status !== 'taken' && (
+                      {/* From the first day the pause runs (the server's hourly job) and ends by itself after the block. */}
+                      {r.plan?.accessPause === 'scheduled' && startsIn <= 0 && <span className="yx-tim-muted">Access paused</span>}
+                      {r.canPlan && r.plan && r.status !== 'taken' && startsIn > 0 && (
                         r.plan.accessPause === 'scheduled'
                           ? <span className="yx-tim-row"><span className="yx-tim-muted">Access pause scheduled from {formatDate(dateOfIso(r.plan.from))}</span><Button size="sm" loading={busy === `p${r.employeeId}`} onClick={() => void run(`p${r.employeeId}`, () => live.onPause(r.employeeId, false))}>Cancel pause</Button></span>
                           : <Button size="sm" onClick={() => setPause(r)}>Schedule access pause</Button>
@@ -3167,7 +3169,7 @@ function LiveBlockLeavePlanner({ live }: { live: LiveBlockLeave }) {
         open={!!pause}
         onOpenChange={(o) => !o && setPause(null)}
         title={pause?.plan ? `Pause ${pause.name}'s access from ${formatDate(dateOfIso(pause.plan.from))}?` : ''}
-        consequence={pause?.plan ? `${pause.name}'s access is paused from ${formatDate(dateOfIso(pause.plan.from))} and restored after ${formatDate(dateOfIso(pause.plan.to))}. Each exception is logged.` : undefined}
+        consequence={pause?.plan ? `${pause.name}'s access to YukthiX is paused from ${formatDate(dateOfIso(pause.plan.from))}, 12:00 am and restored on ${formatDate(addDays(dateOfIso(pause.plan.to), 1))}. Their sign-ins end when the pause starts. Only HR can turn access back on as an exception, and each one is logged.` : undefined}
         confirmLabel="Schedule access pause"
         confirmVariant="danger"
         onConfirm={async () => {

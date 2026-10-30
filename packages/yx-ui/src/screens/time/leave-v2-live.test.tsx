@@ -134,6 +134,23 @@ describe('Leave reports, block leave, holiday feeds (live)', () => {
     expect(screen.getByText('No one in a block-leave role')).toBeInTheDocument();
   });
 
+  it('Suspend: the access pause confirmation says when access stops and comes back; a running pause shows "Access paused"', async () => {
+    const row = { employeeId: 'e1', name: 'Ganesh Hegde', code: null, need: 10, status: 'planned' as const, nudgedAt: null, earnedLeft: 14, canPlan: true };
+    const onPause = vi.fn(async () => ({}));
+    const { unmount } = render(<BlockLeavePlannerScreen live={{ state: 'ready', data: { today: '2026-10-29', rows: [{ ...row, plan: { from: '2026-11-09', to: '2026-11-20', accessPause: 'none', version: 1 } }] }, onPlan: vi.fn(), onNudge: vi.fn(), onPause, teamLeaveHref: '/t', onNavigate: vi.fn() }} />);
+    await ue.click(screen.getByRole('button', { name: 'Schedule access pause' }));
+    const dlg = screen.getByRole('dialog');
+    expect(within(dlg).getByText(/paused from 9 Nov 2026, 12:00 am and restored on 21 Nov 2026/)).toBeInTheDocument();
+    await ue.click(within(dlg).getByRole('button', { name: 'Schedule access pause' }));
+    await waitFor(() => expect(onPause).toHaveBeenCalledWith('e1', true));
+    unmount();
+    // Negative: from the first day there is no cancel and no new pause; the server's job runs it.
+    render(<BlockLeavePlannerScreen live={{ state: 'ready', data: { today: '2026-11-10', rows: [{ ...row, plan: { from: '2026-11-09', to: '2026-11-20', accessPause: 'scheduled', version: 2 } }] }, onPlan: vi.fn(), onNudge: vi.fn(), onPause, teamLeaveHref: '/t', onNavigate: vi.fn() }} />);
+    expect(screen.getByText('Access paused')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancel pause' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Schedule access pause' })).not.toBeInTheDocument();
+  });
+
   it('holiday feeds: publishing needs every change decided; then accepted and ignored go together', async () => {
     const feeds: HolidayFeeds = { on: true, provider: 'dev-fake', states: [{ code: 'IN-KA', name: 'Karnataka' }], feeds: [{ id: 'f1', state: 'IN-KA', stateName: 'Karnataka', provider: 'dev-fake', checkedAt: '2026-10-29T05:00:00Z', checkError: null, locations: [{ id: 'l1', name: 'Bengaluru', hasCalendar: true }], waiting: 2 }], changes: [{ id: 'c1', feedId: 'f1', calendar: 'Bengaluru', action: 'add', on: '2026-11-01', name: 'Kannada Rajyotsava', peopleOnLeave: 1 }, { id: 'c2', feedId: 'f1', calendar: 'Bengaluru', action: 'add', on: '2027-01-26', name: 'Republic Day', peopleOnLeave: 0 }] };
     const onDecide = vi.fn(async () => ({ accepted: 1, ignored: 1, leaveReturned: 1 }));
