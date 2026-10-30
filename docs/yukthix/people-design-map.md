@@ -69,6 +69,14 @@ continuity checklist (live items)` and `PayrollChecklist`) on the restructure re
 transfer raised from the change drawer is sent as a restructure (`POST restructures`), so it reaches the same record and
 checklist. Nothing to build; the group number stays unused (Q6).
 
+## Founder answers, 30 Oct 2026 (what Special data erasure deletes, "All ok")
+(1) disability: keep the yes/no answer for the disability register; delete the sealed details and the certificate after
+the same period; (2) consent records are kept (they prove the checks were lawful, no Special values); (3) a background
+check's result (clear / discrepancy) is kept; only the report file goes; (4) offers that never joined are included,
+counted from the day the joining was cancelled; (5) Aadhaar inside pay records and filings is never erased (payroll keeps
+its own period); (6) the dry run lists name, employee code and last day, not only counts; (7) keep the narrow owner
+database function rather than delete rights for the app role.
+
 ## Founder answers, 30 Oct 2026 (People small-gap follow-ups, "all ok")
 (10) "Possible same person" stays in the menu for 90 days after any merge; (11) "When a fixed-term contract ends"
 (contract_end.action) joins the Fixed-term contracts settings; (12) an erasure job deletes personal data when its
