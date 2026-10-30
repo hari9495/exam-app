@@ -168,7 +168,7 @@ export class JoiningService {
       if (dto.outcome === 'did_not_join' && iso(pb.joiningOn) > todayIst()) throw new BadRequestException('"Did not join" is for on or after the joining day. Before it, use reneged or offer withdrawn.');
       // PPL-15 (founder 27 Oct 2026): a withdrawal comes with its letter, drafted (from the joiner's planned job, so before it is cancelled) for HR to review and issue in People › Letters.
       const letter = dto.outcome === 'withdrawn' ? await this.letters.draftIn(tx, c, pb.personId, 'offer_withdrawal', dto.reason?.trim() || null) : null;
-      const n = await tx.preboarding.updateMany({ where: { organizationId: org, id, version: dto.version, status: 'invited' }, data: { status: 'cancelled', outcome: dto.outcome, outcomeReason: dto.reason?.trim().slice(0, 500) || null, version: { increment: 1 } } });
+      const n = await tx.preboarding.updateMany({ where: { organizationId: org, id, version: dto.version, status: 'invited' }, data: { status: 'cancelled', cancelledOn: asDate(todayIst()), outcome: dto.outcome, outcomeReason: dto.reason?.trim().slice(0, 500) || null, version: { increment: 1 } } });
       if (!n.count) throw new ConflictException('Someone else changed this joiner. Reload it.');
       const j = await tx.journey.findFirst({ where: { organizationId: org, subjectType: 'preboarding', subjectId: id } });
       const tickets: string[] = [];

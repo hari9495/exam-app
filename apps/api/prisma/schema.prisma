@@ -2944,6 +2944,8 @@ model DisabilityDeclaration {
   certificateDocumentId String?   @map("certificate_document_id") @db.Uuid
   consentAt             DateTime  @map("consent_at") @db.Timestamptz(3)
   withdrawnAt           DateTime? @map("withdrawn_at") @db.Timestamptz(3)
+  /// Special data erasure (founder 30 Oct 2026): the details and certificate went after the period; the answer stays.
+  erasedAt              DateTime? @map("erased_at") @db.Timestamptz(3)
   updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([organizationId, employeeId], map: "disability_declarations_employee_key")
@@ -6386,6 +6388,8 @@ model Preboarding {
   identityAttestedAt DateTime? @map("identity_attested_at") @db.Timestamptz(3)
   remindedOn         DateTime? @map("reminded_on") @db.Date
   joinedAt           DateTime? @map("joined_at") @db.Timestamptz(3)
+  /// The day the joining was cancelled (IST): Special data erasure counts a never-joined person's period from it.
+  cancelledOn        DateTime? @map("cancelled_on") @db.Date
   personType         String    @default("new") @map("person_type") @db.VarChar(8)
   rehireOf           String?   @map("rehire_of") @db.Uuid
   rehireOptions      Json?     @map("rehire_options")
