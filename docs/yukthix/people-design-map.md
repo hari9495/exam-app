@@ -69,6 +69,12 @@ continuity checklist (live items)` and `PayrollChecklist`) on the restructure re
 transfer raised from the change drawer is sent as a restructure (`POST restructures`), so it reaches the same record and
 checklist. Nothing to build; the group number stays unused (Q6).
 
+## Founder answers, 30 Oct 2026 (People small-gap follow-ups, "all ok")
+(10) "Possible same person" stays in the menu for 90 days after any merge; (11) "When a fixed-term contract ends"
+(contract_end.action) joins the Fixed-term contracts settings; (12) an erasure job deletes personal data when its
+retention period ends, special data first, as its own task; (13) a small read-only table goes into the kit and replaces
+the three hand-drawn tables (rehire impact, Privacy, impact).
+
 ## 1. Live pages
 
 One row per live People page (the People menu in `apps/web/lib/yx-nav.ts`, the People part of Me, the People part of

@@ -129,6 +129,15 @@ the page; export up to 10,000 rows).
 
 Later on 29 Oct ("both OK", then "OK"): the Ledger and LOP month picker stays in the page header beside the report picker; "Adjust balance" is live on the HR leave home (design TIM-17 HR). It loads only the chosen person's balances (`GET people/:id/balances`). HR can pick themselves, and the server refuses that, as Apply for someone does.
 
+## Founder answers, 30 Oct 2026 (Time follow-ups, "all ok")
+(1) "Clock in as WFH" on by default, HR can turn it off; (2) check-in opens any time by default, a company may set a
+limit; (3) a person paused for block leave sees "Your access is paused for block leave until <date>", not "deactivated";
+(4) managers get "Send back for changes" on leave, as its own task; (5) HR adds training sessions on a "Training" tab of
+Devices and kiosks (design story first); (6) a kiosk where leave is off hides "Apply leave"; (7) comp-off for a holiday on
+a weekly off follows each person's roster, not the location; (8) removing a holiday gives back leave already booked on
+it; (9) no entity-AND-grade policy rule for now. Also pending: WithNote (punch note) needs migration
+docs/yukthix/pending-migrations/20261310000000_punch_note.
+
 ## A. Attendance
 
 ### 1. Live pages
