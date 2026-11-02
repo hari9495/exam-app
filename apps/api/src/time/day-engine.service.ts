@@ -19,7 +19,8 @@ export class DayEngine {
     const leave = await leaveDays(tx, org, employeeId, from, to);
     const punches = await tx.punch.findMany({ where: { organizationId: org, employeeId, accepted: true, workOn: { gte: asDate(from), lte: asDate(to) } }, orderBy: { punchedAt: 'asc' } });
     const approved = await tx.attendanceRequest.findMany({ where: { organizationId: org, employeeId, status: 'approved', workOn: { gte: asDate(from), lte: asDate(to) } }, orderBy: { decidedAt: 'asc' } });
-    const fixes = approved.filter((x) => x.kind !== 'wfh');
+    const fixes = approved.filter((x) => x.kind !== 'wfh' && x.kind !== 'on_duty');
+    const onDuty = approved.filter((x) => x.kind === 'on_duty');
     const wfh = new Set(approved.filter((x) => x.kind === 'wfh').map((x) => x.workOn.toISOString().slice(0, 10)));
     // ChoseWfh: a work-from-home day clocked in from outside and then not approved (or withdrawn): its web punches taken
     // under it ("field" at a restricted place) do not count. Punches are never changed (append-only), the day is.
@@ -78,6 +79,10 @@ export class DayEngine {
         resolution: resolution ? { how: resolution.how as 'present' | 'absent', inMinute: resolution.inMinute, outMinute: resolution.outMinute } : null,
         action: (event?.kind as 'strike' | 'lockout' | 'layoff' | undefined) ?? null,
         presence,
+        onDuty: (() => {
+          const od = onDuty.filter((x) => x.workOn.toISOString().slice(0, 10) === on && x.inMinute !== null && x.outMinute !== null);
+          return od.length ? { inMinute: Math.min(...od.map((x) => x.inMinute!)), outMinute: Math.max(...od.map((x) => x.outMinute!)) } : null;
+        })(),
       });
       const data = { mode, status: r.status, leavePart: r.leavePart, firstIn: r.firstIn, lastOut: r.lastOut, workedMinutes: r.workedMinutes, lateMinutes: r.lateMinutes, regularised: r.regularised, evaluatedAt: now, shiftId: day.shift?.shiftId ?? null };
       await tx.attendanceDay.upsert({

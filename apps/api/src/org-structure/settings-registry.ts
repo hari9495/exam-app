@@ -174,6 +174,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'leave.encashment.window': { label: 'Leave can be cashed in while working', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', 'any_month', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'], default: 'off' },
   'leave.encashment.max_days': { label: 'Most days cashed in a year', scopes: ['tenant', 'legal_entity'], dated: false, values: ['5', '7', '10', '15', '20', '30'], default: '7' },
   'leave.encashment.min_left': { label: 'Days that must stay after cashing in', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '5', '7', '10', '15', '30'], default: '7' },
+  // TIM-29 (Nov 2026): at year end, encashable leave over the carry-forward limit is paid out up to the type's yearly
+  // cash-in limit instead of lapsing; the rest lapses.
+  'leave.year_end.encash_excess': { label: 'At year end, pay out cash-in leave over the carry-forward limit', scopes: ['tenant', 'legal_entity'], dated: false, values: ['on', 'off'], default: 'on' },
   'leave.encashment.divisor': { label: 'Daily rate for cashing in: monthly pay divided by', scopes: ['tenant', 'legal_entity'], dated: false, values: ['26', '30'], default: '26' },
   // Founder decision 2 (29 Oct 2026): a leave type with no notice of its own asks for this many days (sick leave: 0 unless
   // the type sets its own); when HR applies for someone the notice is skipped (audited) unless the company says it applies.
@@ -200,6 +203,11 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'attendance.regularise_monthly_limit': { label: 'Fixes a month with manager approval only', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '2', '3', '4', '5', '6', '8', '10'], default: '4' },
   // TIM-07 / settings 3.5 (19 Oct 2026): work-from-home days a month with manager approval only; beyond that HR approves too.
   'attendance.wfh_monthly_limit': { label: 'Work from home days a month with manager approval only', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '1', '2', '3', '4', '5', '6', '8', '10', '15', '22'], default: '4' },
+  // TIM-03 / TIM-07 OnDuty (Nov 2026): how far ahead and back on duty can be asked, and whether the manager may send it
+  // back for changes instead of turning it down.
+  'attendance.on_duty.ahead_days': { label: 'On duty can be asked this many days ahead', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '7', '15', '30', '60', '90'], default: '30' },
+  'attendance.on_duty.back_days': { label: 'On duty can be asked this many days back', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '3', '7', '15', '30', '60'], default: '60' },
+  'attendance.on_duty.send_back': { label: 'Managers can send on duty back for changes', scopes: ['tenant', 'legal_entity'], dated: false, values: ['on', 'off'], default: 'on' },
   // Extra · My attendance today, ChoseWfh (30 Oct 2026): someone outside the office may clock in as work from home on the
   // day; the request goes to their manager as usual, and if it is not approved those punches no longer count.
   'attendance.wfh_same_day': { label: 'Clock in as work from home on the day (sent for approval)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['on', 'off'], default: 'on' },

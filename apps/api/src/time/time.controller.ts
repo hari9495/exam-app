@@ -9,7 +9,7 @@ import { RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
 import { AttendanceService } from './attendance.service';
-import { AdjustDto, ApplyLeaveDto, AssignPolicyDto, AttendanceRuleDto, CalendarDto, CalendarTemplateDto, EntityFilterDto, HolidayDateDto, HolidayDto, LeavePlanDto, LeaveTypeDto, MonthEntityQueryDto, MonthQueryDto, NetworksDto, PolicyDto, PolicyOrderDto, PolicyVersionDto, PublishDraftDto, PunchDto, RangeEntityQueryDto, RangeQueryDto, ReasonDto, RegulariseDto, WfhDto, YearEndDto, YearEndRunDto } from './dto';
+import { AdjustDto, ApplyLeaveDto, AssignPolicyDto, AttendanceRuleDto, CalendarDto, CalendarTemplateDto, EntityFilterDto, HolidayDateDto, HolidayDto, LeavePlanDto, LeaveTypeDto, MonthEntityQueryDto, MonthQueryDto, NetworksDto, OnDutyDto, PolicyDto, PolicyOrderDto, PolicyVersionDto, PublishDraftDto, PunchDto, RangeEntityQueryDto, RangeQueryDto, ReasonDto, RegulariseDto, WfhDto, YearChangeDto, YearEndDto, YearEndRunDto } from './dto';
 import { LeaveService } from './leave.service';
 import { LeaveV2Service } from './leave-v2.service';
 import { TimeSetupService } from './setup.service';
@@ -114,6 +114,13 @@ export class TimeController {
   @Throttle(MODERATE_UPLOAD_THROTTLE)
   workFromHome(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: WfhDto) {
     return this.attendance.requestWfh(ctx, this.user(req), dto);
+  }
+
+  /** On duty (TIM-07 OnDuty): a day or part of one away from the office, to the manager; or sent again after changes. */
+  @Post('me/on-duty')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  onDuty(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: OnDutyDto) {
+    return this.attendance.requestOnDuty(ctx, this.user(req), dto);
   }
 
   /** Withdraws the person's own fix or work-from-home request while it waits for approval. */
@@ -350,5 +357,19 @@ export class TimeController {
     const ok = await this.setup.yearEndCheck(ctx, this.user(req), dto.yearEnd, dto.acknowledgePending === true);
     await this.jobs.queueYearEnd(ok.organizationId, dto.yearEnd, ok.userId);
     return { queued: true };
+  }
+
+  /** TIM-29 Transition: preview a change of one legal entity's leave year (a short year, then full years). */
+  @Get('setup/year-change')
+  @RequirePermissions('leave.settings.manage')
+  yearChange(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: YearChangeDto) {
+    return this.setup.yearChangePreview(ctx, this.user(req), q.legalEntityId, q.newStartMonth);
+  }
+
+  /** TIM-29 Transition: schedule it (audited; once per entity and date). */
+  @Post('setup/year-change')
+  @RequirePermissions('leave.settings.manage')
+  scheduleYearChange(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: YearChangeDto) {
+    return this.setup.scheduleYearChange(ctx, this.user(req), dto.legalEntityId, dto.newStartMonth);
   }
 }

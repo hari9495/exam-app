@@ -7,8 +7,11 @@ import { isCidr, todayIst } from '../org-structure/org-validation';
 import { SETTINGS, resolveSetting } from '../org-structure/settings-registry';
 import { AssignPolicyDto, AttendanceRuleDto, CalendarDto, HolidayDto, LeaveTypeDto, PolicyDto, PolicyVersionDto } from './dto';
 import { LeaveService } from './leave.service';
-import { DEFAULT_RULE, LeaveRules, asDate, dateOf, parseLines, parseRules, maternityValues, policyFor, statutoryMinimum } from './time-core';
-import { statutoryProblem } from './leave-rules';
+import { DEFAULT_RULE, LeaveRules, asDate, dateOf, parseLines, parseRules, maternityValues, policyFor, statutoryMinimum, yearChangeFor } from './time-core';
+import { leaveYearWith, monthsIn, shortYearEnd, statutoryProblem, yearChangeProblem } from './leave-rules';
+import { addDays } from './time-maths';
+
+const fullDay = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 import { FEED_STATES } from './holiday-feed.provider';
 
 const MOVE_KEY = 'leave.optional_holiday.prorate_on_move';
@@ -391,20 +394,89 @@ export class TimeSetupService {
   yearEndPreview(ctx: TenantContext, user: ScopeUser, yearEnd: string) {
     return this.run(ctx, user, false, async (tx, c) => {
       const rows = await this.leave.yearEndRows(tx, c, yearEnd);
+      const posted = await this.postedRuns(tx, c, yearEnd);
       // TIM-29: requests still waiting with days in the closing year are listed to decide first.
-      return { yearEnd, rows, lapses: rows.filter((r) => r.lapse > 0).length, pending: await this.leave.yearEndPending(tx, c, yearEnd) };
+      return { yearEnd, rows, lapses: rows.filter((r) => r.lapse > 0).length, payOuts: rows.filter((r) => r.encash > 0).length, posted, pending: await this.leave.yearEndPending(tx, c, yearEnd) };
     });
   }
 
-  /** Checked here; the posting runs on the BullMQ worker (idempotent by period key). */
+  /** Year ends already posted for the date: who posted, when, for which policies. */
+  private async postedRuns(tx: Tx, c: CompanyContext, yearEnd: string) {
+    const runs = await tx.leaveYearRun.findMany({ where: { organizationId: c.organizationId, yearEnd: asDate(yearEnd) }, orderBy: { postedAt: 'asc' } });
+    if (!runs.length) return null;
+    const by = runs[0].postedBy ? await tx.user.findFirst({ where: { organizationId: c.organizationId, id: runs[0].postedBy }, select: { name: true, email: true } }) : null;
+    return { at: runs[0].postedAt, by: by?.name || by?.email || null, policies: runs.length };
+  }
+
+  /**
+   * Checked and recorded here (once per policy and last day: a second run is refused), then the posting runs on the
+   * BullMQ worker (safe to re-run by period key).
+   */
   async yearEndCheck(ctx: TenantContext, user: ScopeUser, yearEnd: string, acknowledgePending = false) {
     if (yearEnd > todayIst()) throw new BadRequestException('Run year end on or after the last day of the leave year.');
     return this.run(ctx, user, true, async (tx, c) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`year-end:${c.organizationId}:${yearEnd}`}))`;
+      const done = await this.postedRuns(tx, c, yearEnd);
+      if (done) throw new ConflictException({ statusCode: 409, code: 'YEAR_END_POSTED', message: `Year end for ${fullDay(yearEnd)} was already posted${done.by ? ` by ${done.by}` : ''}. Correct a balance with an adjustment instead.` });
       // TIM-29: pending requests block posting unless HR posts anyway (they stay pending into the new year).
       const pending = await this.leave.yearEndPending(tx, c, yearEnd);
       if (pending.length && !acknowledgePending) throw new ConflictException({ statusCode: 409, code: 'YEAR_END_PENDING', message: `${pending.length} leave ${pending.length === 1 ? 'request is' : 'requests are'} still waiting. Decide ${pending.length === 1 ? 'it' : 'them'} first, or post anyway and ${pending.length === 1 ? 'it stays' : 'they stay'} pending in the new year.`, pending: pending.length });
-      await audit(tx, c, 'leave.year_end.requested', 'leave_year_end', c.organizationId, { yearEnd, pendingCarried: pending.length });
+      const rows = await this.leave.yearEndRows(tx, c, yearEnd);
+      const policies = [...new Set(rows.map((r) => r.policyId))];
+      for (const policyId of policies) {
+        const mine = rows.filter((r) => r.policyId === policyId);
+        const sum = (k: 'carry' | 'encash' | 'lapse') => Math.round(mine.reduce((x, r) => x + r[k], 0) * 100) / 100;
+        await tx.leaveYearRun.create({ data: { organizationId: c.organizationId, yearEnd: asDate(yearEnd), policyId, totals: { people: new Set(mine.map((r) => r.employeeId)).size, carried: sum('carry'), paidOut: sum('encash'), lapsed: sum('lapse') }, postedBy: c.userId ?? null } });
+      }
+      await audit(tx, c, 'leave.year_end.requested', 'leave_year_end', c.organizationId, { yearEnd, pendingCarried: pending.length, policies: policies.length });
       return { organizationId: c.organizationId, userId: c.userId ?? null };
+    });
+  }
+
+  // ------------------------------------------------------------------------------------------ TIM-29 leave-year change
+
+  /** The entity's leave year today and the change it would get: from the first day of its next leave year. */
+  private async yearChangePlan(tx: Tx, c: CompanyContext, legalEntityId: string, newStartMonth: number) {
+    const org = c.organizationId;
+    const entity = await tx.legalEntity.findFirst({ where: { organizationId: org, id: legalEntityId, archivedAt: null }, select: { id: true, name: true } });
+    if (!entity) throw new NotFoundException('No such legal entity.');
+    const today = todayIst();
+    const rows = await tx.setting.findMany({ where: { organizationId: org, key: 'leave.year_start_month' } });
+    const setMonth = Number(resolveSetting(SETTINGS['leave.year_start_month'], rows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: null })), { tenant: org, legal_entity: legalEntityId }, today).value);
+    const change = await yearChangeFor(tx, org, legalEntityId, today);
+    const year = leaveYearWith(today, setMonth, change);
+    const scheduled = change && change.fromOn > today ? change : null;
+    const fromOn = addDays(year.end, 1);
+    const oldStartMonth = Number(fromOn.slice(5, 7));
+    const shortEnd = shortYearEnd(fromOn, newStartMonth);
+    return { entity, today, year, fromOn, oldStartMonth, shortEnd, scheduled, months: monthsIn(fromOn, shortEnd) };
+  }
+
+  /** GET setup/year-change: the preview per person, and any change already scheduled for the entity. */
+  yearChangePreview(ctx: TenantContext, user: ScopeUser, legalEntityId: string, newStartMonth: number) {
+    return this.run(ctx, user, false, async (tx, c) => {
+      const plan = await this.yearChangePlan(tx, c, legalEntityId, newStartMonth);
+      const problem = plan.scheduled ? null : plan.year.short ? 'A short year is running now. Change the leave year again after it ends.' : yearChangeProblem(plan.fromOn, plan.oldStartMonth, newStartMonth, plan.today);
+      const rows = problem || plan.scheduled ? [] : await this.leave.transitionRows(tx, c, legalEntityId, plan.fromOn, plan.shortEnd, plan.today);
+      return { entity: plan.entity, oldStartMonth: plan.oldStartMonth, newStartMonth, fromOn: plan.fromOn, shortEnd: plan.shortEnd, months: plan.months, problem, scheduled: plan.scheduled ? { ...plan.scheduled, shortEnd: shortYearEnd(plan.scheduled.fromOn, plan.scheduled.newStartMonth) } : null, rows };
+    });
+  }
+
+  /**
+   * POST setup/year-change: schedules the change (once per entity and date; a second one while one waits is refused).
+   * Nothing is posted now: from that date the accrual job credits the short year and its year end applies the caps.
+   */
+  scheduleYearChange(ctx: TenantContext, user: ScopeUser, legalEntityId: string, newStartMonth: number) {
+    return this.run(ctx, user, true, async (tx, c) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`year-change:${c.organizationId}:${legalEntityId}`}))`;
+      const plan = await this.yearChangePlan(tx, c, legalEntityId, newStartMonth);
+      if (plan.scheduled) throw new ConflictException({ statusCode: 409, code: 'YEAR_CHANGE_SCHEDULED', message: `${plan.entity.name} already moves to a new leave year on ${fullDay(plan.scheduled.fromOn)}. Only one change can wait at a time.` });
+      if (plan.year.short) throw new ConflictException('A short year is running now. Change the leave year again after it ends.');
+      const problem = yearChangeProblem(plan.fromOn, plan.oldStartMonth, newStartMonth, plan.today);
+      if (problem) throw new BadRequestException(problem);
+      const row = await tx.leaveYearChange.create({ data: { organizationId: c.organizationId, legalEntityId, fromOn: asDate(plan.fromOn), oldStartMonth: plan.oldStartMonth, newStartMonth, createdBy: c.userId ?? null } });
+      await audit(tx, c, 'leave.year_change.scheduled', 'legal_entity', legalEntityId, { fromOn: plan.fromOn, shortYearEnd: plan.shortEnd, from: plan.oldStartMonth, to: newStartMonth, changeId: row.id });
+      return { id: row.id, fromOn: plan.fromOn, shortEnd: plan.shortEnd, months: plan.months };
     });
   }
 }

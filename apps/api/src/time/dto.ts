@@ -148,6 +148,39 @@ export class WfhDto {
   reason!: string;
 }
 
+/** TIM-07 OnDuty: a day, or part of it, on duty away from the office (a place, from and to, a reason). */
+export class OnDutyDto {
+  @IsDateString(DATE)
+  on!: string;
+
+  @IsInt()
+  @Min(0)
+  @Max(1439)
+  inMinute!: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(1439)
+  outMinute!: number;
+
+  @trim()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(120)
+  place!: string;
+
+  @trim()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  reason!: string;
+
+  /** Sending again a request that was sent back for changes (it is closed as "sent again"). */
+  @IsOptional()
+  @IsUUID()
+  resendOf?: string;
+}
+
 export class RegulariseDto {
   @IsDateString(DATE)
   on!: string;
@@ -364,6 +397,18 @@ export class YearEndRunDto extends YearEndDto {
   @IsOptional()
   @IsBoolean()
   acknowledgePending?: boolean;
+}
+
+/** TIM-29 Transition: change the leave year of one legal entity (preview with GET, schedule with POST). */
+export class YearChangeDto {
+  @IsUUID()
+  legalEntityId!: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  newStartMonth!: number;
 }
 
 // ------------------------------------------------------------------------------------------ batch 2: shifts and rosters

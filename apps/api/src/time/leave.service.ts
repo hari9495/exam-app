@@ -6,6 +6,7 @@ import { employeeLanguage, translated } from '../global/global-data';
 import { Viewer, buildViewer, has, implicitSql, tenantWide, type ScopeUser, inEntitySql } from '../access/scope';
 import { ApprovalsEngine, Notice, StepSpec } from '../workflow/approvals-engine.service';
 import { DayEngine } from './day-engine.service';
+import { payOn } from '../payroll/fnf.service';
 import { ApplyLeaveDto, AdjustDto, LeavePlanDto } from './dto';
 import {
   Facts,
@@ -33,7 +34,7 @@ import {
 import { CountedDay, accrualsDue, addDays, applyFloors, countLeaveDays, daysBetween, leaveYearOf, yearEndSplit } from './time-maths';
 import { ScheduleBook, assertOpen, lockedDates } from './schedule';
 import { MaternityCase, daysWorked, eligibilityWindow, maternityChecks } from './time-rules';
-import { BLOCK_DATE_EXEMPT, blockDateStops, creditsDuringAbsence, monthLimitOver, monthName, noticePeriodMode, statutoryProblem, factoriesElEligible, lastDayAfterLeave, noticeDaysFor, noticeText, optionalLimitAfterMove, probationAllows } from './leave-rules';
+import { BLOCK_DATE_EXEMPT, blockDateStops, creditsDuringAbsence, encashAmount, encashTerms, yearEndWithEncash, monthLimitOver, monthName, noticePeriodMode, statutoryProblem, factoriesElEligible, lastDayAfterLeave, noticeDaysFor, noticeText, optionalLimitAfterMove, probationAllows } from './leave-rules';
 
 // M02 Part A leave on the shared engines: requests route through P03 (manager, then HR by the type's rule), the
 // ledger is the only balance (YX-LV-01), days are counted with the location's holidays and weekly offs (YX-LV-03),
@@ -1114,14 +1115,18 @@ export class LeaveService implements OnModuleInit {
     });
   }
 
-  /** Year end preview (YX-LV-07): per employee and type, carry forward and lapse at the leave year ending `yearEnd`. */
+  /**
+   * Year end preview (YX-LV-07, TIM-29): per employee and type, carry forward, pay out and lapse at the leave year ending
+   * `yearEnd`. Over the carry-forward cap, an encashable type is paid out up to what its yearly cash-in limit still
+   * allows (leave.year_end.encash_excess, default on); the rest lapses.
+   */
   async yearEndRows(tx: Tx, c: CompanyContext, yearEnd: string) {
     const org = c.organizationId;
     const types = new Map((await this.types(tx, org)).map((t) => [t.id, t]));
     const employees = await tx.$queryRaw<{ id: string }[]>`
       SELECT DISTINCT a.employee_id::text AS id FROM employee_assignments a
       WHERE a.organization_id = ${org}::uuid AND a.superseded_at IS NULL AND ${yearEnd}::date <@ daterange(a.valid_from, a.valid_to, '[]')`;
-    const rows: { employeeId: string; name: string; code: string | null; leaveTypeId: string; type: string; balance: number; carry: number; lapse: number; encashable: boolean }[] = [];
+    const rows: { employeeId: string; name: string; code: string | null; policyId: string; leaveTypeId: string; type: string; balance: number; carry: number; encash: number; lapse: number; encashable: boolean }[] = [];
     for (const e of employees) {
       const f = await factsOn(tx, org, e.id, yearEnd);
       if (!f) continue;
@@ -1130,14 +1135,66 @@ export class LeaveService implements OnModuleInit {
       const policy = await policyOn(tx, c, f, yearEnd);
       if (!policy) continue;
       const st = await statutoryOn(tx, f.state, yearEnd);
+      const payOut = (await settingOn(tx, c, 'leave.year_end.encash_excess', f, yearEnd)) === 'on';
+      const company = { maxPerYear: Number(await settingOn(tx, c, 'leave.encashment.max_days', f, yearEnd)), minLeft: 0, divisor: 26 };
       for (const l of policy.lines) {
         const t = types.get(l.leaveTypeId);
         if (!t || !hasBalance(t.kind)) continue;
         const sum = num((await tx.leaveLedgerEntry.aggregate({ where: { organizationId: org, employeeId: f.employeeId, leaveTypeId: t.id, entryOn: { lte: asDate(yearEnd) } }, _sum: { days: true } }))._sum.days);
         // P07: a company carry-forward cap below the state's accumulation floor is raised to it.
         const cap = l.carryForwardMax === null ? null : Math.max(l.carryForwardMax, st.carry[t.kind] ?? 0);
-        const split = yearEndSplit(Math.round(sum * 100) / 100, cap);
-        rows.push({ employeeId: f.employeeId, name: f.name, code: f.code, leaveTypeId: t.id, type: t.code, balance: Math.round(sum * 100) / 100, carry: split.carry, lapse: split.lapse, encashable: Boolean((t.rules as unknown as LeaveRules).encashable) });
+        const rules = t.rules as unknown as LeaveRules;
+        let encashLeft = 0;
+        if (payOut && rules.encashable) {
+          // Cashed in during the year (negative in the ledger) comes off the yearly limit.
+          const used = num((await tx.leaveLedgerEntry.aggregate({ where: { organizationId: org, employeeId: f.employeeId, leaveTypeId: t.id, kind: 'encashed', entryOn: { gte: asDate(year.start), lte: asDate(yearEnd) } }, _sum: { days: true } }))._sum.days);
+          encashLeft = encashTerms(rules, company).maxPerYear + used;
+        }
+        const split = yearEndWithEncash(Math.round(sum * 100) / 100, cap, encashLeft);
+        rows.push({ employeeId: f.employeeId, name: f.name, code: f.code, policyId: policy.policyId, leaveTypeId: t.id, type: t.code, balance: Math.round(sum * 100) / 100, ...split, encashable: Boolean(rules.encashable) });
+      }
+    }
+    return rows;
+  }
+
+  /**
+   * TIM-29 Transition preview: for each person of the legal entity and leave type with a balance, the projected opening
+   * of the short year (the old year's balance with the credits still due, after its year end), the short year's credit
+   * and the outcome at its end (carry forward, pay out, lapse). Assumes no leave is taken.
+   */
+  async transitionRows(tx: Tx, c: CompanyContext, legalEntityId: string, fromOn: string, shortEnd: string, today: string) {
+    const org = c.organizationId;
+    const types = await this.types(tx, org);
+    const byId = new Map(types.map((t) => [t.id, t]));
+    const lastOld = addDays(fromOn, -1);
+    const employees = await tx.$queryRaw<{ id: string }[]>`
+      SELECT DISTINCT a.employee_id::text AS id FROM employee_assignments a
+      WHERE a.organization_id = ${org}::uuid AND a.superseded_at IS NULL AND ${today}::date <@ daterange(a.valid_from, a.valid_to, '[]') LIMIT 5000`;
+    const rows: { employeeId: string; name: string; type: string; opening: number; credit: number; atEnd: number; carry: number; encash: number; lapse: number }[] = [];
+    for (const e of employees) {
+      const f = await factsOn(tx, org, e.id, today);
+      if (!f || f.legalEntityId !== legalEntityId || (f.exitedOn && f.exitedOn < fromOn)) continue;
+      const policy = await policyOn(tx, c, f, fromOn);
+      if (!policy) continue;
+      const oldYear = await leaveYearFor(tx, c, f, lastOld);
+      const ent = await this.entitlements(tx, f, fromOn, policy.lines, types);
+      const st = await statutoryOn(tx, f.state, lastOld);
+      const company = { maxPerYear: Number(await settingOn(tx, c, 'leave.encashment.max_days', f, today)), minLeft: 0, divisor: 26 };
+      const payOut = (await settingOn(tx, c, 'leave.year_end.encash_excess', f, today)) === 'on';
+      for (const l of policy.lines) {
+        const t = byId.get(l.leaveTypeId);
+        if (!t || !t.active || !hasBalance(t.kind) || t.kind === 'comp_off') continue;
+        const rules = t.rules as unknown as LeaveRules;
+        const line = { ...l, annualDays: ent.get(l.leaveTypeId) ?? l.annualDays };
+        const now = num((await tx.leaveLedgerEntry.aggregate({ where: { organizationId: org, employeeId: f.employeeId, leaveTypeId: t.id }, _sum: { days: true } }))._sum.days);
+        // Credits of the old year still to come (the accrual job writes them when due).
+        const dueOld = accrualsDue(line, { yearStart: oldYear.start, joinedOn: f.joinedOn, exitedOn: f.exitedOn, upTo: lastOld }).filter((d) => d.on > today).reduce((x, d) => x + d.days, 0);
+        const cap = l.carryForwardMax === null ? null : Math.max(l.carryForwardMax, st.carry[t.kind] ?? 0);
+        const left = payOut && rules.encashable ? encashTerms(rules, company).maxPerYear : 0;
+        const opening = yearEndWithEncash(Math.round((now + dueOld) * 100) / 100, cap, left).carry;
+        const credit = Math.round(accrualsDue(line, { yearStart: fromOn, yearEnd: shortEnd, joinedOn: f.joinedOn, exitedOn: f.exitedOn, upTo: shortEnd }).reduce((x, d) => x + d.days, 0) * 100) / 100;
+        const atEnd = Math.round((opening + credit) * 100) / 100;
+        rows.push({ employeeId: f.employeeId, name: f.name, type: t.name, opening, credit, atEnd, ...yearEndWithEncash(atEnd, cap, left) });
       }
     }
     return rows;
@@ -1158,21 +1215,46 @@ export class LeaveService implements OnModuleInit {
       ORDER BY r.from_on LIMIT 500`;
   }
 
-  /** Posts the lapses of a previewed year end; run by the BullMQ worker, idempotent by period key. */
+  /**
+   * Posts a year end (run by the BullMQ worker, safe to re-run: every entry has its period key): the lapse entries, and
+   * for each pay-out an "encashed" entry plus a one-time pay (leave_encashment) that payroll reads in the month after the
+   * year end, at monthly pay (payroll.leave_encashment_basis) divided by the type's divisor.
+   */
   async yearEndPost(org: string, yearEnd: string, byUserId: string | null): Promise<number> {
     const c: CompanyContext = { organizationId: org, isSuperAdmin: false, userId: byUserId };
     return this.tenantPrisma.forTenant(c, async (tx) => {
-      const rows = (await this.yearEndRows(tx, c, yearEnd)).filter((r) => r.lapse > 0);
-      const n = rows.length
+      const rows = await this.yearEndRows(tx, c, yearEnd);
+      const lapses = rows.filter((r) => r.lapse > 0);
+      const n = lapses.length
         ? (
             await tx.leaveLedgerEntry.createMany({
-              data: rows.map((r) => ({ organizationId: org, employeeId: r.employeeId, leaveTypeId: r.leaveTypeId, entryOn: asDate(yearEnd), kind: 'lapse', days: -r.lapse, periodKey: `lapse:${yearEnd}`, reason: `Year end: ${r.carry} carried forward, ${r.lapse} lapsed`, createdBy: byUserId })),
+              data: lapses.map((r) => ({ organizationId: org, employeeId: r.employeeId, leaveTypeId: r.leaveTypeId, entryOn: asDate(yearEnd), kind: 'lapse', days: -r.lapse, periodKey: `lapse:${yearEnd}`, reason: `Year end: ${r.carry} carried forward${r.encash ? `, ${r.encash} paid out` : ''}, ${r.lapse} lapsed`, createdBy: byUserId })),
               skipDuplicates: true,
             })
           ).count
         : 0;
-      await audit(tx, c, 'leave.year_end.posted', 'leave_year_end', org, { yearEnd, lapses: n });
-      return n;
+      const types = new Map((await this.types(tx, org)).map((t) => [t.id, t]));
+      const payMonth = `${addDays(yearEnd, 1).slice(0, 7)}-01`;
+      let paid = 0;
+      for (const r of rows.filter((x) => x.encash > 0)) {
+        const t = types.get(r.leaveTypeId)!;
+        const made = await tx.leaveLedgerEntry.createMany({ data: [{ organizationId: org, employeeId: r.employeeId, leaveTypeId: r.leaveTypeId, entryOn: asDate(yearEnd), kind: 'encashed', days: -r.encash, periodKey: `ye-encash:${yearEnd}`, reason: `Year end: ${r.encash} days of ${t.name} paid out`, createdBy: byUserId }], skipDuplicates: true });
+        if (!made.count) continue;
+        paid++;
+        const f = await factsOn(tx, org, r.employeeId, yearEnd);
+        const [em] = await tx.$queryRaw<{ id: string }[]>`
+          SELECT a.employment_id::text AS id FROM employee_assignments a WHERE a.organization_id = ${org}::uuid AND a.employee_id = ${r.employeeId}::uuid
+            AND a.superseded_at IS NULL AND ${yearEnd}::date <@ daterange(a.valid_from, a.valid_to, '[]') ORDER BY a.valid_from DESC LIMIT 1`;
+        if (!f || !em) continue;
+        const pay = await payOn(tx, org, em.id, yearEnd);
+        const monthly = Number((await settingOn(tx, c, 'payroll.leave_encashment_basis', f, yearEnd)) === 'gross' ? pay.gross : pay.gratuityWage);
+        if (!(monthly > 0)) continue;
+        const divisor = encashTerms(t.rules as unknown as LeaveRules, { maxPerYear: 0, minLeft: 0, divisor: Number(await settingOn(tx, c, 'leave.encashment.divisor', f, yearEnd)) }).divisor;
+        const amount = encashAmount(monthly, divisor, r.encash);
+        await tx.oneTimePay.create({ data: { organizationId: org, legalEntityId: f.legalEntityId, employeeId: r.employeeId, employmentId: em.id, componentCode: 'leave_encashment', amount: amount.amount, periodStart: asDate(payMonth), source: 'leave', sourceRef: `ye:${yearEnd}:${r.leaveTypeId}:${r.employeeId}`.slice(0, 80), reason: `Year end ${yearEnd}: ${r.encash} days of ${t.name} paid out at Rs ${amount.dailyRate.toFixed(2)} a day`, status: 'approved', createdBy: byUserId ?? f.userId ?? '00000000-0000-0000-0000-000000000000' } });
+      }
+      await audit(tx, c, 'leave.year_end.posted', 'leave_year_end', org, { yearEnd, lapses: n, payOuts: paid });
+      return n + paid;
     });
   }
 }

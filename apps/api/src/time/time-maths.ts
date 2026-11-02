@@ -347,6 +347,11 @@ export interface DayInput {
   action?: 'strike' | 'lockout' | 'layoff' | null;
   /** Presence on a work-from-home day with consent in force (TIM-36): it decides the day when there are no punches. */
   presence?: { first: Date; last: Date; activeMinutes: number } | null;
+  /**
+   * An approved on-duty request (TIM-03 / TIM-07 OnDuty): from and to, in minutes of the day. The time counts as worked,
+   * joined with any punches, so a whole day is present and a part of one adds to the office hours (half day by the shift).
+   */
+  onDuty?: { inMinute: number; outMinute: number } | null;
 }
 
 export type PunchKind = 'in' | 'out' | 'break_start' | 'break_end';
@@ -430,6 +435,13 @@ export function evaluateDay(i: DayInput): DayResult {
   if (fix && fix.outMinute !== null && (fix.kind === 'missed_out' || fix.kind === 'wrong_time')) lastOut = instantAt(i.on, i.zone, fix.outMinute < r.shiftStart && r.shiftEnd < r.shiftStart ? fix.outMinute + 1440 : fix.outMinute);
   if (firstIn && lastOut && lastOut <= firstIn) lastOut = null;
   const regularised = Boolean(fix);
+  // On duty: its from and to stretch the day's first in and last out (worked time between them counts).
+  if (i.onDuty && i.mode === 'punch') {
+    const odIn = instantAt(i.on, i.zone, i.onDuty.inMinute);
+    const odOut = instantAt(i.on, i.zone, i.onDuty.outMinute);
+    if (!firstIn || odIn < firstIn) firstIn = odIn;
+    if (!lastOut || odOut > lastOut) lastOut = odOut;
+  }
   // Punches are still recorded in the other modes (D1) and shown on the day, but they never set its status.
   if (i.mode !== 'punch') {
     const both = firstIn && lastOut;

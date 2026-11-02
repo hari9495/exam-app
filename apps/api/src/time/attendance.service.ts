@@ -7,7 +7,8 @@ import { ApprovalsEngine, Notice, StepSpec } from '../workflow/approvals-engine.
 import { NotificationsService } from '../notifications/notifications.service';
 import { escapeHtml } from '../notifications/notification-email-render';
 import { DayEngine } from './day-engine.service';
-import { PunchDto, RegulariseDto, WfhDto } from './dto';
+import { OnDutyDto, PunchDto, RegulariseDto, WfhDto } from './dto';
+import { clockText, onDutyProblem, overlaps } from './on-duty-rules';
 import { TIME_KEYS, asDate, dateOf, factsOn, holidaysFor, hrApprovers, monthRange, mustSee, myEmployeeId, rulesFor, settingOn, todayIn, visibleSql, type Facts } from './time-core';
 import { addDays, checkInVerdict, ipInRanges, minutesInto, type Fence } from './time-maths';
 import { ScheduleBook, assertOpen, lockedDates } from './schedule';
@@ -23,6 +24,7 @@ import { workOnForPunch } from './time-rules';
 
 export const REGULARISE = 'attendance.regularise';
 export const WFH = 'attendance.wfh';
+export const ON_DUTY = 'attendance.on_duty';
 const KIND_TEXT: Record<string, string> = { missed_in: 'Missed check-in', missed_out: 'Missed check-out', wrong_time: 'Wrong time', full_day: 'Present all day' };
 const ALREADY: Record<PunchDto['kind'], string> = { in: 'Already checked in', out: 'Already checked out', break_start: 'Break already started', break_end: 'Break already ended' };
 const DONE: Record<PunchDto['kind'], string> = { in: 'Checked in', out: 'Checked out', break_start: 'Break started', break_end: 'Break ended' };
@@ -55,6 +57,15 @@ export class AttendanceService implements OnModuleInit {
   onModuleInit() {
     this.engine.register({ key: REGULARISE, label: 'Attendance fix', risk: 'normal', autoActions: false, onDecided: (tx, req, outcome) => this.decided(tx, req, outcome), requesterLink: () => '/yx/time/attendance' });
     this.engine.register({ key: WFH, label: 'Work from home', risk: 'normal', autoActions: false, onDecided: (tx, req, outcome) => this.decided(tx, req, outcome), requesterLink: () => '/yx/time/attendance' });
+    this.engine.register({
+      key: ON_DUTY,
+      label: 'On duty',
+      risk: 'normal',
+      autoActions: false,
+      onDecided: (tx, req, outcome) => this.decided(tx, req, outcome),
+      requesterLink: () => '/yx/time/attendance',
+      sendBack: { allowed: (tx, req) => this.onDutySendBackAllowed(tx, req), apply: (tx, req, reason) => this.onDutySentBack(tx, req, reason) },
+    });
   }
 
   private viewer(user: ScopeUser): Promise<Viewer> {
@@ -119,7 +130,7 @@ export class AttendanceService implements OnModuleInit {
         next: accepted.length && accepted[accepted.length - 1].kind !== 'out' ? 'out' : 'in',
         onBreak: accepted.at(-1)?.kind === 'break_start',
         days: days.map((d) => ({ on: dateOf(d.workOn), status: d.status, leavePart: d.leavePart, firstIn: d.firstIn, lastOut: d.lastOut, workedMinutes: d.workedMinutes, lateMinutes: d.lateMinutes, regularised: d.regularised })),
-        requests: requests.map((r) => ({ id: r.id, on: dateOf(r.workOn), kind: r.kind, inMinute: r.inMinute, outMinute: r.outMinute, reason: r.reason, status: r.status })),
+        requests: await this.withSentBack(tx, org, requests).then((notes) => requests.map((r) => ({ id: r.id, on: dateOf(r.workOn), kind: r.kind, inMinute: r.inMinute, outMinute: r.outMinute, reason: r.reason, status: r.status, place: r.place, sentBack: notes.get(r.id) ?? null }))),
         regularise: { limit, used },
         // Work from home (TIM-07): this month's days asked for or approved, and whether today is an approved one.
         wfh: { limit: Number(await settingOn(tx, c, 'attendance.wfh_monthly_limit', f, today)), used: wfhUsed },
@@ -346,14 +357,92 @@ export class AttendanceService implements OnModuleInit {
     return { id: r.id, status: (await tx.attendanceRequest.findFirstOrThrow({ where: { id: r.id } })).status, hrStep: used >= limit, notices };
   }
 
+  /**
+   * On duty (TIM-07 OnDuty, Nov 2026): a day, or part of it, away from the office at a named place, through P03 to the
+   * manager (who may approve, turn it down or send it back for changes). Approved, its time counts as worked in the day
+   * engine (a full day is present; part of one joins the office hours). Up to attendance.on_duty.ahead_days ahead and
+   * back_days back; never a locked month, a day of full-day leave, or a time that overlaps another on-duty request.
+   */
+  async requestOnDuty(ctx: TenantContext, user: ScopeUser, dto: OnDutyDto) {
+    if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
+    const notices: Notice[] = [];
+    const res = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const { f: now, today } = await this.meFacts(tx, c);
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`punch:${org}:${now.employeeId}`}))`;
+      const f = await factsOn(tx, org, now.employeeId, dto.on);
+      if (!f || dto.on < f.joinedOn || (f.exitedOn && dto.on > f.exitedOn)) throw new BadRequestException('You are not working here on that day.');
+      const problem = onDutyProblem({ on: dto.on, today, aheadDays: Number(await settingOn(tx, c, 'attendance.on_duty.ahead_days', f, today)), backDays: Number(await settingOn(tx, c, 'attendance.on_duty.back_days', f, today)), inMinute: dto.inMinute, outMinute: dto.outMinute });
+      if (problem) throw new BadRequestException({ statusCode: 400, message: problem.message, field: problem.field });
+      if ((await lockedDates(tx, org, f.employeeId, dto.on, dto.on)).size) throw new ConflictException(`${fmt(dto.on)} is in a locked month. Ask HR to record a correction.`);
+      const leave = await tx.$queryRaw<{ part: string }[]>`
+        SELECT d.part FROM leave_request_days d JOIN leave_requests r ON r.organization_id = d.organization_id AND r.id = d.request_id
+        WHERE d.organization_id = ${org}::uuid AND d.employee_id = ${f.employeeId}::uuid AND d.active AND d.portion > 0 AND d.leave_on = ${dto.on}::date
+          AND r.status IN ('pending', 'approved', 'cancel_pending') LIMIT 1`;
+      if (leave[0]?.part === 'full') throw new ConflictException(`You have leave on ${fmt(dto.on)}. Cancel it first if you were on duty instead.`);
+      const old = dto.resendOf ? await tx.attendanceRequest.findFirst({ where: { organizationId: org, id: dto.resendOf, employeeId: f.employeeId, kind: 'on_duty' }, select: { id: true, status: true } }) : null;
+      if (dto.resendOf && !old) throw new NotFoundException('No such request.');
+      if (old && old.status !== 'sent_back') throw new ConflictException(old.status === 'resent' ? 'You already sent this request again.' : 'Only a request sent back for changes can be sent again.');
+      const same = await tx.attendanceRequest.findMany({ where: { organizationId: org, employeeId: f.employeeId, workOn: asDate(dto.on), kind: 'on_duty', status: { in: ['pending', 'approved'] } } });
+      const clash = same.find((x) => x.inMinute !== null && x.outMinute !== null && overlaps({ inMinute: x.inMinute, outMinute: x.outMinute }, dto));
+      if (clash) throw new ConflictException(`You already asked for on duty on ${fmt(dto.on)} from ${clockText(clash.inMinute!)} to ${clockText(clash.outMinute!)}.`);
+      if (old) await tx.attendanceRequest.update({ where: { id: old.id }, data: { status: 'resent', version: { increment: 1 }, updatedAt: new Date() } });
+      const r = await tx.attendanceRequest.create({ data: { organizationId: org, employeeId: f.employeeId, workOn: asDate(dto.on), kind: 'on_duty', inMinute: dto.inMinute, outMinute: dto.outMinute, place: dto.place, reason: dto.reason, raisedBy: c.userId ?? null } });
+      const hr = await hrApprovers(tx, org, f.employeeId, today, f.userId);
+      const sub = await this.engine.submit(tx, c, {
+        type: ON_DUTY,
+        subjectType: 'attendance_request',
+        subjectId: r.id,
+        title: `${f.name}: on duty on ${fmt(dto.on)}`,
+        summary: [
+          { label: 'Day', value: fmt(dto.on) },
+          { label: 'Where', value: dto.place },
+          { label: 'Time', value: `${clockText(dto.inMinute)} to ${clockText(dto.outMinute)}` },
+          { label: 'Why', value: dto.reason.slice(0, 300) },
+          ...(old ? [{ label: 'Note', value: 'Sent again after changes' }] : []),
+        ],
+        subjectPersonId: f.personId,
+        requesterUserId: c.userId ?? null,
+        raisedByUserId: c.userId ?? null,
+        steps: [{ name: 'Manager', approvers: [{ kind: 'manager' }], mode: 'any', remindAfterHours: 24 }],
+        payload: {},
+        payloadFields: [],
+        fallbackUserIds: hr,
+      });
+      notices.push(...sub.notices);
+      await tx.attendanceRequest.update({ where: { id: r.id }, data: { wfRequestId: sub.id } });
+      await audit(tx, c, 'attendance.on_duty.submitted', 'attendance_request', r.id, { employeeId: f.employeeId, on: dto.on, inMinute: dto.inMinute, outMinute: dto.outMinute, place: dto.place, ...(old ? { resendOf: old.id } : {}) });
+      return { id: r.id, status: (await tx.attendanceRequest.findFirstOrThrow({ where: { id: r.id } })).status };
+    });
+    await this.engine.send(ctx, notices);
+    return res;
+  }
+
+  /** Send back is on for on duty unless the company turned it off (attendance.on_duty.send_back). */
+  private async onDutySendBackAllowed(tx: Tx, wf: Prisma.WfRequestGetPayload<object>): Promise<boolean> {
+    const r = await tx.attendanceRequest.findFirst({ where: { organizationId: wf.organizationId, id: wf.subjectId }, select: { employeeId: true, status: true } });
+    if (!r || r.status !== 'pending') return false;
+    const today = todayIn('Asia/Kolkata');
+    const f = await factsOn(tx, wf.organizationId, r.employeeId, today);
+    return Boolean(f) && (await settingOn(tx, { organizationId: wf.organizationId, isSuperAdmin: false }, 'attendance.on_duty.send_back', f!, today)) === 'on';
+  }
+
+  /** Sent back for changes: the request waits for the employee to change it and send it again (or withdraw it). */
+  private async onDutySentBack(tx: Tx, wf: Prisma.WfRequestGetPayload<object>, reason: string) {
+    const done = await tx.attendanceRequest.updateMany({ where: { organizationId: wf.organizationId, id: wf.subjectId, status: 'pending' }, data: { status: 'sent_back', decidedAt: new Date(), version: { increment: 1 }, updatedAt: new Date() } });
+    if (!done.count) return;
+    await audit(tx, { organizationId: wf.organizationId, isSuperAdmin: false, userId: null }, 'attendance.on_duty.sent_back', 'attendance_request', wf.subjectId, { wfRequestId: wf.id, reason });
+  }
+
   async withdraw(ctx: TenantContext, user: ScopeUser, id: string) {
     if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const mine = await myEmployeeId(tx, c.organizationId, c.userId);
       const r = await tx.attendanceRequest.findFirst({ where: { organizationId: c.organizationId, id, employeeId: mine } });
       if (!r) throw new NotFoundException('No such request.');
-      if (r.status !== 'pending') throw new ConflictException('Only a request still waiting for approval can be withdrawn.');
-      if (r.wfRequestId) await this.engine.withdraw(tx, c, r.wfRequestId, c.userId ?? null, 'Withdrawn by the employee');
+      // On duty sent back for changes can also be withdrawn (it is no longer with the manager).
+      if (r.status !== 'pending' && !(r.kind === 'on_duty' && r.status === 'sent_back')) throw new ConflictException('Only a request still waiting for approval can be withdrawn.');
+      if (r.wfRequestId && r.status === 'pending') await this.engine.withdraw(tx, c, r.wfRequestId, c.userId ?? null, 'Withdrawn by the employee');
       await tx.attendanceRequest.update({ where: { id: r.id }, data: { status: 'withdrawn', decidedAt: new Date(), version: { increment: 1 }, updatedAt: new Date() } });
       if (r.kind === 'wfh') await this.dropWfhPunches(tx, c, r.employeeId, dateOf(r.workOn));
       return { id: r.id, status: 'withdrawn' };
@@ -368,6 +457,14 @@ export class AttendanceService implements OnModuleInit {
     const c = { organizationId: wf.organizationId, isSuperAdmin: false };
     if (outcome === 'approved') await this.days.evaluate(tx, c, r.employeeId, on, on);
     else if (r.kind === 'wfh') await this.dropWfhPunches(tx, c, r.employeeId, on);
+  }
+
+  /** What the manager asked to change, for on duty sent back (P03 send-back reason). */
+  private async withSentBack(tx: Tx, org: string, reqs: { id: string; status: string; wfRequestId: string | null }[]): Promise<Map<string, string>> {
+    const back = reqs.filter((r) => r.status === 'sent_back' && r.wfRequestId);
+    if (!back.length) return new Map();
+    const acts = await tx.wfAction.findMany({ where: { organizationId: org, requestId: { in: back.map((r) => r.wfRequestId!) }, action: 'sent_back' }, orderBy: { createdAt: 'asc' } });
+    return new Map(back.map((r) => [r.id, acts.filter((a) => a.requestId === r.wfRequestId).pop()?.reason ?? '']));
   }
 
   /**
@@ -565,6 +662,7 @@ export class AttendanceService implements OnModuleInit {
         lateMarks: { month: lateMarks, free: Number(await settingOn(tx, c, 'attendance.late_marks_free', f, on)) },
         locked,
         hrFix: hr ? (on >= todayIn(f.zone) ? { ok: false, why: 'Today is read only until the day is over.' } : locked ? { ok: false, why: 'The month is frozen or locked: record a correction for the next payroll.' } : { ok: true, why: null }) : null,
+        onDuty: await tx.attendanceRequest.findFirst({ where: { organizationId: org, employeeId, workOn: asDate(on), kind: 'on_duty', status: { in: ['approved', 'pending'] } }, orderBy: [{ status: 'asc' }, { createdAt: 'desc' }] }).then((x) => (x ? { id: x.id, place: x.place ?? '', inMinute: x.inMinute!, outMinute: x.outMinute!, reason: x.reason, status: x.status as 'approved' | 'pending' } : null)),
         resolution: resolution ? { how: resolution.how, inMinute: resolution.inMinute, outMinute: resolution.outMinute, reason: resolution.reason, by: resolver?.name || resolver?.email || null, at: resolution.createdAt } : null,
         shift: shift ? { name: shift.name, start: shift.shiftStart, end: shift.shiftEnd, grace: shift.graceMinutes } : null,
         day: day ? { status: day.status, leavePart: day.leavePart, workedMinutes: day.workedMinutes, lateMinutes: day.lateMinutes, regularised: day.regularised } : null,
