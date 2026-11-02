@@ -15,6 +15,16 @@ import type { ConfirmationDto } from './dto';
 import type { DisbursementDto, ExpediteBankDto, GenerateBankFileDto, PaymentModeDto, PaymentResultRowDto, RepayDto } from './dto-5d';
 import { ExchangeFilesService } from './exchange-files.service';
 import { PayKey, entitiesFor, payHolders, payScope, payViewer, requireEntity, requireSelf } from './pay-access';
+import { plainSalary, splitAmounts, splitsAt, SPLIT_LABEL } from '../people/pay-split';
+
+/** PPL-46: one payment to an account abroad (the outward remittance list released with the bank file). */
+type Remit = { slip: Slip; code: string; name: string; iban: string; bic: string; currency: string; amount: Prisma.Decimal; narration: string };
+/** Remittance list cells: letters, digits, space, dot and dash only (no commas, quotes or spreadsheet formulas). */
+const cell = (s: string, max: number) => s.replace(/[^A-Za-z0-9 .-]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
+export function remittanceCsv(rows: Remit[]): Buffer {
+  const head = 'employee_code,name,iban,bic,payout_currency,amount_inr,narration';
+  return Buffer.from([head, ...rows.map((r) => [cell(r.code, 30), cell(r.name, 70), r.iban, r.bic, r.currency, r.amount.toFixed(2), cell(r.narration, 30)].join(','))].join('\r\n') + '\r\n', 'utf8');
+}
 
 // Pay-out (M03-BUILD-DESIGN §9.7, §11.2, PAY-4.01 … 4.03, D11): the bank file of an approved run from a published
 // format (approved, unheld, bank-mode payslips whose account is past the bank-change cooling period), released by
@@ -185,6 +195,13 @@ export class PayoutService implements OnModuleInit {
       const accounts = await tx.employeeBankAccount.findMany({ where: { organizationId: org, employeeId: { in: slips.map((s) => s.employeeId) }, purpose: only?.purpose ?? 'salary', validTo: null } });
       const now = new Date();
       const rows: (BankRow & { slip: Slip })[] = [];
+      // PPL-46: a split in force pays each of its accounts (a re-pay to one account, `only`, never splits).
+      const splits = only ? new Map() : await splitsAt(tx, org, slips.map((s) => s.employeeId), now);
+      const splitIds = [...splits.keys()];
+      const allBanks = splitIds.length ? await tx.employeeBankAccount.findMany({ where: { organizationId: org, employeeId: { in: splitIds }, validTo: null } }) : [];
+      const abroad = splitIds.length ? await tx.employeeIntlBankAccount.findMany({ where: { organizationId: org, employeeId: { in: splitIds }, validTo: null } }) : [];
+      const people = splitIds.length ? await tx.employee.findMany({ where: { organizationId: org, id: { in: splitIds } }, select: { id: true, givenName: true, familyName: true } }) : [];
+      const remits: Remit[] = [];
       const excluded: { employeeId: string; reason: string }[] = [];
       // 5g-D2: a death-in-service F&F pays each nominee or heir directly, by share, to their own account.
       const deaths = await tx.fnfSettlement.findMany({ where: { organizationId: org, exitType: 'death', OR: [{ runId: run.id }, { secondRunId: run.id }] } });
@@ -213,6 +230,33 @@ export class PayoutService implements OnModuleInit {
         }
         const a = accounts.find((x) => x.employeeId === s.employeeId);
         const mode = modeOf(s.employmentId);
+        const split = splits.get(s.employeeId);
+        if (mode === 'bank' && !plainSalary(split)) {
+          const code = employments.find((e) => e.id === s.employmentId)?.employeeCode ?? '';
+          const r = splitAmounts(s.net, split!, false);
+          if (!r.ok) {
+            excluded.push({ employeeId: s.employeeId, reason: `The pay split cannot be paid: ${r.error}` });
+            continue;
+          }
+          const parts = r.amounts.filter((x) => x.amount.gt(0));
+          const missing = parts.find((x) => (x.account === 'abroad' ? !abroad.some((b) => b.employeeId === s.employeeId) : !allBanks.some((b) => b.employeeId === s.employeeId && b.purpose === x.account)));
+          const cooling = parts.map((x) => (x.account === 'abroad' ? abroad.find((b) => b.employeeId === s.employeeId) : allBanks.find((b) => b.employeeId === s.employeeId && b.purpose === x.account))).find((b) => b && b.usableFrom > now);
+          if (missing) excluded.push({ employeeId: s.employeeId, reason: `The pay split uses the ${SPLIT_LABEL[missing.account].toLowerCase()}, which is not on file.` });
+          else if (cooling) excluded.push({ employeeId: s.employeeId, reason: `An account of the pay split is in its cooling period until ${cooling.usableFrom.toISOString()}.` });
+          else
+            for (const x of parts) {
+              const narration = `Salary ${dateOf(s.periodStart).slice(0, 7)}`;
+              if (x.account === 'abroad') {
+                const b = abroad.find((y) => y.employeeId === s.employeeId)!;
+                const p = people.find((y) => y.id === s.employeeId);
+                remits.push({ slip: s, code, name: p ? [p.givenName, p.familyName].filter(Boolean).join(' ') : code, iban: this.open(org, s.employeeId, b.ibanEnc), bic: b.bic, currency: b.currency, amount: x.amount, narration });
+              } else {
+                const b = allBanks.find((y) => y.employeeId === s.employeeId && y.purpose === x.account)!;
+                rows.push({ slip: s, account: this.open(org, s.employeeId, b.accountEnc), ifsc: b.ifsc, name: b.holderName, amount: x.amount.toFixed(2), code, narration });
+              }
+            }
+          continue;
+        }
         if (mode !== 'bank') excluded.push({ employeeId: s.employeeId, reason: `Paid by ${mode} (disbursement register).` });
         else if (!a) excluded.push({ employeeId: s.employeeId, reason: `No ${only?.purpose ?? 'salary'} bank account.` });
         else if (a.usableFrom > now) excluded.push({ employeeId: s.employeeId, reason: `A new bank account is in its cooling period until ${a.usableFrom.toISOString()}.` });
@@ -227,14 +271,17 @@ export class PayoutService implements OnModuleInit {
             narration: `Salary ${dateOf(s.periodStart).slice(0, 7)}`,
           });
       }
-      if (!rows.length) throw new ConflictException({ statusCode: 409, message: 'Nobody in this run is waiting to be paid by bank.', excluded });
+      if (!rows.length && !remits.length) throw new ConflictException({ statusCode: 409, message: 'Nobody in this run is waiting to be paid by bank.', excluded });
       let out: Awaited<ReturnType<typeof writeBankFile>>;
       try {
         out = await writeBankFile(fmt.values as unknown as BankLayout, rows, { debitAccount: dto.debitAccount, date: payDate });
       } catch (e) {
         throw new BadRequestException(`The bank file could not be written: ${(e as Error).message}`);
       }
-      const total = rows.reduce((t, r) => t.add(r.amount), D(0));
+      const domestic = rows.reduce((t, r) => t.add(r.amount), D(0));
+      const abroadTotal = remits.reduce((t, r) => t.add(r.amount), D(0));
+      // The bank file record covers every payslip it pays, in India and abroad: its total is their net pay.
+      const total = domestic.add(abroadTotal);
       const month = dateOf(run.periodStart).slice(0, 7);
       const f = await this.files.generateIn(tx, c, {
         legalEntityId: run.legalEntityId,
@@ -246,9 +293,24 @@ export class PayoutService implements OnModuleInit {
         contentType: out.contentType,
         data: out.data,
         rows: rows.length,
-        totals: { net: total.toFixed(2) },
+        totals: { net: domestic.toFixed(2) },
         by: v.userId!,
       });
+      const rf = remits.length
+        ? await this.files.generateIn(tx, c, {
+            legalEntityId: run.legalEntityId,
+            kind: 'remittance',
+            ownerType: 'payroll_run',
+            ownerId: run.id,
+            periodStart: dateOf(run.periodStart),
+            fileName: `remittance-${month}-${before + 1}.csv`,
+            contentType: 'text/csv; charset=utf-8',
+            data: remittanceCsv(remits),
+            rows: remits.length,
+            totals: { net: abroadTotal.toFixed(2) },
+            by: v.userId!,
+          })
+        : null;
       const bf = await tx.bankFile.create({
         data: {
           organizationId: org,
@@ -260,9 +322,10 @@ export class PayoutService implements OnModuleInit {
           debitAccountLast4: dto.debitAccount.slice(-4),
           generationNo: before + 1,
           regenerationReason: before ? dto.reason! : null,
-          payslipIds: [...new Set(rows.map((r) => r.slip.id))],
+          payslipIds: [...new Set([...rows, ...remits].map((r) => r.slip.id))],
           total,
           generatedBy: v.userId!,
+          remittanceFileId: rf?.id ?? null,
         },
       });
       const claimed = into.filter((x) => bf.payslipIds.includes(x.payslipId));
@@ -273,6 +336,7 @@ export class PayoutService implements OnModuleInit {
         fileId: f.id,
         format: `${key} ${fmt.version}`,
         rows: rows.length,
+        abroadRows: remits.length,
         excluded: excluded.length,
         generation: bf.generationNo,
         reason: bf.regenerationReason,
@@ -285,6 +349,8 @@ export class PayoutService implements OnModuleInit {
         total: total.toFixed(2),
         sha256: f.sha256,
         format: { key, version: fmt.version, label: (fmt.values as unknown as BankLayout).label },
+        // PPL-46: the outward remittance list (accounts abroad), released with this file.
+        remittance: rf ? { fileId: rf.id, rows: remits.length, total: abroadTotal.toFixed(2), sha256: rf.sha256 } : null,
         excluded,
       };
     }
@@ -336,11 +402,15 @@ export class PayoutService implements OnModuleInit {
         const slips = await tx.payslip.findMany({ where: { organizationId: org, id: { in: bf.payslipIds } } });
         const total = slips.reduce((t, s) => t.add(s.net), D(0));
         const fileTotal = (f.totals as Record<string, string>).net;
+        // PPL-46: the remittance list goes with it (checked against its hash too); a slip may be split over several rows.
+        const rf = bf.remittanceFileId ? await tx.exchangeFile.findFirst({ where: { organizationId: org, id: bf.remittanceFileId } }) : null;
+        if (bf.remittanceFileId && (!rf || rf.status !== 'generated')) throw new ConflictException('The remittance list of this file changed. Generate it again.');
+        if (rf) await this.files.checked(rf);
+        const abroadTotal = rf ? D((rf.totals as Record<string, string>).net ?? '0') : D(0);
         if (
           slips.length !== bf.payslipIds.length ||
-          slips.length !== f.rowCount ||
           !total.eq(bf.total) ||
-          !total.eq(D(fileTotal ?? '0')) ||
+          !total.eq(D(fileTotal ?? '0').add(abroadTotal)) ||
           slips.some((s) => s.status !== 'approved' || s.held || !REPAYABLE.includes(s.paymentStatus))
         ) {
           throw new ConflictException('The payslips changed after this file was generated. Generate it again.');
@@ -348,7 +418,8 @@ export class PayoutService implements OnModuleInit {
         const me = await this.ownEmployeeIds(tx);
         if (slips.some((s) => me.has(s.employeeId))) throw new ForbiddenException('This file pays you, so someone else must release it.');
         await tx.payslip.updateMany({ where: { organizationId: org, id: { in: bf.payslipIds } }, data: { paymentStatus: 'sent' } });
-        await audit(tx, c, 'payroll.bankfile.released', 'bank_file', bf.id, { runId: bf.runId, fileId: f.id, rows: f.rowCount, sha256: f.sha256 });
+        if (rf) await tx.exchangeFile.update({ where: { id: rf.id }, data: { status: 'released', releasedBy: v.userId!, releasedAt: new Date() } });
+        await audit(tx, c, 'payroll.bankfile.released', 'bank_file', bf.id, { runId: bf.runId, fileId: f.id, rows: f.rowCount, sha256: f.sha256, remittance: rf ? { fileId: rf.id, rows: rf.rowCount, sha256: rf.sha256 } : null });
       },
     });
   }

@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsBIC, IsBoolean, IsDateString, IsEmail, IsIBAN, IsIdentityCard, IsIn, IsInt, IsISO4217CurrencyCode, IsNumber, IsObject, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested, ValidateIf } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBIC, IsBoolean, IsDateString, IsEmail, IsIBAN, IsIdentityCard, IsIn, IsInt, IsISO4217CurrencyCode, IsNumber, IsObject, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested, ValidateIf } from 'class-validator';
 import { PAN } from '../org-structure/org-validation';
+import { SPLIT_ACCOUNTS, SPLIT_RULES } from './pay-split';
 
 // Bodies for the employee's Personal data (P02 §4.4) and identity / bank change requests (§4.5). Every field
 // is whitelisted by the global pipe; identifiers are checked with proven validators (validator.js Verhoeff for
@@ -61,7 +62,21 @@ export class WorkPhoneDto {
   workPhone!: string | null;
 }
 
-export const REQUEST_KINDS = ['bank_salary', 'bank_reimbursement', 'pan', 'aadhaar', 'uan', 'esic', 'legal_name', 'passport', 'bank_international'] as const;
+export const REQUEST_KINDS = ['bank_salary', 'bank_reimbursement', 'pan', 'aadhaar', 'uan', 'esic', 'legal_name', 'passport', 'bank_international', 'correction', 'pay_split'] as const;
+/** PPL-33: what a correction is about: the rows of "What we hold" (by class). */
+export const CORRECTION_FIELDS = ['public', 'internal', 'personal', 'confidential', 'special'] as const;
+
+/** PPL-46: one line of a split (an account on file, its rule and value: rupees for fixed, per cent for percent). */
+export class SplitLineDto {
+  @IsIn(SPLIT_ACCOUNTS)
+  account!: (typeof SPLIT_ACCOUNTS)[number];
+
+  @IsIn(SPLIT_RULES)
+  rule!: (typeof SPLIT_RULES)[number];
+
+  @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(100_000_000)
+  value!: number;
+}
 export type RequestKind = (typeof REQUEST_KINDS)[number];
 
 /** The proposed value; only the part the kind needs is read (the rest must be absent). */
@@ -111,6 +126,17 @@ export class ProposedValueDto {
 
   @ValidateIf((o: ProposedValueDto, v) => v !== undefined) @IsISO4217CurrencyCode({ message: 'currency is an ISO 4217 code, like AED' })
   currency?: string;
+
+  // PPL-33: a correction says which data is wrong and what it should be.
+  @ValidateIf((o: ProposedValueDto, v) => v !== undefined) @IsIn(CORRECTION_FIELDS)
+  correctionField?: (typeof CORRECTION_FIELDS)[number];
+
+  @ValidateIf((o: ProposedValueDto, v) => v !== undefined) @IsString() @MinLength(3) @MaxLength(500)
+  correctionText?: string;
+
+  // PPL-46: the split of net pay over the accounts on file.
+  @ValidateIf((o: ProposedValueDto, v) => v !== undefined) @IsArray() @ArrayMinSize(1) @ArrayMaxSize(3) @ValidateNested({ each: true }) @Type(() => SplitLineDto)
+  split?: SplitLineDto[];
 }
 
 export class ProfileRequestDto {
@@ -176,6 +202,8 @@ export const KIND_FIELDS: Record<RequestKind, (keyof ProposedValueDto)[]> = {
   bank_salary: ['holderName', 'accountNumber', 'ifsc'],
   bank_reimbursement: ['holderName', 'accountNumber', 'ifsc'],
   bank_international: ['country', 'iban', 'bic', 'currency'],
+  correction: ['correctionField', 'correctionText'],
+  pay_split: ['split'],
 };
 
 // ---- PPL-03 family, nominations and emergency contacts (Personal class) ----
@@ -254,3 +282,18 @@ export function nominationProblem(memberCount: number, nominations: Pick<Nominat
 }
 
 export const SCHEME_LABEL: Record<string, string> = { pf: 'PF', eps: 'EPS', gratuity: 'Gratuity', group_term: 'Group term insurance', all: 'All schemes' };
+
+/** PPL-33: the person's nominee for their data rights (DPDP Act 2023, s.14); an email or a phone to reach them. */
+export class PrivacyNomineeDto {
+  @IsString() @MinLength(2) @MaxLength(100)
+  name!: string;
+
+  @IsString() @MinLength(2) @MaxLength(40)
+  relation!: string;
+
+  @IsOptional() @IsEmail({}, { message: 'Enter an email like name@example.com.' }) @MaxLength(254)
+  email?: string;
+
+  @IsOptional() @Matches(/^\+?[0-9]{8,15}$/, { message: 'Enter a phone number of 8 to 15 digits, with + and the country code if abroad.' })
+  phone?: string;
+}

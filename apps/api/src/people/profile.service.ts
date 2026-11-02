@@ -9,13 +9,15 @@ import type { CustomFieldDataClass } from '../custom-fields/dto/create-custom-fi
 import { displayName, EmployeeHistoryService, Viewer } from '../employee-history/employee-history.service';
 import { EmailService } from '../email/email.service';
 import { e164 } from './persons';
+import { withPayScope } from '../payroll/pay-access';
 
 /** Child and Adolescent Labour Act 1986: nobody under 14 works (no company setting for a minimum age exists). */
 const MIN_WORKING_AGE = 14;
 const minBirthDate = (today: string) => `${Number(today.slice(0, 4)) - MIN_WORKING_AGE}${today.slice(4)}`;
 const PERSONAL_LABEL = { dateOfBirth: 'Date of birth', gender: 'Gender', maritalStatus: 'Marital status', personalEmail: 'Personal email', personalPhone: 'Personal phone', addressLine1: 'Address', addressLine2: 'Address line 2', city: 'City', stateCode: 'State', postalCode: 'PIN code' } as const;
 import { settingFor } from './probation';
-import { CustomFieldValuesDto, EmergencyContactsDto, FamilyDto, KIND_FIELDS, nominationProblem, PersonalDetailsDto, ProfileRequestDto, ProposedValueDto, RequestKind } from './profile.dto';
+import { CustomFieldValuesDto, EmergencyContactsDto, FamilyDto, KIND_FIELDS, nominationProblem, PersonalDetailsDto, PrivacyNomineeDto, ProfileRequestDto, ProposedValueDto, RequestKind } from './profile.dto';
+import { splitAmounts, splitText, SPLIT_LABEL, type SplitAccount, type SplitLine } from './pay-split';
 
 // The employee's own data beyond job facts (P02 §4.4–4.5; P01 §4.4; M01 §3.1, Q4):
 //   Personal      the person and HR holding employee.personal.view in scope; the person edits it directly,
@@ -33,7 +35,10 @@ type Identifier = 'pan' | 'aadhaar' | 'uan' | 'esic' | 'passport';
 const INTL = 'bank_international';
 const IDENTIFIERS: readonly Identifier[] = ['pan', 'aadhaar', 'uan', 'esic', 'passport'];
 const BANK: Record<string, 'salary' | 'reimbursement'> = { bank_salary: 'salary', bank_reimbursement: 'reimbursement' };
-const LABEL: Record<Kind, string> = { pan: 'PAN', aadhaar: 'Aadhaar', uan: 'UAN', esic: 'ESIC IP number', legal_name: 'Legal name', bank_salary: 'Salary bank account', bank_reimbursement: 'Reimbursement bank account', passport: 'Passport', bank_international: 'Salary account abroad' };
+const LABEL: Record<Kind, string> = { pan: 'PAN', aadhaar: 'Aadhaar', uan: 'UAN', esic: 'ESIC IP number', legal_name: 'Legal name', bank_salary: 'Salary bank account', bank_reimbursement: 'Reimbursement bank account', passport: 'Passport', bank_international: 'Salary account abroad', correction: 'Correction to my data', pay_split: 'Pay split' };
+/** PPL-33: the "What we hold" rows a correction can be about (by class). */
+const CORRECTION_LABEL: Record<string, string> = { public: 'Name, photo, designation, work contact', internal: 'Joining date, grade, birthday', personal: 'Address, personal phone, family, emergency contacts', confidential: 'Salary, bank account, PAN, UAN, payslips', special: 'Aadhaar, background check reports' };
+const SPLIT = 'pay_split';
 /** PPL-32: the document type that proves each kind of change (UAN and ESIC have none). */
 export const PROOF_TYPE: Partial<Record<Kind, string>> = { bank_salary: 'bank_proof', bank_reimbursement: 'bank_proof', pan: 'pan_card', aadhaar: 'aadhaar', legal_name: 'name_change_proof', passport: 'passport' };
 const FIELD_LABEL: Record<string, string> = { pan: 'PAN', uan: 'UAN', esic: 'ESIC IP number', bank_salary: 'Salary bank account', bank_reimbursement: 'Reimbursement bank account' };
@@ -420,7 +425,8 @@ export class ProfileService {
     const missing = allowed.filter((k) => value[k] === undefined);
     if (extra.length || missing.length) throw new BadRequestException(`${LABEL[kind]} takes ${allowed.join(', ')}${extra.length ? `, not ${extra.join(', ')}` : ''}.`);
     const out: Proposal = {};
-    for (const k of allowed) out[k] = String(value[k]).trim();
+    // PPL-46: the split's lines are kept as JSON in the sealed proposal.
+    for (const k of allowed) out[k] = k === 'split' ? JSON.stringify((value.split ?? []).map((l) => ({ account: l.account, rule: l.rule, value: l.rule === 'remainder' ? 0 : l.value }))) : String(value[k]).trim();
     return out;
   }
 
@@ -430,10 +436,17 @@ export class ProfileService {
     if (BANK[kind]) return { holderName: p.holderName ?? null, ifsc: p.ifsc ?? null, account: maskTail(last4(p.accountNumber ?? '')) };
     if (kind === 'passport') return { value: maskTail(last4(p.passport ?? '')), expiresOn: p.passportExpiresOn ?? null };
     if (kind === INTL) return { country: p.country ?? null, iban: maskShaped('account', last4(p.iban ?? '')), bic: p.bic ?? null, currency: p.currency ?? null };
+    if (kind === 'correction') return { field: CORRECTION_LABEL[p.correctionField ?? ''] ?? null, value: p.correctionText ?? null };
+    if (kind === SPLIT) return { split: splitText(JSON.parse(p.split ?? '[]') as SplitLine[]) };
     return { value: maskTail(last4(p[kind as Identifier] ?? '')) };
   }
 
   private async currentDisplay(tx: Tx, c: CompanyContext, employeeId: string, kind: Kind) {
+    if (kind === 'correction') return null;
+    if (kind === SPLIT) {
+      const s = await this.currentSplit(tx, c, employeeId);
+      return s ? { split: splitText(s.lines) } : null;
+    }
     if (BANK[kind]) {
       const b = await tx.employeeBankAccount.findFirst({ where: { organizationId: c.organizationId, employeeId, purpose: BANK[kind], validTo: null } });
       return b ? { holderName: b.holderName, ifsc: b.ifsc, account: maskTail(b.accountLast4) } : null;
@@ -456,7 +469,9 @@ export class ProfileService {
     if (dto.kind === INTL && !p.iban!.startsWith(p.country!)) throw new BadRequestException('The IBAN must be from the country of the account.');
     return this.history.run(ctx, async (tx, c) => {
       const a = await this.history.access(tx, c, v, employeeId);
+      if (dto.kind === 'correction' && !a.self) throw new ForbiddenException('A correction is asked for by the person themselves, from their Privacy page.');
       if (!a.self && !(await this.can(tx, c, v, 'employee.identity.manage', employeeId))) throw new ForbiddenException('Raising an identity or bank change for someone else needs employee.identity.manage.');
+      if (dto.kind === SPLIT) await this.checkSplit(tx, c, employeeId, JSON.parse(p.split!) as SplitLine[]);
       if (await this.sameAsOnFile(tx, c, employeeId, dto.kind, p)) throw new BadRequestException('That is already the value on file.');
       await this.checkProof(tx, c, employeeId, a.self, dto);
       if (dto.effectiveOn && (dto.kind !== 'legal_name' || dto.effectiveOn > todayIst())) throw new BadRequestException('The effective date is for a legal name, on or before today.');
@@ -551,6 +566,8 @@ export class ProfileService {
   }
 
   private async sameAsOnFile(tx: Tx, c: CompanyContext, employeeId: string, kind: Kind, p: Proposal) {
+    if (kind === 'correction') return false;
+    if (kind === SPLIT) return JSON.stringify((await this.currentSplit(tx, c, employeeId))?.lines ?? null) === p.split;
     if (BANK[kind]) {
       const b = await tx.employeeBankAccount.findFirst({ where: { organizationId: c.organizationId, employeeId, purpose: BANK[kind], validTo: null } });
       return Boolean(b && b.accountHash === this.hash(c, 'bank', `${p.ifsc}:${p.accountNumber}`) && b.holderName === p.holderName);
@@ -701,6 +718,17 @@ export class ProfileService {
             requestId: r.id,
           },
         });
+      } else if (kind === SPLIT) {
+        // PPL-46: the accounts must still be on file; the new split is paid after the cooling period, the old one until then.
+        const lines = JSON.parse(p.split!) as SplitLine[];
+        await this.checkSplit(tx, c, r.employeeId, lines);
+        const employment = await tx.employment.findFirst({ where: { organizationId: c.organizationId, employeeId: r.employeeId }, orderBy: { joinedOn: 'desc' } });
+        const hours = Number(await settingFor(tx, c, 'employee.bank_change.cooling_hours', { legalEntityId: employment?.legalEntityId ?? '' }));
+        const usableFrom = new Date(now.getTime() + hours * 3_600_000);
+        await tx.employeePaySplit.updateMany({ where: { organizationId: c.organizationId, employeeId: r.employeeId, validTo: null }, data: { validTo: usableFrom } });
+        await tx.employeePaySplit.create({ data: { organizationId: c.organizationId, employeeId: r.employeeId, lines: lines as unknown as Prisma.InputJsonValue, validFrom: now, usableFrom, requestId: r.id } });
+      } else if (kind === 'correction') {
+        // PPL-33: HR fixes the data where it lives (its own audited change); approving records that it is done.
       } else {
         const data: Record<string, unknown> =
           kind === 'legal_name'
@@ -719,8 +747,11 @@ export class ProfileService {
       return { id, status: 'approved' as const, kind, contacts, organizationId: c.organizationId };
     });
     // YX-SEC-13: tell the person through the contacts on file before the change (best effort, after commit).
-    const subject = `Your ${LABEL[result.kind].toLowerCase()} on file was changed`;
-    const html = `<p>Your ${LABEL[result.kind].toLowerCase()} on file at work was changed on ${todayIst()} after an approved request.</p><p>If you did not ask for this, contact HR at once.</p>`;
+    const corrected = result.kind === 'correction';
+    const subject = corrected ? 'Your correction request was done' : `Your ${LABEL[result.kind].toLowerCase()} on file was changed`;
+    const html = corrected
+      ? `<p>HR finished the correction you asked for on ${todayIst()}. Open Privacy in YukthiX to download your data and check it.</p>`
+      : `<p>Your ${LABEL[result.kind].toLowerCase()} on file at work was changed on ${todayIst()} after an approved request.</p><p>If you did not ask for this, contact HR at once.</p>`;
     await Promise.allSettled(result.contacts.map((to) => this.email.send({ to, subject, html, organizationId: result.organizationId }))).catch((e) => this.logger.error(e));
     return { id: result.id, status: result.status };
   }
@@ -899,6 +930,106 @@ export class ProfileService {
   private async docTypeNames(tx: Tx, org: string, keys: string[]) {
     const rows = await tx.documentType.findMany({ where: { key: { in: keys }, OR: [{ organizationId: null }, { organizationId: org }] }, orderBy: { organizationId: { sort: 'asc', nulls: 'first' } }, select: { key: true, name: true } });
     return new Map(rows.map((t) => [t.key, t.name]));
+  }
+
+  // ================= PPL-46 split pay =================
+
+  /** The split paid now or next (the newest row; usableFrom says from when). */
+  private async currentSplit(tx: Tx, c: CompanyContext, employeeId: string) {
+    const s = await tx.employeePaySplit.findFirst({ where: { organizationId: c.organizationId, employeeId, validTo: null } });
+    return s ? { lines: s.lines as unknown as SplitLine[], usableFrom: s.usableFrom } : null;
+  }
+
+  /** The person's accounts a split can use: the salary and reimbursement accounts in India and the account abroad. */
+  private async splitAccounts(tx: Tx, c: CompanyContext, employeeId: string) {
+    const org = c.organizationId;
+    const banks = await tx.employeeBankAccount.findMany({ where: { organizationId: org, employeeId, validTo: null } });
+    const abroad = await tx.employeeIntlBankAccount.findFirst({ where: { organizationId: org, employeeId, validTo: null } });
+    const out: { account: SplitAccount; label: string; usableFrom: Date }[] = [];
+    for (const purpose of ['salary', 'reimbursement'] as const) {
+      const b = banks.find((x) => x.purpose === purpose);
+      if (b) out.push({ account: purpose, label: `${SPLIT_LABEL[purpose]} · ${b.ifsc} · ${maskTail(b.accountLast4)}`, usableFrom: b.usableFrom });
+    }
+    if (abroad) out.push({ account: 'abroad', label: `${SPLIT_LABEL.abroad} · ${maskShaped('account', abroad.ibanLast4)} · ${abroad.currency}`, usableFrom: abroad.usableFrom });
+    return out;
+  }
+
+  /** The last approved payslip's net pay (a server-side check: the pay guard opens to the person's entity only for it). */
+  private async lastNet(tx: Tx, c: CompanyContext, employeeId: string) {
+    const job = await tx.employment.findFirst({ where: { organizationId: c.organizationId, employeeId }, orderBy: { joinedOn: 'desc' }, select: { legalEntityId: true } });
+    if (!job) return null;
+    const s = await withPayScope(tx, [job.legalEntityId], () => tx.payslip.findFirst({ where: { organizationId: c.organizationId, employeeId, status: 'approved' }, orderBy: { periodStart: 'desc' }, select: { net: true } }));
+    return s?.net ?? null;
+  }
+
+  /** Every account of the split is on file, and the split fits the last net pay (the designed OverSplit message). */
+  private async checkSplit(tx: Tx, c: CompanyContext, employeeId: string, lines: SplitLine[]) {
+    const on = await this.splitAccounts(tx, c, employeeId);
+    const missing = lines.find((l) => !on.some((a) => a.account === l.account));
+    if (missing) throw new BadRequestException(`There is no ${SPLIT_LABEL[missing.account].toLowerCase()} on file. Add it first, then split pay.`);
+    const net = await this.lastNet(tx, c, employeeId);
+    // No payslip yet: only the shape is checked; payroll never pays more than the net (fixed amounts in order).
+    const r = splitAmounts(net ?? Number.MAX_SAFE_INTEGER, lines, true);
+    if (!r.ok) throw new BadRequestException({ statusCode: 400, code: r.error.startsWith('Fixed amounts') ? 'OVER_SPLIT' : 'BAD_SPLIT', message: r.error });
+  }
+
+  /** PPL-46: the split page: the accounts a split can use, the split now, and (for the person, or pay keys) the last net. */
+  paySplit(ctx: TenantContext, v: Viewer, employeeId: string) {
+    return this.history.run(ctx, async (tx, c) => {
+      const a = await this.history.access(tx, c, v, employeeId);
+      if (v.actingForOther || (!a.self && !(await this.can(tx, c, v, 'employee.identity.manage', employeeId)))) throw new NotFoundException('Not found');
+      const pay = a.self || (await this.can(tx, c, v, 'employee.salary.view', employeeId));
+      const net = pay ? await this.lastNet(tx, c, employeeId) : null;
+      if (net && !a.self) await audit(tx, c, 'employee.pay.viewed', 'employee', employeeId, { what: 'split' });
+      const current = await this.currentSplit(tx, c, employeeId);
+      const waiting = await tx.employeeProfileRequest.count({ where: { organizationId: c.organizationId, employeeId, kind: SPLIT, status: 'pending' } });
+      return { accounts: await this.splitAccounts(tx, c, employeeId), current, waiting: waiting > 0, net: net ? Number(net) : null };
+    });
+  }
+
+  // ================= PPL-33 nominee for my data rights =================
+
+  private async ownRecord(tx: Tx, c: CompanyContext, v: Viewer) {
+    const own = await this.history.ownEmployeeId(tx, c, v);
+    if (!own || v.actingForOther) throw new NotFoundException('You have no employee record in this company.');
+    return own;
+  }
+
+  private nomineeView(n: Prisma.PrivacyNomineeGetPayload<object> | null) {
+    return n ? { name: n.name, relation: n.relation, email: n.email, phone: n.phone, since: n.createdAt.toISOString() } : null;
+  }
+
+  /** My nominee (DPDP Act 2023, s.14: who acts for me on my data if I die or cannot act). */
+  myNominee(ctx: TenantContext, v: Viewer) {
+    return this.history.run(ctx, async (tx, c) => {
+      const own = await this.ownRecord(tx, c, v);
+      return { nominee: this.nomineeView(await tx.privacyNominee.findFirst({ where: { organizationId: c.organizationId, employeeId: own, endedAt: null } })) };
+    });
+  }
+
+  /** Name (or replace) my nominee: the old row ends, never deleted; audited without the contact details. */
+  setNominee(ctx: TenantContext, v: Viewer, dto: PrivacyNomineeDto) {
+    if (!dto.email && !dto.phone) throw new BadRequestException('Give an email or a phone number to reach your nominee.');
+    return this.history.run(ctx, async (tx, c) => {
+      const own = await this.ownRecord(tx, c, v);
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`privacy-nominee:${c.organizationId}:${own}`}))`;
+      const me = await tx.employee.findFirstOrThrow({ where: { organizationId: c.organizationId, id: own } });
+      if (displayName(me).toLowerCase() === dto.name.trim().toLowerCase()) throw new BadRequestException('Nominate someone other than yourself.');
+      const ended = await tx.privacyNominee.updateMany({ where: { organizationId: c.organizationId, employeeId: own, endedAt: null }, data: { endedAt: new Date(), endedBy: v.userId } });
+      const n = await tx.privacyNominee.create({ data: { organizationId: c.organizationId, employeeId: own, name: dto.name.trim(), relation: dto.relation.trim(), email: dto.email?.trim() || null, phone: dto.phone?.trim() || null, createdBy: v.userId! } });
+      await audit(tx, c, 'privacy.nominee.set', 'employee', own, { replaced: ended.count > 0 });
+      return { nominee: this.nomineeView(n) };
+    });
+  }
+
+  removeNominee(ctx: TenantContext, v: Viewer) {
+    return this.history.run(ctx, async (tx, c) => {
+      const own = await this.ownRecord(tx, c, v);
+      const n = await tx.privacyNominee.updateMany({ where: { organizationId: c.organizationId, employeeId: own, endedAt: null }, data: { endedAt: new Date(), endedBy: v.userId } });
+      if (!n.count) throw new NotFoundException('You have no nominee to remove.');
+      await audit(tx, c, 'privacy.nominee.removed', 'employee', own, {});
+      return { nominee: null };
+    });
   }
 
   // ================= who accessed my data (P02 §7, P08) =================

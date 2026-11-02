@@ -31,7 +31,7 @@ import { toResponse } from '../custom-fields/custom-fields-config.controller';
 import { CreateCustomFieldDto } from '../custom-fields/dto/create-custom-field.dto';
 import { UpdateCustomFieldDto } from '../custom-fields/dto/update-custom-field.dto';
 import { ProfileService } from './profile.service';
-import { CustomFieldValuesDto, EmergencyContactsDto, FamilyDto, MyDataDto, PersonalDetailsDto, ProfileDecisionDto, ProfileReasonDto, ProfileRequestDto, ProfileRequestListDto, RevealDto, WorkPhoneDto } from './profile.dto';
+import { CustomFieldValuesDto, EmergencyContactsDto, FamilyDto, MyDataDto, PersonalDetailsDto, PrivacyNomineeDto, ProfileDecisionDto, ProfileReasonDto, ProfileRequestDto, ProfileRequestListDto, RevealDto, WorkPhoneDto } from './profile.dto';
 import { myDataPdf } from './my-data-pdf';
 
 // People core (P01 §4.4–4.5a; M01 §3.1–3.4, §3.9–3.10). Permissions (P02 YX-SEC-01):
@@ -139,6 +139,34 @@ export class PeopleController {
   @Get('me/access-log')
   async accessLog(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     return this.profiles.accessLog(ctx, await this.viewer(req));
+  }
+
+  /** PPL-33: my nominee for my data rights (my own record only). */
+  @Get('me/privacy-nominee')
+  async myNominee(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.profiles.myNominee(ctx, await this.viewer(req));
+  }
+
+  /** Naming who acts for me on my data is a fresh-second-factor change, like my bank details. */
+  @Put('me/privacy-nominee')
+  @RequireStepUp()
+  async setNominee(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: PrivacyNomineeDto) {
+    ownSession(req);
+    return this.profiles.setNominee(ctx, await this.viewer(req), dto);
+  }
+
+  @Post('me/privacy-nominee/remove')
+  @HttpCode(200)
+  @RequireStepUp()
+  async removeNominee(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    ownSession(req);
+    return this.profiles.removeNominee(ctx, await this.viewer(req));
+  }
+
+  /** PPL-46: the split pay page (the person, or HR with employee.identity.manage in scope; the service decides). */
+  @Get('employees/:id/pay-split')
+  async paySplit(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.profiles.paySplit(ctx, await this.viewer(req), id);
   }
 
   @Get('employees/:id/profile')

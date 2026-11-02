@@ -47,6 +47,10 @@ const IMPLICIT: Record<string, string[]> = {
     'accessLog', // who looked at one's own data
     'myChangeForm', // one's own identity and bank change page (PPL-32)
     'myData', // one's own data as a file (PPL-33)
+    'myNominee', // one's own nominee for one's data rights (PPL-33)
+    'setNominee',
+    'removeNominee',
+    'paySplit', // the person, or employee.identity.manage in scope (PPL-46; checked by the service)
     'profile', // classes decided per record
     'reveal', // the person, or identity / Aadhaar keys in scope (checked by the service)
     'updatePersonal', // the person, or employee.profile.edit in scope

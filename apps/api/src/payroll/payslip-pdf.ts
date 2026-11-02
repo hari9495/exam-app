@@ -27,6 +27,8 @@ export interface SlipData {
   net: string;
   lines: SlipLine[];
   bankLast4: string | null;
+  /** PPL-46: a split pay, each account with what it gets; replaces the single account. */
+  bankSplit?: { label: string; last4: string; amount: string }[] | null;
   resultHash: string;
 }
 
@@ -53,7 +55,7 @@ export function payslipValues(d: SlipData): Record<string, string> {
     reimbursements: list('reimbursement'),
     grossPay: inr(d.gross),
     netPay: inr(d.net),
-    bankAccount: d.bankLast4 ? `•••• ${d.bankLast4}` : '—',
+    bankAccount: d.bankSplit?.length ? d.bankSplit.map((b) => `${b.label} •••• ${b.last4} ${inr(b.amount)}`).join(' · ') : d.bankLast4 ? `•••• ${d.bankLast4}` : '—',
   };
 }
 

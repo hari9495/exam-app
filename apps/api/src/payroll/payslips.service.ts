@@ -16,6 +16,7 @@ import type { ConfirmationDto } from './dto';
 import type { QueryRaiseDto, QueryUpdateDto } from './dto-5d';
 import { entitiesFor, payHolders, payScope, payViewer, publishesAlone, requireSelf, systemAdmins, withPayScope } from './pay-access';
 import { payslipValues, renderPayslipPdf, type SlipData } from './payslip-pdf';
+import { plainSalary, splitAmounts, splitsAt, SPLIT_LABEL } from '../people/pay-split';
 import { sha256 } from './pay-file-store';
 
 // Payslips to employees (M03-BUILD-DESIGN §9.8, §11.1, PAY-4.04 … 4.06): publish an approved run (step-up, typed phrase)
@@ -257,6 +258,22 @@ export class PayslipsService {
     });
   }
 
+  /**
+   * PPL-46: the accounts a split pay sends this payslip's net to, with each amount (the split in force when the payslip
+   * was approved; shortcut: the split as saved, not the bank file's rows; read the bank file when a split changes mid-run).
+   */
+  private async splitOf(tx: Tx, org: string, s: Slip) {
+    const split = (await splitsAt(tx, org, [s.employeeId], s.approvedAt ?? new Date())).get(s.employeeId);
+    if (plainSalary(split)) return null;
+    const r = splitAmounts(s.net, split!, false);
+    if (!r.ok) return null;
+    const banks = await tx.employeeBankAccount.findMany({ where: { organizationId: org, employeeId: s.employeeId, validTo: null }, select: { purpose: true, accountLast4: true } });
+    const abroad = await tx.employeeIntlBankAccount.findFirst({ where: { organizationId: org, employeeId: s.employeeId, validTo: null }, select: { ibanLast4: true } });
+    return r.amounts
+      .filter((x) => x.amount.gt(0))
+      .map((x) => ({ label: SPLIT_LABEL[x.account], last4: (x.account === 'abroad' ? abroad?.ibanLast4 : banks.find((b) => b.purpose === x.account)?.accountLast4) ?? '····', amount: x.amount.toFixed(2) }));
+  }
+
   /** Draws one payslip from its stored lines with the entity's active layout (every wage-slip particular shown). */
   private async render(tx: Tx, org: string, s: Slip, opts: { watermark?: string; password?: string }) {
     const month = dateOf(s.periodStart).slice(0, 7);
@@ -290,6 +307,7 @@ export class PayslipsService {
       net: s.net.toFixed(2),
       lines: lines.map((l) => ({ code: l.componentCode, name: l.name, kind: l.kind, amount: l.amount.toFixed(2), quantity: l.quantity?.toFixed(2) ?? null })),
       bankLast4: bank?.accountLast4 ?? null,
+      bankSplit: await this.splitOf(tx, org, s),
       resultHash: s.resultHash,
     };
     const labels: Record<string, string> = Object.fromEntries(mandatory.map((m) => [m.key, m.label]));

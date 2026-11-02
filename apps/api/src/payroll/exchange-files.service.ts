@@ -15,9 +15,9 @@ import { entitiesFor, payScope, payViewer, requireSelf } from './pay-access';
 // release is done by a second person (maker ≠ checker, also enforced by the database) after a fresh second step.
 
 const LINK_SECONDS = 60;
-const KINDS = ['bank', 'ecr', 'esi', 'pt', 'lwf', 'form138', 'form24q', 'form140', 'journal', 'register', 'inspection', 'wps', 'f1099nec', 'census'] as const;
+const KINDS = ['bank', 'ecr', 'esi', 'pt', 'lwf', 'form138', 'form24q', 'form140', 'journal', 'register', 'inspection', 'wps', 'f1099nec', 'census', 'remittance'] as const;
 export type FileKind = (typeof KINDS)[number];
-const KIND_LABEL: Record<FileKind, string> = { bank: 'Bank file', ecr: 'PF ECR', esi: 'ESI contributions', pt: 'Professional tax', lwf: 'Labour welfare fund', form138: 'Form 138 (TDS return)', form24q: 'Form 24Q (TDS return)', form140: 'Form 140', inspection: 'Inspection pack', journal: 'Accounting journal', register: 'Register', wps: 'WPS salary file', f1099nec: '1099-NEC data', census: 'Actuarial census' };
+const KIND_LABEL: Record<FileKind, string> = { bank: 'Bank file', ecr: 'PF ECR', esi: 'ESI contributions', pt: 'Professional tax', lwf: 'Labour welfare fund', form138: 'Form 138 (TDS return)', form24q: 'Form 24Q (TDS return)', form140: 'Form 140', inspection: 'Inspection pack', journal: 'Accounting journal', register: 'Register', wps: 'WPS salary file', f1099nec: '1099-NEC data', census: 'Actuarial census', remittance: 'Remittance list (accounts abroad)' };
 const STATUTORY_KINDS = new Set<FileKind>(['ecr', 'esi', 'pt', 'lwf', 'form138', 'form24q', 'form140', 'register', 'inspection']);
 const tokenHash = (t: string) => createHash('sha256').update(t).digest('hex');
 
@@ -102,7 +102,8 @@ export class ExchangeFilesService {
       const f = await tx.exchangeFile.findFirst({ where: { organizationId: c.organizationId, id } });
       if (!f) throw new NotFoundException('Not found');
       // A bank file carries full account numbers (§12.5): only the people who make or release it may download it.
-      if (f.kind === 'bank' && !(await entitiesFor(tx, c, v, 'payroll.bankfile.generate')).concat(await entitiesFor(tx, c, v, 'payroll.bankfile.release')).includes(f.legalEntityId)) throw new ForbiddenException('Bank files are downloaded by the people who generate or release them.');
+      // PPL-46: the remittance list carries full IBANs, so it goes only to the same people.
+      if ((f.kind === 'bank' || f.kind === 'remittance') && !(await entitiesFor(tx, c, v, 'payroll.bankfile.generate')).concat(await entitiesFor(tx, c, v, 'payroll.bankfile.release')).includes(f.legalEntityId)) throw new ForbiddenException('Bank files are downloaded by the people who generate or release them.');
       // Statutory files (UAN, ESI numbers, PANs) for those who hold the statutory download key; other files need payroll.file.view.
       const statutory = STATUTORY_KINDS.has(f.kind as FileKind);
       const allowed = statutory ? (await entitiesFor(tx, c, v, 'statutory.filing.download')).concat(await entitiesFor(tx, c, v, 'payroll.file.view')) : await entitiesFor(tx, c, v, 'payroll.file.view');
@@ -156,6 +157,7 @@ export class ExchangeFilesService {
       await tx.$queryRaw`SELECT id FROM exchange_files WHERE organization_id = ${c.organizationId}::uuid AND id = ${id}::uuid FOR UPDATE`;
       const f = await tx.exchangeFile.findFirst({ where: { organizationId: c.organizationId, id } });
       if (!f) throw new NotFoundException('Not found');
+      if (f.kind === 'remittance') throw new ForbiddenException('The remittance list is released with its bank file, from the payroll run.');
       if ((f.kind === 'bank') !== Boolean(bank)) throw new ForbiddenException(f.kind === 'bank' ? 'Release a bank file from its payroll run (payroll.bankfile.release).' : 'Not a bank file.');
       if (f.generatedBy === v.userId) throw new ForbiddenException('You generated this file, so someone else must release it.');
       if (f.status !== 'generated') throw new ConflictException(f.status === 'released' ? 'This file is already released.' : 'A newer file replaced this one.');
