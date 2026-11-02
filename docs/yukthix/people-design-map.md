@@ -21,11 +21,14 @@ API) · **phone view, mobile app not built**.
 | A. Directory, record and changes | 9 | 138 | 0 | 0 | 2 | 0 | 140 |
 | B. Onboarding and probation | 7 | 69 | 2 | 0 | 0 | 0 | 71 |
 | C. Exits | 7 | 56 | 0 | 0 | 0 | 3 | 59 |
-| D. Assets, documents, letters and self-service | 9 | 50 | 4 | 0 | 0 | 9 | 63 |
-| E. Identity, same person and records | 6 | 14 | 7 | 0 | 2 | 0 | 23 |
-| F. Declarations, relations, special cases and checklists | 11 | 70 | 1 | 0 | 0 | 3 | 74 |
-| **All PPL groups (A–F)** | **49** | **397** | **14** | **0** | **4** | **15** | **430** |
+| D. Assets, documents, letters and self-service | 9 | 55 | 2 | 0 | 0 | 9 | 66 |
+| E. Identity, same person and records | 6 | 18 | 3 | 0 | 2 | 0 | 23 |
+| F. Declarations, relations, special cases and checklists | 11 | 72 | 0 | 0 | 0 | 3 | 75 |
+| **All PPL groups (A–F)** | **49** | **408** | **7** | **0** | **4** | **15** | **434** |
 | G. Other People stories (no PPL number) | 4 | 44 | 0 | 0 | 0 | 0 | 44 |
+
+Counted by script (3 Nov 2026, branch `feat/yukthix-people-last`: the last rows we can build ourselves are live: PPL-28 Held (+ story LiveHeld), PPL-33 MyData (+ Correction, Nominate), PPL-36 Queue, PPL-44 Blocked (+ OfficerWindow), PPL-46 SplitPay, OnPayTab, OverSplit; four design stories added; the C row was already 56 live by the script (the table said 55); what is left needs a provider (penny drop and PAN check PPL-27, face match PPL-34/36) or another module (contract workers, learning). Before that, 2 Nov 2026, branch `feat/yukthix-people-changes`: builder 2 added 24 design stories (PPL-03 12, PPL-04 3, PPL-05 3, PPL-24 6) and made the 8 "wire design" stories live; earlier counts 30 Oct 2026, on `test/yukthix-main`; the script is in the appendix): every `export const` story in the 49 `ppl-NN.stories.tsx`
+
 
 Recounted by script 2 Nov 2026 (branch `feat/yukthix-exit-order-callout`): PPL-40 gets two stories, both live (PermissionDecide,
 PermissionDecideBadOrder: the government's order number on a granted permission, founder pay-gaps answer 1). The script
@@ -200,7 +203,7 @@ Not People: /yx/me/requests (inbox design), /yx/settings/access-settings and com
 
 | page | what has no design | what it does | suggestion |
 |---|---|---|---|
-| /yx/people/directory/[id] Pay tab | account abroad card | PPL-46 `OnPayTab` draws it; the live Pay tab never passes `international` | pass it (S); the person's own desktop view is the phone design (Q5) |
+| /yx/people/directory/[id] Pay tab | account abroad card | done (people last rows, 3 Nov 2026): the Pay tab passes the account abroad and the split | — |
 | /yx/me/declarations/annual, /pre-clearance | "No declarations for you" / "No pre-clearance for you" (someone who is not designated) | done (small gaps): stories PPL-43 and PPL-44 NotDesignated; the screens take state 'not-designated' | — |
 
 ## 3. Designs with no live page or API
@@ -214,11 +217,11 @@ Not People: /yx/me/requests (inbox design), /yx/settings/access-settings and com
 | PPL-03 Learning tab (1) | a learning module | L |
 | PPL-34 Mismatch, PPL-36 FaceMatch (2); PPL-34 OnRecord, Refused (2, consent rows) | face matching with consent (photo at offer vs day one); the attestation path is already live | L |
 | PPL-27 automated checks (2) | PAN check and bank penny drop on employee documents; needs a provider (Pay's payout penny drop may be reusable) | M |
-| PPL-36 proposals (1) | propose "possible same person" on name + date of birth, PAN, UAN, not only a shared email | M |
-| PPL-28 Held (1) | a "held" letter status (a relieving letter waits for clearance) | M |
-| PPL-33 (1) | "How long" is done (small gaps: company settings per class); "Request a correction" and "Nominate someone" (M) | M |
-| PPL-44 Blocked (1) | a trading-window calendar (closed periods set by the compliance officer), refused requests inside it | M |
-| PPL-46 SplitPay, OverSplit (2) | pay split over several accounts, in the bank file too | L |
+| PPL-36 proposals (1) | done 3 Nov 2026 (people last rows): joiner ↔ employee record on PAN, UAN, name + date of birth | — |
+| PPL-28 Held (1) | done 3 Nov 2026: held letters with who, why, Release | — |
+| PPL-33 (1) | done 3 Nov 2026: Request a correction, Nominate someone | — |
+| PPL-44 Blocked (1) | done 3 Nov 2026: trading window calendar, refused requests and approvals inside it | — |
+| PPL-46 SplitPay, OverSplit (2) | done 3 Nov 2026: split pay over 3 accounts on file, bank file + remittance list + payslip | — |
 | PPL-22 absconding F&F (1) | a recovery-only F&F mode: "held until they claim it", no deadline while held | M |
 | PPL-12 rehire preview (1) | done (small gaps): impact preview in the Create drawer, choices with a reason sent with the create | — |
 | PPL-13 New hire view (1) | IT and Manager are done (small gaps: the API sends a non-HR owner only their tasks); the new hire's view is the portal (T9-01) and My first 30 days | — |
@@ -802,7 +805,7 @@ Live pages: /yx/people/letters (register, issue sheet, drafts) and /yx/people/le
 |---|---|---|
 | Bulk · Bulk issue · preview with failures | live | /yx/people/letters/bulk (or Issue letter with several people from the directory): the check lists who cannot get the letter and why |
 | BulkConfirm · Bulk issue · typed confirmation | live | "Issue N letters" asks for the typed phrase |
-| Register · Issued letters register (superseded, held) | live (gap) | superseded, pending approval, waiting for signature, withdrawn are live; the API has no "Held" letter status (e.g. relieving letter held until clearance) |
+| Register · Issued letters register (superseded, held) | live | superseded, pending approval, waiting for signature, withdrawn and Held are live: an exit with its letters on hold makes its relieving and experience letters "held" at T+0 (no reference number yet), with who held them and why ("Held until clearance is done." / "Held by HR on the exit."; the HR-only reason stays on the exit) |
 | Empty · · register empty | live | no letters yet: "No letters issued yet", Issue letter when a template is active |
 | Issue · Issue letter · preview with real data | live | Issue letter: type, person, preview PDF from POST letters/preview |
 | Approval · Issue letter · approval before issue | live | a template with requiresApproval: "Send for approval"; approver = the entity's first signatory, never the issuer |
@@ -814,6 +817,7 @@ Live pages: /yx/people/letters (register, issue sheet, drafts) and /yx/people/le
 | LiveReview · Live · review a drafted letter, then issue | live | POST letters/:id/preview, then letters/:id/issue |
 | LiveDiscardError · Live · discard a draft · reason missing | live | Discard draft asks for a reason; empty reason shows the error |
 | LiveCouldNotMake · Live · couldn’t be made: the reason, and Try again | live | "Try again": POST letters/:id/render; toast if it still fails |
+| LiveHeld · Live · held letter: who held it, why, and Release | live | row menu "Release letter" (letter.issue in scope, plus lifecycle.exit.manage for an exit's letter): the dialog shows Held by, Held on, Why; POST letters/:id/release makes and issues it (or sends it for approval); the exit's hold ends with its last held letter; toast |
 
 #### PPL-29 · Letter templates
 
@@ -875,10 +879,12 @@ Live page: /yx/me/privacy (menu People › Me › Privacy)
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| MyData · My data (classes, retention, download, correction) | live (gap) | classes, download (PDF, JSON: GET people/me/data) and the "How long" column (company settings `privacy.retention.*`, Confidential from `payroll.document_retention_years`, sent by GET people/me/access-log) are live; no "Request a correction", no "Nominate someone" (no API; corrections go through Change requests) |
+| MyData · My data (classes, retention, download, correction) | live | classes, download (PDF, JSON: GET people/me/data), "How long" (company settings `privacy.retention.*`), "Request a correction" (profile request kind `correction`, step-up, HR decides) and "Nominate someone" (GET/PUT people/me/privacy-nominee, remove) |
 | Accessed · Who accessed my data | live | GET people/me/access-log: views of my Confidential and Special data |
 | Off · Who accessed · turned off by the company | live | the API returns enabled=false when the company turns the view off; the page says so |
 | Phone · · phone | phone view, mobile app not built | `WhoAccessedPhone` in known.json |
+| Correction · Request a correction · what is wrong, sent to HR | live | the person only (HR is refused), with a fresh second factor: POST people/employees/:me/profile-requests {kind: correction, value: {correctionField, correctionText}}; HR decides it in Profile change requests (never the person), approving changes nothing on file (HR fixes it where it lives) and emails "Your correction request was done"; one waiting at a time (409) |
+| Nominate · Nominate someone · who acts for you on your data | live | DPDP Act 2023 s.14: name, relation, an email or a phone; PUT people/me/privacy-nominee (step-up) replaces the current one (the old row ends, never deleted); "Remove nominee" asks first; audited without the contact details |
 
 ### E. Identity, same person and records
 
@@ -907,7 +913,7 @@ Live page: /yx/people/same-person (menu People › More › Possible same person
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Queue · HR · proposals (name-only match never listed) | live (gap) | live proposals are only a login-only or help-desk record sharing another person's email; name + date of birth, PAN and UAN proposals are not built |
+| Queue · HR · proposals (name-only match never listed) | live | a login-only or help-desk record sharing another person's email, and (PPL-36 last rows) a new joiner whose own portal answers share an employee record's PAN, UAN, or name + date of birth (same first given name and last family word); never the name alone. Merge makes the joiner a rehire of a former employee (their joining, checklist, documents, letters move along; undone while they have not joined); someone working here now is refused (409). The joiner's PAN and UAN are kept only as the company's keyed hashes |
 | Compare · Evidence side by side | live | open a row: evidence table, Not the same person / Review merge |
 | FaceMatch · Consented face match proposal | design only, feature not built | no face match in the API |
 | Empty · · empty | live | nothing proposed: "No possible matches" (menu item hidden at 0; reach by URL) |
@@ -940,10 +946,10 @@ Live page: /yx/people/directory/[id]/bank-abroad (HR, record menu "Account abroa
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| SplitPay · HR · IBAN and split pay across 3 accounts | live (gap) | the live form changes one salary account abroad (profile request `bank_international`, approval and cooling period); the API has no split pay across accounts |
-| OnPayTab · On the Pay tab | live (gap) | live Pay tab never passes `international`, so the embedded card does not show; the account abroad is its own page (button "Account abroad") |
+| SplitPay · HR · IBAN and split pay across 3 accounts | live | the designed "Split net pay" card on /yx/people/directory/[id]/bank-abroad (and the person's own page): up to 3 of the accounts on file (salary and reimbursement in India, the account abroad), fixed first, then percentages, one remainder; one "Send for approval" sends the IBAN, the split (profile request `pay_split`), or both; HR approves (never the person), used for pay after the cooling period (`employee.bank_change.cooling_hours`). Payroll pays each Indian account in the bank file and the account abroad in the outward remittance list released with it; the payslip shows each account and amount |
+| OnPayTab · On the Pay tab | live | the record's Pay tab shows the embedded card (account abroad and the split, read only, "Change") when either is on file |
 | InvalidIban · Invalid IBAN and BIC | live | /yx/people/directory/[id]/bank-abroad: IBAN length and check digits and BIC are checked in the form before Send |
-| OverSplit · Split more than net pay | live (gap) | no split pay in the API (see SplitPay) |
+| OverSplit · Split more than net pay | live | "This split can't be saved: Fixed amounts and percentages are more than the net pay." in the card, and the API refuses it against the last approved payslip (400 OVER_SPLIT) |
 | Phone · Employee · phone | live | /yx/me/bank-abroad renders `InternationalBankPhone` with `live` on the web (self) |
 | PhoneInvalid · Employee · phone, invalid IBAN | live | same page, IBAN checked against the country from its first two letters |
 
@@ -1031,13 +1037,14 @@ Live page: /yx/me/declarations/pre-clearance (designated person; old /yx/me/pre-
 |---|---|---|
 | Request · Employee · request | live | POST me/pre-clearance; a person who is not designated gets 403 and the NotDesignated state |
 | Approved · Approved · validity window and trade report | live | after the officer approves (validUntil set); trade report with contract note upload |
-| Blocked · Blocked · trading window closed | live (gap) | the API has no trading-window calendar (closed periods); the rule text in live leaves out "never during a closed window" |
+| Blocked · Blocked · trading window closed | live | the compliance officer's calendar (trading_windows, none by default): while a period is closed GET me/pre-clearance carries `window` (until, reopens, why) and the page shows the designed alert; a request is refused (409 TRADING_WINDOW_CLOSED) and so is an approval; the rule text says "never during a closed trading window" again |
 | Expired · Expired without report | live | the service marks an approved, unreported request past validUntil as Expired |
 | Reported · Trade reported | live | POST me/pre-clearance/:id/report |
 | Switch · Employee · under Me › Declarations (switch) | live | designated person only |
 | Officer · Compliance officer · decisions | live | /yx/people/pre-clearance: approve or reject with note |
 | Phone · · phone | phone view, mobile app not built | `PreclearancePhone` is in known.json |
 | NotDesignated · Employee · not a designated person (no pre-clearance) | live | GET me/pre-clearance answers 403: live state 'not-designated' inside the Me frame |
+| OfficerWindow · Compliance officer · trading window calendar (close a period) | live | /yx/people/pre-clearance "Trading window" card: GET/POST people/trading-windows, POST …/:id/remove (compliance.declaration.manage company-wide); dates inclusive, no overlap (409), not in the past; removed periods kept for the audit; toasts |
 
 #### PPL-47 · My checklist tasks
 

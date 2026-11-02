@@ -10179,5 +10179,197 @@
       "Time · TIM-14 · Devices and kiosks · Computers · new computer request"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-L-01",
+    "area": "People · last rows (PPL-28 Held letters)",
+    "screen": "Letters register: a held relieving letter",
+    "url": "http://localhost:3000/yx/people/exits",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "People PPL-28 Register",
+      "People PPL-28 LiveHeld"
+    ],
+    "steps": [
+      "1. Open an accepted exit whose last working day is today or past (or set one up for a demo employee), and in HR facts hold the letters with a reason, e.g. \"Laptop not returned\".",
+      "2. After the last-day job runs (or the next morning), open People › Documents & letters › Letters.",
+      "3. Find the relieving letter for that person: status Held, no reference number, no issued date.",
+      "4. Row menu › Release letter: read Held by, Held on, Why.",
+      "5. Press Release letter."
+    ],
+    "expected": "Step 3: the relieving and experience letters show \"Held\"; the HR-only reason (Laptop not returned) is NOT shown. Step 4: Held by Lakshmi, Held on <date>, Why \"Held until clearance is done.\" (or \"Held by HR on the exit.\" once clearance is done). Step 5: toast \"Relieving letter for <name> issued\" (or \"sent for approval\" when the template needs it); the row gets its reference number and status Issued. After the second letter is released the exit no longer says \"Letters held\".",
+    "note": "Positive."
+  },
+  {
+    "id": "MT-PPL-L-02",
+    "area": "People · last rows (PPL-28 Held letters)",
+    "screen": "Release refused",
+    "url": "http://localhost:3000/yx/people/letters",
+    "account": "panel@demo-org.test (Manager - Divya, no letter key); then hr@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "People PPL-28 LiveHeld"
+    ],
+    "steps": [
+      "1. As Divya, open http://localhost:3000/yx/people/letters.",
+      "2. As Lakshmi, release a held letter, then (second tab, page not reloaded) press Release letter again on the same row."
+    ],
+    "expected": "Negative step 1: no access to the letters (no Release anywhere). Negative step 2: the second press shows \"This letter is not held any more. Reload the letters.\" and nothing is issued twice.",
+    "note": "Negative."
+  },
+  {
+    "id": "MT-PPL-L-03",
+    "area": "People · last rows (PPL-33 My data)",
+    "screen": "Request a correction",
+    "url": "http://localhost:3000/yx/me/privacy",
+    "account": "arjun@demo-org.test (Employee); then hr@demo-org.test (Lakshmi) to decide. Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "People PPL-33 MyData",
+      "People PPL-33 Correction"
+    ],
+    "steps": [
+      "1. As Arjun, open Me › Privacy › My data and press Request a correction.",
+      "2. Press Send to HR with nothing filled.",
+      "3. Choose \"Joining date, grade, birthday\", type \"My joining date is 6 Jan, not 7 Jan\", press Send to HR (enter the emailed code if asked).",
+      "4. Press Request a correction again and send another one.",
+      "5. As Lakshmi, open People › Profile change requests and approve it."
+    ],
+    "expected": "Step 2 (negative): \"Choose what is wrong.\" and \"Say what is wrong and what it should be.\" under the fields; nothing sent. Step 3: toast \"Correction sent to HR\"; Me › Change requests lists \"Correction to my data\" waiting. Step 4 (negative): \"A correction request is already waiting for HR. Wait for the answer in Change requests.\" Step 5: approved; Arjun gets the email \"Your correction request was done\"; nothing else on his record changes by itself.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-L-04",
+    "area": "People · last rows (PPL-33 My data)",
+    "screen": "Nominate someone",
+    "url": "http://localhost:3000/yx/me/privacy",
+    "account": "arjun@demo-org.test (Employee). Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "People PPL-33 Nominate"
+    ],
+    "steps": [
+      "1. Press Nominate someone; type name \"Lakshmi Iyer\", relation \"Sister\"; press Save nominee.",
+      "2. Type phone \"12\"; press Save nominee.",
+      "3. Clear the phone, type \"+91 98450 12345\", press Save nominee (enter the emailed code if asked).",
+      "4. Press Nominate someone, give \"Ravi Iyer\", \"Brother\", an email, press Replace nominee.",
+      "5. Press Remove nominee, then Remove nominee in the dialog."
+    ],
+    "expected": "Step 2 (negative): \"Give an email or a phone number to reach them.\" then \"Enter 8 to 15 digits, with + and the country code if abroad.\" Step 3: toast \"Lakshmi Iyer is your nominee\"; the blue note shows her with the phone and the date. Step 4: replaced (toast); the note shows Ravi. Step 5: toast \"Nominee removed\"; the note is gone.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-L-05",
+    "area": "People · last rows (PPL-36 Possible same person)",
+    "screen": "Joiner proposed on PAN",
+    "url": "http://localhost:3000/yx/people/same-person",
+    "account": "hr@demo-org.test (Lakshmi, company-wide employee.change.manage); then arjun@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "People PPL-36 Queue",
+      "People PPL-36 Compare"
+    ],
+    "steps": [
+      "1. Add a joiner (People › Joiners) for a new person whose PAN is the PAN of a demo FORMER employee; in the joiner portal fill Identity with that PAN.",
+      "2. As Lakshmi, open People › More › Possible same person.",
+      "3. Open the row: compare the evidence; press Review merge, keep fields, write a note, Merge.",
+      "4. Add a second joiner with only the same first and last name as a CURRENT employee and the same date of birth; merge it.",
+      "5. Add a third joiner with the same name as an employee but another date of birth.",
+      "6. As Arjun, type the page address."
+    ],
+    "expected": "Step 2: the joiner is listed, \"Why proposed: PAN\". Step 3: merged; the joiner now shows as a rehire of that former employee (People › Joiners), and Merged lists it with Unmerge. Step 4 (negative): \"This person works here now. Their move is a job change: cancel the joiner and change their job instead.\" Step 5 (negative): NOT listed (name alone never proposes). Step 6 (negative): no access.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-L-06",
+    "area": "People · last rows (PPL-44 Trading window)",
+    "screen": "Compliance officer closes the window",
+    "url": "http://localhost:3000/yx/people/pre-clearance",
+    "account": "admin@demo-org.test (System Admin, compliance officer); Arjun designated in People › BFSI declarations. Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "People PPL-44 Officer",
+      "People PPL-44 OfficerWindow"
+    ],
+    "steps": [
+      "1. Open Pre-clearance requests; find the Trading window card (\"The trading window is open\").",
+      "2. Press Close the window, then Close the window in the dialog with nothing filled.",
+      "3. Choose today to 10 days from today, Why \"Quarterly results due\", Close the window.",
+      "4. Close it again for a day inside that period.",
+      "5. Remove the period (Remove, then Remove)."
+    ],
+    "expected": "Step 2 (negative): \"Choose the first closed day.\", \"Choose the last closed day.\", \"Say why the window is closed.\" Step 3: toast \"Trading window closed for those days\"; the period is listed. Step 4 (negative): \"The window is already closed from … to …. Remove that period first, or choose other dates.\" Step 5: toast \"Closed period removed\"; the card says the window is open.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-L-07",
+    "area": "People · last rows (PPL-44 Trading window)",
+    "screen": "Pre-clearance while the window is closed",
+    "url": "http://localhost:3000/yx/me/declarations/pre-clearance",
+    "account": "arjun@demo-org.test (designated person); admin@demo-org.test closes the window first (MT-PPL-L-06 step 3). Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "People PPL-44 Blocked",
+      "People PPL-44 Request"
+    ],
+    "steps": [
+      "1. As Arjun, open Me › Declarations › Pre-clearance.",
+      "2. Fill the form and press Request pre-clearance.",
+      "3. As the admin, remove the closed period; as Arjun reload and request again.",
+      "4. As the admin, close the window for today only and try to Approve Arjun's request; then Reject it with a reason."
+    ],
+    "expected": "Step 1: red alert \"Trading window closed until <date>\" with \"Quarterly results due\" and the reopening day; the header says \"… and never during a closed trading window.\" Step 2 (negative): a message says the window is closed and when it reopens; nothing is sent. Step 3: toast \"Pre-clearance PC-… sent to the compliance officer\". Step 4 (negative): Approve says the window is closed; Reject works (toast \"Pre-clearance rejected\").",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-L-08",
+    "area": "People · last rows (PPL-46 Split pay)",
+    "screen": "HR splits pay over 3 accounts",
+    "url": "http://localhost:3000/yx/people/directory",
+    "account": "hr@demo-org.test (Lakshmi, identity keys); an employee with a salary account, a reimbursement account and an account abroad on file; hr2 or admin@demo-org.test approves. Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "People PPL-46 SplitPay",
+      "People PPL-46 OverSplit"
+    ],
+    "steps": [
+      "1. Open the person, record menu › Account abroad. See the \"Split net pay\" card.",
+      "2. Add account until three are listed; set Salary account Fixed 2,500 and Reimbursement account Percentage 10; the account abroad keeps Remainder.",
+      "3. Set the fixed amount above the net pay shown in the card title.",
+      "4. Put it back to 2,500 and press Send for approval (no IBAN typed).",
+      "5. As the admin, approve it in Profile change requests.",
+      "6. Open the person's Pay tab."
+    ],
+    "expected": "Step 2: \"This month\" shows each amount; they add up to the net pay. Step 3 (negative): \"This split can't be saved: Fixed amounts and percentages are more than the net pay.\"; Send for approval refuses it. Step 4: toast \"Pay split sent for approval\"; the IBAN is unchanged. Step 5: approved. Step 6: \"Bank accounts (international)\" card shows the account abroad and the split read only, with \"used for pay from <date>\" while the cooling period runs, and Change.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-L-09",
+    "area": "People · last rows (PPL-46 Split pay)",
+    "screen": "Payroll pays per the split",
+    "url": "http://localhost:3000/yx/payroll/payments",
+    "account": "payroll admin (bank file maker) and a second payroll person with payroll.bankfile.release; the employee from MT-PPL-L-08 after the cooling period. Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "People PPL-46 SplitPay"
+    ],
+    "steps": [
+      "1. Approve the month's run; generate the bank file.",
+      "2. Download the bank file and the \"Remittance list (accounts abroad)\" from the run's files.",
+      "3. As the maker, try to release; as the second person, release the bank file.",
+      "4. Open the employee's payslip PDF.",
+      "5. As the second person, try to release the remittance list on its own from the files list."
+    ],
+    "expected": "Step 2: the bank file pays the salary account 2,500.00 and the reimbursement account its 10%; the remittance list has the IBAN, BIC, currency and the rest in rupees; together they equal the net pay. Step 3 (negative then positive): the maker is refused; the release marks both files released. Step 4: the bank line lists each account (masked) with its amount. Step 5 (negative): \"The remittance list is released with its bank file, from the payroll run.\"",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-L-10",
+    "area": "People · last rows (PPL-46 Split pay)",
+    "screen": "Who cannot split pay",
+    "url": "http://localhost:3000/yx/me/bank-abroad",
+    "account": "arjun@demo-org.test (Employee, salary account only); panel@demo-org.test (Manager - Divya). Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "People PPL-46 Phone"
+    ],
+    "steps": [
+      "1. As Arjun open Pay tab › Account abroad: in the split card press Add account.",
+      "2. As Divya, type http://localhost:3000/yx/people/directory/<Arjun>/bank-abroad.",
+      "3. As Arjun, send a split, then as Arjun try to approve it from Profile change requests."
+    ],
+    "expected": "Step 1 (negative): \"Every account on file is in the split. Add an account abroad or a reimbursement account first.\" Step 2 (negative): no access (not found). Step 3 (negative): Arjun cannot approve his own change; HR decides.",
+    "note": "Negative."
   }
 ]

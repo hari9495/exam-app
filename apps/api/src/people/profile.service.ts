@@ -494,7 +494,7 @@ export class ProfileService {
           },
         });
       } catch (e) {
-        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException(`A ${LABEL[dto.kind]} change is already waiting for approval.`);
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException(dto.kind === 'correction' ? 'A correction request is already waiting for HR. Wait for the answer in Change requests.' : `A ${LABEL[dto.kind]} change is already waiting for approval.`);
         throw e;
       }
       await audit(tx, c, 'employee.profile_change.requested', 'employee', employeeId, { requestId: row.id, kind: dto.kind, by: a.self ? 'self' : 'hr', proof: Boolean(dto.proofDocumentId) });
