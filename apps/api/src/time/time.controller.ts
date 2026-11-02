@@ -1,6 +1,8 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { Request } from 'express';
+import { Request, Response } from 'express';
+import { resolveClientMeta } from '../auth/sessions.service';
+import { sha256 } from './device-rules';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
@@ -9,7 +11,7 @@ import { RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
 import { AttendanceService } from './attendance.service';
-import { AdjustDto, ApplyLeaveDto, AssignPolicyDto, AttendanceRuleDto, CalendarDto, CalendarTemplateDto, EntityFilterDto, HolidayDateDto, HolidayDto, LeavePlanDto, LeaveTypeDto, MonthEntityQueryDto, MonthQueryDto, NetworksDto, OnDutyDto, PolicyDto, PolicyOrderDto, PolicyVersionDto, PublishDraftDto, PunchDto, RangeEntityQueryDto, RangeQueryDto, ReasonDto, RegulariseDto, WfhDto, YearChangeDto, YearEndDto, YearEndRunDto } from './dto';
+import { AdjustDto, ApplyLeaveDto, AssignPolicyDto, AttendanceRuleDto, CalendarDto, CalendarTemplateDto, EntityFilterDto, GeoPointsDto, HolidayDateDto, HolidayDto, LeavePlanDto, LeaveTypeDto, MonthEntityQueryDto, MonthQueryDto, NetworksDto, OnDutyDto, PolicyDto, PolicyOrderDto, PolicyVersionDto, PublishDraftDto, PunchDto, RangeEntityQueryDto, RangeQueryDto, ReasonDto, RegulariseDto, WfhDto, YearChangeDto, YearEndDto, YearEndRunDto } from './dto';
 import { LeaveService } from './leave.service';
 import { LeaveV2Service } from './leave-v2.service';
 import { TimeSetupService } from './setup.service';
@@ -91,16 +93,26 @@ export class TimeController {
 
   // ------------------------------------------------------------------------------------------ me › attendance
 
+  // DeviceNotApproved: this computer is the sign-in device cookie (yx_device, set at sign-in; minted here if missing);
+  // only its SHA-256 reaches the service.
   @Get('me/attendance')
-  myAttendance(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: MonthQueryDto) {
-    return this.attendance.me(ctx, q.month, req.ip ?? null);
+  myAttendance(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext, @Query() q: MonthQueryDto) {
+    return this.attendance.me(ctx, q.month, req.ip ?? null, sha256(resolveClientMeta(req, res).deviceId));
   }
 
   @Post('me/punch')
   @HttpCode(200)
   @Throttle(MODERATE_UPLOAD_THROTTLE)
-  punch(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: PunchDto) {
-    return this.attendance.punch(ctx, this.user(req), dto, req.ip ?? null, (req.headers['user-agent'] as string | undefined) ?? null);
+  punch(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext, @Body() dto: PunchDto) {
+    return this.attendance.punch(ctx, this.user(req), dto, req.ip ?? null, (req.headers['user-agent'] as string | undefined) ?? null, sha256(resolveClientMeta(req, res).deviceId));
+  }
+
+  /** DeviceNotApproved · "Ask HR to approve" this computer for web clock-in (self; HR decides on TIM-14). */
+  @Post('me/web-device')
+  @HttpCode(200)
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  askWebDevice(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext) {
+    return this.attendance.requestWebDevice(ctx, this.user(req), sha256(resolveClientMeta(req, res).deviceId), (req.headers['user-agent'] as string | undefined) ?? null);
   }
 
   @Post('me/regularise')
@@ -342,6 +354,14 @@ export class TimeController {
   @RequirePermissions('leave.settings.manage')
   setNetworks(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: NetworksDto) {
     return this.setup.setNetworks(ctx, this.user(req), id, dto.ipRanges);
+  }
+
+  /** TIM-31 Multi: the location's check-in points (inside any one is inside); a stale updatedAt answers 409. */
+  @Post('setup/locations/:id/points')
+  @HttpCode(200)
+  @RequirePermissions('leave.settings.manage')
+  setPoints(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: GeoPointsDto) {
+    return this.setup.setPoints(ctx, this.user(req), id, dto.points, dto.updatedAt);
   }
 
   @Get('setup/year-end')

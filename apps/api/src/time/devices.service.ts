@@ -81,7 +81,8 @@ export class DevicesService {
       const now = new Date();
       const [kiosks, phones, locations] = await Promise.all([
         tx.timeDevice.findMany({ where: { organizationId: org, kind: 'kiosk', status: { in: ['pending', 'active'] } }, orderBy: { code: 'asc' } }),
-        tx.timeDevice.findMany({ where: { organizationId: org, kind: 'phone', status: { in: ['pending', 'active', 'lost', 'revoked'] } }, orderBy: { createdAt: 'desc' }, take: 1000 }),
+        // Phones and, for web clock-in (DeviceNotApproved), computers: both are asked for by the person and approved here.
+        tx.timeDevice.findMany({ where: { organizationId: org, kind: { in: ['phone', 'web'] }, status: { in: ['pending', 'active', 'lost', 'revoked'] } }, orderBy: { createdAt: 'desc' }, take: 1000 }),
         tx.location.findMany({ where: { organizationId: org, archivedAt: null }, select: { id: true, name: true, code: true, legalEntityId: true, timezone: true }, orderBy: { name: 'asc' } }),
       ]);
       const entities = new Map((await tx.legalEntity.findMany({ where: { organizationId: org }, select: { id: true, name: true } })).map((e) => [e.id, e.name]));
@@ -102,8 +103,9 @@ export class DevicesService {
         const f = await factsOn(tx, org, id, today);
         if (f) sites.set(id, locs.get(f.locationId)?.name ?? '');
       }
-      const active = new Map(phones.filter((p) => p.status === 'active').map((p) => [p.employeeId!, p]));
-      const lostOf = (emp: string) => phones.find((p) => p.employeeId === emp && p.status === 'lost');
+      // A new phone replaces the old one; a computer replaces nothing (people may use more than one).
+      const active = new Map(phones.filter((p) => p.status === 'active' && p.kind === 'phone').map((p) => [p.employeeId!, p]));
+      const lostOf = (emp: string) => phones.find((p) => p.employeeId === emp && p.status === 'lost' && p.kind === 'phone');
       return {
         kiosks: kiosks.map((k) => {
           const l = locs.get(k.locationId!);
@@ -113,12 +115,12 @@ export class DevicesService {
         requests: phones
           .filter((p) => p.status === 'pending')
           .map((p) => {
-            const old = active.get(p.employeeId!) ?? (p.replacesLost ? lostOf(p.employeeId!) : undefined);
-            return { id: p.id, employeeId: p.employeeId, person: people.get(p.employeeId!) ?? '', site: sites.get(p.employeeId!) ?? '', model: p.model ?? '', oldModel: old?.model ?? null, oldLastSeenAt: old?.lastSeenAt ?? null, oldPhoneLost: p.replacesLost, reason: p.requestReason ?? '', raisedAt: p.createdAt };
+            const old = p.kind === 'web' ? undefined : (active.get(p.employeeId!) ?? (p.replacesLost ? lostOf(p.employeeId!) : undefined));
+            return { id: p.id, kind: p.kind, employeeId: p.employeeId, person: people.get(p.employeeId!) ?? '', site: sites.get(p.employeeId!) ?? '', model: p.model ?? '', oldModel: old?.model ?? null, oldLastSeenAt: old?.lastSeenAt ?? null, oldPhoneLost: p.replacesLost, reason: p.requestReason ?? '', raisedAt: p.createdAt };
           }),
         phones: phones
           .filter((p) => p.status !== 'pending')
-          .map((p) => ({ id: p.id, employeeId: p.employeeId, person: people.get(p.employeeId!) ?? '', model: p.model ?? '', appVersion: p.appVersion, lastSeenAt: p.lastSeenAt, status: p.status === 'active' && phoneInactive(p.lastSeenAt, p.decidedAt ?? p.createdAt, now) ? 'inactive' : p.status })),
+          .map((p) => ({ id: p.id, kind: p.kind, employeeId: p.employeeId, person: people.get(p.employeeId!) ?? '', model: p.model ?? '', appVersion: p.appVersion, lastSeenAt: p.lastSeenAt, status: p.status === 'active' && phoneInactive(p.lastSeenAt, p.decidedAt ?? p.createdAt, now) ? 'inactive' : p.status })),
         locations: locations.map((l) => ({ id: l.id, name: l.name, entity: entities.get(l.legalEntityId) ?? '', zone: l.timezone })),
         entities: entities.size,
         company: (await tx.organization.findUnique({ where: { id: org }, select: { name: true } }))?.name ?? '',
@@ -292,7 +294,7 @@ export class DevicesService {
   // ------------------------------------------------------------------------------------------ HR: phones
 
   private async phone(tx: Tx, c: CompanyContext, id: string) {
-    const p = await tx.timeDevice.findFirst({ where: { organizationId: c.organizationId, id, kind: 'phone' } });
+    const p = await tx.timeDevice.findFirst({ where: { organizationId: c.organizationId, id, kind: { in: ['phone', 'web'] } } });
     if (!p) throw new NotFoundException('Not found');
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`device:${c.organizationId}:${p.employeeId}`}))`;
     // Read again under the person's lock: someone else may have decided it a moment ago.
@@ -304,12 +306,14 @@ export class DevicesService {
     return this.setup.run(ctx, user, true, async (tx, c) => {
       const p = await this.phone(tx, c, id);
       if (p.status !== 'pending') throw new ConflictException('This request was already decided or withdrawn.');
-      if (p.employeeId && (await myEmployeeId(tx, c.organizationId, c.userId).catch(() => null)) === p.employeeId) throw new ForbiddenException("You can't approve your own phone. Another HR admin decides it.");
-      const old = await tx.timeDevice.findMany({ where: { organizationId: c.organizationId, kind: 'phone', employeeId: p.employeeId, status: { in: ['active', 'lost'] } } });
+      const web = p.kind === 'web';
+      if (p.employeeId && (await myEmployeeId(tx, c.organizationId, c.userId).catch(() => null)) === p.employeeId) throw new ForbiddenException(`You can't approve your own ${web ? 'computer' : 'phone'}. Another HR admin decides it.`);
+      // A new phone replaces the old one; an approved computer leaves the person's other devices as they are.
+      const old = web ? [] : await tx.timeDevice.findMany({ where: { organizationId: c.organizationId, kind: 'phone', employeeId: p.employeeId, status: { in: ['active', 'lost'] } } });
       const now = new Date();
       await tx.timeDevice.updateMany({ where: { id: { in: old.map((o) => o.id) } }, data: { status: 'revoked', decidedBy: c.userId ?? null, decidedAt: now, decisionReason: 'Replaced by a new phone', version: { increment: 1 } } });
       await tx.timeDevice.update({ where: { id: p.id }, data: { status: 'active', decidedBy: c.userId ?? null, decidedAt: now, version: { increment: 1 } } });
-      await audit(tx, c, 'time.phone.approved', 'time_device', p.id, { employeeId: p.employeeId, model: p.model, signedOut: old.map((o) => ({ id: o.id, model: o.model, status: o.status })) });
+      await audit(tx, c, web ? 'time.web_device.approved' : 'time.phone.approved', 'time_device', p.id, { employeeId: p.employeeId, model: p.model, signedOut: old.map((o) => ({ id: o.id, model: o.model, status: o.status })) });
       return { id: p.id, signedOut: old.map((o) => o.model) };
     });
   }
@@ -319,7 +323,7 @@ export class DevicesService {
       const p = await this.phone(tx, c, id);
       if (p.status !== 'pending') throw new ConflictException('This request was already decided or withdrawn.');
       await tx.timeDevice.update({ where: { id: p.id }, data: { status: 'rejected', decidedBy: c.userId ?? null, decidedAt: new Date(), decisionReason: reason, version: { increment: 1 } } });
-      await audit(tx, c, 'time.phone.refused', 'time_device', p.id, { employeeId: p.employeeId, model: p.model, reason });
+      await audit(tx, c, p.kind === 'web' ? 'time.web_device.refused' : 'time.phone.refused', 'time_device', p.id, { employeeId: p.employeeId, model: p.model, reason });
       return { id: p.id };
     });
   }
@@ -331,6 +335,13 @@ export class DevicesService {
   signOutPhone(ctx: TenantContext, user: ScopeUser, id: string) {
     return this.setup.run(ctx, user, true, async (tx, c) => {
       const p = await this.phone(tx, c, id);
+      if (p.kind === 'web') {
+        // DeviceNotApproved: removing a computer's approval stops web clock-in from it; the person stays signed in.
+        if (p.status !== 'active') throw new ConflictException("This computer's approval was already removed.");
+        await tx.timeDevice.update({ where: { id: p.id }, data: { status: 'revoked', decidedBy: c.userId ?? null, decidedAt: new Date(), decisionReason: 'Approval removed by HR', version: { increment: 1 } } });
+        await audit(tx, c, 'time.web_device.revoked', 'time_device', p.id, { employeeId: p.employeeId, model: p.model });
+        return { id: p.id, sessionsEnded: 0 };
+      }
       if (p.status !== 'active' && p.status !== 'lost') throw new ConflictException('This phone is already signed out.');
       await tx.timeDevice.update({ where: { id: p.id }, data: { status: 'revoked', decidedBy: c.userId ?? null, decidedAt: new Date(), decisionReason: p.status === 'lost' ? 'Lost: signed out remotely' : 'Signed out remotely', version: { increment: 1 } } });
       const emp = await tx.employee.findFirst({ where: { organizationId: c.organizationId, id: p.employeeId! }, select: { userId: true } });

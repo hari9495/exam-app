@@ -10,7 +10,7 @@ import { DayEngine } from './day-engine.service';
 import { OnDutyDto, PunchDto, RegulariseDto, WfhDto } from './dto';
 import { clockText, onDutyProblem, overlaps } from './on-duty-rules';
 import { TIME_KEYS, asDate, dateOf, factsOn, holidaysFor, hrApprovers, monthRange, mustSee, myEmployeeId, rulesFor, settingOn, todayIn, visibleSql, type Facts } from './time-core';
-import { addDays, checkInVerdict, ipInRanges, minutesInto, type Fence } from './time-maths';
+import { addDays, checkInVerdict, fencesOf, ipInRanges, minutesInto, type Fence } from './time-maths';
 import { ScheduleBook, assertOpen, lockedDates } from './schedule';
 import { OvertimeService } from './overtime.service';
 import { PeriodsService } from './periods.service';
@@ -18,6 +18,7 @@ import { grantCovers, inReportingLine } from './time-core';
 import { todayIst } from '../org-structure/org-validation';
 import { settingFor } from '../people/probation';
 import { workOnForPunch } from './time-rules';
+import { describeDevice } from '../email/account-emails';
 
 // M02 Part B basics: web punches with the geofence / allowed-network check (Q6, YX-AT-01, every refused attempt
 // logged, YX-AT-23), my days and the team / HR muster (YX-AT-14, read-only in batch 1), and regularisation through
@@ -83,7 +84,38 @@ export class AttendanceService implements OnModuleInit {
 
   private async fences(tx: Tx, org: string, ids: string[]): Promise<Fence[]> {
     const rows = await tx.location.findMany({ where: { organizationId: org, id: { in: ids }, archivedAt: null } });
-    return rows.map((l) => ({ locationId: l.id, name: l.name, lat: l.geoLat === null ? null : Number(l.geoLat), lng: l.geoLng === null ? null : Number(l.geoLng), radiusM: l.geoRadiusM, ipRanges: l.ipRanges }));
+    return rows.flatMap(fencesOf);
+  }
+
+  /**
+   * Extra · today DeviceNotApproved: with attendance.web_device_approval on, web clock-in only from a computer HR
+   * approved for the person. `hash` is the SHA-256 of the sign-in device cookie (yx_device); the raw value is never kept.
+   */
+  private async webDevice(tx: Tx, c: CompanyContext, f: Facts, today: string, hash: string | null) {
+    if ((await settingOn(tx, c, 'attendance.web_device_approval', f, today)) !== 'on') return { required: false, approved: true, requested: false, id: null as string | null };
+    const rows = hash ? await tx.timeDevice.findMany({ where: { organizationId: c.organizationId, kind: 'web', employeeId: f.employeeId, installHash: hash, status: { in: ['active', 'pending'] } } }) : [];
+    const active = rows.find((d) => d.status === 'active');
+    return { required: true, approved: Boolean(active), requested: rows.some((d) => d.status === 'pending'), id: active?.id ?? null };
+  }
+
+  /** "Ask HR to approve" this computer (DeviceNotApproved). Asking again for the same computer answers the same request. */
+  requestWebDevice(ctx: TenantContext, user: ScopeUser, hash: string, userAgent: string | null) {
+    if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const { f, today } = await this.meFacts(tx, c);
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`device:${org}:${f.employeeId}`}))`;
+      if ((await settingOn(tx, c, 'attendance.web_device_approval', f, today)) !== 'on') throw new ConflictException('Your company lets you clock in from any computer. There is nothing to approve.');
+      const mine = await tx.timeDevice.findMany({ where: { organizationId: org, kind: 'web', employeeId: f.employeeId, status: { in: ['active', 'pending'] } } });
+      if (mine.some((d) => d.status === 'active' && d.installHash === hash)) throw new ConflictException('This computer is already approved for clock-in.');
+      const same = mine.find((d) => d.status === 'pending' && d.installHash === hash);
+      if (same) return { id: same.id, status: 'pending' };
+      if (mine.some((d) => d.status === 'pending')) throw new ConflictException('You already asked HR to approve another computer. Wait for HR to decide that one first.');
+      const model = (describeDevice(userAgent) ?? 'Web browser').slice(0, 100);
+      const d = await tx.timeDevice.create({ data: { organizationId: org, kind: 'web', employeeId: f.employeeId, model, installHash: hash, status: 'pending', createdBy: c.userId ?? null } });
+      await audit(tx, c, 'time.web_device.requested', 'time_device', d.id, { employeeId: f.employeeId, model });
+      return { id: d.id, status: 'pending' };
+    });
   }
 
   private punchView(p: Prisma.PunchGetPayload<object>, names: Map<string, string>) {
@@ -94,7 +126,7 @@ export class AttendanceService implements OnModuleInit {
    * Me › Attendance: today's shift, the allowed places, my punches today, my month and my fixes. `ip` (the request's)
    * tells the clock card before any punch whether this computer is on the office network (Extra · today OutsideNetwork).
    */
-  me(ctx: TenantContext, month: string, ip: string | null = null) {
+  me(ctx: TenantContext, month: string, ip: string | null = null, deviceHash: string | null = null) {
     const { from, to } = monthRange(month);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
@@ -124,8 +156,10 @@ export class AttendanceService implements OnModuleInit {
         // OutsideNetwork: "inside" on an office network; "outside" when only networks decide and this one isn't one of
         // them; "unknown" when the location (geofence) decides at the punch, or nothing restricts it.
         network: networkOf(fences, ip, rule.checkIn),
+        // DeviceNotApproved: whether this computer may clock in, and whether HR was already asked to approve it.
+        device: await this.webDevice(tx, c, f, today, deviceHash).then(({ id: _id, ...d }) => d),
         manager: manager ? [manager.preferredName ?? manager.givenName, manager.familyName].filter(Boolean).join(' ') : null,
-        fences: fences.filter((x) => x.lat !== null).map((x) => ({ name: x.name, lat: x.lat, lng: x.lng, radiusM: x.radiusM })),
+        fences: fences.filter((x) => x.lat !== null).map((x) => ({ name: x.name, ...(x.point ? { point: x.point } : {}), lat: x.lat, lng: x.lng, radiusM: x.radiusM })),
         punches: punches.map((p) => this.punchView(p, names)),
         // Working or on a break: the next punch closes the day (a break still open ends at check-out).
         next: accepted.length && accepted[accepted.length - 1].kind !== 'out' ? 'out' : 'in',
@@ -151,7 +185,7 @@ export class AttendanceService implements OnModuleInit {
   }
 
   /** Web punch (YX-AT-01 / 23 / Q6): accepted or refused, always recorded; duplicates within a minute are ignored. */
-  async punch(ctx: TenantContext, user: ScopeUser, dto: PunchDto, ip: string | null, device: string | null) {
+  async punch(ctx: TenantContext, user: ScopeUser, dto: PunchDto, ip: string | null, device: string | null, deviceHash: string | null = null) {
     if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
     const pinGiven = dto.lat !== undefined && dto.lng !== undefined;
     if ((dto.lat === undefined) !== (dto.lng === undefined)) throw new BadRequestException('Send both latitude and longitude, or neither.');
@@ -159,6 +193,13 @@ export class AttendanceService implements OnModuleInit {
     const notices: Notice[] = [];
     const res = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const { f, today } = await this.meFacts(tx, c);
+      // DeviceNotApproved: refused before anything else; the refusal is audited (the transaction still commits).
+      const dev = await this.webDevice(tx, c, f, today, deviceHash);
+      if (!dev.approved) {
+        await audit(tx, c, 'time.web_device.punch_refused', 'employee', f.employeeId, { kind: dto.kind, requested: dev.requested, userAgent: device?.slice(0, 200) ?? null });
+        return null;
+      }
+      if (dev.id) await tx.timeDevice.updateMany({ where: { id: dev.id, OR: [{ lastSeenAt: null }, { lastSeenAt: { lt: new Date(Date.now() - 60_000) } }] }, data: { lastSeenAt: new Date() } });
       // ChoseWfh: outside the office, clock in as work from home today; the request goes to the manager with it.
       if (dto.wfh) {
         if ((await settingOn(tx, c, 'attendance.wfh_same_day', f, today)) !== 'on') throw new BadRequestException('Your company asks for work from home ahead. Request it, then clock in once it is approved.');
@@ -169,6 +210,7 @@ export class AttendanceService implements OnModuleInit {
       const { punchId: _id, ...out } = await this.record(tx, c, f, { kind: dto.kind, at: new Date(), source: 'web', pin: pinGiven ? { lat: dto.lat!, lng: dto.lng!, accuracyM: dto.accuracyM } : null, ip, device, note: dto.note });
       return out;
     });
+    if (res === null) throw new ForbiddenException({ statusCode: 403, code: 'DEVICE_NOT_APPROVED', message: "This computer isn't approved for clock-in. Use your approved device, or ask HR to approve this one." });
     await this.engine.send(ctx, notices);
     return res;
   }

@@ -243,6 +243,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'hybrid.evidence': { label: 'An office day counts with', scopes: ['tenant', 'legal_entity', 'location', 'department'], dated: false, multi: true, values: ['geofence', 'network', 'kiosk'], default: 'geofence,network,kiosk' },
   // TIM-12 / TIM-14: phone check-in only from the one phone HR approved for the person.
   'attendance.phone_binding': { label: 'Phone check-in only from an approved phone', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['off', 'on'], default: 'off', guard: 'access.role.manage' },
+  // Extra · My attendance today · DeviceNotApproved: web clock-in only from a computer HR approved for the person.
+  'attendance.web_device_approval': { label: 'Web clock-in only from an approved computer', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['off', 'on'], default: 'off', guard: 'access.role.manage' },
   // TIM-13: how people identify themselves at a kiosk, and wrong PIN tries before a 15-minute lock.
   'kiosk.methods': { label: 'At a kiosk people sign in with', scopes: ['tenant', 'legal_entity', 'location'], dated: false, multi: true, values: ['pin', 'qr', 'face'], default: 'pin,qr' },
   // TIM-13 (30 Oct 2026): what the kiosk offers besides check-in. Founder: an unknown employee code is refused as unknown
