@@ -319,6 +319,139 @@ export interface LiveMyData {
   onRetry: () => void;
   log: AccessLog | null;
   onDownload: (format: 'pdf' | 'json') => Promise<unknown>;
+  /** PPL-33: ask HR to correct what is wrong (a profile request); the page shows the toast. */
+  onCorrect?: (input: CorrectionInput) => Promise<void>;
+  /** PPL-33: my nominee for my data rights, and naming or removing them (the page shows the toasts). */
+  nominee?: PrivacyNominee | null;
+  onNominate?: (input: NomineeInput) => Promise<void>;
+  onRemoveNominee?: () => Promise<void>;
+}
+
+/* PPL-33 · Request a correction and Nominate someone (the design's two buttons under "What we hold"). */
+export type CorrectionField = 'public' | 'internal' | 'personal' | 'confidential' | 'special';
+export interface CorrectionInput {
+  correctionField: CorrectionField;
+  correctionText: string;
+}
+export interface PrivacyNominee {
+  name: string;
+  relation: string;
+  email: string | null;
+  phone: string | null;
+  since: string;
+}
+export interface NomineeInput {
+  name: string;
+  relation: string;
+  email?: string;
+  phone?: string;
+}
+const CORRECTION_OPTIONS: { value: CorrectionField; label: string }[] = [
+  { value: 'public', label: 'Name, photo, designation, work contact' },
+  { value: 'internal', label: 'Joining date, grade, birthday' },
+  { value: 'personal', label: 'Address, personal phone, family, emergency contacts' },
+  { value: 'confidential', label: 'Salary, bank account, PAN, UAN, payslips' },
+  { value: 'special', label: 'Aadhaar, background check reports' },
+];
+
+function CorrectionDialog({ open, onOpenChange, onCorrect }: { open: boolean; onOpenChange: (o: boolean) => void; onCorrect?: (input: CorrectionInput) => Promise<void> }) {
+  const [field, setField] = useState<CorrectionField | null>(null);
+  const [text, setText] = useState('');
+  const { run, busy, error } = useRun();
+  const early = useTooEarly([...(!field ? [{ fieldId: 'pc-field', message: 'Choose what is wrong.' }] : []), ...(text.trim().length < 3 ? [{ fieldId: 'pc-text', message: 'Say what is wrong and what it should be.' }] : [])]);
+  const send = () => !early.stop() && void run('correct', async () => (await onCorrect?.({ correctionField: field!, correctionText: text.trim() }), onOpenChange(false)));
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Request a correction"
+      size="md"
+      footer={
+        <>
+          <Button onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="primary" loading={busy === 'correct'} onClick={send}>
+            Send to HR
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-ppl__stack">
+        <Text as="p">HR checks it and fixes it where it is kept. You see the answer in Change requests.</Text>
+        <FormField id="pc-field" label="What is wrong" required error={early.errorOf('pc-field')}>
+          <Select aria-label="What is wrong" options={CORRECTION_OPTIONS} value={field} onChange={(v) => setField(v as CorrectionField)} />
+        </FormField>
+        <FormField id="pc-text" label="What it should be" required helper="For example: my joining date is 6 Jan 2020, not 7 Jan." error={early.errorOf('pc-text')}>
+          <TextArea rows={3} value={text} onChange={setText} maxLength={500} />
+        </FormField>
+        {error && <InlineAlert tone="danger" title="Not sent">{error}</InlineAlert>}
+      </div>
+    </Dialog>
+  );
+}
+
+function NomineeDialog({ open, onOpenChange, current, onNominate }: { open: boolean; onOpenChange: (o: boolean) => void; current?: PrivacyNominee | null; onNominate?: (input: NomineeInput) => Promise<void> }) {
+  const [name, setName] = useState('');
+  const [relation, setRelation] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const { run, busy, error } = useRun();
+  const badEmail = email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const badPhone = phone.trim() && !/^\+?[0-9]{8,15}$/.test(phone.replace(/[\s-]/g, ''));
+  const early = useTooEarly([
+    ...(name.trim().length < 2 ? [{ fieldId: 'pn-name', message: 'Give their full name.' }] : []),
+    ...(relation.trim().length < 2 ? [{ fieldId: 'pn-rel', message: 'Say who they are to you.' }] : []),
+    ...(!email.trim() && !phone.trim() ? [{ fieldId: 'pn-email', message: 'Give an email or a phone number to reach them.' }] : []),
+    ...(badEmail ? [{ fieldId: 'pn-email', message: 'Enter an email like name@example.com.' }] : []),
+    ...(badPhone ? [{ fieldId: 'pn-phone', message: 'Enter 8 to 15 digits, with + and the country code if abroad.' }] : []),
+  ]);
+  const send = () =>
+    !early.stop() &&
+    void run('nominate', async () => (await onNominate?.({ name: name.trim(), relation: relation.trim(), ...(email.trim() ? { email: email.trim() } : {}), ...(phone.trim() ? { phone: phone.replace(/[\s-]/g, '') } : {}) }), onOpenChange(false)));
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Nominate someone"
+      size="md"
+      footer={
+        <>
+          <Button onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="primary" loading={busy === 'nominate'} onClick={send}>
+            {current ? 'Replace nominee' : 'Save nominee'}
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-ppl__stack">
+        <Text as="p">The person who can use your rights over your data if you die or cannot act yourself (DPDP Act 2023). {current ? `This replaces ${current.name}.` : ''}</Text>
+        <FormField id="pn-name" label="Full name" required error={early.errorOf('pn-name')}>
+          <TextField value={name} onChange={setName} maxLength={100} />
+        </FormField>
+        <FormField id="pn-rel" label="Relation to you" required helper="For example: sister, spouse, friend." error={early.errorOf('pn-rel')}>
+          <TextField value={relation} onChange={setRelation} maxLength={40} />
+        </FormField>
+        <FormField id="pn-email" label="Email" error={early.errorOf('pn-email')}>
+          <TextField value={email} onChange={setEmail} maxLength={254} />
+        </FormField>
+        <FormField id="pn-phone" label="Phone" helper="An email or a phone is needed." error={early.errorOf('pn-phone')}>
+          <TextField value={phone} onChange={setPhone} maxLength={20} />
+        </FormField>
+        {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
+      </div>
+    </Dialog>
+  );
+}
+
+/** The current nominee, under the buttons; Remove asks first. */
+function NomineeNote({ nominee, onRemove }: { nominee: PrivacyNominee; onRemove?: () => Promise<void> }) {
+  return (
+    <InlineAlert tone="info" title={`Your nominee: ${nominee.name} (${nominee.relation})`}>
+      {[nominee.email, nominee.phone].filter(Boolean).join(' · ')} · since {formatDate(new Date(nominee.since))}
+      {onRemove && (
+        <ConfirmDialog trigger={<Button size="sm">Remove nominee</Button>} title="Remove your nominee?" consequence={`${nominee.name} can no longer act for you on your data.`} confirmLabel="Remove nominee" destructive onConfirm={onRemove} />
+      )}
+    </InlineAlert>
+  );
 }
 type LiveAccess = AccessLog['entries'][number];
 
@@ -336,6 +469,7 @@ function keepText(cls: (typeof HELD)[number]['cls'], r: NonNullable<AccessLog['r
 function LiveMyDataScreen({ live, tab }: { live: LiveMyData; tab: 'data' | 'access' }) {
   const [t, setT] = useState(tab);
   const { busy, error, run } = useRun();
+  const [asking, setAsking] = useState<'correct' | 'nominate' | null>(null);
   const log = live.log;
   const cols: TableColumn<LiveAccess>[] = [
     { key: 'who', header: 'Who', type: 'person', value: (r) => r.who, person: (r) => ({ name: r.who, secondary: r.role ?? undefined }), width: 240 },
@@ -385,8 +519,18 @@ function LiveMyDataScreen({ live, tab }: { live: LiveMyData; tab: 'data' | 'acce
                 <Button icon={Download} loading={busy === 'json'} onClick={() => void run('json', () => live.onDownload('json'))}>
                   Download my data (JSON)
                 </Button>
+                {live.onNominate && <Button onClick={() => setAsking('nominate')}>Nominate someone</Button>}
+                {live.onCorrect && (
+                  <Button variant="primary" onClick={() => setAsking('correct')}>
+                    Request a correction
+                  </Button>
+                )}
               </div>
+              {live.nominee && <NomineeNote nominee={live.nominee} onRemove={live.onRemoveNominee} />}
+              <Text size="sm" tone="secondary" as="p">Requests are answered within the legal time limit. Data we must keep by law (payroll, tax) stays even if you ask for erasure; we tell you what and why.</Text>
             </div>
+            {asking === 'correct' && <CorrectionDialog open onOpenChange={(o) => !o && setAsking(null)} onCorrect={live.onCorrect} />}
+            {asking === 'nominate' && <NomineeDialog open onOpenChange={(o) => !o && setAsking(null)} current={live.nominee} onNominate={live.onNominate} />}
           </TabsContent>
           <TabsContent value="access">
             {!log.enabled ? (
@@ -405,12 +549,13 @@ function LiveMyDataScreen({ live, tab }: { live: LiveMyData; tab: 'data' | 'acce
 }
 
 // PPL-33
-export function MyDataScreen(props: { tab?: 'data' | 'access'; viewOff?: boolean; live?: LiveMyData }) {
+export function MyDataScreen(props: { tab?: 'data' | 'access'; viewOff?: boolean; live?: LiveMyData; dialog?: 'correct' | 'nominate' }) {
   return props.live ? <LiveMyDataScreen live={props.live} tab={props.tab ?? 'data'} /> : <SampleMyDataScreen {...props} />;
 }
 
-function SampleMyDataScreen({ tab = 'data', viewOff = false }: { tab?: 'data' | 'access'; viewOff?: boolean }) {
+function SampleMyDataScreen({ tab = 'data', viewOff = false, dialog }: { tab?: 'data' | 'access'; viewOff?: boolean; dialog?: 'correct' | 'nominate' }) {
   const [t, setT] = useState(tab);
+  const [asking, setAsking] = useState<'correct' | 'nominate' | null>(dialog ?? null);
   const cols: TableColumn<Access>[] = [
     { key: 'who', header: 'Who', type: 'person', value: (r) => r.who, person: (r) => ({ name: r.who, secondary: r.role }), width: 240 },
     { key: 'what', header: 'What they viewed', value: (r) => r.what, width: 200 },
@@ -443,9 +588,13 @@ function SampleMyDataScreen({ tab = 'data', viewOff = false }: { tab?: 'data' | 
             <div className="yx-ppl__row">
               <Button icon={Download}>Download my data (PDF)</Button>
               <Button icon={Download}>Download my data (JSON)</Button>
-              <Button>Nominate someone</Button>
-              <Button variant="primary">Request a correction</Button>
+              <Button onClick={() => setAsking('nominate')}>Nominate someone</Button>
+              <Button variant="primary" onClick={() => setAsking('correct')}>
+                Request a correction
+              </Button>
             </div>
+            {asking === 'correct' && <CorrectionDialog open onOpenChange={(o) => !o && setAsking(null)} onCorrect={async () => {}} />}
+            {asking === 'nominate' && <NomineeDialog open onOpenChange={(o) => !o && setAsking(null)} onNominate={async () => {}} />}
             <Text size="sm" tone="secondary" as="p">Requests are answered within the legal time limit. Data we must keep by law (payroll, tax) stays even if you ask for erasure; we tell you what and why.</Text>
           </div>
         </TabsContent>
@@ -1213,13 +1362,29 @@ export interface LivePreclearance {
   /** Stores the contract note in my documents; resolves to its id. */
   onUploadNote: (file: File) => Promise<string>;
   onReport: (id: string, report: { tradedOn: string; quantity: number; contractNoteDocumentId: string }) => Promise<void>;
+  /** PPL-44: the trading window is closed today (the company's calendar): until when, and why. */
+  window?: { endsOn: Date; reopensOn: Date; reason: string } | null;
+}
+
+/** PPL-44: a closed period of the trading window (the compliance officer's calendar). */
+export interface TradingWindow {
+  id: string;
+  startsOn: Date;
+  endsOn: Date;
+  reason: string;
+}
+export interface TradingWindowInput {
+  startsOn: string;
+  endsOn: string;
+  reason: string;
 }
 
 const tradeTitle = (p: Pick<PreclearanceItem, 'side' | 'quantity' | 'security'>) => `${p.side === 'buy' ? 'Buy' : 'Sell'} ${p.quantity.toLocaleString('en-IN')} ${p.security}`;
-const preclearDescription = (r: PreclearanceRules, live: boolean) =>
-  `Designated persons need pre-clearance for trades above ${formatINR(r.threshold)} in a quarter. Approval is valid for ${r.validDays} trading days${live ? '.' : ' and never during a closed trading window.'}`;
+// PPL-44: the rule text is whole again now that the trading window calendar is live.
+const preclearDescription = (r: PreclearanceRules) => `Designated persons need pre-clearance for trades above ${formatINR(r.threshold)} in a quarter. Approval is valid for ${r.validDays} trading days and never during a closed trading window.`;
+const closedText = (w: NonNullable<LivePreclearance['window']>) => `The trading window is closed. You can request again when it reopens on ${formatDate(w.reopensOn)}.`;
 
-function PreclearanceForm({ disabled, onCancel, onRequest }: { disabled?: boolean; onCancel?: () => void; onRequest?: LivePreclearance['onRequest'] }) {
+function PreclearanceForm({ disabled, onCancel, onRequest, closed }: { disabled?: boolean; onCancel?: () => void; onRequest?: LivePreclearance['onRequest']; closed?: string }) {
   const [security, setSecurity] = useState('');
   const [side, setSide] = useState<'buy' | 'sell' | null>(null);
   const [quantity, setQuantity] = useState<number | null>(null);
@@ -1271,7 +1436,7 @@ function PreclearanceForm({ disabled, onCancel, onRequest }: { disabled?: boolea
       {error && <InlineAlert tone="danger" title="Not sent">{error}</InlineAlert>}
       <div className="yx-ppl__row">
         {onCancel && <Button onClick={onCancel}>Cancel</Button>}
-        <Button variant="primary" loading={busy === 'request'} onClick={() => !early.stop() && void run('request', async () => (await onRequest({ security: security.trim(), side: side!, quantity: quantity!, value: Math.round(value!), noUpsi: true }), toast({ tone: 'success', title: 'Pre-clearance requested' })))}>
+        <Button variant="primary" loading={busy === 'request'} onClick={() => (closed ? say(closed) : !early.stop() && void run('request', async () => (await onRequest({ security: security.trim(), side: side!, quantity: quantity!, value: Math.round(value!), noUpsi: true }), toast({ tone: 'success', title: 'Pre-clearance requested' }))))}>
           Request pre-clearance
         </Button>
       </div>
@@ -1314,14 +1479,19 @@ function LivePreclearancePage({ today, live, switcher }: { today: Date; live: Li
   const state = (i: PreclearanceItem) => (i.status === 'Done' ? 'trade reported' : i.status === 'Expired' ? 'expired: report or re-apply' : 'valid');
   return (
     <MeFrame active="Declarations">
-      <PageHeader title="Trading pre-clearance" description={preclearDescription(live.rules, true)} actions={item && !asking && item.status !== 'Pending' ? <Button onClick={() => setAsking(true)}>New request</Button> : undefined} />
+      <PageHeader title="Trading pre-clearance" description={preclearDescription(live.rules)} actions={item && !asking && item.status !== 'Pending' ? <Button onClick={() => setAsking(true)}>New request</Button> : undefined} />
       {switcher}
+      {live.window && (
+        <InlineAlert tone="danger" title={`Trading window closed until ${formatDate(live.window.endsOn)}`}>
+          {live.window.reason}. You can't request or use a pre-clearance until the window reopens on {formatDate(live.window.reopensOn)}.
+        </InlineAlert>
+      )}
       {live.state === 'error' ? (
         <ErrorState title="We couldn't load your pre-clearances" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : live.state === 'loading' ? (
         <ListSkeleton label="Loading your pre-clearances" />
       ) : !item || asking ? (
-        <PreclearanceForm onCancel={item ? () => setAsking(false) : undefined} onRequest={async (x) => (await live.onRequest(x), setAsking(false))} />
+        <PreclearanceForm onCancel={item ? () => setAsking(false) : undefined} onRequest={async (x) => (await live.onRequest(x), setAsking(false))} closed={live.window ? closedText(live.window) : undefined} />
       ) : (
         <Card title={`${tradeTitle(item)} · ${item.referenceNo}`} actions={<StatusBadge status={item.status} />}>
           <div className="yx-ppl__stack">
@@ -1350,7 +1520,7 @@ export function TradingPreclearance({ view = 'request', today, live, switcher, n
   const validUntil = addDays(approvedOn, 6);
   return (
     <MeFrame active="Declarations">
-      <PageHeader title="Trading pre-clearance" description={preclearDescription({ threshold: 1000000, validDays: 7, decideDays: 2 }, false)} actions={view === 'approved' || view === 'expired' || view === 'report' ? <Button>New request</Button> : undefined} />
+      <PageHeader title="Trading pre-clearance" description={preclearDescription({ threshold: 1000000, validDays: 7, decideDays: 2 })} actions={view === 'approved' || view === 'expired' || view === 'report' ? <Button>New request</Button> : undefined} />
       {switcher}
       {view === 'blocked' && <InlineAlert tone="danger" title="Trading window closed until 16 Oct 2026">Quarterly results are due. You can't request or use a pre-clearance until the window reopens.</InlineAlert>}
       {view === 'request' || view === 'blocked' ? (
@@ -1394,10 +1564,80 @@ export interface LivePreclearanceQueue {
   rules: PreclearanceRules;
   rows: PreclearanceItem[];
   onDecide: (id: string, approve: boolean, note?: string) => Promise<void>;
+  /** PPL-44: the trading window calendar (closed periods; none by default). The page shows the toasts. */
+  windows?: { rows: TradingWindow[]; onClose: (input: TradingWindowInput) => Promise<void>; onRemove: (id: string) => Promise<void> };
+}
+
+const SAMPLE_WINDOWS: TradingWindow[] = [{ id: 'w1', startsOn: new Date(2026, 9, 1), endsOn: new Date(2026, 9, 16), reason: 'Quarterly results due' }];
+
+/** PPL-44: close the trading window for a period (dates inclusive). */
+function CloseWindowDialog({ open, onOpenChange, onClose }: { open: boolean; onOpenChange: (o: boolean) => void; onClose: (input: TradingWindowInput) => Promise<void> }) {
+  const [from, setFrom] = useState<Date | null>(null);
+  const [to, setTo] = useState<Date | null>(null);
+  const [reason, setReason] = useState('');
+  const { run, busy, error } = useRun();
+  const early = useTooEarly([
+    ...(!from ? [{ fieldId: 'tw-from', message: 'Choose the first closed day.' }] : []),
+    ...(!to ? [{ fieldId: 'tw-to', message: 'Choose the last closed day.' }] : from && to < from ? [{ fieldId: 'tw-to', message: 'The last closed day is on or after the first.' }] : []),
+    ...(reason.trim().length < 3 ? [{ fieldId: 'tw-why', message: 'Say why the window is closed.' }] : []),
+  ]);
+  const save = () => !early.stop() && void run('close', async () => (await onClose({ startsOn: dayKey(from!), endsOn: dayKey(to!), reason: reason.trim() }), onOpenChange(false)));
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Close the trading window"
+      size="md"
+      footer={
+        <>
+          <Button onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="primary" loading={busy === 'close'} onClick={save}>
+            Close the window
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-ppl__stack">
+        <Text as="p">Designated persons cannot ask for pre-clearance on these days, and none is approved.</Text>
+        <FormField id="tw-from" label="First closed day" required error={early.errorOf('tw-from')}>
+          <DatePicker value={from} onChange={setFrom} aria-label="First closed day" />
+        </FormField>
+        <FormField id="tw-to" label="Last closed day" required error={early.errorOf('tw-to')}>
+          <DatePicker value={to} onChange={setTo} aria-label="Last closed day" />
+        </FormField>
+        <FormField id="tw-why" label="Why" required helper="For example: quarterly results due." error={early.errorOf('tw-why')}>
+          <TextField value={reason} onChange={setReason} maxLength={200} />
+        </FormField>
+        {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
+      </div>
+    </Dialog>
+  );
+}
+
+/** PPL-44: the officer's calendar of closed periods, under the requests. */
+function TradingWindowCard({ rows, onClose, onRemove, closingOpen = false }: { rows: TradingWindow[]; onClose: (input: TradingWindowInput) => Promise<void>; onRemove: (id: string) => Promise<void>; closingOpen?: boolean }) {
+  const [closing, setClosing] = useState(closingOpen);
+  return (
+    <Card title="Trading window" actions={<Button size="sm" icon={Plus} onClick={() => setClosing(true)}>Close the window</Button>}>
+      <PlainTable
+        label="Closed periods"
+        rows={rows}
+        getRowId={(w) => w.id}
+        columns={[
+          { key: 'from', header: 'Closed from', cell: (w: TradingWindow) => formatDate(w.startsOn) },
+          { key: 'to', header: 'Until', cell: (w: TradingWindow) => formatDate(w.endsOn) },
+          { key: 'why', header: 'Why', cell: (w: TradingWindow) => w.reason },
+          { key: 'act', header: '', cell: (w: TradingWindow) => <ConfirmDialog trigger={<Button size="sm">Remove</Button>} title="Remove this closed period?" consequence={`The window opens for ${formatDate(w.startsOn)} to ${formatDate(w.endsOn)}. The period stays in the audit.`} confirmLabel="Remove" destructive onConfirm={() => onRemove(w.id)} /> },
+        ]}
+        empty={<EmptyState title="The trading window is open" description="No closed periods. Close it before results or other price-sensitive news." />}
+      />
+      {closing && <CloseWindowDialog open onOpenChange={setClosing} onClose={onClose} />}
+    </Card>
+  );
 }
 
 // PPL-44 · compliance officer list
-export function PreclearanceQueue({ live }: { live?: LivePreclearanceQueue }) {
+export function PreclearanceQueue({ live, closingOpen = false }: { live?: LivePreclearanceQueue; closingOpen?: boolean }) {
   const [rejecting, setRejecting] = useState<PreclearanceItem | null>(null);
   const [reason, setReason] = useState('');
   const [tried, setTried] = useState(false);
@@ -1441,6 +1681,7 @@ export function PreclearanceQueue({ live }: { live?: LivePreclearanceQueue }) {
           empty={<EmptyState title="No requests" description="Designated persons' pre-clearance requests appear here." />}
         />
       )}
+      {live ? live.windows && live.state === 'ready' && <TradingWindowCard rows={live.windows.rows} onClose={live.windows.onClose} onRemove={live.windows.onRemove} /> : <TradingWindowCard rows={SAMPLE_WINDOWS} onClose={async () => {}} onRemove={async () => {}} closingOpen={closingOpen} />}
       {live && rejecting && (
         <ConfirmDialog open onOpenChange={(o) => !o && setRejecting(null)} title={`Reject ${tradeTitle(rejecting)}?`} consequence={`${rejecting.name ?? 'The person'} sees your reason and may not trade on it.`} confirmLabel="Reject" destructive onConfirm={async () => {
           setTried(true);

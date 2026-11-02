@@ -103,3 +103,10 @@ export const LiveDiscardError: S = {
   }),
 };
 export const LiveCouldNotMake: S = { name: 'Live · couldn’t be made: the reason, and Try again', render: () => <ToastProvider><IssuedLettersRegister rows={[]} live={{ ...liveDrafts, rows: [DRAFT_ROWS[3]] }} /></ToastProvider>, play: rowMenu(/KFPL-TN\/OWD\/2026\/000001/) };
+
+/** PPL-28 Held: a relieving letter held on the exit until clearance is done; who held it, when and why, and Release. */
+const HELD_ROWS: Letter[] = [
+  L({ id: 'h1', title: 'Relieving letter: Neha Ghosh', letterType: 'relieving', personId: 'p5', person: 'Neha Ghosh', referenceNo: null, verifyCode: null, status: 'held', issuedAt: null, hold: { reason: 'Held until clearance is done.', by: 'Lakshmi Venkatesan', at: '2026-10-31T12:30:00Z' } }),
+  L({}),
+];
+export const LiveHeld: S = { name: 'Live · held letter: who held it, why, and Release', render: () => <ToastProvider><IssuedLettersRegister rows={[]} live={{ ...liveDrafts, rows: HELD_ROWS, onRelease: async () => {}, releaseOpen: 'h1' }} /></ToastProvider> };

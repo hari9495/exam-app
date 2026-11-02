@@ -16,3 +16,4 @@ export const Switch: S = { name: 'Employee · under Me › Declarations (switch)
 export const Officer: S = { name: 'Compliance officer · decisions', render: () => <PreclearanceQueue /> };
 export const Phone: S = { name: '· phone', ...phone, render: () => <PreclearancePhone today={TODAY} /> };
 export const NotDesignated: S = { name: 'Employee · not a designated person (no pre-clearance)', render: () => <TradingPreclearance today={TODAY} notDesignated /> };
+export const OfficerWindow: S = { name: 'Compliance officer · trading window calendar (close a period)', render: () => <PreclearanceQueue closingOpen /> };

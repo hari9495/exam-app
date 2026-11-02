@@ -20,3 +20,13 @@ export const preclearanceItem = (r: PreclearanceRow): PreclearanceItem => ({
   validUntil: r.validUntil ? day(r.validUntil) : null,
   tradedOn: r.tradedOn ? day(r.tradedOn) : null,
 });
+
+/** PPL-44: a closed trading window as the API sends it (dates as YYYY-MM-DD). */
+export interface TradingWindowRow {
+  id: string;
+  startsOn: string;
+  endsOn: string;
+  reopensOn: string;
+  reason: string;
+}
+export const tradingWindow = (w: TradingWindowRow) => ({ id: w.id, startsOn: day(w.startsOn), endsOn: day(w.endsOn), reopensOn: day(w.reopensOn), reason: w.reason });

@@ -366,9 +366,13 @@ export interface LiveLetters {
   };
   /** A letter that could not be made, made again (same reference); the page shows the toast. */
   onRetryRender?: (l: LiveLetter) => Promise<void>;
+  /** PPL-28: a held letter released: made and issued (or sent for approval); the page shows the toast. */
+  onRelease?: (l: LiveLetter) => Promise<void>;
+  /** Stories: the release confirmation opens on this letter. */
+  releaseOpen?: string;
 }
 
-const LETTER_STATE: Record<LiveLetter['status'], string> = { draft: 'Draft', discarded: 'Discarded', pending_approval: 'Pending approval', rejected: 'Not approved', rendering: 'Being made', awaiting_signature: 'Waiting for signature', issued: 'Issued', superseded: 'Superseded', withdrawn: 'Withdrawn' };
+const LETTER_STATE: Record<LiveLetter['status'], string> = { draft: 'Draft', discarded: 'Discarded', pending_approval: 'Pending approval', rejected: 'Not approved', held: 'Held', rendering: 'Being made', awaiting_signature: 'Waiting for signature', issued: 'Issued', superseded: 'Superseded', withdrawn: 'Withdrawn' };
 const LANGUAGE = new Intl.DisplayNames(['en'], { type: 'language' });
 
 type LetterPreview = { url: string } | { missing: Record<string, string> } | { failed: string } | null;
@@ -521,6 +525,8 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
   const [discardTried, setDiscardTried] = useState(false);
   const [discardBusy, setDiscardBusy] = useState(false);
   const [discardFailed, setDiscardFailed] = useState<string | null>(null);
+  // PPL-28: the held letter whose release is being confirmed.
+  const [releasing, setReleasing] = useState<LiveLetter | null>(() => live.rows.find((r) => r.id === live.releaseOpen) ?? null);
   const failedRows = live.rows.filter((r) => r.status === 'rendering' && r.renderError);
   const discard = async () => {
     setDiscardTried(true);
@@ -627,6 +633,8 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
               </>
             ) : r.status === 'rendering' && r.renderError && live.onRetryRender ? (
               <MenuItem onSelect={() => void live.onRetryRender!(r)}>Try again</MenuItem>
+            ) : r.status === 'held' && live.onRelease ? (
+              <MenuItem onSelect={() => setReleasing(r)}>Release letter</MenuItem>
             ) : null
           }
           defaultSort={{ key: 'issued', dir: 'desc' }}
@@ -648,6 +656,27 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
       )}
       {live.issue && <IssueLetterSheet key={sheet} issue={live.issue} open={issuing} onOpenChange={setIssuing} correcting={correcting} />}
       {live.draft && reviewing && <IssueLetterSheet key={reviewing.id} issue={live.issue} open onOpenChange={(o) => !o && setReviewing(null)} reviewing={{ letter: reviewing, onPreview: live.draft.onPreview, onIssue: live.draft.onIssue }} />}
+      {live.onRelease && (
+        <ConfirmDialog
+          open={releasing !== null}
+          onOpenChange={(o) => !o && setReleasing(null)}
+          title={`Release the ${(releasing?.title.split(': ')[0] ?? 'letter').toLowerCase()}?`}
+          consequence={`It is made now with its reference number and sent to ${releasing?.person ?? 'the person'}. If the template needs approval, it goes for approval first.`}
+          confirmLabel="Release letter"
+          onConfirm={async () => {
+            await live.onRelease!(releasing!);
+            setReleasing(null);
+          }}
+        >
+          {releasing?.hold && (
+            <dl className="yx-ppl__rail-facts">
+              <div><dt>Held by</dt><dd>{releasing.hold.by ?? 'YukthiX, on the exit'}</dd></div>
+              {releasing.hold.at && <div><dt>Held on</dt><dd>{formatDate(new Date(releasing.hold.at))}</dd></div>}
+              <div><dt>Why</dt><dd>{releasing.hold.reason}</dd></div>
+            </dl>
+          )}
+        </ConfirmDialog>
+      )}
       <Dialog
         open={discarding !== null}
         onOpenChange={(o) => !o && setDiscarding(null)}

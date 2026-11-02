@@ -280,7 +280,9 @@ export interface Letter {
   person?: string;
   referenceNo: string | null;
   verifyCode: string | null;
-  status: 'draft' | 'discarded' | 'pending_approval' | 'rejected' | 'rendering' | 'awaiting_signature' | 'issued' | 'superseded' | 'withdrawn';
+  status: 'draft' | 'discarded' | 'pending_approval' | 'rejected' | 'held' | 'rendering' | 'awaiting_signature' | 'issued' | 'superseded' | 'withdrawn';
+  /** PPL-28: a held letter (HR's register only): who held it, when and why. */
+  hold?: { reason: string; by: string | null; at: string | null } | null;
   /** Why it could not be made, in plain words (only while it waits to be made). */
   renderError: string | null;
   issuedAt: string | null;

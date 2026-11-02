@@ -5,7 +5,7 @@ import { TradingPreclearance, type PreclearanceRules } from '@yukthix/ui/frame';
 import { todayIst } from '../../../../../../lib/yx-org';
 import { usePeople, usePeopleWrite } from '../../../../../../lib/yx-people';
 import { useLifeWrite } from '../../../../../../lib/yx-lifecycle';
-import { preclearanceItem, type PreclearanceRow } from '../../../../../../lib/yx-preclearance';
+import { preclearanceItem, tradingWindow, type PreclearanceRow, type TradingWindowRow } from '../../../../../../lib/yx-preclearance';
 import { useDeclarationsSwitch } from '../../../../../../lib/yx-declarations';
 
 // Me › Trading pre-clearance (PPL-44): a designated person asks the compliance officer before trading, then reports
@@ -13,7 +13,7 @@ import { useDeclarationsSwitch } from '../../../../../../lib/yx-declarations';
 export default function YxMyPreclearancePage() {
   const switcher = useDeclarationsSwitch('preclearance');
   const { toast } = useToast();
-  const mine = usePeople<{ personId: string; rules: PreclearanceRules; requests: PreclearanceRow[] }>('/me/pre-clearance');
+  const mine = usePeople<{ personId: string; rules: PreclearanceRules; requests: PreclearanceRow[]; window: TradingWindowRow | null }>('/me/pre-clearance');
   const write = usePeopleWrite();
   const upload = useLifeWrite();
   const forbidden = (mine.error as { status?: number } | null)?.status === 403;
@@ -26,6 +26,8 @@ export default function YxMyPreclearancePage() {
         onRetry: () => void mine.refetch(),
         rules: mine.data?.rules ?? { threshold: 0, validDays: 0, decideDays: 0 },
         requests: (mine.data?.requests ?? []).map(preclearanceItem),
+        // PPL-44: the trading window is closed today (the API refuses a request then too).
+        window: mine.data?.window ? tradingWindow(mine.data.window) : null,
         onRequest: async (input) => {
           const r = await write<{ referenceNo: string }>('POST', '/me/pre-clearance', input);
           toast({ tone: 'success', title: `Pre-clearance ${r.referenceNo} sent to the compliance officer` });

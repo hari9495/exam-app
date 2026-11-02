@@ -67,6 +67,12 @@ function Letters() {
                   toast({ tone: 'success', title: `Draft ${l.title.split(': ')[0].toLowerCase()} for ${l.person ?? 'the person'} discarded` });
                 },
               },
+              // PPL-28: a held letter (an exit's, held until clearance is done) released; the API makes and issues it.
+              onRelease: async (l: Letter) => {
+                const after = await write<Letter>('POST', `/letters/${encodeURIComponent(l.id)}/release`);
+                const what = `${l.title.split(': ')[0]} for ${l.person ?? 'the person'}`;
+                toast({ tone: 'success', title: after.status === 'pending_approval' ? `${what} sent for approval` : after.status === 'issued' ? `${what} issued` : `${what} released` });
+              },
               onRetryRender: async (l: Letter) => {
                 try {
                   const after = await write<Letter>('POST', `/letters/${encodeURIComponent(l.id)}/render`);

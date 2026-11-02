@@ -14,7 +14,7 @@ export type { MyRequest, NotifCategory, PlatformNotification } from '../platform
 // PPL-36 / PPL-37: possible same person, merge and unmerge.
 export { MergeReview, SamePersonQueue, type LiveMerge, type LiveSamePerson, type LiveUnmerge, type MergeKeep, type SamePersonRow } from '../people/relations';
 // PPL-44: trading pre-clearance (the person's own, and the compliance officer's decisions).
-export { PreclearanceQueue, TradingPreclearance, type LivePreclearance, type LivePreclearanceQueue, type PreclearanceInput, type PreclearanceItem, type PreclearanceRules } from '../people/selfservice';
+export { PreclearanceQueue, TradingPreclearance, type LivePreclearance, type LivePreclearanceQueue, type PreclearanceInput, type PreclearanceItem, type PreclearanceRules, type TradingWindow, type TradingWindowInput } from '../people/selfservice';
 // PPL-43: BFSI annual declarations and the compliance officer's register.
 export { BfsiComplianceList, BfsiDeclarations, type BfsiHolding, type BfsiRelated, type LiveBfsi, type LiveBfsiRegister } from '../people/selfservice';
 // PPL-38: the disability declaration (the person's own, and the HR diversity role's list).
@@ -48,7 +48,7 @@ export { ResignationSheet, type LiveResignation } from '../people/exits';
 export { ExitInterview, type LiveExitInterview } from '../people/exits';
 export { DeathInServiceFlow, type LiveDeath } from '../people/exits';
 export { ProfileChangeRequest, type LiveProfileChange } from '../people/selfservice';
-export { MyDataScreen, type LiveMyData } from '../people/selfservice';
+export { MyDataScreen, type CorrectionInput, type LiveMyData, type NomineeInput, type PrivacyNominee } from '../people/selfservice';
 export { ClearanceSignoffs, type LiveClearance } from '../people/exits';
 export { AbscondingTimeline, type LiveAbsconding } from '../people/exits';
 // PPL-22 F&F calculator with the live settlements (Payroll › Full and final).
