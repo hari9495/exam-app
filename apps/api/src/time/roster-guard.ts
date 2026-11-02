@@ -4,6 +4,7 @@ import { ScheduleBook, nightGuard } from './schedule';
 import { Facts, asDate, dateOf, factsOn, settingOn } from './time-core';
 import { addDays } from './time-maths';
 import { mondayOf } from './time-rules';
+import { withPayScope } from '../payroll/pay-access';
 import { BLOCKING, GUARD_CODE, Held, Limits, Override, PlanDay, Requirement, RuleBreak, addedBreaks, licenceValid, licencesNeeded, timeBreaks } from './roster-rules';
 
 /** What a day becomes in a "what if": a shift id, null for off, or 'base' for the person's own pattern / location shift. */
@@ -21,6 +22,7 @@ export class RosterGuard {
   private readonly limitsOf = new Map<string, Promise<Limits>>();
   private readonly licences = new Map<string, Promise<{ held: Held[]; overrides: Override[] }>>();
   private reqs: Promise<Requirement[]> | null = null;
+  private readonly callouts = new Map<string, Promise<Map<string, number>>>();
   private readonly names = new Map<string, string>();
 
   private constructor(
@@ -89,12 +91,41 @@ export class RosterGuard {
   }
 
   /**
+   * PAY-35 on-call: the call-out minutes per day of the person's on-call slots whose rule says "count call-out hours towards
+   * the weekly limit" (founder 2 Nov 2026). A rule that says no adds nothing. Loaded once per person and range.
+   */
+  calloutMinutes(employeeId: string, from: string, to: string): Promise<Map<string, number>> {
+    const k = `${employeeId}|${from}|${to}`;
+    if (!this.callouts.has(k))
+      this.callouts.set(
+        k,
+        (async () => {
+          const org = this.c.organizationId;
+          // On-call is pay data behind the pay guard: opened for this server-side check only, to the person's own legal
+          // entities, and only the dates, hours and the rule's flag are read (never amounts), then closed again.
+          const entities = [...new Set((await this.tx.employment.findMany({ where: { organizationId: org, employeeId }, select: { legalEntityId: true } })).map((m) => m.legalEntityId))];
+          const { slots, counting } = await withPayScope(this.tx, entities, async () => {
+            const slots = await this.tx.oncallSlot.findMany({ where: { organizationId: org, employeeId, slotDate: { gte: asDate(from), lte: asDate(to) }, calloutHours: { gt: 0 } }, select: { ruleId: true, slotDate: true, calloutHours: true } });
+            const ruleIds = [...new Set(slots.map((s) => s.ruleId))];
+            const counting = new Set(ruleIds.length ? (await this.tx.oncallRule.findMany({ where: { organizationId: org, id: { in: ruleIds }, countTowardsWeekly: true }, select: { id: true } })).map((r) => r.id) : []);
+            return { slots, counting };
+          });
+          const out = new Map<string, number>();
+          for (const s of slots) if (counting.has(s.ruleId)) out.set(dateOf(s.slotDate), (out.get(dateOf(s.slotDate)) ?? 0) + Math.round(Number(s.calloutHours) * 60));
+          return out;
+        })(),
+      );
+    return this.callouts.get(k)!;
+  }
+
+  /**
    * The person's plan over [from, to]: published (and the pattern / location) by default; `drafts` also applies unpublished
    * drafts; `changes` overrides single days last.
    */
   async plan(employeeId: string, from: string, to: string, opts: { drafts?: boolean; changes?: Map<string, Change> } = {}): Promise<PlanDay[]> {
     const org = this.c.organizationId;
     const drafts = opts.drafts ? new Map((await this.tx.rosterEntry.findMany({ where: { organizationId: org, employeeId, draft: { not: null }, workOn: { gte: asDate(from), lte: asDate(to) } } })).map((e) => [dateOf(e.workOn), e.draft!])) : new Map<string, string>();
+    const callouts = await this.calloutMinutes(employeeId, from, to);
     const out: PlanDay[] = [];
     for (let on = from; on <= to; on = addDays(on, 1)) {
       const f = await this.factsOn(employeeId, on);
@@ -111,7 +142,7 @@ export class RosterGuard {
         const ch = opts.changes.get(on)!;
         shift = ch === null ? null : ch === 'base' ? (await this.book.day(f, on, false)).shift : this.book.shiftOn(ch, on);
       }
-      out.push({ on, shift, employed: true });
+      out.push({ on, shift, employed: true, ...(callouts.get(on) ? { calloutMinutes: callouts.get(on) } : {}) });
     }
     return out;
   }

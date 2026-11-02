@@ -24,6 +24,19 @@ describe('roster rules (feature sheet 1, 2, 4, 5, 8)', () => {
     expect(b.find((x) => x.kind === 'week')?.on).toBe('2026-11-08');
   });
 
+  // Founder 2 Nov 2026 (PAY-35): call-out hours count towards the week when the on-call rule says so (the guard only
+  // passes them in then); on a working day or a day off; the limit itself is unchanged.
+  it('hours a week with call-outs: 48 h plus a call-out breaks; at the limit it passes; none counted, none added', () => {
+    const six = week([DAY, DAY, DAY, DAY, DAY, DAY, null]);
+    expect(hoursBreaks(six.map((d, i) => (i === 6 ? { ...d, calloutMinutes: 30 } : d)), { ...L, minWeeklyOffs: 0 }).find((x) => x.kind === 'week')).toEqual({ on: '2026-11-08', kind: 'week', message: '48 h 30 m of work in the week of 2 Nov 2026 by this day, 30 m of call-outs included (at most 48 h)' });
+    const five = week([DAY, DAY, DAY, DAY, DAY, null, null]);
+    expect(hoursBreaks(five.map((d, i) => (i === 2 ? { ...d, calloutMinutes: 480 } : d)), L).filter((x) => x.kind === 'week')).toEqual([]); // exactly 48 h
+    expect(hoursBreaks(five.map((d, i) => (i === 2 ? { ...d, calloutMinutes: 481 } : d)), L).find((x) => x.kind === 'week')?.on).toBe('2026-11-06');
+    expect(hoursBreaks(six, L).filter((x) => x.kind === 'week')).toEqual([]);
+    // A day off with a call-out is still a day off for the weekly-off rule.
+    expect(hoursBreaks(six.map((d, i) => (i === 6 ? { ...d, calloutMinutes: 30 } : d)), { ...L, weeklyMinutes: 99999 }).map((x) => x.kind)).toEqual([]);
+  });
+
   it('weekly off: a whole week needs one; a part week (joiner) is not judged', () => {
     expect(hoursBreaks(week([DAY, DAY, DAY, DAY, DAY, DAY, DAY]), { ...L, weeklyMinutes: 99999 }).map((x) => x.kind)).toEqual(['weekly_off']);
     expect(hoursBreaks(week([DAY, DAY, DAY, DAY, DAY, DAY, DAY]), { ...L, weeklyMinutes: 99999, minWeeklyOffs: 0 })).toEqual([]);

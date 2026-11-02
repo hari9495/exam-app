@@ -26,6 +26,8 @@ export interface PlanDay {
   shift: ShiftTimes | null;
   /** False on a day the person is not employed (before joining, after leaving): never counted. */
   employed: boolean;
+  /** Call-out minutes that day that count towards the weekly hours (PAY-35: the on-call rule says so). */
+  calloutMinutes?: number;
 }
 
 /** The refusal code an API returns for a break of each kind. */
@@ -50,12 +52,15 @@ export function hoursBreaks(days: readonly PlanDay[], l: Limits): RuleBreak[] {
   for (const d of days) weeks.set(mondayOf(d.on), [...(weeks.get(mondayOf(d.on)) ?? []), d]);
   for (const [monday, list] of weeks) {
     let total = 0;
+    let callouts = 0;
     let reported = false;
     for (const d of [...list].sort((a, b) => a.on.localeCompare(b.on))) {
-      if (!d.shift || !d.employed) continue;
-      total += scheduledMinutes(d.shift);
+      // A call-out counts on its own day too, also a day off (founder 2 Nov 2026, PAY-35 "count towards weekly hours").
+      if (!d.employed || (!d.shift && !d.calloutMinutes)) continue;
+      total += (d.shift ? scheduledMinutes(d.shift) : 0) + (d.calloutMinutes ?? 0);
+      callouts += d.calloutMinutes ?? 0;
       if (!reported && total > l.weeklyMinutes) {
-        out.push({ on: d.on, kind: 'week', message: `${h(total)} of work in the week of ${dateText(monday)} by this day (at most ${h(l.weeklyMinutes)})` });
+        out.push({ on: d.on, kind: 'week', message: `${h(total)} of work in the week of ${dateText(monday)} by this day${callouts ? `, ${callouts < 60 ? `${callouts} m` : h(callouts)} of call-outs included` : ''} (at most ${h(l.weeklyMinutes)})` });
         reported = true;
       }
     }

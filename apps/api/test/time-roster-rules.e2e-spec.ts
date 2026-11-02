@@ -233,6 +233,56 @@ describe('Time rosters: rules, staff view and licences', () => {
     });
   });
 
+  // Founder 2 Nov 2026 (PAY-35): an on-call rule that says "count call-out hours towards the weekly limit" makes the
+  // roster's weekly-hours check count the person's call-outs; a rule that says no leaves them out.
+  describe('rule 2 with call-outs (PAY-35 count towards weekly hours)', () => {
+    const off = addDays(W, 14); // a week with the slot under a rule that does not count
+    const on = addDays(W, 21); // a week with the slot under a rule that counts
+    const weekConflict = async (week: string) =>
+      ((await api('boss', 'get', `/time/roster?week=${week}`).expect(200)).body.people.find((p: { id: string }) => p.id === ids.otherEmp).cells as { conflicts?: { kind: string; message: string }[] }[]).flatMap((c) => c.conflicts ?? []).find((c) => c.kind === 'week');
+
+    it('set-up: two on-call rules (counts / does not) and a 6 h call-out on the Monday of each week', async () => {
+      await inA(async (tx) => {
+        // Payroll records on-call (PAY-35); the pay guard is opened for the entity as the payroll API does.
+        await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entityA}}`}, true)`;
+        const o = { organizationId: org.A.id, legalEntityId: ids.entityA, standbyAmount: 500, calloutMinHours: 2, calloutRate: 300, multiplier: 1.5, createdBy: users.hrAdmin };
+        const no = await tx.oncallRule.create({ data: { ...o, name: `Not counted ${run}`, countTowardsWeekly: false } });
+        const yes = await tx.oncallRule.create({ data: { ...o, name: `Counted ${run}`, countTowardsWeekly: true } });
+        const m = await tx.employment.findFirstOrThrow({ where: { organizationId: org.A.id, employeeId: ids.otherEmp } });
+        const slot = { organizationId: org.A.id, legalEntityId: ids.entityA, employeeId: ids.otherEmp, employmentId: m.id, calloutHours: 6, createdBy: users.hrAdmin };
+        await tx.oncallSlot.create({ data: { ...slot, ruleId: no.id, slotDate: new Date(`${off}T00:00:00Z`) } });
+        await tx.oncallSlot.create({ data: { ...slot, ruleId: yes.id, slotDate: new Date(`${on}T00:00:00Z`) } });
+      });
+    });
+
+    // The location's pattern alone is 51 h a week here, so the limit is set to 54 h for these weeks (back to 48 h after).
+    it('the week view: counted call-outs add to the week and say so; uncounted ones add nothing', async () => {
+      await setSetting('roster.max_weekly_hours', '54');
+      expect(await weekConflict(off)).toBeUndefined(); // 51 h, the call-out not counted
+      expect((await weekConflict(on))?.message).toMatch(/^57 h of work in the week of .* by this day, 6 h of call-outs included \(at most 54 h\)$/);
+    });
+
+    it('a change that takes the week over with counted call-outs is refused (HOURS_GUARD); with uncounted ones it publishes', async () => {
+      // Monday off first (43 h, or 49 h with the counted call-out: both within 54 h), published.
+      for (const week of [off, on]) {
+        await api('boss', 'put', '/time/roster/cells').send({ cells: [{ employeeId: ids.otherEmp, on: week, value: 'off' }] }).expect(200);
+        await api('boss', 'post', '/time/roster/publish').send({ week }).expect(200);
+      }
+      // Monday back to the pattern: 57 h with the counted call-out is refused and nothing is published (the publish judges
+      // the following week too, so this week goes first and is then set back).
+      await api('boss', 'put', '/time/roster/cells').send({ cells: [{ employeeId: ids.otherEmp, on, value: 'pattern' }] }).expect(200);
+      const refused = (await api('boss', 'post', '/time/roster/publish').send({ week: on }).expect(409)).body;
+      expect(refused.code).toBe('HOURS_GUARD');
+      expect(refused.message).toMatch(/57 h of work .* 6 h of call-outs included \(at most 54 h\)/);
+      expect(await inA((tx) => tx.rosterEntry.findFirst({ where: { organizationId: org.A.id, employeeId: ids.otherEmp, workOn: new Date(`${on}T00:00:00Z`) } }))).toMatchObject({ isOff: true, draft: 'pattern' });
+      await api('boss', 'put', '/time/roster/cells').send({ cells: [{ employeeId: ids.otherEmp, on, value: 'off' }] }).expect(200);
+      // The same change where the call-out is not counted: 51 h, published.
+      await api('boss', 'put', '/time/roster/cells').send({ cells: [{ employeeId: ids.otherEmp, on: off, value: 'pattern' }] }).expect(200);
+      await api('boss', 'post', '/time/roster/publish').send({ week: off }).expect(200);
+      await setSetting('roster.max_weekly_hours', '48');
+    });
+  });
+
   describe('TIM-40 licences (rule 8)', () => {
     it('only company-wide set-up manages licences; bad input 400; another company 404', async () => {
       await api('mgr', 'get', '/time/licences').expect(403);

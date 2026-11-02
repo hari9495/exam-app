@@ -324,6 +324,8 @@ export class RosterService implements OnModuleInit {
         const locked = await lockedDates(tx, org, p.id, week, to);
         const cells = [];
         const planned: PlanDay[] = [];
+        // PAY-35: call-out hours that count towards the weekly limit for this person (their on-call rule says so).
+        const callouts = await guard.calloutMinutes(p.id, addDays(week, -1), to);
         let holidays = new Map<string, { name: string }>();
         let f0: Facts | null = null;
         for (let k = -1; k < span; k++) {
@@ -343,7 +345,7 @@ export class RosterService implements OnModuleInit {
           const base = await book.day(f, on, false);
           const draft = e?.draft ?? null;
           const plan = draft === null ? effective : draft === 'off' ? { shift: null, weeklyOff: true, source: 'roster' as const } : draft === 'pattern' ? base : { shift: book.shiftOn(draft, on), weeklyOff: false, source: 'roster' as const };
-          planned.push({ on, shift: plan.shift, employed: true });
+          planned.push({ on, shift: plan.shift, employed: true, ...(callouts.get(on) ? { calloutMinutes: callouts.get(on) } : {}) });
           if (k < 0) continue;
           const conflicts: (Conflict | RuleBreak)[] = [];
           if (plan.shift && leave.get(on)) conflicts.push({ on, kind: 'leave', message: leave.get(on) === 'full' ? 'On leave' : 'Half day on leave' });

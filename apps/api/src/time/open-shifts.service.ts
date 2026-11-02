@@ -185,7 +185,7 @@ export class OpenShiftsService {
               }
             }
             won30 = await tx.openShift.count({ where: { organizationId: org, awardedEmployeeId: b.employeeId, status: 'awarded', workOn: { gte: asDate(addDays(on, -30)), lt: asDate(on) } } });
-            weekMinutes = (await guard.plan(b.employeeId, monday, addDays(monday, 6))).reduce((n, d) => n + (d.employed && d.shift ? scheduledMinutes(d.shift) : 0), 0);
+            weekMinutes = (await guard.plan(b.employeeId, monday, addDays(monday, 6))).reduce((n, d) => n + (d.employed ? (d.shift ? scheduledMinutes(d.shift) : 0) + (d.calloutMinutes ?? 0) : 0), 0);
           }
           list.push({ id: b.id, employeeId: b.employeeId, name, code: f?.code ?? null, status: b.status, bidAt: b.createdAt.toISOString(), eligible: b.status === 'waiting' && os.status === 'open' && !refusal, why: refusal?.why ?? null, code409: refusal?.code ?? null, won30, weekMinutes, rank: null });
         }
