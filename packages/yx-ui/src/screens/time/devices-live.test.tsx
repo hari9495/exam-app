@@ -94,6 +94,27 @@ describe('Devices and kiosks (TIM-14 live)', () => {
     expect(screen.queryByRole('tab', { name: 'Training' })).toBeNull();
   });
 
+  it('DeviceNotApproved: a computer request is approved straight away; an approved computer can have its approval removed', async () => {
+    const data: DevicesData = {
+      ...DATA,
+      requests: [...DATA.requests, { id: 'w1', kind: 'web', employeeId: 'e3', person: 'Divya Raghunathan', site: 'Chennai office', model: 'Chrome on Windows', oldModel: null, oldLastSeenAt: null, oldPhoneLost: false, reason: '', raisedAt: mins(10) }],
+      phones: [...DATA.phones, { id: 'w2', kind: 'web', employeeId: 'e4', person: 'Nisha Menon', model: 'Edge on Windows', appVersion: null, lastSeenAt: mins(30), status: 'active' }],
+    };
+    const live = devices({ data });
+    render(<DevicesScreen live={live} />);
+    await ue.click(screen.getByRole('tab', { name: /New phone requests/ }));
+    expect(screen.getByText('Computer: Chrome on Windows')).toBeInTheDocument();
+    const row = screen.getByText('Computer: Chrome on Windows').closest('tr')!;
+    await ue.click(within(row).getByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(live.onApprove).toHaveBeenCalledWith('w1'));
+    await ue.click(screen.getByRole('tab', { name: /Employee phones/ }));
+    expect(screen.getByText('Computer · Edge on Windows')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Remove approval' }));
+    expect(await screen.findByText(/Nisha can't clock in from this computer any more and stays signed in/)).toBeInTheDocument();
+    await ue.click(screen.getAllByRole('button', { name: 'Remove approval' }).at(-1)!);
+    await waitFor(() => expect(live.onSignOut).toHaveBeenCalledWith('w2'));
+  });
+
   it('signs out a lost phone remotely', async () => {
     const live = devices();
     render(<DevicesScreen live={live} />);

@@ -356,6 +356,40 @@ describe('TIM-31 Locations, live', () => {
     await waitFor(() => expect(onSetNetworks).toHaveBeenCalledWith('loc-blr', ['10.20.4.0/24', '10.20.5.0/24']));
   });
 
+  it('Multi: a location saved with one point shows it; another point is added and both are saved with the version seen', async () => {
+    const onSetPoints = vi.fn(async () => ({}));
+    const data = { ...TIME_SETUP, locations: TIME_SETUP.locations.map((l, i) => (i === 0 ? { ...l, updatedAt: '2026-10-28T04:00:00.000Z' } : l)) };
+    wrap(<GeofenceEditorScreen live={{ ...base, data, settingsHref: '/yx/settings/locations', onSetRule: vi.fn(), onSetPoints }} />);
+    expect(screen.getByText('12.97, 77.59 · 150 m')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Add another point' }));
+    // Pressed too early: the new point has no latitude yet, so its field takes the focus and nothing is sent.
+    await ue.click(screen.getByRole('button', { name: 'Save points' }));
+    await waitFor(() => expect(screen.getByLabelText(/^Latitude/)).toHaveFocus());
+    expect(onSetPoints).not.toHaveBeenCalled();
+    await ue.type(screen.getByLabelText(/^Latitude/), '12.975');
+    await ue.type(screen.getByLabelText(/^Longitude/), '77.595');
+    await ue.clear(screen.getByLabelText(/^Point name/));
+    await ue.type(screen.getByLabelText(/^Point name/), 'Annexe');
+    await ue.click(screen.getByRole('button', { name: 'Save points' }));
+    await waitFor(() => expect(onSetPoints).toHaveBeenCalledWith('loc-blr', [{ name: 'Bengaluru head office', lat: 12.97, lng: 77.59, radiusM: 150 }, { name: 'Annexe', lat: 12.975, lng: 77.595, radiusM: 100 }], '2026-10-28T04:00:00.000Z'));
+  });
+
+  it('Multi: Remove shows only with more than one point; a radius outside 50 to 1,000 m is marked', async () => {
+    const onSetPoints = vi.fn(async () => ({}));
+    const data = { ...TIME_SETUP, locations: TIME_SETUP.locations.map((l, i) => (i === 0 ? { ...l, points: [{ name: 'Main block', lat: 12.97, lng: 77.59, radiusM: 200 }, { name: 'Annexe', lat: 12.972, lng: 77.592, radiusM: 80 }] } : l)) };
+    wrap(<GeofenceEditorScreen live={{ ...base, data, settingsHref: '/yx/settings/locations', onSetRule: vi.fn(), onSetPoints }} />);
+    expect(screen.getAllByRole('button', { name: 'Remove' })).toHaveLength(2);
+    await ue.click(screen.getAllByRole('button', { name: 'Remove' })[1]!);
+    expect(screen.queryByRole('button', { name: 'Remove' })).not.toBeInTheDocument();
+    const radius = screen.getByLabelText(/^Radius/);
+    await ue.clear(radius);
+    await ue.type(radius, '20');
+    await ue.tab();
+    expect(screen.getByText('Enter a radius between 50 and 1,000 m')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Save points' }));
+    expect(onSetPoints).not.toHaveBeenCalled();
+  });
+
   it("IpError: the server's line error shows on the field", async () => {
     const onSetNetworks = vi.fn(async () => { throw new Error('Line 1: 10.0.0.0/33 is not a valid range. Each part must be 0–255, e.g. 10.20.4.0/24.'); });
     wrap(<GeofenceEditorScreen live={{ ...base, settingsHref: '/yx/settings/locations', onSetRule: vi.fn(), onSetNetworks }} />);

@@ -443,6 +443,8 @@ export interface ClockCardProps {
   distanceM?: number;
   mode?: 'restricted' | 'field';
   deviceApproved?: boolean;
+  /** DeviceNotApproved: HR was already asked to approve this device (the card starts at "Requested"). */
+  deviceRequested?: boolean;
   /** Source recorded on a new punch. */
   channel?: 'web' | 'mobile';
   /** Where a new punch is recorded, e.g. "Chennai office · IP 10.20.4.17". */
@@ -451,7 +453,8 @@ export interface ClockCardProps {
   variant?: 'card' | 'page' | 'home';
   defaultNoteOpen?: boolean;
   /** Called with a chosen alternative, e.g. "wfh". */
-  onAlternative?: (option: string) => void;
+  /** A returned promise that fails puts the button back (say, "Ask HR to approve" when the request did not go). */
+  onAlternative?: (option: string) => void | Promise<unknown>;
   onRegularise?: () => void;
   /** Work mode chosen after an outside prompt (the card then allows clock-in). */
   defaultWorkMode?: 'office' | 'wfh' | 'on_duty';
@@ -512,7 +515,7 @@ export function ClockCard(p: ClockCardProps) {
   const [tick, setTick] = useState(0);
   const [announce, setAnnounce] = useState('');
   const [rechecked, setRechecked] = useState('');
-  const [hrAsked, setHrAsked] = useState(false);
+  const [hrAsked, setHrAsked] = useState(Boolean(p.deviceRequested));
   // Why a punch button can't act right now (never a disabled button: pressed, it says why).
   const [hint, setHint] = useState('');
   // The last punch sent to the server, so a refusal (say, the location) can be tried again (YX-AT-23).
@@ -692,7 +695,7 @@ export function ClockCard(p: ClockCardProps) {
                 <Button size="sm" icon={RotateCw} onClick={() => { setRechecked(fmt12(toHHMM(nowMin))); onAlternative?.('retry'); }}>{web && block.code === 'outside' ? 'Check again' : 'Retry location'}</Button>
               )}
               {block.options.includes('ask_hr') && (
-                <Button size="sm" onClick={() => { if (!hrAsked) { setHrAsked(true); onAlternative?.('ask_hr'); } }}>{hrAsked ? 'Requested' : 'Ask HR to approve'}</Button>
+                <Button size="sm" onClick={() => { if (!hrAsked) { setHrAsked(true); void Promise.resolve(onAlternative?.('ask_hr')).catch(() => setHrAsked(false)); } }}>{hrAsked ? 'Requested' : 'Ask HR to approve'}</Button>
               )}
               {/* The check re-runs against the same policy: still blocked, so say so with the time it ran. */}
               {rechecked && block.options.includes('retry') && <span className="yx-tim-muted">{block.code === 'coarse' ? 'Location still not accurate enough' : web ? `Still not on ${locationName} Wi-Fi` : `Still outside ${locationName}`} · checked {rechecked}</span>}

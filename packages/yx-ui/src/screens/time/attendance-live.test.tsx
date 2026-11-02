@@ -63,6 +63,33 @@ describe('Me › Attendance today (live clock page)', () => {
     await waitFor(() => expect(getLocation).toHaveBeenCalledTimes(2));
   });
 
+  it('DeviceNotApproved: an unapproved computer is blocked before the punch; Ask HR to approve sends the request once', async () => {
+    const onAskDevice = vi.fn(async () => ({}));
+    const onPunch = vi.fn();
+    render(<MyAttendanceTodayScreen live={live({ onPunch, onAskDevice, data: { ...ATT, device: { required: true, approved: false, requested: false } } })} />);
+    expect(screen.getByText("This computer isn't approved for clock-in")).toBeInTheDocument();
+    expect(screen.getByText('Use your approved device, or ask HR to approve this one.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Clock in' }));
+    expect(onPunch).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('button', { name: 'Ask HR to approve' }));
+    expect(await screen.findByText('Request sent to HR · this computer')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Requested' }));
+    expect(onAskDevice).toHaveBeenCalledTimes(1);
+  });
+
+  it('DeviceNotApproved: already asked shows Requested; a request that fails puts the button back; approved never blocks', async () => {
+    const { unmount } = render(<MyAttendanceTodayScreen live={live({ onAskDevice: vi.fn(), data: { ...ATT, device: { required: true, approved: false, requested: true } } })} />);
+    expect(screen.getByRole('button', { name: 'Requested' })).toBeInTheDocument();
+    unmount();
+    const failing = vi.fn(async () => { throw new Error('You already asked HR to approve another computer.'); });
+    const second = render(<MyAttendanceTodayScreen live={live({ onAskDevice: failing, data: { ...ATT, device: { required: true, approved: false, requested: false } } })} />);
+    await ue.click(screen.getByRole('button', { name: 'Ask HR to approve' }));
+    expect(await screen.findByRole('button', { name: 'Ask HR to approve' })).toBeInTheDocument();
+    second.unmount();
+    render(<MyAttendanceTodayScreen live={live({ onAskDevice: vi.fn(), data: { ...ATT, device: { required: true, approved: true, requested: false } } })} />);
+    expect(screen.queryByText("This computer isn't approved for clock-in")).not.toBeInTheDocument();
+  });
+
   it("breaks: End break while on one; today's punches name them", async () => {
     const at = (id: string, kind: 'in' | 'break_start', iso: string) => ({ id, kind, at: iso, source: 'web', accepted: true, refusal: null, verdict: 'network', distanceM: null, accuracyM: null, where: 'Bengaluru head office' });
     const onPunch = vi.fn(async () => ({ accepted: true, duplicate: false, kind: 'break_end' as const, message: 'Break ended', verdict: 'network', distanceM: null }));

@@ -30,7 +30,7 @@ import { balancesFor, CLAIM, HR_ADMIN, ME, myReports, NEGATIVE_BALANCES, PAYROLL
 import type { ViewState } from './attendance';
 import type { AttendanceReport, LeaveReport as LiveLeaveReport, LeaveReportKind, LeaveReportQuery, LeaveReportRow, LoadState, MyTimesheet, NightRegister, PayrollFeed, Registers, TimesheetLineInput } from './live/types';
 import { useRun } from '../org/org-kit';
-import { LiveDevicesScreen, type LiveDevices } from './devices-live';
+import { LiveDevicesScreen, computerWords, type LiveDevices } from './devices-live';
 import { TrainingTab, type TrainingRow, type TrainingTabProps } from './training-tab';
 import { LivePrefillDrawer, type LivePrefill, type PrefillProject } from './prefill-live';
 import './time.css';
@@ -106,14 +106,18 @@ const TRAINING: TrainingRow[] = [
   { id: 'tr5', title: 'First aid basics', room: 'Training room 2', location: site('MAA'), startsAt: '2026-09-28T04:30:00Z', endsAt: '2026-09-28T06:30:00Z', invitees: [], present: 0, state: 'cancelled', version: 2 },
 ];
 const TRAINING_PEOPLE = EMPLOYEES.map((e) => ({ id: e.id, label: e.name, detail: null }));
-interface BindReq { id: string; person: string; site: string; from: string; to: string; lost: boolean; reason: string; raised: Date }
+/** `computer`: a computer for web clock-in (DeviceNotApproved), asked for from My attendance today. */
+interface BindReq { id: string; person: string; site: string; from: string; to: string; lost: boolean; reason: string; raised: Date; computer?: boolean }
+/** Computers story: one computer waiting and one approved (company setting "Web clock-in only from an approved computer"). */
+const COMPUTER_BIND: BindReq = { id: 'b4', person: 'Arun Prakash', site: 'Chennai office', from: '', to: 'Chrome on Windows', lost: false, reason: 'Asked from My attendance today', raised: new Date(2026, 8, 29, 9, 31), computer: true };
 const BINDS: BindReq[] = [
   { id: 'b1', person: 'Meera Krishnan', site: 'Chennai office', from: 'Redmi Note 11', to: 'Samsung Galaxy M34', lost: true, reason: 'Old phone lost on 26 Sep', raised: new Date(2026, 8, 27) },
   { id: 'b2', person: 'Kavitha Sundaram', site: 'Hosur plant', from: '', to: 'Nokia G21', lost: false, reason: 'First smartphone', raised: new Date(2026, 8, 28) },
   { id: 'b3', person: 'Divya Raghunathan', site: 'Chennai office', from: 'Pixel 7a', to: 'Samsung Galaxy A15', lost: false, reason: 'Old phone is slow', raised: new Date(2026, 8, 29, 9, 24) },
 ];
 const REJECT_REASONS = ['Phone model not allowed', 'Ask them to visit HR with the phone', "Request doesn't match our records"].map((r) => ({ value: r, label: r }));
-interface Phone { id: string; person: string; model: string; app: string; lastSeen: string; status: 'Active' | 'Lost' | 'Signed out' | 'Inactive'; seenOn?: Date }
+interface Phone { id: string; person: string; model: string; app: string; lastSeen: string; status: 'Active' | 'Lost' | 'Signed out' | 'Inactive'; seenOn?: Date; computer?: boolean }
+const COMPUTER: Phone = { id: 'c1', person: 'Nisha Menon', model: 'Edge on Windows', app: '—', lastSeen: 'Today, 9:04 am', status: 'Active', computer: true };
 const PHONES: Phone[] = [
   { id: 'p1', person: 'Meera Krishnan', model: 'Redmi Note 11', app: '4.2.0', lastSeen: '26 Sep, 6:10 pm', status: 'Lost' },
   { id: 'p2', person: 'Divya Raghunathan', model: 'Pixel 7a', app: '4.2.1', lastSeen: 'Today, 9:38 am', status: 'Active' },
@@ -129,17 +133,17 @@ const KIOSK_W = 320;
 // flex: none — the kit class's 256px flex-basis turns into a min-height when phone cards stack the cell.
 const pad = { paddingBlock: 'var(--yx-space-1)', flex: 'none' } as const;
 
-export function DevicesScreen({ live, ...story }: { persona?: 'hr' | 'sa'; tab?: 'kiosks' | 'binds' | 'phones' | 'training'; signOut?: boolean; state?: ViewState; /** Training stories: the add form, a session's edit form, or its cancel confirmation. */ training?: TrainingTabProps['open']; /** The live app's /time/setup/devices. */ live?: LiveDevices }) {
+export function DevicesScreen({ live, ...story }: { persona?: 'hr' | 'sa'; tab?: 'kiosks' | 'binds' | 'phones' | 'training'; signOut?: boolean; state?: ViewState; /** Computers stories (DeviceNotApproved): a computer request and an approved computer; `removeComputer` opens its remove confirmation. */ computers?: boolean; removeComputer?: boolean; /** Training stories: the add form, a session's edit form, or its cancel confirmation. */ training?: TrainingTabProps['open']; /** The live app's /time/setup/devices. */ live?: LiveDevices }) {
   return live ? <LiveDevicesScreen live={live} /> : <SampleDevicesScreen {...story} />;
 }
 
-function SampleDevicesScreen({ persona = 'hr', tab = 'kiosks', signOut = false, state = 'ready', training }: { persona?: 'hr' | 'sa'; tab?: 'kiosks' | 'binds' | 'phones' | 'training'; signOut?: boolean; state?: ViewState; training?: TrainingTabProps['open'] }) {
+function SampleDevicesScreen({ persona = 'hr', tab = 'kiosks', signOut = false, state = 'ready', training, computers = false, removeComputer = false }: { persona?: 'hr' | 'sa'; tab?: 'kiosks' | 'binds' | 'phones' | 'training'; signOut?: boolean; state?: ViewState; training?: TrainingTabProps['open']; computers?: boolean; removeComputer?: boolean }) {
   const sa = persona === 'sa';
   const narrow = useNarrow(599);
-  // The story opens the sign-out confirmation for Meera's lost Redmi.
-  const [so, setSo] = useState<Phone | null>(signOut ? PHONES[0] : null);
+  // The story opens the sign-out confirmation for Meera's lost Redmi (or the remove confirmation of Nisha's computer).
+  const [so, setSo] = useState<Phone | null>(removeComputer ? COMPUTER : signOut ? PHONES[0] : null);
   const [outIds, setOutIds] = useState<string[]>([]);
-  const [binds, setBinds] = useState(BINDS);
+  const [binds, setBinds] = useState(computers || removeComputer ? [...BINDS, COMPUTER_BIND] : BINDS);
   const [approving, setApproving] = useState<BindReq | null>(null);
   const [rejecting, setRejecting] = useState<BindReq | null>(null);
   const [rejectWhy, setRejectWhy] = useState<string | null>(null);
@@ -162,7 +166,7 @@ function SampleDevicesScreen({ persona = 'hr', tab = 'kiosks', signOut = false, 
   /** The new-phone request that replaces the phone being signed out, if any. */
   const soReq = so ? BINDS.find((b) => b.person === so.person && b.from === so.model) : undefined;
   const sites = sa ? Object.keys(SITE_CODE) : Object.keys(SITE_CODE).filter((s) => s !== 'Coimbatore unit');
-  const phones = [...PHONES.map((p) => (outIds.includes(p.id) ? { ...p, status: 'Signed out' as const } : p)), ...added];
+  const phones = [...[...PHONES, ...(computers || removeComputer ? [COMPUTER] : [])].map((p) => (outIds.includes(p.id) ? { ...p, status: 'Signed out' as const } : p)), ...added];
   /** The phone a request replaces (Meera's lost Redmi, Divya's Pixel 7a). */
   const oldPhone = (r: BindReq) => PHONES.find((p) => p.person === r.person && p.model === r.from);
   const signOutOld = (r: BindReq) => { const p = oldPhone(r); if (p) setOutIds((o) => [...o, p.id]); };
@@ -191,7 +195,7 @@ function SampleDevicesScreen({ persona = 'hr', tab = 'kiosks', signOut = false, 
       key: 'change', header: 'Phone change', value: (r) => r.to,
       render: (r) => (
         <span className="yx-tim-list__main" style={pad}>
-          <span>{r.from ? `${r.from}${r.lost ? ' (lost)' : ''} → ${r.to}` : `First phone: ${r.to}`}</span>
+          <span>{r.computer ? computerWords.change(r.to) : r.from ? `${r.from}${r.lost ? ' (lost)' : ''} → ${r.to}` : `First phone: ${r.to}`}</span>
           <span className="yx-tim-muted">{r.reason}</span>
         </span>
       ),
@@ -206,7 +210,7 @@ function SampleDevicesScreen({ persona = 'hr', tab = 'kiosks', signOut = false, 
     },
   ];
   const pcols: TableColumn<Phone>[] = [
-    { key: 'person', header: 'Employee', type: 'person', width: 240, value: (r) => r.person, person: (r) => ({ name: r.person, secondary: r.model }) },
+    { key: 'person', header: 'Employee', type: 'person', width: 240, value: (r) => r.person, person: (r) => ({ name: r.person, secondary: r.computer ? computerWords.device(r.model) : r.model }) },
     { key: 'app', header: 'App version', value: (r) => r.app, optional: true },
     {
       key: 'lastSeen', header: 'Last seen', value: (r) => r.lastSeen,
@@ -219,6 +223,7 @@ function SampleDevicesScreen({ persona = 'hr', tab = 'kiosks', signOut = false, 
   /** What the person can do after a rejection, from their phones and their site's kiosks. */
   const rejectEffect = (r: BindReq) => {
     const f = first(r.person);
+    if (r.computer) return computerWords.rejectEffect(f);
     if (r.lost) return `The lost ${r.from} is signed out, so ${f} can't check in by phone until a new phone is approved.`;
     if (!oldOut(r)) return `${f} is told why and keeps using the ${r.from}.`;
     const kiosk = list.some((k) => k.location === r.site && k.mode === 'Attendance' && k.status !== 'Not set up');
@@ -229,8 +234,8 @@ function SampleDevicesScreen({ persona = 'hr', tab = 'kiosks', signOut = false, 
     drop(r.id);
     // The new phone replaces the old one in the same step, so no one has two active phones.
     signOutOld(r);
-    setAdded((a) => [...a, { id: `new-${r.id}`, person: r.person, model: r.to, app: '—', lastSeen: 'Approved today', status: 'Active' }]);
-    setBindNote(`${f}'s ${r.to} approved · ${f} can check in from it now.${oldPhone(r) ? ` The ${r.lost ? 'lost ' : ''}${r.from} is signed out.` : ''}`);
+    setAdded((a) => [...a, { id: `new-${r.id}`, person: r.person, model: r.to, app: '—', lastSeen: 'Approved today', status: 'Active', computer: r.computer }]);
+    setBindNote(r.computer ? computerWords.approved(f, r.to) : `${f}'s ${r.to} approved · ${f} can check in from it now.${oldPhone(r) ? ` The ${r.lost ? 'lost ' : ''}${r.from} is signed out.` : ''}`);
   };
   const register = () => {
     if (!reg.location || !reg.place.trim()) return;
@@ -309,7 +314,9 @@ Only lost or inactive ({issueCount})
             onClearFilters={() => { setQ(''); setOnlyIssues(false); }}
             empty={<EmptyState title="No approved phones yet" description="Phones appear here once you approve a new phone request." />}
             rowButtons={(r) =>
-              r.status === 'Lost' ? (
+              r.computer ? (
+                r.status === 'Active' || r.status === 'Inactive' ? <Button size="sm" onClick={() => setSo(r)}>{computerWords.remove}</Button> : null
+              ) : r.status === 'Lost' ? (
                 <Button variant="danger" size="sm" icon={LogOut} onClick={() => setSo(r)}>Sign out remotely</Button>
               ) : r.status === 'Inactive' ? (
                 <Button size="sm" icon={LogOut} onClick={() => setSo(r)}>Sign out phone</Button>
@@ -396,12 +403,12 @@ Only lost or inactive ({issueCount})
         open={!!so}
         onOpenChange={(o) => !o && setSo(null)}
         destructive
-        title={`Sign out ${first(so?.person)}'s ${so?.model}?`}
-        consequence={`${first(so?.person)} is signed out on that phone at once, and it can't record check-ins. ${
+        title={so?.computer ? computerWords.removeTitle(first(so.person), so.model) : `Sign out ${first(so?.person)}'s ${so?.model}?`}
+        consequence={so?.computer ? computerWords.removeConsequence(first(so.person)) : `${first(so?.person)} is signed out on that phone at once, and it can't record check-ins. ${
           soReq ? (binds.some((b) => b.id === soReq.id) ? `${first(so?.person)} can use the app again once the ${soReq.to} is approved.` : `${first(so?.person)} keeps using the ${soReq.to}.`) : `If ${first(so?.person)} uses it again, it comes back here as a new phone request.`
         }`}
-        confirmLabel="Sign out phone"
-        onConfirm={() => { if (so) setOutIds((o) => [...o, so.id]); setSo(null); }}
+        confirmLabel={so?.computer ? computerWords.remove : 'Sign out phone'}
+        onConfirm={() => { if (so) { setOutIds((o) => [...o, so.id]); if (so.computer) setBindNote(computerWords.removed(first(so.person), so.model)); } setSo(null); }}
       />
       <ConfirmDialog
         open={!!approving}

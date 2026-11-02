@@ -2169,6 +2169,8 @@ export interface LiveMyAttendance {
   getLocation: () => Promise<{ pin: Pin | null; problem?: string }>;
   /** `wfh`: ChoseWfh, clocking in from outside the office as work from home today (a request goes to the manager). `note`: WithNote. */
   onPunch: (kind: PunchKind, pin: Pin | null, opts?: { wfh?: boolean; note?: string }) => Promise<PunchResult>;
+  /** DeviceNotApproved: ask HR to approve this computer for web clock-in (POST /time/me/web-device). */
+  onAskDevice?: () => Promise<unknown>;
   onFix: (input: FixInput) => Promise<unknown>;
   onWithdrawFix: (id: string) => Promise<unknown>;
   /** A day card with every punch of that day (TIM-03). */
@@ -2325,7 +2327,7 @@ const requestWord = (r: FixRow) => REQUEST_WORD[r.kind] ?? 'Regularisation';
 const liveShift = (s: MyAttendance['shift']) => ({ name: s.name, start: hm(s.start), end: hm(s.end), graceMin: s.grace });
 
 /** The clock card (Extra · My attendance today, Home) on the person's live day: punches go to the server. */
-function liveClock(d: MyAttendance, now: Date, getLocation: LiveMyAttendance['getLocation'], onPunch: LiveMyAttendance['onPunch'], onRecheck?: () => void): ClockCardProps {
+function liveClock(d: MyAttendance, now: Date, getLocation: LiveMyAttendance['getLocation'], onPunch: LiveMyAttendance['onPunch'], onRecheck?: () => void, onAskDevice?: () => Promise<unknown>): ClockCardProps {
   const t = zoneTime(now, d.zone);
   const punches = d.punches.filter((p) => p.accepted).map((p) => livePunch(p, d.zone));
   const state: ClockState = d.next === 'out' ? (d.onBreak ? 'break' : 'working') : punches.length ? 'out' : 'not_in';
@@ -2341,10 +2343,13 @@ function liveClock(d: MyAttendance, now: Date, getLocation: LiveMyAttendance['ge
     // OutsideNetwork: the server knows this computer is off the office network before any punch.
     inside: d.network !== 'outside',
     // ChoseWfh: work from home on the day when the company allows it (asked for today already: the card starts there).
-    alternatives: d.wfhSameDay && d.mode === 'punch' ? ['wfh', 'retry', 'regularise'] : ['retry', 'regularise'],
+    // DeviceNotApproved: "Ask HR to approve" this computer, where the page can send the request.
+    alternatives: [...(d.wfhSameDay && d.mode === 'punch' ? ['wfh' as const] : []), 'retry', 'regularise', ...(onAskDevice ? ['ask_hr' as const] : [])],
+    deviceApproved: d.device?.approved ?? true,
+    deviceRequested: d.device?.requested ?? false,
     defaultWorkMode: d.wfhPendingToday ? 'wfh' : 'office',
     wfhAsk: { approver: d.manager ?? 'your manager', used: d.wfh.used, limit: d.wfh.limit },
-    onAlternative: (o) => { if (o === 'retry') onRecheck?.(); },
+    onAlternative: (o) => (o === 'retry' ? onRecheck?.() : o === 'ask_hr' ? onAskDevice?.() : undefined),
     state,
     punches,
     mode: d.shift.checkIn,
@@ -2858,7 +2863,7 @@ function LiveAttendanceToday({ live }: { live: LiveMyAttendance }) {
         {d && (
           <div className="yx-tim-grid">
             <div data-span="8">
-              <ClockCard key={d.network} variant="page" {...liveClock(d, now, live.getLocation, live.onPunch, live.onRetry)} onRegularise={() => reqs.open('regularise', d.today)} />
+              <ClockCard key={d.network} variant="page" {...liveClock(d, now, live.getLocation, live.onPunch, live.onRetry, live.onAskDevice)} onRegularise={() => reqs.open('regularise', d.today)} />
             </div>
             <div data-span="4" className="yx-tim-stack">
               <FixAlert days={toFix} onFix={(on) => reqs.open('regularise', on)} />

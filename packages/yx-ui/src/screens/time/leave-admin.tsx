@@ -24,7 +24,7 @@ import { EMPLOYEES, ENTITIES, LOCATIONS, entityHeadcount, locationHeadcount } fr
 import { DueBadge, GeoMap, Kpis, TimePage, type TimeNav } from './time-kit';
 import { formatDate } from '../../lib/format';
 import { errorText, useRun } from '../org/org-kit';
-import type { BlockDateInput, BlockDates, HolidayFeeds, HolidayRow, LeaveRules, LeaveTypeRow, LoadState, LocationRule, PolicyLine, TimeSetup, YearChangePreview, YearEndPreview } from './live/types';
+import type { BlockDateInput, BlockDates, GeoPointInput, HolidayFeeds, HolidayRow, LeaveRules, LeaveTypeRow, LoadState, LocationRule, PolicyLine, TimeSetup, YearChangePreview, YearEndPreview } from './live/types';
 import { EL_ENCASH_MAX, EL_ENCASH_MIN_LEFT, HR_ADMIN, LEAVE_REQUESTS, TODAY, balancesFor, elEncashLeftAtYearEnd } from './time-data';
 import { countLeaveDays, yearEndSplit, type YearEndRow } from './time-logic';
 import type { ViewState } from './attendance';
@@ -1525,11 +1525,77 @@ const nameError = (v: string) => (v.trim() === '' ? 'Enter a point name' : null)
 const pointErrors = (p: GeoPoint) => [nameError(p.name), latError(p.lat), lngError(p.lng), radiusBad(p.r)].filter(Boolean).length;
 const pointBad = (p: GeoPoint) => pointErrors(p) > 0;
 /** Map position from coordinates: the drawing's centre (160, 100) is the office centre, 1 map unit = 5 m. */
-const toMap = (p: GeoPoint) => {
+const toMap = (p: GeoPoint, centre: { lat: number; lng: number } = CENTRE) => {
   if (latError(p.lat) || lngError(p.lng)) return null;
   const m = 111_320;
-  return { x: 160 + ((Number(p.lng) - CENTRE.lng) * m * Math.cos((CENTRE.lat * Math.PI) / 180)) / 5, y: 100 - ((Number(p.lat) - CENTRE.lat) * m) / 5 };
+  return { x: 160 + ((Number(p.lng) - centre.lng) * m * Math.cos((centre.lat * Math.PI) / 180)) / 5, y: 100 - ((Number(p.lat) - centre.lat) * m) / 5 };
 };
+/** The map's circles: every point with good coordinates; the one being edited is marked when there are several. */
+const pointFences = (points: GeoPoint[], curId: string, centre?: { lat: number; lng: number }) =>
+  points.flatMap((p) => {
+    const at = toMap(p, centre);
+    return at ? [{ id: p.id, label: `${p.name.trim() || 'Unnamed point'} · ${p.r ?? 0} m`, x: at.x, y: at.y, r: (p.r ?? 0) / 5, active: points.length > 1 && p.id === curId }] : [];
+  });
+/** Moves the focus to the first wrong field in a form, showing the points first (used by "N errors to fix" and Save). */
+const focusFirstError = (form: HTMLElement | null) =>
+  requestAnimationFrame(() => {
+    const el = form?.querySelector<HTMLElement>('[aria-invalid="true"]');
+    el?.scrollIntoView({ block: 'center' });
+    el?.focus();
+  });
+
+/**
+ * TIM-31 "Allowed points" (design and live): each point with Edit and Remove when there is more than one, the chosen
+ * point's name, latitude, longitude and radius, and "Add another point". A punch inside any point is inside.
+ */
+function GeoPointsSection({ points, sel, onSelect, onChange, footer }: { points: GeoPoint[]; sel: string; onSelect: (id: string) => void; onChange: (points: GeoPoint[]) => void; footer?: ReactNode }) {
+  const cur = points.find((p) => p.id === sel) ?? points[0];
+  const edit = (patch: Partial<GeoPoint>) => onChange(points.map((p) => (p.id === cur.id ? { ...p, ...patch } : p)));
+  const addPoint = () => {
+    const id = `p${Date.now()}`;
+    onChange([...points, { id, name: `Point ${points.length + 1}`, lat: '', lng: '', r: 100 }]);
+    onSelect(id);
+  };
+  return (
+    <FormSection title="Allowed points">
+      {points.length === 0 ? (
+        <p className="yx-tim-muted">No point yet. Check-ins are decided by the office network only.</p>
+      ) : (
+        <ul className="yx-tim-list">
+          {points.map((p) => (
+            <li key={p.id}>
+              <span className="yx-tim-list__main">
+                <strong>{p.name.trim() || 'Unnamed point'}</strong>
+                <span className="yx-tim-muted">{p.lat || '—'}, {p.lng || '—'} · {p.r ?? '—'} m</span>
+              </span>
+              {points.length > 1 && (
+                <span className="yx-tim-row">
+                  {pointBad(p) && <Badge tone="danger">Needs fixing</Badge>}
+                  {/* Same two buttons on every row so Remove lines up (R9). */}
+                  <Button size="sm" onClick={() => onSelect(p.id)}>{p.id === cur.id ? 'Editing' : 'Edit'}</Button>
+                  <Button size="sm" onClick={() => { onChange(points.filter((x) => x.id !== p.id)); if (p.id === cur.id) onSelect(points.find((x) => x.id !== p.id)!.id); }}>Remove</Button>
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {cur && (
+        <>
+          <FormField label="Point name" required error={nameError(cur.name)}><TextField value={cur.name} onChange={(v) => edit({ name: v })} /></FormField>
+          <FieldRow>
+            <FormField label="Latitude" error={latError(cur.lat)}><TextField value={cur.lat} inputMode="decimal" onChange={(v) => edit({ lat: v })} /></FormField>
+            <FormField label="Longitude" error={lngError(cur.lng)}><TextField value={cur.lng} inputMode="decimal" onChange={(v) => edit({ lng: v })} /></FormField>
+          </FieldRow>
+          <FormField label="Radius (m)" helper="50–1,000 m. Phone GPS is usually accurate to 20–50 m outdoors." error={radiusBad(cur.r) ? 'Enter a radius between 50 and 1,000 m' : null}>
+            <NumberField value={cur.r} onChange={(v) => edit({ r: v })} />
+          </FormField>
+        </>
+      )}
+      <span className="yx-tim-row"><Button icon={Plus} onClick={addPoint}>{points.length ? 'Add another point' : 'Add a point'}</Button>{footer}</span>
+    </FormSection>
+  );
+}
 
 /** First bad line in a one-range-per-line IP list, e.g. "Line 2: 10.20.300.0/24 is not a valid range…". */
 export function ipRangeError(text: string): string | null {
@@ -1560,29 +1626,19 @@ function SampleGeofenceEditor({ view = 'edit', ipError = false }: { view?: 'edit
   const formRef = useRef<HTMLDivElement>(null);
   const cur = points.find((p) => p.id === sel) ?? points[0];
   const edit = (patch: Partial<GeoPoint>) => { setPoints((ps) => ps.map((p) => (p.id === cur.id ? { ...p, ...patch } : p))); setSaved(false); };
+  const changePoints = (ps: GeoPoint[]) => { setPoints(ps); setSaved(false); };
   const setIps = (v: string) => { setIpsRaw(v); setSaved(false); };
   const [wifi, setWifiRaw] = useState('KF-Taramani-5F');
   const setWifi = (v: string) => { setWifiRaw(v); setSaved(false); };
   const ipErr = ipRangeError(ips);
-  const radiusErr = 'Enter a radius between 50 and 1,000 m';
   // One per wrong field, so "4 errors to fix" matches what the form marks.
   const errors = (ipErr ? 1 : 0) + points.reduce((s, p) => s + pointErrors(p), 0);
   const field = mode === 'field';
-  const addPoint = () => {
-    const id = `p${Date.now()}`;
-    setPoints((ps) => [...ps, { id, name: `Point ${ps.length + 1}`, lat: '', lng: '', r: 100 }]);
-    setSel(id);
-    setSaved(false);
-  };
   const jumpToError = () => {
     setShowPoints(true);
     const bad = points.find(pointBad);
     if (bad && !pointBad(cur) && !ipErr) setSel(bad.id);
-    requestAnimationFrame(() => {
-      const el = formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
-      el?.scrollIntoView({ block: 'center' });
-      el?.focus();
-    });
+    focusFirstError(formRef.current);
   };
   const saveRow = (
     <div className="yx-tim-row">
@@ -1592,37 +1648,7 @@ function SampleGeofenceEditor({ view = 'edit', ipError = false }: { view?: 'edit
     </div>
   );
 
-  const pointsSection = (
-    <FormSection title="Allowed points">
-      <ul className="yx-tim-list">
-        {points.map((p) => (
-          <li key={p.id}>
-            <span className="yx-tim-list__main">
-              <strong>{p.name.trim() || 'Unnamed point'}</strong>
-              <span className="yx-tim-muted">{p.lat || '—'}, {p.lng || '—'} · {p.r ?? '—'} m</span>
-            </span>
-            {points.length > 1 && (
-              <span className="yx-tim-row">
-                {pointBad(p) && <Badge tone="danger">Needs fixing</Badge>}
-                {/* Same two buttons on every row so Remove lines up (R9). */}
-                <Button size="sm" onClick={() => setSel(p.id)}>{p.id === cur.id ? 'Editing' : 'Edit'}</Button>
-                <Button size="sm" onClick={() => { setPoints((ps) => ps.filter((x) => x.id !== p.id)); if (p.id === cur.id) setSel(points.find((x) => x.id !== p.id)!.id); setSaved(false); }}>Remove</Button>
-              </span>
-            )}
-          </li>
-        ))}
-      </ul>
-      <FormField label="Point name" required error={nameError(cur.name)}><TextField value={cur.name} onChange={(v) => edit({ name: v })} /></FormField>
-      <FieldRow>
-        <FormField label="Latitude" error={latError(cur.lat)}><TextField value={cur.lat} inputMode="decimal" onChange={(v) => edit({ lat: v })} /></FormField>
-        <FormField label="Longitude" error={lngError(cur.lng)}><TextField value={cur.lng} inputMode="decimal" onChange={(v) => edit({ lng: v })} /></FormField>
-      </FieldRow>
-      <FormField label="Radius (m)" helper="50–1,000 m. Phone GPS is usually accurate to 20–50 m outdoors." error={radiusBad(cur.r) ? radiusErr : null}>
-        <NumberField value={cur.r} onChange={(v) => edit({ r: v })} />
-      </FormField>
-      <span><Button icon={Plus} onClick={addPoint}>Add another point</Button></span>
-    </FormSection>
-  );
+  const pointsSection = <GeoPointsSection points={points} sel={cur.id} onSelect={setSel} onChange={changePoints} />;
   const networkSection = (
     <FormSection title="Office network (web check-in)">
       <FormField label="IP ranges" helper="One range per line, e.g. 10.20.4.0/24" error={ipErr}>
@@ -1631,10 +1657,7 @@ function SampleGeofenceEditor({ view = 'edit', ipError = false }: { view?: 'edit
       <FormField label="Wi-Fi names" optional><TextField value={wifi} onChange={setWifi} /></FormField>
     </FormSection>
   );
-  const fences = points.flatMap((p) => {
-    const at = toMap(p);
-    return at ? [{ id: p.id, label: `${p.name.trim() || 'Unnamed point'} · ${p.r ?? 0} m`, x: at.x, y: at.y, r: (p.r ?? 0) / 5, active: points.length > 1 && p.id === cur.id }] : [];
-  });
+  const fences = pointFences(points, cur.id);
 
   return (
     <TimePage active="Locations & geofences" user={HR_ADMIN}>
@@ -1984,7 +2007,9 @@ export interface LiveLocations extends SetupLive {
   onSetRule: (locationId: string, input: LocationRuleInput) => Promise<unknown>;
   /** TIM-31 IpError: save the location's office networks (one IP range per line; the server checks each again). */
   onSetNetworks?: (locationId: string, ipRanges: string[]) => Promise<unknown>;
-  /** Settings › Locations, where the point, radius and office networks are set. */
+  /** TIM-31 Multi: save every check-in point of the location, with the location's updatedAt as last seen. */
+  onSetPoints?: (locationId: string, points: GeoPointInput[], updatedAt?: string) => Promise<unknown>;
+  /** Settings › Locations, where locations are added (the breadcrumb). */
   settingsHref: string;
 }
 
@@ -3578,6 +3603,21 @@ function LiveLocationForm({ d, loc, live, picker }: { d: TimeSetup; loc: SetupLo
     if (ipRangeError(ips)) return void document.getElementById('rl-ips')?.focus();
     void run('ips', () => live.onSetNetworks!(loc.id, ips.split('\n').map((l) => l.trim()).filter(Boolean)));
   };
+  // TIM-31 Multi: the location's points, edited as in the design and saved together (inside any one is inside).
+  const [points, setPoints] = useState<GeoPoint[]>(() => (loc.points ?? (loc.geofence ? [{ name: loc.name, ...loc.geofence }] : [])).map((p, i) => ({ id: `p${i}`, name: p.name, lat: String(p.lat), lng: String(p.lng), r: p.radiusM })));
+  const [sel, setSel] = useState(points[0]?.id ?? '');
+  const pointsRef = useRef<HTMLDivElement>(null);
+  const savePoints = () => {
+    const bad = points.find(pointBad);
+    if (bad) {
+      setSel(bad.id);
+      return void focusFirstError(pointsRef.current);
+    }
+    void run('points', () => live.onSetPoints!(loc.id, points.map((p) => ({ name: p.name.trim(), lat: Number(p.lat), lng: Number(p.lng), radiusM: p.r! })), loc.updatedAt));
+  };
+  const curPoint = points.find((p) => p.id === sel) ?? points[0];
+  const firstGood = points.find((p) => !latError(p.lat) && !lngError(p.lng));
+  const fences = firstGood ? pointFences(points, curPoint?.id ?? '', { lat: Number(firstGood.lat), lng: Number(firstGood.lng) }) : [];
   const toggle = (wd: number, on: boolean) => setOffs((x) => (on ? [...x.filter((o) => o.weekday !== wd), { weekday: wd }] : x.filter((o) => o.weekday !== wd)));
   const sat = offs.find((o) => o.weekday === 6);
   const errors = [
@@ -3594,7 +3634,6 @@ function LiveLocationForm({ d, loc, live, picker }: { d: TimeSetup; loc: SetupLo
     void run('save', () => live.onSetRule(loc.id, { validFrom: isoOf(from!), shiftName: shiftName.trim() || 'General', shiftStart: minuteOf(start)!, shiftEnd: minuteOf(end)!, graceMinutes: grace ?? 0, weeklyOffs: offs, checkIn: mode === 'field' ? 'field' : 'restricted' }));
   };
   const field = mode === 'field';
-  const g = loc.geofence;
   return (
     <>
       <PageHeader
@@ -3605,16 +3644,24 @@ function LiveLocationForm({ d, loc, live, picker }: { d: TimeSetup; loc: SetupLo
         actions={picker}
       />
       <div className="yx-tim-editor">
-        {g ? (
-          <GeoMap height={300} fences={[{ id: 'site', label: `${loc.name} · ${g.radiusM} m`, x: 160, y: 100, r: g.radiusM / 5 }]} pins={[]} caption={field ? 'Used to label check-ins as at office' : 'Check-ins must be inside this circle or on the office network'} />
+        {fences.length ? (
+          <GeoMap
+            height={300}
+            fences={fences}
+            pins={[]}
+            editable={!field && Boolean(live.onSetPoints)}
+            // The map draws 1 px per 5 m; the radius snaps to 10 m.
+            onRadiusChange={(pid, rr) => setPoints((ps) => ps.map((p) => (p.id === pid ? { ...p, r: Math.round((rr * 5) / 10) * 10 } : p)))}
+            caption={field ? 'Used to label check-ins as at office' : live.onSetPoints ? 'Drag the handle, or type the radius in the form' : 'Check-ins must be inside a circle or on the office network'}
+          />
         ) : (
-          <EmptyState compact title="No check-in point yet" description="Set the point and radius in Settings › Locations." />
+          <EmptyState compact title="No check-in point yet" description="Add a point under Allowed points." />
         )}
         <div className="yx-tim-form">
           <ErrorSummary errors={saveErrors.shownErrors} />
           {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
           <FormSection title="Check-in mode">
-            <RadioGroup aria-label="Check-in mode" value={mode} onChange={setMode} options={[{ value: 'restricted', label: 'Restricted', description: 'Must be inside the point or on the office network' }, { value: 'field', label: 'Field', description: 'Location recorded, not restricted' }]} />
+            <RadioGroup aria-label="Check-in mode" value={mode} onChange={setMode} options={[{ value: 'restricted', label: 'Restricted', description: 'Must be inside a point or on the office network' }, { value: 'field', label: 'Field', description: 'Location recorded, not restricted' }]} />
           </FormSection>
           {/* Question: no design shows a location's shift and weekly offs; they stay here, next to its check-in mode. */}
           <FormSection title="Shift and weekly offs">
@@ -3639,13 +3686,19 @@ function LiveLocationForm({ d, loc, live, picker }: { d: TimeSetup; loc: SetupLo
               )}
             </fieldset>
           </FormSection>
-          <FormSection title="Allowed points">
-            {g ? (
-              <ul className="yx-tim-list"><li><span className="yx-tim-list__main"><strong>{loc.name}</strong><span className="yx-tim-muted">{g.lat}, {g.lng} · {g.radiusM} m</span></span></li></ul>
-            ) : (
-              <p className="yx-tim-muted">No point yet.</p>
-            )}
-          </FormSection>
+          {live.onSetPoints ? (
+            <div ref={pointsRef}>
+              <GeoPointsSection points={points} sel={curPoint?.id ?? ''} onSelect={setSel} onChange={setPoints} footer={<Button size="sm" loading={busy === 'points'} onClick={savePoints}>Save points</Button>} />
+            </div>
+          ) : (
+            <FormSection title="Allowed points">
+              {points.length ? (
+                <ul className="yx-tim-list">{points.map((p) => <li key={p.id}><span className="yx-tim-list__main"><strong>{p.name}</strong><span className="yx-tim-muted">{p.lat}, {p.lng} · {p.r} m</span></span></li>)}</ul>
+              ) : (
+                <p className="yx-tim-muted">No point yet.</p>
+              )}
+            </FormSection>
+          )}
           <FormSection title="Office network (web check-in)">
             {live.onSetNetworks ? (
               <>
@@ -3657,8 +3710,6 @@ function LiveLocationForm({ d, loc, live, picker }: { d: TimeSetup; loc: SetupLo
             ) : (
               <p className="yx-tim-muted">{loc.ipRanges.length ? loc.ipRanges.join(', ') : 'No office network yet.'}</p>
             )}
-            {/* The point and radius belong to the location record (Settings › Locations), which payroll and people also use. */}
-            <span><Button size="sm" asChild><a href={live.settingsHref}>Change the point in Settings › Locations</a></Button></span>
           </FormSection>
           <FormField id="rl-from" label="Changes apply from" required error={saveErrors.errorOf('rl-from')}>
             <DatePicker value={from} onChange={setFrom} min={dateOfIso(d.today)} />

@@ -27,8 +27,9 @@ import { TrainingTab, type TrainingTabProps } from './training-tab';
 export type KioskHealth = 'not_set_up' | 'online' | 'stale' | 'offline';
 export interface DevicesData {
   kiosks: { id: string; code: string; place: string; locationId: string; location: string; entity: string; mode: 'attendance' | 'visitor'; status: KioskHealth; lastSeenAt: string | null; setupExpiresAt: string | null; checkInsToday: number | null }[];
-  requests: { id: string; employeeId: string; person: string; site: string; model: string; oldModel: string | null; oldLastSeenAt: string | null; oldPhoneLost: boolean; reason: string; raisedAt: string }[];
-  phones: { id: string; employeeId: string; person: string; model: string; appVersion: string | null; lastSeenAt: string | null; status: 'active' | 'inactive' | 'lost' | 'revoked' }[];
+  /** kind 'web': a computer for web clock-in (DeviceNotApproved); phones otherwise. */
+  requests: { id: string; kind?: 'phone' | 'web'; employeeId: string; person: string; site: string; model: string; oldModel: string | null; oldLastSeenAt: string | null; oldPhoneLost: boolean; reason: string; raisedAt: string }[];
+  phones: { id: string; kind?: 'phone' | 'web'; employeeId: string; person: string; model: string; appVersion: string | null; lastSeenAt: string | null; status: 'active' | 'inactive' | 'lost' | 'revoked' }[];
   locations: { id: string; name: string; entity: string; zone?: string }[];
   /** Legal entities of the company: more than one shows the Entity column. */
   entities: number;
@@ -62,6 +63,18 @@ const KIOSK_W = 320;
 const pad = { paddingBlock: 'var(--yx-space-1)', flex: 'none' } as const;
 const first = (name?: string) => name?.split(' ')[0] ?? '';
 const time12 = (d: Date) => d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase();
+
+/** DeviceNotApproved: the words for a computer (web clock-in) in the phone lists, shared by the design and the live screen. */
+export const computerWords = {
+  change: (model: string) => `Computer: ${model}`,
+  device: (model: string) => `Computer · ${model}`,
+  remove: 'Remove approval',
+  removeTitle: (first: string, model: string) => `Remove approval of ${first}'s ${model}?`,
+  removeConsequence: (first: string) => `${first} can't clock in from this computer any more and stays signed in. If ${first} asks again, it comes back here as a new request.`,
+  approved: (first: string, model: string) => `${first}'s ${model} approved · ${first} can clock in from this computer now.`,
+  removed: (first: string, model: string) => `Approval of ${first}'s ${model} removed.`,
+  rejectEffect: (first: string) => `${first} is told why and can't clock in on the web from that computer.`,
+};
 
 /** "1 min ago", "3 h ago", "2 days ago"; never seen: "Not yet". */
 export function seenAgo(iso: string | null, now: Date): string {
@@ -127,7 +140,7 @@ export function LiveDevicesScreen({ live }: { live: LiveDevices }) {
       key: 'change', header: 'Phone change', value: (r) => r.model,
       render: (r) => (
         <span className="yx-tim-list__main" style={pad}>
-          <span>{r.oldModel ? `${r.oldModel}${r.oldPhoneLost ? ' (lost)' : ''} → ${r.model}` : `First phone: ${r.model}`}</span>
+          <span>{r.kind === 'web' ? computerWords.change(r.model) : r.oldModel ? `${r.oldModel}${r.oldPhoneLost ? ' (lost)' : ''} → ${r.model}` : `First phone: ${r.model}`}</span>
           <span className="yx-tim-muted">{r.reason || 'No reason given'}</span>
         </span>
       ),
@@ -143,7 +156,7 @@ export function LiveDevicesScreen({ live }: { live: LiveDevices }) {
     },
   ];
   const pcols: TableColumn<Phone>[] = [
-    { key: 'person', header: 'Employee', type: 'person', width: 240, value: (r) => r.person, person: (r) => ({ name: r.person, secondary: r.model }) },
+    { key: 'person', header: 'Employee', type: 'person', width: 240, value: (r) => r.person, person: (r) => ({ name: r.person, secondary: r.kind === 'web' ? computerWords.device(r.model) : r.model }) },
     { key: 'app', header: 'App version', value: (r) => r.appVersion ?? '—', optional: true },
     {
       key: 'lastSeen', header: 'Last seen', value: (r) => seenOn(r.lastSeenAt, now),
@@ -155,6 +168,7 @@ export function LiveDevicesScreen({ live }: { live: LiveDevices }) {
   /** What the person can do after a refusal. */
   const rejectEffect = (r: BindReq) => {
     const f = first(r.person);
+    if (r.kind === 'web') return computerWords.rejectEffect(f);
     if (r.oldPhoneLost && r.oldModel) return `The lost ${r.oldModel} stays signed out, so ${f} can't check in by phone until a new phone is approved.`;
     if (r.oldModel) return `${f} is told why and keeps using the ${r.oldModel}.`;
     return `${f} is told why and can check in ${kioskAt(r.site) ? `at a kiosk at ${r.site}` : 'on the web or at the HR desk'} meanwhile.`;
@@ -163,7 +177,7 @@ export function LiveDevicesScreen({ live }: { live: LiveDevices }) {
     run(`approve-${r.id}`, async () => {
       await live.onApprove(r.id);
       const f = first(r.person);
-      note(`${f}'s ${r.model} approved · ${f} can check in from it now.${r.oldModel ? ` The ${r.oldPhoneLost ? 'lost ' : ''}${r.oldModel} is signed out.` : ''}`);
+      note(r.kind === 'web' ? computerWords.approved(f, r.model) : `${f}'s ${r.model} approved · ${f} can check in from it now.${r.oldModel ? ` The ${r.oldPhoneLost ? 'lost ' : ''}${r.oldModel} is signed out.` : ''}`);
       setApproving(null);
     });
   const register = () => {
@@ -256,7 +270,9 @@ Only lost or inactive ({issueCount})
               onClearFilters={() => { setQ(''); setOnlyIssues(false); }}
               empty={<EmptyState title="No approved phones yet" description="Phones appear here once you approve a new phone request." />}
               rowButtons={(r) =>
-                r.status === 'lost' ? (
+                r.kind === 'web' ? (
+                  r.status === 'active' || r.status === 'inactive' ? <Button size="sm" onClick={() => setSo(r)}>{computerWords.remove}</Button> : null
+                ) : r.status === 'lost' ? (
                   <Button variant="danger" size="sm" icon={LogOut} onClick={() => setSo(r)}>Sign out remotely</Button>
                 ) : r.status === 'inactive' || r.status === 'active' ? (
                   <Button size="sm" icon={LogOut} onClick={() => setSo(r)}>Sign out phone</Button>
@@ -351,17 +367,17 @@ Only lost or inactive ({issueCount})
         open={!!so}
         onOpenChange={(o) => !o && setSo(null)}
         destructive
-        title={`Sign out ${first(so?.person)}'s ${so?.model}?`}
-        consequence={`${first(so?.person)} is signed out at once (on every device, as sign-ins are not tied to one phone), and the ${so?.model} can't record check-ins. ${
+        title={so?.kind === 'web' ? computerWords.removeTitle(first(so.person), so.model) : `Sign out ${first(so?.person)}'s ${so?.model}?`}
+        consequence={so?.kind === 'web' ? computerWords.removeConsequence(first(so.person)) : `${first(so?.person)} is signed out at once (on every device, as sign-ins are not tied to one phone), and the ${so?.model} can't record check-ins. ${
           so && binds.some((b) => b.employeeId === so.employeeId) ? `${first(so.person)} can use the app again once the new phone is approved.` : `If ${first(so?.person)} uses it again, it comes back here as a new phone request.`
         }`}
-        confirmLabel="Sign out phone"
+        confirmLabel={so?.kind === 'web' ? computerWords.remove : 'Sign out phone'}
         onConfirm={() => {
           const p = so;
           if (!p) return;
           void run(`out-${p.id}`, async () => {
             await live.onSignOut(p.id);
-            note(`${first(p.person)}'s ${p.model} is signed out.`);
+            note(p.kind === 'web' ? computerWords.removed(first(p.person), p.model) : `${first(p.person)}'s ${p.model} is signed out.`);
           });
           setSo(null);
         }}

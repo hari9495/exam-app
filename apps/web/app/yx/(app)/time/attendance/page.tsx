@@ -2,7 +2,7 @@
 
 import { Suspense, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Spinner } from '@yukthix/ui';
+import { Spinner, useToast } from '@yukthix/ui';
 import { AttendanceCalendarScreen, MyAttendanceTodayScreen, type DayCard, type LiveMyAttendance, type MyAttendance, type MyNightWork, type NightCodeSent, type PunchResult } from '@yukthix/ui/time';
 import { browserLocation, timeState, todayIndia, useOtherWrite, useTime, useTimeRead, useTimeWrite } from '../../../../../lib/yx-time';
 
@@ -21,6 +21,7 @@ function YxMyAttendanceInner() {
   const write = useTimeWrite();
   const read = useTimeRead();
   const other = useOtherWrite();
+  const { toast } = useToast();
   const live: LiveMyAttendance = {
     state: timeState(att),
     onRetry: () => void att.refetch(),
@@ -29,6 +30,11 @@ function YxMyAttendanceInner() {
     onMonth: setMonth,
     getLocation: browserLocation,
     onPunch: (kind, pin, opts) => write<PunchResult>('/me/punch', 'POST', { kind, ...(pin ?? {}), ...(opts?.wfh ? { wfh: true } : {}), ...(opts?.note ? { note: opts.note } : {}) }),
+    // DeviceNotApproved: the card says "Request sent to HR · this computer"; a failure puts the button back.
+    onAskDevice: () => write('/me/web-device', 'POST', undefined, true, 'Request sent to HR').catch((e: unknown) => {
+      toast({ tone: 'danger', title: e instanceof Error ? e.message : 'The request did not go. Try again.' });
+      throw e;
+    }),
     onFix: (input) => write('/me/regularise', 'POST', input),
     onWithdrawFix: (rid) => write(`/me/regularise/${encodeURIComponent(rid)}/withdraw`),
     onOpenDay: (on) => read<DayCard>(`/people/${encodeURIComponent(att.data!.employee.id)}/days/${on}`),

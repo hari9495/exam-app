@@ -204,6 +204,9 @@ export interface OnDutyInput {
   resendOf?: string;
 }
 
+/** TIM-31 Multi: one check-in point of a location. */
+export interface GeoPointInput { name: string; lat: number; lng: number; radiusM: number }
+
 export interface MyAttendance {
   employee: { id: string; name: string };
   today: string;
@@ -218,7 +221,10 @@ export interface MyAttendance {
   /** The company lets people clock in as work from home on the day (ChoseWfh), and today's request still waiting. */
   wfhSameDay?: boolean;
   wfhPendingToday?: boolean;
-  fences: { name: string; lat: number; lng: number; radiusM: number }[];
+  /** DeviceNotApproved: the company asks for an approved computer (required), this one is (approved), HR was asked (requested). */
+  device?: { required: boolean; approved: boolean; requested: boolean };
+  /** One per check-in point (TIM-31 Multi: `point` names it when the location has more than one). */
+  fences: { name: string; point?: string; lat: number; lng: number; radiusM: number }[];
   punches: PunchRow[];
   next: 'in' | 'out';
   /** On a break now (Start break pressed, End break not yet). */
@@ -454,7 +460,7 @@ export interface TimeSetup {
   covered?: number;
   uncovered?: { count: number; people: { id: string; name: string; code: string | null; joinedOn: string }[] };
   order?: { current: string[] | null; currentFrom: string | null; upcoming: { validFrom: string; policyIds: string[] } | null };
-  locations: { id: string; name: string; state: string; timezone: string; geofence: { lat: number; lng: number; radiusM: number } | null; ipRanges: string[]; rule: LocationRule; upcoming: LocationRule[] }[];
+  locations: { id: string; name: string; state: string; timezone: string; geofence: { lat: number; lng: number; radiusM: number } | null; /** TIM-31 Multi: every check-in point. */ points?: GeoPointInput[]; /** Sent back with a points change (409 when someone else changed it first). */ updatedAt?: string; ipRanges: string[]; rule: LocationRule; upcoming: LocationRule[] }[];
   entities: { id: string; name: string }[];
   /** Founder decision 2: days' notice for a leave type without its own number (company setting; sick leave 0). */
   noticeDefault?: number;
