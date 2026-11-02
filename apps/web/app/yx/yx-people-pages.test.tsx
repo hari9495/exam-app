@@ -103,6 +103,46 @@ describe('/yx/people/changes', () => {
     await waitFor(() => expect(posted).toEqual([{ confirmRebase: false }]));
   });
 
+  // Bug 2 Nov 2026: the demo manager saw "We couldn't load the changes". As a manager (no HR keys) the page loads her own
+  // changes and her team, and an optional list the API refuses (403) leaves that choice empty instead of breaking the page.
+  it('loads for a manager; a refused optional list does not break the page and the drawer has no pay', async () => {
+    const refused = async () => {
+      throw Object.assign(new Error('Missing any of required permission(s)'), { status: 403 });
+    };
+    const master = (name: string) => [{ id: `${name}-1`, name, code: name.toUpperCase(), legalEntityId: null }];
+    route({
+      [`GET ${PERMS_PATH}`]: ['request.raise_on_behalf', 'org.structure.view'],
+      'GET /people/changes': [{ ...CHANGE, requestedBy: 'u-divya', waitingFor: ['Karthik Subramanian'] }],
+      'GET /people/team': { managerId: 'p-divya', members: [{ id: 'p-arjun', name: 'Arjun Kulkarni', employeeCode: 'KF-0142', relation: 'direct', designation: { id: 'des-1', name: 'Quality Analyst' }, department: null, location: null, manager: null, joinedOn: '2024-07-01', status: 'confirmed', probationEndsOn: null }] },
+      'GET /people/org-chart': { asOf: '2026-11-02', truncated: false, nodes: [{ id: 'p-arjun', name: 'Arjun Kulkarni', designation: { id: 'des-1', name: 'Quality Analyst' }, department: { id: 'd-1', name: 'Quality' }, location: null, legalEntity: { id: 'le-1', name: 'Kaveri Foods' }, managerId: 'p-divya', dottedLineManagerIds: [], directReports: 0 }] },
+      'GET /people/changes/drafts': [],
+      'GET /people/changes/rules': { promotionMustChange: {} },
+      'GET /people/changes/route': { approvers: ['Karthik Subramanian'] },
+      'GET /org/masters/departments': master('Quality'),
+      'GET /org/masters/designations': master('Quality Lead'),
+      'GET /org/masters/grades': master('G3'),
+      'GET /org/masters/employment-types': refused,
+      'GET /org/masters/cost-centres': refused,
+      'GET /org/locations': refused,
+    });
+    window.history.pushState({}, '', '/yx/people/changes?person=p-arjun');
+    try {
+      wrap(<YxJobChangesPage />);
+      expect(await screen.findByText('Raise a promotion, transfer or manager change for someone in your team.')).toBeInTheDocument();
+      expect(await screen.findByText(/Arjun Kulkarni · Promotion/)).toBeInTheDocument();
+      expect(screen.getByText(/waiting for Karthik Subramanian/)).toBeInTheDocument();
+      expect(screen.queryByText("We couldn't load the changes")).toBeNull();
+      // Approving is HR's: no Open on her own change.
+      expect(screen.queryByRole('button', { name: 'Open' })).toBeNull();
+      // The drawer opens for her report; pay is never offered.
+      expect(await screen.findByRole('dialog')).toBeInTheDocument();
+      expect(screen.queryByText('New annual CTC')).toBeNull();
+      expect(api.mock.calls.map((c) => c[0])).not.toContain('/people/employees');
+    } finally {
+      window.history.pushState({}, '', '/');
+    }
+  });
+
   it('pending inter-entity transfers wait in the same list; Open goes to that restructure (founder 28 Oct 2026)', async () => {
     const push = jest.fn();
     (useRouter as jest.Mock).mockReturnValue({ push, replace: jest.fn() });

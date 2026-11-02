@@ -438,6 +438,22 @@ describe('change action', () => {
     expect(screen.queryByText(/₹6,80,000/)).toBeNull();
     expect(screen.getByText('Pay is proposed by HR')).toBeTruthy();
   });
+  it('live, a manager gets the team picker and their own waiting change, no Open (approving is HR’s)', () => {
+    const noop = () => undefined;
+    render(
+      <ChangeActionSheet
+        persona="mgr"
+        kind="Promotion"
+        effective={TODAY}
+        today={TODAY}
+        live={{ state: 'ready', onRetry: noop, onStart: noop, onOpenWaiting: noop, people: [{ id: 'ak', name: 'Arjun Kulkarni', role: 'Quality Analyst', department: 'Quality' }], waiting: [{ id: 'c-1', name: 'Arjun Kulkarni', kind: 'Promotion', effective: TODAY, note: 'waiting for Karthik Subramanian', canOpen: false }] }}
+      />,
+    );
+    expect(screen.getByText('Raise a promotion, transfer or manager change for someone in your team.')).toBeTruthy();
+    expect(screen.getByText('Arjun Kulkarni · Promotion')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Open' })).toBeNull();
+    expect(screen.queryByText("We couldn't load the changes")).toBeNull();
+  });
   it('a transfer gets its own reason', () => {
     render(<ChangeActionSheet persona="hr" kind="Transfer" effective={d(2026, 10, 5)} today={TODAY} />);
     expect(screen.getByDisplayValue(/Chennai key accounts/)).toBeTruthy();
