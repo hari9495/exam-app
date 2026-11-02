@@ -13,5 +13,7 @@ export const CoachCard: S = { name: 'Coach card on manager home', render: () => 
 export const CoachCardPhone: S = { name: 'Coach card · phone', globals: PHONE, render: () => <ManagerCoachHome device="phone" nudges={NUDGES} weekOf={d(28)} /> };
 export const NoNudges: S = { name: 'No nudges this week', render: () => <ManagerCoachHome nudges={[]} weekOf={d(28)} /> };
 export const OptedOut: S = { name: 'Opted out', render: () => <ManagerCoachHome nudges={NUDGES} weekOf={d(28)} optedOut /> };
+export const CompanyOff: S = { name: 'Turned off by the company', render: () => <ManagerCoachHome nudges={[]} weekOf={d(28)} companyOff /> };
+export const NotManager: S = { name: 'No team yet', render: () => <ManagerCoachHome nudges={[]} weekOf={d(28)} notManager /> };
 export const SuggestedAgenda: S = { name: 'Suggested 1:1 agenda panel', render: () => <OneOnOneScreen persona="mgr" items={ONE_ON_ONES} openId="o1" suggestedAgenda={SUGGESTED_AGENDA} /> };
 export const SuggestedAgendaPhone: S = { name: 'Suggested 1:1 agenda · phone', globals: PHONE, render: () => <OneOnOneScreen persona="mgr" device="phone" items={ONE_ON_ONES} openId="o1" suggestedAgenda={SUGGESTED_AGENDA} /> };

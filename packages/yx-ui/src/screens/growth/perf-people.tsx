@@ -10,7 +10,8 @@ import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, Tab
 import { DataTable, type TableColumn } from '../../components/table';
 import { FilterBar, SavedViewMenu, type FilterFieldDef } from '../../components/filters';
 import { Drawer } from '../../components/drawer';
-import { BottomSheet, ConfirmDialog } from '../../components/overlay';
+import { BottomSheet, ConfirmDialog, Dialog } from '../../components/overlay';
+import { useToast } from '../../components/notify';
 import { FormField, useTooEarly } from '../../components/field';
 import { DatePicker } from '../../components/date';
 import { Segment } from '../../components/segment';
@@ -26,6 +27,7 @@ import { matchesFilter, type FilterValue } from '../../lib/table';
 import { TODAY } from '../_kit/data';
 import { ConfidentialTag, GrowthFrame, SkillLevel, SplitLayout, type Device } from './growth-kit';
 import { pipSchedule } from './growth-logic';
+import { useRun } from '../org/org-kit';
 import type { LoadState } from './perf-goals';
 import './growth.css';
 
@@ -639,11 +641,49 @@ function AddActionSheet({ open, onOpenChange, o, live }: { open: boolean; onOpen
   );
 }
 
+/** PRF-16 suggested 1:1 agenda for the manager: from open goals, open actions and recent praise; nothing is added until chosen. */
+export function SuggestedAgendaPanel({ employee, items, onAdd }: { employee: string; items: { id: string; text: string; why: string }[]; /** Live: adds the item to the 1:1's shared agenda (PRF-11). */ onAdd: (item: { id: string; text: string; why: string }) => Promise<void> | void }) {
+  const [added, setAdded] = useState<string[]>([]);
+  const { run, busy, error } = useRun();
+  return (
+    <section className="yx-growth-panel" data-tone="ai" aria-label="Suggested agenda">
+      <div className="yx-growth-row">
+        <h3 className="yx-growth-h">Suggested agenda for {employee}</h3>
+        <AiBadge />
+      </div>
+      <Text size="sm" tone="secondary">
+        From open goals, feedback themes and your last 1:1 notes. Nothing is added until you choose.
+      </Text>
+      {error && <InlineAlert tone="danger">{error}</InlineAlert>}
+      {items.length === 0 ? (
+        <Text tone="secondary">Nothing to suggest: no goals off track, open actions or new praise.</Text>
+      ) : (
+        <ul className="yx-growth-list">
+          {items.map((s) => (
+            <li key={s.id} className="yx-growth-list__item">
+              <div className="yx-growth-list__main">
+                <span className="yx-growth-list__title">{s.text}</span>
+                <span className="yx-growth-meta">Why: {s.why}</span>
+              </div>
+              {added.includes(s.id) ? (
+                <Badge tone="success">Added</Badge>
+              ) : (
+                <Button size="sm" loading={busy === s.id} onClick={() => void run(s.id, async () => await onAdd(s)).then((ok) => ok && setAdded((a) => [...a, s.id]))}>
+                  Add to agenda
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function OneOnOneRecord({ o, persona, suggested, live, actionOpen }: { o: OneOnOne; persona: 'emp' | 'mgr'; suggested?: OneOnOneProps['suggestedAgenda']; live?: RecordLive; actionOpen?: boolean }) {
   const [agenda, setAgenda] = useState(o.agenda);
   const [draft, setDraft] = useState('');
   const [actions, setActions] = useState(o.actions);
-  const [added, setAdded] = useState<string[]>([]);
   const [shared, setShared] = useState(o.shared);
   const [mine, setMine] = useState(o.privateNote);
   const [adding, setAdding] = useState(!!actionOpen);
@@ -696,37 +736,14 @@ function OneOnOneRecord({ o, persona, suggested, live, actionOpen }: { o: OneOnO
         </div>
       </section>
       {suggested && persona === 'mgr' && (
-        <section className="yx-growth-panel" data-tone="ai" aria-label="Suggested agenda">
-          <div className="yx-growth-row">
-            <h3 className="yx-growth-h">Suggested agenda for {o.employee}</h3>
-            <AiBadge />
-          </div>
-          <Text size="sm" tone="secondary">
-            From open goals, feedback themes and your last 1:1 notes. Nothing is added until you choose.
-          </Text>
-          <ul className="yx-growth-list">
-            {suggested.map((s) => (
-              <li key={s.id} className="yx-growth-list__item">
-                <div className="yx-growth-list__main">
-                  <span className="yx-growth-list__title">{s.text}</span>
-                  <span className="yx-growth-meta">Why: {s.why}</span>
-                </div>
-                {added.includes(s.id) ? (
-                  <Badge tone="success">Added</Badge>
-                ) : (
-                  <Button
-                    size="sm"
-                    onClick={async () => {
-                      if (await addItem(s.text, s.id)) setAdded((a) => [...a, s.id]);
-                    }}
-                  >
-                    Add to agenda
-                  </Button>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
+        <SuggestedAgendaPanel
+          employee={o.employee}
+          items={suggested}
+          onAdd={async (x) => {
+            // addItem says why it failed (toast); the panel then keeps the item addable.
+            if (!(await addItem(x.text, x.id))) throw new Error('The item was not added. Try again.');
+          }}
+        />
       )}
       <div className="yx-growth-cols" data-n="2">
         <section className="yx-growth-note" aria-label="Shared notes">
@@ -1482,17 +1499,89 @@ export interface HandoverRow {
   note?: string;
 }
 
+/** A goal's alignment after a manager change: to one of the new manager's goals, or none (PRF-13). */
+export interface HandoverDecision {
+  decision: 'realigned' | 'unaligned';
+  parentGoalId?: string;
+  note?: string;
+}
+
+/** PRF-13 live: the new manager's or HR's hand-overs (performance builder 3). */
+export interface LiveHandover {
+  state: 'loading' | 'error' | 'ready';
+  onRetry: () => void;
+  rows: HandoverRow[];
+  /** The new manager's open goals in the moved goal's period. */
+  parentOptions: (id: string) => Promise<{ value: string; label: string }[]>;
+  onDecide: (id: string, input: HandoverDecision) => Promise<void>;
+}
+
 const HANDOVER_FIELDS: FilterFieldDef[] = [
   { key: 'status', label: 'Status', type: 'multi', options: ['Moved', 'Needs decision', 'Decided'].map((v) => ({ value: v, label: v })) },
   { key: 'artefact', label: 'Artefact', type: 'multi', options: ['Manager review stage', '360° nominations', 'Calibration session', 'Comp proposal', 'PIP', '1:1 thread', 'Goal parent'].map((v) => ({ value: v, label: v })) },
 ];
+const NEEDS_DECISION: FilterValue[] = [{ key: 'status', type: 'multi', values: ['Needs decision'] }];
+const SAMPLE_GOALS = [
+  { value: 'g1', label: 'Zero line stops on Line 3' },
+  { value: 'g2', label: 'Cut seal-strength rejects to 2%' },
+];
+
+/** PRF-13 re-parent a moved goal: align it to one of the new manager's goals, or leave it unaligned. */
+function ReparentDialog({ row, open, onOpenChange, options, onSave }: { row: HandoverRow; open: boolean; onOpenChange: (o: boolean) => void; options: { value: string; label: string }[] | null; onSave: (input: HandoverDecision) => Promise<void> }) {
+  const [decision, setDecision] = useState<HandoverDecision['decision']>('realigned');
+  const [goal, setGoal] = useState<string | null>(null);
+  const [note, setNote] = useState('');
+  const [tried, setTried] = useState(false);
+  const { run, busy, error } = useRun();
+  const goalError = tried && decision === 'realigned' && !goal ? 'Choose the goal to align it to, or leave it unaligned.' : null;
+  const save = () => {
+    setTried(true);
+    if (decision === 'realigned' && !goal) return void document.getElementById('handover-goal')?.focus();
+    void run('save', () => onSave({ decision, ...(decision === 'realigned' ? { parentGoalId: goal! } : {}), ...(note.trim() ? { note: note.trim() } : {}) }));
+  };
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      size="md"
+      preventClose={busy === 'save'}
+      title={`Re-parent goal for ${row.employee}`}
+      description={row.detail}
+      notice={error ? <InlineAlert tone="danger">{error}</InlineAlert> : undefined}
+      footer={
+        <>
+          <Button onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="primary" loading={busy === 'save'} onClick={save}>
+            Save decision
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-growth-stack">
+        <Segment label="Decision" value={decision} onChange={setDecision} options={[{ value: 'realigned', label: 'Align to a goal' }, { value: 'unaligned', label: 'Leave unaligned' }]} />
+        {decision === 'realigned' && (
+          <FormField label={`${row.to}’s goal`} required id="handover-goal" error={goalError} helper={options && options.length === 0 ? `${row.to} has no open goals in this period. Leave it unaligned, or align it later from Goals.` : undefined}>
+            <Select value={goal} onChange={setGoal} options={options ?? []} placeholder={options ? 'Choose a goal' : 'Loading goals…'} />
+          </FormField>
+        )}
+        <FormField label="Note" optional>
+          <TextArea value={note} onChange={setNote} rows={2} maxLength={500} />
+        </FormField>
+      </div>
+    </Dialog>
+  );
+}
 
 /** PRF-13 Hand-over list (T2) after a manager change (YX-PERF-13): what moved and what needs a decision. */
-export function HandoverListScreen({ persona, rows: initial, state = 'ready', leaver }: { persona: 'mgr' | 'hr'; rows: HandoverRow[]; state?: LoadState; leaver: string }) {
-  const [rows, setRows] = useState(initial);
-  const [filters, setFilters] = useState<FilterValue[]>(persona === 'hr' ? [{ key: 'status', type: 'multi', values: ['Needs decision'] }] : []);
+export function HandoverListScreen({ persona, rows: initial, state = 'ready', leaver, decideId, live }: { persona: 'mgr' | 'hr'; rows: HandoverRow[]; state?: LoadState; leaver?: string; /** Story: the re-parent dialog open on this row. */ decideId?: string; /** The live app's /yx/performance/handovers. */ live?: LiveHandover }) {
+  const { toast } = useToast();
+  const [sample, setSample] = useState(initial);
+  const rows = live ? live.rows : sample;
+  const [filters, setFilters] = useState<FilterValue[]>(persona === 'hr' ? NEEDS_DECISION : []);
   const [q, setQ] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
+  const [deciding, setDeciding] = useState<string | null>(decideId ?? null);
+  const [options, setOptions] = useState<{ value: string; label: string }[] | null>(live ? null : SAMPLE_GOALS);
   const shown = useMemo(
     () => rows.filter((r) => (!q || r.employee.toLowerCase().includes(q.toLowerCase())) && filters.every((f) => matchesFilter((r as unknown as Record<string, unknown>)[f.key], f))),
     [rows, filters, q],
@@ -1506,17 +1595,30 @@ export function HandoverListScreen({ persona, rows: initial, state = 'ready', le
     { key: 'effective', header: 'Effective', type: 'date', value: (r) => r.effective, width: 120 },
     { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => (v === 'Needs decision' ? 'warning' : v === 'Decided' ? 'success' : 'neutral'), width: 150 },
   ];
-  const decide = (id: string) => setRows((xs) => xs.map((x) => (x.id === id ? { ...x, status: 'Decided' } : x)));
+  const decided = (id: string) => setSample((xs) => xs.map((x) => (x.id === id ? { ...x, status: 'Decided' } : x)));
+  const open = (r: HandoverRow) => {
+    if (r.artefact !== 'Goal parent') return decided(r.id);
+    setDeciding(r.id);
+    if (live) {
+      setOptions(null);
+      void live.parentOptions(r.id).then(setOptions, () => setOptions([]));
+    }
+  };
+  const row = rows.find((r) => r.id === deciding);
+  const needs = rows.filter((r) => r.status === 'Needs decision').length;
+  const tableState = live ? live.state : state === 'loading' ? 'loading' : state === 'error' ? 'error' : 'ready';
   return (
     <GrowthFrame area="performance" active="Reviews & cycles" persona={persona}>
       <PageHeader
         title={persona === 'mgr' ? 'Handed over to you' : 'Hand-over list'}
         description={
           persona === 'mgr'
-            ? `Artefacts that moved to you from ${leaver} on 1 Sep 2026. You can read these people’s current cycle; private 1:1 notes stayed with their author.`
-            : `Everything that moved when ${leaver} left, and what still needs a decision.`
+            ? `Artefacts that moved to you${leaver ? ` from ${leaver}` : ' when a manager changed'}. You can read these people’s current cycle; private 1:1 notes stayed with their author.`
+            : leaver
+              ? `Everything that moved when ${leaver} left, and what still needs a decision.`
+              : 'Everything that moved when a manager left or changed, and what still needs a decision.'
         }
-        facts={`${rows.filter((r) => r.status === 'Needs decision').length} need a decision · ${rows.length} artefacts`}
+        facts={`${needs} need a decision · ${rows.length} artefacts`}
       />
       <InlineAlert tone="info" title="Private notes don’t move">
         Shared 1:1 notes and open action items moved. Each person’s private notes stay with them (YX-PERF-13).
@@ -1526,8 +1628,8 @@ export function HandoverListScreen({ persona, rows: initial, state = 'ready', le
         columns={cols}
         rows={shown}
         getRowId={(r) => r.id}
-        state={state === 'loading' ? 'loading' : state === 'error' ? 'error' : 'ready'}
-        onRetry={() => {}}
+        state={tableState}
+        onRetry={live?.onRetry ?? (() => {})}
         filtered={filters.length > 0 || q !== ''}
         onClearFilters={() => {
           setFilters([]);
@@ -1535,20 +1637,36 @@ export function HandoverListScreen({ persona, rows: initial, state = 'ready', le
         }}
         empty={<EmptyState title="Nothing to hand over" description="When a manager leaves or changes, their in-flight reviews, PIPs and 1:1s are listed here." />}
         toolbar={<FilterBar fields={HANDOVER_FIELDS} value={filters} onChange={setFilters} search={q} onSearchChange={setQ} searchPlaceholder="Search employee" />}
-        views={<SavedViewMenu views={[{ id: 'all', name: 'All artefacts' }, { id: 'decide', name: 'Needs decision', shared: true }]} currentId={persona === 'hr' ? 'decide' : 'all'} onSelect={() => {}} />}
-        selectable={persona === 'hr'}
+        views={<SavedViewMenu views={[{ id: 'all', name: 'All artefacts' }, { id: 'decide', name: 'Needs decision', shared: true }]} currentId={filters === NEEDS_DECISION ? 'decide' : 'all'} onSelect={(id) => setFilters(id === 'decide' ? NEEDS_DECISION : [])} />}
+        // Reassigning to HR and the audit entry link are not built yet (performance-map-notes-b3.md).
+        selectable={persona === 'hr' && !live}
         selectedIds={selected}
         onSelectedChange={setSelected}
-        bulkActions={() => <Button size="sm">Reassign to HR</Button>}
+        bulkActions={live ? undefined : () => <Button size="sm">Reassign to HR</Button>}
         rowButtons={(r) =>
           r.status === 'Needs decision' ? (
-            <Button size="sm" onClick={() => decide(r.id)}>
+            <Button size="sm" onClick={() => open(r)}>
               {r.artefact === 'Goal parent' ? 'Re-parent goal' : r.artefact === 'Calibration session' ? 'Reassign facilitator' : 'Decide'}
             </Button>
           ) : null
         }
-        rowActions={() => <MenuItem>View audit entry</MenuItem>}
+        rowActions={live ? undefined : () => <MenuItem>View audit entry</MenuItem>}
       />
+      {row && (
+        <ReparentDialog
+          key={row.id}
+          row={row}
+          open
+          onOpenChange={(o) => !o && setDeciding(null)}
+          options={options}
+          onSave={async (input) => {
+            if (live) await live.onDecide(row.id, input);
+            else decided(row.id);
+            setDeciding(null);
+            toast({ tone: 'success', title: input.decision === 'realigned' ? 'Goal re-aligned' : 'Goal left unaligned' });
+          }}
+        />
+      )}
     </GrowthFrame>
   );
 }
@@ -1562,18 +1680,198 @@ export interface Competency {
   description: string;
   starter: boolean;
   status: 'Active' | 'Retired';
+  /** What each level looks like, level 1 first. */
   levels: string[];
-  roles: { role: string; level: number }[];
+  roles: { role: string; level: number; designationId?: string }[];
   usedIn: string[];
   skillsTest?: string;
+  /** Live: the optimistic version the next save sends. */
+  version?: number;
+}
+
+/** PRF-14 save: the competency as the API takes it (levels in order, the level each designation needs from today). */
+export interface CompetencySave {
+  name: string;
+  group: Competency['group'];
+  description: string;
+  levels: string[];
+  roles: { designationId: string; level: number }[];
+  version?: number;
+}
+
+/** PRF-14 live: Performance › Skills & competencies (performance builder 3). */
+export interface LiveCompetencies {
+  state: 'loading' | 'error' | 'ready';
+  onRetry: () => void;
+  items: Competency[];
+  designations: { value: string; label: string }[];
+  onSave: (id: string | null, input: CompetencySave) => Promise<Competency>;
+  onRetire: (id: string) => Promise<void>;
+  onMerge: (id: string, intoId: string) => Promise<void>;
+  onLoadStarters: () => Promise<void>;
+}
+
+const GROUPS: Competency['group'][] = ['Core', 'Functional', 'Leadership'];
+const SAMPLE_DESIGNATIONS = ['QA Engineer', 'Senior QA Engineer', 'Line Supervisor', 'Plant Manager'].map((d) => ({ value: d, label: d }));
+
+/** PRF-14 add a competency: name, group, what it means and its levels (one per line). */
+function AddCompetencyDrawer({ open, onOpenChange, onAdd }: { open: boolean; onOpenChange: (o: boolean) => void; onAdd: (input: CompetencySave) => Promise<void> }) {
+  const [name, setName] = useState('');
+  const [group, setGroup] = useState<Competency['group']>('Core');
+  const [description, setDescription] = useState('');
+  const [levels, setLevels] = useState('Learning: does it with help\nPractising: does it alone in usual cases\nSkilled: handles hard cases and helps others\nExpert: sets the standard for the company');
+  const [tried, setTried] = useState(false);
+  const { run, busy, error } = useRun();
+  const lines = levels.split('\n').map((l) => l.trim()).filter(Boolean);
+  const nameError = tried && name.trim().length < 2 ? 'Give the competency a name of at least 2 characters.' : null;
+  const levelError = tried && (lines.length < 2 || lines.length > 10) ? 'Write 2 to 10 levels, one per line, the lowest first.' : null;
+  const add = () => {
+    setTried(true);
+    if (name.trim().length < 2) return void document.getElementById('competency-name')?.focus();
+    if (lines.length < 2 || lines.length > 10) return void document.getElementById('competency-levels')?.focus();
+    void run('add', () => onAdd({ name: name.trim(), group, description: description.trim(), levels: lines, roles: [] }));
+  };
+  return (
+    <Drawer
+      open={open}
+      onOpenChange={onOpenChange}
+      size="md"
+      title="Add competency"
+      subtitle="Map it to job titles after it is added."
+      notice={error ? <InlineAlert tone="danger">{error}</InlineAlert> : undefined}
+      footer={
+        <div className="yx-growth-foot">
+          <Button onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="primary" icon={Plus} loading={busy === 'add'} onClick={add}>
+            Add competency
+          </Button>
+        </div>
+      }
+    >
+      <div className="yx-growth-stack">
+        <FormField label="Name" required id="competency-name" error={nameError}>
+          <TextField value={name} onChange={setName} maxLength={120} />
+        </FormField>
+        <Segment label="Group" value={group} onChange={setGroup} options={GROUPS.map((g) => ({ value: g, label: g }))} />
+        <FormField label="Description" optional>
+          <TextArea value={description} onChange={setDescription} rows={2} maxLength={500} />
+        </FormField>
+        <FormField label="Levels" required id="competency-levels" error={levelError} helper="One per line, the lowest first: what someone at that level does.">
+          <TextArea value={levels} onChange={setLevels} rows={5} />
+        </FormField>
+      </div>
+    </Drawer>
+  );
+}
+
+/** PRF-14 map a job title to the level it needs. */
+function MapRoleDialog({ c, open, onOpenChange, designations, onMap }: { c: Competency; open: boolean; onOpenChange: (o: boolean) => void; designations: { value: string; label: string }[]; onMap: (designationId: string, level: number) => Promise<void> }) {
+  const [designation, setDesignation] = useState<string | null>(null);
+  const [level, setLevel] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
+  const { run, busy, error } = useRun();
+  const taken = new Set(c.roles.map((r) => r.designationId ?? r.role));
+  const map = () => {
+    setTried(true);
+    if (!designation) return void document.getElementById('map-designation')?.focus();
+    if (!level) return void document.getElementById('map-level')?.focus();
+    void run('map', () => onMap(designation, Number(level)));
+  };
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      size="md"
+      title={`Map a role to ${c.name}`}
+      description="The job title needs this level from today. Past reviews keep the level they had."
+      notice={error ? <InlineAlert tone="danger">{error}</InlineAlert> : undefined}
+      footer={
+        <>
+          <Button onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="primary" loading={busy === 'map'} onClick={map}>
+            Map role
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-growth-stack">
+        <FormField label="Designation" required id="map-designation" error={tried && !designation ? 'Choose the job title.' : null} helper={designations.length === 0 ? 'No job titles yet. Add them in Settings › Organisation structure.' : undefined}>
+          <Select value={designation} onChange={setDesignation} options={designations.filter((d) => !taken.has(d.value))} searchable placeholder="Choose a job title" />
+        </FormField>
+        <FormField label="Required level" required id="map-level" error={tried && designation && !level ? 'Choose the level this job title needs.' : null}>
+          <Select value={level} onChange={setLevel} options={c.levels.map((l, i) => ({ value: String(i + 1), label: `Level ${i + 1} · ${l}` }))} placeholder="Choose a level" />
+        </FormField>
+      </div>
+    </Dialog>
+  );
+}
+
+/** PRF-14 merge a competency into another; the merged one is retired and its job titles move over. */
+function MergeDialog({ c, open, onOpenChange, others, onMerge }: { c: Competency; open: boolean; onOpenChange: (o: boolean) => void; others: Competency[]; onMerge: (intoId: string) => Promise<void> }) {
+  const [into, setInto] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
+  const { run, busy, error } = useRun();
+  const merge = () => {
+    setTried(true);
+    if (!into) return void document.getElementById('merge-into')?.focus();
+    void run('merge', () => onMerge(into));
+  };
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      size="md"
+      title={`Merge ${c.name} into…`}
+      description={`${c.name} is retired and stays on past reviews. Job titles mapped to it and not to the kept one move over at the same level.`}
+      notice={error ? <InlineAlert tone="danger">{error}</InlineAlert> : undefined}
+      footer={
+        <>
+          <Button onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="primary" icon={GitMerge} loading={busy === 'merge'} onClick={merge}>
+            Merge competency
+          </Button>
+        </>
+      }
+    >
+      <FormField label="Keep" required id="merge-into" error={tried && !into ? 'Choose the competency to keep.' : null}>
+        <Select value={into} onChange={setInto} options={others.map((o) => ({ value: o.id, label: `${o.name} (${o.group})` }))} searchable placeholder="Choose a competency" />
+      </FormField>
+    </Dialog>
+  );
 }
 
 /** PRF-14 Competency framework (T3, HR): library by group, levels with behaviours, role mapping, skills test; in-use can only be retired or merged. */
-export function CompetencyFrameworkScreen({ items, openId, state = 'ready', retireOpen }: { items: Competency[]; openId?: string; state?: LoadState; retireOpen?: boolean }) {
-  const [sel, setSel] = useState(openId ?? items[0]?.id);
+export function CompetencyFrameworkScreen({ items: sampleItems, openId, state = 'ready', retireOpen, addOpen, mapOpen, mergeOpen, live }: { items: Competency[]; openId?: string; state?: LoadState; retireOpen?: boolean; /** Story: the add drawer open. */ addOpen?: boolean; /** Story: the map-a-role dialog open. */ mapOpen?: boolean; /** Story: the merge dialog open. */ mergeOpen?: boolean; /** The live app's /yx/performance/competencies. */ live?: LiveCompetencies }) {
+  const { toast } = useToast();
+  const [local, setLocal] = useState(sampleItems);
+  const items = live ? live.items : local;
+  const [sel, setSel] = useState(openId ?? sampleItems[0]?.id);
   const [retire, setRetire] = useState(!!retireOpen);
-  const c = items.find((i) => i.id === sel);
-  const groups: Competency['group'][] = ['Core', 'Functional', 'Leadership'];
+  const [adding, setAdding] = useState(!!addOpen);
+  const [mapping, setMapping] = useState(!!mapOpen);
+  const [merging, setMerging] = useState(!!mergeOpen);
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const { run, busy, error } = useRun();
+  const c = items.find((i) => i.id === sel) ?? items[0];
+  const designations = live ? live.designations : SAMPLE_DESIGNATIONS;
+  const description = c ? (draft[c.id] ?? c.description) : '';
+  const saveOf = (x: Competency, patch: Partial<CompetencySave> = {}): CompetencySave => ({
+    name: x.name,
+    group: x.group,
+    description: x.description,
+    levels: x.levels,
+    roles: x.roles.map((r) => ({ designationId: r.designationId ?? r.role, level: r.level })),
+    version: x.version,
+    ...patch,
+  });
+  /** Live: the API saves; story: the sample list changes in place. */
+  const save = async (id: string | null, input: CompetencySave) => {
+    if (live) return live.onSave(id, input);
+    const next: Competency = { id: id ?? `k${local.length + 1}`, starter: false, status: 'Active', usedIn: [], ...input, roles: input.roles.map((r) => ({ role: r.designationId, designationId: r.designationId, level: r.level })) };
+    setLocal((xs) => (id ? xs.map((x) => (x.id === id ? { ...x, ...next } : x)) : [...xs, next]));
+    return next;
+  };
+  const loading = live ? live.state === 'loading' : state === 'loading';
   return (
     <GrowthFrame area="performance" active="Skills & competencies" persona="hr">
       <PageHeader
@@ -1581,31 +1879,45 @@ export function CompetencyFrameworkScreen({ items, openId, state = 'ready', reti
         description="One skills library for the company. Competencies here are also used as test question tags and hiring scorecard skills."
         actions={
           <>
-            <Button>Import</Button>
-            <Button icon={Plus}>Add competency</Button>
+            {/* Import from a file is not built yet in the live app (performance-map-notes-b3.md). */}
+            {!live && <Button>Import</Button>}
+            <Button icon={Plus} onClick={() => setAdding(true)}>
+              Add competency
+            </Button>
           </>
         }
       />
+      {error && <InlineAlert tone="danger">{error}</InlineAlert>}
       {items.some((i) => i.starter) && (
         <InlineAlert tone="info" title="Starter library">
-          Items marked “Starter” come from the YukthiX starter template. Edit them to match how Kaveri Foods works.
+          Items marked “Starter” come from the YukthiX starter template. Edit them to match how your company works.
         </InlineAlert>
       )}
-      {state === 'loading' ? (
+      {live?.state === 'error' ? (
+        <EmptyState title="The competencies did not load" description="Check your connection and try again." action={<Button onClick={live.onRetry}>Try again</Button>} />
+      ) : loading ? (
         <Skeleton height={400} />
       ) : items.length === 0 ? (
-        <EmptyState title="No competencies yet" description="Start from the starter library (core, functional, leadership) or add your own." action={<Button variant="primary">Load starter library</Button>} />
+        <EmptyState
+          title="No competencies yet"
+          description="Start from the starter library (core, functional, leadership) or add your own."
+          action={
+            <Button variant="primary" loading={busy === 'starters'} onClick={() => void (live ? run('starters', live.onLoadStarters).then((ok) => ok && toast({ tone: 'success', title: 'Starter library loaded' })) : undefined)}>
+              Load starter library
+            </Button>
+          }
+        />
       ) : (
         <div className="yx-growth-player">
           <nav aria-label="Competencies">
-            {groups.map((g) => (
+            {GROUPS.map((g) => (
               <div key={g} className="yx-growth-stack" data-gap="sm">
                 <h2 className="yx-growth-h">{g}</h2>
                 <ul className="yx-growth-player__outline">
                   {items
                     .filter((i) => i.group === g)
                     .map((i) => (
-                      <li key={i.id} className="yx-growth-player__item" aria-current={i.id === sel ? 'true' : undefined}>
+                      <li key={i.id} className="yx-growth-player__item" aria-current={i.id === c?.id ? 'true' : undefined}>
                         <Link
                           href={`#${i.id}`}
                           onClick={(e) => {
@@ -1631,16 +1943,32 @@ export function CompetencyFrameworkScreen({ items, openId, state = 'ready', reti
                   {c.starter && <Badge tone="info">Starter</Badge>}
                   <Badge tone={c.status === 'Active' ? 'success' : 'neutral'}>{c.status}</Badge>
                 </div>
-                <div className="yx-growth-row">
-                  <Button icon={GitMerge}>Merge into…</Button>
-                  <Button icon={Archive} onClick={() => setRetire(true)}>
-                    Retire
-                  </Button>
-                  <Button variant="primary">Save changes</Button>
-                </div>
+                {c.status === 'Active' && (
+                  <div className="yx-growth-row">
+                    <Button icon={GitMerge} onClick={() => setMerging(true)}>
+                      Merge into…
+                    </Button>
+                    <Button icon={Archive} onClick={() => setRetire(true)}>
+                      Retire
+                    </Button>
+                    <Button
+                      variant="primary"
+                      loading={busy === 'save'}
+                      onClick={() =>
+                        void run('save', () => save(c.id, saveOf(c, { description: description.trim() }))).then((ok) => {
+                          if (!ok) return;
+                          setDraft(({ [c.id]: _, ...rest }) => rest);
+                          toast({ tone: 'success', title: `${c.name} saved` });
+                        })
+                      }
+                    >
+                      Save changes
+                    </Button>
+                  </div>
+                )}
               </div>
               <FormField label="Description">
-                <TextArea defaultValue={c.description} rows={2} />
+                <TextArea value={description} onChange={(v) => setDraft((d) => ({ ...d, [c.id]: v }))} rows={2} maxLength={500} readOnly={c.status !== 'Active'} />
               </FormField>
               <Card title="Proficiency levels">
                 <ol className="yx-growth-list">
@@ -1652,27 +1980,40 @@ export function CompetencyFrameworkScreen({ items, openId, state = 'ready', reti
                   ))}
                 </ol>
               </Card>
-              <Card title="Required level by role" actions={<Button size="sm" icon={Plus}>Map a role</Button>}>
-                <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-                <table className="yx-growth-matrix">
-                  <thead>
-                    <tr>
-                      <th scope="col">Designation</th>
-                      <th scope="col">Required level</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {c.roles.map((r) => (
-                      <tr key={r.role}>
-                        <th scope="row">{r.role}</th>
-                        <td>
-                          <SkillLevel level={r.level} label={r.role} />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                </div>
+              <Card
+                title="Required level by role"
+                actions={
+                  c.status === 'Active' ? (
+                    <Button size="sm" icon={Plus} onClick={() => setMapping(true)}>
+                      Map a role
+                    </Button>
+                  ) : undefined
+                }
+              >
+                {c.roles.length === 0 ? (
+                  <Text tone="secondary">No job title needs this competency yet. Map a role to set the level it needs.</Text>
+                ) : (
+                  <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
+                    <table className="yx-growth-matrix">
+                      <thead>
+                        <tr>
+                          <th scope="col">Designation</th>
+                          <th scope="col">Required level</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {c.roles.map((r) => (
+                          <tr key={r.designationId ?? r.role}>
+                            <th scope="row">{r.role}</th>
+                            <td>
+                              <SkillLevel level={r.level} label={r.role} />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </Card>
               <DescriptionList
                 columns={2}
@@ -1694,7 +2035,55 @@ export function CompetencyFrameworkScreen({ items, openId, state = 'ready', reti
           title={`Retire ${c.name}?`}
           consequence={`It is used in ${c.usedIn.length} review templates and ${c.roles.length} role mappings, so it can’t be deleted. Retired competencies stay on past reviews and aren’t offered for new ones.`}
           confirmLabel="Retire competency"
-          onConfirm={() => setRetire(false)}
+          onConfirm={() => {
+            setRetire(false);
+            const done = () => toast({ tone: 'success', title: `${c.name} retired` });
+            if (live) void run('retire', () => live.onRetire(c.id)).then((ok) => ok && done());
+            else {
+              setLocal((xs) => xs.map((x) => (x.id === c.id ? { ...x, status: 'Retired' } : x)));
+              done();
+            }
+          }}
+        />
+      )}
+      {c && mapping && (
+        <MapRoleDialog
+          c={c}
+          open
+          onOpenChange={setMapping}
+          designations={designations}
+          onMap={async (designationId, level) => {
+            await save(c.id, saveOf(c, { roles: [...c.roles.map((r) => ({ designationId: r.designationId ?? r.role, level: r.level })), { designationId, level }] }));
+            setMapping(false);
+            toast({ tone: 'success', title: `Role mapped to ${c.name}` });
+          }}
+        />
+      )}
+      {c && merging && (
+        <MergeDialog
+          c={c}
+          open
+          onOpenChange={setMerging}
+          others={items.filter((x) => x.id !== c.id && x.status === 'Active')}
+          onMerge={async (intoId) => {
+            if (live) await live.onMerge(c.id, intoId);
+            else setLocal((xs) => xs.map((x) => (x.id === c.id ? { ...x, status: 'Retired' } : x)));
+            setMerging(false);
+            setSel(intoId);
+            toast({ tone: 'success', title: `${c.name} merged` });
+          }}
+        />
+      )}
+      {adding && (
+        <AddCompetencyDrawer
+          open
+          onOpenChange={setAdding}
+          onAdd={async (input) => {
+            const made = await save(null, input);
+            setAdding(false);
+            setSel(made.id);
+            toast({ tone: 'success', title: `${made.name} added` });
+          }}
         />
       )}
     </GrowthFrame>

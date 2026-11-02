@@ -233,7 +233,7 @@ export function skillGap(required: number, current: number | null): { gap: numbe
 
 /* ------------------------------------------------ PRF-17 bias check (P23 YX-AST-11) */
 
-export type BiasKind = 'Gendered or loaded word' | 'Personality, not behaviour' | 'Age reference' | 'Vague, no example' | 'Rating and text disagree';
+export type BiasKind = 'Gendered or loaded word' | 'Personality, not behaviour' | 'Age reference' | 'Vague, no example' | 'Rating and text disagree' | 'Rating spread against peers';
 
 export interface BiasFlag {
   id: string;

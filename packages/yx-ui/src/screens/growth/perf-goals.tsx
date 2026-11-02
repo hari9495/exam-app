@@ -752,10 +752,51 @@ function SampleCompanyGoalMap({ persona = 'hr', state = 'ready', goals, unaligne
 
 /* ================================================================== PRF-16 · Coach card standalone (manager home widget) */
 
+/** PRF-16 live: the manager's coach card (performance builder 3). Wording is fixed rule text; no AI model sees the team. */
+export interface LiveCoach {
+  state: 'loading' | 'error' | 'ready' | 'not-manager' | 'company-off';
+  onRetry: () => void;
+  firstName: string | null;
+  weekOf: Date;
+  optedOut: boolean;
+  nudges: CoachNudge[];
+  /** What the coach looks at, as the server checks it. */
+  looksAt: string[];
+  onAct: (n: CoachNudge) => void;
+  onDismiss: (id: string) => Promise<void>;
+  onOptOut: (optedOut: boolean) => Promise<void>;
+}
+
+const COACH_LOOKS_AT = ['No feedback given in 6 weeks', '1:1s due or overdue', 'Unused leave balance above 12 days (counts only)', 'Overtime 3 weeks running', 'Goals off track', 'New joiners’ open onboarding tasks'];
+const greeting = (d: Date) => (d.getHours() < 12 ? 'Good morning' : d.getHours() < 17 ? 'Good afternoon' : 'Good evening');
+
 /** PRF-16 coach card as it sits on the manager's home (T1 card). */
-export function ManagerCoachHome({ device = 'desktop', nudges, weekOf, optedOut, state = 'ready' }: { device?: Device; nudges: CoachNudge[]; weekOf: Date; optedOut?: boolean; state?: LoadState }) {
-  const [out, setOut] = useState(!!optedOut);
-  const card = state === 'loading' ? <Skeleton height={240} /> : <CoachCard nudges={nudges} weekOf={weekOf} optedOut={out} onOptOut={() => setOut(true)} />;
+export function ManagerCoachHome({ device = 'desktop', nudges, weekOf, optedOut, state = 'ready', companyOff, notManager, live }: { device?: Device; nudges: CoachNudge[]; weekOf: Date; optedOut?: boolean; state?: LoadState; /** The company turned nudges off. */ companyOff?: boolean; /** Someone with no team opened the page. */ notManager?: boolean; /** The live app's /yx/performance/coach. */ live?: LiveCoach }) {
+  const [sampleOut, setOut] = useState(!!optedOut);
+  const out = live ? live.optedOut : sampleOut;
+  const loading = live ? live.state === 'loading' : state === 'loading';
+  const off = live ? live.state === 'company-off' : !!companyOff;
+  const noTeam = live ? live.state === 'not-manager' : !!notManager;
+  const shown = live ? live.nudges : nudges;
+  const card = loading ? (
+    <Skeleton height={240} />
+  ) : live?.state === 'error' ? (
+    <ErrorState title="The coach card did not load" description="Check your connection and try again." onRetry={live.onRetry} />
+  ) : noTeam ? (
+    <EmptyState title="No team yet" description="The coach is for managers. It appears when people report to you." />
+  ) : (
+    <CoachCard
+      key={`${live?.weekOf.getTime() ?? ''}:${shown.map((n) => n.id).join(',')}:${out}`}
+      nudges={shown}
+      weekOf={live ? live.weekOf : weekOf}
+      optedOut={out}
+      companyOff={off}
+      onAct={live?.onAct}
+      onDismiss={live ? (n) => void live.onDismiss(n.id).catch(() => undefined) : undefined}
+      onOptOut={() => (live ? void live.onOptOut(true).catch(() => undefined) : setOut(true))}
+      onOptIn={live ? () => void live.onOptOut(false).catch(() => undefined) : undefined}
+    />
+  );
   if (device === 'phone')
     return (
       <GrowthFrame area="performance" active="Performance home" persona="mgr" device="phone" phone={{ tab: 'home', title: 'Home' }}>
@@ -764,19 +805,21 @@ export function ManagerCoachHome({ device = 'desktop', nudges, weekOf, optedOut,
     );
   return (
     <GrowthFrame area="performance" active="Performance home" persona="mgr">
-      <Heading level={1}>Good morning, Karthik</Heading>
+      <Heading level={1}>{live ? `${greeting(new Date())}${live.firstName ? `, ${live.firstName}` : ''}` : 'Good morning, Karthik'}</Heading>
       <div className="yx-growth-cols" data-n="2">
         {card}
         <Card title="What the coach looks at">
           <ul className="yx-growth-list">
-            {['No feedback given in 6 weeks', '1:1s due or overdue', 'Unused leave balance above 12 days (counts only)', 'Overtime 3 weeks running', 'Goals off track', 'New joiners’ open onboarding tasks'].map((s) => (
+            {(live ? live.looksAt : COACH_LOOKS_AT).map((s) => (
               <li key={s} className="yx-growth-list__item">
                 {s}
               </li>
             ))}
           </ul>
           <Text size="sm" tone="secondary">
-            Never health, leave reasons, POSH or disciplinary data. Names are hidden from the AI model that writes the wording.
+            {live
+              ? 'Never health, leave reasons, POSH or disciplinary data. The wording comes from fixed rules; no AI model sees your team.'
+              : 'Never health, leave reasons, POSH or disciplinary data. Names are hidden from the AI model that writes the wording.'}
           </Text>
         </Card>
       </div>

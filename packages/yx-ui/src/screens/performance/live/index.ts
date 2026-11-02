@@ -23,3 +23,10 @@ export { PipsScreen, type PipsScreenProps } from './pips';
 // PRF-07 360° nominations, PRF-12 PIP record: the designed screens made live (builder 2).
 export { NominationsScreen, type LiveNominations, type Nomination as NominationRow } from '../../growth/perf-reviews';
 export { PipRecordScreen, type LivePip, type Pip as PipRecord, type PipRating } from '../../growth/perf-people';
+// Performance builder 3 (PRF-13 … PRF-17): the designed growth screens with their `live` paths.
+export { HandoverListScreen, CompetencyFrameworkScreen, SuggestedAgendaPanel, type HandoverRow, type HandoverDecision, type LiveHandover, type Competency as FrameworkCompetency, type CompetencySave, type LiveCompetencies } from '../../growth/perf-people';
+export { DisputeRaiseScreen, DisputeRecordScreen, DisputeListScreen, ReviewAssistantPanel, type DisputeCase, type DisputeRow, type LiveDisputeRaise, type LiveDisputeRecord, type LiveReviewAssistant } from '../../growth/perf-reviews';
+export { ManagerCoachHome, type LiveCoach } from '../../growth/perf-goals';
+export type { CoachNudge } from '../../growth/growth-kit';
+export type { BiasFlag } from '../../growth/growth-logic';
+export type { ApprovalStep } from '../../../components/timeline';

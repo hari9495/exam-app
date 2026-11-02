@@ -287,6 +287,11 @@ export function buildNav(n: NavInput): NavArea[] {
       ...when(manager || has('perf.pip.manage'), L('pips', 'PIPs', '/yx/performance/pips')),
       ...when(has('perf.concern.seal'), L('reviewer-blocks', 'Reviewer blocks', '/yx/performance/reviewer-blocks')),
       ...when(has('perf.report.view'), L('perf-reports', 'Reports', '/yx/performance/reports')),
+      // Performance builder 3: PRF-16 coach, PRF-13 hand-overs, PRF-14 competencies, PRF-15 disputes.
+      ...when(manager, L('coach', 'Manager coach', '/yx/performance/coach')),
+      ...when(manager || has('perf.cycle.manage'), L('handovers', 'Hand-over list', '/yx/performance/handovers')),
+      ...when(has('perf.setup.manage'), L('competencies', 'Skills & competencies', '/yx/performance/competencies')),
+      ...when(has('perf.dispute.manage'), L('disputes', 'Rating disputes', '/yx/performance/disputes')),
     ]),
   };
 

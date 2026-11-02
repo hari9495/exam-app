@@ -78,8 +78,6 @@
     "growth: EnrolmentSheet",
     "growth: FeedScreen",
     "growth: GiveKudosScreen",
-    "growth: HandoverListScreen",
-    "growth: ManagerCoachHome",
     "growth: ModerationScreen",
     "growth: MyLearningScreen",
     "growth: MyTestsScreen",

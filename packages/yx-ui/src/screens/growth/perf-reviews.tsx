@@ -10,7 +10,9 @@ import { useAct } from './perf-live';
 import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { Drawer } from '../../components/drawer';
-import { ConfirmDialog } from '../../components/overlay';
+import { ConfirmDialog, Dialog } from '../../components/overlay';
+import { Segment } from '../../components/segment';
+import { useToast } from '../../components/notify';
 import { FieldRow, FormField } from '../../components/field';
 import { NumberField, TextArea, TextField } from '../../components/inputs';
 import { Checkbox, RadioGroup, Switch } from '../../components/choice';
@@ -22,9 +24,10 @@ import { ApprovalTimeline, Timeline, type ApprovalStep, type TimelineItem } from
 import { formatDate } from '../../lib/format';
 import { TODAY } from '../_kit/data';
 import { BiasFlagList, ConfidentialTag, GrowthFrame, RatingScale, ScoreBand, SplitLayout, StageTrack, type Device, type StageItem } from './growth-kit';
-import { anonymityGroups, bandFor, detectBiasFlags, nominationCheck, RATING_LABELS, reviewScore, type Relationship, type ReviewSection } from './growth-logic';
+import { anonymityGroups, bandFor, detectBiasFlags, nominationCheck, RATING_LABELS, reviewScore, type BiasFlag, type Relationship, type ReviewSection } from './growth-logic';
 import type { LoadState } from './perf-goals';
 import { LiveCycleControlRoom, LiveCycleSetupScreen, LiveReviewAcknowledgeScreen, LiveReviewWorkspaceScreen, type LiveAcknowledge, type LiveControlRoom, type LiveCycleSetup, type LiveReviewWorkspace } from './perf-reviews-live';
+import { useRun } from '../org/org-kit';
 import './growth.css';
 
 /* ================================================================== PRF-04 · Cycle set-up (T5) + control room (T6) */
@@ -351,13 +354,131 @@ export interface ReviewData {
 export interface ReviewWorkspaceProps {
   persona: 'emp' | 'mgr';
   review: ReviewData;
-  /** PRF-17 review assistant. */
-  assistant?: { enabled: boolean; draft?: string; showFlags?: boolean };
+  /** PRF-17 review assistant (story: sample draft and rule flags; live: the API through `assistant.live`). */
+  assistant?: ReviewAssistantProps['assistant'];
   submitted?: boolean;
 }
 
 const DRAFT_TEXT =
   'Divya automated 310 of the planned 400 regression cases and brought the flaky rate from 12% to 6%, which cut line stoppages for testing to zero in August. Defect leakage fell from 8% to 3.5%. Mentoring is behind plan: 5 of 12 sessions held; we agreed a fixed Thursday slot.';
+
+/** PRF-17 live: the review assistant for the current manager of an open review (performance builder 3). */
+export interface LiveReviewAssistant {
+  /** Off: the company has not turned on AI review summaries, or no AI provider is set up. */
+  reason: 'company-off' | 'not-configured' | null;
+  /** Through the AI service; resolves to the suggested text and what it was drafted from. */
+  onDraft: () => Promise<{ draft: string; basis: string }>;
+  /** Explainable rules on the server (wording, rating and text, rating spread against peers); never changes the review. */
+  onCheck: (text: string, rating: number | null) => Promise<BiasFlag[]>;
+  /** Records the manager's Accept or Ignore (audited). */
+  onDecide: (flag: BiasFlag, decision: 'accepted' | 'ignored') => Promise<void>;
+}
+
+export interface ReviewAssistantProps {
+  assistant: { enabled: boolean; draft?: string; showFlags?: boolean; reason?: LiveReviewAssistant['reason']; live?: LiveReviewAssistant };
+  summary: string;
+  rating: number | null;
+  onSummary: (text: string) => void;
+}
+
+const SAMPLE_BASIS = 'Draft from goals, feedback received and 1:1 notes, 1 Apr – 30 Sep 2026';
+
+/** PRF-17 "Help me draft" and the wording check, under the manager's summary. Suggestions only; nothing saves by itself. */
+export function ReviewAssistantPanel({ assistant, summary, rating, onSummary }: ReviewAssistantProps) {
+  const live = assistant.live;
+  const [draftShown, setDraftShown] = useState(!!assistant.draft);
+  const [draft, setDraft] = useState<{ draft: string; basis: string } | null>(assistant.draft ? { draft: assistant.draft, basis: SAMPLE_BASIS } : null);
+  const [checked, setChecked] = useState(!!assistant.showFlags);
+  const [serverFlags, setServerFlags] = useState<BiasFlag[]>([]);
+  const [decided, setDecided] = useState<Record<string, 'accepted' | 'ignored'>>({});
+  const { run, busy, error } = useRun();
+  const flags = useMemo(() => (!checked ? [] : live ? serverFlags : detectBiasFlags(summary, rating)), [checked, live, serverFlags, summary, rating]);
+  const enabled = live ? !live.reason : assistant.enabled;
+  const reason = live ? live.reason : (assistant.reason ?? 'company-off');
+  if (!enabled)
+    return reason === 'not-configured' ? (
+      <InlineAlert tone="info" title="Review assistant is off">
+        AI is not set up for your company yet. Ask your admin to add an AI provider in Settings › Integrations.
+      </InlineAlert>
+    ) : (
+      <InlineAlert tone="info" title="Review assistant is off">
+        Your company hasn’t turned on AI review summaries. Ask your HR admin if you’d like drafting help.
+      </InlineAlert>
+    );
+  const decide = (f: BiasFlag, d: 'accepted' | 'ignored') => {
+    setDecided((x) => ({ ...x, [f.id]: d }));
+    // Accept only marks the words in the manager's own unsaved text; nothing is saved by itself.
+    if (d === 'accepted' && summary.includes(f.match)) onSummary(summary.replace(f.match, '[describe the behaviour]'));
+    if (live) void live.onDecide(f, d).catch(() => undefined);
+  };
+  return (
+    <section className="yx-growth-panel" data-tone="ai" aria-label="Review assistant">
+      <div className="yx-growth-row">
+        <h3 className="yx-growth-h">Review assistant</h3>
+        <AiBadge />
+      </div>
+      <Text size="sm" tone="secondary">
+        Suggestions only. Your text and rating are final.
+      </Text>
+      <div className="yx-growth-row">
+        <Button
+          size="sm"
+          loading={busy === 'draft'}
+          onClick={() => {
+            if (!live) {
+              setDraft((x) => x ?? { draft: DRAFT_TEXT, basis: SAMPLE_BASIS });
+              return setDraftShown(true);
+            }
+            void run('draft', async () => {
+              setDraft(await live.onDraft());
+              setDraftShown(true);
+            });
+          }}
+        >
+          Help me draft
+        </Button>
+        <Button
+          size="sm"
+          loading={busy === 'check'}
+          onClick={() => {
+            setDecided({});
+            if (!live) return setChecked(true);
+            void run('check', async () => {
+              setServerFlags(await live.onCheck(summary, rating));
+              setChecked(true);
+            });
+          }}
+        >
+          Check wording
+        </Button>
+      </div>
+      {error && <InlineAlert tone="danger">{error}</InlineAlert>}
+      {draftShown && draft && (
+        <div className="yx-growth-note">
+          <Text size="sm" tone="secondary">
+            {draft.basis}
+          </Text>
+          <p className="yx-growth-p">{draft.draft}</p>
+          <div className="yx-growth-row">
+            <Button
+              size="sm"
+              onClick={() => {
+                onSummary(draft.draft);
+                setDraftShown(false);
+              }}
+            >
+              Use as starting text
+            </Button>
+            <Button size="sm" onClick={() => setDraftShown(false)}>
+              Discard draft
+            </Button>
+          </div>
+        </div>
+      )}
+      {checked && <BiasFlagList flags={flags} decided={decided} onAccept={(f) => decide(f, 'accepted')} onIgnore={(f) => decide(f, 'ignored')} />}
+    </section>
+  );
+}
 
 /** PRF-05 Review workspace (T3): stage stepper, section cards, advisory peer panel, score with band. PRF-17: Help me draft + bias flags. */
 export function ReviewWorkspaceScreen(props: ReviewWorkspaceProps | { live: LiveReviewWorkspace }) {
@@ -369,10 +490,6 @@ function SampleReviewWorkspace({ persona, review, assistant, submitted }: Review
   const [comp, setComp] = useState<Record<string, number | null>>(Object.fromEntries(review.competencies.map((c) => [c.id, persona === 'mgr' ? c.manager : c.self])));
   const [summary, setSummary] = useState(review.summary);
   const [overall, setOverall] = useState<number | null>(persona === 'mgr' ? 4 : null);
-  const [draftShown, setDraftShown] = useState(!!assistant?.draft);
-  const [checked, setChecked] = useState(!!assistant?.showFlags);
-  const [decided, setDecided] = useState<Record<string, 'accepted' | 'ignored'>>({});
-  const flags = useMemo(() => (checked ? detectBiasFlags(summary, overall) : []), [checked, summary, overall]);
   const goalAvg = (() => {
     const done = review.goals.filter((g) => ratings[g.id] != null);
     const w = done.reduce((a, g) => a + g.weight, 0);
@@ -452,64 +569,7 @@ function SampleReviewWorkspace({ persona, review, assistant, submitted }: Review
   );
 
   const assistantPanel =
-    persona === 'mgr' && assistant ? (
-      assistant.enabled ? (
-        <section className="yx-growth-panel" data-tone="ai" aria-label="Review assistant">
-          <div className="yx-growth-row">
-            <h3 className="yx-growth-h">Review assistant</h3>
-            <AiBadge />
-          </div>
-          <Text size="sm" tone="secondary">
-            Suggestions only. Your text and rating are final.
-          </Text>
-          <div className="yx-growth-row">
-            <Button size="sm" onClick={() => setDraftShown(true)}>
-              Help me draft
-            </Button>
-            <Button size="sm" onClick={() => setChecked(true)}>
-              Check wording
-            </Button>
-          </div>
-          {draftShown && (
-            <div className="yx-growth-note">
-              <Text size="sm" tone="secondary">
-                Draft from goals, feedback received and 1:1 notes, 1 Apr – 30 Sep 2026
-              </Text>
-              <p className="yx-growth-p">{assistant.draft ?? DRAFT_TEXT}</p>
-              <div className="yx-growth-row">
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    setSummary(assistant.draft ?? DRAFT_TEXT);
-                    setDraftShown(false);
-                  }}
-                >
-                  Use as starting text
-                </Button>
-                <Button size="sm" onClick={() => setDraftShown(false)}>
-                  Discard draft
-                </Button>
-              </div>
-            </div>
-          )}
-          {checked && (
-            <BiasFlagList
-              flags={flags}
-              decided={decided}
-              onAccept={(f) => {
-                setDecided((x) => ({ ...x, [f.id]: 'accepted' }));
-                if (f.kind !== 'Rating and text disagree') setSummary((s) => s.replace(f.match, '[describe the behaviour]'));
-              }}
-              onIgnore={(f) => setDecided((x) => ({ ...x, [f.id]: 'ignored' }))}
-            />
-          )}
-        </section>
-      ) : (
-        <InlineAlert tone="info" title="Review assistant is off">
-          Your company hasn’t turned on AI review summaries. Ask your HR admin if you’d like drafting help.
-        </InlineAlert>
-      )
-    ) : null;
+    persona === 'mgr' && assistant ? <ReviewAssistantPanel assistant={assistant} summary={summary} rating={overall} onSummary={setSummary} /> : null;
 
   return (
     <GrowthFrame area="performance" active="Reviews & cycles" persona={persona}>
@@ -889,81 +949,265 @@ export interface DisputeCase {
   steps: ApprovalStep[];
   evidence: { id: string; kind: string; label: string; at: Date; hash: string }[];
   activity: TimelineItem[];
+  /** Live: the case reference (PRF-D-0001) and the decision once recorded. */
+  ref?: string;
+  decision?: string | null;
 }
 
+/** PRF-15 live: my escalation of one released review (performance builder 3). */
+export interface LiveDisputeRaise {
+  state: 'loading' | 'error' | 'ready';
+  onRetry: () => void;
+  cycle: string;
+  score: number | null;
+  band: string | null;
+  disagreement: { raisedOn: Date; answeredOn: Date | null } | null;
+  escalateBy: Date | null;
+  /** Why I cannot escalate now (null: I can). */
+  why: string | null;
+  dispute: { ref: string; status: 'raised' | 'resolved'; decision: string | null; decisionNote: string | null; files: { id: string; name: string }[] } | null;
+  steps: ApprovalStep[];
+  onRaise: (input: { grounds: string; sought: string }) => Promise<void>;
+  /** Adds an attachment to my open escalation. */
+  onUpload: (file: File) => Promise<void>;
+}
+
+const SOUGHT_OPTIONS = [
+  { value: 'rereview', label: 'A fresh review of the rating by someone independent' },
+  { value: 'correct', label: 'Correction of a factual error in the review' },
+  { value: 'other', label: 'Something else (say in the text above)' },
+];
+
 /** PRF-15 employee escalation (T4): after a disagreement isn’t resolved, escalate with grounds and attachments. */
-export function DisputeRaiseScreen({ device = 'desktop', dispute, sent }: { device?: Device; dispute?: DisputeCase; sent?: boolean }) {
+export function DisputeRaiseScreen({ device = 'desktop', dispute, sent, live }: { device?: Device; dispute?: DisputeCase; sent?: boolean; /** The live app's /yx/performance/reviews/[id]/dispute. */ live?: LiveDisputeRaise }) {
+  const { toast } = useToast();
   const [grounds, setGrounds] = useState('');
   const [sought, setSought] = useState<string>('rereview');
-  const [done, setDone] = useState(!!sent);
+  const [sampleDone, setSampleDone] = useState(!!sent);
+  const [tried, setTried] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
+  const { run, busy, error } = useRun();
+  const done = live ? Boolean(live.dispute) : sampleDone;
+  const groundsError = tried && grounds.trim().length < 20 ? 'Say what you are escalating and why, in at least 20 characters.' : null;
+  const escalate = () => {
+    setTried(true);
+    if (grounds.trim().length < 20) return void document.getElementById('dispute-grounds')?.focus();
+    if (!live) return setSampleDone(true);
+    void run('raise', async () => {
+      await live.onRaise({ grounds: grounds.trim(), sought });
+      for (const f of files) await live.onUpload(f);
+    }).then((ok) => ok && toast({ tone: 'success', title: 'Escalation raised' }));
+  };
+  const ref = live?.dispute?.ref ?? 'PRF-D-0412';
+  const steps = live ? live.steps : dispute?.steps;
+  const subtitle = live ? `${live.cycle}${live.score != null ? ` · rating ${live.score.toFixed(2)}` : ''}${live.band ? ` · ${live.band}` : ''}` : 'Annual review FY 2025-26 · rating 2.60 · Partly meets';
+  const before = live
+    ? live.disagreement
+      ? `You raised a disagreement on ${formatDate(live.disagreement.raisedOn)}.${live.disagreement.answeredOn ? ` HR replied on ${formatDate(live.disagreement.answeredOn)}.` : ''}${live.escalateBy ? ` You can escalate until ${formatDate(live.escalateBy)}.` : ''} The rating stays as released while it’s reviewed.`
+      : 'Raise a disagreement on your released review first. You can escalate once HR has answered it.'
+    : 'You raised a disagreement on 14 Aug 2026. HR replied on 21 Aug 2026. If you’re still not satisfied, escalate it here. The rating stays as released while it’s reviewed.';
+  const resolved = live?.dispute?.status === 'resolved';
   const form = done ? (
     <div className="yx-growth-stack">
-      <InlineAlert tone="success" title="Escalation raised">
-        Reference PRF-D-0412. HR’s head and an independent reviewer look at it. Your rating stays as released until a decision.
+      <InlineAlert tone="info" title={resolved ? 'A decision was recorded' : 'Escalation raised'}>
+        {resolved
+          ? `${live!.dispute!.decisionNote ?? ''} Reference ${ref}.`
+          : `Reference ${ref}. HR’s dispute team and an independent reviewer look at it. Your rating stays as released until a decision.`}
       </InlineAlert>
-      {dispute && <ApprovalTimeline steps={dispute.steps} now={TODAY} />}
+      {steps && <ApprovalTimeline steps={steps} now={live ? new Date() : TODAY} />}
+      {live && !resolved && (
+        <FormField label="Attachments" optional helper="PDF, JPG or PNG, up to 10 MB each, at most 5.">
+          <FileUpload upload={(f) => live.onUpload(f)} accept={['.pdf', '.jpg', '.png']} multiple defaultItems={[]} />
+        </FormField>
+      )}
+      {live && live.dispute && live.dispute.files.length > 0 && <Text tone="secondary">Attached: {live.dispute.files.map((f) => f.name).join(', ')}</Text>}
     </div>
   ) : (
     <div className="yx-growth-stack">
       <InlineAlert tone="info" title="Before you escalate">
-        You raised a disagreement on 14 Aug 2026. HR replied on 21 Aug 2026. If you’re still not satisfied, escalate it here. The rating stays as released while it’s reviewed.
+        {before}
       </InlineAlert>
-      <FormField label="What are you escalating, and why?" required helper="Refer to the goal, section or comment and what evidence supports your view.">
-        <TextArea value={grounds} onChange={setGrounds} rows={5} />
+      {live?.why && <InlineAlert tone="warning">{live.why}</InlineAlert>}
+      {error && <InlineAlert tone="danger">{error}</InlineAlert>}
+      <FormField label="What are you escalating, and why?" required id="dispute-grounds" error={groundsError} helper="Refer to the goal, section or comment and what evidence supports your view.">
+        <TextArea value={grounds} onChange={setGrounds} rows={5} maxLength={4000} />
       </FormField>
       <FormField label="What outcome are you asking for?">
-        <RadioGroup
-          aria-label="Outcome sought"
-          value={sought}
-          onChange={setSought}
-          options={[
-            { value: 'rereview', label: 'A fresh review of the rating by someone independent' },
-            { value: 'correct', label: 'Correction of a factual error in the review' },
-            { value: 'other', label: 'Something else (say in the text above)' },
-          ]}
-        />
+        <RadioGroup aria-label="Outcome sought" value={sought} onChange={setSought} options={SOUGHT_OPTIONS} />
       </FormField>
-      <FormField label="Attachments" optional>
-        <FileUpload upload={async () => {}} accept={['.pdf', '.jpg', '.png']} multiple />
+      <FormField label="Attachments" optional helper={live ? 'PDF, JPG or PNG, up to 10 MB each, at most 5. They are sent with the escalation.' : undefined}>
+        <FileUpload
+          upload={async () => {}}
+          accept={['.pdf', '.jpg', '.png']}
+          multiple
+          onItemsChange={(items) => setFiles(items.filter((i) => i.status !== 'error').map((i) => i.file).slice(0, 5))}
+        />
       </FormField>
     </div>
   );
-  const btn = !done && (
-    <Button variant="primary" icon={Send} disabled={grounds.trim().length < 20} onClick={() => setDone(true)} fullWidth={device === 'phone'}>
+  const btn = !done && !(live && live.why) && (
+    <Button variant="primary" icon={Send} loading={busy === 'raise'} onClick={escalate} fullWidth={device === 'phone'}>
       Escalate dispute
     </Button>
   );
+  const body = live && live.state !== 'ready' ? <Skeleton height={320} /> : form;
   if (device === 'phone')
     return (
       <GrowthFrame area="performance" active="Reviews & cycles" persona="emp" device="phone" phone={{ title: 'Escalate a dispute', back: true }}>
-        {form}
+        {body}
         {btn && <div className="yx-growth-pinned">{btn}</div>}
       </GrowthFrame>
     );
   return (
     <GrowthFrame area="performance" active="Reviews & cycles" persona="emp">
-      <PageHeader title="Escalate a rating dispute" description="Annual review FY 2025-26 · rating 2.60 · Partly meets" status={<ConfidentialTag />} actions={btn} />
-      <div className="yx-growth-stack" style={{ maxWidth: 'var(--yx-form-max)' }}>
-        {form}
-      </div>
+      <PageHeader title="Escalate a rating dispute" description={subtitle} status={<ConfidentialTag />} actions={btn || undefined} />
+      {live?.state === 'error' ? (
+        <EmptyState title="Your review did not load" description="Check your connection and try again." action={<Button onClick={live.onRetry}>Try again</Button>} />
+      ) : (
+        <div className="yx-growth-stack" style={{ maxWidth: 'var(--yx-form-max)' }}>
+          {body}
+        </div>
+      )}
     </GrowthFrame>
   );
 }
 
+/** PRF-15 HR's list of escalated disputes (design added 3 Nov 2026 with the live page). */
+export interface DisputeRow {
+  id: string;
+  ref: string;
+  employee: string;
+  cycle: string;
+  raised: Date;
+  status: 'Raised' | 'Resolved';
+  legalHold: boolean;
+}
+
+export function DisputeListScreen({ rows, state = 'ready', onOpen, onRetry }: { rows: DisputeRow[]; state?: LoadState; onOpen?: (id: string) => void; onRetry?: () => void }) {
+  const cols: TableColumn<DisputeRow>[] = [
+    { key: 'ref', header: 'Reference', type: 'id', value: (r) => r.ref, width: 130 },
+    { key: 'employee', header: 'Employee', type: 'person', value: (r) => r.employee, person: (r) => ({ name: r.employee }), width: 220 },
+    { key: 'cycle', header: 'Cycle', value: (r) => r.cycle, width: 240 },
+    { key: 'raised', header: 'Raised', type: 'date', value: (r) => r.raised, width: 130 },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => (v === 'Resolved' ? 'success' : 'warning'), width: 130 },
+    { key: 'hold', header: 'Legal hold', value: (r) => (r.legalHold ? 'On' : 'Off'), width: 110 },
+  ];
+  return (
+    <GrowthFrame area="performance" active="Reviews & cycles" persona="hr">
+      <PageHeader title="Rating disputes" description="Escalated disputes about released ratings. Only people who handle disputes see them; every view and export is recorded." status={<ConfidentialTag />} />
+      <DataTable
+        label="Rating disputes"
+        columns={cols}
+        rows={rows}
+        getRowId={(r) => r.id}
+        state={state === 'loading' ? 'loading' : state === 'error' ? 'error' : 'ready'}
+        onRetry={onRetry ?? (() => {})}
+        onRowClick={(r) => onOpen?.(r.id)}
+        empty={<EmptyState title="No escalated disputes" description="When an employee escalates a disagreement HR answered, it is listed here." />}
+      />
+    </GrowthFrame>
+  );
+}
+
+/** PRF-15 live: one escalated dispute for HR with perf.dispute.manage (performance builder 3). */
+export interface LiveDisputeRecord {
+  state: 'loading' | 'error' | 'ready';
+  onRetry: () => void;
+  dispute: DisputeCase | null;
+  /** People who handle this dispute: the signatory is one of them. */
+  signatories: { value: string; label: string }[];
+  exports: { id: string; ref: string; at: Date; items: number }[];
+  onLegalHold: (on: boolean) => Promise<void>;
+  onDecide: (input: { decision: 'upheld' | 'not_upheld' | 'rereview'; note: string }) => Promise<void>;
+  onExport: (items: string[], signatoryUserId: string) => Promise<{ exportId: string; ref: string }>;
+  onDownload: (exportId: string, ref: string) => Promise<void>;
+}
+
+const DECISIONS = [
+  { value: 'upheld' as const, label: 'Upheld' },
+  { value: 'not_upheld' as const, label: 'Not upheld' },
+  { value: 'rereview' as const, label: 'Fresh review' },
+];
+
+/** PRF-15 record the decision; the rating changes only through a reopened review. */
+function DecisionDialog({ open, onOpenChange, onDecide }: { open: boolean; onOpenChange: (o: boolean) => void; onDecide: (input: { decision: 'upheld' | 'not_upheld' | 'rereview'; note: string }) => Promise<void> }) {
+  const [decision, setDecision] = useState<'upheld' | 'not_upheld' | 'rereview' | null>(null);
+  const [note, setNote] = useState('');
+  const [tried, setTried] = useState(false);
+  const { run, busy, error } = useRun();
+  const save = () => {
+    setTried(true);
+    if (!decision) return void document.getElementById('dispute-decision')?.querySelector('button')?.focus();
+    if (note.trim().length < 10) return void document.getElementById('dispute-note')?.focus();
+    void run('decide', () => onDecide({ decision, note: note.trim() }));
+  };
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      size="md"
+      preventClose={busy === 'decide'}
+      title="Record decision"
+      description="The decision is shared with the employee. Recording it never changes the rating: a changed rating goes through a reopened review with a reason."
+      notice={error ? <InlineAlert tone="danger">{error}</InlineAlert> : undefined}
+      footer={
+        <>
+          <Button onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="primary" loading={busy === 'decide'} onClick={save}>
+            Record decision
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-growth-stack">
+        <div id="dispute-decision">
+          <FormField label="Decision" required error={tried && !decision ? 'Choose the decision.' : null}>
+            <Segment label="Decision" value={decision} onChange={setDecision} options={DECISIONS} />
+          </FormField>
+        </div>
+        <FormField label="Decision and reasons" required id="dispute-note" error={tried && decision && note.trim().length < 10 ? 'Write the decision and its reasons, in at least 10 characters.' : null}>
+          <TextArea value={note} onChange={setNote} rows={4} maxLength={2000} />
+        </FormField>
+      </div>
+    </Dialog>
+  );
+}
+
 /** PRF-15 HR dispute record (T3) with legal hold and court-ready evidence export (APX-F #133 / #134, APX-G G-42). */
-export function DisputeRecordScreen({ dispute, exportOpen, exported }: { dispute: DisputeCase; exportOpen?: boolean; exported?: boolean }) {
-  const [hold, setHold] = useState(dispute.legalHold);
+export function DisputeRecordScreen({ dispute: sample, exportOpen, exported, decideOpen, live }: { dispute: DisputeCase; exportOpen?: boolean; exported?: boolean; /** Story: the record-decision dialog open. */ decideOpen?: boolean; /** The live app's /yx/performance/disputes/[id]. */ live?: LiveDisputeRecord }) {
+  const { toast } = useToast();
+  const dispute = live?.dispute ?? sample;
+  const [sampleHold, setHold] = useState(sample.legalHold);
+  const hold = live ? dispute.legalHold : sampleHold;
   const [open, setOpen] = useState(!!exportOpen);
   const [items, setItems] = useState<string[]>(dispute.evidence.map((e) => e.id));
-  const [signatory, setSignatory] = useState<string | null>('hr1');
+  const [signatory, setSignatory] = useState<string | null>(live ? (live.signatories[0]?.value ?? null) : 'hr1');
   const [confirm, setConfirm] = useState(false);
-  const [done, setDone] = useState(!!exported);
+  const [deciding, setDeciding] = useState(!!decideOpen);
+  const [tried, setTried] = useState(false);
+  const [sampleDone, setDone] = useState(!!exported);
+  const { run, busy, error } = useRun();
+  const latest = live?.exports[0];
+  const done = live ? Boolean(latest) : sampleDone;
   const cols: TableColumn<DisputeCase['evidence'][number]>[] = [
     { key: 'kind', header: 'Type', value: (r) => r.kind, width: 170 },
     { key: 'label', header: 'Item', value: (r) => r.label, width: 320 },
     { key: 'at', header: 'Recorded', type: 'date', value: (r) => r.at, width: 130 },
-    { key: 'hash', header: 'SHA-256', type: 'id', value: (r) => r.hash, width: 180 },
+    { key: 'hash', header: 'SHA-256', type: 'id', value: (r) => (r.hash.length > 16 ? `${r.hash.slice(0, 4)}…${r.hash.slice(-4)}` : r.hash), width: 180 },
   ];
+  const signatories = live ? live.signatories : [{ value: 'hr1', label: 'Lakshmi Venkatesan, HR Business Partner' }, { value: 'hr2', label: 'Anand Rao, Head of People' }];
+  const generate = () => {
+    setTried(true);
+    if (items.length === 0) return void document.getElementById('export-items')?.querySelector('button')?.focus();
+    if (!signatory) return void document.getElementById('export-signatory')?.focus();
+    setConfirm(true);
+  };
+  if (live && live.state !== 'ready')
+    return (
+      <GrowthFrame area="performance" active="Reviews & cycles" persona="hr">
+        {live.state === 'error' ? <EmptyState title="This dispute did not load" description="It may not exist, or you may not handle disputes for this person." action={<Button onClick={live.onRetry}>Try again</Button>} /> : <Skeleton height={400} />}
+      </GrowthFrame>
+    );
   return (
     <GrowthFrame area="performance" active="Reviews & cycles" persona="hr">
       <ObjectHeader
@@ -975,23 +1219,44 @@ export function DisputeRecordScreen({ dispute, exportOpen, exported }: { dispute
             <Badge tone={dispute.status === 'Resolved' ? 'success' : 'warning'}>{dispute.status}</Badge> {hold && <Badge tone="info"><Icon icon={Lock} /> Legal hold</Badge>} <ConfidentialTag />
           </>
         }
-        facts={[
-          { label: 'Evidence items', value: dispute.evidence.length },
-          { label: 'Owner', value: 'Lakshmi Venkatesan' },
-          { label: 'Decision due', value: formatDate(new Date(2026, 9, 6)) },
-        ]}
+        facts={
+          live
+            ? [
+                { label: 'Evidence items', value: dispute.evidence.length },
+                { label: 'Reference', value: dispute.ref ?? '' },
+                { label: 'Decision', value: dispute.decision ?? 'Pending' },
+              ]
+            : [
+                { label: 'Evidence items', value: dispute.evidence.length },
+                { label: 'Owner', value: 'Lakshmi Venkatesan' },
+                { label: 'Decision due', value: formatDate(new Date(2026, 9, 6)) },
+              ]
+        }
         actions={
           <>
-            <Button>Record decision</Button>
+            {dispute.status !== 'Resolved' && <Button onClick={() => setDeciding(true)}>Record decision</Button>}
             <Button variant="primary" icon={Download} onClick={() => setOpen(true)}>
               Export evidence
             </Button>
           </>
         }
       />
+      {error && <InlineAlert tone="danger">{error}</InlineAlert>}
       {done && (
-        <InlineAlert tone="success" title="Evidence exported">
-          Evidence pack PRF-D-0412-EXP-01 with cover sheet and electronic-records certificate. The export and its hashes are in the audit log.
+        <InlineAlert
+          tone="info"
+          title="Evidence exported"
+          actions={
+            live && latest ? (
+              <Button size="sm" icon={Download} loading={busy === 'download'} onClick={() => void run('download', () => live.onDownload(latest.id, latest.ref))}>
+                Download
+              </Button>
+            ) : undefined
+          }
+        >
+          {live && latest
+            ? `Evidence pack ${latest.ref} (${latest.items} items) with cover sheet and electronic-records certificate, ${formatDate(latest.at)}. The export and its hashes are in the audit log.`
+            : 'Evidence pack PRF-D-0412-EXP-01 with cover sheet and electronic-records certificate. The export and its hashes are in the audit log.'}
         </InlineAlert>
       )}
       <SplitLayout
@@ -1010,9 +1275,17 @@ export function DisputeRecordScreen({ dispute, exportOpen, exported }: { dispute
                   <Text tone="secondary">Outcome asked for: {dispute.sought}</Text>
                 </Card>
                 <Card title="Steps">
-                  <ApprovalTimeline steps={dispute.steps} now={TODAY} />
+                  <ApprovalTimeline steps={dispute.steps} now={live ? new Date() : TODAY} />
                 </Card>
-                <Switch checked={hold} onChange={setHold} label="Legal hold" description="Keeps every review version, comment, calibration change and audit entry for this person and cycle, even past the retention period." />
+                <Switch
+                  checked={hold}
+                  onChange={(on) => {
+                    if (!live) return setHold(on);
+                    void run('hold', () => live.onLegalHold(on)).then((ok) => ok && toast({ tone: 'success', title: on ? 'Legal hold on' : 'Legal hold off' }));
+                  }}
+                  label="Legal hold"
+                  description="Keeps every review version, comment, calibration change and audit entry for this person and cycle, even past the retention period."
+                />
               </div>
             </TabsContent>
             <TabsContent value="evidence">
@@ -1022,7 +1295,7 @@ export function DisputeRecordScreen({ dispute, exportOpen, exported }: { dispute
         }
         side={
           <Card title="Activity">
-            <Timeline items={dispute.activity} today={TODAY} />
+            <Timeline items={dispute.activity} today={live ? new Date() : TODAY} />
           </Card>
         }
       />
@@ -1035,22 +1308,24 @@ export function DisputeRecordScreen({ dispute, exportOpen, exported }: { dispute
         footer={
           <div className="yx-growth-foot">
             <Button onClick={() => setOpen(false)}>Cancel</Button>
-            <Button variant="primary" icon={Download} disabled={items.length === 0 || !signatory} onClick={() => setConfirm(true)}>
+            <Button variant="primary" icon={Download} loading={busy === 'export'} onClick={generate}>
               Generate export
             </Button>
           </div>
         }
       >
         <div className="yx-growth-stack">
-          <FormField label="Items to include">
-            <div className="yx-growth-stack" data-gap="sm">
-              {dispute.evidence.map((e) => (
-                <Checkbox key={e.id} checked={items.includes(e.id)} onChange={(c) => setItems((xs) => (c ? [...xs, e.id] : xs.filter((x) => x !== e.id)))} label={e.label} description={`${e.kind} · ${formatDate(e.at)}`} />
-              ))}
-            </div>
-          </FormField>
-          <FormField label="Authorised signatory" required helper="Signs the electronic-records certificate with the company’s digital signature.">
-            <Select value={signatory} onChange={setSignatory} options={[{ value: 'hr1', label: 'Lakshmi Venkatesan, HR Business Partner' }, { value: 'hr2', label: 'Anand Rao, Head of People' }]} />
+          <div id="export-items">
+            <FormField label="Items to include" error={tried && items.length === 0 ? 'Choose at least one item to export.' : null}>
+              <div className="yx-growth-stack" data-gap="sm">
+                {dispute.evidence.map((e) => (
+                  <Checkbox key={e.id} checked={items.includes(e.id)} onChange={(c) => setItems((xs) => (c ? [...xs, e.id] : xs.filter((x) => x !== e.id)))} label={e.label} description={`${e.kind} · ${formatDate(e.at)}`} />
+                ))}
+              </div>
+            </FormField>
+          </div>
+          <FormField label="Authorised signatory" required id="export-signatory" error={tried && !signatory ? 'Choose who signs the certificate.' : null} helper="Signs the electronic-records certificate with the company’s digital signature.">
+            <Select value={signatory} onChange={setSignatory} options={signatories} />
           </FormField>
           <InlineAlert tone="warning" title="Certificate format to be confirmed">
             The electronic-records certificate (Bharatiya Sakshya Adhiniyam s.63) follows a format your counsel confirms before first use.
@@ -1073,10 +1348,28 @@ export function DisputeRecordScreen({ dispute, exportOpen, exported }: { dispute
         confirmLabel="Export evidence"
         onConfirm={() => {
           setConfirm(false);
-          setOpen(false);
-          setDone(true);
+          if (!live) {
+            setOpen(false);
+            return setDone(true);
+          }
+          void run('export', async () => {
+            const out = await live.onExport(items, signatory!);
+            setOpen(false);
+            await live.onDownload(out.exportId, out.ref);
+          }).then((ok) => ok && toast({ tone: 'success', title: 'Evidence exported' }));
         }}
       />
+      {deciding && (
+        <DecisionDialog
+          open
+          onOpenChange={setDeciding}
+          onDecide={async (input) => {
+            if (live) await live.onDecide(input);
+            setDeciding(false);
+            toast({ tone: 'success', title: 'Decision recorded' });
+          }}
+        />
+      )}
     </GrowthFrame>
   );
 }

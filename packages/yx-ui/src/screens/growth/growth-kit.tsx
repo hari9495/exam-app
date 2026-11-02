@@ -773,28 +773,46 @@ export interface CoachNudge {
   /** Rule-computed signal the manager already has access to (YX-AST-10). */
   signal: string;
   action: string;
+  /** Live: where the action opens (1:1s, feedback, the goal). */
+  link?: string;
 }
 
 /** Weekly coach card on manager home: Act / Dismiss per nudge, opt-out link. AI only wrote the wording. */
-export function CoachCard({ nudges: initial, weekOf, onAct, optedOut, onOptOut }: { nudges: CoachNudge[]; weekOf: Date; onAct?: (n: CoachNudge) => void; optedOut?: boolean; onOptOut?: () => void }) {
+export function CoachCard({ nudges: initial, weekOf, onAct, optedOut, onOptOut, onOptIn, onDismiss, companyOff }: { nudges: CoachNudge[]; weekOf: Date; onAct?: (n: CoachNudge) => void; optedOut?: boolean; onOptOut?: () => void; /** Live: turn nudges on again from the card. */ onOptIn?: () => void; /** Live: hide this nudge for the week. */ onDismiss?: (n: CoachNudge) => void; /** The company turned the coach off (perf.coach.frequency). */ companyOff?: boolean }) {
   const [nudges, setNudges] = useState(initial);
   const [acted, setActed] = useState<string[]>([]);
+  const head = (
+    <header className="yx-coach__head">
+      <span className="yx-coach__title">{optedOut || companyOff ? 'Manager coach' : `Manager coach · week of ${formatDate(weekOf)}`}</span>
+      <AiBadge />
+    </header>
+  );
+  if (companyOff)
+    return (
+      <section className="yx-coach" aria-label="Manager coach">
+        {head}
+        <Text tone="secondary">Your company has turned off coach nudges. HR can turn them on in Settings › Company rules.</Text>
+      </section>
+    );
   if (optedOut)
     return (
       <section className="yx-coach" aria-label="Manager coach">
-        <header className="yx-coach__head">
-          <span className="yx-coach__title">Manager coach</span>
-          <AiBadge />
-        </header>
-        <Text tone="secondary">You turned off coach nudges. Turn them on again in Me › Preferences. HR doesn’t see this choice.</Text>
+        {head}
+        {onOptIn ? (
+          <>
+            <Text tone="secondary">You turned off coach nudges. HR doesn’t see this choice.</Text>
+            <Link href="#coach-optin" onClick={(e) => { e.preventDefault(); onOptIn(); }}>
+              Turn coach nudges on
+            </Link>
+          </>
+        ) : (
+          <Text tone="secondary">You turned off coach nudges. Turn them on again in Me › Preferences. HR doesn’t see this choice.</Text>
+        )}
       </section>
     );
   return (
     <section className="yx-coach" aria-label="Manager coach">
-      <header className="yx-coach__head">
-        <span className="yx-coach__title">Manager coach · week of {formatDate(weekOf)}</span>
-        <AiBadge />
-      </header>
+      {head}
       <Text size="sm" tone="secondary">
         Based only on team data you can already see. Nothing changes until you act.
       </Text>
@@ -822,7 +840,15 @@ export function CoachCard({ nudges: initial, weekOf, onAct, optedOut, onOptOut }
                   >
                     {n.action}
                   </Button>
-                  <IconButton icon={X} label={`Dismiss nudge about ${n.person}`} size="sm" onClick={() => setNudges((xs) => xs.filter((x) => x.id !== n.id))} />
+                  <IconButton
+                    icon={X}
+                    label={`Dismiss nudge about ${n.person}`}
+                    size="sm"
+                    onClick={() => {
+                      setNudges((xs) => xs.filter((x) => x.id !== n.id));
+                      onDismiss?.(n);
+                    }}
+                  />
                 </>
               )}
             </li>
@@ -850,7 +876,7 @@ export function BiasFlagList({ flags, onAccept, onIgnore, decided = {} }: { flag
     <ul className="yx-bias" aria-label="Wording suggestions">
       {flags.map((f) => (
         <li key={f.id} className="yx-bias__item" data-decided={decided[f.id]}>
-          <Icon icon={f.kind === 'Rating and text disagree' ? CircleAlert : ShieldAlert} />
+          <Icon icon={f.kind === 'Rating and text disagree' || f.kind === 'Rating spread against peers' ? CircleAlert : ShieldAlert} />
           <div className="yx-bias__text">
             <span className="yx-bias__kind">{f.kind}</span>
             <span>
