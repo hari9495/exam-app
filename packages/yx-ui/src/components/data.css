@@ -501,5 +501,14 @@ td .yx-badge, .yx-table td[data-type="date"] { white-space: nowrap; }
 .yx-plain-table thead th, .yx-plain-table .yx-badge { overflow-wrap: normal; }
 .yx-plain-table [data-date] { white-space: nowrap; }
 .yx-plain-table [data-changed] { font-weight: var(--yx-weight-medium); }
+.yx-plain-table [data-num] { text-align: end; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.yx-plain-table tfoot th, .yx-plain-table tfoot td { font-weight: var(--yx-weight-semibold); border-bottom: 0; }
+/* A picked-out row: tint plus a start-edge bar (and a read-out word), so colour is never the only sign. */
+.yx-plain-table tr[data-tone] > * { background: var(--yx-plain-tone-bg); }
+.yx-plain-table tr[data-tone] > :first-child { box-shadow: inset var(--yx-space-1) 0 0 var(--yx-plain-tone-bar); }
+.yx-plain-table tr[data-tone='warning'] { --yx-plain-tone-bg: var(--yx-color-warning-bg); --yx-plain-tone-bar: var(--yx-color-warning-border); }
+.yx-plain-table tr[data-tone='danger'] { --yx-plain-tone-bg: var(--yx-color-danger-bg); --yx-plain-tone-bar: var(--yx-color-danger-border); }
+.yx-plain-table tr[data-tone='success'] { --yx-plain-tone-bg: var(--yx-color-success-bg); --yx-plain-tone-bar: var(--yx-color-success-border); }
+.yx-plain-table tr[data-tone='selected'] { --yx-plain-tone-bg: var(--yx-color-bg-selected); --yx-plain-tone-bar: var(--yx-color-action-primary); }
 .yx-plain-table .yx-number-field, .yx-plain-table input { min-width: 0; }
 .yx-plain-table__caption { caption-side: top; text-align: start; padding-bottom: var(--yx-space-2); color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); }

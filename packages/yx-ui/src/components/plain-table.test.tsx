@@ -39,4 +39,40 @@ describe('PlainTable (kit, Data)', () => {
     expect(table).not.toHaveAttribute('aria-label');
     expect(within(table).getAllByRole('row')).toHaveLength(1);
   });
+
+  it('a number column is marked right-aligned in its heading and cells; total rows sit in the foot, label spanning the empty columns', () => {
+    type Line = { id: string; name: string; note: string; amount: string };
+    const lines: Line[] = [{ id: 'a', name: 'Basic', note: 'Fixed', amount: '₹40,000' }];
+    render(
+      <PlainTable
+        label="Pay"
+        columns={[
+          { key: 'name', header: 'Line', rowHeader: true, cell: (r: Line) => r.name },
+          { key: 'note', header: 'How', cell: (r: Line) => r.note },
+          { key: 'amount', header: 'Amount', num: true, cell: (r: Line) => r.amount },
+        ]}
+        rows={lines}
+        getRowId={(r) => r.id}
+        footer={[{ id: 't', label: 'Total', cells: { amount: '₹40,000' } }]}
+      />,
+    );
+    expect(screen.getByRole('columnheader', { name: 'Amount' })).toHaveAttribute('data-num', 'true');
+    expect(screen.getByRole('columnheader', { name: 'How' })).not.toHaveAttribute('data-num');
+    const [, body, foot] = screen.getAllByRole('row');
+    expect(within(body).getByText('₹40,000')).toHaveAttribute('data-num', 'true');
+    expect(foot.closest('tfoot')).not.toBeNull();
+    const total = within(foot).getByRole('rowheader', { name: 'Total' });
+    expect(total).toHaveAttribute('colspan', '2');
+    expect(within(foot).getByText('₹40,000')).toHaveAttribute('data-num', 'true');
+  });
+
+  it('a picked-out row carries its tone and a word read out first, so colour is not the only sign', () => {
+    render(<PlainTable label="Tasks" columns={COLS} rows={ROWS} getRowId={(r) => r.id} rowTone={(r) => (r.now !== r.was ? { tone: 'warning', label: 'Moved' } : undefined)} />);
+    const [, first, second] = screen.getAllByRole('row');
+    expect(first).toHaveAttribute('data-tone', 'warning');
+    expect(within(first).getByRole('rowheader')).toHaveTextContent('Moved: Laptop ready');
+    expect(second).not.toHaveAttribute('data-tone');
+    expect(second).not.toHaveTextContent('Moved');
+    expect(document.querySelector('tfoot')).toBeNull();
+  });
 });
