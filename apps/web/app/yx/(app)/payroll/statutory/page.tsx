@@ -75,6 +75,13 @@ export default function YxPayStatutoryPage() {
               onCommitImport: (batchId: string) => payWrite(`/imports/${id(batchId)}/commit`),
             }
           : {}),
+        // CMP-05 (founder answer 2): a month before go-live with no salary TDS, recorded with a reason; undone until filed.
+        ...(perms.has('statutory.filing.generate')
+          ? {
+              onNilMonth: (m: string, reason: string) => write('/statutory/tds-nil-months', { entityId, month: m, reason }),
+              onUndoNil: (nid: string, version: number) => write(`/statutory/tds-nil-months/${id(nid)}/undo`, { version }),
+            }
+          : {}),
         // CMP-01 SetupNeeded: registrations live in Payroll set-up.
         ...(perms.has('payroll.setup.manage') ? { onOpenSetup: () => router.push('/yx/payroll/setup') } : {}),
       }}
