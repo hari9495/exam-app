@@ -257,8 +257,19 @@ export interface PortalAnswers {
   identity: { legalName: string; pan: string; aadhaar: string | null; uan: string | null } | null;
   bank: { holderName: string; account: string; ifsc: string } | null;
   emergency: { name: string; relation: string; phone: string } | null;
-  nominees: { name: string; relation: string; sharePercent: number }[] | null;
-  tax: { regime: 'new' | 'old' } | null;
+  nominees: PortalNominee[] | null;
+  /** previousIncome: Form 12B, income from an earlier employer this financial year (whole rupees). */
+  tax: { regime: 'new' | 'old'; previousIncome?: { grossSalary: number; tds: number } | null } | null;
+}
+
+/** A nominee's share per scheme (T9-01): PF, gratuity and group insurance; each scheme adds up to 100. */
+export interface PortalNominee {
+  name: string;
+  relation: string;
+  dateOfBirth?: string | null;
+  pf: number;
+  gratuity: number;
+  insurance: number;
 }
 
 export interface Letter {
@@ -291,10 +302,23 @@ export interface PortalMe {
   sections: Record<SectionKey, 'done' | 'to_do'>;
   answers: PortalAnswers;
   steppedUp: boolean;
-  documents: { typeKey: string; name: string; status: string; rejectReason: string | null; personUploads: boolean }[];
+  documents: { typeKey: string; name: string; status: string; rejectReason: string | null; personUploads: boolean; dueOn?: string | null }[];
   bgv: { notice: string; items: string[]; consented: boolean; consentedAt: string | null } | null;
   letters: Letter[];
   esignAccepted: boolean;
+  /** The joiner's own checklist tasks (HR's, IT's and the manager's are not sent). Dates are YYYY-MM-DD. */
+  tasks: { id: string; title: string; dueOn: string; status: 'done' | 'to_do' }[];
+  firstDay: { reportingTime: string; address: string | null; buddy: string | null; batch: string | null };
+  /** Set while the joining day is the one HR moved it to. */
+  dateMoved: { from: string } | null;
+  closed?: undefined;
+}
+
+/** A joining that closed: the portal shows only this. `on` is the day it closed (YYYY-MM-DD). */
+export interface PortalClosed {
+  company: string;
+  name: string;
+  closed: { outcome: 'joined' | 'withdrawn' | 'reneged' | 'cancelled'; on: string | null };
 }
 
 export interface JoinerForms {

@@ -1,48 +1,29 @@
 import { useState } from 'react';
-import { Upload } from 'lucide-react';
 import { Button } from '../../../components/button';
 import { Checkbox } from '../../../components/choice';
-import { DatePicker } from '../../../components/date';
-import { Badge, type BadgeTone } from '../../../components/display';
+import { Badge } from '../../../components/display';
 import { Drawer } from '../../../components/drawer';
 import { MenuItem } from '../../../components/menu';
 import { EmptyState, InlineAlert, Meter } from '../../../components/feedback';
-import { ErrorSummary, FormField, useSaveErrors, useTooEarly } from '../../../components/field';
-import { ifscBank } from '../people-logic';
+import { FormField } from '../../../components/field';
 import { Text } from '../../../components/foundations';
 import { FileUpload } from '../../../components/upload';
-import { CodeField, NumberField, TextArea, TextField } from '../../../components/inputs';
+import { CodeField, TextArea, TextField } from '../../../components/inputs';
 import { ConfirmDialog } from '../../../components/overlay';
 import { Segment } from '../../../components/segment';
 import { Select } from '../../../components/select';
 import { Card } from '../../../components/shell';
 import { DataTable } from '../../../components/table';
-import { dayKey } from '../../../lib/dates';
+import { formatINR } from '../../../lib/format';
 import { errorText, useRun } from '../../org/org-kit';
-import { LivePage, dateText } from '../../time/live/kit';
-import type { Choice, JoinerForms, JoinerPlaces, Letter, LoadState, PortalAnswers, PortalMe, SectionKey, Signatory } from './types';
+import { dateText } from '../../time/live/kit';
+import type { Choice, JoinerForms, JoinerPlaces, Letter, PortalAnswers, SectionKey, Signatory } from './types';
 
-// Lifecycle batch 6b, wired (design §8, §9, §14): HR's joiner panel (forms, BGV, Mark joined, cancel), the
-// pre-boarding portal (T9-01), letter templates and signatories (PPL-29), the letters register (PPL-28), my letters,
-// and Ready to onboard (PPL-12). Plain words; errors show after Save, never while typing.
+// Lifecycle batch 6b, wired (design §8, §9, §14): HR's joiner panel (forms, BGV, Mark joined, cancel), the letter
+// accept step (the joining portal T9-01 and my letters), signatories (PPL-29). The joining portal itself is the
+// designed T9-01 screen (portals/t9-workforce.tsx). Plain words; errors show after Save, never while typing.
 
-const SECTION_LABEL: Record<SectionKey, string> = { personal: 'Personal details', identity: 'PAN and ID', bank: 'Bank account', emergency: 'Emergency contact', nominees: 'Nominees (PF and gratuity)', tax: 'Tax regime' };
-const LETTER_STATUS: Record<Letter['status'], { label: string; tone: BadgeTone }> = {
-  draft: { label: 'Draft', tone: 'neutral' },
-  discarded: { label: 'Discarded', tone: 'neutral' },
-  pending_approval: { label: 'Waiting for approval', tone: 'info' },
-  rejected: { label: 'Not approved', tone: 'danger' },
-  rendering: { label: 'Being prepared', tone: 'warning' },
-  awaiting_signature: { label: 'Waiting for the company signature', tone: 'warning' },
-  issued: { label: 'Issued', tone: 'success' },
-  superseded: { label: 'Replaced by a correction', tone: 'neutral' },
-  withdrawn: { label: 'Withdrawn', tone: 'neutral' },
-};
-const fromKey = (iso: string) => new Date(`${iso}T00:00:00`);
-const STATES: Choice[] = [
-  ['IN-AP', 'Andhra Pradesh'], ['IN-AS', 'Assam'], ['IN-BR', 'Bihar'], ['IN-CT', 'Chhattisgarh'], ['IN-DL', 'Delhi'], ['IN-GA', 'Goa'], ['IN-GJ', 'Gujarat'], ['IN-HR', 'Haryana'], ['IN-HP', 'Himachal Pradesh'], ['IN-JH', 'Jharkhand'], ['IN-KA', 'Karnataka'], ['IN-KL', 'Kerala'], ['IN-MP', 'Madhya Pradesh'], ['IN-MH', 'Maharashtra'], ['IN-OR', 'Odisha'], ['IN-PB', 'Punjab'], ['IN-RJ', 'Rajasthan'], ['IN-TN', 'Tamil Nadu'], ['IN-TG', 'Telangana'], ['IN-UP', 'Uttar Pradesh'], ['IN-UT', 'Uttarakhand'], ['IN-WB', 'West Bengal'],
-].map(([value, label]) => ({ value, label }));
-
+const SECTION_LABEL: Record<SectionKey, string> = { personal: 'Personal details', identity: 'PAN and ID', bank: 'Bank account', emergency: 'Emergency contact', nominees: 'Nominees', tax: 'Tax regime' };
 function SectionsList({ sections }: { sections: Record<SectionKey, 'done' | 'to_do'> }) {
   return (
     <ul className="yx-lif-list">
@@ -63,8 +44,9 @@ function AnswersList({ a }: { a: PortalAnswers }) {
     ['Aadhaar', a.identity?.aadhaar ?? null],
     ['Bank account', a.bank ? `${a.bank.account} · ${a.bank.ifsc}` : null],
     ['Emergency contact', a.emergency ? `${a.emergency.name} (${a.emergency.relation}), ${a.emergency.phone}` : null],
-    ['Nominees', a.nominees ? a.nominees.map((n) => `${n.name} ${n.sharePercent}%`).join(', ') : null],
+    ['Nominees', a.nominees ? a.nominees.map((n) => `${n.name} (PF ${n.pf}%, gratuity ${n.gratuity}%, insurance ${n.insurance}%)`).join(', ') : null],
     ['Tax regime', a.tax ? (a.tax.regime === 'new' ? 'New regime' : 'Old regime') : null],
+    ['Earlier employer this year (Form 12B)', a.tax?.previousIncome ? `Gross ${formatINR(a.tax.previousIncome.grossSalary)}, TDS ${formatINR(a.tax.previousIncome.tds)}` : null],
   ];
   const shown = rows.filter(([, v]) => v);
   if (!shown.length) return <Text tone="secondary">Nothing filled in yet, or nothing you may see.</Text>;
@@ -254,311 +236,9 @@ export function JoinerPanel(p: JoinerPanelProps) {
   );
 }
 
-// ------------------------------------------------------------------------------------------ the pre-boarding portal
-
-export interface PortalScreenProps {
-  state: LoadState;
-  onRetry?: () => void;
-  data: PortalMe | null;
-  onSave: (section: SectionKey, value: unknown) => Promise<unknown>;
-  onStepUpCode: () => Promise<unknown>;
-  onStepUp: (code: string) => Promise<unknown>;
-  onUpload: (typeKey: string, file: File) => Promise<unknown>;
-  onBgv: (consent: boolean, noticeVersion: string) => Promise<unknown>;
-  onDownload: (letter: Letter, which: 'letter' | 'acceptance') => Promise<unknown>;
-  onSignCode: (letter: Letter) => Promise<unknown>;
-  onSign: (letter: Letter, input: { code: string; accept: boolean; disclosureAccepted: boolean }) => Promise<unknown>;
-  onSignOut: () => void;
-}
-
-/** T9-01: the joiner's own checklist before day one. */
-export function PortalScreen(p: PortalScreenProps) {
-  const d = p.data;
-  const [open, setOpen] = useState<SectionKey | null>(null);
-  const [signing, setSigning] = useState<Letter | null>(null);
-  const { busy, error, run } = useRun();
-  return (
-    <LivePage
-      title={d ? `Welcome, ${d.name.split(' ')[0]}` : 'Joining'}
-      description={d ? `You join ${d.employer} on ${dateText(d.joiningOn)} at ${d.location}${d.designation ? ` as ${d.designation}` : ''}${d.manager ? `. Your manager is ${d.manager}` : ''}.` : undefined}
-      state={p.state}
-      onRetry={p.onRetry}
-      what="your joining forms"
-      actions={<Button onClick={p.onSignOut}>Sign out</Button>}
-    >
-      {d && (
-        <>
-          {error && (
-            <InlineAlert tone="danger" title="That didn't work">
-              {error}
-            </InlineAlert>
-          )}
-          <Card title="Your progress">
-            <Meter value={d.completion} max={100} label="Joining forms done" warnAt={101} dangerAt={101} valueText={`${d.completion}% done`} />
-          </Card>
-          <Card title="Your details">
-            <ul className="yx-lif-list">
-              {(Object.keys(SECTION_LABEL) as SectionKey[]).map((k) => (
-                <li key={k}>
-                  <Badge tone={d.sections[k] === 'done' ? 'success' : 'neutral'}>{d.sections[k] === 'done' ? 'Done' : 'To do'}</Badge> <Text>{SECTION_LABEL[k]}</Text>{' '}
-                  <Button size="sm" onClick={() => setOpen(k)}>
-                    {d.sections[k] === 'done' ? 'Change' : 'Fill in'}
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          </Card>
-          {d.documents.length > 0 && (
-            <Card title="Documents">
-              <ul className="yx-lif-list">
-                {d.documents.map((x) => (
-                  <li key={x.typeKey}>
-                    <Badge tone={x.status === 'verified' ? 'success' : x.status === 'uploaded' ? 'info' : x.status === 'rejected' ? 'danger' : 'neutral'}>{x.status === 'verified' ? 'Accepted' : x.status === 'uploaded' ? 'Sent, HR checks it' : x.status === 'rejected' ? 'Please send again' : 'To send'}</Badge> <Text>{x.name}</Text>
-                    {x.rejectReason && x.status === 'rejected' && <Text tone="danger" size="sm">{x.rejectReason}</Text>}
-                    {x.personUploads && x.status !== 'verified' && (
-                      <label className="yx-button" data-variant="secondary" data-size="sm">
-                        <Upload size={14} aria-hidden /> {busy === x.typeKey ? 'Sending…' : 'Upload'}
-                        <input
-                          type="file"
-                          accept=".pdf,.jpg,.jpeg,.png"
-                          capture="environment"
-                          className="yx-visually-hidden"
-                          aria-label={`Upload ${x.name}`}
-                          onChange={(e) => {
-                            const f = e.target.files?.[0];
-                            if (f) void run(x.typeKey, () => p.onUpload(x.typeKey, f));
-                          }}
-                        />
-                      </label>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          )}
-          {d.bgv && (
-            <Card title="Background check consent">
-              <ul>
-                {d.bgv.items.map((i) => (
-                  <li key={i}>
-                    <Text>{i}</Text>
-                  </li>
-                ))}
-              </ul>
-              {d.bgv.consented ? (
-                <>
-                  <Text as="p">{`You gave consent on ${dateText(d.bgv.consentedAt!.slice(0, 10))}.`}</Text>
-                  <Button loading={busy === 'bgv'} onClick={() => void run('bgv', () => p.onBgv(false, d.bgv!.notice))}>
-                    Withdraw consent
-                  </Button>
-                </>
-              ) : (
-                <Button variant="primary" loading={busy === 'bgv'} onClick={() => void run('bgv', () => p.onBgv(true, d.bgv!.notice))}>
-                  I give consent
-                </Button>
-              )}
-            </Card>
-          )}
-          <LetterList letters={d.letters} onDownload={p.onDownload} onAccept={setSigning} />
-          {open && <SectionDrawer section={open} me={d} onClose={() => setOpen(null)} onSave={p.onSave} onStepUpCode={p.onStepUpCode} onStepUp={p.onStepUp} />}
-          {signing && <AcceptDialog letter={signing} disclosureNeeded={!d.esignAccepted} onClose={() => setSigning(null)} onCode={() => p.onSignCode(signing)} onSign={(x) => p.onSign(signing, x)} />}
-        </>
-      )}
-    </LivePage>
-  );
-}
-
-function SectionDrawer({ section, me, onClose, onSave, onStepUpCode, onStepUp }: { section: SectionKey; me: PortalMe; onClose: () => void; onSave: PortalScreenProps['onSave']; onStepUpCode: () => Promise<unknown>; onStepUp: (code: string) => Promise<unknown> }) {
-  const a = me.answers;
-  const [v, setV] = useState<Record<string, string>>(() => ({
-    ...(section === 'personal' && a.personal ? { ...a.personal } : {}),
-    ...(section === 'emergency' && a.emergency ? { ...a.emergency } : {}),
-    ...(section === 'identity' && a.identity ? { legalName: a.identity.legalName } : {}),
-    ...(section === 'bank' && a.bank ? { holderName: a.bank.holderName, ifsc: a.bank.ifsc } : {}),
-    ...(section === 'tax' && a.tax ? { regime: a.tax.regime } : {}),
-  }));
-  const [nominees, setNominees] = useState(a.nominees ?? [{ name: '', relation: '', sharePercent: 100 }]);
-  const [stepped, setStepped] = useState(me.steppedUp);
-  const [code, setCode] = useState('');
-  const codeEarly = useTooEarly(code.length !== 6 ? [{ fieldId: 'ps-step', message: 'Type the 6-digit code from your email.' }] : []);
-  const [codeSent, setCodeSent] = useState(false);
-  const [failed, setFailed] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const set = (k: string) => (x: string) => setV({ ...v, [k]: x });
-  const need: Record<SectionKey, [string, string][]> = {
-    personal: [['dateOfBirth', 'Give your date of birth.'], ['gender', 'Choose an option.'], ['addressLine1', 'Give your address.'], ['city', 'Give your city.'], ['stateCode', 'Choose your state.'], ['postalCode', 'Give your PIN code.']],
-    identity: [['legalName', 'Give your name as on PAN.'], ['pan', 'Give your PAN.']],
-    bank: [['holderName', 'Give the account holder name.'], ['accountNumber', 'Give the account number.'], ['ifsc', 'Give the IFSC.']],
-    emergency: [['name', 'Give a name.'], ['relation', 'Give the relation.'], ['phone', 'Give a phone number.']],
-    nominees: [],
-    tax: [['regime', 'Choose a regime.']],
-  };
-  const errors = [
-    ...need[section].filter(([k]) => !v[k]?.trim()).map(([k, m]) => ({ fieldId: `ps-${k}`, message: m })),
-    ...(section === 'nominees' && nominees.reduce((n, x) => n + (x.sharePercent || 0), 0) !== 100 ? [{ fieldId: 'ps-nominees', message: 'The shares must add up to 100%.' }] : []),
-  ];
-  const sv = useSaveErrors(errors);
-  const sensitive = section === 'identity' || section === 'bank';
-  const save = async () => {
-    if (errors.length) return sv.reveal();
-    setSaving(true);
-    setFailed(null);
-    try {
-      const value = section === 'nominees' ? { nominees } : Object.fromEntries(Object.entries(v).filter(([, x]) => x !== ''));
-      await onSave(section, value);
-      onClose();
-    } catch (e) {
-      setFailed(errorText(e));
-    } finally {
-      setSaving(false);
-    }
-  };
-  const field = (k: string, label: string, o: { type?: string; optional?: boolean; helper?: string; max?: number } = {}) => (
-    <FormField id={`ps-${k}`} label={label} required={!o.optional} optional={o.optional} helper={o.helper} error={sv.errorOf(`ps-${k}`)}>
-      <TextField type={o.type ?? 'text'} value={v[k] ?? ''} onChange={set(k)} maxLength={o.max ?? 200} autoComplete="off" />
-    </FormField>
-  );
-  return (
-    <Drawer open onOpenChange={(o) => !o && onClose()} title={SECTION_LABEL[section]} size="lg" footer={sensitive && !stepped ? <Button onClick={onClose}>Cancel</Button> : <><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={saving} onClick={() => void save()}>Save</Button></>}>
-      {sv.showErrors && <ErrorSummary errors={sv.shownErrors} />}
-      {failed && (
-        <InlineAlert tone="danger" title="Not saved">
-          {failed}
-        </InlineAlert>
-      )}
-      {sensitive && !stepped ? (
-        <>
-          <Text as="p">For PAN, Aadhaar and bank details we first send a fresh code to your email.</Text>
-          {codeSent ? (
-            <>
-              <FormField id="ps-step" label="Code" required error={codeEarly.errorOf('ps-step')}>
-                <CodeField value={code} onChange={setCode} />
-              </FormField>
-              <Button
-                variant="primary"
-                onClick={async () => {
-                  if (codeEarly.stop()) return;
-                  try {
-                    await onStepUp(code);
-                    setStepped(true);
-                  } catch (e) {
-                    setFailed(errorText(e));
-                  }
-                }}
-              >
-                Continue
-              </Button>
-            </>
-          ) : (
-            <Button
-              variant="primary"
-              onClick={async () => {
-                try {
-                  await onStepUpCode();
-                  setCodeSent(true);
-                } catch (e) {
-                  setFailed(errorText(e));
-                }
-              }}
-            >
-              Send me a code
-            </Button>
-          )}
-        </>
-      ) : section === 'personal' ? (
-        <>
-          <FormField id="ps-dateOfBirth" label="Date of birth" required error={sv.errorOf('ps-dateOfBirth')}>
-            <DatePicker value={v.dateOfBirth ? fromKey(v.dateOfBirth) : null} onChange={(x) => set('dateOfBirth')(x ? dayKey(x) : '')} max={new Date()} aria-label="Date of birth" />
-          </FormField>
-          <FormField id="ps-gender" label="Gender" required error={sv.errorOf('ps-gender')}>
-            <Select aria-label="Gender" value={v.gender ?? null} onChange={(x) => set('gender')(x ?? '')} options={[{ value: 'female', label: 'Female' }, { value: 'male', label: 'Male' }, { value: 'transgender', label: 'Transgender' }, { value: 'other', label: 'Other' }, { value: 'prefer_not_to_say', label: 'Prefer not to say' }]} />
-          </FormField>
-          {field('addressLine1', 'Address')}
-          {field('addressLine2', 'Address line 2', { optional: true })}
-          {field('city', 'City', { max: 100 })}
-          <FormField id="ps-stateCode" label="State" required error={sv.errorOf('ps-stateCode')}>
-            <Select aria-label="State" value={v.stateCode ?? null} onChange={(x) => set('stateCode')(x ?? '')} options={STATES} searchable />
-          </FormField>
-          {field('postalCode', 'PIN code', { max: 6 })}
-        </>
-      ) : section === 'identity' ? (
-        <>
-          {field('legalName', 'Name as on PAN')}
-          {field('pan', 'PAN', { max: 10, helper: a.identity ? `On file: ${a.identity.pan}. Type it again to change it.` : '5 letters, 4 digits, 1 letter.' })}
-          {field('aadhaar', 'Aadhaar', { optional: true, max: 12, helper: 'Optional. You can show another photo ID on your first day.' })}
-          {field('uan', 'UAN (if you had a PF account before)', { optional: true, max: 12 })}
-        </>
-      ) : section === 'bank' ? (
-        <>
-          {field('holderName', 'Account holder name')}
-          {field('accountNumber', 'Account number', { max: 18, helper: a.bank ? `On file: ${a.bank.account}. Type it again to change it.` : undefined })}
-          {field('ifsc', 'IFSC', { max: 11, helper: ifscBank(v.ifsc ?? '') ?? undefined })}
-        </>
-      ) : section === 'emergency' ? (
-        <>
-          {field('name', 'Name', { max: 100 })}
-          {field('relation', 'Relation', { max: 40 })}
-          {field('phone', 'Phone', { type: 'tel', max: 16 })}
-        </>
-      ) : section === 'nominees' ? (
-        <FormField id="ps-nominees" label="Who receives your PF and gratuity" required error={sv.errorOf('ps-nominees')} helper="The shares add up to 100%.">
-          <div className="yx-lif-list">
-            {nominees.map((n, i) => (
-              <div key={i} className="yx-lif-grid">
-                <TextField aria-label={`Nominee ${i + 1} name`} value={n.name} onChange={(x) => setNominees(nominees.map((y, j) => (j === i ? { ...y, name: x } : y)))} placeholder="Name" maxLength={100} />
-                <TextField aria-label={`Nominee ${i + 1} relation`} value={n.relation} onChange={(x) => setNominees(nominees.map((y, j) => (j === i ? { ...y, relation: x } : y)))} placeholder="Relation" maxLength={40} />
-                <NumberField aria-label={`Nominee ${i + 1} share (%)`} value={n.sharePercent} onChange={(x) => setNominees(nominees.map((y, j) => (j === i ? { ...y, sharePercent: x ?? 0 } : y)))} min={1} max={100} />
-              </div>
-            ))}
-            {nominees.length < 6 && <Button size="sm" onClick={() => setNominees([...nominees, { name: '', relation: '', sharePercent: 0 }])}>Add a nominee</Button>}
-          </div>
-        </FormField>
-      ) : (
-        <FormField id="ps-regime" label="Income-tax regime" required error={sv.errorOf('ps-regime')} helper="You can change it later in the year, as the law allows.">
-          <Segment label="Income-tax regime" value={(v.regime as 'new' | 'old') ?? null} onChange={set('regime')} options={[{ value: 'new', label: 'New regime' }, { value: 'old', label: 'Old regime' }]} />
-        </FormField>
-      )}
-    </Drawer>
-  );
-}
-
 // ------------------------------------------------------------------------------------------ letters (person side)
 
-function LetterList({ letters, onDownload, onAccept }: { letters: Letter[]; onDownload: (l: Letter, which: 'letter' | 'acceptance') => Promise<unknown>; onAccept: (l: Letter) => void }) {
-  const { busy, error, run } = useRun();
-  if (!letters.length) return null;
-  return (
-    <Card title="Letters">
-      {error && (
-        <InlineAlert tone="danger" title="Not downloaded">
-          {error}
-        </InlineAlert>
-      )}
-      <ul className="yx-lif-list">
-        {letters.map((l) => (
-          <li key={l.id}>
-            <Text>{l.title.split(': ')[0]}</Text> <Text tone="secondary" size="sm">{l.referenceNo}</Text> <Badge tone={LETTER_STATUS[l.status].tone}>{LETTER_STATUS[l.status].label}</Badge>
-            {l.signature?.status === 'signed' && <Badge tone="success">You accepted it</Badge>}
-            <Button size="sm" loading={busy === l.id} onClick={() => void run(l.id, () => onDownload(l, 'letter'))}>
-              Download
-            </Button>
-            {l.signature?.status === 'signed' && (
-              <Button size="sm" loading={busy === `${l.id}-a`} onClick={() => void run(`${l.id}-a`, () => onDownload(l, 'acceptance'))}>
-                Accepted copy
-              </Button>
-            )}
-            {l.status === 'issued' && l.signature?.status === 'open' && (
-              <Button size="sm" variant="primary" onClick={() => onAccept(l)}>
-                Read and accept
-              </Button>
-            )}
-          </li>
-        ))}
-      </ul>
-    </Card>
-  );
-}
-
+/** The emailed-code acceptance of a letter: the joining portal's accept step (T9-01) and My letters. */
 export function AcceptDialog({ letter, disclosureNeeded, onClose, onCode, onSign }: { letter: Letter; disclosureNeeded: boolean; onClose: () => void; onCode: () => Promise<unknown>; onSign: (x: { code: string; accept: boolean; disclosureAccepted: boolean }) => Promise<unknown> }) {
   const [disclosure, setDisclosure] = useState(!disclosureNeeded);
   const [accept, setAccept] = useState(false);
