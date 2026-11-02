@@ -276,6 +276,22 @@ export class CalibrationChangeDto {
   reason!: string;
 }
 
+/** PRF-09 9-box: the facilitator sets a review's potential (1 low, 2 medium, 3 high) with a reason. */
+export class PotentialDto {
+  @IsUUID()
+  reviewId!: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(3)
+  potential!: number;
+
+  @trim()
+  @IsString()
+  @Length(3, 500)
+  reason!: string;
+}
+
 export class ReportQueryDto {
   @IsUUID()
   cycle!: string;

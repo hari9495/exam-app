@@ -5,7 +5,8 @@ import { MoreHorizontal, MoveRight, Send } from 'lucide-react';
 import { Button, IconButton } from '../../components/button';
 import { Badge, PersonLabel } from '../../components/display';
 import { Text } from '../../components/foundations';
-import { EmptyState, InlineAlert, Meter, Skeleton } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, Meter, Skeleton } from '../../components/feedback';
+import { useAct } from './perf-live';
 import { Card, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { BarChart } from '../../components/charts';
 import { DataTable, type TableColumn } from '../../components/table';
@@ -29,10 +30,15 @@ export interface CalibrationPerson {
   manager: string;
   team: string;
   self: number | null;
+  /** Live: the manager's score and the calibrated one may be decimals (shown as they are). */
   managerRating: number;
+  /** The level (1 = first band) the person sits in now. */
   rating: number;
   protectedLeave?: boolean;
   potential?: 1 | 2 | 3;
+  /** Live: the scores behind the levels, e.g. 3.72. */
+  managerScore?: number | null;
+  score?: number | null;
 }
 
 export interface CalibrationChange {
@@ -43,6 +49,24 @@ export interface CalibrationChange {
   reason: string;
   by: string;
   at: Date;
+  /** Live: the band and score words, e.g. "Meets (3.10)". */
+  fromText?: string;
+  toText?: string;
+}
+
+/** The app's session: levels are the cycle's bands; every change goes to the server, only the facilitator's. */
+export interface LiveCalibration {
+  onRetry: () => void;
+  /** The bands of the cycle's scale, lowest first (they replace the five standard levels). */
+  levels: string[];
+  /** Shares from the server; null when the group is too small to show a chart. */
+  actual: number[] | null;
+  notes: string[];
+  open: boolean;
+  can: { change: boolean; signOff: boolean; potential: boolean };
+  onMove: (personId: string, level: number, reason: string) => Promise<unknown>;
+  onPotential: (personId: string, potential: 1 | 2 | 3, reason: string) => Promise<unknown>;
+  onSignOff: () => Promise<unknown>;
 }
 
 export interface CalibrationProps {
@@ -56,31 +80,49 @@ export interface CalibrationProps {
   /** Manager sees only their own team as movable. */
   myTeam?: string;
   state?: LoadState;
+  /** Stories: open the close-calibration question. */
+  closeOpen?: boolean;
+  live?: LiveCalibration;
 }
 
+const share = (ratings: number[], n: number) => {
+  const counts = Array.from({ length: n }, () => 0);
+  for (const r of ratings) counts[Math.min(n, Math.max(1, Math.round(r))) - 1]! += 1;
+  return counts.map((c) => Math.round((c / (ratings.length || 1)) * 100));
+};
+
 /** PRF-09 Calibration (T6): ratings board by rating, distribution vs a guide only (no forced curve), change with reason (YX-PERF-08); 9-box (wave 6). */
-export function CalibrationScreen({ persona, session, people: initial, guide, changes: initialChanges, tab = 'board', pendingMove, myTeam, state = 'ready' }: CalibrationProps) {
-  const [people, setPeople] = useState(initial);
-  const [changes, setChanges] = useState(initialChanges);
+export function CalibrationScreen({ persona, session, people: initial, guide, changes: initialChanges, tab = 'board', pendingMove, myTeam, state = 'ready', closeOpen, live }: CalibrationProps) {
+  const [ownPeople, setPeople] = useState(initial);
+  const [ownChanges, setChanges] = useState(initialChanges);
+  const people = live ? initial : ownPeople;
+  const changes = live ? initialChanges : ownChanges;
   const [pending, setPending] = useState(pendingMove ?? null);
   const [reason, setReason] = useState('');
   const [tried, setTried] = useState(false);
+  const [closing, setClosing] = useState(!!closeOpen);
+  const { act, toast } = useAct();
+  const levels: readonly string[] = live?.levels ?? RATING_LABELS;
+  const n = levels.length;
   const counted = people.filter((p) => !p.protectedLeave);
-  const actual = distribution(counted.map((p) => p.rating));
+  const actual = live ? live.actual : distribution(counted.map((p) => p.rating));
   const who = pending ? people.find((p) => p.id === pending.id) : null;
-  const canMove = (p: CalibrationPerson) => persona === 'hr' || p.team === myTeam;
-  const nine: NineBoxPerson[] = people.map((p) => ({ id: p.id, name: p.name, performance: (p.rating >= 4 ? 3 : p.rating >= 3 ? 2 : 1) as 1 | 2 | 3, potential: p.potential ?? 2, protectedLeave: p.protectedLeave }));
+  const canMove = (p: CalibrationPerson) => (live ? live.can.change : persona === 'hr' || p.team === myTeam);
+  const label = (r: number) => `${r} · ${levels[r - 1] ?? ''}`;
+  const scoreText = (p: CalibrationPerson) => (p.managerScore != null ? `manager ${p.managerScore.toFixed(2)}${p.score != null && p.score !== p.managerScore ? ` → ${p.score.toFixed(2)}` : ''}` : `manager ${p.managerRating}${p.rating !== p.managerRating ? ` → ${p.rating}` : ''}`);
+  // Performance on the 9-box: the lower, middle and upper thirds of the levels.
+  const third = (r: number) => (Math.ceil((r / n) * 3) as 1 | 2 | 3) || 1;
+  const nine: NineBoxPerson[] = people.map((p) => ({ id: p.id, name: p.name, performance: live ? third(p.rating) : ((p.rating >= 4 ? 3 : p.rating >= 3 ? 2 : 1) as 1 | 2 | 3), potential: p.potential ?? 2, protectedLeave: p.protectedLeave }));
 
   const board = (
-    <div className="yx-growth-cols" data-n="5">
-      {[1, 2, 3, 4, 5].map((r) => {
+    <div className="yx-growth-cols" data-n={String(n)}>
+      {levels.map((l, i) => {
+        const r = i + 1;
         const col = people.filter((p) => p.rating === r);
         return (
-          <section key={r} className="yx-growth-panel" aria-label={`${r} · ${RATING_LABELS[r - 1]}: ${col.length} people`}>
+          <section key={l} className="yx-growth-panel" aria-label={`${r} · ${l}: ${col.length} people`}>
             <div className="yx-growth-row" data-between="">
-              <h3 className="yx-growth-h">
-                {r} · {RATING_LABELS[r - 1]}
-              </h3>
+              <h3 className="yx-growth-h">{label(r)}</h3>
               <span className="yx-growth-num yx-growth-meta">{col.length}</span>
             </div>
             <ul className="yx-growth-list">
@@ -89,8 +131,7 @@ export function CalibrationScreen({ persona, session, people: initial, guide, ch
                   <div className="yx-growth-list__main">
                     <span className="yx-growth-list__title">{p.name}</span>
                     <span className="yx-growth-meta">
-                      {p.team} · self {p.self ?? '—'} · manager {p.managerRating}
-                      {p.rating !== p.managerRating ? ` → ${p.rating}` : ''}
+                      {p.team} · self {p.self ?? '—'} · {scoreText(p)}
                     </span>
                     {p.protectedLeave && <Badge tone="info">Protected leave · not counted</Badge>}
                   </div>
@@ -101,11 +142,12 @@ export function CalibrationScreen({ persona, session, people: initial, guide, ch
                       </MenuTrigger>
                       <MenuContent>
                         <MenuLabel>Move to rating</MenuLabel>
-                        {[1, 2, 3, 4, 5]
+                        {levels
+                          .map((_, j) => j + 1)
                           .filter((x) => x !== p.rating)
                           .map((x) => (
                             <MenuItem key={x} icon={MoveRight} onSelect={() => setPending({ id: p.id, to: x })}>
-                              {x} · {RATING_LABELS[x - 1]}
+                              {label(x)}
                             </MenuItem>
                           ))}
                       </MenuContent>
@@ -119,6 +161,8 @@ export function CalibrationScreen({ persona, session, people: initial, guide, ch
       })}
     </div>
   );
+  const closed = live ? !live.open : false;
+  const canClose = live ? live.can.signOff : persona === 'hr';
 
   return (
     <GrowthFrame area="performance" active="Calibration & comp review" persona={persona}>
@@ -126,16 +170,24 @@ export function CalibrationScreen({ persona, session, people: initial, guide, ch
         title={session.name}
         status={
           <>
-            <Badge tone="info">In session</Badge> <ConfidentialTag />
+            <Badge tone={closed ? 'success' : 'info'}>{closed ? 'Signed off' : 'In session'}</Badge> <ConfidentialTag />
           </>
         }
         facts={`${session.group} · facilitator ${session.facilitator} · ${formatDate(session.date)} · ${people.length} people`}
-        actions={persona === 'hr' ? <Button variant="primary">Close calibration</Button> : undefined}
+        actions={
+          canClose ? (
+            <Button variant="primary" onClick={() => setClosing(true)}>
+              Close calibration
+            </Button>
+          ) : undefined
+        }
       />
       <InlineAlert tone="info" title="Guide only">
         The distribution guide helps the discussion; nobody is forced into a curve. Every change needs a reason and is recorded. Employees see only their released rating.
       </InlineAlert>
-      {state === 'loading' ? (
+      {state === 'error' ? (
+        <ErrorState title="We couldn’t load this session" description="Check your connection and try again." onRetry={live?.onRetry} />
+      ) : state === 'loading' ? (
         <Skeleton height={360} />
       ) : people.length === 0 ? (
         <EmptyState title="No manager ratings yet" description="Calibration opens when manager reviews are submitted for this group." />
@@ -150,25 +202,44 @@ export function CalibrationScreen({ persona, session, people: initial, guide, ch
           </TabsList>
           <TabsContent value="board">
             <div className="yx-growth-stack">
-              <BarChart
-                title="Distribution against the guide"
-                description={`${counted.length} people counted; ${people.length - counted.length} on protected leave are left out.`}
-                xLabel="Rating"
-                categories={RATING_LABELS.map((l, i) => `${i + 1} ${l}`)}
-                series={[
-                  { name: 'This group, %', values: actual },
-                  { name: 'Guide, %', values: guide },
-                ]}
-                emphasis="This group, %"
-                height={200}
-              />
+              {actual ? (
+                <BarChart
+                  title="Distribution against the guide"
+                  description={`${counted.length} people counted; ${people.length - counted.length} on protected leave are left out.`}
+                  xLabel="Rating"
+                  categories={levels.map((l, i) => `${i + 1} ${l}`)}
+                  series={[{ name: 'This group, %', values: actual }, ...(guide.length === n ? [{ name: 'Guide, %', values: guide }] : [])]}
+                  emphasis="This group, %"
+                  height={200}
+                />
+              ) : (
+                <Text tone="secondary">Too few people to show a distribution without pointing at someone. The board below still works.</Text>
+              )}
+              {live?.notes.map((x) => (
+                <Text key={x} size="sm" tone="secondary">
+                  {x}
+                </Text>
+              ))}
               {board}
             </div>
           </TabsContent>
           <TabsContent value="ninebox">
             <div className="yx-growth-stack">
-              <Text tone="secondary">Performance from the calibrated rating; potential from the manager’s potential rating. Moving someone asks for a reason.</Text>
-              <NineBox people={nine} readOnly={persona === 'mgr'} />
+              <Text tone="secondary">Performance from the calibrated rating; potential from the manager’s potential rating. Moving someone asks for a reason.{live ? ' On the 9-box you change potential; change the rating on the ratings board.' : ''}</Text>
+              <NineBox
+                key={live ? nine.map((x) => `${x.id}${x.performance}${x.potential}`).join() : 'sample'}
+                people={nine}
+                readOnly={live ? !live.can.potential : persona === 'mgr'}
+                onMove={
+                  live
+                    ? (id, perf, pot, why) => {
+                        const before = nine.find((x) => x.id === id);
+                        if (before && before.performance !== perf) return void toast({ title: 'Change the rating on the Ratings board. Here you change potential only.', tone: 'error' });
+                        void act('potential', () => live.onPotential(id, pot as 1 | 2 | 3, why), 'Potential changed');
+                      }
+                    : undefined
+                }
+              />
             </div>
           </TabsContent>
           <TabsContent value="changes">
@@ -179,8 +250,8 @@ export function CalibrationScreen({ persona, session, people: initial, guide, ch
               empty={<EmptyState compact title="No changes yet" />}
               columns={[
                 { key: 'person', header: 'Employee', type: 'person', value: (r) => r.person, person: (r) => ({ name: r.person }), width: 200 },
-                { key: 'from', header: 'From', value: (r) => `${r.from} · ${RATING_LABELS[r.from - 1]}`, width: 160 },
-                { key: 'to', header: 'To', value: (r) => `${r.to} · ${RATING_LABELS[r.to - 1]}`, width: 160 },
+                { key: 'from', header: 'From', value: (r) => r.fromText ?? label(r.from), width: 160 },
+                { key: 'to', header: 'To', value: (r) => r.toText ?? label(r.to), width: 160 },
                 { key: 'reason', header: 'Reason', value: (r) => r.reason, width: 320 },
                 { key: 'by', header: 'By', value: (r) => r.by, width: 170 },
                 { key: 'at', header: 'When', type: 'date', value: (r) => r.at, width: 120 },
@@ -198,24 +269,44 @@ export function CalibrationScreen({ persona, session, people: initial, guide, ch
             setTried(false);
           }
         }}
-        title={who && pending ? `Change ${who.name} from ${who.rating} to ${pending.to}?` : 'Change rating'}
+        title={who && pending ? `Change ${who.name} from ${label(who.rating)} to ${label(pending.to)}?` : 'Change rating'}
         consequence="The before and after rating, your reason and your name are recorded. The employee sees only the released rating."
         confirmLabel="Change rating"
-        onConfirm={() => {
+        onConfirm={async () => {
           setTried(true);
-          if (reason.trim().length < 10) return false;
+          if (reason.trim().length < 10) {
+            document.getElementById('cal-reason')?.focus();
+            return false;
+          }
           if (!pending || !who) return;
-          setChanges((c) => [{ id: `c${c.length + 1}`, person: who.name, from: who.rating, to: pending.to, reason, by: persona === 'hr' ? 'Lakshmi Venkatesan' : 'Karthik Subramanian', at: TODAY }, ...c]);
-          setPeople((ps) => ps.map((p) => (p.id === pending.id ? { ...p, rating: pending.to } : p)));
+          if (live) {
+            await live.onMove(who.id, pending.to, reason.trim());
+            toast({ title: `${who.name} moved to ${levels[pending.to - 1]}`, tone: 'success' });
+          } else {
+            setChanges((c) => [{ id: `c${c.length + 1}`, person: who.name, from: who.rating, to: pending.to, reason, by: persona === 'hr' ? 'Lakshmi Venkatesan' : 'Karthik Subramanian', at: TODAY }, ...c]);
+            setPeople((ps) => ps.map((p) => (p.id === pending.id ? { ...p, rating: pending.to } : p)));
+          }
           setPending(null);
           setReason('');
           setTried(false);
         }}
       >
-        <FormField label="Reason" required rule="At least 10 characters." helper="Visible to HR and this calibration group." error={tried && reason.trim().length < 10 ? 'Enter a reason of at least 10 characters.' : null}>
+        <FormField label="Reason" required id="cal-reason" rule="At least 10 characters." helper="Visible to HR and this calibration group." error={tried && reason.trim().length < 10 ? 'Enter a reason of at least 10 characters.' : null}>
           <TextArea value={reason} onChange={setReason} rows={3} />
         </FormField>
       </ConfirmDialog>
+      <ConfirmDialog
+        open={closing}
+        onOpenChange={setClosing}
+        title={`Close ${session.name}?`}
+        consequence="The calibrated ratings become final for release. Nobody can change them in this session after this. The distribution guide never blocks closing."
+        confirmLabel="Close calibration"
+        onConfirm={async () => {
+          if (!live) return;
+          await live.onSignOff();
+          toast({ title: 'Calibration closed. The reviews are ready to release.', tone: 'success' });
+        }}
+      />
     </GrowthFrame>
   );
 }

@@ -6,7 +6,7 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions, RequireAnyPermission } from '../rbac/permissions.decorator';
 import type { ScopeUser } from '../access/scope';
-import { CalibrationChangeDto, ReportQueryDto, SessionDto } from './review-dto';
+import { CalibrationChangeDto, PotentialDto, ReportQueryDto, SessionDto } from './review-dto';
 import { PerformanceCalibrationService } from './calibration.service';
 import { PerformanceReportsService, type ReportKind } from './reports.service';
 
@@ -65,6 +65,14 @@ export class PerformanceCalibrationController {
   @RequirePermissions('perf.calibration.facilitate')
   change(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CalibrationChangeDto) {
     return this.svc.change(ctx, this.user(req), id, dto);
+  }
+
+  /** PRF-09 9-box: the facilitator sets a person's potential with a reason. */
+  @Post('calibrations/:id/potential')
+  @HttpCode(200)
+  @RequirePermissions('perf.calibration.facilitate')
+  potential(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PotentialDto) {
+    return this.svc.potential(ctx, this.user(req), id, dto);
   }
 
   @Post('calibrations/:id/sign-off')

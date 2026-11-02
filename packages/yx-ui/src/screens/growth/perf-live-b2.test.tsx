@@ -4,6 +4,7 @@ import { OneOnOneScreen, PipRecordScreen, QuickFeedbackScreen, type LiveOneOnOne
 import { ONE_ON_ONES, PEOPLE, PIP, PIP_PROPOSED, PIP_TO_ACK, RECEIVED, REQUESTS } from './perf-data-2';
 import { NOMINATIONS } from './perf-data-3';
 import { NominationsScreen, type LiveNominations } from './perf-reviews';
+import { CalibrationScreen, type LiveCalibration } from './perf-talent';
 
 // The designed Performance screens with `live` (builder 2): every action calls the app, pressed too early shows a
 // field error and calls nothing (positive and negative).
@@ -236,5 +237,57 @@ describe('PRF-07 360° nominations, live', () => {
     await waitFor(() => expect(live.onRemove).toHaveBeenCalledWith(expect.objectContaining({ id: 't3' })));
     fireEvent.click(screen.getByRole('button', { name: 'Approve list and invite' }));
     await waitFor(() => expect(live.onApproveAll).toHaveBeenCalled());
+  });
+});
+
+describe('PRF-09 Calibration, live', () => {
+  const calLive = (over: Partial<LiveCalibration> = {}): LiveCalibration => ({
+    onRetry: () => {},
+    levels: ['Below', 'Meets', 'Above'],
+    actual: [0, 50, 50],
+    notes: ['Above: 50% against a guide of 20%.'],
+    open: true,
+    can: { change: true, signOff: true, potential: true },
+    onMove: ok(),
+    onPotential: ok(),
+    onSignOff: ok(),
+    ...over,
+  });
+  const people = [
+    { id: 'r1', name: 'Arjun Rao', manager: 'Priya', team: 'Priya', self: 4, managerRating: 3, rating: 3, managerScore: 4, score: 4 },
+    { id: 'r2', name: 'Sita Iyer', manager: 'Priya', team: 'Priya', self: 3, managerRating: 2, rating: 2, managerScore: 3.1, score: 3.1 },
+  ];
+  const session = { name: 'Sales H1', facilitator: 'Lakshmi', group: 'H1', date: new Date(2026, 9, 1) };
+
+  it('the board has one column per band of the scale, with the server notes', () => {
+    render(<CalibrationScreen persona="hr" session={session} people={people} guide={[10, 70, 20]} changes={[]} live={calLive()} />);
+    expect(screen.getByRole('region', { name: /3 · Above: 1 people/ })).toBeInTheDocument();
+    expect(screen.getByText('Above: 50% against a guide of 20%.')).toBeInTheDocument();
+  });
+
+  it('a move needs a reason of 10 characters; then it goes to the server', async () => {
+    const live = calLive();
+    render(<CalibrationScreen persona="hr" session={session} people={people} guide={[]} changes={[]} live={live} pendingMove={{ id: 'r1', to: 2 }} />);
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Change rating' }));
+    expect(await within(dialog).findByText('Enter a reason of at least 10 characters.')).toBeInTheDocument();
+    expect(live.onMove).not.toHaveBeenCalled();
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'Compared with the plant leads' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Change rating' }));
+    await waitFor(() => expect(live.onMove).toHaveBeenCalledWith('r1', 2, 'Compared with the plant leads'));
+  });
+
+  it('someone who only looks sees no move menus and no close button; a small group shows no chart', () => {
+    render(<CalibrationScreen persona="mgr" session={session} people={people} guide={[]} changes={[]} live={calLive({ actual: null, can: { change: false, signOff: false, potential: false } })} />);
+    expect(screen.queryByRole('button', { name: /Change rating for/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Close calibration' })).toBeNull();
+    expect(screen.getByText(/Too few people to show a distribution/)).toBeInTheDocument();
+  });
+
+  it('closing asks first and then signs off', async () => {
+    const live = calLive();
+    render(<CalibrationScreen persona="hr" session={session} people={people} guide={[]} changes={[]} live={live} closeOpen />);
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Close calibration' }));
+    await waitFor(() => expect(live.onSignOff).toHaveBeenCalled());
   });
 });

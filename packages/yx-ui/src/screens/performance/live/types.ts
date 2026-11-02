@@ -501,6 +501,8 @@ export interface CalibrationRow {
   selfIndication: number | null;
   skipAgreed: boolean;
   protectedLeave: boolean;
+  /** PRF-09 9-box: 1 low, 2 medium, 3 high. */
+  potential?: 1 | 2 | 3 | null;
 }
 
 export interface CalibrationBoard {
@@ -512,8 +514,10 @@ export interface CalibrationBoard {
   scale: { min: number; max: number; bands: { fromScore: number; toScore: number; label: string }[] };
   rows: CalibrationRow[];
   distribution: { bands: { label: string; count: number; share: number; target: number | null; outside: boolean }[] | null; counted: number; notes: string[] };
-  changes: { reviewId: string; employee: string; from: number | null; to: number; fromBand: string | null; toBand: string | null; reason: string; at: string }[];
-  can: { change: boolean; signOff: boolean };
+  changes: { reviewId: string; employee: string; from: number | null; to: number; fromBand: string | null; toBand: string | null; reason: string; at: string; by?: string }[];
+  can: { change: boolean; signOff: boolean; potential?: boolean };
+  facilitator?: string;
+  openedOn?: string;
 }
 
 export interface PerfReport {
