@@ -14,7 +14,7 @@ import { inForce } from '../statutory/evaluator';
 import { dateOf } from '../time/time-core';
 import type { ConfirmationDto } from './dto';
 import type { QueryRaiseDto, QueryUpdateDto } from './dto-5d';
-import { entitiesFor, payHolders, payScope, payViewer, requireSelf, withPayScope } from './pay-access';
+import { entitiesFor, payHolders, payScope, payViewer, publishesAlone, requireSelf, systemAdmins, withPayScope } from './pay-access';
 import { payslipValues, renderPayslipPdf, type SlipData } from './payslip-pdf';
 import { sha256 } from './pay-file-store';
 
@@ -71,7 +71,7 @@ export class PayslipsService {
 
   // ------------------------------------------------------------------------------------------ publish (PAY-4.04)
 
-  async publish(ctx: TenantContext, user: ScopeUser, runId: string, confirmation: ConfirmationDto) {
+  async publish(ctx: TenantContext, user: ScopeUser, runId: string, confirmation: ConfirmationDto, selfApprovalReason?: string) {
     const v = await this.viewer(user);
     const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
@@ -85,11 +85,14 @@ export class PayslipsService {
       const slips = await tx.payslip.findMany({ where: { organizationId: org, runId: run.id, calcVersion: run.calcVersion, status: 'approved' } });
       const phrase = `PUBLISH ${slips.length}`;
       if (confirmation.phrase !== phrase) throw new BadRequestException(`Type ${phrase} to confirm.`);
+      // PAY-09: the sole payroll admin publishes alone only with a reason; it is kept in the audit event and the System Admins are told.
+      const alone = await publishesAlone(tx, org, run.legalEntityId, v.userId!);
+      if (alone && !selfApprovalReason) throw new BadRequestException({ statusCode: 400, code: 'SELF_APPROVAL_REASON', message: 'No one else can publish these payslips: give a reason to publish them yourself (the System Admins are told).' });
       await tx.payrollRun.update({ where: { id: run.id }, data: { publishedAt: new Date(), version: { increment: 1 } } });
-      await audit(tx, c, 'payslip.published', 'payroll_run', run.id, { people: slips.length, confirmed: { phrase: confirmation.phrase, impact: confirmation.impact } });
+      await audit(tx, c, 'payslip.published', 'payroll_run', run.id, { people: slips.length, confirmed: { phrase: confirmation.phrase, impact: confirmation.impact }, selfApproval: alone, reason: alone ? selfApprovalReason : null });
       const people = await tx.employee.findMany({ where: { organizationId: org, id: { in: slips.map((s) => s.employeeId) } }, select: { id: true, userId: true } });
       const emailOn = (await settingFor(tx, c, 'payroll.payslip_email', { legalEntityId: run.legalEntityId })) === 'on';
-      return { run, slips, users: people.map((p) => p.userId).filter((u): u is string => Boolean(u)), emailOn };
+      return { run, slips, users: people.map((p) => p.userId).filter((u): u is string => Boolean(u)), emailOn, admins: alone ? await systemAdmins(tx, org) : [] };
     });
     const org = ctx.organizationId!;
     const month = dateOf(out.run.periodStart).slice(0, 7);
@@ -102,6 +105,10 @@ export class PayslipsService {
         { subject: 'Your payslip is ready', html: '<p>Your payslip is ready. Open YukthiX to see it.</p>' },
       )
       .catch((e) => this.logger.warn(`payslip notices: ${(e as Error).message}`));
+    if (out.admins.length)
+      await this.notifications
+        .notifySystem({ organizationId: org, isSuperAdmin: false }, out.admins, 'payroll.payslip.published', { entityType: 'payroll_run', entityId: out.run.id, contextText: `Payslips for ${month} were published by the only payroll admin. Reason: ${selfApprovalReason}`, linkPath: `/yx/payroll/runs/${out.run.id}` }, { subject: 'Payslips published by the only payroll admin', html: '<p>Payslips were published by the only payroll admin, with a reason. Open YukthiX to see it.</p>' })
+        .catch((e) => this.logger.warn(`self-publish notice: ${(e as Error).message}`));
     const emailed = out.emailOn ? await this.emailAll(org, out.slips) : null;
     return { id: out.run.id, publishedPeople: out.slips.length, emailed };
   }

@@ -188,7 +188,13 @@ export class PayoutService implements OnModuleInit {
       const excluded: { employeeId: string; reason: string }[] = [];
       // 5g-D2: a death-in-service F&F pays each nominee or heir directly, by share, to their own account.
       const deaths = await tx.fnfSettlement.findMany({ where: { organizationId: org, exitType: 'death', OR: [{ runId: run.id }, { secondRunId: run.id }] } });
+      // PAY-10: an invalid IFSC waits for the corrected account (the reimbursement account route is a different account).
+      const ifscWait = only?.purpose === 'reimbursement' ? new Set<string>() : await waitingForIfsc(tx, org, slips);
       for (const s of slips) {
+        if (ifscWait.has(s.id)) {
+          excluded.push({ employeeId: s.employeeId, reason: 'Waiting for the employee to correct the IFSC of their bank account.' });
+          continue;
+        }
         const death = deaths.find((d) => d.employmentId === s.employmentId);
         if (death) {
           const payees = (death.payees as { name: string; sharePercent: string; accountEnc?: string | null; ifsc?: string | null }[]) ?? [];
@@ -363,11 +369,14 @@ export class PayoutService implements OnModuleInit {
       const status = (r.status ?? '').toLowerCase();
       if (!['paid', 'failed', 'returned'].includes(status) || !r.employee_code) throw new BadRequestException(`Row ${i + 2}: needs an employee_code and a status of paid, failed or returned.`);
       if (r.reference && !/^[A-Za-z0-9/-]{1,60}$/.test(r.reference)) throw new BadRequestException(`Row ${i + 2}: the reference is letters, digits, / and -.`);
+      const cause = (r.cause ?? '').toLowerCase();
+      if (cause && !['ifsc', 'account', 'other'].includes(cause)) throw new BadRequestException(`Row ${i + 2}: the cause is ifsc, account or other.`);
       return {
         employeeCode: r.employee_code.slice(0, 30),
         status: status as 'paid' | 'failed' | 'returned',
         bankReference: r.reference || undefined,
         reason: r.reason ? r.reason.slice(0, 300) : undefined,
+        cause: (cause || undefined) as PaymentResultRowDto['cause'],
       };
     });
   }
@@ -402,6 +411,7 @@ export class PayoutService implements OnModuleInit {
         else if (s.paymentStatus !== 'sent') problems.push(`${at}: the payslip is ${s.paymentStatus}, not waiting for a bank result.`);
         if (r.status !== 'paid' && !r.reason) problems.push(`${at}: say why the payment ${r.status === 'failed' ? 'failed' : 'came back'}.`);
         if (source === 'manual' && !r.reason) problems.push(`${at}: a result entered by hand needs a reason.`);
+        if (r.cause && r.status === 'paid') problems.push(`${at}: a paid row has no failure cause.`);
         if (s) seen.add(s.id);
         return { r, s: s! };
       });
@@ -418,13 +428,14 @@ export class PayoutService implements OnModuleInit {
             status: r.status,
             bankReference: r.bankReference ?? null,
             reason: r.reason ?? null,
+            cause: r.status === 'paid' ? null : (r.cause ?? null),
             source,
             recordedBy: v.userId!,
           },
         });
         await tx.payslip.update({ where: { id: s.id }, data: { paymentStatus: r.status } });
         if (r.status !== 'paid') {
-          await audit(tx, c, 'payment.failed', 'payslip', s.id, { employeeId: s.employeeId, status: r.status, reason: r.reason });
+          await audit(tx, c, 'payment.failed', 'payslip', s.id, { employeeId: s.employeeId, status: r.status, reason: r.reason, cause: r.cause ?? null });
           await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'payment.failed', payload: { payslipId: s.id, runId: run.id, kind: 'payslip', employeeId: s.employeeId, status: r.status } } });
           const u = (await tx.employee.findFirst({ where: { organizationId: org, id: s.employeeId }, select: { userId: true } }))?.userId;
           if (u)
@@ -432,7 +443,10 @@ export class PayoutService implements OnModuleInit {
               to: [u],
               type: 'payroll.payment.failed',
               entityId: s.id,
-              text: 'Your salary payment did not go through. Check your bank details in your profile; payroll will pay it again.',
+              text:
+                r.cause === 'ifsc'
+                  ? 'Your salary payment did not go through: the bank says the IFSC of your account is not valid. Correct it in your profile; payroll pays it again once it is fixed.'
+                  : 'Your salary payment did not go through. Check your bank details in your profile; payroll will pay it again.',
               link: '/yx/me/profile',
               subject: 'Your salary payment did not go through',
             });
@@ -493,6 +507,9 @@ export class PayoutService implements OnModuleInit {
       if ((await this.ownEmployeeIds(tx)).has(s.employeeId)) throw new ForbiddenException('Someone else arranges your own pay.');
       if (s.status !== 'approved' || !['failed', 'returned'].includes(s.paymentStatus))
         throw new ConflictException(s.paymentStatus === 'pending' ? 'This payment is already waiting to be paid; nothing to pay again.' : 'Only a payment that failed or came back can be paid again.');
+      // PAY-10: an invalid IFSC is paid again through the bank only once the employee's corrected account is on file.
+      if (dto.route !== 'reimbursement_account' && (await waitingForIfsc(tx, org, [s])).has(s.id))
+        throw new ConflictException({ statusCode: 409, code: 'WAITING_FOR_IFSC', message: 'Waiting for the employee to correct the IFSC of their bank account. Pay it again once the corrected account is on file, or pay to a verified reimbursement account.' });
       let file: Awaited<ReturnType<PayoutService['writeBank']>> | null = null;
       if (dto.route !== 'next_bank_file') {
         if (!(await entitiesFor(tx, c, v, 'payroll.bankfile.generate')).includes(s.legalEntityId))
@@ -670,4 +687,20 @@ export class PayoutService implements OnModuleInit {
       return { id: d.id, payslipId: s.id, mode: d.mode, paymentStatus: 'cash' };
     });
   }
+}
+
+/**
+ * PAY-10: of these failed payslips, the ones whose latest bank failure was an invalid IFSC and whose employee has not put
+ * a new salary account on file since then ("waiting for corrected IFSC").
+ */
+export async function waitingForIfsc(tx: Tx, org: string, slips: { id: string; employeeId: string; paymentStatus: string }[]): Promise<Set<string>> {
+  const failed = slips.filter((s) => s.paymentStatus === 'failed' || s.paymentStatus === 'returned');
+  if (!failed.length) return new Set();
+  const recs = await tx.paymentRecord.findMany({ where: { organizationId: org, payslipId: { in: failed.map((s) => s.id) }, status: { in: ['failed', 'returned'] } }, orderBy: { recordedAt: 'desc' }, select: { payslipId: true, cause: true, recordedAt: true } });
+  const latest = new Map<string, (typeof recs)[number]>();
+  for (const r of recs) if (!latest.has(r.payslipId)) latest.set(r.payslipId, r);
+  const ifsc = failed.filter((s) => latest.get(s.id)?.cause === 'ifsc');
+  if (!ifsc.length) return new Set();
+  const accounts = await tx.employeeBankAccount.findMany({ where: { organizationId: org, employeeId: { in: ifsc.map((s) => s.employeeId) }, purpose: 'salary' }, select: { employeeId: true, validFrom: true } });
+  return new Set(ifsc.filter((s) => !accounts.some((a) => a.employeeId === s.employeeId && a.validFrom > latest.get(s.id)!.recordedAt)).map((s) => s.id));
 }

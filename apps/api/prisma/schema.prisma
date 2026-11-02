@@ -7874,6 +7874,8 @@ model PaymentRecord {
   mode           String   @default("bank") @db.VarChar(8)
   bankReference  String?  @map("bank_reference") @db.VarChar(60)
   reason         String?  @db.VarChar(300)
+  /// PAY-10: why the bank refused it (ifsc = the IFSC on file is not valid; the payslip waits for a corrected account).
+  cause          String?  @db.VarChar(8)
   source         String   @db.VarChar(8)
   recordedBy     String   @map("recorded_by") @db.Uuid
   recordedAt     DateTime @default(now()) @map("recorded_at") @db.Timestamptz(3)

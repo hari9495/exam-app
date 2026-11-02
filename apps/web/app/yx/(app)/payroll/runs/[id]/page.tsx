@@ -80,7 +80,7 @@ export default function YxPayRunPage() {
       const link = await write<{ path: string }>(`/files/${encodeURIComponent(fileId)}/link`);
       await download(link.path, name);
     },
-    onPublish: (confirmation) => write(`${base}/publish`, { confirmation }),
+    onPublish: (confirmation, selfApprovalReason) => write(`${base}/publish`, { confirmation, ...(selfApprovalReason ? { selfApprovalReason } : {}) }),
     onSearchPeople: (q) => search(q),
     onAddItem: (item) => write(`${base}/items`, item),
   };

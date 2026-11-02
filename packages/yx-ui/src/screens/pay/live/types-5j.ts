@@ -22,6 +22,8 @@ export interface PayRun {
   /** Only on the single run. */
   entityName?: string;
   preparedByMe?: boolean;
+  /** PAY-09: the viewer is the only one who may publish these payslips, so a reason is asked for. */
+  publishAlone?: boolean;
   approval?: { canDecide: boolean; phrase: string; step: number; steps: number } | null;
   /** PAY-9.01: a weekly or fortnightly group's run pays one period of the month. */
   subPeriod?: number | null;
@@ -100,6 +102,8 @@ export interface RunPayslip {
   verify: boolean;
   held: boolean;
   paymentStatus: string;
+  /** PAY-10: "ifsc" = failed for an invalid IFSC and waiting for the employee's corrected account. */
+  waitingFor?: 'ifsc' | null;
 }
 
 export interface PayslipLine {

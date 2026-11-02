@@ -19,6 +19,8 @@ export interface PaymentResultRow {
   status: 'paid' | 'failed' | 'returned';
   bankReference?: string;
   reason?: string;
+  /** PAY-10: why the bank refused it; "ifsc" waits for the employee's corrected account. */
+  cause?: 'ifsc' | 'account' | 'other';
 }
 
 export interface DisbursementInput {

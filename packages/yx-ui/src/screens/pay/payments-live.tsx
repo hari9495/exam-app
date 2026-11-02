@@ -8,13 +8,13 @@ import { Button } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, ErrorState, InlineAlert, NoAccessState } from '../../components/feedback';
-import { FormField, useSaveErrors, type FormErrorItem } from '../../components/field';
+import { FormField, FormSection, useSaveErrors, type FormErrorItem } from '../../components/field';
 import { TextArea, TextField } from '../../components/inputs';
 import { RadioGroup } from '../../components/choice';
 import { Segment } from '../../components/segment';
 import { FileUpload } from '../../components/upload';
 import { useToast } from '../../components/notify';
-import { PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
+import { DescriptionList, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { PlainTable } from '../../components/plain-table';
 import { DataTable, type TableColumn } from '../../components/table';
 import { formatDate, formatINR } from '../../lib/format';
@@ -390,6 +390,8 @@ const PAYMENT: Record<string, { label: string; tone: BadgeTone }> = {
   returned: { label: 'Returned', tone: 'danger' },
 };
 const payment = (s: string) => PAYMENT[s] ?? { label: s, tone: 'neutral' as BadgeTone };
+/** PAY-10 FailedIfsc: failed for an invalid IFSC; paid again through the bank once the employee corrects it. */
+const IFSC_WAIT: { label: string; tone: BadgeTone } = { label: 'Waiting for corrected IFSC', tone: 'warning' };
 const FORMAT_TEXT: Record<JournalFormat, string> = { tally: 'Tally (XML)', csv: 'CSV', zoho: 'Zoho Books (CSV)' };
 
 function LiveRun({ live }: { live: LiveRunPayments }) {
@@ -426,10 +428,10 @@ function LiveRun({ live }: { live: LiveRunPayments }) {
     {
       key: 'status',
       header: 'Status',
-      value: (s) => payment(s.paymentStatus).label,
+      value: (s) => (s.waitingFor === 'ifsc' ? IFSC_WAIT.label : payment(s.paymentStatus).label),
       render: (s) => (
         <>
-          <Badge tone={payment(s.paymentStatus).tone}>{payment(s.paymentStatus).label}</Badge>
+          {s.waitingFor === 'ifsc' ? <Badge tone={IFSC_WAIT.tone}>{IFSC_WAIT.label}</Badge> : <Badge tone={payment(s.paymentStatus).tone}>{payment(s.paymentStatus).label}</Badge>}
           {s.held && s.paymentStatus !== 'held' && <Badge tone="neutral">Held</Badge>}
         </>
       ),
@@ -707,20 +709,38 @@ function RepayDrawer({ slip, who, amount, canFileNow, onClose, onSave }: { slip:
     ...(now && !/^\d{6,20}$/.test(debit.trim()) ? [{ fieldId: 'rp-debit', message: 'Enter the account the bank debits (6 to 20 digits).' }] : []),
     ...(reason.trim().length < 5 ? [{ fieldId: 'rp-why', message: 'Say why, in a few words (at least 5 characters).' }] : []),
   ];
+  const ifsc = slip.waitingFor === 'ifsc';
+  // PAY-10: while the IFSC is wrong only the verified reimbursement account can be paid; the bank routes say what is missing.
   const routes = (Object.keys(REPAY) as RepayRoute[]).filter((r) => canFileNow || r === 'next_bank_file');
+  const ifscBlock: FormErrorItem[] = ifsc && route !== 'reimbursement_account' ? [{ fieldId: 'rp-route', message: 'Waiting for the employee to correct the IFSC. Pay to the reimbursement account, or wait until the corrected account is on file.' }] : [];
   return (
     <FormDrawer
       title={`Payment ${slip.paymentStatus === 'returned' ? 'returned' : 'failed'}: ${who}`}
-      subtitle="Fix the bank details in the person’s profile first if the bank said the account is wrong."
+      subtitle={ifsc ? 'Bank said: IFSC not valid' : 'Fix the bank details in the person’s profile first if the bank said the account is wrong.'}
       confirm={REPAY[route].button}
-      errors={errors}
+      errors={[...ifscBlock, ...errors]}
       onClose={onClose}
       onSave={() => onSave({ route, reason: reason.trim(), ...(now ? { debitAccount: debit.trim() } : {}) })}
     >
       {(errorOf) => (
         <>
-          <FactRow items={[{ label: 'Amount', value: amount }, { label: 'Status', value: payment(slip.paymentStatus).label }]} />
-          <FormField id="rp-route" label="Pay through" required helper={REPAY[route].description}>
+          <FactRow items={[{ label: 'Amount', value: amount }, { label: 'Status', value: ifsc ? IFSC_WAIT.label : payment(slip.paymentStatus).label }]} />
+          {ifsc && (
+            <>
+              <InlineAlert tone="info" title="Employee notified">
+                In the app, asking them to correct the IFSC of their bank account. No amounts are sent.
+              </InlineAlert>
+              <FormSection title="Bank details">
+                <DescriptionList
+                  items={[
+                    { label: 'Bank said', value: 'IFSC not valid' },
+                    { label: 'Corrected IFSC', value: <Badge tone="warning">Waiting for employee</Badge> },
+                  ]}
+                />
+              </FormSection>
+            </>
+          )}
+          <FormField id="rp-route" label="Pay through" required helper={REPAY[route].description} error={errorOf('rp-route')}>
             <Segment label="Pay through" value={route} onChange={setRoute} options={routes.map((r) => ({ value: r, label: REPAY[r].label }))} />
           </FormField>
           {now && (
@@ -739,6 +759,7 @@ function RepayDrawer({ slip, who, amount, canFileNow, onClose, onSave }: { slip:
 
 function ResultDrawer({ who, onClose, onSave }: { who: string; onClose: () => void; onSave: (r: Omit<PaymentResultRow, 'payslipId'>) => Promise<unknown> }) {
   const [status, setStatus] = useState<PaymentResultRow['status']>('paid');
+  const [cause, setCause] = useState<NonNullable<PaymentResultRow['cause']>>('other');
   const [ref, setRef] = useState('');
   const [reason, setReason] = useState('');
   const errors: FormErrorItem[] = [
@@ -746,7 +767,7 @@ function ResultDrawer({ who, onClose, onSave }: { who: string; onClose: () => vo
     ...(reason.trim().length < 3 ? [{ fieldId: 'pr-why', message: status === 'paid' ? 'Say how you know it was paid.' : 'Say what the bank gave as the reason.' }] : []),
   ];
   return (
-    <FormDrawer title={`Bank result for ${who}`} confirm="Record" errors={errors} onClose={onClose} onSave={() => onSave({ status, ...(ref.trim() ? { bankReference: ref.trim() } : {}), reason: reason.trim() })}>
+    <FormDrawer title={`Bank result for ${who}`} confirm="Record" errors={errors} onClose={onClose} onSave={() => onSave({ status, ...(status !== 'paid' ? { cause } : {}), ...(ref.trim() ? { bankReference: ref.trim() } : {}), reason: reason.trim() })}>
       {(errorOf) => (
         <>
           <FormField id="pr-status" label="Result">
@@ -761,6 +782,20 @@ function ResultDrawer({ who, onClose, onSave }: { who: string; onClose: () => vo
               ]}
             />
           </FormField>
+          {status !== 'paid' && (
+            <FormField id="pr-cause" label="Bank said" helper={cause === 'ifsc' ? 'The payment waits until the employee corrects the IFSC in their profile.' : undefined}>
+              <Segment
+                label="Bank said"
+                value={cause}
+                onChange={setCause}
+                options={[
+                  { value: 'ifsc', label: 'IFSC not valid' },
+                  { value: 'account', label: 'Account wrong or closed' },
+                  { value: 'other', label: 'Something else' },
+                ]}
+              />
+            </FormField>
+          )}
           <FormField id="pr-ref" label="Bank reference" optional error={errorOf('pr-ref')}>
             <TextField value={ref} onChange={setRef} maxLength={60} />
           </FormField>

@@ -23,7 +23,8 @@ import { principalPart } from './inputs.service';
 import { dayKinds } from './payslip-days';
 import { buildTaxInputs } from './tax.service';
 import { taxYearOf } from './tax';
-import { PayKey, entitiesFor, payHolders, payScope, payViewer, requireEntity, requireSelf, systemAdmins, withPayScope } from './pay-access';
+import { waitingForIfsc } from './payout.service';
+import { PayKey, entitiesFor, payHolders, payScope, payViewer, publishesAlone, requireEntity, requireSelf, systemAdmins, withPayScope } from './pay-access';
 
 // Payroll runs (M03-BUILD-DESIGN §3.2, §9, PAY-3.01 … 3.10, 3.18): create per pay group and month; validations with
 // waivers (YX-PAY-05); calculate by fan-out on BullMQ with per-employee progress (an advisory lock keeps one calculation
@@ -294,7 +295,9 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
         const steps = w ? (await tx.wfTask.findMany({ where: { organizationId: c.organizationId, requestId: w.id }, distinct: ['step'], select: { step: true } })).length : 0;
         approval = { canDecide: !!task, phrase: approvePhrase(e.shortName, this.month(run)), step: w?.currentStep ?? 0, steps };
       }
-      return { ...this.view(run), entityName: e.name, preparedByMe: run.preparedBy === v.userId, approval };
+      // PAY-09: the sole payroll admin is asked for a reason in the publish sheet before pressing publish.
+      const publishAlone = ['approved', 'paid'].includes(run.status) && !run.publishedAt && v.grants.has('payroll.payslip.publish') ? await publishesAlone(tx, c.organizationId, run.legalEntityId, v.userId!) : false;
+      return { ...this.view(run), entityName: e.name, preparedByMe: run.preparedBy === v.userId, approval, publishAlone };
     });
   }
 
@@ -855,7 +858,9 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const run = await this.runIn(tx, c, v, id, VIEW);
       const slips = await tx.payslip.findMany({ where: { organizationId: c.organizationId, runId: run.id, calcVersion: run.calcVersion, status: { in: ['draft', 'approved'] } }, orderBy: { createdAt: 'asc' } });
-      return slips.map((s) => this.slipView(s));
+      const ifsc = await waitingForIfsc(tx, c.organizationId, slips);
+      // PAY-10: "waiting for corrected IFSC" is a failed payment the bank cannot be sent again yet.
+      return slips.map((s) => ({ ...this.slipView(s), waitingFor: ifsc.has(s.id) ? ('ifsc' as const) : null }));
     });
   }
 

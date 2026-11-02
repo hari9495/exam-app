@@ -342,10 +342,22 @@ describe('Payroll batch 5d', () => {
           .expect(400)
       ).body.problems[0],
     ).toMatch(/not waiting for a bank result/);
+    // PAY-10: a cause on a paid row and an unknown cause are refused.
+    expect(
+      (await api('payAdmin', 'post', `/payroll/runs/${ids.run}/payment-results`).send({ rows: [{ payslipId: s1.id, status: 'paid', reason: 'Paid', cause: 'ifsc' }] }).expect(400)).body.problems[0],
+    ).toMatch(/no failure cause/);
+    await api('payAdmin', 'post', `/payroll/runs/${ids.run}/payment-results`).send({ rows: [{ payslipId: s1.id, status: 'failed', reason: 'Bad', cause: 'pigeon' }] }).expect(400);
     await api('payAdmin', 'post', `/payroll/runs/${ids.run}/payment-results`)
-      .send({ rows: [{ payslipId: s1.id, status: 'failed', bankReference: 'UTR-1', reason: 'Account closed' }] })
+      .send({ rows: [{ payslipId: s1.id, status: 'failed', bankReference: 'UTR-1', reason: 'IFSC not valid', cause: 'ifsc' }] })
       .expect(200);
     expect((await slipOf(ids.emp1)).paymentStatus).toBe('failed');
+    // PAY-10 FailedIfsc: the payslip waits for the corrected IFSC; the bank routes are refused until a new account is on file.
+    const listed = (await api('payAdmin', 'get', `/payroll/runs/${ids.run}/payslips`).expect(200)).body as { id: string; waitingFor: string | null }[];
+    expect(listed.find((x) => x.id === s1.id)?.waitingFor).toBe('ifsc');
+    expect(listed.find((x) => x.id === s2.id)?.waitingFor).toBeNull();
+    expect((await api('payAdmin', 'post', `/payroll/payslips/${s1.id}/repay`).send({ route: 'next_bank_file', reason: 'Pay it again' }).expect(409)).body.code).toBe('WAITING_FOR_IFSC');
+    expect((await slipOf(ids.emp1)).paymentStatus).toBe('failed');
+    expect((await scoped((tx) => tx.paymentRecord.findFirstOrThrow({ where: { payslipId: s1.id, status: 'failed' } }))).cause).toBe('ifsc');
     expect(await inA((tx) => tx.userNotification.count({ where: { recipientUserId: users.emp1, type: 'payroll.payment.failed' } }))).toBe(1);
     // M05 §22.1 change 4: the business event, ids only.
     expect((await inA((tx) => tx.eventOutbox.findMany({ where: { eventType: 'payment.failed' } }))).map((e) => e.payload)).toEqual([{ payslipId: s1.id, runId: ids.run, kind: 'payslip', employeeId: ids.emp1, status: 'failed' }]);
@@ -360,6 +372,7 @@ describe('Payroll batch 5d', () => {
     // The employee's bank change is approved (P02): the new account waits out its cooling period.
     await inA((tx) => tx.employeeBankAccount.updateMany({ where: { employeeId: ids.emp1, validTo: null }, data: { validTo: new Date() } }));
     await account(ids.emp1, '000111222444', new Date(Date.now() + 2 * 86_400_000));
+    expect(((await api('payAdmin', 'get', `/payroll/runs/${ids.run}/payslips`).expect(200)).body as { id: string; waitingFor: string | null }[]).find((x) => x.id === s1.id)?.waitingFor).toBeNull();
     await api('emp1', 'post', `/payroll/payslips/${s1.id}/expedite-bank`).send({ pennyDropReference: 'PD-778899', reason: 'My own account' }).expect(403);
     expect((await api('payAdmin', 'post', `/payroll/payslips/${s1.id}/expedite-bank`).send({ pennyDropReference: 'PD-778899', reason: 'Salary failed, new account' }).expect(200)).body).toMatchObject({
       account: '•••• 2444',
@@ -486,13 +499,29 @@ describe('Payroll batch 5d', () => {
     await api('payAdmin', 'post', `/payroll/runs/${ids.run}/publish`)
       .send({ confirmation: { phrase: 'PUBLISH', impact: [] } })
       .expect(400);
+    // PAY-09: payAdmin is the only one with the publish key, so the run says so and a reason is required (too short is refused).
+    expect((await api('payAdmin', 'get', `/payroll/runs/${ids.run}`).expect(200)).body.publishAlone).toBe(true);
+    expect((await api('approver1', 'get', `/payroll/runs/${ids.run}`).expect(200)).body.publishAlone).toBe(false);
     expect(
       (
         await api('payAdmin', 'post', `/payroll/runs/${ids.run}/publish`)
           .send({ confirmation: { phrase: 'PUBLISH 3', impact: [] } })
+          .expect(400)
+      ).body.code,
+    ).toBe('SELF_APPROVAL_REASON');
+    await api('payAdmin', 'post', `/payroll/runs/${ids.run}/publish`)
+      .send({ confirmation: { phrase: 'PUBLISH 3', impact: [] }, selfApprovalReason: 'abc' })
+      .expect(400);
+    expect(
+      (
+        await api('payAdmin', 'post', `/payroll/runs/${ids.run}/publish`)
+          .send({ confirmation: { phrase: 'PUBLISH 3', impact: [] }, selfApprovalReason: 'Only payroll admin this month' })
           .expect(200)
       ).body,
     ).toMatchObject({ publishedPeople: 3, emailed: { sent: 3, noEmail: 0 } });
+    const published = await inA((tx) => tx.auditLog.findFirstOrThrow({ where: { action: 'payslip.published', entityId: ids.run } }));
+    expect(JSON.parse(published.metadataJson ?? '{}')).toMatchObject({ selfApproval: true, reason: 'Only payroll admin this month' });
+    expect(await inA((tx) => tx.userNotification.count({ where: { recipientUserId: users.adminA, type: 'payroll.payslip.published' } }))).toBe(1);
     // 5e-D1: a link, never a PDF; no pay figures in the email; the link opens that payslip for that person only, once signed in.
     const mails = sendMock.mock.calls.map(([m]) => m as { to: string; html: string; attachments?: unknown[] });
     expect(mails.filter((m) => m.attachments?.length)).toEqual([]);

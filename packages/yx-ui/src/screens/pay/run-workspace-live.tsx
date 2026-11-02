@@ -54,7 +54,8 @@ export interface LiveRunWorkspaceData {
   onGenerateBank: (debitAccount: string, reason?: string) => Promise<BankFileMade>;
   onReleaseBank: (bankFileId: string, confirmation: Confirmation) => Promise<unknown>;
   onDownload: (fileId: string, name: string) => Promise<unknown>;
-  onPublish: (confirmation: Confirmation) => Promise<unknown>;
+  /** selfApprovalReason: only when the viewer is the sole payroll admin (run.publishAlone, PAY-09). */
+  onPublish: (confirmation: Confirmation, selfApprovalReason?: string) => Promise<unknown>;
   /** Off-cycle runs: add an item for a person (search by name). */
   onSearchPeople?: (q: string) => Promise<{ id: string; name: string; employeeCode?: string }[]>;
   /** Opens the run's payments (bank results, cash and cheque, journal) once it is approved. */
@@ -450,11 +451,12 @@ export function LiveRunWorkspace({ live: p }: { live: LiveRunWorkspaceData }) {
           phrase={`PUBLISH ${toPublish}`}
           maker="The preparer"
           checker="You"
+          selfApproval={!!r.publishAlone}
           confirmLabel="Publish payslips"
           error={error}
-          onConfirm={() =>
+          onConfirm={(reason) =>
             void run('publish', async () => {
-              await p.onPublish({ phrase: `PUBLISH ${toPublish}`, impact: [{ label: 'Payslips', value: String(toPublish) }] });
+              await p.onPublish({ phrase: `PUBLISH ${toPublish}`, impact: [{ label: 'Payslips', value: String(toPublish) }] }, r.publishAlone ? reason.trim() : undefined);
               setSheet(null);
               say(`${count(toPublish, 'payslip')} published`);
             })

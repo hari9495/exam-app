@@ -10,7 +10,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
-import { ConfirmDto, DisbursementDto, ExpediteBankDto, GenerateBankFileDto, PaymentModeDto, PaymentResultsDto, QueryListDto, QueryRaiseDto, QueryUpdateDto, RepayDto } from './dto-5d';
+import { ConfirmDto, PublishDto, DisbursementDto, ExpediteBankDto, GenerateBankFileDto, PaymentModeDto, PaymentResultsDto, QueryListDto, QueryRaiseDto, QueryUpdateDto, RepayDto } from './dto-5d';
 import { PayoutService } from './payout.service';
 import { PayslipsService } from './payslips.service';
 
@@ -130,8 +130,8 @@ export class Payroll5dController {
   @HttpCode(200)
   @RequirePermissions('payroll.payslip.publish')
   @RequireStepUp()
-  publish(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ConfirmDto) {
-    return this.payslips.publish(ctx, this.user(req), id, dto.confirmation);
+  publish(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PublishDto) {
+    return this.payslips.publish(ctx, this.user(req), id, dto.confirmation, dto.selfApprovalReason);
   }
 
   @Get('me/payslips')

@@ -2,6 +2,7 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx } from '../org-structure/org-structure.service';
+import { todayIst } from '../org-structure/org-validation';
 import { Viewer, buildViewer, has, tenantWide, type ScopeUser } from '../access/scope';
 
 // Batch 5a access (M03-BUILD-DESIGN §6.2, §12.1). Every payroll route declares its key (YX-SEC-01); here the key's
@@ -144,6 +145,11 @@ export async function payHolders(tx: Tx, org: string, key: PayKey, entityId: str
       AND (g.scope_type = 'tenant' OR (g.scope_type = 'legal_entity' AND g.legal_entity_id = ${entityId}::uuid))
     LIMIT 25`;
   return rows.map((r) => r.id);
+}
+
+/** PAY-09: true when this person is the only one who may publish the entity's payslips (sole payroll admin). */
+export async function publishesAlone(tx: Tx, org: string, entityId: string, me: string): Promise<boolean> {
+  return !(await payHolders(tx, org, 'payroll.payslip.publish', entityId, todayIst())).some((u) => u !== me);
 }
 
 /** The company's active System Admins (P08 Q3: the owner's approval of a reopen). */
