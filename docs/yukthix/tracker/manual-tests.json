@@ -9650,5 +9650,84 @@
     ],
     "expected": "Step 2: the first save works; the second (negative) is refused \"The held part ... cannot be more than the incentive\". Step 4: the quarter summary (Quarter N, tier \"100% of quota and above\", earned ₹13,000, held ₹3,000, sent to payroll ₹10,000) and the month table with the quarter total; \"Held: <month>, ₹3,000.00 (Customer has not paid yet)\". Step 5: the second release (negative) 409 \"already released\"; after approval Held is \"—\" and in payroll ₹13,000.",
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-G-33",
+    "area": "Pay · Follow-ups (2 Nov 2026)",
+    "screen": "Request access gives read-only reports for a time (PAY-25, founder answer 2)",
+    "url": "http://localhost:3000/yx/payroll/reports",
+    "account": "hr@demo-org.test (Lakshmi, HR Admin without payroll keys) and admin@demo-org.test (Ramesh, System Admin) Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-25 NoAccess"
+    ],
+    "steps": [
+      "1. As Ramesh open Settings and check \"Payroll reports access given on request lasts (days)\" is 90.",
+      "2. As Lakshmi open Payroll reports; press Request access.",
+      "3. As Ramesh approve \"Payroll reports access for Lakshmi\" in Approvals.",
+      "4. As Lakshmi reload Payroll reports.",
+      "5. As Ramesh open Settings › Roles & access and find Lakshmi's grant; try to add \"payroll.run.prepare\" to the role \"Payroll reports (read only, on request)\".",
+      "6. As Lakshmi try to open Payroll › Runs."
+    ],
+    "expected": "Step 2: toast \"Request sent\"; the page says \"Request sent on <date> for <her entity>\". Step 4: the reports open for her entity only (the entity filter has only it); export works. Step 5: the grant shows \"until <today + 89 days>\"; changing the role's keys is refused (negative). Step 6 (negative): no access to runs.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-G-34",
+    "area": "Pay · Follow-ups (2 Nov 2026)",
+    "screen": "Refused or ended reports access (PAY-25, founder answer 2)",
+    "url": "http://localhost:3000/yx/payroll/reports",
+    "account": "hr@demo-org.test (Lakshmi) and admin@demo-org.test (Ramesh) Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-25 NoAccess"
+    ],
+    "steps": [
+      "1. As Ramesh end Lakshmi's grant from MT-PAY-G-33 in Roles & access with a reason (or wait for its last day).",
+      "2. As Lakshmi reload Payroll reports.",
+      "3. Press Request access again; as Ramesh turn it down with a reason.",
+      "4. As Lakshmi reload.",
+      "5. As Ramesh set the days to 30; Lakshmi asks again and Ramesh approves."
+    ],
+    "expected": "Step 2: the no-access page; with a past last day it says \"Your read-only access to <entity> ended on <date>. You can ask again.\" Step 4 (negative): \"...was turned down. You can ask again.\"; no new grant in Roles & access. Step 5: the new grant ends today + 29 days.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-G-35",
+    "area": "Pay · Follow-ups (2 Nov 2026)",
+    "screen": "LOP refused for a frozen month (PAY-04, founder answer 4)",
+    "url": "http://localhost:3000/yx/payroll/inputs",
+    "account": "payroll@demo-org.test (Suresh) Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-04 Frozen"
+    ],
+    "steps": [
+      "1. Open Payroll › Inputs, Loss of pay, for an open month; enter 1 day for Arjun with a reason; save.",
+      "2. Calculate that month's run (the month becomes frozen); open Loss of pay again.",
+      "3. Ask the developer to call PUT /api/v1/payroll/lop-inputs/<month> with a row for Arjun.",
+      "4. Send a Late request for Arjun's day instead."
+    ],
+    "expected": "Step 1: saved. Step 2: \"Period frozen\" badge; no inline edits. Step 3 (negative): 409 \"Inputs are frozen for <month>. Send the change as a late request.\"; Arjun's LOP unchanged. Step 4: the late request goes to someone else for approval.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-G-36",
+    "area": "Pay · Follow-ups (2 Nov 2026)",
+    "screen": "Results sheet: held part and Release (PAY-32, founder answer 7)",
+    "url": "http://localhost:3000/yx/payroll/special-pay",
+    "account": "payroll@demo-org.test (Suresh) and payroll-approver@demo-org.test (Meena) Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-32 ResultsHeld",
+      "PAY-32 ReleaseConfirm",
+      "PAY-32 ReleaseRefused"
+    ],
+    "steps": [
+      "1. Tab Incentives, a published plan: Add a result for Arjun, quota 100000, achieved 120000, held 999999, no reason; Save result.",
+      "2. Change held to 3000 with the reason \"Customer has not paid yet\"; save.",
+      "3. Press Results for the plan; press Release on Arjun's row and confirm.",
+      "4. Close; press Send month; Meena approves; open Results; Release and confirm.",
+      "5. Press Release again (if shown) or reload and check.",
+      "6. Meena approves the held part; Arjun opens Me › My incentives."
+    ],
+    "expected": "Step 1 (negative): \"At most the incentive...\" and \"Say why it is held...\"; nothing saved. Step 2: toast \"Result saved\". Step 3 (negative): the sheet shows \"That did not go through - Send the month's results to payroll first; the held part follows them.\" Step 4: toast \"Held part for Arjun sent to payroll for approval.\"; the row says \"Held part released\". Step 5 (negative): no Release button; the API answers \"already released\". Step 6: the statement shows the held part as paid.",
+    "note": "Positive and negative."
   }
 ]

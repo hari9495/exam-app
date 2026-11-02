@@ -27,11 +27,15 @@ Verdicts: **wire design** (a live page and the API exist for this job; the page 
 | B. Inputs, loans, recoveries, queries | 8 | 52 | 0 | 0 | 0 | 0 | 2 | 0 | 54 |
 | C. Structures and set-up | 6 | 43 | 0 | 0 | 0 | 0 | 0 | 0 | 43 |
 | D. Employee pay and tax | 6 | 48 | 0 | 0 | 0 | 1 | 9 | 0 | 58 |
-| E. Special pay, earned wage access, actuarial, benefits | 14 | 88 | 0 | 0 | 0 | 6 | 8 | 0 | 102 |
+| E. Special pay, earned wage access, actuarial, benefits | 14 | 91 | 0 | 0 | 0 | 6 | 8 | 0 | 105 |
 | F. Reports | 1 | 14 | 0 | 0 | 0 | 0 | 0 | 0 | 14 |
 | G. Records | 3 | 44 | 0 | 0 | 0 | 0 | 0 | 0 | 44 |
 | H. New designs, made live | 5 | 50 | 0 | 0 | 0 | 0 | 0 | 0 | 50 |
-| **All** | **53** | **402** | **0** | **0** | **0** | **7** | **19** | **0** | **428** |
+| **All** | **53** | **405** | **0** | **0** | **0** | **7** | **19** | **0** | **431** |
+
+Pay followups (2 Nov 2026, branch `feat/yukthix-pay-followups`, founder answers 2, 4 and 7): PAY-32 gets 3 results-sheet
+stories, designed first (live); PAY-25 NoAccess and PAY-04 Frozen notes updated. Recounted by the same script: 405 live,
+0 live with a gap, 7 not built, 19 phone view, 431 sub-pages. Status in "Pay followups status" at the end.
 
 Pay gaps last (2 Nov 2026, branch `feat/yukthix-pay-gaps-last`): the last 13 `live, gap` rows are live: PAY-18 Submitted,
 PAY-21 Document, PAY-22 Overview and NoPan, PAY-23 Line, OwnProof and ResidencyOwn, PAY-27 Recoveries and
@@ -383,7 +387,7 @@ Live page: /yx/payroll/inputs (Loss of pay)
 |---|---|---|
 | Default · Inline entry · one row with an error | live |  |
 | BulkUpload · Bulk upload · row validation | live | CSV read in the page, one PUT lop-inputs/:month |
-| Frozen · Period frozen · late request only | live | pay gaps: GET payroll/input-periods/:month (stage per entity); a frozen or locked month shows the design's badge and alert, no inline edits, and a Late request drawer (POST payroll/input-corrections: a pay correction for one day, approved by someone else with payroll.correction.approve) |
+| Frozen · Period frozen · late request only | live | pay gaps: GET payroll/input-periods/:month (stage per entity); a frozen or locked month shows the design's badge and alert, no inline edits, and a Late request drawer (POST payroll/input-corrections: a pay correction for one day, approved by someone else with payroll.correction.approve). Pay followups (founder answer 4): the API refuses LOP for a frozen month too (409 PERIOD_FROZEN) |
 | Empty · Empty · no Assumed-present groups | live |  |
 | Loading · Loading | live |  |
 | ErrorState · Error | live |  |
@@ -751,6 +755,9 @@ Live page: /yx/payroll/special-pay, tab Incentives (`IncentivePlanScreen` with `
 | Published · Published | live | results, send a month, send clawbacks |
 | Loading · Loading | live |  |
 | ErrorState · Error | live |  |
+| ResultsHeld · Results sheet · a held row | live | pay followups, new story designed first (founder answer 7): each published plan's Results opens the month's results (GET special/plans/:id/results) with the part held until the customer pays and its reason; Add a result takes an optional held part (at most the incentive, a reason when held) |
+| ReleaseConfirm · Results sheet · release the held part (asks first) | live | new story: Release asks, then POST special/plans/:id/results/:resultId/release for the page's month; toast; a payroll approver approves it |
+| ReleaseRefused · Results sheet · release refused | live | new story: the server's refusal (for example "Send the month's results to payroll first...", "already released") stays in the sheet's notice |
 
 #### PAY-33 · My incentive statement
 
@@ -897,7 +904,7 @@ Live page: /yx/payroll/reports
 | Empty · Empty · no data for filters | live |  |
 | Loading · Loading | live |  |
 | ErrorState · Error · the report did not load | live | new state story |
-| NoAccess · No access (HR without payroll scope) | live | pay gaps: "Request access" (POST payroll/reports/access-request) through the approvals engine to the people who grant roles (access.role.manage; the System Admins when nobody holds it); the page says when it was sent, approved or turned down. The approver gives the access in Roles & access (auto-grant: question) |
+| NoAccess · No access (HR without payroll scope) | live | pay gaps: "Request access" (POST payroll/reports/access-request) through the approvals engine to the people who grant roles (access.role.manage; the System Admins when nobody holds it); the page says when it was sent, approved or turned down. Pay followups (founder answer 2): the request names a legal entity (the person's own when left out); approving gives a read-only "Payroll reports (read only, on request)" role grant for that entity at once, for the company's days (setting payroll.reports_access.days, default 90), ending by itself, in Roles & access with its last day, audited; the page says until when, or that it ended (ask again) |
 
 The design's "Schedule" button and dialog stay in the stories only: scheduled reports are not built.
 
@@ -1695,3 +1702,19 @@ LOP input for a frozen month (late request only); (7) a "held" column and Releas
 first then wired. Keep as built: (5) the preparer publishes without a reason when others can publish; (6) the NoPan line
 about Me > Documents stays out; (8) EWA reconciliation for run approvers; (9) deferred counts the EWA deduction first;
 (10) the auditor role has no own-equity key; (11) a what-if rent uses the non-metro rate.
+
+## Pay followups status (2 Nov 2026, branch `feat/yukthix-pay-followups`)
+
+Built from the founder answers: (2) an approved PAY-25 "Request access" gives a read-only payroll reports role grant
+for the legal entity asked, at once, for `payroll.reports_access.days` (company setting, tenant or legal entity,
+default 90), ending by itself, in Roles & access with its last day, audited (`access.grant.created`); the role
+"Payroll reports (read only, on request)" holds payroll.reports.view only and its keys cannot be changed. (4) PUT
+payroll/lop-inputs/:month refuses a frozen month (409 PERIOD_FROZEN). (7) the PAY-32 results sheet with the held part
+and Release, designed first. No migrations (the reports role is made once per company when first granted).
+
+Questions (safe default built):
+1. PAY-25: the request names the person's own legal entity; there is no entity choice on the no-access page (it has
+   no design). Suggested: keep; add an entity choice to the design if HR outside payroll needs other entities.
+2. PAY-25: approving again while access is open is impossible (the person already holds the key, so they cannot ask);
+   an extension waits until it ends. Suggested: keep; Roles & access can lengthen a grant by hand.
+
