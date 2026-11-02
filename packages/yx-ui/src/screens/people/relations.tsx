@@ -620,7 +620,7 @@ function LiveVrsScheme({ live: p }: { live: LiveVrs }) {
     { key: 'kind', header: 'For', value: (r) => KIND_LABEL[r.kind], render: (r) => <span className="yx-ppl__type"><span>{KIND_LABEL[r.kind]}</span><span className="yx-ppl__sub">{entity(r.legalEntityId)}</span></span>, width: 220 },
     { key: 'workers', header: 'Workers', type: 'number', value: (r) => r.workersAffected, width: 100 },
     { key: 'applied', header: 'Applied', type: 'date', value: (r) => dayOf(r.appliedOn), width: 130 },
-    { key: 'authority', header: 'Authority', value: (r) => r.authority, width: 200 },
+    { key: 'authority', header: 'Authority', value: (r) => r.authority, render: (r) => (r.orderNumber ? <span className="yx-ppl__type"><span>{r.authority}</span><span className="yx-ppl__sub">Order no. {r.orderNumber}</span></span> : r.authority), width: 220 },
     { key: 'status', header: 'Status', value: (r) => r.status, render: (r) => <Badge tone={IR_LABEL[r.status].tone}>{IR_LABEL[r.status].label}</Badge>, width: 140 },
   ];
   return (
@@ -773,6 +773,10 @@ function SampleVrsScheme({ tab = 'applications', persona = 'hr', eligible = true
               <li>
                 <span>Lay-off at Kaveri Foods Pvt Ltd (Tamil Nadu): 40 workers, applied 14 Sep 2026 to the Labour Commissioner, Chennai</span>
                 <Badge tone="warning">Applied</Badge>
+              </li>
+              <li>
+                <span>Retrenchment at Kaveri Foods Pvt Ltd (Tamil Nadu): 12 workers, Labour Commissioner, Chennai, order no. L-42011/12/2026-IR(M), granted 18 Sep 2026</span>
+                <Badge tone="success">Granted</Badge>
               </li>
             </ul>
           </div>

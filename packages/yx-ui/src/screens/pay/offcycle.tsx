@@ -128,7 +128,8 @@ function SampleOffCycleRun({ kind = 'fnf', step = 'lines', permission = false }:
       />
       {type === 'retrenchment' && (
         <FormField label="Government permission reference" required={!permission} helper="Required for establishments with 300 or more workers.">
-          <TextField defaultValue={permission ? 'LD/KA/RET/2026/0418 dated 18 Sep 2026' : ''} />
+          {/* Founder 2 Nov 2026: "authority, order no., granted on date", as recorded in People › Exits. */}
+          <TextField defaultValue={permission ? 'Labour Commissioner, Karnataka, order no. LD/KA/RET/2026/0418, granted on 18 Sep 2026' : ''} />
         </FormField>
       )}
       {type === 'death' && (

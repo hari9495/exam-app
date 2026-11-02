@@ -655,6 +655,8 @@ export interface IrPermission {
   authority: string;
   status: 'applied' | 'granted' | 'deemed' | 'refused';
   decidedOn: string | null;
+  /** The government order number of a grant (optional). */
+  orderNumber?: string | null;
   version: number;
 }
 export interface VrsSchemeRow {

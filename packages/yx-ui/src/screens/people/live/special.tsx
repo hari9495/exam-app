@@ -349,7 +349,7 @@ export interface RetrenchmentScreenProps {
   today: string;
   entities: Choice[];
   onApply: (input: { legalEntityId: string; kind: IrPermission['kind']; workersAffected: number; reasons: string; appliedOn: string; authority: string }) => Promise<unknown>;
-  onDecide: (r: IrPermission, input: { status: 'granted' | 'deemed' | 'refused'; decidedOn: string }) => Promise<unknown>;
+  onDecide: (r: IrPermission, input: { status: 'granted' | 'deemed' | 'refused'; decidedOn: string; orderNumber?: string }) => Promise<unknown>;
   onClosure: (r: IrPermission, input: { lwd: string; reason: string }) => Promise<{ opened: number }>;
   onScheme: (input: { name: string; legalEntityId: string | null; opensOn: string; closesOn: string; minAge: number; minServiceYears: number }) => Promise<unknown>;
 }
@@ -388,16 +388,50 @@ export function ApplyDialog({ entities, today, onClose, onApply }: { entities: C
   );
 }
 
-export function DecideDialog({ r, today, onClose, onDecide }: { r: IrPermission; today: string; onClose: () => void; onDecide: RetrenchmentScreenProps['onDecide'] }) {
+/** The government order number as the API takes it: letters, digits, spaces and . / ( ) - & , : _ (1 to 60). */
+const ORDER_NO = /^[A-Za-z0-9][A-Za-z0-9 ./()&,:_-]*$/;
+export const orderNumberProblem = (v: string): string | null => {
+  const t = v.trim();
+  if (!t) return null;
+  if (t.length > 60) return 'Keep the order number to 60 characters.';
+  return ORDER_NO.test(t) ? null : 'Use letters, digits, spaces and . / ( ) - & , : _ only.';
+};
+
+/** PPL-40 "Record the decision": granted (with the order number, optional), deemed granted or refused, and the day. */
+export function DecideDialog({ r, today, onClose, onDecide, initialOrderNumber = '', pressed = false }: { r: IrPermission; today: string; onClose: () => void; onDecide: RetrenchmentScreenProps['onDecide']; /** Stories: the field filled in, and Save already pressed. */ initialOrderNumber?: string; pressed?: boolean }) {
   const [status, setStatus] = useState<'granted' | 'deemed' | 'refused'>('granted');
   const [on, setOn] = useState<Date | null>(fromKey(today));
-  const [tried, setTried] = useState(false);
+  const [order, setOrder] = useState(initialOrderNumber);
+  const [tried, setTried] = useState(pressed);
+  // The order number belongs to a grant; a deemed grant or a refusal has none.
+  const orderErr = status === 'granted' ? orderNumberProblem(order) : null;
   return (
-    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} title="The government's decision" consequence={status === 'refused' ? 'Retrenchments waiting on this permission are cancelled.' : 'Retrenchments waiting on it can now be approved.'} confirmLabel="Save decision" destructive={status === 'refused'} onConfirm={async () => { setTried(true); if (!on) return false; await onDecide(r, { status, decidedOn: dayKey(on!) }); onClose(); }}>
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title="The government's decision"
+      consequence={status === 'refused' ? 'Retrenchments waiting on this permission are cancelled.' : 'Retrenchments waiting on it can now be approved.'}
+      confirmLabel="Save decision"
+      destructive={status === 'refused'}
+      onConfirm={async () => {
+        setTried(true);
+        if (!on || orderErr) {
+          document.getElementById(!on ? 'ir-dec-on' : 'ir-dec-order')?.focus();
+          return false;
+        }
+        await onDecide(r, { status, decidedOn: dayKey(on!), ...(status === 'granted' && order.trim() ? { orderNumber: order.trim() } : {}) });
+        onClose();
+      }}
+    >
       <Segment label="Decision" value={status} onChange={setStatus} options={[{ value: 'granted', label: 'Granted' }, { value: 'deemed', label: 'Deemed granted' }, { value: 'refused', label: 'Refused' }]} />
       <FormField id="ir-dec-on" label="Decided on" required error={tried && !on ? 'Choose the day of the decision.' : null}>
         <DatePicker value={on} onChange={setOn} max={fromKey(today)} aria-label="Decided on" />
       </FormField>
+      {status === 'granted' && (
+        <FormField id="ir-dec-order" label="Order number" optional helper="As printed on the government's order, e.g. L-42011/12/2026-IR(M). Shown on the retrenchment run." error={tried ? orderErr : null}>
+          <TextField value={order} onChange={setOrder} maxLength={80} />
+        </FormField>
+      )}
     </ConfirmDialog>
   );
 }
