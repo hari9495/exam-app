@@ -1241,3 +1241,9 @@ Questions (safe default built, suggested answer):
    times for them are refused. Suggested: keep.
 3. The design's fourth type "Night (across midnight)" stays a fixed shift ending next morning plus the Night allowance
    switch (as before); the live Type field offers Fixed, Flexi and Split. Suggested: keep.
+
+## Founder answers, 3 Nov 2026 (flexi and split shifts built, "all good")
+(1) a flexi shift's rest and spread-over checks use its whole window (legally safe); HR sets windows inside the limits;
+(2) turning flexi or split off again keeps existing shifts of that type working but refuses new times for them;
+(3) the Type field offers Fixed, Flexi and Split only; a night shift stays a fixed shift ending next morning plus the
+night allowance switch.
