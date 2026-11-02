@@ -41,6 +41,12 @@ export class PerformanceFeedbackController {
     return this.svc.counts(ctx, this.user(req), employeeId);
   }
 
+  /** PRF-08: the recipient's goals the giver may link to; empty unless the giver may see that person's goals. */
+  @Get('feedback/goal-options/:employeeId')
+  goalOptions(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) employeeId: string) {
+    return this.svc.goalOptions(ctx, this.user(req), employeeId);
+  }
+
   @Post('feedback')
   @Throttle(PUBLIC_API_THROTTLE)
   give(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: FeedbackDto) {

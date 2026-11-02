@@ -210,6 +210,57 @@ describe('Performance batch PM3', () => {
     expect(n).toBe(2);
   });
 
+  // PRF-11 (designs, builder 2): a 1:1 repeats; marking it held plans the next on its rhythm; one row per pair.
+  it('PRF-11: a repeating 1:1 plans the next when held; dates in the past and bad rhythms are refused', async () => {
+    await api('priya', 'post', '/one-on-ones').send({ withEmployeeId: emp.sita, on: shift(today, -1), cadenceDays: 14 }).expect(400);
+    await api('priya', 'post', '/one-on-ones').send({ withEmployeeId: emp.sita, on: shift(today, 2), cadenceDays: 10 }).expect(400);
+    type M = { id: string; version: number; status: string; cadenceDays: number | null; goals: unknown[]; actions: { text: string }[] };
+    let m = (await api('priya', 'post', '/one-on-ones').send({ withEmployeeId: emp.sita, on: shift(today, 2), cadenceDays: 14 }).expect(201)).body as M;
+    expect(m).toMatchObject({ cadenceDays: 14, goals: [] });
+    m = (await api('sita', 'post', `/one-on-ones/${m.id}/actions`).send({ text: 'Share the route plan', ownerEmployeeId: emp.sita }).expect(201)).body;
+    await api('arjun', 'put', `/one-on-ones/${m.id}`).send({ status: 'held', version: m.version }).expect(404);
+    await api('priya', 'put', `/one-on-ones/${m.id}`).send({ on: shift(today, -3), version: m.version }).expect(400);
+    m = (await api('priya', 'put', `/one-on-ones/${m.id}`).send({ status: 'held', version: m.version }).expect(200)).body;
+    expect(m.status).toBe('held');
+    await api('priya', 'put', `/one-on-ones/${m.id}`).send({ status: 'held', version: m.version }).expect(409);
+    type P = { id: string; role: string; employee: string; partnerRole: string; on: string; lastHeldOn: string | null; cadenceDays: number | null; openActions: number; agendaItems: number };
+    const pairs = (await api('priya', 'get', '/one-on-ones').expect(200)).body as { pairs: P[]; defaultCadenceDays: number };
+    expect(pairs.defaultCadenceDays).toBe(14);
+    const sita = pairs.pairs.find((p) => p.employee.startsWith('Sita'))!;
+    expect(sita).toMatchObject({ role: 'manager', partnerRole: 'Executive', on: shift(today, 16), lastHeldOn: shift(today, 2), cadenceDays: 14, openActions: 1 });
+    expect(sita.id).not.toBe(m.id);
+    // The employee sees the same pair from their side; the open action moved to the next 1:1.
+    expect(((await api('sita', 'get', '/one-on-ones').expect(200)).body.pairs as P[]).map((p) => p.id)).toEqual([sita.id]);
+    const next = (await api('sita', 'get', `/one-on-ones/${sita.id}`).expect(200)).body as M & { lastHeldOn: string };
+    expect(next.actions.map((a) => a.text)).toEqual(['Share the route plan']);
+    expect(next.lastHeldOn).toBe(shift(today, 2));
+    const moved = (await api('sita', 'put', `/one-on-ones/${sita.id}`).send({ on: shift(today, 20), version: next.version }).expect(200)).body as { version: number };
+    expect(moved.version).toBe(next.version + 1);
+    expect(await inA((tx) => tx.auditLog.findFirst({ where: { action: 'perf.one_on_one.rescheduled', entityId: sita.id } }))).toBeTruthy();
+    expect(await inA((tx) => tx.auditLog.findFirst({ where: { action: 'perf.one_on_one.held', entityId: m.id } }))).toBeTruthy();
+  });
+
+  // PRF-08: "them, their manager and HR"; the company default; goals only for those who may see them.
+  it('PRF-08: feedback shown to HR reaches the manager chain too; goals link only for those who see them', async () => {
+    await api('sita', 'post', '/feedback').send({ toEmployeeId: emp.arjun, kind: 'praise', text: 'Public praise please', visibility: 'public' }).expect(400);
+    const hrItem = (await api('sita', 'post', '/feedback').send({ toEmployeeId: emp.arjun, kind: 'praise', text: 'Thanks for the clean dealer report.', visibility: 'with_hr' }).expect(201)).body as Item & { visibility: string };
+    expect(hrItem.visibility).toBe('with_hr');
+    expect((await items('priya', 'team')).map((x) => x.id)).toContain(hrItem.id);
+    const plain = (await api('sita', 'post', '/feedback').send({ toEmployeeId: emp.arjun, kind: 'praise', text: 'Good call with the distributor.' }).expect(201)).body as { visibility: string; id: string };
+    expect(plain.visibility).toBe('private');
+    expect((await api('arjun', 'get', '/feedback?view=received').expect(200)).body.defaultVisibility).toBe('private');
+    expect(await inA((tx) => tx.auditLog.findFirst({ where: { action: 'perf.feedback.given', entityId: plain.id } }))).toBeTruthy();
+    // A peer may not see Arjun's goals: no options, and linking one is refused; his manager may.
+    expect((await api('sita', 'get', `/feedback/goal-options/${emp.arjun}`).expect(200)).body.goals).toEqual([]);
+    await api('sita', 'post', '/feedback').send({ toEmployeeId: emp.arjun, kind: 'praise', text: 'Linked to a goal I cannot see.', goalId: randomUUID() }).expect(400);
+    await api('priya', 'get', `/feedback/goal-options/${emp.arjun}`).expect(200);
+    await api('priya', 'get', '/feedback/goal-options/not-a-uuid').expect(400);
+    await api('adminB', 'get', `/feedback/goal-options/${emp.arjun}`).expect(200).expect(({ body }) => expect(body.goals).toEqual([]));
+    await api('priya', 'post', '/feedback-requests').send({ aboutEmployeeId: emp.arjun, askedEmployeeIds: [emp.sita], question: 'How was the route plan?' }).expect(201);
+    const asked = (await api('sita', 'get', '/feedback-requests').expect(200)).body.requests as { askedAt: string }[];
+    expect(asked[0]!.askedAt).toBeTruthy();
+  });
+
   it('keeps companies apart', async () => {
     await api('adminB', 'get', `/one-on-ones/${ids.m1}`).expect(404);
     await api('adminB', 'post', '/feedback').send({ toEmployeeId: emp.arjun, kind: 'praise', text: 'From another company' }).expect(403);

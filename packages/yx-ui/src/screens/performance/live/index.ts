@@ -2,9 +2,11 @@
 // Import the stylesheet once: '@yukthix/ui/styles.css'.
 export * from './types';
 export { PerformanceSetupScreen, type PerformanceSetupScreenProps } from './setup';
-export { FeedbackScreen, OneOnOnesScreen, OneOnOneScreen, type FeedbackView, type FeedbackScreenProps, type OneOnOnesScreenProps, type OneOnOneScreenProps } from './feedback';
 export { ReviewsScreen, type ReviewsScreenProps, type ReviewsView } from './reviews';
 export { PeerPanel, FeedbackTasksScreen, PeerFormScreen, ReviewerBlocksScreen, type PeerPanelProps, type FeedbackTasksScreenProps, type PeerFormScreenProps, type ReviewerBlocksScreenProps } from './peer';
+// Designed screens made live (builder 2): PRF-08 Quick feedback, PRF-11 1:1s.
+export { QuickFeedbackScreen, VISIBILITY as FEEDBACK_VISIBILITY, type FeedbackAsk, type FeedbackItem as QuickFeedbackItem, type FeedbackVisibility, type LiveQuickFeedback } from '../../growth/perf-people';
+export { OneOnOneScreen, cadenceLabel, type Cadence, type LiveOneOnOnes, type OneOnOne as OneOnOneRow } from '../../growth/perf-people';
 export { CalibrationSessions, CalibrationListScreen, CalibrationBoardScreen, PerformanceReportsScreen, type CalibrationBoardScreenProps, type PerformanceReportsScreenProps, type ReportKind } from './calibration';
 export { CompCyclesScreen, CompSheetScreen, type CompCyclesScreenProps, type CompSheetScreenProps } from './comp';
 export { PipsScreen, PipScreen, type PipsScreenProps, type PipScreenProps } from './pips';

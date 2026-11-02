@@ -3,8 +3,9 @@ import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
-import { ScopeUser, Viewer, buildViewer, covers, implicitPeriods, implicitSql, inScopeSql, started } from '../access/scope';
+import { ScopeUser, Viewer, buildViewer, covers, grantPeriods, implicitPeriods, implicitSql, inScopeSql, started } from '../access/scope';
 import { NotificationsService } from '../notifications/notifications.service';
+import { settingFor } from '../people/probation';
 import type { ActionDto, AgendaDto, FeedbackDto, FeedbackRequestDto, OneOnOneDto, OneOnOneUpdateDto } from './dto';
 
 // Performance batch PM3 (M06-BUILD-DESIGN §8, §15.3; PM-3.01 … 3.03): anytime feedback and requests for it, 1:1s, and
@@ -35,7 +36,25 @@ export class PerformanceFeedbackService {
   ) {}
 
   private viewer(user: ScopeUser) {
-    return buildViewer(this.prisma, this.tenantPrisma, user, ['perf.concern.seal']);
+    return buildViewer(this.prisma, this.tenantPrisma, user, ['perf.concern.seal', 'perf.goal.view']);
+  }
+
+  /** A person's goals: their manager chain and perf.goal.view in scope (the goals rule, PM2). */
+  private async seesGoalsOf(tx: Tx, c: CompanyContext, v: Viewer, me: string, employeeId: string) {
+    const today = todayIst();
+    if (await this.inMyChain(tx, c, me, employeeId)) return true;
+    return !v.actingForOther && covers(started(await grantPeriods(tx, c, v, 'perf.goal.view', employeeId, me), today), today);
+  }
+
+  /** PRF-08: the goals a feedback item may link to: the recipient's active ones, only when the giver may see them. */
+  async goalOptions(ctx: TenantContext, user: ScopeUser, employeeId: string) {
+    const v = await this.viewer(user);
+    return this.run(ctx, async (tx, c) => {
+      const me = (await this.me(tx, c.organizationId, v))?.id;
+      if (!me || me === employeeId || !(await this.seesGoalsOf(tx, c, v, me, employeeId))) return { goals: [] };
+      const goals = await tx.goal.findMany({ where: { organizationId: c.organizationId, ownerType: 'person', ownerEmployeeId: employeeId, status: { in: ['active', 'submitted'] } }, orderBy: { createdAt: 'asc' }, select: { id: true, title: true }, take: 50 });
+      return { goals: goals.map((g) => ({ value: g.id, label: g.title })) };
+    });
   }
 
   private run<T>(ctx: TenantContext, fn: (tx: Tx, c: CompanyContext) => Promise<T>) {
@@ -61,6 +80,17 @@ export class PerformanceFeedbackService {
       const p = persons.find((x) => x.id === e.personId);
       return [e.id, p ? [p.preferredName || p.givenName, p.familyName].filter(Boolean).join(' ') : ''];
     }));
+  }
+
+  /** Today's designation of each employee (the 1:1 list shows the other person's role). */
+  private async roles(tx: Tx, org: string, ids: string[]) {
+    const today = todayIst();
+    const rows = await tx.$queryRaw<{ id: string; role: string | null }[]>`
+      SELECT a.employee_id::text AS id, d.name AS role FROM employee_assignments a
+        LEFT JOIN designations d ON d.organization_id = a.organization_id AND d.id = a.designation_id
+      WHERE a.organization_id = ${org}::uuid AND a.employee_id = ANY(${ids}::uuid[]) AND a.superseded_at IS NULL
+        AND a.valid_from <= ${today}::date AND (a.valid_to IS NULL OR a.valid_to >= ${today}::date)`;
+    return new Map(rows.map((r) => [r.id, r.role ?? '']));
   }
 
   private async userOf(tx: Tx, org: string, employeeId: string) {
@@ -116,12 +146,15 @@ export class PerformanceFeedbackService {
       const me = await this.mustBeEmployee(tx, org, v);
       if (dto.toEmployeeId === me) throw new BadRequestException('Feedback goes to a colleague, not yourself.');
       if (!(await tx.employee.findFirst({ where: { organizationId: org, id: dto.toEmployeeId }, select: { id: true } }))) throw new BadRequestException('Choose a colleague of this company.');
+      if (dto.goalId && !(await this.seesGoalsOf(tx, c, v, me, dto.toEmployeeId))) throw new BadRequestException('You can link only goals you can see.');
       if (dto.goalId && !(await tx.goal.findFirst({ where: { organizationId: org, id: dto.goalId, ownerEmployeeId: dto.toEmployeeId }, select: { id: true } }))) throw new BadRequestException('Link a goal of the person you are writing to.');
       if (dto.requestId) {
         const n = await tx.feedbackRequest.updateMany({ where: { organizationId: org, id: dto.requestId, askedEmployeeId: me, aboutEmployeeId: dto.toEmployeeId, status: 'open' }, data: { status: 'answered', answeredAt: new Date() } });
         if (!n.count) throw new BadRequestException('That request is not open for you.');
       }
-      const x = await tx.feedbackItem.create({ data: { organizationId: org, fromEmployeeId: me, toEmployeeId: dto.toEmployeeId, kind: dto.kind, text: dto.text, visibility: dto.visibility ?? 'private', goalId: dto.goalId ?? null, requestId: dto.requestId ?? null } });
+      const visibility = dto.visibility ?? (await settingFor(tx, c, 'perf.feedback.default_visibility', { legalEntityId: '' }));
+      const x = await tx.feedbackItem.create({ data: { organizationId: org, fromEmployeeId: me, toEmployeeId: dto.toEmployeeId, kind: dto.kind, text: dto.text, visibility, goalId: dto.goalId ?? null, requestId: dto.requestId ?? null } });
+      await audit(tx, c, 'perf.feedback.given', 'feedback_item', x.id, { to: dto.toEmployeeId, kind: dto.kind, visibility });
       const people = await this.names(tx, org, [me, dto.toEmployeeId]);
       return { view: this.itemView(x, people, me, false), to: await this.userOf(tx, org, dto.toEmployeeId) };
     });
@@ -161,14 +194,17 @@ export class PerformanceFeedbackService {
       else if (view === 'given') rows = await tx.feedbackItem.findMany({ where: { organizationId: org, fromEmployeeId: me, withdrawnAt: null }, orderBy: { createdAt: 'desc' }, take: 200 });
       else {
         const ids = await tx.$queryRaw<{ id: string }[]>`
-          SELECT f.id::text FROM feedback_items f WHERE f.organization_id = ${org}::uuid AND f.visibility = 'private' AND f.withdrawn_at IS NULL
+          SELECT f.id::text FROM feedback_items f WHERE f.organization_id = ${org}::uuid AND f.visibility IN ('private', 'with_hr') AND f.withdrawn_at IS NULL
             AND f.sealed_at IS NULL AND f.to_employee_id <> ${me}::uuid AND ${await implicitSql(tx, c, me, Prisma.sql`f.to_employee_id`, Prisma.sql`${todayIst()}::date`)}
           ORDER BY f.created_at DESC LIMIT 300`;
         rows = await tx.feedbackItem.findMany({ where: { organizationId: org, id: { in: ids.map((r) => r.id) } }, orderBy: { createdAt: 'desc' } });
       }
       const people = await this.names(tx, org, rows.flatMap((x) => [x.fromEmployeeId, x.toEmployeeId]));
       // Sealed items leave every list but the recipient's and giver's own, where they show as removed (§15.3).
-      return { items: rows.filter((x) => !x.sealedAt || view !== 'team').map((x) => this.itemView(x, people, me, sealer && view === 'employee')) };
+      // PRF-08: a linked goal shows by its title; whoever reads the item already sees that person's goals or wrote it.
+      const goals = new Map((await tx.goal.findMany({ where: { organizationId: org, id: { in: rows.map((x) => x.goalId).filter((g): g is string => Boolean(g)) } }, select: { id: true, title: true } })).map((g) => [g.id, g.title]));
+      const defaultVisibility = await settingFor(tx, c, 'perf.feedback.default_visibility', { legalEntityId: '' });
+      return { items: rows.filter((x) => !x.sealedAt || view !== 'team').map((x) => ({ ...this.itemView(x, people, me, sealer && view === 'employee'), goal: x.goalId ? (goals.get(x.goalId) ?? null) : null })), defaultVisibility };
     });
   }
 
@@ -192,7 +228,7 @@ export class PerformanceFeedbackService {
       // The calendar quarter of today in India (Jan–Mar, Apr–Jun, Jul–Sep, Oct–Dec).
       const [y, m] = today.split('-').map(Number);
       const from = `${y}-${String(Math.floor((m - 1) / 3) * 3 + 1).padStart(2, '0')}-01`;
-      const base = { organizationId: org, withdrawnAt: null, sealedAt: null, createdAt: { gte: new Date(`${from}T00:00:00+05:30`) }, ...(self ? {} : { visibility: 'private' }) };
+      const base = { organizationId: org, withdrawnAt: null, sealedAt: null, createdAt: { gte: new Date(`${from}T00:00:00+05:30`) }, ...(self ? {} : { visibility: { in: ['private', 'with_hr'] } }) };
       const [received, given] = await Promise.all([tx.feedbackItem.count({ where: { ...base, toEmployeeId: employeeId } }), tx.feedbackItem.count({ where: { ...base, fromEmployeeId: employeeId } })]);
       return { from, received, given };
     });
@@ -239,7 +275,7 @@ export class PerformanceFeedbackService {
       if (!me) return { requests: [] };
       const rows = await tx.feedbackRequest.findMany({ where: { organizationId: org, askedEmployeeId: me, status: 'open' }, orderBy: { createdAt: 'asc' } });
       const people = await this.names(tx, org, rows.flatMap((r) => [r.requestedByEmployeeId, r.aboutEmployeeId]));
-      return { requests: rows.map((r) => ({ id: r.id, about: people.get(r.aboutEmployeeId) ?? '', aboutEmployeeId: r.aboutEmployeeId, requestedBy: people.get(r.requestedByEmployeeId) ?? '', question: r.question, dueOn: r.dueOn ? iso(r.dueOn) : null })) };
+      return { requests: rows.map((r) => ({ id: r.id, about: people.get(r.aboutEmployeeId) ?? '', aboutEmployeeId: r.aboutEmployeeId, requestedBy: people.get(r.requestedByEmployeeId) ?? '', question: r.question, dueOn: r.dueOn ? iso(r.dueOn) : null, askedAt: r.createdAt.toISOString() })) };
     });
   }
 
@@ -267,6 +303,9 @@ export class PerformanceFeedbackService {
     const agenda = await tx.oneOnOneAgendaItem.findMany({ where: { organizationId: org, oneOnOneId: m.id }, orderBy: { createdAt: 'asc' } });
     const actions = await tx.oneOnOneAction.findMany({ where: { organizationId: org, oneOnOneId: m.id }, orderBy: { createdAt: 'asc' } });
     const note = await tx.oneOnOnePrivateNote.findFirst({ where: { organizationId: org, oneOnOneId: m.id, authorUserId: userId } });
+    const last = await tx.oneOnOne.findFirst({ where: { organizationId: org, employeeId: m.employeeId, managerEmployeeId: m.managerEmployeeId, status: 'held', id: { not: m.id } }, orderBy: { on: 'desc' }, select: { on: true } });
+    // PRF-11: an action links to one of the employee's goals; both people of the 1:1 may read the employee's goals.
+    const goals = await tx.goal.findMany({ where: { organizationId: org, ownerType: 'person', ownerEmployeeId: m.employeeId, status: { in: ['active', 'submitted'] } }, orderBy: { createdAt: 'asc' }, select: { id: true, title: true }, take: 50 });
     const people = await this.names(tx, org, [m.employeeId, m.managerEmployeeId, ...agenda.map((a) => a.addedByEmployeeId), ...actions.map((a) => a.ownerEmployeeId)]);
     return {
       id: m.id,
@@ -282,6 +321,9 @@ export class PerformanceFeedbackService {
       actions: actions.map((a) => ({ id: a.id, text: a.text, owner: people.get(a.ownerEmployeeId) ?? '', ownerEmployeeId: a.ownerEmployeeId, dueOn: a.dueOn ? iso(a.dueOn) : null, goalId: a.goalId, done: Boolean(a.doneAt) })),
       // Only the author ever reads their private note (D7).
       privateNote: note?.text ?? '',
+      cadenceDays: m.cadenceDays,
+      lastHeldOn: last ? iso(last.on) : null,
+      goals: goals.map((g) => ({ value: g.id, label: g.title })),
       version: m.version,
     };
   }
@@ -299,7 +341,37 @@ export class PerformanceFeedbackService {
       const manager = await this.managerOf(tx, org, me);
       const partners = [...(manager ? [manager] : []), ...reports.map((r) => r.id)];
       const people = await this.names(tx, org, [...rows.flatMap((m) => [m.employeeId, m.managerEmployeeId]), ...partners]);
+      // PRF-11: one row per pair: the 1:1 to open (the next planned one, else the latest), when it was last held, its rhythm.
+      const today = todayIst();
+      const pairKey = (m: Meeting) => `${m.employeeId}|${m.managerEmployeeId}`;
+      const heads = [...new Set(rows.map(pairKey))].map((k) => {
+        const mine = rows.filter((m) => pairKey(m) === k);
+        const planned = mine.filter((m) => m.status === 'planned').sort((a, b) => a.on.getTime() - b.on.getTime());
+        const head = planned.find((m) => iso(m.on) >= today) ?? planned[planned.length - 1] ?? mine[0]!;
+        return { head, last: mine.filter((m) => m.status === 'held').sort((a, b) => b.on.getTime() - a.on.getTime())[0] ?? null };
+      });
+      const ids = heads.map((h) => h.head.id);
+      const [agenda, open, roles] = await Promise.all([
+        tx.oneOnOneAgendaItem.groupBy({ by: ['oneOnOneId'], where: { organizationId: org, oneOnOneId: { in: ids } }, _count: { _all: true } }),
+        tx.oneOnOneAction.groupBy({ by: ['oneOnOneId'], where: { organizationId: org, oneOnOneId: { in: ids }, doneAt: null }, _count: { _all: true } }),
+        this.roles(tx, org, heads.map((h) => (h.head.employeeId === me ? h.head.managerEmployeeId : h.head.employeeId))),
+      ]);
+      const count = (xs: { oneOnOneId: string; _count: { _all: number } }[], id: string) => xs.find((x) => x.oneOnOneId === id)?._count._all ?? 0;
       return {
+        pairs: heads.map(({ head: m, last }) => ({
+          id: m.id,
+          role: m.managerEmployeeId === me ? 'manager' : 'employee',
+          employee: people.get(m.employeeId) ?? '',
+          manager: people.get(m.managerEmployeeId) ?? '',
+          partnerRole: roles.get(m.employeeId === me ? m.managerEmployeeId : m.employeeId) ?? '',
+          on: iso(m.on),
+          status: m.status,
+          lastHeldOn: last ? iso(last.on) : null,
+          cadenceDays: m.cadenceDays,
+          agendaItems: count(agenda, m.id),
+          openActions: count(open, m.id),
+        })),
+        defaultCadenceDays: Number(await settingFor(tx, c, 'perf.one_on_one.cadence_days', { legalEntityId: '' })),
         meetings: rows.map((m) => ({ id: m.id, with: people.get(m.employeeId === me ? m.managerEmployeeId : m.employeeId) ?? '', on: iso(m.on), status: m.status, role: m.managerEmployeeId === me ? 'manager' : 'employee' })),
         // Who I can hold a 1:1 with: my manager and my direct reports.
         partners: partners.map((p) => ({ value: p, label: `${people.get(p) ?? ''}${p === manager ? ' (my manager)' : ''}` })),
@@ -325,7 +397,8 @@ export class PerformanceFeedbackService {
       if ((await this.managerOf(tx, org, me)) === dto.withEmployeeId) pair = { employeeId: me, managerEmployeeId: dto.withEmployeeId };
       else if ((await this.managerOf(tx, org, dto.withEmployeeId)) === me) pair = { employeeId: dto.withEmployeeId, managerEmployeeId: me };
       else throw new ForbiddenException('A 1:1 is with your manager or one of your direct reports.');
-      const m = await tx.oneOnOne.create({ data: { organizationId: org, ...pair, on: asDate(dto.on), createdBy: v.userId } });
+      if (dto.on < todayIst()) throw new BadRequestException('Choose today or a later date.');
+      const m = await tx.oneOnOne.create({ data: { organizationId: org, ...pair, on: asDate(dto.on), cadenceDays: dto.cadenceDays ?? null, createdBy: v.userId } });
       const earlier = await tx.oneOnOne.findMany({ where: { organizationId: org, ...pair, id: { not: m.id } }, select: { id: true } });
       await tx.oneOnOneAction.updateMany({ where: { organizationId: org, oneOnOneId: { in: earlier.map((e) => e.id) }, doneAt: null }, data: { oneOnOneId: m.id } });
       await audit(tx, c, 'perf.one_on_one.created', 'one_on_one', m.id, {});
@@ -337,9 +410,22 @@ export class PerformanceFeedbackService {
     const v = await this.viewer(user);
     return this.run(ctx, async (tx, c) => {
       const org = c.organizationId;
-      const { me } = await this.meetingOr404(tx, org, v, id);
+      const { m: before, me } = await this.meetingOr404(tx, org, v, id);
+      if (dto.on && dto.on !== iso(before.on) && dto.on < todayIst()) throw new BadRequestException('Choose today or a later date.');
+      if (dto.status === 'held' && before.status !== 'planned') throw new ConflictException('Only a planned 1:1 can be marked as held.');
       const n = await tx.oneOnOne.updateMany({ where: { organizationId: org, id, version: dto.version }, data: { ...(dto.sharedNotes !== undefined ? { sharedNotes: dto.sharedNotes } : {}), ...(dto.status ? { status: dto.status } : {}), ...(dto.on ? { on: asDate(dto.on), remindedOn: null } : {}), version: { increment: 1 } } });
       if (!n.count) throw new ConflictException('Someone else changed this 1:1. Reload it.');
+      if (dto.status || dto.on) await audit(tx, c, dto.status ? `perf.one_on_one.${dto.status}` : 'perf.one_on_one.rescheduled', 'one_on_one', id, { before: { status: before.status, on: iso(before.on) }, after: { status: dto.status ?? before.status, on: dto.on ?? iso(before.on) } });
+      // PRF-11: held and it repeats: plan the next one on its rhythm (never in the past) unless one is already planned.
+      if (dto.status === 'held' && before.cadenceDays) {
+        const pair = { employeeId: before.employeeId, managerEmployeeId: before.managerEmployeeId };
+        if (!(await tx.oneOnOne.findFirst({ where: { organizationId: org, ...pair, status: 'planned', id: { not: id } }, select: { id: true } }))) {
+          const due = addDays(iso(before.on), before.cadenceDays);
+          const next = await tx.oneOnOne.create({ data: { organizationId: org, ...pair, on: asDate(due < todayIst() ? addDays(todayIst(), before.cadenceDays) : due), cadenceDays: before.cadenceDays, createdBy: v.userId } });
+          await tx.oneOnOneAction.updateMany({ where: { organizationId: org, oneOnOneId: id, doneAt: null }, data: { oneOnOneId: next.id } });
+          await audit(tx, c, 'perf.one_on_one.created', 'one_on_one', next.id, { after: id });
+        }
+      }
       return this.meetingView(tx, org, await tx.oneOnOne.findFirstOrThrow({ where: { id } }), me, v.userId!);
     });
   }

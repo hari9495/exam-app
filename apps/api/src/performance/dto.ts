@@ -413,8 +413,8 @@ export class FeedbackDto {
   text!: string;
 
   @IsOptional()
-  @IsIn(['private', 'recipient_only'])
-  visibility?: 'private' | 'recipient_only';
+  @IsIn(['private', 'recipient_only', 'with_hr'])
+  visibility?: 'private' | 'recipient_only' | 'with_hr';
 
   @IsOptional()
   @IsUUID()
@@ -465,6 +465,11 @@ export class OneOnOneDto {
 
   @Matches(ISO)
   on!: string;
+
+  /** PRF-11: repeats every 7, 14 or 30 days; null or absent = one-off. */
+  @IsOptional()
+  @IsIn([7, 14, 30])
+  cadenceDays?: number | null;
 }
 
 export class OneOnOneUpdateDto {

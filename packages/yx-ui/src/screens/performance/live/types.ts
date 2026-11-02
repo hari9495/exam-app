@@ -179,8 +179,10 @@ export interface FeedbackItem {
   kind: 'praise' | 'suggestion';
   /** Null when HR sealed it: the people see that HR removed it. */
   text: string | null;
-  visibility: 'private' | 'recipient_only';
+  visibility: 'private' | 'recipient_only' | 'with_hr';
   goalId: string | null;
+  /** The linked goal's title (PRF-08). */
+  goal?: string | null;
   fromRequest: boolean;
   at: string;
   sealed: boolean;
@@ -194,14 +196,16 @@ export interface FeedbackRequest {
   requestedBy: string;
   question: string;
   dueOn: string | null;
+  askedAt?: string;
 }
 
 export interface FeedbackInput {
   toEmployeeId: string;
   kind: 'praise' | 'suggestion';
   text: string;
-  visibility: 'private' | 'recipient_only';
+  visibility: 'private' | 'recipient_only' | 'with_hr';
   requestId?: string;
+  goalId?: string | null;
 }
 
 export interface OneOnOneSummary {
@@ -210,6 +214,21 @@ export interface OneOnOneSummary {
   on: string;
   status: 'planned' | 'held' | 'cancelled';
   role: 'manager' | 'employee';
+}
+
+/** PRF-11: one row per pair of people: the 1:1 to open, when it was last held, its rhythm and counts. */
+export interface OneOnOnePair {
+  id: string;
+  role: 'manager' | 'employee';
+  employee: string;
+  manager: string;
+  partnerRole: string;
+  on: string;
+  status: 'planned' | 'held' | 'cancelled';
+  lastHeldOn: string | null;
+  cadenceDays: 7 | 14 | 30 | null;
+  agendaItems: number;
+  openActions: number;
 }
 
 export interface OneOnOne {
@@ -226,6 +245,10 @@ export interface OneOnOne {
   actions: { id: string; text: string; owner: string; ownerEmployeeId: string; dueOn: string | null; goalId: string | null; done: boolean }[];
   /** Only the viewer's own note; the other person never sees it. */
   privateNote: string;
+  cadenceDays?: 7 | 14 | 30 | null;
+  lastHeldOn?: string | null;
+  /** The employee's active goals an action may link to. */
+  goals?: Choice[];
   version: number;
 }
 

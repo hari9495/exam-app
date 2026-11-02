@@ -44,3 +44,15 @@ export function usePerfDownload() {
 
 /** The designs take ready, loading or error; anything else (no access, no record) shows as the error with Retry. */
 export const perfState = (s: string): 'ready' | 'loading' | 'error' => (s === 'ready' || s === 'loading' ? s : 'error');
+
+/** The designed Performance screens know ready / loading / error; a refusal (403) shows as the error state. */
+export function designState(...queries: { isError: boolean; isSuccess: boolean; error: unknown }[]): 'ready' | 'loading' | 'error' {
+  if (queries.some((q) => q.isError)) return 'error';
+  return queries.every((q) => q.isSuccess) ? 'ready' : 'loading';
+}
+
+/** "2026-11-03" → that day at local midnight (the designed screens take dates). */
+export function day(iso: string): Date {
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+  return new Date(y!, m! - 1, d!);
+}

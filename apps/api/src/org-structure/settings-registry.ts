@@ -75,6 +75,10 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'perf.comp.budget_overrun': { label: 'Performance: a comp proposal over budget', scopes: ['tenant', 'legal_entity'], dated: false, values: ['extra_approval', 'block'], default: 'extra_approval' },
   'perf.pay_band.visible': { label: 'Performance: employees see their own pay band', scopes: ['tenant', 'legal_entity'], dated: false, values: ['on', 'off'], default: 'on' },
   'perf.pay_equity.flag_pct': { label: 'Performance: flag pay below the grade-and-role median by more than (%)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['5', '10', '15'], default: '10' },
+  // PRF-08 / PRF-11 / PRF-12 (performance designs, builder 2): the choice each form starts with.
+  'perf.feedback.default_visibility': { label: 'Performance: new feedback is shown to', scopes: ['tenant'], dated: false, values: ['private', 'recipient_only', 'with_hr'], default: 'private' },
+  'perf.one_on_one.cadence_days': { label: 'Performance: a new 1:1 repeats every (days)', scopes: ['tenant'], dated: false, values: ['7', '14', '30'], default: '14' },
+  'perf.pip.extend_days': { label: 'Performance: an improvement plan is extended by (days)', scopes: ['tenant'], dated: false, values: ['15', '30', '45', '60'], default: '30' },
   'perf.pip.lengths': { label: 'Performance: improvement plans run for (days)', scopes: ['tenant'], dated: false, values: ['30,60,90', '30,60', '60,90', '90'], default: '30,60,90' },
   // M10 AT2 (D5): requisitions against the headcount plan: not used, shown (outside-plan needs the extra approver), or required.
   'ats.headcount_plan': { label: 'Hiring: requisitions and the headcount plan', scopes: ['tenant'], dated: false, values: ['off', 'advisory', 'required'], default: 'advisory' },

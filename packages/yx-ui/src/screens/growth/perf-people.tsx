@@ -1,20 +1,24 @@
 // Performance, people side: quick feedback (PRF-08), 1:1s with suggested agenda (PRF-11, PRF-16), PIP record (PRF-12),
 // hand-over list after a manager change (PRF-13), competency framework (PRF-14).
-import { useMemo, useState } from 'react';
-import { Archive, Check, GitMerge, Lock, MessageSquarePlus, Plus, Send } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Archive, CalendarPlus, Check, GitMerge, Lock, MessageSquarePlus, Plus, Send } from 'lucide-react';
 import { Button, Link } from '../../components/button';
 import { AiBadge, Badge, PersonLabel } from '../../components/display';
 import { Icon, Text } from '../../components/foundations';
-import { EmptyState, InlineAlert, Skeleton } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, Skeleton } from '../../components/feedback';
 import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { FilterBar, SavedViewMenu, type FilterFieldDef } from '../../components/filters';
 import { Drawer } from '../../components/drawer';
 import { BottomSheet, ConfirmDialog } from '../../components/overlay';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
+import { DatePicker } from '../../components/date';
+import { Segment } from '../../components/segment';
+import { dayKey } from '../../lib/dates';
+import { useAct } from './perf-live';
 import { TextArea, TextField } from '../../components/inputs';
 import { Checkbox, RadioGroup } from '../../components/choice';
-import { PersonPicker, Select, type PersonOption } from '../../components/select';
+import { MultiSelect, PersonPicker, Select, type PersonOption } from '../../components/select';
 import { MenuItem } from '../../components/menu';
 import { ApprovalTimeline, type ApprovalStep } from '../../components/timeline';
 import { formatDate } from '../../lib/format';
@@ -27,15 +31,60 @@ import './growth.css';
 
 /* ================================================================== PRF-08 · Quick feedback */
 
+export type FeedbackVisibility = 'Only them' | 'Them and their manager' | 'Them, their manager and HR';
+
 export interface FeedbackItem {
   id: string;
   from: string;
   to: string;
   kind: 'Praise' | 'Suggestion';
-  text: string;
+  /** Null when HR removed it (a concern): the people see that HR removed it. */
+  text: string | null;
   at: Date;
   goal?: string;
-  visibility: 'Only them' | 'Them and their manager' | 'Them, their manager and HR';
+  visibility: FeedbackVisibility;
+  /** Live: the giver may withdraw it within 24 hours; HR who handle concerns may seal it. */
+  canWithdraw?: boolean;
+  canSeal?: boolean;
+  sealed?: boolean;
+}
+
+export interface FeedbackAsk {
+  id: string;
+  from: string;
+  about: string;
+  at: Date;
+  /** Live: the person the feedback is about, the question and when it is wanted. */
+  aboutId?: string;
+  question?: string;
+  due?: Date | null;
+}
+
+/** The API's visibility values and the words the screen uses. */
+export const VISIBILITY: Record<'recipient_only' | 'private' | 'with_hr', FeedbackVisibility> = { recipient_only: 'Only them', private: 'Them and their manager', with_hr: 'Them, their manager and HR' };
+const visibilityKey = (v: FeedbackVisibility) => (Object.keys(VISIBILITY) as (keyof typeof VISIBILITY)[]).find((k) => VISIBILITY[k] === v)!;
+
+/** The app's feedback: lists from the server, colleagues searched on the server, every send checked there. */
+export interface LiveQuickFeedback {
+  onRetry: () => void;
+  /** The company's default for "Who can see it" (perf.feedback.default_visibility). */
+  defaultVisibility: FeedbackVisibility;
+  onPeopleSearch: (query: string) => void;
+  /** The chosen recipient, so the app can load the goals the viewer may link to (`goals`). */
+  onRecipient: (employeeId: string | null) => void;
+  /** Private feedback to the viewer's team (managers only; null hides the tab). */
+  team: FeedbackItem[] | null;
+  /** HR who handle concerns: one person's feedback with sealed text (null hides the tab). */
+  concerns: { personId: string | null; onPerson: (id: string | null) => void; items: FeedbackItem[] } | null;
+  /** Who the viewer may ask feedback about: themselves and their team. */
+  askAbout: { value: string; label: string }[];
+  /** Where a concern is reported confidentially. */
+  concernHref: string;
+  onGive: (input: { toEmployeeId: string; kind: 'praise' | 'suggestion'; text: string; visibility: keyof typeof VISIBILITY; goalId: string | null; requestId?: string }) => Promise<unknown>;
+  onWithdraw: (id: string) => Promise<unknown>;
+  onAsk: (input: { aboutEmployeeId: string; askedEmployeeIds: string[]; question: string; dueOn: string | null }) => Promise<unknown>;
+  onDecline: (id: string) => Promise<unknown>;
+  onSeal: (id: string, reason: string) => Promise<unknown>;
 }
 
 export interface QuickFeedbackProps {
@@ -45,72 +94,255 @@ export interface QuickFeedbackProps {
   goals: { value: string; label: string }[];
   received: FeedbackItem[];
   given: FeedbackItem[];
-  requests?: { id: string; from: string; about: string; at: Date }[];
-  defaultTab?: 'received' | 'given' | 'requests';
+  requests?: FeedbackAsk[];
+  defaultTab?: 'received' | 'given' | 'requests' | 'team' | 'concerns';
   composerOpen?: boolean;
+  /** Stories: show the toast for a sent item. */
   sent?: boolean;
+  /** Stories: open the ask sheet, or the seal dialog for the first concern. */
+  askOpen?: boolean;
+  sealOpen?: boolean;
   state?: LoadState;
+  live?: LiveQuickFeedback;
 }
 
-function FeedbackList({ items, dir }: { items: FeedbackItem[]; dir: 'from' | 'to' }) {
-  if (items.length === 0) return <EmptyState compact title={dir === 'from' ? 'No feedback received yet' : 'You haven’t given feedback yet'} description="Feedback works best when it’s specific and soon after the moment." />;
+function FeedbackList({ items, dir, onWithdraw, onSeal, busy }: { items: FeedbackItem[]; dir: 'from' | 'to' | 'both'; onWithdraw?: (f: FeedbackItem) => void; onSeal?: (f: FeedbackItem) => void; busy?: string | null }) {
+  if (items.length === 0) return <EmptyState compact title={dir === 'from' ? 'No feedback received yet' : dir === 'to' ? 'You haven’t given feedback yet' : 'No feedback here yet'} description="Feedback works best when it’s specific and soon after the moment." />;
   return (
     <ul className="yx-growth-list">
       {items.map((f) => (
         <li key={f.id} className="yx-growth-list__item" data-top="">
-          <PersonLabel name={dir === 'from' ? f.from : f.to} secondary={formatDate(f.at)} size={32} />
+          <PersonLabel name={dir === 'from' ? f.from : f.to} secondary={dir === 'both' ? `From ${f.from} · ${formatDate(f.at)}` : formatDate(f.at)} size={32} />
           <div className="yx-growth-list__main">
-            <p className="yx-growth-p">{f.text}</p>
+            {f.text === null ? <Text tone="secondary">Removed by HR</Text> : <p className="yx-growth-p">{f.text}</p>}
             <span className="yx-growth-meta">
               {f.goal ? `Linked to “${f.goal}” · ` : ''}Visible to: {f.visibility.toLowerCase()}
             </span>
           </div>
+          {f.sealed && <Badge tone="warning">Sealed</Badge>}
           <Badge tone={f.kind === 'Praise' ? 'success' : 'info'}>{f.kind}</Badge>
+          {f.canWithdraw && onWithdraw && (
+            <Button size="sm" loading={busy === `w-${f.id}`} onClick={() => onWithdraw(f)}>
+              Withdraw
+            </Button>
+          )}
+          {f.canSeal && onSeal && (
+            <Button size="sm" variant="danger" onClick={() => onSeal(f)}>
+              Seal
+            </Button>
+          )}
         </li>
       ))}
     </ul>
   );
 }
 
-/** PRF-08 Quick feedback (T4): give anytime to any colleague, visibility rule shown before sending (YX-PERF-04). */
-export function QuickFeedbackScreen({ device = 'desktop', me, people, goals, received, given, requests = [], defaultTab = 'received', composerOpen, sent: sentProp, state = 'ready' }: QuickFeedbackProps) {
-  const [open, setOpen] = useState(!!composerOpen);
-  const [to, setTo] = useState<string | null>(composerOpen ? people[1]?.id ?? null : null);
-  const [kind, setKind] = useState<'Praise' | 'Suggestion'>('Praise');
-  const [text, setText] = useState(composerOpen ? 'Thanks for staying back to re-run the seal-strength tests on line 3. We shipped on time because of it.' : '');
-  const [goal, setGoal] = useState<string | null>(null);
-  const [vis, setVis] = useState<FeedbackItem['visibility']>('Them and their manager');
-  const [sent, setSent] = useState(!!sentProp);
-  const [error, setError] = useState<string | null>(null);
-  const person = people.find((p) => p.id === to);
+function AskSheet({ open, onOpenChange, people, live }: { open: boolean; onOpenChange: (o: boolean) => void; people: PersonOption[]; live?: LiveQuickFeedback }) {
+  const about = live?.askAbout ?? [
+    { value: 'me', label: 'Myself' },
+    { value: 't3', label: 'Meera Iyer' },
+  ];
+  const [who, setWho] = useState<string | null>(about[0]?.value ?? null);
+  const [asked, setAsked] = useState<string[]>([]);
+  const [chosen, setChosen] = useState<PersonOption[]>([]);
+  const [question, setQuestion] = useState('');
+  const [due, setDue] = useState<Date | null>(null);
+  const { busy, act } = useAct();
+  // Search results plus the people already chosen, so a chosen name stays shown after the next search.
+  const options = [...chosen.filter((c) => !people.some((p) => p.id === c.id)), ...people].filter((p) => p.id !== who);
+  const check = useTooEarly([
+    ...(!who ? [{ fieldId: 'fb-ask-about', message: 'Choose who the feedback is about.' }] : []),
+    ...(asked.length === 0 ? [{ fieldId: 'fb-ask-who', message: 'Choose at least one colleague to ask.' }] : asked.length > 10 ? [{ fieldId: 'fb-ask-who', message: 'Ask up to 10 colleagues at a time.' }] : []),
+    ...(question.trim().length < 3 ? [{ fieldId: 'fb-ask-q', message: 'Write what you want to know.' }] : []),
+  ]);
+  const close = () => {
+    onOpenChange(false);
+    setAsked([]);
+    setChosen([]);
+    setQuestion('');
+    setDue(null);
+    check.reset();
+  };
+  const send = async () => {
+    if (check.stop()) return;
+    if (!live) return close();
+    if (await act('ask', () => live.onAsk({ aboutEmployeeId: who!, askedEmployeeIds: asked, question: question.trim(), dueOn: due ? dayKey(due) : null }), `Asked ${asked.length} ${asked.length === 1 ? 'colleague' : 'colleagues'} for feedback`)) close();
+  };
+  return (
+    <Drawer
+      open={open}
+      onOpenChange={(x) => (x ? onOpenChange(true) : close())}
+      title="Ask for feedback"
+      dirty={question.length > 0 || asked.length > 0}
+      footer={
+        <div className="yx-growth-foot">
+          <Button onClick={close}>Cancel</Button>
+          <Button variant="primary" icon={Send} loading={busy === 'ask'} onClick={() => void send()}>
+            Send requests
+          </Button>
+        </div>
+      }
+    >
+      <div className="yx-growth-stack">
+        <FormField label="About" required id="fb-ask-about" error={check.errorOf('fb-ask-about')}>
+          <Select value={who} onChange={setWho} options={about} />
+        </FormField>
+        <FormField label="Ask" required rule="Up to 10 colleagues." id="fb-ask-who" error={check.errorOf('fb-ask-who')}>
+          <MultiSelect
+            value={asked}
+            onChange={(ids) => {
+              setChosen(options.filter((p) => ids.includes(p.id)));
+              setAsked(ids);
+            }}
+            options={options.map((p) => ({ value: p.id, label: p.name }))}
+            onSearchChange={live?.onPeopleSearch}
+            searchPlaceholder="Search people"
+          />
+        </FormField>
+        <FormField label="What do you want to know" required id="fb-ask-q" error={check.errorOf('fb-ask-q')} helper="One clear question gets better answers.">
+          <TextField value={question} onChange={setQuestion} maxLength={500} />
+        </FormField>
+        <FormField label="Answer by" optional>
+          <DatePicker value={due} onChange={setDue} min={live ? new Date() : TODAY} />
+        </FormField>
+        <div className="yx-growth-effect">
+          <span className="yx-growth-effect__title">When you send</span>
+          <ul>
+            <li>Each colleague gets an in-app request and sees it under Requests.</li>
+            <li>They may answer or decline. You see what they write under Received.</li>
+          </ul>
+        </div>
+      </div>
+    </Drawer>
+  );
+}
 
-  const send = () => {
-    if (!to) return setError('Choose who the feedback is for.');
-    if (text.trim().length < 20) return setError('Write at least 20 characters so the feedback is specific.');
-    setError(null);
-    setSent(true);
+function SealDialog({ item, onClose, onSeal }: { item: FeedbackItem | null; onClose: () => void; onSeal: (reason: string) => Promise<unknown> }) {
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  const { toast } = useAct();
+  return (
+    <ConfirmDialog
+      open={item != null}
+      onOpenChange={(o) => {
+        if (o) return;
+        onClose();
+        setReason('');
+        setTried(false);
+      }}
+      destructive
+      title={item ? `Seal feedback from ${item.from} to ${item.to}?` : 'Seal feedback'}
+      consequence="It leaves every performance view and report. The two people see that HR removed it. The reason is recorded."
+      confirmLabel="Seal feedback"
+      onConfirm={async () => {
+        setTried(true);
+        if (reason.trim().length < 3) {
+          document.getElementById('fb-seal-reason')?.focus();
+          return false;
+        }
+        await onSeal(reason.trim());
+        toast({ title: 'Feedback sealed', tone: 'success' });
+      }}
+    >
+      <FormField label="Reason" required id="fb-seal-reason" error={tried && reason.trim().length < 3 ? 'Enter a reason of at least 3 characters.' : null}>
+        <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
+      </FormField>
+    </ConfirmDialog>
+  );
+}
+
+/** PRF-08 Quick feedback (T4): give anytime to any colleague, visibility rule shown before sending (YX-PERF-04). */
+export function QuickFeedbackScreen({ device = 'desktop', me, people, goals, received, given, requests = [], defaultTab = 'received', composerOpen, sent: sentProp, askOpen, sealOpen, state = 'ready', live }: QuickFeedbackProps) {
+  const [open, setOpen] = useState(!!composerOpen);
+  const [to, setTo] = useState<string | null>(composerOpen && !live ? (people[1]?.id ?? null) : null);
+  const [kind, setKind] = useState<'Praise' | 'Suggestion'>('Praise');
+  const [text, setText] = useState(composerOpen && !live ? 'Thanks for staying back to re-run the seal-strength tests on line 3. We shipped on time because of it.' : '');
+  const [goal, setGoal] = useState<string | null>(null);
+  const [vis, setVis] = useState<FeedbackVisibility>(live?.defaultVisibility ?? 'Them and their manager');
+  const [answering, setAnswering] = useState<FeedbackAsk | null>(null);
+  const [chosen, setChosen] = useState<PersonOption | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [asking, setAsking] = useState(!!askOpen);
+  const [sealing, setSealing] = useState<FeedbackItem | null>(sealOpen ? (live?.concerns?.items[0] ?? received[0] ?? null) : null);
+  const [concernPerson, setConcernPerson] = useState<PersonOption | null>(null);
+  const { busy, act, toast } = useAct();
+  const shown = [...(chosen && !people.some((p) => p.id === chosen.id) ? [chosen] : []), ...people];
+  const person = answering ? { id: answering.aboutId ?? '', name: answering.about } : shown.find((p) => p.id === to);
+  // Stories: the sent state shows the toast the app shows after sending.
+  useEffect(() => {
+    if (sentProp) toast({ title: 'Feedback sent to Meera Iyer', description: 'They can see it now. You can find it under Given.', tone: 'success' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const pickTo = (id: string | null) => {
+    setTo(id);
+    setGoal(null);
+    setChosen(shown.find((p) => p.id === id) ?? null);
+    live?.onRecipient(id);
+  };
+  const close = () => {
     setOpen(false);
+    setAnswering(null);
+    setError(null);
+  };
+  const reset = () => {
+    setTo(null);
+    setText('');
+    setGoal(null);
+    setKind('Praise');
+    setVis(live?.defaultVisibility ?? 'Them and their manager');
+    live?.onRecipient(null);
+  };
+  const send = async () => {
+    const target = answering ? (answering.aboutId ?? null) : to;
+    if (!target) {
+      setError('Choose who the feedback is for.');
+      return document.getElementById('fb-to')?.focus();
+    }
+    if (text.trim().length < 20) {
+      setError('Write at least 20 characters so the feedback is specific.');
+      return document.getElementById('fb-text')?.focus();
+    }
+    setError(null);
+    if (!live) return close();
+    const done = await act('give', () => live.onGive({ toEmployeeId: target, kind: kind === 'Praise' ? 'praise' : 'suggestion', text: text.trim(), visibility: visibilityKey(vis), goalId: goal, ...(answering ? { requestId: answering.id } : {}) }), `Feedback sent to ${person?.name ?? 'your colleague'}`);
+    if (done) {
+      close();
+      reset();
+    }
+  };
+  const answer = (r: FeedbackAsk) => {
+    setAnswering(r);
+    setTo(r.aboutId ?? null);
+    live?.onRecipient(r.aboutId ?? null);
+    setOpen(true);
   };
 
   const form = (
     <div className="yx-growth-stack">
-      <FormField label="To" required error={error && !to ? error : null}>
-        <PersonPicker people={people.filter((p) => p.name !== me)} value={to} onChange={setTo} />
-      </FormField>
+      {answering ? (
+        <InlineAlert tone="info" title={`${answering.from} asked about ${answering.about}`}>
+          {answering.question ?? answering.about}
+        </InlineAlert>
+      ) : (
+        <FormField label="To" required id="fb-to" error={error && !to ? error : null}>
+          <PersonPicker people={shown.filter((p) => p.name !== me)} value={to} onChange={pickTo} onSearchChange={live?.onPeopleSearch} />
+        </FormField>
+      )}
       <FormField label="Type">
-        <RadioGroup aria-label="Type" orientation="horizontal" value={kind} onChange={(v) => setKind(v as typeof kind)} options={[{ value: 'Praise', label: 'Praise' }, { value: 'Suggestion', label: 'Suggestion' }]} />
+        <Segment label="Type" value={kind} onChange={setKind} options={[{ value: 'Praise' as const, label: 'Praise' }, { value: 'Suggestion' as const, label: 'Suggestion' }]} />
       </FormField>
-      <FormField label="Feedback" required helper="Say what they did and what it led to." error={error && to ? error : null}>
-        <TextArea value={text} onChange={setText} rows={4} />
+      <FormField label="Feedback" required id="fb-text" helper="Say what they did and what it led to." error={error && (to || answering) ? error : null}>
+        <TextArea value={text} onChange={setText} rows={4} maxLength={2000} />
       </FormField>
-      <FormField label="Link to one of their goals" optional>
+      <FormField label="Link to one of their goals" optional helper={live && person && goals.length === 0 ? 'You can link only goals you can see; none here.' : undefined}>
         <Select value={goal} onChange={setGoal} clearable placeholder="No goal" options={goals} />
       </FormField>
       <FormField label="Who can see it">
         <RadioGroup
           aria-label="Who can see it"
           value={vis}
-          onChange={(v) => setVis(v as FeedbackItem['visibility'])}
+          onChange={(v) => setVis(v as FeedbackVisibility)}
           options={[
             { value: 'Only them', label: `Only ${person?.name ?? 'them'}` },
             { value: 'Them and their manager', label: `${person?.name ?? 'Them'} and their manager` },
@@ -123,19 +355,23 @@ export function QuickFeedbackScreen({ device = 'desktop', me, people, goals, rec
         <ul>
           <li>{person ? `${person.name} gets an in-app notification.` : 'Choose a person to see who is notified.'}</li>
           <li>It shows in their feedback list{vis !== 'Only them' ? ' and their manager’s view' : ''}, and as context in their next review.</li>
-          <li>Feedback outside a review never changes a rating.</li>
+          <li>Feedback outside a review never changes a rating. You can withdraw it within 24 hours.</li>
         </ul>
       </div>
+      <Text size="sm" tone="secondary">
+        Harassment, safety or misconduct? Feedback is not the place for it. <Link href={live?.concernHref ?? '#'}>Report a concern</Link>: it goes to a confidential channel.
+      </Text>
     </div>
   );
   const footer = (
     <div className="yx-growth-foot">
-      <Button onClick={() => setOpen(false)}>Cancel</Button>
-      <Button variant="primary" icon={Send} onClick={send}>
+      <Button onClick={close}>Cancel</Button>
+      <Button variant="primary" icon={Send} loading={busy === 'give'} onClick={() => void send()}>
         Send feedback
       </Button>
     </div>
   );
+  const withdraw = live && ((f: FeedbackItem) => void act(`w-${f.id}`, () => live.onWithdraw(f.id), 'Feedback withdrawn'));
   const lists = (
     <Tabs defaultValue={defaultTab}>
       <TabsList aria-label="Feedback">
@@ -148,10 +384,16 @@ export function QuickFeedbackScreen({ device = 'desktop', me, people, goals, rec
         <TabsTrigger value="requests" count={requests.length}>
           Requests
         </TabsTrigger>
+        {live?.team && (
+          <TabsTrigger value="team" count={live.team.length}>
+            My team
+          </TabsTrigger>
+        )}
+        {live?.concerns && <TabsTrigger value="concerns">Concerns</TabsTrigger>}
       </TabsList>
       <TabsContent value="received">{state === 'loading' ? <Skeleton height={200} /> : <FeedbackList items={received} dir="from" />}</TabsContent>
       <TabsContent value="given">
-        <FeedbackList items={given} dir="to" />
+        <FeedbackList items={given} dir="to" onWithdraw={withdraw || undefined} busy={busy} />
       </TabsContent>
       <TabsContent value="requests">
         {requests.length === 0 ? (
@@ -160,38 +402,81 @@ export function QuickFeedbackScreen({ device = 'desktop', me, people, goals, rec
           <ul className="yx-growth-list">
             {requests.map((r) => (
               <li key={r.id} className="yx-growth-list__item">
-                <PersonLabel name={r.from} secondary={`Asked ${formatDate(r.at)}`} />
-                <span className="yx-growth-grow">About: {r.about}</span>
-                <Button size="sm" onClick={() => setOpen(true)}>
+                <PersonLabel name={r.from} secondary={`Asked ${formatDate(r.at)}${r.due ? ` · answer by ${formatDate(r.due)}` : ''}`} />
+                <span className="yx-growth-grow">About: {r.question ? `${r.about}. ${r.question}` : r.about}</span>
+                <Button size="sm" onClick={() => answer(r)}>
                   Give feedback
                 </Button>
+                {live && (
+                  <Button size="sm" loading={busy === `d-${r.id}`} onClick={() => void act(`d-${r.id}`, () => live.onDecline(r.id), 'Request declined')}>
+                    Decline
+                  </Button>
+                )}
               </li>
             ))}
           </ul>
         )}
       </TabsContent>
+      {live?.team && (
+        <TabsContent value="team">
+          <FeedbackList items={live.team} dir="both" />
+        </TabsContent>
+      )}
+      {live?.concerns && (
+        <TabsContent value="concerns">
+          <div className="yx-growth-stack">
+            <FormField label="Employee" helper="Their feedback, given and received, including sealed text. Reading it is recorded.">
+              <PersonPicker
+                value={live.concerns.personId}
+                onChange={(id) => {
+                  setConcernPerson(shown.find((p) => p.id === id) ?? null);
+                  live.concerns!.onPerson(id);
+                }}
+                people={[...(concernPerson && !people.some((p) => p.id === concernPerson.id) ? [concernPerson] : []), ...people]}
+                onSearchChange={live.onPeopleSearch}
+                clearable
+              />
+            </FormField>
+            {live.concerns.personId ? <FeedbackList items={live.concerns.items} dir="both" onSeal={setSealing} /> : <EmptyState compact title="Choose an employee" description="Search by name to read their feedback." />}
+          </div>
+        </TabsContent>
+      )}
     </Tabs>
   );
-  const confirmation = sent && (
-    <InlineAlert tone="success" title={`Feedback sent to ${person?.name ?? 'Meera Iyer'}`}>
-      They can see it now. You can find it under Given.
-    </InlineAlert>
+  const askButton = (live ? live.askAbout.length > 0 : true) && (
+    <Button fullWidth={device === 'phone'} onClick={() => setAsking(true)}>
+      Ask for feedback
+    </Button>
   );
+  const sheets = (
+    <>
+      <AskSheet open={asking} onOpenChange={setAsking} people={people} live={live} />
+      <SealDialog item={sealing} onClose={() => setSealing(null)} onSeal={(reason) => (live && sealing ? live.onSeal(sealing.id, reason) : Promise.resolve())} />
+    </>
+  );
+  const title = answering ? `Feedback about ${answering.about}` : 'Give feedback';
+  if (state === 'error')
+    return (
+      <GrowthFrame area="performance" active="Feedback" persona="emp">
+        <PageHeader title="Feedback" />
+        <ErrorState title="We couldn’t load your feedback" description="Check your connection and try again." onRetry={live?.onRetry} />
+      </GrowthFrame>
+    );
 
   if (device === 'phone')
     return (
       <GrowthFrame area="performance" active="Feedback" persona="emp" device="phone" phone={{ title: 'Feedback' }}>
-        {confirmation}
         {lists}
         <div className="yx-growth-pinned">
           <Button variant="primary" fullWidth icon={MessageSquarePlus} onClick={() => setOpen(true)}>
             Give feedback
           </Button>
-          <Button fullWidth>Ask for feedback</Button>
+          {askButton}
         </div>
-        <BottomSheet open={open} onOpenChange={setOpen} title="Give feedback" footer={footer}>
+        <BottomSheet open={open} onOpenChange={(o) => (o ? setOpen(true) : close())} title={title} footer={footer}>
           {form}
         </BottomSheet>
+        {sheets}
       </GrowthFrame>
     );
   return (
@@ -201,18 +486,18 @@ export function QuickFeedbackScreen({ device = 'desktop', me, people, goals, rec
         description="Give and ask for feedback any time. Feedback inside a review uses nominated reviewers instead."
         actions={
           <>
-            <Button>Ask for feedback</Button>
+            {askButton}
             <Button variant="primary" icon={MessageSquarePlus} onClick={() => setOpen(true)}>
               Give feedback
             </Button>
           </>
         }
       />
-      {confirmation}
       {lists}
-      <Drawer open={open} onOpenChange={setOpen} title="Give feedback" footer={footer} dirty={text.length > 0}>
+      <Drawer open={open} onOpenChange={(o) => (o ? setOpen(true) : close())} title={title} footer={footer} dirty={text.length > 0}>
         {form}
       </Drawer>
+      {sheets}
     </GrowthFrame>
   );
 }
@@ -223,7 +508,7 @@ export interface OneOnOneAction {
   id: string;
   text: string;
   owner: string;
-  due: Date;
+  due: Date | null;
   done: boolean;
   goal?: string;
 }
@@ -241,6 +526,45 @@ export interface OneOnOne {
   privateNote: string;
   actions: OneOnOneAction[];
   history: { at: Date; summary: string }[];
+  /** Live list rows carry counts only; the record is loaded when it is opened. */
+  counts?: { agenda: number; openActions: number };
+  /** Live: planned, held or cancelled. */
+  status?: 'planned' | 'held' | 'cancelled';
+}
+
+/** 7, 14 or 30 days; null = one-off (perf.one_on_one.cadence_days is the company's default). */
+export type Cadence = 7 | 14 | 30 | null;
+export const cadenceLabel = (d: Cadence | undefined) => (d === 7 ? 'Every week' : d === 14 ? 'Every 2 weeks' : d === 30 ? 'Monthly' : 'One-off');
+const CADENCES: { value: string; label: string }[] = [
+  { value: '7', label: 'Weekly' },
+  { value: '14', label: 'Every 2 weeks' },
+  { value: '30', label: 'Monthly' },
+  { value: 'once', label: 'One-off' },
+];
+const toCadence = (v: string): Cadence => (v === 'once' ? null : (Number(v) as Cadence));
+
+/** The app's 1:1s: the list from the server, the open record loaded on its own, every change saved and refreshed. */
+export interface LiveOneOnOnes {
+  today: Date;
+  onRetry: () => void;
+  /** The open record (agenda, notes, actions) and its state; null while nothing is open. */
+  record: OneOnOne | null;
+  recordState: LoadState;
+  onOpen: (id: string | null) => void;
+  /** Who the viewer can hold a 1:1 with: their manager and direct reports. */
+  partners: { value: string; label: string }[];
+  defaultCadence: Cadence;
+  /** The two people of the open 1:1 (an action belongs to one of them) and the employee's goals. */
+  owners: { value: string; label: string }[];
+  goals: { value: string; label: string }[];
+  onSchedule: (input: { withEmployeeId: string; on: string; cadenceDays: Cadence }) => Promise<unknown>;
+  onAgenda: (text: string) => Promise<unknown>;
+  onSharedNotes: (text: string) => Promise<unknown>;
+  onPrivateNote: (text: string) => Promise<unknown>;
+  onAction: (input: { text: string; ownerEmployeeId: string; dueOn: string | null; goalId: string | null }) => Promise<unknown>;
+  onActionDone: (id: string, done: boolean) => Promise<unknown>;
+  onHeld: () => Promise<unknown>;
+  onReschedule: (on: string) => Promise<unknown>;
 }
 
 export interface OneOnOneProps {
@@ -250,36 +574,121 @@ export interface OneOnOneProps {
   openId?: string;
   suggestedAgenda?: { id: string; text: string; why: string }[];
   state?: LoadState;
+  /** Stories: open the schedule, add-action or reschedule form. */
+  scheduleOpen?: boolean;
+  actionOpen?: boolean;
+  rescheduleOpen?: boolean;
+  live?: LiveOneOnOnes;
 }
 
-function OneOnOneRecord({ o, persona, suggested }: { o: OneOnOne; persona: 'emp' | 'mgr'; suggested?: OneOnOneProps['suggestedAgenda'] }) {
+type RecordLive = Pick<LiveOneOnOnes, 'owners' | 'goals' | 'onAgenda' | 'onSharedNotes' | 'onPrivateNote' | 'onAction' | 'onActionDone'>;
+
+function AddActionSheet({ open, onOpenChange, o, live }: { open: boolean; onOpenChange: (o: boolean) => void; o: OneOnOne; live?: RecordLive }) {
+  const owners = live?.owners ?? [
+    { value: 'e', label: o.employee },
+    { value: 'm', label: o.manager },
+  ];
+  const [text, setText] = useState('');
+  const [owner, setOwner] = useState<string | null>(owners[0]?.value ?? null);
+  const [due, setDue] = useState<Date | null>(null);
+  const [goal, setGoal] = useState<string | null>(null);
+  const { busy, act } = useAct();
+  const check = useTooEarly([...(text.trim().length < 2 ? [{ fieldId: 'oo-action-text', message: 'Write what needs doing.' }] : []), ...(!owner ? [{ fieldId: 'oo-action-owner', message: 'Choose who does it.' }] : [])]);
+  const close = () => {
+    onOpenChange(false);
+    setText('');
+    setDue(null);
+    setGoal(null);
+    check.reset();
+  };
+  const save = async () => {
+    if (check.stop()) return;
+    if (!live) return close();
+    if (await act('action', () => live.onAction({ text: text.trim(), ownerEmployeeId: owner!, dueOn: due ? dayKey(due) : null, goalId: goal }), 'Action item added')) close();
+  };
+  return (
+    <Drawer
+      open={open}
+      onOpenChange={(x) => (x ? onOpenChange(true) : close())}
+      title="Add action item"
+      dirty={text.length > 0}
+      footer={
+        <div className="yx-growth-foot">
+          <Button onClick={close}>Cancel</Button>
+          <Button variant="primary" icon={Plus} loading={busy === 'action'} onClick={() => void save()}>
+            Add action item
+          </Button>
+        </div>
+      }
+    >
+      <div className="yx-growth-stack">
+        <FormField label="What needs doing" required id="oo-action-text" error={check.errorOf('oo-action-text')}>
+          <TextField value={text} onChange={setText} />
+        </FormField>
+        <FormField label="Who does it" required id="oo-action-owner" error={check.errorOf('oo-action-owner')}>
+          <Select value={owner} onChange={setOwner} options={owners} />
+        </FormField>
+        <FormField label="Due" optional>
+          <DatePicker value={due} onChange={setDue} />
+        </FormField>
+        <FormField label={`Link to one of ${o.employee}’s goals`} optional helper={live && !live.goals.length ? 'No active goals to link yet.' : undefined}>
+          <Select value={goal} onChange={setGoal} clearable placeholder="No goal" options={live?.goals ?? []} />
+        </FormField>
+      </div>
+    </Drawer>
+  );
+}
+
+function OneOnOneRecord({ o, persona, suggested, live, actionOpen }: { o: OneOnOne; persona: 'emp' | 'mgr'; suggested?: OneOnOneProps['suggestedAgenda']; live?: RecordLive; actionOpen?: boolean }) {
   const [agenda, setAgenda] = useState(o.agenda);
   const [draft, setDraft] = useState('');
   const [actions, setActions] = useState(o.actions);
   const [added, setAdded] = useState<string[]>([]);
+  const [shared, setShared] = useState(o.shared);
+  const [mine, setMine] = useState(o.privateNote);
+  const [adding, setAdding] = useState(!!actionOpen);
+  const { busy, act } = useAct();
+  const agendaCheck = useTooEarly(draft.trim().length < 2 ? [{ fieldId: 'oo-agenda', message: 'Write the agenda item first.' }] : []);
+  // Live: the server's record is the truth; it arrives again after every save.
+  const shownAgenda = live ? o.agenda : agenda;
+  const shownActions = live ? o.actions : actions;
   const other = persona === 'mgr' ? o.employee : o.manager;
+  const addItem = async (text: string, id?: string) => {
+    if (live) return act('agenda', () => live.onAgenda(text), 'Agenda item added');
+    setAgenda((xs) => [...xs, { id: id ?? `n${xs.length}`, text, by: persona === 'mgr' ? o.manager : o.employee }]);
+    return true;
+  };
   return (
     <div className="yx-growth-stack">
       <section aria-label="Agenda" className="yx-growth-stack" data-gap="sm">
         <h3 className="yx-growth-h">Shared agenda · {formatDate(o.next)}</h3>
-        <ol className="yx-growth-list">
-          {agenda.map((a) => (
-            <li key={a.id} className="yx-growth-list__item">
-              <span className="yx-growth-grow">{a.text}</span>
-              <span className="yx-growth-meta">Added by {a.by}</span>
-            </li>
-          ))}
-        </ol>
+        {shownAgenda.length === 0 ? (
+          <Text tone="secondary">Nothing on the agenda yet. Either of you can add an item.</Text>
+        ) : (
+          <ol className="yx-growth-list">
+            {shownAgenda.map((a) => (
+              <li key={a.id} className="yx-growth-list__item">
+                <span className="yx-growth-grow">{a.text}</span>
+                <span className="yx-growth-meta">Added by {a.by}</span>
+              </li>
+            ))}
+          </ol>
+        )}
         <div className="yx-growth-row">
           <div className="yx-growth-grow">
-            <TextField aria-label="Add an agenda item" placeholder="Add an agenda item" value={draft} onChange={setDraft} />
+            <FormField label="Add an agenda item" hideLabel id="oo-agenda" error={agendaCheck.errorOf('oo-agenda')}>
+              <TextField placeholder="Add an agenda item" value={draft} onChange={setDraft} />
+            </FormField>
           </div>
           <Button
             icon={Plus}
-            disabled={!draft.trim()}
-            onClick={() => {
-              setAgenda((xs) => [...xs, { id: `n${xs.length}`, text: draft.trim(), by: persona === 'mgr' ? o.manager : o.employee }]);
-              setDraft('');
+            loading={busy === 'agenda'}
+            onClick={async () => {
+              if (agendaCheck.stop()) return;
+              if (await addItem(draft.trim())) {
+                setDraft('');
+                agendaCheck.reset();
+              }
             }}
           >
             Add item
@@ -307,9 +716,8 @@ function OneOnOneRecord({ o, persona, suggested }: { o: OneOnOne; persona: 'emp'
                 ) : (
                   <Button
                     size="sm"
-                    onClick={() => {
-                      setAdded((a) => [...a, s.id]);
-                      setAgenda((xs) => [...xs, { id: s.id, text: s.text, by: o.manager }]);
+                    onClick={async () => {
+                      if (await addItem(s.text, s.id)) setAdded((a) => [...a, s.id]);
                     }}
                   >
                     Add to agenda
@@ -324,9 +732,9 @@ function OneOnOneRecord({ o, persona, suggested }: { o: OneOnOne; persona: 'emp'
         <section className="yx-growth-note" aria-label="Shared notes">
           <h3 className="yx-growth-h">Shared notes</h3>
           <Text size="sm" tone="secondary">
-            You and {other} both see these.
+            You and {other} both see these. They save when you leave the box.
           </Text>
-          <TextArea aria-label="Shared notes" defaultValue={o.shared} rows={5} />
+          <TextArea aria-label="Shared notes" value={shared} onChange={setShared} onBlur={() => live && shared !== o.shared && void act('shared', () => live.onSharedNotes(shared), 'Shared notes saved')} rows={5} />
         </section>
         <section className="yx-growth-note" data-private="" aria-label="My private notes">
           <h3 className="yx-growth-h">
@@ -335,49 +743,174 @@ function OneOnOneRecord({ o, persona, suggested }: { o: OneOnOne; persona: 'emp'
           <Text size="sm" tone="secondary">
             Only you can see these. They stay with you if either of you changes role.
           </Text>
-          <TextArea aria-label="My private notes" defaultValue={o.privateNote} rows={5} />
+          <TextArea aria-label="My private notes" value={mine} onChange={setMine} onBlur={() => live && mine !== o.privateNote && void act('private', () => live.onPrivateNote(mine), 'Private notes saved')} rows={5} />
         </section>
       </div>
       <section aria-label="Action items" className="yx-growth-stack" data-gap="sm">
         <h3 className="yx-growth-h">Action items</h3>
-        <ul className="yx-growth-list">
-          {actions.map((a) => (
-            <li key={a.id} className="yx-growth-list__item">
-              <Checkbox checked={a.done} onChange={(c) => setActions((xs) => xs.map((x) => (x.id === a.id ? { ...x, done: c } : x)))} label={a.text} description={`${a.owner} · due ${formatDate(a.due)}${a.goal ? ` · goal: ${a.goal}` : ''}`} />
-            </li>
-          ))}
-        </ul>
-        <Button icon={Plus} size="sm">
-          Add action item
-        </Button>
+        {shownActions.length === 0 ? (
+          <Text tone="secondary">No action items. Open ones carry over to your next 1:1.</Text>
+        ) : (
+          <ul className="yx-growth-list">
+            {shownActions.map((a) => (
+              <li key={a.id} className="yx-growth-list__item">
+                <Checkbox
+                  checked={a.done}
+                  onChange={(c) => (live ? void act('done', () => live.onActionDone(a.id, c), c ? 'Action marked done' : 'Action reopened') : setActions((xs) => xs.map((x) => (x.id === a.id ? { ...x, done: c } : x))))}
+                  label={a.text}
+                  description={`${a.owner}${a.due ? ` · due ${formatDate(a.due)}` : ''}${a.goal ? ` · goal: ${a.goal}` : ''}`}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="yx-growth-row">
+          <Button icon={Plus} size="sm" onClick={() => setAdding(true)}>
+            Add action item
+          </Button>
+        </div>
       </section>
+      <AddActionSheet open={adding} onOpenChange={setAdding} o={o} live={live} />
     </div>
   );
 }
 
+function ScheduleSheet({ open, onOpenChange, live, today }: { open: boolean; onOpenChange: (o: boolean) => void; live?: LiveOneOnOnes; today: Date }) {
+  const partners = live?.partners ?? [
+    { value: 't2', label: 'Rohit Bhat' },
+    { value: 't3', label: 'Meera Iyer' },
+  ];
+  const [who, setWho] = useState<string | null>(null);
+  const [on, setOn] = useState<Date | null>(null);
+  const [cadence, setCadence] = useState<string>(String(live ? (live.defaultCadence ?? 'once') : 14));
+  const { busy, act } = useAct();
+  const check = useTooEarly([...(!who ? [{ fieldId: 'oo-with', message: 'Choose who the 1:1 is with.' }] : []), ...(!on ? [{ fieldId: 'oo-on', message: 'Choose the date of the first 1:1.' }] : [])]);
+  const close = () => {
+    onOpenChange(false);
+    setWho(null);
+    setOn(null);
+    check.reset();
+  };
+  const save = async () => {
+    if (check.stop()) return;
+    if (!live) return close();
+    if (await act('schedule', () => live.onSchedule({ withEmployeeId: who!, on: dayKey(on!), cadenceDays: toCadence(cadence) }), '1:1 scheduled')) close();
+  };
+  return (
+    <Drawer
+      open={open}
+      onOpenChange={(x) => (x ? onOpenChange(true) : close())}
+      title="Schedule 1:1"
+      footer={
+        <div className="yx-growth-foot">
+          <Button onClick={close}>Cancel</Button>
+          <Button variant="primary" icon={CalendarPlus} loading={busy === 'schedule'} onClick={() => void save()}>
+            Schedule 1:1
+          </Button>
+        </div>
+      }
+    >
+      <div className="yx-growth-stack">
+        <FormField label="With" required id="oo-with" error={check.errorOf('oo-with')} helper={live && !partners.length ? 'You have no manager or direct reports to meet yet.' : undefined}>
+          <Select value={who} onChange={setWho} options={partners} placeholder="Choose a person" />
+        </FormField>
+        <FormField label="First 1:1 on" required id="oo-on" error={check.errorOf('oo-on')}>
+          <DatePicker value={on} onChange={setOn} min={today} />
+        </FormField>
+        <FormField label="Repeats">
+          <Segment label="Repeats" value={cadence} onChange={setCadence} options={CADENCES} />
+        </FormField>
+        <div className="yx-growth-effect">
+          <span className="yx-growth-effect__title">When you schedule</span>
+          <ul>
+            <li>You both see it in 1:1s and get a reminder the day before.</li>
+            <li>{toCadence(cadence) ? `When you mark it as held, the next one is planned ${cadenceLabel(toCadence(cadence)).toLowerCase()}.` : 'It happens once; schedule the next one when you need it.'}</li>
+            <li>Open action items from your earlier 1:1s carry over to it.</li>
+          </ul>
+        </div>
+      </div>
+    </Drawer>
+  );
+}
+
+function RescheduleDialog({ open, onOpenChange, current, live, today }: { open: boolean; onOpenChange: (o: boolean) => void; current: OneOnOne; live?: LiveOneOnOnes; today: Date }) {
+  const [on, setOn] = useState<Date | null>(null);
+  const [tried, setTried] = useState(false);
+  const { toast } = useAct();
+  return (
+    <ConfirmDialog
+      open={open}
+      onOpenChange={(x) => {
+        onOpenChange(x);
+        if (!x) {
+          setOn(null);
+          setTried(false);
+        }
+      }}
+      title={`Move the 1:1 on ${formatDate(current.next)}?`}
+      consequence="You both see the new date. The reminder moves with it."
+      confirmLabel="Move 1:1"
+      onConfirm={async () => {
+        setTried(true);
+        if (!on) {
+          document.getElementById('oo-new-date')?.focus();
+          return false;
+        }
+        if (!live) return;
+        await live.onReschedule(dayKey(on));
+        toast({ title: `1:1 moved to ${formatDate(on)}`, tone: 'success' });
+      }}
+    >
+      <FormField label="New date" required id="oo-new-date" error={tried && !on ? 'Choose the new date.' : null}>
+        <DatePicker value={on} onChange={setOn} min={today} />
+      </FormField>
+    </ConfirmDialog>
+  );
+}
+
 /** PRF-11 1:1s (T2 list + T3 record): shared agenda, shared notes, private notes, action items linked to goals. */
-export function OneOnOneScreen({ persona, device = 'desktop', items, openId, suggestedAgenda, state = 'ready' }: OneOnOneProps) {
-  const [open, setOpen] = useState<string | null>(openId ?? null);
-  const current = items.find((i) => i.id === open) ?? null;
+export function OneOnOneScreen({ persona, device = 'desktop', items, openId, suggestedAgenda, state = 'ready', scheduleOpen, actionOpen, rescheduleOpen, live }: OneOnOneProps) {
+  const [ownOpen, setOwnOpen] = useState<string | null>(openId ?? null);
+  const open = live ? (openId ?? null) : ownOpen;
+  const setOpen = (id: string | null) => (live ? live.onOpen(id) : setOwnOpen(id));
+  const [scheduling, setScheduling] = useState(!!scheduleOpen);
+  const [moving, setMoving] = useState(!!rescheduleOpen);
+  const { busy, act } = useAct();
+  const today = live?.today ?? TODAY;
+  const row = items.find((i) => i.id === open) ?? null;
+  const current = live ? (live.record && live.record.id === open ? live.record : null) : row;
+  const heading = row ?? current;
+  const agendaCount = (r: OneOnOne) => r.counts?.agenda ?? r.agenda.length;
+  const openActions = (r: OneOnOne) => r.counts?.openActions ?? r.actions.filter((a) => !a.done).length;
   const cols: TableColumn<OneOnOne>[] = [
     { key: 'who', header: persona === 'mgr' ? 'Team member' : 'With', type: 'person', value: (r) => (persona === 'mgr' ? r.employee : r.manager), person: (r) => ({ name: persona === 'mgr' ? r.employee : r.manager, secondary: persona === 'mgr' ? r.role : 'Your manager' }), width: 240 },
     { key: 'cadence', header: 'Cadence', value: (r) => r.cadence, width: 130 },
     { key: 'next', header: 'Next', type: 'date', value: (r) => r.next, width: 130 },
     { key: 'last', header: 'Last held', type: 'date', value: (r) => r.last, render: (r) => (r.last ? formatDate(r.last) : 'Not yet'), width: 130 },
-    { key: 'agenda', header: 'Agenda items', type: 'number', value: (r) => r.agenda.length, width: 120 },
-    { key: 'open', header: 'Open actions', type: 'number', value: (r) => r.actions.filter((a) => !a.done).length, width: 120 },
-    { key: 'status', header: 'Status', type: 'status', value: (r) => (r.last && (TODAY.getTime() - r.last.getTime()) / 86400000 > 35 ? 'Overdue' : 'On schedule'), statusTone: (v) => (v === 'Overdue' ? 'danger' : 'success'), width: 130 },
+    { key: 'agenda', header: 'Agenda items', type: 'number', value: agendaCount, width: 120 },
+    { key: 'open', header: 'Open actions', type: 'number', value: openActions, width: 120 },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => (r.last && (today.getTime() - r.last.getTime()) / 86400000 > 35 ? 'Overdue' : 'On schedule'), statusTone: (v) => (v === 'Overdue' ? 'danger' : 'success'), width: 130 },
   ];
+  const recordLive: RecordLive | undefined = live && { owners: live.owners, goals: live.goals, onAgenda: live.onAgenda, onSharedNotes: live.onSharedNotes, onPrivateNote: live.onPrivateNote, onAction: live.onAction, onActionDone: live.onActionDone };
+  // The record remounts when the server sends a new version, so its notes start from what was saved.
+  const record = (o: OneOnOne) => <OneOnOneRecord key={live ? JSON.stringify([o.id, o.shared, o.privateNote]) : o.id} o={o} persona={persona} suggested={suggestedAgenda} live={recordLive} actionOpen={actionOpen} />;
+  const recordBody = current ? record(current) : live?.recordState === 'error' ? <ErrorState title="We couldn’t load this 1:1" description="Check your connection and try again." onRetry={live.onRetry} /> : <Skeleton height={320} />;
+  const canSchedule = persona === 'mgr' || (live?.partners.length ?? 0) > 0;
+  const scheduleButton = canSchedule ? (
+    <Button variant="primary" icon={Plus} onClick={() => setScheduling(true)}>
+      Schedule 1:1
+    </Button>
+  ) : undefined;
   if (device === 'phone')
     return (
-      <GrowthFrame area="performance" active="1:1s" persona={persona} device="phone" phone={{ title: current ? `1:1 with ${persona === 'mgr' ? current.employee : current.manager}` : '1:1s', back: !!current }}>
-        {current ? (
-          <OneOnOneRecord o={current} persona={persona} suggested={suggestedAgenda} />
+      <GrowthFrame area="performance" active="1:1s" persona={persona} device="phone" phone={{ title: heading ? `1:1 with ${persona === 'mgr' ? heading.employee : heading.manager}` : '1:1s', back: !!heading }}>
+        {heading ? (
+          recordBody
         ) : (
           <ul className="yx-growth-list">
             {items.map((o) => (
               <li key={o.id} className="yx-growth-list__item">
-                <PersonLabel name={persona === 'mgr' ? o.employee : o.manager} secondary={`Next ${formatDate(o.next)} · ${o.agenda.length} agenda items`} />
+                <PersonLabel name={persona === 'mgr' ? o.employee : o.manager} secondary={`Next ${formatDate(o.next)} · ${agendaCount(o)} agenda items`} />
                 <Button size="sm" onClick={() => setOpen(o.id)}>
                   Open
                 </Button>
@@ -389,37 +922,41 @@ export function OneOnOneScreen({ persona, device = 'desktop', items, openId, sug
     );
   return (
     <GrowthFrame area="performance" active="1:1s" persona={persona}>
-      <PageHeader title="1:1s" description={persona === 'mgr' ? 'Regular 1:1s with each person in your team.' : 'Your 1:1s with your manager.'} actions={persona === 'mgr' ? <Button variant="primary" icon={Plus}>Schedule 1:1</Button> : undefined} />
+      <PageHeader title="1:1s" description={persona === 'mgr' ? 'Regular 1:1s with each person in your team.' : 'Your 1:1s with your manager.'} actions={scheduleButton} />
       <DataTable
         label="1:1s"
         columns={cols}
         rows={items}
         getRowId={(r) => r.id}
         state={state === 'loading' ? 'loading' : state === 'error' ? 'error' : 'ready'}
-        onRetry={() => {}}
-        empty={<EmptyState title="No 1:1s yet" description="Set a regular 1:1 with each team member. Fortnightly works for most teams." />}
+        onRetry={live?.onRetry ?? (() => {})}
+        empty={<EmptyState title="No 1:1s yet" description={persona === 'mgr' ? 'Set a regular 1:1 with each team member. Fortnightly works for most teams.' : 'Your manager schedules your 1:1s. You can also schedule one with them.'} />}
         onRowClick={(r) => setOpen(r.id)}
         activeRowId={open}
       />
-      {current && (
+      {heading && (
         <Drawer
           open
           onOpenChange={(o) => !o && setOpen(null)}
           size="lg"
-          title={`1:1 with ${persona === 'mgr' ? current.employee : current.manager}`}
-          subtitle={`${current.cadence} · next ${formatDate(current.next)}`}
+          title={`1:1 with ${persona === 'mgr' ? heading.employee : heading.manager}`}
+          subtitle={`${heading.cadence} · ${heading.status === 'held' ? `held ${formatDate(heading.next)}` : `next ${formatDate(heading.next)}`}`}
           footer={
-            <div className="yx-growth-foot">
-              <Button>Reschedule</Button>
-              <Button variant="primary" icon={Check}>
-                Mark as held
-              </Button>
-            </div>
+            heading.status === 'held' || heading.status === 'cancelled' ? undefined : (
+              <div className="yx-growth-foot">
+                <Button onClick={() => setMoving(true)}>Reschedule</Button>
+                <Button variant="primary" icon={Check} loading={busy === 'held'} onClick={() => (live ? void act('held', live.onHeld, heading.cadence === 'One-off' ? '1:1 marked as held' : '1:1 marked as held. The next one is planned.') : undefined)}>
+                  Mark as held
+                </Button>
+              </div>
+            )
           }
         >
-          <OneOnOneRecord o={current} persona={persona} suggested={suggestedAgenda} />
+          {recordBody}
         </Drawer>
       )}
+      {heading && <RescheduleDialog open={moving} onOpenChange={setMoving} current={heading} live={live} today={today} />}
+      <ScheduleSheet open={scheduling} onOpenChange={setScheduling} live={live} today={today} />
     </GrowthFrame>
   );
 }
