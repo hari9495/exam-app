@@ -2,6 +2,7 @@
 import { useState, type ReactNode } from 'react';
 import { ChevronDown, Eye, EyeOff, Lock } from 'lucide-react';
 import { DesktopFrame, type PanelSection } from '../_kit/frames';
+import { PlainTable } from '../../components/plain-table';
 import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
 import { IconButton } from '../../components/button';
 import { useToast } from '../../components/notify';
@@ -307,27 +308,18 @@ export function ExplainedLines({ lines, title, action }: { lines: FnfLine[]; tit
 /** Side-by-side evidence (same-person match, merge review). */
 export function CompareTable({ caption, left, right, rows, highlight }: { caption: string; left: string; right: string; rows: { label: string; a: ReactNode; b: ReactNode }[]; highlight?: (label: string) => boolean }) {
   return (
-    <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-    <table className="yx-ppl__compare">
-      <caption className="yx-visually-hidden">{caption}</caption>
-      <thead>
-        <tr>
-          <th scope="col">Field</th>
-          <th scope="col">{left}</th>
-          <th scope="col">{right}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r) => (
-          <tr key={r.label} data-match={highlight?.(r.label) || undefined}>
-            <th scope="row">{r.label}</th>
-            <td>{r.a || <span className="yx-table__none">—</span>}</td>
-            <td>{r.b || <span className="yx-table__none">—</span>}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-    </div>
+    <PlainTable
+      label={caption}
+      className="yx-ppl__compare"
+      rows={rows}
+      getRowId={(r) => r.label}
+      rowTone={(r) => (highlight?.(r.label) ? { tone: 'success', label: 'Same in both' } : undefined)}
+      columns={[
+        { key: 'field', header: 'Field', rowHeader: true, cell: (r) => r.label },
+        { key: 'a', header: left, cell: (r) => r.a || <span className="yx-table__none">—</span> },
+        { key: 'b', header: right, cell: (r) => r.b || <span className="yx-table__none">—</span> },
+      ]}
+    />
   );
 }
 

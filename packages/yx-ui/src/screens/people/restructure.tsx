@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ListChecks, Plus } from 'lucide-react';
 import { Button } from '../../components/button';
+import { PlainTable } from '../../components/plain-table';
 import { Card, ObjectHeader, PageHeader } from '../../components/shell';
 import { EmptyState, ErrorState, InlineAlert, NoAccessState } from '../../components/feedback';
 import { FormField, useTooEarly } from '../../components/field';
@@ -668,44 +669,33 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
                   {across && from && into && (
                     <Card title={`Places in ${intoE?.name ?? 'the new entity'}`}>
                       {moving.length ? (
-                        <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Locations and their place in the new entity">
-                          <table className="yx-ppl__impact">
-                            <thead>
-                              <tr>
-                                <th scope="col">Now at</th>
-                                <th scope="col">Location in {intoE?.name}</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {moving.map((l) => (
-                                <tr key={l.id}>
-                                  <td>
-                                    <span className="yx-ppl__type">
-                                      <span>{l.name}</span>
-                                      <span className="yx-ppl__sub">{persons(l.people)}</span>
-                                    </span>
-                                  </td>
-                                  <td>
-                                    <Select aria-label={`Location in ${intoE?.name} for ${l.name}`} size="sm" options={intoLocations.map((x) => ({ value: x.id, label: x.name }))} value={locOf(l) ?? null} onChange={(v) => v && setMap({ ...map, [l.id]: v })} placeholder="Choose…" />
-                                  </td>
-                                </tr>
-                              ))}
-                              {closedMasters.map((m) => (
-                                <tr key={m.id}>
-                                  <td>
-                                    <span className="yx-ppl__type">
-                                      <span>{m.name}</span>
-                                      <span className="yx-ppl__sub">{MASTER_TEXT[m.kind]} only for {fromE?.name} · {persons(m.byEntity[from!])}</span>
-                                    </span>
-                                  </td>
-                                  <td>
-                                    <Select aria-label={`${MASTER_TEXT[m.kind]} in ${intoE?.name} for ${m.name}`} size="sm" options={allMasters.filter((x) => x.kind === m.kind && openInto(x)).map((x) => ({ value: x.id, label: x.name }))} value={masterOf(m) ?? null} onChange={(v) => v && setMasterMap({ ...masterMap, [m.id]: v })} placeholder="Choose…" />
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
+                        <PlainTable
+                          label="Locations and their place in the new entity"
+                          rows={[...moving.map((l) => ({ id: `l-${l.id}`, l, m: undefined })), ...closedMasters.map((m) => ({ id: `m-${m.id}`, l: undefined, m }))]}
+                          getRowId={(r) => r.id}
+                          columns={[
+                            {
+                              key: 'now',
+                              header: 'Now at',
+                              cell: ({ l, m }) => (
+                                <span className="yx-ppl__type">
+                                  <span>{l ? l.name : m!.name}</span>
+                                  <span className="yx-ppl__sub">{l ? persons(l.people) : `${MASTER_TEXT[m!.kind]} only for ${fromE?.name} · ${persons(m!.byEntity[from!])}`}</span>
+                                </span>
+                              ),
+                            },
+                            {
+                              key: 'into',
+                              header: `Location in ${intoE?.name}`,
+                              cell: ({ l, m }) =>
+                                l ? (
+                                  <Select aria-label={`Location in ${intoE?.name} for ${l.name}`} size="sm" options={intoLocations.map((x) => ({ value: x.id, label: x.name }))} value={locOf(l) ?? null} onChange={(v) => v && setMap({ ...map, [l.id]: v })} placeholder="Choose…" />
+                                ) : (
+                                  <Select aria-label={`${MASTER_TEXT[m!.kind]} in ${intoE?.name} for ${m!.name}`} size="sm" options={allMasters.filter((x) => x.kind === m!.kind && openInto(x)).map((x) => ({ value: x.id, label: x.name }))} value={masterOf(m!) ?? null} onChange={(v) => v && setMasterMap({ ...masterMap, [m!.id]: v })} placeholder="Choose…" />
+                                ),
+                            },
+                          ]}
+                        />
                       ) : (
                         <Text size="sm" tone="secondary" as="p">{kind === 'demerge' ? (picking ? 'Pick the people who move.' : 'Choose the locations whose people move.') : 'No one works here today.'}</Text>
                       )}
@@ -1043,9 +1033,10 @@ export function RestructureRecord({ state, onRetry, data: d, today, onApprove, o
           </span>
         }
       />
-      {d.status === 'done' && (
-        <InlineAlert tone={d.failed ? 'warning' : 'info'} title={d.failed ? `${d.moved} moved · ${d.failed} couldn't move` : `All ${d.moved} moved`}>
-          {d.failed ? 'Each person who could not move stayed where they were. Fix the reason and move them in a new restructure.' : across ? 'Open each person’s continuity checklist for what payroll still has to do.' : 'The changes are in each person’s job history.'}
+      {/* "All N moved" is a done message: the approve flow says it in a 5-second toast. Who couldn't move stays. */}
+      {d.status === 'done' && d.failed > 0 && (
+        <InlineAlert tone="warning" title={`${d.moved} moved · ${d.failed} couldn't move`}>
+          Each person who could not move stayed where they were. Fix the reason and move them in a new restructure.
         </InlineAlert>
       )}
       {d.status === 'scheduled' && <InlineAlert tone="info" title={`Approved by ${d.decidedBy ?? 'the approver'}`}>The people move on {formatDate(day(d.effectiveDate))}. Each one is checked again on that day.</InlineAlert>}

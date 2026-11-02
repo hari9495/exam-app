@@ -40,7 +40,7 @@ const LEFT: Record<string, number> = {
   notifications: 1,
   ops: 0,
   pay: 2,
-  people: 20,
+  people: 4,
   'platform-a': 9,
   'platform-b': 1,
   portals: 19,

@@ -165,3 +165,21 @@ describe('/yx/people/restructure as payroll (founder 28 Oct 2026)', () => {
     expect((await screen.findAllByText('“Form 12B collected” done')).length).toBeGreaterThan(0);
   });
 });
+
+describe('/yx/people/restructure record as HR: the done message', () => {
+  it('approving a move that runs today says "All N moved" in a toast, not an alert on the page', async () => {
+    (useParams as jest.Mock).mockReturnValue({ id: 'r-2' });
+    (useRouter as jest.Mock).mockReturnValue({ push: jest.fn(), replace: jest.fn() });
+    const REC = { id: 'r-2', kind: 'within', title: 'Quality moves to Hosur', from: null, into: null, effectiveDate: '2026-10-01', status: 'pending', count: 2, moved: 0, failed: 0, requestedBy: 'Lakshmi', mine: false, reason: 'New plant', decidedBy: null, decidedAt: null, decisionNote: null, canDecide: true, canCancel: false, people: [{ employeeId: 'p-arjun', name: 'Arjun Kulkarni', status: 'pending', reason: null, result: null, openItems: 0 }] };
+    route({
+      [`GET ${PERMS_PATH}`]: ['employee.profile.view', 'employee.change.manage', 'employee.change.approve'],
+      'GET /people/restructures/r-2': REC,
+      'POST /people/restructures/r-2/approve': { ...REC, status: 'done', moved: 2, canDecide: false },
+    });
+    wrap(<YxRestructureRecordPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Approve and move 2 people' }));
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Approve and move 2 people' }));
+    expect((await screen.findAllByText('All 2 moved')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('The changes are in each person’s job history.').length).toBeGreaterThan(0);
+  });
+});

@@ -30,7 +30,9 @@ export default function YxRestructureRecordPage() {
         toast(
           out.status === 'scheduled'
             ? { tone: 'success', title: `${out.title} approved`, description: `The people move on ${new Date(`${out.effectiveDate}T00:00:00`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}.` }
-            : { tone: out.failed ? 'default' : 'success', title: `${out.moved} ${out.moved === 1 ? 'person' : 'people'} moved`, ...(out.failed ? { description: `${out.failed} couldn't move; the reasons are in the list.` } : {}) },
+            : out.failed
+              ? { tone: 'default', title: `${out.moved} ${out.moved === 1 ? 'person' : 'people'} moved`, description: `${out.failed} couldn't move; the reasons are in the list.` }
+              : { tone: 'success', title: `All ${out.moved} moved`, description: out.kind !== 'within' ? 'Open each person’s continuity checklist for what payroll still has to do.' : 'The changes are in each person’s job history.' },
         );
       }}
       onReject={async (reason) => {

@@ -1161,68 +1161,39 @@ export function IdentityPanel({ state = 'consented', onClose, live, name }: { st
         <Text size="sm" tone="secondary" as="p">
           Special class. No face image is shown here. Views are recorded.
         </Text>
-        <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Consent by jurisdiction, scrolls sideways on small screens">
-        <table className="yx-ppl__impact">
-          <caption className="yx-ppl__sub">Consent by jurisdiction</caption>
-          <thead>
-            <tr>
-              <th scope="col">Jurisdiction</th>
-              <th scope="col">Status</th>
-              <th scope="col">Captured at</th>
-            </tr>
-          </thead>
-          <tbody>
-            {live ? (
-              <tr>
-                <td colSpan={3}>No face-match consent on file. Identity is checked against the original ID.</td>
-              </tr>
-            ) : (
-              IDENTITY.consent.map((c) => (
-                <tr key={c.jurisdiction}>
-                  <td>{c.jurisdiction}</td>
-                  <td>
-                    <StatusBadge status={state === 'refused' && c.jurisdiction.startsWith('India') ? 'Refused' : c.status === 'Given' ? 'Approved' : c.status} />
-                  </td>
-                  <td>
-                    {c.point}, {formatDate(c.on)}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-        </div>
-        <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Checks across hiring and joining, scrolls sideways on small screens">
-        <table className="yx-ppl__impact">
-          <caption className="yx-ppl__sub">Checks across hiring and joining</caption>
-          <thead>
-            <tr>
-              <th scope="col">Date</th>
-              <th scope="col">Point</th>
-              <th scope="col">Result</th>
-            </tr>
-          </thead>
-          <tbody>
-            {checks.length === 0 && (
-              <tr>
-                <td colSpan={3}>No identity checks recorded yet.</td>
-              </tr>
-            )}
-            {checks.map((c, i) => (
-              <tr key={`${c.point}-${i}`}>
-                <td>{formatDate(c.at)}</td>
-                <td>
+        <PlainTable
+          label="Consent by jurisdiction"
+          caption="Consent by jurisdiction"
+          rows={live ? [] : IDENTITY.consent}
+          getRowId={(c) => c.jurisdiction}
+          empty="No face-match consent on file. Identity is checked against the original ID."
+          columns={[
+            { key: 'where', header: 'Jurisdiction', cell: (c) => c.jurisdiction },
+            { key: 'status', header: 'Status', cell: (c) => <StatusBadge status={state === 'refused' && c.jurisdiction.startsWith('India') ? 'Refused' : c.status === 'Given' ? 'Approved' : c.status} /> },
+            { key: 'at', header: 'Captured at', cell: (c) => `${c.point}, ${formatDate(c.on)}` },
+          ]}
+        />
+        <PlainTable
+          label="Checks across hiring and joining"
+          caption="Checks across hiring and joining"
+          rows={checks.map((c, i) => ({ c, id: `${c.point}-${i}` }))}
+          getRowId={(r) => r.id}
+          empty="No identity checks recorded yet."
+          columns={[
+            { key: 'date', header: 'Date', cell: ({ c }) => formatDate(c.at) },
+            {
+              key: 'point',
+              header: 'Point',
+              cell: ({ c }) => (
+                <>
                   {c.point}
                   {c.by && <Text size="sm" tone="secondary" as="div">{c.by}</Text>}
-                </td>
-                <td data-wrap>
-                  <Badge tone={c.result.startsWith('Mismatch') ? 'danger' : c.result === 'Match' || c.result.startsWith('Captured') ? 'success' : 'neutral'}>{c.result}</Badge>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
+                </>
+              ),
+            },
+            { key: 'result', header: 'Result', cell: ({ c }) => <Badge tone={c.result.startsWith('Mismatch') ? 'danger' : c.result === 'Match' || c.result.startsWith('Captured') ? 'success' : 'neutral'}>{c.result}</Badge> },
+          ]}
+        />
         {state === 'mismatch' && !live && (
           <InlineAlert tone="warning" title="Identity flag for HR review">
             A mismatch never blocks joining. Ask for a fresh ID and selfie, or attest against the original ID.
@@ -1599,36 +1570,26 @@ function SampleInternationalBank({ persona, splits: initial, net, embedded, defa
       </div>
       {splits.length > 0 && (
         <Card title={`Split net pay (${formatINR(net)} this month)`}>
-          <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-          <table className="yx-ppl__impact">
-            <thead>
-              <tr>
-                <th scope="col">Account</th>
-                <th scope="col">Rule</th>
-                <th scope="col">Value</th>
-                <th scope="col">This month</th>
-              </tr>
-            </thead>
-            <tbody>
-              {splits.map((s) => (
-                <tr key={s.id}>
-                  <td className="yx-mono">{s.label}</td>
-                  <td>
-                    <Select aria-label={`Rule for ${s.label}`} size="sm" options={RULES} value={s.rule} onChange={(v) => setSplits((xs) => xs.map((x) => (x.id === s.id ? { ...x, rule: v as PaySplit['rule'] } : x)))} />
-                  </td>
-                  <td>
-                    {s.rule === 'remainder' ? (
-                      '—'
-                    ) : (
-                      <NumberField aria-label={`Value for ${s.label}`} size="sm" value={s.value} onChange={(v) => setSplits((xs) => xs.map((x) => (x.id === s.id ? { ...x, value: v ?? 0 } : x)))} />
-                    )}
-                  </td>
-                  <td className="yx-ppl__num">{result?.ok ? formatINR(result.amounts[s.id]) : '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          </div>
+          <PlainTable
+            label="Split net pay"
+            rows={splits}
+            getRowId={(s) => s.id}
+            columns={[
+              { key: 'account', header: 'Account', cell: (s) => <span className="yx-mono">{s.label}</span> },
+              {
+                key: 'rule',
+                header: 'Rule',
+                cell: (s) => <Select aria-label={`Rule for ${s.label}`} size="sm" options={RULES} value={s.rule} onChange={(v) => setSplits((xs) => xs.map((x) => (x.id === s.id ? { ...x, rule: v as PaySplit['rule'] } : x)))} />,
+              },
+              {
+                key: 'value',
+                header: 'Value',
+                cell: (s) =>
+                  s.rule === 'remainder' ? '—' : <NumberField aria-label={`Value for ${s.label}`} size="sm" value={s.value} onChange={(v) => setSplits((xs) => xs.map((x) => (x.id === s.id ? { ...x, value: v ?? 0 } : x)))} />,
+              },
+              { key: 'month', header: 'This month', cell: (s) => <span className="yx-ppl__num">{result?.ok ? formatINR(result.amounts[s.id]) : '—'}</span> },
+            ]}
+          />
           {result && !result.ok && (
             <InlineAlert tone="danger" title="This split can't be saved">
               {result.error}

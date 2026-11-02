@@ -116,11 +116,9 @@
 .yx-ppl__total strong { font-size: var(--yx-text-2xl); line-height: var(--yx-leading-2xl); font-weight: var(--yx-weight-semibold); font-variant-numeric: tabular-nums; }
 
 /* compare */
-.yx-ppl__compare { width: 100%; border-collapse: collapse; background: var(--yx-color-bg-surface); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); }
-.yx-ppl__compare th, .yx-ppl__compare td { text-align: start; padding: var(--yx-space-2) var(--yx-space-3); border-bottom: var(--yx-border-width) solid var(--yx-color-border); vertical-align: top; overflow-wrap: anywhere; }
-.yx-ppl__compare thead th { font-weight: var(--yx-weight-medium); color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); }
+/* The compare table is the kit PlainTable inside a card frame; its field column stays narrow. */
+.yx-ppl__compare { background: var(--yx-color-bg-surface); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); }
 .yx-ppl__compare tbody th { font-weight: var(--yx-weight-medium); width: 22%; }
-.yx-ppl__compare tr[data-match] td { background: var(--yx-color-success-bg); }
 
 /* phone list */
 .yx-ppl__phone-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface); }

@@ -23,8 +23,8 @@ describe('PPL-36 possible same person, live', () => {
     await ue.click(screen.getByRole('button', { name: 'Compare' }));
     const drawer = screen.getByRole('dialog');
     expect(within(drawer).getByText('Proposed on login email')).toBeInTheDocument();
-    expect(within(drawer).getByRole('row', { name: /Email suresh@kaverifoods.in suresh@kaverifoods.in/ })).toHaveAttribute('data-match', 'true');
-    expect(within(drawer).getByRole('row', { name: /^Name/ })).not.toHaveAttribute('data-match');
+    expect(within(drawer).getByRole('row', { name: /Email suresh@kaverifoods.in suresh@kaverifoods.in/ })).toHaveAttribute('data-tone', 'success');
+    expect(within(drawer).getByRole('row', { name: /^Name/ })).not.toHaveAttribute('data-tone');
     expect(within(drawer).getByRole('row', { name: /Date of birth — 11 Feb 1990/ })).toBeInTheDocument();
     await ue.click(within(drawer).getByRole('button', { name: 'Same person: review merge' }));
     expect(live.onReviewMerge).toHaveBeenCalledWith(ROW);

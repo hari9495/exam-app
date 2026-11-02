@@ -952,37 +952,36 @@ export function BfsiDeclarations({ tab = 'holdings', otpSent = false, today, liv
         </TabsList>
         <TabsContent value="holdings">
           <div className="yx-ppl__stack">
-            <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-            <table className="yx-ppl__impact">
-              <thead>
-                <tr><th scope="col">Security</th><th scope="col">Quantity</th><th scope="col">How held</th>{live && !done && <th scope="col"><span className="yx-visually-hidden">Remove</span></th>}</tr>
-              </thead>
-              <tbody>
-                {live && holdings.length === 0 && <tr><td colSpan={4}>No holdings yet. Add each security you, or your dependants through you, hold.</td></tr>}
-                {holdings.map((h) => (
-                  <tr key={h.id}><td>{h.security}</td><td className="yx-ppl__num">{h.quantity}</td><td>{h.how ?? '—'}</td>{live && !done && <td>{remove(live.onRemoveHolding, h.id, h.security)}</td>}</tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
+            <PlainTable
+              label="Holdings"
+              rows={holdings}
+              getRowId={(h) => h.id}
+              empty={live ? 'No holdings yet. Add each security you, or your dependants through you, hold.' : undefined}
+              columns={[
+                { key: 'security', header: 'Security', cell: (h) => h.security },
+                { key: 'quantity', header: 'Quantity', cell: (h) => <span className="yx-ppl__num">{h.quantity}</span> },
+                { key: 'how', header: 'How held', cell: (h) => h.how ?? '—' },
+                ...(live && !done ? [{ key: 'remove', header: <span className="yx-visually-hidden">Remove</span>, cell: (h: (typeof holdings)[number]) => remove(live.onRemoveHolding, h.id, h.security) }] : []),
+              ]}
+            />
             {!done && <div><Button icon={Plus} onClick={live ? () => setAdding('holding') : undefined}>Add holding</Button></div>}
           </div>
         </TabsContent>
         <TabsContent value="related">
           <div className="yx-ppl__stack">
-            <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-            <table className="yx-ppl__impact">
-              <thead>
-                <tr><th scope="col">Name</th><th scope="col">Relation</th><th scope="col">PAN</th><th scope="col">Holdings</th>{live && !done && <th scope="col"><span className="yx-visually-hidden">Remove</span></th>}</tr>
-              </thead>
-              <tbody>
-                {live && related.length === 0 && <tr><td colSpan={5}>No related persons yet.</td></tr>}
-                {related.map((r) => (
-                  <tr key={r.id}><td>{r.name}</td><td>{r.relation}</td><td className="yx-mono">{r.pan ?? '—'}</td><td>{r.holdings ?? 'None'}</td>{live && !done && <td>{remove(live.onRemoveRelated, r.id, r.name)}</td>}</tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
+            <PlainTable
+              label="Related persons"
+              rows={related}
+              getRowId={(r) => r.id}
+              empty={live ? 'No related persons yet.' : undefined}
+              columns={[
+                { key: 'name', header: 'Name', cell: (r) => r.name },
+                { key: 'relation', header: 'Relation', cell: (r) => r.relation },
+                { key: 'pan', header: 'PAN', cell: (r) => <span className="yx-mono">{r.pan ?? '—'}</span> },
+                { key: 'holdings', header: 'Holdings', cell: (r) => r.holdings ?? 'None' },
+                ...(live && !done ? [{ key: 'remove', header: <span className="yx-visually-hidden">Remove</span>, cell: (r: (typeof related)[number]) => remove(live.onRemoveRelated, r.id, r.name) }] : []),
+              ]}
+            />
             {!done && <div><Button icon={Plus} onClick={live ? () => setAdding('related') : undefined}>Add related person</Button></div>}
           </div>
         </TabsContent>

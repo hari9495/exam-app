@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Download, FileSpreadsheet } from 'lucide-react';
 import { Button } from '../../components/button';
+import { PlainTable } from '../../components/plain-table';
 import { Card, PageHeader } from '../../components/shell';
 import { InlineAlert } from '../../components/feedback';
 import { ConfirmDialog } from '../../components/overlay';
@@ -289,38 +290,37 @@ export function LiveEmployeeImport({ live }: { live: LiveImport }) {
                 ) : (
                   <Text size="sm" tone="secondary" as="p">All required fields are matched.</Text>
                 )}
-                <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Column matches">
-                  <table className="yx-ppl__impact">
-                    <thead>
-                      <tr>
-                        <th scope="col">Column in your file</th>
-                        <th scope="col">YukthiX field</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(file?.data.columns ?? []).map((c) => (
-                        <tr key={c.column}>
-                          <td>
-                            <span className="yx-ppl__type">
-                              <span>{c.column}</span>
-                              {c.sample && <span className="yx-ppl__sub">e.g. {c.sample}</span>}
-                            </span>
-                          </td>
-                          <td>
-                            <Select
-                              aria-label={`Field for ${c.column}`}
-                              size="sm"
-                              // A field goes to one column only.
-                              options={[...fields.filter((f) => mapping[c.column] === f.key || !Object.values(mapping).includes(f.key)).map((f) => ({ value: f.key, label: f.label })), { value: SKIP, label: SKIP }]}
-                              value={mapping[c.column] ?? SKIP}
-                              onChange={(v) => v && (setMapping({ ...mapping, [c.column]: v }), setResult(null))}
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <PlainTable
+                  label="Column matches"
+                  rows={file?.data.columns ?? []}
+                  getRowId={(c) => c.column}
+                  columns={[
+                    {
+                      key: 'column',
+                      header: 'Column in your file',
+                      cell: (c) => (
+                        <span className="yx-ppl__type">
+                          <span>{c.column}</span>
+                          {c.sample && <span className="yx-ppl__sub">e.g. {c.sample}</span>}
+                        </span>
+                      ),
+                    },
+                    {
+                      key: 'field',
+                      header: 'YukthiX field',
+                      cell: (c) => (
+                        <Select
+                          aria-label={`Field for ${c.column}`}
+                          size="sm"
+                          // A field goes to one column only.
+                          options={[...fields.filter((f) => mapping[c.column] === f.key || !Object.values(mapping).includes(f.key)).map((f) => ({ value: f.key, label: f.label })), { value: SKIP, label: SKIP }]}
+                          value={mapping[c.column] ?? SKIP}
+                          onChange={(v) => v && (setMapping({ ...mapping, [c.column]: v }), setResult(null))}
+                        />
+                      ),
+                    },
+                  ]}
+                />
               </div>
             ),
           },

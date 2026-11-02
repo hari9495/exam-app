@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { FileText } from 'lucide-react';
 import { Button } from '../../components/button';
+import { PlainTable } from '../../components/plain-table';
 import { PageHeader } from '../../components/shell';
 import { Badge } from '../../components/display';
 import { InlineAlert } from '../../components/feedback';
@@ -343,34 +344,25 @@ export function LiveIncrementWizard({ live }: { live: LiveIncrement }) {
                       </InlineAlert>
                     )}
                     {result && result.bands.length > 0 ? (
-                      <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Increase by rating">
-                        <table className="yx-ppl__impact">
-                          <thead>
-                            <tr>
-                              <th scope="col">Rating</th>
-                              <th scope="col">People</th>
-                              <th scope="col">Increase</th>
-                              <th scope="col">Added cost a year</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {result.bands.map((k) => {
-                              const inRating = people.filter((r) => r.rating === k && custom[r.employeeId] === undefined);
-                              const all = inRating.length + unset.filter((r) => r.rating === k).length;
-                              return (
-                                <tr key={k}>
-                                  <th scope="row">{k}</th>
-                                  <td>{all}</td>
-                                  <td>
-                                    <NumberField aria-label={`Increase for ${k}`} value={byRating[k] ?? null} onChange={(v) => setByRating({ ...byRating, [k]: v })} decimals suffix="%" min={0} max={100} />
-                                  </td>
-                                  <td>{formatINR(inRating.reduce((s, r) => s + Number(r.newCtc) - Number(r.currentCtc), 0))}</td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
+                      <PlainTable
+                        label="Increase by rating"
+                        rows={result.bands}
+                        getRowId={(k) => k}
+                        columns={[
+                          { key: 'rating', header: 'Rating', rowHeader: true, cell: (k) => k },
+                          { key: 'people', header: 'People', cell: (k) => people.filter((r) => r.rating === k && custom[r.employeeId] === undefined).length + unset.filter((r) => r.rating === k).length },
+                          {
+                            key: 'pct',
+                            header: 'Increase',
+                            cell: (k) => <NumberField aria-label={`Increase for ${k}`} value={byRating[k] ?? null} onChange={(v) => setByRating({ ...byRating, [k]: v })} decimals suffix="%" min={0} max={100} />,
+                          },
+                          {
+                            key: 'cost',
+                            header: 'Added cost a year',
+                            cell: (k) => formatINR(people.filter((r) => r.rating === k && custom[r.employeeId] === undefined).reduce((s, r) => s + Number(r.newCtc) - Number(r.currentCtc), 0)),
+                          },
+                        ]}
+                      />
                     ) : (
                       result && <InlineAlert tone="info">No one chosen has a released rating you can see.</InlineAlert>
                     )}

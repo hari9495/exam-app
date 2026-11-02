@@ -2,6 +2,7 @@
 // PPL-39 Union register · PPL-40 VRS scheme · PPL-42 Re-verification cycles (M01 §3.11).
 import { useState } from 'react';
 import { ErrorState } from '../../components/feedback';
+import { PlainTable } from '../../components/plain-table';
 import { ListSkeleton } from './people-kit';
 import { ApplyDialog, ClosureDialog, DecideDialog, SchemeDialog, type RetrenchmentScreenProps } from './live/special';
 import type { IrPermission } from './live/types';
@@ -306,30 +307,23 @@ export function MergeReview({ mode = 'merge', noteError = false, live, liveUnmer
   return (
     <PeopleFrame active="Possible same person">
       <PageHeader title="Merge two records" description="Pick the value to keep for each field. Every role moves to the merged person; nothing is deleted and you can unmerge later." />
-      <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-      <table className="yx-ppl__impact">
-        <thead>
-          <tr>
-            <th scope="col">Field</th>
-            <th scope="col">{r ? `Record A · ${kindOf(r.a.role)}` : 'Record A · candidate'}</th>
-            <th scope="col">{r ? `Record B · ${kindOf(r.b.role)}` : 'Record B · alumnus'}</th>
-            <th scope="col">Keep</th>
-          </tr>
-        </thead>
-        <tbody>
-          {fields.map((f) => (
-            <tr key={f.label}>
-              <th scope="row">{f.label}</th>
-              <td className="yx-mono">{f.a}</td>
-              <td className="yx-mono">{f.b}</td>
-              <td>
-                <RadioGroup aria-label={`Keep ${f.label}`} orientation="horizontal" value={picks[f.label]} onChange={(v) => setPicks({ ...picks, [f.label]: v })} options={[{ value: 'a', label: 'A', disabled: f.a === '—' }, { value: 'b', label: 'B', disabled: f.b === '—' }]} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      </div>
+      <PlainTable
+        label="Fields to keep"
+        rows={fields}
+        getRowId={(f) => f.label}
+        columns={[
+          { key: 'field', header: 'Field', rowHeader: true, cell: (f) => f.label },
+          { key: 'a', header: r ? `Record A · ${kindOf(r.a.role)}` : 'Record A · candidate', cell: (f) => <span className="yx-mono">{f.a}</span> },
+          { key: 'b', header: r ? `Record B · ${kindOf(r.b.role)}` : 'Record B · alumnus', cell: (f) => <span className="yx-mono">{f.b}</span> },
+          {
+            key: 'keep',
+            header: 'Keep',
+            cell: (f) => (
+              <RadioGroup aria-label={`Keep ${f.label}`} orientation="horizontal" value={picks[f.label]} onChange={(v) => setPicks({ ...picks, [f.label]: v })} options={[{ value: 'a', label: 'A', disabled: f.a === '—' }, { value: 'b', label: 'B', disabled: f.b === '—' }]} />
+            ),
+          },
+        ]}
+      />
       <Card title="Roles that move to the merged person">
         {r ? (
           <ul className="yx-ppl__successors">

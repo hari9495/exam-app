@@ -824,33 +824,21 @@ function SampleBulkChangesWizard({ current = 'people', confirmOpen = false, mode
                     <InlineAlert tone="warning" title="1 person has no rating">
                       They get no raise by rating. Use &quot;Same for everyone&quot;, or see who under Choose people.
                     </InlineAlert>
-              <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Increase by rating">
-                <table className="yx-ppl__impact">
-                  <thead>
-                    <tr>
-                      <th scope="col">Rating</th>
-                      <th scope="col">People</th>
-                      <th scope="col">Increase</th>
-                      <th scope="col">Added cost a year</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {RATINGS.map((k) => {
-                      const inRating = rows.filter((r) => r.rating === k);
-                      return (
-                        <tr key={k}>
-                          <th scope="row">{k}</th>
-                          <td>{inRating.length}</td>
-                          <td>
-                            <NumberField aria-label={`Increase for ${k}`} value={pct[k]} onChange={(v) => setPct({ ...pct, [k]: v ?? 0 })} decimals suffix="%" />
-                          </td>
-                          <td>{formatINR(inRating.reduce((s, r) => s + r.next - r.ctc, 0))}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <PlainTable
+                label="Increase by rating"
+                rows={[...RATINGS]}
+                getRowId={(k) => k}
+                columns={[
+                  { key: 'rating', header: 'Rating', rowHeader: true, cell: (k) => k },
+                  { key: 'people', header: 'People', cell: (k) => rows.filter((r) => r.rating === k).length },
+                  {
+                    key: 'pct',
+                    header: 'Increase',
+                    cell: (k) => <NumberField aria-label={`Increase for ${k}`} value={pct[k]} onChange={(v) => setPct({ ...pct, [k]: v ?? 0 })} decimals suffix="%" />,
+                  },
+                  { key: 'cost', header: 'Added cost a year', cell: (k) => formatINR(rows.filter((r) => r.rating === k).reduce((s, r) => s + r.next - r.ctc, 0)) },
+                ]}
+              />
                   </>
                 )}
               </div>
@@ -1048,31 +1036,28 @@ function SampleEmployeeImportWizard({ current = 'upload', rows: initialRows = SA
                 ) : (
                   <Text size="sm" tone="secondary" as="p">All required fields are matched.</Text>
                 )}
-                <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Column matches">
-                  <table className="yx-ppl__impact">
-                    <thead>
-                      <tr>
-                        <th scope="col">Column in your file</th>
-                        <th scope="col">YukthiX field</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {FILE_COLUMNS.map((c) => (
-                        <tr key={c.column}>
-                          <td>
-                            <span className="yx-ppl__type">
-                              <span>{c.column}</span>
-                              <span className="yx-ppl__sub">e.g. {c.sample}</span>
-                            </span>
-                          </td>
-                          <td>
-                            <Select aria-label={`Field for ${c.column}`} size="sm" options={IMPORT_FIELDS.map((f) => ({ value: f, label: f }))} value={mapping[c.column]} onChange={(v) => v && setMapping({ ...mapping, [c.column]: v })} />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <PlainTable
+                  label="Column matches"
+                  rows={FILE_COLUMNS}
+                  getRowId={(c) => c.column}
+                  columns={[
+                    {
+                      key: 'column',
+                      header: 'Column in your file',
+                      cell: (c) => (
+                        <span className="yx-ppl__type">
+                          <span>{c.column}</span>
+                          <span className="yx-ppl__sub">e.g. {c.sample}</span>
+                        </span>
+                      ),
+                    },
+                    {
+                      key: 'field',
+                      header: 'YukthiX field',
+                      cell: (c) => <Select aria-label={`Field for ${c.column}`} size="sm" options={IMPORT_FIELDS.map((f) => ({ value: f, label: f }))} value={mapping[c.column]} onChange={(v) => v && setMapping({ ...mapping, [c.column]: v })} />,
+                    },
+                  ]}
+                />
               </div>
             ),
           },

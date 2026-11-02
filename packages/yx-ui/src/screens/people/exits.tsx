@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from 'react';
 import { Mail, MoreHorizontal, Pause, Play, RefreshCw, Upload } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
+import { PlainTable } from '../../components/plain-table';
 import { Button, IconButton } from '../../components/button';
 import { Card, ObjectHeader, PageHeader } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
@@ -1727,31 +1728,28 @@ function LiveDeathInService({ live }: { live: LiveDeath }) {
                   </InlineAlert>
                 )}
                 {payees.length > 0 && (
-                  <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-                    <table className="yx-ppl__impact">
-                      <thead>
-                        <tr>
-                          <th scope="col">Payee</th>
-                          <th scope="col">Scheme</th>
-                          <th scope="col">Share</th>
-                          {s !== undefined && <th scope="col">Bank account</th>}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {payees.map((p) => (
-                          <tr key={p.id ?? p.name}>
-                            <td>
-                              {p.name}
-                              <Text size="sm" tone="secondary" as="div">{`${p.relation}${p.kind === 'legal_heir' ? ' (legal heir)' : ''}`}</Text>
-                            </td>
-                            <td>All dues</td>
-                            <td className="yx-ppl__num">{Number(p.sharePercent)}%</td>
-                            {s !== undefined && <td>{bank(p.name) ? <><span className="yx-mono">{bank(p.name)}</span> <StatusBadge status="Pending verification" /></> : <span className="yx-mono">Not given yet</span>}</td>}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <PlainTable
+                    label="Payees"
+                    rows={payees}
+                    getRowId={(p) => p.id ?? p.name}
+                    columns={[
+                      {
+                        key: 'payee',
+                        header: 'Payee',
+                        cell: (p) => (
+                          <>
+                            {p.name}
+                            <Text size="sm" tone="secondary" as="div">{`${p.relation}${p.kind === 'legal_heir' ? ' (legal heir)' : ''}`}</Text>
+                          </>
+                        ),
+                      },
+                      { key: 'scheme', header: 'Scheme', cell: () => 'All dues' },
+                      { key: 'share', header: 'Share', cell: (p) => <span className="yx-ppl__num">{Number(p.sharePercent)}%</span> },
+                      ...(s !== undefined
+                        ? [{ key: 'bank', header: 'Bank account', cell: (p: (typeof payees)[number]) => (bank(p.name) ? <><span className="yx-mono">{bank(p.name)}</span> <StatusBadge status="Pending verification" /></> : <span className="yx-mono">Not given yet</span>) }]
+                        : []),
+                    ]}
+                  />
                 )}
                 {heirs && (
                   <FormField label="Succession or legal-heir certificate" required>
@@ -1772,26 +1770,16 @@ function LiveDeathInService({ live }: { live: LiveDeath }) {
             content: (
               <div className="yx-ppl__stack">
                 {s ? (
-                  <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-                    <table className="yx-ppl__impact">
-                      <thead>
-                        <tr>
-                          <th scope="col">Line</th>
-                          <th scope="col">Amount</th>
-                          <th scope="col">Paid to</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {dues.map((l) => (
-                          <tr key={l.id}>
-                            <td>{l.label}</td>
-                            <td className="yx-ppl__num">{formatINR(l.amount)}</td>
-                            <td>{paidTo(l.amount)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <PlainTable
+                    label="Dues and split"
+                    rows={dues}
+                    getRowId={(l) => l.id}
+                    columns={[
+                      { key: 'line', header: 'Line', cell: (l) => l.label },
+                      { key: 'amount', header: 'Amount', cell: (l) => <span className="yx-ppl__num">{formatINR(l.amount)}</span> },
+                      { key: 'to', header: 'Paid to', cell: (l) => paidTo(l.amount) },
+                    ]}
+                  />
                 ) : (
                   <Text as="p">{s === null ? 'The F&F settlement is not made yet. It starts once the case is accepted.' : 'Payroll works out the dues and splits them by these shares.'}</Text>
                 )}
@@ -1884,33 +1872,34 @@ function SampleDeathInService({ current = 'payees', noNomination = false }: { cu
                     Pay legal heirs once HR verifies a succession or legal-heir certificate. The deadline doesn't move; the case records why payment is pending.
                   </InlineAlert>
                 )}
-                <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-                <table className="yx-ppl__impact">
-                  <thead>
-                    <tr>
-                      <th scope="col">Payee</th>
-                      <th scope="col">Scheme</th>
-                      <th scope="col">Share</th>
-                      <th scope="col">Bank account</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {payees.map((p) => (
-                      <tr key={p.name + p.scheme}>
-                        <td>
+                <PlainTable
+                  label="Payees"
+                  rows={payees}
+                  getRowId={(p) => p.name + p.scheme}
+                  columns={[
+                    {
+                      key: 'payee',
+                      header: 'Payee',
+                      cell: (p) => (
+                        <>
                           {p.name}
                           <Text size="sm" tone="secondary" as="div">{p.relation}</Text>
-                        </td>
-                        <td>{p.scheme}</td>
-                        <td className="yx-ppl__num">{p.share}%</td>
-                        <td>
+                        </>
+                      ),
+                    },
+                    { key: 'scheme', header: 'Scheme', cell: (p) => p.scheme },
+                    { key: 'share', header: 'Share', cell: (p) => <span className="yx-ppl__num">{p.share}%</span> },
+                    {
+                      key: 'bank',
+                      header: 'Bank account',
+                      cell: (p) => (
+                        <>
                           <span className="yx-mono">{p.bank}</span> <StatusBadge status={p.verified ? 'Verified' : 'Pending verification'} />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                </div>
+                        </>
+                      ),
+                    },
+                  ]}
+                />
                 {noNomination && (
                   <FormField label="Succession or legal-heir certificate" required>
                     <FileUpload upload={async () => {}} accept={['.pdf']} maxSize={10 * 1024 * 1024} />
@@ -1928,23 +1917,21 @@ function SampleDeathInService({ current = 'payees', noNomination = false }: { cu
             summary: `Gratuity ${formatINR(g.amount)} (5-year condition waived) split 70 / 30`,
             content: (
               <div className="yx-ppl__stack">
-                <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-                <table className="yx-ppl__impact">
-                  <thead>
-                    <tr>
-                      <th scope="col">Line</th>
-                      <th scope="col">Amount</th>
-                      <th scope="col">Paid to</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr><td>Salary 1–14 Sep 2026</td><td className="yx-ppl__num">{formatINR(19600)}</td><td>Kamala Shankar (not salary TDS after date of death)</td></tr>
-                    <tr><td>Leave encashment to nominee (14 days)</td><td className="yx-ppl__num">{formatINR(13067)}</td><td>Kamala Shankar</td></tr>
-                    <tr><td>Gratuity · {g.basis}</td><td className="yx-ppl__num">{formatINR(g.amount)}</td><td>Kamala {formatINR(gratuityParts[0])} · Divakar {formatINR(gratuityParts[1])}</td></tr>
-                    <tr><td>Ex-gratia (company support policy)</td><td className="yx-ppl__num">{formatINR(84000)}</td><td>Kamala Shankar</td></tr>
-                  </tbody>
-                </table>
-                </div>
+                <PlainTable
+                  label="Dues and split"
+                  rows={[
+                    { line: 'Salary 1–14 Sep 2026', amount: 19600, to: 'Kamala Shankar (not salary TDS after date of death)' },
+                    { line: 'Leave encashment to nominee (14 days)', amount: 13067, to: 'Kamala Shankar' },
+                    { line: `Gratuity · ${g.basis}`, amount: g.amount, to: `Kamala ${formatINR(gratuityParts[0])} · Divakar ${formatINR(gratuityParts[1])}` },
+                    { line: 'Ex-gratia (company support policy)', amount: 84000, to: 'Kamala Shankar' },
+                  ]}
+                  getRowId={(r) => r.line}
+                  columns={[
+                    { key: 'line', header: 'Line', cell: (r) => r.line },
+                    { key: 'amount', header: 'Amount', cell: (r) => <span className="yx-ppl__num">{formatINR(r.amount)}</span> },
+                    { key: 'to', header: 'Paid to', cell: (r) => r.to },
+                  ]}
+                />
                 <Text size="sm" tone="secondary" as="p">Recoveries only as HR confirms. Form 16 goes to the legal heir.</Text>
               </div>
             ),
