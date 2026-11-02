@@ -18,7 +18,7 @@ import { DataTable, type TableColumn } from '../../components/table';
 import { PlainTable } from '../../components/plain-table';
 import { FilterBar, type FilterFieldDef } from '../../components/filters';
 import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
-import { Dialog, TypeToConfirmDialog } from '../../components/overlay';
+import { ConfirmDialog, Dialog, TypeToConfirmDialog } from '../../components/overlay';
 import { PageBanner } from '../../components/notify';
 import { BarChart, StatCard } from '../../components/charts';
 import { Stepper } from '../../components/stepper';
@@ -733,17 +733,30 @@ export interface TdsReturnWizardProps {
   filed?: boolean;
   /** Live: the entity's returns with the wizard of the one opened (compliance-live.tsx); salary on the hub, consultants on CMP-13. */
   live?: LiveReturns;
+  /** MissingMonth: the "No deductees this month" confirm open (stories), or open with the server's refusal. */
+  noDeductees?: 'confirm' | 'refused';
 }
 export function TdsReturnWizardScreen({ live, ...story }: TdsReturnWizardProps) {
   return live ? <LiveTdsReturns live={live} /> : <SampleTdsReturnWizard {...story} />;
 }
-function SampleTdsReturnWizard({ form = 'Form 138', quarter, months, current = 'completeness', missingMonth, difference = 0, mode = 'self', filed }: TdsReturnWizardProps) {
+function SampleTdsReturnWizard({ form = 'Form 138', quarter, months, current = 'completeness', missingMonth, difference = 0, mode = 'self', filed, noDeductees }: TdsReturnWizardProps) {
+  const [nilOpen, setNilOpen] = useState(!!noDeductees);
   const monthRows: CheckRow[] = months.map((m, i) => ({
     id: m.month,
     status: missingMonth && i === 0 ? 'fail' : 'pass',
     label: `${m.month}: ${missingMonth && i === 0 ? 'no deductee rows' : `${m.rows} deductee rows`}`,
     detail: missingMonth && i === 0 ? 'This entity started on YukthiX mid-quarter. Import the prior-month rows so the return is complete.' : m.status,
-    action: missingMonth && i === 0 ? <Button size="sm" icon={Upload}>Import rows</Button> : undefined,
+    action:
+      missingMonth && i === 0 ? (
+        <span className="yx-ops-row">
+          <Button size="sm" icon={Upload}>
+            Import rows
+          </Button>
+          <Button size="sm" onClick={() => setNilOpen(true)}>
+            No deductees this month
+          </Button>
+        </span>
+      ) : undefined,
   }));
   const panRows: CheckRow[] = [
     { id: 'pan1', status: 'warn', label: 'Nisha Thomas: no PAN', detail: 'TDS at 20 %. The row carries the no-PAN flag.' },
@@ -859,7 +872,53 @@ function SampleTdsReturnWizard({ form = 'Form 138', quarter, months, current = '
     <OpsDesk area="compliance" active="TDS & Form 16">
       <PageHeader title={`${form} · ${quarter}`} description={form === 'Form 138' ? 'Salary TDS return under the Income-tax Act 2025.' : form === 'Form 140' ? 'Non-salary TDS return (consultants) under the Income-tax Act 2025.' : 'Correction of a quarter up to 31 Mar 2026, filed under the 1961 Act form.'} status={filed ? <Badge tone="success">Filed</Badge> : <Badge tone="warning">Draft</Badge>} />
       <Stepper key={current} title={`${form} ${quarter}`} steps={steps} defaultCurrent={current} finishLabel="Mark return filed" onContinue={(id) => !(id === 'completeness' && missingMonth) && !(id === 'reconcile' && difference)} />
+      <NoDeducteesDialog
+        month={months[0]?.month ?? ''}
+        open={nilOpen}
+        onOpenChange={setNilOpen}
+        refusal={noDeductees === 'refused' ? `${months[0]?.month ?? 'This month'} has approved payslips with ₹4,200 of TDS. Its rows come from payroll, so it cannot be marked as having no deductees.` : undefined}
+        onConfirm={() => undefined}
+      />
     </OpsDesk>
+  );
+}
+
+/**
+ * CMP-05 MissingMonth (founder answer 2): a month before go-live that had no salary TDS at all is recorded with a short
+ * reason, so the return counts it complete with no rows. Undo stays possible until the return is filed.
+ */
+export function NoDeducteesDialog({ month, open, onOpenChange, onConfirm, refusal }: { month: string; open: boolean; onOpenChange: (o: boolean) => void; onConfirm: (reason: string) => unknown; /** A refusal to show (stories); live refusals show inline by themselves. */ refusal?: string }) {
+  const [reason, setReason] = useState('');
+  const check = useTooEarly(reason.trim().length < 5 ? [{ fieldId: 'nd-reason', message: 'Say why there was no salary TDS, in at least 5 characters.' }] : []);
+  return (
+    <ConfirmDialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) {
+          setReason('');
+          check.reset();
+        }
+        onOpenChange(o);
+      }}
+      title={`No salary TDS in ${month}?`}
+      consequence={`The return counts ${month} as complete with no deductee rows. You can undo this until the return is filed.`}
+      confirmLabel="Record no deductees"
+      onConfirm={async () => {
+        if (check.stop()) return false;
+        await onConfirm(reason.trim());
+      }}
+    >
+      <div className="yx-ops-stack">
+        {refusal && (
+          <InlineAlert tone="danger" title="This didn't go through">
+            {refusal}
+          </InlineAlert>
+        )}
+        <FormField id="nd-reason" label="Why there was no salary TDS" required error={check.errorOf('nd-reason')}>
+          <TextArea id="nd-reason" rows={3} value={reason} onChange={setReason} />
+        </FormField>
+      </div>
+    </ConfirmDialog>
   );
 }
 

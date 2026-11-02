@@ -276,6 +276,51 @@ describe('CMP-01 statutory hub (live)', () => {
     expect((await screen.findAllByText('1 as-paid line imported for July 2026.')).length).toBeGreaterThan(0);
   });
 
+  it('CMP-05 no deductees this month: a reason is needed, a refusal shows in the dialog, a recorded month can be undone', async () => {
+    const months = (nil: boolean) => [
+      nil ? { month: '2026-07', rows: 0, source: 'nil' as const, missing: false, nil: { id: 'n1', version: 2, reason: 'No one above the TDS limit', recordedAt: '2026-10-30T10:00:00Z' } } : { month: '2026-07', rows: 0, source: 'none' as const, missing: true, nil: null },
+      { month: '2026-08', rows: 5, source: 'payroll' as const, missing: false },
+      { month: '2026-09', rows: 6, source: 'payroll' as const, missing: false },
+    ];
+    const ret = (nil: boolean): TdsReturnRow => ({ ...RETURNS[0], completeness: { months: months(nil), panWarnings: [], panWarningCount: 0, panChecked: 6 } });
+    const onNilMonth = vi.fn(async () => Promise.reject(new Error('July 2026 has approved payslips with ₹4,200 of TDS. Its rows come from payroll, so it cannot be marked as having no deductees.')));
+    const { unmount } = showHub({ returns: [ret(false)], onNilMonth });
+    await ue.click(screen.getByRole('tab', { name: 'TDS returns' }));
+    await ue.click(screen.getByRole('button', { name: 'Open Form 138 · Q2 2026-27' }));
+    await ue.click(screen.getByRole('button', { name: /Data completeness/ }));
+    await ue.click(screen.getByRole('button', { name: 'No deductees in July 2026' }));
+    const dialog = await screen.findByRole('alertdialog', { name: 'No salary TDS in July 2026?' }).catch(() => screen.getByRole('dialog', { name: 'No salary TDS in July 2026?' }));
+    expect(within(dialog).getByText(/You can undo this until the return is filed/)).toBeInTheDocument();
+    await ue.click(within(dialog).getByRole('button', { name: 'Record no deductees' }));
+    expect(within(dialog).getAllByText('Say why there was no salary TDS, in at least 5 characters.').length).toBeGreaterThan(0);
+    expect(onNilMonth).not.toHaveBeenCalled();
+    await ue.type(within(dialog).getByRole('textbox', { name: /Why there was no salary TDS/ }), 'Paid only below the TDS limit');
+    await ue.click(within(dialog).getByRole('button', { name: 'Record no deductees' }));
+    expect(await within(dialog).findByText(/has approved payslips with ₹4,200 of TDS/)).toBeInTheDocument();
+    expect(onNilMonth).toHaveBeenCalledWith('2026-07', 'Paid only below the TDS limit');
+    onNilMonth.mockResolvedValueOnce({} as never);
+    await ue.click(within(dialog).getByRole('button', { name: 'Record no deductees' }));
+    expect((await screen.findAllByText('July 2026 recorded as having no deductees.')).length).toBeGreaterThan(0);
+    unmount();
+    // Recorded: counted complete, with its reason and Undo; read only has no Undo.
+    const onUndoNil = ok();
+    const { unmount: u2 } = showHub({ returns: [ret(true)], onNilMonth: ok(), onUndoNil });
+    await ue.click(screen.getByRole('tab', { name: 'TDS returns' }));
+    await ue.click(screen.getByRole('button', { name: 'Open Form 138 · Q2 2026-27' }));
+    await ue.click(screen.getByRole('button', { name: /Data completeness/ }));
+    expect(screen.getByText('July 2026: no deductees')).toBeInTheDocument();
+    expect(screen.getByText('Recorded as having no salary TDS: No one above the TDS limit')).toBeInTheDocument();
+    expect(screen.queryByText(/rows missing/)).toBeNull();
+    await ue.click(screen.getByRole('button', { name: 'Undo no deductees in July 2026' }));
+    await waitFor(() => expect(onUndoNil).toHaveBeenCalledWith('n1', 2));
+    u2();
+    showHub({ returns: [ret(true)], onUndoNil, can: { generate: false, markFiled: false } });
+    await ue.click(screen.getByRole('tab', { name: 'TDS returns' }));
+    await ue.click(screen.getByRole('button', { name: 'Open Form 138 · Q2 2026-27' }));
+    await ue.click(screen.getByRole('button', { name: /Data completeness/ }));
+    expect(screen.queryByRole('button', { name: /Undo no deductees/ })).toBeNull();
+  });
+
   it('CMP-05 returns tab: the return waits for the filer’s .fvu; marking filed needs a validated return and a token', async () => {
     const onReturnFiled = ok();
     showHub({ onReturnFiled, returns: [RETURNS[0], { ...RETURNS[0], id: 't2', quarter: 1, status: 'validated', validation: { validator: 'filer', ok: true, errors: [], version: '9.2' } }] });

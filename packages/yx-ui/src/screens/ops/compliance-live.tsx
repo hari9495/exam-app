@@ -36,7 +36,7 @@ import { StatCard } from '../../components/charts';
 import type { AdvisoryView, CertificateRow, Form16Status, PartAImport, RegisterKindKey, RegisterRow, RegisterRowsView, TaskDesk } from '../pay/live/types-ops';
 import type { ConsultantSection, NonSalaryReturn } from '../pay/live/types-5h';
 import { Actions, CardGrid, CheckList, DueMonth, type CheckRow, type DueItem } from './ops-kit';
-import { NotYetAvailableState, RegisterTabs, SetupNeededState, StatuteCard, SupplementaryFilingPanel, TdsChallanScreen, TdsReturnWizardScreen, type RegisterKind } from './compliance';
+import { NoDeducteesDialog, NotYetAvailableState, RegisterTabs, SetupNeededState, StatuteCard, SupplementaryFilingPanel, TdsChallanScreen, TdsReturnWizardScreen, type RegisterKind } from './compliance';
 import type { FilingStep, RegisterRow as RegisterPersonView, StatuteItem, SupplementaryFiling } from './compliance-data';
 
 const D = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00`);
@@ -108,6 +108,8 @@ export interface LiveStatutoryHub {
   /** CMP-05 MissingMonth: a month's as-paid lines staged, then committed (payroll.import.run). */
   onImportMonth?: LiveTdsReturns['onImportMonth'];
   onCommitImport?: LiveTdsReturns['onCommitImport'];
+  onNilMonth?: LiveTdsReturns['onNilMonth'];
+  onUndoNil?: LiveTdsReturns['onUndoNil'];
   /** CMP-01 SetupNeeded: opens Payroll set-up › Registrations (only for people who may change it). */
   onOpenSetup?: () => void;
 }
@@ -350,6 +352,8 @@ export function LiveStatutoryHubScreen({ live: p }: { live: LiveStatutoryHub }) 
                   onFiled: (r, token, c) => p.onReturnFiled(r.id, token, c),
                   onImportMonth: p.onImportMonth,
                   onCommitImport: p.onCommitImport,
+                  onNilMonth: p.onNilMonth,
+                  onUndoNil: p.onUndoNil,
                 }}
               />
             </TabsContent>
@@ -738,6 +742,9 @@ export interface LiveTdsReturns {
   /** CMP-05 MissingMonth (salary): stage a month's as-paid lines (employeeCode, componentCode, amount), commit them when every row is right. */
   onImportMonth?: (month: string, rows: Record<string, string>[]) => Promise<ImportBatch>;
   onCommitImport?: (batchId: string) => Promise<unknown>;
+  /** CMP-05 (founder answer 2): record a missing month as having no salary TDS, with a reason; undo it until filed. */
+  onNilMonth?: (month: string, reason: string) => Promise<unknown>;
+  onUndoNil?: (id: string, version: number) => Promise<unknown>;
 }
 
 type ReconLine = NonNullable<NonSalaryReturn['reconciliation']>['lines'][number];
@@ -762,6 +769,7 @@ export function LiveTdsReturns({ live }: { live: LiveTdsReturns }) {
   const [confirming, setConfirming] = useState(false);
   const [why, setWhy] = useState<string | null>(null);
   const [badRows, setBadRows] = useState<{ month: string; errors: ImportBatch['errors'] } | null>(null);
+  const [nilMonth, setNilMonth] = useState<string | null>(null);
   const r = live.returns?.find((x) => x.id === openId) ?? null;
   const tokenCheck = useTooEarly(!/^[A-Za-z0-9]{6,30}$/.test(token.trim()) ? [{ fieldId: 'rt-token', message: 'Enter the token number the portal gave (6 to 30 letters or digits).' }] : []);
   const startCheck = useTooEarly(taxYear ? [] : [{ fieldId: 'rt-year', message: 'Choose the tax year.' }]);
@@ -799,17 +807,30 @@ export function LiveTdsReturns({ live }: { live: LiveTdsReturns }) {
   const monthChecks: CheckRow[] = (completeness?.months ?? []).map((m) => ({
     id: m.month,
     status: m.missing ? 'fail' : m.rows || m.source !== 'none' ? 'pass' : 'warn',
-    label: `${monthText(m.month)}: ${m.missing ? 'no deductee rows' : `${m.rows} deductee ${m.rows === 1 ? 'row' : 'rows'}`}`,
+    label: `${monthText(m.month)}: ${m.missing ? 'no deductee rows' : m.source === 'nil' ? 'no deductees' : `${m.rows} deductee ${m.rows === 1 ? 'row' : 'rows'}`}`,
     detail: m.missing
-      ? 'Paid before this company started on YukthiX. Import that month’s as-paid lines (employeeCode, componentCode, amount) so the return is complete.'
-      : m.source === 'imported'
+      ? 'Paid before this company started on YukthiX. Import that month’s as-paid lines (employeeCode, componentCode, amount) so the return is complete, or say it had no salary TDS.'
+      : m.source === 'nil'
+        ? `Recorded as having no salary TDS: ${m.nil?.reason ?? ''}`
+        : m.source === 'imported'
         ? 'From the imported as-paid lines'
         : m.source === 'payroll'
           ? 'From approved payroll'
           : 'No payroll for this month yet',
     action:
-      m.missing && live.can.generate && live.onImportMonth && live.onCommitImport ? (
-        <FileButton label="Import rows" accept=".csv,text/csv" ariaLabel={`Import the as-paid lines for ${monthText(m.month)}`} loading={busy === `im-${m.month}`} onFile={(f) => importMonth(m.month, f)} />
+      m.missing && live.can.generate ? (
+        <span className="yx-ops-row">
+          {live.onImportMonth && live.onCommitImport && <FileButton label="Import rows" accept=".csv,text/csv" ariaLabel={`Import the as-paid lines for ${monthText(m.month)}`} loading={busy === `im-${m.month}`} onFile={(f) => importMonth(m.month, f)} />}
+          {live.onNilMonth && (
+            <Button size="sm" aria-label={`No deductees in ${monthText(m.month)}`} onClick={() => setNilMonth(m.month)}>
+              No deductees this month
+            </Button>
+          )}
+        </span>
+      ) : m.source === 'nil' && m.nil && live.can.generate && live.onUndoNil && r?.status !== 'filed' ? (
+        <Button size="sm" aria-label={`Undo no deductees in ${monthText(m.month)}`} loading={busy === `un-${m.month}`} onClick={() => go(`un-${m.month}`, () => live.onUndoNil!(m.nil!.id, m.nil!.version), `${monthText(m.month)} needs its rows again.`)}>
+          Undo
+        </Button>
       ) : undefined,
   }));
   const panChecks: CheckRow[] = [
@@ -1001,6 +1022,17 @@ export function LiveTdsReturns({ live }: { live: LiveTdsReturns }) {
           </div>
           <Stepper key={r.id} title={returnName(r)} steps={steps} defaultCurrent={currentStep(r)} finishLabel="Mark return filed" onFinish={tryFile} anyOrder />
         </section>
+      )}
+      {live.onNilMonth && (
+        <NoDeducteesDialog
+          month={nilMonth ? monthText(nilMonth) : ''}
+          open={!!nilMonth}
+          onOpenChange={(o) => !o && setNilMonth(null)}
+          onConfirm={async (reason) => {
+            await live.onNilMonth!(nilMonth!, reason);
+            toast({ tone: 'success', title: `${monthText(nilMonth!)} recorded as having no deductees.` });
+          }}
+        />
       )}
       {confirming && r && (
         <IrreversibleSheet

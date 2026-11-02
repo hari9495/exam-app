@@ -280,7 +280,7 @@ export interface TdsReturnRow {
 }
 
 export interface ReturnCompleteness {
-  months: { month: string; rows: number; source: 'payroll' | 'imported' | 'none'; missing: boolean }[];
+  months: { month: string; rows: number; source: 'payroll' | 'imported' | 'nil' | 'none'; missing: boolean; nil?: { id: string; version: number; reason: string; recordedAt: string } | null }[];
   panWarnings: { employeeId: string; employeeCode: string; name: string; issue: 'pan_missing' | 'pan_inoperative' }[];
   panWarningCount: number;
   panChecked: number;

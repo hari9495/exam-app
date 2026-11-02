@@ -9,6 +9,8 @@ const Q = 'Q2 tax year 2026-27';
 
 export const Completeness: S = { name: 'Completeness (prior-month rows imported)', render: () => <TdsReturnWizardScreen quarter={Q} months={DEDUCTEE_GAPS} /> };
 export const MissingMonth: S = { name: 'Blocked · prior-month rows missing', render: () => <TdsReturnWizardScreen quarter={Q} months={DEDUCTEE_GAPS} missingMonth /> };
+export const NoDeducteesConfirm: S = { name: 'Blocked · no deductees this month (confirm)', render: () => <TdsReturnWizardScreen quarter={Q} months={DEDUCTEE_GAPS} missingMonth noDeductees="confirm" /> };
+export const NoDeducteesRefused: S = { name: 'Blocked · no deductees refused (TDS on payslips)', render: () => <TdsReturnWizardScreen quarter={Q} months={DEDUCTEE_GAPS} missingMonth noDeductees="refused" /> };
 export const Reconciliation: S = { name: 'Reconciliation · small difference flagged', render: () => <TdsReturnWizardScreen quarter={Q} months={DEDUCTEE_GAPS} current="reconcile" difference={0.29} /> };
 export const Fvu: S = { name: 'Self-file · FVU validation', render: () => <TdsReturnWizardScreen quarter={Q} months={DEDUCTEE_GAPS} current="validate" /> };
 export const Partner: S = { name: 'Filing partner', render: () => <TdsReturnWizardScreen quarter={Q} months={DEDUCTEE_GAPS} current="validate" mode="partner" /> };
