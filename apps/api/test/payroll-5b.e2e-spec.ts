@@ -428,6 +428,18 @@ describe('Payroll batch 5b', () => {
     const rows = (await api('payAdmin', 'get', '/payroll/coverage').expect(200)).body as { legalEntityId: string; statute: string; status: string; headcount: number }[];
     expect(rows.filter((r) => r.legalEntityId === ids.entityA).map((r) => [r.statute, r.status, r.headcount])).toEqual([['IN.ESI', 'not_covered', 2], ['IN.PF', 'not_covered', 2]]);
     expect((await api('payAdminB', 'get', '/payroll/coverage').expect(200)).body.some((r: { legalEntityId: string }) => r.legalEntityId === ids.entityA)).toBe(false);
+    // PAY-30 Crossed: covered by law (ESI) with no registration is "crossed, set-up needed"; PF is covered and switched on.
+    await inA((tx) => tx.establishmentCoverage.updateMany({ where: { legalEntityId: ids.entityA }, data: { status: 'covered', crossedOn: new Date(`${today}T00:00:00Z`) } }));
+    const crossed = (await api('payAdmin', 'get', '/payroll/coverage').expect(200)).body as { legalEntityId: string; statute: string; status: string; registration: string | null }[];
+    expect(crossed.filter((r) => r.legalEntityId === ids.entityA).map((r) => [r.statute, r.status, r.registration])).toEqual([['IN.ESI', 'crossed', null], ['IN.PF', 'covered', 'on']]);
+    // Record applied (the statutory set-up key and a second step): no longer crossed.
+    await api('hrAdmin', 'put', `/payroll/entities/${ids.entityA}/statutory-registrations`).send({ registrations: [{ statute: 'IN.ESI', status: 'applied_awaited', appliedOn: today }] }).expect(403);
+    await stepUp('payAdmin');
+    await api('payAdmin', 'put', `/payroll/entities/${ids.entityA}/statutory-registrations`).send({ registrations: [{ statute: 'IN.ESI', status: 'applied_awaited' }] }).expect(400);
+    await api('payAdmin', 'put', `/payroll/entities/${ids.entityA}/statutory-registrations`).send({ registrations: [{ statute: 'IN.ESI', status: 'applied_awaited', appliedOn: today }] }).expect(200);
+    const after = (await api('payAdmin', 'get', '/payroll/coverage').expect(200)).body as { legalEntityId: string; statute: string; status: string; registration: string | null }[];
+    expect(after.find((r) => r.legalEntityId === ids.entityA && r.statute === 'IN.ESI')).toMatchObject({ status: 'covered', registration: 'applied_awaited' });
+    await inA((tx) => tx.establishmentCoverage.updateMany({ where: { legalEntityId: ids.entityA }, data: { status: 'not_covered', crossedOn: null } }));
     const state = (await api('payAdmin', 'get', `/payroll/entities/${ids.entityA}/setup`).expect(200)).body;
     expect(state.steps.map((s: { key: string; done: boolean }) => [s.key, s.done])).toEqual([['registrations', false], ['pay_groups', true], ['components', true], ['templates', true], ['payslip_layout', true]]);
   });

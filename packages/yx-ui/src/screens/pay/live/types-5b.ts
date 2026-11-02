@@ -62,7 +62,9 @@ export interface CoverageRow {
   statute: string;
   headcount: number;
   threshold: number;
-  status: 'not_covered' | 'approaching' | 'covered';
+  /** crossed: covered by law but neither switched on nor applied for (PAY-30; blocks run approval). */
+  status: 'not_covered' | 'approaching' | 'covered' | 'crossed';
+  registration?: 'on' | 'applied_awaited' | null;
   crossedOn: string | null;
   ruleVersion: string;
   evaluatedAt: string;

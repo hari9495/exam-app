@@ -351,7 +351,12 @@ export class PaySetupService {
     return this.run(ctx, user, async (tx, c, v) => {
       const ids = await entitiesFor(tx, c, v, 'payroll.setup.manage');
       const rows = await tx.establishmentCoverage.findMany({ where: { organizationId: c.organizationId, legalEntityId: { in: ids } }, orderBy: [{ legalEntityId: 'asc' }, { statute: 'asc' }] });
-      return rows.map((r) => ({ legalEntityId: r.legalEntityId, statute: r.statute, headcount: r.headcount, threshold: r.threshold, status: r.status, crossedOn: iso(r.crossedOn), ruleVersion: r.ruleVersion, evaluatedAt: r.evaluatedAt }));
+      const regs = await tx.statutoryRegistration.findMany({ where: { organizationId: c.organizationId, legalEntityId: { in: ids }, status: { in: ['on', 'applied_awaited'] } }, select: { legalEntityId: true, statute: true, status: true } });
+      // PAY-30 "Crossed": covered by law but neither switched on nor applied for; it blocks run approval (runs.validate).
+      return rows.map((r) => {
+        const reg = regs.find((x) => x.legalEntityId === r.legalEntityId && x.statute === r.statute);
+        return { legalEntityId: r.legalEntityId, statute: r.statute, headcount: r.headcount, threshold: r.threshold, status: r.status === 'covered' && !reg ? 'crossed' : r.status, registration: reg?.status ?? null, crossedOn: iso(r.crossedOn), ruleVersion: r.ruleVersion, evaluatedAt: r.evaluatedAt };
+      });
     });
   }
 

@@ -533,8 +533,10 @@ export interface LiveCoverage {
   entities: SetupEntity[];
   rows: CoverageRow[] | null;
   setupHref: string;
+  /** PAY-30 Crossed: switch the law on (registration number and start) or record it as applied for; needs payroll.statutory.setup. */
+  onSettle?: (row: CoverageRow, x: { applied: boolean; registrationNo?: string; from: string }) => Promise<unknown>;
 }
-const COVER_STATUS: Record<CoverageRow['status'], DesignCoverageRow['status']> = { not_covered: 'Below', approaching: 'Approaching', covered: 'Covered' };
+const COVER_STATUS: Record<CoverageRow['status'], DesignCoverageRow['status']> = { not_covered: 'Below', approaching: 'Approaching', covered: 'Covered', crossed: 'Crossed: set-up needed' };
 
 /** The API's daily coverage rows in the design's shape: entity, statute, head count against the threshold. */
 export const coverageRows = (rows: CoverageRow[], entities: SetupEntity[]): DesignCoverageRow[] =>
@@ -545,7 +547,8 @@ export const coverageRows = (rows: CoverageRow[], entities: SetupEntity[]): Desi
     headcount: r.headcount,
     threshold: r.threshold,
     status: COVER_STATUS[r.status],
-    due: r.status === 'covered' ? (r.crossedOn ? `Covered since ${dateText(r.crossedOn)}; stays covered` : 'Covered') : r.status === 'approaching' ? `Checked ${dateText(r.evaluatedAt.slice(0, 10))}` : undefined,
+    due: r.status === 'covered' ? `${r.registration === 'applied_awaited' ? 'Applied, number awaited' : r.crossedOn ? `Covered since ${dateText(r.crossedOn)}; stays covered` : 'Covered'}` : r.status === 'crossed' ? `Crossed${r.crossedOn ? ` on ${dateText(r.crossedOn)}` : ''}: switch it on or record it as applied for` : r.status === 'approaching' ? `Checked ${dateText(r.evaluatedAt.slice(0, 10))}` : undefined,
+    source: r,
   }));
 
 /** Payroll › Statutory coverage (PAY-30): the coverage panel, read only; switching a law on is done in statutory set-up. */
@@ -554,7 +557,7 @@ export function LiveCoverageScreen({ live }: { live: LiveCoverage }) {
     <div className="yx-auth__page yx-pay-stack">
       <PageHeader title="Statutory coverage" description="Head count of each legal entity against the legal thresholds, checked every day. Once covered, an establishment stays covered." />
       <LiveStates state={live.state} onRetry={live.onRetry} what="statutory coverage">
-        <CoveragePanel rows={coverageRows(live.rows ?? [], live.entities)} setupHref={live.setupHref} />
+        <CoveragePanel key={JSON.stringify(live.rows)} rows={coverageRows(live.rows ?? [], live.entities)} setupHref={live.setupHref} onSettle={live.onSettle && ((r, x) => live.onSettle!(r.source as CoverageRow, x))} />
       </LiveStates>
     </div>
   );

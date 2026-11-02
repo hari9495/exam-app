@@ -145,6 +145,34 @@ describe('PAY-30 Coverage, live', () => {
     expect(coverageRows(COVERAGE, SETUP_ENTITIES).map((r) => r.status)).toEqual(['Covered', 'Covered', 'Approaching', 'Covered']);
   });
 
+  it('PAY-30 Crossed: covered but not set up blocks approval; Switch on needs the number (negative), then saves it with a toast', async () => {
+    const crossed = [{ ...COVERAGE[3], status: 'crossed' as const, crossedOn: '2026-09-24' }];
+    const onSettle = vi.fn(async () => ({}));
+    render(<CoverageMonitorPanel live={{ state: 'ready', entities: SETUP_ENTITIES, rows: crossed, setupHref: '/setup', onSettle }} />);
+    const table = screen.getByRole('table');
+    expect(within(table).getByText('Crossed: set-up needed')).toBeInTheDocument();
+    await ue.click(within(table).getByRole('button', { name: 'Switch on' }));
+    await ue.click(screen.getByRole('button', { name: /^Switch .+ on$/ }));
+    expect(screen.getByText('Give the registration number (at least 5 characters).')).toBeInTheDocument();
+    expect(onSettle).not.toHaveBeenCalled();
+    await ue.type(screen.getByRole('textbox', { name: /Registration number/ }), 'TNMAS0012345000');
+    await ue.click(screen.getByRole('button', { name: /^Switch .+ on$/ }));
+    await waitFor(() => expect(onSettle).toHaveBeenCalledWith(crossed[0], expect.objectContaining({ applied: false, registrationNo: 'TNMAS0012345000', from: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) })));
+  });
+
+  it('PAY-30 Crossed: Record applied sends the date only; without the set-up key there are no buttons (negative)', async () => {
+    const crossed = [{ ...COVERAGE[3], status: 'crossed' as const }];
+    const onSettle = vi.fn(async () => ({}));
+    const { unmount } = render(<CoverageMonitorPanel live={{ state: 'ready', entities: SETUP_ENTITIES, rows: crossed, setupHref: '/setup', onSettle }} />);
+    await ue.click(screen.getByRole('button', { name: 'Record applied' }));
+    await ue.click(screen.getAllByRole('button', { name: 'Record applied' }).pop()!);
+    await waitFor(() => expect(onSettle).toHaveBeenCalledWith(crossed[0], expect.objectContaining({ applied: true })));
+    unmount();
+    render(<CoverageMonitorPanel live={{ state: 'ready', entities: SETUP_ENTITIES, rows: crossed, setupHref: '/setup' }} />);
+    expect(screen.queryByRole('button', { name: 'Switch on' })).not.toBeInTheDocument();
+    expect(screen.getByText(/switch it on or record it as applied for/)).toBeInTheDocument();
+  });
+
   it('not checked yet, and could not load (negative)', async () => {
     const onRetry = vi.fn();
     const { rerender } = render(<CoverageMonitorPanel live={{ state: 'ready', entities: SETUP_ENTITIES, rows: [], setupHref: '/setup' }} />);

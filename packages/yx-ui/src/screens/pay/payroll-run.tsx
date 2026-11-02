@@ -13,6 +13,7 @@ import { DatePicker } from '../../components/date';
 import { useNarrow } from '../../components/stepper';
 import { Dialog } from '../../components/overlay';
 import { useToast } from '../../components/notify';
+import { useRun } from '../org/org-kit';
 import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { Stepper, type StepperStep } from '../../components/stepper';
 import { PlainTable } from '../../components/plain-table';
@@ -444,6 +445,8 @@ export interface CoverageRow {
   threshold: number;
   status: 'Below' | 'Approaching' | 'Covered' | 'Covered permanently' | 'Crossed: set-up needed';
   due?: string;
+  /** Live: the API's row behind it (passed back to onSettle). */
+  source?: unknown;
 }
 export const COVERAGE: CoverageRow[] = [
   { entity: 'Kaveri Foods (Tamil Nadu)', statute: 'PF', basis: 'Employees, any day in 12 months', headcount: 21, threshold: 20, status: 'Crossed: set-up needed', due: 'Register within 30 days of 24 Sep' },
@@ -462,7 +465,11 @@ export function CoverageMonitorPanel(p: { rows?: CoverageRow[]; state?: ViewStat
 }
 
 /** The coverage panel itself. Live: `setupHref` opens statutory set-up; empty means the daily check has not run yet. */
-export function CoveragePanel({ rows: initial = COVERAGE, state = 'ready', onChange, setupHref }: { rows?: CoverageRow[]; state?: ViewState; onChange?: (rows: CoverageRow[]) => void; setupHref?: string }) {
+export function CoveragePanel({ rows: initial = COVERAGE, state = 'ready', onChange, setupHref, onSettle }: { rows?: CoverageRow[]; state?: ViewState; onChange?: (rows: CoverageRow[]) => void; setupHref?: string; /** Live: saves the switch-on or the application; without it (live, no key) the crossed row says where it is done. */ onSettle?: (row: CoverageRow, x: { applied: boolean; registrationNo?: string; from: string }) => Promise<unknown> }) {
+  const { toast } = useToast();
+  const { busy, error, run, clearError } = useRun();
+  // Live without payroll.statutory.setup: a crossed row says what is needed; the set-up page is where it is done.
+  const canSettle = !setupHref || !!onSettle;
   const phone = useNarrow(599);
   const [rows, setRows] = useState(initial);
   const [switching, setSwitching] = useState<{ row: CoverageRow; applied: boolean } | null>(null);
@@ -479,6 +486,7 @@ export function CoveragePanel({ rows: initial = COVERAGE, state = 'ready', onCha
   };
   const close = () => {
     early.reset();
+    clearError();
     setSwitching(null);
     setRegNo('');
     setFrom(d(1));
@@ -515,10 +523,21 @@ export function CoveragePanel({ rows: initial = COVERAGE, state = 'ready', onCha
             <Button onClick={close}>Cancel</Button>
             <Button
               variant="primary"
+              loading={busy === 'settle'}
               onClick={() => {
                 if (early.stop()) return;
-                if (sw && from) settle(sw, switching?.applied ? `Applied, number awaited · from ${formatDate(from)}` : `${sw.statute} ${regNo.trim()} · from ${formatDate(from)}`);
-                close();
+                if (!sw || !from) return;
+                const applied = !!switching?.applied;
+                if (!onSettle) {
+                  settle(sw, applied ? `Applied, number awaited · from ${formatDate(from)}` : `${sw.statute} ${regNo.trim()} · from ${formatDate(from)}`);
+                  return close();
+                }
+                const day = `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, '0')}-${String(from.getDate()).padStart(2, '0')}`;
+                void run('settle', async () => {
+                  await onSettle(sw, { applied, from: day, ...(applied ? {} : { registrationNo: regNo.trim() }) });
+                  toast({ tone: 'success', title: applied ? `${sw.statute} recorded as applied for` : `${sw.statute} switched on for ${sw.entity}` });
+                  close();
+                });
               }}
             >
               {switching?.applied ? 'Record applied' : `Switch ${sw?.statute} on`}
@@ -527,6 +546,7 @@ export function CoveragePanel({ rows: initial = COVERAGE, state = 'ready', onCha
         }
       >
         <div className="yx-pay-stack">
+          {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
           {!switching?.applied && (
             <FormField id="cov-reg" label="Registration number" required helper="As on the registration certificate." error={early.errorOf('cov-reg')}>
               <TextField value={regNo} onChange={setRegNo} />
@@ -551,7 +571,7 @@ export function CoveragePanel({ rows: initial = COVERAGE, state = 'ready', onCha
                 <span className="yx-pay-note">
                   {r.basis}: {groupIndian(r.headcount)} of {groupIndian(r.threshold)}
                 </span>
-                {r.status.startsWith('Crossed') ? (
+                {r.status.startsWith('Crossed') && canSettle ? (
                   <div className="yx-pay-row">
                     <Button size="sm" onClick={() => setSwitching({ row: r, applied: false })}>Switch on</Button>
                     <Button size="sm" onClick={() => setSwitching({ row: r, applied: true })}>Record applied</Button>
@@ -578,7 +598,7 @@ export function CoveragePanel({ rows: initial = COVERAGE, state = 'ready', onCha
               key: 'next',
               header: 'Next step',
               cell: (r) =>
-                r.status.startsWith('Crossed') ? (
+                r.status.startsWith('Crossed') && canSettle ? (
                   <span className="yx-pay-row">
                     <Button size="sm" onClick={() => setSwitching({ row: r, applied: false })}>Switch on</Button>
                     <Button size="sm" onClick={() => setSwitching({ row: r, applied: true })}>Record applied</Button>
