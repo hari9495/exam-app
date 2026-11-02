@@ -1,7 +1,7 @@
 // Attendance: web clock-in page, attendance calendar, Today board, muster, day card, exceptions.
 // TIM-01, TIM-02, TIM-03, TIM-04 + founder extras "My attendance today" and "Attendance calendar".
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { Bell, ChevronLeft, ChevronRight, Download, Lock, Snowflake } from 'lucide-react';
+import { Bell, ChevronLeft, ChevronRight, Clock, Download, Lock, Snowflake } from 'lucide-react';
 import { DesktopFrame, PhoneFrame } from '../_kit/frames';
 import { Button, IconButton } from '../../components/button';
 import { Badge, DayDate, type BadgeTone } from '../../components/display';
@@ -53,7 +53,7 @@ import { AttendanceLegend, AttendanceMonth, ClockCard, DayCardBody, DueBadge, Ge
 import { DAY_CODE_LABEL, daysUntil, fmt12, fmtDuration, lateMinutes, monthSummary, relativeDue, toHHMM, toMin, type AttendanceDay, type ClockState, type DayCode, type Punch } from './time-logic';
 import { VISITS } from '../ops/visitors-data';
 import { useRun } from '../org/org-kit';
-import { AttendanceRequestSheet, OnDutySentBackSheet } from './requests';
+import { AttendanceRequestSheet, OnDutySentBackSheet, OtPreApproveSheet, type OtPreApproveSample } from './requests';
 import { MODE_TEXT } from './live/kit';
 import type { DayCard, DayRow, ExceptionsList, LateCorrectionInput, TodayBoard, FixInput, FixRow, LoadState, Muster, MyAttendance, MyNightWork, NightCodeSent, PersonAttendance, Pin, PunchKind, PunchResult, PunchRow, ResolveInput, WfhInput, OnDutyInput, OtPlanInput, OtPlanRow } from './live/types';
 import './time.css';
@@ -1464,6 +1464,10 @@ export interface MusterProps {
   resolved?: boolean;
   /** Show the muster as it was on an earlier day (the August lock story is set on 2 Sep, before payroll was approved on 3 Sep). */
   asOf?: Date;
+  /** Manager: their team only, no period or bulk actions; "Pre-approve overtime" for a report. */
+  persona?: 'hr' | 'mgr';
+  /** Manager: the Pre-approve overtime sheet open in one of its states. */
+  preApprove?: OtPreApproveSample;
 }
 
 /** TIM-02 · Muster. The app passes `live` (Time › Muster); stories show the sample. */
@@ -1471,13 +1475,16 @@ export function MusterScreen(p: MusterProps & { live?: LiveMusterData }) {
   return p.live ? <LiveMusterScreen live={p.live} /> : <SampleMusterScreen {...p} />;
 }
 
-function SampleMusterScreen({ stage: stageProp = 'open', state: stateProp = 'ready', month = 'sep', openCell, dialog = null, defaultSelected = [], resolved: resolvedProp = false, asOf }: MusterProps) {
+function SampleMusterScreen({ stage: stageProp = 'open', state: stateProp = 'ready', month = 'sep', openCell, dialog = null, defaultSelected = [], resolved: resolvedProp = false, asOf, persona = 'hr', preApprove }: MusterProps) {
+  const mgr = persona === 'mgr';
+  const [otSheet, setOtSheet] = useState(preApprove ?? null);
   const today = asOf ?? TODAY;
   const [state, retry] = useViewState(stateProp);
   const [stage, setStage] = useState(stageProp);
   // August is paid and closed; September's exceptions are open unless the story says resolved.
   const resolved = resolvedProp || month === 'aug' || stage === 'locked';
-  const [rows, setRows] = useState(() => musterRows(month, resolved));
+  // A manager's muster is their own row and their reports (TIM-02, YX-AT-14).
+  const [rows, setRows] = useState(() => musterRows(month, resolved).filter((r) => !mgr || r.name === ME.name || isMyReport(r.name)));
   const [cell, setCell] = useState<[string, number] | null>(openCell ?? null);
   const [dlg, setDlg] = useState(dialog);
   const [selected, setSelected] = useState<string[]>(defaultSelected);
@@ -1505,17 +1512,17 @@ function SampleMusterScreen({ stage: stageProp = 'open', state: stateProp = 'rea
   const sheetRow = monthOf ? rows.find((r) => r.id === monthOf) : null;
   const openExceptions = <LinkButton size="sm" to={STORY.exceptionsHr}>Open exceptions</LinkButton>;
   // Bulk "mark present" only when the month has absent or missing-punch days to mark (a closed August has none).
-  const bulkable = stage !== 'locked' && shown.some((r) => r.days.some((d) => canMarkPresent(d.code)));
+  const bulkable = !mgr && stage !== 'locked' && shown.some((r) => r.days.some((d) => canMarkPresent(d.code)));
   // Open on the latest days, where most of the open exceptions are (names and totals stay pinned).
   useEffect(() => {
     const g = gridRef.current;
     if (g) g.scrollLeft = g.scrollWidth;
   }, [narrow, state]);
   return (
-    <TimePage active="Muster" user={HR_ADMIN} counts={resolved || state === 'empty' ? { ...timeCounts(HR_ADMIN), Exceptions: 0 } : undefined}>
+    <TimePage active="Muster" user={userFor(persona)} counts={resolved || state === 'empty' ? { ...timeCounts(userFor(persona)), Exceptions: 0 } : undefined}>
       <PageHeader
         title={`Muster · ${monthName} 2026`}
-        description={`Kaveri Foods Pvt Ltd (Tamil Nadu) · Chennai office and Hosur plant${state === 'ready' ? ` · ${shown.length} people` : ''}${asOf ? ` · as on ${shortDate(asOf)}` : ''}`}
+        description={mgr ? `Your team${state === 'ready' ? ` · ${shown.length - 1} people and you` : ''}` : `Kaveri Foods Pvt Ltd (Tamil Nadu) · Chennai office and Hosur plant${state === 'ready' ? ` · ${shown.length} people` : ''}${asOf ? ` · as on ${shortDate(asOf)}` : ''}`}
         status={<Badge tone={stage === 'open' ? 'success' : stage === 'frozen' ? 'warning' : 'neutral'}>{stage === 'open' ? 'Open' : stage === 'frozen' ? 'Inputs frozen' : 'Locked'}</Badge>}
         facts={
           stage !== 'locked' && (
@@ -1530,9 +1537,10 @@ function SampleMusterScreen({ stage: stageProp = 'open', state: stateProp = 'rea
         actions={
           <div className="yx-tim-row">
             {ready && <Button icon={Download} onClick={() => downloadCsv(`muster-${monthName.toLowerCase()}-2026.csv`, [['Employee', 'Code', 'Payable', 'Unpaid', 'Late', 'OT h', ...monthDays.map((d) => String(d.date.getDate()))], ...shown.map((r) => { const s = monthSummary(r.days); return [r.name, r.code, s.payable, s.lop, s.lateMarks, s.otHours, ...r.days.map((d) => codeText(cellCode(d.code)))]; })])}>Export</Button>}
-            {stage === 'open' && ready && <Button icon={Snowflake} onClick={() => setDlg('freeze')}>Freeze inputs</Button>}
+            {mgr && ready && <Button icon={Clock} onClick={() => setOtSheet('default')}>Pre-approve overtime</Button>}
+            {!mgr && stage === 'open' && ready && <Button icon={Snowflake} onClick={() => setDlg('freeze')}>Freeze inputs</Button>}
             {/* Not ready to lock: pressed, it says why (the alert below says it too). */}
-            {stage === 'frozen' && <Button variant="primary" icon={Lock} onClick={() => (lockBlock ? setMsg(`${lockBlock}.`, 'default') : setDlg('lock'))}>Lock period</Button>}
+            {!mgr && stage === 'frozen' && <Button variant="primary" icon={Lock} onClick={() => (lockBlock ? setMsg(`${lockBlock}.`, 'default') : setDlg('lock'))}>Lock period</Button>}
           </div>
         }
       />
@@ -1570,8 +1578,9 @@ function SampleMusterScreen({ stage: stageProp = 'open', state: stateProp = 'rea
         {sheetRow && <AttendanceMonth month={monthDays[0].date} days={sheetRow.days} compact onDayClick={(d) => { setMonthOf(null); setCell([sheetRow.id, d.date.getDate() - 1]); }} />}
       </BottomSheet>
       <Drawer open={!!day} onOpenChange={(o) => !o && setCell(null)} title={day ? `${row!.name} · ${formatDate(day.date)}` : ''} subtitle="Day card" size="lg">
-        {day && <DayPanel key={`${row!.id}-${cell![1]}`} day={day} person={row!.name} viewer="hr" locked={stage === 'locked'} monthDays={row!.days} />}
+        {day && <DayPanel key={`${row!.id}-${cell![1]}`} day={day} person={row!.name} viewer={mgr ? 'mgr' : 'hr'} locked={stage === 'locked'} monthDays={row!.days} />}
       </Drawer>
+      {otSheet && <OtPreApproveSheet key={otSheet} sample={otSheet} />}
       <ConfirmDialog
         open={dlg === 'freeze'}
         onOpenChange={(o) => !o && setDlg(null)}
@@ -2232,6 +2241,10 @@ export interface LiveMusterData {
   exceptionsHref?: string;
   /** Manager · one person: the person's month page (opened from their day card). */
   personHref?: (employeeId: string, month: string) => string;
+  /** TIM-02 Manager · Pre-approve overtime for a report (approved at once); offered on a team muster that has reports. */
+  onPreApproveOt?: (employeeId: string, input: OtPlanInput) => Promise<unknown>;
+  /** How far ahead overtime may be planned (attendance.overtime.plan_ahead_days). */
+  otAheadDays?: number;
 }
 
 const LIVE_SOURCES: Punch['source'][] = ['web', 'mobile', 'biometric', 'kiosk', 'teams', 'desktop', 'field'];
@@ -2983,6 +2996,8 @@ function LiveMusterScreen({ live }: { live: LiveMusterData }) {
   const [monthOf, setMonthOf] = useState<string | null>(null);
   const [dlg, setDlg] = useState<'freeze' | 'lock' | 'send' | 'approve' | 'bulk' | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
+  // Pre-approve overtime: open for no one yet (''), or for the person whose day card it came from.
+  const [otFor, setOtFor] = useState<string | null>(null);
   const { run } = useRun();
   const today = live.today ?? isoOf(new Date());
   const todayDate = isoDay(today);
@@ -3007,6 +3022,8 @@ function LiveMusterScreen({ live }: { live: LiveMusterData }) {
   const waiting = (period?.pending ?? []).reduce((n, x) => n + x.count, 0);
   const lockBlock = !period ? null : !period.lockable ? `${label} can be frozen and locked from ${formatDate(isoDay(period.lockableFrom))}` : waiting ? `${waiting} ${waiting === 1 ? 'request is' : 'requests are'} still waiting for a decision` : exceptions ? `Lock opens when ${exceptions} open ${exceptions === 1 ? 'exception is' : 'exceptions are'} resolved` : null;
   const own = selected.filter((id) => d?.people.find((p) => p.id === id)?.me);
+  // A manager pre-approves overtime for their reports, never for themselves (the server checks each one again).
+  const reports = live.onPreApproveOt && d?.scope === 'team' ? d.people.filter((p) => !p.me) : [];
   // Bulk "mark present" only for HR, in an open month with absent or missing-punch days to mark (never their own row).
   const bulkable = Boolean(d?.canMarkPresent) && stage === 'open' && rows.some((r) => !d!.people.find((p) => p.id === r.id)?.me && r.days.some((x) => canMarkPresent(x.code)));
   const toggle = (id: string, on: boolean) => setSelected(on ? [...selected, id] : selected.filter((x) => x !== id));
@@ -3062,6 +3079,7 @@ function LiveMusterScreen({ live }: { live: LiveMusterData }) {
         }
         actions={
           <div className="yx-tim-row">
+            {ready && reports.length > 0 && <Button icon={Clock} onClick={() => setOtFor('')}>Pre-approve overtime</Button>}
             {ready && <Button icon={Download} onClick={() => downloadCsv(`muster-${d!.month}.csv`, [['Employee', 'Code', 'Payable', 'Unpaid', 'Late', 'OT h', ...monthDays.map((x) => String(x.date.getDate()))], ...rows.map((r) => { const s = monthSummary(r.days, todayDate); return [r.name, r.code, s.payable, s.lop, s.lateMarks, s.otHours, ...r.days.map((x) => codeText(cellCode(x.code)))]; })])}>Export</Button>}
             {stageButton}
           </div>
@@ -3123,7 +3141,14 @@ function LiveMusterScreen({ live }: { live: LiveMusterData }) {
         title={day && row ? `${row.name} · ${formatDate(day.date)}` : ''}
         subtitle={person ? [person.code, person.location].filter(Boolean).join(' · ') : 'Day card'}
         size="lg"
-        footer={row && person && !person.me && live.personHref ? <Button asChild><a href={live.personHref(row.id, live.month)}>Open {person.name.split(' ')[0]}'s month</a></Button> : undefined}
+        footer={
+          row && person && !person.me && (live.personHref || reports.some((x) => x.id === row.id)) ? (
+            <>
+              {reports.some((x) => x.id === row.id) && <Button icon={Clock} onClick={() => { setCell(null); setOtFor(row.id); }}>Pre-approve overtime</Button>}
+              {live.personHref && <Button asChild><a href={live.personHref(row.id, live.month)}>Open {person.name.split(' ')[0]}'s month</a></Button>}
+            </>
+          ) : undefined
+        }
       >
         {day && row && person && (
           <DayPanel
@@ -3182,6 +3207,18 @@ function LiveMusterScreen({ live }: { live: LiveMusterData }) {
             onConfirm={async () => { await live.onApproveLock!(period.legalEntityId, live.month); }}
           />
         </>
+      )}
+      {otFor !== null && live.onPreApproveOt && (
+        <OtPreApproveSheet
+          live={{
+            people: reports.map((x) => ({ id: x.id, name: x.name, detail: [x.code, x.location].filter(Boolean).join(' · ') })),
+            employeeId: otFor || null,
+            today,
+            ...(live.otAheadDays !== undefined ? { aheadDays: live.otAheadDays } : {}),
+            onSubmit: live.onPreApproveOt,
+            onClose: () => setOtFor(null),
+          }}
+        />
       )}
       {dlg === 'bulk' && (
         <BulkPresentDialog

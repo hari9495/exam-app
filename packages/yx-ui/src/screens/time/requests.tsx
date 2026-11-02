@@ -496,6 +496,142 @@ export function OnDutySentBackSheet({ live }: { live?: OnDutySentBackProps }) {
   );
 }
 
+/* ---------- TIM-02 · Pre-approve overtime (manager, from the team muster; TIM-07 Ot style) ---------- */
+
+/** A report the manager may pre-approve overtime for (never themselves). */
+export interface OtPreApprovePerson {
+  id: string;
+  name: string;
+  /** "KF-0112 · Chennai office". */
+  detail?: string;
+}
+
+export interface OtPreApproveProps {
+  people: OtPreApprovePerson[];
+  /** Opened from one person: that person is chosen. */
+  employeeId?: string | null;
+  /** Today in the company's zone, "2026-11-02". */
+  today: string;
+  /** How far ahead overtime may be planned (attendance.overtime.plan_ahead_days; default 30). */
+  aheadDays?: number;
+  /** Approved at once (the manager is the approver); a refusal is shown in the sheet. */
+  onSubmit: (employeeId: string, input: OtPlanInput) => Promise<unknown>;
+  onClose: () => void;
+}
+
+/** The sheet's story states: empty, filled in, Pre-approve pressed too early, refused by the server. */
+export type OtPreApproveSample = 'default' | 'filled' | 'errors' | 'refused';
+
+const OT_SAMPLE_PEOPLE: OtPreApprovePerson[] = TEAM.filter((p) => isMyReport(p.name)).map((p) => ({ id: p.id, name: p.name, detail: `${p.code} · ${p.location}` }));
+
+/** TIM-02 Manager · Pre-approve overtime: approved at once and audited; the person claims it after the work. */
+export function OtPreApproveSheet({ live, sample = 'default' }: { live?: OtPreApproveProps; sample?: OtPreApproveSample }) {
+  const [open, setOpen] = useState(true);
+  const filled = !live && (sample === 'filled' || sample === 'refused');
+  const p: OtPreApproveProps = live ?? {
+    people: OT_SAMPLE_PEOPLE,
+    employeeId: filled ? 't3' : null,
+    today: isoOf(TODAY),
+    onSubmit: async () => {
+      if (sample === 'refused') throw new Error('Factory overtime is paid by law, not given as comp-off. Choose Paid overtime.');
+    },
+    onClose: () => setOpen(false),
+  };
+  const today = isoDay(p.today);
+  const ahead = p.aheadDays ?? 30;
+  // One report: they are the only choice, so they are chosen. The date starts on today, as on TIM-07 Ot.
+  const [who, setWho] = useState<string | null>(p.employeeId ?? (p.people.length === 1 ? p.people[0]!.id : null));
+  const [date, setDate] = useState<Date | null>(filled ? addDays(today, 2) : sample === 'errors' && !live ? null : today);
+  const [hours, setHours] = useState<number | null>(filled ? 2.5 : null);
+  const [takeAs, setTakeAs] = useState<'pay' | 'comp_off'>(sample === 'refused' ? 'comp_off' : 'pay');
+  const [reason, setReason] = useState(filled ? 'Month-end batch release at the Hosur plant' : '');
+  const { busy, error, run } = useRun();
+  const { toast } = useToast();
+  const on = date ? isoOf(date) : null;
+  const minutes = Math.round((hours ?? 0) * 60);
+  const person = p.people.find((x) => x.id === who);
+  const errors = [
+    ...(!who ? [{ fieldId: 'ot-who', message: 'Choose the person' }] : []),
+    ...(!on
+      ? [{ fieldId: 'ot-date', message: 'Pick the date' }]
+      : on < p.today
+        ? [{ fieldId: 'ot-date', message: 'Pick today or a later date' }]
+        : (isoDay(on).getTime() - today.getTime()) / 86_400_000 > ahead
+          ? [{ fieldId: 'ot-date', message: `Pick a date in the next ${ahead} days` }]
+          : []),
+    ...(!hours
+      ? [{ fieldId: 'ot-hours', message: 'Enter the hours' }]
+      : minutes < 30
+        ? [{ fieldId: 'ot-hours', message: 'Enter at least 0.5 h' }]
+        : minutes > 720
+          ? [{ fieldId: 'ot-hours', message: 'Enter at most 12 h' }]
+          : minutes % 15
+            ? [{ fieldId: 'ot-hours', message: 'Use quarter hours (e.g. 1.25 or 1.5)' }]
+            : []),
+    ...(!reason.trim() ? [{ fieldId: 'ot-reason', message: 'Enter the reason' }] : []),
+  ];
+  const early = useTooEarly(errors);
+  const send = () => {
+    if (early.stop() || !who || !on) return;
+    void run('send', async () => {
+      await p.onSubmit(who, { on, minutes, takeAs, reason: reason.trim() });
+      toast({ tone: 'success', title: `Overtime pre-approved for ${person?.name ?? 'your team member'}`, description: `Up to ${dur(minutes)} on ${dm(isoDay(on))}, ${takeAs === 'pay' ? 'paid' : 'as comp-off'}. They claim it on My overtime after the work.` });
+      p.onClose();
+    });
+  };
+  // The story states press Pre-approve once on opening: "errors" shows the field errors, "refused" the server's answer.
+  useEffect(() => {
+    if (!live && (sample === 'errors' || sample === 'refused')) send();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  if (!open) return null;
+  const first = person ? person.name.split(' ')[0] : null;
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && p.onClose()}
+      title="Pre-approve overtime"
+      subtitle="Approved at once, as their manager"
+      dirty={Boolean(reason.trim() || hours)}
+      footer={
+        <>
+          {errors[0] && <FootReason>{errors[0].message}</FootReason>}
+          <Button onClick={p.onClose}>Cancel</Button>
+          <Button variant="primary" loading={busy === 'send'} onClick={send}>Pre-approve</Button>
+        </>
+      }
+    >
+      <div className="yx-tim-form">
+        {error && <InlineAlert tone="danger" title="Not pre-approved">{error}</InlineAlert>}
+        <FormField id="ot-who" label="Person" required error={early.errorOf('ot-who')} helper="People who report to you.">
+          <Select value={who} onChange={setWho} options={p.people.map((x) => ({ value: x.id, label: x.detail ? `${x.name} · ${x.detail}` : x.name }))} placeholder="Choose a person" searchable={p.people.length > 8} />
+        </FormField>
+        <FormField id="ot-date" label="Date" required error={early.errorOf('ot-date')} helper={`Today or up to ${ahead} days ahead.`}>
+          <DatePicker value={date} onChange={setDate} min={today} max={addDays(today, ahead)} aria-label="Date" />
+        </FormField>
+        <FormField id="ot-hours" label="Planned OT (hours)" required error={early.errorOf('ot-hours')} helper="0.5 to 12 h, in quarter hours">
+          <NumberField decimals value={hours} onChange={setHours} placeholder="e.g. 1.25" />
+        </FormField>
+        <FormField label="Take as" helper="Factory overtime is always paid.">
+          <Segment label="Take as" value={takeAs} onChange={setTakeAs} options={[{ value: 'pay' as const, label: 'Paid overtime' }, { value: 'comp_off' as const, label: 'Comp-off credit' }]} />
+        </FormField>
+        <FormField id="ot-reason" label="Reason" required error={early.errorOf('ot-reason')} helper="Shown to the person and on their overtime claim.">
+          <TextArea rows={2} value={reason} onChange={setReason} maxLength={500} />
+        </FormField>
+        <section className="yx-tim-effect" aria-live="polite" aria-label="Effect before you pre-approve">
+          <strong>Effect{on ? ` on ${dm(isoDay(on))}` : ''}</strong>
+          <div className="yx-tim-effect__line"><span className="yx-tim-muted">Now</span><Badge tone="neutral">No OT approved</Badge></div>
+          <div className="yx-tim-effect__line">
+            <span className="yx-tim-muted">After</span>
+            {minutes > 0 ? <Badge tone="success">{takeAs === 'pay' ? `Up to ${dur(minutes)} OT · paid at the overtime rate` : `Up to ${dur(minutes)} OT · comp-off credit`}</Badge> : <Badge tone="neutral">Add the hours to see the result</Badge>}
+          </div>
+          <p className="yx-tim-muted">{first ? `${first} claims` : 'They claim'} it on My overtime after the work; the claim shows it was pre-approved. Hours past this are still allowed and flagged to the approver.</p>
+        </section>
+      </div>
+    </Drawer>
+  );
+}
+
 /* ---------- TIM-07 live: the same sheet on the person's real month (Me › Attendance) ---------- */
 
 /** What the live sheet needs: my month from the server, and the two requests it can send. */

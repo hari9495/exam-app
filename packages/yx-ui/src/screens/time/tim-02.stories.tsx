@@ -21,3 +21,9 @@ export const Bulk: S = { name: 'Bulk mark present with reason', args: { dialog: 
 export const Empty: S = { name: 'Empty', args: { state: 'empty' } };
 export const Loading: S = { name: 'Loading', args: { state: 'loading' } };
 export const Failed: S = { name: 'Error', args: { state: 'error' } };
+// Founder 2 Nov 2026 (overtime pre-approval, item 1): a manager pre-approves overtime for a report from the team muster.
+export const Manager: S = { name: 'Manager · team muster', args: { persona: 'mgr' } };
+export const PreApprove: S = { name: 'Manager · Pre-approve overtime', args: { persona: 'mgr', preApprove: 'default' } };
+export const PreApproveFilled: S = { name: 'Manager · Pre-approve overtime · filled in', args: { persona: 'mgr', preApprove: 'filled' } };
+export const PreApproveErrors: S = { name: 'Manager · Pre-approve overtime · pressed too early', args: { persona: 'mgr', preApprove: 'errors' } };
+export const PreApproveRefused: S = { name: 'Manager · Pre-approve overtime · refused', args: { persona: 'mgr', preApprove: 'refused' } };
