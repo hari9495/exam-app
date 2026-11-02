@@ -1199,3 +1199,9 @@ MT-TIM-L-39..40.
 company settings with defaults). (2) Split: each part is checked for late/early on its own; the gap is unpaid and not
 worked; missing one part is a half day; rest and weekly-hour checks use both parts. (3) Flexi and split are company
 settings, off by default; existing fixed shifts do not change.
+
+## Founder answers, 3 Nov 2026 (geofence points and computer approval, "all good")
+(1) a switch for `attendance.web_device_approval` on TIM-14 Devices and kiosks, designed first; (2) the TIM-14 tabs are
+renamed "New device requests" and "Employee devices"; (3) a person may have more than one approved computer (keep);
+(4) HR admins get a notification when someone asks for a computer to be approved; (5) accepted: the approval rides on the
+sign-in device cookie, so moving that cookie moves the approval.
