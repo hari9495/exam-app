@@ -496,7 +496,7 @@ td .yx-badge, .yx-table td[data-type="date"] { white-space: nowrap; }
 
 /* PlainTable: a small read-only table. Long values wrap; headings and badges wrap only between words. */
 .yx-plain-table { width: 100%; border-collapse: collapse; font-size: var(--yx-text-sm); }
-.yx-plain-table th, .yx-plain-table td { text-align: start; vertical-align: top; padding: var(--yx-space-2) var(--yx-space-3); border-bottom: var(--yx-border-width) solid var(--yx-color-border); overflow-wrap: anywhere; }
+.yx-plain-table th, .yx-plain-table td { text-align: start; vertical-align: top; padding: var(--yx-space-2) var(--yx-space-3); border-bottom: var(--yx-border-width) solid var(--yx-color-border); overflow-wrap: break-word; /* words stay whole; only an unbreakable string (a file name, a long ID) wraps */ }
 .yx-plain-table thead th { color: var(--yx-color-text-secondary); font-weight: var(--yx-weight-medium); }
 .yx-plain-table thead th, .yx-plain-table .yx-badge { overflow-wrap: normal; }
 .yx-plain-table [data-date] { white-space: nowrap; }

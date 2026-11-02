@@ -1,4 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PlainTable } from './plain-table';
 
@@ -87,5 +89,12 @@ describe('PlainTable (kit, Data)', () => {
     const cell = screen.getByRole('cell', { name: 'No tasks yet.' });
     expect(cell).toHaveAttribute('colspan', '3');
     expect(screen.getAllByRole('row')).toHaveLength(2);
+  });
+
+  it('cells never split a normal word ("Earnin g"): only an unbreakable string may wrap', () => {
+    const css = readFileSync(join(__dirname, 'data.css'), 'utf8');
+    const rule = css.slice(css.indexOf('.yx-plain-table th, .yx-plain-table td'), css.indexOf('}', css.indexOf('.yx-plain-table th, .yx-plain-table td')));
+    expect(rule).toContain('overflow-wrap: break-word');
+    expect(rule).not.toContain('overflow-wrap: anywhere');
   });
 });
