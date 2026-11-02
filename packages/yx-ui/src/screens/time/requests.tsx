@@ -612,7 +612,7 @@ function LiveAttendanceRequestDrawer({ live }: { live: LiveAttendanceRequest }) 
     <Drawer
       open
       onOpenChange={(o) => !o && live.onClose()}
-      title={live.resend ? 'Change and send again' : live.type === 'wfh' ? 'Request work from home' : 'New attendance request'}
+      title={live.resend ? 'Change and send again' : type === 'wfh' ? 'Request work from home' : type === 'ot' ? 'Overtime pre-approval' : od ? 'On duty request' : 'New attendance request'}
       subtitle={late ? 'Goes to your manager, HR and payroll' : hr ? 'Goes to your manager, then HR' : 'Goes to your manager'}
       dirty={Boolean(reason)}
       footer={

@@ -224,6 +224,13 @@ describe('Me › Attendance (live calendar)', () => {
     expect(await within(sheet).findByText('Wed 14 Oct is a holiday (Founders Day).')).toBeInTheDocument();
   });
 
+  it('the drawer title follows the chosen request type (WFH, then On duty)', async () => {
+    render(<AttendanceCalendarScreen live={live({ onWfh: vi.fn(async () => ({})), onOnDuty: vi.fn(async () => ({})), defaultRequest: 'wfh' })} />);
+    const sheet = screen.getByRole('dialog', { name: 'Request work from home' });
+    await ue.click(within(sheet).getByRole('radio', { name: 'On duty' }));
+    expect(screen.getByRole('dialog', { name: 'On duty request' })).toBeInTheDocument();
+  });
+
   it('fixing a missing check-out needs the time and a reason, then goes for approval', async () => {
     const onFix = vi.fn(async () => ({}));
     render(<AttendanceCalendarScreen live={live({ onFix })} />);
