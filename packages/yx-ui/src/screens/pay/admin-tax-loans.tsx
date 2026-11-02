@@ -33,7 +33,7 @@ import { DesktopFrame, SCREEN_RAIL } from '../_kit/frames';
 import { EMPLOYEES, HR_ADMIN, ME, PAY_CALENDAR, TODAY } from '../_kit/data';
 import { Segment } from '../people/people-kit';
 import { ReportsView, PAY_REPORTS, type LivePayrollReports, type PayReport, type PayReportKind, type ReportFilters, type ReportOptions, type ReportsAccessRequest } from './reports-live';
-import { FactRow, PayFrame, PaySettingsFrame, SectionTitle, StateBlock, type PayPersona, type ViewState } from './pay-kit';
+import { FactRow, PayFrame, PaySettingsFrame, SectionTitle, StateBlock, useFileUrl, type PayPersona, type ViewState } from './pay-kit';
 import {
   ENTITY_KA,
   ENTITY_TN,
@@ -1873,6 +1873,8 @@ export interface LiveProofQueue {
   /** Form 12B in the same status (none for "partly"). */
   form12b: Form12bRow[] | null;
   onFile: (line: ProofQueueLine, n: number, name: string) => Promise<unknown>;
+  /** PAY-23 Line: the file for the in-page viewer (images and PDFs; download stays). */
+  onPreview?: (line: ProofQueueLine, n: number) => Promise<Blob>;
   onDecide: (line: ProofQueueLine, d: ProofDecision) => Promise<unknown>;
   onForm12bFile: (row: Form12bRow) => Promise<unknown>;
   onForm12bDecide: (row: Form12bRow, d: { decision: 'approve' | 'reject'; comment?: string }) => Promise<unknown>;
@@ -1977,7 +1979,7 @@ function LiveProofQueue({ live }: { live: LiveProofQueue }) {
           empty={<EmptyState title={live.status === 'pending' ? 'No proofs to verify yet.' : 'Nothing here.'} description="Proofs appear when employees send them in their tax workspace." />}
         />
       </PayPageState>
-      {open?.kind === 'line' && <ProofDecisionDrawer line={open.line} onFile={live.onFile} onClose={() => setOpenId(null)} onSave={(d) => live.onDecide(open.line, d)} />}
+      {open?.kind === 'line' && <ProofDecisionDrawer line={open.line} onFile={live.onFile} onPreview={live.onPreview} onClose={() => setOpenId(null)} onSave={(d) => live.onDecide(open.line, d)} />}
       {open?.kind === 'form12b' && <Form12bDecisionDrawer row={open.row} onFile={live.onForm12bFile} onClose={() => setOpenId(null)} onSave={(d) => live.onForm12bDecide(open.row, d)} />}
       {open?.kind === 'residency' && live.onResidencyDecide && (
         <ResidencyDecisionDrawer row={open.res} refused={live.story?.refused} onFile={live.onResidencyFile} onClose={() => setOpenId(null)} onSave={(d) => live.onResidencyDecide!(open.res, d)} />
@@ -1986,7 +1988,29 @@ function LiveProofQueue({ live }: { live: LiveProofQueue }) {
   );
 }
 
-function ProofDecisionDrawer({ line, onFile, onClose, onSave }: { line: ProofQueueLine; onFile: LiveProofQueue['onFile']; onClose: () => void; onSave: (d: ProofDecision) => Promise<unknown> }) {
+/** PAY-23 Line: the design's document viewer on the file sent (one at a time; a Segment picks among several). */
+function ProofFileViewer({ line, onFile, onPreview }: { line: ProofQueueLine; onFile: LiveProofQueue['onFile']; onPreview: NonNullable<LiveProofQueue['onPreview']> }) {
+  const [n, setN] = useState(line.proofs[0]?.n ?? 0);
+  const f = line.proofs.find((x) => x.n === n) ?? line.proofs[0];
+  const file = useFileUrl(f ? `${line.id}-${f.n}` : null, f ? () => onPreview(line, f.n) : undefined, f?.name ?? '');
+  const { run } = useRun();
+  if (!f) return null;
+  return (
+    <div className="yx-pay-stack">
+      {line.proofs.length > 1 && <Segment label="File" value={String(f.n)} onChange={(v) => setN(Number(v))} options={line.proofs.map((x) => ({ value: String(x.n), label: x.name }))} />}
+      <DocumentViewer
+        key={`${line.id}-${f.n}`}
+        fileName={f.name}
+        mimeType={file?.type || undefined}
+        state={!file ? 'loading' : file.failed ? 'error' : 'ready'}
+        versions={[{ id: 'v1', label: `Sent ${dateText(f.at.slice(0, 10))}`, url: file?.url ?? '', uploadedBy: line.employeeName || 'Someone', uploadedAt: new Date(f.at), size: f.size }]}
+        onDownload={() => void run(`f-${f.n}`, () => onFile(line, f.n, f.name))}
+      />
+    </div>
+  );
+}
+
+function ProofDecisionDrawer({ line, onFile, onPreview, onClose, onSave }: { line: ProofQueueLine; onFile: LiveProofQueue['onFile']; onPreview?: LiveProofQueue['onPreview']; onClose: () => void; onSave: (d: ProofDecision) => Promise<unknown> }) {
   const [decision, setDecision] = useState<ProofDecision['decision']>('approve');
   const [amount, setAmount] = useState('');
   const [comment, setComment] = useState('');
@@ -2000,13 +2024,17 @@ function ProofDecisionDrawer({ line, onFile, onClose, onSave }: { line: ProofQue
   const files = (
     <section aria-label="Files">
       <SectionTitle>Files sent</SectionTitle>
-      <div className="yx-pay-row">
-        {line.proofs.map((f) => (
-          <Button key={f.n} size="sm" icon={Download} loading={busy === `f-${f.n}`} onClick={() => void run(`f-${f.n}`, () => onFile(line, f.n, f.name))} aria-label={`Open ${f.name}`}>
-            {f.name}
-          </Button>
-        ))}
-      </div>
+      {onPreview ? (
+        <ProofFileViewer line={line} onFile={onFile} onPreview={onPreview} />
+      ) : (
+        <div className="yx-pay-row">
+          {line.proofs.map((f) => (
+            <Button key={f.n} size="sm" icon={Download} loading={busy === `f-${f.n}`} onClick={() => void run(`f-${f.n}`, () => onFile(line, f.n, f.name))} aria-label={`Open ${f.name}`}>
+              {f.name}
+            </Button>
+          ))}
+        </div>
+      )}
     </section>
   );
   const facts = (

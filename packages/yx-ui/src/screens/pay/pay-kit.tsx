@@ -18,6 +18,7 @@ import { Link } from '../../components/button';
 import { cx } from '../../lib/cx';
 import { formatDate, formatINR, groupIndian } from '../../lib/format';
 import { confirmPhraseMatches } from './pay-logic';
+import { documentKind } from '../../components/document';
 import { useRun } from '../org/org-kit';
 import './pay.css';
 
@@ -1005,4 +1006,36 @@ export function FileButton({ label, accept, ariaLabel, loading, onFile }: { labe
       />
     </>
   );
+}
+
+/**
+ * A file fetched by the page (same-origin, signed-in) as an object URL for the kit's viewers; revoked when the key changes
+ * or the view closes. Only PDFs and images get a URL (typed as such, so a browser never renders anything else); other
+ * files stay download-only.
+ */
+export function useFileUrl(key: string | null, load: (() => Promise<Blob>) | undefined, fileName: string) {
+  const [state, setState] = useState<{ key: string; url: string | null; type: string; failed: boolean } | null>(null);
+  useEffect(() => {
+    if (!key || !load) return;
+    let gone = false;
+    let url: string | null = null;
+    setState(null);
+    load().then(
+      (blob) => {
+        if (gone) return;
+        const kind = documentKind(fileName, blob.type);
+        const type = kind === 'pdf' ? 'application/pdf' : kind === 'image' ? blob.type || 'image/png' : '';
+        url = type ? URL.createObjectURL(blob.slice(0, blob.size, type)) : null;
+        setState({ key, url, type, failed: false });
+      },
+      () => !gone && setState({ key, url: null, type: '', failed: true }),
+    );
+    return () => {
+      gone = true;
+      if (url) URL.revokeObjectURL(url);
+    };
+    // The loader is a fresh function each render; the key says when the file changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return state?.key === key ? state : null;
 }

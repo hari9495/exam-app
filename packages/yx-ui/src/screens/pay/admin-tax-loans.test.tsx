@@ -167,6 +167,40 @@ describe('PAY-23 · Payroll › Proof checking (live)', () => {
     await waitFor(() => expect(onDecide).toHaveBeenCalledWith(PROOFS[1], { decision: 'partly', amount: '90000', comment: 'Only the PPF receipt is this year’s' }));
   });
 
+  it('the decision drawer shows the file sent in the page (PDF and image, a Segment between them); Download still downloads (PAY-23 Line)', async () => {
+    const make = vi.spyOn(URL, 'createObjectURL').mockImplementation(() => 'blob:proof');
+    const drop = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    try {
+      const two = { ...PROOFS[0]!, proofs: [...PROOFS[0]!.proofs, { n: 1, name: 'receipt.jpg', size: 5000, at: '2026-10-02T10:00:00Z' }] };
+      const onPreview = vi.fn(async (_l: unknown, n: number) => new Blob(['x'], { type: n ? 'image/jpeg' : 'application/pdf' }));
+      const onFile = fn();
+      render(<ProofQueueScreen live={live({ lines: [two], onPreview, onFile })} />);
+      await ue.click(screen.getByRole('button', { name: /^Decide on Arjun/ }));
+      const d = screen.getByRole('dialog');
+      await waitFor(() => expect(d.querySelector('object[type="application/pdf"]')).toHaveAttribute('data', 'blob:proof'));
+      expect(onPreview).toHaveBeenCalledWith(two, 0);
+      await ue.click(within(d).getByRole('radio', { name: 'receipt.jpg' }));
+      expect(await within(d).findByRole('img', { name: /receipt\.jpg/ })).toHaveAttribute('src', 'blob:proof');
+      expect(onPreview).toHaveBeenLastCalledWith(two, 1);
+      expect(drop).toHaveBeenCalled();
+      await ue.click(within(d).getByRole('button', { name: 'Download' }));
+      await waitFor(() => expect(onFile).toHaveBeenCalledWith(two, 1, 'receipt.jpg'));
+    } finally {
+      make.mockRestore();
+      drop.mockRestore();
+    }
+  });
+
+  it('a file that is neither a PDF nor an image is not shown, only downloaded', async () => {
+    const make = vi.spyOn(URL, 'createObjectURL');
+    const odd = { ...PROOFS[0]!, proofs: [{ n: 0, name: 'notes.docx', size: 900, at: '2026-10-02T10:00:00Z' }] };
+    render(<ProofQueueScreen live={live({ lines: [odd], onPreview: async () => new Blob(['x'], { type: 'application/msword' }) })} />);
+    await ue.click(screen.getByRole('button', { name: /^Decide on Arjun/ }));
+    expect(await screen.findByText(/We can't preview .docx files here/)).toBeInTheDocument();
+    expect(make).not.toHaveBeenCalled();
+    make.mockRestore();
+  });
+
   it('Form 12B is in the same queue: the file opens; reject needs a comment; approve sends the decision', async () => {
     const onForm12bDecide = fn();
     const onForm12bFile = fn();

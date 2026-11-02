@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { ProofQueueScreen, type Form12bRow, type ProofQueueLine, type ProofStatusFilter, type ResidencyRow } from '@yukthix/ui/pay';
-import { payState, usePayDownload } from '../../../../../lib/yx-pay';
+import { payState, usePayBlob, usePayDownload } from '../../../../../lib/yx-pay';
 import { useApi, useApiWrite } from '../../../../../lib/yx-pay-5j';
 
 // Payroll › Proof checking (PAY-23): employees' tax proofs, previous employers' Form 12B (founder decision 6) and
@@ -15,6 +15,7 @@ export default function YxPayProofsPage() {
   const residency = useApi<ResidencyRow[]>(status === 'partly' ? null : `/tax/residency?status=${status}`);
   const write = useApiWrite();
   const download = usePayDownload();
+  const blob = usePayBlob();
   const e = encodeURIComponent;
   const line = (l: ProofQueueLine) => `/tax/proofs/${e(l.workspaceId)}/lines/${e(l.id)}`;
   return (
@@ -27,6 +28,7 @@ export default function YxPayProofsPage() {
         lines: lines.data ?? null,
         form12b: status === 'partly' ? [] : (form12b.data ?? null),
         onFile: (l, n, name) => download(`${line(l)}/files/${n}`, name),
+        onPreview: (l, n) => blob(`${line(l)}/files/${n}`),
         onDecide: (l, d) => write(`${line(l)}/decision`, d),
         onForm12bFile: (r) => download(`/tax/form12b/${e(r.id)}/file`, r.file.name),
         onForm12bDecide: (r, d) => write(`/tax/form12b/${e(r.id)}/decision`, d),

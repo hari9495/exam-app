@@ -46,6 +46,12 @@ export function usePayDownload() {
   };
 }
 
+/** A file as a Blob for the kit's in-page viewers (PAY-21 payslip PDF, PAY-23 proof files); the same signed-in call as a download. */
+export function usePayBlob() {
+  const { accessToken } = useAuth();
+  return async (path: string) => (await apiFetchBlob(path, {}, accessToken ?? undefined)).blob;
+}
+
 export function saveBlob(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

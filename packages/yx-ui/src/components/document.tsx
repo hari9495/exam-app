@@ -169,7 +169,7 @@ function ViewerBody({ fileName, versions, version, defaultVersion, onVersionChan
             {!failed && kind !== 'other' && downloadButton}
           </span>
         </div>
-        <div className="yx-docview__stage" data-kind={kind} tabIndex={0} role="region" aria-label={`Preview of ${name}`}>
+        <div className="yx-docview__stage" data-kind={kind} tabIndex={0} role="region" aria-label={`Preview of ${fileName}`}>
           {preview}
         </div>
       </div>
