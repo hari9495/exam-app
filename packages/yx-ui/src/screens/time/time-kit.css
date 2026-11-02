@@ -64,6 +64,7 @@
   border-radius: var(--yx-radius-round); background: var(--yx-color-bg-inverse); color: var(--yx-color-text-inverse); font-size: var(--yx-text-xs);
 }
 .yx-tim-punches__src, .yx-tim-punches__verdict { display: flex; gap: var(--yx-space-2); align-items: center; flex-wrap: wrap; }
+.yx-tim-punches__note { grid-column: 1 / -1; color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); overflow-wrap: anywhere; }
 .yx-tim-punches__where { color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); min-width: 0; }
 
 /* Shift bar */

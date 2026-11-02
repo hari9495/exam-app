@@ -144,6 +144,8 @@ export interface Punch {
   device?: string;
   /** Live app: the server refused this punch, with the reason (kept and shown, never counted). */
   refusal?: string;
+  /** A short note the person kept with this punch (WithNote); shown under it on the day card. */
+  note?: string;
 }
 
 /** Worked minutes from paired in/out punches minus breaks; an open "in" counts to `now`. */

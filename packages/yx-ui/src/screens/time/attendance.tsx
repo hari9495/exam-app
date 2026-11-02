@@ -439,7 +439,7 @@ function DayPanel(p: Parameters<typeof SampleDayPanel>[0] | { live: Parameters<t
   return 'live' in p ? <LiveDayPanel {...p.live} /> : <SampleDayPanel {...p} />;
 }
 
-function SampleDayPanel({ day, person, viewer, locked, monthDays, onRegularise }: { day: PDay; person: string; viewer: Persona; locked?: boolean; monthDays: AttendanceDay[]; onRegularise?: (d: Date, kind: FixKind) => void }) {
+function SampleDayPanel({ day, person, viewer, locked, monthDays, onRegularise, punchNote }: { day: PDay; person: string; viewer: Persona; locked?: boolean; monthDays: AttendanceDay[]; onRegularise?: (d: Date, kind: FixKind) => void; /** WithNote: the note the person kept with the day's first punch. */ punchNote?: string }) {
   const setMsg = useSay();
   const [resolve, setResolve] = useState<ExceptionRow[] | null>(null);
   const [request, setRequest] = useState(false);
@@ -455,7 +455,7 @@ function SampleDayPanel({ day, person, viewer, locked, monthDays, onRegularise }
     <div className="yx-tim-stack">
       <DayCardBody
         day={day}
-        punches={punchesFor(day, person)}
+        punches={punchesFor(day, person).map((x, i) => (i === 0 && punchNote ? { ...x, note: punchNote } : x))}
         shift={shiftFor(person)}
         locked={locked}
         viewer={viewer}
@@ -1774,9 +1774,11 @@ export interface DayCardScreenProps {
   day?: number;
   /** Whose day (default: Meera Krishnan, a report, for the manager; Divya otherwise, whom HR may also view). */
   person?: string;
+  /** WithNote: a note kept with the day's first punch, shown under it in the punch list. */
+  punchNote?: string;
 }
 
-export function DayCardScreen({ persona = 'emp', day = 22, person }: DayCardScreenProps) {
+export function DayCardScreen({ persona = 'emp', day = 22, person, punchNote }: DayCardScreenProps) {
   const who = person ?? (persona === 'mgr' ? 'Meera Krishnan' : ME.name);
   const days = monthFor(who);
   const d = days[day - 1];
@@ -1796,7 +1798,7 @@ export function DayCardScreen({ persona = 'emp', day = 22, person }: DayCardScre
         subtitle={persona === 'emp' ? 'Your day card' : persona === 'mgr' ? `${t?.role ?? ''} · reports to you` : t ? `${t.code} · ${t.role} · ${t.location}` : `${ME.code} · ${ME.role} · ${ME.location}`}
         size="lg"
       >
-        <DayPanel day={d} person={who} viewer={persona} monthDays={days} onRegularise={reg.open} />
+        <DayPanel day={d} person={who} viewer={persona} monthDays={days} onRegularise={reg.open} punchNote={punchNote} />
       </Drawer>
       {reg.node}
     </TimePage>

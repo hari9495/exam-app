@@ -176,6 +176,7 @@ export function PunchList({ punches, showMapIndex, showNetwork = false, emptyTex
               ))}
             </span>
             <span className="yx-tim-punches__verdict">{v && <Badge tone={v.tone}>{v.label}</Badge>}</span>
+            {p.note && <span className="yx-tim-punches__note">{`Note: ${p.note}`}</span>}
           </li>
         );
       })}

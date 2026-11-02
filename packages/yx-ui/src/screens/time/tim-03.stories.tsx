@@ -12,6 +12,10 @@ export const OnDuty: S = { name: 'On duty · field-recorded, offline punch', arg
 export const Late: S = { name: 'Manager · late day', args: { persona: 'mgr', day: 23 } };
 export const Overtime: S = { name: 'HR · overtime day', args: { persona: 'hr', day: 25 } };
 export const PendingOt: S = { name: 'Manager · pending overtime', args: { persona: 'mgr', person: 'Arun Prakash', day: 14 } };
+// Founder (30 Oct 2026): the note kept with a punch shows under that punch, to the employee, their manager and HR.
+export const Note: S = { name: 'Employee · punch with a note', args: { punchNote: 'Stopped at the Guindy site on the way in' } };
+export const NoteMgr: S = { name: 'Manager · punch with a note', args: { persona: 'mgr', day: 23, punchNote: 'Bus broke down on OMR, came in late' } };
+export const NoteHr: S = { name: 'HR · punch with a note', args: { persona: 'hr', day: 25, punchNote: 'Started early for the month-end close' } };
 export const HrFix: S = { name: 'HR · resolve missing punch', args: { persona: 'hr', day: 10 } };
 export const Phone: StoryObj<typeof DayCardPhone> = { name: 'Phone', render: () => <DayCardPhone />, ...phone };
 export const PhoneOd: StoryObj<typeof DayCardPhone> = { name: 'Phone · on duty', render: () => <DayCardPhone day={21} />, ...phone };
