@@ -111,12 +111,14 @@ export interface TenantPortalProps {
   language?: string;
   /** No language picker (the live sign-in until YukthiX's screens are translated: a picker that changes nothing). */
   noLanguage?: boolean;
+  /** A signed-in portal (live): "Sign out" sits in the header band next to the access note, not in the page body. */
+  onSignOut?: () => void;
   /** Keeps the language choice; without it the switcher is uncontrolled. */
   onLanguageChange?: (lang: string) => void;
   children: ReactNode;
 }
 
-export function TenantPortal({ tenant, portal, nav, accent, whiteLabel, access, footer, pinned, narrow, noLanguage, language = 'en', onLanguageChange, children }: TenantPortalProps) {
+export function TenantPortal({ tenant, portal, nav, accent, whiteLabel, access, footer, pinned, narrow, noLanguage, onSignOut, language = 'en', onLanguageChange, children }: TenantPortalProps) {
   const res = resolveTenantAccent(accent);
   const style = res.accent ? ({ '--yx-tenant-accent': res.accent } as CSSProperties) : undefined;
   const user = access.kind === 'otp' ? access.identity : undefined;
@@ -133,6 +135,11 @@ export function TenantPortal({ tenant, portal, nav, accent, whiteLabel, access, 
           // In the header band, so the page body keeps its height for the content (sign-in fits one laptop screen).
           <div className="yx-tportal__bar">
             <AccessNote access={access} />
+            {onSignOut && (
+              <Button size="sm" onClick={onSignOut}>
+                Sign out
+              </Button>
+            )}
             {!noLanguage && <LanguageSwitcher defaultValue={language} {...(onLanguageChange ? { value: language, onChange: onLanguageChange } : {})} />}
           </div>
         }

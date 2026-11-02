@@ -202,7 +202,8 @@ describe('T9-01 joining portal, live', () => {
     expect(screen.getByText(/withdrew the offer on 8 Oct 2026/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Decline offer' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'Checklist' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument();
+    // In the header band next to the email, not a lone button in the page body.
+    expect(screen.getByRole('button', { name: 'Sign out' }).closest('.yx-tportal__bar')).not.toBeNull();
   });
 
   it('declined and joined read as their own outcome', () => {

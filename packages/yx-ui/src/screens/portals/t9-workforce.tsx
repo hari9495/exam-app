@@ -144,13 +144,9 @@ function PreFrame(p: { tenant: string; accent?: string; email: string; today: Da
       access={{ kind: 'otp', identity: p.email, endsOn: p.ended ? p.today : p.endsOn, today: p.ended ? new Date(p.today.getTime() + 86_400_000) : p.today, endsBecause: 'your joining date' }}
       footer={{ privacy: 'Privacy notice for pre-joiners (G-09)', ...(p.onSignOut ? { hrefs: LEGAL_LINKS } : {}) }}
       noLanguage={Boolean(p.onSignOut)}
+      onSignOut={p.onSignOut}
       pinned={p.pinned}
     >
-      {p.onSignOut && (
-        <div className="yx-ps-row">
-          <Button onClick={p.onSignOut}>Sign out</Button>
-        </div>
-      )}
       {p.children}
     </TenantPortal>
   );
@@ -1462,9 +1458,6 @@ function LiveNotes({ live, error }: { live?: LiveAlumniPortal; error: string | n
   if (!live) return null;
   return (
     <>
-      <div className="yx-ps-row">
-        <Button onClick={live.onSignOut}>Sign out</Button>
-      </div>
       {live.loadError && (
         <InlineAlert tone="warning" title="Some documents did not load">
           {live.loadError}
@@ -1507,6 +1500,7 @@ export function AlumniPortalScreen(props: AlumniPortalScreenProps) {
       noLanguage={Boolean(live)}
       access={{ kind: 'otp', identity: person.email, endsOn: ends, today, endsBecause: live ? undefined : '7 years after you left' }}
       footer={{ privacy: 'Privacy notice for former employees (G-09)', ...(live ? { hrefs: LEGAL_LINKS } : {}) }}
+      onSignOut={live?.onSignOut}
     >
       <section className="yx-ps-hero">
         <h1>Your documents from {tenant}</h1>
@@ -1598,6 +1592,7 @@ export function NomineePortalScreen(props: NomineePortalScreenProps) {
         noLanguage
         access={{ kind: 'otp', identity: live.email, endsOn: isoDate(live.accessUntil), today: isoDate(live.today), endsBecause: 'or when HR closes the claims' }}
         footer={{ privacy: 'Privacy notice for nominees (G-09)', hrefs: LEGAL_LINKS }}
+        onSignOut={live.onSignOut}
       >
         <section className="yx-ps-hero">
           <h1>Documents for {live.name}'s claims</h1>
