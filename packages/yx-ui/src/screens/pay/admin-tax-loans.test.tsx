@@ -405,6 +405,34 @@ describe('PAY-27 · Payroll › Earned wage access (live)', () => {
     render(<EwaAdminScreen live={live({ state: 'no-access', entities: [] })} />);
     expect(screen.getByText(/your payroll admin/)).toBeInTheDocument();
   });
+
+  it('Recoveries in payroll: a row a month with recovered, deferred and to F&F (PAY-27 Recoveries)', async () => {
+    render(<EwaAdminScreen live={live({ recoveries: [
+      { month: '2026-10', draws: 3, toRecover: '9147.10', recovered: '6000.00', deferred: '2000.00', fnf: { people: 1, amount: '1147.10' }, waiting: '0.00' },
+      { month: '2026-09', draws: 1, toRecover: '500.00', recovered: '500.00', deferred: '0.00', fnf: { people: 0, amount: '0.00' }, waiting: '0.00' },
+    ] })} />);
+    await ue.click(screen.getByRole('tab', { name: 'Recoveries in payroll' }));
+    const t = screen.getByRole('table', { name: 'Recoveries in payroll' });
+    expect(within(t).getAllByRole('row')[1]).toHaveTextContent('October 2026');
+    expect(t).toHaveTextContent('₹2,000.00');
+    expect(t).toHaveTextContent('1 leaver: ₹1,147.10');
+  });
+
+  it('Reconciliation: paid, recovered and the difference explained; the finance approver sees only this tab (PAY-27 Reconciliation)', () => {
+    const recon = { entities: [{ id: 'e1', name: 'Kaveri Foods Pvt Ltd' }], legalEntityId: 'e1', month: '2026-10', totals: { draws: 2, paidOut: '8000.10', fees: '98.00', toRecover: '8098.10', recovered: '5049.00', deferred: '0.00', fnf: '0.00', waiting: '3049.10', difference: '3049.10' }, draws: [] };
+    render(<EwaAdminScreen live={live({ canManage: false, recon, draws: null, policies: null })} />);
+    expect(screen.queryByRole('tab', { name: /Draws/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Reconciliation', selected: true })).toBeInTheDocument();
+    expect(screen.getByText('₹8,000.10 + ₹98.00 fees')).toBeInTheDocument();
+    expect(screen.getByText('₹3,049.10 (₹3,049.10 waiting for the October 2026 payroll)')).toBeInTheDocument();
+    expect(screen.getByText(/Each draw is matched to its payslip deduction/)).toBeInTheDocument();
+  });
+
+  it('Reconciliation with nothing paid in the month says so', async () => {
+    render(<EwaAdminScreen live={live({ recon: { entities: [], legalEntityId: 'e1', month: '2026-10', totals: { draws: 0, paidOut: '0.00', fees: '0.00', toRecover: '0.00', recovered: '0.00', deferred: '0.00', fnf: '0.00', waiting: '0.00', difference: '0.00' }, draws: [] } })} />);
+    await ue.click(screen.getByRole('tab', { name: 'Reconciliation' }));
+    expect(screen.getByText('No draws paid in October 2026.')).toBeInTheDocument();
+  });
 });
 
 describe('design samples: no greyed-out buttons (house rules 2 and 3)', () => {

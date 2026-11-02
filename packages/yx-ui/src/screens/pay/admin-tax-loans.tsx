@@ -4,7 +4,7 @@ import { Download, Pause, Play, Plus, Send } from 'lucide-react';
 import { Button, Link } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
 import { Drawer } from '../../components/drawer';
-import { EmptyState, InlineAlert } from '../../components/feedback';
+import { EmptyState, InlineAlert, Skeleton } from '../../components/feedback';
 import { FieldRow, FormField, FormSection, useTooEarly, type FormErrorItem } from '../../components/field';
 import { useToast } from '../../components/notify';
 import { useRun } from '../org/org-kit';
@@ -15,7 +15,7 @@ import { LOAN_STATE, LOAN_TYPE_TEXT, monthName, previewEmi, rateText, subjectTex
 import { EntityPicker } from './live/setup';
 import type { LoadState } from './live/types';
 import type { SetupEntity } from './live/types-5b';
-import type { EwaDrawView, EwaPolicyView } from './live/types-5i';
+import type { EwaDrawView, EwaPolicyView, EwaRecon, EwaRecoveryMonth } from './live/types-5i';
 import type { LoanChangeInput, LoanRepayments, LoanRequestInput, LoanView, ProofDecision, ProofQueueLine } from './live/types-ops';
 import { CurrencyField, NumberField, TextArea, TextField } from '../../components/inputs';
 import { RadioGroup, Switch } from '../../components/choice';
@@ -2470,12 +2470,46 @@ export interface LiveEwaAdmin {
   onPolicy: (x: Omit<EwaPolicyView, 'id'>) => Promise<unknown>;
   onPaid: (d: EwaDrawView, reference: string) => Promise<unknown>;
   onFailed: (d: EwaDrawView, reason: string) => Promise<unknown>;
+  /** PAY-27 Recoveries: the last six months (payroll.ewa.manage). */
+  recoveries?: EwaRecoveryMonth[] | null;
+  /** PAY-27 Reconciliation (payroll, or the finance approver with payroll.run.approve). */
+  recon?: EwaRecon | null;
+  /** False for the finance approver: only the reconciliation shows. */
+  canManage?: boolean;
 }
 
 const LIVE_DRAW: Record<EwaDrawView['status'], { label: string; tone: BadgeTone }> = { requested: { label: 'To pay', tone: 'warning' }, paid: { label: 'Paid, recovered in payroll', tone: 'success' }, failed: { label: 'Failed', tone: 'danger' }, cancelled: { label: 'Cancelled', tone: 'neutral' } };
 
+/** PAY-27 Reconciliation: the design's figures from the month's draws matched to their payslip deductions. */
+function EwaReconPanel({ recon }: { recon: EwaRecon | null | undefined }) {
+  const t = recon?.totals;
+  if (!recon) return <Skeleton height="var(--yx-space-16)" />;
+  if (!t || !t.draws) return <EmptyState title={`No draws paid in ${monthName(recon.month)}.`} description="Draws paid by payroll are matched here to the deduction on each payslip." />;
+  const next = monthName(addMonth(recon.month));
+  const why = [paise(t.waiting) ? `${rupees(t.waiting)} waiting for the ${monthName(recon.month)} payroll` : '', paise(t.deferred) ? `${rupees(t.deferred)} carried to ${next}` : '', paise(t.fnf) ? `${rupees(t.fnf)} in final settlements` : ''].filter(Boolean).join('; ');
+  return (
+    <div className="yx-pay-stack">
+      <FactRow
+        items={[
+          { label: 'Draws paid by the company', value: `${rupees(t.paidOut)}${paise(t.fees) ? ` + ${rupees(t.fees)} fees` : ''}` },
+          { label: 'Recovered in payroll', value: rupees(t.recovered) },
+          { label: 'Carried or in settlements', value: rupees(fromPaise(paise(t.deferred) + paise(t.fnf))) },
+          { label: 'Difference', value: paise(t.difference) ? `${rupees(t.difference)} (${why || 'not recovered yet'})` : `None${why ? ` (${why})` : ''}` },
+        ]}
+      />
+      <InlineAlert tone="info">Each draw is matched to its payslip deduction. A part the payslip could not take is carried to the next month; a leaver's goes to the final settlement.</InlineAlert>
+    </div>
+  );
+}
+
+const addMonth = (m: string) => {
+  const d = new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 1));
+  return d.toISOString().slice(0, 7);
+};
+
 function LiveEwaAdmin({ live }: { live: LiveEwaAdmin }) {
-  const [tab, setTab] = useState<'draws' | 'policy' | 'partner' | 'recoveries'>('draws');
+  const manage = live.canManage !== false;
+  const [tab, setTab] = useState<'draws' | 'policy' | 'partner' | 'recoveries' | 'recon'>(manage ? 'draws' : 'recon');
   const [policyOpen, setPolicyOpen] = useState(false);
   const [paying, setPaying] = useState<EwaDrawView | null>(null);
   const [failing, setFailing] = useState<EwaDrawView | null>(null);
@@ -2497,7 +2531,7 @@ function LiveEwaAdmin({ live }: { live: LiveEwaAdmin }) {
       <PageHeader
         title="Earned wage access"
         description="People draw part of the pay they have already earned this month; payroll pays it and recovers it in the month's payroll."
-        facts={live.state === 'ready' && live.entityId ? `${draws.length} draws in ${monthName(live.month)} · ${rupees(sumMoney(paid.map((d) => d.amount)))} paid · ${toPay.length} to pay` : undefined}
+        facts={live.state === 'ready' && live.entityId && manage ? `${draws.length} draws in ${monthName(live.month)} · ${rupees(sumMoney(paid.map((d) => d.amount)))} paid · ${toPay.length} to pay` : undefined}
       />
       <PayPageState state={live.state} onRetry={live.onRetry} what="earned wage access" grantedBy="your payroll admin">
         <div className="yx-pay-stack">
@@ -2510,12 +2544,17 @@ function LiveEwaAdmin({ live }: { live: LiveEwaAdmin }) {
           {live.entityId && (
             <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
               <TabsList aria-label="Earned wage access">
-                <TabsTrigger value="draws" count={draws.length}>
-                  Draws
-                </TabsTrigger>
-                <TabsTrigger value="policy">Policy</TabsTrigger>
-                <TabsTrigger value="partner">Partner</TabsTrigger>
-                <TabsTrigger value="recoveries">Recoveries in payroll</TabsTrigger>
+                {manage && (
+                  <>
+                    <TabsTrigger value="draws" count={draws.length}>
+                      Draws
+                    </TabsTrigger>
+                    <TabsTrigger value="policy">Policy</TabsTrigger>
+                    <TabsTrigger value="partner">Partner</TabsTrigger>
+                    <TabsTrigger value="recoveries">Recoveries in payroll</TabsTrigger>
+                  </>
+                )}
+                <TabsTrigger value="recon">Reconciliation</TabsTrigger>
               </TabsList>
               <TabsContent value="draws">
                 <DataTable
@@ -2589,8 +2628,25 @@ function LiveEwaAdmin({ live }: { live: LiveEwaAdmin }) {
                       { label: 'To recover in payroll', value: rupees(sumMoney(paid.map((d) => (d.feePayer === 'employee' ? fromPaise(paise(d.amount) + paise(d.fee)) : d.amount)))) },
                     ]}
                   />
-                  <p className="yx-pay-note">Each paid draw (and the person's fee) is taken back as "Earned wage access" on that month's payslip. A balance left at exit goes to the final settlement.</p>
+                  {live.recoveries && live.recoveries.length > 0 && (
+                    <PlainTable
+                      label="Recoveries in payroll"
+                      rows={live.recoveries}
+                      getRowId={(r) => r.month}
+                      columns={[
+                        { key: 'run', header: 'Run', rowHeader: true, cell: (r) => monthName(r.month) },
+                        { key: 'draws', header: 'Draws', num: true, cell: (r) => String(r.draws) },
+                        { key: 'recovered', header: 'Recovered', num: true, cell: (r) => (paise(r.waiting) && !paise(r.recovered) ? 'Not run yet' : rupees(r.recovered)) },
+                        { key: 'deferred', header: 'Deferred (deduction cap)', num: true, cell: (r) => (paise(r.deferred) ? rupees(r.deferred) : '—') },
+                        { key: 'ff', header: 'To F&F', cell: (r) => (r.fnf.people ? `${r.fnf.people} ${r.fnf.people === 1 ? 'leaver' : 'leavers'}: ${rupees(r.fnf.amount)}` : '—') },
+                      ]}
+                    />
+                  )}
+                  <p className="yx-pay-note">Each paid draw (and the person's fee) is taken back as "Earned wage access" on that month's payslip. A part the payslip could not take is carried to the next month; a balance left at exit goes to the final settlement.</p>
                 </div>
+              </TabsContent>
+              <TabsContent value="recon">
+                <EwaReconPanel recon={live.recon} />
               </TabsContent>
             </Tabs>
           )}

@@ -108,6 +108,29 @@ export interface EwaDrawView {
   createdAt: string;
 }
 
+/** GET payroll/ewa/recoveries (PAY-27): one row a month, draws counted in the month they were drawn. */
+export interface EwaRecoveryMonth {
+  month: string;
+  draws: number;
+  toRecover: string;
+  recovered: string;
+  /** Carried to next month: the payslip's net could not take it. */
+  deferred: string;
+  /** Leavers' draws taken (or to be taken) by the final settlement. */
+  fnf: { people: number; amount: string };
+  /** The month's payroll is not approved yet. */
+  waiting: string;
+}
+
+/** GET payroll/ewa/reconciliation (PAY-27): the month's draws matched to their payslip deductions. */
+export interface EwaRecon {
+  entities: { id: string; name: string }[];
+  legalEntityId: string | null;
+  month: string;
+  totals: { draws: number; paidOut: string; fees: string; toRecover: string; recovered: string; deferred: string; fnf: string; waiting: string; difference: string } | null;
+  draws: { drawId: string; employeeId: string; employeeName: string; month: string; paidOn: string | null; paidRef: string | null; amount: string; fee: string; toRecover: string; recovered: string; deferred: string; fnf: string; payslipId: string | null; state: 'recovered' | 'deferred' | 'fnf' | 'waiting' }[];
+}
+
 /** GET payroll/me/ewa. */
 export interface MyEwa {
   open: boolean;
