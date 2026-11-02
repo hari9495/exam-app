@@ -3,6 +3,7 @@ import { Button } from '../../../components/button';
 import { Badge, type BadgeTone } from '../../../components/display';
 import { EmptyState, InlineAlert } from '../../../components/feedback';
 import { FormField, useTooEarly } from '../../../components/field';
+import { PlainTable } from '../../../components/plain-table';
 import { CodeField, TextField } from '../../../components/inputs';
 import { Card } from '../../../components/shell';
 import { useRun } from '../../org/org-kit';
@@ -26,31 +27,21 @@ const DOC_STATUS: Record<PayDocument['status'], { label: string; tone: BadgeTone
 
 function DocTable({ docs, showPerson, busy, onDownload, verifyUrl }: { docs: PayDocument[]; showPerson?: boolean; busy: string | null; onDownload: (d: PayDocument) => void; verifyUrl: (code: string) => string }) {
   return (
-    <table className="yx-tim-table" aria-label="Pay documents">
-      <thead>
-        <tr>
-          {showPerson && <th scope="col">Person</th>}
-          <th scope="col">Document</th>
-          <th scope="col">Reference</th>
-          <th scope="col">Issued</th>
-          <th scope="col">Status</th>
-          <th scope="col">Check it</th>
-          <th scope="col">
-            <span className="yx-visually-hidden">Actions</span>
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {docs.map((x) => (
-          <tr key={x.id}>
-            {showPerson && <td>{x.person}</td>}
-            <th scope="row">{x.title}</th>
-            <td className="yx-tim-note">{x.referenceNo}</td>
-            <td>{dateText(x.issuedAt.slice(0, 10))}</td>
-            <td>
-              <Badge tone={DOC_STATUS[x.status].tone}>{DOC_STATUS[x.status].label}</Badge>
-            </td>
-            <td className="yx-tim-note">
+    <PlainTable
+      label="Pay documents"
+      rows={docs}
+      getRowId={(x) => x.id}
+      columns={[
+        ...(showPerson ? [{ key: 'person', header: 'Person', cell: (x: PayDocument) => x.person }] : []),
+        { key: 'doc', header: 'Document', rowHeader: true, cell: (x) => x.title },
+        { key: 'ref', header: 'Reference', cell: (x) => <span className="yx-tim-note">{x.referenceNo}</span> },
+        { key: 'issued', header: 'Issued', cell: (x) => dateText(x.issuedAt.slice(0, 10)) },
+        { key: 'status', header: 'Status', cell: (x) => <Badge tone={DOC_STATUS[x.status].tone}>{DOC_STATUS[x.status].label}</Badge> },
+        {
+          key: 'check',
+          header: 'Check it',
+          cell: (x) => (
+            <span className="yx-tim-note">
               {x.verifyCode ? (
                 <a href={verifyUrl(x.verifyCode)} target="_blank" rel="noreferrer">
                   {x.verifyCode}
@@ -58,19 +49,22 @@ function DocTable({ docs, showPerson, busy, onDownload, verifyUrl }: { docs: Pay
               ) : (
                 ''
               )}
-            </td>
-            <td>
-              {x.purged ? (
-                <span className="yx-tim-note">Deleted after its retention period</span>
-              ) : (
-                <Button size="sm" loading={busy === x.id} onClick={() => onDownload(x)}>
-                  Download PDF
-                </Button>
-              )}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+            </span>
+          ),
+        },
+        {
+          key: 'act',
+          header: <span className="yx-visually-hidden">Actions</span>,
+          cell: (x) =>
+            x.purged ? (
+              <span className="yx-tim-note">Deleted after its retention period</span>
+            ) : (
+              <Button size="sm" loading={busy === x.id} onClick={() => onDownload(x)}>
+                Download PDF
+              </Button>
+            ),
+        },
+      ]}
+    />
   );
 }

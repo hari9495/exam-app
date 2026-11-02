@@ -10,6 +10,7 @@ import { ErrorSummary, FieldRow, FormField, FormSection, useTooEarly, type FormE
 import { CurrencyField, TextField } from '../../components/inputs';
 import { useToast } from '../../components/notify';
 import { Select } from '../../components/select';
+import { PlainTable } from '../../components/plain-table';
 import { DescriptionList } from '../../components/shell';
 import { Stepper } from '../../components/stepper';
 import { formatINR } from '../../lib/format';
@@ -251,24 +252,15 @@ export function LiveSettlementArrears({ live }: { live: LiveSpecialPay }) {
             title: 'Categories',
             description: 'Increase per worker category',
             content: (
-              <table className="yx-pay-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Category</th>
-                    <th scope="col" data-num>
-                      Increase a month
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {s.rates.map((r) => (
-                    <tr key={r.category}>
-                      <th scope="row">{r.category.replace(/_/g, ' ')}</th>
-                      <td data-num>{formatINR(Number(r.monthlyIncrease))}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <PlainTable
+                label="Categories"
+                rows={s.rates}
+                getRowId={(r) => r.category}
+                columns={[
+                  { key: 'category', header: 'Category', rowHeader: true, cell: (r) => r.category.replace(/_/g, ' ') },
+                  { key: 'increase', header: 'Increase a month', num: true, cell: (r) => formatINR(Number(r.monthlyIncrease)) },
+                ]}
+              />
             ),
           },
           { id: 'worksheet', title: 'Arrears', description: `Paid in ${month}`, content: <p className="yx-pay-muted">Arrears from {dateText(s.effectiveFrom)} are worked out for each worker in a category on the as-paid pay of every month, and go to payroll as one sheet for a payroll approver to approve.</p> },

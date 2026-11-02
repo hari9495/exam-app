@@ -11,6 +11,7 @@ import { CurrencyField, TextArea, TextField } from '../../components/inputs';
 import { RadioGroup } from '../../components/choice';
 import { FileUpload } from '../../components/upload';
 import { DescriptionList, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
+import { PlainTable } from '../../components/plain-table';
 import { Stepper, useNarrow, type StepperStep } from '../../components/stepper';
 import { ConfirmDialog } from '../../components/overlay';
 import { DataTable, type TableColumn } from '../../components/table';
@@ -113,83 +114,40 @@ function SampleOffCycleRun({ kind = 'fnf', step = 'lines', permission = false }:
           { label: 'Last working day', value: formatDate(d(29)) },
         ]}
       />
-      <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-      <table className="yx-pay-table">
-        <thead>
-          <tr>
-            <th scope="col">Line</th>
-            <th scope="col">Type</th>
-            <th scope="col" data-num>
-              Amount
-            </th>
-            <th scope="col">Why</th>
-          </tr>
-        </thead>
-        <tbody>
-          {lines.map((l) => (
-            <tr key={l.label}>
-              <th scope="row">{l.label}</th>
-              <td>{l.kind === 'Employer' ? 'Company cost' : l.kind}</td>
-              <td data-num>{l.kind === 'Deduction' ? `−${formatINR(l.amount)}` : formatINR(l.amount)}</td>
-              <td>{l.note}</td>
-            </tr>
-          ))}
-        </tbody>
-        <tfoot>
-          <tr>
-            <th scope="row" colSpan={2}>
-              Net payable
-            </th>
-            <td data-num>{formatINR(earnings - deds)}</td>
-            <td />
-          </tr>
-        </tfoot>
-      </table>
-      </div>
+      <PlainTable
+        label="Settlement lines"
+        rows={lines}
+        getRowId={(l) => l.label}
+        columns={[
+          { key: 'line', header: 'Line', rowHeader: true, cell: (l) => l.label },
+          { key: 'type', header: 'Type', cell: (l) => (l.kind === 'Employer' ? 'Company cost' : l.kind) },
+          { key: 'amount', header: 'Amount', num: true, cell: (l) => (l.kind === 'Deduction' ? `−${formatINR(l.amount)}` : formatINR(l.amount)) },
+          { key: 'why', header: 'Why', cell: (l) => l.note },
+        ]}
+        footer={[{ id: 'net', label: 'Net payable', cells: { amount: formatINR(earnings - deds) } }]}
+      />
       {type === 'retrenchment' && (
         <FormField label="Government permission reference" required={!permission} helper="Required for establishments with 300 or more workers.">
           <TextField defaultValue={permission ? 'LD/KA/RET/2026/0418 dated 18 Sep 2026' : ''} />
         </FormField>
       )}
       {type === 'death' && (
-        <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Paid to nominees by share (verified bank accounts), scrolls sideways on small screens">
-        <table className="yx-pay-table">
-          <caption>Paid to nominees by share (verified bank accounts)</caption>
-          <thead>
-            <tr>
-              <th scope="col">Nominee</th>
-              <th scope="col">Relationship</th>
-              <th scope="col" data-num>
-                Share
-              </th>
-              <th scope="col" data-num>
-                Amount
-              </th>
-              <th scope="col">Bank</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <th scope="row">Saroja {surname}</th>
-              <td>Spouse</td>
-              <td data-num>60%</td>
-              <td data-num>{formatINR(Math.round((earnings - deds) * 0.6))}</td>
-              <td>
-                <Badge tone="success">Verified</Badge>
-              </td>
-            </tr>
-            <tr>
-              <th scope="row">Nithya {surname}</th>
-              <td>Daughter</td>
-              <td data-num>40%</td>
-              <td data-num>{formatINR(Math.round((earnings - deds) * 0.4))}</td>
-              <td>
-                <Badge tone="warning">Penny-drop pending</Badge>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        </div>
+        <PlainTable
+          label="Paid to nominees by share"
+          caption="Paid to nominees by share (verified bank accounts)"
+          rows={[
+            { name: `Saroja ${surname}`, relation: 'Spouse', share: 0.6, bank: <Badge tone="success">Verified</Badge> },
+            { name: `Nithya ${surname}`, relation: 'Daughter', share: 0.4, bank: <Badge tone="warning">Penny-drop pending</Badge> },
+          ]}
+          getRowId={(p) => p.name}
+          columns={[
+            { key: 'nominee', header: 'Nominee', rowHeader: true, cell: (p) => p.name },
+            { key: 'relation', header: 'Relationship', cell: (p) => p.relation },
+            { key: 'share', header: 'Share', num: true, cell: (p) => `${p.share * 100}%` },
+            { key: 'amount', header: 'Amount', num: true, cell: (p) => formatINR(Math.round((earnings - deds) * p.share)) },
+            { key: 'bank', header: 'Bank', cell: (p) => p.bank },
+          ]}
+        />
       )}
       {type === 'death' && <p className="yx-pay-note">Gratuity 5-year condition waived on death. TDS on payments to nominees follows the P07 rule for heirs.</p>}
     </div>
@@ -484,44 +442,20 @@ function SampleArrearsBase({ confirmed = false, embedded = false, computed: comp
           </div>
         </>
       ) : (
-        <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-          <table className="yx-pay-table">
-            <thead>
-              <tr>
-                <th scope="col">Month</th>
-                <th scope="col" data-num>
-                  Revised basic
-                </th>
-                <th scope="col" data-num>
-                  As paid
-                </th>
-                <th scope="col">Base source</th>
-                <th scope="col" data-num>
-                  Arrear
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {months.map((m) => (
-                <tr key={m.month} data-state={m.source === 'missing' ? 'flag' : undefined}>
-                  <th scope="row">{m.month}</th>
-                  <td data-num>{formatINR(m.corrected)}</td>
-                  <td data-num>{m.asPaid == null ? '—' : formatINR(m.asPaid)}</td>
-                  <td>{sourceBadge(m)}</td>
-                  <td data-num>{arrear(m)}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <th scope="row" colSpan={4}>
-                  {totalLabel}
-                </th>
-                <td data-num>{formatINR(r.total)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+        <PlainTable
+          label="Arrears by month"
+          rows={months}
+          getRowId={(m) => m.month}
+          rowTone={(m) => (m.source === 'missing' ? { tone: 'warning', label: 'Base missing' } : undefined)}
+          columns={[
+            { key: 'month', header: 'Month', rowHeader: true, cell: (m) => m.month },
+            { key: 'corrected', header: 'Revised basic', num: true, cell: (m) => formatINR(m.corrected) },
+            { key: 'asPaid', header: 'As paid', num: true, cell: (m) => (m.asPaid == null ? '—' : formatINR(m.asPaid)) },
+            { key: 'source', header: 'Base source', cell: (m) => sourceBadge(m) },
+            { key: 'arrear', header: 'Arrear', num: true, cell: (m) => arrear(m) },
+          ]}
+          footer={[{ id: 'total', label: totalLabel, cells: { arrear: formatINR(r.total) } }]}
+        />
       )}
       {confirmedMonth && (
         <p className="yx-pay-note">
@@ -682,42 +616,18 @@ function SampleSettlementArrears({ step = 'categories', empty = false, newSettle
             title: 'Categories',
             description: 'Increase per worker category',
             content: (
-              <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-              <table className="yx-pay-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Category</th>
-                    <th scope="col" data-num>
-                      Increase a month
-                    </th>
-                    <th scope="col" data-num>
-                      Workers
-                    </th>
-                    <th scope="col" data-num>
-                      Arrears {SETTLEMENT.span}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cats.map((c) => (
-                    <tr key={c.cat}>
-                      <th scope="row">{c.cat}</th>
-                      <td data-num>{formatINR(c.increase)}</td>
-                      <td data-num>{c.count}</td>
-                      <td data-num>{formatINR(c.increase * c.count * months)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <th scope="row">Total</th>
-                    <td />
-                    <td data-num>{cats.reduce((a, c) => a + c.count, 0)}</td>
-                    <td data-num>{formatINR(cats.reduce((a, c) => a + c.increase * c.count * months, 0))}</td>
-                  </tr>
-                </tfoot>
-              </table>
-              </div>
+              <PlainTable
+                label="Increase per worker category"
+                rows={cats}
+                getRowId={(c) => c.cat}
+                columns={[
+                  { key: 'cat', header: 'Category', rowHeader: true, cell: (c) => c.cat },
+                  { key: 'increase', header: 'Increase a month', num: true, cell: (c) => formatINR(c.increase) },
+                  { key: 'count', header: 'Workers', num: true, cell: (c) => c.count },
+                  { key: 'arrears', header: `Arrears ${SETTLEMENT.span}`, num: true, cell: (c) => formatINR(c.increase * c.count * months) },
+                ]}
+                footer={[{ id: 'total', label: 'Total', cells: { count: cats.reduce((a, c) => a + c.count, 0), arrears: formatINR(cats.reduce((a, c) => a + c.increase * c.count * months, 0)) } }]}
+              />
             ),
           },
           { id: 'employees', title: 'Affected employees', description: '109 workers', content: <p className="yx-pay-muted">109 workers matched by category on the effective date; 4 leavers since April get arrears in an off-cycle run.</p> },
@@ -859,38 +769,19 @@ function SampleActuarial({ step = 'census', uploaded = false, journalOpen = fals
                     ))}
                   </ul>
                 ) : (
-                  <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-                    <table className="yx-pay-table">
-                      <thead>
-                        <tr>
-                          <th scope="col">Version</th>
-                          <th scope="col">As at</th>
-                          <th scope="col" data-num>
-                            Employees
-                          </th>
-                          <th scope="col">Layout</th>
-                          <th scope="col">Status</th>
-                          <th scope="col">
-                            <span className="yx-visually-hidden">Download</span>
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {CENSUS.map((c) => (
-                          <tr key={c.v}>
-                            <th scope="row" style={{ whiteSpace: 'nowrap' }}>
-                              {c.v}
-                            </th>
-                            <td style={{ whiteSpace: 'nowrap' }}>{asAt}</td>
-                            <td data-num>{c.count}</td>
-                            <td>{c.layout}</td>
-                            <td style={{ whiteSpace: 'nowrap' }}>{censusStatus(c)}</td>
-                            <td>{xlsx(c.v)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <PlainTable
+                    label="Census versions"
+                    rows={CENSUS}
+                    getRowId={(c) => c.v}
+                    columns={[
+                      { key: 'version', header: 'Version', rowHeader: true, cell: (c) => <span style={{ whiteSpace: 'nowrap' }}>{c.v}</span> },
+                      { key: 'asAt', header: 'As at', date: true, cell: () => asAt },
+                      { key: 'count', header: 'Employees', num: true, cell: (c) => c.count },
+                      { key: 'layout', header: 'Layout', cell: (c) => c.layout },
+                      { key: 'status', header: 'Status', cell: (c) => <span style={{ whiteSpace: 'nowrap' }}>{censusStatus(c)}</span> },
+                      { key: 'download', header: <span className="yx-visually-hidden">Download</span>, cell: (c) => xlsx(c.v) },
+                    ]}
+                  />
                 )}
                 {!report && (
                   <div className="yx-pay-row">
@@ -971,40 +862,17 @@ function SampleActuarial({ step = 'census', uploaded = false, journalOpen = fals
                     </li>
                   </ul>
                 ) : (
-                <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-                  <table className="yx-pay-table">
-                    <thead>
-                      <tr>
-                        <th scope="col">Figure</th>
-                        <th scope="col" data-num>
-                          Gratuity
-                        </th>
-                        <th scope="col" data-num>
-                          Leave
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {VAL_ROWS.map((r) => (
-                        <tr key={r.k}>
-                          <th scope="row">{r.label}</th>
-                          {(['g', 'l'] as const).map((key) => (
-                            <td key={key} data-num>
-                              {figureCell(r, key)}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr>
-                        <th scope="row">Closing obligation</th>
-                        <td data-num>{filled ? formatINR(closing('g')) : '—'}</td>
-                        <td data-num>{filled ? formatINR(closing('l')) : '—'}</td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
+                <PlainTable
+                  label="Valuation figures"
+                  rows={VAL_ROWS}
+                  getRowId={(r) => r.k}
+                  columns={[
+                    { key: 'figure', header: 'Figure', rowHeader: true, cell: (r) => r.label },
+                    { key: 'g', header: 'Gratuity', num: true, cell: (r) => figureCell(r, 'g') },
+                    { key: 'l', header: 'Leave', num: true, cell: (r) => figureCell(r, 'l') },
+                  ]}
+                  footer={[{ id: 'closing', label: 'Closing obligation', cells: { g: filled ? formatINR(closing('g')) : '—', l: filled ? formatINR(closing('l')) : '—' } }]}
+                />
                 )}
                 <p className="yx-pay-note">Closing obligation is calculated from the rows above. Figures in brackets reduce it.</p>
               </div>
@@ -1029,40 +897,20 @@ function SampleActuarial({ step = 'census', uploaded = false, journalOpen = fals
                     {formatINR(jG + jL)} provision journal sent to accounting by {FIN_APPROVER.name} on {formatDate(TODAY)}.
                   </InlineAlert>
                 )}
-                <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Provision against the valuation">
-                  <table className="yx-pay-table">
-                    <thead>
-                      <tr>
-                        <th scope="col">Figure</th>
-                        <th scope="col" data-num>
-                          Gratuity
-                        </th>
-                        <th scope="col" data-num>
-                          Leave
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr>
-                        <th scope="row">Provision in books</th>
-                        <td data-num>{formatINR(BOOKS.g)}</td>
-                        <td data-num>{formatINR(BOOKS.l)}</td>
-                      </tr>
-                      <tr>
-                        <th scope="row">Closing obligation</th>
-                        <td data-num>{formatINR(closing('g'))}</td>
-                        <td data-num>{formatINR(closing('l'))}</td>
-                      </tr>
-                    </tbody>
-                    <tfoot>
-                      <tr>
-                        <th scope="row">Journal: debit expense</th>
-                        <td data-num>{formatINR(jG)}</td>
-                        <td data-num>{formatINR(jL)}</td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
+                <PlainTable
+                  label="Provision against the valuation"
+                  rows={[
+                    { id: 'books', label: 'Provision in books', g: BOOKS.g, l: BOOKS.l },
+                    { id: 'closing', label: 'Closing obligation', g: closing('g'), l: closing('l') },
+                  ]}
+                  getRowId={(r) => r.id}
+                  columns={[
+                    { key: 'figure', header: 'Figure', rowHeader: true, cell: (r) => r.label },
+                    { key: 'g', header: 'Gratuity', num: true, cell: (r) => formatINR(r.g) },
+                    { key: 'l', header: 'Leave', num: true, cell: (r) => formatINR(r.l) },
+                  ]}
+                  footer={[{ id: 'journal', label: 'Journal: debit expense', cells: { g: formatINR(jG), l: formatINR(jL) } }]}
+                />
                 <p className="yx-pay-note">
                   Check: 6 years 8 months of service on ₹48,000 rounds to {g.years} years, so gratuity due is {formatINR(g.amount)} (15/26 × wage × years).
                 </p>
@@ -1072,38 +920,22 @@ function SampleActuarial({ step = 'census', uploaded = false, journalOpen = fals
                   </Button>
                 </div>
                 {journal && (
-                  <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Provision journal preview">
-                    <table className="yx-pay-table">
-                      <thead>
-                        <tr>
-                          <th scope="col">Account</th>
-                          <th scope="col" data-num>Debit</th>
-                          <th scope="col" data-num>Credit</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[
-                          ['Gratuity expense', jG, 0],
-                          ['Provision for gratuity', 0, jG],
-                          ['Leave encashment expense', jL, 0],
-                          ['Provision for leave encashment', 0, jL],
-                        ].map(([a, dr, cr]) => (
-                          <tr key={String(a)}>
-                            <th scope="row">{a}</th>
-                            <td data-num>{dr ? formatINR(Number(dr)) : ''}</td>
-                            <td data-num>{cr ? formatINR(Number(cr)) : ''}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr>
-                          <th scope="row">Total</th>
-                          <td data-num>{formatINR(jG + jL)}</td>
-                          <td data-num>{formatINR(jG + jL)}</td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
+                  <PlainTable
+                    label="Provision journal preview"
+                    rows={[
+                      { account: 'Gratuity expense', dr: jG, cr: 0 },
+                      { account: 'Provision for gratuity', dr: 0, cr: jG },
+                      { account: 'Leave encashment expense', dr: jL, cr: 0 },
+                      { account: 'Provision for leave encashment', dr: 0, cr: jL },
+                    ]}
+                    getRowId={(j) => j.account}
+                    columns={[
+                      { key: 'account', header: 'Account', rowHeader: true, cell: (j) => j.account },
+                      { key: 'debit', header: 'Debit', num: true, cell: (j) => (j.dr ? formatINR(j.dr) : '') },
+                      { key: 'credit', header: 'Credit', num: true, cell: (j) => (j.cr ? formatINR(j.cr) : '') },
+                    ]}
+                    footer={[{ id: 'total', label: 'Total', cells: { debit: formatINR(jG + jL), credit: formatINR(jG + jL) } }]}
+                  />
                 )}
               </div>
             ),

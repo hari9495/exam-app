@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { CheckCircle2, Download, Plus } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
+import { PlainTable } from '../../components/plain-table';
 import { EmptyState, InlineAlert } from '../../components/feedback';
 import { FormField, type FormErrorItem } from '../../components/field';
 import { TextField } from '../../components/inputs';
@@ -506,30 +507,16 @@ export function MyEquityScreen({ live, state = 'ready', dialog }: { live?: LiveM
                   ]}
                 />
                 {g.plan && g.plan.exitWindowDays > 0 && <p className="yx-pay-note">If you leave, you have {g.plan.exitWindowDays} days to exercise vested units.</p>}
-                <div className="yx-pay-scroll">
-                  <table className="yx-pay-table" aria-label={`Vesting of ${g.plan?.name ?? 'the grant'}`}>
-                    <thead>
-                      <tr>
-                        <th scope="col">Vests</th>
-                        <th scope="col" data-num>
-                          Units
-                        </th>
-                        <th scope="col">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {g.events.map((e) => (
-                        <tr key={e.id}>
-                          <th scope="row">{e.kind === 'milestone' ? `When: ${e.milestone}` : dateText(e.vestOn)}</th>
-                          <td data-num>{e.units}</td>
-                          <td>
-                            <Badge tone={EVENT_STATE[e.state].tone}>{EVENT_STATE[e.state].label}</Badge>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <PlainTable
+                  label={`Vesting of ${g.plan?.name ?? 'the grant'}`}
+                  rows={g.events}
+                  getRowId={(e) => e.id}
+                  columns={[
+                    { key: 'vests', header: 'Vests', rowHeader: true, cell: (e) => (e.kind === 'milestone' ? `When: ${e.milestone}` : dateText(e.vestOn)) },
+                    { key: 'units', header: 'Units', num: true, cell: (e) => e.units },
+                    { key: 'status', header: 'Status', cell: (e) => <Badge tone={EVENT_STATE[e.state].tone}>{EVENT_STATE[e.state].label}</Badge> },
+                  ]}
+                />
                 {g.exercises.length > 0 && (
                   <ul className="yx-pay-cards" aria-label="Your exercises">
                     {g.exercises.map((x) => (

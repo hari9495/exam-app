@@ -8,6 +8,7 @@ import { TextArea, TextField } from '../../../components/inputs';
 import { Segment } from '../../../components/segment';
 import { Select } from '../../../components/select';
 import { Card, Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/shell';
+import { PlainTable } from '../../../components/plain-table';
 import { useRun } from '../../org/org-kit';
 import { LivePage, dateText } from '../../time/live/kit';
 import { IrreversibleSheet, RunStageTrack, type RunStage } from '../pay-kit';
@@ -67,20 +68,26 @@ export function PayslipLines({ lines }: { lines: PayslipLine[] }) {
         return (
           <section key={k} aria-label={title}>
             <h3 className="yx-pay-section-title">{title}</h3>
-            <table className="yx-tim-table" aria-label={title}>
-              <tbody>
-                {ls.map((l, i) => (
-                  <tr key={`${l.code}-${i}`}>
-                    <th scope="row">{l.name}</th>
-                    <td className="yx-tim-note">
+            <PlainTable
+              label={title}
+              hideHeader
+              rows={ls.map((l, i) => ({ l, id: `${l.code}-${i}` }))}
+              getRowId={(r) => r.id}
+              columns={[
+                { key: 'name', header: 'Line', rowHeader: true, cell: ({ l }) => l.name },
+                {
+                  key: 'why',
+                  header: 'How it is worked out',
+                  cell: ({ l }) => (
+                    <span className="yx-tim-note">
                       {l.explanation}
                       {l.rule ? ` (${l.rule.statute} ${l.rule.jurisdiction} ${l.rule.version}${l.verify ? ', verify' : ''})` : ''}
-                    </td>
-                    <td>{rupees(l.amount)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </span>
+                  ),
+                },
+                { key: 'amount', header: 'Amount', cell: ({ l }) => rupees(l.amount) },
+              ]}
+            />
           </section>
         );
       })}

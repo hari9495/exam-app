@@ -39,7 +39,7 @@ const LEFT: Record<string, number> = {
   history: 1,
   notifications: 1,
   ops: 0,
-  pay: 66,
+  pay: 2,
   people: 20,
   'platform-a': 9,
   'platform-b': 1,

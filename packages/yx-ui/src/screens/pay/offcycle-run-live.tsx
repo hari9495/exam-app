@@ -14,6 +14,7 @@ import { RadioGroup } from '../../components/choice';
 import { useToast, ToastProvider } from '../../components/notify';
 import { Select } from '../../components/select';
 import { PageHeader } from '../../components/shell';
+import { PlainTable } from '../../components/plain-table';
 import { Stepper } from '../../components/stepper';
 import { formatDate, formatINR } from '../../lib/format';
 import { useRun } from '../org/org-kit';
@@ -216,73 +217,34 @@ function SettlementLines({ s, blocked, open, fnfHref, person }: { s: FnfSettleme
           { label: 'Last working day', value: formatDate(day(s.lwd)) },
         ]}
       />
-      <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Settlement lines, scrolls sideways on small screens">
-        <table className="yx-pay-table">
-          <thead>
-            <tr>
-              <th scope="col">Line</th>
-              <th scope="col">Type</th>
-              <th scope="col" data-num>
-                Amount
-              </th>
-              <th scope="col">Why</th>
-            </tr>
-          </thead>
-          <tbody>
-            {lines.map((l) => (
-              <tr key={l.key}>
-                <th scope="row">
-                  {l.label} {l.held && <Badge tone="warning">Held</Badge>}
-                </th>
-                <td>{l.type}</td>
-                <td data-num>{l.type === 'Deduction' ? `−${inr(l.amount)}` : inr(l.amount)}</td>
-                <td>{l.held ?? l.why}</td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr>
-              <th scope="row" colSpan={2}>
-                Net payable
-              </th>
-              <td data-num>{s.totals.net == null ? 'After calculation' : inr(s.totals.net)}</td>
-              <td />
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+      <PlainTable
+        label="Settlement lines"
+        rows={lines}
+        getRowId={(l) => l.key}
+        columns={[
+          { key: 'line', header: 'Line', rowHeader: true, cell: (l) => <>{l.label} {l.held && <Badge tone="warning">Held</Badge>}</> },
+          { key: 'type', header: 'Type', cell: (l) => l.type },
+          { key: 'amount', header: 'Amount', num: true, cell: (l) => (l.type === 'Deduction' ? `−${inr(l.amount)}` : inr(l.amount)) },
+          { key: 'why', header: 'Why', cell: (l) => l.held ?? l.why },
+        ]}
+        footer={[{ id: 'net', label: 'Net payable', cells: { amount: s.totals.net == null ? 'After calculation' : inr(s.totals.net) } }]}
+      />
       {s.exitType === 'death' && (
         <>
           {s.payees.length ? (
-            <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Paid to nominees by share, scrolls sideways on small screens">
-              <table className="yx-pay-table">
-                <caption>Paid to nominees by share (verified bank accounts)</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Nominee</th>
-                    <th scope="col">Relationship</th>
-                    <th scope="col" data-num>
-                      Share
-                    </th>
-                    <th scope="col" data-num>
-                      Amount
-                    </th>
-                    <th scope="col">Bank</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {s.payees.map((p) => (
-                    <tr key={p.name}>
-                      <th scope="row">{p.name}</th>
-                      <td>{p.relation}</td>
-                      <td data-num>{Number(p.sharePercent)}%</td>
-                      <td data-num>{p.amount == null ? 'After calculation' : inr(p.amount)}</td>
-                      <td>{p.accountLast4 ? `•••• ${p.accountLast4}` : <Badge tone="warning">No account yet</Badge>}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <PlainTable
+              label="Paid to nominees by share"
+              caption="Paid to nominees by share (verified bank accounts)"
+              rows={s.payees}
+              getRowId={(p) => p.name}
+              columns={[
+                { key: 'nominee', header: 'Nominee', rowHeader: true, cell: (p) => p.name },
+                { key: 'relation', header: 'Relationship', cell: (p) => p.relation },
+                { key: 'share', header: 'Share', num: true, cell: (p) => `${Number(p.sharePercent)}%` },
+                { key: 'amount', header: 'Amount', num: true, cell: (p) => (p.amount == null ? 'After calculation' : inr(p.amount)) },
+                { key: 'bank', header: 'Bank', cell: (p) => (p.accountLast4 ? `•••• ${p.accountLast4}` : <Badge tone="warning">No account yet</Badge>) },
+              ]}
+            />
           ) : (
             <InlineAlert tone="warning" title="No nominees recorded yet">
               Record who is paid and their shares in the death in service case in People before this run is approved.

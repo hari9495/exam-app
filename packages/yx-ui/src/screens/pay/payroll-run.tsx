@@ -15,6 +15,7 @@ import { Dialog } from '../../components/overlay';
 import { useToast } from '../../components/notify';
 import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { Stepper, type StepperStep } from '../../components/stepper';
+import { PlainTable } from '../../components/plain-table';
 import { DataTable, type TableColumn } from '../../components/table';
 import { FilterBar, SavedViewMenu } from '../../components/filters';
 import { LineChart, StatCard } from '../../components/charts';
@@ -562,47 +563,32 @@ export function CoveragePanel({ rows: initial = COVERAGE, state = 'ready', onCha
             ))}
           </ul>
         ) : (
-        <div className="yx-pay-scroll">
-          <table className="yx-pay-table">
-            <thead>
-              <tr>
-                <th scope="col">Entity</th>
-                <th scope="col">Statute</th>
-                <th scope="col">Counting</th>
-                <th scope="col" data-num>
-                  Headcount / threshold
-                </th>
-                <th scope="col">Status</th>
-                <th scope="col">Next step</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.entity + r.statute} data-state={r.status.startsWith('Crossed') ? 'error' : undefined}>
-                  <th scope="row">{r.entity}</th>
-                  <td>{r.statute}</td>
-                  <td>{r.basis}</td>
-                  <td data-num>
-                    {groupIndian(r.headcount)} / {groupIndian(r.threshold)}
-                  </td>
-                  <td>
-                    <Badge tone={COVER_TONE[r.status]}>{r.status}</Badge>
-                  </td>
-                  <td>
-                    {r.status.startsWith('Crossed') ? (
-                      <span className="yx-pay-row">
-                        <Button size="sm" onClick={() => setSwitching({ row: r, applied: false })}>Switch on</Button>
-                        <Button size="sm" onClick={() => setSwitching({ row: r, applied: true })}>Record applied</Button>
-                      </span>
-                    ) : (
-                      <span className="yx-pay-muted">{r.due ?? '—'}</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <PlainTable
+          label="Coverage"
+          rows={rows}
+          getRowId={(r) => r.entity + r.statute}
+          rowTone={(r) => (r.status.startsWith('Crossed') ? { tone: 'danger', label: 'Crossed' } : undefined)}
+          columns={[
+            { key: 'entity', header: 'Entity', rowHeader: true, cell: (r) => r.entity },
+            { key: 'statute', header: 'Statute', cell: (r) => r.statute },
+            { key: 'basis', header: 'Counting', cell: (r) => r.basis },
+            { key: 'count', header: 'Headcount / threshold', num: true, cell: (r) => `${groupIndian(r.headcount)} / ${groupIndian(r.threshold)}` },
+            { key: 'status', header: 'Status', cell: (r) => <Badge tone={COVER_TONE[r.status]}>{r.status}</Badge> },
+            {
+              key: 'next',
+              header: 'Next step',
+              cell: (r) =>
+                r.status.startsWith('Crossed') ? (
+                  <span className="yx-pay-row">
+                    <Button size="sm" onClick={() => setSwitching({ row: r, applied: false })}>Switch on</Button>
+                    <Button size="sm" onClick={() => setSwitching({ row: r, applied: true })}>Record applied</Button>
+                  </span>
+                ) : (
+                  <span className="yx-pay-muted">{r.due ?? '—'}</span>
+                ),
+            },
+          ]}
+        />
         )}
       </StateBlock>
     </section>
@@ -667,50 +653,43 @@ export function RunReadinessScreen({ findings: initial = FINDINGS, groups = ATTE
             ))}
           </ul>
         ) : (
-        <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-        <table className="yx-pay-table">
-          <thead>
-            <tr>
-              <th scope="col">Group</th>
-              <th scope="col">Mode</th>
-              <th scope="col" data-num>
-                Employees
-              </th>
-              <th scope="col" data-num>
-                Open exceptions
-              </th>
-              <th scope="col">Input</th>
-            </tr>
-          </thead>
-          <tbody>
-            {groups.map((g) => (
-              <tr key={g.group} data-state={g.mode === 'Punch · block' && g.exceptions ? 'error' : undefined}>
-                <th scope="row">{g.group}</th>
-                <td>
-                  <Badge tone={g.mode === 'Assumed present' ? 'info' : 'neutral'}>{g.mode}</Badge>
-                </td>
-                <td data-num>{g.employees}</td>
-                <td data-num>
+        <PlainTable
+          label="Attendance mode per group"
+          rows={groups}
+          getRowId={(g) => g.group}
+          rowTone={(g) => (g.mode === 'Punch · block' && g.exceptions ? { tone: 'danger', label: 'Blocks approval' } : undefined)}
+          columns={[
+            { key: 'group', header: 'Group', rowHeader: true, cell: (g) => g.group },
+            { key: 'mode', header: 'Mode', cell: (g) => <Badge tone={g.mode === 'Assumed present' ? 'info' : 'neutral'}>{g.mode}</Badge> },
+            { key: 'employees', header: 'Employees', num: true, cell: (g) => g.employees },
+            {
+              key: 'exceptions',
+              header: 'Open exceptions',
+              num: true,
+              cell: (g) => (
+                <>
                   {g.exceptions}
                   {g.exceptions > 0 && <> · {g.mode === 'Punch · block' ? 'blocks approval' : g.mode === 'Punch · warn' ? 'warning' : 'missing timesheet'}</>}
-                </td>
-                <td>
-                  {g.mode === 'Assumed present' ? (
-                    <span className="yx-pay-row">
-                      {g.input}
-                      <StoryButton size="sm" to={STORY.lopInput}>
-                        Open LOP input
-                      </StoryButton>
-                    </span>
-                  ) : (
-                    g.input
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
+                </>
+              ),
+            },
+            {
+              key: 'input',
+              header: 'Input',
+              cell: (g) =>
+                g.mode === 'Assumed present' ? (
+                  <span className="yx-pay-row">
+                    {g.input}
+                    <StoryButton size="sm" to={STORY.lopInput}>
+                      Open LOP input
+                    </StoryButton>
+                  </span>
+                ) : (
+                  g.input
+                ),
+            },
+          ]}
+        />
         )}
       </section>
       <section className="yx-pay-panel" aria-label="Inputs">
@@ -732,36 +711,18 @@ export function RunReadinessScreen({ findings: initial = FINDINGS, groups = ATTE
             ))}
           </ul>
         ) : (
-        <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-        <table className="yx-pay-table">
-          <thead>
-            <tr>
-              <th scope="col">Source</th>
-              <th scope="col">What</th>
-              <th scope="col" data-num>
-                Records
-              </th>
-              <th scope="col" data-num>
-                Amount
-              </th>
-              <th scope="col">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {inputs.map((s) => (
-              <tr key={s.source}>
-                <th scope="row">{s.source}</th>
-                <td>{s.detail}</td>
-                <td data-num>{groupIndian(s.count)}</td>
-                <td data-num>{s.amount != null ? formatINR(s.amount) : '—'}</td>
-                <td>
-                  <Badge tone={s.status === 'Received' ? 'success' : 'warning'}>{s.status}</Badge>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
+        <PlainTable
+          label="Inputs for this period"
+          rows={inputs}
+          getRowId={(s) => s.source}
+          columns={[
+            { key: 'source', header: 'Source', rowHeader: true, cell: (s) => s.source },
+            { key: 'detail', header: 'What', cell: (s) => s.detail },
+            { key: 'count', header: 'Records', num: true, cell: (s) => groupIndian(s.count) },
+            { key: 'amount', header: 'Amount', num: true, cell: (s) => (s.amount != null ? formatINR(s.amount) : '—') },
+            { key: 'status', header: 'Status', cell: (s) => <Badge tone={s.status === 'Received' ? 'success' : 'warning'}>{s.status}</Badge> },
+          ]}
+        />
         )}
       </section>
       <section className="yx-pay-panel" aria-label="Validations">
@@ -1221,30 +1182,16 @@ function SampleRunWorkspace({ persona = 'pa', tab = 'payslips', phase: initialPh
                   { label: 'Recoveries', value: formatINR(1_46_380) },
                 ]}
               />
-              <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-              <table className="yx-pay-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Source</th>
-                    <th scope="col" data-num>
-                      Records
-                    </th>
-                    <th scope="col" data-num>
-                      Amount
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {INPUT_SOURCES.map((s) => (
-                    <tr key={s.source}>
-                      <th scope="row">{s.source}</th>
-                      <td data-num>{s.count}</td>
-                      <td data-num>{s.amount != null ? formatINR(s.amount) : '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              </div>
+              <PlainTable
+                label="Inputs"
+                rows={INPUT_SOURCES}
+                getRowId={(s) => s.source}
+                columns={[
+                  { key: 'source', header: 'Source', rowHeader: true, cell: (s) => s.source },
+                  { key: 'count', header: 'Records', num: true, cell: (s) => s.count },
+                  { key: 'amount', header: 'Amount', num: true, cell: (s) => (s.amount != null ? formatINR(s.amount) : '—') },
+                ]}
+              />
             </div>
           </TabsContent>
           <TabsContent value="payslips">
@@ -1331,58 +1278,39 @@ function SampleRunWorkspace({ persona = 'pa', tab = 'payslips', phase: initialPh
                   })}
                 </ul>
               ) : (
-              <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-              <table className="yx-pay-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Employee</th>
-                    <th scope="col" data-num>
-                      August net
-                    </th>
-                    <th scope="col" data-num>
-                      September net
-                    </th>
-                    <th scope="col" data-num>
-                      Change
-                    </th>
-                    <th scope="col">Cause</th>
-                    <th scope="col">
-                      <span className="yx-visually-hidden">Action</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {flagged.map((r) => {
-                    const v = variance(r.net, r.prevNet);
-                    const isAck = acked.includes(r.id);
-                    return (
-                      <tr key={r.id} data-state={isAck ? undefined : 'flag'}>
-                        <th scope="row">
-                          <PersonLabel name={r.name} secondary={r.code} />
-                        </th>
-                        <td data-num>{formatINR(r.prevNet)}</td>
-                        <td data-num>{formatINR(r.net)}</td>
-                        <td data-num>
-                          {v.diff >= 0 ? '+' : ''}
-                          {formatINR(v.diff)} ({v.pct >= 0 ? '+' : ''}
-                          {v.pct}%)
-                        </td>
-                        <td>{r.reason ?? 'No input change since August'}</td>
-                        <td>
-                          {isAck ? (
-                            <Badge tone="success">Acknowledged</Badge>
-                          ) : (
-                            <Button size="sm" onClick={() => setAcked((a) => [...a, r.id])}>
-                              Acknowledge
-                            </Button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              </div>
+              <PlainTable
+                label="Variance lines"
+                rows={flagged}
+                getRowId={(r) => r.id}
+                rowTone={(r) => (acked.includes(r.id) ? undefined : { tone: 'warning', label: 'Flagged' })}
+                columns={[
+                  { key: 'name', header: 'Employee', rowHeader: true, cell: (r) => <PersonLabel name={r.name} secondary={r.code} /> },
+                  { key: 'prev', header: 'August net', num: true, cell: (r) => formatINR(r.prevNet) },
+                  { key: 'net', header: 'September net', num: true, cell: (r) => formatINR(r.net) },
+                  {
+                    key: 'change',
+                    header: 'Change',
+                    num: true,
+                    cell: (r) => {
+                      const v = variance(r.net, r.prevNet);
+                      return `${v.diff >= 0 ? '+' : ''}${formatINR(v.diff)} (${v.pct >= 0 ? '+' : ''}${v.pct}%)`;
+                    },
+                  },
+                  { key: 'cause', header: 'Cause', cell: (r) => r.reason ?? 'No input change since August' },
+                  {
+                    key: 'action',
+                    header: <span className="yx-visually-hidden">Action</span>,
+                    cell: (r) =>
+                      acked.includes(r.id) ? (
+                        <Badge tone="success">Acknowledged</Badge>
+                      ) : (
+                        <Button size="sm" onClick={() => setAcked((a) => [...a, r.id])}>
+                          Acknowledge
+                        </Button>
+                      ),
+                  },
+                ]}
+              />
               )}
             </div>
           </TabsContent>
@@ -1676,31 +1604,22 @@ export function BankFileSheet({ open, onOpenChange, variant = 'ready' }: { open:
         ) : undefined
       }
     >
-      <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Left out of this file, scrolls sideways on small screens">
-      <table className="yx-pay-table">
-        <caption>Left out of this file</caption>
-        <tbody>
-          <tr>
-            <th scope="row">Held salaries</th>
-            <td>{RUN.withheld} · released later into the next bank file or an off-cycle payment</td>
-          </tr>
-          {RUN.failed > 0 && (
-            <tr>
-              <th scope="row">Failed payslips</th>
-              <td>{RUN.failed} · paid in the next bank file or off-cycle once calculated</td>
-            </tr>
-          )}
-          <tr>
-            <th scope="row">Cash / cheque</th>
-            <td>{RUN.cashCheque} · paid through the disbursement register</td>
-          </tr>
-          <tr>
-            <th scope="row">EWA partner remittance</th>
-            <td>{formatINR(EWA_REMITTANCE)} to the EWA partner, added as one line</td>
-          </tr>
-        </tbody>
-      </table>
-      </div>
+      <PlainTable
+        label="Left out of this file"
+        caption="Left out of this file"
+        hideHeader
+        rows={[
+          { what: 'Held salaries', how: `${RUN.withheld} · released later into the next bank file or an off-cycle payment` },
+          ...(RUN.failed > 0 ? [{ what: 'Failed payslips', how: `${RUN.failed} · paid in the next bank file or off-cycle once calculated` }] : []),
+          { what: 'Cash / cheque', how: `${RUN.cashCheque} · paid through the disbursement register` },
+          { what: 'EWA partner remittance', how: `${formatINR(EWA_REMITTANCE)} to the EWA partner, added as one line` },
+        ]}
+        getRowId={(r) => r.what}
+        columns={[
+          { key: 'what', header: 'Left out', rowHeader: true, cell: (r) => r.what },
+          { key: 'how', header: 'How it is paid', cell: (r) => r.how },
+        ]}
+      />
     </IrreversibleSheet>
   );
 }

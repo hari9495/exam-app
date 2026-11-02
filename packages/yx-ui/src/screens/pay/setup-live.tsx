@@ -168,45 +168,45 @@ export function RegistrationsPart({ data, onSave }: { data: Registrations | null
           </ul>
         </InlineAlert>
       )}
-      <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Statutes, scrolls sideways on small screens">
-        <table className="yx-pay-table" aria-label="Statutory registrations">
-          <thead>
-            <tr>
-              <th scope="col">Statute</th>
-              <th scope="col">Registration</th>
-              <th scope="col">Status</th>
-              <th scope="col">From</th>
-              <th scope="col">Responsible person</th>
-              <th scope="col">Check</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r, i) => {
+      <PlainTable
+        label="Statutory registrations"
+        rows={rows}
+        getRowId={(r) => r.id ?? `new-${rows.indexOf(r)}`}
+        rowTone={(r) => (missingOf(r).length ? { tone: 'danger', label: 'Incomplete' } : undefined)}
+        columns={[
+          {
+            key: 'statute',
+            header: 'Statute',
+            rowHeader: true,
+            cell: (r) => (
+              <>
+                {STATUTE[r.statute] ?? r.statute}
+                {r.state && <div className="yx-pay-note">{r.state}</div>}
+              </>
+            ),
+          },
+          { key: 'reg', header: 'Registration', cell: (r) => <span className="yx-pay-mono">{r.registrationNo || '—'}</span> },
+          { key: 'status', header: 'Status', cell: (r) => REG_STATUS.find((s) => s.value === r.status)?.label },
+          { key: 'from', header: 'From', cell: (r) => (r.startOn ? dateText(r.startOn) : r.appliedOn ? `Applied ${dateText(r.appliedOn)}` : '—') },
+          { key: 'who', header: 'Responsible person', cell: (r) => (r.responsiblePerson ? `${r.responsiblePerson}${r.responsibleDesignation ? `, ${r.responsibleDesignation}` : ''}` : '—') },
+          {
+            key: 'check',
+            header: 'Check',
+            cell: (r) => {
               const miss = missingOf(r);
+              const i = rows.indexOf(r);
               return (
-                <tr key={r.id ?? `new-${i}`} data-state={miss.length ? 'error' : undefined}>
-                  <th scope="row">
-                    {STATUTE[r.statute] ?? r.statute}
-                    {r.state && <div className="yx-pay-note">{r.state}</div>}
-                  </th>
-                  <td className="yx-pay-mono">{r.registrationNo || '—'}</td>
-                  <td>{REG_STATUS.find((s) => s.value === r.status)?.label}</td>
-                  <td>{r.startOn ? dateText(r.startOn) : r.appliedOn ? `Applied ${dateText(r.appliedOn)}` : '—'}</td>
-                  <td>{r.responsiblePerson ? `${r.responsiblePerson}${r.responsibleDesignation ? `, ${r.responsibleDesignation}` : ''}` : '—'}</td>
-                  <td>
-                    <span className="yx-pay-row">
-                      {miss.length ? <span className="yx-pay-note">{miss.join('; ')}</span> : <Badge tone="success">Complete</Badge>}
-                      <Button size="sm" aria-label={`${miss.length ? 'Fix' : 'Edit'} ${STATUTE[r.statute]}${r.state ? ` ${r.state}` : ''}`} onClick={() => (clearError(), early.reset(), setEdit({ i, r }))}>
-                        {miss.length ? 'Fix' : 'Edit'}
-                      </Button>
-                    </span>
-                  </td>
-                </tr>
+                <span className="yx-pay-row">
+                  {miss.length ? <span className="yx-pay-note">{miss.join('; ')}</span> : <Badge tone="success">Complete</Badge>}
+                  <Button size="sm" aria-label={`${miss.length ? 'Fix' : 'Edit'} ${STATUTE[r.statute]}${r.state ? ` ${r.state}` : ''}`} onClick={() => (clearError(), early.reset(), setEdit({ i, r }))}>
+                    {miss.length ? 'Fix' : 'Edit'}
+                  </Button>
+                </span>
               );
-            })}
-          </tbody>
-        </table>
-      </div>
+            },
+          },
+        ]}
+      />
       <div className="yx-pay-row">
         <Button icon={Plus} onClick={() => (clearError(), early.reset(), setEdit({ i: rows.length, r: blank }))}>
           Add a registration
@@ -403,43 +403,32 @@ export function GroupsPart(p: {
       {!mine ? (
         <Skeleton height={120} />
       ) : mine.length ? (
-        <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Pay groups, scrolls sideways on small screens">
-          <table className="yx-pay-table" aria-label="Pay groups">
-            <thead>
-              <tr>
-                <th scope="col">Pay group</th>
-                <th scope="col">Frequency</th>
-                <th scope="col">Day basis</th>
-                <th scope="col">Cut-off</th>
-                <th scope="col">Pay day</th>
-                <th scope="col">
-                  <span className="yx-visually-hidden">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {mine.map((g) => (
-                <tr key={g.id}>
-                  <th scope="row">{g.name}</th>
-                  <td>{FREQ.find((f) => f.value === g.frequency)?.label ?? g.frequency}</td>
-                  <td>{BASIS.find((b) => b.value === g.dayBasis)?.label}</td>
-                  <td>Day {g.cutOffDay}</td>
-                  <td>{payDayText(g.payDay)}</td>
-                  <td>
-                    <span className="yx-pay-row">
-                      <Button size="sm" onClick={() => show(g)}>
-                        Members and calendar
-                      </Button>
-                      <Button size="sm" onClick={() => (clearError(), groupEarly.reset(), setEdit(g))}>
-                        Edit
-                      </Button>
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <PlainTable
+          label="Pay groups"
+          rows={mine}
+          getRowId={(g) => g.id}
+          columns={[
+            { key: 'name', header: 'Pay group', rowHeader: true, cell: (g) => g.name },
+            { key: 'freq', header: 'Frequency', cell: (g) => FREQ.find((f) => f.value === g.frequency)?.label ?? g.frequency },
+            { key: 'basis', header: 'Day basis', cell: (g) => BASIS.find((b) => b.value === g.dayBasis)?.label },
+            { key: 'cut', header: 'Cut-off', cell: (g) => `Day ${g.cutOffDay}` },
+            { key: 'pay', header: 'Pay day', cell: (g) => payDayText(g.payDay) },
+            {
+              key: 'act',
+              header: <span className="yx-visually-hidden">Actions</span>,
+              cell: (g) => (
+                <span className="yx-pay-row">
+                  <Button size="sm" onClick={() => show(g)}>
+                    Members and calendar
+                  </Button>
+                  <Button size="sm" onClick={() => (clearError(), groupEarly.reset(), setEdit(g))}>
+                    Edit
+                  </Button>
+                </span>
+              ),
+            },
+          ]}
+        />
       ) : (
         <EmptyState compact title="No pay group yet" description="Add one per pay calendar: monthly staff, a weekly plant group and so on." />
       )}
@@ -734,26 +723,17 @@ export function GoLivePart(p: {
       ) : (
         <>
           {p.readiness.ready ? <InlineAlert tone="info" title="Ready for the first live month" /> : <InlineAlert tone="warning" title="Not ready yet">Each item below marked To do must be done first.</InlineAlert>}
-          <table className="yx-pay-table" aria-label="Readiness checks">
-            <thead>
-              <tr>
-                <th scope="col">Check</th>
-                <th scope="col">Where it stands</th>
-                <th scope="col">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {p.readiness.items.map((i) => (
-                <tr key={i.key} data-state={!i.ok && !i.info ? 'error' : undefined}>
-                  <th scope="row">{i.label}</th>
-                  <td>{i.detail}</td>
-                  <td>
-                    <Badge tone={i.info ? 'info' : i.ok ? 'success' : 'warning'}>{i.info ? 'Note' : i.ok ? 'Done' : 'To do'}</Badge>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <PlainTable
+            label="Readiness checks"
+            rows={p.readiness.items}
+            getRowId={(i) => i.key}
+            rowTone={(i) => (!i.ok && !i.info ? { tone: 'danger', label: 'To do' } : undefined)}
+            columns={[
+              { key: 'check', header: 'Check', rowHeader: true, cell: (i) => i.label },
+              { key: 'detail', header: 'Where it stands', cell: (i) => i.detail },
+              { key: 'status', header: 'Status', cell: (i) => <Badge tone={i.info ? 'info' : i.ok ? 'success' : 'warning'}>{i.info ? 'Note' : i.ok ? 'Done' : 'To do'}</Badge> },
+            ]}
+          />
         </>
       )}
       <SectionTitle>Parallel run</SectionTitle>
@@ -803,38 +783,27 @@ export function GoLivePart(p: {
                   <Badge tone={x.status === 'signed_off' ? 'success' : x.status === 'waived' ? 'neutral' : x.differences ? 'warning' : 'info'}>{x.status === 'signed_off' ? 'Signed off' : x.status === 'waived' ? 'Waived' : x.differences ? `${x.differences} differences` : 'No differences'}</Badge>
                 </div>
                 {x.rows.length > 0 && (
-                  <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Differences, scrolls sideways on small screens">
-                    <table className="yx-pay-table" aria-label="Differences">
-                      <thead>
-                        <tr>
-                          <th scope="col">Person</th>
-                          <th scope="col">What</th>
-                          <th scope="col" data-num>
-                            YukthiX
-                          </th>
-                          <th scope="col" data-num>
-                            Old payroll
-                          </th>
-                          <th scope="col" data-num>
-                            Difference
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {x.rows.map((d, i) => (
-                          <tr key={i}>
-                            <th scope="row">
-                              {d.name ?? ''} <span className="yx-pay-mono">{d.employeeCode}</span>
-                            </th>
-                            <td>{FIELD[d.field] ?? d.field}</td>
-                            <td data-num>{d.ours ? rupeesText(d.ours) : ''}</td>
-                            <td data-num>{d.theirs ? rupeesText(d.theirs) : ''}</td>
-                            <td data-num>{d.difference ? rupeesText(d.difference) : ''}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <PlainTable
+                    label="Differences"
+                    rows={x.rows}
+                    getRowId={(d) => String(x.rows.indexOf(d))}
+                    columns={[
+                      {
+                        key: 'who',
+                        header: 'Person',
+                        rowHeader: true,
+                        cell: (d) => (
+                          <>
+                            {d.name ?? ''} <span className="yx-pay-mono">{d.employeeCode}</span>
+                          </>
+                        ),
+                      },
+                      { key: 'what', header: 'What', cell: (d) => FIELD[d.field] ?? d.field },
+                      { key: 'ours', header: 'YukthiX', num: true, cell: (d) => (d.ours ? rupeesText(d.ours) : '') },
+                      { key: 'theirs', header: 'Old payroll', num: true, cell: (d) => (d.theirs ? rupeesText(d.theirs) : '') },
+                      { key: 'diff', header: 'Difference', num: true, cell: (d) => (d.difference ? rupeesText(d.difference) : '') },
+                    ]}
+                  />
                 )}
                 {x.reason && <p className="yx-pay-note">Reason: {x.reason}</p>}
                 {x.status === 'compared' &&
@@ -946,24 +915,34 @@ export function LivePayrollSetupScreen({ live }: { live: LivePayrollSetup }) {
                     <Skeleton height={100} />
                   </Needs>
                 ) : (
-                  <table className="yx-pay-table" aria-label="Set-up steps">
-                    <tbody>
-                      {checklist.map((s) => (
-                        <tr key={s.key}>
-                          <th scope="row">{STEP_TEXT[s.key]}</th>
-                          <td>
+                  <PlainTable
+                    label="Set-up steps"
+                    hideHeader
+                    rows={checklist}
+                    getRowId={(s) => s.key}
+                    columns={[
+                      { key: 'step', header: 'Step', rowHeader: true, cell: (s) => STEP_TEXT[s.key] },
+                      {
+                        key: 'status',
+                        header: 'Status',
+                        cell: (s) => (
+                          <>
                             <Badge tone={s.done ? 'success' : 'warning'}>{s.done ? 'Done' : 'To do'}</Badge>
                             {s.missing?.length ? <div className="yx-pay-note">{s.missing.join('; ')}</div> : null}
-                          </td>
-                          <td>
-                            <Button size="sm" onClick={() => live.onOpen(s.key as SetupLink)}>
-                              Open {STEP_TEXT[s.key].toLowerCase()}
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                          </>
+                        ),
+                      },
+                      {
+                        key: 'open',
+                        header: 'Action',
+                        cell: (s) => (
+                          <Button size="sm" onClick={() => live.onOpen(s.key as SetupLink)}>
+                            Open {STEP_TEXT[s.key].toLowerCase()}
+                          </Button>
+                        ),
+                      },
+                    ]}
+                  />
                 ),
                 summary: <p>{checklist ? `${checklist.filter((s) => s.done).length} of ${checklist.length} done` : '—'}</p>,
               },

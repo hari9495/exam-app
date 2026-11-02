@@ -16,6 +16,7 @@ import { Select } from '../../components/select';
 import { ConfirmDialog } from '../../components/overlay';
 import { useToast } from '../../components/notify';
 import { DescriptionList, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
+import { PlainTable } from '../../components/plain-table';
 import { DataTable, type TableColumn } from '../../components/table';
 import { formatINR } from '../../lib/format';
 import { useRun } from '../org/org-kit';
@@ -579,32 +580,26 @@ function PlanDrawer({ onClose, onSave }: { onClose: () => void; onSave: LiveSpec
             <FormField id="pl-target" label="Target pay at 100 % of quota (₹)" required error={errorOf('pl-target')}>
               <TextField value={target} onChange={setTarget} inputMode="decimal" />
             </FormField>
-            <table className="yx-pay-table">
-              <thead>
-                <tr>
-                  <th scope="col">Tier</th>
-                  <th scope="col">From % of quota</th>
-                  <th scope="col">Multiplier</th>
-                  <th scope="col">
-                    <span className="yx-visually-hidden">Remove</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {tiers.map((t, i) => (
-                  <tr key={i} data-state={tierErr === i ? 'error' : undefined}>
-                    <th scope="row">Tier {i + 1}{Number(t.from) >= 100 ? ' (accelerator)' : ''}</th>
-                    <td>
-                      <TextField id={`pl-tier-${i}`} size="sm" aria-label={`Tier ${i + 1} starts at`} value={t.from} onChange={(from) => setTier(i, { from })} inputMode="numeric" suffix="%" />
-                    </td>
-                    <td>
-                      <TextField size="sm" aria-label={`Tier ${i + 1} multiplier`} value={t.multiplier} onChange={(multiplier) => setTier(i, { multiplier })} inputMode="decimal" suffix="×" />
-                    </td>
-                    <td>{i > 0 && <IconButton icon={Trash2} label={`Remove tier ${i + 1}`} size="sm" onClick={() => setTiers((ts) => ts.filter((_, j) => j !== i))} />}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <PlainTable
+              label="Quota and tiers"
+              rows={tiers.map((_, i) => i)}
+              getRowId={String}
+              rowTone={(i) => (tierErr === i ? { tone: 'danger', label: 'Error' } : undefined)}
+              columns={[
+                { key: 'tier', header: 'Tier', rowHeader: true, cell: (i) => `Tier ${i + 1}${Number(tiers[i]!.from) >= 100 ? ' (accelerator)' : ''}` },
+                {
+                  key: 'from',
+                  header: 'From % of quota',
+                  cell: (i) => <TextField id={`pl-tier-${i}`} size="sm" aria-label={`Tier ${i + 1} starts at`} value={tiers[i]!.from} onChange={(from) => setTier(i, { from })} inputMode="numeric" suffix="%" />,
+                },
+                {
+                  key: 'mult',
+                  header: 'Multiplier',
+                  cell: (i) => <TextField size="sm" aria-label={`Tier ${i + 1} multiplier`} value={tiers[i]!.multiplier} onChange={(multiplier) => setTier(i, { multiplier })} inputMode="decimal" suffix="×" />,
+                },
+                { key: 'rm', header: <span className="yx-visually-hidden">Remove</span>, cell: (i) => i > 0 && <IconButton icon={Trash2} label={`Remove tier ${i + 1}`} size="sm" onClick={() => setTiers((ts) => ts.filter((_, j) => j !== i))} /> },
+              ]}
+            />
             {tierErr >= 0 && errorOf(`pl-tier-${tierErr}`) && <p className="yx-pay-note" role="alert">{errorOf(`pl-tier-${tierErr}`)}</p>}
             <Button size="sm" icon={Plus} onClick={() => setTiers((ts) => [...ts, { from: String((Number(ts[ts.length - 1]?.from) || 0) + 25), multiplier: ts[ts.length - 1]?.multiplier ?? '1' }])}>
               Add tier
@@ -730,35 +725,17 @@ export function LiveTipsPool({ live }: { live: LiveSpecialPay }) {
         {open && (
           <div className="yx-pay-stack">
             <FactRow items={[{ label: open.paidDirect ? 'Paid directly by customers (record only)' : 'Collected through payroll', value: formatINR(Number(open.amount)) }, { label: 'Distribution basis', value: BASIS_LABEL[open.method] }, { label: 'Status', value: poolStatus(open) }]} />
-            <table className="yx-pay-table">
-              <thead>
-                <tr>
-                  <th scope="col">Person</th>
-                  <th scope="col" data-num>
-                    {BASIS_LABEL[open.method]}
-                  </th>
-                  <th scope="col" data-num>
-                    Share
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {open.shares.map((s) => (
-                  <tr key={s.employeeId}>
-                    <th scope="row">{live.nameOf(s.employeeId)}</th>
-                    <td data-num>{Number(s.basis)}</td>
-                    <td data-num>{formatINR(Number(s.amount))}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <th scope="row">Total</th>
-                  <td />
-                  <td data-num>{formatINR(open.shares.reduce((a, s) => a + Number(s.amount), 0))}</td>
-                </tr>
-              </tfoot>
-            </table>
+            <PlainTable
+              label="Shares"
+              rows={open.shares}
+              getRowId={(s) => s.employeeId}
+              columns={[
+                { key: 'who', header: 'Person', rowHeader: true, cell: (s) => live.nameOf(s.employeeId) },
+                { key: 'basis', header: BASIS_LABEL[open.method], num: true, cell: (s) => Number(s.basis) },
+                { key: 'share', header: 'Share', num: true, cell: (s) => formatINR(Number(s.amount)) },
+              ]}
+              footer={[{ id: 'total', label: 'Total', cells: { share: formatINR(open.shares.reduce((a, s) => a + Number(s.amount), 0)) } }]}
+            />
             <p className="yx-pay-note">Treatment in payroll (PF, ESI, tax) follows the central statutory rules for tips paid through payroll.</p>
           </div>
         )}
@@ -1247,22 +1224,17 @@ export function LiveUnionCheckoff({ live }: { live: LiveSpecialPay }) {
       >
         {statement &&
           (statement.members.length ? (
-            <table className="yx-pay-table" aria-label="Union dues">
-              <tbody>
-                {statement.members.map((m) => (
-                  <tr key={m.employeeId}>
-                    <th scope="row">{live.nameOf(m.employeeId)}</th>
-                    <td data-num>{formatINR(Number(m.amount))}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <th scope="row">Total</th>
-                  <td data-num>{formatINR(Number(statement.total))}</td>
-                </tr>
-              </tfoot>
-            </table>
+            <PlainTable
+              label="Union dues"
+              hideHeader
+              rows={statement.members}
+              getRowId={(m) => m.employeeId}
+              columns={[
+                { key: 'member', header: 'Member', rowHeader: true, cell: (m) => live.nameOf(m.employeeId) },
+                { key: 'amount', header: 'Amount', num: true, cell: (m) => formatINR(Number(m.amount)) },
+              ]}
+              footer={[{ id: 'total', label: 'Total', cells: { amount: formatINR(Number(statement.total)) } }]}
+            />
           ) : (
             <EmptyState compact title="No dues sent to payroll for this month" description="Send the month's dues first." />
           ))}

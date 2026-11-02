@@ -13,6 +13,7 @@ import { Checkbox, RadioGroup } from '../../components/choice';
 import { Select } from '../../components/select';
 import { FileUpload } from '../../components/upload';
 import { PageHeader, Tabs, TabsContent, TabsList, TabsTrigger, DescriptionList } from '../../components/shell';
+import { PlainTable } from '../../components/plain-table';
 import { DataTable, tableToCsv, type TableColumn } from '../../components/table';
 import { FilterBar, SavedViewMenu } from '../../components/filters';
 import { BarChart } from '../../components/charts';
@@ -172,30 +173,18 @@ export function BulkUploadDrawer({
             <InlineAlert tone={bad.length ? 'warning' : 'info'} title={`${good} rows ready · ${bad.length} rows with errors`}>
               {bad.length ? 'Each error says what to change in the file.' : 'Every row passed validation.'}
             </InlineAlert>
-            <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-            <table className="yx-pay-table">
-              <thead>
-                <tr>
-                  <th scope="col" data-num>
-                    Row
-                  </th>
-                  <th scope="col">Employee</th>
-                  <th scope="col">Value</th>
-                  <th scope="col">Result</th>
-                </tr>
-              </thead>
-              <tbody>
-                {results.map((r) => (
-                  <tr key={r.row} data-state={r.error ? 'error' : undefined}>
-                    <td data-num>{r.row}</td>
-                    <th scope="row">{r.employee}</th>
-                    <td>{r.value}</td>
-                    <td>{r.error ? <span>{r.error}</span> : <Badge tone="success">Ready</Badge>}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
+            <PlainTable
+              label="Rows checked"
+              rows={results}
+              getRowId={(r) => String(r.row)}
+              rowTone={(r) => (r.error ? { tone: 'danger', label: 'Error' } : undefined)}
+              columns={[
+                { key: 'row', header: 'Row', num: true, cell: (r) => r.row },
+                { key: 'employee', header: 'Employee', rowHeader: true, cell: (r) => r.employee },
+                { key: 'value', header: 'Value', cell: (r) => r.value },
+                { key: 'result', header: 'Result', cell: (r) => (r.error ? <span>{r.error}</span> : <Badge tone="success">Ready</Badge>) },
+              ]}
+            />
           </>
         )}
       </div>
@@ -1425,37 +1414,17 @@ function SamplePayments({ persona = 'pa', tab = 'status', state = 'ready', failu
                 ]}
               />
             </FormField>
-            <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-            <table className="yx-pay-table">
-              <thead>
-                <tr>
-                  <th scope="col">Ledger</th>
-                  <th scope="col" data-num>
-                    Debit
-                  </th>
-                  <th scope="col" data-num>
-                    Credit
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {JOURNAL.map((l) => (
-                  <tr key={l.ledger}>
-                    <th scope="row">{l.ledger}</th>
-                    <td data-num>{l.debit ? formatINR(l.debit) : ''}</td>
-                    <td data-num>{l.credit ? formatINR(l.credit) : ''}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <th scope="row">Total</th>
-                  <td data-num>{formatINR(debits)}</td>
-                  <td data-num>{formatINR(credits)}</td>
-                </tr>
-              </tfoot>
-            </table>
-            </div>
+            <PlainTable
+              label="Journal"
+              rows={JOURNAL}
+              getRowId={(l) => l.ledger}
+              columns={[
+                { key: 'ledger', header: 'Ledger', rowHeader: true, cell: (l) => l.ledger },
+                { key: 'debit', header: 'Debit', num: true, cell: (l) => (l.debit ? formatINR(l.debit) : '') },
+                { key: 'credit', header: 'Credit', num: true, cell: (l) => (l.credit ? formatINR(l.credit) : '') },
+              ]}
+              footer={[{ id: 'total', label: 'Total', cells: { debit: formatINR(debits), credit: formatINR(credits) } }]}
+            />
             <div className="yx-pay-row">
               <Button variant="primary" icon={format === 'api' ? undefined : Download} onClick={() => why(!balanced && 'Debits and credits must match before the journal can go.', exportJournal)}>
                 {format === 'api' ? 'Send journal' : 'Export journal'}
@@ -1853,20 +1822,18 @@ function SampleRecoveriesScreen({ tab = 'court', state = 'ready', openId }: Reco
               ]}
             />
             {openMonths.length ? (
-              <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Remittances, scrolls sideways on small screens">
-                <table className="yx-pay-table">
-                  <caption>Remittances</caption>
-                  <tbody>
-                    {openMonths.map((m, i) => (
-                      <tr key={m.getMonth()}>
-                        <th scope="row">{monthLabel(m)}</th>
-                        <td data-num>{formatINR(open.monthly)}</td>
-                        <td>{i < open.paidMonths || septRemitted.includes(open.id) ? <Badge tone="success">Remitted</Badge> : <Badge tone="warning">Due with September run</Badge>}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <PlainTable
+                label="Remittances"
+                caption="Remittances"
+                hideHeader
+                rows={openMonths}
+                getRowId={(m) => String(m.getMonth())}
+                columns={[
+                  { key: 'month', header: 'Month', rowHeader: true, cell: (m) => monthLabel(m) },
+                  { key: 'amount', header: 'Amount', num: true, cell: () => formatINR(open.monthly) },
+                  { key: 'status', header: 'Status', cell: (m) => (openMonths.indexOf(m) < open.paidMonths || septRemitted.includes(open.id) ? <Badge tone="success">Remitted</Badge> : <Badge tone="warning">Due with September run</Badge>) },
+                ]}
+              />
             ) : (
               <p className="yx-pay-muted">No remittances yet. The first deduction is in the October run.</p>
             )}

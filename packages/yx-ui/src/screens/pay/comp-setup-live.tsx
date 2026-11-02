@@ -20,6 +20,7 @@ import { PayslipDocument, type PayslipData, type PayslipOptions } from '../../co
 import { ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { useNarrow } from '../../components/stepper';
 import { DataTable, tableToCsv, type TableColumn } from '../../components/table';
+import { PlainTable } from '../../components/plain-table';
 import { Timeline, type TimelineItem } from '../../components/timeline';
 import { formatDate, formatINR } from '../../lib/format';
 import { useRun } from '../org/org-kit';
@@ -87,42 +88,21 @@ export function BreakupTable({ b, caption = 'Salary breakup' }: { b: Breakup; ca
         !b.warnings?.length && <InlineAlert tone="info">Minimum wage and Code wage checks pass.</InlineAlert>
       )}
       {b.verify && <p className="yx-pay-note">Some figures use rules marked verify.</p>}
-      <div className="yx-scroll-x" tabIndex={0} role="region" aria-label={`${caption}, scrolls sideways on small screens`}>
-        <table className="yx-pay-table" aria-label={caption}>
-          <thead>
-            <tr>
-              <th scope="col">Component</th>
-              <th scope="col" data-num>Monthly</th>
-              <th scope="col" data-num>Annual</th>
-              <th scope="col">Rule</th>
-            </tr>
-          </thead>
-          <tbody>
-            {b.lines.map((l) => (
-              <tr key={l.code}>
-                <th scope="row">{l.name}</th>
-                <td data-num>{rupees(l.monthly)}</td>
-                <td data-num>{rupees(l.annual)}</td>
-                <td className="yx-pay-note">{l.citation ? `${statuteText(l.citation.statute)} ${l.citation.version}${l.citation.verify ? ' (verify)' : ''}` : ''}</td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr>
-              <th scope="row">Gross a month</th>
-              <td data-num>{rupees(b.monthlyGross)}</td>
-              <td />
-              <td />
-            </tr>
-            <tr>
-              <th scope="row">Cost to company</th>
-              <td data-num>{rupees(b.monthlyCtc)}</td>
-              <td data-num>{rupees(b.annualCtc)}</td>
-              <td />
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+      <PlainTable
+        label={caption}
+        rows={b.lines}
+        getRowId={(l) => l.code}
+        columns={[
+          { key: 'name', header: 'Component', rowHeader: true, cell: (l) => l.name },
+          { key: 'monthly', header: 'Monthly', num: true, cell: (l) => rupees(l.monthly) },
+          { key: 'annual', header: 'Annual', num: true, cell: (l) => rupees(l.annual) },
+          { key: 'rule', header: 'Rule', cell: (l) => <span className="yx-pay-note">{l.citation ? `${statuteText(l.citation.statute)} ${l.citation.version}${l.citation.verify ? ' (verify)' : ''}` : ''}</span> },
+        ]}
+        footer={[
+          { id: 'gross', label: 'Gross a month', cells: { monthly: rupees(b.monthlyGross) } },
+          { id: 'ctc', label: 'Cost to company', cells: { monthly: rupees(b.monthlyCtc), annual: rupees(b.annualCtc) } },
+        ]}
+      />
     </div>
   );
 }
@@ -205,6 +185,14 @@ export interface LiveCompensation {
   history?: CompensationHistoryItem[] | null;
 }
 
+/** The rows of the side-by-side split table; one column per offered template. */
+const SPLIT_ROWS: { label: string; cell: (o: SplitSuggestion) => ReactNode }[] = [
+  { label: 'Gross', cell: (o) => (o.monthlyGross ? rupees(o.monthlyGross) : '—') },
+  { label: 'Take-home before tax', cell: (o) => (o.takeHomeBeforeTax ? rupees(o.takeHomeBeforeTax) : '—') },
+  { label: 'Added back to Code wage', cell: (o) => (o.codeWageAddBack ? rupees(o.codeWageAddBack) : '—') },
+  { label: 'Law checks', cell: () => <Badge tone="success">Passes all</Badge> },
+];
+
 /** PAY-42 · Suggest split, live: each template the person can use, side by side; ones that fail a check are not offered. */
 export function LiveSuggestSplitDrawer({
   open,
@@ -283,42 +271,15 @@ export function LiveSuggestSplitDrawer({
           Every option passes company CTC rules, the Code wage 50% rule, state minimum wage and PF / ESI limits. {plural(hidden.length, 'option')} failed a check and {hidden.length === 1 ? 'is' : 'are'} not offered. Nothing is saved until you send the revision.
         </p>
         {offered.length ? (
-          <div className="yx-pay-scroll">
-            <table className="yx-pay-table" aria-label="Splits suggested">
-              <thead>
-                <tr>
-                  <th scope="col">Monthly</th>
-                  {offered.map((o) => (
-                    <th key={o.templateVersionId} scope="col" data-num>
-                      {o.template}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <th scope="row">Gross</th>
-                  {offered.map((o) => <td key={o.templateVersionId} data-num>{o.monthlyGross ? rupees(o.monthlyGross) : '—'}</td>)}
-                </tr>
-                <tr>
-                  <th scope="row">Take-home before tax</th>
-                  {offered.map((o) => <td key={o.templateVersionId} data-num>{o.takeHomeBeforeTax ? rupees(o.takeHomeBeforeTax) : '—'}</td>)}
-                </tr>
-                <tr>
-                  <th scope="row">Added back to Code wage</th>
-                  {offered.map((o) => <td key={o.templateVersionId} data-num>{o.codeWageAddBack ? rupees(o.codeWageAddBack) : '—'}</td>)}
-                </tr>
-                <tr>
-                  <th scope="row">Law checks</th>
-                  {offered.map((o) => (
-                    <td key={o.templateVersionId}>
-                      <Badge tone="success">Passes all</Badge>
-                    </td>
-                  ))}
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <PlainTable
+            label="Splits suggested"
+            rows={SPLIT_ROWS}
+            getRowId={(r) => r.label}
+            columns={[
+              { key: 'label', header: 'Monthly', rowHeader: true, cell: (r) => r.label },
+              ...offered.map((o) => ({ key: o.templateVersionId, header: o.template, num: true, cell: (r: (typeof SPLIT_ROWS)[number]) => r.cell(o) })),
+            ]}
+          />
         ) : (
           <EmptyState compact title="No template passes the checks for this CTC" description="Change the CTC, or ask your payroll admin to add a template." />
         )}
@@ -468,34 +429,18 @@ export function LiveCompensationScreen({ live: p }: { live: LiveCompensation }) 
                 <div className="yx-pay-split">
                   <div className="yx-pay-stack">
                     {cur.lines.length ? (
-                      <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Current breakup, scrolls sideways on small screens">
-                        <table className="yx-pay-table" aria-label="Lines in force">
-                          <caption>Current breakup</caption>
-                          <thead>
-                            <tr>
-                              <th scope="col">Component</th>
-                              <th scope="col" data-num>Annual</th>
-                              <th scope="col" data-num>Monthly</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {cur.lines.map((l, i) => (
-                              <tr key={`${l.code}-${i}`}>
-                                <th scope="row">{l.name ?? l.code}</th>
-                                <td data-num>{rupees(l.annual)}</td>
-                                <td data-num>{rupees(l.monthly)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                          <tfoot>
-                            <tr>
-                              <th scope="row">Cost to company</th>
-                              <td data-num>{rupees(cur.annualCtc)}</td>
-                              <td data-num>{rupees((Number(cur.annualCtc) / 12).toFixed(2))}</td>
-                            </tr>
-                          </tfoot>
-                        </table>
-                      </div>
+                      <PlainTable
+                        label="Current breakup"
+                        caption="Current breakup"
+                        rows={cur.lines}
+                        getRowId={(l) => `${l.code}-${cur.lines.indexOf(l)}`}
+                        columns={[
+                          { key: 'name', header: 'Component', rowHeader: true, cell: (l) => l.name ?? l.code },
+                          { key: 'annual', header: 'Annual', num: true, cell: (l) => rupees(l.annual) },
+                          { key: 'monthly', header: 'Monthly', num: true, cell: (l) => rupees(l.monthly) },
+                        ]}
+                        footer={[{ id: 'ctc', label: 'Cost to company', cells: { annual: rupees(cur.annualCtc), monthly: rupees((Number(cur.annualCtc) / 12).toFixed(2)) } }]}
+                      />
                     ) : (
                       <InlineAlert tone="warning" title="No breakup yet">
                         {rupees(cur.annualCtc)} a year from {dateText(cur.validFrom)}. Set a breakup before payroll runs.

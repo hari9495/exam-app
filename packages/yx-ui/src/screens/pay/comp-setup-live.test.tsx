@@ -47,7 +47,7 @@ describe('Compensation (PAY-12 live)', () => {
     render(<CompensationScreen live={compLive()} />);
     expect(screen.getByRole('heading', { name: 'Arjun Kulkarni' })).toBeInTheDocument();
     expect(screen.getByText('₹6,60,000.00', { selector: 'dd *, dd' })).toBeInTheDocument();
-    expect(within(screen.getByRole('table', { name: 'Lines in force' })).getByText('House rent allowance')).toBeInTheDocument();
+    expect(within(screen.getByRole('table', { name: 'Current breakup' })).getByText('House rent allowance')).toBeInTheDocument();
   });
 
   it('works out the breakup first, then needs a reason, then sends for approval', async () => {

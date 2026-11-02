@@ -20,6 +20,7 @@ import { FindPerson, type PersonHit } from './equity';
 import { FieldRow, FormField, useTooEarly, type FormErrorItem } from '../../components/field';
 import { Segment } from '../../components/segment';
 import { Slider } from '../../components/slider';
+import { PlainTable } from '../../components/plain-table';
 import { dateText } from '../time/live/kit';
 import { CurrencyField, NumberField, TextArea, TextField } from '../../components/inputs';
 import { Checkbox, RadioGroup } from '../../components/choice';
@@ -654,58 +655,30 @@ export function RegimeComparePanel({
           />
         </div>
         <div data-span="6">
-          <table className="yx-pay-table" aria-label="Tax working, new vs old">
-            <thead>
-              <tr>
-                <th scope="col">Working</th>
-                <th scope="col" data-num>
-                  New
-                </th>
-                <th scope="col" data-num>
-                  Old
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {(
-                [
-                  ['Income', 'gross'],
-                  ['Standard deduction', 'standardDeduction'],
-                  ['Deductions and exemptions', 'deductions'],
-                  ['Taxable income', 'taxable'],
-                  ['Tax on slabs', 'slabTax'],
-                  ['Rebate', 'rebate'],
-                  ['Health and education cess', 'cess'],
-                ] as const
-              ).map(([l, k]) => [
-                <tr key={k}>
-                  <th scope="row">{l}</th>
-                  <td data-num>{formatINR(cmp.new[k])}</td>
-                  <td data-num>{formatINR(cmp.old[k])}</td>
-                </tr>,
-                ...(k === 'deductions'
-                  ? parts.map(([pl, pv]) => (
-                      <tr key={pl}>
-                        <td className="yx-pay-muted">of which {pl}</td>
-                        <td data-num className="yx-pay-muted">
-                          {formatINR(0)}
-                        </td>
-                        <td data-num className="yx-pay-muted">
-                          {formatINR(pv)}
-                        </td>
-                      </tr>
-                    ))
-                  : []),
-              ])}
-            </tbody>
-            <tfoot>
-              <tr>
-                <th scope="row">Tax for the year</th>
-                <td data-num>{formatINR(cmp.new.total)}</td>
-                <td data-num>{formatINR(cmp.old.total)}</td>
-              </tr>
-            </tfoot>
-          </table>
+          <PlainTable
+            label="Tax working, new vs old"
+            rows={(
+              [
+                ['Income', 'gross'],
+                ['Standard deduction', 'standardDeduction'],
+                ['Deductions and exemptions', 'deductions'],
+                ['Taxable income', 'taxable'],
+                ['Tax on slabs', 'slabTax'],
+                ['Rebate', 'rebate'],
+                ['Health and education cess', 'cess'],
+              ] as const
+            ).flatMap(([l, k]) => [
+              { id: k, label: l, newV: cmp.new[k], oldV: cmp.old[k], sub: false },
+              ...(k === 'deductions' ? parts.map(([pl, pv]) => ({ id: pl, label: `of which ${pl}`, newV: 0, oldV: pv, sub: true })) : []),
+            ])}
+            getRowId={(r) => r.id}
+            columns={[
+              { key: 'working', header: 'Working', rowHeader: true, cell: (r) => (r.sub ? <span className="yx-pay-muted">{r.label}</span> : r.label) },
+              { key: 'new', header: 'New', num: true, cell: (r) => (r.sub ? <span className="yx-pay-muted">{formatINR(r.newV)}</span> : formatINR(r.newV)) },
+              { key: 'old', header: 'Old', num: true, cell: (r) => (r.sub ? <span className="yx-pay-muted">{formatINR(r.oldV)}</span> : formatINR(r.oldV)) },
+            ]}
+            footer={[{ id: 'total', label: 'Tax for the year', cells: { new: formatINR(cmp.new.total), old: formatINR(cmp.old.total) } }]}
+          />
         </div>
       </div>
       <p className="yx-pay-note">Only you can see these scenarios. Your manager never sees them, and payroll sees only the regime you choose and your declarations.</p>
@@ -978,34 +951,34 @@ function SampleTaxWorkspace({ layout = 'desktop', tab = 'overview', variant = 'd
                   ))}
                 </ul>
               ) : (
-                <table className="yx-pay-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">Item and section</th>
-                      <th scope="col" data-num>
-                        Declared
-                      </th>
-                      <th scope="col" aria-label="Actions" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lines.map((l) => (
-                      <tr key={l.id}>
-                        <td>
+                <PlainTable
+                  label="Declarations"
+                  rows={lines}
+                  getRowId={(l) => l.id}
+                  columns={[
+                    {
+                      key: 'item',
+                      header: 'Item and section',
+                      cell: (l) => (
+                        <>
                           <strong>{l.item}</strong>
                           <br />
                           <span className="yx-pay-muted">{l.section}</span>
-                        </td>
-                        <td data-num>{formatINR(l.declared)}</td>
-                        <td>
-                          <Button size="sm" onClick={() => setEditing(l)}>
-                            Edit
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        </>
+                      ),
+                    },
+                    { key: 'amount', header: 'Declared', num: true, cell: (l) => formatINR(l.declared) },
+                    {
+                      key: 'act',
+                      header: <span className="yx-visually-hidden">Actions</span>,
+                      cell: (l) => (
+                        <Button size="sm" onClick={() => setEditing(l)}>
+                          Edit
+                        </Button>
+                      ),
+                    },
+                  ]}
+                />
               )}
               <div className="yx-pay-row">
                 <Button onClick={() => setEditing({ id: `new-${Date.now()}`, section: DECL_SECTIONS[0], item: '', declared: 0, proof: 'Not due' })}>Add declaration</Button>
@@ -1411,31 +1384,17 @@ function SampleLoanRequest({ layout = 'desktop', variant = 'form' }: { layout?: 
               Your loans add up to more than {formatINR(20_000)}, so the interest you save against the {BENCHMARK}% benchmark rate is a taxable perquisite: about {formatINR(perquisite)} a month is added to your taxable income. Loans for treating specified diseases are exempt.
             </p>
           )}
-          <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Repayment schedule, scrolls sideways on small screens">
-          <table className="yx-pay-table">
-            <caption>Repayment schedule</caption>
-            <thead>
-              <tr>
-                <th scope="col">Month</th>
-                <th scope="col" data-num>
-                  EMI
-                </th>
-                <th scope="col" data-num>
-                  Balance
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {schedule.slice(0, 6).map((r) => (
-                <tr key={r.no}>
-                  <th scope="row">{r.month}</th>
-                  <td data-num>{formatINR(r.emi)}</td>
-                  <td data-num>{formatINR(r.balance)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          </div>
+          <PlainTable
+            label="Repayment schedule"
+            caption="Repayment schedule"
+            rows={schedule.slice(0, 6)}
+            getRowId={(r) => String(r.no)}
+            columns={[
+              { key: 'month', header: 'Month', rowHeader: true, cell: (r) => r.month },
+              { key: 'emi', header: 'EMI', num: true, cell: (r) => formatINR(r.emi) },
+              { key: 'balance', header: 'Balance', num: true, cell: (r) => formatINR(r.balance) },
+            ]}
+          />
           {schedule.length > 6 && <p className="yx-pay-note">and {schedule.length - 6} more months</p>}
         </aside>
       </div>
@@ -2465,34 +2424,26 @@ function LiveRegimeCompare({ live }: { live: LiveRegimeCompare }) {
             items={(['new', 'old'] as const).map((r) => ({ label: regimeText(r), value: num(of(r)?.annualTax), note: live.current === r ? '(your choice)' : undefined, emphasis: live.current === r }))}
           />
           <p aria-live="polite">{diff === 0n ? 'Both regimes give the same tax.' : diff != null ? `Tax is ${rupees(fromPaise(diff < 0n ? -diff : diff))} lower under the ${diff < 0n ? 'new' : 'old'} regime with your figures.` : ''}</p>
-          <table className="yx-pay-table" aria-label="Regimes compared">
-            <thead>
-              <tr>
-                <th scope="col">Regime</th>
-                <th scope="col" data-num>
-                  Taxable income
-                </th>
-                <th scope="col" data-num>
-                  Tax for the year
-                </th>
-                <th scope="col" data-num>
-                  Tax this month
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {cmp.regimes.map((r) => (
-                <tr key={r.regime}>
-                  <th scope="row">
+          <PlainTable
+            label="Regimes compared"
+            rows={cmp.regimes}
+            getRowId={(r) => r.regime}
+            columns={[
+              {
+                key: 'regime',
+                header: 'Regime',
+                rowHeader: true,
+                cell: (r) => (
+                  <>
                     {regimeText(r.regime)} {cmp.lower === r.regime && <Badge tone="success">Lower tax</Badge>}
-                  </th>
-                  <td data-num>{rupees(r.taxable)}</td>
-                  <td data-num>{rupees(r.annualTax)}</td>
-                  <td data-num>{rupees(r.monthTds)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </>
+                ),
+              },
+              { key: 'taxable', header: 'Taxable income', num: true, cell: (r) => rupees(r.taxable) },
+              { key: 'annual', header: 'Tax for the year', num: true, cell: (r) => rupees(r.annualTax) },
+              { key: 'month', header: 'Tax this month', num: true, cell: (r) => rupees(r.monthTds) },
+            ]}
+          />
         </>
       )}
       <div className="yx-pay-row">
@@ -2585,21 +2536,16 @@ function TaxDeclarations({ live, w }: { live: LiveTax; w: MyTaxWorkspace }) {
       )}
       {d && !d.lines.length && <EmptyState compact title="Nothing declared yet." description="Declare rent, investments and insurance to lower the tax taken from your pay." />}
       {d && d.lines.length > 0 && (
-        <table className="yx-pay-table" aria-label="Declarations">
-          <thead>
-            <tr>
-              <th scope="col">Item and section</th>
-              <th scope="col" data-num>
-                Declared
-              </th>
-              <th scope="col">Proof</th>
-              <th scope="col" aria-label="Actions" />
-            </tr>
-          </thead>
-          <tbody>
-            {d.lines.map((l) => (
-              <tr key={l.id}>
-                <td>
+        <PlainTable
+          label="Declarations"
+          rows={d.lines}
+          getRowId={(l) => l.id}
+          columns={[
+            {
+              key: 'item',
+              header: 'Item and section',
+              cell: (l) => (
+                <>
                   <strong>{subjectText(l.subjectKey, l.section)}</strong>
                   {l.subjectKey === 'hra' && l.rentFrom && l.rentTo && (
                     <>
@@ -2609,23 +2555,23 @@ function TaxDeclarations({ live, w }: { live: LiveTax; w: MyTaxWorkspace }) {
                       </span>
                     </>
                   )}
-                </td>
-                <td data-num>
-                  {rupees(l.amount)}
-                  {l.subjectKey === 'hra' ? ' a month' : ''}
-                </td>
-                <td>{proofBadge(l.proofStatus)}</td>
-                <td>
-                  {open && !verified(l) && (
-                    <Button size="sm" onClick={() => setEditing(l)} aria-label={`Change ${subjectText(l.subjectKey, l.section)}`}>
-                      Change
-                    </Button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </>
+              ),
+            },
+            { key: 'amount', header: 'Declared', num: true, cell: (l) => `${rupees(l.amount)}${l.subjectKey === 'hra' ? ' a month' : ''}` },
+            { key: 'proof', header: 'Proof', cell: (l) => proofBadge(l.proofStatus) },
+            {
+              key: 'act',
+              header: <span className="yx-visually-hidden">Actions</span>,
+              cell: (l) =>
+                open && !verified(l) && (
+                  <Button size="sm" onClick={() => setEditing(l)} aria-label={`Change ${subjectText(l.subjectKey, l.section)}`}>
+                    Change
+                  </Button>
+                ),
+            },
+          ]}
+        />
       )}
       {d && open && (
         <div className="yx-pay-row">
@@ -3207,39 +3153,28 @@ function LiveLoanRequest({ live }: { live: LiveLoanRequest }) {
             {!mine.length ? (
               <p className="yx-pay-note">None yet.</p>
             ) : (
-              <table className="yx-pay-table" aria-label="My loans and advances">
-                <thead>
-                  <tr>
-                    <th scope="col">Type</th>
-                    <th scope="col" data-num>
-                      Amount
-                    </th>
-                    <th scope="col" data-num>
-                      Instalment
-                    </th>
-                    <th scope="col" data-num>
-                      Left to repay
-                    </th>
-                    <th scope="col">From</th>
-                    <th scope="col">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {mine.map((l) => (
-                    <tr key={l.id}>
-                      <th scope="row">{LOAN_TYPE_TEXT[l.loanType] ?? l.loanType}</th>
-                      <td data-num>{rupees(l.principal)}</td>
-                      <td data-num>{rupees(l.emi)}</td>
-                      <td data-num>{rupees(l.outstanding)}</td>
-                      <td>{monthName(l.firstMonth)}</td>
-                      <td>
+              <PlainTable
+                label="My loans and advances"
+                rows={mine}
+                getRowId={(l) => l.id}
+                columns={[
+                  { key: 'type', header: 'Type', rowHeader: true, cell: (l) => LOAN_TYPE_TEXT[l.loanType] ?? l.loanType },
+                  { key: 'amount', header: 'Amount', num: true, cell: (l) => rupees(l.principal) },
+                  { key: 'emi', header: 'Instalment', num: true, cell: (l) => rupees(l.emi) },
+                  { key: 'left', header: 'Left to repay', num: true, cell: (l) => rupees(l.outstanding) },
+                  { key: 'from', header: 'From', cell: (l) => monthName(l.firstMonth) },
+                  {
+                    key: 'status',
+                    header: 'Status',
+                    cell: (l) => (
+                      <>
                         <Badge tone={LOAN_STATE[l.status]?.tone ?? 'neutral'}>{LOAN_STATE[l.status]?.label ?? l.status}</Badge>
                         {l.pausedUntil && <span className="yx-pay-note"> until {monthName(l.pausedUntil)}</span>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </>
+                    ),
+                  },
+                ]}
+              />
             )}
           </section>
         </div>
@@ -3369,33 +3304,26 @@ function LiveEwaRequest({ live }: { live: LiveEwaRequest }) {
               {!d.draws.length ? (
                 <p className="yx-pay-note">None yet.</p>
               ) : (
-                <table className="yx-pay-table" aria-label="My draws">
-                  <thead>
-                    <tr>
-                      <th scope="col">Asked on</th>
-                      <th scope="col" data-num>
-                        Amount
-                      </th>
-                      <th scope="col" data-num>
-                        Fee
-                      </th>
-                      <th scope="col">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {d.draws.map((x) => (
-                      <tr key={x.id}>
-                        <th scope="row">{dateText(x.createdAt.slice(0, 10))}</th>
-                        <td data-num>{rupees(x.amount)}</td>
-                        <td data-num>{x.feePayer === 'employee' ? rupees(x.fee) : 'Paid by the company'}</td>
-                        <td>
+                <PlainTable
+                  label="My draws"
+                  rows={d.draws}
+                  getRowId={(x) => x.id}
+                  columns={[
+                    { key: 'asked', header: 'Asked on', rowHeader: true, cell: (x) => dateText(x.createdAt.slice(0, 10)) },
+                    { key: 'amount', header: 'Amount', num: true, cell: (x) => rupees(x.amount) },
+                    { key: 'fee', header: 'Fee', num: true, cell: (x) => (x.feePayer === 'employee' ? rupees(x.fee) : 'Paid by the company') },
+                    {
+                      key: 'status',
+                      header: 'Status',
+                      cell: (x) => (
+                        <>
                           <Badge tone={DRAW_STATE[x.status].tone}>{DRAW_STATE[x.status].label}</Badge>
                           {x.failureReason && <span className="yx-pay-note"> {x.failureReason}</span>}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        </>
+                      ),
+                    },
+                  ]}
+                />
               )}
             </section>
           </div>
@@ -3442,39 +3370,19 @@ function LiveIncentiveStatement({ live }: { live: LiveIncentives }) {
                   ...(claw.length ? [{ label: 'Clawed back', value: `−${rupees(clawed)}` }] : []),
                 ]}
               />
-              <table className="yx-pay-table" aria-label="My incentive results">
-                <thead>
-                  <tr>
-                    <th scope="col">Month</th>
-                    <th scope="col">Plan</th>
-                    <th scope="col" data-num>
-                      Quota
-                    </th>
-                    <th scope="col" data-num>
-                      Achieved
-                    </th>
-                    <th scope="col" data-num>
-                      Incentive
-                    </th>
-                    <th scope="col">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {results.map((r) => (
-                    <tr key={r.id}>
-                      <th scope="row">{monthName(r.month)}</th>
-                      <td>{r.plan ?? '—'}</td>
-                      <td data-num>{r.quota}</td>
-                      <td data-num>
-                        {r.actual}
-                        {r.workings?.attainment ? ` (${r.workings.attainment}%)` : ''}
-                      </td>
-                      <td data-num>{rupees(r.amount)}</td>
-                      <td>{r.sentToPayroll ? <Badge tone="success">In payroll</Badge> : <Badge tone="neutral">Being checked</Badge>}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <PlainTable
+                label="My incentive results"
+                rows={results}
+                getRowId={(r) => r.id}
+                columns={[
+                  { key: 'month', header: 'Month', rowHeader: true, cell: (r) => monthName(r.month) },
+                  { key: 'plan', header: 'Plan', cell: (r) => r.plan ?? '—' },
+                  { key: 'quota', header: 'Quota', num: true, cell: (r) => r.quota },
+                  { key: 'actual', header: 'Achieved', num: true, cell: (r) => `${r.actual}${r.workings?.attainment ? ` (${r.workings.attainment}%)` : ''}` },
+                  { key: 'amount', header: 'Incentive', num: true, cell: (r) => rupees(r.amount) },
+                  { key: 'status', header: 'Status', cell: (r) => (r.sentToPayroll ? <Badge tone="success">In payroll</Badge> : <Badge tone="neutral">Being checked</Badge>) },
+                ]}
+              />
               <p className="yx-pay-note">Incentives are salary income; tax is deducted through your payslip.</p>
             </div>
           )
@@ -3587,46 +3495,42 @@ export function MyPayDocumentsScreen({ live, state = 'ready', variant }: { live?
           {!docs.length ? (
             <EmptyState title="No pay documents yet." description="Your payslips and letters show here once payroll issues them." />
           ) : (
-            <table className="yx-pay-table" aria-label="Pay documents">
-              <thead>
-                <tr>
-                  <th scope="col">Document</th>
-                  <th scope="col">Reference</th>
-                  <th scope="col">Issued</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Check it</th>
-                  <th scope="col" aria-label="Actions" />
-                </tr>
-              </thead>
-              <tbody>
-                {docs.map((x) => (
-                  <tr key={x.id}>
-                    <th scope="row">{x.title}</th>
-                    <td className="yx-pay-note">{x.referenceNo}</td>
-                    <td>{dateText(x.issuedAt.slice(0, 10))}</td>
-                    <td>
-                      <Badge tone={DOC_STATE[x.status].tone}>{DOC_STATE[x.status].label}</Badge>
-                    </td>
-                    <td className="yx-pay-note">
+            <PlainTable
+              label="Pay documents"
+              rows={docs}
+              getRowId={(x) => x.id}
+              columns={[
+                { key: 'doc', header: 'Document', rowHeader: true, cell: (x) => x.title },
+                { key: 'ref', header: 'Reference', cell: (x) => <span className="yx-pay-note">{x.referenceNo}</span> },
+                { key: 'issued', header: 'Issued', cell: (x) => dateText(x.issuedAt.slice(0, 10)) },
+                { key: 'status', header: 'Status', cell: (x) => <Badge tone={DOC_STATE[x.status].tone}>{DOC_STATE[x.status].label}</Badge> },
+                {
+                  key: 'check',
+                  header: 'Check it',
+                  cell: (x) => (
+                    <span className="yx-pay-note">
                       {x.verifyCode && (
                         <Link href={v.verifyUrl(x.verifyCode)} target="_blank" rel="noreferrer">
                           {x.verifyCode}
                         </Link>
                       )}
-                    </td>
-                    <td>
-                      {x.purged ? (
-                        <span className="yx-pay-note">Deleted after its retention period</span>
-                      ) : (
-                        <Button size="sm" icon={Download} loading={busy === x.id} onClick={() => void run(x.id, () => v.onDownload(x)).then((ok) => ok && toast({ title: 'Document downloaded', description: x.title, tone: 'success' }))} aria-label={`Download ${x.title}, ${x.referenceNo}`}>
-                          Download PDF
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </span>
+                  ),
+                },
+                {
+                  key: 'act',
+                  header: <span className="yx-visually-hidden">Actions</span>,
+                  cell: (x) =>
+                    x.purged ? (
+                      <span className="yx-pay-note">Deleted after its retention period</span>
+                    ) : (
+                      <Button size="sm" icon={Download} loading={busy === x.id} onClick={() => void run(x.id, () => v.onDownload(x)).then((ok) => ok && toast({ title: 'Document downloaded', description: x.title, tone: 'success' }))} aria-label={`Download ${x.title}, ${x.referenceNo}`}>
+                        Download PDF
+                      </Button>
+                    ),
+                },
+              ]}
+            />
           )}
           <p className="yx-pay-note">An issued document never changes. A correction issues a new one and the old one shows as superseded.</p>
         </div>

@@ -24,6 +24,7 @@ import { Dialog } from '../../components/overlay';
 import { DocumentViewer } from '../../components/document';
 import { DescriptionList, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
+import { PlainTable } from '../../components/plain-table';
 import { FilterBar } from '../../components/filters';
 import { useNarrow } from '../../components/stepper';
 import { formatDate, formatINR } from '../../lib/format';
@@ -350,39 +351,21 @@ function SampleLoans({ state = 'ready', openId, action, rows = LOANS }: { state?
                 </ul>
               </section>
             ) : (
-              <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Schedule, scrolls sideways on small screens">
-                <table className="yx-pay-table">
-                  <caption>Schedule</caption>
-                  <thead>
-                    <tr>
-                      <th scope="col">No.</th>
-                      <th scope="col">Month</th>
-                      <th scope="col" data-num>
-                        EMI
-                      </th>
-                      <th scope="col" data-num>
-                        Interest
-                      </th>
-                      <th scope="col" data-num>
-                        Balance
-                      </th>
-                      <th scope="col">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sched.map((r) => (
-                      <tr key={r.no} data-state={r.status === 'due' ? 'selected' : r.status === 'paused' ? 'flag' : undefined}>
-                        <td>{r.no}</td>
-                        <th scope="row">{r.month}</th>
-                        <td data-num>{formatINR(r.emi)}</td>
-                        <td data-num>{formatINR(r.interest)}</td>
-                        <td data-num>{formatINR(r.balance)}</td>
-                        <td>{schedStatus(r)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <PlainTable
+                label="Schedule"
+                caption="Schedule"
+                rows={sched}
+                getRowId={(r) => String(r.no)}
+                rowTone={(r) => (r.status === 'due' ? { tone: 'selected', label: 'Due now' } : r.status === 'paused' ? { tone: 'warning', label: 'Paused' } : undefined)}
+                columns={[
+                  { key: 'no', header: 'No.', cell: (r) => r.no },
+                  { key: 'month', header: 'Month', rowHeader: true, cell: (r) => r.month },
+                  { key: 'emi', header: 'EMI', num: true, cell: (r) => formatINR(r.emi) },
+                  { key: 'interest', header: 'Interest', num: true, cell: (r) => formatINR(r.interest) },
+                  { key: 'balance', header: 'Balance', num: true, cell: (r) => formatINR(r.balance) },
+                  { key: 'status', header: 'Status', cell: (r) => schedStatus(r) },
+                ]}
+              />
             )}
           </div>
         )}
@@ -935,41 +918,21 @@ function SampleEwaAdmin({ tab = 'draws', persona = 'pa', state = 'ready', partne
           <DataTable label="EWA draws, September 2026" columns={cols} rows={EWA_DRAWS} getRowId={(r) => r.id} state={tableState(state)} onExport={(format) => setNotice(`EWA draws · September 2026.${format} downloaded (${EWA_DRAWS.length} draws).`)} />
         </TabsContent>
         <TabsContent value="recoveries">
-          <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-            <table className="yx-pay-table">
-              <thead>
-                <tr>
-                  <th scope="col">Run</th>
-                  <th scope="col" data-num>
-                    Draws
-                  </th>
-                  <th scope="col" data-num>
-                    Recovered
-                  </th>
-                  <th scope="col" data-num>
-                    Deferred (deduction cap)
-                  </th>
-                  <th scope="col">To F&amp;F</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <th scope="row">September 2026</th>
-                  <td data-num>{disbursed.length}</td>
-                  <td data-num>{formatINR(total - 2_000)}</td>
-                  <td data-num>{formatINR(2_000)}</td>
-                  <td>1 leaver: {formatINR(1_500)}</td>
-                </tr>
-                <tr>
-                  <th scope="row">August 2026</th>
-                  <td data-num>9</td>
-                  <td data-num>{formatINR(31_500)}</td>
-                  <td data-num>—</td>
-                  <td>—</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <PlainTable
+            label="Recoveries in payroll"
+            rows={[
+              { run: 'September 2026', draws: String(disbursed.length), recovered: formatINR(total - 2_000), deferred: formatINR(2_000), ff: `1 leaver: ${formatINR(1_500)}` },
+              { run: 'August 2026', draws: '9', recovered: formatINR(31_500), deferred: '—', ff: '—' },
+            ]}
+            getRowId={(r) => r.run}
+            columns={[
+              { key: 'run', header: 'Run', rowHeader: true, cell: (r) => r.run },
+              { key: 'draws', header: 'Draws', num: true, cell: (r) => r.draws },
+              { key: 'recovered', header: 'Recovered', num: true, cell: (r) => r.recovered },
+              { key: 'deferred', header: 'Deferred (deduction cap)', num: true, cell: (r) => r.deferred },
+              { key: 'ff', header: 'To F&F', cell: (r) => r.ff },
+            ]}
+          />
         </TabsContent>
         <TabsContent value="recon">
           <div className="yx-pay-stack">
@@ -1545,39 +1508,21 @@ function LiveSchedule({ data }: { data: LoanRepayments | null | 'error' }) {
   if (!data) return <p className="yx-pay-muted" role="status">Loading the schedule…</p>;
   if (!data.rows.length) return <p className="yx-pay-note">No instalments yet. They start once the loan is approved.</p>;
   return (
-    <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Schedule, scrolls sideways on small screens">
-      <table className="yx-pay-table">
-        <caption>Schedule</caption>
-        <thead>
-          <tr>
-            <th scope="col">No.</th>
-            <th scope="col">Month</th>
-            <th scope="col" data-num>
-              EMI
-            </th>
-            <th scope="col" data-num>
-              Interest
-            </th>
-            <th scope="col" data-num>
-              Balance
-            </th>
-            <th scope="col">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.rows.map((r) => (
-            <tr key={r.no} data-state={r.status === 'paused' ? 'flag' : undefined}>
-              <td>{r.no}</td>
-              <th scope="row">{monthName(r.month)}</th>
-              <td data-num>{rupees(r.emi)}</td>
-              <td data-num>{rupees(r.interest)}</td>
-              <td data-num>{rupees(r.balance)}</td>
-              <td>{LIVE_SCHED[r.status]}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <PlainTable
+      label="Schedule"
+      caption="Schedule"
+      rows={data.rows}
+      getRowId={(r) => String(r.no)}
+      rowTone={(r) => (r.status === 'paused' ? { tone: 'warning', label: 'Paused' } : undefined)}
+      columns={[
+        { key: 'no', header: 'No.', cell: (r) => r.no },
+        { key: 'month', header: 'Month', rowHeader: true, cell: (r) => monthName(r.month) },
+        { key: 'emi', header: 'EMI', num: true, cell: (r) => rupees(r.emi) },
+        { key: 'interest', header: 'Interest', num: true, cell: (r) => rupees(r.interest) },
+        { key: 'balance', header: 'Balance', num: true, cell: (r) => rupees(r.balance) },
+        { key: 'status', header: 'Status', cell: (r) => LIVE_SCHED[r.status] },
+      ]}
+    />
   );
 }
 

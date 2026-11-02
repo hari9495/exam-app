@@ -18,6 +18,7 @@ import { FileUpload } from '../../components/upload';
 import { useNarrow } from '../../components/stepper';
 import { MenuItem } from '../../components/menu';
 import { PageHeader, Tabs, TabsContent, TabsList, TabsTrigger, DescriptionList } from '../../components/shell';
+import { PlainTable } from '../../components/plain-table';
 import { DataTable, type TableColumn } from '../../components/table';
 import { formatDate, formatINR, formatTime } from '../../lib/format';
 import { FactRow, FormDrawer, PartnerLink, PayFrame, PaySettingsFrame, SectionTitle, StateBlock, type ViewState } from './pay-kit';
@@ -506,32 +507,26 @@ function SampleIncentivePlan({ variant = 'draft', state = 'ready' }: { variant?:
                     ))}
                   </div>
                 ) : (
-                  <table className="yx-pay-table">
-                    <thead>
-                      <tr>
-                        <th scope="col">Tier</th>
-                        <th scope="col">From % of quota</th>
-                        <th scope="col">Commission on sales in tier</th>
-                        <th scope="col">
-                          <span className="yx-visually-hidden">Remove</span>
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tiers.map((t, i) => (
-                        <tr key={i} data-state={tierError?.i === i ? 'error' : undefined}>
-                          <th scope="row">{tierName(t, i)}</th>
-                          <td>
-                            <NumberField id={`tier-${i}`} size="sm" aria-label={`Tier ${i + 1} starts at`} value={t.fromPct} onChange={(v) => setTier(i, { fromPct: v ?? 0 })} suffix="%" />
-                          </td>
-                          <td>
-                            <NumberField id={`tier-rate-${i}`} size="sm" aria-label={`Tier ${i + 1} rate`} value={t.ratePct} decimals onChange={(v) => setTier(i, { ratePct: v ?? 0 })} suffix="%" />
-                          </td>
-                          <td>{i > 0 && <IconButton icon={Trash2} label={`Remove tier ${i + 1}`} size="sm" onClick={() => setTiers((ts) => ts.filter((_, j) => j !== i))} />}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <PlainTable
+                    label="Tiers"
+                    rows={tiers.map((_, i) => i)}
+                    getRowId={String}
+                    rowTone={(i) => (tierError?.i === i ? { tone: 'danger', label: 'Error' } : undefined)}
+                    columns={[
+                      { key: 'tier', header: 'Tier', rowHeader: true, cell: (i) => tierName(tiers[i]!, i) },
+                      {
+                        key: 'from',
+                        header: 'From % of quota',
+                        cell: (i) => <NumberField id={`tier-${i}`} size="sm" aria-label={`Tier ${i + 1} starts at`} value={tiers[i]!.fromPct} onChange={(v) => setTier(i, { fromPct: v ?? 0 })} suffix="%" />,
+                      },
+                      {
+                        key: 'rate',
+                        header: 'Commission on sales in tier',
+                        cell: (i) => <NumberField id={`tier-rate-${i}`} size="sm" aria-label={`Tier ${i + 1} rate`} value={tiers[i]!.ratePct} decimals onChange={(v) => setTier(i, { ratePct: v ?? 0 })} suffix="%" />,
+                      },
+                      { key: 'rm', header: <span className="yx-visually-hidden">Remove</span>, cell: (i) => i > 0 && <IconButton icon={Trash2} label={`Remove tier ${i + 1}`} size="sm" onClick={() => setTiers((ts) => ts.filter((_, j) => j !== i))} /> },
+                    ]}
+                  />
                 )}
                 <Button size="sm" icon={Plus} onClick={addTier}>
                   Add tier
@@ -739,39 +734,17 @@ function SampleTipsPool({ openId, state = 'ready' }: { openId?: string; state?: 
             <FormField label="Distribution basis" helper={basisLocked ? undefined : 'Hours come from attendance.'}>
               {basisLocked ? <p className="yx-pay-muted">{BASIS_LABEL[basis]} · can't be changed after the pool is sent.</p> : <BasisChoice value={basis} onChange={setBasis} narrow={narrow} />}
             </FormField>
-            <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-            <table className="yx-pay-table">
-              <thead>
-                <tr>
-                  <th scope="col">Person</th>
-                  <th scope="col" data-num>
-                    {basis === 'points' ? 'Points' : basis === 'shifts' ? 'Shifts' : 'Hours'}
-                  </th>
-                  <th scope="col" data-num>
-                    Share
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {staff.map((s, i) => (
-                  <tr key={s.code}>
-                    <th scope="row">
-                      <PersonLabel name={s.name} secondary={s.code} />
-                    </th>
-                    <td data-num>{basis === 'points' ? s.points : basis === 'shifts' ? s.shifts : s.hours}</td>
-                    <td data-num>{formatINR(shares[i])}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <th scope="row">Total</th>
-                  <td />
-                  <td data-num>{formatINR(shares.reduce((a, s) => a + s, 0))}</td>
-                </tr>
-              </tfoot>
-            </table>
-            </div>
+            <PlainTable
+              label="Shares"
+              rows={staff.map((_, i) => i)}
+              getRowId={(i) => staff[i]!.code}
+              columns={[
+                { key: 'who', header: 'Person', rowHeader: true, cell: (i) => <PersonLabel name={staff[i]!.name} secondary={staff[i]!.code} /> },
+                { key: 'basis', header: basis === 'points' ? 'Points' : basis === 'shifts' ? 'Shifts' : 'Hours', num: true, cell: (i) => (basis === 'points' ? staff[i]!.points : basis === 'shifts' ? staff[i]!.shifts : staff[i]!.hours) },
+                { key: 'share', header: 'Share', num: true, cell: (i) => formatINR(shares[i]!) },
+              ]}
+              footer={[{ id: 'total', label: 'Total', cells: { share: formatINR(shares.reduce((a, s) => a + s, 0)) } }]}
+            />
             <p className="yx-pay-note">Treatment in payroll (PF, ESI, tax) follows the central statutory rules for tips paid through payroll.</p>
           </div>
         )}
@@ -1582,33 +1555,17 @@ export function SpecialPayHomeBody({ month, postings, nameOf, openType, onLayoff
       </div>
       <Drawer open={!!open} onOpenChange={(o) => !o && setOpen(null)} title={open ? `${SPECIAL_KIND_TEXT[open.kind]} · ${monthName(open.month)}` : ''} subtitle={open ? POSTING_STATUS[open.status].label : undefined}>
         {open && (
-          <table className="yx-pay-table" aria-label="Posting lines">
-            <thead>
-              <tr>
-                <th scope="col">Person</th>
-                <th scope="col">Line</th>
-                <th scope="col" data-num>
-                  Amount
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {open.lines.map((l, i) => (
-                <tr key={i}>
-                  <th scope="row">{nameOf(l.employeeId)}</th>
-                  <td>{l.label}</td>
-                  <td data-num>{formatINR(Number(l.amount))}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <th scope="row">Total</th>
-                <td />
-                <td data-num>{formatINR(Number(open.total))}</td>
-              </tr>
-            </tfoot>
-          </table>
+          <PlainTable
+            label="Posting lines"
+            rows={open.lines}
+            getRowId={(l) => String(open.lines.indexOf(l))}
+            columns={[
+              { key: 'who', header: 'Person', rowHeader: true, cell: (l) => nameOf(l.employeeId) },
+              { key: 'line', header: 'Line', cell: (l) => l.label },
+              { key: 'amount', header: 'Amount', num: true, cell: (l) => formatINR(Number(l.amount)) },
+            ]}
+            footer={[{ id: 'total', label: 'Total', cells: { amount: formatINR(Number(open.total)) } }]}
+          />
         )}
       </Drawer>
     </div>

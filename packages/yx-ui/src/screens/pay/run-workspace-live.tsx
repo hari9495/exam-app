@@ -17,6 +17,7 @@ import { useToast } from '../../components/notify';
 import { Dialog } from '../../components/overlay';
 import { Segment } from '../../components/segment';
 import { DescriptionList, ObjectHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
+import { PlainTable } from '../../components/plain-table';
 import { DataTable, type TableColumn } from '../../components/table';
 import { FilterBar } from '../../components/filters';
 import { ApprovalTimeline, type ApprovalStep } from '../../components/timeline';
@@ -589,33 +590,26 @@ export function InputSourcesTable({ data, facts = true }: { data: RunInputSource
           ]}
         />
       )}
-      <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-        <table className="yx-pay-table" aria-label="Inputs for this period">
-          <thead>
-            <tr>
-              <th scope="col">Source</th>
-              <th scope="col" data-num>
-                People
-              </th>
-              <th scope="col" data-num>
-                Days or amount
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.sources.map((x) => (
-              <tr key={x.key}>
-                <th scope="row">
-                  {x.label}
-                  {x.note && <span className="yx-pay-note"> · {x.note}</span>}
-                </th>
-                <td data-num>{x.people}</td>
-                <td data-num>{x.amount != null ? money(x.amount) : x.days != null ? `${Number(x.days)} ${Number(x.days) === 1 ? 'day' : 'days'}` : '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <PlainTable
+        label="Inputs for this period"
+        rows={data.sources}
+        getRowId={(x) => x.key}
+        columns={[
+          {
+            key: 'source',
+            header: 'Source',
+            rowHeader: true,
+            cell: (x) => (
+              <>
+                {x.label}
+                {x.note && <span className="yx-pay-note"> · {x.note}</span>}
+              </>
+            ),
+          },
+          { key: 'people', header: 'People', num: true, cell: (x) => x.people },
+          { key: 'amount', header: 'Days or amount', num: true, cell: (x) => (x.amount != null ? money(x.amount) : x.days != null ? `${Number(x.days)} ${Number(x.days) === 1 ? 'day' : 'days'}` : '—') },
+        ]}
+      />
     </div>
   );
 }
@@ -811,40 +805,31 @@ function VariancePanel({ p, nameOf }: { p: LiveRunWorkspaceData; nameOf: (id: st
       <InlineAlert tone={left ? 'warning' : 'info'} title={left ? `${count(left, 'change')} need acknowledgement before approval` : 'All variance acknowledged'}>
         Net pay changes above the company's limit, and components added or removed since last month.
       </InlineAlert>
-      <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-        <table className="yx-pay-table" aria-label="Pay changes to acknowledge">
-          <thead>
-            <tr>
-              <th scope="col">Employee</th>
-              <th scope="col">Change</th>
-              <th scope="col">Note</th>
-              <th scope="col">
-                <span className="yx-visually-hidden">Action</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {p.variances.map((v) => (
-              <tr key={v.id} data-state={v.acknowledged ? undefined : 'flag'}>
-                <th scope="row">{nameOf(v.employeeId)}</th>
-                <td>{v.detail}</td>
-                <td>{v.note ?? '—'}</td>
-                <td>
-                  {v.acknowledged ? (
-                    <Badge tone="success">Acknowledged</Badge>
-                  ) : p.can.prepare ? (
-                    <Button size="sm" onClick={() => setAcking(v)} aria-label={`Acknowledge the change for ${nameOf(v.employeeId)}`}>
-                      Acknowledge
-                    </Button>
-                  ) : (
-                    <Badge tone="warning">To acknowledge</Badge>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <PlainTable
+        label="Pay changes to acknowledge"
+        rows={p.variances}
+        getRowId={(v) => v.id}
+        rowTone={(v) => (v.acknowledged ? undefined : { tone: 'warning', label: 'To acknowledge' })}
+        columns={[
+          { key: 'who', header: 'Employee', rowHeader: true, cell: (v) => nameOf(v.employeeId) },
+          { key: 'change', header: 'Change', cell: (v) => v.detail },
+          { key: 'note', header: 'Note', cell: (v) => v.note ?? '—' },
+          {
+            key: 'act',
+            header: <span className="yx-visually-hidden">Action</span>,
+            cell: (v) =>
+              v.acknowledged ? (
+                <Badge tone="success">Acknowledged</Badge>
+              ) : p.can.prepare ? (
+                <Button size="sm" onClick={() => setAcking(v)} aria-label={`Acknowledge the change for ${nameOf(v.employeeId)}`}>
+                  Acknowledge
+                </Button>
+              ) : (
+                <Badge tone="warning">To acknowledge</Badge>
+              ),
+          },
+        ]}
+      />
       {acking && <ReasonDialog title="Acknowledge this change?" description={acking.detail} label="Note" optional confirm="Acknowledge" done="Change acknowledged" onClose={() => setAcking(null)} onSave={(note) => p.onAck(acking.id, note)} />}
     </div>
   );
@@ -859,93 +844,86 @@ function FilesPanel({ p, run: r, onRelease, onMake, onPublish }: { p: LiveRunWor
   const after = <Badge>Available after approval</Badge>;
   const files = p.bankFiles ?? [];
   return (
-    <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-      <table className="yx-pay-table" aria-label="Run files">
-        <thead>
-          <tr>
-            <th scope="col">File</th>
-            <th scope="col">What it holds</th>
-            <th scope="col">Status</th>
-            <th scope="col">
-              <span className="yx-visually-hidden">Action</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {files.length ? (
-            files.map((b) => (
-              <tr key={b.id}>
-                <th scope="row">Bank file #{b.generationNo}</th>
-                <td>
+    <PlainTable
+      label="Run files"
+      rows={[
+        ...(files.length
+          ? files.map((b) => ({
+              id: b.id,
+              file: `Bank file #${b.generationNo}`,
+              holds: (
+                <>
                   {b.format} · debit {b.debitAccount} · {count(b.rows, 'payment')} · {money(b.total)}
                   {b.reason ? ` · ${b.reason}` : ''}
-                </td>
-                <td>
-                  <Badge tone={b.status === 'released' ? 'success' : b.status === 'superseded' ? 'neutral' : 'warning'}>
-                    {b.status === 'released' ? `Released${b.releasedAt ? ` ${formatDate(new Date(b.releasedAt))}` : ''}` : b.status === 'superseded' ? 'Replaced' : 'Waiting for release'}
-                  </Badge>
-                </td>
-                <td>
-                  {b.status === 'generated' && p.can.bankRelease && !b.madeByMe ? (
-                    <Button size="sm" onClick={() => onRelease(b)}>
-                      Release
-                    </Button>
-                  ) : b.status === 'generated' && b.madeByMe ? (
-                    <span className="yx-pay-muted">Someone else releases it</span>
-                  ) : b.status === 'released' ? (
-                    <Button
-                      size="sm"
-                      icon={Download}
-                      loading={busy === `dl-${b.id}`}
-                      onClick={() => void run(`dl-${b.id}`, () => p.onDownload(b.fileId, `bank-file-${r.month}-${b.generationNo}`)).then((ok) => (ok ? undefined : toast({ title: 'The file did not download. Try again.', tone: 'error' })))}
-                    >
-                      Download
-                    </Button>
-                  ) : null}
-                </td>
-              </tr>
-            ))
-          ) : (
-            <tr>
-              <th scope="row">Bank file</th>
-              <td>Everyone paid by bank; held and cash or cheque payslips are left out</td>
-              <td>{approved ? <Badge tone="warning">Not made yet</Badge> : after}</td>
-              <td>
-                {approved && p.can.bankGenerate && (
+                </>
+              ),
+              status: (
+                <Badge tone={b.status === 'released' ? 'success' : b.status === 'superseded' ? 'neutral' : 'warning'}>
+                  {b.status === 'released' ? `Released${b.releasedAt ? ` ${formatDate(new Date(b.releasedAt))}` : ''}` : b.status === 'superseded' ? 'Replaced' : 'Waiting for release'}
+                </Badge>
+              ),
+              action:
+                b.status === 'generated' && p.can.bankRelease && !b.madeByMe ? (
+                  <Button size="sm" onClick={() => onRelease(b)}>
+                    Release
+                  </Button>
+                ) : b.status === 'generated' && b.madeByMe ? (
+                  <span className="yx-pay-muted">Someone else releases it</span>
+                ) : b.status === 'released' ? (
+                  <Button
+                    size="sm"
+                    icon={Download}
+                    loading={busy === `dl-${b.id}`}
+                    onClick={() => void run(`dl-${b.id}`, () => p.onDownload(b.fileId, `bank-file-${r.month}-${b.generationNo}`)).then((ok) => (ok ? undefined : toast({ title: 'The file did not download. Try again.', tone: 'error' })))}
+                  >
+                    Download
+                  </Button>
+                ) : null,
+            }))
+          : [
+              {
+                id: 'bank',
+                file: 'Bank file',
+                holds: 'Everyone paid by bank; held and cash or cheque payslips are left out',
+                status: approved ? <Badge tone="warning">Not made yet</Badge> : after,
+                action: approved && p.can.bankGenerate && (
                   <Button size="sm" onClick={onMake}>
                     Make bank file
                   </Button>
-                )}
-              </td>
-            </tr>
-          )}
-          <tr>
-            <th scope="row">Payslips</th>
-            <td>{count(p.payslips?.length ?? 0, 'payslip')} in this run</td>
-            <td>{p.published ? <Badge tone="success">Published</Badge> : approved ? <Badge tone="warning">Not published</Badge> : after}</td>
-            <td>
-              {approved && !p.published && p.can.publish && (
-                <Button size="sm" onClick={onPublish}>
-                  Publish
-                </Button>
-              )}
-            </td>
-          </tr>
-          <tr>
-            <th scope="row">Payments and journal</th>
-            <td>Bank results, cash and cheque, and the accounting export</td>
-            <td>{approved ? <Badge tone="info">Ready</Badge> : after}</td>
-            <td>
-              {approved && p.onPayments && (
-                <Button size="sm" onClick={p.onPayments}>
-                  Open payments
-                </Button>
-              )}
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+                ),
+              },
+            ]),
+        {
+          id: 'payslips',
+          file: 'Payslips',
+          holds: `${count(p.payslips?.length ?? 0, 'payslip')} in this run`,
+          status: p.published ? <Badge tone="success">Published</Badge> : approved ? <Badge tone="warning">Not published</Badge> : after,
+          action: approved && !p.published && p.can.publish && (
+            <Button size="sm" onClick={onPublish}>
+              Publish
+            </Button>
+          ),
+        },
+        {
+          id: 'payments',
+          file: 'Payments and journal',
+          holds: 'Bank results, cash and cheque, and the accounting export',
+          status: approved ? <Badge tone="info">Ready</Badge> : after,
+          action: approved && p.onPayments && (
+            <Button size="sm" onClick={p.onPayments}>
+              Open payments
+            </Button>
+          ),
+        },
+      ]}
+      getRowId={(x) => x.id}
+      columns={[
+        { key: 'file', header: 'File', rowHeader: true, cell: (x) => x.file },
+        { key: 'holds', header: 'What it holds', cell: (x) => x.holds },
+        { key: 'status', header: 'Status', cell: (x) => x.status },
+        { key: 'act', header: <span className="yx-visually-hidden">Action</span>, cell: (x) => x.action },
+      ]}
+    />
   );
 }
 

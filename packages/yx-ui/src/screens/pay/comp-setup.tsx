@@ -19,6 +19,7 @@ import { PayslipDocument, type PayslipData } from '../../components/print';
 import { DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { Stepper, useNarrow } from '../../components/stepper';
 import { DataTable, tableToCsv, type TableColumn } from '../../components/table';
+import { PlainTable } from '../../components/plain-table';
 import { Timeline } from '../../components/timeline';
 import { formatDate, formatINR } from '../../lib/format';
 import { FactRow, PayFrame, PaySettingsFrame, SectionTitle, StateBlock, type ViewState } from './pay-kit';
@@ -134,20 +135,11 @@ export function SuggestSplitDrawer({
         <p className="yx-pay-muted">
           Every option passes company CTC rules, the Code wage 50% rule, state minimum wage and PF / ESI limits. {hidden.length} option{hidden.length === 1 ? '' : 's'} failed a check and {hidden.length === 1 ? 'is' : 'are'} not offered. Rule-based calculator; no data leaves YukthiX. Your choice and the options shown are recorded.
         </p>
-        <div className="yx-pay-scroll">
-          <table className="yx-pay-table">
-            <thead>
-              <tr>
-                <th scope="col">Monthly</th>
-                {offered.map(({ o }) => (
-                  <th key={o.id} scope="col" data-num>
-                    {o.name} {stale && <Badge tone="warning">Stale</Badge>}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {(
+        <PlainTable
+          label="Splits suggested"
+          rows={
+            [
+              ...(
                 [
                   ['Basic', (o: SplitOption) => o.basic],
                   ['House rent allowance', (o: SplitOption) => o.hra],
@@ -156,59 +148,42 @@ export function SuggestSplitDrawer({
                   ['Employer NPS', (o: SplitOption) => o.employerNps],
                   ['Employer PF', (o: SplitOption) => pfContribution(o.basic, { restrictToCeiling: true }).employee],
                 ] as const
-              ).map(([label, f]) => (
-                <tr key={label}>
-                  <th scope="row">{label}</th>
-                  {offered.map(({ o }) => (
-                    <td key={o.id} data-num>
-                      {formatINR(f(o))}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-              <tr>
-                <th scope="row">Take-home, new regime</th>
-                {offered.map(({ o, c }) => {
+              ).map(([label, f]) => ({ label, cell: ({ o }: (typeof offered)[number]) => formatINR(f(o)) })),
+              {
+                label: 'Take-home, new regime',
+                cell: ({ o, c }: (typeof offered)[number]) => {
                   const pf = pfContribution(o.basic, { restrictToCeiling: true }).employee;
                   const tax = compareRegimes(c.gross * 12, { ...NO_DEDUCTIONS, employerNps: o.employerNps * 12 }).new.total;
-                  return (
-                    <td key={o.id} data-num>
-                      {formatINR(Math.round(c.gross - pf - 200 - tax / 12))}
-                    </td>
-                  );
-                })}
-              </tr>
-              <tr>
-                <th scope="row">Take-home, old regime</th>
-                {offered.map(({ o, c }) => {
+                  return formatINR(Math.round(c.gross - pf - 200 - tax / 12));
+                },
+              },
+              {
+                label: 'Take-home, old regime',
+                cell: ({ o, c }: (typeof offered)[number]) => {
                   const pf = pfContribution(o.basic, { restrictToCeiling: true }).employee;
                   const tax = compareRegimes(c.gross * 12, { ...NO_DEDUCTIONS, sec80c: pf * 12, employerNps: o.employerNps * 12, hraExemption: Math.round(o.hra * 0.6) * 12 }).old.total;
-                  return (
-                    <td key={o.id} data-num>
-                      {formatINR(Math.round(c.gross - pf - 200 - tax / 12))}
-                    </td>
-                  );
-                })}
-              </tr>
-              <tr>
-                <th scope="row">Employer cost</th>
-                {offered.map(({ o, c }) => (
-                  <td key={o.id} data-num>
-                    {formatINR(c.gross + o.employerNps + pfContribution(o.basic, { restrictToCeiling: true }).employee)}
-                  </td>
-                ))}
-              </tr>
-              <tr>
-                <th scope="row">Law checks</th>
-                {offered.map(({ o }) => (
-                  <td key={o.id}>
-                    <Badge tone="success">Passes all</Badge>
-                  </td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
-        </div>
+                  return formatINR(Math.round(c.gross - pf - 200 - tax / 12));
+                },
+              },
+              { label: 'Employer cost', cell: ({ o, c }: (typeof offered)[number]) => formatINR(c.gross + o.employerNps + pfContribution(o.basic, { restrictToCeiling: true }).employee) },
+              { label: 'Law checks', cell: () => <Badge tone="success">Passes all</Badge> },
+            ] as { label: string; cell: (x: (typeof offered)[number]) => ReactNode }[]
+          }
+          getRowId={(r) => r.label}
+          columns={[
+            { key: 'label', header: 'Monthly', rowHeader: true, cell: (r) => r.label },
+            ...offered.map((x) => ({
+              key: x.o.id,
+              header: (
+                <>
+                  {x.o.name} {stale && <Badge tone="warning">Stale</Badge>}
+                </>
+              ),
+              num: true,
+              cell: (r: { cell: (x: (typeof offered)[number]) => ReactNode }) => r.cell(x),
+            })),
+          ]}
+        />
         <RadioGroup
           aria-label="Choose an option"
           orientation="horizontal"
@@ -407,38 +382,18 @@ function SampleCompensationScreen({
                     <p className="yx-pay-note">Each payslip line carries the placement ID for margin reporting.</p>
                   </section>
                 ) : (
-                  <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Current breakup (CTC-first), scrolls sideways on small screens">
-                    <table className="yx-pay-table">
-                      <caption>Current breakup (India standard CTC v3)</caption>
-                      <thead>
-                        <tr>
-                          <th scope="col">Component</th>
-                          <th scope="col" data-num>
-                            Annual
-                          </th>
-                          <th scope="col" data-num>
-                            Monthly
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {annualBreakup(CURRENT_CTC).map(([l, a]) => (
-                          <tr key={l}>
-                            <th scope="row">{l}</th>
-                            <td data-num>{formatINR(a)}</td>
-                            <td data-num>{formatINR(Math.round(a / 12))}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr>
-                          <th scope="row">Cost to company</th>
-                          <td data-num>{formatINR(CURRENT_CTC)}</td>
-                          <td data-num>{formatINR(Math.round(CURRENT_CTC / 12))}</td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
+                  <PlainTable
+                    label="Current breakup (CTC-first)"
+                    caption="Current breakup (India standard CTC v3)"
+                    rows={annualBreakup(CURRENT_CTC)}
+                    getRowId={([l]) => l}
+                    columns={[
+                      { key: 'l', header: 'Component', rowHeader: true, cell: ([l]) => l },
+                      { key: 'a', header: 'Annual', num: true, cell: ([, a]) => formatINR(a) },
+                      { key: 'm', header: 'Monthly', num: true, cell: ([, a]) => formatINR(Math.round(a / 12)) },
+                    ]}
+                    footer={[{ id: 'ctc', label: 'Cost to company', cells: { a: formatINR(CURRENT_CTC), m: formatINR(Math.round(CURRENT_CTC / 12)) } }]}
+                  />
                 )}
               </div>
               <section className="yx-pay-panel" aria-label="Compensation history">
@@ -559,25 +514,18 @@ function SampleCompensationScreen({
                   />
                 )}
                 {arrearsMonths.length > 0 && (
-                  <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Arrears preview (paid in October run), scrolls sideways on small screens">
-                    <table className="yx-pay-table">
-                      <caption>Arrears preview (paid in October run)</caption>
-                      <tbody>
-                        {arrearsMonths.map((m) => (
-                          <tr key={m}>
-                            <th scope="row">{MONTHS[m]} 2026</th>
-                            <td data-num>{formatINR(grossDiff)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr>
-                          <th scope="row">Total arrears</th>
-                          <td data-num>{formatINR(grossDiff * arrearsMonths.length)}</td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
+                  <PlainTable
+                    label="Arrears preview (paid in October run)"
+                    hideHeader
+                    caption="Arrears preview (paid in October run)"
+                    rows={arrearsMonths}
+                    getRowId={(m) => String(m)}
+                    columns={[
+                      { key: 'month', header: 'Month', rowHeader: true, cell: (m) => `${MONTHS[m]} 2026` },
+                      { key: 'amount', header: 'Arrears', num: true, cell: () => formatINR(grossDiff) },
+                    ]}
+                    footer={[{ id: 'total', label: 'Total arrears', cells: { amount: formatINR(grossDiff * arrearsMonths.length) } }]}
+                  />
                 )}
                 {arrearsMonths.length > 0 && <p className="yx-pay-note">PF on arrears is attributed to the months they relate to; supplementary ECRs are raised for months already filed.</p>}
               </>
@@ -813,33 +761,26 @@ function SampleTemplateBuilderScreen({ variant = 'default' }: { variant?: 'defau
           <FormField label="Test employee">
             <Select<TestId> value={testId} onChange={(v) => v && setTestId(v)} options={(Object.keys(TEST_EMPLOYEES) as TestId[]).map((k) => ({ value: k, label: TEST_EMPLOYEES[k].label }))} />
           </FormField>
-          <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-            <table className="yx-pay-table">
-              <tbody>
-                {(
-                  [
-                    ['Basic', b.basic],
-                    ['House rent allowance', b.hra],
-                    ['Leave travel allowance', b.lta],
-                    ['Employer PF', b.pf],
-                    ['Gratuity provision', b.grat],
-                    ['Special allowance', b.spl],
-                  ] as const
-                ).map(([l, v]) => (
-                  <tr key={l}>
-                    <th scope="row">{l}</th>
-                    <td data-num>{blocked && l !== 'Leave travel allowance' ? '—' : formatINR(v)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <th scope="row">Monthly CTC</th>
-                  <td data-num>{formatINR(Math.round(emp.ctc / 12))}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+          <PlainTable
+            label="Live test breakup"
+            hideHeader
+            rows={
+              [
+                ['Basic', b.basic],
+                ['House rent allowance', b.hra],
+                ['Leave travel allowance', b.lta],
+                ['Employer PF', b.pf],
+                ['Gratuity provision', b.grat],
+                ['Special allowance', b.spl],
+              ] as const
+            }
+            getRowId={([l]) => l}
+            columns={[
+              { key: 'l', header: 'Component', rowHeader: true, cell: ([l]) => l },
+              { key: 'v', header: 'Monthly', num: true, cell: ([l, v]) => (blocked && l !== 'Leave travel allowance' ? '—' : formatINR(v)) },
+            ]}
+            footer={[{ id: 'ctc', label: 'Monthly CTC', cells: { v: formatINR(Math.round(emp.ctc / 12)) } }]}
+          />
           {blocked ? (
             <InlineAlert tone="danger">Can't calculate until the circular formula is fixed.</InlineAlert>
           ) : warn ? (
@@ -1405,28 +1346,18 @@ function SamplePayrollSetupScreen({ step = 'reg', incomplete = true, imported: i
           ))}
         </ol>
       ) : (
-        <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Statutes, scrolls sideways on small screens">
-          <table className="yx-pay-table">
-            <thead>
-              <tr>
-                <th scope="col">Statute</th>
-                <th scope="col">Registration</th>
-                <th scope="col">Filing</th>
-                {missing.length > 0 && <th scope="col">Check</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {regs.map((r) => (
-                <tr key={r.s} data-state={r.missing ? 'error' : undefined}>
-                  <th scope="row">{r.s}</th>
-                  <td className="yx-pay-mono">{r.n || '—'}</td>
-                  <td>{r.f}</td>
-                  {missing.length > 0 && <td>{checkCell(r)}</td>}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <PlainTable
+          label="Statutes"
+          rows={regs}
+          getRowId={(r) => r.s}
+          rowTone={(r) => (r.missing ? { tone: 'danger', label: 'Missing' } : undefined)}
+          columns={[
+            { key: 's', header: 'Statute', rowHeader: true, cell: (r) => r.s },
+            { key: 'n', header: 'Registration', cell: (r) => <span className="yx-pay-mono">{r.n || '—'}</span> },
+            { key: 'f', header: 'Filing', cell: (r) => r.f },
+            ...(missing.length > 0 ? [{ key: 'check', header: 'Check', cell: (r: (typeof regs)[number]) => checkCell(r) }] : []),
+          ]}
+        />
       )}
       {options && <LegalOptionsPart options={SAMPLE_OPTIONS} onSet={async () => undefined} />}
     </div>
@@ -1485,26 +1416,15 @@ function SamplePayrollSetupScreen({ step = 'reg', incomplete = true, imported: i
     </FieldRow>
   );
   const acct = (
-    <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Ledger mapping, scrolls sideways on small screens">
-      <table className="yx-pay-table">
-        <thead>
-          <tr>
-            <th scope="col">Payroll item</th>
-            <th scope="col">Ledger</th>
-          </tr>
-        </thead>
-        <tbody>
-          {MAPPING.map(([l], i) => (
-            <tr key={l}>
-              <th scope="row">{l}</th>
-              <td>
-                <Select size="sm" aria-label={`Ledger for ${l}`} value={ledgers[i]} onChange={(v) => v && setLedgers((ls) => ls.map((x, j) => (j === i ? v : x)))} options={LEDGERS} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <PlainTable
+      label="Ledger mapping"
+      rows={MAPPING.map(([l], i) => ({ l, i }))}
+      getRowId={(r) => r.l}
+      columns={[
+        { key: 'l', header: 'Payroll item', rowHeader: true, cell: (r) => r.l },
+        { key: 'ledger', header: 'Ledger', cell: ({ l, i }) => <Select size="sm" aria-label={`Ledger for ${l}`} value={ledgers[i]} onChange={(v) => v && setLedgers((ls) => ls.map((x, j) => (j === i ? v : x)))} options={LEDGERS} /> },
+      ]}
+    />
   );
   const opening = openingView ? (
     <ImportsPart entityId={SETUP_ENTITY} today="2026-10-29" onStage={async () => SAMPLE_BATCH} onCommit={SAMPLE_CALLS.onCommit} onGoLiveCheck={async () => ({ fyStart: '2026-04-01', goLiveMonth: '2026-10', ready: true, missing: [] })} batch={openingView === 'checked' ? SAMPLE_BATCH : SAMPLE_BATCH_ERRORS} />

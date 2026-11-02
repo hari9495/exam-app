@@ -15,6 +15,7 @@ import { Segment } from '../../components/segment';
 import { FileUpload } from '../../components/upload';
 import { useToast } from '../../components/notify';
 import { PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
+import { PlainTable } from '../../components/plain-table';
 import { DataTable, type TableColumn } from '../../components/table';
 import { formatDate, formatINR } from '../../lib/format';
 import { useRun } from '../org/org-kit';
@@ -605,40 +606,18 @@ function LiveRun({ live }: { live: LiveRunPayments }) {
                   <FormField label="Export to">
                     <RadioGroup value={format} onChange={(v) => setFormat(v as JournalFormat)} orientation="horizontal" options={(Object.keys(FORMAT_TEXT) as JournalFormat[]).map((f) => ({ value: f, label: FORMAT_TEXT[f] }))} />
                   </FormField>
-                  <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-                    <table className="yx-pay-table">
-                      <thead>
-                        <tr>
-                          <th scope="col">Ledger</th>
-                          <th scope="col">Cost centre</th>
-                          <th scope="col" data-num>
-                            Debit
-                          </th>
-                          <th scope="col" data-num>
-                            Credit
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {j.lines.map((l, i) => (
-                          <tr key={`${l.accountCode}-${l.costCentre ?? ''}-${i}`}>
-                            <th scope="row">{l.ledger}</th>
-                            <td>{l.costCentre ?? ''}</td>
-                            <td data-num>{Number(l.debit) ? money(l.debit) : ''}</td>
-                            <td data-num>{Number(l.credit) ? money(l.credit) : ''}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr>
-                          <th scope="row">Total</th>
-                          <td />
-                          <td data-num>{formatINR(debits)}</td>
-                          <td data-num>{formatINR(credits)}</td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
+                  <PlainTable
+                    label="Journal"
+                    rows={j.lines.map((l, i) => ({ ...l, i }))}
+                    getRowId={(l) => `${l.accountCode}-${l.costCentre ?? ''}-${l.i}`}
+                    columns={[
+                      { key: 'ledger', header: 'Ledger', rowHeader: true, cell: (l) => l.ledger },
+                      { key: 'cc', header: 'Cost centre', cell: (l) => l.costCentre ?? '' },
+                      { key: 'debit', header: 'Debit', num: true, cell: (l) => (Number(l.debit) ? money(l.debit) : '') },
+                      { key: 'credit', header: 'Credit', num: true, cell: (l) => (Number(l.credit) ? money(l.credit) : '') },
+                    ]}
+                    footer={[{ id: 'total', label: 'Total', cells: { debit: formatINR(debits), credit: formatINR(credits) } }]}
+                  />
                   <div className="yx-pay-row">
                     <Button
                       variant="primary"

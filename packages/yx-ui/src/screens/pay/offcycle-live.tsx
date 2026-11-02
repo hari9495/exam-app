@@ -15,6 +15,7 @@ import { ConfirmDialog } from '../../components/overlay';
 import { Segment } from '../../components/segment';
 import { Select } from '../../components/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
+import { PlainTable } from '../../components/plain-table';
 import { Stepper } from '../../components/stepper';
 import { DataTable, type TableColumn } from '../../components/table';
 import { FileUpload } from '../../components/upload';
@@ -149,50 +150,21 @@ function WorksheetBase({ w, live }: { w: Worksheet; live: LiveArrears }) {
       ) : (
         <Badge tone={sheetStatus(w).tone}>{sheetStatus(w).label}</Badge>
       )}
-      <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Worksheet lines">
-        <table className="yx-pay-table">
-          <thead>
-            <tr>
-              <th scope="col">Month</th>
-              <th scope="col">Component</th>
-              <th scope="col" data-num>
-                Corrected
-              </th>
-              <th scope="col" data-num>
-                As paid
-              </th>
-              <th scope="col">Base source</th>
-              <th scope="col" data-num>
-                Arrear
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {w.lines.map((l) => (
-              <tr key={l.id} data-state={l.base === 'missing' ? 'flag' : undefined}>
-                <th scope="row">{monthText(l.period)}</th>
-                <td>
-                  {l.componentCode} {l.kind !== 'earning' && <Badge tone="neutral">{l.kind === 'deduction' ? 'employee share' : 'company cost'}</Badge>}
-                </td>
-                <td data-num>{money(l.corrected)}</td>
-                <td data-num>{money(l.asPaid)}</td>
-                <td>
-                  <Badge tone={BASE[l.base].tone}>{BASE[l.base].label}</Badge>
-                </td>
-                <td data-num>{money(l.difference)}</td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr>
-              <th scope="row" colSpan={5}>
-                {missing.length ? `Arrears so far for ${name} (${missing.map(monthText).join(', ')} not included)` : `Arrears for ${name}`}
-              </th>
-              <td data-num>{money(w.total)}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+      <PlainTable
+        label="Worksheet lines"
+        rows={w.lines}
+        getRowId={(l) => l.id}
+        rowTone={(l) => (l.base === 'missing' ? { tone: 'warning', label: 'Base missing' } : undefined)}
+        columns={[
+          { key: 'month', header: 'Month', rowHeader: true, cell: (l) => monthText(l.period) },
+          { key: 'component', header: 'Component', cell: (l) => <>{l.componentCode} {l.kind !== 'earning' && <Badge tone="neutral">{l.kind === 'deduction' ? 'employee share' : 'company cost'}</Badge>}</> },
+          { key: 'corrected', header: 'Corrected', num: true, cell: (l) => money(l.corrected) },
+          { key: 'asPaid', header: 'As paid', num: true, cell: (l) => money(l.asPaid) },
+          { key: 'base', header: 'Base source', cell: (l) => <Badge tone={BASE[l.base].tone}>{BASE[l.base].label}</Badge> },
+          { key: 'arrear', header: 'Arrear', num: true, cell: (l) => money(l.difference) },
+        ]}
+        footer={[{ id: 'total', label: missing.length ? `Arrears so far for ${name} (${missing.map(monthText).join(', ')} not included)` : `Arrears for ${name}`, cells: { arrear: money(w.total) } }]}
+      />
       {draft && period && (
         <section className="yx-pay-panel" aria-label={`Confirm ${monthText(period)} base`}>
           <SectionTitle>Confirm the as-paid base for {monthText(period)}</SectionTitle>
@@ -414,42 +386,27 @@ export function LiveActuarialScreen({ live }: { live: LiveActuarial }) {
       content: (
         <div className="yx-pay-stack">
           {censuses.length ? (
-            <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Census versions">
-              <table className="yx-pay-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Version</th>
-                    <th scope="col">As at</th>
-                    <th scope="col" data-num>
-                      Employees
-                    </th>
-                    <th scope="col">Standard</th>
-                    <th scope="col">Status</th>
-                    <th scope="col">
-                      <span className="yx-visually-hidden">Download</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {censuses.map((c, i) => (
-                    <tr key={c.id}>
-                      <th scope="row" style={{ whiteSpace: 'nowrap' }}>
-                        Version {censuses.length - i}
-                      </th>
-                      <td style={{ whiteSpace: 'nowrap' }}>{dateText(c.asOf)}</td>
-                      <td data-num>{c.rows}</td>
-                      <td>{stdText(c.standard)}</td>
-                      <td>{i === 0 ? <Badge tone="success">Current</Badge> : <Badge>Replaced</Badge>}</td>
-                      <td>
-                        <Button size="sm" icon={Download} aria-label={`Download version ${censuses.length - i} census as XLSX`} loading={busy === c.id} onClick={() => void run(c.id, () => live.onDownload(c.fileId, `actuarial-census-${c.asOf}.xlsx`))}>
-                          XLSX
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <PlainTable
+              label="Census versions"
+              rows={censuses}
+              getRowId={(c) => c.id}
+              columns={[
+                { key: 'version', header: 'Version', rowHeader: true, cell: (c) => <span style={{ whiteSpace: 'nowrap' }}>Version {censuses.length - censuses.indexOf(c)}</span> },
+                { key: 'asOf', header: 'As at', date: true, cell: (c) => dateText(c.asOf) },
+                { key: 'rows', header: 'Employees', num: true, cell: (c) => c.rows },
+                { key: 'standard', header: 'Standard', cell: (c) => stdText(c.standard) },
+                { key: 'status', header: 'Status', cell: (c) => (c === censuses[0] ? <Badge tone="success">Current</Badge> : <Badge>Replaced</Badge>) },
+                {
+                  key: 'download',
+                  header: <span className="yx-visually-hidden">Download</span>,
+                  cell: (c) => (
+                    <Button size="sm" icon={Download} aria-label={`Download version ${censuses.length - censuses.indexOf(c)} census as XLSX`} loading={busy === c.id} onClick={() => void run(c.id, () => live.onDownload(c.fileId, `actuarial-census-${c.asOf}.xlsx`))}>
+                      XLSX
+                    </Button>
+                  ),
+                },
+              ]}
+            />
           ) : (
             <EmptyState compact title="No census yet" description="Make one as at the valuation date and send it to the actuary." />
           )}
@@ -553,38 +510,18 @@ export function LiveActuarialScreen({ live }: { live: LiveActuarial }) {
             </section>
           )}
           {d?.valuations.length ? (
-            <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Valuations">
-              <table className="yx-pay-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Figure</th>
-                    <th scope="col" data-num>
-                      Opening obligation
-                    </th>
-                    <th scope="col" data-num>
-                      Closing obligation
-                    </th>
-                    <th scope="col" data-num>
-                      Change
-                    </th>
-                    <th scope="col">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {d.valuations.map((v) => (
-                    <tr key={v.id}>
-                      <th scope="row">
-                        {v.kind === 'gratuity' ? 'Gratuity' : 'Leave'} · {dateText(v.valuedOn)} · {stdText(v.standard)}
-                      </th>
-                      <td data-num>{money(v.opening)}</td>
-                      <td data-num>{money(v.closing)}</td>
-                      <td data-num>{money(v.delta)}</td>
-                      <td>{v.status === 'posted' ? <Badge tone="success">Posted</Badge> : <Badge tone="warning">To post</Badge>}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <PlainTable
+              label="Valuations"
+              rows={d.valuations}
+              getRowId={(v) => v.id}
+              columns={[
+                { key: 'figure', header: 'Figure', rowHeader: true, cell: (v) => <>{v.kind === 'gratuity' ? 'Gratuity' : 'Leave'} · {dateText(v.valuedOn)} · {stdText(v.standard)}</> },
+                { key: 'opening', header: 'Opening obligation', num: true, cell: (v) => money(v.opening) },
+                { key: 'closing', header: 'Closing obligation', num: true, cell: (v) => money(v.closing) },
+                { key: 'delta', header: 'Change', num: true, cell: (v) => money(v.delta) },
+                { key: 'status', header: 'Status', cell: (v) => (v.status === 'posted' ? <Badge tone="success">Posted</Badge> : <Badge tone="warning">To post</Badge>) },
+              ]}
+            />
           ) : (
             <EmptyState compact title="No valuations recorded" description="Record the closing obligation from the actuary's report." />
           )}
@@ -606,40 +543,20 @@ export function LiveActuarialScreen({ live }: { live: LiveActuarial }) {
           {current.length > 0 && !toPost.length && <InlineAlert tone="info" title="Journal posted">The latest gratuity and leave figures are in the books.</InlineAlert>}
           {toPost.length > 0 && (
             <>
-              <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Provision against the valuation">
-                <table className="yx-pay-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">Figure</th>
-                      <th scope="col" data-num>
-                        Gratuity
-                      </th>
-                      <th scope="col" data-num>
-                        Leave
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <th scope="row">Provision in books</th>
-                      <td data-num>{cell('gratuity', (v) => v.opening)}</td>
-                      <td data-num>{cell('leave', (v) => v.opening)}</td>
-                    </tr>
-                    <tr>
-                      <th scope="row">Closing obligation</th>
-                      <td data-num>{cell('gratuity', (v) => v.closing)}</td>
-                      <td data-num>{cell('leave', (v) => v.closing)}</td>
-                    </tr>
-                  </tbody>
-                  <tfoot>
-                    <tr>
-                      <th scope="row">Journal: debit expense</th>
-                      <td data-num>{cell('gratuity', (v) => v.delta)}</td>
-                      <td data-num>{cell('leave', (v) => v.delta)}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
+              <PlainTable
+                label="Provision against the valuation"
+                rows={[
+                  { id: 'books', label: 'Provision in books', pick: (v: Valuation) => v.opening },
+                  { id: 'closing', label: 'Closing obligation', pick: (v: Valuation) => v.closing },
+                ]}
+                getRowId={(r) => r.id}
+                columns={[
+                  { key: 'figure', header: 'Figure', rowHeader: true, cell: (r) => r.label },
+                  { key: 'gratuity', header: 'Gratuity', num: true, cell: (r) => cell('gratuity', r.pick) },
+                  { key: 'leave', header: 'Leave', num: true, cell: (r) => cell('leave', r.pick) },
+                ]}
+                footer={[{ id: 'journal', label: 'Journal: debit expense', cells: { gratuity: cell('gratuity', (v) => v.delta), leave: cell('leave', (v) => v.delta) } }]}
+              />
               {toPost.some((v) => v.madeByMe) && <p className="yx-pay-note">You recorded {postable.length ? 'some of these figures' : 'these figures'}, so someone else posts {postable.length ? 'those' : 'the journal'}.</p>}
               <div className="yx-pay-row">
                 <Button icon={FileText} aria-expanded={journal} onClick={() => setJournal(!journal)}>
@@ -647,32 +564,16 @@ export function LiveActuarialScreen({ live }: { live: LiveActuarial }) {
                 </Button>
               </div>
               {journal && (
-                <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Provision journal preview">
-                  <table className="yx-pay-table">
-                    <thead>
-                      <tr>
-                        <th scope="col">Account</th>
-                        <th scope="col" data-num>
-                          Debit
-                        </th>
-                        <th scope="col" data-num>
-                          Credit
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {toPost.flatMap((v) =>
-                        v.journal.map((j, i) => (
-                          <tr key={`${v.id}-${i}`}>
-                            <th scope="row">{j.account}</th>
-                            <td data-num>{j.debit ? money(j.debit) : ''}</td>
-                            <td data-num>{j.credit ? money(j.credit) : ''}</td>
-                          </tr>
-                        )),
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                <PlainTable
+                  label="Provision journal preview"
+                  rows={toPost.flatMap((v) => v.journal.map((j, i) => ({ ...j, id: `${v.id}-${i}` })))}
+                  getRowId={(j) => j.id}
+                  columns={[
+                    { key: 'account', header: 'Account', rowHeader: true, cell: (j) => j.account },
+                    { key: 'debit', header: 'Debit', num: true, cell: (j) => (j.debit ? money(j.debit) : '') },
+                    { key: 'credit', header: 'Credit', num: true, cell: (j) => (j.credit ? money(j.credit) : '') },
+                  ]}
+                />
               )}
             </>
           )}
