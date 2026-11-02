@@ -10,7 +10,7 @@ import { OtClaimDto, OtPlanDto, OtRuleDto } from './dto';
 import { hoursText, otPlanProblem, preApprovalCheck } from './ot-plan-rules';
 import { ScheduleBook, assertOpen, lockedDates } from './schedule';
 import { SCOPE_MODEL, TimeSetupService } from './setup.service';
-import { TIME_KEYS, Facts, asDate, dateOf, factsOn, grantCovers, holidaysFor, hrApprovers, monthRange, mustSee, myEmployeeId, num, settingOn, todayIn, visibleSql } from './time-core';
+import { TIME_KEYS, Facts, asDate, dateOf, factsOn, grantCovers, holidaysFor, hrApprovers, inReportingLine, monthRange, myEmployeeId, num, settingOn, todayIn, visibleSql } from './time-core';
 import { addDays } from './time-maths';
 import { OtCategory, compOffDays, otSettlement, overtimeFor, quarterOf, scheduledMinutes } from './time-rules';
 
@@ -97,6 +97,12 @@ export class OvertimeService implements OnModuleInit {
     const rows = await tx.statutoryRuleSet.findMany({ where: { statute: 'IN.FACTORIES', jurisdiction: { in: [state, 'IN'] }, validFrom: { lte: asDate(on) } }, orderBy: { validFrom: 'desc' } });
     const v = ((rows.find((r) => r.jurisdiction === state) ?? rows[0])?.values ?? {}) as { dailyMaxWorkMinutes?: number; quarterlyOtMinutes?: number; rate?: number; coveredCategories?: string[] };
     return { dailyMaxWorkMinutes: v.dailyMaxWorkMinutes ?? 600, quarterlyOtMinutes: v.quarterlyOtMinutes ?? 7500, rate: v.rate ?? 2, coveredCategories: v.coveredCategories ?? [] };
+  }
+
+  /** TIM-02 muster: what the Pre-approve overtime sheet needs for one report (plan-ahead days; paid only under the Factories Act). */
+  async planHints(tx: Tx, org: string, f: Facts, on: string) {
+    const c = { organizationId: org, isSuperAdmin: false };
+    return { aheadDays: Number(await settingOn(tx, c, 'attendance.overtime.plan_ahead_days', f, on)), factoriesAct: await this.factoriesAct(tx, org, f, on, (await this.statutory(tx, f.state, on)).coveredCategories) };
   }
 
   /** Whether the Factories Act covers the person on a date: the company says the place is a factory, P07 the category. */
@@ -306,7 +312,10 @@ export class OvertimeService implements OnModuleInit {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       const own = (await tx.employee.findFirst({ where: { organizationId: org, userId: v.userId! }, select: { id: true } }))?.id ?? null;
-      if ((await mustSee(tx, c, v, own, 'leave.approve', employeeId, dto.on)) === 'self') throw new ForbiddenException('Ask your manager to pre-approve your own overtime.');
+      if (own === employeeId) throw new ForbiddenException('Ask your manager to pre-approve your own overtime.');
+      // Founder 2 Nov 2026: only the reporting line (direct and indirect managers) pre-approves; no dotted line, department
+      // head or HR route. Anyone else gets the same answer as an unknown person.
+      if (!(await inReportingLine(tx, c, own, [employeeId], dto.on)).has(employeeId)) throw new NotFoundException('Not found');
       await this.checkPlan(tx, c, employeeId, dto);
       const p = await tx.overtimePlan.create({ data: { organizationId: org, employeeId, workOn: asDate(dto.on), plannedMinutes: dto.minutes, takeAs: dto.takeAs, reason: dto.reason, status: 'approved', decidedAt: new Date(), raisedBy: c.userId ?? null } });
       await audit(tx, c, 'time.ot.plan_approved', 'overtime_plan', p.id, { employeeId, on: dto.on, minutes: dto.minutes, takeAs: dto.takeAs, by: 'planner' });

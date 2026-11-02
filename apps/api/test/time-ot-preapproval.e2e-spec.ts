@@ -28,7 +28,7 @@ describe('Time overtime pre-approval', () => {
   const server = () => app.getHttpServer();
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'adminA' | 'adminB' | 'hr' | 'mgr' | 'emp' | 'emp2' | 'emp3' | 'emp4' | 'mgr2' | 'empB';
+  type Who = 'adminA' | 'adminB' | 'hr' | 'mgr' | 'emp' | 'emp2' | 'emp3' | 'emp4' | 'mgr2' | 'empB' | 'boss' | 'dotted' | 'head' | 'plant';
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
@@ -86,6 +86,11 @@ describe('Time overtime pre-approval', () => {
       ['emp4', 'A', 'panel', null],
       ['mgr2', 'A', 'panel', null],
       ['empB', 'B', 'panel', null],
+      // Founder 2 Nov 2026: mgr's own manager (indirect), a dotted-line manager, a department head and a factory worker.
+      ['boss', 'A', 'panel', null],
+      ['dotted', 'A', 'panel', null],
+      ['head', 'A', 'panel', null],
+      ['plant', 'A', 'panel', null],
     ];
     for (const [who, k, role, keys] of roster) {
       const o = org[k].id;
@@ -107,21 +112,27 @@ describe('Time overtime pre-approval', () => {
       });
     }
     const joined = `${Y - 1}-01-01`;
-    const hire = async (admin: 'adminA' | 'adminB', who: Who, manager: string | null, k: 'A' | 'B' = 'A') =>
+    const hire = async (admin: 'adminA' | 'adminB', who: Who, manager: string | null, k: 'A' | 'B' = 'A', extra: Record<string, unknown> = {}) =>
       (
         await api(admin, 'post', '/people/employees')
-          .send({ legalEntityId: ids[`entity${k}`], status: 'confirmed', reason: 'Joined', overrideReason: 'Joined before this year (test data)', givenName: who, familyName: run, joinedOn: joined, userId: users[who], workEmail: `${who}@ot-${run}.test`, assignment: { locationId: ids[`loc${k}`], departmentId: ids[`dept${k}`], designationId: ids[`desig${k}`], employmentTypeId: ids[`perm${k}`], managerEmployeeId: manager } })
+          .send({ legalEntityId: ids[`entity${k}`], status: 'confirmed', reason: 'Joined', overrideReason: 'Joined before this year (test data)', givenName: who, familyName: run, joinedOn: joined, userId: users[who], workEmail: `${who}@ot-${run}.test`, assignment: { locationId: ids[`loc${k}`], departmentId: ids[`dept${k}`], designationId: ids[`desig${k}`], employmentTypeId: ids[`perm${k}`], managerEmployeeId: manager, ...extra } })
           .then((r) => {
             if (r.status !== 201) throw new Error(`hire ${who}: ${r.status} ${JSON.stringify(r.body)}`);
             return r;
           })
       ).body.id as string;
-    ids.mgrEmp = await hire('adminA', 'mgr', null);
+    ids.bossEmp = await hire('adminA', 'boss', null);
+    ids.dottedEmp = await hire('adminA', 'dotted', null);
+    ids.headEmp = await hire('adminA', 'head', null);
+    ids.mgrEmp = await hire('adminA', 'mgr', ids.bossEmp);
     ids.mgr2Emp = await hire('adminA', 'mgr2', null);
     ids.empEmp = await hire('adminA', 'emp', ids.mgrEmp);
     ids.emp2Emp = await hire('adminA', 'emp2', ids.mgrEmp);
     ids.emp3Emp = await hire('adminA', 'emp3', ids.mgrEmp);
-    ids.emp4Emp = await hire('adminA', 'emp4', ids.mgrEmp);
+    ids.emp4Emp = await hire('adminA', 'emp4', ids.mgrEmp, 'A', { dottedLineManagerIds: [ids.dottedEmp] });
+    ids.plantType = (await tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false }, (tx) => tx.employmentType.create({ data: { organizationId: org.A.id, name: 'Plant worker', code: `PLT-${run}`, category: 'permanent' } }))).id;
+    ids.plantEmp = await hire('adminA', 'plant', ids.mgrEmp, 'A', { employmentTypeId: ids.plantType });
+    await tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false }, (tx) => tx.department.update({ where: { id: ids.deptA }, data: { headEmployeeId: ids.headEmp, headSince: new Date(`${Y - 1}-01-01T00:00:00Z`) } }));
     ids.hrEmp = await hire('adminA', 'hr', null);
     ids.empBEmp = await hire('adminB', 'empB', null, 'B');
   }, 300_000);
@@ -202,6 +213,37 @@ describe('Time overtime pre-approval', () => {
     await api('emp', 'post', `/time/team/overtime/plans/${ids.emp4Emp}`).send(plan({ on: d(3) })).expect(404);
     await api('adminB', 'post', `/time/team/overtime/plans/${ids.emp4Emp}`).send(plan({ on: d(3) })).expect(404);
     await api('mgr', 'post', `/time/team/overtime/plans/${ids.emp4Emp}`).send(plan({ on: d(2) })).expect(409);
+  });
+
+  // Founder 2 Nov 2026 (Pre-approve overtime on the muster): only the reporting line pre-approves.
+  it('direct and indirect managers pre-approve; a dotted-line manager, the department head and HR are refused', async () => {
+    for (const who of ['dotted', 'head', 'hr'] as const) await api(who, 'post', `/time/team/overtime/plans/${ids.emp4Emp}`).send(plan({ on: d(4) })).expect(404);
+    // They still see the person on their muster (the implicit view), without the pre-approval facts.
+    const seen = (await api('dotted', 'get', `/time/muster?month=${today.slice(0, 7)}`).expect(200)).body.people.find((x: { id: string }) => x.id === ids.emp4Emp);
+    expect(seen).toBeDefined();
+    expect(seen.ot).toBeUndefined();
+    expect((await api('boss', 'post', `/time/team/overtime/plans/${ids.emp4Emp}`).send(plan({ on: d(4) })).expect(201)).body).toMatchObject({ status: 'approved' });
+    expect((await api('mgr', 'post', `/time/team/overtime/plans/${ids.emp2Emp}`).send(plan({ on: d(4) })).expect(201)).body).toMatchObject({ status: 'approved' });
+    await api('boss', 'post', `/time/team/overtime/plans/${ids.mgrEmp}`).send(plan({ on: d(4) })).expect(201);
+  });
+
+  it('the muster carries what the sheet needs for the line only: plan-ahead days and the Factories Act', async () => {
+    await api('adminA', 'put', '/org/settings').send({ key: 'attendance.factories_act', scopeType: 'employment_type', scopeId: ids.plantType, value: 'covered', validFrom: today }).expect(200);
+    await api('adminA', 'put', '/org/settings').send({ key: 'attendance.overtime.plan_ahead_days', scopeType: 'tenant', value: '15' }).expect(200);
+    const people = (await api('mgr', 'get', `/time/muster?month=${today.slice(0, 7)}`).expect(200)).body.people as { id: string; me: boolean; ot?: { aheadDays: number; factoriesAct: boolean } }[];
+    expect(people.find((x) => x.id === ids.plantEmp)?.ot).toEqual({ aheadDays: 15, factoriesAct: true });
+    expect(people.find((x) => x.id === ids.emp4Emp)?.ot).toEqual({ aheadDays: 15, factoriesAct: false });
+    expect(people.find((x) => x.me)?.ot).toBeUndefined();
+    // The boss sees the whole line below them; HR's muster carries no pre-approval facts for people outside its own line.
+    const bossView = (await api('boss', 'get', `/time/muster?month=${today.slice(0, 7)}`).expect(200)).body.people as { id: string; ot?: unknown }[];
+    expect(bossView.find((x) => x.id === ids.plantEmp)?.ot).toBeDefined();
+    const hrView = (await api('hr', 'get', `/time/muster?month=${today.slice(0, 7)}`).expect(200)).body.people as { id: string; ot?: unknown }[];
+    expect(hrView.some((x) => x.ot)).toBe(false);
+    // The server still refuses comp-off for a factory worker; paid is fine. The plan-ahead limit is the company's.
+    expect((await api('mgr', 'post', `/time/team/overtime/plans/${ids.plantEmp}`).send(plan({ on: d(5), takeAs: 'comp_off' })).expect(400)).body.message).toMatch(/Factory overtime is paid by law/);
+    await api('mgr', 'post', `/time/team/overtime/plans/${ids.plantEmp}`).send(plan({ on: d(5) })).expect(201);
+    expect((await api('mgr', 'post', `/time/team/overtime/plans/${ids.emp3Emp}`).send(plan({ on: d(16) })).expect(400)).body.message).toBe('Pick a date in the next 15 days.');
+    await api('adminA', 'put', '/org/settings').send({ key: 'attendance.overtime.plan_ahead_days', scopeType: 'tenant', value: '30' }).expect(200);
   });
 
   it('a claim reads the plan: pre-approved hours go with it to the approver', async () => {

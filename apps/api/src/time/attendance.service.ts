@@ -14,7 +14,8 @@ import { addDays, checkInVerdict, ipInRanges, minutesInto, type Fence } from './
 import { ScheduleBook, assertOpen, lockedDates } from './schedule';
 import { OvertimeService } from './overtime.service';
 import { PeriodsService } from './periods.service';
-import { grantCovers } from './time-core';
+import { grantCovers, inReportingLine } from './time-core';
+import { todayIst } from '../org-structure/org-validation';
 import { settingFor } from '../people/probation';
 import { workOnForPunch } from './time-rules';
 
@@ -563,6 +564,14 @@ export class AttendanceService implements OnModuleInit {
       // TIM-02: the month's stage for the legal entity it is about (the one picked, else the company's only one).
       const ent = await this.periods.musterEntity(tx, c, user, entityId);
       const period = ent.id ? await this.periods.musterPeriod(tx, c, ent.v, ent.id, month) : null;
+      // TIM-02 Pre-approve overtime (founder 2 Nov 2026): for the viewer's reporting line only, what the sheet needs.
+      const today = todayIst();
+      const line = v.actingForOther ? new Set<string>() : await inReportingLine(tx, c, own, ids, today);
+      const otHints = new Map<string, { aheadDays: number; factoriesAct: boolean }>();
+      for (const id of line) {
+        const f = await factsOn(tx, c.organizationId, id, today);
+        if (f) otHints.set(id, await this.overtime.planHints(tx, c.organizationId, f, today));
+      }
       const modes = new Map<string, { mode: string; effect: string }>();
       for (const id of ids) {
         const f = await factsOn(tx, c.organizationId, id, to);
@@ -585,6 +594,7 @@ export class AttendanceService implements OnModuleInit {
           mode: modes.get(p.id)?.mode ?? 'punch',
           missingPunchEffect: modes.get(p.id)?.effect ?? 'block_payroll_approval',
           remindedOn: nudges.filter((n) => n.employeeId === p.id).map((n) => dateOf(n.onDay)),
+          ...(otHints.has(p.id) ? { ot: otHints.get(p.id) } : {}),
           days: days.filter((d) => d.employeeId === p.id).map((d) => ({ on: dateOf(d.workOn), status: d.status, leavePart: d.leavePart, firstIn: d.firstIn, lateMinutes: d.lateMinutes, workedMinutes: d.workedMinutes, regularised: d.regularised, otMinutes: ots.find((o) => o.employeeId === p.id && dateOf(o.workOn) === dateOf(d.workOn))?.payableMinutes ?? 0, otStatus: ots.find((o) => o.employeeId === p.id && dateOf(o.workOn) === dateOf(d.workOn))?.status ?? null })),
         })),
       };

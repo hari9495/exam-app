@@ -390,6 +390,19 @@ export async function visibleSql(tx: Tx, c: CompanyContext, v: Viewer, own: stri
   return Prisma.sql`(${self} OR ${implicit} OR ${granted})`;
 }
 
+/**
+ * Of `ids`, the people `own` manages on `date` in the reporting line: direct or indirect reports, whatever the company's
+ * manager view setting. Never dotted lines, department heads or HR grants (founder 2 Nov 2026, overtime pre-approval).
+ */
+export async function inReportingLine(tx: Tx, c: CompanyContext, own: string | null, ids: readonly string[], date: string): Promise<Set<string>> {
+  const others = ids.filter((id) => id !== own);
+  if (!own || !others.length) return new Set();
+  const rows = await tx.$queryRaw<{ id: string }[]>`
+    SELECT x.id::text FROM unnest(${others}::uuid[]) AS x(id)
+    WHERE yx_scope_periods(${c.organizationId}::uuid, x.id, 'all_reports', NULL::uuid, ${own}::uuid) @> ${date}::date`;
+  return new Set(rows.map((r) => r.id));
+}
+
 /** One employee: visible as self, team or through `key`? (404 otherwise: the same answer as an unknown person.) */
 export async function mustSee(tx: Tx, c: CompanyContext, v: Viewer, own: string | null, key: TimeKey, employeeId: string, date: string, team = true): Promise<'self' | 'team' | 'granted'> {
   if (own === employeeId) return 'self';
