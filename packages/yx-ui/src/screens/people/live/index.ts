@@ -32,7 +32,6 @@ export {
   AddMembersDialog,
   PayeesDialog,
   ContractDialog,
-  VrsCard,
   type BatchesScreenProps,
   type UpcomingExitsScreenProps,
   type RetrenchmentScreenProps,

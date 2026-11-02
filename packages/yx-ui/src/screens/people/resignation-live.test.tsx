@@ -47,7 +47,8 @@ describe('Me › Resign (PPL-18)', () => {
 
   it('a voluntary retirement scheme shows above the form; nothing to resign from says so', () => {
     const { unmount } = render(<ResignationSheet live={{ state: 'ready', onRetry: vi.fn(), data: DATA, onResign: vi.fn(), onWithdraw: vi.fn(), interviewHref: '/i', vrs: { schemes: [{ id: 'v', name: 'VRS 2026', closesOn: '2026-12-31', minAge: 50, minServiceYears: 10, eligible: true }], onApply: vi.fn() } }} />);
-    expect(screen.getByText('VRS 2026: open until 31 Dec 2026')).toBeInTheDocument();
+    expect(screen.getByText('VRS 2026 · open until 31 Dec 2026')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Apply for VRS' })).toBeInTheDocument();
     unmount();
     page({ data: { ...DATA, notice: null } });
     expect(screen.getByText('You have no open employment to resign from.')).toBeInTheDocument();

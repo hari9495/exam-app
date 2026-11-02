@@ -205,7 +205,7 @@ export class SpecialCasesController {
 
   @Get('me/vrs')
   myVrs(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
-    return this.exits.myVrs(ctx, this.user(req));
+    return this.exits.myVrs(ctx, this.user(req), { estimate: true });
   }
 
   @Post('me/vrs')

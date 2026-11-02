@@ -10,13 +10,17 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { EmployeeHistoryService, displayName } from '../employee-history/employee-history.service';
 import { PeopleService } from '../people/people.service';
 import { settingFor } from '../people/probation';
+import { payOn } from '../payroll/fnf.service';
+import { withPayScope } from '../payroll/pay-access';
+import { StatutoryRulesService } from '../statutory/statutory.service';
+import { gratuityDue, inForce, serviceYears } from '../statutory/evaluator';
 import { holdersOf } from '../time/time-core';
 import { JourneysService as DeskJourneysService } from '../service-desk/journeys.service';
 import { ownOf, reachesPerson } from '../documents/person-access';
 import { LifecycleJourneysService } from './journeys.service';
 import { LastDayService } from './last-day.service';
 import { cancelFnfIn, fnfStateOf, freezeSettlementIn } from './settlement';
-import { daysFrom, CLEARANCE_STARTER, DEATH_CLAIMS, EXIT_INTERVIEW_FORM_VERSION, IR_PERMISSION_THRESHOLD, MATERNITY_BLOCKED, NEEDS_APPROVAL, RESIGNATION_REASONS, type ExitType, noticeLabel, standardLwd } from './exit-rules';
+import { ageOn, daysFrom, vrsBenefit, CLEARANCE_STARTER, DEATH_CLAIMS, EXIT_INTERVIEW_FORM_VERSION, IR_PERMISSION_THRESHOLD, MATERNITY_BLOCKED, NEEDS_APPROVAL, RESIGNATION_REASONS, type ExitType, noticeLabel, standardLwd } from './exit-rules';
 
 // Lifecycle batch 6c (design §10): probation reviews, resignations, notice changes and company-started exits.
 //   resignation   the employee gives it (Me › Resign); P03 exit.resignation: their manager, then HR; on acceptance the
@@ -98,6 +102,7 @@ export class ExitsService implements OnModuleInit {
     private readonly journeys: LifecycleJourneysService,
     private readonly desk: DeskJourneysService,
     private readonly lastDay: LastDayService,
+    private readonly rules: StatutoryRulesService,
   ) {}
 
   onModuleInit() {
@@ -631,7 +636,7 @@ export class ExitsService implements OnModuleInit {
   // ------------------------------------------------------------------------------------------ VRS (LIFE-5.07)
 
   /** Open schemes I may apply to: my legal entity (or all), open today, my age and service at or above the minimum. */
-  async myVrs(ctx: TenantContext, user: ScopeUser) {
+  async myVrs(ctx: TenantContext, user: ScopeUser, opts: { estimate?: boolean } = {}) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const own = await ownOf(tx, c, v);
@@ -639,11 +644,50 @@ export class ExitsService implements OnModuleInit {
       if (!e) return { schemes: [] };
       const today = todayIst();
       const dob = (await tx.employeePersonalDetails.findFirst({ where: { organizationId: c.organizationId, employeeId: own.employeeId! }, select: { dateOfBirth: true } }))?.dateOfBirth;
-      const age = dob ? Math.floor(daysFrom(iso(dob), today) / 365.25) : null;
-      const service = Math.floor(daysFrom(iso(e.joinedOn), today) / 365.25);
+      // Whole years by the calendar (on the birthday the new age counts; days / 365.25 was a day late).
+      const age = dob ? ageOn(iso(dob), today) : null;
+      const service = serviceYears(iso(e.joinedOn), today).completed;
       const rows = await tx.vrsScheme.findMany({ where: { organizationId: c.organizationId, status: 'open', opensOn: { lte: asDate(today) }, closesOn: { gte: asDate(today) }, OR: [{ legalEntityId: null }, { legalEntityId: e.legalEntityId }] } });
-      return { schemes: rows.map((s) => ({ id: s.id, name: s.name, closesOn: iso(s.closesOn), minAge: s.minAge, minServiceYears: s.minServiceYears, eligible: age !== null && age >= s.minAge && service >= s.minServiceYears })) };
+      const schemes = rows.map((s) => ({ id: s.id, name: s.name, closesOn: iso(s.closesOn), minAge: s.minAge, minServiceYears: s.minServiceYears, eligible: age !== null && age >= s.minAge && service >= s.minServiceYears, age, serviceYears: service }));
+      // PPL-40: an estimate only for the employee's own screen (an application never needs it).
+      const estimate = opts.estimate && schemes.some((x) => x.eligible) && dob ? await this.vrsEstimate(tx, c, e, iso(dob), today) : null;
+      return { schemes: schemes.map((x) => ({ ...x, estimate: x.eligible ? estimate : null })) };
     });
+  }
+
+  /**
+   * PPL-40 "your estimate" (an estimate only; the F&F works out the real amounts on the last day): the scheme benefit,
+   * `vrs.benefit_days` (default 45) days of the monthly basic + DA per completed year of service, or basic + DA for each
+   * month left to retirement (`retirement.age`), whichever is lower (Income Tax Rule 2BA); gratuity by the law in force
+   * today on basic + DA; encashable leave on the company's encashment basis. Null when no pay is on record.
+   */
+  private async vrsEstimate(tx: Tx, c: CompanyContext, e: Prisma.EmploymentGetPayload<object>, dob: string, today: string) {
+    const org = c.organizationId;
+    // The employee's own pay: the pay guard opens to their entity for this read only.
+    const pay = await withPayScope(tx, [e.legalEntityId], () => payOn(tx, org, e.id, today));
+    if (pay.gratuityWage.lte(0)) return null;
+    const scope = { legalEntityId: e.legalEntityId };
+    const D = (x: Prisma.Decimal.Value) => new Prisma.Decimal(x);
+    const r0 = (x: Prisma.Decimal) => x.toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP).toFixed(0);
+    const years = serviceYears(iso(e.joinedOn), today).completed;
+    // Rupee amounts as numbers are safe here: an estimate shown rounded to the rupee, never paid from.
+    const b = vrsBenefit({ monthlyWage: pay.gratuityWage.toNumber(), daysPerYear: Number(await settingFor(tx, c, 'vrs.benefit_days', scope)), completedYears: years, dob, today, retireAge: Number(await settingFor(tx, c, 'retirement.age', scope)) });
+    const rs = inForce(await this.rules.published(), 'IN.SS-CODE', ['IN'], today) ?? inForce(await this.rules.published(), 'IN.GRATUITY', ['IN'], today);
+    const grat = rs?.values.kind === 'gratuity' ? gratuityDue(rs, { lastWage: pay.gratuityWage, joined: iso(e.joinedOn), lastDay: today }) : null;
+    const encashOn = (await settingFor(tx, c, 'payroll.leave_encashment_basis', scope)) === 'gross' ? pay.gross : pay.gratuityWage;
+    const types = (await tx.leaveType.findMany({ where: { organizationId: org } })).filter((t) => (t.rules as { encashable?: boolean } | null)?.encashable);
+    let leaveDays = D(0);
+    for (const t of types) {
+      const bal = (await tx.leaveLedgerEntry.aggregate({ where: { organizationId: org, employeeId: e.employeeId, leaveTypeId: t.id, entryOn: { lte: asDate(today) } }, _sum: { days: true } }))._sum.days;
+      if (bal && D(bal).gt(0)) leaveDays = leaveDays.add(bal);
+    }
+    return {
+      benefit: r0(D(b.amount)),
+      benefitBasis: b.basis,
+      gratuity: grat?.eligible ? r0(grat.amount) : '0',
+      leaveDays: leaveDays.toFixed(1).replace(/\.0$/, ''),
+      leaveEncashment: r0(encashOn.div(30).mul(leaveDays)),
+    };
   }
 
   async applyVrs(ctx: TenantContext, user: ScopeUser, dto: { schemeId: string; requestedLwd: string; reasonText?: string | null }) {

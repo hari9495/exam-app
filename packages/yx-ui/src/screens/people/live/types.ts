@@ -677,6 +677,11 @@ export interface MyVrsScheme {
   minAge: number;
   minServiceYears: number;
   eligible: boolean;
+  /** PPL-40: the person's age (null: no date of birth on the record) and completed years of service today. */
+  age?: number | null;
+  serviceYears?: number;
+  /** PPL-40 "Your estimate" (eligible only; null when no pay is on record): rupees as whole-number strings. */
+  estimate?: { benefit: string; benefitBasis: string; gratuity: string; leaveDays: string; leaveEncashment: string } | null;
 }
 /** The letter editor's paragraphs (the API's documents/letters Block): colours, highlights and sizes are the editor's presets. */
 export interface EditorRun {

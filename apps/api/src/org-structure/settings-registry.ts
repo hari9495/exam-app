@@ -96,6 +96,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'absconding.days': { label: 'Absconding timeline (days: hold, notice 1, notice 2, abandonment)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['3,7,14,21', '3,7,14,30', '5,10,20,30'], default: '3,7,14,21' },
   // YX-LC-20: retirement age (the last day is the end of that month) and how early the retirement exit opens.
   'retirement.age': { label: 'Retirement age', scopes: ['tenant', 'legal_entity', 'employment_type', 'grade'], dated: false, values: ['58', '60', '62', '65'], default: '58' },
+  // PPL-40: the VRS scheme benefit's days of basic + DA per completed year in the employee's estimate (Rule 2BA allows up to 90; 45 is common).
+  'vrs.benefit_days': { label: 'VRS benefit: days of basic + DA per completed year', scopes: ['tenant', 'legal_entity'], dated: false, values: ['30', '45', '60', '90'], default: '45' },
   'retirement.alert_months': { label: 'Open the retirement exit this many months before', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '3', '6'], default: '6' },
   // YX-LC-19: at the end of a fixed-term contract: remind HR and the manager (30 and 7 days before), or also exit on the day.
   'contract_end.action': { label: 'When a fixed-term contract ends', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['alert', 'auto_exit'], default: 'alert' },

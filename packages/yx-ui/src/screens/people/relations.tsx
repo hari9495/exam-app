@@ -5,7 +5,7 @@ import { ErrorState } from '../../components/feedback';
 import { PlainTable } from '../../components/plain-table';
 import { ListSkeleton } from './people-kit';
 import { ApplyDialog, ClosureDialog, DecideDialog, SchemeDialog, type RetrenchmentScreenProps } from './live/special';
-import type { IrPermission } from './live/types';
+import type { IrPermission, MyVrsScheme } from './live/types';
 import { FileText, GitMerge, Mail, Plus, Split } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Card, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
@@ -23,7 +23,8 @@ import { MenuItem } from '../../components/menu';
 import { Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
 import { matchPersons, type Persona } from './people-logic';
-import { MATCHES, UNIONS, VRS } from './people-data';
+import { MATCHES, TODAY_KEY, UNIONS, VRS } from './people-data';
+import { dayKey } from '../../lib/dates';
 import { CompareTable, MeFrame, PeopleFrame, Segment } from './people-kit';
 import { errorText, useRun } from '../org/org-kit';
 
@@ -729,26 +730,7 @@ function SampleVrsScheme({ tab = 'applications', persona = 'hr', eligible = true
     return (
       <MeFrame active="My exit">
         <PageHeader title={VRS.name} description={`Open ${formatDate(VRS.window[0])} to ${formatDate(VRS.window[1])}. ${VRS.eligibility}.`} />
-        {eligible ? (
-          <>
-            <Card title="Your estimate">
-              <dl className="yx-ppl__rail-facts">
-                <div><dt>Scheme benefit</dt><dd className="yx-ppl__num">{formatINR(1296000)} (45 days × 24 years)</dd></div>
-                <div><dt>On top: gratuity</dt><dd className="yx-ppl__num">{formatINR(1034000)}</dd></div>
-                <div><dt>On top: leave encashment (42 days)</dt><dd className="yx-ppl__num">{formatINR(84000)}</dd></div>
-              </dl>
-              <Text size="sm" tone="secondary" as="p">Estimate only. Tax treatment follows the income tax rules for VRS. Final amounts come in your F&F.</Text>
-            </Card>
-            <div className="yx-ppl__form">
-              <FormField label="Preferred last working day" required>
-                <Select options={[{ value: '30n', label: '30 Nov 2026' }, { value: '31d', label: '31 Dec 2026' }]} value="30n" onChange={() => {}} />
-              </FormField>
-              <div className="yx-ppl__row"><Button>Cancel</Button><Button variant="primary">Apply for VRS</Button></div>
-            </div>
-          </>
-        ) : (
-          <InlineAlert tone="info" title="You're not eligible for this scheme">It needs age 50+ and 10+ years at Hosur plant. You have 7 years. Talk to HR if you think this is wrong.</InlineAlert>
-        )}
+        <VrsApply today={TODAY_KEY} onApply={async () => undefined} schemes={[eligible ? VRS_MINE : { ...VRS_MINE, eligible: false, serviceYears: 7, estimate: null }]} />
       </MeFrame>
     );
   const cols: TableColumn<VrsApp>[] = [
@@ -801,3 +783,98 @@ function SampleVrsScheme({ tab = 'applications', persona = 'hr', eligible = true
 }
 
 /* PPL-42 re-verification lives in ./reverification.tsx. */
+
+/* ---- PPL-40 employee view: the schemes open to me, my estimate, apply; or why I can't (the live view on My exit) ---- */
+
+const VRS_MINE: MyVrsScheme = { id: 'v1', name: VRS.name, closesOn: '2026-10-31', minAge: 50, minServiceYears: 10, eligible: true, age: 57, serviceYears: 24, estimate: { benefit: '1296000', benefitBasis: '45 days × 24 years', gratuity: '1034000', leaveDays: '42', leaveEncashment: '84000' } };
+const isoDate = (k: string) => new Date(`${k}T00:00:00`);
+
+/** Why a scheme is not open to me, from its rule and my age and years (plain words). */
+export function vrsWhyNot(s: MyVrsScheme): string {
+  const rule = `It needs age ${s.minAge}+ and ${s.minServiceYears}+ years of service.`;
+  if (s.age === null) return `${rule} Your date of birth is not on your record, so your age can't be checked. Ask HR to add it.`;
+  if (s.age === undefined) return `${rule} Talk to HR if you think this is wrong.`;
+  const years = s.serviceYears ?? 0;
+  return `${rule} You are ${s.age} with ${years} year${years === 1 ? '' : 's'} of service. Talk to HR if you think this is wrong.`;
+}
+
+function VrsSchemeCard({ s, today, onApply }: { s: MyVrsScheme; today: string; onApply: (s: MyVrsScheme, input: { requestedLwd: string; reasonText: string | null }) => Promise<unknown> }) {
+  const [lwd, setLwd] = useState<Date | null>(null);
+  const [why, setWhy] = useState('');
+  const { busy, error, run } = useRun();
+  const early = useTooEarly(lwd ? [] : [{ fieldId: `vr-lwd-${s.id}`, message: 'Choose the last working day you would like.' }]);
+  const e = s.estimate;
+  return (
+    <Card title={`${s.name} · open until ${formatDate(isoDate(s.closesOn))}`}>
+      <div className="yx-ppl__stack">
+        {!s.eligible ? (
+          <InlineAlert tone="info" title="You're not eligible for this scheme">
+            {vrsWhyNot(s)}
+          </InlineAlert>
+        ) : (
+          <>
+            {e ? (
+              <div className="yx-ppl__stack">
+                <Text weight="semibold">Your estimate</Text>
+                <dl className="yx-ppl__rail-facts">
+                  <div>
+                    <dt>Scheme benefit</dt>
+                    <dd className="yx-ppl__num">{`${formatINR(Number(e.benefit))} (${e.benefitBasis})`}</dd>
+                  </div>
+                  <div>
+                    <dt>On top: gratuity</dt>
+                    <dd className="yx-ppl__num">{formatINR(Number(e.gratuity))}</dd>
+                  </div>
+                  <div>
+                    <dt>{`On top: leave encashment (${e.leaveDays} days)`}</dt>
+                    <dd className="yx-ppl__num">{formatINR(Number(e.leaveEncashment))}</dd>
+                  </div>
+                </dl>
+                <Text size="sm" tone="secondary" as="p">
+                  Estimate only. Tax treatment follows the income tax rules for VRS. Final amounts come in your F&amp;F.
+                </Text>
+              </div>
+            ) : (
+              <Text size="sm" tone="secondary" as="p">
+                Your estimate needs your pay on record. HR works out the amounts when you apply.
+              </Text>
+            )}
+            <div className="yx-ppl__form">
+              <FormField id={`vr-lwd-${s.id}`} label="Preferred last working day" required error={early.errorOf(`vr-lwd-${s.id}`)}>
+                <DatePicker value={lwd} onChange={setLwd} min={isoDate(today)} aria-label="Preferred last working day" />
+              </FormField>
+              <FormField id={`vr-why-${s.id}`} label="Anything HR should know" optional>
+                <TextArea value={why} onChange={setWhy} rows={2} maxLength={1000} />
+              </FormField>
+              {error && (
+                <InlineAlert tone="danger" title="Not sent">
+                  {error}
+                </InlineAlert>
+              )}
+              <div className="yx-ppl__row">
+                <Button onClick={() => (setLwd(null), setWhy(''))} disabled={busy !== null}>
+                  Cancel
+                </Button>
+                <Button variant="primary" loading={busy === 'apply'} onClick={() => !early.stop() && void run('apply', () => onApply(s, { requestedLwd: dayKey(lwd!), reasonText: why.trim() || null }))}>
+                  Apply for VRS
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+/** PPL-40 employee view (My exit): every open scheme, with my estimate and Apply, or why I'm not eligible. */
+export function VrsApply({ schemes, today, onApply }: { schemes: MyVrsScheme[]; today: string; onApply: (s: MyVrsScheme, input: { requestedLwd: string; reasonText: string | null }) => Promise<unknown> }) {
+  if (!schemes.length) return null;
+  return (
+    <div className="yx-ppl__stack">
+      {schemes.map((s) => (
+        <VrsSchemeCard key={s.id} s={s} today={today} onApply={onApply} />
+      ))}
+    </div>
+  );
+}

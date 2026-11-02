@@ -453,8 +453,18 @@ describe('Lifecycle batch 6e', () => {
     emp.lata = await hire('Lata', 'SF-050', { userId: users.lata });
     await dob(emp.lata, yearsAgo(45));
     await api('hr', 'post', '/lifecycle/vrs-schemes').send({ name: `VRS ${run}`, opensOn: today, closesOn: addDays(today, 30), minAge: 40, minServiceYears: 0 }).expect(201);
-    const mine = (await api('lata', 'get', '/lifecycle/me/vrs').expect(200)).body.schemes;
-    expect(mine[0]).toMatchObject({ eligible: true });
+    // PPL-40: a second scheme for 50+ is listed as not eligible with her age and years; no estimate without pay on record.
+    await api('hr', 'post', '/lifecycle/vrs-schemes').send({ name: `VRS 50 ${run}`, opensOn: today, closesOn: addDays(today, 30), minAge: 50, minServiceYears: 0 }).expect(201);
+    await api('mgr', 'post', '/lifecycle/vrs-schemes').send({ name: `VRS x ${run}`, opensOn: today, closesOn: addDays(today, 30), minAge: 50, minServiceYears: 0 }).expect(403);
+    const listed = (await api('lata', 'get', '/lifecycle/me/vrs').expect(200)).body.schemes as { id: string; name: string; eligible: boolean }[];
+    expect(listed.find((x) => x.name === `VRS 50 ${run}`)).toMatchObject({ eligible: false, minAge: 50, age: 45, serviceYears: 0, estimate: null });
+    const mine = listed.filter((x) => x.name === `VRS ${run}`);
+    expect(mine[0]).toMatchObject({ eligible: true, age: 45, estimate: null });
+    // Not eligible: applying is refused with the rule.
+    const refusedVrs = await api('lata', 'post', '/lifecycle/me/vrs').send({ schemeId: listed.find((x) => x.name === `VRS 50 ${run}`)!.id, requestedLwd: addDays(today, 60) }).expect(400);
+    expect(refusedVrs.body.message).toMatch(/aged 50 or more/);
+    // Someone else's employee cannot apply for her.
+    await api('adminB', 'post', '/lifecycle/me/vrs').send({ schemeId: mine[0].id, requestedLwd: addDays(today, 60) }).expect((r) => expect([403, 404]).toContain(r.status));
     await api('lata', 'post', '/lifecycle/me/vrs').send({ schemeId: mine[0].id, requestedLwd: addDays(today, 60) }).expect(201);
     const task = await inA((tx) => tx.wfTask.findFirstOrThrow({ where: { status: 'open', assigneeUserId: { in: [users.hr, users.hr2] } }, orderBy: { createdAt: 'desc' } }));
     await api(task.assigneeUserId === users.hr ? 'hr' : 'hr2', 'post', `/workflow/approvals/tasks/${task.id}/decide`).send({ decision: 'approve' }).expect(200);

@@ -24,7 +24,8 @@ import { abscondingState, addWorkingDays, daysBetween, fnfTotals, gratuity, spli
 import { CLEARANCE, DEATH_PAYEES, DEPROVISIONING, EXIT_CASES, HOLIDAYS, ME, MEERA, MEERA_FNF, TODAY } from './people-data';
 import { DueCountdown, exportCsv, ExplainedLines, ListSkeleton, MeFrame, PeopleFrame, StatusBadge, StatusChecklist, useSay, type ChecklistRow } from './people-kit';
 import { HandoffCard, HrFactsDialog, NoticeDialog, SignOffDialog, WithdrawExitDialog, type ExitCaseScreenProps } from './live/exits';
-import { PayeesDialog, VrsCard } from './live/special';
+import { PayeesDialog } from './live/special';
+import { VrsApply } from './relations';
 import { TaskForm } from './live/lifecycle';
 import { dayKey } from '../../lib/dates';
 import type { AbscondingRow, Choice, ClearanceItem, ExitStatus, ExitStep, ExitWorkspace, FormDef, InterviewAnswers, InterviewForm, LoadState, MyClearanceItem, MyResignation, MyVrsScheme, Payee, Payees } from './live/types';
@@ -119,7 +120,7 @@ function ResignationForm({ data, live, initial }: { data: MyResignation; live: L
   return (
     <MeFrame active="My exit">
       <PageHeader title="Resign" description={RESIGN_TEXT} />
-      {live.vrs && <VrsCard schemes={live.vrs.schemes} today={data.today} onApply={live.vrs.onApply} />}
+      {live.vrs && <VrsApply schemes={live.vrs.schemes} today={data.today} onApply={live.vrs.onApply} />}
       {n ? (
         <>
           <ResignationFields data={data} draft={draft} setDraft={setDraft} tried={tried} />
@@ -290,7 +291,7 @@ function sampleResignation(today: Date, current: Partial<MyExit> | null, vrs: bo
     onResign: none,
     onWithdraw: none,
     interviewHref: '#exit-interview',
-    ...(vrs ? { vrs: { schemes: [{ id: 'v1', name: 'Voluntary retirement 2026', closesOn: dayKey(plusDays(today, 45)), minAge: 50, minServiceYears: 10, eligible: true }], onApply: none } } : {}),
+    ...(vrs ? { vrs: { schemes: [{ id: 'v1', name: 'Voluntary retirement 2026', closesOn: dayKey(plusDays(today, 45)), minAge: 50, minServiceYears: 10, eligible: true, age: 57, serviceYears: 24, estimate: { benefit: '1296000', benefitBasis: '45 days × 24 years', gratuity: '1034000', leaveDays: '42', leaveEncashment: '84000' } }], onApply: none } } : {}),
   };
 }
 

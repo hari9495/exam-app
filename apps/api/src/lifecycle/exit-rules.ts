@@ -139,3 +139,24 @@ export function alumniUntil(lastDay: string, years: number): string {
 
 /** An ISO day plus n days. */
 export const addDaysIso = (iso: string, n: number) => new Date(day(iso).getTime() + n * 86_400_000).toISOString().slice(0, 10);
+
+/**
+ * PPL-40 VRS scheme benefit (Income Tax Rule 2BA): `daysPerYear` days of the monthly basic + DA (a month counted as 30
+ * days) for each completed year, or basic + DA for each month left to retirement, whichever is lower. Whole months left
+ * from this month to the month the person reaches `retireAge` (none once past it). Rupees, not rounded.
+ */
+export function vrsBenefit(i: { monthlyWage: number; daysPerYear: number; completedYears: number; dob: string; today: string; retireAge: number }) {
+  const [by, bm] = i.dob.split('-').map(Number);
+  const [ty, tm] = i.today.split('-').map(Number);
+  const monthsLeft = Math.max(0, (by + i.retireAge - ty) * 12 + (bm - tm));
+  const perYear = (i.monthlyWage * i.daysPerYear * i.completedYears) / 30;
+  const byMonths = i.monthlyWage * monthsLeft;
+  return perYear <= byMonths ? { amount: perYear, basis: `${i.daysPerYear} days × ${i.completedYears} years` } : { amount: byMonths, basis: `${monthsLeft} months left to retirement` };
+}
+
+/** Age in whole years on a date: the new age counts from the birthday itself. */
+export function ageOn(dob: string, on: string) {
+  const [by, bm, bd] = dob.split('-').map(Number);
+  const [y, m, d] = on.split('-').map(Number);
+  return y - by - (m < bm || (m === bm && d < bd) ? 1 : 0);
+}
