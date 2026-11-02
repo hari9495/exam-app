@@ -1168,3 +1168,8 @@ for a sent-back on-duty request ("Change and send again"), TIM-19 SentBack style
 wired to the existing API; (2) overtime past the pre-approved hours is allowed and flagged to the approver, not refused;
 (3) `attendance.overtime.pre_approval` defaults to `flag`; (4) overtime pre-approval is manager-only (no HR step, no send
 back), like work from home within its limit.
+
+## Founder answers, 2 Nov 2026 (Pre-approve overtime on the muster, "ok for all")
+(1) the muster sends the company's `attendance.overtime.plan_ahead_days` and the sheet uses it; (2) only the reporting
+line (direct and indirect managers) may pre-approve a report's overtime; dotted-line, department-head and HR routes are
+removed from the plan endpoint; (3) for people covered by the Factories Act the sheet offers only Paid overtime.
