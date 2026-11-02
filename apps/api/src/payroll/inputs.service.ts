@@ -132,18 +132,67 @@ export class PayInputsService implements OnModuleInit {
       await this.notLocked(tx, org, e.legalEntityId, dto.month);
       const comp = await tx.payComponent.findFirst({ where: { organizationId: org, code: dto.componentCode, status: 'active' } });
       if (!comp || comp.statutory || !['earning', 'deduction', 'reimbursement'].includes(comp.kind)) throw new BadRequestException('Choose an earning, deduction or reimbursement component (not a statutory one).');
-      const limit = await settingFor(tx, c, 'payroll.one_time_review_above', { legalEntityId: e.legalEntityId });
-      const review = limit !== 'none' && D(dto.amount).gt(limit);
-      const row = await tx.oneTimePay.create({ data: { organizationId: org, legalEntityId: e.legalEntityId, employeeId: e.employeeId, employmentId: e.id, componentCode: comp.code, amount: dto.amount, periodStart: asDate(`${dto.month}-01`), endOn: dto.endOn ? asDate(dto.endOn) : null, reason: dto.reason, status: review ? 'pending' : 'approved', createdBy: v.userId! } });
-      if (review) {
-        const approvers = await this.approversFor(tx, org, 'payroll.run.approve', e.legalEntityId, v.userId!, e.employeeId);
-        if (!approvers.length) throw new BadRequestException(`One-time pay above ₹${limit} needs someone else to approve it. Give a second person "payroll.run.approve".`);
-        const sub = await this.engine.submit(tx, c, { type: ONE_TIME, subjectType: 'one_time_pay', subjectId: row.id, title: `One-time pay of ₹${dto.amount}`, summary: [{ label: 'Component', value: comp.name }, { label: 'Month', value: dto.month }, { label: 'Why', value: dto.reason.slice(0, 200) }], subjectPersonId: null, requesterUserId: v.userId!, raisedByUserId: v.userId!, steps: [{ name: 'Payroll approval', approvers: [{ kind: 'users', userIds: approvers }], mode: 'any', remindAfterHours: 24 }], payload: {}, payloadFields: [], fallbackUserIds: [] });
-        notices.push(...sub.notices);
-        await tx.oneTimePay.update({ where: { id: row.id }, data: { wfRequestId: sub.id } });
+      const row = await tx.oneTimePay.create({ data: { organizationId: org, legalEntityId: e.legalEntityId, employeeId: e.employeeId, employmentId: e.id, componentCode: comp.code, amount: dto.amount, periodStart: asDate(`${dto.month}-01`), endOn: dto.endOn ? asDate(dto.endOn) : null, reason: dto.reason, status: 'draft', createdBy: v.userId! } });
+      // PAY-05: a draft waits in the list until it is sent for approval (one by one or in bulk); nothing is paid from it.
+      if (dto.draft) {
+        await audit(tx, c, 'payroll.one_time.drafted', 'one_time_pay', row.id, { employeeId: e.employeeId, componentCode: comp.code, month: dto.month });
+        return { id: row.id, status: 'draft' };
       }
-      await audit(tx, c, 'payroll.one_time.added', 'one_time_pay', row.id, { employeeId: e.employeeId, componentCode: comp.code, month: dto.month, review });
-      return { id: row.id, status: row.status };
+      return { id: row.id, status: await this.sendOneTime(tx, c, v, row, comp.name, notices) };
+    });
+    await this.engine.send(ctx, notices);
+    return out;
+  }
+
+  /** A draft goes in: approved at once, or above the company's limit to someone else for approval. */
+  private async sendOneTime(tx: Tx, c: CompanyContext, v: Viewer, row: Prisma.OneTimePayGetPayload<object>, componentName: string, notices: Notice[]) {
+    const org = c.organizationId;
+    const month = dateOf(row.periodStart).slice(0, 7);
+    const amount = row.amount.toFixed(2);
+    const limit = await settingFor(tx, c, 'payroll.one_time_review_above', { legalEntityId: row.legalEntityId });
+    const review = limit !== 'none' && row.amount.gt(limit);
+    await tx.oneTimePay.update({ where: { id: row.id }, data: { status: review ? 'pending' : 'approved' } });
+    if (review) {
+      const approvers = await this.approversFor(tx, org, 'payroll.run.approve', row.legalEntityId, v.userId!, row.employeeId);
+      if (!approvers.length) throw new BadRequestException(`One-time pay above ₹${limit} needs someone else to approve it. Give a second person "payroll.run.approve".`);
+      const sub = await this.engine.submit(tx, c, { type: ONE_TIME, subjectType: 'one_time_pay', subjectId: row.id, title: `One-time pay of ₹${amount}`, summary: [{ label: 'Component', value: componentName }, { label: 'Month', value: month }, { label: 'Why', value: row.reason.slice(0, 200) }], subjectPersonId: null, requesterUserId: v.userId!, raisedByUserId: v.userId!, steps: [{ name: 'Payroll approval', approvers: [{ kind: 'users', userIds: approvers }], mode: 'any', remindAfterHours: 24 }], payload: {}, payloadFields: [], fallbackUserIds: [] });
+      notices.push(...sub.notices);
+      await tx.oneTimePay.update({ where: { id: row.id }, data: { wfRequestId: sub.id } });
+    }
+    await audit(tx, c, 'payroll.one_time.added', 'one_time_pay', row.id, { employeeId: row.employeeId, componentCode: row.componentCode, month, review });
+    return review ? 'pending' : 'approved';
+  }
+
+  /**
+   * PAY-05 bulk actions on drafts: send them for approval, or delete them (kept as cancelled for the audit trail). All or
+   * nothing: a chosen item that is not one's draft in scope, or in a locked month, stops the whole action.
+   */
+  async bulkOneTime(ctx: TenantContext, user: ScopeUser, ids: string[], action: 'submit' | 'delete') {
+    const v = await this.viewer(user);
+    const notices: Notice[] = [];
+    const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const scope = await entitiesFor(tx, c, v, 'payroll.input.manage');
+      await payScope(tx, scope);
+      await tx.$queryRaw`SELECT id FROM one_time_pays WHERE organization_id = ${org}::uuid AND id = ANY(${ids}::uuid[]) FOR UPDATE`;
+      const rows = await tx.oneTimePay.findMany({ where: { organizationId: org, id: { in: ids }, legalEntityId: { in: scope } } });
+      if (rows.length !== new Set(ids).size) throw new NotFoundException('Not found');
+      const notDraft = rows.filter((r) => r.status !== 'draft');
+      if (notDraft.length) throw new ConflictException({ statusCode: 409, code: 'NOT_DRAFT', message: `${notDraft.length} of the chosen items ${notDraft.length === 1 ? 'is' : 'are'} not a draft any more (someone sent or deleted ${notDraft.length === 1 ? 'it' : 'them'}). Reload and choose again.` });
+      for (const r of rows) {
+        if (await this.isSelf(tx, org, v, r.employeeId)) throw new ForbiddenException('Someone else enters pay inputs and holds about you.');
+        await this.notLocked(tx, org, r.legalEntityId, dateOf(r.periodStart).slice(0, 7));
+      }
+      const names = new Map((await tx.payComponent.findMany({ where: { organizationId: org, code: { in: rows.map((r) => r.componentCode) } }, select: { code: true, name: true } })).map((x) => [x.code, x.name]));
+      const out: { id: string; status: string }[] = [];
+      for (const r of rows) {
+        if (action === 'delete') {
+          await tx.oneTimePay.update({ where: { id: r.id }, data: { status: 'cancelled' } });
+          await audit(tx, c, 'payroll.one_time.draft_deleted', 'one_time_pay', r.id, { employeeId: r.employeeId });
+          out.push({ id: r.id, status: 'cancelled' });
+        } else out.push({ id: r.id, status: await this.sendOneTime(tx, c, v, r, names.get(r.componentCode) ?? r.componentCode, notices) });
+      }
+      return { action, items: out };
     });
     await this.engine.send(ctx, notices);
     return out;

@@ -234,6 +234,38 @@ describe('Payroll batch 5c', () => {
       (await api('payAdmin', 'post', '/payroll/one-time-pays').send({ employeeId: ids.emp1, componentCode: 'bonus', amount: '5000', month, reason: 'Festival bonus' }).expect(201)).body.status,
     ).toBe('approved');
 
+    // PAY-05 effect summary: the calculator's change for one more bonus (gross up by it; nothing saved); wrong role,
+    // another company and bad input refused.
+    const before = await inA((tx) => tx.oneTimePay.count());
+    const eff = (await api('payAdmin', 'get', `/payroll/one-time-pays/effect?employeeId=${ids.emp1}&componentCode=bonus&amount=10000&month=${month}`).expect(200)).body;
+    expect(eff).toMatchObject({ month, component: { code: 'bonus' }, gross: '10000.00' });
+    expect(Number(eff.net)).toBeLessThanOrEqual(10000);
+    expect(Number(eff.net)).toBeCloseTo(10000 - Number(eff.tds) - Number(eff.pfEmployee) - Number(eff.esiEmployee), 2);
+    expect(await inA((tx) => tx.oneTimePay.count())).toBe(before);
+    await api('emp1', 'get', `/payroll/one-time-pays/effect?employeeId=${ids.emp1}&componentCode=bonus&amount=10000&month=${month}`).expect(403);
+    await api('payAdminB', 'get', `/payroll/one-time-pays/effect?employeeId=${ids.emp1}&componentCode=bonus&amount=10000&month=${month}`).expect(404);
+    await api('payAdmin', 'get', `/payroll/one-time-pays/effect?employeeId=${ids.emp1}&componentCode=pf_employee&amount=10000&month=${month}`).expect(400);
+    await api('payAdmin', 'get', `/payroll/one-time-pays/effect?employeeId=${ids.emp1}&componentCode=bonus&amount=lots&month=${month}`).expect(400);
+
+    // PAY-05 drafts: kept out of payroll until sent; sent or deleted in bulk, all or nothing; another company's refused.
+    const d1 = (await api('payAdmin', 'post', '/payroll/one-time-pays').send({ employeeId: ids.emp2, componentCode: 'bonus', amount: '700', month, reason: 'Spot award', draft: true }).expect(201)).body;
+    const d2 = (await api('payAdmin', 'post', '/payroll/one-time-pays').send({ employeeId: ids.emp2, componentCode: 'bonus', amount: '800', month, reason: 'Spot award', draft: 'yes' }).expect(400)).body;
+    expect(d2.message).toBeTruthy();
+    const d3 = (await api('payAdmin', 'post', '/payroll/one-time-pays').send({ employeeId: ids.emp2, componentCode: 'bonus', amount: '900', month, reason: 'Spot award', draft: true }).expect(201)).body;
+    expect(d1.status).toBe('draft');
+    const approvedId = ((await api('payAdmin', 'get', `/payroll/one-time-pays?month=${month}`).expect(200)).body as { id: string; status: string; amount: string }[]).find((r) => r.status === 'approved' && r.amount === '5000.00')!.id;
+    expect((await api('payAdmin', 'post', '/payroll/one-time-pays/bulk').send({ ids: [d1.id, approvedId], action: 'submit' }).expect(409)).body.code).toBe('NOT_DRAFT');
+    await api('payAdminB', 'post', '/payroll/one-time-pays/bulk').send({ ids: [d1.id], action: 'submit' }).expect(404);
+    await api('emp1', 'post', '/payroll/one-time-pays/bulk').send({ ids: [d1.id], action: 'submit' }).expect(403);
+    await api('payAdmin', 'post', '/payroll/one-time-pays/bulk').send({ ids: [], action: 'submit' }).expect(400);
+    await api('payAdmin', 'post', '/payroll/one-time-pays/bulk').send({ ids: [d1.id], action: 'approve' }).expect(400);
+    expect((await api('payAdmin', 'post', '/payroll/one-time-pays/bulk').send({ ids: [d1.id], action: 'submit' }).expect(200)).body).toEqual({ action: 'submit', items: [{ id: d1.id, status: 'approved' }] });
+    expect((await api('payAdmin', 'post', '/payroll/one-time-pays/bulk').send({ ids: [d1.id], action: 'delete' }).expect(409)).body.code).toBe('NOT_DRAFT');
+    expect((await api('payAdmin', 'post', '/payroll/one-time-pays/bulk').send({ ids: [d3.id], action: 'delete' }).expect(200)).body.items).toEqual([{ id: d3.id, status: 'cancelled' }]);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: { in: ['payroll.one_time.drafted', 'payroll.one_time.draft_deleted'] } } }))).toBe(3);
+    // Keep the run's totals as before: the sent spot award is cancelled again.
+    await api('payAdmin', 'patch', `/payroll/one-time-pays/${d1.id}/cancel`).expect(200);
+
     const loan = (await api('emp2', 'post', '/payroll/loans').send({ loanType: 'advance', principal: '12000', instalments: 4, firstMonth: month, reason: 'Medical expenses' }).expect(201)).body;
     expect(loan).toMatchObject({ status: 'requested', emi: '3000.00' });
     await api('emp2', 'post', '/payroll/loans').send({ employeeId: ids.emp1, loanType: 'advance', principal: '12000', instalments: 4, firstMonth: month, reason: 'For someone else' }).expect(404);

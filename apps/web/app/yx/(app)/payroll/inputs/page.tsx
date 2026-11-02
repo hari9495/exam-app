@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { OneTimePayScreen, type HoldRow, type LopRow, type OneTimeItem } from '@yukthix/ui/pay';
-import { payState, usePay, usePayWrite } from '../../../../../lib/yx-pay';
+import { OneTimePayScreen, type HoldRow, type LopRow, type OneTimeEffect, type OneTimeItem } from '@yukthix/ui/pay';
+import { payState, usePay, usePayRead, usePayWrite } from '../../../../../lib/yx-pay';
 import { usePeopleSearch } from '../../../../../lib/yx-pay-5b';
 import { useNames } from '../../../../../lib/yx-pay-5j';
 import { todayIndia } from '../../../../../lib/yx-time';
@@ -17,6 +17,7 @@ export default function YxPayInputsPage() {
   const oneTime = usePay<OneTimeItem[]>(`/one-time-pays?month=${month}`);
   const holds = usePay<HoldRow[]>('/holds');
   const write = usePayWrite();
+  const read = usePayRead();
   const search = usePeopleSearch();
   const nameOf = useNames();
   return (
@@ -40,6 +41,8 @@ export default function YxPayInputsPage() {
           rows: oneTime.data ?? null,
           onAdd: (row) => write<{ status: string }>('/one-time-pays', row),
           onCancel: (id) => write(`/one-time-pays/${encodeURIComponent(id)}/cancel`, undefined, 'PATCH'),
+          onBulk: (ids, action) => write<{ items: { id: string; status: string }[] }>('/one-time-pays/bulk', { ids, action }),
+          onEffect: (x) => read<OneTimeEffect>(`/one-time-pays/effect?${new URLSearchParams(x).toString()}`),
         },
         holds: {
           state: payState(holds),

@@ -97,7 +97,15 @@ export interface LiveInputs {
     /** PAY-04 late request for a day of a frozen or locked month; someone else approves it (POST input-corrections). */
     onLateRequest?: (x: { employeeId: string; on: string; kind: 'attendance'; shouldBe: string; reason: string }) => Promise<unknown>;
   };
-  oneTime: { rows: OneTimeItem[] | null; onAdd: (row: { employeeId: string; componentCode: string; amount: string; month: string; reason: string; endOn?: string }) => Promise<{ status: string }>; onCancel: (id: string) => Promise<unknown> };
+  oneTime: {
+    rows: OneTimeItem[] | null;
+    onAdd: (row: { employeeId: string; componentCode: string; amount: string; month: string; reason: string; endOn?: string; draft?: boolean }) => Promise<{ status: string }>;
+    onCancel: (id: string) => Promise<unknown>;
+    /** PAY-05 bulk actions on drafts (POST one-time-pays/bulk). */
+    onBulk?: (ids: string[], action: 'submit' | 'delete') => Promise<{ items: { id: string; status: string }[] }>;
+    /** PAY-05 effect summary: gross, PF, ESI, TDS and net change from the payroll calculator (GET one-time-pays/effect). */
+    onEffect?: (x: { employeeId: string; componentCode: string; amount: string; month: string }) => Promise<OneTimeEffect>;
+  };
   holds: { state: LoadState; rows: HoldRow[] | null; onAdd: (row: { employeeId: string; reasonCode: string; note: string }) => Promise<unknown>; onRelease: (id: string, body: { reason: string; route: HoldRoute }) => Promise<unknown> };
 }
 
@@ -419,7 +427,22 @@ function LateRequestDrawer({ live, onClose, onSaved }: { live: LiveInputs; onClo
 
 /* ------------------------------------------------------------------ PAY-05 one-time pay */
 
+/** GET one-time-pays/effect: what one item changes in the month's payslip (rupees, signed). */
+export interface OneTimeEffect {
+  month: string;
+  component: { code: string; name: string; kind: string };
+  gross: string;
+  pfEmployee: string;
+  pfEmployer: string;
+  esiEmployee: string;
+  esiEmployer: string;
+  esiCovered: boolean;
+  tds: string;
+  net: string;
+}
+
 const OT_STATUS: Record<string, { label: string; tone: BadgeTone }> = {
+  draft: { label: 'Draft', tone: 'neutral' },
   approved: { label: 'Approved', tone: 'info' },
   pending: { label: 'Awaiting approval', tone: 'warning' },
   paid: { label: 'Paid', tone: 'success' },
@@ -436,6 +459,9 @@ function LiveOneTimePanel({ live }: { live: LiveInputs }) {
   const [adding, setAdding] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [cancelling, setCancelling] = useState<OneTimeItem | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [deleting, setDeleting] = useState<string[] | null>(null);
+  const { busy: bulkBusy, run: bulkRun } = useRun();
   const [results, setResults] = useState<{ rows: UploadRowResult[]; ok: { employeeId: string; componentCode: string; amount: string; month: string; reason: string }[] } | null>(null);
   const [q, setQ] = useState('');
   const [filters, setFilters] = useState<FilterValue[]>([
@@ -455,6 +481,19 @@ function LiveOneTimePanel({ live }: { live: LiveInputs }) {
     { key: 'status', header: 'Status', type: 'status', value: (r) => otStatus(r.status).label, statusTone: (v) => Object.values(OT_STATUS).find((s) => s.label === v)?.tone ?? 'neutral', width: 170 },
   ];
   const opts = (xs: string[]) => xs.map((v) => ({ value: v, label: v }));
+  const draftsIn = (ids: string[]) => rows.filter((r) => ids.includes(r.id) && r.status === 'draft').map((r) => r.id);
+  const bulk = (ids: string[], action: 'submit' | 'delete') =>
+    void bulkRun(action, async () => {
+      try {
+        const out = await live.oneTime.onBulk!(ids, action);
+        setSelected([]);
+        const waiting = out.items.filter((i) => i.status === 'pending').length;
+        say(action === 'delete' ? `${plural(ids.length, 'draft')} deleted` : `${plural(ids.length, 'item')} sent${waiting ? `; ${waiting} above the company's limit ${waiting === 1 ? 'waits' : 'wait'} for approval` : ''}`);
+      } catch (e) {
+        say(failText(e), 'error');
+        throw e;
+      }
+    });
   return (
     <div className="yx-pay-stack">
       <SectionTitle
@@ -477,6 +516,27 @@ function LiveOneTimePanel({ live }: { live: LiveInputs }) {
         rows={shown}
         getRowId={(r) => r.id}
         state={live.oneTime.rows ? 'ready' : 'loading'}
+        {...(live.oneTime.onBulk
+          ? {
+              selectable: true,
+              selectedIds: selected,
+              onSelectedChange: setSelected,
+              bulkActions: (ids: string[]) => {
+                const drafts = draftsIn(ids);
+                return (
+                  <>
+                    <Button size="sm" loading={bulkBusy === 'submit'} onClick={() => (drafts.length ? bulk(drafts, 'submit') : say('None of the selected items is a draft.', 'default'))}>
+                      Send {drafts.length} for approval
+                    </Button>
+                    <Button size="sm" variant="danger" onClick={() => (drafts.length ? setDeleting(drafts) : say('Only drafts can be deleted, and none is selected.', 'default'))}>
+                      Delete {plural(drafts.length, 'draft')}
+                    </Button>
+                    {drafts.length < ids.length && <span className="yx-pay-note">Only drafts can be sent or deleted</span>}
+                  </>
+                );
+              },
+            }
+          : {})}
         filtered={shown.length !== rows.length}
         onClearFilters={() => {
           setFilters((fs) => fs.map((f) => ({ ...f, values: [] }) as FilterValue));
@@ -485,7 +545,7 @@ function LiveOneTimePanel({ live }: { live: LiveInputs }) {
         toolbar={
           <FilterBar
             fields={[
-              { key: 'status', label: 'Status', type: 'multi', options: opts(['Approved', 'Awaiting approval', 'Paid', 'Cancelled', 'Rejected']) },
+              { key: 'status', label: 'Status', type: 'multi', options: opts(['Draft', 'Approved', 'Awaiting approval', 'Paid', 'Cancelled', 'Rejected']) },
               { key: 'source', label: 'Source', type: 'multi', options: opts([...new Set(rows.map((r) => (r.source === 'manual' ? 'Manual' : componentText(r.source))))]) },
             ]}
             value={filters}
@@ -505,6 +565,20 @@ function LiveOneTimePanel({ live }: { live: LiveInputs }) {
         empty={<EmptyState title={`No one-time pay in ${monthName(live.month)}.`} description="Items from expenses, hiring, performance and cases appear here once approved." action={<Button variant="primary" icon={Plus} onClick={() => setAdding(true)}>Add one-time pay</Button>} />}
       />
       {adding && <OneTimeDrawer live={live} onClose={() => setAdding(false)} onSaved={(t) => say(t)} />}
+      <ConfirmDialog
+        open={!!deleting}
+        onOpenChange={(o) => !o && setDeleting(null)}
+        title={deleting ? `Delete ${plural(deleting.length, 'draft')}?` : ''}
+        consequence="They are never paid. The audit trail keeps them as deleted."
+        confirmLabel="Delete drafts"
+        cancelLabel="Keep them"
+        destructive
+        onConfirm={async () => {
+          const ids = deleting!;
+          setDeleting(null);
+          bulk(ids, 'delete');
+        }}
+      />
       <ConfirmDialog
         open={!!cancelling}
         onOpenChange={(o) => !o && setCancelling(null)}
@@ -580,6 +654,8 @@ function OneTimeDrawer({ live, onClose, onSaved }: { live: LiveInputs; onClose: 
   const [end, setEnd] = useState<Date | null>(null);
   const [reason, setReason] = useState('');
   const { busy, error, run } = useRun();
+  const [effect, setEffect] = useState<OneTimeEffect | null>(null);
+  const [effectError, setEffectError] = useState<string | null>(null);
   const component = kind === 'other' ? code.trim() : kind;
   const start = day(`${month}-01`);
   const plan = recurring && end && amount ? recurringPlan(amount, start, end) : null;
@@ -592,6 +668,37 @@ function OneTimeDrawer({ live, onClose, onSaved }: { live: LiveInputs; onClose: 
     ...(reason.trim().length < 3 ? [{ fieldId: 'ot-why', message: 'Say what it is for.' }] : []),
   ];
   const shown = useSaveErrors(errors);
+  // PAY-05 effect summary: asked of the payroll calculator once the person, component, amount and month are set.
+  const effectKey = who && CODE.test(component) && amount && amount > 0 && /^\d{4}-\d{2}$/.test(month) && live.oneTime.onEffect ? `${who.id}|${component}|${amount}|${month}` : null;
+  useEffect(() => {
+    setEffect(null);
+    setEffectError(null);
+    if (!effectKey) return;
+    let live2 = true;
+    const t = setTimeout(() => {
+      live.oneTime
+        .onEffect!({ employeeId: who!.id, componentCode: component, amount: String(amount), month })
+        .then((x) => live2 && setEffect(x))
+        .catch((e) => live2 && setEffectError(failText(e)));
+    }, 400);
+    return () => {
+      live2 = false;
+      clearTimeout(t);
+    };
+  }, [effectKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const signed = (v: string) => (Number(v) === 0 ? 'No change' : `${Number(v) > 0 ? '+' : '−'}${formatINR(Math.abs(Number(v)))}`);
+  const add = (draft: boolean) => {
+    if (errors.length) {
+      shown.reveal();
+      document.getElementById(errors[0].fieldId)?.focus();
+      return;
+    }
+    void run(draft ? 'draft' : 'add', async () => {
+      const r = await live.oneTime.onAdd({ employeeId: who!.id, componentCode: component, amount: String(amount), month, reason: reason.trim(), ...(recurring && end ? { endOn: isoOf(end) } : {}), ...(draft ? { draft: true } : {}) });
+      onSaved(draft ? `${componentText(component)} of ${formatINR(amount!)} for ${who!.name} saved as a draft` : r.status === 'pending' ? `${componentText(component)} of ${formatINR(amount!)} for ${who!.name} added; above the company's limit, so it waits for approval` : `${componentText(component)} of ${formatINR(amount!)}${recurring ? ' a month' : ''} for ${who!.name} added`);
+      onClose();
+    });
+  };
   return (
     <Drawer
       open
@@ -602,22 +709,12 @@ function OneTimeDrawer({ live, onClose, onSaved }: { live: LiveInputs; onClose: 
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button
-            variant="primary"
-            loading={busy === 'add'}
-            onClick={() => {
-              if (errors.length) {
-                shown.reveal();
-                document.getElementById(errors[0].fieldId)?.focus();
-                return;
-              }
-              void run('add', async () => {
-                const r = await live.oneTime.onAdd({ employeeId: who!.id, componentCode: component, amount: String(amount), month, reason: reason.trim(), ...(recurring && end ? { endOn: isoOf(end) } : {}) });
-                onSaved(r.status === 'pending' ? `${componentText(component)} of ${formatINR(amount!)} for ${who!.name} added; above the company's limit, so it waits for approval` : `${componentText(component)} of ${formatINR(amount!)}${recurring ? ' a month' : ''} for ${who!.name} added`);
-                onClose();
-              });
-            }}
-          >
+          {live.oneTime.onBulk && (
+            <Button loading={busy === 'draft'} onClick={() => add(true)}>
+              Save as draft
+            </Button>
+          )}
+          <Button variant="primary" loading={busy === 'add'} onClick={() => add(false)}>
             Add one-time pay
           </Button>
         </>
@@ -676,6 +773,17 @@ function OneTimeDrawer({ live, onClose, onSaved }: { live: LiveInputs; onClose: 
                     { label: plan ? `Total over ${plan.months} months` : 'Total', value: plan ? formatINR(plan.total) : 'Choose the end date' },
                   ]
                 : [{ label: 'Pay in', value: /^\d{4}-\d{2}$/.test(month) ? monthName(month) : '—' }]),
+              ...(live.oneTime.onEffect
+                ? effect
+                  ? [
+                      { label: 'Gross pay', value: signed(effect.gross) },
+                      { label: `TDS in ${monthName(effect.month)}`, value: signed(effect.tds) },
+                      { label: 'PF (employee)', value: Number(effect.pfEmployee) ? signed(effect.pfEmployee) : 'Not PF wage' },
+                      { label: 'ESI (employee)', value: effect.esiCovered ? signed(effect.esiEmployee) : 'Not covered by ESI' },
+                      { label: 'Net pay', value: signed(effect.net) },
+                    ]
+                  : [{ label: 'Tax, PF and ESI', value: effectError ?? (effectKey ? 'Working it out…' : 'Shown once the person, amount and month are set') }]
+                : []),
               { label: 'Approval', value: <>Above the company's limit it waits for someone with payroll approval.<br /><span className="yx-pay-note">You can't approve your own item</span></> },
             ]}
           />

@@ -7,7 +7,7 @@ import { RequireStepUp } from '../auth/step-up.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import type { ScopeUser } from '../access/scope';
-import { AckDto, CostRateListDto, CourtOrderDto, HoldDto, HoldReleaseDto, JournalExportDto, LoanChangeDto, LoanRequestDto, LopInputsDto, OneTimeDto, OneTimeListDto, ReasonDto, RunCreateDto, RunDecisionDto, RunListDto, SpecialDaysDto, SubmitRunDto } from './dto-5c';
+import { AckDto, CostRateListDto, CourtOrderDto, HoldDto, HoldReleaseDto, JournalExportDto, LoanChangeDto, LoanRequestDto, LopInputsDto, OneTimeBulkDto, OneTimeDto, OneTimeListDto, ReasonDto, RunCreateDto, RunDecisionDto, RunListDto, SpecialDaysDto, SubmitRunDto } from './dto-5c';
 import { PayInputsService } from './inputs.service';
 import { PayRunsService } from './runs.service';
 import { LedgerService } from './ledger.service';
@@ -184,6 +184,14 @@ export class Payroll5cController {
   @RequirePermissions('payroll.input.manage')
   addOneTime(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: OneTimeDto) {
     return this.inputs.addOneTime(ctx, this.user(req), dto);
+  }
+
+  /** PAY-05 bulk actions on drafts: send them for approval, or delete them. */
+  @Post('one-time-pays/bulk')
+  @HttpCode(200)
+  @RequirePermissions('payroll.input.manage')
+  bulkOneTime(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: OneTimeBulkDto) {
+    return this.inputs.bulkOneTime(ctx, this.user(req), dto.ids, dto.action);
   }
 
   @Patch('one-time-pays/:id/cancel')

@@ -81,6 +81,50 @@ describe('Payroll › Inputs (PAY-04 … 06 live)', () => {
     expect(await within(d).findByText('September 2026 is locked. Add it to the next month.')).toBeInTheDocument();
   });
 
+  it('PAY-05 List: drafts are sent for approval or deleted in bulk; a selection without drafts says so and sends nothing', async () => {
+    const onBulk = vi.fn(async (ids: string[], action: 'submit' | 'delete') => ({ items: ids.map((id) => ({ id, status: action === 'delete' ? 'cancelled' : 'pending' })) }));
+    const rows = [
+      { id: 'd1', employeeId: 'p1', componentCode: 'bonus', amount: '5000.00', month: '2026-09', endOn: null, source: 'manual', reason: 'Spot award', status: 'draft' },
+      { id: 'd2', employeeId: 'p3', componentCode: 'bonus', amount: '7000.00', month: '2026-09', endOn: null, source: 'manual', reason: 'Spot award', status: 'draft' },
+      ...inputs().oneTime.rows!,
+    ];
+    const live = inputs({ oneTime: { ...inputs().oneTime, rows, onBulk } });
+    render(<OneTimePayScreen live={live} />);
+    expect(screen.getAllByText('Draft').length).toBeGreaterThan(0);
+    // Only the approved item chosen: nothing to send.
+    await ue.click(screen.getByRole('checkbox', { name: /Divya Raghunathan/ }));
+    await ue.click(screen.getByRole('button', { name: 'Send 0 for approval' }));
+    expect((await screen.findAllByText('None of the selected items is a draft.')).length).toBeGreaterThan(0);
+    expect(onBulk).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('checkbox', { name: /Arjun Kulkarni/ }));
+    await ue.click(screen.getByRole('button', { name: 'Send 1 for approval' }));
+    await waitFor(() => expect(onBulk).toHaveBeenCalledWith(['d1'], 'submit'));
+    expect((await screen.findAllByText(/1 item sent; 1 above the company's limit waits for approval/)).length).toBeGreaterThan(0);
+    await ue.click(screen.getByRole('checkbox', { name: /Sridhar Fernandes/ }));
+    await ue.click(screen.getByRole('button', { name: 'Delete 1 draft' }));
+    await ue.click(screen.getByRole('button', { name: 'Delete drafts' }));
+    await waitFor(() => expect(onBulk).toHaveBeenCalledWith(['d2'], 'delete'));
+  });
+
+  it('PAY-05 AddSheet: the effect summary comes from the payroll calculator; Save as draft keeps it out of payroll', async () => {
+    const onEffect = vi.fn(async () => ({ month: '2026-09', component: { code: 'bonus', name: 'Bonus', kind: 'earning' }, gross: '25000.00', pfEmployee: '0.00', pfEmployer: '0.00', esiEmployee: '0.00', esiEmployer: '0.00', esiCovered: false, tds: '2600.00', net: '22400.00' }));
+    const live = inputs({ oneTime: { ...inputs().oneTime, onEffect, onBulk: vi.fn() } });
+    render(<OneTimePayScreen live={live} />);
+    await ue.click(screen.getAllByRole('button', { name: 'Add one-time pay' })[0]);
+    const d = screen.getByRole('dialog');
+    expect(within(d).getByText('Shown once the person, amount and month are set')).toBeInTheDocument();
+    await pick();
+    await ue.type(within(d).getByRole('textbox', { name: /^Amount/ }), '25000');
+    await waitFor(() => expect(onEffect).toHaveBeenCalledWith({ employeeId: 'p2', componentCode: 'bonus', amount: '25000', month: '2026-09' }));
+    expect(await within(d).findByText('+₹2,600')).toBeInTheDocument();
+    expect(within(d).getByText('Not PF wage')).toBeInTheDocument();
+    expect(within(d).getByText('Not covered by ESI')).toBeInTheDocument();
+    expect(within(d).getByText('+₹22,400')).toBeInTheDocument();
+    await ue.type(within(d).getByRole('textbox', { name: /Reason/ }), 'Festival bonus');
+    await ue.click(within(d).getByRole('button', { name: 'Save as draft' }));
+    await waitFor(() => expect(live.oneTime.onAdd).toHaveBeenCalledWith({ employeeId: 'p2', componentCode: 'bonus', amount: '25000', month: '2026-09', reason: 'Festival bonus', draft: true }));
+  });
+
   it('one-time pay: cancel asks first, then cancels', async () => {
     const live = inputs();
     render(<OneTimePayScreen live={live} />);

@@ -147,6 +147,48 @@ export class ArrearsService {
     });
   }
 
+  /**
+   * PAY-05 "Add one-time pay · effect summary": the month worked out by the payroll calculator with and without the item,
+   * so gross, PF, ESI, TDS and net pay change by exactly what the run would do (today's records and rules; nothing saved).
+   */
+  async oneTimeEffect(ctx: TenantContext, user: ScopeUser, dto: { employeeId: string; componentCode: string; amount: string; month: string }) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const ids = await this.scoped(tx, c, v, ['payroll.input.manage']);
+      const em = await this.employment(tx, org, dto.employeeId, ids);
+      const comp = await tx.payComponent.findFirst({ where: { organizationId: org, code: dto.componentCode, status: 'active' } });
+      if (!comp || comp.statutory || !['earning', 'deduction', 'reimbursement'].includes(comp.kind)) throw new BadRequestException('Choose an earning, deduction or reimbursement component (not a statutory one).');
+      const rules = await this.rules.published();
+      const run = await monthRun(tx, org, em, dto.month, v.userId!);
+      let before: ReturnType<typeof calculatePayslip>, after: ReturnType<typeof calculatePayslip>;
+      try {
+        const snap = await this.runs.snapshot(tx, c, run, em.id, rules);
+        before = calculatePayslip(snap, rules);
+        after = calculatePayslip({ ...snap, oneTime: [...snap.oneTime, { id: NIL, code: comp.code, amount: dto.amount, days: null }] }, rules);
+      } catch (e) {
+        if (e instanceof StatutoryError || (e as { field?: string }).field) throw new BadRequestException(`${dto.month}: ${(e as Error).message}`);
+        throw e;
+      }
+      const statutes = new Map((await tx.payComponent.findMany({ where: { organizationId: org, statutory: { not: null } }, select: { code: true, statutory: true } })).map((x) => [x.code, x.statutory!]));
+      type Result = ReturnType<typeof calculatePayslip>;
+      const total = (r: Result, st: string[]) => r.lines.filter((l) => st.includes(statutes.get(l.code) ?? '')).reduce((t, l) => t.add(l.amount), D(0));
+      const diff = (...st: string[]) => total(after, st).sub(total(before, st)).toFixed(2);
+      return {
+        month: dto.month,
+        component: { code: comp.code, name: comp.name, kind: comp.kind },
+        gross: D(after.gross).sub(before.gross).toFixed(2),
+        pfEmployee: diff('pf_employee'),
+        pfEmployer: diff('pf_employer'),
+        esiEmployee: diff('esi_employee'),
+        esiEmployer: diff('esi_employer'),
+        esiCovered: total(after, ['esi_employee']).gt(0),
+        tds: diff('tds'),
+        net: D(after.net).sub(before.net).toFixed(2),
+      };
+    });
+  }
+
   async removeItem(ctx: TenantContext, user: ScopeUser, runId: string, itemId: string) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
@@ -235,38 +277,7 @@ export class ArrearsService {
     for (const m of list) {
       const { from: ms, to: me } = monthRange(m);
       if (dateOf(em.joinedOn) > me || (em.exitedOn && dateOf(em.exitedOn) < ms)) continue;
-      const member = await tx.payGroupMember.findFirst({
-        where: { organizationId: org, employmentId: em.id, validFrom: { lte: asDate(me) }, OR: [{ validTo: null }, { validTo: { gte: asDate(ms) } }] },
-        orderBy: { validFrom: 'desc' },
-      });
-      const group = member ? { id: member.payGroupId } : await tx.payGroup.findFirst({ where: { organizationId: org, legalEntityId: em.legalEntityId }, orderBy: { createdAt: 'asc' } });
-      if (!group) throw new BadRequestException('The person is in no pay group.');
-      // The month as the regular run would pay it today (today's records, the rules in force for that month).
-      const run = {
-        id: NIL,
-        organizationId: org,
-        legalEntityId: em.legalEntityId,
-        payGroupId: group.id,
-        periodStart: asDate(ms),
-        periodEnd: asDate(me),
-        runType: 'regular',
-        offcycleKind: null,
-        status: 'draft',
-        calcVersion: 0,
-        wfRequestId: null,
-        preparedBy: by,
-        approvedBy: null,
-        approvedAt: null,
-        publishedAt: null,
-        postedAt: null,
-        totals: null,
-        voidReason: null,
-        reference: null,
-        subPeriod: 0,
-        rangeStart: null,
-        version: 1,
-        createdAt: new Date(),
-      };
+      const run = await monthRun(tx, org, em, m, by);
       let corrected: Map<string, Prisma.Decimal>;
       try {
         const r = calculatePayslip(await this.runs.snapshot(tx, c, run, em.id, rules), rules);
@@ -704,4 +715,43 @@ export class ArrearsService {
       return this.recoveryView(done);
     });
   }
+}
+
+/**
+ * The month as the regular run would pay it today (today's records, the rules in force for that month), for a what-if
+ * calculation: arrears worksheets and the PAY-05 one-time pay effect. Nothing is saved.
+ */
+async function monthRun(tx: Tx, org: string, em: { id: string; legalEntityId: string }, m: string, by: string) {
+  const { from: ms, to: me } = monthRange(m);
+  const member = await tx.payGroupMember.findFirst({
+    where: { organizationId: org, employmentId: em.id, validFrom: { lte: asDate(me) }, OR: [{ validTo: null }, { validTo: { gte: asDate(ms) } }] },
+    orderBy: { validFrom: 'desc' },
+  });
+  const group = member ? { id: member.payGroupId } : await tx.payGroup.findFirst({ where: { organizationId: org, legalEntityId: em.legalEntityId }, orderBy: { createdAt: 'asc' } });
+  if (!group) throw new BadRequestException('The person is in no pay group.');
+  return {
+    id: NIL,
+    organizationId: org,
+    legalEntityId: em.legalEntityId,
+    payGroupId: group.id,
+    periodStart: asDate(ms),
+    periodEnd: asDate(me),
+    runType: 'regular',
+    offcycleKind: null,
+    status: 'draft',
+    calcVersion: 0,
+    wfRequestId: null,
+    preparedBy: by,
+    approvedBy: null,
+    approvedAt: null,
+    publishedAt: null,
+    postedAt: null,
+    totals: null,
+    voidReason: null,
+    reference: null,
+    subPeriod: 0,
+    rangeStart: null,
+    version: 1,
+    createdAt: new Date(),
+  };
 }
