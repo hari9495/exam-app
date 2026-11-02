@@ -8931,5 +8931,77 @@
       "Compliance CMP-08 MarkReviewed"
     ],
     "note": "Positive and negative. Spacing in the dialog: blocks never touch."
+  },
+  {
+    "id": "MT-PPL-M-01",
+    "area": "People · Manager change action (2 Nov 2026 fix)",
+    "screen": "Change action as a manager (PPL-04)",
+    "url": "http://localhost:3000/yx/people/changes",
+    "account": "panel@demo-org.test (Manager - Divya Raghunathan, no second factor set up). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open For my team › Change action.",
+      "2. Read the page: Start a change and Waiting for approval.",
+      "3. Open Find a person and look at the names."
+    ],
+    "expected": "Step 1: the page loads (no \"We couldn't load the changes\"), subtitle \"Raise a promotion, transfer or manager change for someone in your team.\". Step 2: only changes Divya raised herself are listed, none raised by HR for others. Step 3: only her team (Arjun Kulkarni, Kiran Joshi, Meera Iyer, Kavya Reddy, …). Negative: Lakshmi Venkatesan (her own manager) and people in other teams are not in the list; there is no Open button on a waiting change (HR approves).",
+    "stories": [
+      "People PPL-04 Manager",
+      "People PPL-04 Start"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-M-02",
+    "area": "People · Manager change action (2 Nov 2026 fix)",
+    "screen": "Raise a change for a report (PPL-04)",
+    "url": "http://localhost:3000/yx/people/changes",
+    "account": "panel@demo-org.test (Manager - Divya Raghunathan, no second factor set up). Browser window 1278 x 635, sidebar open. Second: hr@demo-org.test (HR Admin - Lakshmi).",
+    "steps": [
+      "1. Find Arjun Kulkarni, press Start change.",
+      "2. Open Change type and the Department, Designation, Grade and Location lists.",
+      "3. Choose New designation, a new designation, effective date the 1st of next month; clear the reason and press Send for approval.",
+      "4. Type the reason \"Leads the shift now\" and press Send for approval.",
+      "5. Sign in as HR (Lakshmi) and open People › Changes › Change action."
+    ],
+    "expected": "Step 2: change types are only Promotion, Transfer, New designation and Manager change; every list has the company's values (none empty); no pay field. Negative step 3: \"Enter the reason for this change\" under Reason with the focus there, nothing sent. Step 4: toast \"New designation for Arjun Kulkarni sent for approval\" and it shows under Waiting for approval with \"waiting for …\" HR names. Step 5: HR sees Divya's change waiting with Open and can approve or reject it.",
+    "stories": [
+      "People PPL-04 Manager",
+      "People PPL-04 Review"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-M-03",
+    "area": "People · Manager change action (2 Nov 2026 fix)",
+    "screen": "My team and Approvals as a manager",
+    "url": "http://localhost:3000/yx/people/team",
+    "account": "panel@demo-org.test (Manager - Divya Raghunathan, no second factor set up). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open My team; press Start a change.",
+      "2. Open the Change type and Designation lists in the drawer.",
+      "3. Close it and open Approvals.",
+      "4. In the browser address bar open http://localhost:3000/yx/settings/structure."
+    ],
+    "expected": "Step 1: My team loads with her reports and the Start a change drawer opens. Step 2: the lists have values; no pay field (\"Pay is proposed by HR\" for a promotion). Step 3: Approvals loads with no error. Negative step 4: Divya cannot add or change departments (no access page, or the save is refused); master lists stay HR's to edit.",
+    "stories": [
+      "People PPL-08 Team"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-M-04",
+    "area": "People · Manager change action (2 Nov 2026 fix)",
+    "screen": "Who is refused",
+    "url": "http://localhost:3000/yx/people/changes",
+    "account": "arjun@demo-org.test (employee Arjun, not a manager). Second: hr@demo-org.test (HR Admin - Lakshmi), no second factor.",
+    "steps": [
+      "1. As Arjun, look at the menu for Change action; then type http://localhost:3000/yx/people/changes in the address bar.",
+      "2. As HR without a second factor set up (past the set-up deadline), open Change action."
+    ],
+    "expected": "Negative step 1: no Change action in Arjun's menu; the page says he has no access to the changes (not an error). Negative step 2: HR is asked to set up two-step verification first (HR reads every person's changes, so the second factor stays required for HR); once set up, HR sees every change, including Divya's.",
+    "stories": [
+      "People PPL-04 Start"
+    ],
+    "note": "Negative."
   }
 ]
