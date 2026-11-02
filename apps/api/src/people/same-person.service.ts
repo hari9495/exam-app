@@ -64,7 +64,8 @@ export const samePersonPairs = (org: string, only?: { personId: string; intoPers
 
 const ROLE: Record<string, string> = { employee: 'Employee', login: 'Login', preboarder: 'Joiner', external_login: 'Help desk contact' };
 /** PPL-36: a joiner merged into an employee record: every row of theirs moves with them (and back on unmerge). */
-const JOINER_TABLES = ['preboardings', 'journeys', 'documents', 'document_shares', 'letter_issues', 'signature_requests', 'consent_records', 'person_identity_checks', 'asset_assignments'] as const;
+// Consent records and identity checks are evidence and stay with the record they were given on (append-only).
+const JOINER_TABLES = ['preboardings', 'journeys', 'documents', 'document_shares', 'letter_issues', 'signature_requests', 'asset_assignments'] as const;
 const name = (p: { givenName: string; familyName: string | null }) => [p.givenName, p.familyName].filter(Boolean).join(' ');
 type Before = { givenName: string; familyName: string | null; primaryEmail: string | null; primaryPhone: string | null; roleIds: string[]; employeeLinked: string | null; joiner?: { preboardingId: string; moved: Record<string, string[]> } };
 

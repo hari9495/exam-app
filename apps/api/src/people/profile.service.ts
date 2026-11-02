@@ -567,7 +567,11 @@ export class ProfileService {
 
   private async sameAsOnFile(tx: Tx, c: CompanyContext, employeeId: string, kind: Kind, p: Proposal) {
     if (kind === 'correction') return false;
-    if (kind === SPLIT) return JSON.stringify((await this.currentSplit(tx, c, employeeId))?.lines ?? null) === p.split;
+    // jsonb keeps its own key order: compare the lines rebuilt in one shape.
+    if (kind === SPLIT) {
+      const shape = (ls: SplitLine[] | undefined) => JSON.stringify((ls ?? []).map((l) => [l.account, l.rule, Number(l.value)]));
+      return shape((await this.currentSplit(tx, c, employeeId))?.lines) === shape(JSON.parse(p.split!) as SplitLine[]);
+    }
     if (BANK[kind]) {
       const b = await tx.employeeBankAccount.findFirst({ where: { organizationId: c.organizationId, employeeId, purpose: BANK[kind], validTo: null } });
       return Boolean(b && b.accountHash === this.hash(c, 'bank', `${p.ifsc}:${p.accountNumber}`) && b.holderName === p.holderName);
