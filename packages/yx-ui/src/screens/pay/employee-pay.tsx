@@ -2174,6 +2174,8 @@ export interface MyTaxSheet {
     monthTds: string;
     notes: string[];
   } | null;
+  /** PAY-22: the 12 months of the tax year, April first: deducted by the approved payslips, then projected. */
+  months?: { month: string; tds: string; kind: 'deducted' | 'projected' }[];
 }
 
 /** GET tax/me/form12b (founder decision 6): previous employer income, checked by payroll before it counts. */
@@ -2255,6 +2257,16 @@ const TAN_RE = /^[A-Z]{4}\d{5}[A-Z]$/;
 const todayIso = () => new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
 const regimeText = (r: 'new' | 'old') => (r === 'new' ? 'New regime' : 'Old regime');
 
+/** The design's "Tax deducted by month" chart on the API's month list (exact amounts, shown in rupees). */
+function TaxByMonthChart({ months }: { months: NonNullable<MyTaxSheet['months']> }) {
+  const done = months.filter((m) => m.kind === 'deducted');
+  const ahead = months.filter((m) => m.kind === 'projected');
+  const short = (m: string) => MONTHS[(Number(m.slice(5, 7)) + 8) % 12]!;
+  const span = (l: typeof months) => (l.length ? `${short(l[0]!.month)}–${short(l[l.length - 1]!.month)}` : '');
+  const description = [done.length ? `Actual ${span(done)}` : '', ahead.length ? `${span(ahead)} at the current projection` : ''].filter(Boolean).join('; ');
+  return <BarChart title="Tax deducted by month" description={`${description}.`} categories={months.map((m) => short(m.month))} series={[{ name: 'TDS', values: months.map((m) => num(m.tds)) }]} money xLabel="Month" height={180} horizontalBelow={600} />;
+}
+
 function LiveTaxWorkspace({ live }: { live: LiveTax }) {
   const { toast } = useToast();
   const w = live.workspace;
@@ -2329,6 +2341,7 @@ function LiveTaxWorkspace({ live }: { live: LiveTax }) {
                     {live.sheet?.message ?? 'Your tax sheet appears with your first payslip of the tax year.'}
                   </InlineAlert>
                 ) : (
+                  <div className="yx-pay-stack">
                   <section className="yx-pay-panel" aria-label="How your monthly tax is worked out">
                     <SectionTitle>How your monthly tax is worked out</SectionTitle>
                     <ol className="yx-pay-muted">
@@ -2362,6 +2375,8 @@ function LiveTaxWorkspace({ live }: { live: LiveTax }) {
                     )}
                     <p className="yx-pay-note">The tax shown here and the tax on your payslip come from the same calculation{live.sheet?.month ? `, the payslip for ${monthName(live.sheet.month)}` : ''}.</p>
                   </section>
+                  {live.sheet?.months?.length === 12 && <TaxByMonthChart months={live.sheet.months} />}
+                  </div>
                 )}
               </TabsContent>
               <TabsContent value="compare">

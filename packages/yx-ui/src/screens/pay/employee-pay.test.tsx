@@ -157,6 +157,15 @@ describe('PAY-22 / PAY-41 · Me › Tax (live)', () => {
     expect(how).toHaveTextContent('Projected income for the year: ₹7,44,000.00');
     expect(how).toHaveTextContent('other income ₹18,000.00');
     expect(how).toHaveTextContent('7 months left');
+    expect(screen.queryByText('Tax deducted by month')).not.toBeInTheDocument();
+  });
+
+  it('overview: the tax by month chart from the month list of the sheet (PAY-22)', () => {
+    const base = live();
+    const months = ['04', '05', '06', '07', '08', '09', '10', '11', '12', '01', '02', '03'].map((m, i) => ({ month: `${i < 9 ? 2026 : 2027}-${m}`, tds: i < 6 ? '1200.00' : '1500.00', kind: (i < 6 ? 'deducted' : 'projected') as 'deducted' | 'projected' }));
+    render(<TaxWorkspaceScreen live={{ ...base, sheet: { ...base.sheet!, months } }} />);
+    expect(screen.getByText('Tax deducted by month')).toBeInTheDocument();
+    expect(screen.getByText('Actual Apr–Sep; Oct–Mar at the current projection.')).toBeInTheDocument();
   });
 
   it('before the first payslip, the overview says so', () => {

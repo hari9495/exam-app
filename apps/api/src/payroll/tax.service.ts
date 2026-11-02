@@ -18,7 +18,7 @@ import { dayMonYear } from './loan-rules';
 import { PayDocumentsService } from './documents.service';
 import { PayFileStore, sha256 } from './pay-file-store';
 import { PayKey, entitiesFor, payHolders, payScope, payViewer, requireEntity, requireSelf, withPayScope } from './pay-access';
-import { lawVersionFor, projectTax, taxForms, taxYearOf, type TaxInputs, type TaxProjection } from './tax';
+import { lawVersionFor, nextMonth, projectTax, taxForms, taxYearOf, type TaxInputs, type TaxProjection } from './tax';
 import { form16Block } from './form16-link';
 
 // Income tax (M03-BUILD-DESIGN §8.5, §8.6, PAY-5.01 … 5.08): the employee's tax workspace (regime until the company's
@@ -491,8 +491,34 @@ export class TaxService implements OnModuleInit {
       const { ws } = await this.ownWorkspace(tx, c);
       const p = await this.latestProjection(tx, c.organizationId, await this.mine(tx), ws.taxYear);
       if (!p) return { taxYear: ws.taxYear, sheet: null, message: 'Your tax sheet appears with your first payslip of the tax year.' };
-      return { taxYear: ws.taxYear, payslipId: p.payslipId, month: (p.result as unknown as TaxProjection).thisMonth.month, sheet: p.result };
+      const sheet = p.result as unknown as TaxProjection;
+      return { taxYear: ws.taxYear, payslipId: p.payslipId, month: sheet.thisMonth.month, sheet: p.result, months: await this.tdsMonths(tx, c.organizationId, await this.mine(tx), ws.taxYear, sheet) };
     });
+  }
+
+  /**
+   * PAY-22 "tax by month": the 12 months of the tax year. Up to the sheet's month, what the approved payslips of each month
+   * deducted (each payslip's own latest projection); after it, the sheet's monthly TDS for the months it is spread over.
+   */
+  private async tdsMonths(tx: Tx, org: string, employeeIds: string[], taxYear: string, sheet: TaxProjection) {
+    const rows = await tx.tdsProjection.findMany({ where: { organizationId: org, employeeId: { in: employeeIds }, taxYear }, orderBy: { createdAt: 'desc' }, select: { payslipId: true, result: true } });
+    const approved = new Set((await tx.payslip.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.payslipId) }, status: 'approved' }, select: { id: true } })).map((s) => s.id));
+    const seen = new Set<string>();
+    const deducted = new Map<string, Prisma.Decimal>();
+    for (const r of rows) {
+      if (!approved.has(r.payslipId) || seen.has(r.payslipId)) continue;
+      seen.add(r.payslipId);
+      const x = r.result as unknown as TaxProjection;
+      deducted.set(x.thisMonth.month, (deducted.get(x.thisMonth.month) ?? ZERO).add(x.monthTds));
+    }
+    const last = sheet.thisMonth.month;
+    const out: { month: string; tds: string; kind: 'deducted' | 'projected' }[] = [];
+    let month = `${taxYear.slice(0, 4)}-04`;
+    for (let i = 0, ahead = 0; i < 12; i++, month = nextMonth(month)) {
+      if (month <= last) out.push({ month, tds: (deducted.get(month) ?? ZERO).toFixed(2), kind: 'deducted' });
+      else out.push({ month, tds: ++ahead < sheet.remainingPeriods ? sheet.monthTds : '0.00', kind: 'projected' });
+    }
+    return out;
   }
 
   /** Old and new regime on the figures of the latest payslip (the same function as the TDS). */

@@ -319,6 +319,13 @@ describe('Payroll batch 5e (income tax)', () => {
     expect(Number(tdsLine.amount)).toBeGreaterThan(0);
     const sheet = (await api('emp1', 'get', '/tax/me/tax-sheet').expect(200)).body;
     expect(sheet).toMatchObject({ payslipId: slip.id, sheet: { monthTds: tdsLine.amount.toFixed(2), regime: 'old' } });
+    // PAY-22 tax by month: 12 months from April; this month deducted what the payslip did, the months left the spread.
+    const months = sheet.months as { month: string; tds: string; kind: string }[];
+    expect(months).toHaveLength(12);
+    expect(months[0].month.slice(5)).toBe('04');
+    expect(months.find((m) => m.month === sheet.month)).toEqual({ month: sheet.month, tds: tdsLine.amount.toFixed(2), kind: 'deducted' });
+    const ahead = months.filter((m) => m.kind === 'projected');
+    expect(ahead.filter((m) => m.tds === sheet.sheet.monthTds)).toHaveLength(Math.min(ahead.length, sheet.sheet.remainingPeriods - 1));
     // Before the proof cut-off the declared 80C counts (the partly approved amount only after it).
     expect(sheet.sheet.deductions).toEqual([expect.objectContaining({ key: 'sec80c', allowed: '150000.00' })]);
     expect(Number(sheet.sheet.exemptions.hra)).toBeGreaterThan(0);
