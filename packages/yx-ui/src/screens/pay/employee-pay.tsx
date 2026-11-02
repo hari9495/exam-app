@@ -245,7 +245,7 @@ export function PayDiffPanel({ diffs, previous, current, onQuery, chat, labels =
         ]}
       />
       {diffs.length === 0 ? (
-        <InlineAlert tone="success" title="Your pay is the same as last month">
+        <InlineAlert tone="info" title="Your pay is the same as last month">
           No line changed between {labels.previous} and {labels.current}.
         </InlineAlert>
       ) : (
@@ -310,7 +310,7 @@ function SamplePayslipViewer({ layout = 'desktop', variant = 'default', state = 
   const [withdrawn, setWithdrawn] = useState(false);
   const [why, setWhy] = useState(variant.startsWith('why'));
   const [doc, setDoc] = useState(variant === 'document');
-  const [pdfSaved, setPdfSaved] = useState(false);
+  const { toast } = useToast();
   const [aug, setAug] = useState(false);
   /** An earlier month opened from "Earlier payslips". */
   const [past, setPast] = useState<(typeof PAYSLIP_HISTORY)[number] | null>(null);
@@ -390,11 +390,6 @@ function SamplePayslipViewer({ layout = 'desktop', variant = 'default', state = 
           change={prevNet === net ? 'Same as August' : `${formatINR(prevNet - net)} less than August`}
           actions={phone && state === 'ready' ? actions : undefined}
         />
-        {sent && (
-          <InlineAlert tone="success" title="Query sent to payroll">
-            Suresh Pillai will reply here within 2 working days. You'll get a notification in the app.
-          </InlineAlert>
-        )}
         {(sent || variant === 'query-withdraw') && !withdrawn && (
           <section className="yx-pay-panel" aria-label="Your queries on this payslip">
             <SectionTitle>Your queries on this payslip</SectionTitle>
@@ -491,6 +486,7 @@ function SamplePayslipViewer({ layout = 'desktop', variant = 'default', state = 
               onClick={() => {
                 setQuery(null);
                 setSent(true);
+                toast({ tone: 'success', title: 'Query sent to payroll', description: "Suresh Pillai will reply here within 2 working days. You'll get a notification in the app." });
               }}
             >
               Send query
@@ -517,16 +513,11 @@ function SamplePayslipViewer({ layout = 'desktop', variant = 'default', state = 
         subtitle={`Your September 2026 payslip, as issued by ${MY_PAYSLIP.company.name}`}
         size="full"
         footer={
-          <Button variant="primary" icon={Download} onClick={() => setPdfSaved(true)}>
+          <Button variant="primary" icon={Download} onClick={() => toast({ tone: 'success', title: 'Payslip downloaded', description: `Saved as ${MY_PAYSLIP.employee.code}-payslip-Sep-2026.pdf in your downloads.` })}>
             Download PDF
           </Button>
         }
       >
-        {pdfSaved && (
-          <InlineAlert tone="success" title="Payslip downloaded">
-            Saved as {MY_PAYSLIP.employee.code}-payslip-Sep-2026.pdf in your downloads.
-          </InlineAlert>
-        )}
         <div className="yx-pay-preview" tabIndex={0} role="region" aria-label="Payslip preview">
           <PayslipDocument data={MY_PAYSLIP} />
         </div>
@@ -803,7 +794,6 @@ function SampleTaxWorkspace({ layout = 'desktop', tab = 'overview', variant = 'd
   const [trc, setTrc] = useState(false);
   const [form10f, setForm10f] = useState(false);
   const [resSent, setResSent] = useState(false);
-  const [form16, setForm16] = useState(false);
   const [askHr, setAskHr] = useState(false);
   const [hrReason, setHrReason] = useState('');
   const [hrSent, setHrSent] = useState(false);
@@ -832,12 +822,16 @@ function SampleTaxWorkspace({ layout = 'desktop', tab = 'overview', variant = 'd
   const pickedMonthly = planFor(savedRegime, savedLines, res === 'r').monthly;
   const tdsByMonth = [...tdsSoFar, ...Array<number>(monthsLeft).fill(monthly)];
   const resChanged = (res === 'r') !== savedResident;
-  const resBlocked = res === 'nr' && !(trc && form10f);
   const needs12b = !!prevSalary && !form12b;
+  const { toast } = useToast();
+  const resEarly = useTooEarly(res === 'nr' ? [...(!trc ? [{ fieldId: 'rs-trc', message: 'Upload your tax residency certificate.' }] : []), ...(!form10f ? [{ fieldId: 'rs-10f', message: 'Tick this once you have filed Form 10F.' }] : [])] : []);
+  const prevEarly = useTooEarly(needs12b ? [{ fieldId: 'pe-12b', message: "Upload Form 12B to save a previous employer's salary." }] : []);
+  const hrEarly = useTooEarly(!hrReason.trim() ? [{ fieldId: 'hr-reason', message: 'Give a reason to send.' }] : []);
+  const panEarly = useTooEarly(!panProof ? [{ fieldId: 'pan-proof', message: 'Upload the confirmation to send.' }] : []);
   const rejected = savedLines.filter((l) => l.proof === 'Rejected').length;
   const partly = savedLines.filter((l) => l.proof === 'Partly approved').length;
   const isNewLine = editing != null && !lines.some((l) => l.id === editing.id);
-  const lineIncomplete = editing != null && (!editing.item.trim() || !editing.declared);
+  const lineEarly = useTooEarly(editing ? [...(!editing.item.trim() ? [{ fieldId: 'dl-item', message: 'Enter the item.' }] : []), ...(!editing.declared ? [{ fieldId: 'dl-amount', message: 'Enter the amount for the year.' }] : [])] : []);
   const leftRange = monthRange(monthsLeft);
 
   const facts = [
@@ -855,7 +849,7 @@ function SampleTaxWorkspace({ layout = 'desktop', tab = 'overview', variant = 'd
     </Badge>
   );
   const form16Button = (
-    <Button icon={Download} onClick={() => setForm16(true)}>
+    <Button icon={Download} onClick={() => toast({ tone: 'success', title: 'Form 16 for 2025-26 downloaded', description: `Saved as ${MY_PAYSLIP.employee.code}-Form16-2025-26.pdf in your downloads. Your Form 130 for 2026-27 comes after this tax year ends.` })}>
       Form 16 for 2025-26
     </Button>
   );
@@ -875,11 +869,6 @@ function SampleTaxWorkspace({ layout = 'desktop', tab = 'overview', variant = 'd
           <FactRow items={[facts[0], facts[3], facts[1]]} />
           <div className="yx-pay-row">{form16Button}</div>
         </div>
-      )}
-      {form16 && (
-        <InlineAlert tone="success" title="Form 16 for 2025-26 downloaded">
-          Saved as {MY_PAYSLIP.employee.code}-Form16-2025-26.pdf in your downloads. Your Form 130 for 2026-27 comes after this tax year ends.
-        </InlineAlert>
       )}
       {variant === 'no-pan' && ready && (
         <InlineAlert
@@ -940,8 +929,8 @@ function SampleTaxWorkspace({ layout = 'desktop', tab = 'overview', variant = 'd
                 <SectionTitle>Your regime for {MY_TAX.taxYear.toLowerCase()}</SectionTitle>
                 {locked ? (
                   hrSent ? (
-                    <InlineAlert tone="success" title="Request sent to HR">
-                      Lakshmi Venkatesan will review your request to switch to the {regime === 'new' ? 'old' : 'new'} regime. You'll get a notification in the app.
+                    <InlineAlert tone="info" title="Waiting for HR">
+                      Lakshmi Venkatesan is reviewing your request to switch to the {regime === 'new' ? 'old' : 'new'} regime. You'll get a notification in the app.
                     </InlineAlert>
                   ) : (
                     <InlineAlert
@@ -980,11 +969,6 @@ function SampleTaxWorkspace({ layout = 'desktop', tab = 'overview', variant = 'd
                     ? `With these changes your tax stays ${formatINR(annual)} for the year.`
                     : `With these changes your tax would be ${formatINR(draft.annual)} for the year (${formatINR(draft.monthly)} a month from October) instead of ${formatINR(annual)}.`}{' '}
                   Nothing changes until you save.
-                </InlineAlert>
-              )}
-              {declSaved && (
-                <InlineAlert tone="success" title="Declarations saved">
-                  {savedRegime === 'new' ? "Your October payslip uses them. In the new regime they don't change your tax." : `Your October payslip uses them: monthly TDS ${formatINR(monthly)}.`}
                 </InlineAlert>
               )}
               {phone ? (
@@ -1037,12 +1021,13 @@ function SampleTaxWorkspace({ layout = 'desktop', tab = 'overview', variant = 'd
                 <Button onClick={() => setEditing({ id: `new-${Date.now()}`, section: DECL_SECTIONS[0], item: '', declared: 0, proof: 'Not due' })}>Add declaration</Button>
                 <Button
                   variant="primary"
-                  disabled={!declDirty}
                   onClick={() => {
+                    if (!declDirty) return void toast({ title: `Nothing to save yet. ${locked ? 'Edit or add a line.' : 'Change your regime, or edit or add a line.'}` });
                     setSavedRegime(regime);
                     setSavedLines(lines);
                     setDeclDirty(false);
                     setDeclSaved(true);
+                    toast({ tone: 'success', title: 'Declarations saved', description: regime === 'new' ? "Your October payslip uses them. In the new regime they don't change your tax." : `Your October payslip uses them: monthly TDS ${formatINR(planFor(regime, lines, savedResident).monthly)}.` });
                   }}
                 >
                   Save declarations
@@ -1125,7 +1110,7 @@ function SampleTaxWorkspace({ layout = 'desktop', tab = 'overview', variant = 'd
                   }}
                 />
               </FormField>
-              <FormField label="Form 12B from previous employer" required={!!prevSalary} optional={!prevSalary} helper="PDF signed by the previous employer. Needed when you enter a salary above.">
+              <FormField id="pe-12b" error={prevEarly.errorOf('pe-12b')} label="Form 12B from previous employer" required={!!prevSalary} optional={!prevSalary} helper="PDF signed by the previous employer. Needed when you enter a salary above.">
                 <FileUpload upload={async () => {}} accept={['.pdf']} multiple={false} onItemsChange={(items) => setForm12b(uploaded(items))} />
               </FormField>
               <FactRow
@@ -1138,22 +1123,18 @@ function SampleTaxWorkspace({ layout = 'desktop', tab = 'overview', variant = 'd
               <div className="yx-pay-row">
                 <Button
                   variant="primary"
-                  disabled={!prevDirty || needs12b}
                   onClick={() => {
+                    if (!prevDirty) return void toast({ title: 'Nothing to save yet.' });
+                    if (prevEarly.stop()) return;
                     setPrevSaved(true);
                     setPrevDirty(false);
+                    toast({ tone: 'success', title: 'Saved', description: `Your October payslip uses the new projection: ${formatINR(monthly)} a month.` });
                   }}
                 >
                   Save
                 </Button>
                 {!prevDirty && !prevSaved && <span className="yx-pay-note">Nothing to save yet.</span>}
-                {prevDirty && needs12b && <span className="yx-pay-note">Upload Form 12B to save a previous employer's salary.</span>}
               </div>
-              {prevSaved && (
-                <InlineAlert tone="success" title="Saved">
-                  Your October payslip uses the new projection: {formatINR(monthly)} a month.
-                </InlineAlert>
-              )}
             </div>
           </TabsContent>
           <TabsContent value="residential">
@@ -1177,10 +1158,12 @@ function SampleTaxWorkspace({ layout = 'desktop', tab = 'overview', variant = 'd
                       Your tax is worked out without the rebate. To get a lower treaty rate, add your tax residency certificate and file Form 10F.
                     </InlineAlert>
                   )}
-                  <FormField label={resChanged ? 'Tax residency certificate (TRC)' : 'Add TRC for treaty rate'} required={resChanged} optional={!resChanged} helper="Valid for the tax year.">
+                  <FormField id="rs-trc" error={resEarly.errorOf('rs-trc')} label={resChanged ? 'Tax residency certificate (TRC)' : 'Add TRC for treaty rate'} required={resChanged} optional={!resChanged} helper="Valid for the tax year.">
                     <FileUpload upload={async () => {}} accept={['.pdf']} multiple={false} onItemsChange={(items) => setTrc(uploaded(items))} />
                   </FormField>
-                  <Checkbox id="rs-10f" checked={form10f} onChange={setForm10f} label="I have filed Form 10F on the income-tax portal" />
+                  <FormField id="rs-10f" label="Form 10F" error={resEarly.errorOf('rs-10f')} hideLabel>
+                    <Checkbox checked={form10f} onChange={setForm10f} label="I have filed Form 10F on the income-tax portal" />
+                  </FormField>
                 </>
               )}
               <p className="yx-pay-muted">
@@ -1191,16 +1174,15 @@ function SampleTaxWorkspace({ layout = 'desktop', tab = 'overview', variant = 'd
                     : `Your monthly TDS would be ${formatINR(pickedMonthly)} instead of ${formatINR(monthly)}.`}
               </p>
               {resSent ? (
-                <InlineAlert tone="success" title="Sent for HR review">
+                <InlineAlert tone="info" title="Waiting for HR review">
                   Lakshmi Venkatesan checks it. Your TDS changes from the payslip after she approves.
                 </InlineAlert>
               ) : (
                 (resChanged || res === 'nr') && (
                   <div className="yx-pay-row">
-                    <Button variant="primary" disabled={resBlocked} onClick={() => setResSent(true)}>
+                    <Button variant="primary" onClick={() => !resEarly.stop() && (setResSent(true), toast({ tone: 'success', title: 'Sent for HR review' }))}>
                       {resChanged ? 'Send for HR review' : 'Send TRC to HR'}
                     </Button>
-                    {resBlocked && <span className="yx-pay-note">Upload your TRC and tick Form 10F first.</span>}
                   </div>
                 )
               )}
@@ -1216,7 +1198,6 @@ function SampleTaxWorkspace({ layout = 'desktop', tab = 'overview', variant = 'd
         subtitle="Amounts are for the whole tax year."
         footer={
           <>
-            {lineIncomplete && <span className="yx-pay-note">Enter the item and amount to save.</span>}
             {editing && !isNewLine && (
               <Button
                 onClick={() => {
@@ -1230,7 +1211,7 @@ function SampleTaxWorkspace({ layout = 'desktop', tab = 'overview', variant = 'd
               </Button>
             )}
             <Button onClick={() => setEditing(null)}>Cancel</Button>
-            <Button variant="primary" disabled={lineIncomplete} onClick={saveLine}>
+            <Button variant="primary" onClick={() => !lineEarly.stop() && saveLine()}>
               Save line
             </Button>
           </>
@@ -1241,10 +1222,10 @@ function SampleTaxWorkspace({ layout = 'desktop', tab = 'overview', variant = 'd
             <FormField label="Section" required>
               <Select value={editing.section} onChange={(v) => setEditing({ ...editing, section: v ?? editing.section })} options={DECL_SECTIONS.map((s) => ({ value: s, label: s }))} />
             </FormField>
-            <FormField label="Item" required>
+            <FormField id="dl-item" error={lineEarly.errorOf('dl-item')} label="Item" required>
               <TextField value={editing.item} onChange={(v) => setEditing({ ...editing, item: v })} />
             </FormField>
-            <FormField label="Amount for the year" required>
+            <FormField id="dl-amount" error={lineEarly.errorOf('dl-amount')} label="Amount for the year" required>
               <CurrencyField value={editing.declared || null} onChange={(v) => setEditing({ ...editing, declared: v ?? 0 })} />
             </FormField>
           </div>
@@ -1258,14 +1239,14 @@ function SampleTaxWorkspace({ layout = 'desktop', tab = 'overview', variant = 'd
         subtitle={`From ${regime === 'new' ? 'new' : 'old'} to ${regime === 'new' ? 'old' : 'new'} regime for ${MY_TAX.taxYear.toLowerCase()}`}
         footer={
           <>
-            {!hrReason.trim() && <span className="yx-pay-note">Give a reason to send.</span>}
             <Button onClick={() => setAskHr(false)}>Cancel</Button>
             <Button
               variant="primary"
-              disabled={!hrReason.trim()}
               onClick={() => {
+                if (hrEarly.stop()) return;
                 setAskHr(false);
                 setHrSent(true);
+                toast({ tone: 'success', title: 'Request sent to HR', description: "Lakshmi Venkatesan reviews it. You'll get a notification in the app." });
               }}
             >
               Send request
@@ -1273,7 +1254,7 @@ function SampleTaxWorkspace({ layout = 'desktop', tab = 'overview', variant = 'd
           </>
         }
       >
-        <FormField label="Reason" required helper="For example, a home loan taken after the cut-off. Lakshmi Venkatesan reviews it.">
+        <FormField id="hr-reason" error={hrEarly.errorOf('hr-reason')} label="Reason" required helper="For example, a home loan taken after the cut-off. Lakshmi Venkatesan reviews it.">
           <TextArea rows={3} value={hrReason} onChange={setHrReason} />
         </FormField>
       </Sheet>
@@ -1285,12 +1266,11 @@ function SampleTaxWorkspace({ layout = 'desktop', tab = 'overview', variant = 'd
         subtitle="Normal-rate tax resumes once payroll sees your PAN working."
         footer={
           <>
-            {!panProof && <span className="yx-pay-note">Upload the confirmation to send.</span>}
             <Button onClick={() => setPan(false)}>Cancel</Button>
             <Button
               variant="primary"
-              disabled={!panProof}
               onClick={() => {
+                if (panEarly.stop()) return;
                 setPan(false);
                 setPanSent(true);
               }}
@@ -1306,7 +1286,7 @@ function SampleTaxWorkspace({ layout = 'desktop', tab = 'overview', variant = 'd
             <li>Pay the late-linking fee if the portal asks for it, then submit.</li>
             <li>Download the confirmation once the portal shows your PAN as operative.</li>
           </ol>
-          <FormField label="Link confirmation from the portal" required helper="This also updates your PAN in Me › Documents.">
+          <FormField id="pan-proof" error={panEarly.errorOf('pan-proof')} label="Link confirmation from the portal" required helper="This also updates your PAN in Me › Documents.">
             <FileUpload upload={async () => {}} accept={['.pdf', '.jpg', '.png']} multiple={false} onItemsChange={(items) => setPanProof(uploaded(items))} />
           </FormField>
         </div>
@@ -1344,7 +1324,16 @@ function SampleLoanRequest({ layout = 'desktop', variant = 'form' }: { layout?: 
   const perquisite = Math.round(((amount ?? 0) * (BENCHMARK - rate)) / 100 / 12);
   // October has no professional tax or unpaid day, so its take-home starts from September's net plus both.
   const octoberNet = MY_NET + SEP_LOP + SEP_PT;
-  const blocked = over ? `Lower the amount to ${formatINR(limit)} or less to send.` : emisBad ? `Choose 1 to ${maxEmis} EMIs to send.` : noReason ? 'Give a reason to send.' : null;
+  const early = useTooEarly([
+    ...(over ? [{ fieldId: 'lr-amount', message: `Enter ${formatINR(limit)} or less.` }] : []),
+    ...(emisBad ? [{ fieldId: 'lr-emis', message: `Enter 1 to ${maxEmis} EMIs.` }] : []),
+    ...(noReason ? [{ fieldId: 'lr-reason', message: 'Give a reason for the request.' }] : []),
+  ]);
+  const { toast } = useToast();
+  // The submitted page is where Send request lands: the done message is a toast there.
+  useEffect(() => {
+    if (variant === 'submitted') toast({ tone: 'success', title: 'Request sent', description: `${formatINR(1_50_000)} over 12 EMIs of ${formatINR(emiAmount(1_50_000, 6, 12))}. You'll be notified at each step.` });
+  }, [variant]);
   const phone = layout === 'phone';
   if (variant === 'not-eligible')
     return (
@@ -1373,9 +1362,6 @@ function SampleLoanRequest({ layout = 'desktop', variant = 'form' }: { layout?: 
               {status}
             </div>
           )}
-          <InlineAlert tone="success" title="Request sent">
-            {formatINR(1_50_000)} over 12 EMIs of {formatINR(emiAmount(1_50_000, 6, 12))}. You'll be notified at each step.
-          </InlineAlert>
           <ApprovalTimeline
             now={NOW}
             steps={[
@@ -1410,14 +1396,14 @@ function SampleLoanRequest({ layout = 'desktop', variant = 'form' }: { layout?: 
             />
           </FormField>
           <FieldRow>
-            <FormField label="Amount" required error={over ? `Enter ${formatINR(limit)} or less. That is the limit for your grade.` : undefined}>
+            <FormField id="lr-amount" label="Amount" required error={over ? `Enter ${formatINR(limit)} or less. That is the limit for your grade.` : undefined}>
               <CurrencyField value={amount} onChange={setAmount} />
             </FormField>
-            <FormField label="Number of EMIs" required helper={`1 to ${maxEmis}`} error={emisBad ? `Enter 1 to ${maxEmis} EMIs. That is the limit for a ${type === 'advance' ? 'salary advance' : 'personal loan'}.` : undefined}>
+            <FormField id="lr-emis" label="Number of EMIs" required helper={`1 to ${maxEmis}`} error={emisBad ? `Enter 1 to ${maxEmis} EMIs. That is the limit for a ${type === 'advance' ? 'salary advance' : 'personal loan'}.` : undefined}>
               <NumberField value={emis} onChange={setEmis} min={1} max={maxEmis} />
             </FormField>
           </FieldRow>
-          <FormField label="Reason" required error={noReason ? 'Give a reason for the request.' : undefined}>
+          <FormField id="lr-reason" label="Reason" required error={noReason ? 'Give a reason for the request.' : undefined}>
             <TextArea rows={2} value={reason} onChange={setReason} />
           </FormField>
         </div>
@@ -1465,10 +1451,9 @@ function SampleLoanRequest({ layout = 'desktop', variant = 'form' }: { layout?: 
       </div>
       <div className={phone ? 'yx-pay-phone-actions' : 'yx-pay-row'}>
         <Button onClick={() => goStory(phone ? STORY.payslipPhone : STORY.payslip)}>Cancel</Button>
-        <Button variant="primary" disabled={blocked != null} onClick={() => goStory(phone ? STORY.loanSubmittedPhone : STORY.loanSubmitted)}>
+        <Button variant="primary" onClick={() => !early.stop() && goStory(phone ? STORY.loanSubmittedPhone : STORY.loanSubmitted)}>
           Send request
         </Button>
-        {blocked && <span className="yx-pay-note">{blocked}</span>}
       </div>
     </EmpFrame>
   );
@@ -1492,6 +1477,9 @@ function SampleEwaRequest({ layout = 'phone', variant = 'available' }: { layout?
   const [agree, setAgree] = useState(variant === 'confirm');
   const [step, setStep] = useState<'form' | 'confirm' | 'done'>(variant === 'confirm' ? 'confirm' : variant === 'disbursed' ? 'done' : 'form');
   const tooMuch = (amount ?? 0) > r.available;
+  const amountEarly = useTooEarly(!amount ? [{ fieldId: 'ew-amount', message: 'Enter the amount.' }] : tooMuch ? [{ fieldId: 'ew-amount', message: `Enter ${formatINR(r.available)} or less.` }] : []);
+  const agreeEarly = useTooEarly(agree ? [] : [{ fieldId: 'ew-agree', message: 'Tick the box to accept the fee and the recovery.' }]);
+  const { toast } = useToast();
   const phone = layout === 'phone';
   return (
     <EmpFrame layout={layout} page="ewa" title="Get paid early" back>
@@ -1505,9 +1493,6 @@ function SampleEwaRequest({ layout = 'phone', variant = 'available' }: { layout?
         </div>
       ) : step === 'done' ? (
         <div className="yx-pay-stack">
-          <InlineAlert tone="success" title={`${formatINR(amount ?? 0)} sent to your salary account`}>
-            Cauvery Co-operative Bank ••••8834, 29 Sep, 9:44 am. It will be recovered as "Earned wage access" on your September payslip.
-          </InlineAlert>
           <DescriptionList
             items={[
               { label: 'Amount', value: formatINR(amount ?? 0) },
@@ -1528,11 +1513,11 @@ function SampleEwaRequest({ layout = 'phone', variant = 'available' }: { layout?
           </section>
           {step === 'form' ? (
             <>
-              <FormField label="Amount" required helper={`${formatINR(policy.min)} to ${formatINR(r.available)}`} error={tooMuch ? `Enter ${formatINR(r.available)} or less.` : undefined}>
+              <FormField id="ew-amount" label="Amount" required helper={`${formatINR(policy.min)} to ${formatINR(r.available)}`} error={tooMuch ? `Enter ${formatINR(r.available)} or less.` : amountEarly.errorOf('ew-amount')}>
                 <CurrencyField value={amount} onChange={setAmount} min={policy.min} max={r.available} />
               </FormField>
               <div className={phone ? 'yx-pay-phone-actions' : 'yx-pay-row'}>
-                <Button variant="primary" disabled={tooMuch || !amount} onClick={() => setStep('confirm')}>
+                <Button variant="primary" onClick={() => !amountEarly.stop() && setStep('confirm')}>
                   Continue
                 </Button>
               </div>
@@ -1551,11 +1536,20 @@ function SampleEwaRequest({ layout = 'phone', variant = 'available' }: { layout?
                 </p>
                 <PartnerLink>Read the partner's terms</PartnerLink>
               </section>
-              <Checkbox checked={agree} onChange={setAgree} label={`I agree to the fee of ${formatINR(policy.fee)} and the recovery from my September salary`} />
+              <FormField id="ew-agree" label="Fee and recovery" error={agreeEarly.errorOf('ew-agree')} hideLabel>
+                <Checkbox checked={agree} onChange={setAgree} label={`I agree to the fee of ${formatINR(policy.fee)} and the recovery from my September salary`} />
+              </FormField>
               <p className="yx-pay-note">You'll confirm with your fingerprint or PIN.</p>
               <div className={phone ? 'yx-pay-phone-actions' : 'yx-pay-row'}>
                 <Button onClick={() => setStep('form')}>Back</Button>
-                <Button variant="primary" disabled={!agree} onClick={() => setStep('done')}>
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    if (agreeEarly.stop()) return;
+                    setStep('done');
+                    toast({ tone: 'success', title: `${formatINR(amount ?? 0)} sent to your salary account`, description: 'Cauvery Co-operative Bank ••••8834. It will be recovered as "Earned wage access" on your September payslip.' });
+                  }}
+                >
                   Get {formatINR(amount ?? 0)}
                 </Button>
               </div>
@@ -2574,7 +2568,7 @@ function TaxDeclarations({ live, w }: { live: LiveTax; w: MyTaxWorkspace }) {
             </div>
           </>
         ) : w.regimeRequest?.status === 'pending' ? (
-          <InlineAlert tone="success" title="Request sent to HR">
+          <InlineAlert tone="info" title="Waiting for HR">
             You asked to switch to the {w.regimeRequest.to} regime on {dateText(w.regimeRequest.requestedAt.slice(0, 10))}. HR reviews it in Approvals; you get a notification in the app.
           </InlineAlert>
         ) : (
@@ -2989,7 +2983,7 @@ function Residential({ w, onSend }: { w: MyTaxWorkspace; onSend: LiveTax['onResi
   if (req?.status === 'pending')
     return (
       <div className="yx-pay-stack">
-        <InlineAlert tone="success" title="Sent for HR review">
+        <InlineAlert tone="info" title="Waiting for HR review">
           You asked to be {RES_TEXT[req.residentialStatus].toLowerCase()} on {dateText(req.submittedAt.slice(0, 10))}
           {req.file ? `, with ${req.file.name}` : ''}. Payroll checks it. Your TDS changes from the payslip after they approve.
         </InlineAlert>

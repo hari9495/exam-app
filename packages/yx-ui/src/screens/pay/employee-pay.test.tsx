@@ -204,7 +204,7 @@ describe('PAY-22 / PAY-41 · Me › Tax (live)', () => {
     const req = { id: 'rq1', from: 'new' as const, to: 'old' as const, reason: 'Home loan', requestedAt: '2026-10-20T10:00:00Z', decidedAt: null };
     const locked = { ...WS, canChooseRegime: false, dates: { regimeCutoff: '2026-05-31' } };
     const { unmount } = render(<TaxWorkspaceScreen live={live({ tab: 'declarations', workspace: { ...locked, regimeRequest: { ...req, status: 'pending' } } })} />);
-    expect(screen.getByText('Request sent to HR')).toBeInTheDocument();
+    expect(screen.getByText('Waiting for HR')).toBeInTheDocument();
     expect(screen.getByText(/switch to the old regime on 20 Oct 2026/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Ask HR to change regime' })).not.toBeInTheDocument();
     unmount();
@@ -300,7 +300,7 @@ describe('PAY-22 / PAY-41 · Me › Tax (live)', () => {
   it('residential status: a pending request shows its state and no form; a rejection shows payroll’s comment', () => {
     const req = { id: 'r1', from: 'resident' as const, residentialStatus: 'non_resident' as const, trcValidTo: '2027-03-31', dtaaCountry: 'SG', file: { name: 'trc.pdf', size: 10, at: '2026-10-20T10:00:00Z' }, comment: null, submittedAt: '2026-10-20T10:00:00Z' };
     const { unmount } = render(<TaxWorkspaceScreen live={live({ tab: 'residential', workspace: { ...WS, residencyRequest: { ...req, status: 'pending' } } })} />);
-    expect(screen.getByText('Sent for HR review')).toBeInTheDocument();
+    expect(screen.getByText('Waiting for HR review')).toBeInTheDocument();
     expect(screen.getByText(/be non-resident on 20 Oct 2026, with trc.pdf/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Send/ })).not.toBeInTheDocument();
     unmount();
@@ -518,5 +518,35 @@ describe('PAY-54 · My pay documents and the nominee drawer', () => {
     await ue.type(screen.getByRole('textbox', { name: /Nominee's email/ }), '.com');
     await ue.click(screen.getByRole('button', { name: 'Add nominee' }));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith({ employeeId: 'p1', name: 'Lakshmi Kulkarni', email: 'lakshmi@example.com', validUntil: '2099-12-31' }));
+  });
+});
+
+describe('design samples: no greyed-out buttons (house rules 2 and 3)', () => {
+  it('Save declarations with nothing changed says so; nothing is saved', async () => {
+    const u = userEvent.setup();
+    render(<TaxWorkspaceScreen tab="declarations" />);
+    await u.click(screen.getByRole('button', { name: 'Save declarations' }));
+    expect(screen.getAllByText(/Nothing to save yet\. /)[0]).toBeInTheDocument();
+    expect(screen.queryByText('Declarations saved')).not.toBeInTheDocument();
+  });
+
+  it('a loan over the limit: Send request focuses the amount and does not send', async () => {
+    const u = userEvent.setup();
+    render(<LoanRequestScreen variant="over-limit" />);
+    await u.click(screen.getByRole('button', { name: 'Send request' }));
+    expect(document.getElementById('lr-amount')).toHaveFocus();
+  });
+
+  it('EWA: no amount, Continue shows the error; with one it moves on', async () => {
+    const u = userEvent.setup();
+    render(<EwaRequestScreen layout="desktop" />);
+    const amount = screen.getByRole('textbox', { name: /Amount/ });
+    await u.clear(amount);
+    await u.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(screen.getByText('Enter the amount.')).toBeInTheDocument();
+    expect(amount).toHaveFocus();
+    await u.type(amount, '2000');
+    await u.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(screen.getByRole('button', { name: /Get ₹2,000/ })).toBeInTheDocument();
   });
 });

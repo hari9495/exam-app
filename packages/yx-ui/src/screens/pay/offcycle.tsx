@@ -6,7 +6,7 @@ import { Button, Link } from '../../components/button';
 import { Badge } from '../../components/display';
 import { EmptyState, InlineAlert, NoAccessState } from '../../components/feedback';
 import { Drawer } from '../../components/drawer';
-import { FieldRow, FormField } from '../../components/field';
+import { FieldRow, FormField, useTooEarly } from '../../components/field';
 import { CurrencyField, TextArea, TextField } from '../../components/inputs';
 import { RadioGroup } from '../../components/choice';
 import { FileUpload } from '../../components/upload';
@@ -442,6 +442,10 @@ function SampleArrearsBase({ confirmed = false, embedded = false, computed: comp
   const [reason, setReason] = useState(confirmed ? 'Old payroll register for August 2026, page 14' : '');
   const [computed, setComputed] = useState(computedAtStart);
   const [sent, setSent] = useState(false);
+  const baseEarly = useTooEarly([
+    ...(base == null ? [{ fieldId: 'ar-base', message: `Enter the basic as paid in ${ARREAR_MONTHS.find((m) => m.source === 'missing')!.month}.` }] : []),
+    ...(reason.trim().length < REASON_MIN ? [{ fieldId: 'ar-source', message: `Name the document or register (at least ${REASON_MIN} characters).` }] : []),
+  ]);
   const months: ArrearMonth[] = ARREAR_MONTHS.map((m) => (m.source === 'missing' && base != null && reason.trim().length >= REASON_MIN ? { ...m, asPaid: base, source: 'confirmed' } : m));
   const r = arrearsTotal(months);
   const missingMonth = ARREAR_MONTHS.find((m) => m.source === 'missing')!.month;
@@ -453,7 +457,7 @@ function SampleArrearsBase({ confirmed = false, embedded = false, computed: comp
   const pf = Math.round(r.total * 0.12);
   const content = (
     <div className="yx-pay-stack">
-      <InlineAlert tone={r.canApprove ? 'success' : 'warning'} title={r.canApprove ? 'Base confirmed for every month' : `Confirm the as-paid base for ${r.missing.join(', ')}`}>
+      <InlineAlert tone={r.canApprove ? 'info' : 'warning'} title={r.canApprove ? 'Base confirmed for every month' : `Confirm the as-paid base for ${r.missing.join(', ')}`}>
         {r.canApprove ? 'You can compute the arrears and send them for approval.' : 'No imported lines exist for this month. Arrears can’t be computed until you confirm what was paid, with a reason.'}
       </InlineAlert>
       {narrow ? (
@@ -528,10 +532,10 @@ function SampleArrearsBase({ confirmed = false, embedded = false, computed: comp
         <section className="yx-pay-panel" aria-label={`Confirm ${missingMonth} base`}>
           <SectionTitle>Confirm the as-paid base for {missingMonth}</SectionTitle>
           <FieldRow>
-            <FormField label={`Basic as paid in ${missingMonth}`} required>
+            <FormField id="ar-base" error={baseEarly.errorOf('ar-base')} label={`Basic as paid in ${missingMonth}`} required>
               <CurrencyField value={base} onChange={setBase} />
             </FormField>
-            <FormField label="Where this figure comes from" required helper={`Name the document or register (at least ${REASON_MIN} characters). Stored with the audit event.`}>
+            <FormField id="ar-source" error={baseEarly.errorOf('ar-source')} label="Where this figure comes from" required helper={`Name the document or register (at least ${REASON_MIN} characters). Stored with the audit event.`}>
               <TextArea value={reason} onChange={setReason} rows={2} />
             </FormField>
           </FieldRow>
@@ -573,7 +577,7 @@ function SampleArrearsBase({ confirmed = false, embedded = false, computed: comp
         </section>
       ) : (
         <div className="yx-pay-row">
-          <Button variant="primary" disabled={!r.canApprove} onClick={() => setComputed(true)}>
+          <Button variant="primary" onClick={() => (r.canApprove ? setComputed(true) : baseEarly.stop())}>
             Compute arrears
           </Button>
           {!r.canApprove && (

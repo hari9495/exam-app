@@ -143,7 +143,7 @@ function WorksheetBase({ w, live }: { w: Worksheet; live: LiveArrears }) {
     <div className="yx-pay-stack">
       <Failed error={error} />
       {draft ? (
-        <InlineAlert tone={missing.length ? 'warning' : 'success'} title={missing.length ? `Confirm the as-paid base for ${missing.map(monthText).join(', ')}` : 'Base confirmed for every month'}>
+        <InlineAlert tone={missing.length ? 'warning' : 'info'} title={missing.length ? `Confirm the as-paid base for ${missing.map(monthText).join(', ')}` : 'Base confirmed for every month'}>
           {missing.length ? 'No pay lines exist for this month. Arrears can’t be approved until you confirm what was paid, with a reason.' : 'You can approve the arrears; they are paid with the next run.'}
         </InlineAlert>
       ) : (
@@ -603,7 +603,7 @@ export function LiveActuarialScreen({ live }: { live: LiveActuarial }) {
               {finishNote}
             </InlineAlert>
           )}
-          {current.length > 0 && !toPost.length && <InlineAlert tone="success" title="Journal posted">The latest gratuity and leave figures are in the books.</InlineAlert>}
+          {current.length > 0 && !toPost.length && <InlineAlert tone="info" title="Journal posted">The latest gratuity and leave figures are in the books.</InlineAlert>}
           {toPost.length > 0 && (
             <>
               <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Provision against the valuation">

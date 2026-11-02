@@ -413,3 +413,23 @@ describe('Compensation history and the stale split (PAY-12, PAY-42 live)', () =>
     expect(onCheckSplit).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('design samples: no greyed-out buttons (house rules 2 and 3)', () => {
+  it('moving the first component up says it is already first; the order stays', async () => {
+    const u = userEvent.setup();
+    render(<TemplateBuilderScreen />);
+    const ups = screen.getAllByRole('button', { name: /^Move .* up$/ });
+    const first = ups[0]!.getAttribute('aria-label')!.replace(/^Move | up$/g, '');
+    await u.click(ups[0]!);
+    expect(screen.getAllByText(`${first} is already first.`)[0]).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /^Move .* up$/ })[0]).toHaveAccessibleName(`Move ${first} up`);
+  });
+
+  it('Revise compensation while the pay details load says to wait; no drawer opens', async () => {
+    const u = userEvent.setup();
+    render(<CompensationScreen state="loading" />);
+    await u.click(screen.getByRole('button', { name: 'Revise compensation' }));
+    expect(screen.getAllByText('Wait for the pay details to load.')[0]).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Revise compensation' })).not.toBeInTheDocument();
+  });
+});

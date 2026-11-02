@@ -15,6 +15,7 @@ import { Segment } from '../../components/segment';
 import { Select } from '../../components/select';
 import { FileUpload } from '../../components/upload';
 import { useToast } from '../../components/notify';
+import { PlainTable } from '../../components/plain-table';
 import { Stepper } from '../../components/stepper';
 import { formatINR } from '../../lib/format';
 import { useRun } from '../org/org-kit';
@@ -157,7 +158,7 @@ export function RegistrationsPart({ data, onSave }: { data: Registrations | null
     <div className="yx-pay-stack">
       <p className="yx-pay-muted">Each statute runs a completeness check before payroll can use it. Saving asks you to confirm it is you again; registration numbers never go into the audit log.</p>
       {data.completeness.complete ? (
-        <InlineAlert tone="success">All {rows.length} statutes pass the completeness check.</InlineAlert>
+        <InlineAlert tone="info">All {rows.length} statutes pass the completeness check.</InlineAlert>
       ) : (
         <InlineAlert tone="warning" title="Missing before the first payroll">
           <ul>
@@ -300,26 +301,17 @@ export function LegalOptionsPart({ options, onSet }: { options: LegalOption[] | 
       {!options ? (
         <Skeleton height={80} />
       ) : options.length ? (
-        <table className="yx-pay-table" aria-label="Legal options">
-          <thead>
-            <tr>
-              <th scope="col">Option</th>
-              <th scope="col">Value</th>
-              <th scope="col">From</th>
-              <th scope="col">Until</th>
-            </tr>
-          </thead>
-          <tbody>
-            {options.map((o) => (
-              <tr key={o.id}>
-                <th scope="row">{OPTION_CHOICES[o.optionKey].label}</th>
-                <td>{OPTION_CHOICES[o.optionKey].choices?.find((c) => c.value === o.value)?.label ?? o.value}</td>
-                <td>{dateText(o.validFrom)}</td>
-                <td>{o.validTo ? dateText(o.validTo) : 'Now'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <PlainTable
+          label="Legal options"
+          rows={options}
+          getRowId={(o) => o.id}
+          columns={[
+            { key: 'option', header: 'Option', rowHeader: true, cell: (o) => OPTION_CHOICES[o.optionKey].label },
+            { key: 'value', header: 'Value', cell: (o) => OPTION_CHOICES[o.optionKey].choices?.find((c) => c.value === o.value)?.label ?? o.value },
+            { key: 'from', header: 'From', date: true, cell: (o) => dateText(o.validFrom) },
+            { key: 'until', header: 'Until', date: true, cell: (o) => (o.validTo ? dateText(o.validTo) : 'Now') },
+          ]}
+        />
       ) : (
         <p className="yx-pay-note">No option set yet; the law's default applies.</p>
       )}
@@ -524,24 +516,16 @@ export function GroupsPart(p: {
             {!members ? (
               <Skeleton height={60} />
             ) : members.length ? (
-              <table className="yx-pay-table" aria-label="Members">
-                <thead>
-                  <tr>
-                    <th scope="col">Person</th>
-                    <th scope="col">Code</th>
-                    <th scope="col">In this group from</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {members.map((m) => (
-                    <tr key={m.employmentId}>
-                      <th scope="row">{m.name}</th>
-                      <td className="yx-pay-mono">{m.employeeCode}</td>
-                      <td>{dateText(m.validFrom)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <PlainTable
+                label="Members"
+                rows={members}
+                getRowId={(m) => m.employmentId}
+                columns={[
+                  { key: 'person', header: 'Person', rowHeader: true, cell: (m) => m.name },
+                  { key: 'code', header: 'Code', cell: (m) => <span className="yx-pay-mono">{m.employeeCode}</span> },
+                  { key: 'from', header: 'In this group from', date: true, cell: (m) => dateText(m.validFrom) },
+                ]}
+              />
             ) : (
               <EmptyState compact title="No one in this group yet" />
             )}
@@ -580,24 +564,16 @@ export function GroupsPart(p: {
             {!calendar ? (
               <Skeleton height={60} />
             ) : (
-              <table className="yx-pay-table" aria-label="Pay calendar">
-                <thead>
-                  <tr>
-                    <th scope="col">Month</th>
-                    <th scope="col">Inputs close</th>
-                    <th scope="col">Paid on</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {calendar.map((m) => (
-                    <tr key={m.month}>
-                      <th scope="row">{monthText(m.month)}</th>
-                      <td>{dateText(m.cutOff)}</td>
-                      <td>{dateText(m.payDate)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <PlainTable
+                label="Pay calendar"
+                rows={calendar}
+                getRowId={(m) => m.month}
+                columns={[
+                  { key: 'month', header: 'Month', rowHeader: true, cell: (m) => monthText(m.month) },
+                  { key: 'cut', header: 'Inputs close', date: true, cell: (m) => dateText(m.cutOff) },
+                  { key: 'pay', header: 'Paid on', date: true, cell: (m) => dateText(m.payDate) },
+                ]}
+              />
             )}
           </div>
         )}
@@ -700,7 +676,7 @@ export function ImportsPart(p: { entityId: string; today: string; onStage: LiveP
       </div>
       {check &&
         (check.ready ? (
-          <InlineAlert tone="success" title={`Every month from ${monthText(check.fyStart.slice(0, 7))} has its as-paid lines.`} />
+          <InlineAlert tone="info" title={`Every month from ${monthText(check.fyStart.slice(0, 7))} has its as-paid lines.`} />
         ) : (
           <InlineAlert tone="warning" title={`${check.missing.length}${check.missing.length === 500 ? '+' : ''} person-months have no as-paid lines yet`}>
             Arrears that reach back to these months will ask you to confirm their as-paid base.
@@ -757,7 +733,7 @@ export function GoLivePart(p: {
         <Skeleton height={140} />
       ) : (
         <>
-          {p.readiness.ready ? <InlineAlert tone="success" title="Ready for the first live month" /> : <InlineAlert tone="warning" title="Not ready yet">Each item below marked To do must be done first.</InlineAlert>}
+          {p.readiness.ready ? <InlineAlert tone="info" title="Ready for the first live month" /> : <InlineAlert tone="warning" title="Not ready yet">Each item below marked To do must be done first.</InlineAlert>}
           <table className="yx-pay-table" aria-label="Readiness checks">
             <thead>
               <tr>

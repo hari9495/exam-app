@@ -19,6 +19,7 @@ import { BarChart } from '../../components/charts';
 import { MenuItem } from '../../components/menu';
 import { CommentThread } from '../../components/timeline';
 import { ConfirmDialog } from '../../components/overlay';
+import { useToast } from '../../components/notify';
 import { DatePicker } from '../../components/date';
 import { formatDate, formatINR, groupIndian } from '../../lib/format';
 import { matchesFilter, toCsv, type FilterValue } from '../../lib/table';
@@ -66,7 +67,7 @@ const STORY = {
 const storyHref = (id: string) => `/?path=/story/${id}`;
 
 /** A bordered button that opens another story (the next screen in the flow). */
-function StoryButton({ to, icon, children, ...rest }: { to: string; children: ReactNode } & Pick<ButtonProps, 'variant' | 'size' | 'icon' | 'disabled'>) {
+function StoryButton({ to, icon, children, ...rest }: { to: string; children: ReactNode } & Pick<ButtonProps, 'variant' | 'size' | 'icon'>) {
   return (
     <Button {...rest} asChild>
       <a href={storyHref(to)} target="_top">
@@ -77,9 +78,16 @@ function StoryButton({ to, icon, children, ...rest }: { to: string; children: Re
   );
 }
 
-/** Result of the last action on the page. */
-function Done({ text }: { text: string | null }) {
-  return text ? <InlineAlert tone="success" title={text} /> : null;
+/** Says the last action is done: a success toast (5 s), never a green alert that stays. */
+function useDone() {
+  const { toast } = useToast();
+  return (text: string) => void toast({ tone: 'success', title: text });
+}
+
+/** Never a greyed-out button: pressed too early, a toast says why and nothing runs. */
+function useWhy() {
+  const { toast } = useToast();
+  return (why: string | false | null | undefined, act?: () => void) => (why ? void toast({ title: why }) : act?.());
 }
 
 /* ------------------------------------------------------------------ Bulk upload with row validation (shared) */
@@ -161,7 +169,7 @@ export function BulkUploadDrawer({
         )}
         {results && (
           <>
-            <InlineAlert tone={bad.length ? 'warning' : 'success'} title={`${good} rows ready · ${bad.length} rows with errors`}>
+            <InlineAlert tone={bad.length ? 'warning' : 'info'} title={`${good} rows ready · ${bad.length} rows with errors`}>
               {bad.length ? 'Each error says what to change in the file.' : 'Every row passed validation.'}
             </InlineAlert>
             <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
@@ -216,8 +224,10 @@ export function LopInputScreen(p: LopInputProps & { live?: LiveInputs }) {
 function SampleLopInputScreen({ state = 'ready', upload, locked, rows: initial = LOP_ROWS }: LopInputProps) {
   const [rows, setRows] = useState(initial);
   const [showUpload, setShowUpload] = useState(!!upload);
-  const [done, setDone] = useState<string | null>(null);
+  const setDone = useDone();
+  const why = useWhy();
   const errors = rows.filter((r) => r.error);
+  const frozen = locked && 'Inputs are frozen for September. Changes now go through a late request.';
   const cols: TableColumn<LopRow>[] = [
     { key: 'employee', header: 'Employee', type: 'person', value: (r) => r.employee, person: (r) => ({ name: r.employee, secondary: r.code }), width: 240 },
     { key: 'lop', header: 'LOP days', type: 'number', value: (r) => r.lop, editable: locked ? undefined : 'number', total: 'sum', width: 110 },
@@ -235,16 +245,15 @@ function SampleLopInputScreen({ state = 'ready', upload, locked, rows: initial =
         status={locked ? <Badge tone="neutral">Period frozen</Badge> : <Badge tone="warning">Open</Badge>}
         actions={
           <>
-            <Button icon={Upload} disabled={locked} onClick={() => setShowUpload(true)}>
+            <Button icon={Upload} onClick={() => why(frozen, () => setShowUpload(true))}>
               Bulk upload
             </Button>
-            <Button variant="primary" disabled={locked || errors.length > 0} onClick={() => setDone(`LOP saved for ${rows.length} employees · ${rows.reduce((a, r) => a + r.lop, 0)} unpaid days in total`)}>
+            <Button variant="primary" onClick={() => why(frozen || (errors.length > 0 && `Fix ${errors[0].employee}'s row first: ${errors[0].error}`), () => setDone(`LOP saved for ${rows.length} employees · ${rows.reduce((a, r) => a + r.lop, 0)} unpaid days in total`))}>
               Save LOP for {rows.length} employees
             </Button>
           </>
         }
       />
-      <Done text={done} />
       {locked && (
         <InlineAlert tone="info" title="Inputs are frozen for September">
           The cut-off passed on {formatDate(RUN.cutOff)}. Changes now go through a late request; approved late items reach October as arrears or LOP reversal.
@@ -367,7 +376,8 @@ function SampleOneTimePayScreen({ state = 'ready', sheet, upload, rows: initialR
   const [rows, setRows] = useState(upload ? initialRows.filter((r) => r.id !== O7.id) : initialRows);
   const [holds, setHolds] = useState<Hold[]>(HOLDS);
   const [selected, setSelected] = useState<string[]>([]);
-  const [done, setDone] = useState<string | null>(null);
+  const setDone = useDone();
+  const why = useWhy();
   const [type, setType] = useState<OneTimeRow['type']>(sheet === 'recurring' ? 'Incentive' : 'Bonus');
   const [payIn, setPayIn] = useState('Oct 2026');
   const [who, setWho] = useState(sheet ? payeeLabel(DEFAULT_PAYEE) : '');
@@ -535,16 +545,15 @@ function SampleOneTimePayScreen({ state = 'ready', sheet, upload, rows: initialR
         facts={ready ? `${plural(rows.length, 'item')} · ${formatINR(rows.filter((r) => r.kind === 'Earning').reduce((a, r) => a + r.amount, 0))} earnings · ${formatINR(rows.filter((r) => r.kind === 'Deduction').reduce((a, r) => a + r.amount, 0))} deductions` : undefined}
         actions={
           <>
-            <Button icon={Upload} disabled={!ready} onClick={() => setShowUpload(true)}>
+            <Button icon={Upload} onClick={() => why(!ready && 'Wait for the list to load.', () => setShowUpload(true))}>
               Bulk upload
             </Button>
-            <Button variant="primary" icon={Plus} disabled={!ready} onClick={openAdd}>
+            <Button variant="primary" icon={Plus} onClick={() => why(!ready && 'Wait for the list to load.', openAdd)}>
               Add one-time pay
             </Button>
           </>
         }
       />
-      <Done text={done} />
       <Tabs defaultValue={tab}>
         <TabsList aria-label="One-time pay and holds">
           <TabsTrigger value="onetime" count={ready ? rows.length : undefined}>
@@ -568,10 +577,10 @@ function SampleOneTimePayScreen({ state = 'ready', sheet, upload, rows: initialR
               const drafts = draftsIn(ids);
               return (
                 <>
-                  <Button size="sm" disabled={drafts.length === 0} onClick={() => sendForApproval(drafts)}>
+                  <Button size="sm" onClick={() => why(drafts.length === 0 && 'None of the selected items is a draft.', () => sendForApproval(drafts))}>
                     Send {drafts.length} for approval
                   </Button>
-                  <Button size="sm" variant="danger" disabled={drafts.length === 0} onClick={() => setDeleting(drafts)}>
+                  <Button size="sm" variant="danger" onClick={() => why(drafts.length === 0 && 'Only drafts can be deleted, and none is selected.', () => setDeleting(drafts))}>
                     Delete {plural(drafts.length, 'draft')}
                   </Button>
                   {drafts.length < ids.length && <span className="yx-pay-note">Only drafts can be sent or deleted</span>}
@@ -645,7 +654,7 @@ function SampleOneTimePayScreen({ state = 'ready', sheet, upload, rows: initialR
           <>
             <Button onClick={() => setAdding(false)}>Cancel</Button>
             {addMissing && <span className="yx-pay-note">{addMissing}</span>}
-            <Button variant="primary" disabled={!!addMissing} onClick={saveItem}>
+            <Button variant="primary" onClick={() => why(addMissing, saveItem)}>
               Send for approval
             </Button>
           </>
@@ -751,7 +760,8 @@ function statutoryText(h: Hold) {
 }
 
 function HoldsPanel({ state, holds, setHolds, releaseId, addOpen }: { state: ViewState; holds: Hold[]; setHolds: (fn: (hs: Hold[]) => Hold[]) => void; releaseId?: string; addOpen?: boolean }) {
-  const [done, setDone] = useState<string | null>(null);
+  const setDone = useDone();
+  const why = useWhy();
   const [release, setRelease] = useState<Hold | null>(holds.find((h) => h.id === releaseId) ?? null);
   const [payThrough, setPayThrough] = useState('next');
   const [releaseReason, setReleaseReason] = useState(releaseDefault(release));
@@ -853,7 +863,6 @@ function HoldsPanel({ state, holds, setHolds, releaseId, addOpen }: { state: Vie
   const releaseMonths = release ? heldMonths(release) : [];
   return (
     <div className="yx-pay-stack">
-      <Done text={done} />
       <InlineAlert tone="info">While a salary is held, PF, ESI and TDS are still computed and deposited on the accrued pay. Only the net is held.</InlineAlert>
       <SectionTitle
         actions={
@@ -907,7 +916,7 @@ function HoldsPanel({ state, holds, setHolds, releaseId, addOpen }: { state: Vie
           <>
             <Button onClick={() => setRelease(null)}>Cancel</Button>
             {!releaseReason.trim() && <span className="yx-pay-note">Add a reason to release</span>}
-            <Button variant="primary" disabled={!releaseReason.trim()} onClick={() => setConfirmRelease(true)}>
+            <Button variant="primary" onClick={() => why(!releaseReason.trim() && 'Add a reason to release.', () => setConfirmRelease(true))}>
               Release {release ? formatINR(heldTotal(release)) : ''}
             </Button>
           </>
@@ -959,7 +968,7 @@ function HoldsPanel({ state, holds, setHolds, releaseId, addOpen }: { state: Vie
           <>
             <Button onClick={() => setAdding(false)}>Cancel</Button>
             {holdMissing && <span className="yx-pay-note">{holdMissing}</span>}
-            <Button variant="primary" disabled={!!holdMissing} onClick={() => setConfirmHold(true)}>
+            <Button variant="primary" onClick={() => why(holdMissing, () => setConfirmHold(true))}>
               Hold salary
             </Button>
           </>
@@ -1167,7 +1176,8 @@ function SamplePayments({ persona = 'pa', tab = 'status', state = 'ready', failu
   const [route, setRoute] = useState<RepayRoute>('next');
   const [repayReason, setRepayReason] = useState(defaultReason(first));
   const [confirming, setConfirming] = useState(false);
-  const [done, setDone] = useState<string | null>(null);
+  const setDone = useDone();
+  const why = useWhy();
   const [acks, setAcks] = useState(PAY_LINES.filter((p) => p.acknowledged).map((p) => p.id));
   const [uploading, setUploading] = useState(false);
   const [format, setFormat] = useState('csv');
@@ -1271,10 +1281,10 @@ function SamplePayments({ persona = 'pa', tab = 'status', state = 'ready', failu
         facts={ready ? `${RUN.employees} employees · ${IN_BANK_FILE - failedOrReturned} paid by bank · ${failedOrReturned} failed or returned · ${RUN.cashCheque} cash or cheque · ${RUN.withheld} held · ${RUN.failed} not calculated` : undefined}
         actions={
           <>
-            <Button icon={showPay ? EyeOff : Eye} aria-pressed={showPay} disabled={!ready} onClick={() => setShowPay(!showPay)}>
+            <Button icon={showPay ? EyeOff : Eye} aria-pressed={showPay} onClick={() => why(!ready && 'Wait for the payments to load.', () => setShowPay(!showPay))}>
               {showPay ? 'Hide pay' : 'Show pay'}
             </Button>
-            <Button icon={Upload} disabled={!ready} onClick={() => setUploading(true)}>
+            <Button icon={Upload} onClick={() => why(!ready && 'Wait for the payments to load.', () => setUploading(true))}>
               Upload bank response
             </Button>
             {persona === 'pa' &&
@@ -1283,14 +1293,13 @@ function SamplePayments({ persona = 'pa', tab = 'status', state = 'ready', failu
                   Start off-cycle payment
                 </StoryButton>
               ) : (
-                <Button variant="primary" disabled>
+                <Button variant="primary" onClick={() => why('Wait for the payments to load.')}>
                   Start off-cycle payment
                 </Button>
               ))}
           </>
         }
       />
-      <Done text={done} />
       {showPay && <p className="yx-pay-muted">Pay is showing. Each time you show it is recorded.</p>}
       <StateBlock state={state} rows={8} onRetry={() => setTimeout(() => setRetried(true), 1200)}>
       <Tabs defaultValue={tab}>
@@ -1448,7 +1457,7 @@ function SamplePayments({ persona = 'pa', tab = 'status', state = 'ready', failu
             </table>
             </div>
             <div className="yx-pay-row">
-              <Button variant="primary" icon={format === 'api' ? undefined : Download} disabled={!balanced} onClick={exportJournal}>
+              <Button variant="primary" icon={format === 'api' ? undefined : Download} onClick={() => why(!balanced && 'Debits and credits must match before the journal can go.', exportJournal)}>
                 {format === 'api' ? 'Send journal' : 'Export journal'}
               </Button>
               {!balanced && <span className="yx-pay-note">Debits and credits must match</span>}
@@ -1489,7 +1498,7 @@ function SamplePayments({ persona = 'pa', tab = 'status', state = 'ready', failu
           <>
             <Button onClick={() => setFailure(null)}>Cancel</Button>
             {repayBlocked && <span className="yx-pay-note">{repayBlocked}</span>}
-            <Button variant="primary" disabled={!!repayBlocked} onClick={() => setConfirming(true)}>
+            <Button variant="primary" onClick={() => why(repayBlocked, () => setConfirming(true))}>
               {REPAY_ROUTE[route].button}
             </Button>
           </>
@@ -1634,7 +1643,8 @@ function SampleRecoveriesScreen({ tab = 'court', state = 'ready', openId }: Reco
   const [septRemitted, setSeptRemitted] = useState<string[]>([]);
   const [recoveries, setRecoveries] = useState(RECOVERIES);
   const [writeOff, setWriteOff] = useState<Recovery | null>(null);
-  const [done, setDone] = useState<string | null>(null);
+  const setDone = useDone();
+  const why = useWhy();
   const [adding, setAdding] = useState(false);
   const [newWho, setNewWho] = useState('');
   const [newRef, setNewRef] = useState('');
@@ -1748,12 +1758,11 @@ function SampleRecoveriesScreen({ tab = 'court', state = 'ready', openId }: Reco
         title="Court orders and recoveries"
         description="Court orders, unpaid balances carried to the next run, and overpayment recovery plans. Total deductions stay within the legal cap."
         actions={
-          <Button variant="primary" icon={Plus} disabled={state !== 'ready'} onClick={() => setAdding(true)}>
+          <Button variant="primary" icon={Plus} onClick={() => why(state !== 'ready' && 'Wait for the orders to load.', () => setAdding(true))}>
             Add court order
           </Button>
         }
       />
-      <Done text={done} />
       <StateBlock state={state} rows={6}>
         <Tabs defaultValue={tab}>
           <TabsList aria-label="Recoveries">
@@ -1824,7 +1833,7 @@ function SampleRecoveriesScreen({ tab = 'court', state = 'ready', openId }: Reco
           <>
             <Button onClick={() => setOpen(null)}>Close</Button>
             {open && (open.start > d(1) ? <span className="yx-pay-note">Deductions start with the October run</span> : septRemitted.includes(open.id) && <span className="yx-pay-note">September is already remitted</span>)}
-            <Button variant="primary" disabled={!open || open.start > d(1) || septRemitted.includes(open.id)} onClick={() => open && setRemitting(open)}>
+            <Button variant="primary" onClick={() => open && why(open.start > d(1) ? 'Deductions start with the October run.' : septRemitted.includes(open.id) && 'September is already remitted.', () => setRemitting(open))}>
               Record September remittance
             </Button>
           </>
@@ -1895,7 +1904,7 @@ function SampleRecoveriesScreen({ tab = 'court', state = 'ready', openId }: Reco
           <>
             <Button onClick={() => setAdding(false)}>Cancel</Button>
             {newMissing && <span className="yx-pay-note">{newMissing}</span>}
-            <Button variant="primary" disabled={!!newMissing} onClick={addOrder}>
+            <Button variant="primary" onClick={() => why(newMissing, addOrder)}>
               Add court order
             </Button>
           </>
@@ -2041,7 +2050,8 @@ function SampleQueryQueueScreen({ state = 'ready', openId, rows: initialRows = Q
   const open = rows.find((q) => q.id === openRef) ?? null;
   const setOpen = (q: QueryRow | null) => setOpenRef(q?.id ?? null);
   const [selected, setSelected] = useState<string[]>([]);
-  const [done, setDone] = useState<string | null>(null);
+  const setDone = useDone();
+  const why = useWhy();
   const [assignTo, setAssignTo] = useState<string | null>(null);
   const [replied, setReplied] = useState<string[]>([]);
   const ASSIGNEES = [PAYROLL_ADMIN.name, OTHER_ASSIGNEE];
@@ -2097,7 +2107,6 @@ function SampleQueryQueueScreen({ state = 'ready', openId, rows: initialRows = Q
   return (
     <PayFrame page="queries" counts={{ queries: openCount }}>
       <PageHeader title="Payslip queries" description="Questions employees raised on a payslip or a line. Replies stay in the app." facts={ready ? `${openCount} open · reply target 2 working days` : undefined} />
-      <Done text={done} />
       <DataTable
         label="Payslip queries"
         columns={cols}
@@ -2132,9 +2141,9 @@ function SampleQueryQueueScreen({ state = 'ready', openId, rows: initialRows = Q
             <Button onClick={() => setOpen(null)}>Close</Button>
             {!assignTo && <span className="yx-pay-note">Choose who to {open?.assignee === UNASSIGNED ? 'assign' : 'reassign'} to</span>}
             <Button
-              disabled={!assignTo}
               onClick={() => {
-                if (!open || !assignTo) return;
+                if (!open) return;
+                if (!assignTo) return why(`Choose who to ${open.assignee === UNASSIGNED ? 'assign' : 'reassign'} to.`);
                 update([open.id], () => ({ assignee: assignTo }));
                 setDone(`Query from ${open.employee} ${open.assignee === UNASSIGNED ? 'assigned' : 'reassigned'} to ${assignTo}`);
                 setAssignTo(null);
@@ -2145,9 +2154,9 @@ function SampleQueryQueueScreen({ state = 'ready', openId, rows: initialRows = Q
             {open?.status === 'Resolved' ? <span className="yx-pay-note">Already resolved</span> : !hasReply && <span className="yx-pay-note">Reply to the employee first</span>}
             <Button
               variant="primary"
-              disabled={!open || open.status === 'Resolved' || !hasReply}
               onClick={() => {
                 if (!open) return;
+                if (open.status === 'Resolved' || !hasReply) return why(open.status === 'Resolved' ? 'This query is already resolved.' : 'Reply to the employee first.');
                 update([open.id], () => ({ status: 'Resolved' }));
                 setDone(`Query from ${open.employee} on "${open.line}" marked resolved`);
                 setOpen(null);

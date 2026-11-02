@@ -310,9 +310,9 @@ export function LiveRunWorkspace({ live: p }: { live: LiveRunWorkspaceData }) {
                 onRetryFailed={p.can.prepare && p.onRetryFailed ? retryFailed : undefined}
               />
             )}
-            {made && (
-              <InlineAlert tone="success" title={`Bank file made: ${count(made.rows, 'payment')}, ${money(made.total)}`} actions={<Button size="sm" onClick={() => setMade(null)}>Dismiss</Button>}>
-                {made.excluded.length ? `Not in the file: ${made.excluded.map((x) => `${nameOf(x.employeeId)} (${x.reason})`).join('; ')}.` : 'Everyone waiting to be paid by bank is in it.'} Someone else releases it.
+            {!!made?.excluded.length && (
+              <InlineAlert tone="warning" title="Not in the bank file" actions={<Button size="sm" onClick={() => setMade(null)}>Dismiss</Button>}>
+                {made.excluded.map((x) => `${nameOf(x.employeeId)} (${x.reason})`).join('; ')}.
               </InlineAlert>
             )}
             <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
@@ -351,7 +351,7 @@ export function LiveRunWorkspace({ live: p }: { live: LiveRunWorkspaceData }) {
                     </InlineAlert>
                   )}
                   {locked && (
-                    <InlineAlert tone="success" title="Approved and locked">
+                    <InlineAlert tone="info" title="Approved and locked">
                       The month's attendance and pay are locked. Changes after this are paid in the next payroll.
                     </InlineAlert>
                   )}
@@ -465,9 +465,10 @@ export function LiveRunWorkspace({ live: p }: { live: LiveRunWorkspaceData }) {
           again={!!p.bankFiles?.length}
           onClose={() => setSheet(null)}
           onSave={async (debit, reason) => {
-            setMade(await p.onGenerateBank(debit, reason));
+            const m = await p.onGenerateBank(debit, reason);
+            setMade(m);
             setTab('files');
-            say('Bank file made. Someone else releases it.');
+            say(`Bank file made: ${count(m.rows, 'payment')}, ${money(m.total)}. Someone else releases it.`);
           }}
         />
       )}
@@ -515,7 +516,7 @@ function ValidationsPanel({ p, checks, calcBlocks, editable, nameOf }: { p: Live
           You can calculate once waivable items are waived with a reason. Waiving a missing bank account holds that person's net pay until it is added.
         </InlineAlert>
       ) : (
-        <InlineAlert tone="success" title="Ready to calculate">
+        <InlineAlert tone="info" title="Ready to calculate">
           Every blocking item is resolved or waived with a reason.
         </InlineAlert>
       )}
@@ -807,7 +808,7 @@ function VariancePanel({ p, nameOf }: { p: LiveRunWorkspaceData; nameOf: (id: st
   if (!p.variances.length) return <EmptyState title="No unusual pay changes" description="Net pay changes above the company's limit, and components added or removed since last month, show here." />;
   return (
     <div className="yx-pay-stack">
-      <InlineAlert tone={left ? 'warning' : 'success'} title={left ? `${count(left, 'change')} need acknowledgement before approval` : 'All variance acknowledged'}>
+      <InlineAlert tone={left ? 'warning' : 'info'} title={left ? `${count(left, 'change')} need acknowledgement before approval` : 'All variance acknowledged'}>
         Net pay changes above the company's limit, and components added or removed since last month.
       </InlineAlert>
       <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">

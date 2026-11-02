@@ -64,7 +64,8 @@ describe('batch 5j payroll screens', () => {
 
   it('F&F: before the run is calculated, salary and TDS wait; a held line shows why and is released', async () => {
     const onHold = vi.fn(async () => ({}));
-    render(<FnfCalculator today={new Date(2026, 9, 16)} live={fnfLive({ settlements: [FNF[0]], onHold })} />);
+    const onSubmit = vi.fn(async () => ({}));
+    render(<FnfCalculator today={new Date(2026, 9, 16)} live={fnfLive({ settlements: [FNF[0]], onHold, onSubmit })} />);
     expect(screen.getByText('Part of this F&F is held')).toBeInTheDocument();
     expect(screen.getByText('Pay now').parentElement).toHaveTextContent('Pay now—');
     expect(screen.getByText('Held back').parentElement).toHaveTextContent('Held back₹44,000');
@@ -74,15 +75,21 @@ describe('batch 5j payroll screens', () => {
     expect(within(notice).getByText("Held because: The establishment has 350 workers: the government's permission for retrenchment is needed first.")).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Tax' })).toHaveTextContent('Worked out on the final income for the year when the F&F run is calculated.');
     expect(screen.getByText('Gratuity: 5 years 7 months counts as 6 years (6 months or more rounds up). Due within 30 days, by 15 Nov 2026.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Send for approval' })).toBeDisabled();
+    // Never greyed out: pressed too early it says why and sends nothing.
+    await ue.click(screen.getByRole('button', { name: 'Send for approval' }));
+    expect((await screen.findAllByText('Calculate the settlement first, then send it for approval.')).length).toBeGreaterThan(0);
+    expect(onSubmit).not.toHaveBeenCalled();
     await ue.click(screen.getByRole('button', { name: 'Release', hidden: true }));
     await waitFor(() => expect(onHold).toHaveBeenCalledWith(FNF[0], 'i1', null, 'Released for payment'));
   });
 
-  it('F&F: a calculated run whose lines changed since says it needs recalculating', () => {
-    render(<FnfCalculator today={new Date(2026, 9, 19)} live={fnfLive({ settlements: [{ ...FNF[1], salary: null }] })} />);
+  it('F&F: a calculated run whose lines changed since says it needs recalculating, and Send for approval says so', async () => {
+    const onSubmit = vi.fn(async () => ({}));
+    render(<FnfCalculator today={new Date(2026, 9, 19)} live={fnfLive({ settlements: [{ ...FNF[1], salary: null }], onSubmit })} />);
     expect(screen.getByText('Needs recalculating')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Send for approval' })).toBeDisabled();
+    await ue.click(screen.getByRole('button', { name: 'Send for approval' }));
+    expect((await screen.findAllByText('The lines changed since the last calculation. Recalculate, then send it for approval.')).length).toBeGreaterThan(0);
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it('F&F: hold with a reason, add a line, waive the notice, and pick another settlement', async () => {

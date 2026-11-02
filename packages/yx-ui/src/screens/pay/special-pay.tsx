@@ -80,6 +80,15 @@ export const PIECE_WORKERS: PieceWorker[] = PLANT_WORKERS.slice(0, 10)
   .map((e, i) => ({ id: e.id, name: e.name, code: e.code, days: 26 - (i % 3), outputs: [{ qty: 180 + i * 17, rate: 42 }, { qty: 120 + i * 9, rate: 18 }, { qty: i === 2 ? 60 : 900 + i * 40, rate: 1.5 }] }));
 
 /** PAY-31 · Piece-rate cards and output import with minimum-wage top-up check. */
+/** Never a greyed-out button: pressed too early, a toast says why and nothing runs; done is a success toast (5 s). */
+function useSay() {
+  const { toast } = useToast();
+  return {
+    done: (title: string, description?: string) => void toast({ tone: 'success', title, description }),
+    why: (why: string | false | null | undefined, act?: () => void) => (why ? void toast({ title: why }) : act?.()),
+  };
+}
+
 export function PieceRateScreen({ live, ...story }: { tab?: 'cards' | 'output' | 'check'; upload?: boolean; state?: ViewState; /** The live app's /yx/payroll/special-pay tab. */ live?: LiveSpecialPay }) {
   return live ? <LivePieceRate live={live} /> : <SamplePieceRate {...story} />;
 }
@@ -90,7 +99,7 @@ function SamplePieceRate({ tab = 'check', upload, state = 'ready' }: { tab?: 'ca
   const [cards, setCards] = useState<RateCard[]>(RATE_CARDS);
   const [editingCard, setEditingCard] = useState<RateCard | null>(null);
   const [workers, setWorkers] = useState<PieceWorker[]>(PIECE_WORKERS);
-  const [imported, setImported] = useState<string | null>(null);
+  const say = useSay();
   const ready = state === 'ready';
   const cardBlocked = !editingCard ? null : !editingCard.operation.trim() ? 'Enter the operation.' : !(editingCard.rate > 0) ? 'Enter a rate above zero.' : !editingCard.unit.trim() ? 'Enter the unit.' : !editingCard.from ? 'Enter the valid-from date.' : null;
   const saveCard = () => {
@@ -136,30 +145,29 @@ function SamplePieceRate({ tab = 'check', upload, state = 'ready' }: { tab?: 'ca
             {sent ? (
               <span className="yx-pay-muted">September output is locked.</span>
             ) : (
-              <Button icon={Upload} onClick={() => setShowUpload(true)} disabled={!ready}>
+              <Button icon={Upload} onClick={() => say.why(!ready && 'Wait for the output to load.', () => setShowUpload(true))}>
                 Import output
               </Button>
             )}
-            <ConfirmDialog
-              trigger={
-                <Button variant="primary" disabled={sent || !ready}>
-                  {sent ? 'Sent to September run' : 'Send to September run'}
-                </Button>
-              }
-              title="Send piece-rate pay to the September run?"
-              consequence={`${rows.length} workers, ${formatINR(payTotal)} in all, including ${formatINR(topUpTotal)} minimum-wage top-up. The ${lock} cut-off has passed, so this goes in as a late input for ${PAYROLL_ADMIN.name} to accept before approval. September output is locked after this.`}
-              confirmLabel="Send to September run"
-              onConfirm={() => setSent(true)}
-            />
+            {sent || !ready ? (
+              <Button variant="primary" onClick={() => say.why(sent ? 'Already sent. September output is locked.' : 'Wait for the output to load.')}>
+                {sent ? 'Sent to September run' : 'Send to September run'}
+              </Button>
+            ) : (
+              <ConfirmDialog
+                trigger={<Button variant="primary">Send to September run</Button>}
+                title="Send piece-rate pay to the September run?"
+                consequence={`${rows.length} workers, ${formatINR(payTotal)} in all, including ${formatINR(topUpTotal)} minimum-wage top-up. The ${lock} cut-off has passed, so this goes in as a late input for ${PAYROLL_ADMIN.name} to accept before approval. September output is locked after this.`}
+                confirmLabel="Send to September run"
+                onConfirm={() => {
+                  setSent(true);
+                  say.done('Sent to the September run', `${formatINR(payTotal)} for ${rows.length} workers is in the run as piece-rate pay and minimum-wage top-up lines. September output is locked.`);
+                }}
+              />
+            )}
           </>
         }
       />
-      {imported && !sent && <InlineAlert tone="success" title={imported} />}
-      {sent && (
-        <InlineAlert tone="success" title="Sent to the September run">
-          {formatINR(payTotal)} for {rows.length} workers is in the run as piece-rate pay and minimum-wage top-up lines. September output is locked.
-        </InlineAlert>
-      )}
       <Tabs defaultValue={tab}>
         <TabsList aria-label="Piece-rate">
           <TabsTrigger value="cards" count={ready ? cards.length : undefined}>
@@ -224,7 +232,7 @@ function SamplePieceRate({ tab = 'check', upload, state = 'ready' }: { tab?: 'ca
           <>
             {cardBlocked && <span className="yx-pay-muted">{cardBlocked}</span>}
             <Button onClick={() => setEditingCard(null)}>Cancel</Button>
-            <Button variant="primary" disabled={!!cardBlocked} onClick={saveCard}>
+            <Button variant="primary" onClick={() => say.why(cardBlocked, saveCard)}>
               Save rate card
             </Button>
           </>
@@ -260,7 +268,7 @@ function SamplePieceRate({ tab = 'check', upload, state = 'ready' }: { tab?: 'ca
           const add: Record<string, number> = { [PIECE_WORKERS[0].id]: 18, [PIECE_WORKERS[1].id]: 21 };
           setWorkers((ws) => ws.map((w) => (add[w.id] ? { ...w, outputs: w.outputs.map((o, i) => (i === 0 ? { ...o, qty: o.qty + add[w.id] } : o)) } : w)));
           setShowUpload(false);
-          setImported('2 output rows imported into 1 kg pouches · 2 rows skipped with errors');
+          say.done('2 output rows imported into 1 kg pouches · 2 rows skipped with errors');
         }}
         results={
           upload
@@ -306,6 +314,7 @@ export function IncentivePlanScreen({ live, ...story }: { variant?: 'draft' | 'o
 function SampleIncentivePlan({ variant = 'draft', state = 'ready' }: { variant?: 'draft' | 'overlap' | 'published'; state?: ViewState }) {
   const narrow = useNarrow(599);
   const [status, setStatus] = useState<'draft' | 'published'>(variant === 'published' ? 'published' : 'draft');
+  const say = useSay();
   const ro = status === 'published';
   const [newVersion, setNewVersion] = useState(false);
   const [effFrom, setEffFrom] = useState<Date | null>(variant === 'published' ? d(1, 3) : NEXT_QUARTER);
@@ -401,7 +410,7 @@ function SampleIncentivePlan({ variant = 'draft', state = 'ready' }: { variant?:
             <>
               {previewLink}
               {publishBlocked && <span className="yx-pay-muted">{publishBlocked}</span>}
-              <Button variant="primary" disabled={!!publishBlocked} onClick={() => setConfirming(true)}>
+              <Button variant="primary" onClick={() => say.why(publishBlocked, () => setConfirming(true))}>
                 Publish plan
               </Button>
             </>
@@ -471,7 +480,7 @@ function SampleIncentivePlan({ variant = 'draft', state = 'ready' }: { variant?:
                   <span className="yx-pay-muted">
                     {members.length} {members.length === 1 ? 'person is' : 'people are'} on the plan.
                   </span>
-                  <Button size="sm" onClick={() => setShowPeople(true)} disabled={!members.length}>
+                  <Button size="sm" onClick={() => say.why(!members.length && 'No one is on the plan yet.', () => setShowPeople(true))}>
                     See people
                   </Button>
                 </div>
@@ -650,7 +659,7 @@ function SampleTipsPool({ openId, state = 'ready' }: { openId?: string; state?: 
   const setOpen = (p: TipPool | null) => setOpenPoolId(p?.id ?? null);
   const [creating, setCreating] = useState(false);
   const [confirmingSend, setConfirmingSend] = useState(false);
-  const [sentPool, setSentPool] = useState<TipPool | null>(null);
+  const say = useSay();
   const [draft, setDraft] = useState<{ outlet: string; period: string; basis: TipBasis }>({ outlet: TIP_OUTLETS[0], period: 'October 2026', basis: 'points' });
   const shownState: ViewState = state === 'empty' && pools.length ? 'ready' : state;
   const duplicate = pools.some((p) => p.outlet === draft.outlet && p.period === draft.period);
@@ -689,11 +698,6 @@ function SampleTipsPool({ openId, state = 'ready' }: { openId?: string; state?: 
   return (
     <PayFrame page="compensation" persona="hr">
       <PageHeader title="Tips and service charge" description="Pools per outlet and period. Amounts paid through payroll are a named line; tips paid directly by customers are recorded for statements only." actions={shownState === 'ready' ? newPoolButton : undefined} />
-      {sentPool && (
-        <InlineAlert tone="success" title={`${sentPool.outlet} tips sent to the September run`}>
-          {formatINR(sentPool.collected)} is split across {sentPool.staff.length} people on the {BASIS_LABEL[sentPool.basis]} basis and paid as a named tips line.
-        </InlineAlert>
-      )}
       <StateBlock state={shownState} errorTitle="Couldn't load tip pools." empty={<EmptyState title="No tip pools yet." description="Create a pool for an outlet and period, then add collections." action={newPoolButton} />}>
         <DataTable
           label="Tip pools"
@@ -718,7 +722,7 @@ function SampleTipsPool({ openId, state = 'ready' }: { openId?: string; state?: 
           <>
             {sendBlocked && <span className="yx-pay-muted">{sendBlocked}</span>}
             <Button onClick={() => setOpen(null)}>Cancel</Button>
-            <Button variant="primary" disabled={!!sendBlocked} onClick={() => setConfirmingSend(true)}>
+            <Button variant="primary" onClick={() => say.why(sendBlocked, () => setConfirmingSend(true))}>
               Send to September run
             </Button>
           </>
@@ -780,7 +784,7 @@ function SampleTipsPool({ openId, state = 'ready' }: { openId?: string; state?: 
           <>
             {duplicate && <span className="yx-pay-muted">A pool for this outlet and period already exists.</span>}
             <Button onClick={() => setCreating(false)}>Cancel</Button>
-            <Button variant="primary" disabled={duplicate} onClick={createPool}>
+            <Button variant="primary" onClick={() => say.why(duplicate && 'A pool for this outlet and period already exists.', createPool)}>
               Create pool
             </Button>
           </>
@@ -807,7 +811,7 @@ function SampleTipsPool({ openId, state = 'ready' }: { openId?: string; state?: 
           confirmLabel="Send to September run"
           onConfirm={() => {
             setPools((ps) => ps.map((p) => (p.id === open.id ? { ...p, status: 'In September run' } : p)));
-            setSentPool(open);
+            say.done(`${open.outlet} tips sent to the September run`, `${formatINR(open.collected)} is split across ${open.staff.length} people on the ${BASIS_LABEL[open.basis]} basis and paid as a named tips line.`);
             setOpen(null);
           }}
         />
@@ -868,7 +872,7 @@ function SampleOnCallRules({ variant = 'default', state = 'ready' }: { variant?:
   const [appliesFrom, setAppliesFrom] = useState<Date | null>(NEXT_QUARTER);
   const [editing, setEditing] = useState<OnCallSlot | null>(null);
   const [confirming, setConfirming] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const say = useSay();
   const [dayType, setDayType] = useState<'normal' | 'holiday'>(variant === 'holiday' ? 'holiday' : 'normal');
   const [savedFlags, setSavedFlags] = useState({ payStandby: true, countOvertime: true });
   const changes = [
@@ -919,18 +923,13 @@ function SampleOnCallRules({ variant = 'default', state = 'ready' }: { variant?:
           shownState === 'ready' ? (
             <>
               <span className="yx-pay-muted">{saveBlocked ?? 'Unsaved changes.'}</span>
-              <Button variant="primary" disabled={!!saveBlocked} onClick={() => setConfirming(true)}>
+              <Button variant="primary" onClick={() => say.why(saveBlocked, () => setConfirming(true))}>
                 Save rules
               </Button>
             </>
           ) : undefined
         }
       />
-      {saved && appliesFrom && (
-        <InlineAlert tone="success" title="Rules saved">
-          New on-call rates apply to call-outs from {formatDate(appliesFrom)} <DueBadge date={appliesFrom} />.
-        </InlineAlert>
-      )}
       <StateBlock state={shownState} errorTitle="Couldn't load the on-call slot types." empty={<EmptyState title="No on-call slot types yet." description="Add them in Time › Roster first." action={openRoster} />}>
         {row && ex && (
           <div className="yx-pay-stack">
@@ -1001,11 +1000,9 @@ function SampleOnCallRules({ variant = 'default', state = 'ready' }: { variant?:
             <Button onClick={() => setEditing(null)}>Cancel</Button>
             <Button
               variant="primary"
-              disabled={!!editBlocked}
               onClick={() => {
-                if (!editing) return;
+                if (!editing || editBlocked) return say.why(editBlocked);
                 setSlots((ss) => ss.map((s) => (s.id === editing.id ? editing : s)));
-                setSaved(false);
                 setEditing(null);
               }}
             >
@@ -1048,7 +1045,7 @@ function SampleOnCallRules({ variant = 'default', state = 'ready' }: { variant?:
         onConfirm={() => {
           setSavedSlots(slots);
           setSavedFlags({ payStandby, countOvertime });
-          setSaved(true);
+          if (appliesFrom) say.done('Rules saved', `New on-call rates apply to call-outs from ${formatDate(appliesFrom)}.`);
         }}
       />
     </PayFrame>
@@ -1102,6 +1099,7 @@ function SampleUnionCheckoff({ tab = 'auth', state = 'ready' }: { tab?: 'auth' |
   const noAuth = rows.filter((c) => c.status === 'No authorisation').length;
   const withdrawn = rows.filter((c) => c.status === 'Withdrawn').length;
   const candidates = rows.filter((c) => c.status !== 'Authorised');
+  const say = useSay();
   const startAdding = (r?: CheckoffRow) => setAdding({ id: r?.id ?? candidates[0]?.id ?? null, union: r?.union ?? UNIONS[0], signed: null, file: false });
   const addBlocked = !adding ? null : !adding.id ? 'Choose a worker.' : !adding.signed ? 'Enter the date it was signed.' : !adding.file ? 'Upload the signed form.' : null;
   const saveAuth = () => {
@@ -1173,7 +1171,7 @@ function SampleUnionCheckoff({ tab = 'auth', state = 'ready' }: { tab?: 'auth' |
       <PageHeader title="Union check-off" description="Dues are deducted only with the worker's written authorisation and remitted to each union every month." actions={
           <>
             {!candidates.length && <span className="yx-pay-muted">Every worker on the list has an authorisation.</span>}
-            <Button variant="primary" icon={Upload} disabled={!candidates.length || state !== 'ready'} onClick={() => startAdding()}>
+            <Button variant="primary" icon={Upload} onClick={() => say.why(state !== 'ready' ? 'Wait for the list to load.' : !candidates.length && 'Every worker on the list has an authorisation.', () => startAdding())}>
               Add authorisation
             </Button>
           </>
@@ -1243,7 +1241,7 @@ function SampleUnionCheckoff({ tab = 'auth', state = 'ready' }: { tab?: 'auth' |
                     Statement
                   </Button>
                   {!u.remitted && (
-                    <Button size="sm" disabled={!paid} onClick={() => { setTriedMark(false); setMarking({ union: u.union, on: null, reference: '' }); }}>
+                    <Button size="sm" onClick={() => say.why(!paid && `Mark it remitted after the ${formatDate(PAY_CALENDAR.payDate)} pay date.`, () => { setTriedMark(false); setMarking({ union: u.union, on: null, reference: '' }); })}>
                       Mark remitted
                     </Button>
                   )}
@@ -1286,7 +1284,7 @@ function SampleUnionCheckoff({ tab = 'auth', state = 'ready' }: { tab?: 'auth' |
           <>
             {addBlocked && <span className="yx-pay-muted">{addBlocked}</span>}
             <Button onClick={() => setAdding(null)}>Cancel</Button>
-            <Button variant="primary" disabled={!!addBlocked} onClick={saveAuth}>
+            <Button variant="primary" onClick={() => say.why(addBlocked, saveAuth)}>
               Save authorisation
             </Button>
           </>

@@ -6,12 +6,13 @@ import { Button, Link, type ButtonProps } from '../../components/button';
 import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
 import { Icon } from '../../components/foundations';
 import { TextArea, TextField } from '../../components/inputs';
 import { DatePicker } from '../../components/date';
 import { useNarrow } from '../../components/stepper';
 import { Dialog } from '../../components/overlay';
+import { useToast } from '../../components/notify';
 import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { Stepper, type StepperStep } from '../../components/stepper';
 import { DataTable, type TableColumn } from '../../components/table';
@@ -198,6 +199,7 @@ function SamplePayrollHome({ state = 'ready', persona = 'pa', stage = 'In review
   const blocking = blockers.filter((b) => b.severity === 'block');
   const isFin = persona === 'fin';
   const [help, setHelp] = useState(false);
+  const { toast } = useToast();
   const loaded = state === 'ready';
   // A draft run has no September totals yet: the cards show the last finished run (August) against July.
   const last = RUN_HISTORY.length - (stage === 'Draft' ? 2 : 1);
@@ -217,7 +219,7 @@ function SamplePayrollHome({ state = 'ready', persona = 'pa', stage = 'In review
             <span className="yx-pay-muted">
               {plural(blocking.length, 'item')} {blocking.length === 1 ? 'blocks' : 'block'} approval: {blocking.map((b) => (b.id === 'b1' ? 'attendance exceptions' : b.id === 'b2' ? 'PF coverage' : b.title)).join(', ')}
             </span>
-            <Button variant="primary" icon={Lock} disabled>
+            <Button variant="primary" icon={Lock} onClick={() => toast({ title: `Resolve the ${plural(blocking.length, 'blocking item')} first.` })}>
               Approve and lock
             </Button>
           </>
@@ -465,12 +467,17 @@ export function CoveragePanel({ rows: initial = COVERAGE, state = 'ready', onCha
   const [switching, setSwitching] = useState<{ row: CoverageRow; applied: boolean } | null>(null);
   const [regNo, setRegNo] = useState('');
   const [from, setFrom] = useState<Date | null>(d(1));
+  const early = useTooEarly([
+    ...(!switching?.applied && regNo.trim().length < 5 ? [{ fieldId: 'cov-reg', message: 'Give the registration number (at least 5 characters).' }] : []),
+    ...(!from ? [{ fieldId: 'cov-from', message: 'Choose the date coverage starts.' }] : []),
+  ]);
   const settle = (r: CoverageRow, due: string) => {
     const next = rows.map((x) => (x === r ? { ...x, status: 'Covered' as const, due } : x));
     setRows(next);
     onChange?.(next);
   };
   const close = () => {
+    early.reset();
     setSwitching(null);
     setRegNo('');
     setFrom(d(1));
@@ -481,7 +488,6 @@ export function CoveragePanel({ rows: initial = COVERAGE, state = 'ready', onCha
       ? `PF deductions start for ${sw.headcount} employees of ${sw.entity} from the September run, with the company's matching contribution.`
       : `${sw.statute} provisioning starts for ${sw.headcount} employees of ${sw.entity}.`
     : '';
-  const canSave = !!from && (switching?.applied || regNo.trim().length >= 5);
   return (
     <section className="yx-pay-panel" aria-label="Coverage monitor">
       <SectionTitle
@@ -508,8 +514,8 @@ export function CoveragePanel({ rows: initial = COVERAGE, state = 'ready', onCha
             <Button onClick={close}>Cancel</Button>
             <Button
               variant="primary"
-              disabled={!canSave}
               onClick={() => {
+                if (early.stop()) return;
                 if (sw && from) settle(sw, switching?.applied ? `Applied, number awaited · from ${formatDate(from)}` : `${sw.statute} ${regNo.trim()} · from ${formatDate(from)}`);
                 close();
               }}
@@ -521,11 +527,11 @@ export function CoveragePanel({ rows: initial = COVERAGE, state = 'ready', onCha
       >
         <div className="yx-pay-stack">
           {!switching?.applied && (
-            <FormField label="Registration number" required helper="As on the registration certificate.">
+            <FormField id="cov-reg" label="Registration number" required helper="As on the registration certificate." error={early.errorOf('cov-reg')}>
               <TextField value={regNo} onChange={setRegNo} />
             </FormField>
           )}
-          <FormField label="Covered from" required helper="The date the threshold was crossed or the registration starts.">
+          <FormField id="cov-from" label="Covered from" required helper="The date the threshold was crossed or the registration starts." error={early.errorOf('cov-from')}>
             <DatePicker value={from} onChange={setFrom} />
           </FormField>
         </div>
@@ -621,6 +627,7 @@ export function RunReadinessScreen({ findings: initial = FINDINGS, groups = ATTE
   const [viewing, setViewing] = useState<Finding | null>(null);
   const [waiving, setWaiving] = useState<Finding | null>(initial.find((f) => f.id === defaultWaiveId) ?? null);
   const [reason, setReason] = useState('');
+  const waiveEarly = useTooEarly(reason.trim().length < 5 ? [{ fieldId: 'waive-reason', message: 'Give a reason of at least 5 characters.' }] : []);
   const hardBlocks = findings.filter((f) => f.severity === 'block' && !f.waived);
   const coverageBlock = coverage.some((c) => c.status.startsWith('Crossed'));
   const readiness = (
@@ -630,7 +637,7 @@ export function RunReadinessScreen({ findings: initial = FINDINGS, groups = ATTE
           You can calculate once waivable items are waived with a reason. Attendance exceptions and coverage set-up can't be waived; they block approval.
         </InlineAlert>
       ) : (
-        <InlineAlert tone="success" title="Ready to calculate">
+        <InlineAlert tone="info" title="Ready to calculate">
           Every blocking item is resolved or waived with a reason.
         </InlineAlert>
       )}
@@ -830,8 +837,9 @@ export function RunReadinessScreen({ findings: initial = FINDINGS, groups = ATTE
             <Button onClick={() => setWaiving(null)}>Cancel</Button>
             <Button
               variant="primary"
-              disabled={reason.trim().length < 5}
               onClick={() => {
+                if (waiveEarly.stop()) return;
+                waiveEarly.reset();
                 setFindings((fs) => fs.map((f) => (f.id === waiving?.id ? { ...f, waived: reason } : f)));
                 setWaiving(null);
                 setReason('');
@@ -842,7 +850,7 @@ export function RunReadinessScreen({ findings: initial = FINDINGS, groups = ATTE
           </>
         }
       >
-        <FormField label="Reason" required helper="At least 5 characters. Shown to the approver.">
+        <FormField id="waive-reason" label="Reason" required helper="At least 5 characters. Shown to the approver." error={waiveEarly.errorOf('waive-reason')}>
           <TextArea value={reason} onChange={setReason} rows={3} />
         </FormField>
       </Dialog>
@@ -952,6 +960,7 @@ function SampleRunWorkspace({ persona = 'pa', tab = 'payslips', phase: initialPh
   const [sent, setSent] = useState(false);
   const [filters, setFilters] = useState<FilterValue[]>([{ key: 'status', type: 'multi', values: [] }]);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const { toast } = useToast();
   const [audit, setAudit] = useState(false);
   const [voiding, setVoiding] = useState(false);
   const locked = !['review', 'calculating', 'failed'].includes(initialPhase);
@@ -1013,7 +1022,7 @@ function SampleRunWorkspace({ persona = 'pa', tab = 'payslips', phase: initialPh
       isFin ? (
         <>
           {approveBlock && <span className="yx-pay-muted">{approveBlock}</span>}
-          <Button variant="approve" icon={Lock} disabled={!!approveBlock} onClick={() => setSheet('approve')}>
+          <Button variant="approve" icon={Lock} onClick={() => (approveBlock ? toast({ title: `Not yet: ${approveBlock}.` }) : setSheet('approve'))}>
             Approve and lock
           </Button>
         </>
@@ -1027,10 +1036,10 @@ function SampleRunWorkspace({ persona = 'pa', tab = 'payslips', phase: initialPh
           <Button
             variant="primary"
             icon={Send}
-            disabled={!!ackReason}
             onClick={() => {
+              if (ackReason) return void toast({ title: `Not yet: ${ackReason}.` });
               setSubmitted(true);
-              setNotice({ tone: 'success', title: `Sent to ${FIN_APPROVER.name} for approval`, body: exceptionsOpen ? `They can approve and lock the period once the ${OPEN_EXCEPTIONS} attendance exceptions are resolved.` : 'They can now approve and lock the period.' });
+              toast({ tone: 'success', title: `Sent to ${FIN_APPROVER.name} for approval`, description: exceptionsOpen ? `They can approve and lock the period once the ${OPEN_EXCEPTIONS} attendance exceptions are resolved.` : 'They can now approve and lock the period.' });
             }}
           >
             Submit for approval
@@ -1052,6 +1061,7 @@ function SampleRunWorkspace({ persona = 'pa', tab = 'payslips', phase: initialPh
         onClick={() => {
           setPhase('review');
           setRetried(true);
+          toast({ tone: 'success', title: `${plural(failures.length, 'payslip')} recalculated`, description: `${failures.map((f) => f.employee).join(' and ')} calculated on retry. All ${groupIndian(RUN.employees)} payslips are ready for review.` });
         }}
       >
         Retry {failures.length} failed
@@ -1132,11 +1142,6 @@ function SampleRunWorkspace({ persona = 'pa', tab = 'payslips', phase: initialPh
           finished
           onFix={() => goTo(STORY.compensation)}
         />
-      )}
-      {retried && (
-        <InlineAlert tone="success" title={`${plural(failures.length, 'payslip')} recalculated`}>
-          {failures.map((f) => f.employee).join(' and ')} calculated on retry. All {groupIndian(RUN.employees)} payslips are ready for review.
-        </InlineAlert>
       )}
       {notice && (
         <InlineAlert
@@ -1268,7 +1273,7 @@ function SampleRunWorkspace({ persona = 'pa', tab = 'payslips', phase: initialPh
                   onSelect={(id) => setFilters([{ key: 'status', type: 'multi', values: id === 'exc' ? EXCEPTION_FILTER : [] }])}
                 />
               }
-              onExport={(format) => setNotice({ tone: 'success', title: `Exported ${plural(shown.length, 'payslip')}`, body: `payslips-sep-2026.${format} is in your downloads.` })}
+              onExport={(format) => toast({ tone: 'success', title: `Exported ${plural(shown.length, 'payslip')}`, description: `payslips-sep-2026.${format} is in your downloads.` })}
               rowActions={(r) => (
                 <>
                   <MenuItem onSelect={() => setOpen(r)}>Why this number</MenuItem>
@@ -1276,11 +1281,9 @@ function SampleRunWorkspace({ persona = 'pa', tab = 'payslips', phase: initialPh
                   {!periodLocked && (
                     <MenuItem
                       onSelect={() =>
-                        setNotice(
-                          r.status === 'Failed'
-                            ? { tone: 'danger', title: `${r.name}'s payslip still fails`, body: r.reason, action: <StoryButton size="sm" to={STORY.compensation}>Add compensation</StoryButton> }
-                            : { tone: 'success', title: `${r.name}'s payslip recalculated`, body: `Net pay ${formatINR(r.net)} is unchanged.` },
-                        )
+                        r.status === 'Failed'
+                          ? setNotice({ tone: 'danger', title: `${r.name}'s payslip still fails`, body: r.reason, action: <StoryButton size="sm" to={STORY.compensation}>Add compensation</StoryButton> })
+                          : toast({ tone: 'success', title: `${r.name}'s payslip recalculated`, description: `Net pay ${formatINR(r.net)} is unchanged.` })
                       }
                     >
                       Recalculate
@@ -1292,7 +1295,7 @@ function SampleRunWorkspace({ persona = 'pa', tab = 'payslips', phase: initialPh
           </TabsContent>
           <TabsContent value="variance">
             <div className="yx-pay-stack">
-              <InlineAlert tone={unacked.length ? 'warning' : 'success'} title={unacked.length ? `${plural(unacked.length, 'change')} need acknowledgement before approval` : 'All variance acknowledged'}>
+              <InlineAlert tone={unacked.length ? 'warning' : 'info'} title={unacked.length ? `${plural(unacked.length, 'change')} need acknowledgement before approval` : 'All variance acknowledged'}>
                 Threshold: net change above 10% or any new or removed component, compared with August.
               </InlineAlert>
               {narrow ? (
@@ -1506,20 +1509,18 @@ function SampleRunWorkspace({ persona = 'pa', tab = 'payslips', phase: initialPh
         onConfirm={() => {
           setDone(true);
           setPhase('approved');
+          toast({ tone: 'success', title: 'September 2026 approved and locked' });
         }}
         done={
           done ? (
-            <InlineAlert
-              tone="success"
-              title="September 2026 approved and locked"
-              actions={
+            <div className="yx-pay-stack">
+              <p className="yx-pay-muted">Approved by {FIN_APPROVER.name} on 29 Sep 2026, 9:42 am. Bank file and payslip publishing are now available to payroll.</p>
+              <span className="yx-pay-row">
                 <StoryButton size="sm" icon={Landmark} to={STORY.bank}>
                   Open bank file
                 </StoryButton>
-              }
-            >
-              Approved by {FIN_APPROVER.name} on 29 Sep 2026, 9:42 am. Bank file and payslip publishing are now available to payroll.
-            </InlineAlert>
+              </span>
+            </div>
           ) : sent ? (
             <InlineAlert tone="info" title={`Sent to ${FIN_APPROVER.name} for approval`}>
               Sent on {formatDate(d(29))}. {FIN_APPROVER.name} gets a notification and approves from Payroll home.
@@ -1638,6 +1639,7 @@ function FilesPanel({ phase, narrow, onRelease, onPublish }: { phase: RunPhase; 
 
 export function BankFileSheet({ open, onOpenChange, variant = 'ready' }: { open: boolean; onOpenChange: (o: boolean) => void; variant?: RunWorkspaceProps['sheetVariant'] }) {
   const [done, setDone] = useState(variant === 'done');
+  const { toast } = useToast();
   const regenerate = variant === 'regenerate';
   return (
     <IrreversibleSheet
@@ -1658,13 +1660,13 @@ export function BankFileSheet({ open, onOpenChange, variant = 'ready' }: { open:
       maker={PAYROLL_ADMIN.name}
       checker={FIN_APPROVER.name}
       confirmLabel={regenerate ? 'Regenerate bank file' : 'Release bank file'}
-      onConfirm={() => setDone(true)}
+      onConfirm={() => (setDone(true), toast({ tone: 'success', title: 'Bank file released' }))}
       done={
         done ? (
           <div className="yx-pay-stack">
-            <InlineAlert tone="success" title="Bank file released">
+            <p className="yx-pay-muted">
               KFD_SAL_202609_01.txt · {plural(RUN.inBankFile, 'payment')} · {formatINR(RUN.bankFileTotal)}. Download it and upload it on the bank portal. Record payment status when the bank confirms.
-            </InlineAlert>
+            </p>
             <span className="yx-pay-row">
               <StoryButton icon={Download} to={STORY.bankFiles}>
                 Download bank file
@@ -1707,6 +1709,7 @@ export function BankFileSheet({ open, onOpenChange, variant = 'ready' }: { open:
 
 export function PublishSheet({ open, onOpenChange, variant = 'ready' }: { open: boolean; onOpenChange: (o: boolean) => void; variant?: RunWorkspaceProps['sheetVariant'] }) {
   const [done, setDone] = useState(variant === 'done');
+  const { toast } = useToast();
   return (
     <IrreversibleSheet
       open={open}
@@ -1726,14 +1729,12 @@ export function PublishSheet({ open, onOpenChange, variant = 'ready' }: { open: 
       checker={variant === 'self-approval' ? PAYROLL_ADMIN.name : 'Priya Nair'}
       selfApproval={variant === 'self-approval'}
       confirmLabel="Publish payslips"
-      onConfirm={() => setDone(true)}
+      onConfirm={() => (setDone(true), toast({ tone: 'success', title: `${plural(PUBLISHED, 'payslip')} published` }))}
       done={
         done ? (
           <div className="yx-pay-stack">
             <RunProgress action="Publishing payslips" done={PUBLISHED} total={PUBLISHED} finished />
-            <InlineAlert tone="success" title={`${plural(PUBLISHED, 'payslip')} published`}>
-              Employees were notified in the app and by email with a link. Queries on these payslips go to the payroll query queue.
-            </InlineAlert>
+            <p className="yx-pay-muted">Employees were notified in the app and by email with a link. Queries on these payslips go to the payroll query queue.</p>
           </div>
         ) : undefined
       }
@@ -1848,7 +1849,7 @@ function SampleFrequencyRuns({ view = 'list', frequency = 'Weekly', state = 'rea
             step(
               'ready',
               'Readiness',
-              <InlineAlert tone="success" title="Ready">
+              <InlineAlert tone="info" title="Ready">
                 Attendance feed for 21–27 Sep received for 38 of 38. PT and LWF use part-period rules; TDS projected on annualised weekly pay.
               </InlineAlert>,
             ),

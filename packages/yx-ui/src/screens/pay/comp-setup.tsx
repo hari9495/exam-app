@@ -6,7 +6,8 @@ import { Button, IconButton, type ButtonProps } from '../../components/button';
 import { Badge } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { InlineAlert, NoAccessState } from '../../components/feedback';
-import { ErrorSummary, FieldRow, FormField, FormSection } from '../../components/field';
+import { ErrorSummary, FieldRow, FormField, FormSection, useTooEarly } from '../../components/field';
+import { useToast } from '../../components/notify';
 import { CurrencyField, NumberField, TextArea, TextField } from '../../components/inputs';
 import { Checkbox, RadioGroup, Switch } from '../../components/choice';
 import { Select } from '../../components/select';
@@ -95,6 +96,7 @@ export function SuggestSplitDrawer({
   onUse?: (o: SplitOption) => void;
 }) {
   const [chosen, setChosen] = useState<string | null>(initialChosen ?? null);
+  const { toast } = useToast();
   const checked = SPLITS.map((o) => ({ o, c: checkSplit(o, KA_MIN_WAGE) }));
   const offered = checked.filter((x) => x.c.ok);
   const hidden = checked.filter((x) => !x.c.ok);
@@ -111,9 +113,10 @@ export function SuggestSplitDrawer({
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button
             variant="primary"
-            disabled={!pick || stale}
             onClick={() => {
-              if (pick) onUse?.(pick);
+              if (stale) return void toast({ title: 'These options are out of date. Refresh to get options that meet the new rules.' });
+              if (!pick) return void toast({ title: 'Choose an option first.' });
+              onUse?.(pick);
               onOpenChange(false);
             }}
           >
@@ -301,23 +304,25 @@ function SampleCompensationScreen({
   const ctcDiff = (ctc ?? 0) - CURRENT_CTC;
   const pct = Math.round((ctcDiff / CURRENT_CTC) * 1000) / 10;
   const belowMin = !rateBased && !!ctc && newB.basic < KA_MIN_WAGE;
-  const blocked = !effective
-    ? 'Enter the effective date'
-    : !reason
-      ? 'Choose a reason'
-      : rateBased
-        ? !rate
-          ? `Enter the new ${basis === 'hourly' ? 'hourly' : 'daily'} rate`
-          : hourly && basis === 'hourly' && rate === CURRENT_RATE
-            ? 'Same as current rate'
-            : undefined
-        : !ctc
-          ? 'Enter the new annual CTC'
-          : !hourly && ctc === CURRENT_CTC
-            ? 'Same as current CTC'
-            : belowMin
-              ? 'Basic is below the minimum wage'
-              : undefined;
+  const amountError = rateBased
+    ? !rate
+      ? `Enter the new ${basis === 'hourly' ? 'hourly' : 'daily'} rate.`
+      : hourly && basis === 'hourly' && rate === CURRENT_RATE
+        ? 'This is the same as the current rate.'
+        : undefined
+    : !ctc
+      ? 'Enter the new annual CTC.'
+      : !hourly && ctc === CURRENT_CTC
+        ? 'This is the same as the current CTC.'
+        : belowMin
+          ? 'Basic is below the minimum wage. Raise the CTC or choose another split.'
+          : undefined;
+  const reviseEarly = useTooEarly([
+    ...(!effective ? [{ fieldId: 'rc-from', message: 'Enter the effective date.' }] : []),
+    ...(!reason ? [{ fieldId: 'rc-reason', message: 'Choose a reason.' }] : []),
+    ...(amountError ? [{ fieldId: 'rc-amount', message: amountError }] : []),
+  ]);
+  const { toast } = useToast();
   const reasonLabel = REASONS.find((r) => r.value === reason)?.label.toLowerCase();
   const history = hourly
     ? [
@@ -360,19 +365,12 @@ function SampleCompensationScreen({
                 {view === 'loading' ? 'Loading pay details' : "Pay details didn't load"}
               </span>
             )}
-            <Button variant="primary" onClick={() => setRevise(true)} disabled={sent || view !== 'ready'}>
+            <Button variant="primary" onClick={() => (view !== 'ready' ? toast({ title: 'Wait for the pay details to load.' }) : sent ? toast({ title: 'A revision is already waiting for approval.' }) : setRevise(true))}>
               Revise compensation
             </Button>
           </>
         }
       />
-      {sent && effective && (
-        <InlineAlert tone="success" title="Revision sent for approval">
-          {rateBased
-            ? `New rate ${formatINR(rate ?? 0)} ${rateUnit} from ${formatDate(effective)} (${reasonLabel}) is with ${approver.name} for approval. The current rate stays until it is approved.`
-            : `New annual CTC ${formatINR(ctc ?? 0)} on ${TEMPLATES[template].label} from ${formatDate(effective)} (${reasonLabel}) is with ${approver.name} for approval.${arrearsMonths.length ? ` Arrears of ${formatINR(grossDiff * arrearsMonths.length)} are paid in the October run once approved.` : ''} The current CTC stays until it is approved.`}
-        </InlineAlert>
-      )}
       <Tabs defaultValue="comp">
         <TabsList aria-label="Employee record">
           <TabsTrigger value="profile">Profile</TabsTrigger>
@@ -461,17 +459,19 @@ function SampleCompensationScreen({
           <>
             <Button onClick={() => setRevise(false)}>Cancel</Button>
             {!rateBased && <Button onClick={() => setSplit(true)}>Suggest split</Button>}
-            {blocked && (
-              <span className="yx-pay-note" role="status">
-                {blocked}
-              </span>
-            )}
             <Button
               variant="primary"
-              disabled={!!blocked}
               onClick={() => {
+                if (reviseEarly.stop() || !effective) return;
                 setSent(true);
                 setRevise(false);
+                toast({
+                  tone: 'success',
+                  title: 'Revision sent for approval',
+                  description: rateBased
+                    ? `New rate ${formatINR(rate ?? 0)} ${rateUnit} from ${formatDate(effective)} (${reasonLabel}) is with ${approver.name} for approval. The current rate stays until it is approved.`
+                    : `New annual CTC ${formatINR(ctc ?? 0)} on ${TEMPLATES[template].label} from ${formatDate(effective)} (${reasonLabel}) is with ${approver.name} for approval.${arrearsMonths.length ? ` Arrears of ${formatINR(grossDiff * arrearsMonths.length)} are paid in the October run once approved.` : ''} The current CTC stays until it is approved.`,
+                });
               }}
             >
               Send for approval
@@ -482,10 +482,10 @@ function SampleCompensationScreen({
         <div className="yx-pay-split">
           <div className="yx-pay-stack">
             <FieldRow>
-              <FormField label="Effective from" required helper={backdated ? 'Back-dated: arrears are paid in the next run; past payslips are never changed.' : undefined}>
+              <FormField id="rc-from" error={reviseEarly.errorOf('rc-from')} label="Effective from" required helper={backdated ? 'Back-dated: arrears are paid in the next run; past payslips are never changed.' : undefined}>
                 <DatePicker value={effective} onChange={setEffective} min={CURRENT_FROM} required />
               </FormField>
-              <FormField label="Reason" required>
+              <FormField id="rc-reason" error={reviseEarly.errorOf('rc-reason')} label="Reason" required>
                 <Select value={reason} onChange={setReason} options={REASONS} />
               </FormField>
             </FieldRow>
@@ -503,12 +503,12 @@ function SampleCompensationScreen({
               />
             </FormField>
             {rateBased ? (
-              <FormField label={basis === 'hourly' ? 'New hourly rate' : 'New daily rate'} required helper={hourly ? `Current rate ${formatINR(CURRENT_RATE)} an hour (placement PL-0342)` : 'Pay follows approved timesheet hours.'}>
+              <FormField id="rc-amount" error={reviseEarly.errorOf('rc-amount')} label={basis === 'hourly' ? 'New hourly rate' : 'New daily rate'} required helper={hourly ? `Current rate ${formatINR(CURRENT_RATE)} an hour (placement PL-0342)` : 'Pay follows approved timesheet hours.'}>
                 <CurrencyField value={rate} onChange={setRate} />
               </FormField>
             ) : (
               <>
-                <FormField label="New annual CTC" required helper={hourly ? undefined : `Current ${formatINR(CURRENT_CTC)}`}>
+                <FormField id="rc-amount" error={reviseEarly.errorOf('rc-amount')} label="New annual CTC" required helper={hourly ? undefined : `Current ${formatINR(CURRENT_CTC)}`}>
                   <CurrencyField value={ctc} onChange={setCtc} />
                 </FormField>
                 <FormField label="Salary template">
@@ -546,7 +546,7 @@ function SampleCompensationScreen({
                       Minimum wage check passes. Code wage: {formatINR(newB.addBack)} a month is added back to PF and ESI wage.
                     </InlineAlert>
                   ) : (
-                    <InlineAlert tone="success">Minimum wage and Code wage checks pass.</InlineAlert>
+                    <InlineAlert tone="info">Minimum wage and Code wage checks pass.</InlineAlert>
                   )
                 ) : null}
                 {chosen && (
@@ -649,7 +649,7 @@ function SampleTemplateBuilderScreen({ variant = 'default' }: { variant?: 'defau
   const [live, setLive] = useState(variant === 'saved' ? 4 : 3);
   const [base, setBase] = useState(TEMPLATE_LINES);
   const [dirty, setDirty] = useState(variant !== 'saved');
-  const [justPublished, setJustPublished] = useState(variant === 'saved');
+  const { toast } = useToast();
   const [confirm, setConfirm] = useState(false);
   const [compare, setCompare] = useState(false);
   const [active, setActive] = useState(0);
@@ -666,7 +666,6 @@ function SampleTemplateBuilderScreen({ variant = 'default' }: { variant?: 'defau
   const edit = (fn: (ls: TemplateLine[]) => TemplateLine[]) => {
     setLines(fn);
     setDirty(true);
-    setJustPublished(false);
   };
   const setFormula = (id: string, v: string) => {
     edit((ls) => ls.map((l) => (l.id === id ? { ...l, formula: v, error: undefined } : l)));
@@ -713,7 +712,7 @@ function SampleTemplateBuilderScreen({ variant = 'default' }: { variant?: 'defau
               {compare ? 'Hide comparison' : `Compare with version ${live}`}
             </Button>
             {dirty && (
-              <Button variant="primary" disabled={blocked} onClick={() => setConfirm(true)}>
+              <Button variant="primary" onClick={() => (blocked ? toast({ title: 'Fix the formula errors listed above before publishing.' }) : setConfirm(true))}>
                 Validate and publish
               </Button>
             )}
@@ -734,11 +733,6 @@ function SampleTemplateBuilderScreen({ variant = 'default' }: { variant?: 'defau
           )}
         </InlineAlert>
       )}
-      {justPublished && (
-        <InlineAlert tone="success" title={`Version ${live} published`}>
-          Dependency order checked, no cycles. Test run on {emp.name} passed{b.addBack > 0 ? `; Code wage add-back ${formatINR(b.addBack)} a month applies` : ''}. Used from the October run.
-        </InlineAlert>
-      )}
       <ConfirmDialog
         open={confirm}
         onOpenChange={setConfirm}
@@ -749,8 +743,8 @@ function SampleTemplateBuilderScreen({ variant = 'default' }: { variant?: 'defau
           setBase(lines);
           setLive((v) => v + 1);
           setDirty(false);
-          setJustPublished(true);
           setCompare(false);
+          toast({ tone: 'success', title: `Version ${live + 1} published`, description: `Dependency order checked, no cycles. Test run on ${emp.name} passed${b.addBack > 0 ? `; Code wage add-back ${formatINR(b.addBack)} a month applies` : ''}. Used from the October run.` });
         }}
       />
       <div className="yx-pay-grid">
@@ -767,8 +761,8 @@ function SampleTemplateBuilderScreen({ variant = 'default' }: { variant?: 'defau
                       {l.error ? <Badge tone="danger">Error</Badge> : l.code === 'BASIC' && warn ? <Badge tone="warning">Check</Badge> : null}
                     </span>
                   </button>
-                  <IconButton icon={ArrowUp} label={`Move ${l.component} up`} size="sm" disabled={i === 0} onClick={() => move(l.id, -1)} />
-                  <IconButton icon={ArrowDown} label={`Move ${l.component} down`} size="sm" disabled={i === lines.length - 1} onClick={() => move(l.id, 1)} />
+                  <IconButton icon={ArrowUp} label={`Move ${l.component} up`} size="sm" onClick={() => (i === 0 ? toast({ title: `${l.component} is already first.` }) : move(l.id, -1))} />
+                  <IconButton icon={ArrowDown} label={`Move ${l.component} down`} size="sm" onClick={() => (i === lines.length - 1 ? toast({ title: `${l.component} is already last.` }) : move(l.id, 1))} />
                 </div>
               </li>
             ))}
@@ -893,7 +887,8 @@ function SampleComponentLibraryScreen({ state = 'ready', editId }: { state?: Vie
   const [edit, setEdit] = useState<ComponentRow | null>(initial);
   const [draft, setDraft] = useState<ComponentRow | null>(initial);
   const [confirm, setConfirm] = useState(false);
-  const [done, setDone] = useState<string | null>(null);
+  const { toast } = useToast();
+  const setDone = (title: string) => toast({ tone: 'success', title });
   const open = (r: ComponentRow | null) => {
     setEdit(r);
     setDraft(r);
@@ -902,15 +897,10 @@ function SampleComponentLibraryScreen({ state = 'ready', editId }: { state?: Vie
   const flagsChanged = !!edit && !!draft && FLAGS.some(([k]) => edit[k] !== draft[k]);
   const nameChanged = !!edit && !!draft && edit.name !== draft.name.trim();
   const code = draft?.code.trim().toUpperCase() ?? '';
-  const saveBlocked = !draft
-    ? undefined
-    : !draft.name.trim() || !code
-      ? 'Enter a name and a code'
-      : isNew && rows.some((r) => r.code === code)
-        ? `Code ${code} is already used`
-        : !isNew && !flagsChanged && !nameChanged
-          ? 'No changes to save'
-          : undefined;
+  const saveEarly = useTooEarly([
+    ...(draft && !draft.name.trim() ? [{ fieldId: 'cl-name', message: 'Enter a name.' }] : []),
+    ...(draft && !code ? [{ fieldId: 'cl-code', message: 'Enter a code.' }] : draft && isNew && rows.some((r) => r.code === code) ? [{ fieldId: 'cl-code', message: `Code ${code} is already used.` }] : []),
+  ]);
   const save = () => {
     if (!draft) return;
     const row: ComponentRow = { ...draft, name: draft.name.trim(), code, id: isNew ? `c${rows.length + 1}` : draft.id };
@@ -954,7 +944,6 @@ function SampleComponentLibraryScreen({ state = 'ready', editId }: { state?: Vie
   return (
     <PaySettingsFrame page="4.2">
       <PageHeader title="Component library" description="Every earning, deduction, employer contribution, reimbursement and informational line. Flags decide the wage definitions." actions={<Button variant="primary" icon={Plus} onClick={() => open(NEW_COMPONENT)}>Add component</Button>} />
-      {done && <InlineAlert tone="success" title={done} />}
       <DataTable
         label="Pay components"
         columns={cols}
@@ -984,12 +973,7 @@ function SampleComponentLibraryScreen({ state = 'ready', editId }: { state?: Vie
         footer={
           <>
             <Button onClick={() => open(null)}>Cancel</Button>
-            {saveBlocked && (
-              <span className="yx-pay-note" role="status">
-                {saveBlocked}
-              </span>
-            )}
-            <Button variant="primary" disabled={!!saveBlocked} onClick={() => (flagsChanged && edit && edit.usedIn > 0 ? setConfirm(true) : save())}>
+            <Button variant="primary" onClick={() => (saveEarly.stop() ? undefined : !isNew && !flagsChanged && !nameChanged ? toast({ title: 'No changes to save.' }) : flagsChanged && edit && edit.usedIn > 0 ? setConfirm(true) : save())}>
               Save component
             </Button>
           </>
@@ -1003,10 +987,10 @@ function SampleComponentLibraryScreen({ state = 'ready', editId }: { state?: Vie
               </InlineAlert>
             )}
             <FieldRow>
-              <FormField label="Name" required>
+              <FormField id="cl-name" error={saveEarly.errorOf('cl-name')} label="Name" required>
                 <TextField value={draft.name} onChange={(v) => setDraft({ ...draft, name: v })} />
               </FormField>
-              <FormField label="Code" required helper={isNew ? undefined : "Codes can't change once used."}>
+              <FormField id="cl-code" error={saveEarly.errorOf('cl-code')} label="Code" required helper={isNew ? undefined : "Codes can't change once used."}>
                 <TextField value={draft.code} onChange={(v) => setDraft({ ...draft, code: v.toUpperCase() })} disabled={!isNew} />
               </FormField>
             </FieldRow>
@@ -1138,6 +1122,7 @@ function SamplePayslipLayoutScreen({ variant = 'default' }: { variant?: 'default
   const [s, setS] = useState<Layout>(start);
   const [status, setStatus] = useState<'draft' | 'published' | 'discarded'>(variant === 'published' ? 'published' : 'draft');
   const [ask, setAsk] = useState<'publish' | 'discard' | null>(null);
+  const { toast } = useToast();
   // Any change starts a draft of the next version.
   const set =
     <K extends keyof Layout>(k: K) =>
@@ -1168,11 +1153,6 @@ function SamplePayslipLayoutScreen({ variant = 'default' }: { variant?: 'default
           )
         }
       />
-      {status === 'published' && (
-        <InlineAlert tone="success" title={`Version ${live} published`}>
-          Payslips from the October run use this layout. Payslips already published keep version {live - 1}.
-        </InlineAlert>
-      )}
       {status === 'discarded' && (
         <InlineAlert tone="info" title="Draft discarded" actions={<Button size="sm" onClick={() => setStatus('draft')}>Start a new draft</Button>}>
           The settings below are back to version {live}, the layout in use.
@@ -1188,6 +1168,7 @@ function SamplePayslipLayoutScreen({ variant = 'default' }: { variant?: 'default
           setBase(s);
           setLive((v) => v + 1);
           setStatus('published');
+          toast({ tone: 'success', title: `Version ${live + 1} published`, description: `Payslips from the October run use this layout. Payslips already published keep version ${live}.` });
         }}
       />
       <ConfirmDialog
@@ -1388,7 +1369,8 @@ function SamplePayrollSetupScreen({ step = 'reg', incomplete = true, imported: i
   const freqLabel = freq === 'f' ? 'Fortnightly' : freq === 'w' ? 'Weekly' : 'Monthly';
   const payDayLabel = payDay === '1' ? '1st of next month' : 'last working day';
   const fixLabel = fixing === 'lwf' ? 'LWF Karnataka registration number' : 'TDS responsible person PAN';
-  const fixBlocked = !fixValue.trim() ? `Enter the ${fixing === 'lwf' ? 'registration number' : 'PAN'}` : fixing === 'pan' && !PAN_RE.test(fixValue.trim()) ? 'Enter a 10-character PAN, like ABCDE1234F' : undefined;
+  const fixBlocked = !fixValue.trim() ? `Enter the ${fixing === 'lwf' ? 'registration number' : 'PAN'}.` : fixing === 'pan' && !PAN_RE.test(fixValue.trim()) ? 'Enter a 10-character PAN, like ABCDE1234F.' : undefined;
+  const fixEarly = useTooEarly(fixBlocked ? [{ fieldId: 'ps-fix', message: fixBlocked }] : []);
 
   const checkCell = (r: (typeof regs)[number]) =>
     r.missing ? (
@@ -1410,7 +1392,7 @@ function SamplePayrollSetupScreen({ step = 'reg', incomplete = true, imported: i
   const reg = (
     <div className="yx-pay-stack">
       <p className="yx-pay-muted">Each statute runs a completeness check before payroll can use it.</p>
-      {missing.length === 0 && <InlineAlert tone="success">All {regs.length} statutes pass the completeness check.</InlineAlert>}
+      {missing.length === 0 && <InlineAlert tone="info">All {regs.length} statutes pass the completeness check.</InlineAlert>}
       {phone ? (
         <ol className="yx-pay-cards" aria-label="Statutes">
           {regs.map((r) => (
@@ -1617,15 +1599,10 @@ function SamplePayrollSetupScreen({ step = 'reg', incomplete = true, imported: i
         footer={
           <>
             <Button onClick={() => setFixing(null)}>Cancel</Button>
-            {fixBlocked && (
-              <span className="yx-pay-note" role="status">
-                {fixBlocked}
-              </span>
-            )}
             <Button
               variant="primary"
-              disabled={!!fixBlocked}
               onClick={() => {
+                if (fixEarly.stop()) return;
                 if (fixing === 'lwf') setLwf(fixValue.trim());
                 else setTdsPan(fixValue.trim().toUpperCase());
                 setFixing(null);
@@ -1636,7 +1613,7 @@ function SamplePayrollSetupScreen({ step = 'reg', incomplete = true, imported: i
           </>
         }
       >
-        <FormField label={fixLabel} required helper={fixing === 'pan' ? 'PAN of the person who signs TDS returns for this TAN.' : 'As printed on the Karnataka LWF registration certificate.'}>
+        <FormField id="ps-fix" error={fixEarly.errorOf('ps-fix')} label={fixLabel} required helper={fixing === 'pan' ? 'PAN of the person who signs TDS returns for this TAN.' : 'As printed on the Karnataka LWF registration certificate.'}>
           <TextField value={fixValue} onChange={(v) => setFixValue(fixing === 'pan' ? v.toUpperCase() : v)} />
         </FormField>
       </Drawer>

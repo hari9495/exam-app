@@ -84,7 +84,7 @@ export function BreakupTable({ b, caption = 'Salary breakup' }: { b: Breakup; ca
           Allowances pass half of pay: {rupees(b.codeWageAddBack)} a month is added back to PF and ESI wage.
         </InlineAlert>
       ) : (
-        !b.warnings?.length && <InlineAlert tone="success">Minimum wage and Code wage checks pass.</InlineAlert>
+        !b.warnings?.length && <InlineAlert tone="info">Minimum wage and Code wage checks pass.</InlineAlert>
       )}
       {b.verify && <p className="yx-pay-note">Some figures use rules marked verify.</p>}
       <div className="yx-scroll-x" tabIndex={0} role="region" aria-label={`${caption}, scrolls sideways on small screens`}>
@@ -843,8 +843,8 @@ export function LiveTemplateBuilderScreen({ live: p }: { live: LiveTemplates }) 
                             {nameOf(l.code)} <span className="yx-pay-mono">{l.code}</span> {checks[i] && !checks[i].ok ? <Badge tone="danger">Error</Badge> : l.code === v.balancing ? <Badge>Balancing</Badge> : null}
                           </span>
                         </button>
-                        <IconButton icon={ArrowUp} label={`Move ${nameOf(l.code)} up`} size="sm" disabled={i === 0} onClick={() => move(i, -1)} />
-                        <IconButton icon={ArrowDown} label={`Move ${nameOf(l.code)} down`} size="sm" disabled={i === v.lines.length - 1} onClick={() => move(i, 1)} />
+                        <IconButton icon={ArrowUp} label={`Move ${nameOf(l.code)} up`} size="sm" onClick={() => (i === 0 ? toast({ title: `${nameOf(l.code)} is already first.` }) : move(i, -1))} />
+                        <IconButton icon={ArrowDown} label={`Move ${nameOf(l.code)} down`} size="sm" onClick={() => (i === v.lines.length - 1 ? toast({ title: `${nameOf(l.code)} is already last.` }) : move(i, 1))} />
                       </div>
                     </li>
                   ))}

@@ -317,9 +317,13 @@ describe('screens', () => {
     const u = userEvent.setup();
     render(<EwaRequestScreen variant="confirm" layout="desktop" />);
     const get = screen.getByRole('button', { name: /Get ₹5,000/ });
-    expect(get).toBeEnabled();
     await u.click(screen.getByRole('checkbox'));
-    expect(get).toBeDisabled();
+    await u.click(get);
+    expect(screen.getByText('Tick the box to accept the fee and the recovery.')).toBeInTheDocument();
+    expect(screen.queryByText('₹5,000 sent to your salary account')).not.toBeInTheDocument();
+    await u.click(screen.getByRole('checkbox'));
+    await u.click(get);
+    expect(screen.getByText('₹5,000 sent to your salary account')).toBeInTheDocument();
   });
 
   it('EWA shows the reason when not available', () => {
@@ -338,7 +342,11 @@ describe('screens', () => {
     const pan = within(findings).getByText(pText('PAN missing or inoperative')).closest('li')!;
     await u.click(within(pan).getByRole('button', { name: 'Waive' }));
     const confirm = screen.getByRole('button', { name: 'Waive with reason' });
-    expect(confirm).toBeDisabled();
+    // Pressed too early: the reason field says what is missing and takes the focus; nothing is waived.
+    await u.click(confirm);
+    expect(screen.getByText('Give a reason of at least 5 characters.')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Reason/)).toHaveFocus();
+    expect(within(findings).queryByText(/Waived by Suresh Pillai: PAN applied/)).toBeNull();
     await u.type(screen.getByLabelText(/Reason/), 'PAN applied; slab TDS at 20% accepted');
     await u.click(confirm);
     expect(within(findings).getByText(/Waived by Suresh Pillai: PAN applied/)).toBeInTheDocument();
@@ -348,10 +356,14 @@ describe('screens', () => {
     const u = userEvent.setup();
     render(<ArrearsBaseScreen embedded />);
     const compute = screen.getByRole('button', { name: 'Compute arrears' });
-    expect(compute).toBeDisabled();
+    await u.click(compute);
+    expect(screen.getByText('Enter the basic as paid in Aug 2026.')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Basic as paid in Aug 2026/)).toHaveFocus();
+    expect(screen.queryByRole('region', { name: 'Computed arrears' })).not.toBeInTheDocument();
     await u.type(screen.getByLabelText(/Basic as paid in Aug 2026/), '25000');
     await u.type(screen.getByLabelText(/Where this figure comes from/), 'Old payroll register');
-    expect(compute).toBeEnabled();
+    await u.click(compute);
+    expect(screen.getByRole('region', { name: 'Computed arrears' })).toBeInTheDocument();
   });
 
   it('payslip query sheet sends and confirms in the app', async () => {

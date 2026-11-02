@@ -217,7 +217,9 @@ describe('PAY-03 run workspace, live', () => {
     await ue.type(screen.getByRole('textbox', { name: /Company account/ }), '0050200012345678');
     await ue.click(screen.getAllByRole('button', { name: 'Make bank file' }).pop()!);
     await waitFor(() => expect(l.onGenerateBank).toHaveBeenCalledWith('0050200012345678', undefined));
-    expect(await screen.findByText(/Not in the file: Sridhar Fernandes/)).toBeInTheDocument();
+    expect((await screen.findAllByText(/^Bank file made: /)).length).toBeGreaterThan(0);
+    expect(screen.getByText('Not in the bank file')).toBeInTheDocument();
+    expect(screen.getByText(/^Sridhar Fernandes \(/)).toBeInTheDocument();
   });
 
   it('bank file: someone other than its maker releases it with the phrase; its maker cannot', async () => {

@@ -323,3 +323,43 @@ describe('PAY-27 · Payroll › Earned wage access (live)', () => {
     expect(screen.getByText(/your payroll admin/)).toBeInTheDocument();
   });
 });
+
+describe('design samples: no greyed-out buttons (house rules 2 and 3)', () => {
+  it('Pause EMIs pressed without a reason shows the field error and focuses it; with one it pauses', async () => {
+    const u = userEvent.setup();
+    render(<LoansScreen openId="l1" action="pause" />);
+    // Two stacked modals (record drawer, then this dialog): jsdom marks both aria-hidden, so query hidden ones.
+    const confirm = () => screen.getAllByRole('button', { name: 'Pause EMIs', hidden: true }).at(-1)!;
+    await u.click(confirm());
+    expect(screen.getByText('Add a reason.')).toBeInTheDocument();
+    const reason = screen.getAllByRole('textbox', { name: /Reason/, hidden: true }).at(-1)!;
+    expect(reason).toHaveFocus();
+    await u.type(reason, 'Medical leave');
+    await u.click(confirm());
+    await waitFor(() => expect(screen.queryByText('Pause EMIs?')).not.toBeInTheDocument());
+  });
+
+  it('the loan ledger says the list has not loaded yet instead of greying out', async () => {
+    const u = userEvent.setup();
+    render(<LoansScreen state="loading" />);
+    await u.click(screen.getByRole('button', { name: 'Loan ledger' }));
+    expect(screen.getAllByText('The loan list has not loaded yet.')[0]).toBeInTheDocument();
+  });
+
+  it('one’s own proof: Approve says why and changes nothing', async () => {
+    const u = userEvent.setup();
+    render(<ProofQueueScreen openId="pr-own" />);
+    await u.click(screen.getByRole('button', { name: 'Approve line' }));
+    expect(screen.getAllByText(/You can't verify your own proof/)[0]).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('connect a partner: sent with a toast; pressed again it says it was already sent', async () => {
+    const u = userEvent.setup();
+    render(<EwaAdminScreen tab="partner" partner="not-connected" />);
+    await u.click(screen.getByRole('button', { name: 'Connect a partner' }));
+    expect(screen.getAllByText('Connection request sent to Pragati EarlyPay Pvt Ltd.')[0]).toBeInTheDocument();
+    await u.click(screen.getByRole('button', { name: 'Request sent' }));
+    expect(screen.getAllByText(/The connection request was already sent/)[0]).toBeInTheDocument();
+  });
+});

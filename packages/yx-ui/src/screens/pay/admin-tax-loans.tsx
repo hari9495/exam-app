@@ -157,7 +157,8 @@ function SampleLoans({ state = 'ready', openId, action, rows = LOANS }: { state?
   const [openKey, setOpenKey] = useState<string | null>(openId ?? null);
   const open = list.find((l) => l.id === openKey) ?? null;
   const [dialog, setDialog] = useState<'pause' | 'preclose' | 'add' | null>(action ?? null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const { toast } = useToast();
+  const setNotice = (title: string) => toast({ tone: 'success', title });
   const [pauseMonths, setPauseMonths] = useState<number | null>(1);
   const [pauseFrom, setPauseFrom] = useState<string | null>(NEXT_MONTH);
   const [pauseReason, setPauseReason] = useState('');
@@ -207,11 +208,12 @@ function SampleLoans({ state = 'ready', openId, action, rows = LOANS }: { state?
   const toRecover = sumBy(list, runEmi);
   const opts = (xs: string[]) => xs.map((v) => ({ value: v, label: v }));
   const pauseOptions = [1, 2].map((k) => monthLabel(monthIndex(RUN_MONTH) + k)).map((m) => ({ value: m, label: fullMonth(monthIndex(m)) }));
-  const pauseBlock = !pauseMonths ? 'Enter the months to pause' : !pauseReason.trim() ? 'Add a reason' : null;
   const interest = open ? closeInterest(open) : 0;
   const total = (open?.outstanding ?? 0) + interest;
   const thisEmi = open ? runEmi(open) : 0;
-  const pcBlock = !pcReason.trim() ? 'Add a reason' : route === 'direct' && !bankRef.trim() ? 'Add the bank reference' : null;
+  const pauseEarly = useTooEarly([...(!pauseMonths ? [{ fieldId: 'lp-months', message: 'Enter the months to pause.' }] : []), ...(!pauseReason.trim() ? [{ fieldId: 'lp-reason', message: 'Add a reason.' }] : [])]);
+  const pcEarly = useTooEarly([...(route === 'direct' && !bankRef.trim() ? [{ fieldId: 'pc-ref', message: 'Add the bank reference.' }] : []), ...(!pcReason.trim() ? [{ fieldId: 'pc-reason', message: 'Add a reason.' }] : [])]);
+  const addEarly = useTooEarly([...(!draft.employee ? [{ fieldId: 'ad-emp', message: 'Choose an employee.' }] : []), ...(!draft.amount ? [{ fieldId: 'ad-amount', message: 'Enter the amount.' }] : []), ...(!draft.emis ? [{ fieldId: 'ad-emis', message: 'Enter the number of EMIs.' }] : [])]);
   const addButton = (
     <Button variant="primary" icon={Plus} onClick={() => setDialog('add')}>
       Add loan
@@ -226,7 +228,7 @@ function SampleLoans({ state = 'ready', openId, action, rows = LOANS }: { state?
         actions={
           <>
             {list.length > 0 && (
-              <Button icon={Download} disabled={view !== 'ready'} onClick={() => setNotice(`Loan ledger · ${RUN.period}.xlsx downloaded (${list.length} loans).`)}>
+              <Button icon={Download} onClick={() => view !== 'ready' ? toast({ title: 'The loan list has not loaded yet.' }) : setNotice(`Loan ledger · ${RUN.period}.xlsx downloaded (${list.length} loans).`)}>
                 Loan ledger
               </Button>
             )}
@@ -234,7 +236,6 @@ function SampleLoans({ state = 'ready', openId, action, rows = LOANS }: { state?
           </>
         }
       />
-      {notice && <InlineAlert tone="success">{notice}</InlineAlert>}
       <DataTable
         label="Loans and advances"
         columns={cols}
@@ -290,8 +291,8 @@ function SampleLoans({ state = 'ready', openId, action, rows = LOANS }: { state?
               ) : (
                 <Button
                   icon={Pause}
-                  disabled={open.status !== 'Active'}
                   onClick={() => {
+                    if (open.status !== 'Active') return void toast({ title: `This loan is ${open.status.toLowerCase()}. Only an active loan can be paused.` });
                     setPauseMonths(1);
                     setPauseFrom(NEXT_MONTH);
                     setPauseReason('');
@@ -303,8 +304,8 @@ function SampleLoans({ state = 'ready', openId, action, rows = LOANS }: { state?
               )}
               <Button
                 variant="primary"
-                disabled={open.status === 'Closed' || open.status === 'Waiting for approval'}
                 onClick={() => {
+                  if (open.status === 'Closed' || open.status === 'Waiting for approval') return void toast({ title: `This loan is ${open.status.toLowerCase()}, so it can't be pre-closed.` });
                   setRoute('pay');
                   setBankRef('');
                   setPcReason(preCloseReason(open));
@@ -393,13 +394,11 @@ function SampleLoans({ state = 'ready', openId, action, rows = LOANS }: { state?
         description="Paused months move to the end of the schedule. Interest continues on the balance."
         footer={
           <>
-            {pauseBlock && <span className="yx-pay-irrev__why">{pauseBlock}</span>}
             <Button onClick={() => setDialog(null)}>Cancel</Button>
             <Button
               variant="primary"
-              disabled={!open || !!pauseBlock}
               onClick={() => {
-                if (!open || !pauseMonths || !pauseFrom) return;
+                if (pauseEarly.stop() || !open || !pauseMonths || !pauseFrom) return;
                 const pause = { from: pauseFrom, months: pauseMonths, reason: pauseReason.trim(), by: PAYROLL_ADMIN.name };
                 update(open.id, { status: 'Paused', pause }, `${open.employee}: ${pauseText(pause)}`);
               }}
@@ -410,14 +409,14 @@ function SampleLoans({ state = 'ready', openId, action, rows = LOANS }: { state?
         }
       >
         <FieldRow>
-          <FormField label="Months to pause" required>
+          <FormField id="lp-months" label="Months to pause" required error={pauseEarly.errorOf('lp-months')}>
             <NumberField value={pauseMonths} onChange={setPauseMonths} min={1} max={3} />
           </FormField>
           <FormField label="From">
             <Select value={pauseFrom} onChange={setPauseFrom} options={pauseOptions} />
           </FormField>
         </FieldRow>
-        <FormField label="Reason" required>
+        <FormField id="lp-reason" label="Reason" required error={pauseEarly.errorOf('lp-reason')}>
           <TextArea rows={2} value={pauseReason} onChange={setPauseReason} />
         </FormField>
       </Dialog>
@@ -429,12 +428,11 @@ function SampleLoans({ state = 'ready', openId, action, rows = LOANS }: { state?
         size="md"
         footer={
           <>
-            {pcBlock && <span className="yx-pay-irrev__why">{pcBlock}</span>}
             <Button onClick={() => setDialog(null)}>Cancel</Button>
             <Button
               variant="primary"
-              disabled={!open || !!pcBlock}
               onClick={() =>
+                !pcEarly.stop() &&
                 open &&
                 update(
                   open.id,
@@ -473,11 +471,11 @@ function SampleLoans({ state = 'ready', openId, action, rows = LOANS }: { state?
             />
           </FormField>
           {route === 'direct' && (
-            <FormField label="Bank reference" required>
+            <FormField id="pc-ref" label="Bank reference" required error={pcEarly.errorOf('pc-ref')}>
               <TextField value={bankRef} onChange={setBankRef} placeholder="UTR or transaction number" />
             </FormField>
           )}
-          <FormField label="Reason" required>
+          <FormField id="pc-reason" label="Reason" required error={pcEarly.errorOf('pc-reason')}>
             <TextArea rows={2} value={pcReason} onChange={setPcReason} />
           </FormField>
         </div>
@@ -491,24 +489,24 @@ function SampleLoans({ state = 'ready', openId, action, rows = LOANS }: { state?
         footer={
           <>
             <Button onClick={() => setDialog(null)}>Cancel</Button>
-            <Button variant="primary" disabled={!draft.employee || !draft.amount || !draft.emis} onClick={addLoan}>
+            <Button variant="primary" onClick={() => !addEarly.stop() && addLoan()}>
               Add loan
             </Button>
           </>
         }
       >
         <div className="yx-pay-stack">
-          <FormField label="Employee" required>
+          <FormField id="ad-emp" label="Employee" required error={addEarly.errorOf('ad-emp')}>
             <Select searchable value={draft.employee} onChange={(v) => setDraft({ ...draft, employee: v })} placeholder="Choose an employee" options={EMPLOYEES.map((e) => ({ value: e.id, label: e.name, description: e.code }))} />
           </FormField>
           <FormField label="Type" required>
             <Select value={draft.type} onChange={(v) => v && setDraft({ ...draft, type: v as LoanRow['type'] })} options={opts(LOAN_TYPES)} />
           </FormField>
           <FieldRow>
-            <FormField label="Amount" required>
+            <FormField id="ad-amount" label="Amount" required error={addEarly.errorOf('ad-amount')}>
               <CurrencyField value={draft.amount} onChange={(v) => setDraft({ ...draft, amount: v })} max={5_00_000} />
             </FormField>
-            <FormField label="Number of EMIs" required>
+            <FormField id="ad-emis" label="Number of EMIs" required error={addEarly.errorOf('ad-emis')}>
               <NumberField value={draft.emis} onChange={(v) => setDraft({ ...draft, emis: v })} min={1} max={60} />
             </FormField>
           </FieldRow>
@@ -624,7 +622,8 @@ function SampleProofQueue({ state = 'ready', openId, decision, rows = PROOF_ROWS
   const [choice, setChoice] = useState<string>(decision ?? 'approve');
   const [amount, setAmount] = useState<number | null>(first ? amountFor(first, decision ?? 'approve') : null);
   const [comment, setComment] = useState(first ? commentFor(first, decision ?? 'approve') : '');
-  const [notice, setNotice] = useState<string | null>(null);
+  const { toast } = useToast();
+  const setNotice = (title: string) => toast({ tone: 'success', title });
   const [reminded, setReminded] = useState(false);
   const [q, setQ] = useState('');
   const [filters, setFilters] = useState<FilterValue[]>(DEFAULT_PROOF_FILTERS);
@@ -671,17 +670,14 @@ function SampleProofQueue({ state = 'ready', openId, decision, rows = PROOF_ROWS
     setOpenKey(r.id);
     pick(r, 'approve');
   };
-  const block = !open
-    ? null
-    : self
-      ? "You can't verify your own proof"
-      : choice !== 'approve' && !comment.trim()
-        ? 'Add a comment for the employee'
-        : choice === 'partial' && (amount == null || amount < 1 || amount > open.proofAmount - 1)
-          ? `Enter an amount from ₹1 to ${formatINR(open.proofAmount - 1)}`
-          : null;
+  const early = useTooEarly([
+    ...(open && choice === 'partial' && (amount == null || amount < 1 || amount > open.proofAmount - 1) ? [{ fieldId: 'pv-amount', message: `Enter an amount from ₹1 to ${formatINR(open.proofAmount - 1)}.` }] : []),
+    ...(choice !== 'approve' && !comment.trim() ? [{ fieldId: 'pv-comment', message: 'Add a comment for the employee.' }] : []),
+  ]);
   const decide = (thenNext: boolean) => {
-    if (!open || block) return;
+    if (!open) return;
+    if (self) return void toast({ title: "You can't verify your own proof. Another payroll admin does it." });
+    if (early.stop()) return;
     const status: ProofRow['status'] = choice === 'approve' ? 'Approved' : choice === 'partial' ? 'Partly approved' : 'Rejected';
     const approved = choice === 'approve' ? open.proofAmount : choice === 'partial' ? (amount ?? undefined) : undefined;
     setList((ls) => ls.map((r) => (r.id === open.id ? { ...r, status, approved, comment: comment.trim() || undefined } : r)));
@@ -698,12 +694,11 @@ function SampleProofQueue({ state = 'ready', openId, decision, rows = PROOF_ROWS
         description={`Tax year 2026-27 · ${PROOF_WINDOW}. Verify each line; unproven items are dropped after the cut-off and extra tax is spread over the remaining months.`}
         facts={state === 'ready' && list.length > 0 ? `${list.filter((r) => r.status === 'Waiting').length} lines waiting · ${verified.length} done` : undefined}
         actions={
-          <Button icon={Download} disabled={state !== 'ready' || verified.length === 0} onClick={() => setNotice(`Verified proof lines · 2026-27.xlsx downloaded (${verified.length} lines).`)}>
+          <Button icon={Download} onClick={() => state !== 'ready' ? toast({ title: 'The proof lines have not loaded yet.' }) : !verified.length ? toast({ title: 'No lines are verified yet, so there is nothing to export.' }) : setNotice(`Verified proof lines · 2026-27.xlsx downloaded (${verified.length} lines).`)}>
             Export verified lines
           </Button>
         }
       />
-      {notice && <InlineAlert tone="success">{notice}</InlineAlert>}
       <DataTable
         label="Proof lines"
         columns={cols}
@@ -726,7 +721,7 @@ function SampleProofQueue({ state = 'ready', openId, decision, rows = PROOF_ROWS
             title="No proofs to verify yet."
             description={reminded ? `Reminder sent on ${formatDate(TODAY)} to employees with tax declarations.` : `The ${PROOF_WINDOW} is open and no one has submitted a proof. Remind employees with tax declarations to upload them.`}
             action={
-              <Button icon={Send} disabled={reminded} onClick={() => setReminded(true)}>
+              <Button icon={Send} onClick={() => (reminded ? toast({ title: 'The reminder was already sent today.' }) : (setReminded(true), setNotice('Reminder sent to employees with tax declarations.')))}>
                 {reminded ? 'Reminder sent' : 'Send reminder'}
               </Button>
             }
@@ -755,12 +750,11 @@ function SampleProofQueue({ state = 'ready', openId, decision, rows = PROOF_ROWS
         size="full"
         footer={
           <>
-            {block && <span className="yx-pay-irrev__why">{block}</span>}
             <Button onClick={() => setOpenKey(null)}>Cancel</Button>
-            <Button disabled={!!block} onClick={() => decide(true)}>
+            <Button onClick={() => decide(true)}>
               Save and open next
             </Button>
-            <Button variant={choice === 'reject' ? 'danger' : 'approve'} disabled={!!block} onClick={() => decide(false)}>
+            <Button variant={choice === 'reject' ? 'danger' : 'approve'} onClick={() => decide(false)}>
               {choice === 'approve' ? 'Approve line' : choice === 'partial' ? `Approve ${formatINR(amount ?? 0)}` : 'Reject line'}
             </Button>
           </>
@@ -802,11 +796,11 @@ function SampleProofQueue({ state = 'ready', openId, decision, rows = PROOF_ROWS
                   />
                 </FormField>
                 {choice === 'partial' && (
-                  <FormField label="Approved amount" required>
+                  <FormField id="pv-amount" label="Approved amount" required error={early.errorOf('pv-amount')}>
                     <CurrencyField value={amount} onChange={setAmount} max={open.proofAmount} disabled={self} />
                   </FormField>
                 )}
-                <FormField label="Comment to employee" required={choice !== 'approve'} helper="The employee sees this on the line.">
+                <FormField id="pv-comment" label="Comment to employee" required={choice !== 'approve'} error={early.errorOf('pv-comment')} helper="The employee sees this on the line.">
                   <TextArea rows={3} value={comment} onChange={setComment} disabled={self} />
                 </FormField>
               </div>
@@ -828,7 +822,8 @@ export function EwaAdminScreen(p: { tab?: 'policy' | 'partner' | 'draws' | 'reco
 }
 
 function SampleEwaAdmin({ tab = 'draws', persona = 'pa', state = 'ready', partner = 'connected' }: { tab?: 'policy' | 'partner' | 'draws' | 'recoveries' | 'recon'; persona?: PayPersona; state?: ViewState; partner?: 'connected' | 'not-connected' }) {
-  const [notice, setNotice] = useState<string | null>(null);
+  const { toast } = useToast();
+  const setNotice = (title: string) => toast({ tone: 'success', title });
   const [requested, setRequested] = useState(false);
   const cols: TableColumn<EwaDraw>[] = [
     { key: 'employee', header: 'Employee', type: 'person', value: (r) => r.employee, person: (r) => ({ name: r.employee, secondary: r.code }), width: 210 },
@@ -845,7 +840,6 @@ function SampleEwaAdmin({ tab = 'draws', persona = 'pa', state = 'ready', partne
   const total = disbursed.reduce((a, x) => a + x.amount, 0);
   const content = (
     <div className="yx-pay-stack">
-      {notice && <InlineAlert tone="success">{notice}</InlineAlert>}
       <Tabs defaultValue={tab}>
         <TabsList aria-label="Earned wage access">
           <TabsTrigger value="policy">Policy</TabsTrigger>
@@ -918,7 +912,7 @@ function SampleEwaAdmin({ tab = 'draws', persona = 'pa', state = 'ready', partne
               title="No EWA partner connected."
               description={requested ? 'Connection request sent to Pragati EarlyPay Pvt Ltd on 29 Sep 2026. They confirm within 2 working days; you can then switch the policy on.' : 'Earned wage access needs a partner (third-party add-on). Connect one to switch the policy on.'}
               action={
-                <Button variant="primary" icon={Send} disabled={requested} onClick={() => setRequested(true)}>
+                <Button variant="primary" icon={Send} onClick={() => (requested ? toast({ title: 'The connection request was already sent. The partner confirms within 2 working days.' }) : (setRequested(true), setNotice('Connection request sent to Pragati EarlyPay Pvt Ltd.')))}>
                   {requested ? 'Request sent' : 'Connect a partner'}
                 </Button>
               }
@@ -1444,6 +1438,7 @@ function SampleReports({ report, state, period, group }: { report: ReportId; sta
 /** Report page when a person has no payroll scope (P02): shown instead of figures. The app passes `live` (its own shell around it). */
 export function ReportsNoAccess({ live }: { live?: boolean }) {
   const [sent, setSent] = useState(false);
+  const { toast } = useToast();
   const body = (
     <>
       <PageHeader title="Payroll reports" />
@@ -1454,7 +1449,7 @@ export function ReportsNoAccess({ live }: { live?: boolean }) {
           title="You don't have access to payroll reports"
           description={sent ? `Request sent to ${PAYROLL_ADMIN.name} on 29 Sep 2026. You'll get a notification when it's decided.` : `Ask ${PAYROLL_ADMIN.name}, your payroll admin, for access.`}
           action={
-            <Button variant="primary" icon={Send} disabled={sent} onClick={() => setSent(true)}>
+            <Button variant="primary" icon={Send} onClick={() => (sent ? toast({ title: `You already asked ${PAYROLL_ADMIN.name} for access.` }) : (setSent(true), toast({ tone: 'success', title: 'Request sent', description: `${PAYROLL_ADMIN.name} decides; you'll get a notification.` })))}>
               {sent ? 'Request sent' : 'Request access'}
             </Button>
           }
