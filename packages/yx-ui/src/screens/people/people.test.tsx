@@ -424,12 +424,14 @@ describe('probation review (the queue drawer, sample data)', () => {
 });
 
 describe('change action', () => {
-  it('HR sees the raise size and only what changes, with the rest folded', () => {
+  // The story is the live drawer: what changes is worked out a moment after the form is complete; the route has
+  // one approval step (any one of the approvers decides).
+  it('HR sees the raise size and only what changes, with the rest folded', async () => {
     render(<ChangeActionSheet persona="hr" kind="Promotion" effective={d(2026, 10, 1)} today={TODAY} />);
-    expect(screen.getByText(/\+13% on the current/)).toBeTruthy();
+    expect(await screen.findByText(/\+13% on the current/, undefined, { timeout: 2000 })).toBeTruthy();
     expect(screen.getByText('What changes (5)')).toBeTruthy();
     expect(screen.getByText('Stays the same (1)')).toBeTruthy();
-    expect(screen.getByText('Goes to Karthik Subramanian, then Lakshmi Venkatesan.')).toBeTruthy();
+    expect(screen.getByText('Goes to Karthik Subramanian or Lakshmi Venkatesan.')).toBeTruthy();
   });
   it('a manager sees no pay band', () => {
     render(<ChangeActionSheet persona="mgr" kind="Promotion" effective={d(2026, 10, 1)} today={TODAY} />);

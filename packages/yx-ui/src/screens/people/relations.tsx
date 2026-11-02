@@ -852,9 +852,7 @@ function VrsSchemeCard({ s, today, onApply }: { s: MyVrsScheme; today: string; o
                 </InlineAlert>
               )}
               <div className="yx-ppl__row">
-                <Button onClick={() => (setLwd(null), setWhy(''))} disabled={busy !== null}>
-                  Cancel
-                </Button>
+                <Button onClick={() => busy === null && (setLwd(null), setWhy(''))}>Cancel</Button>
                 <Button variant="primary" loading={busy === 'apply'} onClick={() => !early.stop() && void run('apply', () => onApply(s, { requestedLwd: dayKey(lwd!), reasonText: why.trim() || null }))}>
                   Apply for VRS
                 </Button>

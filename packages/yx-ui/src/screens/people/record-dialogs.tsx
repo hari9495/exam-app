@@ -151,9 +151,7 @@ export function UploadForPersonDialog({ name, types, onUpload, onClose, today = 
       notice={error ? <InlineAlert tone="danger" title="Not uploaded">{error}</InlineAlert> : undefined}
       footer={
         <>
-          <Button onClick={onClose} disabled={busy}>
-            Cancel
-          </Button>
+          <Button onClick={() => !busy && onClose()}>Cancel</Button>
           <Button variant="primary" onClick={() => void upload()} loading={busy}>
             Upload
           </Button>

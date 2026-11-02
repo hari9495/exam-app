@@ -550,10 +550,16 @@ export function ChangeActionDrawer({ options, employeeId, initial, onPreview, on
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft.employeeId, date, withPay]);
   const submit = () => {
+    if (busy !== null) return;
     if (!input || !impact) return saveErrors.reveal();
     void run('submit', () => (moving && move ? move.onSubmit(input as MoveInput) : onSubmit(input as ChangeInput))).then((ok) => ok && onClose());
   };
-  const saveDraft = () => onSaveDraft && void run('draft', () => onSaveDraft(draft)).then((ok) => ok && onClose());
+  // A draft needs only the person (pressed before choosing one, the person field says so).
+  const saveDraft = () => {
+    if (busy !== null || !onSaveDraft) return;
+    if (!draft.employeeId) return saveErrors.reveal();
+    void run('draft', () => onSaveDraft(draft)).then((ok) => ok && onClose());
+  };
   const types: Raisable[] = [...(options.types ?? RAISABLE).filter((t) => t !== 'salary_revision' || options.canPay), ...(move ? [MOVE] : [])];
   const label = (f: ChangeField) => (draft.changeType === 'correction' ? FIELD_LABEL[f] : `New ${FIELD_LABEL[f].toLowerCase()}`);
   const past = date && date < options.today;
@@ -586,15 +592,13 @@ export function ChangeActionDrawer({ options, employeeId, initial, onPreview, on
       subtitle={person ? [person.designation, person.department, person.location].filter(Boolean).join(' · ') : 'Raise a change for one person.'}
       footer={
         <>
-          <Button onClick={onClose} disabled={busy !== null}>
-            Cancel
-          </Button>
+          <Button onClick={() => busy === null && onClose()}>Cancel</Button>
           {onSaveDraft && (
-            <Button loading={busy === 'draft'} disabled={busy === 'submit' || !draft.employeeId} onClick={saveDraft}>
+            <Button loading={busy === 'draft'} onClick={saveDraft}>
               Save draft
             </Button>
           )}
-          <Button variant="primary" loading={busy === 'submit'} disabled={busy === 'draft'} onClick={submit}>
+          <Button variant="primary" loading={busy === 'submit'} onClick={submit}>
             Send for approval
           </Button>
         </>
