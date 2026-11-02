@@ -6,10 +6,11 @@ import { todayIst } from '../org-structure/org-validation';
 import { SettingDef, resolveSetting } from '../org-structure/settings-registry';
 import { Viewer, buildViewer, has, tenantWide, type ScopeUser, inEntitySql } from '../access/scope';
 import { ApprovalsEngine, Notice, StepSpec } from '../workflow/approvals-engine.service';
-import { OtClaimDto, OtRuleDto } from './dto';
+import { OtClaimDto, OtPlanDto, OtRuleDto } from './dto';
+import { hoursText, otPlanProblem, preApprovalCheck } from './ot-plan-rules';
 import { ScheduleBook, assertOpen, lockedDates } from './schedule';
 import { SCOPE_MODEL, TimeSetupService } from './setup.service';
-import { TIME_KEYS, Facts, asDate, dateOf, factsOn, grantCovers, holidaysFor, hrApprovers, monthRange, myEmployeeId, num, settingOn, todayIn, visibleSql } from './time-core';
+import { TIME_KEYS, Facts, asDate, dateOf, factsOn, grantCovers, holidaysFor, hrApprovers, monthRange, mustSee, myEmployeeId, num, settingOn, todayIn, visibleSql } from './time-core';
 import { addDays } from './time-maths';
 import { OtCategory, compOffDays, otSettlement, overtimeFor, quarterOf, scheduledMinutes } from './time-rules';
 
@@ -24,6 +25,7 @@ import { OtCategory, compOffDays, otSettlement, overtimeFor, quarterOf, schedule
 // whatever the rule says; comp-off settlement is offered only where the Act does not apply.
 
 export const OVERTIME = 'time.overtime';
+export const OT_PLAN = 'time.overtime_plan';
 const RULE_DEF: SettingDef = { label: 'Overtime rule', scopes: ['employee', 'designation', 'grade', 'employment_type', 'department', 'location', 'legal_entity', 'tenant'], dated: true, values: [], default: '' };
 const fmt = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
 const hm = (m: number) => `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')} m`;
@@ -40,6 +42,7 @@ export class OvertimeService implements OnModuleInit {
 
   onModuleInit() {
     this.engine.register({ key: OVERTIME, label: 'Overtime', risk: 'normal', autoActions: false, onDecided: (tx, req, outcome) => this.decided(tx, req, outcome), requesterLink: () => '/yx/time/overtime' });
+    this.engine.register({ key: OT_PLAN, label: 'Overtime pre-approval', risk: 'normal', autoActions: false, onDecided: (tx, req, outcome) => this.planDecided(tx, req, outcome), requesterLink: () => '/yx/time/attendance' });
   }
 
   private viewer(user: ScopeUser): Promise<Viewer> {
@@ -151,12 +154,17 @@ export class OvertimeService implements OnModuleInit {
         const w = await this.workOut(tx, org, f, on, book);
         if (w.ot && w.ot.eligible > 0) open.push({ on, category: w.ot.category, workedMinutes: d.workedMinutes, scheduledMinutes: w.ot.scheduled, eligibleMinutes: w.ot.eligible, payableMinutes: w.ot.payable, overCapMinutes: w.ot.overCap, settle: w.ot.settle, factoriesAct: w.ot.factoriesAct, needsApproval: w.rule!.needsApproval });
       }
-      return { today, claims: claims.map((x) => this.view(x)), open };
+      const plans = await tx.overtimePlan.findMany({ where: { organizationId: org, employeeId: id, workOn: { gte: asDate(addDays(today, -31)) } }, orderBy: { workOn: 'desc' }, take: 60 });
+      return { today, claims: claims.map((x) => this.view(x)), open, plans: plans.map((x) => this.planView(x)) };
     });
   }
 
+  private planView(x: Prisma.OvertimePlanGetPayload<object>) {
+    return { id: x.id, employeeId: x.employeeId, on: dateOf(x.workOn), minutes: x.plannedMinutes, takeAs: x.takeAs as 'pay' | 'comp_off', reason: x.reason, status: x.status, createdAt: x.createdAt, decidedAt: x.decidedAt };
+  }
+
   private view(x: Prisma.OvertimeRequestGetPayload<object>) {
-    return { id: x.id, employeeId: x.employeeId, on: dateOf(x.workOn), category: x.category, workedMinutes: x.workedMinutes, scheduledMinutes: x.scheduledMinutes, eligibleMinutes: x.eligibleMinutes, payableMinutes: x.payableMinutes, overCapMinutes: x.overCapMinutes, rate: num(x.rate), settle: x.settle, compOffDays: num(x.compOffDays), reason: x.reason, status: x.status, overridden: Boolean(x.overrideReason), overrideReason: x.overrideReason, createdAt: x.createdAt, decidedAt: x.decidedAt };
+    return { id: x.id, planId: x.planId, preApprovedMinutes: x.preApprovedMinutes, employeeId: x.employeeId, on: dateOf(x.workOn), category: x.category, workedMinutes: x.workedMinutes, scheduledMinutes: x.scheduledMinutes, eligibleMinutes: x.eligibleMinutes, payableMinutes: x.payableMinutes, overCapMinutes: x.overCapMinutes, rate: num(x.rate), settle: x.settle, compOffDays: num(x.compOffDays), reason: x.reason, status: x.status, overridden: Boolean(x.overrideReason), overrideReason: x.overrideReason, createdAt: x.createdAt, decidedAt: x.decidedAt };
   }
 
   /** A claim for one worked day (after the fact, Q7), routed through P03 unless the rule needs no approval. */
@@ -175,10 +183,15 @@ export class OvertimeService implements OnModuleInit {
       const w = await this.workOut(tx, org, f, dto.on, await ScheduleBook.load(tx, org));
       if (!w.rule) throw new BadRequestException('No overtime rule applies to you. Ask HR.');
       if (!w.ot || w.ot.eligible === 0) throw new BadRequestException(`No overtime on ${fmt(dto.on)}: the time past your shift is below the ${w.rule.minMinutes} minutes that count.`);
-      const settle = w.ot.settle;
+      // TIM-07 Ot: the day's approved pre-approval, read by the claim (company setting for a claim without one).
+      const plan = await tx.overtimePlan.findFirst({ where: { organizationId: org, employeeId: me, workOn: asDate(dto.on), status: 'approved' } });
+      const pre = preApprovalCheck(await settingOn(tx, c, 'attendance.overtime.pre_approval', f, dto.on), plan?.plannedMinutes ?? null, w.ot.payable);
+      if (pre.refuse) throw new BadRequestException({ statusCode: 400, code: 'OT_NOT_PRE_APPROVED', message: pre.refuse });
+      // The plan's choice of pay or comp-off holds, except that factory overtime is always paid (founder 9 Oct 2026).
+      const settle = plan && !w.ot.factoriesAct ? (plan.takeAs as 'pay' | 'comp_off') : w.ot.settle;
       const compOff = settle === 'comp_off' ? compOffDays(w.ot.payable, w.rule.compOffHalfMinutes, w.rule.compOffFullMinutes) : 0;
       const r = await tx.overtimeRequest.create({
-        data: { organizationId: org, employeeId: me, workOn: asDate(dto.on), ruleId: w.rule.id, category: w.ot.category, scheduledMinutes: w.ot.scheduled, workedMinutes: w.day!.workedMinutes!, eligibleMinutes: w.ot.eligible, payableMinutes: w.ot.payable, overCapMinutes: w.ot.overCap, rate: w.ot.rate, settle, compOffDays: compOff, reason: dto.reason, raisedBy: c.userId ?? null },
+        data: { organizationId: org, employeeId: me, workOn: asDate(dto.on), ruleId: w.rule.id, category: w.ot.category, scheduledMinutes: w.ot.scheduled, workedMinutes: w.day!.workedMinutes!, eligibleMinutes: w.ot.eligible, payableMinutes: w.ot.payable, overCapMinutes: w.ot.overCap, rate: w.ot.rate, settle, compOffDays: compOff, reason: dto.reason, raisedBy: c.userId ?? null, planId: plan?.id ?? null, preApprovedMinutes: plan?.plannedMinutes ?? null },
       });
       const hr = await hrApprovers(tx, org, me, todayIst(), f.userId);
       const steps: StepSpec[] = w.rule.needsApproval ? [{ name: 'Manager', approvers: [{ kind: 'manager' }], mode: 'any', remindAfterHours: 24, timeoutHours: 72, onTimeout: 'escalate' }] : [];
@@ -192,6 +205,7 @@ export class OvertimeService implements OnModuleInit {
           { label: 'Worked', value: `${hm(w.day!.workedMinutes!)} against ${hm(w.ot.scheduled)} expected` },
           { label: 'Overtime', value: `${hm(w.ot.payable)} at ${w.ot.rate}×${w.ot.overCap ? ` (${hm(w.ot.overCap)} more is over the limit and needs HR)` : ''}` },
           { label: 'Settled as', value: settle === 'comp_off' ? `Comp-off: ${compOff} ${compOff === 1 ? 'day' : 'days'}` : w.ot.factoriesAct ? `Paid in payroll at ${w.ot.rate}× (Factories Act)` : 'Paid in payroll' },
+          ...(pre.note ? [{ label: 'Pre-approval', value: pre.note }] : []),
           { label: 'Why', value: dto.reason.slice(0, 300) },
         ],
         subjectPersonId: f.personId,
@@ -204,7 +218,7 @@ export class OvertimeService implements OnModuleInit {
       });
       notices.push(...sub.notices);
       await tx.overtimeRequest.update({ where: { id: r.id }, data: { wfRequestId: sub.id } });
-      await audit(tx, c, 'time.ot.claimed', 'overtime_request', r.id, { on: dto.on, eligible: w.ot.eligible, payable: w.ot.payable, overCap: w.ot.overCap, settle, factoriesAct: w.ot.factoriesAct });
+      await audit(tx, c, 'time.ot.claimed', 'overtime_request', r.id, { on: dto.on, eligible: w.ot.eligible, payable: w.ot.payable, overCap: w.ot.overCap, settle, factoriesAct: w.ot.factoriesAct, planId: plan?.id ?? null, preApproved: pre.note });
       return this.view(await tx.overtimeRequest.findFirstOrThrow({ where: { id: r.id } }));
     });
     await this.engine.send(ctx, notices);
@@ -222,6 +236,100 @@ export class OvertimeService implements OnModuleInit {
       await tx.overtimeRequest.update({ where: { id }, data: { status: 'withdrawn', decidedAt: new Date(), version: { increment: 1 }, updatedAt: new Date() } });
       return { id, status: 'withdrawn' };
     });
+  }
+
+  // ------------------------------------------------------------------------------------------ TIM-07 Ot pre-approval
+
+  /** Checks shared by the employee's and the manager's plan: the window, quarter hours, a rule, comp-off allowed, one a day. */
+  private async checkPlan(tx: Tx, c: { organizationId: string; isSuperAdmin: boolean }, employeeId: string, dto: OtPlanDto) {
+    const org = c.organizationId;
+    const f = await factsOn(tx, org, employeeId, dto.on);
+    if (!f || dto.on < f.joinedOn || (f.exitedOn && dto.on > f.exitedOn)) throw new BadRequestException('Not working here on that day.');
+    const problem = otPlanProblem({ on: dto.on, today: todayIn(f.zone), aheadDays: Number(await settingOn(tx, c, 'attendance.overtime.plan_ahead_days', f, dto.on)), minutes: dto.minutes });
+    if (problem) throw new BadRequestException({ statusCode: 400, message: problem.message, field: problem.field });
+    await assertOpen(tx, org, employeeId, dto.on);
+    if (!(await this.ruleOn(tx, org, f, dto.on))) throw new BadRequestException('No overtime rule applies on that day. Ask HR.');
+    if (dto.takeAs === 'comp_off') {
+      if (await this.factoriesAct(tx, org, f, dto.on, (await this.statutory(tx, f.state, dto.on)).coveredCategories)) throw new BadRequestException('Factory overtime is paid by law, not given as comp-off. Choose Paid overtime.');
+      if (!(await tx.leaveType.findFirst({ where: { organizationId: org, kind: 'comp_off', active: true }, select: { id: true } }))) throw new BadRequestException('Comp-off is not in use here. Choose Paid overtime.');
+    }
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`ot-plan:${org}:${employeeId}`}))`;
+    if (await tx.overtimePlan.findFirst({ where: { organizationId: org, employeeId, workOn: asDate(dto.on), status: { in: ['pending', 'approved'] } }, select: { id: true } })) throw new ConflictException(`Overtime on ${fmt(dto.on)} is already asked for. Withdraw that request first.`);
+    return f;
+  }
+
+  /** POST me/overtime/plans: the employee asks ahead; the manager approves through P03. */
+  async plan(ctx: TenantContext, user: ScopeUser, dto: OtPlanDto) {
+    if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
+    const notices: Notice[] = [];
+    const res = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const me = await myEmployeeId(tx, org, c.userId);
+      const f = await this.checkPlan(tx, c, me, dto);
+      const p = await tx.overtimePlan.create({ data: { organizationId: org, employeeId: me, workOn: asDate(dto.on), plannedMinutes: dto.minutes, takeAs: dto.takeAs, reason: dto.reason, raisedBy: c.userId ?? null } });
+      const hr = await hrApprovers(tx, org, me, todayIst(), f.userId);
+      const sub = await this.engine.submit(tx, c, {
+        type: OT_PLAN,
+        subjectType: 'overtime_plan',
+        subjectId: p.id,
+        title: `${f.name}: overtime pre-approval for ${fmt(dto.on)} (up to ${hoursText(dto.minutes)})`,
+        summary: [
+          { label: 'Day', value: fmt(dto.on) },
+          { label: 'Planned', value: `Up to ${hoursText(dto.minutes)}` },
+          { label: 'Take as', value: dto.takeAs === 'comp_off' ? 'Comp-off credit' : 'Paid overtime' },
+          { label: 'Why', value: dto.reason.slice(0, 300) },
+        ],
+        subjectPersonId: f.personId,
+        requesterUserId: c.userId ?? null,
+        raisedByUserId: c.userId ?? null,
+        steps: [{ name: 'Manager', approvers: [{ kind: 'manager' }], mode: 'any', remindAfterHours: 24 }],
+        payload: {},
+        payloadFields: [],
+        fallbackUserIds: hr,
+      });
+      notices.push(...sub.notices);
+      await tx.overtimePlan.update({ where: { id: p.id }, data: { wfRequestId: sub.id } });
+      await audit(tx, c, 'time.ot.plan_requested', 'overtime_plan', p.id, { on: dto.on, minutes: dto.minutes, takeAs: dto.takeAs });
+      return this.planView(await tx.overtimePlan.findFirstOrThrow({ where: { id: p.id } }));
+    });
+    await this.engine.send(ctx, notices);
+    return res;
+  }
+
+  /**
+   * POST team/overtime/plans/:employeeId: the manager (or someone holding leave.approve over the person) plans overtime
+   * for them; as the approver, it is approved at once (audited). Never for oneself.
+   */
+  async planFor(ctx: TenantContext, user: ScopeUser, employeeId: string, dto: OtPlanDto) {
+    const v = await this.viewer(user);
+    if (v.actingForOther || !v.userId) throw new ForbiddenException('Not available while acting for someone else.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const own = (await tx.employee.findFirst({ where: { organizationId: org, userId: v.userId! }, select: { id: true } }))?.id ?? null;
+      if ((await mustSee(tx, c, v, own, 'leave.approve', employeeId, dto.on)) === 'self') throw new ForbiddenException('Ask your manager to pre-approve your own overtime.');
+      await this.checkPlan(tx, c, employeeId, dto);
+      const p = await tx.overtimePlan.create({ data: { organizationId: org, employeeId, workOn: asDate(dto.on), plannedMinutes: dto.minutes, takeAs: dto.takeAs, reason: dto.reason, status: 'approved', decidedAt: new Date(), raisedBy: c.userId ?? null } });
+      await audit(tx, c, 'time.ot.plan_approved', 'overtime_plan', p.id, { employeeId, on: dto.on, minutes: dto.minutes, takeAs: dto.takeAs, by: 'planner' });
+      return this.planView(p);
+    });
+  }
+
+  async withdrawPlan(ctx: TenantContext, user: ScopeUser, id: string) {
+    if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const me = await myEmployeeId(tx, c.organizationId, c.userId);
+      const p = await tx.overtimePlan.findFirst({ where: { organizationId: c.organizationId, id, employeeId: me } });
+      if (!p) throw new NotFoundException('No such request.');
+      if (p.status !== 'pending') throw new ConflictException('Only a request still waiting for approval can be withdrawn.');
+      if (p.wfRequestId) await this.engine.withdraw(tx, c, p.wfRequestId, c.userId ?? null, 'Withdrawn by the employee');
+      await tx.overtimePlan.update({ where: { id }, data: { status: 'withdrawn', decidedAt: new Date(), version: { increment: 1 }, updatedAt: new Date() } });
+      await audit(tx, c, 'time.ot.plan_withdrawn', 'overtime_plan', id, {});
+      return { id, status: 'withdrawn' };
+    });
+  }
+
+  private async planDecided(tx: Tx, wf: Prisma.WfRequestGetPayload<object>, outcome: 'approved' | 'rejected') {
+    await tx.overtimePlan.updateMany({ where: { organizationId: wf.organizationId, id: wf.subjectId, status: 'pending' }, data: { status: outcome, decidedAt: new Date(), version: { increment: 1 }, updatedAt: new Date() } });
   }
 
   /** P03 effect, exactly once: the status, and for comp-off the ledger credit (YX-LV-01, period key per claim). */

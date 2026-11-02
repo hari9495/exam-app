@@ -5511,6 +5511,9 @@ model OvertimeRequest {
   status           String    @default("pending") @db.VarChar(10)
   overrideReason   String?   @map("override_reason") @db.VarChar(500)
   overriddenBy     String?   @map("overridden_by") @db.Uuid
+  /// TIM-07 Ot: the approved plan the claim read, and its planned minutes (null: claimed without pre-approval).
+  planId             String?   @map("plan_id") @db.Uuid
+  preApprovedMinutes Int?      @map("pre_approved_minutes") @db.SmallInt
   wfRequestId      String?   @map("wf_request_id") @db.Uuid
   raisedBy         String?   @map("raised_by") @db.Uuid
   decidedAt        DateTime? @map("decided_at") @db.Timestamptz(3)
@@ -5519,6 +5522,26 @@ model OvertimeRequest {
   updatedAt        DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
 
   @@map("overtime_requests")
+}
+
+/// TIM-07 Ot: overtime asked for ahead of the work; a later claim reads the approved plan.
+model OvertimePlan {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  workOn         DateTime  @map("work_on") @db.Date
+  plannedMinutes Int       @map("planned_minutes") @db.SmallInt
+  takeAs         String    @default("pay") @map("take_as") @db.VarChar(8)
+  reason         String    @db.VarChar(500)
+  status         String    @default("pending") @db.VarChar(10)
+  wfRequestId    String?   @map("wf_request_id") @db.Uuid
+  raisedBy       String?   @map("raised_by") @db.Uuid
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+  version        Int       @default(1)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@map("overtime_plans")
 }
 
 model TimesheetProject {

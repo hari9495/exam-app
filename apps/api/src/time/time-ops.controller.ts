@@ -9,7 +9,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
-import { ActiveDto, ConsentDto, EligibilityOverrideDto, MonthQueryDto, NightConfirmDto, NightOptInDto, OtClaimDto, OtRuleDto, OverrideDto, PatternAssignDto, PatternDto, PeriodDto, ProjectDto, RegisterQueryDto, RosterCellsDto, RosterCopyDto, SafeguardDto, ShiftDetailsDto, ShiftDto, ShiftTimesDto, SwapDto, TimesheetDto, UnlockDto, WeekQueryDto, WithdrawConsentDto, YearQueryDto, MonthEntityQueryDto, YearEntityQueryDto } from './dto';
+import { ActiveDto, ConsentDto, EligibilityOverrideDto, MonthQueryDto, NightConfirmDto, NightOptInDto, OtClaimDto, OtPlanDto, OtRuleDto, OverrideDto, PatternAssignDto, PatternDto, PeriodDto, ProjectDto, RegisterQueryDto, RosterCellsDto, RosterCopyDto, SafeguardDto, ShiftDetailsDto, ShiftDto, ShiftTimesDto, SwapDto, TimesheetDto, UnlockDto, WeekQueryDto, WithdrawConsentDto, YearQueryDto, MonthEntityQueryDto, YearEntityQueryDto } from './dto';
 import { LeaveService } from './leave.service';
 import { RosterPublishDto } from './roster-ops.dto';
 import { NightWorkService } from './night-work.service';
@@ -232,6 +232,26 @@ export class TimeOpsController {
   @Throttle(MODERATE_UPLOAD_THROTTLE)
   claim(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: OtClaimDto) {
     return this.overtime.claim(ctx, this.user(req), dto);
+  }
+
+  /** TIM-07 Ot: ask ahead for overtime; the manager approves through P03. */
+  @Post('me/overtime/plans')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  planOvertime(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: OtPlanDto) {
+    return this.overtime.plan(ctx, this.user(req), dto);
+  }
+
+  @Post('me/overtime/plans/:id/withdraw')
+  @HttpCode(200)
+  withdrawPlan(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.overtime.withdrawPlan(ctx, this.user(req), id);
+  }
+
+  /** TIM-07 Ot: a manager (or leave.approve over the person) pre-approves overtime for someone; approved at once. */
+  @Post('team/overtime/plans/:employeeId')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  planOvertimeFor(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) employeeId: string, @Body() dto: OtPlanDto) {
+    return this.overtime.planFor(ctx, this.user(req), employeeId, dto);
   }
 
   @Post('me/overtime/:id/withdraw')

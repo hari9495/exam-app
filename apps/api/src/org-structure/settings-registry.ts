@@ -205,6 +205,10 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'attendance.regularise_monthly_limit': { label: 'Fixes a month with manager approval only', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '2', '3', '4', '5', '6', '8', '10'], default: '4' },
   // TIM-07 / settings 3.5 (19 Oct 2026): work-from-home days a month with manager approval only; beyond that HR approves too.
   'attendance.wfh_monthly_limit': { label: 'Work from home days a month with manager approval only', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '1', '2', '3', '4', '5', '6', '8', '10', '15', '22'], default: '4' },
+  // TIM-07 Ot (Nov 2026): overtime asked for ahead of the work. A claim without an approved plan is refused, flagged to
+  // the approver ("Not pre-approved"), or allowed; and how far ahead a plan can be asked.
+  'attendance.overtime.pre_approval': { label: 'Overtime claimed without pre-approval', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['flag', 'refuse', 'allow'], default: 'flag' },
+  'attendance.overtime.plan_ahead_days': { label: 'Overtime can be pre-approved this many days ahead', scopes: ['tenant', 'legal_entity'], dated: false, values: ['7', '15', '30', '60'], default: '30' },
   // TIM-03 / TIM-07 OnDuty (Nov 2026): how far ahead and back on duty can be asked, and whether the manager may send it
   // back for changes instead of turning it down.
   'attendance.on_duty.ahead_days': { label: 'On duty can be asked this many days ahead', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '7', '15', '30', '60', '90'], default: '30' },

@@ -705,6 +705,26 @@ export class OtClaimDto {
   reason!: string;
 }
 
+/** TIM-07 Ot: overtime asked for ahead (quarter hours, 0.5 to 12 h), paid or as comp-off. */
+export class OtPlanDto {
+  @IsDateString(DATE)
+  on!: string;
+
+  @IsInt()
+  @Min(30)
+  @Max(720)
+  minutes!: number;
+
+  @IsIn(['pay', 'comp_off'])
+  takeAs!: 'pay' | 'comp_off';
+
+  @trim()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  reason!: string;
+}
+
 export class OverrideDto {
   @trim()
   @IsString()
