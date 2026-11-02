@@ -5,7 +5,8 @@ import { Bell, CalendarPlus, Check, Download, FileLock2, Lock, Plus, Send, Trash
 import { Button, Link } from '../../components/button';
 import { AiBadge, Badge, PersonLabel } from '../../components/display';
 import { Icon, Text } from '../../components/foundations';
-import { EmptyState, InlineAlert, Skeleton } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, Skeleton } from '../../components/feedback';
+import { useAct } from './perf-live';
 import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { Drawer } from '../../components/drawer';
@@ -706,22 +707,65 @@ export interface Nomination {
   relationship: Relationship;
   status: 'Proposed' | 'Approved' | 'Removed' | 'Invited' | 'Responded';
   addedBy?: string;
+  /** Live: the viewer may take this one off the list (the employee their own proposal, the manager a proposal). */
+  canRemove?: boolean;
 }
 
+/** The app's nominations: names searched on the server, every change checked there (who, the window, min and max). */
+export interface LiveNominations {
+  onRetry: () => void;
+  cycle: string;
+  dueOn: Date;
+  manager: string;
+  /** The list was sent and nothing new was added since. */
+  sent: boolean;
+  can: { propose: boolean; decide: boolean; add: boolean; send: boolean };
+  onSearch: (query: string) => void;
+  onAdd: (reviewerEmployeeId: string, relationship: 'peer' | 'report' | 'other') => Promise<unknown>;
+  onApprove: (id: string) => Promise<unknown>;
+  onRemove: (n: Nomination) => Promise<unknown>;
+  onSend: () => Promise<unknown>;
+  onApproveAll: () => Promise<unknown>;
+}
+
+const REL: Record<Relationship, 'peer' | 'report' | 'other'> = { Peer: 'peer', 'Direct report': 'report', Other: 'other', Manager: 'other' };
+
 /** PRF-07 360° nominations (T4): employee nominates (min–max), manager approves or adds; anonymity explained (Q4). */
-export function NominationsScreen({ persona, device = 'desktop', employee, people, nominations: initial, min = 3, max = 6, submitted }: { persona: 'emp' | 'mgr'; device?: Device; employee: string; people: PersonOption[]; nominations: Nomination[]; min?: number; max?: number; submitted?: boolean }) {
-  const [list, setList] = useState(initial);
+export function NominationsScreen({ persona, device = 'desktop', employee, people, nominations: initial, min = 3, max = 6, submitted, state = 'ready', live }: { persona: 'emp' | 'mgr'; device?: Device; employee: string; people: PersonOption[]; nominations: Nomination[]; min?: number; max?: number; submitted?: boolean; state?: LoadState; live?: LiveNominations }) {
+  const [own, setList] = useState(initial);
+  const list = live ? initial : own;
   const [pick, setPick] = useState<string | null>(null);
+  const [chosen, setChosen] = useState<PersonOption | null>(null);
   const [rel, setRel] = useState<Relationship>('Peer');
-  const [sent, setSent] = useState(!!submitted);
+  const [ownSent, setSent] = useState(!!submitted);
+  const sent = live ? live.sent : ownSent;
+  const [tried, setTried] = useState(false);
+  const [pickError, setPickError] = useState<string | null>(null);
+  const { busy, act } = useAct();
   const active = list.filter((n) => n.status !== 'Removed');
   const err = nominationCheck(active.length, min, max);
-  const add = () => {
-    const p = people.find((x) => x.id === pick);
-    if (!p || list.some((n) => n.name === p.name)) return;
+  const canAdd = live ? (persona === 'emp' ? live.can.propose : live.can.add) : !sent;
+  const shown = [...(chosen && !people.some((p) => p.id === chosen.id) ? [chosen] : []), ...people];
+  const add = async () => {
+    const p = shown.find((x) => x.id === pick);
+    if (!p) {
+      setPickError('Choose a person to add.');
+      return document.getElementById('nom-pick')?.focus();
+    }
+    if (list.some((n) => n.name === p.name && n.status !== 'Removed')) return setPickError(`${p.name} is already on the list.`);
+    setPickError(null);
+    if (live) {
+      if (await act('add', () => live.onAdd(p.id, REL[rel]), `${p.name} added`)) {
+        setPick(null);
+        setChosen(null);
+      }
+      return;
+    }
     setList((xs) => [...xs, { id: p.id, name: p.name, relationship: rel, status: persona === 'mgr' ? 'Approved' : 'Proposed', addedBy: persona === 'mgr' ? 'Manager' : undefined }]);
     setPick(null);
   };
+  const remove = (n: Nomination) => (live ? void act(`r-${n.id}`, () => live.onRemove(n), `${n.name} removed`) : setList((xs) => (persona === 'mgr' ? xs.map((x) => (x.id === n.id ? { ...x, status: 'Removed' } : x)) : xs.filter((x) => x.id !== n.id))));
+  const approve = (n: Nomination) => (live ? void act(`a-${n.id}`, () => live.onApprove(n.id), `${n.name} approved`) : setList((xs) => xs.map((x) => (x.id === n.id ? { ...x, status: 'Approved' } : x))));
   const rows = (
     <ul className="yx-growth-list">
       {list.map((n) => (
@@ -729,13 +773,13 @@ export function NominationsScreen({ persona, device = 'desktop', employee, peopl
           <PersonLabel name={n.name} secondary={`${n.relationship}${n.addedBy ? ` · added by ${n.addedBy.toLowerCase()}` : ''}`} />
           <span className="yx-growth-grow" />
           <Badge tone={n.status === 'Approved' || n.status === 'Responded' ? 'success' : n.status === 'Removed' ? 'neutral' : 'info'}>{n.status}</Badge>
-          {persona === 'mgr' && n.status === 'Proposed' && (
-            <Button variant="approve" size="sm" onClick={() => setList((xs) => xs.map((x) => (x.id === n.id ? { ...x, status: 'Approved' } : x)))}>
+          {persona === 'mgr' && n.status === 'Proposed' && (!live || live.can.decide) && (
+            <Button variant="approve" size="sm" loading={busy === `a-${n.id}`} onClick={() => approve(n)}>
               Approve
             </Button>
           )}
-          {!sent && n.status !== 'Removed' && n.status !== 'Responded' && (
-            <Button size="sm" icon={Trash2} onClick={() => setList((xs) => (persona === 'mgr' ? xs.map((x) => (x.id === n.id ? { ...x, status: 'Removed' } : x)) : xs.filter((x) => x.id !== n.id)))}>
+          {(live ? n.canRemove : !sent && n.status !== 'Removed' && n.status !== 'Responded') && (
+            <Button size="sm" icon={Trash2} loading={busy === `r-${n.id}`} onClick={() => remove(n)}>
               Remove
             </Button>
           )}
@@ -743,15 +787,24 @@ export function NominationsScreen({ persona, device = 'desktop', employee, peopl
       ))}
     </ul>
   );
-  const adder = !sent && (
+  const adder = canAdd && (
     <FieldRow>
-      <FormField label="Add a reviewer">
-        <PersonPicker people={people.filter((p) => p.name !== employee)} value={pick} onChange={setPick} />
+      <FormField label="Add a reviewer" id="nom-pick" error={pickError}>
+        <PersonPicker
+          people={shown.filter((p) => p.name !== employee)}
+          value={pick}
+          onChange={(id) => {
+            setPick(id);
+            setChosen(shown.find((p) => p.id === id) ?? null);
+            setPickError(null);
+          }}
+          onSearchChange={live?.onSearch}
+        />
       </FormField>
       <FormField label="Relationship">
         <Select value={rel} onChange={(v) => v && setRel(v as Relationship)} options={(['Peer', 'Direct report', 'Other'] as const).map((r) => ({ value: r, label: r }))} />
       </FormField>
-      <Button icon={Plus} onClick={add} disabled={!pick}>
+      <Button icon={Plus} loading={busy === 'add'} onClick={() => void add()}>
         Add
       </Button>
     </FieldRow>
@@ -761,31 +814,50 @@ export function NominationsScreen({ persona, device = 'desktop', employee, peopl
       Peers and direct reports stay anonymous, and their feedback shows only when 3 or more in a group respond. Manager feedback is named. Only people on this approved list can give 360° feedback on {persona === 'emp' ? 'your' : `${employee}’s`} review.
     </InlineAlert>
   );
+  // Never a disabled button: pressed too early, it says what is missing next to the list.
+  const press = (fn: () => void) => () => {
+    setTried(true);
+    if (err) return;
+    fn();
+  };
   const primary =
     persona === 'emp' ? (
-      <Button variant="primary" icon={Send} disabled={!!err || sent} onClick={() => setSent(true)} fullWidth={device === 'phone'}>
-        Send to manager for approval
-      </Button>
+      (!live || live.can.send || !sent) && (
+        <Button variant="primary" icon={Send} loading={busy === 'send'} onClick={press(() => (live ? void act('send', live.onSend, `Sent to ${live.manager}`) : setSent(true)))} fullWidth={device === 'phone'}>
+          Send to manager for approval
+        </Button>
+      )
     ) : (
-      <Button variant="primary" disabled={!!err || list.some((n) => n.status === 'Proposed')} onClick={() => setSent(true)} fullWidth={device === 'phone'}>
-        Approve list and invite
-      </Button>
+      (!live || (live.can.decide && !live.sent)) && (
+        <Button variant="primary" loading={busy === 'all'} onClick={press(() => (live ? void act('all', live.onApproveAll, 'Reviewers invited') : (setList((xs) => xs.map((x) => (x.status === 'Proposed' ? { ...x, status: 'Approved' } : x))), setSent(true))))} fullWidth={device === 'phone'}>
+          Approve list and invite
+        </Button>
+      )
     );
+  const doneNote = sent && (
+    <InlineAlert tone="success" title={persona === 'emp' ? `Sent to ${live?.manager ?? 'Karthik Subramanian'}` : 'Reviewers invited'}>
+      {persona === 'emp' ? 'You’ll be told when your manager approves or changes the list.' : `Each reviewer gets an in-app task due ${formatDate(live?.dueOn ?? new Date(2026, 9, 12))}.`}
+    </InlineAlert>
+  );
   const content = (
     <>
       {info}
-      {sent && (
-        <InlineAlert tone="success" title={persona === 'emp' ? 'Sent to Karthik Subramanian' : 'Reviewers invited'}>
-          {persona === 'emp' ? 'You’ll be told when your manager approves or changes the list.' : 'Each reviewer gets an in-app task due 12 Oct 2026.'}
-        </InlineAlert>
-      )}
+      {doneNote}
       <Card title={`Reviewers · ${active.length} of ${min}–${max}`}>
-        {list.length === 0 ? <EmptyState compact title="No reviewers yet" description={`Add ${min} to ${max} people who worked closely with ${persona === 'emp' ? 'you' : employee} this period.`} /> : rows}
-        {err && !sent && <Text tone="danger">{err}</Text>}
+        {state === 'loading' ? <Skeleton height={160} /> : list.length === 0 ? <EmptyState compact title="No reviewers yet" description={`Add ${min} to ${max} people who worked closely with ${persona === 'emp' ? 'you' : employee} this period.`} /> : rows}
+        {err && (tried || !live) && !sent && <Text tone="danger">{err}</Text>}
         {adder}
       </Card>
     </>
   );
+  const description = live ? `${live.cycle} · nominations close ${formatDate(live.dueOn)}` : 'Half-yearly review H1 FY 2026-27 · nominations close 2 Oct 2026';
+  if (state === 'error')
+    return (
+      <GrowthFrame area="performance" active="Reviews & cycles" persona={persona}>
+        <PageHeader title="360° reviewers" />
+        <ErrorState title="We couldn’t load the nominations" description="Check your connection and try again." onRetry={live?.onRetry} />
+      </GrowthFrame>
+    );
   if (device === 'phone')
     return (
       <GrowthFrame area="performance" active="Reviews & cycles" persona={persona} device="phone" phone={{ title: '360° reviewers', back: true, tab: persona === 'mgr' ? 'requests' : 'me' }}>
@@ -795,7 +867,7 @@ export function NominationsScreen({ persona, device = 'desktop', employee, peopl
     );
   return (
     <GrowthFrame area="performance" active="Reviews & cycles" persona={persona}>
-      <PageHeader title={persona === 'emp' ? 'Nominate your 360° reviewers' : `360° reviewers for ${employee}`} description="Half-yearly review H1 FY 2026-27 · nominations close 2 Oct 2026" actions={primary} />
+      <PageHeader title={persona === 'emp' ? 'Nominate your 360° reviewers' : `360° reviewers for ${employee}`} description={description} actions={primary || undefined} />
       <div className="yx-growth-stack" style={{ maxWidth: 'var(--yx-form-max)' }}>
         {content}
       </div>

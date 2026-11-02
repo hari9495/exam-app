@@ -430,7 +430,13 @@ export interface Nomination {
 export interface Nominations {
   peer: PeerConfig | null;
   nominations: Nomination[];
-  can: { propose: boolean; decide: boolean; add: boolean };
+  can: { propose: boolean; decide: boolean; add: boolean; send?: boolean };
+  /** PRF-07: whose review, the cycle, when the list was last sent, and who is looking. */
+  employee?: string;
+  manager?: string;
+  cycle?: string;
+  sentAt?: string | null;
+  viewer?: 'employee' | 'manager' | 'other';
 }
 
 export interface PeerGroups {

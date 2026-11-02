@@ -15,3 +15,4 @@ export const ManagerApproves: S = { name: 'Manager · approve list', render: () 
 export const Phone: S = { name: 'Employee · phone', globals: PHONE, render: () => <NominationsScreen persona="emp" device="phone" employee="Divya Raghunathan" people={PEOPLE} nominations={NOMINATIONS} /> };
 export const ManagerPhone: S = { name: 'Manager · phone', globals: PHONE, render: () => <NominationsScreen persona="mgr" device="phone" employee="Divya Raghunathan" people={PEOPLE} nominations={NOMINATIONS} /> };
 export const Empty: S = { render: () => <NominationsScreen persona="emp" employee="Divya Raghunathan" people={PEOPLE} nominations={[]} /> };
+export const LoadError: S = { name: 'Error', render: () => <NominationsScreen persona="emp" employee="Divya Raghunathan" people={PEOPLE} nominations={[]} state="error" /> };

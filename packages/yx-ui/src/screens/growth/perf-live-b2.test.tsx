@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { OneOnOneScreen, PipRecordScreen, QuickFeedbackScreen, type LiveOneOnOnes, type LivePip, type LiveQuickFeedback } from './perf-people';
 import { ONE_ON_ONES, PEOPLE, PIP, PIP_PROPOSED, PIP_TO_ACK, RECEIVED, REQUESTS } from './perf-data-2';
+import { NOMINATIONS } from './perf-data-3';
+import { NominationsScreen, type LiveNominations } from './perf-reviews';
 
 // The designed Performance screens with `live` (builder 2): every action calls the app, pressed too early shows a
 // field error and calls nothing (positive and negative).
@@ -185,5 +187,54 @@ describe('PRF-12 PIP record, live', () => {
     fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'Some progress on releases.' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Record outcome' }));
     await waitFor(() => expect(live.onOutcome).toHaveBeenCalledWith({ outcome: 'extended', note: 'Some progress on releases.', extendTo: '2026-09-14' }));
+  });
+});
+
+describe('PRF-07 360° nominations, live', () => {
+  const nomLive = (over: Partial<LiveNominations> = {}): LiveNominations => ({
+    onRetry: () => {},
+    cycle: 'Half-yearly H2',
+    dueOn: new Date(2026, 10, 20),
+    manager: 'Karthik Subramanian',
+    sent: false,
+    can: { propose: true, decide: false, add: false, send: true },
+    onSearch: vi.fn(),
+    onAdd: ok(),
+    onApprove: ok(),
+    onRemove: ok(),
+    onSend: ok(),
+    onApproveAll: ok(),
+    ...over,
+  });
+
+  it('below the minimum, sending says why and calls nothing; at the minimum it sends', async () => {
+    const live = nomLive();
+    const { rerender } = render(<NominationsScreen persona="emp" employee="Divya Raghunathan" people={PEOPLE} nominations={NOMINATIONS.slice(0, 2)} live={live} />);
+    expect(screen.queryByText('Nominate at least 3 reviewers. You have 2.')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Send to manager for approval' }));
+    expect(screen.getByText('Nominate at least 3 reviewers. You have 2.')).toBeInTheDocument();
+    expect(live.onSend).not.toHaveBeenCalled();
+    rerender(<NominationsScreen persona="emp" employee="Divya Raghunathan" people={PEOPLE} nominations={NOMINATIONS} live={live} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Send to manager for approval' }));
+    await waitFor(() => expect(live.onSend).toHaveBeenCalled());
+  });
+
+  it('adding without a person says so and calls nothing', () => {
+    const live = nomLive();
+    render(<NominationsScreen persona="emp" employee="Divya Raghunathan" people={PEOPLE} nominations={[]} live={live} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    expect(screen.getByText('Choose a person to add.')).toBeInTheDocument();
+    expect(live.onAdd).not.toHaveBeenCalled();
+  });
+
+  it('the manager approves one, removes one and approves the list', async () => {
+    const live = nomLive({ can: { propose: false, decide: true, add: true, send: false } });
+    render(<NominationsScreen persona="mgr" employee="Divya Raghunathan" people={PEOPLE} nominations={NOMINATIONS.map((n) => ({ ...n, canRemove: true }))} live={live} />);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Approve' })[0]!);
+    await waitFor(() => expect(live.onApprove).toHaveBeenCalledWith('t2'));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Remove' })[1]!);
+    await waitFor(() => expect(live.onRemove).toHaveBeenCalledWith(expect.objectContaining({ id: 't3' })));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve list and invite' }));
+    await waitFor(() => expect(live.onApproveAll).toHaveBeenCalled());
   });
 });

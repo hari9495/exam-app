@@ -16,5 +16,6 @@ export { PERF_LINKS, checkinInput, type LiveHome, type LiveMyGoals, type LiveGoa
 export { scoreSoFar, type LiveCycleSetup, type LiveControlRoom, type LiveReviewWorkspace, type LiveAcknowledge, type StagePerson } from '../../growth/perf-reviews-live';
 export { toGoal, type GoalItem, type PerfHome } from '../../growth/perf-live-data';
 export { PipsScreen, type PipsScreenProps } from './pips';
-// PRF-12 PIP record, the designed screen made live (builder 2).
+// PRF-07 360° nominations, PRF-12 PIP record: the designed screens made live (builder 2).
+export { NominationsScreen, type LiveNominations, type Nomination as NominationRow } from '../../growth/perf-reviews';
 export { PipRecordScreen, type LivePip, type Pip as PipRecord, type PipRating } from '../../growth/perf-people';

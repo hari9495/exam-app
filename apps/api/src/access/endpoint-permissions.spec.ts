@@ -99,7 +99,7 @@ const IMPLICIT: Record<string, string[]> = {
   // PM4: reviews are decided per review (the person, the manager, the chain above, perf.review.view in scope).
   PerformanceReviewsController: ['list', 'get', 'saveSelf', 'submitSelf', 'saveManager', 'submitManager', 'skipAgree', 'sendBack', 'acknowledge', 'disagree', 'handovers', 'saveOther', 'submitOther'],
   // PM5: nominations and answers are decided per review (the employee, the manager, an approved nominee).
-  PerformancePeerController: ['nominations', 'options', 'nominate', 'approve', 'decline', 'withdraw', 'tasks', 'form', 'savePeer', 'submitPeer', 'grouped'],
+  PerformancePeerController: ['nominations', 'options', 'nominate', 'send', 'approveAll', 'approve', 'decline', 'withdraw', 'tasks', 'form', 'savePeer', 'submitPeer', 'grouped'],
   // PM6: the board is open to its facilitator, HR and the managers of the people in it (decided per session).
   PerformanceCalibrationController: ['board'],
   // PM7: a manager's own team in a comp cycle, decided per cycle; my own pay band.
