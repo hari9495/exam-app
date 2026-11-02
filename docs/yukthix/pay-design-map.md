@@ -24,14 +24,20 @@ Verdicts: **wire design** (a live page and the API exist for this job; the page 
 | | pages | live | live, gap | wire | wire, gap | feature not built | phone view | ? | sub-pages |
 |---|---|---|---|---|---|---|---|---|---|
 | A. Runs and payments | 10 | 63 | 0 | 0 | 0 | 0 | 0 | 0 | 63 |
-| B. Inputs, loans, recoveries, queries | 8 | 51 | 1 | 0 | 0 | 0 | 2 | 0 | 54 |
+| B. Inputs, loans, recoveries, queries | 8 | 52 | 0 | 0 | 0 | 0 | 2 | 0 | 54 |
 | C. Structures and set-up | 6 | 43 | 0 | 0 | 0 | 0 | 0 | 0 | 43 |
-| D. Employee pay and tax | 6 | 37 | 8 | 0 | 0 | 1 | 9 | 0 | 55 |
-| E. Special pay, earned wage access, actuarial, benefits | 14 | 85 | 3 | 0 | 0 | 6 | 8 | 0 | 102 |
+| D. Employee pay and tax | 6 | 48 | 0 | 0 | 0 | 1 | 9 | 0 | 58 |
+| E. Special pay, earned wage access, actuarial, benefits | 14 | 88 | 0 | 0 | 0 | 6 | 8 | 0 | 102 |
 | F. Reports | 1 | 14 | 0 | 0 | 0 | 0 | 0 | 0 | 14 |
 | G. Records | 3 | 44 | 0 | 0 | 0 | 0 | 0 | 0 | 44 |
-| H. New designs, made live | 5 | 49 | 1 | 0 | 0 | 0 | 0 | 0 | 50 |
-| **All** | **53** | **386** | **13** | **0** | **0** | **7** | **19** | **0** | **425** |
+| H. New designs, made live | 5 | 50 | 0 | 0 | 0 | 0 | 0 | 0 | 50 |
+| **All** | **53** | **402** | **0** | **0** | **0** | **7** | **19** | **0** | **428** |
+
+Pay gaps last (2 Nov 2026, branch `feat/yukthix-pay-gaps-last`): the last 13 `live, gap` rows are live: PAY-18 Submitted,
+PAY-21 Document, PAY-22 Overview and NoPan, PAY-23 Line, OwnProof and ResidencyOwn, PAY-27 Recoveries and
+Reconciliation, PAY-33 Default, PAY-39 InBand, PAY-41 OldLower, PAY-58 NoAccess; PAY-23 gets 3 new PAN-link stories,
+designed first (live). Recounted by the same script (it gives 386 / 13 / 425 on the map before this run): 402 live,
+0 live with a gap, 7 not built, 19 phone view, 428 sub-pages. Status in "Pay gaps last status" at the end.
 
 Pay gaps run (2 Nov 2026, branch `feat/yukthix-pay-gaps-run`): the 22 `live (gap)` rows of PAY-02, 03, 04, 05, 09, 10, 11,
 12, 19, 25, 29, 30, 32, 35, 37 and 38 are live. Recounted by script: every story row of section 4 (between `## 4.` and
@@ -433,7 +439,7 @@ Live page: /yx/me/loans
 | Advance · Salary advance · schedule preview | live | instalment preview exact for interest-free (rounded up, as the API); with interest an estimate. Founder answer 1: no rate field; the company's rate per loan type (settings `payroll.loan.interest_rate.advance` / `.loan`, default 0) is shown and applied by the server, which refuses a rate sent by the client |
 | OverLimit · Personal loan · over limit | live | founder decision 8: GET payroll/loans/rules; the server refuses too |
 | NotEligible · Not eligible · new joiner on probation | live | founder decision 8: on probation, the reason and the end day |
-| Submitted · Submitted · approval steps | live, gap | toast and "Waiting for approval" in Your loans; the step-by-step approval timeline is in Approvals (the loan view has no steps) |
+| Submitted · Submitted · approval steps | live | pay gaps last: GET payroll/loans gives one's own requests the approvals engine's route (each step's state, who decided and when, or who it waits for; nobody else's loans carry it); a request waiting for approval shows the design's ApprovalTimeline above the loans table (Submitted done by you, then each step) |
 | Phone · phone | phone view, mobile app not built |  |
 | PhoneSubmitted · phone · submitted | phone view, mobile app not built |  |
 
@@ -578,7 +584,7 @@ Live page: /yx/me/payslips
 | RaiseQuery · Raise a query on a line | live |  |
 | QuerySent · Query sent | live | a 5-second toast (house rule) instead of the inline alert |
 | WithdrawQuery · Your query · withdraw | live | new story (founder answer 16): the person's own queries on the payslip; Withdraw asks first, closes it with no reply needed (PATCH payroll/queries/:id status closed; the server already allowed it), 5-second toast |
-| Document · Payslip PDF | live, gap | the PDF downloads; no in-page preview (the API streams the file) |
+| Document · Payslip PDF | live | pay gaps last: Download PDF opens the design's 'Payslip PDF' drawer; the same signed-in PDF as a same-origin object URL drawn by the kit's PdfPages (PDF.js, no plug-in or frame); the drawer's Download PDF downloads with the toast; the URL is revoked on close; a fetch failure says so |
 | Held · Salary on hold | live |  |
 | NotPublished · Empty · not published yet | live | "No payslips yet" |
 | Loading · Loading | live |  |
@@ -592,13 +598,13 @@ Live page: /yx/me/tax and /yx/me/tax-declarations (founder Q5)
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Overview · Overview · TDS explanation | live, gap | from GET tax/me/tax-sheet. Gap: the "tax by month" chart (the sheet has no month list) |
+| Overview · Overview · TDS explanation | live | from GET tax/me/tax-sheet. Pay gaps last: the sheet now returns `months` (12, from April): what the approved payslips of each month deducted, then the monthly TDS over the months it is spread across; the design's 'Tax deducted by month' chart under the working |
 | Declarations · Declarations · choose regime | live | regime as a Segment; rent is a monthly amount, as the API takes it |
 | Locked · Regime locked after cut-off | live | founder answer 3: "Ask HR to change regime" with a reason (POST tax/me/regime-request) goes to Approvals (tax.regime.override, never the person); pending and turned-down states; approved changes the regime (audited) |
 | Proofs · Proofs · old-regime variant, rejected line | live |  |
 | Previous · Previous employer (Form 12B) | live | founder decision 6: GET/POST tax/me/form12b; counts in tax once payroll approves it; other income through the workspace |
 | NonResident · Residential status · non-resident | live | founder answer 2: sent with the TRC (PDF), its last day and Form 10F filed (POST tax/me/residency); waits for payroll in the proof queue (PAY-23, tax.proof.verify, never one's own); pending and rejected states; the workspace changes only on approval |
-| NoPan · PAN inoperative warning | live, gap | warning shown. Gap: the "link PAN" proof upload (no API) |
+| NoPan · PAN inoperative warning | live | pay gaps last: How to link PAN opens the design's sheet (portal steps, the confirmation upload; Send to payroll refused with a field error until a file is attached; toast). POST tax/me/pan-link through the shared file pipeline (PDF/PNG/JPEG, 5 MB, virus scan), only while the PAN is recorded inoperative; checked in PAY-23 (tax.proof.verify, never one's own); approved, the PAN is operative again. Waiting / refused (with the reason, send again) shown. The design's helper 'This also updates your PAN in Me › Documents' is left out (not true; question) |
 | Loading · Loading | live |  |
 | ErrorState · Error | live |  |
 | Phone · phone | phone view, mobile app not built |  |
@@ -612,10 +618,10 @@ Live page: /yx/payroll/proofs
 | story (sub-page) | verdict | note |
 |---|---|---|
 | Queue · Waiting lines | live | with the Form 12B rows (founder decision 6) |
-| Line · Line with document · approve | live, gap | decision drawer with the files; the files download (no in-page viewer) |
+| Line · Line with document · approve | live | pay gaps last: the decision drawer shows the file in the kit's DocumentViewer (images and PDFs; a Segment between several files); a same-origin object URL typed as PDF or image only (other files download-only), revoked on change or close; Download still uses the audited file route |
 | Partial · Approve part with comment | live |  |
 | Reject · Reject with comment | live |  |
-| OwnProof · Own proof · cannot verify | live, gap | cannot occur live: the API never lists one's own proofs (and refuses them) |
+| OwnProof · Own proof · cannot verify | live | pay gaps last: a deep link /yx/payroll/proofs?line=<own line id> opens one's own line read only with the design's 'This is your own proof' warning and nothing to decide (the page reads it from tax/me/*; the queue still never lists it and the server still refuses it) |
 | Empty · Empty · nothing submitted | live |  |
 | Loading · Loading | live |  |
 | ResidencyQueue · Residency · in the queue (TRC and back to resident) | live | founder last 10, item 10: designed first; the row says the change, then the TRC (valid until, treaty country) or "no document needed"; Declared shows "Certificate sent" / "No document" |
@@ -623,7 +629,10 @@ Live page: /yx/payroll/proofs
 | ResidencyBackToResident · Residency · back to resident · no document | live | founder last 10, item 7: "None needed: going back to resident only needs your approval." |
 | ResidencyApproved · Residency · approved | live | read only, with the day decided |
 | ResidencyRefused · Residency · refused with a reason | live | the row shows "Refused: <reason>"; status label "Refused" |
-| ResidencyOwn · Residency · deciding your own · refused | live, gap | the server refuses it ("Someone else checks your own residential status."); live it only shows if someone forces the call, since the queue never lists one's own |
+| ResidencyOwn · Residency · deciding your own · refused | live | pay gaps last: a deep link ?residency=<own request id> opens one's own request in its decision drawer; deciding it shows the server's refusal ('Someone else checks your own residential status.') in the designed notice; the server rule is unchanged |
+| PanLinkQueue · PAN link · in the queue | live | pay gaps last, new story (PAY-22 NoPan is checked here): 'PAN linked with Aadhaar', 'Portal confirmation · tax year', 'Confirmation sent'; from GET tax/pan-links |
+| PanLinkDecide · PAN link · confirmation · decide | live | new story: its drawer with the file in the document viewer; Approve / Refuse (Segment); a refusal needs the reason (error and focus); approving makes the PAN operative (toast) |
+| PanLinkRefused · PAN link · refused with a reason | live | new story: read only with the reason; the row says 'Refused: <reason>' |
 
 #### PAY-39 · My pay band
 
@@ -631,7 +640,7 @@ Live page: /yx/performance/pay-band
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| InBand · Within band | live, gap | band, midpoint, position and quarter. Gap: the marker of one's own CTC (the API gives only the position) |
+| InBand · Within band | live | pay gaps last: GET me/pay-band (the signed-in person only) also returns their own annual CTC; the design's RangeMarker, the annual CTC and 'Compared with midpoint' |
 | Above · Above band maximum | live |  |
 | Off · Visibility off | live |  |
 | Phone · phone | phone view, mobile app not built |  |
@@ -658,7 +667,7 @@ Live page: /yx/me/tax (Compare regimes)
 | story (sub-page) | verdict | note |
 |---|---|---|
 | NewLower · New regime lower | live | POST tax/me/regime-compare, inside the workspace |
-| OldLower · What-if · old regime lower (rent and home loan) | live, gap | POST me/regime-compare takes no what-if inputs (rent, home loan) |
+| OldLower · What-if · old regime lower (rent and home loan) | live | pay gaps last: POST tax/me/regime-compare takes an optional monthly rent and the year's home loan interest (validated); they replace the declared ones in that calculation only, through the real tax engine; nothing saved. The design's two sliders start at the declared figures (interest up to the rule's limit, returned by the API); each change is worked out again |
 | NonResident · Non-resident · no rebate | live |  |
 | InWorkspace · Inside the tax workspace | live |  |
 | Phone · phone | phone view, mobile app not built |  |
@@ -714,8 +723,8 @@ Live page: /yx/payroll/ewa
 | Policy · Policy editor (Settings) | live | from a date; on/off and fee payer as Segments |
 | Partner · Partner connection | design only, feature not built | partner-funded draws not wired (DECISION NEEDED in ewa.service.ts) |
 | NoPartner · Partner not connected | live | the true state today |
-| Recoveries · Recoveries in payroll | live, gap | worked out exactly from paid draws and fees. Gap: deferred and F&F columns (no endpoint) |
-| Reconciliation · Reconciliation (finance approver) | live, gap | not on the live page: no reconciliation endpoint |
+| Recoveries · Recoveries in payroll | live | pay gaps last: GET payroll/ewa/recoveries (payroll.ewa.manage): the last six months, each paid draw matched to its recovery (recovered on an approved regular payslip; deferred = the part the payslip's negative net carried forward; to F&F = taken by the leaver's settlement, which now takes back any draw no approved payslip recovered); the design's table |
+| Reconciliation · Reconciliation (finance approver) | live | pay gaps last: GET payroll/ewa/reconciliation (payroll.ewa.manage or payroll.run.approve): the month's draws matched to their payslip deductions; the design's figures with the difference explained (no partner, so paid by the company, not remitted). A finance approver opens the page on Reconciliation only, with the entities they reach |
 | Loading · Loading | live |  |
 
 #### PAY-31 · Piece-rate cards and output
@@ -749,7 +758,7 @@ Live page: /yx/me/incentives
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Default · Earned, paid, held | live, gap | results by month, sent to payroll or being checked, exact totals. Gap: the quarter, tier and "held for customer payment" breakdown (not in the API) |
+| Default · Earned, paid, held | live | pay gaps last: results keep the part held until the customer pays (with its reason; payroll releases it later as its own approved posting); GET me/incentives adds the financial-year quarter, payout frequency and tier reached. The design's latest-quarter summary (quota, achieved, tier, earned, held, sent to payroll, being checked, clawback) and the statement by month with quarter totals. Payroll's results sheet has no held column yet (question) |
 | Clawback · With a clawback | live |  |
 | Empty · Empty · not on a plan | live |  |
 | Phone · phone | phone view, mobile app not built |  |
@@ -1046,7 +1055,7 @@ Live page: /yx/me/equity
 | Empty · Empty | live | |
 | Loading · Loading | live | |
 | LoadError · Error · retry | live | |
-| NoAccess · No access | live, gap | /me/equity has no permission key, so no 403 |
+| NoAccess · No access | live | pay gaps last: GET/POST payroll/me/equity need payroll.equity.own (migration 20261370000000 gives it to every base role, company role and override; every template carries it); a role without it gets 403 and the designed No access |
 
 ## 5. Split into 3 builders
 
@@ -1646,3 +1655,34 @@ Questions for the founder (safe default built, suggested answer):
    late requests for frozen months. Suggested: the API refuses LOP for frozen months too (same as the screen).
 5. PAY-09: when several people may publish, the person who prepared the run may still publish alone. Suggested: keep
    (the run was already approved by someone else).
+
+## Pay gaps last status (2 Nov 2026, branch `feat/yukthix-pay-gaps-last`)
+
+Every PAY row is live or a phone view / feature not built. Migrations: 20261370000000_pay_equity_own_key,
+20261370000100_tax_pan_link_requests, 20261370000200_incentive_held.
+
+New or changed routes (all declare their key, or are a listed own route in endpoint-permissions.spec.ts, which now
+covers TaxController too):
+- GET/POST payroll/me/equity(/exercises): payroll.equity.own (every role by default).
+- GET performance/me/pay-band: own route; now with one's own CTC.
+- GET tax/me/tax-sheet: own; now `months`. POST tax/me/regime-compare: own; optional what-if body.
+- POST tax/me/pan-link: own, rate limited, shared file pipeline. GET tax/pan-links, GET tax/pan-links/:id/file,
+  POST tax/pan-links/:id/decision: tax.proof.verify, entities in scope, never one's own.
+- GET payroll/loans: one's own requests carry `approval`.
+- GET payroll/ewa/recoveries: payroll.ewa.manage. GET payroll/ewa/reconciliation: payroll.ewa.manage or payroll.run.approve.
+- POST payroll/special/plans/:id/results/:resultId/release: payroll.special.manage. Results take `held` + `heldReason`.
+
+Questions (safe default built):
+1. PAY-22 NoPan design helper "This also updates your PAN in Me › Documents": left out, as nothing updates the
+   document. Suggested: keep it out; the PAN link is a tax check, the PAN document stays HR's.
+2. PAY-33 held part: payroll enters it with the results through the API; the results sheet (PAY-32 screen) has no held
+   column or Release button yet (no design story). Suggested: add both to the PAY-32 design, then wire them.
+3. PAY-27: the reconciliation is for payroll.run.approve holders (Payroll and Finance Approvers). Suggested: keep;
+   or a separate finance key if Finance should see it without approving runs.
+4. PAY-27: a negative net's carry-forward is laid on the EWA deduction first when splitting "deferred". Suggested:
+   fine until the calculation records which deduction it cut.
+5. PAY-58: the fixed read-only auditor base role does not get payroll.equity.own (outside auditors are not employees).
+   Suggested: keep.
+6. PAY-41: rent with no rent declared counts for the whole tax year in a non-metro city. Suggested: keep (the lower,
+   safer exemption); a metro choice can be added to the design.
+

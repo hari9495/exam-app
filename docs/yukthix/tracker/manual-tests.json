@@ -9410,5 +9410,245 @@
     ],
     "expected": "Step 1: toast \"Request sent\"; the page says \"Request sent on <date>…\". Step 2 (negative): toast \"You already asked for access…\"; nothing sent. Step 3: the request is in Ramesh's inbox (never Lakshmi's). Step 4: \"…was approved. The access starts once it is set up in Roles & access\". Step 5 (negative): 409 \"You already have payroll reports access.\"",
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-G-20",
+    "area": "Pay · Gaps last (2 Nov 2026)",
+    "screen": "My equity: no access without payroll.equity.own (PAY-58 NoAccess)",
+    "url": "http://localhost:3000/yx/me/equity",
+    "account": "arjun@demo-org.test (employee) and admin@demo-org.test (System Admin) Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-58 NoAccess",
+      "PAY-58 Empty"
+    ],
+    "steps": [
+      "1. As Arjun open Me › My equity.",
+      "2. As Ramesh open Settings › Roles & access, make a company role \"No equity\" with only \"org:view\", and give it to Arjun as his role.",
+      "3. As Arjun reload Me › My equity.",
+      "4. As Ramesh give Arjun his old role back; as Arjun reload."
+    ],
+    "expected": "Step 1: the page loads (Empty \"No grants\", or his grants). Step 3 (negative): the designed No access state; no Exercise button. Step 4: the page loads again.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-G-21",
+    "area": "Pay · Gaps last (2 Nov 2026)",
+    "screen": "Own CTC on the pay band (PAY-39 InBand)",
+    "url": "http://localhost:3000/yx/performance/pay-band",
+    "account": "arjun@demo-org.test (employee, a grade with a pay range; pay bands shown) and kavya@demo-org.test Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-39 InBand"
+    ],
+    "steps": [
+      "1. As Arjun open Performance › My pay band.",
+      "2. Compare the marker with Arjun's annual CTC on his compensation page.",
+      "3. As Kavya open her pay band."
+    ],
+    "expected": "Step 1: the range marker with \"You\" at Arjun's annual CTC, \"Your annual CTC\", \"Compared with midpoint\" (per cent and the rupee gap), Band and Midpoint. Step 2: same CTC. Step 3 (negative): Kavya sees only her own figures, never Arjun's.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-G-22",
+    "area": "Pay · Gaps last (2 Nov 2026)",
+    "screen": "Tax by month (PAY-22 Overview)",
+    "url": "http://localhost:3000/yx/me/tax",
+    "account": "arjun@demo-org.test (has approved payslips this tax year) Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-22 Overview"
+    ],
+    "steps": [
+      "1. Open Me › Tax, tab Overview.",
+      "2. Hover the bars of the months already paid and of the months to come.",
+      "3. As a person with no payslip this tax year open Me › Tax."
+    ],
+    "expected": "Step 1: \"Tax deducted by month\" under the working, 12 months from April; the description says \"Actual Apr–<this month>; <next>–Mar at the current projection\". Step 2: paid months equal the TDS on each payslip; months to come equal the \"Monthly TDS\". Step 3 (negative): \"No tax sheet yet\" and no chart.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-G-23",
+    "area": "Pay · Gaps last (2 Nov 2026)",
+    "screen": "What-if rent and home loan (PAY-41 OldLower)",
+    "url": "http://localhost:3000/yx/me/tax",
+    "account": "arjun@demo-org.test (approved payslip this tax year) Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-41 OldLower"
+    ],
+    "steps": [
+      "1. Open Me › Tax, tab Compare regimes; press Compare the two regimes.",
+      "2. Move Monthly rent to ₹45,000 and Home-loan interest to the top.",
+      "3. Open Declarations.",
+      "4. Ask the developer to call POST /api/v1/tax/me/regime-compare with {\"rentMonthly\":\"-5\"}."
+    ],
+    "expected": "Step 1: both regimes and the two sliders at the declared rent and interest. Step 2: after a moment the old regime's tax drops and the text says \"...lower under the old regime with these what-if figures\"; the interest slider stops at the rule's limit. Step 3: declarations unchanged (\"What-if figures are not saved\"). Step 4 (negative): 400.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-G-24",
+    "area": "Pay · Gaps last (2 Nov 2026)",
+    "screen": "Link PAN proof (PAY-22 NoPan)",
+    "url": "http://localhost:3000/yx/me/tax",
+    "account": "arjun@demo-org.test, payroll@demo-org.test (Suresh) and payroll-approver@demo-org.test (Meena) Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-22 NoPan",
+      "PAY-23 PanLinkQueue",
+      "PAY-23 PanLinkDecide"
+    ],
+    "steps": [
+      "1. Ask the developer to record Arjun's PAN as inoperative (POST /api/v1/tax/workspaces/<Arjun's workspace>/pan-status, status inoperative, as Suresh).",
+      "2. As Arjun open Me › Tax; press How to link PAN; press Send to payroll with no file.",
+      "3. Attach a PDF confirmation; press Send to payroll.",
+      "4. Try again with a .txt renamed to .pdf (after Meena refuses in MT-PAY-G-25, or with a second account).",
+      "5. As Arjun reload."
+    ],
+    "expected": "Step 2 (negative): \"Attach the link confirmation from the portal.\" under the field, focus on it; nothing sent. Step 3: toast \"PAN link proof sent to payroll. Payroll checks it.\"; the warning now says \"PAN link proof sent to payroll\". Step 4 (negative): \"...was not added. Upload a PDF, PNG, JPG file.\" Step 5: still waiting.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-G-25",
+    "area": "Pay · Gaps last (2 Nov 2026)",
+    "screen": "Payroll checks the PAN link (PAY-23 PanLinkDecide, PanLinkRefused)",
+    "url": "http://localhost:3000/yx/payroll/proofs",
+    "account": "payroll@demo-org.test (Suresh) and arjun@demo-org.test Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-23 PanLinkQueue",
+      "PAY-23 PanLinkDecide",
+      "PAY-23 PanLinkRefused"
+    ],
+    "steps": [
+      "1. As Suresh open Payroll › Proof checking; find Arjun's \"PAN linked with Aadhaar\"; press Decide.",
+      "2. Choose Refuse and press Refuse PAN link with no reason.",
+      "3. Type \"The confirmation is for another PAN\" and press Refuse PAN link; as Arjun open Me › Tax.",
+      "4. Arjun sends again (MT-PAY-G-24 step 3); Suresh approves it.",
+      "5. As Arjun reload Me › Tax."
+    ],
+    "expected": "Step 1: the drawer shows the confirmation in the page (PDF or image) with Download. Step 2 (negative): \"Give the reason...\" and focus on the reason. Step 3: toast; Arjun sees \"Payroll did not accept your last confirmation: The confirmation is for another PAN\" and How to link PAN again. Step 5: no PAN warning; normal-rate tax from the next payslip.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-G-26",
+    "area": "Pay · Gaps last (2 Nov 2026)",
+    "screen": "Own PAN link and own proof never decided by oneself (PAY-23)",
+    "url": "http://localhost:3000/yx/payroll/proofs",
+    "account": "payroll@demo-org.test (Suresh, also an employee) Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-23 OwnProof",
+      "PAY-23 ResidencyOwn"
+    ],
+    "steps": [
+      "1. As Suresh declare a line in Me › Tax and send a proof file; note the line id from the address after opening it in the developer tools, or ask the developer for it.",
+      "2. Open /yx/payroll/proofs?line=<that id>.",
+      "3. As Suresh send a residency change (non-resident with a TRC) in Me › Tax › Residential status; open /yx/payroll/proofs?residency=<its id>; press Approve change.",
+      "4. Check the queue list."
+    ],
+    "expected": "Step 2: the drawer opens read only: \"This is your own proof - You can't verify your own proofs. Another payroll or HR person must verify it.\"; no decision, only Close. Step 3 (negative): the notice \"That did not go through - Someone else checks your own residential status.\"; nothing changes. Step 4: Suresh's own items are not in the list.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-G-27",
+    "area": "Pay · Gaps last (2 Nov 2026)",
+    "screen": "Proof file in the decision drawer (PAY-23 Line)",
+    "url": "http://localhost:3000/yx/payroll/proofs",
+    "account": "payroll@demo-org.test (Suresh); arjun@demo-org.test sent a PDF and a JPG proof on one line Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-23 Line"
+    ],
+    "steps": [
+      "1. Open a waiting line of Arjun with Decide.",
+      "2. Pick the second file in the File choice.",
+      "3. Press Download.",
+      "4. Ask Arjun to send a .docx renamed proof (refused) and check the drawer for a line whose file is not a PDF or image (if any)."
+    ],
+    "expected": "Step 1: the PDF shows in the drawer, zoom works. Step 2: the JPG shows. Step 3: the file downloads. Step 4 (negative): the upload is refused; a non-PDF/image file is never shown, only \"We can't preview .x files here\" with Download.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-G-28",
+    "area": "Pay · Gaps last (2 Nov 2026)",
+    "screen": "Payslip PDF in the page (PAY-21 Document)",
+    "url": "http://localhost:3000/yx/me/payslips",
+    "account": "arjun@demo-org.test (published payslip) Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-21 Document"
+    ],
+    "steps": [
+      "1. Open Me › Payslips; press Download PDF.",
+      "2. Scroll the preview; press Download PDF in the drawer footer.",
+      "3. Close the drawer; stop the API and press Download PDF again."
+    ],
+    "expected": "Step 1: the \"Payslip PDF\" drawer with the payslip drawn as pages. Step 2: the file downloads; toast \"Payslip downloaded\". Step 3 (negative): \"We couldn't show the preview - Download the PDF to read it.\"",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-G-29",
+    "area": "Pay · Gaps last (2 Nov 2026)",
+    "screen": "Loan request approval steps (PAY-18 Submitted)",
+    "url": "http://localhost:3000/yx/me/loans",
+    "account": "arjun@demo-org.test and payroll-approver@demo-org.test (Meena) Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-18 Submitted"
+    ],
+    "steps": [
+      "1. As Arjun ask for a salary advance of ₹10,000 over 2 instalments with a reason.",
+      "2. Look above Your loans and advances.",
+      "3. As Meena approve it in Approvals; as Arjun reload.",
+      "4. As Suresh open Payroll › Loans."
+    ],
+    "expected": "Step 1: toast \"Request sent\". Step 2: \"Salary advance request, ₹10,000.00\" with \"Waiting for approval\" and the steps: Submitted (You, done), the approval step \"Waiting\" naming who it waits for. Step 3: the request is active; the timeline is gone. Step 4 (negative): payroll's list shows no one's approval steps.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-G-30",
+    "area": "Pay · Gaps last (2 Nov 2026)",
+    "screen": "EWA recoveries by month (PAY-27 Recoveries)",
+    "url": "http://localhost:3000/yx/payroll/ewa",
+    "account": "payroll@demo-org.test (Suresh), arjun@demo-org.test, payroll-approver@demo-org.test (Meena) Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-27 Recoveries"
+    ],
+    "steps": [
+      "1. As Suresh switch on a policy (Policy, Set up the policy, from the 1st of this month); as Arjun draw ₹500 in Me › Get paid early; as Suresh record the payment with reference \"NEFT-1234\".",
+      "2. Open Recoveries in payroll.",
+      "3. Run, approve and publish this month's payroll (Meena approves); open Recoveries again.",
+      "4. As Meena open /yx/payroll/ewa."
+    ],
+    "expected": "Step 2: a row for this month: 1 draw, Recovered \"Not run yet\". Step 3: Recovered ₹500 plus any fee, Deferred \"—\", To F&F \"—\". Step 4 (negative): Meena (no EWA key) sees only Reconciliation, no Draws or Recoveries.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-G-31",
+    "area": "Pay · Gaps last (2 Nov 2026)",
+    "screen": "EWA reconciliation for the finance approver (PAY-27 Reconciliation)",
+    "url": "http://localhost:3000/yx/payroll/ewa",
+    "account": "finance@demo-org.test (Neha, Finance Approver) and hr@demo-org.test (Lakshmi) Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-27 Reconciliation"
+    ],
+    "steps": [
+      "1. As Neha open /yx/payroll/ewa after MT-PAY-G-30 step 1 and before the run.",
+      "2. After the run is approved, reload.",
+      "3. Change the month to one with no draws.",
+      "4. As Lakshmi open /yx/payroll/ewa."
+    ],
+    "expected": "Step 1: only the Reconciliation tab: paid by the company ₹500 (+ fee), Recovered ₹0, Difference \"(... waiting for the <month> payroll)\". Step 2: Recovered equals the draw and fee; Difference \"None\". Step 3: \"No draws paid in <month>.\" Step 4 (negative): the No access state.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-G-32",
+    "area": "Pay · Gaps last (2 Nov 2026)",
+    "screen": "Incentive statement: quarter, tier, held (PAY-33 Default)",
+    "url": "http://localhost:3000/yx/me/incentives",
+    "account": "payroll@demo-org.test (Suresh), payroll-approver@demo-org.test (Meena), arjun@demo-org.test Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-33 Default"
+    ],
+    "steps": [
+      "1. As Suresh make and publish a plan (Payroll › Special pay › Incentives), tiers 0 % ×1 and 100 % ×1.5, target ₹10,000.",
+      "2. Ask the developer to save Arjun's result for this month: quota 100, actual 120, held 3000, heldReason \"Customer has not paid yet\"; then save it with held 20000.",
+      "3. Send the month to payroll; Meena approves.",
+      "4. As Arjun open Me › My incentives.",
+      "5. Ask the developer to release the held part (POST .../results/<id>/release with this month), twice; Meena approves; Arjun reloads."
+    ],
+    "expected": "Step 2: the first save works; the second (negative) is refused \"The held part ... cannot be more than the incentive\". Step 4: the quarter summary (Quarter N, tier \"100% of quota and above\", earned ₹13,000, held ₹3,000, sent to payroll ₹10,000) and the month table with the quarter total; \"Held: <month>, ₹3,000.00 (Customer has not paid yet)\". Step 5: the second release (negative) 409 \"already released\"; after approval Held is \"—\" and in payroll ₹13,000.",
+    "note": "Positive and negative."
   }
 ]
