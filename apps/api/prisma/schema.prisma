@@ -10075,6 +10075,10 @@ model OncallRule {
   calloutMinHours Decimal  @map("callout_min_hours") @db.Decimal(5, 2)
   calloutRate     Decimal  @map("callout_rate") @db.Decimal(12, 2)
   multiplier      Decimal  @db.Decimal(5, 2)
+  /// PAY-35: the public-holiday multiplier (null = the normal one); standby on a called-out slot; counts towards weekly hours.
+  holidayMultiplier    Decimal? @map("holiday_multiplier") @db.Decimal(5, 2)
+  payStandbyWhenCalled Boolean  @default(true) @map("pay_standby_when_called")
+  countTowardsWeekly   Boolean  @default(false) @map("count_towards_weekly")
   createdBy       String   @map("created_by") @db.Uuid
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
@@ -10090,6 +10094,7 @@ model OncallSlot {
   employmentId   String   @map("employment_id") @db.Uuid
   slotDate       DateTime @map("slot_date") @db.Date
   calloutHours   Decimal? @map("callout_hours") @db.Decimal(5, 2)
+  onHoliday      Boolean  @default(false) @map("on_holiday")
   createdBy      String   @map("created_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 

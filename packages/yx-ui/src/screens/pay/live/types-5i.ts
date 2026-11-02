@@ -57,6 +57,10 @@ export interface OncallRuleView {
   calloutMinHours: string;
   calloutRate: string;
   multiplier: string;
+  /** PAY-35: the public-holiday multiplier (null = the normal one); company choices on standby and weekly hours. */
+  holidayMultiplier?: string | null;
+  payStandbyWhenCalled?: boolean;
+  countTowardsWeekly?: boolean;
 }
 
 /** GET payroll/special/me/incentives. */

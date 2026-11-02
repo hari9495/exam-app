@@ -239,6 +239,21 @@ export class OncallRuleDto {
 
   @Matches(/^\d(\.\d{1,2})?$/)
   multiplier!: string;
+
+  /** PAY-35: the public-holiday multiplier (at least the normal one; left out = the normal one). */
+  @IsOptional()
+  @Matches(/^\d(\.\d{1,2})?$/)
+  holidayMultiplier?: string;
+
+  /** PAY-35: pay standby even when the person is called out (default yes). */
+  @IsOptional()
+  @IsBoolean()
+  payStandbyWhenCalled?: boolean;
+
+  /** PAY-35: call-out hours count towards the weekly hours limit (default no). */
+  @IsOptional()
+  @IsBoolean()
+  countTowardsWeekly?: boolean;
 }
 
 export class OncallSlotDto {
@@ -254,6 +269,11 @@ export class OncallSlotDto {
   @IsOptional()
   @Matches(/^\d{1,2}(\.\d{1,2})?$/)
   calloutHours?: string;
+
+  /** PAY-35: the slot fell on a public holiday (its call-out is paid at the holiday multiplier). */
+  @IsOptional()
+  @IsBoolean()
+  onHoliday?: boolean;
 }
 
 // ------------------------------------------------------------------------------------------ industrial relations

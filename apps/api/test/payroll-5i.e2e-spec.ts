@@ -244,6 +244,28 @@ describe('Payroll batch 5i', () => {
     await api('emp1', 'get', '/payroll/special/plans').query({ legalEntityId: ids.entity }).expect(403);
   });
 
+  it('PAY-35 on-call: the public-holiday multiplier and the standby choice change the pay; a lower holiday multiplier is refused', async () => {
+    const base = { legalEntityId: ids.entity, name: 'Night standby', standbyAmount: '500', calloutMinHours: '3', calloutRate: '200', multiplier: '1.5' };
+    expect((await api('payAdmin', 'post', '/payroll/special/oncall-rules').send({ ...base, holidayMultiplier: '1.2' }).expect(400)).body.message).toMatch(/at least the normal-day multiplier/);
+    await api('payAdmin', 'post', '/payroll/special/oncall-rules').send({ ...base, payStandbyWhenCalled: 'no' }).expect(400);
+    await api('approver1', 'post', '/payroll/special/oncall-rules').send({ ...base, holidayMultiplier: '2' }).expect(403);
+    await api('payAdminB', 'post', '/payroll/special/oncall-rules').send({ ...base, holidayMultiplier: '2' }).expect(404);
+    const rule = (await api('payAdmin', 'post', '/payroll/special/oncall-rules').send({ ...base, holidayMultiplier: '2', payStandbyWhenCalled: false, countTowardsWeekly: true }).expect(201)).body.id;
+    expect((await api('payAdmin', 'get', '/payroll/special/oncall-rules').query({ legalEntityId: ids.entity }).expect(200)).body).toEqual([expect.objectContaining({ id: rule, holidayMultiplier: '2', payStandbyWhenCalled: false, countTowardsWeekly: true })]);
+    // emp1: a holiday call-out of 4 h, a normal call-out of 1 h (paid 3 h), and a slot with no call-out.
+    const day = (n: number) => `${month}-${String(n).padStart(2, '0')}`;
+    await api('payAdmin', 'post', '/payroll/special/oncall-slots').send({ ruleId: rule, employeeId: ids.emp1, slotDate: day(2), calloutHours: '4', onHoliday: true }).expect(201);
+    await api('payAdmin', 'post', '/payroll/special/oncall-slots').send({ ruleId: rule, employeeId: ids.emp1, slotDate: day(3), calloutHours: '1' }).expect(201);
+    await api('payAdmin', 'post', '/payroll/special/oncall-slots').send({ ruleId: rule, employeeId: ids.emp1, slotDate: day(4) }).expect(201);
+    expect(((await api('payAdmin', 'get', '/payroll/special/oncall-slots').query({ legalEntityId: ids.entity, month }).expect(200)).body as { onHoliday: boolean }[]).filter((x) => x.onHoliday)).toHaveLength(1);
+    const posting = (await api('payAdmin', 'post', '/payroll/special/oncall/post').send({ legalEntityId: ids.entity, month }).expect(201)).body.posting;
+    const lines = posting.lines as { employeeId: string; componentCode: string; amount: string; label: string }[];
+    // 4 h × 200 × 2 + 3 h × 200 × 1.5 = 2,500; standby only for the slot with no call-out.
+    expect(lines.find((l) => l.componentCode === 'callout_pay')).toMatchObject({ employeeId: ids.emp1, amount: '2500.00' });
+    expect(lines.find((l) => l.componentCode === 'standby_allowance')).toMatchObject({ amount: '500.00' });
+    expect(lines.find((l) => l.componentCode === 'callout_pay')!.label).toMatch(/1 on a public holiday at 2 ×/);
+  });
+
   it('IR pay: union dues only with an authorisation, the remittance statement; VRS within the lifetime limit; lay-off pay', async () => {
     const union = (await api('payAdmin', 'post', '/payroll/special/unions').send({ legalEntityId: ids.entity, name: 'Garment Workers Union', registrationNo: 'KA-123' }).expect(201)).body.id;
     await api('payAdmin', 'post', '/payroll/special/union-authorisations').send({ unionId: union, employeeId: ids.emp1, duesKind: 'fixed', duesValue: '50', validFrom: first }).expect(201);

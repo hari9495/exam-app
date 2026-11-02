@@ -532,17 +532,18 @@ export class SpecialPayService implements OnModuleInit {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       await this.entity(tx, c, v, entityId);
-      return (await tx.oncallRule.findMany({ where: { organizationId: c.organizationId, legalEntityId: entityId }, orderBy: { name: 'asc' } })).map((r) => ({ id: r.id, name: r.name, standbyAmount: r.standbyAmount.toFixed(2), calloutMinHours: r.calloutMinHours.toString(), calloutRate: r.calloutRate.toFixed(2), multiplier: r.multiplier.toString() }));
+      return (await tx.oncallRule.findMany({ where: { organizationId: c.organizationId, legalEntityId: entityId }, orderBy: { name: 'asc' } })).map((r) => ({ id: r.id, name: r.name, standbyAmount: r.standbyAmount.toFixed(2), calloutMinHours: r.calloutMinHours.toString(), calloutRate: r.calloutRate.toFixed(2), multiplier: r.multiplier.toString(), holidayMultiplier: r.holidayMultiplier?.toString() ?? null, payStandbyWhenCalled: r.payStandbyWhenCalled, countTowardsWeekly: r.countTowardsWeekly }));
     });
   }
 
   async addOncallRule(ctx: TenantContext, user: ScopeUser, dto: OncallRuleDto) {
     const v = await this.viewer(user);
     if (Number(dto.multiplier) < 1) throw new BadRequestException('The call-out multiplier is at least 1.');
+    if (dto.holidayMultiplier && Number(dto.holidayMultiplier) < Number(dto.multiplier)) throw new BadRequestException(`The public-holiday multiplier must be at least the normal-day multiplier (${dto.multiplier}×).`);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       await this.entity(tx, c, v, dto.legalEntityId);
-      const r = await tx.oncallRule.create({ data: { organizationId: c.organizationId, legalEntityId: dto.legalEntityId, name: dto.name, standbyAmount: D(dto.standbyAmount), calloutMinHours: D(dto.calloutMinHours), calloutRate: D(dto.calloutRate), multiplier: D(dto.multiplier), createdBy: v.userId! } });
-      await audit(tx, c, 'payroll.oncall.rule_added', 'oncall_rule', r.id, { name: dto.name });
+      const r = await tx.oncallRule.create({ data: { organizationId: c.organizationId, legalEntityId: dto.legalEntityId, name: dto.name, standbyAmount: D(dto.standbyAmount), calloutMinHours: D(dto.calloutMinHours), calloutRate: D(dto.calloutRate), multiplier: D(dto.multiplier), holidayMultiplier: dto.holidayMultiplier ? D(dto.holidayMultiplier) : null, payStandbyWhenCalled: dto.payStandbyWhenCalled ?? true, countTowardsWeekly: dto.countTowardsWeekly ?? false, createdBy: v.userId! } });
+      await audit(tx, c, 'payroll.oncall.rule_added', 'oncall_rule', r.id, { name: dto.name, holidayMultiplier: dto.holidayMultiplier ?? null, payStandbyWhenCalled: dto.payStandbyWhenCalled ?? true, countTowardsWeekly: dto.countTowardsWeekly ?? false });
       return { id: r.id };
     });
   }
@@ -559,8 +560,8 @@ export class SpecialPayService implements OnModuleInit {
       if (await tx.specialPosting.findFirst({ where: { organizationId: org, kind: 'oncall', sourceRef: `oncall:${rule.legalEntityId}:${month}`, status: { in: ['pending', 'approved'] } } })) throw new ConflictException(`${month}'s on-call pay is already sent to payroll.`);
       const e = await this.employment(tx, org, rule.legalEntityId, dto.employeeId, dto.slotDate, dto.slotDate);
       try {
-        const s = await tx.oncallSlot.create({ data: { organizationId: org, legalEntityId: rule.legalEntityId, ruleId: rule.id, employeeId: dto.employeeId, employmentId: e.id, slotDate: asDate(dto.slotDate), calloutHours: dto.calloutHours ? D(dto.calloutHours) : null, createdBy: v.userId! } });
-        await audit(tx, c, 'payroll.oncall.slot_added', 'oncall_slot', s.id, { employeeId: dto.employeeId, date: dto.slotDate, calloutHours: dto.calloutHours ?? null });
+        const s = await tx.oncallSlot.create({ data: { organizationId: org, legalEntityId: rule.legalEntityId, ruleId: rule.id, employeeId: dto.employeeId, employmentId: e.id, slotDate: asDate(dto.slotDate), calloutHours: dto.calloutHours ? D(dto.calloutHours) : null, onHoliday: dto.onHoliday ?? false, createdBy: v.userId! } });
+        await audit(tx, c, 'payroll.oncall.slot_added', 'oncall_slot', s.id, { employeeId: dto.employeeId, date: dto.slotDate, calloutHours: dto.calloutHours ?? null, onHoliday: dto.onHoliday ?? false });
         return { id: s.id };
       } catch (err) {
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') throw new ConflictException('This person already has that on-call slot on that day.');
@@ -575,7 +576,7 @@ export class SpecialPayService implements OnModuleInit {
       await this.entity(tx, c, v, entityId);
       const { from, to } = monthRange(month);
       const rows = await tx.oncallSlot.findMany({ where: { organizationId: c.organizationId, legalEntityId: entityId, slotDate: { gte: asDate(from), lte: asDate(to) } }, orderBy: { slotDate: 'asc' } });
-      return rows.map((s) => ({ id: s.id, ruleId: s.ruleId, employeeId: s.employeeId, slotDate: dateOf(s.slotDate), calloutHours: s.calloutHours?.toString() ?? null }));
+      return rows.map((s) => ({ id: s.id, ruleId: s.ruleId, employeeId: s.employeeId, slotDate: dateOf(s.slotDate), calloutHours: s.calloutHours?.toString() ?? null, onHoliday: s.onHoliday }));
     });
   }
 
@@ -592,9 +593,12 @@ export class SpecialPayService implements OnModuleInit {
         for (const rule of rules) {
           const mine = slots.filter((s) => s.employeeId === employeeId && s.ruleId === rule.id);
           if (!mine.length) continue;
-          const r = oncall({ standbyAmount: rule.standbyAmount.toString(), calloutMinHours: rule.calloutMinHours.toString(), calloutRate: rule.calloutRate.toString(), multiplier: rule.multiplier.toString() }, mine.map((s) => ({ calloutHours: s.calloutHours?.toString() ?? null })));
-          lines.push({ employeeId, componentCode: 'standby_allowance', amount: r.standby.toFixed(2), label: `${rule.name}: ${mine.length} on-call slots in ${month}.` });
-          if (r.callouts) lines.push({ employeeId, componentCode: 'callout_pay', amount: r.callout.toFixed(2), label: `${rule.name}: ${r.callouts} call-outs (at least ${rule.calloutMinHours.toString()} hours each at ${rule.multiplier.toString()} ×).` });
+          const r = oncall(
+            { standbyAmount: rule.standbyAmount.toString(), calloutMinHours: rule.calloutMinHours.toString(), calloutRate: rule.calloutRate.toString(), multiplier: rule.multiplier.toString(), holidayMultiplier: rule.holidayMultiplier?.toString() ?? null, payStandbyWhenCalled: rule.payStandbyWhenCalled },
+            mine.map((s) => ({ calloutHours: s.calloutHours?.toString() ?? null, onHoliday: s.onHoliday })),
+          );
+          if (r.standby.gt(0)) lines.push({ employeeId, componentCode: 'standby_allowance', amount: r.standby.toFixed(2), label: `${rule.name}: ${mine.length} on-call slots in ${month}${rule.payStandbyWhenCalled ? '' : ' (no standby on a slot with a call-out)'}.` });
+          if (r.callouts) lines.push({ employeeId, componentCode: 'callout_pay', amount: r.callout.toFixed(2), label: `${rule.name}: ${r.callouts} call-outs (at least ${rule.calloutMinHours.toString()} hours each at ${rule.multiplier.toString()} ×${r.holidayCallouts && rule.holidayMultiplier ? `; ${r.holidayCallouts} on a public holiday at ${rule.holidayMultiplier.toString()} ×` : ''}).` });
         }
       }
       return this.post(tx, c, v, { kind: 'oncall', entityId, month, sourceRef: `oncall:${entityId}:${month}`, lines, title: month });

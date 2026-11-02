@@ -101,8 +101,8 @@ export interface LiveSpecialPay {
   onAddPlan: (x: { name: string; kind: 'production' | 'attendance' | 'sales'; metric: string; targetAmount: string; tiers: { from: number; multiplier: number }[]; capPercent?: string; clawbackDays: number }) => Promise<unknown>;
   onSaveResult: (planId: string, x: { employeeId: string; quota: string; actual: string }) => Promise<unknown>;
   onAddPool: (x: { locationId: string; amount: string; method: 'points' | 'hours' | 'shifts'; paidDirect: boolean; shares: { employeeId: string; basis: string }[] }) => Promise<{ id: string }>;
-  onAddRule: (x: { name: string; standbyAmount: string; calloutMinHours: string; calloutRate: string; multiplier: string }) => Promise<unknown>;
-  onAddSlot: (x: { ruleId: string; employeeId: string; slotDate: string; calloutHours?: string }) => Promise<unknown>;
+  onAddRule: (x: { name: string; standbyAmount: string; calloutMinHours: string; calloutRate: string; multiplier: string; holidayMultiplier?: string; payStandbyWhenCalled?: boolean; countTowardsWeekly?: boolean }) => Promise<unknown>;
+  onAddSlot: (x: { ruleId: string; employeeId: string; slotDate: string; calloutHours?: string; onHoliday?: boolean }) => Promise<unknown>;
   onAddUnion: (x: { name: string; registrationNo?: string }) => Promise<unknown>;
   onAuthorise: (x: { unionId: string; employeeId: string; duesKind: 'fixed' | 'percent'; duesValue: string; validFrom: string }) => Promise<unknown>;
   /** Ends a check-off authorisation from a day (the worker withdrew it). */
@@ -826,17 +826,22 @@ export function LiveOnCallRules({ live }: { live: LiveSpecialPay }) {
   const [slot, setSlot] = useState(false);
   const [exampleId, setExampleId] = useState<string | null>(null);
   const [hours, setHours] = useState('1');
+  const [dayType, setDayType] = useState<'normal' | 'holiday'>('normal');
   const month = monthName(live.month);
   const rules = live.oncallRules;
   const row = rules?.find((r) => r.id === exampleId) ?? rules?.[0];
   const actual = Number(hours) || 0;
-  const ex = row ? onCallPay(Number(row.standbyAmount), actual, Number(row.calloutMinHours), Number(row.calloutRate), Number(row.multiplier)) : null;
+  // PAY-35: the public-holiday multiplier on a holiday (the normal one when the rule has none); standby by the rule's choice.
+  const mult = row ? Number(dayType === 'holiday' && row.holidayMultiplier ? row.holidayMultiplier : row.multiplier) : 1;
+  const standby = row ? (actual > 0 && row.payStandbyWhenCalled === false ? 0 : Number(row.standbyAmount)) : 0;
+  const ex = row ? onCallPay(standby, actual, Number(row.calloutMinHours), Number(row.calloutRate), mult) : null;
   const cols: TableColumn<OncallRuleView>[] = [
     { key: 'name', header: 'Rule', value: (r) => r.name, width: 220 },
     { key: 'standby', header: 'Standby pay', type: 'money', value: (r) => Number(r.standbyAmount), render: (r) => `${formatINR(Number(r.standbyAmount))} a slot`, width: 140 },
     { key: 'rate', header: 'Call-out rate', type: 'money', value: (r) => Number(r.calloutRate), render: (r) => `${formatINR(Number(r.calloutRate))}/h`, width: 130 },
     { key: 'min', header: 'Minimum', type: 'number', value: (r) => Number(r.calloutMinHours), render: (r) => `${Number(r.calloutMinHours)} h paid`, width: 110 },
-    { key: 'mult', header: 'Multiplier', type: 'number', value: (r) => Number(r.multiplier), render: (r) => `${Number(r.multiplier)}×`, width: 100 },
+    { key: 'mult', header: 'Normal day', type: 'number', value: (r) => Number(r.multiplier), render: (r) => `${Number(r.multiplier)}×`, width: 100 },
+    { key: 'holiday', header: 'Holiday', type: 'number', value: (r) => Number(r.holidayMultiplier ?? r.multiplier), render: (r) => `${Number(r.holidayMultiplier ?? r.multiplier)}×`, width: 90, optional: true },
   ];
   return (
     <div className="yx-pay-stack">
@@ -864,17 +869,21 @@ export function LiveOnCallRules({ live }: { live: LiveSpecialPay }) {
               <FormField id="oc-ex-rule" label="Rule">
                 <Select value={row.id} onChange={(v) => v && setExampleId(v)} options={(rules ?? []).map((r) => ({ value: r.id, label: r.name }))} />
               </FormField>
+              <FormField id="oc-ex-day" label="Call-out on">
+                <Segment label="Call-out on" value={dayType} onChange={setDayType} options={[{ value: 'normal', label: 'Normal day' }, { value: 'holiday', label: 'Public holiday' }]} />
+              </FormField>
               <FormField id="oc-ex-hours" label="Actual call-out hours">
                 <TextField value={hours} onChange={setHours} inputMode="decimal" />
               </FormField>
               <DescriptionList
                 items={[
                   { label: 'Paid hours', value: actual > 0 ? `${ex.paidHours} h (minimum ${Number(row.calloutMinHours)} h)` : '0 h (not called out)' },
-                  { label: 'Call-out', value: `${formatINR(ex.callOut)} · ${ex.paidHours} h × ${formatINR(Number(row.calloutRate))} × ${Number(row.multiplier)}` },
-                  { label: 'Standby', value: formatINR(Number(row.standbyAmount)) },
+                  { label: 'Call-out', value: `${formatINR(ex.callOut)} · ${ex.paidHours} h × ${formatINR(Number(row.calloutRate))} × ${mult}` },
+                  { label: 'Standby', value: standby === 0 && actual > 0 ? `${formatINR(0)} (not paid when called out)` : formatINR(standby) },
                   { label: 'Total for the slot', value: formatINR(ex.total) },
                 ]}
               />
+              {row.countTowardsWeekly && actual > 0 && <p className="yx-pay-note">{ex.paidHours} h count towards the person&apos;s weekly hours limit.</p>}
             </aside>
           )}
         </div>
@@ -887,13 +896,16 @@ export function LiveOnCallRules({ live }: { live: LiveSpecialPay }) {
 
 function RuleDrawer({ onClose, onSave }: { onClose: () => void; onSave: LiveSpecialPay['onAddRule'] }) {
   const { toast } = useToast();
-  const [x, setX] = useState({ name: '', standbyAmount: '', calloutMinHours: '3', calloutRate: '', multiplier: '1.5' });
+  const [x, setX] = useState({ name: '', standbyAmount: '', calloutMinHours: '3', calloutRate: '', multiplier: '1.5', holidayMultiplier: '' });
+  const [payStandby, setPayStandby] = useState(true);
+  const [countWeekly, setCountWeekly] = useState(false);
   const errors: FormErrorItem[] = [
     ...(x.name.trim().length < 2 ? [{ fieldId: 'oc-name', message: 'Name the rule.' }] : []),
     ...(!MONEY.test(x.standbyAmount) ? [{ fieldId: 'oc-standby', message: 'The standby allowance a slot, 0 or more.' }] : []),
     ...(!/^\d{1,2}(\.\d{1,2})?$/.test(x.calloutMinHours) || Number(x.calloutMinHours) <= 0 ? [{ fieldId: 'oc-min', message: 'The minimum paid hours of a call-out, like 3.' }] : []),
     ...(!MONEY.test(x.calloutRate) || Number(x.calloutRate) <= 0 ? [{ fieldId: 'oc-rate', message: 'The call-out rate an hour, above zero.' }] : []),
     ...(!/^\d(\.\d{1,2})?$/.test(x.multiplier) || Number(x.multiplier) < 1 ? [{ fieldId: 'oc-mult', message: 'The multiplier, at least 1.' }] : []),
+    ...(x.holidayMultiplier && (!/^\d(\.\d{1,2})?$/.test(x.holidayMultiplier) || Number(x.holidayMultiplier) < Number(x.multiplier)) ? [{ fieldId: 'oc-hmult', message: `Must be at least the normal-day multiplier (${x.multiplier}×).` }] : []),
   ];
   return (
     <FormDrawer
@@ -902,7 +914,8 @@ function RuleDrawer({ onClose, onSave }: { onClose: () => void; onSave: LiveSpec
       errors={errors}
       onClose={onClose}
       onSave={async () => {
-        await onSave({ ...x, name: x.name.trim() });
+        const { holidayMultiplier, ...rest } = x;
+        await onSave({ ...rest, name: x.name.trim(), ...(holidayMultiplier ? { holidayMultiplier } : {}), payStandbyWhenCalled: payStandby, countTowardsWeekly: countWeekly });
         toast({ tone: 'success', title: `On-call rule ${x.name.trim()} saved.` });
       }}
     >
@@ -923,10 +936,15 @@ function RuleDrawer({ onClose, onSave }: { onClose: () => void; onSave: LiveSpec
             <FormField id="oc-min" label="Minimum paid hours" required error={errorOf('oc-min')}>
               <TextField value={x.calloutMinHours} onChange={(calloutMinHours) => setX({ ...x, calloutMinHours })} inputMode="decimal" suffix="h" />
             </FormField>
-            <FormField id="oc-mult" label="Multiplier" required error={errorOf('oc-mult')}>
+            <FormField id="oc-mult" label="Normal-day multiplier" required error={errorOf('oc-mult')}>
               <TextField value={x.multiplier} onChange={(multiplier) => setX({ ...x, multiplier })} inputMode="decimal" suffix="×" />
             </FormField>
           </FieldRow>
+          <FormField id="oc-hmult" label="Public holiday multiplier" optional helper="Left empty, a holiday call-out uses the normal-day multiplier." error={errorOf('oc-hmult')}>
+            <TextField value={x.holidayMultiplier} onChange={(holidayMultiplier) => setX({ ...x, holidayMultiplier })} inputMode="decimal" suffix="×" />
+          </FormField>
+          <Checkbox label="Pay standby even when the person is called out" checked={payStandby} onChange={setPayStandby} />
+          <Checkbox label="Count call-out hours towards the weekly hours limit" checked={countWeekly} onChange={setCountWeekly} />
         </>
       )}
     </FormDrawer>
@@ -939,6 +957,7 @@ function SlotDrawer({ rules, onSearch, onClose, onSave }: { rules: OncallRuleVie
   const [who, setWho] = useState<PersonHit | null>(null);
   const [date, setDate] = useState('');
   const [hours, setHours] = useState('');
+  const [holiday, setHoliday] = useState(false);
   const errors: FormErrorItem[] = [...(!who ? [{ fieldId: 'sl-who', message: 'Choose the person.' }] : []), ...(!DAY.test(date) ? [{ fieldId: 'sl-date', message: 'The day of the slot.' }] : []), ...(hours && !/^\d{1,2}(\.\d{1,2})?$/.test(hours) ? [{ fieldId: 'sl-hours', message: 'Hours worked on the call-out, like 2.5.' }] : [])];
   return (
     <FormDrawer
@@ -948,7 +967,7 @@ function SlotDrawer({ rules, onSearch, onClose, onSave }: { rules: OncallRuleVie
       errors={errors}
       onClose={onClose}
       onSave={async () => {
-        await onSave({ ruleId: rule!, employeeId: who!.id, slotDate: date, ...(hours ? { calloutHours: hours } : {}) });
+        await onSave({ ruleId: rule!, employeeId: who!.id, slotDate: date, ...(hours ? { calloutHours: hours } : {}), ...(holiday ? { onHoliday: true } : {}) });
         toast({ tone: 'success', title: `On-call slot saved for ${who!.name}.` });
       }}
     >
@@ -966,6 +985,7 @@ function SlotDrawer({ rules, onSearch, onClose, onSave }: { rules: OncallRuleVie
               <TextField value={hours} onChange={setHours} inputMode="decimal" />
             </FormField>
           </FieldRow>
+          <Checkbox label="This day is a public holiday" description="A call-out is paid at the rule's holiday multiplier." checked={holiday} onChange={setHoliday} />
         </>
       )}
     </FormDrawer>

@@ -317,12 +317,54 @@ describe('On-call tab (PAY-35 live)', () => {
     expect(screen.getByText('No on-call rules yet')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Record a slot' })).not.toBeInTheDocument();
     await ue.click(screen.getAllByRole('button', { name: 'Add rule' })[0]);
-    const mult = within(drawer()).getByRole('textbox', { name: /Multiplier/ });
+    const mult = within(drawer()).getByRole('textbox', { name: /Normal-day multiplier/ });
     await ue.clear(mult);
     await ue.type(mult, '0.5');
     await ue.click(within(drawer()).getByRole('button', { name: 'Save rule' }));
     expect(within(drawer()).getAllByText('The multiplier, at least 1.').length).toBeGreaterThan(0);
     expect(onAddRule).not.toHaveBeenCalled();
+  });
+});
+
+describe('On-call holiday rules (PAY-35 Holiday live)', () => {
+  it('the worked example uses the holiday multiplier on a public holiday; standby is not paid when called out if the rule says so', async () => {
+    const rules = [{ id: 'r1', name: 'Maintenance on-call', standbyAmount: '500.00', calloutMinHours: '3', calloutRate: '200.00', multiplier: '1.5', holidayMultiplier: '2', payStandbyWhenCalled: false, countTowardsWeekly: true }];
+    render(<SpecialPayHomeScreen live={live({ oncallRules: rules })} />);
+    await tab('On-call');
+    // Normal day, 1 h called out: 3 h × ₹200 × 1.5 = ₹900, no standby.
+    expect(screen.getAllByText('₹900').length).toBeGreaterThan(0);
+    expect(screen.getByText('₹0 (not paid when called out)')).toBeInTheDocument();
+    expect(screen.getByText(/count towards the person's weekly hours limit/)).toBeInTheDocument();
+    await ue.click(screen.getByRole('radio', { name: 'Public holiday' }));
+    // Holiday: 3 h × ₹200 × 2 = ₹1,200.
+    expect(screen.getAllByText('₹1,200').length).toBeGreaterThan(0);
+  });
+
+  it('a holiday multiplier below the normal one is refused (negative); a good rule is sent with its choices; a slot can be a holiday', async () => {
+    const onAddRule = ok();
+    const onAddSlot = ok();
+    render(<SpecialPayHomeScreen live={live({ onAddRule, onAddSlot })} />);
+    await tab('On-call');
+    await ue.click(screen.getAllByRole('button', { name: 'Add rule' })[0]);
+    await ue.type(within(drawer()).getByRole('textbox', { name: /^Name/ }), 'Night standby');
+    await ue.type(within(drawer()).getByRole('textbox', { name: /Standby pay per slot/ }), '400');
+    await ue.type(within(drawer()).getByRole('textbox', { name: /Call-out hourly rate/ }), '250');
+    await ue.type(within(drawer()).getByRole('textbox', { name: /Public holiday multiplier/ }), '1.2');
+    await ue.click(within(drawer()).getByRole('button', { name: 'Save rule' }));
+    expect(within(drawer()).getAllByText('Must be at least the normal-day multiplier (1.5×).').length).toBeGreaterThan(0);
+    expect(onAddRule).not.toHaveBeenCalled();
+    const h = within(drawer()).getByRole('textbox', { name: /Public holiday multiplier/ });
+    await ue.clear(h);
+    await ue.type(h, '2');
+    await ue.click(within(drawer()).getByRole('checkbox', { name: /Pay standby even when/ }));
+    await ue.click(within(drawer()).getByRole('button', { name: 'Save rule' }));
+    await waitFor(() => expect(onAddRule).toHaveBeenCalledWith({ name: 'Night standby', standbyAmount: '400', calloutMinHours: '3', calloutRate: '250', multiplier: '1.5', holidayMultiplier: '2', payStandbyWhenCalled: false, countTowardsWeekly: false }));
+    await ue.click(screen.getByRole('button', { name: 'Record a slot' }));
+    await pick('person');
+    await ue.type(within(drawer()).getByLabelText(/^Day/), '2026-10-02');
+    await ue.click(within(drawer()).getByRole('checkbox', { name: /public holiday/ }));
+    await ue.click(within(drawer()).getByRole('button', { name: 'Save slot' }));
+    await waitFor(() => expect(onAddSlot).toHaveBeenCalledWith({ ruleId: 'r1', employeeId: 'p1', slotDate: '2026-10-02', onHoliday: true }));
   });
 });
 

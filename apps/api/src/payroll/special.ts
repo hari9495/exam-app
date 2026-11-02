@@ -94,10 +94,19 @@ export function tipShares(amount: string, bases: { employmentId: string; basis: 
 // ------------------------------------------------------------------------------------------ on-call (YX-PAY-62)
 
 /** A standby allowance per slot; a call-out pays max(hours, the minimum) × rate × multiplier. */
-export function oncall(rule: { standbyAmount: string; calloutMinHours: string; calloutRate: string; multiplier: string }, slots: { calloutHours: string | null }[]) {
-  const standby = D(rule.standbyAmount).mul(slots.length);
-  const callout = slots.filter((s) => s.calloutHours).reduce((t, s) => t.add(Prisma.Decimal.max(D(s.calloutHours!), D(rule.calloutMinHours)).mul(rule.calloutRate).mul(rule.multiplier)), ZERO);
-  return { standby: r2(standby), callout: r2(callout), callouts: slots.filter((s) => s.calloutHours).length };
+/**
+ * On-call pay: standby for each slot (PAY-35: not for a called-out slot when the rule says so), and each call-out paid for at
+ * least the minimum hours at the rate times the multiplier (the public-holiday multiplier on a holiday slot, when set).
+ */
+export function oncall(
+  rule: { standbyAmount: string; calloutMinHours: string; calloutRate: string; multiplier: string; holidayMultiplier?: string | null; payStandbyWhenCalled?: boolean },
+  slots: { calloutHours: string | null; onHoliday?: boolean }[],
+) {
+  const paidStandby = slots.filter((s) => rule.payStandbyWhenCalled !== false || !s.calloutHours).length;
+  const standby = D(rule.standbyAmount).mul(paidStandby);
+  const mult = (s: { onHoliday?: boolean }) => (s.onHoliday && rule.holidayMultiplier ? rule.holidayMultiplier : rule.multiplier);
+  const callout = slots.filter((s) => s.calloutHours).reduce((t, s) => t.add(Prisma.Decimal.max(D(s.calloutHours!), D(rule.calloutMinHours)).mul(rule.calloutRate).mul(mult(s))), ZERO);
+  return { standby: r2(standby), callout: r2(callout), callouts: slots.filter((s) => s.calloutHours).length, holidayCallouts: slots.filter((s) => s.calloutHours && s.onHoliday).length, calloutHours: slots.filter((s) => s.calloutHours).reduce((t, s) => t.add(Prisma.Decimal.max(D(s.calloutHours!), D(rule.calloutMinHours))), ZERO).toString() };
 }
 
 // ------------------------------------------------------------------------------------------ industrial relations (YX-PAY-63)
