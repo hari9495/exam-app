@@ -9109,5 +9109,72 @@
       "Compliance CMP-05 NoDeducteesRefused"
     ],
     "note": "Negative paths."
+  },
+  {
+    "id": "MT-TIM-L-35",
+    "area": "Time · Muster · Pre-approve overtime, founder answers (2 Nov 2026)",
+    "screen": "Only the reporting line, direct and indirect",
+    "url": "http://localhost:3000/yx/time/muster",
+    "account": "panel@demo-org.test (Manager - Divya Raghunathan). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Time › Muster, press Pre-approve overtime and open the Person list.",
+      "2. Choose Murugan (he reports to Kavya Reddy, who reports to Divya), tomorrow, 2 h, Paid overtime, reason \"Boiler shutdown\"; press Pre-approve."
+    ],
+    "expected": "Step 1: the list has Divya's direct reports (Arjun, Kiran, Meera, Nikhil, Kavya) and the people under Kavya (Murugan, Karthik, Anbu, Revathi, Selvi); never Divya herself. Step 2: toast \"Overtime pre-approved for Murugan …\". Negative: nobody outside her line is in the list.",
+    "stories": [
+      "Time · TIM-02 · Muster · Manager · Pre-approve overtime"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-TIM-L-36",
+    "area": "Time · Muster · Pre-approve overtime, founder answers (2 Nov 2026)",
+    "screen": "Factory workers: Paid overtime only",
+    "url": "http://localhost:3000/yx/time/muster",
+    "account": "panel@demo-org.test (Manager - Divya Raghunathan). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Press Pre-approve overtime and choose Arjun Kulkarni (Bengaluru head office); look at Take as.",
+      "2. Pick Comp-off credit, then change the person to Kavya Reddy (Hosur plant, a factory); look at Take as and the Effect box.",
+      "3. Enter 2 h and a reason, press Pre-approve."
+    ],
+    "expected": "Step 1: Take as has two choices, Paid overtime and Comp-off credit. Step 2: only one choice, Paid overtime (selected), with \"Kavya works under the Factories Act, so overtime is paid by law.\"; Effect says \"paid at the overtime rate\". Step 3: toast \"Overtime pre-approved for Kavya Reddy\" (sent as paid). Negative: comp-off cannot be chosen for a factory worker.",
+    "stories": [
+      "Time · TIM-02 · Muster · Manager · Pre-approve overtime · factory worker (paid only)"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-TIM-L-37",
+    "area": "Time · Muster · Pre-approve overtime, founder answers (2 Nov 2026)",
+    "screen": "The company's plan-ahead limit",
+    "url": "http://localhost:3000/yx/time/muster",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi) to change the setting; then panel@demo-org.test (Manager - Divya Raghunathan). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As HR, set \"Overtime can be pre-approved this many days ahead\" (attendance.overtime.plan_ahead_days) to 15 for the company.",
+      "2. As Divya, open Pre-approve overtime and choose Kavya Reddy; read the Date hint.",
+      "3. Pick a date 20 days ahead and press Pre-approve.",
+      "4. As HR, set it back to 30."
+    ],
+    "expected": "Step 2: \"Today or up to 15 days ahead.\" Negative step 3: \"Pick a date in the next 15 days\" under Date with the focus there; nothing is sent. Step 4: the hint says 30 days again.",
+    "stories": [
+      "Time · TIM-02 · Muster · Manager · Pre-approve overtime · pressed too early"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-TIM-L-38",
+    "area": "Time · Muster · Pre-approve overtime, founder answers (2 Nov 2026)",
+    "screen": "HR and department heads do not pre-approve",
+    "url": "http://localhost:3000/yx/time/muster",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi, head of the People department). Browser window 1278 x 635.",
+    "steps": [
+      "1. Open Time › Muster as Lakshmi.",
+      "2. Open a cell on any row (for example Ramesh, in the People department she heads)."
+    ],
+    "expected": "Negative step 1: no Pre-approve overtime button (founder: only the reporting line; HR and department heads no longer pre-approve). Negative step 2: the day card has no Pre-approve overtime button. A crafted call is refused by the server (404) for HR, a department head and a dotted-line manager.",
+    "stories": [
+      "Time · TIM-02 · Muster · Open month"
+    ],
+    "note": "Negative."
   }
 ]

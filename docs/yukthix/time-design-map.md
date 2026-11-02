@@ -12,13 +12,13 @@ live page cannot reach yet (the reason is given).
 
 | | live | feature not built | phone view | gap |
 |---|---|---|---|---|
-| Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 108 | 1 | 19 | 0 |
+| Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 109 | 1 | 19 | 0 |
 | Leave (TIM-17…25) | 48 | 0 | 11 | 0 |
 | Set-up (TIM-26…29, 31, 42) | 34 | 1 | 0 | 0 |
 | Rosters and shifts (TIM-05, 06, 08, 34, 35, 38…41) | 44 | 2 | 10 | 0 |
 | Overtime, periods, reports, timesheets (TIM-09, 11, 15, 16, 30, 37, 43) | 49 | 0 | 3 | 0 |
 | Field force (TIM-32, 33) | 7 | 0 | 9 | 0 |
-| **All 45 design groups (346 sub-pages counted)** | **290** | **4** | **52** | **0** |
+| **All 45 design groups (347 sub-pages counted)** | **291** | **4** | **52** | **0** |
 
 Counted from the stories and the rows below by script (29 Oct 2026, after rosters/devices/field, the roster fixes and founder decisions 1-7 were merged into the test app). Section counts further down may be older; this table is the current one.
 Recounted by script on 30 Oct 2026 (time small items: TIM-13 Training, Leave, UnknownCode and the new TrainingNone story live; TIM-26 Clone and
@@ -223,11 +223,12 @@ Old live copies deleted: live/my-attendance.tsx (MyAttendanceScreen, TodayCard, 
 | Empty | /yx/time/muster with no one in scope ("No one on the muster") |
 | Loading | /yx/time/muster while loading |
 | Failed · Error | /yx/time/muster when the API fails (Try again) |
-| Manager · Manager · team muster | /yx/time/muster as a manager (scope team): their reports and their own row; no freeze, lock or bulk; "Pre-approve overtime" in the header and on a report's day card (founder 2 Nov 2026) |
-| PreApprove · Manager · Pre-approve overtime | /yx/time/muster (manager) → Pre-approve overtime: person (reports only, never oneself; one report is chosen), date (today to the plan-ahead limit), hours 0.5–12 in quarter hours, Paid overtime / Comp-off credit (Segment), reason; POST time/team/overtime/plans/:employeeId, approved at once and audited; toast "Overtime pre-approved for …" |
+| Manager · Manager · team muster | /yx/time/muster as a manager (scope team): their reports and their own row; no freeze, lock or bulk; "Pre-approve overtime" in the header and on the day card of someone in their reporting line (founder 2 Nov 2026; the muster marks those people with `ot`) |
+| PreApprove · Manager · Pre-approve overtime | /yx/time/muster (manager) → Pre-approve overtime: person (the reporting line only: direct and indirect reports, never a dotted-line report or oneself; one is chosen when there is one), date (today to that person's `attendance.overtime.plan_ahead_days`, from the muster), hours 0.5–12 in quarter hours, Paid overtime / Comp-off credit (Segment), reason; POST time/team/overtime/plans/:employeeId, approved at once and audited; toast "Overtime pre-approved for …" |
 | PreApproveFilled · filled in | the same sheet filled: the effect "Up to N h OT · paid at the overtime rate" or "· comp-off credit" |
 | PreApproveErrors · pressed too early | Pre-approve with fields missing: each field names what is missing, the first takes the focus; the button is never disabled |
-| PreApproveRefused · refused | a server refusal stays in the sheet ("Not pre-approved" with the reason, e.g. factory overtime is paid by law; outside the line 404) |
+| PreApproveRefused · refused | a server refusal stays in the sheet ("Not pre-approved" with the reason, e.g. that day already has overtime asked for; outside the line 404) |
+| PreApproveFactory · factory worker (paid only) | a person covered by the Factories Act (the muster's `ot.factoriesAct`): Take as shows one choice, Paid overtime, with "… works under the Factories Act, so overtime is paid by law."; the server still refuses comp-off for them |
 
 Live extras from the design file: month arrows (the top bar has no month on this page); next month that has not started says so in a toast.
 Founder (29 Oct 2026): the lock is a plain confirm plus the authenticator step, here and on Periods (the Lock story is renamed "Lock · confirm").
@@ -1173,3 +1174,10 @@ back), like work from home within its limit.
 (1) the muster sends the company's `attendance.overtime.plan_ahead_days` and the sheet uses it; (2) only the reporting
 line (direct and indirect managers) may pre-approve a report's overtime; dotted-line, department-head and HR routes are
 removed from the plan endpoint; (3) for people covered by the Factories Act the sheet offers only Paid overtime.
+
+Built 2 Nov 2026 (branch `feat/yukthix-ot-muster-2`): (1) the muster gives each person in the viewer's reporting line
+`ot: { aheadDays, factoriesAct }` and the sheet's date limit and hint use it; (2) POST time/team/overtime/plans/:employeeId
+is for direct and indirect managers only (dotted-line managers, department heads and HR now get 404; oneself 403);
+(3) a factory worker gets only Paid overtime in the sheet (new TIM-02 story PreApproveFactory); the server still refuses
+comp-off for them. Recounted by script (timecount3): 347 sub-pages, 291 live, 4 not built, 52 phone, 0 gaps; Attendance
+108 → 109 live. Manual tests MT-TIM-L-35..38.
