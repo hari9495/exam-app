@@ -77,7 +77,7 @@ describe('PRF-13 hand-over list page', () => {
 describe('PRF-14 competencies page', () => {
   it('maps a role through the competency save, with today and the version', async () => {
     const comp = { id: 'k1', skillId: 's1', name: 'Food safety', group: 'functional', description: 'HACCP', status: 'active', starter: true, levels: [{ level: 1, label: 'Aware', behaviours: 'knows the rules' }, { level: 2, label: 'Applies', behaviours: null }], roles: [], usedIn: ['Annual'], version: 4 };
-    serve({ 'GET /performance/competencies': [comp], 'GET /org/masters/designations': [{ id: 'd1', name: 'QA Engineer', archivedAt: null }], 'PUT /performance/competencies/k1': (b) => ({ ...comp, ...(b as object), group: 'functional', levels: comp.levels, roles: [] }) }, ['perf.setup.manage', 'org.structure.view']);
+    serve({ 'GET /performance/competencies': [comp], 'GET /org/masters/designations': [{ id: 'd1', name: 'QA Engineer', archivedAt: null }], 'PUT /performance/competencies/k1': (b: unknown) => ({ ...comp, ...(b as object), group: 'functional', levels: comp.levels, roles: [] }) }, ['perf.setup.manage', 'org.structure.view']);
     wrap(<YxCompetenciesPage />);
     expect(await screen.findByText('Aware: knows the rules')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Map a role' }));
