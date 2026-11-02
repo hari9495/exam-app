@@ -344,6 +344,13 @@ export class FnfService implements OnModuleInit {
         where: { organizationId: org, id: { in: queued.filter((x) => !paid.has(x)) }, employmentId: f.employmentId, source: 'm05', status: 'approved', runId: null, holdReason: null },
         data: { runId: f.runId, periodStart: asDate(monthStart) },
       });
+      // PAY-27: an earned wage access draw not yet taken back by an approved payslip is recovered in the F&F run.
+      const ewa = await tx.oneTimePay.findMany({ where: { organizationId: org, employmentId: f.employmentId, source: 'ewa', status: 'approved', runId: null, holdReason: null }, select: { id: true } });
+      const ewaOn = ewa.length ? await tx.payslipLine.findMany({ where: { organizationId: org, sourceRef: { in: ewa.map((x) => x.id) } }, select: { sourceRef: true, payslipId: true } }) : [];
+      const ewaPaid = new Set((await tx.payslip.findMany({ where: { organizationId: org, id: { in: ewaOn.map((l) => l.payslipId) }, status: 'approved' }, select: { id: true } })).map((s) => s.id));
+      const taken = new Set(ewaOn.filter((l) => ewaPaid.has(l.payslipId)).map((l) => l.sourceRef));
+      const left = ewa.map((x) => x.id).filter((x) => !taken.has(x));
+      if (left.length) await tx.oneTimePay.updateMany({ where: { organizationId: org, id: { in: left }, runId: null }, data: { runId: f.runId, periodStart: asDate(monthStart) } });
     }
   }
 
@@ -379,7 +386,7 @@ export class FnfService implements OnModuleInit {
     const runs = [f.runId, f.secondRunId].filter((x): x is string => !!x);
     // The settlement's lines, and the expense claims paid in its runs.
     const items = await tx.oneTimePay.findMany({
-      where: { organizationId: org, status: 'approved', OR: [{ source: 'fnf', sourceRef: f.id }, ...(runs.length ? [{ source: 'm05', employmentId: f.employmentId, runId: { in: runs } }] : [])] },
+      where: { organizationId: org, status: 'approved', OR: [{ source: 'fnf', sourceRef: f.id }, ...(runs.length ? [{ source: { in: ['m05', 'ewa'] }, employmentId: f.employmentId, runId: { in: runs } }] : [])] },
       orderBy: { createdAt: 'asc' },
     });
     const run = f.runId ? await tx.payrollRun.findFirst({ where: { organizationId: org, id: f.runId } }) : null;
@@ -403,6 +410,7 @@ export class FnfService implements OnModuleInit {
     const explained = (i: (typeof items)[number]) => {
       const name = comp(i.componentCode)?.name ?? i.componentCode;
       if (i.source === 'm05') return { title: `Pending reimbursement: ${i.reason.replace(/^Expense claim: /, '')}`, how: 'An approved expense claim not paid yet: it is paid with this settlement.', auto: true };
+      if (i.source === 'ewa') return { title: name, how: `${i.reason} Not taken back by a payslip yet: it is recovered in this settlement.`, auto: true };
       if (i.reason !== WORKED_OUT) return { title: i.label ?? name, how: `Added by payroll: ${i.reason}`, auto: false };
       if (i.componentCode === 'fnf_recovery') return { title: i.label ?? name, how: 'Recorded in the exit clearance; pulled automatically and refreshed until the run is approved.', auto: true };
       return { title: name, how: i.label ?? name, auto: false };

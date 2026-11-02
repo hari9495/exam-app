@@ -21,6 +21,11 @@ import { ewaAvailable } from './special';
 const D = (x: Prisma.Decimal.Value) => new Prisma.Decimal(x);
 const ZERO = D(0);
 const LIVE = ['requested', 'paid'];
+/** "2026-10" moved by n months. */
+const addMonths = (m: string, n: number) => {
+  const d = new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)) - 1 + n, 1));
+  return d.toISOString().slice(0, 7);
+};
 type Policy = Prisma.EwaPolicyGetPayload<object>;
 
 @Injectable()
@@ -46,6 +51,105 @@ export class EwaService {
   }
 
   // ------------------------------------------------------------------------------------------ payroll's side
+
+  /**
+   * PAY-27: each paid draw of the entity in the months, matched to its recovery. Recovered: on an approved regular
+   * payslip. Carried to next month: the part of that deduction the payslip could not take (its net went below zero and
+   * a carry-forward was made). In the final settlement: taken (or to be taken) by the leaver's F&F run. Waiting: the
+   * month's payroll is not approved yet.
+   * shortcut: a carry-forward covers the payslip's whole shortfall and is laid on the EWA deduction first; upgrade when
+   * the calculation records which deduction it cut.
+   */
+  private async matches(tx: Tx, org: string, entityId: string, from: string, to: string) {
+    const draws = await tx.ewaDraw.findMany({ where: { organizationId: org, legalEntityId: entityId, status: 'paid', month: { gte: asDate(`${from}-01`), lte: asDate(`${to}-01`) } }, orderBy: [{ month: 'asc' }, { createdAt: 'asc' }] });
+    const refs = draws.map((d) => d.recoveryRef).filter((x): x is string => !!x);
+    const otps = await tx.oneTimePay.findMany({ where: { organizationId: org, id: { in: refs } }, select: { id: true, amount: true, runId: true, status: true } });
+    const lines = refs.length ? await tx.payslipLine.findMany({ where: { organizationId: org, sourceRef: { in: refs } }, select: { sourceRef: true, amount: true, payslipId: true } }) : [];
+    const slips = await tx.payslip.findMany({ where: { organizationId: org, id: { in: lines.map((l) => l.payslipId) }, status: 'approved' }, select: { id: true, runId: true } });
+    const runs = await tx.payrollRun.findMany({ where: { organizationId: org, id: { in: [...slips.map((s) => s.runId), ...otps.map((o) => o.runId)].filter((x): x is string => !!x) } }, select: { id: true, offcycleKind: true } });
+    const carries = await tx.payCarryForward.findMany({ where: { organizationId: org, originPayslipId: { in: slips.map((s) => s.id) } }, select: { originPayslipId: true, amount: true } });
+    const fnfRun = (id: string | null | undefined) => !!id && runs.find((r) => r.id === id)?.offcycleKind === 'fnf';
+    return draws.map((d) => {
+      const o = otps.find((x) => x.id === d.recoveryRef);
+      const toRecover = o?.amount ?? d.amount.add(d.feePayer === 'employee' ? d.fee : 0);
+      const line = lines.find((l) => l.sourceRef === o?.id && slips.some((s) => s.id === l.payslipId));
+      const slip = line ? slips.find((s) => s.id === line.payslipId)! : null;
+      const carried = slip ? Prisma.Decimal.min(line!.amount, carries.filter((x) => x.originPayslipId === slip.id).reduce((t, x) => t.add(x.amount), ZERO)) : ZERO;
+      const inFnf = slip ? fnfRun(slip.runId) : fnfRun(o?.runId);
+      const state: 'recovered' | 'deferred' | 'fnf' | 'waiting' = inFnf ? 'fnf' : !slip ? 'waiting' : carried.gt(0) ? 'deferred' : 'recovered';
+      return {
+        drawId: d.id,
+        employeeId: d.employeeId,
+        month: dateOf(d.month).slice(0, 7),
+        paidOn: d.paidAt ? dateOf(d.paidAt) : null,
+        paidRef: d.paidRef,
+        amount: d.amount.toFixed(2),
+        fee: d.feePayer === 'employee' ? d.fee.toFixed(2) : '0.00',
+        toRecover: toRecover.toFixed(2),
+        recovered: (slip && !inFnf ? line!.amount.sub(carried) : ZERO).toFixed(2),
+        deferred: (inFnf ? ZERO : carried).toFixed(2),
+        fnf: (inFnf ? (line?.amount ?? toRecover) : ZERO).toFixed(2),
+        payslipId: slip?.id ?? null,
+        state,
+      };
+    });
+  }
+
+  private static sum(rows: { [k: string]: unknown }[], k: string) {
+    return rows.reduce((t, r) => t.add(r[k] as string), ZERO).toFixed(2);
+  }
+
+  /** PAY-27 Recoveries: the last six months to `month`, one row a month (draws counted in the month they were drawn). */
+  async recoveries(ctx: TenantContext, user: ScopeUser, entityId: string, month?: string) {
+    const v = await this.viewer(user);
+    const to = month ?? todayIst().slice(0, 7);
+    const from = addMonths(to, -5);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      await requireEntity(tx, c, v, 'payroll.ewa.manage', entityId);
+      await payScope(tx, [entityId]);
+      const all = await this.matches(tx, c.organizationId, entityId, from, to);
+      const months: string[] = [];
+      for (let m = to; m >= from; m = addMonths(m, -1)) months.push(m);
+      return months
+        .map((m) => {
+          const rows = all.filter((x) => x.month === m);
+          const leavers = new Set(rows.filter((x) => x.state === 'fnf').map((x) => x.employeeId));
+          return { month: m, draws: rows.length, toRecover: EwaService.sum(rows, 'toRecover'), recovered: EwaService.sum(rows, 'recovered'), deferred: EwaService.sum(rows, 'deferred'), fnf: { people: leavers.size, amount: EwaService.sum(rows, 'fnf') }, waiting: EwaService.sum(rows.filter((x) => x.state === 'waiting'), 'toRecover') };
+        })
+        .filter((r) => r.draws > 0);
+    });
+  }
+
+  /** PAY-27 Reconciliation: the month's draws, each matched to its payslip deduction; payroll or the finance approver. */
+  async reconciliation(ctx: TenantContext, user: ScopeUser, entityId?: string, month?: string) {
+    const v = await this.viewer(user);
+    const m = month ?? todayIst().slice(0, 7);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const ids = [...new Set([...(await entitiesFor(tx, c, v, 'payroll.ewa.manage')), ...(await entitiesFor(tx, c, v, 'payroll.run.approve'))])];
+      const entities = await tx.legalEntity.findMany({ where: { organizationId: c.organizationId, id: { in: ids } }, select: { id: true, name: true }, orderBy: { name: 'asc' } });
+      if (entityId && !ids.includes(entityId)) throw new NotFoundException('Not found');
+      const chosen = entityId ?? entities[0]?.id ?? null;
+      if (!chosen) return { entities, legalEntityId: null, month: m, totals: null, draws: [] };
+      await payScope(tx, [chosen]);
+      const rows = await this.matches(tx, c.organizationId, chosen, m, m);
+      const people = await tx.employee.findMany({ where: { organizationId: c.organizationId, id: { in: rows.map((r) => r.employeeId) } }, select: { id: true, givenName: true, familyName: true } });
+      const name = (id: string) => {
+        const p = people.find((x) => x.id === id);
+        return p ? `${p.givenName} ${p.familyName ?? ''}`.trim() : '';
+      };
+      const paidOut = EwaService.sum(rows, 'amount');
+      const fees = EwaService.sum(rows, 'fee');
+      const toRecover = EwaService.sum(rows, 'toRecover');
+      const settled = rows.reduce((t, r) => t.add(r.recovered).add(r.deferred).add(r.fnf), ZERO);
+      return {
+        entities,
+        legalEntityId: chosen,
+        month: m,
+        totals: { draws: rows.length, paidOut, fees, toRecover, recovered: EwaService.sum(rows, 'recovered'), deferred: EwaService.sum(rows, 'deferred'), fnf: EwaService.sum(rows, 'fnf'), waiting: EwaService.sum(rows.filter((r) => r.state === 'waiting'), 'toRecover'), difference: D(toRecover).sub(settled).toFixed(2) },
+        draws: rows.map((r) => ({ ...r, employeeName: name(r.employeeId) })),
+      };
+    });
+  }
 
   async policies(ctx: TenantContext, user: ScopeUser, entityId: string) {
     const v = await this.viewer(user);

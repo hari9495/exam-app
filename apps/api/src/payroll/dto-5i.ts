@@ -19,6 +19,17 @@ export class EntityMonthQuery {
   month?: string;
 }
 
+/** PAY-27 reconciliation: one legal entity (the first in scope when left out) and a month. */
+export class EwaReconQuery {
+  @IsOptional()
+  @IsUUID()
+  legalEntityId?: string;
+
+  @IsOptional()
+  @Matches(MONTH)
+  month?: string;
+}
+
 export class PostMonthDto {
   @IsUUID()
   legalEntityId!: string;

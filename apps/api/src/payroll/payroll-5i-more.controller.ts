@@ -11,7 +11,7 @@ import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
 import { ActuarialService } from './actuarial.service';
 import { CountryPackService } from './country-packs.service';
-import { CensusDto, EntityMonthQuery, EquityPlanDto, EwaDrawDto, EwaPaidDto, EwaPolicyDto, ExerciseDto, GrantDto, PackSwitchDto, PostMonthDto, ReasonDto, TaxYearDto, ValuationDto, ValuationResultDto, W9Dto, WpsIdsDto } from './dto-5i';
+import { CensusDto, EntityMonthQuery, EquityPlanDto, EwaReconQuery, EwaDrawDto, EwaPaidDto, EwaPolicyDto, ExerciseDto, GrantDto, PackSwitchDto, PostMonthDto, ReasonDto, TaxYearDto, ValuationDto, ValuationResultDto, W9Dto, WpsIdsDto } from './dto-5i';
 import { EquityService } from './equity.service';
 import { EwaService } from './ewa.service';
 import { file } from './payroll.controller';
@@ -20,7 +20,8 @@ import { file } from './payroll.controller';
 // route declares its key (YX-SEC-01) or is the signed-in person's own (no key: their draws, checked against their
 // employee records by the pay guard); the services check the key's legal entities again.
 //   payroll.equity.own        one's own grants and exercises (every role holds it by default; PAY-58)
-//   payroll.ewa.manage        EWA policies, draws, their payment (never one's own) and failures
+//   payroll.ewa.manage        EWA policies, draws, their payment (never one's own), failures and recoveries
+//   payroll.run.approve       the EWA reconciliation, as payroll does (the finance approver; PAY-27)
 //   payroll.equity.manage     plans, valuations, grants (approved by another holder), milestones, the cap table
 //   payroll.special.manage    the actuarial census; the UAE end-of-service provision
 //   payroll.journal.export    the actuary's figures and the provision journal (posted by someone else)
@@ -77,6 +78,20 @@ export class Payroll5iMoreController {
   }
 
   /** The signed-in person's earned wage access (no key: their own). */
+  /** PAY-27: each month's paid draws as recovered, carried to the next month, in the final settlement, or waiting. */
+  @Get('ewa/recoveries')
+  @RequirePermissions('payroll.ewa.manage')
+  ewaRecoveries(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: EntityMonthQuery) {
+    return this.ewa.recoveries(ctx, this.user(req), q.legalEntityId, q.month);
+  }
+
+  /** PAY-27: the month's draws matched to their payslip deductions, for payroll or the finance approver. */
+  @Get('ewa/reconciliation')
+  @RequireAnyPermission('payroll.ewa.manage', 'payroll.run.approve')
+  ewaReconciliation(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: EwaReconQuery) {
+    return this.ewa.reconciliation(ctx, this.user(req), q.legalEntityId, q.month);
+  }
+
   @Get('me/ewa')
   myEwa(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     return this.ewa.me(ctx, this.user(req));

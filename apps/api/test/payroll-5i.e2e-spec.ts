@@ -389,6 +389,19 @@ describe('Payroll batch 5i', () => {
     const rec = await oneTimes('ewa');
     expect(rec).toEqual([expect.objectContaining({ componentCode: 'ewa_recovery', employeeId: ids.emp1 })]);
     expect(rec[0].amount.toFixed(2)).toBe('149.00');
+    // PAY-27: the month's recovery waits for its payroll; the finance side (run approvers) sees the reconciliation.
+    const recov = (await api('payAdmin', 'get', `/payroll/ewa/recoveries?legalEntityId=${ids.entity}&month=${month}`).expect(200)).body;
+    expect(recov).toEqual([{ month, draws: 1, toRecover: '149.00', recovered: '0.00', deferred: '0.00', fnf: { people: 0, amount: '0.00' }, waiting: '149.00' }]);
+    await api('approver1', 'get', `/payroll/ewa/recoveries?legalEntityId=${ids.entity}&month=${month}`).expect(403);
+    await api('payAdmin', 'get', `/payroll/ewa/recoveries?legalEntityId=${ids.entity}&month=2026-13`).expect(400);
+    const recon = (await api('approver1', 'get', `/payroll/ewa/reconciliation?legalEntityId=${ids.entity}&month=${month}`).expect(200)).body;
+    expect(recon.totals).toMatchObject({ draws: 1, paidOut: '100.00', fees: '49.00', toRecover: '149.00', recovered: '0.00', waiting: '149.00', difference: '149.00' });
+    expect(recon.draws).toEqual([expect.objectContaining({ drawId: d.id, state: 'waiting', paidRef: 'NEFT-0001', employeeName: expect.any(String) })]);
+    expect(recon.entities.map((x: { id: string }) => x.id)).toContain(ids.entity);
+    await api('emp1', 'get', `/payroll/ewa/reconciliation?legalEntityId=${ids.entity}&month=${month}`).expect(403);
+    await api('payAdminB', 'get', `/payroll/ewa/reconciliation?legalEntityId=${ids.entity}&month=${month}`).expect(404);
+    await api('payAdminB', 'get', `/payroll/ewa/recoveries?legalEntityId=${ids.entity}&month=${month}`).expect(404);
+    await api('approver1', 'get', `/payroll/ewa/reconciliation?legalEntityId=not-a-uuid`).expect(400);
   });
 
   it('weekly pay: the run that ends the month pays the items of the month and locks it', async () => {
@@ -400,7 +413,13 @@ describe('Payroll batch 5i', () => {
     const ll = await scoped((tx) => tx.payslipLine.findMany({ where: { payslipId: sl.id } }));
     expect(ll.some((l) => l.componentCode === 'piece_pay')).toBe(true);
     expect(ll.some((l) => l.componentCode === 'union_dues')).toBe(true);
-    if (Number(today.slice(8)) < 25) expect(ll.some((l) => l.componentCode === 'ewa_recovery')).toBe(true);
+    if (Number(today.slice(8)) < 25) {
+      expect(ll.some((l) => l.componentCode === 'ewa_recovery')).toBe(true);
+      // PAY-27: once the run is approved the draw is recovered and reconciles to nothing left.
+      const r = (await api('payAdmin', 'get', `/payroll/ewa/recoveries?legalEntityId=${ids.entity}&month=${month}`).expect(200)).body;
+      expect(r[0]).toMatchObject({ draws: 1, recovered: '149.00', waiting: '0.00' });
+      expect((await api('approver1', 'get', `/payroll/ewa/reconciliation?legalEntityId=${ids.entity}&month=${month}`).expect(200)).body.totals).toMatchObject({ recovered: '149.00', difference: '0.00' });
+    }
     const snap = await scoped((tx) => tx.payslipSnapshot.findFirstOrThrow({ where: { payslipId: sl.id } }));
     expect((snap.inputs as { sub: { final: boolean; mtd: { taxable: string } } }).sub).toMatchObject({ final: true, mtd: { taxable: expect.any(String) } });
     const p2 = await scoped((tx) => tx.payPeriod.findFirst({ where: { organizationId: org.A.id, legalEntityId: ids.entity, payGroupId: null, periodStart: new Date(`${first}T00:00:00Z`) } }));
