@@ -9176,5 +9176,239 @@
       "Time · TIM-02 · Muster · Open month"
     ],
     "note": "Negative."
+  },
+  {
+    "id": "MT-PAY-G-07",
+    "area": "Pay · Gaps run (2 Nov 2026)",
+    "screen": "Weekly run step view (PAY-29 WeeklyRun)",
+    "url": "http://localhost:3000/yx/payroll/runs",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh) Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-29 WeeklyRun"
+    ],
+    "steps": [
+      "1. Open a run of a weekly pay group.",
+      "2. Click each step: Readiness, Payslips, Approve, Bank file.",
+      "3. Open a monthly run."
+    ],
+    "expected": "Step 1: the heading is the week's dates, the group name and a Weekly badge; the steps show the frequency on each. Step 2: Payslips lists people with gross and net totals (after calculation; before it \"No payslips yet\"). The workspace tabs and buttons stay below. Step 3 (negative): a monthly run opens the normal run workspace.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-G-08",
+    "area": "Pay · Gaps run (2 Nov 2026)",
+    "screen": "Coverage crossed: switch on or record applied (PAY-30 Crossed)",
+    "url": "http://localhost:3000/yx/payroll/coverage",
+    "account": "tester@demo-org.test (payroll.setup.manage) with payroll.statutory.setup Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-30 Crossed"
+    ],
+    "steps": [
+      "1. Ask the developer to make an entity covered by ESI with no ESI registration; open the page.",
+      "2. Press Switch on, leave the number empty, press Switch ESI on.",
+      "3. Type a registration number; press Switch ESI on (second sign-in step when asked).",
+      "4. Make another crossed row; press Record applied; press Record applied.",
+      "5. As a person with payroll.setup.manage but not payroll.statutory.setup open the page."
+    ],
+    "expected": "Step 1: \"Crossed: set-up needed\" in red. Step 2 (negative): \"Give the registration number (at least 5 characters).\" Step 3: toast \"ESI switched on for …\"; the row is Covered. Step 4: toast; the row says \"Applied, number awaited\". Step 5 (negative): no buttons; the row says \"switch it on or record it as applied for\".",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-G-09",
+    "area": "Pay · Gaps run (2 Nov 2026)",
+    "screen": "Frozen month: late request (PAY-04 Frozen)",
+    "url": "http://localhost:3000/yx/payroll/inputs",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh) and approver@demo-org.test (Payroll Approver - Meena) with payroll.correction.approve Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-04 Frozen"
+    ],
+    "steps": [
+      "1. Calculate this month's run (the month freezes); open Inputs › Loss of pay.",
+      "2. Press Bulk upload.",
+      "3. Press Late request; press Send for approval with nothing filled.",
+      "4. Choose Arjun, a day of the month, Paid day (reverse LOP), reason \"Was on a client visit, approved late\"; Send for approval.",
+      "5. As Meena open Approvals."
+    ],
+    "expected": "Step 1: \"Period frozen\" badge and \"Inputs are frozen for <month>\" alert; no inline edits, no Save. Step 2 (negative): toast \"Inputs are frozen… late request.\" Step 3 (negative): \"Choose the person.\" and focus. Step 4: toast \"Late request for Arjun… sent for approval\". Step 5: the correction waits for Meena (never Suresh).",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-G-10",
+    "area": "Pay · Gaps run (2 Nov 2026)",
+    "screen": "One-time pay drafts and bulk actions (PAY-05 List)",
+    "url": "http://localhost:3000/yx/payroll/inputs",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh) Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-05 List"
+    ],
+    "steps": [
+      "1. Add one-time pay for two people with Save as draft.",
+      "2. Select an approved item only; press Send 0 for approval.",
+      "3. Select the two drafts; press Send 2 for approval.",
+      "4. Add another draft; select it; press Delete 1 draft; confirm."
+    ],
+    "expected": "Step 1: both show Draft and no run pays them. Step 2 (negative): toast \"None of the selected items is a draft.\" Step 3: toast \"2 items sent…\" (above the company limit: \"… waits for approval\"). Step 4: the draft is gone from the open list (kept as cancelled in the audit).",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-G-11",
+    "area": "Pay · Gaps run (2 Nov 2026)",
+    "screen": "One-time pay effect summary (PAY-05 AddSheet)",
+    "url": "http://localhost:3000/yx/payroll/inputs",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh) Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-05 AddSheet"
+    ],
+    "steps": [
+      "1. Press Add one-time pay; read Effect.",
+      "2. Choose Arjun, Bonus, 25,000, this month.",
+      "3. Choose a statutory component code as Other component."
+    ],
+    "expected": "Step 1: \"Shown once the person, amount and month are set\". Step 2: Gross pay +₹25,000, TDS, PF (or \"Not PF wage\"), ESI (or \"Not covered by ESI\") and Net pay from the payroll calculator. Step 3 (negative): the effect says the component is refused.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-G-12",
+    "area": "Pay · Gaps run (2 Nov 2026)",
+    "screen": "Court order remittances (PAY-19 OrderPanel)",
+    "url": "http://localhost:3000/yx/payroll/arrears",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh) Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-19 OrderPanel"
+    ],
+    "steps": [
+      "1. Open the Recoveries tab, press Open on a court order deducted in an approved run.",
+      "2. Press Record remittance; press Record remittance with no reference.",
+      "3. Type \"UTR-7788\"; Record remittance.",
+      "4. Try to record the same month again."
+    ],
+    "expected": "Step 1: Remittances table: month, deducted, \"Not remitted yet\". Step 2 (negative): \"Enter the payment reference.\" Step 3: toast; the row shows \"Remitted · UTR-7788\". Step 4 (negative): no Record button on that month.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-G-13",
+    "area": "Pay · Gaps run (2 Nov 2026)",
+    "screen": "Carry-forwards and the deduction cap check (PAY-19 CarryForwards, Cap)",
+    "url": "http://localhost:3000/yx/payroll/arrears",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh) and hr@demo-org.test (HR Admin - Lakshmi, no payroll keys) Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-19 CarryForwards",
+      "PAY-19 Cap"
+    ],
+    "steps": [
+      "1. Open the Carry-forwards tab.",
+      "2. Open the Deduction cap check tab and press Check on a row.",
+      "3. As Lakshmi open the page."
+    ],
+    "expected": "Step 1: negative-net balances with origin month, balance and status (or the empty state). Step 2: the payslip's wages, cap, protected net, net and the deductions in order with Deducted and Deferred. Step 3 (negative): no Carry-forwards or Deduction cap check tabs.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-G-14",
+    "area": "Pay · Gaps run (2 Nov 2026)",
+    "screen": "Back-dated revision arrears and hourly pay (PAY-12 Arrears, Hourly)",
+    "url": "http://localhost:3000/yx/payroll/compensation",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi, company-wide employee.change.manage) Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-12 Arrears",
+      "PAY-12 Hourly"
+    ],
+    "steps": [
+      "1. Choose Arjun; press Revise compensation; set Effective from to the 15th of last month; template and a higher CTC; Send for approval (works out the breakup).",
+      "2. Choose Paid by Hourly rate; press Send for approval with no rate.",
+      "3. Type 450 and work it out."
+    ],
+    "expected": "Step 1: \"Arrears preview (paid in the next run)\" table: last month (17 of 31 days style) and each later paid month with the total. Step 2 (negative): \"Give the hourly rate in rupees, for example 450.\" Step 3: the breakup is worked out; after approval the tab shows \"Hourly rate · ₹450 an hour\".",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-G-15",
+    "area": "Pay · Gaps run (2 Nov 2026)",
+    "screen": "Incentive plan drafts and versions (PAY-32 Draft)",
+    "url": "http://localhost:3000/yx/payroll/special-pay",
+    "account": "tester@demo-org.test (payroll.special.manage) Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-32 Draft"
+    ],
+    "steps": [
+      "1. Incentives › New plan: fill name, measured on, target; Effective to before Effective from; Save draft.",
+      "2. Fix the date; Quarterly; a location; Save draft.",
+      "3. Check the draft row has no Add a result button; press Publish.",
+      "4. Press New version; Start new version with no date; then choose a date next year."
+    ],
+    "expected": "Step 1 (negative): \"Effective to must be after Effective from.\" Step 2: \"Draft · version 1\" with the dates and \"Paid quarterly\". Step 3: toast \"… published.\"; Status \"Published · version 1\". Step 4 (negative): \"Choose the day the new version starts.\"; then \"Draft · version 2\" appears; publishing it ends version 1 the day before.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-G-16",
+    "area": "Pay · Gaps run (2 Nov 2026)",
+    "screen": "On-call holiday multiplier and standby (PAY-35 Holiday)",
+    "url": "http://localhost:3000/yx/payroll/special-pay",
+    "account": "tester@demo-org.test (payroll.special.manage) Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-35 Holiday"
+    ],
+    "steps": [
+      "1. On-call › Add rule: normal 1.5, holiday 1.2; Save rule.",
+      "2. Set holiday 2, untick \"Pay standby even when called out\"; Save rule.",
+      "3. In the worked example choose Public holiday, hours 1.",
+      "4. Record a slot with \"This day is a public holiday\" and call-out hours."
+    ],
+    "expected": "Step 1 (negative): \"Must be at least the normal-day multiplier (1.5×).\" Step 3: Call-out uses 2×, Standby \"₹0 (not paid when called out)\". Step 4: saved; sending the month pays the holiday call-out at 2× and the label says so.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-G-17",
+    "area": "Pay · Gaps run (2 Nov 2026)",
+    "screen": "Wage settlement workers and worksheet (PAY-37 Categories, Worksheet)",
+    "url": "http://localhost:3000/yx/payroll/special-pay",
+    "account": "tester@demo-org.test (payroll.special.manage) Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-37 Categories",
+      "PAY-37 Worksheet"
+    ],
+    "steps": [
+      "1. Settlements: open a settlement effective a few months back.",
+      "2. Open Affected employees, then Arrears worksheet.",
+      "3. Set the page month to the settlement's first month."
+    ],
+    "expected": "Step 1: the category table shows Workers and Arrears with the total. Step 2: the workers with category, from, months and arrears; the worksheet lines per month and person (settlement_arrears, corrected, as paid 0, arrear). Step 3 (negative): \"Workers and arrears not shown: Arrears are for months before the pay month.\"",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-G-18",
+    "area": "Pay · Gaps run (2 Nov 2026)",
+    "screen": "Actuarial movement (PAY-38 Upload)",
+    "url": "http://localhost:3000/yx/payroll/actuarial",
+    "account": "tester@demo-org.test (Payroll Admin) with payroll.journal.export Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-38 Upload"
+    ],
+    "steps": [
+      "1. Valuation step: enter As at and only Current service cost; Record figures.",
+      "2. Enter the other four figures (0 where none).",
+      "3. Record figures."
+    ],
+    "expected": "Step 1 (negative): \"Enter all five figures (0 where the report has none), or leave them all empty.\" Step 2: the Closing obligation is worked out from the last posted figure. Step 3: toast \"… figures recorded. Someone else posts the journal.\"; figures that do not add up are refused by the API.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PAY-G-19",
+    "area": "Pay · Gaps run (2 Nov 2026)",
+    "screen": "Request access to payroll reports (PAY-25 NoAccess)",
+    "url": "http://localhost:3000/yx/payroll/reports",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi, no payroll keys) and admin@demo-org.test (System Admin) Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PAY-25 NoAccess"
+    ],
+    "steps": [
+      "1. As Lakshmi open Payroll reports; press Request access.",
+      "2. Press Request sent.",
+      "3. As Ramesh open Approvals and approve \"Payroll reports access for Lakshmi\".",
+      "4. As Lakshmi reload the page.",
+      "5. As Suresh (has the key) ask the developer to call POST /api/v1/payroll/reports/access-request."
+    ],
+    "expected": "Step 1: toast \"Request sent\"; the page says \"Request sent on <date>…\". Step 2 (negative): toast \"You already asked for access…\"; nothing sent. Step 3: the request is in Ramesh's inbox (never Lakshmi's). Step 4: \"…was approved. The access starts once it is set up in Roles & access\". Step 5 (negative): 409 \"You already have payroll reports access.\"",
+    "note": "Positive and negative."
   }
 ]

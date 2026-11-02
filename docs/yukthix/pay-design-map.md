@@ -23,15 +23,21 @@ Verdicts: **wire design** (a live page and the API exist for this job; the page 
 
 | | pages | live | live, gap | wire | wire, gap | feature not built | phone view | ? | sub-pages |
 |---|---|---|---|---|---|---|---|---|---|
-| A. Runs and payments | 10 | 55 | 8 | 0 | 0 | 0 | 0 | 0 | 63 |
-| B. Inputs, loans, recoveries, queries | 8 | 45 | 7 | 0 | 0 | 0 | 2 | 0 | 54 |
-| C. Structures and set-up | 6 | 41 | 2 | 0 | 0 | 0 | 0 | 0 | 43 |
+| A. Runs and payments | 10 | 63 | 0 | 0 | 0 | 0 | 0 | 0 | 63 |
+| B. Inputs, loans, recoveries, queries | 8 | 51 | 1 | 0 | 0 | 0 | 2 | 0 | 54 |
+| C. Structures and set-up | 6 | 43 | 0 | 0 | 0 | 0 | 0 | 0 | 43 |
 | D. Employee pay and tax | 6 | 37 | 8 | 0 | 0 | 1 | 9 | 0 | 55 |
-| E. Special pay, earned wage access, actuarial, benefits | 14 | 80 | 8 | 0 | 0 | 6 | 8 | 0 | 102 |
-| F. Reports | 1 | 13 | 1 | 0 | 0 | 0 | 0 | 0 | 14 |
+| E. Special pay, earned wage access, actuarial, benefits | 14 | 85 | 3 | 0 | 0 | 6 | 8 | 0 | 102 |
+| F. Reports | 1 | 14 | 0 | 0 | 0 | 0 | 0 | 0 | 14 |
 | G. Records | 3 | 44 | 0 | 0 | 0 | 0 | 0 | 0 | 44 |
 | H. New designs, made live | 5 | 49 | 1 | 0 | 0 | 0 | 0 | 0 | 50 |
-| **All** | **53** | **364** | **35** | **0** | **0** | **7** | **19** | **0** | **425** |
+| **All** | **53** | **386** | **13** | **0** | **0** | **7** | **19** | **0** | **425** |
+
+Pay gaps run (2 Nov 2026, branch `feat/yukthix-pay-gaps-run`): the 22 `live (gap)` rows of PAY-02, 03, 04, 05, 09, 10, 11,
+12, 19, 25, 29, 30, 32, 35, 37 and 38 are live. Recounted by script: every story row of section 4 (between `## 4.` and
+`## 5.`), its verdict cell counted per group heading `### A.` … `### H.`, pages = the `#### PAY-NN` headings under each
+group (the script gives exactly the earlier table, 364 / 35 / 7 / 19 / 425, on the map before this run). Status in
+"Pay gaps run status" at the end.
 
 Pay last four (30 Oct 2026, branch `feat/yukthix-pay-last`): PAY-23 gets 6 residency stories (5 live, 1 live with a gap), PAY-24 3 new
  state stories (live); D, E and All recounted by hand from those rows.
@@ -251,7 +257,7 @@ Live page: /yx/payroll/runs/[id] (Checks step)
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Blocked · Blocking items | live (gap) | inside the run workspace (Validations tab); the input-source table shows there too (founder item 11, 30 Oct 2026); no API for the attendance-group table; only blocking checks can be waived |
+| Blocked · Blocking items | live | inside the run workspace (Validations tab) with the input-source table (founder item 11); pay gaps (2 Nov 2026): the attendance mode per group (GET runs/:id/readiness `groups`: people by location and the dated settings attendance.mode / missing_punch_effect, open exceptions, manual LOP entered; Open LOP input), the design table now one kit component `AttendanceGroupsPanel`; only blocking checks can be waived |
 | WaiveDialog · Waive with reason (dialog open) | live | POST runs/:id/validations/:vid/waive |
 | AllClear · Ready to calculate | live |  |
 | Loading · Loading | live |  |
@@ -271,7 +277,7 @@ Live page: /yx/payroll/runs/[id]
 | Inputs · Inputs tab | live | GET runs/:id/input-sources: people and days or amount per source |
 | Validations · Validations tab | live |  |
 | Approvals · Approvals tab (finance approver) | live |  |
-| Files · Files tab · approved | live (gap) | no journal or statutory rows with links; one "Payments and journal" row opens the payments page |
+| Files · Files tab · approved | live | pay gaps: bank file, payslips, disbursement register, Journal (lines, ready or posted; Export journal opens the payments page Journal tab) and one row per statutory file of the month (download through the single-use file link) plus Statutory files (open the hub); rows only for payroll.journal.export / statutory.filing.view |
 | Loading · Loading | live |  |
 | ErrorState · Error | live |  |
 
@@ -304,7 +310,7 @@ Live page: /yx/payroll/runs/[id] (Publish)
 | story (sub-page) | verdict | note |
 |---|---|---|
 | Ready · Impact preview · type to confirm | live |  |
-| SelfApproval · Sole payroll admin · reason required | live (gap) | the API has no publish self-approval reason |
+| SelfApproval · Sole payroll admin · reason required | live | pay gaps: GET runs/:id `publishAlone`; the publish sheet asks for the reason (self-approval badge); POST runs/:id/publish refuses without it (SELF_APPROVAL_REASON), keeps it in the audit event and tells the System Admins |
 | Published · Published · progress finished | live |  |
 
 #### PAY-10 · Payments and files
@@ -315,7 +321,7 @@ Live page: /yx/payroll/runs/[id]/payments
 |---|---|---|
 | Status · Payment status · failures | live |  |
 | Failure · Returned payment · re-pay route | live | POST payslips/:id/repay (route + reason, audited `payroll.payment.repay`); off-cycle is a one-person bank file released by someone else |
-| FailedIfsc · Failed payment · waiting for corrected IFSC | live (gap) | the API has no "waiting for a new IFSC" status |
+| FailedIfsc · Failed payment · waiting for corrected IFSC | live | pay gaps: payment results take a cause (ifsc, account, other); an IFSC failure shows "Waiting for corrected IFSC" (runs/:id/payslips `waitingFor`), bank files skip it and re-pay through the bank is refused (409 WAITING_FOR_IFSC) until a new salary account is on file; the reimbursement account still pays |
 | Register · Disbursement register · cash and cheque | live |  |
 | Files · Bank files | live | also /yx/payroll/files: every payroll file, second-person release |
 | Journal · Journal export (finance approver) | live | GET runs/:id/journal and export; "Send to accounting system" has no API, live offers Tally, CSV, Zoho Books |
@@ -333,10 +339,10 @@ Live page: /yx/payroll/runs (New run) and /yx/payroll/runs/[id] for an off-cycle
 | story (sub-page) | verdict | note |
 |---|---|---|
 | Fnf · F&F · 2-working-day deadline | live | /yx/payroll/runs/[id] of an F&F run renders OffCycleRunScreen (live): deadline, settlement lines, then the workspace tabs |
-| Retrenchment · F&F retrenchment · blocked without permission | live (gap) | "Permission needed" from the settlement's held lines; the permission reference is recorded in People › Exits, not typed on the run |
+| Retrenchment · F&F retrenchment · blocked without permission | live | pay gaps: the F&F view returns `permission` (needed at the IN.IR threshold, and the request recorded in People › Exits: "authority, granted on …"), shown in the design's "Government permission reference" field; retrenchment lines in the run without a granted permission block approval (not waivable). The reference is the authority and decision date (People has no order number field: question) |
 | RetrenchmentOk · F&F retrenchment · permission recorded | live | same as above |
 | Death · F&F on death in service · nominee shares | live | nominee shares read from the settlement; edited in People's death in service case |
-| Bonus · Bonus run | live (gap) | the bonus lines show in the workspace Inputs and Payslips tabs, not the design's own table |
+| Bonus · Bonus run | live | pay gaps: GET payroll/runs/:id/items; a bonus (or any non-F&F) off-cycle run renders the design's lines table (`OffCycleLinesTable`, shared with the story) above the workspace |
 | ChooseType · Choose run type (arrears only, correction) | live | /yx/payroll/runs/off-cycle ("Start off-cycle run"); Full and final points to /yx/payroll/fnf |
 
 #### PAY-29 · Weekly and fortnightly runs
@@ -347,7 +353,7 @@ Live page: /yx/payroll/runs (weekly and fortnightly groups)
 |---|---|---|
 | WeeklyList · Run list · weekly | live | run list under the PAY-01 home on /yx/payroll/runs; no pay date per run in the API |
 | FortnightlyList · Run list · fortnightly | live |  |
-| WeeklyRun · Weekly run · payslips step | live (gap) | a weekly run opens the PAY-03 run workspace, not this step view |
+| WeeklyRun · Weekly run · payslips step | live | pay gaps: GET runs/:id `payGroup`; a weekly or fortnightly run renders the PAY-29 step view (`FrequencyRunSteps`, shared with the story: readiness, payslips with totals, approval, bank file) over the run workspace, which keeps every action. "Days worked" is not in the payslip list (left out) |
 | Loading · Loading | live |  |
 
 #### PAY-30 · Coverage monitor
@@ -356,7 +362,7 @@ Live page: /yx/payroll/coverage (and inside PAY-02 checks)
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Crossed · Threshold crossed · blocks approval | live (gap) | the API status has no "crossed, set-up needed"; the page is read only, so Switch on / Record applied never show |
+| Crossed · Threshold crossed · blocks approval | live | pay gaps: GET payroll/coverage says `crossed` (covered, no registration on or applied for: the rule that blocks approval) with the registration; Switch on / Record applied save through the statutory set-up registrations (payroll.statutory.setup, second step); without the key the row says what is needed |
 | Approaching · Approaching only | live | /yx/payroll/coverage; "Counting" always Employees (no basis in the API) |
 | Empty · Empty · nothing near a threshold | live |  |
 | Loading · Loading | live |  |
@@ -371,7 +377,7 @@ Live page: /yx/payroll/inputs (Loss of pay)
 |---|---|---|
 | Default · Inline entry · one row with an error | live |  |
 | BulkUpload · Bulk upload · row validation | live | CSV read in the page, one PUT lop-inputs/:month |
-| Frozen · Period frozen · late request only | live (gap) | the inputs API does not return the month stage; a locked month shows as the refusal on save; no late-request form |
+| Frozen · Period frozen · late request only | live | pay gaps: GET payroll/input-periods/:month (stage per entity); a frozen or locked month shows the design's badge and alert, no inline edits, and a Late request drawer (POST payroll/input-corrections: a pay correction for one day, approved by someone else with payroll.correction.approve) |
 | Empty · Empty · no Assumed-present groups | live |  |
 | Loading · Loading | live |  |
 | ErrorState · Error | live |  |
@@ -382,8 +388,8 @@ Live page: /yx/payroll/inputs (One-time pay)
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| List · List · filters and bulk actions | live (gap) | filters and search work; bulk "send for approval" / "delete drafts" have no API (items are never drafts) |
-| AddSheet · Add one-time pay · effect summary | live (gap) | no TDS, PF, ESI effect preview in the API; the panel shows the month or recurring plan and the approval rule |
+| List · List · filters and bulk actions | live | pay gaps: one-time pay drafts (migration 20261320000100); select rows, "Send N for approval" / "Delete N drafts" (POST one-time-pays/bulk, all or nothing, same limit and approver rule as one item) |
+| AddSheet · Add one-time pay · effect summary | live | pay gaps: GET one-time-pays/effect works the month out with the payroll calculator with and without the item: gross, TDS, PF, ESI and net change; Save as draft |
 | Recurring · Add recurring item · prorated months | live | API has a recurring end date (dto-5c); the live copy has no recurring form today |
 | BulkUpload · Bulk upload · row validation | live | CSV read in the page, one POST each row |
 | Empty · Empty · first use | live |  |
@@ -438,10 +444,10 @@ Live page: /yx/payroll/arrears (founder Q6)
 | story (sub-page) | verdict | note |
 |---|---|---|
 | CourtOrders · Court orders | live | tab on /yx/payroll/arrears (RecoveriesScreen in the recoveryTabs slot) |
-| OrderPanel · Court order record · remittances | live (gap) | no remittances endpoint; shows remitted against cap only |
-| CarryForwards · Carry-forwards (negative net) | live (gap) | no list endpoint; tab left out of live |
+| OrderPanel · Court order record · remittances | live | pay gaps: court_order_remittances (migration 20261320000200, insert-only); GET/POST court-orders/:id/remittances: each month's deduction and its payment to the court with the reference, once per month |
+| CarryForwards · Carry-forwards (negative net) | live | pay gaps: GET payroll/carry-forwards (origin month, recovered, balance); a Carry-forwards tab for payroll.input.manage |
 | Overpayments · Overpayments · consent and write-off | live | write-off with reason; "Send reminder" has no API |
-| Cap · Deduction cap check · EMI deferred | live (gap) | no read endpoint; tab left out of live |
+| Cap · Deduction cap check · EMI deferred | live | pay gaps: GET payroll/deferrals and payslips/:id/deduction-cap (the calculator returns its wages, cap, protected net and statutory total); the design's `CapPreview` (now shared) for one payslip |
 | Loading · Loading | live |  |
 
 #### PAY-20 · Payslip query queue
@@ -483,8 +489,8 @@ Live page: /yx/payroll/compensation (builder 2: `CompensationScreen` with `live`
 |---|---|---|
 | Tab · Compensation tab · breakup and history | live | history: GET employees/:id/compensation-history (round 2): salaries and waiting or turned-down requests, who asked and approved |
 | Revision · Revision sheet · effect summary | live | POST compensations/preview, then employees/:id/compensation-changes (for approval); revision letter with signatory |
-| Arrears · Back-dated revision · arrears preview | live (gap) | a back-dated date is taken; the month-by-month arrears table needs arrears months in the preview response |
-| Hourly · Pay basis · hourly rate (placement) | live (gap) | the API takes only entryMode ctc or fixed: no hourly or daily pay basis |
+| Arrears · Back-dated revision · arrears preview | live | pay gaps: compensations/preview returns `arrears` (months already paid, gross difference, first month prorated); the design's table (`ArrearsPreviewTable`, shared) in the revision sheet; the arrears worksheet works the exact lines out once approved |
+| Hourly · Pay basis · hourly rate (placement) | live | pay gaps: the gap note was out of date: the API already took payBasis (monthly, hourly, daily) and rate. The revision sheet now has "Paid by" and the rate; the tab shows the basis and rate |
 | HrPersona · HR view | live | Revise only with employee.salary.manage + employee.change.manage; payroll keeps the statutory profile tab |
 | Loading · Loading | live |  |
 | ErrorState · Error | live | retry |
@@ -731,7 +737,7 @@ Live page: /yx/payroll/special-pay, tab Incentives (`IncentivePlanScreen` with `
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Draft · Draft · tiers, accelerator, cap, clawback | live (gap) | the live form uses the API plan model (target, tiers, cap %, clawback days); effective dates, payout frequency, metric source, group, drafts and versions are not in the model |
+| Draft · Draft · tiers, accelerator, cap, clawback | live | pay gaps (migration 20261320000500): effective dates, payout frequency, metric source, department / location, drafts (Save draft, Edit draft, Publish) and versions (New version from a later date ends the earlier one); results refused on a draft, outside the dates, outside a quarter-end month for a quarterly plan, or for someone outside its group |
 | Overlap · Validation error · overlapping tiers | live |  |
 | Published · Published | live | results, send a month, send clawbacks |
 | Loading · Loading | live |  |
@@ -769,7 +775,7 @@ Live page: /yx/payroll/special-pay, tab On-call (`OnCallRulesScreen` with `live`
 | story (sub-page) | verdict | note |
 |---|---|---|
 | Weekday · Rules · weekday worked example | live | rules and slots |
-| Holiday · Holiday multiplier example | live (gap) | the API has one multiplier: no holiday multiplier, "pay standby when called out" or "count towards 48 h" |
+| Holiday · Holiday multiplier example | live | pay gaps (migration 20261320000300): public-holiday multiplier, "pay standby when called out", "count towards the weekly hours limit" per rule; a slot can be a public holiday; the worked example has Normal day / Public holiday. The Time roster check does not yet read call-out hours (question) |
 | Empty · Empty · no slot types in the roster | live |  |
 | Loading · Loading | live |  |
 | ErrorState · Error | live |  |
@@ -792,9 +798,9 @@ Live page: /yx/payroll/special-pay, tab Settlements (`SettlementArrearsScreen` w
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Categories · Categories and arrears | live (gap) | worker counts per category are not in the API |
+| Categories · Categories and arrears | live | pay gaps: GET special/settlements/:id/preview?month: workers and arrears per category (the posting uses the same helper) |
 | Settlement · Settlement terms | live | send the arrears; "New settlement" drawer (round 2) |
-| Worksheet · Arrears worksheet | live (gap) | the affected-employees list and the embedded PAY-28 worksheet are not in the settlement API |
+| Worksheet · Arrears worksheet | live | pay gaps: Affected employees step (worker, category, from, months, arrears) and the Arrears worksheet step with the PAY-28 worksheet lines (`WorksheetLinesTable`, shared with the arrears worksheet) |
 | Empty · Empty · no settlement yet | live | new (round 2); offers New settlement |
 | NewSettlement · New settlement · drawer open | live | new (founder answer 4); POST special/settlements |
 | NewSettlementFilled · New settlement · filled in | live | new |
@@ -808,7 +814,7 @@ Live page: /yx/payroll/actuarial (`ActuarialScreen` with `live`, offcycle-live.t
 | story (sub-page) | verdict | note |
 |---|---|---|
 | Census · Census versions | live | Ind AS 19 / AS 15, download |
-| Upload · Valuation upload · figures to enter | live (gap) | only the closing figure is stored: service cost, interest, benefits paid, gains and losses cannot be entered |
+| Upload · Valuation upload · figures to enter | live | pay gaps (migration 20261320000400): service cost, interest cost, benefits paid, actuarial loss and gain (all or none; they must reach the closing obligation from the opening one, checked by the API and the database); the design's figures table works the closing out |
 | Uploaded · Valuation uploaded | live |  |
 | Posting · Provision posting | live | someone else posts it |
 | JournalPreview · Provision posting · journal preview | live |  |
@@ -882,7 +888,7 @@ Live page: /yx/payroll/reports
 | Empty · Empty · no data for filters | live |  |
 | Loading · Loading | live |  |
 | ErrorState · Error · the report did not load | live | new state story |
-| NoAccess · No access (HR without payroll scope) | live (gap) | "Request access" is not built: the live page says whom to ask |
+| NoAccess · No access (HR without payroll scope) | live | pay gaps: "Request access" (POST payroll/reports/access-request) through the approvals engine to the people who grant roles (access.role.manage; the System Admins when nobody holds it); the page says when it was sent, approved or turned down. The approver gives the access in Roles & access (auto-grant: question) |
 
 The design's "Schedule" button and dialog stay in the stories only: scheduled reports are not built.
 
@@ -1606,3 +1612,37 @@ access (Partner), payslip chat (Chat).
 (1) issuing Form 16 requires a valid Q4 return link once linking is in normal use; (2) a plain "No deductees this month"
 choice for a month that needs import but had no salary TDS (small follow-up); (3) the review follow-up task can later be
 given to someone else on the desk; (4) "HR admins" = holders of `employee.change.manage` for the entity (keep).
+## Pay gaps run status (branch `feat/yukthix-pay-gaps-run`, 2 Nov 2026)
+
+All 22 PAY rows that were `live (gap)` (not the CMP groups) are live. Two gap notes were out of date: PAY-12 Hourly (the
+API already took payBasis hourly / daily and rate since batch 5b; only the screen lacked the field) and PAY-02 "only
+blocking checks can be waived" (a rule, not a gap).
+
+Migrations (forward-only, prefix 2026132): `20261320000000_pay_failed_ifsc` (payment_records.cause),
+`20261320000100_pay_one_time_drafts` (one_time_pays status draft), `20261320000200_pay_court_order_remittances`
+(new insert-only table, RLS, support exclusion, pay guard), `20261320000300_pay_oncall_holiday`,
+`20261320000400_pay_actuarial_movement`, `20261320000500_pay_incentive_plan_versions`.
+
+New API routes and their keys: GET runs/:id (+ publishAlone, payGroup), GET runs/:id/readiness (+ groups),
+POST runs/:id/publish (+ selfApprovalReason) · payroll.payslip.publish; payment results `cause` · payroll.payment.record;
+GET payroll/runs/:id/items · payroll.offcycle.prepare, payroll.run.view or payroll.run.approve; GET input-periods/:month,
+POST input-corrections · payroll.input.manage; POST one-time-pays/bulk, GET one-time-pays/effect · payroll.input.manage;
+GET / POST court-orders/:id/remittances, GET carry-forwards · payroll.input.manage; GET deferrals,
+GET payslips/:id/deduction-cap · a run key; GET special/settlements/:id/preview, PUT special/plans/:id,
+POST special/plans/:id/publish, POST special/plans/:id/versions · payroll.special.manage; GET / POST
+reports/access-request · none (the person's own request; listed in the new payroll endpoint-permissions spec).
+
+Run checks: a generation's checks count only its latest pass (a cause fixed since no longer blocks; rows are kept).
+
+Questions for the founder (safe default built, suggested answer):
+1. PAY-11 permission reference: People › Exits keeps the authority and the decision date, not an order number. Add an
+   order number field to the permission request? Suggested: yes, in People (one optional field); the run shows it.
+2. PAY-25: on approval the approver gives the access in Roles & access by hand. Auto-grant a time-bound
+   "Payroll reports (read only)" role on approval? Suggested: yes, for the entity of the requester, with a company
+   setting for the days (default 90).
+3. PAY-35: "count call-out hours towards the weekly hours limit" is stored and shown; the Time roster check does not
+   read call-out hours yet. Suggested: the Time builder adds them to the weekly hours check.
+4. PAY-04: a frozen month still accepts LOP through the API (only locked / filed are refused); the screen offers only
+   late requests for frozen months. Suggested: the API refuses LOP for frozen months too (same as the screen).
+5. PAY-09: when several people may publish, the person who prepared the run may still publish alone. Suggested: keep
+   (the run was already approved by someone else).
