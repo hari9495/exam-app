@@ -160,6 +160,7 @@ describe('Claim review (EXP-03)', () => {
     await ue.type(within(dlg).getByRole('textbox'), 'Add the hotel bill');
     await ue.click(within(dlg).getByRole('button', { name: 'Send back' }));
     expect(onDecide).toHaveBeenCalledWith('send_back', 'Add the hotel bill');
+    expect((await screen.findAllByText('Claim sent back to Ravi Kumar for changes')).length).toBeGreaterThan(0);
     await ue.click(screen.getByRole('button', { name: 'Clear' }));
     dlg = screen.getByRole('dialog');
     await ue.type(within(dlg).getByRole('textbox'), 'Client venue, agreed');
@@ -194,5 +195,32 @@ describe('Other currencies and field days (E5)', () => {
     expect(screen.getByLabelText('Add the statement for the rate on line 1')).toBeInTheDocument();
     expect(screen.getByText('From your field day')).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Check and confirm' })).toHaveLength(1);
+  });
+});
+
+describe('Sent back for changes (approvals engine send back)', () => {
+  const back = claim({ status: 'sent_back', decisionNote: 'Add the restaurant name', route: { status: 'sent_back', currentStep: 0, steps: [{ name: 'Manager', state: 'sent_back' }, { name: 'Finance check', state: 'waiting' }] }, can: { edit: true, withdraw: false, decide: false, changeAmounts: false, review: false } });
+
+  it('the employee sees what to change and which step sent it back, then sends it again with a toast', async () => {
+    const onSubmit = vi.fn(async () => ({}));
+    render(<ClaimScreen {...props({ claim: back, onSubmit })} />);
+    expect(screen.getByText("Approver's note: Add the restaurant name")).toBeInTheDocument();
+    expect(screen.getByText('Sent back')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Send back' })).not.toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Send for approval' }));
+    expect(onSubmit).toHaveBeenCalled();
+    expect((await screen.findAllByText('Claim sent again. Approval starts over.')).length).toBeGreaterThan(0);
+  });
+
+  it('a refused resend shows why and no toast; the button is never disabled', async () => {
+    const onSubmit = vi.fn(async () => {
+      throw Object.assign(new Error('Add at least one bill.'), { body: { blockers: [{ text: 'Add at least one bill.' }] } });
+    });
+    render(<ClaimScreen {...props({ claim: { ...back, lines: [] }, onSubmit })} />);
+    const send = screen.getByRole('button', { name: 'Send for approval' });
+    expect(send).toBeEnabled();
+    await ue.click(send);
+    expect((await screen.findAllByText('Add at least one bill.')).length).toBeGreaterThan(0);
+    expect(screen.queryByText('Claim sent again. Approval starts over.')).not.toBeInTheDocument();
   });
 });

@@ -9,6 +9,7 @@ import { EmptyState, InlineAlert } from '../../../components/feedback';
 import { ErrorSummary, FormField, useSaveErrors } from '../../../components/field';
 import { Text } from '../../../components/foundations';
 import { NumberField, TextArea, TextField } from '../../../components/inputs';
+import { useToast } from '../../../components/notify';
 import { ConfirmDialog } from '../../../components/overlay';
 import { Segment } from '../../../components/segment';
 import { Select } from '../../../components/select';
@@ -205,10 +206,12 @@ export function ClaimScreen(p: ClaimScreenProps) {
   const [deciding, setDeciding] = useState<'reject' | 'send_back' | null>(null);
   const [flagging, setFlagging] = useState<{ id: string; decision: 'clear' | 'confirm' } | null>(null);
   const [blockers, setBlockers] = useState<string[]>([]);
+  const { toast } = useToast();
   const cats = new Map(p.categories.map((x) => [x.code, x]));
   const submit = () =>
     run('submit', async () => {
       setBlockers([]);
+      const again = c?.status === 'sent_back';
       try {
         await p.onSubmit();
       } catch (e) {
@@ -216,6 +219,7 @@ export function ClaimScreen(p: ClaimScreenProps) {
         if (b?.length) setBlockers(b.map((x) => x.text));
         throw e;
       }
+      if (again) toast({ tone: 'success', title: 'Claim sent again. Approval starts over.' });
     });
   const pick = (e: ChangeEvent<HTMLInputElement>, lineId?: string) => {
     const f = e.target.files?.[0];
@@ -268,7 +272,7 @@ export function ClaimScreen(p: ClaimScreenProps) {
               <ul className="yx-lif-list">
                 {c.route.steps.map((s, i) => (
                   <li key={`${s.name}-${i}`}>
-                    <Text>{s.name}</Text> <Badge tone={s.state === 'approved' ? 'success' : s.state === 'rejected' ? 'danger' : s.state === 'open' ? 'info' : 'neutral'}>{s.state === 'open' ? 'Waiting' : s.state === 'approved' ? 'Approved' : s.state === 'rejected' ? 'Not approved' : s.state === 'skipped' ? 'Skipped' : 'Later'}</Badge>
+                    <Text>{s.name}</Text> <Badge tone={s.state === 'approved' ? 'success' : s.state === 'rejected' ? 'danger' : s.state === 'sent_back' ? 'warning' : s.state === 'open' ? 'info' : 'neutral'}>{s.state === 'open' ? 'Waiting' : s.state === 'approved' ? 'Approved' : s.state === 'rejected' ? 'Not approved' : s.state === 'sent_back' ? 'Sent back' : s.state === 'skipped' ? 'Skipped' : 'Later'}</Badge>
                   </li>
                 ))}
               </ul>
@@ -362,7 +366,7 @@ export function ClaimScreen(p: ClaimScreenProps) {
           )}
           <div className="yx-lif-row">
             {c.can.edit && (
-              <Button variant="primary" loading={busy === 'submit'} disabled={c.lines.length === 0} onClick={() => void submit()}>
+              <Button variant="primary" loading={busy === 'submit'} onClick={() => void submit()}>
                 Send for approval
               </Button>
             )}
@@ -388,7 +392,10 @@ export function ClaimScreen(p: ClaimScreenProps) {
             setEditing(null);
           }} />}
           {lowering && <LowerDialog line={lowering} currency={c.currency} onClose={() => setLowering(null)} onSave={(amount, reason) => p.onApproveAmount(lowering.id, amount, reason)} />}
-          {deciding && <ReasonDialog title={deciding === 'reject' ? 'Not approve this claim?' : 'Send it back?'} consequence={deciding === 'reject' ? 'The claim closes and the employee sees your reason.' : 'The employee changes it and sends it again; approval starts over.'} label={deciding === 'reject' ? 'Why not' : 'What should change'} confirm={deciding === 'reject' ? 'Do not approve' : 'Send back'} onClose={() => setDeciding(null)} onConfirm={(reason) => p.onDecide(deciding, reason)} />}
+          {deciding && <ReasonDialog title={deciding === 'reject' ? 'Not approve this claim?' : 'Send it back?'} consequence={deciding === 'reject' ? 'The claim closes and the employee sees your reason.' : 'The employee changes it and sends it again; approval starts over.'} label={deciding === 'reject' ? 'Why not' : 'What should change'} confirm={deciding === 'reject' ? 'Do not approve' : 'Send back'} onClose={() => setDeciding(null)} onConfirm={async (reason) => {
+            await p.onDecide(deciding, reason);
+            if (deciding === 'send_back') toast({ tone: 'success', title: `Claim sent back to ${c.person} for changes` });
+          }} />}
           {flagging && <ReasonDialog title={flagging.decision === 'clear' ? 'Clear this flag?' : 'Confirm this flag?'} consequence={flagging.decision === 'clear' ? 'Recorded with your note.' : 'A confirmed duplicate pays nothing for that bill; the employee sees why.'} label="Note" confirm={flagging.decision === 'clear' ? 'Clear flag' : 'Confirm flag'} onClose={() => setFlagging(null)} onConfirm={(note) => p.onFlag(flagging.id, flagging.decision, note)} />}
         </>
       )}
