@@ -1015,10 +1015,11 @@ export class StatutoryFilingsService {
     const months = quarterMonths(r.taxYear, r.quarter);
     const starts = months.map((m) => asDate(`${m}-01`));
     const rows = r.rows as { employeeId: string; employeeCode: string; name: string; month: string; noPan: boolean }[];
-    const [first, imported, paid] = await Promise.all([
+    const [first, imported, paid, nil] = await Promise.all([
       tx.payslip.findFirst({ where: { organizationId: org, legalEntityId: r.legalEntityId, status: 'approved' }, orderBy: { periodStart: 'asc' }, select: { periodStart: true } }),
       tx.asPaidLine.findMany({ where: { organizationId: org, legalEntityId: r.legalEntityId, periodStart: { in: starts } }, distinct: ['periodStart'], select: { periodStart: true } }),
       tx.payslip.findMany({ where: { organizationId: org, legalEntityId: r.legalEntityId, status: 'approved', periodStart: { in: starts } }, distinct: ['periodStart'], select: { periodStart: true } }),
+      tx.tdsNilMonth.findMany({ where: { organizationId: org, legalEntityId: r.legalEntityId, month: { in: starts }, undoneAt: null } }),
     ]);
     const firstMonth = first ? dateOf(first.periodStart).slice(0, 7) : null;
     const inoperative = new Set(
@@ -1026,14 +1027,78 @@ export class StatutoryFilingsService {
     );
     const has = (list: { periodStart: Date }[], m: string) => list.some((x) => dateOf(x.periodStart).slice(0, 7) === m);
     const monthRows = months.map((m) => {
-      const source = has(paid, m) ? ('payroll' as const) : has(imported, m) ? ('imported' as const) : ('none' as const);
-      return { month: m, rows: rows.filter((x) => x.month === m).length, source, missing: source === 'none' && !!firstMonth && m < firstMonth };
+      const none = nil.find((x) => dateOf(x.month).slice(0, 7) === m);
+      const source = has(paid, m) ? ('payroll' as const) : has(imported, m) ? ('imported' as const) : none ? ('nil' as const) : ('none' as const);
+      return {
+        month: m,
+        rows: rows.filter((x) => x.month === m).length,
+        source,
+        missing: source === 'none' && !!firstMonth && m < firstMonth,
+        // CMP-05: recorded as having no salary TDS (undo until the return is filed).
+        nil: none ? { id: none.id, version: none.version, reason: none.reason, recordedAt: none.recordedAt } : null,
+      };
     });
     const seen = new Set<string>();
     const panWarnings = rows
       .filter((x) => (x.noPan || inoperative.has(x.employeeId)) && !seen.has(x.employeeId) && Boolean(seen.add(x.employeeId)))
       .map((x) => ({ employeeId: x.employeeId, employeeCode: x.employeeCode, name: x.name, issue: x.noPan ? ('pan_missing' as const) : ('pan_inoperative' as const) }));
     return { months: monthRows, panWarnings: panWarnings.slice(0, 100), panWarningCount: panWarnings.length, panChecked: new Set(rows.map((x) => x.employeeId)).size };
+  }
+
+  /** The filed original salary return of the quarter a month falls in, if any. */
+  private async filedFor(tx: Tx, org: string, entityId: string, month: string) {
+    const m = Number(month.slice(5));
+    const quarter = Math.floor(((m + 8) % 12) / 3) + 1;
+    return tx.tdsReturn.findFirst({ where: { organizationId: org, legalEntityId: entityId, taxYear: taxYearOf(month), quarter, kind: 'original', status: 'filed', formCode: { in: SALARY_FORMS } }, select: { id: true } });
+  }
+
+  private nilView(x: Prisma.TdsNilMonthGetPayload<object>) {
+    return { id: x.id, entityId: x.legalEntityId, month: dateOf(x.month).slice(0, 7), reason: x.reason, recordedBy: x.recordedBy, recordedAt: x.recordedAt, undoneAt: x.undoneAt, version: x.version };
+  }
+
+  /**
+   * CMP-05 (founder answer 2): a month with no salary TDS at all, recorded with a reason so the return counts it complete
+   * with no rows. Refused for a month still to come, one whose approved payslips or imported lines carry TDS, one already
+   * recorded, and one whose quarter's return is filed.
+   */
+  async recordNilMonth(ctx: TenantContext, user: ScopeUser, entityId: string, month: string, reason: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      await this.entity(tx, c, v, 'statutory.filing.generate', entityId);
+      const today = localDate(new Date(), await entityTimeZone(tx, org, entityId));
+      if (month >= today.slice(0, 7)) throw new BadRequestException(`${monthName(month)} has not ended yet. Record this for a month that is over.`);
+      const m = await this.month(tx, org, entityId, month);
+      const tds = m.slips.reduce((t, x) => t.add(m.sum(x.id, m.codes('tds'))), ZERO);
+      if (tds.gt(0)) throw new ConflictException(`${monthName(month)} has approved payslips with ${rupeesText(tds.toFixed(2))} of TDS. Its rows come from payroll, so it cannot be marked as having no deductees.`);
+      const imported = (await this.importedRows(tx, org, entityId, month, m.codes('tds'))).length;
+      if (imported) throw new ConflictException(`${monthName(month)} has imported as-paid lines with TDS for ${imported} ${imported === 1 ? 'person' : 'people'}, so it cannot be marked as having no deductees.`);
+      if (await this.filedFor(tx, org, entityId, month)) throw new ConflictException('The return for this quarter is filed. A change goes in a correction return.');
+      if (await tx.tdsNilMonth.findFirst({ where: { organizationId: org, legalEntityId: entityId, month: asDate(`${month}-01`), undoneAt: null }, select: { id: true } }))
+        throw new ConflictException(`${monthName(month)} is already recorded as having no deductees.`);
+      const row = await tx.tdsNilMonth.create({ data: { organizationId: org, legalEntityId: entityId, month: asDate(`${month}-01`), reason, recordedBy: v.userId! } });
+      await audit(tx, c, 'statutory.tds_nil_month.recorded', 'tds_nil_month', row.id, { month, reason });
+      return this.nilView(row);
+    });
+  }
+
+  /** Undoes a "no deductees" record (the version as last read) while the quarter's return is not filed. */
+  async undoNilMonth(ctx: TenantContext, user: ScopeUser, id: string, version: number) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const ids = await entitiesFor(tx, c, v, 'statutory.filing.generate');
+      await payScope(tx, ids);
+      const x = await tx.tdsNilMonth.findFirst({ where: { organizationId: org, id } });
+      if (!x || !ids.includes(x.legalEntityId)) throw new NotFoundException('Not found');
+      const month = dateOf(x.month).slice(0, 7);
+      if (x.undoneAt) throw new ConflictException('This is already undone.');
+      if (await this.filedFor(tx, org, x.legalEntityId, month)) throw new ConflictException('The return for this quarter is filed, so this stays. A change goes in a correction return.');
+      const done = await tx.tdsNilMonth.updateMany({ where: { organizationId: org, id, version, undoneAt: null }, data: { undoneAt: new Date(), undoneBy: v.userId!, version: { increment: 1 } } });
+      if (!done.count) throw new ConflictException('Someone else changed this. Reload to see it.');
+      await audit(tx, c, 'statutory.tds_nil_month.undone', 'tds_nil_month', id, { month, reason: x.reason });
+      return this.nilView(await tx.tdsNilMonth.findFirstOrThrow({ where: { organizationId: org, id } }));
+    });
   }
 
   private returnView(r: Prisma.TdsReturnGetPayload<object>) {

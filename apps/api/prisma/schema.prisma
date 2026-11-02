@@ -8274,6 +8274,22 @@ model TdsReturn {
   @@map("tds_returns")
 }
 
+/// CMP-05: a month before go-live recorded as having no salary TDS (undone, never deleted, until the return is filed).
+model TdsNilMonth {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  month          DateTime  @db.Date
+  reason         String    @db.VarChar(500)
+  recordedBy     String    @map("recorded_by") @db.Uuid
+  recordedAt     DateTime  @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  undoneBy       String?   @map("undone_by") @db.Uuid
+  undoneAt       DateTime? @map("undone_at") @db.Timestamptz(3)
+  version        Int       @default(1)
+
+  @@map("tds_nil_months")
+}
+
 /// CMP-06: the salary return a legal entity's year-end certificates are issued against (one per entity and tax year).
 model Form16ReturnLink {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

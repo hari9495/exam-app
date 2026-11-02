@@ -23,6 +23,8 @@ import {
   RegisterRowsDto,
   HomeDuesDto,
   HubDto,
+  NilMonthDto,
+  NilUndoDto,
   PartADto,
   RegisterDto,
   ReturnDto,
@@ -210,6 +212,20 @@ export class StatutoryController {
   @RequirePermissions('statutory.filing.generate')
   correction(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.filings.correction(ctx, this.user(req), id);
+  }
+
+  /** CMP-05 (founder answer 2): a month before go-live recorded as having no salary TDS, and undone. */
+  @Post('tds-nil-months')
+  @RequirePermissions('statutory.filing.generate')
+  recordNil(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: NilMonthDto) {
+    return this.filings.recordNilMonth(ctx, this.user(req), dto.entityId, dto.month, dto.reason);
+  }
+
+  @Post('tds-nil-months/:id/undo')
+  @HttpCode(200)
+  @RequirePermissions('statutory.filing.generate')
+  undoNil(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: NilUndoDto) {
+    return this.filings.undoNilMonth(ctx, this.user(req), id, dto.version);
   }
 
   @Post('tds-returns/part-a')

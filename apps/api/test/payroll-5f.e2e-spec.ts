@@ -245,7 +245,7 @@ describe('Payroll batch 5f (statutory files, returns, registers)', () => {
   });
 
   it('every 5f table has forced RLS, tenant isolation, the support exclusion and the pay guard', async () => {
-    const tables = ['statutory_filings', 'statutory_penalty_lines', 'tds_challans', 'tds_returns', 'statutory_registers', 'register_rows', 'inspection_packs', 'advisory_reviews', 'form16_return_links'];
+    const tables = ['statutory_filings', 'statutory_penalty_lines', 'tds_challans', 'tds_returns', 'statutory_registers', 'register_rows', 'inspection_packs', 'advisory_reviews', 'form16_return_links', 'tds_nil_months'];
     const rows = await prisma.$queryRaw<{ t: string; ok: boolean }[]>`
       SELECT c.relname AS t, (c.relrowsecurity AND c.relforcerowsecurity
         AND EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = c.oid AND p.polname = 'tenant_isolation')
@@ -602,5 +602,70 @@ describe('Payroll batch 5f (statutory files, returns, registers)', () => {
     expect(bell).toHaveLength(1);
     expect(bell[0].linkPath).toBe('/yx/payroll/advisories');
     await api('compliance', 'post', `/statutory/advisories/${a.code}/review`).send({ entityId: ids.entity, note: 'Again' }).expect(409);
+  });
+
+  it('CMP-05 "No deductees this month": recorded with a reason, undone until filed; refused where TDS exists; scoped', async () => {
+    const back = (n: number) => new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5)) - 1 - n, 1)).toISOString().slice(0, 7);
+    const tyOf = (m: string) => {
+      const y = Number(m.slice(0, 4)) - (Number(m.slice(5)) < 4 ? 1 : 0);
+      return `${y}-${String((y + 1) % 100).padStart(2, '0')}`;
+    };
+    const qOf = (m: string) => Math.floor(((Number(m.slice(5)) + 8) % 12) / 3) + 1;
+    const nilOf = async (m: string) => {
+      const r = (await api('payAdmin', 'post', '/statutory/tds-returns').send({ entityId: ids.entity, taxYear: tyOf(m), quarter: qOf(m) }).expect(201)).body;
+      return { r, m: r.completeness.months.find((x: { month: string }) => x.month === m) };
+    };
+    const pastA = back(4);
+    expect((await nilOf(pastA)).m).toMatchObject({ source: 'none', missing: true, nil: null });
+    const record = (who: Who, m: string, reason = 'The company paid no one above the TDS limit that month') => api(who, 'post', '/statutory/tds-nil-months').send({ entityId: ids.entity, month: m, reason });
+    // Bad input, the wrong role, another company, a month not over yet.
+    await record('payAdmin', pastA, 'x').expect(400);
+    await record('emp1', pastA).expect(403);
+    await record('payAdminB', pastA).expect(404);
+    expect((await record('payAdmin', month).expect(400)).body.message).toMatch(/has not ended yet/);
+    const nil = (await record('payAdmin', pastA).expect(201)).body;
+    expect(nil).toMatchObject({ month: pastA, version: 1, undoneAt: null, recordedBy: users.payAdmin });
+    expect((await record('payAdmin', pastA).expect(409)).body.message).toMatch(/already recorded/);
+    expect((await nilOf(pastA)).m).toMatchObject({ source: 'nil', rows: 0, missing: false, nil: { id: nil.id, reason: 'The company paid no one above the TDS limit that month' } });
+    // Undo: the version as last read; once only; then it can be recorded again.
+    await api('payAdmin', 'post', `/statutory/tds-nil-months/${nil.id}/undo`).send({ version: 7 }).expect(409);
+    await api('payAdminB', 'post', `/statutory/tds-nil-months/${nil.id}/undo`).send({ version: 1 }).expect(404);
+    await api('emp1', 'post', `/statutory/tds-nil-months/${nil.id}/undo`).send({ version: 1 }).expect(403);
+    expect((await api('payAdmin', 'post', `/statutory/tds-nil-months/${nil.id}/undo`).send({ version: 1 }).expect(200)).body).toMatchObject({ version: 2, undoneAt: expect.any(String) });
+    await api('payAdmin', 'post', `/statutory/tds-nil-months/${nil.id}/undo`).send({ version: 2 }).expect(409);
+    expect((await nilOf(pastA)).m).toMatchObject({ source: 'none', missing: true });
+    const again = (await record('compliance', pastA).expect(201)).body;
+    // Undone rows never change; nothing is ever deleted.
+    await expect(scoped((tx) => tx.tdsNilMonth.update({ where: { id: nil.id }, data: { reason: 'Changed later' } }))).rejects.toThrow(/YX_NIL_MONTH_UNDONE/);
+    await expect(scoped((tx) => tx.tdsNilMonth.deleteMany({ where: { id: again.id } }))).rejects.toThrow(/permission denied/);
+    // Once the quarter's return is filed the record stays; a month in a filed quarter cannot be recorded.
+    await scoped((tx) => tx.tdsReturn.updateMany({ where: { legalEntityId: ids.entity, taxYear: tyOf(pastA), quarter: qOf(pastA), kind: 'original' }, data: { status: 'filed', tokenNo: 'TKN-NIL-1' } }));
+    expect((await api('payAdmin', 'post', `/statutory/tds-nil-months/${again.id}/undo`).send({ version: 1 }).expect(409)).body.message).toMatch(/is filed, so this stays/);
+    const prior = back(1);
+    if (qOf(prior) === quarter && tyOf(prior) === ty) expect((await record('payAdmin', prior).expect(409)).body.message).toMatch(/return for this quarter is filed/);
+    // Refused where TDS exists: imported as-paid lines, then approved payslips.
+    const pastC = back(6);
+    const imp = (await api('payAdmin', 'post', '/payroll/imports').send({ legalEntityId: ids.entity, kind: 'as_paid_lines', rows: [{ employeeCode: 'P5F-001', month: pastC, componentCode: 'basic', amount: '50000' }, { employeeCode: 'P5F-001', month: pastC, componentCode: 'tds', amount: '2500' }] }).expect(201)).body;
+    await api('payAdmin', 'post', `/payroll/imports/${imp.id}/commit`).expect(200);
+    expect((await record('payAdmin', pastC).expect(409)).body.message).toMatch(/imported as-paid lines with TDS for 1 person/);
+    const pastB = back(5);
+    await scoped(async (tx) => {
+      const base = await tx.payslip.findFirstOrThrow({ where: { runId: ids.run, employeeId: ids.emp1, status: 'approved' } });
+      const slip = await tx.payslip.create({
+        data: { organizationId: org.A.id, legalEntityId: ids.entity, runType: 'offcycle', employmentId: base.employmentId, employeeId: ids.emp1, periodStart: new Date(`${pastB}-01T00:00:00Z`), calcVersion: 1, gross: 50000, deductions: 3000, net: 47000, employerCost: 50000, ruleVersions: base.ruleVersions as object, snapshotHash: 'c'.repeat(64), resultHash: 'd'.repeat(64) },
+      });
+      await tx.payslipLine.createMany({
+        data: [
+          { code: 'basic', kind: 'earning', amount: 50000 },
+          { code: 'tds', kind: 'deduction', amount: 3000 },
+        ].map((l, i) => ({ organizationId: org.A.id, legalEntityId: ids.entity, employeeId: ids.emp1, payslipId: slip.id, position: i, componentCode: l.code, name: l.code, kind: l.kind, amount: l.amount, explanation: 'Paid in an earlier month.' })),
+      });
+      await tx.payslip.update({ where: { id: slip.id }, data: { status: 'approved', approvedAt: new Date() } });
+    });
+    expect((await record('payAdmin', pastB).expect(409)).body.message).toMatch(/has approved payslips with ₹3,000 of TDS/);
+    // Audited; another company has none.
+    const audits = await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, action: { startsWith: 'statutory.tds_nil_month.' } }, select: { action: true } }));
+    expect(audits.map((x) => x.action).sort()).toEqual(['statutory.tds_nil_month.recorded', 'statutory.tds_nil_month.recorded', 'statutory.tds_nil_month.undone']);
+    expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.tdsNilMonth.count({ where: { organizationId: org.B.id } }))).toBe(0);
   });
 });

@@ -227,3 +227,24 @@ export class Form16LinkDto extends Form16StatusDto {
   @Min(1)
   version?: number;
 }
+
+/** CMP-05: a month before go-live with no salary TDS. */
+export class NilMonthDto {
+  @IsUUID()
+  entityId!: string;
+
+  @Matches(MONTH)
+  month!: string;
+
+  @trim()
+  @IsString()
+  @MinLength(5)
+  @MaxLength(500)
+  reason!: string;
+}
+
+export class NilUndoDto {
+  @IsInt()
+  @Min(1)
+  version!: number;
+}
