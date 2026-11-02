@@ -878,46 +878,80 @@ export function ExitCaseWorkspace({ persona = 'hr', current = 'clearance', varia
 
 type Clear = (typeof CLEARANCE)[number];
 
-/** The live app's clearance (design audit step 3): sign-offs for leavers that I or my team own. */
+/** The live app's clearance (design audit step 3): sign-offs for leavers that I or my team own; HR (lifecycle.exit.manage)
+ * also sees every department leaver by leaver (`hrRows`). */
 export interface LiveClearance {
   state: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry: () => void;
   rows: MyClearanceItem[];
+  /** PPL-20 HR view: every department's items of the leavers in HR's scope; absent for owners. */
+  hrRows?: MyClearanceItem[];
   onSignOff: ExitCaseScreenProps['onSignOff'];
+  onOpenExit?: (exitCaseId: string) => void;
 }
+
+const CLEAR_STATUS = (r: MyClearanceItem) => (r.status === 'cleared' ? 'Done' : r.status === 'waived' ? 'Waived' : 'Pending');
 
 // PPL-20
 export function ClearanceSignoffs({ owner, live }: { owner?: string; live?: LiveClearance }) {
   const [signing, setSigning] = useState<MyClearanceItem | null>(null);
   const [all, setAll] = useState(false);
+  const [view, setView] = useState<'leaver' | 'mine'>(live?.hrRows ? 'leaver' : 'mine');
+  const [leaverPick, setLeaverPick] = useState<string | null>(null);
   type Row = Clear & { person?: string; lastDay?: Date };
-  const liveRows: Row[] = (live?.rows ?? [])
-    .filter((r) => all || r.status === 'open')
-    .map((r) => ({ id: r.id, dept: LIVE_DEPT[r.department], owner: r.owner, item: r.title, status: r.status === 'cleared' ? 'Done' : r.status === 'waived' ? 'Waived' : 'Pending', recovery: r.recoveryAmount ? Number(r.recoveryAmount) : 0, person: r.person, lastDay: isoDay(r.lastDay) }));
+  const hrView = Boolean(live?.hrRows) && view === 'leaver';
+  // HR: one leaver at a time (the one picked, else the first with open items).
+  const leavers = [...new Map((live?.hrRows ?? []).map((r) => [r.exitCaseId, r])).values()];
+  const leaver = leavers.find((r) => r.exitCaseId === leaverPick) ?? leavers[0] ?? null;
+  const hrItems = (live?.hrRows ?? []).filter((r) => r.exitCaseId === leaver?.exitCaseId);
+  const source = hrView ? hrItems : (live?.rows ?? []).filter((r) => all || r.status === 'open');
+  const liveRows: Row[] = source.map((r) => ({ id: r.id, dept: LIVE_DEPT[r.department], owner: r.owner, item: r.title, status: CLEAR_STATUS(r), recovery: r.recoveryAmount ? Number(r.recoveryAmount) : 0, person: r.person, lastDay: isoDay(r.lastDay) }));
   const rows: Row[] = live ? liveRows : owner ? CLEARANCE.filter((c) => c.owner === owner) : CLEARANCE;
+  // The design's HR table (department, items, owner) for the sample and the live HR view; owners see the leaver column.
+  const leaverCol = live && !hrView;
   const cols: TableColumn<Row>[] = [
-    ...(live ? [{ key: 'person', header: 'Leaver', type: 'person', value: (r: Row) => r.person ?? '', person: (r: Row) => ({ name: r.person ?? '', secondary: r.lastDay ? `Last day ${formatDate(r.lastDay)}` : undefined }), width: 210 } as TableColumn<Row>] : []),
-    { key: 'dept', header: 'Department', value: (r) => r.dept, width: live ? 130 : 190 },
-    { key: 'item', header: 'Items', value: (r) => r.item, ...(live ? { render: (r: Row) => <span className="yx-ppl__type"><span>{r.item}</span><span className="yx-ppl__sub">{r.owner}</span></span> } : {}), width: 320 },
-    // Live: the owner is you or your team, shown under the item instead of its own column.
-    ...(live ? [] : [{ key: 'owner', header: 'Owner', type: 'person', value: (r: Row) => r.owner, person: (r: Row) => ({ name: r.owner }), width: 200 } as TableColumn<Row>]),
+    ...(leaverCol ? [{ key: 'person', header: 'Leaver', type: 'person', value: (r: Row) => r.person ?? '', person: (r: Row) => ({ name: r.person ?? '', secondary: r.lastDay ? `Last day ${formatDate(r.lastDay)}` : undefined }), width: 210 } as TableColumn<Row>] : []),
+    { key: 'dept', header: 'Department', value: (r) => r.dept, width: leaverCol ? 130 : 190 },
+    { key: 'item', header: 'Items', value: (r) => r.item, ...(leaverCol ? { render: (r: Row) => <span className="yx-ppl__type"><span>{r.item}</span><span className="yx-ppl__sub">{r.owner}</span></span> } : {}), width: 320 },
+    // Owners: the owner is you or your team, shown under the item instead of its own column.
+    ...(leaverCol ? [] : [{ key: 'owner', header: 'Owner', type: 'person', value: (r: Row) => r.owner, person: (r: Row) => ({ name: r.owner }), width: 200 } as TableColumn<Row>]),
     { key: 'recovery', header: 'Recovery', type: 'money', value: (r) => r.recovery, total: 'sum', width: 130 },
     { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => (v === 'Done' ? 'success' : v === 'Blocked' ? 'danger' : v === 'Waived' ? 'neutral' : 'warning'), width: 120 },
   ];
   const open = CLEARANCE.filter((c) => c.status !== 'Done').length;
   const liveOpen = (live?.rows ?? []).filter((r) => r.status === 'open').length;
+  const hrOpen = hrItems.filter((r) => r.status === 'open').length;
+  const pool = hrView ? hrItems : (live?.rows ?? []);
   return (
-    <PeopleFrame active="Clearance" persona={owner || live ? 'mgr' : 'hr'}>
+    <PeopleFrame active="Clearance" persona={owner || (live && !live.hrRows) ? 'mgr' : 'hr'}>
       <PageHeader
-        title={live ? 'Clearance: your sign-offs' : owner ? 'Clearance: your sign-offs' : 'Clearance · Meera Iyer'}
-        description={live ? `${liveOpen} ${liveOpen === 1 ? 'sign-off is' : 'sign-offs are'} open for people leaving that you or your team look after. Open items block F&F finalisation, not the exit itself.` : `Last working day ${formatDate(MEERA.lwd)}. Open items block F&F finalisation, not the exit itself.`}
+        title={hrView ? (leaver ? `Clearance · ${leaver.person}` : 'Clearance') : live ? 'Clearance: your sign-offs' : owner ? 'Clearance: your sign-offs' : 'Clearance · Meera Iyer'}
+        description={
+          hrView
+            ? leaver
+              ? `Last working day ${formatDate(isoDay(leaver.lastDay))}. Open items block F&F finalisation, not the exit itself.`
+              : 'Every department signs off before F&F. Leavers with open sign-offs show up here.'
+            : live
+              ? `${liveOpen} ${liveOpen === 1 ? 'sign-off is' : 'sign-offs are'} open for people leaving that you or your team look after. Open items block F&F finalisation, not the exit itself.`
+              : `Last working day ${formatDate(MEERA.lwd)}. Open items block F&F finalisation, not the exit itself.`
+        }
+        actions={hrView && leaver && live?.onOpenExit ? <Button onClick={() => live.onOpenExit!(leaver.exitCaseId)}>Open exit case</Button> : undefined}
       />
       {!owner && !live && <InlineAlert tone="warning">{open} of {CLEARANCE.length} sign-offs open. Finance is blocked on an unclaimed advance of {formatINR(5000)}.</InlineAlert>}
       {live && (
-        <Segment label="Show" value={all ? 'all' : 'open'} onChange={(v) => setAll(v === 'all')} options={[{ value: 'open', label: 'To do' }, { value: 'all', label: 'All' }]} />
+        <div className="yx-ppl__filterbar">
+          {live.hrRows && <Segment label="View" value={view} onChange={setView} options={[{ value: 'leaver', label: `By leaver (${leavers.length})` }, { value: 'mine', label: 'Your sign-offs' }]} />}
+          {hrView && leavers.length > 1 && (
+            <span className="yx-ppl__head-select">
+              <Select aria-label="Leaver" size="sm" value={leaver?.exitCaseId ?? null} onChange={setLeaverPick} options={leavers.map((r) => ({ value: r.exitCaseId, label: `${r.person} · last day ${formatDate(isoDay(r.lastDay))}` }))} />
+            </span>
+          )}
+          {!hrView && <Segment label="Show" value={all ? 'all' : 'open'} onChange={(v) => setAll(v === 'all')} options={[{ value: 'open', label: 'To do' }, { value: 'all', label: 'All' }]} />}
+        </div>
       )}
+      {hrView && leaver && hrOpen > 0 && <InlineAlert tone="warning">{`${hrOpen} of ${hrItems.length} sign-offs open.`}</InlineAlert>}
       {live?.state === 'error' ? (
-        <ErrorState title="We couldn't load your sign-offs" description="Check your connection and try again." onRetry={live.onRetry} />
+        <ErrorState title="We couldn't load the sign-offs" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : (
         <DataTable
           label="Clearance sign-offs"
@@ -925,7 +959,7 @@ export function ClearanceSignoffs({ owner, live }: { owner?: string; live?: Live
           rows={rows}
           getRowId={(r) => r.id}
           state={live?.state === 'loading' ? 'loading' : 'ready'}
-          rowButtons={(r) => (r.status !== 'Pending' && r.status !== 'Blocked' ? null : <Button size="sm" onClick={live ? () => setSigning(live.rows.find((x) => x.id === r.id) ?? null) : undefined}>Sign off</Button>)}
+          rowButtons={(r) => (r.status !== 'Pending' && r.status !== 'Blocked' ? null : <Button size="sm" onClick={live ? () => setSigning(pool.find((x) => x.id === r.id) ?? null) : undefined}>Sign off</Button>)}
           // Live: a recovery and a note are part of the sign-off.
           rowActions={
             live
@@ -937,7 +971,7 @@ export function ClearanceSignoffs({ owner, live }: { owner?: string; live?: Live
                   </>
                 )
           }
-          empty={<EmptyState title="Nothing to sign off" description="Clearance items for leavers you own show up here." />}
+          empty={hrView ? <EmptyState title="No open clearance" description="Leavers in your scope with sign-offs still open show up here." /> : <EmptyState title="Nothing to sign off" description="Clearance items for leavers you own show up here." />}
         />
       )}
       {live && signing && <SignOffDialog item={signing} onClose={() => setSigning(null)} onSignOff={live.onSignOff} />}

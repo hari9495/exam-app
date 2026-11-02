@@ -186,6 +186,14 @@ describe('Lifecycle batch 6c', () => {
     const mgrItems = (await api('mgr', 'get', '/lifecycle/clearance/mine').expect(200)).body.rows;
     expect(mgrItems.map((i: { department: string }) => i.department)).toEqual(['manager_handover']);
     await api('ravi', 'get', '/lifecycle/clearance/mine').expect(200).expect((r) => expect(r.body.rows).toHaveLength(0));
+    // PPL-20 HR view by leaver: every department of Ravi's exit for HR; the owner-only, the leaver and company B are refused.
+    const byLeaver = (await api('hr', 'get', '/lifecycle/clearance').expect(200)).body.rows as { exitCaseId: string; department: string; person: string; owner: string }[];
+    const ravis = byLeaver.filter((r) => r.exitCaseId === ids.raviCase);
+    expect(new Set(ravis.map((r) => r.department))).toEqual(new Set(['manager_handover', 'it', 'admin', 'finance', 'hr', 'asset']));
+    expect(ravis[0].person).toMatch(/Ravi/);
+    await api('mgr', 'get', '/lifecycle/clearance').expect(403);
+    await api('ravi', 'get', '/lifecycle/clearance').expect(403);
+    expect((await api('adminB', 'get', '/lifecycle/clearance').expect(200)).body.rows.some((r: { exitCaseId: string }) => r.exitCaseId === ids.raviCase)).toBe(false);
     const handover = mgrItems[0];
     await api('ravi', 'post', `/lifecycle/clearance/${handover.id}/sign-off`).send({ action: 'clear', version: handover.version }).expect(404);
     await api('mgr', 'post', `/lifecycle/clearance/${handover.id}/sign-off`).send({ action: 'waive', version: handover.version }).expect(400);

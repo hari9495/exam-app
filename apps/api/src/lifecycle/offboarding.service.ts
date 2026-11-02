@@ -92,6 +92,33 @@ export class OffboardingService {
     });
   }
 
+  /**
+   * PPL-20 HR view by leaver: every department's items for the leavers in HR's scope (lifecycle.exit.manage on the
+   * person) whose clearance is still open. Never the HR person's own exit.
+   */
+  async hrClearance(ctx: TenantContext, user: ScopeUser) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const own = await ownOf(tx, c, v);
+      const openCases = await tx.clearanceItem.findMany({ where: { organizationId: org, status: 'open' }, select: { exitCaseId: true }, distinct: ['exitCaseId'] });
+      const cases = (await tx.exitCase.findMany({ where: { organizationId: org, id: { in: openCases.map((x) => x.exitCaseId) }, status: { in: ['accepted', 'cleared', 'exited'] } }, orderBy: { createdAt: 'asc' } })).filter((k) => k.employeeId !== own.employeeId);
+      const reach = await Promise.all(cases.map((k) => reachesPerson(tx, c, v, 'lifecycle.exit.manage', k.personId, own)));
+      const mine = cases.filter((_, i) => reach[i]);
+      const items = await tx.clearanceItem.findMany({ where: { organizationId: org, exitCaseId: { in: mine.map((k) => k.id) } }, orderBy: { createdAt: 'asc' } });
+      const people = await tx.employee.findMany({ where: { organizationId: org, id: { in: mine.map((k) => k.employeeId) } } });
+      const names = await this.exits.userNames(tx, org, items.map((i) => i.ownerUserId));
+      const gnames = await this.exits.groupNames(tx, org, items.map((i) => i.ownerGroupId));
+      return {
+        today: todayIst(),
+        rows: items.map((i) => {
+          const k = mine.find((x) => x.id === i.exitCaseId)!;
+          return { ...this.exits.itemView(i, names, gnames), exitCaseId: k.id, person: displayName(people.find((p) => p.id === k.employeeId)!), lastDay: iso(k.approvedLwd ?? k.standardLwd) };
+        }),
+      };
+    });
+  }
+
   async signOff(ctx: TenantContext, user: ScopeUser, itemId: string, dto: SignOffDto) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {

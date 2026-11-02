@@ -170,6 +170,13 @@ export class ExitsController {
     return this.offboarding.myClearance(ctx, this.user(req));
   }
 
+  /** PPL-20 HR view: every department's items, leaver by leaver, for leavers in the caller's scope. */
+  @Get('clearance')
+  @RequirePermissions('lifecycle.exit.manage')
+  hrClearance(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.offboarding.hrClearance(ctx, this.user(req));
+  }
+
   @Post('clearance/:id/sign-off')
   @HttpCode(200)
   signOff(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SignOffDto) {
