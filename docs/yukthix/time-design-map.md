@@ -140,6 +140,11 @@ the page; export up to 10,000 rows).
 
 Later on 29 Oct ("both OK", then "OK"): the Ledger and LOP month picker stays in the page header beside the report picker; "Adjust balance" is live on the HR leave home (design TIM-17 HR). It loads only the chosen person's balances (`GET people/:id/balances`). HR can pick themselves, and the server refuses that, as Apply for someone does.
 
+## Founder answers, 2 Nov 2026 (punch note and expense send back, "all ok")
+(1) no company switch for expense send back for now; add one if a company asks; (2) an expense rejection from the
+approvals inbox needs at least 3 letters too, as on the claim page (done); (3) a manager or HR sees the note on a refused
+punch (already so).
+
 ## Founder answers, 30 Oct 2026 (Time follow-up questions, "all ok")
 (1) training "Who" is who attends (everyone at a location, or chosen people); a trainer name field later if needed;
 (2) a sent-back leave request that is resent goes through the whole approval chain again; (3) expense claims move onto

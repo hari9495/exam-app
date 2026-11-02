@@ -507,6 +507,9 @@ export class ApprovalsEngine {
       const fresh = await tx.wfTask.findFirstOrThrow({ where: { id: task.id } });
       if (fresh.status !== 'open' || req.status !== 'pending' || fresh.step !== req.currentStep) throw new ConflictException('This approval is already closed.');
       if (decision === 'reject' && !reason?.trim()) throw new BadRequestException('Say why you are not approving it.');
+      // An expense claim's reason is read by the employee: at least 3 letters here too, as on the claim page (founder, 2 Nov 2026).
+      if (decision !== 'approve' && req.subjectType === 'expense_claim' && (reason?.trim().length ?? 0) < 3)
+        throw new BadRequestException(decision === 'send_back' ? 'Say what the employee should change.' : 'Say why you are not approving it.');
       if (decision === 'send_back' && !reason?.trim()) throw new BadRequestException('Say what to change, so the person who asked knows.');
       const steps = req.steps as unknown as FrozenStep[];
       const s = steps[fresh.step];

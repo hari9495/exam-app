@@ -275,6 +275,8 @@ describe('Expenses batch E2', () => {
     const item = inbox.find((t) => t.requestId === now)!;
     expect(item.canSendBack).toBe(true);
     await wf('mgr', item.taskId, 'send_back', 'ab').expect(400);
+    // A rejection from the inbox needs 3 letters too (founder, 2 Nov 2026), as on the claim page.
+    expect((await wf('mgr', item.taskId, 'reject', 'no').expect(400)).body.message).toBe('Say why you are not approving it.');
     expect((await claim('ravi', id)).status).toBe('submitted');
     await wf('mgr', item.taskId, 'send_back', 'Attach the bill').expect(200);
     const back = await claim('ravi', id);
