@@ -32,6 +32,22 @@ export interface RateCard {
   validTo: string | null;
 }
 
+/** GET payroll/special/plans/:id/results?month (PAY-32 results sheet, PAY-33 held part). */
+export interface IncentiveResultRow {
+  id: string;
+  employeeId: string;
+  quota: string;
+  actual: string;
+  amount: string;
+  /** The part held until the customer pays, its reason, and whether it has been released to payroll. */
+  held: string;
+  heldReason: string | null;
+  released: boolean;
+  workings: { attainment?: string } | null;
+  /** The month's results were sent to payroll. */
+  posted: boolean;
+}
+
 export interface IncentivePlanView {
   id: string;
   name: string;

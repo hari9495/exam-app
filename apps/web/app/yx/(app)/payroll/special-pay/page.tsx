@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { SpecialPayHomeScreen, type IncentivePlanView, type PieceOutput, type TipPoolView, type UnionRemittance, type PieceCheck, type OncallRuleView, type RateCard, type SetupEntity, type SpecialPosting, type UnionsView, type SettlementPreview } from '@yukthix/ui/pay';
+import { SpecialPayHomeScreen, type IncentivePlanView, type IncentiveResultRow, type PieceOutput, type TipPoolView, type UnionRemittance, type PieceCheck, type OncallRuleView, type RateCard, type SetupEntity, type SpecialPosting, type UnionsView, type SettlementPreview } from '@yukthix/ui/pay';
 import { useOrg } from '../../../../../lib/yx-org';
 import { payState, usePay, usePayRead } from '../../../../../lib/yx-pay';
 import { useApiWrite, useNames } from '../../../../../lib/yx-pay-5j';
@@ -68,6 +68,9 @@ export default function YxPaySpecialPage() {
         onPublishPlan: (id) => sp(`plans/${e(id)}/publish`),
         onNewPlanVersion: (id, effectiveFrom) => sp(`plans/${e(id)}/versions`, { effectiveFrom }),
         onSaveResult: (planId, x) => sp(`plans/${e(planId)}/results`, { month, rows: [x] }),
+        // PAY-32 results sheet (founder answer 7): the month's results and releasing a held part in this month.
+        onResults: (planId) => read<IncentiveResultRow[]>(`/special/plans/${e(planId)}/results?month=${month}`),
+        onReleaseHeld: (planId, resultId) => sp(`plans/${e(planId)}/results/${e(resultId)}/release`, { month }),
         onAddPool: (x) => sp('tip-pools', { ...x, month }) as Promise<{ id: string }>,
         onAddRule: (x) => sp('oncall-rules', { legalEntityId: entityId, ...x }),
         onSettlementPreview: (id) => read<SettlementPreview>(`/special/settlements/${e(id)}/preview?month=${month}`),

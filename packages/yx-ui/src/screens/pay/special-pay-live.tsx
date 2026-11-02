@@ -27,7 +27,7 @@ import { PersonPicker, type PersonHit } from './live/inputs';
 import { EntityPicker } from './live/setup';
 import type { LoadState } from './live/types';
 import type { SetupEntity } from './live/types-5b';
-import type { IncentivePlanView, OncallRuleView, RateCard as RateCardView, SpecialPosting, UnionsView } from './live/types-5i';
+import type { IncentivePlanView, IncentiveResultRow, OncallRuleView, RateCard as RateCardView, SpecialPosting, UnionsView } from './live/types-5i';
 import { IncentivePlanScreen, LayoffDrawer, OnCallRulesScreen, PieceRateScreen, SpecialPayHomeBody, TipsPoolScreen, UnionCheckoffScreen, VrsDrawer, type SpecialTab } from './special-pay';
 import { Head, monthName } from './settlement-live';
 import { SettlementArrearsScreen } from './offcycle';
@@ -105,7 +105,11 @@ export interface LiveSpecialPay {
   onUpdatePlan?: (id: string, x: PlanInput & { version: number }) => Promise<unknown>;
   onPublishPlan?: (id: string) => Promise<unknown>;
   onNewPlanVersion?: (id: string, effectiveFrom: string) => Promise<unknown>;
-  onSaveResult: (planId: string, x: { employeeId: string; quota: string; actual: string }) => Promise<unknown>;
+  onSaveResult: (planId: string, x: { employeeId: string; quota: string; actual: string; held?: string; heldReason?: string }) => Promise<unknown>;
+  /** PAY-32 results sheet: the month's results of a plan. */
+  onResults?: (planId: string) => Promise<IncentiveResultRow[]>;
+  /** PAY-33: release a result's held part to payroll in the page's month (approved like any posting). */
+  onReleaseHeld?: (planId: string, resultId: string) => Promise<unknown>;
   onAddPool: (x: { locationId: string; amount: string; method: 'points' | 'hours' | 'shifts'; paidDirect: boolean; shares: { employeeId: string; basis: string }[] }) => Promise<{ id: string }>;
   onAddRule: (x: { name: string; standbyAmount: string; calloutMinHours: string; calloutRate: string; multiplier: string; holidayMultiplier?: string; payStandbyWhenCalled?: boolean; countTowardsWeekly?: boolean }) => Promise<unknown>;
   onAddSlot: (x: { ruleId: string; employeeId: string; slotDate: string; calloutHours?: string; onHoliday?: boolean }) => Promise<unknown>;
@@ -531,6 +535,7 @@ export function LiveIncentivePlans({ live }: { live: LiveSpecialPay }) {
   const say = (title: string, tone: 'success' | 'error' = 'success') => toast({ tone, title });
   const dated = (p: IncentivePlanView) => (p.effectiveFrom ? `${dateText(p.effectiveFrom)}${p.effectiveTo ? ` to ${dateText(p.effectiveTo)}` : ' on'}` : 'Open-ended');
   const [result, setResult] = useState<IncentivePlanView | null>(null);
+  const [sheet, setSheet] = useState<IncentivePlanView | null>(null);
   const month = monthName(live.month);
   const cols: TableColumn<IncentivePlanView>[] = [
     { key: 'plan', header: 'Plan', value: (p) => p.name, render: (p) => <div>{p.name}<p className="yx-pay-note">{KIND_LABEL[p.kind]} · {p.metric}</p></div>, width: 240 },
@@ -581,6 +586,11 @@ export function LiveIncentivePlans({ live }: { live: LiveSpecialPay }) {
               <Button size="sm" onClick={() => setResult(p)}>
                 Add a result
               </Button>
+              {live.onResults && (
+                <Button size="sm" onClick={() => setSheet(p)}>
+                  Results
+                </Button>
+              )}
               <SendToPayroll label="Send month" title={`Send ${p.name} results for ${month}?`} consequence={`Every ${month} result of the plan goes to payroll as one-time pay, for a payroll approver to approve.`} done={`${p.name} results for ${month} sent to payroll for approval.`} onSend={() => live.onPost({ kind: 'plan', id: p.id })} size="sm" />
               {live.onNewPlanVersion && p.status === 'active' && (
                 <Button size="sm" onClick={() => (setVerFrom(''), setVerTried(false), setVersioning(p))}>
@@ -613,7 +623,110 @@ export function LiveIncentivePlans({ live }: { live: LiveSpecialPay }) {
         </FormField>
       </ConfirmDialog>
       {result && <ResultDrawer plan={result} month={month} onSearch={live.onSearch} onClose={() => setResult(null)} onSave={(x) => live.onSaveResult(result.id, x)} />}
+      {sheet && live.onResults && <ResultsSheetLoader plan={sheet} month={month} nameOf={live.nameOf} onLoad={() => live.onResults!(sheet.id)} onRelease={live.onReleaseHeld ? (r) => live.onReleaseHeld!(sheet.id, r.id) : undefined} onClose={() => setSheet(null)} />}
     </div>
+  );
+}
+
+function ResultsSheetLoader({ plan, month, nameOf, onLoad, onRelease, onClose }: { plan: IncentivePlanView; month: string; nameOf: (id: string) => string; onLoad: () => Promise<IncentiveResultRow[]>; onRelease?: (r: IncentiveResultRow) => Promise<unknown>; onClose: () => void }) {
+  const [rows, setRows] = useState<IncentiveResultRow[] | null | 'error'>(null);
+  const load = () => onLoad().then(setRows, () => setRows('error'));
+  useEffect(() => {
+    void load();
+    // Loaded once when the sheet opens; a release loads it again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return <IncentiveResultsSheet plan={plan} month={month} nameOf={nameOf} rows={rows} onRetry={() => void load()} onRelease={onRelease ? async (r) => { await onRelease(r); await load(); } : undefined} onClose={onClose} />;
+}
+
+/**
+ * PAY-32 results sheet (designed here first; stories in pay-32-incentive-plan.stories.tsx): the month's results with the
+ * part held until the customer pays (PAY-33) and Release, which asks first and sends the held part to payroll for
+ * approval. A refusal from the server stays in the sheet's notice.
+ */
+export function IncentiveResultsSheet({ plan, month, nameOf, rows, onRetry, onRelease, onClose, story }: { plan: IncentivePlanView; month: string; nameOf: (id: string) => string; rows: IncentiveResultRow[] | null | 'error'; onRetry?: () => void; onRelease?: (r: IncentiveResultRow) => Promise<unknown>; onClose: () => void; /** Stories only: the release dialog open, or a refusal shown. */ story?: { confirm?: string; refused?: string } }) {
+  const { toast } = useToast();
+  const [asking, setAsking] = useState<IncentiveResultRow | null>((rows !== 'error' && rows?.find((r) => r.id === story?.confirm)) || null);
+  const [refused, setRefused] = useState<string | null>(story?.refused ?? null);
+  const list = rows === 'error' || !rows ? [] : rows;
+  const heldOf = (r: IncentiveResultRow) => (r.released ? 0 : Number(r.held));
+  const status = (r: IncentiveResultRow) =>
+    Number(r.held) > 0 && r.released ? <Badge tone="success">Held part released</Badge> : r.posted ? <Badge tone="success">In payroll</Badge> : <Badge tone="neutral">Not sent yet</Badge>;
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`${plan.name} · results`}
+      subtitle={month}
+      size="lg"
+      notice={
+        refused && (
+          <InlineAlert tone="danger" title="That did not go through">
+            {refused}
+          </InlineAlert>
+        )
+      }
+      footer={<Button onClick={onClose}>Close</Button>}
+    >
+      {rows === 'error' ? (
+        <EmptyState title="We couldn't load the results." action={onRetry ? <Button onClick={onRetry}>Try again</Button> : undefined} />
+      ) : !rows ? (
+        <Skeleton height="var(--yx-space-16)" />
+      ) : !list.length ? (
+        <EmptyState compact title={`No results for ${month} yet.`} description="Add a result for each person on the plan." />
+      ) : (
+        <div className="yx-pay-stack">
+          <FactRow
+            items={[
+              { label: 'Incentive', value: formatINR(list.reduce((t, r) => t + Number(r.amount), 0)) },
+              { label: 'Held until the customer pays', value: formatINR(list.reduce((t, r) => t + heldOf(r), 0)) },
+              { label: 'People', value: String(list.length) },
+            ]}
+          />
+          <PlainTable
+            label={`${plan.name} results, ${month}`}
+            rows={list}
+            getRowId={(r) => r.id}
+            columns={[
+              { key: 'who', header: 'Person', rowHeader: true, cell: (r) => nameOf(r.employeeId) || 'Someone' },
+              { key: 'quota', header: 'Quota', num: true, cell: (r) => r.quota },
+              { key: 'actual', header: 'Achieved', num: true, cell: (r) => `${r.actual}${r.workings?.attainment ? ` (${r.workings.attainment} %)` : ''}` },
+              { key: 'amount', header: 'Incentive', num: true, cell: (r) => formatINR(Number(r.amount)) },
+              { key: 'held', header: 'Held', num: true, cell: (r) => (Number(r.held) > 0 ? <div>{formatINR(Number(r.held))}{r.heldReason && <p className="yx-pay-note">{r.heldReason}</p>}</div> : '—') },
+              { key: 'status', header: 'Status', cell: status },
+              {
+                key: 'act',
+                header: 'Action',
+                cell: (r) =>
+                  Number(r.held) > 0 && !r.released && onRelease ? (
+                    <Button size="sm" onClick={() => (setRefused(null), setAsking(r))} aria-label={`Release the held part for ${nameOf(r.employeeId) || 'this person'}`}>
+                      Release
+                    </Button>
+                  ) : null,
+              },
+            ]}
+          />
+          <p className="yx-pay-note">The held part is not paid with the month. Release it once the customer has paid; it goes to payroll for approval.</p>
+        </div>
+      )}
+      <ConfirmDialog
+        open={!!asking}
+        onOpenChange={(o) => !o && setAsking(null)}
+        title={asking ? `Release ${formatINR(Number(asking.held))} for ${nameOf(asking.employeeId) || 'this person'}?` : ''}
+        consequence={`It goes to payroll for ${month} as one-time pay, for a payroll approver to approve. Do this once the customer has paid.`}
+        confirmLabel="Release to payroll"
+        onConfirm={async () => {
+          const r = asking!;
+          try {
+            await onRelease!(r);
+            toast({ tone: 'success', title: `Held part for ${nameOf(r.employeeId) || 'this person'} sent to payroll for approval.` });
+          } catch (e) {
+            setRefused(e instanceof Error && e.message ? e.message : 'The held part was not released. Try again.');
+          }
+          setAsking(null);
+        }}
+      />
+    </Drawer>
   );
 }
 
@@ -774,13 +887,23 @@ function PlanDrawer({ live, plan, onClose, onSave }: { live: LiveSpecialPay; /**
   );
 }
 
-function ResultDrawer({ plan, month, onSearch, onClose, onSave }: { plan: IncentivePlanView; month: string; onSearch: Search; onClose: () => void; onSave: (x: { employeeId: string; quota: string; actual: string }) => Promise<unknown> }) {
+function ResultDrawer({ plan, month, onSearch, onClose, onSave }: { plan: IncentivePlanView; month: string; onSearch: Search; onClose: () => void; onSave: (x: { employeeId: string; quota: string; actual: string; held?: string; heldReason?: string }) => Promise<unknown> }) {
   const { toast } = useToast();
   const [who, setWho] = useState<PersonHit | null>(null);
   const [quota, setQuota] = useState('');
   const [actual, setActual] = useState('');
-  const errors: FormErrorItem[] = [...(!who ? [{ fieldId: 'ir-who', message: 'Choose the person.' }] : []), ...(!MONEY.test(quota) || Number(quota) <= 0 ? [{ fieldId: 'ir-quota', message: 'The quota, above zero.' }] : []), ...(!MONEY.test(actual) ? [{ fieldId: 'ir-actual', message: 'What they achieved, 0 or more.' }] : [])];
+  // PAY-33: part of the incentive may wait for the customer's payment (with the reason).
+  const [held, setHeld] = useState('');
+  const [why, setWhy] = useState('');
   const preview = who && Number(quota) > 0 && MONEY.test(actual) ? incentivePay(Number(plan.targetAmount), plan.tiers, plan.capPercent ? Number(plan.capPercent) : null, (Number(actual) / Number(quota)) * 100) : null;
+  const heldN = held.trim() ? Number(held) : 0;
+  const errors: FormErrorItem[] = [
+    ...(!who ? [{ fieldId: 'ir-who', message: 'Choose the person.' }] : []),
+    ...(!MONEY.test(quota) || Number(quota) <= 0 ? [{ fieldId: 'ir-quota', message: 'The quota, above zero.' }] : []),
+    ...(!MONEY.test(actual) ? [{ fieldId: 'ir-actual', message: 'What they achieved, 0 or more.' }] : []),
+    ...(held.trim() && !MONEY.test(held.trim()) ? [{ fieldId: 'ir-held', message: 'The held part in rupees, or leave it empty.' }] : preview && heldN > preview.amount ? [{ fieldId: 'ir-held', message: `At most the incentive, ${formatINR(preview.amount)}.` }] : []),
+    ...(heldN > 0 && why.trim().length < 3 ? [{ fieldId: 'ir-held-why', message: 'Say why it is held, such as the customer has not paid yet.' }] : []),
+  ];
   return (
     <FormDrawer
       title={`Result for ${plan.name}`}
@@ -789,7 +912,7 @@ function ResultDrawer({ plan, month, onSearch, onClose, onSave }: { plan: Incent
       errors={errors}
       onClose={onClose}
       onSave={async () => {
-        await onSave({ employeeId: who!.id, quota, actual });
+        await onSave({ employeeId: who!.id, quota, actual, ...(heldN > 0 ? { held: held.trim(), heldReason: why.trim() } : {}) });
         toast({ tone: 'success', title: `Result saved for ${who!.name}.` });
       }}
     >
@@ -805,6 +928,14 @@ function ResultDrawer({ plan, month, onSearch, onClose, onSave }: { plan: Incent
             </FormField>
           </FieldRow>
           {preview && <FactRow items={[{ label: 'Attainment', value: `${Math.round((Number(actual) / Number(quota)) * 10000) / 100} %` }, { label: 'Pay', value: formatINR(preview.amount) }]} />}
+          <FieldRow>
+            <FormField id="ir-held" label="Held until the customer pays (₹)" optional helper="Not paid with the month; released later." error={errorOf('ir-held')}>
+              <TextField value={held} onChange={setHeld} inputMode="decimal" />
+            </FormField>
+            <FormField id="ir-held-why" label="Why it is held" required={heldN > 0} optional={heldN <= 0} error={errorOf('ir-held-why')}>
+              <TextField value={why} onChange={setWhy} maxLength={200} />
+            </FormField>
+          </FieldRow>
         </>
       )}
     </FormDrawer>

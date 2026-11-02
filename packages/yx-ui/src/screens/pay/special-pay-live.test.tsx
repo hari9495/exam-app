@@ -225,6 +225,54 @@ describe('Incentives tab (PAY-32 live)', () => {
     await waitFor(() => expect(onPost).toHaveBeenCalledWith({ kind: 'plan', id: 'pl1' }));
   });
 
+  it('a result can hold part until the customer pays; more than the incentive or no reason is refused (PAY-33)', async () => {
+    const onSaveResult = ok();
+    render(<SpecialPayHomeScreen live={live({ onSaveResult })} />);
+    await tab('Incentives');
+    await ue.click(screen.getByRole('button', { name: 'Add a result' }));
+    await pick('person');
+    await ue.type(within(drawer()).getByRole('textbox', { name: /Quota/ }), '100000');
+    await ue.type(within(drawer()).getByRole('textbox', { name: /Achieved/ }), '120000');
+    await ue.type(within(drawer()).getByRole('textbox', { name: /Held until the customer pays/ }), '30000');
+    await ue.click(within(drawer()).getByRole('button', { name: 'Save result' }));
+    expect(onSaveResult).not.toHaveBeenCalled();
+    expect(within(drawer()).getAllByText(/At most the incentive, ₹26,000/).length).toBeGreaterThan(0);
+    expect(within(drawer()).getAllByText(/Say why it is held/).length).toBeGreaterThan(0);
+    await ue.clear(within(drawer()).getByRole('textbox', { name: /Held until the customer pays/ }));
+    await ue.type(within(drawer()).getByRole('textbox', { name: /Held until the customer pays/ }), '6000');
+    await ue.type(within(drawer()).getByRole('textbox', { name: /Why it is held/ }), 'Customer has not paid yet');
+    await ue.click(within(drawer()).getByRole('button', { name: 'Save result' }));
+    await waitFor(() => expect(onSaveResult).toHaveBeenCalledWith('pl1', { employeeId: 'p1', quota: '100000', actual: '120000', held: '6000', heldReason: 'Customer has not paid yet' }));
+  });
+
+  it('the results sheet shows the held part; Release asks first, then sends it; a refusal stays in the sheet (PAY-32 founder answer 7)', async () => {
+    const rows = [{ id: 'r1', employeeId: 'p1', quota: '100000.00', actual: '120000.00', amount: '26000.00', held: '6000.00', heldReason: 'Customer has not paid yet', released: false, workings: { attainment: '120.00' }, posted: true }];
+    const onResults = vi.fn(async () => rows);
+    let fail = false;
+    const onReleaseHeld = vi.fn(async () => {
+      if (fail) throw new Error('The held part is already released.');
+      return {};
+    });
+    render(<SpecialPayHomeScreen live={live({ onResults, onReleaseHeld })} />);
+    await tab('Incentives');
+    await ue.click(screen.getByRole('button', { name: 'Results' }));
+    const d = await screen.findByRole('dialog', { name: /results/ });
+    const t = await within(d).findByRole('table');
+    expect(t).toHaveTextContent('₹6,000');
+    expect(t).toHaveTextContent('Customer has not paid yet');
+    await ue.click(within(d).getByRole('button', { name: /Release the held part/ }));
+    const confirm = screen.queryAllByRole('alertdialog').at(-1) ?? screen.getAllByRole('dialog').at(-1)!;
+    expect(confirm).toHaveTextContent('Release ₹6,000');
+    await ue.click(within(confirm).getByRole('button', { name: 'Release to payroll' }));
+    await waitFor(() => expect(onReleaseHeld).toHaveBeenCalledWith('pl1', 'r1'));
+    expect((await screen.findAllByText(/sent to payroll for approval/)).length).toBeGreaterThan(0);
+    fail = true;
+    await ue.click(within(d).getByRole('button', { name: /Release the held part/ }));
+    const again = screen.queryAllByRole('alertdialog').at(-1) ?? screen.getAllByRole('dialog').at(-1)!;
+    await ue.click(within(again).getByRole('button', { name: 'Release to payroll' }));
+    expect(await within(d).findByText('The held part is already released.')).toBeInTheDocument();
+  });
+
   it('publishes a new plan, and refuses tiers that do not go up', async () => {
     const onAddPlan = ok();
     render(<SpecialPayHomeScreen live={live({ onAddPlan, today: '2026-10-01' })} />);
