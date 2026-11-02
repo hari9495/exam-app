@@ -147,6 +147,17 @@ export class ProbationReviewDto {
   rating?: number | null;
 }
 
+/** PPL-20: an owner marks an open clearance item blocked, with the reason. */
+export class BlockItemDto {
+  @trim()
+  @IsString()
+  @Length(3, 300)
+  reason!: string;
+
+  @IsInt()
+  version!: number;
+}
+
 export class SignOffDto {
   @IsIn(['clear', 'waive'])
   action!: 'clear' | 'waive';

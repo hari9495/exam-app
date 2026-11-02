@@ -195,9 +195,21 @@ describe('Lifecycle batch 6c', () => {
     await api('ravi', 'get', '/lifecycle/clearance').expect(403);
     expect((await api('adminB', 'get', '/lifecycle/clearance').expect(200)).body.rows.some((r: { exitCaseId: string }) => r.exitCaseId === ids.raviCase)).toBe(false);
     const handover = mgrItems[0];
+    // PPL-20 blocked (needs migration 20261312000000_clearance_blocked): the owner marks it blocked with the reason; it
+    // stays open; the leaver, another company, a short reason and a stale version are refused; signing off ends it.
+    await api('ravi', 'post', `/lifecycle/clearance/${handover.id}/block`).send({ reason: 'Files not handed over', version: handover.version }).expect(404);
+    await api('adminB', 'post', `/lifecycle/clearance/${handover.id}/block`).send({ reason: 'Files not handed over', version: handover.version }).expect((r) => expect([403, 404]).toContain(r.status));
+    await api('mgr', 'post', `/lifecycle/clearance/${handover.id}/block`).send({ reason: 'x', version: handover.version }).expect(400);
+    await api('mgr', 'post', `/lifecycle/clearance/${handover.id}/block`).send({ reason: 'Files not handed over', version: handover.version - 1 }).expect(409);
+    await api('mgr', 'post', `/lifecycle/clearance/${handover.id}/block`).send({ reason: 'Files not handed over', version: handover.version }).expect(200);
+    const blocked = (await api('hr', 'get', '/lifecycle/clearance').expect(200)).body.rows.find((r: { id: string }) => r.id === handover.id);
+    expect(blocked).toMatchObject({ status: 'open', blockedReason: 'Files not handed over' });
+    handover.version = blocked.version;
     await api('ravi', 'post', `/lifecycle/clearance/${handover.id}/sign-off`).send({ action: 'clear', version: handover.version }).expect(404);
     await api('mgr', 'post', `/lifecycle/clearance/${handover.id}/sign-off`).send({ action: 'waive', version: handover.version }).expect(400);
     await api('mgr', 'post', `/lifecycle/clearance/${handover.id}/sign-off`).send({ action: 'clear', note: 'All files moved', version: handover.version }).expect(200);
+    expect((await api('hr', 'get', '/lifecycle/clearance').expect(200)).body.rows.find((r: { id: string }) => r.id === handover.id)).toMatchObject({ status: 'cleared', blockedReason: null });
+    expect(await inA((tx) => tx.clearanceItem.findFirstOrThrow({ where: { id: handover.id } }))).toMatchObject({ status: 'cleared', blockedReason: null, blockedAt: null });
     // Signing off the laptop's clearance item (nothing owed) records the return too (founder 23 Oct 2026).
     const k0 = (await api('hr', 'get', `/lifecycle/exits/${ids.raviCase}`).expect(200)).body;
     const lt = k0.clearance.find((i: { title: string }) => i.title.includes('ThinkPad'));

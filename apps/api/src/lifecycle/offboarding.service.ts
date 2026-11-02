@@ -119,27 +119,52 @@ export class OffboardingService {
     });
   }
 
+  /** The item, if the viewer owns it (themselves or a group) or is HR over the leaver; never the leaver themselves. */
+  private async ownedItem(tx: Tx, c: CompanyContext, v: Viewer, itemId: string) {
+    const org = c.organizationId;
+    const i = await tx.clearanceItem.findFirst({ where: { organizationId: org, id: itemId } });
+    if (!i) throw new NotFoundException('No such clearance item.');
+    const k = await tx.exitCase.findFirstOrThrow({ where: { organizationId: org, id: i.exitCaseId } });
+    const own = await ownOf(tx, c, v);
+    const groups = await this.groupsOf(tx, org, v.userId);
+    const owner = i.ownerUserId === v.userId || (i.ownerGroupId !== null && groups.includes(i.ownerGroupId));
+    const hr = !v.actingForOther && (await reachesPerson(tx, c, v, 'lifecycle.exit.manage', k.personId, own));
+    if ((!owner && !hr) || own.employeeId === k.employeeId) throw new NotFoundException('No such clearance item.');
+    if (v.actingForOther) throw new ForbiddenException('Sign-offs are made by the owner, signed in as themselves.');
+    if (!['accepted', 'cleared', 'exited'].includes(k.status)) throw new ConflictException('This exit is not accepted.');
+    if (i.status !== 'open') throw new ConflictException('This item is already signed off.');
+    return { i, k };
+  }
+
+  /**
+   * PPL-20: the owner (or HR) marks an open item blocked with the reason, e.g. an unclaimed advance. It stays open: it
+   * still holds F&F finalisation, and signing it off or waiving it ends the block. Marking it again replaces the reason.
+   */
+  async block(ctx: TenantContext, user: ScopeUser, itemId: string, dto: { reason: string; version: number }) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const { i, k } = await this.ownedItem(tx, c, v, itemId);
+      const n = await tx.clearanceItem.updateMany({
+        where: { organizationId: c.organizationId, id: itemId, version: dto.version, status: 'open' },
+        data: { blockedReason: dto.reason.trim().slice(0, 300), blockedAt: new Date(), blockedBy: c.userId ?? null, version: { increment: 1 } },
+      });
+      if (!n.count) throw new ConflictException('This item changed meanwhile. Reload it.');
+      await audit(tx, c, 'exit.clearance.blocked', 'exit_case', k.id, { itemId, department: i.department });
+      return { ok: true };
+    });
+  }
+
   async signOff(ctx: TenantContext, user: ScopeUser, itemId: string, dto: SignOffDto) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
-      const i = await tx.clearanceItem.findFirst({ where: { organizationId: org, id: itemId } });
-      if (!i) throw new NotFoundException('No such clearance item.');
-      const k = await tx.exitCase.findFirstOrThrow({ where: { organizationId: org, id: i.exitCaseId } });
-      const own = await ownOf(tx, c, v);
-      const groups = await this.groupsOf(tx, org, v.userId);
-      const owner = i.ownerUserId === v.userId || (i.ownerGroupId !== null && groups.includes(i.ownerGroupId));
-      const hr = !v.actingForOther && (await reachesPerson(tx, c, v, 'lifecycle.exit.manage', k.personId, own));
-      if ((!owner && !hr) || own.employeeId === k.employeeId) throw new NotFoundException('No such clearance item.');
-      if (v.actingForOther) throw new ForbiddenException('Sign-offs are made by the owner, signed in as themselves.');
-      if (!['accepted', 'cleared', 'exited'].includes(k.status)) throw new ConflictException('This exit is not accepted.');
-      if (i.status !== 'open') throw new ConflictException('This item is already signed off.');
+      const { i, k } = await this.ownedItem(tx, c, v, itemId);
       if (dto.action === 'waive' && !dto.note?.trim()) throw new BadRequestException('Say why it is waived.');
       if (dto.recoveryAmount && !dto.recoveryReason?.trim()) throw new BadRequestException('Say what the recovery is for.');
       if (dto.action === 'waive' && dto.recoveryAmount) throw new BadRequestException('A waived item has no recovery.');
       const n = await tx.clearanceItem.updateMany({
         where: { organizationId: org, id: itemId, version: dto.version, status: 'open' },
-        data: { status: dto.action === 'clear' ? 'cleared' : 'waived', note: dto.note?.trim() || null, recoveryAmount: dto.recoveryAmount ? new Prisma.Decimal(dto.recoveryAmount) : null, recoveryReason: dto.recoveryReason?.trim() || null, signedOffBy: c.userId ?? null, signedOffAt: new Date(), version: { increment: 1 } },
+        data: { status: dto.action === 'clear' ? 'cleared' : 'waived', blockedReason: null, blockedAt: null, blockedBy: null, note: dto.note?.trim() || null, recoveryAmount: dto.recoveryAmount ? new Prisma.Decimal(dto.recoveryAmount) : null, recoveryReason: dto.recoveryReason?.trim() || null, signedOffBy: c.userId ?? null, signedOffAt: new Date(), version: { increment: 1 } },
       });
       if (!n.count) throw new ConflictException('Someone else signed this off. Reload it.');
       // An asset item cleared with nothing owed means the asset came back: record the return as "Take back" does

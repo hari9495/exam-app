@@ -975,6 +975,9 @@ export class ExitsService implements OnModuleInit {
       recoveryReason: i.recoveryReason,
       assetAssignmentId: i.assetAssignmentId,
       signedOffAt: i.signedOffAt?.toISOString() ?? null,
+      // PPL-20: an open item its owner marked blocked, with the reason.
+      blockedReason: i.blockedReason,
+      blockedAt: i.blockedAt?.toISOString() ?? null,
       version: i.version,
     };
   }

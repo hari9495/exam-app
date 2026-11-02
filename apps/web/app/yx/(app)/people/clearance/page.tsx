@@ -25,6 +25,10 @@ export default function YxClearancePage() {
         onRetry: () => void Promise.all([data.refetch(), hr ? byLeaver.refetch() : null]),
         rows: data.data?.rows ?? [],
         ...(hr ? { hrRows: byLeaver.data?.rows ?? [], onOpenExit: (exitCaseId: string) => router.push(`/yx/people/exits/${encodeURIComponent(exitCaseId)}`) } : {}),
+        onBlock: async (item, reason) => {
+          await write('POST', `/lifecycle/clearance/${encodeURIComponent(item.id)}/block`, { reason, version: item.version });
+          toast({ tone: 'success', title: `${item.title} marked blocked for ${item.person}` });
+        },
         onSignOff: async (item, x) => {
           await write('POST', `/lifecycle/clearance/${encodeURIComponent(item.id)}/sign-off`, { action: x.action, version: item.version, ...(x.note ? { note: x.note } : {}), ...(x.recoveryAmount ? { recoveryAmount: x.recoveryAmount, recoveryReason: x.recoveryReason } : {}) });
           const person = 'person' in item ? ` for ${(item as MyClearanceItem).person}` : '';

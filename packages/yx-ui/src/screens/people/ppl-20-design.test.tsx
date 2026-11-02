@@ -41,4 +41,26 @@ describe('PPL-20 HR view by leaver (live)', () => {
     expect(screen.getByRole('heading', { name: 'Clearance: your sign-offs' })).toBeInTheDocument();
     expect(screen.queryByRole('radio', { name: /By leaver/ })).toBeNull();
   });
+
+  it('Blocked (FinanceOwner): an item with a reason shows Blocked with why; Mark blocked asks for the reason', async () => {
+    const ue = userEvent.setup({ pointerEventsCheck: 0 });
+    const onBlock = vi.fn().mockResolvedValue(undefined);
+    render(<ClearanceSignoffs live={{ state: 'ready', onRetry: vi.fn(), rows: [item({ id: 'f', department: 'finance', title: 'Advances and expense claims', blockedReason: 'Unclaimed advance of ₹5,000' }), item({ id: 'g' })], onSignOff: vi.fn(), onBlock }} />);
+    expect(screen.getByText('Blocked')).toBeInTheDocument();
+    expect(screen.getByText(/blocked: Unclaimed advance of ₹5,000/)).toBeInTheDocument();
+    const row = screen.getByRole('row', { name: /Collect laptop/ });
+    await ue.click(within(row).getByRole('button', { name: /More actions/ }));
+    await ue.click(await screen.findByRole('menuitem', { name: 'Mark blocked' }));
+    await ue.click(await screen.findByRole('button', { name: 'Mark blocked' }));
+    expect((await screen.findAllByText('Say what is blocking it, at least 3 characters.')).length).toBeGreaterThan(0);
+    expect(onBlock).not.toHaveBeenCalled();
+    await ue.type(screen.getByRole('textbox', { name: /What is blocking it/ }), 'Laptop is with the vendor');
+    await ue.click(screen.getByRole('button', { name: 'Mark blocked' }));
+    await vi.waitFor(() => expect(onBlock).toHaveBeenCalledWith(expect.objectContaining({ id: 'g' }), 'Laptop is with the vendor'));
+  });
+
+  it('HR by leaver names the blocked department in the open count', () => {
+    render(<ClearanceSignoffs live={{ state: 'ready', onRetry: vi.fn(), rows: [], hrRows: [item({ id: 'f', department: 'finance', blockedReason: 'Unclaimed advance' }), item({ id: 'g' })], onSignOff: vi.fn() }} />);
+    expect(screen.getByText('2 of 2 sign-offs open. Finance is blocked: Unclaimed advance')).toBeInTheDocument();
+  });
 });

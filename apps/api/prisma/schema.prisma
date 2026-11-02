@@ -6709,6 +6709,10 @@ model ClearanceItem {
   assetAssignmentId String?   @map("asset_assignment_id") @db.Uuid
   signedOffBy       String?   @map("signed_off_by") @db.Uuid
   signedOffAt       DateTime? @map("signed_off_at") @db.Timestamptz(3)
+  /// PPL-20: an open item the owner marked blocked, with the reason (cleared when it is signed off or waived).
+  blockedReason     String?   @map("blocked_reason") @db.VarChar(300)
+  blockedAt         DateTime? @map("blocked_at") @db.Timestamptz(3)
+  blockedBy         String?   @map("blocked_by") @db.Uuid
   version           Int       @default(1)
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 

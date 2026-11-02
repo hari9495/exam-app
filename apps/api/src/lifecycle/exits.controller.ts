@@ -6,7 +6,7 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import type { ScopeUser } from '../access/scope';
-import { AssetDto, CompanyExitDto, ManualStepDto, SettledOutsideDto, HrFactsDto, InterviewDto, InterviewNotesDto, IssueAssetDto, NoticeChangeDto, ProbationReviewDto, ReasonDto, ResignDto, ReturnAssetDto, SignOffDto } from './exit-dto';
+import { AssetDto, CompanyExitDto, ManualStepDto, SettledOutsideDto, HrFactsDto, InterviewDto, InterviewNotesDto, IssueAssetDto, NoticeChangeDto, ProbationReviewDto, ReasonDto, ResignDto, ReturnAssetDto, BlockItemDto, SignOffDto } from './exit-dto';
 import { ExitsService } from './exits.service';
 import { OffboardingService } from './offboarding.service';
 import { LastDayService } from './last-day.service';
@@ -175,6 +175,13 @@ export class ExitsController {
   @RequirePermissions('lifecycle.exit.manage')
   hrClearance(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     return this.offboarding.hrClearance(ctx, this.user(req));
+  }
+
+  /** PPL-20: the owner (or HR over the leaver) marks an open item blocked, with the reason. */
+  @Post('clearance/:id/block')
+  @HttpCode(200)
+  block(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: BlockItemDto) {
+    return this.offboarding.block(ctx, this.user(req), id, dto);
   }
 
   @Post('clearance/:id/sign-off')
