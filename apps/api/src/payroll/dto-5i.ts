@@ -580,6 +580,27 @@ export class ValuationResultDto extends CensusDto {
 
   @Matches(/^\d{1,13}(\.\d{1,2})?$/)
   closing!: string;
+
+  /** PAY-38: the movement from the actuary's report (all five or none; they must add up to the closing obligation). */
+  @IsOptional()
+  @Matches(/^\d{1,13}(\.\d{1,2})?$/)
+  serviceCost?: string;
+
+  @IsOptional()
+  @Matches(/^\d{1,13}(\.\d{1,2})?$/)
+  interestCost?: string;
+
+  @IsOptional()
+  @Matches(/^\d{1,13}(\.\d{1,2})?$/)
+  benefitsPaid?: string;
+
+  @IsOptional()
+  @Matches(/^\d{1,13}(\.\d{1,2})?$/)
+  actuarialLoss?: string;
+
+  @IsOptional()
+  @Matches(/^\d{1,13}(\.\d{1,2})?$/)
+  actuarialGain?: string;
 }
 
 export class PackSwitchDto {

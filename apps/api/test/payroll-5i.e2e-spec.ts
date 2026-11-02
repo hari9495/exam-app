@@ -382,6 +382,17 @@ describe('Payroll batch 5i', () => {
     ]);
     await api('payAdmin', 'post', `/payroll/actuarial/valuations/${v.id}/post`).expect(403);
     await api('payAdmin2', 'post', `/payroll/actuarial/valuations/${v.id}/post`).expect(200);
+    // PAY-38 Upload: the leave valuation with the actuary's movement; it must add up from the opening (none posted: 0).
+    const leave = () => api('payAdmin', 'post', '/payroll/actuarial/valuations').field('legalEntityId', ids.entity).field('asOf', lastDay).field('standard', 'IND_AS_19').field('kind', 'leave');
+    expect((await leave().field('closing', '60000').field('serviceCost', '50000').expect(400)).body.message).toMatch(/all five movement figures/);
+    expect((await leave().field('closing', '60000').field('serviceCost', '50000').field('interestCost', '5000').field('benefitsPaid', '2000').field('actuarialLoss', '1000').field('actuarialGain', '0').expect(400)).body.message).toMatch(/do not add up/);
+    await leave().field('closing', '54000').field('serviceCost', '-1').field('interestCost', '5000').field('benefitsPaid', '2000').field('actuarialLoss', '1000').field('actuarialGain', '0').expect(400);
+    await api('approver1', 'post', '/payroll/actuarial/valuations').field('legalEntityId', ids.entity).field('asOf', lastDay).field('standard', 'IND_AS_19').field('kind', 'leave').field('closing', '54000').expect(403);
+    const lv = (await leave().field('closing', '54000').field('serviceCost', '50000').field('interestCost', '5000').field('benefitsPaid', '2000').field('actuarialLoss', '1000').field('actuarialGain', '0').expect(201)).body;
+    expect(lv.delta).toBe('54000.00');
+    const listed = (await api('payAdmin', 'get', '/payroll/actuarial').query({ legalEntityId: ids.entity }).expect(200)).body.valuations as { id: string; movement: Record<string, string> | null }[];
+    expect(listed.find((x) => x.id === lv.id)!.movement).toEqual({ serviceCost: '50000.00', interestCost: '5000.00', benefitsPaid: '2000.00', actuarialLoss: '1000.00', actuarialGain: '0.00' });
+    expect(listed.find((x) => x.id === v.id)!.movement).toBeNull();
   });
 
   it('country packs: a UAE entity is paid only once its pack is switched on after the completeness check', async () => {

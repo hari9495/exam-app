@@ -209,6 +209,30 @@ describe('Actuarial valuation (PAY-38 live)', () => {
     await waitFor(() => expect(live.onRecord).toHaveBeenCalledWith({ asOf: '2026-03-31', standard: 'IND_AS_19', kind: 'leave', closing: '4248000' }, null));
   });
 
+  it('PAY-38 Upload: the movement works out the closing obligation from the last posted one; part of it is refused (negative)', async () => {
+    const posted = { ...VIEW.valuations[0], id: 'g0', valuedOn: '2025-03-31', status: 'posted' as const, closing: '1000000.00' };
+    const live = actuarial({ data: { ...VIEW, valuations: [posted] } });
+    render(<ActuarialScreen live={live} />);
+    await toStep('Valuation');
+    const form = await screen.findByRole('region', { name: "Record the actuary's figures" });
+    await ue.type(within(form).getByLabelText(/^As at/), '31 Mar 2026');
+    await ue.tab();
+    await ue.type(within(form).getByLabelText('Current service cost'), '218000');
+    await ue.click(screen.getByRole('button', { name: 'Record figures' }));
+    expect((await screen.findAllByText('Enter all five figures (0 where the report has none), or leave them all empty.')).length).toBeGreaterThan(0);
+    expect(live.onRecord).not.toHaveBeenCalled();
+    await ue.type(within(form).getByLabelText('Interest cost'), '101200');
+    await ue.type(within(form).getByLabelText('Benefits paid (less)'), '84000');
+    await ue.type(within(form).getByLabelText('Actuarial loss'), '31800');
+    await ue.type(within(form).getByLabelText('Actuarial gain (less)'), '0');
+    // 10,00,000 + 2,18,000 + 1,01,200 − 84,000 + 31,800 − 0 = 12,67,000
+    expect(within(form).getByText('₹12,67,000')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Record figures' }));
+    await waitFor(() =>
+      expect(live.onRecord).toHaveBeenCalledWith({ asOf: '2026-03-31', standard: 'IND_AS_19', kind: 'gratuity', closing: '1267000', serviceCost: '218000', interestCost: '101200', benefitsPaid: '84000', actuarialLoss: '31800', actuarialGain: '0' }, null),
+    );
+  });
+
   it('posts the provision journal after asking', async () => {
     const live = actuarial();
     render(<ActuarialScreen live={live} />);

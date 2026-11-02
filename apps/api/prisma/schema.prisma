@@ -10260,6 +10260,12 @@ model ActuarialValuation {
   opening        Decimal   @db.Decimal(16, 2)
   closing        Decimal   @db.Decimal(16, 2)
   provisionDelta Decimal   @map("provision_delta") @db.Decimal(16, 2)
+  /// PAY-38: the actuary's movement (all or none; opening + service + interest − paid + loss − gain = closing).
+  serviceCost    Decimal?  @map("service_cost") @db.Decimal(16, 2)
+  interestCost   Decimal?  @map("interest_cost") @db.Decimal(16, 2)
+  benefitsPaid   Decimal?  @map("benefits_paid") @db.Decimal(16, 2)
+  actuarialLoss  Decimal?  @map("actuarial_loss") @db.Decimal(16, 2)
+  actuarialGain  Decimal?  @map("actuarial_gain") @db.Decimal(16, 2)
   reportRef      String?   @map("report_ref") @db.VarChar(500)
   reportSha256   String?   @map("report_sha256") @db.Char(64)
   journal        Json

@@ -139,7 +139,7 @@ export interface EquityOverview {
 
 export interface ActuarialView {
   censuses: { id: string; asOf: string; standard: string; rows: number; fileId: string; createdAt: string }[];
-  valuations: { id: string; valuedOn: string; standard: string; kind: 'gratuity' | 'leave'; opening: string; closing: string; delta: string; journal: { account: string; debit?: string; credit?: string }[]; status: 'recorded' | 'posted'; madeByMe: boolean }[];
+  valuations: { id: string; valuedOn: string; standard: string; kind: 'gratuity' | 'leave'; opening: string; closing: string; delta: string; journal: { account: string; debit?: string; credit?: string }[]; status: 'recorded' | 'posted'; madeByMe: boolean; /** PAY-38: the actuary's movement, when it was entered. */ movement?: { serviceCost: string; interestCost: string; benefitsPaid: string; actuarialLoss: string; actuarialGain: string } | null }[];
 }
 
 /** GET payroll/country-packs. */

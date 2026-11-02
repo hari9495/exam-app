@@ -7,7 +7,7 @@ import { Button } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FieldRow, FormField, useTooEarly } from '../../components/field';
+import { FieldRow, FormField, FormSection, useTooEarly } from '../../components/field';
 import { CurrencyField, TextArea } from '../../components/inputs';
 import { DatePicker } from '../../components/date';
 import { useToast } from '../../components/notify';
@@ -327,7 +327,7 @@ export interface LiveActuarial {
   can: { census: boolean; journal: boolean };
   onCensus: (asOf: string, standard: Standard) => Promise<unknown>;
   onDownload: (fileId: string, name: string) => Promise<unknown>;
-  onRecord: (x: { asOf: string; standard: Standard; kind: 'gratuity' | 'leave'; closing: string; censusId?: string }, report: File | null) => Promise<unknown>;
+  onRecord: (x: { asOf: string; standard: Standard; kind: 'gratuity' | 'leave'; closing: string; censusId?: string } & Partial<Record<MovementKey, string>>, report: File | null) => Promise<unknown>;
   onPost: (id: string) => Promise<unknown>;
 }
 
@@ -338,6 +338,16 @@ const STANDARDS = [
 const stdText = (s: string) => STANDARDS.find((x) => x.value === s)?.label ?? s;
 type Valuation = ActuarialView['valuations'][number];
 
+/** PAY-38 "Valuation upload · figures to enter": the actuary's movement in the obligation (brackets reduce it). */
+type MovementKey = 'serviceCost' | 'interestCost' | 'benefitsPaid' | 'actuarialLoss' | 'actuarialGain';
+const MOVEMENT: { k: MovementKey; label: string; sign: 1 | -1 }[] = [
+  { k: 'serviceCost', label: 'Current service cost', sign: 1 },
+  { k: 'interestCost', label: 'Interest cost', sign: 1 },
+  { k: 'benefitsPaid', label: 'Benefits paid (less)', sign: -1 },
+  { k: 'actuarialLoss', label: 'Actuarial loss', sign: 1 },
+  { k: 'actuarialGain', label: 'Actuarial gain (less)', sign: -1 },
+];
+
 export function LiveActuarialScreen({ live }: { live: LiveActuarial }) {
   const { toast } = useToast();
   const { busy, error, run } = useRun();
@@ -346,16 +356,24 @@ export function LiveActuarialScreen({ live }: { live: LiveActuarial }) {
   const [standard, setStandard] = useState<Standard>('IND_AS_19');
   const [rec, setRec] = useState<{ kind: 'gratuity' | 'leave'; standard: Standard; asOf: Date | null; closing: number | null; census: string | null }>({ kind: 'gratuity', standard: 'IND_AS_19', asOf: null, closing: null, census: null });
   const [report, setReport] = useState<File | null>(null);
+  const [move, setMove] = useState<Partial<Record<MovementKey, number | null>>>({});
   const [uploadKey, setUploadKey] = useState(0);
   const [journal, setJournal] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [finishNote, setFinishNote] = useState<string | null>(null);
   const censusCheck = useTooEarly(asOf ? [] : [{ fieldId: 'ac-asof', message: 'Choose the date the census is as at.' }]);
+  const d = live.data;
+  // PAY-38: with the movement entered, the closing obligation is worked out from the opening one (the last posted figure).
+  const openingOf = (k: 'gratuity' | 'leave') => Number(d?.valuations.filter((v) => v.kind === k && v.status === 'posted').sort((a, b) => b.valuedOn.localeCompare(a.valuedOn))[0]?.closing ?? 0);
+  const moveGiven = MOVEMENT.filter((m) => move[m.k] != null).length;
+  const moveClosing = moveGiven === MOVEMENT.length ? Math.round((openingOf(rec.kind) + MOVEMENT.reduce((t, m) => t + m.sign * (move[m.k] ?? 0), 0)) * 100) / 100 : null;
+  const closing = moveClosing ?? rec.closing;
   const recordCheck = useTooEarly([
     ...(rec.asOf ? [] : [{ fieldId: 'rv-asof', message: 'Choose the valuation date.' }]),
-    ...(rec.closing == null ? [{ fieldId: 'rv-closing', message: 'Enter the closing obligation from the report.' }] : []),
+    ...(moveGiven > 0 && moveGiven < MOVEMENT.length ? [{ fieldId: `rv-${MOVEMENT.find((m) => move[m.k] == null)!.k}`, message: 'Enter all five figures (0 where the report has none), or leave them all empty.' }] : []),
+    ...(moveClosing !== null && moveClosing < 0 ? [{ fieldId: 'rv-serviceCost', message: 'These figures take the obligation below zero. Check them against the report.' }] : []),
+    ...(closing == null ? [{ fieldId: 'rv-closing', message: 'Enter the closing obligation from the report.' }] : []),
   ]);
-  const d = live.data;
   const entity = live.entities.find((x) => x.id === live.entityId)?.name;
   const censuses = d?.censuses ?? [];
   // The latest figure of each obligation that is recorded but not posted yet: what the journal books.
@@ -479,8 +497,8 @@ export function LiveActuarialScreen({ live }: { live: LiveActuarial }) {
                 <FormField id="rv-asof" label="As at" required error={recordCheck.errorOf('rv-asof')}>
                   <DatePicker id="rv-asof" value={rec.asOf} onChange={(x) => setRec({ ...rec, asOf: x })} />
                 </FormField>
-                <FormField id="rv-closing" label="Closing obligation" required error={recordCheck.errorOf('rv-closing')}>
-                  <CurrencyField allowPaise value={rec.closing} onChange={(closing) => setRec({ ...rec, closing })} />
+                <FormField id="rv-closing" label="Closing obligation" required error={recordCheck.errorOf('rv-closing')} helper={moveClosing !== null ? 'Worked out from the opening obligation and the movement below.' : undefined}>
+                  <CurrencyField allowPaise value={closing} onChange={(c) => setRec({ ...rec, closing: c })} readOnly={moveClosing !== null} />
                 </FormField>
                 {censuses.length > 0 && (
                   <FormField label="From the census" optional>
@@ -488,6 +506,26 @@ export function LiveActuarialScreen({ live }: { live: LiveActuarial }) {
                   </FormField>
                 )}
               </FieldRow>
+              <FormSection title="Movement from the report" description={`Optional. Opening obligation ${formatINR(openingOf(rec.kind))} (the last posted figure). Figures marked "less" reduce it.`}>
+                <PlainTable
+                  label="Valuation figures"
+                  rows={MOVEMENT}
+                  getRowId={(m) => m.k}
+                  columns={[
+                    { key: 'figure', header: 'Figure', rowHeader: true, cell: (m) => m.label },
+                    {
+                      key: 'amount',
+                      header: rec.kind === 'gratuity' ? 'Gratuity' : 'Leave',
+                      cell: (m) => (
+                        <FormField id={`rv-${m.k}`} label={m.label} hideLabel error={recordCheck.errorOf(`rv-${m.k}`)}>
+                          <CurrencyField allowPaise value={move[m.k] ?? null} onChange={(x) => setMove({ ...move, [m.k]: x })} />
+                        </FormField>
+                      ),
+                    },
+                  ]}
+                  footer={[{ id: 'closing', label: 'Closing obligation', cells: { amount: moveClosing !== null ? formatINR(moveClosing) : '—' } }]}
+                />
+              </FormSection>
               <div className="yx-pay-row">
                 <Button
                   variant="primary"
@@ -495,9 +533,11 @@ export function LiveActuarialScreen({ live }: { live: LiveActuarial }) {
                   onClick={() => {
                     if (recordCheck.stop()) return;
                     void run('record', async () => {
-                      await live.onRecord({ asOf: isoDay(rec.asOf!), standard: rec.standard, kind: rec.kind, closing: String(rec.closing), ...(rec.census ? { censusId: rec.census } : {}) }, report);
+                      const movement = moveClosing !== null ? Object.fromEntries(MOVEMENT.map((m) => [m.k, String(move[m.k])])) : {};
+                      await live.onRecord({ asOf: isoDay(rec.asOf!), standard: rec.standard, kind: rec.kind, closing: String(closing), ...(rec.census ? { censusId: rec.census } : {}), ...movement }, report);
                       recordCheck.reset();
                       setRec({ ...rec, asOf: null, closing: null });
+                      setMove({});
                       setReport(null);
                       setUploadKey((k) => k + 1);
                       toast({ tone: 'success', title: `${rec.kind === 'gratuity' ? 'Gratuity' : 'Leave'} figures recorded. Someone else posts the journal.` });

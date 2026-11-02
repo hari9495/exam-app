@@ -91,7 +91,7 @@ export class ActuarialService {
       const valuations = await tx.actuarialValuation.findMany({ where: { organizationId: org, legalEntityId: entityId }, orderBy: { valuedOn: 'desc' }, take: 40 });
       return {
         censuses: censuses.map((x) => ({ id: x.id, asOf: dateOf(x.asOf), standard: x.standard, rows: x.rowCount, fileId: x.fileRef, createdAt: x.createdAt })),
-        valuations: valuations.map((x) => ({ id: x.id, valuedOn: dateOf(x.valuedOn), standard: x.standard, kind: x.kind, opening: x.opening.toFixed(2), closing: x.closing.toFixed(2), delta: x.provisionDelta.toFixed(2), journal: x.journal, status: x.status, madeByMe: x.createdBy === v.userId, hasReport: Boolean(x.reportRef) })),
+        valuations: valuations.map((x) => ({ id: x.id, valuedOn: dateOf(x.valuedOn), standard: x.standard, kind: x.kind, opening: x.opening.toFixed(2), closing: x.closing.toFixed(2), delta: x.provisionDelta.toFixed(2), journal: x.journal, status: x.status, madeByMe: x.createdBy === v.userId, hasReport: Boolean(x.reportRef), movement: x.serviceCost === null ? null : { serviceCost: x.serviceCost.toFixed(2), interestCost: x.interestCost!.toFixed(2), benefitsPaid: x.benefitsPaid!.toFixed(2), actuarialLoss: x.actuarialLoss!.toFixed(2), actuarialGain: x.actuarialGain!.toFixed(2) } })),
       };
     });
   }
@@ -109,13 +109,22 @@ export class ActuarialService {
       if (last && dateOf(last.valuedOn) >= dto.asOf) throw new ConflictException(`A valuation as at ${dateOf(last.valuedOn)} is already posted.`);
       const opening = last?.closing ?? D(0);
       const delta = D(dto.closing).sub(opening);
+      // PAY-38: the movement is all or nothing, and it must reach the closing obligation from the opening one.
+      const parts = [dto.serviceCost, dto.interestCost, dto.benefitsPaid, dto.actuarialLoss, dto.actuarialGain];
+      const given = parts.filter((x) => x !== undefined).length;
+      if (given && given < parts.length) throw new BadRequestException('Enter all five movement figures (a zero where the report has none), or none of them.');
+      if (given) {
+        const reached = opening.add(dto.serviceCost!).add(dto.interestCost!).sub(dto.benefitsPaid!).add(dto.actuarialLoss!).sub(dto.actuarialGain!);
+        if (!reached.eq(dto.closing)) throw new BadRequestException(`The figures do not add up: opening ₹${opening.toFixed(2)} with this movement gives ₹${reached.toFixed(2)}, but the closing obligation is ₹${D(dto.closing).toFixed(2)}. Check them against the report.`);
+      }
+      const movement = given ? { serviceCost: D(dto.serviceCost!), interestCost: D(dto.interestCost!), benefitsPaid: D(dto.benefitsPaid!), actuarialLoss: D(dto.actuarialLoss!), actuarialGain: D(dto.actuarialGain!) } : {};
       const [expense, provision] = ACCOUNT[dto.kind];
       const amount = delta.abs().toFixed(2);
       const journal = delta.isZero() ? [] : delta.gt(0) ? [{ account: expense, debit: amount }, { account: provision, credit: amount }] : [{ account: provision, debit: amount }, { account: expense, credit: amount }];
       const ref = report ? await this.files.put(`actuarial/${org}/${dto.legalEntityId}/${randomBytes(12).toString('hex')}.pdf`, report) : null;
       try {
-        const row = await tx.actuarialValuation.create({ data: { organizationId: org, legalEntityId: dto.legalEntityId, valuedOn: asDate(dto.asOf), standard: dto.standard, kind: dto.kind, censusId: dto.censusId ?? null, opening, closing: D(dto.closing), provisionDelta: delta, reportRef: ref, reportSha256: report ? sha256(report) : null, journal: journal as unknown as Prisma.InputJsonValue, createdBy: v.userId! } });
-        await audit(tx, c, 'payroll.actuarial.valuation_recorded', 'actuarial_valuation', row.id, { kind: dto.kind, asOf: dto.asOf, opening: opening.toFixed(2), closing: dto.closing, delta: delta.toFixed(2) });
+        const row = await tx.actuarialValuation.create({ data: { organizationId: org, legalEntityId: dto.legalEntityId, valuedOn: asDate(dto.asOf), standard: dto.standard, kind: dto.kind, censusId: dto.censusId ?? null, opening, closing: D(dto.closing), provisionDelta: delta, ...movement, reportRef: ref, reportSha256: report ? sha256(report) : null, journal: journal as unknown as Prisma.InputJsonValue, createdBy: v.userId! } });
+        await audit(tx, c, 'payroll.actuarial.valuation_recorded', 'actuarial_valuation', row.id, { kind: dto.kind, asOf: dto.asOf, opening: opening.toFixed(2), closing: dto.closing, delta: delta.toFixed(2), movement: given > 0 });
         return { id: row.id, delta: delta.toFixed(2), journal };
       } catch (e) {
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('This valuation is already recorded.');
