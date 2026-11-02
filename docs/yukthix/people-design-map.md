@@ -688,7 +688,7 @@ Live page: /yx/people/clearance (menu People › Exits › Clearance; owners of 
 |---|---|---|
 | Hr · HR · all departments | live | HR with `lifecycle.exit.manage`: "By leaver" (GET lifecycle/clearance, scoped by the server): every department with owners, the open count, a leaver picker |
 | ItOwner · IT owner · own items | live | an IT group member with an open item; Sign off dialog (recovery, note) |
-| FinanceOwner · Finance owner · blocked item | live (gap) | built: the owner marks an open item Blocked with the reason (POST lifecycle/clearance/:id/block, `Mark blocked`), shown as Blocked to HR and the owner; needs migration `20261312000000_clearance_blocked` (written, not applied) |
+| FinanceOwner · Finance owner · blocked item | live | migration applied in the test app 2 Nov 2026; the owner marks an open item Blocked with the reason (POST lifecycle/clearance/:id/block, `Mark blocked`), shown as Blocked to HR and the owner; needs migration `20261312000000_clearance_blocked` (written, not applied) |
 | Empty · · empty | live | "Nothing to sign off" |
 | Phone · · phone | phone view, mobile app not built | `ClearancePhone` in known.json |
 
