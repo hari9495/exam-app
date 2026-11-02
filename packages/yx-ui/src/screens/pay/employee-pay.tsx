@@ -7,6 +7,7 @@ import { PhoneFrame } from '../_kit/frames';
 import { Button, IconButton, Link } from '../../components/button';
 import { AiBadge, Badge, type BadgeTone } from '../../components/display';
 import { Drawer } from '../../components/drawer';
+import { PdfPages } from '../../components/document';
 import { EmptyState, InlineAlert, Skeleton } from '../../components/feedback';
 import { useToast } from '../../components/notify';
 import { useRun } from '../org/org-kit';
@@ -45,6 +46,7 @@ import {
   SectionTitle,
   StateBlock,
   WhyThisNumber,
+  useFileUrl,
   type ExplainedLine,
   type MyPayPage,
   type ViewState,
@@ -1788,6 +1790,8 @@ export interface LivePayslips {
   payslips: MyPayslip[] | null;
   onOpen: (id: string) => Promise<PayslipDetail>;
   onPdf: (id: string, month: string) => Promise<unknown>;
+  /** PAY-21 Document: the payslip PDF for the in-page preview (the same signed-in file as the download). */
+  onPdfFile?: (id: string) => Promise<Blob>;
   onQuery: (id: string, text: string, lineCode?: string) => Promise<unknown>;
   /** The person's own payslip queries (GET payroll/queries, `mine`). */
   queries?: PayslipQueryView[] | null;
@@ -1896,6 +1900,10 @@ function LivePayslipViewer({ live }: { live: LivePayslips }) {
       setWhy(true);
     });
   };
+  // PAY-21 Document: the design's "Payslip PDF" drawer shows the PDF in the page (PDF.js); its footer downloads it.
+  const [pdfOpen, setPdfOpen] = useState(false);
+  const pdf = useFileUrl(pdfOpen && slip ? slip.id : null, slip && live.onPdfFile ? () => live.onPdfFile!(slip.id) : undefined, 'payslip.pdf');
+  const downloadPdf = () => slip && void run('pdf', () => live.onPdf(slip.id, slip.month)).then((ok) => ok && toast({ title: 'Payslip downloaded', description: `Your payslip for ${period} is in your downloads.`, tone: 'success' }));
   const actions = slip && (
     <>
       {prev && (
@@ -1906,11 +1914,7 @@ function LivePayslipViewer({ live }: { live: LivePayslips }) {
       <Button icon={MessageSquare} onClick={() => setQuery('')}>
         Raise a query
       </Button>
-      <Button
-        icon={Download}
-        loading={busy === 'pdf'}
-        onClick={() => void run('pdf', () => live.onPdf(slip.id, slip.month)).then((ok) => ok && toast({ title: 'Payslip downloaded', description: `Your payslip for ${period} is in your downloads.`, tone: 'success' }))}
-      >
+      <Button icon={Download} loading={busy === 'pdf'} onClick={() => (live.onPdfFile ? setPdfOpen(true) : downloadPdf())}>
         Download PDF
       </Button>
     </>
@@ -2055,6 +2059,30 @@ function LivePayslipViewer({ live }: { live: LivePayslips }) {
               setQuery(d?.lines.find((l) => l.name === line)?.code ?? prevD?.lines.find((l) => l.name === line)?.code ?? '');
             }}
           />
+        </Drawer>
+      )}
+      {slip && live.onPdfFile && (
+        <Drawer
+          open={pdfOpen}
+          onOpenChange={setPdfOpen}
+          title="Payslip PDF"
+          subtitle={`Your ${period} payslip, as issued`}
+          size="full"
+          footer={
+            <Button variant="primary" icon={Download} loading={busy === 'pdf'} onClick={downloadPdf}>
+              Download PDF
+            </Button>
+          }
+        >
+          <div className="yx-pay-preview" tabIndex={0} role="region" aria-label="Payslip preview">
+            {pdf?.url ? (
+              <PdfPages url={pdf.url} label={`Payslip for ${period}`} />
+            ) : pdf?.failed ? (
+              <EmptyState title="We couldn't show the preview" description="Download the PDF to read it." />
+            ) : (
+              <Skeleton height="var(--yx-space-16)" />
+            )}
+          </div>
         </Drawer>
       )}
       {slip && query != null && <QueryDrawer slip={slip} period={period} lines={d?.lines ?? []} lineCode={query} onClose={() => setQuery(null)} onSend={live.onQuery} />}

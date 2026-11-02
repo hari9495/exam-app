@@ -13,8 +13,39 @@ const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const fn = () => vi.fn(async () => ({}) as never);
 const drawer = () => screen.getByRole('dialog');
 
+// PDF.js does not run in jsdom: the kit's PDF pages stand in as their label.
+vi.mock('../../components/document', async (orig) => ({ ...(await orig<object>()), PdfPages: ({ label }: { label: string }) => <p>{`PDF ${label}`}</p> }));
+
 describe('PAY-21 / PAY-40 · Me › Payslips (live)', () => {
   const live = (over: Partial<LivePayslips> = {}): LivePayslips => ({ state: 'ready', payslips: MY_PAYSLIPS, onOpen: async (id) => (id === 's0' ? PREVIOUS : DETAIL), onPdf: fn(), onQuery: fn(), ...over });
+
+  it('Download PDF opens the payslip PDF in the page; the drawer downloads it (PAY-21 Document)', async () => {
+    const make = vi.spyOn(URL, 'createObjectURL').mockImplementation(() => 'blob:slip');
+    const drop = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    try {
+      const onPdf = fn();
+      const onPdfFile = vi.fn(async () => new Blob(['%PDF-1.7'], { type: 'application/pdf' }));
+      render(<PayslipViewerScreen live={live({ onPdf, onPdfFile })} />);
+      await ue.click(await screen.findByRole('button', { name: 'Download PDF' }));
+      const d = screen.getByRole('dialog', { name: 'Payslip PDF' });
+      expect(await within(d).findByText(/PDF Payslip for/)).toBeInTheDocument();
+      expect(onPdfFile).toHaveBeenCalledWith(MY_PAYSLIPS[0]!.id);
+      await ue.click(within(d).getByRole('button', { name: 'Download PDF' }));
+      await waitFor(() => expect(onPdf).toHaveBeenCalledWith(MY_PAYSLIPS[0]!.id, MY_PAYSLIPS[0]!.month));
+      expect(await screen.findByText('Payslip downloaded')).toBeInTheDocument();
+      await ue.keyboard('{Escape}');
+      await waitFor(() => expect(drop).toHaveBeenCalledWith('blob:slip'));
+    } finally {
+      make.mockRestore();
+      drop.mockRestore();
+    }
+  });
+
+  it('the preview says so when the PDF cannot be fetched', async () => {
+    render(<PayslipViewerScreen live={live({ onPdfFile: async () => Promise.reject(new Error('gone')) })} />);
+    await ue.click(await screen.findByRole('button', { name: 'Download PDF' }));
+    expect(await screen.findByText("We couldn't show the preview")).toBeInTheDocument();
+  });
 
   it('what changed is worked out only from the two payslips, exactly, largest first', () => {
     expect(payDiff(PREVIOUS.lines, DETAIL.lines).map((r) => [r.name, r.before, r.after, r.netEffect])).toEqual([
