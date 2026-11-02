@@ -24,6 +24,8 @@ export interface PayRun {
   preparedByMe?: boolean;
   /** PAY-09: the viewer is the only one who may publish these payslips, so a reason is asked for. */
   publishAlone?: boolean;
+  /** PAY-29: the run's pay group (only on the single run). */
+  payGroup?: { name: string; frequency: 'monthly' | 'weekly' | 'fortnightly' | string } | null;
   approval?: { canDecide: boolean; phrase: string; step: number; steps: number } | null;
   /** PAY-9.01: a weekly or fortnightly group's run pays one period of the month. */
   subPeriod?: number | null;

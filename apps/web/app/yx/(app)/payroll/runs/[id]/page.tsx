@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { OffCycleRunScreen, RunWorkspaceScreen, type FnfSettlementView, type LiveRunWorkspaceData, type OffcycleItem, type RunInputSources, type BankFileMade, type BankFileRow, type FilingRow, type PayRun, type PayslipDetail, type RunPayslip, type RunPerson, type RunProgressData, type RunReadiness, type RunVariance } from '@yukthix/ui/pay';
+import { FrequencyRunsScreen, OffCycleRunScreen, RunWorkspaceScreen, type FnfSettlementView, type LiveRunWorkspaceData, type OffcycleItem, type RunInputSources, type BankFileMade, type BankFileRow, type FilingRow, type PayRun, type PayslipDetail, type RunPayslip, type RunPerson, type RunProgressData, type RunReadiness, type RunVariance } from '@yukthix/ui/pay';
 import { useYxPermissions } from '../../../../../../lib/yx-org';
 import { payState, usePay, usePayDownload, usePayRead, usePayWrite } from '../../../../../../lib/yx-pay';
 import { usePeopleSearch } from '../../../../../../lib/yx-pay-5b';
@@ -104,6 +104,9 @@ export default function YxPayRunPage() {
   // PAY-11: an off-cycle run opens in the designed off-cycle screen (its settlement lines on top of the same steps).
   return run.data?.runType === 'offcycle' ? (
     <OffCycleRunScreen live={{ mode: 'run', workspace, settlement, person: settlement ? nameOf(settlement.employeeId) : null, fnfHref: '/yx/payroll/fnf', items: items.data ?? null }} />
+  ) : run.data?.payGroup && ['weekly', 'fortnightly'].includes(run.data.payGroup.frequency) ? (
+    // PAY-29: a weekly or fortnightly run opens in the design's step view over the same workspace.
+    <FrequencyRunsScreen liveRun={workspace} />
   ) : (
     <RunWorkspaceScreen live={workspace} />
   );

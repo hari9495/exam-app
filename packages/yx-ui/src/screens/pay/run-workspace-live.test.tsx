@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { RunWorkspaceScreen } from './payroll-run';
+import { FrequencyRunsScreen, RunWorkspaceScreen } from './payroll-run';
 import { explained, type LiveRunWorkspaceData } from './run-workspace-live';
 import { BANK_FILES, DETAIL, PAYSLIPS, PEOPLE, READINESS, RUN, VARIANCES } from './live/fixtures-5j';
 
@@ -306,6 +306,24 @@ describe('PAY-03 run workspace, live', () => {
     await ue.click(screen.getByRole('tab', { name: /^Files/ }));
     expect(screen.queryByText('Journal')).not.toBeInTheDocument();
     expect(screen.queryByText('Statutory files')).not.toBeInTheDocument();
+  });
+
+  it('PAY-29 WeeklyRun: the design step view (period, group, frequency on every step) over the workspace; payslips with totals', async () => {
+    const weekly = { ...RUN, status: 'calculated' as const, range: { from: '2026-09-21', to: '2026-09-27' }, subPeriod: 4, payGroup: { name: 'Hosur loaders (weekly)', frequency: 'weekly' } };
+    const l = live({ run: weekly, onPayments: vi.fn() });
+    render(<FrequencyRunsScreen liveRun={l} />);
+    expect(screen.getByRole('heading', { level: 1, name: '21 Sep 2026 to 27 Sep 2026' })).toBeInTheDocument();
+    expect(screen.getByText('Hosur loaders (weekly)')).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: 'Weekly payslips' })).toBeInTheDocument();
+    // The workspace's actions stay: Submit for approval is in the header.
+    expect(screen.getByRole('button', { name: 'Submit for approval' })).toBeInTheDocument();
+  });
+
+  it('PAY-29 WeeklyRun: before calculation it says how to get payslips; a fortnightly group says Fortnightly', () => {
+    const l = live({ run: { ...RUN, status: 'draft', range: { from: '2026-09-16', to: '2026-09-30' }, payGroup: { name: 'Packing line', frequency: 'fortnightly' } }, payslips: [] });
+    render(<FrequencyRunsScreen liveRun={l} />);
+    expect(screen.getAllByText('Fortnightly').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('table', { name: 'Fortnightly payslips' })).not.toBeInTheDocument();
   });
 
   it('void: from the menu, only with a reason; a void run says so', async () => {

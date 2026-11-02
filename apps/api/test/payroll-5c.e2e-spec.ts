@@ -261,6 +261,8 @@ describe('Payroll batch 5c', () => {
     // PAY-02: attendance mode per group (the company default: punch, missing punches block approval); emp2 has a manual LOP entry.
     expect(ready.groups).toEqual([expect.objectContaining({ group: 'Bengaluru', mode: 'punch_block', employees: 2, lopEntered: 1, attendanceStage: 'open' })]);
     await api('approver1', 'get', `/payroll/runs/${ids.run}/readiness`).expect(403);
+    // PAY-29: the run says its pay group and frequency (a weekly or fortnightly group opens the step view).
+    expect((await api('payAdmin', 'get', `/payroll/runs/${ids.run}`).expect(200)).body.payGroup).toEqual({ name: expect.any(String), frequency: 'monthly' });
     await api('payAdminB', 'get', `/payroll/runs/${ids.run}/readiness`).expect(404);
     const banks = ready.checks.filter((c: { checkKey: string }) => c.checkKey === 'bank_missing');
     expect(banks).toHaveLength(2);

@@ -45,7 +45,7 @@ import {
 import { CONFIRM_PHRASE, DUE_ITEMS, EWA_REMITTANCE, FIN_APPROVER, PAYROLL_ADMIN, RUN, RUN_HISTORY, RUN_PICKS, RUN_ROWS, d, type RunRow } from './pay-data';
 import { variance } from './pay-logic';
 import { DueBadge } from '../time/time-kit';
-import { LiveRunWorkspace, type LiveRunWorkspaceData } from './run-workspace-live';
+import { LiveFrequencyRun, LiveRunWorkspace, type LiveRunWorkspaceData } from './run-workspace-live';
 import { LiveCoverageScreen, LivePayrollHomeScreen, LiveRunListPanel, type LiveCoverage, type LivePayrollHome, type LiveRunList } from './payroll-home-live';
 
 /** Story ids this file links to (review/pay-story-ids.txt). */
@@ -1693,9 +1693,26 @@ export const FREQ_RUNS: FrequencyRun[] = [
 ];
 const RUN_TONE: Record<FrequencyRun['status'], BadgeTone> = { Draft: 'neutral', 'In review': 'warning', Approved: 'info', Paid: 'success', Published: 'success' };
 
+/** PAY-29 "Weekly run": the run's four steps with the frequency on every step (design; also the live weekly run's lead). */
+export function FrequencyRunSteps(p: { frequency: string; period: string; ready: ReactNode; payslips: ReactNode; approve: ReactNode; bank: ReactNode; defaultCurrent?: string; current?: string; onCurrentChange?: (id: string) => void; finishLabel?: string; onFinish?: () => void }) {
+  const badge = <Badge tone="info">{p.frequency}</Badge>;
+  const step = (id: string, title: string, content: ReactNode): StepperStep => ({ id, title, description: `${p.frequency} · ${p.period}`, content: <div className="yx-pay-stack">{badge}{content}</div> });
+  return (
+    <Stepper
+      title={`${p.frequency} run`}
+      defaultCurrent={p.defaultCurrent}
+      current={p.current}
+      onCurrentChange={p.onCurrentChange}
+      finishLabel={p.finishLabel ?? 'Release bank file'}
+      onFinish={p.onFinish}
+      steps={[step('ready', 'Readiness', p.ready), step('payslips', 'Payslips', p.payslips), step('approve', 'Approve', p.approve), step('bank', 'Bank file', p.bank)]}
+    />
+  );
+}
+
 /** PAY-29 · Weekly / fortnightly pay run (T2 run list per frequency + T5 steps, frequency shown on every step). */
-export function FrequencyRunsScreen(p: { view?: 'list' | 'run'; frequency?: 'Weekly' | 'Fortnightly'; state?: ViewState; live?: LiveRunList }) {
-  return p.live ? <LiveRunListPanel live={p.live} /> : <SampleFrequencyRuns {...p} />;
+export function FrequencyRunsScreen(p: { view?: 'list' | 'run'; frequency?: 'Weekly' | 'Fortnightly'; state?: ViewState; live?: LiveRunList; /** The live weekly or fortnightly run (/yx/payroll/runs/[id]). */ liveRun?: LiveRunWorkspaceData }) {
+  return p.liveRun ? <LiveFrequencyRun live={p.liveRun} /> : p.live ? <LiveRunListPanel live={p.live} /> : <SampleFrequencyRuns {...p} />;
 }
 
 function SampleFrequencyRuns({ view = 'list', frequency = 'Weekly', state = 'ready' }: { view?: 'list' | 'run'; frequency?: 'Weekly' | 'Fortnightly'; state?: ViewState }) {
@@ -1727,7 +1744,6 @@ function SampleFrequencyRuns({ view = 'list', frequency = 'Weekly', state = 'rea
   ];
   const cur = runs[0];
   const freqBadge = <Badge tone="info">{frequency}</Badge>;
-  const step = (id: string, title: string, content: ReactNode): StepperStep => ({ id, title, description: `${frequency} · ${cur?.period ?? ''}`, content: <div className="yx-pay-stack">{freqBadge}{content}</div> });
   return (
     <PayFrame page="runs" persona="pa">
       <PageHeader
@@ -1771,21 +1787,16 @@ function SampleFrequencyRuns({ view = 'list', frequency = 'Weekly', state = 'rea
           ))}
         </Tabs>
       ) : (
-        <Stepper
-          title={`${frequency} run`}
+        <FrequencyRunSteps
+          frequency={frequency}
+          period={cur?.period ?? ''}
           defaultCurrent="payslips"
-          finishLabel="Release bank file"
-          steps={[
-            step(
-              'ready',
-              'Readiness',
-              <InlineAlert tone="info" title="Ready">
-                Attendance feed for 21–27 Sep received for 38 of 38. PT and LWF use part-period rules; TDS projected on annualised weekly pay.
-              </InlineAlert>,
-            ),
-            step(
-              'payslips',
-              'Payslips',
+          ready={
+            <InlineAlert tone="info" title="Ready">
+              Attendance feed for 21–27 Sep received for 38 of 38. PT and LWF use part-period rules; TDS projected on annualised weekly pay.
+            </InlineAlert>
+          }
+          payslips={
               <DataTable
                 label="Weekly payslips"
                 columns={[
@@ -1796,15 +1807,10 @@ function SampleFrequencyRuns({ view = 'list', frequency = 'Weekly', state = 'rea
                 ]}
                 rows={RUN_ROWS.slice(0, 12)}
                 getRowId={(r) => r.id}
-              />,
-            ),
-            step(
-              'approve',
-              'Approve',
-              <p className="yx-pay-muted">Finance approves each weekly run. PF and ESI are computed per run and added up into the monthly ECR and ESI return.</p>,
-            ),
-            step('bank', 'Bank file', <FactRow items={[{ label: 'Payments', value: '38' }, { label: 'Total', value: formatINR(cur?.net ?? 0) }, { label: 'Pay date', value: formatDate(cur?.payDate) }]} />),
-          ]}
+              />
+          }
+          approve={<p className="yx-pay-muted">Finance approves each weekly run. PF and ESI are computed per run and added up into the monthly ECR and ESI return.</p>}
+          bank={<FactRow items={[{ label: 'Payments', value: '38' }, { label: 'Total', value: formatINR(cur?.net ?? 0) }, { label: 'Pay date', value: formatDate(cur?.payDate) }]} />}
         />
       )}
     </PayFrame>

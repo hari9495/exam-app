@@ -24,7 +24,7 @@ import { ApprovalTimeline, type ApprovalStep } from '../../components/timeline';
 import { formatDate, formatINR } from '../../lib/format';
 import type { FilterValue } from '../../lib/table';
 import { useRun } from '../org/org-kit';
-import { AttendanceGroupsPanel, type AttendanceGroup } from './payroll-run';
+import { AttendanceGroupsPanel, FrequencyRunSteps, type AttendanceGroup } from './payroll-run';
 import { FactRow, IrreversibleSheet, RunProgress, RunStageTrack, SectionTitle, StateBlock, WhyThisNumber, type ExplainedLine, type RunStage } from './pay-kit';
 import { RunStatusBadge, rupees, runName } from './live/runs';
 import type { Confirmation, LoadState } from './live/types';
@@ -506,6 +506,76 @@ export function LiveRunWorkspace({ live: p }: { live: LiveRunWorkspaceData }) {
       )}
     </div>
   );
+}
+
+/* ------------------------------------------------------------------ PAY-29 weekly and fortnightly runs */
+
+const STEP_OF: Record<string, string> = { draft: 'ready', reopened: 'ready', calculating: 'ready', calculated: 'payslips', in_review: 'payslips', submitted: 'approve', approved: 'bank', paid: 'bank' };
+
+/** PAY-29 "Weekly run": the design's step view (frequency on every step) over the run workspace, which keeps every action. */
+export function LiveFrequencyRun({ live: p }: { live: LiveRunWorkspaceData }) {
+  const r = p.run;
+  const [current, setCurrent] = useState<string | undefined>(undefined);
+  const frequency = r?.payGroup?.frequency === 'fortnightly' ? 'Fortnightly' : 'Weekly';
+  const period = r?.range ? `${formatDate(new Date(`${r.range.from}T00:00:00`))} to ${formatDate(new Date(`${r.range.to}T00:00:00`))}` : r ? monthLong(r.month) : '';
+  const nameOf = (id: string) => p.people.find((x) => x.employeeId === id);
+  const blocks = (p.readiness?.checks ?? []).filter((c) => c.severity === 'block' && !c.waived).length;
+  const slips = p.payslips ?? [];
+  const file = (p.bankFiles ?? []).find((b) => b.status !== 'superseded');
+  const lead = r && (
+    <FrequencyRunSteps
+      frequency={frequency}
+      period={period}
+      current={current ?? STEP_OF[r.status] ?? 'ready'}
+      onCurrentChange={setCurrent}
+      finishLabel="Open payments"
+      onFinish={p.onPayments}
+      ready={
+        blocks ? (
+          <InlineAlert tone="danger" title={`${count(blocks, 'item')} ${blocks === 1 ? 'blocks' : 'block'} this run`}>
+            Fix or waive them in Validations below, then calculate.
+          </InlineAlert>
+        ) : (
+          <InlineAlert tone="info" title="Ready">
+            {`${count(p.readiness?.people ?? 0, 'person', 'people')} in this ${frequency.toLowerCase()} period. PT and LWF use part-period rules; TDS is projected on the annualised pay.`}
+          </InlineAlert>
+        )
+      }
+      payslips={
+        slips.length ? (
+          <DataTable
+            label={`${frequency} payslips`}
+            columns={[
+              { key: 'name', header: 'Employee', type: 'person', value: (x: RunPayslip) => nameOf(x.employeeId)?.name ?? 'Someone', person: (x) => ({ name: nameOf(x.employeeId)?.name ?? 'Someone', secondary: nameOf(x.employeeId)?.employeeCode ?? undefined }), width: 220 },
+              { key: 'gross', header: 'Gross', type: 'money', value: (x) => Number(x.gross), total: 'sum', width: 120 },
+              { key: 'net', header: 'Net', type: 'money', value: (x) => Number(x.net), total: 'sum', width: 120 },
+            ]}
+            rows={slips}
+            getRowId={(x) => x.id}
+          />
+        ) : (
+          <EmptyState compact title="No payslips yet" description="Calculate the run to see each person's pay for this period." />
+        )
+      }
+      approve={
+        <p className="yx-pay-muted">
+          {r.status === 'submitted'
+            ? `Waiting for approval${r.approval ? ` (step ${r.approval.step} of ${r.approval.steps})` : ''}.`
+            : LOCKED.includes(r.status)
+              ? `Approved${r.approvedAt ? ` on ${formatDate(new Date(r.approvedAt))}` : ''}.`
+              : 'Finance approves each run with the typed phrase. PF and ESI are worked out per run and added up into the monthly return.'}
+        </p>
+      }
+      bank={
+        file ? (
+          <FactRow items={[{ label: 'Payments', value: String(file.rows) }, { label: 'Total', value: money(file.total) }, { label: 'Status', value: file.status === 'released' ? 'Released' : 'Waiting for release' }]} />
+        ) : (
+          <p className="yx-pay-muted">{LOCKED.includes(r.status) ? 'No bank file yet. Make it in Files below.' : 'The bank file is made once the run is approved.'}</p>
+        )
+      }
+    />
+  );
+  return <LiveRunWorkspace live={{ ...p, heading: r ? { name: period, secondary: r.payGroup?.name ?? runName(r), status: <Badge tone="info">{frequency}</Badge> } : undefined, lead }} />;
 }
 
 /* ------------------------------------------------------------------ Validations (PAY-02) */

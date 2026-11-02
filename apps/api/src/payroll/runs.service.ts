@@ -298,7 +298,9 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       }
       // PAY-09: the sole payroll admin is asked for a reason in the publish sheet before pressing publish.
       const publishAlone = ['approved', 'paid'].includes(run.status) && !run.publishedAt && v.grants.has('payroll.payslip.publish') ? await publishesAlone(tx, c.organizationId, run.legalEntityId, v.userId!) : false;
-      return { ...this.view(run), entityName: e.name, preparedByMe: run.preparedBy === v.userId, approval, publishAlone };
+      // PAY-29: a weekly or fortnightly group's run opens in the design's step view (its group and frequency).
+      const payGroup = await tx.payGroup.findFirst({ where: { organizationId: c.organizationId, id: run.payGroupId }, select: { name: true, frequency: true } });
+      return { ...this.view(run), entityName: e.name, preparedByMe: run.preparedBy === v.userId, approval, publishAlone, payGroup };
     });
   }
 
