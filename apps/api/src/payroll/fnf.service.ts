@@ -738,6 +738,9 @@ export class FnfService implements OnModuleInit {
 /** The retrenchment lines of a settlement (held until the government's permission is recorded, when it is needed). */
 export const RETRENCHMENT_CODES = ['retrenchment_comp', 'notice_pay', 'reskilling_fund'];
 
+/** "18 Sep 2026": the house date in text the run shows. */
+const houseDate = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+
 /**
  * PAY-11 Retrenchment: whether the retrenchment needs the government's permission (IN.IR threshold on the workers recorded
  * on the exit case), and the permission recorded in People › Exits ("granted by … on …"), shown on the run.
@@ -749,13 +752,14 @@ export async function retrenchmentPermission(tx: Tx, org: string, f: { exitType:
   const irRs = inForce(rules, 'IN.IR', ['IN'], dateOf(f.lwd));
   const threshold = (irRs?.values as { permissionThreshold?: number | string } | undefined)?.permissionThreshold;
   const needed = threshold != null && workers >= Number(threshold);
-  const p = k?.irPermissionId ? await tx.irPermissionRequest.findFirst({ where: { organizationId: org, id: k.irPermissionId }, select: { authority: true, status: true, appliedOn: true, decidedOn: true } }) : null;
+  const p = k?.irPermissionId ? await tx.irPermissionRequest.findFirst({ where: { organizationId: org, id: k.irPermissionId }, select: { authority: true, status: true, appliedOn: true, decidedOn: true, orderNumber: true } }) : null;
   const granted = !!p && (p.status === 'granted' || p.status === 'deemed');
   return {
     needed,
     workers,
     granted,
     status: p?.status ?? null,
-    reference: p ? `${p.authority}, ${p.status === 'deemed' ? 'deemed granted' : p.status === 'granted' ? 'granted' : p.status === 'refused' ? 'refused' : 'applied'} ${p.decidedOn ? `on ${dateOf(p.decidedOn)}` : `(applied ${dateOf(p.appliedOn)})`}` : null,
+    // Founder 2 Nov 2026: "authority, order no., granted on date" (the order number when one was recorded).
+    reference: p ? `${p.authority}, ${p.orderNumber ? `order no. ${p.orderNumber}, ` : ''}${p.status === 'deemed' ? 'deemed granted' : p.status === 'granted' ? 'granted' : p.status === 'refused' ? 'refused' : 'applied'} ${p.decidedOn ? `on ${houseDate(p.decidedOn)}` : `(applied ${houseDate(p.appliedOn)})`}` : null,
   };
 }

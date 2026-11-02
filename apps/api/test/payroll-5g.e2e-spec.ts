@@ -473,10 +473,10 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     expect(blocks).toEqual([expect.objectContaining({ waivable: false })]);
     await api('payAdmin', 'post', `/payroll/runs/${second.runId}/validations/${blocks[0].id}/waive`).send({ reason: 'Trying to skip it' }).expect(409);
     await inA(async (tx) => {
-      const p = await tx.irPermissionRequest.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity, kind: 'retrenchment', workersAffected: 1, reasons: 'Line closed', appliedOn: new Date(`${today}T00:00:00Z`), authority: 'Labour Commissioner, Karnataka', status: 'granted', decidedOn: new Date(`${today}T00:00:00Z`) } });
+      const p = await tx.irPermissionRequest.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity, kind: 'retrenchment', workersAffected: 1, reasons: 'Line closed', appliedOn: new Date(`${today}T00:00:00Z`), authority: 'Labour Commissioner, Karnataka', status: 'granted', decidedOn: new Date(`${today}T00:00:00Z`), orderNumber: 'LC/KA/2026/118' } });
       await tx.exitCase.update({ where: { id: f.exitCaseId }, data: { irPermissionId: p.id } });
     });
-    expect((await api('payAdmin', 'get', `/payroll/fnf/${id}`).expect(200)).body.permission).toEqual({ needed: true, workers: 350, granted: true, status: 'granted', reference: `Labour Commissioner, Karnataka, granted on ${today}` });
+    expect((await api('payAdmin', 'get', `/payroll/fnf/${id}`).expect(200)).body.permission).toEqual({ needed: true, workers: 350, granted: true, status: 'granted', reference: `Labour Commissioner, Karnataka, order no. LC/KA/2026/118, granted on ${new Date(`${today}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })}` });
     // Gap-free per company and year: the second F&F run takes the next number; another company starts at 1.
     expect((await api('payAdmin', 'get', `/payroll/runs/${second.runId}`).expect(200)).body.reference).toBe(`FNF-${today.slice(0, 4)}-0002`);
     expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => (fnf as unknown as { runReference: (t: unknown, o: string) => Promise<string> }).runReference(tx, org.B.id))).toBe(`FNF-${today.slice(0, 4)}-0001`);

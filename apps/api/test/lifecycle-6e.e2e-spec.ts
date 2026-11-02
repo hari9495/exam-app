@@ -469,7 +469,20 @@ describe('Lifecycle batch 6e', () => {
     expect(refused.body.code).toBe('IR_PERMISSION_NEEDED');
     const p = (await api('hr', 'get', '/lifecycle/ir-permissions').expect(200)).body;
     expect(p.workers[ids.plant]).toBe(350);
-    await api('hr', 'post', `/lifecycle/ir-permissions/${perm.id}/decide`).send({ status: 'granted', decidedOn: today, version: 1 }).expect(200);
+    // Founder 2 Nov 2026: an optional government order number with a grant, validated and audited; never with a refusal
+    // or a deemed grant; the wrong role and another company cannot decide.
+    const decide = (who: 'hr' | 'mgr' | 'adminB', body: Record<string, unknown>) => api(who, 'post', `/lifecycle/ir-permissions/${perm.id}/decide`).send({ status: 'granted', decidedOn: today, version: 1, ...body });
+    await decide('hr', { orderNumber: '<script>' }).expect(400);
+    await decide('hr', { orderNumber: 'X'.repeat(61) }).expect(400);
+    await decide('hr', { orderNumber: '   ' }).expect(400);
+    expect((await decide('hr', { status: 'deemed', orderNumber: 'L-1/2026' }).expect(400)).body.message).toMatch(/granted permission only/);
+    await decide('mgr', { orderNumber: 'L-42011/12/2026-IR(M)' }).expect(403);
+    await decide('adminB', { orderNumber: 'L-42011/12/2026-IR(M)' }).expect(404);
+    await decide('hr', { orderNumber: ' L-42011/12/2026-IR(M) ' }).expect(200);
+    await decide('hr', { orderNumber: 'L-2' }).expect(409); // decided already
+    expect((await api('hr', 'get', '/lifecycle/ir-permissions').expect(200)).body.requests.find((r: { id: string }) => r.id === perm.id)).toMatchObject({ status: 'granted', orderNumber: 'L-42011/12/2026-IR(M)' });
+    const logged = await inA((tx) => tx.auditLog.findFirstOrThrow({ where: { action: 'ir.permission.granted', entityId: perm.id } }));
+    expect(JSON.parse(logged.metadataJson ?? '{}')).toMatchObject({ orderNumber: 'L-42011/12/2026-IR(M)', decidedOn: today });
     await decideAs('hr2');
     expect((await api('hr', 'get', `/lifecycle/exits/${k.id}`).expect(200)).body.status).toBe('accepted');
     // VRS: open to 40+; Lata (45) applies and HR accepts.

@@ -543,7 +543,7 @@ export class ExitExtrasService {
       for (const le of await tx.legalEntity.findMany({ where: { organizationId: c.organizationId }, select: { id: true } })) workers[le.id] = await this.exits.workersIn(tx, c.organizationId, le.id);
       return {
         workers,
-        requests: rows.filter((r) => tenantWide(v, 'lifecycle.exit.manage') || (v.scopes.get('lifecycle.exit.manage') ?? []).some((s) => s.id === r.legalEntityId)).map((r) => ({ id: r.id, legalEntityId: r.legalEntityId, kind: r.kind, workersAffected: r.workersAffected, reasons: r.reasons, appliedOn: iso(r.appliedOn), authority: r.authority, status: r.status, decidedOn: r.decidedOn ? iso(r.decidedOn) : null, version: r.version })),
+        requests: rows.filter((r) => tenantWide(v, 'lifecycle.exit.manage') || (v.scopes.get('lifecycle.exit.manage') ?? []).some((s) => s.id === r.legalEntityId)).map((r) => ({ id: r.id, legalEntityId: r.legalEntityId, kind: r.kind, workersAffected: r.workersAffected, reasons: r.reasons, appliedOn: iso(r.appliedOn), authority: r.authority, status: r.status, decidedOn: r.decidedOn ? iso(r.decidedOn) : null, orderNumber: r.orderNumber, version: r.version })),
         schemes: schemes.map((s) => ({ id: s.id, name: s.name, legalEntityId: s.legalEntityId, opensOn: iso(s.opensOn), closesOn: iso(s.closesOn), minAge: s.minAge, minServiceYears: s.minServiceYears, status: s.status })),
       };
     });
@@ -560,16 +560,18 @@ export class ExitExtrasService {
     });
   }
 
-  async decidePermission(ctx: TenantContext, user: ScopeUser, id: string, dto: { status: 'granted' | 'deemed' | 'refused'; decidedOn: string; orderDocumentId?: string | null; version: number }) {
+  async decidePermission(ctx: TenantContext, user: ScopeUser, id: string, dto: { status: 'granted' | 'deemed' | 'refused'; decidedOn: string; orderDocumentId?: string | null; orderNumber?: string; version: number }) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const r = await tx.irPermissionRequest.findFirst({ where: { organizationId: c.organizationId, id } });
       if (!r) throw new NotFoundException('No such request.');
       this.entityAdmin(v, r.legalEntityId);
       if (r.status !== 'applied' || r.version !== dto.version) throw new ConflictException('This request was decided or changed meanwhile.');
-      await tx.irPermissionRequest.update({ where: { id }, data: { status: dto.status, decidedOn: asDate(dto.decidedOn), orderDocumentId: dto.orderDocumentId ?? null, version: { increment: 1 } } });
+      // The order number belongs to the government's grant order; a deemed grant or a refusal has none here.
+      if (dto.orderNumber && dto.status !== 'granted') throw new BadRequestException('An order number goes with a granted permission only.');
+      await tx.irPermissionRequest.update({ where: { id }, data: { status: dto.status, decidedOn: asDate(dto.decidedOn), orderDocumentId: dto.orderDocumentId ?? null, orderNumber: dto.orderNumber || null, version: { increment: 1 } } });
       if (dto.status === 'refused') await this.exits.refusePermissionIn(tx, c, id);
-      await audit(tx, c, `ir.permission.${dto.status}`, 'ir_permission_request', id, {});
+      await audit(tx, c, `ir.permission.${dto.status}`, 'ir_permission_request', id, { decidedOn: dto.decidedOn, ...(dto.orderNumber ? { orderNumber: dto.orderNumber } : {}) });
       return { ok: true };
     });
   }

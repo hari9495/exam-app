@@ -482,6 +482,14 @@ export class IrDecisionDto {
   @IsUUID()
   orderDocumentId?: string | null;
 
+  /** The government order number of a grant, e.g. "L-42011/12/2026-IR(M)" (founder 2 Nov 2026). Optional. */
+  @IsOptional()
+  @trim()
+  @IsString()
+  @Length(1, 60, { message: 'The order number is 1 to 60 characters.' })
+  @Matches(/^[A-Za-z0-9][A-Za-z0-9 ./()&,:_-]*$/, { message: 'The order number has letters, digits, spaces and . / ( ) - & , : _ only.' })
+  orderNumber?: string;
+
   @IsInt()
   version!: number;
 }

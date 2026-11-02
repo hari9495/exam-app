@@ -6960,6 +6960,8 @@ model IrPermissionRequest {
   status          String    @default("applied") @db.VarChar(10)
   decidedOn       DateTime? @map("decided_on") @db.Date
   orderDocumentId String?   @map("order_document_id") @db.Uuid
+  /// The government order number of a grant (optional; founder 2 Nov 2026).
+  orderNumber     String?   @map("order_number") @db.VarChar(60)
   createdBy       String?   @map("created_by") @db.Uuid
   version         Int       @default(1)
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
