@@ -18,7 +18,9 @@ const STATUTE = /\b(pf|epf|eps|edli|esi|esic|uan|professional[\s_-]?tax|ptax|lwf
 /** A number that could be a legal figure: 3+ digits, or a decimal (a rate). Times and sizes have their own names. */
 const FIGURE = /(?<![\w.$'"`-])(\d{3,}(_\d{3})*|\d+\.\d+)(?![\w.'"`])/;
 
-const ALLOWED: { file: string; text: string; why: string }[] = [];
+const ALLOWED: { file: string; text: string; why: string }[] = [
+  { file: 'payroll/reports.service.ts', text: 'const EXPORT_LIMIT = 50_000;', why: 'a row cap on the CSV export so one request cannot pull an unbounded file; not a legal figure' },
+];
 
 function files(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
