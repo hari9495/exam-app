@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { RulesBrowserScreen, type AdvisoryView, type RuleSetView, type SetupEntity } from '@yukthix/ui/pay';
+import { RulesBrowserScreen, type AdvisoryView, type RuleSetView, type SetupEntity, type TaskDesk } from '@yukthix/ui/pay';
 import { useYxPermissions } from '../../../../../lib/yx-org';
 import { payState, usePay } from '../../../../../lib/yx-pay';
 import { useApi, useApiWrite } from '../../../../../lib/yx-pay-5j';
@@ -19,6 +19,8 @@ export default function YxPayAdvisoriesPage() {
   const seeRules = perms.has('payroll.setup.manage');
   const rules = usePay<RuleSetView[]>(seeRules ? `/statutory/rules${entityId ? `?entityId=${encodeURIComponent(entityId)}` : ''}` : null);
   const advisories = useApi<AdvisoryView[]>(entityId ? `/statutory/advisories?entityId=${encodeURIComponent(entityId)}` : null);
+  // CMP-08: the help desks the reviewer may put a follow-up task on.
+  const taskDesks = useApi<TaskDesk[]>('/statutory/advisories/task-desks');
   const write = useApiWrite();
   return (
     <RulesBrowserScreen
@@ -35,7 +37,8 @@ export default function YxPayAdvisoriesPage() {
         rules: rules.data ?? null,
         advisories: advisories.data ?? null,
         can: { rules: seeRules, updates: true },
-        onReview: (a, note) => write(`/statutory/advisories/${encodeURIComponent(a.code)}/review`, { entityId, note }),
+        onReview: (a, note, extra) => write(`/statutory/advisories/${encodeURIComponent(a.code)}/review`, { entityId, note, ...extra }),
+        taskDesks: taskDesks.data ?? (taskDesks.isError ? [] : null),
         today: todayIndia(),
       }}
     />

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { RegistersScreen, type RegisterRow, type SetupEntity } from '@yukthix/ui/pay';
+import { RegistersScreen, type RegisterKindKey, type RegisterRow, type RegisterRowsView, type SetupEntity } from '@yukthix/ui/pay';
 import { useYxPermissions } from '../../../../../lib/yx-org';
 import { payState, usePay, usePayDownload, usePayWrite } from '../../../../../lib/yx-pay';
 import { useApi, useApiWrite } from '../../../../../lib/yx-pay-5j';
@@ -21,6 +21,9 @@ export default function YxPayRegistersPage() {
     return d.toISOString().slice(0, 7);
   });
   const registers = useApi<RegisterRow[]>(entityId ? `/statutory/registers?entityId=${encodeURIComponent(entityId)}&month=${month}` : null);
+  // CMP-03: the statute's register person by person.
+  const [kind, setKind] = useState<RegisterKindKey>('epf');
+  const rows = useApi<RegisterRowsView>(entityId ? `/statutory/registers/${kind}/rows?entityId=${encodeURIComponent(entityId)}&month=${month}` : null);
   const write = useApiWrite();
   const payWrite = usePayWrite();
   const download = usePayDownload();
@@ -37,6 +40,10 @@ export default function YxPayRegistersPage() {
         month,
         onMonth: setMonth,
         registers: registers.data ?? null,
+        kind,
+        onKind: setKind,
+        rows: rows.data ?? null,
+        rowsState: rows.isError ? 'error' : rows.data ? 'ready' : 'loading',
         can: { generate: perms.has('statutory.filing.generate'), sign: perms.has('statutory.register.sign'), download: perms.has('statutory.filing.download') },
         onGenerate: (reason) => write('/statutory/registers', { entityId, month, ...(reason ? { reason } : {}) }),
         onDownload: (r) => download(`/statutory/registers/${id(r.id)}/file`, `${r.registerType}-${r.month}-v${r.version}.pdf`),

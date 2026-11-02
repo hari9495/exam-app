@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Form16BulkScreen, type CertificateRow, type PartAImport, type SetupEntity, type TdsReturnRow } from '@yukthix/ui/pay';
+import { Form16BulkScreen, type CertificateRow, type Form16Status, type PartAImport, type SetupEntity, type TdsReturnRow } from '@yukthix/ui/pay';
 import { useYxPermissions } from '../../../../../lib/yx-org';
 import { payState, usePay } from '../../../../../lib/yx-pay';
 import { useApi, useApiWrite, useNames } from '../../../../../lib/yx-pay-5j';
@@ -25,6 +25,8 @@ export default function YxPayCertificatesPage() {
   const certificates = useApi<CertificateRow[]>(q ? `/tax/certificates?entityId=${q}&taxYear=${taxYear}` : null);
   // The year's Q4 salary return, to show the link (only for people who may see returns).
   const returns = useApi<TdsReturnRow[]>(q && perms.has('statutory.filing.view') ? `/statutory/tds-returns?entityId=${q}` : null);
+  // CMP-06: the linked return and when certificates become available.
+  const status = useApi<Form16Status>(q && perms.has('statutory.filing.view') ? `/statutory/form16-status?entityId=${q}&taxYear=${taxYear}` : null);
   const write = useApiWrite();
   const nameOf = useNames();
   const file = (f: File) => {
@@ -56,6 +58,8 @@ export default function YxPayCertificatesPage() {
         onPartA: (c, f) => write(`/tax/certificates/${encodeURIComponent(c.id)}/part-a`, file(f)),
         onIssue: (c, confirmation) => write(`/tax/certificates/${encodeURIComponent(c.id)}/issue`, { confirmation }),
         onIssueAll: (confirmation) => write('/statutory/form130/batch', { entityId, taxYear, confirmation }),
+        ...(perms.has('statutory.filing.view') ? { status: status.data ?? null, salaryReturns: returns.data ?? null } : {}),
+        ...(perms.has('statutory.filing.generate') ? { onLink: (returnId: string, version?: number) => write('/statutory/form16-link', { entityId, taxYear, returnId, ...(version ? { version } : {}) }) } : {}),
       }}
     />
   );

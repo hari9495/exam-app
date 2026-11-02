@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { StatutoryHubScreen, type FilingRow, type SetupEntity, type StatutoryHub, type TdsReturnRow } from '@yukthix/ui/pay';
+import { useRouter } from 'next/navigation';
+import { StatutoryHubScreen, type FilingRow, type ImportBatch, type SetupEntity, type StatutoryHub, type TdsReturnRow } from '@yukthix/ui/pay';
 import { useYxPermissions } from '../../../../../lib/yx-org';
 import { payState, usePay, usePayDownload, usePayWrite } from '../../../../../lib/yx-pay';
 import { useApi, useApiWrite } from '../../../../../lib/yx-pay-5j';
@@ -10,6 +11,7 @@ import { todayIndia } from '../../../../../lib/yx-time';
 // Compliance › Statutory hub: the designed CMP-01 hub with real data (CMP-04 challan sheet over it, CMP-05 TDS returns tab).
 export default function YxPayStatutoryPage() {
   const perms = useYxPermissions();
+  const router = useRouter();
   const entities = usePay<SetupEntity[]>('/setup/entities');
   const [entityId, setEntityId] = useState<string | null>(null);
   useEffect(() => {
@@ -66,6 +68,15 @@ export default function YxPayStatutoryPage() {
           return write(`/statutory/tds-returns/${id(rid)}/fvu`, body);
         },
         onReturnFiled: (rid, tokenNo, confirmation) => write(`/statutory/tds-returns/${id(rid)}/filed`, { tokenNo, confirmation }),
+        // CMP-05 MissingMonth: a month paid before go-live, imported as as-paid lines (Payroll set-up › Imports).
+        ...(perms.has('payroll.import.run')
+          ? {
+              onImportMonth: (_month: string, rows: Record<string, string>[]) => payWrite<ImportBatch>('/imports', { legalEntityId: entityId, kind: 'as_paid_lines', rows }),
+              onCommitImport: (batchId: string) => payWrite(`/imports/${id(batchId)}/commit`),
+            }
+          : {}),
+        // CMP-01 SetupNeeded: registrations live in Payroll set-up.
+        ...(perms.has('payroll.setup.manage') ? { onOpenSetup: () => router.push('/yx/payroll/setup') } : {}),
       }}
     />
   );
