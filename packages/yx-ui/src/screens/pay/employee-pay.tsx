@@ -3505,13 +3505,38 @@ export interface LiveIncentives {
   data: MyIncentives | null;
 }
 
+type IncentiveRow = MyIncentives['results'][number];
+const QUARTER_MONTHS: Record<string, string> = { Q1: 'Apr–Jun', Q2: 'Jul–Sep', Q3: 'Oct–Dec', Q4: 'Jan–Mar' };
+/** PAY-33: what of a result is held (until released), in payroll, and still being checked. */
+const heldOf = (r: IncentiveRow) => (r.heldReleased ? '0.00' : (r.held ?? '0.00'));
+const inPayrollOf = (r: IncentiveRow) => (r.sentToPayroll ? fromPaise(paise(r.amount) - paise(heldOf(r))) : '0.00');
+const checkedOf = (r: IncentiveRow) => (r.sentToPayroll ? '0.00' : fromPaise(paise(r.amount) - paise(heldOf(r))));
+const tierText = (t: IncentiveRow['tier']) => (!t ? '—' : t.to === null ? `${t.from}% of quota and above` : `${t.from}–${t.to}% of quota`);
+
 function LiveIncentiveStatement({ live }: { live: LiveIncentives }) {
   const d = live.data;
   const results = [...(d?.results ?? [])].sort((x, y) => y.month.localeCompare(x.month));
   const claw = d?.clawbacks ?? [];
   const earned = sumMoney(results.map((r) => r.amount));
-  const inPayroll = sumMoney(results.filter((r) => r.sentToPayroll).map((r) => r.amount));
+  const inPayroll = sumMoney(results.map(inPayrollOf));
   const clawed = sumMoney(claw.map((c) => c.amount));
+  // PAY-33 Default: the latest quarter, as the design's summary; the statement by month with each quarter's total.
+  const qKey = (r: IncentiveRow) => (r.quarter && r.taxYear ? `${r.taxYear} ${r.quarter}` : r.month);
+  const latest = results[0];
+  const inQuarter = latest ? results.filter((r) => qKey(r) === qKey(latest)) : [];
+  const quota = sumMoney(inQuarter.map((r) => r.quota));
+  const actual = sumMoney(inQuarter.map((r) => r.actual));
+  const groups = [...new Set(results.map(qKey))].map((k) => results.filter((r) => qKey(r) === k));
+  const tableRows = groups.flatMap((g) => [
+    ...g.map((r) => ({ id: r.id, label: monthName(r.month), plan: r.plan ?? '—', achieved: `${r.actual}${r.workings?.attainment ? ` (${r.workings.attainment}%)` : ''}`, tier: tierText(r.tier), earned: r.amount, inPayroll: inPayrollOf(r), held: heldOf(r), checked: checkedOf(r), total: false })),
+    ...(g[0]?.quarter
+      ? [{ id: `t-${qKey(g[0])}`, label: `${g[0].quarter} ${g[0].taxYear} total`, plan: '', achieved: '', tier: '', earned: sumMoney(g.map((r) => r.amount)), inPayroll: sumMoney(g.map(inPayrollOf)), held: sumMoney(g.map(heldOf)), checked: sumMoney(g.map(checkedOf)), total: true }]
+      : []),
+  ]);
+  const cell = (v: string, total: boolean) => {
+    const text = paise(v) ? rupees(v) : '—';
+    return total ? <strong>{text}</strong> : text;
+  };
   return (
     <MyPayFrame page="incentives" show={{ incentives: true }}>
       <PageHeader title="My incentives" description="Your incentive and commission results, what went to payroll, and any clawbacks." />
@@ -3526,28 +3551,49 @@ function LiveIncentiveStatement({ live }: { live: LiveIncentives }) {
                   {claw.map((c) => `${monthName(c.month)}: ${rupees(c.amount)} (${c.reason})`).join(' · ')}. It is taken from your payslip.
                 </InlineAlert>
               )}
-              <FactRow
-                items={[
-                  { label: 'Earned', value: rupees(earned) },
-                  { label: 'Sent to payroll', value: rupees(inPayroll) },
-                  { label: 'Being checked', value: rupees(fromPaise(paise(earned) - paise(inPayroll))) },
-                  ...(claw.length ? [{ label: 'Clawed back', value: `−${rupees(clawed)}` }] : []),
-                ]}
-              />
+              {latest && (
+                <>
+                  <SectionTitle actions={latest.quarter ? <Badge tone="info">{latest.payoutFrequency === 'quarterly' ? `${latest.quarter} pays quarterly` : `${latest.quarter}`}</Badge> : undefined}>
+                    {latest.quarter ? `Quarter ${latest.quarter.slice(1)} (${QUARTER_MONTHS[latest.quarter]}, ${latest.taxYear})` : monthName(latest.month)}
+                  </SectionTitle>
+                  <DescriptionList
+                    columns={2}
+                    items={[
+                      { label: 'Quota', value: quota },
+                      { label: 'Achieved', value: `${actual}${paise(quota) ? ` · ${(Number(actual) / Number(quota) * 100).toFixed(2)}%` : ''}` },
+                      { label: 'Tier reached', value: tierText(latest.tier) },
+                      { label: 'Earned this quarter', value: rupees(sumMoney(inQuarter.map((r) => r.amount))) },
+                      { label: 'Held (waiting for payment from customer)', value: rupees(sumMoney(inQuarter.map(heldOf))) },
+                      { label: 'Sent to payroll', value: rupees(sumMoney(inQuarter.map(inPayrollOf))) },
+                      { label: 'Being checked', value: rupees(sumMoney(inQuarter.map(checkedOf))) },
+                      ...(claw.length ? [{ label: 'Recovered (clawback)', value: `−${rupees(clawed)}` }] : []),
+                    ]}
+                  />
+                </>
+              )}
+              <SectionTitle>Statement by month</SectionTitle>
               <PlainTable
                 label="My incentive results"
-                rows={results}
+                rows={tableRows}
                 getRowId={(r) => r.id}
                 columns={[
-                  { key: 'month', header: 'Month', rowHeader: true, cell: (r) => monthName(r.month) },
-                  { key: 'plan', header: 'Plan', cell: (r) => r.plan ?? '—' },
-                  { key: 'quota', header: 'Quota', num: true, cell: (r) => r.quota },
-                  { key: 'actual', header: 'Achieved', num: true, cell: (r) => `${r.actual}${r.workings?.attainment ? ` (${r.workings.attainment}%)` : ''}` },
-                  { key: 'amount', header: 'Incentive', num: true, cell: (r) => rupees(r.amount) },
-                  { key: 'status', header: 'Status', cell: (r) => (r.sentToPayroll ? <Badge tone="success">In payroll</Badge> : <Badge tone="neutral">Being checked</Badge>) },
+                  { key: 'month', header: 'Month', rowHeader: true, cell: (r) => (r.total ? <strong>{r.label}</strong> : r.label) },
+                  { key: 'plan', header: 'Plan', cell: (r) => r.plan },
+                  { key: 'actual', header: 'Achieved', num: true, cell: (r) => r.achieved },
+                  { key: 'tier', header: 'Tier', cell: (r) => r.tier },
+                  { key: 'earned', header: 'Earned', num: true, cell: (r) => cell(r.earned, r.total) },
+                  { key: 'paid', header: 'In payroll', num: true, cell: (r) => cell(r.inPayroll, r.total) },
+                  { key: 'held', header: 'Held', num: true, cell: (r) => cell(r.held, r.total) },
+                  { key: 'checked', header: 'Being checked', num: true, cell: (r) => cell(r.checked, r.total) },
                 ]}
+                footer={[{ id: 'all', label: 'Total', cells: { earned: rupees(earned), paid: rupees(inPayroll), held: rupees(sumMoney(results.map(heldOf))), checked: rupees(sumMoney(results.map(checkedOf))) } }]}
               />
-              <p className="yx-pay-note">Incentives are salary income; tax is deducted through your payslip.</p>
+              {results.some((r) => paise(heldOf(r)) > 0n) && (
+                <p className="yx-pay-note">
+                  Held: {results.filter((r) => paise(heldOf(r)) > 0n).map((r) => `${monthName(r.month)}, ${rupees(heldOf(r))}${r.heldReason ? ` (${r.heldReason})` : ''}`).join('; ')}. Payroll pays it once the customer has paid.
+                </p>
+              )}
+              <p className="yx-pay-note">Quarters follow the financial year (April to March). Incentives are salary income; tax is deducted through your payslip.</p>
             </div>
           )
         )}

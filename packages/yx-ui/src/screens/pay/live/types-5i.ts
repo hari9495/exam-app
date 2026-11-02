@@ -75,7 +75,27 @@ export interface OncallRuleView {
 
 /** GET payroll/special/me/incentives. */
 export interface MyIncentives {
-  results: { id: string; plan: string | null; month: string; quota: string; actual: string; amount: string; sentToPayroll: boolean; workings: { attainment?: string } | null }[];
+  results: {
+    id: string;
+    plan: string | null;
+    month: string;
+    quota: string;
+    actual: string;
+    amount: string;
+    sentToPayroll: boolean;
+    workings: { attainment?: string } | null;
+    /** PAY-33: the financial-year quarter ("Q2") and its tax year ("2026-27"). */
+    quarter?: string;
+    taxYear?: string;
+    payoutFrequency?: 'monthly' | 'quarterly';
+    clawbackDays?: number;
+    /** The tier the attainment reached (% of quota; to null: and above). */
+    tier?: { from: number; to: number | null } | null;
+    /** The part held until the customer pays, its reason, and whether payroll has released it. */
+    held?: string;
+    heldReason?: string | null;
+    heldReleased?: boolean;
+  }[];
   clawbacks: { id: string; month: string; amount: string; reason: string }[];
 }
 

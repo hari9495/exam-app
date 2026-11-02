@@ -547,17 +547,27 @@ describe('PAY-33 · Me › My incentives (live)', () => {
           state: 'ready',
           data: {
             results: [
-              { id: 'r1', plan: 'South sales 2026-27', month: '2026-09', quota: '100000.00', actual: '120000.00', amount: '26000.10', sentToPayroll: true, workings: { attainment: '120.00' } },
-              { id: 'r2', plan: 'South sales 2026-27', month: '2026-10', quota: '100000.00', actual: '90000.00', amount: '9000.20', sentToPayroll: false, workings: { attainment: '90.00' } },
+              { id: 'r1', plan: 'South sales 2026-27', month: '2026-09', quarter: 'Q2', taxYear: '2026-27', payoutFrequency: 'monthly', tier: { from: 100, to: null }, quota: '100000.00', actual: '120000.00', amount: '26000.10', held: '6000.00', heldReason: 'Malgudi Stores has not paid', heldReleased: false, sentToPayroll: true, workings: { attainment: '120.00' } },
+              { id: 'r0', plan: 'South sales 2026-27', month: '2026-08', quarter: 'Q2', taxYear: '2026-27', payoutFrequency: 'monthly', tier: { from: 0, to: 100 }, quota: '100000.00', actual: '80000.00', amount: '8000.00', held: '1000.00', heldReason: 'Paid late', heldReleased: true, sentToPayroll: true, workings: { attainment: '80.00' } },
+              { id: 'r2', plan: 'South sales 2026-27', month: '2026-10', quarter: 'Q3', taxYear: '2026-27', payoutFrequency: 'monthly', tier: { from: 0, to: 100 }, quota: '100000.00', actual: '90000.00', amount: '9000.20', held: '0.00', heldReason: null, heldReleased: false, sentToPayroll: false, workings: { attainment: '90.00' } },
             ],
             clawbacks: [{ id: 'k1', month: '2026-10', amount: '2000.00', reason: 'Order 4471 cancelled within 90 days' }],
           },
         }}
       />,
     );
-    expect(screen.getByText('₹35,000.30')).toBeInTheDocument();
     expect(screen.getByText('Clawback: ₹2,000.00')).toBeInTheDocument();
-    expect(screen.getByText('₹9,000.20', { selector: 'dd, dd *' })).toBeInTheDocument();
+    // The latest quarter, as the design: Q3 with October being checked.
+    expect(screen.getByText('Quarter 3 (Oct–Dec, 2026-27)')).toBeInTheDocument();
+    expect(screen.getByText('0–100% of quota', { selector: 'dd, dd *' })).toBeInTheDocument();
+    // By month with each quarter's total: Q2 earned ₹34,000.10, ₹6,000.00 held (the released part is in payroll).
+    const t = screen.getByRole('table', { name: 'My incentive results' });
+    const q2 = within(t).getByRole('rowheader', { name: 'Q2 2026-27 total' }).closest('tr')!;
+    expect(q2).toHaveTextContent('₹34,000.10');
+    expect(q2).toHaveTextContent('₹28,000.10');
+    expect(q2).toHaveTextContent('₹6,000.00');
+    expect(t).toHaveTextContent('₹43,000.30');
+    expect(screen.getByText(/Held: September 2026, ₹6,000.00 \(Malgudi Stores has not paid\)/)).toBeInTheDocument();
   });
 
   it('not on a plan: the empty state; loading has a status', () => {
