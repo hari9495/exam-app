@@ -1267,22 +1267,28 @@ pay-ops-live.test.tsx and the statutory case of pay-5j-live.test.tsx (ported). `
 `pay-kit.tsx`; the dead live/special.tsx is deleted. 12 lines left `known.json` (6 live copies, 6 not live). Still in
 `known.json` from this area: "ops: StatutorySetupScreen" (CMP-02). ("ops: MissingIdsScreen" left on 30 Oct: CMP-07 is live.)
 
+CMP gaps (branch `feat/yukthix-pay-gaps-statutory`, 2 Nov 2026): CMP-01 SetupNeeded, CMP-03 Epf / Esic / Pt / LwfNotDue,
+CMP-05 Completeness / MissingMonth, CMP-06 WrongQuarter / NotYetAvailable and CMP-08 MarkReviewed went live (see each
+row). Left as gaps on purpose (an outside provider): CMP-05 Partner (filing partner connector) and CMP-06 Sign (DSC).
+Migration 20261330000000_form16_return_link; rule pack packs/in-tds-dates.json. Manual steps MT-CMP-G-01 … 08. Recounted
+row by row: 54 live, 2 live (gap), 5 wire (gap), 20 not Pay = 81 (the earlier total of 47 live was off by 3; the rows gave 44).
+
 ### Counts (sub-pages = stories)
 
 | group | live | live, gap | wire, gap | feature not built | not Pay | sub-pages |
 |---|---|---|---|---|---|---|
-| CMP-01 Statutory hub | 4 | 1 | 0 | 0 | 0 | 5 |
+| CMP-01 Statutory hub | 5 | 0 | 0 | 0 | 0 | 5 |
 | CMP-02 Statutory set-up | 0 | 0 | 5 | 0 | 0 | 5 |
-| CMP-03 Registers | 3 | 4 | 0 | 0 | 0 | 7 |
+| CMP-03 Registers | 7 | 0 | 0 | 0 | 0 | 7 |
 | CMP-04 TDS challan sheet | 4 | 0 | 0 | 0 | 0 | 4 |
-| CMP-05 TDS return wizard | 4 | 3 | 0 | 0 | 0 | 7 |
-| CMP-06 Form 16 | 2 | 3 | 0 | 0 | 0 | 5 |
+| CMP-05 TDS return wizard | 6 | 1 | 0 | 0 | 0 | 7 |
+| CMP-06 Form 16 | 4 | 1 | 0 | 0 | 0 | 5 |
 | CMP-07 Missing IDs | 4 | 0 | 0 | 0 | 0 | 4 |
-| CMP-08 Rules & updates | 4 | 1 | 0 | 0 | 0 | 5 |
+| CMP-08 Rules & updates | 5 | 0 | 0 | 0 | 0 | 5 |
 | CMP-09 … 11 IC console, POSH | 0 | 0 | 0 | 0 | 20 | 20 |
 | CMP-12 Supplementary filing | 4 | 0 | 0 | 0 | 0 | 4 |
 | CMP-13 Consultant TDS (new) | 15 | 0 | 0 | 0 | 0 | 15 |
-| **All** | **47** | **12** | **5** | **0** | **20** | **81** |
+| **All** | **54** | **2** | **5** | **0** | **20** | **81** |
 
 ### CMP-01 · Statutory hub
 
@@ -1293,7 +1299,7 @@ Live page: /yx/payroll/statutory
 | Cards · Cards per statute (overdue with penalty) | live | penalty from the hub's estimate; the TDS challan is a card |
 | Calendar · Due-date calendar | live | the month after the pay month |
 | AllOnTrack · All on track | live | |
-| SetupNeeded · Empty (set-up needed) | live (gap) | the page shows "Nothing to file for this month"; the hub API does not say which registrations are missing (S: add `setupMissing` to GET statutory/hub) |
+| SetupNeeded · Empty (set-up needed) | live | GET statutory/hub carries `setupMissing` (PF, ESI, TDS unless the entity has a TAN, PT / LWF for each state of the entity where a published rule charges it; "not registered" counts as recorded). With something missing and nothing owed, the hub shows the design's `SetupNeededState` naming what to register, and "Open payroll set-up" for `payroll.setup.manage` holders. (The old note was out of date: "Nothing to file" never showed, as PF, ESI and TDS cards always come back.) |
 | Loading · Loading | live | |
 
 ### CMP-02 · Statutory set-up
@@ -1315,10 +1321,10 @@ Live page: /yx/payroll/registers
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Epf · EPF (covered / not covered) | live (gap) | the live page lists the month's register documents (wages, deductions, overtime …) with make, freeze, sign, inspection pack; per-employee EPF rows, the 6-month chart and filters need GET statutory/registers/:kind/rows (M) |
-| Esic · ESIC (not covered above ceiling) | live (gap) | same |
-| Pt · PT | live (gap) | same |
-| LwfNotDue · LWF (not due this month) | live (gap) | same |
+| Epf · EPF (covered / not covered) | live | GET statutory/registers/epf/rows: one row a person from the approved payslips (an off-cycle payslip adds to the regular one): UAN last four, PF wage, employee, EPS and EPF employer shares; not covered with its reason ("Not a PF member", "No PF on this payslip"); six months of employee / employer totals for the chart; location and coverage filters. The design's `RegisterTabs` renders it; the register files (make, freeze, sign, inspection pack) are its "Register files" tab |
+| Esic · ESIC (not covered above ceiling) | live | same read (esic): IP last four, gross, shares; above the ceiling says "Wages above the ESI limit of ₹…" with the limit from the published ESI rule |
+| Pt · PT | live | same read (pt): work location, gross, PT; "Below the PT slab" or "No PT in <state>" |
+| LwfNotDue · LWF (not due this month) | live | same read (lwf): a month outside the state's LWF months is "Not due" with "LWF is deducted in December in Karnataka" (months from the published LWF rule) |
 | Empty · Empty | live | "No register for … yet." with Make registers |
 | Loading · Loading | live | |
 | Error · Error | live | |
@@ -1340,8 +1346,8 @@ Live page: /yx/payroll/statutory › TDS returns (salary); /yx/payroll/consultan
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Completeness · Completeness (prior-month rows imported) | live (gap) | deductee row count; PAN warnings are not in the return API (S) |
-| MissingMonth · Blocked · prior-month rows missing | live (gap) | "No deductee rows" shows; importing prior-month rows is not built (M) |
+| Completeness · Completeness (prior-month rows imported) | live | each salary return carries `completeness`: rows per month with their source (payroll / imported as-paid lines), PAN warnings (no PAN, or recorded inoperative for the tax year) and the count checked; the step shows both check lists |
+| MissingMonth · Blocked · prior-month rows missing | live | a quarter month before the entity's first approved payroll with nothing imported is missing: the step errors ("July rows missing"), filing says so, and POST tds-returns/:id/file is refused (409 TDS_MONTH_MISSING). "Import rows" takes the month's as-paid lines (employeeCode, componentCode, amount) through the existing PAY-2.12 import (payroll.import.run): every row checked, bad rows listed, nothing lands until all are right; then the draft is started again with the rows (TDS from the TDS lines, paid from the earning lines) and the month unblocks |
 | Reconciliation · Reconciliation · small difference flagged | live | |
 | Fvu · Self-file · FVU validation | live | make file, download, upload .fvu, validation result |
 | Partner · Filing partner | live (gap) | filing partner connector not built |
@@ -1355,10 +1361,10 @@ Live page: /yx/payroll/certificates
 | story (sub-page) | verdict | note |
 |---|---|---|
 | PartA · Part A import (1 missing) | live | ZIP import, unmatched files, one PDF per person |
-| WrongQuarter · Q2 return linked · blocked | live (gap) | the page shows the year's filed Q4 return or warns; the API does not link a return to the certificates, so it cannot block (S) |
+| WrongQuarter · Q2 return linked · blocked | live | form16_return_links (migration 20261330000000): POST statutory/form16-link (statutory.filing.generate, versioned, audited) links the year's certificates to a salary return of the entity; GET statutory/form16-status shows it with its problem. A link to another quarter, another year, a correction or an unfiled return is kept, shown in the step ("Not a Q4 return") and blocks issuing (one or all). With no link issuing works as before (question 2) |
 | Sign · Sign with DSC | live (gap) | DSC signing not built; the step says Part B is made at issue |
 | Publish · Publish | live | Issue n ready with the typed phrase |
-| NotYetAvailable · Form 130 · not available yet | live (gap) | an empty list shows "No certificates yet"; no "available after" date from the API |
+| NotYetAvailable · Form 130 · not available yet | live | no certificates and the year's Q4 return not filed: the design's `NotYetAvailableState` with "For tax year 2026-27 that is after 31 May 2027" (`availableAfter` from the new IN.TDS-DATES rule, packs/in-tds-dates.json, verify) and "Open Form 16 for 2025-26" |
 
 ### CMP-07 · Missing IDs
 
@@ -1378,7 +1384,7 @@ Live pages: /yx/payroll/statutory-rules (Rules tab), /yx/payroll/advisories (Lab
 | Rules · Rules browser + updates banner | live | |
 | History · Rule history and source | live | values shown as stored |
 | Updates · Labour-law updates feed | live | severity is not in the API: "To review" / "Reviewed" and "Check the source" |
-| MarkReviewed · Mark reviewed with note | live (gap) | note required; "Create a task" and "Share with HR admins" need the API (S) |
+| MarkReviewed · Mark reviewed with note | live | note required; "Create a task" puts a standalone help desk task (the existing desk task list) on a desk the reviewer works on (GET statutory/advisories/task-desks), given to them with a due date; no seat says so. "Share with HR admins" sends an in-app note to holders of employee.change.manage reaching the entity. Both are audited. "Share" is a Checkbox here and in the story (the kit keeps Switch for settings that apply at once) |
 | NoUpdates · No unreviewed updates | live | |
 
 ### CMP-09 … CMP-11 · IC console, POSH complaint, POSH case (20 stories)
@@ -1423,7 +1429,8 @@ Live page: /yx/payroll/consultant-tds
 1. The menu item "Statutory set-up" opens the rules browser (/yx/payroll/statutory-rules). Rename it "Statutory rules"
    and leave registrations in Payroll set-up (PAY-16)? *Yes*; CMP-02 then waits as "wire design (gap)".
 2. Registers: the API keeps register documents (wages, deductions, overtime), the design shows EPF / ESIC / PT / LWF rows
-   per person. Add a read of those rows from the payslips (size M) so CMP-03's tabs go live? *Yes, later*.
+   per person. Add a read of those rows from the payslips (size M) so CMP-03's tabs go live? *Yes, later*. Done 2 Nov 2026
+   (branch `feat/yukthix-pay-gaps-statutory`).
 3. TDS returns live in the hub's "TDS returns" tab, Form 16 on "TDS & Form 16". Move the returns tab to "TDS & Form 16"
    (as the CMP-04 page shows them)? *No for now*: the hub is where the challan is.
 4. Supplementary filings (CMP-12) and the Missing IDs page (CMP-07): build next, in that order? *Yes*, both M.

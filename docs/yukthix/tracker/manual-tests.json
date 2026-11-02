@@ -8787,5 +8787,149 @@
       "Time · TIM-29 · Year-end wizard · Leave-year change · scope"
     ],
     "note": ""
+  },
+  {
+    "id": "MT-CMP-G-01",
+    "area": "Compliance · CMP gaps (statutory builder, 2 Nov 2026)",
+    "screen": "Statutory hub: set-up needed (CMP-01 SetupNeeded)",
+    "url": "http://localhost:3000/yx/payroll/statutory",
+    "account": "payroll@demo-org.test (Payroll Admin). Browser window 1278 x 635, sidebar open. Demo entity \"Kaveri Foods Pvt Ltd (Tamil Nadu)\" has only its Tamil Nadu PT registration and no approved payroll.",
+    "steps": [
+      "1. Choose the legal entity \"Kaveri Foods Pvt Ltd (Tamil Nadu)\" and any month.",
+      "2. Press \"Open payroll set-up\".",
+      "3. Sign in as compliance@demo-org.test (Compliance Owner, no payroll set-up key) and repeat step 1.",
+      "4. Choose \"Kaveri Foods Pvt Ltd\" and a month with approved payroll."
+    ],
+    "expected": "Step 1: \"Statutory set-up needed.\" with \"Add registrations for Provident fund, ESI and Labour welfare fund (Tamil Nadu) for Kaveri Foods Pvt Ltd (Tamil Nadu). Cards appear here after the first payroll run.\"; no page scroll. Step 2: Payroll set-up opens. Negative step 3: the same message, but no \"Open payroll set-up\" button. Negative step 4: something is owed, so the statute cards show instead of the set-up message.",
+    "stories": [
+      "Compliance CMP-01 SetupNeeded"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CMP-G-02",
+    "area": "Compliance · CMP gaps (statutory builder, 2 Nov 2026)",
+    "screen": "Registers: EPF and ESIC person by person (CMP-03 Epf, Esic)",
+    "url": "http://localhost:3000/yx/payroll/registers",
+    "account": "compliance@demo-org.test (Compliance Owner). Browser window 1278 x 635, sidebar open. Needs an approved payroll month for Kaveri Foods Pvt Ltd (approve one first through Runs if the demo has none).",
+    "steps": [
+      "1. Choose Kaveri Foods Pvt Ltd and the approved month. Stay on the EPF tab.",
+      "2. Filter Coverage = Not covered, then clear the filter.",
+      "3. Open the ESIC tab.",
+      "4. Sign in as an employee (e.g. panel@demo-org.test) and open the same address."
+    ],
+    "expected": "Step 1: \"EPF contributions, last 6 months\" chart (employee and employer), then one row a person with UAN as \"•••• 1234\", PF wage, Employee, EPS and EPF employer amounts and column totals; someone not in PF shows \"Not a PF member\" or \"No PF on this payslip\". Step 2: only not-covered people, then everyone again. Step 3: people above the ESI limit show \"Not covered\" with \"Wages above the ESI limit of ₹21,000\" (the figure from the published ESI rule). Negative step 4: no access page, no rows.",
+    "stories": [
+      "Compliance CMP-03 Epf",
+      "Compliance CMP-03 Esic"
+    ],
+    "note": "Positive and negative. Full UAN / IP numbers never show."
+  },
+  {
+    "id": "MT-CMP-G-03",
+    "area": "Compliance · CMP gaps (statutory builder, 2 Nov 2026)",
+    "screen": "Registers: PT and LWF not due (CMP-03 Pt, LwfNotDue)",
+    "url": "http://localhost:3000/yx/payroll/registers",
+    "account": "compliance@demo-org.test (Compliance Owner). Browser window 1278 x 635, sidebar open. The same approved month as MT-CMP-G-02 (not a December month).",
+    "steps": [
+      "1. Open the PT tab.",
+      "2. Open the LWF tab.",
+      "3. Open the \"Register files\" tab and press Freeze on a made register, then Cancel.",
+      "4. Change the month to one with no approved payroll."
+    ],
+    "expected": "Step 1: work location, gross and PT per person; anyone with no PT shows \"Below the PT slab\". Step 2: Karnataka people show \"Not due\" with \"LWF is deducted in December in Karnataka\". Step 3: the register files list with Freeze asking first; Cancel changes nothing. Negative step 4: \"No one was paid in <month> yet.\" in the tab, nothing breaks.",
+    "stories": [
+      "Compliance CMP-03 Pt",
+      "Compliance CMP-03 LwfNotDue"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CMP-G-04",
+    "area": "Compliance · CMP gaps (statutory builder, 2 Nov 2026)",
+    "screen": "TDS return: completeness and PAN checks (CMP-05 Completeness)",
+    "url": "http://localhost:3000/yx/payroll/statutory",
+    "account": "payroll@demo-org.test (Payroll Admin). Browser window 1278 x 635, sidebar open. Kaveri Foods Pvt Ltd with an approved payroll in the quarter.",
+    "steps": [
+      "1. Open \"TDS returns\", choose the tax year and quarter, press \"Start return\", then Open it.",
+      "2. Open \"Data completeness\".",
+      "3. Sign in as compliance@demo-org.test and open the same return."
+    ],
+    "expected": "Step 2: \"Deductee rows by month\" lists each month of the quarter with its rows and \"From approved payroll\" (a later month with no payroll yet says so, as a warning); \"PAN checks\" lists each deductee with no PAN or an inoperative PAN, then \"<n> other PANs in order\". Step 3: the same lists, read only (no Start return or Import rows).",
+    "stories": [
+      "Compliance CMP-05 Completeness"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-CMP-G-05",
+    "area": "Compliance · CMP gaps (statutory builder, 2 Nov 2026)",
+    "screen": "TDS return: a month paid before go-live (CMP-05 MissingMonth)",
+    "url": "http://localhost:3000/yx/payroll/statutory",
+    "account": "payroll@demo-org.test (Payroll Admin). Browser window 1278 x 635, sidebar open. A quarter whose first month was paid before the entity's first approved payroll here (for a fresh demo: the quarter of the first approved month, when that is its 2nd or 3rd month). A CSV \"employeeCode,componentCode,amount\" with a few demo codes (basic, tds) and one bad line \"NOPE,tds,5\".",
+    "steps": [
+      "1. Open the quarter's return. Look at Data completeness.",
+      "2. Go to \"File and acknowledgement\", type a token and press \"Mark return filed\".",
+      "3. Back in Data completeness, press \"Import rows\" on the missing month and choose the CSV with the bad line.",
+      "4. Remove the bad line and import again."
+    ],
+    "expected": "Step 1: the step shows \"<Month> rows missing\"; the month reads \"no deductee rows\" with \"Paid before this company started on YukthiX…\" and an \"Import rows\" button. Negative step 2: \"Import the as-paid lines for <Month Year> first.\" and nothing is sent. Negative step 3: \"Nothing was imported for <Month Year>. Fix these rows and upload the file again\" with \"Row n: No employee with that code in this legal entity.\"; nothing lands. Step 4: toast \"<n> as-paid lines imported for <Month Year>.\"; the month now reads \"From the imported as-paid lines\" and the step error is gone; Make return file is no longer refused for that month.",
+    "stories": [
+      "Compliance CMP-05 MissingMonth"
+    ],
+    "note": "Positive and negative. The imported month is locked as paid in the old system (PAY-2.12)."
+  },
+  {
+    "id": "MT-CMP-G-06",
+    "area": "Compliance · CMP gaps (statutory builder, 2 Nov 2026)",
+    "screen": "Form 16: wrong quarter linked (CMP-06 WrongQuarter)",
+    "url": "http://localhost:3000/yx/payroll/certificates",
+    "account": "payroll@demo-org.test (Payroll Admin) to link; compliance@demo-org.test (Compliance Owner) to issue. Browser window 1278 x 635, sidebar open. A tax year with a filed Q2 return and certificates with Part A.",
+    "steps": [
+      "1. As payroll: open \"Link the Q4 return\" and press \"Link return\" without choosing.",
+      "2. Choose the Q2 return and press \"Link return\".",
+      "3. As compliance: press \"Issue <n> ready\".",
+      "4. As payroll: link the filed Q4 return instead."
+    ],
+    "expected": "Negative step 1: \"Choose the return to link.\" and nothing is sent. Step 2: toast \"Return linked to the certificates.\"; the step shows \"Not a Q4 return\" and \"The return you chose is Q2 (Jul … to Sept …). Certificates need the filed Q4 return (Jan … to Mar …).\" Negative step 3: the same sentence; no confirm sheet opens. Step 4: \"Linked: Form 138 Q4 …, filed, token …\"; issuing works again.",
+    "stories": [
+      "Compliance CMP-06 WrongQuarter"
+    ],
+    "note": "Positive and negative. Two people changing the link at once: the second gets \"Someone else changed the linked return. Reload to see it.\""
+  },
+  {
+    "id": "MT-CMP-G-07",
+    "area": "Compliance · CMP gaps (statutory builder, 2 Nov 2026)",
+    "screen": "Form 130: not available yet (CMP-06 NotYetAvailable)",
+    "url": "http://localhost:3000/yx/payroll/certificates",
+    "account": "compliance@demo-org.test (Compliance Owner). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Choose Kaveri Foods Pvt Ltd and tax year 2026-27.",
+      "2. Press \"Open Form 16 for 2025-26\".",
+      "3. Choose 2026-27 again with a filed Q4 return for it (not possible before 31 May 2027: check on a test company only)."
+    ],
+    "expected": "Step 1: \"Form 130 is available after the Q4 return is filed.\" and \"For tax year 2026-27 that is after 31 May 2027. Employees see their monthly TDS in the tax workspace until then.\"; no page scroll. Step 2: the 2025-26 steps open. Negative step 3: the steps show instead of the message.",
+    "stories": [
+      "Compliance CMP-06 NotYetAvailable"
+    ],
+    "note": "Positive and negative. The date comes from the IN.TDS-DATES rule (load packs/in-tds-dates.json if the database predates it)."
+  },
+  {
+    "id": "MT-CMP-G-08",
+    "area": "Compliance · CMP gaps (statutory builder, 2 Nov 2026)",
+    "screen": "Labour-law update: mark reviewed with a task and a note to HR (CMP-08 MarkReviewed)",
+    "url": "http://localhost:3000/yx/payroll/advisories",
+    "account": "compliance@demo-org.test (Compliance Owner) with an agent seat on \"HR help desk\" (give it in Help desk › Members first for the positive step). Browser window 1278 x 635, sidebar open. An update still \"To review\".",
+    "steps": [
+      "1. Without a desk seat: press \"Mark reviewed\", type what you did, tick \"Create a task\" and press \"Mark reviewed\".",
+      "2. With the seat: tick \"Create a task\" and press \"Mark reviewed\" without a desk or date.",
+      "3. Choose \"HR help desk\", a due date, tick \"Share with HR admins\" and press \"Mark reviewed\".",
+      "4. Sign in as hr@demo-org.test and open the bell; open the HR help desk task list as compliance."
+    ],
+    "expected": "Negative step 1: \"You have no seat on a help desk, so a task cannot be made here…\" and nothing is saved. Negative step 2: \"Choose the help desk for the task.\" and \"Choose when the task is due.\"; past dates cannot be picked. Step 3: toast \"Marked reviewed. Task added to the help desk.\"; the card shows Reviewed with the note. Step 4: HR sees \"Law update reviewed: <title>…\" linking to the updates page; the task \"Law update: <title>\" is on the HR help desk, given to compliance, with the due date.",
+    "stories": [
+      "Compliance CMP-08 MarkReviewed"
+    ],
+    "note": "Positive and negative. Spacing in the dialog: blocks never touch."
   }
 ]
