@@ -2539,23 +2539,6 @@ function useLiveRequests(live: LiveMyAttendance) {
   const node = (
     <>
       {req && d && <AttendanceRequestSheet key={req.n} live={{ data: d, type: req.type, on: req.on, resend: req.resend, canRegularise, onFix: live.onFix, onWfh: live.onWfh, onOnDuty: live.onOnDuty, onOtPlan: live.onOtPlan, onLateCorrection: live.onLateCorrection, onClose: () => setReq(null) }} />}
-      {sentBack && (
-        <OnDutySentBackSheet
-          key={sentBack.id}
-          live={{
-            on: sentBack.on,
-            place: sentBack.place ?? '',
-            inMinute: sentBack.inMinute ?? 0,
-            outMinute: sentBack.outMinute ?? 0,
-            reason: sentBack.reason,
-            sentBack: sentBack.sentBack ?? null,
-            by: d?.manager ?? null,
-            onResend: () => { const r = sentBack; setSentBack(null); open('on_duty', r.on, r); },
-            onWithdraw: () => live.onWithdrawFix(sentBack.id),
-            onClose: () => setSentBack(null),
-          }}
-        />
-      )}
       <ConfirmDialog
         open={!!plan}
         onOpenChange={(o) => !o && setPlan(null)}
@@ -2584,7 +2567,7 @@ function useLiveRequests(live: LiveMyAttendance) {
       />
     </>
   );
-  return { open, node, withdraw: setWithdrawing, withdrawPlan: setPlan, viewSentBack: setSentBack, first };
+  return { open, node, withdraw: setWithdrawing, withdrawPlan: setPlan, viewSentBack: setSentBack, sentBack, first };
 }
 
 /** Me › Attendance, live: the attendance calendar design (Extra · Attendance calendar) on my month. */
@@ -2699,6 +2682,24 @@ function LiveAttendanceCalendar({ live }: { live: LiveMyAttendance }) {
           />
         )}
       </Drawer>
+      {/* On duty sent back (TIM-07 OnDutySentBack): what the manager asked, Change and send again, Withdraw. */}
+      {reqs.sentBack && d && (
+        <OnDutySentBackSheet
+          key={reqs.sentBack.id}
+          live={{
+            on: reqs.sentBack.on,
+            place: reqs.sentBack.place ?? '',
+            inMinute: reqs.sentBack.inMinute ?? 0,
+            outMinute: reqs.sentBack.outMinute ?? 0,
+            reason: reqs.sentBack.reason,
+            sentBack: reqs.sentBack.sentBack ?? null,
+            by: d.manager ?? null,
+            onResend: () => { const r = reqs.sentBack!; reqs.viewSentBack(null); reqs.open('on_duty', r.on, r); },
+            onWithdraw: () => live.onWithdrawFix(reqs.sentBack!.id),
+            onClose: () => reqs.viewSentBack(null),
+          }}
+        />
+      )}
       {reqs.node}
     </TimePage>
   );
