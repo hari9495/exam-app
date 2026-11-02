@@ -123,6 +123,15 @@ export class TimeSetupService {
         grades,
         ...(await this.coverage(tx, org, today, assignments, policies)),
         noticeDefault,
+        // TIM-27: the company values a type follows until it sets its own (named in the editor's helpers).
+        leaveDefaults: Object.fromEntries(
+          await Promise.all(
+            ['leave.encashment.max_days', 'leave.encashment.min_left', 'leave.encashment.divisor', 'leave.notice_period.leave', 'leave.long_absence.accrues'].map(async (key) => {
+              const rows = await tx.setting.findMany({ where: { organizationId: org, key } });
+              return [key, String(resolveSetting(SETTINGS[key], rows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: null })), { tenant: org }, today).value)];
+            }),
+          ),
+        ),
         statutory: statutory.map((s) => ({ jurisdiction: s.jurisdiction, version: s.version, validFrom: dateOf(s.validFrom), values: s.values, source: s.source, verify: s.verify })),
       };
     });

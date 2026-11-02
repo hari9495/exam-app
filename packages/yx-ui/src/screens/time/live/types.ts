@@ -165,12 +165,27 @@ export interface PersonAttendance {
 export interface FixRow {
   id: string;
   on: string;
-  /** A fix of the day, or work from home on it (TIM-07). */
-  kind: FixKind | 'wfh';
+  /** A fix of the day, work from home on it, or on duty (TIM-07). */
+  kind: FixKind | 'wfh' | 'on_duty';
   inMinute: number | null;
   outMinute: number | null;
   reason: string;
-  status: 'pending' | 'approved' | 'rejected' | 'withdrawn';
+  status: 'pending' | 'approved' | 'rejected' | 'withdrawn' | 'sent_back' | 'resent';
+  /** On duty: where. */
+  place?: string | null;
+  /** Sent back for changes: what the manager asked to change. */
+  sentBack?: string | null;
+}
+
+/** TIM-07 OnDuty: a day or part of one on duty away from the office. */
+export interface OnDutyInput {
+  on: string;
+  inMinute: number;
+  outMinute: number;
+  place: string;
+  reason: string;
+  /** Sending again a request sent back for changes. */
+  resendOf?: string;
 }
 
 export interface MyAttendance {
@@ -282,6 +297,8 @@ export interface DayCard {
   /** TIM-03 HrFix: null when the viewer may not resolve; otherwise whether they may now, and why not. */
   hrFix?: { ok: boolean; why: string | null } | null;
   resolution?: { how: 'present' | 'absent'; inMinute: number | null; outMinute: number | null; reason: string; by: string | null; at: string } | null;
+  /** TIM-03 OnDuty: an on-duty request for the day (approved, else waiting). */
+  onDuty?: { id: string; place: string; inMinute: number; outMinute: number; reason: string; status: 'approved' | 'pending' } | null;
 }
 export interface ResolveInput {
   days: { employeeId: string; on: string }[];
@@ -321,6 +338,25 @@ export interface LeaveRules {
   negativeLimit: number;
   encashable: boolean;
   hrApprovalAboveDays: number | null;
+  /** Pay by day ranges (G1); one step of 1-99 % over the whole year is "partially paid" (TIM-27 Basics). */
+  paySteps?: { days: number; percent: number }[] | null;
+  /** TIM-27 Rules: the most days in one calendar month (null: no limit). */
+  maxDaysPerMonth?: number | null;
+  /** TIM-27 Year end: cash-in limits and payout (null: the company's). */
+  encashMaxDays?: number | null;
+  encashMinLeft?: number | null;
+  encashDivisor?: 26 | 30 | null;
+  encashAtExit?: boolean;
+  /** TIM-27 Absence & notice (null: the company's). */
+  longAbsence?: 'pause' | 'continue' | null;
+  noticePeriod?: 'allowed' | 'extends' | 'blocked' | null;
+}
+
+/** TIM-27 Statutory: what the law fixes for the type's kind. */
+export interface StatutoryMinimum {
+  law: string;
+  days: number;
+  paidInFull: boolean;
 }
 
 export interface LeaveTypeRow {
@@ -332,6 +368,8 @@ export interface LeaveTypeRow {
   colour: string;
   active: boolean;
   rules: LeaveRules;
+  /** Set by law (maternity; paternity where a state rule applies): those fields can't go below it. */
+  statutory?: StatutoryMinimum | null;
 }
 
 export interface PolicyLine {
@@ -387,15 +425,37 @@ export interface TimeSetup {
   entities: { id: string; name: string }[];
   /** Founder decision 2: days' notice for a leave type without its own number (company setting; sick leave 0). */
   noticeDefault?: number;
+  /** TIM-27: the company values a type follows until it sets its own (setting key → value). */
+  leaveDefaults?: Record<string, string>;
+  /** The Maternity Benefit Act values in force (P07 IN.LEAVE). */
+  maternity?: { maternityWeeks: number; maternityWeeksThirdChild: number; beforeDeliveryWeeks: number; eligibilityDaysWorked: number; miscarriageWeeks?: number; tubectomyWeeks?: number };
   statutory: { jurisdiction: string; version: string; validFrom: string; values: { floors?: { kinds: string[]; days: number }[]; carry?: Record<string, number> }; source: string; verify: boolean }[];
 }
 
 export interface YearEndPreview {
   yearEnd: string;
   lapses: number;
-  rows: { employeeId: string; name: string; code: string | null; type: string; balance: number; carry: number; lapse: number; encashable: boolean }[];
+  rows: { employeeId: string; name: string; code: string | null; type: string; balance: number; carry: number; lapse: number; encashable: boolean; /** Paid out (over the carry cap, within the yearly cash-in limit). */ encash?: number }[];
   /** TIM-29: requests still waiting with days in the closing year. */
   pending?: { id: string; employeeId: string; name: string; type: string; from: string; to: string; days: number }[];
+  payOuts?: number;
+  /** Already posted for this date (a second post is refused). */
+  posted?: { at: string; by: string | null; policies: number } | null;
+}
+
+/** TIM-29 Transition: changing a legal entity's leave year (a short year, then full years). */
+export interface YearChangePreview {
+  entity: { id: string; name: string };
+  oldStartMonth: number;
+  newStartMonth: number;
+  /** First day of the short year and its last day. */
+  fromOn: string;
+  shortEnd: string;
+  months: number;
+  /** Why it can't be scheduled (plain words), or null. */
+  problem: string | null;
+  scheduled: { fromOn: string; oldStartMonth: number; newStartMonth: number; shortEnd: string } | null;
+  rows: { employeeId: string; name: string; type: string; opening: number; credit: number; atEnd: number; carry: number; encash: number; lapse: number }[];
 }
 
 export interface PersonOption {

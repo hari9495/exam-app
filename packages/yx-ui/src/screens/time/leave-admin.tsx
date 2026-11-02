@@ -24,7 +24,7 @@ import { EMPLOYEES, ENTITIES, LOCATIONS, entityHeadcount, locationHeadcount } fr
 import { DueBadge, GeoMap, Kpis, TimePage, type TimeNav } from './time-kit';
 import { formatDate } from '../../lib/format';
 import { errorText, useRun } from '../org/org-kit';
-import type { BlockDateInput, BlockDates, HolidayFeeds, HolidayRow, LeaveRules, LeaveTypeRow, LoadState, LocationRule, PolicyLine, TimeSetup, YearEndPreview } from './live/types';
+import type { BlockDateInput, BlockDates, HolidayFeeds, HolidayRow, LeaveRules, LeaveTypeRow, LoadState, LocationRule, PolicyLine, TimeSetup, YearChangePreview, YearEndPreview } from './live/types';
 import { EL_ENCASH_MAX, EL_ENCASH_MIN_LEFT, HR_ADMIN, LEAVE_REQUESTS, TODAY, balancesFor, elEncashLeftAtYearEnd } from './time-data';
 import { countLeaveDays, yearEndSplit, type YearEndRow } from './time-logic';
 import type { ViewState } from './attendance';
@@ -1968,6 +1968,11 @@ export interface LiveHolidayCalendars extends SetupLive {
   onReviewFeed?: () => void;
 }
 export interface LiveYearEnd extends SetupLive {
+  /** TIM-29 Transition: the leave-year change of a legal entity instead of the year end. */
+  mode?: 'yearend' | 'transition';
+  onYearChangePreview?: (legalEntityId: string, newStartMonth: number) => Promise<YearChangePreview>;
+  onYearChangeSchedule?: (legalEntityId: string, newStartMonth: number) => Promise<unknown>;
+  policiesHref?: string;
   onYearEndPreview: (yearEnd: string) => Promise<YearEndPreview>;
   /** acknowledgePending: post with leave requests still waiting (they stay pending into the new year). */
   onYearEndRun: (yearEnd: string, acknowledgePending: boolean) => Promise<unknown>;
@@ -2580,8 +2585,11 @@ function LivePolicyDrawer({ d, policy, live, onOpen, onClose }: { d: TimeSetup; 
 
 /* ---------------- TIM-27 live ---------------- */
 
-const LIVE_SECTIONS = { basics: 'Basics', crediting: 'Crediting', counting: 'Counting', rules: 'Rules', yearend: 'Year end' } as const;
-const FIELD_SECTION: Record<string, keyof typeof LIVE_SECTIONS> = { 'lt-code': 'basics', 'lt-name': 'basics', 'lt-paid': 'basics' };
+const LIVE_SECTIONS = { basics: 'Basics', crediting: 'Crediting', counting: 'Counting', rules: 'Rules', yearend: 'Year end', absence: 'Absence & notice' } as const;
+const FIELD_SECTION: Record<string, keyof typeof LIVE_SECTIONS> = { 'lt-code': 'basics', 'lt-name': 'basics', 'lt-paid': 'basics', 'lt-paypct': 'basics', 'lt-maxMonth': 'rules', 'lt-maxDays': 'rules', 'lt-encashMax': 'yearend' };
+/** "Partially paid" (TIM-27 Basics): one pay step of 1-99 % over the whole year. */
+const partPct = (r: LeaveRules) => (r.paySteps?.length === 1 && r.paySteps[0].days >= 366 && r.paySteps[0].percent > 0 && r.paySteps[0].percent < 100 ? r.paySteps[0].percent : null);
+const NOTICE_PERIOD_TEXT: Record<string, string> = { no_change: 'allowed', extends_last_day: 'moves the last working day later', sick_and_unpaid_only: 'only sick and unpaid leave' };
 
 function LiveTypeEditor({ live }: { live: LiveLeaveTypeEditor }) {
   const crumbs = (name: string) => <Breadcrumbs items={[{ label: 'Leave types & policies', href: live.policiesHref }, { label: name }]} />;
@@ -2606,18 +2614,23 @@ function LiveTypeForm({ d, row, live, crumbs }: { d: TimeSetup; row: LeaveTypeRo
   const [code, setCode] = useState(row?.code ?? '');
   const [name, setName] = useState(row?.name ?? '');
   const [kind, setKind] = useState<string | null>(row?.kind ?? 'earned');
-  const [pay, setPay] = useState(row && !row.paid ? 'unpaid' : 'paid');
+  const [pay, setPay] = useState(row && !row.paid ? 'unpaid' : row && partPct(row.rules) ? 'part' : 'paid');
   const [colour, setColour] = useState<string | null>(row?.colour ?? 'blue');
   const [active, setActive] = useState(row?.active ?? true);
   const [r, setR] = useState<LeaveRules>(row?.rules ?? DEFAULT_RULES);
+  const [payPct, setPayPct] = useState<number | null>(row ? partPct(row.rules) : null);
   const [sec, setSec] = useState<string>('basics');
+  const law = row?.statutory ?? null;
+  const defaults = d.leaveDefaults ?? {};
   const narrow = useNarrow();
   const { busy, error, run } = useRun();
   const set = <K extends keyof LeaveRules>(k: K, v: LeaveRules[K]) => setR((x) => ({ ...x, [k]: v }));
   const errors = [
     ...(!/^[A-Z][A-Z0-9]{0,7}$/.test(code) ? [{ fieldId: 'lt-code', message: 'Use 1 to 8 capital letters or digits, starting with a letter (EL, CL, SL).' }] : []),
     ...(!name.trim() ? [{ fieldId: 'lt-name', message: 'Name the leave type.' }] : []),
-    ...(kind === 'lop' && pay === 'paid' ? [{ fieldId: 'lt-paid', message: 'Leave without pay is unpaid.' }] : []),
+    ...(kind === 'lop' && pay !== 'unpaid' ? [{ fieldId: 'lt-paid', message: 'Leave without pay is unpaid.' }] : []),
+    ...(pay === 'part' && (payPct === null || payPct < 1 || payPct > 99) ? [{ fieldId: 'lt-paypct', message: 'Enter a share between 1 and 99%.' }] : []),
+    ...(r.maxDaysPerMonth != null && r.maxDays != null && r.maxDays > r.maxDaysPerMonth ? [{ fieldId: 'lt-maxDays', message: `More than the monthly limit of ${num(r.maxDaysPerMonth)} days. A request that big can never be approved.` }] : []),
   ];
   const saveErrors = useSaveErrors(errors);
   const { errorOf } = saveErrors;
@@ -2631,7 +2644,10 @@ function LiveTypeForm({ d, row, live, crumbs }: { d: TimeSetup; row: LeaveTypeRo
       return;
     }
     void run('save', async () => {
-      const res = await live.onSaveType(row?.id ?? null, { code, name: name.trim(), kind: kind!, paid: pay === 'paid', colour: colour ?? 'blue', active, rules: kind === 'lop' ? { ...r, negativeLimit: 0 } : r });
+      // Partially paid is one pay step over the whole year; plain paid drops a step set here (other steps stay).
+      const paySteps = pay === 'part' ? [{ days: 366, percent: payPct! }] : pay === 'unpaid' || partPct(r) ? null : r.paySteps ?? null;
+      const cashIn = r.encashable ? {} : { encashMaxDays: null, encashMinLeft: null, encashDivisor: null };
+      const res = await live.onSaveType(row?.id ?? null, { code, name: name.trim(), kind: kind!, paid: pay !== 'unpaid', colour: colour ?? 'blue', active, rules: { ...(kind === 'lop' ? { ...r, negativeLimit: 0 } : r), paySteps, ...cashIn } });
       const id = (res as { id?: string } | undefined)?.id;
       if (!row && id) live.onAdded?.(id);
     });
@@ -2647,12 +2663,54 @@ function LiveTypeForm({ d, row, live, crumbs }: { d: TimeSetup; row: LeaveTypeRo
   const mon = new Date(fri.getFullYear(), fri.getMonth(), fri.getDate() + 3);
   const ex = countLeaveDays({ from: fri, to: mon, holidays: [], weeklyOffDays: [0, 6], sandwich: r.sandwich });
   const title = row?.name ?? 'New leave type';
+  if (row && law) {
+    // TIM-27 Statutory: the law sets the length and pay; only the colour (and more than the law) is the company's.
+    const m = d.maternity;
+    const weeks = (n: number) => `${n} weeks`;
+    return (
+      <>
+        <PageHeader
+          breadcrumbs={crumbs(title)}
+          title={title}
+          description={`Statutory · ${law.law}. The law sets the length and pay; you can change only the colour.`}
+          status={<Badge tone={row.active ? 'success' : 'neutral'}>{row.active ? 'Active' : 'Not in use'}</Badge>}
+          actions={<Button variant="primary" loading={busy === 'save'} onClick={save}>Save colour</Button>}
+        />
+        <div className="yx-tim-editor">
+          <div className="yx-tim-form">
+            {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
+            <InlineAlert tone="info" title="The law sets these values">
+              {row.kind === 'maternity' && m
+                ? `${weeks(m.maternityWeeks)} (at most ${m.beforeDeliveryWeeks} before delivery); ${weeks(m.maternityWeeksThirdChild)} for mothers who adopt a baby or have one through surrogacy, and from the 3rd child; ${weeks(m.miscarriageWeeks ?? 6)} after miscarriage; ${weeks(m.tubectomyWeeks ?? 2)} after tubectomy. Eligibility: ${m.eligibilityDaysWorked} days worked in the 12 months before the expected date.`
+                : `Up to ${plural(law.days, 'day')}, paid in full.`}
+            </InlineAlert>
+            <FormSection title="Set by law">
+              {/* Read-only text, not inputs: these can't be changed below the law. */}
+              <DescriptionList items={[{ label: 'Name', value: row.name }, { label: 'Code', value: row.code }, { label: 'Length', value: law.days % 7 === 0 ? weeks(law.days / 7) : plural(law.days, 'day') }, { label: 'Pay', value: law.paidInFull ? 'Paid, full wages' : 'As the law says' }]} />
+            </FormSection>
+            <FormSection title="Set by you">
+              <FormField label="Colour"><Select value={colour} onChange={setColour} options={COLOURS} /></FormField>
+            </FormSection>
+          </div>
+          <div className="yx-tim-sticky">
+            {m && row.kind === 'maternity' && (
+              <Card title="Example">
+                <p className="yx-tim-muted">Delivery expected {day(new Date(dateOfIso(d.today).getTime() + 70 * 86_400_000))}</p>
+                <Kpis items={[{ label: 'Length', value: `${weeks(m.maternityWeeks)}, paid` }]} />
+                <p className="yx-tim-note">Starts at most {m.beforeDeliveryWeeks} weeks before the expected date.</p>
+              </Card>
+            )}
+          </div>
+        </div>
+      </>
+    );
+  }
   return (
     <>
       <PageHeader
         breadcrumbs={crumbs(title)}
         title={title}
-        description={`${pay === 'paid' ? 'Paid' : 'Unpaid'} · ${kindText(kind ?? '')}${row ? ` · used in ${plural(inPolicies.length, 'policy', 'policies')}${inPolicies.length ? ` (${inPolicies.map((x) => x.p.name).join('; ')})` : ''}` : ''}.`}
+        description={`${pay === 'paid' ? 'Paid' : pay === 'part' ? `Paid at ${payPct ?? '…'}%` : 'Unpaid'} · ${kindText(kind ?? '')}${row ? ` · used in ${plural(inPolicies.length, 'policy', 'policies')}${inPolicies.length ? ` (${inPolicies.map((x) => x.p.name).join('; ')})` : ''}` : ''}.`}
         status={row ? <Badge tone={row.active ? 'success' : 'neutral'}>{row.active ? 'Active' : 'Not in use'}</Badge> : undefined}
         actions={<Button variant="primary" loading={busy === 'save'} onClick={save}>{row ? 'Save' : 'Add leave type'}</Button>}
       />
@@ -2683,8 +2741,13 @@ function LiveTypeForm({ d, row, live, crumbs }: { d: TimeSetup; row: LeaveTypeRo
                   <Select value={kind} onChange={setKind} options={KINDS} disabled={Boolean(row)} />
                 </FormField>
                 <FormField id="lt-paid" label="Pay" error={errorOf('lt-paid')}>
-                  <RadioGroup aria-label="Pay" value={pay} onChange={setPay} orientation="horizontal" options={[{ value: 'paid', label: 'Paid' }, { value: 'unpaid', label: 'Unpaid (shows days taken, no balance)' }]} />
+                  <RadioGroup aria-label="Pay" value={pay} onChange={setPay} orientation="horizontal" options={[{ value: 'paid', label: 'Paid' }, { value: 'unpaid', label: 'Unpaid (shows days taken, no balance)' }, { value: 'part', label: 'Partially paid' }]} />
                 </FormField>
+                {pay === 'part' && (
+                  <FormField id="lt-paypct" label="Paid at (% of daily wage)" required error={errorOf('lt-paypct')}>
+                    <NumberField value={payPct} min={1} max={99} onChange={setPayPct} />
+                  </FormField>
+                )}
                 <FormField label="Colour"><Select value={colour} onChange={setColour} options={COLOURS} /></FormField>
                 {row && <Switch label="In use" description="A type not in use cannot be applied for; its history stays." checked={active} onChange={setActive} />}
               </FormSection>
@@ -2717,7 +2780,12 @@ function LiveTypeForm({ d, row, live, crumbs }: { d: TimeSetup; row: LeaveTypeRo
                   <FormField id="lt-notice" label="Apply at least (days ahead)" helper={r.noticeDays !== null ? 'Leave blank to use the company default.' : kind === 'sick' ? 'Blank: no notice (sick leave).' : `Blank: the company default, ${plural(d.noticeDefault ?? 0, 'day')}.`}><NumberField value={r.noticeDays} onChange={(v) => set('noticeDays', v)} min={0} max={90} /></FormField>
                   {(r.noticeDays ?? (kind === 'sick' ? 0 : (d.noticeDefault ?? 0))) > 0 && <FormField label="Shorter notice"><Segment label="Shorter notice" value={r.noticeMode ?? 'block'} onChange={(v) => set('noticeMode', v)} options={[{ value: 'block' as const, label: 'Refuse it' }, { value: 'warn' as const, label: 'Allow and flag to the approver' }]} /></FormField>}
                   {numField('minDays', 'Least days in one request', 'Leave empty for no minimum.')}
-                  {numField('maxDays', 'Most days in one request', 'Leave empty for no maximum.')}
+                  <FormField id="lt-maxDays" label="Most days in one request" optional helper="Leave empty for no maximum." error={errorOf('lt-maxDays')}>
+                    <NumberField value={r.maxDays} onChange={(v) => set('maxDays', v)} decimals min={0} max={366} />
+                  </FormField>
+                  <FormField id="lt-maxMonth" label="Most days in a month" optional helper="Asked and approved together, half days count as half. Leave empty for no limit.">
+                    <NumberField value={r.maxDaysPerMonth ?? null} onChange={(v) => set('maxDaysPerMonth', v)} decimals min={0.5} max={31} />
+                  </FormField>
                 </FieldRow>
                 <FieldRow>
                   {numField('certificateAfterDays', 'Ask for a document when leave is longer than (days)', 'Leave blank to never ask')}
@@ -2734,6 +2802,50 @@ function LiveTypeForm({ d, row, live, crumbs }: { d: TimeSetup; row: LeaveTypeRo
                 {inPolicies.length > 0 && <ul className="yx-tim-list">{inPolicies.map(({ p, l }) => <li key={p.id}><span className="yx-tim-list__main"><strong>{p.name}</strong><span className="yx-tim-muted">{carryText(l)}</span></span></li>)}</ul>}
                 <p className="yx-tim-muted">The carry-forward limit is set in each policy.</p>
                 <Switch label="Can be cashed in (payroll pays it later)" checked={r.encashable} onChange={(v) => set('encashable', v)} />
+                {r.encashable && (
+                  <>
+                    <FieldRow>
+                      <FormField id="lt-encashMax" label="Encash per year in total, up to (days)" optional helper={`Blank: the company limit, ${plural(Number(defaults['leave.encashment.max_days'] ?? 7), 'day')}. Over the carry-forward limit at year end, this much is paid out; the rest lapses.`}>
+                        <NumberField value={r.encashMaxDays ?? null} onChange={(v) => set('encashMaxDays', v)} decimals min={0} max={366} />
+                      </FormField>
+                      <FormField id="lt-encashMin" label="Keep at least (days) after encashing" optional helper={`Blank: the company value, ${plural(Number(defaults['leave.encashment.min_left'] ?? 7), 'day')}.`}>
+                        <NumberField value={r.encashMinLeft ?? null} onChange={(v) => set('encashMinLeft', v)} decimals min={0} max={366} />
+                      </FormField>
+                    </FieldRow>
+                    <FormField label="Pay for each day paid out" helper="Monthly pay as payroll pays leave encashment (basic and DA, or gross).">
+                      <Select value={r.encashDivisor ? String(r.encashDivisor) : 'company'} onChange={(v) => set('encashDivisor', v === '26' ? 26 : v === '30' ? 30 : null)} options={[{ value: 'company', label: `Company default (monthly pay ÷ ${defaults['leave.encashment.divisor'] ?? '26'})` }, { value: '26', label: 'Monthly pay ÷ 26' }, { value: '30', label: 'Monthly pay ÷ 30' }]} />
+                    </FormField>
+                    <Switch label="Pay out the balance when someone leaves (in the final settlement)" checked={r.encashAtExit !== false} onChange={(v) => set('encashAtExit', v)} />
+                  </>
+                )}
+              </FormSection>
+            </TabsContent>
+            <TabsContent value="absence">
+              <FormSection title="During long absence">
+                <RadioGroup
+                  aria-label="Crediting during long absence"
+                  value={r.longAbsence ?? 'company'}
+                  onChange={(v) => set('longAbsence', v === 'company' ? null : (v as 'pause' | 'continue'))}
+                  options={[
+                    { value: 'company', label: `Company default (${defaults['leave.long_absence.accrues'] === 'yes' ? 'keep crediting' : 'stop crediting'})` },
+                    { value: 'pause', label: 'Stop crediting during a sabbatical or long unpaid leave' },
+                    { value: 'continue', label: 'Keep crediting' },
+                  ]}
+                />
+                <p className="yx-tim-note">Maternity leave always counts as service, so crediting continues by law.</p>
+              </FormSection>
+              <FormSection title="During the notice period">
+                <RadioGroup
+                  aria-label="During notice"
+                  value={r.noticePeriod ?? 'company'}
+                  onChange={(v) => set('noticePeriod', v === 'company' ? null : (v as 'allowed' | 'extends' | 'blocked'))}
+                  options={[
+                    { value: 'company', label: `Company default (${NOTICE_PERIOD_TEXT[defaults['leave.notice_period.leave'] ?? 'no_change'] ?? 'allowed'})` },
+                    { value: 'allowed', label: 'Allowed' },
+                    { value: 'extends', label: 'Moves the last working day later' },
+                    { value: 'blocked', label: 'Not allowed' },
+                  ]}
+                />
               </FormSection>
             </TabsContent>
           </Tabs>
@@ -3110,10 +3222,148 @@ const daysBetween = (a: string, b: string) => Math.round((dateOfIso(b).getTime()
 /* ---------------- TIM-29 live ---------------- */
 
 function LiveYearEndWizard({ live }: { live: LiveYearEnd }) {
+  const transition = live.mode === 'transition' && live.onYearChangePreview && live.onYearChangeSchedule;
   return (
-    <SetupGate live={live} active="Year-end" header={<PageHeader title="Leave year-end" />}>
-      {(d) => <LiveYearEndBody d={d} live={live} />}
+    <SetupGate live={live} active="Year-end" header={<PageHeader title={transition ? 'Change leave year' : 'Leave year-end'} />}>
+      {(d) => (transition ? <LiveTransitionBody d={d} live={live} /> : <LiveYearEndBody d={d} live={live} />)}
     </SetupGate>
+  );
+}
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const yearKind = (m: number) => (m === 1 ? 'calendar year (Jan–Dec)' : m === 4 ? 'financial year (Apr–Mar)' : `year from ${MONTH_NAMES[m - 1]}`);
+const monthShort = (m: number) => MONTH_NAMES[m - 1].slice(0, 3);
+
+/** TIM-29 Transition, live: one legal entity moves to a new leave year with a short year in between (scheduled, audited). */
+function LiveTransitionBody({ d, live }: { d: TimeSetup; live: LiveYearEnd }) {
+  const [entity, setEntity] = useState<string | null>(d.entities[0]?.id ?? null);
+  const [month, setMonth] = useState<string | null>('4');
+  const [preview, setPreview] = useState<YearChangePreview | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const [q, setQ] = useState('');
+  const [c, setC] = useState(false);
+  const [posted, setPosted] = useState<{ on: string } | null>(null);
+  const narrow = useNarrow(1365);
+  const { toast } = useToast();
+  useEffect(() => {
+    if (!entity || !month) return;
+    let stale = false;
+    setPreview(null);
+    setLoadError(null);
+    live.onYearChangePreview!(entity, Number(month)).then(
+      (p) => !stale && setPreview(p),
+      (e) => !stale && setLoadError(errorText(e)),
+    );
+    return () => {
+      stale = true;
+    };
+    // Reload on a new entity, month or Try again; the handler changes identity on every render of the page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entity, month, attempt]);
+  const entName = d.entities.find((e) => e.id === entity)?.name ?? '';
+  const title = entName ? `Change leave year · ${entName}` : 'Change leave year';
+  const rows = preview?.rows ?? [];
+  const people = new Set(rows.map((r) => r.employeeId)).size;
+  const shownRows = rows.filter((r) => r.name.toLowerCase().includes(q.trim().toLowerCase()));
+  const nextStart = preview ? dateOfIso(preview.shortEnd) : null;
+  if (nextStart) nextStart.setDate(nextStart.getDate() + 1);
+  const shortText = preview ? `${isoDay(preview.fromOn)} – ${isoDay(preview.shortEnd)} (${plural(preview.months, 'month')})` : '';
+  const scheduled = preview?.scheduled ?? null;
+  if (posted || scheduled) {
+    const s = scheduled ?? (preview ? { fromOn: preview.fromOn, shortEnd: preview.shortEnd } : null);
+    return (
+      <>
+        <PageHeader title={title} />
+        <InlineAlert tone="info" title={posted ? `Leave-year change scheduled on ${isoDay(posted.on)}` : `Leave-year change scheduled for ${entName}`} actions={live.policiesHref && live.onNavigate ? <Button size="sm" onClick={() => live.onNavigate!(live.policiesHref!)}>View leave policies</Button> : undefined}>
+          {s ? `${posted ? `${plural(people, 'person', 'people')} at ${entName}` : entName} move${posted && people === 1 ? 's' : ''} to a short year from ${isoDay(s.fromOn)} to ${isoDay(s.shortEnd)}. Leave entries are posted from ${isoDay(s.fromOn)}.` : ''}
+        </InlineAlert>
+      </>
+    );
+  }
+  type Row = YearChangePreview['rows'][number];
+  const outcome = (r: Row) => (
+    <span className="yx-tim-row" style={{ flexWrap: 'nowrap' }}>
+      <span style={{ whiteSpace: 'nowrap' }}>{num(r.carry)} carried{r.encash > 0 ? ` · ${num(r.encash)} to pay out` : ''}</span>
+      {r.lapse > 0 && <Badge tone="warning">{num(r.lapse)} lapse</Badge>}
+    </span>
+  );
+  const name = (r: Row) => <span className="yx-tim-list__main"><strong>{r.name}</strong><span className="yx-tim-muted">{r.type}</span></span>;
+  const cols: TableColumn<Row>[] = narrow
+    ? [
+        { key: 'name', header: 'Employee', value: (r) => r.name, render: name },
+        { key: 'sum', header: `Opening + credit = end of short year → ${nextStart ? dayShort(nextStart) : ''}`, value: (r) => r.carry, render: (r) => <span className="yx-tim-row"><span>{num(r.opening)} + {num(r.credit)} = {num(r.atEnd)} →</span>{outcome(r)}</span> },
+      ]
+    : [
+        { key: 'name', header: 'Employee', value: (r) => r.name, render: name },
+        { key: 'open', header: `Opening ${preview ? isoDay(preview.fromOn) : ''}`, type: 'number', value: (r) => r.opening, render: (r) => num(r.opening) },
+        { key: 'credit', header: 'Short-year credit', type: 'number', optional: true, value: (r) => r.credit, render: (r) => num(r.credit) },
+        { key: 'end', header: `Balance ${preview ? isoDay(preview.shortEnd) : ''}`, type: 'number', value: (r) => r.atEnd, render: (r) => num(r.atEnd) },
+        { key: 'next', header: `Opening ${nextStart ? day(nextStart) : ''}`, hideable: false, value: (r) => r.carry, render: outcome },
+      ];
+  const blocked = !entity ? 'Choose the entity in Scope' : loadError ? 'The preview did not load. Open Preview and try again' : !preview ? 'The preview is still loading' : preview.problem ?? undefined;
+  const yr = preview ? preview.fromOn.slice(0, 4) : '';
+  return (
+    <>
+      <PageHeader title={title} description={`Move from the ${yearKind(preview?.oldStartMonth ?? 1)} to the ${yearKind(Number(month ?? 4))}, with a short year in between.`} />
+      <Stepper
+        title={title}
+        finishLabel="Post transition"
+        finishBlocked={blocked}
+        onFinish={() => setC(true)}
+        review={{ note: 'Posting schedules the short year. Ledger entries are written as its credits fall due, and its year end applies each policy’s carry-forward limit.' }}
+        steps={[
+          {
+            id: 'scope', title: 'Scope', description: 'Entity and new leave year',
+            content: (
+              <div className="yx-tim-form">
+                <FormField label="Entity" required error={entity ? null : 'Choose the entity.'}><Select value={entity} onChange={setEntity} options={d.entities.map((e) => ({ value: e.id, label: e.name }))} /></FormField>
+                <FormField label="New leave year starts in" required><Select value={month} onChange={setMonth} options={MONTH_NAMES.map((m, i) => ({ value: String(i + 1), label: m }))} /></FormField>
+                {preview && <DescriptionList items={[{ label: 'Leave year', value: `${yearKind(preview.oldStartMonth)[0].toUpperCase()}${yearKind(preview.oldStartMonth).slice(1)} → ${yearKind(preview.newStartMonth)}, from ${isoDay(preview.fromOn)} (the day after the year end)` }]} />}
+                {preview?.problem ? (
+                  <InlineAlert tone="warning" title="This change can't be made">{preview.problem}</InlineAlert>
+                ) : preview ? (
+                  <InlineAlert tone="info" title="A short year is created">{shortText} with entitlements for {plural(preview.months, 'month')}, then the first full year from {nextStart ? day(nextStart) : ''}.</InlineAlert>
+                ) : null}
+              </div>
+            ),
+            summary: preview ? `${entName} · ${monthShort(preview.oldStartMonth)}–${monthShort(((preview.oldStartMonth + 10) % 12) + 1)} → ${monthShort(preview.newStartMonth)}–${monthShort(((preview.newStartMonth + 10) % 12) + 1)} from ${isoDay(preview.fromOn)}` : 'Not loaded',
+          },
+          {
+            id: 'preview', title: 'Preview', description: 'Per employee',
+            content: loadError ? (
+              <InlineAlert tone="danger" title="The preview did not load" actions={<Button size="sm" onClick={() => setAttempt((a) => a + 1)}>Try again</Button>}>{loadError}</InlineAlert>
+            ) : !preview ? (
+              <div className="yx-tim-stack" role="status" aria-busy="true" aria-label="Loading the preview"><Skeleton height={64} /><Skeleton height={160} /></div>
+            ) : preview.problem ? (
+              <EmptyState compact title="Nothing to preview" description={preview.problem} />
+            ) : rows.length === 0 ? (
+              <EmptyState compact title="No one to move" description={`No one at ${entName} has a leave policy with a balance.`} />
+            ) : (
+              <div className="yx-tim-stack">
+                <Kpis items={[{ label: 'People', value: people }, { label: 'Short year', value: shortText }]} />
+                <p className="yx-tim-muted">Opening {isoDay(preview.fromOn)} is after the year end before it. Assumes no leave taken; on {isoDay(preview.shortEnd)} each policy’s carry-forward limit applies and the rest is paid out or lapses.</p>
+                <DataTable cardSummary label="Short-year preview per employee" columns={cols} rows={shownRows} getRowId={(r) => r.employeeId + r.type} filtered={q !== ''} onClearFilters={() => setQ('')} toolbar={<FilterBar fields={[]} value={[]} onChange={() => {}} search={q} onSearchChange={setQ} searchPlaceholder="Search by name" />} />
+              </div>
+            ),
+            summary: preview && !preview.problem ? `${plural(people, 'person', 'people')} · short year ${shortText}` : 'Not loaded',
+          },
+        ]}
+      />
+      <TypeToConfirmDialog
+        open={c}
+        onOpenChange={setC}
+        title="Post leave-year change"
+        consequence={preview ? `${plural(people, 'person', 'people')} at ${entName} move to a short year with ${plural(preview.months, 'month')} of entitlements. Ledger entries are posted from ${isoDay(preview.fromOn)}. It can't be undone here.` : ''}
+        objectName={`SHORT YEAR ${yr}`}
+        confirmLabel="Post entries"
+        onConfirm={async () => {
+          await live.onYearChangeSchedule!(entity!, Number(month));
+          setPosted({ on: d.today });
+          toast({ tone: 'success', title: 'Leave-year change scheduled', description: `${entName} moves to a short year from ${isoDay(preview!.fromOn)}.` });
+        }}
+      />
+    </>
   );
 }
 
@@ -3150,6 +3400,7 @@ function LiveYearEndBody({ d, live }: { d: TimeSetup; live: LiveYearEnd }) {
   const people = new Set(rows.map((r) => r.employeeId)).size;
   const carried = rows.reduce((s, r) => s + r.carry, 0);
   const lapsed = rows.reduce((s, r) => s + r.lapse, 0);
+  const paidOut = rows.reduce((s, r) => s + (r.encash ?? 0), 0);
   const losing = rows.filter((r) => r.lapse > 0);
   const shownRows = rows.filter((r) => r.name.toLowerCase().includes(q.trim().toLowerCase()) && (!onlyLosing || r.lapse > 0));
   type Row = YearEndPreview['rows'][number];
@@ -3159,7 +3410,7 @@ function LiveYearEndBody({ d, live }: { d: TimeSetup; live: LiveYearEnd }) {
       key: 'split', header: `Balance ${yearEnd ? dayShort(yearEnd) : ''} → carried`, value: (r) => r.lapse,
       render: (r) => (
         <span className="yx-tim-row">
-          <span>{r.balance !== r.carry ? `${num(r.balance)} → ` : ''}{num(r.carry)} carried</span>
+          <span>{r.balance !== r.carry ? `${num(r.balance)} → ` : ''}{num(r.carry)} carried{r.encash ? ` · ${num(r.encash)} to pay out` : ''}</span>
           {r.lapse > 0 && <Badge tone="warning">{num(r.lapse)} lapse</Badge>}
         </span>
       ),
@@ -3170,7 +3421,18 @@ function LiveYearEndBody({ d, live }: { d: TimeSetup; live: LiveYearEnd }) {
       <>
         <PageHeader title={title} />
         <YearEndPosted title="Year end is being posted">
-          It runs in the background and is recorded in the audit log. Balances update in a few moments.
+          It runs in the background and is recorded in the audit log. Balances update in a few moments.{paidOut > 0 ? ` ${num(paidOut)} days go to payroll as pay-outs.` : ''}
+        </YearEndPosted>
+      </>
+    );
+  }
+  // Posted before (by anyone): it is done once per policy and date, so the page says so instead of offering Post.
+  if (preview?.posted) {
+    return (
+      <>
+        <PageHeader title={title} />
+        <YearEndPosted title={`Year-end ${yr} posted on ${day(new Date(preview.posted.at))}`}>
+          {preview.posted.by ? `Posted by ${preview.posted.by}. ` : ''}A year end is posted once. Correct a balance with an adjustment.
         </YearEndPosted>
       </>
     );
@@ -3181,8 +3443,8 @@ function LiveYearEndBody({ d, live }: { d: TimeSetup; live: LiveYearEnd }) {
       ? 'The preview did not load. Open Preview and try again'
       : !preview
         ? 'The preview is still loading'
-        : preview.lapses === 0
-          ? 'Nothing lapses on that date, so there is nothing to post'
+        : preview.lapses === 0 && !preview.payOuts
+          ? 'Nothing lapses or is paid out on that date, so there is nothing to post'
           : (preview.pending?.length ?? 0) > 0 && !ack
             ? `Decide the ${plural(preview.pending!.length, 'pending leave request')} first, or tick "Post anyway" in Scope`
             : undefined;
@@ -3228,7 +3490,7 @@ function LiveYearEndBody({ d, live }: { d: TimeSetup; live: LiveYearEnd }) {
               <EmptyState compact title="Nothing to process" description="No one’s leave year ends on that date." />
             ) : (
               <div className="yx-tim-stack">
-                <Kpis items={[{ label: 'People', value: people }, { label: 'Carried forward', value: `${thousands(Number(num(carried)))} days` }, { label: 'Lapse', value: `${thousands(Number(num(lapsed)))} days` }]} />
+                <Kpis items={[{ label: 'People', value: people }, { label: 'Carried forward', value: `${thousands(Number(num(carried)))} days` }, { label: 'Lapse', value: `${thousands(Number(num(lapsed)))} days` }, ...(paidOut > 0 ? [{ label: 'Paid out', value: `${thousands(Number(num(paidOut)))} days`, note: 'Amounts are shown in payroll' }] : [])]} />
                 <DataTable
                   cardSummary
                   label="Year-end preview per employee"
@@ -3255,7 +3517,7 @@ Only people losing days ({losing.length})
         open={c}
         onOpenChange={setC}
         title={`Post year-end ${yr}`}
-        consequence={`${plural(people, 'person', 'people')} · ${num(carried)} days carried forward · ${num(lapsed)} days lapse. They are not removed later; a correction is a new adjustment.`}
+        consequence={`${plural(people, 'person', 'people')} · ${num(carried)} days carried forward${paidOut > 0 ? ` · ${num(paidOut)} days paid out in payroll` : ''} · ${num(lapsed)} days lapse. They are not removed later; a correction is a new adjustment.`}
         objectName={`LEAVE YEAR ${yr}`}
         confirmLabel="Post entries"
         onConfirm={async () => {
