@@ -203,3 +203,53 @@ export interface AdvisoryView {
   verify: boolean;
   reviewed: { at: string; note: string } | null;
 }
+
+/** GET statutory/registers/:kind/rows (CMP-03). */
+export type RegisterKindKey = 'epf' | 'esic' | 'pt' | 'lwf';
+export interface RegisterPersonRow {
+  employeeId: string;
+  name: string;
+  code: string;
+  location: string | null;
+  state: string | null;
+  uanLast4: string | null;
+  ipLast4: string | null;
+  gross: string;
+  pfWage: string | null;
+  employee: string;
+  employer: string;
+  eps: string | null;
+  epfEmployer: string | null;
+  coverage: 'covered' | 'not_covered' | 'not_due';
+  reason: string | null;
+}
+export interface RegisterRowsView {
+  kind: RegisterKindKey;
+  month: string;
+  rows: RegisterPersonRow[];
+  trend: { month: string; employee: string; employer: string }[];
+}
+
+/** GET statutory/form16-status (CMP-06). */
+export interface Form16Linked {
+  returnId: string;
+  formCode: string;
+  taxYear: string;
+  quarter: number;
+  status: string;
+  kind: string;
+  tokenNo: string | null;
+}
+export interface Form16Status {
+  taxYear: string;
+  link: (Form16Linked & { version: number; problem: string | null }) | null;
+  q4: Form16Linked | null;
+  /** The Q4 return's due date; certificates can be made after it is filed. */
+  availableAfter: string | null;
+}
+
+/** GET statutory/advisories/task-desks (CMP-08). */
+export interface TaskDesk {
+  id: string;
+  name: string;
+}

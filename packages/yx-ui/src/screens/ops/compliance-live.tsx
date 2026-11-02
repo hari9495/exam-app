@@ -12,6 +12,7 @@ import { Drawer } from '../../components/drawer';
 import { EmptyState, InlineAlert, Meter, Skeleton } from '../../components/feedback';
 import { FieldRow, FormField, useTooEarly } from '../../components/field';
 import { TextArea, TextField } from '../../components/inputs';
+import { Checkbox } from '../../components/choice';
 import { DatePicker } from '../../components/date';
 import { useToast, PageBanner } from '../../components/notify';
 import { ConfirmDialog, Dialog } from '../../components/overlay';
@@ -23,18 +24,20 @@ import { DataTable } from '../../components/table';
 import { useRun } from '../org/org-kit';
 import { LivePage, dateText } from '../time/live/kit';
 import { FileButton, FormDrawer, IrreversibleSheet } from '../pay/pay-kit';
-import { EntityPicker, statuteText } from '../pay/live/setup';
+import { EntityPicker, parseCsv, readText, statuteText } from '../pay/live/setup';
+import { STATES } from '../org/data';
 import { monthText } from '../pay/live/periods';
 import { rupees } from '../pay/live/runs';
 import type { Confirmation, LoadState } from '../pay/live/types';
 import type { RuleSetView, SetupEntity } from '../pay/live/types-5b';
 import type { FilingRow, HubCard, HubChild, MissingIds, MissingIdView, StatutoryHub, TdsReturnRow } from '../pay/live/types-5j';
+import type { ImportBatch } from '../pay/live/types-5b';
 import { StatCard } from '../../components/charts';
-import type { AdvisoryView, CertificateRow, PartAImport, RegisterRow } from '../pay/live/types-ops';
+import type { AdvisoryView, CertificateRow, Form16Status, PartAImport, RegisterKindKey, RegisterRow, RegisterRowsView, TaskDesk } from '../pay/live/types-ops';
 import type { ConsultantSection, NonSalaryReturn } from '../pay/live/types-5h';
 import { Actions, CardGrid, CheckList, DueMonth, type CheckRow, type DueItem } from './ops-kit';
-import { StatuteCard, SupplementaryFilingPanel, TdsChallanScreen, TdsReturnWizardScreen } from './compliance';
-import type { FilingStep, StatuteItem, SupplementaryFiling } from './compliance-data';
+import { NotYetAvailableState, RegisterTabs, SetupNeededState, StatuteCard, SupplementaryFilingPanel, TdsChallanScreen, TdsReturnWizardScreen, type RegisterKind } from './compliance';
+import type { FilingStep, RegisterRow as RegisterPersonView, StatuteItem, SupplementaryFiling } from './compliance-data';
 
 const D = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00`);
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -55,6 +58,14 @@ const lastTaxYears = (now = new Date()) => {
   const y = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
   return [y, y - 1, y - 2].map((s) => `${s}-${pad((s + 1) % 100)}`);
 };
+const stateText = (code: string) => STATES.find((x) => x.code === code)?.name ?? code;
+/** "IN.PT IN-KA" as "Professional tax (Karnataka)". */
+export const setupText = (code: string) => {
+  const [statute, state] = code.split(' ');
+  return `${statuteText(statute)}${state ? ` (${stateText(state)})` : ''}`;
+};
+const listText = (xs: string[]) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
+
 function RefusedLine({ error }: { error: string | null }) {
   return error ? (
     <InlineAlert tone="danger" title="This didn't go through">
@@ -94,6 +105,11 @@ export interface LiveStatutoryHub {
   onReturnFiled: (id: string, tokenNo: string, confirmation: Confirmation) => Promise<unknown>;
   /** CMP-12 (founder answer 22): a filed PF or ESI month corrected by a supplementary filing, or an excess recorded. */
   onCorrect?: (card: HubCard, x: CorrectionInput) => Promise<unknown>;
+  /** CMP-05 MissingMonth: a month's as-paid lines staged, then committed (payroll.import.run). */
+  onImportMonth?: LiveTdsReturns['onImportMonth'];
+  onCommitImport?: LiveTdsReturns['onCommitImport'];
+  /** CMP-01 SetupNeeded: opens Payroll set-up › Registrations (only for people who may change it). */
+  onOpenSetup?: () => void;
 }
 
 export interface CorrectionInput {
@@ -180,6 +196,8 @@ export function LiveStatutoryHubScreen({ live: p }: { live: LiveStatutoryHub }) 
   const dueMonth = new Date(Number(p.month.slice(0, 4)), Number(p.month.slice(5, 7)), 1);
   const due: DueItem[] = all.filter((i) => i.due.getMonth() === dueMonth.getMonth() && i.due.getFullYear() === dueMonth.getFullYear()).map((i) => ({ date: i.due, label: i.title, tone: i.step.startsWith('filed') || (i.step === 'due' && i.amount === 0) ? 'success' : i.due < today ? 'danger' : 'warning' }));
   const phrase = (f: FilingRow) => `FILED ${f.statute.slice(3)} ${p.month}`;
+  // CMP-01 SetupNeeded: registrations missing and nothing owed this month yet.
+  const setupNeeded = !!p.hub?.setupMissing?.length && all.every((i) => i.amount === 0);
   const go = (key: string, fn: () => Promise<unknown>, done: string) => void run(key, async () => (await fn(), toast({ tone: 'success', title: done })));
 
   const cardActions = ({ card: c, file: f }: (typeof items)[number]): ReactNode => (
@@ -263,7 +281,19 @@ export function LiveStatutoryHubScreen({ live: p }: { live: LiveStatutoryHub }) 
               <TabsTrigger value="returns">TDS returns</TabsTrigger>
             </TabsList>
             <TabsContent value="cards">
-              {!all.length ? (
+              {setupNeeded ? (
+                <SetupNeededState
+                  missing={listText(p.hub!.setupMissing!.map(setupText))}
+                  entity={entity || 'this legal entity'}
+                  action={
+                    p.onOpenSetup ? (
+                      <Button variant="primary" onClick={p.onOpenSetup}>
+                        Open payroll set-up
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              ) : !all.length ? (
                 <EmptyState title="Nothing to file for this month." description="Cards appear here after the month's payroll is approved." />
               ) : (
                 <CardGrid min="lg">
@@ -318,6 +348,8 @@ export function LiveStatutoryHubScreen({ live: p }: { live: LiveStatutoryHub }) 
                   onDownload: (r) => p.onDownload(r.fileId!, `${r.formCode}-${r.taxYear}-q${r.quarter}.txt`),
                   onUploadFvu: (r, file) => p.onUploadFvu(r.id, file),
                   onFiled: (r, token, c) => p.onReturnFiled(r.id, token, c),
+                  onImportMonth: p.onImportMonth,
+                  onCommitImport: p.onCommitImport,
                 }}
               />
             </TabsContent>
@@ -703,6 +735,9 @@ export interface LiveTdsReturns {
   /** Salary returns: the .fvu the filer's FVU made. */
   onUploadFvu?: (r: ReturnView, file: File) => Promise<unknown>;
   onFiled: (r: ReturnView, tokenNo: string, c: Confirmation) => Promise<unknown>;
+  /** CMP-05 MissingMonth (salary): stage a month's as-paid lines (employeeCode, componentCode, amount), commit them when every row is right. */
+  onImportMonth?: (month: string, rows: Record<string, string>[]) => Promise<ImportBatch>;
+  onCommitImport?: (batchId: string) => Promise<unknown>;
 }
 
 type ReconLine = NonNullable<NonSalaryReturn['reconciliation']>['lines'][number];
@@ -726,6 +761,7 @@ export function LiveTdsReturns({ live }: { live: LiveTdsReturns }) {
   const [token, setToken] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [why, setWhy] = useState<string | null>(null);
+  const [badRows, setBadRows] = useState<{ month: string; errors: ImportBatch['errors'] } | null>(null);
   const r = live.returns?.find((x) => x.id === openId) ?? null;
   const tokenCheck = useTooEarly(!/^[A-Za-z0-9]{6,30}$/.test(token.trim()) ? [{ fieldId: 'rt-token', message: 'Enter the token number the portal gave (6 to 30 letters or digits).' }] : []);
   const startCheck = useTooEarly(taxYear ? [] : [{ fieldId: 'rt-year', message: 'Choose the tax year.' }]);
@@ -737,6 +773,7 @@ export function LiveTdsReturns({ live }: { live: LiveTdsReturns }) {
     if (!r) return;
     if (r.status === 'filed') return setWhy('This return is already filed.');
     if (!live.can.markFiled) return setWhy('Only someone who may mark returns filed can do this.');
+    if (missing.length) return setWhy(`Import the as-paid lines for ${missing.map((m) => monthText(m.month)).join(' and ')} first.`);
     if (!readyToFile(r)) return setWhy(isSalary(r) ? 'Upload the .fvu file the FVU made first: the return must be validated.' : 'Make the return file first.');
     if (tokenCheck.stop()) return;
     setConfirming(true);
@@ -744,19 +781,77 @@ export function LiveTdsReturns({ live }: { live: LiveTdsReturns }) {
 
   if (!live.returns) return <Skeleton height={200} />;
   const salary = live.kind === 'salary';
+  // CMP-05: rows per month and the PAN checks (salary returns; filed ones carry none).
+  const completeness = r && isSalary(r) ? (r.completeness ?? null) : null;
+  const missing = completeness?.months.filter((m) => m.missing) ?? [];
+  const importMonth = (month: string, file: File) =>
+    void run(`im-${month}`, async () => {
+      setBadRows(null);
+      const rows = parseCsv(await readText(file)).map((x) => ({ ...x, month }));
+      if (!rows.length) throw new Error('The file has no rows under the header line. Start it with: employeeCode,componentCode,amount');
+      const batch = await live.onImportMonth!(month, rows);
+      if (batch.errors.length) return setBadRows({ month, errors: batch.errors });
+      await live.onCommitImport!(batch.id);
+      // The draft takes the imported rows: the month is no longer missing.
+      await live.onStart(r!.taxYear, r!.quarter);
+      toast({ tone: 'success', title: `${batch.valid} as-paid ${batch.valid === 1 ? 'line' : 'lines'} imported for ${monthText(month)}.` });
+    });
+  const monthChecks: CheckRow[] = (completeness?.months ?? []).map((m) => ({
+    id: m.month,
+    status: m.missing ? 'fail' : m.rows || m.source !== 'none' ? 'pass' : 'warn',
+    label: `${monthText(m.month)}: ${m.missing ? 'no deductee rows' : `${m.rows} deductee ${m.rows === 1 ? 'row' : 'rows'}`}`,
+    detail: m.missing
+      ? 'Paid before this company started on YukthiX. Import that month’s as-paid lines (employeeCode, componentCode, amount) so the return is complete.'
+      : m.source === 'imported'
+        ? 'From the imported as-paid lines'
+        : m.source === 'payroll'
+          ? 'From approved payroll'
+          : 'No payroll for this month yet',
+    action:
+      m.missing && live.can.generate && live.onImportMonth && live.onCommitImport ? (
+        <FileButton label="Import rows" accept=".csv,text/csv" ariaLabel={`Import the as-paid lines for ${monthText(m.month)}`} loading={busy === `im-${m.month}`} onFile={(f) => importMonth(m.month, f)} />
+      ) : undefined,
+  }));
+  const panChecks: CheckRow[] = [
+    ...(completeness?.panWarnings ?? []).map((w): CheckRow => ({
+      id: w.employeeId,
+      status: 'warn',
+      label: `${w.name || w.employeeCode}: ${w.issue === 'pan_missing' ? 'no PAN' : 'PAN inoperative'}`,
+      detail: w.issue === 'pan_missing' ? 'TDS at the no-PAN rate. The row carries the no-PAN flag.' : 'Recorded inoperative for the tax year. Higher-rate TDS applies.',
+    })),
+    ...(completeness && completeness.panWarningCount > completeness.panWarnings.length ? [{ id: 'more', status: 'warn' as const, label: `${completeness.panWarningCount - completeness.panWarnings.length} more PAN warnings`, detail: 'See Missing IDs for everyone.' }] : []),
+    ...(completeness ? [{ id: 'ok', status: 'pass' as const, label: `${completeness.panChecked - completeness.panWarningCount} other PANs in order`, detail: 'Each deductee’s PAN on file, not recorded inoperative' }] : []),
+  ];
   const steps = r
     ? [
         {
           id: 'completeness',
           title: 'Data completeness',
           description: 'Deductee rows',
-          content: (
+          ...(missing.length ? { status: 'error' as const, statusNote: `${missing.map((m) => monthText(m.month).split(' ')[0]).join(' and ')} rows missing` } : {}),
+          content: completeness ? (
+            <div className="yx-ops-stack">
+              <CheckList label="Deductee rows by month" items={monthChecks} />
+              {badRows && (
+                <InlineAlert tone="warning" title={`Nothing was imported for ${monthText(badRows.month)}. Fix these rows and upload the file again`}>
+                  <ul>
+                    {badRows.errors.slice(0, 20).map((e) => (
+                      <li key={e.row}>
+                        Row {e.row}: {e.message}
+                      </li>
+                    ))}
+                  </ul>
+                </InlineAlert>
+              )}
+              <CheckList label="PAN checks" items={panChecks} />
+            </div>
+          ) : (
             <CheckList
               label="Deductee rows"
               items={[r.rows ? { id: 'rows', status: 'pass', label: `${r.rows} deductee rows`, detail: `${rupees(r.tds)} TDS in the quarter` } : { id: 'rows', status: 'fail', label: 'No deductee rows', detail: salary ? 'Approve the quarter’s payroll first; rows come from approved payslips.' : 'Approve and pay the quarter’s consultant invoices first.' }] as CheckRow[]}
             />
           ),
-          summary: `${r.rows} deductee rows`,
+          summary: missing.length ? 'Rows missing' : completeness ? `${r.rows} deductee rows, ${completeness.panWarningCount} PAN ${completeness.panWarningCount === 1 ? 'warning' : 'warnings'}` : `${r.rows} deductee rows`,
         },
         {
           id: 'reconcile',
@@ -967,6 +1062,33 @@ export interface LiveRegisters {
   onFreeze: (r: RegisterRow) => Promise<unknown>;
   onSign: (r: RegisterRow, file: File) => Promise<unknown>;
   onPack: () => Promise<unknown>;
+  /** CMP-03: the statute shown and its rows (null while loading). */
+  kind: RegisterKindKey;
+  onKind: (k: RegisterKindKey) => void;
+  rows: RegisterRowsView | null;
+  rowsState?: 'ready' | 'loading' | 'error';
+}
+
+const KIND_TAB: Record<RegisterKindKey, RegisterKind> = { epf: 'EPF', esic: 'ESIC', pt: 'PT', lwf: 'LWF' };
+const COVERAGE: Record<string, RegisterPersonView['coverage']> = { covered: 'Covered', not_covered: 'Not covered', not_due: 'Not due' };
+const shortMonth = (m: string) => new Date(`${m}-01T00:00:00`).toLocaleString('en-IN', { month: 'short' });
+/** API register rows as the design's rows: `ee` / `er` the statute's employee and employer amounts. */
+export function registerView(v: RegisterRowsView): RegisterPersonView[] {
+  return v.rows.map((x) => ({
+    id: x.employeeId,
+    name: x.name,
+    code: x.code,
+    uan: x.uanLast4 ? `•••• ${x.uanLast4}` : '—',
+    ip: x.ipLast4 ? `•••• ${x.ipLast4}` : undefined,
+    location: x.location ?? '—',
+    gross: Number(x.gross),
+    pfWage: Number(x.pfWage ?? 0),
+    ee: Number(x.employee),
+    er: v.kind === 'epf' ? Number(x.epfEmployer ?? 0) : Number(x.employer),
+    eps: Number(x.eps ?? 0),
+    coverage: COVERAGE[x.coverage],
+    reason: x.reason ?? undefined,
+  }));
 }
 
 const REGISTER: Record<string, { label: string; tone: BadgeTone }> = {
@@ -1019,6 +1141,20 @@ export function LiveRegistersScreen({ live: p }: { live: LiveRegisters }) {
       {!p.entityId ? (
         <EmptyState compact title="Choose a legal entity." description="Registers are kept for each legal entity and month." />
       ) : (
+        <RegisterTabs
+          kind={KIND_TAB[p.kind]}
+          onKind={(k) => p.onKind((Object.keys(KIND_TAB) as RegisterKindKey[]).find((x) => KIND_TAB[x] === k)!)}
+          rows={p.rows && p.rows.kind === p.kind ? registerView(p.rows) : []}
+          state={p.rowsState === 'error' ? 'error' : p.rows && p.rows.kind === p.kind ? 'ready' : 'loading'}
+          onRetry={p.onRetry}
+          trend={{ categories: (p.rows?.trend ?? []).map((t) => shortMonth(t.month)), employee: (p.rows?.trend ?? []).map((t) => Number(t.employee)), employer: (p.rows?.trend ?? []).map((t) => Number(t.employer)) }}
+          locations={[...new Set((p.rows?.rows ?? []).map((x) => x.location).filter((x): x is string => !!x))].sort()}
+          empty={<EmptyState title={`No one was paid in ${monthText(p.month)} yet.`} description="Rows come from the month's approved payroll." />}
+          extra={[
+            {
+              value: 'files',
+              label: 'Register files',
+              content: (
         <DataTable
           label={`Registers for ${monthText(p.month)}`}
           columns={[
@@ -1049,6 +1185,10 @@ export function LiveRegistersScreen({ live: p }: { live: LiveRegisters }) {
               )}
             </>
           )}
+        />
+              ),
+            },
+          ]}
         />
       )}
       {remaking && (
@@ -1097,6 +1237,12 @@ export interface LiveForm16 {
   onPartA: (c: CertificateRow, file: File) => Promise<unknown>;
   onIssue: (c: CertificateRow, confirmation: Confirmation) => Promise<unknown>;
   onIssueAll: (confirmation: Confirmation) => Promise<{ issued: number; failed: { id: string; reason: string }[] }>;
+  /** CMP-06: the linked return and when certificates become available (null while loading; undefined: not shown). */
+  status?: Form16Status | null;
+  /** The entity's salary returns, to choose the one to link. */
+  salaryReturns?: TdsReturnRow[] | null;
+  /** Link the year's certificates to a return (people who may make filings). */
+  onLink?: (returnId: string, version?: number) => Promise<unknown>;
 }
 
 const formText = (f: string) => (f === 'form130' ? 'Form 130' : 'Form 16');
@@ -1108,14 +1254,22 @@ export function LiveForm16Screen({ live: p }: { live: LiveForm16 }) {
   const [issuing, setIssuing] = useState<CertificateRow | 'all' | null>(null);
   const [issuedAll, setIssuedAll] = useState<{ issued: number; failed: { id: string; reason: string }[] } | null>(null);
   const [why, setWhy] = useState<string | null>(null);
+  const [linkId, setLinkId] = useState<string | null>(null);
+  const linkCheck = useTooEarly(linkId ? [] : [{ fieldId: 'tc-link', message: 'Choose the return to link.' }]);
   const certs = p.certificates ?? [];
   const ready = certs.filter((c) => c.partA && !c.issued);
   const form = certs[0]?.form ?? (Number(p.taxYear.slice(0, 4)) >= 2026 ? 'form130' : 'form16');
   const phrase = `ISSUE ${form.toUpperCase()} ${p.taxYear}`;
   const issued = certs.filter((c) => c.issued).length;
   const years = [...new Set([p.taxYear, ...lastTaxYears()])].sort().reverse();
+  const linked = p.status?.link ?? null;
+  const yearReturns = (p.salaryReturns ?? []).filter((r) => r.taxYear === p.taxYear);
+  const prevYear = `${Number(p.taxYear.slice(0, 4)) - 1}-${String(Number(p.taxYear.slice(0, 4)) % 100).padStart(2, '0')}`;
+  // CMP-06 NotYetAvailable: nothing to issue before the year's Q4 return is filed.
+  const notYet = !!p.status && !certs.length && p.status.q4?.status !== 'filed' && !linked;
   const publish = () => {
     setWhy(null);
+    if (linked?.problem) return setWhy(linked.problem);
     if (!p.can.issueAll) return setWhy('Only someone who signs for the company issues certificates.');
     if (!ready.length) return setWhy(certs.length ? 'No certificate is ready: attach Part A first.' : 'Import Part A first.');
     setIssuing('all');
@@ -1140,6 +1294,13 @@ export function LiveForm16Screen({ live: p }: { live: LiveForm16 }) {
         <EmptyState compact title="Choose a legal entity." description="Certificates are issued by each legal entity (its TAN)." />
       ) : !p.certificates ? (
         <Skeleton height={240} />
+      ) : notYet ? (
+        <NotYetAvailableState
+          form={formText(form)}
+          taxYear={p.taxYear}
+          after={p.status!.availableAfter ? D(p.status!.availableAfter) : null}
+          action={<Button onClick={() => p.onTaxYear(prevYear)}>{`Open ${formText(Number(prevYear.slice(0, 4)) >= 2026 ? 'form130' : 'form16')} for ${prevYear}`}</Button>}
+        />
       ) : (
         <Stepper
           key={`${p.entityId}${p.taxYear}`}
@@ -1152,12 +1313,55 @@ export function LiveForm16Screen({ live: p }: { live: LiveForm16 }) {
             {
               id: 'q4',
               title: 'Link the Q4 return',
-              content:
-                p.q4Return?.status === 'filed' ? (
-                  <InlineAlert tone="info">Linked: Form {p.q4Return.formCode} Q4 {p.taxYear}, filed, token {p.q4Return.tokenNo}.</InlineAlert>
-                ) : (
-                  <InlineAlert tone="warning">The Q4 return for {p.taxYear} is not marked filed here yet. Part A comes from TRACES after it is filed.</InlineAlert>
-                ),
+              ...(linked?.problem ? { status: 'error' as const, statusNote: linked.quarter !== 4 ? 'Not a Q4 return' : 'Cannot be used' } : {}),
+              content: (
+                <div className="yx-ops-stack">
+                  {linked ? (
+                    linked.problem ? (
+                      <InlineAlert tone="danger">{linked.problem}</InlineAlert>
+                    ) : (
+                      <InlineAlert tone="info">
+                        Linked: Form {linked.formCode} Q4 {linked.taxYear}, filed, token {linked.tokenNo}.
+                      </InlineAlert>
+                    )
+                  ) : p.q4Return?.status === 'filed' ? (
+                    <InlineAlert tone="info">
+                      Form {p.q4Return.formCode} Q4 {p.taxYear} is filed (token {p.q4Return.tokenNo}). Link it so the certificates are issued against it.
+                    </InlineAlert>
+                  ) : (
+                    <InlineAlert tone="warning">The Q4 return for {p.taxYear} is not marked filed here yet. Part A comes from TRACES after it is filed.</InlineAlert>
+                  )}
+                  {p.onLink && (
+                    <FieldRow>
+                      <FormField id="tc-link" label={linked ? 'Link another return' : 'Return to link'} error={linkCheck.errorOf('tc-link')}>
+                        <Select
+                          id="tc-link"
+                          value={linkId}
+                          onChange={setLinkId}
+                          placeholder="Choose a salary return"
+                          options={yearReturns.map((r) => ({ value: r.id, label: `${returnName(r)} · ${RETURN_STATUS[r.status]?.label ?? r.status}` }))}
+                        />
+                      </FormField>
+                      <Actions>
+                        <Button
+                          loading={busy === 'link'}
+                          onClick={() =>
+                            !linkCheck.stop() &&
+                            void run('link', async () => {
+                              await p.onLink!(linkId!, linked?.version);
+                              setLinkId(null);
+                              linkCheck.reset();
+                              toast({ tone: 'success', title: 'Return linked to the certificates.' });
+                            })
+                          }
+                        >
+                          Link return
+                        </Button>
+                      </Actions>
+                    </FieldRow>
+                  )}
+                </div>
+              ),
             },
             {
               id: 'partA',
@@ -1284,7 +1488,10 @@ export interface LiveRules {
   rules: RuleSetView[] | null;
   advisories: AdvisoryView[] | null;
   can: { rules: boolean; updates: boolean };
-  onReview: (a: AdvisoryView, note: string) => Promise<unknown>;
+  /** CMP-08: the note, and optionally a help desk task (desk, due date) and a note to the entity's HR admins. */
+  onReview: (a: AdvisoryView, note: string, extra: { task?: { deskId: string; dueOn: string }; share?: boolean }) => Promise<{ taskError?: string | null } | unknown>;
+  /** The help desks the reviewer may put a task on (null while loading). */
+  taskDesks?: TaskDesk[] | null;
   /** The live app's today ("2026-10-29"). */
   today: string;
 }
@@ -1299,7 +1506,17 @@ export function LiveRulesScreen({ live: p, tab }: { live: LiveRules; tab: 'rules
   const [open, setOpen] = useState<string | null>(null);
   const [review, setReview] = useState<AdvisoryView | null>(null);
   const [note, setNote] = useState('');
-  const noteCheck = useTooEarly(note.trim().length < 5 ? [{ fieldId: 'rv-note', message: 'Say what you did, in at least 5 characters.' }] : []);
+  const [task, setTask] = useState(false);
+  const [deskId, setDeskId] = useState<string | null>(null);
+  const [dueOn, setDueOn] = useState<Date | null>(null);
+  const [share, setShare] = useState(false);
+  const desks = p.taskDesks ?? [];
+  const noteCheck = useTooEarly([
+    ...(note.trim().length < 5 ? [{ fieldId: 'rv-note', message: 'Say what you did, in at least 5 characters.' }] : []),
+    ...(task && !desks.length ? [{ fieldId: 'rv-task', message: 'You have no seat on a help desk, so a task cannot be made here. Untick it, or ask your desk admin for a seat.' }] : []),
+    ...(task && desks.length && !deskId ? [{ fieldId: 'rv-desk', message: 'Choose the help desk for the task.' }] : []),
+    ...(task && desks.length && !dueOn ? [{ fieldId: 'rv-due', message: 'Choose when the task is due.' }] : []),
+  ]);
   const rules = p.rules ?? [];
   const rule = rules.find((r) => r.id === open);
   const toReview = (p.advisories ?? []).filter((a) => !a.reviewed);
@@ -1388,7 +1605,7 @@ export function LiveRulesScreen({ live: p, tab }: { live: LiveRules; tab: 'rules
                         </Button>
                       )}
                       {!a.reviewed && (
-                        <Button size="sm" aria-label={`Mark "${a.title}" reviewed`} onClick={() => (setReview(a), setNote(''), noteCheck.reset())}>
+                        <Button size="sm" aria-label={`Mark "${a.title}" reviewed`} onClick={() => (setReview(a), setNote(''), setTask(false), setDeskId(desks.length === 1 ? desks[0].id : null), setDueOn(null), setShare(false), noteCheck.reset())}>
                           Mark reviewed
                         </Button>
                       )}
@@ -1440,15 +1657,31 @@ export function LiveRulesScreen({ live: p, tab }: { live: LiveRules; tab: 'rules
         description={review?.title}
         footer={<ReviewFooter onCancel={() => setReview(null)} onConfirm={async () => {
           if (noteCheck.stop()) return false;
-          await p.onReview(review!, note.trim());
-          toast({ tone: 'success', title: 'Marked reviewed.' });
+          const out = (await p.onReview(review!, note.trim(), { ...(task ? { task: { deskId: deskId!, dueOn: isoDay(dueOn!) } } : {}), ...(share ? { share: true } : {}) })) as { taskError?: string | null } | undefined;
+          toast(out?.taskError ? { tone: 'warning', title: out.taskError } : { tone: 'success', title: task ? 'Marked reviewed. Task added to the help desk.' : 'Marked reviewed.' });
           setReview(null);
           return true;
         }} />}
       >
-        <FormField id="rv-note" label="What you did" helper="Saved with your name in the audit log" required error={noteCheck.errorOf('rv-note')}>
-          <TextArea id="rv-note" rows={3} value={note} onChange={setNote} />
-        </FormField>
+        <div className="yx-ops-stack">
+          <FormField id="rv-note" label="What you did" helper="Saved with your name in the audit log" required error={noteCheck.errorOf('rv-note')}>
+            <TextArea id="rv-note" rows={3} value={note} onChange={setNote} />
+          </FormField>
+          <FormField id="rv-task" label="Follow-up" error={noteCheck.errorOf('rv-task')}>
+            <Checkbox id="rv-task" label="Create a task" description="Assign follow-up work with a due date" checked={task} onChange={setTask} />
+          </FormField>
+          {task && desks.length > 0 && (
+            <FieldRow>
+              <FormField id="rv-desk" label="Help desk" required error={noteCheck.errorOf('rv-desk')}>
+                <Select id="rv-desk" value={deskId} onChange={setDeskId} placeholder="Choose a help desk" options={desks.map((d) => ({ value: d.id, label: d.name }))} />
+              </FormField>
+              <FormField id="rv-due" label="Due on" required error={noteCheck.errorOf('rv-due')}>
+                <DatePicker id="rv-due" value={dueOn} onChange={setDueOn} min={D(p.today)} />
+              </FormField>
+            </FieldRow>
+          )}
+          <Checkbox label="Share with HR admins" description="They get a note in the app with what you did" checked={share} onChange={setShare} />
+        </div>
       </Dialog>
     </LivePage>
   );

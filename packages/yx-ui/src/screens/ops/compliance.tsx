@@ -209,7 +209,7 @@ function SampleStatutoryHub({ items, today, state = 'ready', view = 'cards', ope
         }
       />
       {setupNeeded ? (
-        <EmptyState title="Statutory set-up needed." description="Add registrations for PF, ESI, PT, LWF and TDS for each legal entity. Cards appear here after the first payroll run." action={<Button variant="primary">Open statutory set-up</Button>} />
+        <SetupNeededState action={<Button variant="primary">Open statutory set-up</Button>} />
       ) : state === 'loading' ? (
         <CardGrid>
           {[1, 2, 3, 4].map((i) => (
@@ -248,6 +248,11 @@ function SampleStatutoryHub({ items, today, state = 'ready', view = 'cards', ope
       <SupplementaryFilingPanel filing={filing} onClose={() => setFiling(null)} />
     </OpsDesk>
   );
+}
+
+/** CMP-01 SetupNeeded: what the entity still has to register (live: from the hub's `setupMissing`). */
+export function SetupNeededState({ missing = 'PF, ESI, PT, LWF and TDS', entity = 'each legal entity', action }: { missing?: string; entity?: string; action?: ReactNode }) {
+  return <EmptyState title="Statutory set-up needed." description={`Add registrations for ${missing} for ${entity}. Cards appear here after the first payroll run.`} action={action} />;
 }
 
 /** CMP-12 · Supplementary filing panel (T3 panel): origin month, reason, amounts, status, TRRN, interest and damages lines. */
@@ -477,21 +482,67 @@ export function RegistersScreen({ live, ...story }: RegistersScreenProps) {
 }
 function SampleRegisters({ rows, kind = 'EPF', state = 'ready', lwfNotDue }: RegistersScreenProps) {
   const [tab, setTab] = useState<RegisterKind>(kind);
+  // Sample figures only: the live page takes each person's amounts from their payslip.
+  const data = rows.map((x): RegisterRow => {
+    if (tab === 'ESIC') return x.gross <= 21000 ? { ...x, coverage: 'Covered', ee: Math.ceil(x.gross * 0.0075), er: Math.ceil(x.gross * 0.0325) } : { ...x, coverage: 'Not covered', reason: 'Wages above ₹21,000 at the start of the contribution period', ee: 0, er: 0 };
+    if (tab === 'LWF' && lwfNotDue) return { ...x, coverage: 'Not due', reason: 'LWF is deducted in December in Karnataka', ee: 0, er: 0 };
+    if (tab === 'LWF') return { ...x, ee: x.coverage === 'Covered' ? 50 : 0, er: x.coverage === 'Covered' ? 100 : 0 };
+    if (tab === 'PT') return { ...x, coverage: x.gross >= 25000 ? 'Covered' : 'Not covered', reason: x.gross >= 25000 ? undefined : 'Below the ₹25,000 slab', ee: x.gross >= 25000 ? 200 : 0 };
+    return x;
+  });
+  const exportLabel = { EPF: 'Download ECR file', ESIC: 'Download ESIC portal file', PT: 'Download PT return file', LWF: 'Download LWF file' }[tab];
+  return (
+    <OpsDesk area="compliance" active="Registers">
+      <PageHeader title="Statutory registers" description="Values stored on each payslip at calculation, never today's settings. Same numbers as the filing files." facts="August 2026 · Kaveri Foods Pvt Ltd" actions={<Button icon={Download}>{exportLabel}</Button>} />
+      <RegisterTabs
+        kind={tab}
+        onKind={setTab}
+        rows={state === 'empty' ? [] : data}
+        state={state === 'empty' ? 'ready' : state}
+        trend={{ categories: ['Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug'], employee: [182000, 184500, 186200, 188000, 189400, 191230], employer: [182000, 184500, 186200, 188000, 189400, 191230] }}
+        rates={{ EPF: { ee: '12%', eps: '8.33%', er: '3.67%' }, ESIC: { ee: '0.75%', er: '3.25%' } }}
+        locations={['Bengaluru head office', 'Chennai office', 'Hosur plant']}
+        empty={<EmptyState title="No register for this month yet." description="Registers are generated when the payroll period locks." />}
+        onExport={() => {}}
+      />
+    </OpsDesk>
+  );
+}
+
+export interface RegisterTabsProps {
+  kind: RegisterKind;
+  onKind: (k: RegisterKind) => void;
+  /** One row a person: `ee` / `er` are the statute's employee and employer amounts (PT: `ee`). */
+  rows: RegisterRow[];
+  state?: Exclude<ListState, 'empty'>;
+  onRetry?: () => void;
+  /** The six months up to the register's month: employee and employer totals. */
+  trend: { categories: string[]; employee: number[]; employer: number[] };
+  /** Rates shown in the column headers (the story); the live page leaves them out. */
+  rates?: Partial<Record<RegisterKind, { ee?: string; eps?: string; er?: string }>>;
+  locations: string[];
+  empty?: ReactNode;
+  onExport?: () => void;
+  /** Live: further tabs after EPF, ESIC, PT and LWF (the register files). */
+  extra?: { value: string; label: string; content: ReactNode }[];
+}
+
+/** CMP-03 · the per-statute register: six months of totals, then one row a person with coverage, filters and totals. */
+export function RegisterTabs({ kind, onKind, rows, state = 'ready', onRetry, trend, rates = {}, locations, empty, onExport, extra = [] }: RegisterTabsProps) {
+  const [tab, setTab] = useState<string>(kind);
   const [filters, setFilters] = useState<FilterValue[]>([]);
+  const current = (['EPF', 'ESIC', 'PT', 'LWF'] as string[]).includes(tab) ? (tab as RegisterKind) : kind;
   const fields: FilterFieldDef[] = [
-    { key: 'location', label: 'Location', type: 'multi', options: ['Bengaluru head office', 'Chennai office', 'Hosur plant'].map((v) => ({ value: v, label: v })) },
+    { key: 'location', label: 'Location', type: 'multi', options: locations.map((v) => ({ value: v, label: v })) },
     { key: 'coverage', label: 'Coverage', type: 'multi', options: ['Covered', 'Not covered', 'Not due'].map((v) => ({ value: v, label: v })) },
   ];
   const data = useMemo(() => {
-    let r = rows.map((x): RegisterRow => {
-      if (tab === 'ESIC') return x.gross <= 21000 ? { ...x, coverage: 'Covered' } : { ...x, coverage: 'Not covered', reason: 'Wages above ₹21,000 at the start of the contribution period' };
-      if (tab === 'LWF' && lwfNotDue) return { ...x, coverage: 'Not due', reason: 'LWF is deducted in December in Karnataka' };
-      if (tab === 'PT') return { ...x, coverage: x.gross >= 25000 ? 'Covered' : 'Not covered', reason: x.gross >= 25000 ? undefined : 'Below the ₹25,000 slab' };
-      return x;
-    });
+    let r = rows;
     for (const f of filters) if (f.type === 'multi' && f.values.length) r = r.filter((x) => f.values.includes(String((x as unknown as Record<string, unknown>)[f.key])));
     return r;
-  }, [rows, tab, filters, lwfNotDue]);
+  }, [rows, filters]);
+  const head = (label: string, rate?: string) => (rate ? `${label} ${rate}` : label);
+  const rate = rates[current] ?? {};
   const coverage: TableColumn<RegisterRow> = {
     key: 'coverage',
     header: 'Coverage',
@@ -508,43 +559,60 @@ function SampleRegisters({ rows, kind = 'EPF', state = 'ready', lwfNotDue }: Reg
   };
   const person: TableColumn<RegisterRow> = { key: 'name', header: 'Employee', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: r.code }), width: 200 };
   const cols: Record<RegisterKind, TableColumn<RegisterRow>[]> = {
-    EPF: [person, { key: 'uan', header: 'UAN', type: 'id', value: (r) => r.uan }, coverage, { key: 'pfw', header: 'PF wage', type: 'money', value: (r) => r.pfWage, total: 'sum' }, { key: 'ee', header: 'Employee 12%', type: 'money', value: (r) => r.ee, total: 'sum' }, { key: 'eps', header: 'EPS 8.33%', type: 'money', value: (r) => r.eps, total: 'sum' }, { key: 'er', header: 'EPF employer 3.67%', type: 'money', value: (r) => r.er, total: 'sum' }],
-    ESIC: [person, { key: 'ip', header: 'IP number', type: 'id', value: (r) => r.ip ?? '—' }, coverage, { key: 'g', header: 'Gross', type: 'money', value: (r) => r.gross, total: 'sum' }, { key: 'ee', header: 'Employee 0.75%', type: 'money', value: (r) => (r.gross <= 21000 ? Math.ceil(r.gross * 0.0075) : 0), total: 'sum' }, { key: 'er', header: 'Employer 3.25%', type: 'money', value: (r) => (r.gross <= 21000 ? Math.ceil(r.gross * 0.0325) : 0), total: 'sum' }],
-    PT: [person, { key: 'loc', header: 'Work location', value: (r) => r.location }, coverage, { key: 'g', header: 'Gross', type: 'money', value: (r) => r.gross, total: 'sum' }, { key: 'pt', header: 'PT', type: 'money', value: (r) => (r.gross >= 25000 ? 200 : 0), total: 'sum' }],
-    LWF: [person, { key: 'loc', header: 'Work location', value: (r) => r.location }, coverage, { key: 'ee', header: 'Employee', type: 'money', value: (r) => (r.coverage === 'Covered' ? 50 : 0), total: 'sum' }, { key: 'er', header: 'Employer', type: 'money', value: (r) => (r.coverage === 'Covered' ? 100 : 0), total: 'sum' }],
+    EPF: [person, { key: 'uan', header: 'UAN', type: 'id', value: (r) => r.uan }, coverage, { key: 'pfw', header: 'PF wage', type: 'money', value: (r) => r.pfWage, total: 'sum' }, { key: 'ee', header: head('Employee', rate.ee), type: 'money', value: (r) => r.ee, total: 'sum' }, { key: 'eps', header: head('EPS', rate.eps), type: 'money', value: (r) => r.eps, total: 'sum' }, { key: 'er', header: head('EPF employer', rate.er), type: 'money', value: (r) => r.er, total: 'sum' }],
+    ESIC: [person, { key: 'ip', header: 'IP number', type: 'id', value: (r) => r.ip ?? '—' }, coverage, { key: 'g', header: 'Gross', type: 'money', value: (r) => r.gross, total: 'sum' }, { key: 'ee', header: head('Employee', rate.ee), type: 'money', value: (r) => r.ee, total: 'sum' }, { key: 'er', header: head('Employer', rate.er), type: 'money', value: (r) => r.er, total: 'sum' }],
+    PT: [person, { key: 'loc', header: 'Work location', value: (r) => r.location }, coverage, { key: 'g', header: 'Gross', type: 'money', value: (r) => r.gross, total: 'sum' }, { key: 'pt', header: 'PT', type: 'money', value: (r) => r.ee, total: 'sum' }],
+    LWF: [person, { key: 'loc', header: 'Work location', value: (r) => r.location }, coverage, { key: 'ee', header: 'Employee', type: 'money', value: (r) => r.ee, total: 'sum' }, { key: 'er', header: 'Employer', type: 'money', value: (r) => r.er, total: 'sum' }],
   };
-  const exportLabel = { EPF: 'Download ECR file', ESIC: 'Download ESIC portal file', PT: 'Download PT return file', LWF: 'Download LWF file' }[tab];
   return (
-    <OpsDesk area="compliance" active="Registers">
-      <PageHeader title="Statutory registers" description="Values stored on each payslip at calculation, never today's settings. Same numbers as the filing files." facts="August 2026 · Kaveri Foods Pvt Ltd" actions={<Button icon={Download}>{exportLabel}</Button>} />
-      <Tabs value={tab} onValueChange={(v) => setTab(v as RegisterKind)}>
-        <TabsList aria-label="Registers">
-          {(['EPF', 'ESIC', 'PT', 'LWF'] as RegisterKind[]).map((k) => (
-            <TabsTrigger key={k} value={k}>
-              {k}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-        <TabsContent value={tab}>
-          <div className="yx-ops-stack">
-            <BarChart title={`${tab} contributions, last 6 months`} xLabel="Month" money categories={['Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug']} series={[{ name: 'Employee', values: [182000, 184500, 186200, 188000, 189400, 191230] }, { name: 'Employer', values: [182000, 184500, 186200, 188000, 189400, 191230] }]} stacked loading={state === 'loading'} />
-            <DataTable
-              label={`${tab} register`}
-              columns={cols[tab]}
-              rows={state === 'empty' ? [] : data}
-              getRowId={(r) => r.id}
-              state={state === 'empty' ? 'ready' : state}
-              onRetry={() => {}}
-              empty={<EmptyState title="No register for this month yet." description="Registers are generated when the payroll period locks." />}
-              filtered={filters.length > 0}
-              onClearFilters={() => setFilters([])}
-              toolbar={<FilterBar fields={fields} value={filters} onChange={setFilters} searchPlaceholder="Search employee or UAN" />}
-              onExport={() => {}}
-            />
-          </div>
+    <Tabs
+      value={tab}
+      onValueChange={(v) => {
+        setTab(v);
+        setFilters([]);
+        if ((['EPF', 'ESIC', 'PT', 'LWF'] as string[]).includes(v)) onKind(v as RegisterKind);
+      }}
+    >
+      <TabsList aria-label="Registers">
+        {(['EPF', 'ESIC', 'PT', 'LWF'] as RegisterKind[]).map((k) => (
+          <TabsTrigger key={k} value={k}>
+            {k}
+          </TabsTrigger>
+        ))}
+        {extra.map((x) => (
+          <TabsTrigger key={x.value} value={x.value}>
+            {x.label}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+      {(['EPF', 'ESIC', 'PT', 'LWF'] as RegisterKind[]).map((k) => (
+        <TabsContent key={k} value={k}>
+          {k === current && (
+            <div className="yx-ops-stack">
+              <BarChart title={`${k} contributions, last 6 months`} xLabel="Month" money categories={trend.categories} series={[{ name: 'Employee', values: trend.employee }, { name: 'Employer', values: trend.employer }]} stacked loading={state === 'loading'} />
+              <DataTable
+                label={`${k} register`}
+                columns={cols[k]}
+                rows={data}
+                getRowId={(r) => r.id}
+                state={state}
+                onRetry={onRetry}
+                empty={empty}
+                filtered={filters.length > 0}
+                onClearFilters={() => setFilters([])}
+                toolbar={<FilterBar fields={fields} value={filters} onChange={setFilters} searchPlaceholder="Search employee or UAN" />}
+                onExport={onExport}
+              />
+            </div>
+          )}
         </TabsContent>
-      </Tabs>
-    </OpsDesk>
+      ))}
+      {extra.map((x) => (
+        <TabsContent key={x.value} value={x.value}>
+          {x.content}
+        </TabsContent>
+      ))}
+    </Tabs>
   );
 }
 
@@ -817,7 +885,7 @@ function SampleForm16Bulk({ rows, current = 'partA', notYet, q2Linked }: { rows:
     return (
       <OpsDesk area="compliance" active="TDS & Form 16">
         <PageHeader title="Form 130 · tax year 2026-27" />
-        <EmptyState title="Form 130 is available after the Q4 return is filed." description="For tax year 2026-27 that is after 31 May 2027. Employees see their monthly TDS in the tax workspace until then." action={<Button>Open Form 16 for FY 2025-26</Button>} />
+        <NotYetAvailableState form="Form 130" taxYear="2026-27" after={new Date(2027, 4, 31)} action={<Button>Open Form 16 for FY 2025-26</Button>} />
       </OpsDesk>
     );
   const cols: TableColumn<F16Row>[] = [
@@ -876,6 +944,17 @@ function SampleForm16Bulk({ rows, current = 'partA', notYet, q2Linked }: { rows:
       />
       <TypeToConfirmDialog open={publishOpen} onOpenChange={setPublishOpen} title={`Publish ${ready} Form 16 certificates?`} consequence="Employees and alumni see them at once. A correction later issues a revised certificate; this one is kept as superseded." objectName="FORM16 FY2025-26" confirmLabel="Publish certificates" onConfirm={() => setPublishOpen(false)} />
     </OpsDesk>
+  );
+}
+
+/** CMP-06 NotYetAvailable: certificates wait for the year's filed Q4 return (live: the date from the published calendar). */
+export function NotYetAvailableState({ form, taxYear, after, action }: { form: string; taxYear: string; after: Date | null; action?: ReactNode }) {
+  return (
+    <EmptyState
+      title={`${form} is available after the Q4 return is filed.`}
+      description={`${after ? `For tax year ${taxYear} that is after ${formatDate(after)}. ` : ''}Employees see their monthly TDS in the tax workspace until then.`}
+      action={action}
+    />
   );
 }
 
@@ -1092,7 +1171,7 @@ function SampleRulesBrowser({ rules, advisories, tab = 'rules', openRuleId = nul
             <TextArea rows={3} defaultValue="Checked contractor licences at Hosur; scope covers Tamil Nadu." />
           </FormField>
           <Checkbox label="Create a task" description="Assign follow-up work with a due date" />
-          <Switch label="Share with HR admins" />
+          <Checkbox label="Share with HR admins" description="They get a note in the app with what you did" />
         </div>
       </Dialog>
     </OpsDesk>

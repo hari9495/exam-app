@@ -245,6 +245,8 @@ export interface StatutoryHub {
   entityId: string;
   month: string;
   today: string;
+  /** CMP-01: registrations the entity has not recorded ("IN.PF", "IN.PT IN-KA"). */
+  setupMissing?: string[];
   cards: HubCard[];
   tds: { amount: string; dueOn: string | null; challanStatus: string; late: boolean };
 }
@@ -273,6 +275,15 @@ export interface TdsReturnRow {
   tds: string;
   reconciliation: { difference?: string } | null;
   validation: { validator: string; ok: boolean; errors: string[]; version?: string | null } | null;
+  /** CMP-05: rows per month and where they come from, and the PAN warnings (null once filed). */
+  completeness?: ReturnCompleteness | null;
+}
+
+export interface ReturnCompleteness {
+  months: { month: string; rows: number; source: 'payroll' | 'imported' | 'none'; missing: boolean }[];
+  panWarnings: { employeeId: string; employeeCode: string; name: string; issue: 'pan_missing' | 'pan_inoperative' }[];
+  panWarningCount: number;
+  panChecked: number;
 }
 
 export interface FnfItem {

@@ -21,7 +21,7 @@ import { formatINR } from '../../lib/format';
 import { useRun } from '../org/org-kit';
 import { LivePage, dateText } from '../time/live/kit';
 import { SectionTitle } from './pay-kit';
-import { EntityPicker, parseCsv } from './live/setup';
+import { EntityPicker, parseCsv, readText } from './live/setup';
 import { monthText } from './live/periods';
 import type { LoadState } from './live/types';
 import type { EmployeeHit, GoLiveCheck, ImportBatch, ImportKind, LegalOption, LegalOptionKey, PayCalendarMonth, PayGroup, PayGroupMember, Registration, RegistrationStatus, Registrations, SetupEntity, SetupState } from './live/types-5b';
@@ -103,14 +103,6 @@ export interface LivePayrollSetup {
 export const rupeesText = (s: string) => formatINR(Number(s));
 const runLabel = (r: PayRun) => `Payroll · ${monthText(r.month)}`;
 const noop = async () => undefined;
-/** A file's text (FileReader works in every browser and in tests). */
-const readText = (f: File) =>
-  new Promise<string>((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => res(String(r.result));
-    r.onerror = () => rej(new Error('We could not read the file. Save it again as CSV and upload it.'));
-    r.readAsText(f);
-  });
 
 const STATUTE: Record<Registration['statute'], string> = {
   'IN.PF': 'Provident fund',

@@ -2,11 +2,13 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ConsultantTdsScreen, Form16BulkScreen, MissingIdsScreen, RegistersScreen, RulesBrowserScreen, StatutoryHubScreen } from './compliance';
-import { hubItem, monthChoices, taxYearOf, type LiveConsultantTds, type LiveForm16, type LiveMissingIds, type LiveRegisters, type LiveRules, type LiveStatutoryHub } from './compliance-live';
+import { hubItem, monthChoices, registerView, setupText, taxYearOf, type LiveConsultantTds, type LiveForm16, type LiveMissingIds, type LiveRegisters, type LiveRules, type LiveStatutoryHub } from './compliance-live';
 import { CONSULTANT_RETURNS } from './compliance-data';
 import { FILINGS, HUB, PEOPLE, RETURNS } from '../pay/live/fixtures-5j';
 import { ADVISORIES, CERTIFICATES, ENTITIES, REGISTERS } from '../pay/live/fixtures-ops';
 import { RULE_SETS } from '../pay/live/fixtures-5ab';
+import type { Form16Status, RegisterRowsView } from '../pay/live/types-ops';
+import type { TdsReturnRow } from '../pay/live/types-5j';
 
 // The designed Compliance screens (CMP-01, 03, 04, 05, 06, 08, 13) with the live pages' data: positive and negative paths.
 // Ported from the deleted live copies' tests (pay-ops-live.test.tsx, the statutory case of pay-5j-live.test.tsx).
@@ -35,6 +37,8 @@ const hub = (o: Partial<LiveStatutoryHub> = {}): LiveStatutoryHub => ({
   onFiled: ok(),
   onDownload: ok(),
   onCreateReturn: ok(),
+  onImportMonth: vi.fn(async () => ({ id: 'b', kind: 'as_paid_lines' as const, rows: 0, valid: 0, errors: [], status: 'staged' })),
+  onCommitImport: ok(),
   onReconcile: ok(),
   onReturnFile: ok(),
   onUploadFvu: ok(),
@@ -204,6 +208,74 @@ describe('CMP-01 statutory hub (live)', () => {
     expect(screen.queryByRole('tab', { name: 'Cards' })).toBeNull();
   });
 
+  it('CMP-01 SetupNeeded: registrations missing and nothing owed shows what to register and opens payroll set-up', async () => {
+    const onOpenSetup = vi.fn();
+    const zero = HUB.cards.map((c) => ({ ...c, amount: '0.00', status: 'not_generated', filingId: null }));
+    const setup = { ...HUB, setupMissing: ['IN.PF', 'IN.TDS', 'IN.PT IN-KA'], cards: zero, tds: { ...HUB.tds, amount: '0.00' } };
+    const { unmount } = showHub({ hub: setup, filings: [], onOpenSetup });
+    expect(screen.getByText('Statutory set-up needed.')).toBeInTheDocument();
+    expect(screen.getByText('Add registrations for Provident fund, Income tax (TDS) and Professional tax (Karnataka) for Kaveri Foods Pvt Ltd. Cards appear here after the first payroll run.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Open payroll set-up' }));
+    expect(onOpenSetup).toHaveBeenCalled();
+    unmount();
+    // Without the set-up key there is no button; once something is owed the cards show instead.
+    const { unmount: u2 } = showHub({ hub: setup, filings: [] });
+    expect(screen.queryByRole('button', { name: 'Open payroll set-up' })).toBeNull();
+    u2();
+    showHub({ hub: { ...HUB, setupMissing: ['IN.PF'] } });
+    expect(screen.queryByText('Statutory set-up needed.')).toBeNull();
+    expect(screen.getByRole('article', { name: /Provident fund/ })).toBeInTheDocument();
+    expect(setupText('IN.LWF IN-TN')).toBe('Labour welfare fund (Tamil Nadu)');
+  });
+
+  it('CMP-05 completeness: rows per month and PAN checks; a missing month blocks filing until its rows are imported', async () => {
+    const completeness = {
+      months: [
+        { month: '2026-07', rows: 0, source: 'none' as const, missing: true },
+        { month: '2026-08', rows: 5, source: 'payroll' as const, missing: false },
+        { month: '2026-09', rows: 6, source: 'payroll' as const, missing: false },
+      ],
+      panWarnings: [{ employeeId: 'p2', employeeCode: 'KF-002', name: 'Nisha Thomas', issue: 'pan_missing' as const }],
+      panWarningCount: 1,
+      panChecked: 7,
+    };
+    const ret: TdsReturnRow = { ...RETURNS[0], status: 'validated', validation: { validator: 'filer', ok: true, errors: [] }, completeness };
+    const onImportMonth = vi.fn(async () => ({ id: 'b1', kind: 'as_paid_lines' as const, rows: 2, valid: 1, errors: [{ row: 2, message: 'No employee with that code in this legal entity.' }], status: 'staged' }));
+    const onCommitImport = ok();
+    const onCreateReturn = ok();
+    showHub({ returns: [ret], onImportMonth, onCommitImport, onCreateReturn });
+    await ue.click(screen.getByRole('tab', { name: 'TDS returns' }));
+    await ue.click(screen.getByRole('button', { name: 'Open Form 138 · Q2 2026-27' }));
+    expect(screen.getByText(/July rows missing/)).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: /Data completeness/ }));
+    const rows = screen.getByRole('list', { name: 'Deductee rows by month' });
+    expect(within(rows).getByText('July 2026: no deductee rows')).toBeInTheDocument();
+    expect(within(rows).getByText('August 2026: 5 deductee rows')).toBeInTheDocument();
+    expect(within(screen.getByRole('list', { name: 'PAN checks' })).getByText('Nisha Thomas: no PAN')).toBeInTheDocument();
+    expect(screen.getByText('6 other PANs in order')).toBeInTheDocument();
+    // Filing waits for the month.
+    await ue.click(screen.getByRole('button', { name: /File and acknowledgement/ }));
+    await ue.type(screen.getByRole('textbox', { name: /Token number/ }), 'TKN123456');
+    await ue.click(screen.getAllByRole('button', { name: 'Mark return filed' })[0]);
+    expect(screen.getByText('Import the as-paid lines for July 2026 first.')).toBeInTheDocument();
+    // A bad row: reported plainly, nothing committed.
+    await ue.click(screen.getByRole('button', { name: /Data completeness/ }));
+    const csv = (text: string) => new File([text], 'july.csv', { type: 'text/csv' });
+    await ue.upload((screen.getByRole('button', { name: 'Import the as-paid lines for July 2026' }).nextElementSibling as HTMLInputElement), csv('employeeCode,componentCode,amount\nKF-001,tds,1200\nNOPE,tds,5\n'));
+    expect(await screen.findByText('Row 2: No employee with that code in this legal entity.')).toBeInTheDocument();
+    expect(onImportMonth).toHaveBeenCalledWith('2026-07', [
+      { employeeCode: 'KF-001', componentCode: 'tds', amount: '1200', month: '2026-07' },
+      { employeeCode: 'NOPE', componentCode: 'tds', amount: '5', month: '2026-07' },
+    ]);
+    expect(onCommitImport).not.toHaveBeenCalled();
+    // Every row right: committed, the draft started again with the rows, and a toast.
+    onImportMonth.mockResolvedValueOnce({ id: 'b2', kind: 'as_paid_lines', rows: 1, valid: 1, errors: [], status: 'staged' });
+    await ue.upload((screen.getByRole('button', { name: 'Import the as-paid lines for July 2026' }).nextElementSibling as HTMLInputElement), csv('employeeCode,componentCode,amount\nKF-001,tds,1200\n'));
+    await waitFor(() => expect(onCommitImport).toHaveBeenCalledWith('b2'));
+    await waitFor(() => expect(onCreateReturn).toHaveBeenCalledWith('2026-27', 2));
+    expect((await screen.findAllByText('1 as-paid line imported for July 2026.')).length).toBeGreaterThan(0);
+  });
+
   it('CMP-05 returns tab: the return waits for the filer’s .fvu; marking filed needs a validated return and a token', async () => {
     const onReturnFiled = ok();
     showHub({ onReturnFiled, returns: [RETURNS[0], { ...RETURNS[0], id: 't2', quarter: 1, status: 'validated', validation: { validator: 'filer', ok: true, errors: [], version: '9.2' } }] });
@@ -226,6 +298,15 @@ describe('CMP-01 statutory hub (live)', () => {
   });
 });
 
+const EPF_ROWS: RegisterRowsView = {
+  kind: 'epf',
+  month: '2026-09',
+  rows: [
+    { employeeId: 'p1', name: 'Divya Raghunathan', code: 'KF-001', location: 'Bengaluru head office', state: 'IN-KA', uanLast4: '0400', ipLast4: null, gross: '58000.00', pfWage: '15000', employee: '1800.00', employer: '1800.00', eps: '1250.00', epfEmployer: '550.00', coverage: 'covered', reason: null },
+    { employeeId: 'p2', name: 'Karthik Subramanian', code: 'KF-002', location: 'Hosur plant', state: 'IN-TN', uanLast4: null, ipLast4: null, gross: '96000.00', pfWage: null, employee: '0.00', employer: '0.00', eps: '0.00', epfEmployer: '0.00', coverage: 'not_covered', reason: 'Not a PF member' },
+  ],
+  trend: ['2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09'].map((month) => ({ month, employee: '1800.00', employer: '1800.00' })),
+};
 const regs = (o: Partial<LiveRegisters> = {}): LiveRegisters => ({
   state: 'ready',
   entities: ENTITIES,
@@ -240,13 +321,42 @@ const regs = (o: Partial<LiveRegisters> = {}): LiveRegisters => ({
   onFreeze: ok(),
   onSign: ok(),
   onPack: ok(),
+  kind: 'epf',
+  onKind: vi.fn(),
+  rows: EPF_ROWS,
   ...o,
 });
 
 describe('CMP-03 registers (live)', () => {
+  it('EPF person by person: coverage with its reason, IDs as last four, six months of totals; a tab asks for its rows', async () => {
+    const onKind = vi.fn();
+    const { unmount } = render(<RegistersScreen rows={[]} live={regs({ onKind })} />);
+    const table = screen.getByRole('table', { name: 'EPF register' });
+    expect(within(table).getByText('Not a PF member')).toBeInTheDocument();
+    expect(within(table).getByText('•••• 0400')).toBeInTheDocument();
+    expect(screen.getByText('EPF contributions, last 6 months')).toBeInTheDocument();
+    await ue.click(screen.getByRole('tab', { name: 'LWF' }));
+    expect(onKind).toHaveBeenCalledWith('lwf');
+    unmount();
+    // Rows of another statute still loading: the table waits; none paid: it says so.
+    const { unmount: u2 } = render(<RegistersScreen rows={[]} live={regs({ kind: 'esic' })} />);
+    expect(screen.queryByText('Not a PF member')).toBeNull();
+    u2();
+    render(<RegistersScreen rows={[]} live={regs({ rows: { ...EPF_ROWS, rows: [] } })} />);
+    expect(screen.getByText('No one was paid in September 2026 yet.')).toBeInTheDocument();
+  });
+
+  it('registerView: EPF shows the EPF employer share apart from EPS; not due keeps its reason', () => {
+    const [a] = registerView(EPF_ROWS);
+    expect(a).toMatchObject({ ee: 1800, eps: 1250, er: 550, pfWage: 15000, uan: '•••• 0400', coverage: 'Covered' });
+    const lwf = registerView({ ...EPF_ROWS, kind: 'lwf', rows: [{ ...EPF_ROWS.rows[0], employee: '0.00', employer: '0.00', coverage: 'not_due', reason: 'LWF is deducted in December in Karnataka' }] });
+    expect(lwf[0]).toMatchObject({ coverage: 'Not due', reason: 'LWF is deducted in December in Karnataka', er: 0 });
+  });
+
   it('freezing asks first; a signed register only downloads', async () => {
     const onFreeze = ok();
     render(<RegistersScreen rows={[]} live={regs({ onFreeze })} />);
+    await ue.click(screen.getByRole('tab', { name: 'Register files' }));
     expect(screen.getByRole('button', { name: 'Upload the signed Wages register' })).toBeInTheDocument();
     const signed = screen.getByRole('row', { name: /Overtime/ });
     expect(within(signed).getAllByRole('button')).toHaveLength(1);
@@ -271,6 +381,7 @@ describe('CMP-03 registers (live)', () => {
   it('empty month offers Make registers; without the keys there are no actions', async () => {
     const onGenerate = ok();
     const { unmount } = render(<RegistersScreen rows={[]} live={regs({ registers: [], onGenerate })} />);
+    await ue.click(screen.getByRole('tab', { name: 'Register files' }));
     expect(screen.getByText('No register for September 2026 yet.')).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Make registers' }));
     await waitFor(() => expect(onGenerate).toHaveBeenCalledWith());
@@ -312,7 +423,43 @@ describe('CMP-08 rules and updates (live)', () => {
     expect(onReview).not.toHaveBeenCalled();
     await ue.type(screen.getByRole('textbox', { name: /What you did/ }), 'Raised two salaries in Mysuru');
     await ue.click(screen.getByRole('button', { name: 'Mark reviewed' }));
-    await waitFor(() => expect(onReview).toHaveBeenCalledWith(ADVISORIES[0], 'Raised two salaries in Mysuru'));
+    await waitFor(() => expect(onReview).toHaveBeenCalledWith(ADVISORIES[0], 'Raised two salaries in Mysuru', {}));
+  });
+
+  it('updates: "Create a task" needs a desk seat, a desk and a due date; shared with HR admins', async () => {
+    const onReview = vi.fn(async () => ({ taskError: null }));
+    const { unmount } = render(<RulesBrowserScreen rules={[]} advisories={[]} tab="updates" live={rules({ onReview, taskDesks: [] })} />);
+    await ue.click(screen.getByRole('button', { name: 'Mark "Karnataka minimum wages revised" reviewed' }));
+    await ue.type(screen.getByRole('textbox', { name: /What you did/ }), 'Raised two salaries in Mysuru');
+    await ue.click(screen.getByRole('checkbox', { name: /Create a task/ }));
+    await ue.click(screen.getByRole('button', { name: 'Mark reviewed' }));
+    expect(screen.getAllByText(/You have no seat on a help desk/).length).toBeGreaterThan(0);
+    expect(onReview).not.toHaveBeenCalled();
+    unmount();
+    render(<RulesBrowserScreen rules={[]} advisories={[]} tab="updates" live={rules({ onReview, taskDesks: [{ id: 'd1', name: 'HR desk' }, { id: 'd2', name: 'Payroll desk' }] })} />);
+    await ue.click(screen.getByRole('button', { name: 'Mark "Karnataka minimum wages revised" reviewed' }));
+    await ue.type(screen.getByRole('textbox', { name: /What you did/ }), 'Raised two salaries in Mysuru');
+    await ue.click(screen.getByRole('checkbox', { name: /Create a task/ }));
+    await ue.click(screen.getByRole('button', { name: 'Mark reviewed' }));
+    expect(screen.getAllByText('Choose the help desk for the task.').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Choose when the task is due.').length).toBeGreaterThan(0);
+    expect(onReview).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('checkbox', { name: /Create a task/ }));
+    await ue.click(screen.getByRole('checkbox', { name: /Share with HR admins/ }));
+    await ue.click(screen.getByRole('button', { name: 'Mark reviewed' }));
+    await waitFor(() => expect(onReview).toHaveBeenCalledWith(ADVISORIES[0], 'Raised two salaries in Mysuru', { share: true }));
+  });
+
+  it('updates: a task the desk refused still marks the update reviewed and says so', async () => {
+    const onReview = vi.fn(async () => ({ taskError: 'Reviewed, but the task was not made: Give tasks to people with a seat on this desk.' }));
+    render(<RulesBrowserScreen rules={[]} advisories={[]} tab="updates" live={rules({ onReview, taskDesks: [{ id: 'd1', name: 'HR desk' }] })} />);
+    await ue.click(screen.getByRole('button', { name: 'Mark "Karnataka minimum wages revised" reviewed' }));
+    await ue.type(screen.getByRole('textbox', { name: /What you did/ }), 'Raised two salaries in Mysuru');
+    await ue.click(screen.getByRole('checkbox', { name: /Create a task/ }));
+    await ue.type(screen.getByRole('textbox', { name: /Due on/ }), '30/10/2026{Enter}');
+    await ue.click(screen.getByRole('button', { name: 'Mark reviewed' }));
+    await waitFor(() => expect(onReview).toHaveBeenCalledWith(ADVISORIES[0], 'Raised two salaries in Mysuru', { task: { deskId: 'd1', dueOn: '2026-10-30' } }));
+    expect((await screen.findAllByText(/the task was not made/)).length).toBeGreaterThan(0);
   });
 
   it('updates: only an https source becomes a link; a reviewer without set-up sees no Rules tab', () => {
@@ -377,9 +524,54 @@ describe('CMP-06 Form 16 (live)', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('the Q4 link shows the filed return', () => {
-    render(<Form16BulkScreen rows={[]} live={f16({ q4Return: { ...RETURNS[0], quarter: 4, taxYear: '2025-26', status: 'filed', tokenNo: 'TKN4' } })} />);
+  it('the Q4 link shows the linked filed return; a filed Q4 not linked yet says so', () => {
+    const q4 = { returnId: 't4', formCode: '138', taxYear: '2025-26', quarter: 4, status: 'filed', kind: 'original', tokenNo: 'TKN4' };
+    const { unmount } = render(<Form16BulkScreen rows={[]} live={f16({ status: { taxYear: '2025-26', link: { ...q4, version: 1, problem: null }, q4, availableAfter: '2026-05-31' } })} />);
     expect(screen.getByText(/Linked: Form 138 Q4 2025-26, filed, token TKN4/)).toBeInTheDocument();
+    unmount();
+    render(<Form16BulkScreen rows={[]} live={f16({ q4Return: { ...RETURNS[0], quarter: 4, taxYear: '2025-26', status: 'filed', tokenNo: 'TKN4' } })} />);
+    expect(screen.getByText(/Form 138 Q4 2025-26 is filed \(token TKN4\)\. Link it/)).toBeInTheDocument();
+  });
+
+  it('CMP-06 WrongQuarter: a Q2 link blocks issuing and says why; linking needs a return chosen', async () => {
+    const q2 = { returnId: 't2', formCode: '138', taxYear: '2025-26', quarter: 2, status: 'filed', kind: 'original', tokenNo: 'TKN2' };
+    const problem = 'The return you chose is Q2 (Jul 2025 to Sept 2025). Certificates need the filed Q4 return (Jan 2026 to Mar 2026).';
+    const status: Form16Status = { taxYear: '2025-26', link: { ...q2, version: 3, problem }, q4: null, availableAfter: '2026-05-31' };
+    const onLink = ok();
+    const onIssueAll = vi.fn(async () => ({ issued: 1, failed: [] }));
+    const salaryReturns = [{ ...RETURNS[0], id: 't4', taxYear: '2025-26', quarter: 4, status: 'filed', tokenNo: 'TKN4' }, { ...RETURNS[0], id: 'tx', taxYear: '2024-25' }];
+    render(<Form16BulkScreen rows={[]} live={f16({ status, onLink, onIssueAll, salaryReturns })} />);
+    await ue.click(screen.getByRole('button', { name: 'Issue 1 ready' }));
+    expect(screen.getAllByText(problem).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByText(/Not a Q4 return/)).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: /Link the Q4 return/ }));
+    expect(screen.getAllByText(problem).length).toBeGreaterThan(0);
+    await ue.click(screen.getByRole('button', { name: 'Link return' }));
+    expect(screen.getAllByText('Choose the return to link.').length).toBeGreaterThan(0);
+    expect(onLink).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('combobox', { name: /Link another return/ }));
+    expect(screen.queryByRole('option', { name: /2024-25/ })).toBeNull();
+    await ue.click(screen.getByRole('option', { name: /Form 138 · Q4 2025-26/ }));
+    await ue.click(screen.getByRole('button', { name: 'Link return' }));
+    await waitFor(() => expect(onLink).toHaveBeenCalledWith('t4', 3));
+    expect((await screen.findAllByText('Return linked to the certificates.')).length).toBeGreaterThan(0);
+  });
+
+  it('CMP-06 NotYetAvailable: no certificates before the Q4 return is filed, with the date; opens the year before', async () => {
+    const onTaxYear = vi.fn();
+    const { unmount } = render(<Form16BulkScreen rows={[]} live={f16({ taxYear: '2026-27', onTaxYear, certificates: [], status: { taxYear: '2026-27', link: null, q4: null, availableAfter: '2027-05-31' } })} />);
+    expect(screen.getByText('Form 130 is available after the Q4 return is filed.')).toBeInTheDocument();
+    expect(screen.getByText(/For tax year 2026-27 that is after 31 May 2027\./)).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Open Form 16 for 2025-26' }));
+    expect(onTaxYear).toHaveBeenCalledWith('2025-26');
+    unmount();
+    // No date published: it still says why; with certificates the steps show.
+    const { unmount: u2 } = render(<Form16BulkScreen rows={[]} live={f16({ certificates: [], status: { taxYear: '2025-26', link: null, q4: null, availableAfter: null } })} />);
+    expect(screen.getByText('Employees see their monthly TDS in the tax workspace until then.')).toBeInTheDocument();
+    u2();
+    render(<Form16BulkScreen rows={[]} live={f16({ status: { taxYear: '2025-26', link: null, q4: null, availableAfter: '2026-05-31' } })} />);
+    expect(screen.queryByText(/is available after the Q4 return is filed/)).toBeNull();
   });
 });
 

@@ -24,6 +24,15 @@ export const statuteText = (s: string) => STATUTE[s] ?? s;
 
 // ------------------------------------------------------------------------------------------ imports (PAY-2.12)
 
+/** A file's text (FileReader works in every browser and in tests). */
+export const readText = (f: File) =>
+  new Promise<string>((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result));
+    r.onerror = () => rej(new Error('We could not read the file. Save it again as CSV and upload it.'));
+    r.readAsText(f);
+  });
+
 /** Comma-separated text with a header row (no commas inside values) into rows. */
 export function parseCsv(text: string): Record<string, string>[] {
   const lines = text
