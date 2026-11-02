@@ -8,7 +8,8 @@ import { useScopeParams, withParams } from '../../../../../lib/yx-shell';
 // (YX-AT-14). Each cell opens the person's day card (TIM-03: HR resolves a past day, managers decide pending overtime).
 // The month's stage for its legal entity: freeze inputs and lock (attendance.lock), or in the two-step flow send it
 // (HR) and approve the lock (attendance.lock.approve); the lock asks for the second sign-in step. HR (leave.approve)
-// marks ticked people present with a reason. Every action is checked again on the server.
+// marks ticked people present with a reason. A manager pre-approves overtime for a report. Every action is checked again
+// on the server.
 export default function YxMusterPage() {
   const { month, setMonth, entity } = useScopeParams();
   const muster = useTime<Muster>(withParams(`/muster?month=${month}`, entity));
@@ -34,6 +35,8 @@ export default function YxMusterPage() {
         onDecideOt: (id, decision, reason) => write(`/overtime/${encodeURIComponent(id)}/decide`, 'POST', { decision, ...(reason ? { reason } : {}) }, true, decision === 'reject' ? 'Overtime rejected' : decision === 'comp_off' ? 'Comp-off given' : 'Overtime approved'),
         exceptionsHref: '/yx/time/exceptions',
         personHref: (employeeId, m) => `/yx/time/muster/${encodeURIComponent(employeeId)}?month=${m}`,
+        // TIM-02 Manager · Pre-approve overtime (founder 2 Nov 2026): approved at once for a report; the sheet shows the toast.
+        onPreApproveOt: (employeeId, input) => write(`/team/overtime/plans/${encodeURIComponent(employeeId)}`, 'POST', input, true),
       }}
     />
   );
