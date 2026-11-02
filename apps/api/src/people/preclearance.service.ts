@@ -1,12 +1,13 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { TenantContext } from '@exam-platform/shared';
+import { tenantWide } from '../access/scope';
 import { audit, CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { asDate, isoDate, todayIst } from '../org-structure/org-validation';
 import { displayName, EmployeeHistoryService, Viewer } from '../employee-history/employee-history.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { settingFor } from './probation';
-import type { PreclearanceDto, TradeReportDto } from './person-panels.dto';
+import type { PreclearanceDto, TradeReportDto, TradingWindowDto } from './person-panels.dto';
 
 // PPL-44 Trading pre-clearance (SEBI PIT Regulations 2015, Sch. B; Confidential). A designated person asks before
 // trading; the compliance officer (compliance.declaration.manage in scope, never on their own request) approves or
@@ -15,6 +16,13 @@ import type { PreclearanceDto, TradeReportDto } from './person-panels.dto';
 
 const KEY = 'compliance.declaration.manage';
 type Row = Prisma.TradePreclearanceGetPayload<object>;
+type Window = Prisma.TradingWindowGetPayload<object>;
+
+/** "16 Oct 2026", as the screens write dates. */
+export const dayText = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+/** The day after a closed window ends: when it reopens. */
+const dayAfter = (iso: string) => isoDate(new Date(asDate(iso).getTime() + 86_400_000));
+const windowView = (w: Window) => ({ id: w.id, startsOn: isoDate(w.startsOn), endsOn: isoDate(w.endsOn), reopensOn: dayAfter(isoDate(w.endsOn)), reason: w.reason });
 
 /** The day `days` trading days after `from` (weekdays; `from` itself counts when it is one). */
 export function tradingDaysFrom(from: string, days: number): string {
@@ -81,6 +89,61 @@ export class PreclearanceService {
     return employeeId;
   }
 
+  /** PPL-44: the company's closed trading window on a day (IST), if any. The company starts with none. */
+  private async closedOn(tx: Tx, c: CompanyContext, day: string) {
+    const w = await tx.tradingWindow.findFirst({ where: { organizationId: c.organizationId, removedAt: null, startsOn: { lte: asDate(day) }, endsOn: { gte: asDate(day) } }, orderBy: { endsOn: 'desc' } });
+    return w ? windowView(w) : null;
+  }
+
+  private closedError(w: ReturnType<typeof windowView>, who: 'person' | 'officer') {
+    return new ConflictException({
+      statusCode: 409,
+      code: 'TRADING_WINDOW_CLOSED',
+      message: who === 'person' ? `The trading window is closed until ${dayText(w.endsOn)} (${w.reason}). You can request again when it reopens on ${dayText(w.reopensOn)}.` : `The trading window is closed until ${dayText(w.endsOn)}. Approve it after the window reopens, or reject it.`,
+      window: w,
+    });
+  }
+
+  /** The compliance officer's calendar: closed periods still to come or running, and the last year's (newest first). */
+  windows(ctx: TenantContext, v: Viewer) {
+    this.companyWide(v);
+    return this.history.run(ctx, async (tx, c) => {
+      const since = asDate(`${Number(todayIst().slice(0, 4)) - 1}${todayIst().slice(4)}`);
+      const rows = await tx.tradingWindow.findMany({ where: { organizationId: c.organizationId, removedAt: null, endsOn: { gte: since } }, orderBy: { startsOn: 'desc' }, take: 100 });
+      return { rows: rows.map(windowView), closedNow: await this.closedOn(tx, c, todayIst()) };
+    });
+  }
+
+  private companyWide(v: Viewer) {
+    if (v.actingForOther || !tenantWide(v, KEY)) throw new ForbiddenException('The trading window is set by the compliance officer for the whole company.');
+  }
+
+  /** Close the window for a period (dates inclusive); periods never overlap. Today or later only. */
+  addWindow(ctx: TenantContext, v: Viewer, dto: TradingWindowDto) {
+    this.companyWide(v);
+    if (dto.endsOn < dto.startsOn) throw new BadRequestException('The window reopens after it closes: the end date is on or after the start date.');
+    if (dto.endsOn < todayIst()) throw new BadRequestException('That period is over. Close the window for today or a later day.');
+    return this.history.run(ctx, async (tx, c) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`trading-window:${c.organizationId}`}))`;
+      const clash = await tx.tradingWindow.findFirst({ where: { organizationId: c.organizationId, removedAt: null, startsOn: { lte: asDate(dto.endsOn) }, endsOn: { gte: asDate(dto.startsOn) } } });
+      if (clash) throw new ConflictException(`The window is already closed from ${dayText(isoDate(clash.startsOn))} to ${dayText(isoDate(clash.endsOn))}. Remove that period first, or choose other dates.`);
+      const w = await tx.tradingWindow.create({ data: { organizationId: c.organizationId, startsOn: asDate(dto.startsOn), endsOn: asDate(dto.endsOn), reason: dto.reason.trim(), createdBy: v.userId! } });
+      await audit(tx, c, 'compliance.trading_window.closed', 'trading_window', w.id, { startsOn: dto.startsOn, endsOn: dto.endsOn, reason: w.reason });
+      return windowView(w);
+    });
+  }
+
+  /** A period removed (kept for the audit); a running one reopens the window at once. */
+  removeWindow(ctx: TenantContext, v: Viewer, id: string) {
+    this.companyWide(v);
+    return this.history.run(ctx, async (tx, c) => {
+      const n = await tx.tradingWindow.updateMany({ where: { organizationId: c.organizationId, id, removedAt: null }, data: { removedAt: new Date(), removedBy: v.userId } });
+      if (!n.count) throw new NotFoundException('No such closed period.');
+      await audit(tx, c, 'compliance.trading_window.removed', 'trading_window', id, {});
+      return { removed: true };
+    });
+  }
+
   /** My requests, newest first, and the company's rules. */
   my(ctx: TenantContext, v: Viewer) {
     return this.history.run(ctx, async (tx, c) => {
@@ -89,7 +152,7 @@ export class PreclearanceService {
       const names = await this.names(tx, c, rows);
       const { personId } = await tx.employee.findFirstOrThrow({ where: { organizationId: c.organizationId, id: employeeId }, select: { personId: true } });
       // personId: where the contract note is uploaded (my documents).
-      return { personId, rules: await this.rules(tx, c, employeeId), requests: rows.map((r) => this.view(r, names)) };
+      return { personId, rules: await this.rules(tx, c, employeeId), requests: rows.map((r) => this.view(r, names)), window: await this.closedOn(tx, c, todayIst()) };
     });
   }
 
@@ -97,6 +160,8 @@ export class PreclearanceService {
     const out = await this.history.run(ctx, async (tx, c) => {
       const org = c.organizationId;
       const employeeId = await this.me(tx, c, v);
+      const closed = await this.closedOn(tx, c, todayIst());
+      if (closed) throw this.closedError(closed, 'person');
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`preclearance:${org}`}))`;
       const year = todayIst().slice(0, 4);
       const n = await tx.tradePreclearance.count({ where: { organizationId: org, referenceNo: { startsWith: `PC-${year}-` } } });
@@ -150,6 +215,8 @@ export class PreclearanceService {
       if (r.requestedBy === v.userId || (await this.history.ownEmployeeId(tx, c, v)) === r.employeeId) throw new ForbiddenException('Someone else decides your own pre-clearance.');
       if (r.status !== 'pending') throw new ConflictException(`This request is ${r.status}.`);
       if (!approve && !note?.trim()) throw new BadRequestException('Say why it is rejected.');
+      const closed = approve ? await this.closedOn(tx, c, todayIst()) : null;
+      if (closed) throw this.closedError(closed, 'officer');
       const validUntil = approve ? tradingDaysFrom(todayIst(), (await this.rules(tx, c, r.employeeId)).validDays) : null;
       await tx.tradePreclearance.update({ where: { id }, data: { status: approve ? 'approved' : 'rejected', decidedBy: v.userId, decidedAt: new Date(), decisionNote: note?.trim() || null, validUntil: validUntil ? asDate(validUntil) : null } });
       await audit(tx, c, approve ? 'compliance.preclearance.approved' : 'compliance.preclearance.rejected', 'employee', r.employeeId, { id, referenceNo: r.referenceNo });

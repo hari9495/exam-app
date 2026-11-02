@@ -9,6 +9,7 @@ import { OtpService } from '../auth/otp.service';
 import { EmailService } from '../email/email.service';
 import { showDate } from '../people/employee-import';
 import { settingFor } from '../people/probation';
+import { hashValue } from '../people/profile.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { DocumentsService } from '../documents/documents.service';
 import { LettersService } from '../documents/letters/letters.service';
@@ -288,7 +289,14 @@ export class PreboardingPortalService {
       (a as Record<string, unknown>)[key] = value;
       const sections = { ...(pb.sections as Record<string, string>), [key]: 'done' };
       const completion = await this.completion(tx, s, sections);
-      await tx.preboarding.update({ where: { id: pb.id }, data: { answersEnc: this.crypto.encrypt(JSON.stringify(a)), sections, completion, version: { increment: 1 } } });
+      // PPL-36: the keys "possible same person" matches on (PAN and UAN only as the company's keyed hashes).
+      const keys =
+        key === 'identity'
+          ? { panHash: hashValue(this.crypto, s.org, 'pan', (value as IdentitySectionDto).pan), uanHash: (value as IdentitySectionDto).uan ? hashValue(this.crypto, s.org, 'uan', (value as IdentitySectionDto).uan!) : null }
+          : key === 'personal'
+            ? { dateOfBirth: new Date(`${(value as PersonalSectionDto).dateOfBirth}T00:00:00Z`) }
+            : {};
+      await tx.preboarding.update({ where: { id: pb.id }, data: { answersEnc: this.crypto.encrypt(JSON.stringify(a)), sections, completion, version: { increment: 1 }, ...keys } });
       await audit(tx, c, 'preboarding.section.saved', 'preboarding', pb.id, { section: key });
       // Named events for what the founder asked to find in the audit (never the values).
       if (key === 'nominees') await audit(tx, c, 'preboarding.nominees.saved', 'preboarding', pb.id, { nominees: (value as NomineesSectionDto).nominees.length });

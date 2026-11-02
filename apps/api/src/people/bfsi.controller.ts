@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Header, Param, ParseUUIDPipe, Post, Put, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, HttpCode, Param, ParseUUIDPipe, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -9,7 +9,7 @@ import { RequirePermissions } from '../rbac/permissions.decorator';
 import { ownSession } from '../org-structure/org-structure.controller';
 import { EmployeeHistoryService, RequestUser } from '../employee-history/employee-history.service';
 import { BfsiService } from './bfsi.service';
-import { BfsiCoiDto, BfsiHoldingDto, BfsiRelatedDto, DecisionDto, PreclearanceDto, TradeReportDto } from './person-panels.dto';
+import { BfsiCoiDto, BfsiHoldingDto, BfsiRelatedDto, DecisionDto, PreclearanceDto, TradeReportDto, TradingWindowDto } from './person-panels.dto';
 import { PreclearanceService } from './preclearance.service';
 
 // BFSI declarations (PPL-43) and trading pre-clearance (PPL-44). The designated person keeps their own declaration (the service checks they are
@@ -100,6 +100,28 @@ export class BfsiController {
   async decidePreclearance(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DecisionDto) {
     ownSession(req);
     return this.preclearance.decide(ctx, await this.viewer(req), id, dto.decision === 'approve', dto.note);
+  }
+
+  /** PPL-44: the trading window calendar (closed periods), set by the compliance officer for the whole company. */
+  @Get('trading-windows')
+  @RequirePermissions('compliance.declaration.manage')
+  async tradingWindows(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.preclearance.windows(ctx, await this.viewer(req));
+  }
+
+  @Post('trading-windows')
+  @RequirePermissions('compliance.declaration.manage')
+  async closeWindow(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: TradingWindowDto) {
+    ownSession(req);
+    return this.preclearance.addWindow(ctx, await this.viewer(req), dto);
+  }
+
+  @Post('trading-windows/:id/remove')
+  @HttpCode(200)
+  @RequirePermissions('compliance.declaration.manage')
+  async removeWindow(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    ownSession(req);
+    return this.preclearance.removeWindow(ctx, await this.viewer(req), id);
   }
 
   @Get('bfsi/register')

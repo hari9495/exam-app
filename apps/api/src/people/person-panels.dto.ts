@@ -157,6 +157,18 @@ export class PreclearanceDto {
   noUpsi!: boolean;
 }
 
+/** PPL-44: a closed trading window (inclusive dates, IST). */
+export class TradingWindowDto {
+  @IsDateString({ strict: true }) @Matches(DATE, { message: 'startsOn is a date (YYYY-MM-DD)' })
+  startsOn!: string;
+
+  @IsDateString({ strict: true }) @Matches(DATE, { message: 'endsOn is a date (YYYY-MM-DD)' })
+  endsOn!: string;
+
+  @IsString() @MinLength(3) @MaxLength(200)
+  reason!: string;
+}
+
 export class TradeReportDto {
   @IsDateString({ strict: true }) @Matches(DATE, { message: 'tradedOn is a date (YYYY-MM-DD)' })
   tradedOn!: string;
