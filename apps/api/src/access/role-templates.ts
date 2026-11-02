@@ -63,7 +63,11 @@ const DESK_AGENT = ['desk.ticket.view', 'desk.ticket.work', 'desk.ticket.note', 
 /** The compliance owner's keys (the demo's compliance@ login uses them). */
 export const COMPLIANCE_OWNER_5J = ['org:view', 'org.structure.view', 'payroll.period.view', 'payroll.file.view', 'payroll.document.view', 'audit.view', 'payroll.statutory.setup', ...COMPLIANCE_5F];
 
-export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
+// PAY-58: every person's own equity page has a key so a company can take it away; every role keeps it by default (a
+// company role replaces the base role's keys, so each template carries it).
+export const OWN_PAY = ['payroll.equity.own'];
+
+const TEMPLATES: readonly RoleTemplate[] = [
   {
     key: 'hr_admin',
     name: 'HR Admin',
@@ -274,3 +278,5 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     permissions: ['desk.ticket.view', 'desk.ticket.note', 'desk.task.work'],
   },
 ];
+
+export const ROLE_TEMPLATES: readonly RoleTemplate[] = TEMPLATES.map((t) => ({ ...t, permissions: [...t.permissions, ...OWN_PAY] }));

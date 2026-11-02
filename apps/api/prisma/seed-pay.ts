@@ -90,6 +90,7 @@ export const PAY_PERMISSIONS = [
   { key: 'payroll.special.manage', description: 'Special pay: piece-rate, incentives and commission, tips, on-call, union dues, settlements, lay-off and VRS, sent to payroll for approval' },
   { key: 'payroll.ewa.manage', description: 'Earned wage access: the policy, draws and their payment and recovery' },
   { key: 'payroll.equity.manage', description: 'Equity plans: valuations, grants, vesting, exercises and the cap table' },
+  { key: 'payroll.equity.own', description: 'See your own equity grants and vesting, and exercise your vested units' },
   { key: 'payroll.notice.waive', description: 'Waive the recovery of an unserved notice period for one leaver, with a reason' },
   { key: 'payroll.writeoff.approve', description: 'Write off the rest of an overpayment raised by someone else, with a reason (needs a fresh second sign-in step)' },
   { key: 'payroll.bonus.manage', description: 'Work out the statutory bonus of a legal entity, enter the surplus and deductions, send it for approval and pay it through an off-cycle bonus run' },

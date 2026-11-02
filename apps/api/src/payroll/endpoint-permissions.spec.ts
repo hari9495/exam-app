@@ -24,8 +24,8 @@ const SELF: Record<string, string[]> = {
   Payroll5gController: ['answer', 'mine'],
   // An employee's own incentive statement.
   Payroll5iController: ['myIncentives'],
-  // An employee's own earned wage access and equity.
-  Payroll5iMoreController: ['myDraw', 'myEquity', 'myEwa', 'myExercise'],
+  // An employee's own earned wage access (own equity has its key, payroll.equity.own: PAY-58).
+  Payroll5iMoreController: ['myDraw', 'myEwa'],
   // PAY-25: the person's own request for payroll reports access (the service refuses acting for someone else).
   PayrollReportsController: ['myAccessRequest', 'requestAccess'],
   // An employee's own pay documents and late corrections.

@@ -76,6 +76,8 @@ export function grantScopesFor(key: string): readonly GrantScopeType[] {
   // M03 batch 5a: payroll and its audit work per legal entity (the pay guard reads the granted entities); legal holds are company-wide.
   // Batch 5e: income tax (workspaces, proofs, regime) works per legal entity like the rest of payroll.
   // Batch 5h: consultants are registered and paid per legal entity like payroll.
+  // PAY-58: one's own equity page is about the person, so it rides on any role at any scope.
+  if (key === 'payroll.equity.own') return GRANT_SCOPE_TYPES;
   if (key.startsWith('payroll.') || key.startsWith('tax.') || key.startsWith('statutory.') || key.startsWith('consultant.') || key === 'audit.view' || key === 'audit.export') return ['tenant', 'legal_entity'];
   if (key.startsWith('org.') || key.startsWith('pay.range.')) return ['tenant', 'legal_entity'];
   return ['tenant'];

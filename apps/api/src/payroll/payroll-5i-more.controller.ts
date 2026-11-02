@@ -17,8 +17,9 @@ import { EwaService } from './ewa.service';
 import { file } from './payroll.controller';
 
 // Payroll batch 5i (M03-BUILD-DESIGN §14.7): earned wage access, equity, the actuarial census and country packs. Every
-// route declares its key (YX-SEC-01) or is the signed-in person's own (no key: their draws and grants, checked against
-// their employee records by the pay guard); the services check the key's legal entities again.
+// route declares its key (YX-SEC-01) or is the signed-in person's own (no key: their draws, checked against their
+// employee records by the pay guard); the services check the key's legal entities again.
+//   payroll.equity.own        one's own grants and exercises (every role holds it by default; PAY-58)
 //   payroll.ewa.manage        EWA policies, draws, their payment (never one's own) and failures
 //   payroll.equity.manage     plans, valuations, grants (approved by another holder), milestones, the cap table
 //   payroll.special.manage    the actuarial census; the UAE end-of-service provision
@@ -132,13 +133,15 @@ export class Payroll5iMoreController {
     return file(res, await this.equity.capTable(ctx, this.user(req), id));
   }
 
-  /** The signed-in person's grants, vesting and exercises (no key: their own). */
+  /** The signed-in person's grants, vesting and exercises (PAY-58: payroll.equity.own, held by every role by default). */
   @Get('me/equity')
+  @RequirePermissions('payroll.equity.own')
   myEquity(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     return this.equity.mine(ctx, this.user(req));
   }
 
   @Post('me/equity/exercises')
+  @RequirePermissions('payroll.equity.own')
   myExercise(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: ExerciseDto) {
     return this.equity.exercise(ctx, this.user(req), dto);
   }

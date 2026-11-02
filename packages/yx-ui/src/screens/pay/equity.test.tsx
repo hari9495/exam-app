@@ -150,6 +150,12 @@ describe('PAY-58 My equity, live', () => {
     expect(screen.getByText('No grants')).toBeInTheDocument();
   });
 
+  it('no access (PAY-58: the role lacks payroll.equity.own): the designed state, no exercise', () => {
+    render(<MyEquityScreen live={mine({ state: 'no-access', data: null })} />);
+    expect(screen.getByText(/You don't have access to your equity/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Exercise/ })).not.toBeInTheDocument();
+  });
+
   it('shows vesting; exercising more than vested is refused, then the exact units with the price payable', async () => {
     const v = mine();
     render(<MyEquityScreen live={v} />);

@@ -424,6 +424,18 @@ describe('Payroll batch 5i', () => {
     expect(perq.map((p) => p.annualValue.toFixed(2))).toEqual(['15000.00']);
     const cap = await api('payAdmin', 'get', `/payroll/equity/plans/${plan}/cap-table`).expect(200);
     expect(cap.text).toContain('POOL LEFT,,200');
+    // PAY-58: a company role without payroll.equity.own sees the designed No access (403) and cannot exercise; the
+    // base role (no company role) keeps it.
+    const bare = await inA((tx) => tx.permissionProfile.create({ data: { organizationId: org.A.id, name: `bare-${run}`, permissionsJson: JSON.stringify(['org:view']) } }));
+    await inA((tx) => tx.user.update({ where: { id: users.emp1 }, data: { permissionProfileId: bare.id } }));
+    try {
+      const t = (await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: org.A.slug, email: `emp1@pay5i-${run}.test`, password: PASSWORD }).expect(200)).body.accessToken;
+      await request(server()).get('/api/v1/payroll/me/equity').set('Authorization', `Bearer ${t}`).expect(403);
+      await request(server()).post('/api/v1/payroll/me/equity/exercises').set('Authorization', `Bearer ${t}`).send({ grantId: mine[0].id, units: 1 }).expect(403);
+    } finally {
+      await inA((tx) => tx.user.update({ where: { id: users.emp1 }, data: { permissionProfileId: null } }));
+    }
+    await api('emp1', 'get', '/payroll/me/equity').expect(200);
   });
 
   it('actuarial: the census as a file; the provision journal posted by someone other than its recorder', async () => {

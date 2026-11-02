@@ -175,6 +175,8 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'audit.export',
     'audit.hold.manage',
     'payroll.period.reopen.approve',
+    // PAY-58: every base role an employee signs in with sees their own equity (migration 20261370000000).
+    'payroll.equity.own',
     // M01 lifecycle 6a: checklists and joiners like adding employees; documents only by data class (none Confidential).
     'lifecycle.onboarding.view',
     'lifecycle.onboarding.manage',
@@ -217,12 +219,12 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     // PM8: improvement plans.
     'perf.pip.manage',
   ],
-  recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
-  panel: ['org:view', 'results:view', 'interview:view_assigned'],
+  recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned', 'payroll.equity.own'],
+  panel: ['org:view', 'results:view', 'interview:view_assigned', 'payroll.equity.own'],
   // hiring_manager: a job owner who reviews their reqs' candidates + results and joins interviews,
   // but has no settings/users/billing access. Pair with Record-level visibility to scope them to
   // their own jobs. This is the seeded DEFAULT — an org admin can retune it in Roles & Permissions.
-  hiring_manager: ['org:view', 'results:view', 'interview:view_assigned', 'pipeline:manage', 'candidate:manage'],
+  hiring_manager: ['org:view', 'results:view', 'interview:view_assigned', 'pipeline:manage', 'candidate:manage', 'payroll.equity.own'],
   // auditor: compliance read-only. Sees candidates, jobs/pipelines, exams, results/reports, the
   // question bank, and the audit log — but holds ZERO write keys, so every mutation route (all gated
   // on a :manage key) denies it. Deliberately NOT in EDITABLE_ROLES: its grants stay fixed read-only,
