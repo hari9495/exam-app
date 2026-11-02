@@ -5,8 +5,8 @@ checked the same way (see `pay-design-map.md`, `time-design-map.md`). Founder ru
 version of a designed screen; make the designed one live.
 
 Status 30 Oct 2026 (branch `feat/yukthix-people-design-map`, from `test/yukthix-main`): almost every People page already
-renders its designed PPL screen with a `live` prop. What is left is one stand-in page (the pre-boarding portal, T9-01),
-four hidden live copies the guard cannot see (section "Hidden copies"), a few dialogs built inside pages, and states
+renders its designed PPL screen with a `live` prop. The one stand-in page (the pre-boarding portal, T9-01) is live with its
+design since 2 Nov 2026 (branch `feat/yukthix-joiner-portal`). What is left is three hidden live copies the guard cannot see (section "Hidden copies"), a few dialogs built inside pages, and states
 the API cannot produce yet.
 
 Verdicts (the same words as Pay): **live** (the live page renders the designed screen and can reach this state; the
@@ -32,7 +32,7 @@ files (PPL-01 … 50; PPL-10 has no story) and in the four other People story fi
 script fails unless each story file has exactly one row per story, in file order, and every verdict is one of the five
 words. 49 groups, 404 stories (400 before the small gaps added four: PPL-37 MergedList and MergedEmpty, PPL-43 and PPL-44 NotDesignated); the other People stories (section G) are 44 more and are counted on their own line.
 The Kit (`people-kit.stories.tsx`, 10 stories) is shared parts, not pages, and is not counted. T9-01 (the pre-boarding
-portal) is a Portals design, not a People one; its 21 stories are in their own section below and are not counted here.
+portal) is a Portals design, not a People one; its 37 stories (32 live, 5 waiting for providers) are in their own section below and are not counted here.
 
 The 15 phone views are the 11 People phone screens in `packages/yx-ui/src/design-live-guard.known.json` (asset
 acknowledge ×2, BFSI, certificate, clearance, disability, exit interview, my documents ×3, pre-clearance, profile
@@ -55,7 +55,6 @@ name clashes with a design elsewhere or the part is not a `…Screen`:
 
 | live page | what it renders today (file) | design it should render | why the guard misses it |
 |---|---|---|---|
-| /yx/join/[org] | `PortalScreen` (people/live/joining.tsx) | T9-01 `PreboardingPortalScreen` and its steps (portals/t9-workforce.tsx) | the guard lists `people: PortalScreen`, but the Helpdesk `PortalScreen` (desk) is a design with the same name, so the page reads as "designed and live". See "T9-01" below |
 | /yx/people/changes, /yx/people/history, /yx/people/team, person record "Start change" | `ChangeDrawer` (history/history-kit.tsx) | PPL-04 change drawer (promotion, transfer, inter-entity, retro, manager) | a drawer, not a screen; no story renders `ChangeDrawer` |
 | /yx/people/changes, /yx/people/scheduled | `ReasonDialog` (history/job-changes.tsx), reject or cancel a change with a reason | PPL-04 Review / PPL-05 cancel | a dialog; no story renders it |
 | /yx/me/resignation (VRS card) | `VrsCard` (people/live/special.tsx), inside the designed `ResignationSheet` | PPL-40 "Employee · apply with estimate", "Employee · not eligible" | a card inside a designed screen |
@@ -187,7 +186,7 @@ Settings, and the pre-boarding portal).
 | /yx/settings/letters | `LetterTemplatesList` + `SignatoriesDrawer` | PPL-29 + Me and set-up | live |
 | /yx/settings/custom-fields | `EmployeeFieldsScreen` | PPL-03 (custom field stories) | live |
 | /yx/settings/access | `RolesAccessScreen` | Access and privacy | live |
-| /yx/join/[org] | `PortalSignInScreen` (T9 design), then `PortalScreen` (people/live/joining.tsx) | T9-01 | sign-in live; the portal is **wire design** (stand-in) |
+| /yx/join/[org] | `PortalSignInScreen` (T9 design), then `PreboardingPortalScreen` with `live` (portals/t9-workforce.tsx) | T9-01 | live (2 Nov 2026); see "T9-01" below |
 
 Not People: /yx/me/requests (inbox design), /yx/settings/access-settings and company-rules (company settings design),
 /yx/me/delegation, notifications, security, language, and the pay pages under /yx/me (see `pay-design-map.md`).
@@ -196,7 +195,6 @@ Not People: /yx/me/requests (inbox design), /yx/settings/access-settings and com
 
 | page | what has no design | what it does | suggestion |
 |---|---|---|---|
-| /yx/join/[org] | `PortalScreen` stand-in | the joiner's own pre-boarding page after the one-time code | not "no design": T9-01 exists and is not live. Wire it (section T9-01, builder 1) |
 | /yx/people/changes, /history, /team, record | `ChangeDrawer` | the live raise-a-change form: type, date, pay, reason, impact preview, draft, inter-entity move | make the PPL-04 drawer take `live` with the `ChangeDrawer` props (options, onPreview, onRoute, onSubmit, onSaveDraft, move) and delete `ChangeDrawer` (builder 2; Q2) |
 | /yx/people/changes, /scheduled | `ReasonDialog` | reject or cancel a change with a reason (and a date) | add stories "Review · reject with reason" to PPL-04 and "Cancel with reason" to PPL-05 drawing this dialog, moved into `people/changes.tsx` |
 | /yx/me/resignation | `VrsCard` | lists open VRS schemes, says if you are eligible, applies with a last day and reason | wire the PPL-40 employee stories; keep apply and the eligibility flag |
@@ -212,7 +210,7 @@ Not People: /yx/me/requests (inbox design), /yx/settings/access-settings and com
 
 | design | what it needs | size |
 |---|---|---|
-| T9-01 Pre-boarding portal (21 stories) | wire the design on /yx/join/[org] and add to the portal API: the checklist (tasks, due dates, HR-owned items), first-day facts (reporting time, address, buddy, batch), an outcome for a closed joining (postponed, withdrawn, reneged, joined) instead of a silent sign-out, decline offer with reason, previous income (Form 12B), group-insurance nominees. Penny drop and Aadhaar e-sign wait for providers (section T9-01) | L |
+| T9-01 Pre-boarding portal (5 of 37 stories) | done 2 Nov 2026 except what needs a provider: penny drop (verified, name mismatch), Aadhaar e-sign of the appointment letter, the letter of intent. Education form and "sign the code of conduct and POSH policy" are not in the portal sections (question) | M, needs providers |
 | PPL-04 change drawer (6 stories) | the API exists (`POST changes`, preview, route, drafts, `POST restructures` for a move); only the screen is missing (hidden copy above) | M |
 | PPL-40 employee VRS (2) | wire the design; add a VRS estimate (benefit, gratuity, leave encashment) and the reason someone is not eligible (age, years) to `GET lifecycle/me/vrs` | M |
 | PPL-01 Contract workers and Placements cards (1), PPL-12 contract worker conversion (1), PPL-35 contract-worker and nominee roles (1) | a contract workers module (person type, agency, deployment) | L |
@@ -231,70 +229,77 @@ Not People: /yx/me/requests (inbox design), /yx/settings/access-settings and com
 | PPL-37 Unmerge later | done (small gaps): Possible same person › Merged lists every merged record | — |
 | Me and set-up: starter copied twice, signatory with letters waiting (2) | done (small gaps): both refused with 409 | — |
 
-## T9-01 · Pre-boarding portal (/yx/join/[org]): the stand-in and the design
+## T9-01 · Pre-boarding portal (/yx/join/[org]): live with its design (2 Nov 2026)
 
-/yx/join/[org] first shows `PortalSignInScreen` (the T9 sign-in design, live: `otpSignIn`, code to the personal email,
-`POST portal/join/:org/code`, `/verify`). After sign-in it renders `PortalScreen` from `people/live/joining.tsx`, a
-stand-in. The design is T9-01 (`portals/t9-workforce.tsx`: `PreboardingPortalScreen` with `NomineeForm`,
-`BankDetailsStep`, `TaxRegimeStep`, `OfferLettersPanel`, `PreboardingDocuments`, `BgvConsentStep`, `DeclineOffer`;
-stories `portals/t9-01-preboarding.stories.tsx`). The guard has `people: PortalScreen` in `known.json`, but treats the
-page as designed because the Helpdesk `PortalScreen` (desk) is a design with the same name. The API is
-`apps/api/src/lifecycle/portal.controller.ts` (`me`, `step-up`, six `sections/*`, `documents/:typeKey`, `bgv-consent`,
-`letters/:id/file`, `letters/:id/sign[/code]`, `sign-out`). A session works only while the pre-boarding is `invited`.
+/yx/join/[org] shows `PortalSignInScreen` (email and an emailed code), then `PreboardingPortalScreen` with `live`
+(`portals/t9-workforce.tsx`). The stand-in `PortalScreen`, `SectionDrawer` and `LetterList` are deleted from
+`people/live/joining.tsx`; `AcceptDialog` stays there as the design's accept step (My letters uses it too). The API is
+`apps/api/src/lifecycle/portal.controller.ts`: `code`, `verify`, `me`, `step-up/code`, `step-up`, six `sections/*`,
+`documents/:typeKey`, `bgv-consent`, `decline` (new), `letters/:id/file`, `letters/:id/sign[/code]`, `sign-out`.
+e2e: `joiner-portal.e2e-spec.ts` (12 tests) and `lifecycle-6b`.
 
-**What the stand-in does that T9-01 lacks** (the wiring must keep all of it):
+**Founder defaults applied (to confirm):** sign-in by email and code, no invitation link (the InviteExpired story is
+dropped); penny drop, Aadhaar e-sign and the letter of intent wait for a provider (only their design-only stories
+remain; the live bank step says "HR checks the account"); "Withdraw consent" added to the design (BgvWithdraw) and wired.
 
-| stand-in has | in T9-01 |
-|---|---|
-| a form drawer for each of the six sections the API takes: personal details (date of birth, gender, state …), PAN and ID, bank, emergency contact, nominees, tax regime; field errors from the server and a "Not saved" box | only nominees, bank and tax regime are drawn; personal details, PAN and ID, and emergency contact are checklist rows with no form |
-| a step-up code before PAN and ID **and** bank (`POST step-up/code`, `step-up`) | step-up drawn for bank only |
-| a document list from the joiner's checklist with an Upload button per type (phone camera capture), statuses To send / Sent, HR checks it / Accepted / Please send again + HR's reason | drawn (Documents tab, sent back with a note, `FileUpload`); keep the per-type list from the API |
-| BGV consent as one notice with its items; **withdraw consent** (stops the checks, audited) | per-purpose ticks (required and optional), vendor named; no withdraw |
-| letters list: download the letter and the acceptance copy; accept with an emailed code and the e-sign disclosure (`AcceptDialog`) | LOI and appointment letter, "Sign with Aadhaar e-sign" (read, agree, OTP); no acceptance-copy download |
-| loading, could not load with Retry, "That didn't work" box; Sign out | none of these states drawn; the T9 frame shows who is signed in |
-| employer (legal entity), designation and manager in the welcome line | role, department, manager in the welcome line |
+**Stand-in features kept:** a form for each of the six sections (personal, PAN and ID, bank, emergency, nominees, tax)
+with server errors in a "Not saved" box; a fresh code before PAN and ID and before bank; documents from the checklist
+with upload (phone camera, `FileUpload capture`), statuses and HR's send-back reason; BGV consent (the itemised notice,
+one consent) and withdrawal; letters: download the letter and the acceptance copy, accept with an emailed code and the
+e-sign disclosure; loading, could not load with Try again, sign out; employer, designation and manager in the welcome.
 
-**What T9-01 has that the stand-in (and mostly the API) lacks:**
+**Added from the design (server built):** the checklist by section with "x of y", HR-owned documents ("HR completes
+this"), the joiner's own journey tasks with due dates ("After you join"), documents' due days, the pinned
+"Continue / Fix" button, tabs Checklist / Offer and letters / Documents; "Your first day" (date, reporting time from
+the setting `joining.reporting_time`, default 9:30 am, per entity or employment type; place and address; manager;
+buddy; batch); "date moved" (from the audited postpone); decline offer with a reason (the joining closes as reneged,
+HR gets the bell and an email, audited `preboarding.declined`); the outcome of a closed joining (declined, withdrawn,
+cancelled, joined) readable after sign-in, every change refused (409 `PORTAL_CLOSED`); nominees per scheme (PF,
+gratuity, group insurance, each 100 %; on joining one nomination per scheme, group insurance as `group_term`);
+previous-employer income (Form 12B: gross, TDS) in the tax step, shown to HR. Audits without values:
+`preboarding.nominees.saved`, `preboarding.form12b.saved`, `bgv.consent.withdrawn`.
 
-| T9-01 has | stand-in / API today | size |
-|---|---|---|
-| the checklist by section (Welcome, Forms, Documents, E-sign, Bank and tax, Statutory), "x of y", due dates, HR-owned items ("HR completes this", e.g. UAN and Form 11, ESIC), a sent-back banner, a pinned "Continue: …" / "Fix …" button | six sections + documents + a % only; the journey tasks exist on the server but `me` does not send them | M |
-| tabs Checklist, Offer and letters, Documents | one long page | S |
-| "Your first day": reporting time, address, buddy, joining batch; "Bring on day one" | `me` has no reporting time, address, buddy or batch | S |
-| Decline offer with a reason (the hiring team is told) | no API | S |
-| outcome banners: postponed (new date), withdrawn, reneged, cancelled, joined (page closed) | postponed: the new date shows but nothing says it moved; any other status ends the session (401) and the joiner lands back on sign-in with no explanation | S |
-| nominees for PF, gratuity **and group insurance**, each adding up to 100 % | one list (PF and gratuity) | S |
-| bank verified by penny drop, "verified" and "name mismatch" | no penny drop | M, needs a provider |
-| previous employment and income (Form 12B: gross salary, TDS) with the tax regime | `sections/tax` takes the regime only | S (Pay already takes Form 12B in the tax workspace) |
-| letter of intent before the appointment letter; Aadhaar e-sign | emailed-code acceptance | M, Aadhaar e-sign needs a provider |
-| Education form; sign the code of conduct and POSH policy | not in the sections | S |
-| sign-in "Invitation link expired" | sign-in is by email, there is no invitation link | — (Q1) |
-
-**T9-01 stories (21, not counted in the People totals)**
+**T9-01 stories (37, not counted in the People totals): 32 live, 5 design only (feature not built)**
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| SignIn · Sign in (email OTP) | live | /yx/join/[org]; `PortalSignInScreen` with `live` |
+| SignIn · Sign in (email OTP) | live | `PortalSignInScreen` with `live` |
 | SignInCode · Sign in · code sent | live | after "Send code" (`POST code`) |
-| SignInWrongCode · Sign in · wrong code, 2 attempts left | live | `POST verify` refuses; the screen counts attempts |
-| SignInLocked · Sign in · locked after 5 wrong codes | live | the screen locks after 5 wrong codes (server-side lockout not checked) |
-| InviteExpired · Invitation link expired | live (gap) | no invitation link; sign-in is by email (Q1) |
-| Checklist · Checklist | wire design | the stand-in renders instead |
-| ChecklistPhone · Checklist · phone | wire design | the portal is a web page; the same component at phone width |
-| CampusBatch · Checklist · campus joining batch | wire design | needs the batch in `me` |
-| Nominees · Family and nominees · shares do not add up | wire design | needs group insurance in `sections/nominees` |
-| BankStepUp · Bank details · step-up code | wire design | API exists (`step-up`) |
-| BankForm · Bank details · form | wire design | API exists (`sections/bank`) |
-| BankVerified · Bank details · verified | design only, feature not built | no penny drop |
-| BankMismatch · Bank details · name mismatch | design only, feature not built | no penny drop |
-| TaxRegime · Tax regime and previous income | wire design | regime exists; previous income needs `sections/tax` to take it |
-| LetterOfIntent · Offer · letter of intent | design only, feature not built | no LOI letter kind for the portal |
-| ESign · Offer · e-sign appointment letter | wire design | accept with code exists; Aadhaar e-sign needs a provider (Q2) |
-| Documents · Documents · one sent back | wire design | API exists |
-| BgvConsent · Background verification consent | wire design | API exists (one notice); per-purpose ticks need the notice items as purposes |
-| Postponed · Postponed | wire design | a postpone keeps the joiner `invited` and moves `joiningOn` (audited `preboarding.joining_date.changed`); `me` must also say the date moved |
-| Withdrawn · Offer withdrawn · access ended | design only, feature not built | as above |
-| Joined · Joined · page closed | design only, feature not built | as above |
+| SignInWrongCode · Sign in · wrong code, 2 attempts left | live | `POST verify` refuses |
+| SignInLocked · Sign in · locked after 5 wrong codes | live | the screen locks after 5 wrong codes |
+| Checklist · Checklist | live | from `me`: sections, documents, letters, tasks |
+| ChecklistPhone · Checklist · phone | live | the same page at phone width |
+| CampusBatch · Checklist · campus joining batch | live | `me.firstDay.batch` |
+| Nominees · Family and nominees · shares do not add up | live | `sections/nominees` per scheme |
+| BankStepUp · Bank details · step-up code | live | `step-up/code`, `step-up` (code by email) |
+| BankForm · Bank details · form | live | `sections/bank`; "Save account", HR checks it |
+| BankVerified · Bank details · verified | design only, feature not built | penny drop needs a provider |
+| BankMismatch · Bank details · name mismatch | design only, feature not built | penny drop needs a provider |
+| TaxRegime · Tax regime and previous income | live | `sections/tax` with `previousIncome` (Form 12B) |
+| LetterOfIntent · Offer · letter of intent | design only, feature not built | no LOI for the portal (waits with e-sign) |
+| ESign · Offer · e-sign appointment letter | design only, feature not built | Aadhaar e-sign needs a provider; the live accept is AcceptCode |
+| Documents · Documents · one sent back | live | `documents/:typeKey`, HR's reason |
+| BgvConsent · Background verification consent | design only, feature not built | per-purpose ticks and a named vendor; the live notice is BgvNotice |
+| Postponed · Postponed | live | `me.dateMoved` (with the old date) |
+| Withdrawn · Offer withdrawn · access ended | live | `me.closed.outcome` withdrawn |
+| Joined · Joined · page closed | live | `me.closed.outcome` joined |
+| Loading · Loading | live | before `me` answers |
+| LoadError · Could not load · try again | live | `me` failed (not 401) |
+| AfterYouJoin · Checklist · your tasks after joining | live | `me.tasks` (owner: the joiner) |
+| PersonalForm · Personal details · pressed too early | live | `sections/personal` |
+| PersonalFilled · Personal details · form | live | `sections/personal` |
+| IdentityStepUp · PAN and ID · step-up code | live | same code as bank |
+| IdentityForm · PAN and ID · form | live | `sections/identity` |
+| EmergencyForm · Emergency contact · form | live | `sections/emergency` |
+| NomineesAdd · Family and nominees · add a nominee | live | added in the form, saved with it |
+| TaxRegimeEarly · Tax regime · pressed too early | live | TDS above gross refused (also by the server) |
+| BgvNotice · Background check consent · the notice | live | `bgv-consent` true |
+| BgvWithdraw · Background check consent · withdraw | live | `bgv-consent` false; checks stop |
+| OfferLetters · Offer · letters to download and accept | live | `letters/:id/file` (letter, acceptance) |
+| AcceptCode · Offer · accept with an emailed code | live | `letters/:id/sign/code`, `sign` |
+| DeclineReason · Decline offer · reason | live | `POST decline` |
+| Declined · Declined · page closed | live | `me.closed.outcome` reneged |
+| Cancelled · Cancelled · access ended | live | `me.closed.outcome` cancelled (did not join) |
 
 ## 4. Design groups, story by story
 
@@ -1144,7 +1149,7 @@ first.
 
 | builder | owns (files) | work | size |
 |---|---|---|---|
-| 1 · Pre-boarding portal (first) | `packages/yx-ui/src/screens/portals/t9-workforce.tsx` (T9-01 parts only), `t9-01-preboarding.stories.tsx`, `t9-data.ts`; `apps/web/app/yx/join/[org]/page.tsx`; `apps/api/src/lifecycle/portal.service.ts`, `portal.controller.ts`, `portal-dto.ts`; from `people/live/joining.tsx` only `PortalScreen`, `SectionDrawer`, `SectionsList`, `AnswersList`, `LetterList` (keep `AcceptDialog` as the design's accept step or move it into `t9-workforce.tsx`) | T9-01 takes `live` (as the alumni portal T9-02 already does); keep everything in the "stand-in has" table; add to `me` the checklist tasks with due dates and owners, first-day facts, "date moved"; an outcome read for a closed joining; decline offer; group-insurance nominees; previous income (Form 12B) in `sections/tax`; design stories first for the states T9-01 lacks (loading, error, personal / PAN and ID / emergency forms, PAN step-up, BGV withdraw). Remove `people: PortalScreen` from `known.json`. Penny drop, LOI and Aadhaar e-sign wait (Q2) | L |
+| 1 · Pre-boarding portal (first) · **done 2 Nov 2026** | `packages/yx-ui/src/screens/portals/t9-workforce.tsx` (T9-01 parts only), `t9-01-preboarding.stories.tsx`, `t9-data.ts`; `apps/web/app/yx/join/[org]/page.tsx`; `apps/api/src/lifecycle/portal.service.ts`, `portal.controller.ts`, `portal-dto.ts`; from `people/live/joining.tsx` only `PortalScreen`, `SectionDrawer`, `SectionsList`, `AnswersList`, `LetterList` (keep `AcceptDialog` as the design's accept step or move it into `t9-workforce.tsx`) | T9-01 takes `live` (as the alumni portal T9-02 already does); keep everything in the "stand-in has" table; add to `me` the checklist tasks with due dates and owners, first-day facts, "date moved"; an outcome read for a closed joining; decline offer; group-insurance nominees; previous income (Form 12B) in `sections/tax`; design stories first for the states T9-01 lacks (loading, error, personal / PAN and ID / emergency forms, PAN step-up, BGV withdraw). Remove `people: PortalScreen` from `known.json`. Penny drop, LOI and Aadhaar e-sign wait (Q2) | L |
 | 2 · Changes, record dialogs, exits | `people/changes.tsx`, `history/history-kit.tsx` (`ChangeDrawer`), `history/job-changes.tsx` (`ReasonDialog`), `ppl-04`, `ppl-05` stories; `people/record.tsx`, `people/documents.tsx`, web `people/person-record.tsx`, `people/upload-doc-dialog.tsx`, `ppl-03` stories; `people/exits.tsx`, `people/live/special.tsx` (`VrsCard`), `ppl-24`, `ppl-40`, `ppl-20` stories; web `people/absconding`, `me/resignation`, `people/clearance` pages; `apps/api/src/lifecycle` exit and clearance services | PPL-04 drawer takes the `ChangeDrawer` props, then `ChangeDrawer` is deleted (it is used on /changes, /history, /team and the record: one swap); `ReasonDialog` stories; PPL-03 stories for work phone, ask for a document, send back, upload for the person, then move the dialogs; PPL-24 start and dispatch-proof stories; PPL-40 employee view replaces `VrsCard` (+ estimate and reason, M); PPL-20 HR view by leaver and "blocked" status | L |
 | 3 · Small gaps | `people/live/templates.tsx`, `SignatoriesDrawer` in `people/live/joining.tsx` (that function only); `people/onboarding.tsx`, `ppl-12`, `ppl-13`; `people/relations.tsx`, `ppl-36`, `ppl-37`; `people/selfservice.tsx`, `ppl-33`, `ppl-43`, `ppl-44`; `people/upcoming.tsx`; the PPL-46 Pay tab line in the record's Pay tab (ask builder 2 before touching `record.tsx`, or land it after builder 2); the matching API services (journey templates, letters signatories, joiners, same person, privacy, contracts) | starter copy refused twice; signatory not removed while letters wait; PPL-13 "your tasks" filter; PPL-12 rehire impact in the Create drawer; merged-records list for Unmerge; PPL-33 retention column; PPL-43/44 empty stories; fixed-term contract limit as a company setting (Q4); PPL-46 account abroad on the Pay tab | M |
 

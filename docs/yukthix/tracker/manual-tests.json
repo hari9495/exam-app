@@ -7725,5 +7725,255 @@
       "Expenses · Live · Claims"
     ],
     "note": ""
+  },
+  {
+    "id": "MT-PPL-J-01",
+    "area": "People · Joining portal T9-01 (2 Nov 2026)",
+    "screen": "Sign in by email and code; another company; a wrong code",
+    "url": "http://localhost:3000/yx/join/demo-org",
+    "account": "Joiner Sneha Pillai (sneha.pillai@example.test, the demo joiner). Codes come by email: in development the developer reads them from the mail log. Use a phone-width window (375 x 812) where a step says phone, else 1278 x 635.",
+    "steps": [
+      "1. Open the page, type sneha.pillai@example.test, press Send code.",
+      "2. Type a wrong 6-digit code and press Verify.",
+      "3. Press Send code again at once.",
+      "4. Type the right code from the email.",
+      "5. In a new window open http://localhost:3000/yx/join/other-company and sign in with the same email."
+    ],
+    "expected": "Step 1: 'Enter your code'. Step 2: refused, attempts left shown. Step 3: refused with a wait in seconds (the 60-second limit stays). Step 4: the checklist opens: 'Welcome, Sneha', progress, sections, 'Your first day'. Negative step 5: no code arrives (the same answer as for any unknown email).",
+    "stories": [
+      "Portals T9-01 SignIn",
+      "Portals T9-01 SignInWrongCode",
+      "Portals T9-01 Checklist"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-J-02",
+    "area": "People · Joining portal T9-01 (2 Nov 2026)",
+    "screen": "Checklist, first day, tasks after joining, phone width",
+    "url": "http://localhost:3000/yx/join/demo-org",
+    "account": "Joiner Sneha Pillai (sneha.pillai@example.test, the demo joiner). Codes come by email: in development the developer reads them from the mail log. Use a phone-width window (375 x 812) where a step says phone, else 1278 x 635.",
+    "steps": [
+      "1. Look at 'Your first day'.",
+      "2. Look at the 'After you join' card.",
+      "3. Look at Documents rows marked 'HR completes this'.",
+      "4. Make the window 375 x 812 (phone).",
+      "5. Then 1278 x 635."
+    ],
+    "expected": "Step 1: date, 'Report at 9:30 am · <place>' (Settings › Organisation › Joining day changes the time), address, manager, and buddy and batch when HR set them. Step 2: only Sneha's own tasks, each with 'Due <date>' and no button; HR's, IT's and payroll's tasks never show. Step 3: no Open button. Step 4: one column, no sideways scroll, the pinned 'Continue: …' button at the bottom. Step 5: no page scroll bar beyond what the checklist needs.",
+    "stories": [
+      "Portals T9-01 Checklist",
+      "Portals T9-01 ChecklistPhone",
+      "Portals T9-01 AfterYouJoin"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-J-03",
+    "area": "People · Joining portal T9-01 (2 Nov 2026)",
+    "screen": "Personal details and emergency contact: pressed too early, then saved",
+    "url": "http://localhost:3000/yx/join/demo-org",
+    "account": "Joiner Sneha Pillai (sneha.pillai@example.test, the demo joiner). Codes come by email: in development the developer reads them from the mail log. Use a phone-width window (375 x 812) where a step says phone, else 1278 x 635.",
+    "steps": [
+      "1. Open Personal details. Press Save details with the form empty.",
+      "2. Fill date of birth, gender, address, city, state and a 5-digit PIN; Save.",
+      "3. Fix the PIN to 6 digits; Save.",
+      "4. Open Emergency contact, type phone 12345, Save; then a 10-digit phone, Save."
+    ],
+    "expected": "Step 1: errors under every missing field, focus on the first; the button is never greyed out. Step 2: 'The PIN code is 6 digits.' Step 3: toast 'Personal details saved' (5 s), back on the checklist, row Done with a Change button. Step 4: first refused under Phone, then toast 'Emergency contact saved'.",
+    "stories": [
+      "Portals T9-01 PersonalForm",
+      "Portals T9-01 PersonalFilled",
+      "Portals T9-01 EmergencyForm"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-J-04",
+    "area": "People · Joining portal T9-01 (2 Nov 2026)",
+    "screen": "PAN and ID, and bank: a fresh code first",
+    "url": "http://localhost:3000/yx/join/demo-org",
+    "account": "Joiner Sneha Pillai (sneha.pillai@example.test, the demo joiner). Codes come by email: in development the developer reads them from the mail log. Use a phone-width window (375 x 812) where a step says phone, else 1278 x 635.",
+    "steps": [
+      "1. Open PAN and ID.",
+      "2. Press Send me a code; type a wrong code; Verify.",
+      "3. Type the right code; Verify.",
+      "4. Type PAN ABC12; Save PAN and ID. Then a valid PAN; Save.",
+      "5. Open Bank account for salary within 10 minutes; then again after 11 minutes."
+    ],
+    "expected": "Step 1: no form, only 'Confirm it's you' with Send me a code. Step 2: 'That code is not right or has expired. Ask for a new one.' Step 3: the form opens. Step 4: refused under PAN, then toast 'PAN and ID saved…'; HR sees only ••••••234F. Step 5: within 10 minutes the bank form opens directly; after 11 minutes it asks for a fresh code again.",
+    "stories": [
+      "Portals T9-01 IdentityStepUp",
+      "Portals T9-01 IdentityForm",
+      "Portals T9-01 BankStepUp",
+      "Portals T9-01 BankForm"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-J-05",
+    "area": "People · Joining portal T9-01 (2 Nov 2026)",
+    "screen": "Family and nominees: PF, gratuity and group insurance",
+    "url": "http://localhost:3000/yx/join/demo-org",
+    "account": "Joiner Sneha Pillai (sneha.pillai@example.test, the demo joiner). Codes come by email: in development the developer reads them from the mail log. Use a phone-width window (375 x 812) where a step says phone, else 1278 x 635.",
+    "steps": [
+      "1. Open Family and nominees; Save nominees with no one added.",
+      "2. Add nominee with an empty name and press Add nominee.",
+      "3. Add Anil, Father; give PF 100, Gratuity 100, Insurance 60; Save.",
+      "4. Add Usha, Mother, Insurance 40, PF 0, Gratuity 0; Save."
+    ],
+    "expected": "Step 1: 'Add at least one nominee.' Step 2: 'Give the nominee's name.' Step 3: 'Group insurance: shares add up to 60%…' and 'Must be 100%' under the column; nothing saved. Step 4: toast 'Nominees saved'. HR's joiner panel shows each nominee with PF, gratuity and insurance shares. After joining, the record has one nomination per scheme (insurance as Group term insurance).",
+    "stories": [
+      "Portals T9-01 Nominees",
+      "Portals T9-01 NomineesAdd"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-J-06",
+    "area": "People · Joining portal T9-01 (2 Nov 2026)",
+    "screen": "Tax regime and income from an earlier employer (Form 12B)",
+    "url": "http://localhost:3000/yx/join/demo-org",
+    "account": "Joiner Sneha Pillai (sneha.pillai@example.test, the demo joiner). Codes come by email: in development the developer reads them from the mail log. Use a phone-width window (375 x 812) where a step says phone, else 1278 x 635.",
+    "steps": [
+      "1. Open Choose your tax regime; Save choice with nothing chosen.",
+      "2. Choose New regime; tick 'I worked for another employer…'; gross 1,000, TDS 2,000; Save.",
+      "3. TDS 100; Save."
+    ],
+    "expected": "Step 1: 'Choose a regime.' Step 2: 'The TDS is more than the gross salary…'; nothing saved. Step 3: toast 'Tax choice saved'; HR's joiner panel shows 'Earlier employer this year (Form 12B): Gross ₹1,000, TDS ₹100'. The audit has 'preboarding.form12b.saved' without the amounts.",
+    "stories": [
+      "Portals T9-01 TaxRegime",
+      "Portals T9-01 TaxRegimeEarly"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-J-07",
+    "area": "People · Joining portal T9-01 (2 Nov 2026)",
+    "screen": "Documents: upload, phone camera, sent back",
+    "url": "http://localhost:3000/yx/join/demo-org",
+    "account": "Joiner Sneha Pillai (sneha.pillai@example.test, the demo joiner). Codes come by email: in development the developer reads them from the mail log. Use a phone-width window (375 x 812) where a step says phone, else 1278 x 635. hr@demo-org.test (HR Admin - Lakshmi) in a second browser, for the HR side.",
+    "steps": [
+      "1. Open the Documents tab; on a phone press Browse files for PAN card.",
+      "2. Upload a .exe file.",
+      "3. Upload a JPG of the PAN card.",
+      "4. HR (Lakshmi) sends it back with a reason in the verification queue; Sneha reloads."
+    ],
+    "expected": "Step 1: the phone offers the camera. Step 2: refused before upload ('This file type is not allowed…'). Step 3: toast 'Sent. HR checks it.'; status 'HR is checking'. Step 4: a red 'HR sent back an item' box with HR's reason, the row says Fix, the pinned button reads 'Fix pan card' when it is the first open item.",
+    "stories": [
+      "Portals T9-01 Documents"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-J-08",
+    "area": "People · Joining portal T9-01 (2 Nov 2026)",
+    "screen": "Background check consent, then withdraw",
+    "url": "http://localhost:3000/yx/join/demo-org",
+    "account": "Joiner Sneha Pillai (sneha.pillai@example.test, the demo joiner). Codes come by email: in development the developer reads them from the mail log. Use a phone-width window (375 x 812) where a step says phone, else 1278 x 635. hr@demo-org.test (HR Admin - Lakshmi) in a second browser, for the HR side.",
+    "steps": [
+      "1. HR asks for consent on Sneha's joiner panel. Sneha reloads and opens Background check consent.",
+      "2. Press Give consent without ticking.",
+      "3. Tick and Give consent.",
+      "4. Press Change on the row, then Withdraw consent; Cancel; then Withdraw consent and confirm."
+    ],
+    "expected": "Step 1: the notice in plain items, version BGV v1, no dead link. Step 2: 'Tick the items marked Needed to continue'. Step 3: toast 'Consent given…'; row Done. Step 4: the dialog says checks stop at once and HR decides about the offer; Cancel changes nothing; confirming shows toast 'Consent withdrawn. Background checks stopped.'; HR's panel says the joiner withdrew consent; audit 'bgv.consent.withdrawn'.",
+    "stories": [
+      "Portals T9-01 BgvNotice",
+      "Portals T9-01 BgvWithdraw"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-J-09",
+    "area": "People · Joining portal T9-01 (2 Nov 2026)",
+    "screen": "Offer and letters: download, accept with an emailed code",
+    "url": "http://localhost:3000/yx/join/demo-org",
+    "account": "Joiner Sneha Pillai (sneha.pillai@example.test, the demo joiner). Codes come by email: in development the developer reads them from the mail log. Use a phone-width window (375 x 812) where a step says phone, else 1278 x 635. hr@demo-org.test (HR Admin - Lakshmi) in a second browser, for the HR side.",
+    "steps": [
+      "1. HR issues Sneha's appointment letter. Sneha opens the Offer and letters tab.",
+      "2. Press Read and accept; press Accept with nothing ticked.",
+      "3. Tick both boxes, Send me a code, type the code, Accept.",
+      "4. Press Download PDF and Accepted copy."
+    ],
+    "expected": "Step 1: the letter with reference and issue date, 'Waiting for you to accept'. Step 2: 'Tick that you agree to accept letters electronically.' and 'Send yourself a code, then enter it.' Step 3: toast 'Letter accepted…'; the badge reads 'You accepted it'. Step 4: both PDFs download. No Aadhaar e-sign and no letter of intent yet (waiting for a provider).",
+    "stories": [
+      "Portals T9-01 OfferLetters",
+      "Portals T9-01 AcceptCode"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-J-10",
+    "area": "People · Joining portal T9-01 (2 Nov 2026)",
+    "screen": "Date moved",
+    "url": "http://localhost:3000/yx/join/demo-org",
+    "account": "Joiner Sneha Pillai (sneha.pillai@example.test, the demo joiner). Codes come by email: in development the developer reads them from the mail log. Use a phone-width window (375 x 812) where a step says phone, else 1278 x 635. hr@demo-org.test (HR Admin - Lakshmi) in a second browser, for the HR side.",
+    "steps": [
+      "1. HR (Lakshmi) opens Sneha's checklist › Change status and moves the joining day a week later.",
+      "2. Sneha reloads."
+    ],
+    "expected": "Step 2: a blue box 'Your joining date moved to <new date>' with 'It was <old date>.'; 'Your first day' and the access note show the new date; finished items stay Done.",
+    "stories": [
+      "Portals T9-01 Postponed"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-J-11",
+    "area": "People · Joining portal T9-01 (2 Nov 2026)",
+    "screen": "Decline offer: reason needed, HR told, page closed and read-only",
+    "url": "http://localhost:3000/yx/join/demo-org",
+    "account": "Joiner Sneha Pillai (sneha.pillai@example.test, the demo joiner). Codes come by email: in development the developer reads them from the mail log. Use a phone-width window (375 x 812) where a step says phone, else 1278 x 635. hr@demo-org.test (HR Admin - Lakshmi) in a second browser, for the HR side.",
+    "steps": [
+      "1. HR adds a second joiner with a test email (Onboarding › Add joiner). Sign in as that joiner.",
+      "2. Press Decline offer, then Decline offer in the dialog without a reason.",
+      "3. Choose 'Accepted another offer', add a note, confirm.",
+      "4. Sign out and sign in again with the same email.",
+      "5. HR looks at Onboarding and the bell."
+    ],
+    "expected": "Step 2: 'Choose a reason.', focus on Reason. Step 3: the page shows 'You declined this offer… This page is now closed.' with no tabs and no forms. Step 4: the code still works and shows the same message. Step 5: the joiner shows Cancelled (reneged) with the reason; the bell says '<name> declined the offer (Accepted another offer: …)'; audit 'preboarding.declined'. Negative: Sneha's own checklist is unchanged.",
+    "stories": [
+      "Portals T9-01 DeclineReason",
+      "Portals T9-01 Declined"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-J-12",
+    "area": "People · Joining portal T9-01 (2 Nov 2026)",
+    "screen": "Closed joinings: withdrawn, did not join, joined; every change refused",
+    "url": "http://localhost:3000/yx/join/demo-org",
+    "account": "Joiner Sneha Pillai (sneha.pillai@example.test, the demo joiner). Codes come by email: in development the developer reads them from the mail log. Use a phone-width window (375 x 812) where a step says phone, else 1278 x 635. hr@demo-org.test (HR Admin - Lakshmi) in a second browser, for the HR side.",
+    "steps": [
+      "1. HR withdraws the offer of another test joiner (Change status › Offer withdrawn, with a reason). That joiner signs in.",
+      "2. With a joining day of today, HR marks another joiner Did not join; that joiner signs in.",
+      "3. On Sneha's joining day HR marks her joined; Sneha signs in.",
+      "4. Keep a closed joiner's form open in a tab from before it closed and press Save."
+    ],
+    "expected": "Step 1: 'This offer has been withdrawn… HR sends you a letter that explains why.' Step 2: 'Your pre-joining access has ended'. Step 3: 'Welcome to <company>… this page is closed.' Step 4: the save is refused and the page switches to the outcome (409 'Your joining is closed, so nothing can be changed here.').",
+    "stories": [
+      "Portals T9-01 Withdrawn",
+      "Portals T9-01 Cancelled",
+      "Portals T9-01 Joined"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-J-13",
+    "area": "People · Joining portal T9-01 (2 Nov 2026)",
+    "screen": "Loading and could not load",
+    "url": "http://localhost:3000/yx/join/demo-org",
+    "account": "Joiner Sneha Pillai (sneha.pillai@example.test, the demo joiner). Codes come by email: in development the developer reads them from the mail log. Use a phone-width window (375 x 812) where a step says phone, else 1278 x 635.",
+    "steps": [
+      "1. Sign in, then ask the developer to stop the API and reload the checklist.",
+      "2. Start the API again and press Try again."
+    ],
+    "expected": "Step 1: grey blocks while loading, then 'Your joining checklist did not load… Try again' with Sign out still there. Step 2: the checklist loads.",
+    "stories": [
+      "Portals T9-01 Loading",
+      "Portals T9-01 LoadError"
+    ],
+    "note": "Positive and negative."
   }
 ]
