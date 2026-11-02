@@ -431,6 +431,48 @@ describe('PermissionsGuard', () => {
       }
     });
 
+    // Regression (2 Nov 2026): a manager on a route HR shares (any of employee.profile.view / request.raise_on_behalf)
+    // was refused for HR's MFA floor once their grace ended, though they hold no sensitive key.
+    describe('a route with "any" keys follows the keys the person holds', () => {
+      const anyRoute = (held: string[], policy: Partial<typeof DEFAULT_SECURITY_POLICY> = {}) => {
+        const reflector = { get: jest.fn((key: string) => (key === PERMISSIONS_ANY_KEY ? ['employee.profile.view', 'request.raise_on_behalf'] : undefined)) } as unknown as Reflector;
+        const prisma = { rolePermission: { findMany: jest.fn().mockResolvedValue(held.map((key) => ({ permission: { key } }))) } };
+        const tx = {
+          tenantSecurityPolicy: { findUnique: jest.fn().mockResolvedValue({ ...DEFAULT_SECURITY_POLICY, ...policy, organizationId: ORG }) },
+          orgRolePermission: { findUnique: jest.fn().mockResolvedValue(null) },
+          $queryRaw: jest.fn().mockResolvedValue([]),
+        };
+        const tenantPrisma = { forTenant: jest.fn(async (_c: unknown, fn: (t: unknown) => unknown) => fn(tx)) };
+        return new PermissionsGuard(reflector, prisma as any, tenantPrisma as any);
+      };
+      const panel = (session: object) => ({ userId: 'u-2', role: 'panel', organizationId: ORG, permissionProfileId: null, session });
+
+      it('a manager holding only the everyday key passes at AAL1 past the grace', async () => {
+        expect(await outcome(anyRoute(['request.raise_on_behalf']).canActivate(ctx(panel(AAL1_PAST_DUE))))).toBe('allowed');
+      });
+
+      it('someone holding the sensitive key still needs AAL2, even when they also hold the everyday one', async () => {
+        expect(await outcome(anyRoute(['employee.profile.view']).canActivate(ctx(panel(AAL1_PAST_DUE))))).toBe(MFA_REQUIRED_CODE);
+        expect(await outcome(anyRoute(['employee.profile.view', 'request.raise_on_behalf']).canActivate(ctx(panel(AAL1_PAST_DUE))))).toBe(MFA_REQUIRED_CODE);
+        expect(await outcome(anyRoute(['employee.profile.view']).canActivate(ctx(panel(AAL2))))).toBe('allowed');
+      });
+
+      it('the admin-network list binds the sensitive holder only', async () => {
+        invalidateTenantSecurityPolicy(ORG);
+        const outside = (held: string[]) => {
+          const guard = anyRoute(held, { ipAllowlistAdmin: ['198.51.100.0/24'] });
+          return outcome(guard.canActivate(ctx(panel(AAL2))));
+        };
+        expect(await outside(['request.raise_on_behalf'])).toBe('allowed');
+        invalidateTenantSecurityPolicy(ORG);
+        expect(await outside(['employee.profile.view'])).toBe('forbidden');
+      });
+
+      it('nobody holding either key is refused', async () => {
+        await expect(anyRoute([]).canActivate(ctx(panel(AAL2)))).rejects.toThrow('Missing any of required permission');
+      });
+    });
+
     it('a missing permission is reported before MFA or step-up', async () => {
       const meta: Record<string, unknown> = { [PERMISSIONS_KEY]: ['org:manage_users'], [STEP_UP_REQUIRED]: true };
       const reflector = { get: jest.fn((key: string) => meta[key]) } as unknown as Reflector;

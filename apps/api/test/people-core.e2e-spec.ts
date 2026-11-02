@@ -113,7 +113,8 @@ describe('People core (P01 §4.4–4.5a; M01 §3.2–3.4, §3.10; P02 YX-SEC-04/
     const hr = await profile('HR Admin', ['employee.profile.view', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.change.retro_override']);
     const approver = await profile('HR Approver', ['employee.profile.view', 'employee.change.approve', 'employee.change.retro', 'employee.salary.view']);
     const payroll = await profile('Payroll Admin', ['employee.profile.view', 'employee.change.manage', 'employee.change.approve', 'employee.salary.view', 'employee.salary.manage']);
-    const manager = await profile('Team Manager', ['org:view', 'request.raise_on_behalf']);
+    // As the shipped template (Manager · raise changes) and the demo's Team Manager: the structure read key for the drawer's lists.
+    const manager = await profile('Team Manager', ['org:view', 'request.raise_on_behalf', 'org.structure.view']);
     const passwordHash = await argon2.hash(PASSWORD);
     const roster: [Who, 'A' | 'B', string, string | null][] = [
       ['adminA', 'A', 'org_admin', null],
@@ -341,6 +342,54 @@ describe('People core (P01 §4.4–4.5a; M01 §3.2–3.4, §3.10; P02 YX-SEC-04/
       await api('divyaA', 'post', `/people/changes/${ids.onBehalf}/cancel`).send({ reason: 'Changed my mind' }).expect(404);
       const again = await api('divyaA', 'post', '/people/changes').send({ ...body(ids.arjun), changeType: 'redesignation', payload: { assignment: { designationId: ids.lead } } }).expect(201);
       await api('divyaA', 'post', `/people/changes/${again.body.id}/cancel`).send({ reason: 'Raised too early' }).expect(201);
+    });
+
+    // Bug 2 Nov 2026 (demo manager, Change action): once the MFA enrolment grace ended, a manager with no factor got
+    // 403 MFA_REQUIRED on GET changes and the master lists, because HR's keys on the same routes are MFA keys. A manager
+    // holds none of them, so they need no second factor; HR still does.
+    it('a manager past the MFA grace, with no factor, still lists, reads the masters and raises; the rest stays refused', async () => {
+      const due = (who: Who) => tenantPrisma.forTenant(SUPER, (tx) => tx.user.update({ where: { id: users[who] }, data: { mfaEnrolmentDueAt: new Date(Date.now() - 3600_000) } }));
+      await due('divyaA');
+      await due('arjunA');
+      await due('hrA');
+      // Only what she raised (all about her team), never the company's other changes; no pay anywhere.
+      const mine = (await api('divyaA', 'get', '/people/changes').expect(200)).body as { requestedBy: string; employeeId: string }[];
+      expect(mine.length).toBeGreaterThan(0);
+      expect(mine.every((c) => c.requestedBy === users.divyaA)).toBe(true);
+      noPay(mine);
+      // The drawer's lists: names and ids of the masters (read key org.structure.view); the admin writes stay HR's.
+      for (const path of ['/org/legal-entities', '/org/masters/departments', '/org/masters/designations', '/org/masters/grades', '/org/masters/employment-types', '/org/masters/cost-centres', '/org/locations', '/people/changes/rules']) {
+        await api('divyaA', 'get', path).expect(200);
+      }
+      expect(((await api('divyaA', 'get', '/org/legal-entities').expect(200)).body as { gstin?: string | null }[]).every((e) => !e.gstin)).toBe(true);
+      await api('divyaA', 'post', '/org/masters/departments').send({ name: 'Sneaky', code: 'SNK' }).expect(403);
+      await api('divyaA', 'put', `/org/masters/designations/${ids.lead}`).send({ name: 'Renamed', code: 'QA-LEAD' }).expect(403);
+      await api('divyaA', 'post', '/org/legal-entities').send({ name: 'Sneaky Ltd', shortName: 'SNK' }).expect(403);
+      // She raises for her report through the same approval: HR sees it waiting and approves it.
+      const in40 = addDays(today, 40);
+      const body = (employeeId: string) => ({ employeeId, changeType: 'transfer', effectiveDate: in40, payload: { assignment: { locationId: ids.mys } }, reason: 'Moving to Mysuru' });
+      await api('divyaA', 'get', `/people/changes/route?employeeId=${ids.kiran}&pay=false&effectiveDate=${in40}`).expect(200);
+      const raised = (await api('divyaA', 'post', '/people/changes').send(body(ids.kiran)).expect(201)).body;
+      expect(raised).toMatchObject({ status: 'pending', requestedBy: users.divyaA });
+      expect((await api('divyaA', 'get', '/people/changes').expect(200)).body.map((c: { id: string }) => c.id)).toContain(raised.id);
+      // Outside her line, and another company's person: the same answer as an unknown person.
+      await api('divyaA', 'post', '/people/changes').send(body(ids.imran)).expect(404);
+      await api('divyaA', 'post', '/people/changes').send(body(randomUUID())).expect(404);
+      await api('adminB', 'post', '/people/changes').send(body(ids.kiran)).expect(404);
+      expect((await api('adminB', 'get', '/people/changes').expect(200)).body).toEqual([]);
+      // A plain employee: refused for the missing key, not asked for a second factor.
+      const plain = await api('arjunA', 'get', '/people/changes').expect(403);
+      expect(plain.body.code).not.toBe('MFA_REQUIRED');
+      await api('arjunA', 'post', '/people/changes').send(body(ids.meera)).expect(403);
+      // HR holds MFA keys: past the grace without a factor they are asked for one; with it they see every change.
+      expect((await api('hrA', 'get', '/people/changes').expect(403)).body.code).toBe('MFA_REQUIRED');
+      // Back inside the grace (as with a factor): HR sees every change.
+      await tenantPrisma.forTenant(SUPER, (tx) => tx.user.updateMany({ where: { id: { in: [users.divyaA, users.arjunA, users.hrA] } }, data: { mfaEnrolmentDueAt: new Date(Date.now() + 14 * 86_400_000) } }));
+      const all = (await api('hrA', 'get', '/people/changes').expect(200)).body as { id: string; requestedBy: string }[];
+      expect(all.map((c) => c.id)).toContain(raised.id);
+      expect(all.some((c) => c.requestedBy !== users.divyaA)).toBe(true);
+      // Decided by HR as any change is (rejected here, so the facts later tests read stay as they are).
+      await api('approverA', 'post', `/people/changes/${raised.id}/reject`).send({ reason: 'Not this quarter' }).expect(201);
     });
   });
 

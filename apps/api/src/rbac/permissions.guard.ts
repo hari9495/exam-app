@@ -94,10 +94,13 @@ export class PermissionsGuard implements CanActivate {
     }
 
     const allKeys = [...(requiredAll ?? []), ...(requiredAny ?? [])];
+    // The keys this request runs on: every "all" key plus the "any" keys the person holds. The admin-network and MFA
+    // floors follow those, not an "any" key the person lacks (a manager on a route HR shares was refused for HR's MFA).
+    let usedKeys = allKeys;
     if (allKeys.length > 0 && !user.actingSuperAdmin) {
-      await this.checkPermissions(user, request.ip, requiredAll, requiredAny, allKeys);
+      usedKeys = await this.checkPermissions(user, request.ip, requiredAll, requiredAny, allKeys);
     }
-    await this.checkMfa(user, allKeys, sensitiveAction);
+    await this.checkMfa(user, usedKeys, sensitiveAction);
     if (stepUp) {
       assertStepUp(user);
       await this.audit.record(
@@ -123,14 +126,7 @@ export class PermissionsGuard implements CanActivate {
     requiredAll: string[] | undefined,
     requiredAny: string[] | undefined,
     allKeys: string[],
-  ): Promise<void> {
-    // Tenant staff only: platform super admins are bound by staff controls (Q7), not tenant lists.
-    if (user.organizationId && user.role !== 'super_admin' && allKeys.some(isAdminConsolePermission)) {
-      const policy = await loadTenantSecurityPolicy(this.tenantPrisma, user.organizationId);
-      if (!ipAllowedForSurface(policy, 'admin', ip)) {
-        throw new ForbiddenException(NETWORK_NOT_ALLOWED_MESSAGE);
-      }
-    }
+  ): Promise<string[]> {
     // Profile > per-org role override > global role default; see resolvePermissionGrants.
     const grantedKeys = await resolvePermissionGrants(this.prisma, this.tenantPrisma, {
       role: user.role,
@@ -145,6 +141,15 @@ export class PermissionsGuard implements CanActivate {
     if (requiredAny?.length && !requiredAny.some((key) => grantedKeys.has(key))) {
       throw new ForbiddenException(`Missing any of required permission(s): ${requiredAny.join(', ')}`);
     }
+    const usedKeys = [...(requiredAll ?? []), ...(requiredAny ?? []).filter((key) => grantedKeys.has(key))];
+    // Tenant staff only: platform super admins are bound by staff controls (Q7), not tenant lists.
+    if (user.organizationId && user.role !== 'super_admin' && usedKeys.some(isAdminConsolePermission)) {
+      const policy = await loadTenantSecurityPolicy(this.tenantPrisma, user.organizationId);
+      if (!ipAllowedForSurface(policy, 'admin', ip)) {
+        throw new ForbiddenException(NETWORK_NOT_ALLOWED_MESSAGE);
+      }
+    }
+    return usedKeys;
   }
 
   // YX-IAM-01: a sensitive-role permission (or a company requiring MFA for everyone) needs an AAL2
