@@ -22,7 +22,7 @@ import { MenuItem } from '../../components/menu';
 import { useToast } from '../../components/notify';
 import { useTooEarly } from '../../components/field';
 import { useRun } from '../org/org-kit';
-import type { DayRow, FixInput, FixKind as LiveFixKind, LateCorrectionInput, MyAttendance, WfhInput } from './live/types';
+import type { DayRow, FixInput, FixKind as LiveFixKind, FixRow, LateCorrectionInput, MyAttendance, OnDutyInput, WfhInput } from './live/types';
 import { Segment } from '../people/people-kit';
 import { EXCEPTIONS, HOLIDAYS, HR_ADMIN, LATE_PAYROLL, LEAVE_REQUESTS, ME, OT_ROWS, PAYROLL_ADMIN, SEPTEMBER, TEAM, TODAY, isMyReport, timeCounts, type OtRow, type TimeUser } from './time-data';
 import { DueBadge, Kpis, TimePage } from './time-kit';
@@ -429,7 +429,11 @@ function SentState({ s, withdrawn }: { s: ReqState; withdrawn: boolean }) {
 /** What the live sheet needs: my month from the server, and the two requests it can send. */
 export interface LiveAttendanceRequest {
   data: MyAttendance;
-  type: 'regularise' | 'wfh';
+  type: 'regularise' | 'wfh' | 'on_duty';
+  /** On duty sent back for changes: the sheet starts from it and sends it again. */
+  resend?: FixRow;
+  /** TIM-07 OnDuty; without it the sheet has no On duty choice. */
+  onOnDuty?: (input: OnDutyInput) => Promise<unknown>;
   /** The day to start on (a day picked on the calendar), else today. */
   on?: string | null;
   onFix: (input: FixInput) => Promise<unknown>;
@@ -443,6 +447,7 @@ export interface LiveAttendanceRequest {
 const isoDay = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
 const isoOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const minuteOf = (hhmm: string | null) => (hhmm ? Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5)) : null);
+const hhmmOf = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 const LIVE_FIX: Record<string, LiveFixKind> = { in: 'missed_in', out: 'missed_out', wrong: 'wrong_time', full: 'full_day' };
 const STATUS_NOW: Record<DayRow['status'], string> = { present: 'Present', half_day: 'Half day', absent: 'Absent', leave: 'On leave', holiday: 'Holiday', weekly_off: 'Weekly off', missing_in: 'Missing check-in', missing_out: 'Missing check-out', no_timesheet: 'No timesheet yet', not_started: 'Not worked out yet', strike: 'Strike', lockout: 'Lockout', layoff: 'Lay-off' };
 /** The time of day in the person's zone as "HH:MM". */
@@ -451,8 +456,14 @@ const zoneHm = (iso: string | null | undefined, zone: string) => (iso ? new Date
 function LiveAttendanceRequestDrawer({ live }: { live: LiveAttendanceRequest }) {
   const d = live.data;
   const today = isoDay(d.today);
-  const [type, setTypeRaw] = useState<'regularise' | 'wfh'>(live.onWfh ? live.type : 'regularise');
+  type T = 'regularise' | 'wfh' | 'on_duty';
+  const offered = (t: T) => t === 'regularise' || (t === 'wfh' && !!live.onWfh) || (t === 'on_duty' && !!live.onOnDuty);
+  const [type, setTypeRaw] = useState<T>(offered(live.type) ? live.type : 'regularise');
   const [date, setDate] = useState<Date | null>(live.on ? isoDay(live.on) : today);
+  // On duty: where and when (a sent-back request starts from what was sent).
+  const [where, setWhere] = useState(live.resend?.place ?? '');
+  const [odFrom, setOdFrom] = useState<string | null>(live.resend?.inMinute != null ? hhmmOf(live.resend.inMinute) : null);
+  const [odTo, setOdTo] = useState<string | null>(live.resend?.outMinute != null ? hhmmOf(live.resend.outMinute) : null);
   const on = date ? isoOf(date) : null;
   const day = on ? d.days.find((x) => x.on === on) : undefined;
   const recIn = zoneHm(day?.firstIn, d.zone);
@@ -463,48 +474,60 @@ function LiveAttendanceRequestDrawer({ live }: { live: LiveAttendanceRequest }) 
   const fix = options.some((o) => o.value === picked) ? picked : options[0].value;
   const [inT, setIn] = useState<string | null>(null);
   const [outT, setOut] = useState<string | null>(null);
-  const [reason, setReason] = useState('');
-  const setType = (t: 'regularise' | 'wfh') => { setTypeRaw(t); setDate(today); };
+  const [reason, setReason] = useState(live.resend?.reason ?? '');
+  const setType = (t: T) => { setTypeRaw(t); setDate(today); };
   const { busy, error, run } = useRun();
   const { toast } = useToast();
   const needIn = type === 'regularise' && (fix === 'in' || fix === 'wrong');
   const needOut = type === 'regularise' && (fix === 'out' || fix === 'wrong');
   const when = date ? dm(date) : '';
-  const pending = on ? d.requests.some((r) => r.on === on && r.status === 'pending' && (type === 'wfh') === (r.kind === 'wfh')) : false;
+  const pending = on && type !== 'on_duty' ? d.requests.some((r) => r.on === on && r.status === 'pending' && (type === 'wfh') === (r.kind === 'wfh') && r.kind !== 'on_duty') : false;
+  const odWindow = d.onDuty ?? { aheadDays: 30, backDays: 60 };
+  const ago = on ? Math.round((isoDay(d.today).getTime() - isoDay(on).getTime()) / 86_400_000) : 0;
   const nothing = type !== 'regularise' || !day ? null : pending ? `${when} already has a request waiting` : ['weekly_off', 'holiday', 'leave'].includes(day.status) ? `${when} is ${day.status === 'leave' ? 'on approved leave' : day.status === 'holiday' ? 'a holiday' : 'a weekly off'}: nothing to fix` : null;
   // A day of a frozen or locked month goes as a late request (P08 Q4), up to the company's limit in days.
   const late = type === 'regularise' && !!on && !!live.onLateCorrection && (d.locked ?? []).includes(on);
   const tooLate = late && d.lateRequestMaxDays !== undefined && (isoDay(d.today).getTime() - isoDay(on!).getTime()) / 86_400_000 > d.lateRequestMaxDays;
-  const dateErr = !on ? null : type === 'regularise' ? (on > d.today ? 'Pick today or an earlier date' : tooLate ? `${when} is more than ${d.lateRequestMaxDays} days ago, so only HR can correct it now. Ask HR.` : nothing) : on < d.today ? 'Pick today or a later date' : pending ? `${when} already has a request waiting` : null;
+  const dateErr = !on
+    ? null
+    : type === 'on_duty'
+      ? -ago > odWindow.aheadDays ? `Pick a date in the next ${odWindow.aheadDays} days` : ago > odWindow.backDays ? `Pick a date in the last ${odWindow.backDays} days` : (d.locked ?? []).includes(on) ? `${when} is in a locked month. Ask HR to record a correction.` : null
+      : type === 'regularise' ? (on > d.today ? 'Pick today or an earlier date' : tooLate ? `${when} is more than ${d.lateRequestMaxDays} days ago, so only HR can correct it now. Ask HR.` : nothing) : on < d.today ? 'Pick today or a later date' : pending ? `${when} already has a request waiting` : null;
+  const od = type === 'on_duty';
   const errors = [
     ...(!on ? [{ fieldId: 'ar-date', message: 'Pick a date' }] : dateErr ? [{ fieldId: 'ar-date', message: dateErr }] : []),
     ...(!nothing && needIn && !inT ? [{ fieldId: 'ar-in', message: 'Enter the check-in time' }] : []),
     ...(!nothing && needOut && !outT ? [{ fieldId: 'ar-out', message: 'Enter the check-out time' }] : []),
     ...(!nothing && needIn && needOut && inT && outT && outT <= inT ? [{ fieldId: 'ar-out', message: 'Enter a check-out time after check-in' }] : []),
+    ...(od && where.trim().length < 2 ? [{ fieldId: 'ar-where', message: 'Enter where you will be' }] : []),
+    ...(od && (!odFrom || !odTo) ? [{ fieldId: !odFrom ? 'ar-from' : 'ar-to', message: 'Enter the From and To times' }] : []),
+    ...(od && odFrom && odTo && odTo <= odFrom ? [{ fieldId: 'ar-to', message: 'Enter a To time after From' }] : []),
+    ...(od && odFrom && odTo && odTo > odFrom && minuteOf(odTo)! - minuteOf(odFrom)! < 30 ? [{ fieldId: 'ar-to', message: 'On duty is at least 30 minutes' }] : []),
     ...(!reason.trim() ? [{ fieldId: 'ar-reason', message: 'Enter a reason' }] : late && reason.trim().length < 10 ? [{ fieldId: 'ar-reason', message: 'Give the reason in a sentence (at least 10 letters).' }] : []),
   ];
   const early = useTooEarly(errors);
   const regLeft = Math.max(0, d.regularise.limit - d.regularise.used);
   const wfhThen = on && on.slice(0, 7) === d.today.slice(0, 7) ? d.wfh.used : 0;
-  const hr = late || (type === 'regularise' ? regLeft === 0 : wfhThen >= d.wfh.limit);
+  const hr = !od && (late || (type === 'regularise' ? regLeft === 0 : wfhThen >= d.wfh.limit));
   const send = () => {
     if (early.stop() || !on) return;
     void run('send', async () => {
-      if (type === 'wfh') await live.onWfh!({ on, reason: reason.trim() });
+      if (od) await live.onOnDuty!({ on, inMinute: minuteOf(odFrom)!, outMinute: minuteOf(odTo)!, place: where.trim(), reason: reason.trim(), ...(live.resend ? { resendOf: live.resend.id } : {}) });
+      else if (type === 'wfh') await live.onWfh!({ on, reason: reason.trim() });
       else if (late) await live.onLateCorrection!({ on, kind: 'attendance', shouldBe: after, reason: reason.trim() });
       else await live.onFix({ on, kind: LIVE_FIX[fix], ...(needIn ? { inMinute: minuteOf(inT)! } : {}), ...(needOut ? { outMinute: minuteOf(outT)! } : {}), reason: reason.trim() });
-      toast({ tone: 'success', title: late ? 'Sent to your manager, then HR and payroll' : hr ? 'Sent to your manager, then HR' : 'Sent to your manager', description: `${type === 'wfh' ? 'Work from home' : late ? 'Late request' : 'Regularisation'} for ${when}. You will get a notification when it is decided.` });
+      toast({ tone: 'success', title: late ? 'Sent to your manager, then HR and payroll' : hr ? 'Sent to your manager, then HR' : 'Sent to your manager', description: `${od ? 'On duty' : type === 'wfh' ? 'Work from home' : late ? 'Late request' : 'Regularisation'} for ${when}. You will get a notification when it is decided.` });
       live.onClose();
     });
   };
   const timeText = (t: string | null) => (t ? fmt12(t) : '…');
-  const after = type === 'wfh' ? 'Work from home · counts as present' : fix === 'full' ? 'Present all day' : `Present ${timeText(needIn ? inT : recIn)} – ${timeText(needOut ? outT : recOut)}`;
+  const after = od ? `On duty at ${where.trim() || '…'}, ${timeText(odFrom)} – ${timeText(odTo)}` : type === 'wfh' ? 'Work from home · counts as present' : fix === 'full' ? 'Present all day' : `Present ${timeText(needIn ? inT : recIn)} – ${timeText(needOut ? outT : recOut)}`;
   const monthName = date ? MONTH[date.getMonth()] : '';
   return (
     <Drawer
       open
       onOpenChange={(o) => !o && live.onClose()}
-      title={type === 'wfh' ? 'Request work from home' : 'New attendance request'}
+      title={live.resend ? 'Change and send again' : type === 'wfh' ? 'Request work from home' : 'New attendance request'}
       subtitle={late ? 'Goes to your manager, HR and payroll' : hr ? 'Goes to your manager, then HR' : 'Goes to your manager'}
       dirty={Boolean(reason)}
       footer={
@@ -517,15 +540,25 @@ function LiveAttendanceRequestDrawer({ live }: { live: LiveAttendanceRequest }) 
     >
       <div className="yx-tim-form">
         {error && <InlineAlert tone="danger" title="Not sent">{error}</InlineAlert>}
-        {/* On duty and OT pre-approval are not in the app yet: only the requests it can send. */}
-        {live.onWfh && (
+        {live.resend?.sentBack && <InlineAlert tone="warning" title="Your manager asked for changes">{live.resend.sentBack}</InlineAlert>}
+        {/* OT pre-approval is not in the app yet: only the requests it can send. */}
+        {(live.onWfh || live.onOnDuty) && !live.resend && (
           <FormField label="Request type" required>
-            <Segment label="Request type" value={type} onChange={setType} options={[{ value: 'regularise' as const, label: 'Regularise' }, { value: 'wfh' as const, label: 'WFH' }]} />
+            <Segment label="Request type" value={type} onChange={setType} options={[{ value: 'regularise' as const, label: 'Regularise' }, ...(live.onWfh ? [{ value: 'wfh' as const, label: 'WFH' }] : []), ...(live.onOnDuty ? [{ value: 'on_duty' as const, label: 'On duty' }] : [])]} />
           </FormField>
         )}
-        <FormField id="ar-date" label="Date" required error={early.errorOf('ar-date')} helper={type === 'wfh' ? 'Pick the day you will work from home.' : late ? `${monthName} is locked, so this goes as a late request.` : 'Pick the day to fix.'}>
+        <FormField id="ar-date" label="Date" required error={early.errorOf('ar-date')} helper={od ? `Up to ${odWindow.aheadDays} days ahead or ${odWindow.backDays} days back.` : type === 'wfh' ? 'Pick the day you will work from home.' : late ? `${monthName} is locked, so this goes as a late request.` : 'Pick the day to fix.'}>
           <DatePicker value={date} onChange={setDate} min={type === 'wfh' ? today : undefined} max={type === 'regularise' ? today : undefined} aria-label="Date" />
         </FormField>
+        {od && (
+          <>
+            <FormField id="ar-where" label="Where" required error={early.errorOf('ar-where')}><TextField value={where} onChange={setWhere} maxLength={120} /></FormField>
+            <FieldRow>
+              <FormField id="ar-from" label="From" required error={early.errorOf('ar-from')}><TimeField value={odFrom} onChange={setOdFrom} placeholder="--:--" /></FormField>
+              <FormField id="ar-to" label="To" required error={early.errorOf('ar-to')}><TimeField value={odTo} onChange={setOdTo} placeholder="--:--" /></FormField>
+            </FieldRow>
+          </>
+        )}
         {type === 'regularise' && !nothing && (
           <>
             <FormField label="What needs fixing" required helper={recIn ? `Recorded check-in on this day: ${fmt12(recIn)}.` : undefined}>
@@ -552,8 +585,9 @@ function LiveAttendanceRequestDrawer({ live }: { live: LiveAttendanceRequest }) 
         </FormField>
         <section className="yx-tim-effect" aria-live="polite" aria-label="Effect before you send">
           <strong>Effect on {date ? dm(date) : 'the day'}</strong>
-          <div className="yx-tim-effect__line"><span className="yx-tim-muted">Now</span><Badge tone={late ? 'danger' : 'neutral'}>{type === 'wfh' ? 'Expected in office' : day ? STATUS_NOW[day.status] : 'Nothing recorded'}</Badge></div>
-          <div className="yx-tim-effect__line"><span className="yx-tim-muted">After</span>{nothing ? <Badge tone="neutral">Pick a day that needs fixing</Badge> : <Badge tone="success">{after}</Badge>}</div>
+          <div className="yx-tim-effect__line"><span className="yx-tim-muted">Now</span><Badge tone={late ? 'danger' : 'neutral'}>{type === 'wfh' || od ? 'Expected in office' : day ? STATUS_NOW[day.status] : 'Nothing recorded'}</Badge></div>
+          <div className="yx-tim-effect__line"><span className="yx-tim-muted">After</span>{nothing ? <Badge tone="neutral">Pick a day that needs fixing</Badge> : od && (!where.trim() || !odFrom || !odTo) ? <Badge tone="neutral">Add the place and times to see the result</Badge> : <Badge tone="success">{after}</Badge>}</div>
+          {od && <p className="yx-tim-muted">Once approved, the time counts as worked: a full day is present, part of one adds to your office hours.</p>}
           {type === 'wfh' && on && (
             <p className="yx-tim-muted">
               {hr ? `This would be work-from-home day ${wfhThen + 1} in ${monthName}, over the ${d.wfh.limit} your manager approves alone, so HR approves too.` : `This will be work-from-home day ${wfhThen + 1} of ${d.wfh.limit} in ${monthName}.`}

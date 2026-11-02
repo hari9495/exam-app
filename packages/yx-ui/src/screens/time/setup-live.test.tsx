@@ -318,7 +318,7 @@ describe('TIM-29 Year-end wizard, live', () => {
     await ue.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByText('Nothing to process')).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: /^Continue/ }));
-    expect(screen.getByText('Nothing lapses on that date, so there is nothing to post')).toBeInTheDocument();
+    expect(screen.getByText('Nothing lapses or is paid out on that date, so there is nothing to post')).toBeInTheDocument();
   });
 });
 

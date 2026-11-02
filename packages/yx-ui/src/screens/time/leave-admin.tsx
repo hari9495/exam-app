@@ -3321,7 +3321,7 @@ function LiveTransitionBody({ d, live }: { d: TimeSetup; live: LiveYearEnd }) {
                 <FormField label="New leave year starts in" required><Select value={month} onChange={setMonth} options={MONTH_NAMES.map((m, i) => ({ value: String(i + 1), label: m }))} /></FormField>
                 {preview && <DescriptionList items={[{ label: 'Leave year', value: `${yearKind(preview.oldStartMonth)[0].toUpperCase()}${yearKind(preview.oldStartMonth).slice(1)} → ${yearKind(preview.newStartMonth)}, from ${isoDay(preview.fromOn)} (the day after the year end)` }]} />}
                 {preview?.problem ? (
-                  <InlineAlert tone="warning" title="This change can't be made">{preview.problem}</InlineAlert>
+                  <InlineAlert tone="warning" title="This change can not be made">{preview.problem}</InlineAlert>
                 ) : preview ? (
                   <InlineAlert tone="info" title="A short year is created">{shortText} with entitlements for {plural(preview.months, 'month')}, then the first full year from {nextStart ? day(nextStart) : ''}.</InlineAlert>
                 ) : null}

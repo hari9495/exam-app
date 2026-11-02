@@ -134,6 +134,7 @@ export class AttendanceService implements OnModuleInit {
         regularise: { limit, used },
         // Work from home (TIM-07): this month's days asked for or approved, and whether today is an approved one.
         wfh: { limit: Number(await settingOn(tx, c, 'attendance.wfh_monthly_limit', f, today)), used: wfhUsed },
+        onDuty: { aheadDays: Number(await settingOn(tx, c, 'attendance.on_duty.ahead_days', f, today)), backDays: Number(await settingOn(tx, c, 'attendance.on_duty.back_days', f, today)) },
         wfhToday: requests.some((r) => r.kind === 'wfh' && r.status === 'approved' && dateOf(r.workOn) === today),
         // ChoseWfh: the company lets people clock in as work from home on the day; today's request still waiting.
         wfhSameDay: (await settingOn(tx, c, 'attendance.wfh_same_day', f, today)) === 'on',

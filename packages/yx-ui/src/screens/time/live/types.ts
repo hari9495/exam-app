@@ -212,6 +212,8 @@ export interface MyAttendance {
   regularise: { limit: number; used: number };
   /** Work-from-home days this month (asked for or approved) and the days a month the manager alone approves. */
   wfh: { limit: number; used: number };
+  /** TIM-07 OnDuty: how far ahead and back on duty can be asked (company settings). */
+  onDuty?: { aheadDays: number; backDays: number };
   /** Today is an approved work-from-home day. */
   wfhToday?: boolean;
   /** Days of the month in a frozen or locked period: a fix becomes a late correction (TIM-07), paid next payroll. */

@@ -55,7 +55,7 @@ import { VISITS } from '../ops/visitors-data';
 import { useRun } from '../org/org-kit';
 import { AttendanceRequestSheet } from './requests';
 import { MODE_TEXT } from './live/kit';
-import type { DayCard, DayRow, ExceptionsList, LateCorrectionInput, TodayBoard, FixInput, FixRow, LoadState, Muster, MyAttendance, MyNightWork, NightCodeSent, PersonAttendance, Pin, PunchKind, PunchResult, PunchRow, ResolveInput, WfhInput } from './live/types';
+import type { DayCard, DayRow, ExceptionsList, LateCorrectionInput, TodayBoard, FixInput, FixRow, LoadState, Muster, MyAttendance, MyNightWork, NightCodeSent, PersonAttendance, Pin, PunchKind, PunchResult, PunchRow, ResolveInput, WfhInput, OnDutyInput } from './live/types';
 import './time.css';
 
 export type ViewState = 'ready' | 'loading' | 'error' | 'empty';
@@ -2162,6 +2162,8 @@ export interface LiveMyAttendance {
   onOpenDay: (on: string) => Promise<DayCard>;
   /** Request work from home (TIM-07); without it only regularising is offered. */
   onWfh?: (input: WfhInput) => Promise<unknown>;
+  /** TIM-07 OnDuty: a day or part of one on duty away from the office (or sent again after changes). */
+  onOnDuty?: (input: OnDutyInput) => Promise<unknown>;
   /** TIM-07 LateRequest: a day of a frozen or locked month goes as a late correction, paid in the next payroll. */
   onLateCorrection?: (input: LateCorrectionInput) => Promise<unknown>;
   /** Open the request sheet at once (Home's "Request work from home" links here). */
@@ -2260,7 +2262,7 @@ function livePunch(p: PunchRow, zone: string): Punch {
 }
 
 /** A day from the day engine in the design's day codes (a waiting request shows as R, an approved WFH day as WFH). */
-function liveDay(on: string, x: Omit<DayRow, 'on'> | undefined, today: string, o: { pending?: boolean; wfh?: boolean } = {}): PDay {
+function liveDay(on: string, x: Omit<DayRow, 'on'> | undefined, today: string, o: { pending?: boolean; wfh?: boolean; od?: string } = {}): PDay {
   const date = isoDay(on);
   if (on > today) return { date, code: 'FUT' };
   if (o.pending) return { date, code: 'R', note: 'Request waiting for approval' };
@@ -2271,6 +2273,7 @@ function liveDay(on: string, x: Omit<DayRow, 'on'> | undefined, today: string, o
       : st === 'holiday' ? 'H'
         : st === 'weekly_off' ? 'WO'
           : on === today ? 'TODAY'
+            : o.od && (st === 'present' || st === 'half_day') ? 'OD'
             : st === 'present' ? (o.wfh ? 'WFH' : late > 0 ? 'L' : 'P')
               : st === 'half_day' ? 'HD'
                 : st === 'absent' || st === 'no_timesheet' ? 'A'
@@ -2280,20 +2283,25 @@ function liveDay(on: string, x: Omit<DayRow, 'on'> | undefined, today: string, o
                         : st === 'lockout' ? 'LO'
                           : st === 'layoff' ? 'LF'
                             : 'FUT';
-  const note = x?.regularised ? 'Fixed by an approved request' : st === 'no_timesheet' ? 'No timesheet yet' : st === 'leave' && x?.leavePart && x.leavePart !== 'full' ? `On leave, ${x.leavePart} half` : undefined;
+  const note = o.od && (st === 'present' || st === 'half_day') ? o.od : x?.regularised ? 'Fixed by an approved request' : st === 'no_timesheet' ? 'No timesheet yet' : st === 'leave' && x?.leavePart && x.leavePart !== 'full' ? `On leave, ${x.leavePart} half` : undefined;
   const ot = x?.otMinutes ? { otMin: x.otMinutes, otStatus: x.otStatus === 'approved' ? ('approved' as const) : ('pending' as const) } : {};
   return { date, code, ...(late > 0 ? { lateMin: late } : {}), ...(x?.workedMinutes ? { workedMin: x.workedMinutes } : {}), ...ot, ...(note ? { note } : {}) };
 }
 
 /** Every day of a month in the design's codes. */
-function liveMonth(month: string, rows: DayRow[], today: string, pending = new Set<string>(), wfh = new Set<string>()): PDay[] {
+function liveMonth(month: string, rows: DayRow[], today: string, pending = new Set<string>(), wfh = new Set<string>(), od = new Map<string, string>()): PDay[] {
   const first = isoDay(`${month}-01`);
   const n = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
   return Array.from({ length: n }, (_, i) => {
     const on = `${month}-${String(i + 1).padStart(2, '0')}`;
-    return liveDay(on, rows.find((r) => r.on === on), today, { pending: pending.has(on), wfh: wfh.has(on) });
+    return liveDay(on, rows.find((r) => r.on === on), today, { pending: pending.has(on), wfh: wfh.has(on), od: od.get(on) });
   });
 }
+
+/** Approved on-duty days → "place" (TIM-03 OnDuty: the calendar and day card show OD). */
+const onDutyDays = (reqs: FixRow[] | undefined) => new Map((reqs ?? []).filter((r) => r.kind === 'on_duty' && r.status === 'approved').map((r) => [r.on, r.place ?? 'On duty']));
+const REQUEST_WORD: Record<string, string> = { wfh: 'Work from home', on_duty: 'On duty' };
+const requestWord = (r: FixRow) => REQUEST_WORD[r.kind] ?? 'Regularisation';
 
 /** Today's shift as the design's shift. */
 const liveShift = (s: MyAttendance['shift']) => ({ name: s.name, start: hm(s.start), end: hm(s.end), graceMin: s.grace });
@@ -2396,7 +2404,9 @@ function LiveDayPanel({ load, day, viewer, person, employeeId, approver, monthDa
   const otMin = card.ot ? card.ot.payableMinutes : undefined;
   const claim = card.ot?.claim ?? null;
   const otStatus: PDay['otStatus'] = !card.ot ? undefined : !claim ? 'unclaimed' : claim.status === 'approved' ? (card.ot.settle === 'comp_off' ? 'comp-off' : 'approved') : 'pending';
-  const shown: PDay = { ...day, ...(card.day?.workedMinutes && !day.workedMin ? { workedMin: card.day.workedMinutes } : {}), ...(otMin ? { otMin, otStatus } : {}) };
+  // TIM-03 OnDuty: an approved on-duty day shows as "On duty" with the place and times (the design's header).
+  const od = card.onDuty?.status === 'approved' && card.day?.status && ['present', 'half_day'].includes(card.day.status) && card.on !== undefined ? card.onDuty : null;
+  const shown: PDay = { ...day, ...(od ? { code: 'OD' as const, note: `${od.place} · ${fmt12(hm(od.inMinute))} – ${fmt12(hm(od.outMinute))}` } : {}), ...(card.day?.workedMinutes && !day.workedMin ? { workedMin: card.day.workedMinutes } : {}), ...(otMin ? { otMin, otStatus } : {}) };
   // HR may resolve only a past day of an open month; the card says why not otherwise (today, frozen or locked).
   const hrFix = viewer === 'hr' && onResolve && card.hrFix?.ok ? () => setResolve([liveException(shown, person, employeeId ?? '', card)]) : undefined;
   const firstIn = card.punches.find((p) => p.accepted && p.kind === 'in');
@@ -2508,17 +2518,17 @@ function LiveStates({ state, onRetry, what, children }: { state: LoadState; onRe
 /** Shared by both live attendance pages: the request sheet (TIM-07), and withdrawing a waiting request. */
 function useLiveRequests(live: LiveMyAttendance) {
   const say = useSay();
-  const [req, setReq] = useState<{ type: 'regularise' | 'wfh'; on: string | null; n: number } | null>(live.defaultRequest ? { type: live.defaultRequest, on: null, n: 0 } : null);
+  const [req, setReq] = useState<{ type: 'regularise' | 'wfh' | 'on_duty'; on: string | null; n: number; resend?: FixRow } | null>(live.defaultRequest ? { type: live.defaultRequest, on: null, n: 0 } : null);
   const [withdrawing, setWithdrawing] = useState<FixRow | null>(null);
-  const open = (type: 'regularise' | 'wfh', on: string | null = null) => setReq({ type, on, n: (req?.n ?? 0) + 1 });
+  const open = (type: 'regularise' | 'wfh' | 'on_duty', on: string | null = null, resend?: FixRow) => setReq({ type, on, n: (req?.n ?? 0) + 1, resend });
   const d = live.data;
   const node = (
     <>
-      {req && d && <AttendanceRequestSheet key={req.n} live={{ data: d, type: req.type, on: req.on, onFix: live.onFix, onWfh: live.onWfh, onLateCorrection: live.onLateCorrection, onClose: () => setReq(null) }} />}
+      {req && d && <AttendanceRequestSheet key={req.n} live={{ data: d, type: req.type, on: req.on, resend: req.resend, onFix: live.onFix, onWfh: live.onWfh, onOnDuty: live.onOnDuty, onLateCorrection: live.onLateCorrection, onClose: () => setReq(null) }} />}
       <ConfirmDialog
         open={!!withdrawing}
         onOpenChange={(o) => !o && setWithdrawing(null)}
-        title={withdrawing ? `Withdraw the ${withdrawing.kind === 'wfh' ? 'work-from-home' : 'regularisation'} request for ${shortIso(withdrawing.on)}?` : ''}
+        title={withdrawing ? `Withdraw the ${withdrawing.kind === 'wfh' ? 'work-from-home' : withdrawing.kind === 'on_duty' ? 'on-duty' : 'regularisation'} request for ${shortIso(withdrawing.on)}?` : ''}
         consequence="Your manager won't see it any more. The day goes back to what was recorded until you send a new request."
         confirmLabel="Withdraw request"
         cancelLabel="Keep request"
@@ -2541,14 +2551,15 @@ function LiveAttendanceCalendar({ live }: { live: LiveMyAttendance }) {
   const narrow = useNarrow();
   const [openOn, setOpenOn] = useState<string | null>(null);
   const reqs = useLiveRequests(live);
-  const pendingFix = new Set((d?.requests ?? []).filter((r) => r.status === 'pending' && r.kind !== 'wfh').map((r) => r.on));
+  const pendingFix = new Set((d?.requests ?? []).filter((r) => r.status === 'pending' && r.kind !== 'wfh' && r.kind !== 'on_duty').map((r) => r.on));
   const wfhDays = new Set((d?.requests ?? []).filter((r) => r.status === 'approved' && r.kind === 'wfh').map((r) => r.on));
-  const days = d ? liveMonth(live.month, d.days, d.today, pendingFix, wfhDays) : [];
+  const days = d ? liveMonth(live.month, d.days, d.today, pendingFix, wfhDays, onDutyDays(d.requests)) : [];
   const label = monthLong(live.month);
   const toFix = d?.mode === 'punch' ? days.filter((x) => fixable(x.code)) : [];
-  const waiting = (d?.requests ?? []).filter((r) => r.status === 'pending');
+  // Waiting, and on duty sent back for changes (to change and send again, or withdraw).
+  const waiting = (d?.requests ?? []).filter((r) => r.status === 'pending' || (r.kind === 'on_duty' && r.status === 'sent_back'));
   const open = openOn ? days.find((x) => isoOf(x.date) === openOn) ?? null : null;
-  const openReq = openOn ? waiting.find((r) => r.on === openOn && r.kind !== 'wfh') : undefined;
+  const openReq = openOn ? waiting.find((r) => r.on === openOn && r.status === 'pending' && r.kind !== 'wfh' && r.kind !== 'on_duty') : undefined;
   const nowMin = d ? zoneTime(live.now ?? new Date(), d.zone).minute : undefined;
   // The next month has not started: the arrow stays clickable and says so.
   const goMonth = (n: number) => {
@@ -2597,11 +2608,12 @@ function LiveAttendanceCalendar({ live }: { live: LiveMyAttendance }) {
                     {waiting.map((r) => (
                       <li key={r.id}>
                         <span className="yx-tim-list__main">
-                          <strong>{shortIso(r.on)} · {r.kind === 'wfh' ? 'Work from home' : 'Regularisation'}</strong>
-                          <span className="yx-tim-muted">With your manager</span>
+                          <strong>{shortIso(r.on)} · {requestWord(r)}{r.place ? ` at ${r.place}` : ''}</strong>
+                          <span className="yx-tim-muted">{r.status === 'sent_back' ? `Sent back for changes${r.sentBack ? `: ${r.sentBack}` : ''}` : 'With your manager'}</span>
                         </span>
                         <span className="yx-tim-row">
-                          {r.kind !== 'wfh' && r.on.startsWith(live.month) && <Button size="sm" onClick={() => setOpenOn(r.on)}>View</Button>}
+                          {r.status === 'sent_back' && live.onOnDuty && <Button size="sm" variant="primary" onClick={() => reqs.open('on_duty', r.on, r)}>Change and send again</Button>}
+                          {r.kind !== 'wfh' && r.kind !== 'on_duty' && r.on.startsWith(live.month) && <Button size="sm" onClick={() => setOpenOn(r.on)}>View</Button>}
                           <Button size="sm" onClick={() => reqs.withdraw(r)}>Withdraw</Button>
                         </span>
                       </li>
@@ -2742,7 +2754,7 @@ function LiveAttendanceToday({ live }: { live: LiveMyAttendance }) {
   const ready = live.state === 'ready' && !!d;
   const reqs = useLiveRequests(live);
   const now = live.now ?? new Date();
-  const pendingFix = new Set((d?.requests ?? []).filter((r) => r.status === 'pending' && r.kind !== 'wfh').map((r) => r.on));
+  const pendingFix = new Set((d?.requests ?? []).filter((r) => r.status === 'pending' && r.kind !== 'wfh' && r.kind !== 'on_duty').map((r) => r.on));
   const days = d ? liveMonth(d.today.slice(0, 7), d.days, d.today, pendingFix) : [];
   const toFix = d?.mode === 'punch' ? days.filter((x) => fixable(x.code)) : [];
   // Monday to Sunday of this week (days outside this month show the shift only).
