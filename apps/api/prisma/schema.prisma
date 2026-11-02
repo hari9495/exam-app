@@ -2316,6 +2316,8 @@ model Location {
   geoLat         Decimal?  @map("geo_lat") @db.Decimal(9, 6)
   geoLng         Decimal?  @map("geo_lng") @db.Decimal(9, 6)
   geoRadiusM     Int?      @map("geo_radius_m")
+  /// TIM-31 Multi: every check-in point [{ name, lat, lng, radiusM }]; geo_* above mirror the first one.
+  geoPoints      Json      @default("[]") @map("geo_points")
   ipRanges       String[]  @default([]) @map("ip_ranges")
   archivedAt     DateTime? @map("archived_at") @db.Timestamptz(3)
   createdBy      String?   @map("created_by") @db.Uuid
@@ -11214,6 +11216,7 @@ model TimeDevice {
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   version        Int       @default(1)
 
+  @@index([organizationId, employeeId, kind, installHash], map: "time_devices_person_hash_idx")
   @@map("time_devices")
 }
 

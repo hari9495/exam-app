@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, ValidateNested, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, ValidateNested, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsISO8601, IsNumber, IsObject, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
 const DATE = { strict: true } as const;
@@ -855,6 +855,43 @@ export class EligibilityOverrideDto {
   @MinLength(10)
   @MaxLength(500)
   reason!: string;
+}
+
+/** TIM-31 Multi: one check-in point of a location. */
+export class GeoPointDto {
+  @trim()
+  @IsString()
+  @MinLength(1, { message: 'Enter a point name' })
+  @MaxLength(60)
+  name!: string;
+
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  @Min(-90)
+  @Max(90)
+  lat!: number;
+
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  @Min(-180)
+  @Max(180)
+  lng!: number;
+
+  @IsInt()
+  @Min(50, { message: 'Enter a radius between 50 and 1,000 m' })
+  @Max(1000, { message: 'Enter a radius between 50 and 1,000 m' })
+  radiusM!: number;
+}
+
+/** TIM-31 Multi: every check-in point of a location (up to 20), with the location's updatedAt as last seen. */
+export class GeoPointsDto {
+  @IsArray()
+  @ArrayMaxSize(20, { message: 'A location can have up to 20 points.' })
+  @ValidateNested({ each: true })
+  @Type(() => GeoPointDto)
+  points!: GeoPointDto[];
+
+  @IsOptional()
+  @IsISO8601()
+  updatedAt?: string;
 }
 
 /** TIM-31: a location's office networks for web check-in, one IP range per line (checked again on the server). */

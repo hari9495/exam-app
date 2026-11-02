@@ -10,7 +10,7 @@ import { MAX_DUTY_HOURS, MAX_LATE_HOURS, MAX_SKEW_MS, NOTICE_VERSION, dutyWindow
 import { MAPS, type MapsProvider } from './providers/maps';
 import { ScheduleBook } from './schedule';
 import { TIME_KEYS, asDate, dateOf, factsOn, mustSee, myEmployeeId, todayIn, visibleSql, type Facts } from './time-core';
-import { addDays, localDate, minutesInto } from './time-maths';
+import { addDays, geoPointsOf, localDate, minutesInto } from './time-maths';
 
 // Field force (TIM-32 map, TIM-33 visits and beat plan; design-map rule 15, DPDP Act 2023 s.4–6, s.8(7)).
 //   - Tracking needs `field.tracking` on for the person, their open consent (notice version kept) and duty (an accepted
@@ -402,8 +402,9 @@ export class FieldService {
   }
 
   private async fences(tx: Tx, org: string, facts: Facts[]) {
-    const rows = await tx.location.findMany({ where: { organizationId: org, id: { in: [...new Set(facts.map((f) => f.locationId))] }, archivedAt: null, geoLat: { not: null }, geoLng: { not: null } } });
-    return rows.map((l) => ({ id: l.id, name: l.name, lat: Number(l.geoLat), lng: Number(l.geoLng), radiusM: l.geoRadiusM }));
+    const rows = await tx.location.findMany({ where: { organizationId: org, id: { in: [...new Set(facts.map((f) => f.locationId))] }, archivedAt: null } });
+    // TIM-31 Multi: one circle per check-in point.
+    return rows.flatMap((l) => geoPointsOf(l).map((p, i, all) => ({ id: i ? `${l.id}:${i}` : l.id, name: all.length > 1 ? `${l.name} · ${p.name}` : l.name, lat: p.lat, lng: p.lng, radiusM: p.radiusM })));
   }
 
   /**

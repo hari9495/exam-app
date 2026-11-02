@@ -9,7 +9,7 @@ import { AssignPolicyDto, AttendanceRuleDto, CalendarDto, HolidayDto, LeaveTypeD
 import { LeaveService } from './leave.service';
 import { DEFAULT_RULE, LeaveRules, asDate, dateOf, parseLines, parseRules, maternityValues, policyFor, statutoryMinimum, yearChangeFor } from './time-core';
 import { leaveYearWith, monthsIn, shortYearEnd, statutoryProblem, yearChangeProblem } from './leave-rules';
-import { addDays } from './time-maths';
+import { addDays, geoPointsOf, type GeoPoint } from './time-maths';
 
 const fullDay = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 import { FEED_STATES } from './holiday-feed.provider';
@@ -114,6 +114,9 @@ export class TimeSetupService {
             state: l.state,
             timezone: l.timezone,
             geofence: l.geoLat !== null && l.geoRadiusM ? { lat: Number(l.geoLat), lng: Number(l.geoLng), radiusM: l.geoRadiusM } : null,
+            // TIM-31 Multi: every check-in point; `updatedAt` is sent back with a change (someone else's change first: 409).
+            points: geoPointsOf(l),
+            updatedAt: l.updatedAt,
             ipRanges: l.ipRanges,
             rule: now ? this.ruleView(now) : { ...DEFAULT_RULE, validFrom: null, starter: true },
             upcoming: mine.filter((r) => dateOf(r.validFrom) > today).map((r) => this.ruleView(r)),
@@ -381,6 +384,31 @@ export class TimeSetupService {
       await tx.location.update({ where: { id: locationId }, data: { ipRanges } });
       await audit(tx, c, 'org.location.networks_changed', 'location', locationId, { before: row.ipRanges, after: ipRanges });
       return { id: locationId, ipRanges };
+    });
+  }
+
+  /**
+   * TIM-31 Multi: a location's check-in points (a punch inside any of them is inside). The first point is also kept in
+   * geo_lat / geo_lng / geo_radius_m, which Settings › Locations shows. Names are unique per location.
+   */
+  setPoints(ctx: TenantContext, user: ScopeUser, locationId: string, input: GeoPoint[], seen?: string) {
+    const points = input.map((p) => ({ name: p.name.trim(), lat: p.lat, lng: p.lng, radiusM: p.radiusM }));
+    const names = points.map((p) => p.name.toLowerCase());
+    const twice = names.findIndex((n, i) => names.indexOf(n) !== i);
+    if (twice >= 0) throw new BadRequestException(`Two points are called "${points[twice].name}". Give each point its own name.`);
+    return this.run(ctx, user, true, async (tx, c) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`location:${c.organizationId}:${locationId}`}))`;
+      const row = await tx.location.findFirst({ where: { organizationId: c.organizationId, id: locationId, archivedAt: null } });
+      if (!row) throw new NotFoundException('No such location.');
+      if (seen && new Date(seen).getTime() !== row.updatedAt.getTime()) throw new ConflictException('Someone else changed this location. Reload to see their change, then make yours.');
+      const before = geoPointsOf(row);
+      const head = points[0];
+      const saved = await tx.location.update({
+        where: { id: locationId },
+        data: { geoPoints: points as unknown as Prisma.InputJsonValue, geoLat: head?.lat ?? null, geoLng: head?.lng ?? null, geoRadiusM: head?.radiusM ?? null },
+      });
+      await audit(tx, c, 'org.location.points_changed', 'location', locationId, { before, after: points });
+      return { id: locationId, points, updatedAt: saved.updatedAt };
     });
   }
 

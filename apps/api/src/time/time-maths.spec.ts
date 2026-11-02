@@ -1,4 +1,4 @@
-import { accrualsDue, applyFloors, breakMinutes, checkInVerdict, countLeaveDays, evaluateDay, instantAt, ipInRanges, isWeeklyOff, leaveYearOf, minutesInto, roundTo, workOnFor, yearEndSplit, type CountRules, type DayInput, type HolidayOn } from './time-maths';
+import { accrualsDue, applyFloors, breakMinutes, checkInVerdict, countLeaveDays, fencesOf, geoPointsOf, evaluateDay, instantAt, ipInRanges, isWeeklyOff, leaveYearOf, minutesInto, roundTo, workOnFor, yearEndSplit, type CountRules, type DayInput, type HolidayOn } from './time-maths';
 
 const SUN = [{ weekday: 7 }];
 const SAT_SUN = [{ weekday: 6 }, { weekday: 7 }];
@@ -149,6 +149,35 @@ describe('check-in verdicts (YX-AT-01, YX-AT-23)', () => {
     expect(checkInVerdict({ fences: [blr], pin: { lat: 12.9716, lng: 77.5946, accuracyM: 300 }, ip: null, mode: 'restricted' })).toMatchObject({ accepted: false, verdict: 'coarse' });
     expect(checkInVerdict({ fences: [blr], pin: { lat: 13.5, lng: 77.5, accuracyM: 10 }, ip: null, mode: 'field' })).toMatchObject({ accepted: true, verdict: 'field' });
     expect(checkInVerdict({ fences: [blr], pin: null, ip: '8.8.8.8', mode: 'restricted' })).toMatchObject({ accepted: false, verdict: 'no_location' });
+  });
+
+  describe('TIM-31 Multi: several points per location', () => {
+    // Main block 200 m and Annexe 80 m about 450 m apart (the design's Chennai office).
+    const loc = { id: 'maa', name: 'Chennai office', geoPoints: [{ name: 'Main block', lat: 12.9894, lng: 80.2481, radiusM: 200 }, { name: 'Annexe', lat: 12.9921, lng: 80.2512, radiusM: 80 }], geoLat: 12.9894, geoLng: 80.2481, geoRadiusM: 200, ipRanges: [] };
+    const fences = fencesOf(loc);
+    const at = (lat: number, lng: number) => checkInVerdict({ fences, pin: { lat, lng, accuracyM: 20 }, ip: null, mode: 'restricted' });
+
+    it('one fence per point, named after the location and the point', () => {
+      expect(fences.map((f) => [f.name, f.point, f.radiusM])).toEqual([['Chennai office', 'Main block', 200], ['Chennai office', 'Annexe', 80]]);
+    });
+    it('inside the second point only is inside (the first point is not the nearest edge)', () => {
+      expect(at(12.9921, 80.2512)).toMatchObject({ accepted: true, verdict: 'inside', locationId: 'maa', message: 'Inside Chennai office · Annexe' });
+    });
+    it('a small point near the pin does not hide a big point that contains it', () => {
+      // 70 m from a 60 m point, 150 m from a 200 m point: inside the big one.
+      const two = fencesOf({ ...loc, geoPoints: [{ name: 'Gate', lat: 0.00063, lng: 0, radiusM: 60 }, { name: 'Yard', lat: -0.00135, lng: 0, radiusM: 200 }] });
+      expect(checkInVerdict({ fences: two, pin: { lat: 0, lng: 0, accuracyM: 5 }, ip: null, mode: 'restricted' })).toMatchObject({ accepted: true, message: 'Inside Chennai office · Yard' });
+    });
+    it('the edge counts as inside; one metre more is outside every point', () => {
+      const edge = at(12.9894 + 200 / 111_195, 80.2481);
+      expect(edge.accepted).toBe(true);
+      expect(at(12.98, 80.2481)).toMatchObject({ accepted: false, verdict: 'outside' });
+    });
+    it('a location saved before the points keeps its one point (geo_lat / geo_lng / radius)', () => {
+      expect(geoPointsOf({ name: 'Old', geoPoints: [], geoLat: '12.9', geoLng: '77.5', geoRadiusM: 150 })).toEqual([{ name: 'Old', lat: 12.9, lng: 77.5, radiusM: 150 }]);
+      expect(geoPointsOf({ name: 'None', geoPoints: [], geoLat: null, geoLng: null, geoRadiusM: null })).toEqual([]);
+      expect(fencesOf({ id: 'x', name: 'Net only', geoPoints: [], geoLat: null, geoLng: null, geoRadiusM: null, ipRanges: ['10.0.0.0/8'] })).toEqual([{ locationId: 'x', name: 'Net only', lat: null, lng: null, radiusM: null, ipRanges: ['10.0.0.0/8'] }]);
+    });
   });
 
   it('IPv4-mapped IPv6 and bad input', () => {

@@ -247,10 +247,37 @@ export function ipInRanges(ip: string | null | undefined, ranges: readonly strin
 export interface Fence {
   locationId: string;
   name: string;
+  /** TIM-31 Multi: the point's own name when the location has more than one point. */
+  point?: string;
   lat: number | null;
   lng: number | null;
   radiusM: number | null;
   ipRanges: readonly string[];
+}
+
+export interface GeoPoint {
+  name: string;
+  lat: number;
+  lng: number;
+  radiusM: number;
+}
+
+/**
+ * TIM-31 Multi: a location's check-in points. `geo_points` when set; else the single point in geo_lat / geo_lng /
+ * geo_radius_m (locations saved before the points, or written straight to those columns).
+ */
+export function geoPointsOf(l: { name: string; geoPoints?: unknown; geoLat: unknown; geoLng: unknown; geoRadiusM: number | null }): GeoPoint[] {
+  const list = Array.isArray(l.geoPoints) ? (l.geoPoints as Partial<GeoPoint>[]) : [];
+  const points = list.filter((p) => typeof p?.lat === 'number' && typeof p.lng === 'number' && typeof p.radiusM === 'number' && p.radiusM > 0).map((p) => ({ name: String(p.name ?? l.name), lat: p.lat!, lng: p.lng!, radiusM: p.radiusM! }));
+  if (points.length) return points;
+  return l.geoLat !== null && l.geoLng !== null && l.geoRadiusM ? [{ name: l.name, lat: Number(l.geoLat), lng: Number(l.geoLng), radiusM: l.geoRadiusM }] : [];
+}
+
+/** One fence per point (a punch inside any of them is inside); a location with no point still carries its networks. */
+export function fencesOf(l: { id: string; name: string; geoPoints?: unknown; geoLat: unknown; geoLng: unknown; geoRadiusM: number | null; ipRanges: string[] }): Fence[] {
+  const points = geoPointsOf(l);
+  if (!points.length) return [{ locationId: l.id, name: l.name, lat: null, lng: null, radiusM: null, ipRanges: l.ipRanges }];
+  return points.map((p) => ({ locationId: l.id, name: l.name, ...(points.length > 1 ? { point: p.name } : {}), lat: p.lat, lng: p.lng, radiusM: p.radiusM, ipRanges: l.ipRanges }));
 }
 
 export interface CheckInVerdict {
@@ -270,10 +297,12 @@ export function checkInVerdict(i: { fences: readonly Fence[]; pin: { lat: number
   const maxAcc = i.maxAccuracyM ?? 150;
   const net = i.fences.find((f) => ipInRanges(i.ip, f.ipRanges));
   const geo = i.fences.filter((f) => f.lat !== null && f.lng !== null && f.radiusM);
-  const nearest = i.pin
-    ? geo.map((f) => ({ f, d: distanceM(i.pin!, { lat: f.lat!, lng: f.lng! }) })).sort((a, b) => a.d - b.d)[0]
-    : undefined;
-  if (nearest && nearest.d <= nearest.f.radiusM! && i.pin!.accuracyM <= maxAcc) return { accepted: true, verdict: 'inside', distanceM: nearest.d, locationId: nearest.f.locationId, message: `Inside ${nearest.f.name}` };
+  // TIM-31 Multi: inside any point counts (the closest one that contains the pin); otherwise the point whose edge is nearest.
+  const measured = i.pin ? geo.map((f) => ({ f, d: distanceM(i.pin!, { lat: f.lat!, lng: f.lng! }) })) : [];
+  const inside = measured.filter((x) => x.d <= x.f.radiusM!).sort((a, b) => a.d - b.d)[0];
+  const nearest = inside ?? [...measured].sort((a, b) => a.d - a.f.radiusM! - (b.d - b.f.radiusM!))[0];
+  const place = (f: Fence) => (f.point ? `${f.name} · ${f.point}` : f.name);
+  if (inside && i.pin!.accuracyM <= maxAcc) return { accepted: true, verdict: 'inside', distanceM: inside.d, locationId: inside.f.locationId, message: `Inside ${place(inside.f)}` };
   if (net) return { accepted: true, verdict: 'network', distanceM: nearest?.d ?? null, locationId: net.locationId, message: `On the ${net.name} network` };
   if (!geo.length && !i.fences.some((f) => f.ipRanges.length)) return { accepted: true, verdict: 'no_fence', distanceM: null, locationId: null, message: 'Checked in' };
   if (i.mode === 'field') return { accepted: true, verdict: 'field', distanceM: nearest?.d ?? null, locationId: nearest?.f.locationId ?? null, message: 'Checked in, location recorded' };

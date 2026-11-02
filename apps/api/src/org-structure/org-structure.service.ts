@@ -17,6 +17,7 @@ import {
   PayRangeAmountsDto,
   PayRangeDto,
 } from './dto';
+import { geoPointsOf } from '../time/time-maths';
 import { addDays, addressProblem, asDate, codeFromName, gstinMatchesPan, isCidr, isCurrency, isoDate, isTimeZone, regionProblem, todayIst } from './org-validation';
 
 // P01 organisation structure (§4.1–4.3): legal entities, locations, structure masters and grade pay ranges.
@@ -104,7 +105,7 @@ export function legalEntityView(r: EntityRow) {
 
 type LocationRow = Prisma.LocationGetPayload<object>;
 export function locationView(r: LocationRow) {
-  const { organizationId: _o, geoLat, geoLng, geoRadiusM, createdBy: _c, ...rest } = r;
+  const { organizationId: _o, geoLat, geoLng, geoRadiusM, geoPoints: _p, createdBy: _c, ...rest } = r;
   return { ...rest, geofence: geoLat !== null && geoLng !== null && geoRadiusM !== null ? { lat: Number(geoLat), lng: Number(geoLng), radiusM: geoRadiusM } : null };
 }
 
@@ -390,7 +391,8 @@ export class OrgStructureService {
       // YX-ORG-02: one active legal entity of this company.
       await this.activeEntity(tx, c, dto.legalEntityId);
       const code = dto.code ?? codeFromName(data.name, await this.takenCodes(tx, c, 'location', data.name));
-      const row = await tx.location.create({ data: { ...data, organizationId: c.organizationId, legalEntityId: dto.legalEntityId, code, createdBy: c.userId } });
+      const geoPoints = (dto.geofence ? [{ name: data.name, ...dto.geofence }] : []) as unknown as Prisma.InputJsonValue;
+      const row = await tx.location.create({ data: { ...data, geoPoints, organizationId: c.organizationId, legalEntityId: dto.legalEntityId, code, createdBy: c.userId } });
       await audit(tx, c, 'org.location.created', 'location', row.id, { name: row.name, code: row.code, legalEntityId: row.legalEntityId, state: row.state });
       return locationView(row);
     });
@@ -402,7 +404,9 @@ export class OrgStructureService {
       const row = await this.locationOr404(tx, c, id);
       // People's employments hang off the site's entity (YX-ORG-08): a site never changes entity.
       if (dto.legalEntityId !== row.legalEntityId) throw new BadRequestException('A location stays with its legal entity. Add a new location under the other entity instead.');
-      const next = { ...data, code: dto.code ?? row.code };
+      // TIM-31 Multi: this form edits the first check-in point; the other points (Time › Locations) stay.
+      const points = dto.geofence === undefined ? undefined : dto.geofence === null ? [] : [{ name: geoPointsOf(row)[0]?.name ?? data.name, ...dto.geofence }, ...geoPointsOf(row).slice(1)];
+      const next = { ...data, code: dto.code ?? row.code, ...(points ? { geoPoints: points as unknown as Prisma.InputJsonValue } : {}) };
       const updated = await tx.location.update({ where: { id }, data: next });
       const fields = changed(locationView(row) as unknown as Record<string, unknown>, locationView(updated) as unknown as Record<string, unknown>).filter((f) => f !== 'updatedAt');
       if (fields.length) await audit(tx, c, 'org.location.updated', 'location', id, { fields });
