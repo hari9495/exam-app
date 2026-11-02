@@ -13,13 +13,15 @@ export { TODAY };
 export type PreItemStatus = 'done' | 'todo' | 'in-review' | 'sent-back' | 'blocked';
 export interface PreItem {
   id: string;
-  section: 'Welcome' | 'Forms' | 'Documents' | 'E-sign' | 'Bank and tax' | 'Statutory (HR completes)';
+  section: 'Welcome' | 'Forms' | 'Documents' | 'E-sign' | 'Bank and tax' | 'Statutory (HR completes)' | 'After you join';
   title: string;
   hint?: string;
   status: PreItemStatus;
   due?: Date;
   note?: string;
   hrOwned?: boolean;
+  /** Done in the employee app after joining: shown with its due date, no button here. */
+  later?: boolean;
 }
 
 export const JOINER = {
@@ -60,7 +62,7 @@ export interface Nominee {
   id: string;
   name: string;
   relation: string;
-  dob: Date;
+  dob?: Date | null;
   pf: number;
   gratuity: number;
   insurance: number;
@@ -229,4 +231,25 @@ export const VERIFY_DOCS = [
   { code: 'KF-VRF-8Q2M-41TZ', company: 'Kaveri Foods Pvt Ltd', type: 'Experience certificate', name: 'Rohan Deshpande', issuedOn: d(2025, 6, 30), status: 'issued' as const },
   { code: 'KF-VRF-3N7P-90KD', company: 'Kaveri Foods Pvt Ltd', type: 'Salary certificate', name: 'Anjali Nair', issuedOn: d(2026, 4, 10), status: 'superseded' as const, supersededOn: d(2026, 5, 2) },
   { code: 'KF-VRF-7H1C-22WX', company: 'Kaveri Foods Pvt Ltd', type: 'Offer letter', name: 'Gopal Reddy', issuedOn: d(2026, 2, 3), status: 'withdrawn' as const },
+];
+
+/* ------------------------------------------------------------------ T9-01 states the first design lacked (live wiring) */
+
+/** The background-check notice as the live portal shows it: plain items, one consent (DPDP Act 2023). */
+export const BGV_NOTICE_ITEMS = [
+  'What we check: your identity, address, education and past jobs, and only what the company asks for your role.',
+  'Why: to confirm what you told us before you join.',
+  'Who sees it: HR people allowed to see background checks, and the checking partner if the company uses one.',
+  'How long: until your confirmation plus one year, then deleted unless there is a dispute.',
+  'You can withdraw this consent at any time in this portal. Checks then stop. HR decides what that means for your offer; nothing happens automatically.',
+  'Questions or complaints: write to the company’s grievance officer; you may also complain to the Data Protection Board of India.',
+];
+
+export const PERSONAL = { dateOfBirth: '1998-02-11', gender: 'female', addressLine1: '14, 3rd Cross, Gandhi Nagar', city: 'Hosur', stateCode: 'IN-TN', postalCode: '635109' };
+export const EMERGENCY = { name: 'Sundaram Rajagopal', relation: 'Father', phone: '+91 94430 11122' };
+
+/** Letters in the Offer tab: one to accept with an emailed code, one accepted. */
+export const PRE_LETTERS = [
+  { id: 'l-apt', title: 'Appointment letter: Meenakshi Sundaram', letterType: 'appointment', personId: 'p1', referenceNo: 'KF/HR/APT/2026/0187', verifyCode: 'KF7QX2M9PL', status: 'issued' as const, renderError: null, issuedAt: '2026-09-24T09:00:00Z', personSigns: true, acceptedAt: null, signature: { status: 'open' as const, signedAt: null }, supersededById: null },
+  { id: 'l-offer', title: 'Offer letter: Meenakshi Sundaram', letterType: 'offer', personId: 'p1', referenceNo: 'KF/HR/OFR/2026/0112', verifyCode: 'KF3HT8W2RN', status: 'issued' as const, renderError: null, issuedAt: '2026-09-10T09:00:00Z', personSigns: true, acceptedAt: '2026-09-11T13:48:00Z', signature: { status: 'signed' as const, signedAt: '2026-09-11T13:48:00Z' }, supersededById: null },
 ];
