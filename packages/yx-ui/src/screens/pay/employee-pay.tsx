@@ -19,6 +19,7 @@ import type { PayDocument } from './live/types';
 import { FindPerson, type PersonHit } from './equity';
 import { FieldRow, FormField, useTooEarly, type FormErrorItem } from '../../components/field';
 import { Segment } from '../../components/segment';
+import { Slider } from '../../components/slider';
 import { dateText } from '../time/live/kit';
 import { CurrencyField, NumberField, TextArea, TextField } from '../../components/inputs';
 import { Checkbox, RadioGroup } from '../../components/choice';
@@ -528,20 +529,6 @@ function SamplePayslipViewer({ layout = 'desktop', variant = 'default', state = 
 
 /* ================================================================== PAY-41 Compare tax regimes */
 
-function WhatIf({ label, value, max, step, onChange, hint, disabled }: { label: string; value: number; max: number; step: number; onChange: (n: number) => void; hint?: string; disabled?: boolean }) {
-  const id = `wi-${label.replace(/\W+/g, '-').toLowerCase()}`;
-  return (
-    <div className="yx-pay-slider">
-      <div className="yx-pay-slider__head">
-        <label htmlFor={id}>{label}</label>
-        <strong>{formatINR(value)}</strong>
-      </div>
-      <input id={id} type="range" min={0} max={max} step={step} value={value} disabled={disabled} onChange={(e) => onChange(Number(e.target.value))} aria-valuetext={formatINR(value)} />
-      {hint && <p className="yx-pay-note">{hint}</p>}
-    </div>
-  );
-}
-
 export interface RegimeCompareProps {
   gross?: number;
   base?: Deductions;
@@ -635,7 +622,8 @@ export function RegimeComparePanel({
       {!resident && <InlineAlert tone="info">As a non-resident this year, the rebate doesn't apply in either regime.</InlineAlert>}
       <div className="yx-pay-grid">
         <div data-span="6" className="yx-pay-stack">
-          <WhatIf
+          <Slider
+            valueText={formatINR}
             label="Extra 80C-equivalent investment"
             value={invest}
             max={room80c}
@@ -644,7 +632,8 @@ export function RegimeComparePanel({
             onChange={(n) => setX({ ...x, invest: n })}
             hint={room80c ? `You can add up to ${formatINR(room80c)} more.` : `You have used the full ${formatINR(DEDUCTION_CAPS.sec80c)} limit; extra investment won't lower tax.`}
           />
-          <WhatIf
+          <Slider
+            valueText={formatINR}
             label="Monthly rent"
             value={x.rent}
             max={80_000}
@@ -652,8 +641,9 @@ export function RegimeComparePanel({
             onChange={(n) => setX({ ...x, rent: n })}
             hint={`HRA exemption for the year: ${formatINR(hra)} (old regime only). It is the lowest of three limits; here that is ${hraLimit}.`}
           />
-          <WhatIf label="Home-loan interest for the year" value={x.homeLoan} max={DEDUCTION_CAPS.homeLoanInterest} step={10_000} onChange={(n) => setX({ ...x, homeLoan: n })} />
-          <WhatIf
+          <Slider valueText={formatINR} label="Home-loan interest for the year" value={x.homeLoan} max={DEDUCTION_CAPS.homeLoanInterest} step={10_000} onChange={(n) => setX({ ...x, homeLoan: n })} />
+          <Slider
+            valueText={formatINR}
             label="Extra NPS (own)"
             value={nps}
             max={roomNps}

@@ -18,7 +18,6 @@ const ALLOWED: Record<string, string> = {
   'pay/pay-kit.tsx: <button type="button" className="yx-pay-why__row"': 'a clickable explanation row (the whole line opens its working), not a button look',
   'pay/comp-setup.tsx: <button type="button" className="yx-pay-why__row"': 'a clickable explanation row (picks the line to explain), not a button look',
   'pay/comp-setup-live.tsx: <button type="button" className="yx-pay-why__row"': 'a clickable explanation row (picks the line to explain), not a button look',
-  'pay/employee-pay.tsx: <input id={id} type="range"': 'the what-if slider: the kit has no Slider yet (question raised to add one)',
   'ops/contract.tsx: <button type="button" className="yx-ops-cellbtn"': 'the vendor compliance status cell: the status badge in the grid opens its verification',
   'auth/sign-in.tsx: <button type="button" onClick={props.onRetryOptions}>': 'inside the kit Link (asChild): a link-styled "Try again" that runs an action instead of going to a page',
 };

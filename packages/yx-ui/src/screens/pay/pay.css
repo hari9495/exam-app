@@ -262,10 +262,6 @@
 .yx-pay-disclosure p, .yx-pay-disclosure ul { margin: 0; }
 
 /* Slider (what-if) */
-.yx-pay-slider { display: flex; flex-direction: column; gap: var(--yx-space-1); }
-.yx-pay-slider__head { display: flex; justify-content: space-between; font-size: var(--yx-text-sm); }
-.yx-pay-slider input[type="range"] { width: 100%; min-height: var(--yx-target-min); accent-color: var(--yx-color-action-primary); }
-.yx-pay-slider input[type="range"]:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: 2px; }
 
 /* Phone helpers */
 .yx-pay-phone-actions { display: flex; flex-direction: column; gap: var(--yx-space-2); }

@@ -19,6 +19,7 @@ export * from './components/filters';
 export * from './components/table';
 export * from './components/plain-table';
 export * from './components/filter-toggle';
+export * from './components/slider';
 export * from './components/timesheet';
 export * from './components/shell';
 export * from './components/overlay';

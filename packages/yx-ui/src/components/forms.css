@@ -231,3 +231,12 @@
 .yx-filter-toggle:hover:not([aria-pressed='true']) { border-color: var(--yx-color-text-muted); background: var(--yx-color-bg-subtle); }
 .yx-filter-toggle[aria-pressed='true'] { border-color: var(--yx-color-action-primary); background: var(--yx-color-bg-selected); color: var(--yx-color-link); font-weight: var(--yx-weight-medium); }
 .yx-filter-toggle:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: var(--yx-space-half); }
+
+/* Slider: a what-if number in a range; the label and value above, the hint below. */
+.yx-slider { display: flex; flex-direction: column; gap: var(--yx-space-1); }
+.yx-slider__head { display: flex; justify-content: space-between; gap: var(--yx-space-2); font-size: var(--yx-text-sm); }
+.yx-slider__head strong { font-variant-numeric: tabular-nums; }
+.yx-slider input[type="range"] { width: 100%; min-height: var(--yx-target-min); margin: 0; cursor: pointer; accent-color: var(--yx-color-action-primary); }
+.yx-slider input[type="range"]:disabled { cursor: not-allowed; }
+.yx-slider input[type="range"]:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: 2px; }
+.yx-slider__hint { margin: 0; color: var(--yx-color-text-secondary); font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); }
