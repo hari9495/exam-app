@@ -568,6 +568,7 @@ describe('Company rules and access settings (P01 §4.6; YX-ORG-12/18)', () => {
     expect(screen.getByRole('heading', { name: 'Payroll rules' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Statutory bonus' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Loans and advances' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Payroll reports access' })).toBeInTheDocument();
     expect(screen.getAllByText("Rate on the month's last day").length).toBeGreaterThan(0);
     expect(screen.getByText('Highest rate in the month')).toBeInTheDocument(); // the Tamil Nadu override
     expect(screen.getAllByText('7.5% a year').length).toBeGreaterThan(0);

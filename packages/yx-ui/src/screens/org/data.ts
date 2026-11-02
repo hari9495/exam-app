@@ -168,6 +168,7 @@ export const SETTING_REGISTRY: Record<string, SettingDef> = {
   'payroll.loan.max_gross_months': { label: 'A loan or advance may be at most (months of gross pay)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['none', '1', '2', '3', '4', '6', '12'], default: '2' },
   'payroll.loan.after_probation': { label: 'Who may ask for a loan or advance', scopes: ['tenant', 'legal_entity'], dated: false, values: ['confirmed', 'everyone'], default: 'confirmed' },
   'payroll.loan.interest_rate.advance': { label: 'Interest on a salary advance (% a year)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '4', '5', '6', '7', '7.5', '8', '8.5', '9', '10', '12'], default: '0' },
+  'payroll.reports_access.days': { label: 'Payroll reports access given on request lasts (days)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['7', '30', '60', '90', '180', '365'], default: '90' },
   'payroll.loan.interest_rate.loan': { label: 'Interest on a personal loan (% a year)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '4', '5', '6', '7', '7.5', '8', '8.5', '9', '10', '12'], default: '0' },
 };
 

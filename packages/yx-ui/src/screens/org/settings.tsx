@@ -92,6 +92,7 @@ const VALUE_LABEL: Record<string, Record<string, string>> = {
   'payroll.bonus.allocable_percent': { '60': '60%', '67': '67% (some companies, section 2(4))' },
   'payroll.bonus.carry_years': { '4': '4 years' },
   'payroll.bonus.due_months': Object.fromEntries(Array.from({ length: 8 }, (_, i) => [String(i + 1), `${i + 1} ${i ? 'months' : 'month'}`])),
+  'payroll.reports_access.days': { '7': '7 days', '30': '30 days', '60': '60 days', '90': '90 days', '180': '180 days', '365': '365 days' },
   'payroll.loan.max_gross_months': { none: 'No limit', '1': '1 month', '2': '2 months', '3': '3 months', '4': '4 months', '6': '6 months', '12': '12 months' },
   'payroll.loan.after_probation': { confirmed: 'Confirmed employees only (after probation)', everyone: 'Everyone, during probation too' },
   'payroll.loan.interest_rate.advance': { '0': 'Interest-free', ...rates() },
@@ -152,13 +153,18 @@ export const SETTING_SECTIONS: Record<SettingsArea, SettingsSection[]> = {
       description: 'The most a person may borrow, who may ask, and the yearly interest for each type. Employees never type the interest: a new request uses the rate in force that day, and loans already given keep theirs.',
       keys: ['payroll.loan.max_gross_months', 'payroll.loan.after_probation', 'payroll.loan.interest_rate.advance', 'payroll.loan.interest_rate.loan'],
     },
+    {
+      title: 'Payroll reports access',
+      description: 'When someone asks for payroll reports and it is approved, they get read-only access to the reports of their legal entity for this many days. It ends by itself; Roles & access shows it with its last day.',
+      keys: ['payroll.reports_access.days'],
+    },
   ],
 };
 
 const AREA: Record<SettingsArea, { group: string; title: string; description: string; what: string }> = {
   organisation: { group: 'Organisation', title: 'Company rules', description: 'Rules that apply to everyone unless an entity, employment type or grade has its own.', what: 'the company rules' },
   access: { group: 'People & Access', title: 'Access and privacy', description: 'Who sees what beyond the roles you grant, and what employees see about their own data.', what: 'the access settings' },
-  payroll: { group: 'Payroll & Statutory', title: 'Payroll rules', description: 'Statutory bonus and loan rules for the whole company, or for one legal entity where it differs.', what: 'the payroll rules' },
+  payroll: { group: 'Payroll & Statutory', title: 'Payroll rules', description: 'Statutory bonus, loan and reports-access rules for the whole company, or for one legal entity where it differs.', what: 'the payroll rules' },
 };
 
 /** The company-wide value in force on `today`, and its row (none: the starter value). */
