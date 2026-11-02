@@ -10371,5 +10371,269 @@
     ],
     "expected": "Step 1 (negative): \"Every account on file is in the split. Add an account abroad or a reimbursement account first.\" Step 2 (negative): no access (not found). Step 3 (negative): Arjun cannot approve his own change; HR decides.",
     "note": "Negative."
+  },
+  {
+    "id": "MT-PRF-01",
+    "area": "Performance · PRF-01 … 06 live (3 Nov 2026)",
+    "screen": "Performance home · employee",
+    "url": "http://localhost:3000/yx/performance",
+    "account": "arjun@demo-org.test (Employee - Arjun, reports to Divya)",
+    "steps": [
+      "1. Open http://localhost:3000/yx/performance.",
+      "2. Press Check in on an approved goal, change a key result value, choose At risk and press Save check-in."
+    ],
+    "expected": "Step 1: \"My performance\" with Needs your action, My review stages (if a cycle includes Arjun), My goals, Next 1:1 and Feedback received. Step 2: toast \"Check-in saved\"; the goal shows At risk and today as the last check-in.",
+    "stories": [
+      "Performance · PRF-01 · Employee"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-PRF-02",
+    "area": "Performance · PRF-01 … 06 live (3 Nov 2026)",
+    "screen": "Performance home · manager and HR",
+    "url": "http://localhost:3000/yx/performance",
+    "account": "panel@demo-org.test (Manager - Divya), then hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "1. As Divya open /yx/performance.",
+      "2. Press Goals on Arjun's row of My team.",
+      "3. As Lakshmi open /yx/performance.",
+      "4. As Lakshmi press Start a review cycle."
+    ],
+    "expected": "Step 1: \"Performance · my team\" with the team table (goal progress, review stage, last 1:1, last feedback) and Team goals. Step 2: \"Arjun …’s goals\". Step 3: HR home with Review cycles (done of eligible, overdue), stat cards and Last released ratings. Step 4: the New review cycle wizard.",
+    "stories": [
+      "Performance · PRF-01 · Manager",
+      "Performance · PRF-01 · HR admin"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-PRF-03",
+    "area": "Performance · PRF-01 … 06 live (3 Nov 2026)",
+    "screen": "Performance home · negative",
+    "url": "http://localhost:3000/yx/performance",
+    "account": "arjun@demo-org.test (Employee - Arjun); then the lead stops the API",
+    "steps": [
+      "1. As Arjun, check the page has no team table, no Review cycles and no Start a review cycle.",
+      "2. Stop the API and reload the page."
+    ],
+    "expected": "Step 1: none of the manager or HR parts show for Arjun. Step 2: \"Your performance home didn’t load\" with Retry; nothing else breaks.",
+    "stories": [
+      "Performance · PRF-01 · Error"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-PRF-04",
+    "area": "Performance · PRF-01 … 06 live (3 Nov 2026)",
+    "screen": "My goals · add, send, approve",
+    "url": "http://localhost:3000/yx/performance/goals",
+    "account": "arjun@demo-org.test (Employee - Arjun), then panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "1. As Arjun open /yx/performance/goals and press Add goal. Fill Goal \"Close three new accounts\", Weight 100, key result \"Accounts\" from 0 to 3, Aligned to a company goal, and Save goal.",
+      "2. Press Send to my manager, then Send.",
+      "3. As Divya open the Goals action on her home (or /yx/performance/goals?employee=<Arjun>) and press Approve goals.",
+      "4. As Arjun open the goal and Check in."
+    ],
+    "expected": "Step 1: toast \"Goal added\"; the goal shows as Draft. Step 2: toast \"Goal sent\"; \"With your manager\". Step 3: toast \"Goals approved\"; status Approved. Step 4: the check-in shows in the goal panel.",
+    "stories": [
+      "Performance · PRF-02 · Employee · add goal form",
+      "Performance · PRF-02 · Manager · approve goals (weights 90%)"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-PRF-05",
+    "area": "Performance · PRF-01 … 06 live (3 Nov 2026)",
+    "screen": "My goals · negative",
+    "url": "http://localhost:3000/yx/performance/goals",
+    "account": "arjun@demo-org.test (Employee - Arjun), then panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "1. As Arjun press Add goal and press Save goal with nothing filled in.",
+      "2. Add two goals of weight 40 each and send them.",
+      "3. As Divya press Approve goals.",
+      "4. Press Send back, then Send back again with the reason empty, then with \"Add a repeat-order target\"."
+    ],
+    "expected": "Step 1: field errors, focus on Goal; nothing saved. Step 3: \"Weights add up to 80%. Add 20% to reach 100%.\" and nothing is approved. Step 4: \"Enter at least 3 characters.\" first; then toast \"Goals sent back\" and Arjun's goals are drafts again with Divya's note.",
+    "stories": [
+      "Performance · PRF-02 · Manager · send back with what to change"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-PRF-06",
+    "area": "Performance · PRF-01 … 06 live (3 Nov 2026)",
+    "screen": "Company goal map",
+    "url": "http://localhost:3000/yx/performance/goal-map",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "1. Open /yx/performance/goal-map.",
+      "2. Choose a department in \"All departments\".",
+      "3. Press Export.",
+      "4. Press Suggest parent on a goal in \"Not aligned yet\", choose a company goal, Send suggestion.",
+      "5. Press Add company goal, choose \"A team\", fill it and Save goal."
+    ],
+    "expected": "Step 1: stat cards, the map tree, Not aligned yet and At risk or off track. Step 2: that department's goals with the goals above them. Step 3: a CSV downloads; toast \"Goal map exported\". Step 4: toast \"Suggestion sent\"; the owner gets a notification. Step 5: toast \"Team goal added\".",
+    "stories": [
+      "Performance · PRF-03 · HR · goal map"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-PRF-07",
+    "area": "Performance · PRF-01 … 06 live (3 Nov 2026)",
+    "screen": "Company goal map · negative",
+    "url": "http://localhost:3000/yx/performance/goal-map",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi); then arjun@demo-org.test (Employee - Arjun)",
+    "steps": [
+      "1. As Lakshmi press Suggest parent and Send suggestion without choosing.",
+      "2. As Arjun open /yx/performance/goal-map."
+    ],
+    "expected": "Step 1: \"Choose one.\" and nothing is sent. Step 2: no Goal map in the menu; the page shows the error with Retry (the API answers 403 without perf.goal.view).",
+    "stories": [
+      "Performance · PRF-03 · Leadership · read-only map"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-PRF-08",
+    "area": "Performance · PRF-01 … 06 live (3 Nov 2026)",
+    "screen": "Cycle set-up",
+    "url": "http://localhost:3000/yx/performance/cycles/new",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "1. Open /yx/performance/cycles/new. Fill Basics (name, Half-yearly, period) and Continue.",
+      "2. On Population press Count who is included.",
+      "3. Choose the template, then on Stages tick 360° feedback, set the dates, Continue.",
+      "4. Press Launch cycle."
+    ],
+    "expected": "Step 2: the draft is saved and \"Who this includes today\" shows reviewed, left out, protected leave and leavers. Step 4: toast \"Cycle launched\"; the control room opens.",
+    "stories": [
+      "Performance · PRF-04 · Set-up · basics",
+      "Performance · PRF-04 · Set-up · count who is included"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-PRF-09",
+    "area": "Performance · PRF-01 … 06 live (3 Nov 2026)",
+    "screen": "Cycle set-up · negative",
+    "url": "http://localhost:3000/yx/performance/cycles/new",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi); then panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "1. Press Continue on Basics with no name.",
+      "2. Include a department where someone has no manager and press Launch cycle.",
+      "3. As Divya open /yx/performance/cycles/new."
+    ],
+    "expected": "Step 1: \"Name the cycle.\" and the step does not move on. Step 2: \"Fix this before you launch: … has no manager.\" and nothing launches. Step 3: the page cannot load the templates (the API answers 403 without perf.cycle.manage).",
+    "stories": [
+      "Performance · PRF-04 · Set-up · basics"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-PRF-10",
+    "area": "Performance · PRF-01 … 06 live (3 Nov 2026)",
+    "screen": "Control room",
+    "url": "http://localhost:3000/yx/performance/cycles/<running cycle>",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "1. Open a running cycle from the HR home.",
+      "2. Press a stage in Progress by stage.",
+      "3. Press Extend a deadline, choose Self review and a later day, Move deadline.",
+      "4. Press Send reminders, then Send reminders.",
+      "5. Open Who is reviewed and press Leave out on someone; give a reason."
+    ],
+    "expected": "Step 2: a drawer with the names, who has it and the due day. Step 3: toast \"Deadline moved\". Step 4: toast \"Reminders sent\". Step 5: toast \"<name> left out\"; the row shows Left out.",
+    "stories": [
+      "Performance · PRF-04 · Control room · clickable funnel",
+      "Performance · PRF-04 · Control room · names behind a stage"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-PRF-11",
+    "area": "Performance · PRF-01 … 06 live (3 Nov 2026)",
+    "screen": "Control room · negative",
+    "url": "http://localhost:3000/yx/performance/cycles/<running cycle>",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "1. Press Release ratings when no review is ready.",
+      "2. Press Extend a deadline and choose a day before the current one.",
+      "3. Press Remind all overdue owners when nothing is overdue.",
+      "4. Press Leave out and confirm with no reason."
+    ],
+    "expected": "Step 1: a message \"No review is ready to release yet…\"; nothing is released. Step 2: \"Choose a day after …; a deadline only moves later.\" Step 3: \"Nothing is overdue, so there is no one to remind.\" Step 4: \"Enter at least 3 characters.\"",
+    "stories": [
+      "Performance · PRF-04 · Control room · who is reviewed (include, leave out)"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-PRF-12",
+    "area": "Performance · PRF-01 … 06 live (3 Nov 2026)",
+    "screen": "Review workspace",
+    "url": "http://localhost:3000/yx/performance/reviews/<review>",
+    "account": "arjun@demo-org.test (Employee - Arjun), then panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "1. As Arjun open the self review from the home action, rate each section, write the summary, Save draft, then Complete self review.",
+      "2. As Divya open the manager review from her home; Save draft; read Arjun's self rating under each question; Complete manager review."
+    ],
+    "expected": "Step 1: toast \"Draft saved\", then \"Self review completed\"; the page locks and the stages move to Manager review. Step 2: the self ratings appear after Divya's draft; the Score card shows the score with its band; toast \"Manager review completed\".",
+    "stories": [
+      "Performance · PRF-05 · Employee · self review",
+      "Performance · PRF-05 · Manager · manager review with advisory peer panel"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-PRF-13",
+    "area": "Performance · PRF-01 … 06 live (3 Nov 2026)",
+    "screen": "Review workspace · negative",
+    "url": "http://localhost:3000/yx/performance/reviews/<review>",
+    "account": "arjun@demo-org.test (Employee - Arjun); kavya@demo-org.test (Manager - Kavya)",
+    "steps": [
+      "1. As Arjun press Complete self review with a required question unanswered.",
+      "2. As Kavya (not Arjun's manager or above) open Arjun's review link.",
+      "3. As Arjun, before release, look for a score."
+    ],
+    "expected": "Step 1: the dialog shows \"Answer … before you submit.\" and stays open. Step 2: \"This review didn’t load\" (the API answers 404). Step 3: no score or band is shown to Arjun before release.",
+    "stories": [
+      "Performance · PRF-05 · Submitted (locked)"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-PRF-14",
+    "area": "Performance · PRF-01 … 06 live (3 Nov 2026)",
+    "screen": "Review acknowledgement",
+    "url": "http://localhost:3000/yx/performance/reviews/<released review>",
+    "account": "arjun@demo-org.test (Employee - Arjun)",
+    "steps": [
+      "1. After HR releases, open the review from the home action \"Read and acknowledge your review\".",
+      "2. Tick \"I disagree with this rating\", write a reason of 20+ characters and press Acknowledge and send disagreement."
+    ],
+    "expected": "Step 1: the released rating with section scores and Divya's summary. Step 2: toast \"Review acknowledged\"; \"Acknowledged on <date>\" with the disagreement \"Waiting for HR\"; HR sees it under Disagreements in the control room.",
+    "stories": [
+      "Performance · PRF-06 · Acknowledge",
+      "Performance · PRF-06 · With disagreement flag"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-PRF-15",
+    "area": "Performance · PRF-01 … 06 live (3 Nov 2026)",
+    "screen": "Review acknowledgement · negative",
+    "url": "http://localhost:3000/yx/performance/reviews/<released review>",
+    "account": "arjun@demo-org.test (Employee - Arjun)",
+    "steps": [
+      "1. Tick \"I disagree with this rating\", type \"Too short\" and press Acknowledge and send disagreement.",
+      "2. After acknowledging, reload and look for the Acknowledge button."
+    ],
+    "expected": "Step 1: \"Say which part you disagree with and why (at least 20 characters).\" and nothing is sent. Step 2: no Acknowledge button (it is done once); the rating is unchanged.",
+    "stories": [
+      "Performance · PRF-06 · Disagreement too short (at least 20 characters)"
+    ],
+    "note": "Negative."
   }
 ]
