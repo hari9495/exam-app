@@ -1884,6 +1884,13 @@ export interface LiveProofQueue {
   onResidencyDecide?: (row: ResidencyRow, d: { decision: 'approve' | 'reject'; comment?: string }) => Promise<unknown>;
   /** Stories only: open a row, and show a refusal the server sent. */
   story?: { openId?: string; refused?: string };
+  /** A deep link: the row to open ("l-<line id>", "f-<Form 12B id>", "r-<residency id>"). */
+  openId?: string;
+  /**
+   * A deep link to the viewer's own item, which the queue never lists (PAY-23 OwnProof, ResidencyOwn): the drawer opens
+   * with the designed refusal. The server refuses deciding one's own either way.
+   */
+  own?: { line?: ProofQueueLine; residency?: ResidencyRow };
 }
 
 type QueueRow = { kind: 'line'; id: string; line: ProofQueueLine } | { kind: 'form12b'; id: string; row: Form12bRow } | { kind: 'residency'; id: string; res: ResidencyRow };
@@ -1907,7 +1914,8 @@ const LIVE_PROOF_STATE: Record<string, { label: string; tone: BadgeTone }> = {
 };
 
 function LiveProofQueue({ live }: { live: LiveProofQueue }) {
-  const [openId, setOpenId] = useState<string | null>(live.story?.openId ?? null);
+  const [openId, setOpenId] = useState<string | null>(live.story?.openId ?? live.openId ?? null);
+  const [ownOpen, setOwnOpen] = useState(true);
   const [q, setQ] = useState('');
   const rows: QueueRow[] = [
     ...(live.lines ?? []).map((l) => ({ kind: 'line' as const, id: `l-${l.id}`, line: l })),
@@ -1984,6 +1992,10 @@ function LiveProofQueue({ live }: { live: LiveProofQueue }) {
       {open?.kind === 'residency' && live.onResidencyDecide && (
         <ResidencyDecisionDrawer row={open.res} refused={live.story?.refused} onFile={live.onResidencyFile} onClose={() => setOpenId(null)} onSave={(d) => live.onResidencyDecide!(open.res, d)} />
       )}
+      {ownOpen && !open && live.own?.line && <ProofDecisionDrawer line={live.own.line} own onFile={live.onFile} onClose={() => setOwnOpen(false)} onSave={(d) => live.onDecide(live.own!.line!, d)} />}
+      {ownOpen && !open && !live.own?.line && live.own?.residency && live.onResidencyDecide && (
+        <ResidencyDecisionDrawer row={live.own.residency} onClose={() => setOwnOpen(false)} onSave={(d) => live.onResidencyDecide!(live.own!.residency!, d)} />
+      )}
     </PayFrame>
   );
 }
@@ -2010,7 +2022,7 @@ function ProofFileViewer({ line, onFile, onPreview }: { line: ProofQueueLine; on
   );
 }
 
-function ProofDecisionDrawer({ line, onFile, onPreview, onClose, onSave }: { line: ProofQueueLine; onFile: LiveProofQueue['onFile']; onPreview?: LiveProofQueue['onPreview']; onClose: () => void; onSave: (d: ProofDecision) => Promise<unknown> }) {
+function ProofDecisionDrawer({ line, own, onFile, onPreview, onClose, onSave }: { line: ProofQueueLine; own?: boolean; onFile: LiveProofQueue['onFile']; onPreview?: LiveProofQueue['onPreview']; onClose: () => void; onSave: (d: ProofDecision) => Promise<unknown> }) {
   const [decision, setDecision] = useState<ProofDecision['decision']>('approve');
   const [amount, setAmount] = useState('');
   const [comment, setComment] = useState('');
@@ -2046,6 +2058,19 @@ function ProofDecisionDrawer({ line, onFile, onPreview, onClose, onSave }: { lin
       ]}
     />
   );
+  // PAY-23 OwnProof: one's own line opens read only with the design's warning (the server refuses a decision too).
+  if (own)
+    return (
+      <Drawer open onOpenChange={(o) => !o && onClose()} title={label} subtitle="Your own proof" meta={<Badge tone={LIVE_PROOF_STATE[line.proofStatus]?.tone ?? 'neutral'}>{LIVE_PROOF_STATE[line.proofStatus]?.label}</Badge>} size="lg" footer={<Button onClick={onClose}>Close</Button>}>
+        <div className="yx-pay-stack">
+          <InlineAlert tone="warning" title="This is your own proof">
+            You can't verify your own proofs. Another payroll or HR person must verify it.
+          </InlineAlert>
+          {facts}
+          <p className="yx-pay-note">Files sent: {line.proofs.map((f) => f.name).join(', ') || 'none'}</p>
+        </div>
+      </Drawer>
+    );
   if (!pending)
     return (
       <Drawer open onOpenChange={(o) => !o && onClose()} title={label} subtitle={line.employeeName || 'Someone'} meta={<Badge tone={LIVE_PROOF_STATE[line.proofStatus]?.tone ?? 'neutral'}>{LIVE_PROOF_STATE[line.proofStatus]?.label}</Badge>} size="lg" footer={<Button onClick={onClose}>Close</Button>}>

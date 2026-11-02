@@ -201,6 +201,32 @@ describe('PAY-23 · Payroll › Proof checking (live)', () => {
     make.mockRestore();
   });
 
+  it('a deep link to one’s own proof opens it read only with the designed warning; nothing to decide (PAY-23 OwnProof)', () => {
+    const mine = { ...PROOFS[0]!, employeeName: 'You' };
+    const onDecide = fn();
+    render(<ProofQueueScreen live={live({ lines: [], form12b: [], own: { line: mine }, onDecide })} />);
+    const d = screen.getByRole('dialog');
+    expect(within(d).getByText('This is your own proof')).toBeInTheDocument();
+    expect(within(d).getByText(/You can't verify your own proofs/)).toBeInTheDocument();
+    expect(within(d).queryByRole('radio')).not.toBeInTheDocument();
+    expect(within(d).queryByRole('button', { name: /Approve|Reject/ })).not.toBeInTheDocument();
+  });
+
+  it('a deep link to one’s own residency request: deciding it shows the server refusal (PAY-23 ResidencyOwn)', async () => {
+    const mine: ResidencyRow = { id: 'rs-own', employeeId: '', employeeName: 'You', legalEntityId: '', taxYear: '2026-27', from: 'resident', residentialStatus: 'non_resident', trcValidTo: '2027-03-31', dtaaCountry: 'AE', form10fFiled: true, file: { name: 'trc.pdf', size: 900, at: '2026-10-24T09:00:00Z' }, status: 'pending', comment: null, submittedAt: '2026-10-24T09:00:00Z', verifiedAt: null };
+    const onResidencyDecide = vi.fn(async () => Promise.reject(new Error('Someone else checks your own residential status.')));
+    render(<ProofQueueScreen live={live({ lines: [], form12b: [], residency: [], own: { residency: mine }, onResidencyDecide })} />);
+    const d = screen.getByRole('dialog', { name: /Residential status change/ });
+    await ue.click(within(d).getByRole('button', { name: 'Approve change' }));
+    expect(await within(d).findByText('Someone else checks your own residential status.')).toBeInTheDocument();
+    expect(within(d).getByText('That did not go through')).toBeInTheDocument();
+  });
+
+  it('a deep link opens that row of the queue', () => {
+    render(<ProofQueueScreen live={live({ openId: `l-${PROOFS[1]!.id}` })} />);
+    expect(screen.getByRole('dialog')).toHaveTextContent('Divya');
+  });
+
   it('Form 12B is in the same queue: the file opens; reject needs a comment; approve sends the decision', async () => {
     const onForm12bDecide = fn();
     const onForm12bFile = fn();
