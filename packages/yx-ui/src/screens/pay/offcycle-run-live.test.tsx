@@ -131,6 +131,29 @@ describe('PAY-11 off-cycle run, live: an off-cycle run page', () => {
     expect(screen.getByText(/Pay by 21 Oct 2026/)).toBeInTheDocument();
   });
 
+  it('PAY-11 Retrenchment: the permission reference from People › Exits; without a grant it says approval waits (negative)', () => {
+    const base = { ...FNF[0], exitType: 'retrenchment' };
+    const { unmount } = record({ settlement: { ...base, permission: { needed: true, workers: 350, granted: false, status: 'applied', reference: 'Labour Commissioner, Karnataka, applied (applied 2026-09-01)' } }, person: 'Meena Rao' });
+    expect(screen.getByText('Permission needed')).toBeInTheDocument();
+    expect(screen.getByText(/Not granted yet .* Approval waits for it\./)).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /Government permission reference/ })).toHaveValue('');
+    unmount();
+    record({ settlement: { ...base, items: base.items.map((i) => ({ ...i, held: null, heldTag: null })), permission: { needed: true, workers: 350, granted: true, status: 'granted', reference: 'Labour Commissioner, Karnataka, granted on 2026-09-18' } }, person: 'Meena Rao' });
+    expect(screen.queryByText('Permission needed')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /Government permission reference/ })).toHaveValue('Labour Commissioner, Karnataka, granted on 2026-09-18');
+  });
+
+  it('PAY-11 Bonus: the design’s bonus lines table with the people and the total; no table before any line is added', () => {
+    const bonus = workspace({ run: { ...RUN, id: 'r12', runType: 'offcycle', offcycleKind: 'bonus', status: 'draft' } });
+    const { unmount } = record({ workspace: bonus, items: [{ id: 'i1', employeeId: PEOPLE[0].employeeId, componentCode: 'bonus', label: 'Diwali bonus', amount: '5000.00', reason: 'Diwali', held: null }, { id: 'i2', employeeId: PEOPLE[1].employeeId, componentCode: 'bonus', label: null, amount: '2500.00', reason: 'Diwali', held: null }] });
+    const table = screen.getByRole('table', { name: /Bonus lines/ });
+    expect(within(table).getByText(PEOPLE[0].name)).toBeInTheDocument();
+    expect(within(table).getByText('₹7,500')).toBeInTheDocument();
+    unmount();
+    record({ workspace: bonus, items: [] });
+    expect(screen.queryByRole('table', { name: /Bonus lines/ })).not.toBeInTheDocument();
+  });
+
   it('death in service: nominee shares; with none recorded it warns before approval', () => {
     const death = { ...FNF[1], exitType: 'death', payees: [{ kind: 'nominee', name: 'Saroja Kumar', relation: 'Spouse', sharePercent: '60.00', accountLast4: '4321', ifsc: 'HDFC0001', amount: '20064.00' }] };
     const { unmount } = record({ settlement: death, person: 'Arjun Kumar' });

@@ -39,6 +39,12 @@ export class Payroll5gController {
     return this.arrears.addItem(ctx, this.user(req), id, dto);
   }
 
+  @Get('payroll/runs/:id/items')
+  @RequireAnyPermission('payroll.offcycle.prepare', 'payroll.run.view', 'payroll.run.approve')
+  items(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.arrears.items(ctx, this.user(req), id);
+  }
+
   @Post('payroll/runs/:id/items/:itemId/remove')
   @HttpCode(200)
   @RequirePermissions('payroll.offcycle.prepare')

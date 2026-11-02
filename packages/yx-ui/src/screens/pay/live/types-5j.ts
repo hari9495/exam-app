@@ -351,6 +351,8 @@ export interface FnfSettlementView {
   payees: { kind: string; name: string; relation: string; sharePercent: string; accountLast4: string | null; ifsc: string | null; amount: string | null }[];
   noticeWaived: { by: string; reason: string } | null;
   taxNote?: string;
+  /** PAY-11 Retrenchment: whether the government's permission is needed and the one recorded in People › Exits. */
+  permission?: { needed: boolean; workers: number; granted: boolean; status: string | null; reference: string | null } | null;
   version: number;
 }
 

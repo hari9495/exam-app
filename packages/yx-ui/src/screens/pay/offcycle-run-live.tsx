@@ -20,6 +20,7 @@ import { formatDate, formatINR } from '../../lib/format';
 import { useRun } from '../org/org-kit';
 import { FactRow, StateBlock } from './pay-kit';
 import { LiveRunWorkspace, type LiveRunWorkspaceData } from './run-workspace-live';
+import { OffCycleLinesTable } from './offcycle';
 import type { LoadState } from './live/types';
 import type { FnfSettlementView, OffcycleKind, PayGroupRef } from './live/types-5j';
 
@@ -48,7 +49,20 @@ export type LiveOffCycleRun =
       /** The leaver's name (F&F). */
       person: string | null;
       fnfHref: string;
+      /** PAY-11 Bonus (any non-F&F off-cycle run): the run's own lines (GET runs/:id/items). */
+      items?: OffcycleItem[] | null;
     };
+
+/** One line of an off-cycle run (GET payroll/runs/:id/items). */
+export interface OffcycleItem {
+  id: string;
+  employeeId: string;
+  componentCode: string;
+  label: string | null;
+  amount: string;
+  reason: string;
+  held: string | null;
+}
 
 const KIND_TEXT: Record<OffcycleKind, string> = { fnf: 'Full and final', bonus: 'Bonus', arrears: 'Arrears only', correction: 'Correction', payment: 'Payment' };
 const EXIT_TEXT: Record<string, string> = { death: 'Death in service', retrenchment: 'Retrenchment', resignation: 'Resignation', termination: 'Termination', retirement: 'Retirement', end_of_contract: 'End of contract', vrs: 'Voluntary retirement', absconding: 'Absconding', probation_termination: 'Probation not confirmed' };
@@ -166,7 +180,8 @@ function OffCycleRunRecord({ live }: { live: Extract<LiveOffCycleRun, { mode: 'r
   const r = live.workspace.run;
   const s = live.settlement;
   const fnf = r?.offcycleKind === 'fnf';
-  const blocked = !!s && s.items.some((i) => i.heldTag === 'permission needed');
+  // PAY-11 Retrenchment: blocked while the permission is needed and not recorded as granted in People › Exits.
+  const blocked = !!s && (s.permission ? s.permission.needed && !s.permission.granted : s.items.some((i) => i.heldTag === 'permission needed'));
   const open = !!s && s.status === 'open' && !['approved', 'paid'].includes(r?.status ?? '');
   const heading = r
     ? fnf
@@ -177,10 +192,19 @@ function OffCycleRunRecord({ live }: { live: Extract<LiveOffCycleRun, { mode: 'r
         }
       : { name: `Off-cycle run · ${KIND_TEXT[r.offcycleKind ?? 'payment']} · ${monthLong(r.month)}`, secondary: `${r.entityName ?? ''} · Uses the same engine and approval as monthly runs.` }
     : undefined;
+  const person = (id: string) => live.workspace.people.find((x) => x.employeeId === id);
   const lead = !r ? null : !fnf ? (
-    <InlineAlert tone="info" title="An off-cycle run pays only what you add to it">
-      Add the lines in Inputs, then calculate. It never changes the month's regular payslip; past payslips are never changed.
-    </InlineAlert>
+    <div className="yx-pay-stack">
+      <InlineAlert tone="info" title="An off-cycle run pays only what you add to it">
+        Add the lines in Inputs, then calculate. It never changes the month's regular payslip; past payslips are never changed.
+      </InlineAlert>
+      {!!live.items?.length && (
+        <OffCycleLinesTable
+          label={r.offcycleKind === 'bonus' ? 'Bonus lines' : `${KIND_TEXT[r.offcycleKind ?? 'payment']} lines`}
+          rows={live.items.map((i) => ({ id: i.id, name: person(i.employeeId)?.name ?? 'Someone', code: person(i.employeeId)?.employeeCode ?? null, amount: Number(i.amount), note: i.held ? `Held: ${i.held}` : (i.label ?? i.reason) }))}
+        />
+      )}
+    </div>
   ) : !s ? (
     <InlineAlert tone="info" title="Full and final run" actions={<Button size="sm" asChild><a href={live.fnfHref}>Open full and final</a></Button>}>
       The settlement's lines, deadline and payees are on the full and final page.
@@ -206,7 +230,7 @@ function SettlementLines({ s, blocked, open, fnfHref, person }: { s: FnfSettleme
           actions={<Button size="sm" asChild><a href={fnfHref}>Open full and final</a></Button>}
         >
           {blocked
-            ? 'The establishment needs the government permission for retrenchment. Record it as granted in People › Exits; the held lines are then paid in a second off-cycle run. Undisputed wages can still be paid within the deadline in this run.'
+            ? `The establishment has ${s.permission?.workers ?? 'enough'} workers, so retrenchment needs the government's permission. Record it as granted in People › Exits; approval waits for it and the held lines are then paid in a second off-cycle run. Undisputed wages can still be paid within the deadline in this run.`
             : `Last working day ${formatDate(day(s.lwd))}${s.workingDaysLeft >= 0 ? `, ${s.workingDaysLeft} working ${s.workingDaysLeft === 1 ? 'day' : 'days'} left` : ''}. If something blocks full settlement, pay the undisputed wages by the deadline and the rest in a second off-cycle run with the reason.`}
         </InlineAlert>
       )}
@@ -229,6 +253,17 @@ function SettlementLines({ s, blocked, open, fnfHref, person }: { s: FnfSettleme
         ]}
         footer={[{ id: 'net', label: 'Net payable', cells: { amount: s.totals.net == null ? 'After calculation' : inr(s.totals.net) } }]}
       />
+      {s.exitType === 'retrenchment' && s.permission?.needed && (
+        <FormField
+          id="oc-permission"
+          label="Government permission reference"
+          required
+          helper={`Recorded in People › Exits. Required for establishments at the legal threshold (${s.permission.workers} workers here).`}
+          error={s.permission.granted ? undefined : s.permission.reference ? `Not granted yet (${s.permission.reference}). Approval waits for it.` : 'Not recorded yet. Record it in People › Exits; approval waits for it.'}
+        >
+          <TextField value={s.permission.granted ? (s.permission.reference ?? '') : ''} readOnly />
+        </FormField>
+      )}
       {s.exitType === 'death' && (
         <>
           {s.payees.length ? (

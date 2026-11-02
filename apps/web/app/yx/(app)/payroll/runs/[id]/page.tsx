@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { OffCycleRunScreen, RunWorkspaceScreen, type FnfSettlementView, type LiveRunWorkspaceData, type RunInputSources, type BankFileMade, type BankFileRow, type FilingRow, type PayRun, type PayslipDetail, type RunPayslip, type RunPerson, type RunProgressData, type RunReadiness, type RunVariance } from '@yukthix/ui/pay';
+import { OffCycleRunScreen, RunWorkspaceScreen, type FnfSettlementView, type LiveRunWorkspaceData, type OffcycleItem, type RunInputSources, type BankFileMade, type BankFileRow, type FilingRow, type PayRun, type PayslipDetail, type RunPayslip, type RunPerson, type RunProgressData, type RunReadiness, type RunVariance } from '@yukthix/ui/pay';
 import { useYxPermissions } from '../../../../../../lib/yx-org';
 import { payState, usePay, usePayDownload, usePayRead, usePayWrite } from '../../../../../../lib/yx-pay';
 import { usePeopleSearch } from '../../../../../../lib/yx-pay-5b';
@@ -40,6 +40,8 @@ export default function YxPayRunPage() {
   const fnf = usePay<FnfSettlementView[]>(run.data?.offcycleKind === 'fnf' && perms.has('payroll.fnf.manage') ? '/fnf' : null);
   const settlement = fnf.data?.find((f) => f.runId === id || f.secondRunId === id) ?? null;
   const nameOf = useNames();
+  // PAY-11 Bonus: a non-F&F off-cycle run shows its own lines (the design's table).
+  const items = usePay<OffcycleItem[]>(run.data?.runType === 'offcycle' && run.data.offcycleKind !== 'fnf' ? `${base}/items` : null);
   // While it calculates, look again every two seconds.
   useEffect(() => {
     if (!calculating) return;
@@ -93,11 +95,15 @@ export default function YxPayRunPage() {
     },
     onPublish: (confirmation, selfApprovalReason) => write(`${base}/publish`, { confirmation, ...(selfApprovalReason ? { selfApprovalReason } : {}) }),
     onSearchPeople: (q) => search(q),
-    onAddItem: (item) => write(`${base}/items`, item),
+    onAddItem: async (item) => {
+      const out = await write(`${base}/items`, item);
+      void items.refetch();
+      return out;
+    },
   };
   // PAY-11: an off-cycle run opens in the designed off-cycle screen (its settlement lines on top of the same steps).
   return run.data?.runType === 'offcycle' ? (
-    <OffCycleRunScreen live={{ mode: 'run', workspace, settlement, person: settlement ? nameOf(settlement.employeeId) : null, fnfHref: '/yx/payroll/fnf' }} />
+    <OffCycleRunScreen live={{ mode: 'run', workspace, settlement, person: settlement ? nameOf(settlement.employeeId) : null, fnfHref: '/yx/payroll/fnf', items: items.data ?? null }} />
   ) : (
     <RunWorkspaceScreen live={workspace} />
   );

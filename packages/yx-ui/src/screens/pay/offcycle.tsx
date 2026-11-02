@@ -152,17 +152,7 @@ function SampleOffCycleRun({ kind = 'fnf', step = 'lines', permission = false }:
       {type === 'death' && <p className="yx-pay-note">Gratuity 5-year condition waived on death. TDS on payments to nominees follows the P07 rule for heirs.</p>}
     </div>
   );
-  const bonusLines = (
-    <DataTable
-      label="Bonus lines"
-      columns={[
-        { key: 'n', header: 'Employee', type: 'person', value: (r: (typeof EMPLOYEES)[number]) => r.name, person: (r) => ({ name: r.name, secondary: r.code }), width: 220 },
-        { key: 'a', header: 'Amount', type: 'money', value: (r) => Math.round(r.ctc * 0.25), total: 'sum', width: 120 },
-      ]}
-      rows={EMPLOYEES.slice(0, 8)}
-      getRowId={(r) => r.id}
-    />
-  );
+  const bonusLines = <OffCycleLinesTable rows={EMPLOYEES.slice(0, 8).map((r) => ({ id: r.id, name: r.name, code: r.code, amount: Math.round(r.ctc * 0.25) }))} />;
   const steps: StepperStep[] = [
     {
       id: 'type',
@@ -195,6 +185,22 @@ function SampleOffCycleRun({ kind = 'fnf', step = 'lines', permission = false }:
       />
       <Stepper title="Off-cycle run" steps={steps} defaultCurrent={step} finishLabel="Send for approval" />
     </PayFrame>
+  );
+}
+
+/** PAY-11 "Bonus run": the run's lines per person with the total (design table, also rendered live on an off-cycle run). */
+export function OffCycleLinesTable({ rows, label = 'Bonus lines' }: { rows: { id: string; name: string; code?: string | null; amount: number; note?: string | null }[]; label?: string }) {
+  return (
+    <DataTable
+      label={label}
+      columns={[
+        { key: 'n', header: 'Employee', type: 'person', value: (r: (typeof rows)[number]) => r.name, person: (r) => ({ name: r.name, secondary: r.code ?? undefined }), width: 220 },
+        { key: 'a', header: 'Amount', type: 'money', value: (r) => r.amount, total: 'sum', width: 120 },
+        ...(rows.some((r) => r.note) ? [{ key: 'w', header: 'Why', value: (r: (typeof rows)[number]) => r.note ?? '', width: 280 }] : []),
+      ]}
+      rows={rows}
+      getRowId={(r) => r.id}
+    />
   );
 }
 

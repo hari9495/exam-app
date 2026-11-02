@@ -24,6 +24,7 @@ import { dayKinds } from './payslip-days';
 import { buildTaxInputs } from './tax.service';
 import { taxYearOf } from './tax';
 import { waitingForIfsc } from './payout.service';
+import { RETRENCHMENT_CODES, retrenchmentPermission } from './fnf.service';
 import { PayKey, entitiesFor, payHolders, payScope, payViewer, publishesAlone, requireEntity, requireSelf, systemAdmins, withPayScope } from './pay-access';
 
 // Payroll runs (M03-BUILD-DESIGN §3.2, §9, PAY-3.01 … 3.10, 3.18): create per pay group and month; validations with
@@ -407,6 +408,16 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       const reg = await tx.statutoryRegistration.findFirst({ where: { organizationId: org, legalEntityId: run.legalEntityId, statute: cv.statute, status: { in: ['on', 'applied_awaited'] } } });
       if (!reg) found.push({ employeeId: null, checkKey: `coverage_${cv.statute}`, severity: 'block', blocks: 'approval', waivable: false, message: `The entity has ${cv.headcount} people and is covered by ${cv.statute}, but no registration is recorded.` });
     }
+    // PAY-11 Retrenchment: retrenchment lines in this run need the government's permission recorded in People › Exits
+    // when the establishment is at the IN.IR threshold; approval waits for it (never waived; the held lines say so too).
+    if (run.offcycleKind === 'fnf') {
+      for (const f of await tx.fnfSettlement.findMany({ where: { organizationId: org, exitType: 'retrenchment', OR: [{ runId: run.id }, { secondRunId: run.id }] } })) {
+        const lines = await tx.oneTimePay.count({ where: { organizationId: org, runId: run.id, source: 'fnf', sourceRef: f.id, status: 'approved', holdReason: null, componentCode: { in: RETRENCHMENT_CODES } } });
+        const perm = lines ? await retrenchmentPermission(tx, org, f, await this.rules.published()) : null;
+        if (perm?.needed && !perm.granted)
+          found.push({ employeeId: f.employeeId, checkKey: 'retrenchment_permission', severity: 'block', blocks: 'approval', waivable: false, message: `${nameOf(f.employeeId)}: retrenchment needs the government's permission (${perm.workers} workers). Record it as granted in People › Exits before approval.` });
+      }
+    }
     // PPL-45: an expired employment visa or work permit for the entity's country holds approval (WPS files fail on it).
     const country = (await tx.legalEntity.findFirstOrThrow({ where: { organizationId: org, id: run.legalEntityId }, select: { country: true } })).country;
     for (const id of await lapsedWorkPermits(tx, org, country, ids, run.periodEnd)) found.push({ employeeId: id, checkKey: 'work_permit_expired', severity: 'block', blocks: 'approval', message: `${nameOf(id)}: the employment visa or work permit has expired. Record the renewal on their record before approval.` });
@@ -420,7 +431,12 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
 
   private async current(tx: Tx, org: string, run: Run, generation?: number) {
     const g = generation ?? (await tx.runValidation.aggregate({ where: { organizationId: org, runId: run.id }, _max: { calcVersion: true } }))._max.calcVersion;
-    return g === null ? [] : tx.runValidation.findMany({ where: { organizationId: org, runId: run.id, calcVersion: g }, orderBy: [{ severity: 'asc' }, { checkKey: 'asc' }] });
+    if (g === null) return [];
+    // A generation can be checked more than once (readiness, then calculate or submit): only the latest pass counts, so a
+    // cause fixed since (a permission recorded, a bank account added) no longer blocks. Rows are never deleted (audit).
+    const rows = await tx.runValidation.findMany({ where: { organizationId: org, runId: run.id, calcVersion: g }, orderBy: [{ severity: 'asc' }, { checkKey: 'asc' }] });
+    const last = Math.max(...rows.map((r) => r.createdAt.getTime()));
+    return rows.filter((r) => r.createdAt.getTime() === last);
   }
 
   /** The readiness screen: people, attendance feed state, and the checks as they stand now (refreshed). */

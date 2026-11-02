@@ -135,6 +135,18 @@ export class ArrearsService {
     });
   }
 
+  /** PAY-11 Bonus (and every non-F&F off-cycle run): the run's own lines, per person, as the design's table shows them. */
+  async items(ctx: TenantContext, user: ScopeUser, runId: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const ids = await this.scoped(tx, c, v, ['payroll.offcycle.prepare', 'payroll.run.view', 'payroll.run.approve']);
+      const run = await tx.payrollRun.findFirst({ where: { organizationId: c.organizationId, id: runId } });
+      if (!run || !ids.includes(run.legalEntityId) || run.runType !== 'offcycle') throw new NotFoundException('Not found');
+      const rows = await tx.oneTimePay.findMany({ where: { organizationId: c.organizationId, runId: run.id, status: 'approved' }, orderBy: { createdAt: 'asc' }, take: 5000 });
+      return rows.map((r) => ({ id: r.id, employeeId: r.employeeId, componentCode: r.componentCode, label: r.label, amount: r.amount.toFixed(2), reason: r.reason, held: r.holdReason }));
+    });
+  }
+
   async removeItem(ctx: TenantContext, user: ScopeUser, runId: string, itemId: string) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {

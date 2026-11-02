@@ -8,7 +8,7 @@ import type { ScopeUser } from '../access/scope';
 import { AutomationService } from '../rules-engine/automation.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { StatutoryRulesService } from '../statutory/statutory.service';
-import { gratuityDue, inForce, retrenchment, serviceYears } from '../statutory/evaluator';
+import { gratuityDue, inForce, retrenchment, serviceYears, type RuleSet } from '../statutory/evaluator';
 import { workingDaysUntil } from '../lifecycle/exit-rules';
 import { holidaysNear } from '../lifecycle/settlement';
 import { LettersService } from '../documents/letters/letters.service';
@@ -501,6 +501,8 @@ export class FnfService implements OnModuleInit {
       })),
       noticeWaived: f.noticeWaivedBy ? { by: f.noticeWaivedBy, reason: f.noticeWaiveReason } : null,
       ...(f.exitType === 'death' ? { taxNote: "No TDS is deducted on the payees' shares (verify with the partner CA)." } : {}),
+      // PAY-11 Retrenchment: the permission recorded in People › Exits, shown on the run.
+      permission: await retrenchmentPermission(tx, org, f, await this.rules.published()),
       version: f.version,
     };
   }
@@ -723,4 +725,29 @@ export class FnfService implements OnModuleInit {
     }
     return n;
   }
+}
+
+/** The retrenchment lines of a settlement (held until the government's permission is recorded, when it is needed). */
+export const RETRENCHMENT_CODES = ['retrenchment_comp', 'notice_pay', 'reskilling_fund'];
+
+/**
+ * PAY-11 Retrenchment: whether the retrenchment needs the government's permission (IN.IR threshold on the workers recorded
+ * on the exit case), and the permission recorded in People › Exits ("granted by … on …"), shown on the run.
+ */
+export async function retrenchmentPermission(tx: Tx, org: string, f: { exitType: string; exitCaseId: string; lwd: Date }, rules: RuleSet[]) {
+  if (f.exitType !== 'retrenchment') return null;
+  const k = await tx.exitCase.findFirst({ where: { organizationId: org, id: f.exitCaseId }, select: { irPermissionId: true, retrenchment: true } });
+  const workers = (k?.retrenchment as { workers?: number } | null)?.workers ?? 0;
+  const irRs = inForce(rules, 'IN.IR', ['IN'], dateOf(f.lwd));
+  const threshold = (irRs?.values as { permissionThreshold?: number | string } | undefined)?.permissionThreshold;
+  const needed = threshold != null && workers >= Number(threshold);
+  const p = k?.irPermissionId ? await tx.irPermissionRequest.findFirst({ where: { organizationId: org, id: k.irPermissionId }, select: { authority: true, status: true, appliedOn: true, decidedOn: true } }) : null;
+  const granted = !!p && (p.status === 'granted' || p.status === 'deemed');
+  return {
+    needed,
+    workers,
+    granted,
+    status: p?.status ?? null,
+    reference: p ? `${p.authority}, ${p.status === 'deemed' ? 'deemed granted' : p.status === 'granted' ? 'granted' : p.status === 'refused' ? 'refused' : 'applied'} ${p.decidedOn ? `on ${dateOf(p.decidedOn)}` : `(applied ${dateOf(p.appliedOn)})`}` : null,
+  };
 }

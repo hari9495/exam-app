@@ -284,6 +284,11 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     await api('payAdmin', 'post', `/payroll/runs/${off.id}/items`)
       .send({ employeeId: ids.emp1, componentCode: 'bonus', amount: '20000', reason: 'Diwali bonus', label: 'Diwali bonus 2026.' })
       .expect(201);
+    // PAY-11 Bonus: the run's own lines for the design's table; another company and an employee see none.
+    expect((await api('payAdmin', 'get', `/payroll/runs/${off.id}/items`).expect(200)).body).toEqual([expect.objectContaining({ employeeId: ids.emp1, componentCode: 'bonus', amount: '20000.00', label: 'Diwali bonus 2026.', held: null })]);
+    await api('payAdminB', 'get', `/payroll/runs/${off.id}/items`).expect(404);
+    await api('emp1', 'get', `/payroll/runs/${off.id}/items`).expect(403);
+    await api('payAdmin', 'get', '/payroll/runs/not-a-uuid/items').expect(400);
     const slips = await approveRun(off.id);
     expect(slips).toHaveLength(1);
     const lines = (await linesOf(slips[0].id)).body.lines as { code: string; amount: string; explanation: string }[];
@@ -407,6 +412,8 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     expect(f).toMatchObject({ lwd: friday, deadline: plus(friday, 5), status: 'open', runStatus: 'draft', runReference: `FNF-${today.slice(0, 4)}-0001` });
     const notice = f.items.find((i: { componentCode: string }) => i.componentCode === 'notice_pay');
     expect(notice.held).toMatch(/permission/);
+    // PAY-11 Retrenchment: the run shows that the permission is needed and none is recorded in People › Exits yet.
+    expect(f.permission).toEqual({ needed: true, workers: 350, granted: false, status: null, reference: null });
     expect(f.items.find((i: { componentCode: string }) => i.componentCode === 'reskilling_fund').held).toMatch(/permission/);
     await api('emp2', 'get', `/payroll/fnf/${id}`).expect(403);
     await api('payAdminB', 'get', `/payroll/fnf/${id}`).expect(404);
@@ -453,9 +460,22 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     await api('payAdmin', 'patch', `/payroll/fnf/${id}`).send({ version: after.version, reason: 'Government permission granted', items: held }).expect(200);
     const second = (await api('payAdmin', 'post', `/payroll/fnf/${id}/second-run`).expect(201)).body;
     expect(second.lines).toBe(held.length);
+    // PAY-11: released by hand, the retrenchment lines still wait for the permission in People › Exits: approval is refused
+    // (not waivable); once it is recorded as granted, the run shows its reference and goes through.
+    await calculate(second.runId);
+    expect((await api('payAdmin', 'post', `/payroll/runs/${second.runId}/submit`).send({}).expect(409)).body.message).toMatch(/government's permission/);
+    const blocks = ((await api('payAdmin', 'get', `/payroll/runs/${second.runId}/readiness`).expect(200)).body.checks as { checkKey: string; waivable: boolean; id: string }[]).filter((c) => c.checkKey === 'retrenchment_permission');
+    expect(blocks).toEqual([expect.objectContaining({ waivable: false })]);
+    await api('payAdmin', 'post', `/payroll/runs/${second.runId}/validations/${blocks[0].id}/waive`).send({ reason: 'Trying to skip it' }).expect(409);
+    await inA(async (tx) => {
+      const p = await tx.irPermissionRequest.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity, kind: 'retrenchment', workersAffected: 1, reasons: 'Line closed', appliedOn: new Date(`${today}T00:00:00Z`), authority: 'Labour Commissioner, Karnataka', status: 'granted', decidedOn: new Date(`${today}T00:00:00Z`) } });
+      await tx.exitCase.update({ where: { id: f.exitCaseId }, data: { irPermissionId: p.id } });
+    });
+    expect((await api('payAdmin', 'get', `/payroll/fnf/${id}`).expect(200)).body.permission).toEqual({ needed: true, workers: 350, granted: true, status: 'granted', reference: `Labour Commissioner, Karnataka, granted on ${today}` });
     // Gap-free per company and year: the second F&F run takes the next number; another company starts at 1.
     expect((await api('payAdmin', 'get', `/payroll/runs/${second.runId}`).expect(200)).body.reference).toBe(`FNF-${today.slice(0, 4)}-0002`);
     expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => (fnf as unknown as { runReference: (t: unknown, o: string) => Promise<string> }).runReference(tx, org.B.id))).toBe(`FNF-${today.slice(0, 4)}-0001`);
+    expect(((await api('payAdmin', 'get', `/payroll/runs/${second.runId}/readiness`).expect(200)).body.checks as { checkKey: string }[]).some((c) => c.checkKey === 'retrenchment_permission')).toBe(false);
     const s2 = await approveRun(second.runId);
     // The second run's statement supersedes the first and covers both runs.
     await statementFor(second.runId);
