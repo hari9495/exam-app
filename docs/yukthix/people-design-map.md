@@ -1331,3 +1331,10 @@ in the portal until the employee app has a "My letters" page.
 (1) a manager lists only the changes they raised (a read of HR-raised changes for their team can come later); (2) a role
 with `request.raise_on_behalf` but no `org.structure.view` gets no master lists (least access; the shipped manager
 template pairs both); (3) managers are not prompted for MFA unless the company requires it for everyone.
+
+## Founder answers, 3 Nov 2026 (last buildable People rows, "all good")
+Keep as built: (1) a split has at most one account abroad; (2) on pay day, a net below the fixed amounts pays them in
+order as far as the net goes (salary never held); (3) the remittance list is a plain CSV until a bank sends its format;
+(4) letter issuers see only "held until clearance", never HR's hold reason; (5) consent and identity-check rows stay on
+the joiner's old record after a merge (evidence); (6) the trading-window calendar lives only on the compliance officer's
+Pre-clearance page; (7) the self-service split card and the per-row Remove stay.

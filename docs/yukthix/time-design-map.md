@@ -1250,3 +1250,7 @@ Questions (safe default built, suggested answer):
 (2) turning flexi or split off again keeps existing shifts of that type working but refuses new times for them;
 (3) the Type field offers Fixed, Flexi and Split only; a night shift stays a fixed shift ending next morning plus the
 night allowance switch.
+
+## Founder answers, 3 Nov 2026 (device follow-ups, "all good")
+Keep as built: (1) the web clock-in rule switch is guarded by `leave.settings.manage` held company-wide, every change
+audited as a control change; (2) managers do not get the computer-approval notice; HR decides.
