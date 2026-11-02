@@ -18,16 +18,16 @@ API) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Directory, record and changes | 9 | 114 | 0 | 6 | 2 | 0 | 122 |
+| A. Directory, record and changes | 9 | 138 | 0 | 0 | 2 | 0 | 140 |
 | B. Onboarding and probation | 7 | 69 | 2 | 0 | 0 | 0 | 71 |
-| C. Exits | 7 | 47 | 3 | 0 | 0 | 3 | 53 |
+| C. Exits | 7 | 55 | 1 | 0 | 0 | 3 | 59 |
 | D. Assets, documents, letters and self-service | 9 | 50 | 4 | 0 | 0 | 9 | 63 |
 | E. Identity, same person and records | 6 | 14 | 7 | 0 | 2 | 0 | 23 |
-| F. Declarations, relations, special cases and checklists | 11 | 66 | 1 | 2 | 0 | 3 | 72 |
-| **All PPL groups (A–F)** | **49** | **360** | **17** | **8** | **4** | **15** | **404** |
+| F. Declarations, relations, special cases and checklists | 11 | 68 | 1 | 0 | 0 | 3 | 72 |
+| **All PPL groups (A–F)** | **49** | **394** | **15** | **0** | **4** | **15** | **428** |
 | G. Other People stories (no PPL number) | 4 | 44 | 0 | 0 | 0 | 0 | 44 |
 
-Counted by script (30 Oct 2026, on `test/yukthix-main`; the script is in the appendix): every `export const` story in the 49 `ppl-NN.stories.tsx`
+Counted by script (2 Nov 2026, branch `feat/yukthix-people-changes`: builder 2 added 24 design stories (PPL-03 12, PPL-04 3, PPL-05 3, PPL-24 6) and made the 8 "wire design" stories live; earlier counts 30 Oct 2026, on `test/yukthix-main`; the script is in the appendix): every `export const` story in the 49 `ppl-NN.stories.tsx`
 files (PPL-01 … 50; PPL-10 has no story) and in the four other People story files, against the rows in section 4. The
 script fails unless each story file has exactly one row per story, in file order, and every verdict is one of the five
 words. 49 groups, 404 stories (400 before the small gaps added four: PPL-37 MergedList and MergedEmpty, PPL-43 and PPL-44 NotDesignated); the other People stories (section G) are 44 more and are counted on their own line.
@@ -50,14 +50,15 @@ phone width (directory, probation drawer, bank abroad for oneself) are counted a
 
 ## Hidden copies (the guard cannot see them)
 
+**Builder 2 (branch `feat/yukthix-people-changes`, 2 Nov 2026): none left in its area.** `ChangeDrawer` is deleted (the
+PPL-04 `ChangeActionDrawer` is the one change form), `ReasonDialog` has PPL-04 / PPL-05 stories, `VrsCard` is deleted
+(PPL-40 `VrsApply`).
+
 The guard matches screen names. These live parts have no design story, yet the guard does not list them, because the
 name clashes with a design elsewhere or the part is not a `…Screen`:
 
 | live page | what it renders today (file) | design it should render | why the guard misses it |
 |---|---|---|---|
-| /yx/people/changes, /yx/people/history, /yx/people/team, person record "Start change" | `ChangeDrawer` (history/history-kit.tsx) | PPL-04 change drawer (promotion, transfer, inter-entity, retro, manager) | a drawer, not a screen; no story renders `ChangeDrawer` |
-| /yx/people/changes, /yx/people/scheduled | `ReasonDialog` (history/job-changes.tsx), reject or cancel a change with a reason | PPL-04 Review / PPL-05 cancel | a dialog; no story renders it |
-| /yx/me/resignation (VRS card) | `VrsCard` (people/live/special.tsx), inside the designed `ResignationSheet` | PPL-40 "Employee · apply with estimate", "Employee · not eligible" | a card inside a designed screen |
 
 ## PPL-10 · Inter-entity continuity checklist
 
@@ -134,11 +135,11 @@ Settings, and the pre-boarding portal).
 | page | screen it renders | design | verdict |
 |---|---|---|---|
 | /yx/people/directory | `DirectoryScreen`, `DirectoryPhone` under 768 px; `HireDrawer` (Add person) | PPL-01 | live |
-| /yx/people/directory/[id], /yx/people/profile | `PersonRecord` (web) → `PersonWorkspace` | PPL-03 (panels PPL-34, 35, 45, 50) | live; four page-built dialogs have no story (section 2) |
+| /yx/people/directory/[id], /yx/people/profile | `PersonRecord` (web) → `PersonWorkspace` | PPL-03 (panels PPL-34, 35, 45, 50) | live; the record's dialogs (work phone, ask for a document, send back, upload for the person) are PPL-03 stories |
 | /yx/people/directory/[id]/bank-abroad, /yx/me/bank-abroad | `BankAbroad` (web) → `InternationalBankTab`; for oneself `InternationalBankPhone` | PPL-46 | live (the person's own view is the phone design on the web, Q5) |
 | /yx/people/org-chart | `OrgChartScreen` | PPL-02 | live |
-| /yx/people/team | `TeamPage` (+ `ChangeDrawer`, Hiring `RequisitionSheet`) | PPL-08 | live; the drawer is a hidden copy |
-| /yx/people/changes | `ChangeActionSheet` + `ChangeDrawer`, `ChangeReview`, `ReasonDialog` | PPL-04 | start and review live; the change drawer is **wire design** |
+| /yx/people/team | `TeamPage` (+ PPL-04 `ChangeActionDrawer`, Hiring `RequisitionSheet`) | PPL-08 | live |
+| /yx/people/changes | `ChangeActionSheet` + `ChangeActionDrawer`, `ChangeReview`, `ReasonDialog` | PPL-04 | live |
 | /yx/people/scheduled | `ScheduledChangesScreen` + `ChangeReview`, `ReasonDialog` | PPL-05 | live |
 | /yx/people/bulk-changes | `BulkChangesScreen` (workforce/bulk.tsx) | People core | live |
 | /yx/people/bulk-changes/increment | `BulkChangesWizard` | PPL-06 | live |
@@ -159,9 +160,9 @@ Settings, and the pre-boarding portal).
 | /yx/people/exits/[id] | `ExitCaseWorkspace`, `DeathInServiceFlow` | PPL-19, PPL-23 | live |
 | /yx/people/exits/[id]/interview, /yx/me/exit-interview | `ExitInterview` | PPL-21 | live |
 | /yx/people/fnf | re-exports /yx/payroll/fnf → `FnfCalculator` | PPL-22 | live |
-| /yx/people/clearance | `ClearanceSignoffs` | PPL-20 | live |
+| /yx/people/clearance | `ClearanceSignoffs` (owners: your sign-offs; HR: by leaver) | PPL-20 | live; "blocked" waits for a migration (PPL-20) |
 | /yx/people/upcoming-exits | `UpcomingExits` + `ContractDialog` | PPL-49 | live |
-| /yx/people/absconding | `AbscondingTimeline` + page-built start and dispatch-proof dialogs | PPL-24 | live; two dialogs have no story (section 2) |
+| /yx/people/absconding | `AbscondingTimeline` + `StartAbscondingDialog`, `StopAbscondingDialog`, `DispatchProofDialog` | PPL-24 | live |
 | /yx/people/documents | `DocumentVerificationQueue` | PPL-27 | live |
 | /yx/people/letters, /letters/bulk | `IssuedLettersRegister`, `BulkLetterWizard` | PPL-28 | live |
 | /yx/people/assets | `AssetRegister` + `AddAssetDrawer` | PPL-25 | live |
@@ -179,7 +180,7 @@ Settings, and the pre-boarding portal).
 | /yx/me/documents/certificate | `CertificateRequest` | PPL-31 | live |
 | /yx/me/change-requests | `ProfileChangeRequest` | PPL-32 | live |
 | /yx/me/privacy | `MyDataScreen` | PPL-33 | live |
-| /yx/me/resignation | `ResignationSheet` (+ `VrsCard`) | PPL-18 (+ PPL-40 employee) | live; the VRS card is **wire design** |
+| /yx/me/resignation | `ResignationSheet` (+ PPL-40 `VrsApply`) | PPL-18 (+ PPL-40 employee) | live |
 | /yx/me/assets | `MyAssetsScreen` (people/live/exits.tsx) | Me and set-up (accepted design) | live |
 | /yx/me/first-30-days | `FirstThirtyDaysScreen` (people/live/lifecycle.tsx) | Me and set-up (accepted design) | live |
 | /yx/settings/checklists | `JourneyTemplatesScreen` (people/live/templates.tsx) | Me and set-up (accepted design) | live |
@@ -195,14 +196,6 @@ Not People: /yx/me/requests (inbox design), /yx/settings/access-settings and com
 
 | page | what has no design | what it does | suggestion |
 |---|---|---|---|
-| /yx/people/changes, /history, /team, record | `ChangeDrawer` | the live raise-a-change form: type, date, pay, reason, impact preview, draft, inter-entity move | make the PPL-04 drawer take `live` with the `ChangeDrawer` props (options, onPreview, onRoute, onSubmit, onSaveDraft, move) and delete `ChangeDrawer` (builder 2; Q2) |
-| /yx/people/changes, /scheduled | `ReasonDialog` | reject or cancel a change with a reason (and a date) | add stories "Review · reject with reason" to PPL-04 and "Cancel with reason" to PPL-05 drawing this dialog, moved into `people/changes.tsx` |
-| /yx/me/resignation | `VrsCard` | lists open VRS schemes, says if you are eligible, applies with a last day and reason | wire the PPL-40 employee stories; keep apply and the eligibility flag |
-| /yx/people/absconding | "Start an absconding timeline" dialog (person, last day present), built in the page | starts the timeline | add a "Start" story to PPL-24; move the dialog into `people/exits.tsx` |
-| /yx/people/absconding | "Dispatch proof for …" dialog (registered-post article number), built in the page | records how the notice was sent | add a "Dispatch proof" story to PPL-24 |
-| /yx/people/directory/[id], /profile | "Work phone for …" dialog (web `person-record.tsx`) | HR sets or clears the company phone | add a story to PPL-03 (record header); move it into `record.tsx` |
-| /yx/people/directory/[id] | "Ask … to upload a document" and "Send … back to …?" dialogs (web `person-record.tsx`) | HR asks for a document type; sends one back with a message | add both to the PPL-03 Documents tab stories |
-| /yx/people/directory/[id] | `UploadDocDialog` (web `people/upload-doc-dialog.tsx`) | HR uploads a document for the person: type, file, expiry | add "Upload for the person" to PPL-03; move it into `people/documents.tsx` |
 | /yx/people/directory/[id] Pay tab | account abroad card | PPL-46 `OnPayTab` draws it; the live Pay tab never passes `international` | pass it (S); the person's own desktop view is the phone design (Q5) |
 | /yx/me/declarations/annual, /pre-clearance | "No declarations for you" / "No pre-clearance for you" (someone who is not designated) | done (small gaps): stories PPL-43 and PPL-44 NotDesignated; the screens take state 'not-designated' | — |
 
@@ -409,25 +402,40 @@ Live pages: /yx/people/directory/[id] (HR, managers from My team), /yx/people/pr
 | WithdrawChange · Withdraw a waiting change · open | live | a pending change on the record, raised by the viewer or own: `CancelDialog` |
 | WithdrawChangeMissing · Withdraw a waiting change · no reason | live | client check |
 | WithdrawChangeFailed · Withdraw a waiting change · the server refuses | live | POST profile-requests/:id/cancel after HR decided |
+| WorkPhone · Work phone · open (HR) | live | `WorkPhoneDialog` (record-dialogs.tsx) from "Edit" on the work phone (`can.editWork`); PUT employees/:id/work-phone |
+| WorkPhoneWrong · Work phone · Save pressed with a wrong number | live | client check (7+ digits, country code), field error with focus |
+| WorkPhoneFailed · Work phone · the server refuses | live | API 4xx shown in the dialog |
+| AskDocument · Ask for a document · open | live | `AskDocumentDialog` from the Documents tab (`document.manage`); POST documents/requests |
+| AskDocumentMissing · Ask for a document · Send pressed with no document chosen | live | client check |
+| AskDocumentFailed · Ask for a document · the server refuses | live | API 4xx shown in the dialog |
+| SendBack · Send a document back · open | live | `SendBackDialog` from "Send back" on a document; POST documents/:id/decision (reject, reason) |
+| SendBackMissing · Send a document back · no reason chosen | live | client check |
+| SendBackFailed · Send a document back · the server refuses | live | API 409 (already decided) shown in the dialog |
+| UploadFor · Upload for the person · open | live | `UploadForPersonDialog` (HR, not on one's own record); POST documents/people/:id/:type |
+| UploadForMissing · Upload for the person · Upload pressed with nothing chosen | live | client check; Upload is never disabled |
+| UploadForExpiry · Upload for the person · passport needs the expiry date | live | a type with `expiryTracked` |
 
 #### PPL-04 · Change action
 
-Live page: /yx/people/changes (menu People › Changes › Change action; HR with `employee.change.manage`, managers with `request.raise_on_behalf`). The page renders the designed start card and waiting list, but "Start change" opens the Job history `ChangeDrawer` (history-kit.tsx), not this design's change drawer.
+Live page: /yx/people/changes (menu People › Changes › Change action; HR with `employee.change.manage`, managers with `request.raise_on_behalf`). "Start change" opens the designed `ChangeActionDrawer` (people/changes.tsx), the one change form (founder Q3): also on /yx/people/history, /yx/people/team and the person record. The stories render that same drawer with sample data (`ppl-04-design.test.tsx`).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
 | Start · HR · find a person, changes waiting | live | live branch `LiveChangeActionPage`: person picker, drafts, waiting list (incl. inter-entity transfers) |
-| Promotion · HR · promotion with pay change | wire design | live opens history `ChangeDrawer` (same job: type, date, pay, impact via POST changes preview); the designed drawer with CTC % and approval route is not used |
-| PromotionBoth · HR · promotion when the company requires both a new designation and grade | wire design | rule is live inside `ChangeDrawer` (`promotionMustChange` per entity), not in this drawer |
-| Transfer · HR · transfer with impact preview (PT state) | wire design | `ChangeDrawer` + `DesignImpact`; the designed impact table is not rendered |
-| InterEntity · HR · inter-entity transfer options | wire design | `ChangeDrawer` `move` part (useMove, POST restructures); designed leave/service/code/salary options drawer not used |
-| Retro · HR · correction into processed payroll | wire design | `ChangeDrawer` "correction" type and past-date helper; designed "payroll already processed" notice not used |
-| Manager · Manager · promotion without salary grant | wire design | manager gets `ChangeDrawer` limited to promotion, transfer, redesignation, manager change |
+| Promotion · HR · promotion with pay change | live | POST changes/preview for what changes (kit `PlainTable`, "Stays the same" folded); the CTC helper shows the change on the pay in force; route line and "Approval route" card from GET changes/route |
+| PromotionBoth · HR · promotion when the company requires both a new designation and grade | live | GET changes/rules `promotionMustChange` per entity: both fields required |
+| Transfer · HR · transfer with impact preview (PT state) | live | only the new location; the preview adds holiday calendar, PT and LWF state, geofence |
+| InterEntity · HR · inter-entity transfer options | live | `move` (POST restructures/preview, POST restructures); options on the company defaults; a master only for the old entity is required and says why |
+| Retro · HR · correction into processed payroll | live | the preview's `retro.processed` (months whose regular payroll at the entity is approved or paid) gives "Payroll for … is already processed"; other past months "This changes the past" |
+| Manager · Manager · promotion without salary grant | live | `request.raise_on_behalf`: promotion, transfer, new designation, manager change; no pay field, "Pay is proposed by HR" |
 | Review · Review · impact with a later change recalculated | live | "Open" on a waiting change (`employee.change.approve`): `ChangeReview`, GET changes/:id/preview |
 | ReviewWorking · Review · Approve pressed before the impact shows | live | Approve while the preview loads |
 | ReviewNoImpact · Review · the impact could not be worked out | live | preview call fails |
 | ReviewFailed · Review · the server refuses the approval | live | POST changes/:id/approve refuses maker = checker |
 | ReviewSimple · Review · manager change, nothing recalculated | live | a manager change has no pay lines |
+| Reject · Review · reject with a reason | live | "Reject" in the review: `ReasonDialog`; POST changes/:id/reject |
+| RejectMissing · Review · Reject pressed with no reason | live | field error with focus |
+| RejectFailed · Review · the server refuses the rejection | live | API 409 shown in the dialog |
 
 #### PPL-05 · Scheduled changes
 
@@ -440,6 +448,9 @@ Live page: /yx/people/scheduled (menu People › Changes › Scheduled; `employe
 | Cancel · Cancel with reason | live | HR (`employee.change.manage`): POST changes/:id/cancel with reason |
 | Empty · · empty | live | nothing scheduled or waiting |
 | Review · Review a waiting change | live | approver: `ChangeReview` from a pending row |
+| Move · Move a change to another date | live | "Edit" on a scheduled change: `ReasonDialog` (reschedule); PUT changes/:id with the new date (back to approval) |
+| MoveMissing · Move pressed with no new date | live | field error with focus (also the same date as now) |
+| MoveFailed · Move refused by the server | live | API 4xx shown in the dialog |
 
 #### PPL-06 · Bulk changes wizard
 
@@ -637,7 +648,7 @@ Live page: /yx/me/resignation (menu People › Me › My exit; employee)
 |---|---|---|
 | Form · Employee · resign with standard notice | live | GET lifecycle/me/resignation (notice from the company policy) |
 | Shortfall · Early last day (notice shortfall) | live | pick a last day before the standard one |
-| Vrs · A voluntary retirement scheme is open | live | `VrsCard` when GET lifecycle/me/vrs has a scheme (PPL-40 scheme open) |
+| Vrs · A voluntary retirement scheme is open | live | PPL-40 `VrsApply` when GET lifecycle/me/vrs has a scheme |
 | NoEmployment · · nothing to resign from | live | a person with no employment (notice null) |
 | Pending · Submitted, pending (withdraw directly) | live | POST me/resignation/withdraw returns withdrawn |
 | Accepted · Accepted (withdraw needs approval) | live | withdraw returns requested |
@@ -675,9 +686,9 @@ Live page: /yx/people/clearance (menu People › Exits › Clearance; owners of 
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Hr · HR · all departments | live (gap) | the page lists only items you or your team own (GET lifecycle/clearance/mine); HR sees every department of one leaver in the exit case's Clearance step (/yx/people/exits/[id]) |
+| Hr · HR · all departments | live | HR with `lifecycle.exit.manage`: "By leaver" (GET lifecycle/clearance, scoped by the server): every department with owners, the open count, a leaver picker |
 | ItOwner · IT owner · own items | live | an IT group member with an open item; Sign off dialog (recovery, note) |
-| FinanceOwner · Finance owner · blocked item | live (gap) | items are open, cleared or waived; the API has no "blocked" status or reason |
+| FinanceOwner · Finance owner · blocked item | live (gap) | built: the owner marks an open item Blocked with the reason (POST lifecycle/clearance/:id/block, `Mark blocked`), shown as Blocked to HR and the owner; needs migration `20261312000000_clearance_blocked` (written, not applied) |
 | Empty · · empty | live | "Nothing to sign off" |
 | Phone · · phone | phone view, mobile app not built | `ClearancePhone` in known.json |
 
@@ -706,7 +717,7 @@ Live page: /yx/people/fnf (same page as /yx/payroll/fnf; `payroll.fnf.manage` or
 | DueSoon · One working day left (holiday skipped) | live | `workingDaysLeft` from the API counts holidays of the person's location |
 | Overdue · Overdue | live | `overdue` from the API: red alert "Pay wage lines now" |
 | Held · Part held for an open case | live | hold a non-wage line ("held" total, second run) |
-| Absconding · Recovery-only (absconding) | live (gap) | a negative net shows "Net recoverable", but there is no absconding "recovery-only, held until they claim it" mode or banner in the API or page |
+| Absconding · Recovery-only (absconding) | live | GET payroll/fnf `heldForClaim` (absconding exit with the absconding salary hold still on): "Held until … claims it", the Recovery-only banner, never overdue |
 
 #### PPL-23 · Death in service
 
@@ -730,6 +741,12 @@ Live page: /yx/people/absconding (menu People › Exits › Absconding; `lifecyc
 | StopDialog · Stop with reason | live | "Stop timeline" opens the confirm with a reason |
 | Stopped · Stopped (returned) | live | stopped with its reason |
 | Deemed · Deemed abandonment (day 23) | live | deemed step done: alert with "Open exit case" |
+| Start · Start a timeline · open | live | "Start a timeline": `StartAbscondingDialog`; POST lifecycle/absconding |
+| StartMissing · Start a timeline · Start pressed with nothing filled | live | field errors with focus; the last day present must be before today |
+| StartFailed · Start a timeline · the server refuses (one already running) | live | API 409 shown in the dialog |
+| DispatchProof · Dispatch proof · open | live | "Add dispatch proof" on a sent notice: `DispatchProofDialog`; PUT lifecycle/absconding/:id/steps/:key/dispatch |
+| DispatchProofMissing · Dispatch proof · Save pressed with no article number | live | field error with focus |
+| DispatchProofFailed · Dispatch proof · the server refuses (timeline changed) | live | API 409 (stale version) shown in the dialog |
 
 ### D. Assets, documents, letters and self-service
 
@@ -958,8 +975,8 @@ Live page: /yx/people/retrenchment (HR, menu "VRS schemes"); employee side is /y
 |---|---|---|
 | Applications · HR · applications and approvals | live | Applications tab: exit cases of type VRS from GET lifecycle/exits; a row opens /yx/people/exits/[id] |
 | Setup · HR · scheme set-up | live | Set-up tab; open a scheme is POST lifecycle/vrs-schemes |
-| Apply · Employee · apply with estimate | wire design | /yx/me/resignation renders `VrsCard` (people/live/special.tsx), not this design; it applies (POST lifecycle/me/vrs) but shows no estimate: the API has no VRS benefit, gratuity or encashment estimate (gap, M) |
-| NotEligible · Employee · not eligible | wire design | the same `VrsCard` shows the scheme as not eligible (GET lifecycle/me/vrs `eligible`), without the design's reason (age and years) |
+| Apply · Employee · apply with estimate | live | /yx/me/resignation renders `VrsApply`; GET lifecycle/me/vrs `estimate` (scheme benefit by Rule 2BA with `vrs.benefit_days`, gratuity, leave encashment); POST lifecycle/me/vrs |
+| NotEligible · Employee · not eligible | live | GET lifecycle/me/vrs `age`, `serviceYears`: the rule and the person's age and years |
 | Permissions · HR · government permission requests | live | Government permission tab: apply, decide, closure (lifecycle/ir-permissions) |
 
 #### PPL-41 · Buddy panel
@@ -1170,6 +1187,8 @@ first.
 
 Not in this round (founder to decide, section 3): contract workers module, learning, face match, automated document
 checks, held letters, trading-window calendar, split pay, absconding recovery-only F&F, privacy correction requests.
+
+**Builder 2 done (branch `feat/yukthix-people-changes`, 2 Nov 2026):** PPL-04 `ChangeActionDrawer` replaces `ChangeDrawer` everywhere; `ReasonDialog`, PPL-03 record dialogs and PPL-24 start / dispatch proof have stories and are live; PPL-40 `VrsApply` with the estimate replaces `VrsCard`; PPL-20 HR view by leaver; PPL-22 recovery-only F&F for absconding. Left: PPL-20 "blocked" needs migration `20261312000000_clearance_blocked` applied. Manual steps MT-PPL-C-01 … 12.
 
 **Builder 3 done (branch `feat/yukthix-people-small`, 30 Oct 2026):** starter copied once (409); signatory kept while letters wait for approval (409); PPL-13 own tasks (API filter); PPL-12 rehire impact in the Create drawer (an ex-employee's offer now joins as a rehire); PPL-37 Merged list; PPL-33 How long (settings `privacy.retention.internal_years` 8, `personal_years` 3, `special_years` 1); PPL-43/44 NotDesignated; fixed-term limit `contract.max_years` (default 3, Settings › Organisation › Fixed-term contracts). No migrations. Left: PPL-46 account abroad on the Pay tab needs `record.tsx` and lands after builder 2.
 

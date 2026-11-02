@@ -8392,5 +8392,237 @@
       "Time · TIM-03 · Day card · On duty · field-recorded, offline punch"
     ],
     "note": ""
+  },
+  {
+    "id": "MT-PPL-C-01",
+    "area": "People · Changes, record dialogs, exits (builder 2, 2 Nov 2026)",
+    "screen": "Change action: promotion with pay (PPL-04)",
+    "url": "http://localhost:3000/yx/people/changes",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Find Arjun Kulkarni, press Start change.",
+      "2. Change type Promotion, effective date the 1st of next month, a new grade, New annual CTC 780000, reason \"Ready for a team\".",
+      "3. Wait a moment and read What changes and Approval route.",
+      "4. Clear the reason and press Send for approval.",
+      "5. Type the reason again and press Send for approval."
+    ],
+    "expected": "Step 3: a table \"What changes\" (Now / From the date) with the grade and the annual CTC, the CTC helper says the change in % on the current pay, \"Stays the same\" folded below; \"Goes to …\" at the top and an Approval route card. Negative step 4: \"Enter the reason for this change\" under Reason, the field has the focus, nothing is sent. Step 5: toast \"Promotion for Arjun Kulkarni sent for approval\"; the change shows under Waiting for approval.",
+    "stories": [
+      "People PPL-04 Promotion"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-C-02",
+    "area": "People · Changes, record dialogs, exits (builder 2, 2 Nov 2026)",
+    "screen": "Change action: the company rule, transfer, no pay access (PPL-04)",
+    "url": "http://localhost:3000/yx/people/changes",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635, sidebar open. Second: panel@demo-org.test (Manager - Divya). Browser window 1278 x 635.",
+    "steps": [
+      "1. Settings › Job changes: set \"What a promotion must change\" to both for the entity. Back on Change action, start a promotion for Arjun and choose only a new designation; press Send for approval.",
+      "2. Change the type to Transfer; choose a location in another state; wait.",
+      "3. Sign in as Divya (manager) and start a change for someone in her team; open Change type."
+    ],
+    "expected": "Negative step 1: \"Choose the new grade\" (both are required). Step 2: only New location is asked; What changes lists the holiday calendar and professional tax state. Step 3: only Promotion, Transfer, New designation and Manager change; no pay field; \"Pay is proposed by HR\". Negative: no Salary revision or Inter-entity transfer for the manager.",
+    "stories": [
+      "People PPL-04 PromotionBoth",
+      "People PPL-04 Transfer",
+      "People PPL-04 Manager"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-C-03",
+    "area": "People · Changes, record dialogs, exits (builder 2, 2 Nov 2026)",
+    "screen": "Change action: inter-entity transfer and a past date (PPL-04)",
+    "url": "http://localhost:3000/yx/people/changes",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Start a change for someone on a plant-only employment type; type Inter-entity transfer; choose the other legal entity.",
+      "2. Look at Transfer options and the employment type field.",
+      "3. Start a correction for Arjun dated in a month whose payroll is approved; wait.",
+      "4. Date it before 1 Apr of this financial year."
+    ],
+    "expected": "Step 2: options on the company defaults (\"Keep <code>\", \"Continue from <date>\"); the employment type is required with \"… is only for <entity>: choose one for the new entity\". Step 3: \"Payroll for <months> is already processed\". Negative step 4: \"Why go back this far\" appears and is required.",
+    "stories": [
+      "People PPL-04 InterEntity",
+      "People PPL-04 Retro"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-C-04",
+    "area": "People · Changes, record dialogs, exits (builder 2, 2 Nov 2026)",
+    "screen": "Reject a change and move a scheduled one (PPL-04, PPL-05)",
+    "url": "http://localhost:3000/yx/people/changes",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi) as approver of a change raised by someone else; window 1278 x 635.",
+    "steps": [
+      "1. Open a waiting change, press Reject, press Reject change with no reason.",
+      "2. Type \"Not budgeted this year\", press Reject change.",
+      "3. People › Scheduled: Edit a scheduled change, press Move and send for approval with no date.",
+      "4. Pick the same date it has now; press again. Then pick a later date; press again."
+    ],
+    "expected": "Negative step 1: \"Enter a reason of at least 3 characters.\" and the focus is in Reason. Step 2: toast \"The … was rejected\". Negative step 3: \"Choose the new date.\"; step 4 first: \"Choose a date other than the one it has now.\"; then toast \"… moved to <date>\", it goes back for approval.",
+    "stories": [
+      "People PPL-04 Reject",
+      "People PPL-04 RejectMissing",
+      "People PPL-05 Move",
+      "People PPL-05 MoveMissing"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-C-05",
+    "area": "People · Changes, record dialogs, exits (builder 2, 2 Nov 2026)",
+    "screen": "Person record: work phone (PPL-03)",
+    "url": "http://localhost:3000/yx/people/directory",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Arjun Kulkarni, Edit the work phone, type \"abc\", press Save.",
+      "2. Type +91 80 4012 3142, Save.",
+      "3. Clear it, Save."
+    ],
+    "expected": "Negative step 1: \"Enter the number with the country code, e.g. +91 44 4012 3142.\" with focus. Step 2: toast \"Arjun's work phone saved\"; the record shows it. Step 3: saved as \"Not on file\".",
+    "stories": [
+      "People PPL-03 WorkPhone",
+      "People PPL-03 WorkPhoneWrong"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-C-06",
+    "area": "People · Changes, record dialogs, exits (builder 2, 2 Nov 2026)",
+    "screen": "Person record: ask for a document, send one back (PPL-03)",
+    "url": "http://localhost:3000/yx/people/directory",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635, sidebar open. Then arjun@demo-org.test (Arjun) for My documents.",
+    "steps": [
+      "1. Arjun's record › Documents › Ask for a document: press Send request with nothing chosen.",
+      "2. Choose PAN card, Send request.",
+      "3. Ask for the PAN card again.",
+      "4. On an uploaded document press Send back; press Send back with no reason; then choose \"Image is unclear\", add a message, Send back.",
+      "5. As Arjun open My documents."
+    ],
+    "expected": "Negative step 1: \"Choose the document to ask for.\" Step 2: toast \"Arjun asked to upload the PAN card\". Negative step 3: the refusal shows inside the dialog. Step 4: first \"Choose a reason.\"; then toast \"<type> sent back to Arjun\". Step 5: Arjun sees the request and the reason with the message.",
+    "stories": [
+      "People PPL-03 AskDocument",
+      "People PPL-03 AskDocumentMissing",
+      "People PPL-03 SendBack",
+      "People PPL-03 SendBackMissing"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-C-07",
+    "area": "People · Changes, record dialogs, exits (builder 2, 2 Nov 2026)",
+    "screen": "Person record: upload for the person (PPL-03)",
+    "url": "http://localhost:3000/yx/people/directory",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635, sidebar open. Also panel@demo-org.test on her own record.",
+    "steps": [
+      "1. Arjun's record › Documents › Upload: press Upload with nothing chosen.",
+      "2. Choose Passport, choose a PDF, press Upload.",
+      "3. Enter an expiry date next year, Upload.",
+      "4. Try a .txt file for PAN card.",
+      "5. On one's own record (Divya) look for Upload."
+    ],
+    "expected": "Negative step 1: \"Choose the document.\" (Upload is never greyed out). Negative step 2: \"Enter the expiry date.\" Step 3: toast \"Passport uploaded for Arjun\". Negative step 4: \"Choose a PDF, PNG or JPEG file.\" Negative step 5: no Upload for oneself.",
+    "stories": [
+      "People PPL-03 UploadFor",
+      "People PPL-03 UploadForMissing",
+      "People PPL-03 UploadForExpiry"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-C-08",
+    "area": "People · Changes, record dialogs, exits (builder 2, 2 Nov 2026)",
+    "screen": "Absconding: start, stop, dispatch proof (PPL-24)",
+    "url": "http://localhost:3000/yx/people/absconding",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635, sidebar open. Second: panel@demo-org.test (no lifecycle.exit.manage).",
+    "steps": [
+      "1. Start a timeline: press Start timeline with nothing filled.",
+      "2. Choose a person and today as the last day present; press Start timeline.",
+      "3. Choose a day 8 days ago; Start.",
+      "4. Start one again for the same person.",
+      "5. On a sent notice press Add dispatch proof; Save with nothing; then type RK 4471 2291 IN and Save.",
+      "6. As Divya open the page."
+    ],
+    "expected": "Negative step 1: \"Choose the person.\" and \"Choose the last day present.\" with focus on Person. Negative step 2: \"The last day present must be before today.\" Step 3: toast \"Absconding timeline started for …\". Negative step 4: \"A timeline is already running for this person.\" in the dialog. Step 5: first \"Enter the article number…\", then toast \"Dispatch proof saved for …\" and the step shows the number. Negative step 6: no access.",
+    "stories": [
+      "People PPL-24 Start",
+      "People PPL-24 StartMissing",
+      "People PPL-24 StartFailed",
+      "People PPL-24 DispatchProof",
+      "People PPL-24 DispatchProofMissing"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-C-09",
+    "area": "People · Changes, record dialogs, exits (builder 2, 2 Nov 2026)",
+    "screen": "VRS on My exit: estimate and apply (PPL-40)",
+    "url": "http://localhost:3000/yx/me/resignation",
+    "account": "An employee aged 50+ with 10+ years and a salary on record (create a VRS scheme first as hr@demo-org.test in People › VRS schemes for age 50+, 10+ years).",
+    "steps": [
+      "1. Open My exit and read the scheme card.",
+      "2. Press Apply for VRS with no day.",
+      "3. Choose a last working day next month, a note, Apply for VRS."
+    ],
+    "expected": "Step 1: \"Your estimate\": scheme benefit with its basis (\"45 days × N years\" or \"N months left to retirement\"), gratuity, leave encashment; \"Estimate only…\". Negative step 2: \"Choose the last working day you would like.\" with focus. Step 3: toast \"Application for … sent to HR\"; My exit shows the VRS exit pending.",
+    "stories": [
+      "People PPL-40 Apply"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-C-10",
+    "area": "People · Changes, record dialogs, exits (builder 2, 2 Nov 2026)",
+    "screen": "VRS on My exit: not eligible (PPL-40)",
+    "url": "http://localhost:3000/yx/me/resignation",
+    "account": "arjun@demo-org.test (Arjun, under the scheme age), while the 50+ scheme from MT-PPL-C-09 is open.",
+    "steps": [
+      "1. Open My exit.",
+      "2. Try to apply through the API (developer) for that scheme."
+    ],
+    "expected": "Step 1: \"You're not eligible for this scheme. It needs age 50+ and 10+ years of service. You are <age> with <years> years of service.\" No Apply button. Negative step 2: 400 \"This scheme is for people aged 50 or more…\". If the date of birth is missing: \"Your date of birth is not on your record…\".",
+    "stories": [
+      "People PPL-40 NotEligible"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-C-11",
+    "area": "People · Changes, record dialogs, exits (builder 2, 2 Nov 2026)",
+    "screen": "Clearance: HR by leaver (PPL-20)",
+    "url": "http://localhost:3000/yx/people/clearance",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635, sidebar open. Second: panel@demo-org.test (Divya, an item owner, no HR keys).",
+    "steps": [
+      "1. Open Clearance; By leaver is selected.",
+      "2. Pick another leaver in Leaver.",
+      "3. Sign off an IT item with a note.",
+      "4. Switch to Your sign-offs.",
+      "5. As Divya open Clearance."
+    ],
+    "expected": "Step 1: \"Clearance · <leaver>\", the last working day, \"<n> of <m> sign-offs open.\", every department with its owner. Step 2: the other leaver's items. Step 3: toast \"<item> signed off for <leaver>\". Negative step 5: Divya sees only her own sign-offs; no By leaver switch; GET lifecycle/clearance is 403 for her.",
+    "stories": [
+      "People PPL-20 Hr",
+      "People PPL-20 ItOwner"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-C-12",
+    "area": "People · Changes, record dialogs, exits (builder 2, 2 Nov 2026)",
+    "screen": "F&F: absconding recovery-only (PPL-22)",
+    "url": "http://localhost:3000/yx/people/fnf",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh). Browser window 1278 x 635, sidebar open. Needs a deemed-abandoned absconding exit (MT-PPL-C-08 run to day 21, or the demo seed).",
+    "steps": [
+      "1. Open the settlement of the absconding exit.",
+      "2. Compare with a resignation settlement past its deadline."
+    ],
+    "expected": "Step 1: \"Absconding · recovery-only F&F\", the badge \"Held until <name> claims it\", the Recovery-only banner; no wage deadline countdown and no overdue alert. Negative step 2: the resignation one shows its deadline (and \"Wages on exit are overdue\" when past it).",
+    "stories": [
+      "People PPL-22 Absconding"
+    ],
+    "note": "Positive and negative."
   }
 ]
