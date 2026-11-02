@@ -157,6 +157,14 @@ const TEMPLATES: readonly RoleTemplate[] = [
     cannot: 'See anyone’s goals, reviews or ratings.',
     permissions: ['perf.setup.manage', 'perf.goal.manage', 'perf.cycle.manage', 'perf.calibration.facilitate'],
   },
+  {
+    key: 'performance_disputes',
+    name: 'Rating disputes',
+    typicalScope: 'tenant',
+    summary: 'Escalated rating disputes (PRF-15): read the case and its evidence, keep it on legal hold, record the decision and export court-ready evidence. Every view and export is recorded.',
+    cannot: 'Change a rating (that goes through a reopened review), see other reviews.',
+    permissions: ['perf.dispute.manage'],
+  },
   // M10 AT1 (founder D2): hiring roles on the scoped ats.* keys. Company-wide for now: the hiring screens become
   // scope-aware batch by batch (M10-BUILD-DESIGN §17).
   {

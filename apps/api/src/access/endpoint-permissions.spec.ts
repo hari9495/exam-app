@@ -19,6 +19,7 @@ import { PerformanceCalibrationController } from '../performance/calibration.con
 import { PerformanceCompController } from '../performance/comp.controller';
 import { PerformancePipsController } from '../performance/pips.controller';
 import { PerformanceHomeController } from '../performance/home.controller';
+import { PerformanceB3Controller } from '../performance/b3.controller';
 import { SpecialCasesController } from '../lifecycle/special-cases.controller';
 import { ExpensesController } from '../expenses/expenses.controller';
 import { ExpenseClaimsController } from '../expenses/claims.controller';
@@ -106,6 +107,9 @@ const IMPLICIT: Record<string, string[]> = {
   PerformanceCompController: ['cycles', 'sheet', 'updateProposal', 'submit', 'myPayBand', 'decide'], // decide: the holder of an approval task of the cycle (PRF-10)
   // PM8: a plan is about one person; the person, their manager chain and HR in scope, decided per plan.
   PerformancePipsController: ['list', 'propose', 'get', 'acknowledge', 'checkin'],
+  // PRF-13: the new manager's own hand-overs (or HR, checked again); PRF-15: the employee's own dispute; PRF-16: my coach
+  // card and the 1:1's manager; PRF-17: the review's current manager. The service decides per record (404 otherwise).
+  PerformanceB3Controller: ['handoverMine', 'handoverOptions', 'handoverDecide', 'myDispute', 'raise', 'addFile', 'coach', 'optOut', 'dismiss', 'agenda', 'assistant', 'draft', 'check', 'flag'],
   // People › Import, buddies, union register and succession: every route has its key.
   EmployeeImportController: [],
   PeopleRegistersController: [],
@@ -114,7 +118,7 @@ const IMPLICIT: Record<string, string[]> = {
 };
 
 describe('every HR endpoint declares a permission (P02 YX-SEC-01)', () => {
-  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, ReverificationController, RestructureController, EmployeeImportController, PeopleRegistersController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController, PerformanceHomeController, PersonPanelsController, BfsiController]) {
+  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, ReverificationController, RestructureController, EmployeeImportController, PeopleRegistersController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController, PerformanceB3Controller, PerformanceHomeController, PersonPanelsController, BfsiController]) {
     it(`${controller.name}`, () => {
       const proto = controller.prototype as unknown as Record<string, unknown>;
       const handlers = Object.getOwnPropertyNames(proto).filter((m) => m !== 'constructor' && typeof proto[m] === 'function' && Reflect.getMetadata(PATH_METADATA, proto[m] as object) !== undefined);

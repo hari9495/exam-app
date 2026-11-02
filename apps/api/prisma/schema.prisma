@@ -9469,8 +9469,86 @@ model PerfOwnerTransfer {
   decisionNeeded       Boolean  @default(false) @map("decision_needed")
   byUserId             String?  @map("by_user_id") @db.Uuid
   createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  // PRF-13 (migration 20261460000000_performance_b3): the decision on a moved artefact that needed one.
+  decision             String?   @db.VarChar(12)
+  decisionNote         String?   @map("decision_note") @db.VarChar(500)
+  decidedBy            String?   @map("decided_by") @db.Uuid
+  decidedAt            DateTime? @map("decided_at") @db.Timestamptz(3)
 
   @@map("perf_owner_transfers")
+}
+
+// ---- Performance builder 3 (migration 20261460000000_performance_b3): PRF-15 disputes, PRF-16 manager coach.
+
+model PerfDispute {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  ref            String    @db.VarChar(20)
+  reviewId       String    @map("review_id") @db.Uuid
+  disagreementId String    @map("disagreement_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  grounds        String    @db.VarChar(4000)
+  sought         String    @db.VarChar(10)
+  status         String    @default("raised") @db.VarChar(10)
+  legalHold      Boolean   @default(false) @map("legal_hold")
+  decision       String?   @db.VarChar(12)
+  decisionNote   String?   @map("decision_note") @db.VarChar(2000)
+  decidedBy      String?   @map("decided_by") @db.Uuid
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+  createdBy      String    @map("created_by") @db.Uuid
+  version        Int       @default(1)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, reviewId])
+  @@map("perf_disputes")
+}
+
+model PerfDisputeFile {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  disputeId      String   @map("dispute_id") @db.Uuid
+  fileId         String   @map("file_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("perf_dispute_files")
+}
+
+model PerfDisputeExport {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  disputeId       String   @map("dispute_id") @db.Uuid
+  ref             String   @db.VarChar(30)
+  fileId          String   @map("file_id") @db.Uuid
+  items           Json
+  signatoryUserId String   @map("signatory_user_id") @db.Uuid
+  exportedBy      String   @map("exported_by") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("perf_dispute_exports")
+}
+
+model PerfCoachPref {
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  optedOut       Boolean  @default(false) @map("opted_out")
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@id([organizationId, userId])
+  @@map("perf_coach_prefs")
+}
+
+model PerfCoachDismissal {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  nudgeKey       String   @map("nudge_key") @db.VarChar(80)
+  weekOf         DateTime @map("week_of") @db.Date
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, userId, nudgeKey, weekOf])
+  @@map("perf_coach_dismissals")
 }
 
 // ------------------------------------------------------------------------------------------ M06 PM5: peer and 360°

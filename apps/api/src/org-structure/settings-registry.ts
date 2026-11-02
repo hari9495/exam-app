@@ -79,6 +79,11 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'perf.feedback.default_visibility': { label: 'Performance: new feedback is shown to', scopes: ['tenant'], dated: false, values: ['private', 'recipient_only', 'with_hr'], default: 'private' },
   'perf.one_on_one.cadence_days': { label: 'Performance: a new 1:1 repeats every (days)', scopes: ['tenant'], dated: false, values: ['7', '14', '30'], default: '14' },
   'perf.pip.extend_days': { label: 'Performance: an improvement plan is extended by (days)', scopes: ['tenant'], dated: false, values: ['15', '30', '45', '60'], default: '30' },
+  // Performance builder 3 (PRF-15, PRF-16, PRF-17): how long after HR's answer a dispute may be escalated; how often the
+  // manager coach writes nudges (each manager may still turn them off); whether managers get the AI review assistant.
+  'perf.dispute.escalate_days': { label: 'Performance: days after HR answers a disagreement to escalate it', scopes: ['tenant'], dated: false, values: ['7', '15', '30'], default: '15' },
+  'perf.coach.frequency': { label: 'Performance: manager coach nudges', scopes: ['tenant'], dated: false, values: ['weekly', 'fortnightly', 'off'], default: 'weekly' },
+  'perf.ai.review_assistant': { label: 'Performance: AI review summaries (Help me draft) for managers', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   'perf.pip.lengths': { label: 'Performance: improvement plans run for (days)', scopes: ['tenant'], dated: false, values: ['30,60,90', '30,60', '60,90', '90'], default: '30,60,90' },
   // M10 AT2 (D5): requisitions against the headcount plan: not used, shown (outside-plan needs the extra approver), or required.
   'ats.headcount_plan': { label: 'Hiring: requisitions and the headcount plan', scopes: ['tenant'], dated: false, values: ['off', 'advisory', 'required'], default: 'advisory' },

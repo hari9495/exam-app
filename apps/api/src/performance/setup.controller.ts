@@ -114,6 +114,13 @@ export class PerformanceSetupController {
     return this.setup.retireCompetency(ctx, id);
   }
 
+  @Post('competencies/:id/merge')
+  @HttpCode(200)
+  @RequirePermissions('perf.setup.manage')
+  mergeCompetency(@CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: MergeDto) {
+    return this.setup.mergeCompetency(ctx, id, dto.intoId);
+  }
+
   @Get('skills')
   @RequirePermissions('perf.setup.manage')
   skills(@CurrentTenant() ctx: TenantContext) {

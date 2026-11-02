@@ -330,6 +330,11 @@ export class PerformanceSetupService {
       starter: Boolean(x.starterKey),
       levels: levels.map((l) => ({ level: l.level, label: l.label, behaviours: l.behaviours })),
       roles: roles.map((r) => ({ designationId: r.designationId, designation: names.get(r.designationId) ?? '', level: r.expectedLevel, validFrom: iso(r.validFrom) })),
+      // PRF-14: competencies are rated in every active review template with a competencies section.
+      usedIn: (
+        await tx.$queryRaw<{ name: string }[]>`SELECT DISTINCT t.name FROM review_templates t JOIN review_template_sections s ON s.organization_id = t.organization_id AND s.template_id = t.id
+          WHERE t.organization_id = ${org}::uuid AND t.status = 'active' AND s.kind = 'competencies' ORDER BY t.name`
+      ).map((t) => t.name),
       version: x.version,
     };
   }
@@ -408,6 +413,34 @@ export class PerformanceSetupService {
       await tx.roleCompetencyMap.updateMany({ where: { organizationId: org, competencyId: id, OR: [{ validTo: null }, { validTo: { gt: asDate(end) } }] }, data: { validTo: asDate(end) } });
       await audit(tx, c, 'perf.competency.retired', 'competency', id, {});
       return this.competencyView(tx, org, await tx.competency.findFirstOrThrow({ where: { id } }), todayIst());
+    });
+  }
+
+  /**
+   * PRF-14: merge a competency into another. The merged one is retired (it stays on past reviews) and its skill points
+   * to the kept one; each job title it was mapped to and the kept one is not, moves over at the same level (capped at the
+   * kept one's highest level), from today.
+   */
+  async mergeCompetency(ctx: TenantContext, id: string, intoId: string) {
+    if (id === intoId) throw new BadRequestException('A competency cannot be merged into itself.');
+    return this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const from = await tx.competency.findFirst({ where: { organizationId: org, id, status: 'active' } });
+      const into = await tx.competency.findFirst({ where: { organizationId: org, id: intoId, status: 'active' } });
+      if (!from || !into) throw new NotFoundException('Both competencies must be in use.');
+      const today = todayIst();
+      const open = (competencyId: string) => tx.roleCompetencyMap.findMany({ where: { organizationId: org, competencyId, validFrom: { lte: asDate(today) }, OR: [{ validTo: null }, { validTo: { gte: asDate(today) } }] } });
+      const keep = new Set((await open(intoId)).map((r) => r.designationId));
+      const max = await tx.competencyLevel.count({ where: { organizationId: org, competencyId: intoId } });
+      const moved = (await open(id)).filter((r) => !keep.has(r.designationId));
+      if (moved.length) await tx.roleCompetencyMap.createMany({ data: moved.map((r) => ({ organizationId: org, competencyId: intoId, designationId: r.designationId, expectedLevel: Math.min(r.expectedLevel, max), validFrom: asDate(today) })) });
+      const end = dayBefore(today);
+      await tx.roleCompetencyMap.deleteMany({ where: { organizationId: org, competencyId: id, validFrom: { gt: asDate(end) } } });
+      await tx.roleCompetencyMap.updateMany({ where: { organizationId: org, competencyId: id, OR: [{ validTo: null }, { validTo: { gt: asDate(end) } }] }, data: { validTo: asDate(end) } });
+      await tx.competency.update({ where: { id }, data: { status: 'retired', version: { increment: 1 } } });
+      await tx.companySkill.update({ where: { id: from.companySkillId }, data: { status: 'merged', mergedIntoId: into.companySkillId } });
+      await audit(tx, c, 'perf.competency.merged', 'competency', id, { into: intoId, rolesMoved: moved.length });
+      return this.competencyView(tx, org, await tx.competency.findFirstOrThrow({ where: { id: intoId } }), today);
     });
   }
 
