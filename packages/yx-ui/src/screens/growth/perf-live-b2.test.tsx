@@ -4,7 +4,7 @@ import { OneOnOneScreen, PipRecordScreen, QuickFeedbackScreen, type LiveOneOnOne
 import { ONE_ON_ONES, PEOPLE, PIP, PIP_PROPOSED, PIP_TO_ACK, RECEIVED, REQUESTS } from './perf-data-2';
 import { NOMINATIONS } from './perf-data-3';
 import { NominationsScreen, type LiveNominations } from './perf-reviews';
-import { CalibrationScreen, type LiveCalibration } from './perf-talent';
+import { CalibrationScreen, CompReviewScreen, type CompRow, type LiveCalibration, type LiveCompReview } from './perf-talent';
 
 // The designed Performance screens with `live` (builder 2): every action calls the app, pressed too early shows a
 // field error and calls nothing (positive and negative).
@@ -289,5 +289,64 @@ describe('PRF-09 Calibration, live', () => {
     render(<CalibrationScreen persona="hr" session={session} people={people} guide={[]} changes={[]} live={live} closeOpen />);
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Close calibration' }));
     await waitFor(() => expect(live.onSignOff).toHaveBeenCalled());
+  });
+});
+
+describe('PRF-10 Comp review sheet, live', () => {
+  const compLive = (over: Partial<LiveCompReview> = {}): LiveCompReview => ({
+    onRetry: () => {},
+    title: 'Comp review · FY27',
+    facts: 'Your team',
+    budgets: [],
+    equity: null,
+    can: { submit: true, decide: false, budgets: false, open: false, apply: false },
+    departments: [],
+    designations: [{ value: 'sqa', label: 'Senior QA Engineer' }],
+    equityDimension: 'gender',
+    onEquity: vi.fn(),
+    onPropose: ok(),
+    onSubmit: ok(),
+    onDecide: ok(),
+    onBudgets: ok(),
+    onOpenCycle: ok(),
+    onApply: ok(),
+    ...over,
+  });
+  const row = (o: Partial<NonNullable<CompRow['live']>> = {}, r: Partial<CompRow> = {}): CompRow => ({ id: 'p1', name: 'Arjun Rao', department: 'Sales', grade: 'G4', score: 3.8, ctc: 8_50_000, gradeMid: 0, factor: 1, eligibility: 'Included', proposed: 12, peerMedian: 0, ...r, live: { band: 'Exceeds', compa: 0.85, range: [10, 14], outOfRange: false, newCtc: 9_52_000, increment: 1_02_000, belowPeers: false, editable: true, promotionToDesignationId: null, promotionAmount: 0, bonusAmount: 0, ...o } });
+
+  it('a manager never sees the pay-gap figures; sending with an unjustified out-of-range row is refused', async () => {
+    const live = compLive();
+    render(<CompReviewScreen persona="mgr" rows={[row({ outOfRange: true }, { proposed: 20 })]} budget={[]} benchmark={null} live={live} />);
+    expect(screen.getByText(/Pay-gap figures are for HR and finance/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Send proposals for approval' }));
+    expect(live.onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('an out-of-range proposal saves only with a justification of 20 characters', async () => {
+    const live = compLive();
+    render(<CompReviewScreen persona="mgr" rows={[row({ outOfRange: true }, { proposed: 20 })]} budget={[]} benchmark={null} live={live} justifyFor="p1" />);
+    const drawer = screen.getByRole('dialog');
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Save justification' }));
+    expect(live.onPropose).not.toHaveBeenCalled();
+    fireEvent.change(within(drawer).getByRole('textbox', { name: /Justification/ }), { target: { value: 'Well below peers after a late promotion.' } });
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Save justification' }));
+    await waitFor(() => expect(live.onPropose).toHaveBeenCalledWith('p1', expect.objectContaining({ meritPct: 20, justification: 'Well below peers after a late promotion.' })));
+  });
+
+  it('HR or finance approve from the sheet; sending back needs what to change', async () => {
+    const live = compLive({ can: { submit: false, decide: true, budgets: false, open: false, apply: false }, equity: [{ dimension: 'Female', before: '6.0%', after: '2.0%' }] });
+    render(<CompReviewScreen persona="hr" rows={[row()]} budget={[]} benchmark={null} live={live} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Approve 1 proposals' }));
+    await waitFor(() => expect(live.onDecide).toHaveBeenCalledWith('approve', null));
+    fireEvent.click(screen.getByRole('button', { name: 'Send back' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Send back' }));
+    expect(await within(dialog).findByText('Say what to change.')).toBeInTheDocument();
+    expect(live.onDecide).toHaveBeenCalledTimes(1);
+  });
+
+  it('nobody without a task sees approve buttons', () => {
+    render(<CompReviewScreen persona="fin" rows={[row()]} budget={[]} benchmark={null} live={compLive({ can: { submit: false, decide: false, budgets: false, open: false, apply: false }, equity: [] })} />);
+    expect(screen.queryByRole('button', { name: /Approve/ })).toBeNull();
   });
 });

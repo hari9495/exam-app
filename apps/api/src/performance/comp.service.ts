@@ -15,7 +15,7 @@ import { LettersService } from '../documents/letters/letters.service';
 import { bandFor } from './perf-rules';
 import { bandPosition, belowMedian, budgetUse, cellFor, compaRatio, matrixProblem, meritFor, outOfRange, payGap, splitPool, type Cell } from './comp-rules';
 import { STARTER_MATRIX } from './starters';
-import type { BudgetsDto, CompCycleDto, MatrixDto, ProposalDto } from './review-dto';
+import type { BudgetsDto, CompCycleDto, CompDecideDto, MatrixDto, ProposalDto } from './review-dto';
 
 // Performance batch PM7 (M06-BUILD-DESIGN §12; PM-7.01 … 7.07): from ratings to pay.
 //   matrices   bands × compa-ratio ranges with min / target / max %; cells tile the axis (checked on save)
@@ -360,15 +360,58 @@ export class PerformanceCompService implements OnModuleInit {
       if (!a.hr && !a.finance) await audit(tx, c, 'perf.comp.team_pay_viewed', 'comp_cycle', id, { people: rows.length });
       const people = await this.names(tx, org, rows.flatMap((p) => [p.employeeId, p.managerEmployeeId]));
       const overrun = await settingFor(tx, c, 'perf.comp.budget_overrun', { legalEntityId: x.legalEntityId });
+      // PRF-10: what the sheet shows beside the pay: the grade and department, the review score, and (HR and finance only,
+      // never a manager: it compares with pay outside their team) whether pay is below the grade-and-role median.
+      const facts = await this.facts(tx, org, rows.map((p) => p.employeeId));
+      const depts = new Map((await tx.department.findMany({ where: { organizationId: org, id: { in: rows.map((p) => p.departmentId) } }, select: { id: true, name: true } })).map((d) => [d.id, d.name]));
+      const scores = new Map((await tx.review.findMany({ where: { organizationId: org, id: { in: rows.map((p) => p.reviewId).filter((r): r is string => Boolean(r)) } }, select: { id: true, finalScore: true, calibratedScore: true } })).map((r) => [r.id, num(r.calibratedScore) ?? num(r.finalScore)]));
+      const below = a.hr || a.finance ? new Set(belowMedian(rows.map((p) => ({ id: p.employeeId, grade: facts.get(p.employeeId)?.grade ?? '—', role: facts.get(p.employeeId)?.role ?? '—', pay: num(p.currentCtc)! })), Number(await settingFor(tx, c, 'perf.pay_equity.flag_pct', { legalEntityId: x.legalEntityId })))) : new Set<string>();
+      const decide = await this.myTasks(tx, org, v, rows);
       return {
         cycle: this.cycleView(x),
         role: a.hr ? 'hr' : a.finance ? 'finance' : 'manager',
-        proposals: rows.map((p) => this.proposalView(p, people)),
+        proposals: rows.map((p) => ({ ...this.proposalView(p, people), grade: facts.get(p.employeeId)?.grade ?? null, department: depts.get(p.departmentId) ?? '', score: p.reviewId ? (scores.get(p.reviewId) ?? null) : null, belowPeers: below.has(p.employeeId) })),
         budgets: a.hr || a.finance ? await this.budgets(tx, org, x) : (await this.budgets(tx, org, x)).filter((b) => rows.some((p) => p.departmentId === b.departmentId)),
         overrun,
-        can: { edit: x.status === 'open', submit: x.status === 'open' && rows.some((p) => p.status === 'draft' && (a.hr || p.managerEmployeeId === a.me)), apply: a.hr && x.status === 'approved' },
+        can: { edit: x.status === 'open', submit: x.status === 'open' && rows.some((p) => p.status === 'draft' && (a.hr || p.managerEmployeeId === a.me)), apply: a.hr && x.status === 'approved', decide: decide.length > 0 },
       };
     });
+  }
+
+  /** Today's grade and designation of each employee (the sheet and the pay-equity view). */
+  private async facts(tx: Tx, org: string, ids: string[]) {
+    const today = todayIst();
+    const rows = await tx.$queryRaw<{ employee_id: string; grade: string | null; role: string | null }[]>`
+      SELECT a.employee_id::text, g.name AS grade, d.name AS role FROM employee_assignments a
+        LEFT JOIN grades g ON g.organization_id = a.organization_id AND g.id = a.grade_id
+        LEFT JOIN designations d ON d.organization_id = a.organization_id AND d.id = a.designation_id
+      WHERE a.organization_id = ${org}::uuid AND a.employee_id = ANY(${ids}::uuid[]) AND a.superseded_at IS NULL
+        AND a.valid_from <= ${today}::date AND (a.valid_to IS NULL OR a.valid_to >= ${today}::date)`;
+    return new Map(rows.map((r) => [r.employee_id, { grade: r.grade, role: r.role }]));
+  }
+
+  /** PRF-10: the approval tasks of this cycle's sent proposals that wait for me. */
+  private async myTasks(tx: Tx, org: string, v: Viewer, rows: Proposal[]) {
+    const reqs = [...new Set(rows.filter((p) => p.status === 'submitted' && p.wfRequestId).map((p) => p.wfRequestId!))];
+    if (!reqs.length || !v.userId || v.actingForOther) return [];
+    return tx.wfTask.findMany({ where: { organizationId: org, requestId: { in: reqs }, status: 'open', OR: [{ assigneeUserId: v.userId }, { onBehalfOfUserId: v.userId }] }, select: { id: true } });
+  }
+
+  /** PRF-10: an approver (the manager's manager, HR or finance) approves or sends back from the sheet; sent back returns the proposals to draft. */
+  async decide(ctx: TenantContext, user: ScopeUser, id: string, dto: CompDecideDto) {
+    const v = await this.viewer(user);
+    const tasks = await this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const x = await this.cycleOr404(tx, org, id);
+      const rows = await withPayScope(tx, [x.legalEntityId], () => tx.compProposal.findMany({ where: { organizationId: org, compCycleId: id, status: 'submitted' } }));
+      const mine = await this.myTasks(tx, org, v, rows);
+      if (!mine.length) throw new ForbiddenException('Nothing in this cycle is waiting for your approval.');
+      if (dto.decision === 'send_back' && !dto.reason?.trim()) throw new BadRequestException('Say what to change before you send it back.');
+      // Each decision is recorded by the approvals engine (workflow.request.*), as in the approvals inbox.
+      return mine.map((t) => t.id);
+    });
+    for (const t of tasks) await this.engine.decide({ ...ctx, organizationId: ctx.organizationId! }, v.userId!, t, dto.decision === 'approve' ? 'approve' : 'reject', dto.reason?.trim() || null);
+    return { decided: tasks.length };
   }
 
   async updateProposal(ctx: TenantContext, user: ScopeUser, proposalId: string, dto: ProposalDto) {

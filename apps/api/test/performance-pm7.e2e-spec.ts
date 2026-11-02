@@ -184,6 +184,14 @@ describe('Performance batch PM7', () => {
     await api('priya', 'put', `/comp-proposals/${arjun.id}`).send({ meritPct: 20, version: arjun.version }).expect(400);
     const p = (await api('priya', 'put', `/comp-proposals/${arjun.id}`).send({ meritPct: 20, justification: 'Took over the Madurai territory', version: arjun.version }).expect(200)).body;
     expect(p).toMatchObject({ outOfRange: true, meritAmount: 170_000, newCtc: 1_020_000 });
+    // PRF-10: the sheet shows the grade, department and score; a manager is never told who is below the pay median.
+    const again = (await api('priya', 'get', `/comp-cycles/${ids.comp}/sheet`).expect(200)).body as { proposals: { department: string; score: number | null; belowPeers: boolean }[]; can: { decide: boolean } };
+    expect(again.proposals.every((x) => x.belowPeers === false)).toBe(true);
+    expect(again.proposals[0]!.department).toBeTruthy();
+    expect(again.can.decide).toBe(false);
+    const hrSheet = (await api('hr', 'get', `/comp-cycles/${ids.comp}/sheet`).expect(200)).body as { proposals: { belowPeers: boolean; score: number | null }[] };
+    expect(hrSheet.proposals.every((x) => typeof x.belowPeers === 'boolean')).toBe(true);
+    expect(hrSheet.proposals.some((x) => typeof x.score === 'number')).toBe(true);
   });
 
   it('over budget blocks with "block" and adds a finance step with "extra_approval"; the chain approves (PM-7.03, 7.05)', async () => {
@@ -197,7 +205,27 @@ describe('Performance batch PM7', () => {
     });
     const steps = (await inA((tx) => tx.wfRequest.findFirstOrThrow({ where: { id: wf } }))).steps as { name: string }[];
     expect(steps.map((x) => x.name)).toEqual(['Your manager', 'HR', 'Finance', 'Finance (exceptions)']);
-    await decideAll(wf);
+    // PRF-10: approvers decide from the sheet; only whoever holds an open task of the cycle; sending back needs a note.
+    const decide = (who: Who, body: object) => api(who, 'post', `/comp-cycles/${ids.comp}/decide`).send(body);
+    await decide('arjun', { decision: 'approve' }).expect(403);
+    await decide('priya', { decision: 'approve' }).expect(403);
+    await decide('fin', { decision: 'approve' }).expect(403);
+    await decide('head', { decision: 'maybe' }).expect(400);
+    await decide('head', { decision: 'send_back' }).expect(400);
+    await decide('adminB', { decision: 'approve' }).expect((r) => expect([403, 404]).toContain(r.status));
+    expect((await decide('head', { decision: 'send_back', reason: 'Lower Arjun to the range or add the promotion.' }).expect(200)).body.decided).toBe(1);
+    const back = (await api('priya', 'get', `/comp-cycles/${ids.comp}/sheet`).expect(200)).body as Sheet;
+    expect(back.proposals.every((x) => x.status === 'draft')).toBe(true);
+    await api('priya', 'post', `/comp-cycles/${ids.comp}/submit`).expect(200);
+    const wf2 = await inA(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`;
+      return (await tx.compProposal.findFirstOrThrow({ where: { compCycleId: ids.comp } })).wfRequestId!;
+    });
+    expect(wf2).not.toBe(wf);
+    expect((await decide('head', { decision: 'approve' }).expect(200)).body.decided).toBe(1);
+    expect(((await api('hr', 'get', `/comp-cycles/${ids.comp}/sheet`).expect(200)).body as { can: { decide: boolean } }).can.decide).toBe(true);
+    await decide('hr', { decision: 'approve' }).expect(200);
+    await decideAll(wf2);
     expect((await api('hr', 'get', '/comp-cycles').expect(200)).body.find((x: { id: string }) => x.id === ids.comp).status).toBe('approved');
   });
 

@@ -577,6 +577,11 @@ export interface CompProposal {
   justification: string | null;
   status: 'draft' | 'submitted' | 'approved' | 'rejected' | 'applied';
   version: number;
+  /** PRF-10: the grade, department and review score beside the pay; below the grade-and-role median (HR and finance only). */
+  grade?: string | null;
+  department?: string;
+  score?: number | null;
+  belowPeers?: boolean;
 }
 
 export interface CompSheet {
@@ -585,7 +590,7 @@ export interface CompSheet {
   proposals: CompProposal[];
   budgets: { departmentId: string; department: string; kind: 'merit' | 'bonus'; amount: number; used: number; remaining: number; over: boolean }[];
   overrun: string;
-  can: { edit: boolean; submit: boolean; apply: boolean };
+  can: { edit: boolean; submit: boolean; apply: boolean; decide?: boolean };
 }
 
 export interface MyPayBand {

@@ -542,6 +542,18 @@ export class PipCheckinDto {
   rating?: 'on_track' | 'some_progress' | 'no_progress' | null;
 }
 
+/** PRF-10: an approver approves the sheet's proposals waiting for them, or sends them back with what to change. */
+export class CompDecideDto {
+  @IsIn(['approve', 'send_back'])
+  decision!: 'approve' | 'send_back';
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(1000)
+  reason?: string | null;
+}
+
 /** PRF-12: HR approves a proposed plan or sends it back with a reason. */
 export class PipDecideDto {
   @IsIn(['approve', 'send_back'])

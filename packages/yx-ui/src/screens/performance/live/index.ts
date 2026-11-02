@@ -12,13 +12,15 @@ export { PeerPanel, PeerSetup, FeedbackTasksScreen, PeerFormScreen, ReviewerBloc
 export { CalibrationSessions, CalibrationListScreen, PerformanceReportsScreen, type PerformanceReportsScreenProps, type ReportKind } from './calibration';
 // PRF-09 Calibration board and 9-box, the designed screen made live (builder 2).
 export { CalibrationScreen, type CalibrationChange, type CalibrationPerson, type LiveCalibration } from '../../growth/perf-talent';
-export { CompCyclesScreen, CompSheetScreen, type CompCyclesScreenProps, type CompSheetScreenProps } from './comp';
 // The PRF-01 … 06 designs, rendered by the live pages with `live` (performance builder 1).
 export { PerformanceHomeScreen, MyGoalsScreen, CompanyGoalMapScreen, GoalCheckInSheet } from '../../growth/perf-goals';
 export { CycleSetupScreen, CycleControlRoomScreen, ReviewWorkspaceScreen, ReviewAcknowledgeScreen } from '../../growth/perf-reviews';
 export { PERF_LINKS, checkinInput, type LiveHome, type LiveMyGoals, type LiveGoalMap } from '../../growth/perf-goals-live';
 export { scoreSoFar, type LiveCycleSetup, type LiveControlRoom, type LiveReviewWorkspace, type LiveAcknowledge, type StagePerson } from '../../growth/perf-reviews-live';
 export { toGoal, type GoalItem, type PerfHome } from '../../growth/perf-live-data';
+export { CompCyclesScreen, type CompCyclesScreenProps } from './comp';
+// PRF-10 Comp review sheet, the designed screen made live (builder 2).
+export { CompReviewScreen, type CompProposalInput, type CompRow as CompReviewRow, type LiveCompReview } from '../../growth/perf-talent';
 export { PipsScreen, type PipsScreenProps } from './pips';
 // PRF-07 360° nominations, PRF-12 PIP record: the designed screens made live (builder 2).
 export { NominationsScreen, type LiveNominations, type Nomination as NominationRow } from '../../growth/perf-reviews';

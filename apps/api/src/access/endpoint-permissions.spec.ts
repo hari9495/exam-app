@@ -103,7 +103,7 @@ const IMPLICIT: Record<string, string[]> = {
   // PM6: the board is open to its facilitator, HR and the managers of the people in it (decided per session).
   PerformanceCalibrationController: ['board'],
   // PM7: a manager's own team in a comp cycle, decided per cycle; my own pay band.
-  PerformanceCompController: ['cycles', 'sheet', 'updateProposal', 'submit', 'myPayBand'],
+  PerformanceCompController: ['cycles', 'sheet', 'updateProposal', 'submit', 'myPayBand', 'decide'], // decide: the holder of an approval task of the cycle (PRF-10)
   // PM8: a plan is about one person; the person, their manager chain and HR in scope, decided per plan.
   PerformancePipsController: ['list', 'propose', 'get', 'acknowledge', 'checkin'],
   // People › Import, buddies, union register and succession: every route has its key.

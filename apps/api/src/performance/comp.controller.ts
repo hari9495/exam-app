@@ -8,7 +8,7 @@ import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.de
 import { RequireStepUp } from '../auth/step-up.decorator';
 import type { ScopeUser } from '../access/scope';
 import { VersionDto } from './dto';
-import { BudgetsDto, CompCycleDto, EquityQueryDto, MatrixDto, ProposalDto } from './review-dto';
+import { BudgetsDto, CompCycleDto, CompDecideDto, EquityQueryDto, MatrixDto, ProposalDto } from './review-dto';
 import { PerformanceCompService } from './comp.service';
 
 // Performance batch PM7 (M06-BUILD-DESIGN §19 "Comp"). Matrices, cycles, budgets and apply need perf.comp.manage (for
@@ -85,6 +85,13 @@ export class PerformanceCompController {
   @HttpCode(200)
   submit(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.svc.submit(ctx, this.user(req), id);
+  }
+
+  /** PRF-10: approve or send back from the sheet; open to whoever holds an approval task of the cycle (the manager's manager, HR, finance), which the service checks. */
+  @Post('comp-cycles/:id/decide')
+  @HttpCode(200)
+  decide(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CompDecideDto) {
+    return this.svc.decide(ctx, this.user(req), id, dto);
   }
 
   @Post('comp-cycles/:id/apply')
