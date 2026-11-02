@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, HttpCode, Param, ParseEnumPipe, ParseUUIDPipe, Patch, Post, Query, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
@@ -18,6 +18,9 @@ import {
   ConfirmDto5f,
   EntityDto,
   FilingDto,
+  Form16LinkDto,
+  Form16StatusDto,
+  RegisterRowsDto,
   HomeDuesDto,
   HubDto,
   PartADto,
@@ -28,6 +31,9 @@ import {
 } from './dto-5f';
 import { StatutoryFilingsService, homeDueMonths, onlyUnfiled } from './statutory-filings.service';
 import { StatutoryRegistersService } from './statutory-registers.service';
+import { DeskAccessService } from '../service-desk/desk-access';
+
+const REGISTER_KINDS = { epf: 'epf', esic: 'esic', pt: 'pt', lwf: 'lwf' } as const;
 
 // Payroll batch 5f (M03-BUILD-DESIGN §14.6). Every route declares its key (YX-SEC-01); the services check the key's
 // legal entities again and the database pay guard is the second layer. ⚡ = a fresh second sign-in step (P12).
@@ -55,6 +61,7 @@ export class StatutoryController {
   constructor(
     private readonly filings: StatutoryFilingsService,
     private readonly registers: StatutoryRegistersService,
+    private readonly desks: DeskAccessService,
   ) {}
 
   private user(req: Request) {
@@ -214,6 +221,20 @@ export class StatutoryController {
     return this.registers.importPartA(ctx, this.user(req), dto.entityId, dto.taxYear, file?.buffer);
   }
 
+  /** CMP-06: the return the year's certificates are linked to, the year's Q4 return, and when certificates are due. */
+  @Get('form16-status')
+  @RequirePermissions('statutory.filing.view')
+  form16Status(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: Form16StatusDto) {
+    return this.registers.form16Status(ctx, this.user(req), q.entityId, q.taxYear);
+  }
+
+  @Post('form16-link')
+  @HttpCode(200)
+  @RequirePermissions('statutory.filing.generate')
+  form16Link(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: Form16LinkDto) {
+    return this.registers.linkForm16(ctx, this.user(req), dto.entityId, dto.taxYear, dto.returnId, dto.version);
+  }
+
   @Post('form130/batch')
   @HttpCode(200)
   @RequirePermissions('statutory.register.sign')
@@ -234,6 +255,13 @@ export class StatutoryController {
   @RequirePermissions('statutory.filing.generate')
   registerMake(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: RegisterDto) {
     return this.registers.generate(ctx, this.user(req), dto.entityId, dto.month, dto.locationId ?? null, dto.reason);
+  }
+
+  /** CMP-03: one statute's register, person by person, with the six-month totals. */
+  @Get('registers/:kind/rows')
+  @RequirePermissions('statutory.filing.view')
+  registerRows(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('kind', new ParseEnumPipe(REGISTER_KINDS)) kind: keyof typeof REGISTER_KINDS, @Query() q: RegisterRowsDto) {
+    return this.filings.registerRows(ctx, this.user(req), q.entityId, q.month, kind);
   }
 
   @Get('registers/:id/file')
@@ -280,9 +308,17 @@ export class StatutoryController {
     return this.registers.advisories(ctx, this.user(req), q.entityId);
   }
 
+  /** CMP-08: the help desks the reviewer may put a follow-up task on. */
+  @Get('advisories/task-desks')
+  @RequirePermissions('statutory.advisory.review')
+  async taskDesks(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.registers.taskDesks(ctx, await this.desks.actor(req, ctx));
+  }
+
   @Post('advisories/:code/review')
   @RequirePermissions('statutory.advisory.review')
-  review(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('code') code: string, @Body() dto: AdvisoryReviewDto) {
-    return this.registers.review(ctx, this.user(req), code.slice(0, 40), dto.entityId, dto.note);
+  async review(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('code') code: string, @Body() dto: AdvisoryReviewDto) {
+    const task = dto.task ? { ...dto.task, actor: await this.desks.actor(req, ctx) } : undefined;
+    return this.registers.review(ctx, this.user(req), code.slice(0, 40), dto.entityId, dto.note, { share: dto.share, task });
   }
 }

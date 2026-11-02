@@ -53,13 +53,14 @@ import { EwaService } from './ewa.service';
 import { EquityService } from './equity.service';
 import { ActuarialService } from './actuarial.service';
 import { CountryPackService } from './country-packs.service';
+import { ServiceDeskModule } from '../service-desk/service-desk.module';
 
 // M03 payroll, batch 5a: locks, audit, documents and exchange files (PAY-1.01 … PAY-1.12); batch 5b: set-up,
 // structures, compensation, statutory profiles and imports (PAY-2.04 … PAY-2.13); batch 5c: runs and inputs;
 // batch 5d: pay-out and payslips (PAY-4.01 … PAY-4.06); batch 5e: income tax (PAY-5.01 … PAY-5.08); batch 5f: statutory files, returns, registers (PAY-6.01 … PAY-6.10); batch 5g: off-cycle, arrears, F&F (PAY-7.01 … PAY-7.07); batch 5h: consultants (PAY-8.01 … PAY-8.04). Time imports it for the
 // reopen request (the step-4 unlock became it) and nothing here depends on time's services.
 @Module({
-  imports: [AuditModule, CryptoModule, StorageModule, WorkflowModule, NotificationsModule, EmailModule, AuthModule, EmployeeHistoryModule, RulesEngineModule, DocumentsModule],
+  imports: [AuditModule, CryptoModule, StorageModule, WorkflowModule, NotificationsModule, EmailModule, AuthModule, EmployeeHistoryModule, RulesEngineModule, DocumentsModule, ServiceDeskModule],
   controllers: [PayrollController, PublicPayController, Payroll5bController, Payroll5cController, Payroll5dController, TaxController, StatutoryController, Payroll5gController, Payroll5jController, Payroll5hController, PublicConsultantController, Payroll5iController, Payroll5iMoreController, PayrollBonusController, PayrollReportsController],
   providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, { provide: DSC_ROOTS, useClass: PublishedCcaRoots }, { provide: DSC_REVOCATION, useClass: OnlineRevocationChecker }, PayFileStore, PayPeriodsService, PayAuditService, PayDocumentsService, ExchangeFilesService, PaySetupService, PayStructuresService, PayImportsService, PayRunsService, PayInputsService, PayoutService, PayslipsService, TaxService, LedgerService, StatutoryFilingsService, StatutoryRegistersService, FvuRunner, ArrearsService, FnfService, GoLiveService, PayrollIntakeService, PayrollJobs, ConsultantsService, SpecialPayService, EwaService, EquityService, ActuarialService, CountryPackService, BonusService, PayReportsService],
   exports: [PayPeriodsService, PayDocumentsService, ExchangeFilesService, PayrollIntakeService],

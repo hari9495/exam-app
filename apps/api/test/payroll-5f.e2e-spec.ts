@@ -35,7 +35,7 @@ describe('Payroll batch 5f (statutory files, returns, registers)', () => {
   const server = () => app.getHttpServer();
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'adminA' | 'adminB' | 'payAdmin' | 'compliance' | 'approver1' | 'approver2' | 'emp1' | 'emp2' | 'payAdminB';
+  type Who = 'adminA' | 'adminB' | 'payAdmin' | 'compliance' | 'approver1' | 'approver2' | 'emp1' | 'emp2' | 'payAdminB' | 'hrAdmin';
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
@@ -99,7 +99,7 @@ describe('Payroll batch 5f (statutory files, returns, registers)', () => {
         values: { kind: 'advisory', code: `KA-TEST-${run}`, title: 'Karnataka test advisory', summary: 'A change the company should look at.', action: 'Check the PT slabs used.' },
         golden: [{ name: 'code', fn: 'advisory', input: {}, expected: { code: `KA-TEST-${run}` } }],
       };
-      await loadRuleSets(tx, [...pack('in-tax.json'), ...pack('in-filing.json'), advisory], await staff('super@platform.test'), await staff('rules@platform.test'));
+      await loadRuleSets(tx, [...pack('in-tax.json'), ...pack('in-filing.json'), ...pack('in-tds-dates.json'), advisory], await staff('super@platform.test'), await staff('rules@platform.test'));
     });
     planId = (await prisma.plan.create({ data: { name: `pay5f-plan-${run}`, candidateLimit: 1, aiCreditLimit: 1, proctoringMinutesLimit: 1 } })).id;
     for (const k of ['A', 'B'] as const) {
@@ -116,12 +116,14 @@ describe('Payroll batch 5f (statutory files, returns, registers)', () => {
       ['adminA', 'A', 'org_admin', null],
       ['adminB', 'B', 'org_admin', null],
       ['payAdmin', 'A', 'panel', [...template('payroll_admin'), 'employee.change.retro']],
-      ['compliance', 'A', 'panel', template('compliance_owner')],
+      // CMP-08: the compliance owner also works on a help desk (follow-up tasks for law updates).
+      ['compliance', 'A', 'panel', [...template('compliance_owner'), 'desk.task.work']],
       ['approver1', 'A', 'panel', [...template('payroll_approver'), 'employee.change.retro']],
       ['approver2', 'A', 'panel', [...template('payroll_approver'), 'employee.change.retro']],
       ['emp1', 'A', 'panel', null],
       ['emp2', 'A', 'panel', null],
       ['payAdminB', 'B', 'panel', template('payroll_admin')],
+      ['hrAdmin', 'A', 'panel', template('hr_admin')],
     ];
     for (const [who, k, role, keys] of roster) {
       const o = org[k].id;
@@ -243,7 +245,7 @@ describe('Payroll batch 5f (statutory files, returns, registers)', () => {
   });
 
   it('every 5f table has forced RLS, tenant isolation, the support exclusion and the pay guard', async () => {
-    const tables = ['statutory_filings', 'statutory_penalty_lines', 'tds_challans', 'tds_returns', 'statutory_registers', 'register_rows', 'inspection_packs', 'advisory_reviews'];
+    const tables = ['statutory_filings', 'statutory_penalty_lines', 'tds_challans', 'tds_returns', 'statutory_registers', 'register_rows', 'inspection_packs', 'advisory_reviews', 'form16_return_links'];
     const rows = await prisma.$queryRaw<{ t: string; ok: boolean }[]>`
       SELECT c.relname AS t, (c.relrowsecurity AND c.relforcerowsecurity
         AND EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = c.oid AND p.polname = 'tenant_isolation')
@@ -263,6 +265,11 @@ describe('Payroll batch 5f (statutory files, returns, registers)', () => {
     expect(hub.cards.map((c: { statute: string; state: string | null }) => `${c.statute}${c.state ? `:${c.state}` : ''}`)).toEqual(expect.arrayContaining(['IN.PF', 'IN.ESI', 'IN.PT:IN-KA']));
     expect(hub.cards.find((c: { statute: string }) => c.statute === 'IN.PF')).toMatchObject({ status: 'not_generated', dueOn: expect.stringMatching(/-15$/) });
     expect(Number(hub.tds.amount)).toBeGreaterThan(0);
+    // CMP-01 SetupNeeded: nothing is registered yet; PT and LWF only for the states the entity is in.
+    expect(hub.setupMissing).toEqual(['IN.PF', 'IN.ESI', 'IN.TDS', 'IN.PT IN-KA', 'IN.LWF IN-KA']);
+    await inA((tx) => tx.statutoryRegistration.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity, statute: 'IN.PF', status: 'off' } }));
+    expect((await api('payAdmin', 'get', `/statutory/hub?entityId=${ids.entity}&month=${month}`).expect(200)).body.setupMissing).not.toContain('IN.PF');
+    await api('payAdmin', 'get', `/statutory/hub?entityId=${ids.entity}&month=2026-13`).expect(400);
     await api('payAdminB', 'get', `/statutory/hub?entityId=${ids.entity}&month=${month}`).expect(404);
     await api('emp1', 'get', `/statutory/hub?entityId=${ids.entity}&month=${month}`).expect(403);
   });
@@ -415,6 +422,31 @@ describe('Payroll batch 5f (statutory files, returns, registers)', () => {
     await api('payAdmin', 'post', `/statutory/tds-returns/${ret.id}/file`).expect(409);
     await api('payAdmin', 'patch', `/statutory/challans/${ch.id}`).send({ challanNo: '00042', bsrCode: '0510308', depositDate: today }).expect(200);
     expect((await api('payAdmin', 'post', `/statutory/tds-returns/${ret.id}/reconcile`).expect(200)).body).toMatchObject({ status: 'reconciled', reconciliation: { ok: true } });
+    // CMP-05: completeness per month (this month from payroll) and the PAN warnings (P5F-002 has no PAN).
+    const seen = (await api('compliance', 'get', `/statutory/tds-returns/${ret.id}`).expect(200)).body;
+    expect(seen.completeness.months.find((m: { month: string }) => m.month === month)).toMatchObject({ source: 'payroll', rows: ret.rows, missing: false });
+    expect(seen.completeness.panWarnings).toEqual([expect.objectContaining({ employeeCode: 'P5F-002', issue: 'pan_missing' })]);
+    expect(JSON.stringify(seen.completeness)).not.toContain(PAN1);
+    // CMP-05 MissingMonth: months of the quarter paid before the company started here wait for their imported rows.
+    const prior = seen.completeness.months.filter((m: { month: string }) => m.month < month).map((m: { month: string }) => m.month) as string[];
+    expect(seen.completeness.months.filter((m: { missing: boolean }) => m.missing).map((m: { month: string }) => m.month)).toEqual(prior);
+    if (prior.length) {
+      expect((await api('payAdmin', 'post', `/statutory/tds-returns/${ret.id}/file`).expect(409)).body.code).toBe('TDS_MONTH_MISSING');
+      const rows = prior.flatMap((m) => [
+        { employeeCode: 'P5F-001', month: m, componentCode: 'basic', amount: '50000' },
+        { employeeCode: 'P5F-001', month: m, componentCode: 'tds', amount: '0' },
+      ]);
+      // Every row is checked; a bad row is reported plainly and nothing lands.
+      const bad = (await api('payAdmin', 'post', '/payroll/imports').send({ legalEntityId: ids.entity, kind: 'as_paid_lines', rows: [...rows, { employeeCode: 'NOPE', month: prior[0], componentCode: 'tds', amount: 'x' }] }).expect(201)).body;
+      expect(bad.errors).toEqual([{ row: rows.length + 1, message: 'No employee with that code in this legal entity.' }]);
+      await api('payAdmin', 'post', `/payroll/imports/${bad.id}/commit`).expect(409);
+      const good = (await api('payAdmin', 'post', '/payroll/imports').send({ legalEntityId: ids.entity, kind: 'as_paid_lines', rows }).expect(201)).body;
+      await api('payAdmin', 'post', `/payroll/imports/${good.id}/commit`).expect(200);
+      const again = (await api('payAdmin', 'post', '/statutory/tds-returns').send({ entityId: ids.entity, taxYear: ty, quarter }).expect(201)).body;
+      expect(again.completeness.months.filter((m: { source: string }) => m.source === 'imported').map((m: { month: string }) => m.month)).toEqual(prior);
+      expect(again.completeness.months.some((m: { missing: boolean }) => m.missing)).toBe(false);
+      await api('payAdmin', 'post', `/statutory/tds-returns/${ret.id}/reconcile`).expect(200);
+    }
     // 5f-D1: the official e-TDS file needs the deductor's details first.
     expect((await api('payAdmin', 'post', `/statutory/tds-returns/${ret.id}/file`).expect(400)).body.problems).toEqual(expect.arrayContaining([expect.stringMatching(/TAN/)]));
     await inA(async (tx) => {
@@ -452,6 +484,29 @@ describe('Payroll batch 5f (statutory files, returns, registers)', () => {
       ).body.status,
     ).toBe('filed');
     expect((await api('payAdmin', 'post', `/statutory/tds-returns/${ret.id}/correction`).expect(201)).body).toMatchObject({ kind: 'correction', correctsId: ret.id });
+    ids.ret = ret.id;
+  });
+
+  it('CMP-03 register rows: EPF / ESIC / PT / LWF person by person with coverage and six months of totals; scoped', async () => {
+    const get = (who: Who, kind: string, m = month) => api(who, 'get', `/statutory/registers/${kind}/rows?entityId=${ids.entity}&month=${m}`);
+    const epf = (await get('compliance', 'epf').expect(200)).body;
+    const one = epf.rows.find((r: { code: string }) => r.code === 'P5F-001');
+    expect(one).toMatchObject({ coverage: 'covered', reason: null, uanLast4: '0400', location: 'Bengaluru', state: 'IN-KA' });
+    expect(Number(one.employee)).toBeGreaterThan(0);
+    expect(Number(one.employer)).toBeCloseTo(Number(one.eps) + Number(one.epfEmployer), 2);
+    expect(JSON.stringify(epf)).not.toContain('100200300400');
+    expect(epf.trend.map((t: { month: string }) => t.month).pop()).toBe(month);
+    expect(epf.trend).toHaveLength(6);
+    const esic = (await get('compliance', 'esic').expect(200)).body;
+    expect(esic.rows.find((r: { code: string }) => r.code === 'P5F-001')).toMatchObject({ coverage: 'not_covered', reason: expect.stringMatching(/^Wages above the ESI limit of ₹/) });
+    expect(esic.rows.find((r: { code: string }) => r.code === 'P5F-002')).toMatchObject({ coverage: 'covered' });
+    const lwf = (await get('compliance', 'lwf').expect(200)).body;
+    if (!month.endsWith('-12')) expect(lwf.rows[0]).toMatchObject({ coverage: 'not_due', reason: 'LWF is deducted in December in Karnataka' });
+    expect((await get('compliance', 'pt').expect(200)).body.rows).toHaveLength(2);
+    await get('compliance', 'gratuity').expect(400);
+    await get('compliance', 'epf', '2026-1').expect(400);
+    await get('emp1', 'epf').expect(403);
+    await get('payAdminB', 'epf').expect(404);
   });
 
   it('registers: made from the payslips, frozen (never changed again), the signature checked; each person sees only their own row', async () => {
@@ -488,7 +543,30 @@ describe('Payroll batch 5f (statutory files, returns, registers)', () => {
     ).body;
     expect(imported).toMatchObject({ files: 2, matched: 1 });
     const form = Number(ty.slice(0, 4)) >= 2026 ? 'FORM130' : 'FORM16';
+    // CMP-06: certificates are linked to the year's filed Q4 return; a wrong quarter is kept, shown and blocks issuing.
+    const status0 = (await api('compliance', 'get', `/statutory/form16-status?entityId=${ids.entity}&taxYear=${ty}`).expect(200)).body;
+    expect(status0).toMatchObject({ link: null, availableAfter: `${Number(ty.slice(0, 4)) + 1}-05-31` });
+    const filedRow = (q: number) =>
+      scoped((tx) =>
+        tx.tdsReturn.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity, formCode: Number(ty.slice(0, 4)) >= 2026 ? '138' : '24Q', lawVersion: Number(ty.slice(0, 4)) >= 2026 ? 'IT-2025' : 'IT-1961', taxYear: ty, quarter: q, rows: [], status: 'filed', tokenNo: `TKN${q}0000`, createdBy: users.payAdmin } }),
+      );
+    const wrongId = quarter !== 4 ? ids.ret : (await filedRow(1)).id;
+    const link = (await api('payAdmin', 'post', '/statutory/form16-link').send({ entityId: ids.entity, taxYear: ty, returnId: wrongId }).expect(200)).body;
+    expect(link).toMatchObject({ quarter: quarter !== 4 ? quarter : 1, version: 1, problem: expect.stringMatching(/Certificates need the filed Q4 return/) });
+    expect((await api('compliance', 'get', `/statutory/form16-status?entityId=${ids.entity}&taxYear=${ty}`).expect(200)).body.link.problem).toBe(link.problem);
     await stepUp('compliance');
+    const blocked = (await api('compliance', 'post', '/statutory/form130/batch').send({ entityId: ids.entity, taxYear: ty, confirmation: { phrase: `ISSUE ${form} ${ty}`, impact: [] } }).expect(200)).body;
+    expect(blocked).toMatchObject({ issued: 0, failed: [{ reason: link.problem }] });
+    const rightId = quarter === 4 ? ids.ret : (await filedRow(4)).id;
+    await api('payAdmin', 'post', '/statutory/form16-link').send({ entityId: ids.entity, taxYear: ty, returnId: rightId }).expect(409);
+    await api('payAdmin', 'post', '/statutory/form16-link').send({ entityId: ids.entity, taxYear: ty, returnId: wrongId, version: 1 }).expect(409);
+    await api('payAdmin', 'post', '/statutory/form16-link').send({ entityId: ids.entity, taxYear: '2025', returnId: rightId, version: 1 }).expect(400);
+    await api('payAdminB', 'post', '/statutory/form16-link').send({ entityId: ids.entity, taxYear: ty, returnId: rightId, version: 1 }).expect(404);
+    await api('emp1', 'post', '/statutory/form16-link').send({ entityId: ids.entity, taxYear: ty, returnId: rightId, version: 1 }).expect(403);
+    expect((await api('payAdmin', 'post', '/statutory/form16-link').send({ entityId: ids.entity, taxYear: ty, returnId: rightId, version: 1 }).expect(200)).body).toMatchObject({ quarter: 4, version: 2, problem: null });
+    const audits = await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'statutory.form16.return_linked' } }));
+    expect(audits).toBe(2);
+    await expect(scoped((tx) => tx.form16ReturnLink.deleteMany({ where: { legalEntityId: ids.entity } }))).rejects.toThrow(/permission denied/);
     expect(
       (
         await api('compliance', 'post', '/statutory/form130/batch')
@@ -504,7 +582,25 @@ describe('Payroll batch 5f (statutory files, returns, registers)', () => {
     const a = list.find((x: { code: string }) => x.code === `KA-TEST-${run}`);
     expect(a).toMatchObject({ jurisdiction: 'IN-KA', reviewed: null });
     await api('payAdmin', 'post', `/statutory/advisories/${a.code}/review`).send({ entityId: ids.entity, note: 'Checked the PT slabs' }).expect(403);
-    await api('compliance', 'post', `/statutory/advisories/${a.code}/review`).send({ entityId: ids.entity, note: 'Checked the PT slabs' }).expect(201);
+    // CMP-08: a task goes only on a help desk the reviewer works on, due from today on.
+    const desk = (await api('adminA', 'post', '/desk/desks').send({ name: 'Compliance desk', key: 'CMP', kind: 'hr' }).expect(201)).body;
+    expect((await api('compliance', 'get', '/statutory/advisories/task-desks').expect(200)).body).toEqual([]);
+    const review = (extra: object) => api('compliance', 'post', `/statutory/advisories/${a.code}/review`).send({ entityId: ids.entity, note: 'Checked the PT slabs', ...extra });
+    expect((await review({ task: { deskId: desk.id, dueOn: today } }).expect(400)).body.message).toBe('Choose a help desk you work on for the task.');
+    await api('adminA', 'post', `/desk/desks/${desk.id}/members`).send({ userId: users.compliance, role: 'agent' }).expect(201);
+    expect((await api('compliance', 'get', '/statutory/advisories/task-desks').expect(200)).body).toEqual([{ id: desk.id, name: 'Compliance desk' }]);
+    await api('emp1', 'get', '/statutory/advisories/task-desks').expect(403);
+    expect((await review({ task: { deskId: desk.id, dueOn: '2020-01-01' } }).expect(400)).body.message).toBe('Choose a due date from today on.');
+    await review({ task: { deskId: desk.id, dueOn: 'soon' } }).expect(400);
+    await review({ share: 'yes' }).expect(400);
+    const done = (await review({ task: { deskId: desk.id, dueOn: today }, share: true }).expect(201)).body;
+    // The entity's HR admins: the HR admin and the payroll fixture, which also holds the HR job-change key.
+    expect(done).toMatchObject({ sharedWith: 2, taskId: expect.any(String), taskError: null });
+    const task = await tenantPrisma.forTenant(SUPER, (tx) => tx.sdTask.findUniqueOrThrow({ where: { id: done.taskId } }));
+    expect(task).toMatchObject({ deskId: desk.id, assigneeUserId: users.compliance, title: 'Law update: Karnataka test advisory', ticketId: null });
+    const bell = await tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.findMany({ where: { recipientUserId: users.hrAdmin, type: 'statutory.advisory.shared' } }));
+    expect(bell).toHaveLength(1);
+    expect(bell[0].linkPath).toBe('/yx/payroll/advisories');
     await api('compliance', 'post', `/statutory/advisories/${a.code}/review`).send({ entityId: ids.entity, note: 'Again' }).expect(409);
   });
 });

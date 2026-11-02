@@ -135,6 +135,6 @@ import { WidgetService } from './widget.service';
     MobileService,
   ],
   // Lifecycle 6a: HR checklist tasks raise their desk requests through the journeys service (founder D1).
-  exports: [JourneysService],
+  exports: [JourneysService, DeskAccessService, WorkService],
 })
 export class ServiceDeskModule {}
