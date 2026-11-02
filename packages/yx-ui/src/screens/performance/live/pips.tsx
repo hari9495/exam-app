@@ -3,19 +3,17 @@ import { Plus } from 'lucide-react';
 import { Button } from '../../../components/button';
 import { DatePicker } from '../../../components/date';
 import { Badge, type BadgeTone } from '../../../components/display';
-import { EmptyState, InlineAlert } from '../../../components/feedback';
+import { EmptyState } from '../../../components/feedback';
 import { FormField } from '../../../components/field';
 import { Text } from '../../../components/foundations';
 import { TextArea, TextField } from '../../../components/inputs';
 import { ConfirmDialog } from '../../../components/overlay';
 import { Segment } from '../../../components/segment';
 import { PersonPicker, type PersonOption } from '../../../components/select';
-import { Card } from '../../../components/shell';
 import { DataTable, type TableColumn } from '../../../components/table';
 import { dayKey } from '../../../lib/dates';
-import { useRun } from '../../org/org-kit';
 import { LivePage, dateText } from '../../time/live/kit';
-import type { LoadState, Pip, PipStatus, PipSummary, PipsView } from './types';
+import type { LoadState, PipStatus, PipSummary, PipsView } from './types';
 
 // Performance batch PM8, wired (M06-BUILD-DESIGN §13; PRF-12 the PIP record). A plan is seen by the person, their
 // manager chain and HR in scope only. Protected leave pauses it; "not met" opens nothing by itself.

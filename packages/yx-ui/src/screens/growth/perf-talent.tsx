@@ -88,12 +88,6 @@ export interface CalibrationProps {
   live?: LiveCalibration;
 }
 
-const share = (ratings: number[], n: number) => {
-  const counts = Array.from({ length: n }, () => 0);
-  for (const r of ratings) counts[Math.min(n, Math.max(1, Math.round(r))) - 1]! += 1;
-  return counts.map((c) => Math.round((c / (ratings.length || 1)) * 100));
-};
-
 /** PRF-09 Calibration (T6): ratings board by rating, distribution vs a guide only (no forced curve), change with reason (YX-PERF-08); 9-box (wave 6). */
 export function CalibrationScreen({ persona, session, people: initial, guide, changes: initialChanges, tab = 'board', pendingMove, myTeam, state = 'ready', closeOpen, live }: CalibrationProps) {
   const [ownPeople, setPeople] = useState(initial);

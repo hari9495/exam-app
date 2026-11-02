@@ -10635,5 +10635,288 @@
       "Performance · PRF-06 · Disagreement too short (at least 20 characters)"
     ],
     "note": "Negative."
+  },
+  {
+    "id": "MT-PRF-B2-01",
+    "area": "Performance · PRF-07 360° nominations",
+    "screen": "Employee nominates and sends the list",
+    "url": "http://localhost:3000/yx/performance/reviews/<Arjun's open review id>/nominations",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya). Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "Performance PRF-07 EmployeeNominates",
+      "Performance PRF-07 Sent"
+    ],
+    "steps": [
+      "1. Open Performance › Reviews, open your review in a cycle that asks colleagues for feedback (HR turned it on with at least 3 and at most 6), and change the address to end in /nominations.",
+      "2. In Add a reviewer search \"Kavya\", choose Kavya, Relationship Peer, press Add.",
+      "3. Add two more colleagues the same way.",
+      "4. Press Send to manager for approval."
+    ],
+    "expected": "Step 2: toast \"Kavya … added\"; the row shows Peer and Proposed. Step 4: toast \"Sent to Divya …\"; a green note says you will be told when your manager approves; the Send button is gone until you add someone new. Divya gets one notification \"Nominations for 360° feedback are waiting for you\" (not one per name).",
+    "note": "Positive."
+  },
+  {
+    "id": "MT-PRF-B2-02",
+    "area": "Performance · PRF-07 360° nominations",
+    "screen": "Too few names, and nothing chosen",
+    "url": "http://localhost:3000/yx/performance/reviews/<Arjun's open review id>/nominations",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya). Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "Performance PRF-07 BelowMinimum"
+    ],
+    "steps": [
+      "1. With only 1 or 2 names on the list, press Send to manager for approval.",
+      "2. Press Add without choosing a person.",
+      "3. Try to add Divya (your manager) or yourself."
+    ],
+    "expected": "Step 1: nothing is sent; red text \"Nominate at least 3 reviewers. You have 2.\" The button is never greyed out. Step 2: field error \"Choose a person to add.\" and the search box gets focus. Step 3: neither you nor your manager appears in the search.",
+    "note": "Negative."
+  },
+  {
+    "id": "MT-PRF-B2-03",
+    "area": "Performance · PRF-07 360° nominations",
+    "screen": "Manager approves the list",
+    "url": "http://localhost:3000/yx/performance/reviews/<Arjun's review id>/nominations",
+    "account": "panel@demo-org.test (Manager - Divya). Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "Performance PRF-07 ManagerApproves"
+    ],
+    "steps": [
+      "1. Open the link in the nominations notification (or the same address as Arjun).",
+      "2. Press Approve on one name, Remove on another.",
+      "3. Press Approve list and invite."
+    ],
+    "expected": "Step 2: toasts \"… approved\" and \"… removed\"; the removed row shows Removed. Step 3: toast \"Reviewers invited\"; every row shows Approved; each reviewer gets an in-app feedback task. If the list is below the minimum the toast says \"Approve at least 3 reviewers. The list has 2.\" and nothing changes.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PRF-B2-04",
+    "area": "Performance · PRF-08 Quick feedback",
+    "screen": "Give feedback with a visibility",
+    "url": "http://localhost:3000/yx/performance/feedback",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya). Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "Performance PRF-08 Received",
+      "Performance PRF-08 Give"
+    ],
+    "steps": [
+      "1. Press Give feedback.",
+      "2. To: search and choose Kavya. Type Praise. Feedback: \"Your line-3 changeover checklist saved us two hours on Friday.\"",
+      "3. Who can see it: choose \"Kavya, their manager and HR\". Press Send feedback.",
+      "4. Open the Given tab."
+    ],
+    "expected": "Step 3: toast \"Feedback sent to Kavya …\"; the drawer closes. Step 4: the item shows \"Visible to: them, their manager and hr\" and a Withdraw button (for 24 hours). Kavya sees it under Received; her manager sees it under My team.",
+    "note": "Positive."
+  },
+  {
+    "id": "MT-PRF-B2-05",
+    "area": "Performance · PRF-08 Quick feedback",
+    "screen": "Feedback too short, no person, a concern",
+    "url": "http://localhost:3000/yx/performance/feedback",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya). Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "Performance PRF-08 Give"
+    ],
+    "steps": [
+      "1. Press Give feedback and press Send feedback at once.",
+      "2. Choose a person, write \"Good job\" and press Send feedback.",
+      "3. Read the line under the form about harassment, safety or misconduct and press Report a concern."
+    ],
+    "expected": "Step 1: \"Choose who the feedback is for.\" and focus on To; nothing is sent. Step 2: \"Write at least 20 characters so the feedback is specific.\"; nothing is sent. Step 3: the Help centre opens (the confidential channel), not the feedback list.",
+    "note": "Negative."
+  },
+  {
+    "id": "MT-PRF-B2-06",
+    "area": "Performance · PRF-08 Quick feedback",
+    "screen": "Ask, answer and decline requests",
+    "url": "http://localhost:3000/yx/performance/feedback",
+    "account": "panel@demo-org.test (Manager - Divya). Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "Performance PRF-08 Ask",
+      "Performance PRF-08 Requests"
+    ],
+    "steps": [
+      "1. As Divya press Ask for feedback. About: Arjun. Ask: Kavya. Question: \"How did Arjun run the supplier audit?\" Press Send requests.",
+      "2. Press Send requests again with nobody in Ask.",
+      "3. Sign in as Kavya, open Feedback › Requests, press Give feedback on the request and send 20+ characters; on a second request press Decline."
+    ],
+    "expected": "Step 1: toast \"Asked 1 colleague for feedback\". Step 2: \"Choose at least one colleague to ask.\" and nothing is sent. Step 3: the answer goes to Arjun (Received) and the request leaves the list; Decline shows toast \"Request declined\".",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PRF-B2-07",
+    "area": "Performance · PRF-08 Quick feedback",
+    "screen": "HR seals a concern",
+    "url": "http://localhost:3000/yx/performance/feedback",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "Performance PRF-08 Concerns",
+      "Performance PRF-08 Seal"
+    ],
+    "steps": [
+      "1. Open the Concerns tab (only HR who handle concerns see it). Choose Arjun.",
+      "2. On one item press Seal and press Seal feedback without a reason.",
+      "3. Write \"Passed to the confidential channel\" and press Seal feedback.",
+      "4. Sign in as Arjun and open Received."
+    ],
+    "expected": "Step 2: \"Enter a reason of at least 3 characters.\" Step 3: toast \"Feedback sealed\"; the item shows Sealed. Step 4: Arjun sees \"Removed by HR\" instead of the text. Divya (manager) no longer sees it under My team. A manager without the key never sees the Concerns tab.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PRF-B2-08",
+    "area": "Performance · PRF-09 Calibration board and 9-box",
+    "screen": "Facilitator moves a rating and sets potential",
+    "url": "http://localhost:3000/yx/performance/calibrations/<session id>",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635, sidebar open. Lakshmi is the session facilitator.",
+    "stories": [
+      "Performance PRF-09 HrBoard",
+      "Performance PRF-09 ChangeWithReason",
+      "Performance PRF-09 NineBox"
+    ],
+    "steps": [
+      "1. Open Performance › Calibration and open a session (cycle with submitted manager reviews).",
+      "2. On a card press the … button › Move to rating › a lower band; press Change rating with \"too short\".",
+      "3. Write \"Compared with the plant leads this half\" and press Change rating.",
+      "4. Open 9-box; use … › Move to on a person to another potential row; give a reason.",
+      "5. Open Changes."
+    ],
+    "expected": "The board has one column per band of the cycle's scale. Step 2: \"Enter a reason of at least 10 characters.\" Step 3: toast \"<name> moved to <band>\"; the card moves. Step 4: toast \"Potential changed\". Moving across performance on the 9-box shows \"Change the rating on the Ratings board\". Step 5: the change with before, after, reason and Lakshmi's name.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PRF-B2-09",
+    "area": "Performance · PRF-09 Calibration board and 9-box",
+    "screen": "A manager looks; closing",
+    "url": "http://localhost:3000/yx/performance/calibrations/<session id>",
+    "account": "panel@demo-org.test (Manager - Divya). Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "Performance PRF-09 ManagerView",
+      "Performance PRF-09 Close"
+    ],
+    "steps": [
+      "1. As Divya (manager of people in the session) open the session.",
+      "2. As Lakshmi press Close calibration, then Close calibration in the question."
+    ],
+    "expected": "Step 1: Divya sees the board and 9-box but no … move buttons and no Close button. Step 2: toast \"Calibration closed. The reviews are ready to release.\"; the badge says Signed off; no more moves. A group under 5 shows no chart (\"Too few people …\").",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PRF-B2-10",
+    "area": "Performance · PRF-10 Comp review sheet",
+    "screen": "Manager proposes and sends",
+    "url": "http://localhost:3000/yx/performance/comp/<comp cycle id>",
+    "account": "panel@demo-org.test (Manager - Divya). Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "Performance PRF-10 ManagerProposes",
+      "Performance PRF-10 Justify",
+      "Performance PRF-10 Proposal"
+    ],
+    "steps": [
+      "1. Open Performance › Comp review and open the open cycle.",
+      "2. Click Proposed % on a row inside the Suggested range and type a value in range.",
+      "3. Type a value above the range.",
+      "4. In the drawer press Save justification with \"more\", then with \"Took over the Madurai territory in March.\"",
+      "5. Press Send proposals for approval."
+    ],
+    "expected": "Only Divya's team shows. The Pay equity card says the figures are for HR and finance (a manager never sees pay-gap figures or who is below the median). Step 2: toast \"<name>: <n>% saved\". Step 3: the proposal drawer opens. Step 4: first \"Write at least 20 characters …\", then toast \"<name>: proposal saved\"; the row shows \"Justified · extra approval\". Step 5: toast \"Proposals sent for approval\".",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PRF-B2-11",
+    "area": "Performance · PRF-10 Comp review sheet",
+    "screen": "Approve or send back from the sheet",
+    "url": "http://localhost:3000/yx/performance/comp/<comp cycle id>",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "Performance PRF-10 HrApproves",
+      "Performance PRF-10 SendBack"
+    ],
+    "steps": [
+      "1. When the HR step is waiting for Lakshmi, open the cycle. Use Pay gap by: Gender, Grade, Location.",
+      "2. Press Send back and Send back again with no text.",
+      "3. Write \"Lower Arjun to the range.\" and press Send back.",
+      "4. After Divya sends again, press Approve N proposals."
+    ],
+    "expected": "Step 1: the before and after gap per group; groups under 5 say \"Suppressed\". Step 2: \"Say what to change.\" Step 3: toast \"Proposals sent back to draft\"; Divya can edit again. Step 4: toast \"Proposals approved\". Someone with no approval task sees no Approve or Send back buttons.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PRF-B2-12",
+    "area": "Performance · PRF-11 1:1s",
+    "screen": "Schedule a repeating 1:1 and hold it",
+    "url": "http://localhost:3000/yx/performance/one-on-ones",
+    "account": "panel@demo-org.test (Manager - Divya). Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "Performance PRF-11 ManagerList",
+      "Performance PRF-11 Schedule",
+      "Performance PRF-11 ManagerRecord"
+    ],
+    "steps": [
+      "1. Press Schedule 1:1. With: Arjun. First 1:1 on: a date next week. Repeats: Every 2 weeks (the company default). Press Schedule 1:1.",
+      "2. In the drawer add an agenda item, write shared notes and a private note (click outside each box), add an action item for Arjun with a due date.",
+      "3. Press Mark as held."
+    ],
+    "expected": "Step 1: toast \"1:1 scheduled\"; the drawer opens. Step 2: toasts \"Agenda item added\", \"Shared notes saved\", \"Private notes saved\", \"Action item added\". Arjun sees the agenda and shared notes but never Divya's private note. Step 3: toast \"1:1 marked as held. The next one is planned.\"; the list row shows Next two weeks later and Last held today; the open action moved to the next 1:1.",
+    "note": "Positive."
+  },
+  {
+    "id": "MT-PRF-B2-13",
+    "area": "Performance · PRF-11 1:1s",
+    "screen": "Missing fields, a past date, someone else's 1:1",
+    "url": "http://localhost:3000/yx/performance/one-on-ones",
+    "account": "panel@demo-org.test (Manager - Divya). Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "Performance PRF-11 Schedule",
+      "Performance PRF-11 Reschedule",
+      "Performance PRF-11 AddAction"
+    ],
+    "steps": [
+      "1. Press Schedule 1:1 and press Schedule 1:1 again at once.",
+      "2. Open a 1:1, press Reschedule and Move 1:1 with no date.",
+      "3. Press Add item with an empty agenda box; press Add action item twice with nothing typed.",
+      "4. As Kavya (not in the pair) open the 1:1 address /yx/performance/one-on-ones/<id>."
+    ],
+    "expected": "Step 1: \"Choose who the 1:1 is with.\" with focus on With. Step 2: \"Choose the new date.\" (past days cannot be picked). Step 3: \"Write the agenda item first.\" and \"Write what needs doing.\"; nothing is saved. Step 4: the drawer says \"We couldn't load this 1:1\" (only the two people see a 1:1).",
+    "note": "Negative."
+  },
+  {
+    "id": "MT-PRF-B2-14",
+    "area": "Performance · PRF-12 PIP record",
+    "screen": "HR approves or sends back a proposed plan",
+    "url": "http://localhost:3000/yx/performance/pips/<plan id>",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "Performance PRF-12 HrApproval",
+      "Performance PRF-12 SendBack"
+    ],
+    "steps": [
+      "1. As Divya propose a plan for Arjun (Performance › Improvement plans › Propose).",
+      "2. As Lakshmi open it: read the Approval timeline (Proposed done, HR approval current).",
+      "3. Press Send back, then Send back with no reason; then write \"Add a measure to goal 1.\" and Send back.",
+      "4. Have Divya propose again; as Lakshmi press Approve and start."
+    ],
+    "expected": "Step 3: \"Say why you are sending it back.\"; then toast \"Plan sent back to the manager\", status Not approved, the timeline shows HR rejected with the reason. Arjun never sees a proposed or sent-back plan. Step 4: toast \"Plan approved. It starts now.\"; status Active; check-ins appear.",
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PRF-B2-15",
+    "area": "Performance · PRF-12 PIP record",
+    "screen": "Check-ins, acknowledgement, outcome",
+    "url": "http://localhost:3000/yx/performance/pips/<plan id>",
+    "account": "panel@demo-org.test (Manager - Divya). Browser window 1278 x 635, sidebar open. Then arjun@demo-org.test and hr@demo-org.test.",
+    "stories": [
+      "Performance PRF-12 CheckIns",
+      "Performance PRF-12 EmployeeAck",
+      "Performance PRF-12 RecordOutcome",
+      "Performance PRF-12 RecordCheckIn"
+    ],
+    "steps": [
+      "1. As Divya press Record check-in and press Record check-in in the dialog at once.",
+      "2. Choose On track, write a note, press Record check-in.",
+      "3. As Arjun open the plan, Acknowledgement tab: add a comment and press Acknowledge plan; on the held check-in press Add my note.",
+      "4. As Lakshmi press Record outcome › Extend by 30 days (the company setting) with a note."
+    ],
+    "expected": "Step 1: \"Choose how it is going.\" and nothing is saved. Step 2: toast \"Check-in recorded\"; the badge says On track. Step 3: toasts \"Plan acknowledged\" and \"Your note was added\"; acknowledging says it is not agreeing. Step 4: toast \"Plan extended to <date>\". A \"not met\" outcome starts nothing by itself; HR then sees \"Open exit case in People\", which asks for a last working day and a reason.",
+    "note": "Positive and negative."
   }
 ]

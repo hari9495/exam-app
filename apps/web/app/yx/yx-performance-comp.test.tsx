@@ -32,7 +32,7 @@ beforeEach(() => {
 });
 
 describe('Comp review (M06 batch PM7)', () => {
-  it('a manager change puts the proposal with its version', async () => {
+  it('a manager change puts the proposal with its version; the manager never sees pay-gap figures', async () => {
     (useParams as jest.Mock).mockReturnValue({ id: 'c1' });
     const put: unknown[] = [];
     const sheet = {
@@ -50,13 +50,15 @@ describe('Comp review (M06 batch PM7)', () => {
       'PUT /performance/comp-proposals/p1': (_p: string, init: RequestInit) => (put.push(JSON.parse(String(init.body))), {}),
     });
     wrap(<YxCompSheetPage />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Change' }));
+    await userEvent.click(await screen.findByText('Arjun'));
     const d = screen.getByRole('dialog');
     const merit = within(d).getByRole('textbox', { name: /Merit increase/ });
     await userEvent.clear(merit);
     await userEvent.type(merit, '6');
-    await userEvent.click(within(d).getByRole('button', { name: 'Save' }));
+    await userEvent.click(within(d).getByRole('button', { name: 'Save justification' }));
     await waitFor(() => expect(put).toEqual([{ meritPct: 6, promotionToDesignationId: null, promotionAmount: 0, bonusAmount: 0, justification: null, version: 4 }]));
+    expect(screen.getByText(/Pay-gap figures are for HR and finance/)).toBeInTheDocument();
+    expect(api.mock.calls.some(([path]) => String(path).includes('pay-equity'))).toBe(false);
   });
 
   it('my pay band shows where I sit', async () => {

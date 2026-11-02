@@ -11,7 +11,7 @@ jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), apiFetchBlob: jest.fn() }));
 jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn() }));
 
-// Calibration and reports wired to /performance (M06 batch PM6, PM-6.04).
+// PRF-09 Calibration board (the designed screen) and reports wired to /performance (M06 batch PM6; builder 2).
 const wrap = (ui: React.ReactElement) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{ui}</QueryClientProvider>);
 const api = apiFetch as jest.Mock;
 function route(table: Record<string, unknown>) {
@@ -35,19 +35,20 @@ describe('Calibration and reports (M06 batch PM6)', () => {
   it('a move on the board posts the band and the reason', async () => {
     (useParams as jest.Mock).mockReturnValue({ id: 's1' });
     const posted: unknown[] = [];
-    const board = { id: 's1', name: 'Sales', cycle: 'H1', status: 'open', guide: null, scale: { min: 1, max: 5, bands: [{ fromScore: 1, toScore: 2.49, label: 'Below' }, { fromScore: 2.5, toScore: 5, label: 'Meets' }] }, rows: [{ reviewId: 'r1', employee: 'Arjun', manager: 'Priya', managerScore: 4, score: 4, band: 'Meets', moved: false, selfIndication: null, skipAgreed: false, protectedLeave: false }], distribution: { bands: null, counted: 1, notes: [] }, changes: [], can: { change: true, signOff: true } };
+    const board = { id: 's1', name: 'Sales', cycle: 'H1', status: 'open', guide: null, scale: { min: 1, max: 5, bands: [{ fromScore: 1, toScore: 2.49, label: 'Below' }, { fromScore: 2.5, toScore: 5, label: 'Meets' }] }, rows: [{ reviewId: 'r1', employee: 'Arjun', manager: 'Priya', managerScore: 4, score: 4, band: 'Meets', moved: false, selfIndication: null, skipAgreed: false, protectedLeave: false }], distribution: { bands: null, counted: 1, notes: [] }, changes: [], can: { change: true, signOff: true, potential: true }, facilitator: 'Lakshmi', openedOn: '2026-10-01T09:00:00.000Z' };
     route({
       'GET /rbac/me/permissions': [],
       'GET /performance/calibrations/s1': board,
       'POST /performance/calibrations/s1/changes': (_p: string, init: RequestInit) => (posted.push(JSON.parse(String(init.body))), board),
     });
     wrap(<YxCalibrationBoardPage />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Move' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Change rating for Arjun' }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: '1 · Below' }));
     const d = screen.getByRole('dialog');
-    await userEvent.click(within(d).getByRole('combobox', { name: 'Band' }));
-    await userEvent.click(screen.getByRole('option', { name: 'Below' }));
+    await userEvent.click(within(d).getByRole('button', { name: 'Change rating' }));
+    expect(posted).toEqual([]);
     await userEvent.type(within(d).getByRole('textbox', { name: /Reason/ }), 'Compared with peers');
-    await userEvent.click(within(d).getByRole('button', { name: 'Move' }));
+    await userEvent.click(within(d).getByRole('button', { name: 'Change rating' }));
     await waitFor(() => expect(posted).toEqual([{ reviewId: 'r1', toBand: 'Below', reason: 'Compared with peers' }]));
   });
 

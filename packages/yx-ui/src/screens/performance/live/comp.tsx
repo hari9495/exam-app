@@ -3,20 +3,18 @@ import { Plus } from 'lucide-react';
 import { Button } from '../../../components/button';
 import { DatePicker } from '../../../components/date';
 import { Badge, type BadgeTone } from '../../../components/display';
-import { Drawer } from '../../../components/drawer';
 import { EmptyState, InlineAlert } from '../../../components/feedback';
 import { FormField } from '../../../components/field';
 import { Text } from '../../../components/foundations';
-import { NumberField, TextArea, TextField } from '../../../components/inputs';
+import { NumberField, TextField } from '../../../components/inputs';
 import { ConfirmDialog } from '../../../components/overlay';
 import { Segment } from '../../../components/segment';
 import { Select } from '../../../components/select';
-import { Card } from '../../../components/shell';
 import { DataTable, type TableColumn } from '../../../components/table';
 import { dayKey } from '../../../lib/dates';
-import { errorText, useRun } from '../../org/org-kit';
+import { useRun } from '../../org/org-kit';
 import { LivePage, dateText } from '../../time/live/kit';
-import type { Choice, CompCycle, CompMatrix, CompProposal, CompSheet, LoadState, PayEquity } from './types';
+import type { Choice, CompCycle, CompMatrix, LoadState } from './types';
 
 // Performance batch PM7, wired (M06-BUILD-DESIGN §12; PRF-10 comp review, PAY-39 my pay band, YX-PERF-18 pay equity).
 // Amounts are rupees per year. A manager sees their team's pay only inside a comp cycle; every look is recorded.
@@ -28,7 +26,6 @@ const STATUS: Record<CompCycle['status'], { label: string; tone: BadgeTone }> = 
   applied: { label: 'Applied', tone: 'success' },
   closed: { label: 'Closed', tone: 'neutral' },
 };
-const inr = (x: number | null) => (x === null ? '—' : `₹${x.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`);
 
 // ------------------------------------------------------------------------------------------ cycles
 

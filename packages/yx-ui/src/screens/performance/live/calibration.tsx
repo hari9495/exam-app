@@ -1,19 +1,19 @@
-import { useState, type DragEvent } from 'react';
+import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Button } from '../../../components/button';
 import { Badge } from '../../../components/display';
-import { EmptyState, InlineAlert } from '../../../components/feedback';
+import { EmptyState } from '../../../components/feedback';
 import { FormField } from '../../../components/field';
 import { Text } from '../../../components/foundations';
-import { NumberField, TextArea, TextField } from '../../../components/inputs';
+import { NumberField, TextField } from '../../../components/inputs';
 import { ConfirmDialog } from '../../../components/overlay';
 import { Segment } from '../../../components/segment';
 import { MultiSelect, Select } from '../../../components/select';
 import { Card } from '../../../components/shell';
 import { DataTable } from '../../../components/table';
 import { useRun } from '../../org/org-kit';
-import { LivePage, dateText } from '../../time/live/kit';
-import type { CalibrationBoard, CalibrationRow, CalibrationSession, Choice, LoadState, PerfReport } from './types';
+import { LivePage } from '../../time/live/kit';
+import type { CalibrationSession, Choice, LoadState, PerfReport } from './types';
 
 // Performance batch PM6, wired (M06-BUILD-DESIGN §11, §13; PRF-09 calibration, reports). The guide is a guide only:
 // it never blocks sign-off and never moves anyone. Every change needs a reason. No pay is shown here.
