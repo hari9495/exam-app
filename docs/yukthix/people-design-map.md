@@ -1262,3 +1262,11 @@ if (errs.length) { console.error(errs.join('\n')); process.exit(1); }
 own small change; (3) PlainTable keeps `hideHeader` and `empty`; (4) the kit Slider may be disabled when nothing can
 change, with a hint saying why (the no-disabled rule covers buttons); (5) the run-files list (table on desktop, cards on
 phone) waits for a kit pattern.
+
+## Founder answers, 2 Nov 2026 (joiner portal T9-01, "all ok")
+Confirmed: sign-in by email and an emailed code (no invitation link); penny drop, Aadhaar e-sign and the letter of intent
+wait for a provider; BGV "Withdraw consent" added. (1) a joiner's decline is recorded in Hiring under their HR owner, with
+the joiner's reason; (2) a closed joining can still download its letters, read-only; (3) joiners don't tick "read" tasks
+before joining, for now; (4) Form 12B numbers given in the portal are not copied into Pay automatically (payroll needs the
+PDF and approves it); (5) "Bring on day one" becomes a short text HR edits, shown on the portal; (6) the education form and
+code-of-conduct / POSH policy signing join the portal in a later round.
