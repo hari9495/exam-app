@@ -969,13 +969,20 @@ export class EmployeeHistoryService implements OnModuleInit {
     // Founder queue 28 Oct 2026: a promotion may lower pay, but whoever raises it is warned first (not a block).
     const [was, will] = [before[0].compensation, after[0].compensation];
     const lowersPay = ch.changeType === 'promotion' && was && will && was.currency === will.currency && new Prisma.Decimal(will.annualCtc).lt(was.annualCtc);
+    // P06 §4.5: past periods the change touches, for payroll arrears / recoveries (Q4); PPL-04 Retro names those whose
+    // regular payroll at the person's entity is already approved or paid.
+    const months = date < today ? affectedMonths(date, today) : [];
+    // Which months are closed is no pay amount: the pay guard opens to the entity for this check only.
+    const runs = months.length
+      ? await withPayScope(tx, [e.legalEntityId], () => tx.payrollRun.findMany({ where: { organizationId: c.organizationId, legalEntityId: e.legalEntityId, runType: 'regular', status: { in: ['approved', 'paid'] }, periodStart: { gte: asDate(`${months[0]}-01`) } }, select: { periodStart: true } }))
+      : [];
+    const done = new Set(runs.map((r) => isoDate(r.periodStart).slice(0, 7)));
     return {
       effectiveDate: date,
       ...own,
       warnings: lowersPay ? ['This promotion lowers the annual CTC. Check the new pay before you send it.'] : [],
       rebased,
-      // P06 §4.5: past periods the change touches, for payroll arrears / recoveries (Q4).
-      retro: date < today ? { from: date, months: affectedMonths(date, today) } : null,
+      retro: months.length ? { from: date, months, processed: months.filter((m) => done.has(m)) } : null,
     };
   }
 

@@ -84,7 +84,8 @@ export interface Impact {
   /** 'hidden' without pay access. */
   pay: ImpactLine[] | 'hidden';
   rebased: { changeId: string; changeType: ChangeType; effectiveDate: string; facts: ImpactLine[]; pay: ImpactLine[] | 'hidden' }[];
-  retro: { from: string; months: string[] } | null;
+  /** `processed`: those months whose regular payroll is already published for the person's entity (PPL-04 Retro). */
+  retro: { from: string; months: string[]; processed?: string[] } | null;
   /** Things to check before sending (e.g. a promotion that lowers pay); never a block. Empty without pay access. */
   warnings?: string[];
 }

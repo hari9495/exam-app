@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast, type ActionItem } from '@yukthix/ui';
 import type { ApprovalTask } from '@yukthix/ui/desk';
-import { RequisitionSheet, TeamPage, type PlanLine } from '@yukthix/ui/frame';
-import { ChangeDrawer, type PersonOption } from '@yukthix/ui/history';
+import { ChangeActionDrawer, RequisitionSheet, TeamPage, type PlanLine } from '@yukthix/ui/frame';
+import { type PersonOption } from '@yukthix/ui/history';
 import type { Joiner, MyTasks } from '@yukthix/ui/lifecycle';
 import type { Muster, TeamCalendar } from '@yukthix/ui/time';
 import type { OrgChartData, TeamMember } from '@yukthix/ui/workforce';
@@ -141,7 +141,7 @@ export default function YxTeamPage() {
         />
       )}
       {raising && (
-        <ChangeDrawer
+        <ChangeActionDrawer
           options={{ ...options, managers: everyone, ...(types ? { types: [...types] } : {}) }}
           onPreview={raise.onPreview}
           onRoute={raise.onRoute}

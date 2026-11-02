@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@yukthix/ui';
-import { ChangeActionSheet } from '@yukthix/ui/frame';
-import { ChangeDrawer, ChangeReview, ReasonDialog, draftForm, draftFromForm, orList, type ChangeDraft, type ChangeRecord, type Impact, type PersonOption } from '@yukthix/ui/history';
+import { ChangeActionDrawer, ChangeActionSheet } from '@yukthix/ui/frame';
+import { ChangeReview, ReasonDialog, draftForm, draftFromForm, orList, type ChangeDraft, type ChangeRecord, type Impact, type PersonOption } from '@yukthix/ui/history';
 import type { OrgChartData, TeamMember } from '@yukthix/ui/workforce';
 import { todayIst, useYxPermissions, loadState } from '../../../../../lib/yx-org';
 import { chartPeople, useChangeOptions, useMove, usePeople, usePeopleWrite, useRaiseChange } from '../../../../../lib/yx-people';
@@ -79,7 +79,7 @@ export default function YxChangeActionPage() {
         children: (
           <>
             {starting && (
-              <ChangeDrawer
+              <ChangeActionDrawer
                 options={{ ...options, ...(onBehalf ? { managers: everyone, types: ['promotion', 'transfer', 'redesignation', 'manager_change'] } : {}) }}
                 key={draft?.id ?? starting}
                 employeeId={starting}

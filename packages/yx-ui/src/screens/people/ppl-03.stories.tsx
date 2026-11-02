@@ -6,6 +6,7 @@ import { ContactsDrawer, FamilyDrawer } from './family';
 import { CancelDialog, ChangeDialog, PERSONAL_REQUIRED_DEFAULT, PersonalDialog } from '../access';
 import { PROFILE_SELF, REQUESTS } from '../access/data';
 import { fails, ok, pick, play, press, type } from './popup-play';
+import { AskDocumentDialog, SendBackDialog, UploadForPersonDialog, WorkPhoneDialog } from './record-dialogs';
 
 const meta: Meta = { title: 'Screens/People/PPL-03 · Person record', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -76,3 +77,22 @@ const withdraw = (onCancel: Parameters<typeof CancelDialog>[0]['onCancel'] = ok)
 export const WithdrawChange: S = { name: 'Withdraw a waiting change · open', render: () => withdraw() };
 export const WithdrawChangeMissing: S = { name: 'Withdraw a waiting change · no reason', render: () => withdraw(), play: play(press('Withdraw')) };
 export const WithdrawChangeFailed: S = { name: 'Withdraw a waiting change · the server refuses', render: () => withdraw(fails('HR already approved this change.')), play: play(type(/^Reason/, 'Typed the wrong account'), press('Withdraw')) };
+
+// HR's dialogs on someone's record: the work phone, asking for a document, sending one back, uploading one for them.
+const DOC_TYPES = [{ key: 'pan_card', name: 'PAN card' }, { key: 'passport', name: 'Passport', expiryTracked: true }, { key: 'degree', name: 'Degree certificate' }];
+const workPhone = (onSave: (p: string | null) => Promise<void> = ok) => <WorkPhoneDialog name="Arjun Kulkarni" initial="+91 80 4012 3142" onSave={onSave} onClose={() => undefined} />;
+export const WorkPhone: S = { name: 'Work phone · open (HR)', render: () => workPhone() };
+export const WorkPhoneWrong: S = { name: 'Work phone · Save pressed with a wrong number', render: () => workPhone(), play: play(type(/^Work phone/, 'abc'), press('Save')) };
+export const WorkPhoneFailed: S = { name: 'Work phone · the server refuses', render: () => workPhone(fails('You can change the work phone only for people in your scope.')), play: play(press('Save')) };
+const ask = (onRequest: (k: string, n: string) => Promise<void> = ok) => <AskDocumentDialog name="Arjun" types={DOC_TYPES} onRequest={onRequest} onClose={() => undefined} />;
+export const AskDocument: S = { name: 'Ask for a document · open', render: () => ask() };
+export const AskDocumentMissing: S = { name: 'Ask for a document · Send pressed with no document chosen', render: () => ask(), play: play(press('Send request')) };
+export const AskDocumentFailed: S = { name: 'Ask for a document · the server refuses', render: () => ask(fails('Arjun already has an open request for the PAN card.')), play: play(pick('Document', 'PAN card'), press('Send request')) };
+const sendBack = (onSendBack: (r: string) => Promise<void> = ok) => <SendBackDialog name="Arjun" docType="PAN card" onSendBack={onSendBack} onClose={() => undefined} />;
+export const SendBack: S = { name: 'Send a document back · open', render: () => sendBack() };
+export const SendBackMissing: S = { name: 'Send a document back · no reason chosen', render: () => sendBack(), play: play(press('Send back')) };
+export const SendBackFailed: S = { name: 'Send a document back · the server refuses', render: () => sendBack(fails('This document was already verified by Priya Nair.')), play: play(pick('Reason', 'Image is unclear'), press('Send back')) };
+const upload = (onUpload: (k: string, f: File, e: string | null) => Promise<void> = ok) => <UploadForPersonDialog name="Arjun" types={DOC_TYPES} onUpload={onUpload} onClose={() => undefined} today={TODAY} />;
+export const UploadFor: S = { name: 'Upload for the person · open', render: () => upload() };
+export const UploadForMissing: S = { name: 'Upload for the person · Upload pressed with nothing chosen', render: () => upload(), play: play(press('Upload')) };
+export const UploadForExpiry: S = { name: 'Upload for the person · passport needs the expiry date', render: () => upload(), play: play(pick('Document', 'Passport')) };

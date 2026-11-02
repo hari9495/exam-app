@@ -40,7 +40,7 @@ export { PreboardingBatches, type BatchRow, type LiveBatches } from '../people/o
 export { ProbationQueue, type LiveProbation, type ProbRow, type ProbationDraft, type ProbationOutcome } from '../people/onboarding';
 export { JourneyRecord, type LiveJourney } from '../people/onboarding';
 export { LifeEventsList, MyChecklistTasks } from '../people/checklists';
-export { BulkChangesWizard, ChangeActionSheet, ScheduledChangesScreen, type LiveChangeAction, type LiveScheduled, type Sched as ScheduledRow } from '../people/changes';
+export { BulkChangesWizard, ChangeActionSheet, ChangeActionDrawer, ScheduledChangesScreen, type LiveChangeAction, type LiveScheduled, type Sched as ScheduledRow } from '../people/changes';
 export type { IncrementInput, IncrementResult, LiveIncrement } from '../people/increment';
 export { ExitCasesList, type ExitRow as ExitListRow, type LiveExits } from '../people/exits';
 export { ExitCaseWorkspace } from '../people/exits';
@@ -75,3 +75,4 @@ export { UnionRegister, type LiveUnionRegister } from '../people/relations';
 // People › Restructure (PPL-09): the wizard, the record with approval and results, and the PPL-10 checklist.
 export { RestructureWizard } from '../people/changes';
 export { FinishedRestructuresScreen, RestructureRecord, type ContinuityItemData, type FinishedRestructure, type LiveRestructure, type RestructureDraftState, type RestructureInput, type RestructurePreview, type RestructureRecordData, type RestructureSetup, type RestructureSummary } from '../people/restructure';
+export { AskDocumentDialog, SendBackDialog, UploadForPersonDialog, WorkPhoneDialog, workPhoneOk, type AskableType } from '../people/record-dialogs';

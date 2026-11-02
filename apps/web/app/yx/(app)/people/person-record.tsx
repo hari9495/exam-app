@@ -2,10 +2,10 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Button, ConfirmDialog, FormField, Select, TextArea, TextField, formatPhone, useToast, type ActivityEntry } from '@yukthix/ui';
-import { ContactsDrawer, CustomFieldsDrawer, FamilyDrawer, PayAccessDialog, PersonWorkspace, type PayAccessAskInput, type PayAccessRow, type RecordCustomField, type FieldRow, type LiveRecord, type LiveRecordPay, type RecordDoc } from '@yukthix/ui/frame';
+import { formatPhone, useToast, type ActivityEntry } from '@yukthix/ui';
+import { AskDocumentDialog, ChangeActionDrawer, ContactsDrawer, SendBackDialog, UploadForPersonDialog, WorkPhoneDialog, type AskableType, CustomFieldsDrawer, FamilyDrawer, PayAccessDialog, PersonWorkspace, type PayAccessAskInput, type PayAccessRow, type RecordCustomField, type FieldRow, type LiveRecord, type LiveRecordPay, type RecordDoc } from '@yukthix/ui/frame';
 import { CancelDialog, ChangeDialog, PersonalDialog, type ProfileRequest, type ProfileView, type RevealField } from '@yukthix/ui/access';
-import { ChangeDrawer, draftForm, type AsOfView, type HistoryView, type PersonOption } from '@yukthix/ui/history';
+import { draftForm, type AsOfView, type HistoryView, type PersonOption } from '@yukthix/ui/history';
 import type { AssetRow, QueueDocument } from '@yukthix/ui/lifecycle';
 import { todayIst, useOrg, useYxPermissions, type Reference } from '../../../../lib/yx-org';
 import { useChangeOptions, useMove, usePeople, usePeopleRead, usePeopleWrite, useRaiseChange } from '../../../../lib/yx-people';
@@ -14,7 +14,7 @@ import { useTime } from '../../../../lib/yx-time';
 import { usePayRead } from '../../../../lib/yx-pay';
 import { assetRows, attendanceCard, bankRows, currentPeriod, customRows, docRows, familyData, leaveOrder, payShown, type Compensation, type PersonMonth, historyRows, identityRows, jobRows, performanceData, personalRows, scheduledNotes, upcoming, type ReverifDue } from '../../../../lib/yx-record';
 import { usePerf } from '../../../../lib/yx-performance';
-import { reportErrors, UploadDocDialog, type AskableType } from './upload-doc-dialog';
+import { reportErrors } from './report-errors';
 
 const id = encodeURIComponent;
 const day = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00`);
@@ -133,7 +133,6 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [askingPay, setAskingPay] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [phone, setPhone] = useState('');
   // PPL-34: loaded each time HR opens the identity panel (every load is a recorded view of Special data).
   const [ids, setIds] = useState<{ state: 'idle' | 'loading' | 'error' | 'ready'; data: IdentityChecks | null }>({ state: 'idle', data: null });
   const read = usePeopleRead();
@@ -291,7 +290,7 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
     ...(!self && workEmail ? { onMessage: () => window.location.assign(`mailto:${workEmail}`) } : {}),
     // PPL-46: the salary account abroad goes to approval like any bank change (HR with identity change rights, or the person).
     ...(prof?.can.requestChange ? { onBankAbroad: () => router.push(self ? '/yx/me/bank-abroad' : `/yx/people/directory/${p}/bank-abroad`) } : {}),
-    ...(prof?.can.editWork ? { onEditWorkPhone: () => (setPhone(prof.work?.phone ?? ''), setPhoneOpen(true)) } : {}),
+    ...(prof?.can.editWork ? { onEditWorkPhone: () => setPhoneOpen(true) } : {}),
     activity: activity.data ? activity.data.entries.map((e) => ({ id: e.id, kind: e.kind, actor: e.actor ? { name: e.actor } : null, at: new Date(e.at), text: e.text })) : null,
     performance:
       perfAllowed && (goals.data || reviews.data) && personId
@@ -359,7 +358,7 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
         />
       )}
       {uploading && docs.data && (
-        <UploadDocDialog
+        <UploadForPersonDialog
           name={first}
           types={docs.data.askable}
           onUpload={async (typeKey, file, expiresOn) => {
@@ -373,23 +372,16 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
         />
       )}
       {phoneOpen && (
-        <ConfirmDialog
-          open
-          onOpenChange={(o) => !o && setPhoneOpen(false)}
-          size="md"
-          title={`Work phone for ${name}`}
-          consequence="The company line shown on the record and in the directory. Leave it empty to clear it."
-          confirmLabel="Save"
-          onConfirm={async () => {
-            await write('PUT', `/employees/${p}/work-phone`, { workPhone: phone.trim() || null });
+        <WorkPhoneDialog
+          name={name}
+          initial={prof?.work?.phone ?? null}
+          onSave={async (workPhone) => {
+            await write('PUT', `/employees/${p}/work-phone`, { workPhone });
             void profile.refetch();
             done(`${first}'s work phone saved`);
           }}
-        >
-          <FormField label="Work phone" helper="With the country code, e.g. +91 44 4012 3142.">
-            <TextField type="tel" value={phone} onChange={setPhone} maxLength={30} />
-          </FormField>
-        </ConfirmDialog>
+          onClose={() => setPhoneOpen(false)}
+        />
       )}
       {editing && prof?.personal && (
         <PersonalDialog
@@ -460,7 +452,7 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
         />
       )}
       {starting && personId && (
-        <ChangeDrawer
+        <ChangeActionDrawer
           options={options}
           employeeId={personId}
           onPreview={raise.onPreview}
@@ -485,50 +477,21 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
           onClose={() => setStarting(false)}
         />
       )}
-      {docDialog && docs.data && <DocDialog dialog={docDialog} name={first} askable={docs.data.askable} onClose={() => setDocDialog(null)} onRequest={async (typeKey, typeName) => {
-        await lifeWrite('POST', '/documents/requests', { personIds: [docs.data!.personId], typeKey });
-        done(`${first} asked to upload the ${typeName}`);
-      }} onReject={(d, reason) => docAction(d, 'reject', reason)} />}
+      {docDialog?.kind === 'request' && docs.data && (
+        <AskDocumentDialog
+          name={first}
+          types={docs.data.askable}
+          onRequest={async (typeKey, typeName) => {
+            await lifeWrite('POST', '/documents/requests', { personIds: [docs.data!.personId], typeKey });
+            done(`${first} asked to upload the ${typeName}`);
+          }}
+          onClose={() => setDocDialog(null)}
+        />
+      )}
+      {docDialog?.kind === 'reject' && docDialog.doc && (
+        <SendBackDialog name={first} docType={docDialog.doc.type} onSendBack={(reason) => docAction(docDialog.doc!, 'reject', reason)} onClose={() => setDocDialog(null)} />
+      )}
     </>
   );
   return <PersonWorkspace persona={persona} relation={relation} today={day(today)} state={state} live={live} />;
-}
-
-const REJECT_REASONS = ['Name does not match the record', 'Image is unclear', 'Wrong document type', 'Expired document'];
-
-/** Ask for an upload, or send a document back with the reason (the person sees the reason). */
-function DocDialog({ dialog, name, askable, onClose, onRequest, onReject }: { dialog: { kind: 'request' | 'reject'; doc?: RecordDoc }; name: string; askable: { key: string; name: string }[]; onClose: () => void; onRequest: (typeKey: string, typeName: string) => Promise<void>; onReject: (d: RecordDoc, reason: string) => Promise<void> }) {
-  const [type, setType] = useState<string | null>(null);
-  const [reason, setReason] = useState<string | null>(REJECT_REASONS[0]);
-  const [message, setMessage] = useState('');
-  const [tried, setTried] = useState(false);
-  if (dialog.kind === 'request')
-    return (
-      <ConfirmDialog open onOpenChange={(o) => !o && onClose()} title={`Ask ${name} to upload a document`} consequence={`${name} gets an email and sees it in My documents.`} confirmLabel="Send request" onConfirm={async () => {
-        setTried(true);
-        if (!type) return false;
-        await onRequest(type, askable.find((x) => x.key === type)?.name ?? 'document');
-        onClose();
-      }}>
-        <FormField id="rq-type" label="Document" required error={tried && !type ? 'Choose the document to ask for.' : null}>
-          <Select aria-label="Document" value={type} onChange={setType} options={askable.map((x) => ({ value: x.key, label: x.name }))} />
-        </FormField>
-      </ConfirmDialog>
-    );
-  const d = dialog.doc!;
-  return (
-    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} title={`Send ${d.type} back to ${name}?`} consequence={`${name} is asked to upload it again and sees your message.`} confirmLabel="Reject and ask to re-upload" destructive onConfirm={async () => {
-      setTried(true);
-      if (!reason) return false;
-      await onReject(d, [reason, message.trim()].filter(Boolean).join('. '));
-      onClose();
-    }}>
-      <FormField id="rj-reason" label="Reason" required error={tried && !reason ? 'Choose a reason.' : null}>
-        <Select aria-label="Reason" value={reason} onChange={setReason} options={REJECT_REASONS.map((x) => ({ value: x, label: x }))} />
-      </FormField>
-      <FormField id="rj-msg" label={`Message to ${name}`} optional helper="Say what to upload instead.">
-        <TextArea value={message} onChange={setMessage} rows={3} maxLength={400} />
-      </FormField>
-    </ConfirmDialog>
-  );
 }

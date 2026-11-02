@@ -3,7 +3,7 @@ import { Button } from '../../components/button';
 import { DatePicker } from '../../components/date';
 import { Drawer } from '../../components/drawer';
 import { ErrorState, InlineAlert, Skeleton } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { TextArea } from '../../components/inputs';
 import { ConfirmDialog } from '../../components/overlay';
@@ -58,18 +58,30 @@ export function Review({ row, onPreview, onApprove, onReject, onClose }: { row: 
   );
 }
 
+/** PPL-04 Review "Reject" and PPL-05 "Edit" (move to a new date): what each step needs, the field error and focus when
+ * pressed too early; a refusal from the server shows in the dialog and nothing closes. */
 export function ReasonDialog({ ask, onDone, onClose, act }: { ask: ChangeAsk; onDone: () => void; onClose: () => void; act: (reason: string, date: string | null) => Promise<void> }) {
   const [reason, setReason] = useState('');
   const [date, setDate] = useState<Date | null>(null);
-  const [tried, setTried] = useState(false);
   // "Joined" is a past-tense label; as the thing being moved or cancelled it reads "joining".
   const what = ask.row.changeType === 'join' ? 'joining' : TYPE_LABEL[ask.row.changeType].toLowerCase();
+  const who = ask.row.employeeName ?? 'this person';
   const copy = {
-    reject: { title: `Reject the ${what} for ${ask.row.employeeName ?? 'this person'}?`, consequence: 'The person who raised it sees your reason.', label: 'Reject change' },
-    cancel: { title: `Cancel the ${what} for ${ask.row.employeeName ?? 'this person'}?`, consequence: ask.row.status === 'scheduled' ? 'It will not take effect. Later changes fall back on the values before it.' : 'It will not go ahead.', label: 'Cancel change' },
-    reschedule: { title: `Move the ${what} for ${ask.row.employeeName ?? 'this person'} to another date?`, consequence: 'A new date goes back for approval; until then the change does not take effect.', label: 'Move and send for approval' },
+    reject: { title: `Reject the ${what} for ${who}?`, consequence: 'It will not take effect. The person who raised it sees your reason.', label: 'Reject change', helper: 'Shown to the person who raised it.' },
+    cancel: { title: `Cancel the ${what} for ${who}?`, consequence: ask.row.status === 'scheduled' ? 'It will not take effect. Later changes fall back on the values before it.' : 'It will not go ahead.', label: 'Cancel change', helper: 'Shown on the timeline with the cancelled change.' },
+    reschedule: { title: `Move the ${what} for ${who} to another date?`, consequence: `Now on ${dateLabel(ask.row.effectiveDate)}. The new date goes back for approval; until then the change does not take effect.`, label: 'Move and send for approval', helper: '' },
   }[ask.kind];
-  const ready = ask.kind === 'reschedule' ? Boolean(date) : reason.trim().length >= 3;
+  const early = useTooEarly(
+    ask.kind === 'reschedule'
+      ? !date
+        ? [{ fieldId: 'rs-date', message: 'Choose the new date.' }]
+        : dayKey(date) === ask.row.effectiveDate.slice(0, 10)
+          ? [{ fieldId: 'rs-date', message: 'Choose a date other than the one it has now.' }]
+          : []
+      : reason.trim().length < 3
+        ? [{ fieldId: 'rs-reason', message: 'Enter a reason of at least 3 characters.' }]
+        : [],
+  );
   return (
     <ConfirmDialog
       open
@@ -78,20 +90,20 @@ export function ReasonDialog({ ask, onDone, onClose, act }: { ask: ChangeAsk; on
       title={copy.title}
       consequence={copy.consequence}
       confirmLabel={copy.label}
+      cancelLabel={ask.kind === 'reschedule' ? 'Keep the date' : 'Back'}
       destructive={ask.kind !== 'reschedule'}
       onConfirm={async () => {
-        setTried(true);
-        if (!ready) return false;
+        if (early.stop()) return false;
         await act(reason.trim(), date ? dayKey(date) : null);
         onDone();
       }}
     >
       {ask.kind === 'reschedule' ? (
-        <FormField id="rs-date" label="New date" required error={tried && !date ? 'Choose the new date.' : null}>
+        <FormField id="rs-date" label="New date" required error={early.errorOf('rs-date')}>
           <DatePicker value={date} onChange={setDate} aria-label="New date" />
         </FormField>
       ) : (
-        <FormField id="rs-reason" label="Reason" required rule="At least 3 characters." error={tried && reason.trim().length < 3 ? 'Enter at least 3 characters.' : null}>
+        <FormField id="rs-reason" label="Reason" required rule="At least 3 characters." helper={copy.helper} error={early.errorOf('rs-reason')}>
           <TextArea value={reason} onChange={setReason} rows={2} maxLength={1000} />
         </FormField>
       )}

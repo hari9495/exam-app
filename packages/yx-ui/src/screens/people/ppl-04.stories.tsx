@@ -1,9 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { ChangeActionSheet } from './changes';
 import { d, TODAY } from './people-data';
-import { ChangeReview } from '../history';
+import { ChangeReview, ReasonDialog } from '../history';
 import { CHANGES, IMPACT } from '../history/data';
-import { fails, never, ok, play, press } from './popup-play';
+import { fails, never, ok, play, press, type } from './popup-play';
 
 const meta: Meta = { title: 'Screens/People/PPL-04 · Change action', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -24,3 +24,9 @@ export const ReviewWorking: S = { name: 'Review · Approve pressed before the im
 export const ReviewNoImpact: S = { name: 'Review · the impact could not be worked out', render: () => review({ onPreview: fails('The salary template for G3 is missing a component.') }), play: play(press('Approve')) };
 export const ReviewFailed: S = { name: 'Review · the server refuses the approval', render: () => review({ onApprove: fails('You raised this change, so someone else must approve it.') }), play: play(press('Approve and recalculate')) };
 export const ReviewSimple: S = { name: 'Review · manager change, nothing recalculated', render: () => review({ row: CHANGES[4], onPreview: async () => ({ ...IMPACT, effectiveDate: '2026-10-05', facts: [{ fact: 'Manager', from: 'Ramesh Gowda', to: 'Lakshmi Venkatesan' }], pay: [], rebased: [] }) }) };
+
+// Reject from the review: the reason dialog (live ReasonDialog, PPL-04 Review "Reject").
+const reject = (act: (reason: string) => Promise<void> = ok) => <ReasonDialog ask={{ kind: 'reject', row: CHANGES[3] }} act={act} onDone={() => undefined} onClose={() => undefined} />;
+export const Reject: S = { name: 'Review · reject with a reason', render: () => reject() };
+export const RejectMissing: S = { name: 'Review · Reject pressed with no reason', render: () => reject(), play: play(press('Reject change')) };
+export const RejectFailed: S = { name: 'Review · the server refuses the rejection', render: () => reject(fails('This change was already approved by Lakshmi Venkatesan.')), play: play(type(/Reason/, 'Grade band not budgeted this year'), press('Reject change')) };

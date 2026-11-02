@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import { PersonHistoryScreen } from './person-history';
-import { DesignImpact } from './history-kit';
+import { ChangeImpact } from '../people/changes';
 import { AS_OF, AS_OF_FUTURE, AS_OF_PAY, HISTORY, IMPACT, IMPACT_LOWERS_PAY, OPTIONS, PEOPLE, TODAY_ISO } from './data';
 
 const meta: Meta = { title: 'Screens/People/Job history', parameters: { layout: 'fullscreen' } };
@@ -44,4 +44,4 @@ export const Manager: S = {
 };
 export const NoPerson: S = { name: '· no person chosen', render: () => <PersonHistoryScreen state="ready" people={PEOPLE} personId={null} onPickPerson={() => {}} today={TODAY_ISO} asOf={TODAY_ISO} onAsOf={() => {}} view={null} history={null} payShown={false} onShowPay={() => wait()} /> };
 
-export const PromotionLowersPay: S = { name: 'Change action · a promotion that lowers pay (warning, not a block)', render: () => <DesignImpact impact={IMPACT_LOWERS_PAY} /> };
+export const PromotionLowersPay: S = { name: 'Change action · a promotion that lowers pay (warning, not a block)', render: () => <ChangeImpact impact={IMPACT_LOWERS_PAY} /> };

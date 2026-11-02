@@ -2,7 +2,8 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { PersonHistoryScreen, type PersonHistoryScreenProps } from './person-history';
-import { ChangeDrawer, changeInput, DesignImpact, draftForm, draftFromForm, ImpactPanel, moveInput, moveNeeds, orList, routeLine, type ChangeDraft } from './history-kit';
+import { changeInput, draftForm, draftFromForm, ImpactPanel, moveInput, moveNeeds, orList, routeLine, type ChangeDraft } from './history-kit';
+import { ChangeActionDrawer as ChangeDrawer, ChangeImpact as DesignImpact } from '../people/changes';
 import { EMPTY_HIRE, HireDrawer, hireInput, type HireDraft } from './hire';
 import { AS_OF, AS_OF_PAY, HISTORY, IMPACT, IMPACT_LOWERS_PAY, OPTIONS, PEOPLE, TODAY_ISO } from './data';
 

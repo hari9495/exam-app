@@ -13,6 +13,7 @@ import { EmployeeHistoryService } from '../src/employee-history/employee-history
 import { fyStart } from '../src/employee-history/history-rules';
 import { addDays, todayIst } from '../src/org-structure/org-validation';
 import { markSteppedUp } from './fixtures/step-up';
+import { withPayScope } from '../src/payroll/pay-access';
 
 // P06 effective-dated history on the P01 employee core, end to end against the real database (forced RLS,
 // app role): joins, changes as the only write path, approval by someone else, scheduled and retro changes,
@@ -399,12 +400,24 @@ describe('Employee history (P06; P01 §4.4; P02 YX-SEC-06/09/11; R1)', () => {
       await api('clerkA', 'post', '/people/changes').send(body).expect(403);
       beforeCorrection = new Date().toISOString();
       await new Promise((r) => setTimeout(r, 20));
+      // PPL-04 Retro: the first month's regular payroll at the person's entity is approved; a draft run and a run at the
+      // other entity do not count as processed.
+      await tenantPrisma.forTenant(asA(), async (tx) => {
+        const run = async (legalEntityId: string, month: string, status: string) => {
+          const group = await tx.payGroup.create({ data: { organizationId: org.A.id, legalEntityId, name: `Retro ${legalEntityId.slice(0, 4)} ${month} ${status}` } });
+          const start = new Date(`${month}-01T00:00:00Z`);
+          await withPayScope(tx as never, [legalEntityId], () => tx.payrollRun.create({ data: { organizationId: org.A.id, legalEntityId, payGroupId: group.id, periodStart: start, periodEnd: new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0)), status, preparedBy: org.A.id } }));
+        };
+        await run(ids.kf, fy.slice(0, 7), 'approved');
+        await run(ids.kf, today.slice(0, 7), 'draft');
+        await run(ids.tn, today.slice(0, 7), 'paid');
+      });
       const raised = await api('hrA', 'post', '/people/changes').send(body).expect(201);
       expect(raised.body.retro).toBe(true);
       await markSteppedUp(tenantPrisma, token.approverA);
       const ok = await api('approverA', 'post', `/people/changes/${raised.body.id}/approve`).send({}).expect(201);
       expect(ok.body.status).toBe('effective');
-      expect(ok.body.impact.retro).toEqual({ from: fy, months: expect.arrayContaining([fy.slice(0, 7), today.slice(0, 7)]) });
+      expect(ok.body.impact.retro).toEqual({ from: fy, months: expect.arrayContaining([fy.slice(0, 7), today.slice(0, 7)]), processed: fy.slice(0, 7) === today.slice(0, 7) ? [] : [fy.slice(0, 7)] });
       ids.correction = raised.body.id;
       // The downstream signal for payroll arrears / recoveries (Q4).
       expect((await auditActions('employee.change.retro_applied')).map((a) => a.metadata.changeId)).toContain(ids.correction);
