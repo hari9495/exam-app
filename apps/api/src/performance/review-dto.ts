@@ -558,3 +558,43 @@ export class PipListQueryDto {
   @IsUUID()
   legalEntityId?: string;
 }
+
+// ------------------------------------------------------------------------------------------ PRF-04 / PRF-06 (design wiring)
+
+export class AcknowledgeDto extends CommentDto {
+  /** PRF-06: "I disagree with this rating", sent with the acknowledgement (both or neither). */
+  @IsOptional()
+  @trim()
+  @IsString()
+  @Length(20, 2000, { message: 'Say which part you disagree with and why, in at least 20 characters.' })
+  disagreement?: string | null;
+}
+
+export class StageQueryDto {
+  @IsIn(['self', 'manager', 'skip', 'release', 'done'])
+  stage!: 'self' | 'manager' | 'skip' | 'release' | 'done';
+}
+
+export class RemindDto {
+  @IsOptional()
+  @IsBoolean()
+  overdueOnly?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(500)
+  @IsUUID('all', { each: true })
+  ownerEmployeeIds?: string[];
+}
+
+export class ExtendDto {
+  @IsIn(['self', 'manager', 'skip'])
+  stage!: 'self' | 'manager' | 'skip';
+
+  @Matches(ISO, { message: 'Give the day as YYYY-MM-DD.' })
+  dueOn!: string;
+
+  @IsInt()
+  @Min(1)
+  version!: number;
+}

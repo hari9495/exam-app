@@ -332,6 +332,103 @@ export class PerformanceReviewsService {
     });
   }
 
+  // ------------------------------------------------------------------------------------------ control room (PRF-04)
+
+  /** The open reviews of a running cycle with each stage's owner and due day (skip-level: the manager's manager). */
+  private async openRows(tx: Tx, org: string, x: Cycle, stage?: string) {
+    const rows = await tx.review.findMany({ where: { organizationId: org, cycleId: x.id, status: { not: 'closed' }, ...(stage ? { stage } : {}) }, orderBy: { createdAt: 'asc' }, take: 5000 });
+    const today = todayIst();
+    const skipOwners = new Map<string, string | null>();
+    for (const m of [...new Set(rows.filter((r) => r.stage === 'skip').map((r) => r.managerEmployeeId))]) skipOwners.set(m, await this.managerOf(tx, org, m, today));
+    return rows.map((r) => {
+      const due = (x.stages as StageIn[]).find((s) => s.key === r.stage)?.dueOn ?? null;
+      const owner = r.stage === 'self' ? r.employeeId : r.stage === 'manager' ? r.managerEmployeeId : r.stage === 'skip' ? (skipOwners.get(r.managerEmployeeId) ?? null) : null;
+      return { r, owner, due, overdue: r.status === 'open' && due !== null && today > due };
+    });
+  }
+
+  private async cycleOr404(tx: Tx, org: string, id: string) {
+    const x = await tx.reviewCycle.findFirst({ where: { organizationId: org, id } });
+    if (!x) throw new NotFoundException('No such cycle.');
+    return x;
+  }
+
+  /** The names behind one funnel stage (the control room's drill-down), with who has it and by when. */
+  async stagePeople(ctx: TenantContext, user: ScopeUser, id: string, stage: string) {
+    const v = await this.viewer(user);
+    this.manager(v);
+    return this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const rows = await this.openRows(tx, org, await this.cycleOr404(tx, org, id), stage);
+      const people = await this.names(tx, org, rows.flatMap((x) => [x.r.employeeId, x.owner]));
+      return rows.map((x) => ({ reviewId: x.r.id, employee: people.get(x.r.employeeId) ?? '', owner: x.owner ? (people.get(x.owner) ?? '') : null, dueOn: x.due, overdue: x.overdue }));
+    });
+  }
+
+  /** Overdue stages grouped by who owes them (YX-PERF-06), most first. */
+  async overdue(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
+    this.manager(v);
+    return this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const late = (await this.openRows(tx, org, await this.cycleOr404(tx, org, id))).filter((x) => x.overdue && x.owner);
+      const people = await this.names(tx, org, late.map((x) => x.owner));
+      const groups = new Map<string, { ownerEmployeeId: string; owner: string; stages: Set<string>; count: number }>();
+      for (const x of late) {
+        const g = groups.get(x.owner!) ?? { ownerEmployeeId: x.owner!, owner: people.get(x.owner!) ?? '', stages: new Set<string>(), count: 0 };
+        g.stages.add(STAGE_LABEL[x.r.stage] ?? x.r.stage);
+        g.count++;
+        groups.set(x.owner!, g);
+      }
+      return [...groups.values()].sort((a, b) => b.count - a.count || a.owner.localeCompare(b.owner)).map((g) => ({ ownerEmployeeId: g.ownerEmployeeId, owner: g.owner, stage: [...g.stages].join(', '), count: g.count }));
+    });
+  }
+
+  /** HR reminds the owners of open stages now: everyone with one, only those overdue, or the named owners. */
+  async remind(ctx: TenantContext, user: ScopeUser, id: string, dto: { overdueOnly?: boolean; ownerEmployeeIds?: string[] }) {
+    const v = await this.viewer(user);
+    this.manager(v);
+    const out = await this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const x = await this.cycleOr404(tx, org, id);
+      if (x.status !== 'launched') throw new ConflictException('Reminders go out only while the cycle runs.');
+      const only = dto.ownerEmployeeIds?.length ? new Set(dto.ownerEmployeeIds) : null;
+      const rows = (await this.openRows(tx, org, x)).filter((r) => r.r.status === 'open' && r.owner && (!dto.overdueOnly || r.overdue) && (!only || only.has(r.owner)));
+      const owners = [...new Set(rows.map((r) => r.owner!))];
+      if (!owners.length) throw new ConflictException(dto.overdueOnly ? 'Nothing is overdue.' : 'No one has a stage open.');
+      const users = (await tx.employee.findMany({ where: { organizationId: org, id: { in: owners } }, select: { userId: true } })).map((e) => e.userId);
+      await audit(tx, c, 'perf.cycle.reminded', 'review_cycle', id, { owners: owners.length, overdueOnly: Boolean(dto.overdueOnly) });
+      return { users, name: x.name, owners: owners.length };
+    });
+    await this.tell(ctx.organizationId!, out.users, 'perf.review.stage_due', `A reminder from HR: your part in ${out.name} is waiting`, '/yx/performance');
+    return { reminded: out.owners };
+  }
+
+  /** HR moves a stage's deadline later on a running cycle (never earlier); the stages after it must still follow. */
+  async extend(ctx: TenantContext, user: ScopeUser, id: string, dto: { stage: StageKey; dueOn: string; version: number }) {
+    const v = await this.viewer(user);
+    this.manager(v);
+    return this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const x = await this.cycleOr404(tx, org, id);
+      if (x.status !== 'launched') throw new ConflictException('Deadlines move only while the cycle runs.');
+      if (x.version !== dto.version) throw new ConflictException('Someone else changed this cycle. Reload it.');
+      const stages = x.stages as StageIn[];
+      const cur = stages.find((s) => s.key === dto.stage);
+      if (!cur) throw new BadRequestException('This cycle has no such stage.');
+      if (dto.dueOn <= cur.dueOn) throw new BadRequestException(`Choose a day after ${cur.dueOn}; a deadline only moves later.`);
+      if (dto.dueOn < todayIst()) throw new BadRequestException('Choose a day from today on.');
+      const next = stages.map((s) => (s.key === dto.stage ? { ...s, dueOn: dto.dueOn } : s));
+      const problem = stagesProblem(next, iso(x.createdAt));
+      if (problem) throw new BadRequestException(`${problem} Move the later stages first.`);
+      await tx.reviewCycle.update({ where: { id }, data: { stages: asJson(next), version: { increment: 1 } } });
+      // Reminders start again for the new deadline.
+      await tx.review.updateMany({ where: { organizationId: org, cycleId: id, status: 'open', stage: dto.stage }, data: { remindedOn: null } });
+      await audit(tx, c, 'perf.cycle.deadline_extended', 'review_cycle', id, { stage: dto.stage, before: cur.dueOn, after: dto.dueOn });
+      return this.cycleView(await tx.reviewCycle.findFirstOrThrow({ where: { id } }));
+    });
+  }
+
   // ------------------------------------------------------------------------------------------ reviews (PM-4.03, 4.04)
 
   private async managerOf(tx: Tx, org: string, employeeId: string, today = todayIst()) {
@@ -468,6 +565,8 @@ export class PerformanceReviewsService {
         managerScore: showManager && !a.own ? num(r.finalScore) : null,
         band: showManager ? r.band : null,
         excludedSections: showManager ? ((r.excludedSections as string[] | null) ?? []) : [],
+        // PRF-06: each rated section's score, shown with the released rating.
+        sectionScores: showManager ? sections.filter((s) => s.id in ((r.sectionScores as Record<string, number> | null) ?? {})).map((s) => ({ title: s.title, score: (r.sectionScores as Record<string, number>)[s.id] })) : [],
         bands: bands.map((b) => ({ fromScore: num(b.fromScore), toScore: num(b.toScore), label: b.label })),
         trail: log.map((l) => ({ stage: l.stage, event: l.event, reason: l.reason, at: l.at.toISOString() })),
         skipComment: showManager && !skipEntry?.sealedAt ? (skipEntry?.comment ?? null) : null,
@@ -661,37 +760,49 @@ export class PerformanceReviewsService {
     return { released: out.released, notReady: out.notReady };
   }
 
-  /** The employee acknowledges; the rating does not change. */
-  async acknowledge(ctx: TenantContext, user: ScopeUser, id: string, comment: string | null) {
+  /**
+   * The employee acknowledges; the rating does not change. PRF-06: a disagreement may go with it, in the same step
+   * (both or neither).
+   */
+  async acknowledge(ctx: TenantContext, user: ScopeUser, id: string, comment: string | null, disagreement?: string | null) {
     const v = await this.viewer(user);
-    await this.run(ctx, async (tx, c) => {
+    const hr = await this.run(ctx, async (tx, c) => {
       const r = await tx.review.findFirst({ where: { organizationId: c.organizationId, id } });
       if (!r || (await this.me(tx, c.organizationId, v)) !== r.employeeId) throw new NotFoundException('No such review.');
       if (r.status !== 'released') throw new ConflictException(r.status === 'acknowledged' ? 'You already acknowledged this review.' : 'This review is not released yet.');
+      const told = disagreement ? await this.raiseDisagreement(tx, c, r, disagreement) : null;
       await tx.review.update({ where: { id }, data: { status: 'acknowledged', acknowledgedAt: new Date(), acknowledgeComment: comment, version: { increment: 1 } } });
       await tx.reviewStageLog.create({ data: { organizationId: c.organizationId, reviewId: id, stage: 'done', event: 'acknowledged', byUserId: v.userId } });
+      await audit(tx, c, 'perf.review.acknowledged', 'review', id, { comment: Boolean(comment), disagreement: Boolean(disagreement) });
+      return told;
     });
+    if (hr) void this.tell(ctx.organizationId!, hr.users, 'perf.review.disagreed', 'An employee disagrees with their review', hr.link);
     return this.get(ctx, user, id);
+  }
+
+  /** The checks and record of a disagreement; returns who in HR is told. */
+  private async raiseDisagreement(tx: Tx, c: CompanyContext, r: Review, text: string) {
+    const org = c.organizationId;
+    if (!r.releasedAt || (r.status !== 'released' && r.status !== 'acknowledged')) throw new ConflictException('You can disagree once the review is released.');
+    if (r.disagreement) throw new ConflictException('You already raised a disagreement on this review.');
+    const days = Number(await settingFor(tx, c, 'perf.disagreement.days', { legalEntityId: r.legalEntityId }));
+    if (todayIst() > addDays(iso(r.releasedAt), days)) throw new ConflictException(`A disagreement is raised within ${days} days of release.`);
+    await tx.reviewDisagreement.create({ data: { organizationId: org, reviewId: r.id, text } });
+    await tx.review.update({ where: { id: r.id }, data: { disagreement: true, version: { increment: 1 } } });
+    await audit(tx, c, 'perf.review.disagreed', 'review', r.id, {});
+    const cycle = await tx.reviewCycle.findFirstOrThrow({ where: { id: r.cycleId } });
+    return { users: [...(await holdersOf(tx, org, 'perf.cycle.manage', r.employeeId, todayIst())), cycle.createdBy], link: `/yx/performance/cycles/${cycle.id}` };
   }
 
   /** PRF-15: within perf.disagreement.days of release the employee may disagree; HR answers. */
   async disagree(ctx: TenantContext, user: ScopeUser, id: string, text: string) {
     const v = await this.viewer(user);
     const hr = await this.run(ctx, async (tx, c) => {
-      const org = c.organizationId;
-      const r = await tx.review.findFirst({ where: { organizationId: org, id } });
-      if (!r || (await this.me(tx, org, v)) !== r.employeeId) throw new NotFoundException('No such review.');
-      if (!r.releasedAt || (r.status !== 'released' && r.status !== 'acknowledged')) throw new ConflictException('You can disagree once the review is released.');
-      if (r.disagreement) throw new ConflictException('You already raised a disagreement on this review.');
-      const days = Number(await settingFor(tx, c, 'perf.disagreement.days', { legalEntityId: r.legalEntityId }));
-      if (todayIst() > addDays(iso(r.releasedAt), days)) throw new ConflictException(`A disagreement is raised within ${days} days of release.`);
-      await tx.reviewDisagreement.create({ data: { organizationId: org, reviewId: id, text } });
-      await tx.review.update({ where: { id }, data: { disagreement: true, version: { increment: 1 } } });
-      await audit(tx, c, 'perf.review.disagreed', 'review', id, {});
-      const cycle = await tx.reviewCycle.findFirstOrThrow({ where: { id: r.cycleId } });
-      return [...(await holdersOf(tx, org, 'perf.cycle.manage', r.employeeId, todayIst())), cycle.createdBy];
+      const r = await tx.review.findFirst({ where: { organizationId: c.organizationId, id } });
+      if (!r || (await this.me(tx, c.organizationId, v)) !== r.employeeId) throw new NotFoundException('No such review.');
+      return this.raiseDisagreement(tx, c, r, text);
     });
-    void this.tell(ctx.organizationId!, hr, 'perf.review.disagreed', 'An employee disagrees with their review', '/yx/performance/cycles');
+    void this.tell(ctx.organizationId!, hr.users, 'perf.review.disagreed', 'An employee disagrees with their review', hr.link);
     return this.get(ctx, user, id);
   }
 

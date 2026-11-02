@@ -520,3 +520,27 @@ export class ActionDto {
   @IsUUID()
   goalId?: string | null;
 }
+
+// ------------------------------------------------------------------------------------------ PRF-02 / PRF-03 (design wiring)
+
+export class DecideGoalsDto {
+  @IsUUID()
+  employeeId!: string;
+
+  @IsUUID()
+  periodId!: string;
+
+  @IsIn(['approve', 'send_back'])
+  decision!: 'approve' | 'send_back';
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(1000)
+  reason?: string;
+}
+
+export class SuggestParentDto {
+  @IsUUID()
+  parentGoalId!: string;
+}

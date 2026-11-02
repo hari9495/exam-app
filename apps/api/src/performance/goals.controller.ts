@@ -6,7 +6,7 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import type { ScopeUser } from '../access/scope';
-import { CascadeDto, CheckinDto, DropDto, GoalDto, GoalListDto, GoalPeriodDto, PeriodQueryDto, SubmitGoalsDto } from './dto';
+import { CascadeDto, CheckinDto, DecideGoalsDto, DropDto, GoalDto, GoalListDto, GoalPeriodDto, PeriodQueryDto, SubmitGoalsDto, SuggestParentDto } from './dto';
 import { PerformanceGoalsService } from './goals.service';
 
 // Performance batch PM2 (M06-BUILD-DESIGN §19 "Goals"). Goals are open to the implicit grants (my own goals, my
@@ -73,6 +73,21 @@ export class PerformanceGoalsController {
   @HttpCode(200)
   submit(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: SubmitGoalsDto) {
     return this.goals.submit(ctx, this.user(req), dto.periodId);
+  }
+
+  /** PRF-02: the manager approves or sends back a person's goals; the service checks the approval task is theirs. */
+  @Post('goals/decide')
+  @HttpCode(200)
+  decide(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: DecideGoalsDto) {
+    return this.goals.decide(ctx, this.user(req), dto);
+  }
+
+  /** PRF-03: HR suggests a parent for a person's goal; the owner is notified. */
+  @Post('goals/:id/suggest-parent')
+  @HttpCode(200)
+  @RequirePermissions('perf.goal.manage')
+  suggestParent(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SuggestParentDto) {
+    return this.goals.suggestParent(ctx, this.user(req), id, dto.parentGoalId);
   }
 
   @Post('goals/:id/checkins')

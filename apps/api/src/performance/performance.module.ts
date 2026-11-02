@@ -10,6 +10,8 @@ import { PerformanceFeedbackController } from './feedback.controller';
 import { PerformanceFeedbackService } from './feedback.service';
 import { PerformanceGoalsController } from './goals.controller';
 import { PerformanceGoalsService } from './goals.service';
+import { PerformanceHomeController } from './home.controller';
+import { PerformanceHomeService } from './home.service';
 import { PerformanceJobs } from './perf-jobs';
 import { PerformanceCalibrationController } from './calibration.controller';
 import { PerformanceCompController } from './comp.controller';
@@ -33,11 +35,12 @@ import { PerformanceSetupService } from './setup.service';
 // PM5: peer and 360° feedback (nominations, anonymous groups, reviewer blocks, reveal for abuse).
 // PM6: calibration (sessions, guide, changes with reasons, sign-off) and reports with suppression.
 // PM8: improvement plans (proposal, HR approval, acknowledgement, check-ins, pause, outcome, the exit link).
+// PRF-01: the performance home (one read per role over the same services).
 // PM7: ratings to pay (matrices, comp cycles, budgets, proposals, approval, apply to P06 and payroll, pay band, pay equity).
 @Module({
   imports: [AuthModule, WorkflowModule, NotificationsModule, PayrollModule, EmployeeHistoryModule, DocumentsModule, LifecycleModule],
-  controllers: [PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, PerformanceSetupService, PerformanceGoalsService, PerformanceFeedbackService, PerformanceReviewsService, PerformancePeerService, PerformanceCalibrationService, PerformanceReportsService, PerformanceCompService, PerformancePipsService, PerformanceJobs],
+  controllers: [PerformanceHomeController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, PerformanceSetupService, PerformanceGoalsService, PerformanceFeedbackService, PerformanceReviewsService, PerformancePeerService, PerformanceCalibrationService, PerformanceReportsService, PerformanceCompService, PerformancePipsService, PerformanceJobs, PerformanceHomeService],
   exports: [PerformanceSetupService, PerformanceGoalsService],
 })
 export class PerformanceModule {}
