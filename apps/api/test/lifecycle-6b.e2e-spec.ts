@@ -35,6 +35,12 @@ describe('Lifecycle batch 6b', () => {
   let prisma: PrismaService;
   let tenantPrisma: TenantPrismaService;
   let automation: AutomationService;
+  let redis: Redis;
+  /** The resend wait is production behaviour; signing the same joiner in again later starts clean. */
+  const noCooldown = async () => {
+    const keys = [...(await redis.keys('auth:otp:cool:*')), ...(await redis.keys('auth:otp:sends:*'))];
+    if (keys.length) await redis.del(...keys);
+  };
   const PASSWORD = 'Corr3ct-Horse-Battery';
   const run = randomUUID().slice(0, 8);
   const SUPER: TenantContext = { organizationId: null, isSuperAdmin: true };
@@ -90,7 +96,7 @@ describe('Lifecycle batch 6b', () => {
     tenantPrisma = moduleRef.get(TenantPrismaService);
     automation = moduleRef.get(AutomationService);
     // The per-IP hourly code limit (production behaviour) counts every run from this machine; start each run clean.
-    const redis = moduleRef.get<Redis>(LOGIN_PROTECTION_REDIS);
+    redis = moduleRef.get<Redis>(LOGIN_PROTECTION_REDIS);
     const ipKeys = await redis.keys('auth:otp:ip:*');
     if (ipKeys.length) await redis.del(...ipKeys);
 
@@ -421,6 +427,18 @@ describe('Lifecycle batch 6b', () => {
     expect((await inA((tx) => tx.employee.findFirstOrThrow({ where: { id: done.employeeId } }))).personId).toBe(row.personId);
     await portal('get', '/me', ids.portal).expect(401);
     await api('hr', 'post', `/lifecycle/joiners/${ids.joiner}/join`).send({ identityAttested: true, status: 'probation', version: now.version + 1 }).expect(409);
+    // Founder 2 Nov 2026: signing in again, the joined joiner still downloads their letters and the accepted copy, read-only.
+    await noCooldown();
+    const again = await signIn(`kavya-${run}@mail.test`);
+    const closed = (await portal('get', '/me', again).expect(200)).body;
+    expect(closed.closed.outcome).toBe('joined');
+    expect(closed.letters.map((x: { id: string }) => x.id)).toContain(ids.letter);
+    expect((await portal('get', `/letters/${ids.letter}/file`, again).expect(200)).headers['content-type']).toMatch(/application\/pdf/);
+    await portal('get', `/letters/${ids.letter}/file?which=acceptance`, again).expect(200);
+    // Nothing else moves: accepting again, a form, an upload.
+    expect((await portal('post', `/letters/${ids.letter}/sign/code`, again).expect(409)).body.code).toBe('PORTAL_CLOSED');
+    expect((await portal('put', '/sections/tax', again).send({ regime: 'old' }).expect(409)).body.code).toBe('PORTAL_CLOSED');
+    expect((await portal('post', '/documents/pan_card', again).attach('file', PNG, 'pan.png').expect(409)).body.code).toBe('PORTAL_CLOSED');
   });
 
   it('a joiner who reneges is cancelled in one step (a fresh second step), nothing deleted', async () => {
@@ -479,6 +497,20 @@ describe('Lifecycle batch 6b', () => {
     const issued = (await api('hr', 'post', `/letters/${draft.id}/issue`).expect(201)).body;
     expect(issued).toMatchObject({ id: draft.id, status: 'issued', referenceNo: expect.stringMatching(/\/OWD\//) });
     await api('hr', 'post', `/letters/${draft.id}/issue`).expect(404);
+    // Founder 2 Nov 2026: the withdrawn joiner signs in and downloads the withdrawal letter, read-only.
+    await noCooldown();
+    const nt = await signIn(`nila-${run}@mail.test`);
+    const closed = (await portal('get', '/me', nt).expect(200)).body;
+    expect(closed).toMatchObject({ closed: { outcome: 'withdrawn' }, letters: [{ id: draft.id, letterType: 'offer_withdrawal', status: 'issued' }] });
+    expect((await portal('get', `/letters/${draft.id}/file`, nt).expect(200)).headers['content-type']).toMatch(/application\/pdf/);
+    await portal('get', `/letters/${draft.id}/file?which=acceptance`, nt).expect(404);
+    expect((await portal('post', `/letters/${draft.id}/sign/code`, nt).expect(409)).body.code).toBe('PORTAL_CLOSED');
+    expect((await portal('post', '/decline', nt).send({ reason: 'Personal reasons' }).expect(409)).body.code).toBe('PORTAL_CLOSED');
+    // Another joiner (still waiting to join) never reaches it, nor the joined one's letter; no session, no file.
+    const ravi = await signIn(`ravi-${run}@mail.test`);
+    await portal('get', `/letters/${draft.id}/file`, ravi).expect(404);
+    await portal('get', `/letters/${ids.letter}/file`, nt).expect(404);
+    await portal('get', `/letters/${draft.id}/file`).expect(401);
   });
 
   it('PPL-15 HR discards a drafted letter with a reason (kept for the audit); a letter that could not be made says why and is made again', async () => {

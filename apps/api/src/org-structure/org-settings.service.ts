@@ -103,8 +103,14 @@ export class OrgSettingsService {
     const def = definition(dto.key);
     const scopeType = dto.scopeType as ScopeType;
     if (!def.scopes.includes(scopeType)) throw new BadRequestException(`${def.label} cannot be set per ${scopeType.replace('_', ' ')}.`);
-    const parts = def.multi ? (dto.value ? dto.value.split(',') : []) : [dto.value];
-    if (!parts.every((p) => def.values.includes(p)) || new Set(parts).size !== parts.length) throw new BadRequestException(`${def.label} is ${def.multi ? 'any of' : 'one of'}: ${def.values.join(', ')}`);
+    if (def.text) {
+      dto.value = dto.value.replace(/\r\n?/g, '\n').trim();
+      if (!dto.value) throw new BadRequestException(`Write what goes in "${def.label}", one thing a line.`);
+      if (dto.value.length > def.text.maxLength) throw new BadRequestException(`"${def.label}" is ${dto.value.length} characters. Keep it to ${def.text.maxLength} or fewer.`);
+    } else {
+      const parts = def.multi ? (dto.value ? dto.value.split(',') : []) : [dto.value];
+      if (!parts.every((p) => def.values.includes(p)) || new Set(parts).size !== parts.length) throw new BadRequestException(`${def.label} is ${def.multi ? 'any of' : 'one of'}: ${def.values.join(', ')}`);
+    }
     // YX-ORG-18: a dated setting always carries its start date; a plain one never does.
     if (def.dated && !dto.validFrom) throw new BadRequestException(`${def.label} is dated: give the date it applies from.`);
     if (!def.dated && dto.validFrom) throw new BadRequestException(`${def.label} is not dated.`);

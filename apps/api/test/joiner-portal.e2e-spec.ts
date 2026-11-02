@@ -157,11 +157,32 @@ describe('Joiner portal (T9-01)', () => {
     expect(me.tasks[0]).toEqual({ id: expect.any(String), title: expect.any(String), dueOn: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), status: 'to_do' });
     const pan = me.documents.find((d: { typeKey: string }) => d.typeKey === 'pan_card');
     expect(pan.dueOn).toBe(addDays(joining, -7));
-    expect(me.firstDay).toEqual({ reportingTime: '09:30', address: '12, Hosur Road, Bengaluru, 560068', buddy: `Faisal ${run}`, batch: `Campus batch ${run}` });
+    expect(me.firstDay).toEqual({ reportingTime: '09:30', address: '12, Hosur Road, Bengaluru, 560068', buddy: `Faisal ${run}`, batch: `Campus batch ${run}`, bring: 'Original PAN and Aadhaar (to be seen, not kept)\nTwo passport photos\nBank passbook or cancelled cheque' });
     expect(me).toMatchObject({ manager: `Divya ${run}`, dateMoved: null });
     // The reporting time is a company setting HR can change.
     await inA((tx) => tx.setting.create({ data: { organizationId: org.A.id, key: 'joining.reporting_time', scopeType: 'tenant', scopeId: org.A.id, value: '10:00' } }));
     expect((await portal('get', '/me', t).expect(200)).body.firstDay.reportingTime).toBe('10:00');
+  });
+
+  it('"Bring on day one" is text HR writes in Settings, per company or legal entity; empty, too long or the wrong scope is refused', async () => {
+    const key = 'joining.bring_on_day_one';
+    const put = (who: Who, body: Record<string, unknown>) => api(who, 'put', '/org/settings').send({ key, scopeType: 'tenant', ...body });
+    expect((await put('adminA', { value: '  \n  ' }).expect(400)).body.message).toBe('Write what goes in "Joiners bring on their first day", one thing a line.');
+    expect((await put('adminA', { value: 'x'.repeat(501) }).expect(400)).body.message).toBe('"Joiners bring on their first day" is 501 characters. Keep it to 500 or fewer.');
+    await put('adminA', { value: 'x'.repeat(1001) }).expect(400);
+    await put('adminA', { scopeType: 'location', scopeId: ids.blr, value: 'Two photos' }).expect(400);
+    // A joiner's portal session is no staff sign-in: refused.
+    await request(server()).put('/api/v1/org/settings').set('X-Join-Portal', ids.riyaToken).send({ key, scopeType: 'tenant', value: 'Two photos' }).expect(401);
+    await put('adminA', { value: '  Two passport photos\r\nSafety shoes for the plant floor \n' }).expect(200);
+    const me = async () => (await portal('get', '/me', ids.riyaToken).expect(200)).body.firstDay.bring;
+    expect(await me()).toBe('Two passport photos\nSafety shoes for the plant floor');
+    // The joiner's legal entity has its own: that one wins.
+    await put('adminA', { scopeType: 'legal_entity', scopeId: ids.entity, value: 'Original PAN card' }).expect(200);
+    expect(await me()).toBe('Original PAN card');
+    const changed = await inA((tx) => tx.auditLog.findMany({ where: { action: 'org.setting.changed' } }));
+    expect(changed.some((a) => (a.metadataJson ?? '').includes(key))).toBe(true);
+    // Back to the company text for the rest of the run.
+    await inA((tx) => tx.setting.deleteMany({ where: { key, scopeType: 'legal_entity' } }));
   });
 
   it('"date moved": a postponed joining says the day moved and from when', async () => {
@@ -282,7 +303,11 @@ describe('Joiner portal (T9-01)', () => {
     expect(await audits(ids.sam, 'preboarding.declined')).toHaveLength(1);
     expect(await inA((tx) => tx.userNotification.count({ where: { recipientUserId: users.hr, type: 'preboarding.declined', entityId: ids.sam } }))).toBe(1);
     const me = (await portal('get', '/me', t).expect(200)).body;
-    expect(me).toEqual({ company: 'JoinP Org A', name: `Sam ${run}`, closed: { outcome: 'reneged', on: today } });
+    // The outcome and the joiner's own letters (none here), nothing else.
+    expect(me).toEqual({ company: 'JoinP Org A', name: `Sam ${run}`, closed: { outcome: 'reneged', on: today }, letters: [] });
+    // Downloads stay open for the joiner's own letters only: another id is not found (never "closed").
+    await portal('get', `/letters/${randomUUID()}/file`, t).expect(404);
+    await portal('get', '/letters/not-a-uuid/file', t).expect(400);
     // A closed joining is read-only: every change is refused.
     for (const [m, path, body] of [
       ['put', '/sections/emergency', { name: 'Rita', relation: 'Sister', phone: '+91 98450 11122' }],

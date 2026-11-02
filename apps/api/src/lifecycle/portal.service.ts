@@ -20,8 +20,8 @@ import { BankSectionDto, EmergencySectionDto, IdentitySectionDto, NomineesSectio
 //   scope     the session reaches only its own joiner record, the person's own documents and letters;
 //   answers   sealed with the platform key, shown back masked; PAN, Aadhaar and bank need a fresh code (step-up);
 //   on day 1  personal details are written to the record and identity / bank become change requests (joining service);
-//   closed    after joining, a decline or a cancellation the joiner can still sign in, and reads only the outcome; every
-//             change is refused (409 PORTAL_CLOSED).
+//   closed    after joining, a decline or a cancellation the joiner can still sign in, reads the outcome and downloads
+//             their own letters (founder 2 Nov 2026); every change is refused (409 PORTAL_CLOSED).
 
 const SESSION_MINUTES = 120;
 const STEP_UP_MINUTES = 10;
@@ -189,7 +189,8 @@ export class PreboardingPortalService {
         if (pb.status !== 'invited') {
           const outcome = pb.status === 'joined' ? 'joined' : (OUTCOME[pb.outcome ?? ''] ?? 'cancelled');
           const on = pb.status === 'joined' ? (pb.joinedAt ? iso(pb.joinedAt) : null) : pb.cancelledOn ? iso(pb.cancelledOn) : null;
-          return { company: org.name, name, closed: { outcome, on } };
+          // Founder 2 Nov 2026: the joiner's own letters stay downloadable (letterFile is the one closed route besides me).
+          return { company: org.name, name, closed: { outcome, on }, letters: (await this.letters.lettersOf(tx, s.org, s.personId)).letters };
         }
         const [entity, loc, desig, mgr, buddy, batch] = await Promise.all([
           tx.legalEntity.findFirst({ where: { organizationId: s.org, id: pb.legalEntityId }, select: { name: true } }),
@@ -227,6 +228,7 @@ export class PreboardingPortalService {
           tasks: tasks.map((t) => ({ id: t.id, title: t.title, dueOn: iso(t.dueOn), status: t.status === 'done' ? 'done' : 'to_do' })),
           firstDay: {
             reportingTime: await settingFor(tx, c, 'joining.reporting_time', { legalEntityId: pb.legalEntityId, employmentTypeId: pb.employmentTypeId }),
+            bring: await settingFor(tx, c, 'joining.bring_on_day_one', { legalEntityId: pb.legalEntityId }),
             address: [...(addr.lines ?? []), addr.city, addr.postalCode].filter(Boolean).join(', ') || null,
             buddy: who(buddy),
             batch: batch?.name ?? null,
@@ -372,7 +374,7 @@ export class PreboardingPortalService {
       const l = await tx.letterIssue.findFirst({ where: { organizationId: s.org, id, personId: s.personId, status: { in: ['issued', 'superseded'] } } });
       if (!l) throw new NotFoundException('No such letter.');
       return this.letters.letterFile(tx, c, l, which, 'self');
-    });
+    }, true);
   }
 
   async signCode(slug: string, token: string | undefined, id: string, ip: string | null) {

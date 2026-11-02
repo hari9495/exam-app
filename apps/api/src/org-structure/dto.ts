@@ -347,8 +347,9 @@ export class SettingDto {
   @IsUUID()
   scopeId?: string;
 
+  /** A choice, or a text setting's words (each text key's own limit is checked against the registry). */
   @IsString()
-  @MaxLength(200)
+  @MaxLength(1000)
   value!: string;
 
   /** Dated keys only. */
