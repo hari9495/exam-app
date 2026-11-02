@@ -1189,3 +1189,9 @@ the roster guard judges a week (week view warnings, publish, swaps, open shifts,
 "N h of call-outs included". On-call is pay data: the guard opens the pay guard for this check only, to the person's own
 legal entities, reading dates, hours and the flag. No new stories (the week warning already has its design). Manual tests
 MT-TIM-L-39..40.
+
+## Founder answers, 2 Nov 2026 (flexi and split shifts)
+(1) Flexi: late if the person arrives after core hours start; short if the day's total is below the shift's hours (both
+company settings with defaults). (2) Split: each part is checked for late/early on its own; the gap is unpaid and not
+worked; missing one part is a half day; rest and weekly-hour checks use both parts. (3) Flexi and split are company
+settings, off by default; existing fixed shifts do not change.
