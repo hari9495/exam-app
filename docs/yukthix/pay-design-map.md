@@ -1597,3 +1597,8 @@ Every Pay "live (gap)" row we can build ourselves is being made live now (run an
 rows that need an outside partner wait until the founder picks each partner, then are built against the real partner:
 TDS filing partner (CMP-05 Partner), Form 16 DSC signing (CMP-06 Sign), group health (5 rows), partner-funded earned wage
 access (Partner), payslip chat (Chat).
+
+## Founder answers, 2 Nov 2026 (statutory gaps, "ok for all")
+(1) issuing Form 16 requires a valid Q4 return link once linking is in normal use; (2) a plain "No deductees this month"
+choice for a month that needs import but had no salary TDS (small follow-up); (3) the review follow-up task can later be
+given to someone else on the desk; (4) "HR admins" = holders of `employee.change.manage` for the entity (keep).

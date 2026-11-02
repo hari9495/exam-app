@@ -1313,3 +1313,8 @@ in the portal until the employee app has a "My letters" page.
 ## Founder answers, 2 Nov 2026 (changes, record dialogs, exits, "ok for all")
 (1) the clearance_blocked migration is applied in the test app; (2) VRS benefit days stay a company setting
 (`vrs.benefit_days`, default 45; 30/45/60/90), not per scheme; (3) no separate Unblock: signing off or waiving ends a block.
+
+## Founder answers, 2 Nov 2026 (manager Change action, "ok for all")
+(1) a manager lists only the changes they raised (a read of HR-raised changes for their team can come later); (2) a role
+with `request.raise_on_behalf` but no `org.structure.view` gets no master lists (least access; the shipped manager
+template pairs both); (3) managers are not prompted for MFA unless the company requires it for everyone.
