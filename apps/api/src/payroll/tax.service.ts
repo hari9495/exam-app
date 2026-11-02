@@ -165,6 +165,23 @@ export async function buildTaxInputs(
   });
 }
 
+/** The deduction key of home loan interest in the tax deduction rules. */
+const HOME_LOAN = 'sec24b';
+
+/** PAY-41: the inputs with the what-if rent (the whole tax year, or the declared months) and home loan interest. */
+export function whatIfInputs(t: TaxInputs, taxYear: string, w: { rentMonthly?: string; homeLoanInterest?: string; metro?: boolean }): TaxInputs {
+  let out = t;
+  if (w.rentMonthly !== undefined) {
+    const y = Number(taxYear.slice(0, 4));
+    out = { ...out, rent: D(w.rentMonthly).gt(0) ? { monthly: D(w.rentMonthly).toFixed(2), from: t.rent?.from ?? `${y}-04`, to: t.rent?.to ?? `${y + 1}-03`, metro: w.metro ?? t.rent?.metro ?? false } : null };
+  } else if (w.metro !== undefined && t.rent) out = { ...out, rent: { ...t.rent, metro: w.metro } };
+  if (w.homeLoanInterest !== undefined) {
+    const rest = out.deductions.filter((x) => x.key !== HOME_LOAN);
+    out = { ...out, deductions: D(w.homeLoanInterest).gt(0) ? [...rest, { key: HOME_LOAN, amount: D(w.homeLoanInterest).toFixed(2) }] : rest };
+  }
+  return out;
+}
+
 @Injectable()
 export class TaxService implements OnModuleInit {
   constructor(
@@ -521,14 +538,17 @@ export class TaxService implements OnModuleInit {
     return out;
   }
 
-  /** Old and new regime on the figures of the latest payslip (the same function as the TDS). */
-  async compare(ctx: TenantContext, user: ScopeUser) {
+  /**
+   * Old and new regime on the figures of the latest payslip (the same function as the TDS). PAY-41 what-if: a monthly
+   * rent for the year and the year's home loan interest replace the declared ones in this calculation only; nothing is saved.
+   */
+  async compare(ctx: TenantContext, user: ScopeUser, whatIf: { rentMonthly?: string; homeLoanInterest?: string; metro?: boolean } = {}) {
     await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const { ws } = await this.ownWorkspace(tx, c);
       const p = await this.latestProjection(tx, c.organizationId, await this.mine(tx), ws.taxYear);
       if (!p) throw new ConflictException('The comparison uses your figures from your first payslip of the tax year.');
-      const inputs = p.inputs as unknown as TaxInputs;
+      const inputs = whatIfInputs(p.inputs as unknown as TaxInputs, ws.taxYear, whatIf);
       const month = (p.result as unknown as TaxProjection).thisMonth;
       const rules = await this.rules.published();
       const run = (regime: 'new' | 'old') => {
@@ -536,7 +556,15 @@ export class TaxService implements OnModuleInit {
         return { regime, taxable: r.taxable, annualTax: r.tax.total, monthTds: r.monthTds };
       };
       const both = [run('new'), run('old')];
-      return { taxYear: ws.taxYear, current: ws.regime, regimes: both, lower: D(both[0].annualTax).lte(both[1].annualTax) ? 'new' : 'old' };
+      const cap = (inForce(rules, 'IN.TAXDED', ['IN'], `${month.month}-01`)?.values.caps as Record<string, string | null> | undefined)?.sec24b ?? null;
+      return {
+        taxYear: ws.taxYear,
+        current: ws.regime,
+        regimes: both,
+        lower: D(both[0].annualTax).lte(both[1].annualTax) ? 'new' : 'old',
+        // The figures this comparison used (declared, or the what-if), and the rule's limit on home loan interest.
+        whatIf: { rentMonthly: inputs.rent?.monthly ?? '0.00', metro: inputs.rent?.metro ?? false, homeLoanInterest: D(inputs.deductions.find((x) => x.key === HOME_LOAN)?.amount ?? 0).toFixed(2), homeLoanCap: cap },
+      };
     });
   }
 

@@ -2155,6 +2155,14 @@ export interface RegimeComparison {
   current: 'new' | 'old';
   lower: 'new' | 'old';
   regimes: { regime: 'new' | 'old'; taxable: string; annualTax: string; monthTds: string }[];
+  /** PAY-41: the rent and home loan interest this comparison used (declared, or the what-if) and the rule's interest limit. */
+  whatIf?: { rentMonthly: string; metro: boolean; homeLoanInterest: string; homeLoanCap: string | null };
+}
+
+/** PAY-41 what-if sent with the comparison: worked out by the tax engine, never saved. */
+export interface RegimeWhatIf {
+  rentMonthly?: string;
+  homeLoanInterest?: string;
 }
 
 /** GET tax/me/tax-sheet: the projection behind the latest payslip's TDS (null before the first payslip of the year). */
@@ -2218,7 +2226,7 @@ export interface LiveTax {
   declarations: MyDeclarations | null;
   certificates: MyCertificate[] | null;
   form12b: MyForm12b | null;
-  onCompare: () => Promise<RegimeComparison>;
+  onCompare: (whatIf?: RegimeWhatIf) => Promise<RegimeComparison>;
   onPatch: (x: { regime?: 'new' | 'old'; otherIncome?: { kind: 'interest' | 'rent' | 'other'; amount: string }[] }) => Promise<unknown>;
   /** Founder answer 3: after the cut-off, POST tax/me/regime-request (goes to Approvals). */
   onRegimeRequest: (x: { regime: 'new' | 'old'; reason: string }) => Promise<unknown>;
@@ -2407,14 +2415,35 @@ export interface LiveRegimeCompare {
   resident: boolean;
   cutOff?: string;
   locked: boolean;
-  onCompare: () => Promise<RegimeComparison>;
+  onCompare: (whatIf?: RegimeWhatIf) => Promise<RegimeComparison>;
   onOpenDeclarations: () => void;
 }
 
 /** PAY-41 inside the workspace: both regimes from the API (the same function as the monthly TDS). Never chooses for the person. */
 function LiveRegimeCompare({ live }: { live: LiveRegimeCompare }) {
   const [cmp, setCmp] = useState<RegimeComparison | null>(null);
+  // PAY-41 what-if: starts at the declared rent and interest; each change is worked out again by the API (not saved).
+  const [x, setX] = useState<{ rent: number; homeLoan: number } | null>(null);
+  const [limits, setLimits] = useState<{ rent: number; homeLoan: number; declaredRent: number; declaredHomeLoan: number } | null>(null);
   const { busy, error, run } = useRun();
+  const first = async () => {
+    const r = await live.onCompare();
+    setCmp(r);
+    if (r.whatIf) {
+      const rent = num(r.whatIf.rentMonthly);
+      const homeLoan = num(r.whatIf.homeLoanInterest);
+      setX({ rent, homeLoan });
+      // The rent range is the screen's; the interest range is the rule's limit when it has one.
+      setLimits({ rent: Math.max(80_000, Math.ceil((rent * 1.5) / 1000) * 1000), homeLoan: r.whatIf.homeLoanCap ? num(r.whatIf.homeLoanCap) : Math.max(1_000_000, homeLoan * 2), declaredRent: rent, declaredHomeLoan: homeLoan });
+    }
+  };
+  useEffect(() => {
+    if (!x || !cmp?.whatIf || (num(cmp.whatIf.rentMonthly) === x.rent && num(cmp.whatIf.homeLoanInterest) === x.homeLoan)) return;
+    const t = setTimeout(() => void run('what-if', async () => setCmp(await live.onCompare({ rentMonthly: String(x.rent), homeLoanInterest: String(x.homeLoan) }))), 400);
+    return () => clearTimeout(t);
+    // Only a change of the what-if figures asks again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [x]);
   const of = (r: 'new' | 'old') => cmp?.regimes.find((x) => x.regime === r);
   const diff = cmp && of('new') && of('old') ? paise(of('new')!.annualTax) - paise(of('old')!.annualTax) : null;
   return (
@@ -2428,7 +2457,7 @@ function LiveRegimeCompare({ live }: { live: LiveRegimeCompare }) {
       )}
       {!cmp ? (
         <div className="yx-pay-row">
-          <Button variant="primary" loading={busy === 'cmp'} onClick={() => void run('cmp', async () => setCmp(await live.onCompare()))}>
+          <Button variant="primary" loading={busy === 'cmp'} onClick={() => void run('cmp', first)}>
             Compare the two regimes
           </Button>
         </div>
@@ -2438,7 +2467,16 @@ function LiveRegimeCompare({ live }: { live: LiveRegimeCompare }) {
             label="Tax for the year under each regime"
             items={(['new', 'old'] as const).map((r) => ({ label: regimeText(r), value: num(of(r)?.annualTax), note: live.current === r ? '(your choice)' : undefined, emphasis: live.current === r }))}
           />
-          <p aria-live="polite">{diff === 0n ? 'Both regimes give the same tax.' : diff != null ? `Tax is ${rupees(fromPaise(diff < 0n ? -diff : diff))} lower under the ${diff < 0n ? 'new' : 'old'} regime with your figures.` : ''}</p>
+          <p aria-live="polite">{diff === 0n ? 'Both regimes give the same tax.' : diff != null ? `Tax is ${rupees(fromPaise(diff < 0n ? -diff : diff))} lower under the ${diff < 0n ? 'new' : 'old'} regime with ${limits && cmp.whatIf && (limits.declaredRent !== num(cmp.whatIf.rentMonthly) || limits.declaredHomeLoan !== num(cmp.whatIf.homeLoanInterest)) ? 'these what-if' : 'your'} figures.` : ''}</p>
+          <div className="yx-pay-grid">
+          {x && limits && (
+            <div data-span="6" className="yx-pay-stack" aria-busy={busy === 'what-if'}>
+              <Slider valueText={formatINR} label="Monthly rent" value={x.rent} max={limits.rent} step={1_000} onChange={(n) => setX({ ...x, rent: n })} hint="Old regime only: the HRA exemption is worked out from it for each month." />
+              <Slider valueText={formatINR} label="Home-loan interest for the year" value={x.homeLoan} max={limits.homeLoan} step={10_000} onChange={(n) => setX({ ...x, homeLoan: n })} hint={cmp.whatIf?.homeLoanCap ? `Up to ${formatINR(num(cmp.whatIf.homeLoanCap))} counts (old regime only).` : 'Old regime only.'} />
+              <p className="yx-pay-note">What-if figures are not saved. To make them count, declare them in Declarations.</p>
+            </div>
+          )}
+          <div data-span={x && limits ? '6' : '12'}>
           <PlainTable
             label="Regimes compared"
             rows={cmp.regimes}
@@ -2459,6 +2497,8 @@ function LiveRegimeCompare({ live }: { live: LiveRegimeCompare }) {
               { key: 'month', header: 'Tax this month', num: true, cell: (r) => rupees(r.monthTds) },
             ]}
           />
+          </div>
+          </div>
         </>
       )}
       <div className="yx-pay-row">

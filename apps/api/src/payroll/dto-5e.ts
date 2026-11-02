@@ -74,6 +74,23 @@ export class DeclarationLineDto {
   metro?: boolean;
 }
 
+/** PAY-41 what-if on the regime comparison: worked out by the tax engine, never saved as declarations. */
+export class RegimeWhatIfDto {
+  /** Monthly rent for the whole tax year (0: no rent). */
+  @IsOptional()
+  @Matches(MONEY)
+  rentMonthly?: string;
+
+  /** Home loan interest for the year (0: none). */
+  @IsOptional()
+  @Matches(MONEY)
+  homeLoanInterest?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  metro?: boolean;
+}
+
 export class DeclarationsDto {
   @IsArray()
   @ArrayMinSize(1)

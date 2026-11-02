@@ -1,3 +1,4 @@
+import { whatIfInputs } from './tax.service';
 import { readFileSync } from 'fs';
 import { Prisma } from '@prisma/client';
 import { join } from 'path';
@@ -129,5 +130,23 @@ describe('income tax projection (PAY-5.02 … 5.07)', () => {
     expect(r.lines.find((l) => l.code === 'tds')?.amount ?? '0.00').toBe(r.tax!.monthTds === '0.00' ? '0.00' : r.tax!.monthTds);
     // Without tax inputs (before 5e) there is no TDS line, so earlier payslips reproduce unchanged.
     expect(calculatePayslip(s, TAX).lines.some((l) => l.code === 'tds')).toBe(false);
+  });
+});
+
+describe('PAY-41 what-if inputs (never saved)', () => {
+  const base = { rent: null, deductions: [{ key: 'sec80c', amount: '100000.00' }, { key: 'sec24b', amount: '50000.00' }] } as unknown as TaxInputs;
+
+  it('rent for the whole tax year when none is declared; 0 takes it away; the declared months and metro are kept', () => {
+    expect(whatIfInputs(base, '2026-27', { rentMonthly: '25000' }).rent).toEqual({ monthly: '25000.00', from: '2026-04', to: '2027-03', metro: false });
+    const declared = { ...base, rent: { monthly: '20000.00', from: '2026-06', to: '2027-03', metro: true } };
+    expect(whatIfInputs(declared, '2026-27', { rentMonthly: '30000' }).rent).toEqual({ monthly: '30000.00', from: '2026-06', to: '2027-03', metro: true });
+    expect(whatIfInputs(declared, '2026-27', { rentMonthly: '0' }).rent).toBeNull();
+    expect(whatIfInputs(declared, '2026-27', { metro: false }).rent?.metro).toBe(false);
+  });
+
+  it('home loan interest replaces the declared one; 0 drops it; other deductions untouched; no input changes nothing', () => {
+    expect(whatIfInputs(base, '2026-27', { homeLoanInterest: '180000' }).deductions).toEqual([{ key: 'sec80c', amount: '100000.00' }, { key: 'sec24b', amount: '180000.00' }]);
+    expect(whatIfInputs(base, '2026-27', { homeLoanInterest: '0' }).deductions).toEqual([{ key: 'sec80c', amount: '100000.00' }]);
+    expect(whatIfInputs(base, '2026-27', {})).toBe(base);
   });
 });

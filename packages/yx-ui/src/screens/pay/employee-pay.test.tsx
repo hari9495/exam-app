@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { EwaRequestScreen, IncentiveStatementScreen, LoanRequestScreen, MyPayDocumentsScreen, NomineeDrawer, PayBandScreen, PayslipViewerScreen, TaxWorkspaceScreen, payDiff, previewEmi, type LiveEwaRequest, type LiveLoanRequest, type LivePayslips, type LiveTax, type LoanRules, type MyTaxWorkspace } from './employee-pay';
@@ -179,6 +179,26 @@ describe('PAY-22 / PAY-41 · Me › Tax (live)', () => {
     const table = await screen.findByRole('table', { name: 'Regimes compared' });
     expect(table).toHaveTextContent('₹38,220.00');
     expect(screen.getByText('Tax is ₹38,220.00 lower under the new regime with your figures.')).toBeInTheDocument();
+  });
+
+  it('what-if rent and home loan interest are worked out again by the API, never saved (PAY-41 OldLower)', async () => {
+    const declared = { rentMonthly: '0.00', metro: false, homeLoanInterest: '0.00', homeLoanCap: '200000' };
+    const onCompare = vi.fn(async (w?: { rentMonthly?: string; homeLoanInterest?: string }) =>
+      w
+        ? { taxYear: '2026-27', current: 'new' as const, lower: 'old' as const, regimes: [{ regime: 'new' as const, taxable: '669000.00', annualTax: '12000.00', monthTds: '0.00' }, { regime: 'old' as const, taxable: '300000.00', annualTax: '0.00', monthTds: '0.00' }], whatIf: { ...declared, rentMonthly: `${w.rentMonthly}.00`, homeLoanInterest: `${w.homeLoanInterest}.00` } }
+        : { taxYear: '2026-27', current: 'new' as const, lower: 'new' as const, regimes: [{ regime: 'new' as const, taxable: '669000.00', annualTax: '0.00', monthTds: '0.00' }, { regime: 'old' as const, taxable: '626000.00', annualTax: '38220.00', monthTds: '3185.00' }], whatIf: declared },
+    );
+    const onDeclare = fn();
+    render(<TaxWorkspaceScreen live={live({ tab: 'compare', onCompare, onDeclare })} />);
+    await ue.click(screen.getByRole('button', { name: 'Compare the two regimes' }));
+    const rent = await screen.findByRole('slider', { name: 'Monthly rent' });
+    expect(screen.getByRole('slider', { name: 'Home-loan interest for the year' })).toHaveAttribute('max', '200000');
+    fireEvent.change(rent, { target: { value: '45000' } });
+    fireEvent.change(screen.getByRole('slider', { name: 'Home-loan interest for the year' }), { target: { value: '200000' } });
+    await waitFor(() => expect(onCompare).toHaveBeenLastCalledWith({ rentMonthly: '45000', homeLoanInterest: '200000' }));
+    expect(await screen.findByText('Tax is ₹12,000.00 lower under the old regime with these what-if figures.')).toBeInTheDocument();
+    expect(screen.getByText(/What-if figures are not saved/)).toBeInTheDocument();
+    expect(onDeclare).not.toHaveBeenCalled();
   });
 
   it('the regime is a Segment; saving the same regime is refused with a message, the other one is saved', async () => {

@@ -10,7 +10,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
-import { CertificateDto, CertificateListDto, DeclarationsDto, Form12bDecisionDto, Form12bDto, Form12bQueueDto, IssueCertificateDto, PanStatusDto, PerquisiteDto, ProofDecisionDto, ProofQueueDto, RegimeOverrideDto, RegimeRequestDto, ResidencyRequestDto, WorkspaceListDto, WorkspacePatchDto } from './dto-5e';
+import { CertificateDto, CertificateListDto, DeclarationsDto, Form12bDecisionDto, Form12bDto, Form12bQueueDto, IssueCertificateDto, PanStatusDto, PerquisiteDto, ProofDecisionDto, ProofQueueDto, RegimeOverrideDto, RegimeRequestDto, RegimeWhatIfDto, ResidencyRequestDto, WorkspaceListDto, WorkspacePatchDto } from './dto-5e';
 import { TaxService } from './tax.service';
 
 // Payroll batch 5e, income tax (M03-BUILD-DESIGN §14.5). Every route declares its key (YX-SEC-01) or is the signed-in
@@ -54,8 +54,8 @@ export class TaxController {
 
   @Post('me/regime-compare')
   @HttpCode(200)
-  compare(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
-    return this.tax.compare(ctx, this.user(req));
+  compare(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: RegimeWhatIfDto) {
+    return this.tax.compare(ctx, this.user(req), dto);
   }
 
   @Get('me/tax-sheet')

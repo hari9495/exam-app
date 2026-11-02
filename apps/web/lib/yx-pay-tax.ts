@@ -27,7 +27,8 @@ export function useLiveTax(tab: TaxTab): LiveTax {
     declarations: decl.data ?? null,
     certificates: certificates.data ?? null,
     form12b: form12b.data ?? null,
-    onCompare: () => write<RegimeComparison>('/tax/me/regime-compare'),
+    // PAY-41: the what-if rent and home loan interest go with the comparison (never saved).
+    onCompare: (whatIf) => write<RegimeComparison>('/tax/me/regime-compare', whatIf ?? {}),
     onPatch: (x) => write('/tax/me/workspace', x, 'PATCH'),
     onDeclare: (line) => write('/tax/me/declarations', { lines: [line] }),
     onProof: (lineId, f) => write(`/tax/me/proofs/${encodeURIComponent(lineId)}`, file(f)),

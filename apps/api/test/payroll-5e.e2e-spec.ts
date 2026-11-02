@@ -332,6 +332,14 @@ describe('Payroll batch 5e (income tax)', () => {
     const cmp = (await api('emp1', 'post', '/tax/me/regime-compare').expect(200)).body;
     expect(cmp.regimes.map((r: { regime: string }) => r.regime)).toEqual(['new', 'old']);
     expect(cmp.regimes[1].annualTax).toBe(sheet.sheet.tax.total);
+    // PAY-41 what-if: rent and home loan interest go through the same engine; the old regime gets lower; nothing is saved.
+    const declaredBefore = (await api('emp1', 'get', '/tax/me/declarations').expect(200)).body.lines;
+    const what = (await api('emp1', 'post', '/tax/me/regime-compare').send({ rentMonthly: '60000', homeLoanInterest: '150000' }).expect(200)).body;
+    expect(what.whatIf).toMatchObject({ rentMonthly: '60000.00', homeLoanInterest: '150000.00', homeLoanCap: expect.any(String) });
+    expect(Number(what.regimes[1].annualTax)).toBeLessThan(Number(cmp.regimes[1].annualTax));
+    expect(what.regimes[0].annualTax).toBe(cmp.regimes[0].annualTax);
+    expect((await api('emp1', 'get', '/tax/me/declarations').expect(200)).body.lines).toEqual(declaredBefore);
+    for (const bad of [{ rentMonthly: '-1' }, { homeLoanInterest: 'lots' }, { rentMonthly: '1000', extra: 'x' }, { metro: 'yes' }]) await api('emp1', 'post', '/tax/me/regime-compare').send(bad).expect(400);
     // No PAN on file: never a block; the higher of the slab tax (nil here) and the no-PAN rate (PAY-5.05).
     const two = (await api('emp2', 'get', '/tax/me/tax-sheet').expect(200)).body.sheet;
     expect(two.tax).toMatchObject({ noPanApplied: true });
