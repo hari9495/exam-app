@@ -358,6 +358,46 @@ export class PayPeriodsService implements OnModuleInit {
     return out;
   }
 
+  /**
+   * PAY-04 "Period frozen · late request only": the stage of a month per legal entity the person enters pay inputs for,
+   * so the LOP input shows a frozen or locked month before anyone types.
+   */
+  async inputStages(ctx: TenantContext, user: ScopeUser, month: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const ids = await entitiesFor(tx, c, v, 'payroll.input.manage');
+      const rows = await tx.payPeriod.findMany({ where: { organizationId: c.organizationId, legalEntityId: { in: ids }, payGroupId: null, periodStart: asDate(monthRange(month).from) }, select: { legalEntityId: true, stage: true } });
+      return ids.map((id) => ({ legalEntityId: id, month, stage: rows.find((r) => r.legalEntityId === id)?.stage ?? 'open' }));
+    });
+  }
+
+  /**
+   * PAY-04 late request: payroll (payroll.input.manage) asks for a day of an assumed-present person in a frozen or locked
+   * month to change (an unpaid day, or an unpaid day reversed). Someone else with payroll.correction.approve approves it
+   * in Approvals; the difference is paid in the next open payroll, the locked month never changes (YX-LOCK-03).
+   */
+  async inputCorrection(ctx: TenantContext, user: ScopeUser, dto: HrCorrectionDto) {
+    const v = await this.viewer(user);
+    requireSelf(v);
+    const notices: Notice[] = [];
+    const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      if (dto.on > todayIst()) throw new BadRequestException('A late request is for a day that has passed.');
+      const f = await factsOn(tx, org, dto.employeeId, dto.on);
+      if (!f) throw new NotFoundException('Not found');
+      await requireEntity(tx, c, v, 'payroll.input.manage', f.legalEntityId);
+      if (f.userId === v.userId) throw new ForbiddenException('Someone else asks for a change to your own pay.');
+      const p = await this.periodOn(tx, org, f.legalEntityId, dto.on);
+      if (!p || p.stage === 'open') throw new BadRequestException('That month is still open. Change the LOP days in the input instead.');
+      const payroll = (await payHolders(tx, org, 'payroll.correction.approve', f.legalEntityId, todayIst())).filter((u) => u !== v.userId && u !== f.userId);
+      if (!payroll.length) throw new BadRequestException('No one else can approve it. Give a second person "payroll.correction.approve" for this legal entity.');
+      const steps: StepSpec[] = [{ name: 'Payroll', approvers: [{ kind: 'users', userIds: payroll }], mode: 'any', remindAfterHours: 24 }];
+      return this.createCorrection(tx, c, { employeeId: f.employeeId, name: f.name, personId: f.personId, entityId: f.legalEntityId, period: p, dto, source: 'late_request', steps, fallback: [] }, notices);
+    });
+    await this.engine.send(ctx, notices);
+    return out;
+  }
+
   /** HR records a correction for someone in a frozen / locked month (needs attendance.lock on the entity); payroll approves. */
   async hrCorrection(ctx: TenantContext, user: ScopeUser, dto: HrCorrectionDto) {
     const v = await this.viewer(user);

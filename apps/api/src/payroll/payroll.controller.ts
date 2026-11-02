@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, HttpCode, Ip, Param, ParseUUIDPipe, Post, Query, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Ip, Param, ParseUUIDPipe, Post, Query, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
@@ -105,6 +105,22 @@ export class PayrollController {
   @Throttle(MODERATE_UPLOAD_THROTTLE)
   lateCorrection(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: LateCorrectionDto) {
     return this.periods.lateRequest(ctx, this.user(req), dto);
+  }
+
+  /** PAY-04: the month's stage per legal entity for the LOP input (frozen or locked takes a late request). */
+  @Get('input-periods/:month')
+  @RequirePermissions('payroll.input.manage')
+  inputStages(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('month') month: string) {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new BadRequestException('The month is like 2026-10.');
+    return this.periods.inputStages(ctx, this.user(req), month);
+  }
+
+  /** PAY-04 late request from the LOP input (a frozen or locked month); someone else approves it for payroll. */
+  @Post('input-corrections')
+  @RequirePermissions('payroll.input.manage')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  inputCorrection(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: HrCorrectionDto) {
+    return this.periods.inputCorrection(ctx, this.user(req), dto);
   }
 
   @Post('corrections')

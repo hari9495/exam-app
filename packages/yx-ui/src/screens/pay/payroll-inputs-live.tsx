@@ -88,7 +88,15 @@ export interface LiveInputs {
   nameOf: (employeeId: string) => string;
   onSearch: (q: string) => Promise<PersonHit[]>;
   tab?: 'lop' | 'onetime' | 'holds';
-  lop: { state: LoadState; rows: LopRow[] | null; onSave: (rows: { employeeId: string; lopDays: string; reason: string }[], source: 'manual' | 'upload') => Promise<unknown> };
+  lop: {
+    state: LoadState;
+    rows: LopRow[] | null;
+    onSave: (rows: { employeeId: string; lopDays: string; reason: string }[], source: 'manual' | 'upload') => Promise<unknown>;
+    /** PAY-04 Frozen: the month's stage (GET input-periods/:month); frozen, locked or filed takes late requests only. */
+    stage?: string | null;
+    /** PAY-04 late request for a day of a frozen or locked month; someone else approves it (POST input-corrections). */
+    onLateRequest?: (x: { employeeId: string; on: string; kind: 'attendance'; shouldBe: string; reason: string }) => Promise<unknown>;
+  };
   oneTime: { rows: OneTimeItem[] | null; onAdd: (row: { employeeId: string; componentCode: string; amount: string; month: string; reason: string; endOn?: string }) => Promise<{ status: string }>; onCancel: (id: string) => Promise<unknown> };
   holds: { state: LoadState; rows: HoldRow[] | null; onAdd: (row: { employeeId: string; reasonCode: string; note: string }) => Promise<unknown>; onRelease: (id: string, body: { reason: string; route: HoldRoute }) => Promise<unknown> };
 }
@@ -159,14 +167,19 @@ export function LiveLopPanel({ live }: { live: LiveInputs }) {
   });
   const changed = rows.filter((r) => edits[r.employeeId]);
   const wrong = changed.filter((r) => r.error);
+  // PAY-04 Frozen: the month is frozen or locked, so days change only through a late request (the design's state).
+  const frozen = !!live.lop.stage && live.lop.stage !== 'open';
+  const [late, setLate] = useState(false);
+  const frozenText = `Inputs are frozen for ${label}. Changes now go through a late request.`;
   const cols: TableColumn<LopLine>[] = [
     { key: 'employee', header: 'Employee', type: 'person', value: (r) => live.nameOf(r.employeeId), person: (r) => ({ name: live.nameOf(r.employeeId) }), width: 240 },
-    { key: 'lop', header: 'LOP days', type: 'number', value: (r) => Number(r.lopDays) || 0, editable: 'number', total: 'sum', width: 110 },
-    { key: 'reason', header: 'Reason', value: (r) => r.reason, editable: 'text', width: 260 },
+    { key: 'lop', header: 'LOP days', type: 'number', value: (r) => Number(r.lopDays) || 0, editable: frozen ? undefined : 'number', total: 'sum', width: 110 },
+    { key: 'reason', header: 'Reason', value: (r) => r.reason, editable: frozen ? undefined : 'text', width: 260 },
     { key: 'source', header: 'Source', value: (r) => (r.source === 'upload' ? 'Upload' : 'Manual'), width: 90, optional: true },
     { key: 'err', header: 'Check', value: (r) => r.error ?? '', render: (r) => (r.error ? <span className="yx-pay-note">{r.error}</span> : edits[r.employeeId] ? <Badge tone="info">Not saved yet</Badge> : <Badge tone="success">Saved</Badge>), width: 300 },
   ];
   const save = () => {
+    if (frozen) return say(frozenText, 'default');
     if (!changed.length) return say('Nothing to save. Change a row, or add a person.', 'default');
     if (wrong.length) return setTried(true);
     void run('save', async () => {
@@ -182,20 +195,35 @@ export function LiveLopPanel({ live }: { live: LiveInputs }) {
         <SectionTitle
           actions={
             <>
-              <Button icon={Upload} onClick={() => (setResults(null), setUploading(true))}>
+              <Button icon={Upload} onClick={() => (frozen ? say(frozenText, 'default') : (setResults(null), setUploading(true)))}>
                 Bulk upload
               </Button>
-              <Button icon={Plus} onClick={() => setAdding(true)}>
-                Add loss of pay
-              </Button>
-              <Button variant="primary" loading={busy === 'save'} onClick={save}>
-                {changed.length ? `Save LOP for ${plural(changed.length, 'person', 'people')}` : 'Save LOP'}
-              </Button>
+              {frozen ? (
+                live.lop.onLateRequest && (
+                  <Button variant="primary" icon={Plus} onClick={() => setLate(true)}>
+                    Late request
+                  </Button>
+                )
+              ) : (
+                <>
+                  <Button icon={Plus} onClick={() => setAdding(true)}>
+                    Add loss of pay
+                  </Button>
+                  <Button variant="primary" loading={busy === 'save'} onClick={save}>
+                    {changed.length ? `Save LOP for ${plural(changed.length, 'person', 'people')}` : 'Save LOP'}
+                  </Button>
+                </>
+              )}
             </>
           }
         >
-          Loss of pay · {label}
+          Loss of pay · {label} {frozen ? <Badge tone="neutral">Period frozen</Badge> : live.lop.stage === 'open' ? <Badge tone="warning">Open</Badge> : null}
         </SectionTitle>
+        {frozen && (
+          <InlineAlert tone="info" title={`Inputs are frozen for ${label}`}>
+            Changes now go through a late request; approved late items reach the next open payroll as arrears or LOP reversal.{live.lop.onLateRequest ? '' : ' Ask someone who enters payroll inputs.'}
+          </InlineAlert>
+        )}
         <p className="yx-pay-muted">For groups paid as present (Assumed present): enter unpaid days per person, each with a reason. Others come from attendance.</p>
         {error && (
           <InlineAlert tone="danger" title="Not saved">
@@ -220,6 +248,7 @@ export function LiveLopPanel({ live }: { live: LiveInputs }) {
           empty={<EmptyState title={`No loss-of-pay days in ${label}.`} description="Add days for people in groups paid as present; everyone else's come from attendance." action={<Button icon={Plus} onClick={() => setAdding(true)}>Add loss of pay</Button>} />}
         />
         {adding && <LopDrawer live={live} days={days} onClose={() => setAdding(false)} onSaved={(t) => say(t)} />}
+        {late && live.lop.onLateRequest && <LateRequestDrawer live={live} onClose={() => setLate(false)} onSaved={(t) => say(t)} />}
         <BulkUploadDrawer
           open={uploading}
           onOpenChange={setUploading}
@@ -308,6 +337,80 @@ function LopDrawer({ live, days, onClose, onSaved }: { live: LiveInputs; days: n
         </FormField>
         <FormField id="lop-why" label="Reason" required error={shown.errorOf('lop-why')}>
           <TextArea value={reason} onChange={setReason} rows={2} maxLength={300} />
+        </FormField>
+      </div>
+    </Drawer>
+  );
+}
+
+const SHOULD_BE: { value: string; label: string }[] = [
+  { value: 'absent', label: 'Unpaid day (LOP)' },
+  { value: 'present', label: 'Paid day (reverse LOP)' },
+  { value: 'half_day', label: 'Half day' },
+];
+const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/** PAY-04 "Period frozen · late request only": one day of a frozen or locked month, sent for approval by someone else. */
+function LateRequestDrawer({ live, onClose, onSaved }: { live: LiveInputs; onClose: () => void; onSaved: (text: string) => void }) {
+  const [who, setWho] = useState<PersonHit | null>(null);
+  const [on, setOn] = useState<Date | null>(null);
+  const [shouldBe, setShouldBe] = useState('absent');
+  const [reason, setReason] = useState('');
+  const { busy, error, run } = useRun();
+  const first = new Date(`${live.month}-01T00:00:00`);
+  const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
+  const errors = [
+    ...(!who ? [{ fieldId: 'late-who', message: 'Choose the person.' }] : []),
+    ...(!on ? [{ fieldId: 'late-on', message: `Choose the day in ${monthName(live.month)}.` }] : []),
+    ...(reason.trim().length < 10 ? [{ fieldId: 'late-why', message: 'Say why, in at least 10 characters.' }] : []),
+  ];
+  const shown = useSaveErrors(errors);
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title="Late request"
+      subtitle={`${monthName(live.month)} is frozen. Someone else in payroll approves it; the difference is paid in the next open payroll.`}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant="primary"
+            loading={busy === 'late'}
+            onClick={() => {
+              if (errors.length) {
+                shown.reveal();
+                document.getElementById(errors[0].fieldId)?.focus();
+                return;
+              }
+              void run('late', async () => {
+                await live.lop.onLateRequest!({ employeeId: who!.id, on: isoDay(on!), kind: 'attendance', shouldBe, reason: reason.trim() });
+                onSaved(`Late request for ${who!.name} sent for approval`);
+                onClose();
+              });
+            }}
+          >
+            Send for approval
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-pay-stack">
+        <ErrorSummary errors={shown.shownErrors} />
+        {error && (
+          <InlineAlert tone="danger" title="Not sent">
+            {error}
+          </InlineAlert>
+        )}
+        <PersonPicker id="late-who" label="Employee" value={who} onChange={setWho} onSearch={live.onSearch} error={shown.errorOf('late-who')} />
+        <FormField id="late-on" label="Day" required error={shown.errorOf('late-on')}>
+          <DatePicker value={on} onChange={setOn} min={first} max={last} />
+        </FormField>
+        <FormField id="late-should" label="It should be">
+          <Segment label="It should be" value={shouldBe} onChange={setShouldBe} options={SHOULD_BE} />
+        </FormField>
+        <FormField id="late-why" label="Reason" required error={shown.errorOf('late-why')} helper="Saved with the request and in the audit trail.">
+          <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
         </FormField>
       </div>
     </Drawer>

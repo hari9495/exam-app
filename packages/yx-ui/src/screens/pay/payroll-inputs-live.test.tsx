@@ -109,6 +109,38 @@ describe('Payroll › Inputs (PAY-04 … 06 live)', () => {
     await waitFor(() => expect(live.lop.onSave).toHaveBeenCalledWith([{ employeeId: 'p3', lopDays: '2', reason: 'Unapproved absence' }], 'manual'));
   });
 
+  it('PAY-04 Frozen: a frozen month shows the design state and takes late requests only; pressed too early nothing is sent', async () => {
+    const onLateRequest = ok();
+    const live = inputs({ tab: 'lop', lop: { ...inputs().lop, stage: 'frozen', onLateRequest } });
+    render(<OneTimePayScreen live={live} />);
+    expect(screen.getByText('Period frozen')).toBeInTheDocument();
+    expect(screen.getByText('Inputs are frozen for September 2026')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Save LOP/ })).not.toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Bulk upload' }));
+    expect((await screen.findAllByText(/Changes now go through a late request\./)).length).toBeGreaterThan(0);
+    await ue.click(screen.getByRole('button', { name: 'Late request' }));
+    const d = screen.getByRole('dialog');
+    await ue.click(within(d).getByRole('button', { name: 'Send for approval' }));
+    expect(within(d).getAllByText('Choose the person.').length).toBeGreaterThan(0);
+    expect(onLateRequest).not.toHaveBeenCalled();
+    await pick('Sridhar Fernandes');
+    await ue.type(within(d).getByLabelText(/^Day/), '14/9/2026');
+    await ue.click(within(d).getByRole('radio', { name: 'Paid day (reverse LOP)' }));
+    await ue.type(within(d).getByRole('textbox', { name: /Reason/ }), 'Was on client visit, approved later');
+    await ue.click(within(d).getByRole('button', { name: 'Send for approval' }));
+    await waitFor(() => expect(onLateRequest).toHaveBeenCalledWith({ employeeId: 'p3', on: '2026-09-14', kind: 'attendance', shouldBe: 'present', reason: 'Was on client visit, approved later' }));
+    expect((await screen.findAllByText('Late request for Sridhar Fernandes sent for approval')).length).toBeGreaterThan(0);
+  });
+
+  it('PAY-04: an open month keeps inline entry; a frozen month without the request action says whom to ask', () => {
+    const { unmount } = render(<OneTimePayScreen live={inputs({ tab: 'lop', lop: { ...inputs().lop, stage: 'open' } })} />);
+    expect(screen.getByRole('button', { name: 'Save LOP' })).toBeInTheDocument();
+    unmount();
+    render(<OneTimePayScreen live={inputs({ tab: 'lop', lop: { ...inputs().lop, stage: 'locked' } })} />);
+    expect(screen.queryByRole('button', { name: 'Late request' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Ask someone who enters payroll inputs/)).toBeInTheDocument();
+  });
+
   it('loss of pay: a CSV is checked row by row; only good rows are imported, as an upload', async () => {
     const live = inputs({ tab: 'lop' });
     live.onSearch = vi.fn(async (q: string) => PEOPLE.filter((p) => p.employeeCode === q).map((p) => ({ id: p.employeeId, name: p.name, employeeCode: p.employeeCode ?? undefined })));

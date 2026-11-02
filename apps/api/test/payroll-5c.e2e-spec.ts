@@ -294,6 +294,30 @@ describe('Payroll batch 5c', () => {
     expect(await inA((tx) => tx.payslip.count())).toBe(0);
   });
 
+  it('PAY-04 Frozen: the inputs say the month stage; a late request goes to someone else in payroll, never the requester', async () => {
+    expect((await api('payAdmin', 'get', `/payroll/input-periods/${month}`).expect(200)).body).toEqual([{ legalEntityId: ids.entity, month, stage: 'frozen' }]);
+    await api('payAdmin', 'get', '/payroll/input-periods/2026-13').expect(400);
+    await api('emp1', 'get', `/payroll/input-periods/${month}`).expect(403);
+    expect((await api('payAdminB', 'get', `/payroll/input-periods/${month}`).expect(200)).body.some((r: { legalEntityId: string }) => r.legalEntityId === ids.entity)).toBe(false);
+    const ask = { employeeId: ids.emp2, on: first, kind: 'attendance', shouldBe: 'present', reason: 'Was on a client visit, approved late' };
+    await api('emp1', 'post', '/payroll/input-corrections').send(ask).expect(403);
+    await api('payAdminB', 'post', '/payroll/input-corrections').send(ask).expect(404);
+    await api('payAdmin', 'post', '/payroll/input-corrections').send({ ...ask, reason: 'short' }).expect(400);
+    await api('payAdmin', 'post', '/payroll/input-corrections').send({ ...ask, on: '2099-01-01' }).expect(400);
+    // Nobody else holds payroll.correction.approve yet: refused, nothing recorded.
+    expect((await api('payAdmin', 'post', '/payroll/input-corrections').send(ask).expect(400)).body.message).toMatch(/No one else can approve/);
+    await inA(async (tx) => {
+      const u = await tx.user.findFirstOrThrow({ where: { id: users.approver1 } });
+      const prof = await tx.permissionProfile.findFirstOrThrow({ where: { id: u.permissionProfileId! } });
+      await tx.permissionProfile.update({ where: { id: prof.id }, data: { permissionsJson: JSON.stringify([...JSON.parse(prof.permissionsJson), 'payroll.correction.approve']) } });
+    });
+    expect((await api('payAdmin', 'post', '/payroll/input-corrections').send(ask).expect(201)).body).toMatchObject({ status: 'pending', stage: 'frozen' });
+    expect((await api('payAdmin', 'post', '/payroll/input-corrections').send(ask).expect(409)).body.message).toMatch(/already waiting/);
+    const inbox = (await api('approver1', 'get', '/workflow/approvals/inbox').expect(200)).body as { title: string }[];
+    expect(inbox.some((t) => /correction for/.test(t.title))).toBe(true);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'payroll.correction.submitted' } }))).toBe(1);
+  });
+
   it('PAY-03 retry only the failed people (founder 29 Oct 2026): only after failures, prepare key, in scope, audited', async () => {
     // Nobody failed: refused, so a whole recalculation goes through Calculate.
     expect((await api('payAdmin', 'post', `/payroll/runs/${ids.run}/retry-failed`).expect(409)).body.message).toMatch(/No one failed/);

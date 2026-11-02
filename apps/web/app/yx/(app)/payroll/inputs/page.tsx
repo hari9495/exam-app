@@ -11,6 +11,9 @@ import { todayIndia } from '../../../../../lib/yx-time';
 export default function YxPayInputsPage() {
   const [month, setMonth] = useState(todayIndia().slice(0, 7));
   const lop = usePay<LopRow[]>(`/lop-inputs/${month}`);
+  // PAY-04 Frozen: when every legal entity's month is frozen or locked, the LOP input takes late requests only.
+  const stages = usePay<{ legalEntityId: string; stage: string }[]>(`/input-periods/${month}`);
+  const stage = !stages.data ? null : stages.data.length && stages.data.every((x) => x.stage !== 'open') ? stages.data[0].stage : 'open';
   const oneTime = usePay<OneTimeItem[]>(`/one-time-pays?month=${month}`);
   const holds = usePay<HoldRow[]>('/holds');
   const write = usePayWrite();
@@ -26,7 +29,13 @@ export default function YxPayInputsPage() {
         today: todayIndia(),
         nameOf,
         onSearch: (q) => search(q),
-        lop: { state: payState(lop), rows: lop.data ?? null, onSave: (rows, source) => write(`/lop-inputs/${month}`, { rows, source }, 'PUT') },
+        lop: {
+          state: payState(lop),
+          rows: lop.data ?? null,
+          onSave: (rows, source) => write(`/lop-inputs/${month}`, { rows, source }, 'PUT'),
+          stage,
+          onLateRequest: (x) => write('/input-corrections', x),
+        },
         oneTime: {
           rows: oneTime.data ?? null,
           onAdd: (row) => write<{ status: string }>('/one-time-pays', row),
