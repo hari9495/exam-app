@@ -173,6 +173,14 @@ export class LettersController {
     return this.letters.discardDraft(ctx, this.user(req), id, dto.reason);
   }
 
+  /** PPL-28: a held letter (an exit's relieving letter waiting for clearance) released: made and issued as usual. */
+  @Post(':id/release')
+  @HttpCode(200)
+  @RequirePermissions('letter.issue')
+  release(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.letters.release(ctx, this.user(req), id);
+  }
+
   /** A letter that could not be made, made again with its reference. */
   @Post(':id/render')
   @HttpCode(200)

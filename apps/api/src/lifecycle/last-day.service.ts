@@ -33,6 +33,9 @@ interface Leaver {
   takeover: string | null;
   lwd: string;
   lettersHeld: boolean;
+  /** PPL-28: who put the letters on hold (HR), and whether clearance is done. */
+  heldBy: string | null;
+  cleared: boolean;
 }
 type Step = { timing: Timing; label: string; run: (x: Leaver) => Promise<'done' | 'held'>; when?: (exitType: string) => boolean };
 const NOT_DEATH = (t: string) => t !== 'death';
@@ -133,9 +136,16 @@ export class LastDayService implements OnModuleInit {
 
   /** Issues a letter of this type for the exit once (held while HR holds the letters). */
   private async letter(x: Leaver, letterType: string, holdable: boolean): Promise<'done' | 'held'> {
-    if (holdable && x.lettersHeld) return 'held';
-    const already = await this.inOrg(x.org, (tx) => tx.letterIssue.findFirst({ where: { organizationId: x.org, personId: x.personId, letterType, subjectType: 'exit_case', subjectId: x.caseId, status: { notIn: ['rejected', 'withdrawn'] } }, select: { id: true } }));
-    if (!already) await this.letters.issueSystem({ organizationId: x.org, isSuperAdmin: false, userId: null }, { letterType, personId: x.personId, subjectType: 'exit_case', subjectId: x.caseId });
+    const already = await this.inOrg(x.org, (tx) => tx.letterIssue.findFirst({ where: { organizationId: x.org, personId: x.personId, letterType, subjectType: 'exit_case', subjectId: x.caseId, status: { notIn: ['rejected', 'withdrawn'] } }, select: { id: true, status: true } }));
+    const ctx = { organizationId: x.org, isSuperAdmin: false, userId: null };
+    // PPL-28: while HR holds the exit's letters they are made "held" (the register shows them, with who held them and
+    // why); the HR-only reason stays on the exit, the register says whether clearance is done. Released, they go on.
+    if (holdable && x.lettersHeld) {
+      if (!already) await this.letters.issueSystem(ctx, { letterType, personId: x.personId, subjectType: 'exit_case', subjectId: x.caseId }, { reason: x.cleared ? 'Held by HR on the exit.' : 'Held until clearance is done.', by: x.heldBy });
+      return 'held';
+    }
+    if (!already) await this.letters.issueSystem(ctx, { letterType, personId: x.personId, subjectType: 'exit_case', subjectId: x.caseId });
+    else if (already.status === 'held') await this.letters.releaseSystem(x.org, already.id);
     return 'done';
   }
 
@@ -147,7 +157,10 @@ export class LastDayService implements OnModuleInit {
     const a = await tx.employeeAssignment.findFirst({ where: { organizationId: org, employmentId: k.employmentId, supersededAt: null }, orderBy: { validFrom: 'desc' }, select: { managerEmployeeId: true } });
     const mgr = a?.managerEmployeeId ? await tx.employee.findFirst({ where: { organizationId: org, id: a.managerEmployeeId }, select: { userId: true } }) : null;
     const hr = (await holdersOf(tx, org, 'lifecycle.exit.manage', k.employeeId, todayIst())).filter((u) => u !== emp.userId)[0] ?? null;
-    return { org, caseId, personId: k.personId, employeeId: k.employeeId, userId: emp.userId, takeover: mgr?.userId && mgr.userId !== emp.userId ? mgr.userId : hr, lwd: (k.approvedLwd ?? k.standardLwd).toISOString().slice(0, 10), lettersHeld: k.lettersHeld };
+    // Who held the letters: the HR-only row (read with the confidential flag; only the user id leaves it, never the reason).
+    if (k.lettersHeld) await tx.$executeRaw`SELECT set_config('app.lifecycle_confidential', 'on', true)`;
+    const held = k.lettersHeld ? await tx.exitCaseHr.findFirst({ where: { organizationId: org, exitCaseId: caseId }, select: { updatedBy: true } }) : null;
+    return { org, caseId, personId: k.personId, employeeId: k.employeeId, userId: emp.userId, takeover: mgr?.userId && mgr.userId !== emp.userId ? mgr.userId : hr, lwd: (k.approvedLwd ?? k.standardLwd).toISOString().slice(0, 10), lettersHeld: k.lettersHeld, heldBy: held?.updatedBy ?? null, cleared: !(await tx.clearanceItem.count({ where: { organizationId: org, exitCaseId: caseId, status: 'open' } })) };
   }
 
   private async schedule(tx: Tx, org: string, caseId: string, timing: Timing) {

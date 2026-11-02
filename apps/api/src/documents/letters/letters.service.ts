@@ -38,6 +38,8 @@ export const SELF_CERTIFICATES = ['salary_certificate', 'address_proof', 'employ
 const SELF_REQUEST = 'certificate_request';
 type BulkInput = { templateId: string; source: 'people' | 'no_appointment'; personIds?: string[] };
 type IssueInput = { letterType: string; personId: string; signatoryId?: string | null; subjectType?: string; subjectId?: string; supersedesId?: string | null; templateId?: string; pay?: LetterPay; fnf?: LetterFnf; request?: CertificateRequest };
+/** PPL-28: a system letter made held (an exit with its letters on hold): who held it and why, shown in the register. */
+export type LetterHold = { reason: string; by: string | null };
 const KEYS = ['letter.template.manage', 'letter.issue', 'letter.signatory.manage', 'employee.personal.view', 'employee.salary.view'] as const;
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const REQUEST_TYPE = 'letter.issue';
@@ -283,7 +285,7 @@ export class LettersService implements OnModuleInit {
     const org = c.organizationId;
     const current = await tx.employment.findMany({ where: { organizationId: org, OR: [{ exitedOn: null }, { exitedOn: { gte: new Date(`${todayIst()}T00:00:00Z`) } }] }, select: { employeeId: true } });
     const people = await tx.employee.findMany({ where: { organizationId: org, id: { in: current.map((e) => e.employeeId) } }, select: { personId: true }, orderBy: { givenName: 'asc' } });
-    const have = new Set((await tx.letterIssue.findMany({ where: { organizationId: org, letterType: 'appointment', status: { in: ['issued', 'superseded', 'pending_approval', 'rendering', 'awaiting_signature'] } }, select: { personId: true } })).map((l) => l.personId));
+    const have = new Set((await tx.letterIssue.findMany({ where: { organizationId: org, letterType: 'appointment', status: { in: ['issued', 'superseded', 'pending_approval', 'held', 'rendering', 'awaiting_signature'] } }, select: { personId: true } })).map((l) => l.personId));
     // shortcut: the first 500 by name, as the issue takes at most 500; page through when a company has more to catch up.
     return [...new Set(people.map((p) => p.personId))].filter((id) => !have.has(id)).slice(0, 500);
   }
@@ -522,7 +524,7 @@ export class LettersService implements OnModuleInit {
    * same employment (a correction replaces it; a rehire's new job may have its own).
    */
   private async noOtherLetter(tx: Tx, org: string, personId: string, t: Template, employmentId: string | null, supersedesId?: string | null) {
-    if (await tx.letterIssue.findFirst({ where: { organizationId: org, personId, letterType: t.letterType, status: { in: ['pending_approval', 'rendering', 'awaiting_signature'] } }, select: { id: true } })) throw new ConflictException('A letter of this type for this person is already on its way.');
+    if (await tx.letterIssue.findFirst({ where: { organizationId: org, personId, letterType: t.letterType, status: { in: ['pending_approval', 'held', 'rendering', 'awaiting_signature'] } }, select: { id: true } })) throw new ConflictException('A letter of this type for this person is already on its way.');
     const held = t.onePerPerson && !supersedesId && (await tx.letterIssue.findFirst({ where: { organizationId: org, personId, letterType: t.letterType, employmentId, status: 'issued' }, orderBy: { issuedAt: 'desc' }, select: { referenceNo: true } }));
     if (held) throw new ConflictException(`Already issued: ${held.referenceNo}. Use Issue a correction to replace it.`);
   }
@@ -542,11 +544,11 @@ export class LettersService implements OnModuleInit {
   }
 
   /** Issued by the system for an event (exit letters) or a person's own instant certificate: no issuer checks. */
-  issueSystem(ctx: TenantContext, dto: IssueInput) {
-    return this.issueAs({ ...ctx, userId: ctx.userId ?? null }, null, dto);
+  issueSystem(ctx: TenantContext, dto: IssueInput, hold?: LetterHold) {
+    return this.issueAs({ ...ctx, userId: ctx.userId ?? null }, null, dto, hold);
   }
 
-  private async issueAs(ctx: TenantContext, v: Viewer | null, dto: IssueInput) {
+  private async issueAs(ctx: TenantContext, v: Viewer | null, dto: IssueInput, hold?: LetterHold) {
     let notices: Notice[] = [];
     const res = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
@@ -572,15 +574,16 @@ export class LettersService implements OnModuleInit {
           subjectType: dto.subjectType ?? null,
           subjectId: dto.subjectId ?? null,
           dataEnc: this.seal(data),
-          status: t.requiresApproval ? 'pending_approval' : 'rendering',
+          status: hold ? 'held' : t.requiresApproval ? 'pending_approval' : 'rendering',
+          ...(hold ? { holdReason: hold.reason.slice(0, 500), heldBy: hold.by, heldAt: new Date() } : {}),
           supersedesId: dto.supersedesId ?? null,
           signatoryId: signer?.row.id ?? null,
           personSigns: t.personSigns,
           requestedBy: c.userId ?? null,
         },
       });
-      if (t.requiresApproval) notices = await this.requestApproval(tx, c, l, t, signer, dto.request);
-      await audit(tx, c, 'letter.requested', 'letter_issue', l.id, { letterType: t.letterType, templateVersion: t.version, personId: dto.personId, approval: t.requiresApproval, supersedes: dto.supersedesId ?? null });
+      if (t.requiresApproval && !hold) notices = await this.requestApproval(tx, c, l, t, signer, dto.request);
+      await audit(tx, c, hold ? 'letter.held' : 'letter.requested', 'letter_issue', l.id, { letterType: t.letterType, templateVersion: t.version, personId: dto.personId, approval: t.requiresApproval, supersedes: dto.supersedesId ?? null, ...(hold ? { heldBy: hold.by } : {}) });
       return { l, org };
     });
     return this.afterRequest(ctx, res.org, res.l.id, notices);
@@ -710,6 +713,51 @@ export class LettersService implements OnModuleInit {
     return this.letterView(await this.tenantPrisma.forTenant({ organizationId: org, isSuperAdmin: false }, (tx) => tx.letterIssue.findFirstOrThrow({ where: { organizationId: org, id } })));
   }
 
+  /**
+   * PPL-28: HR releases a held letter (letter.issue in scope, never their own). An exit's letter also needs the exit key;
+   * the exit's hold ends with its last held letter. Then it goes on as any letter: to approval when the template asks
+   * for it, else it is made and issued.
+   */
+  async release(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
+    this.requireKey(v, 'letter.issue');
+    const { org, notices } = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const l = await tx.letterIssue.findFirst({ where: { organizationId: c.organizationId, id } });
+      if (!l) throw new NotFoundException('No such letter.');
+      await this.mayIssue(tx, c, v, l.personId, await this.templateRow(tx, c.organizationId, l.templateId));
+      if (l.subjectType === 'exit_case' && !(await reachesPerson(tx, c, v, 'lifecycle.exit.manage', l.personId, await ownOf(tx, c, v)))) throw new ForbiddenException('This letter is held on an exit. Releasing it needs the exit key (lifecycle.exit.manage).');
+      return { org: c.organizationId, notices: await this.releaseIn(tx, c, l) };
+    });
+    return this.afterRequest(ctx, org, id, notices);
+  }
+
+  /** The exit released its letters (LIFE-4.03): its held letters go on, by the system. */
+  async releaseSystem(org: string, id: string) {
+    const ctx: TenantContext = { organizationId: org, isSuperAdmin: false, userId: null };
+    const notices = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const l = await tx.letterIssue.findFirst({ where: { organizationId: org, id, status: 'held' } });
+      return l ? this.releaseIn(tx, c, l) : [];
+    });
+    return this.afterRequest(ctx, org, id, notices);
+  }
+
+  private async releaseIn(tx: Tx, c: CompanyContext, l: Letter): Promise<Notice[]> {
+    const t = await this.templateRow(tx, c.organizationId, l.templateId);
+    const n = await tx.letterIssue.updateMany({ where: { organizationId: c.organizationId, id: l.id, status: 'held' }, data: { status: t.requiresApproval ? 'pending_approval' : 'rendering' } });
+    if (!n.count) throw new ConflictException('This letter is not held any more. Reload the letters.');
+    // The signatory chosen when it was held may have left meanwhile: then the company admins approve (requestApproval).
+    const signer = t.requiresApproval ? await this.signatoryFor(tx, c.organizationId, l.legalEntityId, l.signatoryId).catch(() => null) : null;
+    const notices = t.requiresApproval ? await this.requestApproval(tx, c, l, t, signer) : [];
+    await audit(tx, c, 'letter.released', 'letter_issue', l.id, { letterType: l.letterType, personId: l.personId, heldBy: l.heldBy, heldAt: l.heldAt?.toISOString() ?? null, approval: t.requiresApproval });
+    if (l.subjectType === 'exit_case' && l.subjectId && !(await tx.letterIssue.count({ where: { organizationId: c.organizationId, subjectType: 'exit_case', subjectId: l.subjectId, status: 'held' } }))) {
+      const k = await tx.exitCase.updateMany({ where: { organizationId: c.organizationId, id: l.subjectId, lettersHeld: true }, data: { lettersHeld: false, version: { increment: 1 } } });
+      if (k.count) await audit(tx, c, 'exit.letters_released', 'exit_case', l.subjectId, { by: 'letter_release', letterId: l.id });
+      // The exit's "letters held" steps are done: their letters exist and go on from here.
+      await tx.exitDeprovisioning.updateMany({ where: { organizationId: c.organizationId, exitCaseId: l.subjectId, handler: { startsWith: 'letters.' }, status: 'held' }, data: { status: 'done', doneAt: new Date(), lastError: null } });
+    }
+    return notices;
+  }
+
   /** Number → fill → PDF → stamp → (DSC) → issued. Safe to run twice; failures stay "rendering" for the retry. */
   async render(org: string, id: string): Promise<boolean> {
     const ctx = { organizationId: org, isSuperAdmin: false } as CompanyContext;
@@ -831,7 +879,7 @@ export class LettersService implements OnModuleInit {
 
   // ------------------------------------------------------------------------------------------ reading
 
-  letterView(l: Letter, extra: { person?: string; signature?: { status: string; signedAt: string | null } | null } = {}) {
+  letterView(l: Letter, extra: { person?: string; signature?: { status: string; signedAt: string | null } | null; heldBy?: string | null } = {}) {
     return {
       id: l.id,
       title: l.title,
@@ -848,6 +896,8 @@ export class LettersService implements OnModuleInit {
       acceptedAt: l.acceptedAt?.toISOString() ?? null,
       signature: extra.signature ?? null,
       supersededById: l.supersededById,
+      // PPL-28: HR's register says who held a letter, when and why ('heldBy' is passed only there).
+      hold: l.status === 'held' && extra.heldBy !== undefined ? { reason: l.holdReason ?? '', by: extra.heldBy, at: l.heldAt?.toISOString() ?? null } : null,
     };
   }
 
@@ -865,7 +915,8 @@ export class LettersService implements OnModuleInit {
         if (!seen.get(r.personId)) continue;
         const p = await tx.person.findFirstOrThrow({ where: { organizationId: c.organizationId, id: r.personId } });
         const sr = await tx.signatureRequest.findFirst({ where: { organizationId: c.organizationId, letterIssueId: r.id } });
-        out.push(this.letterView(r, { person: [p.preferredName || p.givenName, p.familyName].filter(Boolean).join(' '), signature: sr ? { status: sr.status, signedAt: sr.signedAt?.toISOString() ?? null } : null }));
+        const holder = r.status === 'held' && r.heldBy ? await tx.user.findFirst({ where: { organizationId: c.organizationId, id: r.heldBy }, select: { name: true, email: true } }) : null;
+        out.push(this.letterView(r, { person: [p.preferredName || p.givenName, p.familyName].filter(Boolean).join(' '), signature: sr ? { status: sr.status, signedAt: sr.signedAt?.toISOString() ?? null } : null, heldBy: holder ? holder.name || holder.email : null }));
       }
       return out;
     });
