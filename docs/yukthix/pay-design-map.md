@@ -1584,3 +1584,9 @@ reports (`payroll.reports.view`).
   clear message); the Form C PDF uses the built-in Helvetica font, so names outside Latin-1 (Tamil, Hindi) print wrongly
   (the registers have the same limit); father's name stays blank (not held); OwnProof / ResidencyOwn cannot occur live.
 - **Manual steps:** MT-PAY-L-01 … MT-PAY-L-05 in `docs/yukthix/tracker/manual-tests.json`.
+
+## Founder answers, 2 Nov 2026 (finish Pay)
+Every Pay "live (gap)" row we can build ourselves is being made live now (run and pay screens; statutory screens). The 9
+rows that need an outside partner wait until the founder picks each partner, then are built against the real partner:
+TDS filing partner (CMP-05 Partner), Form 16 DSC signing (CMP-06 Sign), group health (5 rows), partner-funded earned wage
+access (Partner), payslip chat (Chat).
