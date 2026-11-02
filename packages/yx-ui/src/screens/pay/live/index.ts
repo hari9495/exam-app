@@ -47,7 +47,7 @@ export type { LivePayrollReports, PayReport, PayReportKind, ReportFilters, Repor
 export type { LiveBonus, BonusOverview, BonusComputation, BonusRow, BonusRules, BonusYear, BonusChange, BonusRowChange } from '../bonus-live';
 export { CountryPacksScreen, type LiveCountryPacks, type W9Input, type WpsIdsInput } from '../country-packs';
 export { SpecialPayHomeScreen } from '../special-pay';
-export type { LiveSpecialPay, PieceOutput, TipPoolView, UnionRemittance, PieceCheck } from '../special-pay-live';
+export type { LiveSpecialPay, PieceOutput, TipPoolView, UnionRemittance, PieceCheck, SettlementPreview } from '../special-pay-live';
 export { EquityScreen, MyEquityScreen, type LiveEquity, type LiveMyEquity } from '../equity';
 // Employee pay and tax designs (PAY-17, 18, 21 … 23, 26, 27, 33, 39 … 41, 54 · builder 3): designed screens with `live`.
 export {

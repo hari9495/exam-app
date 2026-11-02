@@ -104,6 +104,8 @@ export interface LiveSpecialPay {
   onAddRule: (x: { name: string; standbyAmount: string; calloutMinHours: string; calloutRate: string; multiplier: string; holidayMultiplier?: string; payStandbyWhenCalled?: boolean; countTowardsWeekly?: boolean }) => Promise<unknown>;
   onAddSlot: (x: { ruleId: string; employeeId: string; slotDate: string; calloutHours?: string; onHoliday?: boolean }) => Promise<unknown>;
   onAddUnion: (x: { name: string; registrationNo?: string }) => Promise<unknown>;
+  /** PAY-37: workers per category and each worker's arrears month by month for the page's month (GET settlements/:id/preview). */
+  onSettlementPreview?: (settlementId: string) => Promise<SettlementPreview>;
   onAuthorise: (x: { unionId: string; employeeId: string; duesKind: 'fixed' | 'percent'; duesValue: string; validFrom: string }) => Promise<unknown>;
   /** Ends a check-off authorisation from a day (the worker withdrew it). */
   onRevoke?: (authorisationId: string, revokedOn: string) => Promise<unknown>;
@@ -145,6 +147,15 @@ function SendToPayroll({ label, title, consequence, done, onSend, size }: { labe
 }
 
 /* ================================================================== PAY-50 Special pay home */
+
+/** GET payroll/special/settlements/:id/preview. */
+export interface SettlementPreview {
+  settlementId: string;
+  month: string;
+  categories: { category: string; monthlyIncrease: string; workers: number; arrears: string }[];
+  employees: { employeeId: string; category: string; from: string; months: { month: string; days: number; of: number; amount: string }[]; total: string }[];
+  total: string;
+}
 
 const TAB_LABEL: Record<SpecialTab, string> = { home: 'Home', piece: 'Piece-rate', incentives: 'Incentives', tips: 'Tips', oncall: 'On-call', unions: 'Union dues', settlements: 'Settlements' };
 

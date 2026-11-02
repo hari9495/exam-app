@@ -765,26 +765,49 @@ export class SpecialPayService implements OnModuleInit {
   async postSettlement(ctx: TenantContext, user: ScopeUser, id: string, month: string) {
     const v = await this.viewer(user);
     return this.posting(ctx, async (tx, c) => {
-      const org = c.organizationId;
-      const ids = await entitiesFor(tx, c, v, 'payroll.special.manage');
-      await payScope(tx, ids);
-      const s = await tx.wageSettlement.findFirst({ where: { organizationId: org, id } });
-      if (!s || !ids.includes(s.legalEntityId)) throw new NotFoundException('Not found');
-      const effective = dateOf(s.effectiveFrom);
-      if (effective.slice(0, 7) >= month) throw new BadRequestException('Arrears are for months before the pay month.');
-      const rates = s.rates as unknown as { category: string; monthlyIncrease: string }[];
-      const plain = await tx.employeeAssignment.findMany({ where: { organizationId: org, supersededAt: null, validTo: null, skillClass: { in: rates.map((r) => r.category) } } });
-      const ems = await tx.employment.findMany({ where: { organizationId: org, legalEntityId: s.legalEntityId, id: { in: plain.map((a) => a.employmentId) }, joinedOn: { lt: monthStart(month) }, OR: [{ exitedOn: null }, { exitedOn: { gte: monthStart(month) } }] }, select: { id: true, employeeId: true, joinedOn: true } });
-      const asgs = plain.filter((a) => ems.some((e) => e.id === a.employmentId)).map((a) => ({ ...a, employment: ems.find((e) => e.id === a.employmentId)! }));
-      const lines: Line[] = [];
-      for (const a of asgs) {
-        const rate = rates.find((r) => r.category === a.skillClass)!;
-        const from = dateOf(a.employment.joinedOn) > effective ? dateOf(a.employment.joinedOn) : effective;
-        const x = settlementArrears(rate.monthlyIncrease, from, month);
-        lines.push({ employeeId: a.employment.employeeId, componentCode: 'settlement_arrears', amount: x.total.toFixed(2), label: `${s.title}: ₹${rate.monthlyIncrease} a month for ${a.skillClass} from ${from} to the end of the month before ${month}.` });
-      }
+      const { s, workers } = await this.settlementWorkers(tx, c, v, id, month);
+      const lines: Line[] = workers.map((w) => ({ employeeId: w.employeeId, componentCode: 'settlement_arrears', amount: w.total, label: `${s.title}: ₹${w.monthlyIncrease} a month for ${w.category} from ${w.from} to the end of the month before ${month}.` }));
       return this.post(tx, c, v, { kind: 'settle', entityId: s.legalEntityId, month, sourceRef: `settle:${s.id}`, lines, title: s.title });
     });
+  }
+
+  /**
+   * PAY-37 Categories and Worksheet: the workers each category reaches (today's skill class, in the entity, joined before
+   * the pay month and not gone), and each worker's arrears month by month, as the posting would send them. Nothing saved.
+   */
+  async settlementPreview(ctx: TenantContext, user: ScopeUser, id: string, month: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const { s, rates, workers } = await this.settlementWorkers(tx, c, v, id, month);
+      const categories = rates.map((r) => {
+        const mine = workers.filter((w) => w.category === r.category);
+        return { category: r.category, monthlyIncrease: D(r.monthlyIncrease).toFixed(2), workers: mine.length, arrears: mine.reduce((t, w) => t.add(w.total), D(0)).toFixed(2) };
+      });
+      return { settlementId: s.id, month, categories, employees: workers.map(({ monthlyIncrease: _m, ...w }) => w), total: workers.reduce((t, w) => t.add(w.total), D(0)).toFixed(2) };
+    });
+  }
+
+  private async settlementWorkers(tx: Tx, c: CompanyContext, v: Viewer, id: string, month: string) {
+    const org = c.organizationId;
+    const ids = await entitiesFor(tx, c, v, 'payroll.special.manage');
+    await payScope(tx, ids);
+    const s = await tx.wageSettlement.findFirst({ where: { organizationId: org, id } });
+    if (!s || !ids.includes(s.legalEntityId)) throw new NotFoundException('Not found');
+    const effective = dateOf(s.effectiveFrom);
+    if (effective.slice(0, 7) >= month) throw new BadRequestException('Arrears are for months before the pay month.');
+    const rates = s.rates as unknown as { category: string; monthlyIncrease: string }[];
+    const plain = await tx.employeeAssignment.findMany({ where: { organizationId: org, supersededAt: null, validTo: null, skillClass: { in: rates.map((r) => r.category) } } });
+    const ems = await tx.employment.findMany({ where: { organizationId: org, legalEntityId: s.legalEntityId, id: { in: plain.map((a) => a.employmentId) }, joinedOn: { lt: monthStart(month) }, OR: [{ exitedOn: null }, { exitedOn: { gte: monthStart(month) } }] }, select: { id: true, employeeId: true, joinedOn: true } });
+    const workers = plain
+      .filter((a) => ems.some((e) => e.id === a.employmentId))
+      .map((a) => {
+        const em = ems.find((e) => e.id === a.employmentId)!;
+        const rate = rates.find((r) => r.category === a.skillClass)!;
+        const from = dateOf(em.joinedOn) > effective ? dateOf(em.joinedOn) : effective;
+        const x = settlementArrears(rate.monthlyIncrease, from, month);
+        return { employeeId: em.employeeId, category: a.skillClass!, monthlyIncrease: rate.monthlyIncrease, from, months: x.months, total: x.total.toFixed(2) };
+      });
+    return { s, rates, workers };
   }
 
   async addLayoff(ctx: TenantContext, user: ScopeUser, entityId: string, dto: LayoffDto) {

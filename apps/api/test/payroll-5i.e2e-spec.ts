@@ -266,6 +266,24 @@ describe('Payroll batch 5i', () => {
     expect(lines.find((l) => l.componentCode === 'callout_pay')!.label).toMatch(/1 on a public holiday at 2 ×/);
   });
 
+  it('PAY-37 settlement preview: workers per category and each worker month by month, as the posting would send them', async () => {
+    const s = (await api('payAdmin', 'post', '/payroll/special/settlements').send({ legalEntityId: ids.entity, title: 'Settlement preview test', effectiveFrom: `${prevMonth}-01`, signedOn: today, rates: [{ category: 'skilled', monthlyIncrease: '1500' }, { category: 'unskilled', monthlyIncrease: '1200' }] }).expect(201)).body.id;
+    const pre = (await api('payAdmin', 'get', `/payroll/special/settlements/${s}/preview`).query({ month }).expect(200)).body;
+    expect(pre.categories).toEqual([
+      { category: 'skilled', monthlyIncrease: '1500.00', workers: 2, arrears: '3000.00' },
+      { category: 'unskilled', monthlyIncrease: '1200.00', workers: 0, arrears: '0.00' },
+    ]);
+    expect(pre.employees.map((e: { employeeId: string }) => e.employeeId).sort()).toEqual([ids.emp1, ids.emp2].sort());
+    expect(pre.employees[0]).toMatchObject({ category: 'skilled', from: `${prevMonth}-01`, total: '1500.00', months: [expect.objectContaining({ month: prevMonth, amount: '1500.00' })] });
+    expect(pre.total).toBe('3000.00');
+    // Nothing was sent; wrong role, another company and bad input refused; a pay month not after the effective date too.
+    expect(await scoped((tx) => tx.specialPosting.count({ where: { sourceRef: `settle:${s}` } }))).toBe(0);
+    await api('approver1', 'get', `/payroll/special/settlements/${s}/preview`).query({ month }).expect(403);
+    await api('payAdminB', 'get', `/payroll/special/settlements/${s}/preview`).query({ month }).expect(404);
+    await api('payAdmin', 'get', `/payroll/special/settlements/${s}/preview`).query({ month: 'soon' }).expect(400);
+    await api('payAdmin', 'get', `/payroll/special/settlements/${s}/preview`).query({ month: prevMonth }).expect(400);
+  });
+
   it('IR pay: union dues only with an authorisation, the remittance statement; VRS within the lifetime limit; lay-off pay', async () => {
     const union = (await api('payAdmin', 'post', '/payroll/special/unions').send({ legalEntityId: ids.entity, name: 'Garment Workers Union', registrationNo: 'KA-123' }).expect(201)).body.id;
     await api('payAdmin', 'post', '/payroll/special/union-authorisations').send({ unionId: union, employeeId: ids.emp1, duesKind: 'fixed', duesValue: '50', validFrom: first }).expect(201);

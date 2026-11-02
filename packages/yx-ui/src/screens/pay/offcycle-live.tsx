@@ -124,6 +124,28 @@ export function LiveArrearsScreen({ live }: { live: LiveArrears }) {
 }
 
 /** One worksheet: the design's base step (months, as paid, base source, arrear), confirm a missing month, approve or cancel. */
+/** PAY-28 worksheet lines (month, component, corrected, as paid, base, arrear); also embedded in PAY-37 settlement arrears. */
+export function WorksheetLinesTable({ lines, totalLabel, total, who }: { lines: WorksheetLine[]; totalLabel: string; total: string; /** Several people's lines: the person's name per row. */ who?: (l: WorksheetLine) => string }) {
+  return (
+    <PlainTable
+      label="Worksheet lines"
+      rows={lines}
+      getRowId={(l) => l.id}
+      rowTone={(l) => (l.base === 'missing' ? { tone: 'warning', label: 'Base missing' } : undefined)}
+      columns={[
+        { key: 'month', header: 'Month', rowHeader: true, cell: (l) => monthText(l.period) },
+        ...(who ? [{ key: 'who', header: 'Employee', cell: (l: WorksheetLine) => who(l) }] : []),
+        { key: 'component', header: 'Component', cell: (l) => <>{l.componentCode} {l.kind !== 'earning' && <Badge tone="neutral">{l.kind === 'deduction' ? 'employee share' : 'company cost'}</Badge>}</> },
+        { key: 'corrected', header: 'Corrected', num: true, cell: (l) => money(l.corrected) },
+        { key: 'asPaid', header: 'As paid', num: true, cell: (l) => money(l.asPaid) },
+        { key: 'base', header: 'Base source', cell: (l) => <Badge tone={BASE[l.base].tone}>{BASE[l.base].label}</Badge> },
+        { key: 'arrear', header: 'Arrear', num: true, cell: (l) => money(l.difference) },
+      ]}
+      footer={[{ id: 'total', label: totalLabel, cells: { arrear: money(total) } }]}
+    />
+  );
+}
+
 function WorksheetBase({ w, live }: { w: Worksheet; live: LiveArrears }) {
   const { toast } = useToast();
   const { busy, error, run } = useRun();
@@ -150,21 +172,7 @@ function WorksheetBase({ w, live }: { w: Worksheet; live: LiveArrears }) {
       ) : (
         <Badge tone={sheetStatus(w).tone}>{sheetStatus(w).label}</Badge>
       )}
-      <PlainTable
-        label="Worksheet lines"
-        rows={w.lines}
-        getRowId={(l) => l.id}
-        rowTone={(l) => (l.base === 'missing' ? { tone: 'warning', label: 'Base missing' } : undefined)}
-        columns={[
-          { key: 'month', header: 'Month', rowHeader: true, cell: (l) => monthText(l.period) },
-          { key: 'component', header: 'Component', cell: (l) => <>{l.componentCode} {l.kind !== 'earning' && <Badge tone="neutral">{l.kind === 'deduction' ? 'employee share' : 'company cost'}</Badge>}</> },
-          { key: 'corrected', header: 'Corrected', num: true, cell: (l) => money(l.corrected) },
-          { key: 'asPaid', header: 'As paid', num: true, cell: (l) => money(l.asPaid) },
-          { key: 'base', header: 'Base source', cell: (l) => <Badge tone={BASE[l.base].tone}>{BASE[l.base].label}</Badge> },
-          { key: 'arrear', header: 'Arrear', num: true, cell: (l) => money(l.difference) },
-        ]}
-        footer={[{ id: 'total', label: missing.length ? `Arrears so far for ${name} (${missing.map(monthText).join(', ')} not included)` : `Arrears for ${name}`, cells: { arrear: money(w.total) } }]}
-      />
+      <WorksheetLinesTable lines={w.lines} totalLabel={missing.length ? `Arrears so far for ${name} (${missing.map(monthText).join(', ')} not included)` : `Arrears for ${name}`} total={w.total} />
       {draft && period && (
         <section className="yx-pay-panel" aria-label={`Confirm ${monthText(period)} base`}>
           <SectionTitle>Confirm the as-paid base for {monthText(period)}</SectionTitle>

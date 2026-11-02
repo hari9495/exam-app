@@ -17,7 +17,10 @@ import { formatINR } from '../../lib/format';
 import { useRun } from '../org/org-kit';
 import { dateText } from '../time/live/kit';
 import { SectionTitle } from './pay-kit';
-import type { LiveSpecialPay } from './special-pay-live';
+import type { LiveSpecialPay, SettlementPreview } from './special-pay-live';
+import { WorksheetLinesTable } from './offcycle-live';
+import { DataTable } from '../../components/table';
+import type { WorksheetLine } from './live/types-5j';
 
 /** "2026-09" → "September 2026". */
 export const monthName = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
@@ -193,6 +196,24 @@ export function LiveSettlementArrears({ live }: { live: LiveSpecialPay }) {
   const month = monthName(live.month);
   const unionName = (uid: string | null) => (uid ? live.unions?.unions.find((x) => x.id === uid)?.name ?? 'Union' : 'No union (company settlement)');
   const [adding, setAdding] = useState(false);
+  // PAY-37: the workers per category and each worker's arrears for the page's month, worked out by the API.
+  const [preview, setPreview] = useState<SettlementPreview | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  useEffect(() => {
+    setPreview(null);
+    setPreviewError(null);
+    if (!s || !live.onSettlementPreview) return;
+    let on = true;
+    live.onSettlementPreview(s.id).then(
+      (x) => on && setPreview(x),
+      (e) => on && setPreviewError(e instanceof Error && e.message ? e.message : 'The arrears did not load.'),
+    );
+    return () => {
+      on = false;
+    };
+  }, [s?.id, live.month]); // eslint-disable-line react-hooks/exhaustive-deps
+  const catOf = (category: string) => preview?.categories.find((c) => c.category === category);
+  const worksheetLines: WorksheetLine[] = (preview?.employees ?? []).flatMap((e) => e.months.map((m) => ({ id: `${e.employeeId}-${m.month}`, period: m.month, componentCode: 'settlement_arrears', kind: 'earning' as const, asPaid: '0.00', corrected: m.amount, difference: m.amount, base: 'payslip' as const, employeeId: e.employeeId })));
   const newButton = live.onAddSettlement && (
     <Button icon={Plus} onClick={() => setAdding(true)}>
       New settlement
@@ -252,18 +273,73 @@ export function LiveSettlementArrears({ live }: { live: LiveSpecialPay }) {
             title: 'Categories',
             description: 'Increase per worker category',
             content: (
-              <PlainTable
-                label="Categories"
-                rows={s.rates}
-                getRowId={(r) => r.category}
-                columns={[
-                  { key: 'category', header: 'Category', rowHeader: true, cell: (r) => r.category.replace(/_/g, ' ') },
-                  { key: 'increase', header: 'Increase a month', num: true, cell: (r) => formatINR(Number(r.monthlyIncrease)) },
-                ]}
-              />
+              <div className="yx-pay-stack">
+                {previewError && (
+                  <InlineAlert tone="warning" title="Workers and arrears not shown">
+                    {previewError}
+                  </InlineAlert>
+                )}
+                <PlainTable
+                  label="Increase per worker category"
+                  rows={s.rates}
+                  getRowId={(r) => r.category}
+                  columns={[
+                    { key: 'category', header: 'Category', rowHeader: true, cell: (r) => r.category.replace(/_/g, ' ') },
+                    { key: 'increase', header: 'Increase a month', num: true, cell: (r) => formatINR(Number(r.monthlyIncrease)) },
+                    ...(live.onSettlementPreview
+                      ? [
+                          { key: 'count', header: 'Workers', num: true, cell: (r: (typeof s.rates)[number]) => (preview ? (catOf(r.category)?.workers ?? 0) : '…') },
+                          { key: 'arrears', header: `Arrears to ${month}`, num: true, cell: (r: (typeof s.rates)[number]) => (preview ? formatINR(Number(catOf(r.category)?.arrears ?? 0)) : '…') },
+                        ]
+                      : []),
+                  ]}
+                  footer={preview ? [{ id: 'total', label: 'Total', cells: { count: preview.employees.length, arrears: formatINR(Number(preview.total)) } }] : undefined}
+                />
+              </div>
             ),
           },
-          { id: 'worksheet', title: 'Arrears', description: `Paid in ${month}`, content: <p className="yx-pay-muted">Arrears from {dateText(s.effectiveFrom)} are worked out for each worker in a category on the as-paid pay of every month, and go to payroll as one sheet for a payroll approver to approve.</p> },
+          ...(live.onSettlementPreview
+            ? [
+                {
+                  id: 'employees',
+                  title: 'Affected employees',
+                  description: preview ? `${preview.employees.length} ${preview.employees.length === 1 ? 'worker' : 'workers'}` : 'Matched by category',
+                  content: (
+                    <div className="yx-pay-stack">
+                      <p className="yx-pay-muted">Workers matched by their category today, in this legal entity, who joined before {month} and have not left. A worker who changed category since {dateText(s.effectiveFrom)} is checked by hand.</p>
+                      <DataTable
+                        label="Affected employees"
+                        columns={[
+                          { key: 'who', header: 'Employee', type: 'person', value: (e: SettlementPreview['employees'][number]) => live.nameOf(e.employeeId), person: (e) => ({ name: live.nameOf(e.employeeId) }), width: 220 },
+                          { key: 'cat', header: 'Category', value: (e) => e.category.replace(/_/g, ' '), width: 160 },
+                          { key: 'from', header: 'From', value: (e) => dateText(e.from), width: 130 },
+                          { key: 'months', header: 'Months', type: 'number', value: (e) => e.months.length, width: 100 },
+                          { key: 'total', header: 'Arrears', type: 'money', value: (e) => Number(e.total), total: 'sum', width: 130 },
+                        ]}
+                        rows={preview?.employees ?? []}
+                        getRowId={(e) => e.employeeId}
+                        state={preview ? 'ready' : previewError ? 'error' : 'loading'}
+                        empty={<EmptyState compact title="No worker in these categories" description="Set the skill class on the workers' jobs (People), then come back." />}
+                      />
+                    </div>
+                  ),
+                },
+              ]
+            : []),
+          {
+            id: 'worksheet',
+            title: 'Arrears worksheet',
+            description: `Paid in ${month}`,
+            content: preview ? (
+              worksheetLines.length ? (
+                <WorksheetLinesTable lines={worksheetLines} who={(l) => live.nameOf((l as WorksheetLine & { employeeId: string }).employeeId)} totalLabel={`Arrears for ${preview.employees.length} ${preview.employees.length === 1 ? 'worker' : 'workers'}`} total={preview.total} />
+              ) : (
+                <p className="yx-pay-muted">No arrears: no worker matches the categories.</p>
+              )
+            ) : (
+              <p className="yx-pay-muted">Arrears from {dateText(s.effectiveFrom)} are worked out for each worker in a category on the as-paid pay of every month, and go to payroll as one sheet for a payroll approver to approve.</p>
+            ),
+          },
         ]}
       />
     </div>

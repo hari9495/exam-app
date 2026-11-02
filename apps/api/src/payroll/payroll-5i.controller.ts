@@ -254,6 +254,13 @@ export class Payroll5iController {
     return this.special.addSettlement(ctx, this.user(req), dto);
   }
 
+  /** PAY-37: workers per category and each worker's arrears month by month for a pay month (nothing saved). */
+  @Get('settlements/:id/preview')
+  @RequirePermissions('payroll.special.manage')
+  settlementPreview(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Query() q: SettlementPostDto) {
+    return this.special.settlementPreview(ctx, this.user(req), id, q.month);
+  }
+
   @Post('settlements/:id/post')
   @RequirePermissions('payroll.special.manage')
   postSettlement(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SettlementPostDto) {

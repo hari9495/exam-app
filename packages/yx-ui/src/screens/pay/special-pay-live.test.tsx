@@ -425,6 +425,39 @@ describe('Settlements tab (PAY-37 live)', () => {
     await waitFor(() => expect(onPost).toHaveBeenLastCalledWith({ kind: 'settlement', id: 's1' }));
   });
 
+  it('PAY-37 Categories and Worksheet: workers and arrears per category, the affected employees and the worksheet lines', async () => {
+    const onSettlementPreview = vi.fn(async () => ({
+      settlementId: 's1',
+      month: '2026-10',
+      categories: [
+        { category: 'skilled', monthlyIncrease: '1500.00', workers: 1, arrears: '9000.00' },
+        { category: 'unskilled', monthlyIncrease: '1200.00', workers: 0, arrears: '0.00' },
+      ],
+      employees: [{ employeeId: 'p1', category: 'skilled', from: '2026-04-01', months: ['2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09'].map((month) => ({ month, days: 30, of: 30, amount: '1500.00' })), total: '9000.00' }],
+      total: '9000.00',
+    }));
+    render(<SpecialPayHomeScreen live={live({ onSettlementPreview })} />);
+    await tab('Settlements');
+    await waitFor(() => expect(onSettlementPreview).toHaveBeenCalledWith('s1'));
+    const cats = await screen.findByRole('table', { name: 'Increase per worker category' });
+    expect(within(cats).getAllByText('₹9,000').length).toBeGreaterThan(0);
+    await ue.click(within(screen.getByRole('navigation', { name: 'Settlement arrears steps' })).getByRole('button', { name: /Affected employees/ }));
+    expect(within(await screen.findByRole('table', { name: 'Affected employees' })).getByText('Lakshmi Devi')).toBeInTheDocument();
+    await ue.click(within(screen.getByRole('navigation', { name: 'Settlement arrears steps' })).getByRole('button', { name: /Arrears worksheet/ }));
+    const ws = await screen.findByRole('table', { name: 'Worksheet lines' });
+    expect(within(ws).getAllByText('settlement_arrears')).toHaveLength(6);
+  });
+
+  it('PAY-37: a preview the API refuses says so and the categories still show (negative)', async () => {
+    const onSettlementPreview = vi.fn(async () => {
+      throw new Error('Arrears are for months before the pay month.');
+    });
+    render(<SpecialPayHomeScreen live={live({ onSettlementPreview })} />);
+    await tab('Settlements');
+    expect(await screen.findByText('Arrears are for months before the pay month.')).toBeInTheDocument();
+    expect(screen.getByText('₹1,500')).toBeInTheDocument();
+  });
+
   it('says so when there is no settlement', async () => {
     render(<SpecialPayHomeScreen live={live({ unions: { unions: [], authorisations: [], settlements: [] } })} />);
     await tab('Settlements');
