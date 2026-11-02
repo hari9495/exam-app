@@ -9811,5 +9811,145 @@
       "Time · TIM-05 · Roster"
     ],
     "note": "Negative."
+  },
+  {
+    "id": "MT-TIM-L-41",
+    "area": "Time · Locations · Multiple points (TIM-31 Multi, 2 Nov 2026)",
+    "screen": "Add a second point and save",
+    "url": "http://localhost:3000/yx/time/setup/locations",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635.",
+    "steps": [
+      "1. Open Time › Set-up › Locations & geofences and choose Hosur plant in the location picker.",
+      "2. Under Allowed points, read the one point (named after the location) and its radius.",
+      "3. Click \"Add another point\". Type Point name \"Canteen block\", Latitude 12.7425, Longitude 77.8330, Radius 100.",
+      "4. Click \"Save points\".",
+      "5. Reload the page and choose Hosur plant again."
+    ],
+    "expected": "Step 2: one point, e.g. \"Hosur plant · 12.74…, 77.83… · 300 m\", no Remove button (one point cannot be removed). Step 3: the map shows a second circle labelled \"Canteen block · 100 m\", both points list Edit and Remove. Step 4: toast \"Points saved\". Step 5: both points are still there; Settings › Locations still shows the first point.",
+    "stories": [
+      "Time · TIM-31 · Locations and geofence editor · Multiple points"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-TIM-L-42",
+    "area": "Time · Locations · Multiple points (TIM-31 Multi, 2 Nov 2026)",
+    "screen": "Wrong point fields are refused",
+    "url": "http://localhost:3000/yx/time/setup/locations",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635. Hosur plant with two points (MT-TIM-L-41).",
+    "steps": [
+      "1. Click \"Add another point\" and click \"Save points\" without typing anything else.",
+      "2. Type Latitude 95 and Longitude 77.83, then Radius 20, and click \"Save points\".",
+      "3. Rename the new point to \"Canteen block\" (the same name as another point), fix Latitude 12.745 and Radius 100, click \"Save points\".",
+      "4. Click \"Remove\" on the new point."
+    ],
+    "expected": "Negative step 1: \"Enter a latitude\" / \"Enter a longitude\" under the fields, the Latitude field has the focus, the point is marked \"Needs fixing\", no toast and nothing saved. Negative step 2: \"Enter a latitude between -90 and 90\" and \"Enter a radius between 50 and 1,000 m\", focus on the first wrong field, nothing saved. Negative step 3: \"Not saved · Two points are called \"Canteen block\". Give each point its own name.\" Step 4: the point goes; the two saved points stay.",
+    "stories": [
+      "Time · TIM-31 · Locations and geofence editor · Multiple points"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-TIM-L-43",
+    "area": "Time · Locations · Multiple points (TIM-31 Multi, 2 Nov 2026)",
+    "screen": "Clock in at the second point; outside every point",
+    "url": "http://localhost:3000/yx/time/attendance?view=today",
+    "account": "An employee at Hosur plant (check the demo DB for one with restricted check-in, not on the office network). Browser location set with the browser's sensors panel. Hosur plant with the Canteen block point (MT-TIM-L-41).",
+    "steps": [
+      "1. Set the browser location to 12.7425, 77.8330 (inside Canteen block only) and click \"Clock in\".",
+      "2. Clock out, set the location to 12.80, 77.90 (outside both points) and click \"Clock in\" again on a day not yet clocked in (or another employee)."
+    ],
+    "expected": "Step 1: the punch is recorded; Today's punches says where (\"Inside Hosur plant · Canteen block\"). Negative step 2: \"Not recorded · Outside Hosur plant, N km away\"; the refused punch shows in the day card with its reason.",
+    "stories": [
+      "Time · TIM-31 · Locations and geofence editor · Multiple points",
+      "Time · Extra · My attendance today · Working"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-TIM-L-44",
+    "area": "Time · Locations · Multiple points (TIM-31 Multi, 2 Nov 2026)",
+    "screen": "Who may change points; two HR at once",
+    "url": "http://localhost:3000/yx/time/setup/locations",
+    "account": "arjun@demo-org.test (employee). Second: hr@demo-org.test in two browser windows.",
+    "steps": [
+      "1. As Arjun, open http://localhost:3000/yx/time/setup/locations.",
+      "2. As HR, open Hosur plant in two windows. In window 1 change a radius and Save points. In window 2 change another radius and Save points."
+    ],
+    "expected": "Negative step 1: no access page (Locations are company set-up). Negative step 2: window 1 shows the toast; window 2 shows \"Not saved · Someone else changed this location. Reload to see their change, then make yours.\" and nothing is lost in window 1's change.",
+    "stories": [
+      "Time · TIM-31 · Locations and geofence editor · Multiple points"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-TIM-L-45",
+    "area": "Time · My attendance today · Device not approved (2 Nov 2026)",
+    "screen": "Unapproved computer: blocked, Ask HR to approve",
+    "url": "http://localhost:3000/yx/time/attendance?view=today",
+    "account": "arjun@demo-org.test (employee Arjun). Before: the lead turns on the company setting \"Web clock-in only from an approved computer\" (PUT /api/v1/org/settings, key attendance.web_device_approval, value on, tenant scope; no screen yet, see the questions). Browser window 1278 x 635.",
+    "steps": [
+      "1. Open My attendance today.",
+      "2. Click \"Clock in\".",
+      "3. Click \"Ask HR to approve\".",
+      "4. Reload the page."
+    ],
+    "expected": "Step 1: amber box \"This computer isn't approved for clock-in · Use your approved device, or ask HR to approve this one.\" with \"Ask HR to approve\". Negative step 2: nothing is recorded; the card says why next to the button. Step 3: toast \"Request sent to HR\"; the button reads \"Requested\" with \"Request sent to HR · this computer\". Step 4: still \"Requested\" (HR has it).",
+    "stories": [
+      "Time · Extra · My attendance today · Blocked · device not approved"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-TIM-L-46",
+    "area": "Time · Devices and kiosks · Computers (2 Nov 2026)",
+    "screen": "HR approves the computer; Arjun clocks in",
+    "url": "http://localhost:3000/yx/time/setup/devices",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi), after MT-TIM-L-45. Then arjun@demo-org.test on the same computer as before.",
+    "steps": [
+      "1. Open Time › Set-up › Devices & kiosks, tab New phone requests.",
+      "2. On Arjun's row click \"Approve\".",
+      "3. As Arjun, reload My attendance today and click \"Clock in\" (inside the office or on its network)."
+    ],
+    "expected": "Step 1: Arjun's row reads \"Computer: Chrome on Windows\" (or his browser and system). Step 2: toast \"Arjun's Chrome on Windows approved · Arjun can clock in from this computer now.\"; the row moves to Employee phones as \"Computer · Chrome on Windows\", Active; his phone, if any, is not touched. Step 3: no amber box; the punch is recorded.",
+    "stories": [
+      "Time · TIM-14 · Devices and kiosks · Computers · new computer request",
+      "Time · Extra · My attendance today · Working since 9:38 am"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-TIM-L-47",
+    "area": "Time · Devices and kiosks · Computers (2 Nov 2026)",
+    "screen": "Another computer, and removing an approval",
+    "url": "http://localhost:3000/yx/time/setup/devices",
+    "account": "arjun@demo-org.test on a second browser (another browser profile counts as another computer). Then hr@demo-org.test.",
+    "steps": [
+      "1. As Arjun in the second browser, open My attendance today and click \"Clock out\".",
+      "2. As HR, Employee phones tab, on Arjun's computer click \"Remove approval\", then \"Remove approval\" in the box.",
+      "3. As Arjun in the first browser, reload My attendance today."
+    ],
+    "expected": "Negative step 1: the amber box \"This computer isn't approved for clock-in\"; nothing recorded. Step 2: the box says Arjun can't clock in from this computer any more and stays signed in; toast \"Approval of Arjun's Chrome on Windows removed.\"; the row reads Signed out. Negative step 3: Arjun is still signed in, and the amber box is back on that computer.",
+    "stories": [
+      "Time · TIM-14 · Devices and kiosks · Computers · remove a computer's approval"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-TIM-L-48",
+    "area": "Time · Devices and kiosks · Computers (2 Nov 2026)",
+    "screen": "Who may decide; setting off",
+    "url": "http://localhost:3000/yx/time/setup/devices",
+    "account": "panel@demo-org.test (Manager - Divya); hr@demo-org.test asking for her own computer; then the lead turns the setting off again.",
+    "steps": [
+      "1. As Divya, open http://localhost:3000/yx/time/setup/devices.",
+      "2. As Lakshmi, ask HR to approve her own computer on My attendance today, then try to Approve her own row on Devices & kiosks.",
+      "3. Turn attendance.web_device_approval off and reload My attendance today as Arjun on the second browser."
+    ],
+    "expected": "Negative step 1: no access page (devices are company set-up). Negative step 2: \"That did not work · You can't approve your own computer. Another HR admin decides it.\" Step 3: no amber box; Clock in works from any computer, as before.",
+    "stories": [
+      "Time · TIM-14 · Devices and kiosks · Computers · new computer request"
+    ],
+    "note": "Negative."
   }
 ]

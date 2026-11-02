@@ -12,13 +12,13 @@ live page cannot reach yet (the reason is given).
 
 | | live | feature not built | phone view | gap |
 |---|---|---|---|---|
-| Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 109 | 1 | 19 | 0 |
+| Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 112 | 0 | 19 | 0 |
 | Leave (TIM-17…25) | 48 | 0 | 11 | 0 |
-| Set-up (TIM-26…29, 31, 42) | 34 | 1 | 0 | 0 |
+| Set-up (TIM-26…29, 31, 42) | 35 | 0 | 0 | 0 |
 | Rosters and shifts (TIM-05, 06, 08, 34, 35, 38…41) | 44 | 2 | 10 | 0 |
 | Overtime, periods, reports, timesheets (TIM-09, 11, 15, 16, 30, 37, 43) | 49 | 0 | 3 | 0 |
 | Field force (TIM-32, 33) | 7 | 0 | 9 | 0 |
-| **All 45 design groups (347 sub-pages counted)** | **291** | **4** | **52** | **0** |
+| **All 45 design groups (349 sub-pages counted)** | **295** | **2** | **52** | **0** |
 
 Counted from the stories and the rows below by script (29 Oct 2026, after rosters/devices/field, the roster fixes and founder decisions 1-7 were merged into the test app). Section counts further down may be older; this table is the current one.
 Recounted by script on 30 Oct 2026 (time small items: TIM-13 Training, Leave, UnknownCode and the new TrainingNone story live; TIM-26 Clone and
@@ -54,6 +54,8 @@ built (TIM-07 Ot, TIM-31 Multi, two roster stories, Extra · today one), 52 phon
 2 Nov 2026 (branch `feat/yukthix-ot-muster`, founder answers on overtime pre-approval, item 1): five new TIM-02 stories, all
 live (Manager · team muster; Pre-approve overtime, filled in, pressed too early, refused). Recounted by script (timecount3):
 346 sub-pages, 290 live, 4 not built, 52 phone, 0 gaps; Attendance 103 → 108 live. Manual tests MT-TIM-L-31..34.
+
+2 Nov 2026 (branch `feat/yukthix-time-points-devices`): TIM-31 Multi (several check-in points) and Extra · today DeviceNotApproved (web clock-in from an approved computer) made live, plus two new TIM-14 stories (Computers · new computer request, Computers · remove a computer's approval), both live. Recounted by script (timecount3 over the story rows; the OT group's #### sections kept from the table): Attendance 109 → 112 live, 1 → 0 not built; Set-up 34 → 35 live, 1 → 0; all 349 sub-pages: 295 live, 2 not built (the two roster stories: flexi and split shifts, founder decision), 52 phone, 0 gaps. Manual tests MT-TIM-L-41..48.
 
 Kit (24 stories) are shared parts, not pages; section E lists which live screens use them.
 
@@ -343,6 +345,8 @@ Live at /yx/kiosk (outside the app shell; set up with HR's one-time key). Small 
 | Training · sessions (new story, 30 Oct 2026) | /yx/time/setup/devices, Training tab (`TrainingTab`, kit parts only): sessions from 7 days back and all coming ones, When (date, start – end at the location), Location, Who ("Everyone at <location>" or the people), Marked present, Status (Upcoming / On now / Ended / Cancelled). GET /time/devices/training (leave.settings.manage) |
 | TrainingAdd · Training · add a session (new story) | same → Add training: title, location, room, date, start, end, Who (Segment: everyone at the location / chosen people, searched by name or code, GET training/people); pressed too early each field says what is missing and takes focus; POST /time/devices/training; toast "Training added · <title>" |
 | TrainingEdit · Training · change a session (new story) | same → Edit (upcoming only): the form from the session; PUT /time/devices/training/:id with the version seen (409 "Someone else changed this session" stays in the form); a started session is refused; audited before → after; toast |
+| ComputerRequest · Computers · new computer request (new story, 2 Nov 2026) | /yx/time/setup/devices, New phone requests tab: a computer asked for from My attendance today shows "Computer: Chrome on Windows"; Approve approves it at once (the person's phone and other computers stay as they are); Reject with a reason. Own computer: refused ("Another HR admin decides it") |
+| ComputerRemove · Computers · remove a computer's approval (new story) | /yx/time/setup/devices, Employee phones tab: "Computer · Edge on Windows" with Remove approval → confirm ("can't clock in from this computer any more and stays signed in") → POST /time/devices/phones/:id/sign-out (no sign-in ends); toast |
 | TrainingCancel · Training · cancel a session (new story) | same → Cancel session (upcoming or on now): confirm ("the N already marked stay on record"), POST training/:id/cancel; an ended one is refused with the reason in the dialog; toast |
 | TrainingEmpty · Training · none yet (new story) | same tab with no sessions: "No training sessions" with Add training |
 
@@ -389,7 +393,7 @@ Provider: to decide (Teams presence). The YukthiX desktop app posts the person's
 | OutsideNetwork · blocked outside office network | /yx/time/attendance?view=today off the office network: "Not on <office> Wi-Fi" before any punch (GET me/attendance `network` from the request IP when the location's networks decide; a geofence still decides at the punch), Check again reloads; Clock in says why |
 | ChoseWfh · outside → clock in as WFH | same, "Clock in as WFH" (setting attendance.wfh_same_day, default on): "WFH · needs <manager>'s approval · N of M used this month"; Clock in sends `wfh` and raises today's request with the punch. Rejected or withdrawn, the day engine leaves those web punches out (punches stay append-only). On duty: not offered (no on-duty request in the API) |
 | ShiftNotStarted | /yx/time/attendance?view=today before check-in opens (setting attendance.check_in_opens_minutes, default any): "Your shift has not started yet · Clock-in opens at …"; the server refuses earlier check-ins with the same words |
-| DeviceNotApproved | feature not built (no device binding API) |
+| DeviceNotApproved | /yx/time/attendance?view=today with the company setting `attendance.web_device_approval` on (default off) on a computer HR has not approved: "This computer isn't approved for clock-in · Use your approved device, or ask HR to approve this one", Ask HR to approve → POST /time/me/web-device (self; one request per computer, a repeat answers the same one; toast "Request sent to HR") → "Requested · Request sent to HR · this computer"; HR approves, refuses or removes the approval on TIM-14 (Computers stories). The computer is the sign-in device cookie (yx_device); only its SHA-256 is stored. A punch from an unapproved computer is refused (403 DEVICE_NOT_APPROVED, same words) and audited (time.web_device.punch_refused); requests, approvals, refusals and removals are audited. Migration 20261410000100_web_device_approval (2 Nov 2026) |
 | WithNote · Note open | /yx/time/attendance?view=today once today has a punch → Add note: the note (1–200 characters, trimmed; Save with nothing typed says "Type a note") goes with the next punch (POST /time/me/punch `note`, kept with the punch and never changed; migration 20261310200000_punch_note); a refused punch keeps it for the retry (30 Oct 2026) |
 | Live · ticking clock | /yx/time/attendance?view=today (always ticks) |
 | RegulariseOpen · Regularise → sheet | /yx/time/attendance?view=today → Regularise (TIM-07 sheet) |
@@ -607,7 +611,7 @@ dev-fake answers until a provider is chosen).
 | /yx/time/setup/types/[id] (new) | LeaveTypeEditorScreen `live` | TIM-27 · Leave type editor | now the TIM-27 design; opened from the "Leave types" menu on Leave policies (id or `new`) |
 | /yx/time/setup/holidays (new) | HolidayCalendarsScreen `live` | TIM-26 · Holiday calendars | now the TIM-26 design |
 | /yx/time/setup/year-end (new) | YearEndWizard `live` | TIM-29 · Year-end wizard | now the TIM-29 design |
-| /yx/time/setup/locations (new) | GeofenceEditorScreen `live` | TIM-31 · Locations and geofence editor | now the TIM-31 design, plus the location's shift and weekly offs (Question: no design shows them) |
+| /yx/time/setup/locations (new) | GeofenceEditorScreen `live` | TIM-31 · Locations and geofence editor | now the TIM-31 design (with Multi: several points), plus the location's shift and weekly offs (Question: no design shows them) |
 
 Menu (yx-nav.ts, not mine): only "Leave types & policies" → /yx/time/setup exists. The design's Time menu also has
 "Holiday calendars", "Locations & geofences" (Time settings) and "Year-end". Until the coordinator adds those links,
@@ -669,8 +673,8 @@ Menu: "Change leave year" has no menu link yet (reachable by address, like the o
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Edit · Geofence and IP ranges | /yx/time/setup/locations → location picker, map of the point and radius, check-in mode, shift and weekly offs from a date (errors: start = end, no date), point and networks read-only with a link to Settings › Locations (where they are edited) |
-| Multi · Multiple points | feature not built (one point per location) |
+| Edit · Geofence and IP ranges | /yx/time/setup/locations → location picker, map of the points and radius (drag the handle), check-in mode, shift and weekly offs from a date (errors: start = end, no date), Allowed points and office networks edited here (Settings › Locations still edits the first point) |
+| Multi · Multiple points | /yx/time/setup/locations → Allowed points (the design's `GeoPointsSection`, shared by the story and the live page): each point with Edit / Remove (only with more than one), name, latitude, longitude, radius 50–1,000 m, Add another point, Save points (pressed with a wrong field: the field is focused, nothing sent); POST /time/setup/locations/:id/points (leave.settings.manage; up to 20 points, unique names, the location's updatedAt seen or 409 "Someone else changed this location…"; audited before → after; toast "Points saved"). A punch inside any point is inside (web and phone punches); the field-force map draws every point. Old single-point locations became one point (migration 20261410000000_location_geo_points) (2 Nov 2026) |
 | Field · Field mode | → choose Field in Check-in mode, Save |
 | IpError · Invalid IP range | /yx/time/setup/locations → Office network: IP ranges, one per line; Save office network checks each line ("Line 2: 10.20.300.0/24 is not a valid range…", field focused) and the server again (POST /time/setup/locations/:id/networks, leave.settings.manage, audited) |
 
