@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
@@ -8,7 +8,8 @@ import type { ScopeUser } from '../access/scope';
 import { toCsv } from '../expenses/reports.service';
 import { StatutoryRulesService } from '../statutory/statutory.service';
 import { inForce, serviceYears } from '../statutory/evaluator';
-import { entitiesFor, payScope, payViewer, requireSelf } from './pay-access';
+import { ApprovalsEngine, type Notice } from '../workflow/approvals-engine.service';
+import { entitiesFor, payScope, payViewer, requireSelf, roleGranters, systemAdmins } from './pay-access';
 
 // PAY-25 payroll reports (RPT-PAY-01 … 12, APX-C §1.1): read only, from approved payslips and the payroll records they
 // came from. One key, payroll.reports.view, scoped to legal entities; the database pay guard is opened to exactly those
@@ -30,6 +31,8 @@ import { entitiesFor, payScope, payViewer, requireSelf } from './pay-access';
 export const PAY_REPORTS = ['register', 'recon', 'variance', 'ctc', 'arrears', 'ytd', 'bank', 'holds', 'gratuity', 'loans'] as const;
 export type PayReportKind = (typeof PAY_REPORTS)[number];
 const KEY = 'payroll.reports.view';
+/** PAY-25: the approvals-engine type of a request for payroll reports access. */
+const REPORTS_ACCESS = 'payroll.reports_access';
 /** At most this many months in one report. */
 const MAX_MONTHS = 36;
 /** A CSV export holds at most this many rows (narrow the filters for more). */
@@ -79,12 +82,80 @@ const iso = (d: Date) => d.toISOString().slice(0, 10);
 const NAME = Prisma.sql`concat_ws(' ', e.given_name, e.family_name)`;
 
 @Injectable()
-export class PayReportsService {
+export class PayReportsService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly statutory: StatutoryRulesService,
+    private readonly engine: ApprovalsEngine,
   ) {}
+
+  onModuleInit() {
+    // PAY-25 NoAccess: asking for payroll reports access goes to someone who grants roles; they set it up in Roles & access.
+    this.engine.register({
+      key: REPORTS_ACCESS,
+      label: 'Payroll reports access',
+      risk: 'normal',
+      autoActions: false,
+      distinctSteps: true,
+      onDecided: async (tx, req, outcome) => {
+        await audit(tx, { organizationId: req.organizationId, isSuperAdmin: false } as CompanyContext, `payroll.reports_access.${outcome}`, 'user', req.subjectId, { requestId: req.id });
+      },
+      requesterLink: () => '/yx/payroll/reports',
+    });
+  }
+
+  /** PAY-25: the person's latest request for payroll reports access (none = null). */
+  async myAccessRequest(ctx: TenantContext, user: ScopeUser) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const r = await tx.wfRequest.findFirst({ where: { organizationId: c.organizationId, requestType: REPORTS_ACCESS, requesterUserId: v.userId! }, orderBy: { createdAt: 'desc' }, select: { id: true, status: true, createdAt: true } });
+      return r ? { id: r.id, status: r.status, askedAt: r.createdAt } : null;
+    });
+  }
+
+  /**
+   * PAY-25 "Request access": through the approvals engine to the people who grant roles (access.role.manage; a System
+   * Admin when nobody holds it), never the requester. One open request at a time; the reason is kept and audited.
+   */
+  async requestAccess(ctx: TenantContext, user: ScopeUser, reason: string) {
+    const v = await this.viewer(user);
+    if (v.grants.has('payroll.reports.view')) throw new ConflictException('You already have payroll reports access.');
+    const notices: Notice[] = [];
+    const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const me = v.userId!;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`reports-access:${me}`}))`;
+      if (await tx.wfRequest.findFirst({ where: { organizationId: org, requestType: REPORTS_ACCESS, requesterUserId: me, status: 'pending' } })) throw new ConflictException('Your request for payroll reports access is already waiting for approval.');
+      const granters = (await roleGranters(tx, org)).filter((u) => u !== me);
+      const approvers = granters.length ? granters : (await systemAdmins(tx, org)).filter((u) => u !== me);
+      if (!approvers.length) throw new BadRequestException('No one else can give this access. Ask your System Admin.');
+      const who = await tx.user.findFirst({ where: { organizationId: org, id: me }, select: { name: true, email: true } });
+      const sub = await this.engine.submit(tx, c, {
+        type: REPORTS_ACCESS,
+        subjectType: 'user',
+        subjectId: me,
+        title: `Payroll reports access for ${who?.name || who?.email || 'a colleague'}`,
+        summary: [
+          { label: 'Asked for', value: 'Payroll reports (read only)' },
+          { label: 'Why', value: reason.slice(0, 300) },
+          { label: 'If you approve', value: 'Give the access in Roles & access (a role with payroll.reports.view).' },
+        ],
+        subjectPersonId: null,
+        requesterUserId: me,
+        raisedByUserId: me,
+        steps: [{ name: 'Access', approvers: [{ kind: 'users', userIds: approvers }], mode: 'any', remindAfterHours: 48 }],
+        payload: {},
+        payloadFields: [],
+        fallbackUserIds: [],
+      });
+      notices.push(...sub.notices);
+      await audit(tx, c, 'payroll.reports_access.requested', 'user', me, { requestId: sub.id, reason });
+      return { id: sub.id, status: 'pending' };
+    });
+    await this.engine.send(ctx, notices);
+    return out;
+  }
 
   private async viewer(user: ScopeUser) {
     const v = await payViewer(this.prisma, this.tenantPrisma, user);

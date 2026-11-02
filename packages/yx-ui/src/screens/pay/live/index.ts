@@ -42,7 +42,7 @@ export { ArrearsBaseScreen, ActuarialScreen, BonusComputationScreen } from '../o
 export type { LiveArrears, LiveActuarial } from '../offcycle-live';
 // PAY-25 payroll reports (design with `live`).
 export { defaultMonth, effectiveFilters } from '../reports-live';
-export type { LivePayrollReports, PayReport, PayReportKind, ReportFilters, ReportOptions } from '../reports-live';
+export type { LivePayrollReports, PayReport, PayReportKind, ReportFilters, ReportOptions, ReportsAccessRequest } from '../reports-live';
 // PAY-24 statutory bonus (design with `live`).
 export type { LiveBonus, BonusOverview, BonusComputation, BonusRow, BonusRules, BonusYear, BonusChange, BonusRowChange } from '../bonus-live';
 export { CountryPacksScreen, type LiveCountryPacks, type W9Input, type WpsIdsInput } from '../country-packs';

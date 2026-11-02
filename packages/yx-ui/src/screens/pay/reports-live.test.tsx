@@ -229,4 +229,28 @@ describe('PAY-25 payroll reports (live)', () => {
     expect(screen.getByText("You don't have access to payroll reports")).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Request access' })).toBeNull();
   });
+
+  it('PAY-25 NoAccess: Request access goes for approval with a toast; once sent it says when and does not send again', async () => {
+    const onRequestAccess = vi.fn(async () => ({}));
+    const { unmount } = render(<PayrollReportsScreen live={live({ state: 'no-access', options: null, accessRequest: null, onRequestAccess })} />);
+    await ue.click(screen.getByRole('button', { name: 'Request access' }));
+    await waitFor(() => expect(onRequestAccess).toHaveBeenCalledTimes(1));
+    expect((await screen.findAllByText('Request sent')).length).toBeGreaterThan(0);
+    unmount();
+    render(<PayrollReportsScreen live={live({ state: 'no-access', options: null, accessRequest: { id: 'w1', status: 'pending', askedAt: '2026-10-30T05:00:00Z' }, onRequestAccess })} />);
+    expect(screen.getByText(/Request sent on 30 Oct 2026/)).toBeTruthy();
+    await ue.click(screen.getByRole('button', { name: 'Request sent' }));
+    expect((await screen.findAllByText('You already asked for access. It is waiting for approval.')).length).toBeGreaterThan(0);
+    expect(onRequestAccess).toHaveBeenCalledTimes(1);
+  });
+
+  it('PAY-25 NoAccess: a refused request says so and shows the reason (negative)', async () => {
+    const onRequestAccess = vi.fn(async () => {
+      throw new Error('No one else can give this access. Ask your System Admin.');
+    });
+    render(<PayrollReportsScreen live={live({ state: 'no-access', options: null, accessRequest: { id: 'w1', status: 'rejected', askedAt: '2026-10-01T05:00:00Z' }, onRequestAccess })} />);
+    expect(screen.getByText(/was turned down/)).toBeTruthy();
+    await ue.click(screen.getByRole('button', { name: 'Request access' }));
+    expect((await screen.findAllByText('No one else can give this access. Ask your System Admin.')).length).toBeGreaterThan(0);
+  });
 });

@@ -1,6 +1,8 @@
-import { BadRequestException, Controller, Get, Param, Query, Req, Res, UseGuards } from '@nestjs/common';
-import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsUUID, Matches, Max, Min } from 'class-validator';
+import { BadRequestException, Body, Controller, Get, Param, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
+import { Transform, Type } from 'class-transformer';
+import { IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Matches, Max, Min } from 'class-validator';
 import { Request, Response } from 'express';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -12,6 +14,15 @@ import { file } from './payroll.controller';
 import { PayReportsService, isPayReport } from './reports.service';
 
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/** PAY-25: why the person needs payroll reports (kept with the request and audited). */
+export class ReportsAccessDto {
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @Length(10, 500)
+  reason?: string;
+}
 
 export class PayReportQueryDto {
   @IsOptional()
@@ -67,6 +78,19 @@ export class PayrollReportsController {
   @RequirePermissions('payroll.reports.view')
   options(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     return this.reports.options(ctx, this.user(req));
+  }
+
+  // PAY-25 NoAccess: the person without the reports key asks for it (no key needed: it is about their own access; the
+  // service refuses anyone acting for someone else and anyone who already has it).
+  @Get('access-request')
+  myAccessRequest(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.reports.myAccessRequest(ctx, this.user(req));
+  }
+
+  @Post('access-request')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  requestAccess(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: ReportsAccessDto) {
+    return this.reports.requestAccess(ctx, this.user(req), dto.reason ?? 'Asked from the payroll reports page.');
   }
 
   @Get(':kind')

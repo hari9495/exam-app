@@ -92,9 +92,19 @@ export interface ReportFilters {
   locationId: string | null;
 }
 
+/** PAY-25 NoAccess: the person's latest request for payroll reports access (GET payroll/reports/access-request). */
+export interface ReportsAccessRequest {
+  id: string;
+  status: string;
+  askedAt: string;
+}
+
 export interface LivePayrollReports {
   /** The filter choices (GET payroll/reports); 'no-access' shows the no-access page. */
   state: LoadState;
+  /** PAY-25 NoAccess: the latest access request (undefined while it loads) and "Request access" (approvals engine). */
+  accessRequest?: ReportsAccessRequest | null;
+  onRequestAccess?: () => Promise<unknown>;
   onRetry?: () => void;
   options: ReportOptions | null;
   kind: PayReportKind;

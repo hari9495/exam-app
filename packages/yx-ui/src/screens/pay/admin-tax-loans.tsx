@@ -32,7 +32,7 @@ import { matchesFilter, type FilterValue } from '../../lib/table';
 import { DesktopFrame, SCREEN_RAIL } from '../_kit/frames';
 import { EMPLOYEES, HR_ADMIN, ME, PAY_CALENDAR, TODAY } from '../_kit/data';
 import { Segment } from '../people/people-kit';
-import { ReportsView, PAY_REPORTS, type LivePayrollReports, type PayReport, type PayReportKind, type ReportFilters, type ReportOptions } from './reports-live';
+import { ReportsView, PAY_REPORTS, type LivePayrollReports, type PayReport, type PayReportKind, type ReportFilters, type ReportOptions, type ReportsAccessRequest } from './reports-live';
 import { FactRow, PayFrame, PaySettingsFrame, SectionTitle, StateBlock, type PayPersona, type ViewState } from './pay-kit';
 import {
   ENTITY_KA,
@@ -1331,7 +1331,7 @@ export function PayrollReportsScreen({
   period?: ReportPeriod;
   group?: ReportGroup;
 }) {
-  if (live) return live.state === 'no-access' ? <ReportsNoAccess live /> : <ReportsView live={live} />;
+  if (live) return live.state === 'no-access' ? <ReportsNoAccess live={{ request: live.accessRequest, onRequest: live.onRequestAccess }} /> : <ReportsView live={live} />;
   return (
     <PayFrame page="reports" persona={persona}>
       <SampleReports key={`${report}${state}${period}${group}`} report={report} state={state} period={period} group={group} />
@@ -1399,14 +1399,48 @@ function SampleReports({ report, state, period, group }: { report: ReportId; sta
 }
 
 /** Report page when a person has no payroll scope (P02): shown instead of figures. The app passes `live` (its own shell around it). */
-export function ReportsNoAccess({ live }: { live?: boolean }) {
+export function ReportsNoAccess({ live }: { /** Live: the latest request and "Request access" (approvals engine); without onRequest it says whom to ask. */ live?: { request?: ReportsAccessRequest | null; onRequest?: () => Promise<unknown> } }) {
   const [sent, setSent] = useState(false);
   const { toast } = useToast();
+  const { busy, run } = useRun();
+  const req = live?.request;
+  const pending = req?.status === 'pending';
+  const ask = () => {
+    if (pending) return toast({ title: 'You already asked for access. It is waiting for approval.' });
+    void run('ask', async () => {
+      try {
+        await live!.onRequest!();
+        toast({ tone: 'success', title: 'Request sent', description: "Someone who gives access decides; you'll get a notification." });
+      } catch (e) {
+        toast({ tone: 'error', title: e instanceof Error && e.message ? e.message : 'The request was not sent. Try again.' });
+      }
+    });
+  };
   const body = (
     <>
       <PageHeader title="Payroll reports" />
       {live ? (
-        <EmptyState title="You don't have access to payroll reports" description="Payroll reports need payroll access for a legal entity. Ask your payroll admin or a system admin to give it to you." />
+        live.onRequest ? (
+          <EmptyState
+            title="You don't have access to payroll reports"
+            description={
+              pending
+                ? `Request sent on ${formatDate(new Date(req!.askedAt))}. Someone who gives access decides; you'll get a notification.`
+                : req?.status === 'approved'
+                  ? `Your request of ${formatDate(new Date(req.askedAt))} was approved. The access starts once it is set up in Roles & access; ask again if it does not.`
+                  : req?.status === 'rejected'
+                    ? `Your request of ${formatDate(new Date(req.askedAt))} was turned down. You can ask again.`
+                    : 'Payroll reports need payroll access for a legal entity. Ask for it here; someone who gives access decides.'
+            }
+            action={
+              <Button variant="primary" icon={Send} loading={busy === 'ask'} onClick={ask}>
+                {pending ? 'Request sent' : 'Request access'}
+              </Button>
+            }
+          />
+        ) : (
+          <EmptyState title="You don't have access to payroll reports" description="Payroll reports need payroll access for a legal entity. Ask your payroll admin or a system admin to give it to you." />
+        )
       ) : (
         <EmptyState
           title="You don't have access to payroll reports"

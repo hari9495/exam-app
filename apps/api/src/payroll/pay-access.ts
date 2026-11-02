@@ -152,6 +152,23 @@ export async function publishesAlone(tx: Tx, org: string, entityId: string, me: 
   return !(await payHolders(tx, org, 'payroll.payslip.publish', entityId, todayIst())).some((u) => u !== me);
 }
 
+/** PAY-25: the active people who grant roles company-wide (access.role.manage in their profile or a tenant-wide grant). */
+export async function roleGranters(tx: Tx, org: string): Promise<string[]> {
+  const like = '%"access.role.manage"%';
+  const today = todayIst();
+  const rows = await tx.$queryRaw<{ id: string }[]>`
+    SELECT u.id::text FROM users u JOIN permission_profiles p ON p.organization_id = u.organization_id AND p.id = u.permission_profile_id
+    WHERE u.organization_id = ${org}::uuid AND u.status = 'active' AND p.permissions_json LIKE ${like}
+    UNION
+    SELECT g.user_id::text FROM role_grants g
+    JOIN permission_profiles p ON p.organization_id = g.organization_id AND p.id = g.permission_profile_id
+    JOIN users u ON u.organization_id = g.organization_id AND u.id = g.user_id AND u.status = 'active'
+    WHERE g.organization_id = ${org}::uuid AND g.status = 'active' AND p.permissions_json LIKE ${like} AND g.scope_type = 'tenant'
+      AND g.valid_from <= ${today}::date AND (g.valid_to IS NULL OR g.valid_to >= ${today}::date)
+    LIMIT 25`;
+  return rows.map((r) => r.id);
+}
+
 /** The company's active System Admins (P08 Q3: the owner's approval of a reopen). */
 export async function systemAdmins(tx: Tx, org: string): Promise<string[]> {
   return (await tx.user.findMany({ where: { organizationId: org, role: 'org_admin', status: 'active' }, select: { id: true }, take: 25 })).map((u) => u.id);

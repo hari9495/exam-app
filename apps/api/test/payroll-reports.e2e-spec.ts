@@ -371,6 +371,28 @@ describe('Payroll reports (PAY-25)', () => {
     expect([b.filters.from, b.filters.to, b.total]).toEqual([lastMonth, lastMonth, 0]);
   });
 
+  it('PAY-25 NoAccess: "Request access" goes through the approvals engine to someone who gives access; once at a time', async () => {
+    const post = (who: Who, body: object) => request(server()).post('/api/v1/payroll/reports/access-request').set('Authorization', `Bearer ${token[who]}`).send(body);
+    expect((await api('noKey', '/payroll/reports/access-request').expect(200)).body).toEqual({});
+    await post('noKey', { reason: 'short' }).expect(400);
+    await post('noKey', { reason: 'Need the CTC report', extra: 1 }).expect(400);
+    expect((await post('payAdmin', {}).expect(409)).body.message).toMatch(/already have payroll reports access/);
+    const r = (await post('noKey', { reason: 'Budget review needs the CTC report' }).expect(201)).body;
+    expect(r).toMatchObject({ status: 'pending' });
+    expect((await post('noKey', {}).expect(409)).body.message).toMatch(/already waiting/);
+    expect((await api('noKey', '/payroll/reports/access-request').expect(200)).body).toMatchObject({ id: r.id, status: 'pending' });
+    // Nobody holds access.role.manage here, so the System Admin decides; the requester never does.
+    const inbox = (await api('adminA', '/workflow/approvals/inbox').expect(200)).body as { taskId: string; title: string }[];
+    const task = inbox.find((t) => /Payroll reports access/.test(t.title))!;
+    expect(task).toBeTruthy();
+    expect(((await api('noKey', '/workflow/approvals/inbox').expect(200)).body as { title: string }[]).some((t) => /Payroll reports access/.test(t.title))).toBe(false);
+    await request(server()).post(`/api/v1/workflow/approvals/tasks/${task.taskId}/decide`).set('Authorization', `Bearer ${token.adminA}`).send({ decision: 'approve' }).expect(200);
+    expect((await api('noKey', '/payroll/reports/access-request').expect(200)).body).toMatchObject({ status: 'approved' });
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: { in: ['payroll.reports_access.requested', 'payroll.reports_access.approved'] }, entityId: users.noKey } }))).toBe(2);
+    // The report itself still needs the key until it is given in Roles & access.
+    await api('noKey', '/payroll/reports').expect(403);
+  });
+
   it('bad input: unknown report, months the wrong way round or badly written, too many months, a page too big', async () => {
     await api('payAdmin', '/payroll/reports/payslips').expect(400);
     await api('payAdmin', `/payroll/reports/register?from=${M}&to=${P}`).expect(400);

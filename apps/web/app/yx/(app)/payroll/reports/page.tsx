@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { PayrollReportsScreen, effectiveFilters, type PayReport, type PayReportKind, type ReportFilters, type ReportOptions } from '@yukthix/ui/pay';
-import { payState, usePay, usePayDownload } from '../../../../../lib/yx-pay';
+import { PayrollReportsScreen, effectiveFilters, type PayReport, type PayReportKind, type ReportFilters, type ReportOptions, type ReportsAccessRequest } from '@yukthix/ui/pay';
+import { payState, usePay, usePayDownload, usePayWrite } from '../../../../../lib/yx-pay';
 
 // Payroll › Payroll reports (PAY-25): read-only reports for the legal entities the person's payroll.reports.view
 // reaches. The API narrows every query to those entities (and the database pay guard to the same); a CSV export holds
@@ -20,11 +20,17 @@ export default function YxPayReportsPage() {
   const path = `/reports/${kind}?${query}${query ? '&' : ''}`;
   const report = usePay<PayReport>(options.data ? `${path}page=${page}` : null);
   const download = usePayDownload();
+  // PAY-25 NoAccess: without the reports key, the person's latest access request and "Request access".
+  const noAccess = payState(options) === 'no-access';
+  const accessRequest = usePay<ReportsAccessRequest | null>(noAccess ? '/reports/access-request' : null);
+  const write = usePayWrite();
   return (
     <PayrollReportsScreen
       live={{
         state: payState(options),
         onRetry: () => void options.refetch(),
+        accessRequest: accessRequest.data,
+        onRequestAccess: () => write('/reports/access-request', {}),
         options: options.data ?? null,
         kind,
         onKind: (k) => {
