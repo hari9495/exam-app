@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { EwaAdminScreen, LoansScreen, ProofQueueScreen, type Form12bRow, type LiveEwaAdmin, type LiveLoans, type LiveProofQueue, type ResidencyRow } from './admin-tax-loans';
+import { EwaAdminScreen, LoansScreen, ProofQueueScreen, type Form12bRow, type LiveEwaAdmin, type LiveLoans, type LiveProofQueue, type PanLinkRow, type ResidencyRow } from './admin-tax-loans';
 import type { LoanRepayments } from './live/types-ops';
 import { PEOPLE } from './live/fixtures-5j';
 import { LOANS, PROOFS } from './live/fixtures-ops';
@@ -220,6 +220,29 @@ describe('PAY-23 · Payroll › Proof checking (live)', () => {
     await ue.click(within(d).getByRole('button', { name: 'Approve change' }));
     expect(await within(d).findByText('Someone else checks your own residential status.')).toBeInTheDocument();
     expect(within(d).getByText('That did not go through')).toBeInTheDocument();
+  });
+
+  it('a PAN link confirmation is in the queue; the file shows in the drawer; refusing needs a reason; approve sends it (PAY-22 NoPan)', async () => {
+    const make = vi.spyOn(URL, 'createObjectURL').mockImplementation(() => 'blob:pan');
+    try {
+      const PAN: PanLinkRow = { id: 'pl1', employeeId: 'p3', employeeName: 'Karthik Iyer', legalEntityId: 'e1', taxYear: '2026-27', file: { name: 'pan-link.pdf', size: 900, type: 'application/pdf', at: '2026-10-29T08:00:00Z' }, status: 'pending', comment: null, submittedAt: '2026-10-29T08:00:00Z', verifiedAt: null };
+      const onPanLinkDecide = fn();
+      const onPanLinkPreview = vi.fn(async () => new Blob(['%PDF'], { type: 'application/pdf' }));
+      render(<ProofQueueScreen live={live({ lines: [], form12b: [], panLinks: [PAN], onPanLinkDecide, onPanLinkPreview, onPanLinkFile: fn() })} />);
+      expect(screen.getByText('PAN linked with Aadhaar')).toBeInTheDocument();
+      await ue.click(screen.getByRole('button', { name: "Decide on Karthik Iyer's PAN link" }));
+      const d = screen.getByRole('dialog', { name: /PAN linked with Aadhaar/ });
+      await waitFor(() => expect(d.querySelector('object[type="application/pdf"]')).toHaveAttribute('data', 'blob:pan'));
+      await ue.click(within(d).getByRole('radio', { name: 'Refuse' }));
+      await ue.click(within(d).getByRole('button', { name: 'Refuse PAN link' }));
+      expect(onPanLinkDecide).not.toHaveBeenCalled();
+      expect(within(d).getByRole('textbox', { name: /Reason/ })).toHaveFocus();
+      await ue.click(within(d).getByRole('radio', { name: 'Approve' }));
+      await ue.click(within(d).getByRole('button', { name: 'Approve PAN link' }));
+      await waitFor(() => expect(onPanLinkDecide).toHaveBeenCalledWith(PAN, { decision: 'approve' }));
+    } finally {
+      make.mockRestore();
+    }
   });
 
   it('a deep link opens that row of the queue', () => {

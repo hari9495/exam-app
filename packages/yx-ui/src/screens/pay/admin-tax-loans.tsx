@@ -562,8 +562,42 @@ const DEFAULT_PROOF_FILTERS: FilterValue[] = [
 ];
 
 /** PAY-23 · Proof verification queue: each line approved, rejected or partly approved with a comment. The app passes `live`. */
-export function ProofQueueScreen(p: { state?: ViewState; openId?: string; decision?: 'partial' | 'reject'; rows?: ProofRow[]; /** Stories: the residential-status row (founder last 10, items 7 and 10). */ residency?: ResidencyStory; live?: LiveProofQueue }) {
-  return p.live ? <LiveProofQueue live={p.live} /> : p.residency ? <LiveProofQueue key={p.residency} live={sampleResidencyQueue(p.residency)} /> : <SampleProofQueue {...p} />;
+export function ProofQueueScreen(p: {
+  state?: ViewState;
+  openId?: string;
+  decision?: 'partial' | 'reject';
+  rows?: ProofRow[];
+  /** Stories: the residential-status row (founder last 10, items 7 and 10). */ residency?: ResidencyStory;
+  /** Stories: the PAN link confirmation (PAY-22 NoPan, checked here). */ panLink?: PanLinkStory;
+  live?: LiveProofQueue;
+}) {
+  return p.live ? <LiveProofQueue live={p.live} /> : p.residency ? <LiveProofQueue key={p.residency} live={sampleResidencyQueue(p.residency)} /> : p.panLink ? <LiveProofQueue key={p.panLink} live={samplePanLinkQueue(p.panLink)} /> : <SampleProofQueue {...p} />;
+}
+
+/** PAY-23 PAN link design states (PAY-22 NoPan sends them). */
+export type PanLinkStory = 'queue' | 'decide' | 'refused';
+
+/** Kaveri Foods' PAN link confirmations for 2026-27, in the shape GET tax/pan-links returns. */
+function samplePanLinkQueue(view: PanLinkStory): LiveProofQueue {
+  const sent: PanLinkRow = { id: 'pl-1', employeeId: 'e-63', employeeName: 'Karthik Iyer', legalEntityId: 'kf-ka', taxYear: '2026-27', file: { name: 'pan-aadhaar-link.pdf', size: 96_400, type: 'application/pdf', at: '2026-10-29T08:20:00Z' }, status: 'pending', comment: null, submittedAt: '2026-10-29T08:20:00Z', verifiedAt: null };
+  const refused: PanLinkRow = { ...sent, id: 'pl-2', status: 'rejected', comment: 'The confirmation shows another PAN. Send the one for your own PAN.', verifiedAt: '2026-10-30T10:00:00Z' };
+  const done = async () => undefined;
+  return {
+    state: 'ready',
+    status: view === 'refused' ? 'rejected' : 'pending',
+    onStatus: () => {},
+    lines: [],
+    form12b: [],
+    residency: [],
+    panLinks: [view === 'refused' ? refused : sent],
+    onFile: done,
+    onDecide: done,
+    onForm12bFile: done,
+    onForm12bDecide: done,
+    onPanLinkFile: done,
+    onPanLinkDecide: done,
+    story: view === 'queue' ? undefined : { openId: `p-${view === 'refused' ? refused.id : sent.id}` },
+  };
 }
 
 /** PAY-23 residency design states. */
@@ -1864,6 +1898,20 @@ export interface ResidencyRow {
 
 export type ProofStatusFilter = 'pending' | 'approved' | 'partly' | 'rejected';
 
+/** GET tax/pan-links (PAY-22 NoPan): a PAN-Aadhaar link confirmation waiting for payroll, or decided. */
+export interface PanLinkRow {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  legalEntityId: string;
+  taxYear: string;
+  file: { name: string; size: number; type: string; at: string } | null;
+  status: 'pending' | 'approved' | 'rejected';
+  comment: string | null;
+  submittedAt: string;
+  verifiedAt: string | null;
+}
+
 export interface LiveProofQueue {
   state: LoadState;
   onRetry?: () => void;
@@ -1882,6 +1930,11 @@ export interface LiveProofQueue {
   residency?: ResidencyRow[] | null;
   onResidencyFile?: (row: ResidencyRow) => Promise<unknown>;
   onResidencyDecide?: (row: ResidencyRow, d: { decision: 'approve' | 'reject'; comment?: string }) => Promise<unknown>;
+  /** PAY-22 NoPan: PAN link confirmations in the same status (none for "partly"). */
+  panLinks?: PanLinkRow[] | null;
+  onPanLinkFile?: (row: PanLinkRow) => Promise<unknown>;
+  onPanLinkPreview?: (row: PanLinkRow) => Promise<Blob>;
+  onPanLinkDecide?: (row: PanLinkRow, d: { decision: 'approve' | 'reject'; comment?: string }) => Promise<unknown>;
   /** Stories only: open a row, and show a refusal the server sent. */
   story?: { openId?: string; refused?: string };
   /** A deep link: the row to open ("l-<line id>", "f-<Form 12B id>", "r-<residency id>"). */
@@ -1893,13 +1946,13 @@ export interface LiveProofQueue {
   own?: { line?: ProofQueueLine; residency?: ResidencyRow };
 }
 
-type QueueRow = { kind: 'line'; id: string; line: ProofQueueLine } | { kind: 'form12b'; id: string; row: Form12bRow } | { kind: 'residency'; id: string; res: ResidencyRow };
+type QueueRow = { kind: 'line'; id: string; line: ProofQueueLine } | { kind: 'form12b'; id: string; row: Form12bRow } | { kind: 'residency'; id: string; res: ResidencyRow } | { kind: 'pan'; id: string; pan: PanLinkRow };
 const RES_LABEL = { resident: 'Resident', non_resident: 'Non-resident' } as const;
 /** The residency row's second line: the change, then the document (a TRC, or none going back to resident). */
 export const residencyNote = (r: ResidencyRow) =>
   [`${RES_LABEL[r.from]} → ${RES_LABEL[r.residentialStatus].toLowerCase()}`, r.residentialStatus === 'resident' ? 'no document needed' : r.trcValidTo ? `TRC until ${dateText(r.trcValidTo)}${r.dtaaCountry ? ` · ${r.dtaaCountry}` : ''}` : 'TRC', r.taxYear].join(' · ');
-const itemText = (r: QueueRow) => (r.kind === 'line' ? subjectText(r.line.subjectKey, r.line.section) : r.kind === 'form12b' ? 'Previous employer (Form 12B)' : 'Residential status');
-const statusOf = (r: QueueRow) => (r.kind === 'line' ? r.line.proofStatus : r.kind === 'form12b' ? r.row.status : r.res.status);
+const itemText = (r: QueueRow) => (r.kind === 'line' ? subjectText(r.line.subjectKey, r.line.section) : r.kind === 'form12b' ? 'Previous employer (Form 12B)' : r.kind === 'pan' ? 'PAN linked with Aadhaar' : 'Residential status');
+const statusOf = (r: QueueRow) => (r.kind === 'line' ? r.line.proofStatus : r.kind === 'form12b' ? r.row.status : r.kind === 'pan' ? r.pan.status : r.res.status);
 /** A residency request is approved or refused (founder last 10, item 7). */
 const RES_STATE: Record<string, { label: string; tone: BadgeTone }> = {
   pending: { label: 'Waiting', tone: 'warning' },
@@ -1921,9 +1974,10 @@ function LiveProofQueue({ live }: { live: LiveProofQueue }) {
     ...(live.lines ?? []).map((l) => ({ kind: 'line' as const, id: `l-${l.id}`, line: l })),
     ...(live.form12b ?? []).map((r) => ({ kind: 'form12b' as const, id: `f-${r.id}`, row: r })),
     ...(live.residency ?? []).map((r) => ({ kind: 'residency' as const, id: `r-${r.id}`, res: r })),
+    ...(live.panLinks ?? []).map((r) => ({ kind: 'pan' as const, id: `p-${r.id}`, pan: r })),
   ];
   const query = q.trim().toLowerCase();
-  const nameOf = (r: QueueRow) => (r.kind === 'line' ? r.line.employeeName : r.kind === 'form12b' ? r.row.employeeName : r.res.employeeName) || 'Someone';
+  const nameOf = (r: QueueRow) => (r.kind === 'line' ? r.line.employeeName : r.kind === 'form12b' ? r.row.employeeName : r.kind === 'pan' ? r.pan.employeeName : r.res.employeeName) || 'Someone';
   const shown = rows.filter((r) => !query || nameOf(r).toLowerCase().includes(query));
   const open = rows.find((r) => r.id === openId) ?? null;
   const cols: TableColumn<QueueRow>[] = [
@@ -1936,16 +1990,17 @@ function LiveProofQueue({ live }: { live: LiveProofQueue }) {
         <div>
           <div>{itemText(r)}</div>
           <div className="yx-pay-note">
-            {r.kind === 'line' ? `${r.line.proofs.length} ${r.line.proofs.length === 1 ? 'file' : 'files'}` : r.kind === 'form12b' ? `${r.row.employerName ?? r.row.employerTan} · ${r.row.taxYear}` : residencyNote(r.res)}
+            {r.kind === 'line' ? `${r.line.proofs.length} ${r.line.proofs.length === 1 ? 'file' : 'files'}` : r.kind === 'form12b' ? `${r.row.employerName ?? r.row.employerTan} · ${r.row.taxYear}` : r.kind === 'pan' ? `Portal confirmation · ${r.pan.taxYear}` : residencyNote(r.res)}
           </div>
           {r.kind === 'residency' && r.res.status === 'rejected' && r.res.comment && <div className="yx-pay-note">Refused: {r.res.comment}</div>}
+          {r.kind === 'pan' && r.pan.status === 'rejected' && r.pan.comment && <div className="yx-pay-note">Refused: {r.pan.comment}</div>}
         </div>
       ),
       width: 260,
     },
-    { key: 'declared', header: 'Declared', type: 'money', value: (r) => Number(r.kind === 'line' ? r.line.amount : r.kind === 'form12b' ? r.row.gross : 0), render: (r) => (r.kind === 'line' ? `${rupees(r.line.amount)}${r.line.subjectKey === 'hra' ? ' a month' : ''}` : r.kind === 'form12b' ? `${rupees(r.row.gross)} salary` : r.res.file ? 'Certificate sent' : 'No document'), width: 170 },
+    { key: 'declared', header: 'Declared', type: 'money', value: (r) => Number(r.kind === 'line' ? r.line.amount : r.kind === 'form12b' ? r.row.gross : 0), render: (r) => (r.kind === 'line' ? `${rupees(r.line.amount)}${r.line.subjectKey === 'hra' ? ' a month' : ''}` : r.kind === 'form12b' ? `${rupees(r.row.gross)} salary` : r.kind === 'pan' ? 'Confirmation sent' : r.res.file ? 'Certificate sent' : 'No document'), width: 170 },
     { key: 'accepted', header: 'Approved', type: 'money', value: (r) => (r.kind === 'line' && r.line.approvedAmount ? Number(r.line.approvedAmount) : 0), render: (r) => (r.kind === 'line' && r.line.approvedAmount ? rupees(r.line.approvedAmount) : '—'), width: 120, optional: true },
-    { key: 'status', header: 'Status', type: 'status', value: (r) => (r.kind === 'residency' ? RES_STATE : LIVE_PROOF_STATE)[statusOf(r)]?.label, statusTone: (_v, r) => LIVE_PROOF_STATE[statusOf(r)]?.tone ?? 'neutral', width: 140 },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => (r.kind === 'residency' || r.kind === 'pan' ? RES_STATE : LIVE_PROOF_STATE)[statusOf(r)]?.label, statusTone: (_v, r) => LIVE_PROOF_STATE[statusOf(r)]?.tone ?? 'neutral', width: 140 },
   ];
   return (
     <PayFrame page="tax" counts={live.status === 'pending' ? { tax: rows.length } : undefined}>
@@ -1963,7 +2018,7 @@ function LiveProofQueue({ live }: { live: LiveProofQueue }) {
           onClearFilters={() => setQ('')}
           rowButtons={(r) =>
             statusOf(r) === 'pending' ? (
-              <Button size="sm" onClick={() => setOpenId(r.id)} aria-label={`Decide on ${nameOf(r)}'s ${r.kind === 'line' ? subjectText(r.line.subjectKey) : r.kind === 'form12b' ? 'Form 12B' : 'residential status'}`}>
+              <Button size="sm" onClick={() => setOpenId(r.id)} aria-label={`Decide on ${nameOf(r)}'s ${r.kind === 'line' ? subjectText(r.line.subjectKey) : r.kind === 'form12b' ? 'Form 12B' : r.kind === 'pan' ? 'PAN link' : 'residential status'}`}>
                 Decide
               </Button>
             ) : null
@@ -1991,6 +2046,9 @@ function LiveProofQueue({ live }: { live: LiveProofQueue }) {
       {open?.kind === 'form12b' && <Form12bDecisionDrawer row={open.row} onFile={live.onForm12bFile} onClose={() => setOpenId(null)} onSave={(d) => live.onForm12bDecide(open.row, d)} />}
       {open?.kind === 'residency' && live.onResidencyDecide && (
         <ResidencyDecisionDrawer row={open.res} refused={live.story?.refused} onFile={live.onResidencyFile} onClose={() => setOpenId(null)} onSave={(d) => live.onResidencyDecide!(open.res, d)} />
+      )}
+      {open?.kind === 'pan' && live.onPanLinkDecide && (
+        <PanLinkDecisionDrawer row={open.pan} onFile={live.onPanLinkFile} onPreview={live.onPanLinkPreview} onClose={() => setOpenId(null)} onSave={(d) => live.onPanLinkDecide!(open.pan, d)} />
       )}
       {ownOpen && !open && live.own?.line && <ProofDecisionDrawer line={live.own.line} own onFile={live.onFile} onClose={() => setOwnOpen(false)} onSave={(d) => live.onDecide(live.own!.line!, d)} />}
       {ownOpen && !open && !live.own?.line && live.own?.residency && live.onResidencyDecide && (
@@ -2186,6 +2244,104 @@ function Form12bDecisionDrawer({ row, onFile, onClose, onSave }: { row: Form12bR
         </>
       )}
     </PayFormDrawer>
+  );
+}
+
+/**
+ * PAY-22 NoPan, checked here: the portal's PAN-Aadhaar link confirmation. Approving it makes the PAN operative again
+ * (normal-rate tax from the next payslip); a refusal needs the reason. Nobody decides their own (the server refuses it).
+ */
+function PanLinkDecisionDrawer({ row, onFile, onPreview, onClose, onSave }: { row: PanLinkRow; onFile?: LiveProofQueue['onPanLinkFile']; onPreview?: LiveProofQueue['onPanLinkPreview']; onClose: () => void; onSave: (d: { decision: 'approve' | 'reject'; comment?: string }) => Promise<unknown> }) {
+  const { toast } = useToast();
+  const [decision, setDecision] = useState<'approve' | 'reject'>('approve');
+  const [comment, setComment] = useState('');
+  const { busy, error, run } = useRun();
+  const early = useTooEarly(decision === 'reject' && comment.trim().length < 3 ? [{ fieldId: 'pl-why', message: 'Give the reason, so the employee can fix it.' }] : []);
+  const pending = row.status === 'pending';
+  const state = RES_STATE[row.status] ?? { label: row.status, tone: 'neutral' as const };
+  const file = useFileUrl(row.file && onPreview ? row.id : null, onPreview ? () => onPreview(row) : undefined, row.file?.name ?? '');
+  const save = () => {
+    if (early.stop()) return;
+    void run('save', () => onSave({ decision, ...(comment.trim() ? { comment: comment.trim() } : {}) })).then((ok) => {
+      if (!ok) return;
+      toast({ tone: 'success', title: `${row.employeeName || 'Someone'} · ${decision === 'approve' ? 'PAN works again: normal-rate tax from the next payslip' : 'PAN link refused'}.` });
+      onClose();
+    });
+  };
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title="PAN linked with Aadhaar"
+      subtitle={`${row.employeeName || 'Someone'} · tax year ${row.taxYear}`}
+      meta={<Badge tone={state.tone}>{state.label}</Badge>}
+      size="lg"
+      notice={
+        error && (
+          <InlineAlert tone="danger" title="That did not go through">
+            {error}
+          </InlineAlert>
+        )
+      }
+      footer={
+        pending ? (
+          <>
+            <Button onClick={onClose}>Cancel</Button>
+            <Button variant="primary" loading={busy === 'save'} onClick={save}>
+              {decision === 'approve' ? 'Approve PAN link' : 'Refuse PAN link'}
+            </Button>
+          </>
+        ) : (
+          <Button onClick={onClose}>Close</Button>
+        )
+      }
+    >
+      <div className="yx-pay-stack">
+        <DescriptionList
+          columns={1}
+          items={[
+            { label: 'Sent', value: dateText(row.submittedAt.slice(0, 10)) },
+            ...(row.verifiedAt ? [{ label: row.status === 'approved' ? 'Approved' : 'Refused', value: dateText(row.verifiedAt.slice(0, 10)) }] : []),
+            ...(row.status === 'rejected' && row.comment ? [{ label: 'Reason', value: row.comment }] : []),
+          ]}
+        />
+        {row.file && onPreview ? (
+          <DocumentViewer
+            key={row.id}
+            fileName={row.file.name}
+            mimeType={file?.type || undefined}
+            state={!file ? 'loading' : file.failed ? 'error' : 'ready'}
+            versions={[{ id: 'v1', label: `Sent ${dateText(row.file.at.slice(0, 10))}`, url: file?.url ?? '', uploadedBy: row.employeeName || 'Someone', uploadedAt: new Date(row.file.at), size: row.file.size }]}
+            onDownload={() => onFile && void run('file', () => onFile(row))}
+          />
+        ) : row.file && onFile ? (
+          <div className="yx-pay-row">
+            <Button size="sm" icon={Download} loading={busy === 'file'} onClick={() => void run('file', () => onFile(row))} aria-label={`Open ${row.file.name}`}>
+              {row.file.name}
+            </Button>
+          </div>
+        ) : null}
+        {pending && (
+          <>
+            <p className="yx-pay-note">Check that the confirmation is from the income-tax portal and shows this person's PAN as linked. Once approved, tax is worked out at the normal rate from the next payslip.</p>
+            <FormField id="pl-decision" label="Decision" required>
+              <Segment
+                label="Decision"
+                value={decision}
+                onChange={setDecision}
+                options={[
+                  { value: 'approve', label: 'Approve' },
+                  { value: 'reject', label: 'Refuse' },
+                ]}
+              />
+            </FormField>
+            <FormField id="pl-why" label="Reason for the employee" required={decision === 'reject'} optional={decision === 'approve'} error={early.errorOf('pl-why')}>
+              <TextArea rows={3} value={comment} onChange={setComment} maxLength={500} />
+            </FormField>
+          </>
+        )}
+      </div>
+    </Drawer>
   );
 }
 

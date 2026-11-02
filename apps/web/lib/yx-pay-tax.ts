@@ -36,6 +36,8 @@ export function useLiveTax(tab: TaxTab): LiveTax {
     onForm12b: (x: Form12bInput, f: File) => write('/tax/me/form12b', file(f, { ...x })),
     // Founder answers 2 and 3: both wait for payroll; the workspace shows them as pending.
     onRegimeRequest: (x) => write('/tax/me/regime-request', x),
+    // PAY-22 NoPan: the portal's PAN link confirmation, checked by payroll in the proof queue.
+    onPanLink: (f: File) => write('/tax/me/pan-link', file(f)),
     onResidency: (x: ResidencyInput, f: File | null) =>
       write('/tax/me/residency', file(f, { residentialStatus: x.residentialStatus, trcValidTo: x.trcValidTo, dtaaCountry: x.dtaaCountry, form10fFiled: x.form10fFiled === undefined ? undefined : String(x.form10fFiled) })),
   };

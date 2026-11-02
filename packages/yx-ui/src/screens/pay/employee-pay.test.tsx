@@ -357,6 +357,32 @@ describe('PAY-22 / PAY-41 · Me › Tax (live)', () => {
     expect((await screen.findAllByText('Sent for HR review')).length).toBeGreaterThan(0);
   });
 
+  it('PAN inoperative: How to link PAN sends the portal confirmation to payroll; Send without it is refused (PAY-22 NoPan)', async () => {
+    const onPanLink = fn();
+    render(<TaxWorkspaceScreen live={live({ onPanLink, workspace: { ...WS, panStatus: 'inoperative' } })} />);
+    expect(screen.getByText('Your PAN is inoperative')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'How to link PAN' }));
+    const d = screen.getByRole('dialog', { name: 'Link your PAN with Aadhaar' });
+    await ue.click(within(d).getByRole('button', { name: 'Send to payroll' }));
+    expect(onPanLink).not.toHaveBeenCalled();
+    expect(within(d).getByText('Attach the link confirmation from the portal.')).toBeInTheDocument();
+    const pdf = new File(['%PDF-1.4'], 'pan-link.pdf', { type: 'application/pdf' });
+    await ue.upload(within(d).getByLabelText(/Link confirmation from the portal/, { selector: 'input' }), pdf);
+    await ue.click(within(d).getByRole('button', { name: 'Send to payroll' }));
+    await waitFor(() => expect(onPanLink).toHaveBeenCalledWith(pdf));
+    expect((await screen.findAllByText('PAN link proof sent to payroll. Payroll checks it.')).length).toBeGreaterThan(0);
+  });
+
+  it('PAN link: waiting shows that payroll checks it; refused shows why and offers it again', () => {
+    const sent = { id: 'pl1', taxYear: '2026-27', file: { name: 'pan-link.pdf', size: 900, type: 'application/pdf', at: '2026-10-30T10:00:00Z' }, status: 'pending' as const, comment: null, submittedAt: '2026-10-30T10:00:00Z', verifiedAt: null };
+    const { rerender } = render(<TaxWorkspaceScreen live={live({ onPanLink: fn(), workspace: { ...WS, panStatus: 'inoperative', panLinkRequest: sent } })} />);
+    expect(screen.getByText('PAN link proof sent to payroll')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'How to link PAN' })).not.toBeInTheDocument();
+    rerender(<TaxWorkspaceScreen live={live({ onPanLink: fn(), workspace: { ...WS, panStatus: 'inoperative', panLinkRequest: { ...sent, status: 'rejected', comment: 'It is for another PAN' } } })} />);
+    expect(screen.getByText(/Payroll did not accept your last confirmation: It is for another PAN/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'How to link PAN' })).toBeInTheDocument();
+  });
+
   it('residential status: a pending request shows its state and no form; a rejection shows payroll’s comment', () => {
     const req = { id: 'r1', from: 'resident' as const, residentialStatus: 'non_resident' as const, trcValidTo: '2027-03-31', dtaaCountry: 'SG', file: { name: 'trc.pdf', size: 10, at: '2026-10-20T10:00:00Z' }, comment: null, submittedAt: '2026-10-20T10:00:00Z' };
     const { unmount } = render(<TaxWorkspaceScreen live={live({ tab: 'residential', workspace: { ...WS, residencyRequest: { ...req, status: 'pending' } } })} />);

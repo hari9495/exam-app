@@ -2155,6 +2155,8 @@ export interface MyTaxWorkspace {
   canSendProofs?: boolean;
   /** Founder answer 3: the latest "ask HR to change my regime" request (Approvals). */
   regimeRequest?: { id: string; from: 'new' | 'old'; to: 'new' | 'old'; reason: string; status: 'pending' | 'approved' | 'rejected'; requestedAt: string; decidedAt: string | null } | null;
+  /** PAY-22 NoPan: the latest PAN link confirmation sent to payroll (waiting, or the last decision). */
+  panLinkRequest?: { id: string; taxYear: string; file: { name: string; size: number; type: string; at: string } | null; status: 'pending' | 'approved' | 'rejected'; comment: string | null; submittedAt: string; verifiedAt: string | null } | null;
   /** Founder answer 2: the latest residential-status request (payroll approves it with the TRC). */
   residencyRequest?: {
     id: string;
@@ -2260,6 +2262,8 @@ export interface LiveTax {
   onRegimeRequest: (x: { regime: 'new' | 'old'; reason: string }) => Promise<unknown>;
   /** Founder answer 2: POST tax/me/residency with the TRC (non-resident). */
   onResidency: (x: ResidencyInput, file: File | null) => Promise<unknown>;
+  /** PAY-22 NoPan: send the portal's PAN-Aadhaar link confirmation to payroll. */
+  onPanLink?: (file: File) => Promise<unknown>;
   onDeclare: (line: DeclarationInput) => Promise<unknown>;
   onProof: (lineId: string, file: File) => Promise<unknown>;
   onPartA: (c: MyCertificate) => Promise<unknown>;
@@ -2355,11 +2359,7 @@ function LiveTaxWorkspace({ live }: { live: LiveTax }) {
                 {error}
               </InlineAlert>
             )}
-            {w.panStatus === 'inoperative' && (
-              <InlineAlert tone="warning" title="Your PAN is inoperative">
-                Tax is taken at the higher of 20% or your slab rate until your PAN is linked with Aadhaar. Link it on the income-tax e-filing portal, then tell payroll so they can check it.
-              </InlineAlert>
-            )}
+            {w.panStatus === 'inoperative' && <PanLink w={w} onSend={live.onPanLink} />}
             <Tabs value={tab} onValueChange={(v) => setTab(v as TaxTab)}>
               <TabsList aria-label="Tax workspace">
                 <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -2967,6 +2967,64 @@ const RES_TEXT = { resident: 'Resident', non_resident: 'Non-resident' } as const
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** PAY-22 residential status (founder answer 2): a change waits for payroll with the TRC and Form 10F; pending shows here. */
+/** PAY-22 NoPan: the design's warning, "How to link PAN" and the sheet that sends the portal's confirmation to payroll. */
+function PanLink({ w, onSend }: { w: MyTaxWorkspace; onSend?: LiveTax['onPanLink'] }) {
+  const [open, setOpen] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const req = w.panLinkRequest ?? null;
+  if (req?.status === 'pending')
+    return (
+      <InlineAlert tone="warning" title="PAN link proof sent to payroll">
+        Payroll checks it. Until then tax stays at the higher rate.
+      </InlineAlert>
+    );
+  return (
+    <>
+      <InlineAlert
+        tone="warning"
+        title="Your PAN is inoperative"
+        actions={
+          onSend ? (
+            <Button size="sm" onClick={() => setOpen(true)}>
+              How to link PAN
+            </Button>
+          ) : undefined
+        }
+      >
+        {req?.status === 'rejected' ? `Payroll did not accept your last confirmation${req.comment ? `: ${req.comment}` : ''}. Send it again. ` : ''}
+        Tax is taken at the higher of 20% or your slab rate until your PAN is linked with Aadhaar. Link it on the income-tax e-filing portal, then send the confirmation to payroll.
+      </InlineAlert>
+      {open && onSend && (
+        <PayFormDrawer
+          title="Link your PAN with Aadhaar"
+          subtitle="Normal-rate tax resumes once payroll sees your PAN working."
+          confirm="Send to payroll"
+          done="PAN link proof sent to payroll. Payroll checks it."
+          errors={file ? [] : [{ fieldId: 'pan-proof', message: 'Attach the link confirmation from the portal.' }]}
+          onClose={() => {
+            setOpen(false);
+            setFile(null);
+          }}
+          onSave={() => onSend(file!)}
+        >
+          {(errorOf) => (
+            <>
+              <ol className="yx-pay-muted">
+                <li>On the income-tax e-filing portal, choose Link Aadhaar and enter your PAN and Aadhaar.</li>
+                <li>Pay the late-linking fee if the portal asks for it, then submit.</li>
+                <li>Download the confirmation once the portal shows your PAN as operative.</li>
+              </ol>
+              <FormField id="pan-proof" label="Link confirmation from the portal" required helper="A PDF, PNG or JPEG, up to 5 MB." error={errorOf('pan-proof')}>
+                <FileUpload id="pan-proof" accept={['.pdf', '.jpg', '.jpeg', '.png']} multiple={false} upload={async (x) => setFile(x)} onItemsChange={(items) => !items.length && setFile(null)} />
+              </FormField>
+            </>
+          )}
+        </PayFormDrawer>
+      )}
+    </>
+  );
+}
+
 function Residential({ w, onSend }: { w: MyTaxWorkspace; onSend: LiveTax['onResidency'] }) {
   const { toast } = useToast();
   const saved = w.residentialStatus ?? 'resident';

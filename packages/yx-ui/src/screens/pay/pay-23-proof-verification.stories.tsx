@@ -20,3 +20,7 @@ export const ResidencyBackToResident: S = { name: 'Residency · back to resident
 export const ResidencyApproved: S = { name: 'Residency · approved', args: { residency: 'approved' } };
 export const ResidencyRefused: S = { name: 'Residency · refused with a reason', args: { residency: 'refused' } };
 export const ResidencyOwn: S = { name: 'Residency · deciding your own · refused', args: { residency: 'own' } };
+// PAY-22 NoPan (2 Nov 2026): the PAN-Aadhaar link confirmation an employee sends is checked here.
+export const PanLinkQueue: S = { name: 'PAN link · in the queue', args: { panLink: 'queue' } };
+export const PanLinkDecide: S = { name: 'PAN link · confirmation · decide', args: { panLink: 'decide' } };
+export const PanLinkRefused: S = { name: 'PAN link · refused with a reason', args: { panLink: 'refused' } };
