@@ -197,7 +197,16 @@ describe('Lifecycle batch 6d', () => {
     await api('hr', 'put', `/lifecycle/exits/${k.id}/hr`).send({ hold: true, holdReason: 'Laptop data not handed over', version: k.version }).expect(200);
     await lastDay.sweepCase(org.A.id, k.id, tomorrowNoonIst());
     expect((await steps(k.id))['letters.relieving']).toBe('held');
-    expect(await inA((tx) => tx.letterIssue.count({ where: { subjectId: k.id } }))).toBe(0);
+    // PPL-28: the letters are made "held" (no reference number yet), with who held them and a reason that never repeats
+    // the HR-only one; the register shows them. A second sweep makes no second letter.
+    await lastDay.sweepCase(org.A.id, k.id, tomorrowNoonIst());
+    const held = await inA((tx) => tx.letterIssue.findMany({ where: { subjectId: k.id }, select: { letterType: true, status: true, referenceNo: true, holdReason: true, heldBy: true } }));
+    expect(held.map((l) => `${l.letterType}:${l.status}`).sort()).toEqual(['experience:held', 'relieving:held']);
+    expect(held.every((l) => l.referenceNo === null && l.heldBy === users.hr && /^Held (until clearance is done|by HR on the exit)\.$/.test(l.holdReason!))).toBe(true);
+    const reg = ((await api('hr2', 'get', '/letters/issued').expect(200)).body as { personId: string; status: string; hold: { reason: string; by: string } | null }[]).filter((l) => l.status === 'held');
+    expect(reg).toHaveLength(2);
+    expect(reg[0].hold).toMatchObject({ by: `hr ${run}`, reason: expect.stringMatching(/^Held/) });
+    expect(JSON.stringify(reg)).not.toContain('Laptop data');
     // Alumni: a code to the personal email; nothing yet in the vault.
     const mail = `sita.home-${run}@mail.test`;
     email.send.mockClear();
@@ -224,6 +233,31 @@ describe('Lifecycle batch 6d', () => {
     const moved = await inA((tx) => tx.employment.updateMany({ where: { employeeId: emp.sita }, data: { joinedOn: new Date('2010-06-01T00:00:00Z'), exitedOn: new Date('2018-01-31T00:00:00Z') } }));
     expect(moved.count).toBe(1);
     await alumni('get', '/me', t).expect(401);
+  });
+
+  it('PPL-28: a held letter is released from the register: HR with the exit key only; then the exit hold ends', async () => {
+    const neha = (await api('adminA', 'post', '/people/employees').send({ legalEntityId: ids.entity, status: 'confirmed', reason: 'Joined', givenName: 'Neha', familyName: run, employeeCode: 'LD-005', joinedOn: '2026-04-06', assignment: { locationId: ids.blr, departmentId: ids.dept, designationId: ids.desig, employmentTypeId: ids.perm, managerEmployeeId: null } }).expect(201)).body.id as string;
+    const k = (await api('hr', 'post', '/lifecycle/exits').send({ employeeId: neha, exitType: 'end_of_contract', lwd: today, reasonText: 'Contract ends' }).expect(201)).body;
+    await api('hr', 'put', `/lifecycle/exits/${k.id}/hr`).send({ hold: true, holdReason: 'Notice shortfall to recover', version: k.version }).expect(200);
+    await lastDay.sweepCase(org.A.id, k.id, tomorrowNoonIst());
+    const [rel, exp] = await inA((tx) => tx.letterIssue.findMany({ where: { subjectId: k.id }, orderBy: { letterType: 'desc' } }));
+    expect([rel.letterType, exp.letterType]).toEqual(['relieving', 'experience']);
+    // Wrong role, another company, not a letter id; a letter that is not held.
+    await api('mgr', 'post', `/letters/${rel.id}/release`).expect(403);
+    // Another company never reaches it (its admin has no letter key there, and the letter is not in it).
+    expect([403, 404]).toContain((await api('adminB', 'post', `/letters/${rel.id}/release`)).status);
+    await api('hr', 'post', '/letters/not-a-uuid/release').expect(400);
+    const ravis = await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { subjectId: ids.raviCase, letterType: 'relieving' } }));
+    expect((await api('hr', 'post', `/letters/${ravis.id}/release`).expect(409)).body.message).toBe('This letter is not held any more. Reload the letters.');
+    // Released: made and issued with its reference; again is refused; the exit is still held while one letter waits.
+    const out = (await api('hr2', 'post', `/letters/${rel.id}/release`).expect(200)).body;
+    expect(out).toMatchObject({ status: 'issued', referenceNo: expect.any(String), hold: null });
+    await api('hr2', 'post', `/letters/${rel.id}/release`).expect(409);
+    expect((await api('hr', 'get', `/lifecycle/exits/${k.id}`).expect(200)).body.lettersHeld).toBe(true);
+    await api('hr2', 'post', `/letters/${exp.id}/release`).expect(200);
+    expect((await api('hr', 'get', `/lifecycle/exits/${k.id}`).expect(200)).body.lettersHeld).toBe(false);
+    expect((await steps(k.id))['letters.experience']).toBe('done');
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'letter.released', entityId: { in: [rel.id, exp.id] } } }))).toBe(2);
   });
 
   it('the payroll hand-off: due two working days after the last day (holidays skipped); open clearance never moves it; an asset return makes a revision', async () => {
