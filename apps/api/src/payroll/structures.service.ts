@@ -362,9 +362,31 @@ export class PayStructuresService {
         const e = await this.employmentOn(tx, c.organizationId, dto.employeeId, dto.effectiveDate);
         if (!(await this.history.reachesFrom(tx, c, v, 'employee.salary.manage', e, dto.effectiveDate))) throw new NotFoundException('Not found');
         const { b } = await this.work(tx, c.organizationId, e, dto);
-        return { ...breakupJson(b), warnings: mwWarnings(b) };
+        return { ...breakupJson(b), warnings: mwWarnings(b), arrears: await this.arrearsPreview(tx, c.organizationId, e, dto.effectiveDate, b.monthlyGross) };
       }),
     );
+  }
+
+  /**
+   * PAY-12 "Back-dated revision · arrears preview": for each month from the effective date already paid in an approved
+   * regular payslip, the monthly gross difference (the first month prorated by calendar days). An estimate for the sheet;
+   * the arrears worksheet works the exact lines (PF, ESI) out with the payroll calculator once the change is approved.
+   */
+  private async arrearsPreview(tx: Tx, org: string, e: { id: string; legalEntityId: string }, effectiveDate: string, monthlyGross: Prisma.Decimal) {
+    await payScope(tx, [e.legalEntityId]);
+    const paid = await tx.payslip.findMany({ where: { organizationId: org, employmentId: e.id, status: 'approved', runType: 'regular', periodStart: { gte: asDate(`${effectiveDate.slice(0, 7)}-01`) } }, distinct: ['periodStart'], orderBy: { periodStart: 'asc' }, select: { periodStart: true } });
+    if (!paid.length) return [];
+    const out: { month: string; days: number; of: number; amount: string }[] = [];
+    for (const p of paid) {
+      const month = dateOf(p.periodStart).slice(0, 7);
+      const comp = await tx.compensation.findFirst({ where: { organizationId: org, employmentId: e.id, supersededAt: null, validFrom: { lte: p.periodStart }, OR: [{ validTo: null }, { validTo: { gte: p.periodStart } }] } });
+      const pkg = comp ? await tx.compensationPackage.findFirst({ where: { organizationId: org, changeId: comp.changeId }, select: { monthlyGross: true } }) : null;
+      const of = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate();
+      const days = effectiveDate.slice(0, 7) === month ? of - Number(effectiveDate.slice(8)) + 1 : of;
+      const diff = monthlyGross.sub(pkg?.monthlyGross ?? monthlyGross).mul(days).div(of);
+      out.push({ month, days, of, amount: diff.toDecimalPlaces(2).toFixed(2) });
+    }
+    return out;
   }
 
   /** A new or revised compensation: a P06 change (approved by someone else) with its breakup kept by change id. */

@@ -165,6 +165,8 @@ export interface Breakup {
   } | null;
   verify: boolean;
   warnings?: string[];
+  /** PAY-12: a back-dated revision's arrears for months already paid (the first month prorated). */
+  arrears?: { month: string; days: number; of: number; amount: string }[];
 }
 
 export interface SalaryTemplate {
@@ -224,6 +226,9 @@ export interface CompensationInput {
   entryMode: 'ctc' | 'fixed';
   annualCtc?: string;
   fixed?: Record<string, string>;
+  /** PAY-12 Hourly: paid by the month (default), or by an hourly or daily rate from approved timesheets or days. */
+  payBasis?: 'monthly' | 'hourly' | 'daily';
+  rate?: string;
 }
 
 export interface StatutoryProfileRow {

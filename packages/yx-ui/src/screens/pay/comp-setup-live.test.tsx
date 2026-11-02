@@ -69,6 +69,39 @@ describe('Compensation (PAY-12 live)', () => {
     await toastSays('Sent for approval. It takes effect once someone else approves it.');
   });
 
+  it('PAY-12 Arrears: a back-dated revision shows the arrears month by month with the total, from the preview', async () => {
+    const arrears = [
+      { month: '2026-08', days: 17, of: 31, amount: '2741.94' },
+      { month: '2026-09', days: 30, of: 30, amount: '5000.00' },
+    ];
+    const live = compLive({ onPreview: vi.fn(async () => ({ ...BREAKUP, arrears })) });
+    render(<CompensationScreen live={live} />);
+    const dialog = await openRevise();
+    await ue.clear(within(dialog).getByLabelText(/Effective from/));
+    await ue.type(within(dialog).getByLabelText(/Effective from/), '15/8/2026');
+    await pickOption(/Salary template/, /Staff standard · version 2/, dialog);
+    await ue.type(within(dialog).getByRole('textbox', { name: /New annual CTC/ }), '726000');
+    await ue.click(within(dialog).getByRole('button', { name: 'Send for approval' }));
+    const t = await within(dialog).findByRole('table', { name: /Arrears preview/ });
+    expect(within(t).getByText('August 2026 (17 of 31 days)')).toBeInTheDocument();
+    expect(within(t).getByText('₹7,741.94')).toBeInTheDocument();
+  });
+
+  it('PAY-12 Hourly: an hourly rate needs the rate (pressed too early, negative), then it is sent with the basis and rate', async () => {
+    const live = compLive();
+    render(<CompensationScreen live={live} />);
+    const dialog = await openRevise();
+    await ue.click(within(dialog).getByRole('radio', { name: 'Hourly rate' }));
+    await pickOption(/Salary template/, /Staff standard · version 2/, dialog);
+    await ue.type(within(dialog).getByRole('textbox', { name: /New annual CTC/ }), '726000');
+    await ue.click(within(dialog).getByRole('button', { name: 'Send for approval' }));
+    expect((await within(dialog).findAllByText('Give the hourly rate in rupees, for example 450.')).length).toBeGreaterThan(0);
+    expect(live.onPreview).not.toHaveBeenCalled();
+    await ue.type(within(dialog).getByRole('textbox', { name: /^Hourly rate/ }), '450');
+    await ue.click(within(dialog).getByRole('button', { name: 'Send for approval' }));
+    await waitFor(() => expect(live.onPreview).toHaveBeenCalledWith(expect.objectContaining({ payBasis: 'hourly', rate: '450' })));
+  });
+
   it('pressed too early: names the missing template and focuses it; nothing is worked out', async () => {
     const live = compLive();
     render(<CompensationScreen live={live} />);

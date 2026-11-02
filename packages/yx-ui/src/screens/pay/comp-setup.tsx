@@ -236,6 +236,24 @@ function annualBreakup(ctc: number): [string, number][] {
   return [rows[0], rows[1], ['Special allowance', special], ...rows.slice(2)];
 }
 
+/** PAY-12 "Back-dated revision · arrears preview": the arrears month by month with the total (design; also rendered live). */
+export function ArrearsPreviewTable({ rows, run }: { rows: { id: string; month: string; amount: number }[]; run: string }) {
+  return (
+    <PlainTable
+      label={`Arrears preview (paid in ${run})`}
+      hideHeader
+      caption={`Arrears preview (paid in ${run})`}
+      rows={rows}
+      getRowId={(m) => m.id}
+      columns={[
+        { key: 'month', header: 'Month', rowHeader: true, cell: (m) => m.month },
+        { key: 'amount', header: 'Arrears', num: true, cell: (m) => formatINR(m.amount) },
+      ]}
+      footer={[{ id: 'total', label: 'Total arrears', cells: { amount: formatINR(rows.reduce((t, m) => t + m.amount, 0)) } }]}
+    />
+  );
+}
+
 /** PAY-12 · Compensation tab (timeline, pay basis, breakup) and revision sheet with arrears preview. */
 export function CompensationScreen({ live, ...story }: Parameters<typeof SampleCompensationScreen>[0] & { /** The live app's /yx/payroll/compensation. */ live?: LiveCompensation }) {
   return live ? <LiveCompensationScreen live={live} /> : <SampleCompensationScreen {...story} />;
@@ -513,20 +531,7 @@ function SampleCompensationScreen({
                     ]}
                   />
                 )}
-                {arrearsMonths.length > 0 && (
-                  <PlainTable
-                    label="Arrears preview (paid in October run)"
-                    hideHeader
-                    caption="Arrears preview (paid in October run)"
-                    rows={arrearsMonths}
-                    getRowId={(m) => String(m)}
-                    columns={[
-                      { key: 'month', header: 'Month', rowHeader: true, cell: (m) => `${MONTHS[m]} 2026` },
-                      { key: 'amount', header: 'Arrears', num: true, cell: () => formatINR(grossDiff) },
-                    ]}
-                    footer={[{ id: 'total', label: 'Total arrears', cells: { amount: formatINR(grossDiff * arrearsMonths.length) } }]}
-                  />
-                )}
+                {arrearsMonths.length > 0 && <ArrearsPreviewTable run="October run" rows={arrearsMonths.map((m) => ({ id: String(m), month: `${MONTHS[m]} 2026`, amount: grossDiff }))} />}
                 {arrearsMonths.length > 0 && <p className="yx-pay-note">PF on arrears is attributed to the months they relate to; supplementary ECRs are raised for months already filed.</p>}
               </>
             )}

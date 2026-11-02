@@ -274,6 +274,11 @@ describe('Payroll batch 5b', () => {
     expect(p).toMatchObject({ monthlyCtc: '60500.00', warnings: [expect.stringMatching(/No skill class/)] });
     expect(p.lines.find((l: { code: string }) => l.code === 'pf_employee')).toMatchObject({ monthly: '1800.00', citation: { statute: 'IN.PF' } });
 
+    // PAY-12: nothing paid yet, so no arrears; an hourly or daily basis needs its rate (then it is worked out).
+    expect(p.arrears).toEqual([]);
+    expect((await api('payAdmin', 'post', '/payroll/compensations/preview').send({ ...body, payBasis: 'hourly' }).expect(400)).body.message).toMatch(/needs its rate/);
+    await api('payAdmin', 'post', '/payroll/compensations/preview').send({ ...body, payBasis: 'weekly', rate: '450' }).expect(400);
+    expect((await api('payAdmin', 'post', '/payroll/compensations/preview').send({ ...body, payBasis: 'hourly', rate: '450' }).expect(200)).body.lines.length).toBeGreaterThan(0);
     // Another entity's template is refused.
     expect((await api('payAdmin', 'post', '/payroll/compensations/preview').send({ ...body, templateVersionId: ids.versionA2 }).expect(400)).body.message).toMatch(/legal entity/);
     // YX-PAY-22: below the floor wage is a plain warning on the breakup.

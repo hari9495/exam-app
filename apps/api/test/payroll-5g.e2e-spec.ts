@@ -300,6 +300,11 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
   });
 
   it('arrears after a past-dated raise: corrected − as-paid per component, approved by someone else, paid in an arrears run with PF', async () => {
+    // PAY-12 Arrears: the preview of a back-dated revision lists the months already paid with the monthly gross difference.
+    const pre = (await api('payAdmin', 'post', '/payroll/compensations/preview').send({ employeeId: ids.emp1, effectiveDate: first, templateVersionId: ids.version, entryMode: 'ctc', annualCtc: '720000' }).expect(200)).body;
+    const daysIn = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate();
+    expect(pre.arrears).toEqual([expect.objectContaining({ month, days: daysIn, of: daysIn })]);
+    expect(Number(pre.arrears[0].amount)).toBeGreaterThan(0);
     const ch = (
       await api('payAdmin', 'post', `/payroll/employees/${ids.emp1}/compensation-changes`)
         .send({ employeeId: ids.emp1, effectiveDate: first, templateVersionId: ids.version, entryMode: 'ctc', annualCtc: '720000', reason: 'Raise from the start of the month' })

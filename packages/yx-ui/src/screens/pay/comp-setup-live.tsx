@@ -25,6 +25,7 @@ import { Timeline, type TimelineItem } from '../../components/timeline';
 import { formatDate, formatINR } from '../../lib/format';
 import { useRun } from '../org/org-kit';
 import { FactRow, SectionTitle } from './pay-kit';
+import { ArrearsPreviewTable } from './comp-setup';
 import { EntityPicker, statuteText } from './live/setup';
 import type { LoadState } from './live/types';
 import type {
@@ -58,6 +59,7 @@ const signedRupees = (n: number) => (n === 0 ? 'No change' : `${n > 0 ? '+' : '�
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const day = (s: string) => new Date(`${s.slice(0, 10)}T00:00:00`);
 const dateText = (s: string) => formatDate(day(s));
+const monthText = (m: string) => new Date(`${m}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const GRANTED_BY = 'your payroll admin';
 
@@ -321,6 +323,7 @@ export function LiveCompensationScreen({ live: p }: { live: LiveCompensation }) 
     ...(!form.templateVersionId ? [{ fieldId: 'cp-tpl', message: 'Choose the salary template.' }] : []),
     ...(!ctcOk ? [{ fieldId: 'cp-ctc', message: 'Give the annual CTC in rupees, for example 726000.' }] : []),
     ...(form.entryMode === 'fixed' && !Object.keys(form.fixed ?? {}).length ? [{ fieldId: 'cp-fixed', message: 'Give at least one amount, for example basic = 30000.' }] : []),
+    ...((form.payBasis ?? 'monthly') !== 'monthly' && !/^\d{1,12}(\.\d{1,2})?$/.test(form.rate ?? '') ? [{ fieldId: 'cp-rate', message: `Give the ${form.payBasis === 'hourly' ? 'hourly' : 'daily'} rate in rupees, for example 450.` }] : []),
   ];
   const previewEarly = useTooEarly(formErrors);
   const suggestEarly = useTooEarly(form.entryMode === 'ctc' && !ctcOk ? [{ fieldId: 'cp-ctc', message: 'Give the annual CTC in rupees, for example 726000.' }] : []);
@@ -397,7 +400,7 @@ export function LiveCompensationScreen({ live: p }: { live: LiveCompensation }) 
               cur
                 ? [
                     { label: 'Annual CTC', value: rupees(cur.annualCtc) },
-                    { label: 'Pay basis', value: cur.package?.entryMode === 'fixed' ? 'Fixed amounts' : 'Annual CTC' },
+                    { label: 'Pay basis', value: cur.package?.payBasis === 'hourly' ? `Hourly rate${cur.package.rate ? ` · ${rupees(cur.package.rate)} an hour` : ''}` : cur.package?.payBasis === 'daily' ? `Daily rate${cur.package.rate ? ` · ${rupees(cur.package.rate)} a day` : ''}` : cur.package?.entryMode === 'fixed' ? 'Fixed amounts' : 'Annual CTC' },
                     { label: 'Effective', value: dateText(cur.validFrom) },
                     ...(cur.package ? [{ label: 'Monthly gross', value: rupees(cur.package.monthlyGross) }] : []),
                   ]
@@ -596,8 +599,16 @@ export function LiveCompensationScreen({ live: p }: { live: LiveCompensation }) 
                   <TextField value={reason} onChange={setReason} placeholder="Promotion, annual review" />
                 </FormField>
               </FieldRow>
-              <FormField id="cp-mode" label="Pay basis" required>
-                <Segment label="Pay basis" value={form.entryMode} onChange={(v) => change({ entryMode: v })} options={[{ value: 'ctc', label: 'Annual CTC' }, { value: 'fixed', label: 'Fixed amounts' }]} />
+              <FormField id="cp-basis" label="Paid by" required helper={(form.payBasis ?? 'monthly') === 'monthly' ? undefined : 'Pay follows approved timesheet hours or days; the breakup below still sets PF, ESI and the other lines.'}>
+                <Segment label="Paid by" value={form.payBasis ?? 'monthly'} onChange={(v) => change({ payBasis: v, ...(v === 'monthly' ? { rate: undefined } : {}) })} options={[{ value: 'monthly', label: 'Monthly' }, { value: 'hourly', label: 'Hourly rate' }, { value: 'daily', label: 'Daily rate' }]} />
+              </FormField>
+              {(form.payBasis ?? 'monthly') !== 'monthly' && (
+                <FormField id="cp-rate" label={form.payBasis === 'hourly' ? 'Hourly rate' : 'Daily rate'} required error={submitEarly.errorOf('cp-rate') ?? previewEarly.errorOf('cp-rate')} helper={cur?.package?.rate ? `Current rate ${rupees(cur.package.rate)}` : undefined}>
+                  <CurrencyField value={form.rate ? Number(form.rate) : null} onChange={(v) => change({ rate: v === null ? undefined : String(v) })} />
+                </FormField>
+              )}
+              <FormField id="cp-mode" label="Breakup from" required>
+                <Segment label="Breakup from" value={form.entryMode} onChange={(v) => change({ entryMode: v })} options={[{ value: 'ctc', label: 'Annual CTC' }, { value: 'fixed', label: 'Fixed amounts' }]} />
               </FormField>
               {form.entryMode === 'ctc' ? (
                 <FormField id="cp-ctc" label="New annual CTC" required helper={cur ? `Current ${rupees(cur.annualCtc)}` : undefined} error={submitEarly.errorOf('cp-ctc') ?? previewEarly.errorOf('cp-ctc') ?? suggestEarly.errorOf('cp-ctc')}>
@@ -625,6 +636,8 @@ export function LiveCompensationScreen({ live: p }: { live: LiveCompensation }) 
                 ]}
               />
               {preview ? <BreakupTable b={preview} /> : <p className="yx-pay-note">Press Work out the breakup to see the lines and the minimum wage and Code wage checks.</p>}
+              {backdated && !!preview?.arrears?.length && <ArrearsPreviewTable run="the next run" rows={preview.arrears.map((a) => ({ id: a.month, month: `${monthText(a.month)}${a.days < a.of ? ` (${a.days} of ${a.of} days)` : ''}`, amount: Number(a.amount) }))} />}
+              {backdated && preview && !preview.arrears?.length && <p className="yx-pay-note">No month from this date is paid yet, so there are no arrears.</p>}
               {backdated && <p className="yx-pay-note">PF on arrears is attributed to the months they relate to; supplementary ECRs are raised for months already filed.</p>}
             </aside>
           </div>
