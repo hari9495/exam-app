@@ -270,6 +270,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // items always follow the legal basis whatever is chosen here.
   // M03 batch 5c (PAY-3.08, 3.12, §9.4): variance threshold, protected net, net rounding, standard hours, one-time review.
   'payroll.variance_threshold_pct': { label: 'Ask to confirm a net pay change above (%)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['5', '10', '15', '20', '25'], default: '10' },
+  // Founder answer 2 (2 Nov 2026): approving PAY-25 "Request access" gives read-only payroll reports for this many days.
+  'payroll.reports_access.days': { label: 'Payroll reports access given on request lasts (days)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['7', '30', '60', '90', '180', '365'], default: '90' },
   'payroll.protected_net_percent': { label: 'Recoveries leave at least this share of gross pay (%)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '10', '20', '25', '30', '40', '50'], default: '0' },
   'payroll.net_rounding': { label: 'Round net pay', scopes: ['tenant', 'legal_entity'], dated: false, values: ['none', 'rupee'], default: 'rupee' },
   // Founder decisions 5g-D4 / 5g-D5 (M03 §19.9): the daily rate leave encashment is paid at, and whether an unserved

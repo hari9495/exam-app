@@ -22,6 +22,11 @@ export class ReportsAccessDto {
   @IsString()
   @Length(10, 500)
   reason?: string;
+
+  /** The legal entity whose reports are asked for (founder answer 2); the person's own entity when left out. */
+  @IsOptional()
+  @IsUUID()
+  legalEntityId?: string;
 }
 
 export class PayReportQueryDto {
@@ -90,7 +95,7 @@ export class PayrollReportsController {
   @Post('access-request')
   @Throttle(MODERATE_UPLOAD_THROTTLE)
   requestAccess(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: ReportsAccessDto) {
-    return this.reports.requestAccess(ctx, this.user(req), dto.reason ?? 'Asked from the payroll reports page.');
+    return this.reports.requestAccess(ctx, this.user(req), dto.reason ?? 'Asked from the payroll reports page.', dto.legalEntityId);
   }
 
   @Get(':kind')

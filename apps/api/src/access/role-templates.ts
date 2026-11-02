@@ -16,6 +16,8 @@ export interface RoleTemplate {
 
 /** Not a template: the company role team pay access grants use (employee.salary.view only; its keys cannot be edited). */
 export const PAY_ACCESS_ROLE = 'pay_access';
+/** Not a template: the company role approved PAY-25 "Request access" grants use (payroll.reports.view only; its keys cannot be edited). */
+export const REPORTS_READ_ROLE = 'payroll_reports_read';
 
 const HR_VIEW = ['org.structure.view', 'employee.profile.view'];
 // M02 leave and attendance (step 4): HR reads in scope; HR Admin also sets up, adjusts, approves and handles Special

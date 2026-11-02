@@ -244,6 +244,15 @@ describe('PAY-25 payroll reports (live)', () => {
     expect(onRequestAccess).toHaveBeenCalledTimes(1);
   });
 
+  it('PAY-25: an approved request gives read-only access until a day; once ended it says so and can be asked again (founder answer 2)', () => {
+    const base = { id: 'w1', status: 'approved', askedAt: '2026-10-30T05:00:00Z', legalEntity: 'Kaveri Foods Pvt Ltd' };
+    const { rerender } = render(<PayrollReportsScreen live={live({ state: 'no-access', options: null, accessRequest: { ...base, grant: { validTo: '2027-01-27', status: 'active' } }, onRequestAccess: vi.fn() })} />);
+    expect(screen.getByText(/was approved: read-only access until 27 Jan 2027/)).toBeTruthy();
+    rerender(<PayrollReportsScreen live={live({ state: 'no-access', options: null, accessRequest: { ...base, grant: { validTo: '2027-01-27', status: 'ended' } }, onRequestAccess: vi.fn() })} />);
+    expect(screen.getByText('Your read-only access to Kaveri Foods Pvt Ltd ended on 27 Jan 2027. You can ask again.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Request access' })).toBeTruthy();
+  });
+
   it('PAY-25 NoAccess: a refused request says so and shows the reason (negative)', async () => {
     const onRequestAccess = vi.fn(async () => {
       throw new Error('No one else can give this access. Ask your System Admin.');

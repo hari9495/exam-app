@@ -3,6 +3,8 @@ import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
+import { addDays } from '../time/time-maths';
+import { REPORTS_READ_ROLE } from '../access/role-templates';
 import { settingFor } from '../people/probation';
 import type { ScopeUser } from '../access/scope';
 import { toCsv } from '../expenses/reports.service';
@@ -99,18 +101,53 @@ export class PayReportsService implements OnModuleInit {
       autoActions: false,
       distinctSteps: true,
       onDecided: async (tx, req, outcome) => {
-        await audit(tx, { organizationId: req.organizationId, isSuperAdmin: false } as CompanyContext, `payroll.reports_access.${outcome}`, 'user', req.subjectId, { requestId: req.id });
+        const c = { organizationId: req.organizationId, isSuperAdmin: false } as CompanyContext;
+        await audit(tx, c, `payroll.reports_access.${outcome}`, 'user', req.requesterUserId ?? req.subjectId, { requestId: req.id });
+        if (outcome === 'approved') await this.grantReports(tx, c, req);
       },
       requesterLink: () => '/yx/payroll/reports',
     });
   }
 
-  /** PAY-25: the person's latest request for payroll reports access (none = null). */
+  /**
+   * Founder answer 2 (2 Nov 2026): an approved request gives the requester a read-only payroll reports role for the legal
+   * entity asked for, from today for the company's number of days (setting payroll.reports_access.days, default 90). It is
+   * an ordinary role grant: it ends by itself, shows in Roles & access with its end date, and can be ended there early.
+   */
+  private async grantReports(tx: Tx, c: CompanyContext, req: Prisma.WfRequestGetPayload<object>) {
+    const org = c.organizationId;
+    // The request's subject is the legal entity asked for (older requests named the person: nothing to grant).
+    const entityId = req.subjectType === 'legal_entity' ? req.subjectId : null;
+    if (!entityId || !req.requesterUserId) return;
+    const by = (await tx.wfAction.findFirst({ where: { organizationId: org, requestId: req.id, action: { in: ['approved', 'self_approved'] } }, orderBy: { createdAt: 'desc' }, select: { actorUserId: true } }))?.actorUserId ?? null;
+    const days = Number(await settingFor(tx, c, 'payroll.reports_access.days', { legalEntityId: entityId }));
+    const today = todayIst();
+    const validTo = addDays(today, days - 1);
+    const role = await this.reportsRole(tx, org);
+    const grant = await tx.roleGrant.create({
+      data: { organizationId: org, userId: req.requesterUserId, permissionProfileId: role, scopeType: 'legal_entity', legalEntityId: entityId, validFrom: new Date(`${today}T00:00:00Z`), validTo: new Date(`${validTo}T00:00:00Z`), status: 'active', reason: `Payroll reports access asked for and approved (request ${req.id}).`, grantedBy: null, decidedBy: by, decidedAt: new Date() },
+    });
+    await audit(tx, { ...c, userId: by } as CompanyContext, 'access.grant.created', 'role_grant', grant.id, { userId: req.requesterUserId, role: 'Payroll reports (read only)', scopeType: 'legal_entity', legalEntityId: entityId, validFrom: today, validTo, days, status: 'active', reportsAccessRequestId: req.id });
+  }
+
+  /** The company role these grants use (payroll.reports.view only), made once. */
+  private async reportsRole(tx: Tx, org: string): Promise<string> {
+    const keys = JSON.stringify(['payroll.reports.view']);
+    const found = await tx.permissionProfile.findFirst({ where: { organizationId: org, templateKey: REPORTS_READ_ROLE }, select: { id: true } });
+    if (found) return found.id;
+    return (await tx.permissionProfile.create({ data: { organizationId: org, name: 'Payroll reports (read only, on request)', permissionsJson: keys, templateKey: REPORTS_READ_ROLE, templateChecked: true } })).id;
+  }
+
+  /** PAY-25: the person's latest request for payroll reports access (none = null), with the access it gave. */
   async myAccessRequest(ctx: TenantContext, user: ScopeUser) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const r = await tx.wfRequest.findFirst({ where: { organizationId: c.organizationId, requestType: REPORTS_ACCESS, requesterUserId: v.userId! }, orderBy: { createdAt: 'desc' }, select: { id: true, status: true, createdAt: true } });
-      return r ? { id: r.id, status: r.status, askedAt: r.createdAt } : null;
+      const r = await tx.wfRequest.findFirst({ where: { organizationId: c.organizationId, requestType: REPORTS_ACCESS, requesterUserId: v.userId! }, orderBy: { createdAt: 'desc' }, select: { id: true, status: true, createdAt: true, subjectType: true, subjectId: true } });
+      if (!r) return null;
+      const entityId = r.subjectType === 'legal_entity' ? r.subjectId : null;
+      const entity = entityId ? await tx.legalEntity.findFirst({ where: { organizationId: c.organizationId, id: entityId }, select: { name: true } }) : null;
+      const g = r.status === 'approved' ? await tx.roleGrant.findFirst({ where: { organizationId: c.organizationId, userId: v.userId!, reason: { contains: r.id } }, select: { validTo: true, status: true } }) : null;
+      return { id: r.id, status: r.status, askedAt: r.createdAt, legalEntity: entity?.name ?? null, ...(g ? { grant: { validTo: g.validTo!.toISOString().slice(0, 10), status: g.validTo! < new Date(`${todayIst()}T00:00:00Z`) ? 'ended' : g.status } } : {}) };
     });
   }
 
@@ -118,7 +155,7 @@ export class PayReportsService implements OnModuleInit {
    * PAY-25 "Request access": through the approvals engine to the people who grant roles (access.role.manage; a System
    * Admin when nobody holds it), never the requester. One open request at a time; the reason is kept and audited.
    */
-  async requestAccess(ctx: TenantContext, user: ScopeUser, reason: string) {
+  async requestAccess(ctx: TenantContext, user: ScopeUser, reason: string, legalEntityId?: string) {
     const v = await this.viewer(user);
     if (v.grants.has('payroll.reports.view')) throw new ConflictException('You already have payroll reports access.');
     const notices: Notice[] = [];
@@ -131,15 +168,28 @@ export class PayReportsService implements OnModuleInit {
       const approvers = granters.length ? granters : (await systemAdmins(tx, org)).filter((u) => u !== me);
       if (!approvers.length) throw new BadRequestException('No one else can give this access. Ask your System Admin.');
       const who = await tx.user.findFirst({ where: { organizationId: org, id: me }, select: { name: true, email: true } });
+      // Founder answer 2: scoped to what was asked: the entity named, else the entity of the person's current job.
+      const today = todayIst();
+      const own = legalEntityId
+        ? null
+        : await tx.employeeAssignment.findFirst({
+            where: { organizationId: org, supersededAt: null, validFrom: { lte: new Date(`${today}T00:00:00Z`) }, OR: [{ validTo: null }, { validTo: { gte: new Date(`${today}T00:00:00Z`) } }], employeeId: { in: (await tx.employee.findMany({ where: { organizationId: org, userId: me }, select: { id: true } })).map((e) => e.id) } },
+            orderBy: { validFrom: 'desc' },
+            select: { legalEntityId: true },
+          });
+      const entityId = legalEntityId ?? own?.legalEntityId ?? null;
+      const entity = entityId ? await tx.legalEntity.findFirst({ where: { organizationId: org, id: entityId }, select: { id: true, name: true } }) : null;
+      if (!entity) { if (legalEntityId) throw new NotFoundException('Not found'); throw new BadRequestException('Say which legal entity you need payroll reports for.'); }
+      const days = await settingFor(tx, c, 'payroll.reports_access.days', { legalEntityId: entity.id });
       const sub = await this.engine.submit(tx, c, {
         type: REPORTS_ACCESS,
-        subjectType: 'user',
-        subjectId: me,
+        subjectType: 'legal_entity',
+        subjectId: entity.id,
         title: `Payroll reports access for ${who?.name || who?.email || 'a colleague'}`,
         summary: [
-          { label: 'Asked for', value: 'Payroll reports (read only)' },
+          { label: 'Asked for', value: `Payroll reports (read only), ${entity.name}` },
           { label: 'Why', value: reason.slice(0, 300) },
-          { label: 'If you approve', value: 'Give the access in Roles & access (a role with payroll.reports.view).' },
+          { label: 'If you approve', value: `The access is given at once for ${days} days and ends by itself (Roles & access shows it).` },
         ],
         subjectPersonId: null,
         requesterUserId: me,
@@ -150,7 +200,7 @@ export class PayReportsService implements OnModuleInit {
         fallbackUserIds: [],
       });
       notices.push(...sub.notices);
-      await audit(tx, c, 'payroll.reports_access.requested', 'user', me, { requestId: sub.id, reason });
+      await audit(tx, c, 'payroll.reports_access.requested', 'user', me, { requestId: sub.id, reason, legalEntityId: entity.id });
       return { id: sub.id, status: 'pending' };
     });
     await this.engine.send(ctx, notices);

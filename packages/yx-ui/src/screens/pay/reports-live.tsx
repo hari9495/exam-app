@@ -97,6 +97,10 @@ export interface ReportsAccessRequest {
   id: string;
   status: string;
   askedAt: string;
+  /** The legal entity asked for (founder answer 2). */
+  legalEntity?: string | null;
+  /** The read-only access an approval gave, until its last day (it ends by itself). */
+  grant?: { validTo: string; status: string };
 }
 
 export interface LivePayrollReports {

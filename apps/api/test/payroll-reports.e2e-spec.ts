@@ -4,6 +4,7 @@ import request from 'supertest';
 import * as argon2 from 'argon2';
 import cookieParser from 'cookie-parser';
 import { randomUUID } from 'crypto';
+import { markSteppedUp } from './fixtures/step-up';
 import { Prisma } from '@prisma/client';
 import { BlobStorageService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { AppModule } from '../src/app.module';
@@ -377,7 +378,11 @@ describe('Payroll reports (PAY-25)', () => {
     await post('noKey', { reason: 'short' }).expect(400);
     await post('noKey', { reason: 'Need the CTC report', extra: 1 }).expect(400);
     expect((await post('payAdmin', {}).expect(409)).body.message).toMatch(/already have payroll reports access/);
-    const r = (await post('noKey', { reason: 'Budget review needs the CTC report' }).expect(201)).body;
+    // Founder answer 2: scoped to a legal entity: the one named, else the person's own (noKey has no job here).
+    expect((await post('noKey', { reason: 'Budget review needs the CTC report' }).expect(400)).body.message).toMatch(/Say which legal entity/);
+    await post('noKey', { reason: 'Budget review needs the CTC report', legalEntityId: 'not-a-uuid' }).expect(400);
+    await post('noKey', { reason: 'Budget review needs the CTC report', legalEntityId: randomUUID() }).expect(404);
+    const r = (await post('noKey', { reason: 'Budget review needs the CTC report', legalEntityId: ids.ka }).expect(201)).body;
     expect(r).toMatchObject({ status: 'pending' });
     expect((await post('noKey', {}).expect(409)).body.message).toMatch(/already waiting/);
     expect((await api('noKey', '/payroll/reports/access-request').expect(200)).body).toMatchObject({ id: r.id, status: 'pending' });
@@ -387,10 +392,46 @@ describe('Payroll reports (PAY-25)', () => {
     expect(task).toBeTruthy();
     expect(((await api('noKey', '/workflow/approvals/inbox').expect(200)).body as { title: string }[]).some((t) => /Payroll reports access/.test(t.title))).toBe(false);
     await request(server()).post(`/api/v1/workflow/approvals/tasks/${task.taskId}/decide`).set('Authorization', `Bearer ${token.adminA}`).send({ decision: 'approve' }).expect(200);
-    expect((await api('noKey', '/payroll/reports/access-request').expect(200)).body).toMatchObject({ status: 'approved' });
+    // Founder answer 2: approving gives a read-only reports role at once, for the entity asked, for the company's days
+    // (default 90), ending by itself; audited as a grant; listed with its end date.
+    const end = new Date(Date.now() + 330 * 60_000 + 89 * 86_400_000).toISOString().slice(0, 10);
+    expect((await api('noKey', '/payroll/reports/access-request').expect(200)).body).toMatchObject({ status: 'approved', legalEntity: 'Report Foods', grant: { validTo: end, status: 'active' } });
     expect(await inA((tx) => tx.auditLog.count({ where: { action: { in: ['payroll.reports_access.requested', 'payroll.reports_access.approved'] }, entityId: users.noKey } }))).toBe(2);
-    // The report itself still needs the key until it is given in Roles & access.
+    const grant = await inA((tx) => tx.roleGrant.findFirstOrThrow({ where: { userId: users.noKey } }));
+    expect(grant).toMatchObject({ scopeType: 'legal_entity', legalEntityId: ids.ka, status: 'active' });
+    expect(grant.validTo?.toISOString().slice(0, 10)).toBe(end);
+    expect(JSON.parse((await inA((tx) => tx.permissionProfile.findFirstOrThrow({ where: { id: grant.permissionProfileId } }))).permissionsJson)).toEqual(['payroll.reports.view']);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'access.grant.created', entityId: grant.id } }))).toBe(1);
+    // Read only and only the entity asked: KA reports open, TN does not, nothing can be changed.
+    const shown = (await api('noKey', '/payroll/reports').expect(200)).body;
+    expect(JSON.stringify(shown)).toContain(ids.ka);
+    expect(JSON.stringify(shown)).not.toContain(ids.tn);
+    await api('noKey', `/payroll/reports/register?legalEntityId=${ids.tn}&from=${P}&to=${M}`).expect((x) => expect([403, 404]).toContain(x.status));
+    await request(server()).post('/api/v1/payroll/runs').set('Authorization', `Bearer ${token.noKey}`).send({}).expect((x) => expect([400, 403]).toContain(x.status));
+    // The role's keys cannot be widened (an admin with a fresh second step still cannot).
+    await markSteppedUp(tenantPrisma, token.adminA);
+    await request(server()).patch(`/api/v1/organizations/permission-profiles/${grant.permissionProfileId}`).set('Authorization', `Bearer ${token.adminA}`).send({ permissions: ['payroll.reports.view', 'payroll.run.prepare'] }).expect(409);
+    // Ended (its last day passed): the key is gone by itself and the page says the access ended.
+    await inA((tx) => tx.roleGrant.update({ where: { id: grant.id }, data: { validFrom: new Date('2019-12-01T00:00:00Z'), validTo: new Date('2020-01-01T00:00:00Z') } }));
     await api('noKey', '/payroll/reports').expect(403);
+    expect((await api('noKey', '/payroll/reports/access-request').expect(200)).body).toMatchObject({ grant: { status: 'ended' } });
+  });
+
+  it('PAY-25: the number of days is the company setting; a refused request gives nothing', async () => {
+    const post = (who: Who, body: object) => request(server()).post('/api/v1/payroll/reports/access-request').set('Authorization', `Bearer ${token[who]}`).send(body);
+    await request(server()).put('/api/v1/org/settings').set('Authorization', `Bearer ${token.adminA}`).send({ key: 'payroll.reports_access.days', value: '30', scopeType: 'tenant' }).expect(200);
+    await request(server()).put('/api/v1/org/settings').set('Authorization', `Bearer ${token.adminA}`).send({ key: 'payroll.reports_access.days', value: '45', scopeType: 'tenant' }).expect(400);
+    const decide = async (decision: 'approve' | 'reject') => {
+      const task = ((await api('adminA', '/workflow/approvals/inbox').expect(200)).body as { taskId: string; title: string }[]).find((t) => /Payroll reports access/.test(t.title))!;
+      await request(server()).post(`/api/v1/workflow/approvals/tasks/${task.taskId}/decide`).set('Authorization', `Bearer ${token.adminA}`).send({ decision, ...(decision === 'reject' ? { reason: 'Not needed for your role' } : {}) }).expect(200);
+    };
+    await post('noKey', { reason: 'Second look at the CTC report', legalEntityId: ids.tn }).expect(201);
+    await decide('reject');
+    expect(await inA((tx) => tx.roleGrant.count({ where: { userId: users.noKey, legalEntityId: ids.tn } }))).toBe(0);
+    await post('noKey', { reason: 'Second look at the CTC report', legalEntityId: ids.tn }).expect(201);
+    await decide('approve');
+    const g = await inA((tx) => tx.roleGrant.findFirstOrThrow({ where: { userId: users.noKey, legalEntityId: ids.tn } }));
+    expect(g.validTo?.toISOString().slice(0, 10)).toBe(new Date(Date.now() + 330 * 60_000 + 29 * 86_400_000).toISOString().slice(0, 10));
   });
 
   it('bad input: unknown report, months the wrong way round or badly written, too many months, a page too big', async () => {

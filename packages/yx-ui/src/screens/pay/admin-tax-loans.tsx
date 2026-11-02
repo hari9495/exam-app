@@ -1459,9 +1459,11 @@ export function ReportsNoAccess({ live }: { /** Live: the latest request and "Re
             title="You don't have access to payroll reports"
             description={
               pending
-                ? `Request sent on ${formatDate(new Date(req!.askedAt))}. Someone who gives access decides; you'll get a notification.`
-                : req?.status === 'approved'
-                  ? `Your request of ${formatDate(new Date(req.askedAt))} was approved. The access starts once it is set up in Roles & access; ask again if it does not.`
+                ? `Request sent on ${formatDate(new Date(req!.askedAt))}${req!.legalEntity ? ` for ${req!.legalEntity}` : ''}. Someone who gives access decides; you'll get a notification.`
+                : req?.status === 'approved' && req.grant && req.grant.status !== 'active'
+                  ? `Your read-only access${req.legalEntity ? ` to ${req.legalEntity}` : ''} ended on ${formatDate(new Date(`${req.grant.validTo}T00:00:00`))}. You can ask again.`
+                  : req?.status === 'approved'
+                  ? `Your request of ${formatDate(new Date(req.askedAt))} was approved${req.grant ? `: read-only access until ${formatDate(new Date(`${req.grant.validTo}T00:00:00`))}. Reload the page to open the reports.` : '. Reload the page to open the reports.'}`
                   : req?.status === 'rejected'
                     ? `Your request of ${formatDate(new Date(req.askedAt))} was turned down. You can ask again.`
                     : 'Payroll reports need payroll access for a legal entity. Ask for it here; someone who gives access decides.'
