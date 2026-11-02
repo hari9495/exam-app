@@ -8071,5 +8071,326 @@
       "Portals T9-01 OfferLetters"
     ],
     "note": "Positive and negative. The same happens on Mark joined (the joined employee's waiting letters show 'No longer needed')."
+  },
+  {
+    "id": "MT-TIM-L-01",
+    "area": "Time · Leave type editor",
+    "screen": "Most days in a month (positive)",
+    "url": "http://localhost:3000/yx/time/setup/types",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Open Leave types & policies, open Earned leave from the Leave types menu.",
+      "Open Rules. Type 3 in \"Most days in a month\". Click Save."
+    ],
+    "expected": "A toast says it is saved. Opening the type again shows 3 in \"Most days in a month\".",
+    "stories": [
+      "Time · TIM-27 · Leave type editor · Rules"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-L-02",
+    "area": "Time · Leave type editor",
+    "screen": "Most days in a month smaller than one request (negative)",
+    "url": "http://localhost:3000/yx/time/setup/types",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "On Earned leave › Rules, type 3 in \"Most days in a month\" and 5 in \"Most days in one request\".",
+      "Click Save."
+    ],
+    "expected": "Save is not greyed out. Nothing is saved; \"Most days in one request\" shows \"More than the monthly limit of 3 days. A request that big can never be approved.\" and the cursor moves there.",
+    "stories": [
+      "Time · TIM-27 · Leave type editor · Rules"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-L-03",
+    "area": "Time · My leave",
+    "screen": "Most days in a month enforced on apply (positive and negative)",
+    "url": "http://localhost:3000/yx/time/leave",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
+    "steps": [
+      "Do MT-TIM-L-01 first (3 days a month).",
+      "Apply Earned leave for 2 working days in one month two months ahead. It is sent.",
+      "Apply Earned leave for 2 more working days in the same month.",
+      "Then apply a half day (second half) in that month."
+    ],
+    "expected": "The second request is refused: \"Earned leave is at most 3 days in a month. You already have 2 days in <Month Year>, so up to 1 day more can be taken then.\" The half day is accepted (2.5 of 3).",
+    "stories": [
+      "Time · TIM-27 · Leave type editor · Rules"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-L-04",
+    "area": "Time · Leave type editor",
+    "screen": "Cash-in limits and payout (positive)",
+    "url": "http://localhost:3000/yx/time/setup/types",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Open Earned leave › Year end. Turn on \"Can be cashed in\" if it is off.",
+      "Type 10 in \"Encash per year in total\", 0 in \"Keep at least\", choose \"Monthly pay ÷ 30\", turn off \"Pay out the balance when someone leaves\". Save."
+    ],
+    "expected": "A toast says it is saved. The helper names the company default (for example 7 days) for a blank field. Opening again shows the values.",
+    "stories": [
+      "Time · TIM-27 · Leave type editor · Year end"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-L-05",
+    "area": "Time · Leave type editor",
+    "screen": "Cash-in limits on a type that cannot be cashed in (negative)",
+    "url": "http://localhost:3000/yx/time/setup/types",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Open Casual leave › Year end with \"Can be cashed in\" off."
+    ],
+    "expected": "The cash-in limits and payout fields are not shown. Saving sends no limits (the server would refuse them: \"Turn on Can be cashed in before setting cash-in limits or the payout.\").",
+    "stories": [
+      "Time · TIM-27 · Leave type editor · Year end"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-L-06",
+    "area": "Time · Leave type editor",
+    "screen": "Absence & notice choices (positive)",
+    "url": "http://localhost:3000/yx/time/setup/types",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Open Earned leave › Absence & notice.",
+      "Note the \"Company default (…)\" choice is ticked and names the company value.",
+      "Choose \"Keep crediting\" and \"Not allowed\". Save."
+    ],
+    "expected": "A toast says it is saved; opening again shows both choices.",
+    "stories": [
+      "Time · TIM-27 · Leave type editor · Absence & notice"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-L-07",
+    "area": "Time · My leave",
+    "screen": "Leave during the notice period not allowed for the type (negative)",
+    "url": "http://localhost:3000/yx/time/leave",
+    "account": "An employee with an accepted resignation (exit case) whose last day is later this month",
+    "steps": [
+      "Do MT-TIM-L-06 first (Earned leave: Not allowed during notice).",
+      "Apply Earned leave for a day before the last working day."
+    ],
+    "expected": "Refused: \"Earned leave can't be taken during the notice period. Ask HR if you need leave before <date>.\" Casual leave still follows the company setting.",
+    "stories": [
+      "Time · TIM-27 · Leave type editor · Absence & notice"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-L-08",
+    "area": "Time · Leave type editor",
+    "screen": "Statutory maternity view (positive)",
+    "url": "http://localhost:3000/yx/time/setup/types",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Open the Maternity leave type (kind Maternity)."
+    ],
+    "expected": "The page says \"Statutory · Maternity Benefit Act 1961\". An info box gives 26 weeks (8 before delivery), 12 weeks from the 3rd child or adoption, 6 after miscarriage, 2 after tubectomy, 80 days worked. Name, Code, Length 26 weeks and Pay are text, not fields. Only Colour can change; \"Save colour\" saves it with a toast.",
+    "stories": [
+      "Time · TIM-27 · Leave type editor · Statutory template · maternity"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-L-09",
+    "area": "Time · Leave type editor",
+    "screen": "Statutory maternity below the law (negative, server)",
+    "url": "http://localhost:3000/yx/time/setup/types",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi) (or an API client)",
+    "steps": [
+      "Send PUT /api/v1/time/setup/types/<maternity id> with rules.maxDays 181 (or paid false)."
+    ],
+    "expected": "Refused with 400: \"Maternity leave can be up to 26 weeks by law (Maternity Benefit Act 1961). The most days in one request can't be below 182.\" (paid false: \"…is paid by law…\"). Nothing changes; the audit has no change row.",
+    "stories": [
+      "Time · TIM-27 · Leave type editor · Statutory template · maternity"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-L-10",
+    "area": "Time · Year-end",
+    "screen": "Year end with pay-outs (positive)",
+    "url": "http://localhost:3000/yx/time/setup/year-end",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Pick last year's 31 Dec. Continue to Preview.",
+      "Find a person whose Earned leave is over the policy's carry-forward limit (Earned leave can be cashed in)."
+    ],
+    "expected": "The row reads \"<balance> → <cap> carried · N to pay out\" with a lapse badge for the rest. The totals show \"Paid out\" with \"Amounts are shown in payroll\".",
+    "stories": [
+      "Time · TIM-29 · Year-end wizard · Year-end · preview"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-L-11",
+    "area": "Time · Year-end",
+    "screen": "Year end posted once (negative)",
+    "url": "http://localhost:3000/yx/time/setup/year-end",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Post last year's year end (type LEAVE YEAR <year>).",
+      "Reload the page and pick the same date. Try to post again from another browser tab that still shows Post."
+    ],
+    "expected": "After reload the page says \"Year-end <year> posted on <date>\" with who posted, and no Post button. The other tab's post is refused: \"Year end for 31 Dec <year> was already posted by Lakshmi…\". Ledger shows lapse and encashed entries once.",
+    "stories": [
+      "Time · TIM-29 · Year-end wizard · Year-end · posted (on 2 Jan 2027)"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-L-12",
+    "area": "Time · Year-end",
+    "screen": "Change leave year preview (positive)",
+    "url": "http://localhost:3000/yx/time/setup/year-end?mode=transition",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Choose the entity; New leave year starts in April.",
+      "Continue to Preview."
+    ],
+    "expected": "Scope says \"A short year is created\" from 1 Jan to 31 Mar (3 months). Preview lists each person: opening, short-year credit, balance on 31 Mar, then carried with any lapse badge. Search by name works.",
+    "stories": [
+      "Time · TIM-29 · Year-end wizard · Leave-year change · scope",
+      "Time · TIM-29 · Year-end wizard · Leave-year change · preview"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-L-13",
+    "area": "Time · Year-end",
+    "screen": "Change leave year to the same month (negative)",
+    "url": "http://localhost:3000/yx/time/setup/year-end?mode=transition",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Choose New leave year starts in January (the current start)."
+    ],
+    "expected": "A warning \"This change can not be made: The leave year already starts in that month.\" Post transition says why and posts nothing.",
+    "stories": [
+      "Time · TIM-29 · Year-end wizard · Leave-year change · scope"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-L-14",
+    "area": "Time · Year-end",
+    "screen": "Post the leave-year change once (positive and negative)",
+    "url": "http://localhost:3000/yx/time/setup/year-end?mode=transition",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Do MT-TIM-L-12, then Post transition; click Post entries before typing (nothing happens), then type SHORT YEAR <year> and post.",
+      "Open the page again and try another month."
+    ],
+    "expected": "A toast \"Leave-year change scheduled\" and the page shows it scheduled. Opening again shows the scheduled change, not the wizard. An API post for the same entity is refused (409: \"…already moves to a new leave year on 1 Jan … Only one change can wait at a time.\").",
+    "stories": [
+      "Time · TIM-29 · Year-end wizard · Leave-year change · posted"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-L-15",
+    "area": "Time · My attendance",
+    "screen": "Ask for on duty (positive)",
+    "url": "http://localhost:3000/yx/time/attendance",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
+    "steps": [
+      "Click Regularise a day, choose On duty.",
+      "Pick yesterday. Where: Hosur plant. From 08:30, To 18:00. Reason: Supplier audit. Send request."
+    ],
+    "expected": "The effect says \"On duty at Hosur plant, 8:30 am – 6:00 pm\". A toast \"Sent to your manager\". \"Waiting for approval\" lists \"<date> · On duty at Hosur plant\".",
+    "stories": [
+      "Time · TIM-07 · Attendance request · On duty with location"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-L-16",
+    "area": "Time · My attendance",
+    "screen": "On duty pressed too early and bad times (negative)",
+    "url": "http://localhost:3000/yx/time/attendance",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
+    "steps": [
+      "Choose On duty and click Send request with nothing filled.",
+      "Fill Where, From 18:00, To 08:30 and a reason; Send.",
+      "Pick a date 40 days ahead."
+    ],
+    "expected": "Send is never greyed out. First: \"Enter where you will be\", the cursor moves to Where. Then: \"Enter a To time after From\". The far date: \"Pick a date in the next 30 days\". Nothing is sent.",
+    "stories": [
+      "Time · TIM-07 · Attendance request · On duty with location",
+      "Time · TIM-07 · Attendance request · Validation error"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-L-17",
+    "area": "Time · Approvals",
+    "screen": "Send on duty back, change and send again (positive)",
+    "url": "http://localhost:3000/yx/approvals",
+    "account": "panel@demo-org.test (Manager - Divya), then arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
+    "steps": [
+      "As Divya, open Arjun's on-duty request; choose Send back for changes with \"Add the plant gate time\".",
+      "As Arjun, open My attendance: the request shows \"Sent back for changes: Add the plant gate time\". Click Change and send again, change From, Send."
+    ],
+    "expected": "Arjun gets a new request sent; the old one is closed as sent again. Divya sees the new one in Approvals.",
+    "stories": [
+      "Time · TIM-07 · Attendance request · On duty with location"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-L-18",
+    "area": "Time · Approvals",
+    "screen": "On duty decided by the wrong person (negative)",
+    "url": "http://localhost:3000/yx/approvals",
+    "account": "kavya@demo-org.test (Manager - Kavya), not Arjun's manager",
+    "steps": [
+      "Look for Arjun's on-duty request in Approvals; try the task link from Divya's inbox."
+    ],
+    "expected": "Kavya does not see it; the task link answers \"Not found\".",
+    "stories": [
+      "Time · TIM-07 · Attendance request · On duty with location"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-L-19",
+    "area": "Time · Day card",
+    "screen": "Approved on-duty day (positive)",
+    "url": "http://localhost:3000/yx/time/attendance",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya); then panel@demo-org.test (Manager - Divya) on the muster",
+    "steps": [
+      "As Divya approve Arjun's on-duty request for yesterday.",
+      "As Arjun open yesterday on the calendar. As Divya open the same day on Time › Muster."
+    ],
+    "expected": "The day is \"On duty\" with \"Hosur plant · 8:30 am – 6:00 pm\"; Worked shows the on-duty time; the day counts as present in the totals.",
+    "stories": [
+      "Time · TIM-03 · Day card · On duty · field-recorded, offline punch"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-L-20",
+    "area": "Time · Day card",
+    "screen": "Half a day on duty (positive and negative)",
+    "url": "http://localhost:3000/yx/time/attendance",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
+    "steps": [
+      "Ask on duty for a past day 09:30–13:30 only (no punches that day); have it approved.",
+      "Ask on duty for 09:30–09:50."
+    ],
+    "expected": "The first day is a Half day (4 hours on duty). The second is refused: \"On duty is at least 30 minutes.\"",
+    "stories": [
+      "Time · TIM-03 · Day card · On duty · field-recorded, offline punch"
+    ],
+    "note": ""
   }
 ]

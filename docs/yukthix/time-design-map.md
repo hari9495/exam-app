@@ -12,13 +12,13 @@ live page cannot reach yet (the reason is given).
 
 | | live | feature not built | phone view | gap |
 |---|---|---|---|---|
-| Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 99 | 4 | 19 | 0 |
+| Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 101 | 2 | 19 | 0 |
 | Leave (TIM-17…25) | 48 | 0 | 11 | 0 |
-| Set-up (TIM-26…29, 31, 42) | 29 | 6 | 0 | 0 |
+| Set-up (TIM-26…29, 31, 42) | 34 | 1 | 0 | 0 |
 | Rosters and shifts (TIM-05, 06, 08, 34, 35, 38…41) | 44 | 2 | 10 | 0 |
 | Overtime, periods, reports, timesheets (TIM-09, 11, 15, 16, 30, 37, 43) | 49 | 0 | 3 | 0 |
 | Field force (TIM-32, 33) | 7 | 0 | 9 | 0 |
-| **All 45 design groups (340 sub-pages counted)** | **276** | **12** | **52** | **0** |
+| **All 45 design groups (340 sub-pages counted)** | **283** | **5** | **52** | **0** |
 
 Counted from the stories and the rows below by script (29 Oct 2026, after rosters/devices/field, the roster fixes and founder decisions 1-7 were merged into the test app). Section counts further down may be older; this table is the current one.
 Recounted by script on 30 Oct 2026 (time small items: TIM-13 Training, Leave, UnknownCode and the new TrainingNone story live; TIM-26 Clone and
@@ -41,6 +41,12 @@ PLT-04 "Approvals · send back for changes".
 2 Nov 2026 (branch `feat/yukthix-time-q34`, follow-up items 3 and 4): three new TIM-03 stories, all live (Note, NoteMgr,
 NoteHr · punch with a note): Attendance 96 → 99 live, all 337 → 340 sub-pages, 273 → 276 live. Expense send back has no
 new story (the claim page and PLT-04 SendBack already drew it).
+
+2 Nov 2026 (branch `feat/yukthix-time-leave-rules`): recounted by script over the story rows (timecount3: a row whose
+"where it shows live" starts with "gap" or "phone view", or says "feature not built", is not live). Made live: TIM-03 OnDuty,
+TIM-07 OnDuty, TIM-27 Notice and Statutory, TIM-29 Transition, TransitionPreview and TransitionPosted; the TIM-27 Rules and
+Year end rows no longer have parts not built. Attendance 99 → 101 live, Set-up 29 → 34; all 340 sub-pages: 283 live, 5 not
+built (TIM-07 Ot, TIM-31 Multi, two roster stories, Extra · today one), 52 phone, 0 gaps.
 
 Kit (24 stories) are shared parts, not pages; section E lists which live screens use them.
 
@@ -221,7 +227,7 @@ Question: an HR "open again" for a month HR froze exists in the API (POST /time/
 |---|---|
 | Employee · outside-geofence punch | /yx/time/attendance → a day; refused punches show "Not recorded: reason" (map left out, see gaps) |
 | MissingOut · missing check-out, Fix | /yx/time/attendance → a missing day → Fix this day → TIM-07 sheet |
-| OnDuty · field-recorded, offline punch | feature not built (no on-duty or offline punches in the API) |
+| OnDuty · field-recorded, offline punch | /yx/time/attendance → a day with approved on duty: the header "On duty" with the place and times (from the day card's `onDuty`); the same card for the manager and HR on the muster. The time counts as worked (2 Nov 2026). Offline punches stay with the device sync (TIM-10) |
 | Late · Manager · late day | /yx/time/muster (manager) → a late day |
 | Overtime · HR · overtime day | /yx/time/muster → a day with overtime: "N h · approved / pending approval / not claimed yet" |
 | PendingOt · Manager · pending overtime | /yx/time/muster (the approver) → a day with a pending claim: Approve overtime / Reject (reason) / Give comp-off (weekly off or holiday) |
@@ -253,8 +259,8 @@ Question: an HR "open again" for a month HR froze exists in the API (POST /time/
 | OverLimit · over monthly limit → HR | same, when the month's fixes are used up ("Goes to your manager, then HR") |
 | LateRequest · locked date | /yx/time/attendance → a day of a frozen or locked month → the sheet sends a late correction (manager → HR → payroll; reason of 10+ letters; up to payroll.late_request_max_days, default 60) |
 | Wfh · WFH | /yx/time/attendance → Request work from home (or ?request=wfh from Home) |
-| OnDuty · with location | feature not built (no on-duty API) |
-| Ot · OT pre-approval | feature not built here (overtime claims are on /yx/time/overtime) |
+| OnDuty · with location | /yx/time/attendance → Regularise a day → On duty: date (attendance.on_duty.ahead_days 30 / back_days 60), Where, From, To (at least 30 min), reason; field errors and focus, effect preview, toast. To the manager (P03), who may approve, turn down or send it back for changes (attendance.on_duty.send_back, default on); a sent-back one shows in "Waiting for approval" with the reason → Change and send again, or Withdraw (2 Nov 2026) |
+| Ot · OT pre-approval | feature not built: the overtime module has no pre-approval (claims are made after the work on /yx/time/overtime, and TIM-09 only shows a "pre-approved" flag from sample data). Building it needs a planned-OT record, the claim to read it, and the over-cap rule decided (Question) |
 | Invalid · Validation error | the sheet → Send with a field missing (error on the field, focus moves there) |
 | Sent | toast "Sent to your manager" and the sheet closes (house rule: done = toast) |
 | Phone | phone view, mobile app not built |
@@ -610,10 +616,10 @@ the three new pages are reachable only by address.
 | Counting · Counting · live example | /yx/time/setup/types/<id> → Counting tab (weekly offs/holidays rule, applies to, half days) with the live example over the next weekend |
 | Basics | → Basics tab: name, code (fixed once saved), kind (Question: kept from the old page), pay (paid/unpaid; "partially paid" not built), colour, in use. Save with a bad code / no name / paid "without pay" → field errors, Basics tab opens |
 | Crediting | → Crediting tab: read-only, each policy's days and how it credits (set in the policy) |
-| Rules | → Rules tab: notice days (blank = the company default, named in the helper; sick leave none), least/most days, document after, below zero, HR approval above, medical. "Most days in a month": feature not built; "dates when no one can take it" is now the company block dates on Leave policies (TIM-28), with the leave types picked there |
-| YearEnd · Year end | → Year end tab: each policy's carry-forward (read-only) and "can be cashed in". Encash limits and payout formula: feature not built |
-| Notice · Absence & notice | feature not built |
-| Statutory · Statutory template · maternity | feature not built (statutory types are not locked by law in the API) |
+| Rules | → Rules tab: notice days (blank = the company default, named in the helper; sick leave none), least/most days, "Most days in a month" (0.5–31, pending and approved together, half days exact; enforced on apply with the month named; a request bigger than the month is refused on save, field focused), document after, below zero, HR approval above, medical. "Dates when no one can take it" is the company block dates on Leave policies (TIM-28) (2 Nov 2026) |
+| YearEnd · Year end | → Year end tab: each policy's carry-forward (read-only), "can be cashed in", and for a cash-in type: encash per year up to, keep at least, pay for each day (company default ÷ 26/30, or the type's own), pay out at exit. Blank = the company setting (named). Payroll reads them: in-service cash-in, the year-end pay-out (TIM-29) and the final settlement (2 Nov 2026) |
+| Notice · Absence & notice | → Absence & notice tab: crediting during a sabbatical or long unpaid leave (company default / stop / keep), and leave during the notice period (company default / allowed / moves the last day / not allowed). "Counted as unpaid leave": not offered (Question) (2 Nov 2026) |
+| Statutory · Statutory template · maternity | /yx/time/setup/types/<maternity type> → "The law sets these values" (P07 IN.LEAVE: 26 weeks, 12 from the 3rd child or adoption, 8 before delivery, 80 days worked), Set by law (read-only), Set by you (colour), Save colour. The server refuses shorter, unpaid, reduced pay, a monthly limit, refusing short notice or switching it off, with the law named (2 Nov 2026). Paternity: locked only where a state IN.LEAVE rule gives it (none seeded, Question) |
 
 ### TIM-28 · Leave policies
 
@@ -637,11 +643,13 @@ the three new pages are reachable only by address.
 | PendingBlocked · pending requests | /yx/time/setup/year-end → Scope lists the pending requests; Post is blocked until "Post anyway" is ticked (the API answers 409 otherwise) |
 | Post · typed confirmation | → Post year-end → type LEAVE YEAR <year> → Post entries |
 | Posted · posted | → after posting: "Year end is being posted" (stays, founder OK) |
-| Transition · Leave-year change · scope | feature not built |
-| TransitionPreview | feature not built |
-| TransitionPosted | feature not built |
+| Transition · Leave-year change · scope | /yx/time/setup/year-end?mode=transition → Scope: entity, new leave year (default April), "A short year is created" (from the day after the next year end); a change that can't be made says why (same month, a short year running) (2 Nov 2026) |
+| TransitionPreview | → Preview: per person and type, opening (after the year end, credits still due, cap applied), short-year credit (its months only), balance at its end → carried / to pay out / lapse; search; failed preview → Try again |
+| TransitionPosted | → Post transition → type SHORT YEAR <year> → "Leave-year change scheduled" (toast too); audited `leave.year_change.scheduled`; once per entity and date (a second one while one waits: 409). The page shows the scheduled change when opened again |
 
 Letters and notices step: feature not built (left out live).
+Year end (2 Nov 2026): over the carry-forward cap, a cash-in type is paid out up to its yearly cash-in limit (setting `leave.year_end.encash_excess`, default on), the rest lapses; the preview shows "· N to pay out" and a Paid out total; posting writes `encashed` ledger entries and a one-time pay (leave_encashment) for payroll. A year end is posted once per policy and date (`leave_year_runs`); the page then says "posted on … by …" and a second post is refused (409 YEAR_END_POSTED).
+Menu: "Change leave year" has no menu link yet (reachable by address, like the other new set-up pages).
 
 ### TIM-31 · Locations and geofence editor
 
