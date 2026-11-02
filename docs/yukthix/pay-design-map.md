@@ -1686,3 +1686,12 @@ Questions (safe default built):
 6. PAY-41: rent with no rent declared counts for the whole tax year in a non-metro city. Suggested: keep (the lower,
    safer exemption); a metro choice can be added to the design.
 
+
+## Founder answers, 2 Nov 2026 (pay gaps run and last 13 rows, "ok for all")
+Build: (1) an optional order number on the retrenchment permission in People > Exits, shown on the run; (2) approving
+"Request access" grants a time-limited read-only payroll reports role automatically, days a company setting (default 90);
+(3) the Time roster check counts call-out hours towards the weekly limit when the on-call rule says so; (4) the API refuses
+LOP input for a frozen month (late request only); (7) a "held" column and Release on the PAY-32 results sheet, designed
+first then wired. Keep as built: (5) the preparer publishes without a reason when others can publish; (6) the NoPan line
+about Me > Documents stays out; (8) EWA reconciliation for run approvers; (9) deferred counts the EWA deduction first;
+(10) the auditor role has no own-equity key; (11) a what-if rent uses the non-metro rate.
