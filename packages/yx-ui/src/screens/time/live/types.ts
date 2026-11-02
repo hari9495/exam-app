@@ -281,7 +281,19 @@ export interface Muster {
   from: string;
   to: string;
   scope: 'team' | 'granted' | 'company';
-  people: { id: string; name: string; code: string | null; location: string; me: boolean; mode: string; missingPunchEffect: string; remindedOn?: string[]; days: DayRow[] }[];
+  people: {
+    id: string;
+    name: string;
+    code: string | null;
+    location: string;
+    me: boolean;
+    mode: string;
+    missingPunchEffect: string;
+    remindedOn?: string[];
+    days: DayRow[];
+    /** In the viewer's reporting line (founder 2 Nov 2026): what Pre-approve overtime needs; absent for everyone else. */
+    ot?: { aheadDays: number; factoriesAct: boolean };
+  }[];
   /** TIM-02: the month's stage for its legal entity (null when the company has several and none is picked). */
   period?: MusterPeriod | null;
   /** HR may mark people present in bulk (leave.approve; checked per person on the server). */

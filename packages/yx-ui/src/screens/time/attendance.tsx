@@ -2243,8 +2243,6 @@ export interface LiveMusterData {
   personHref?: (employeeId: string, month: string) => string;
   /** TIM-02 Manager · Pre-approve overtime for a report (approved at once); offered on a team muster that has reports. */
   onPreApproveOt?: (employeeId: string, input: OtPlanInput) => Promise<unknown>;
-  /** How far ahead overtime may be planned (attendance.overtime.plan_ahead_days). */
-  otAheadDays?: number;
 }
 
 const LIVE_SOURCES: Punch['source'][] = ['web', 'mobile', 'biometric', 'kiosk', 'teams', 'desktop', 'field'];
@@ -3022,8 +3020,9 @@ function LiveMusterScreen({ live }: { live: LiveMusterData }) {
   const waiting = (period?.pending ?? []).reduce((n, x) => n + x.count, 0);
   const lockBlock = !period ? null : !period.lockable ? `${label} can be frozen and locked from ${formatDate(isoDay(period.lockableFrom))}` : waiting ? `${waiting} ${waiting === 1 ? 'request is' : 'requests are'} still waiting for a decision` : exceptions ? `Lock opens when ${exceptions} open ${exceptions === 1 ? 'exception is' : 'exceptions are'} resolved` : null;
   const own = selected.filter((id) => d?.people.find((p) => p.id === id)?.me);
-  // A manager pre-approves overtime for their reports, never for themselves (the server checks each one again).
-  const reports = live.onPreApproveOt && d?.scope === 'team' ? d.people.filter((p) => !p.me) : [];
+  // Founder 2 Nov 2026: overtime is pre-approved by the reporting line only; the server marks those people (`ot`) and
+  // checks each one again. Never oneself.
+  const reports = live.onPreApproveOt && d ? d.people.filter((p) => p.ot && !p.me) : [];
   // Bulk "mark present" only for HR, in an open month with absent or missing-punch days to mark (never their own row).
   const bulkable = Boolean(d?.canMarkPresent) && stage === 'open' && rows.some((r) => !d!.people.find((p) => p.id === r.id)?.me && r.days.some((x) => canMarkPresent(x.code)));
   const toggle = (id: string, on: boolean) => setSelected(on ? [...selected, id] : selected.filter((x) => x !== id));
@@ -3211,10 +3210,9 @@ function LiveMusterScreen({ live }: { live: LiveMusterData }) {
       {otFor !== null && live.onPreApproveOt && (
         <OtPreApproveSheet
           live={{
-            people: reports.map((x) => ({ id: x.id, name: x.name, detail: [x.code, x.location].filter(Boolean).join(' · ') })),
+            people: reports.map((x) => ({ id: x.id, name: x.name, detail: [x.code, x.location].filter(Boolean).join(' · '), aheadDays: x.ot!.aheadDays, paidOnly: x.ot!.factoriesAct })),
             employeeId: otFor || null,
             today,
-            ...(live.otAheadDays !== undefined ? { aheadDays: live.otAheadDays } : {}),
             onSubmit: live.onPreApproveOt,
             onClose: () => setOtFor(null),
           }}

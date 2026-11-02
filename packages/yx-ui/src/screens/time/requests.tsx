@@ -504,6 +504,10 @@ export interface OtPreApprovePerson {
   name: string;
   /** "KF-0112 · Chennai office". */
   detail?: string;
+  /** The company's plan-ahead limit for this person (attendance.overtime.plan_ahead_days). */
+  aheadDays?: number;
+  /** Covered by the Factories Act: overtime is paid by law, so only Paid overtime is offered. */
+  paidOnly?: boolean;
 }
 
 export interface OtPreApproveProps {
@@ -512,7 +516,7 @@ export interface OtPreApproveProps {
   employeeId?: string | null;
   /** Today in the company's zone, "2026-11-02". */
   today: string;
-  /** How far ahead overtime may be planned (attendance.overtime.plan_ahead_days; default 30). */
+  /** How far ahead overtime may be planned when the person carries no limit of their own (default 30). */
   aheadDays?: number;
   /** Approved at once (the manager is the approver); a refusal is shown in the sheet. */
   onSubmit: (employeeId: string, input: OtPlanInput) => Promise<unknown>;
@@ -520,36 +524,42 @@ export interface OtPreApproveProps {
 }
 
 /** The sheet's story states: empty, filled in, Pre-approve pressed too early, refused by the server. */
-export type OtPreApproveSample = 'default' | 'filled' | 'errors' | 'refused';
+export type OtPreApproveSample = 'default' | 'filled' | 'errors' | 'refused' | 'factory';
 
-const OT_SAMPLE_PEOPLE: OtPreApprovePerson[] = TEAM.filter((p) => isMyReport(p.name)).map((p) => ({ id: p.id, name: p.name, detail: `${p.code} · ${p.location}` }));
+// The Hosur plant's lab technicians are factory workers in the sample (only Paid overtime for them).
+const OT_SAMPLE_PEOPLE: OtPreApprovePerson[] = TEAM.filter((p) => isMyReport(p.name)).map((p) => ({ id: p.id, name: p.name, detail: `${p.code} · ${p.location}`, aheadDays: 30, ...(p.role === 'Lab Technician' ? { paidOnly: true } : {}) }));
 
 /** TIM-02 Manager · Pre-approve overtime: approved at once and audited; the person claims it after the work. */
 export function OtPreApproveSheet({ live, sample = 'default' }: { live?: OtPreApproveProps; sample?: OtPreApproveSample }) {
   const [open, setOpen] = useState(true);
-  const filled = !live && (sample === 'filled' || sample === 'refused');
+  const filled = !live && (sample === 'filled' || sample === 'refused' || sample === 'factory');
   const p: OtPreApproveProps = live ?? {
     people: OT_SAMPLE_PEOPLE,
-    employeeId: filled ? 't3' : null,
+    employeeId: sample === 'factory' ? 't5' : filled ? 't1' : null,
     today: isoOf(TODAY),
     onSubmit: async () => {
-      if (sample === 'refused') throw new Error('Factory overtime is paid by law, not given as comp-off. Choose Paid overtime.');
+      if (sample === 'refused') throw new Error(`Overtime on ${dm(addDays(TODAY, 2))} is already asked for. Withdraw that request first.`);
     },
     onClose: () => setOpen(false),
   };
   const today = isoDay(p.today);
-  const ahead = p.aheadDays ?? 30;
+  const ahead0 = p.aheadDays ?? 30;
   // One report: they are the only choice, so they are chosen. The date starts on today, as on TIM-07 Ot.
   const [who, setWho] = useState<string | null>(p.employeeId ?? (p.people.length === 1 ? p.people[0]!.id : null));
   const [date, setDate] = useState<Date | null>(filled ? addDays(today, 2) : sample === 'errors' && !live ? null : today);
   const [hours, setHours] = useState<number | null>(filled ? 2.5 : null);
-  const [takeAs, setTakeAs] = useState<'pay' | 'comp_off'>(sample === 'refused' ? 'comp_off' : 'pay');
-  const [reason, setReason] = useState(filled ? 'Month-end batch release at the Hosur plant' : '');
+  const [takeAs, setTakeAs] = useState<'pay' | 'comp_off'>('pay');
+  const [reason, setReason] = useState(filled ? 'Month-end batch release' : '');
   const { busy, error, run } = useRun();
   const { toast } = useToast();
   const on = date ? isoOf(date) : null;
   const minutes = Math.round((hours ?? 0) * 60);
   const person = p.people.find((x) => x.id === who);
+  // The chosen person's own limit (their entity's setting), else the page's.
+  const ahead = person?.aheadDays ?? ahead0;
+  // A factory worker's overtime is paid by law: whatever was picked before, it goes as paid.
+  const paidOnly = Boolean(person?.paidOnly);
+  const as = paidOnly ? 'pay' : takeAs;
   const errors = [
     ...(!who ? [{ fieldId: 'ot-who', message: 'Choose the person' }] : []),
     ...(!on
@@ -574,8 +584,8 @@ export function OtPreApproveSheet({ live, sample = 'default' }: { live?: OtPreAp
   const send = () => {
     if (early.stop() || !who || !on) return;
     void run('send', async () => {
-      await p.onSubmit(who, { on, minutes, takeAs, reason: reason.trim() });
-      toast({ tone: 'success', title: `Overtime pre-approved for ${person?.name ?? 'your team member'}`, description: `Up to ${dur(minutes)} on ${dm(isoDay(on))}, ${takeAs === 'pay' ? 'paid' : 'as comp-off'}. They claim it on My overtime after the work.` });
+      await p.onSubmit(who, { on, minutes, takeAs: as, reason: reason.trim() });
+      toast({ tone: 'success', title: `Overtime pre-approved for ${person?.name ?? 'your team member'}`, description: `Up to ${dur(minutes)} on ${dm(isoDay(on))}, ${as === 'pay' ? 'paid' : 'as comp-off'}. They claim it on My overtime after the work.` });
       p.onClose();
     });
   };
@@ -612,8 +622,8 @@ export function OtPreApproveSheet({ live, sample = 'default' }: { live?: OtPreAp
         <FormField id="ot-hours" label="Planned OT (hours)" required error={early.errorOf('ot-hours')} helper="0.5 to 12 h, in quarter hours">
           <NumberField decimals value={hours} onChange={setHours} placeholder="e.g. 1.25" />
         </FormField>
-        <FormField label="Take as" helper="Factory overtime is always paid.">
-          <Segment label="Take as" value={takeAs} onChange={setTakeAs} options={[{ value: 'pay' as const, label: 'Paid overtime' }, { value: 'comp_off' as const, label: 'Comp-off credit' }]} />
+        <FormField label="Take as" helper={paidOnly ? `${first} works under the Factories Act, so overtime is paid by law.` : undefined}>
+          <Segment label="Take as" value={as} onChange={setTakeAs} options={paidOnly ? [{ value: 'pay' as const, label: 'Paid overtime' }] : [{ value: 'pay' as const, label: 'Paid overtime' }, { value: 'comp_off' as const, label: 'Comp-off credit' }]} />
         </FormField>
         <FormField id="ot-reason" label="Reason" required error={early.errorOf('ot-reason')} helper="Shown to the person and on their overtime claim.">
           <TextArea rows={2} value={reason} onChange={setReason} maxLength={500} />
@@ -623,7 +633,7 @@ export function OtPreApproveSheet({ live, sample = 'default' }: { live?: OtPreAp
           <div className="yx-tim-effect__line"><span className="yx-tim-muted">Now</span><Badge tone="neutral">No OT approved</Badge></div>
           <div className="yx-tim-effect__line">
             <span className="yx-tim-muted">After</span>
-            {minutes > 0 ? <Badge tone="success">{takeAs === 'pay' ? `Up to ${dur(minutes)} OT · paid at the overtime rate` : `Up to ${dur(minutes)} OT · comp-off credit`}</Badge> : <Badge tone="neutral">Add the hours to see the result</Badge>}
+            {minutes > 0 ? <Badge tone="success">{as === 'pay' ? `Up to ${dur(minutes)} OT · paid at the overtime rate` : `Up to ${dur(minutes)} OT · comp-off credit`}</Badge> : <Badge tone="neutral">Add the hours to see the result</Badge>}
           </div>
           <p className="yx-tim-muted">{first ? `${first} claims` : 'They claim'} it on My overtime after the work; the claim shows it was pre-approved. Hours past this are still allowed and flagged to the approver.</p>
         </section>

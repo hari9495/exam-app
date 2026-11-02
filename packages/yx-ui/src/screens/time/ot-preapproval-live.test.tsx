@@ -142,8 +142,10 @@ describe('On duty sent back (TIM-07, TIM-19 SentBack style)', () => {
 // Founder 2 Nov 2026 (overtime pre-approval, item 1): a manager pre-approves overtime for a report from the team muster
 // (TIM-02 Manager, the TIM-07 Ot fields); approved at once on the server, never for themselves.
 describe('TIM-02 Manager · Pre-approve overtime', () => {
-  const person = (id: string, name: string, me = false) => ({ id, name, code: `KF-${id}`, location: 'Hosur plant', me, mode: 'punch', missingPunchEffect: 'block_payroll_approval', days: [{ on: '2026-10-01', status: 'present' as const, leavePart: null, workedMinutes: 490, lateMinutes: null, regularised: false }] });
-  const team: Muster = { month: '2026-10', from: '2026-10-01', to: '2026-10-31', scope: 'team', people: [person('d', 'Divya Raghunathan', true), person('k', 'Kavya Reddy'), person('a', 'Arjun Kulkarni')] };
+  const line = (aheadDays = 30, factoriesAct = false) => ({ ot: { aheadDays, factoriesAct } });
+  const person = (id: string, name: string, me = false, extra: object = {}) => ({ id, name, code: `KF-${id}`, location: 'Hosur plant', me, mode: 'punch', missingPunchEffect: 'block_payroll_approval', days: [{ on: '2026-10-01', status: 'present' as const, leavePart: null, workedMinutes: 490, lateMinutes: null, regularised: false }], ...extra });
+  // The server marks the viewer's reporting line (`ot`); a dotted-line report (Nisha) has none.
+  const team: Muster = { month: '2026-10', from: '2026-10-01', to: '2026-10-31', scope: 'team', people: [person('d', 'Divya Raghunathan', true), person('k', 'Kavya Reddy', false, line()), person('a', 'Arjun Kulkarni', false, line()), person('n', 'Nisha Menon')] };
   const muster = (over: Partial<LiveMusterData> = {}): LiveMusterData => ({ state: 'ready', data: team, month: '2026-10', onMonth: vi.fn(), onOpenDay: vi.fn(), today: '2026-10-09', ...over });
   const open = async () => {
     await ue.click(screen.getByRole('button', { name: 'Pre-approve overtime' }));
@@ -161,9 +163,10 @@ describe('TIM-02 Manager · Pre-approve overtime', () => {
     expect(within(sheet).getAllByText('Choose the person').length).toBeGreaterThan(0);
     expect(within(sheet).getByText('Enter the hours')).toBeInTheDocument();
     expect(within(sheet).getByText('Enter the reason')).toBeInTheDocument();
-    // Never the manager's own row among the people.
+    // Only the reporting line: never the manager's own row, never a dotted-line report.
     await ue.click(within(sheet).getByRole('combobox'));
     expect(screen.queryByRole('option', { name: /Divya Raghunathan/ })).toBeNull();
+    expect(screen.queryByRole('option', { name: /Nisha Menon/ })).toBeNull();
     await ue.click(screen.getByRole('option', { name: /Kavya Reddy/ }));
     await ue.type(within(sheet).getByLabelText(/^Planned OT/), '13');
     await ue.type(within(sheet).getByRole('textbox', { name: /Reason/ }), 'Month-end batch');
@@ -210,8 +213,8 @@ describe('TIM-02 Manager · Pre-approve overtime', () => {
     expect(within(sheet).getByText('Not pre-approved')).toBeInTheDocument();
   });
 
-  it('not offered to HR on a granted muster, to someone with no reports, or without the call', () => {
-    const a = render(<MusterScreen live={muster({ onPreApproveOt: vi.fn(), data: { ...team, scope: 'granted' } })} />);
+  it('not offered when no one on the muster is in the reporting line (HR, a dotted line), with no reports, or without the call', () => {
+    const a = render(<MusterScreen live={muster({ onPreApproveOt: vi.fn(), data: { ...team, scope: 'granted', people: [person('n', 'Nisha Menon'), person('r', 'Ravi Kumar')] } })} />);
     expect(screen.queryByRole('button', { name: 'Pre-approve overtime' })).toBeNull();
     a.unmount();
     const b = render(<MusterScreen live={muster({ onPreApproveOt: vi.fn(), data: { ...team, people: [team.people[0]!] } })} />);
@@ -234,6 +237,38 @@ describe('TIM-02 Manager · Pre-approve overtime', () => {
     expect(screen.getByText('Up to 2 h 30 min OT · paid at the overtime rate')).toBeInTheDocument();
     f.unmount();
     render(<OtPreApproveSheet sample="refused" />);
-    expect(await screen.findByText(/Factory overtime is paid by law/)).toBeInTheDocument();
+    expect(await screen.findByText(/is already asked for. Withdraw that request first./)).toBeInTheDocument();
+  });
+
+  it("the company's plan-ahead limit for the person sets the date limit and hint", async () => {
+    render(<MusterScreen live={muster({ onPreApproveOt: vi.fn(), data: { ...team, people: [person('d', 'Divya Raghunathan', true), person('k', 'Kavya Reddy', false, line(15))] } })} />);
+    const sheet = await open();
+    expect(within(sheet).getByText('Today or up to 15 days ahead.')).toBeInTheDocument();
+  });
+
+  it('a factory worker gets only Paid overtime with the reason; others keep both choices', async () => {
+    const onPreApproveOt = vi.fn(async () => ({}));
+    const data = { ...team, people: [person('d', 'Divya Raghunathan', true), person('g', 'Gopal Iyer', false, line(30, true)), person('a', 'Arjun Kulkarni', false, line())] };
+    render(<MusterScreen live={muster({ onPreApproveOt, data })} />);
+    const sheet = await open();
+    await ue.click(within(sheet).getByRole('combobox'));
+    await ue.click(screen.getByRole('option', { name: /Arjun Kulkarni/ }));
+    await ue.click(within(sheet).getByRole('radio', { name: 'Comp-off credit' }));
+    await ue.click(within(sheet).getByRole('combobox'));
+    await ue.click(screen.getByRole('option', { name: /Gopal Iyer/ }));
+    expect(within(sheet).queryByRole('radio', { name: 'Comp-off credit' })).toBeNull();
+    expect(within(sheet).getByRole('radio', { name: 'Paid overtime' })).toBeChecked();
+    expect(within(sheet).getByText('Gopal works under the Factories Act, so overtime is paid by law.')).toBeInTheDocument();
+    await ue.type(within(sheet).getByLabelText(/^Planned OT/), '2');
+    await ue.type(within(sheet).getByRole('textbox', { name: /Reason/ }), 'Line trial');
+    expect(within(sheet).getByText('Up to 2 h OT · paid at the overtime rate')).toBeInTheDocument();
+    await ue.click(within(sheet).getByRole('button', { name: 'Pre-approve' }));
+    await waitFor(() => expect(onPreApproveOt).toHaveBeenCalledWith('g', { on: '2026-10-09', minutes: 120, takeAs: 'pay', reason: 'Line trial' }));
+  });
+
+  it('the factory story shows one choice and the note', () => {
+    render(<OtPreApproveSheet sample="factory" />);
+    expect(screen.queryByRole('radio', { name: 'Comp-off credit' })).toBeNull();
+    expect(screen.getByText(/works under the Factories Act, so overtime is paid by law/)).toBeInTheDocument();
   });
 });

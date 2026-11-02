@@ -27,3 +27,5 @@ export const PreApprove: S = { name: 'Manager · Pre-approve overtime', args: { 
 export const PreApproveFilled: S = { name: 'Manager · Pre-approve overtime · filled in', args: { persona: 'mgr', preApprove: 'filled' } };
 export const PreApproveErrors: S = { name: 'Manager · Pre-approve overtime · pressed too early', args: { persona: 'mgr', preApprove: 'errors' } };
 export const PreApproveRefused: S = { name: 'Manager · Pre-approve overtime · refused', args: { persona: 'mgr', preApprove: 'refused' } };
+// Founder 2 Nov 2026: a factory worker's overtime is paid by law, so the sheet offers only Paid overtime.
+export const PreApproveFactory: S = { name: 'Manager · Pre-approve overtime · factory worker (paid only)', args: { persona: 'mgr', preApprove: 'factory' } };

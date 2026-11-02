@@ -15,7 +15,8 @@ jest.mock('../../lib/yx-shell', () => ({ ...jest.requireActual('../../lib/yx-she
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const wrap = (ui: React.ReactElement) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ToastProvider>{ui}</ToastProvider></QueryClientProvider>);
 const day = { on: '2026-11-02', status: 'present', leavePart: null, workedMinutes: 480, lateMinutes: null, regularised: false };
-const person = (id: string, name: string, me = false) => ({ id, name, code: `KF-${id}`, location: 'Bengaluru head office', me, mode: 'punch', missingPunchEffect: 'block_payroll_approval', days: [day] });
+// `ot`: the server marks the viewer's reporting line (plan-ahead days, Factories Act); the manager's own row never has it.
+const person = (id: string, name: string, me = false) => ({ id, name, code: `KF-${id}`, location: 'Bengaluru head office', me, mode: 'punch', missingPunchEffect: 'block_payroll_approval', days: [day], ...(me ? {} : { ot: { aheadDays: 15, factoriesAct: false } }) });
 const api = apiFetch as jest.Mock;
 
 beforeEach(() => {
@@ -39,6 +40,7 @@ describe('/yx/time/muster as a manager', () => {
     const sheet = screen.getByRole('dialog', { name: 'Pre-approve overtime' });
     // One report: already chosen.
     expect(within(sheet).getByRole('combobox')).toHaveTextContent('Arjun Kulkarni');
+    expect(within(sheet).getByText('Today or up to 15 days ahead.')).toBeInTheDocument();
     await ue.click(within(sheet).getByRole('button', { name: 'Pre-approve' }));
     expect(posted).toEqual([]);
     await ue.type(within(sheet).getByLabelText(/^Planned OT/), '1.5');
