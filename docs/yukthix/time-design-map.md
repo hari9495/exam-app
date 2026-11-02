@@ -1153,3 +1153,9 @@ refusing "refuse short notice" and switching the type off; (3) year end pays out
 for a sent-back on-duty request ("Change and send again"), TIM-19 SentBack style; (6) overtime pre-approval is built next
 (a planned-overtime record the claim reads); (7) the attendance page's "Request work from home" button becomes
 "New request" (Regularise / WFH / On duty), so on duty is findable; (8) the change-leave-year page fits 1278 x 635.
+
+## Founder answers, 2 Nov 2026 (overtime pre-approval, "ok for all 4")
+(1) a manager planning overtime for a report gets a "Pre-approve overtime" action designed on the team muster first, then
+wired to the existing API; (2) overtime past the pre-approved hours is allowed and flagged to the approver, not refused;
+(3) `attendance.overtime.pre_approval` defaults to `flag`; (4) overtime pre-approval is manager-only (no HR step, no send
+back), like work from home within its limit.
