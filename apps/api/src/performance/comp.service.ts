@@ -576,7 +576,8 @@ export class PerformanceCompService implements OnModuleInit {
         const range = a.gradeId && pay ? await tx.gradePayRange.findFirst({ where: { organizationId: org, gradeId: a.gradeId, legalEntityId: a.legalEntityId, currency: pay.currency, validFrom: { lte: asDate(today) }, OR: [{ validTo: null }, { validTo: { gte: asDate(today) } }] } }) : null;
         if (!pay || !range) return { visible: true, range: null };
         const r = { min: num(range.min)!, mid: num(range.mid)!, max: num(range.max)! };
-        return { visible: true, currency: pay.currency, range: r, ...bandPosition(num(pay.annualCtc)!, r) };
+        // PAY-39: the person's own annual CTC for the marker on the band (this route only ever answers for the signed-in person).
+        return { visible: true, currency: pay.currency, range: r, ctc: num(pay.annualCtc)!, ...bandPosition(num(pay.annualCtc)!, r) };
       });
     });
   }

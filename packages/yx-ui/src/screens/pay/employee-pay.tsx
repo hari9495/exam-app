@@ -3401,6 +3401,8 @@ export interface MyPayBand {
   range?: { min: number; mid: number; max: number } | null;
   position?: 'below' | 'within' | 'above';
   quartile?: 1 | 2 | 3 | 4 | null;
+  /** PAY-39: the person's own annual CTC (only ever their own), for the marker on the band. */
+  ctc?: number;
 }
 
 export interface LivePayBand {
@@ -3425,8 +3427,15 @@ function LivePayBand({ live }: { live: LivePayBand }) {
             <div className="yx-pay-stack">
               <section className="yx-pay-panel" aria-label="Your position in the band">
                 <SectionTitle>Where your pay sits</SectionTitle>
+                {b.ctc != null && <RangeMarker label="Your annual CTC in your band" min={b.range.min} max={b.range.max} mid={b.range.mid} value={b.ctc} />}
                 <FactRow
                   items={[
+                    ...(b.ctc != null
+                      ? [
+                          { label: 'Your annual CTC', value: formatINR(b.ctc) },
+                          { label: 'Compared with midpoint', value: `${Math.round((b.ctc / b.range.mid) * 100)}% (${formatINR(Math.abs(b.ctc - b.range.mid))} ${b.ctc < b.range.mid ? 'below' : 'above'})` },
+                        ]
+                      : []),
                     { label: 'Band', value: `${formatINR(b.range.min)} – ${formatINR(b.range.max)}` },
                     { label: 'Midpoint', value: formatINR(b.range.mid) },
                     { label: 'Where you sit', value: b.position === 'within' ? `Within${b.quartile ? `, quarter ${b.quartile} of 4` : ''}` : b.position === 'below' ? 'Below the range' : 'Above the range' },

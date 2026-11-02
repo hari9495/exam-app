@@ -472,6 +472,12 @@ describe('PAY-39 · My pay band (live)', () => {
   it('says where I sit, or that there is no range, or that bands are not shared', () => {
     const { rerender } = render(<PayBandScreen live={{ state: 'ready', band: { visible: true, currency: 'INR', range: { min: 600_000, mid: 800_000, max: 1_000_000 }, position: 'within', quartile: 3 } }} />);
     expect(screen.getByText('You are within the range, in quarter 3 of 4.')).toBeInTheDocument();
+    expect(screen.queryByText('Your annual CTC')).not.toBeInTheDocument();
+    // PAY-39 InBand: one's own CTC marked on the band, compared with the midpoint.
+    rerender(<PayBandScreen live={{ state: 'ready', band: { visible: true, currency: 'INR', range: { min: 600_000, mid: 800_000, max: 1_000_000 }, ctc: 850_000, position: 'within', quartile: 3 } }} />);
+    expect(screen.getByText('Your annual CTC')).toBeInTheDocument();
+    expect(screen.getByText(/^106% \(/)).toBeInTheDocument();
+    expect(screen.getAllByText(/8,50,000/).length).toBeGreaterThan(0);
     rerender(<PayBandScreen live={{ state: 'ready', band: { visible: true, range: null } }} />);
     expect(screen.getByText('No range is set for your grade yet.')).toBeInTheDocument();
     rerender(<PayBandScreen live={{ state: 'ready', band: { visible: false } }} />);

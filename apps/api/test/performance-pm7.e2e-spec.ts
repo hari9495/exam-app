@@ -256,8 +256,9 @@ describe('Performance batch PM7', () => {
 
   it('my pay band shows only my own range and where I sit (PAY-39)', async () => {
     const b = (await api('sita', 'get', '/me/pay-band').expect(200)).body;
-    expect(b).toMatchObject({ visible: true, currency: 'INR', range: { min: 600_000, mid: 800_000, max: 1_000_000 }, position: 'within' });
-    expect(JSON.stringify(b)).not.toContain('850000');
+    // PAY-39: her own CTC comes back for the marker; no one else's pay is in it.
+    expect(b).toMatchObject({ visible: true, currency: 'INR', range: { min: 600_000, mid: 800_000, max: 1_000_000 }, ctc: pay.sita, position: 'within' });
+    expect(JSON.stringify(b)).not.toContain(String(pay.arjun));
   });
 
   it('pay equity: before and after, small groups suppressed (YX-PERF-18)', async () => {
