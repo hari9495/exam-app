@@ -37,6 +37,12 @@ describe('payslip PDF (PAY-4.04)', () => {
     });
   });
 
+  it('PPL-46: a split pay shows each account (masked) with what it gets, instead of the one account', () => {
+    const v = payslipValues({ ...slip, bankSplit: [{ label: 'Salary account', last4: '6789', amount: '1000.00' }, { label: 'Account abroad', last4: '3456', amount: '24500.50' }] });
+    expect(v.bankAccount).toBe('Salary account •••• 6789 1,000.00 · Account abroad •••• 3456 24,500.50');
+    expect(payslipValues({ ...slip, bankSplit: [] }).bankAccount).toBe('•••• 6789');
+  });
+
   it('M05 D3: reimbursements have their own line, apart from earnings', () => {
     const v = payslipValues({ ...slip, net: '59500.00', lines: [...slip.lines, { code: 'exp_reimb', name: 'Expense reimbursement', kind: 'reimbursement', amount: '1000.00', quantity: null }] });
     expect(v.reimbursements).toBe('Expense reimbursement 1,000.00');
