@@ -1181,3 +1181,11 @@ is for direct and indirect managers only (dotted-line managers, department heads
 (3) a factory worker gets only Paid overtime in the sheet (new TIM-02 story PreApproveFactory); the server still refuses
 comp-off for them. Recounted by script (timecount3): 347 sub-pages, 291 live, 4 not built, 52 phone, 0 gaps; Attendance
 108 → 109 live. Manual tests MT-TIM-L-35..38.
+
+Built 2 Nov 2026 (branch `feat/yukthix-exit-order-callout`, pay gaps answer 3): the roster's weekly-hours rule (rule 2,
+`roster.max_weekly_hours`) counts the call-out hours of a person's on-call slots (PAY-35) on their day when the slot's
+on-call rule says "count call-out hours towards the weekly limit"; a rule that says no adds nothing. It applies everywhere
+the roster guard judges a week (week view warnings, publish, swaps, open shifts, auto-roster) and the message says
+"N h of call-outs included". On-call is pay data: the guard opens the pay guard for this check only, to the person's own
+legal entities, reading dates, hours and the flag. No new stories (the week warning already has its design). Manual tests
+MT-TIM-L-39..40.

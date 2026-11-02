@@ -1718,3 +1718,10 @@ Questions (safe default built):
 2. PAY-25: approving again while access is open is impossible (the person already holds the key, so they cannot ask);
    an extension waits until it ends. Suggested: keep; Roles & access can lengthen a grant by hand.
 
+Built 2 Nov 2026 (branch `feat/yukthix-exit-order-callout`): (1) People › VRS schemes › Government permission: "Record the
+decision" takes an optional order number with a grant (1 to 60 characters; letters, digits, spaces and . / ( ) - & , : _;
+refused with a deemed grant or a refusal), audited with the date; the PAY-11 Retrenchment run's permission reference now
+reads "authority, order no. X, granted on 18 Sep 2026" (the house date). Migration 20261390000000_ir_permission_order_number.
+PAY-11 RetrenchmentOk's sample shows the same wording (no new Pay story). (3) The Time roster's weekly-hours check counts
+call-out hours of on-call slots whose rule says "count towards weekly hours" (see time-design-map.md). Manual tests
+MT-PPL-C-13..15 and MT-TIM-L-39..40.

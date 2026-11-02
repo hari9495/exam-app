@@ -20,12 +20,16 @@ API) · **phone view, mobile app not built**.
 |---|---|---|---|---|---|---|---|
 | A. Directory, record and changes | 9 | 138 | 0 | 0 | 2 | 0 | 140 |
 | B. Onboarding and probation | 7 | 69 | 2 | 0 | 0 | 0 | 71 |
-| C. Exits | 7 | 55 | 1 | 0 | 0 | 3 | 59 |
+| C. Exits | 7 | 56 | 0 | 0 | 0 | 3 | 59 |
 | D. Assets, documents, letters and self-service | 9 | 50 | 4 | 0 | 0 | 9 | 63 |
 | E. Identity, same person and records | 6 | 14 | 7 | 0 | 2 | 0 | 23 |
-| F. Declarations, relations, special cases and checklists | 11 | 68 | 1 | 0 | 0 | 3 | 72 |
-| **All PPL groups (A–F)** | **49** | **394** | **15** | **0** | **4** | **15** | **428** |
+| F. Declarations, relations, special cases and checklists | 11 | 70 | 1 | 0 | 0 | 3 | 74 |
+| **All PPL groups (A–F)** | **49** | **397** | **14** | **0** | **4** | **15** | **430** |
 | G. Other People stories (no PPL number) | 4 | 44 | 0 | 0 | 0 | 0 | 44 |
+
+Recounted by script 2 Nov 2026 (branch `feat/yukthix-exit-order-callout`): PPL-40 gets two stories, both live (PermissionDecide,
+PermissionDecideBadOrder: the government's order number on a granted permission, founder pay-gaps answer 1). The script
+also found C. Exits at 56 live / 0 gap (the table had 55 / 1), so the table now matches the rows: 430 stories, 397 live.
 
 Counted by script (2 Nov 2026, branch `feat/yukthix-people-changes`: builder 2 added 24 design stories (PPL-03 12, PPL-04 3, PPL-05 3, PPL-24 6) and made the 8 "wire design" stories live; earlier counts 30 Oct 2026, on `test/yukthix-main`; the script is in the appendix): every `export const` story in the 49 `ppl-NN.stories.tsx`
 files (PPL-01 … 50; PPL-10 has no story) and in the four other People story files, against the rows in section 4. The
@@ -978,6 +982,8 @@ Live page: /yx/people/retrenchment (HR, menu "VRS schemes"); employee side is /y
 | Apply · Employee · apply with estimate | live | /yx/me/resignation renders `VrsApply`; GET lifecycle/me/vrs `estimate` (scheme benefit by Rule 2BA with `vrs.benefit_days`, gratuity, leave encashment); POST lifecycle/me/vrs |
 | NotEligible · Employee · not eligible | live | GET lifecycle/me/vrs `age`, `serviceYears`: the rule and the person's age and years |
 | Permissions · HR · government permission requests | live | Government permission tab: apply, decide, closure (lifecycle/ir-permissions) |
+| PermissionDecide · HR · record the decision (granted, order number) | live | "Record the decision" on an applied request: Granted / Deemed granted / Refused, the day, and for a grant an optional Order number (founder 2 Nov 2026); POST lifecycle/ir-permissions/:id/decide `orderNumber`, audited; shown under the authority in the list and on the PAY-11 run ("authority, order no., granted on date") |
+| PermissionDecideBadOrder · HR · record the decision · order number not valid | live | Save pressed with characters the order number may not have: field error with focus, nothing sent (the API refuses it too, 400) |
 
 #### PPL-41 · Buddy panel
 
