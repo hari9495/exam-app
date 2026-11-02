@@ -6,7 +6,8 @@ import { timeState, useTime, useTimeRead, useTimeWrite } from '../../../../../..
 const id = encodeURIComponent;
 
 // HR › Devices and kiosks (TIM-14): leave.settings.manage for the whole company. Kiosks (register, reset key), new
-// phone requests (approve / refuse with a reason), employees' phones (remote sign-out) and training sessions (add,
+// device requests, phones and computers (approve / refuse with a reason), employees' devices (remote sign-out,
+// remove a computer's approval), the web clock-in rule and training sessions (add,
 // change before they start, cancel); the API checks each call.
 export default function YxTimeDevicesPage() {
   const devices = useTime<DevicesData>('/devices');
@@ -24,6 +25,9 @@ export default function YxTimeDevicesPage() {
         onApprove: (rid) => write(`/devices/phones/${id(rid)}/approve`, 'POST'),
         onRefuse: (rid, reason) => write(`/devices/phones/${id(rid)}/refuse`, 'POST', { reason }),
         onSignOut: (pid) => write(`/devices/phones/${id(pid)}/sign-out`, 'POST'),
+        // The web clock-in rule (founder answer 1): the dialog says what was done with its own toast.
+        onSetWebApproval: (input) => write('/devices/web-approval', 'PUT', input),
+        onRemoveWebApproval: (sid) => write(`/devices/web-approval/${id(sid)}/remove`, 'POST'),
         training: {
           rows: training.data ?? [],
           state: training.isLoading ? 'loading' : training.isError ? 'error' : 'ready',

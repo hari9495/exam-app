@@ -6,12 +6,14 @@ export default meta;
 type S = StoryObj<typeof DevicesScreen>;
 
 export const Kiosks: S = { name: 'HR · kiosks and last seen' };
-export const Binds: S = { name: 'New phone requests', args: { tab: 'binds' } };
-export const Phones: S = { name: 'Employee phones', args: { tab: 'phones' } };
+export const Binds: S = { name: 'New device requests', args: { tab: 'binds' } };
+export const Phones: S = { name: 'Employee devices', args: { tab: 'phones' } };
 export const SignOut: S = { name: 'Remote sign-out', args: { tab: 'phones', signOut: true } };
 // DeviceNotApproved (2 Nov 2026): computers for web clock-in are asked for and approved in the same lists.
 export const ComputerRequest: S = { name: 'Computers · new computer request', args: { tab: 'binds', computers: true } };
 export const ComputerRemove: S = { name: "Computers · remove a computer's approval", args: { tab: 'phones', removeComputer: true } };
+// Founder answer 1 (3 Nov 2026): the rule's switch for the company and the places with their own.
+export const WebRule: S = { name: 'Computers · web clock-in rule', args: { webRule: true } };
 export const SystemAdmin: S = { name: 'System Admin', args: { persona: 'sa' } };
 export const Training: S = { name: 'Training · sessions', args: { tab: 'training' } };
 export const TrainingAdd: S = { name: 'Training · add a session', args: { tab: 'training', training: { form: 'new' } } };

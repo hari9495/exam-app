@@ -61,7 +61,7 @@ describe('Devices and kiosks (TIM-14 live)', () => {
   it('a refusal needs a reason; approving a replacement asks first', async () => {
     const live = devices();
     render(<DevicesScreen live={live} />);
-    await ue.click(screen.getByRole('tab', { name: /New phone requests/ }));
+    await ue.click(screen.getByRole('tab', { name: /New device requests/ }));
     const row = screen.getByText('Meera Krishnan').closest('tr')!;
     await ue.click(within(row).getByRole('button', { name: 'Reject' }));
     const dialog = screen.getByRole('dialog');
@@ -102,12 +102,12 @@ describe('Devices and kiosks (TIM-14 live)', () => {
     };
     const live = devices({ data });
     render(<DevicesScreen live={live} />);
-    await ue.click(screen.getByRole('tab', { name: /New phone requests/ }));
+    await ue.click(screen.getByRole('tab', { name: /New device requests/ }));
     expect(screen.getByText('Computer: Chrome on Windows')).toBeInTheDocument();
     const row = screen.getByText('Computer: Chrome on Windows').closest('tr')!;
     await ue.click(within(row).getByRole('button', { name: 'Approve' }));
     await waitFor(() => expect(live.onApprove).toHaveBeenCalledWith('w1'));
-    await ue.click(screen.getByRole('tab', { name: /Employee phones/ }));
+    await ue.click(screen.getByRole('tab', { name: /Employee devices/ }));
     expect(screen.getByText('Computer · Edge on Windows')).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Remove approval' }));
     expect(await screen.findByText(/Nisha can't clock in from this computer any more and stays signed in/)).toBeInTheDocument();
@@ -115,10 +115,54 @@ describe('Devices and kiosks (TIM-14 live)', () => {
     await waitFor(() => expect(live.onSignOut).toHaveBeenCalledWith('w2'));
   });
 
+  it('the tabs are named for devices (phones and computers)', () => {
+    render(<DevicesScreen live={devices()} />);
+    expect(screen.getByRole('tab', { name: /New device requests/ })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Employee devices/ })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /phone/i })).not.toBeInTheDocument();
+  });
+
+  it('web clock-in rule: the company switch, a place pressed too early, a place set and removed', async () => {
+    const onSetWebApproval = vi.fn(async () => ({}));
+    const onRemoveWebApproval = vi.fn(async () => ({}));
+    const data: DevicesData = { ...DATA, entityList: [{ id: 'le1', name: 'Kaveri Foods' }], webApproval: { company: 'off', overrides: [{ id: 's1', scopeType: 'location', scopeId: 'l1', name: 'Hosur plant', value: 'on' }] } };
+    render(<DevicesScreen live={devices({ data, onSetWebApproval, onRemoveWebApproval })} />);
+    await ue.click(screen.getByRole('button', { name: 'Web clock-in rule' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Hosur plant')).toBeInTheDocument();
+    expect(within(dialog).getAllByText('Approved computer only').length).toBeGreaterThan(0);
+    await ue.click(within(dialog).getByRole('switch', { name: /Web clock-in only from an approved computer/ }));
+    await waitFor(() => expect(onSetWebApproval).toHaveBeenCalledWith({ scopeType: 'tenant', value: 'on' }));
+    // Pressed too early: the place says what is missing and takes the focus; nothing is sent.
+    await ue.click(within(dialog).getByRole('button', { name: 'Set for this place' }));
+    expect(within(dialog).getByText('Choose a legal entity or location.')).toBeInTheDocument();
+    expect(onSetWebApproval).toHaveBeenCalledTimes(1);
+    await ue.click(within(dialog).getByRole('combobox'));
+    // A place that already has its own rule is not offered again.
+    expect(screen.queryByRole('option', { name: 'Hosur plant' })).not.toBeInTheDocument();
+    await ue.click(await screen.findByRole('option', { name: 'Kaveri Foods · legal entity' }));
+    await ue.click(within(dialog).getByRole('button', { name: 'Set for this place' }));
+    await waitFor(() => expect(onSetWebApproval).toHaveBeenLastCalledWith({ scopeType: 'legal_entity', scopeId: 'le1', value: 'on' }));
+    await ue.click(within(dialog).getByRole('button', { name: 'Remove' }));
+    await waitFor(() => expect(onRemoveWebApproval).toHaveBeenCalledWith('s1'));
+  });
+
+  it('web clock-in rule: no button without the rule from the server; a refusal stays in the dialog', async () => {
+    const { unmount } = render(<DevicesScreen live={devices({ onSetWebApproval: vi.fn(), onRemoveWebApproval: vi.fn() })} />);
+    expect(screen.queryByRole('button', { name: 'Web clock-in rule' })).not.toBeInTheDocument();
+    unmount();
+    const onSetWebApproval = vi.fn(async () => { throw new Error("You don't have access to company set-up."); });
+    render(<DevicesScreen live={devices({ data: { ...DATA, webApproval: { company: 'off', overrides: [] } }, onSetWebApproval, onRemoveWebApproval: vi.fn() })} />);
+    await ue.click(screen.getByRole('button', { name: 'Web clock-in rule' }));
+    await ue.click(within(await screen.findByRole('dialog')).getByRole('switch'));
+    expect(await screen.findByText("You don't have access to company set-up.")).toBeInTheDocument();
+    expect(screen.getByText('None. Every place follows the company rule.')).toBeInTheDocument();
+  });
+
   it('signs out a lost phone remotely', async () => {
     const live = devices();
     render(<DevicesScreen live={live} />);
-    await ue.click(screen.getByRole('tab', { name: /Employee phones/ }));
+    await ue.click(screen.getByRole('tab', { name: /Employee devices/ }));
     await ue.click(screen.getByRole('button', { name: 'Sign out remotely' }));
     await ue.click(await screen.findByRole('button', { name: 'Sign out phone' }));
     await waitFor(() => expect(live.onSignOut).toHaveBeenCalledWith('p1'));

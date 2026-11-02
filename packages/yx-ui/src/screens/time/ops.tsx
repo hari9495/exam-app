@@ -30,7 +30,7 @@ import { balancesFor, CLAIM, HR_ADMIN, ME, myReports, NEGATIVE_BALANCES, PAYROLL
 import type { ViewState } from './attendance';
 import type { AttendanceReport, LeaveReport as LiveLeaveReport, LeaveReportKind, LeaveReportQuery, LeaveReportRow, LoadState, MyTimesheet, NightRegister, PayrollFeed, Registers, TimesheetLineInput } from './live/types';
 import { useRun } from '../org/org-kit';
-import { LiveDevicesScreen, computerWords, type LiveDevices } from './devices-live';
+import { LiveDevicesScreen, WebApprovalDialog, computerWords, type LiveDevices, type WebApproval } from './devices-live';
 import { TrainingTab, type TrainingRow, type TrainingTabProps } from './training-tab';
 import { LivePrefillDrawer, type LivePrefill, type PrefillProject } from './prefill-live';
 import './time.css';
@@ -128,16 +128,22 @@ const PHONES: Phone[] = [
   { id: 'p7', person: 'Fathima Beevi', model: 'Samsung Galaxy A15', app: '4.2.1', lastSeen: 'Yesterday, 6:32 pm', status: 'Active' },
   { id: 'p8', person: 'Rahul Deshpande', model: 'Realme Narzo 60', app: '4.1.8', lastSeen: '2 Aug', status: 'Inactive', seenOn: new Date(2026, 7, 2) },
 ];
+/** Computers · web clock-in rule: on for the company, the Hosur plant (shared tablets at the gate) turns it off. */
+const RULE_PLACES = [
+  ...ENTITIES.map((e) => ({ value: `legal_entity:${e.id}`, label: `${e.name} · legal entity` })),
+  ...Object.keys(SITE_CODE).map((name) => ({ value: `location:${SITE_CODE[name]}`, label: name })),
+];
+const SAMPLE_RULE: WebApproval = { company: 'on', overrides: [{ id: 'o1', scopeType: 'location', scopeId: 'HSR', name: 'Hosur plant', value: 'off' }] };
 /** Fits "Packing hall · Bengaluru head office" on one line at desktop width. */
 const KIOSK_W = 320;
 // flex: none — the kit class's 256px flex-basis turns into a min-height when phone cards stack the cell.
 const pad = { paddingBlock: 'var(--yx-space-1)', flex: 'none' } as const;
 
-export function DevicesScreen({ live, ...story }: { persona?: 'hr' | 'sa'; tab?: 'kiosks' | 'binds' | 'phones' | 'training'; signOut?: boolean; state?: ViewState; /** Computers stories (DeviceNotApproved): a computer request and an approved computer; `removeComputer` opens its remove confirmation. */ computers?: boolean; removeComputer?: boolean; /** Training stories: the add form, a session's edit form, or its cancel confirmation. */ training?: TrainingTabProps['open']; /** The live app's /time/setup/devices. */ live?: LiveDevices }) {
+export function DevicesScreen({ live, ...story }: { persona?: 'hr' | 'sa'; tab?: 'kiosks' | 'binds' | 'phones' | 'training'; signOut?: boolean; state?: ViewState; /** Computers stories (DeviceNotApproved): a computer request and an approved computer; `removeComputer` opens its remove confirmation. */ computers?: boolean; removeComputer?: boolean; /** Computers · web clock-in rule: the rule dialog open. */ webRule?: boolean; /** Training stories: the add form, a session's edit form, or its cancel confirmation. */ training?: TrainingTabProps['open']; /** The live app's /time/setup/devices. */ live?: LiveDevices }) {
   return live ? <LiveDevicesScreen live={live} /> : <SampleDevicesScreen {...story} />;
 }
 
-function SampleDevicesScreen({ persona = 'hr', tab = 'kiosks', signOut = false, state = 'ready', training, computers = false, removeComputer = false }: { persona?: 'hr' | 'sa'; tab?: 'kiosks' | 'binds' | 'phones' | 'training'; signOut?: boolean; state?: ViewState; training?: TrainingTabProps['open']; computers?: boolean; removeComputer?: boolean }) {
+function SampleDevicesScreen({ persona = 'hr', tab = 'kiosks', signOut = false, state = 'ready', training, computers = false, removeComputer = false, webRule = false }: { persona?: 'hr' | 'sa'; tab?: 'kiosks' | 'binds' | 'phones' | 'training'; signOut?: boolean; state?: ViewState; training?: TrainingTabProps['open']; computers?: boolean; removeComputer?: boolean; webRule?: boolean }) {
   const sa = persona === 'sa';
   const narrow = useNarrow(599);
   // The story opens the sign-out confirmation for Meera's lost Redmi (or the remove confirmation of Nisha's computer).
@@ -249,15 +255,25 @@ function SampleDevicesScreen({ persona = 'hr', tab = 'kiosks', signOut = false, 
     setReg({ place: '', location: null, mode: 'Attendance' });
   };
   const registerBtn = <Button variant="primary" icon={Plus} onClick={() => setRegistering(true)}>Register kiosk</Button>;
+  const [ruleOpen, setRuleOpen] = useState(webRule);
+  const [rule, setRule] = useState<WebApproval>(SAMPLE_RULE);
   return (
     <TimePage active="Devices & kiosks" user={sa ? SYS_ADMIN : HR_ADMIN} allEntities={sa}>
-      <PageHeader title="Devices and kiosks" description={sa ? 'System Admin · all entities' : `HR · ${ENTITIES[0].name}`} actions={registerBtn} />
+      <PageHeader title="Devices and kiosks" description={sa ? 'System Admin · all entities' : `HR · ${ENTITIES[0].name}`} actions={<div className="yx-tim-row"><Button onClick={() => setRuleOpen(true)}>Web clock-in rule</Button>{registerBtn}</div>} />
+      <WebApprovalDialog
+        open={ruleOpen}
+        onOpenChange={setRuleOpen}
+        rule={rule}
+        places={RULE_PLACES}
+        onSet={async (x) => setRule((r) => (x.scopeType === 'tenant' ? { ...r, company: x.value } : { ...r, overrides: [...r.overrides, { id: `o-${x.scopeId}`, scopeType: x.scopeType as 'legal_entity' | 'location', scopeId: x.scopeId!, name: RULE_PLACES.find((p) => p.value === `${x.scopeType}:${x.scopeId}`)!.label.split(' · ')[0]!, value: x.value }] }))}
+        onRemove={async (id) => setRule((r) => ({ ...r, overrides: r.overrides.filter((o) => o.id !== id) }))}
+      />
       <Tabs defaultValue={tab}>
         <TabsList aria-label="Devices">
           <TabsTrigger value="kiosks">Kiosks</TabsTrigger>
           {/* Short labels on phones so all three tabs fit without scrolling. */}
-          <TabsTrigger value="binds" count={binds.length}>{narrow ? 'Requests' : 'New phone requests'}</TabsTrigger>
-          <TabsTrigger value="phones">{narrow ? 'Phones' : 'Employee phones'}</TabsTrigger>
+          <TabsTrigger value="binds" count={binds.length}>{narrow ? 'Requests' : 'New device requests'}</TabsTrigger>
+          <TabsTrigger value="phones">{narrow ? 'Devices' : 'Employee devices'}</TabsTrigger>
           <TabsTrigger value="training">Training</TabsTrigger>
         </TabsList>
         <TabsContent value="kiosks">
@@ -288,23 +304,23 @@ function SampleDevicesScreen({ persona = 'hr', tab = 'kiosks', signOut = false, 
         <TabsContent value="binds">
           <div className="yx-tim-stack">
             <DataTable
-              label="New phone requests"
+              label="New device requests"
               columns={bcols}
               rows={binds}
               getRowId={(r) => r.id}
-              empty={<EmptyState title="No new phone requests" description="Requests appear here when someone signs in on a phone that isn't approved yet." />}
+              empty={<EmptyState title="No new device requests" description="Requests appear here when someone asks to clock in from a phone or computer that isn't approved yet." />}
               rowButtons={(r) => <><Button size="sm" onClick={() => { setRejectWhy(null); setRejecting(r); }}>Reject</Button><Button variant="approve" size="sm" onClick={() => (!oldOut(r) ? setApproving(r) : approve(r))}>Approve</Button></>}
             />
           </div>
         </TabsContent>
         <TabsContent value="phones">
           <DataTable
-            label="Employee phones"
+            label="Employee devices"
             columns={pcols}
             rows={shownPhones}
             getRowId={(r) => r.id}
             toolbar={
-              <FilterBar fields={[]} value={[]} onChange={() => {}} search={q} onSearchChange={setQ} searchPlaceholder="Search name or phone">
+              <FilterBar fields={[]} value={[]} onChange={() => {}} search={q} onSearchChange={setQ} searchPlaceholder="Search name or device">
                 <FilterToggle pressed={onlyIssues} onPressedChange={setOnlyIssues}>
 Only lost or inactive ({issueCount})
 </FilterToggle>
@@ -312,7 +328,7 @@ Only lost or inactive ({issueCount})
             }
             filtered={!!q.trim() || onlyIssues}
             onClearFilters={() => { setQ(''); setOnlyIssues(false); }}
-            empty={<EmptyState title="No approved phones yet" description="Phones appear here once you approve a new phone request." />}
+            empty={<EmptyState title="No approved devices yet" description="Phones and computers appear here once you approve a request." />}
             rowButtons={(r) =>
               r.computer ? (
                 r.status === 'Active' || r.status === 'Inactive' ? <Button size="sm" onClick={() => setSo(r)}>{computerWords.remove}</Button> : null

@@ -7,7 +7,8 @@ import { Segment } from '../people/people-kit';
 import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
 import { EmptyState, ErrorState, InlineAlert, NoAccessState } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FieldRow, FormField, FormSection } from '../../components/field';
+import { Switch } from '../../components/choice';
 import { useToast } from '../../components/notify';
 import { Icon } from '../../components/foundations';
 import { TextField } from '../../components/inputs';
@@ -33,6 +34,10 @@ export interface DevicesData {
   locations: { id: string; name: string; entity: string; zone?: string }[];
   /** Legal entities of the company: more than one shows the Entity column. */
   entities: number;
+  /** The legal entities, for the web clock-in rule's places. */
+  entityList?: { id: string; name: string }[];
+  /** The web clock-in rule (company value and the places with their own). */
+  webApproval?: WebApproval;
   company?: string;
 }
 export interface KioskKey { code: string; setupCode: string; setupExpiresAt: string }
@@ -47,6 +52,9 @@ export interface LiveDevices {
   onApprove: (requestId: string) => Promise<unknown>;
   onRefuse: (requestId: string, reason: string) => Promise<unknown>;
   onSignOut: (phoneId: string) => Promise<unknown>;
+  /** The web clock-in rule (PUT /time/devices/web-approval) and removing a place's own value. */
+  onSetWebApproval?: WebApprovalProps['onSet'];
+  onRemoveWebApproval?: WebApprovalProps['onRemove'];
   /** TIM-14 Training: sessions, and HR adds, changes and cancels them (GET/POST/PUT /time/devices/training). */
   training?: Omit<TrainingTabProps, 'locations' | 'open'>;
   /** For tests. */
@@ -75,6 +83,84 @@ export const computerWords = {
   removed: (first: string, model: string) => `Approval of ${first}'s ${model} removed.`,
   rejectEffect: (first: string) => `${first} is told why and can't clock in on the web from that computer.`,
 };
+
+/** "Web clock-in only from an approved computer" (attendance.web_device_approval): the company and places with their own. */
+export interface WebApproval { company: 'on' | 'off'; overrides: { id: string; scopeType: 'legal_entity' | 'location'; scopeId: string; name: string; value: 'on' | 'off' }[] }
+export interface WebApprovalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  rule: WebApproval;
+  /** Legal entities and locations, value "legal_entity:<id>" / "location:<id>". */
+  places: { value: string; label: string }[];
+  onSet: (input: { scopeType: 'tenant' | 'legal_entity' | 'location'; scopeId?: string; value: 'on' | 'off' }) => Promise<unknown>;
+  onRemove: (id: string) => Promise<unknown>;
+}
+const RULE_TEXT = { on: 'Approved computer only', off: 'Any computer' } as const;
+
+/**
+ * TIM-14 · Computers · web clock-in rule (founder answer 1, 3 Nov 2026): the company switch and the legal entities or
+ * locations that set their own (a location wins over its legal entity, which wins over the company). Design and live.
+ */
+export function WebApprovalDialog({ open, onOpenChange, rule, places, onSet, onRemove }: WebApprovalProps) {
+  const { toast } = useToast();
+  const { busy, error, run } = useRun();
+  const [place, setPlace] = useState<string | null>(null);
+  const [value, setValue] = useState<'on' | 'off'>(rule.company === 'on' ? 'off' : 'on');
+  const [tried, setTried] = useState(false);
+  const done = (title: string) => toast({ tone: 'success', title });
+  const free = places.filter((p) => !rule.overrides.some((o) => `${o.scopeType}:${o.scopeId}` === p.value));
+  const add = () => {
+    setTried(true);
+    if (!place) return void document.getElementById('yx-web-place')?.focus();
+    const [scopeType, scopeId] = place.split(':') as ['legal_entity' | 'location', string];
+    const label = places.find((p) => p.value === place)?.label ?? '';
+    void run('add', async () => {
+      await onSet({ scopeType, scopeId, value });
+      done(`${label.split(' · ')[0]}: ${RULE_TEXT[value].toLowerCase()} for web clock-in.`);
+      setPlace(null);
+      setTried(false);
+    });
+  };
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange} title="Web clock-in rule" description="Decide where people may clock in on the web only from a computer HR approved." footer={<Button onClick={() => onOpenChange(false)}>Close</Button>}>
+      <div className="yx-tim-form">
+        {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
+        <Switch
+          label="Web clock-in only from an approved computer"
+          description="For the whole company. People ask from My attendance today; their requests come to New device requests."
+          checked={rule.company === 'on'}
+          onChange={(v) => void run('company', async () => { await onSet({ scopeType: 'tenant', value: v ? 'on' : 'off' }); done(v ? 'Web clock-in now needs an approved computer.' : 'Any computer can be used for web clock-in.'); })}
+        />
+        <FormSection title="Places with their own rule">
+          {rule.overrides.length ? (
+            <ul className="yx-tim-list">
+              {rule.overrides.map((o) => (
+                <li key={o.id}>
+                  <span className="yx-tim-list__main"><strong>{o.name}</strong><span className="yx-tim-muted">{o.scopeType === 'location' ? 'Location' : 'Legal entity'}</span></span>
+                  <span className="yx-tim-row">
+                    <Badge tone={o.value === 'on' ? 'info' : 'neutral'}>{RULE_TEXT[o.value]}</Badge>
+                    <Button size="sm" loading={busy === `rm-${o.id}`} onClick={() => void run(`rm-${o.id}`, async () => { await onRemove(o.id); done(`${o.name} follows the company rule again.`); })}>Remove</Button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="yx-tim-muted">None. Every place follows the company rule.</p>
+          )}
+          <FieldRow>
+            <FormField id="yx-web-place" label="Place" required error={tried && !place ? 'Choose a legal entity or location.' : undefined}>
+              <Select options={free} value={place} onChange={setPlace} placeholder="Choose a place" />
+            </FormField>
+            <FormField label="Rule there">
+              <Segment label="Rule there" value={value} onChange={(v) => setValue(v as 'on' | 'off')} options={[{ value: 'on', label: RULE_TEXT.on }, { value: 'off', label: RULE_TEXT.off }]} />
+            </FormField>
+          </FieldRow>
+          <span><Button loading={busy === 'add'} onClick={add}>Set for this place</Button></span>
+        </FormSection>
+      </div>
+    </Dialog>
+  );
+}
 
 /** "1 min ago", "3 h ago", "2 days ago"; never seen: "Not yet". */
 export function seenAgo(iso: string | null, now: Date): string {
@@ -112,6 +198,7 @@ export function LiveDevicesScreen({ live }: { live: LiveDevices }) {
   const [key, setKey] = useState<(KioskKey & { where: string }) | null>(null);
   const [q, setQ] = useState('');
   const [onlyIssues, setOnlyIssues] = useState(false);
+  const [ruleOpen, setRuleOpen] = useState(false);
   const kiosks = d?.kiosks ?? [];
   const binds = d?.requests ?? [];
   const phones = d?.phones ?? [];
@@ -197,10 +284,16 @@ export function LiveDevicesScreen({ live }: { live: LiveDevices }) {
     });
   };
   const registerBtn = <Button variant="primary" icon={Plus} onClick={() => setRegistering(true)}>Register kiosk</Button>;
+  const canRule = Boolean(live.onSetWebApproval && live.onRemoveWebApproval && d?.webApproval);
+  const places = [
+    ...(d?.entityList ?? []).map((e) => ({ value: `legal_entity:${e.id}`, label: `${e.name} · legal entity` })),
+    ...(d?.locations ?? []).map((l) => ({ value: `location:${l.id}`, label: many ? `${l.name} · ${l.entity}` : l.name })),
+  ];
   if (live.state === 'no-access') return <TimePage active="Devices & kiosks"><NoAccessState grantedBy="your System Admin" what="devices and kiosks" note="Kiosks and phones are company-wide set-up." /></TimePage>;
   return (
     <TimePage active="Devices & kiosks">
-      <PageHeader title="Devices and kiosks" description={`HR · ${live.company ?? d?.company ?? 'all locations'}`} actions={registerBtn} />
+      <PageHeader title="Devices and kiosks" description={`HR · ${live.company ?? d?.company ?? 'all locations'}`} actions={canRule ? <div className="yx-tim-row"><Button onClick={() => setRuleOpen(true)}>Web clock-in rule</Button>{registerBtn}</div> : registerBtn} />
+      {canRule && <WebApprovalDialog open={ruleOpen} onOpenChange={setRuleOpen} rule={d!.webApproval!} places={places} onSet={live.onSetWebApproval!} onRemove={live.onRemoveWebApproval!} />}
       {key && (
         <InlineAlert tone="info" title={`Set-up key for ${key.code}: ${key.setupCode}`} actions={<Button size="sm" onClick={() => setKey(null)}>Done</Button>}>
           Open the kiosk page on the tablet at {key.where} and type this key before {time12(new Date(key.setupExpiresAt))}. It works once and is not shown again.
@@ -213,8 +306,8 @@ export function LiveDevicesScreen({ live }: { live: LiveDevices }) {
         <Tabs defaultValue="kiosks">
           <TabsList aria-label="Devices">
             <TabsTrigger value="kiosks">Kiosks</TabsTrigger>
-            <TabsTrigger value="binds" count={binds.length}>{narrow ? 'Requests' : 'New phone requests'}</TabsTrigger>
-            <TabsTrigger value="phones">{narrow ? 'Phones' : 'Employee phones'}</TabsTrigger>
+            <TabsTrigger value="binds" count={binds.length}>{narrow ? 'Requests' : 'New device requests'}</TabsTrigger>
+            <TabsTrigger value="phones">{narrow ? 'Devices' : 'Employee devices'}</TabsTrigger>
             {live.training && <TabsTrigger value="training">Training</TabsTrigger>}
           </TabsList>
           <TabsContent value="kiosks">
@@ -240,27 +333,27 @@ export function LiveDevicesScreen({ live }: { live: LiveDevices }) {
           <TabsContent value="binds">
             <div className="yx-tim-stack">
               <DataTable
-                label="New phone requests"
+                label="New device requests"
                 columns={bcols}
                 rows={binds}
                 getRowId={(r) => r.id}
                 state={tableState}
                 onRetry={live.onRetry}
-                empty={<EmptyState title="No new phone requests" description="Requests appear here when someone signs in on a phone that isn't approved yet." />}
+                empty={<EmptyState title="No new device requests" description="Requests appear here when someone asks to clock in from a phone or computer that isn't approved yet." />}
                 rowButtons={(r) => <><Button size="sm" onClick={() => { setRejectWhy(null); setRejectTried(false); setRejecting(r); }}>Reject</Button><Button variant="approve" size="sm" loading={busy === `approve-${r.id}`} onClick={() => (r.oldModel ? setApproving(r) : void approve(r))}>Approve</Button></>}
               />
             </div>
           </TabsContent>
           <TabsContent value="phones">
             <DataTable
-              label="Employee phones"
+              label="Employee devices"
               columns={pcols}
               rows={shownPhones}
               getRowId={(r) => r.id}
               state={tableState}
               onRetry={live.onRetry}
               toolbar={
-                <FilterBar fields={[]} value={[]} onChange={() => {}} search={q} onSearchChange={setQ} searchPlaceholder="Search name or phone">
+                <FilterBar fields={[]} value={[]} onChange={() => {}} search={q} onSearchChange={setQ} searchPlaceholder="Search name or device">
                   <FilterToggle pressed={onlyIssues} onPressedChange={setOnlyIssues}>
 Only lost or inactive ({issueCount})
 </FilterToggle>
@@ -268,7 +361,7 @@ Only lost or inactive ({issueCount})
               }
               filtered={!!q.trim() || onlyIssues}
               onClearFilters={() => { setQ(''); setOnlyIssues(false); }}
-              empty={<EmptyState title="No approved phones yet" description="Phones appear here once you approve a new phone request." />}
+              empty={<EmptyState title="No approved devices yet" description="Phones and computers appear here once you approve a request." />}
               rowButtons={(r) =>
                 r.kind === 'web' ? (
                   r.status === 'active' || r.status === 'inactive' ? <Button size="sm" onClick={() => setSo(r)}>{computerWords.remove}</Button> : null
