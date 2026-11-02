@@ -6461,6 +6461,10 @@ model Preboarding {
   batchId            String?   @map("batch_id") @db.Uuid
   buddyEmployeeId    String?   @map("buddy_employee_id") @db.Uuid
   version            Int       @default(1)
+  /// PPL-36: from the joiner's own answers, for "possible same person" (PAN and UAN as the company's keyed hashes).
+  panHash            String?   @map("pan_hash") @db.Char(64)
+  uanHash            String?   @map("uan_hash") @db.Char(64)
+  dateOfBirth        DateTime? @map("date_of_birth") @db.Date
   createdBy          String?   @map("created_by") @db.Uuid
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -6587,6 +6591,10 @@ model LetterIssue {
   renderError      String?   @map("render_error") @db.VarChar(300)
   /// PPL-15: why HR discarded a drafted letter (the row is kept for the audit).
   discardReason    String?   @map("discard_reason") @db.VarChar(500)
+  /// PPL-28: a held letter waits (no reference yet); who held it, when and why.
+  holdReason       String?   @map("hold_reason") @db.VarChar(500)
+  heldBy           String?   @map("held_by") @db.Uuid
+  heldAt           DateTime? @map("held_at") @db.Timestamptz(3)
   requestedBy      String?   @map("requested_by") @db.Uuid
   issuedBy         String?   @map("issued_by") @db.Uuid
   issuedAt         DateTime? @map("issued_at") @db.Timestamptz(3)
@@ -7889,6 +7897,8 @@ model BankFile {
   payslipIds         String[] @map("payslip_ids") @db.Uuid
   total              Decimal  @db.Decimal(14, 2)
   generatedBy        String   @map("generated_by") @db.Uuid
+  /// PPL-46: the outward remittance list (accounts abroad) generated and released with this file.
+  remittanceFileId   String?  @map("remittance_file_id") @db.Uuid
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("bank_files")
@@ -11355,4 +11365,51 @@ model LicenceOverride {
 
   @@index([organizationId, employeeId, licenceTypeId], map: "licence_overrides_person_idx")
   @@map("licence_overrides")
+}
+
+/// PPL-33: the person's nominee for their data rights (DPDP Act 2023, s.14); one current row, ended rows kept.
+model PrivacyNominee {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  name           String    @db.VarChar(100)
+  relation       String    @db.VarChar(40)
+  email          String?   @db.Citext
+  phone          String?   @db.VarChar(16)
+  createdBy      String    @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  endedAt        DateTime? @map("ended_at") @db.Timestamptz(3)
+  endedBy        String?   @map("ended_by") @db.Uuid
+
+  @@map("privacy_nominees")
+}
+
+/// PPL-46: net pay split over up to three accounts on file; changed only through an approved request, used after cooling.
+model EmployeePaySplit {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  lines          Json
+  validFrom      DateTime  @default(now()) @map("valid_from") @db.Timestamptz(3)
+  validTo        DateTime? @map("valid_to") @db.Timestamptz(3)
+  usableFrom     DateTime  @map("usable_from") @db.Timestamptz(3)
+  requestId      String?   @map("request_id") @db.Uuid
+
+  @@map("employee_pay_splits")
+}
+
+/// PPL-44: a closed trading window set by the compliance officer (none by default).
+model TradingWindow {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  startsOn       DateTime  @map("starts_on") @db.Date
+  endsOn         DateTime  @map("ends_on") @db.Date
+  reason         String    @db.VarChar(200)
+  createdBy      String    @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  removedAt      DateTime? @map("removed_at") @db.Timestamptz(3)
+  removedBy      String?   @map("removed_by") @db.Uuid
+
+  @@index([organizationId, startsOn], map: "trading_windows_org_idx")
+  @@map("trading_windows")
 }
