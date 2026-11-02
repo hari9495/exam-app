@@ -354,6 +354,13 @@ describe('FileUpload', () => {
     expect(await screen.findByText(/Uploaded/)).toBeInTheDocument();
   });
 
+  it('on a phone it can open the back camera for a document (capture)', () => {
+    const { container, rerender } = render(<FileUpload upload={vi.fn()} />);
+    expect(container.querySelector('input[type=file]')).not.toHaveAttribute('capture');
+    rerender(<FileUpload upload={vi.fn()} capture="environment" />);
+    expect(container.querySelector('input[type=file]')).toHaveAttribute('capture', 'environment');
+  });
+
   it('the field label and the error summary can focus it (the zone shows the ring); Browse files is the tab stop', () => {
     render(
       <FormField label="Résumé" id="resume" error="Attach your resume">

@@ -534,7 +534,10 @@ export interface ConsentPanelProps {
   noticeVersion: string;
   acceptLabel: string;
   declineLabel?: string;
-  onAccept?: (ids: string[]) => void;
+  /** May be async: the button shows it is busy; if it fails, the panel stays as it was (the caller shows why). */
+  onAccept?: (ids: string[]) => void | Promise<unknown>;
+  /** Where the full notice opens; null when the summary already is the full notice (no link). */
+  noticeHref?: string | null;
   onDecline?: () => void;
   defaultChecked?: string[];
   /** Show the "you declined" outcome. */
@@ -555,11 +558,13 @@ export function ConsentPanel({
   defaultChecked = [],
   defaultDeclined,
   declinedText,
+  noticeHref = '#',
 }: ConsentPanelProps) {
   const [checked, setChecked] = useState<string[]>(defaultChecked);
   const [showErr, setShowErr] = useState(false);
   const [declined, setDeclined] = useState(!!defaultDeclined);
   const [accepted, setAccepted] = useState(false);
+  const [busy, setBusy] = useState(false);
   const missing = purposes.filter((p) => p.required && !checked.includes(p.id));
   if (declined)
     return (
@@ -599,7 +604,16 @@ export function ConsentPanel({
         </InlineAlert>
       )}
       <p className="yx-consent__notice">
-        <Icon icon={ShieldCheck} /> Read the full <a href="#">{noticeLabel}</a> · version {noticeVersion}
+        <Icon icon={ShieldCheck} />{' '}
+        {noticeHref === null ? (
+          <>
+            This is the full {noticeLabel} · version {noticeVersion}
+          </>
+        ) : (
+          <>
+            Read the full <a href={noticeHref}>{noticeLabel}</a> · version {noticeVersion}
+          </>
+        )}
       </p>
       <div className="yx-consent__actions">
         <Button
@@ -612,10 +626,16 @@ export function ConsentPanel({
         </Button>
         <Button
           variant="primary"
+          loading={busy}
           onClick={() => {
             if (missing.length) return setShowErr(true);
-            setAccepted(true);
-            onAccept?.(checked);
+            const r = onAccept?.(checked);
+            if (!(r instanceof Promise)) return setAccepted(true);
+            setBusy(true);
+            r.then(
+              () => setAccepted(true),
+              () => undefined,
+            ).finally(() => setBusy(false));
           }}
         >
           {acceptLabel}

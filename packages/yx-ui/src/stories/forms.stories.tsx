@@ -219,6 +219,9 @@ export const DatesAndUpload: StoryObj = {
               }
             />
           </FormField>
+          <FormField label="PAN card photo" helper="On a phone, Browse files opens the back camera (capture)">
+            <FileUpload accept={['.jpg', '.png', '.pdf']} maxSize={5 * 1024 * 1024} multiple={false} capture="environment" upload={() => new Promise((resolve) => setTimeout(resolve, 600))} />
+          </FormField>
         </Section>
       </Stack>
     );
