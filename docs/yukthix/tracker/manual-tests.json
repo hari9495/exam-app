@@ -9661,7 +9661,7 @@
       "PAY-25 NoAccess"
     ],
     "steps": [
-      "1. As Ramesh open Settings and check \"Payroll reports access given on request lasts (days)\" is 90.",
+      "1. As Ramesh open Settings › Payroll rules and check the \"Payroll reports access\" panel says 90 days.",
       "2. As Lakshmi open Payroll reports; press Request access.",
       "3. As Ramesh approve \"Payroll reports access for Lakshmi\" in Approvals.",
       "4. As Lakshmi reload Payroll reports.",
