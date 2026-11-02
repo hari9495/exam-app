@@ -168,6 +168,17 @@ describe('Me › Attendance (live calendar)', () => {
     expect(await screen.findByRole('dialog', { name: 'New attendance request' })).toBeInTheDocument();
   });
 
+  it('WithNote: the note kept with a punch shows under that punch on the day card; a punch without one shows none', async () => {
+    const withNote = { ...DAY_6, punches: DAY_6.punches.map((x, i) => (i === 0 ? { ...x, note: 'Client call ran late' } : x)) };
+    const l = live({ onOpenDay: vi.fn(async () => withNote) });
+    render(<AttendanceCalendarScreen live={l} />);
+    await ue.click(screen.getByRole('button', { name: /6 Oct 2026: Missing check-out/ }));
+    const list = await screen.findByRole('list', { name: 'Punches' });
+    const rows = within(list).getAllByRole('listitem');
+    expect(within(rows[0]).getByText('Note: Client call ran late')).toBeInTheDocument();
+    expect(rows.slice(1).every((r) => !/Note:/.test(r.textContent ?? ''))).toBe(true);
+  });
+
   it('a day card that cannot load says why and retries', async () => {
     const onOpenDay = vi.fn().mockRejectedValueOnce(new Error('You moved teams on 5 Oct.')).mockResolvedValue(DAY_6);
     render(<AttendanceCalendarScreen live={live({ onOpenDay })} />);
@@ -312,6 +323,18 @@ describe('Time › Muster (live)', () => {
     expect(await screen.findByText(/40 m from centre/)).toBeInTheDocument();
     // Read only: no fix, resolve or nudge buttons that would do nothing.
     expect(screen.queryByRole('button', { name: /Resolve with reason|Nudge to fix/ })).toBeNull();
+  });
+
+  it('WithNote: a manager or HR opening the day sees the note under the punch; none when there is none', async () => {
+    const noted: DayCard = { ...card, punches: [{ ...card.punches[0], note: 'Bus broke down on OMR' }] };
+    const { unmount } = render(<MusterScreen live={muster({ onOpenDay: vi.fn(async () => noted) })} />);
+    await ue.click(screen.getByRole('button', { name: /Kavya Reddy, 1 Oct 2026: Present/ }));
+    expect(await screen.findByText('Note: Bus broke down on OMR')).toBeInTheDocument();
+    unmount();
+    render(<MusterScreen live={muster()} />);
+    await ue.click(screen.getByRole('button', { name: /Kavya Reddy, 1 Oct 2026: Present/ }));
+    expect(await screen.findByText(/40 m from centre/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Note:/)).toBeNull();
   });
 
   it("Manager · one person: the day card links to the person's month", async () => {

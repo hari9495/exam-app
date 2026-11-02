@@ -126,6 +126,8 @@ export interface PunchRow {
   distanceM: number | null;
   accuracyM: number | null;
   where: string | null;
+  /** WithNote: the note kept with the punch (null without one). */
+  note?: string | null;
 }
 
 export type DayStatus = 'present' | 'half_day' | 'absent' | 'leave' | 'holiday' | 'weekly_off' | 'missing_in' | 'missing_out' | 'no_timesheet' | 'not_started' | 'strike' | 'lockout' | 'layoff';

@@ -2255,6 +2255,7 @@ function livePunch(p: PunchRow, zone: string): Punch {
     distanceM: p.distanceM ?? undefined,
     verdict,
     ...(p.accepted ? {} : { refusal: p.refusal ?? 'Refused' }),
+    ...(p.note ? { note: p.note } : {}),
   };
 }
 

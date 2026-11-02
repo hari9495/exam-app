@@ -173,6 +173,24 @@ describe('Time follow-ups', () => {
       await expect(inA((tx) => tx.punch.update({ where: { id: row.id }, data: { note: '  ' } }))).rejects.toThrow();
       expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.punch.count({ where: { id: row.id } }))).toBe(0);
     });
+
+    it('the day card shows the note to the employee, their manager and HR; never to anyone who may not see the punch', async () => {
+      const row = await inA((tx) => tx.punch.findFirstOrThrow({ where: { organizationId: org.A.id, employeeId: ids.peerEmp, note: 'Client call ran late' } }));
+      const on = row.workOn.toISOString().slice(0, 10);
+      const path = `/time/people/${ids.peerEmp}/days/${on}`;
+      for (const who of ['peer', 'mgr', 'hr'] as const) {
+        const card = (await api(who, 'get', path).expect(200)).body as { punches: { id: string; kind: string; note: string | null }[] };
+        expect(card.punches.find((x) => x.id === row.id)?.note).toBe('Client call ran late');
+        // A punch without a note says so (null), never an empty text.
+        expect(card.punches.find((x) => x.kind === 'break_start')?.note ?? null).toBeNull();
+      }
+      // A colleague, another manager, and another company see neither the day nor its notes.
+      for (const who of ['emp', 'mgr2', 'empB', 'adminB'] as const) {
+        const res = await api(who, 'get', path);
+        expect(res.status).toBe(404);
+        expect(JSON.stringify(res.body)).not.toContain('Client call ran late');
+      }
+    });
   });
 
   // ------------------------------------------------------------------------------------------ paused sign-in
