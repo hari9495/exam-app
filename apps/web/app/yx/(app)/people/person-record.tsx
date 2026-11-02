@@ -9,6 +9,7 @@ import { draftForm, type AsOfView, type HistoryView, type PersonOption } from '@
 import type { AssetRow, QueueDocument } from '@yukthix/ui/lifecycle';
 import { todayIst, useOrg, useYxPermissions, type Reference } from '../../../../lib/yx-org';
 import { useChangeOptions, useMove, usePeople, usePeopleRead, usePeopleWrite, useRaiseChange } from '../../../../lib/yx-people';
+import { liveSplit, type PaySplitView } from '../../../../lib/yx-pay-split';
 import { useDocumentDownload, useLife, useLifeWrite } from '../../../../lib/yx-lifecycle';
 import { useTime } from '../../../../lib/yx-time';
 import { usePayRead } from '../../../../lib/yx-pay';
@@ -153,6 +154,9 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const v = view.data ?? null;
   const h = history.data ?? null;
   const prof = profile.data ?? null;
+  // PPL-46 OnPayTab: the account abroad and the split (read only) on the Pay tab, for whoever may change them.
+  const paySplit = usePeople<PaySplitView>(personId && prof?.can.requestChange ? `/employees/${p}/pay-split` : null);
+  const abroadAcct = prof?.identity?.internationalAccount ?? null;
   const pending = (requests.data?.rows ?? []).filter((r) => r.employeeId === personId && r.status === 'pending');
   const docList = docs.data?.documents ?? [];
   const persona = hr ? 'hr' : self ? 'emp' : 'mgr';
@@ -291,6 +295,10 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
     // PPL-46: the salary account abroad goes to approval like any bank change (HR with identity change rights, or the person).
     ...(prof?.can.requestChange ? { onBankAbroad: () => router.push(self ? '/yx/me/bank-abroad' : `/yx/people/directory/${p}/bank-abroad`) } : {}),
     ...(prof?.can.editWork ? { onEditWorkPhone: () => setPhoneOpen(true) } : {}),
+    abroad:
+      abroadAcct || paySplit.data?.current
+        ? { name, current: abroadAcct ? { ...abroadAcct, usableFrom: new Date(abroadAcct.usableFrom) } : null, waiting: false, onSend: async () => undefined, onCancel: () => undefined, ...(paySplit.data ? { split: liveSplit(paySplit.data) } : {}) }
+        : null,
     activity: activity.data ? activity.data.entries.map((e) => ({ id: e.id, kind: e.kind, actor: e.actor ? { name: e.actor } : null, at: new Date(e.at), text: e.text })) : null,
     performance:
       perfAllowed && (goals.data || reviews.data) && personId

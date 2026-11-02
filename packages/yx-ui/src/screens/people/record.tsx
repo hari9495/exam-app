@@ -177,6 +177,8 @@ export interface LiveRecord {
   onMessage?: () => void;
   /** PPL-46: the salary account abroad (HR menu, or the person's Pay tab). */
   onBankAbroad?: () => void;
+  /** PPL-46 OnPayTab: the account abroad and the split, shown on the Pay tab when either is on file (read only). */
+  abroad?: LiveIntlBank | null;
   /** HR menu: change the work phone (Internal). */
   onEditWorkPhone?: () => void;
   /** Rail "Activity": who did what on the record (null: none the viewer may see yet). */
@@ -514,7 +516,7 @@ export function PersonWorkspace({ persona, relation, today, defaultTab = 'overvi
               <TabsContent value="pay">
                 <PayTab
                   {...(live
-                    ? { pay: live.pay, access: live.payAccess ?? null, onRequestChange: live.onRequestChange, onBankAbroad: self ? live.onBankAbroad : undefined }
+                    ? { pay: live.pay, access: live.payAccess ?? null, onRequestChange: live.onRequestChange, onBankAbroad: self ? live.onBankAbroad : undefined, intl: live.abroad ?? undefined, onChangeAbroad: live.onBankAbroad }
                     : {
                         pay: !payVisible ? { kind: 'none' as const, grantedBy: 'HR', note: 'Pay needs a salary grant for your team.' } : payShown ? SAMPLE_PAY : { kind: 'ask' as const, onShow: () => setPayShown(true) },
                         // As live: every viewer, the employee too, asks to see pay each time (R1).
@@ -748,7 +750,7 @@ function PayReveal({ name, self, onShow, busy, error }: { name: string; self: bo
 }
 
 /** Pay tab: the person's current pay, last approved payslip and tax regime (live from the API, the design from SAMPLE_PAY). */
-export function PayTab({ pay, name, persona, self, access, international = false, onRequestChange, onBankAbroad }: { pay: LiveRecordPay; name: string; persona: Persona; self: boolean; access: LiveRecord['payAccess']; international?: boolean; onRequestChange?: () => void; onBankAbroad?: () => void }) {
+export function PayTab({ pay, name, persona, self, access, international = false, onRequestChange, onBankAbroad, intl, onChangeAbroad }: { pay: LiveRecordPay; name: string; persona: Persona; self: boolean; access: LiveRecord['payAccess']; international?: boolean; onRequestChange?: () => void; onBankAbroad?: () => void; intl?: LiveIntlBank; onChangeAbroad?: () => void }) {
   if (pay.kind === 'none')
     return access ? (
       <div className="yx-ppl__stack">
@@ -763,7 +765,7 @@ export function PayTab({ pay, name, persona, self, access, international = false
   if (until) return (
     <div className="yx-ppl__stack">
       {until}
-      <PayTab pay={pay} name={name} persona={persona} self={self} access={null} international={international} onRequestChange={onRequestChange} onBankAbroad={onBankAbroad} />
+      <PayTab pay={pay} name={name} persona={persona} self={self} access={null} international={international} onRequestChange={onRequestChange} onBankAbroad={onBankAbroad} intl={intl} onChangeAbroad={onChangeAbroad} />
     </div>
   );
   if (pay.kind === 'ask') return <PayReveal name={name} self={self} onShow={pay.onShow} busy={pay.busy} error={pay.error} />;
@@ -801,7 +803,9 @@ export function PayTab({ pay, name, persona, self, access, international = false
         </Card>
       </div>
       {pay.lines.length > 0 && <SalaryTable lines={pay.lines} money={money} ctc={pay.ctc} outside={pay.outside} />}
-      {international ? (
+      {intl ? (
+        <InternationalBankTab persona={persona} splits={[]} net={0} live={intl} embedded onChange={onChangeAbroad} />
+      ) : international ? (
         <InternationalBankTab persona={persona} splits={SPLITS} net={pay.lastNet?.amount ?? 0} embedded />
       ) : pay.banks.length > 0 && (
         <Card
@@ -1414,6 +1418,83 @@ export interface LiveIntlBank {
   /** The page shows the success toast and goes back. */
   onSend: (value: { country: string; iban: string; bic: string; currency: string }) => Promise<void>;
   onCancel: () => void;
+  /** PPL-46: split pay over the accounts on file (salary and reimbursement in India, the account abroad). */
+  split?: LiveSplit;
+}
+
+/** One line of a split as the API keeps it (`account`: salary, reimbursement or abroad). */
+export interface SplitLineInput {
+  account: string;
+  rule: PaySplit['rule'];
+  value: number;
+}
+export interface LiveSplit {
+  /** The accounts a split can use, masked ("Salary account · HDFC0001234 · XXXX 2333"). */
+  accounts: { account: string; label: string }[];
+  /** The split in force or next (usableFrom: paid from then, after the cooling period). */
+  current: { lines: SplitLineInput[]; usableFrom: Date } | null;
+  /** A split change is already waiting for approval. */
+  waiting: boolean;
+  /** The last net pay (the person, or a pay key); null: "This month" is not shown. */
+  net: number | null;
+  /** Sends the split for approval; the page shows the toast. Absent: read only (the Pay tab card). */
+  onSend?: (lines: SplitLineInput[]) => Promise<void>;
+}
+
+/** The split's rows (PaySplit) from the API's lines; none yet: everything to the first account. */
+const splitRows = (s: LiveSplit): PaySplit[] =>
+  (s.current?.lines ?? (s.accounts[0] ? [{ account: s.accounts[0].account, rule: 'remainder' as const, value: 0 }] : [])).map((l) => ({ id: l.account, label: s.accounts.find((a) => a.account === l.account)?.label ?? l.account, rule: l.rule, value: l.value }));
+
+/** PPL-46 · the designed "Split net pay" card: up to 3 accounts, a rule and a value each, this month's amounts. */
+function SplitPayCard({ rows, setRows, net, accounts, readOnly = false }: { rows: PaySplit[]; setRows?: (fn: (xs: PaySplit[]) => PaySplit[]) => void; net: number | null; accounts: { id: string; label: string }[]; readOnly?: boolean }) {
+  const result = rows.length ? splitNetPay(net ?? Number.MAX_SAFE_INTEGER, rows) : null;
+  const next = accounts.find((a) => !rows.some((r) => r.id === a.id));
+  const ruleText = (s: PaySplit) => (s.rule === 'remainder' ? 'The rest' : s.rule === 'fixed' ? formatINR(s.value) : `${s.value}%`);
+  return (
+    <Card title={net != null ? `Split net pay (${formatINR(net)} this month)` : 'Split net pay'}>
+      <PlainTable
+        label="Split net pay"
+        rows={rows}
+        getRowId={(s) => s.id}
+        columns={[
+          { key: 'account', header: 'Account', cell: (s) => <span className="yx-mono">{s.label}</span> },
+          readOnly
+            ? { key: 'rule', header: 'Rule', cell: (s) => ruleText(s) }
+            : {
+                key: 'rule',
+                header: 'Rule',
+                cell: (s) => <Select aria-label={`Rule for ${s.label}`} size="sm" options={RULES} value={s.rule} onChange={(v) => setRows?.((xs) => xs.map((x) => (x.id === s.id ? { ...x, rule: v as PaySplit['rule'] } : x)))} />,
+              },
+          ...(readOnly
+            ? []
+            : [
+                {
+                  key: 'value',
+                  header: 'Value',
+                  cell: (s: PaySplit) => (s.rule === 'remainder' ? '—' : <NumberField aria-label={`Value for ${s.label}`} size="sm" value={s.value} onChange={(v) => setRows?.((xs) => xs.map((x) => (x.id === s.id ? { ...x, value: v ?? 0 } : x)))} />),
+                },
+              ]),
+          ...(net != null ? [{ key: 'month', header: 'This month', num: true, cell: (s: PaySplit) => <span className="yx-ppl__num">{result?.ok ? formatINR(result.amounts[s.id]) : '—'}</span> }] : []),
+          ...(readOnly || rows.length < 2 ? [] : [{ key: 'remove', header: '', cell: (s: PaySplit) => <Button size="sm" onClick={() => setRows?.((xs) => xs.filter((x) => x.id !== s.id))}>Remove</Button> }]),
+        ]}
+      />
+      {result && !result.ok && (
+        <InlineAlert tone="danger" title="This split can't be saved">
+          {result.error}
+        </InlineAlert>
+      )}
+      {!readOnly && (
+        <div className="yx-ppl__row">
+          <Button icon={Plus} size="sm" onClick={() => (next && rows.length < 3 ? setRows?.((xs) => [...xs, { id: next.id, label: next.label, rule: 'fixed', value: 0 }]) : undefined)}>
+            Add account
+          </Button>
+          <Text size="sm" tone="secondary">
+            {next || rows.length >= 3 ? 'Up to 3 accounts: fixed amounts first, then percentages, remainder to the primary.' : 'Every account on file is in the split. Add an account abroad or a reimbursement account first.'}
+          </Text>
+        </div>
+      )}
+    </Card>
+  );
 }
 
 const CURRENCY = new Intl.DisplayNames(['en'], { type: 'currency' });
@@ -1465,8 +1546,54 @@ function IntlBankOnFile({ current }: { current: NonNullable<LiveIntlBank['curren
   );
 }
 
-function LiveInternationalBank({ persona, live }: { persona: Persona; live: LiveIntlBank }) {
+/** PPL-46: the split's rows and the page's one "Send for approval" (a new IBAN, the split, or both). */
+function useSplitSend(live: LiveIntlBank, f: ReturnType<typeof useIntlBankForm>) {
+  const sp = live.split;
+  const [rows, setRows] = useState<PaySplit[]>(() => (sp ? splitRows(sp) : []));
+  const accounts = (sp?.accounts ?? []).map((a) => ({ id: a.account, label: a.label }));
+  const changed = sp ? JSON.stringify(rows.map((r) => [r.id, r.rule, r.rule === 'remainder' ? 0 : r.value])) !== JSON.stringify(splitRows(sp).map((r) => [r.id, r.rule, r.rule === 'remainder' ? 0 : r.value])) : false;
+  const { say } = useSay();
+  const [sending, setSending] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  // One "Send for approval" as designed: the new IBAN, the split, or both (the split first: the IBAN page goes back).
+  const send = async () => {
+    const ibanAsked = Boolean(f.iban.trim() || f.bic.trim());
+    if (!ibanAsked && !changed) return say('Enter a new IBAN, or change the split, then send it.');
+    if (changed) {
+      if (sp!.waiting) return say('A split change is already waiting for approval. Wait for the decision first.');
+      const check = splitNetPay(sp!.net ?? Number.MAX_SAFE_INTEGER, rows);
+      if (!check.ok) return say(check.error!);
+      setSending(true);
+      setFailed(null);
+      try {
+        await sp!.onSend!(rows.map((r) => ({ account: r.id, rule: r.rule, value: r.rule === 'remainder' ? 0 : r.value })));
+      } catch (e) {
+        setFailed(errorText(e));
+        setSending(false);
+        return;
+      }
+      setSending(false);
+    }
+    if (ibanAsked) await f.send();
+    else live.onCancel();
+  };
+  return { sp, rows, setRows, accounts, send, sending: sending || f.sending, failed: failed ?? f.failed };
+}
+
+function LiveInternationalBank({ persona, live, embedded = false, onChange }: { persona: Persona; live: LiveIntlBank; embedded?: boolean; onChange?: () => void }) {
   const f = useIntlBankForm(live, false);
+  const { sp, rows, setRows, accounts, send, sending, failed } = useSplitSend(live, f);
+  // PPL-46 OnPayTab: the Pay tab shows the accounts and the split, read only, with a way to change them.
+  if (embedded)
+    return (
+      <Card title="Bank accounts (international)" actions={onChange ? <Button size="sm" onClick={onChange}>Change</Button> : undefined}>
+        <div className="yx-ppl__stack">
+          {live.current ? <IntlBankOnFile current={live.current} /> : <Text as="p" tone="secondary">No account abroad on file yet.</Text>}
+          {sp && rows.length > 0 && <SplitPayCard rows={rows} net={sp.net} accounts={accounts} readOnly />}
+          {sp?.current && sp.current.usableFrom > new Date() && <Text size="sm" tone="secondary" as="p">This split is used for pay from {formatDate(sp.current.usableFrom)} (cooling period).</Text>}
+        </div>
+      </Card>
+    );
   return (
     <PeopleFrame active="Directory" persona={persona}>
       <ObjectHeader name={live.name} person secondary="Pay › Bank details" />
@@ -1491,11 +1618,13 @@ function LiveInternationalBank({ persona, live }: { persona: Persona; live: Live
             <Select aria-label="Payout currency" options={CURRENCY_OPTIONS} value={f.currency} onChange={f.setCurrency} searchable />
           </FormField>
         </div>
+        {sp && sp.onSend && rows.length > 0 && <SplitPayCard rows={rows} setRows={setRows} net={sp.net} accounts={accounts} />}
+        {sp?.waiting && <InlineAlert tone="warning" title="A split change is already waiting for approval">Wait for the decision, or withdraw it on the person's record first.</InlineAlert>}
         <InlineAlert tone="info">Changes need approval and a cooling period before the first payout. The employee and the old contact are notified.</InlineAlert>
-        {f.failed && <InlineAlert tone="danger" title="Not sent">{f.failed}</InlineAlert>}
+        {failed && <InlineAlert tone="danger" title="Not sent">{failed}</InlineAlert>}
         <div className="yx-ppl__row">
           <Button onClick={live.onCancel}>Cancel</Button>
-          <Button variant="primary" loading={f.sending} onClick={() => void f.send()}>
+          <Button variant="primary" loading={sending} onClick={() => void send()}>
             Send for approval
           </Button>
         </div>
@@ -1506,6 +1635,7 @@ function LiveInternationalBank({ persona, live }: { persona: Persona; live: Live
 
 function LiveInternationalBankPhone({ live }: { live: LiveIntlBank }) {
   const f = useIntlBankForm(live, true);
+  const { sp, rows, setRows, accounts, send, sending, failed } = useSplitSend(live, f);
   return (
     <MeFrame active="Change requests">
       <PageHeader title="Bank details" />
@@ -1521,11 +1651,12 @@ function LiveInternationalBankPhone({ live }: { live: LiveIntlBank }) {
         <FormField id="ib-cur" label="Payout currency" required error={f.errorOf('ib-cur')}>
           <Select aria-label="Payout currency" options={CURRENCY_OPTIONS} value={f.currency} onChange={f.setCurrency} searchable />
         </FormField>
+        {sp && sp.onSend && rows.length > 0 && <SplitPayCard rows={rows} setRows={setRows} net={sp.net} accounts={accounts} />}
         <InlineAlert tone="info">HR approves bank changes. Your first salary to a new account waits for the cooling period.</InlineAlert>
-        {f.failed && <InlineAlert tone="danger" title="Not sent">{f.failed}</InlineAlert>}
+        {failed && <InlineAlert tone="danger" title="Not sent">{failed}</InlineAlert>}
         <div className="yx-ppl__row">
           <Button onClick={live.onCancel}>Cancel</Button>
-          <Button variant="primary" loading={f.sending} onClick={() => void f.send()}>
+          <Button variant="primary" loading={sending} onClick={() => void send()}>
             Send for approval
           </Button>
         </div>
@@ -1540,8 +1671,8 @@ function LiveInternationalBankPhone({ live }: { live: LiveIntlBank }) {
 }
 
 // PPL-46
-export function InternationalBankTab(props: { persona: Persona; splits: PaySplit[]; net: number; embedded?: boolean; defaultIban?: string; defaultBic?: string; live?: LiveIntlBank }) {
-  return props.live ? <LiveInternationalBank persona={props.persona} live={props.live} /> : <SampleInternationalBank {...props} />;
+export function InternationalBankTab(props: { persona: Persona; splits: PaySplit[]; net: number; embedded?: boolean; defaultIban?: string; defaultBic?: string; live?: LiveIntlBank; onChange?: () => void }) {
+  return props.live ? <LiveInternationalBank persona={props.persona} live={props.live} embedded={props.embedded} onChange={props.onChange} /> : <SampleInternationalBank {...props} />;
 }
 
 function SampleInternationalBank({ persona, splits: initial, net, embedded, defaultIban = 'AE07 0331 2345 6789 0123 456', defaultBic = 'ECBKAEAD' }: { persona: Persona; splits: PaySplit[]; net: number; embedded?: boolean; defaultIban?: string; defaultBic?: string }) {
@@ -1549,6 +1680,7 @@ function SampleInternationalBank({ persona, splits: initial, net, embedded, defa
   const [iban, setIban] = useState(defaultIban);
   const [bic, setBic] = useState(defaultBic);
   const result = splits.length ? splitNetPay(net, splits) : null;
+  const sampleAccounts = [...initial.map((s) => ({ id: s.id, label: s.label }))];
   const ibanOk = isIban(iban);
   const bicOk = isBic(bic);
   const { say } = useSay();
@@ -1568,47 +1700,7 @@ function SampleInternationalBank({ persona, splits: initial, net, embedded, defa
           <Select options={[{ value: 'AED', label: 'AED · UAE dirham' }, { value: 'INR', label: 'INR · Indian rupee' }]} value="AED" onChange={() => {}} />
         </FormField>
       </div>
-      {splits.length > 0 && (
-        <Card title={`Split net pay (${formatINR(net)} this month)`}>
-          <PlainTable
-            label="Split net pay"
-            rows={splits}
-            getRowId={(s) => s.id}
-            columns={[
-              { key: 'account', header: 'Account', cell: (s) => <span className="yx-mono">{s.label}</span> },
-              {
-                key: 'rule',
-                header: 'Rule',
-                cell: (s) => <Select aria-label={`Rule for ${s.label}`} size="sm" options={RULES} value={s.rule} onChange={(v) => setSplits((xs) => xs.map((x) => (x.id === s.id ? { ...x, rule: v as PaySplit['rule'] } : x)))} />,
-              },
-              {
-                key: 'value',
-                header: 'Value',
-                cell: (s) =>
-                  s.rule === 'remainder' ? '—' : <NumberField aria-label={`Value for ${s.label}`} size="sm" value={s.value} onChange={(v) => setSplits((xs) => xs.map((x) => (x.id === s.id ? { ...x, value: v ?? 0 } : x)))} />,
-              },
-              { key: 'month', header: 'This month', num: true, cell: (s) => <span className="yx-ppl__num">{result?.ok ? formatINR(result.amounts[s.id]) : '—'}</span> },
-            ]}
-          />
-          {result && !result.ok && (
-            <InlineAlert tone="danger" title="This split can't be saved">
-              {result.error}
-            </InlineAlert>
-          )}
-          <div className="yx-ppl__row">
-            <Button
-              icon={Plus}
-              size="sm"
-              onClick={() => setSplits((xs) => [...xs, { id: `n${xs.length}`, label: 'New account', rule: 'fixed', value: 0 }])}
-            >
-              Add account
-            </Button>
-            <Text size="sm" tone="secondary">
-              Up to 3 accounts: fixed amounts first, then percentages, remainder to the primary. The WPS account must get at least the pack minimum.
-            </Text>
-          </div>
-        </Card>
-      )}
+      {splits.length > 0 && <SplitPayCard rows={splits} setRows={setSplits} net={net} accounts={sampleAccounts} />}
       <InlineAlert tone="info">
         Changes need approval and a cooling period before the first payout. {persona === 'emp' ? 'We tell your old contact when your account changes.' : 'The employee and the old contact are notified.'}
       </InlineAlert>

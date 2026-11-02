@@ -20,7 +20,7 @@ export { BfsiComplianceList, BfsiDeclarations, type BfsiHolding, type BfsiRelate
 // PPL-38: the disability declaration (the person's own, and the HR diversity role's list).
 export { DeclarationsSwitch, DisabilityDeclaration, type DeclarationsPage, type DisabilityInput, type LiveDisability, type LiveDisabilityList } from '../people/selfservice';
 // PPL-46: the salary account abroad (HR's page and the person's own).
-export { InternationalBankPhone, InternationalBankTab, type LiveIntlBank } from '../people/record';
+export { InternationalBankPhone, InternationalBankTab, type LiveIntlBank, type LiveSplit, type SplitLineInput } from '../people/record';
 export { PersonWorkspace, type LiveRecord, type LiveRecordPay, type RecordAsset, type RecordDoc, type RecordEvent, type RecordFact, type RecordPerformance, type RecordRole, type RecordTab } from '../people/record';
 export type { FieldRow, JobChange } from '../people/people-data';
 export { CustomFieldsDrawer, EmployeeFieldsScreen, CLASS_LABEL as CUSTOM_CLASS_LABEL, customValueText, type DataClass, type EmployeeFieldDef, type EmployeeFieldsScreenProps, type RecordCustomField } from '../people/custom-fields';
