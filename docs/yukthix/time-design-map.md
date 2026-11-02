@@ -12,13 +12,13 @@ live page cannot reach yet (the reason is given).
 
 | | live | feature not built | phone view | gap |
 |---|---|---|---|---|
-| Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 101 | 2 | 19 | 0 |
+| Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 103 | 1 | 19 | 0 |
 | Leave (TIM-17…25) | 48 | 0 | 11 | 0 |
 | Set-up (TIM-26…29, 31, 42) | 34 | 1 | 0 | 0 |
 | Rosters and shifts (TIM-05, 06, 08, 34, 35, 38…41) | 44 | 2 | 10 | 0 |
 | Overtime, periods, reports, timesheets (TIM-09, 11, 15, 16, 30, 37, 43) | 49 | 0 | 3 | 0 |
 | Field force (TIM-32, 33) | 7 | 0 | 9 | 0 |
-| **All 45 design groups (340 sub-pages counted)** | **283** | **5** | **52** | **0** |
+| **All 45 design groups (341 sub-pages counted)** | **285** | **4** | **52** | **0** |
 
 Counted from the stories and the rows below by script (29 Oct 2026, after rosters/devices/field, the roster fixes and founder decisions 1-7 were merged into the test app). Section counts further down may be older; this table is the current one.
 Recounted by script on 30 Oct 2026 (time small items: TIM-13 Training, Leave, UnknownCode and the new TrainingNone story live; TIM-26 Clone and
@@ -47,6 +47,9 @@ new story (the claim page and PLT-04 SendBack already drew it).
 TIM-07 OnDuty, TIM-27 Notice and Statutory, TIM-29 Transition, TransitionPreview and TransitionPosted; the TIM-27 Rules and
 Year end rows no longer have parts not built. Attendance 99 → 101 live, Set-up 29 → 34; all 340 sub-pages: 283 live, 5 not
 built (TIM-07 Ot, TIM-31 Multi, two roster stories, Extra · today one), 52 phone, 0 gaps.
+
+2 Nov 2026 (branch `feat/yukthix-time-ot-preapproval`, founder follow-ups): TIM-07 Ot made live and a new TIM-07 story
+(OnDutySentBack, live). Recounted by script (timecount3): 341 sub-pages, 285 live, 4 not built, 52 phone, 0 gaps; Attendance 101 → 103 live, 2 → 1 not built.
 
 Kit (24 stories) are shared parts, not pages; section E lists which live screens use them.
 
@@ -260,7 +263,8 @@ Question: an HR "open again" for a month HR froze exists in the API (POST /time/
 | LateRequest · locked date | /yx/time/attendance → a day of a frozen or locked month → the sheet sends a late correction (manager → HR → payroll; reason of 10+ letters; up to payroll.late_request_max_days, default 60) |
 | Wfh · WFH | /yx/time/attendance → Request work from home (or ?request=wfh from Home) |
 | OnDuty · with location | /yx/time/attendance → Regularise a day → On duty: date (attendance.on_duty.ahead_days 30 / back_days 60), Where, From, To (at least 30 min), reason; field errors and focus, effect preview, toast. To the manager (P03), who may approve, turn down or send it back for changes (attendance.on_duty.send_back, default on); a sent-back one shows in "Waiting for approval" with the reason → Change and send again, or Withdraw (2 Nov 2026) |
-| Ot · OT pre-approval | feature not built: the overtime module has no pre-approval (claims are made after the work on /yx/time/overtime, and TIM-09 only shows a "pre-approved" flag from sample data). Building it needs a planned-OT record, the claim to read it, and the over-cap rule decided (Question) |
+| Ot · OT pre-approval | /yx/time/attendance → New request → OT: date (today to attendance.overtime.plan_ahead_days, 30), planned hours (0.5–12, quarter hours), Paid overtime / Comp-off credit, reason; field errors and focus, effect, toast; to the manager (P03). Waiting ones are listed with Withdraw. A manager may plan it for a report (POST /time/team/overtime/plans/:id, approved at once, no screen yet). A later claim reads it: "Pre-approved up to N h" to the approver; without one, attendance.overtime.pre_approval decides (flag by default: "not pre-approved" on TIM-09; refuse; allow) (2 Nov 2026) |
+| OnDutySentBack · On duty · sent back, change and send again | /yx/time/attendance → Waiting for approval → a sent-back on-duty request → View: what the manager asked, the request, the steps; Change and send again (the sheet starts from it) or Withdraw (confirm, toast) (2 Nov 2026) |
 | Invalid · Validation error | the sheet → Send with a field missing (error on the field, focus moves there) |
 | Sent | toast "Sent to your manager" and the sheet closes (house rule: done = toast) |
 | Phone | phone view, mobile app not built |
@@ -349,7 +353,7 @@ Provider: to decide (Teams presence). The YukthiX desktop app posts the person's
 
 | story (sub-page) | where it shows live |
 |---|---|
-| Employee · September | /yx/time/attendance |
+| Employee · September | /yx/time/attendance (header: New request opens the TIM-07 sheet with only the choices the person may use; founder 2 Nov 2026) |
 | DayOpen · missing check-out | /yx/time/attendance → click a missing day |
 | DayOpenPending · regularisation pending | /yx/time/attendance → a day with a waiting fix (View in "Waiting for approval"), Withdraw there |
 | Locked · August | /yx/time/attendance on a frozen or locked month (the day card and the request sheet say so) |

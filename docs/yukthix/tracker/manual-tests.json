@@ -8624,5 +8624,168 @@
       "People PPL-22 Absconding"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-TIM-L-21",
+    "area": "Time · My attendance",
+    "screen": "New request shows only my choices (positive)",
+    "url": "http://localhost:3000/yx/time/attendance",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
+    "steps": [
+      "Open My attendance.",
+      "Click New request."
+    ],
+    "expected": "There is no \"Request work from home\" button. The sheet opens with Regularise, WFH, On duty and OT (only the ones Arjun may use). \"Regularise a day\" is still there.",
+    "stories": [
+      "Time · Extra · Attendance calendar · Employee · September",
+      "Time · TIM-07 · Attendance request · WFH"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-L-22",
+    "area": "Time · My attendance",
+    "screen": "New request without punch mode (negative)",
+    "url": "http://localhost:3000/yx/time/attendance",
+    "account": "An employee whose attendance mode is assumed present or timesheet",
+    "steps": [
+      "Open My attendance and click New request."
+    ],
+    "expected": "Regularise is not offered; the sheet starts on the first choice the person may use.",
+    "stories": [
+      "Time · Extra · Attendance calendar · Employee · September"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-L-23",
+    "area": "Time · My attendance",
+    "screen": "Ask for overtime ahead (positive)",
+    "url": "http://localhost:3000/yx/time/attendance",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
+    "steps": [
+      "New request → OT. Pick tomorrow, Planned OT 2, Take as Paid overtime, reason \"Batch release\". Send request."
+    ],
+    "expected": "The effect says \"Up to 2 h OT · paid at the overtime rate\". A toast \"Sent to your manager\". Waiting for approval lists \"<date> · Overtime pre-approval\" with \"Up to 2 h · paid\".",
+    "stories": [
+      "Time · TIM-07 · Attendance request · OT pre-approval"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-L-24",
+    "area": "Time · My attendance",
+    "screen": "Overtime ahead: early, bad hours, past day, twice (negative)",
+    "url": "http://localhost:3000/yx/time/attendance",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
+    "steps": [
+      "New request → OT; click Send request with nothing filled.",
+      "Type 1.3 hours; Send.",
+      "Pick yesterday.",
+      "Do MT-TIM-L-23, then ask again for the same day."
+    ],
+    "expected": "Send is never greyed out. \"Enter the planned hours\" (cursor moves there); \"Use quarter hours (e.g. 1.25 or 1.5)\"; \"Pick today or a later date\"; \"<date> already has overtime asked for\". Nothing is sent.",
+    "stories": [
+      "Time · TIM-07 · Attendance request · OT pre-approval",
+      "Time · TIM-07 · Attendance request · Validation error"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-L-25",
+    "area": "Time · Approvals",
+    "screen": "Approve and turn down a pre-approval (positive)",
+    "url": "http://localhost:3000/yx/approvals",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "Open Arjun's \"overtime pre-approval\" request: approve it.",
+      "Ask again (another day) as Arjun; Divya turns it down with a reason."
+    ],
+    "expected": "The first is approved; the second shows as not approved to Arjun. Kavya (another manager) never sees either.",
+    "stories": [
+      "Time · TIM-07 · Attendance request · OT pre-approval"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-L-26",
+    "area": "Time · My overtime",
+    "screen": "Claim with and without pre-approval (positive and negative)",
+    "url": "http://localhost:3000/yx/time/overtime",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya); then panel@demo-org.test (Manager - Divya) on Overtime review; hr@demo-org.test (HR Admin - Lakshmi) for the setting",
+    "steps": [
+      "After working past the shift on the pre-approved day, claim it. As Divya open Overtime review.",
+      "Claim a day with overtime but no pre-approval.",
+      "As HR set Settings › \"Overtime claimed without pre-approval\" to Refuse; claim another such day."
+    ],
+    "expected": "The pre-approved claim shows \"Pre-approved up to 2 h\" to the approver and no flag. The other shows \"not pre-approved\" on the review. With Refuse the claim is refused: \"Overtime needs approval before the work…\" and nothing is saved.",
+    "stories": [
+      "Time · TIM-07 · Attendance request · OT pre-approval",
+      "Time · TIM-09 · Overtime review"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-L-27",
+    "area": "Time · My attendance",
+    "screen": "Withdraw a waiting pre-approval (positive and negative)",
+    "url": "http://localhost:3000/yx/time/attendance",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
+    "steps": [
+      "Withdraw a waiting overtime pre-approval; confirm.",
+      "Try the same with Keep request."
+    ],
+    "expected": "Withdraw asks first; Withdraw request removes it from the list with a \"Request withdrawn\" toast; Keep request changes nothing.",
+    "stories": [
+      "Time · TIM-07 · Attendance request · OT pre-approval"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-L-28",
+    "area": "Time · My attendance",
+    "screen": "On duty sent back: View, change and send again (positive)",
+    "url": "http://localhost:3000/yx/time/attendance",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya) after Divya sent an on-duty request back",
+    "steps": [
+      "In Waiting for approval click View on the sent-back on-duty request.",
+      "Click Change and send again; change the place; Send request."
+    ],
+    "expected": "The sheet shows \"Divya … sent it back for changes\" with her note, the place, time and reason, and the steps. The request sheet starts from what was sent; it is sent again with a toast.",
+    "stories": [
+      "Time · TIM-07 · Attendance request · On duty · sent back, change and send again"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-L-29",
+    "area": "Time · My attendance",
+    "screen": "On duty sent back: Withdraw asks first (negative)",
+    "url": "http://localhost:3000/yx/time/attendance",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya) after Divya sent an on-duty request back",
+    "steps": [
+      "View the sent-back request; click Withdraw, then Keep request.",
+      "Click Withdraw again, then Withdraw request."
+    ],
+    "expected": "Keep request changes nothing. Withdraw request closes the sheet, a toast says \"Request withdrawn\", and it leaves the list.",
+    "stories": [
+      "Time · TIM-07 · Attendance request · On duty · sent back, change and send again"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-L-30",
+    "area": "Time · Year-end",
+    "screen": "Change leave year fits the laptop screen (positive)",
+    "url": "http://localhost:3000/yx/time/setup/year-end?mode=transition",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi) at 1278 x 635 (a laptop at 150 %)",
+    "steps": [
+      "Open the page and wait for Scope to load."
+    ],
+    "expected": "Entity and \"New leave year starts in\" sit side by side; the Continue button is fully visible with no page scroll bar.",
+    "stories": [
+      "Time · TIM-29 · Year-end wizard · Leave-year change · scope"
+    ],
+    "note": ""
   }
 ]
