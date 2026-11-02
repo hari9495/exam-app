@@ -12,13 +12,13 @@ live page cannot reach yet (the reason is given).
 
 | | live | feature not built | phone view | gap |
 |---|---|---|---|---|
-| Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 103 | 1 | 19 | 0 |
+| Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 108 | 1 | 19 | 0 |
 | Leave (TIM-17…25) | 48 | 0 | 11 | 0 |
 | Set-up (TIM-26…29, 31, 42) | 34 | 1 | 0 | 0 |
 | Rosters and shifts (TIM-05, 06, 08, 34, 35, 38…41) | 44 | 2 | 10 | 0 |
 | Overtime, periods, reports, timesheets (TIM-09, 11, 15, 16, 30, 37, 43) | 49 | 0 | 3 | 0 |
 | Field force (TIM-32, 33) | 7 | 0 | 9 | 0 |
-| **All 45 design groups (341 sub-pages counted)** | **285** | **4** | **52** | **0** |
+| **All 45 design groups (346 sub-pages counted)** | **290** | **4** | **52** | **0** |
 
 Counted from the stories and the rows below by script (29 Oct 2026, after rosters/devices/field, the roster fixes and founder decisions 1-7 were merged into the test app). Section counts further down may be older; this table is the current one.
 Recounted by script on 30 Oct 2026 (time small items: TIM-13 Training, Leave, UnknownCode and the new TrainingNone story live; TIM-26 Clone and
@@ -50,6 +50,10 @@ built (TIM-07 Ot, TIM-31 Multi, two roster stories, Extra · today one), 52 phon
 
 2 Nov 2026 (branch `feat/yukthix-time-ot-preapproval`, founder follow-ups): TIM-07 Ot made live and a new TIM-07 story
 (OnDutySentBack, live). Recounted by script (timecount3): 341 sub-pages, 285 live, 4 not built, 52 phone, 0 gaps; Attendance 101 → 103 live, 2 → 1 not built.
+
+2 Nov 2026 (branch `feat/yukthix-ot-muster`, founder answers on overtime pre-approval, item 1): five new TIM-02 stories, all
+live (Manager · team muster; Pre-approve overtime, filled in, pressed too early, refused). Recounted by script (timecount3):
+346 sub-pages, 290 live, 4 not built, 52 phone, 0 gaps; Attendance 103 → 108 live. Manual tests MT-TIM-L-31..34.
 
 Kit (24 stories) are shared parts, not pages; section E lists which live screens use them.
 
@@ -219,6 +223,11 @@ Old live copies deleted: live/my-attendance.tsx (MyAttendanceScreen, TodayCard, 
 | Empty | /yx/time/muster with no one in scope ("No one on the muster") |
 | Loading | /yx/time/muster while loading |
 | Failed · Error | /yx/time/muster when the API fails (Try again) |
+| Manager · Manager · team muster | /yx/time/muster as a manager (scope team): their reports and their own row; no freeze, lock or bulk; "Pre-approve overtime" in the header and on a report's day card (founder 2 Nov 2026) |
+| PreApprove · Manager · Pre-approve overtime | /yx/time/muster (manager) → Pre-approve overtime: person (reports only, never oneself; one report is chosen), date (today to the plan-ahead limit), hours 0.5–12 in quarter hours, Paid overtime / Comp-off credit (Segment), reason; POST time/team/overtime/plans/:employeeId, approved at once and audited; toast "Overtime pre-approved for …" |
+| PreApproveFilled · filled in | the same sheet filled: the effect "Up to N h OT · paid at the overtime rate" or "· comp-off credit" |
+| PreApproveErrors · pressed too early | Pre-approve with fields missing: each field names what is missing, the first takes the focus; the button is never disabled |
+| PreApproveRefused · refused | a server refusal stays in the sheet ("Not pre-approved" with the reason, e.g. factory overtime is paid by law; outside the line 404) |
 
 Live extras from the design file: month arrows (the top bar has no month on this page); next month that has not started says so in a toast.
 Founder (29 Oct 2026): the lock is a plain confirm plus the authenticator step, here and on Periods (the Lock story is renamed "Lock · confirm").

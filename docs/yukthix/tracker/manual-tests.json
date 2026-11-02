@@ -9003,5 +9003,75 @@
       "People PPL-04 Start"
     ],
     "note": "Negative."
+  },
+  {
+    "id": "MT-TIM-L-31",
+    "area": "Time · Muster · Pre-approve overtime (2 Nov 2026)",
+    "screen": "Pre-approve overtime for a report (TIM-02 Manager)",
+    "url": "http://localhost:3000/yx/time/muster",
+    "account": "panel@demo-org.test (Manager - Divya Raghunathan). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Time › Muster. Press Pre-approve overtime (top right).",
+      "2. Person: Kavya Reddy (Hosur plant). Date: tomorrow. Planned OT (hours): 2.5. Take as: Paid overtime. Reason: \"Month-end batch release\".",
+      "3. Read the Effect box, then press Pre-approve.",
+      "4. Press Pre-approve overtime again, choose Kavya Reddy, the same date, 1 h, a reason, and press Pre-approve."
+    ],
+    "expected": "Step 1: a sheet \"Pre-approve overtime\" with Person, Date (today), Planned OT, Take as and Reason; the person list has only Divya's reports, never Divya. Step 3: Effect says \"Up to 2 h 30 min OT · paid at the overtime rate\"; after Pre-approve a toast \"Overtime pre-approved for Kavya Reddy\" and the sheet closes. Negative step 4: the sheet stays open with \"Not pre-approved\" and \"Overtime on … is already asked for. Withdraw that request first.\"",
+    "stories": [
+      "Time · TIM-02 · Muster · Manager · Pre-approve overtime",
+      "Time · TIM-02 · Muster · Manager · Pre-approve overtime · filled in"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-TIM-L-32",
+    "area": "Time · Muster · Pre-approve overtime (2 Nov 2026)",
+    "screen": "Pressed too early and the hour limits",
+    "url": "http://localhost:3000/yx/time/muster",
+    "account": "panel@demo-org.test (Manager - Divya Raghunathan). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Press Pre-approve overtime, then press Pre-approve straight away.",
+      "2. Choose Kavya Reddy, type 1.3 hours and a reason; press Pre-approve.",
+      "3. Change the hours to 13; press Pre-approve.",
+      "4. Change the hours to 0.25; press Pre-approve."
+    ],
+    "expected": "Negative step 1: \"Choose the person\", \"Enter the hours\" and \"Enter the reason\" under the fields, the Person field has the focus, nothing is sent; the button was never greyed out. Negative step 2: \"Use quarter hours (e.g. 1.25 or 1.5)\". Negative step 3: \"Enter at most 12 h\". Negative step 4: \"Enter at least 0.5 h\".",
+    "stories": [
+      "Time · TIM-02 · Muster · Manager · Pre-approve overtime · pressed too early"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-TIM-L-33",
+    "area": "Time · Muster · Pre-approve overtime (2 Nov 2026)",
+    "screen": "Refusals from the server",
+    "url": "http://localhost:3000/yx/time/muster",
+    "account": "panel@demo-org.test (Manager - Divya Raghunathan). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Pre-approve overtime for Kavya Reddy (Hosur plant, a factory) with Take as: Comp-off credit, 2 h, a reason, the day after tomorrow.",
+      "2. Pre-approve overtime for Arjun Kulkarni (Bengaluru head office) with 2 h, Paid overtime, a reason.",
+      "3. Open a cell on Kavya Reddy's row; in the day card press Pre-approve overtime."
+    ],
+    "expected": "Negative step 1: \"Not pre-approved\" with \"Factory overtime is paid by law, not given as comp-off. Choose Paid overtime.\"; the sheet stays open with what was typed. Negative step 2: \"No overtime rule applies on that day. Ask HR.\" (only the Hosur plant has an overtime rule in the demo). Step 3: the sheet opens with Kavya Reddy already chosen.",
+    "stories": [
+      "Time · TIM-02 · Muster · Manager · Pre-approve overtime · refused"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-TIM-L-34",
+    "area": "Time · Muster · Pre-approve overtime (2 Nov 2026)",
+    "screen": "Who does not get the action",
+    "url": "http://localhost:3000/yx/time/muster",
+    "account": "arjun@demo-org.test (employee Arjun, no reports). Second: hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635.",
+    "steps": [
+      "1. As Arjun, open http://localhost:3000/yx/time/muster.",
+      "2. As HR (Lakshmi), open Time › Muster."
+    ],
+    "expected": "Negative step 1: no Pre-approve overtime button (he has no one to pre-approve for; the page shows only his own row or says he has no access). Negative step 2: HR's muster has no Pre-approve overtime button (founder: overtime pre-approval is the manager's). Even a crafted call for someone outside one's line is refused by the server (404) and for oneself (403).",
+    "stories": [
+      "Time · TIM-02 · Muster · Open month"
+    ],
+    "note": "Negative."
   }
 ]
