@@ -5,7 +5,7 @@ import { ScopeContext, SETTINGS, SettingDef, resolveSetting } from '../org-struc
 import { Viewer, has, implicitSql, inScopeSql, tenantWide } from '../access/scope';
 import { DayRule, Floor, HolidayOn, WeeklyOffRule, addDays, eachDay, isWeeklyOff, localDate } from './time-maths';
 import { substituteDays } from './holiday-rules';
-import { pickPolicy } from './leave-rules';
+import { LeaveYearChange, StatutoryMinimum, leaveYearWith, pickPolicy } from './leave-rules';
 import type { MaternityValues } from './time-rules';
 
 // Shared loaders for leave and attendance: the employee's dated facts, the location's calendar and rules, the
@@ -54,6 +54,20 @@ export interface LeaveRules {
   paySteps: PayStep[] | null;
   /** Which earlier days count toward the steps. */
   payWindow: 'leave_year' | 'rolling_12_months';
+  /** TIM-27 Rules: the most days of this type in one calendar month, pending and approved together (null: no limit). */
+  maxDaysPerMonth: number | null;
+  /** TIM-27 Year end: the most days cashed in a leave year (null: the company's leave.encashment.max_days). */
+  encashMaxDays: number | null;
+  /** Days that must stay after cashing in (null: the company's leave.encashment.min_left). */
+  encashMinLeft: number | null;
+  /** The payout per day is monthly pay divided by this (null: the company's leave.encashment.divisor). */
+  encashDivisor: 26 | 30 | null;
+  /** The balance is paid in the final settlement at exit (only an encashable type). */
+  encashAtExit: boolean;
+  /** TIM-27 Absence & notice: crediting during a sabbatical or long unpaid leave (null: leave.long_absence.accrues). */
+  longAbsence: 'pause' | 'continue' | null;
+  /** Taking this type during the notice period (null: the company's leave.notice_period.leave). */
+  noticePeriod: 'allowed' | 'extends' | 'blocked' | null;
 }
 
 export interface PayStep {
@@ -63,7 +77,7 @@ export interface PayStep {
   percent: number;
 }
 
-export const DEFAULT_RULES: LeaveRules = { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: null, noticeMode: 'block', certificateAfterDays: null, medical: false, negativeLimit: 0, encashable: false, hrApprovalAboveDays: null, eligibleGenders: null, paySteps: null, payWindow: 'leave_year' };
+export const DEFAULT_RULES: LeaveRules = { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: null, noticeMode: 'block', certificateAfterDays: null, medical: false, negativeLimit: 0, encashable: false, hrApprovalAboveDays: null, eligibleGenders: null, paySteps: null, payWindow: 'leave_year', maxDaysPerMonth: null, encashMaxDays: null, encashMinLeft: null, encashDivisor: null, encashAtExit: true, longAbsence: null, noticePeriod: null };
 export const GENDER_VALUES = ['female', 'male', 'transgender', 'non_binary', 'prefer_not_to_say'];
 
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
@@ -77,14 +91,19 @@ export function parseRules(input: unknown): LeaveRules {
   const r = { ...DEFAULT_RULES, ...input } as LeaveRules;
   if (!['none', 'sandwich', 'always'].includes(r.sandwich)) throw new BadRequestException('Choose how weekends and holidays between leave days count.');
   if (!['weekly_offs', 'holidays', 'both'].includes(r.sandwichOn)) throw new BadRequestException('Choose whether the sandwich rule covers weekly offs, holidays or both.');
-  for (const k of ['sandwichHalfDays', 'halfDays', 'medical', 'encashable'] as const) if (typeof r[k] !== 'boolean') throw new BadRequestException('Use yes or no for the switches.');
-  for (const k of ['minDays', 'maxDays', 'certificateAfterDays', 'hrApprovalAboveDays'] as const) {
+  for (const k of ['sandwichHalfDays', 'halfDays', 'medical', 'encashable', 'encashAtExit'] as const) if (typeof r[k] !== 'boolean') throw new BadRequestException('Use yes or no for the switches.');
+  for (const k of ['minDays', 'maxDays', 'certificateAfterDays', 'hrApprovalAboveDays', 'encashMaxDays', 'encashMinLeft'] as const) {
     if (r[k] !== null && !halfStep(r[k], 0, 366)) throw new BadRequestException('Days are 0 to 366, in half days.');
   }
   if (r.noticeDays !== null && (!Number.isInteger(r.noticeDays) || r.noticeDays < 0 || r.noticeDays > 90)) throw new BadRequestException('Notice is 0 to 90 days.');
   if (r.noticeMode !== 'block' && r.noticeMode !== 'warn') throw new BadRequestException('Choose whether short notice is refused or only flagged.');
   if (!halfStep(r.negativeLimit, 0, 30)) throw new BadRequestException('The balance may go below zero by 0 to 30 days.');
   if (r.minDays !== null && r.maxDays !== null && r.minDays > r.maxDays) throw new BadRequestException('The least days per request is more than the most.');
+  if (r.maxDaysPerMonth !== null && !halfStep(r.maxDaysPerMonth, 0.5, 31)) throw new BadRequestException('Most days in a month is 0.5 to 31, in half days.');
+  if (r.maxDaysPerMonth !== null && r.maxDays !== null && r.maxDays > r.maxDaysPerMonth) throw new BadRequestException(`Most days in one request is more than the monthly limit of ${r.maxDaysPerMonth}. A request that big could never be approved.`);
+  if (r.encashDivisor !== null && r.encashDivisor !== 26 && r.encashDivisor !== 30) throw new BadRequestException('The daily rate for cashing in is monthly pay divided by 26 or 30.');
+  if (r.longAbsence !== null && r.longAbsence !== 'pause' && r.longAbsence !== 'continue') throw new BadRequestException('Choose whether crediting stops or continues during a long absence.');
+  if (r.noticePeriod !== null && !['allowed', 'extends', 'blocked'].includes(r.noticePeriod)) throw new BadRequestException('Choose what happens to this leave during the notice period.');
   if (r.eligibleGenders !== null && (!Array.isArray(r.eligibleGenders) || !r.eligibleGenders.length || r.eligibleGenders.some((g) => !GENDER_VALUES.includes(g)))) throw new BadRequestException('Choose who the leave is for, or leave it open to everyone.');
   if (r.eligibleGenders) r.eligibleGenders = [...new Set(r.eligibleGenders)];
   if (!['leave_year', 'rolling_12_months'].includes(r.payWindow)) throw new BadRequestException('Count earlier days in the leave year or the last 12 months.');
@@ -264,6 +283,43 @@ export async function statutoryOn(tx: Tx, state: string, on: string): Promise<{ 
 export async function maternityValues(tx: Tx, on: string): Promise<MaternityValues> {
   const rs = await tx.statutoryRuleSet.findFirst({ where: { statute: 'IN.LEAVE', jurisdiction: 'IN', validFrom: { lte: asDate(on) } }, orderBy: { validFrom: 'desc' } });
   return { maternityWeeks: 26, maternityWeeksThirdChild: 12, beforeDeliveryWeeks: 8, eligibilityDaysWorked: 80, ...((rs?.values ?? {}) as Partial<MaternityValues>) };
+}
+
+/**
+ * TIM-29 Transition: the leave-year change for the person's legal entity (or the whole company) that applies on `on`:
+ * the latest one in force, else the first one still to come (dates before it keep its old start month).
+ */
+export async function yearChangeFor(tx: Tx, org: string, legalEntityId: string | null, on: string): Promise<LeaveYearChange | null> {
+  const rows = await tx.leaveYearChange.findMany({ where: { organizationId: org, OR: [{ legalEntityId: null }, ...(legalEntityId ? [{ legalEntityId }] : [])] }, orderBy: { fromOn: 'asc' } });
+  // An entity's own change wins over a company-wide one.
+  const own = rows.filter((r) => r.legalEntityId !== null);
+  const list = own.length ? own : rows;
+  if (!list.length) return null;
+  const inForce = [...list].reverse().find((r) => iso(r.fromOn) <= on) ?? list[0];
+  return { fromOn: iso(inForce.fromOn), oldStartMonth: inForce.oldStartMonth, newStartMonth: inForce.newStartMonth };
+}
+
+/** The person's leave year on `on`: the company setting (leave.year_start_month) and any leave-year change. */
+export async function leaveYearFor(tx: Tx, c: CompanyContext, f: Facts, on: string): Promise<{ start: string; end: string; short: boolean }> {
+  const startMonth = Number(await settingOn(tx, c, 'leave.year_start_month', f, on));
+  return leaveYearWith(on, startMonth, await yearChangeFor(tx, c.organizationId, f.legalEntityId, on));
+}
+
+/**
+ * TIM-27 Statutory: what the law fixes for a type's kind. Maternity (Maternity Benefit Act 1961, P07 IN.LEAVE): the
+ * longest case, paid in full. Paternity only where a P07 IN.LEAVE rule set of a state the company works in gives it
+ * (`paternityDays`); none is seeded, so paternity stays a company choice until one is.
+ */
+export async function statutoryMinimum(tx: Tx, org: string, kind: string, on: string): Promise<StatutoryMinimum | null> {
+  if (kind === 'maternity') {
+    const v = await maternityValues(tx, on);
+    return { law: 'Maternity Benefit Act 1961', days: v.maternityWeeks * 7, paidInFull: true };
+  }
+  if (kind !== 'paternity') return null;
+  const states = (await tx.location.findMany({ where: { organizationId: org, archivedAt: null }, select: { state: true } })).map((l) => l.state);
+  const sets = await tx.statutoryRuleSet.findMany({ where: { statute: 'IN.LEAVE', jurisdiction: { in: states }, validFrom: { lte: asDate(on) }, OR: [{ validTo: null }, { validTo: { gte: asDate(on) } }] } });
+  const days = Math.max(0, ...sets.map((s) => Number((s.values as { paternityDays?: number } | null)?.paternityDays ?? 0)));
+  return days > 0 ? { law: 'state leave rules', days, paidInFull: true } : null;
 }
 
 // ------------------------------------------------------------------------------------------ calendars and shifts

@@ -18,6 +18,7 @@ import {
   grantCovers,
   hasBalance,
   hrApprovers,
+  leaveYearFor,
   holidaysFor,
   maternityValues,
   mustSee,
@@ -32,7 +33,7 @@ import {
 import { CountedDay, accrualsDue, addDays, applyFloors, countLeaveDays, daysBetween, leaveYearOf, yearEndSplit } from './time-maths';
 import { ScheduleBook, assertOpen, lockedDates } from './schedule';
 import { MaternityCase, daysWorked, eligibilityWindow, maternityChecks } from './time-rules';
-import { BLOCK_DATE_EXEMPT, blockDateStops, factoriesElEligible, lastDayAfterLeave, noticeDaysFor, noticeText, optionalLimitAfterMove, probationAllows } from './leave-rules';
+import { BLOCK_DATE_EXEMPT, blockDateStops, creditsDuringAbsence, monthLimitOver, monthName, noticePeriodMode, statutoryProblem, factoriesElEligible, lastDayAfterLeave, noticeDaysFor, noticeText, optionalLimitAfterMove, probationAllows } from './leave-rules';
 
 // M02 Part A leave on the shared engines: requests route through P03 (manager, then HR by the type's rule), the
 // ledger is the only balance (YX-LV-01), days are counted with the location's holidays and weekly offs (YX-LV-03),
@@ -153,7 +154,7 @@ export class LeaveService implements OnModuleInit {
     const policy = await policyOn(tx, c, f, on);
     const lines = policy?.lines ?? [];
     const ent = await this.entitlements(tx, f, on, lines, types);
-    const year = leaveYearOf(on, Number(await settingOn(tx, c, 'leave.year_start_month', f, on)));
+    const year = await leaveYearFor(tx, c, f, on);
     const sums = new Map((await tx.leaveLedgerEntry.groupBy({ by: ['leaveTypeId'], where: { organizationId: org, employeeId: f.employeeId }, _sum: { days: true } })).map((g) => [g.leaveTypeId, num(g._sum.days)]));
     const pending = new Map((await tx.leaveRequest.groupBy({ by: ['leaveTypeId'], where: { organizationId: org, employeeId: f.employeeId, status: 'pending' }, _sum: { days: true } })).map((g) => [g.leaveTypeId, num(g._sum.days)]));
     // TIM-24: an encashment waiting for approval holds its days too, so they can't also be booked as leave.
@@ -241,6 +242,21 @@ export class LeaveService implements OnModuleInit {
       );
     if (rules.minDays !== null && total > 0 && total < rules.minDays) blocks.push(`${t.name} is at least ${daysText(rules.minDays)} at a time.`);
     if (rules.maxDays !== null && total > rules.maxDays) blocks.push(`${t.name} is at most ${daysText(rules.maxDays)} at a time.`);
+    // TIM-27 "Most days in a month": this type's days asked or approved in each calendar month the request touches.
+    if (rules.maxDaysPerMonth !== null && rules.maxDaysPerMonth !== undefined && total > 0) {
+      const months = await tx.$queryRaw<{ month: string; days: number }[]>`
+        SELECT to_char(d.leave_on, 'YYYY-MM') AS month, sum(d.portion)::float AS days FROM leave_request_days d
+        JOIN leave_requests r ON r.organization_id = d.organization_id AND r.id = d.request_id
+        WHERE d.organization_id = ${org}::uuid AND d.employee_id = ${f.employeeId}::uuid AND d.active AND d.portion > 0 AND r.leave_type_id = ${t.id}::uuid
+          AND r.status = ANY(${ACTIVE}::text[]) AND d.leave_on BETWEEN date_trunc('month', ${dto.from}::date) AND (date_trunc('month', ${dto.to}::date) + interval '1 month - 1 day')
+        GROUP BY 1`;
+      const over = monthLimitOver(rules.maxDaysPerMonth, counted.days, new Map(months.map((m) => [m.month, m.days])));
+      if (over) {
+        const limit = rules.maxDaysPerMonth;
+        const who = onBehalf ? `${f.name} already has` : 'You already have';
+        blocks.push(over.already ? `${t.name} is at most ${daysText(limit)} in a month. ${who} ${daysText(over.already)} in ${monthName(over.month)}, so up to ${daysText(Math.max(0, limit - over.already))} more can be taken then.` : `${t.name} is at most ${daysText(limit)} in a month. This asks for ${daysText(over.asked)} in ${monthName(over.month)}.`);
+      }
+    }
     // DECISION NEEDED: P05 documents are not built yet, so a certificate is not uploaded here: the employee confirms
     // they will give it to HR, HR marks it verified (Special data), and approvers see only its status (YX-LV-09).
     const certificateNeeded = rules.certificateAfterDays !== null && total > rules.certificateAfterDays;
@@ -317,8 +333,10 @@ export class LeaveService implements OnModuleInit {
       SELECT coalesce(approved_lwd, standard_lwd)::text AS lwd FROM exit_cases
       WHERE organization_id = ${org}::uuid AND employee_id = ${f.employeeId}::uuid AND status IN ('submitted', 'accepted') ORDER BY submitted_on DESC LIMIT 1`;
     if (exit && dto.to >= today) {
-      const mode = await setting('leave.notice_period.leave');
+      // TIM-27 Absence & notice: the type's own choice, else the company's.
+      const mode = noticePeriodMode((t.rules as unknown as LeaveRules).noticePeriod, await setting('leave.notice_period.leave'));
       if (dto.to > exit.lwd) blocks.push(`Your last working day is ${fmt(exit.lwd)}. Leave can't go past it.`);
+      else if (mode === 'blocked') blocks.push(`${t.name} can't be taken during the notice period. Ask HR if you need leave before ${fmt(exit.lwd)}.`);
       else if (mode === 'sick_and_unpaid_only' && !BLOCK_DATE_EXEMPT.includes(t.kind)) blocks.push('During your notice period only sick and unpaid leave can be taken. Ask HR if you need other leave.');
       else {
         notice = { lastDay: exit.lwd, newLastDay: lastDayAfterLeave(mode, exit.lwd, total) };
@@ -398,7 +416,7 @@ export class LeaveService implements OnModuleInit {
       const org = c.organizationId;
       // G1 (gap pass G1): leave names in the person's language where the company translated them.
       const words = await translated(tx, c, await employeeLanguage(tx, c, f.employeeId), 'leave_type', (await this.types(tx, org)).map((t) => t.id));
-      const year = leaveYearOf(today, Number(await settingOn(tx, c, 'leave.year_start_month', f, today)));
+      const year = await leaveYearFor(tx, c, f, today);
       // The balance on the first day of the leave year (opening entries included), where the ledger has one: the
       // Home says how it changed since then.
       const atStart = new Map((await tx.leaveLedgerEntry.groupBy({ by: ['leaveTypeId'], where: { organizationId: org, employeeId: f.employeeId, entryOn: { lte: asDate(year.start) } }, _sum: { days: true } })).map((g) => [g.leaveTypeId, Math.round(num(g._sum.days) * 100) / 100]));
@@ -1002,7 +1020,7 @@ export class LeaveService implements OnModuleInit {
       if (!choose) {
         await tx.optionalHolidayChoice.deleteMany({ where: key });
       } else {
-        const year = leaveYearOf(dateOf(h.holidayOn), Number(await settingOn(tx, c, 'leave.year_start_month', f, today)));
+        const year = await leaveYearFor(tx, c, f, dateOf(h.holidayOn));
         const taken = await tx.$queryRaw<{ n: number }[]>`
           SELECT count(*)::int AS n FROM optional_holiday_choices x JOIN holidays h ON h.organization_id = x.organization_id AND h.id = x.holiday_id
           WHERE x.organization_id = ${c.organizationId}::uuid AND x.employee_id = ${f.employeeId}::uuid AND h.holiday_on BETWEEN ${year.start}::date AND ${year.end}::date`;
@@ -1039,7 +1057,7 @@ export class LeaveService implements OnModuleInit {
       const types = new Map((await this.types(tx, c.organizationId)).map((t) => [t.id, t]));
       const rows = await tx.leaveLedgerEntry.findMany({ where: { organizationId: c.organizationId, employeeId: f.employeeId }, orderBy: [{ entryOn: 'desc' }, { createdAt: 'desc' }], take: 300 });
       const pending = await tx.leaveRequest.findMany({ where: { organizationId: c.organizationId, employeeId: f.employeeId, status: 'pending' }, orderBy: { fromOn: 'asc' } });
-      const year = leaveYearOf(today, Number(await settingOn(tx, c, 'leave.year_start_month', f, today)));
+      const year = await leaveYearFor(tx, c, f, today);
       return {
         employee: { id: f.employeeId, name: f.name, code: f.code },
         today,
@@ -1070,12 +1088,16 @@ export class LeaveService implements OnModuleInit {
         const policy = await policyOn(tx, c, f, local);
         if (!policy) continue;
         const ent = await this.entitlements(tx, f, local, policy.lines, [...types.values()]);
-        const year = leaveYearOf(local, Number(await settingOn(tx, c, 'leave.year_start_month', f, local)));
-        const notEarning = (await tx.longAbsence.findMany({ where: { organizationId: org, employeeId: f.employeeId, accrues: false, toOn: { gte: asDate(year.start) } }, select: { fromOn: true, toOn: true } })).map((a) => ({ from: dateOf(a.fromOn), to: dateOf(a.toOn) }));
+        const year = await leaveYearFor(tx, c, f, local);
+        // TIM-27 Absence & notice: a type may keep or stop crediting during a long absence whatever the company says;
+        // maternity always counts as service (Maternity Benefit Act), so it never stops crediting.
+        const absences = (await tx.longAbsence.findMany({ where: { organizationId: org, employeeId: f.employeeId, toOn: { gte: asDate(year.start) } }, select: { fromOn: true, toOn: true, accrues: true, kind: true } })).filter((a) => a.kind !== 'maternity');
         const data = policy.lines.flatMap((l) => {
           const t = types.get(l.leaveTypeId);
           if (!t || !t.active || !hasBalance(t.kind) || t.kind === 'comp_off') return [];
-          return accrualsDue({ ...l, annualDays: ent.get(l.leaveTypeId) ?? l.annualDays }, { yearStart: year.start, joinedOn: f.joinedOn, exitedOn: f.exitedOn, upTo: local, notEarning }).map((d) => ({
+          const own = (t.rules as unknown as LeaveRules).longAbsence;
+          const notEarning = absences.filter((a) => !creditsDuringAbsence(own, a.accrues)).map((a) => ({ from: dateOf(a.fromOn), to: dateOf(a.toOn) }));
+          return accrualsDue({ ...l, annualDays: ent.get(l.leaveTypeId) ?? l.annualDays }, { yearStart: year.start, joinedOn: f.joinedOn, exitedOn: f.exitedOn, upTo: local, notEarning, ...(year.short ? { yearEnd: year.end } : {}) }).map((d) => ({
             organizationId: org,
             employeeId: f.employeeId,
             leaveTypeId: t.id,
@@ -1103,7 +1125,7 @@ export class LeaveService implements OnModuleInit {
     for (const e of employees) {
       const f = await factsOn(tx, org, e.id, yearEnd);
       if (!f) continue;
-      const year = leaveYearOf(yearEnd, Number(await settingOn(tx, c, 'leave.year_start_month', f, yearEnd)));
+      const year = await leaveYearFor(tx, c, f, yearEnd);
       if (year.end !== yearEnd) continue;
       const policy = await policyOn(tx, c, f, yearEnd);
       if (!policy) continue;

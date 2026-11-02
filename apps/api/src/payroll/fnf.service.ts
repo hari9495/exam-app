@@ -242,10 +242,13 @@ export class FnfService implements OnModuleInit {
     const encashDaily = encashOn.div(days);
     const items: { code: string; amount: Prisma.Decimal; label: string; hold?: string }[] = [];
     // Leave encashment: the balance of encashable leave on the last day at the daily rate the company chose (5g-D4).
-    const types = (await tx.leaveType.findMany({ where: { organizationId: org } })).filter((t) => (t.rules as { encashable?: boolean } | null)?.encashable);
+    // TIM-27 Year end: a type may opt out of the exit payout, or fix its own daily rate (monthly pay ÷ 26 or ÷ 30).
+    const types = (await tx.leaveType.findMany({ where: { organizationId: org } })).filter((t) => { const r = t.rules as { encashable?: boolean; encashAtExit?: boolean } | null; return r?.encashable && r.encashAtExit !== false; });
     for (const t of types) {
       const bal = (await tx.leaveLedgerEntry.aggregate({ where: { organizationId: org, employeeId: em.employeeId, leaveTypeId: t.id, entryOn: { lte: f.lwd } }, _sum: { days: true } }))._sum.days;
-      if (bal && D(bal).gt(0)) items.push({ code: 'leave_encashment', amount: r2(encashDaily.mul(bal)), label: `${t.name}: ${D(bal).toFixed(2)} days at ₹${r2(encashDaily).toFixed(2)} a day.` });
+      const own = (t.rules as { encashDivisor?: number | null } | null)?.encashDivisor;
+      const rate = own ? encashOn.div(own) : encashDaily;
+      if (bal && D(bal).gt(0)) items.push({ code: 'leave_encashment', amount: r2(rate.mul(bal)), label: `${t.name}: ${D(bal).toFixed(2)} days at ₹${r2(rate).toFixed(2)} a day.` });
     }
     // Gratuity on the last wage (basic and DA), by the law in force on the last day.
     const grat = await this.gratuityTerms(tx, org, f, em.joinedOn);

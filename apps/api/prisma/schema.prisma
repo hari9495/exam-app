@@ -5098,6 +5098,33 @@ model LeaveBlockDate {
   @@map("leave_block_dates")
 }
 
+/// TIM-29 Transition: a scheduled change of the leave year (company or one legal entity); a short year runs from from_on.
+model LeaveYearChange {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  legalEntityId  String?  @map("legal_entity_id") @db.Uuid
+  fromOn         DateTime @map("from_on") @db.Date
+  oldStartMonth  Int      @map("old_start_month") @db.SmallInt
+  newStartMonth  Int      @map("new_start_month") @db.SmallInt
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("leave_year_changes")
+}
+
+/// TIM-29: a posted year end, once per policy and last day of the leave year.
+model LeaveYearRun {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  yearEnd        DateTime @map("year_end") @db.Date
+  policyId       String   @map("policy_id") @db.Uuid
+  totals         Json     @default("{}")
+  postedBy       String?  @map("posted_by") @db.Uuid
+  postedAt       DateTime @default(now()) @map("posted_at") @db.Timestamptz(3)
+
+  @@map("leave_year_runs")
+}
+
 /// TIM-22: a claim for working on a weekly off or holiday; approved claims credit the leave ledger (kind comp_off).
 model CompOffClaim {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -5285,6 +5312,8 @@ model AttendanceRequest {
   inMinute       Int?      @map("in_minute") @db.SmallInt
   outMinute      Int?      @map("out_minute") @db.SmallInt
   reason         String    @db.VarChar(500)
+  /// On duty (kind on_duty): where the person is; in/out minutes are the from and to times.
+  place          String?   @db.VarChar(120)
   status         String    @default("pending") @db.VarChar(10)
   wfRequestId    String?   @map("wf_request_id") @db.Uuid
   raisedBy       String?   @map("raised_by") @db.Uuid

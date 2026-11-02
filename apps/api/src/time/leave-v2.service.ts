@@ -11,11 +11,11 @@ import { payOn } from '../payroll/fnf.service';
 import { entitiesFor, payViewer, withPayScope } from '../payroll/pay-access';
 import { DayEngine } from './day-engine.service';
 import { LeaveService } from './leave.service';
-import { Facts, LeaveRules, asDate, dateOf, factsOn, grantCovers, hasBalance, holidaysFor, hrApprovers, num, rulesFor, settingOn, todayIn, visibleSql, type TimeKey } from './time-core';
+import { Facts, LeaveRules, asDate, dateOf, factsOn, grantCovers, hasBalance, holidaysFor, hrApprovers, num, rulesFor, leaveYearFor, settingOn, todayIn, visibleSql, type TimeKey } from './time-core';
 import { addDays, daysBetween, leaveYearOf } from './time-maths';
 import { cloneToYear, holidayCompOffDue, recountedDay, templateRows } from './holiday-rules';
 import { ScheduleBook, lockedDates } from './schedule';
-import { BLOCK_DATE_EXEMPT, CompOffCredit, compOffExpiries, compOffUseBy, dailyPay, encashAmount, encashMax, encashWindowOpen, longestRun, toCsv } from './leave-rules';
+import { BLOCK_DATE_EXEMPT, CompOffCredit, compOffExpiries, compOffUseBy, dailyPay, encashAmount, encashMax, encashTerms, encashWindowOpen, longestRun, toCsv } from './leave-rules';
 import { FEED_STATES, HOLIDAY_PROVIDER, HolidayProvider } from './holiday-feed.provider';
 import type { BlockDateDto, CompOffClaimDto, DateNoteDto, EncashDto, FeedDecideDto, LongAbsenceDto, ReportQueryDto } from './leave-v2.dto';
 
@@ -267,7 +267,7 @@ export class LeaveV2Service implements OnModuleInit {
     const minLeft = Number(await settingOn(tx, c, 'leave.encashment.min_left', f, today));
     const divisor = Number(await settingOn(tx, c, 'leave.encashment.divisor', f, today));
     const basis = await settingOn(tx, c, 'payroll.leave_encashment_basis', f, today);
-    const year = leaveYearOf(today, Number(await settingOn(tx, c, 'leave.year_start_month', f, today)));
+    const year = await leaveYearFor(tx, c, f, today);
     const employmentId = await this.employmentOf(tx, org, f.employeeId, today);
     const pay = employmentId ? await payOn(tx, org, employmentId, today) : null;
     const monthly = pay ? Number(basis === 'gross' ? pay.gross : pay.gratuityWage) : 0;
@@ -278,7 +278,9 @@ export class LeaveV2Service implements OnModuleInit {
       const b = balances.find((x) => x.leaveTypeId === t.id);
       const encashedThisYear = num(done.find((d) => d.leaveTypeId === t.id)?._sum.days);
       const available = b?.available ?? 0;
-      return { leaveTypeId: t.id, name: t.name, balance: b?.balance ?? 0, pending: b?.pending ?? 0, available, encashedThisYear, max: encashMax({ available, maxPerYear, minLeft, encashedThisYear }) };
+      // TIM-27 Year end: the type's own limits and payout, else the company's.
+      const terms = encashTerms(t.rules as unknown as LeaveRules, { maxPerYear, minLeft, divisor });
+      return { leaveTypeId: t.id, name: t.name, balance: b?.balance ?? 0, pending: b?.pending ?? 0, available, encashedThisYear, ...terms, max: encashMax({ available, maxPerYear: terms.maxPerYear, minLeft: terms.minLeft, encashedThisYear }) };
     }).filter((t) => balances.some((b) => b.leaveTypeId === t.leaveTypeId));
     const month = Number(today.slice(5, 7));
     return { window, open: encashWindowOpen(window, month), maxPerYear, minLeft, divisor, basis, monthly: monthly || null, dailyRate: monthly ? encashAmount(monthly, divisor, 1).dailyRate : null, types, employmentId, legalEntityId: f.legalEntityId, year };
@@ -313,9 +315,9 @@ export class LeaveV2Service implements OnModuleInit {
       const t = e.types.find((x) => x.leaveTypeId === dto.leaveTypeId);
       if (!t) throw new BadRequestException('That leave type cannot be cashed in.');
       if (await tx.leaveEncashment.findFirst({ where: { organizationId: org, employeeId: f.employeeId, status: 'pending' }, select: { id: true } })) throw new ConflictException('You already have an encashment request waiting. Withdraw it or wait until it is decided.');
-      if (dto.days > t.max) throw new BadRequestException(t.max === 0 ? `Nothing can be cashed in now: ${days(e.minLeft)} must stay and the yearly limit is ${days(e.maxPerYear)}.` : `You can cash in up to ${days(t.max)} (${days(e.minLeft)} must stay; ${days(e.maxPerYear)} a year).`);
+      if (dto.days > t.max) throw new BadRequestException(t.max === 0 ? `Nothing can be cashed in now: ${days(t.minLeft)} must stay and the yearly limit is ${days(t.maxPerYear)}.` : `You can cash in up to ${days(t.max)} (${days(t.minLeft)} must stay; ${days(t.maxPerYear)} a year).`);
       const x = await tx.leaveEncashment.create({ data: { organizationId: org, employeeId: f.employeeId, leaveTypeId: t.leaveTypeId, days: dto.days } });
-      const amount = e.monthly ? encashAmount(e.monthly, e.divisor, dto.days) : null;
+      const amount = e.monthly ? encashAmount(e.monthly, t.divisor, dto.days) : null;
       const hrUsers = await hrApprovers(tx, org, f.employeeId, today, f.userId);
       const sub = await this.engine.submit(tx, c, {
         type: LEAVE_ENCASH,
@@ -384,7 +386,7 @@ export class LeaveV2Service implements OnModuleInit {
       const pay = await payOn(tx, org, employmentId, today);
       const monthly = Number(basis === 'gross' ? pay.gross : pay.gratuityWage);
       if (monthly > 0) {
-        amount = encashAmount(monthly, Number(await settingOn(tx, c, 'leave.encashment.divisor', f, today)), num(x.days));
+        amount = encashAmount(monthly, encashTerms(t.rules as unknown as LeaveRules, { maxPerYear: 0, minLeft: 0, divisor: Number(await settingOn(tx, c, 'leave.encashment.divisor', f, today)) }).divisor, num(x.days));
         const p = await tx.oneTimePay.create({ data: { organizationId: org, legalEntityId: f.legalEntityId, employeeId: x.employeeId, employmentId, componentCode: 'leave_encashment', amount: amount.amount, periodStart: asDate(`${today.slice(0, 7)}-01`), source: 'leave', sourceRef: x.id, reason: `Leave encashment: ${days(num(x.days))} of ${t.name}`, status: 'approved', wfRequestId: wf.id, createdBy: wf.requesterUserId ?? f.userId ?? '00000000-0000-0000-0000-000000000000' } });
         payId = p.id;
       }
@@ -920,7 +922,7 @@ export class LeaveV2Service implements OnModuleInit {
           const f = await factsOn(tx, org, p.id, today);
           if (!f || (await settingOn(tx, c, 'leave.block_leave.required', f, today)) !== 'yes') continue;
           const need = Number(await settingOn(tx, c, 'leave.block_leave.days', f, today));
-          const year = leaveYearOf(today, Number(await settingOn(tx, c, 'leave.year_start_month', f, today)));
+          const year = await leaveYearFor(tx, c, f, today);
           const { offs: _offs, managerEmployeeId: _m, ...row } = await this.blockStatus(tx, c, book, f, year, need, today);
           rows.push({ ...row, canPlan: has(v, 'leave.view') });
         }
@@ -954,7 +956,7 @@ export class LeaveV2Service implements OnModuleInit {
     if (employeeId === own) throw new ForbiddenException('You cannot plan your own block leave here.');
     const f = await factsOn(tx, c.organizationId, employeeId, today);
     if (!f || (await settingOn(tx, c, 'leave.block_leave.required', f, today)) !== 'yes') throw new ConflictException('Block leave is not required for this person.');
-    const year = leaveYearOf(today, Number(await settingOn(tx, c, 'leave.year_start_month', f, today)));
+    const year = await leaveYearFor(tx, c, f, today);
     return { f, today, year, need: Number(await settingOn(tx, c, 'leave.block_leave.days', f, today)) };
   }
 

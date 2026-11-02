@@ -151,3 +151,123 @@ export function pickPolicy(rows: readonly { scopeType: string; scopeId: string; 
   const ranked = current.filter((p) => order.includes(p)).sort((a, b) => order.indexOf(a) - order.indexOf(b));
   return ranked[0] ?? (fallback.value || null);
 }
+
+// ------------------------------------------------------------------------------------------ TIM-27 type rules (Nov 2026)
+
+const r2 = (n: number) => Math.round(n * 100) / 100;
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+export const monthName = (yyyyMm: string) => `${MONTHS[Number(yyyyMm.slice(5, 7)) - 1]} ${yyyyMm.slice(0, 4)}`;
+
+/**
+ * "Most days in a month": the first calendar month where the days already asked (pending and approved) plus this
+ * request's days go over the limit. `days` are the request's counted days (portion 0.5 for a half day).
+ */
+export function monthLimitOver(limit: number | null | undefined, days: readonly { on: string; portion: number }[], already: ReadonlyMap<string, number>): { month: string; already: number; asked: number } | null {
+  if (limit === null || limit === undefined) return null;
+  const asked = new Map<string, number>();
+  for (const d of days) if (d.portion > 0) asked.set(d.on.slice(0, 7), (asked.get(d.on.slice(0, 7)) ?? 0) + d.portion);
+  for (const [month, n] of [...asked].sort()) {
+    const before = already.get(month) ?? 0;
+    if (before + n > limit) return { month, already: r2(before), asked: r2(n) };
+  }
+  return null;
+}
+
+/** What the law fixes for a statutory type (Maternity Benefit Act 1961; a state's paternity rule where one applies). */
+export interface StatutoryMinimum {
+  /** The law this comes from, named in refusals. */
+  law: string;
+  /** The longest leave the law gives (days); a company limit may never be below it. */
+  days: number;
+  /** Paid in full by law. */
+  paidInFull: boolean;
+}
+
+/**
+ * Statutory lock (TIM-27 Statutory): a type of a kind the law sets may not be made shorter or less paid than the
+ * law says. Returns the plain reason it is refused, or null. A company may give more, never less.
+ */
+export function statutoryProblem(
+  min: StatutoryMinimum | null,
+  t: { name: string; paid: boolean; active: boolean; rules: { maxDays: number | null; maxDaysPerMonth?: number | null; paySteps: readonly { days: number; percent: number }[] | null; noticeDays: number | null; noticeMode: string } },
+): string | null {
+  if (!min) return null;
+  const weeks = min.days % 7 === 0 ? `${min.days / 7} weeks` : `${min.days} days`;
+  if (min.paidInFull && !t.paid) return `${t.name} is paid by law (${min.law}). It can't be unpaid.`;
+  if (min.paidInFull && t.rules.paySteps?.some((s) => s.percent < 100)) return `${t.name} is paid in full by law (${min.law}). Remove the reduced pay steps.`;
+  if (t.rules.maxDays !== null && t.rules.maxDays < min.days) return `${t.name} can be up to ${weeks} by law (${min.law}). The most days in one request can't be below ${min.days}.`;
+  if (t.rules.maxDaysPerMonth !== null && t.rules.maxDaysPerMonth !== undefined) return `${t.name} is set by law (${min.law}), so it has no monthly limit.`;
+  if ((t.rules.noticeDays ?? 0) > 0 && t.rules.noticeMode === 'block') return `${t.name} can't be refused for short notice (${min.law}). Choose "Allow and flag to the approver" or no notice.`;
+  if (!t.active) return `${t.name} is a right under ${min.law}, so it stays in use.`;
+  return null;
+}
+
+/** TIM-27 Year end: the type's own encashment limits and payout divisor, else the company's (settings). */
+export function encashTerms(rules: { encashMaxDays?: number | null; encashMinLeft?: number | null; encashDivisor?: number | null }, company: { maxPerYear: number; minLeft: number; divisor: number }) {
+  return { maxPerYear: rules.encashMaxDays ?? company.maxPerYear, minLeft: rules.encashMinLeft ?? company.minLeft, divisor: rules.encashDivisor ?? company.divisor };
+}
+
+/**
+ * TIM-29 year end with cash-in: up to the carry-forward cap is carried; of the rest, up to `encashLeft` days (what
+ * the yearly cash-in limit still allows, never below 0) is paid out and the remainder lapses. Half days throughout.
+ */
+export function yearEndWithEncash(balance: number, carryCap: number | null, encashLeft: number): { carry: number; encash: number; lapse: number } {
+  if (balance <= 0 || carryCap === null || balance <= carryCap) return { carry: r2(balance), encash: 0, lapse: 0 };
+  const over = r2(balance - carryCap);
+  const encash = Math.max(0, Math.min(over, Math.floor(Math.max(0, encashLeft) * 2) / 2));
+  return { carry: carryCap, encash, lapse: r2(over - encash) };
+}
+
+/** The type's notice-period choice as the company setting's value, or the company's own value. */
+export function noticePeriodMode(own: 'allowed' | 'extends' | 'blocked' | null | undefined, company: string): string {
+  return own === 'allowed' ? 'no_change' : own === 'extends' ? 'extends_last_day' : own === 'blocked' ? 'blocked' : company;
+}
+
+/** Long absence: does this type keep crediting? The type's own choice, else the absence's (leave.long_absence.accrues). */
+export const creditsDuringAbsence = (own: 'pause' | 'continue' | null | undefined, absenceAccrues: boolean) => (own === 'continue' ? true : own === 'pause' ? false : absenceAccrues);
+
+// ------------------------------------------------------------------------------------------ TIM-29 leave-year change
+
+/** A scheduled change of the leave year: from `fromOn` a short year runs to the day before the new start month. */
+export interface LeaveYearChange {
+  fromOn: string;
+  oldStartMonth: number;
+  newStartMonth: number;
+}
+
+const pad = (n: number) => String(n).padStart(2, '0');
+const plainYear = (on: string, startMonth: number) => {
+  const y = Number(on.slice(0, 4));
+  const sy = Number(on.slice(5, 7)) >= startMonth ? y : y - 1;
+  return { start: `${sy}-${pad(startMonth)}-01`, end: addDays(`${sy + 1}-${pad(startMonth)}-01`, -1) };
+};
+
+/** The end of the short year that starts on `fromOn` (the day before the first new start month after it). */
+export function shortYearEnd(fromOn: string, newStartMonth: number): string {
+  const y = Number(fromOn.slice(0, 4));
+  const next = Number(fromOn.slice(5, 7)) < newStartMonth ? `${y}-${pad(newStartMonth)}-01` : `${y + 1}-${pad(newStartMonth)}-01`;
+  return addDays(next, -1);
+}
+
+/**
+ * The leave year a date falls in, with a leave-year change: before the change the old start month, then the short
+ * year, then full years from the new start month. Without a change it is the plain year from `startMonth`.
+ */
+export function leaveYearWith(on: string, startMonth: number, change: LeaveYearChange | null): { start: string; end: string; short: boolean } {
+  if (!change) return { ...plainYear(on, startMonth), short: false };
+  if (on < change.fromOn) return { ...plainYear(on, change.oldStartMonth), short: false };
+  const end = shortYearEnd(change.fromOn, change.newStartMonth);
+  if (on <= end) return { start: change.fromOn, end, short: true };
+  return { ...plainYear(on, change.newStartMonth), short: false };
+}
+
+/** Whole calendar months from `start` to `end` (1 Jan – 31 Mar = 3). */
+export const monthsIn = (start: string, end: string) => (Number(end.slice(0, 4)) - Number(start.slice(0, 4))) * 12 + Number(end.slice(5, 7)) - Number(start.slice(5, 7)) + 1;
+
+/** A leave-year change is valid only from the first day of a leave year still to come, to a different start month. */
+export function yearChangeProblem(fromOn: string, oldStartMonth: number, newStartMonth: number, today: string): string | null {
+  if (newStartMonth === oldStartMonth) return 'The leave year already starts in that month.';
+  if (fromOn.slice(8) !== '01' || Number(fromOn.slice(5, 7)) !== oldStartMonth) return `The change starts on the first day of a leave year (1 ${MONTHS[oldStartMonth - 1]}).`;
+  if (fromOn <= today) return 'Choose a leave year that has not started yet.';
+  return null;
+}

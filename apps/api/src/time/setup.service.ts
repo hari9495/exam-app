@@ -7,7 +7,8 @@ import { isCidr, todayIst } from '../org-structure/org-validation';
 import { SETTINGS, resolveSetting } from '../org-structure/settings-registry';
 import { AssignPolicyDto, AttendanceRuleDto, CalendarDto, HolidayDto, LeaveTypeDto, PolicyDto, PolicyVersionDto } from './dto';
 import { LeaveService } from './leave.service';
-import { DEFAULT_RULE, LeaveRules, asDate, dateOf, parseLines, parseRules, policyFor } from './time-core';
+import { DEFAULT_RULE, LeaveRules, asDate, dateOf, parseLines, parseRules, maternityValues, policyFor, statutoryMinimum } from './time-core';
+import { statutoryProblem } from './leave-rules';
 import { FEED_STATES } from './holiday-feed.provider';
 
 const MOVE_KEY = 'leave.optional_holiday.prorate_on_move';
@@ -70,9 +71,12 @@ export class TimeSetupService {
       // Founder decision 2: the notice a type without its own number asks for (company value; sick leave 0).
       const noticeRows = await tx.setting.findMany({ where: { organizationId: org, key: 'leave.notice_days.default' } });
       const noticeDefault = Number(resolveSetting(SETTINGS['leave.notice_days.default'], noticeRows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: null })), { tenant: org }, today).value);
+      // TIM-27 Statutory: what the law fixes for maternity (and paternity where a state rule gives it).
+      const law = { maternity: await statutoryMinimum(tx, org, 'maternity', today), paternity: await statutoryMinimum(tx, org, 'paternity', today) };
       return {
         today,
-        types: types.map((t) => ({ id: t.id, code: t.code, name: t.name, kind: t.kind, paid: t.paid, colour: t.colour, active: t.active, rules: t.rules as unknown as LeaveRules, version: t.version })),
+        types: types.map((t) => ({ id: t.id, code: t.code, name: t.name, kind: t.kind, paid: t.paid, colour: t.colour, active: t.active, rules: t.rules as unknown as LeaveRules, version: t.version, statutory: law[t.kind as keyof typeof law] ?? null })),
+        maternity: await maternityValues(tx, today),
         policies: policies.map((p) => ({
           id: p.id,
           name: p.name,
@@ -200,7 +204,7 @@ export class TimeSetupService {
 
   createType(ctx: TenantContext, user: ScopeUser, dto: LeaveTypeDto) {
     return this.run(ctx, user, true, async (tx, c) => {
-      const rules = this.checkType(dto);
+      const rules = await this.checkType(tx, c, dto);
       if (await tx.leaveType.findFirst({ where: { organizationId: c.organizationId, code: dto.code } })) throw new ConflictException(`The code ${dto.code} is already used.`);
       const t = await tx.leaveType.create({ data: { organizationId: c.organizationId, code: dto.code, name: dto.name, kind: dto.kind, paid: dto.paid, colour: dto.colour ?? 'blue', rules: rules as unknown as Prisma.InputJsonValue, active: dto.active ?? true, createdBy: c.userId ?? null } });
       await audit(tx, c, 'leave.type.created', 'leave_type', t.id, { code: t.code, kind: t.kind, rules });
@@ -216,19 +220,24 @@ export class TimeSetupService {
       if (dto.kind !== t.kind) throw new BadRequestException('A leave type keeps its kind. Add a new type instead.');
       // G1 (gap pass T1): the leave type screen does not show pay steps yet, so an edit that leaves them out keeps them.
       const old = t.rules as Record<string, unknown>;
-      const rules = this.checkType({ ...dto, rules: { paySteps: old.paySteps ?? null, payWindow: old.payWindow ?? 'leave_year', ...(dto.rules ?? {}) } });
+      const rules = await this.checkType(tx, c, { ...dto, rules: { paySteps: old.paySteps ?? null, payWindow: old.payWindow ?? 'leave_year', ...(dto.rules ?? {}) } });
       await tx.leaveType.update({ where: { id: t.id }, data: { name: dto.name, paid: dto.paid, colour: dto.colour ?? t.colour, rules: rules as unknown as Prisma.InputJsonValue, active: dto.active ?? t.active, version: { increment: 1 }, updatedAt: new Date() } });
       await audit(tx, c, 'leave.type.changed', 'leave_type', t.id, { code: t.code, from: { name: t.name, paid: t.paid, rules: t.rules, active: t.active }, to: { name: dto.name, paid: dto.paid, rules, active: dto.active ?? t.active } });
       return { id: t.id };
     });
   }
 
-  private checkType(dto: LeaveTypeDto): LeaveRules {
+  private async checkType(tx: Tx, c: CompanyContext, dto: LeaveTypeDto): Promise<LeaveRules> {
     const rules = parseRules(dto.rules);
     if (dto.kind === 'lop' && dto.paid) throw new BadRequestException('Leave without pay is unpaid.');
     // YX-LV-14: an unpaid type carries no balance, so it has nothing to go below zero.
     if (dto.kind === 'lop' && rules.negativeLimit) throw new BadRequestException('Leave without pay has no balance, so it cannot go below zero.');
     if (!dto.paid && rules.paySteps) throw new BadRequestException('Only paid leave has pay steps.');
+    // TIM-27 Year end: cash-in limits and the payout only mean something for a type that can be cashed in.
+    if (!rules.encashable && (rules.encashMaxDays !== null || rules.encashMinLeft !== null || rules.encashDivisor !== null)) throw new BadRequestException('Turn on "Can be cashed in" before setting cash-in limits or the payout.');
+    // TIM-27 Statutory: a kind the law sets can't be made shorter or less paid than the law (a company may give more).
+    const problem = statutoryProblem(await statutoryMinimum(tx, c.organizationId, dto.kind, todayIst()), { name: dto.name, paid: dto.paid, active: dto.active ?? true, rules });
+    if (problem) throw new BadRequestException(problem);
     return rules;
   }
 

@@ -143,10 +143,14 @@ export interface AccrualDue {
  * cumulative entitlement, and the last month of the year trues up to the exact entitlement (L4). A joiner gets the
  * employed share of the joining month (pro-rata); nothing before joining or after leaving.
  */
-export function accrualsDue(line: AccrualLine, o: { yearStart: string; joinedOn: string; exitedOn?: string | null; upTo: string; /** TIM-25: long absences that earn no leave (monthly credits only). */ notEarning?: readonly { from: string; to: string }[] }): AccrualDue[] {
+export function accrualsDue(line: AccrualLine, o: { yearStart: string; joinedOn: string; exitedOn?: string | null; upTo: string; /** TIM-25: long absences that earn no leave (monthly credits only). */ notEarning?: readonly { from: string; to: string }[]; /** TIM-29: a short year ends early (a leave-year change); its yearly credit is for its months only. */ yearEnd?: string }): AccrualDue[] {
   if (line.annualDays <= 0) return [];
   const start = day(o.yearStart);
-  const yearEnd = start.plus({ years: 1 }).minus({ days: 1 }).toISODate()!;
+  const yearEnd = o.yearEnd ?? start.plus({ years: 1 }).minus({ days: 1 }).toISODate()!;
+  if (o.yearEnd) {
+    const months = (day(yearEnd).year - start.year) * 12 + day(yearEnd).month - start.month + 1;
+    if (months < 12) line = { ...line, annualDays: line.frequency === 'yearly' ? (line.annualDays * months) / 12 : line.annualDays };
+  }
   const last = o.exitedOn && o.exitedOn < yearEnd ? o.exitedOn : yearEnd;
   if (o.joinedOn > last) return [];
   const share = (from: string, to: string) => {
