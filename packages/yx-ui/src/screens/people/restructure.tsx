@@ -5,7 +5,7 @@ import { ListChecks, Plus } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Card, ObjectHeader, PageHeader } from '../../components/shell';
 import { EmptyState, ErrorState, InlineAlert, NoAccessState } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
 import { MultiSelect, PersonPicker, Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
 import { TextArea } from '../../components/inputs';
@@ -17,7 +17,7 @@ import { Drawer } from '../../components/drawer';
 import { Stepper } from '../../components/stepper';
 import { Text } from '../../components/foundations';
 import { formatDate } from '../../lib/format';
-import { ListSkeleton, PeopleFrame, StatusBadge, StatusChecklist, toneOf, type ChecklistRow } from './people-kit';
+import { ListSkeleton, PeopleFrame, StatusBadge, StatusChecklist, toneOf, useSay, type ChecklistRow } from './people-kit';
 
 const persons = (n: number) => `${n} ${n === 1 ? 'person' : 'people'}`;
 
@@ -208,7 +208,7 @@ function OverrideDialog({ people, start, onClose, onSave }: { people: { id: stri
   // "Leave out" from the checks opens a new override with the person and the option chosen.
   const isNew = !start?.reason;
   const choices = [{ value: 'out', label: 'Leave out of this move' }, ...KEYS.flatMap((k) => Object.entries(OPTION_TEXT[k]).map(([v, t]) => ({ value: `${k}:${v}`, label: `${OPTION_LABEL[k]}: ${t}` })))];
-  const ok = who && pick && reason.trim().length >= 3;
+  const early = useTooEarly([...(!who ? [{ fieldId: 'ov-who', message: 'Choose the person.' }] : []), ...(!pick ? [{ fieldId: 'ov-pick', message: 'Choose an option.' }] : []), ...(reason.trim().length < 3 ? [{ fieldId: 'ov-reason', message: 'Say why (at least 3 letters).' }] : [])]);
   return (
     <Dialog
       open
@@ -220,9 +220,8 @@ function OverrideDialog({ people, start, onClose, onSave }: { people: { id: stri
           <Button onClick={onClose}>Cancel</Button>
           <Button
             variant="primary"
-            disabled={!ok}
             onClick={() => {
-              if (!who || !pick) return;
+              if (early.stop() || !who || !pick) return;
               const [k, v] = pick.split(':');
               onSave({ employeeId: who, reason: reason.trim(), ...(pick === 'out' ? { leaveOut: true } : { [k]: v }) });
             }}
@@ -233,13 +232,13 @@ function OverrideDialog({ people, start, onClose, onSave }: { people: { id: stri
       }
     >
       <div className="yx-ppl__form">
-        <FormField label="Person" required>
+        <FormField id="ov-who" label="Person" required error={early.errorOf('ov-who')}>
           <PersonPicker people={people} value={who} onChange={setWho} disabled={!!start} />
         </FormField>
-        <FormField label="Option" required>
+        <FormField id="ov-pick" label="Option" required error={early.errorOf('ov-pick')}>
           <Select options={choices} value={pick} onChange={setPick} placeholder="Choose an option" />
         </FormField>
-        <FormField label="Reason" required>
+        <FormField id="ov-reason" label="Reason" required error={early.errorOf('ov-reason')}>
           <TextArea rows={2} value={reason} onChange={setReason} maxLength={300} />
         </FormField>
       </div>
@@ -274,6 +273,7 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
   }, [s?.defaults]); // eslint-disable-line react-hooks/exhaustive-deps
   const [overrides, setOverrides] = useState<RestructureOverride[]>(d0.overrides ?? []);
   const [editing, setEditing] = useState<RestructureOverride | 'new' | null>(null);
+  const { say } = useSay();
   const [reason, setReason] = useState(d0.reason ?? '');
   const [letterType, setLetterType] = useState<string | null>(d0.letterType ?? null);
   // The transfer letter template starts chosen once the templates are in (the person can pick another).
@@ -734,7 +734,7 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
                   <Card
                     title={`Per-person overrides (${overrides.length})`}
                     actions={
-                      <Button size="sm" icon={Plus} onClick={() => setEditing('new')} disabled={!people.length}>
+                      <Button size="sm" icon={Plus} onClick={() => say(!people.length && 'No one is in this move yet. Choose who moves first.', () => setEditing('new'))}>
                         Add override
                       </Button>
                     }
@@ -1044,7 +1044,7 @@ export function RestructureRecord({ state, onRetry, data: d, today, onApprove, o
         }
       />
       {d.status === 'done' && (
-        <InlineAlert tone={d.failed ? 'warning' : 'success'} title={d.failed ? `${d.moved} moved · ${d.failed} couldn't move` : `All ${d.moved} moved`}>
+        <InlineAlert tone={d.failed ? 'warning' : 'info'} title={d.failed ? `${d.moved} moved · ${d.failed} couldn't move` : `All ${d.moved} moved`}>
           {d.failed ? 'Each person who could not move stayed where they were. Fix the reason and move them in a new restructure.' : across ? 'Open each person’s continuity checklist for what payroll still has to do.' : 'The changes are in each person’s job history.'}
         </InlineAlert>
       )}

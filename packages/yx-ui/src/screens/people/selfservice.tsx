@@ -9,7 +9,7 @@ import { DataTable, type TableColumn } from '../../components/table';
 import { PlainTable } from '../../components/plain-table';
 import { Badge } from '../../components/display';
 import { EmptyState, ErrorState, InlineAlert } from '../../components/feedback';
-import { ErrorSummary, FormField, useSaveErrors, type FormErrorItem } from '../../components/field';
+import { ErrorSummary, FormField, useSaveErrors, useTooEarly, type FormErrorItem } from '../../components/field';
 import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { Drawer } from '../../components/drawer';
 import { MenuItem } from '../../components/menu';
@@ -24,7 +24,7 @@ import { formatDate, formatINR } from '../../lib/format';
 import { dayKey } from '../../lib/dates';
 import { addDays, daysBetween, ifscBank, isIfsc, isPan, preclearanceState } from './people-logic';
 import { ACCESS_LOG } from './people-data';
-import { ClassBadge, ListSkeleton, MeFrame, PeopleFrame, Segment, StatusBadge } from './people-kit';
+import { ClassBadge, ListSkeleton, MeFrame, PeopleFrame, Segment, StatusBadge, useSay } from './people-kit';
 import { useRun } from '../org/org-kit';
 import { KIND_FIELDS } from '../access/profile';
 import type { AccessLog, ChangeForm, ProfileRequest, ProfileRequestInput, RequestKind } from '../access/types';
@@ -39,24 +39,16 @@ function ChangeFields({ kind, value, setValue, ifsc, setIfsc }: { kind: ProfileC
   const old = kind === 'bank' ? 'Canara Bank · XXXX XXXX 6789 · CNRB0001234' : kind === 'pan' ? 'XXXXXX821M' : 'Divya Raghunathan';
   return (
     <div className="yx-ppl__form">
-      <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-      <table className="yx-ppl__impact">
-        <thead>
-          <tr>
-            <th scope="col">Field</th>
-            <th scope="col">Now</th>
-            <th scope="col">Change to</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <th scope="row">{kind === 'bank' ? 'Salary account' : kind === 'pan' ? 'PAN' : 'Legal name'}</th>
-            <td className="yx-mono">{old}</td>
-            <td className="yx-mono" data-changed>{kind === 'bank' ? `${value} · ${ifsc}` : value}</td>
-          </tr>
-        </tbody>
-      </table>
-      </div>
+      <PlainTable
+        label="The change"
+        columns={[
+          { key: 'f', header: 'Field', rowHeader: true, cell: () => (kind === 'bank' ? 'Salary account' : kind === 'pan' ? 'PAN' : 'Legal name') },
+          { key: 'now', header: 'Now', cell: () => <span className="yx-mono">{old}</span> },
+          { key: 'to', header: 'Change to', changed: () => true, cell: () => <span className="yx-mono">{kind === 'bank' ? `${value} · ${ifsc}` : value}</span> },
+        ]}
+        rows={[kind]}
+        getRowId={(k) => k}
+      />
       {kind === 'bank' && (
         <>
           <FormField label="Account number" required>
@@ -207,24 +199,16 @@ function LiveProfileChangeRequest({ today, live }: { today: Date; live: LiveProf
         <RadioGroup value={kind} onChange={(v) => pick(v as RequestKind)} orientation="horizontal" options={LIVE_KINDS.map((k) => ({ ...k, disabled: waiting.includes(k.value), description: waiting.includes(k.value) ? 'A change is already waiting' : undefined }))} />
       </FormField>
       <div className="yx-ppl__form">
-        <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-          <table className="yx-ppl__impact">
-            <thead>
-              <tr>
-                <th scope="col">Field</th>
-                <th scope="col">Now</th>
-                <th scope="col">Change to</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <th scope="row">{ROW_LABEL[kind]}</th>
-                <td className="yx-mono">{shownValue(kind, form.current[kind])}</td>
-                <td className="yx-mono" data-changed>{changeTo}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <PlainTable
+          label="The change"
+          columns={[
+            { key: 'f', header: 'Field', rowHeader: true, cell: () => ROW_LABEL[kind] },
+            { key: 'now', header: 'Now', cell: () => <span className="yx-mono">{shownValue(kind, form.current[kind])}</span> },
+            { key: 'to', header: 'Change to', changed: () => true, cell: () => <span className="yx-mono">{changeTo}</span> },
+          ]}
+          rows={[kind]}
+          getRowId={(k) => k}
+        />
         {fields.map((f) =>
           f.date ? (
             <FormField key={f.key} label={f.label} required error={tried && !value[f.key] ? 'Choose the date.' : null}>
@@ -575,7 +559,7 @@ function DisabilityFields({ consent, setConsent, company = 'Kaveri Foods', live 
       <InlineAlert tone="info" title="This is voluntary">
         You can skip it or withdraw it at any time. It is Special data: you, the HR diversity role and payroll (only the ESI flag it needs) can see it. Your manager never does. Reports show only totals.
       </InlineAlert>
-      <Checkbox checked={consent} onChange={setConsent} label={`I agree ${company} may record this to provide reasonable adjustments and apply the correct ESI ceiling`} description="Read the notice: how we use disability data" />
+      <Checkbox id="ds-consent" checked={consent} onChange={setConsent} label={`I agree ${company} may record this to provide reasonable adjustments and apply the correct ESI ceiling`} description="Read the notice: how we use disability data" />
       <FormField id="ds-answer" label="Do you have a disability you want to declare?" required>
         <RadioGroup value={f ? f.answer : 'yes'} onChange={(v) => live?.set({ answer: v as DisabilityAnswer })} disabled={!consent} orientation="horizontal" options={(['yes', 'no', 'skip'] as const).map((value) => ({ value, label: ANSWER_LABEL[value] }))} />
       </FormField>
@@ -622,6 +606,12 @@ interface DisabilityForm {
   adjustments: string;
 }
 
+/** Pressed before the consent box is ticked: say so and take the person to it. */
+const noConsent = (say: (why: string) => void) => {
+  say('Tick the consent box first. Nothing is recorded without it.');
+  document.getElementById('ds-consent')?.focus();
+};
+
 // PPL-38
 export function DisabilityDeclaration({ declared = false, persona = 'emp', live, liveList, switcher }: { declared?: boolean; persona?: 'emp' | 'hr'; live?: LiveDisability; liveList?: LiveDisabilityList; switcher?: ReactNode }) {
   const [consent, setConsent] = useState(declared);
@@ -637,6 +627,7 @@ export function DisabilityDeclaration({ declared = false, persona = 'emp', live,
       : [];
   const sv = useSaveErrors(errors);
   const { run, busy, error } = useRun();
+  const { say, toast } = useSay();
   // PPL-38 HR: the certificate being rejected, and why (the person sees the reason).
   const [rejecting, setRejecting] = useState<{ id: string; n: string } | null>(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -733,8 +724,9 @@ export function DisabilityDeclaration({ declared = false, persona = 'emp', live,
   const verified = live ? d?.certificate?.status === 'verified' : true;
   const rejected = live ? d?.certificate?.status === 'rejected' : false;
   const save = () => {
+    if (!consent) return noConsent(say);
     if (errors.length) return sv.reveal();
-    void run('save', () => live!.onSave({ consent: true, answer: form.answer, ...(form.answer === 'yes' ? { category: form.category!, percent: form.percent!, certificateDocumentId: form.certificateId!, ...(form.adjustments.trim() ? { adjustments: form.adjustments.trim() } : {}) } : {}) }));
+    void run('save', async () => (await live!.onSave({ consent: true, answer: form.answer, ...(form.answer === 'yes' ? { category: form.category!, percent: form.percent!, certificateDocumentId: form.certificateId!, ...(form.adjustments.trim() ? { adjustments: form.adjustments.trim() } : {}) } : {}) }), toast({ tone: 'success', title: 'Declaration saved' })));
   };
   return (
     <MeFrame active="Declarations">
@@ -775,7 +767,7 @@ export function DisabilityDeclaration({ declared = false, persona = 'emp', live,
           {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
           <div className="yx-ppl__row">
             <Button onClick={live?.onSkip}>Skip</Button>
-            <Button variant="primary" disabled={!consent} loading={busy === 'save'} onClick={live ? save : undefined}>
+            <Button variant="primary" loading={busy === 'save'} onClick={live ? save : () => !consent && noConsent(say)}>
               Save declaration
             </Button>
           </div>
@@ -791,10 +783,11 @@ export function DisabilityDeclaration({ declared = false, persona = 'emp', live,
 // PPL-38 · phone
 export function DisabilityPhone() {
   const [consent, setConsent] = useState(false);
+  const { say } = useSay();
   return (
     <PhoneFrame tab="me" title="Disability declaration">
       <DisabilityFields consent={consent} setConsent={setConsent} />
-      <Button variant="primary" fullWidth disabled={!consent}>
+      <Button variant="primary" fullWidth onClick={() => !consent && noConsent(say)}>
         Save declaration
       </Button>
     </PhoneFrame>
@@ -939,6 +932,7 @@ export function BfsiDeclarations({ tab = 'holdings', otpSent = false, today, liv
       </Button>
     );
   const coiReady = coi === 'no' || (coi === 'yes' && details.trim() !== '');
+  const { say, toast } = useSay();
   return (
     <MeFrame active="Declarations">
       <PageHeader
@@ -947,7 +941,7 @@ export function BfsiDeclarations({ tab = 'holdings', otpSent = false, today, liv
         status={status}
       />
       {switcher}
-      {done && <InlineAlert tone="success" title={`Submitted on ${formatDate(live!.submittedAt!)}`}>Ask the compliance officer if something has to change.</InlineAlert>}
+      {done && <InlineAlert tone="info" title={`Submitted on ${formatDate(live!.submittedAt!)}`}>Ask the compliance officer if something has to change.</InlineAlert>}
       {error && <InlineAlert tone="danger" title="That didn't work">{error}</InlineAlert>}
       <Tabs value={t} onValueChange={(v) => setT(v as typeof t)}>
         <TabsList aria-label="Declarations">
@@ -1023,15 +1017,14 @@ export function BfsiDeclarations({ tab = 'holdings', otpSent = false, today, liv
               <>
                 {live && !coiReady && <Text size="sm" tone="secondary" as="p">Answer the conflict of interest question before you attest.</Text>}
                 <div className="yx-ppl__row">
-                  <Button onClick={live ? () => coi && void run('draft', () => live.onSaveCoi({ answer: coi, ...(coi === 'yes' ? { details: details.trim() } : {}) })) : undefined} disabled={Boolean(live) && !coiReady} loading={busy === 'draft'}>
+                  <Button onClick={live ? () => say(!coiReady && 'Answer the conflict of interest question first, on the Conflict of interest tab.', () => coi && void run('draft', async () => (await live.onSaveCoi({ answer: coi, ...(coi === 'yes' ? { details: details.trim() } : {}) }), toast({ tone: 'success', title: 'Draft saved' })))) : undefined} loading={busy === 'draft'}>
                     Save draft
                   </Button>
                   <Button
                     variant="primary"
                     icon={ShieldCheck}
-                    disabled={Boolean(live) && (!coiReady || !agreed)}
                     loading={busy === 'submit'}
-                    onClick={live ? () => void run('submit', async () => (await live.onSaveCoi({ answer: coi!, ...(coi === 'yes' ? { details: details.trim() } : {}) }), await live.onSubmit())) : undefined}
+                    onClick={live ? () => say((!coiReady && 'Answer the conflict of interest question first, on the Conflict of interest tab.') || (!agreed && 'Tick that you have read and will follow the code of conduct.'), () => void run('submit', async () => (await live.onSaveCoi({ answer: coi!, ...(coi === 'yes' ? { details: details.trim() } : {}) }), await live.onSubmit(), toast({ tone: 'success', title: 'Declarations submitted' })))) : undefined}
                   >
                     {otpSent ? 'Verify and submit' : 'Send OTP to attest'}
                   </Button>
@@ -1234,6 +1227,8 @@ function PreclearanceForm({ disabled, onCancel, onRequest }: { disabled?: boolea
   const [value, setValue] = useState<number | null>(null);
   const [noUpsi, setNoUpsi] = useState(false);
   const { run, busy, error } = useRun();
+  const { say, toast } = useSay();
+  const early = useTooEarly([...(!security.trim() ? [{ fieldId: 'pc-sec', message: 'Give the company name.' }] : []), ...(!side ? [{ fieldId: 'pc-side', message: 'Choose buy or sell.' }] : []), ...(!quantity || quantity <= 0 ? [{ fieldId: 'pc-qty', message: 'Give the quantity.' }] : []), ...(!value || value <= 0 ? [{ fieldId: 'pc-value', message: 'Give the approximate value.' }] : []), ...(!noUpsi ? [{ fieldId: 'pc-upsi', message: 'Confirm you hold no price-sensitive information.' }] : [])]);
   if (!onRequest)
     return (
       <div className="yx-ppl__form">
@@ -1252,32 +1247,32 @@ function PreclearanceForm({ disabled, onCancel, onRequest }: { disabled?: boolea
         <Checkbox label="I don't hold unpublished price-sensitive information about this company" defaultChecked disabled={disabled} />
         <div className="yx-ppl__row">
           <Button>Cancel</Button>
-          <Button variant="primary" disabled={disabled}>
+          <Button variant="primary" onClick={() => say(disabled && 'The trading window is closed. You can request again when it reopens.')}>
             Request pre-clearance
           </Button>
         </div>
       </div>
     );
-  const ready = security.trim() && side && quantity && quantity > 0 && value && value > 0 && noUpsi;
   return (
     <div className="yx-ppl__form">
-      <FormField label="Security" required helper="The company’s name as on the exchange.">
+      <FormField id="pc-sec" label="Security" required helper="The company’s name as on the exchange." error={early.errorOf('pc-sec')}>
         <TextField value={security} onChange={setSecurity} maxLength={200} />
       </FormField>
-      <FormField label="Buy or sell" required>
+      <FormField id="pc-side" label="Buy or sell" required error={early.errorOf('pc-side')}>
         <RadioGroup value={side ?? ''} onChange={(v) => setSide(v as 'buy' | 'sell')} orientation="horizontal" options={[{ value: 'buy', label: 'Buy' }, { value: 'sell', label: 'Sell' }]} />
       </FormField>
-      <FormField label="Quantity" required>
+      <FormField id="pc-qty" label="Quantity" required error={early.errorOf('pc-qty')}>
         <NumberField value={quantity} onChange={setQuantity} />
       </FormField>
-      <FormField label="Approximate value" required>
+      <FormField id="pc-value" label="Approximate value" required error={early.errorOf('pc-value')}>
         <CurrencyField value={value} onChange={setValue} />
       </FormField>
-      <Checkbox checked={noUpsi} onChange={setNoUpsi} label="I don't hold unpublished price-sensitive information about this company" />
+      <Checkbox id="pc-upsi" checked={noUpsi} onChange={setNoUpsi} label="I don't hold unpublished price-sensitive information about this company" />
+      {early.errorOf('pc-upsi') && <Text size="sm" tone="danger" as="p">{early.errorOf('pc-upsi')}</Text>}
       {error && <InlineAlert tone="danger" title="Not sent">{error}</InlineAlert>}
       <div className="yx-ppl__row">
         {onCancel && <Button onClick={onCancel}>Cancel</Button>}
-        <Button variant="primary" disabled={!ready} loading={busy === 'request'} onClick={() => void run('request', () => onRequest({ security: security.trim(), side: side!, quantity: quantity!, value: Math.round(value!), noUpsi: true }))}>
+        <Button variant="primary" loading={busy === 'request'} onClick={() => !early.stop() && void run('request', async () => (await onRequest({ security: security.trim(), side: side!, quantity: quantity!, value: Math.round(value!), noUpsi: true }), toast({ tone: 'success', title: 'Pre-clearance requested' })))}>
           Request pre-clearance
         </Button>
       </div>
@@ -1290,22 +1285,23 @@ function TradeReport({ item, today, live }: { item: PreclearanceItem; today: Dat
   const [quantity, setQuantity] = useState<number | null>(item.quantity);
   const [note, setNote] = useState<string | null>(null);
   const { run, busy, error } = useRun();
-  const ready = on && quantity && quantity > 0 && quantity <= item.quantity && note;
+  const { toast } = useSay();
+  const early = useTooEarly([...(!on ? [{ fieldId: 'tr-on', message: 'Give the date you traded.' }] : []), ...(!quantity || quantity <= 0 || quantity > item.quantity ? [{ fieldId: 'tr-qty', message: `Give the quantity traded, up to ${item.quantity}.` }] : []), ...(!note ? [{ fieldId: 'tr-note', message: 'Upload the contract note.' }] : [])]);
   return (
     <div className="yx-ppl__form">
       <h3 className="yx-ppl__section-title">Report the trade</h3>
-      <FormField label="Traded on" required>
+      <FormField id="tr-on" label="Traded on" required error={early.errorOf('tr-on')}>
         <DatePicker value={on} onChange={setOn} min={item.decidedAt ?? undefined} max={item.validUntil && item.validUntil < today ? item.validUntil : today} aria-label="Traded on" />
       </FormField>
-      <FormField label="Quantity traded" required error={quantity && quantity > item.quantity ? `You were cleared for ${item.quantity}.` : null}>
+      <FormField id="tr-qty" label="Quantity traded" required error={quantity && quantity > item.quantity ? `You were cleared for ${item.quantity}.` : early.errorOf('tr-qty')}>
         <NumberField value={quantity} onChange={setQuantity} />
       </FormField>
-      <FormField label="Contract note" required>
+      <FormField id="tr-note" label="Contract note" required error={early.errorOf('tr-note')}>
         <FileUpload multiple={false} upload={async (file) => setNote(await live.onUploadNote(file))} accept={['.pdf']} maxSize={5 * 1024 * 1024} />
       </FormField>
       {error && <InlineAlert tone="danger" title="Not reported">{error}</InlineAlert>}
       <div>
-        <Button variant="primary" disabled={!ready} loading={busy === 'report'} onClick={() => void run('report', () => live.onReport(item.id, { tradedOn: dayKey(on!), quantity: quantity!, contractNoteDocumentId: note! }))}>
+        <Button variant="primary" loading={busy === 'report'} onClick={() => !early.stop() && void run('report', async () => (await live.onReport(item.id, { tradedOn: dayKey(on!), quantity: quantity!, contractNoteDocumentId: note! }), toast({ tone: 'success', title: 'Trade reported' })))}>
           Report trade
         </Button>
       </div>
@@ -1338,7 +1334,7 @@ function LivePreclearancePage({ today, live, switcher }: { today: Date; live: Li
           </dl>
           {(item.status === 'Approved' || item.status === 'Expired') && <TradeReport item={item} today={today} live={live} />}
           {item.status === 'Expired' && <InlineAlert tone="warning">The window ended without a trade report. Report the trade if you made it, or request again.</InlineAlert>}
-          {item.status === 'Done' && <InlineAlert tone="success">Trade reported on {formatDate(item.tradedOn!)}. Late or missing reports alert the compliance officer.</InlineAlert>}
+          {item.status === 'Done' && <InlineAlert tone="info">Trade reported on {formatDate(item.tradedOn!)}. Late or missing reports alert the compliance officer.</InlineAlert>}
           </div>
         </Card>
       )}
@@ -1384,7 +1380,7 @@ export function TradingPreclearance({ view = 'request', today, live, switcher, n
             </div>
           )}
           {view === 'expired' && <InlineAlert tone="warning">The window ended without a trade report. Report the trade if you made it, or request again.</InlineAlert>}
-          {view === 'report' && <InlineAlert tone="success">Trade reported on {formatDate(today)}. Late or missing reports alert the compliance officer.</InlineAlert>}
+          {view === 'report' && <InlineAlert tone="info">Trade reported on {formatDate(today)}. Late or missing reports alert the compliance officer.</InlineAlert>}
           </div>
         </Card>
       )}

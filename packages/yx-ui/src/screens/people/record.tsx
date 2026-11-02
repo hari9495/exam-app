@@ -13,7 +13,8 @@ import { ConfirmDialog } from '../../components/overlay';
 import { DataTable, type TableColumn } from '../../components/table';
 import { DatePicker } from '../../components/date';
 import { Select } from '../../components/select';
-import { ErrorSummary, FormField, useSaveErrors, type FormErrorItem } from '../../components/field';
+import { ErrorSummary, FormField, useSaveErrors, useTooEarly, type FormErrorItem } from '../../components/field';
+import { PlainTable } from '../../components/plain-table';
 import { Drawer } from '../../components/drawer';
 import { TextArea, TextField, NumberField } from '../../components/inputs';
 import { ActivityFeed, type ActivityEntry } from '../../components/timeline';
@@ -23,7 +24,7 @@ import { dayKey } from '../../lib/dates';
 import { errorText } from '../org/org-kit';
 import { canSeePay, daysBetween, fieldVisibility, ibanProblem, isBic, isIban, splitNetPay, type FieldClass, type PaySplit, type Persona, type Relation } from './people-logic';
 import { SPLITS, ARJUN, ARJUN_ASSETS, ARJUN_DOCS, ARJUN_HISTORY, ARJUN_ROLES, ARJUN_WORK_AUTH, IDENTITY, type FieldRow, type JobChange } from './people-data';
-import { ClassBadge, FactRail, FieldList, ListSkeleton, MeFrame, PeopleFrame, SplitLayout, StatusBadge } from './people-kit';
+import { ClassBadge, FactRail, FieldList, ListSkeleton, MeFrame, PeopleFrame, SplitLayout, StatusBadge, useSay } from './people-kit';
 import { FamilyCards, type RecordFamily } from './family';
 import { PayAccessDialog, PayAccessNote, type PayAccessRow } from './pay-access';
 
@@ -1028,33 +1029,18 @@ function AssetsTab({ name, rows, onIssue }: { name: string; rows: RecordAsset[];
       {rows.length === 0 ? (
         <EmptyState title={`No assets with ${name}`} description="Assets issued to this person appear here." />
       ) : (
-        <div className="yx-scroll-x" tabIndex={0} role="region" aria-label={`Assets with ${name}, scrolls sideways on small screens`}>
-        <table className="yx-ppl__impact">
-          <caption className="yx-visually-hidden">Assets with {name}</caption>
-          <thead>
-            <tr>
-              <th scope="col">Tag</th>
-              <th scope="col">Asset</th>
-              <th scope="col">Issued</th>
-              <th scope="col">Condition</th>
-              <th scope="col">Acknowledgement</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((a) => (
-              <tr key={a.tag}>
-                <td className="yx-mono">{a.tag}</td>
-                <td>{a.name}</td>
-                <td>{formatDate(a.issued)}</td>
-                <td>{a.condition}</td>
-                <td>
-                  <StatusBadge status={a.ack === 'Waiting' ? 'Waiting for confirmation' : 'Confirmed'} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
+        <PlainTable
+          label={`Assets with ${name}`}
+          columns={[
+            { key: 'tag', header: 'Tag', cell: (a: (typeof rows)[number]) => <span className="yx-mono">{a.tag}</span> },
+            { key: 'name', header: 'Asset', cell: (a: (typeof rows)[number]) => a.name },
+            { key: 'issued', header: 'Issued', date: true, cell: (a: (typeof rows)[number]) => formatDate(a.issued) },
+            { key: 'cond', header: 'Condition', cell: (a: (typeof rows)[number]) => a.condition },
+            { key: 'ack', header: 'Acknowledgement', cell: (a: (typeof rows)[number]) => <StatusBadge status={a.ack === 'Waiting' ? 'Waiting for confirmation' : 'Confirmed'} /> },
+          ]}
+          rows={rows}
+          getRowId={(a) => a.tag}
+        />
       )}
     </div>
   );
@@ -1474,8 +1460,16 @@ function useIntlBankForm(live: LiveIntlBank, fixedCountry: boolean) {
   const cc = fixedCountry ? compact(iban).slice(0, 2) || null : country;
   const ibanError = iban.trim() ? ibanProblem(iban, cc) : null;
   const bicError = bic.trim() && !isBic(bic) ? 'Enter an 8 or 11 character BIC, like ECBKAEAD.' : null;
-  const ready = Boolean(cc && iban.trim() && !ibanError && bic.trim() && !bicError && currency && !live.waiting);
+  const early = useTooEarly([
+    ...(!cc && !fixedCountry ? [{ fieldId: 'ib-country', message: 'Choose the country of the account.' }] : []),
+    ...(!iban.trim() || ibanError ? [{ fieldId: 'ib-iban', message: ibanError ?? 'Enter the IBAN.' }] : []),
+    ...(!bic.trim() || bicError ? [{ fieldId: 'ib-bic', message: bicError ?? 'Enter the BIC.' }] : []),
+    ...(!currency ? [{ fieldId: 'ib-cur', message: 'Choose the payout currency.' }] : []),
+  ]);
+  const { say } = useSay();
   const send = async () => {
+    if (live.waiting) return say('A change is already waiting for approval. Wait for the decision, or withdraw it first.');
+    if (early.stop()) return;
     setSending(true);
     setFailed(null);
     try {
@@ -1485,7 +1479,7 @@ function useIntlBankForm(live: LiveIntlBank, fixedCountry: boolean) {
     }
     setSending(false);
   };
-  return { country, setCountry, iban, setIban, bic, setBic, currency, setCurrency, ibanError, bicError, ready, send, sending, failed };
+  return { country, setCountry, iban, setIban, bic, setBic, currency, setCurrency, ibanError, bicError, errorOf: early.errorOf, send, sending, failed };
 }
 
 function IntlBankOnFile({ current }: { current: NonNullable<LiveIntlBank['current']> }) {
@@ -1513,16 +1507,16 @@ function LiveInternationalBank({ persona, live }: { persona: Persona; live: Live
           </Card>
         )}
         <div className="yx-ppl__form">
-          <FormField label="Country of account" required>
+          <FormField id="ib-country" label="Country of account" required error={f.errorOf('ib-country')}>
             <Select aria-label="Country of account" options={COUNTRY_OPTIONS} value={f.country} onChange={f.setCountry} searchable />
           </FormField>
-          <FormField label="IBAN" required error={f.ibanError} helper={f.iban.trim() && !f.ibanError ? 'IBAN check passed (country length and check digits).' : undefined}>
+          <FormField id="ib-iban" label="IBAN" required error={f.errorOf('ib-iban') ?? f.ibanError} helper={f.iban.trim() && !f.ibanError ? 'IBAN check passed (country length and check digits).' : undefined}>
             <TextField value={f.iban} onChange={f.setIban} className="yx-mono" maxLength={42} />
           </FormField>
-          <FormField label="BIC / SWIFT" required error={f.bicError}>
+          <FormField id="ib-bic" label="BIC / SWIFT" required error={f.errorOf('ib-bic') ?? f.bicError}>
             <TextField value={f.bic} onChange={f.setBic} maxLength={11} />
           </FormField>
-          <FormField label="Payout currency" required>
+          <FormField id="ib-cur" label="Payout currency" required error={f.errorOf('ib-cur')}>
             <Select aria-label="Payout currency" options={CURRENCY_OPTIONS} value={f.currency} onChange={f.setCurrency} searchable />
           </FormField>
         </div>
@@ -1530,7 +1524,7 @@ function LiveInternationalBank({ persona, live }: { persona: Persona; live: Live
         {f.failed && <InlineAlert tone="danger" title="Not sent">{f.failed}</InlineAlert>}
         <div className="yx-ppl__row">
           <Button onClick={live.onCancel}>Cancel</Button>
-          <Button variant="primary" disabled={!f.ready} loading={f.sending} onClick={() => void f.send()}>
+          <Button variant="primary" loading={f.sending} onClick={() => void f.send()}>
             Send for approval
           </Button>
         </div>
@@ -1547,20 +1541,20 @@ function LiveInternationalBankPhone({ live }: { live: LiveIntlBank }) {
       <div className="yx-ppl__stack">
         <Card title="Salary account abroad">{live.current ? <IntlBankOnFile current={live.current} /> : <Text as="p" tone="secondary">No account abroad on file yet.</Text>}</Card>
         {live.waiting && <InlineAlert tone="warning" title="A change is already waiting for approval">You can withdraw it in Change requests.</InlineAlert>}
-        <FormField label="New IBAN" required error={f.ibanError} helper={f.iban.trim() && !f.ibanError ? 'IBAN check passed.' : undefined}>
+        <FormField id="ib-iban" label="New IBAN" required error={f.errorOf('ib-iban') ?? f.ibanError} helper={f.iban.trim() && !f.ibanError ? 'IBAN check passed.' : undefined}>
           <TextField value={f.iban} onChange={f.setIban} className="yx-mono" maxLength={42} />
         </FormField>
-        <FormField label="BIC / SWIFT" required error={f.bicError}>
+        <FormField id="ib-bic" label="BIC / SWIFT" required error={f.errorOf('ib-bic') ?? f.bicError}>
           <TextField value={f.bic} onChange={f.setBic} maxLength={11} />
         </FormField>
-        <FormField label="Payout currency" required>
+        <FormField id="ib-cur" label="Payout currency" required error={f.errorOf('ib-cur')}>
           <Select aria-label="Payout currency" options={CURRENCY_OPTIONS} value={f.currency} onChange={f.setCurrency} searchable />
         </FormField>
         <InlineAlert tone="info">HR approves bank changes. Your first salary to a new account waits for the cooling period.</InlineAlert>
         {f.failed && <InlineAlert tone="danger" title="Not sent">{f.failed}</InlineAlert>}
         <div className="yx-ppl__row">
           <Button onClick={live.onCancel}>Cancel</Button>
-          <Button variant="primary" disabled={!f.ready} loading={f.sending} onClick={() => void f.send()}>
+          <Button variant="primary" loading={f.sending} onClick={() => void f.send()}>
             Send for approval
           </Button>
         </div>
@@ -1586,6 +1580,7 @@ function SampleInternationalBank({ persona, splits: initial, net, embedded, defa
   const result = splits.length ? splitNetPay(net, splits) : null;
   const ibanOk = isIban(iban);
   const bicOk = isBic(bic);
+  const { say } = useSay();
   const body = (
     <div className="yx-ppl__stack">
       <div className="yx-ppl__form">
@@ -1659,7 +1654,7 @@ function SampleInternationalBank({ persona, splits: initial, net, embedded, defa
       {!embedded && (
         <div className="yx-ppl__row">
           <Button>Cancel</Button>
-          <Button variant="primary" disabled={!ibanOk || !bicOk || (result != null && !result.ok)}>
+          <Button variant="primary" onClick={() => say((!ibanOk && 'Fix the IBAN first.') || (!bicOk && 'Fix the BIC first.') || (result != null && !result.ok && 'Fix the account split first.'))}>
             Send for approval
           </Button>
         </div>
@@ -1683,6 +1678,7 @@ export function InternationalBankPhone({ defaultIban, live }: { defaultIban?: st
 function SampleInternationalBankPhone({ defaultIban }: { defaultIban?: string }) {
   const [iban, setIban] = useState(defaultIban ?? 'AE07 0331 2345 6789 0123 456');
   const ok = isIban(iban);
+  const { say } = useSay();
   return (
     <PhoneFrame tab="pay" title="Bank details">
       <Card title="Salary account">
@@ -1693,7 +1689,7 @@ function SampleInternationalBankPhone({ defaultIban }: { defaultIban?: string })
         <TextField value={iban} onChange={setIban} />
       </FormField>
       <InlineAlert tone="info">HR approves bank changes. Your first salary to a new account waits for the cooling period.</InlineAlert>
-      <Button variant="primary" fullWidth disabled={!ok}>
+      <Button variant="primary" fullWidth onClick={() => say(!ok && 'Fix the IBAN first.')}>
         Send for approval
       </Button>
       {!ok && (

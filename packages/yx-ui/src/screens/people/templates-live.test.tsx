@@ -84,7 +84,9 @@ describe('PPL-29 letter templates, live', () => {
   it('activates only after the test render was seen', async () => {
     const live = page();
     await ue.click(screen.getByRole('row', { name: /Relieving and experience/ }));
-    expect(screen.getByRole('button', { name: 'Activate' })).toBeDisabled();
+    await ue.click(screen.getByRole('button', { name: 'Activate' }));
+    expect((await screen.findAllByText('View the test render first, on the Test render tab. Then activate it.')).length).toBeGreaterThan(0); // a toast
+    expect(live.onStatus).not.toHaveBeenCalled();
     expect(screen.getByText('View a test render with a sample employee before you activate this template.')).toBeTruthy();
     // The validation report of the saved file: fields, a section and a personal field.
     expect(screen.getByText('3 placeholders match the field registry')).toBeTruthy();
@@ -92,8 +94,7 @@ describe('PPL-29 letter templates, live', () => {
     await ue.click(screen.getByRole('tab', { name: 'Test render' }));
     expect(await screen.findByRole('region', { name: 'Test render preview' })).toBeTruthy();
     expect(live.onTestRender).toHaveBeenCalledWith(DATA.templates[0], null);
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Activate' })).toBeEnabled());
-    expect(screen.getByRole('button', { name: 'Preview viewed' })).toBeDisabled();
+    await screen.findByRole('button', { name: 'Preview viewed' });
     await ue.click(screen.getByRole('button', { name: 'Activate' }));
     expect(live.onStatus).toHaveBeenCalledWith(DATA.templates[0], 'active');
     expect(await screen.findByText('Relieving and experience is now in use')).toBeTruthy();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   abscondingState,
@@ -220,10 +220,11 @@ describe('screens', () => {
     expect(within(dialog).queryByText('Enter a reason of at least 5 characters.')).toBeNull();
   });
 
-  it('international bank: invalid IBAN blocks sending', () => {
+  it('international bank: invalid IBAN blocks sending and says why', async () => {
     render(<InternationalBankTab persona="hr" splits={SPLITS} net={49812} defaultIban="AE07 0331 2345 6789 0123 457" />);
     expect(screen.getByText(/Enter a 23-character UAE IBAN/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Send for approval' }).hasAttribute('disabled')).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Send for approval' }));
+    expect((await screen.findAllByText('Fix the IBAN first.')).length).toBeGreaterThan(0); // a toast
   });
 });
 

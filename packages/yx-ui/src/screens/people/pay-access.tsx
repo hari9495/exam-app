@@ -11,6 +11,7 @@ import { FormField } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { TextArea } from '../../components/inputs';
 import { useToast } from '../../components/notify';
+import { useTooEarly } from '../../components/field';
 import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { Segment } from '../../components/segment';
 import { Select } from '../../components/select';
@@ -97,7 +98,9 @@ export function PayAccessDialog({ person, teamSize, defaultScope, days, onSubmit
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const first = person.name.split(' ')[0];
+  const early = useTooEarly(reason.trim().length < 3 ? [{ fieldId: 'pa-reason', message: 'Say why you need it (at least 3 letters).' }] : []);
   const send = async () => {
+    if (early.stop()) return;
     setBusy(true);
     setError(null);
     try {
@@ -121,10 +124,10 @@ export function PayAccessDialog({ person, teamSize, defaultScope, days, onSubmit
       notice={error ? <InlineAlert tone="danger" title={error} /> : undefined}
       footer={
         <>
-          <Button onClick={onClose} disabled={busy}>
+          <Button onClick={() => (busy ? toast({ title: 'Wait a moment: the request is being sent.' }) : onClose())}>
             Cancel
           </Button>
-          <Button variant="primary" loading={busy} disabled={reason.trim().length < 3} onClick={() => void send()}>
+          <Button variant="primary" loading={busy} onClick={() => void send()}>
             Send request
           </Button>
         </>
@@ -142,7 +145,7 @@ export function PayAccessDialog({ person, teamSize, defaultScope, days, onSubmit
             ]}
           />
         </FormField>
-        <FormField id="pa-reason" label="Why you need it" required helper="HR reads this before deciding.">
+        <FormField id="pa-reason" label="Why you need it" required helper="HR reads this before deciding." error={early.errorOf('pa-reason')}>
           <TextArea value={reason} onChange={setReason} rows={3} maxLength={500} />
         </FormField>
       </div>
@@ -230,13 +233,13 @@ export function PayAccessDecide({ row, onDecide, onClose }: { row: PayAccessRow;
       notice={error ? <InlineAlert tone="danger" title={error} /> : undefined}
       footer={
         <>
-          <Button onClick={onClose} disabled={Boolean(busy)}>
+          <Button onClick={() => (busy ? toast({ title: 'Wait a moment: your decision is being saved.' }) : onClose())}>
             Cancel
           </Button>
-          <Button variant="danger" loading={busy === 'refuse'} disabled={Boolean(busy)} onClick={() => void go('refuse')}>
+          <Button variant="danger" loading={busy === 'refuse'} onClick={() => (busy ? toast({ title: 'Wait a moment: your decision is being saved.' }) : void go('refuse'))}>
             Refuse
           </Button>
-          <Button variant="approve" loading={busy === 'approve'} disabled={Boolean(busy)} onClick={() => void go('approve')}>
+          <Button variant="approve" loading={busy === 'approve'} onClick={() => (busy ? toast({ title: 'Wait a moment: your decision is being saved.' }) : void go('approve'))}>
             {second ? 'Approve and give access' : 'Approve'}
           </Button>
         </>

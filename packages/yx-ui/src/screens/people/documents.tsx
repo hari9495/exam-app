@@ -11,7 +11,7 @@ import { Drawer } from '../../components/drawer';
 import { BottomSheet, ConfirmDialog, Dialog, TypeToConfirmDialog } from '../../components/overlay';
 import { Badge } from '../../components/display';
 import { EmptyState, ErrorState, NoAccessState, InlineAlert, Skeleton } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
 import { MultiSelect, Select } from '../../components/select';
 import { TextArea, TextField } from '../../components/inputs';
 import { RadioGroup } from '../../components/choice';
@@ -31,7 +31,7 @@ import type { FieldClass,  } from './people-logic';
 import type { BulkLetterCheck, BulkLetterQuery, EditorParagraph, EditorRun, Letter as LiveLetter, LetterTemplate, LetterTemplates, QueueDocument } from './live/types';
 import { useToast } from '../../components/notify';
 import { ISSUED_LETTERS, MY_DOCS, TEMPLATES, VERIFY_QUEUE } from './people-data';
-import { ClassBadge, exportCsv, MeFrame, PeopleFrame } from './people-kit';
+import { ClassBadge, exportCsv, MeFrame, PeopleFrame, useSay } from './people-kit';
 import { AcceptDialog } from './live/joining';
 
 const SCAN = (title: string) =>
@@ -66,6 +66,7 @@ function LiveDocumentQueue({ live }: { live: LiveDocQueue }) {
   const [file, setFile] = useState<{ url: string; name: string; type: string } | 'loading' | 'error' | null>(null);
   const [reason, setReason] = useState<string | null>(REJECT_REASONS[0]);
   const [message, setMessage] = useState('');
+  const rejectEarly = useTooEarly(!reason ? [{ fieldId: 'dq-reason', message: 'Choose the reason.' }] : []);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
   const open = live.rows.find((r) => r.id === openId) ?? null;
@@ -143,7 +144,7 @@ function LiveDocumentQueue({ live }: { live: LiveDocQueue }) {
           ) : mode === 'reject' ? (
             <>
               <Button onClick={() => setMode('view')}>Back</Button>
-              <Button variant="danger" loading={busy} disabled={!reason} onClick={() => void decide('reject')}>
+              <Button variant="danger" loading={busy} onClick={() => !rejectEarly.stop() && void decide('reject')}>
                 Reject and ask to re-upload
               </Button>
             </>
@@ -163,7 +164,7 @@ function LiveDocumentQueue({ live }: { live: LiveDocQueue }) {
             {open.sensitivity === 'special' && <Text size="sm" tone="secondary" as="p">Special class: this view is recorded.</Text>}
             {mode === 'reject' ? (
               <div className="yx-ppl__form">
-                <FormField label="Reason" required>
+                <FormField id="dq-reason" label="Reason" required error={rejectEarly.errorOf('dq-reason')}>
                   <Select options={REJECT_REASONS.map((x) => ({ value: x, label: x }))} value={reason} onChange={setReason} />
                 </FormField>
                 <FormField label={`Message to ${first}`} optional helper="Say what to upload instead.">
@@ -423,8 +424,11 @@ function IssueLetterSheet({ issue, open, onOpenChange, correcting, reviewing }: 
   // The sheet owns the preview's object URL: let go when another replaces it or the sheet closes.
   const shownUrl = preview && 'url' in preview ? preview.url : null;
   useEffect(() => () => void (shownUrl && URL.revokeObjectURL(shownUrl)), [shownUrl]);
+  const issueEarly = useTooEarly([...(!who ? [{ fieldId: 'dl-who', message: 'Choose the employee.' }] : []), ...(!chosen && !draft ? [{ fieldId: 'dl-tpl', message: 'Choose the template.' }] : [])]);
+  const { say } = useSay();
   const issueIt = async () => {
-    if (!who || (!chosen && !draft)) return;
+    if (issueEarly.stop() || !who || (!chosen && !draft)) return;
+    if (!preview || 'missing' in preview) return say(!preview ? 'Wait for the preview to load, then issue it.' : 'Fix what the message above says first, then issue it.');
     setBusy(true);
     setFailed(null);
     try {
@@ -446,7 +450,7 @@ function IssueLetterSheet({ issue, open, onOpenChange, correcting, reviewing }: 
       footer={
         <>
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button variant="primary" disabled={!who || (!chosen && !draft) || !preview || 'missing' in preview} loading={busy} onClick={() => void issueIt()}>
+          <Button variant="primary" loading={busy} onClick={() => void issueIt()}>
             {chosen?.requiresApproval ? 'Send for approval' : 'Issue letter'}
           </Button>
         </>
@@ -455,7 +459,7 @@ function IssueLetterSheet({ issue, open, onOpenChange, correcting, reviewing }: 
       <div className="yx-ppl__stack">
         {failed && <InlineAlert tone="danger" title={failed} />}
         <div className="yx-ppl__form">
-          <FormField label="Employee" required>
+          <FormField id="dl-who" label="Employee" required error={issueEarly.errorOf('dl-who')}>
             <Select aria-label="Employee" options={people} value={who} onChange={setWho} searchable disabled={Boolean(correcting || draft)} />
           </FormField>
           <FormField label="Letter type" required>
@@ -470,7 +474,7 @@ function IssueLetterSheet({ issue, open, onOpenChange, correcting, reviewing }: 
               }}
             />
           </FormField>
-          <FormField label="Template" required>
+          <FormField id="dl-tpl" label="Template" required error={issueEarly.errorOf('dl-tpl')}>
             {draft ? (
               <Select aria-label="Template" options={[{ value: 'drafted', label: 'As drafted' }]} value="drafted" onChange={() => undefined} disabled />
             ) : (
@@ -1287,7 +1291,9 @@ function NewTemplateDrawer({ mode, data, entities, onClose, onStarter, onSpec }:
   // A new letter type from what was typed: "Transfer letter" becomes transfer_letter.
   const slug = query.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^[^a-z]+|_+$/g, '').slice(0, 40);
   const types = [...known.filter((k) => k.label.toLowerCase().includes(query.toLowerCase())), ...(slug.length >= 2 && !known.some((k) => k.value === slug) ? [{ value: slug, label: `New letter type: ${query.trim()}` }] : [])];
+  const specEarly = useTooEarly(starter ? [] : [...(name.trim().length < 2 ? [{ fieldId: 'ts-name', message: 'Name the template (at least 2 letters).' }] : []), ...(!type ? [{ fieldId: 'ts-type', message: 'Choose or type the letter type.' }] : [])]);
   const go = async () => {
+    if (specEarly.stop()) return;
     if (!starter) {
       onSpec({ letterType: type!, name: name.trim(), legalEntityId: entity || null, requiresApproval: approval === 'approval', personSigns: signs === 'yes', onePerPerson: once === 'one' });
       return;
@@ -1311,7 +1317,7 @@ function NewTemplateDrawer({ mode, data, entities, onClose, onStarter, onSpec }:
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={!starter && (name.trim().length < 2 || !type)} loading={busy} onClick={() => void go()}>
+          <Button variant="primary" loading={busy} onClick={() => void go()}>
             {starter ? 'Add starter' : 'Continue'}
           </Button>
         </>
@@ -1325,10 +1331,10 @@ function NewTemplateDrawer({ mode, data, entities, onClose, onStarter, onSpec }:
         )}
         {!starter && (
           <>
-            <FormField label="Name" required>
+            <FormField id="ts-name" label="Name" required error={specEarly.errorOf('ts-name')}>
               <TextField value={name} onChange={setName} maxLength={100} />
             </FormField>
-            <FormField label="Letter type" required helper="A letter type can have several templates. Type a new one to add it.">
+            <FormField id="ts-type" label="Letter type" required helper="A letter type can have several templates. Type a new one to add it." error={specEarly.errorOf('ts-type')}>
               <Select
                 aria-label="Letter type"
                 options={types}
@@ -1370,6 +1376,7 @@ function TemplateWorkspace({ live, ws, onChange, onClose }: { live: LiveLetterTe
   const { t, spec } = ws;
   const d = live.data;
   const { toast } = useToast();
+  const { say } = useSay();
   const [viewed, setViewed] = useState(t?.previewViewed ?? false);
   const [activating, setActivating] = useState(false);
   const [fileName, setFileName] = useState(t ? `${t.letterType}-v${t.version}.docx` : '');
@@ -1442,11 +1449,11 @@ function TemplateWorkspace({ live, ws, onChange, onClose }: { live: LiveLetterTe
         status={<Badge tone={draft ? 'neutral' : 'success'}>{draft ? 'Draft' : 'Active'}</Badge>}
         actions={
           <>
-            <Button icon={Download} disabled={!t} onClick={() => t && live.onWord(t)}>
+            <Button icon={Download} onClick={() => say(!t && 'Save the template first, then download it.', () => t && live.onWord(t))}>
               Download as Word
             </Button>
             {draft && (
-              <Button variant="primary" disabled={!t || !viewed} loading={activating} onClick={() => void activate()}>
+              <Button variant="primary" loading={activating} onClick={() => say((!t && 'Save the template first.') || (!viewed && 'View the test render first, on the Test render tab. Then activate it.'), () => void activate())}>
                 Activate
               </Button>
             )}
@@ -1561,7 +1568,7 @@ function TemplateWorkspace({ live, ws, onChange, onClose }: { live: LiveLetterTe
                 />
               )}
               <div>
-                <Button variant="primary" disabled={html === null} loading={saving} onClick={() => void saveEditor()}>
+                <Button variant="primary" loading={saving} onClick={() => say(html === null && 'Wait for the letter to load, then save.', () => void saveEditor())}>
                   {t ? 'Save as a new version' : 'Save draft'}
                 </Button>
               </div>
@@ -1601,6 +1608,7 @@ function TestRender({ live, t, viewed, onViewed }: { live: LiveLetterTemplates; 
   const [who, setWho] = useState('sample');
   const [preview, setPreview] = useState<LetterPreview>(null);
   const [attempt, setAttempt] = useState(0);
+  const { say } = useSay();
   const person = live.people.find((p) => p.value === who);
   useEffect(() => {
     setPreview(null);
@@ -1641,7 +1649,7 @@ function TestRender({ live, t, viewed, onViewed }: { live: LiveLetterTemplates; 
         </div>
       )}
       <div>
-        <Button disabled={viewed || !preview} onClick={() => setAttempt((n) => n + 1)}>
+        <Button onClick={() => say((viewed && 'This preview is already marked as viewed.') || (!preview && 'Wait for the preview to load.'), () => setAttempt((n) => n + 1))}>
           {viewed ? 'Preview viewed' : 'Mark preview as viewed'}
         </Button>
       </div>
@@ -2210,7 +2218,7 @@ function LiveCertificatePage({ live, today }: { live: LiveCertificateRequest; to
       const l = done.letter;
       return (
         <div className="yx-ppl__stack">
-          <InlineAlert tone="success" title={`${done.kind.name} ready · ${l.referenceNo}`}>{`It is in your documents. Verification code ${l.verifyCode}. HR can see that you requested it.`}</InlineAlert>
+          <InlineAlert tone="info" title={`${done.kind.name} · ${l.referenceNo}`}>{`It is in your documents. Verification code ${l.verifyCode}. HR can see that you requested it.`}</InlineAlert>
           <div className="yx-ppl__letter" tabIndex={0} role="region" aria-label="Certificate preview">
             {done.url ? <PdfPages url={done.url} label={`${done.kind.name} ${l.referenceNo}`} /> : <InlineAlert tone="info" title="The preview did not open">Download the PDF to read it.</InlineAlert>}
           </div>
@@ -2272,7 +2280,7 @@ function SampleCertificateRequest({ initial, generated, today }: { initial: Cert
       <PageHeader title="Request a certificate" description="Salary certificate, address proof and employment verification are generated instantly with the company signatory and a QR code anyone can verify." />
       {generated && type !== 'noc' ? (
         <div className="yx-ppl__stack">
-          <InlineAlert tone="success" title={`${CERT_LABEL[type]} ready · KF/HR/2026/0422`}>It is in your documents. Verification code 7QM2-XK9P. HR can see that you requested it.</InlineAlert>
+          <InlineAlert tone="info" title={`${CERT_LABEL[type]} · KF/HR/2026/0422`}>It is in your documents. Verification code 7QM2-XK9P. HR can see that you requested it.</InlineAlert>
           <div className="yx-ppl__letter" tabIndex={0} role="region" aria-label="Certificate preview">
             <LetterDocument
               data={{

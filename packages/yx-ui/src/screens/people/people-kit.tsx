@@ -4,6 +4,7 @@ import { ChevronDown, Eye, EyeOff, Lock } from 'lucide-react';
 import { DesktopFrame, type PanelSection } from '../_kit/frames';
 import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
 import { IconButton } from '../../components/button';
+import { useToast } from '../../components/notify';
 import { Icon, Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
 import { daysBetween, fieldVisibility, workingDaysUntil, type FieldClass, type FnfLine, type Persona, type Relation } from './people-logic';
@@ -25,6 +26,12 @@ export type PeoplePage =
 const COUNTS: Partial<Record<PeoplePage, number>> = { 'Ready to onboard': 3, Probation: 5, 'Exit cases': 6, Clearance: 5, 'Documents & letters': 5, 'Possible same person': 3 };
 
 /** People panel per persona (P02: navigation hides what a person can't reach). */
+/** Never a greyed-out button (founder rule): pressed when it cannot act, it says why in a toast; otherwise it acts. */
+export function useSay() {
+  const { toast } = useToast();
+  return { toast, say: (why: string | false | null | undefined, act?: () => void) => (why ? void toast({ title: why }) : act?.()) };
+}
+
 export function peoplePanel(active: PeoplePage, persona: Persona = 'hr'): PanelSection[] {
   const it = (label: PeoplePage) => ({ label, active: label === active, count: persona === 'mgr' && label === 'Probation' ? 1 : COUNTS[label] });
   if (persona === 'emp') return [{ items: (['Directory', 'Org chart'] as PeoplePage[]).map(it) }];
@@ -106,7 +113,7 @@ export function MaskedValue({ value, masked, canReveal, onReveal, label }: { val
   return (
     <span className="yx-ppl__masked">
       <span className="yx-mono">{shown ?? masked}</span>
-      {canReveal && shown === null && <IconButton icon={Eye} size="sm" label={`Show ${label}. Your view is recorded.`} disabled={busy} onClick={() => void reveal()} />}
+      {canReveal && shown === null && <IconButton icon={Eye} size="sm" label={`Show ${label}. Your view is recorded.`} aria-busy={busy || undefined} onClick={() => !busy && void reveal()} />}
       {/* Hide again, like a password field (founder, 22 Oct 2026); showing it again asks the server and is recorded again. */}
       {shown !== null && <IconButton icon={EyeOff} size="sm" label={`Hide ${label}`} onClick={() => setShown(null)} />}
       {failed && (

@@ -22,7 +22,7 @@ import { formatDate, formatPhone } from '../../lib/format';
 import { matchesFilter, type FilterValue } from '../../lib/table';
 import { daysBetween, type Persona } from './people-logic';
 import { DISTINCT_PERSONS, ME, ORG_PROMOTED, type WorkforceKind, type WorkforceRow } from './people-data';
-import { ListSkeleton, PeopleFrame, PhoneRow, Segment, StatusBadge } from './people-kit';
+import { ListSkeleton, PeopleFrame, PhoneRow, Segment, StatusBadge, useSay } from './people-kit';
 
 /* ================================================================== PPL-01 directory */
 
@@ -185,6 +185,7 @@ const ALL_VIEW: DirectoryViewState = { kind: 'Employee', filters: [], q: '', qui
 // PPL-01
 export function DirectoryScreen({ persona, rows, defaultFilter = 'Employee', state = 'ready', defaultQuery = '', defaultFilters = [], defaultOpenId, live }: DirectoryScreenProps) {
   const [kind, setKind] = useState<WorkforceFilter>(persona === 'hr' ? defaultFilter : 'Employee');
+  const { say } = useSay();
   const [filters, setFilters] = useState<FilterValue[]>(defaultFilters);
   const [q, setQ] = useState(defaultQuery);
   const [view, setView] = useState('all');
@@ -303,12 +304,12 @@ export function DirectoryScreen({ persona, rows, defaultFilter = 'Employee', sta
                   return (
                     <>
                       {(!live || live.onIssueLetter) && (
-                        <Button size="sm" icon={Mail} disabled={Boolean(live) && !staff.length} onClick={() => live?.onIssueLetter?.(staff)}>
+                        <Button size="sm" icon={Mail} onClick={() => say(Boolean(live) && !staff.length && 'Letters and job changes are for employees. Choose at least one employee; consultants have neither.', () => live?.onIssueLetter?.(staff))}>
                           Issue letter
                         </Button>
                       )}
                       {(!live || live.onStartChange) && (
-                        <Button size="sm" icon={CalendarClock} disabled={Boolean(live) && !staff.length} onClick={() => live?.onStartChange?.(staff)}>
+                        <Button size="sm" icon={CalendarClock} onClick={() => say(Boolean(live) && !staff.length && 'Letters and job changes are for employees. Choose at least one employee; consultants have neither.', () => live?.onStartChange?.(staff))}>
                           Start change
                         </Button>
                       )}
@@ -612,6 +613,7 @@ const todayTone = (t: string) => (t.startsWith('Present') ? 'success' : t.starts
 // PPL-08
 export function TeamPage({ members, approvals, tasks, today, state: ownState = 'ready', live }: { members: TeamMember[]; approvals: ActionItem[]; tasks: { id: string; title: string; due: Date; kind: string }[]; today: Date; state?: 'ready' | 'loading'; live?: LiveTeam }) {
   const state = live ? live.state : ownState;
+  const { say } = useSay();
   const present = members.filter((m) => m.today.startsWith('Present')).length;
   const away = members.filter((m) => m.today.startsWith('On leave')).length;
   const late = members.filter((m) => m.today.startsWith('Late')).length;
@@ -676,7 +678,7 @@ export function TeamPage({ members, approvals, tasks, today, state: ownState = '
                   ? (r: TeamMember) =>
                       live.onNudge && r.today.startsWith('Not checked in') ? (
                         // Once reminded today it says so and stays done, after a reload too (founder, 22 Oct 2026).
-                        <Button size="sm" icon={r.reminded ? Check : undefined} disabled={r.reminded} aria-label={r.reminded ? `Reminded ${r.name}` : `Nudge ${r.name}`} onClick={() => live.onNudge!(r.id)}>
+                        <Button size="sm" icon={r.reminded ? Check : undefined} aria-label={r.reminded ? `Reminded ${r.name}` : `Nudge ${r.name}`} onClick={() => say(r.reminded && `${r.name.split(' ')[0]} was already reminded today.`, () => live.onNudge!(r.id))}>
                           {r.reminded ? 'Reminded' : 'Nudge'}
                         </Button>
                       ) : null

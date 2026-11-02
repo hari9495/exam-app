@@ -21,7 +21,7 @@ import { Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
 import { abscondingState, addWorkingDays, daysBetween, fnfTotals, gratuity, splitByShares, type FnfLine, type Persona } from './people-logic';
 import { CLEARANCE, DEATH_PAYEES, DEPROVISIONING, EXIT_CASES, HOLIDAYS, ME, MEERA, MEERA_FNF, TODAY } from './people-data';
-import { DueCountdown, exportCsv, ExplainedLines, ListSkeleton, MeFrame, PeopleFrame, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
+import { DueCountdown, exportCsv, ExplainedLines, ListSkeleton, MeFrame, PeopleFrame, StatusBadge, StatusChecklist, useSay, type ChecklistRow } from './people-kit';
 import { HandoffCard, HrFactsDialog, NoticeDialog, SignOffDialog, WithdrawExitDialog, type ExitCaseScreenProps } from './live/exits';
 import { PayeesDialog, VrsCard } from './live/special';
 import { TaskForm } from './live/lifecycle';
@@ -1231,6 +1231,7 @@ function LiveFnfCalculator({ today, live }: { today: Date; live: LiveFnf }) {
   const [tried, setTried] = useState(false);
   const [line, setLine] = useState<{ componentCode: string | null; amount: string; label: string }>({ componentCode: null, amount: '', label: '' });
   const { busy, error, run } = useRun();
+  const { say } = useSay();
   const s = live.settlements.find((x) => x.id === pick) ?? live.settlements[0];
   const frame = (body: ReactNode) => <PeopleFrame active="F&F">{body}</PeopleFrame>;
   if (live.state === 'no-access') return frame(<NoAccessState what="the full and final settlements" grantedBy="your payroll admin" />);
@@ -1252,6 +1253,8 @@ function LiveFnfCalculator({ today, live }: { today: Date; live: LiveFnf }) {
   // As the API: lines change while the run is not submitted for approval; the run is calculated from draft or calculated.
   const runOpen = !s.runStatus || ['draft', 'calculated', 'in_review', 'reopened'].includes(s.runStatus);
   const canCalc = ['draft', 'calculated', 'reopened'].includes(s.runStatus ?? '');
+  const runText = (RUN_STATUS[s.runStatus ?? 'draft'] ?? 'Draft').toLowerCase();
+  const notReady = s.runStatus === 'calculated' ? !s.salary && 'The lines changed since the last calculation. Recalculate, then send it for approval.' : ['draft', 'reopened', 'calculating'].includes(s.runStatus ?? 'draft') ? 'Calculate the settlement first, then send it for approval.' : `The run is ${runText}, so it can't be sent again.`;
   const firstDone = s.runStatus === 'approved' || s.runStatus === 'paid';
   const held = amountOf(t.held);
   const net = t.net === null ? null : amountOf(t.net);
@@ -1337,12 +1340,12 @@ function LiveFnfCalculator({ today, live }: { today: Date; live: LiveFnf }) {
         actions={
           <>
             {live.can.prepare && s.runId && (
-              <Button icon={RefreshCw} disabled={!canCalc} loading={busy === 'calc'} onClick={() => void run('calc', () => live.onRecalculate(s))}>
+              <Button icon={RefreshCw} loading={busy === 'calc'} onClick={() => say(!canCalc && `The run is ${runText}, so it can't be recalculated now.`, () => void run('calc', () => live.onRecalculate(s)))}>
                 Recalculate
               </Button>
             )}
             {live.can.prepare && s.runId && (
-              <Button variant="primary" disabled={s.runStatus !== 'calculated' || !s.salary} loading={busy === 'submit'} onClick={() => void run('submit', () => live.onSubmit(s))}>
+              <Button variant="primary" loading={busy === 'submit'} onClick={() => say(notReady, () => void run('submit', () => live.onSubmit(s)))}>
                 Send for approval
               </Button>
             )}
@@ -2063,7 +2066,7 @@ function LiveAbscondingTimeline({ today, live }: { today: Date; live: LiveAbscon
               An exit case of type absconding opened with the last day present as the last working day.
             </InlineAlert>
           )}
-          {r.status === 'stopped' && r.stoppedReason && <InlineAlert tone="success" title="Stopped">{r.stoppedReason}</InlineAlert>}
+          {r.status === 'stopped' && r.stoppedReason && <InlineAlert tone="info" title="Stopped">{r.stoppedReason}</InlineAlert>}
           <StatusChecklist label="Absconding steps" rows={rows} today={today} />
         </>
       )}
@@ -2120,7 +2123,7 @@ function SampleAbscondingTimeline({ today, stopped = false, stopOpen = false }: 
           An exit case of type absconding opened with last working day 19 Sep 2026. F&F is recovery-only; any net payable is held, never forfeited. Rehire eligibility is set to no.
         </InlineAlert>
       )}
-      {stopped && <InlineAlert tone="success" title="Stopped on 1 Oct 2026 by Lakshmi Venkatesan">Rohit returned with a medical reason. The absence is regularised in Time and his salary is released.</InlineAlert>}
+      {stopped && <InlineAlert tone="info" title="Stopped on 1 Oct 2026 by Lakshmi Venkatesan">Rohit returned with a medical reason. The absence is regularised in Time and his salary is released.</InlineAlert>}
       <StatusChecklist label="Absconding steps" rows={rows} today={today} />
       <div className="yx-ppl__row">
         <Button icon={Upload}>Add dispatch proof</Button>

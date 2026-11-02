@@ -9,7 +9,7 @@ import { FilterBar, type FilterFieldDef } from '../../components/filters';
 import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { Badge } from '../../components/display';
 import { EmptyState, ErrorState, InlineAlert, NoAccessState } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
 import { PersonPicker, Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
 import { CurrencyField, TextArea, TextField } from '../../components/inputs';
@@ -20,7 +20,7 @@ import { formatDate } from '../../lib/format';
 import { matchesFilter, type FilterValue } from '../../lib/table';
 import { successionRisk, type Persona, type Readiness } from './people-logic';
 import { ASSETS, SUCCESSION } from './people-data';
-import { exportCsv, ListSkeleton, PeopleFrame, Segment, StatusBadge } from './people-kit';
+import { exportCsv, ListSkeleton, PeopleFrame, Segment, StatusBadge, useSay } from './people-kit';
 import type { AssetRow } from './live/types';
 
 /* ================================================================== PPL-25 asset register */
@@ -84,6 +84,8 @@ function LiveAssetDialogs({ live, issuing, returning, onClose }: { live: LiveAss
   const leavingOn = returning?.holder?.leavingOn ?? null;
   const holderFirst = first(returning?.holder?.name ?? 'They');
   const charge = Boolean(leavingOn) && (condition === 'Damaged' || condition === 'Not returned');
+  const issueEarly = useTooEarly([...(!who ? [{ fieldId: 'as-who', message: 'Choose who gets the asset.' }] : []), ...(!on ? [{ fieldId: 'as-on', message: 'Give the date it was issued.' }] : []), ...(!condition ? [{ fieldId: 'as-cond', message: 'Choose its condition.' }] : [])]);
+  const returnEarly = useTooEarly([...(!on ? [{ fieldId: 'ar-on', message: 'Give the date.' }] : []), ...(!condition ? [{ fieldId: 'ar-cond', message: 'Choose the return condition.' }] : []), ...(condition === 'Not returned' && note.trim().length < 3 ? [{ fieldId: 'ar-note', message: 'Say what happened (at least 3 letters).' }] : [])]);
   return (
     <>
       <Dialog
@@ -93,7 +95,7 @@ function LiveAssetDialogs({ live, issuing, returning, onClose }: { live: LiveAss
         footer={
           <>
             <Button onClick={onClose}>Cancel</Button>
-            <Button variant="primary" loading={busy} disabled={!who || !on || !condition} onClick={() => issuing && void run(() => live.onIssue(issuing, { employeeId: who!, issuedOn: dayKeyOf(on!), condition: condition! }))}>
+            <Button variant="primary" loading={busy} onClick={() => issuing && !issueEarly.stop() && void run(() => live.onIssue(issuing, { employeeId: who!, issuedOn: dayKeyOf(on!), condition: condition! }))}>
               Issue asset
             </Button>
           </>
@@ -101,13 +103,13 @@ function LiveAssetDialogs({ live, issuing, returning, onClose }: { live: LiveAss
       >
         <div className="yx-ppl__stack">
           {failed && <InlineAlert tone="danger" title={failed} />}
-          <FormField label="Issue to" required>
+          <FormField id="as-who" label="Issue to" required error={issueEarly.errorOf('as-who')}>
             <PersonPicker people={live.people} value={who} onChange={setWho} placeholder="Find a person" />
           </FormField>
-          <FormField label="Issued on" required>
+          <FormField id="as-on" label="Issued on" required error={issueEarly.errorOf('as-on')}>
             <DatePicker value={on} onChange={setOn} max={live.today} />
           </FormField>
-          <FormField label="Condition" required>
+          <FormField id="as-cond" label="Condition" required error={issueEarly.errorOf('as-cond')}>
             <Select options={opt(['New', 'Good', 'Fair'])} value={condition} onChange={setCondition} />
           </FormField>
           <Text size="sm" tone="secondary" as="p">
@@ -125,9 +127,9 @@ function LiveAssetDialogs({ live, issuing, returning, onClose }: { live: LiveAss
             <Button
               variant="primary"
               loading={busy}
-              disabled={!on || !condition || (condition === 'Not returned' && note.trim().length < 3)}
               onClick={() =>
                 returning &&
+                !returnEarly.stop() &&
                 void run(() =>
                   live.onReturn(returning, { returnedOn: dayKeyOf(on!), condition: [condition, note.trim()].filter(Boolean).join(': '), status: condition === 'Not returned' ? 'lost' : condition === 'Damaged' ? 'in_repair' : 'in_stock', ...(charge && recovery ? { recoveryAmount: recovery.toFixed(2) } : {}) }),
                 )
@@ -140,10 +142,10 @@ function LiveAssetDialogs({ live, issuing, returning, onClose }: { live: LiveAss
       >
         <div className="yx-ppl__stack">
           {failed && <InlineAlert tone="danger" title={failed} />}
-          <FormField label={condition === 'Not returned' ? 'Recorded on' : 'Returned on'} required>
+          <FormField id="ar-on" label={condition === 'Not returned' ? 'Recorded on' : 'Returned on'} required error={returnEarly.errorOf('ar-on')}>
             <DatePicker value={on} onChange={setOn} max={live.today} />
           </FormField>
-          <FormField label="Return condition" required>
+          <FormField id="ar-cond" label="Return condition" required error={returnEarly.errorOf('ar-cond')}>
             <Select options={opt(['Good', 'Fair', 'Damaged', 'Not returned'])} value={condition} onChange={setCondition} />
           </FormField>
           {charge && (
@@ -151,7 +153,7 @@ function LiveAssetDialogs({ live, issuing, returning, onClose }: { live: LiveAss
               <CurrencyField value={recovery} onChange={setRecovery} />
             </FormField>
           )}
-          <FormField label={condition === 'Not returned' ? 'What happened' : 'Note'} required={condition === 'Not returned'} optional={condition !== 'Not returned'}>
+          <FormField id="ar-note" label={condition === 'Not returned' ? 'What happened' : 'Note'} required={condition === 'Not returned'} optional={condition !== 'Not returned'} error={returnEarly.errorOf('ar-note')}>
             <TextArea rows={2} value={note} onChange={setNote} maxLength={150} />
           </FormField>
           <InlineAlert tone="info">
@@ -391,6 +393,8 @@ function SampleAssetRegister({ rows, dialog = null, persona = 'hr' }: { rows: As
 
 // PPL-25 · phone (employee acknowledgement)
 export function AssetAcknowledgePhone({ acknowledged = false }: { acknowledged?: boolean }) {
+  const { toast } = useSay();
+  const [ack, setAck] = useState(acknowledged);
   return (
     <PhoneFrame tab="me" title="Acknowledge asset">
       <Card title="Inspection tablet">
@@ -401,12 +405,12 @@ export function AssetAcknowledgePhone({ acknowledged = false }: { acknowledged?:
           <div><dt>Condition</dt><dd>New</dd></div>
         </dl>
       </Card>
-      {acknowledged ? (
-        <InlineAlert tone="success" title="Acknowledged on 29 Sep 2026, 9:42 am">A copy is in your documents.</InlineAlert>
+      {ack ? (
+        <Text as="p" tone="secondary">Acknowledged on 29 Sep 2026, 9:42 am. A copy is in your documents.</Text>
       ) : (
         <>
           <Text as="p">By acknowledging, you confirm you received this asset in the condition shown and will return it when asked or when you leave.</Text>
-          <Button variant="primary" fullWidth>
+          <Button variant="primary" fullWidth onClick={() => (setAck(true), toast({ tone: 'success', title: 'Asset acknowledged', description: 'A copy is in your documents.' }))}>
             Acknowledge receipt
           </Button>
           <Button fullWidth>Report a problem</Button>
@@ -455,7 +459,7 @@ function SuccessionDialog({ ask, people, onClose, live }: { ask: 'position' | Li
   const [ready, setReady] = useState<'now' | '1_2y' | '3y' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const can = nominate ? Boolean(who && ready) : title.trim().length >= 2;
+  const early = useTooEarly(nominate ? [...(!who ? [{ fieldId: 'sc-who', message: 'Choose the successor.' }] : []), ...(!ready ? [{ fieldId: 'sc-ready', message: 'Choose how ready they are.' }] : [])] : title.trim().length < 2 ? [{ fieldId: 'sc-title', message: 'Name the position (at least 2 letters).' }] : []);
   const save = async () => {
     setSaving(true);
     try {
@@ -480,7 +484,7 @@ function SuccessionDialog({ ask, people, onClose, live }: { ask: 'position' | Li
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={!can} loading={saving} onClick={() => void save()}>
+          <Button variant="primary" loading={saving} onClick={() => !early.stop() && void save()}>
             {nominate ? 'Nominate successor' : 'Add critical position'}
           </Button>
         </>
@@ -488,15 +492,15 @@ function SuccessionDialog({ ask, people, onClose, live }: { ask: 'position' | Li
     >
       <div className="yx-ppl__form">
         {!nominate && (
-          <FormField label="Position" required>
+          <FormField id="sc-title" label="Position" required error={early.errorOf('sc-title')}>
             <TextField value={title} onChange={setTitle} placeholder="Head of Quality" maxLength={120} />
           </FormField>
         )}
-        <FormField label={nominate ? 'Successor' : 'Person in the role now'} required={nominate} helper={nominate && ask.incumbent ? `${ask.incumbent.name} is in the role now, so isn't listed.` : undefined}>
+        <FormField id="sc-who" label={nominate ? 'Successor' : 'Person in the role now'} required={nominate} error={early.errorOf('sc-who')} helper={nominate && ask.incumbent ? `${ask.incumbent.name} is in the role now, so isn't listed.` : undefined}>
           <PersonPicker people={choices} value={who} onChange={setWho} />
         </FormField>
         {nominate && (
-          <FormField label="Readiness" required>
+          <FormField id="sc-ready" label="Readiness" required error={early.errorOf('sc-ready')}>
             <Segment label="Readiness" options={READINESS_OPTIONS} value={ready} onChange={setReady} />
           </FormField>
         )}

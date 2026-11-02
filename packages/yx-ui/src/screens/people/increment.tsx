@@ -15,7 +15,7 @@ import { DataTable, type TableColumn } from '../../components/table';
 import { Stepper } from '../../components/stepper';
 import { DocumentViewer } from '../../components/document';
 import { formatDate, formatINR } from '../../lib/format';
-import { PeopleFrame, Segment, StatusChecklist, type ChecklistRow } from './people-kit';
+import { PeopleFrame, Segment, StatusChecklist, useSay, type ChecklistRow } from './people-kit';
 import { bandNotice, type BandPolicy } from './changes';
 
 export interface IncrementInput {
@@ -174,6 +174,7 @@ export function LiveIncrementWizard({ live }: { live: LiveIncrement }) {
   const sendInput = input && chosenTemplate ? { ...input, letterTemplateId: chosenTemplate } : input;
   const templateName = result?.letterTemplates.find((t) => t.id === chosenTemplate)?.name;
   const previewFor = people.find((p) => p.employeeId === letterFor) ?? people[0];
+  const { say } = useSay();
   const openLetter = async () => {
     if (!sendInput || !previewFor || !chosenTemplate) return;
     setLetter({ name: previewFor.name, url: null, failed: null });
@@ -464,7 +465,7 @@ export function LiveIncrementWizard({ live }: { live: LiveIncrement }) {
                       <Select options={people.map((r) => ({ value: r.employeeId, label: r.name }))} value={letterFor ?? people[0]?.employeeId ?? null} onChange={setLetterFor} searchable />
                     </FormField>
                     <div>
-                      <Button icon={FileText} onClick={() => void openLetter()} disabled={!previewFor}>
+                      <Button icon={FileText} onClick={() => say(!previewFor && 'No one is in this increment yet, so there is no letter to preview.', () => void openLetter())}>
                         Preview letter
                       </Button>
                     </div>

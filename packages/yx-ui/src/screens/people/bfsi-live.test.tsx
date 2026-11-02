@@ -57,7 +57,10 @@ describe('PPL-43 annual declarations, live', () => {
     const live = mine();
     render(<BfsiDeclarations today={day('2026-09-29')} live={live} />);
     await ue.click(screen.getByRole('tab', { name: 'Code of conduct' }));
-    expect(screen.getByRole('button', { name: 'Send OTP to attest' })).toBeDisabled();
+    // Pressed too early it says why and sends nothing (never greyed out).
+    await ue.click(screen.getByRole('button', { name: 'Send OTP to attest' }));
+    expect((await screen.findAllByText('Answer the conflict of interest question first, on the Conflict of interest tab.')).length).toBeGreaterThan(0); // a toast
+    expect(live.onSubmit).not.toHaveBeenCalled();
     expect(screen.getByText('Answer the conflict of interest question before you attest.')).toBeInTheDocument();
     await ue.click(screen.getByRole('tab', { name: 'Conflict of interest' }));
     await ue.click(screen.getByRole('radio', { name: 'Yes' }));

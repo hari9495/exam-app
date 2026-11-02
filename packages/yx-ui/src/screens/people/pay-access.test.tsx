@@ -18,7 +18,10 @@ describe('PayAccessDialog (manager)', () => {
     wrap(<PayAccessDialog person={{ id: 't1', name: 'Arjun Kulkarni' }} teamSize={6} defaultScope="team" days={30} onSubmit={onSubmit} onClose={onClose} />);
     expect(screen.getByText(/Access lasts 30 days unless HR changes it/)).toBeInTheDocument();
     const send = screen.getByRole('button', { name: 'Send request' });
-    expect(send).toBeDisabled(); // no reason yet
+    await userEvent.click(send); // no reason yet: it says so at the field and sends nothing
+    expect(screen.getByText('Say why you need it (at least 3 letters).')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /Why you need it/ })).toHaveFocus();
+    expect(onSubmit).not.toHaveBeenCalled();
     expect(screen.getByRole('radio', { name: 'My whole team (6)' })).toBeChecked();
     await userEvent.click(screen.getByRole('radio', { name: 'Only Arjun' }));
     await userEvent.type(screen.getByRole('textbox', { name: /Why you need it/ }), 'Retention case');

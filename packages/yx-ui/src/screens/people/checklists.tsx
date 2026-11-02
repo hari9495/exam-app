@@ -10,7 +10,7 @@ import { PageHeader } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { formatDate } from '../../lib/format';
 import { daysBetween } from './people-logic';
-import { ListSkeleton, PeopleFrame, StatusChecklist, type ChecklistRow } from './people-kit';
+import { ListSkeleton, PeopleFrame, StatusChecklist, useSay, type ChecklistRow } from './people-kit';
 import { CONTENT_ASK, TaskDialog, type TaskActions, type TaskAsk } from './live/lifecycle';
 import { JOURNEY_KIND_LABEL, type JourneyKind, type JourneyTask, type LifeJourneyRow } from './live/types';
 
@@ -26,13 +26,19 @@ export function taskButtons(t: JourneyTask, onAsk: (a: TaskAsk) => void, opts: {
   if (opts.manage && opts.actions.onIssueLetter && t.kind === 'letter' && t.status === 'open') out.push(<Button key="letter" size="sm" onClick={() => onAsk({ kind: 'letter', task: t })}>Issue letter</Button>);
   if (opts.manage && opts.actions.onUpload && t.kind === 'document' && t.status === 'open') out.push(<Button key="up" size="sm" onClick={() => onAsk({ kind: 'upload', task: t })}>{docIn(t) ? 'Replace' : t.documentStatus === 'rejected' ? 'Upload again' : 'Upload'}</Button>);
   if (t.canSkip) out.push(<Button key="skip" size="sm" onClick={() => onAsk({ kind: 'skip', task: t })}>Skip</Button>);
-  if (t.status === 'waiting' && !out.length) out.push(<Button key="wait" size="sm" disabled>Mark done</Button>);
+  if (t.status === 'waiting' && !out.length) out.push(<WaitingDone key="wait" />);
   return out.length ? <>{out}</> : undefined;
 }
 
 /** One task as a checklist row (PPL-13 style): title, the law badge, owner, due day, status and buttons. */
 /** The file for a document task is in and waits for HR to verify it (the task closes on verification). */
 const docIn = (t: JourneyTask) => t.kind === 'document' && t.status === 'open' && Boolean(t.documentStatus) && !['requested', 'rejected', 'verified', 'expired'].includes(t.documentStatus!);
+
+/** A task that waits for an earlier step: pressed, it says so (never greyed out). */
+export function WaitingDone({ why = 'This task waits for an earlier step. Finish that first.' }: { why?: string }) {
+  const { say } = useSay();
+  return <Button size="sm" onClick={() => say(why)}>Mark done</Button>;
+}
 
 export function taskRow(t: JourneyTask, when: string | undefined, action: ReactNode): ChecklistRow {
   return {

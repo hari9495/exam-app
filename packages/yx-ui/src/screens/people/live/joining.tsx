@@ -7,7 +7,7 @@ import { Badge, type BadgeTone } from '../../../components/display';
 import { Drawer } from '../../../components/drawer';
 import { MenuItem } from '../../../components/menu';
 import { EmptyState, InlineAlert, Meter } from '../../../components/feedback';
-import { ErrorSummary, FormField, useSaveErrors } from '../../../components/field';
+import { ErrorSummary, FormField, useSaveErrors, useTooEarly } from '../../../components/field';
 import { ifscBank } from '../people-logic';
 import { Text } from '../../../components/foundations';
 import { FileUpload } from '../../../components/upload';
@@ -380,6 +380,7 @@ function SectionDrawer({ section, me, onClose, onSave, onStepUpCode, onStepUp }:
   const [nominees, setNominees] = useState(a.nominees ?? [{ name: '', relation: '', sharePercent: 100 }]);
   const [stepped, setStepped] = useState(me.steppedUp);
   const [code, setCode] = useState('');
+  const codeEarly = useTooEarly(code.length !== 6 ? [{ fieldId: 'ps-step', message: 'Type the 6-digit code from your email.' }] : []);
   const [codeSent, setCodeSent] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -430,13 +431,13 @@ function SectionDrawer({ section, me, onClose, onSave, onStepUpCode, onStepUp }:
           <Text as="p">For PAN, Aadhaar and bank details we first send a fresh code to your email.</Text>
           {codeSent ? (
             <>
-              <FormField id="ps-step" label="Code" required>
+              <FormField id="ps-step" label="Code" required error={codeEarly.errorOf('ps-step')}>
                 <CodeField value={code} onChange={setCode} />
               </FormField>
               <Button
                 variant="primary"
-                disabled={code.length !== 6}
                 onClick={async () => {
+                  if (codeEarly.stop()) return;
                   try {
                     await onStepUp(code);
                     setStepped(true);

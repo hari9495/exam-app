@@ -14,6 +14,7 @@ import { FormField } from '../../components/field';
 import { NumberField, TextField } from '../../components/inputs';
 import { Icon, Text } from '../../components/foundations';
 import { formatPhone } from '../../lib/format';
+import { useSay } from './people-kit';
 
 export interface FamilyMember {
   /** Live id; a new member has none. */
@@ -196,6 +197,7 @@ export function FamilyDrawer({ name, initial, onSave, onClose }: { name: string;
   const [error, setError] = useState<string | null>(null);
   const dropped = initial.nominations.length - initial.nominations.filter((n) => n.member !== null).length;
   const problem = familyProblem(members, nominations);
+  const { say } = useSay();
   const setMember = (i: number, patch: Partial<FamilyMember>) => setMembers((ms) => ms.map((m, j) => (j === i ? { ...m, ...patch } : m)));
   const removeMember = (i: number) => {
     setMembers((ms) => ms.filter((_, j) => j !== i));
@@ -235,7 +237,7 @@ export function FamilyDrawer({ name, initial, onSave, onClose }: { name: string;
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={() => void save()} disabled={!!problem || busy} loading={busy}>
+          <Button variant="primary" onClick={() => say(problem, () => void save())} loading={busy}>
             Save
           </Button>
         </>
@@ -259,7 +261,7 @@ export function FamilyDrawer({ name, initial, onSave, onClose }: { name: string;
           </fieldset>
         ))}
         <div>
-          <Button size="sm" icon={Plus} onClick={() => setMembers((ms) => [...ms, { name: '', relation: '', dateOfBirth: null, dependant: false }])} disabled={members.length >= 20}>
+          <Button size="sm" icon={Plus} onClick={() => say(members.length >= 20 && 'A record holds at most 20 family members.', () => setMembers((ms) => [...ms, { name: '', relation: '', dateOfBirth: null, dependant: false }]))}>
             Add family member
           </Button>
         </div>
@@ -284,7 +286,7 @@ export function FamilyDrawer({ name, initial, onSave, onClose }: { name: string;
           </fieldset>
         ))}
         <div>
-          <Button size="sm" icon={Plus} onClick={addNomination} disabled={!members.length || nominations.length >= 40}>
+          <Button size="sm" icon={Plus} onClick={() => say((!members.length && 'Add a family member first: every nominee is a family member.') || (nominations.length >= 40 && 'A record holds at most 40 nominations.'), addNomination)}>
             Add nomination
           </Button>
         </div>
@@ -304,6 +306,7 @@ export function ContactsDrawer({ initial, onSave, onClose }: { initial: Emergenc
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const problem = contacts.some((c) => !c.name.trim() || !c.relation.trim() || !c.phone.trim()) ? 'Give every contact a name, a relation and a phone number.' : null;
+  const { say } = useSay();
   const set = (i: number, patch: Partial<EmergencyContact>) => setContacts((cs) => cs.map((c, j) => (j === i ? { ...c, ...patch } : c)));
   const save = async () => {
     setBusy(true);
@@ -328,7 +331,7 @@ export function ContactsDrawer({ initial, onSave, onClose }: { initial: Emergenc
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={() => void save()} disabled={!!problem || busy} loading={busy}>
+          <Button variant="primary" onClick={() => say(problem, () => void save())} loading={busy}>
             Save
           </Button>
         </>
@@ -351,7 +354,7 @@ export function ContactsDrawer({ initial, onSave, onClose }: { initial: Emergenc
           </fieldset>
         ))}
         <div>
-          <Button size="sm" icon={Plus} onClick={() => setContacts((cs) => [...cs, { name: '', relation: '', phone: '' }])} disabled={contacts.length >= 5}>
+          <Button size="sm" icon={Plus} onClick={() => say(contacts.length >= 5 && 'You can keep at most 5 emergency contacts.', () => setContacts((cs) => [...cs, { name: '', relation: '', phone: '' }]))}>
             Add contact
           </Button>
         </div>

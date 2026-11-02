@@ -12,7 +12,7 @@ import { DataTable, type TableColumn } from '../../components/table';
 import { Drawer } from '../../components/drawer';
 import { Badge } from '../../components/display';
 import { EmptyState, InlineAlert, NoAccessState } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
 import { Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
 import { TextArea, TextField } from '../../components/inputs';
@@ -418,7 +418,7 @@ export function UnionDialog({ union, entities, locations, onClose, onSave }: { u
   const [saving, setSaving] = useState(false);
   const needBasis = recognition === 'recognised' && !basis.trim();
   const badDates = Boolean(from && to && to < from);
-  const can = Boolean(entity && name.trim().length >= 2 && !needBasis && !badDates);
+  const early = useTooEarly([...(!entity ? [{ fieldId: 'un-entity', message: 'Choose the legal entity.' }] : []), ...(name.trim().length < 2 ? [{ fieldId: 'un-name', message: 'Give the union name (at least 2 letters).' }] : []), ...(needBasis ? [{ fieldId: 'un-basis', message: 'Say on what basis the union is recognised.' }] : []), ...(badDates ? [{ fieldId: 'un-to', message: 'The end date must be on or after the start date.' }] : [])]);
   const save = async () => {
     if (!entity) return;
     setSaving(true);
@@ -442,17 +442,17 @@ export function UnionDialog({ union, entities, locations, onClose, onSave }: { u
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={!can} loading={saving} onClick={() => void save()}>
+          <Button variant="primary" loading={saving} onClick={() => !early.stop() && void save()}>
             {union ? 'Save union' : 'Add union'}
           </Button>
         </>
       }
     >
       <div className="yx-ppl__form">
-        <FormField label="Legal entity" required>
+        <FormField id="un-entity" label="Legal entity" required error={early.errorOf('un-entity')}>
           <Select options={entities} value={entity} onChange={(v) => (setEntity(v), setLocation(null))} disabled={!!union} placeholder="Choose a legal entity" />
         </FormField>
-        <FormField label="Union name" required>
+        <FormField id="un-name" label="Union name" required error={early.errorOf('un-name')}>
           <TextField value={name} onChange={setName} maxLength={200} />
         </FormField>
         <FormField label="Registration number">
@@ -464,14 +464,14 @@ export function UnionDialog({ union, entities, locations, onClose, onSave }: { u
         <FormField label="Recognition" required>
           <Segment label="Recognition" options={RECOGNITION} value={recognition} onChange={setRecognition} />
         </FormField>
-        <FormField label="Basis" required={recognition === 'recognised'} error={needBasis ? 'Say on what basis the union is recognised.' : null} helper="For example: sole negotiating union, 58% of workers.">
+        <FormField id="un-basis" label="Basis" required={recognition === 'recognised'} error={needBasis ? 'Say on what basis the union is recognised.' : null} helper="For example: sole negotiating union, 58% of workers.">
           <TextField value={basis} onChange={setBasis} maxLength={200} />
         </FormField>
         <div className="yx-ppl__row">
           <FormField label="Valid from">
             <DatePicker value={from} onChange={setFrom} />
           </FormField>
-          <FormField label="Valid to" error={badDates ? 'The end date must be on or after the start date.' : null}>
+          <FormField id="un-to" label="Valid to" error={badDates ? 'The end date must be on or after the start date.' : null}>
             <DatePicker value={to} onChange={setTo} />
           </FormField>
         </div>

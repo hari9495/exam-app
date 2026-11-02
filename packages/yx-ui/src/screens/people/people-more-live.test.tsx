@@ -186,7 +186,9 @@ describe('Union register (PPL-39)', () => {
     await ue.type(within(dialog).getByRole('textbox', { name: /Union name/ }), 'Kaveri Staff Association');
     await ue.click(within(dialog).getByRole('radio', { name: 'Recognised' }));
     expect(within(dialog).getByText('Say on what basis the union is recognised.')).toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: 'Add union' })).toBeDisabled();
+    await ue.click(within(dialog).getByRole('button', { name: 'Add union' }));
+    expect(within(dialog).getByRole('textbox', { name: /Basis/ })).toHaveFocus();
+    expect(l.onSave).not.toHaveBeenCalled();
     await ue.type(within(dialog).getByRole('textbox', { name: /Basis/ }), 'Over 20% of workers');
     await ue.click(within(dialog).getByRole('button', { name: 'Add union' }));
     await waitFor(() =>

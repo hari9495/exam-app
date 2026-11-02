@@ -18,8 +18,11 @@ describe('PPL-38 disability declaration, live', () => {
   it('nothing can be filled in before consent; a "Yes" needs the category, percentage and certificate', async () => {
     const live = mine();
     const view = page(live);
-    expect(screen.getByRole('button', { name: 'Save declaration' })).toBeDisabled();
     expect(screen.getByRole('combobox', { name: /Category/ })).toBeDisabled();
+    await ue.click(screen.getByRole('button', { name: 'Save declaration' }));
+    expect((await screen.findAllByText('Tick the consent box first. Nothing is recorded without it.')).length).toBeGreaterThan(0); // a toast
+    expect(screen.getByRole('checkbox', { name: /I agree Kaveri Foods may record this/ })).toHaveFocus();
+    expect(live.onSave).not.toHaveBeenCalled();
     await ue.click(screen.getByRole('checkbox', { name: /I agree Kaveri Foods may record this/ }));
     await ue.click(screen.getByRole('button', { name: 'Save declaration' }));
     expect(screen.getByText('Fix these before saving')).toBeInTheDocument();

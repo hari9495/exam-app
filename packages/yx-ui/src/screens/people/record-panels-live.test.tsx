@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
@@ -207,11 +207,15 @@ describe('International bank details (PPL-46), live', () => {
     await ue.type(box(/BIC/), 'ECB1');
     await ue.tab();
     expect(screen.getByText('Enter an 8 or 11 character BIC, like ECBKAEAD.')).toBeInTheDocument();
-    expect(send()).toBeDisabled();
+    await ue.click(send());
+    expect(box(/BIC/)).toHaveFocus();
+    expect(live.onSend).not.toHaveBeenCalled();
     await ue.clear(box(/BIC/));
     await ue.type(box(/BIC/), 'ecbkaead');
     await ue.tab();
-    expect(send()).toBeDisabled(); // no payout currency yet
+    await ue.click(send()); // no payout currency yet: it says so at the field
+    expect(screen.getByText('Choose the payout currency.')).toBeInTheDocument();
+    expect(live.onSend).not.toHaveBeenCalled();
     await ue.click(screen.getByRole('combobox', { name: 'Payout currency' }));
     await ue.type(await screen.findByPlaceholderText('Search'), 'AED');
     await ue.click(await screen.findByRole('option', { name: /^AED/ }));
@@ -219,12 +223,13 @@ describe('International bank details (PPL-46), live', () => {
     await waitFor(() => expect(live.onSend).toHaveBeenCalledWith({ country: 'AE', iban: 'AE070331234567890123456', bic: 'ECBKAEAD', currency: 'AED' }));
   });
 
-  it('HR: a change already waiting blocks another; what is on file shows masked', () => {
+  it('HR: a change already waiting blocks another; what is on file shows masked', async () => {
     wrap(<InternationalBankTab persona="hr" splits={[]} net={0} live={bank({ waiting: true, current: { country: 'AE', iban: '•••• 3456', bic: 'ECBKAEAD', currency: 'AED', usableFrom: day('2026-01-01') } })} />);
     expect(screen.getByText('A change is already waiting for approval')).toBeInTheDocument();
     expect(screen.getByText('United Arab Emirates · •••• 3456 · ECBKAEAD · AED')).toBeInTheDocument();
     expect(screen.getByText('In use')).toBeInTheDocument();
-    expect(send()).toBeDisabled();
+    fireEvent.click(send());
+    expect((await screen.findAllByText('A change is already waiting for approval. Wait for the decision, or withdraw it first.')).length).toBeGreaterThan(0); // a toast
   });
 
   it('employee: the country comes from the IBAN; a wrong IBAN says what to fix', async () => {

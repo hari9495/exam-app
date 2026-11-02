@@ -8,7 +8,8 @@ import { Card, PageHeader } from '../../components/shell';
 import { Drawer } from '../../components/drawer';
 import { Badge } from '../../components/display';
 import { EmptyState, ErrorState, NoAccessState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
+import { PlainTable } from '../../components/plain-table';
 import { MultiSelect, PersonPicker, Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
 import { CurrencyField, NumberField, TextArea, TextField } from '../../components/inputs';
@@ -177,6 +178,7 @@ export interface LiveChangeAction {
 function LiveChangeActionPage({ persona, live }: { persona: Persona; live: LiveChangeAction }) {
   const mgr = persona === 'mgr';
   const [whoId, setWhoId] = useState<string | null>(null);
+  const whoEarly = useTooEarly(!whoId ? [{ fieldId: 'ca-who', message: 'Choose the person.' }] : []);
   return (
     <PeopleFrame active="Change action" persona={persona}>
       <PageHeader title="Change action" description={mgr ? 'Raise a promotion, transfer or manager change for someone in your team.' : 'Raise a change for one person. For many people at once, use Bulk changes.'} />
@@ -188,11 +190,11 @@ function LiveChangeActionPage({ persona, live }: { persona: Persona; live: LiveC
         <div className="yx-ppl__grid2">
           <Card title="Start a change">
             <div className="yx-ppl__stack">
-              <FormField label="Person" required>
+              <FormField id="ca-who" label="Person" required error={whoEarly.errorOf('ca-who')}>
                 <PersonPicker people={live.people.map((p) => ({ id: p.id, name: p.name, role: p.role, department: p.department }))} value={whoId} onChange={setWhoId} placeholder="Find a person" />
               </FormField>
               <div>
-                <Button variant="primary" disabled={!whoId} onClick={() => whoId && live.onStart(whoId)}>
+                <Button variant="primary" onClick={() => !whoEarly.stop() && whoId && live.onStart(whoId)}>
                   Start change
                 </Button>
               </div>
@@ -240,6 +242,7 @@ function SampleChangeActionSheet({ persona, kind: kindProp, effective: effective
   const people = CHANGE_PEOPLE.filter((p) => !mgr || p.mine);
   const [open, setOpen] = useState(startOpen);
   const [whoId, setWhoId] = useState<string | null>(!startOpen ? null : kindProp === 'Transfer' || kindProp === 'Inter-entity transfer' ? 'rs' : 'ak');
+  const whoEarly = useTooEarly(!whoId ? [{ fieldId: 'ca-who', message: 'Choose the person.' }] : []);
   const [kind, setKind] = useState<ChangeKind | null>(kindProp);
   const [effective, setEffective] = useState<Date | null>(effectiveProp);
   const [ctc, setCtc] = useState<number | null>(780000);
@@ -269,11 +272,11 @@ function SampleChangeActionSheet({ persona, kind: kindProp, effective: effective
       <div className="yx-ppl__grid2">
         <Card title="Start a change">
           <div className="yx-ppl__stack">
-            <FormField label="Person" required>
+            <FormField id="ca-who" label="Person" required error={whoEarly.errorOf('ca-who')}>
               <PersonPicker people={people.map((p) => ({ id: p.id, name: p.name, role: p.role, department: `${p.team} · ${p.location}` }))} value={whoId} onChange={setWhoId} placeholder="Find a person" />
             </FormField>
             <div>
-              <Button variant="primary" disabled={!whoId} onClick={() => setOpen(true)}>
+              <Button variant="primary" onClick={() => !whoEarly.stop() && setOpen(true)}>
                 Start change
               </Button>
             </div>
@@ -421,24 +424,16 @@ function SampleChangeActionSheet({ persona, kind: kindProp, effective: effective
                   ))}
                 </ul>
               ) : (
-                <table className="yx-ppl__impact">
-                  <thead>
-                    <tr>
-                      <th scope="col">What changes</th>
-                      <th scope="col">Now</th>
-                      <th scope="col">{fromLabel}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {changed.map((r) => (
-                      <tr key={r.fact}>
-                        <th scope="row">{r.fact}</th>
-                        <td>{r.now}</td>
-                        <td data-changed>{r.next}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <PlainTable
+                  label="What changes"
+                  columns={[
+                    { key: 'fact', header: 'What changes', rowHeader: true, cell: (r: (typeof changed)[number]) => r.fact },
+                    { key: 'now', header: 'Now', cell: (r: (typeof changed)[number]) => r.now },
+                    { key: 'next', header: fromLabel, changed: () => true, cell: (r: (typeof changed)[number]) => r.next },
+                  ]}
+                  rows={changed}
+                  getRowId={(r) => r.fact}
+                />
               )}
               {same.length > 0 && (
                 <details className="yx-ppl__done-fold">

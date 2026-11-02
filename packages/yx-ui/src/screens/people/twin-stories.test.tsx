@@ -1,5 +1,6 @@
 import { composeStories } from '@storybook/react-vite';
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 import * as ppl15 from './ppl-15.stories';
 import * as ppl17 from './ppl-17.stories';
@@ -37,7 +38,8 @@ describe('PPL-28 issue sheet stories (live = design)', () => {
     await show(s28.Missing);
     const sheet = within(await screen.findByRole('dialog'));
     expect(await sheet.findByText(/Fill these on Arjun's record first/)).toBeInTheDocument();
-    expect(sheet.getByRole('button', { name: 'Send for approval' })).toBeDisabled();
+    await userEvent.click(sheet.getByRole('button', { name: 'Send for approval' }));
+    expect((await screen.findAllByText('Fix what the message above says first, then issue it.')).length).toBeGreaterThan(0); // a toast
   });
 });
 

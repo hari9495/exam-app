@@ -12,7 +12,7 @@ import { Drawer } from '../../components/drawer';
 import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { Badge } from '../../components/display';
 import { EmptyState, ErrorState, NoAccessState, InlineAlert, Meter } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
 import { Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
 import { NumberField, TextArea, TextField } from '../../components/inputs';
@@ -27,10 +27,10 @@ import { addDays, daysBetween, journeyProgress, overdueTasks, probationState, ta
 import type { JoinerInput, JoinerPlaces, Journey as LiveJourneyData, RehireView } from './live/types';
 import { choiceLabel } from './live/special';
 import { TaskDialog, type TaskActions, type TaskAsk } from './live/lifecycle';
-import { taskButtons, taskRow } from './checklists';
+import { taskButtons, taskRow, WaitingDone } from './checklists';
 import { useRun } from '../org/org-kit';
 import { BATCHES, BUDDIES, EXIT_CASES, KAVYA_JOIN, NEEDS_BUDDY, ONBOARDING_TASKS, PROBATIONS, READY_TO_ONBOARD } from './people-data';
-import { ListSkeleton, PeopleFrame, ProgressRing, StatusBadge, StatusChecklist, type ChecklistRow } from './people-kit';
+import { ListSkeleton, PeopleFrame, ProgressRing, StatusBadge, StatusChecklist, useSay, type ChecklistRow } from './people-kit';
 
 /* ================================================================== PPL-11 onboarding board */
 
@@ -704,7 +704,7 @@ function LiveJourneyRecord({ live, today }: { live: LiveJourney; today: Date }) 
         // Add task: no way to add a one-off task to a running checklist yet (left out).
         actions={j.canManage && j.status === 'active' && live.preboard ? <Button onClick={() => setChanging(true)}>Change status</Button> : undefined}
       />
-      {j.status !== 'active' && <InlineAlert tone={j.status === 'done' ? 'success' : 'info'}>{j.status === 'done' ? 'This checklist is complete.' : 'This checklist was cancelled.'}</InlineAlert>}
+      {j.status !== 'active' && <InlineAlert tone="info">{j.status === 'done' ? 'This checklist is complete.' : 'This checklist was cancelled.'}</InlineAlert>}
       {letterLate && j.canManage && (
         <InlineAlert tone="danger" title={`${letterLate.title} is overdue`} actions={live.actions.onIssueLetter ? <Button size="sm" icon={FileText} onClick={() => setAsk({ kind: 'letter', task: letterLate })}>Issue letter</Button> : undefined}>
           Due {formatDate(fromKey(letterLate.dueOn))}. It is required by law.
@@ -763,7 +763,7 @@ export function JourneyRecord({ tasks, joining, today, view = 'hr', live }: { ta
     if (t.status === 'done' || !canAct(t)) return undefined;
     // The legal letter completes only when it is actually issued.
     if (t.locked) return <Button size="sm" icon={FileText}>Issue letter</Button>;
-    if (t.status === 'blocked') return <Button size="sm" disabled>Mark done</Button>;
+    if (t.status === 'blocked') return <WaitingDone why={t.waitsFor ? `This task waits for: ${titleOf(t.waitsFor)}. Finish that first.` : undefined} />;
     if (view === 'hire' && t.owner === 'New hire') return <Button size="sm">{HIRE_ACTION[t.id] ?? 'Open'}</Button>;
     return <Button size="sm">Mark done</Button>;
   };
@@ -870,6 +870,7 @@ export interface LiveBatches {
 // PPL-14
 export function PreboardingBatches({ rows, defaultChangeId, defaultDate, live }: { rows: BatchRow[]; defaultChangeId?: string; defaultDate?: Date; live?: LiveBatches }) {
   const [changeId, setChangeId] = useState<string | null>(defaultChangeId ?? null);
+  const { say } = useSay();
   const [openId, setOpenId] = useState<string | null>(null);
   const [newDate, setNewDate] = useState<Date | null>(defaultDate ?? rows.find((b) => b.id === defaultChangeId)?.joining ?? null);
   const [notify, setNotify] = useState(true);
@@ -1001,7 +1002,7 @@ export function PreboardingBatches({ rows, defaultChangeId, defaultDate, live }:
         preventClose={busy}
         footer={
           <>
-            <Button onClick={() => setChangeId(null)} disabled={busy}>
+            <Button onClick={() => say(busy && 'Wait a moment: the new date is being saved.', () => setChangeId(null))}>
               Cancel
             </Button>
             <Button variant="primary" loading={busy} onClick={() => void save()}>
@@ -1610,6 +1611,7 @@ const CAPS = [1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: n === 1 ? '1
 export function AddToPoolDialog({ open, onOpenChange, people, onAdd }: { open: boolean; onOpenChange: (o: boolean) => void; people: { id: string; name: string; role?: string }[]; onAdd?: (employeeId: string, cap: number) => Promise<void> }) {
   const [who, setWho] = useState<string | null>(null);
   const [cap, setCap] = useState('2');
+  const addEarly = useTooEarly(!who ? [{ fieldId: 'bp-who', message: 'Choose the person.' }] : []);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const close = () => {
@@ -1641,14 +1643,14 @@ export function AddToPoolDialog({ open, onOpenChange, people, onAdd }: { open: b
       footer={
         <>
           <Button onClick={close}>Cancel</Button>
-          <Button variant="primary" disabled={!who} loading={saving} onClick={() => void add()}>
+          <Button variant="primary" loading={saving} onClick={() => !addEarly.stop() && void add()}>
             Add to pool
           </Button>
         </>
       }
     >
       <div className="yx-ppl__form">
-        <FormField label="Colleague" required helper="Choose someone from the joiner's team or location. A buddy is never the joiner's manager.">
+        <FormField id="bp-who" label="Colleague" required error={addEarly.errorOf('bp-who')} helper="Choose someone from the joiner's team or location. A buddy is never the joiner's manager.">
           <PersonPicker people={people} value={who} onChange={setWho} />
         </FormField>
         <FormField label="Looks after at a time" required>
@@ -1666,6 +1668,7 @@ function LiveBuddyPanel({ live }: { live: LiveBuddies }) {
   const [forId, setForId] = useState<string | null>(null);
   const [pick, setPick] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const pickEarly = useTooEarly(!pick ? [{ fieldId: 'bd-pick', message: 'Choose the buddy.' }] : []);
   const [removing, setRemoving] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1848,7 +1851,7 @@ function LiveBuddyPanel({ live }: { live: LiveBuddies }) {
         footer={
           <>
             <Button onClick={() => setForId(null)}>Cancel</Button>
-            <Button variant="primary" disabled={!pick} loading={saving} onClick={() => void assign()}>
+            <Button variant="primary" loading={saving} onClick={() => !pickEarly.stop() && void assign()}>
               Assign buddy
             </Button>
           </>
@@ -1863,7 +1866,7 @@ function LiveBuddyPanel({ live }: { live: LiveBuddies }) {
               <div className="yx-ppl__dl-row"><dt>Joins</dt><dd>{formatDate(isoDay(joiner.joins))}</dd></div>
               <div className="yx-ppl__dl-row"><dt>Manager</dt><dd>{joiner.manager || '—'}</dd></div>
             </dl>
-            <FormField label="Buddy" required helper={`Suggested from ${joiner.team || 'the same team'} at ${joiner.location || 'the same location'}.${joiner.manager ? ` ${joiner.manager} is the manager, so isn't listed.` : ''}`}>
+            <FormField id="bd-pick" label="Buddy" required error={pickEarly.errorOf('bd-pick')} helper={`Suggested from ${joiner.team || 'the same team'} at ${joiner.location || 'the same location'}.${joiner.manager ? ` ${joiner.manager} is the manager, so isn't listed.` : ''}`}>
               <PersonPicker
                 people={pool
                   .filter((b) => b.employeeId !== joiner.managerEmployeeId)
@@ -1904,6 +1907,7 @@ function SampleBuddyPanel({ pool, needs = NEEDS_BUDDY, assignFor }: { pool: Budd
   // Suggest the least-loaded buddy from the joiner's team and location.
   const suggest = (j: Joiner) => [...pool].filter((b) => b.joiners.length < b.cap && !EXIT_CASES.some((e) => e.name === b.name)).sort((a, b) => Number(b.team === j.team && b.location === j.location) - Number(a.team === j.team && a.location === j.location) || a.joiners.length - b.joiners.length)[0]?.id ?? null;
   const [pick, setPick] = useState<string | null>(() => (joiner ? suggest(joiner) : null));
+  const sampleEarly = useTooEarly(!pick ? [{ fieldId: 'bd-pick', message: 'Choose the buddy.' }] : []);
   const narrow = useNarrow();
   const openFor = (j: Joiner) => {
     setForId(j.id);
@@ -2032,7 +2036,7 @@ function SampleBuddyPanel({ pool, needs = NEEDS_BUDDY, assignFor }: { pool: Budd
         footer={
           <>
             <Button onClick={() => setForId(null)}>Cancel</Button>
-            <Button variant="primary" disabled={!pick}>
+            <Button variant="primary" onClick={() => sampleEarly.stop()}>
               Assign buddy
             </Button>
           </>
@@ -2047,7 +2051,7 @@ function SampleBuddyPanel({ pool, needs = NEEDS_BUDDY, assignFor }: { pool: Budd
               <div className="yx-ppl__dl-row"><dt>Joins</dt><dd>{formatDate(joiner.joins)}</dd></div>
               <div className="yx-ppl__dl-row"><dt>Manager</dt><dd>{joiner.manager}</dd></div>
             </dl>
-            <FormField label="Buddy" required helper={`Suggested from ${joiner.team} at ${joiner.location}. ${joiner.manager} is the manager, so isn't listed.`}>
+            <FormField id="bd-pick" label="Buddy" required error={sampleEarly.errorOf('bd-pick')} helper={`Suggested from ${joiner.team} at ${joiner.location}. ${joiner.manager} is the manager, so isn't listed.`}>
               <PersonPicker
                 people={pool.map((b) => {
                   const isFull = b.joiners.length >= b.cap;

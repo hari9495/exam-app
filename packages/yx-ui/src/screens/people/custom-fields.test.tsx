@@ -20,7 +20,10 @@ describe('Additional details drawer', () => {
     );
     expect(screen.queryByText('T-shirt size')).toBeNull();
     const save = screen.getByRole('button', { name: 'Save' });
-    expect(save).toBeDisabled();
+    // Nothing changed yet: it says so and sends nothing (never greyed out).
+    await ue.click(save);
+    expect((await screen.findAllByText('Nothing has changed yet. Change a value, then save.')).length).toBeGreaterThan(0); // a toast
+    expect(onSave).not.toHaveBeenCalled();
     const box = screen.getByDisplayValue('TN70 2019 0004412');
     await ue.clear(box);
     await ue.type(box, 'TN70 2020 1');

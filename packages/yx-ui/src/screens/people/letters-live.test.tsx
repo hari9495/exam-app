@@ -62,7 +62,8 @@ describe('PPL-28 issue a letter, live', () => {
     expect(await within(drawer()).findByText("We can't generate this letter yet")).toBeTruthy();
     expect(within(drawer()).getByText(/Fill these on Arjun's record first: annual CTC after the raise\. Name who signs for their legal entity in Settings › Letter templates\. Letters never go out with blanks\./)).toBeTruthy();
     expect(within(drawer()).queryByRole('region', { name: 'Letter preview' })).toBeNull();
-    expect(within(drawer()).getByRole('button', { name: 'Issue letter' })).toBeDisabled();
+    await ue.click(within(drawer()).getByRole('button', { name: 'Issue letter' }));
+    expect((await screen.findAllByText('Fix what the message above says first, then issue it.')).length).toBeGreaterThan(0); // a toast
   });
 
   it('missing fields on a letter needing approval show no approval card (as the design)', async () => {

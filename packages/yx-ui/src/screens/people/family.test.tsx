@@ -70,9 +70,13 @@ describe('FamilyDrawer', () => {
     const onSave = vi.fn(async () => undefined);
     render(<FamilyDrawer name="Arjun Kulkarni" initial={{ members, nominations: [nom('gratuity', 0, 60)] }} onSave={onSave} onClose={vi.fn()} />);
     expect(screen.getByText('Gratuity shares must total 100% (now 60%).')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    await ue.click(screen.getByRole('button', { name: 'Save' }));
+    const said = (await screen.findAllByText('Gratuity shares must total 100% (now 60%).')).length;
+    expect(said).toBeGreaterThan(1); // the notice and the toast
+    expect(onSave).not.toHaveBeenCalled();
     await ue.click(screen.getByRole('button', { name: 'Add nomination' }));
-    expect(screen.queryByText(/shares must total/)).toBeNull();
+    // The warning above the form is gone; only the earlier toast (5 s) still says it.
+    expect(screen.queryAllByText(/shares must total/)).toHaveLength(said - 1);
     await ue.click(screen.getByRole('button', { name: 'Save' }));
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ nominations: [expect.objectContaining({ scheme: 'gratuity', member: 0, share: 60 }), expect.objectContaining({ scheme: 'gratuity', member: 1, share: 40 })] }));
   });

@@ -17,7 +17,7 @@ import { DataTable, type TableColumn } from '../../components/table';
 import { CustomFieldInputs, type CustomValues } from '../hiring/live/fields';
 import { EditorDrawer, OrgPage, errorText, useRun } from '../org/org-kit';
 import type { LoadState } from '../org/types';
-import { ClassBadge } from './people-kit';
+import { ClassBadge, useSay } from './people-kit';
 import type { FieldClass } from './people-logic';
 
 export type DataClass = 'public' | 'internal' | 'personal' | 'confidential';
@@ -68,6 +68,7 @@ export function CustomFieldsDrawer({ fields, onSave, onClose }: { fields: Record
   const [touched, setTouched] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { say } = useSay();
   const save = async () => {
     setBusy(true);
     setError(null);
@@ -92,7 +93,7 @@ export function CustomFieldsDrawer({ fields, onSave, onClose }: { fields: Record
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={() => void save()} disabled={!touched.length || busy} loading={busy}>
+          <Button variant="primary" onClick={() => say(!touched.length && 'Nothing has changed yet. Change a value, then save.', () => void save())} loading={busy}>
             Save
           </Button>
         </>

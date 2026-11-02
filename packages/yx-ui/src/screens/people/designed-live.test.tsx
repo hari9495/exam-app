@@ -444,7 +444,10 @@ describe('Assets (PPL-25)', () => {
     await ue.click(within(dialog).getByRole('combobox', { name: /Return condition/ }));
     await ue.click(screen.getByRole('option', { name: 'Not returned' }));
     expect(within(dialog).getByText(/stays open for a recovery/)).toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: 'Mark not returned' })).toBeDisabled();
+    await ue.click(within(dialog).getByRole('button', { name: 'Mark not returned' }));
+    expect(within(dialog).getByText('Say what happened (at least 3 letters).')).toBeInTheDocument();
+    expect(within(dialog).getByRole('textbox', { name: /What happened/ })).toHaveFocus();
+    expect(onReturn).not.toHaveBeenCalled();
     await ue.type(within(dialog).getByRole('textbox', { name: /What happened/ }), 'Lost on the train');
     await ue.click(within(dialog).getByRole('button', { name: 'Mark not returned' }));
     expect(onReturn).toHaveBeenCalledWith(api, expect.objectContaining({ status: 'lost', condition: 'Not returned: Lost on the train' }));
@@ -593,7 +596,9 @@ describe('Change action (PPL-04) and Scheduled (PPL-05)', () => {
     const onStart = vi.fn();
     const onOpenWaiting = vi.fn();
     render(<ChangeActionSheet persona="hr" kind="Promotion" effective={day('2026-10-20')} today={day('2026-10-20')} live={{ state: 'ready', onRetry: vi.fn(), people: [{ id: 'p1', name: 'Arjun Kulkarni', role: 'Quality Analyst', department: 'Quality' }], waiting: [{ id: 'c1', name: 'Kavya Reddy', kind: 'Manager change', effective: day('2026-11-16'), note: 'raised 19 Oct 2026', canOpen: true }], onStart, onOpenWaiting }} />);
-    expect(screen.getByRole('button', { name: 'Start change' })).toBeDisabled();
+    await ue.click(screen.getByRole('button', { name: 'Start change' }));
+    expect(screen.getByText('Choose the person.')).toBeInTheDocument();
+    expect(onStart).not.toHaveBeenCalled();
     await ue.click(screen.getByRole('button', { name: 'Open' }));
     expect(onOpenWaiting).toHaveBeenCalledWith('c1');
   });

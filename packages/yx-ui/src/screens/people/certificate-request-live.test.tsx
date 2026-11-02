@@ -65,7 +65,7 @@ describe('PPL-31 request a certificate, live', () => {
     await ue.type(screen.getByRole('textbox', { name: 'Addressed to' }), '  The Branch Manager, Canara Bank, Hosur ');
     await ue.click(screen.getByRole('button', { name: 'Generate certificate' }));
     expect(live.onRequest).toHaveBeenCalledWith({ letterType: 'salary_certificate', purpose: 'Home loan', addressedTo: 'The Branch Manager, Canara Bank, Hosur' });
-    expect(await screen.findByText('Salary certificate ready · KF/SALA/2026/000001')).toBeInTheDocument();
+    expect(await screen.findByText('Salary certificate · KF/SALA/2026/000001')).toBeInTheDocument();
     expect(screen.getByText(/Verification code 7QM2-XK9P/)).toBeInTheDocument();
     expect(within(screen.getByRole('region', { name: 'Certificate preview' })).getByText('PDF Salary certificate KF/SALA/2026/000001')).toBeInTheDocument();
     expect(screen.getAllByText('Salary certificate ready').length).toBeGreaterThan(0);

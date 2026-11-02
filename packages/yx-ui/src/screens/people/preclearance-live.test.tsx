@@ -24,7 +24,9 @@ describe('PPL-44 trading pre-clearance, live', () => {
     await ue.click(screen.getByRole('radio', { name: 'Sell' }));
     await ue.type(screen.getByRole('textbox', { name: /^Quantity/ }), '350');
     await ue.type(screen.getByRole('textbox', { name: /Approximate value/ }), '1225000');
-    expect(send).toBeDisabled();
+    await ue.click(send);
+    expect(screen.getByText('Confirm you hold no price-sensitive information.')).toBeInTheDocument();
+    expect(live.onRequest).not.toHaveBeenCalled();
     await ue.click(screen.getByRole('checkbox', { name: /unpublished price-sensitive/ }));
     await ue.click(send);
     await waitFor(() => expect(live.onRequest).toHaveBeenCalledWith({ security: 'Deccan Agro Industries Ltd', side: 'sell', quantity: 350, value: 1225000, noUpsi: true }));
@@ -39,11 +41,14 @@ describe('PPL-44 trading pre-clearance, live', () => {
     const report = screen.getByRole('button', { name: 'Report trade' });
     await ue.type(screen.getByRole('textbox', { name: 'Traded on' }), '29 Sep 2026');
     await ue.tab();
-    expect(report).toBeDisabled();
+    await ue.click(report);
+    expect(screen.getByText('Upload the contract note.')).toBeInTheDocument();
+    expect(live.onReport).not.toHaveBeenCalled();
     await ue.upload(view.container.querySelector('input[type="file"]') as HTMLInputElement, new File(['%PDF'], 'note.pdf', { type: 'application/pdf' }));
     await waitFor(() => expect(live.onUploadNote).toHaveBeenCalled());
     await ue.click(report);
     await waitFor(() => expect(live.onReport).toHaveBeenCalledWith('p1', { tradedOn: '2026-09-29', quantity: 350, contractNoteDocumentId: 'note1' }));
+    expect((await screen.findAllByText('Trade reported')).length).toBeGreaterThan(0); // a toast
   });
 
   it('pending waits for the officer; expired says to report or ask again; New request opens the form', async () => {

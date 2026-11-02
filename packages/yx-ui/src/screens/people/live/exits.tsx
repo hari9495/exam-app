@@ -522,7 +522,7 @@ export function HandoffCard({ h, today, onSettled }: { h: Handoff; today: string
       ) : (
         <Text as="p">No recoveries.</Text>
       )}
-      {h.settledOutside && <InlineAlert tone="success" title="Settled outside YukthiX">{`On ${dateText(h.settledOutside.on)}. ${h.settledOutside.reason}`}</InlineAlert>}
+      {h.settledOutside && <InlineAlert tone="info" title="Settled outside YukthiX">{`On ${dateText(h.settledOutside.on)}. ${h.settledOutside.reason}`}</InlineAlert>}
       {settling && onSettled && (
         <ConfirmDialog
           open
