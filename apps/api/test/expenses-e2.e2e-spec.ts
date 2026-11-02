@@ -15,8 +15,8 @@ import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 // Expenses batch E2 end to end against the real database (forced RLS, the app role): snap-first receipts read by the
 // dev-fake OCR (suggestions only; the employee confirms every read line), the same receipt refused for a second claim,
 // the policy check (receipt needed, over the limit needs a reason and an extra approval), computed mileage, GST input
-// credit, the P03 route (manager, over-the-limit, finance), approve with changes and its reason, send back, the
-// virus check blocking submit, who may see a claim and its receipt, and two companies apart.
+// credit, the P03 route (manager, over-the-limit, finance), approve with changes and its reason, send back (the
+// approvals engine's own decision) and resend, the virus check blocking submit, who may see a claim and its receipt, and two companies apart.
 process.env.EXPENSE_OCR_ADAPTER = 'dev-fake';
 process.env.SD_SCANNER = 'dev-fake';
 
@@ -46,6 +46,7 @@ describe('Expenses batch E2', () => {
   // A 1×1 PNG; extra bytes make each receipt a different file.
   const png = () => Buffer.concat([Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64'), Buffer.from(randomUUID())]);
   type Claim = { id: string; version: number; status: string; paymentStatus: string; claimedTotal: string; approvedTotal: string | null; netPayable: string; risk: string; decisionNote: string | null; lines: { id: string; version: number; categoryCode: string; claimed: string; approved: string | null; reduceReason: string | null; ocr: { fields: Record<string, { value: string; confidence: number }>; lowConfidence: string[]; confirmed: boolean } | null; gst: { itcStatus: string | null } | null; policy: { outcome: string } | null }[]; flags: { id: string; kind: string; status: string }[]; route: { steps: { name: string; state: string }[] } | null; can: Record<string, boolean> };
+  const wf = (who: Who, taskId: string, decision: string, reason?: string) => request(server()).post(`/api/v1/workflow/approvals/tasks/${taskId}/decide`).set('Authorization', `Bearer ${token[who]}`).send({ decision, ...(reason ? { reason } : {}) });
   const claim = async (who: Who, id: string) => (await api(who, 'get', `/claims/${id}`).expect(200)).body as Claim;
   const newClaim = async (title: string) => (await api('ravi', 'post', '/claims').send({ title }).expect(201)).body as Claim;
   const upload = (who: Who, id: string, name: string, data = png()) => api(who, 'post', `/claims/${id}/receipts`).attach('file', data, { filename: name, contentType: 'image/png' });
@@ -213,23 +214,76 @@ describe('Expenses batch E2', () => {
     expect(done.lines.find((l) => l.categoryCode === 'lodging')).toMatchObject({ claimed: '5900.00', approved: '5000.00', reduceReason: 'Hotel cap Tier 1' });
   });
 
-  it('send back: the employee edits and submits again; an invoice already claimed is refused', async () => {
+  it('send back (the approvals engine decision): a reason is required, only the task holder may, the same audit as leave', async () => {
     const c = await newClaim('Second visit');
     const n = (await api('ravi', 'post', `/claims/${c.id}/lines`).send(line({ categoryCode: 'meals', city: 'Mumbai', merchant: 'Cafe', amount: '300.00', selfDeclared: true })).expect(201)).body as Claim;
-    let s = (await api('ravi', 'post', `/claims/${c.id}/submit`).send({ version: n.version }).expect(200)).body as Claim;
-    await api('mgr', 'post', `/claims/${c.id}/decide`).send({ decision: 'send_back' }).expect(400);
+    await api('ravi', 'post', `/claims/${c.id}/submit`).send({ version: n.version }).expect(200);
+    ids.claim2 = c.id;
+    const first = (await inA((tx) => tx.expenseClaim.findFirstOrThrow({ where: { id: c.id } }))).wfRequestId!;
+    ids.wf2 = first;
+    // The reason is required (and at least 3 characters, the expense rule).
+    expect((await api('mgr', 'post', `/claims/${c.id}/decide`).send({ decision: 'send_back' }).expect(400)).body.message).toBe('Say what the employee should change.');
+    await api('mgr', 'post', `/claims/${c.id}/decide`).send({ decision: 'send_back', reason: 'ab' }).expect(400);
+    // Only the holder of the open task: not the employee, not finance (sees it, holds no task), not a colleague, not another company.
+    await api('ravi', 'post', `/claims/${c.id}/decide`).send({ decision: 'send_back', reason: 'Add the restaurant name' }).expect(403);
+    expect((await api('fin', 'post', `/claims/${c.id}/decide`).send({ decision: 'send_back', reason: 'Add the restaurant name' }).expect(403)).body.message).toBe('This claim is not waiting for you.');
+    await api('sita', 'post', `/claims/${c.id}/decide`).send({ decision: 'send_back', reason: 'Add the restaurant name' }).expect(404);
+    await api('adminB', 'post', `/claims/${c.id}/decide`).send({ decision: 'send_back', reason: 'Add the restaurant name' }).expect(404);
+    const task = await inA((tx) => tx.wfTask.findFirstOrThrow({ where: { requestId: first, status: 'open' } }));
+    for (const who of ['fin', 'sita', 'ravi', 'adminB'] as const) expect([403, 404]).toContain((await wf(who, task.id, 'send_back', 'Add the restaurant name')).status);
+    expect((await claim('ravi', c.id)).status).toBe('submitted');
     await api('mgr', 'post', `/claims/${c.id}/decide`).send({ decision: 'send_back', reason: 'Add the restaurant name' }).expect(200);
-    s = await claim('ravi', c.id);
-    expect(s).toMatchObject({ status: 'sent_back', decisionNote: 'Add the restaurant name', can: { edit: true } });
+    const s = await claim('ravi', c.id);
+    expect(s).toMatchObject({ status: 'sent_back', decisionNote: 'Add the restaurant name', can: { edit: true, withdraw: false } });
+    expect(s.route!.steps[0]).toMatchObject({ name: 'Manager', state: 'sent_back' });
+    // The engine's own decision, not a reject: the request and task end "sent_back"; the same audit as leave.
+    expect((await inA((tx) => tx.wfRequest.findFirstOrThrow({ where: { id: first } }))).status).toBe('sent_back');
+    expect((await inA((tx) => tx.wfTask.findFirstOrThrow({ where: { id: task.id } }))).status).toBe('sent_back');
+    expect(await inA((tx) => tx.wfAction.count({ where: { requestId: first, action: 'sent_back', reason: 'Add the restaurant name' } }))).toBe(1);
+    expect(await inA((tx) => tx.wfAction.count({ where: { requestId: first, action: 'rejected' } }))).toBe(0);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'workflow.request.sent_back', entityId: first } }))).toBe(1);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'expense.claim.sent_back', entityId: c.id } }))).toBe(1);
+    const notes = await inA((tx) => tx.userNotification.findMany({ where: { recipientUserId: users.ravi, type: 'workflow.approval.decided' } }));
+    expect(notes.some((x) => /sent back for changes/.test(x.contextText ?? ''))).toBe(true);
+    // A repeat is refused, as is approving what was sent back.
+    await api('mgr', 'post', `/claims/${c.id}/decide`).send({ decision: 'send_back', reason: 'Again please' }).expect(403);
+    await wf('mgr', task.id, 'approve').expect(409);
+  });
+
+  it('resend: the employee edits and sends again (a new request, the whole route again); an invoice already claimed is refused', async () => {
+    const id = ids.claim2;
+    // Someone else cannot send it.
+    await api('sita', 'post', `/claims/${id}/submit`).send({ version: 1 }).expect(404);
+    await api('mgr', 'post', `/claims/${id}/submit`).send({ version: (await claim('mgr', id)).version }).expect(403);
     // The same GST invoice as the approved claim cannot be claimed again (F2).
-    const dup = (await api('ravi', 'post', `/claims/${c.id}/lines`).send(line({ categoryCode: 'lodging', city: 'Mumbai', merchant: 'Hotel Sea View', amount: '100.00', selfDeclared: true, gst: { supplierGstin: SUPPLIER, invoiceNo: 'SV-1182' } })).expect(201)).body as Claim;
-    expect((await api('ravi', 'post', `/claims/${c.id}/submit`).send({ version: dup.version }).expect(400)).body.message).toMatch(/invoice SV-1182 .* is already claimed/);
+    const dup = (await api('ravi', 'post', `/claims/${id}/lines`).send(line({ categoryCode: 'lodging', city: 'Mumbai', merchant: 'Hotel Sea View', amount: '100.00', selfDeclared: true, gst: { supplierGstin: SUPPLIER, invoiceNo: 'SV-1182' } })).expect(201)).body as Claim;
+    expect((await api('ravi', 'post', `/claims/${id}/submit`).send({ version: dup.version }).expect(400)).body.message).toMatch(/invoice SV-1182 .* is already claimed/);
+    expect((await claim('ravi', id)).status).toBe('sent_back');
     const lodging = dup.lines.find((l) => l.categoryCode === 'lodging')!;
-    const fixed = (await api('ravi', 'delete', `/claims/${c.id}/lines/${lodging.id}`).expect(200)).body as Claim;
-    s = (await api('ravi', 'post', `/claims/${c.id}/submit`).send({ version: fixed.version }).expect(200)).body;
-    expect(s.status).toBe('submitted');
-    await api('mgr', 'post', `/claims/${c.id}/decide`).send({ decision: 'reject', reason: 'Personal meal' }).expect(200);
-    expect((await claim('ravi', c.id)).status).toBe('rejected');
+    const fixed = (await api('ravi', 'delete', `/claims/${id}/lines/${lodging.id}`).expect(200)).body as Claim;
+    const s = (await api('ravi', 'post', `/claims/${id}/submit`).send({ version: fixed.version }).expect(200)).body as Claim;
+    expect(s).toMatchObject({ status: 'submitted', decisionNote: null });
+    expect(s.route!.steps[0]).toMatchObject({ name: 'Manager', state: 'open' });
+    const now = (await inA((tx) => tx.expenseClaim.findFirstOrThrow({ where: { id } }))).wfRequestId!;
+    expect(now).not.toBe(ids.wf2);
+    expect((await inA((tx) => tx.wfRequest.findFirstOrThrow({ where: { id: ids.wf2 } }))).status).toBe('sent_back');
+    const resent = await inA((tx) => tx.auditLog.findMany({ where: { action: 'expense.claim.resent', entityId: id } }));
+    expect(resent).toHaveLength(1);
+    expect(JSON.parse(resent[0].metadataJson ?? '{}')).toMatchObject({ previousRequestId: ids.wf2, newRequestId: now });
+    // The approvals inbox offers send back for the claim and keeps the expense rule (3 characters).
+    const inbox = (await request(server()).get('/api/v1/workflow/approvals/inbox').set('Authorization', `Bearer ${token.mgr}`).expect(200)).body as { taskId: string; requestId: string; canSendBack?: boolean }[];
+    const item = inbox.find((t) => t.requestId === now)!;
+    expect(item.canSendBack).toBe(true);
+    await wf('mgr', item.taskId, 'send_back', 'ab').expect(400);
+    expect((await claim('ravi', id)).status).toBe('submitted');
+    await wf('mgr', item.taskId, 'send_back', 'Attach the bill').expect(200);
+    const back = await claim('ravi', id);
+    expect(back).toMatchObject({ status: 'sent_back', decisionNote: 'Attach the bill' });
+    await api('ravi', 'post', `/claims/${id}/submit`).send({ version: back.version }).expect(200);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'expense.claim.resent', entityId: id } }))).toBe(2);
+    // Not approving still closes the claim.
+    await api('mgr', 'post', `/claims/${id}/decide`).send({ decision: 'reject', reason: 'Personal meal' }).expect(200);
+    expect((await claim('ravi', id)).status).toBe('rejected');
   });
 
   it('withdraw returns a waiting claim to a draft; companies stay apart', async () => {

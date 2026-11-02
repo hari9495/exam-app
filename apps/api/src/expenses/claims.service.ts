@@ -66,6 +66,8 @@ export class ExpenseClaimsService implements OnModuleInit {
       distinctSteps: true,
       onDecided: (tx, req, outcome) => this.decided(tx, req, outcome),
       requesterLink: (req) => `/yx/expenses/claims/${req.subjectId}`,
+      // The engine's shared "Send back for changes" (founder, 30 Oct 2026); always allowed for a claim still waiting.
+      sendBack: { allowed: (tx, req) => this.sendBackAllowed(tx, req), apply: (tx, req, reason) => this.sentBack(tx, req, reason) },
     });
   }
 
@@ -779,7 +781,9 @@ export class ExpenseClaimsService implements OnModuleInit {
         fallbackWording: { who: 'HR', check: "Check the person's manager or the cost-centre owner" },
         ...(risk === 'high' ? { risk: 'high' as const } : {}),
       });
-      await tx.expenseClaim.update({ where: { id }, data: { status: 'submitted', risk, wfRequestId: sub.id, submittedAt: new Date(), decidedAt: null, decisionNote: null, sendBackPending: false, version: { increment: 1 } } });
+      await tx.expenseClaim.update({ where: { id }, data: { status: 'submitted', risk, wfRequestId: sub.id, submittedAt: new Date(), decidedAt: null, decisionNote: null, version: { increment: 1 } } });
+      // Sent back for changes and now sent again: the whole route starts over as a new request (like leave).
+      if (claim.status === 'sent_back') await audit(tx, c, 'expense.claim.resent', 'expense_claim', id, { employeeId: claim.employeeId, previousRequestId: claim.wfRequestId, newRequestId: sub.id });
       await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'expense.claim.submitted', payload: { claimId: id, lines: r.lines.length, flags: r.flags.length } } });
       if (r.flags.length) await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'expense.claim.flagged', payload: { claimId: id, kinds: [...new Set(r.flags.map((f) => f.kind))] } } });
       await audit(tx, c, 'expense.claim.submitted', 'expense_claim', id, { lines: r.lines.length, risk, steps: steps.map((s) => s.name) });
@@ -852,22 +856,34 @@ export class ExpenseClaimsService implements OnModuleInit {
     });
   }
 
-  /** Approve, reject (with a reason) or send back (the employee edits and submits again), as the open task's holder. */
+  /** Approve, reject (with a reason) or send back for changes (with what to change), as the open task's holder. */
   async decide(ctx: TenantContext, user: ScopeUser, id: string, decision: 'approve' | 'reject' | 'send_back', reason: string | undefined) {
     const v = await this.viewer(user);
     const taskId = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const { claim, a } = await this.claimOr404(tx, c, v, id);
       if (!a.openTaskId || claim.status !== 'submitted') throw new ForbiddenException('This claim is not waiting for you.');
       if (decision !== 'approve' && (reason?.trim().length ?? 0) < 3) throw new BadRequestException(decision === 'send_back' ? 'Say what the employee should change.' : 'Say why you are not approving it.');
-      if (decision === 'send_back') await tx.expenseClaim.update({ where: { id }, data: { sendBackPending: true } });
       return a.openTaskId;
     });
-    try {
-      await this.engine.decide({ ...ctx, organizationId: ctx.organizationId! }, v.userId!, taskId, decision === 'approve' ? 'approve' : 'reject', reason?.trim() || null);
-    } finally {
-      if (decision === 'send_back') await this.tenantPrisma.forTenant(ctx, (tx) => tx.expenseClaim.updateMany({ where: { organizationId: ctx.organizationId!, id, status: 'submitted' }, data: { sendBackPending: false } }));
-    }
+    await this.engine.decide({ ...ctx, organizationId: ctx.organizationId! }, v.userId!, taskId, decision, reason?.trim() || null);
     return this.get(ctx, user, id);
+  }
+
+  private async sendBackAllowed(tx: Tx, req: Prisma.WfRequestGetPayload<object>) {
+    const claim = await tx.expenseClaim.findFirst({ where: { organizationId: req.organizationId, id: req.subjectId }, select: { status: true, wfRequestId: true } });
+    return claim?.status === 'submitted' && claim.wfRequestId === req.id;
+  }
+
+  /** Sent back for changes (engine decision, its transaction): the claim goes back to the employee to change and send again. */
+  private async sentBack(tx: Tx, req: Prisma.WfRequestGetPayload<object>, reason: string) {
+    const org = req.organizationId;
+    // The same rule on the claim page and in the approvals inbox.
+    if (reason.trim().length < 3) throw new BadRequestException('Say what the employee should change.');
+    const done = await tx.expenseClaim.updateMany({ where: { organizationId: org, id: req.subjectId, status: 'submitted', wfRequestId: req.id }, data: { status: 'sent_back', decidedAt: new Date(), decisionNote: reason, version: { increment: 1 } } });
+    if (!done.count) throw new ConflictException('This claim is no longer waiting for approval.');
+    await tx.expenseLine.updateMany({ where: { organizationId: org, claimId: req.subjectId }, data: { approved: null, reduceReason: null } });
+    await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'expense.claim.sent_back', payload: { claimId: req.subjectId } } });
+    await audit(tx, { organizationId: org, isSuperAdmin: false }, 'expense.claim.sent_back', 'expense_claim', req.subjectId, { wfRequestId: req.id, reason });
   }
 
   /** P03 effect, once, in the decision's own transaction. */
@@ -877,11 +893,9 @@ export class ExpenseClaimsService implements OnModuleInit {
     if (!claim || claim.status !== 'submitted' || claim.wfRequestId !== req.id) return;
     const last = await tx.wfAction.findFirst({ where: { organizationId: org, requestId: req.id }, orderBy: { createdAt: 'desc' }, select: { reason: true } });
     if (outcome === 'rejected') {
-      const back = claim.sendBackPending;
-      await tx.expenseClaim.update({ where: { id: claim.id }, data: { status: back ? 'sent_back' : 'rejected', sendBackPending: false, decidedAt: new Date(), decisionNote: last?.reason ?? null, version: { increment: 1 } } });
-      if (back) await tx.expenseLine.updateMany({ where: { organizationId: org, claimId: claim.id }, data: { approved: null, reduceReason: null } });
-      await tx.eventOutbox.create({ data: { organizationId: org, eventType: back ? 'expense.claim.sent_back' : 'expense.claim.rejected', payload: { claimId: claim.id } } });
-      if (!back) await closeTripIfDone(tx, org, claim.tripId);
+      await tx.expenseClaim.update({ where: { id: claim.id }, data: { status: 'rejected', decidedAt: new Date(), decisionNote: last?.reason ?? null, version: { increment: 1 } } });
+      await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'expense.claim.rejected', payload: { claimId: claim.id } } });
+      await closeTripIfDone(tx, org, claim.tripId);
       return;
     }
     const lines = await tx.expenseLine.findMany({ where: { organizationId: org, claimId: claim.id, removedAt: null } });

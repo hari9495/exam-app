@@ -8429,7 +8429,6 @@ model ExpenseClaim {
   netPayable      Decimal?  @map("net_payable") @db.Decimal(14, 2)
   risk            String    @default("none") @db.VarChar(8)
   wfRequestId     String?   @map("wf_request_id") @db.Uuid
-  sendBackPending Boolean   @default(false) @map("send_back_pending")
   decisionNote    String?   @map("decision_note") @db.VarChar(500)
   submittedAt     DateTime? @map("submitted_at") @db.Timestamptz(3)
   decidedAt       DateTime? @map("decided_at") @db.Timestamptz(3)
