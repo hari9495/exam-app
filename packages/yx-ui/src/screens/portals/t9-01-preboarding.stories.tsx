@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { BankDetailsStep, BgvConsentStep, DeclineOffer, EmergencyContactStep, IdentityStep, NomineeForm, OfferLettersPanel, PersonalDetailsStep, PreboardingDocuments, PreboardingPortalScreen, TaxRegimeStep } from './t9-workforce';
 import { PortalSignInScreen } from './portals-kit';
-import { BGV_NOTICE_ITEMS, EMERGENCY, JOINER, KAVERI_ACCENT, NOMINEES, PERSONAL, PRE_ITEMS, PRE_LETTERS, TENANT, TODAY } from './t9-data';
+import { BGV_NOTICE_ITEMS, EMERGENCY, JOINER, KAVERI_ACCENT, NOMINEES, PERSONAL, PRE_CLOSED_LETTERS, PRE_ITEMS, PRE_LETTERS, TENANT, TODAY } from './t9-data';
 
 const meta: Meta = { title: 'Screens/Portals/T9-01 · Pre-boarding portal', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -266,3 +266,23 @@ export const DeclineReason: S = {
 };
 export const Declined: S = { name: 'Declined · page closed', render: () => <PreboardingPortalScreen {...base} outcome="reneged" onSignOut={signOut} /> };
 export const Cancelled: S = { name: 'Cancelled · access ended', render: () => <PreboardingPortalScreen {...base} outcome="cancelled" onSignOut={signOut} /> };
+
+/* ------------------------------------------------------------------ Founder answers 2 Nov 2026 (drawn before wiring) */
+
+/** (2) A closed joining keeps its letters: download only, nothing to accept; every change is refused. */
+export const WithdrawnLetters: S = {
+  name: 'Offer withdrawn · letters to download (read-only)',
+  render: () => (
+    <PreboardingPortalScreen {...base} outcome="withdrawn" onSignOut={signOut}>
+      <OfferLettersPanel state="signed" joiner={JOINER} ctc={0} letters={PRE_CLOSED_LETTERS} readOnly />
+    </PreboardingPortalScreen>
+  ),
+};
+export const JoinedLetters: S = {
+  name: 'Joined · letters to download (read-only)',
+  render: () => (
+    <PreboardingPortalScreen {...base} outcome="joined" onSignOut={signOut}>
+      <OfferLettersPanel state="signed" joiner={JOINER} ctc={0} letters={PRE_LETTERS.map((l) => ({ ...l, signature: { status: 'signed' as const, signedAt: '2026-09-25T10:00:00Z' } }))} readOnly />
+    </PreboardingPortalScreen>
+  ),
+};

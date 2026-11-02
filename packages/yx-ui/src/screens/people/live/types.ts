@@ -308,17 +308,20 @@ export interface PortalMe {
   esignAccepted: boolean;
   /** The joiner's own checklist tasks (HR's, IT's and the manager's are not sent). Dates are YYYY-MM-DD. */
   tasks: { id: string; title: string; dueOn: string; status: 'done' | 'to_do' }[];
-  firstDay: { reportingTime: string; address: string | null; buddy: string | null; batch: string | null };
+  /** `bring`: what to bring on day one, as HR wrote it (setting joining.bring_on_day_one), one thing a line. */
+  firstDay: { reportingTime: string; address: string | null; buddy: string | null; batch: string | null; bring: string };
   /** Set while the joining day is the one HR moved it to. */
   dateMoved: { from: string } | null;
   closed?: undefined;
 }
 
-/** A joining that closed: the portal shows only this. `on` is the day it closed (YYYY-MM-DD). */
+/** A joining that closed: the outcome and the joiner's letters, read-only. `on` is the day it closed (YYYY-MM-DD). */
 export interface PortalClosed {
   company: string;
   name: string;
   closed: { outcome: 'joined' | 'withdrawn' | 'reneged' | 'cancelled'; on: string | null };
+  /** Founder 2 Nov 2026: a closed joining can still download its letters (never accept or change them). */
+  letters: Letter[];
 }
 
 export interface JoinerForms {

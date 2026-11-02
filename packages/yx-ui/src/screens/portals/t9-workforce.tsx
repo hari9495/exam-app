@@ -73,6 +73,8 @@ export interface Joiner {
   reportingTime: string;
   buddy: string;
   batch: string | null;
+  /** "Bring on day one" as HR wrote it, one thing a line (none: the card is not shown). */
+  bring?: string;
 }
 
 export type PreOutcome = 'in-progress' | 'postponed' | 'reneged' | 'withdrawn' | 'cancelled' | 'joined';
@@ -224,7 +226,8 @@ interface FirstDay {
 const CHANGEABLE: PreItem['section'][] = ['Forms', 'Bank and tax'];
 
 /** The checklist home: welcome, progress, the items by section, the first day and "Changed your mind?". */
-function PreHome({ firstName, intro, items, day, bring, onOpen, decline }: { firstName: string; intro: string; items: PreItem[]; day: FirstDay; bring?: string[]; onOpen?: (id: string) => void; decline: ReactNode }) {
+function PreHome({ firstName, intro, items, day, bring: bringText, onOpen, decline }: { firstName: string; intro: string; items: PreItem[]; day: FirstDay; bring?: string; onOpen?: (id: string) => void; decline: ReactNode }) {
+  const bring = (bringText ?? '').split('\n').map((b) => b.trim()).filter(Boolean);
   const counted = items.filter((i) => !i.later);
   const pct = checklistPercent(counted);
   const sections = Array.from(new Set(items.map((i) => i.section)));
@@ -287,11 +290,11 @@ function PreHome({ firstName, intro, items, day, bring, onOpen, decline }: { fir
               ]}
             />
           </Card>
-          {bring && bring.length > 0 && (
+          {bring.length > 0 && (
             <Card title="Bring on day one">
               <ul className="yx-ps-list">
-                {bring.map((b) => (
-                  <li key={b}>{b}</li>
+                {bring.map((b, i) => (
+                  <li key={i}>{b}</li>
                 ))}
               </ul>
             </Card>
@@ -330,14 +333,14 @@ export function PreboardingPortalScreen(props: PreboardingPortalScreenProps) {
       ) : (
         <>
           <OutcomeNote tenant={tenant} outcome={outcome} on={today} newDate={newJoiningDate} from={movedFrom} />
-          {!ended && children}
+          {children}
           {!ended && !children && (
             <PreHome
               firstName={joiner.name.split(' ')[0]}
               intro={`You join as ${joiner.role} in ${joiner.department} on`}
               items={items}
               day={{ date: endsOn, reportingTime: joiner.reportingTime, location: joiner.location, address: joiner.address, manager: joiner.manager, buddy: joiner.buddy, batch: joiner.batch }}
-              bring={['Original PAN and Aadhaar (to be seen, not kept)', 'Safety shoes for the plant floor', 'Two passport-size photos']}
+              bring={joiner.bring}
               decline={<DeclineOffer company={tenant} />}
             />
           )}
@@ -405,7 +408,15 @@ function LivePreboarding({ live, accent, tab: initialTab = 'checklist' }: { live
     const closed = me?.closed;
     return (
       <PreFrame tenant={me?.company ?? live.tenant} accent={accent} email={live.email} today={today} endsOn={today} ended={Boolean(closed)} tab={tab} onSignOut={live.onSignOut}>
-        {closed ? <OutcomeNote tenant={me!.company} outcome={closed.outcome} on={closed.on ? preDate(closed.on) : today} /> : <PreState state={live.state === 'error' ? 'error' : 'loading'} onRetry={live.onRetry} />}
+        {closed ? (
+          <>
+            <OutcomeNote tenant={me!.company} outcome={closed.outcome} on={closed.on ? preDate(closed.on) : today} />
+            {/* Founder 2 Nov 2026: the letters stay downloadable, read-only. */}
+            {me!.letters.length > 0 && <OfferLettersPanel state="signed" joiner={PRE_NOBODY} ctc={0} letters={me!.letters} readOnly onDownload={live.onDownload} />}
+          </>
+        ) : (
+          <PreState state={live.state === 'error' ? 'error' : 'loading'} onRetry={live.onRetry} />
+        )}
       </PreFrame>
     );
   }
@@ -487,6 +498,7 @@ function LivePreboarding({ live, accent, tab: initialTab = 'checklist' }: { live
           intro={`You join ${me.employer || me.company}${me.designation ? ` as ${me.designation}` : ''} on`}
           items={items}
           day={{ date: joiningOn, reportingTime: me.firstDay.reportingTime, location: me.location, address: me.firstDay.address, manager: me.manager, buddy: me.firstDay.buddy, batch: me.firstDay.batch }}
+          bring={me.firstDay.bring}
           onOpen={open}
           decline={<DeclineOffer company={me.company} onDecline={live.onDecline} />}
         />
@@ -1130,11 +1142,14 @@ export function OfferLettersPanel({
   onSignCode,
   onSign,
   defaultAccepting,
+  readOnly = false,
 }: {
   state: LetterSignState;
   joiner: Joiner;
   ctc: number;
   letters?: Letter[];
+  /** A closed joining: download only; a letter still waiting to be accepted no longer is. */
+  readOnly?: boolean;
   disclosureNeeded?: boolean;
   onDownload?: (l: Letter, which: 'letter' | 'acceptance') => Promise<unknown>;
   onSignCode?: (l: Letter) => Promise<unknown>;
@@ -1157,7 +1172,8 @@ export function OfferLettersPanel({
         )}
         {shown.length === 0 && <EmptyState title="No letters yet" description="HR issues your appointment letter here. We email you when it is ready." />}
         {shown.map((l) => {
-          const badge = l.status === 'superseded' ? { tone: 'neutral' as BadgeTone, text: 'Replaced by a correction' } : l.signature ? LETTER_BADGE[l.signature.status] : { tone: 'success' as BadgeTone, text: 'Issued' };
+          const sig = readOnly && l.signature?.status === 'open' ? 'cancelled' : l.signature?.status;
+          const badge = l.status === 'superseded' ? { tone: 'neutral' as BadgeTone, text: 'Replaced by a correction' } : sig ? LETTER_BADGE[sig] : { tone: 'success' as BadgeTone, text: 'Issued' };
           return (
             <Card key={l.id} title={l.title.split(': ')[0] ?? l.title} actions={<Badge tone={badge.tone}>{badge.text}</Badge>}>
               <div className="yx-ps-stack">
@@ -1178,7 +1194,7 @@ export function OfferLettersPanel({
                       Accepted copy
                     </Button>
                   )}
-                  {l.status === 'issued' && l.signature?.status === 'open' && (
+                  {!readOnly && l.status === 'issued' && l.signature?.status === 'open' && (
                     <Button variant="primary" icon={FileText} onClick={() => setAccepting(l)}>
                       Read and accept
                     </Button>

@@ -163,6 +163,8 @@ export interface SettingDef {
   guard?: string;
   /** The value is a comma list of any of `values` (none: empty), e.g. which fields are required. */
   multi?: true;
+  /** The value is short text HR writes (one thing a line), up to this many characters; `values` is empty. */
+  text?: { maxLength: number };
 }
 
 export interface SettingOverride {

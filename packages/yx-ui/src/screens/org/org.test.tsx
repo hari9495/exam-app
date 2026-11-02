@@ -394,6 +394,32 @@ describe('Company rules and access settings (P01 §4.6; YX-ORG-12/18)', () => {
     await waitFor(() => expect(onSave).toHaveBeenCalledWith({ key, scopeType: 'tenant', value: 'dateOfBirth,maritalStatus,personalPhone,addressLine1,city,stateCode' }));
   });
 
+  it('Joining day: what joiners bring is text HR writes; empty or too long is refused before sending; saved trimmed with a toast', async () => {
+    const key = 'joining.bring_on_day_one';
+    const def = SETTING_REGISTRY[key];
+    const draft = (value: string) => settingInput(key, def, { scopeType: 'tenant', scopeId: null, value, validFrom: null });
+    expect(draft('  \n ').errors[0]?.message).toBe('Write it, one thing a line');
+    expect(draft('x'.repeat(501)).errors[0]?.message).toBe('Keep it to 500 characters or fewer (now 501)');
+    expect(draft('x'.repeat(500)).input).toEqual({ key, scopeType: 'tenant', value: 'x'.repeat(500) });
+    expect(draft(' Two photos\r\nPAN card \n').input?.value).toBe('Two photos\nPAN card');
+    const onSave = ok();
+    render(<ToastProvider><CompanySettingsScreen {...base} onSave={onSave} /></ToastProvider>);
+    const block = screen.getByText('Joiners bring on their first day').closest('.yx-org__rule') as HTMLElement;
+    expect(within(block).getByText('Original PAN and Aadhaar (to be seen, not kept) · Two passport photos · Bank passbook or cancelled cheque')).toBeInTheDocument();
+    await userEvent.click(within(block).getByRole('button', { name: 'Change' }));
+    const dialog = await screen.findByRole('dialog');
+    const box = within(dialog).getByRole('textbox', { name: 'Joiners bring on their first day' });
+    expect(box).toHaveValue(def.default);
+    await userEvent.clear(box);
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect((await within(dialog).findAllByText('Write it, one thing a line')).length).toBeGreaterThan(0);
+    expect(onSave).not.toHaveBeenCalled();
+    await userEvent.type(box, 'Two passport photos{enter}Safety shoes');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ key, scopeType: 'tenant', value: 'Two passport photos\nSafety shoes' }));
+    expect(await within(screen.getByRole('region', { name: 'Notifications' })).findByText('Saved.')).toBeInTheDocument();
+  });
+
   it('Home page: net pay on the employee home is off to start; turning it on is a pick-one, saved for the company', async () => {
     const onSave = ok();
     render(<ToastProvider><CompanySettingsScreen {...base} section="access" heldGuards={[]} onSave={onSave} /></ToastProvider>);

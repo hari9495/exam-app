@@ -31,7 +31,7 @@ const ME: PortalMe = {
   letters: [LETTER],
   esignAccepted: false,
   tasks: [{ id: 't1', title: 'How things work here', dueOn: '2026-10-20', status: 'to_do' }],
-  firstDay: { reportingTime: '09:30', address: 'SIPCOT Phase II, Hosur, 635109', buddy: 'Faisal Khan', batch: null },
+  firstDay: { reportingTime: '09:30', address: 'SIPCOT Phase II, Hosur, 635109', buddy: 'Faisal Khan', batch: null, bring: 'Original PAN and Aadhaar (to be seen, not kept)\n\nTwo passport photos  ' },
   dateMoved: { from: '2026-10-12' },
 };
 const live = (over: Partial<LivePreboardingPortal> = {}): LivePreboardingPortal => ({
@@ -196,7 +196,7 @@ describe('T9-01 joining portal, live', () => {
   });
 
   it('a closed joining shows only its outcome, with sign out', () => {
-    const p = live({ me: { company: 'Kaveri Foods', name: 'Sneha Pillai', closed: { outcome: 'withdrawn', on: '2026-10-08' } } });
+    const p = live({ me: { company: 'Kaveri Foods', name: 'Sneha Pillai', closed: { outcome: 'withdrawn', on: '2026-10-08' }, letters: [] } });
     render(<PreboardingPortalScreen live={p} />);
     expect(screen.getByText('This offer has been withdrawn')).toBeInTheDocument();
     expect(screen.getByText(/withdrew the offer on 8 Oct 2026/)).toBeInTheDocument();
@@ -207,10 +207,47 @@ describe('T9-01 joining portal, live', () => {
   });
 
   it('declined and joined read as their own outcome', () => {
-    const { rerender } = render(<PreboardingPortalScreen live={live({ me: { company: 'Kaveri Foods', name: 'Sneha', closed: { outcome: 'reneged', on: '2026-10-08' } } })} />);
+    const { rerender } = render(<PreboardingPortalScreen live={live({ me: { company: 'Kaveri Foods', name: 'Sneha', closed: { outcome: 'reneged', on: '2026-10-08' }, letters: [] } })} />);
     expect(screen.getByText('You declined this offer')).toBeInTheDocument();
-    rerender(<PreboardingPortalScreen live={live({ me: { company: 'Kaveri Foods', name: 'Sneha', closed: { outcome: 'joined', on: '2026-10-19' } } })} />);
+    rerender(<PreboardingPortalScreen live={live({ me: { company: 'Kaveri Foods', name: 'Sneha', closed: { outcome: 'joined', on: '2026-10-19' }, letters: [] } })} />);
     expect(screen.getByText('Welcome to Kaveri Foods')).toBeInTheDocument();
+  });
+
+  it('a closed joining lists its letters to download, read-only: no accept, the open one is no longer needed', async () => {
+    window.location.hash = '';
+    const owd: Letter = { ...LETTER, id: 'l2', title: 'Offer withdrawal letter: Sneha Pillai', letterType: 'offer_withdrawal', referenceNo: 'KFPL/OWD/2026/000001', personSigns: false, signature: null };
+    const signed: Letter = { ...LETTER, id: 'l3', title: 'Offer letter: Sneha Pillai', signature: { status: 'signed', signedAt: '2026-10-02T05:00:00Z' } };
+    const p = live({ me: { company: 'Kaveri Foods', name: 'Sneha Pillai', closed: { outcome: 'withdrawn', on: '2026-10-08' }, letters: [owd, LETTER, signed] } });
+    render(<PreboardingPortalScreen live={p} />);
+    expect(screen.getByText('This offer has been withdrawn')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Read and accept' })).toBeNull();
+    expect(screen.getByText('No longer needed')).toBeInTheDocument();
+    expect(screen.queryByText('Waiting for you to accept')).toBeNull();
+    await ue.click(screen.getAllByRole('button', { name: 'Download PDF' })[0]);
+    expect(p.onDownload).toHaveBeenCalledWith(owd, 'letter');
+    await ue.click(screen.getByRole('button', { name: 'Accepted copy' }));
+    expect(p.onDownload).toHaveBeenCalledWith(signed, 'acceptance');
+  });
+
+  it('a closed joining whose download is refused says so; with no letters there is no letters list', async () => {
+    const p = live({ me: { company: 'Kaveri Foods', name: 'Sneha', closed: { outcome: 'joined', on: '2026-10-19' }, letters: [LETTER] }, onDownload: vi.fn().mockRejectedValue(new Error('No such letter.')) });
+    const { unmount } = render(<PreboardingPortalScreen live={p} />);
+    await ue.click(screen.getByRole('button', { name: 'Download PDF' }));
+    expect(await screen.findByText('No such letter.')).toBeInTheDocument();
+    unmount();
+    render(<PreboardingPortalScreen live={live({ me: { company: 'Kaveri Foods', name: 'Sneha', closed: { outcome: 'reneged', on: '2026-10-08' }, letters: [] } })} />);
+    expect(screen.queryByText('No letters yet')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Download PDF' })).toBeNull();
+  });
+
+  it('"Bring on day one" shows HR’s text one thing a line (blank lines dropped); no text, no card', () => {
+    window.location.hash = '';
+    const { unmount } = render(<PreboardingPortalScreen live={live()} />);
+    const card = screen.getByText('Bring on day one').closest('.yx-card') as HTMLElement;
+    expect(within(card).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Original PAN and Aadhaar (to be seen, not kept)', 'Two passport photos']);
+    unmount();
+    render(<PreboardingPortalScreen live={live({ me: { ...ME, firstDay: { ...ME.firstDay, bring: ' \n ' } } })} />);
+    expect(screen.queryByText('Bring on day one')).toBeNull();
   });
 
   it('loading, then "could not load" with Try again', async () => {

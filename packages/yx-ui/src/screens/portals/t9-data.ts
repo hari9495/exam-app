@@ -36,6 +36,8 @@ export const JOINER = {
   reportingTime: '09:30',
   buddy: 'Faisal Khan',
   batch: null as string | null,
+  /** "Bring on day one" as HR wrote it (Settings › Organisation › Joining day), one thing a line. */
+  bring: 'Original PAN and Aadhaar (to be seen, not kept)\nTwo passport photos\nBank passbook or cancelled cheque\nSafety shoes for the plant floor',
 };
 
 export const PRE_ITEMS: PreItem[] = [
@@ -252,4 +254,10 @@ export const EMERGENCY = { name: 'Sundaram Rajagopal', relation: 'Father', phone
 export const PRE_LETTERS = [
   { id: 'l-apt', title: 'Appointment letter: Meenakshi Sundaram', letterType: 'appointment', personId: 'p1', referenceNo: 'KF/HR/APT/2026/0187', verifyCode: 'KF7QX2M9PL', status: 'issued' as const, renderError: null, issuedAt: '2026-09-24T09:00:00Z', personSigns: true, acceptedAt: null, signature: { status: 'open' as const, signedAt: null }, supersededById: null },
   { id: 'l-offer', title: 'Offer letter: Meenakshi Sundaram', letterType: 'offer', personId: 'p1', referenceNo: 'KF/HR/OFR/2026/0112', verifyCode: 'KF3HT8W2RN', status: 'issued' as const, renderError: null, issuedAt: '2026-09-10T09:00:00Z', personSigns: true, acceptedAt: '2026-09-11T13:48:00Z', signature: { status: 'signed' as const, signedAt: '2026-09-11T13:48:00Z' }, supersededById: null },
+];
+/** A closed joining (offer withdrawn): the withdrawal letter, the accepted offer, and the appointment letter no longer to accept. */
+export const PRE_CLOSED_LETTERS = [
+  { id: 'l-owd', title: 'Offer withdrawal letter: Meenakshi Sundaram', letterType: 'offer_withdrawal', personId: 'p1', referenceNo: 'KF/HR/OWD/2026/0004', verifyCode: 'KF9WD4C2TX', status: 'issued' as const, renderError: null, issuedAt: '2026-10-08T06:30:00Z', personSigns: false, acceptedAt: null, signature: null, supersededById: null },
+  { ...PRE_LETTERS[0], signature: { status: 'cancelled' as const, signedAt: null } },
+  PRE_LETTERS[1],
 ];

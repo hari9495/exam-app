@@ -131,6 +131,16 @@ export const CompanyRules: S = {
   ),
 };
 
+/** Joining day (founder 2 Nov 2026): what joiners bring on day one, short text HR writes, one thing a line. */
+export const CompanyRulesBringOnDayOne: S = {
+  name: 'Company rules · joining day · what to bring (text)',
+  render: () => (
+    <Frame active="company-rules">
+      <CompanySettingsScreen section="organisation" {...settings} story={{ editing: 'joining.bring_on_day_one' }} />
+    </Frame>
+  ),
+};
+
 /** Group 2: manager access narrowed to direct reports. */
 export const AccessAndPrivacy: S = {
   render: () => (

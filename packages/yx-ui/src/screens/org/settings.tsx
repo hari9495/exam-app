@@ -4,6 +4,7 @@ import { Badge } from '../../components/display';
 import { Button } from '../../components/button';
 import { DatePicker } from '../../components/date';
 import { EmptyState, InlineAlert } from '../../components/feedback';
+import { TextArea } from '../../components/inputs';
 import { FormField, FormSection, type FormErrorItem, useSaveErrors } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { MenuItem } from '../../components/menu';
@@ -99,6 +100,8 @@ const VALUE_LABEL: Record<string, Record<string, string>> = {
 export const valueLabel = (key: string, value: unknown) => {
   const v = String(value);
   if (VALUE_LABEL[key]?.[v]) return VALUE_LABEL[key][v];
+  // A text setting (one thing a line) reads as one line.
+  if (v.includes('\n')) return v.split('\n').join(' · ');
   // A list (a multi setting): each part in words; an empty list is none.
   return v ? v.split(',').map((p) => VALUE_LABEL[key]?.[p] ?? p).join(', ') : 'None';
 };
@@ -121,7 +124,7 @@ export const SETTING_SECTIONS: Record<SettingsArea, SettingsSection[]> = {
     { title: 'Inter-entity transfer defaults', description: 'Applied to every move between legal entities (People › Restructure, and one person in Change action). HR can change them for one transfer.', keys: ['transfer.leave', 'transfer.service', 'transfer.code', 'transfer.salary'] },
     { title: 'Probation', description: 'Set for the company, then per entity, employment type or grade where they differ.', keys: ['probation.default_months', 'probation.max_total_months', 'probation.review_lead_days', 'probation.auto_confirm_after_days'] },
     { title: 'Fixed-term contracts', description: 'How long a fixed-term contract may run, counted from the joining day. Setting or extending an end past it is refused; make the person permanent instead. HR is reminded 30 and 7 days before the end; the company can also have the exit start by itself a week before it.', keys: ['contract.max_years', 'contract_end.action'] },
-    { title: 'Joining day', description: 'The time joiners report on their first day. Joiners see it in their joining checklist, with the place, their manager and their buddy.', keys: ['joining.reporting_time'] },
+    { title: 'Joining day', description: 'The time joiners report on their first day, and what they bring. Joiners see both in their joining checklist, with the place, their manager and their buddy.', keys: ['joining.reporting_time', 'joining.bring_on_day_one'] },
     { title: 'Attendance', description: 'Dated: a new value starts on the day you choose and earlier days keep the old one.', keys: ['attendance.mode', 'attendance.missing_punch_effect', 'attendance.factories_act'] },
     { title: 'Team pay access', description: 'A manager can ask to see the pay of their team, with a reason. Two different HR people approve; the access ends by itself. The approving HR person can change the length and who it covers on each request.', keys: ['pay_access.days', 'pay_access.scope'] },
     { title: 'Pay ranges', description: 'When a raise takes someone above the top of their grade’s pay range (set per grade in Structure). Warn lets the approver decide; Cap holds the new pay at the maximum; Block stops the change until it is lowered.', keys: ['pay.band.above_max'] },
@@ -176,11 +179,15 @@ interface Draft {
 export function settingInput(key: string, def: SettingDef, d: Draft): { input: SettingInput | null; errors: FormErrorItem[] } {
   const errors: FormErrorItem[] = [];
   if (d.scopeType !== 'tenant' && !d.scopeId) errors.push({ fieldId: 'set-scope-id', message: `Choose the ${SCOPE_LABEL[d.scopeType].toLowerCase()}` });
-  if (def.multi ? (d.value ?? '').split(',').some((p) => p && !def.values.includes(p)) : !d.value || !def.values.includes(d.value)) errors.push({ fieldId: 'set-value', message: 'Choose the value' });
+  const text = def.text ? (d.value ?? '').replace(/\r\n?/g, '\n').trim() : null;
+  if (def.text) {
+    if (!text) errors.push({ fieldId: 'set-value', message: 'Write it, one thing a line' });
+    else if (text.length > def.text.maxLength) errors.push({ fieldId: 'set-value', message: `Keep it to ${def.text.maxLength} characters or fewer (now ${text.length})` });
+  } else if (def.multi ? (d.value ?? '').split(',').some((p) => p && !def.values.includes(p)) : !d.value || !def.values.includes(d.value)) errors.push({ fieldId: 'set-value', message: 'Choose the value' });
   const from = d.validFrom ? dayKey(d.validFrom) : null;
   if (def.dated && !from) errors.push({ fieldId: 'set-from', message: 'Choose the date it applies from' });
   if (errors.length) return { input: null, errors };
-  return { input: { key, scopeType: d.scopeType, ...(d.scopeType === 'tenant' ? {} : { scopeId: d.scopeId! }), value: d.value ?? '', ...(def.dated ? { validFrom: from! } : {}) }, errors };
+  return { input: { key, scopeType: d.scopeType, ...(d.scopeType === 'tenant' ? {} : { scopeId: d.scopeId! }), value: text ?? d.value ?? '', ...(def.dated ? { validFrom: from! } : {}) }, errors };
 }
 
 /** Focuses a form field by its FormField id: the control itself, or the first control inside it. */
@@ -197,7 +204,7 @@ function SettingEditor({ settingKey, def, current, choices, today, tooEarly = fa
   // Only scopes with records to name (pay groups and people are set elsewhere).
   const scopes = def.scopes.filter((s) => s === 'tenant' || (choices[s]?.length ?? 0) > 0);
   // A multi setting starts from the company's current list (the starter value until one is set).
-  const [draft, setDraft] = useState<Draft>({ scopeType: scopes[0] ?? 'tenant', scopeId: null, value: def.multi ? current ?? def.default : null, validFrom: null });
+  const [draft, setDraft] = useState<Draft>({ scopeType: scopes[0] ?? 'tenant', scopeId: null, value: def.multi || def.text ? current ?? def.default : null, validFrom: null });
   const picked = (draft.value ?? '').split(',').filter(Boolean);
   const [dirty, setDirty] = useState(false);
   const { busy, error, run } = useRun();
@@ -240,8 +247,10 @@ function SettingEditor({ settingKey, def, current, choices, today, tooEarly = fa
       </FormSection>
       )}
       <FormSection title="Value">
-        <FormField id="set-value" label="New value" required error={errorOf('set-value')}>
-          {def.multi ? (
+        <FormField id="set-value" label="New value" required error={errorOf('set-value')} helper={def.text ? `One thing a line, up to ${def.text.maxLength} characters (${(draft.value ?? '').length} now).` : undefined}>
+          {def.text ? (
+            <TextArea value={draft.value ?? ''} onChange={(value) => set({ value })} rows={5} aria-label={def.label} />
+          ) : def.multi ? (
             def.values.map((v) => <Checkbox key={v} checked={picked.includes(v)} onChange={(c) => set({ value: def.values.filter((x) => (x === v ? c : picked.includes(x))).join(',') })} label={valueLabel(settingKey, v)} />)
           ) : isPickOne(def.values.length) ? (
             <Segment label={def.label} value={draft.value ?? ''} onChange={(value) => set({ value })} options={def.values.map((v) => ({ value: v, label: valueLabel(settingKey, v) }))} />
