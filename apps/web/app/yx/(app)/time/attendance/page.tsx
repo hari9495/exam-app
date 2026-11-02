@@ -32,7 +32,7 @@ function YxMyAttendanceInner() {
     onPunch: (kind, pin, opts) => write<PunchResult>('/me/punch', 'POST', { kind, ...(pin ?? {}), ...(opts?.wfh ? { wfh: true } : {}), ...(opts?.note ? { note: opts.note } : {}) }),
     // DeviceNotApproved: the card says "Request sent to HR · this computer"; a failure puts the button back.
     onAskDevice: () => write('/me/web-device', 'POST', undefined, true, 'Request sent to HR').catch((e: unknown) => {
-      toast({ tone: 'danger', title: e instanceof Error ? e.message : 'The request did not go. Try again.' });
+      toast({ tone: 'error', title: e instanceof Error ? e.message : 'The request did not go. Try again.' });
       throw e;
     }),
     onFix: (input) => write('/me/regularise', 'POST', input),
