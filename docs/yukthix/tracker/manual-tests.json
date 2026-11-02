@@ -10090,5 +10090,94 @@
       "Time · TIM-03 · My attendance"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-TIM-L-49",
+    "area": "Time · Devices and kiosks · Web clock-in rule (founder answers, 3 Nov 2026)",
+    "screen": "Turn the company rule on and off",
+    "url": "http://localhost:3000/yx/time/setup/devices",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635. Second: arjun@demo-org.test.",
+    "steps": [
+      "1. Open Time › Set-up › Devices & kiosks and click \"Web clock-in rule\".",
+      "2. Turn on \"Web clock-in only from an approved computer\".",
+      "3. As Arjun, open My attendance today on a computer HR has not approved.",
+      "4. As Lakshmi, turn the switch off again; as Arjun, reload."
+    ],
+    "expected": "Step 1: a dialog \"Web clock-in rule\" with the switch off and \"None. Every place follows the company rule.\" Step 2: toast \"Web clock-in now needs an approved computer.\" Step 3: the amber box \"This computer isn't approved for clock-in\" with \"Ask HR to approve\". Step 4: toast \"Any computer can be used for web clock-in.\"; Arjun's box is gone and Clock in works.",
+    "stories": [
+      "Time · TIM-14 · Devices and kiosks · Computers · web clock-in rule",
+      "Time · Extra · My attendance today · Blocked · device not approved"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-TIM-L-58",
+    "area": "Time · Devices and kiosks · Web clock-in rule (founder answers, 3 Nov 2026)",
+    "screen": "A place with its own rule",
+    "url": "http://localhost:3000/yx/time/setup/devices",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). The company rule on (MT-TIM-L-49 step 2). A Hosur plant employee (check the demo DB).",
+    "steps": [
+      "1. In the Web clock-in rule dialog click \"Set for this place\" without choosing a place.",
+      "2. Choose Hosur plant, choose \"Any computer\", click \"Set for this place\".",
+      "3. As the Hosur plant employee, open My attendance today on any computer.",
+      "4. As Lakshmi, open the place list again, then click \"Remove\" on Hosur plant."
+    ],
+    "expected": "Negative step 1: \"Choose a legal entity or location.\" under Place, which takes the focus; nothing saved. Step 2: toast \"Hosur plant: any computer for web clock-in.\"; Hosur plant is listed as Location · Any computer. Step 3: no amber box; Clock in works. Step 4: Hosur plant is not offered in the list while it has its own rule; after Remove, toast \"Hosur plant follows the company rule again.\" and the employee needs an approved computer again.",
+    "stories": [
+      "Time · TIM-14 · Devices and kiosks · Computers · web clock-in rule"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-TIM-L-59",
+    "area": "Time · Devices and kiosks · Web clock-in rule (founder answers, 3 Nov 2026)",
+    "screen": "Who may change the rule",
+    "url": "http://localhost:3000/yx/time/setup/devices",
+    "account": "panel@demo-org.test (Manager - Divya); arjun@demo-org.test (employee).",
+    "steps": [
+      "1. As Divya, open http://localhost:3000/yx/time/setup/devices.",
+      "2. As Arjun, open the same address."
+    ],
+    "expected": "Negative steps 1 and 2: the no-access page (devices are company set-up); no Web clock-in rule button. A crafted call to PUT /api/v1/time/devices/web-approval is refused (403), and a place of another company answers 404.",
+    "stories": [
+      "Time · TIM-14 · Devices and kiosks · Computers · web clock-in rule"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-TIM-L-60",
+    "area": "Time · Devices and kiosks · Tabs renamed (founder answers, 3 Nov 2026)",
+    "screen": "New device requests and Employee devices",
+    "url": "http://localhost:3000/yx/time/setup/devices",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635, then a phone-width window (about 390 wide).",
+    "steps": [
+      "1. Open Devices & kiosks and read the tabs.",
+      "2. Open New device requests and Employee devices.",
+      "3. Narrow the window to phone width."
+    ],
+    "expected": "Step 1: Kiosks, New device requests (with the count), Employee devices, Training, all on one row; no tab says \"phone\". Step 2: phones and computers are listed together (computers say \"Computer: …\" or \"Computer · …\"); the search box says \"Search name or device\"; with nothing to show: \"No new device requests\" / \"No approved devices yet\". Step 3: the short labels Requests and Devices.",
+    "stories": [
+      "Time · TIM-14 · Devices and kiosks · New device requests",
+      "Time · TIM-14 · Devices and kiosks · Employee devices"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-TIM-L-61",
+    "area": "Time · Devices and kiosks · Notification of a computer request (founder answers, 3 Nov 2026)",
+    "screen": "HR admins hear of a new computer request",
+    "url": "http://localhost:3000/yx/time/attendance?view=today",
+    "account": "arjun@demo-org.test on a computer not yet approved, with the company rule on. Then hr@demo-org.test (HR Admin - Lakshmi).",
+    "steps": [
+      "1. As Arjun, click \"Ask HR to approve\" on My attendance today, then reload and look at Arjun's bell.",
+      "2. As Lakshmi, open the bell.",
+      "3. Click the notice.",
+      "4. As Arjun, with the request still waiting, use the API again for the same computer (or another tab that still shows \"Ask HR to approve\"); as Lakshmi, open the bell."
+    ],
+    "expected": "Negative step 1: Arjun gets no notice about his own request. Step 2: one notice \"Arjun … asked to clock in on the web from a new computer (Chrome on Windows).\" (and the email \"A computer is waiting for approval\"). Step 3: it opens Devices & kiosks. Negative step 4: no second notice for the same request.",
+    "stories": [
+      "Time · TIM-14 · Devices and kiosks · Computers · new computer request"
+    ],
+    "note": "Positive and negative."
   }
 ]

@@ -12,13 +12,13 @@ live page cannot reach yet (the reason is given).
 
 | | live | feature not built | phone view | gap |
 |---|---|---|---|---|
-| Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 112 | 0 | 19 | 0 |
+| Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 113 | 0 | 19 | 0 |
 | Leave (TIM-17…25) | 48 | 0 | 11 | 0 |
 | Set-up (TIM-26…29, 31, 42) | 35 | 0 | 0 | 0 |
 | Rosters and shifts (TIM-05, 06, 08, 34, 35, 38…41) | 46 | 0 | 10 | 0 |
 | Overtime, periods, reports, timesheets (TIM-09, 11, 15, 16, 30, 37, 43) | 49 | 0 | 3 | 0 |
 | Field force (TIM-32, 33) | 7 | 0 | 9 | 0 |
-| **All 45 design groups (349 sub-pages counted)** | **297** | **0** | **52** | **0** |
+| **All 45 design groups (350 sub-pages counted)** | **298** | **0** | **52** | **0** |
 
 3 Nov 2026 (branch `feat/yukthix-flexi-split`): TIM-06 Flexi and Split made live; recounted by script over the story rows (same rule):
 Rosters 44 → 46 live, 2 → 0 not built; All 291 → 293 live, 4 → 2 not built (TIM-02/Attendance 1 and Set-up 1 left), 52 phone, 0 gaps.
@@ -59,6 +59,8 @@ live (Manager · team muster; Pre-approve overtime, filled in, pressed too early
 346 sub-pages, 290 live, 4 not built, 52 phone, 0 gaps; Attendance 103 → 108 live. Manual tests MT-TIM-L-31..34.
 
 2 Nov 2026 (branch `feat/yukthix-time-points-devices`): TIM-31 Multi (several check-in points) and Extra · today DeviceNotApproved (web clock-in from an approved computer) made live, plus two new TIM-14 stories (Computers · new computer request, Computers · remove a computer's approval), both live. Recounted by script (timecount3 over the story rows; the OT group's #### sections kept from the table): Attendance 109 → 112 live, 1 → 0 not built; Set-up 34 → 35 live, 1 → 0; all 349 sub-pages: 295 live, 2 not built (the two roster stories: flexi and split shifts, founder decision), 52 phone, 0 gaps. Manual tests MT-TIM-L-41..48.
+
+3 Nov 2026 (branch `feat/yukthix-devices-followups`, founder answers 1, 2 and 4 on computer approval): new TIM-14 story Computers · web clock-in rule, live (the company switch and places with their own rule); the TIM-14 tabs and stories renamed New device requests and Employee devices; HR admins notified of a computer request (not the person, not repeats). Recounted by script (timecount3): Attendance 112 → 113 live; all 350 sub-pages: 296 live, 2 not built (flexi and split shifts), 52 phone, 0 gaps. Manual tests MT-TIM-L-49 and 58..61 (renumbered from 50..53, which flexi and split used).
 
 Kit (24 stories) are shared parts, not pages; section E lists which live screens use them.
 
@@ -339,8 +341,8 @@ Live at /yx/kiosk (outside the app shell; set up with HR's one-time key). Small 
 | story (sub-page) | where it shows live |
 |---|---|
 | Kiosks · HR · kiosks and last seen | /yx/time/setup/devices, Kiosks tab: health (stale 15 min, offline 1 h), check-ins today, Register kiosk (the one-time set-up key stays on screen until Done), Reset kiosk key |
-| Binds · New phone requests | /yx/time/setup/devices, New phone requests tab: approve (the old phone is signed out in the same step) or reject with a reason |
-| Phones · Employee phones | /yx/time/setup/devices, Employee phones tab (inactive: not seen for 30 days) |
+| Binds · New device requests | /yx/time/setup/devices, New device requests tab (renamed 3 Nov 2026, founder answer 2): approve (the old phone is signed out in the same step) or reject with a reason |
+| Phones · Employee devices | /yx/time/setup/devices, Employee devices tab (renamed 3 Nov 2026; phones and computers; inactive: not seen for 30 days) |
 | SignOut · Remote sign-out | /yx/time/setup/devices → Sign out remotely / Sign out phone: the phone stops and every sign-in of the person ends |
 | SystemAdmin | /yx/time/setup/devices: the Entity column shows when the company has more than one legal entity (set-up is company-wide) |
 | Empty | /yx/time/setup/devices with no kiosks: "No kiosks registered" |
@@ -348,8 +350,9 @@ Live at /yx/kiosk (outside the app shell; set up with HR's one-time key). Small 
 | Training · sessions (new story, 30 Oct 2026) | /yx/time/setup/devices, Training tab (`TrainingTab`, kit parts only): sessions from 7 days back and all coming ones, When (date, start – end at the location), Location, Who ("Everyone at <location>" or the people), Marked present, Status (Upcoming / On now / Ended / Cancelled). GET /time/devices/training (leave.settings.manage) |
 | TrainingAdd · Training · add a session (new story) | same → Add training: title, location, room, date, start, end, Who (Segment: everyone at the location / chosen people, searched by name or code, GET training/people); pressed too early each field says what is missing and takes focus; POST /time/devices/training; toast "Training added · <title>" |
 | TrainingEdit · Training · change a session (new story) | same → Edit (upcoming only): the form from the session; PUT /time/devices/training/:id with the version seen (409 "Someone else changed this session" stays in the form); a started session is refused; audited before → after; toast |
-| ComputerRequest · Computers · new computer request (new story, 2 Nov 2026) | /yx/time/setup/devices, New phone requests tab: a computer asked for from My attendance today shows "Computer: Chrome on Windows"; Approve approves it at once (the person's phone and other computers stay as they are); Reject with a reason. Own computer: refused ("Another HR admin decides it") |
-| ComputerRemove · Computers · remove a computer's approval (new story) | /yx/time/setup/devices, Employee phones tab: "Computer · Edge on Windows" with Remove approval → confirm ("can't clock in from this computer any more and stays signed in") → POST /time/devices/phones/:id/sign-out (no sign-in ends); toast |
+| ComputerRequest · Computers · new computer request (new story, 2 Nov 2026) | /yx/time/setup/devices, New device requests tab: a computer asked for from My attendance today shows "Computer: Chrome on Windows"; Approve approves it at once (the person's phone and other computers stay as they are); Reject with a reason. Own computer: refused ("Another HR admin decides it"). HR admins get a notification (bell and email, type time.web_device.requested, link to this page) when a computer is asked for: the set-up holders who reach the person, else the company admins; never the person asking, not again for a repeat of the same request (founder answer 4, 3 Nov 2026) |
+| WebRule · Computers · web clock-in rule (new story, 3 Nov 2026) | /yx/time/setup/devices → Web clock-in rule (founder answer 1): the company switch "Web clock-in only from an approved computer" and the places with their own rule (legal entity or location, "Approved computer only" / "Any computer", Remove); Set for this place pressed with no place says "Choose a legal entity or location." and takes the focus; a place with its own rule is not offered again. PUT /time/devices/web-approval and POST web-approval/:id/remove (leave.settings.manage, company-wide; checked and audited by the settings service as a control change, org.setting.changed / removed); toasts |
+| ComputerRemove · Computers · remove a computer's approval (new story) | /yx/time/setup/devices, Employee devices tab: "Computer · Edge on Windows" with Remove approval → confirm ("can't clock in from this computer any more and stays signed in") → POST /time/devices/phones/:id/sign-out (no sign-in ends); toast |
 | TrainingCancel · Training · cancel a session (new story) | same → Cancel session (upcoming or on now): confirm ("the N already marked stay on record"), POST training/:id/cancel; an ended one is refused with the reason in the dialog; toast |
 | TrainingEmpty · Training · none yet (new story) | same tab with no sessions: "No training sessions" with Add training |
 
