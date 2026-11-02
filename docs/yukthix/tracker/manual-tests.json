@@ -7555,5 +7555,175 @@
       "TIM-26"
     ],
     "note": ""
+  },
+  {
+    "id": "MT-TIM-Q-01",
+    "area": "Time · Day card",
+    "screen": "My attendance · my punch note on the day card (positive)",
+    "url": "http://localhost:3000/yx/time/attendance?view=today",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
+    "steps": [
+      "On the clock card click \"Add note\", type \"Client call ran late\", click Save.",
+      "Clock in (or Clock out if you are already in).",
+      "Open /yx/time/attendance and click today on the calendar."
+    ],
+    "expected": "The day card lists the punch with \"Note: Client call ran late\" on its own line under it. Punches without a note show no note line.",
+    "stories": [
+      "TIM-03 · Day card › Employee · punch with a note"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-Q-02",
+    "area": "Time · Day card",
+    "screen": "Muster · a report's punch note (positive, manager)",
+    "url": "http://localhost:3000/yx/time/muster",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "Do MT-TIM-Q-01 first as Arjun.",
+      "Sign in as Divya, open the muster for this month.",
+      "Click Arjun's cell for today."
+    ],
+    "expected": "The day card shows the punch with \"Note: Client call ran late\" under it.",
+    "stories": [
+      "TIM-03 · Day card › Manager · punch with a note"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-Q-03",
+    "area": "Time · Day card",
+    "screen": "Muster · punch note for HR (positive)",
+    "url": "http://localhost:3000/yx/time/muster",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "Do MT-TIM-Q-01 first as Arjun.",
+      "Open the muster, find Arjun, click today's cell."
+    ],
+    "expected": "The day card shows the note under the punch.",
+    "stories": [
+      "TIM-03 · Day card › HR · punch with a note"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-Q-04",
+    "area": "Time · Day card",
+    "screen": "Punch note never shown out of scope (negative)",
+    "url": "http://localhost:3000/yx/time/muster",
+    "account": "kavya@demo-org.test (Manager - Kavya)",
+    "steps": [
+      "Do MT-TIM-Q-01 first as Arjun.",
+      "Sign in as Kavya (not Arjun's manager) and open the muster.",
+      "Look for Arjun; in the browser address bar open the API day card for Arjun only if you know his id (developer step)."
+    ],
+    "expected": "Arjun is not on Kavya's muster; the API answers 404 \"Not found\" and the note never appears.",
+    "stories": [
+      "TIM-03 · Day card › Manager · punch with a note"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-Q-05",
+    "area": "Time · Day card",
+    "screen": "Punch note: blank or too long refused (negative)",
+    "url": "http://localhost:3000/yx/time/attendance?view=today",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
+    "steps": [
+      "Click \"Add note\", type only spaces, click Save.",
+      "Type more than 200 characters."
+    ],
+    "expected": "A blank note is not saved (no note goes with the punch); the box stops at 200 characters. The day card shows no empty \"Note:\" line.",
+    "stories": [
+      "Extra · My attendance today",
+      "TIM-03 · Day card › Employee · punch with a note"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-Q-06",
+    "area": "Expenses · Claim",
+    "screen": "Send back for changes (positive, approver)",
+    "url": "http://localhost:3000/yx/expenses",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "As Arjun, create a claim \"Client visit\" with one meals bill of 300 and click \"Send for approval\".",
+      "Sign in as Divya, open the claim from Approvals (or /yx/expenses).",
+      "Click \"Send back\", type \"Add the restaurant name\", click \"Send back\"."
+    ],
+    "expected": "A toast \"Claim sent back to Arjun Kulkarni for changes\" shows for 5 seconds. The claim no longer waits for Divya. The Manager step shows \"Sent back\".",
+    "stories": [
+      "Platform · Inbox & requests › PLT-04 · Approvals · send back for changes",
+      "Expenses · Live · Claims"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-Q-07",
+    "area": "Expenses · Claim",
+    "screen": "Send back needs a reason (negative)",
+    "url": "http://localhost:3000/yx/expenses",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "Open a claim waiting for you, click \"Send back\".",
+      "Click \"Send back\" with the box empty, then with \"ab\"."
+    ],
+    "expected": "The button is never greyed out; it shows \"Enter a reason of at least 3 characters.\" under the box and nothing is sent. From the approvals inbox, \"ab\" is refused with \"Say what the employee should change.\"",
+    "stories": [
+      "Platform · Inbox & requests › PLT-04 · Approvals · send back for changes",
+      "Expenses · Live · Claims"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-Q-08",
+    "area": "Expenses · Claim",
+    "screen": "Change and send again (positive, employee)",
+    "url": "http://localhost:3000/yx/expenses",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
+    "steps": [
+      "Do MT-TIM-Q-06 first.",
+      "Open the claim: read \"Approver's note: Add the restaurant name\".",
+      "Change the bill (add the restaurant name), click \"Send for approval\"."
+    ],
+    "expected": "The bell says the claim was \"sent back for changes\" (not \"not approved\"). After sending: a toast \"Claim sent again. Approval starts over.\" and the Manager step is Waiting again (the whole route starts over). The audit log shows expense.claim.sent_back and expense.claim.resent.",
+    "stories": [
+      "Platform · Inbox & requests › PLT-04 · Approvals · send back for changes",
+      "Expenses · Live · Claims"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-Q-09",
+    "area": "Expenses · Claim",
+    "screen": "Only the approver whose turn it is may send back (negative)",
+    "url": "http://localhost:3000/yx/expenses",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "With a claim of Arjun waiting for Divya, open its link as Lakshmi (HR) or as another employee."
+    ],
+    "expected": "No \"Send back\" button; if the API is called directly it answers 403 \"This claim is not waiting for you.\" (or 404 for someone who cannot see the claim). The claim stays waiting for Divya.",
+    "stories": [
+      "Platform · Inbox & requests › PLT-04 · Approvals · send back for changes",
+      "Expenses · Live · Claims"
+    ],
+    "note": ""
+  },
+  {
+    "id": "MT-TIM-Q-10",
+    "area": "Expenses · Claim",
+    "screen": "Sending again still checks every rule (negative)",
+    "url": "http://localhost:3000/yx/expenses",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
+    "steps": [
+      "Do MT-TIM-Q-06 first.",
+      "Remove every bill from the claim and click \"Send for approval\"."
+    ],
+    "expected": "The button is not greyed out; the claim is not sent and the page says \"Add at least one bill.\" No toast shows. The claim stays \"Sent back to you\".",
+    "stories": [
+      "Platform · Inbox & requests › PLT-04 · Approvals · send back for changes",
+      "Expenses · Live · Claims"
+    ],
+    "note": ""
   }
 ]

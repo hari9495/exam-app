@@ -12,13 +12,13 @@ live page cannot reach yet (the reason is given).
 
 | | live | feature not built | phone view | gap |
 |---|---|---|---|---|
-| Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 96 | 4 | 19 | 0 |
+| Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 99 | 4 | 19 | 0 |
 | Leave (TIM-17…25) | 48 | 0 | 11 | 0 |
 | Set-up (TIM-26…29, 31, 42) | 29 | 6 | 0 | 0 |
 | Rosters and shifts (TIM-05, 06, 08, 34, 35, 38…41) | 44 | 2 | 10 | 0 |
 | Overtime, periods, reports, timesheets (TIM-09, 11, 15, 16, 30, 37, 43) | 49 | 0 | 3 | 0 |
 | Field force (TIM-32, 33) | 7 | 0 | 9 | 0 |
-| **All 45 design groups (337 sub-pages counted)** | **273** | **12** | **52** | **0** |
+| **All 45 design groups (340 sub-pages counted)** | **276** | **12** | **52** | **0** |
 
 Counted from the stories and the rows below by script (29 Oct 2026, after rosters/devices/field, the roster fixes and founder decisions 1-7 were merged into the test app). Section counts further down may be older; this table is the current one.
 Recounted by script on 30 Oct 2026 (time small items: TIM-13 Training, Leave, UnknownCode and the new TrainingNone story live; TIM-26 Clone and
@@ -37,6 +37,10 @@ TrainingCancel / TrainingEmpty, TIM-19 SendBack and SentBack. Extra · today Wit
 found Set-up at 29 live / 6 not built (the table had 27 / 8), so the table now matches the rows: 337 sub-pages, 273 live,
 12 not built, 52 phone, 0 gaps. Outside Time, new stories also live: SEC-01 "Sign in · access paused for block leave" and
 PLT-04 "Approvals · send back for changes".
+
+2 Nov 2026 (branch `feat/yukthix-time-q34`, follow-up items 3 and 4): three new TIM-03 stories, all live (Note, NoteMgr,
+NoteHr · punch with a note): Attendance 96 → 99 live, all 337 → 340 sub-pages, 273 → 276 live. Expense send back has no
+new story (the claim page and PLT-04 SendBack already drew it).
 
 Kit (24 stories) are shared parts, not pages; section E lists which live screens use them.
 
@@ -142,6 +146,13 @@ Later on 29 Oct ("both OK", then "OK"): the Ledger and LOP month picker stays in
 the shared approvals-engine "send back" decision, as its own small task; (4) the employee sees their punch note on the
 day card: a small design addition first, then live.
 
+### Follow-up items 3 and 4 (built 2 Nov 2026, branch feat/yukthix-time-q34)
+
+| item | where it shows live | rules |
+|---|---|---|
+| (4) Punch note on the day card | TIM-03 Note, NoteMgr, NoteHr (rows below) | The note comes with the day card (GET /time/people/:id/days/:on, scoped by `mustSee`: self, the manager, `attendance.view` in scope); no new route. Stored once with the punch, never changed |
+| (3) Expense claims: Send back for changes | /yx/expenses/claims/:id (approver: Send back → "What should change"; employee: the note, the step shows "Sent back", Send for approval sends it again) and the approvals inbox (Send back) | The approvals engine's own `send_back` decision (no more reject plus a flag; column `send_back_pending` dropped by migration 20261311200000_expense_send_back_engine). Reason required, at least 3 characters (the expense rule, also from the inbox). Only the holder of the open task (others 403 / 404). Resend = submit again: every check again, a new request, the whole route from the manager. Audit like leave: `workflow.request.sent_back`, `expense.claim.sent_back` (reason), `expense.claim.resent` (previous and new request). The employee is told "sent back for changes", no longer "not approved". Toasts: "Claim sent back to <name> for changes", "Claim sent again. Approval starts over." No setting: a claim could always be sent back (leave has `leave.send_back`) |
+
 ## Founder answers, 30 Oct 2026 (Time follow-ups, "all ok")
 (1) "Clock in as WFH" on by default, HR can turn it off; (2) check-in opens any time by default, a company may set a
 limit; (3) a person paused for block leave sees "Your access is paused for block leave until <date>", not "deactivated";
@@ -209,6 +220,9 @@ Question: an HR "open again" for a month HR froze exists in the API (POST /time/
 | Late · Manager · late day | /yx/time/muster (manager) → a late day |
 | Overtime · HR · overtime day | /yx/time/muster → a day with overtime: "N h · approved / pending approval / not claimed yet" |
 | PendingOt · Manager · pending overtime | /yx/time/muster (the approver) → a day with a pending claim: Approve overtime / Reject (reason) / Give comp-off (weekly off or holiday) |
+| Note · Employee · punch with a note | /yx/time/attendance → a day: a punch's note shows under it ("Note: …"); also today's punch list |
+| NoteMgr · Manager · punch with a note | /yx/time/muster (manager) → a report's day: the note under the punch |
+| NoteHr · HR · punch with a note | /yx/time/muster (attendance.view) → a day in scope: the note under the punch. Anyone who may not see the day gets 404, so never the note |
 | HrFix · HR · resolve missing punch | /yx/time/muster (leave.approve) → a past missing day → Resolve with reason. Today is read only; a frozen or locked month says to record a correction |
 | Phone | phone view, mobile app not built |
 | PhoneOd · Phone · on duty | phone view, mobile app not built |
