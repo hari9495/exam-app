@@ -25,6 +25,20 @@ const KEYS = ['lifecycle.onboarding.view', 'lifecycle.onboarding.manage', 'lifec
 const asDate = (d: string) => new Date(`${d}T00:00:00Z`);
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
+/**
+ * Founder 2 Nov 2026: when a joining closes (joined, withdrawn, declined, cancelled) every still-open e-sign request of
+ * the person is cancelled in the same transaction, one audit row per letter, so no pending acceptance hangs around.
+ * Signed and declined requests stay as they are.
+ */
+export async function cancelOpenSignatures(tx: Tx, c: CompanyContext, personId: string, preboardingId: string, because: string) {
+  const org = c.organizationId;
+  const open = await tx.signatureRequest.findMany({ where: { organizationId: org, personId, status: 'open' }, select: { id: true, letterIssueId: true } });
+  if (!open.length) return 0;
+  await tx.signatureRequest.updateMany({ where: { organizationId: org, id: { in: open.map((s) => s.id) }, status: 'open' }, data: { status: 'cancelled' } });
+  for (const s of open) await audit(tx, c, 'letter.signature.cancelled', 'letter_issue', s.letterIssueId, { signatureRequestId: s.id, preboardingId, because });
+  return open.length;
+}
+
 @Injectable()
 export class JoiningService {
   constructor(
@@ -155,6 +169,7 @@ export class JoiningService {
       await tx.preboarding.update({ where: { id }, data: { status: 'joined', employmentId: hired.employmentId, joinedAt: new Date(), identityAttestedBy: c.userId ?? null, identityAttestedAt: new Date(), version: { increment: 1 } } });
       await tx.personRole.updateMany({ where: { organizationId: org, personId: p.id, roleType: 'preboarder', sourceId: id, endOn: null }, data: { endOn: asDate(todayIst()) } });
       await tx.preboardingPortalSession.updateMany({ where: { organizationId: org, preboardingId: id, endedAt: null }, data: { endedAt: new Date() } });
+      await cancelOpenSignatures(tx, c, p.id, id, 'joined');
       // Tasks for "the joiner" now reach their own login, if they have one.
       if (dto.userId) {
         const j = await tx.journey.findFirst({ where: { organizationId: org, subjectType: 'preboarding', subjectId: id } });
@@ -220,7 +235,7 @@ export class JoiningService {
     await tx.bgvCheck.updateMany({ where: { organizationId: org, preboardingId: id, status: { in: ['requested', 'in_progress'] } }, data: { status: 'cancelled', note: 'The joiner did not join', version: { increment: 1 } } });
     const pending = await tx.letterIssue.findMany({ where: { organizationId: org, personId: pb.personId, status: { in: ['pending_approval', 'rendering', 'awaiting_signature'] } }, select: { id: true, wfRequestId: true } });
     await tx.letterIssue.updateMany({ where: { organizationId: org, id: { in: pending.map((l) => l.id) } }, data: { status: 'withdrawn' } });
-    await tx.signatureRequest.updateMany({ where: { organizationId: org, personId: pb.personId, status: 'open' }, data: { status: 'cancelled' } });
+    await cancelOpenSignatures(tx, c, pb.personId, id, outcome);
     if (pb.offerId) await tx.offer.updateMany({ where: { organizationId: org, id: pb.offerId }, data: { status: outcome === 'withdrawn' ? 'withdrawn' : 'reneged' } });
     await audit(tx, c, 'preboarding.cancelled', 'preboarding', id, { outcome, offerId: pb.offerId, deskRequests: tickets.length, letters: pending.length, withdrawalLetter: letter });
     await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'preboarding.cancelled', payload: { preboardingId: id, outcome } } });

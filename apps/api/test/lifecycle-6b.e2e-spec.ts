@@ -419,7 +419,19 @@ describe('Lifecycle batch 6b', () => {
     await api('hr', 'post', `/lifecycle/joiners/${ids.joiner}/postpone`).send({ joiningOn: today, reason: 'Joins early', version: pb.version }).expect(200);
     const now = (await api('hr', 'get', `/lifecycle/joiners/${ids.joiner}`).expect(200)).body;
     await api('hr', 'post', `/lifecycle/joiners/${ids.joiner}/join`).send({ identityAttested: false, status: 'probation', version: now.version }).expect(400);
+    // The correction is still waiting for Kavya's acceptance; the first letter she accepted.
+    const srsOf = () => inA((tx) => tx.signatureRequest.findMany({ where: { personId: row.personId } }));
+    const waiting = (await srsOf()).filter((s) => s.status === 'open');
+    expect(waiting.length).toBeGreaterThan(0);
     const done = (await api('hr', 'post', `/lifecycle/joiners/${ids.joiner}/join`).send({ identityAttested: true, status: 'probation', version: now.version }).expect(200)).body;
+    // Founder 2 Nov 2026: joining cancels every still-open e-sign request in the same step, audited; a signed one stays signed.
+    const srs = await srsOf();
+    expect(srs.filter((s) => s.status === 'open')).toEqual([]);
+    expect(srs.find((s) => s.letterIssueId === ids.letter)?.status).toBe('signed');
+    expect(srs.filter((s) => waiting.some((w) => w.id === s.id)).map((s) => s.status)).toEqual(waiting.map(() => 'cancelled'));
+    const cancelAudit = await inA((tx) => tx.auditLog.findMany({ where: { action: 'letter.signature.cancelled', entityId: { in: waiting.map((w) => w.letterIssueId) } } }));
+    expect(cancelAudit).toHaveLength(waiting.length);
+    expect(JSON.parse(cancelAudit[0].metadataJson!)).toMatchObject({ preboardingId: ids.joiner, because: 'joined' });
     expect(done.changeRequests.sort()).toEqual(['aadhaar', 'bank_salary', 'legal_name', 'pan']);
     const reqs = await inA((tx) => tx.employeeProfileRequest.findMany({ where: { employeeId: done.employeeId } }));
     expect(reqs.every((r) => r.status === 'pending')).toBe(true);
@@ -694,5 +706,50 @@ describe('Lifecycle batch 6b', () => {
     await api('adminB', 'post', `/letters/templates/${tplB}/activate`).expect(200);
     await api('hr', 'post', '/letters/preview').send({ letterType: 'appointment', personId: row.personId, templateId: tplB }).expect(400);
     await api('hr', 'post', '/letters/issue').send({ letterType: 'appointment', personId: row.personId, templateId: tplB }).expect(400);
+  });
+
+  it('a joining closed by HR cancels that joiner’s open e-sign requests (audited); another joiner’s and another company’s stay open', async () => {
+    const inB = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, fn);
+    // An open request in company B (its active appointment template from the test above).
+    const srB = await inB(async (tx) => {
+      const o = { organizationId: org.B.id };
+      const tpl = await tx.letterTemplate.findFirstOrThrow({ where: { letterType: 'appointment' } });
+      const le = await tx.legalEntity.create({ data: { ...o, name: 'B Foods Pvt Ltd', shortName: `LB${run.slice(0, 3).toUpperCase()}` } });
+      const p = await tx.person.create({ data: { ...o, givenName: 'Bina', familyName: run } });
+      const l = await tx.letterIssue.create({ data: { ...o, templateId: tpl.id, templateVersion: 1, letterType: 'appointment', title: 'Appointment', personId: p.id, legalEntityId: le.id, dataEnc: 'x', status: 'pending_approval', personSigns: true } });
+      return tx.signatureRequest.create({ data: { ...o, letterIssueId: l.id, personId: p.id, status: 'open' } });
+    });
+    // Two joiners in A, each with a letter waiting for acceptance.
+    const openFor = async (given: string) => {
+      const j = await addJoiner(given, `${given.toLowerCase()}-${run}@mail.test`);
+      const pb = (await api('hr', 'get', `/lifecycle/joiners/${j.id}`).expect(200)).body;
+      const sr = await inA(async (tx) => {
+        const l = await tx.letterIssue.create({ data: { organizationId: org.A.id, templateId: ids.tpl_appointment, templateVersion: 1, letterType: 'appointment', title: `Appointment: ${given}`, personId: pb.personId, legalEntityId: ids.entity, dataEnc: 'x', status: 'pending_approval', personSigns: true } });
+        return tx.signatureRequest.create({ data: { organizationId: org.A.id, letterIssueId: l.id, personId: pb.personId, status: 'open' } });
+      });
+      return { j, pb, sr };
+    };
+    const zoya = await openFor('Zoya');
+    const yash = await openFor('Yash');
+    await markSteppedUp(tenantPrisma, token.hr);
+    await api('hr', 'post', `/lifecycle/joiners/${zoya.j.id}/cancel`).send({ outcome: 'reneged', reason: 'Took another offer', version: zoya.pb.version }).expect(200);
+    const status = (id: string, inX = inA) => inX((tx) => tx.signatureRequest.findFirstOrThrow({ where: { id } })).then((s) => s.status);
+    expect(await status(zoya.sr.id)).toBe('cancelled');
+    expect(await status(yash.sr.id)).toBe('open');
+    expect(await status(srB.id, inB)).toBe('open');
+    const a = await inA((tx) => tx.auditLog.findMany({ where: { action: 'letter.signature.cancelled', entityId: zoya.sr.letterIssueId } }));
+    expect(a).toHaveLength(1);
+    expect(JSON.parse(a[0].metadataJson!)).toEqual({ signatureRequestId: zoya.sr.id, preboardingId: zoya.j.id, because: 'reneged' });
+    // A repeat of the close is refused and changes nothing more (no second audit row).
+    await api('hr', 'post', `/lifecycle/joiners/${zoya.j.id}/cancel`).send({ outcome: 'reneged', reason: 'Took another offer', version: zoya.pb.version }).expect(409);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'letter.signature.cancelled', entityId: zoya.sr.letterIssueId } }))).toBe(1);
+    // The joiner's own decline in the portal closes Yash the same way.
+    await noCooldown();
+    const t = await signIn(`yash-${run}@mail.test`);
+    await portal('post', '/decline', t).send({ reason: 'Accepted another offer' }).expect(200);
+    expect(await status(yash.sr.id)).toBe('cancelled');
+    expect(await status(srB.id, inB)).toBe('open');
+    // Nothing left to accept: the code for the cancelled letter is refused (the joining is closed).
+    expect((await portal('post', `/letters/${yash.sr.letterIssueId}/sign/code`, t).expect(409)).body.code).toBe('PORTAL_CLOSED');
   });
 });
