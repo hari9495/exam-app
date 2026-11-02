@@ -519,6 +519,23 @@ export class PipCheckinDto {
   @IsString()
   @Length(3, 2000)
   note!: string;
+
+  /** PRF-12: the manager's rating of progress (the employee's note has none). */
+  @IsOptional()
+  @IsIn(['on_track', 'some_progress', 'no_progress'])
+  rating?: 'on_track' | 'some_progress' | 'no_progress' | null;
+}
+
+/** PRF-12: HR approves a proposed plan or sends it back with a reason. */
+export class PipDecideDto {
+  @IsIn(['approve', 'send_back'])
+  decision!: 'approve' | 'send_back';
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(1000)
+  reason?: string | null;
 }
 
 export class PipOutcomeDto {

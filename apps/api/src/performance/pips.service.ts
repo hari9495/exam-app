@@ -11,7 +11,7 @@ import { holdersOf } from '../time/time-core';
 import { LettersService } from '../documents/letters/letters.service';
 import { ExitsService } from '../lifecycle/exits.service';
 import { checkinDates, extensionProblem, isMissed, onLeave, pausedEnd, planProblem, type Span } from './pip-rules';
-import type { PipCheckinDto, PipExitDto, PipOutcomeDto, PipProposeDto } from './review-dto';
+import type { PipCheckinDto, PipDecideDto, PipExitDto, PipOutcomeDto, PipProposeDto } from './review-dto';
 
 // Performance batch PM8 (M06-BUILD-DESIGN §13; PM-8.01 … 8.03): performance improvement plans.
 //   propose     the manager (or the chain above) proposes for a report: reason, expectations with measures, support,
@@ -157,7 +157,11 @@ export class PerformancePipsService implements OnModuleInit {
       letterId: p.letterId,
       exitCaseId: a.hr ? p.exitCaseId : null,
       goals: goals.map((g) => ({ id: g.id, text: g.text, measure: g.measure, status: g.status })),
-      checkins: checkins.map((x) => ({ id: x.id, dueOn: iso(x.dueOn), heldOn: x.heldOn ? iso(x.heldOn) : null, managerNote: x.managerNote, employeeNote: x.employeeNote, status: x.status })),
+      checkins: checkins.map((x) => ({ id: x.id, dueOn: iso(x.dueOn), heldOn: x.heldOn ? iso(x.heldOn) : null, managerNote: x.managerNote, employeeNote: x.employeeNote, rating: x.rating, status: x.status })),
+      // PRF-12: the approval route (proposed, HR, the employee's acknowledgement) and whether I decide the HR step.
+      approval: await this.approval(tx, org, v, p, people),
+      proposedOn: iso(p.createdAt),
+      extendDays: Number(await settingFor(tx, c, 'perf.pip.extend_days', { legalEntityId: '' })),
       // §15.3: HR only, and only that there is something to check with the case owner.
       warning: a.hr && (live || p.status === 'proposed') ? await this.blocked(tx, org, [p.employeeId, p.managerEmployeeId], today) : false,
       role: a.own ? 'employee' : lead ? 'manager' : 'hr',
@@ -172,6 +176,41 @@ export class PerformancePipsService implements OnModuleInit {
       },
       version: p.version,
     };
+  }
+
+  /** PRF-12: who proposed it, HR's decision (from the approval request) and the employee's acknowledgement. */
+  private async approval(tx: Tx, org: string, v: Viewer, p: Pip, people: Map<string, string>) {
+    const req = p.wfRequestId ? await tx.wfRequest.findFirst({ where: { organizationId: org, id: p.wfRequestId } }) : null;
+    const tasks = req ? await tx.wfTask.findMany({ where: { organizationId: org, requestId: req.id }, orderBy: { createdAt: 'asc' } }) : [];
+    const decision = req ? await tx.wfAction.findFirst({ where: { organizationId: org, requestId: req.id, action: { in: ['approved', 'self_approved', 'rejected', 'auto_approved', 'auto_rejected'] } }, orderBy: { createdAt: 'desc' } }) : null;
+    const users = await tx.user.findMany({ where: { organizationId: org, id: { in: [...tasks.map((t) => t.assigneeUserId), decision?.actorUserId].filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } });
+    const name = (id: string | null | undefined) => users.find((u) => u.id === id)?.name ?? undefined;
+    const mine = !v.actingForOther && tasks.some((t) => t.status === 'open' && (t.assigneeUserId === v.userId || t.onBehalfOfUserId === v.userId));
+    const live = (LIVE as readonly string[]).includes(p.status) || ['met', 'not_met'].includes(p.status);
+    const hr = p.status === 'proposed' ? { status: 'current', approver: tasks.map((t) => name(t.assigneeUserId)).filter(Boolean).slice(0, 3).join(', ') || undefined } : p.status === 'declined' ? { status: 'rejected', approver: name(decision?.actorUserId), at: decision?.createdAt.toISOString(), comment: decision?.reason ?? undefined } : { status: 'done', approver: name(decision?.actorUserId), at: (decision?.createdAt ?? req?.decidedAt)?.toISOString(), comment: decision?.reason ?? undefined };
+    return {
+      steps: [
+        { id: 'proposed', label: 'Proposed', status: 'done', approver: people.get(p.managerEmployeeId) ?? undefined, at: p.createdAt.toISOString() },
+        { id: 'hr', label: 'HR approval', ...hr },
+        { id: 'ack', label: 'Employee acknowledgement', status: p.acknowledgedAt ? 'done' : live && p.status !== 'met' && p.status !== 'not_met' ? 'current' : 'pending', approver: people.get(p.employeeId) ?? undefined, at: p.acknowledgedAt?.toISOString() },
+      ],
+      canDecide: p.status === 'proposed' && mine,
+    };
+  }
+
+  /** PRF-12: HR approves (the plan starts) or sends it back (declined, with a reason) from the plan itself. */
+  async decide(ctx: TenantContext, user: ScopeUser, id: string, dto: PipDecideDto) {
+    const v = await this.viewer(user);
+    const taskId = await this.run(ctx, async (tx, c) => {
+      const { p } = await this.pipOr404(tx, c, v, id);
+      if (p.status !== 'proposed' || !p.wfRequestId) throw new ConflictException('This plan is not waiting for approval.');
+      const t = await tx.wfTask.findFirst({ where: { organizationId: c.organizationId, requestId: p.wfRequestId, status: 'open', OR: [{ assigneeUserId: v.userId! }, { onBehalfOfUserId: v.userId! }] } });
+      if (!t || v.actingForOther) throw new ForbiddenException('Only HR who were asked to approve this plan decide it.');
+      if (dto.decision === 'send_back' && !dto.reason?.trim()) throw new BadRequestException('Say why you are sending it back.');
+      return t.id;
+    });
+    await this.engine.decide({ ...ctx, organizationId: ctx.organizationId! }, v.userId!, taskId, dto.decision === 'approve' ? 'approve' : 'reject', dto.reason?.trim() || null);
+    return this.get(ctx, user, id);
   }
 
   // ------------------------------------------------------------------------------------------ list and read
@@ -324,7 +363,7 @@ export class PerformancePipsService implements OnModuleInit {
       if (a.manager || a.chain) {
         if (x.status === 'held') throw new ConflictException('This check-in is already recorded.');
         if (iso(x.dueOn) > addDays(today, 7)) throw new ConflictException('Record a check-in when it is near: at most a week before it is due.');
-        await tx.pipCheckin.update({ where: { id: x.id }, data: { status: 'held', heldOn: asDate(today), managerNote: dto.note } });
+        await tx.pipCheckin.update({ where: { id: x.id }, data: { status: 'held', heldOn: asDate(today), managerNote: dto.note, rating: dto.rating ?? null } });
       } else if (a.own) {
         if (x.status !== 'held') throw new ConflictException('Add your note after the check-in is held.');
         await tx.pipCheckin.update({ where: { id: x.id }, data: { employeeNote: dto.note } });

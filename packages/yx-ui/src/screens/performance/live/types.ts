@@ -635,7 +635,11 @@ export interface Pip {
   letterId: string | null;
   exitCaseId: string | null;
   goals: { id: string; text: string; measure: string; status: string }[];
-  checkins: { id: string; dueOn: string; heldOn: string | null; managerNote: string | null; employeeNote: string | null; status: 'due' | 'held' | 'missed' | 'cancelled' }[];
+  checkins: { id: string; dueOn: string; heldOn: string | null; managerNote: string | null; employeeNote: string | null; rating?: 'on_track' | 'some_progress' | 'no_progress' | null; status: 'due' | 'held' | 'missed' | 'cancelled' }[];
+  /** PRF-12: proposed, HR's decision, the acknowledgement; whether the viewer decides the HR step. */
+  approval?: { steps: { id: string; label: string; status: 'done' | 'current' | 'pending' | 'rejected'; approver?: string; at?: string; comment?: string }[]; canDecide: boolean };
+  /** perf.pip.extend_days */
+  extendDays?: number;
   warning: boolean;
   role: 'employee' | 'manager' | 'hr';
   can: { acknowledge: boolean; checkin: boolean; employeeNote: boolean; outcome: boolean; extend: boolean; letter: boolean; startExit: boolean };

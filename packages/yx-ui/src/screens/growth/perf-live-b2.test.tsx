@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { OneOnOneScreen, QuickFeedbackScreen, type LiveOneOnOnes, type LiveQuickFeedback } from './perf-people';
-import { ONE_ON_ONES, PEOPLE, RECEIVED, REQUESTS } from './perf-data-2';
+import { OneOnOneScreen, PipRecordScreen, QuickFeedbackScreen, type LiveOneOnOnes, type LivePip, type LiveQuickFeedback } from './perf-people';
+import { ONE_ON_ONES, PEOPLE, PIP, PIP_PROPOSED, PIP_TO_ACK, RECEIVED, REQUESTS } from './perf-data-2';
 
 // The designed Performance screens with `live` (builder 2): every action calls the app, pressed too early shows a
 // field error and calls nothing (positive and negative).
@@ -123,5 +123,67 @@ describe('PRF-08 Quick feedback, live', () => {
     fireEvent.click(within(sheet).getByRole('button', { name: 'Send requests' }));
     expect(within(sheet).getByText('Choose at least one colleague to ask.')).toBeInTheDocument();
     expect(live.onAsk).not.toHaveBeenCalled();
+  });
+});
+
+describe('PRF-12 PIP record, live', () => {
+  const pipLive = (over: Partial<LivePip> = {}): LivePip => ({
+    today: new Date(2026, 6, 20),
+    can: { decide: false, acknowledge: false, checkin: false, employeeNote: false, outcome: false, letter: false, startExit: false },
+    extendDays: 30,
+    askHrHref: '/yx/desk/help',
+    onDecide: ok(),
+    onAcknowledge: ok(),
+    onCheckin: ok(),
+    onEmployeeNote: ok(),
+    onOutcome: ok(),
+    onLetter: ok(),
+    onStartExit: ok(),
+    ...over,
+  });
+
+  it('HR approves a proposed plan; sending back needs a reason', async () => {
+    const live = pipLive({ can: { ...pipLive().can, decide: true } });
+    render(<PipRecordScreen persona="hr" pip={PIP_PROPOSED} live={live} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Send back' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Send back' }));
+    expect(await within(dialog).findByText('Say why you are sending it back.')).toBeInTheDocument();
+    expect(live.onDecide).not.toHaveBeenCalled();
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'Add a measure to goal 1.' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Send back' }));
+    await waitFor(() => expect(live.onDecide).toHaveBeenCalledWith('send_back', 'Add a measure to goal 1.'));
+  });
+
+  it('the employee acknowledges with a comment; others see no approve button', async () => {
+    const live = pipLive({ can: { ...pipLive().can, acknowledge: true } });
+    render(<PipRecordScreen persona="emp" pip={PIP_TO_ACK} tab="ack" live={live} />);
+    expect(screen.queryByRole('button', { name: 'Approve and start' })).toBeNull();
+    fireEvent.change(screen.getByRole('textbox', { name: /Your comment/ }), { target: { value: 'Please confirm dates early.' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Acknowledge plan' }));
+    await waitFor(() => expect(live.onAcknowledge).toHaveBeenCalledWith('Please confirm dates early.'));
+  });
+
+  it('a check-in needs a rating and a note before it is recorded', async () => {
+    const schedule = [{ id: 'k1', due: new Date(2026, 6, 22), status: 'due' as const }];
+    const live = pipLive({ can: { ...pipLive().can, checkin: true } });
+    render(<PipRecordScreen persona="mgr" pip={{ ...PIP, schedule }} live={live} checkinOpen />);
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Record check-in' }));
+    expect(await within(dialog).findByText('Choose how it is going.')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('radio', { name: 'On track' }));
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'Cases for 7.3 in on time.' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Record check-in' }));
+    await waitFor(() => expect(live.onCheckin).toHaveBeenCalledWith({ checkinId: 'k1', note: 'Cases for 7.3 in on time.', rating: 'on_track' }));
+  });
+
+  it('extending sends the date the company setting gives', async () => {
+    const live = pipLive({ can: { ...pipLive().can, outcome: true }, extendDays: 15 });
+    render(<PipRecordScreen persona="hr" pip={{ ...PIP, end: new Date(2026, 7, 30) }} tab="outcome" outcomeOpen live={live} />);
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('radio', { name: /Extend by 15 days/ }));
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'Some progress on releases.' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Record outcome' }));
+    await waitFor(() => expect(live.onOutcome).toHaveBeenCalledWith({ outcome: 'extended', note: 'Some progress on releases.', extendTo: '2026-09-14' }));
   });
 });

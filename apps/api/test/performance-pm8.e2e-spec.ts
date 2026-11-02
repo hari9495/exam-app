@@ -242,4 +242,33 @@ describe('Performance batch PM8', () => {
     await expect(inA((tx) => tx.$executeRaw`DELETE FROM pip_checkins WHERE pip_id = ${ids.pip}::uuid`)).rejects.toThrow(/permission denied/);
     await expect(inA((tx) => tx.$executeRaw`DELETE FROM pips WHERE id = ${ids.pip}::uuid`)).rejects.toThrow(/permission denied/);
   });
+
+  // PRF-12 (designs, builder 2): HR decides from the plan; the approval route shows on it; check-ins carry a rating.
+  it('PRF-12: HR approves or sends back from the plan; the route shows; a check-in has a rating', async () => {
+    type Step = { id: string; status: string; approver?: string; comment?: string };
+    type V = View & { approval: { steps: Step[]; canDecide: boolean }; extendDays: number; checkins: (View['checkins'][number] & { rating: string | null })[] };
+    const first = (await api('head', 'post', '/pips').send(plan(emp.priya)).expect(201)).body.id as string;
+    let v = (await api('hr', 'get', `/pips/${first}`).expect(200)).body as V;
+    expect(v.approval.canDecide).toBe(true);
+    expect(v.approval.steps.map((s) => [s.id, s.status])).toEqual([['proposed', 'done'], ['hr', 'current'], ['ack', 'pending']]);
+    expect((await api('head', 'get', `/pips/${first}`).expect(200)).body.approval.canDecide).toBe(false);
+    await api('priya', 'get', `/pips/${first}`).expect(404);
+    await api('head', 'post', `/pips/${first}/decide`).send({ decision: 'approve' }).expect(403);
+    await api('adminB', 'post', `/pips/${first}/decide`).send({ decision: 'approve' }).expect((r) => expect([403, 404]).toContain(r.status));
+    await api('hr', 'post', `/pips/${first}/decide`).send({ decision: 'maybe' }).expect(400);
+    await api('hr', 'post', `/pips/${first}/decide`).send({ decision: 'send_back' }).expect(400);
+    v = (await api('hr', 'post', `/pips/${first}/decide`).send({ decision: 'send_back', reason: 'Add a measure the employee can track.' }).expect(200)).body;
+    expect(v.status).toBe('declined');
+    expect(v.approval.steps[1]).toMatchObject({ status: 'rejected', comment: 'Add a measure the employee can track.' });
+    await api('hr', 'post', `/pips/${first}/decide`).send({ decision: 'approve' }).expect(409);
+    const again = (await api('head', 'post', '/pips').send(plan(emp.priya)).expect(201)).body.id as string;
+    v = (await api('hr2', 'post', `/pips/${again}/decide`).send({ decision: 'approve' }).expect(200)).body;
+    expect(v.status).toBe('active');
+    expect(v.extendDays).toBe(30);
+    expect(v.approval.steps[1]!.status).toBe('done');
+    expect(v.approval.steps[2]!.status).toBe('current');
+    await api('head', 'post', `/pips/${again}/checkins`).send({ checkinId: v.checkins[0]!.id, note: 'Errors at 2.5%.', rating: 'great' }).expect(400);
+    v = (await api('head', 'post', `/pips/${again}/checkins`).send({ checkinId: v.checkins[0]!.id, note: 'Errors at 2.5%.', rating: 'some_progress' }).expect(200)).body;
+    expect(v.checkins[0]).toMatchObject({ status: 'held', rating: 'some_progress' });
+  });
 });

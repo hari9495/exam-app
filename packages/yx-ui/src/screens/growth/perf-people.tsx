@@ -963,21 +963,50 @@ export function OneOnOneScreen({ persona, device = 'desktop', items, openId, sug
 
 /* ================================================================== PRF-12 · PIP record */
 
+export type PipRating = 'On track' | 'Some progress' | 'No progress';
+
 export interface Pip {
   id: string;
   employee: string;
   role: string;
   manager: string;
   hr: string;
-  status: 'Proposed' | 'Active' | 'Extended' | 'Closed: met' | 'Closed: not met';
+  status: 'Proposed' | 'Active' | 'Extended' | 'Closed: met' | 'Closed: not met' | 'Not approved' | 'Withdrawn';
   start: Date;
-  days: 30 | 60 | 90;
+  days: number;
   reason: string;
   goals: { id: string; text: string; measure: string; status: 'Not started' | 'In progress' | 'Met' | 'Not met' }[];
   support: string[];
-  checkIns: { at: Date; by: string; note: string; rating: 'On track' | 'Some progress' | 'No progress' }[];
+  checkIns: { at: Date; by: string; note: string; rating: PipRating }[];
   acknowledgement?: { at: Date; comment?: string } | null;
   approval: ApprovalStep[];
+  /** Live: the plan's own check-in schedule and end (protected leave moves the end), instead of working them out. */
+  schedule?: { id: string; due: Date; status: 'due' | 'held' | 'missed' | 'cancelled'; note?: string | null; employeeNote?: string | null; rating?: PipRating | null }[];
+  end?: Date;
+  /** Live: why it was extended, or the outcome note. */
+  outcomeNote?: string | null;
+  /** Protected leave inside the plan moves its end by these days; HR is warned to check with the case owner. */
+  pausedDays?: number;
+  warning?: boolean;
+}
+
+/** The app's plan: each action is checked again on the server (who may act, the plan's state, the version). */
+export interface LivePip {
+  today: Date;
+  can: { decide: boolean; acknowledge: boolean; checkin: boolean; employeeNote: boolean; outcome: boolean; letter: boolean; startExit: boolean };
+  /** perf.pip.extend_days: "Extend by N days". */
+  extendDays: number;
+  /** Where the employee asks HR a question; the exit case once one is open. */
+  askHrHref: string;
+  exitHref?: string | null;
+  onDecide: (decision: 'approve' | 'send_back', reason: string | null) => Promise<unknown>;
+  onAcknowledge: (comment: string | null) => Promise<unknown>;
+  onCheckin: (input: { checkinId: string; note: string; rating: 'on_track' | 'some_progress' | 'no_progress' }) => Promise<unknown>;
+  onOutcome: (input: { outcome: 'met' | 'extended' | 'not_met'; note: string; extendTo: string | null }) => Promise<unknown>;
+  onLetter: () => Promise<unknown>;
+  /** The employee adds their own note to a held check-in. */
+  onEmployeeNote: (checkinId: string, note: string) => Promise<unknown>;
+  onStartExit: (input: { lwd: string; reasonText: string }) => Promise<unknown>;
 }
 
 export interface PipRecordProps {
@@ -986,24 +1015,174 @@ export interface PipRecordProps {
   pip: Pip;
   tab?: 'plan' | 'checkins' | 'ack' | 'outcome';
   outcomeOpen?: boolean;
+  /** Stories: open the check-in, send-back or exit-case dialog. */
+  checkinOpen?: boolean;
+  sendBackOpen?: boolean;
+  exitOpen?: boolean;
+  live?: LivePip;
+}
+
+const RATING: Record<'on_track' | 'some_progress' | 'no_progress', PipRating> = { on_track: 'On track', some_progress: 'Some progress', no_progress: 'No progress' };
+const ratingTone = (r: PipRating) => (r === 'On track' ? 'success' : r === 'Some progress' ? 'warning' : 'danger');
+
+function CheckinDialog({ open, onOpenChange, due, live }: { open: boolean; onOpenChange: (o: boolean) => void; due: { value: string; label: string }[]; live?: LivePip }) {
+  const [which, setWhich] = useState<string | null>(due[0]?.value ?? null);
+  const [rating, setRating] = useState<keyof typeof RATING | null>(null);
+  const [note, setNote] = useState('');
+  const [tried, setTried] = useState(false);
+  const { toast } = useAct();
+  const missing = !which ? 'pip-ci-which' : !rating ? 'pip-ci-rating' : note.trim().length < 3 ? 'pip-ci-note' : null;
+  return (
+    <ConfirmDialog
+      open={open}
+      onOpenChange={(o) => {
+        onOpenChange(o);
+        if (!o) {
+          setTried(false);
+          setNote('');
+          setRating(null);
+        }
+      }}
+      title="Record check-in"
+      consequence="The employee, their manager chain and HR see the rating and your note. It can’t be changed later."
+      confirmLabel="Record check-in"
+      onConfirm={async () => {
+        setTried(true);
+        if (missing) {
+          document.getElementById(missing)?.focus();
+          return false;
+        }
+        if (!live) return;
+        await live.onCheckin({ checkinId: which!, note: note.trim(), rating: rating! });
+        toast({ title: 'Check-in recorded', tone: 'success' });
+      }}
+    >
+      <FormField label="Check-in" required id="pip-ci-which" error={tried && !which ? 'No check-in is due within a week.' : null}>
+        <Select value={which} onChange={setWhich} options={due} placeholder="No check-in due" />
+      </FormField>
+      <FormField label="Progress" required id="pip-ci-rating" error={tried && which && !rating ? 'Choose how it is going.' : null}>
+        <Segment label="Progress" value={rating} onChange={setRating} options={(Object.keys(RATING) as (keyof typeof RATING)[]).map((k) => ({ value: k, label: RATING[k] }))} />
+      </FormField>
+      <FormField label="Note" required id="pip-ci-note" error={tried && which && rating && note.trim().length < 3 ? 'Write what you discussed.' : null}>
+        <TextArea value={note} onChange={setNote} rows={3} maxLength={2000} />
+      </FormField>
+    </ConfirmDialog>
+  );
+}
+
+function SendBackDialog({ open, onOpenChange, pip, live }: { open: boolean; onOpenChange: (o: boolean) => void; pip: Pip; live?: LivePip }) {
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  const { toast } = useAct();
+  return (
+    <ConfirmDialog
+      open={open}
+      onOpenChange={(o) => {
+        onOpenChange(o);
+        if (!o) setTried(false);
+      }}
+      title={`Send back ${pip.employee}’s plan?`}
+      consequence={`The plan does not start. ${pip.manager} sees your reason and may propose a new plan. ${pip.employee} is not told.`}
+      confirmLabel="Send back"
+      onConfirm={async () => {
+        setTried(true);
+        if (reason.trim().length < 3) {
+          document.getElementById('pip-back-reason')?.focus();
+          return false;
+        }
+        if (!live) return;
+        await live.onDecide('send_back', reason.trim());
+        toast({ title: 'Plan sent back to the manager', tone: 'success' });
+      }}
+    >
+      <FormField label="Reason" required id="pip-back-reason" error={tried && reason.trim().length < 3 ? 'Say why you are sending it back.' : null}>
+        <TextArea value={reason} onChange={setReason} rows={3} maxLength={1000} />
+      </FormField>
+    </ConfirmDialog>
+  );
+}
+
+function ExitDialog({ open, onOpenChange, pip, live }: { open: boolean; onOpenChange: (o: boolean) => void; pip: Pip; live?: LivePip }) {
+  const [lwd, setLwd] = useState<Date | null>(null);
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  const { toast } = useAct();
+  const missing = !lwd ? 'pip-exit-lwd' : reason.trim().length < 3 ? 'pip-exit-reason' : null;
+  return (
+    <ConfirmDialog
+      open={open}
+      onOpenChange={(o) => {
+        onOpenChange(o);
+        if (!o) setTried(false);
+      }}
+      title={`Open an exit case for ${pip.employee}?`}
+      consequence="It opens a company-initiated exit in People, linked to this plan. It goes through the usual exit approval; nothing else changes until then."
+      confirmLabel="Open exit case"
+      onConfirm={async () => {
+        setTried(true);
+        if (missing) {
+          document.getElementById(missing)?.focus();
+          return false;
+        }
+        if (!live) return;
+        await live.onStartExit({ lwd: dayKey(lwd!), reasonText: reason.trim() });
+        toast({ title: 'Exit case opened in People', tone: 'success' });
+      }}
+    >
+      <FormField label="Proposed last working day" required id="pip-exit-lwd" error={tried && !lwd ? 'Choose the last working day.' : null}>
+        <DatePicker value={lwd} onChange={setLwd} min={live?.today ?? TODAY} />
+      </FormField>
+      <FormField label="Reason" required id="pip-exit-reason" error={tried && lwd && reason.trim().length < 3 ? 'Write the reason for the exit.' : null}>
+        <TextArea value={reason} onChange={setReason} rows={3} maxLength={1000} />
+      </FormField>
+    </ConfirmDialog>
+  );
 }
 
 /** PRF-12 PIP record (T3): plan, fixed check-ins, employee acknowledgement, outcome; not met never auto-starts an exit (YX-PERF-11). */
-export function PipRecordScreen({ persona, device = 'desktop', pip, tab = 'plan', outcomeOpen }: PipRecordProps) {
-  const sched = pipSchedule(pip.start, pip.days, 10);
-  const [ack, setAck] = useState(pip.acknowledgement ?? null);
+export function PipRecordScreen({ persona, device = 'desktop', pip, tab = 'plan', outcomeOpen, checkinOpen, sendBackOpen, exitOpen, live }: PipRecordProps) {
+  const today = live?.today ?? TODAY;
+  const sched = pipSchedule(pip.start, (pip.days === 30 || pip.days === 60 ? pip.days : 90) as 30 | 60 | 90, 10);
+  const end = pip.end ?? sched.end;
+  const [ownAck, setAck] = useState(pip.acknowledgement ?? null);
+  const ack = live ? (pip.acknowledgement ?? null) : ownAck;
   const [comment, setComment] = useState('');
   const [outcome, setOutcome] = useState<string>('');
+  const [note, setNote] = useState('');
   const [showOutcome, setShowOutcome] = useState(!!outcomeOpen);
   const [triedOutcome, setTriedOutcome] = useState(false);
+  const [recording, setRecording] = useState(!!checkinOpen);
+  const [sendingBack, setSendingBack] = useState(!!sendBackOpen);
+  const [exiting, setExiting] = useState(!!exitOpen);
+  const [noting, setNoting] = useState<string | null>(null);
+  const [myNote, setMyNote] = useState('');
+  const [triedNote, setTriedNote] = useState(false);
+  const { busy, act, toast } = useAct();
+  const closed = pip.status.startsWith('Closed');
+  const rows = pip.schedule ?? sched.checkIns.map((c, i) => ({ id: c.toISOString(), due: c, status: (pip.checkIns[i] ? 'held' : c < today ? 'missed' : 'due') as 'due' | 'held' | 'missed' | 'cancelled', note: pip.checkIns[i] ? `${pip.checkIns[i]!.by}: ${pip.checkIns[i]!.note}` : null, employeeNote: null, rating: pip.checkIns[i]?.rating ?? null }));
+  const held = rows.filter((r) => r.status === 'held').length;
+  const shownRows = rows.filter((r) => r.status !== 'cancelled');
+  // A check-in is recorded when it is near: at most a week before it is due (the API checks the same).
+  const recordable = rows.filter((r) => (r.status === 'due' || r.status === 'missed') && r.due.getTime() - today.getTime() <= 7 * 86_400_000).map((r) => ({ value: r.id, label: `${formatDate(r.due)}${r.status === 'missed' ? ' (missed)' : ''}` }));
+  const extendTo = new Date(end.getFullYear(), end.getMonth(), end.getDate() + (live?.extendDays ?? 30));
+  const canCheckin = live ? live.can.checkin : persona === 'mgr';
+  const canOutcome = live ? live.can.outcome : persona !== 'emp' && !closed;
+  const canDecide = live ? live.can.decide : persona === 'hr' && pip.status === 'Proposed';
+  const canAck = live ? live.can.acknowledge : persona === 'emp';
   const facts = [
     { label: 'Plan', value: `${pip.days} days` },
-    { label: 'Dates', value: `${formatDate(pip.start)} – ${formatDate(sched.end)}` },
-    { label: 'Check-ins', value: `${pip.checkIns.length} of ${sched.checkIns.length} held` },
+    { label: 'Dates', value: `${formatDate(pip.start)} – ${formatDate(end)}${pip.pausedDays ? ` (moved ${pip.pausedDays} days for protected leave)` : ''}` },
+    { label: 'Check-ins', value: `${held} of ${shownRows.length} held` },
     { label: 'Manager', value: pip.manager },
     { label: 'HR', value: pip.hr },
   ];
-  const statusTone = pip.status === 'Active' ? 'warning' : pip.status === 'Proposed' ? 'info' : pip.status === 'Closed: met' ? 'success' : pip.status === 'Closed: not met' ? 'danger' : 'warning';
+  const statusTone = pip.status === 'Active' ? 'warning' : pip.status === 'Proposed' ? 'info' : pip.status === 'Closed: met' ? 'success' : pip.status === 'Closed: not met' ? 'danger' : pip.status === 'Extended' ? 'warning' : 'neutral';
+  const checkinButton = (variant: 'primary' | 'secondary') =>
+    canCheckin && !closed ? (
+      <Button variant={variant} icon={Plus} onClick={() => setRecording(true)}>
+        Record check-in
+      </Button>
+    ) : null;
 
   const plan = (
     <div className="yx-growth-stack">
@@ -1036,24 +1215,30 @@ export function PipRecordScreen({ persona, device = 'desktop', pip, tab = 'plan'
   );
   const checkins = (
     <div className="yx-growth-stack">
-      <ul className="yx-growth-list">
-        {sched.checkIns.map((c, i) => {
-          const held = pip.checkIns[i];
-          return (
-            <li key={c.toISOString()} className="yx-growth-list__item">
+      {shownRows.length === 0 ? (
+        <Text tone="secondary">Check-ins are set when HR approves the plan.</Text>
+      ) : (
+        <ul className="yx-growth-list">
+          {shownRows.map((c, i) => (
+            <li key={c.id} className="yx-growth-list__item">
               <div className="yx-growth-list__main">
                 <span className="yx-growth-list__title">
-                  Check-in {i + 1} · {formatDate(c)}
-                  {i === sched.checkIns.length - 1 ? ' (final)' : ''}
+                  Check-in {i + 1} · {formatDate(c.due)}
+                  {i === shownRows.length - 1 ? ' (final)' : ''}
                 </span>
-                <span className="yx-growth-meta">{held ? `${held.by}: ${held.note}` : c < TODAY ? 'Missed. Hold it this week.' : 'Scheduled. Reminder 2 days before.'}</span>
+                <span className="yx-growth-meta">{c.status === 'held' ? `${c.note ?? ''}${c.employeeNote ? ` · ${pip.employee}: ${c.employeeNote}` : ''}` : c.status === 'missed' ? 'Missed. Hold it this week.' : 'Scheduled. Reminder 2 days before.'}</span>
               </div>
-              <Badge tone={held ? (held.rating === 'On track' ? 'success' : held.rating === 'Some progress' ? 'warning' : 'danger') : c < TODAY ? 'danger' : 'neutral'}>{held ? held.rating : c < TODAY ? 'Missed' : 'Scheduled'}</Badge>
+              <Badge tone={c.status === 'held' ? (c.rating ? ratingTone(c.rating) : 'success') : c.status === 'missed' ? 'danger' : 'neutral'}>{c.status === 'held' ? (c.rating ?? 'Held') : c.status === 'missed' ? 'Missed' : 'Scheduled'}</Badge>
+              {live?.can.employeeNote && c.status === 'held' && !c.employeeNote && (
+                <Button size="sm" onClick={() => setNoting(c.id)}>
+                  Add my note
+                </Button>
+              )}
             </li>
-          );
-        })}
-      </ul>
-      {persona === 'mgr' && <Button icon={Plus}>Record check-in</Button>}
+          ))}
+        </ul>
+      )}
+      {checkinButton('secondary')}
     </div>
   );
   const ackPanel = (
@@ -1062,19 +1247,21 @@ export function PipRecordScreen({ persona, device = 'desktop', pip, tab = 'plan'
         <InlineAlert tone="success" title={`Acknowledged on ${formatDate(ack.at)}`}>
           {ack.comment ? `Comment: “${ack.comment}”` : 'No comment added.'}
         </InlineAlert>
-      ) : persona === 'emp' ? (
+      ) : canAck ? (
         <>
           <Text>Acknowledging means you have read the plan. It doesn’t mean you agree with it. You can add a comment that HR and your manager will see.</Text>
           <FormField label="Your comment" optional>
-            <TextArea value={comment} onChange={setComment} rows={3} />
+            <TextArea value={comment} onChange={setComment} rows={3} maxLength={2000} />
           </FormField>
           <div className="yx-growth-row">
-            <Button variant="primary" onClick={() => setAck({ at: TODAY, comment: comment || undefined })}>
+            <Button variant="primary" loading={busy === 'ack'} onClick={() => (live ? void act('ack', () => live.onAcknowledge(comment.trim() || null), 'Plan acknowledged') : setAck({ at: today, comment: comment || undefined }))}>
               Acknowledge plan
             </Button>
-            <Button>Ask HR a question</Button>
+            <Button asChild={!!live}>{live ? <Link href={live.askHrHref}>Ask HR a question</Link> : 'Ask HR a question'}</Button>
           </div>
         </>
+      ) : pip.status === 'Proposed' || pip.status === 'Not approved' || pip.status === 'Withdrawn' ? (
+        <Text tone="secondary">{pip.employee} is asked to acknowledge the plan once HR approves it.</Text>
       ) : (
         <InlineAlert tone="warning" title="Not acknowledged yet">
           {pip.employee} was asked on {formatDate(pip.start)}. A reminder goes out every 2 days.
@@ -1084,24 +1271,38 @@ export function PipRecordScreen({ persona, device = 'desktop', pip, tab = 'plan'
   );
   const outcomePanel = (
     <div className="yx-growth-stack">
-      {pip.status.startsWith('Closed') ? (
+      {closed ? (
         <InlineAlert tone={pip.status === 'Closed: met' ? 'success' : 'danger'} title={`Outcome: ${pip.status.replace('Closed: ', '')}`}>
-          Recorded by {pip.hr}. {pip.status === 'Closed: not met' ? 'HR decides the next step. Nothing starts automatically.' : ''}
+          {pip.outcomeNote ? `${pip.outcomeNote} ` : `Recorded by ${pip.hr}. `}
+          {pip.status === 'Closed: not met' ? 'HR decides the next step. Nothing starts automatically.' : ''}
         </InlineAlert>
       ) : (
-        <Text tone="secondary">The outcome is recorded after the final check-in on {formatDate(sched.end)}.</Text>
+        <Text tone="secondary">The outcome is recorded after the final check-in on {formatDate(end)}.</Text>
       )}
-      {persona !== 'emp' && !pip.status.startsWith('Closed') && (
-        <Button onClick={() => { setTriedOutcome(false); setShowOutcome(true); }}>
-          Record outcome
-        </Button>
+      {canOutcome && !closed && (
+        <div className="yx-growth-row">
+          <Button
+            onClick={() => {
+              setTriedOutcome(false);
+              setShowOutcome(true);
+            }}
+          >
+            Record outcome
+          </Button>
+        </div>
       )}
       {pip.status === 'Closed: not met' && persona === 'hr' && (
         <Card title="Next step (HR decides)">
-          <Text>Options: extend the plan, change role, or open an exit case in People. Any exit case is started by a person, never by this outcome.</Text>
+          <Text>Options: change role, or open an exit case in People. Any exit case is started by a person, never by this outcome.</Text>
           <div className="yx-growth-row">
-            <Button>Extend plan</Button>
-            <Button>Open exit case in People</Button>
+            {!live && <Button>Extend plan</Button>}
+            {live?.exitHref ? (
+              <Button asChild>
+                <Link href={live.exitHref}>Open the exit case</Link>
+              </Button>
+            ) : (
+              (!live || live.can.startExit) && <Button onClick={() => setExiting(true)}>Open exit case in People</Button>
+            )}
           </div>
         </Card>
       )}
@@ -1112,7 +1313,7 @@ export function PipRecordScreen({ persona, device = 'desktop', pip, tab = 'plan'
     <Tabs defaultValue={tab}>
       <TabsList aria-label="PIP">
         <TabsTrigger value="plan">Plan</TabsTrigger>
-        <TabsTrigger value="checkins" count={pip.checkIns.length}>
+        <TabsTrigger value="checkins" count={held}>
           Check-ins
         </TabsTrigger>
         <TabsTrigger value="ack">Acknowledgement</TabsTrigger>
@@ -1131,9 +1332,18 @@ export function PipRecordScreen({ persona, device = 'desktop', pip, tab = 'plan'
       title={`Record the outcome of ${pip.employee}’s PIP?`}
       consequence="The outcome is final and visible to the employee, their manager chain and HR. A “not met” outcome does not start any exit step by itself."
       confirmLabel="Record outcome"
-      onConfirm={() => {
+      onConfirm={async () => {
         setTriedOutcome(true);
         if (!outcome) return false;
+        if (live && note.trim().length < 3) {
+          document.getElementById('pip-outcome-note')?.focus();
+          return false;
+        }
+        if (live) {
+          await live.onOutcome({ outcome: outcome === 'met' ? 'met' : outcome === 'extended' ? 'extended' : 'not_met', note: note.trim(), extendTo: outcome === 'extended' ? dayKey(extendTo) : null });
+          toast({ title: outcome === 'extended' ? `Plan extended to ${formatDate(extendTo)}` : 'Outcome recorded', tone: 'success' });
+          return;
+        }
         setShowOutcome(false);
       }}
     >
@@ -1144,12 +1354,49 @@ export function PipRecordScreen({ persona, device = 'desktop', pip, tab = 'plan'
           onChange={setOutcome}
           options={[
             { value: 'met', label: 'Met', description: 'All goals met. The plan closes.' },
-            { value: 'extended', label: 'Extend by 30 days', description: 'Some progress; new end date and check-ins are added.' },
+            { value: 'extended', label: `Extend by ${live?.extendDays ?? 30} days`, description: `Some progress; it now ends ${formatDate(extendTo)} and check-ins are added. A plan is extended once.` },
             { value: 'not-met', label: 'Not met', description: 'HR decides the next step with the manager.' },
           ]}
         />
       </FormField>
+      <FormField label="Note" required={!!live} optional={!live} id="pip-outcome-note" error={live && triedOutcome && outcome && note.trim().length < 3 ? 'Write a short note for the record.' : null}>
+        <TextArea value={note} onChange={setNote} rows={2} maxLength={1000} />
+      </FormField>
     </ConfirmDialog>
+  );
+  const dialogs = (
+    <>
+      {outcomeDialog}
+      <CheckinDialog open={recording} onOpenChange={setRecording} due={live ? recordable : [{ value: 'c4', label: formatDate(sched.checkIns[3] ?? end) }]} live={live} />
+      <SendBackDialog open={sendingBack} onOpenChange={setSendingBack} pip={pip} live={live} />
+      <ExitDialog open={exiting} onOpenChange={setExiting} pip={pip} live={live} />
+      <ConfirmDialog
+        open={noting != null}
+        onOpenChange={(o) => {
+          if (o) return;
+          setNoting(null);
+          setMyNote('');
+          setTriedNote(false);
+        }}
+        title="Add your note to this check-in?"
+        consequence="Your manager and HR see it next to the manager’s note."
+        confirmLabel="Add note"
+        onConfirm={async () => {
+          setTriedNote(true);
+          if (myNote.trim().length < 3) {
+            document.getElementById('pip-my-note')?.focus();
+            return false;
+          }
+          if (!live || !noting) return;
+          await live.onEmployeeNote(noting, myNote.trim());
+          toast({ title: 'Your note was added', tone: 'success' });
+        }}
+      >
+        <FormField label="Your note" required id="pip-my-note" error={triedNote && myNote.trim().length < 3 ? 'Write your note first.' : null}>
+          <TextArea value={myNote} onChange={setMyNote} rows={3} maxLength={2000} />
+        </FormField>
+      </ConfirmDialog>
+    </>
   );
 
   if (device === 'phone')
@@ -1161,6 +1408,7 @@ export function PipRecordScreen({ persona, device = 'desktop', pip, tab = 'plan'
         </div>
         <DescriptionList items={facts} />
         {!ack && persona === 'emp' ? ackPanel : body}
+        {dialogs}
       </GrowthFrame>
     );
 
@@ -1170,7 +1418,7 @@ export function PipRecordScreen({ persona, device = 'desktop', pip, tab = 'plan'
         name={pip.employee}
         person
         photoUrl={null}
-        secondary={`${pip.role} · Performance improvement plan`}
+        secondary={[pip.role, 'Performance improvement plan'].filter(Boolean).join(' · ')}
         status={
           <>
             <Badge tone={statusTone}>{pip.status}</Badge> <ConfidentialTag />
@@ -1178,21 +1426,32 @@ export function PipRecordScreen({ persona, device = 'desktop', pip, tab = 'plan'
         }
         facts={facts}
         actions={
-          persona === 'hr' && pip.status === 'Proposed' ? (
+          canDecide ? (
             <>
-              <Button>Send back</Button>
-              <Button variant="primary">Approve and start</Button>
+              <Button onClick={() => setSendingBack(true)}>Send back</Button>
+              <Button variant="approve" loading={busy === 'approve'} onClick={() => live && void act('approve', () => live.onDecide('approve', null), 'Plan approved. It starts now.')}>
+                Approve and start
+              </Button>
             </>
-          ) : persona === 'mgr' && pip.status === 'Active' ? (
+          ) : persona === 'mgr' && (pip.status === 'Active' || pip.status === 'Extended') ? (
             <>
-              <Button>Download PIP letter</Button>
-              <Button variant="primary">Record check-in</Button>
+              {!live && <Button>Download PIP letter</Button>}
+              {checkinButton('primary')}
             </>
+          ) : live?.can.letter ? (
+            <Button loading={busy === 'letter'} onClick={() => void act('letter', live.onLetter, 'PIP letter issued')}>
+              Issue PIP letter
+            </Button>
           ) : undefined
         }
       />
+      {pip.warning && (
+        <InlineAlert tone="warning" title="Check with the case owner before you decide">
+          There is something open that concerns this plan. Ask the case owner before you approve it or record an outcome.
+        </InlineAlert>
+      )}
       {pip.status === 'Proposed' && (
-        <InlineAlert tone="info" title={persona === 'hr' ? 'Waiting for your approval' : 'Waiting for HR approval'}>
+        <InlineAlert tone="info" title={canDecide ? 'Waiting for your approval' : 'Waiting for HR approval'}>
           The plan starts only after HR approves it. {pip.employee} is not told until then.
         </InlineAlert>
       )}
@@ -1200,11 +1459,11 @@ export function PipRecordScreen({ persona, device = 'desktop', pip, tab = 'plan'
         main={body}
         side={
           <Card title="Approval">
-            <ApprovalTimeline steps={pip.approval} now={TODAY} />
+            <ApprovalTimeline steps={pip.approval} now={today} />
           </Card>
         }
       />
-      {outcomeDialog}
+      {dialogs}
     </GrowthFrame>
   );
 }

@@ -10480,6 +10480,8 @@ model PipCheckin {
   dueOn          DateTime  @map("due_on") @db.Date
   heldOn         DateTime? @map("held_on") @db.Date
   managerNote    String?   @map("manager_note") @db.VarChar(2000)
+  /// PRF-12: on_track, some_progress or no_progress; null on check-ins recorded before.
+  rating         String?   @db.VarChar(14)
   employeeNote   String?   @map("employee_note") @db.VarChar(2000)
   status         String    @default("due") @db.VarChar(10)
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
