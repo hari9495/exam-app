@@ -1251,3 +1251,9 @@ for (const h in want) errs.push('story file with no rows: ' + h);
 console.table(counts);
 if (errs.length) { console.error(errs.join('\n')); process.exit(1); }
 ```
+
+## Founder answers, 2 Nov 2026 (kit table and slider, "All ok")
+(1) Pay tables keep the kit look (no grey header band); (2) People numbers move to right-aligned number columns, as its
+own small change; (3) PlainTable keeps `hideHeader` and `empty`; (4) the kit Slider may be disabled when nothing can
+change, with a hint saying why (the no-disabled rule covers buttons); (5) the run-files list (table on desktop, cards on
+phone) waits for a kit pattern.
