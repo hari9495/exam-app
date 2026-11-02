@@ -12,7 +12,7 @@ import type { ScopeUser, Viewer } from '../access/scope';
 import { REDIS_CONNECTION, logBullErrors, bullOpts } from '../jobs/redis-connection';
 import { StatutoryRulesService } from '../statutory/statutory.service';
 import { StatutoryError, empDefaults, esiCovered, inForce, type RuleSet } from '../statutory/evaluator';
-import { asDate, dateOf, monthRange } from '../time/time-core';
+import { asDate, dateOf, factsOn, monthRange, settingOn } from '../time/time-core';
 import { subPeriods } from './frequency';
 import { addDays } from '../time/time-maths';
 import { PeriodsService as TimePeriodsService } from '../time/periods.service';
@@ -435,8 +435,39 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       const members = await this.members(tx, c.organizationId, run);
       const period = await tx.payPeriod.findFirst({ where: { organizationId: c.organizationId, legalEntityId: run.legalEntityId, payGroupId: null, periodStart: run.periodStart } });
       const checks = await this.current(tx, c.organizationId, run);
-      return { run: this.view(run), people: members.length, period: period?.stage ?? 'open', checks: checks.map((x) => ({ id: x.id, employeeId: x.employeeId, checkKey: x.checkKey, severity: x.severity, blocks: x.blocks, waivable: x.waivable, message: x.message, waived: !!x.waivedBy, waiverReason: x.waiverReason })) };
+      const groups = run.runType === 'regular' ? await this.attendanceGroups(tx, c, run, members) : [];
+      return { run: this.view(run), people: members.length, period: period?.stage ?? 'open', groups, checks: checks.map((x) => ({ id: x.id, employeeId: x.employeeId, checkKey: x.checkKey, severity: x.severity, blocks: x.blocks, waivable: x.waivable, message: x.message, waived: !!x.waivedBy, waiverReason: x.waiverReason })) };
     }, RUN_TX);
+  }
+
+  /**
+   * PAY-02 "Attendance mode per group": the run's people by location and attendance mode (the dated company settings
+   * attendance.mode and attendance.missing_punch_effect as they stand on the period's last day), with their open
+   * attendance exceptions in the period and, for assumed-present groups, how many have a manual LOP entry.
+   * shortcut: one facts read per person; fine for a few thousand people, batch the facts when runs grow past that.
+   */
+  private async attendanceGroups(tx: Tx, c: CompanyContext, run: Run, members: Member[]) {
+    const org = c.organizationId;
+    const on = dateOf(run.periodEnd);
+    const ids = members.map((m) => m.employeeId);
+    const open = ids.length ? await tx.attendanceDay.groupBy({ by: ['employeeId'], where: { organizationId: org, employeeId: { in: ids }, workOn: { gte: run.periodStart, lte: run.periodEnd }, status: { in: ['missing_in', 'missing_out', 'no_timesheet'] } }, _count: { _all: true } }) : [];
+    const lop = new Set((await withPayScope(tx, [run.legalEntityId], () => tx.lopInput.findMany({ where: { organizationId: org, periodStart: run.periodStart, employeeId: { in: ids } }, select: { employeeId: true } }))).map((l) => l.employeeId));
+    const locations = new Map((await tx.location.findMany({ where: { organizationId: org, legalEntityId: run.legalEntityId }, select: { id: true, name: true } })).map((l) => [l.id, l.name]));
+    const period = await tx.payPeriod.findFirst({ where: { organizationId: org, legalEntityId: run.legalEntityId, payGroupId: null, periodStart: run.periodStart } });
+    const out = new Map<string, { group: string; mode: 'punch_block' | 'punch_warn' | 'assumed_present' | 'timesheet'; employees: number; exceptions: number; lopEntered: number }>();
+    for (const m of members) {
+      const f = await factsOn(tx, org, m.employeeId, on);
+      if (!f) continue;
+      const set = await settingOn(tx, c, 'attendance.mode', f, on);
+      const mode = set === 'assumed_present' ? 'assumed_present' : set === 'timesheet' ? 'timesheet' : (await settingOn(tx, c, 'attendance.missing_punch_effect', f, on)) === 'warning_only' ? 'punch_warn' : 'punch_block';
+      const group = locations.get(f.locationId) ?? 'Other locations';
+      const g = out.get(`${group}|${mode}`) ?? { group, mode, employees: 0, exceptions: 0, lopEntered: 0 };
+      g.employees++;
+      g.exceptions += open.find((x) => x.employeeId === m.employeeId)?._count._all ?? 0;
+      if (lop.has(m.employeeId)) g.lopEntered++;
+      out.set(`${group}|${mode}`, g);
+    }
+    return [...out.values()].sort((a, b) => a.group.localeCompare(b.group) || a.mode.localeCompare(b.mode)).map((g) => ({ ...g, attendanceStage: period?.stage ?? 'open' }));
   }
 
   async waive(ctx: TenantContext, user: ScopeUser, id: string, validationId: string, reason: string) {

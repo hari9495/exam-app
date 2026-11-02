@@ -24,6 +24,7 @@ import { ApprovalTimeline, type ApprovalStep } from '../../components/timeline';
 import { formatDate, formatINR } from '../../lib/format';
 import type { FilterValue } from '../../lib/table';
 import { useRun } from '../org/org-kit';
+import { AttendanceGroupsPanel, type AttendanceGroup } from './payroll-run';
 import { FactRow, IrreversibleSheet, RunProgress, RunStageTrack, SectionTitle, StateBlock, WhyThisNumber, type ExplainedLine, type RunStage } from './pay-kit';
 import { RunStatusBadge, rupees, runName } from './live/runs';
 import type { Confirmation, LoadState } from './live/types';
@@ -77,6 +78,8 @@ export interface LiveRunWorkspaceData {
   onJournal?: () => void;
   /** Opens the statutory hub for the run's month. */
   onStatutory?: () => void;
+  /** PAY-02: opens the manual LOP input for assumed-present groups. */
+  onLopInput?: () => void;
 }
 
 /** GET /payroll/runs/:id/input-sources: per source, the people it touches and its days or amount. */
@@ -507,6 +510,17 @@ export function LiveRunWorkspace({ live: p }: { live: LiveRunWorkspaceData }) {
 
 /* ------------------------------------------------------------------ Validations (PAY-02) */
 
+const MODE_LABEL: Record<NonNullable<RunReadiness['groups']>[number]['mode'], AttendanceGroup['mode']> = { punch_block: 'Punch · block', punch_warn: 'Punch · warn', assumed_present: 'Assumed present', timesheet: 'Timesheet' };
+const STAGE_TEXT: Record<string, string> = { open: 'open', frozen: 'frozen for payroll', locked: 'locked' };
+/** The API's group as the design's row: the input says where the days come from. */
+export const attendanceGroup = (g: NonNullable<RunReadiness['groups']>[number]): AttendanceGroup => ({
+  group: g.group,
+  mode: MODE_LABEL[g.mode],
+  employees: g.employees,
+  exceptions: g.exceptions,
+  input: g.mode === 'assumed_present' ? `Manual LOP input: ${g.lopEntered} of ${g.employees} entered` : `Attendance feed, ${STAGE_TEXT[g.attendanceStage] ?? g.attendanceStage}`,
+});
+
 const SEV: Record<RunCheck['severity'], { label: string; icon: typeof AlertCircle }> = { block: { label: 'Blocking', icon: AlertCircle }, warn: { label: 'Warning', icon: AlertTriangle }, info: { label: 'Note', icon: CheckCircle2 } };
 
 function ValidationsPanel({ p, checks, calcBlocks, editable, nameOf }: { p: LiveRunWorkspaceData; checks: RunCheck[]; calcBlocks: RunCheck[]; editable: boolean; nameOf: (id: string | null) => string }) {
@@ -531,6 +545,18 @@ function ValidationsPanel({ p, checks, calcBlocks, editable, nameOf }: { p: Live
         <InlineAlert tone="info" title="Ready to calculate">
           Every blocking item is resolved or waived with a reason.
         </InlineAlert>
+      )}
+      {!!p.readiness.groups?.length && (
+        <AttendanceGroupsPanel
+          groups={p.readiness.groups.map(attendanceGroup)}
+          lopAction={
+            p.onLopInput && (
+              <Button size="sm" onClick={p.onLopInput}>
+                Open LOP input
+              </Button>
+            )
+          }
+        />
       )}
       {/* Founder 30 Oct 2026 (item 11): the input sources show here too, where the PAY-02 design puts them. */}
       {p.inputSources && (

@@ -76,6 +76,7 @@ export default function YxPayRunPage() {
     filings: filingsOk ? (locked ? (filings.data ?? []) : []) : undefined,
     onJournal: () => router.push(`/yx/payroll/runs/${encodeURIComponent(id)}/payments?tab=journal`),
     onStatutory: () => router.push('/yx/payroll/statutory'),
+    onLopInput: () => router.push('/yx/payroll/inputs'),
     onWaive: (vid, reason) => write(`${base}/validations/${encodeURIComponent(vid)}/waive`, { reason }),
     onCalculate: () => write(`${base}/calculate`),
     onRetryFailed: () => write(`${base}/retry-failed`),

@@ -76,6 +76,8 @@ export interface RunReadiness {
   people: number;
   period: string;
   checks: RunCheck[];
+  /** PAY-02: the run's people by location and attendance mode (company settings), open exceptions and manual LOP entered. */
+  groups?: { group: string; mode: 'punch_block' | 'punch_warn' | 'assumed_present' | 'timesheet'; employees: number; exceptions: number; lopEntered: number; attendanceStage: string }[];
 }
 
 export interface RunProgressData {

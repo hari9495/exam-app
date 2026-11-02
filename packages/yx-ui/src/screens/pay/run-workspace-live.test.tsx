@@ -134,6 +134,25 @@ describe('PAY-03 run workspace, live', () => {
     expect(screen.queryByRole('region', { name: 'Inputs' })).not.toBeInTheDocument();
   });
 
+  it('PAY-02 Blocked: the attendance mode per group from the API, with the LOP input link for assumed-present people; none without groups', async () => {
+    const onLopInput = vi.fn();
+    const groups = [
+      { group: 'Bengaluru', mode: 'punch_block' as const, employees: 12, exceptions: 3, lopEntered: 0, attendanceStage: 'frozen' },
+      { group: 'Bengaluru', mode: 'assumed_present' as const, employees: 4, exceptions: 0, lopEntered: 2, attendanceStage: 'frozen' },
+    ];
+    const { unmount } = show(live({ run: { ...RUN, status: 'draft' }, readiness: { ...READINESS, groups }, onLopInput }));
+    const table = screen.getByRole('table', { name: 'Attendance mode per group' });
+    expect(within(table).getByText('Punch · block')).toBeInTheDocument();
+    expect(within(table).getByText(/blocks approval/)).toBeInTheDocument();
+    expect(within(table).getByText('Manual LOP input: 2 of 4 entered')).toBeInTheDocument();
+    expect(within(table).getByText('Attendance feed, frozen for payroll')).toBeInTheDocument();
+    await ue.click(within(table).getByRole('button', { name: 'Open LOP input' }));
+    expect(onLopInput).toHaveBeenCalled();
+    unmount();
+    show(live({ run: { ...RUN, status: 'draft' } }));
+    expect(screen.queryByRole('table', { name: 'Attendance mode per group' })).not.toBeInTheDocument();
+  });
+
   it('checks: with nothing blocking, Calculate calculates', async () => {
     const l = live({ run: { ...RUN, status: 'draft' }, readiness: { ...READINESS, checks: READINESS.checks.map((c) => ({ ...c, waived: true, waiverReason: 'Bank next week' })) } });
     show(l);

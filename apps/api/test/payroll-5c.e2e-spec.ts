@@ -258,6 +258,10 @@ describe('Payroll batch 5c', () => {
     await api('payAdmin', 'post', '/payroll/runs').send({ payGroupId: ids.group, month }).expect(409);
     await api('payAdminB', 'get', `/payroll/runs/${ids.run}`).expect(404);
     const ready = (await api('payAdmin', 'get', `/payroll/runs/${ids.run}/readiness`).expect(200)).body;
+    // PAY-02: attendance mode per group (the company default: punch, missing punches block approval); emp2 has a manual LOP entry.
+    expect(ready.groups).toEqual([expect.objectContaining({ group: 'Bengaluru', mode: 'punch_block', employees: 2, lopEntered: 1, attendanceStage: 'open' })]);
+    await api('approver1', 'get', `/payroll/runs/${ids.run}/readiness`).expect(403);
+    await api('payAdminB', 'get', `/payroll/runs/${ids.run}/readiness`).expect(404);
     const banks = ready.checks.filter((c: { checkKey: string }) => c.checkKey === 'bank_missing');
     expect(banks).toHaveLength(2);
     // 5c-D2: no skill class on the jobs yet: a warning (the minimum-wage check uses the lowest class).

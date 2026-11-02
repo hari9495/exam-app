@@ -604,6 +604,74 @@ export interface ReadinessProps {
   state?: ViewState;
 }
 
+/** PAY-02 "Attendance mode per group" (design table, also rendered live in the run's Validations tab). */
+export function AttendanceGroupsPanel({ groups, lopAction }: { groups: AttendanceGroup[]; lopAction?: ReactNode }) {
+  const phone = useNarrow(599);
+  return (
+    <section className="yx-pay-panel" aria-label="Attendance mode per group">
+      <SectionTitle>Attendance mode per group</SectionTitle>
+      {phone ? (
+        <ul className="yx-pay-cards" aria-label="Attendance mode per group">
+          {groups.map((g) => (
+            <li key={`${g.group}|${g.mode}`} data-state={g.mode === 'Punch · block' && g.exceptions ? 'error' : undefined}>
+              <div className="yx-pay-cards__row">
+                <strong>{g.group}</strong>
+                <Badge tone={g.mode === 'Assumed present' ? 'info' : 'neutral'}>{g.mode}</Badge>
+              </div>
+              <span className="yx-pay-note">
+                {plural(g.employees, 'employee')} · {plural(g.exceptions, 'open exception')}
+                {g.exceptions > 0 && <> · {g.mode === 'Punch · block' ? 'blocks approval' : g.mode === 'Punch · warn' ? 'warning' : 'missing timesheet'}</>}
+              </span>
+              <span className="yx-pay-note">{g.input}</span>
+              {g.mode === 'Assumed present' && (
+                <div className="yx-pay-row">
+                  {lopAction}
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : (
+      <PlainTable
+        label="Attendance mode per group"
+        rows={groups}
+        getRowId={(g) => `${g.group}|${g.mode}`}
+        rowTone={(g) => (g.mode === 'Punch · block' && g.exceptions ? { tone: 'danger', label: 'Blocks approval' } : undefined)}
+        columns={[
+          { key: 'group', header: 'Group', rowHeader: true, cell: (g) => g.group },
+          { key: 'mode', header: 'Mode', cell: (g) => <Badge tone={g.mode === 'Assumed present' ? 'info' : 'neutral'}>{g.mode}</Badge> },
+          { key: 'employees', header: 'Employees', num: true, cell: (g) => g.employees },
+          {
+            key: 'exceptions',
+            header: 'Open exceptions',
+            num: true,
+            cell: (g) => (
+              <>
+                {g.exceptions}
+                {g.exceptions > 0 && <> · {g.mode === 'Punch · block' ? 'blocks approval' : g.mode === 'Punch · warn' ? 'warning' : 'missing timesheet'}</>}
+              </>
+            ),
+          },
+          {
+            key: 'input',
+            header: 'Input',
+            cell: (g) =>
+              g.mode === 'Assumed present' ? (
+                <span className="yx-pay-row">
+                  {g.input}
+                  {lopAction}
+                </span>
+              ) : (
+                g.input
+              ),
+          },
+        ]}
+      />
+      )}
+    </section>
+  );
+}
+
 /** PAY-02 · Run readiness / pre-flight (T5 step). */
 export function RunReadinessScreen({ findings: initial = FINDINGS, groups = ATTENDANCE_GROUPS, inputs = INPUT_SOURCES, coverage: initialCoverage = COVERAGE, defaultWaiveId, state = 'ready' }: ReadinessProps) {
   const phone = useNarrow(599);
@@ -627,71 +695,14 @@ export function RunReadinessScreen({ findings: initial = FINDINGS, groups = ATTE
           Every blocking item is resolved or waived with a reason.
         </InlineAlert>
       )}
-      <section className="yx-pay-panel" aria-label="Attendance mode per group">
-        <SectionTitle>Attendance mode per group</SectionTitle>
-        {phone ? (
-          <ul className="yx-pay-cards" aria-label="Attendance mode per group">
-            {groups.map((g) => (
-              <li key={g.group} data-state={g.mode === 'Punch · block' && g.exceptions ? 'error' : undefined}>
-                <div className="yx-pay-cards__row">
-                  <strong>{g.group}</strong>
-                  <Badge tone={g.mode === 'Assumed present' ? 'info' : 'neutral'}>{g.mode}</Badge>
-                </div>
-                <span className="yx-pay-note">
-                  {plural(g.employees, 'employee')} · {plural(g.exceptions, 'open exception')}
-                  {g.exceptions > 0 && <> · {g.mode === 'Punch · block' ? 'blocks approval' : g.mode === 'Punch · warn' ? 'warning' : 'missing timesheet'}</>}
-                </span>
-                <span className="yx-pay-note">{g.input}</span>
-                {g.mode === 'Assumed present' && (
-                  <div className="yx-pay-row">
-                    <StoryButton size="sm" to={STORY.lopInput}>
-                      Open LOP input
-                    </StoryButton>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        ) : (
-        <PlainTable
-          label="Attendance mode per group"
-          rows={groups}
-          getRowId={(g) => g.group}
-          rowTone={(g) => (g.mode === 'Punch · block' && g.exceptions ? { tone: 'danger', label: 'Blocks approval' } : undefined)}
-          columns={[
-            { key: 'group', header: 'Group', rowHeader: true, cell: (g) => g.group },
-            { key: 'mode', header: 'Mode', cell: (g) => <Badge tone={g.mode === 'Assumed present' ? 'info' : 'neutral'}>{g.mode}</Badge> },
-            { key: 'employees', header: 'Employees', num: true, cell: (g) => g.employees },
-            {
-              key: 'exceptions',
-              header: 'Open exceptions',
-              num: true,
-              cell: (g) => (
-                <>
-                  {g.exceptions}
-                  {g.exceptions > 0 && <> · {g.mode === 'Punch · block' ? 'blocks approval' : g.mode === 'Punch · warn' ? 'warning' : 'missing timesheet'}</>}
-                </>
-              ),
-            },
-            {
-              key: 'input',
-              header: 'Input',
-              cell: (g) =>
-                g.mode === 'Assumed present' ? (
-                  <span className="yx-pay-row">
-                    {g.input}
-                    <StoryButton size="sm" to={STORY.lopInput}>
-                      Open LOP input
-                    </StoryButton>
-                  </span>
-                ) : (
-                  g.input
-                ),
-            },
-          ]}
-        />
-        )}
-      </section>
+      <AttendanceGroupsPanel
+        groups={groups}
+        lopAction={
+          <StoryButton size="sm" to={STORY.lopInput}>
+            Open LOP input
+          </StoryButton>
+        }
+      />
       <section className="yx-pay-panel" aria-label="Inputs">
         <SectionTitle>Inputs for this period</SectionTitle>
         {phone ? (
