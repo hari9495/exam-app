@@ -22,7 +22,7 @@ export * from './types-5h';
 export { ConsultantsScreen, ConsultantPortalScreen, type LiveConsultants, type LiveConsultantPortal } from '../consultants';
 // Batch 5i (PAY-9.01 … 9.12): special pay, earned wage access, equity, actuarial valuation and country packs.
 export * from './types-5i';
-export { RunWorkspaceScreen } from '../payroll-run';
+export { FrequencyRunsScreen, RunWorkspaceScreen } from '../payroll-run';
 export type { LiveRunWorkspaceData } from '../run-workspace-live';
 export { PayrollHomeScreen, CoverageMonitorPanel } from '../payroll-run';
 export type { LivePayrollHome, LiveCoverage } from '../payroll-home-live';

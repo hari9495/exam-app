@@ -16,7 +16,7 @@ export default function YxPayArrearsPage() {
   const recoveries = usePay<Recovery[]>('/overpayments');
   const orders = usePay<LiveCourtOrder[]>('/court-orders');
   const inputs = perms.has('payroll.input.manage');
-  const runView = ['payroll.run.view', 'payroll.run.prepare', 'payroll.run.approve'].some((k) => perms.has(k));
+  const runView = (['payroll.run.view', 'payroll.run.prepare', 'payroll.run.approve'] as const).some((k) => perms.has(k));
   // PAY-19: carry-forwards and the deduction cap check, for the people who may see them.
   const carry = usePay<CarryForwardRow[]>(inputs ? '/carry-forwards' : null);
   const deferrals = usePay<DeferralRow[]>(runView ? '/deferrals' : null);
