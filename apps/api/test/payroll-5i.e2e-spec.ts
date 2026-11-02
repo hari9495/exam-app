@@ -233,15 +233,35 @@ describe('Payroll batch 5i', () => {
 
   it('incentives: the tiers with an accelerator; a worker reads only their own statement', async () => {
     const plan = (await api('payAdmin', 'post', '/payroll/special/plans').send({ legalEntityId: ids.entity, name: 'Line bonus', kind: 'production', metric: 'pieces', targetAmount: '1000', tiers: [{ from: 0, multiplier: 1 }, { from: 100, multiplier: 1.5 }], clawbackDays: 30 }).expect(201)).body.id;
-    const r = (await api('payAdmin', 'post', `/payroll/special/plans/${plan}/results`).send({ month, rows: [{ employeeId: ids.emp1, quota: '100', actual: '120' }, { employeeId: ids.emp2, quota: '100', actual: '50' }] }).expect(200)).body as { employeeId: string; amount: string }[];
+    // PAY-33: part of a result can be held until the customer pays, never more than the incentive, always with a reason.
+    const res = (rows: object[]) => api('payAdmin', 'post', `/payroll/special/plans/${plan}/results`).send({ month, rows });
+    expect((await res([{ employeeId: ids.emp1, quota: '100', actual: '120', held: '1300.01', heldReason: 'Customer has not paid' }]).expect(400)).body.message).toMatch(/cannot be more than the incentive/);
+    expect((await res([{ employeeId: ids.emp1, quota: '100', actual: '120', held: '300' }]).expect(400)).body.message).toMatch(/Say why/);
+    await res([{ employeeId: ids.emp1, quota: '100', actual: '120', held: '-1', heldReason: 'Customer has not paid' }]).expect(400);
+    const r = (await res([{ employeeId: ids.emp1, quota: '100', actual: '120', held: '300', heldReason: 'Customer has not paid yet' }, { employeeId: ids.emp2, quota: '100', actual: '50' }]).expect(200)).body as { employeeId: string; amount: string }[];
     expect(r.find((x) => x.employeeId === ids.emp1)!.amount).toBe('1300.00');
     expect(r.find((x) => x.employeeId === ids.emp2)!.amount).toBe('500.00');
+    const saved = (await api('payAdmin', 'get', `/payroll/special/plans/${plan}/results`).query({ month }).expect(200)).body as { id: string; employeeId: string; held: string }[];
+    const held1 = saved.find((x) => x.employeeId === ids.emp1)!;
+    expect(held1.held).toBe('300.00');
+    // Releasing waits for the month to go to payroll first.
+    await api('payAdmin', 'post', `/payroll/special/plans/${plan}/results/${held1.id}/release`).send({ month }).expect(409);
     await api('payAdmin', 'post', `/payroll/special/plans/${plan}/post`).send({ month }).expect(201);
     await decide('approver2', /Incentives/);
-    expect((await oneTimes('incentive')).length).toBe(2);
+    expect((await oneTimes('incentive')).map((o) => o.amount.toFixed(2)).sort()).toEqual(['1000.00', '500.00']);
     const mine = (await api('emp1', 'get', '/payroll/special/me/incentives').expect(200)).body;
-    expect(mine.results).toEqual([expect.objectContaining({ plan: 'Line bonus', amount: '1300.00', sentToPayroll: true })]);
+    expect(mine.results).toEqual([expect.objectContaining({ plan: 'Line bonus', amount: '1300.00', sentToPayroll: true, held: '300.00', heldReason: 'Customer has not paid yet', heldReleased: false, tier: { from: 100, to: null }, quarter: expect.stringMatching(/^Q[1-4]$/), payoutFrequency: 'monthly' })]);
     await api('emp1', 'get', '/payroll/special/plans').query({ legalEntityId: ids.entity }).expect(403);
+    // The customer paid: payroll releases the held part, approved by someone else; only once; never by the worker or another company.
+    await api('emp1', 'post', `/payroll/special/plans/${plan}/results/${held1.id}/release`).send({ month }).expect(403);
+    await api('payAdminB', 'post', `/payroll/special/plans/${plan}/results/${held1.id}/release`).send({ month }).expect(404);
+    await api('payAdmin', 'post', `/payroll/special/plans/${plan}/results/${held1.id}/release`).send({ month: 'soon' }).expect(400);
+    await api('payAdmin', 'post', `/payroll/special/plans/${plan}/results/${saved.find((x) => x.employeeId === ids.emp2)!.id}/release`).send({ month }).expect(409);
+    await api('payAdmin', 'post', `/payroll/special/plans/${plan}/results/${held1.id}/release`).send({ month }).expect(201);
+    await api('payAdmin', 'post', `/payroll/special/plans/${plan}/results/${held1.id}/release`).send({ month }).expect(409);
+    await decide('approver2', /held part/);
+    expect((await oneTimes('incentive')).map((o) => o.amount.toFixed(2)).sort()).toEqual(['1000.00', '300.00', '500.00']);
+    expect((await api('emp1', 'get', '/payroll/special/me/incentives').expect(200)).body.results[0]).toMatchObject({ heldReleased: true });
   });
 
   it('PAY-35 on-call: the public-holiday multiplier and the standby choice change the pay; a lower holiday multiplier is refused', async () => {

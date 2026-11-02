@@ -10045,6 +10045,10 @@ model IncentiveResult {
   amount         Decimal  @db.Decimal(14, 2)
   workings       Json
   postingId      String?  @map("posting_id") @db.Uuid
+  /// PAY-33: the part held until the customer pays, its reason, and the posting that released it.
+  heldAmount        Decimal @default(0) @map("held_amount") @db.Decimal(14, 2)
+  heldReason        String? @map("held_reason") @db.VarChar(200)
+  releasedPostingId String? @map("released_posting_id") @db.Uuid
   createdBy      String   @map("created_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 

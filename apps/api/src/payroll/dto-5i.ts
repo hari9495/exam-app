@@ -208,6 +208,24 @@ export class ResultRowDto {
 
   @Matches(MONEY)
   actual!: string;
+
+  /** PAY-33: the part of this incentive held until the customer pays (needs the reason). */
+  @IsOptional()
+  @Matches(MONEY)
+  held?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MinLength(3)
+  @MaxLength(200)
+  heldReason?: string;
+}
+
+/** PAY-33: release the held part of a result in a payroll month. */
+export class ReleaseHeldDto {
+  @Matches(MONTH)
+  month!: string;
 }
 
 export class IncentiveResultsDto {

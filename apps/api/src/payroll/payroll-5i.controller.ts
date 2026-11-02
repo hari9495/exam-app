@@ -15,6 +15,7 @@ import {
   EntityMonthQuery,
   IncentivePlanDto, IncentivePlanUpdateDto, IncentivePlanVersionDto,
   IncentiveResultsDto,
+  ReleaseHeldDto,
   LayoffDto,
   OncallRuleDto,
   OncallSlotDto,
@@ -146,6 +147,13 @@ export class Payroll5iController {
   @RequirePermissions('payroll.special.manage')
   saveResults(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: IncentiveResultsDto) {
     return this.special.saveResults(ctx, this.user(req), id, dto);
+  }
+
+  /** PAY-33: the held part of a result goes to payroll once the customer has paid (approved like any posting). */
+  @Post('plans/:id/results/:resultId/release')
+  @RequirePermissions('payroll.special.manage')
+  releaseHeld(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('resultId', ParseUUIDPipe) resultId: string, @Body() dto: ReleaseHeldDto) {
+    return this.special.releaseHeld(ctx, this.user(req), id, resultId, dto.month);
   }
 
   @Post('plans/:id/post')

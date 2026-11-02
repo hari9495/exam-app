@@ -476,7 +476,11 @@ export class SpecialPayService implements OnModuleInit {
         } catch (err) {
           this.fail(err);
         }
-        const data = { quota: D(r.quota), actual: D(r.actual), amount: x.amount, workings: { plan: p.name, attainment: x.attainment, capped: x.capped, bands: x.bands } as unknown as Prisma.InputJsonValue, createdBy: v.userId! };
+        // PAY-33: part of it may wait for the customer's payment; never more than the incentive, always with the reason.
+        const held = D(r.held ?? 0);
+        if (held.gt(x.amount)) throw new BadRequestException(`The held part (₹${held.toFixed(2)}) cannot be more than the incentive (₹${x.amount.toFixed(2)}).`);
+        if (held.gt(0) && !r.heldReason) throw new BadRequestException('Say why part of the incentive is held, such as the customer has not paid yet.');
+        const data = { quota: D(r.quota), actual: D(r.actual), amount: x.amount, heldAmount: held, heldReason: held.gt(0) ? r.heldReason! : null, workings: { plan: p.name, attainment: x.attainment, capped: x.capped, bands: x.bands } as unknown as Prisma.InputJsonValue, createdBy: v.userId! };
         const row = await tx.incentiveResult.upsert({
           where: { organizationId_planId_employmentId_month: { organizationId: org, planId, employmentId: e.id, month: monthStart(dto.month) } },
           create: { organizationId: org, legalEntityId: p.legalEntityId, planId, employeeId: r.employeeId, employmentId: e.id, month: monthStart(dto.month), ...data },
@@ -494,7 +498,7 @@ export class SpecialPayService implements OnModuleInit {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       await this.planFor(tx, c, v, planId);
       const rows = await tx.incentiveResult.findMany({ where: { organizationId: c.organizationId, planId, month: monthStart(month) } });
-      return rows.map((r) => ({ id: r.id, employeeId: r.employeeId, quota: r.quota.toFixed(2), actual: r.actual.toFixed(2), amount: r.amount.toFixed(2), workings: r.workings, posted: Boolean(r.postingId) }));
+      return rows.map((r) => ({ id: r.id, employeeId: r.employeeId, quota: r.quota.toFixed(2), actual: r.actual.toFixed(2), amount: r.amount.toFixed(2), held: r.heldAmount.toFixed(2), heldReason: r.heldReason, released: Boolean(r.releasedPostingId), workings: r.workings, posted: Boolean(r.postingId) }));
     });
   }
 
@@ -504,8 +508,43 @@ export class SpecialPayService implements OnModuleInit {
       const org = c.organizationId;
       const p = await this.planFor(tx, c, v, planId);
       const rows = await tx.incentiveResult.findMany({ where: { organizationId: org, planId, month: monthStart(month), postingId: null } });
-      const out = await this.post(tx, c, v, { kind: 'incentive', entityId: p.legalEntityId, month, sourceRef: `incentive:${planId}:${month}`, lines: rows.map((r) => ({ employeeId: r.employeeId, componentCode: 'incentive', amount: r.amount.toFixed(2), label: `${p.name}, ${month}: ${(r.workings as { attainment: string }).attainment} % of quota.` })), title: `${p.name}, ${month}` });
+      // PAY-33: the held part waits for the customer's payment; the rest goes now.
+      const out = await this.post(tx, c, v, {
+        kind: 'incentive',
+        entityId: p.legalEntityId,
+        month,
+        sourceRef: `incentive:${planId}:${month}`,
+        lines: rows.map((r) => ({ employeeId: r.employeeId, componentCode: 'incentive', amount: r.amount.sub(r.heldAmount).toFixed(2), label: `${p.name}, ${month}: ${(r.workings as { attainment: string }).attainment} % of quota${r.heldAmount.gt(0) ? `; ₹${r.heldAmount.toFixed(2)} held until the customer pays` : ''}.` })),
+        title: `${p.name}, ${month}`,
+      });
       await tx.incentiveResult.updateMany({ where: { organizationId: org, id: { in: rows.map((r) => r.id) } }, data: { postingId: out.posting.id } });
+      return out;
+    });
+  }
+
+  /** PAY-33: the held part of a result, once the customer has paid, sent to payroll in a month (approved like any posting). */
+  async releaseHeld(ctx: TenantContext, user: ScopeUser, planId: string, resultId: string, month: string) {
+    const v = await this.viewer(user);
+    return this.posting(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const p = await this.planFor(tx, c, v, planId);
+      const r = await tx.incentiveResult.findFirst({ where: { organizationId: org, planId, id: resultId } });
+      if (!r) throw new NotFoundException('Not found');
+      if (!r.heldAmount.gt(0)) throw new ConflictException('Nothing of this result is held.');
+      if (!r.postingId) throw new ConflictException("Send the month's results to payroll first; the held part follows them.");
+      if (r.releasedPostingId) throw new ConflictException('The held part is already released.');
+      if (month < dateOf(r.month).slice(0, 7)) throw new BadRequestException('Release it in the result month or later.');
+      const out = await this.post(tx, c, v, {
+        kind: 'incentive',
+        entityId: p.legalEntityId,
+        month,
+        sourceRef: `incentive-release:${r.id}`,
+        lines: [{ employeeId: r.employeeId, componentCode: 'incentive', amount: r.heldAmount.toFixed(2), label: `${p.name}, ${dateOf(r.month).slice(0, 7)}: the part held until the customer paid.` }],
+        title: `${p.name}, held part of ${dateOf(r.month).slice(0, 7)}`,
+      });
+      const n = await tx.incentiveResult.updateMany({ where: { organizationId: org, id: r.id, releasedPostingId: null }, data: { releasedPostingId: out.posting.id } });
+      if (!n.count) throw new ConflictException('The held part is already released.');
+      await audit(tx, c, 'payroll.incentive.held_released', 'incentive_result', r.id, { employeeId: r.employeeId, amount: r.heldAmount.toFixed(2), month, reason: r.heldReason });
       return out;
     });
   }
@@ -552,8 +591,37 @@ export class SpecialPayService implements OnModuleInit {
       const org = c.organizationId;
       const results = await tx.incentiveResult.findMany({ where: { organizationId: org }, orderBy: { month: 'desc' }, take: 120 });
       const clawbacks = await tx.incentiveClawback.findMany({ where: { organizationId: org }, orderBy: { month: 'desc' }, take: 120 });
+      // PAY-33: how often the plan pays (its quarter), the tier reached (the last band the attainment got into), the held part.
+      const plans = await tx.incentivePlan.findMany({ where: { organizationId: org, id: { in: [...new Set(results.map((r) => r.planId))] } }, select: { id: true, payoutFrequency: true, clawbackDays: true } });
+      const quarterOf = (m: string) => {
+        const n = Math.floor(((Number(m.slice(5, 7)) + 8) % 12) / 3) + 1;
+        const fy = Number(m.slice(0, 4)) - (Number(m.slice(5, 7)) < 4 ? 1 : 0);
+        return { quarter: `Q${n}`, taxYear: `${fy}-${String((fy + 1) % 100).padStart(2, '0')}` };
+      };
       return {
-        results: results.map((r) => ({ id: r.id, plan: (r.workings as { plan?: string }).plan ?? null, month: dateOf(r.month).slice(0, 7), quota: r.quota.toFixed(2), actual: r.actual.toFixed(2), amount: r.amount.toFixed(2), workings: r.workings, sentToPayroll: Boolean(r.postingId) })),
+        results: results.map((r) => {
+          const m = dateOf(r.month).slice(0, 7);
+          const plan = plans.find((x) => x.id === r.planId);
+          const bands = ((r.workings as { bands?: { from: number; to: number | null }[] }).bands ?? []);
+          const tier = bands.length ? { from: bands[bands.length - 1].from, to: bands[bands.length - 1].to } : null;
+          return {
+            id: r.id,
+            plan: (r.workings as { plan?: string }).plan ?? null,
+            month: m,
+            ...quarterOf(m),
+            payoutFrequency: plan?.payoutFrequency ?? 'monthly',
+            clawbackDays: plan?.clawbackDays ?? 0,
+            tier,
+            quota: r.quota.toFixed(2),
+            actual: r.actual.toFixed(2),
+            amount: r.amount.toFixed(2),
+            held: r.heldAmount.toFixed(2),
+            heldReason: r.heldReason,
+            heldReleased: Boolean(r.releasedPostingId),
+            workings: r.workings,
+            sentToPayroll: Boolean(r.postingId),
+          };
+        }),
         clawbacks: clawbacks.map((x) => ({ id: x.id, month: dateOf(x.month).slice(0, 7), amount: x.amount.toFixed(2), reason: x.reason })),
       };
     });
