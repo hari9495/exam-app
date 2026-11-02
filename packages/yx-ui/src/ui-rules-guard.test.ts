@@ -38,7 +38,10 @@ const files = (dir: string): string[] =>
     return statSync(p).isDirectory() ? files(p) : p.endsWith('.tsx') && !/\.(stories|test)\.tsx$/.test(p) ? [p] : [];
   });
 const rel = (f: string) => relative(SCREENS, f).replace(/\\/g, '/');
-const SOURCES = AREAS.flatMap((a) => files(join(SCREENS, a)));
+// Performance (PRF-01 … 06, 3 Nov 2026): the live parts of the growth designs. The older growth design prototypes are
+// not covered yet (widen as each Performance screen goes live).
+const FILES = ['growth/perf-goals-live.tsx', 'growth/perf-reviews-live.tsx'];
+const SOURCES = [...AREAS.flatMap((a) => files(join(SCREENS, a))), ...FILES.map((f) => join(SCREENS, f))];
 
 /** Every JSX tag `name` with an attribute `attr`, as "file: <tag …" (whitespace collapsed, first 110 characters). */
 function tagsWith(names: string[], attr: string, test: (value: string) => boolean): string[] {
