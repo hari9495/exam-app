@@ -22,6 +22,12 @@ export function usePerfWrite() {
   };
 }
 
+/** One GET under /performance on demand (a drill-down), not cached. */
+export function usePerfRead() {
+  const { accessToken } = useAuth();
+  return <T,>(path: string): Promise<T> => apiFetch(`/performance${path}`, {}, accessToken ?? undefined) as Promise<T>;
+}
+
 /** Saves a file the API streams (a report's CSV). */
 export function usePerfDownload() {
   const { accessToken } = useAuth();
@@ -35,3 +41,6 @@ export function usePerfDownload() {
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   };
 }
+
+/** The designs take ready, loading or error; anything else (no access, no record) shows as the error with Retry. */
+export const perfState = (s: string): 'ready' | 'loading' | 'error' => (s === 'ready' || s === 'loading' ? s : 'error');

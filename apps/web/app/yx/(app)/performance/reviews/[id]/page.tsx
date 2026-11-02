@@ -1,15 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { PeerPanel, ReviewScreen, type Nominations, type PeerGroups, type ReviewDetail } from '@yukthix/ui/performance';
+import { useParams } from 'next/navigation';
+import { PeerPanel, ReviewAcknowledgeScreen, ReviewWorkspaceScreen, type Nominations, type PeerGroups, type ReviewDetail } from '@yukthix/ui/performance';
 import { loadState } from '../../../../../../lib/yx-org';
-import { usePerf, usePerfWrite } from '../../../../../../lib/yx-performance';
+import { perfState, usePerf, usePerfWrite } from '../../../../../../lib/yx-performance';
 
-// One review (PRF-04 / PRF-05, M06 batch PM4): the self, manager and skip-level reviews, where it is, and after
-// release the employee's acknowledgement or disagreement; HR may reopen it with a reason.
+// One review. The employee's released review is PRF-06 (acknowledge, with a disagreement in the same step); every other
+// view is the PRF-05 workspace (self, manager, former manager, skip-level, the chain above and HR). 360° nominations are
+// PRF-07, built separately; until then its live panel sits inside the workspace.
 export default function YxReviewPage() {
-  const router = useRouter();
   const { id } = useParams<{ id: string }>();
   const base = `/reviews/${encodeURIComponent(id)}`;
   const review = usePerf<ReviewDetail>(base);
@@ -20,19 +20,21 @@ export default function YxReviewPage() {
   const canNominate = Boolean(nominations.data?.can.propose || nominations.data?.can.add);
   const options = usePerf<{ id: string; name: string }[]>(`${base}/nominee-options?q=${encodeURIComponent(q)}`, peerOn && canNominate);
   const write = usePerfWrite();
-  const questions = Object.fromEntries((review.data?.template.sections ?? []).flatMap((s) => s.questions.map((x) => [x.id, x.wholeSection ? s.title : x.text])));
+  const r = review.data;
+  if (r && r.role === 'employee' && r.released)
+    return <ReviewAcknowledgeScreen live={{ review: r, onAcknowledge: (comment, disagreement) => write('POST', `${base}/acknowledge`, { comment, ...(disagreement ? { disagreement } : {}) }), onDisagree: (text) => write('POST', `${base}/disagree`, { text }) }} />;
+  const questions = Object.fromEntries((r?.template.sections ?? []).flatMap((s) => s.questions.map((x) => [x.id, x.wholeSection ? s.title : x.text])));
   return (
-    <ReviewScreen
-      state={loadState(review)}
-      onRetry={() => void review.refetch()}
-      review={review.data ?? null}
-      onBack={() => router.push('/yx/performance/reviews')}
-      onSave={(stage, input, submit) => (submit ? write('POST', `${base}/entries/${stage}/submit`, input) : write('PUT', `${base}/entries/${stage}`, input))}
-      extra={
-        nominations.data?.peer ? (
+    <ReviewWorkspaceScreen
+      live={{
+        state: perfState(loadState(review)),
+        onRetry: () => void review.refetch(),
+        review: r ?? null,
+        peer: groups.data ?? null,
+        nominations: nominations.data?.peer ? (
           <PeerPanel
             data={nominations.data}
-            groups={groups.data ?? null}
+            groups={null}
             questions={questions}
             options={options.data ?? []}
             onSearch={setQ}
@@ -40,13 +42,12 @@ export default function YxReviewPage() {
             onDecide={(nid, approve) => write('POST', `/nominations/${encodeURIComponent(nid)}/${approve ? 'approve' : 'decline'}`)}
             onWithdraw={(nid) => write('POST', `/nominations/${encodeURIComponent(nid)}/withdraw`)}
           />
-        ) : null
-      }
-      onAddOther={(employeeId) => write('POST', `${base}/other-reviewers`, { employeeId })}
-      onSkip={(agree, text) => (agree ? write('POST', `${base}/skip/agree`, { comment: text }) : write('POST', `${base}/send-back`, { reason: text }))}
-      onAcknowledge={(comment) => write('POST', `${base}/acknowledge`, { comment })}
-      onDisagree={(text) => write('POST', `${base}/disagree`, { text })}
-      onReopen={(reason) => write('POST', `${base}/reopen`, { reason })}
+        ) : undefined,
+        onSave: (stage, input, submit) => (submit ? write('POST', `${base}/entries/${stage}/submit`, input) : write('PUT', `${base}/entries/${stage}`, input)),
+        onSkip: (agree, text) => (agree ? write('POST', `${base}/skip/agree`, { comment: text }) : write('POST', `${base}/send-back`, { reason: text })),
+        onReopen: (reason) => write('POST', `${base}/reopen`, { reason }),
+        onAddOther: (employeeId) => write('POST', `${base}/other-reviewers`, { employeeId }),
+      }}
     />
   );
 }

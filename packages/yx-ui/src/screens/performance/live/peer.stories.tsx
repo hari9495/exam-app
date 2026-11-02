@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { FeedbackTasksScreen, PeerFormScreen, PeerPanel, PeerSetup, ReviewerBlocksScreen, type PeerPanelProps } from './peer';
+import { FeedbackTasksScreen, PeerFormScreen, PeerPanel, ReviewerBlocksScreen, type PeerPanelProps } from './peer';
 import type { PeerForm } from './types';
 
 // Peer and 360° feedback, wired (batch PM5; PRF-07). In the affordance guard set ('screens-performance-live').
@@ -42,4 +42,3 @@ export const OnTheReview: S = { render: () => <div className="yx-auth__page"><Pe
 export const MyTasks: S = { render: () => <FeedbackTasksScreen state="ready" tasks={[{ id: 't1', reviewId: 'r1', employee: 'Arjun Rao', cycle: 'FY 2025-26 annual review', dueOn: '2026-10-25', done: false, open: true }]} onOpen={noop} /> };
 export const AnswerForm: S = { render: () => <PeerFormScreen state="ready" form={form} onBack={noop} onSave={ok} /> };
 export const Blocks: S = { render: () => <ReviewerBlocksScreen state="ready" blocks={[{ id: 'b1', a: 'Arjun Rao', b: 'Sita Iyer', employeeA: 'e1', employeeB: 'e2', reasonCode: 'conflict', untilOn: null }]} people={[]} onSearch={noop} onBlock={ok} onEnd={ok} /> };
-export const CycleSetup: S = { render: () => <div className="yx-auth__page"><PeerSetup value={null} onSave={ok} /></div> };

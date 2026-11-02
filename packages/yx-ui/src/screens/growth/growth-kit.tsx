@@ -263,10 +263,12 @@ export interface RatingScaleProps {
   disabled?: boolean;
   /** Labels per point; default M06 Q3 five labels. */
   labels?: readonly string[];
+  /** The company's scale (live data): each level's value and label, in order. Wins over `labels`. */
+  levels?: readonly { value: number; label: string }[];
 }
 
 /** 1–5 labelled rating (M06 Q3); the label is always written next to the number. */
-export function RatingScale({ value, onChange, label, disabled, labels = RATING_LABELS }: RatingScaleProps) {
+export function RatingScale({ value, onChange, label, disabled, labels = RATING_LABELS, levels }: RatingScaleProps) {
   return (
     <RadioGroup
       className="yx-rating-scale"
@@ -275,18 +277,18 @@ export function RatingScale({ value, onChange, label, disabled, labels = RATING_
       disabled={disabled}
       value={value == null ? '' : String(value)}
       onChange={(v) => onChange?.(Number(v))}
-      options={labels.map((l, i) => ({ value: String(i + 1), label: `${i + 1} · ${l}` }))}
+      options={(levels ?? labels.map((l, i) => ({ value: i + 1, label: l }))).map((l) => ({ value: String(l.value), label: `${l.value} · ${l.label}` }))}
     />
   );
 }
 
 /** Final score with its band (YX-PERF-07), or "pending" (YX-PERF-02, never 0). */
-export function ScoreBand({ score, pendingText = 'Pending' }: { score: number | null; pendingText?: string }) {
+export function ScoreBand({ score, pendingText = 'Pending', band }: { score: number | null; pendingText?: string; band?: string | null }) {
   if (score == null) return <Badge tone="neutral">{pendingText}</Badge>;
   return (
     <span className="yx-score-band">
       <span className="yx-score-band__num">{score.toFixed(2)}</span>
-      <Badge tone={score >= 3.5 ? 'success' : score >= 2.5 ? 'info' : 'warning'}>{bandFor(score)}</Badge>
+      <Badge tone={score >= 3.5 ? 'success' : score >= 2.5 ? 'info' : 'warning'}>{band ?? bandFor(score)}</Badge>
     </span>
   );
 }

@@ -276,7 +276,8 @@ export function buildNav(n: NavInput): NavArea[] {
     id: 'performance',
     title: 'Performance',
     sections: sec(undefined, [
-      ...when(employee || has('perf.goal.manage'), L('goals', 'Goals', '/yx/performance')),
+      ...when(employee || has('perf.goal.manage') || has('perf.cycle.manage'), L('perf-home', 'Performance home', '/yx/performance')),
+      ...when(employee, L('goals', 'Goals', '/yx/performance/goals')),
       ...when(has('perf.goal.view'), L('goal-map', 'Goal map', '/yx/performance/goal-map')),
       ...when(employee, L('reviews', 'Reviews & cycles', '/yx/performance/reviews')),
       ...when(has('perf.cycle.manage'), L('review-cycles', 'Review cycles', '/yx/performance/cycles')),

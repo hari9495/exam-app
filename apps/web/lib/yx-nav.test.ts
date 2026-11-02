@@ -206,7 +206,8 @@ describe('activeLink and meLinks', () => {
   it('picks the longest matching link, so a sub-page lights up its own entry', () => {
     expect(activeLink(n, '/yx/people/profile-requests')?.link.label).toBe('Identity and bank changes');
     expect(activeLink(n, '/yx/performance/cycles/c-1')?.link.label).toBe('Review cycles');
-    expect(activeLink(n, '/yx/performance')?.link.label).toBe('Goals');
+    expect(activeLink(n, '/yx/performance')?.link.label).toBe('Performance home');
+    expect(activeLink(n, '/yx/performance/goals')?.link.label).toBe('Goals');
     expect(activeLink(n, '/yx/nowhere')).toBeNull();
   });
   it('the designed Me menu (PPL-30), and the personal settings in the avatar menu', () => {

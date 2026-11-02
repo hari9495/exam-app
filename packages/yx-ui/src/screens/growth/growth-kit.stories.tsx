@@ -52,6 +52,18 @@ export const Rating: S = {
     );
   },
 };
+export const RatingCompanyScale: S = {
+  name: 'Rating · the company’s own scale and band',
+  render: () => {
+    const [v, setV] = useState<number | null>(2);
+    return (
+      <div style={box}>
+        <RatingScale label="Rating" value={v} onChange={setV} levels={[{ value: 1, label: 'Below' }, { value: 2, label: 'Meets' }, { value: 3, label: 'Above' }, { value: 4, label: 'Far above' }]} />
+        <ScoreBand score={2.6} band="Solid performer" />
+      </div>
+    );
+  },
+};
 export const Stages: S = { render: () => <div style={box}><StageTrack stages={MY_STAGES} nextStep="360° feedback" /></div> };
 export const NineBoxGrid: S = {
   name: '9-box',

@@ -20,6 +20,7 @@ import { formatDate } from '../../lib/format';
 import { TODAY } from '../_kit/data';
 import { CoachCard, GoalTree, GrowthFrame, ProgressRing, StageTrack, type CoachNudge, type Device, type StageItem } from './growth-kit';
 import { goalProgress, krProgress, weightCheck, type Goal, type GoalConfidence } from './growth-logic';
+import { LiveCompanyGoalMap, LiveMyGoalsScreen, LivePerformanceHome, type LiveGoalMap, type LiveHome, type LiveMyGoals } from './perf-goals-live';
 import './growth.css';
 
 export type LoadState = 'ready' | 'loading' | 'error' | 'empty';
@@ -115,8 +116,12 @@ function FeedbackMini({ items }: { items: NonNullable<PerformanceHomeProps['feed
   );
 }
 
-/** PRF-01 Performance home (T6, role-based). Manager home carries the PRF-16 coach card. */
-export function PerformanceHomeScreen(p: PerformanceHomeProps) {
+/** PRF-01 Performance home (T6, role-based). Manager home carries the PRF-16 coach card. The live app passes `live`. */
+export function PerformanceHomeScreen(props: PerformanceHomeProps | { live: LiveHome }) {
+  return 'live' in props ? <LivePerformanceHome live={props.live} /> : <SamplePerformanceHome {...props} />;
+}
+
+function SamplePerformanceHome(p: PerformanceHomeProps) {
   const { persona, device = 'desktop', state = 'ready' } = p;
   const [checkIn, setCheckIn] = useState<Goal | null>(null);
   const title = persona === 'hr' ? 'Performance' : persona === 'mgr' ? 'Performance · my team' : 'My performance';
@@ -311,23 +316,41 @@ export interface GoalCheckInSheetProps {
   device?: Device;
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  onSave?: (actuals: Record<string, number>, confidence: GoalConfidence, note: string) => void;
+  /** `progress` is sent only for a goal without key results (typed by hand, 0–100). A promise keeps the sheet open
+   *  with the button busy, closes it when done and shows the server's refusal inside it otherwise. */
+  onSave?: (actuals: Record<string, number>, confidence: GoalConfidence, note: string, progress?: number) => void | Promise<unknown>;
 }
 
-/** PRF-02 goal check-in (T4): new actual per key result, confidence, note; live effect on progress. */
+/** PRF-02 goal check-in (T4): new actual per key result (or how far, for a goal without them), confidence, note; live effect on progress. */
 export function GoalCheckInSheet({ goal, device = 'desktop', open, onOpenChange, onSave }: GoalCheckInSheetProps) {
   const [actuals, setActuals] = useState<Record<string, number | null>>(Object.fromEntries(goal.keyResults.map((k) => [k.id, k.actual])));
   const [confidence, setConfidence] = useState<GoalConfidence>(goal.confidence ?? 'On track');
   const [note, setNote] = useState('');
+  const [typed, setTyped] = useState<number | null>(goalProgress(goal));
+  const [saving, setSaving] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
+  const byHand = goal.keyResults.length === 0;
   const before = goalProgress(goal);
-  const after = goalProgress({ ...goal, keyResults: goal.keyResults.map((k) => ({ ...k, actual: actuals[k.id] ?? k.actual })) });
+  const after = byHand ? typed : goalProgress({ ...goal, progress: undefined, keyResults: goal.keyResults.map((k) => ({ ...k, progress: undefined, actual: actuals[k.id] ?? k.actual })) });
+  const tooFar = byHand && (typed == null || typed < 0 || typed > 100);
   const body = (
     <div className="yx-growth-stack">
+      {failed && (
+        <InlineAlert tone="danger" title="Check-in not saved">
+          {failed}
+        </InlineAlert>
+      )}
       {goal.keyResults.map((kr) => (
         <FormField key={kr.id} label={kr.title} helper={`Start ${kr.start} · target ${kr.target} ${kr.unit} · now ${kr.actual}`}>
           <NumberField value={actuals[kr.id] ?? null} onChange={(v) => setActuals((a) => ({ ...a, [kr.id]: v }))} suffix={kr.unit} decimals />
         </FormField>
       ))}
+      {byHand && (
+        <FormField id="ci-progress" label="How far is this goal?" required helper="This goal has no key results, so say how far it is." error={tried && tooFar ? 'Enter a number from 0 to 100.' : undefined}>
+          <NumberField value={typed} onChange={setTyped} suffix="%" min={0} max={100} decimals />
+        </FormField>
+      )}
       <FormField label="How confident are you of reaching this goal?">
         <RadioGroup
           aria-label="Confidence"
@@ -348,13 +371,13 @@ export function GoalCheckInSheet({ goal, device = 'desktop', open, onOpenChange,
         <span className="yx-growth-effect__title">What this check-in changes</span>
         <ul>
           <li>
-            Goal progress: {before ?? 0}% → <strong>{after ?? 0}%</strong> (calculated from key results)
+            Goal progress: {before ?? 0}% → <strong>{after ?? 0}%</strong> {byHand ? '(typed, as the goal has no key results)' : '(calculated from key results)'}
           </li>
           {goal.keyResults.map((kr) => {
             const a = actuals[kr.id];
             return a != null && a !== kr.actual ? (
               <li key={kr.id}>
-                {kr.title}: {krProgress(kr)}% → {krProgress({ ...kr, actual: a })}%
+                {kr.title}: {krProgress(kr)}% → {krProgress({ ...kr, progress: undefined, actual: a })}%
               </li>
             ) : null;
           })}
@@ -364,17 +387,27 @@ export function GoalCheckInSheet({ goal, device = 'desktop', open, onOpenChange,
       </div>
     </div>
   );
+  const save = async () => {
+    if (tooFar) {
+      setTried(true);
+      document.getElementById('ci-progress')?.focus();
+      return;
+    }
+    setSaving(true);
+    setFailed(null);
+    try {
+      await onSave?.(Object.fromEntries(Object.entries(actuals).map(([k, v]) => [k, v ?? 0])), confidence, note, byHand ? (typed ?? 0) : undefined);
+      onOpenChange(false);
+    } catch (e) {
+      setFailed(e instanceof Error ? e.message : 'Try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
   const footer = (
     <div className="yx-growth-foot">
       <Button onClick={() => onOpenChange(false)}>Cancel</Button>
-      <Button
-        variant="primary"
-        icon={Check}
-        onClick={() => {
-          onSave?.(Object.fromEntries(Object.entries(actuals).map(([k, v]) => [k, v ?? 0])), confidence, note);
-          onOpenChange(false);
-        }}
-      >
+      <Button variant="primary" icon={Check} loading={saving} onClick={() => void save()}>
         Save check-in
       </Button>
     </div>
@@ -407,8 +440,12 @@ export interface MyGoalsProps {
   period?: string;
 }
 
-/** PRF-02 My goals (T6): tree and alignment views, progress rings per key result, weights check, check-in (T4). */
-export function MyGoalsScreen({ persona, device = 'desktop', state = 'ready', ownerName, goals, allGoals, checkIns = {}, openGoalId, checkInGoalId, period = 'H1 FY 2026-27 (Apr–Sep 2026)' }: MyGoalsProps) {
+/** PRF-02 My goals (T6): tree and alignment views, progress rings per key result, weights check, check-in (T4). The live app passes `live`. */
+export function MyGoalsScreen(props: MyGoalsProps | { live: LiveMyGoals; defaultDialog?: Parameters<typeof LiveMyGoalsScreen>[0]['defaultDialog'] }) {
+  return 'live' in props ? <LiveMyGoalsScreen live={props.live} defaultDialog={props.defaultDialog} /> : <SampleMyGoals {...props} />;
+}
+
+function SampleMyGoals({ persona, device = 'desktop', state = 'ready', ownerName, goals, allGoals, checkIns = {}, openGoalId, checkInGoalId, period = 'H1 FY 2026-27 (Apr–Sep 2026)' }: MyGoalsProps) {
   const [openId, setOpenId] = useState<string | null>(openGoalId ?? null);
   const [checkInId, setCheckInId] = useState<string | null>(checkInGoalId ?? null);
   const [approved, setApproved] = useState(false);
@@ -628,8 +665,12 @@ export interface CompanyGoalMapProps {
   departments: string[];
 }
 
-/** PRF-03 Company goal map (T6, HR / Exec): company → team → person with calculated progress; unaligned and off-track lists. */
-export function CompanyGoalMapScreen({ persona = 'hr', state = 'ready', goals, unaligned, departments }: CompanyGoalMapProps) {
+/** PRF-03 Company goal map (T6, HR / Exec): company → team → person with calculated progress; unaligned and off-track lists. The live app passes `live`. */
+export function CompanyGoalMapScreen(props: CompanyGoalMapProps | { live: LiveGoalMap; defaultDialog?: 'add' | 'period' }) {
+  return 'live' in props ? <LiveCompanyGoalMap live={props.live} defaultDialog={props.defaultDialog} /> : <SampleCompanyGoalMap {...props} />;
+}
+
+function SampleCompanyGoalMap({ persona = 'hr', state = 'ready', goals, unaligned, departments }: CompanyGoalMapProps) {
   const [dept, setDept] = useState<string | null>(null);
   const company = goals.filter((g) => g.owner.type === 'company');
   const offTrack = goals.filter((g) => g.confidence === 'Off track' || g.confidence === 'At risk');

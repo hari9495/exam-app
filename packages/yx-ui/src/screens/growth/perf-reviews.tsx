@@ -23,6 +23,7 @@ import { TODAY } from '../_kit/data';
 import { BiasFlagList, ConfidentialTag, GrowthFrame, RatingScale, ScoreBand, SplitLayout, StageTrack, type Device, type StageItem } from './growth-kit';
 import { anonymityGroups, bandFor, detectBiasFlags, nominationCheck, RATING_LABELS, reviewScore, type Relationship, type ReviewSection } from './growth-logic';
 import type { LoadState } from './perf-goals';
+import { LiveCycleControlRoom, LiveCycleSetupScreen, LiveReviewAcknowledgeScreen, LiveReviewWorkspaceScreen, type LiveAcknowledge, type LiveControlRoom, type LiveCycleSetup, type LiveReviewWorkspace } from './perf-reviews-live';
 import './growth.css';
 
 /* ================================================================== PRF-04 · Cycle set-up (T5) + control room (T6) */
@@ -43,7 +44,11 @@ const STAGE_DEFAULTS = [
 ];
 
 /** PRF-04 cycle set-up wizard: basics, population and eligibility (J11), template and scale, stages and deadlines. */
-export function CycleSetupScreen({ defaultStep = 'basics', population }: CycleSetupProps) {
+export function CycleSetupScreen(props: CycleSetupProps | { live: LiveCycleSetup; defaultStep?: string }) {
+  return 'live' in props ? <LiveCycleSetupScreen live={props.live} defaultStep={props.defaultStep} /> : <SampleCycleSetup {...props} />;
+}
+
+function SampleCycleSetup({ defaultStep = 'basics', population }: CycleSetupProps) {
   const [name, setName] = useState('Half-yearly review H2 FY 2026-27');
   const [type, setType] = useState<string | null>('half');
   const [start, setStart] = useState<Date | null>(new Date(2026, 9, 1));
@@ -219,7 +224,11 @@ export interface CycleControlProps {
 }
 
 /** PRF-04 cycle control room: clickable funnel (YX-PERF-12) → names; overdue by owner; reminders and deadlines. */
-export function CycleControlRoomScreen({ name, funnel, overdue, openStage, state = 'ready' }: CycleControlProps) {
+export function CycleControlRoomScreen(props: CycleControlProps | { live: LiveControlRoom; defaultTab?: string; defaultStage?: string }) {
+  return 'live' in props ? <LiveCycleControlRoom live={props.live} defaultTab={props.defaultTab} defaultStage={props.defaultStage} /> : <SampleControlRoom {...props} />;
+}
+
+function SampleControlRoom({ name, funnel, overdue, openStage, state = 'ready' }: CycleControlProps) {
   const [open, setOpen] = useState<string | null>(openStage ?? null);
   const top = funnel[0]?.count ?? 0;
   const current = funnel.find((f) => f.stage === open);
@@ -350,7 +359,11 @@ const DRAFT_TEXT =
   'Divya automated 310 of the planned 400 regression cases and brought the flaky rate from 12% to 6%, which cut line stoppages for testing to zero in August. Defect leakage fell from 8% to 3.5%. Mentoring is behind plan: 5 of 12 sessions held; we agreed a fixed Thursday slot.';
 
 /** PRF-05 Review workspace (T3): stage stepper, section cards, advisory peer panel, score with band. PRF-17: Help me draft + bias flags. */
-export function ReviewWorkspaceScreen({ persona, review, assistant, submitted }: ReviewWorkspaceProps) {
+export function ReviewWorkspaceScreen(props: ReviewWorkspaceProps | { live: LiveReviewWorkspace }) {
+  return 'live' in props ? <LiveReviewWorkspaceScreen live={props.live} /> : <SampleReviewWorkspace {...props} />;
+}
+
+function SampleReviewWorkspace({ persona, review, assistant, submitted }: ReviewWorkspaceProps) {
   const [ratings, setRatings] = useState<Record<string, number | null>>(Object.fromEntries(review.goals.map((g) => [g.id, persona === 'mgr' ? g.manager : g.self])));
   const [comp, setComp] = useState<Record<string, number | null>>(Object.fromEntries(review.competencies.map((c) => [c.id, persona === 'mgr' ? c.manager : c.self])));
   const [summary, setSummary] = useState(review.summary);
@@ -614,7 +627,11 @@ export interface ReleasedReview {
 }
 
 /** PRF-06 acknowledgement (T4): comment allowed, rating unchanged; disagreement flag routes to HR (M06 Q2). */
-export function ReviewAcknowledgeScreen({ device = 'desktop', review, defaultDisagree, acknowledged }: { device?: Device; review: ReleasedReview; defaultDisagree?: boolean; acknowledged?: boolean }) {
+export function ReviewAcknowledgeScreen(props: { device?: Device; review: ReleasedReview; defaultDisagree?: boolean; acknowledged?: boolean } | { live: LiveAcknowledge; defaultDisagree?: boolean }) {
+  return 'live' in props ? <LiveReviewAcknowledgeScreen live={props.live} defaultDisagree={props.defaultDisagree} /> : <SampleAcknowledge {...props} />;
+}
+
+function SampleAcknowledge({ device = 'desktop', review, defaultDisagree, acknowledged }: { device?: Device; review: ReleasedReview; defaultDisagree?: boolean; acknowledged?: boolean }) {
   const [comment, setComment] = useState(defaultDisagree ? 'The line-3 automation was delayed by the vendor, which the review doesn’t mention.' : '');
   const [disagree, setDisagree] = useState(!!defaultDisagree);
   const [reason, setReason] = useState(defaultDisagree ? 'Goal 2 rating does not account for the vendor delay agreed in my 1:1 on 19 Aug.' : '');
