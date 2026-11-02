@@ -42,6 +42,8 @@ export interface PlainTableProps<R> {
   footer?: PlainTableFooterRow[];
   /** Picks out a row (flagged, error, a match, the selected one). */
   rowTone?: (row: R) => PlainTableRowTone | undefined;
+  /** Column headings read out but not shown, for a short label-and-value list whose design has no heading row. */
+  hideHeader?: boolean;
   className?: string;
 }
 
@@ -50,12 +52,12 @@ export interface PlainTableProps<R> {
  * pay workings with totals. Long values wrap; it scrolls sideways only on a narrow screen. For lists people work through,
  * use DataTable.
  */
-export function PlainTable<R>({ label, caption, columns, rows, getRowId, footer, rowTone, className }: PlainTableProps<R>) {
+export function PlainTable<R>({ label, caption, columns, rows, getRowId, footer, rowTone, hideHeader, className }: PlainTableProps<R>) {
   return (
     <div className="yx-scroll-x" tabIndex={0} role="region" aria-label={`${label}, scrolls sideways on small screens`}>
       <table className={cx('yx-plain-table', className)} aria-label={caption ? undefined : label}>
         {caption && <caption className="yx-plain-table__caption">{caption}</caption>}
-        <thead>
+        <thead className={hideHeader ? 'yx-visually-hidden' : undefined}>
           <tr>
             {columns.map((c) => (
               <th key={c.key} scope="col" data-date={c.date || undefined} data-num={c.num || undefined}>

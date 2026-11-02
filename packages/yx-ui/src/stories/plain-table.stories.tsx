@@ -102,3 +102,24 @@ export const NumbersAndTotals: StoryObj = {
     </Stack>
   ),
 };
+
+export const HiddenHeadings: StoryObj = {
+  name: 'Label and value list (headings read out, not shown)',
+  render: () => (
+    <Stack>
+      <Section title="Monthly pay" note="A short label-and-value list whose design has no heading row: the headings stay for screen readers.">
+        <PlainTable
+          label="Monthly pay"
+          hideHeader
+          columns={[
+            { key: 'line', header: 'Line', rowHeader: true, cell: (r: Line) => r.line },
+            { key: 'month', header: 'A month', num: true, cell: (r: Line) => formatINR(r.month) },
+          ]}
+          rows={LINES}
+          getRowId={(r) => r.id}
+          footer={[{ id: 'total', label: 'Total', cells: { month: formatINR(72_500) } }]}
+        />
+      </Section>
+    </Stack>
+  ),
+};

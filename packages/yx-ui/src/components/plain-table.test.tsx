@@ -75,4 +75,10 @@ describe('PlainTable (kit, Data)', () => {
     expect(second).not.toHaveTextContent('Moved');
     expect(document.querySelector('tfoot')).toBeNull();
   });
+
+  it('hidden headings are still column headers for screen readers, only not shown', () => {
+    render(<PlainTable label="Tasks" hideHeader columns={COLS} rows={ROWS} getRowId={(r) => r.id} />);
+    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Task', 'Was due', 'Now due']);
+    expect(document.querySelector('thead')).toHaveClass('yx-visually-hidden');
+  });
 });
