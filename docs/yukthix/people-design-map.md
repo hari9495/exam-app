@@ -310,6 +310,12 @@ short text HR writes, one thing a line, up to 500 characters, per company or leg
 and Aadhaar (to be seen, not kept) / Two passport photos / Bank passbook or cancelled cheque". The server trims it and
 refuses empty or longer text. Org story: `CompanyRulesBringOnDayOne` (Settings, the text editor). Manual tests MT-PPL-J-14 … 17.
 
+Founder answers 2 Nov 2026 (follow-up), built: when a joining closes (Mark joined; HR's offer withdrawn, reneged or did
+not join; the joiner's decline) every still-open e-sign request of that person becomes `cancelled` in the same
+transaction (existing status, no migration), one `letter.signature.cancelled` audit row per letter with the reason;
+signed and declined requests stay. The closed portal shows such a letter as "No longer needed". "Bring on day one" left
+blank stays refused; joined employees keep their portal downloads. Manual test MT-PPL-J-18.
+
 ## 4. Design groups, story by story
 
 ### A. Directory, record and changes

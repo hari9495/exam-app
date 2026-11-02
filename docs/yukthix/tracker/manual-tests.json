@@ -8050,5 +8050,26 @@
       "Portals T9-01 ChecklistPhone"
     ],
     "note": "Positive and negative (another entity's text never shows)."
+  },
+  {
+    "id": "MT-PPL-J-18",
+    "area": "People · Joining portal T9-01 (founder follow-up 2 Nov 2026)",
+    "screen": "A closing joining cancels letters still waiting for acceptance",
+    "url": "http://localhost:3000/yx/join/demo-org",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi) and two test joiners of demo-org, A and B, each with an appointment letter issued and waiting for acceptance (Offer and letters shows 'Read and accept'). Joiner A has also accepted one earlier letter (the offer). Codes by email (developer reads the mail log). 1278 x 635.",
+    "steps": [
+      "1. HR changes joiner A's status to Offer withdrawn, with a reason (or A presses Decline offer in the portal).",
+      "2. Joiner A signs in to the portal.",
+      "3. Joiner A presses Accepted copy on the offer they accepted before.",
+      "4. The developer reads the audit log rows with action 'letter.signature.cancelled' (no audit screen for this yet).",
+      "5. Joiner B (still waiting to join) signs in and opens Offer and letters.",
+      "6. From an old tab of joiner A opened before step 1, press Read and accept on the appointment letter and ask for a code."
+    ],
+    "expected": "Step 2: the outcome and the letters; the appointment letter's tag says 'No longer needed' and has no Read and accept. Step 3: the accepted copy still downloads; the offer still says 'You accepted it'. Step 4: one row for A's appointment letter, with the reason (withdrawn or reneged); none for B. Step 5: B's letter still says 'Waiting for you to accept' with Read and accept. Step 6: refused; the page switches to the outcome ('Your joining is closed, so nothing can be changed here.').",
+    "stories": [
+      "Portals T9-01 WithdrawnLetters",
+      "Portals T9-01 OfferLetters"
+    ],
+    "note": "Positive and negative. The same happens on Mark joined (the joined employee's waiting letters show 'No longer needed')."
   }
 ]
