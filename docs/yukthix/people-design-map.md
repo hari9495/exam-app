@@ -1279,3 +1279,8 @@ the joiner's reason; (2) a closed joining can still download its letters, read-o
 before joining, for now; (4) Form 12B numbers given in the portal are not copied into Pay automatically (payroll needs the
 PDF and approves it); (5) "Bring on day one" becomes a short text HR edits, shown on the portal; (6) the education form and
 code-of-conduct / POSH policy signing join the portal in a later round.
+
+## Founder answers, 2 Nov 2026 (joiner portal follow-up, "all ok")
+(1) "Bring on day one" cannot be saved blank; HR keeps the starter list if nothing extra is needed; (2) when a joining
+closes, its open signature requests are cancelled (small follow-up); (3) joined employees keep downloading their letters
+in the portal until the employee app has a "My letters" page.
