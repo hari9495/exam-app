@@ -27,7 +27,7 @@ import { useRun } from '../org/org-kit';
 import { FactRow, IrreversibleSheet, RunProgress, RunStageTrack, SectionTitle, StateBlock, WhyThisNumber, type ExplainedLine, type RunStage } from './pay-kit';
 import { RunStatusBadge, rupees, runName } from './live/runs';
 import type { Confirmation, LoadState } from './live/types';
-import type { BankFileMade, BankFileRow, PayRun, PayslipDetail, PayslipLine, RunCheck, RunPayslip, RunPerson, RunProgressData, RunReadiness, RunVariance } from './live/types-5j';
+import type { BankFileMade, BankFileRow, FilingRow, PayRun, PayslipDetail, PayslipLine, RunCheck, RunPayslip, RunPerson, RunProgressData, RunReadiness, RunVariance } from './live/types-5j';
 
 /** What /yx/payroll/runs/[id] passes to the designed run workspace. */
 export interface LiveRunWorkspaceData {
@@ -69,6 +69,14 @@ export interface LiveRunWorkspaceData {
   heading?: { name: string; secondary: string; status?: React.ReactNode };
   /** PAY-11: the off-cycle run's own part (settlement lines, deadline, payees), above the tabs. */
   lead?: React.ReactNode;
+  /** PAY-03 Files tab: the run's journal (GET runs/:id/journal; null without payroll.journal.export). */
+  journal?: { lines: unknown[]; postedAt: string | null; canPost: boolean } | null;
+  /** PAY-03 Files tab: the month's statutory files of the run's entity (GET statutory/filings; null without statutory.filing.view). */
+  filings?: FilingRow[] | null;
+  /** Opens the journal export (the payments page, Journal tab). */
+  onJournal?: () => void;
+  /** Opens the statutory hub for the run's month. */
+  onStatutory?: () => void;
 }
 
 /** GET /payroll/runs/:id/input-sources: per source, the people it touches and its days or amount. */
@@ -456,7 +464,8 @@ export function LiveRunWorkspace({ live: p }: { live: LiveRunWorkspaceData }) {
           error={error}
           onConfirm={(reason) =>
             void run('publish', async () => {
-              await p.onPublish({ phrase: `PUBLISH ${toPublish}`, impact: [{ label: 'Payslips', value: String(toPublish) }] }, r.publishAlone ? reason.trim() : undefined);
+              const confirmation = { phrase: `PUBLISH ${toPublish}`, impact: [{ label: 'Payslips', value: String(toPublish) }] };
+              await (r.publishAlone ? p.onPublish(confirmation, reason.trim()) : p.onPublish(confirmation));
               setSheet(null);
               say(`${count(toPublish, 'payslip')} published`);
             })
@@ -839,6 +848,9 @@ function VariancePanel({ p, nameOf }: { p: LiveRunWorkspaceData; nameOf: (id: st
 
 /* ------------------------------------------------------------------ Files (bank file PAY-08, publish PAY-09) */
 
+const STATUTE: Record<string, string> = { 'IN.PF': 'PF', 'IN.ESI': 'ESI', 'IN.PT': 'PT', 'IN.LWF': 'LWF', 'IN.TDS': 'TDS' };
+const FILING_STATUS: Record<string, string> = { generated: 'Made', uploaded: 'Uploaded', filed: 'Filed', superseded: 'Replaced' };
+
 function FilesPanel({ p, run: r, onRelease, onMake, onPublish }: { p: LiveRunWorkspaceData; run: PayRun; onRelease: (b: BankFileRow) => void; onMake: () => void; onPublish: () => void }) {
   const { busy, run } = useRun();
   const { toast } = useToast();
@@ -908,8 +920,8 @@ function FilesPanel({ p, run: r, onRelease, onMake, onPublish }: { p: LiveRunWor
         },
         {
           id: 'payments',
-          file: 'Payments and journal',
-          holds: 'Bank results, cash and cheque, and the accounting export',
+          file: 'Disbursement register',
+          holds: 'Bank results, and cash and cheque payments with their acknowledgements',
           status: approved ? <Badge tone="info">Ready</Badge> : after,
           action: approved && p.onPayments && (
             <Button size="sm" onClick={p.onPayments}>
@@ -917,6 +929,56 @@ function FilesPanel({ p, run: r, onRelease, onMake, onPublish }: { p: LiveRunWor
             </Button>
           ),
         },
+        ...(p.journal !== undefined && p.journal !== null
+          ? [
+              {
+                id: 'journal',
+                file: 'Journal',
+                holds: `Accounting export (Tally, CSV, Zoho Books) · ${count(p.journal.lines.length, 'line')}${p.journal.canPost ? '' : ' · some pay lines need a ledger account'}`,
+                status: p.journal.postedAt ? <Badge tone="success">{`Posted ${formatDate(new Date(p.journal.postedAt))}`}</Badge> : <Badge tone={p.journal.canPost ? 'info' : 'warning'}>{p.journal.canPost ? 'Ready' : 'Ledger accounts missing'}</Badge>,
+                action: p.onJournal && (
+                  <Button size="sm" icon={Download} onClick={p.onJournal}>
+                    Export journal
+                  </Button>
+                ),
+              },
+            ]
+          : approved || p.journal === null
+            ? []
+            : [{ id: 'journal', file: 'Journal', holds: 'Accounting export by cost centre', status: after, action: null }]),
+        ...(p.filings ?? [])
+          .filter((f) => f.fileId)
+          .map((f) => ({
+            id: `filing-${f.id}`,
+            file: `${STATUTE[f.statute] ?? f.statute}${f.state ? ` ${f.state.replace(/^IN-/, '')}` : ''} file`,
+            holds: `${f.kind === 'regular' ? 'Return for the month' : 'Correction'}${f.rows != null ? ` · ${count(f.rows, 'row')}` : ''}${f.reference ? ` · reference ${f.reference}` : ''}`,
+            status: <Badge tone={f.status === 'filed' ? 'success' : 'info'}>{FILING_STATUS[f.status] ?? f.status}</Badge>,
+            action: (
+              <Button
+                size="sm"
+                icon={Download}
+                loading={busy === `dl-${f.id}`}
+                onClick={() => void run(`dl-${f.id}`, () => p.onDownload(f.fileId!, `${f.statute}-${r.month}`)).then((ok) => (ok ? undefined : toast({ title: 'The file did not download. Try again.', tone: 'error' })))}
+              >
+                Download
+              </Button>
+            ),
+          })),
+        ...(p.filings === undefined
+          ? []
+          : [
+              {
+                id: 'statutory',
+                file: 'Statutory files',
+                holds: p.filings?.length ? `PF, ESI, PT and LWF return files for ${monthLong(r.month)}: ${count(p.filings.length, 'file')} made` : `PF, ESI, PT and LWF return files for ${monthLong(r.month)}: none made yet`,
+                status: !approved ? after : p.filings?.length ? <Badge tone="info">Ready</Badge> : <Badge tone="warning">Not made yet</Badge>,
+                action: approved && p.onStatutory && (
+                  <Button size="sm" onClick={p.onStatutory}>
+                    Open statutory hub
+                  </Button>
+                ),
+              },
+            ]),
       ]}
       getRowId={(x) => x.id}
       columns={[

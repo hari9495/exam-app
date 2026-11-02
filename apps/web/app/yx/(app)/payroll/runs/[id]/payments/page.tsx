@@ -1,6 +1,6 @@
 'use client';
 
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { PaymentsScreen, type BankFileRow, type Disbursement, type PayRun, type RunJournal, type RunPayslip } from '@yukthix/ui/pay';
 import { apiFetch, apiFetchBlob } from '../../../../../../../lib/api-client';
 import { useAuth } from '../../../../../../../lib/auth-context';
@@ -13,6 +13,7 @@ import { useApiWrite, useNames } from '../../../../../../../lib/yx-pay-5j';
 export default function YxPayRunPaymentsPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const tab = useSearchParams().get('tab') === 'journal' ? 'journal' : undefined;
   const perms = useYxPermissions();
   const { accessToken } = useAuth();
   const base = `/runs/${encodeURIComponent(id)}`;
@@ -32,6 +33,7 @@ export default function YxPayRunPaymentsPage() {
     <PaymentsScreen
       live={{
         view: 'run',
+        tab,
         state: payState(run, payslips),
         onRetry: () => void Promise.all([run.refetch(), payslips.refetch()]),
         run: run.data ?? null,

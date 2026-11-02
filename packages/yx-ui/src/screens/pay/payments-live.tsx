@@ -208,6 +208,8 @@ export interface LiveRunPayments extends LiveBase {
   /** null while it loads or when the person may not export it (`can.journal`). */
   journal: RunJournal | null;
   nameOf: (employeeId: string) => string;
+  /** The tab to open first (PAY-03 Files tab "Export journal" opens the journal). */
+  tab?: 'status' | 'register' | 'files' | 'journal';
   /** `bankFile`: may make a bank file now (re-pay off-cycle or to the reimbursement account). */
   can: { record: boolean; journal: boolean; bankFile?: boolean };
   onBack: () => void;
@@ -503,7 +505,7 @@ function LiveRun({ live }: { live: LiveRunPayments }) {
       <LiveStates state={live.state} onRetry={live.onRetry} what="payments">
         {!approved && <InlineAlert tone="info" title="Payments are recorded once the run is approved." />}
         {showPay && <p className="yx-pay-muted">Pay is showing. Each time you show it is recorded.</p>}
-        <Tabs defaultValue="status">
+        <Tabs defaultValue={live.tab === 'journal' && !live.can.journal ? 'status' : (live.tab ?? 'status')}>
           <TabsList aria-label="Payments">
             <TabsTrigger value="status" count={bank.length}>
               Payment status

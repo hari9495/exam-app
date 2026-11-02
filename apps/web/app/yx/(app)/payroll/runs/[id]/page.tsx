@@ -2,11 +2,11 @@
 
 import { useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { OffCycleRunScreen, RunWorkspaceScreen, type FnfSettlementView, type LiveRunWorkspaceData, type RunInputSources, type BankFileMade, type BankFileRow, type PayRun, type PayslipDetail, type RunPayslip, type RunPerson, type RunProgressData, type RunReadiness, type RunVariance } from '@yukthix/ui/pay';
+import { OffCycleRunScreen, RunWorkspaceScreen, type FnfSettlementView, type LiveRunWorkspaceData, type RunInputSources, type BankFileMade, type BankFileRow, type FilingRow, type PayRun, type PayslipDetail, type RunPayslip, type RunPerson, type RunProgressData, type RunReadiness, type RunVariance } from '@yukthix/ui/pay';
 import { useYxPermissions } from '../../../../../../lib/yx-org';
 import { payState, usePay, usePayDownload, usePayRead, usePayWrite } from '../../../../../../lib/yx-pay';
 import { usePeopleSearch } from '../../../../../../lib/yx-pay-5b';
-import { useNames } from '../../../../../../lib/yx-pay-5j';
+import { useApi, useNames } from '../../../../../../lib/yx-pay-5j';
 
 // Payroll › one run: the designed run workspace (PAY-03, with PAY-02 checks, PAY-07 approve, PAY-08 bank file, PAY-09
 // publish) with this run's data: checks, calculation, payslips, approval, bank file and publishing.
@@ -26,6 +26,12 @@ export default function YxPayRunPage() {
   const payslips = usePay<RunPayslip[]>(`${base}/payslips`);
   const variances = usePay<RunVariance[]>(`${base}/variances`);
   const bankFiles = usePay<BankFileRow[]>(run.data && ['approved', 'paid'].includes(run.data.status) ? `${base}/bank-files` : null);
+  // PAY-03 Files tab: the journal and the month's statutory files, for the people who may see them.
+  const locked = !!run.data && ['approved', 'paid'].includes(run.data.status);
+  const journalOk = perms.has('payroll.journal.export');
+  const journal = usePay<{ lines: unknown[]; postedAt: string | null; canPost: boolean }>(locked && journalOk ? `${base}/journal` : null);
+  const filingsOk = perms.has('statutory.filing.view');
+  const filings = useApi<FilingRow[]>(locked && filingsOk && run.data ? `/statutory/filings?entityId=${encodeURIComponent(run.data.legalEntityId)}&month=${run.data.month}` : null);
   const read = usePayRead();
   const write = usePayWrite();
   const download = usePayDownload();
@@ -66,6 +72,10 @@ export default function YxPayRunPage() {
     },
     onBack: () => router.push('/yx/payroll/runs'),
     onPayments: () => router.push(`/yx/payroll/runs/${encodeURIComponent(id)}/payments`),
+    journal: !journalOk ? null : locked ? (journal.data ?? null) : undefined,
+    filings: filingsOk ? (locked ? (filings.data ?? []) : []) : undefined,
+    onJournal: () => router.push(`/yx/payroll/runs/${encodeURIComponent(id)}/payments?tab=journal`),
+    onStatutory: () => router.push('/yx/payroll/statutory'),
     onWaive: (vid, reason) => write(`${base}/validations/${encodeURIComponent(vid)}/waive`, { reason }),
     onCalculate: () => write(`${base}/calculate`),
     onRetryFailed: () => write(`${base}/retry-failed`),

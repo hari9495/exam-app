@@ -61,7 +61,7 @@ describe('PAY-10 live · a run’s payments', () => {
     expect(live.onResults).not.toHaveBeenCalled();
     await ue.type(screen.getByRole('textbox', { name: /Reason from the bank/ }), 'Account closed');
     await ue.click(screen.getByRole('button', { name: 'Record' }));
-    await waitFor(() => expect(live.onResults).toHaveBeenCalledWith([{ payslipId: 's1', status: 'failed', reason: 'Account closed' }]));
+    await waitFor(() => expect(live.onResults).toHaveBeenCalledWith([{ payslipId: 's1', status: 'failed', cause: 'other', reason: 'Account closed' }]));
     expect((await screen.findAllByText('Bank result recorded for Arjun Kulkarni')).length).toBeGreaterThan(0);
   });
 
@@ -100,6 +100,32 @@ describe('PAY-10 live · a run’s payments', () => {
     await ue.click(screen.getByRole('button', { name: 'Add to the next bank file' }));
     await waitFor(() => expect(onRepay).toHaveBeenCalledWith('s1', { route: 'next_bank_file', reason: 'Account fixed by HR' }));
     expect((await screen.findAllByText('Arjun Kulkarni is paid in the next bank file')).length).toBeGreaterThan(0);
+  });
+
+  it('PAY-10 FailedIfsc: the bank said IFSC not valid; the payment waits for the corrected IFSC (negative), the reimbursement account still pays (positive)', async () => {
+    const live = runLive();
+    const { unmount } = render(<PaymentsScreen live={live} />);
+    await ue.click(screen.getByRole('button', { name: 'Record the bank result for Arjun Kulkarni' }));
+    await ue.click(screen.getByRole('radio', { name: 'Failed' }));
+    await ue.click(screen.getByRole('radio', { name: 'IFSC not valid' }));
+    await ue.type(screen.getByRole('textbox', { name: /Reason from the bank/ }), 'IFSC not valid');
+    await ue.click(screen.getByRole('button', { name: 'Record' }));
+    await waitFor(() => expect(live.onResults).toHaveBeenCalledWith([{ payslipId: 's1', status: 'failed', cause: 'ifsc', reason: 'IFSC not valid' }]));
+    unmount();
+    const onRepay = fn();
+    const waiting = PAYSLIPS.map((s, i) => (i === 0 ? { ...s, status: 'approved', paymentStatus: 'failed', waitingFor: 'ifsc' as const } : s));
+    render(<PaymentsScreen live={runLive({ payslips: waiting, onRepay, disbursements: [] })} />);
+    expect(screen.getAllByText('Waiting for corrected IFSC').length).toBeGreaterThan(0);
+    await ue.click(screen.getByRole('button', { name: /Pay .* again/ }));
+    expect(screen.getByText('Waiting for employee')).toBeInTheDocument();
+    await ue.type(screen.getByRole('textbox', { name: /Reason/ }), 'Salary needed now');
+    await ue.click(screen.getByRole('button', { name: 'Add to the next bank file' }));
+    expect(screen.getByText(/Waiting for the employee to correct the IFSC/)).toBeInTheDocument();
+    expect(onRepay).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('radio', { name: 'Reimbursement account' }));
+    await ue.type(screen.getByRole('textbox', { name: /debits/ }), '0050200012345678');
+    await ue.click(screen.getByRole('button', { name: 'Pay to reimbursement account' }));
+    await waitFor(() => expect(onRepay).toHaveBeenCalledWith('s1', { route: 'reimbursement_account', reason: 'Salary needed now', debitAccount: '0050200012345678' }));
   });
 
   it('re-pay now needs the debit account; without the bank file key only the next bank file is offered (negative, then positive)', async () => {

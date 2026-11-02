@@ -249,6 +249,46 @@ describe('PAY-03 run workspace, live', () => {
     await waitFor(() => expect(l.onPublish).toHaveBeenCalledWith(expect.objectContaining({ phrase: 'PUBLISH 3' })));
   });
 
+  it('PAY-09 SelfApproval: the sole payroll admin must give a reason; pressed without one it says so and sends nothing', async () => {
+    const l = live({ run: { ...RUN, status: 'paid', publishAlone: true }, payslips: PAYSLIPS.map((s) => ({ ...s, status: 'approved' })), bankFiles: [], can: { ...live().can, bankGenerate: false } });
+    show(l);
+    await ue.click(screen.getByRole('button', { name: 'Publish payslips' }));
+    expect(screen.getByText('Self-approval')).toBeInTheDocument();
+    await ue.type(screen.getByRole('textbox', { name: /Type/ }), 'PUBLISH 3');
+    await ue.click(screen.getAllByRole('button', { name: 'Publish payslips' }).pop()!);
+    expect(await screen.findByText(/Add a reason \(at least 5 characters\)\./)).toBeInTheDocument();
+    expect(l.onPublish).not.toHaveBeenCalled();
+    await ue.type(screen.getByRole('textbox', { name: /Reason/ }), 'Only payroll admin this month');
+    await ue.click(screen.getAllByRole('button', { name: 'Publish payslips' }).pop()!);
+    await waitFor(() => expect(l.onPublish).toHaveBeenCalledWith(expect.objectContaining({ phrase: 'PUBLISH 3' }), 'Only payroll admin this month'));
+  });
+
+  it('PAY-03 Files: journal and statutory file rows with their links once approved; none without the keys', async () => {
+    const l = live({
+      run: { ...RUN, status: 'approved' },
+      journal: { lines: [{}, {}, {}], postedAt: null, canPost: true },
+      filings: [{ id: 'f1', statute: 'IN.PF', state: null, kind: 'regular', status: 'generated', fileId: 'x1', rows: 12 }],
+      onJournal: vi.fn(),
+      onStatutory: vi.fn(),
+    });
+    const { unmount } = show(l);
+    await ue.click(screen.getByRole('tab', { name: /^Files/ }));
+    const table = screen.getByRole('table', { name: 'Run files' });
+    expect(within(table).getByText(/3 lines/)).toBeInTheDocument();
+    await ue.click(within(table).getByRole('button', { name: 'Export journal' }));
+    expect(l.onJournal).toHaveBeenCalled();
+    expect(within(table).getByText('PF file')).toBeInTheDocument();
+    await ue.click(within(table).getAllByRole('button', { name: 'Download' }).pop()!);
+    await waitFor(() => expect(l.onDownload).toHaveBeenCalledWith('x1', 'IN.PF-2026-09'));
+    await ue.click(within(table).getByRole('button', { name: 'Open statutory hub' }));
+    expect(l.onStatutory).toHaveBeenCalled();
+    unmount();
+    show(live({ run: { ...RUN, status: 'approved' }, journal: null }));
+    await ue.click(screen.getByRole('tab', { name: /^Files/ }));
+    expect(screen.queryByText('Journal')).not.toBeInTheDocument();
+    expect(screen.queryByText('Statutory files')).not.toBeInTheDocument();
+  });
+
   it('void: from the menu, only with a reason; a void run says so', async () => {
     const l = live();
     const { unmount } = show(l);
