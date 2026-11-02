@@ -35,6 +35,26 @@ export function principalPart(outstanding: Prisma.Decimal, yearlyRatePct: Prisma
   return Prisma.Decimal.max(D(0), paid.sub(interest));
 }
 
+const DECIDED = ['approved', 'self_approved', 'rejected', 'auto_approved', 'auto_rejected'];
+
+/** PAY-18: a loan request's approval steps for its requester: who decided each step and when, or who it waits for. */
+export function loanRoute(v: Awaited<ReturnType<ApprovalsEngine['viewIn']>>) {
+  return {
+    submittedAt: v.submittedAt,
+    status: v.status,
+    steps: v.steps.map((s, i) => {
+      const done = [...v.log].reverse().find((a) => a.step === i + 1 && DECIDED.includes(a.action));
+      return {
+        name: s.name,
+        state: s.state,
+        by: done?.by ?? null,
+        at: done?.at ?? null,
+        waitingFor: s.state === 'open' ? s.approvers.filter((a) => a.status === 'open').map((a) => a.name) : s.waitingFor,
+      };
+    }),
+  };
+}
+
 @Injectable()
 export class PayInputsService implements OnModuleInit {
   constructor(
@@ -411,7 +431,24 @@ export class PayInputsService implements OnModuleInit {
       await payScope(tx, ids);
       const me = await tx.employee.findFirst({ where: { organizationId: c.organizationId, userId: v.userId! }, select: { id: true } });
       const rows = await tx.loan.findMany({ where: { organizationId: c.organizationId, OR: [{ legalEntityId: { in: ids } }, ...(me ? [{ employeeId: me.id }] : [])] }, orderBy: { createdAt: 'desc' }, take: 500 });
-      return rows.map((l) => ({ id: l.id, employeeId: l.employeeId, loanType: l.loanType, principal: l.principal.toFixed(2), interestRate: l.interestRate.toFixed(2), emi: l.emi.toFixed(2), outstanding: l.outstanding.toFixed(2), firstMonth: dateOf(l.firstMonth).slice(0, 7), status: l.status, pausedUntil: l.pausedUntil ? dateOf(l.pausedUntil).slice(0, 7) : null, mine: l.employeeId === me?.id }));
+      // PAY-18: the person's own requests carry their approval steps (the engine's route); nobody else's do.
+      const own = rows.filter((l) => l.employeeId === me?.id && l.wfRequestId);
+      const reqs = await tx.wfRequest.findMany({ where: { organizationId: c.organizationId, id: { in: own.map((l) => l.wfRequestId!) } } });
+      const routes = new Map(await Promise.all(reqs.map(async (r) => [r.id, loanRoute(await this.engine.viewIn(tx, c.organizationId, r))] as const)));
+      return rows.map((l) => ({
+        id: l.id,
+        employeeId: l.employeeId,
+        loanType: l.loanType,
+        principal: l.principal.toFixed(2),
+        interestRate: l.interestRate.toFixed(2),
+        emi: l.emi.toFixed(2),
+        outstanding: l.outstanding.toFixed(2),
+        firstMonth: dateOf(l.firstMonth).slice(0, 7),
+        status: l.status,
+        pausedUntil: l.pausedUntil ? dateOf(l.pausedUntil).slice(0, 7) : null,
+        mine: l.employeeId === me?.id,
+        ...(l.employeeId === me?.id && l.wfRequestId && routes.has(l.wfRequestId) ? { approval: routes.get(l.wfRequestId) } : {}),
+      }));
     });
   }
 

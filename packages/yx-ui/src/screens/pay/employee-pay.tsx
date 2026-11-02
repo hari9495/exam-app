@@ -13,7 +13,7 @@ import { useRun } from '../org/org-kit';
 import { PayFormDrawer, PayPageState, fromPaise, paise, rupees, sumMoney } from './consultants';
 import type { LoadState } from './live/types';
 import type { MyPayslip, PayslipDetail, PayslipLine } from './live/types-5j';
-import type { DeclarationInput, DeclarationLine, LoanRequestInput, LoanView, MyCertificate, MyDeclarations, PayslipQueryView } from './live/types-ops';
+import type { DeclarationInput, DeclarationLine, LoanApproval, LoanRequestInput, LoanView, MyCertificate, MyDeclarations, PayslipQueryView } from './live/types-ops';
 import type { EwaDrawView, MyEwa, MyIncentives } from './live/types-5i';
 import type { PayDocument } from './live/types';
 import { FindPerson, type PersonHit } from './equity';
@@ -30,7 +30,7 @@ import { AssistantPanel } from '../../components/notify';
 import { PayslipDocument } from '../../components/print';
 import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { BarChart } from '../../components/charts';
-import { ApprovalTimeline } from '../../components/timeline';
+import { ApprovalTimeline, type ApprovalStep } from '../../components/timeline';
 import { FileUpload, type UploadItem } from '../../components/upload';
 import { formatDate, formatINR } from '../../lib/format';
 import {
@@ -3094,6 +3094,16 @@ const nextMonthIso = () => {
   return new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 1)).toISOString().slice(0, 7);
 };
 
+const ROUTE_STATE: Record<LoanApproval['steps'][number]['state'], ApprovalStep['status']> = { approved: 'done', open: 'current', waiting: 'pending', rejected: 'rejected', skipped: 'skipped', sent_back: 'pending' };
+
+/** PAY-18 Submitted: the engine's steps as the design's approval timeline (sent, then each approval step). */
+export function loanSteps(a: LoanApproval): ApprovalStep[] {
+  return [
+    { id: 'sent', label: 'Submitted', status: 'done', approver: 'You', at: new Date(a.submittedAt) },
+    ...a.steps.map((s, i) => ({ id: String(i), label: s.name, status: ROUTE_STATE[s.state], approver: s.by ?? (s.waitingFor.join(', ') || undefined), at: s.at ? new Date(s.at) : undefined })),
+  ];
+}
+
 function LiveLoanRequest({ live }: { live: LiveLoanRequest }) {
   const { toast } = useToast();
   const rules = live.rules;
@@ -3203,6 +3213,19 @@ function LiveLoanRequest({ live }: { live: LiveLoanRequest }) {
               </aside>
             </div>
           )}
+          {mine
+            .filter((l) => l.status === 'requested' && l.approval)
+            .map((l) => (
+              <section key={l.id} className="yx-pay-stack" aria-label={`${LOAN_TYPE_TEXT[l.loanType] ?? l.loanType} request`}>
+                <div className="yx-pay-row">
+                  <strong>
+                    {LOAN_TYPE_TEXT[l.loanType] ?? l.loanType} request, {rupees(l.principal)}
+                  </strong>
+                  <Badge tone="info">Waiting for approval</Badge>
+                </div>
+                <ApprovalTimeline steps={loanSteps(l.approval!)} />
+              </section>
+            ))}
           <section aria-label="Your loans and advances">
             <SectionTitle>Your loans and advances</SectionTitle>
             {!mine.length ? (

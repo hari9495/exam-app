@@ -270,11 +270,16 @@ describe('Payroll batch 5c', () => {
     const loan = (await api('emp2', 'post', '/payroll/loans').send({ loanType: 'advance', principal: '12000', instalments: 4, firstMonth: month, reason: 'Medical expenses' }).expect(201)).body;
     expect(loan).toMatchObject({ status: 'requested', emi: '3000.00' });
     await api('emp2', 'post', '/payroll/loans').send({ employeeId: ids.emp1, loanType: 'advance', principal: '12000', instalments: 4, firstMonth: month, reason: 'For someone else' }).expect(404);
+    // PAY-18: the requester sees the approval steps; who it waits for; payroll's list carries no one's steps.
+    const waiting = ((await api('emp2', 'get', '/payroll/loans').expect(200)).body as { id: string; approval?: { steps: { state: string; waitingFor: string[]; by: string | null }[] } }[]).find((l) => l.id === loan.id)!;
+    expect(waiting.approval?.steps[0]).toMatchObject({ state: 'open', by: null, waitingFor: expect.arrayContaining([expect.any(String)]) });
+    expect(((await api('payAdmin', 'get', '/payroll/loans').expect(200)).body as { id: string; approval?: unknown }[]).find((l) => l.id === loan.id)?.approval).toBeUndefined();
     const inbox = (await api('approver1', 'get', '/workflow/approvals/inbox').expect(200)).body as { taskId: string; type?: string; title: string }[];
     const task = inbox.find((t) => /Salary advance/.test(t.title))!;
     await api('approver1', 'post', `/workflow/approvals/tasks/${task.taskId}/decide`).send({ decision: 'approve' }).expect(200);
     const loans = (await api('emp2', 'get', '/payroll/loans').expect(200)).body;
     expect(loans).toEqual([expect.objectContaining({ status: 'active', mine: true })]);
+    expect(loans[0].approval.steps.at(-1)).toMatchObject({ state: 'approved', by: expect.stringContaining('approver1'), at: expect.any(String), waitingFor: [] });
     ids.loan = loans[0].id;
 
     await api('payAdmin', 'post', '/payroll/court-orders')

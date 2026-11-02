@@ -373,6 +373,21 @@ describe('PAY-18 · Me › Loans and advances (live, founder decision 8)', () =>
     expect(previewEmi('100000', '12', 12).exact).toBe(false);
   });
 
+  it('a request waiting for approval shows the approval steps from the approvals engine (PAY-18 Submitted)', () => {
+    const asked = { id: 'l9', employeeId: 'me', loanType: 'loan' as const, principal: '150000.00', emi: '12500.00', outstanding: '150000.00', firstMonth: '2026-11', status: 'requested', pausedUntil: null, mine: true, approval: { submittedAt: '2026-10-29T03:45:00.000Z', status: 'pending', steps: [
+      { name: 'Payroll approver', state: 'approved' as const, by: 'Meena Raghavan', at: '2026-10-30T05:00:00.000Z', waitingFor: [] },
+      { name: 'Finance', state: 'open' as const, by: null, at: null, waitingFor: ['Neha Joshi'] },
+      { name: 'Final check', state: 'waiting' as const, by: null, at: null, waitingFor: ['Arun Rao'] },
+    ] } };
+    render(<LoanRequestScreen live={live({ loans: [asked, ...LOANS] })} />);
+    const route = screen.getByRole('region', { name: 'Personal loan request' });
+    const steps = within(route).getAllByRole('listitem');
+    expect(steps.map((li) => li.getAttribute('data-status'))).toEqual(['done', 'done', 'current', 'pending']);
+    expect(steps[1]).toHaveTextContent('Meena Raghavan');
+    expect(steps[2]).toHaveTextContent('Neha Joshi');
+    expect(within(route).getByText('Waiting for approval')).toBeInTheDocument();
+  });
+
   it('shows only my loans and the company limit, then sends a request within it', async () => {
     const onRequest = fn();
     render(<LoanRequestScreen live={live({ onRequest })} />);

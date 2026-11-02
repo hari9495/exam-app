@@ -56,6 +56,15 @@ export interface LoanView {
   status: string;
   pausedUntil: string | null;
   mine: boolean;
+  /** PAY-18: the person's own request's approval steps (only on their own loans). */
+  approval?: LoanApproval;
+}
+
+/** The approvals engine's route of one's own loan request: each step's state, who decided it and when, or who it waits for. */
+export interface LoanApproval {
+  submittedAt: string;
+  status: string;
+  steps: { name: string; state: 'waiting' | 'open' | 'approved' | 'rejected' | 'skipped' | 'sent_back'; by: string | null; at: string | null; waitingFor: string[] }[];
 }
 
 /** GET payroll/loans/:id/repayments (founder answer 5): month by month, and what a pre-closure today comes to. */
