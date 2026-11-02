@@ -81,4 +81,11 @@ describe('PlainTable (kit, Data)', () => {
     expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Task', 'Was due', 'Now due']);
     expect(document.querySelector('thead')).toHaveClass('yx-visually-hidden');
   });
+
+  it('no rows with an empty message: one row whose cell spans every column', () => {
+    render(<PlainTable label="Tasks" columns={COLS} rows={[]} getRowId={(r) => r.id} empty="No tasks yet." />);
+    const cell = screen.getByRole('cell', { name: 'No tasks yet.' });
+    expect(cell).toHaveAttribute('colspan', '3');
+    expect(screen.getAllByRole('row')).toHaveLength(2);
+  });
 });

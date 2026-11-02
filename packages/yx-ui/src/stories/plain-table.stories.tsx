@@ -67,6 +67,12 @@ export const WithCaptionAndDates: StoryObj = {
           { key: 'now', header: 'Now due', date: true, changed: (r: Task) => Boolean(r.now), cell: (r: Task) => (r.now ? formatDate(new Date(`${r.now}T00:00:00`)) : 'Done') },
         ]} rows={TASKS} getRowId={(r) => r.id} />
       </Section>
+      <Section title="No rows" note="The empty message spans the columns under the headings.">
+        <PlainTable label="Tasks moved" columns={[
+          { key: 'title', header: 'Task', cell: (r: Task) => r.title },
+          { key: 'was', header: 'Was due', date: true, cell: (r: Task) => r.was },
+        ]} rows={[]} getRowId={(r) => r.id} empty="No open tasks move." />
+      </Section>
     </Stack>
   ),
 };

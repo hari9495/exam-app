@@ -42,6 +42,8 @@ export interface PlainTableProps<R> {
   footer?: PlainTableFooterRow[];
   /** Picks out a row (flagged, error, a match, the selected one). */
   rowTone?: (row: R) => PlainTableRowTone | undefined;
+  /** Shown across the columns when there are no rows (otherwise only the headings show). */
+  empty?: ReactNode;
   /** Column headings read out but not shown, for a short label-and-value list whose design has no heading row. */
   hideHeader?: boolean;
   className?: string;
@@ -52,7 +54,7 @@ export interface PlainTableProps<R> {
  * pay workings with totals. Long values wrap; it scrolls sideways only on a narrow screen. For lists people work through,
  * use DataTable.
  */
-export function PlainTable<R>({ label, caption, columns, rows, getRowId, footer, rowTone, hideHeader, className }: PlainTableProps<R>) {
+export function PlainTable<R>({ label, caption, columns, rows, getRowId, footer, rowTone, hideHeader, empty, className }: PlainTableProps<R>) {
   return (
     <div className="yx-scroll-x" tabIndex={0} role="region" aria-label={`${label}, scrolls sideways on small screens`}>
       <table className={cx('yx-plain-table', className)} aria-label={caption ? undefined : label}>
@@ -67,6 +69,11 @@ export function PlainTable<R>({ label, caption, columns, rows, getRowId, footer,
           </tr>
         </thead>
         <tbody>
+          {rows.length === 0 && empty && (
+            <tr>
+              <td colSpan={columns.length}>{empty}</td>
+            </tr>
+          )}
           {rows.map((r) => {
             const tone = rowTone?.(r);
             return (
