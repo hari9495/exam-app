@@ -308,8 +308,10 @@ describe('Workspace search and counts (design shell step 1; P02 §4.3, YX-SEC-05
       const res = await api('adminA', 'get', `${path}${sep}legalEntityId=${other}`);
       expect([200, 403]).toContain(res.status);
       if (res.status === 200) expect(JSON.stringify(res.body)).not.toContain(ids.zA);
-      // Where the person may open the list, a bad id is a 400; otherwise the key check answers first (403).
-      await api('adminA', 'get', `${path}${sep}legalEntityId=not-a-uuid`).expect(res.status === 200 ? 400 : 403);
+      // Where the person may open the list, a bad id is a 400. A 403 for the other entity comes either from the key check
+      // (then a bad id is 403 too) or from the service after the key passed (then the bad id is refused first, 400).
+      const bad = await api('adminA', 'get', `${path}${sep}legalEntityId=not-a-uuid`);
+      expect(res.status === 200 ? [400] : [400, 403]).toContain(bad.status);
     }
   });
 });

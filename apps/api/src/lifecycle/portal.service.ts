@@ -189,7 +189,8 @@ export class PreboardingPortalService {
         const name = [p.preferredName || p.givenName, p.familyName].filter(Boolean).join(' ');
         if (pb.status !== 'invited') {
           const outcome = pb.status === 'joined' ? 'joined' : (OUTCOME[pb.outcome ?? ''] ?? 'cancelled');
-          const on = pb.status === 'joined' ? (pb.joinedAt ? iso(pb.joinedAt) : null) : pb.cancelledOn ? iso(pb.cancelledOn) : null;
+          // joinedAt is an instant: show the India date it happened on (a 2 am join is that day, not the UTC day before).
+          const on = pb.status === 'joined' ? (pb.joinedAt ? todayIst(pb.joinedAt) : null) : pb.cancelledOn ? iso(pb.cancelledOn) : null;
           // Founder 2 Nov 2026: the joiner's own letters stay downloadable (letterFile is the one closed route besides me).
           return { company: org.name, name, closed: { outcome, on }, letters: (await this.letters.lettersOf(tx, s.org, s.personId)).letters };
         }
