@@ -32,7 +32,7 @@ files (PPL-01 … 50; PPL-10 has no story) and in the four other People story fi
 script fails unless each story file has exactly one row per story, in file order, and every verdict is one of the five
 words. 49 groups, 404 stories (400 before the small gaps added four: PPL-37 MergedList and MergedEmpty, PPL-43 and PPL-44 NotDesignated); the other People stories (section G) are 44 more and are counted on their own line.
 The Kit (`people-kit.stories.tsx`, 10 stories) is shared parts, not pages, and is not counted. T9-01 (the pre-boarding
-portal) is a Portals design, not a People one; its 37 stories (32 live, 5 waiting for providers) are in their own section below and are not counted here.
+portal) is a Portals design, not a People one; its 39 stories (34 live, 5 waiting for providers) are in their own section below and are not counted here.
 
 The 15 phone views are the 11 People phone screens in `packages/yx-ui/src/design-live-guard.known.json` (asset
 acknowledge ×2, BFSI, certificate, clearance, disability, exit interview, my documents ×3, pre-clearance, profile
@@ -210,7 +210,7 @@ Not People: /yx/me/requests (inbox design), /yx/settings/access-settings and com
 
 | design | what it needs | size |
 |---|---|---|
-| T9-01 Pre-boarding portal (5 of 37 stories) | done 2 Nov 2026 except what needs a provider: penny drop (verified, name mismatch), Aadhaar e-sign of the appointment letter, the letter of intent. Education form and "sign the code of conduct and POSH policy" are not in the portal sections (question) | M, needs providers |
+| T9-01 Pre-boarding portal (5 of 39 stories) | done 2 Nov 2026 except what needs a provider: penny drop (verified, name mismatch), Aadhaar e-sign of the appointment letter, the letter of intent. Education form and "sign the code of conduct and POSH policy" are not in the portal sections (question) | M, needs providers |
 | PPL-04 change drawer (6 stories) | the API exists (`POST changes`, preview, route, drafts, `POST restructures` for a move); only the screen is missing (hidden copy above) | M |
 | PPL-40 employee VRS (2) | wire the design; add a VRS estimate (benefit, gratuity, leave encashment) and the reason someone is not eligible (age, years) to `GET lifecycle/me/vrs` | M |
 | PPL-01 Contract workers and Placements cards (1), PPL-12 contract worker conversion (1), PPL-35 contract-worker and nominee roles (1) | a contract workers module (person type, agency, deployment) | L |
@@ -236,7 +236,7 @@ Not People: /yx/me/requests (inbox design), /yx/settings/access-settings and com
 `people/live/joining.tsx`; `AcceptDialog` stays there as the design's accept step (My letters uses it too). The API is
 `apps/api/src/lifecycle/portal.controller.ts`: `code`, `verify`, `me`, `step-up/code`, `step-up`, six `sections/*`,
 `documents/:typeKey`, `bgv-consent`, `decline` (new), `letters/:id/file`, `letters/:id/sign[/code]`, `sign-out`.
-e2e: `joiner-portal.e2e-spec.ts` (12 tests) and `lifecycle-6b`.
+e2e: `joiner-portal.e2e-spec.ts` (13 tests) and `lifecycle-6b`.
 
 **Founder defaults applied (to confirm):** sign-in by email and code, no invitation link (the InviteExpired story is
 dropped); penny drop, Aadhaar e-sign and the letter of intent wait for a provider (only their design-only stories
@@ -259,7 +259,7 @@ gratuity, group insurance, each 100 %; on joining one nomination per scheme, gro
 previous-employer income (Form 12B: gross, TDS) in the tax step, shown to HR. Audits without values:
 `preboarding.nominees.saved`, `preboarding.form12b.saved`, `bgv.consent.withdrawn`.
 
-**T9-01 stories (37, not counted in the People totals): 32 live, 5 design only (feature not built)**
+**T9-01 stories (39, not counted in the People totals): 34 live, 5 design only (feature not built)**
 
 | story (sub-page) | verdict | note |
 |---|---|---|
@@ -267,7 +267,7 @@ previous-employer income (Form 12B: gross, TDS) in the tax step, shown to HR. Au
 | SignInCode · Sign in · code sent | live | after "Send code" (`POST code`) |
 | SignInWrongCode · Sign in · wrong code, 2 attempts left | live | `POST verify` refuses |
 | SignInLocked · Sign in · locked after 5 wrong codes | live | the screen locks after 5 wrong codes |
-| Checklist · Checklist | live | from `me`: sections, documents, letters, tasks |
+| Checklist · Checklist | live | from `me`: sections, documents, letters, tasks; "Bring on day one" from `me.firstDay.bring` (setting `joining.bring_on_day_one`) |
 | ChecklistPhone · Checklist · phone | live | the same page at phone width |
 | CampusBatch · Checklist · campus joining batch | live | `me.firstDay.batch` |
 | Nominees · Family and nominees · shares do not add up | live | `sections/nominees` per scheme |
@@ -300,6 +300,15 @@ previous-employer income (Form 12B: gross, TDS) in the tax step, shown to HR. Au
 | DeclineReason · Decline offer · reason | live | `POST decline` |
 | Declined · Declined · page closed | live | `me.closed.outcome` reneged |
 | Cancelled · Cancelled · access ended | live | `me.closed.outcome` cancelled (did not join) |
+| WithdrawnLetters · Offer withdrawn · letters to download (read-only) | live | founder 2 Nov 2026: `me.letters` of a closed joining; `letters/:id/file` for the joiner's own letters only (404 otherwise); no accept; a letter still open reads "No longer needed"; every change 409 |
+| JoinedLetters · Joined · letters to download (read-only) | live | the same for a joined joiner, with the accepted copy |
+
+Founder answers 2 Nov 2026, built: (2) a closed joining (declined, withdrawn, cancelled, joined) downloads its letters
+(offer, acceptance copy, withdrawal letter if issued), read-only; (5) "Bring on day one" is the setting
+`joining.bring_on_day_one` (Settings › Organisation › Company rules › Joining day, next to `joining.reporting_time`):
+short text HR writes, one thing a line, up to 500 characters, per company or legal entity; starter value "Original PAN
+and Aadhaar (to be seen, not kept) / Two passport photos / Bank passbook or cancelled cheque". The server trims it and
+refuses empty or longer text. Org story: `CompanyRulesBringOnDayOne` (Settings, the text editor). Manual tests MT-PPL-J-14 … 17.
 
 ## 4. Design groups, story by story
 

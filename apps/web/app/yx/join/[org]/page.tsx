@@ -9,7 +9,8 @@ import { otpSignIn } from '../../../../lib/yx-portal';
 
 // The joining portal (T9-01, LIFE-2.01 / 2.02): a joiner signs in with a one-time code to their personal email, then
 // works through the designed T9-01 checklist: forms (PAN, ID and bank after a fresh code), documents, background-check
-// consent, letters to accept, the first day, and "Decline offer". A closed joining shows only its outcome. The session
+// consent, letters to accept, the first day, and "Decline offer". A closed joining shows its outcome and its letters to
+// download, read-only (onDownload works for it; every change is refused by the API). The session
 // lives in this tab only (memory), never in storage.
 export default function YxJoinPortalPage() {
   const { org } = useParams<{ org: string }>();

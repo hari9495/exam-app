@@ -7975,5 +7975,80 @@
       "Portals T9-01 LoadError"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-J-14",
+    "area": "People · Joining portal T9-01 (founder answers 2 Nov 2026)",
+    "screen": "Closed joining: letters to download, read-only (offer withdrawn)",
+    "url": "http://localhost:3000/yx/join/demo-org",
+    "account": "A test joiner of demo-org whose offer HR withdrew (MT-PPL-J-12 step 1) and whose withdrawal letter HR issued from Letters. Codes come by email: in development the developer reads them from the mail log. 1278 x 635, then 375 x 812. hr@demo-org.test (HR Admin - Lakshmi) in a second browser.",
+    "steps": [
+      "1. The joiner signs in.",
+      "2. Press Download PDF on the offer withdrawal letter, then on the offer letter; on a letter they accepted before, press Accepted copy.",
+      "3. Look for Read and accept on the appointment letter that was waiting.",
+      "4. Make the window phone width (375 x 812)."
+    ],
+    "expected": "Step 1: 'This offer has been withdrawn' and, below it, one card per letter (withdrawal letter, offer, appointment letter) with reference and issue date; no Checklist / Offer / Documents tabs, no Decline offer. Step 2: each PDF downloads and opens. Step 3: there is no Read and accept; the letter's tag says 'No longer needed'. Step 4: the cards stack, nothing is cut off, no sideways scroll.",
+    "stories": [
+      "Portals T9-01 WithdrawnLetters"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-PPL-J-15",
+    "area": "People · Joining portal T9-01 (founder answers 2 Nov 2026)",
+    "screen": "Closed joining: nothing else changes; only the joiner's own letters",
+    "url": "http://localhost:3000/yx/join/demo-org",
+    "account": "Joiner Sneha Pillai after HR marked her joined (MT-PPL-J-12 step 3), and the withdrawn test joiner of MT-PPL-J-14. The developer helps with the browser's network tools for steps 3 and 4.",
+    "steps": [
+      "1. Sneha signs in after joining; download the appointment letter and the accepted copy.",
+      "2. Keep an old tab of Sneha's checklist open from before she joined and press Save on a form, or Read and accept on a letter.",
+      "3. Signed in as the withdrawn joiner, the developer asks for one of Sneha's letters by its id (GET /api/v1/portal/join/demo-org/letters/<Sneha's letter id>/file).",
+      "4. Signed out (no session), the same request."
+    ],
+    "expected": "Step 1: 'Welcome to <company>… this page is closed.' with her letters; both PDFs download. Step 2: refused, and the page switches to the outcome with her letters (409 'Your joining is closed, so nothing can be changed here.'). Step 3: 404 'No such letter.' and no file. Step 4: 401 'Sign in again.'",
+    "stories": [
+      "Portals T9-01 JoinedLetters"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PPL-J-16",
+    "area": "People · Joining portal T9-01 (founder answers 2 Nov 2026)",
+    "screen": "Settings › Organisation › Company rules › Joining day: what joiners bring (text)",
+    "url": "http://localhost:3000/yx/settings/company-rules",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi), or an admin with Settings rights. 1278 x 635.",
+    "steps": [
+      "1. Open Joining day. Read 'Joiners bring on their first day'.",
+      "2. Press Change. Clear the box and press Save.",
+      "3. Paste more than 500 characters and press Save.",
+      "4. Write 'Two passport photos', Enter, 'Safety shoes for the plant floor'. Press Save.",
+      "5. Press Change again, choose Legal entity, pick one entity, write 'Original PAN card', Save."
+    ],
+    "expected": "Step 1: the starter value 'Original PAN and Aadhaar (to be seen, not kept) · Two passport photos · Bank passbook or cancelled cheque' with the Starter value tag, next to the reporting time. Step 2: Save is not greyed out; the error 'Write it, one thing a line' shows and the box takes focus; nothing is saved. Step 3: 'Keep it to 500 characters or fewer (now N)'; nothing is saved. Step 4: toast 'Saved.' (5 s); the line reads 'Two passport photos · Safety shoes for the plant floor', 'Set for your company'. Step 5: toast 'Saved.'; a table lists the company value and the entity's own.",
+    "stories": [
+      "Org CompanyRulesBringOnDayOne",
+      "Org CompanyRules"
+    ],
+    "note": "Positive and negative. The API refuses empty or longer text too (400)."
+  },
+  {
+    "id": "MT-PPL-J-17",
+    "area": "People · Joining portal T9-01 (founder answers 2 Nov 2026)",
+    "screen": "Joining portal: Bring on day one shows HR's text",
+    "url": "http://localhost:3000/yx/join/demo-org",
+    "account": "Joiner Sneha Pillai (sneha.pillai@example.test, the demo joiner) while still waiting to join. Codes by email (developer reads the mail log). 1278 x 635, then 375 x 812.",
+    "steps": [
+      "1. Before MT-PPL-J-16: Sneha signs in and looks at the right-hand column of the checklist.",
+      "2. After MT-PPL-J-16 step 4: reload.",
+      "3. After MT-PPL-J-16 step 5 with Sneha's legal entity: reload.",
+      "4. Make the window phone width."
+    ],
+    "expected": "Step 1: under 'Your first day' a 'Bring on day one' card lists the three starter items, one a line. Step 2: it lists 'Two passport photos' and 'Safety shoes for the plant floor'. Step 3: it lists only 'Original PAN card' (the entity's own wins). Step 4: the card sits below Your first day, nothing cut off.",
+    "stories": [
+      "Portals T9-01 Checklist",
+      "Portals T9-01 ChecklistPhone"
+    ],
+    "note": "Positive and negative (another entity's text never shows)."
   }
 ]
