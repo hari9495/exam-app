@@ -9,6 +9,7 @@ import { Payroll5iController } from './payroll-5i.controller';
 import { Payroll5iMoreController } from './payroll-5i-more.controller';
 import { PayrollReportsController } from './payroll-reports.controller';
 import { PayrollController } from './payroll.controller';
+import { TaxController } from './tax.controller';
 
 // YX-SEC-01 for Payroll: every payroll route declares its key. The only exceptions are routes about a person's own pay
 // or own request, where the service decides per record (self, or the key in scope), listed here by name with the reason. A new route without a key fails this test until it is declared or listed.
@@ -30,10 +31,12 @@ const SELF: Record<string, string[]> = {
   PayrollReportsController: ['myAccessRequest', 'requestAccess'],
   // An employee's own pay documents and late corrections.
   PayrollController: ['documentFile', 'lateCorrection', 'mine'],
+  // An employee's own tax workspace (tax/me/*): regime, declarations, proofs, Form 12B, residency, PAN link, certificates.
+  TaxController: ['compare', 'declarations', 'declare', 'myCertificates', 'myForm12b', 'myPartA', 'myWorkspace', 'patchWorkspace', 'proof', 'requestPanLink', 'requestRegime', 'requestResidency', 'submitForm12b', 'taxSheet'],
 };
 
 describe('every payroll endpoint declares a permission (YX-SEC-01)', () => {
-  for (const controller of [Payroll5bController, Payroll5cController, Payroll5dController, Payroll5gController, Payroll5iController, Payroll5iMoreController, PayrollReportsController, PayrollController]) {
+  for (const controller of [Payroll5bController, Payroll5cController, Payroll5dController, Payroll5gController, Payroll5iController, Payroll5iMoreController, PayrollReportsController, PayrollController, TaxController]) {
     it(`${controller.name}`, () => {
       const proto = controller.prototype as unknown as Record<string, unknown>;
       const handlers = Object.getOwnPropertyNames(proto).filter((m) => m !== 'constructor' && typeof proto[m] === 'function' && Reflect.getMetadata(PATH_METADATA, proto[m] as object) !== undefined);

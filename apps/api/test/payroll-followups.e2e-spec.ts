@@ -377,4 +377,68 @@ describe('Pay follow-ups (founder answers 1, 2, 3, 5, 16)', () => {
     // The database refuses a self-verification even past the service.
     await expect(inA((tx) => tx.taxResidencyRequest.update({ where: { id: own.id }, data: { verifierId: users.payAdmin } }))).rejects.toThrow(/YX_TAX_SELF_VERIFY/);
   });
+
+  // ------------------------------------------------------------------------------------------ PAY-22 NoPan · the PAN link
+
+  it('PAY-22 NoPan: the PAN link confirmation goes to the proof queue; checked by someone else; approved, the PAN works again', async () => {
+    const send = (who: Who, file: Buffer | null, name = 'pan-link.pdf') => {
+      const r = api(who, 'post', '/tax/me/pan-link');
+      return file ? r.attach('file', file, name) : r;
+    };
+    const LINK = Buffer.from('%PDF-1.4 PAN Aadhaar link confirmation');
+    // Nothing to send while payroll has not recorded the PAN as inoperative.
+    expect((await send('emp1', LINK).expect(409)).body.message).toMatch(/not recorded your PAN as inoperative/);
+    const ws1 = (await api('emp1', 'get', '/tax/me/workspace').expect(200)).body.id;
+    await api('payAdmin', 'post', `/tax/workspaces/${ws1}/pan-status`).send({ status: 'inoperative', reason: 'Not linked with Aadhaar' }).expect(200);
+    expect((await send('emp1', null).expect(400)).body.message).toMatch(/Attach the link confirmation/);
+    await send('emp1', Buffer.from('GIF89a not a pdf'), 'pan-link.pdf').expect(400);
+    await send('emp1', Buffer.from('<html><script>x</script></html>'), 'pan-link.pdf').expect(400);
+    await send('emp1', Buffer.alloc(5 * 1024 * 1024 + 10, 1), 'pan-link.pdf').expect((r) => expect([400, 413]).toContain(r.status));
+    const rq = (await send('emp1', LINK).expect(201)).body;
+    expect(rq).toMatchObject({ status: 'pending', file: { name: 'pan-link.pdf', type: 'application/pdf' } });
+    expect((await send('emp1', LINK).expect(409)).body.message).toMatch(/still with payroll/);
+    expect((await api('emp1', 'get', '/tax/me/workspace').expect(200)).body).toMatchObject({ panStatus: 'inoperative', panLinkRequest: { id: rq.id, status: 'pending' } });
+
+    // payAdmin's own: never in their queue, never decided by them (and the database refuses it too).
+    const wsP = (await api('payAdmin', 'get', '/tax/me/workspace').expect(200)).body;
+    await api('payAdmin2', 'post', `/tax/workspaces/${wsP.id}/pan-status`).send({ status: 'inoperative', reason: 'Not linked with Aadhaar' }).expect(200);
+    const own = (await send('payAdmin', LINK).expect(201)).body;
+    expect(((await api('payAdmin', 'get', '/tax/pan-links').expect(200)).body as { id: string }[]).map((x) => x.id)).toEqual([rq.id]);
+    expect((await api('payAdmin', 'post', `/tax/pan-links/${own.id}/decision`).send({ decision: 'approve' }).expect(403)).body.message).toBe('Someone else checks your own PAN.');
+    await api('payAdmin', 'get', `/tax/pan-links/${own.id}/file`).expect(403);
+    await expect(inA((tx) => tx.taxPanLinkRequest.update({ where: { id: own.id }, data: { verifierId: users.payAdmin } }))).rejects.toThrow(/YX_TAX_SELF_VERIFY/);
+
+    // Not payroll, or another company: nothing.
+    await api('emp1', 'get', '/tax/pan-links').expect(403);
+    await api('emp1', 'post', `/tax/pan-links/${rq.id}/decision`).send({ decision: 'approve' }).expect(403);
+    await api('payAdminB', 'get', '/tax/pan-links').expect(200).expect((r) => expect(r.body).toEqual([]));
+    await api('payAdminB', 'post', `/tax/pan-links/${rq.id}/decision`).send({ decision: 'approve' }).expect(404);
+    await api('payAdminB', 'get', `/tax/pan-links/${rq.id}/file`).expect(404);
+
+    // The file opens once the virus scan has passed (fail closed until then).
+    let file: request.Response | null = null;
+    for (let i = 0; i < 40 && file?.status !== 200; i++) {
+      file = await api('payAdmin', 'get', `/tax/pan-links/${rq.id}/file`).buffer(true).parse((res, cb) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (c: Buffer) => chunks.push(c));
+        res.on('end', () => cb(null, Buffer.concat(chunks)));
+      });
+      if (file.status !== 200) await new Promise((ok) => setTimeout(ok, 250));
+    }
+    expect(file?.status).toBe(200);
+    expect((file!.body as Buffer).equals(LINK)).toBe(true);
+
+    await api('payAdmin', 'post', `/tax/pan-links/${rq.id}/decision`).send({ decision: 'maybe' }).expect(400);
+    expect((await api('payAdmin', 'post', `/tax/pan-links/${rq.id}/decision`).send({ decision: 'reject' }).expect(400)).body.message).toMatch(/Say why/);
+    await api('payAdmin', 'post', `/tax/pan-links/${rq.id}/decision`).send({ decision: 'approve' }).expect(200);
+    await api('payAdmin2', 'post', `/tax/pan-links/${rq.id}/decision`).send({ decision: 'reject', comment: 'Too late' }).expect(409);
+    expect((await api('emp1', 'get', '/tax/me/workspace').expect(200)).body).toMatchObject({ panStatus: 'operative', panLinkRequest: { status: 'approved' } });
+    expect((await api('payAdmin', 'get', '/tax/pan-links?status=approved').expect(200)).body).toEqual([expect.objectContaining({ id: rq.id, employeeId: expect.any(String) })]);
+    // A refusal says why; the person sends again.
+    await api('payAdmin2', 'post', `/tax/pan-links/${own.id}/decision`).send({ decision: 'reject', comment: 'The confirmation is for another PAN' }).expect(200);
+    expect((await api('payAdmin', 'get', '/tax/me/workspace').expect(200)).body).toMatchObject({ panStatus: 'inoperative', panLinkRequest: { status: 'rejected', comment: 'The confirmation is for another PAN' } });
+    await send('payAdmin', LINK).expect(201);
+    const logged = await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, entityId: rq.id }, select: { action: true } }));
+    expect(logged.map((l) => l.action).sort()).toEqual(['tax.pan_link.requested', 'tax.pan_link.verified', 'tax.pan_link.viewed']);
+  });
 });

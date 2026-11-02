@@ -109,6 +109,14 @@ export class TaxController {
     return this.tax.requestResidency(ctx, this.user(req), dto, file);
   }
 
+  // PAY-22 NoPan: the portal's PAN-Aadhaar link confirmation, checked by payroll in the proof queue.
+  @Post('me/pan-link')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024, files: 1 } }))
+  requestPanLink(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @UploadedFile() file?: { buffer: Buffer; originalname?: string }) {
+    return this.tax.requestPanLink(ctx, this.user(req), file);
+  }
+
   @Get('me/certificates')
   myCertificates(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     return this.tax.myCertificates(ctx, this.user(req));
@@ -207,6 +215,26 @@ export class TaxController {
   @RequirePermissions('tax.proof.verify')
   decideResidency(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: Form12bDecisionDto) {
     return this.tax.decideResidency(ctx, this.user(req), id, dto);
+  }
+
+  @Get('pan-links')
+  @RequirePermissions('tax.proof.verify')
+  panLinks(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: Form12bQueueDto) {
+    return this.tax.panLinkQueue(ctx, this.user(req), q.status);
+  }
+
+  @Get('pan-links/:id/file')
+  @RequirePermissions('tax.proof.verify')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  async panLinkFile(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return send(res, await this.tax.panLinkFile(ctx, this.user(req), id));
+  }
+
+  @Post('pan-links/:id/decision')
+  @HttpCode(200)
+  @RequirePermissions('tax.proof.verify')
+  decidePanLink(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: Form12bDecisionDto) {
+    return this.tax.decidePanLink(ctx, this.user(req), id, dto);
   }
 
   @Get('perquisites')

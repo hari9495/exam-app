@@ -8079,6 +8079,28 @@ model TaxResidencyRequest {
   @@map("tax_residency_requests")
 }
 
+/// PAY-22 NoPan (2 Nov 2026): the portal's PAN-Aadhaar link confirmation, checked by payroll in the proof queue.
+model TaxPanLinkRequest {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  legalEntityId   String    @map("legal_entity_id") @db.Uuid
+  employeeId      String    @map("employee_id") @db.Uuid
+  employmentId    String    @map("employment_id") @db.Uuid
+  workspaceId     String    @map("workspace_id") @db.Uuid
+  taxYear         String    @map("tax_year") @db.VarChar(7)
+  /// The shared file pipeline's row (type, size, virus scan).
+  fileId          String    @map("file_id") @db.Uuid
+  status          String    @default("pending") @db.VarChar(8)
+  verifierId      String?   @map("verifier_id") @db.Uuid
+  verifierComment String?   @map("verifier_comment") @db.VarChar(500)
+  verifiedAt      DateTime? @map("verified_at") @db.Timestamptz(3)
+  submittedBy     String    @map("submitted_by") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@map("tax_pan_link_requests")
+}
+
 /// Founder answer 3 (30 Oct 2026): after the cut-off, "ask HR to change my regime" through Approvals.
 model TaxRegimeRequest {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

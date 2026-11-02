@@ -17,6 +17,7 @@ import { ApprovalsEngine, type Notice } from '../workflow/approvals-engine.servi
 import { dayMonYear } from './loan-rules';
 import { PayDocumentsService } from './documents.service';
 import { PayFileStore, sha256 } from './pay-file-store';
+import { FilesService } from '../documents/files.service';
 import { PayKey, entitiesFor, payHolders, payScope, payViewer, requireEntity, requireSelf, withPayScope } from './pay-access';
 import { lawVersionFor, nextMonth, projectTax, taxForms, taxYearOf, type TaxInputs, type TaxProjection } from './tax';
 import { form16Block } from './form16-link';
@@ -39,6 +40,9 @@ type Workspace = Prisma.TaxWorkspaceGetPayload<object>;
 type ProofFile = { ref: string; name: string; sha256: string; size: number; contentType: string; at: string };
 type Form12b = Prisma.Form12bSubmissionGetPayload<object>;
 type Residency = Prisma.TaxResidencyRequestGetPayload<object>;
+type PanLink = Prisma.TaxPanLinkRequestGetPayload<object>;
+/** PAY-22 NoPan: the portal's link confirmation is a PDF or a picture of it. */
+const PAN_LINK_MIME = ['application/pdf', 'image/png', 'image/jpeg'] as const;
 type RegimeRequest = Prisma.TaxRegimeRequestGetPayload<object>;
 /** Founder answer 3: the Approvals request type for a regime change after the cut-off. */
 export const REGIME_CHANGE = 'tax.regime_change';
@@ -192,6 +196,7 @@ export class TaxService implements OnModuleInit {
     private readonly crypto: OrgSecretsCryptoService,
     private readonly documents: PayDocumentsService,
     private readonly engine: ApprovalsEngine,
+    private readonly sharedFiles: FilesService,
   ) {}
 
   onModuleInit() {
@@ -201,8 +206,12 @@ export class TaxService implements OnModuleInit {
   /** The latest regime and residency requests of a workspace (PAY-22 shows the one waiting, or the last decision). */
   private async requestsOf(tx: Tx, ws: Workspace) {
     const where = { organizationId: ws.organizationId, workspaceId: ws.id };
-    const [regime, residency] = await Promise.all([tx.taxRegimeRequest.findFirst({ where, orderBy: { createdAt: 'desc' } }), tx.taxResidencyRequest.findFirst({ where, orderBy: { createdAt: 'desc' } })]);
-    return { regimeRequest: regime ? this.regimeRequestView(regime) : null, residencyRequest: residency ? this.residencyView(residency) : null };
+    const [regime, residency, pan] = await Promise.all([
+      tx.taxRegimeRequest.findFirst({ where, orderBy: { createdAt: 'desc' } }),
+      tx.taxResidencyRequest.findFirst({ where, orderBy: { createdAt: 'desc' } }),
+      tx.taxPanLinkRequest.findFirst({ where, orderBy: { createdAt: 'desc' } }),
+    ]);
+    return { regimeRequest: regime ? this.regimeRequestView(regime) : null, residencyRequest: residency ? this.residencyView(residency) : null, panLinkRequest: pan ? await this.panLinkView(tx, pan) : null };
   }
 
   private async viewer(user: ScopeUser) {
@@ -492,6 +501,103 @@ export class TaxService implements OnModuleInit {
         await tx.taxWorkspace.update({ where: { id: r.workspaceId }, data: { residentialStatus: r.residentialStatus, trcValidTo: r.trcValidTo, dtaaCountry: r.dtaaCountry, updatedAt: new Date(), version: { increment: 1 } } });
       await audit(tx, c, 'tax.residency.verified', 'tax_residency_request', r.id, { employeeId: r.employeeId, taxYear: r.taxYear, status, from: r.fromStatus, to: r.residentialStatus, comment: dto.comment ?? null });
       return this.residencyView(await tx.taxResidencyRequest.findFirstOrThrow({ where: { id: r.id } }));
+    });
+  }
+
+  // ------------------------------------------------------------------------------------------ PAN link (PAY-22 NoPan)
+
+  private async panLinkView(tx: Tx, r: PanLink) {
+    const f = await tx.file.findFirst({ where: { organizationId: r.organizationId, id: r.fileId }, select: { fileName: true, size: true, mime: true, scanStatus: true, createdAt: true } });
+    return {
+      id: r.id,
+      taxYear: r.taxYear,
+      file: f ? { name: f.fileName, size: f.size, type: f.mime, at: f.createdAt, scan: f.scanStatus } : null,
+      status: r.status as 'pending' | 'approved' | 'rejected',
+      comment: r.verifierComment,
+      submittedAt: r.createdAt,
+      verifiedAt: r.verifiedAt,
+    };
+  }
+
+  /**
+   * The employee sends the portal's PAN-Aadhaar link confirmation while their PAN is recorded as inoperative. The file
+   * goes through the shared pipeline (real type PDF, PNG or JPEG, at most 5 MB, virus scan before anyone can open it).
+   */
+  async requestPanLink(ctx: TenantContext, user: ScopeUser, file: { buffer: Buffer; originalname?: string } | undefined) {
+    const v = await this.viewer(user);
+    if (!file?.buffer?.length) throw new BadRequestException('Attach the link confirmation from the income-tax portal (PDF, PNG or JPEG).');
+    const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const { ws } = await this.ownWorkspace(tx, c);
+      if (ws.panStatus !== 'inoperative') throw new ConflictException('Payroll has not recorded your PAN as inoperative, so there is nothing to send.');
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`tax-pan-link:${ws.id}`}))`;
+      if (await tx.taxPanLinkRequest.count({ where: { organizationId: org, workspaceId: ws.id, status: 'pending' } })) throw new ConflictException('Your earlier confirmation is still with payroll. Wait for their answer.');
+      const stored = await this.sharedFiles.storeIn(tx, c, { area: 'tax-pan-link', name: file.originalname ?? 'pan-link.pdf', data: file.buffer, allowedMime: PAN_LINK_MIME, maxMb: 5, via: 'self' });
+      const row = await tx.taxPanLinkRequest.create({
+        data: { organizationId: org, legalEntityId: ws.legalEntityId, employeeId: ws.employeeId, employmentId: ws.employmentId, workspaceId: ws.id, taxYear: ws.taxYear, fileId: stored.id, submittedBy: v.userId! },
+      });
+      await audit(tx, c, 'tax.pan_link.requested', 'tax_pan_link_request', row.id, { taxYear: ws.taxYear, fileId: stored.id, sha256: stored.sha256 });
+      return { view: await this.panLinkView(tx, row), fileId: stored.id };
+    });
+    // Scanned after the commit, as every upload of the shared pipeline; until it is clean nobody can open it.
+    void this.sharedFiles.scan(ctx.organizationId!, out.fileId).catch(() => undefined);
+    return out.view;
+  }
+
+  /** Payroll's queue (PAY-23, beside Form 12B and residency): the entities in scope, never the viewer's own. */
+  async panLinkQueue(ctx: TenantContext, user: ScopeUser, status: 'pending' | 'approved' | 'rejected' = 'pending') {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const ids = await entitiesFor(tx, c, v, 'tax.proof.verify');
+      await payScope(tx, ids);
+      const rows = await tx.taxPanLinkRequest.findMany({ where: { organizationId: c.organizationId, legalEntityId: { in: ids }, status, employeeId: { notIn: await this.mine(tx) } }, orderBy: { updatedAt: 'asc' }, take: 300 });
+      const people = await tx.employee.findMany({ where: { organizationId: c.organizationId, id: { in: rows.map((r) => r.employeeId) } }, select: { id: true, givenName: true, familyName: true } });
+      const out = [];
+      for (const r of rows) {
+        const p = people.find((x) => x.id === r.employeeId);
+        out.push({ ...(await this.panLinkView(tx, r)), employeeId: r.employeeId, employeeName: p ? `${p.givenName} ${p.familyName ?? ''}`.trim() : '', legalEntityId: r.legalEntityId });
+      }
+      return out;
+    });
+  }
+
+  /** A request the key reaches (else "not found"), never the viewer's own. */
+  private async panLinkFor(tx: Tx, c: CompanyContext, v: Viewer, id: string) {
+    const ids = await entitiesFor(tx, c, v, 'tax.proof.verify');
+    await payScope(tx, ids);
+    const r = await tx.taxPanLinkRequest.findFirst({ where: { organizationId: c.organizationId, id } });
+    if (!r || !ids.includes(r.legalEntityId)) throw new NotFoundException('Not found');
+    if ((await this.mine(tx)).includes(r.employeeId)) throw new ForbiddenException('Someone else checks your own PAN.');
+    return r;
+  }
+
+  async panLinkFile(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const r = await this.panLinkFor(tx, c, v, id);
+      const row = await tx.file.findFirstOrThrow({ where: { organizationId: c.organizationId, id: r.fileId } });
+      const data = await this.sharedFiles.bytes(row);
+      await audit(tx, c, 'tax.pan_link.viewed', 'tax_pan_link_request', r.id, { sha256: row.sha256 });
+      return { file: data, name: row.fileName, contentType: row.mime };
+    });
+  }
+
+  /** Approve (the PAN is operative again: normal-rate tax from the next payslip) or refuse with a reason. */
+  async decidePanLink(ctx: TenantContext, user: ScopeUser, id: string, dto: Form12bDecisionDto) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const r = await this.panLinkFor(tx, c, v, id);
+      if (dto.decision === 'reject' && !dto.comment) throw new BadRequestException('Say why, so the employee can fix it.');
+      const status = dto.decision === 'approve' ? 'approved' : 'rejected';
+      const n = await tx.taxPanLinkRequest.updateMany({ where: { id: r.id, status: 'pending' }, data: { status, verifierId: v.userId!, verifierComment: dto.comment ?? null, verifiedAt: new Date(), updatedAt: new Date() } });
+      if (!n.count) throw new ConflictException('This confirmation is not waiting for a check.');
+      if (status === 'approved') {
+        const reason = 'PAN link confirmation checked';
+        await tx.taxWorkspace.update({ where: { id: r.workspaceId }, data: { panStatus: 'operative', panStatusBy: v.userId!, panStatusReason: reason, updatedAt: new Date(), version: { increment: 1 } } });
+        await audit(tx, c, 'tax.pan_status.recorded', 'tax_workspace', r.workspaceId, { employeeId: r.employeeId, status: 'operative', reason, panLinkRequestId: r.id });
+      }
+      await audit(tx, c, 'tax.pan_link.verified', 'tax_pan_link_request', r.id, { employeeId: r.employeeId, taxYear: r.taxYear, status, comment: dto.comment ?? null });
+      return this.panLinkView(tx, await tx.taxPanLinkRequest.findFirstOrThrow({ where: { id: r.id } }));
     });
   }
 
