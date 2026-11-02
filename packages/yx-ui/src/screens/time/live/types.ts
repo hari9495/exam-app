@@ -177,6 +177,22 @@ export interface FixRow {
   sentBack?: string | null;
 }
 
+/** TIM-07 Ot: overtime asked for ahead of the work. */
+export interface OtPlanRow {
+  id: string;
+  on: string;
+  minutes: number;
+  takeAs: 'pay' | 'comp_off';
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected' | 'withdrawn';
+}
+export interface OtPlanInput {
+  on: string;
+  minutes: number;
+  takeAs: 'pay' | 'comp_off';
+  reason: string;
+}
+
 /** TIM-07 OnDuty: a day or part of one on duty away from the office. */
 export interface OnDutyInput {
   on: string;
@@ -214,6 +230,9 @@ export interface MyAttendance {
   wfh: { limit: number; used: number };
   /** TIM-07 OnDuty: how far ahead and back on duty can be asked (company settings). */
   onDuty?: { aheadDays: number; backDays: number };
+  /** TIM-07 Ot: overtime asked for ahead, and how far ahead it can be asked. */
+  otPlans?: OtPlanRow[];
+  otAheadDays?: number;
   /** Today is an approved work-from-home day. */
   wfhToday?: boolean;
   /** Days of the month in a frozen or locked period: a fix becomes a late correction (TIM-07), paid next payroll. */
@@ -623,6 +642,8 @@ export interface OtClaim {
   status: 'pending' | 'approved' | 'rejected' | 'withdrawn';
   overridden: boolean;
   overrideReason: string | null;
+  /** TIM-07 Ot: the minutes pre-approved for the day when claimed (null: none; older servers leave it out). */
+  preApprovedMinutes?: number | null;
   name?: string;
   code?: string | null;
   canOverride?: boolean;

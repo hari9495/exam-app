@@ -9,7 +9,7 @@ import { formatDate } from '../../lib/format';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, InlineAlert, Pagination, Skeleton } from '../../components/feedback';
 import { BottomSheet, ConfirmDialog, Dialog } from '../../components/overlay';
-import { Card, PageHeader } from '../../components/shell';
+import { Card, DescriptionList, PageHeader } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { RadioGroup } from '../../components/choice';
 import { NumberField, TextArea, TextField, TimeField } from '../../components/inputs';
@@ -22,7 +22,7 @@ import { MenuItem } from '../../components/menu';
 import { useToast } from '../../components/notify';
 import { useTooEarly } from '../../components/field';
 import { useRun } from '../org/org-kit';
-import type { DayRow, FixInput, FixKind as LiveFixKind, FixRow, LateCorrectionInput, MyAttendance, OnDutyInput, WfhInput } from './live/types';
+import type { DayRow, FixInput, FixKind as LiveFixKind, FixRow, LateCorrectionInput, MyAttendance, OnDutyInput, OtPlanInput, WfhInput } from './live/types';
 import { Segment } from '../people/people-kit';
 import { EXCEPTIONS, HOLIDAYS, HR_ADMIN, LATE_PAYROLL, LEAVE_REQUESTS, ME, OT_ROWS, PAYROLL_ADMIN, SEPTEMBER, TEAM, TODAY, isMyReport, timeCounts, type OtRow, type TimeUser } from './time-data';
 import { DueBadge, Kpis, TimePage } from './time-kit';
@@ -44,6 +44,7 @@ const dayStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(
 const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 /** "2 h" for whole hours, else "2 h 15 m". */
+const hhmmOf = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 const dur = (min: number) => (min >= 60 && min % 60 === 0 ? `${min / 60} h` : fmtDuration(min));
 const range = (from: Date, to: Date) => (from.getMonth() === to.getMonth() ? `${from.getDate()}–${dm(to)}` : `${dm(from)} – ${dm(to)}`);
 const storyHref = (id: string, args?: string) => `/?path=/story/${id}${args ? `&args=${args}` : ''}`;
@@ -424,12 +425,87 @@ function SentState({ s, withdrawn }: { s: ReqState; withdrawn: boolean }) {
   );
 }
 
+/* ---------- TIM-07 OnDuty sent back (TIM-19 SentBack style): what the manager asked, Change and send again, Withdraw ---------- */
+
+export interface OnDutySentBackProps {
+  on: string;
+  place: string;
+  inMinute: number;
+  outMinute: number;
+  reason: string;
+  /** What the manager asked to change. */
+  sentBack: string | null;
+  by?: string | null;
+  onResend: () => void;
+  onWithdraw: () => Promise<unknown>;
+  onClose: () => void;
+}
+
+const SAMPLE_SENT_BACK: Omit<OnDutySentBackProps, 'onResend' | 'onWithdraw' | 'onClose'> = { on: '2026-09-30', place: 'Hosur plant', inMinute: 510, outMinute: 1080, reason: 'Supplier quality audit with the Hosur plant team', sentBack: 'Add the plant gate times; the audit starts at 7:30 am.', by: ME.manager };
+
+/** TIM-07 · On duty sent back. Stories show the sample; the app passes `live` (the request and its actions). */
+export function OnDutySentBackSheet({ live }: { live?: OnDutySentBackProps }) {
+  const [open, setOpen] = useState(true);
+  const [ask, setAsk] = useState(false);
+  const { busy, error, run } = useRun();
+  const { toast } = useToast();
+  if (!open) return null;
+  const r = live ?? { ...SAMPLE_SENT_BACK, onResend: () => setOpen(false), onWithdraw: async () => undefined, onClose: () => setOpen(false) };
+  const date = new Date(Number(r.on.slice(0, 4)), Number(r.on.slice(5, 7)) - 1, Number(r.on.slice(8, 10)));
+  const by = r.by ?? 'Your manager';
+  const steps: ApprovalStep[] = [
+    { id: 's1', label: 'Requested', status: 'done' },
+    { id: 's2', label: 'Sent back for changes', status: 'done', approver: by, ...(r.sentBack ? { comment: r.sentBack } : {}) },
+  ];
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && r.onClose()}
+      title={`On duty · ${formatDate(date)}`}
+      subtitle="Sent back for changes"
+      footer={
+        <>
+          <Button onClick={() => setAsk(true)}>Withdraw</Button>
+          <Button variant="primary" onClick={r.onResend}>Change and send again</Button>
+        </>
+      }
+    >
+      <div className="yx-tim-stack">
+        {error && <InlineAlert tone="danger" title="Not withdrawn">{error}</InlineAlert>}
+        <InlineAlert tone="warning" title={`${by} sent it back for changes`}>{r.sentBack || 'No note was given.'}</InlineAlert>
+        <DescriptionList items={[{ label: 'Where', value: r.place }, { label: 'Time', value: `${fmt12(hhmmOf(r.inMinute))} – ${fmt12(hhmmOf(r.outMinute))}` }, { label: 'Reason', value: r.reason }]} />
+        <ApprovalTimeline now={TODAY} steps={steps} />
+      </div>
+      <ConfirmDialog
+        open={ask}
+        onOpenChange={setAsk}
+        title="Withdraw this request?"
+        consequence="It was sent back, so the day is not on duty. Withdrawn, it stays in your history."
+        confirmLabel={busy === 'withdraw' ? 'Withdrawing…' : 'Withdraw request'}
+        cancelLabel="Keep request"
+        onConfirm={() =>
+          void run('withdraw', async () => {
+            await r.onWithdraw();
+            setAsk(false);
+            toast({ tone: 'success', title: 'Request withdrawn' });
+            r.onClose();
+          })
+        }
+      />
+    </Drawer>
+  );
+}
+
 /* ---------- TIM-07 live: the same sheet on the person's real month (Me › Attendance) ---------- */
 
 /** What the live sheet needs: my month from the server, and the two requests it can send. */
 export interface LiveAttendanceRequest {
   data: MyAttendance;
-  type: 'regularise' | 'wfh' | 'on_duty';
+  type: 'regularise' | 'wfh' | 'on_duty' | 'ot';
+  /** Regularising is offered (punch mode, or a late correction); default yes. */
+  canRegularise?: boolean;
+  /** TIM-07 Ot: overtime asked for ahead; without it the sheet has no OT choice. */
+  onOtPlan?: (input: OtPlanInput) => Promise<unknown>;
   /** On duty sent back for changes: the sheet starts from it and sends it again. */
   resend?: FixRow;
   /** TIM-07 OnDuty; without it the sheet has no On duty choice. */
@@ -447,7 +523,6 @@ export interface LiveAttendanceRequest {
 const isoDay = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
 const isoOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const minuteOf = (hhmm: string | null) => (hhmm ? Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5)) : null);
-const hhmmOf = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 const LIVE_FIX: Record<string, LiveFixKind> = { in: 'missed_in', out: 'missed_out', wrong: 'wrong_time', full: 'full_day' };
 const STATUS_NOW: Record<DayRow['status'], string> = { present: 'Present', half_day: 'Half day', absent: 'Absent', leave: 'On leave', holiday: 'Holiday', weekly_off: 'Weekly off', missing_in: 'Missing check-in', missing_out: 'Missing check-out', no_timesheet: 'No timesheet yet', not_started: 'Not worked out yet', strike: 'Strike', lockout: 'Lockout', layoff: 'Lay-off' };
 /** The time of day in the person's zone as "HH:MM". */
@@ -456,9 +531,13 @@ const zoneHm = (iso: string | null | undefined, zone: string) => (iso ? new Date
 function LiveAttendanceRequestDrawer({ live }: { live: LiveAttendanceRequest }) {
   const d = live.data;
   const today = isoDay(d.today);
-  type T = 'regularise' | 'wfh' | 'on_duty';
-  const offered = (t: T) => t === 'regularise' || (t === 'wfh' && !!live.onWfh) || (t === 'on_duty' && !!live.onOnDuty);
-  const [type, setTypeRaw] = useState<T>(offered(live.type) ? live.type : 'regularise');
+  type T = 'regularise' | 'wfh' | 'on_duty' | 'ot';
+  const offered = (t: T) => (t === 'regularise' && live.canRegularise !== false) || (t === 'wfh' && !!live.onWfh) || (t === 'on_duty' && !!live.onOnDuty) || (t === 'ot' && !!live.onOtPlan);
+  const choices = (['regularise', 'wfh', 'on_duty', 'ot'] as const).filter(offered);
+  const [type, setTypeRaw] = useState<T>(offered(live.type) ? live.type : choices[0] ?? 'regularise');
+  // TIM-07 Ot: planned hours and how the overtime is taken.
+  const [otHours, setOtHours] = useState<number | null>(null);
+  const [takeAs, setTakeAs] = useState<'pay' | 'comp_off'>('pay');
   const [date, setDate] = useState<Date | null>(live.on ? isoDay(live.on) : today);
   // On duty: where and when (a sent-back request starts from what was sent).
   const [where, setWhere] = useState(live.resend?.place ?? '');
@@ -488,8 +567,12 @@ function LiveAttendanceRequestDrawer({ live }: { live: LiveAttendanceRequest }) 
   // A day of a frozen or locked month goes as a late request (P08 Q4), up to the company's limit in days.
   const late = type === 'regularise' && !!on && !!live.onLateCorrection && (d.locked ?? []).includes(on);
   const tooLate = late && d.lateRequestMaxDays !== undefined && (isoDay(d.today).getTime() - isoDay(on!).getTime()) / 86_400_000 > d.lateRequestMaxDays;
+  const otMin = Math.round((otHours ?? 0) * 60);
+  const otAhead = d.otAheadDays ?? 30;
   const dateErr = !on
     ? null
+    : type === 'ot'
+      ? on < d.today ? 'Pick today or a later date' : -ago > otAhead ? `Pick a date in the next ${otAhead} days` : (d.otPlans ?? []).some((p) => p.on === on && (p.status === 'pending' || p.status === 'approved')) ? `${when} already has overtime asked for` : null
     : type === 'on_duty'
       ? -ago > odWindow.aheadDays ? `Pick a date in the next ${odWindow.aheadDays} days` : ago > odWindow.backDays ? `Pick a date in the last ${odWindow.backDays} days` : (d.locked ?? []).includes(on) ? `${when} is in a locked month. Ask HR to record a correction.` : null
       : type === 'regularise' ? (on > d.today ? 'Pick today or an earlier date' : tooLate ? `${when} is more than ${d.lateRequestMaxDays} days ago, so only HR can correct it now. Ask HR.` : nothing) : on < d.today ? 'Pick today or a later date' : pending ? `${when} already has a request waiting` : null;
@@ -499,6 +582,7 @@ function LiveAttendanceRequestDrawer({ live }: { live: LiveAttendanceRequest }) 
     ...(!nothing && needIn && !inT ? [{ fieldId: 'ar-in', message: 'Enter the check-in time' }] : []),
     ...(!nothing && needOut && !outT ? [{ fieldId: 'ar-out', message: 'Enter the check-out time' }] : []),
     ...(!nothing && needIn && needOut && inT && outT && outT <= inT ? [{ fieldId: 'ar-out', message: 'Enter a check-out time after check-in' }] : []),
+    ...(type === 'ot' && !otHours ? [{ fieldId: 'ar-ot', message: 'Enter the planned hours' }] : type === 'ot' && otMin < 30 ? [{ fieldId: 'ar-ot', message: 'Enter at least 0.5 h' }] : type === 'ot' && otMin % 15 ? [{ fieldId: 'ar-ot', message: 'Use quarter hours (e.g. 1.25 or 1.5)' }] : type === 'ot' && otMin > 720 ? [{ fieldId: 'ar-ot', message: 'Enter at most 12 h' }] : []),
     ...(od && where.trim().length < 2 ? [{ fieldId: 'ar-where', message: 'Enter where you will be' }] : []),
     ...(od && (!odFrom || !odTo) ? [{ fieldId: !odFrom ? 'ar-from' : 'ar-to', message: 'Enter the From and To times' }] : []),
     ...(od && odFrom && odTo && odTo <= odFrom ? [{ fieldId: 'ar-to', message: 'Enter a To time after From' }] : []),
@@ -508,26 +592,27 @@ function LiveAttendanceRequestDrawer({ live }: { live: LiveAttendanceRequest }) 
   const early = useTooEarly(errors);
   const regLeft = Math.max(0, d.regularise.limit - d.regularise.used);
   const wfhThen = on && on.slice(0, 7) === d.today.slice(0, 7) ? d.wfh.used : 0;
-  const hr = !od && (late || (type === 'regularise' ? regLeft === 0 : wfhThen >= d.wfh.limit));
+  const hr = !od && type !== 'ot' && (late || (type === 'regularise' ? regLeft === 0 : wfhThen >= d.wfh.limit));
   const send = () => {
     if (early.stop() || !on) return;
     void run('send', async () => {
-      if (od) await live.onOnDuty!({ on, inMinute: minuteOf(odFrom)!, outMinute: minuteOf(odTo)!, place: where.trim(), reason: reason.trim(), ...(live.resend ? { resendOf: live.resend.id } : {}) });
+      if (type === 'ot') await live.onOtPlan!({ on, minutes: otMin, takeAs, reason: reason.trim() });
+      else if (od) await live.onOnDuty!({ on, inMinute: minuteOf(odFrom)!, outMinute: minuteOf(odTo)!, place: where.trim(), reason: reason.trim(), ...(live.resend ? { resendOf: live.resend.id } : {}) });
       else if (type === 'wfh') await live.onWfh!({ on, reason: reason.trim() });
       else if (late) await live.onLateCorrection!({ on, kind: 'attendance', shouldBe: after, reason: reason.trim() });
       else await live.onFix({ on, kind: LIVE_FIX[fix], ...(needIn ? { inMinute: minuteOf(inT)! } : {}), ...(needOut ? { outMinute: minuteOf(outT)! } : {}), reason: reason.trim() });
-      toast({ tone: 'success', title: late ? 'Sent to your manager, then HR and payroll' : hr ? 'Sent to your manager, then HR' : 'Sent to your manager', description: `${od ? 'On duty' : type === 'wfh' ? 'Work from home' : late ? 'Late request' : 'Regularisation'} for ${when}. You will get a notification when it is decided.` });
+      toast({ tone: 'success', title: late ? 'Sent to your manager, then HR and payroll' : hr ? 'Sent to your manager, then HR' : 'Sent to your manager', description: `${type === 'ot' ? 'Overtime pre-approval' : od ? 'On duty' : type === 'wfh' ? 'Work from home' : late ? 'Late request' : 'Regularisation'} for ${when}. You will get a notification when it is decided.` });
       live.onClose();
     });
   };
   const timeText = (t: string | null) => (t ? fmt12(t) : '…');
-  const after = od ? `On duty at ${where.trim() || '…'}, ${timeText(odFrom)} – ${timeText(odTo)}` : type === 'wfh' ? 'Work from home · counts as present' : fix === 'full' ? 'Present all day' : `Present ${timeText(needIn ? inT : recIn)} – ${timeText(needOut ? outT : recOut)}`;
+  const after = type === 'ot' ? (takeAs === 'pay' ? `Up to ${dur(otMin)} OT · paid at the overtime rate` : `Up to ${dur(otMin)} OT · comp-off credit`) : od ? `On duty at ${where.trim() || '…'}, ${timeText(odFrom)} – ${timeText(odTo)}` : type === 'wfh' ? 'Work from home · counts as present' : fix === 'full' ? 'Present all day' : `Present ${timeText(needIn ? inT : recIn)} – ${timeText(needOut ? outT : recOut)}`;
   const monthName = date ? MONTH[date.getMonth()] : '';
   return (
     <Drawer
       open
       onOpenChange={(o) => !o && live.onClose()}
-      title={live.resend ? 'Change and send again' : type === 'wfh' ? 'Request work from home' : 'New attendance request'}
+      title={live.resend ? 'Change and send again' : live.type === 'wfh' ? 'Request work from home' : 'New attendance request'}
       subtitle={late ? 'Goes to your manager, HR and payroll' : hr ? 'Goes to your manager, then HR' : 'Goes to your manager'}
       dirty={Boolean(reason)}
       footer={
@@ -542,14 +627,22 @@ function LiveAttendanceRequestDrawer({ live }: { live: LiveAttendanceRequest }) 
         {error && <InlineAlert tone="danger" title="Not sent">{error}</InlineAlert>}
         {live.resend?.sentBack && <InlineAlert tone="warning" title="Your manager asked for changes">{live.resend.sentBack}</InlineAlert>}
         {/* OT pre-approval is not in the app yet: only the requests it can send. */}
-        {(live.onWfh || live.onOnDuty) && !live.resend && (
+        {choices.length > 1 && !live.resend && (
           <FormField label="Request type" required>
-            <Segment label="Request type" value={type} onChange={setType} options={[{ value: 'regularise' as const, label: 'Regularise' }, ...(live.onWfh ? [{ value: 'wfh' as const, label: 'WFH' }] : []), ...(live.onOnDuty ? [{ value: 'on_duty' as const, label: 'On duty' }] : [])]} />
+            <Segment label="Request type" value={type} onChange={setType} options={TYPE_SHORT.filter((o) => offered(o.value))} />
           </FormField>
         )}
-        <FormField id="ar-date" label="Date" required error={early.errorOf('ar-date')} helper={od ? `Up to ${odWindow.aheadDays} days ahead or ${odWindow.backDays} days back.` : type === 'wfh' ? 'Pick the day you will work from home.' : late ? `${monthName} is locked, so this goes as a late request.` : 'Pick the day to fix.'}>
-          <DatePicker value={date} onChange={setDate} min={type === 'wfh' ? today : undefined} max={type === 'regularise' ? today : undefined} aria-label="Date" />
+        <FormField id="ar-date" label="Date" required error={early.errorOf('ar-date')} helper={type === 'ot' ? `Today or up to ${otAhead} days ahead. Overtime already worked is claimed on My overtime.` : od ? `Up to ${odWindow.aheadDays} days ahead or ${odWindow.backDays} days back.` : type === 'wfh' ? 'Pick the day you will work from home.' : late ? `${monthName} is locked, so this goes as a late request.` : 'Pick the day to fix.'}>
+          <DatePicker value={date} onChange={setDate} min={type === 'wfh' || type === 'ot' ? today : undefined} max={type === 'regularise' ? today : undefined} aria-label="Date" />
         </FormField>
+        {type === 'ot' && (
+          <FieldRow>
+            <FormField id="ar-ot" label="Planned OT (hours)" required error={early.errorOf('ar-ot')} helper="Min 0.5 h, in quarter hours"><NumberField decimals value={otHours} onChange={setOtHours} placeholder="e.g. 1.25" /></FormField>
+            <FormField label="Take as">
+              <Select value={takeAs} onChange={(v) => v && setTakeAs(v as 'pay' | 'comp_off')} options={[{ value: 'pay', label: 'Paid overtime' }, { value: 'comp_off', label: 'Comp-off credit' }]} />
+            </FormField>
+          </FieldRow>
+        )}
         {od && (
           <>
             <FormField id="ar-where" label="Where" required error={early.errorOf('ar-where')}><TextField value={where} onChange={setWhere} maxLength={120} /></FormField>
@@ -585,9 +678,10 @@ function LiveAttendanceRequestDrawer({ live }: { live: LiveAttendanceRequest }) 
         </FormField>
         <section className="yx-tim-effect" aria-live="polite" aria-label="Effect before you send">
           <strong>Effect on {date ? dm(date) : 'the day'}</strong>
-          <div className="yx-tim-effect__line"><span className="yx-tim-muted">Now</span><Badge tone={late ? 'danger' : 'neutral'}>{type === 'wfh' || od ? 'Expected in office' : day ? STATUS_NOW[day.status] : 'Nothing recorded'}</Badge></div>
-          <div className="yx-tim-effect__line"><span className="yx-tim-muted">After</span>{nothing ? <Badge tone="neutral">Pick a day that needs fixing</Badge> : od && (!where.trim() || !odFrom || !odTo) ? <Badge tone="neutral">Add the place and times to see the result</Badge> : <Badge tone="success">{after}</Badge>}</div>
+          <div className="yx-tim-effect__line"><span className="yx-tim-muted">Now</span><Badge tone={late ? 'danger' : 'neutral'}>{type === 'ot' ? 'No OT approved' : type === 'wfh' || od ? 'Expected in office' : day ? STATUS_NOW[day.status] : 'Nothing recorded'}</Badge></div>
+          <div className="yx-tim-effect__line"><span className="yx-tim-muted">After</span>{nothing ? <Badge tone="neutral">Pick a day that needs fixing</Badge> : od && (!where.trim() || !odFrom || !odTo) ? <Badge tone="neutral">Add the place and times to see the result</Badge> : type === 'ot' && !otHours ? <Badge tone="neutral">Add the planned hours to see the result</Badge> : <Badge tone="success">{after}</Badge>}</div>
           {od && <p className="yx-tim-muted">Once approved, the time counts as worked: a full day is present, part of one adds to your office hours.</p>}
+          {type === 'ot' && <p className="yx-tim-muted">After the work, claim it on My overtime; the claim shows it was pre-approved. Factory overtime is always paid.</p>}
           {type === 'wfh' && on && (
             <p className="yx-tim-muted">
               {hr ? `This would be work-from-home day ${wfhThen + 1} in ${monthName}, over the ${d.wfh.limit} your manager approves alone, so HR approves too.` : `This will be work-from-home day ${wfhThen + 1} of ${d.wfh.limit} in ${monthName}.`}
@@ -1146,7 +1240,8 @@ function LiveOtReviewScreen({ live }: { live: LiveOtReview }) {
   const cols: TableColumn<OtClaim>[] = [
     { key: 'person', header: 'Employee', type: 'person', width: 200, value: (c) => c.name ?? '', person: (c) => ({ name: c.name ?? '', secondary: isoDate(c.on) }) },
     { key: 'worked', header: 'Worked', optional: true, width: 220, value: (c) => c.workedMinutes, render: workedText },
-    { key: 'ot', header: 'OT', type: 'number', value: (c) => c.payableMinutes / 60, render: otCell },
+    // TIM-09's "not pre-approved" line (TIM-07 Ot): shown when the claim was made without a pre-approval.
+    { key: 'ot', header: 'OT', type: 'number', value: (c) => c.payableMinutes / 60, render: (c) => (c.preApprovedMinutes === null ? <span className="yx-tim-list__main">{otCell(c)}<span className="yx-tim-muted" style={NOWRAP}>not pre-approved</span></span> : otCell(c)) },
     { key: 'cap', header: 'Legal limit', hideable: false, width: 150, value: (c) => c.overCapMinutes, render: capCell },
   ];
   const needCompWhy = !!comp?.overCapMinutes;

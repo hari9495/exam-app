@@ -53,9 +53,9 @@ import { AttendanceLegend, AttendanceMonth, ClockCard, DayCardBody, DueBadge, Ge
 import { DAY_CODE_LABEL, daysUntil, fmt12, fmtDuration, lateMinutes, monthSummary, relativeDue, toHHMM, toMin, type AttendanceDay, type ClockState, type DayCode, type Punch } from './time-logic';
 import { VISITS } from '../ops/visitors-data';
 import { useRun } from '../org/org-kit';
-import { AttendanceRequestSheet } from './requests';
+import { AttendanceRequestSheet, OnDutySentBackSheet } from './requests';
 import { MODE_TEXT } from './live/kit';
-import type { DayCard, DayRow, ExceptionsList, LateCorrectionInput, TodayBoard, FixInput, FixRow, LoadState, Muster, MyAttendance, MyNightWork, NightCodeSent, PersonAttendance, Pin, PunchKind, PunchResult, PunchRow, ResolveInput, WfhInput, OnDutyInput } from './live/types';
+import type { DayCard, DayRow, ExceptionsList, LateCorrectionInput, TodayBoard, FixInput, FixRow, LoadState, Muster, MyAttendance, MyNightWork, NightCodeSent, PersonAttendance, Pin, PunchKind, PunchResult, PunchRow, ResolveInput, WfhInput, OnDutyInput, OtPlanInput, OtPlanRow } from './live/types';
 import './time.css';
 
 export type ViewState = 'ready' | 'loading' | 'error' | 'empty';
@@ -770,6 +770,7 @@ function SampleAttendanceCalendar({ persona = 'emp', defaultMonth = 'sep', openD
   const toFix = monthSummary(days).toFix.filter((d) => !reg.isSent(d.date));
   // The fix-before-payroll alert carries the "Tomorrow" badge; the month bar doesn't repeat it.
   const fixAlert = persona === 'emp' && !locked && ready && toFix.length > 0;
+  const [newReq, setNewReq] = useState(0);
   return (
     <TimePage active={persona === 'emp' ? 'My attendance' : 'Muster'}>
       <PageHeader
@@ -784,10 +785,13 @@ function SampleAttendanceCalendar({ persona = 'emp', defaultMonth = 'sep', openD
               </div>
             )}
             {ready && <Button icon={Download} onClick={() => exportMonth(who, monthLabel, days)}>Export month</Button>}
+            {ready && persona === 'emp' && <Button onClick={() => setNewReq((n) => n + 1)}>New request</Button>}
             {ready && persona === 'emp' && <Button variant="primary" onClick={() => reg.open(null, 'wrong')}>Regularise a day</Button>}
           </div>
         }
       />
+      {/* New request: the TIM-07 sheet (Regularise, WFH, On duty, OT pre-approval). */}
+      {newReq > 0 && <AttendanceRequestSheet key={newReq} type="wfh" />}
       <div className="yx-tim-row yx-tim-monthnav">
         <IconButton icon={ChevronLeft} label="Previous month" variant="secondary" onClick={() => goMonth('aug')} />
         <h2 className="yx-tim-h2" aria-live="polite">{monthLabel}</h2>
@@ -2164,6 +2168,9 @@ export interface LiveMyAttendance {
   onWfh?: (input: WfhInput) => Promise<unknown>;
   /** TIM-07 OnDuty: a day or part of one on duty away from the office (or sent again after changes). */
   onOnDuty?: (input: OnDutyInput) => Promise<unknown>;
+  /** TIM-07 Ot: overtime asked for ahead; and withdrawing one still waiting. */
+  onOtPlan?: (input: OtPlanInput) => Promise<unknown>;
+  onWithdrawOtPlan?: (id: string) => Promise<unknown>;
   /** TIM-07 LateRequest: a day of a frozen or locked month goes as a late correction, paid in the next payroll. */
   onLateCorrection?: (input: LateCorrectionInput) => Promise<unknown>;
   /** Open the request sheet at once (Home's "Request work from home" links here). */
@@ -2518,13 +2525,50 @@ function LiveStates({ state, onRetry, what, children }: { state: LoadState; onRe
 /** Shared by both live attendance pages: the request sheet (TIM-07), and withdrawing a waiting request. */
 function useLiveRequests(live: LiveMyAttendance) {
   const say = useSay();
-  const [req, setReq] = useState<{ type: 'regularise' | 'wfh' | 'on_duty'; on: string | null; n: number; resend?: FixRow } | null>(live.defaultRequest ? { type: live.defaultRequest, on: null, n: 0 } : null);
+  type ReqType = 'regularise' | 'wfh' | 'on_duty' | 'ot';
+  const [req, setReq] = useState<{ type: ReqType; on: string | null; n: number; resend?: FixRow } | null>(live.defaultRequest ? { type: live.defaultRequest, on: null, n: 0 } : null);
   const [withdrawing, setWithdrawing] = useState<FixRow | null>(null);
-  const open = (type: 'regularise' | 'wfh' | 'on_duty', on: string | null = null, resend?: FixRow) => setReq({ type, on, n: (req?.n ?? 0) + 1, resend });
+  const [plan, setPlan] = useState<OtPlanRow | null>(null);
+  // On duty sent back for changes: the TIM-07 sent-back sheet (what the manager asked, Change and send again, Withdraw).
+  const [sentBack, setSentBack] = useState<FixRow | null>(null);
+  const open = (type: ReqType, on: string | null = null, resend?: FixRow) => setReq({ type, on, n: (req?.n ?? 0) + 1, resend });
   const d = live.data;
+  // "New request": only the choices this person may use (regularising needs punch mode).
+  const canRegularise = d?.mode === 'punch';
+  const first: ReqType | null = canRegularise ? 'regularise' : live.onWfh ? 'wfh' : live.onOnDuty ? 'on_duty' : live.onOtPlan ? 'ot' : null;
   const node = (
     <>
-      {req && d && <AttendanceRequestSheet key={req.n} live={{ data: d, type: req.type, on: req.on, resend: req.resend, onFix: live.onFix, onWfh: live.onWfh, onOnDuty: live.onOnDuty, onLateCorrection: live.onLateCorrection, onClose: () => setReq(null) }} />}
+      {req && d && <AttendanceRequestSheet key={req.n} live={{ data: d, type: req.type, on: req.on, resend: req.resend, canRegularise, onFix: live.onFix, onWfh: live.onWfh, onOnDuty: live.onOnDuty, onOtPlan: live.onOtPlan, onLateCorrection: live.onLateCorrection, onClose: () => setReq(null) }} />}
+      {sentBack && (
+        <OnDutySentBackSheet
+          key={sentBack.id}
+          live={{
+            on: sentBack.on,
+            place: sentBack.place ?? '',
+            inMinute: sentBack.inMinute ?? 0,
+            outMinute: sentBack.outMinute ?? 0,
+            reason: sentBack.reason,
+            sentBack: sentBack.sentBack ?? null,
+            by: d?.manager ?? null,
+            onResend: () => { const r = sentBack; setSentBack(null); open('on_duty', r.on, r); },
+            onWithdraw: () => live.onWithdrawFix(sentBack.id),
+            onClose: () => setSentBack(null),
+          }}
+        />
+      )}
+      <ConfirmDialog
+        open={!!plan}
+        onOpenChange={(o) => !o && setPlan(null)}
+        title={plan ? `Withdraw the overtime pre-approval for ${shortIso(plan.on)}?` : ''}
+        consequence="Your manager won't see it any more. You can ask again any time before the day."
+        confirmLabel="Withdraw request"
+        cancelLabel="Keep request"
+        onConfirm={async () => {
+          await live.onWithdrawOtPlan!(plan!.id);
+          setPlan(null);
+          say('Request withdrawn');
+        }}
+      />
       <ConfirmDialog
         open={!!withdrawing}
         onOpenChange={(o) => !o && setWithdrawing(null)}
@@ -2540,7 +2584,7 @@ function useLiveRequests(live: LiveMyAttendance) {
       />
     </>
   );
-  return { open, node, withdraw: setWithdrawing };
+  return { open, node, withdraw: setWithdrawing, withdrawPlan: setPlan, viewSentBack: setSentBack, first };
 }
 
 /** Me › Attendance, live: the attendance calendar design (Extra · Attendance calendar) on my month. */
@@ -2558,6 +2602,7 @@ function LiveAttendanceCalendar({ live }: { live: LiveMyAttendance }) {
   const toFix = d?.mode === 'punch' ? days.filter((x) => fixable(x.code)) : [];
   // Waiting, and on duty sent back for changes (to change and send again, or withdraw).
   const waiting = (d?.requests ?? []).filter((r) => r.status === 'pending' || (r.kind === 'on_duty' && r.status === 'sent_back'));
+  const waitingPlans = (d?.otPlans ?? []).filter((p) => p.status === 'pending');
   const open = openOn ? days.find((x) => isoOf(x.date) === openOn) ?? null : null;
   const openReq = openOn ? waiting.find((r) => r.on === openOn && r.status === 'pending' && r.kind !== 'wfh' && r.kind !== 'on_duty') : undefined;
   const nowMin = d ? zoneTime(live.now ?? new Date(), d.zone).minute : undefined;
@@ -2578,7 +2623,7 @@ function LiveAttendanceCalendar({ live }: { live: LiveMyAttendance }) {
             <div className="yx-tim-row">
               {live.todayHref && <Button asChild><a href={live.todayHref}>Clock in or out</a></Button>}
               <Button icon={Download} onClick={() => exportMonth(d.employee.name, label, days)}>Export month</Button>
-              {live.onWfh && <Button onClick={() => reqs.open('wfh')}>Request work from home</Button>}
+              {reqs.first && (live.onWfh || live.onOnDuty || live.onOtPlan) && <Button onClick={() => reqs.open(reqs.first!)}>New request</Button>}
               {d.mode === 'punch' && <Button variant="primary" onClick={() => reqs.open('regularise')}>Regularise a day</Button>}
             </div>
           ) : undefined
@@ -2602,7 +2647,7 @@ function LiveAttendanceCalendar({ live }: { live: LiveMyAttendance }) {
               <Card title={`${label} totals`}>
                 <AttendanceLegend days={days} />
               </Card>
-              {waiting.length > 0 && (
+              {(waiting.length > 0 || waitingPlans.length > 0) && (
                 <Card title="Waiting for approval">
                   <ul className="yx-tim-list" aria-label="Waiting for approval">
                     {waiting.map((r) => (
@@ -2612,10 +2657,19 @@ function LiveAttendanceCalendar({ live }: { live: LiveMyAttendance }) {
                           <span className="yx-tim-muted">{r.status === 'sent_back' ? `Sent back for changes${r.sentBack ? `: ${r.sentBack}` : ''}` : 'With your manager'}</span>
                         </span>
                         <span className="yx-tim-row">
-                          {r.status === 'sent_back' && live.onOnDuty && <Button size="sm" variant="primary" onClick={() => reqs.open('on_duty', r.on, r)}>Change and send again</Button>}
+                          {r.status === 'sent_back' && live.onOnDuty && <Button size="sm" onClick={() => reqs.viewSentBack(r)}>View</Button>}
                           {r.kind !== 'wfh' && r.kind !== 'on_duty' && r.on.startsWith(live.month) && <Button size="sm" onClick={() => setOpenOn(r.on)}>View</Button>}
                           <Button size="sm" onClick={() => reqs.withdraw(r)}>Withdraw</Button>
                         </span>
+                      </li>
+                    ))}
+                    {waitingPlans.map((p) => (
+                      <li key={p.id}>
+                        <span className="yx-tim-list__main">
+                          <strong>{shortIso(p.on)} · Overtime pre-approval</strong>
+                          <span className="yx-tim-muted">Up to {fmtDuration(p.minutes)} · {p.takeAs === 'comp_off' ? 'comp-off' : 'paid'} · with your manager</span>
+                        </span>
+                        {live.onWithdrawOtPlan && <Button size="sm" onClick={() => reqs.withdrawPlan(p)}>Withdraw</Button>}
                       </li>
                     ))}
                   </ul>

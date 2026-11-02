@@ -191,8 +191,11 @@ describe('Me › Attendance (live calendar)', () => {
   it('work from home: Send pressed early shows the missing reason (never a disabled button), shows the effect, sends, then a toast', async () => {
     const onWfh = vi.fn(async () => undefined);
     render(<AttendanceCalendarScreen live={live({ onWfh })} />);
-    await ue.click(screen.getByRole('button', { name: 'Request work from home' }));
-    const sheet = screen.getByRole('dialog', { name: 'Request work from home' });
+    // "New request" (founder 2 Nov 2026) opens the sheet; WFH is one of the choices.
+    expect(screen.queryByRole('button', { name: 'Request work from home' })).toBeNull();
+    await ue.click(screen.getByRole('button', { name: 'New request' }));
+    const sheet = screen.getByRole('dialog', { name: 'New attendance request' });
+    await ue.click(within(sheet).getByRole('radio', { name: 'WFH' }));
     expect(within(sheet).getByText('Goes to your manager')).toBeInTheDocument();
     expect(within(sheet).getByText('Work from home · counts as present')).toBeInTheDocument();
     expect(within(sheet).getByText('This will be work-from-home day 1 of 4 in October.')).toBeInTheDocument();
@@ -205,7 +208,7 @@ describe('Me › Attendance (live calendar)', () => {
     await ue.click(send);
     await waitFor(() => expect(onWfh).toHaveBeenCalledWith({ on: '2026-10-09', reason: 'Plumber visit' }));
     expect(await screen.findByText('Sent to your manager')).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Request work from home' })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New attendance request' })).toBeNull());
   });
 
   it('work from home over the monthly limit goes to HR too; a refusal from the server says why', async () => {

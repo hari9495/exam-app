@@ -108,7 +108,9 @@ describe('TIM-07 OnDuty, live', () => {
     const list = screen.getByRole('list', { name: 'Waiting for approval' });
     expect(within(list).getByText('8 Oct 2026 · On duty at Hosur')).toBeInTheDocument();
     expect(within(list).getByText('Sent back for changes: Add the plant name in full')).toBeInTheDocument();
-    await ue.click(within(list).getByRole('button', { name: 'Change and send again' }));
+    // View opens the sent-back sheet (TIM-19 SentBack style); Change and send again starts from it.
+    await ue.click(within(list).getByRole('button', { name: 'View' }));
+    await ue.click(within(screen.getByRole('dialog', { name: /On duty · 8 Oct 2026/ })).getByRole('button', { name: 'Change and send again' }));
     const sheet = screen.getByRole('dialog', { name: 'Change and send again' });
     expect(within(sheet).getByText('Add the plant name in full')).toBeInTheDocument();
     await ue.type(within(sheet).getByRole('textbox', { name: /Where/ }), ' plant');

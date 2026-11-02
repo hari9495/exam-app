@@ -34,6 +34,8 @@ function YxMyAttendanceInner() {
     onOpenDay: (on) => read<DayCard>(`/people/${encodeURIComponent(att.data!.employee.id)}/days/${on}`),
     onWfh: (input) => write('/me/wfh', 'POST', input),
     onOnDuty: (input) => write('/me/on-duty', 'POST', input),
+    onOtPlan: (input) => write('/me/overtime/plans', 'POST', input),
+    onWithdrawOtPlan: (pid) => write(`/me/overtime/plans/${encodeURIComponent(pid)}/withdraw`),
     // TIM-07: a day of a frozen or locked month goes as a late correction (manager, HR, payroll), paid next payroll.
     onLateCorrection: (input) => other('/payroll/me/late-corrections', input),
     defaultRequest: request === 'wfh' || request === 'regularise' ? request : undefined,

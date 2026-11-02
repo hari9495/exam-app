@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { AttendanceRequestSheet } from './requests';
+import { AttendanceRequestSheet, OnDutySentBackSheet } from './requests';
 
 const meta: Meta<typeof AttendanceRequestSheet> = { title: 'Screens/Time/TIM-07 · Attendance request', component: AttendanceRequestSheet, parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -16,3 +16,4 @@ export const Invalid: S = { name: 'Validation error', args: { error: true } };
 export const Sent: S = { name: 'Sent', args: { submitted: true } };
 export const Phone: S = { name: 'Phone', args: { surface: 'phone' }, ...phone };
 export const PhoneWfh: S = { name: 'Phone · WFH', args: { surface: 'phone', type: 'wfh' }, ...phone };
+export const OnDutySentBack: StoryObj<typeof OnDutySentBackSheet> = { name: 'On duty · sent back, change and send again', render: () => <OnDutySentBackSheet /> };

@@ -3317,9 +3317,12 @@ function LiveTransitionBody({ d, live }: { d: TimeSetup; live: LiveYearEnd }) {
             id: 'scope', title: 'Scope', description: 'Entity and new leave year',
             content: (
               <div className="yx-tim-form">
-                <FormField label="Entity" required error={entity ? null : 'Choose the entity.'}><Select value={entity} onChange={setEntity} options={d.entities.map((e) => ({ value: e.id, label: e.name }))} /></FormField>
-                <FormField label="New leave year starts in" required><Select value={month} onChange={setMonth} options={MONTH_NAMES.map((m, i) => ({ value: String(i + 1), label: m }))} /></FormField>
-                {preview && <DescriptionList items={[{ label: 'Leave year', value: `${yearKind(preview.oldStartMonth)[0].toUpperCase()}${yearKind(preview.oldStartMonth).slice(1)} → ${yearKind(preview.newStartMonth)}, from ${isoDay(preview.fromOn)} (the day after the year end)` }]} />}
+                {/* Side by side, and the leave-year line in one row: the page fits 1278 x 635 without scrolling (founder rule). */}
+                <FieldRow>
+                  <FormField label="Entity" required error={entity ? null : 'Choose the entity.'}><Select value={entity} onChange={setEntity} options={d.entities.map((e) => ({ value: e.id, label: e.name }))} /></FormField>
+                  <FormField label="New leave year starts in" required><Select value={month} onChange={setMonth} options={MONTH_NAMES.map((m, i) => ({ value: String(i + 1), label: m }))} /></FormField>
+                </FieldRow>
+                {preview && <DescriptionList items={[{ label: 'Leave year', value: `${yearKind(preview.oldStartMonth)[0].toUpperCase()}${yearKind(preview.oldStartMonth).slice(1)} → ${yearKind(preview.newStartMonth)}, from ${isoDay(preview.fromOn)}` }]} />}
                 {preview?.problem ? (
                   <InlineAlert tone="warning" title="This change can not be made">{preview.problem}</InlineAlert>
                 ) : preview ? (
