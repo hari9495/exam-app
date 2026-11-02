@@ -1270,7 +1270,9 @@ pay-ops-live.test.tsx and the statutory case of pay-5j-live.test.tsx (ported). `
 CMP gaps (branch `feat/yukthix-pay-gaps-statutory`, 2 Nov 2026): CMP-01 SetupNeeded, CMP-03 Epf / Esic / Pt / LwfNotDue,
 CMP-05 Completeness / MissingMonth, CMP-06 WrongQuarter / NotYetAvailable and CMP-08 MarkReviewed went live (see each
 row). Left as gaps on purpose (an outside provider): CMP-05 Partner (filing partner connector) and CMP-06 Sign (DSC).
-Migration 20261330000000_form16_return_link; rule pack packs/in-tds-dates.json. Manual steps MT-CMP-G-01 … 08. Recounted
+Migration 20261330000000_form16_return_link; rule pack packs/in-tds-dates.json. Manual steps MT-CMP-G-01 … 08.
+No deductees this month (founder answer 2, branch `feat/yukthix-cmp-no-deductees`): 2 new CMP-05 stories, both live;
+migration 20261360000000_tds_nil_months; manual steps MT-CMP-G-09, 10. Counts now 56 live of 83. Before it, recounted
 row by row: 54 live, 2 live (gap), 5 wire (gap), 20 not Pay = 81 (the earlier total of 47 live was off by 3; the rows gave 44).
 
 ### Counts (sub-pages = stories)
@@ -1281,14 +1283,14 @@ row by row: 54 live, 2 live (gap), 5 wire (gap), 20 not Pay = 81 (the earlier to
 | CMP-02 Statutory set-up | 0 | 0 | 5 | 0 | 0 | 5 |
 | CMP-03 Registers | 7 | 0 | 0 | 0 | 0 | 7 |
 | CMP-04 TDS challan sheet | 4 | 0 | 0 | 0 | 0 | 4 |
-| CMP-05 TDS return wizard | 6 | 1 | 0 | 0 | 0 | 7 |
+| CMP-05 TDS return wizard | 8 | 1 | 0 | 0 | 0 | 9 |
 | CMP-06 Form 16 | 4 | 1 | 0 | 0 | 0 | 5 |
 | CMP-07 Missing IDs | 4 | 0 | 0 | 0 | 0 | 4 |
 | CMP-08 Rules & updates | 5 | 0 | 0 | 0 | 0 | 5 |
 | CMP-09 … 11 IC console, POSH | 0 | 0 | 0 | 0 | 20 | 20 |
 | CMP-12 Supplementary filing | 4 | 0 | 0 | 0 | 0 | 4 |
 | CMP-13 Consultant TDS (new) | 15 | 0 | 0 | 0 | 0 | 15 |
-| **All** | **54** | **2** | **5** | **0** | **20** | **81** |
+| **All** | **56** | **2** | **5** | **0** | **20** | **83** |
 
 ### CMP-01 · Statutory hub
 
@@ -1347,7 +1349,9 @@ Live page: /yx/payroll/statutory › TDS returns (salary); /yx/payroll/consultan
 | story (sub-page) | verdict | note |
 |---|---|---|
 | Completeness · Completeness (prior-month rows imported) | live | each salary return carries `completeness`: rows per month with their source (payroll / imported as-paid lines), PAN warnings (no PAN, or recorded inoperative for the tax year) and the count checked; the step shows both check lists |
-| MissingMonth · Blocked · prior-month rows missing | live | a quarter month before the entity's first approved payroll with nothing imported is missing: the step errors ("July rows missing"), filing says so, and POST tds-returns/:id/file is refused (409 TDS_MONTH_MISSING). "Import rows" takes the month's as-paid lines (employeeCode, componentCode, amount) through the existing PAY-2.12 import (payroll.import.run): every row checked, bad rows listed, nothing lands until all are right; then the draft is started again with the rows (TDS from the TDS lines, paid from the earning lines) and the month unblocks |
+| MissingMonth · Blocked · prior-month rows missing | live | a quarter month before the entity's first approved payroll with nothing imported is missing: the step errors ("July rows missing"), filing says so, and POST tds-returns/:id/file is refused (409 TDS_MONTH_MISSING). "Import rows" takes the month's as-paid lines (employeeCode, componentCode, amount) through the existing PAY-2.12 import (payroll.import.run): every row checked, bad rows listed, nothing lands until all are right; then the draft is started again with the rows (TDS from the TDS lines, paid from the earning lines) and the month unblocks. Founder answer 2: next to it, "No deductees this month" (`NoDeducteesDialog`) records the month with a reason (POST statutory/tds-nil-months, statutory.filing.generate; tds_nil_months, migration 20261360000000: RLS, audited, versioned, never deleted); the return counts it complete with zero rows; Undo until the quarter's return is filed. Refused plainly for a month not over, one whose approved payslips or imported lines carry TDS, one already recorded, or one in a filed quarter |
+| NoDeducteesConfirm · Blocked · no deductees this month (confirm) | live | the confirm names the month and asks why (5 to 500 characters; pressed empty: field error); done: toast |
+| NoDeducteesRefused · Blocked · no deductees refused (TDS on payslips) | live | the server's refusal shows in the dialog ("July 2026 has approved payslips with ₹4,200 of TDS…"); nothing is recorded |
 | Reconciliation · Reconciliation · small difference flagged | live | |
 | Fvu · Self-file · FVU validation | live | make file, download, upload .fvu, validation result |
 | Partner · Filing partner | live (gap) | filing partner connector not built |

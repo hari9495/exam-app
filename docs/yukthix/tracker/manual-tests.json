@@ -9073,5 +9073,41 @@
       "Time · TIM-02 · Muster · Open month"
     ],
     "note": "Negative."
+  },
+  {
+    "id": "MT-CMP-G-09",
+    "area": "Compliance · CMP gaps (statutory builder, 2 Nov 2026)",
+    "screen": "TDS return: no deductees this month (CMP-05 MissingMonth, founder answer 2)",
+    "url": "http://localhost:3000/yx/payroll/statutory",
+    "account": "payroll@demo-org.test (Payroll Admin). Browser window 1278 x 635, sidebar open. A quarter with a month paid before go-live and nothing imported (as in MT-CMP-G-05).",
+    "steps": [
+      "1. Open the return, Data completeness, and press \"No deductees this month\" on the missing month.",
+      "2. Press \"Record no deductees\" with the reason empty.",
+      "3. Type \"No one was paid above the TDS limit\" and press \"Record no deductees\".",
+      "4. Press \"Undo\" on that month, then record it again.",
+      "5. Sign in as compliance@demo-org.test (no import key, but statutory.filing.generate) and open the same return; then as hr@demo-org.test open the statutory page."
+    ],
+    "expected": "Step 1: \"No salary TDS in <Month Year>?\" saying the return counts the month complete with no rows and that it can be undone until the return is filed. Negative step 2: \"Say why there was no salary TDS, in at least 5 characters.\" with focus there; nothing saved. Step 3: toast \"<Month Year> recorded as having no deductees.\"; the month reads \"no deductees\" with \"Recorded as having no salary TDS: …\"; the step error is gone. Step 4: toast \"<Month Year> needs its rows again.\", the month is missing again; recording again works. Step 5: compliance sees Undo too; HR sees no access to the page.",
+    "stories": [
+      "Compliance CMP-05 MissingMonth",
+      "Compliance CMP-05 NoDeducteesConfirm"
+    ],
+    "note": "Positive and negative. Each record and undo is in the audit log (statutory.tds_nil_month.*)."
+  },
+  {
+    "id": "MT-CMP-G-10",
+    "area": "Compliance · CMP gaps (statutory builder, 2 Nov 2026)",
+    "screen": "TDS return: no deductees refused (CMP-05 NoDeducteesRefused)",
+    "url": "http://localhost:3000/yx/payroll/statutory",
+    "account": "payroll@demo-org.test (Payroll Admin). Browser window 1278 x 635, sidebar open. A missing month that has imported as-paid lines with TDS, or a past month with approved payslips carrying TDS; and a quarter whose return is filed.",
+    "steps": [
+      "1. On a month whose payslips or imported lines carry TDS, press \"No deductees this month\", give a reason and confirm.",
+      "2. On a month recorded as no deductees, mark that quarter's return filed, then look for Undo."
+    ],
+    "expected": "Negative step 1: the dialog stays open with \"<Month Year> has approved payslips with ₹… of TDS. Its rows come from payroll, so it cannot be marked as having no deductees.\" (or the imported-lines version); nothing is recorded. Negative step 2: no Undo once filed (the API also refuses: \"The return for this quarter is filed, so this stays.\").",
+    "stories": [
+      "Compliance CMP-05 NoDeducteesRefused"
+    ],
+    "note": "Negative paths."
   }
 ]
