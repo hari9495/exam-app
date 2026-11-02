@@ -1557,6 +1557,8 @@ function useSplitSend(live: LiveIntlBank, f: ReturnType<typeof useIntlBankForm>)
   const [failed, setFailed] = useState<string | null>(null);
   // One "Send for approval" as designed: the new IBAN, the split, or both (the split first: the IBAN page goes back).
   const send = async () => {
+    // No split on this page (no accounts to split): the IBAN form alone, as before.
+    if (!sp?.onSend) return f.send();
     const ibanAsked = Boolean(f.iban.trim() || f.bic.trim());
     if (!ibanAsked && !changed) return say('Enter a new IBAN, or change the split, then send it.');
     if (changed) {

@@ -18,7 +18,7 @@ describe('PPL-44 trading pre-clearance, live', () => {
   it('the company rules in the header; a request needs every field and the UPSI confirmation', async () => {
     const live = mine();
     render(<TradingPreclearance today={day('2026-09-29')} live={live} />);
-    expect(screen.getByText('Designated persons need pre-clearance for trades above ₹10,00,000 in a quarter. Approval is valid for 7 trading days.')).toBeInTheDocument();
+    expect(screen.getByText('Designated persons need pre-clearance for trades above ₹10,00,000 in a quarter. Approval is valid for 7 trading days and never during a closed trading window.')).toBeInTheDocument();
     const send = screen.getByRole('button', { name: 'Request pre-clearance' });
     await ue.type(screen.getByRole('textbox', { name: /Security/ }), 'Deccan Agro Industries Ltd');
     await ue.click(screen.getByRole('radio', { name: 'Sell' }));
