@@ -7,7 +7,7 @@ import { RequireStepUp } from '../auth/step-up.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import type { ScopeUser } from '../access/scope';
-import { AckDto, CostRateListDto, CourtOrderDto, HoldDto, HoldReleaseDto, JournalExportDto, LoanChangeDto, LoanRequestDto, LopInputsDto, OneTimeBulkDto, OneTimeDto, OneTimeListDto, ReasonDto, RunCreateDto, RunDecisionDto, RunListDto, SpecialDaysDto, SubmitRunDto } from './dto-5c';
+import { AckDto, CostRateListDto, CourtOrderDto, HoldDto, HoldReleaseDto, JournalExportDto, LoanChangeDto, LoanRequestDto, LopInputsDto, OneTimeBulkDto, OneTimeDto, OneTimeListDto, ReasonDto, RemittanceDto, RunCreateDto, RunDecisionDto, RunListDto, SpecialDaysDto, SubmitRunDto } from './dto-5c';
 import { PayInputsService } from './inputs.service';
 import { PayRunsService } from './runs.service';
 import { LedgerService } from './ledger.service';
@@ -253,6 +253,39 @@ export class Payroll5cController {
   @RequirePermissions('payroll.loan.manage')
   changeLoan(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: LoanChangeDto) {
     return this.inputs.changeLoan(ctx, this.user(req), id, dto);
+  }
+
+  /** PAY-19: each month's deduction for the order and whether it was paid to the court. */
+  @Get('court-orders/:id/remittances')
+  @RequirePermissions('payroll.input.manage')
+  remittances(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.inputs.courtOrderRemittances(ctx, this.user(req), id);
+  }
+
+  @Post('court-orders/:id/remittances')
+  @RequirePermissions('payroll.input.manage')
+  remit(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RemittanceDto) {
+    return this.inputs.recordRemittance(ctx, this.user(req), id, dto.month, dto.reference);
+  }
+
+  /** PAY-19: negative net carried to later runs. */
+  @Get('carry-forwards')
+  @RequirePermissions('payroll.input.manage')
+  carryForwards(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.inputs.carryForwards(ctx, this.user(req));
+  }
+
+  /** PAY-19: payslips whose recoveries the deduction cap deferred, and one payslip's cap check. */
+  @Get('deferrals')
+  @RequireAnyPermission(...RUN_VIEW)
+  deferrals(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.runs.deferrals(ctx, this.user(req));
+  }
+
+  @Get('payslips/:id/deduction-cap')
+  @RequireAnyPermission(...RUN_VIEW)
+  deductionCap(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.runs.deductionCap(ctx, this.user(req), id);
   }
 
   @Get('court-orders')

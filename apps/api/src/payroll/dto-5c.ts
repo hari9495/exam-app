@@ -272,6 +272,16 @@ export class LoanChangeDto {
   reason!: string;
 }
 
+/** PAY-19: a month's court-order deduction paid to the court. */
+export class RemittanceDto {
+  @Matches(MONTH)
+  month!: string;
+
+  @trim()
+  @Matches(/^[A-Za-z0-9/ -]{3,60}$/, { message: 'The payment reference is 3 to 60 letters, digits, spaces, / or -.' })
+  reference!: string;
+}
+
 export class CourtOrderDto {
   @IsUUID()
   employeeId!: string;

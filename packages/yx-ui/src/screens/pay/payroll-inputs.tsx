@@ -1920,7 +1920,7 @@ function SampleRecoveriesScreen({ tab = 'court', state = 'ready', openId }: Reco
   );
 }
 
-type CapLine = ReturnType<typeof applyDeductionCap>['lines'][number];
+type CapLine = { id: string; label: string; amount: number; deducted: number; deferred: number };
 const capCols: TableColumn<CapLine>[] = [
   { key: 'label', header: 'Deduction', value: (l) => l.label, width: 260 },
   { key: 'due', header: 'Due', type: 'money', value: (l) => l.amount, total: 'sum', width: 120 },
@@ -1928,15 +1928,16 @@ const capCols: TableColumn<CapLine>[] = [
   { key: 'deferred', header: 'Deferred', type: 'money', value: (l) => l.deferred, render: (l) => (l.deferred ? formatINR(l.deferred) : '—'), total: 'sum', width: 120 },
 ];
 
-function CapPreview({ wages, result }: { wages: number; result: ReturnType<typeof applyDeductionCap> }) {
+/** PAY-19 "Deduction cap check" (design; also rendered live for one payslip from the calculator's own working). */
+export function CapPreview({ wages, result, who = `${COURT_ORDERS[0].employee} · ${COURT_ORDERS[0].code}`, capText, protectedNet = 12_000 }: { wages: number; result: { cap: number; net: number; lines: CapLine[] }; who?: string; capText?: string; protectedNet?: number }) {
   return (
     <div className="yx-pay-stack">
       <FactRow
         items={[
-          { label: 'Employee', value: `${COURT_ORDERS[0].employee} · ${COURT_ORDERS[0].code}` },
+          { label: 'Employee', value: who },
           { label: 'Wages this month', value: formatINR(wages) },
-          { label: 'Legal cap (Code on Wages)', value: `50% · ${formatINR(result.cap)}` },
-          { label: 'Protected net (company)', value: formatINR(12_000) },
+          { label: 'Legal cap (Code on Wages)', value: capText ?? `50% · ${formatINR(result.cap)}` },
+          { label: 'Protected net (company)', value: formatINR(protectedNet) },
           { label: 'Net pay', value: <Amount value={result.net} strong /> },
         ]}
       />

@@ -500,6 +500,66 @@ export class PayInputsService implements OnModuleInit {
     });
   }
 
+  /**
+   * PAY-19 "Court order record · remittances": each month's deduction for the order (approved payslips) and whether it
+   * was paid to the court, with the reference.
+   */
+  async courtOrderRemittances(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const o = await this.orderIn(tx, c, v, id);
+      return this.remittanceMonths(tx, c.organizationId, o.id);
+    });
+  }
+
+  private async orderIn(tx: Tx, c: CompanyContext, v: Viewer, id: string) {
+    const ids = await entitiesFor(tx, c, v, 'payroll.input.manage');
+    await payScope(tx, ids);
+    const o = await tx.courtOrder.findFirst({ where: { organizationId: c.organizationId, id } });
+    if (!o || !ids.includes(o.legalEntityId)) throw new NotFoundException('Not found');
+    return o;
+  }
+
+  private async remittanceMonths(tx: Tx, org: string, orderId: string) {
+    const lines = await tx.$queryRaw<{ month: string; amount: string }[]>`
+      SELECT to_char(p.period_start, 'YYYY-MM') AS month, sum(l.amount)::text AS amount
+      FROM payslip_lines l JOIN payslips p ON p.organization_id = l.organization_id AND p.id = l.payslip_id
+      WHERE l.organization_id = ${org}::uuid AND l.component_code = 'court_attachment' AND l.source_ref = ${orderId} AND p.status = 'approved' AND l.amount > 0
+      GROUP BY 1 ORDER BY 1`;
+    const paid = await tx.courtOrderRemittance.findMany({ where: { organizationId: org, courtOrderId: orderId } });
+    return lines.map((l) => {
+      const r = paid.find((x) => dateOf(x.month).slice(0, 7) === l.month);
+      return { month: l.month, deducted: D(l.amount).toFixed(2), remitted: r ? { reference: r.reference, at: r.recordedAt, by: r.recordedBy } : null };
+    });
+  }
+
+  /** PAY-19: the month's deduction paid to the court, once, with the bank or challan reference (audited). */
+  async recordRemittance(ctx: TenantContext, user: ScopeUser, id: string, month: string, reference: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const o = await this.orderIn(tx, c, v, id);
+      if (await this.isSelf(tx, c.organizationId, v, o.employeeId)) throw new ForbiddenException('Someone else records payments about your own pay.');
+      const due = (await this.remittanceMonths(tx, c.organizationId, o.id)).find((m) => m.month === month);
+      if (!due) throw new BadRequestException(`Nothing was deducted for this order in ${month}: there is nothing to remit.`);
+      if (due.remitted) throw new ConflictException(`${month} is already recorded as remitted (reference ${due.remitted.reference}).`);
+      const r = await tx.courtOrderRemittance.create({ data: { organizationId: c.organizationId, legalEntityId: o.legalEntityId, employeeId: o.employeeId, courtOrderId: o.id, month: asDate(`${month}-01`), amount: due.deducted, reference, recordedBy: v.userId! } });
+      await audit(tx, c, 'payroll.court_order.remitted', 'court_order', o.id, { month, amount: due.deducted, reference });
+      return { id: r.id, month, amount: due.deducted, reference };
+    });
+  }
+
+  /** PAY-19 "Carry-forwards": negative net carried to later runs, with what is recovered and what is left. */
+  async carryForwards(ctx: TenantContext, user: ScopeUser) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const ids = await entitiesFor(tx, c, v, 'payroll.input.manage');
+      await payScope(tx, ids);
+      const rows = await tx.payCarryForward.findMany({ where: { organizationId: c.organizationId, legalEntityId: { in: ids } }, orderBy: { createdAt: 'desc' }, take: 500 });
+      const origins = new Map((await tx.payslip.findMany({ where: { organizationId: c.organizationId, id: { in: rows.map((r) => r.originPayslipId) } }, select: { id: true, periodStart: true } })).map((p) => [p.id, dateOf(p.periodStart).slice(0, 7)]));
+      return rows.map((r) => ({ id: r.id, employeeId: r.employeeId, originMonth: origins.get(r.originPayslipId) ?? null, amount: r.amount.toFixed(2), recovered: r.recovered.toFixed(2), balance: r.amount.sub(r.recovered).toFixed(2), status: r.status }));
+    });
+  }
+
   async addCourtOrder(ctx: TenantContext, user: ScopeUser, dto: CourtOrderDto) {
     if ((dto.amount === undefined) === (dto.percent === undefined)) throw new BadRequestException('Give either a fixed amount or a percentage.');
     const v = await this.viewer(user);

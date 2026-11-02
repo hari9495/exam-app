@@ -304,6 +304,51 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  /**
+   * PAY-19 "Deduction cap check": one payslip's deductions in the legal order, what each wanted, what it took and what the
+   * cap or the protected net deferred to the next run, worked out again from the payslip's frozen inputs.
+   */
+  async deductionCap(ctx: TenantContext, user: ScopeUser, payslipId: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const ids = [...new Set((await Promise.all(VIEW.map((k) => entitiesFor(tx, c, v, k)))).flat())];
+      await payScope(tx, ids);
+      const s = await tx.payslip.findFirst({ where: { organizationId: c.organizationId, id: payslipId } });
+      if (!s || !ids.includes(s.legalEntityId)) throw new NotFoundException('Not found');
+      const snap = await tx.payslipSnapshot.findFirst({ where: { organizationId: c.organizationId, payslipId: s.id } });
+      if (!snap) throw new NotFoundException('Not found');
+      const input = snap.inputs as unknown as Snapshot;
+      const r = calculatePayslip(input, await this.rulesFor(snap.ruleVersions as Record<string, string>));
+      const refOf = new Map<string, string>(input.recoveries.courtOrders.map((o) => [o.id, o.ref]));
+      const deferredOf = (kind: string, ref: string) => r.deferred.filter((d) => d.kind === kind && d.ref === ref).reduce((t, d) => t.add(d.amount), D(0));
+      const KIND: Record<string, string> = { court_attachment: 'court_order', loan_emi: 'loan', carry_forward_recovery: 'carry_forward', overpayment_recovery: 'overpayment' };
+      const recoveries = r.lines
+        .filter((l) => KIND[l.code] && l.sourceRef)
+        .map((l) => {
+          const deferred = deferredOf(KIND[l.code], KIND[l.code] === 'court_order' ? (refOf.get(l.sourceRef!) ?? l.sourceRef!) : l.sourceRef!);
+          return { label: l.name, kind: KIND[l.code], due: D(l.amount).add(deferred).toFixed(2), deducted: D(l.amount).toFixed(2), deferred: deferred.toFixed(2) };
+        });
+      return { payslipId: s.id, employeeId: s.employeeId, month: dateOf(s.periodStart).slice(0, 7), wages: r.cap?.wages ?? r.gross, cap: r.cap?.limit ?? null, protectedNet: r.cap?.protectedNet ?? null, net: r.net, lines: [{ label: 'Statutory (PF, ESI, PT, TDS)', kind: 'statutory', due: r.cap?.statutory ?? '0.00', deducted: r.cap?.statutory ?? '0.00', deferred: '0.00' }, ...recoveries] };
+    });
+  }
+
+  /** PAY-19: the payslips whose recoveries the cap or the protected net deferred (from the approval's deferral events). */
+  async deferrals(ctx: TenantContext, user: ScopeUser) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const ids = [...new Set((await Promise.all(VIEW.map((k) => entitiesFor(tx, c, v, k)))).flat())];
+      await payScope(tx, ids);
+      const events = await tx.eventOutbox.findMany({ where: { organizationId: c.organizationId, eventType: 'recovery.deferred' }, orderBy: { occurredAt: 'desc' }, take: 500, select: { payload: true } });
+      const bySlip = new Map<string, string[]>();
+      for (const e of events) {
+        const p = e.payload as { payslipId?: string; kind?: string };
+        if (p.payslipId) bySlip.set(p.payslipId, [...(bySlip.get(p.payslipId) ?? []), p.kind ?? 'recovery']);
+      }
+      const slips = await tx.payslip.findMany({ where: { organizationId: c.organizationId, id: { in: [...bySlip.keys()] }, legalEntityId: { in: ids } }, orderBy: { periodStart: 'desc' } });
+      return slips.map((s) => ({ payslipId: s.id, employeeId: s.employeeId, month: dateOf(s.periodStart).slice(0, 7), kinds: [...new Set(bySlip.get(s.id))] }));
+    });
+  }
+
   /** Who the run pays, by name and code (the screens show names; the rows carry ids). */
   async people(ctx: TenantContext, user: ScopeUser, id: string) {
     const v = await this.viewer(user);

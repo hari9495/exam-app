@@ -112,6 +112,8 @@ export interface CalcResult {
   ruleVersions: Record<string, string>;
   recoveries: { courtOrders: { id: string; amount: string }[]; loans: { id: string; amount: string }[]; carryForwards: { id: string; amount: string }[]; overpayments: { id: string; amount: string }[] };
   deferred: { kind: string; ref: string; amount: string }[];
+  /** PAY-19 "Deduction cap check": the wages, the legal cap, the protected net and the statutory deductions it worked from. */
+  cap?: { wages: string; limit: string; protectedNet: string; statutory: string };
   carryForward: string;
   minWage: { monthly: string; below: boolean; floorApplied: boolean; skillFallback: boolean } | null;
   /** Batch 5e: the projection behind the TDS line (the tax sheet shows this, YX-TAX-06). */
@@ -391,6 +393,6 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
   if (s.held) add({ code: 'held', name: 'Net pay held', kind: 'info', segmentNo: 0, amount: net, explanation: 'Net pay is held; statutory deductions are made as usual and the pay is released later.' });
   const minW = mw ? { monthly: mw.monthly.toFixed(2), below: gross0.lt(mw.monthly) && unpaid.isZero(), floorApplied: mw.floorApplied, skillFallback: !!mw.state?.skillFallback } : null;
   const ruleVersions = Object.fromEntries([...used.entries()].map(([k, v]) => [k, v.version]));
-  const result = { lines, gross: gross.toFixed(2), deductions: deductions.toFixed(2), net: net.toFixed(2), employerCost: employerCost.toFixed(2), verify: lines.some((l) => l.verify), ruleVersions, recoveries: out, deferred, carryForward: carryForward.toFixed(2), minWage: minW, tax };
+  const result = { lines, gross: gross.toFixed(2), deductions: deductions.toFixed(2), net: net.toFixed(2), employerCost: employerCost.toFixed(2), verify: lines.some((l) => l.verify), ruleVersions, recoveries: out, deferred, cap: { wages: gross.toFixed(2), limit: r2(cap).toFixed(2), protectedNet: r2(protectedNet).toFixed(2), statutory: statutoryDed.toFixed(2) }, carryForward: carryForward.toFixed(2), minWage: minW, tax };
   return { ...result, resultHash: hashOf({ lines, gross: result.gross, deductions: result.deductions, net: result.net, employerCost: result.employerCost }) };
 }

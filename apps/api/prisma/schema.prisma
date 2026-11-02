@@ -7726,6 +7726,23 @@ model CourtOrder {
   @@map("court_orders")
 }
 
+/// PAY-19: a month's court-order deduction paid to the court (insert-only; one per order and month).
+model CourtOrderRemittance {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  legalEntityId  String   @map("legal_entity_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  courtOrderId   String   @map("court_order_id") @db.Uuid
+  month          DateTime @db.Date
+  amount         Decimal  @db.Decimal(14, 2)
+  reference      String   @db.VarChar(60)
+  recordedBy     String   @map("recorded_by") @db.Uuid
+  recordedAt     DateTime @default(now()) @map("recorded_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, courtOrderId, month], map: "court_order_remittances_key")
+  @@map("court_order_remittances")
+}
+
 model Loan {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String    @map("organization_id") @db.Uuid

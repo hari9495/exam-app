@@ -24,7 +24,8 @@ import { formatDate, formatINR } from '../../lib/format';
 import { matchesFilter, type FilterValue } from '../../lib/table';
 import { useRun } from '../org/org-kit';
 import { SectionTitle } from './pay-kit';
-import { BulkUploadDrawer, recurringPlan, type UploadRowResult } from './payroll-inputs';
+import { BulkUploadDrawer, CapPreview, recurringPlan, type UploadRowResult } from './payroll-inputs';
+import { PlainTable } from '../../components/plain-table';
 import { PersonPicker, type HoldRow, type LopRow, type PersonHit } from './live/inputs';
 import { parseCsv } from './live/setup';
 import type { LoadState } from './live/types';
@@ -1282,17 +1283,64 @@ export interface CourtOrderInput {
   capTotal?: string;
   endOn?: string;
 }
+/** PAY-19: one month's court-order deduction and its payment to the court (GET court-orders/:id/remittances). */
+export interface CourtRemittance {
+  month: string;
+  deducted: string;
+  remitted: { reference: string; at: string; by: string } | null;
+}
+/** PAY-19: negative net carried to later runs (GET payroll/carry-forwards). */
+export interface CarryForwardRow {
+  id: string;
+  employeeId: string;
+  originMonth: string | null;
+  amount: string;
+  recovered: string;
+  balance: string;
+  status: string;
+}
+/** PAY-19: a payslip whose recoveries the cap deferred (GET payroll/deferrals). */
+export interface DeferralRow {
+  payslipId: string;
+  employeeId: string;
+  month: string;
+  kinds: string[];
+}
+/** PAY-19: one payslip's deduction cap check (GET payroll/payslips/:id/deduction-cap). */
+export interface DeductionCapView {
+  payslipId: string;
+  employeeId: string;
+  month: string;
+  wages: string;
+  cap: string | null;
+  protectedNet: string | null;
+  net: string;
+  lines: { label: string; kind: string; due: string; deducted: string; deferred: string }[];
+}
 export interface LiveRecoveriesData {
-  /** Court orders (GET payroll/court-orders, payroll.input.manage). */
-  orders: { state: LoadState; rows: LiveCourtOrder[] | null; canAdd: boolean; onAdd: (x: CourtOrderInput) => Promise<unknown> };
+  /** Court orders (GET payroll/court-orders, payroll.input.manage); each order's monthly remittances. */
+  orders: {
+    state: LoadState;
+    rows: LiveCourtOrder[] | null;
+    canAdd: boolean;
+    onAdd: (x: CourtOrderInput) => Promise<unknown>;
+    onRemittances?: (orderId: string) => Promise<CourtRemittance[]>;
+    onRemit?: (orderId: string, month: string, reference: string) => Promise<unknown>;
+  };
+  /** PAY-19 Carry-forwards (negative net). */
+  carry?: { state: LoadState; rows: CarryForwardRow[] | null };
+  /** PAY-19 Deduction cap check: payslips with deferred recoveries, and one payslip's working. */
+  cap?: { state: LoadState; rows: DeferralRow[] | null; onOpen: (payslipId: string) => Promise<DeductionCapView> };
   /** Overpayment recovery plans (GET payroll/overpayments). */
   overpayments: { state: LoadState; rows: OverpaymentPlan[] | null; canWriteOff: boolean; onWriteOff: (r: OverpaymentPlan, reason: string) => Promise<unknown> };
   nameOf: (employeeId: string) => string;
   onSearch: (q: string) => Promise<PersonHit[]>;
   onRetry?: () => void;
   today: string;
-  tab?: 'court' | 'over';
+  tab?: 'court' | 'over' | 'carry' | 'cap';
 }
+
+const DEFER_KIND: Record<string, string> = { court_order: 'Court order', loan: 'Loan EMI', carry_forward: 'Carry-forward', overpayment: 'Overpayment' };
 
 const OVER_STATUS: Record<string, { label: string; tone: BadgeTone }> = {
   proposed: { label: 'Needs consent', tone: 'warning' },
@@ -1316,6 +1364,37 @@ export function LiveRecoveries({ live }: { live: LiveRecoveriesData }) {
   const priority = (o: LiveCourtOrder) => orders.filter((x) => x.priorityDate < o.priorityDate).length + 1;
   const open = orders.find((o) => o.id === openId) ?? null;
   const overs = live.overpayments.rows ?? [];
+  const [remits, setRemits] = useState<CourtRemittance[] | null>(null);
+  const [remitting, setRemitting] = useState<CourtRemittance | null>(null);
+  const [remitRef, setRemitRef] = useState('');
+  const [triedRemit, setTriedRemit] = useState(false);
+  const [capView, setCapView] = useState<DeductionCapView | null>(null);
+  const [capError, setCapError] = useState<string | null>(null);
+  const loadRemits = (id: string) => {
+    setRemits(null);
+    if (live.orders.onRemittances) void live.orders.onRemittances(id).then(setRemits, () => setRemits([]));
+  };
+  useEffect(() => {
+    if (openId) loadRemits(openId);
+  }, [openId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const openCap = (payslipId: string) => {
+    setCapError(null);
+    void live.cap!.onOpen(payslipId).then(setCapView, (e) => setCapError(failText(e)));
+  };
+  const carry = live.carry?.rows ?? [];
+  const carryCols: TableColumn<CarryForwardRow>[] = [
+    { key: 'employee', header: 'Employee', type: 'person', value: (r) => live.nameOf(r.employeeId), person: (r) => ({ name: live.nameOf(r.employeeId) }), width: 220 },
+    { key: 'origin', header: 'Origin', value: (r) => (r.originMonth ? `Negative net in ${monthName(r.originMonth)} (−${money(r.amount)})` : `Negative net (−${money(r.amount)})`), width: 300 },
+    { key: 'balance', header: 'Balance', type: 'money', value: (r) => Number(r.balance), total: 'sum', width: 110 },
+    { key: 'recovered', header: 'Recovered', type: 'money', value: (r) => Number(r.recovered), width: 120, optional: true },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => (r.status === 'recovered' ? 'Recovered' : 'Recovering'), statusTone: (v) => (v === 'Recovered' ? 'success' : 'info'), width: 130 },
+  ];
+  const capRows = live.cap?.rows ?? [];
+  const capCols: TableColumn<DeferralRow>[] = [
+    { key: 'employee', header: 'Employee', type: 'person', value: (r) => live.nameOf(r.employeeId), person: (r) => ({ name: live.nameOf(r.employeeId) }), width: 220 },
+    { key: 'month', header: 'Month', value: (r) => monthName(r.month), width: 150 },
+    { key: 'kinds', header: 'Deferred', value: (r) => r.kinds.map((k) => DEFER_KIND[k] ?? k).join(', '), width: 260 },
+  ];
   const amountText = (o: LiveCourtOrder) => (o.amount ? `${money(o.amount)} a month` : `${Number(o.percent)}% of net`);
   const orderCols: TableColumn<LiveCourtOrder>[] = [
     { key: 'employee', header: 'Employee', type: 'person', value: (c) => live.nameOf(c.employeeId), person: (c) => ({ name: live.nameOf(c.employeeId) }), width: 220 },
@@ -1355,9 +1434,15 @@ export function LiveRecoveries({ live }: { live: LiveRecoveriesData }) {
           <TabsTrigger value="court" count={live.orders.rows?.length}>
             Court orders
           </TabsTrigger>
+          {live.carry && (
+            <TabsTrigger value="carry" count={live.carry.rows?.length}>
+              Carry-forwards
+            </TabsTrigger>
+          )}
           <TabsTrigger value="over" count={live.overpayments.rows?.length}>
             Overpayments
           </TabsTrigger>
+          {live.cap && <TabsTrigger value="cap">Deduction cap check</TabsTrigger>}
         </TabsList>
         <TabsContent value="court">
           <PanelStates state={live.orders.state} onRetry={live.onRetry} what="court orders">
@@ -1379,6 +1464,57 @@ export function LiveRecoveries({ live }: { live: LiveRecoveriesData }) {
             />
           </PanelStates>
         </TabsContent>
+        {live.carry && (
+          <TabsContent value="carry">
+            <PanelStates state={live.carry.state} onRetry={live.onRetry} what="carry-forwards">
+              <DataTable
+                label="Carry-forward balances"
+                columns={carryCols}
+                rows={carry}
+                getRowId={(r) => r.id}
+                state={live.carry.rows ? 'ready' : 'loading'}
+                empty={<EmptyState title="No carry-forwards." description="When deductions are more than the pay, the net is paid as zero and the rest is recovered from the next runs. They show here." />}
+              />
+            </PanelStates>
+          </TabsContent>
+        )}
+        {live.cap && (
+          <TabsContent value="cap">
+            <PanelStates state={live.cap.state} onRetry={live.onRetry} what="deduction cap checks">
+              <div className="yx-pay-stack">
+                <DataTable
+                  label="Payslips with deferred deductions"
+                  columns={capCols}
+                  rows={capRows}
+                  getRowId={(r) => r.payslipId}
+                  state={live.cap.rows ? 'ready' : 'loading'}
+                  onRowClick={(r) => openCap(r.payslipId)}
+                  activeRowId={capView?.payslipId}
+                  rowButtons={(r) => (
+                    <Button size="sm" onClick={() => openCap(r.payslipId)}>
+                      Check
+                    </Button>
+                  )}
+                  empty={<EmptyState title="Nothing deferred." description="Every recovery fitted within the legal cap and the protected net in the approved runs." />}
+                />
+                {capError && (
+                  <InlineAlert tone="danger" title="The cap check did not load">
+                    {capError}
+                  </InlineAlert>
+                )}
+                {capView && (
+                  <CapPreview
+                    who={`${live.nameOf(capView.employeeId)} · ${monthName(capView.month)}`}
+                    wages={Number(capView.wages)}
+                    capText={capView.cap ? formatINR(Number(capView.cap)) : 'Not set'}
+                    protectedNet={Number(capView.protectedNet ?? 0)}
+                    result={{ cap: Number(capView.cap ?? 0), net: Number(capView.net), lines: capView.lines.map((l, i) => ({ id: `${l.kind}-${i}`, label: l.label, amount: Number(l.due), deducted: Number(l.deducted), deferred: Number(l.deferred) })) }}
+                  />
+                )}
+              </div>
+            </PanelStates>
+          </TabsContent>
+        )}
         <TabsContent value="over">
           <PanelStates state={live.overpayments.state} onRetry={live.onRetry} what="overpayment plans">
             <div className="yx-pay-stack">
@@ -1404,17 +1540,67 @@ export function LiveRecoveries({ live }: { live: LiveRecoveriesData }) {
       </Tabs>
       <Drawer open={!!open} onOpenChange={(o) => !o && setOpenId(null)} title={`Court order ${open?.orderRef ?? ''}`} subtitle={open ? live.nameOf(open.employeeId) : undefined} size="lg" footer={<Button onClick={() => setOpenId(null)}>Close</Button>}>
         {open && (
-          <DescriptionList
-            columns={2}
-            items={[
-              { label: 'Amount', value: amountText(open) },
-              { label: 'Priority', value: `${priority(open)} (order dated ${formatDate(day(open.priorityDate))})` },
-              { label: 'Remitted', value: open.capTotal ? `${money(open.remittedTotal)} of ${money(open.capTotal)}` : money(open.remittedTotal) },
-              { label: 'Remaining', value: open.capTotal ? money(String(Number(open.capTotal) - Number(open.remittedTotal))) : 'Until the order ends' },
-            ]}
-          />
+          <div className="yx-pay-stack">
+            <DescriptionList
+              columns={2}
+              items={[
+                { label: 'Amount', value: amountText(open) },
+                { label: 'Priority', value: `${priority(open)} (order dated ${formatDate(day(open.priorityDate))})` },
+                { label: 'Remitted', value: open.capTotal ? `${money(open.remittedTotal)} of ${money(open.capTotal)}` : money(open.remittedTotal) },
+                { label: 'Remaining', value: open.capTotal ? money(String(Number(open.capTotal) - Number(open.remittedTotal))) : 'Until the order ends' },
+              ]}
+            />
+            {live.orders.onRemittances &&
+              (remits === null ? (
+                <Skeleton height={72} />
+              ) : remits.length ? (
+                <PlainTable
+                  label="Remittances"
+                  caption="Remittances"
+                  rows={remits}
+                  getRowId={(m) => m.month}
+                  columns={[
+                    { key: 'month', header: 'Month', rowHeader: true, cell: (m) => monthName(m.month) },
+                    { key: 'amount', header: 'Deducted', num: true, cell: (m) => money(m.deducted) },
+                    { key: 'status', header: 'Status', cell: (m) => (m.remitted ? <Badge tone="success">{`Remitted · ${m.remitted.reference}`}</Badge> : <Badge tone="warning">Not remitted yet</Badge>) },
+                    {
+                      key: 'act',
+                      header: <span className="yx-visually-hidden">Action</span>,
+                      cell: (m) =>
+                        !m.remitted && live.orders.onRemit ? (
+                          <Button size="sm" onClick={() => (setRemitRef(''), setTriedRemit(false), setRemitting(m))}>
+                            Record remittance
+                          </Button>
+                        ) : null,
+                    },
+                  ]}
+                />
+              ) : (
+                <p className="yx-pay-muted">No remittances yet. The first deduction is in the next approved run.</p>
+              ))}
+          </div>
         )}
       </Drawer>
+      <ConfirmDialog
+        open={!!remitting}
+        onOpenChange={(o) => !o && setRemitting(null)}
+        title={remitting && open ? `Record ${money(remitting.deducted)} paid to the court for ${open.orderRef} (${monthName(remitting.month)})?` : ''}
+        consequence="The payment reference is saved in the audit trail. It can't be changed afterwards."
+        confirmLabel="Record remittance"
+        onConfirm={async () => {
+          setTriedRemit(true);
+          if (remitRef.trim().length < 3) return false;
+          const m = remitting!;
+          await live.orders.onRemit!(open!.id, m.month, remitRef.trim());
+          setRemitting(null);
+          loadRemits(open!.id);
+          say(`${monthName(m.month)} remittance of ${money(m.deducted)} recorded for ${open!.orderRef}`);
+        }}
+      >
+        <FormField id="co-remit-ref" label="Payment reference" required helper="The bank or challan reference of the payment to the court." error={triedRemit && remitRef.trim().length < 3 ? 'Enter the payment reference.' : null}>
+          <TextField value={remitRef} onChange={setRemitRef} placeholder="UTR or challan number" maxLength={60} />
+        </FormField>
+      </ConfirmDialog>
       {adding && <CourtOrderDrawer live={live} count={orders.length} onClose={() => setAdding(false)} onSaved={(t) => say(t)} />}
       <ConfirmDialog
         open={!!writeOff}

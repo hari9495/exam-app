@@ -30,7 +30,7 @@ export type { LivePayrollHome, LiveCoverage } from '../payroll-home-live';
 export { PayPeriodsScreen, ReopenRequestsScreen, PayAuditScreen, PayDocumentsScreen, actionText, type LivePayPeriods, type LiveReopenRequests, type LivePayAudit, type LivePayDocuments, type NomineeInput } from '../payroll-records';
 // PAY-04 … 06 inputs, PAY-19 court orders and recoveries (tabs on the arrears page), PAY-20 payslip queries: designed screens with `live`.
 export { LopInputScreen, OneTimePayScreen, SalaryHoldsScreen, QueryQueueScreen, RecoveriesScreen } from '../payroll-inputs';
-export type { LiveInputs, LiveQueries, LiveRecoveriesData, LiveCourtOrder, CourtOrderInput, OneTimeEffect } from '../payroll-inputs-live';
+export type { LiveInputs, LiveQueries, LiveRecoveriesData, LiveCourtOrder, CourtOrderInput, OneTimeEffect, CourtRemittance, CarryForwardRow, DeferralRow, DeductionCapView } from '../payroll-inputs-live';
 // PAY-10 · Payments and files (design with `live`): a run's payments, every payroll file and the payment modes.
 export { PaymentsScreen, type PaymentsProps } from '../payroll-inputs';
 export { PaymentModesPanel, type LivePayments, type LiveRunPayments, type LivePayrollFiles, type LivePaymentModes, type RunJournal, type JournalFormat, type PaymentModeRequest } from '../payments-live';

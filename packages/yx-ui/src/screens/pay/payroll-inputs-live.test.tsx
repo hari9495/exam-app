@@ -364,6 +364,50 @@ describe('Arrears and recoveries › PAY-19 tabs (live)', () => {
     expect(live.orders.onAdd).not.toHaveBeenCalled();
   });
 
+  it('PAY-19 OrderPanel: each month deducted with its remittance; recording one needs the payment reference (negative, then positive)', async () => {
+    const onRemit = ok();
+    const onRemittances = vi.fn(async () => [
+      { month: '2026-08', deducted: '12000.00', remitted: { reference: 'UTR-778', at: '2026-09-02T10:00:00Z', by: 'u1' } },
+      { month: '2026-09', deducted: '12000.00', remitted: null },
+    ]);
+    const live = recoveries({ orders: { ...recoveries().orders, onRemittances, onRemit } });
+    render(<RecoveriesScreen live={live} />);
+    await ue.click(screen.getByRole('button', { name: 'Open' }));
+    const table = await screen.findByRole('table', { name: 'Remittances' });
+    expect(within(table).getByText('Remitted · UTR-778')).toBeInTheDocument();
+    await ue.click(within(table).getByRole('button', { name: 'Record remittance' }));
+    await ue.click(screen.getAllByRole('button', { name: 'Record remittance' }).pop()!);
+    expect(await screen.findByText('Enter the payment reference.')).toBeInTheDocument();
+    expect(onRemit).not.toHaveBeenCalled();
+    await ue.type(screen.getByRole('textbox', { name: /Payment reference/ }), 'UTR-991');
+    await ue.click(screen.getAllByRole('button', { name: 'Record remittance' }).pop()!);
+    await waitFor(() => expect(onRemit).toHaveBeenCalledWith('c1', '2026-09', 'UTR-991'));
+    expect(onRemittances).toHaveBeenCalledTimes(2);
+  });
+
+  it('PAY-19 CarryForwards and Cap: balances from negative net; the cap check shows what was deferred for one payslip', async () => {
+    const onOpen = vi.fn(async () => ({ payslipId: 's1', employeeId: 'p1', month: '2026-09', wages: '48000.00', cap: '24000.00', protectedNet: '12000.00', net: '24000.00', lines: [{ label: 'Statutory (PF, ESI, PT, TDS)', kind: 'statutory', due: '7420.00', deducted: '7420.00', deferred: '0.00' }, { label: 'Loan instalment', kind: 'loan', due: '8864.00', deducted: '4580.00', deferred: '4284.00' }] }));
+    const live = recoveries({
+      tab: 'carry',
+      carry: { state: 'ready', rows: [{ id: 'cf1', employeeId: 'p3', originMonth: '2026-07', amount: '4000.00', recovered: '0.00', balance: '4000.00', status: 'open' }] },
+      cap: { state: 'ready', rows: [{ payslipId: 's1', employeeId: 'p1', month: '2026-09', kinds: ['loan'] }], onOpen },
+    });
+    render(<RecoveriesScreen live={live} />);
+    expect(screen.getByText('Negative net in July 2026 (−₹4,000)')).toBeInTheDocument();
+    await ue.click(screen.getByRole('tab', { name: /Deduction cap check/ }));
+    await ue.click(screen.getByRole('button', { name: 'Check' }));
+    await waitFor(() => expect(onOpen).toHaveBeenCalledWith('s1'));
+    const t = await screen.findByRole('table', { name: 'Deductions in priority order' });
+    expect(within(t).getByText('Loan instalment')).toBeInTheDocument();
+    expect(within(t).getAllByText('₹4,284').length).toBeGreaterThan(0);
+  });
+
+  it('PAY-19: without the keys there are no carry-forward or cap tabs (negative)', () => {
+    render(<RecoveriesScreen live={recoveries()} />);
+    expect(screen.queryByRole('tab', { name: /Carry-forwards/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /Deduction cap check/ })).not.toBeInTheDocument();
+  });
+
   it('without the key there is no add button; an overpayment write-off needs a reason', async () => {
     const live = recoveries({ tab: 'over' });
     live.orders.canAdd = false;

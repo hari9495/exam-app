@@ -198,6 +198,7 @@ describe('Payroll batch 5c', () => {
       'variance_flags',
       'payroll_withholds',
       'pay_carry_forwards',
+      'court_order_remittances',
       'court_orders',
       'loans',
       'loan_repayments',
@@ -435,6 +436,30 @@ describe('Payroll batch 5c', () => {
     const loan = (await api('payAdmin', 'get', '/payroll/loans').expect(200)).body.find((l: { id: string }) => l.id === ids.loan);
     expect(loan.outstanding).toBe('9000.00');
     expect((await api('payAdmin', 'get', '/payroll/court-orders').expect(200)).body[0].remittedTotal).toBe('2000.00');
+    // PAY-19 OrderPanel: the month's deduction, paid to the court once with its reference (audited); no other month.
+    const orderId = (await api('payAdmin', 'get', '/payroll/court-orders').expect(200)).body[0].id as string;
+    expect((await api('payAdmin', 'get', `/payroll/court-orders/${orderId}/remittances`).expect(200)).body).toEqual([{ month, deducted: '2000.00', remitted: null }]);
+    await api('payAdminB', 'get', `/payroll/court-orders/${orderId}/remittances`).expect(404);
+    await api('emp1', 'get', `/payroll/court-orders/${orderId}/remittances`).expect(403);
+    await api('payAdmin', 'post', `/payroll/court-orders/${orderId}/remittances`).send({ month, reference: '!' }).expect(400);
+    await api('payAdmin', 'post', `/payroll/court-orders/${orderId}/remittances`).send({ month: '2020-01', reference: 'UTR-1' }).expect(400);
+    expect((await api('payAdmin', 'post', `/payroll/court-orders/${orderId}/remittances`).send({ month, reference: 'UTR-7788' }).expect(201)).body).toMatchObject({ month, amount: '2000.00', reference: 'UTR-7788' });
+    await api('payAdmin', 'post', `/payroll/court-orders/${orderId}/remittances`).send({ month, reference: 'UTR-7789' }).expect(409);
+    expect((await api('payAdmin', 'get', `/payroll/court-orders/${orderId}/remittances`).expect(200)).body[0].remitted).toMatchObject({ reference: 'UTR-7788' });
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'payroll.court_order.remitted' } }))).toBe(1);
+    // Insert-only: the app role cannot change a recorded remittance.
+    await expect(scoped((tx) => tx.courtOrderRemittance.updateMany({ data: { reference: 'CHANGED' } }))).rejects.toThrow(/permission denied/);
+    // PAY-19 carry-forwards and the cap check: read keys only, never another company.
+    expect(Array.isArray((await api('payAdmin', 'get', '/payroll/carry-forwards').expect(200)).body)).toBe(true);
+    await api('emp1', 'get', '/payroll/carry-forwards').expect(403);
+    const cap = (await api('approver1', 'get', `/payroll/payslips/${ids.slip1}/deduction-cap`).expect(200)).body;
+    expect(cap).toMatchObject({ payslipId: ids.slip1, employeeId: ids.emp1, month });
+    expect(cap.lines[0]).toMatchObject({ kind: 'statutory', deferred: '0.00' });
+    expect(cap.lines.find((l: { kind: string }) => l.kind === 'court_order')).toMatchObject({ deducted: '2000.00' });
+    await api('payAdminB', 'get', `/payroll/payslips/${ids.slip1}/deduction-cap`).expect(404);
+    await api('emp1', 'get', `/payroll/payslips/${ids.slip1}/deduction-cap`).expect(403);
+    expect(Array.isArray((await api('approver1', 'get', '/payroll/deferrals').expect(200)).body)).toBe(true);
+    expect((await api('payAdminB', 'get', '/payroll/deferrals').expect(200)).body).toEqual([]);
     expect((await api('approver1', 'post', `/payroll/payslips/${ids.slip1}/reproduce`).expect(200)).body).toMatchObject({ same: true, inputsMatch: true });
     const j = (await api('payAdmin', 'get', `/payroll/runs/${ids.run}/journal`).expect(200)).body;
     const debit = j.lines.reduce((t: number, l: { debit: string }) => t + Number(l.debit), 0);
