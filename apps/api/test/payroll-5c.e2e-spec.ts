@@ -336,6 +336,12 @@ describe('Payroll batch 5c', () => {
     expect((await api('payAdmin', 'get', `/payroll/input-periods/${month}`).expect(200)).body).toEqual([{ legalEntityId: ids.entity, month, stage: 'frozen' }]);
     await api('payAdmin', 'get', '/payroll/input-periods/2026-13').expect(400);
     await api('emp1', 'get', `/payroll/input-periods/${month}`).expect(403);
+    // Founder answer 4: the API refuses LOP for a frozen month too, as the screen does; nothing changes.
+    const lopBefore = (await api('payAdmin', 'get', `/payroll/lop-inputs/${month}`).expect(200)).body;
+    const frozen = await api('payAdmin', 'put', `/payroll/lop-inputs/${month}`).send({ rows: [{ employeeId: ids.emp2, lopDays: '3', reason: 'Changed after the freeze' }] }).expect(409);
+    expect(frozen.body).toMatchObject({ code: 'PERIOD_FROZEN', message: `Inputs are frozen for ${month}. Send the change as a late request.` });
+    await api('payAdmin', 'put', `/payroll/lop-inputs/${month}`).send({ source: 'upload', rows: [{ employeeId: ids.emp2, lopDays: '3', reason: 'Changed after the freeze' }] }).expect(409);
+    expect((await api('payAdmin', 'get', `/payroll/lop-inputs/${month}`).expect(200)).body).toEqual(lopBefore);
     expect((await api('payAdminB', 'get', `/payroll/input-periods/${month}`).expect(200)).body.some((r: { legalEntityId: string }) => r.legalEntityId === ids.entity)).toBe(false);
     const ask = { employeeId: ids.emp2, on: first, kind: 'attendance', shouldBe: 'present', reason: 'Was on a client visit, approved late' };
     await api('emp1', 'post', '/payroll/input-corrections').send(ask).expect(403);

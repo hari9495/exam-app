@@ -100,6 +100,12 @@ export class PayInputsService implements OnModuleInit {
     if (p && (p.stage === 'locked' || p.stage === 'filed')) throw new ConflictException({ statusCode: 409, code: 'PERIOD_LOCKED', message: `${month} is locked: record it as a correction for the next payroll.` });
   }
 
+  /** Founder answer 4 (2 Nov 2026): once a month is frozen for payroll, LOP changes only through a late request (as the screen). */
+  private async notFrozen(tx: Tx, org: string, entityId: string, month: string) {
+    const p = await tx.payPeriod.findFirst({ where: { organizationId: org, legalEntityId: entityId, payGroupId: null, periodStart: asDate(`${month}-01`) } });
+    if (p?.stage === 'frozen') throw new ConflictException({ statusCode: 409, code: 'PERIOD_FROZEN', message: `Inputs are frozen for ${month}. Send the change as a late request.` });
+  }
+
   // ------------------------------------------------------------------------------------------ manual LOP (D1)
 
   async lop(ctx: TenantContext, user: ScopeUser, month: string) {
@@ -124,6 +130,7 @@ export class PayInputsService implements OnModuleInit {
       for (const r of rows) {
         const e = await this.person(tx, c, v, 'payroll.input.manage', r.employeeId, monthRange(month).to);
         await this.notLocked(tx, c.organizationId, e.legalEntityId, month);
+        await this.notFrozen(tx, c.organizationId, e.legalEntityId, month);
         await tx.lopInput.upsert({ where: { organizationId_employmentId_periodStart: { organizationId: c.organizationId, employmentId: e.id, periodStart: key } }, update: { lopDays: r.lopDays, reason: r.reason, source, enteredBy: v.userId!, enteredAt: new Date() }, create: { organizationId: c.organizationId, legalEntityId: e.legalEntityId, employeeId: e.employeeId, employmentId: e.id, periodStart: key, lopDays: r.lopDays, reason: r.reason, source, enteredBy: v.userId! } });
       }
       await audit(tx, c, 'payroll.lop.saved', 'payroll_input', month, { rows: rows.length, source });
