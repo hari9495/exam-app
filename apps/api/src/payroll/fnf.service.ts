@@ -441,6 +441,10 @@ export class FnfService implements OnModuleInit {
     const grat = em ? await this.gratuityTerms(tx, org, f, em.joinedOn) : null;
     const service = grat ? serviceYears(grat.terms.joined, lwd) : null;
     const due = grat ? gratuityDue(grat.rs, { ...grat.terms, lastWage: 0 }) : null;
+    // PPL-22 absconding: recovery-only. While the absconding salary hold is on, the net payable waits until the person
+    // claims it (never forfeited), so no wage deadline runs and the settlement is never "overdue".
+    const heldForClaim =
+      f.exitType === 'absconding' && Boolean(await tx.payrollWithhold.findFirst({ where: { organizationId: org, employmentId: f.employmentId, reasonCode: 'absconding', releasedAt: null }, select: { id: true } }));
     return {
       id: f.id,
       employeeId: f.employeeId,
@@ -448,7 +452,8 @@ export class FnfService implements OnModuleInit {
       exitType: f.exitType,
       lwd,
       deadline,
-      overdue: f.status === 'open' && deadline < today && run?.status !== 'approved',
+      overdue: f.status === 'open' && deadline < today && run?.status !== 'approved' && !heldForClaim,
+      heldForClaim,
       workingDaysLeft,
       status: f.status,
       runId: f.runId,

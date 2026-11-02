@@ -888,13 +888,39 @@ export interface LiveClearance {
   hrRows?: MyClearanceItem[];
   onSignOff: ExitCaseScreenProps['onSignOff'];
   onOpenExit?: (exitCaseId: string) => void;
+  /** PPL-20: mark an open item blocked with the reason (owner or HR). */
+  onBlock?: (item: MyClearanceItem, reason: string) => Promise<void>;
 }
 
-const CLEAR_STATUS = (r: MyClearanceItem) => (r.status === 'cleared' ? 'Done' : r.status === 'waived' ? 'Waived' : 'Pending');
+const CLEAR_STATUS = (r: MyClearanceItem) => (r.status === 'cleared' ? 'Done' : r.status === 'waived' ? 'Waived' : r.blockedReason ? 'Blocked' : 'Pending');
+
+/** PPL-20: the owner says why an item can't be signed off yet; it stays open and holds F&F. */
+export function BlockItemDialog({ item, onBlock, onClose }: { item: { title: string; person?: string }; onBlock: (reason: string) => Promise<void>; onClose: () => void }) {
+  const [reason, setReason] = useState('');
+  const early = useTooEarly(reason.trim().length < 3 ? [{ fieldId: 'cl-block', message: 'Say what is blocking it, at least 3 characters.' }] : []);
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`Mark ${item.title.toLowerCase()} blocked?`}
+      consequence={`It stays open${item.person ? ` for ${item.person}` : ''} and holds the F&F. HR sees the reason. Sign it off when it is settled.`}
+      confirmLabel="Mark blocked"
+      onConfirm={async () => {
+        if (early.stop()) return false;
+        await onBlock(reason.trim());
+      }}
+    >
+      <FormField id="cl-block" label="What is blocking it" required error={early.errorOf('cl-block')}>
+        <TextArea value={reason} onChange={setReason} rows={2} maxLength={300} />
+      </FormField>
+    </ConfirmDialog>
+  );
+}
 
 // PPL-20
 export function ClearanceSignoffs({ owner, live }: { owner?: string; live?: LiveClearance }) {
   const [signing, setSigning] = useState<MyClearanceItem | null>(null);
+  const [blocking, setBlocking] = useState<MyClearanceItem | null>(null);
   const [all, setAll] = useState(false);
   const [view, setView] = useState<'leaver' | 'mine'>(live?.hrRows ? 'leaver' : 'mine');
   const [leaverPick, setLeaverPick] = useState<string | null>(null);
@@ -905,7 +931,7 @@ export function ClearanceSignoffs({ owner, live }: { owner?: string; live?: Live
   const leaver = leavers.find((r) => r.exitCaseId === leaverPick) ?? leavers[0] ?? null;
   const hrItems = (live?.hrRows ?? []).filter((r) => r.exitCaseId === leaver?.exitCaseId);
   const source = hrView ? hrItems : (live?.rows ?? []).filter((r) => all || r.status === 'open');
-  const liveRows: Row[] = source.map((r) => ({ id: r.id, dept: LIVE_DEPT[r.department], owner: r.owner, item: r.title, status: CLEAR_STATUS(r), recovery: r.recoveryAmount ? Number(r.recoveryAmount) : 0, person: r.person, lastDay: isoDay(r.lastDay) }));
+  const liveRows: Row[] = source.map((r) => ({ id: r.id, dept: LIVE_DEPT[r.department], owner: r.owner, item: r.blockedReason ? `${r.title} · blocked: ${r.blockedReason}` : r.title, status: CLEAR_STATUS(r), recovery: r.recoveryAmount ? Number(r.recoveryAmount) : 0, person: r.person, lastDay: isoDay(r.lastDay) }));
   const rows: Row[] = live ? liveRows : owner ? CLEARANCE.filter((c) => c.owner === owner) : CLEARANCE;
   // The design's HR table (department, items, owner) for the sample and the live HR view; owners see the leaver column.
   const leaverCol = live && !hrView;
@@ -921,6 +947,7 @@ export function ClearanceSignoffs({ owner, live }: { owner?: string; live?: Live
   const open = CLEARANCE.filter((c) => c.status !== 'Done').length;
   const liveOpen = (live?.rows ?? []).filter((r) => r.status === 'open').length;
   const hrOpen = hrItems.filter((r) => r.status === 'open').length;
+  const hrBlocked = hrItems.filter((r) => r.status === 'open' && r.blockedReason);
   const pool = hrView ? hrItems : (live?.rows ?? []);
   return (
     <PeopleFrame active="Clearance" persona={owner || (live && !live.hrRows) ? 'mgr' : 'hr'}>
@@ -949,7 +976,7 @@ export function ClearanceSignoffs({ owner, live }: { owner?: string; live?: Live
           {!hrView && <Segment label="Show" value={all ? 'all' : 'open'} onChange={(v) => setAll(v === 'all')} options={[{ value: 'open', label: 'To do' }, { value: 'all', label: 'All' }]} />}
         </div>
       )}
-      {hrView && leaver && hrOpen > 0 && <InlineAlert tone="warning">{`${hrOpen} of ${hrItems.length} sign-offs open.`}</InlineAlert>}
+      {hrView && leaver && hrOpen > 0 && <InlineAlert tone="warning">{`${hrOpen} of ${hrItems.length} sign-offs open.${hrBlocked.map((r) => ` ${LIVE_DEPT[r.department]} is blocked: ${r.blockedReason}`).join('')}`}</InlineAlert>}
       {live?.state === 'error' ? (
         <ErrorState title="We couldn't load the sign-offs" description="Check your connection and try again." onRetry={live.onRetry} />
       ) : (
@@ -963,7 +990,12 @@ export function ClearanceSignoffs({ owner, live }: { owner?: string; live?: Live
           // Live: a recovery and a note are part of the sign-off.
           rowActions={
             live
-              ? undefined
+              ? live.onBlock
+                ? (r) => {
+                    const x = pool.find((y) => y.id === r.id);
+                    return x && x.status === 'open' ? <MenuItem onSelect={() => setBlocking(x)}>{x.blockedReason ? 'Change why it is blocked' : 'Mark blocked'}</MenuItem> : null;
+                  }
+                : undefined
               : () => (
                   <>
                     <MenuItem>Add recovery</MenuItem>
@@ -975,6 +1007,7 @@ export function ClearanceSignoffs({ owner, live }: { owner?: string; live?: Live
         />
       )}
       {live && signing && <SignOffDialog item={signing} onClose={() => setSigning(null)} onSignOff={live.onSignOff} />}
+      {live?.onBlock && blocking && <BlockItemDialog item={blocking} onBlock={(reason) => live.onBlock!(blocking, reason)} onClose={() => setBlocking(null)} />}
     </PeopleFrame>
   );
 }
@@ -1370,7 +1403,7 @@ function LiveFnfCalculator({ today, live }: { today: Date; live: LiveFnf }) {
         name={`F&F · ${who}`}
         avatarName={who}
         person
-        secondary={`${EXIT[s.exitType] ?? s.exitType} · last working day ${formatDate(lwd)}${s.runReference ? ` · off-cycle run ${s.runReference}` : ''}`}
+        secondary={`${s.heldForClaim ? 'Absconding · recovery-only F&F' : (EXIT[s.exitType] ?? s.exitType)} · last working day ${formatDate(lwd)}${s.runReference ? ` · off-cycle run ${s.runReference}` : ''}`}
         // A calculated run whose lines changed since has no current payslip: it needs recalculating before approval.
         status={<StatusBadge status={s.status === 'settled' ? 'Settled' : s.overdue ? 'Overdue' : s.runStatus === 'calculated' && !s.salary ? 'Needs recalculating' : (RUN_STATUS[s.runStatus ?? 'draft'] ?? 'Draft')} />}
         actions={
@@ -1398,7 +1431,14 @@ function LiveFnfCalculator({ today, live }: { today: Date; live: LiveFnf }) {
       />
       {error && <InlineAlert tone="danger" title="This didn't go through">{error}</InlineAlert>}
       <div className="yx-ppl__row">
-        {s.status === 'open' && !firstDone && <DueCountdown due={isoDay(s.deadline)} today={today} left={s.workingDaysLeft} label="Wages due on exit by" />}
+        {s.heldForClaim ? (
+          <span className="yx-ppl__countdown">
+            <Badge tone="neutral">Held until {first} claims it</Badge>
+            <Text size="sm" tone="secondary">No payment deadline runs while wages are held for a claim.</Text>
+          </span>
+        ) : (
+          s.status === 'open' && !firstDone && <DueCountdown due={isoDay(s.deadline)} today={today} left={s.workingDaysLeft} label="Wages due on exit by" />
+        )}
         {g && (
           <Text size="sm" tone="secondary">
             {s.exitType === 'death'
@@ -1417,6 +1457,11 @@ function LiveFnfCalculator({ today, live }: { today: Date; live: LiveFnf }) {
       {held > 0 && (
         <InlineAlert tone="warning" title="Part of this F&F is held">
           Wage lines can't be held beyond the legal deadline. Pay them now; the held lines wait until they are released and are paid in a second run.
+        </InlineAlert>
+      )}
+      {s.heldForClaim && (
+        <InlineAlert tone="info" title="Recovery-only F&F">
+          {`Any net payable is held until ${first} claims it; it is never forfeited. Rehire eligibility is set to no (HR can clear it).`}
         </InlineAlert>
       )}
       {s.noticeWaived && <InlineAlert tone="info" title="Notice recovery waived">{s.noticeWaived.reason}</InlineAlert>}

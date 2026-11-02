@@ -314,6 +314,8 @@ export interface FnfSettlementView {
   lwd: string;
   deadline: string;
   overdue: boolean;
+  /** PPL-22 absconding: recovery-only, the net payable held until the person claims it (no wage deadline runs). */
+  heldForClaim?: boolean;
   status: string;
   runId: string | null;
   /** "FNF-2026-0041". */

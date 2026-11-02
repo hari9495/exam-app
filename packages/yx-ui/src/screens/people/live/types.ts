@@ -450,6 +450,8 @@ export interface ClearanceItem {
   recoveryAmount: string | null;
   recoveryReason: string | null;
   signedOffAt: string | null;
+  /** PPL-20: an open item its owner marked blocked (the reason); absent or null when not blocked. */
+  blockedReason?: string | null;
   version: number;
 }
 export interface MyClearanceItem extends ClearanceItem {

@@ -132,4 +132,18 @@ describe('batch 5j payroll screens', () => {
     expect(screen.queryByRole('button', { name: 'Recalculate' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Send for approval' })).not.toBeInTheDocument();
   });
+
+  it('F&F (PPL-22 absconding): recovery-only, held until they claim it, no deadline or overdue alert', () => {
+    render(<FnfCalculator today={new Date(2026, 9, 19)} live={fnfLive({ settlements: [{ ...FNF[1], exitType: 'absconding', heldForClaim: true, overdue: false }] })} />);
+    expect(screen.getByText('Recovery-only F&F')).toBeInTheDocument();
+    expect(screen.getByText(/Held until .* claims it/)).toBeInTheDocument();
+    expect(screen.getByText(/Absconding · recovery-only F&F/)).toBeInTheDocument();
+    expect(screen.queryByText('Wages on exit are overdue')).toBeNull();
+    expect(screen.queryByText(/Wages due on exit by/)).toBeNull();
+  });
+
+  it('F&F: an absconding exit whose hold was released is an ordinary settlement with its deadline', () => {
+    render(<FnfCalculator today={new Date(2026, 9, 19)} live={fnfLive({ settlements: [{ ...FNF[1], exitType: 'absconding', heldForClaim: false }] })} />);
+    expect(screen.queryByText('Recovery-only F&F')).toBeNull();
+  });
 });

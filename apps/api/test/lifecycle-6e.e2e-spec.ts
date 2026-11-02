@@ -404,6 +404,29 @@ describe('Lifecycle batch 6e', () => {
     expect(row.steps.find((x: { key: string }) => x.key === 'notice_1').dispatchRef).toBe('RK 4471 2291 IN');
     // The same proof again with the old version: someone else saved first.
     await put('hr', { ref: 'RK 4471 2291 IN', version: row.version - 1 }).expect(409);
+    // PPL-22: once deemed abandoned, the F&F is recovery-only: held until Aru claims it, no wage deadline, never overdue.
+    await extras.runTimeline(org.A.id, t.id, addDays(today, 30));
+    row = (await api('hr', 'get', '/lifecycle/absconding').expect(200)).body.rows.find((r: { id: string }) => r.id === t.id);
+    expect(row.status).toBe('abandoned');
+    const settlement = await inA(async (tx) => {
+      const e = await tx.employment.findFirstOrThrow({ where: { employeeId: emp.aru } });
+      await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${e.legalEntityId}}`}, true)`;
+      const made = await tx.fnfSettlement.findFirst({ where: { exitCaseId: row.exitCaseId } });
+      if (made) return tx.fnfSettlement.update({ where: { id: made.id }, data: { deadline: new Date(`${addDays(today, -6)}T00:00:00Z`), status: 'open' } });
+      return tx.fnfSettlement.create({ data: { organizationId: org.A.id, legalEntityId: e.legalEntityId, employeeId: emp.aru, employmentId: e.id, exitCaseId: row.exitCaseId, exitType: 'absconding', inputRevision: 1, lwd: new Date(`${addDays(today, -8)}T00:00:00Z`), deadline: new Date(`${addDays(today, -6)}T00:00:00Z`), status: 'open' } });
+    });
+    // Payroll's read (payroll.fnf.manage): hr2 gets the key for this check.
+    await inA(async (tx) => {
+      const u = await tx.user.findFirstOrThrow({ where: { id: users.hr2 } });
+      const prof = await tx.permissionProfile.findFirstOrThrow({ where: { id: u.permissionProfileId! } });
+      await tx.permissionProfile.update({ where: { id: prof.id }, data: { permissionsJson: JSON.stringify([...JSON.parse(prof.permissionsJson), 'payroll.fnf.manage']) } });
+    });
+    await markSteppedUp(tenantPrisma, token.hr2);
+    const view = (await api('hr2', 'get', `/payroll/fnf/${settlement.id}`).expect(200)).body;
+    expect(view).toMatchObject({ exitType: 'absconding', heldForClaim: true, overdue: false });
+    await api('mgr', 'get', `/payroll/fnf/${settlement.id}`).expect(403);
+    // Company B never reads company A's settlement (its admin has no F&F key: 403; with one it would be 404).
+    await api('adminB', 'get', `/payroll/fnf/${settlement.id}`).expect((r) => expect([403, 404]).toContain(r.status));
   });
 
   it('contract end: reminders at 30 and 7 days, an exit only when the policy says so; retirement opens months ahead', async () => {
