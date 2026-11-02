@@ -376,6 +376,36 @@ describe('Lifecycle batch 6e', () => {
     expect(await inA(async (tx) => { await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`; return tx.payrollWithhold.count({ where: { employeeId: emp.ajay, reasonCode: 'absconding', releasedAt: null } }); })).toBe(1);
   });
 
+  it('absconding negatives (PPL-24 start and dispatch proof): wrong role, other company, bad dates, repeats, stale version', async () => {
+    emp.aru = await hire('Aru', 'SF-032');
+    // Start: only lifecycle.exit.manage; a last day present today or later, or a bad date, is refused.
+    await api('mgr', 'post', '/lifecycle/absconding').send({ employeeId: emp.aru, lastPresentOn: addDays(today, -5) }).expect(403);
+    const notBefore = await api('hr', 'post', '/lifecycle/absconding').send({ employeeId: emp.aru, lastPresentOn: today }).expect(400);
+    expect(notBefore.body.message).toBe('The last day present must be before today.');
+    await api('hr', 'post', '/lifecycle/absconding').send({ employeeId: emp.aru, lastPresentOn: '05-10-2026' }).expect(400);
+    // Another company cannot start one for this person.
+    await api('adminB', 'post', '/lifecycle/absconding').send({ employeeId: emp.aru, lastPresentOn: addDays(today, -5) }).expect((r) => expect([403, 404]).toContain(r.status));
+    const t = (await api('hr', 'post', '/lifecycle/absconding').send({ employeeId: emp.aru, lastPresentOn: addDays(today, -8) }).expect(201)).body;
+    // A repeat start is a conflict.
+    await api('hr', 'post', '/lifecycle/absconding').send({ employeeId: emp.aru, lastPresentOn: addDays(today, -8) }).expect(409);
+    let row = (await api('hr', 'get', '/lifecycle/absconding').expect(200)).body.rows.find((r: { id: string }) => r.id === t.id);
+    // Dispatch proof: not before the notice has gone out.
+    await api('hr', 'put', `/lifecycle/absconding/${t.id}/steps/notice_1/dispatch`).send({ ref: 'RK 4471 2291 IN', version: row.version }).expect(400);
+    await extras.runTimeline(org.A.id, t.id, today);
+    row = (await api('hr', 'get', '/lifecycle/absconding').expect(200)).body.rows.find((r: { id: string }) => r.id === t.id);
+    const put = (who: 'hr' | 'mgr' | 'adminB', body: object, key = 'notice_1') => api(who, 'put', `/lifecycle/absconding/${t.id}/steps/${key}/dispatch`).send(body);
+    await put('mgr', { ref: 'RK 4471 2291 IN', version: row.version }).expect(403);
+    await put('adminB', { ref: 'RK 4471 2291 IN', version: row.version }).expect(404);
+    await put('hr', { ref: 'RK', version: row.version }).expect(400);
+    await put('hr', { ref: 'RK 4471 2291 IN', version: row.version }, 'hold').expect(400);
+    await put('hr', { ref: 'RK 4471 2291 IN', version: row.version - 1 }).expect(409);
+    await put('hr', { ref: 'RK 4471 2291 IN', version: row.version }).expect(200);
+    row = (await api('hr', 'get', '/lifecycle/absconding').expect(200)).body.rows.find((r: { id: string }) => r.id === t.id);
+    expect(row.steps.find((x: { key: string }) => x.key === 'notice_1').dispatchRef).toBe('RK 4471 2291 IN');
+    // The same proof again with the old version: someone else saved first.
+    await put('hr', { ref: 'RK 4471 2291 IN', version: row.version - 1 }).expect(409);
+  });
+
   it('contract end: reminders at 30 and 7 days, an exit only when the policy says so; retirement opens months ahead', async () => {
     emp.kavi = await hire('Kavi', 'SF-040');
     const end = addDays(today, 30);

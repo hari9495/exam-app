@@ -76,3 +76,4 @@ export { UnionRegister, type LiveUnionRegister } from '../people/relations';
 export { RestructureWizard } from '../people/changes';
 export { FinishedRestructuresScreen, RestructureRecord, type ContinuityItemData, type FinishedRestructure, type LiveRestructure, type RestructureDraftState, type RestructureInput, type RestructurePreview, type RestructureRecordData, type RestructureSetup, type RestructureSummary } from '../people/restructure';
 export { AskDocumentDialog, SendBackDialog, UploadForPersonDialog, WorkPhoneDialog, workPhoneOk, type AskableType } from '../people/record-dialogs';
+export { DispatchProofDialog, StartAbscondingDialog, StopAbscondingDialog } from '../people/exits';

@@ -9,7 +9,7 @@ import { Card, ObjectHeader, PageHeader } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { Badge, type BadgeTone } from '../../components/display';
 import { EmptyState, ErrorState, NoAccessState, InlineAlert } from '../../components/feedback';
-import { FieldRow, FormField } from '../../components/field';
+import { FieldRow, FormField, useTooEarly } from '../../components/field';
 import { Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
 import { TextArea, TextField } from '../../components/inputs';
@@ -2112,21 +2112,86 @@ function SampleAbscondingTimeline({ today, stopped = false, stopOpen = false }: 
       )}
       {stopped && <InlineAlert tone="info" title="Stopped on 1 Oct 2026 by Lakshmi Venkatesan">Rohit returned with a medical reason. The absence is regularised in Time and his salary is released.</InlineAlert>}
       <StatusChecklist label="Absconding steps" rows={rows} today={today} />
-      <div className="yx-ppl__row">
-        <Button icon={Upload}>Add dispatch proof</Button>
-      </div>
-      <ConfirmDialog
-        open={open}
-        onOpenChange={setOpen}
-        title="Stop the absconding timeline for Rohit Das?"
-        consequence="No further notices go out. Regularise the absence in Time to release the salary hold."
-        confirmLabel="Stop timeline"
-        onConfirm={() => setOpen(false)}
-      >
-        <FormField label="Reason" required>
-          <TextArea rows={2} defaultValue="Returned on 1 Oct with a hospital discharge summary." />
-        </FormField>
-      </ConfirmDialog>
+      {open && <StopAbscondingDialog name="Rohit Das" initial="Returned on 1 Oct with a hospital discharge summary." onStop={async () => undefined} onClose={() => setOpen(false)} />}
     </PeopleFrame>
+  );
+}
+
+/* ---- PPL-24 dialogs: start a timeline, stop it, record the dispatch proof of a notice (the live dialogs) ---- */
+
+/** HR starts a timeline: the person and the last day they were present (before today). */
+export function StartAbscondingDialog({ people, today, onStart, onClose }: { people: { value: string; label: string }[]; today: Date; onStart: (employeeId: string, lastPresentOn: string) => Promise<void>; onClose: () => void }) {
+  const [who, setWho] = useState<string | null>(null);
+  const [last, setLast] = useState<Date | null>(null);
+  const early = useTooEarly([
+    ...(who ? [] : [{ fieldId: 'ab-who', message: 'Choose the person.' }]),
+    ...(!last ? [{ fieldId: 'ab-last', message: 'Choose the last day present.' }] : dayKey(last) >= dayKey(today) ? [{ fieldId: 'ab-last', message: 'The last day present must be before today.' }] : []),
+  ]);
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      size="md"
+      title="Start an absconding timeline"
+      consequence="The steps run on their days: the salary hold, two notices, then deemed abandonment. Every step is recorded; you can stop it at any time."
+      confirmLabel="Start timeline"
+      onConfirm={async () => {
+        if (early.stop()) return false;
+        await onStart(who!, dayKey(last!));
+      }}
+    >
+      <FormField id="ab-who" label="Person" required error={early.errorOf('ab-who')}>
+        <Select aria-label="Person" value={who} onChange={setWho} options={people} searchable />
+      </FormField>
+      <FormField id="ab-last" label="Last day present" required helper="The last day they came to work. The timeline counts from the day after." error={early.errorOf('ab-last')}>
+        <DatePicker value={last} onChange={setLast} max={new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1)} aria-label="Last day present" />
+      </FormField>
+    </ConfirmDialog>
+  );
+}
+
+/** HR stops a running timeline (they came back); the reason is kept and the salary hold is released. */
+export function StopAbscondingDialog({ name, initial = '', onStop, onClose }: { name: string; initial?: string; onStop: (reason: string) => Promise<void>; onClose: () => void }) {
+  const [text, setText] = useState(initial);
+  const early = useTooEarly(text.trim().length < 3 ? [{ fieldId: 'ab-why', message: 'Enter a reason of at least 3 characters.' }] : []);
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`Stop the absconding timeline for ${name}?`}
+      consequence="No further notices go out, and the salary hold is released (the held pay goes in the next payment). Regularise the absent days in Time."
+      confirmLabel="Stop timeline"
+      onConfirm={async () => {
+        if (early.stop()) return false;
+        await onStop(text.trim());
+      }}
+    >
+      <FormField id="ab-why" label="Reason" required error={early.errorOf('ab-why')}>
+        <TextArea value={text} onChange={setText} rows={2} maxLength={500} />
+      </FormField>
+    </ConfirmDialog>
+  );
+}
+
+/** HR records the registered post's article number for a notice that went out. */
+export function DispatchProofDialog({ name, notice, onSave, onClose }: { name: string; notice: string; onSave: (ref: string) => Promise<void>; onClose: () => void }) {
+  const [text, setText] = useState('');
+  const early = useTooEarly(text.trim().length < 3 ? [{ fieldId: 'ab-ref', message: 'Enter the article number, e.g. RK 4471 2291 IN.' }] : []);
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`Dispatch proof for ${name}`}
+      consequence={`The registered post's article number is kept with ${notice.toLowerCase()} as proof it was sent.`}
+      confirmLabel="Save"
+      onConfirm={async () => {
+        if (early.stop()) return false;
+        await onSave(text.trim());
+      }}
+    >
+      <FormField id="ab-ref" label="Article number" required helper="Printed on the registered post receipt." error={early.errorOf('ab-ref')}>
+        <TextField value={text} onChange={setText} maxLength={60} />
+      </FormField>
+    </ConfirmDialog>
   );
 }

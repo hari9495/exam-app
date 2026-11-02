@@ -218,7 +218,7 @@ export class ExitExtrasService {
 
   private async startAbscondingIn(tx: Tx, c: CompanyContext, e: Prisma.EmploymentGetPayload<object>, lastPresentOn: string, by: 'hr' | 'attendance') {
     const org = c.organizationId;
-    if (lastPresentOn >= todayIst()) throw new BadRequestException('The last day present is before today.');
+    if (lastPresentOn >= todayIst()) throw new BadRequestException('The last day present must be before today.');
     if (lastPresentOn < iso(e.joinedOn)) throw new BadRequestException('The last day present is before they joined.');
     if (await tx.abscondingTimeline.findFirst({ where: { organizationId: org, employmentId: e.id, status: 'running' }, select: { id: true } })) throw new ConflictException('A timeline is already running for this person.');
     if (await tx.exitCase.findFirst({ where: { organizationId: org, employmentId: e.id, status: { in: ['submitted', 'accepted', 'cleared'] } }, select: { id: true } })) throw new ConflictException('This person already has an exit in progress.');
