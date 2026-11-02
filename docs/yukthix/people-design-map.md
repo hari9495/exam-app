@@ -69,6 +69,11 @@ continuity checklist (live items)` and `PayrollChecklist`) on the restructure re
 transfer raised from the change drawer is sent as a restructure (`POST restructures`), so it reaches the same record and
 checklist. Nothing to build; the group number stays unused (Q6).
 
+## Founder answers, 2 Nov 2026 (erasure scope follow-up, "all ok")
+(1) the disability list does not show erased former employees as "Yes, details deleted"; the answer stays in the data
+for counting; (2) for joinings cancelled before 30 Oct 2026 the cancellation day estimated from the record's last change
+is accepted; (3) the dry-run name list is not paged for now.
+
 ## Founder answers, 30 Oct 2026 (what Special data erasure deletes, "All ok")
 (1) disability: keep the yes/no answer for the disability register; delete the sealed details and the certificate after
 the same period; (2) consent records are kept (they prove the checks were lawful, no Special values); (3) a background
