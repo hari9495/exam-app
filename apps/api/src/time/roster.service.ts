@@ -100,7 +100,7 @@ export class RosterService implements OnModuleInit {
           .sort((a, b) => a.code.localeCompare(b.code))
           .map((s) => ({ id: s.id, code: s.code, name: s.name, colour: s.colour, night: s.night, active: s.active, kind: s.kind, versions: s.versions.map(({ from, v }) => ({ validFrom: from, start: v.startMinute, end: v.endMinute, graceMinutes: v.graceMinutes, halfDayMinutes: v.halfDayMinutes, fullDayMinutes: v.fullDayMinutes, breakMinutes: v.breakMinutes, breakAboveMinutes: v.breakAboveMinutes, coreStart: v.coreStartMinute, coreEnd: v.coreEndMinute, otAfterMinutes: v.otAfterMinutes, firstEnd: v.firstEndMinute, secondStart: v.secondStartMinute })) })),
         // TIM-06: the shift types the company turned on (Settings › Company rules), and a split's shortest gap.
-        types: { flexi: (await companySetting(tx, c, 'attendance.shift_types.flexi')) === 'on', split: (await companySetting(tx, c, 'attendance.shift_types.split')) === 'on', minGapMinutes: Number(await companySetting(tx, c, 'attendance.split.min_gap_minutes')) },
+        types: { flexi: (await companySetting(tx, c, 'attendance.shift_types.flexi')) === 'on', split: (await companySetting(tx, c, 'attendance.shift_types.split')) === 'on', minGapMinutes: Number(await companySetting(tx, c, 'attendance.split.min_gap_minutes')), flexiLate: await companySetting(tx, c, 'attendance.flexi.late_from'), flexiShort: await companySetting(tx, c, 'attendance.flexi.short_by') },
         patterns: patterns.map((p) => ({
           id: p.id,
           name: p.name,

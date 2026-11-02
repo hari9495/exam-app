@@ -9951,5 +9951,144 @@
       "Time · TIM-14 · Devices and kiosks · Computers · new computer request"
     ],
     "note": "Negative."
+  },
+  {
+    "id": "MT-TIM-L-50",
+    "area": "Time › Shifts › flexi and split shifts (3 Nov 2026)",
+    "screen": "Turn on flexi and split shifts",
+    "url": "http://localhost:3000/yx/settings/company-rules",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Settings › Company rules and find \"Flexi and split shifts\".",
+      "2. Set \"Flexi shifts (core hours) can be set up\" to On and save; do the same for split shifts.",
+      "3. Open Time › Shifts & patterns › Shift tab and press Add a shift."
+    ],
+    "expected": "Step 1: both shown as Off (the default), late on a flexi shift \"Checking in after core hours start\", short \"Hours worked are under the shift's hours\", shortest gap \"1 hour\". Step 2: a toast each time. Step 3: a Type field with Fixed, Flexi with core hours and Split.",
+    "stories": [
+      "Time · TIM-06 · Shift editor and patterns",
+      "Organisation · Company rules"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-TIM-L-51",
+    "area": "Time › Shifts › flexi and split shifts (3 Nov 2026)",
+    "screen": "Off by default: no flexi or split",
+    "url": "http://localhost:3000/yx/time/shifts-setup",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635, sidebar open. Then arjun@demo-org.test (Arjun Kulkarni, Employee).",
+    "steps": [
+      "1. With both settings Off (a company that never turned them on), open Time › Shifts & patterns and press Add a shift.",
+      "2. Open an existing shift such as General.",
+      "3. As Arjun, open http://localhost:3000/yx/time/shifts-setup."
+    ],
+    "expected": "Negative. Step 1: no Type field; the form is the fixed shift form as before. Step 2: times, thresholds and preview exactly as before. Step 3: no access (Arjun cannot set up shifts).",
+    "stories": [
+      "Time · TIM-06 · Shift editor and patterns"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-TIM-L-52",
+    "area": "Time › Shifts › flexi and split shifts (3 Nov 2026)",
+    "screen": "Add a flexi shift (design story Flexi)",
+    "url": "http://localhost:3000/yx/time/shifts-setup",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Add a shift: Name \"Flexi office\", Code \"FO\", Type \"Flexi with core hours\".",
+      "2. Leave the window 8:00 am – 8:00 pm and core 11:00 am – 4:00 pm; set Overtime after (h worked) to 9.",
+      "3. Press Save shift."
+    ],
+    "expected": "Step 2: the preview says \"Everyone is in for core hours, 11:00 am – 4:00 pm.\", Late \"Checking in after 11:10 am\", Overtime \"After 9 h worked\". Step 3: toast \"Shift added\"; the list shows \"FO · Flexi with core hours · 8:00 am – 8:00 pm\"; opening it again shows the Type locked with \"Type is fixed once the shift is saved\".",
+    "stories": [
+      "Time · TIM-06 · Shift editor and patterns"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-TIM-L-53",
+    "area": "Time › Shifts › flexi and split shifts (3 Nov 2026)",
+    "screen": "Flexi: core hours outside the shift",
+    "url": "http://localhost:3000/yx/time/shifts-setup",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Add a shift \"Flexi late\" (code FL), Type Flexi with core hours.",
+      "2. Set Core to 9:00 pm (after the 8:00 pm end) and press Save shift.",
+      "3. Set Core from 4:00 pm and Core to 11:00 am and press Save shift."
+    ],
+    "expected": "Negative. Steps 2 and 3: \"Fix these to save\" with \"Core hours sit inside the shift (8:00 am to 8:00 pm) and end after they start.\"; Save shift is never greyed out; nothing is saved.",
+    "stories": [
+      "Time · TIM-06 · Shift editor and patterns"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-TIM-L-54",
+    "area": "Time › Shifts › flexi and split shifts (3 Nov 2026)",
+    "screen": "Add a split shift (design story Split)",
+    "url": "http://localhost:3000/yx/time/shifts-setup",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Add a shift: Name \"Lunch split\", Code \"LS\", Type Split.",
+      "2. Set First part 8:00 am – 12:00 pm and Second part 2:00 pm – 6:00 pm.",
+      "3. Press Save shift."
+    ],
+    "expected": "Step 1: the break rule moves to No break; the preview says \"The 11:00 am – 5:00 pm gap is the break, not shift time.\" and Break deducted \"None (the gap is the break)\", Half day \"Missing one part\". Step 2: the bar shows two blocks. Step 3: toast \"Shift added\"; the list shows \"LS · Split · 8:00 am – 12:00 pm, 2:00 pm – 6:00 pm\".",
+    "stories": [
+      "Time · TIM-06 · Shift editor and patterns"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-TIM-L-55",
+    "area": "Time › Shifts › flexi and split shifts (3 Nov 2026)",
+    "screen": "Split: overlap, short gap, break rule",
+    "url": "http://localhost:3000/yx/time/shifts-setup",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Add a shift \"Bad split\" (code BS), Type Split.",
+      "2. Set Second part from 11:30 am and press Save shift.",
+      "3. Set Second part from 10:00 am and press Save shift.",
+      "4. Set Second part from 5:00 pm, pick Fixed unpaid break and press Save shift."
+    ],
+    "expected": "Negative. Step 2: \"Leave at least 1 h between the parts (company setting).\" Step 3: \"The second part starts after the first part ends and ends within 24 hours of the start.\" Step 4: \"A split shift has no break rule: the gap is the break. Pick No break.\" Nothing is saved.",
+    "stories": [
+      "Time · TIM-06 · Shift editor and patterns"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-TIM-L-56",
+    "area": "Time › Shifts › flexi and split shifts (3 Nov 2026)",
+    "screen": "Roster with a split shift",
+    "url": "http://localhost:3000/yx/time/roster",
+    "account": "panel@demo-org.test (Manager - Divya). Browser window 1278 x 635.",
+    "steps": [
+      "1. Open Time › Roster on next week. Put Arjun Kulkarni on \"Lunch split\" (LS, 8 am – 6 pm with a 2 h gap) on Tuesday and press Publish roster.",
+      "2. Put Arjun on the 7 am – 11 am / 5 pm – 9 pm split (\"Canteen split\", if HR added one) on Wednesday.",
+      "3. Press Publish roster."
+    ],
+    "expected": "Step 1: published (8 h of work, 10 h spread-over: inside the limits). Negative step 2: the day warns \"The working day spreads over 14 h (at most 10 h 30 m)\" and no \"hours a day\" warning (only 8 h of work). Step 3: refused with the same message (HOURS_GUARD); nothing more is published.",
+    "stories": [
+      "Time · TIM-05 · Roster"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-TIM-L-57",
+    "area": "Time › Shifts › flexi and split shifts (3 Nov 2026)",
+    "screen": "A day on flexi and on split (muster and attendance)",
+    "url": "http://localhost:3000/yx/time/today",
+    "account": "hr@demo-org.test to roster Arjun; then arjun@demo-org.test (Arjun Kulkarni) to check in; then panel@demo-org.test (Manager - Divya) for the muster.",
+    "steps": [
+      "1. Publish Arjun on \"Flexi office\" (core 11 am – 4 pm) for today. As Arjun, check in at 10:30 am. As Divya, open Time › Today.",
+      "2. On another day on \"Flexi office\", Arjun checks in at 11:25 am. Divya opens Time › Today.",
+      "3. On a day on \"Lunch split\", Arjun checks in at 8:00 am and out at 12:00 pm only. The next day, open his attendance for that day."
+    ],
+    "expected": "Step 1: Arjun shows \"In\" (not late: before core start). Negative step 2: \"Late by 25 min\" (counted from core start 11:00 am). Negative step 3: the day is a Half day (the afternoon part was missed); worked 4 h.",
+    "stories": [
+      "Time · TIM-01 · Today",
+      "Time · TIM-03 · My attendance"
+    ],
+    "note": "Positive and negative."
   }
 ]

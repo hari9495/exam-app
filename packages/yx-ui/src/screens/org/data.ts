@@ -153,6 +153,11 @@ export const SETTING_REGISTRY: Record<string, SettingDef> = {
   'attendance.mode': { label: 'Attendance mode', scopes: ['tenant', 'legal_entity', 'location', 'department', 'employment_type'], dated: true, values: ['punch', 'assumed_present', 'timesheet'], default: 'punch' },
   'attendance.missing_punch_effect': { label: 'Missing punches', scopes: ['tenant', 'legal_entity', 'location', 'department', 'employment_type'], dated: true, values: ['block_payroll_approval', 'warning_only'], default: 'block_payroll_approval' },
   'attendance.factories_act': { label: 'Factories Act (overtime is paid at the legal rate)', scopes: ['tenant', 'legal_entity', 'location', 'department', 'employment_type'], dated: true, values: ['covered', 'not_covered'], default: 'not_covered' },
+  'attendance.shift_types.flexi': { label: 'Flexi shifts (core hours) can be set up', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
+  'attendance.shift_types.split': { label: 'Split shifts (two parts a day) can be set up', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
+  'attendance.flexi.late_from': { label: 'On a flexi shift, late is', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['core_start', 'never'], default: 'core_start' },
+  'attendance.flexi.short_by': { label: 'On a flexi shift, the day is short when', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['shift_hours', 'core_hours'], default: 'shift_hours' },
+  'attendance.split.min_gap_minutes': { label: 'Shortest gap between the two parts of a split shift (minutes)', scopes: ['tenant'], dated: false, values: ['30', '60', '90', '120', '180'], default: '60' },
   // Settings › Payroll & Statutory › Payroll rules (the API's registry entries, founder 30 Oct 2026 last 10, items 1 and 5).
   'payroll.bonus.eligibility_rate_on': { label: 'Bonus eligibility uses the salary rate on', scopes: ['tenant', 'legal_entity'], dated: false, values: ['last_day', 'first_day', 'highest_in_month'], default: 'last_day' },
   'payroll.bonus.eligibility_wage': { label: 'Bonus is paid to people whose wage a month is at most (₹)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['21000', '25000', '30000', '35000', '40000', '50000'], default: '21000' },

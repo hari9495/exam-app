@@ -155,6 +155,7 @@ describe('set-up checks for flexi and split shifts', () => {
     expect(shiftKindProblem('split', { start: 420, end: 1260, firstEnd: 660, secondStart: 690 }, 60)).toBe('The gap between the parts is 30 min. Make it at least 1 h (company setting), or use a fixed shift.');
     expect(shiftKindProblem('split', { start: 420, end: 1260, firstEnd: 660, secondStart: 720 }, 60)).toBeNull();
     expect(shiftKindProblem('split', { start: 1200, end: 360, firstEnd: 0, secondStart: 120 }, 60)).toBeNull();
+    expect(shiftKindProblem('split', { start: 420, end: 1260, firstEnd: 660, secondStart: 1020, breakMinutes: 30 }, 60)).toMatch(/no break rule/);
   });
   it('the other types carry neither core hours nor parts', () => {
     expect(shiftKindProblem('fixed', { start: 540, end: 1080, coreStart: 600, coreEnd: 900 }, 60)).toMatch(/only for flexi/);

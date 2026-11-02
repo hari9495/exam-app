@@ -15,10 +15,13 @@ live page cannot reach yet (the reason is given).
 | Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 112 | 0 | 19 | 0 |
 | Leave (TIM-17…25) | 48 | 0 | 11 | 0 |
 | Set-up (TIM-26…29, 31, 42) | 35 | 0 | 0 | 0 |
-| Rosters and shifts (TIM-05, 06, 08, 34, 35, 38…41) | 44 | 2 | 10 | 0 |
+| Rosters and shifts (TIM-05, 06, 08, 34, 35, 38…41) | 46 | 0 | 10 | 0 |
 | Overtime, periods, reports, timesheets (TIM-09, 11, 15, 16, 30, 37, 43) | 49 | 0 | 3 | 0 |
 | Field force (TIM-32, 33) | 7 | 0 | 9 | 0 |
-| **All 45 design groups (349 sub-pages counted)** | **295** | **2** | **52** | **0** |
+| **All 45 design groups (349 sub-pages counted)** | **297** | **0** | **52** | **0** |
+
+3 Nov 2026 (branch `feat/yukthix-flexi-split`): TIM-06 Flexi and Split made live; recounted by script over the story rows (same rule):
+Rosters 44 → 46 live, 2 → 0 not built; All 291 → 293 live, 4 → 2 not built (TIM-02/Attendance 1 and Set-up 1 left), 52 phone, 0 gaps.
 
 Counted from the stories and the rows below by script (29 Oct 2026, after rosters/devices/field, the roster fixes and founder decisions 1-7 were merged into the test app). Section counts further down may be older; this table is the current one.
 Recounted by script on 30 Oct 2026 (time small items: TIM-13 Training, Leave, UnknownCode and the new TrainingNone story live; TIM-26 Clone and
@@ -789,8 +792,8 @@ Inside RosterScreen: the Open shifts tab is live (the TIM-35 panel); the Bids ta
 | story (sub-page) | where it shows live |
 |---|---|
 | Fixed (Fixed shift · preview) | /yx/time/shifts-setup → Shift tab: shift list, editor form, preview |
-| Flexi (Flexi with core hours) | feature not built: shifts have no type or core hours, and the day engine (the attendance builder's) judges fixed times only; needs a shift type + core hours in shift versions and the day engine to count core hours (Question for the lead: which builder) |
-| Split (Split shift) | feature not built: a shift version has one start and end; a split needs a second part in shift versions, the day engine, rest and roster checks |
+| Flexi (Flexi with core hours) | /yx/time/shifts-setup → Add a shift → Type "Flexi with core hours" (the Type field shows once HR turns on `attendance.shift_types.flexi` in Settings › Company rules; off by default): window start and end, Core from / Core to (inside the shift, field error otherwise), Overtime after (h worked; empty = the full day); preview "Everyone is in for core hours …", Late from core start, Overtime after N h. A saved shift keeps its type (Type locked, Duplicate for another). Built 3 Nov 2026 (branch `feat/yukthix-flexi-split`) |
+| Split (Split shift) | /yx/time/shifts-setup → Add a shift → Type "Split" (shows once HR turns on `attendance.shift_types.split`): First part from / to, Second part from / to (in order, within 24 h, the gap at least `attendance.split.min_gap_minutes`, default 1 h; field errors), no break rule (the gap is the break); preview with both parts on the bar and "The … gap is the break, not shift time"; the list shows both parts. Built 3 Nov 2026 (branch `feat/yukthix-flexi-split`) |
 | Night (Night shift · law notice) | /yx/time/shifts-setup → a shift ending next morning, or Night allowance on → law notice, "(next day)" |
 | Patterns (Patterns · N-day cycle) | /yx/time/shifts-setup → Patterns tab: new pattern (weekly or N-day cycle), saved pattern with "Who follows it" and apply form, 14-day preview |
 | SaveError (Save error) | /yx/time/shifts-setup → Save shift with half day ≥ full day (or other missing fields) → error summary + field error |
@@ -879,7 +882,7 @@ Standby allowance per slot and call-out pay rates are payroll's (PAY on-call rul
 
 ### Counts
 
-56 sub-pages (3 new stories: TIM-05 Notice, TIM-38 SetStandby, TIM-40 Record): live 40 · feature not built 5 · phone view 10 · gaps 1.
+56 sub-pages (3 new stories: TIM-05 Notice, TIM-38 SetStandby, TIM-40 Record): live 40 · feature not built 5 · phone view 10 · gaps 1 (3 Nov 2026: TIM-06 Flexi and Split are live, so TIM-06 is 7 live; the table at the top is the current count).
 Live 40 = TIM-05 10, TIM-06 5, TIM-08 5, TIM-34 5, TIM-35 3, TIM-38 4, TIM-40 4, TIM-41 4. Not built 5 = TIM-06 Flexi and Split, TIM-39 ×3
 (not in this scope). Gap 1 = TIM-40 Blocked (shown on the roster instead). Also gaps inside live stories, listed in the rows (TIM-08 "Change my shift",
 TIM-34 OT forecast / CSV import / AI summary, TIM-35 bid windows, TIM-40 Skill).
@@ -1205,3 +1208,36 @@ settings, off by default; existing fixed shifts do not change.
 renamed "New device requests" and "Employee devices"; (3) a person may have more than one approved computer (keep);
 (4) HR admins get a notification when someone asks for a computer to be approved; (5) accepted: the approval rides on the
 sign-in device cookie, so moving that cookie moves the approval.
+Built 3 Nov 2026 (branch `feat/yukthix-flexi-split`, founder answers on flexi and split shifts): TIM-06 Flexi and Split
+are live.
+- Settings (Settings › Company rules › "Flexi and split shifts"): `attendance.shift_types.flexi` and
+  `attendance.shift_types.split` (company, off by default; off, the API refuses the type with SHIFT_TYPE_OFF and the
+  Shift tab shows no Type field), `attendance.flexi.late_from` (`core_start` default, or `never`),
+  `attendance.flexi.short_by` (`shift_hours` default: below the full-day hours is a half day / absent as for any shift; or
+  `core_hours`: present when in for all core hours), `attendance.split.min_gap_minutes` (30 / 60 default / 90 / 120 / 180).
+- Data: `shifts.kind` (fixed / flexi / split, never changes once saved; every existing shift is fixed), and on
+  `shift_versions` core start / end and overtime-after (flexi), first part end / second part start (split). Migration
+  `20261420000000_flexi_split_shifts` (check constraints; the tables already have forced RLS). Created and new versions
+  are audited with the type's fields.
+- Set-up checks (API and the form): core hours inside the shift; split parts in order, no overlap, within 24 h, the gap at
+  least the company minimum, no break rule (the gap is the break); a fixed shift carries neither.
+- Day engine: flexi is late from core start + grace (or never); a split judges each part on its own (late per part, the
+  gap is never worked time, one part missing is a half day, a check-in left open is a missing check-out, a half-day leave
+  expects only the other part); a night split across midnight belongs to the day it started.
+- Roster guard (week view, publish, swaps, open shifts, auto-roster, standby): hours a day and a week count both parts
+  of a split and a flexi's hours (overtime-after, else the full day); the spread-over and rest use the whole day (a split's
+  gap included, a flexi's whole window). The night window checks only a split's parts.
+- Muster (TIM-01 today): late counts from core start on flexi, from the part checked in for on a split; the monthly
+  register's "early" is before core end on flexi. Night register: only a split's parts count as night minutes.
+- Overtime and the payroll feed: overtime counts beyond both parts (split) or after the flexi's hours; the feed pays days
+  by the engine's status, so a split's missing part is half a day.
+Manual tests MT-TIM-L-50..57.
+
+Questions (safe default built, suggested answer):
+1. A flexi shift's rest and spread-over use its whole window (the person may come at the start and leave at the end), so
+   a wide window (for example 7 am – 10 pm) warns on rest every day. Suggested: keep (it is the legally safe reading);
+   HR sets windows inside the limits.
+2. When the company turns flexi or split off again, existing shifts of that type keep being judged as their type, but new
+   times for them are refused. Suggested: keep.
+3. The design's fourth type "Night (across midnight)" stays a fixed shift ending next morning plus the Night allowance
+   switch (as before); the live Type field offers Fixed, Flexi and Split. Suggested: keep.

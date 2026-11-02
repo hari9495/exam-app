@@ -1232,16 +1232,31 @@ const timesOf = (start: number, end: number) => `${fmt12(fromMinute(start))} –
 /** Hours as the form shows them: 450 min → 7.5. */
 const hrs = (m: number) => Math.round((m / 60) * 100) / 100;
 
-interface ShiftForm { code: string; name: string; colour: string; night: boolean; start: string | null; end: string | null; grace: number | null; full: number | null; half: number | null; breakRule: 'fixed' | 'none'; brk: number | null; brkAbove: number | null; from: Date | null }
+/**
+ * The form as the design has it (TIM-06): `end` is the shift's end, or a split's first part end; a split's second part
+ * is `p2From`–`p2To`. Flexi adds core hours and overtime after hours worked (empty: the full day).
+ */
+interface ShiftForm { kind: LiveShiftKind; code: string; name: string; colour: string; night: boolean; start: string | null; end: string | null; coreFrom: string | null; coreTo: string | null; otAfter: number | null; p2From: string | null; p2To: string | null; grace: number | null; full: number | null; half: number | null; breakRule: 'fixed' | 'none'; brk: number | null; brkAbove: number | null; from: Date | null }
+type LiveShiftKind = NonNullable<ShiftRow['kind']>;
+const KIND_LABEL: Record<LiveShiftKind, string> = { fixed: 'Fixed', flexi: 'Flexi with core hours', split: 'Split' };
+const hhmmOr = (m: number | null | undefined, fallback: string) => (m == null ? fallback : fromMinute(m));
 const formOf = (s: ShiftRow | null, today: string): ShiftForm => {
   const v = s ? versionNow(s, today) : undefined;
+  const kind = s?.kind ?? 'fixed';
+  const split = kind === 'split';
   return {
+    kind,
     code: s?.code ?? '',
     name: s?.name ?? '',
     colour: s?.colour ?? 'blue',
     night: s?.night ?? false,
     start: v ? fromMinute(v.start) : '09:00',
-    end: v ? fromMinute(v.end) : '17:30',
+    end: v ? fromMinute(split ? (v.firstEnd ?? v.end) : v.end) : '17:30',
+    coreFrom: hhmmOr(v?.coreStart, '11:00'),
+    coreTo: hhmmOr(v?.coreEnd, '16:00'),
+    otAfter: v?.otAfterMinutes != null ? hrs(v.otAfterMinutes) : null,
+    p2From: hhmmOr(v?.secondStart, '17:00'),
+    p2To: split && v ? fromMinute(v.end) : '21:00',
     grace: v?.graceMinutes ?? 10,
     full: hrs(v?.fullDayMinutes ?? 450),
     half: hrs(v?.halfDayMinutes ?? 240),
@@ -1266,13 +1281,27 @@ function useLiveShiftTab(d: SetupData, p: LiveShiftSetup) {
   const [base, setBase] = useState<ShiftForm>(f);
   const set = (patch: Partial<ShiftForm>) => setF({ ...f, ...patch });
   const dirty = JSON.stringify({ ...f, from: null }) !== JSON.stringify({ ...base, from: null });
-  const overnight = !!f.start && !!f.end && f.end < f.start;
+  const flexi = f.kind === 'flexi';
+  const split = f.kind === 'split';
+  const types = d.types ?? { flexi: false, split: false, minGapMinutes: 60 };
+  /** The day's last minute: the end, or a split's second part end. */
+  const lastEnd = split ? f.p2To : f.end;
+  const overnight = !!f.start && !!lastEnd && lastEnd < f.start;
+  // TIM-06: minutes after the start (a time before the start is next day), as the server checks them.
+  const rel = (t: string | null) => (t && f.start ? ((((toMinute(t)! - toMinute(f.start)!) % 1440) + 1440) % 1440) : 0);
+  const len = rel(lastEnd) || 1440;
+  const gap = rel(f.p2From) - rel(f.end);
+  const at = (t: string) => fmt12(t);
   const errors = [
     ...(isNew && !/^[A-Z][A-Z0-9]{0,5}$/.test(f.code) ? [{ fieldId: 'sh-code', message: 'Use 1 to 6 capital letters or digits, starting with a letter (M, A, N, GEN).' }] : []),
     ...(!f.name.trim() ? [{ fieldId: 'sh-name', message: 'Name the shift.' }] : []),
-    ...(!f.start || !f.end || f.start === f.end ? [{ fieldId: 'sh-end', message: 'Give a start and an end that differ.' }] : []),
+    ...(!f.start || !f.end || f.start === f.end ? [{ fieldId: 'sh-end', message: split ? 'Give the first part a start and an end that differ.' : 'Give a start and an end that differ.' }] : []),
+    ...(flexi && (!f.coreFrom || !f.coreTo || rel(f.coreFrom) >= rel(f.coreTo) || rel(f.coreTo) > len) ? [{ fieldId: 'sh-core-to', message: `Core hours sit inside the shift${f.start && f.end ? ` (${at(f.start)} to ${at(f.end)})` : ''} and end after they start.` }] : []),
+    ...(split && (!f.p2From || !f.p2To || rel(f.p2From) < rel(f.end) || rel(f.end) >= len || rel(f.p2From) >= len) ? [{ fieldId: 'sh-p2-to', message: 'The second part starts after the first part ends and ends within 24 hours of the start.' }] : []),
+    ...(split && f.p2From && f.p2To && rel(f.p2From) >= rel(f.end) && rel(f.p2From) < len && gap < types.minGapMinutes ? [{ fieldId: 'sh-p2-from', message: `Leave at least ${mins(types.minGapMinutes)} between the parts (company setting).` }] : []),
     ...(f.full === null || f.half === null || f.half >= f.full ? [{ fieldId: 'half-day', message: `Make the half day less than the full day${f.full !== null ? ` (${f.full} h)` : ''}.` }] : []),
     ...(f.breakRule === 'fixed' && !f.brk ? [{ fieldId: 'sh-break', message: 'Give the break in minutes, or pick No break.' }] : []),
+    ...(split && f.breakRule === 'fixed' ? [{ fieldId: 'sh-break', message: 'A split shift has no break rule: the gap is the break. Pick No break.' }] : []),
     ...(!f.from || isoOf(f.from) < d.today ? [{ fieldId: 'sh-from', message: 'Choose today or a later date.' }] : []),
   ];
   const saveErrors = useSaveErrors(errors);
@@ -1291,15 +1320,34 @@ function useLiveShiftTab(d: SetupData, p: LiveShiftSetup) {
     setBase(formOf(null, d.today));
     saveErrors.reset();
   };
-  const times = { validFrom: f.from ? isoOf(f.from) : d.today, start: toMinute(f.start) ?? 0, end: toMinute(f.end) ?? 0, graceMinutes: f.grace ?? 0, halfDayMinutes: Math.round((f.half ?? 4) * 60), fullDayMinutes: Math.round((f.full ?? 8) * 60), breakMinutes: f.breakRule === 'fixed' ? (f.brk ?? 0) : 0, breakAboveMinutes: Math.round((f.brkAbove ?? 0) * 60) };
+  /** A new shift's type (as the design's pickKind): only the type's own times change; a split has no break rule. */
+  const pickKind = (k: LiveShiftKind) => {
+    if (k === f.kind) return;
+    if (k === 'flexi') set({ kind: k, start: '08:00', end: '20:00', coreFrom: '11:00', coreTo: '16:00' });
+    else if (k === 'split') set({ kind: k, start: '07:00', end: '11:00', p2From: '17:00', p2To: '21:00', breakRule: 'none' });
+    else set({ kind: k, end: split ? f.p2To : f.end });
+  };
+  const times = {
+    validFrom: f.from ? isoOf(f.from) : d.today,
+    start: toMinute(f.start) ?? 0,
+    end: toMinute(lastEnd) ?? 0,
+    graceMinutes: f.grace ?? 0,
+    halfDayMinutes: Math.round((f.half ?? 4) * 60),
+    fullDayMinutes: Math.round((f.full ?? 8) * 60),
+    breakMinutes: f.breakRule === 'fixed' ? (f.brk ?? 0) : 0,
+    breakAboveMinutes: Math.round((f.brkAbove ?? 0) * 60),
+    ...(flexi ? { coreStart: toMinute(f.coreFrom), coreEnd: toMinute(f.coreTo), otAfterMinutes: f.otAfter !== null ? Math.round(f.otAfter * 60) : null } : {}),
+    ...(split ? { firstEnd: toMinute(f.end), secondStart: toMinute(f.p2From) } : {}),
+  };
   const save = () => {
     if (errors.length) return saveErrors.reveal();
     const detailsChanged = row && (f.name.trim() !== row.name || f.colour !== row.colour || f.night !== row.night);
-    const timesChanged = row && JSON.stringify([f.start, f.end, f.grace, f.full, f.half, f.breakRule, f.brk, f.brkAbove]) !== JSON.stringify([base.start, base.end, base.grace, base.full, base.half, base.breakRule, base.brk, base.brkAbove]);
+    const timed = (x: ShiftForm) => JSON.stringify([x.start, x.end, x.grace, x.full, x.half, x.breakRule, x.brk, x.brkAbove, ...(flexi ? [x.coreFrom, x.coreTo, x.otAfter] : []), ...(split ? [x.p2From, x.p2To] : [])]);
+    const timesChanged = row && timed(f) !== timed(base);
     if (row && !detailsChanged && !timesChanged) return why('Nothing has changed yet')();
     void run('save', async () => {
       if (!row) {
-        await p.onCreateShift({ code: f.code, name: f.name.trim(), colour: f.colour, night: f.night, ...times });
+        await p.onCreateShift({ code: f.code, name: f.name.trim(), colour: f.colour, night: f.night, ...(f.kind !== 'fixed' ? { kind: f.kind } : {}), ...times });
         setSel(`code:${f.code}`);
       } else {
         if (detailsChanged) await p.onShiftDetails(row.id, { name: f.name.trim(), colour: f.colour, night: f.night, active: row.active });
@@ -1309,15 +1357,26 @@ function useLiveShiftTab(d: SetupData, p: LiveShiftSetup) {
     });
   };
   const waiting = row?.versions.find((x) => x.validFrom > d.today);
+  const ready = !!f.start && !!f.end && f.start !== f.end && (!split || (!!f.p2From && !!f.p2To));
+  const coreAt = flexi && f.coreFrom ? fmt12(fromMinute((toMinute(f.coreFrom)! + (f.grace ?? 0)) % 1440)) : '';
+  const previewText = !ready
+    ? 'Enter the start and end to see the day.'
+    : flexi
+      ? `A day on this shift: in from ${at(f.start!)}, out by ${at(f.end!)}${f.end! < f.start! ? ' (next day)' : ''}.${f.coreFrom && f.coreTo ? ` Everyone is in for core hours, ${at(f.coreFrom)} – ${at(f.coreTo)}.` : ''}`
+      : split
+        ? `Two parts: ${timesOf(toMinute(f.start)!, toMinute(f.end)!)} and ${timesOf(toMinute(f.p2From)!, toMinute(f.p2To)!)}. The ${at(f.end!)} – ${at(f.p2From!)} gap is the break, not shift time.`
+        : `A day on this shift: ${timesOf(toMinute(f.start)!, toMinute(f.end)!)}.${f.grace ? ` Check-ins up to ${fmt12(fromMinute((toMinute(f.start)! + f.grace) % 1440))} are on time.` : ''}`;
   const previewCard = (
     <Card title="Preview">
-      <p className="yx-tim-muted">{f.start && f.end ? `A day on this shift: ${timesOf(toMinute(f.start)!, toMinute(f.end)!)}.${f.grace ? ` Check-ins up to ${fmt12(fromMinute((toMinute(f.start)! + f.grace) % 1440))} are on time.` : ''}` : 'Enter the start and end to see the day.'}</p>
-      {f.start && f.end && f.start !== f.end && <ShiftBar start={f.start} end={f.end} punches={[]} from={overnight ? 18 * 60 : 6 * 60} to={overnight ? 32 * 60 : 23 * 60} />}
+      <p className="yx-tim-muted">{previewText}</p>
+      {ready && <ShiftBar start={f.start!} end={lastEnd!} parts={split ? [[f.start!, f.end!], [f.p2From!, f.p2To!]] : undefined} punches={[]} from={overnight ? 18 * 60 : 6 * 60} to={overnight ? 32 * 60 : 23 * 60} />}
       <ul className="yx-tim-days">
-        <li><span>Late grace</span><strong>{f.grace ? `${f.grace} min` : 'None'}</strong></li>
-        <li><span>Break deducted</span><strong>{f.breakRule === 'fixed' && f.brk ? `${f.brk} min when worked time is above ${f.brkAbove ?? 0} h` : 'None'}</strong></li>
-        <li><span>Full day</span><strong>{f.full !== null ? `From ${f.full} h worked` : '—'}</strong></li>
-        <li><span>Half day</span><strong>{f.half !== null ? `From ${f.half} h worked; under it is absent` : '—'}</strong></li>
+        {flexi && <li><span>Core hours</span><strong>{f.coreFrom && f.coreTo ? `${at(f.coreFrom)} – ${at(f.coreTo)}` : '—'}</strong></li>}
+        <li><span>{flexi ? 'Late' : 'Late grace'}</span><strong>{flexi ? (d.types?.flexiLate === 'never' ? 'Never: only the hours worked count (company setting)' : `Checking in after ${coreAt || 'core start'}`) : f.grace ? `${f.grace} min${split ? ', for each part' : ''}` : 'None'}</strong></li>
+        <li><span>Break deducted</span><strong>{split ? 'None (the gap is the break)' : f.breakRule === 'fixed' && f.brk ? `${f.brk} min when worked time is above ${f.brkAbove ?? 0} h` : 'None'}</strong></li>
+        <li><span>Full day</span><strong>{f.full !== null ? `From ${f.full} h worked${split ? ' over both parts' : ''}` : '—'}</strong></li>
+        <li><span>Half day</span><strong>{split ? 'Missing one part' : flexi && d.types?.flexiShort === 'core_hours' ? 'Only when core hours are missed (company setting)' : f.half !== null ? `From ${f.half} h worked; under it is absent` : '—'}</strong></li>
+        {flexi && <li><span>Overtime</span><strong>{`After ${f.otAfter ?? f.full ?? 0} h worked`}</strong></li>}
         <li><span>Allowance</span><strong>{f.night ? 'Night allowance' : 'None'}</strong></li>
       </ul>
     </Card>
@@ -1333,6 +1392,8 @@ function useLiveShiftTab(d: SetupData, p: LiveShiftSetup) {
       </span>
     ),
   };
+  // Type: shown once the company turns on flexi or split (Settings › Company rules), or for a shift that has another type.
+  const kinds = (Object.keys(KIND_LABEL) as LiveShiftKind[]).filter((k) => k === 'fixed' || k === f.kind || types[k]);
   const body = (
     <div className="yx-tim-editor">
       <div className="yx-tim-form">
@@ -1344,9 +1405,10 @@ function useLiveShiftTab(d: SetupData, p: LiveShiftSetup) {
               {d.shifts.map((s) => {
                 const v = versionNow(s, d.today);
                 const current = row?.id === s.id;
+                const when = !v ? '—' : s.kind === 'split' && v.firstEnd != null && v.secondStart != null ? `${timesOf(v.start, v.firstEnd)}, ${timesOf(v.secondStart, v.end)}` : timesOf(v.start, v.end);
                 return (
                   <li key={s.id}>
-                    <span className="yx-tim-list__main" style={{ flex: '1 1 0', minWidth: 0 }}><strong>{s.name}</strong><span className="yx-tim-muted">{s.code} · {v ? timesOf(v.start, v.end) : '—'}{s.active ? '' : ' · not in use'}</span></span>
+                    <span className="yx-tim-list__main" style={{ flex: '1 1 0', minWidth: 0 }}><strong>{s.name}</strong><span className="yx-tim-muted">{s.code} · {s.kind && s.kind !== 'fixed' ? `${KIND_LABEL[s.kind]} · ` : ''}{when}{s.active ? '' : ' · not in use'}</span></span>
                     <span className="yx-tim-row" style={{ flexShrink: 0, justifyContent: 'flex-end' }}>
                       <Button size="sm" onClick={why(current ? 'You are editing this shift' : dirty && 'Save or discard your changes first', () => open(s.id))}>{current ? 'Editing' : 'Edit'}</Button>
                       <Button size="sm" loading={busy === s.id} onClick={() => void run(s.id, () => p.onShiftDetails(s.id, { name: s.name, colour: s.colour, night: s.night, active: !s.active }))}>{s.active ? 'Stop using' : 'Use again'}</Button>
@@ -1366,15 +1428,32 @@ function useLiveShiftTab(d: SetupData, p: LiveShiftSetup) {
             <FormField id="sh-code" label="Code" required helper={isNew ? 'Shown in every roster cell.' : 'A code never changes.'} error={errorOf('sh-code')}><TextField value={f.code} placeholder="For example GC" maxLength={6} disabled={!isNew} onChange={(v) => set({ code: v.toUpperCase() })} /></FormField>
           </FieldRow>
           <FormField id="sh-colour" label="Colour" helper="The colour of the shift on the roster."><Select value={f.colour} onChange={(v) => v && set({ colour: v })} options={COLOURS} /></FormField>
+          {kinds.length > 1 && (
+            <FormField label="Type" helper={isNew ? 'Pick the type. It cannot change once the shift is saved.' : 'Type is fixed once the shift is saved. Duplicate it to make a shift of another type.'}>
+              <RadioGroup aria-label="Type" value={f.kind} disabled={!isNew} onChange={(v) => pickKind(v as LiveShiftKind)} orientation="horizontal" options={kinds.map((k) => ({ value: k, label: KIND_LABEL[k] }))} />
+            </FormField>
+          )}
           <FieldRow>
-            <FormField id="sh-start" label="Start" required><TimeField value={f.start} onChange={(v) => set({ start: v })} /></FormField>
-            <FormField id="sh-end" label="End" required helper={overnight ? 'Ends next day; the day belongs to the start date' : 'Before the start for a night shift.'} error={errorOf('sh-end')}><TimeField value={f.end} onChange={(v) => set({ end: v })} /></FormField>
+            <FormField id="sh-start" label={split ? 'First part from' : 'Start'} required><TimeField value={f.start} onChange={(v) => set({ start: v })} /></FormField>
+            <FormField id="sh-end" label={split ? 'First part to' : 'End'} required helper={split ? undefined : overnight ? 'Ends next day; the day belongs to the start date' : 'Before the start for a night shift.'} error={errorOf('sh-end')}><TimeField value={f.end} onChange={(v) => set({ end: v })} /></FormField>
           </FieldRow>
+          {flexi && (
+            <FieldRow>
+              <FormField id="sh-core-from" label="Core from"><TimeField value={f.coreFrom} onChange={(v) => set({ coreFrom: v })} /></FormField>
+              <FormField id="sh-core-to" label="Core to" error={errorOf('sh-core-to')}><TimeField value={f.coreTo} onChange={(v) => set({ coreTo: v })} /></FormField>
+            </FieldRow>
+          )}
+          {split && (
+            <FieldRow>
+              <FormField id="sh-p2-from" label="Second part from" error={errorOf('sh-p2-from')}><TimeField value={f.p2From} onChange={(v) => set({ p2From: v })} /></FormField>
+              <FormField id="sh-p2-to" label="Second part to" helper={overnight ? 'Ends next day; the day belongs to the start date' : undefined} error={errorOf('sh-p2-to')}><TimeField value={f.p2To} onChange={(v) => set({ p2To: v })} /></FormField>
+            </FieldRow>
+          )}
         </FormSection>
         {narrow && previewCard}
         <FormSection title="Check-in and grace">
           <FieldRow>
-            <FormField id="sh-grace" label="Late grace (min)"><NumberField value={f.grace} min={0} max={120} onChange={(v) => set({ grace: v })} /></FormField>
+            <FormField id="sh-grace" label="Late grace (min)" helper={flexi ? 'Counted from the start of core hours.' : split ? 'For each part.' : undefined}><NumberField value={f.grace} min={0} max={120} onChange={(v) => set({ grace: v })} /></FormField>
           </FieldRow>
         </FormSection>
         <FormSection title="Break rule">
@@ -1391,8 +1470,13 @@ function useLiveShiftTab(d: SetupData, p: LiveShiftSetup) {
             <FormField id="sh-full" label="Full day from (h)"><NumberField value={f.full} min={0.5} max={16} decimals onChange={(v) => set({ full: v })} /></FormField>
             <FormField id="half-day" label="Half day from (h)" error={errorOf('half-day')}><NumberField value={f.half} min={0.5} max={16} decimals onChange={(v) => set({ half: v })} /></FormField>
           </FieldRow>
-          <p className="yx-tim-note">{f.half != null ? `Under ${f.half} h worked counts as absent. ` : ''}A missing punch shows as "Missing check-out".</p>
+          <p className="yx-tim-note">{split ? 'Missing one part is a half day. ' : f.half != null ? `Under ${f.half} h worked counts as absent. ` : ''}A missing punch shows as "Missing check-out".</p>
         </FormSection>
+        {flexi && (
+          <FormSection title="Overtime">
+            <FormField id="sh-ot-after" label="Overtime after (h worked)" helper="Flexi shifts have no fixed end, so overtime counts from hours worked. Empty: from the full day."><NumberField value={f.otAfter} min={0.5} max={16} decimals onChange={(v) => set({ otAfter: v })} /></FormField>
+          </FormSection>
+        )}
         <FormSection title="Allowances">
           <Switch label="Night allowance" description="Counts this shift for the night allowance in payroll" checked={f.night} onChange={(v) => set({ night: v })} />
           {(f.night || overnight) && <InlineAlert tone="info" title="Night window for women (law)">The legal night window is 7 pm – 6 am. Women can be rostered on a shift touching it only with written consent and every safeguard in date (Night work tab). The allowance is for pay only; consent checks always use 7 pm – 6 am.</InlineAlert>}

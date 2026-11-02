@@ -127,7 +127,7 @@ describe('Time flexi and split shifts', () => {
     expect((await api('hrAdmin', 'post', '/time/shifts').send({ code: 'SP', name: 'Canteen split', colour: 'green', night: false, ...SPLIT }).expect(400)).body.code).toBe('SHIFT_TYPE_OFF');
     ids.G = (await api('hrAdmin', 'post', '/time/shifts').send({ code: 'G', name: 'General', colour: 'blue', night: false, ...times(540, 1050, { breakMinutes: 30 }) }).expect(201)).body.id;
     const setup = (await api('hrAdmin', 'get', '/time/shifts/setup').expect(200)).body;
-    expect(setup.types).toEqual({ flexi: false, split: false, minGapMinutes: 60 });
+    expect(setup.types).toEqual({ flexi: false, split: false, minGapMinutes: 60, flexiLate: 'core_start', flexiShort: 'shift_hours' });
     expect(setup.shifts.find((s: { id: string }) => s.id === ids.G)).toMatchObject({ kind: 'fixed', versions: [expect.objectContaining({ coreStart: null, firstEnd: null })] });
     // A type the API does not know is bad input.
     await api('hrAdmin', 'post', '/time/shifts').send({ code: 'X', name: 'X', colour: 'blue', night: false, kind: 'rotating', ...times(540, 1050) }).expect(400);
@@ -167,6 +167,7 @@ describe('Time flexi and split shifts', () => {
     const body = (code: string, b: Record<string, unknown>) => ({ code, name: `Split ${code}`, colour: 'green', night: false, ...SPLIT, ...b });
     expect((await api('hrAdmin', 'post', '/time/shifts').send(body('SP', { firstEnd: undefined })).expect(400)).body.message).toMatch(/both parts/);
     expect((await api('hrAdmin', 'post', '/time/shifts').send(body('SP', { firstEnd: 900, secondStart: 600 })).expect(400)).body.message).toMatch(/overlap/);
+    expect((await api('hrAdmin', 'post', '/time/shifts').send(body('SP', { breakMinutes: 30 })).expect(400)).body.message).toMatch(/no break rule/);
     expect((await api('hrAdmin', 'post', '/time/shifts').send(body('SP', { secondStart: 690 })).expect(400)).body.message).toBe('The gap between the parts is 30 min. Make it at least 1 h (company setting), or use a fixed shift.');
     ids.SP = (await api('hrAdmin', 'post', '/time/shifts').send(body('SP', {})).expect(201)).body.id;
     // 08:00–12:00 and 14:00–18:00: inside the 10.5 h spread-over.
@@ -177,13 +178,13 @@ describe('Time flexi and split shifts', () => {
     await setting('adminA', 'attendance.split.min_gap_minutes', '30');
     await api('hrAdmin', 'post', '/time/shifts').send(body('ST', { secondStart: 690 })).expect(201);
     const setup = (await api('hrAdmin', 'get', '/time/shifts/setup').expect(200)).body;
-    expect(setup.types).toEqual({ flexi: true, split: true, minGapMinutes: 30 });
+    expect(setup.types).toMatchObject({ flexi: true, split: true, minGapMinutes: 30 });
     expect(setup.shifts.find((s: { id: string }) => s.id === ids.SN)).toMatchObject({ kind: 'split', versions: [expect.objectContaining({ start: 1200, end: 360, firstEnd: 0, secondStart: 120 })] });
   });
 
   it('another company is untouched: its types stay off and it never reaches these shifts', async () => {
     const b = (await api('adminB', 'get', '/time/shifts/setup').expect(200)).body;
-    expect(b.types).toEqual({ flexi: false, split: false, minGapMinutes: 60 });
+    expect(b.types).toMatchObject({ flexi: false, split: false, minGapMinutes: 60 });
     expect(b.shifts.map((s: { id: string }) => s.id)).not.toContain(ids.SP);
     await api('adminB', 'post', `/time/shifts/${ids.SP}/versions`).send({ ...times(420, 1260, { firstEnd: 660, secondStart: 1020 }), validFrom: d(5) }).expect(404);
     expect((await api('adminB', 'post', '/time/shifts').send({ code: 'SP', name: 'Split', colour: 'green', night: false, ...SPLIT }).expect(400)).body.code).toBe('SHIFT_TYPE_OFF');

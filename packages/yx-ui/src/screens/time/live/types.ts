@@ -568,7 +568,16 @@ export interface ShiftVersionRow {
   fullDayMinutes: number;
   breakMinutes: number;
   breakAboveMinutes: number;
+  /** TIM-06 flexi: core hours (minutes of the day) and overtime after hours worked (null: the full day). */
+  coreStart?: number | null;
+  coreEnd?: number | null;
+  otAfterMinutes?: number | null;
+  /** TIM-06 split: the first part ends and the second starts (start to firstEnd, secondStart to end). */
+  firstEnd?: number | null;
+  secondStart?: number | null;
 }
+/** TIM-06 shift types: fixed (with night shifts that end next day), flexi with core hours, split in two parts. */
+export type ShiftKind = 'fixed' | 'flexi' | 'split';
 export interface ShiftRow {
   id: string;
   code: string;
@@ -576,6 +585,8 @@ export interface ShiftRow {
   colour: string;
   night: boolean;
   active: boolean;
+  /** Fixed when absent; never changes once saved. */
+  kind?: ShiftKind;
   versions: ShiftVersionRow[];
 }
 export interface OtRuleRow {
@@ -626,6 +637,8 @@ export interface ShiftSetup {
   entities: { id: string; name: string }[];
   people: { id: string; name: string; code: string | null }[];
   users: { id: string; name: string }[];
+  /** The shift types the company turned on (company settings, off by default) and a split's shortest gap in minutes. */
+  types?: { flexi: boolean; split: boolean; minGapMinutes: number; flexiLate?: 'core_start' | 'never'; flexiShort?: 'shift_hours' | 'core_hours' };
 }
 export interface ShiftInput {
   code: string;
@@ -640,6 +653,12 @@ export interface ShiftInput {
   fullDayMinutes: number;
   breakMinutes: number;
   breakAboveMinutes: number;
+  kind?: ShiftKind;
+  coreStart?: number | null;
+  coreEnd?: number | null;
+  otAfterMinutes?: number | null;
+  firstEnd?: number | null;
+  secondStart?: number | null;
 }
 
 export type OtCategory = 'normal' | 'weekly_off' | 'holiday';

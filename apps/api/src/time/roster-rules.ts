@@ -134,7 +134,7 @@ export function insideNotice(on: string, startMinutes: readonly (number | null)[
  * to firstEnd, then secondStart to end, in that order, with the gap at least `minGapMinutes` (company setting) and the
  * whole day under 24 hours. A fixed shift carries neither.
  */
-export function shiftKindProblem(kind: 'fixed' | 'flexi' | 'split', t: { start: number; end: number; coreStart?: number | null; coreEnd?: number | null; otAfterMinutes?: number | null; firstEnd?: number | null; secondStart?: number | null }, minGapMinutes: number): string | null {
+export function shiftKindProblem(kind: 'fixed' | 'flexi' | 'split', t: { start: number; end: number; breakMinutes?: number; coreStart?: number | null; coreEnd?: number | null; otAfterMinutes?: number | null; firstEnd?: number | null; secondStart?: number | null }, minGapMinutes: number): string | null {
   const rel = (m: number) => (((m - t.start) % 1440) + 1440) % 1440;
   const len = rel(t.end) || 1440;
   const hm = (m: number) => (m < 60 ? `${m} min` : h(m));
@@ -151,6 +151,7 @@ export function shiftKindProblem(kind: 'fixed' | 'flexi' | 'split', t: { start: 
     const b = rel(t.secondStart);
     if (a === 0) return 'The first part ends at a different time from when it starts.';
     if (b < a || a >= len || b >= len) return 'The parts overlap or the day runs past 24 hours. The second part starts after the first part ends and ends within 24 hours of the start.';
+    if ((t.breakMinutes ?? 0) > 0) return 'A split shift has no break rule: the gap between the parts is the break. Set the break to 0.';
     if (b - a < minGapMinutes) return `The gap between the parts is ${hm(b - a)}. Make it at least ${hm(minGapMinutes)} (company setting), or use a fixed shift.`;
   }
   return null;
