@@ -29,6 +29,19 @@ export class RegisterKioskDto {
   mode!: 'attendance' | 'visitor';
 }
 
+/** Founder answer 1: "Web clock-in only from an approved computer" for the company, a legal entity or a location. */
+export class WebApprovalDto {
+  @IsIn(['tenant', 'legal_entity', 'location'])
+  scopeType!: 'tenant' | 'legal_entity' | 'location';
+
+  @IsOptional()
+  @IsUUID()
+  scopeId?: string;
+
+  @IsIn(['on', 'off'])
+  value!: 'on' | 'off';
+}
+
 export class ReasonDto {
   @trim()
   @IsString()

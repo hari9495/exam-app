@@ -8,7 +8,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
-import { BindRequestDto, FaceConsentDto, PhonePunchDto, PhoneSyncDto, PinDto, ReasonDto, RegisterKioskDto, TrainingPeopleQueryDto, TrainingSessionDto, TrainingSessionEditDto } from './devices.dto';
+import { BindRequestDto, FaceConsentDto, PhonePunchDto, PhoneSyncDto, PinDto, ReasonDto, RegisterKioskDto, TrainingPeopleQueryDto, TrainingSessionDto, TrainingSessionEditDto, WebApprovalDto } from './devices.dto';
 import { DevicesService } from './devices.service';
 
 // TIM-14 Devices and kiosks (HR) and the person's own devices (TIM-12 phone, TIM-13 kiosk PIN / card / face).
@@ -101,6 +101,21 @@ export class DevicesController {
   @RequirePermissions('leave.settings.manage')
   signOut(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.devices.signOutPhone(ctx, this.user(req), id);
+  }
+
+  /** Founder answer 1: the web clock-in rule for the company, a legal entity or a location (audited as a control change). */
+  @Put('web-approval')
+  @RequirePermissions('leave.settings.manage')
+  setWebApproval(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: WebApprovalDto) {
+    return this.devices.setWebApproval(ctx, this.user(req), dto);
+  }
+
+  /** A legal entity's or location's own value removed: it follows the value above it again. */
+  @Post('web-approval/:id/remove')
+  @HttpCode(200)
+  @RequirePermissions('leave.settings.manage')
+  removeWebApproval(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.devices.removeWebApproval(ctx, this.user(req), id);
   }
 
   @Post('people/:employeeId/pin-reset')

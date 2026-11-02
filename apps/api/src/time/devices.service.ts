@@ -7,12 +7,14 @@ import { OrgSecretsCryptoService, TenantContext, TenantPrismaService, revokeStaf
 import { CompanyContext, Tx, audit, companyContext, inCompany, mapDbError } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
 import { resolveSetting, SETTINGS } from '../org-structure/settings-registry';
+import { OrgSettingsService } from '../org-structure/org-settings.service';
+import type { SettingDto } from '../org-structure/dto';
 import type { ScopeUser } from '../access/scope';
 import { AttendanceService } from './attendance.service';
 import { TimeSetupService } from './setup.service';
 import { Facts, factsOn, myEmployeeId, settingOn, todayIn } from './time-core';
 import { localDate } from './time-maths';
-import { BindRequestDto, DevicePunchDto, FaceConsentDto, PhonePunchDto, PhonePunchItemDto, PhoneSyncDto, RegisterKioskDto, TrainingSessionDto, TrainingSessionEditDto } from './devices.dto';
+import { BindRequestDto, DevicePunchDto, FaceConsentDto, PhonePunchDto, PhonePunchItemDto, PhoneSyncDto, RegisterKioskDto, TrainingSessionDto, TrainingSessionEditDto, WebApprovalDto } from './devices.dto';
 import { SETUP_CODE_MS, kioskHealth, newSetupCode, normalSetupCode, phoneInactive, pinProblem, punchTimeProblem, sha256 } from './device-rules';
 import { FACE_MATCH, type FaceMatchProvider } from './providers/face-match';
 
@@ -28,6 +30,7 @@ export type PunchResult = { accepted: boolean; duplicate: boolean; kind: string;
 export type SyncResult = ({ clientRef: string; ok: true } & PunchResult) | { clientRef: string; ok: false; status: number; message: string };
 
 const CARD_AUDIENCE = 'yx-kiosk-card';
+const WEB_APPROVAL = 'attendance.web_device_approval';
 const isUnique = (e: unknown) => e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002';
 
 @Injectable()
@@ -37,6 +40,7 @@ export class DevicesService {
     private readonly setup: TimeSetupService,
     private readonly attendance: AttendanceService,
     private readonly crypto: OrgSecretsCryptoService,
+    private readonly settings: OrgSettingsService,
     @Optional() @Inject(FACE_MATCH) private readonly face: FaceMatchProvider | null,
   ) {}
 
@@ -123,9 +127,42 @@ export class DevicesService {
           .map((p) => ({ id: p.id, kind: p.kind, employeeId: p.employeeId, person: people.get(p.employeeId!) ?? '', model: p.model ?? '', appVersion: p.appVersion, lastSeenAt: p.lastSeenAt, status: p.status === 'active' && phoneInactive(p.lastSeenAt, p.decidedAt ?? p.createdAt, now) ? 'inactive' : p.status })),
         locations: locations.map((l) => ({ id: l.id, name: l.name, entity: entities.get(l.legalEntityId) ?? '', zone: l.timezone })),
         entities: entities.size,
+        // The places the web clock-in rule can be set for, and the rule as it stands.
+        entityList: [...entities].map(([id, name]) => ({ id, name })),
+        webApproval: await this.webApproval(tx, org, locations, entities),
         company: (await tx.organization.findUnique({ where: { id: org }, select: { name: true } }))?.name ?? '',
       };
     });
+  }
+
+  /**
+   * Founder answer 1: the "Web clock-in only from an approved computer" rule on TIM-14: the company value and every
+   * legal entity / location that sets its own (attendance.web_device_approval: company → legal entity → location).
+   */
+  private async webApproval(tx: Tx, org: string, locations: { id: string; name: string }[], entities: Map<string, string>) {
+    const rows = await tx.setting.findMany({ where: { organizationId: org, key: WEB_APPROVAL }, orderBy: { scopeType: 'asc' } });
+    const company = rows.find((r) => r.scopeType === 'tenant')?.value ?? SETTINGS[WEB_APPROVAL].default;
+    const nameOf = (type: string, id: string) => (type === 'legal_entity' ? entities.get(id) : locations.find((l) => l.id === id)?.name) ?? '';
+    return {
+      company,
+      overrides: rows.filter((r) => r.scopeType !== 'tenant').map((r) => ({ id: r.id, scopeType: r.scopeType as 'legal_entity' | 'location', scopeId: r.scopeId, name: nameOf(r.scopeType, r.scopeId), value: r.value })),
+    };
+  }
+
+  /** Sets the rule for the company, a legal entity or a location (validated and audited by the settings service). */
+  async setWebApproval(ctx: TenantContext, user: ScopeUser, dto: WebApprovalDto) {
+    if (dto.scopeType === 'tenant' ? dto.scopeId : !dto.scopeId) throw new BadRequestException(dto.scopeType === 'tenant' ? 'The company-wide rule has no place.' : 'Choose the legal entity or location.');
+    // The company-wide set-up holder check first; then the settings service checks the place and value and audits it.
+    await this.setup.run(ctx, user, true, async () => null);
+    return this.settings.set(ctx, { key: WEB_APPROVAL, scopeType: dto.scopeType, scopeId: dto.scopeId, value: dto.value } as SettingDto);
+  }
+
+  /** A legal entity or location goes back to the value above it. */
+  async removeWebApproval(ctx: TenantContext, user: ScopeUser, id: string) {
+    const row = await this.setup.run(ctx, user, true, (tx, c) => tx.setting.findFirst({ where: { organizationId: c.organizationId, id, key: WEB_APPROVAL } }));
+    if (!row || row.scopeType === 'tenant') throw new NotFoundException('Not found');
+    await this.settings.remove(ctx, id);
+    return { id };
   }
 
   private async names(tx: Tx, org: string, ids: string[]): Promise<Map<string, string>> {

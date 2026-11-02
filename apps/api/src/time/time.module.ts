@@ -46,12 +46,13 @@ import { OpenShiftsService } from './open-shifts.service';
 import { StandbyService } from './standby.service';
 import { AutoRosterController } from './auto-roster.controller';
 import { AutoRosterService } from './auto-roster.service';
+import { OrgSettingsService } from '../org-structure/org-settings.service';
 
 // M02 Time and leave (step 4, batches 1 and 2) on the shared P03 approvals engine and P19 conditions.
 @Module({
   imports: [AuditModule, WorkflowModule, NotificationsModule, AuthModule, PayrollModule, CryptoModule],
   controllers: [TimeController, TimeOpsController, LeaveV2Controller, AttendanceOpsController, DevicesController, KioskController, FieldController, HybridPrefillController, RosterExtrasController, AutoRosterController, RosterLicencesController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, DayEngine, LeaveService, AttendanceService, TimeSetupService, TimeJobs, RosterService, OvertimeService, TimesheetService, PeriodsService, NightWorkService, LeaveV2Service, { provide: HOLIDAY_PROVIDER, useClass: DevFakeHolidayProvider }, AttendanceOpsService, IndustrialActionService, PresenceService, DeviceBackfillService, DevicesService, KioskService, { provide: FACE_MATCH, useFactory: faceMatchFromEnv }, FieldService, FieldJobs, { provide: MAPS, useFactory: mapsFromEnv }, HybridService, PrefillService, { provide: WORK_TOOLS, useFactory: workToolsFromEnv }, OpenShiftsService, StandbyService, AutoRosterService, LicencesService, LicenceJobs],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, OrgSettingsService, DayEngine, LeaveService, AttendanceService, TimeSetupService, TimeJobs, RosterService, OvertimeService, TimesheetService, PeriodsService, NightWorkService, LeaveV2Service, { provide: HOLIDAY_PROVIDER, useClass: DevFakeHolidayProvider }, AttendanceOpsService, IndustrialActionService, PresenceService, DeviceBackfillService, DevicesService, KioskService, { provide: FACE_MATCH, useFactory: faceMatchFromEnv }, FieldService, FieldJobs, { provide: MAPS, useFactory: mapsFromEnv }, HybridService, PrefillService, { provide: WORK_TOOLS, useFactory: workToolsFromEnv }, OpenShiftsService, StandbyService, AutoRosterService, LicencesService, LicenceJobs],
   // PeriodsService.feedRows / feed: the stable read of the frozen payroll feed for payroll (step 5).
   // LeaveV2Service.creditCompOff: the one comp-off ledger, for overtime settled as comp-off (TIM-09).
   exports: [LeaveService, PeriodsService, LeaveV2Service],

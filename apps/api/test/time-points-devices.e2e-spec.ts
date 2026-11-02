@@ -32,6 +32,7 @@ describe('Time: check-in points and approved computers', () => {
   const login = async (who: Who, k: 'A' | 'B') => (token[who] = (await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: org[k].slug, email: `${who}@dev-${run}.test`, password: PASSWORD }).expect(200)).body.accessToken);
   const setting = (key: string, value: string) => inA((tx) => tx.setting.create({ data: { organizationId: org.A.id, scopeType: 'tenant', scopeId: org.A.id, key, value } }));
   const auditOf = (action: string) => tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, action } }));
+  const noticesFor = (who: Who) => tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.findMany({ where: { recipientUserId: users[who], type: 'time.web_device.requested' } }));
   const sha = (v: string) => createHash('sha256').update(v).digest('hex');
   // Two computers: the sign-in device cookie (yx_device) each browser carries.
   const pcX = randomBytes(32).toString('base64url');
@@ -202,6 +203,13 @@ describe('Time: check-in points and approved computers', () => {
     expect(JSON.stringify(row)).not.toContain(pcX);
     expect((await api('peer', 'get', `/time/me/attendance?month=${new Date().toISOString().slice(0, 7)}`).set('Cookie', on(pcX)).expect(200)).body.device.requested).toBe(true);
     expect((await auditOf('time.web_device.requested')).length).toBe(1);
+    // Founder answer 4: HR admins hear of it once (not for the repeat); the person asking does not.
+    const told = await noticesFor('hrAdmin');
+    expect(told).toHaveLength(1);
+    expect(told[0]).toMatchObject({ entityId: request1, linkPath: '/yx/time/setup/devices' });
+    expect(told[0]!.contextText).toMatch(/asked to clock in on the web from a new computer \(Chrome on Windows\)/);
+    expect(await noticesFor('peer')).toHaveLength(0);
+    expect(await noticesFor('hrExec')).toHaveLength(0);
   });
 
   it('HR sees the request; wrong role, another company and approving oneself are refused; HR approves', async () => {
@@ -234,6 +242,31 @@ describe('Time: check-in points and approved computers', () => {
     await api('hrAdmin', 'post', `/time/devices/phones/${request1}/sign-out`).expect(409);
     expect((await auditOf('time.web_device.revoked')).length).toBe(1);
     await api('peer', 'post', '/time/me/punch').set('Cookie', on(pcX)).send({ kind: 'out', ...MAIN, accuracyM: 20 }).expect(403);
+  });
+
+  it('the web clock-in rule on TIM-14: wrong role, bad input and another company refused; a location sets its own; audited', async () => {
+    await api('emp', 'put', '/time/devices/web-approval').send({ scopeType: 'tenant', value: 'off' }).expect(403);
+    await api('hrExec', 'put', '/time/devices/web-approval').send({ scopeType: 'tenant', value: 'off' }).expect(403);
+    await api('hrAdmin', 'put', '/time/devices/web-approval').send({ scopeType: 'tenant', value: 'maybe' }).expect(400);
+    await api('hrAdmin', 'put', '/time/devices/web-approval').send({ scopeType: 'department', scopeId: ids.deptA, value: 'on' }).expect(400);
+    await api('hrAdmin', 'put', '/time/devices/web-approval').send({ scopeType: 'location', value: 'on' }).expect(400);
+    await api('hrAdmin', 'put', '/time/devices/web-approval').send({ scopeType: 'tenant', scopeId: ids.locA, value: 'on' }).expect(400);
+    await api('hrAdmin', 'put', '/time/devices/web-approval').send({ scopeType: 'location', scopeId: ids.locB, value: 'off' }).expect(404);
+    // The company rule is on (set above); Hosur turns it off for itself, so the peer clocks in from any computer there.
+    await api('hrAdmin', 'put', '/time/devices/web-approval').send({ scopeType: 'location', scopeId: ids.locA, value: 'off' }).expect(200);
+    const w = (await api('hrAdmin', 'get', '/time/devices').expect(200)).body.webApproval;
+    expect(w.company).toBe('on');
+    expect(w.overrides).toEqual([expect.objectContaining({ scopeType: 'location', scopeId: ids.locA, name: 'Hosur', value: 'off' })]);
+    expect((await api('peer', 'get', `/time/me/attendance?month=${new Date().toISOString().slice(0, 7)}`).set('Cookie', on(pcY)).expect(200)).body.device.required).toBe(false);
+    expect(JSON.stringify(await auditOf('org.setting.changed'), (_k, v) => (typeof v === 'bigint' ? String(v) : v))).toContain('attendance.web_device_approval');
+    // Another company sees only its own rule and cannot remove this one; a wrong id is 404.
+    expect((await api('adminB', 'get', '/time/devices').expect(200)).body.webApproval).toEqual({ company: 'off', overrides: [] });
+    await api('adminB', 'post', `/time/devices/web-approval/${w.overrides[0].id}/remove`).expect(404);
+    await api('hrAdmin', 'post', `/time/devices/web-approval/${randomUUID()}/remove`).expect(404);
+    await api('hrExec', 'post', `/time/devices/web-approval/${w.overrides[0].id}/remove`).expect(403);
+    await api('hrAdmin', 'post', `/time/devices/web-approval/${w.overrides[0].id}/remove`).expect(200);
+    expect((await api('hrAdmin', 'get', '/time/devices').expect(200)).body.webApproval.overrides).toEqual([]);
+    expect((await api('peer', 'get', `/time/me/attendance?month=${new Date().toISOString().slice(0, 7)}`).set('Cookie', on(pcY)).expect(200)).body.device.required).toBe(true);
   });
 
   it('HR refuses a request with a reason; another company with the setting off clocks in as before', async () => {

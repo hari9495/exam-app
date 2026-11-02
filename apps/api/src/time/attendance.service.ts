@@ -9,7 +9,7 @@ import { escapeHtml } from '../notifications/notification-email-render';
 import { DayEngine } from './day-engine.service';
 import { OnDutyDto, PunchDto, RegulariseDto, WfhDto } from './dto';
 import { clockText, onDutyProblem, overlaps } from './on-duty-rules';
-import { TIME_KEYS, asDate, dateOf, factsOn, holidaysFor, hrApprovers, monthRange, mustSee, myEmployeeId, rulesFor, settingOn, todayIn, visibleSql, type Facts } from './time-core';
+import { TIME_KEYS, asDate, dateOf, factsOn, holdersOf, holidaysFor, hrApprovers, monthRange, mustSee, myEmployeeId, rulesFor, settingOn, todayIn, visibleSql, type Facts } from './time-core';
 import { addDays, checkInVerdict, fencesOf, ipInRanges, minutesInto, type Fence } from './time-maths';
 import { ScheduleBook, assertOpen, lockedDates } from './schedule';
 import { OvertimeService } from './overtime.service';
@@ -99,9 +99,9 @@ export class AttendanceService implements OnModuleInit {
   }
 
   /** "Ask HR to approve" this computer (DeviceNotApproved). Asking again for the same computer answers the same request. */
-  requestWebDevice(ctx: TenantContext, user: ScopeUser, hash: string, userAgent: string | null) {
+  async requestWebDevice(ctx: TenantContext, user: ScopeUser, hash: string, userAgent: string | null) {
     if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
-    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+    const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       const { f, today } = await this.meFacts(tx, c);
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`device:${org}:${f.employeeId}`}))`;
@@ -109,13 +109,31 @@ export class AttendanceService implements OnModuleInit {
       const mine = await tx.timeDevice.findMany({ where: { organizationId: org, kind: 'web', employeeId: f.employeeId, status: { in: ['active', 'pending'] } } });
       if (mine.some((d) => d.status === 'active' && d.installHash === hash)) throw new ConflictException('This computer is already approved for clock-in.');
       const same = mine.find((d) => d.status === 'pending' && d.installHash === hash);
-      if (same) return { id: same.id, status: 'pending' };
+      // A repeat of the same request tells no one again.
+      if (same) return { id: same.id, status: 'pending', tell: null };
       if (mine.some((d) => d.status === 'pending')) throw new ConflictException('You already asked HR to approve another computer. Wait for HR to decide that one first.');
       const model = (describeDevice(userAgent) ?? 'Web browser').slice(0, 100);
       const d = await tx.timeDevice.create({ data: { organizationId: org, kind: 'web', employeeId: f.employeeId, model, installHash: hash, status: 'pending', createdBy: c.userId ?? null } });
       await audit(tx, c, 'time.web_device.requested', 'time_device', d.id, { employeeId: f.employeeId, model });
-      return { id: d.id, status: 'pending' };
+      // Founder answer 4: HR admins (company set-up holders who reach the person; else the company admins) hear of it,
+      // never the person asking.
+      const others = (ids: string[]) => ids.filter((x) => x !== c.userId);
+      let hr = others(await holdersOf(tx, org, 'leave.settings.manage', f.employeeId, today));
+      if (!hr.length) hr = others((await tx.user.findMany({ where: { organizationId: org, role: 'org_admin', status: 'active' }, select: { id: true }, take: 25 })).map((u) => u.id));
+      return { id: d.id, status: 'pending', tell: { to: hr, name: f.name, model } };
     });
+    if (out.tell?.to.length) {
+      const text = `${out.tell.name} asked to clock in on the web from a new computer (${out.tell.model}).`;
+      await this.notifications.notifySystem(
+        ctx,
+        out.tell.to,
+        'time.web_device.requested',
+        { entityType: 'time_device', entityId: out.id, contextText: text, linkPath: '/yx/time/setup/devices' },
+        { subject: 'A computer is waiting for approval', html: `<p>${escapeHtml(text)}</p><p>Open Time › Devices and kiosks › New device requests to approve or reject it.</p>` },
+        user.userId ?? null,
+      );
+    }
+    return { id: out.id, status: out.status };
   }
 
   private punchView(p: Prisma.PunchGetPayload<object>, names: Map<string, string>) {
