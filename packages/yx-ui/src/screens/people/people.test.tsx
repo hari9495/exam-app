@@ -223,6 +223,8 @@ describe('screens', () => {
   it('international bank: invalid IBAN blocks sending and says why', async () => {
     render(<InternationalBankTab persona="hr" splits={SPLITS} net={49812} defaultIban="AE07 0331 2345 6789 0123 457" />);
     expect(screen.getByText(/Enter a 23-character UAE IBAN/)).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: 'This month' })).toHaveAttribute('data-num');
+    expect(screen.getByRole('columnheader', { name: 'Account' })).not.toHaveAttribute('data-num');
     fireEvent.click(screen.getByRole('button', { name: 'Send for approval' }));
     expect((await screen.findAllByText('Fix the IBAN first.')).length).toBeGreaterThan(0); // a toast
   });
@@ -478,7 +480,9 @@ describe('bulk changes', () => {
   it('the rule step shows people and added cost per rating', () => {
     render(<BulkChangesWizard current="rule" />);
     expect(screen.getByLabelText('Increase for Exceeds')).toBeTruthy();
-    expect(screen.getByRole('columnheader', { name: 'Added cost a year' })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: 'Added cost a year' })).toHaveAttribute('data-num');
+    expect(screen.getByRole('columnheader', { name: 'People' })).toHaveAttribute('data-num');
+    expect(screen.getByRole('columnheader', { name: 'Rating' })).not.toHaveAttribute('data-num');
   });
 });
 

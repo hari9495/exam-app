@@ -23,6 +23,7 @@ describe('PPL-43 annual declarations, live', () => {
     expect(screen.getByRole('heading', { name: 'Annual declarations 2026–27' })).toBeInTheDocument();
     expect(screen.getByText('Due in 16 days')).toBeInTheDocument();
     expect(screen.getByRole('row', { name: /Deccan Agro Industries Ltd 350 Demat · NSDL/ })).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: '350' })).toHaveAttribute('data-num');
     await ue.click(screen.getByRole('button', { name: 'Add holding' }));
     let dialog = screen.getByRole('dialog');
     await ue.click(within(dialog).getByRole('button', { name: 'Add holding' }));

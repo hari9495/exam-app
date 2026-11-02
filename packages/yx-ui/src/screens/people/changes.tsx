@@ -830,13 +830,13 @@ function SampleBulkChangesWizard({ current = 'people', confirmOpen = false, mode
                 getRowId={(k) => k}
                 columns={[
                   { key: 'rating', header: 'Rating', rowHeader: true, cell: (k) => k },
-                  { key: 'people', header: 'People', cell: (k) => rows.filter((r) => r.rating === k).length },
+                  { key: 'people', header: 'People', num: true, cell: (k) => rows.filter((r) => r.rating === k).length },
                   {
                     key: 'pct',
                     header: 'Increase',
                     cell: (k) => <NumberField aria-label={`Increase for ${k}`} value={pct[k]} onChange={(v) => setPct({ ...pct, [k]: v ?? 0 })} decimals suffix="%" />,
                   },
-                  { key: 'cost', header: 'Added cost a year', cell: (k) => formatINR(rows.filter((r) => r.rating === k).reduce((s, r) => s + r.next - r.ctc, 0)) },
+                  { key: 'cost', header: 'Added cost a year', num: true, cell: (k) => formatINR(rows.filter((r) => r.rating === k).reduce((s, r) => s + r.next - r.ctc, 0)) },
                 ]}
               />
                   </>

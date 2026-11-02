@@ -350,7 +350,7 @@ export function LiveIncrementWizard({ live }: { live: LiveIncrement }) {
                         getRowId={(k) => k}
                         columns={[
                           { key: 'rating', header: 'Rating', rowHeader: true, cell: (k) => k },
-                          { key: 'people', header: 'People', cell: (k) => people.filter((r) => r.rating === k && custom[r.employeeId] === undefined).length + unset.filter((r) => r.rating === k).length },
+                          { key: 'people', header: 'People', num: true, cell: (k) => people.filter((r) => r.rating === k && custom[r.employeeId] === undefined).length + unset.filter((r) => r.rating === k).length },
                           {
                             key: 'pct',
                             header: 'Increase',
@@ -359,6 +359,7 @@ export function LiveIncrementWizard({ live }: { live: LiveIncrement }) {
                           {
                             key: 'cost',
                             header: 'Added cost a year',
+                            num: true,
                             cell: (k) => formatINR(people.filter((r) => r.rating === k && custom[r.employeeId] === undefined).reduce((s, r) => s + Number(r.newCtc) - Number(r.currentCtc), 0)),
                           },
                         ]}

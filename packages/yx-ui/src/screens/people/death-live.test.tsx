@@ -57,6 +57,8 @@ describe('PPL-23 death in service, live', () => {
     expect(screen.getByRole('heading', { name: 'Death in service · Late Ravi Shankar' })).toBeInTheDocument();
     expect(screen.getByText(/Maintenance Supervisor, Hosur plant\. Access was revoked at once\..*Compassionate contact: Lakshmi Venkatesan\./)).toBeInTheDocument();
     expect(screen.getByRole('cell', { name: /Kamala Shankar/ })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Share' })).toHaveAttribute('data-num');
+    expect(screen.getByRole('cell', { name: '70%' })).toHaveAttribute('data-num');
     expect(screen.queryByRole('columnheader', { name: 'Bank account' })).toBeNull();
     await next(3);
     expect(screen.getByText('Payroll sends the F&F for approval.')).toBeInTheDocument();
@@ -70,6 +72,7 @@ describe('PPL-23 death in service, live', () => {
     expect(screen.getAllByText('Not given yet')).toHaveLength(1);
     await next();
     expect(screen.getByText(/Kamala ₹70,000 · Divakar ₹30,000/)).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Amount' })).toHaveAttribute('data-num');
   });
 
   it('no nomination: legal heirs need the certificate; shares short of 100 % mark the step', async () => {

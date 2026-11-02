@@ -1587,7 +1587,7 @@ function SampleInternationalBank({ persona, splits: initial, net, embedded, defa
                 cell: (s) =>
                   s.rule === 'remainder' ? '—' : <NumberField aria-label={`Value for ${s.label}`} size="sm" value={s.value} onChange={(v) => setSplits((xs) => xs.map((x) => (x.id === s.id ? { ...x, value: v ?? 0 } : x)))} />,
               },
-              { key: 'month', header: 'This month', cell: (s) => <span className="yx-ppl__num">{result?.ok ? formatINR(result.amounts[s.id]) : '—'}</span> },
+              { key: 'month', header: 'This month', num: true, cell: (s) => <span className="yx-ppl__num">{result?.ok ? formatINR(result.amounts[s.id]) : '—'}</span> },
             ]}
           />
           {result && !result.ok && (

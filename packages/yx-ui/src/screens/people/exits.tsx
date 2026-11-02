@@ -1744,7 +1744,7 @@ function LiveDeathInService({ live }: { live: LiveDeath }) {
                         ),
                       },
                       { key: 'scheme', header: 'Scheme', cell: () => 'All dues' },
-                      { key: 'share', header: 'Share', cell: (p) => <span className="yx-ppl__num">{Number(p.sharePercent)}%</span> },
+                      { key: 'share', header: 'Share', num: true, cell: (p) => <span className="yx-ppl__num">{Number(p.sharePercent)}%</span> },
                       ...(s !== undefined
                         ? [{ key: 'bank', header: 'Bank account', cell: (p: (typeof payees)[number]) => (bank(p.name) ? <><span className="yx-mono">{bank(p.name)}</span> <StatusBadge status="Pending verification" /></> : <span className="yx-mono">Not given yet</span>) }]
                         : []),
@@ -1776,7 +1776,7 @@ function LiveDeathInService({ live }: { live: LiveDeath }) {
                     getRowId={(l) => l.id}
                     columns={[
                       { key: 'line', header: 'Line', cell: (l) => l.label },
-                      { key: 'amount', header: 'Amount', cell: (l) => <span className="yx-ppl__num">{formatINR(l.amount)}</span> },
+                      { key: 'amount', header: 'Amount', num: true, cell: (l) => <span className="yx-ppl__num">{formatINR(l.amount)}</span> },
                       { key: 'to', header: 'Paid to', cell: (l) => paidTo(l.amount) },
                     ]}
                   />
@@ -1888,7 +1888,7 @@ function SampleDeathInService({ current = 'payees', noNomination = false }: { cu
                       ),
                     },
                     { key: 'scheme', header: 'Scheme', cell: (p) => p.scheme },
-                    { key: 'share', header: 'Share', cell: (p) => <span className="yx-ppl__num">{p.share}%</span> },
+                    { key: 'share', header: 'Share', num: true, cell: (p) => <span className="yx-ppl__num">{p.share}%</span> },
                     {
                       key: 'bank',
                       header: 'Bank account',
@@ -1928,7 +1928,7 @@ function SampleDeathInService({ current = 'payees', noNomination = false }: { cu
                   getRowId={(r) => r.line}
                   columns={[
                     { key: 'line', header: 'Line', cell: (r) => r.line },
-                    { key: 'amount', header: 'Amount', cell: (r) => <span className="yx-ppl__num">{formatINR(r.amount)}</span> },
+                    { key: 'amount', header: 'Amount', num: true, cell: (r) => <span className="yx-ppl__num">{formatINR(r.amount)}</span> },
                     { key: 'to', header: 'Paid to', cell: (r) => r.to },
                   ]}
                 />

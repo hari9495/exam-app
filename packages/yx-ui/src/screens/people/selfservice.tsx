@@ -959,7 +959,7 @@ export function BfsiDeclarations({ tab = 'holdings', otpSent = false, today, liv
               empty={live ? 'No holdings yet. Add each security you, or your dependants through you, hold.' : undefined}
               columns={[
                 { key: 'security', header: 'Security', cell: (h) => h.security },
-                { key: 'quantity', header: 'Quantity', cell: (h) => <span className="yx-ppl__num">{h.quantity}</span> },
+                { key: 'quantity', header: 'Quantity', num: true, cell: (h) => <span className="yx-ppl__num">{h.quantity}</span> },
                 { key: 'how', header: 'How held', cell: (h) => h.how ?? '—' },
                 ...(live && !done ? [{ key: 'remove', header: <span className="yx-visually-hidden">Remove</span>, cell: (h: (typeof holdings)[number]) => remove(live.onRemoveHolding, h.id, h.security) }] : []),
               ]}

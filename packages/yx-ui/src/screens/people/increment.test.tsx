@@ -39,6 +39,10 @@ describe('Annual increment, live (PPL-06)', () => {
     expect(await screen.findByText(/1 person matches\. 1 is left out\./)).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'See who' }));
     expect(within(screen.getByRole('dialog')).getByText('No released rating in FY 2025-26 annual review.')).toBeInTheDocument();
+    await ue.keyboard('{Escape}');
+    await ue.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(screen.getByRole('columnheader', { name: 'Added cost a year' })).toHaveAttribute('data-num');
+    expect(screen.getByRole('columnheader', { name: 'People' })).toHaveAttribute('data-num');
   });
 
   const toPreview = async (l: LiveIncrement) => {
