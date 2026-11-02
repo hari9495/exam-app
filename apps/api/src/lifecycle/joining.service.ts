@@ -10,7 +10,7 @@ import { LettersService } from '../documents/letters/letters.service';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { JourneysService as DeskJourneysService } from '../service-desk/journeys.service';
 import { joinerInScope, ownOf } from '../documents/person-access';
-import { PreboardingPortalService } from './portal.service';
+import { PreboardingPortalService, nomineesOf } from './portal.service';
 import { OnboardingExtrasService } from './onboarding-extras.service';
 
 // LIFE-2.03 / 2.08 / 2.09 HR's side of a joiner (M01 §3.5, D3; YX-LC-03 / 12 / 31; design §8.4):
@@ -136,7 +136,14 @@ export class JoiningService {
         await tx.employeePersonalDetails.upsert({ where: { organizationId_employeeId: { organizationId: org, employeeId: hired.id } }, update: d, create: { organizationId: org, employeeId: hired.id, ...d } });
       }
       // Lifecycle 6e (YX-LC-16): the nominees the joiner gave become the record's nominations (death in service uses them).
-      if (a.nominees?.nominees.length) await tx.employeeNomination.createMany({ data: a.nominees.nominees.map((n) => ({ organizationId: org, employeeId: hired.id, scheme: 'all', name: n.name, relation: n.relation, sharePercent: n.sharePercent, source: 'joiner' })) });
+      // T9-01: one row per scheme with a share (group insurance is the group term scheme); an older single share stays "all".
+      const SCHEME = { pf: 'pf', gratuity: 'gratuity', insurance: 'group_term' } as const;
+      const noms = (nomineesOf(a) ?? []).flatMap((n) =>
+        n.single
+          ? [{ scheme: 'all', name: n.name, relation: n.relation, sharePercent: n.pf }]
+          : (['pf', 'gratuity', 'insurance'] as const).filter((k) => n[k] > 0).map((k) => ({ scheme: SCHEME[k], name: n.name, relation: n.relation, sharePercent: n[k] })),
+      );
+      if (noms.length) await tx.employeeNomination.createMany({ data: noms.map((n) => ({ organizationId: org, employeeId: hired.id, ...n, source: 'joiner' })) });
       const reason = 'Given by the joiner in pre-boarding';
       const raised: string[] = [];
       if (a.identity) {
@@ -162,36 +169,68 @@ export class JoiningService {
   async cancel(ctx: TenantContext, user: ScopeUser, id: string, dto: { outcome: 'did_not_join' | 'reneged' | 'withdrawn'; reason?: string; version: number }) {
     const v = await this.viewer(user);
     const res = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const org = c.organizationId;
       const pb = await this.joiner(tx, c, v, id, 'lifecycle.onboarding.manage');
       if (pb.status !== 'invited') throw new ConflictException('This joiner is no longer waiting to join.');
       if (dto.outcome === 'did_not_join' && iso(pb.joiningOn) > todayIst()) throw new BadRequestException('"Did not join" is for on or after the joining day. Before it, use reneged or offer withdrawn.');
-      // PPL-15 (founder 27 Oct 2026): a withdrawal comes with its letter, drafted (from the joiner's planned job, so before it is cancelled) for HR to review and issue in People › Letters.
-      const letter = dto.outcome === 'withdrawn' ? await this.letters.draftIn(tx, c, pb.personId, 'offer_withdrawal', dto.reason?.trim() || null) : null;
-      const n = await tx.preboarding.updateMany({ where: { organizationId: org, id, version: dto.version, status: 'invited' }, data: { status: 'cancelled', cancelledOn: asDate(todayIst()), outcome: dto.outcome, outcomeReason: dto.reason?.trim().slice(0, 500) || null, version: { increment: 1 } } });
-      if (!n.count) throw new ConflictException('Someone else changed this joiner. Reload it.');
-      const j = await tx.journey.findFirst({ where: { organizationId: org, subjectType: 'preboarding', subjectId: id } });
-      const tickets: string[] = [];
-      if (j) {
-        const linked = await tx.journeyTask.findMany({ where: { organizationId: org, journeyId: j.id, linkType: 'sd_ticket', status: { in: ['open', 'waiting'] } }, select: { linkId: true } });
-        tickets.push(...linked.map((t) => t.linkId!).filter(Boolean));
-        await tx.journeyTask.updateMany({ where: { organizationId: org, journeyId: j.id, status: { in: ['open', 'waiting'] } }, data: { status: 'cancelled', version: { increment: 1 } } });
-        await tx.journey.update({ where: { id: j.id }, data: { status: 'cancelled' } });
-      }
-      await tx.preboardingPortalSession.updateMany({ where: { organizationId: org, preboardingId: id, endedAt: null }, data: { endedAt: new Date() } });
-      await tx.personRole.updateMany({ where: { organizationId: org, personId: pb.personId, roleType: 'preboarder', sourceId: id, endOn: null }, data: { endOn: asDate(todayIst()) } });
-      await tx.bgvCheck.updateMany({ where: { organizationId: org, preboardingId: id, status: { in: ['requested', 'in_progress'] } }, data: { status: 'cancelled', note: 'The joiner did not join', version: { increment: 1 } } });
-      const pending = await tx.letterIssue.findMany({ where: { organizationId: org, personId: pb.personId, status: { in: ['pending_approval', 'rendering', 'awaiting_signature'] } }, select: { id: true, wfRequestId: true } });
-      await tx.letterIssue.updateMany({ where: { organizationId: org, id: { in: pending.map((l) => l.id) } }, data: { status: 'withdrawn' } });
-      await tx.signatureRequest.updateMany({ where: { organizationId: org, personId: pb.personId, status: 'open' }, data: { status: 'cancelled' } });
-      if (pb.offerId) await tx.offer.updateMany({ where: { organizationId: org, id: pb.offerId }, data: { status: dto.outcome === 'withdrawn' ? 'withdrawn' : 'reneged' } });
-      await audit(tx, c, 'preboarding.cancelled', 'preboarding', id, { outcome: dto.outcome, offerId: pb.offerId, deskRequests: tickets.length, letters: pending.length, withdrawalLetter: letter });
-      await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'preboarding.cancelled', payload: { preboardingId: id, outcome: dto.outcome } } });
-      return { tickets, org, offerId: pb.offerId };
+      return this.closeIn(tx, c, pb, dto.outcome, dto.reason?.trim() || null, dto.version, true);
     });
-    await this.desk.stopFor({ organizationId: res.org, isSuperAdmin: false } as CompanyContext, res.tickets, `The joiner's onboarding was cancelled (${dto.outcome.replace(/_/g, ' ')}).`).catch(() => undefined);
-    if (res.offerId && user.userId) await this.unwindHire(ctx, user.userId, res.offerId, dto.outcome);
+    await this.afterClose(ctx, user.userId ?? null, res, dto.outcome, null);
     return { ok: true };
+  }
+
+  /**
+   * T9-01 "Decline offer": the joiner, signed in to the joining portal, reneges with a reason. The same closing as HR's
+   * (nothing deleted, tasks and checks stop, the offer and the hiring entry move); the portal stays readable so the
+   * joiner sees the outcome; HR (the joiner's owner) is told. The candidate's move in Hiring is recorded under that HR
+   * owner, with the joiner's reason.
+   */
+  async declineByJoiner(org: string, id: string, dto: { reason: string; note?: string }) {
+    const c = { organizationId: org, isSuperAdmin: false } as CompanyContext;
+    const reason = [dto.reason, dto.note?.trim()].filter(Boolean).join(': ').slice(0, 500);
+    const res = await this.tenantPrisma.forTenant(c, async (tx) => {
+      const pb = await tx.preboarding.findFirst({ where: { organizationId: org, id, status: 'invited' } });
+      if (!pb) throw new ConflictException({ statusCode: 409, code: 'PORTAL_CLOSED', message: 'Your joining is closed, so nothing can be changed here.' });
+      const p = await tx.person.findFirstOrThrow({ where: { organizationId: org, id: pb.personId }, select: { givenName: true, familyName: true, preferredName: true } });
+      const out = await this.closeIn(tx, c, pb, 'reneged', reason, pb.version, false);
+      await audit(tx, c, 'preboarding.declined', 'preboarding', id, { by: 'joiner', reason: dto.reason, note: Boolean(dto.note?.trim()) });
+      return { ...out, hr: pb.hrOwnerUserId, who: [p.preferredName || p.givenName, p.familyName].filter(Boolean).join(' ') };
+    });
+    await this.afterClose({ organizationId: org, isSuperAdmin: false } as TenantContext, res.hr, res, 'reneged', `Declined by the joiner in the joining portal: ${reason}`);
+    return { hr: res.hr, who: res.who, reason };
+  }
+
+  /** Closes a waiting joining in one transaction (nothing deleted). HR's cancel also ends the joiner's portal sessions. */
+  private async closeIn(tx: Tx, c: CompanyContext, pb: { id: string; personId: string; offerId: string | null }, outcome: 'did_not_join' | 'reneged' | 'withdrawn', reason: string | null, version: number, endSessions: boolean) {
+    const org = c.organizationId;
+    const id = pb.id;
+    // PPL-15 (founder 27 Oct 2026): a withdrawal comes with its letter, drafted (from the joiner's planned job, so before it is cancelled) for HR to review and issue in People › Letters.
+    const letter = outcome === 'withdrawn' ? await this.letters.draftIn(tx, c, pb.personId, 'offer_withdrawal', reason) : null;
+    const n = await tx.preboarding.updateMany({ where: { organizationId: org, id, version, status: 'invited' }, data: { status: 'cancelled', cancelledOn: asDate(todayIst()), outcome, outcomeReason: reason?.slice(0, 500) || null, version: { increment: 1 } } });
+    if (!n.count) throw new ConflictException('Someone else changed this joiner. Reload it.');
+    const j = await tx.journey.findFirst({ where: { organizationId: org, subjectType: 'preboarding', subjectId: id } });
+    const tickets: string[] = [];
+    if (j) {
+      const linked = await tx.journeyTask.findMany({ where: { organizationId: org, journeyId: j.id, linkType: 'sd_ticket', status: { in: ['open', 'waiting'] } }, select: { linkId: true } });
+      tickets.push(...linked.map((t) => t.linkId!).filter(Boolean));
+      await tx.journeyTask.updateMany({ where: { organizationId: org, journeyId: j.id, status: { in: ['open', 'waiting'] } }, data: { status: 'cancelled', version: { increment: 1 } } });
+      await tx.journey.update({ where: { id: j.id }, data: { status: 'cancelled' } });
+    }
+    if (endSessions) await tx.preboardingPortalSession.updateMany({ where: { organizationId: org, preboardingId: id, endedAt: null }, data: { endedAt: new Date() } });
+    await tx.personRole.updateMany({ where: { organizationId: org, personId: pb.personId, roleType: 'preboarder', sourceId: id, endOn: null }, data: { endOn: asDate(todayIst()) } });
+    await tx.bgvCheck.updateMany({ where: { organizationId: org, preboardingId: id, status: { in: ['requested', 'in_progress'] } }, data: { status: 'cancelled', note: 'The joiner did not join', version: { increment: 1 } } });
+    const pending = await tx.letterIssue.findMany({ where: { organizationId: org, personId: pb.personId, status: { in: ['pending_approval', 'rendering', 'awaiting_signature'] } }, select: { id: true, wfRequestId: true } });
+    await tx.letterIssue.updateMany({ where: { organizationId: org, id: { in: pending.map((l) => l.id) } }, data: { status: 'withdrawn' } });
+    await tx.signatureRequest.updateMany({ where: { organizationId: org, personId: pb.personId, status: 'open' }, data: { status: 'cancelled' } });
+    if (pb.offerId) await tx.offer.updateMany({ where: { organizationId: org, id: pb.offerId }, data: { status: outcome === 'withdrawn' ? 'withdrawn' : 'reneged' } });
+    await audit(tx, c, 'preboarding.cancelled', 'preboarding', id, { outcome, offerId: pb.offerId, deskRequests: tickets.length, letters: pending.length, withdrawalLetter: letter });
+    await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'preboarding.cancelled', payload: { preboardingId: id, outcome } } });
+    return { tickets, org, offerId: pb.offerId };
+  }
+
+  /** After the closing commits: stop the desk requests and move the candidate out of hired in Hiring. */
+  private async afterClose(ctx: TenantContext, actorUserId: string | null, res: { tickets: string[]; org: string; offerId: string | null }, outcome: 'did_not_join' | 'reneged' | 'withdrawn', reason: string | null) {
+    await this.desk.stopFor({ organizationId: res.org, isSuperAdmin: false } as CompanyContext, res.tickets, `The joiner's onboarding was cancelled (${outcome.replace(/_/g, ' ')}).`).catch(() => undefined);
+    if (res.offerId && actorUserId) await this.unwindHire(ctx, actorUserId, res.offerId, outcome, reason);
   }
 
   /**
@@ -200,7 +239,7 @@ export class JoiningService {
    * own moves (no message goes to the candidate); a status named for the outcome in the job's pipeline is used when the
    * company has one, else the rejected stage with the reason.
    */
-  private async unwindHire(ctx: TenantContext, actorUserId: string, offerId: string, outcome: 'did_not_join' | 'reneged' | 'withdrawn') {
+  private async unwindHire(ctx: TenantContext, actorUserId: string, offerId: string, outcome: 'did_not_join' | 'reneged' | 'withdrawn', why: string | null = null) {
     const found = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const offer = await tx.offer.findFirst({ where: { organizationId: c.organizationId, id: offerId }, select: { pipelineEntryId: true } });
       const entry = offer ? await tx.pipelineEntry.findFirst({ where: { organizationId: c.organizationId, id: offer.pipelineEntryId }, include: { status: { include: { stage: true } }, job: { select: { id: true, status: true, pipelineId: true } } } }) : null;
@@ -209,7 +248,7 @@ export class JoiningService {
       return { entryId: entry.id, job: entry.job, statusId: status?.id ?? null };
     });
     if (!found) return;
-    const reason = outcome === 'withdrawn' ? 'Offer withdrawn by the company' : outcome === 'reneged' ? 'Reneged after accepting the offer' : 'Did not join';
+    const reason = why ?? (outcome === 'withdrawn' ? 'Offer withdrawn by the company' : outcome === 'reneged' ? 'Reneged after accepting the offer' : 'Did not join');
     await this.pipeline.patchEntry(ctx, actorUserId, found.entryId, found.statusId ? { statusId: found.statusId, reason } : { rejected: true, reason }, { skipComms: true });
     if (found.job.status === 'closed') await this.pipeline.updateJob(ctx, actorUserId, found.job.id, { status: 'open' });
   }

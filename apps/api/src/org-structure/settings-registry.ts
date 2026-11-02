@@ -100,6 +100,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // PPL-49 (founder Q4, 30 Oct 2026): the longest a fixed-term contract may run from the joining day; setting or extending
   // an end past it is refused. Default 3 years; HR may change it per entity or employment type.
   'contract.max_years': { label: 'A fixed-term contract lasts at most (years from joining)', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['1', '2', '3', '4', '5', 'none'], default: '3' },
+  // T9-01 (joiner portal): the time a joiner reports on the first day, shown in "Your first day". HR may change it per entity.
+  'joining.reporting_time': { label: 'Joiners report on their first day at', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00'], default: '09:30' },
   // P02 Q2 (decided): managers view their whole reporting subtree by default; the company may narrow it.
   'access.manager.view_scope': { label: 'Managers can view', scopes: ['tenant'], dated: false, values: ['all_reports', 'direct_reports'], default: 'all_reports', guard: 'access.role.manage' },
   // Founder 28 Oct 2026: a manager's access to their team's pay lasts this long, and covers the whole team or the one person

@@ -52,6 +52,7 @@ describe('notification catalog', () => {
       'letter.ready',
       'letter.signed',
       'preboarding.completed',
+      'preboarding.declined',
       'exit.case.update',
       'exit.clearance.assigned',
       'exit.interview.sent',

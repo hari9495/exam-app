@@ -255,8 +255,9 @@ describe('Lifecycle batch 6b', () => {
     await portal('put', '/sections/bank', t).send({ holderName: `Kavya ${run}`, accountNumber: '123456789012', ifsc: 'HDFC0001234' }).expect(200);
     await portal('put', '/sections/personal', t).send({ dateOfBirth: '1999-05-14', gender: 'female', addressLine1: '14, 3rd Cross, Jayanagar', city: 'Bengaluru', stateCode: 'IN-KA', postalCode: '560011' }).expect(200);
     await portal('put', '/sections/emergency', t).send({ name: 'Anil', relation: 'Father', phone: '+91 98450 11122' }).expect(200);
-    await portal('put', '/sections/nominees', t).send({ nominees: [{ name: 'Anil', relation: 'Father', sharePercent: 60 }, { name: 'Usha', relation: 'Mother', sharePercent: 30 }] }).expect(400);
-    await portal('put', '/sections/nominees', t).send({ nominees: [{ name: 'Anil', relation: 'Father', sharePercent: 60 }, { name: 'Usha', relation: 'Mother', sharePercent: 40 }] }).expect(200);
+    // T9-01: one share per scheme (PF, gratuity, group insurance), each adding up to 100.
+    await portal('put', '/sections/nominees', t).send({ nominees: [{ name: 'Anil', relation: 'Father', pf: 60, gratuity: 60, insurance: 60 }, { name: 'Usha', relation: 'Mother', pf: 30, gratuity: 40, insurance: 40 }] }).expect(400);
+    await portal('put', '/sections/nominees', t).send({ nominees: [{ name: 'Anil', relation: 'Father', pf: 60, gratuity: 60, insurance: 60 }, { name: 'Usha', relation: 'Mother', pf: 40, gratuity: 40, insurance: 40 }] }).expect(200);
     await portal('put', '/sections/tax', t).send({ regime: 'new' }).expect(200);
     await portal('post', '/documents/pan_card', t).attach('file', PNG, 'pan.png').expect(201);
     await portal('post', '/documents/passport', t).attach('file', PNG, 'pp.png').expect(403);

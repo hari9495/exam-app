@@ -126,10 +126,26 @@ export class NomineeDto {
   @Length(2, 40)
   relation!: string;
 
+  /** Optional: Form 2 asks it for a minor nominee. */
+  @IsOptional()
+  @Matches(ISO, { message: "Give the nominee's date of birth." })
+  dateOfBirth?: string;
+
+  /** Shares per scheme (T9-01): PF, gratuity and group insurance; each scheme adds up to 100 over all nominees. */
   @IsInt()
-  @Min(1)
+  @Min(0)
   @Max(100)
-  sharePercent!: number;
+  pf!: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  gratuity!: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  insurance!: number;
 }
 
 export class NomineesSectionDto {
@@ -141,9 +157,41 @@ export class NomineesSectionDto {
   nominees!: NomineeDto[];
 }
 
+/** Form 12B: income from an earlier employer in this financial year, in whole rupees. */
+export class PreviousIncomeDto {
+  @IsInt()
+  @Min(0)
+  @Max(100_000_000)
+  grossSalary!: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(100_000_000)
+  tds!: number;
+}
+
 export class TaxSectionDto {
   @IsIn(['new', 'old'])
   regime!: 'new' | 'old';
+
+  /** Null or left out: no earlier employer this financial year. */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PreviousIncomeDto)
+  previousIncome?: PreviousIncomeDto | null;
+}
+
+export const DECLINE_REASONS = ['Accepted another offer', 'Counter-offer from current employer', 'Location or relocation', 'Personal reasons', 'Other'] as const;
+
+export class DeclineOfferDto {
+  @IsIn(DECLINE_REASONS, { message: 'Choose a reason.' })
+  reason!: (typeof DECLINE_REASONS)[number];
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
 }
 
 export class BgvConsentDto {
