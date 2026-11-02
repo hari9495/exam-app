@@ -1180,8 +1180,11 @@ export function DisputeRecordScreen({ dispute: sample, exportOpen, exported, dec
   const [sampleHold, setHold] = useState(sample.legalHold);
   const hold = live ? dispute.legalHold : sampleHold;
   const [open, setOpen] = useState(!!exportOpen);
-  const [items, setItems] = useState<string[]>(dispute.evidence.map((e) => e.id));
-  const [signatory, setSignatory] = useState<string | null>(live ? (live.signatories[0]?.value ?? null) : 'hr1');
+  // Null until changed: every item, and the first signatory (the live record arrives after the first render).
+  const [chosenItems, setItems] = useState<string[] | null>(null);
+  const items = chosenItems ?? dispute.evidence.map((e) => e.id);
+  const [chosenSignatory, setSignatory] = useState<string | null>(null);
+  const signatory = chosenSignatory ?? (live ? (live.signatories[0]?.value ?? null) : 'hr1');
   const [confirm, setConfirm] = useState(false);
   const [deciding, setDeciding] = useState(!!decideOpen);
   const [tried, setTried] = useState(false);
@@ -1319,7 +1322,7 @@ export function DisputeRecordScreen({ dispute: sample, exportOpen, exported, dec
             <FormField label="Items to include" error={tried && items.length === 0 ? 'Choose at least one item to export.' : null}>
               <div className="yx-growth-stack" data-gap="sm">
                 {dispute.evidence.map((e) => (
-                  <Checkbox key={e.id} checked={items.includes(e.id)} onChange={(c) => setItems((xs) => (c ? [...xs, e.id] : xs.filter((x) => x !== e.id)))} label={e.label} description={`${e.kind} · ${formatDate(e.at)}`} />
+                  <Checkbox key={e.id} checked={items.includes(e.id)} onChange={(c) => setItems(c ? [...items, e.id] : items.filter((x) => x !== e.id))} label={e.label} description={`${e.kind} · ${formatDate(e.at)}`} />
                 ))}
               </div>
             </FormField>

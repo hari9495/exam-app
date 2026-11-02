@@ -24,7 +24,8 @@ import type { DisputeDecisionDto, DisputeExportDto, LegalHoldDto, RaiseDisputeDt
 //   decision upheld / not upheld / a fresh review; recording it never changes the rating: a changed rating goes through
 //            HR's reopen with a reason (PRF-05)
 
-const iso = (d: Date) => d.toISOString().slice(0, 10);
+/** The calendar day in India (IST) of a moment: the escalation window counts Indian days. */
+const iso = (d: Date) => new Date(d.getTime() + 330 * 60_000).toISOString().slice(0, 10);
 const num = (x: Prisma.Decimal | null) => (x === null ? null : Number(x.toString()));
 const KEY = 'perf.dispute.manage';
 const ATTACH_MIME = ['application/pdf', 'image/jpeg', 'image/png'] as const;
