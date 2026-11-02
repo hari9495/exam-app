@@ -324,6 +324,43 @@ export interface DayRule {
   fullDayMinutes: number;
   breakMinutes: number;
   breakAboveMinutes: number;
+  /** TIM-06 (founder 2 Nov 2026): fixed when absent. */
+  kind?: 'fixed' | 'flexi' | 'split';
+  /** Flexi: core hours, wall-clock minutes inside the shift. */
+  coreStart?: number | null;
+  coreEnd?: number | null;
+  /** Split: the first part ends and the second starts (wall clock); the gap between is unpaid and not worked. */
+  firstEnd?: number | null;
+  secondStart?: number | null;
+  /** Flexi: overtime after this many minutes worked (null: the full day). */
+  otAfterMinutes?: number | null;
+}
+
+/** A wall-clock minute as minutes of the shift's start day, at or after the start (the next morning is past 1440). */
+export const fromStart = (r: Pick<DayRule, 'shiftStart'>, m: number) => r.shiftStart + ((((m - r.shiftStart) % 1440) + 1440) % 1440);
+
+/** The worked parts of a shift as [from, to) minutes of its start day: the whole shift, or a split's two parts. */
+export function partsOf(r: Pick<DayRule, 'shiftStart' | 'shiftEnd' | 'kind' | 'firstEnd' | 'secondStart'>): [number, number][] {
+  const end = r.shiftStart + (r.shiftEnd > r.shiftStart ? r.shiftEnd - r.shiftStart : r.shiftEnd + 1440 - r.shiftStart);
+  if (r.kind === 'split' && r.firstEnd != null && r.secondStart != null) return [[r.shiftStart, fromStart(r, r.firstEnd)], [fromStart(r, r.secondStart), end]];
+  return [[r.shiftStart, end]];
+}
+
+/** Flexi company settings: late from core start or never; short below the shift's hours, or only when core hours are missed. */
+export interface FlexiRules {
+  late: 'core_start' | 'never';
+  short: 'shift_hours' | 'core_hours';
+}
+
+/**
+ * The minute lateness counts from for a check-in at `inMinute` of the day (null: never late). Fixed: the start. Flexi:
+ * the start of core hours, or never (company setting attendance.flexi.late_from). Split: the start of the part the
+ * check-in is closer to.
+ */
+export function lateFrom(r: DayRule, inMinute: number, flexiLate: FlexiRules['late'] = 'core_start'): number | null {
+  if (r.kind === 'flexi' && r.coreStart != null) return flexiLate === 'never' ? null : fromStart(r, r.coreStart);
+  const p = partsOf(r);
+  return p.length === 2 && inMinute >= (p[0][1] + p[1][0]) / 2 ? p[1][0] : r.shiftStart;
 }
 
 /** Wall-clock minutes of `at` on the local day `on` in `zone` (past 1440 for the next morning). Durations stay real. */
@@ -381,6 +418,8 @@ export interface DayInput {
    * joined with any punches, so a whole day is present and a part of one adds to the office hours (half day by the shift).
    */
   onDuty?: { inMinute: number; outMinute: number } | null;
+  /** A flexi shift's company settings (defaults: late from core start, short below the shift's hours). */
+  flexi?: FlexiRules;
 }
 
 export type PunchKind = 'in' | 'out' | 'break_start' | 'break_end';
@@ -464,12 +503,12 @@ export function evaluateDay(i: DayInput): DayResult {
   if (fix && fix.outMinute !== null && (fix.kind === 'missed_out' || fix.kind === 'wrong_time')) lastOut = instantAt(i.on, i.zone, fix.outMinute < r.shiftStart && r.shiftEnd < r.shiftStart ? fix.outMinute + 1440 : fix.outMinute);
   if (firstIn && lastOut && lastOut <= firstIn) lastOut = null;
   const regularised = Boolean(fix);
+  const fixedTimes = Boolean(fix && (fix.inMinute !== null || fix.outMinute !== null));
   // On duty: its from and to stretch the day's first in and last out (worked time between them counts).
-  if (i.onDuty && i.mode === 'punch') {
-    const odIn = instantAt(i.on, i.zone, i.onDuty.inMinute);
-    const odOut = instantAt(i.on, i.zone, i.onDuty.outMinute);
-    if (!firstIn || odIn < firstIn) firstIn = odIn;
-    if (!lastOut || odOut > lastOut) lastOut = odOut;
+  const od = i.onDuty && i.mode === 'punch' ? ([instantAt(i.on, i.zone, i.onDuty.inMinute), instantAt(i.on, i.zone, i.onDuty.outMinute)] as [Date, Date]) : null;
+  if (od) {
+    if (!firstIn || od[0] < firstIn) firstIn = od[0];
+    if (!lastOut || od[1] > lastOut) lastOut = od[1];
   }
   // Punches are still recorded in the other modes (D1) and shown on the day, but they never set its status.
   if (i.mode !== 'punch') {
@@ -485,19 +524,79 @@ export function evaluateDay(i: DayInput): DayResult {
   const nowMin = minutesInto(i.on, i.zone, i.now);
   const dayOver = nowMin >= workEnd + 240;
 
-  const late = firstIn ? Math.max(0, minutesInto(i.on, i.zone, firstIn) - workStart - r.graceMinutes) : null;
+  // Flexi: late from core start (or never), and not on a day whose first half is off; fixed and split: the working start.
+  const lateOf = (at: Date) => {
+    const m = minutesInto(i.on, i.zone, at);
+    const ref = r.kind === 'flexi' ? (offHalf === 'first' ? null : lateFrom(r, m, i.flexi?.late)) : workStart;
+    return ref === null ? 0 : Math.max(0, m - ref - r.graceMinutes);
+  };
+  const late = firstIn ? lateOf(firstIn) : null;
   // Work from home (19 Oct 2026): approved, the day counts as present; punches still give the hours and lateness.
   // Presence (TIM-36): with consent and no punches, the active time decides the day against the shift's thresholds.
   if (i.wfh && i.presence && !firstIn && !lastOut) {
     const p = i.presence;
     const status: DayStatus = p.activeMinutes >= r.fullDayMinutes * halfFactor ? 'present' : p.activeMinutes >= r.halfDayMinutes * halfFactor && !offHalf ? 'half_day' : 'absent';
-    return { status, leavePart, firstIn: p.first, lastOut: p.last, workedMinutes: p.activeMinutes, lateMinutes: Math.max(0, minutesInto(i.on, i.zone, p.first) - workStart - r.graceMinutes), regularised };
+    return { status, leavePart, firstIn: p.first, lastOut: p.last, workedMinutes: p.activeMinutes, lateMinutes: lateOf(p.first), regularised };
   }
   if (i.wfh) return { status: 'present', leavePart, firstIn, lastOut, workedMinutes: firstIn && lastOut ? netWorked(i.punches, firstIn, lastOut, r) : null, lateMinutes: late, regularised };
+  if (r.kind === 'split' && partsOf(r).length === 2) {
+    const spans = fixedTimes ? (firstIn && lastOut ? [[firstIn, lastOut] as [Date, Date]] : []) : pairsOf(i.punches);
+    return splitDay(i, r, { offHalf, halfFactor, firstIn, lastOut, spans: od ? [...spans, od] : spans, open: !fixedTimes && openIn(i.punches), leavePart, regularised });
+  }
   if (!firstIn && !lastOut) return { ...none, status: dayOver ? 'absent' : 'not_started', leavePart, regularised };
   if (!firstIn) return { ...none, status: 'missing_in', leavePart, lastOut, regularised };
   if (!lastOut) return { ...none, status: dayOver ? 'missing_out' : 'not_started', leavePart, firstIn, lateMinutes: late, regularised };
   const worked = netWorked(i.punches, firstIn, lastOut, r);
-  const status: DayStatus = worked >= r.fullDayMinutes * halfFactor ? 'present' : worked >= r.halfDayMinutes * halfFactor && !offHalf ? 'half_day' : 'absent';
+  let status: DayStatus = worked >= r.fullDayMinutes * halfFactor ? 'present' : worked >= r.halfDayMinutes * halfFactor && !offHalf ? 'half_day' : 'absent';
+  // Flexi, company setting "short only when core hours are missed": in by core start (with grace) and out after core end is present.
+  if (r.kind === 'flexi' && i.flexi?.short === 'core_hours' && !offHalf && r.coreStart != null && r.coreEnd != null && minutesInto(i.on, i.zone, firstIn) <= fromStart(r, r.coreStart) + r.graceMinutes && minutesInto(i.on, i.zone, lastOut) >= fromStart(r, r.coreEnd)) status = 'present';
   return { status, leavePart, firstIn, lastOut, workedMinutes: worked, lateMinutes: late, regularised };
+}
+
+/** Check-in to check-out pairs in time order (break punches are not pairs; a check-out with no check-in is skipped). */
+function pairsOf(punches: DayInput['punches']): [Date, Date][] {
+  const out: [Date, Date][] = [];
+  let open: Date | null = null;
+  for (const p of [...punches].sort((a, b) => a.at.getTime() - b.at.getTime())) {
+    if (p.kind === 'in') open ??= p.at;
+    else if (p.kind === 'out' && open) {
+      out.push([open, p.at]);
+      open = null;
+    }
+  }
+  return out;
+}
+/** A check-in still open after the day's last punch. */
+const openIn = (punches: DayInput['punches']) => [...punches].sort((a, b) => a.at.getTime() - b.at.getTime()).filter((p) => p.kind === 'in' || p.kind === 'out').at(-1)?.kind === 'in';
+const overlapMs = (a: Date, b: Date, x: Date, y: Date) => Math.max(0, Math.min(b.getTime(), y.getTime()) - Math.max(a.getTime(), x.getTime()));
+
+/**
+ * A split shift's day (founder 2 Nov 2026): each part is judged on its own (late from that part's start), time in the gap
+ * is never worked time, and missing one part is a half day. Both parts attended: the shift's thresholds decide. On a
+ * half-day leave only the other part is expected. A check-in left open once the day is over is a missing check-out.
+ */
+function splitDay(i: DayInput, r: DayRule, o: { offHalf: 'first' | 'second' | null; halfFactor: number; firstIn: Date | null; lastOut: Date | null; spans: [Date, Date][]; open: boolean; leavePart: Half | null; regularised: boolean }): DayResult {
+  const [p1, p2] = partsOf(r).map(([a, b]) => [instantAt(i.on, i.zone, a), instantAt(i.on, i.zone, b)] as [Date, Date]);
+  const expected = o.offHalf === 'first' ? [p2] : o.offHalf === 'second' ? [p1] : [p1, p2];
+  const dayOver = i.now.getTime() >= expected[expected.length - 1][1].getTime() + 240 * 60_000;
+  const base = { leavePart: o.leavePart, firstIn: o.firstIn, lastOut: o.lastOut, workedMinutes: null, lateMinutes: null, regularised: o.regularised };
+  if (!o.firstIn && !o.lastOut) return { ...base, status: dayOver ? 'absent' : 'not_started' };
+  if (!o.firstIn) return { ...base, status: 'missing_in' };
+  // Overlapping spans (on duty over punches) are merged so no minute counts twice.
+  const spans: [Date, Date][] = [];
+  for (const [x, y] of [...o.spans].sort((a, b) => a[0].getTime() - b[0].getTime())) {
+    const last = spans[spans.length - 1];
+    if (last && x <= last[1]) last[1] = y > last[1] ? y : last[1];
+    else spans.push([x, y]);
+  }
+  const touching = (a: Date, b: Date) => spans.filter(([x, y]) => overlapMs(a, b, x, y) > 0);
+  const attended = expected.filter(([a, b]) => touching(a, b).length > 0);
+  const late = attended.reduce((n, [a, b]) => n + Math.max(0, Math.floor((touching(a, b)[0][0].getTime() - a.getTime()) / 60_000) - r.graceMinutes), 0);
+  if (o.open || !spans.length) return { ...base, status: dayOver ? 'missing_out' : 'not_started', lateMinutes: late };
+  // ponytail: a break punched inside the gap is taken off too; split shifts have no break rule (the gap is the break).
+  const gapMs = spans.reduce((n, [x, y]) => n + overlapMs(p1[1], p2[0], x, y), 0);
+  const worked = Math.max(0, Math.floor((spans.reduce((n, [x, y]) => n + y.getTime() - x.getTime(), 0) - gapMs) / 60_000) - breakMinutes(i.punches, o.firstIn, spans[spans.length - 1][1]));
+  const byHours: DayStatus = worked >= r.fullDayMinutes * o.halfFactor ? 'present' : worked >= r.halfDayMinutes * o.halfFactor && !o.offHalf ? 'half_day' : 'absent';
+  const status: DayStatus = attended.length === expected.length ? byHours : !dayOver ? 'not_started' : attended.length ? 'half_day' : 'absent';
+  return { ...base, status, workedMinutes: worked, lateMinutes: late };
 }

@@ -222,6 +222,12 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // M02 §B2 / YX-AT-07: the least rest between two shifts of one person; the roster flags anything shorter. Founder
   // decision 9 Oct 2026: 11 hours by default, company-configurable.
   'attendance.min_rest_hours': { label: 'Least rest between shifts (hours)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['0', '8', '9', '10', '11', '12'], default: '11' },
+  // TIM-06 flexi and split shifts (founder 2 Nov 2026): company choices, off by default; existing fixed shifts never change.
+  'attendance.shift_types.flexi': { label: 'Flexi shifts (core hours) can be set up', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
+  'attendance.shift_types.split': { label: 'Split shifts (two parts a day) can be set up', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
+  'attendance.flexi.late_from': { label: 'On a flexi shift, late is', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['core_start', 'never'], default: 'core_start' },
+  'attendance.flexi.short_by': { label: 'On a flexi shift, the day is short when', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['shift_hours', 'core_hours'], default: 'shift_hours' },
+  'attendance.split.min_gap_minutes': { label: 'Shortest gap between the two parts of a split shift (minutes)', scopes: ['tenant'], dated: false, values: ['30', '60', '90', '120', '180'], default: '60' },
   // TIM-05 (founder decision 29 Oct 2026): employees see their team's published roster read-only; off: their own shifts only.
   'roster.staff_see_team': { label: "Employees can see their team's published roster", scopes: ['tenant', 'legal_entity', 'location', 'department'], dated: false, values: ['off', 'on'], default: 'off' },
   // Working-hours limits the roster checks (Factories Act 1948 s.51 / 54 / 56, OSH Code 2020 s.25; a state's shops act

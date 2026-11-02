@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { ScheduleBook, lockedDates } from './schedule';
 import { asDate, factsOn, holidaysFor, leaveDays, settingOn, todayIn } from './time-core';
-import { HolidayOn, addDays, daysBetween, eachDay, evaluateDay, type PunchKind } from './time-maths';
+import { FlexiRules, HolidayOn, addDays, daysBetween, eachDay, evaluateDay, type PunchKind } from './time-maths';
 import { presenceDay } from './time-rules';
 
 // M02 §B3 day engine: works out each day's status from the expected day (the roster / pattern / location shift and
@@ -79,6 +79,8 @@ export class DayEngine {
         resolution: resolution ? { how: resolution.how as 'present' | 'absent', inMinute: resolution.inMinute, outMinute: resolution.outMinute } : null,
         action: (event?.kind as 'strike' | 'lockout' | 'layoff' | undefined) ?? null,
         presence,
+        // A flexi shift reads its two company settings (only then: a fixed day reads nothing new).
+        flexi: rule.kind === 'flexi' ? { late: (await settingOn(tx, c, 'attendance.flexi.late_from', f, on)) as FlexiRules['late'], short: (await settingOn(tx, c, 'attendance.flexi.short_by', f, on)) as FlexiRules['short'] } : undefined,
         onDuty: (() => {
           const od = onDuty.filter((x) => x.workOn.toISOString().slice(0, 10) === on && x.inMinute !== null && x.outMinute !== null);
           return od.length ? { inMinute: Math.min(...od.map((x) => x.inMinute!)), outMinute: Math.max(...od.map((x) => x.outMinute!)) } : null;

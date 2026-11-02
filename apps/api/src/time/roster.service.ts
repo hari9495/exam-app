@@ -10,11 +10,11 @@ import { DayEngine } from './day-engine.service';
 import { ConsentDto, PatternAssignDto, PatternDto, RosterCellDto, SafeguardDto, ShiftDetailsDto, ShiftDto, ShiftTimesDto, SwapDto } from './dto';
 import { ScheduleBook, assertOpen, lockedDates, nightGuard, oshOn } from './schedule';
 import { TimeSetupService, SCOPE_MODEL } from './setup.service';
-import { TIME_KEYS, Facts, asDate, dateOf, factsOn, holidaysFor, hrApprovers, leaveDays, mustSee, myEmployeeId, settingOn, visibleSql } from './time-core';
+import { TIME_KEYS, Facts, asDate, companySetting, dateOf, factsOn, holidaysFor, hrApprovers, leaveDays, mustSee, myEmployeeId, settingOn, visibleSql } from './time-core';
 import { addDays } from './time-maths';
 import { Conflict, ShiftTimes, mondayOf } from './time-rules';
 import { RosterGuard } from './roster-guard';
-import { BLOCKING, GUARD_CODE, RuleBreak, addedBreaks, insideNotice, timeBreaks, type Limits, type PlanDay } from './roster-rules';
+import { BLOCKING, GUARD_CODE, RuleBreak, addedBreaks, insideNotice, shiftKindProblem, timeBreaks, type Limits, type PlanDay } from './roster-rules';
 
 // M02 §B2 shifts, patterns and the roster (Q1 / Q2, YX-AT-07), swaps through P03 (§B4), and the night-work law guard
 // (OSH Code, YX-AT-25): no path places a protected person (recorded as female or transgender, or opted in: founder
@@ -98,7 +98,9 @@ export class RosterService implements OnModuleInit {
         today,
         shifts: [...book.shifts.values()]
           .sort((a, b) => a.code.localeCompare(b.code))
-          .map((s) => ({ id: s.id, code: s.code, name: s.name, colour: s.colour, night: s.night, active: s.active, versions: s.versions.map(({ from, v }) => ({ validFrom: from, start: v.startMinute, end: v.endMinute, graceMinutes: v.graceMinutes, halfDayMinutes: v.halfDayMinutes, fullDayMinutes: v.fullDayMinutes, breakMinutes: v.breakMinutes, breakAboveMinutes: v.breakAboveMinutes })) })),
+          .map((s) => ({ id: s.id, code: s.code, name: s.name, colour: s.colour, night: s.night, active: s.active, kind: s.kind, versions: s.versions.map(({ from, v }) => ({ validFrom: from, start: v.startMinute, end: v.endMinute, graceMinutes: v.graceMinutes, halfDayMinutes: v.halfDayMinutes, fullDayMinutes: v.fullDayMinutes, breakMinutes: v.breakMinutes, breakAboveMinutes: v.breakAboveMinutes, coreStart: v.coreStartMinute, coreEnd: v.coreEndMinute, otAfterMinutes: v.otAfterMinutes, firstEnd: v.firstEndMinute, secondStart: v.secondStartMinute })) })),
+        // TIM-06: the shift types the company turned on (Settings › Company rules), and a split's shortest gap.
+        types: { flexi: (await companySetting(tx, c, 'attendance.shift_types.flexi')) === 'on', split: (await companySetting(tx, c, 'attendance.shift_types.split')) === 'on', minGapMinutes: Number(await companySetting(tx, c, 'attendance.split.min_gap_minutes')) },
         patterns: patterns.map((p) => ({
           id: p.id,
           name: p.name,
@@ -120,23 +122,34 @@ export class RosterService implements OnModuleInit {
     });
   }
 
-  private checkTimes(dto: ShiftTimesDto) {
+  /** Times for a shift of a type (TIM-06): flexi and split only while the company has them on; their own fields checked. */
+  private async checkTimes(tx: Tx, c: CompanyContext, kind: 'fixed' | 'flexi' | 'split', dto: ShiftTimesDto) {
     if (dto.start === dto.end) throw new BadRequestException('A shift ends at a different time from when it starts.');
     if (dto.halfDayMinutes > dto.fullDayMinutes) throw new BadRequestException('A half day needs fewer minutes than a full day.');
     if (dto.validFrom < todayIst()) throw new BadRequestException('Shift times start today or later; what is already in force stays as it was.');
+    if (kind !== 'fixed' && (await companySetting(tx, c, `attendance.shift_types.${kind}`)) !== 'on') throw new BadRequestException({ statusCode: 400, code: 'SHIFT_TYPE_OFF', message: `${kind === 'flexi' ? 'Flexi' : 'Split'} shifts are turned off for your company. A System Admin or HR can turn them on in Settings › Company rules.` });
+    const problem = shiftKindProblem(kind, dto, kind === 'split' ? Number(await companySetting(tx, c, 'attendance.split.min_gap_minutes')) : 0);
+    if (problem) throw new BadRequestException(problem);
   }
 
   private times(dto: ShiftTimesDto) {
-    return { validFrom: asDate(dto.validFrom), startMinute: dto.start, endMinute: dto.end, graceMinutes: dto.graceMinutes, halfDayMinutes: dto.halfDayMinutes, fullDayMinutes: dto.fullDayMinutes, breakMinutes: dto.breakMinutes, breakAboveMinutes: dto.breakAboveMinutes };
+    return { validFrom: asDate(dto.validFrom), startMinute: dto.start, endMinute: dto.end, graceMinutes: dto.graceMinutes, halfDayMinutes: dto.halfDayMinutes, fullDayMinutes: dto.fullDayMinutes, breakMinutes: dto.breakMinutes, breakAboveMinutes: dto.breakAboveMinutes, coreStartMinute: dto.coreStart ?? null, coreEndMinute: dto.coreEnd ?? null, otAfterMinutes: dto.otAfterMinutes ?? null, firstEndMinute: dto.firstEnd ?? null, secondStartMinute: dto.secondStart ?? null };
+  }
+
+  /** The type's own fields for the audit trail (nothing for a fixed shift). */
+  private kindAudit(dto: ShiftTimesDto) {
+    const m = (x: number | null | undefined) => (x == null ? undefined : hhmm(x));
+    return { coreStart: m(dto.coreStart), coreEnd: m(dto.coreEnd), otAfterMinutes: dto.otAfterMinutes ?? undefined, firstEnd: m(dto.firstEnd), secondStart: m(dto.secondStart) };
   }
 
   createShift(ctx: TenantContext, user: ScopeUser, dto: ShiftDto) {
     return this.setup.run(ctx, user, true, async (tx, c) => {
-      this.checkTimes(dto);
+      const kind = dto.kind ?? 'fixed';
+      await this.checkTimes(tx, c, kind, dto);
       if (await tx.shift.findFirst({ where: { organizationId: c.organizationId, code: dto.code } })) throw new ConflictException(`The code ${dto.code} is already used.`);
-      const s = await tx.shift.create({ data: { organizationId: c.organizationId, code: dto.code, name: dto.name, colour: dto.colour, night: dto.night, createdBy: c.userId ?? null } });
+      const s = await tx.shift.create({ data: { organizationId: c.organizationId, code: dto.code, name: dto.name, colour: dto.colour, night: dto.night, kind, createdBy: c.userId ?? null } });
       await tx.shiftVersion.create({ data: { organizationId: c.organizationId, shiftId: s.id, ...this.times(dto), createdBy: c.userId ?? null } });
-      await audit(tx, c, 'time.shift.created', 'shift', s.id, { code: dto.code, name: dto.name, start: hhmm(dto.start), end: hhmm(dto.end), validFrom: dto.validFrom });
+      await audit(tx, c, 'time.shift.created', 'shift', s.id, { code: dto.code, name: dto.name, kind, start: hhmm(dto.start), end: hhmm(dto.end), validFrom: dto.validFrom, ...this.kindAudit(dto) });
       return { id: s.id };
     });
   }
@@ -144,12 +157,12 @@ export class RosterService implements OnModuleInit {
   /** New times from a date (P06): a version in force never changes. */
   addShiftVersion(ctx: TenantContext, user: ScopeUser, id: string, dto: ShiftTimesDto) {
     return this.setup.run(ctx, user, true, async (tx, c) => {
-      this.checkTimes(dto);
       const s = await tx.shift.findFirst({ where: { organizationId: c.organizationId, id } });
       if (!s) throw new NotFoundException('No such shift.');
+      await this.checkTimes(tx, c, s.kind as 'fixed' | 'flexi' | 'split', dto);
       if (await tx.shiftVersion.findFirst({ where: { organizationId: c.organizationId, shiftId: id, validFrom: asDate(dto.validFrom) } })) throw new ConflictException('This shift already changes on that date. Choose another date.');
       await tx.shiftVersion.create({ data: { organizationId: c.organizationId, shiftId: id, ...this.times(dto), createdBy: c.userId ?? null } });
-      await audit(tx, c, 'time.shift.version_added', 'shift', id, { code: s.code, validFrom: dto.validFrom, start: hhmm(dto.start), end: hhmm(dto.end), graceMinutes: dto.graceMinutes, breakMinutes: dto.breakMinutes });
+      await audit(tx, c, 'time.shift.version_added', 'shift', id, { code: s.code, kind: s.kind, validFrom: dto.validFrom, start: hhmm(dto.start), end: hhmm(dto.end), graceMinutes: dto.graceMinutes, breakMinutes: dto.breakMinutes, ...this.kindAudit(dto) });
       return { id };
     });
   }

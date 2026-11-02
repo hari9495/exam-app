@@ -244,6 +244,12 @@ export async function settingOn(tx: Tx, c: CompanyContext, key: string, f: Facts
   return String(resolveSetting(def, rows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: r.validFrom ? iso(r.validFrom) : null })), scopeContext(c, f), on).value);
 }
 
+/** A company-wide setting (the company's own value, else the default), for set-up choices that belong to no one person. */
+export async function companySetting(tx: Tx, c: CompanyContext, key: string): Promise<string> {
+  const rows = await tx.setting.findMany({ where: { organizationId: c.organizationId, key, scopeType: 'tenant' } });
+  return String(resolveSetting(SETTINGS[key], rows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: r.validFrom ? iso(r.validFrom) : null })), { tenant: c.organizationId }, todayIn('Asia/Kolkata')).value);
+}
+
 // DECISION NEEDED: the brief lists policy precedence as grade > employment type > entity > location > company; the
 // shared P01 order (YX-ORG-18, settings-registry SCOPE_ORDER) puts a location above its legal entity (a location
 // belongs to one entity, so it is the more specific scope). Leave policies follow the shared order until decided.

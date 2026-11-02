@@ -9,7 +9,7 @@ import { DayEngine } from './day-engine.service';
 import { ResolveDto, MarkPresentDto } from './ops-dto';
 import { ScheduleBook, lockedDates } from './schedule';
 import { TIME_KEYS, asDate, dateOf, factsOn, grantCovers, monthRange, mustSee, settingOn, todayIn, visibleSql } from './time-core';
-import { addDays, minutesInto } from './time-maths';
+import { FlexiRules, addDays, fromStart, lateFrom, minutesInto, partsOf } from './time-maths';
 
 // Time ops, attendance side (29 Oct 2026):
 //   TIM-01 Today board   a manager's team or HR's people (attendance.view in scope) today: who is in, late, not in, on
@@ -104,7 +104,9 @@ export class AttendanceOpsService {
         const leave = leaves.find((x) => x.id === p.id);
         const shift = sched.shift ?? (await book.locationDay(f, day)).rule;
         const inMinute = firstIn ? minutesInto(day, f.zone, firstIn.punchedAt) : null;
-        const late = inMinute !== null && inMinute > shift.shiftStart + shift.graceMinutes;
+        // TIM-06: a flexi shift is late from core start (or never, company setting); a split from the part checked in for.
+        const lateRef = inMinute === null ? null : lateFrom(shift, inMinute, shift.kind === 'flexi' ? ((await settingOn(tx, c, 'attendance.flexi.late_from', f, day)) as FlexiRules['late']) : undefined);
+        const late = inMinute !== null && lateRef !== null && inMinute > lateRef + shift.graceMinutes;
         const field = mine.some((x) => x.verdict === 'field');
         const status = sched.weeklyOff
           ? 'off'
@@ -128,7 +130,7 @@ export class AttendanceOpsService {
                       ? 'leave'
                       : 'not_in';
         const detail =
-          status === 'off' ? 'Weekly off' : status === 'rest' ? holiday!.name : status === 'leave' ? (leave?.part === 'full' ? 'On leave' : 'On leave for half the day') : status === 'wfh' ? 'WFH today' : status === 'od' ? `On duty · ${last?.locationId ? (names.get(last.locationId) ?? 'away') : 'away from the office'}` : status === 'late' ? `Late by ${inMinute! - shift.shiftStart} min` : status === 'not_in' ? `Shift ${hhmm(shift.shiftStart)}–${hhmm(shift.shiftEnd)}` : null;
+          status === 'off' ? 'Weekly off' : status === 'rest' ? holiday!.name : status === 'leave' ? (leave?.part === 'full' ? 'On leave' : 'On leave for half the day') : status === 'wfh' ? 'WFH today' : status === 'od' ? `On duty · ${last?.locationId ? (names.get(last.locationId) ?? 'away') : 'away from the office'}` : status === 'late' ? `Late by ${inMinute! - lateRef!} min` : status === 'not_in' ? `Shift ${hhmm(shift.shiftStart)}–${hhmm(shift.shiftEnd)}` : null;
         out.push({
           id: p.id,
           name: p.name,
@@ -350,7 +352,8 @@ export class AttendanceOpsService {
           const f = await factsOn(tx, org, p.id, on);
           if (!f) continue;
           const shift = (d.shiftId ? book.shiftOn(d.shiftId, on) : null) ?? (await book.locationDay(f, on)).rule;
-          const end = shift.shiftEnd > shift.shiftStart ? shift.shiftEnd : shift.shiftEnd + 1440;
+          // TIM-06: a flexi shift has no fixed end, so leaving before core hours end is early; a split ends with its second part.
+          const end = shift.kind === 'flexi' && shift.coreEnd != null ? fromStart(shift, shift.coreEnd) : shift.shiftEnd > shift.shiftStart ? shift.shiftEnd : shift.shiftEnd + 1440;
           // The working half ends at the middle on a half-day leave.
           const workEnd = d.leavePart === 'second' ? Math.round((shift.shiftStart + end) / 2) : end;
           if (minutesInto(on, f.zone, d.lastOut!) < workEnd) early++;
@@ -398,7 +401,8 @@ export class AttendanceOpsService {
         let minutes = 0;
         for (const d of mine) {
           const s = book.shiftOn(d.shiftId!, dateOf(d.workOn));
-          if (s) minutes += nightMinutes(s.shiftStart, s.shiftEnd);
+          // A split shift's gap is not work, so only its two parts count.
+          if (s) minutes += partsOf(s).reduce((n, [a, b]) => n + nightMinutes(a % 1440, b % 1440), 0);
         }
         const consent = consents.find((x) => x.employeeId === p.id && dateOf(x.givenOn) <= to && (!x.withdrawnOn || dateOf(x.withdrawnOn) >= from));
         rows.push({ id: p.id, name: p.name, code: p.code, location: p.location, shifts: mine.length, nightMinutes: minutes, consent: consent ? { reference: consent.reference, givenOn: dateOf(consent.givenOn), withdrawnOn: consent.withdrawnOn ? dateOf(consent.withdrawnOn) : null, confirmed: Boolean(consent.confirmedAt) } : null });

@@ -10,6 +10,13 @@ import { PatternDef, Scheduled, ShiftTimes, crossesMidnight, overlapsNight, patt
 // scope and date, else the location's default shift and weekly offs. One loader per request or job: the company's
 // shifts, patterns and assignments are read once; roster entries per person and range.
 
+/** TIM-06: a version's flexi or split fields as the day engine reads them (a fixed shift adds nothing, so it is judged as before). */
+export function versionKind(kind: string, v: Pick<Prisma.ShiftVersionGetPayload<object>, 'coreStartMinute' | 'coreEndMinute' | 'firstEndMinute' | 'secondStartMinute' | 'otAfterMinutes'>): Partial<ShiftTimes> {
+  if (kind === 'flexi') return { kind, coreStart: v.coreStartMinute, coreEnd: v.coreEndMinute, otAfterMinutes: v.otAfterMinutes };
+  if (kind === 'split') return { kind, firstEnd: v.firstEndMinute, secondStart: v.secondStartMinute };
+  return {};
+}
+
 const PATTERN_DEF: SettingDef = { label: 'Shift pattern', scopes: ['employee', 'department', 'location', 'legal_entity', 'tenant'], dated: true, values: [], default: '' };
 
 export class ScheduleBook {
@@ -19,7 +26,7 @@ export class ScheduleBook {
   private constructor(
     private readonly tx: Tx,
     private readonly org: string,
-    readonly shifts: Map<string, { id: string; code: string; name: string; night: boolean; colour: string; active: boolean; versions: { from: string; v: Prisma.ShiftVersionGetPayload<object> }[] }>,
+    readonly shifts: Map<string, { id: string; code: string; name: string; night: boolean; colour: string; active: boolean; kind: string; versions: { from: string; v: Prisma.ShiftVersionGetPayload<object> }[] }>,
     private readonly patterns: Map<string, PatternDef & { name: string }>,
     private readonly assignments: Prisma.ShiftPatternAssignmentGetPayload<object>[],
   ) {}
@@ -34,7 +41,7 @@ export class ScheduleBook {
     return new ScheduleBook(
       tx,
       org,
-      new Map(shifts.map((s) => [s.id, { id: s.id, code: s.code, name: s.name, night: s.night, colour: s.colour, active: s.active, versions: versions.filter((v) => v.shiftId === s.id).map((v) => ({ from: dateOf(v.validFrom), v })) }])),
+      new Map(shifts.map((s) => [s.id, { id: s.id, code: s.code, name: s.name, night: s.night, colour: s.colour, active: s.active, kind: s.kind, versions: versions.filter((v) => v.shiftId === s.id).map((v) => ({ from: dateOf(v.validFrom), v })) }])),
       new Map(patterns.map((p) => [p.id, { kind: p.kind as PatternDef['kind'], cycle: p.cycle as (string | null)[], name: p.name }])),
       assignments,
     );
@@ -45,7 +52,7 @@ export class ScheduleBook {
     const s = this.shifts.get(shiftId);
     const v = s?.versions.find((x) => x.from <= on)?.v;
     if (!s || !v) return null;
-    return { shiftId: s.id, name: s.name, night: s.night, shiftStart: v.startMinute, shiftEnd: v.endMinute, graceMinutes: v.graceMinutes, halfDayMinutes: v.halfDayMinutes, fullDayMinutes: v.fullDayMinutes, breakMinutes: v.breakMinutes, breakAboveMinutes: v.breakAboveMinutes };
+    return { shiftId: s.id, name: s.name, night: s.night, shiftStart: v.startMinute, shiftEnd: v.endMinute, graceMinutes: v.graceMinutes, halfDayMinutes: v.halfDayMinutes, fullDayMinutes: v.fullDayMinutes, breakMinutes: v.breakMinutes, breakAboveMinutes: v.breakAboveMinutes, ...versionKind(s.kind, v) };
   }
 
   /** Loads published roster entries for people and dates (else each day is read on its own). */

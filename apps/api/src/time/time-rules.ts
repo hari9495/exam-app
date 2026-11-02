@@ -1,5 +1,5 @@
 import { DateTime } from 'luxon';
-import { DayRule, addDays, daysBetween, minutesInto } from './time-maths';
+import { DayRule, addDays, daysBetween, minutesInto, partsOf } from './time-maths';
 
 // M02 batch 2 maths, pure and unit-tested: shift patterns (weekly and N-day cycles) and what a date resolves to
 // (roster > pattern > location, Q1), the working day of a punch around a night shift, roster conflicts (overlap,
@@ -18,8 +18,13 @@ export interface ShiftTimes extends DayRule {
 export const shiftLength = (s: Pick<DayRule, 'shiftStart' | 'shiftEnd'>) => (s.shiftEnd > s.shiftStart ? s.shiftEnd - s.shiftStart : s.shiftEnd + 1440 - s.shiftStart);
 export const crossesMidnight = (s: Pick<DayRule, 'shiftStart' | 'shiftEnd'>) => s.shiftEnd < s.shiftStart;
 
-/** The minutes a day on this shift is expected to work: its length less the fixed break when the break rule applies (Q3). */
+/**
+ * The minutes a day on this shift is expected to work: its length less the fixed break when the break rule applies (Q3).
+ * Flexi: its hours (overtime after, else the full day); split: both parts, the gap is not work (founder 2 Nov 2026).
+ */
 export function scheduledMinutes(s: DayRule): number {
+  if (s.kind === 'flexi') return s.otAfterMinutes ?? s.fullDayMinutes;
+  if (s.kind === 'split') return partsOf(s).reduce((n, [a, b]) => n + b - a, 0);
   const len = shiftLength(s);
   return len > s.breakAboveMinutes ? len - s.breakMinutes : len;
 }
@@ -117,12 +122,11 @@ export function restConflicts(days: { on: string; shift: Pick<DayRule, 'shiftSta
   return out;
 }
 
-/** Does a shift overlap the legal night window (P07 IN.OSH, e.g. 19:00 to 06:00)? */
-export function overlapsNight(s: Pick<DayRule, 'shiftStart' | 'shiftEnd'>, window: { start: number; end: number }): boolean {
-  const [a, b] = [s.shiftStart, s.shiftStart + shiftLength(s)];
+/** Does a shift overlap the legal night window (P07 IN.OSH, e.g. 19:00 to 06:00)? A split shift's gap is not work. */
+export function overlapsNight(s: Pick<DayRule, 'shiftStart' | 'shiftEnd' | 'kind' | 'firstEnd' | 'secondStart'>, window: { start: number; end: number }): boolean {
   // The window as ranges over two days: [start, end + 1440) when it wraps midnight, shifted back a day too.
   const wins: [number, number][] = window.end <= window.start ? [[window.start - 1440, window.end], [window.start, window.end + 1440], [window.start + 1440, window.end + 2880]] : [[window.start, window.end], [window.start + 1440, window.end + 1440]];
-  return wins.some(([x, y]) => a < y && x < b);
+  return partsOf(s).some(([a, b]) => wins.some(([x, y]) => a < y && x < b));
 }
 
 // ------------------------------------------------------------------------------------------ overtime (Q7)

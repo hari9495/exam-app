@@ -5336,6 +5336,8 @@ model Shift {
   name           String   @db.VarChar(60)
   colour         String   @default("blue") @db.VarChar(10)
   night          Boolean  @default(false)
+  /// TIM-06: fixed, flexi (core hours) or split (two parts); never changes once saved.
+  kind           String   @default("fixed") @db.VarChar(6)
   active         Boolean  @default(true)
   version        Int      @default(1)
   createdBy      String?  @map("created_by") @db.Uuid
@@ -5357,6 +5359,14 @@ model ShiftVersion {
   fullDayMinutes    Int      @default(480) @map("full_day_minutes") @db.SmallInt
   breakMinutes      Int      @default(30) @map("break_minutes") @db.SmallInt
   breakAboveMinutes Int      @default(300) @map("break_above_minutes") @db.SmallInt
+  /// Flexi: core hours (everyone is in), wall-clock minutes inside the shift.
+  coreStartMinute   Int?     @map("core_start_minute") @db.SmallInt
+  coreEndMinute     Int?     @map("core_end_minute") @db.SmallInt
+  /// Split: the first part ends and the second starts; the gap between is unpaid and not worked.
+  firstEndMinute    Int?     @map("first_end_minute") @db.SmallInt
+  secondStartMinute Int?     @map("second_start_minute") @db.SmallInt
+  /// Flexi: overtime counts after this many minutes worked (null: the full day).
+  otAfterMinutes    Int?     @map("ot_after_minutes") @db.SmallInt
   createdBy         String?  @map("created_by") @db.Uuid
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 

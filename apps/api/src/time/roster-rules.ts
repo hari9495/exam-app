@@ -127,3 +127,31 @@ export function insideNotice(on: string, startMinutes: readonly (number | null)[
   const first = DateTime.fromISO(on, { zone }).plus({ minutes: Math.min(...starts) });
   return first.toMillis() - now.getTime() < noticeHours * 3_600_000;
 }
+
+/**
+ * TIM-06 (founder 2 Nov 2026): what is wrong with a flexi or split shift's times, in plain words, or null. Minutes are wall
+ * clock (0–1439); a shift ending before it starts runs into the next day. Flexi: core hours inside the shift. Split: start
+ * to firstEnd, then secondStart to end, in that order, with the gap at least `minGapMinutes` (company setting) and the
+ * whole day under 24 hours. A fixed shift carries neither.
+ */
+export function shiftKindProblem(kind: 'fixed' | 'flexi' | 'split', t: { start: number; end: number; coreStart?: number | null; coreEnd?: number | null; otAfterMinutes?: number | null; firstEnd?: number | null; secondStart?: number | null }, minGapMinutes: number): string | null {
+  const rel = (m: number) => (((m - t.start) % 1440) + 1440) % 1440;
+  const len = rel(t.end) || 1440;
+  const hm = (m: number) => (m < 60 ? `${m} min` : h(m));
+  const clock = (m: number) => DateTime.utc(2000, 1, 1).plus({ minutes: m }).toFormat('h:mm a').toLowerCase();
+  if (kind !== 'flexi' && (t.coreStart != null || t.coreEnd != null || t.otAfterMinutes != null)) return 'Core hours and overtime after hours worked are only for flexi shifts.';
+  if (kind !== 'split' && (t.firstEnd != null || t.secondStart != null)) return 'Two parts are only for split shifts.';
+  if (kind === 'flexi') {
+    if (t.coreStart == null || t.coreEnd == null) return 'Give the core hours: the time everyone on this flexi shift is in.';
+    if (t.coreStart === t.coreEnd || rel(t.coreStart) >= rel(t.coreEnd) || rel(t.coreEnd) > len) return `Core hours must sit inside the shift (${clock(t.start)} to ${clock(t.end)}) and end after they start.`;
+  }
+  if (kind === 'split') {
+    if (t.firstEnd == null || t.secondStart == null) return 'Give both parts of the split shift.';
+    const a = rel(t.firstEnd);
+    const b = rel(t.secondStart);
+    if (a === 0) return 'The first part ends at a different time from when it starts.';
+    if (b < a || a >= len || b >= len) return 'The parts overlap or the day runs past 24 hours. The second part starts after the first part ends and ends within 24 hours of the start.';
+    if (b - a < minGapMinutes) return `The gap between the parts is ${hm(b - a)}. Make it at least ${hm(minGapMinutes)} (company setting), or use a fixed shift.`;
+  }
+  return null;
+}

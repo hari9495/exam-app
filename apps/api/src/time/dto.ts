@@ -453,9 +453,46 @@ export class ShiftTimesDto {
   @Min(0)
   @Max(960)
   breakAboveMinutes!: number;
+
+  /** TIM-06 flexi: core hours (wall-clock minutes inside the shift) and overtime after hours worked (default the full day). */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1439)
+  coreStart?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1439)
+  coreEnd?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(30)
+  @Max(960)
+  otAfterMinutes?: number | null;
+
+  /** TIM-06 split: the first part ends and the second starts (start = first part from, end = second part to). */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1439)
+  firstEnd?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1439)
+  secondStart?: number | null;
 }
 
 export class ShiftDto extends ShiftTimesDto {
+  /** TIM-06: fixed (default), flexi or split; never changes once saved. Flexi and split need the company setting on. */
+  @IsOptional()
+  @IsIn(['fixed', 'flexi', 'split'])
+  kind?: 'fixed' | 'flexi' | 'split';
+
   @trim()
   @Matches(/^[A-Z][A-Z0-9]{0,5}$/, { message: 'A shift code is 1 to 6 capital letters or digits, starting with a letter (M, A, N, GEN).' })
   code!: string;
