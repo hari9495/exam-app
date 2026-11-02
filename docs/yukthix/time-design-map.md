@@ -1141,3 +1141,11 @@ closed, batch changed since review); acting for someone else refused.
    the web (the consent page is a phone design). The API exists for each; the UI has only what the designs show, plus
    Withdraw consent on the presence page header (consent must be withdrawable).
 6. Visitors on site (TIM-01) and the field map (TIM-32) wait for their modules.
+
+## Founder answers, 2 Nov 2026 (leave rules, year end, on duty, "ok for all")
+(1) Paternity stays a company choice until the compliance partner confirms a state law; (2) maternity: the server keeps
+refusing "refuse short notice" and switching the type off; (3) year end pays out cash-in leave over the cap by default
+(company setting); (4) the change-leave-year screen keeps "New leave year starts in", default April; (5) a design story
+for a sent-back on-duty request ("Change and send again"), TIM-19 SentBack style; (6) overtime pre-approval is built next
+(a planned-overtime record the claim reads); (7) the attendance page's "Request work from home" button becomes
+"New request" (Regularise / WFH / On duty), so on duty is findable; (8) the change-leave-year page fits 1278 x 635.

@@ -1309,3 +1309,7 @@ code-of-conduct / POSH policy signing join the portal in a later round.
 (1) "Bring on day one" cannot be saved blank; HR keeps the starter list if nothing extra is needed; (2) when a joining
 closes, its open signature requests are cancelled (small follow-up); (3) joined employees keep downloading their letters
 in the portal until the employee app has a "My letters" page.
+
+## Founder answers, 2 Nov 2026 (changes, record dialogs, exits, "ok for all")
+(1) the clearance_blocked migration is applied in the test app; (2) VRS benefit days stay a company setting
+(`vrs.benefit_days`, default 45; 30/45/60/90), not per scheme; (3) no separate Unblock: signing off or waiving ends a block.
