@@ -14,6 +14,7 @@ import { Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
 import { FileUpload } from '../../components/upload';
 import { DataTable, type TableColumn } from '../../components/table';
+import { PlainTable } from '../../components/plain-table';
 import { FilterBar, type FilterFieldDef } from '../../components/filters';
 import { Card, DescriptionList, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { ConfirmDialog } from '../../components/overlay';
@@ -22,7 +23,7 @@ import { BarChart } from '../../components/charts';
 import { Stepper } from '../../components/stepper';
 import { formatDate, formatINR } from '../../lib/format';
 import type { FilterValue } from '../../lib/table';
-import { Actions, CardGrid, CheckList, Facts, OpsDesk, PhotoPlaceholder, ReceiptImage, StatusTrail } from './ops-kit';
+import { Actions, CardGrid, CheckList, Facts, OpsDesk, PhotoPlaceholder, ReceiptImage, StatusTrail, useSay } from './ops-kit';
 import { challanShortfall, deployBlocks, expiryTone } from './ops-rules';
 import type { ListState } from './helpdesk';
 import type { ContractWorker, Contractor, ProofStatus } from './contract-data';
@@ -121,6 +122,7 @@ export function WorkersScreen({ workers, contractors, today, state = 'ready', de
     licenceStates: lic.states,
     siteState: deploy === 'scope' ? 'Kerala' : 'Tamil Nadu',
   });
+  const { say } = useSay();
   const cols: TableColumn<ContractWorker>[] = [
     { key: 'name', header: 'Worker', value: (w) => w.name, render: (w) => <span className="yx-ops-row"><PhotoPlaceholder name={w.name} size="sm" /><span className="yx-ops-stack" data-gap="sm"><strong>{w.name}</strong><span className="yx-ops-muted">ID {w.idMasked}</span></span></span>, width: 220 },
     { key: 'contractor', header: 'Contractor', value: (w) => w.contractor, groupable: true, width: 200 },
@@ -151,7 +153,7 @@ export function WorkersScreen({ workers, contractors, today, state = 'ready', de
         rowButtons={(w) => (w.status === 'Pending approval' ? <Button variant="approve" size="sm">Approve</Button> : w.status === 'Deployed' ? <Button size="sm">Release</Button> : null)}
         onExport={() => {}}
       />
-      <Drawer open={open} onOpenChange={setOpen} size="lg" title="Deploy a worker" subtitle={`${contractors[0].name} · ${deploy === 'scope' ? 'Kochi warehouse (Kerala)' : 'Hosur plant'}`} footer={<><Button onClick={() => setOpen(false)}>Cancel</Button><Button variant="primary" disabled={blocks.length > 0}>Send for site approval</Button></>}>
+      <Drawer open={open} onOpenChange={setOpen} size="lg" title="Deploy a worker" subtitle={`${contractors[0].name} · ${deploy === 'scope' ? 'Kochi warehouse (Kerala)' : 'Hosur plant'}`} footer={<><Button onClick={() => setOpen(false)}>Cancel</Button><Button variant="primary" onClick={() => say(blocks.length > 0 && `This worker can't be deployed yet. ${blocks.join(' ')}`)}>Send for site approval</Button></>}>
         <div className="yx-ops-stack">
           <FieldRow>
             <FormField label="Name" required>
@@ -212,47 +214,43 @@ export function VendorComplianceScreen({ month, proofTypes, matrix, alerts, veri
   const [verify, setVerify] = useState(!!verifyOpen);
   const [override, setOverride] = useState(!!overrideOpen);
   const short = challanShortfall(12, 14);
+  const { say } = useSay();
   return (
     <OpsDesk area="contract" active="Vendor compliance" counts={{ 'Vendor compliance': alerts.length }}>
       <PageHeader title="Vendor compliance" description={`Monthly proofs from each contractor for ${month} wages, due by 15 Oct 2026. You can be liable for unpaid wages and dues.`} facts={`${alerts.length} liability alerts · estimated exposure ${formatINR(alerts.reduce((s, a) => s + a.liability, 0))}`} />
       <Card title={`Compliance matrix · ${month}`}>
-        <div className="yx-ops-scroll">
-          <table className="yx-ops-matrix" aria-label="Contractor by proof type">
-            <thead>
-              <tr>
-                <th scope="col">Contractor</th>
-                {proofTypes.map((p) => (
-                  <th key={p} scope="col">
-                    {p}
-                  </th>
-                ))}
-                <th scope="col">Bill payment</th>
-              </tr>
-            </thead>
-            <tbody>
-              {matrix.map((m) => {
-                const held = m.statuses.some((s) => s === 'Overdue' || s === 'Discrepancy');
-                return (
-                  <tr key={m.contractor}>
-                    <th scope="row">{m.contractor}</th>
-                    {m.statuses.map((s, i) => (
-                      <td key={i}>
-                        {s === 'Discrepancy' || s === 'Submitted' ? (
-                          <button type="button" className="yx-ops-cellbtn" onClick={() => setVerify(true)} aria-label={`${proofTypes[i]}, ${m.contractor}: ${s}. Open verification`}>
-                            <Badge tone={PROOF_TONE[s]}>{s}</Badge>
-                          </button>
-                        ) : (
-                          <Badge tone={PROOF_TONE[s]}>{s}</Badge>
-                        )}
-                      </td>
-                    ))}
-                    <td>{held ? <span className="yx-ops-row"><Badge tone="danger">Held</Badge>{persona === 'compliance' && <Button size="sm" onClick={() => setOverride(true)}>Override</Button>}</span> : <Badge tone="success">Can be paid</Badge>}</td>
-                  </tr>
+        <PlainTable
+          label="Contractor by proof type"
+          rows={matrix}
+          getRowId={(m) => m.contractor}
+          columns={[
+            { key: 'contractor', header: 'Contractor', rowHeader: true, cell: (m) => m.contractor },
+            ...proofTypes.map((p, i) => ({
+              key: p,
+              header: p,
+              cell: (m: (typeof matrix)[number]) => {
+                const s = m.statuses[i]!;
+                return s === 'Discrepancy' || s === 'Submitted' ? (
+                  <button type="button" className="yx-ops-cellbtn" onClick={() => setVerify(true)} aria-label={`${p}, ${m.contractor}: ${s}. Open verification`}>
+                    <Badge tone={PROOF_TONE[s]}>{s}</Badge>
+                  </button>
+                ) : (
+                  <Badge tone={PROOF_TONE[s]}>{s}</Badge>
                 );
-              })}
-            </tbody>
-          </table>
-        </div>
+              },
+            })),
+            {
+              key: 'bill',
+              header: 'Bill payment',
+              cell: (m) =>
+                m.statuses.some((s) => s === 'Overdue' || s === 'Discrepancy') ? (
+                  <span className="yx-ops-row"><Badge tone="danger">Held</Badge>{persona === 'compliance' && <Button size="sm" onClick={() => setOverride(true)}>Override</Button>}</span>
+                ) : (
+                  <Badge tone="success">Can be paid</Badge>
+                ),
+            },
+          ]}
+        />
       </Card>
       <Card title="Liability alerts">
         <DataTable
@@ -270,7 +268,7 @@ export function VendorComplianceScreen({ month, proofTypes, matrix, alerts, veri
           empty={<EmptyState compact title="No open alerts." />}
         />
       </Card>
-      <Drawer open={verify} onOpenChange={setVerify} size="full" title="Verify ESI challan · Vetri Security Agency · Aug 2026" subtitle="Uploaded by Selvam K. (contractor login) on 16 Sep 2026. You can verify because you didn't upload it." footer={<><Button>Raise discrepancy</Button><Button variant="primary" disabled={short > 0}>Mark verified</Button></>}>
+      <Drawer open={verify} onOpenChange={setVerify} size="full" title="Verify ESI challan · Vetri Security Agency · Aug 2026" subtitle="Uploaded by Selvam K. (contractor login) on 16 Sep 2026. You can verify because you didn't upload it." footer={<><Button>Raise discrepancy</Button><Button variant="primary" onClick={() => say(short > 0 && `The challan covers ${short} fewer ${short === 1 ? 'worker' : 'workers'} than were on site. Raise a discrepancy instead.`)}>Mark verified</Button></>}>
         <div className="yx-ops-split">
           <ReceiptImage merchant="ESIC challan 26081544901" amount={9412} date={new Date(2026, 8, 14)} />
           <CheckList

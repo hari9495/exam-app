@@ -7,7 +7,7 @@ import { Button, IconButton } from '../../components/button';
 import { Badge, PersonLabel, Tag } from '../../components/display';
 import { EmptyState, ErrorState, InlineAlert, Meter, Skeleton } from '../../components/feedback';
 import { Drawer } from '../../components/drawer';
-import { FormField, FieldRow } from '../../components/field';
+import { FormField, FieldRow, useTooEarly } from '../../components/field';
 import { CodeField, TextArea, TextField } from '../../components/inputs';
 import { Checkbox, RadioGroup, Switch } from '../../components/choice';
 import { MultiSelect, Select } from '../../components/select';
@@ -23,7 +23,7 @@ import { RichTextEditor } from '../../components/editor';
 import { ActivityFeed, type ActivityEntry } from '../../components/timeline';
 import { formatDate } from '../../lib/format';
 import type { FilterValue } from '../../lib/table';
-import { Actions, CardGrid, Facts, OpsDesk, SlaBadge, Workspace } from './ops-kit';
+import { Actions, CardGrid, Facts, OpsDesk, SlaBadge, Workspace, useSay } from './ops-kit';
 import { ackPercent, slaState, ticketCloseInfo } from './ops-rules';
 import type { KbArticle, PolicyRow, Ticket, TicketStatus } from './helpdesk-data';
 
@@ -148,7 +148,7 @@ export interface HelpCentreScreenProps {
 export function HelpCentreScreen({ device = 'desk', articles, tickets, today, state = 'ready', defaultQuery = '', raiseOpen, raiseSubject, assistant, rateTicketId }: HelpCentreScreenProps) {
   const [query, setQuery] = useState(defaultQuery);
   const [open, setOpen] = useState(!!raiseOpen);
-  const [deflected, setDeflected] = useState<string | null>(null);
+  const { toast } = useSay();
   const results = query ? suggestArticles(articles, query, 5) : articles.filter((a) => a.status === 'Published').slice(0, 4);
   const rateTicket = tickets.find((t) => t.id === rateTicketId);
   const phone = device === 'phone';
@@ -219,18 +219,12 @@ export function HelpCentreScreen({ device = 'desk', articles, tickets, today, st
 
   const rating = rateTicket && <RateTicketCard ticket={rateTicket} today={today} resolvedOn={new Date(2026, 8, 27)} />;
 
-  const deflectNote = deflected && (
-    <InlineAlert tone="success" title="Glad that helped">
-      We didn't raise a ticket. “{deflected}” is saved in your recent articles.
-    </InlineAlert>
-  );
-
   const form = (
     <RaiseTicketForm
       articles={articles}
       defaultSubject={raiseSubject}
       onDeflected={(a) => {
-        setDeflected(a.title);
+        toast({ tone: 'success', title: 'Glad that helped', description: `We didn't raise a ticket. “${a.title}” is saved in your recent articles.` });
         setOpen(false);
       }}
     />
@@ -239,7 +233,6 @@ export function HelpCentreScreen({ device = 'desk', articles, tickets, today, st
   if (phone) {
     return (
       <PhoneFrame tab="me" title="Help" back={<IconButton icon={ArrowLeft} label="Back to Me" />}>
-        {deflectNote}
         {search}
         <Button variant="primary" icon={Plus} fullWidth onClick={() => setOpen(true)}>
           Raise a ticket
@@ -277,7 +270,6 @@ export function HelpCentreScreen({ device = 'desk', articles, tickets, today, st
           </Button>
         }
       />
-      {deflectNote}
       <Workspace
         main={
           <>
@@ -324,16 +316,16 @@ export function RateTicketCard({ ticket, today, resolvedOn }: { ticket: Ticket; 
   const info = ticketCloseInfo(resolvedOn, today);
   const [rating, setRating] = useState<string>('');
   const [sent, setSent] = useState(false);
+  const { toast } = useSay();
+  const early = useTooEarly(rating ? [] : [{ fieldId: 'rt-rating', message: 'Choose a rating from 1 to 5.' }]);
   return (
     <Card title={`Resolved: ${ticket.subject}`}>
       <div className="yx-ops-stack">
         <p className="yx-ops-muted">
           {info.closed ? `Closed on ${formatDate(info.closesOn)}.` : `Closes on ${formatDate(info.closesOn)} if you don't reply.`} {info.canReopen ? `You can reopen it until ${formatDate(info.reopenUntil)}.` : 'It can no longer be reopened; raise a new ticket.'}
         </p>
-        {sent ? (
-          <InlineAlert tone="success">Thanks. Your rating is saved.</InlineAlert>
-        ) : (
-          <FormField label="How was the help you got?">
+        {!sent && (
+          <FormField id="rt-rating" label="How was the help you got?" error={early.errorOf('rt-rating')}>
             <RadioGroup
               orientation="horizontal"
               value={rating}
@@ -350,7 +342,7 @@ export function RateTicketCard({ ticket, today, resolvedOn }: { ticket: Ticket; 
         )}
         <Actions>
           {!sent && (
-            <Button disabled={!rating} onClick={() => setSent(true)}>
+            <Button onClick={() => !early.stop() && (setSent(true), toast({ tone: 'success', title: 'Thanks. Your rating is saved.' }))}>
               Send rating
             </Button>
           )}
@@ -566,8 +558,10 @@ export function TicketWorkspaceScreen({ ticket, messages, macros, articles, acti
   const [thread, setThread] = useState(messages);
   const [status, setStatus] = useState<TicketStatus>(resolved ? 'Resolved' : ticket.status);
   const first = ticket.requester.split(' ')[0];
+  const { say, toast } = useSay();
+  const draftEarly = useTooEarly(draft.trim() ? [] : [{ fieldId: 'tw-draft', message: mode === 'note' ? 'Write the note first.' : `Write your reply to ${first} first.` }]);
   const send = () => {
-    if (!draft.trim()) return;
+    if (draftEarly.stop()) return;
     setThread((t) => [...t, { id: `n${t.length}`, kind: mode === 'note' ? 'note' : 'agent', who: 'Suresh Pillai', at: today, text: draft }]);
     setDraft('');
   };
@@ -597,7 +591,7 @@ export function TicketWorkspaceScreen({ ticket, messages, macros, articles, acti
         actions={
           <>
             <Button onClick={() => setStatus(paused ? 'In progress' : 'Waiting on employee')}>{paused ? 'Resume' : 'Wait on employee'}</Button>
-            <Button onClick={() => setStatus('Resolved')} disabled={status === 'Resolved'}>
+            <Button onClick={() => say(status === 'Resolved' && 'This ticket is already resolved.', () => (setStatus('Resolved'), toast({ tone: 'success', title: 'Ticket resolved' })))}>
               Resolve
             </Button>
           </>
@@ -612,7 +606,7 @@ export function TicketWorkspaceScreen({ ticket, messages, macros, articles, acti
       />
       {paused && <InlineAlert tone="info">The SLA clock is paused while you wait for {first}. It restarts when they reply.</InlineAlert>}
       {status === 'Resolved' && (
-        <InlineAlert tone="success" title="Resolved">
+        <InlineAlert tone="info" title="Resolved">
           Closes on {formatDate(ticketCloseInfo(today, today).closesOn)} if {first} doesn't reply. {first} rated this ticket 5 of 5.
         </InlineAlert>
       )}
@@ -644,7 +638,7 @@ export function TicketWorkspaceScreen({ ticket, messages, macros, articles, acti
                 <TabsContent value={mode}>
                   <div className="yx-ops-stack">
                     {mode === 'note' && <p className="yx-ops-muted">Only agents in the {ticket.queue} queue see internal notes.</p>}
-                    <FormField label={mode === 'note' ? 'Note' : 'Reply'} hideLabel>
+                    <FormField id="tw-draft" label={mode === 'note' ? 'Note' : 'Reply'} hideLabel error={draftEarly.errorOf('tw-draft')}>
                       <TextArea value={draft} onChange={setDraft} rows={5} placeholder={mode === 'note' ? 'Add a note for other agents' : `Write to ${first}`} />
                     </FormField>
                     <Actions>
@@ -660,7 +654,7 @@ export function TicketWorkspaceScreen({ ticket, messages, macros, articles, acti
                           ))}
                         </MenuContent>
                       </Menu>
-                      <Button variant="primary" icon={Send} onClick={send} disabled={!draft.trim()}>
+                      <Button variant="primary" icon={Send} onClick={send}>
                         {mode === 'note' ? 'Add note' : 'Send reply'}
                       </Button>
                     </Actions>
@@ -970,9 +964,12 @@ export function PolicyAcknowledge({ policy, today, done, otpSent, quizAnswers = 
   const [answers, setAnswers] = useState<Record<string, string>>(quizAnswers);
   const [complete, setComplete] = useState(!!done);
   const score = quizScore(answers);
+  const { say, toast } = useSay();
+  const readEarly = useTooEarly(read ? [] : [{ fieldId: 'pa-read', message: 'Tick that you have read and understood the policy.' }]);
+  const otpEarly = useTooEarly(policy.method === 'OTP' && otp.length !== 6 ? [{ fieldId: 'pa-otp', message: 'Enter the 6-digit code from the SMS.' }] : []);
   if (complete || policy.myStatus === 'Acknowledged')
     return (
-      <InlineAlert tone="success" title="Acknowledged">
+      <InlineAlert tone="info" title="Acknowledged">
         You acknowledged {policy.version} on {formatDate(policy.acknowledgedOn ?? today)} by {policy.method === 'OTP' ? 'one-time code' : policy.method === 'Quiz' ? 'quiz' : 'confirmation'}. The record keeps the version and time.
       </InlineAlert>
     );
@@ -993,19 +990,27 @@ export function PolicyAcknowledge({ policy, today, done, otpSent, quizAnswers = 
           )}
         </div>
       )}
-      <Checkbox checked={read} onChange={setRead} label={`I have read and understood the ${policy.title} (${policy.version})`} />
+      <Checkbox id="pa-read" checked={read} onChange={setRead} label={`I have read and understood the ${policy.title} (${policy.version})`} />
+      {readEarly.errorOf('pa-read') && <p className="yx-field__error">{readEarly.errorOf('pa-read')}</p>}
       {policy.method === 'OTP' && sent && (
-        <FormField label="One-time code" helper="Sent by SMS to your mobile ending 4471. It expires in 10 minutes.">
+        <FormField id="pa-otp" error={otpEarly.errorOf('pa-otp')} label="One-time code" helper="Sent by SMS to your mobile ending 4471. It expires in 10 minutes.">
           <CodeField value={otp} onChange={setOtp} />
         </FormField>
       )}
       <Actions>
         {policy.method === 'OTP' && !sent ? (
-          <Button variant="primary" disabled={!read} onClick={() => setSent(true)}>
+          <Button variant="primary" onClick={() => !readEarly.stop() && setSent(true)}>
             Send code to acknowledge
           </Button>
         ) : (
-          <Button variant="primary" disabled={!read || (policy.method === 'OTP' && otp.length !== 6) || (policy.method === 'Quiz' && !score.passed)} onClick={() => setComplete(true)}>
+          <Button
+            variant="primary"
+            onClick={() =>
+              !readEarly.stop() &&
+              !otpEarly.stop() &&
+              say(policy.method === 'Quiz' && !score.passed && 'Answer both questions correctly first.', () => (setComplete(true), toast({ tone: 'success', title: `${policy.title} acknowledged` })))
+            }
+          >
             Acknowledge
           </Button>
         )}

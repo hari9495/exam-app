@@ -6,9 +6,16 @@ import { DesktopFrame, type AreaId, type PanelSection } from '../_kit/frames';
 import { Badge, type BadgeTone } from '../../components/display';
 import { Button } from '../../components/button';
 import { Icon, Text } from '../../components/foundations';
+import { useToast } from '../../components/notify';
 import { formatDate, formatINR } from '../../lib/format';
 import { clockState, clockText, slaState, slaText, type ClockItem, type ClockState, type SlaState } from './ops-rules';
 import './ops.css';
+
+/** Never a greyed-out button (founder rule): pressed when it cannot act, it says why in a toast. */
+export function useSay() {
+  const { toast } = useToast();
+  return { toast, say: (why: string | false | undefined, act?: () => void) => (why ? void toast({ title: why }) : act?.()) };
+}
 
 /* ---------------- Desktop frame per area (APX-D §1.2 panel links) ---------------- */
 

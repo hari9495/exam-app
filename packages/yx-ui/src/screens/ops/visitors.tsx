@@ -1,13 +1,13 @@
 // Visitor screens (M02 §B11, YX-AT-22): VIS-01 visitor desk (today), VIS-02 pre-register + my visitors, VIS-03 visitor kiosk,
 // VIS-04 visitor log & reports.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowLeft, Check, LogIn, LogOut, Printer, QrCode, ScanLine, Send, UserPlus, X } from 'lucide-react';
 import { KioskFrame, PhoneFrame } from '../_kit/frames';
 import { Button, IconButton } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
 import { EmptyState, InlineAlert } from '../../components/feedback';
 import { Drawer } from '../../components/drawer';
-import { FieldRow, FormField } from '../../components/field';
+import { FieldRow, FormField, useTooEarly } from '../../components/field';
 import { TextField } from '../../components/inputs';
 import { Checkbox, RadioGroup } from '../../components/choice';
 import { Select } from '../../components/select';
@@ -19,7 +19,7 @@ import { PageBanner } from '../../components/notify';
 import { BarChart, DonutChart } from '../../components/charts';
 import { formatDate } from '../../lib/format';
 import type { FilterValue } from '../../lib/table';
-import { Actions, CameraFrame, CardGrid, Facts, OpsDesk, PhotoPlaceholder, QrPlaceholder } from './ops-kit';
+import { Actions, CameraFrame, CardGrid, Facts, OpsDesk, PhotoPlaceholder, QrPlaceholder, useSay } from './ops-kit';
 import { retentionLeft } from './ops-rules';
 import type { ListState } from './helpdesk';
 import type { Visit, VisitStatus } from './visitors-data';
@@ -64,6 +64,7 @@ export function VisitorDeskScreen({ visits, today, state = 'ready', tab = 'expec
   const [current, setCurrent] = useState(tab);
   const [checkIn, setCheckIn] = useState<string | null>(checkInId);
   const [nda, setNda] = useState(false);
+  const ndaEarly = useTooEarly(nda ? [] : [{ fieldId: 'vd-nda', message: 'Tick that the visitor accepted the NDA and safety notice.' }]);
   const groups = {
     expected: visits.filter((v) => v.status === 'Expected' || v.status === 'Waiting for host' || v.status === 'Blocked'),
     onsite: visits.filter((v) => v.status === 'On site'),
@@ -156,7 +157,7 @@ export function VisitorDeskScreen({ visits, today, state = 'ready', tab = 'expec
         footer={
           <>
             <Button onClick={() => setCheckIn(null)}>Cancel</Button>
-            <Button variant="primary" icon={Printer} disabled={!nda}>
+            <Button variant="primary" icon={Printer} onClick={() => ndaEarly.stop()}>
               Check in and print badge
             </Button>
           </>
@@ -169,7 +170,8 @@ export function VisitorDeskScreen({ visits, today, state = 'ready', tab = 'expec
               <FormField label="ID shown">
                 <Select value="dl" onChange={() => {}} options={[{ value: 'dl', label: 'Driving licence' }, { value: 'pan', label: 'PAN card' }, { value: 'other', label: 'Other' }]} />
               </FormField>
-              <Checkbox checked={nda} onChange={setNda} label="Visitor accepted the NDA and safety notice" description="Required at this location before entry" />
+              <Checkbox id="vd-nda" checked={nda} onChange={setNda} label="Visitor accepted the NDA and safety notice" description="Required at this location before entry" />
+              {ndaEarly.errorOf('vd-nda') && <p className="yx-field__error">{ndaEarly.errorOf('vd-nda')}</p>}
               <p className="yx-ops-muted">ID images are deleted after 30 days; other visitor details after 90 days.</p>
             </div>
             <VisitorBadge visit={{ ...visit, badge: 'V-0413' }} today={today} />
@@ -247,6 +249,11 @@ export function PreRegisterForm({ today }: { today: Date }) {
 }
 export function PreRegisterScreen({ device = 'desk', visits, today, formOpen, sent, approval }: PreRegisterProps) {
   const [open, setOpen] = useState(!!formOpen);
+  const { toast } = useSay();
+  const saySent = () => toast({ tone: 'success', title: 'Invite sent', description: 'Rahul Menon got a QR pass on WhatsApp for 1 Oct 2026, 2:00 pm to 3:00 pm, Chennai office.' });
+  // The "invite sent" design state shows the toast the host sees after pressing Send invite.
+  useEffect(() => void (sent && saySent()), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const send = () => (setOpen(false), saySent());
   const list = visits.length ? (
     <ul className="yx-ops-stack yx-ops-plain" data-gap="sm" aria-label="My visitors">
       {visits.map((v) => (
@@ -265,7 +272,6 @@ export function PreRegisterScreen({ device = 'desk', visits, today, formOpen, se
   ) : (
     <EmptyState compact title="No visitors invited." description="Invite a visitor so reception has them on the list." />
   );
-  const sentNote = sent && <InlineAlert tone="success" title="Invite sent">Rahul Menon got a QR pass on WhatsApp for 1 Oct 2026, 2:00 pm to 3:00 pm, Chennai office.</InlineAlert>;
   const approvalCard = approval && (
     <Card title="A walk-in is asking for you">
       <div className="yx-ops-stack">
@@ -291,14 +297,13 @@ export function PreRegisterScreen({ device = 'desk', visits, today, formOpen, se
         {open ? (
           <>
             <PreRegisterForm today={today} />
-            <Button variant="primary" icon={Send} fullWidth>
+            <Button variant="primary" icon={Send} fullWidth onClick={send}>
               Send invite
             </Button>
           </>
         ) : (
           <>
             {approvalCard}
-            {sentNote}
             <Button variant="primary" icon={UserPlus} fullWidth onClick={() => setOpen(true)}>
               Invite a visitor
             </Button>
@@ -311,9 +316,8 @@ export function PreRegisterScreen({ device = 'desk', visits, today, formOpen, se
     <OpsDesk area="visitors" active="Invites">
       <PageHeader title="My visitors" description="Invite visitors ahead so they can check in with a QR pass." actions={<Button variant="primary" icon={UserPlus} onClick={() => setOpen(true)}>Invite a visitor</Button>} />
       {approvalCard}
-      {sentNote}
       <Card>{list}</Card>
-      <Drawer open={open} onOpenChange={setOpen} size="lg" title="Invite a visitor" footer={<><Button onClick={() => setOpen(false)}>Cancel</Button><Button variant="primary" icon={Send}>Send invite</Button></>}>
+      <Drawer open={open} onOpenChange={setOpen} size="lg" title="Invite a visitor" footer={<><Button onClick={() => setOpen(false)}>Cancel</Button><Button variant="primary" icon={Send} onClick={send}>Send invite</Button></>}>
         <PreRegisterForm today={today} />
       </Drawer>
     </OpsDesk>
@@ -327,6 +331,7 @@ export function PreRegisterScreen({ device = 'desk', visits, today, formOpen, se
 export type KioskStep = 'welcome' | 'details' | 'photo' | 'notice' | 'waiting' | 'badge' | 'see-reception' | 'rejected';
 export function VisitorKioskScreen({ step = 'welcome', visit, today }: { step?: KioskStep; visit: Visit; today: Date }) {
   const [agree, setAgree] = useState(false);
+  const agreeEarly = useTooEarly(agree ? [] : [{ fieldId: 'vk-agree', message: 'Tick to accept the notice before you continue.' }]);
   return (
     <KioskFrame tenant="Kaveri Foods · Chennai office">
       <div className="yx-ops-kiosk">
@@ -387,10 +392,11 @@ export function VisitorKioskScreen({ step = 'welcome', visit, today }: { step?: 
                 <strong>Your data.</strong> Your name, mobile, photo and visit times are kept for 90 days for security, then deleted.
               </p>
             </div>
-            <Checkbox checked={agree} onChange={setAgree} label="I have read and accept the confidentiality and safety notice" />
+            <Checkbox id="vk-agree" checked={agree} onChange={setAgree} label="I have read and accept the confidentiality and safety notice" />
+            {agreeEarly.errorOf('vk-agree') && <p className="yx-field__error">{agreeEarly.errorOf('vk-agree')}</p>}
             <Actions end>
               <Button>Back</Button>
-              <Button variant="primary" disabled={!agree}>
+              <Button variant="primary" onClick={() => agreeEarly.stop()}>
                 Accept and continue
               </Button>
             </Actions>

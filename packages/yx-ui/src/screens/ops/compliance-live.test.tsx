@@ -361,7 +361,8 @@ describe('CMP-06 Form 16 (live)', () => {
     await ue.type(screen.getByRole('textbox', { name: /Type/ }), 'ISSUE FORM16 2025-26');
     await ue.click(confirm);
     await waitFor(() => expect(onIssueAll).toHaveBeenCalledWith(expect.objectContaining({ phrase: 'ISSUE FORM16 2025-26' })));
-    expect(await screen.findByText('1 issued')).toBeInTheDocument();
+    expect((await screen.findAllByText('1 certificates issued.')).length).toBeGreaterThan(0);
+    expect(screen.queryByText('1 issued')).toBeNull(); // done is a toast, not an inline alert
   });
 
   it('nothing ready: issue says why; without the key it says who may', async () => {

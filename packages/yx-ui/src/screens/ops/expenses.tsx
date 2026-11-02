@@ -1,13 +1,13 @@
 // Expenses screens (M05), under Pay: EXP-01 expenses home, EXP-02 claim composer, EXP-03 claim review, EXP-04 trip,
 // EXP-05 advance card + request.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowLeft, Camera, Car, Check, FileText, Plane, Plus, Receipt, RotateCcw, Send, Trash2, X } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { Button, IconButton } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
 import { EmptyState, ErrorState, InlineAlert, Skeleton } from '../../components/feedback';
 import { Drawer } from '../../components/drawer';
-import { FieldRow, FormField } from '../../components/field';
+import { FieldRow, FormField, useTooEarly } from '../../components/field';
 import { CurrencyField, NumberField, TextArea, TextField } from '../../components/inputs';
 import { RadioGroup, Switch } from '../../components/choice';
 import { Select } from '../../components/select';
@@ -19,7 +19,7 @@ import { ApprovalTimeline } from '../../components/timeline';
 import { NeedsActionList } from '../../components/dashboard';
 import { StatCard } from '../../components/charts';
 import { formatDate, formatINR } from '../../lib/format';
-import { Actions, CameraFrame, CardGrid, Facts, MoneyLead, OpsDesk, ReceiptImage, StatusTrail, Workspace, type CameraState } from './ops-kit';
+import { Actions, CameraFrame, CardGrid, Facts, MoneyLead, OpsDesk, ReceiptImage, StatusTrail, Workspace, useSay, type CameraState } from './ops-kit';
 import { checkLine, flagText, fxFlagged, fxVariancePct, mileageAmount, perDiemAmount, recoveryInstalments, reductionText, settlement } from './ops-rules';
 import type { ListState } from './helpdesk';
 import type { ApprovalStatus, Claim, ExpenseLine, PaymentStatus } from './expenses-data';
@@ -275,8 +275,13 @@ export interface ClaimComposerProps {
   submitted?: boolean;
   trip?: string;
 }
-export function ClaimComposerScreen({ device = 'desk', title, lines: initial, advance, gstOn, camera = null, submitted, trip }: ClaimComposerProps) {
+export function ClaimComposerScreen({ device = 'desk', title, lines: initial, advance, gstOn, camera = null, submitted: sentBefore, trip }: ClaimComposerProps) {
   const [lines, setLines] = useState(initial);
+  const [submitted, setSubmitted] = useState(!!sentBefore);
+  const { say, toast } = useSay();
+  const saySubmitted = () => toast({ tone: 'success', title: 'Claim submitted', description: `${title} went to Sana Nizami for approval. Lines over the limit also go to the department head.` });
+  // The "just submitted" design state shows the toast the person sees after pressing Submit claim.
+  useEffect(() => void (sentBefore && saySubmitted()), []); // eslint-disable-line react-hooks/exhaustive-deps
   const [addOpen, setAddOpen] = useState(false);
   const [kind, setKind] = useState('receipt');
   const [km, setKm] = useState<number | null>(42);
@@ -318,13 +323,9 @@ export function ClaimComposerScreen({ device = 'desk', title, lines: initial, ad
       {kind === 'perdiem' && <p className="yx-ops-muted">₹1,200 a day in Tier 1 cities for your grade.</p>}
     </div>
   );
+  const submit = () => say((lines.length === 0 && 'Add a line first: a receipt, mileage or per diem.') || (blocked && 'Remove or fix the blocked line first.'), () => (setSubmitted(true), saySubmitted()));
   const body = submitted ? (
-    <div className="yx-ops-stack">
-      <InlineAlert tone="success" title="Claim submitted">
-        {title} went to Sana Nizami for approval. Lines over the limit also go to the department head.
-      </InlineAlert>
-      {lead}
-    </div>
+    <div className="yx-ops-stack">{lead}</div>
   ) : (
     <div className="yx-ops-stack">
       {device === 'phone' && lead}
@@ -346,7 +347,7 @@ export function ClaimComposerScreen({ device = 'desk', title, lines: initial, ad
             <Button icon={Camera} fullWidth onClick={() => setAddOpen(true)}>
               Add another receipt
             </Button>
-            <Button variant="primary" icon={Send} fullWidth disabled={blocked || lines.length === 0}>
+            <Button variant="primary" icon={Send} fullWidth onClick={submit}>
               Submit claim
             </Button>
           </div>
@@ -369,7 +370,7 @@ export function ClaimComposerScreen({ device = 'desk', title, lines: initial, ad
                 Add line
               </Button>
               <Button>Save draft</Button>
-              <Button variant="primary" icon={Send} disabled={blocked || lines.length === 0}>
+              <Button variant="primary" icon={Send} onClick={submit}>
                 Submit claim
               </Button>
             </>
@@ -402,6 +403,7 @@ export function ClaimReviewScreen({ claim, today, persona = 'mgr', reducing = nu
   const [reduce, setReduce] = useState<string | null>(reducing);
   const [newAmt, setNewAmt] = useState<number | null>(reducing ? 7500 : null);
   const [reason, setReason] = useState(reasonMissing ? '' : 'Hotel cap Tier 1 for G4–G6');
+  const reasonEarly = useTooEarly(reason.trim() ? [] : [{ fieldId: 'cr-reason', message: 'Enter a reason. The employee sees it next to the amount.' }]);
   const [decisions, setDecisions] = useState<Record<string, 'approved' | 'rejected'>>({});
   const line = claim.lines.find((l) => l.id === sel)!;
   const t = claimTotals(claim);
@@ -504,7 +506,7 @@ export function ClaimReviewScreen({ claim, today, persona = 'mgr', reducing = nu
         footer={
           <>
             <Button onClick={() => setReduce(null)}>Cancel</Button>
-            <Button variant="primary" disabled={!reason.trim()}>
+            <Button variant="primary" onClick={() => reasonEarly.stop()}>
               Save reduction
             </Button>
           </>
@@ -515,7 +517,7 @@ export function ClaimReviewScreen({ claim, today, persona = 'mgr', reducing = nu
             <FormField label="Approve" required>
               <CurrencyField value={newAmt} onChange={setNewAmt} />
             </FormField>
-            <FormField label="Reason" required error={reason.trim() ? null : 'Enter a reason. The employee sees it next to the amount.'}>
+            <FormField id="cr-reason" label="Reason" required error={reason.trim() ? null : 'Enter a reason. The employee sees it next to the amount.'}>
               <TextField value={reason} onChange={setReason} />
             </FormField>
             <InlineAlert tone="info">The employee will see: “{reductionText(newAmt ?? 0, claim.lines.find((l) => l.id === reduce)!.amount, reason || '…')}”</InlineAlert>
@@ -629,7 +631,7 @@ export function TripScreen({ device = 'desk', trip, view = 'record', spent = 197
           Return {formatINR(s.toReturn)} by 16 Oct 2026. After that it is recovered from salary in up to 3 instalments.
         </InlineAlert>
       )}
-      {settled && <InlineAlert tone="success">Settled on 29 Sep 2026.</InlineAlert>}
+      {settled && <InlineAlert tone="info">Settled on 29 Sep 2026.</InlineAlert>}
     </Card>
   );
   const body = (

@@ -19,7 +19,7 @@ import { Dialog } from '../../components/overlay';
 import { PageBanner } from '../../components/notify';
 import { Stepper } from '../../components/stepper';
 import { formatDate, formatINR } from '../../lib/format';
-import { Actions, CheckList, ClockPanel, Confidential, Facts, MembersList, OpsDesk, PhotoPlaceholder, SourceTag, StatusTrail, Workspace, type CaseMember, type CheckRow } from './ops-kit';
+import { Actions, CheckList, ClockPanel, Confidential, Facts, MembersList, OpsDesk, PhotoPlaceholder, SourceTag, StatusTrail, Workspace, useSay, type CaseMember, type CheckRow } from './ops-kit';
 import { addDays, ecCompensation, tdsLateInterest, type EcKind } from './ops-rules';
 import { RestrictedNotFound } from './cases';
 import type { Device } from './helpdesk';
@@ -483,6 +483,7 @@ export function PolicyWriterScreen({ step = 'draft', clauses, findings: initial,
   const [states, setStates] = useState<string[]>(['KA', 'TN']);
   const [headcount, setHeadcount] = useState<number | null>(248);
   const openFindings = findings.filter((f) => f.status === 'open');
+  const { say } = useSay();
   const checks: CheckRow[] = findings.map((f) => ({
     id: f.id,
     status: f.status === 'open' ? 'fail' : f.status === 'acknowledged' ? 'warn' : 'pass',
@@ -511,7 +512,7 @@ export function PolicyWriterScreen({ step = 'draft', clauses, findings: initial,
           step === 'draft' ? (
             <>
               <Button>Save draft</Button>
-              <Button variant="primary" disabled={openFindings.length > 0} onClick={() => setOpen(true)}>
+              <Button variant="primary" onClick={() => say(openFindings.length > 0 && `Resolve or acknowledge the ${openFindings.length === 1 ? 'open law-check finding' : `${openFindings.length} open law-check findings`} first.`, () => setOpen(true))}>
                 Approve & load
               </Button>
             </>
@@ -609,7 +610,7 @@ export function PolicyWriterScreen({ step = 'draft', clauses, findings: initial,
               <p className="yx-ops-muted">Checked against P07 rules valid today for each chosen state.</p>
               <CheckList label="Law-floor findings" items={checks} />
             </Card>
-            {openFindings.length > 0 && <InlineAlert tone="warning">Approve & load stays off until every finding is resolved or acknowledged.</InlineAlert>}
+            {openFindings.length > 0 && <InlineAlert tone="warning">Approve & load works once every finding is resolved or acknowledged.</InlineAlert>}
           </div>
         </div>
       )}

@@ -21,7 +21,7 @@ import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { PageBanner } from '../../components/notify';
 import { formatDate } from '../../lib/format';
 import type { FilterValue } from '../../lib/table';
-import { AccessCodeCard, Actions, ClockPanel, Confidential, MembersList, OpsDesk, StatusTrail, Workspace, type CaseMember } from './ops-kit';
+import { AccessCodeCard, Actions, ClockPanel, Confidential, MembersList, OpsDesk, StatusTrail, Workspace, useSay, type CaseMember } from './ops-kit';
 import { addDays, formatAccessCode, showCauseDue, type ClockItem } from './ops-rules';
 import type { AnonMessage, CaseRow, CaseType } from './helpdesk-data';
 import type { Device, ListState } from './helpdesk';
@@ -215,6 +215,7 @@ export function SpeakUpScreen({ device = 'desk', defaultKind = 'grievance', defa
 /** YX-CASE-11 no-login page for anonymous reporters. */
 export function CheckReportScreen({ state = 'enter', messages = [] }: { state?: 'enter' | 'open' | 'wrong-code' | 'locked'; messages?: AnonMessage[] }) {
   const [code, setCode] = useState(state === 'wrong-code' ? 'KF7Q-2MXA-99TR-HPL3' : '');
+  const { say } = useSay();
   return (
     <PortalFrame tenant="Kaveri Foods Pvt Ltd" portal="Check my report">
       {state === 'open' ? (
@@ -244,7 +245,7 @@ export function CheckReportScreen({ state = 'enter', messages = [] }: { state?: 
               <TextField value={code} onChange={setCode} autoComplete="off" disabled={state === 'locked'} />
             </FormField>
             <Actions>
-              <Button variant="primary" disabled={state === 'locked'}>
+              <Button variant="primary" onClick={() => say(state === 'locked' && 'Too many tries. Try again after 10:45 am.')}>
                 Open my report
               </Button>
               <Button>File a follow-up report</Button>
@@ -328,7 +329,7 @@ export function ShowCauseReply({ notice, today, replied, extensionRequested }: {
         </Actions>
       </Card>
       {replied ? (
-        <InlineAlert tone="success" title="Reply sent">
+        <InlineAlert tone="info" title="Reply sent">
           HR received your reply on {formatDate(today)}. You'll be told the next step here; nothing about this case is sent outside the app.
         </InlineAlert>
       ) : (
@@ -524,6 +525,7 @@ export function CaseWorkspaceScreen({ variant, caseRow, members, timeline, docum
   const [addOpen, setAddOpen] = useState(!!addMemberConflict);
   const [decision, setDecision] = useState(!!decisionOpen);
   const [penalty, setPenalty] = useState<string>('warning');
+  const { say } = useSay();
   if (!member) return <RestrictedNotFound />;
 
   const clocks: ClockItem[] =
@@ -691,7 +693,7 @@ export function CaseWorkspaceScreen({ variant, caseRow, members, timeline, docum
         footer={
           <>
             <Button onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button variant="primary" disabled={addMemberConflict}>
+            <Button variant="primary" onClick={() => say(addMemberConflict && 'Ravi Shankar is in the respondent’s manager chain. Add him with a documented override, or choose someone else.')}>
               Add member
             </Button>
           </>
@@ -719,7 +721,7 @@ export function CaseWorkspaceScreen({ variant, caseRow, members, timeline, docum
         footer={
           <>
             <Button onClick={() => setDecision(false)}>Cancel</Button>
-            <Button variant="primary" disabled={!replyReceived}>
+            <Button variant="primary" onClick={() => say(!replyReceived && 'No penalty can be decided yet. Wait for the employee’s reply or for the reply date to pass.')}>
               Record decision and draft letter
             </Button>
           </>

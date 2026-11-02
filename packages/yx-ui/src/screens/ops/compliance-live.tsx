@@ -771,7 +771,7 @@ export function LiveTdsReturns({ live }: { live: LiveTdsReturns }) {
               ) : reconcileError(r) ? (
                 <InlineAlert tone="danger">{reconcileError(r)}. Pay the difference with interest, or correct the challan, then reconcile again.</InlineAlert>
               ) : (
-                <InlineAlert tone="success">Every challan matches its deductions.</InlineAlert>
+                <InlineAlert tone="info">Every challan matches its deductions.</InlineAlert>
               )}
               {!isSalary(r) && r.reconciliation && r.reconciliation.lines.length > 0 && (
                 <DataTable
@@ -838,7 +838,7 @@ export function LiveTdsReturns({ live }: { live: LiveTdsReturns }) {
           title: 'File and acknowledgement',
           content:
             r.status === 'filed' ? (
-              <InlineAlert tone="success" title="Filed and locked">
+              <InlineAlert tone="info" title="Filed and locked">
                 Token {r.tokenNo}. Corrections now go through a correction return.
               </InlineAlert>
             ) : (
@@ -1154,7 +1154,7 @@ export function LiveForm16Screen({ live: p }: { live: LiveForm16 }) {
               title: 'Link the Q4 return',
               content:
                 p.q4Return?.status === 'filed' ? (
-                  <InlineAlert tone="success">Linked: Form {p.q4Return.formCode} Q4 {p.taxYear}, filed, token {p.q4Return.tokenNo}.</InlineAlert>
+                  <InlineAlert tone="info">Linked: Form {p.q4Return.formCode} Q4 {p.taxYear}, filed, token {p.q4Return.tokenNo}.</InlineAlert>
                 ) : (
                   <InlineAlert tone="warning">The Q4 return for {p.taxYear} is not marked filed here yet. Part A comes from TRACES after it is filed.</InlineAlert>
                 ),
@@ -1220,9 +1220,9 @@ export function LiveForm16Screen({ live: p }: { live: LiveForm16 }) {
                 <div className="yx-ops-stack">
                   <p className="yx-ops-p">Employees and alumni get their certificate in My pay documents. The notification says only that a document is ready.</p>
                   <Meter label="Issued" value={issued} max={Math.max(certs.length, 1)} />
-                  {issuedAll && (
-                    <InlineAlert tone={issuedAll.failed.length ? 'warning' : 'success'} title={`${issuedAll.issued} issued`}>
-                      {issuedAll.failed.length > 0 && `${issuedAll.failed.length} could not be issued: ${issuedAll.failed[0].reason}`}
+                  {issuedAll && issuedAll.failed.length > 0 && (
+                    <InlineAlert tone="warning" title={`${issuedAll.issued} issued`}>
+                      {`${issuedAll.failed.length} could not be issued: ${issuedAll.failed[0].reason}`}
                     </InlineAlert>
                   )}
                   {why && <InlineAlert tone="warning">{why}</InlineAlert>}
@@ -1614,9 +1614,9 @@ export function ConsultantTdsBody({ live: p, tab: start }: { live: LiveConsultan
                   }
                 />
               </Actions>
-              {imported && (
-                <InlineAlert tone={imported.unmatched.length ? 'warning' : 'success'} title={`${imported.matched.length} Form ${imported.formCode} certificates issued`}>
-                  {imported.unmatched.length ? `Not matched to anyone: ${imported.unmatched.join(', ')}.` : 'Every file matched a consultant.'}
+              {imported && imported.unmatched.length > 0 && (
+                <InlineAlert tone="warning" title={`${imported.matched.length} Form ${imported.formCode} certificates issued`}>
+                  {`Not matched to anyone: ${imported.unmatched.join(', ')}.`}
                 </InlineAlert>
               )}
             </div>

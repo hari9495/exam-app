@@ -15,6 +15,7 @@ import { Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
 import { FileUpload } from '../../components/upload';
 import { DataTable, type TableColumn } from '../../components/table';
+import { PlainTable } from '../../components/plain-table';
 import { FilterBar, type FilterFieldDef } from '../../components/filters';
 import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { Dialog, TypeToConfirmDialog } from '../../components/overlay';
@@ -710,7 +711,7 @@ function SampleTdsReturnWizard({ form = 'Form 138', quarter, months, current = '
       statusNote: difference ? `${formatINR(difference, { decimals: 2 })} difference` : undefined,
       content: (
         <div className="yx-ops-stack">
-          {difference ? <InlineAlert tone="danger">August deposit is {formatINR(difference, { decimals: 2 })} less than deducted. Pay the difference with interest, or correct the challan, before validating.</InlineAlert> : <InlineAlert tone="success">Every challan matches its deductions.</InlineAlert>}
+          {difference ? <InlineAlert tone="danger">August deposit is {formatINR(difference, { decimals: 2 })} less than deducted. Pay the difference with interest, or correct the challan, before validating.</InlineAlert> : <InlineAlert tone="info">Every challan matches its deductions.</InlineAlert>}
           <DataTable
             label="Challan reconciliation"
             columns={[
@@ -749,7 +750,7 @@ function SampleTdsReturnWizard({ form = 'Form 138', quarter, months, current = '
       title: 'File and acknowledgement',
       content: filed ? (
         <div className="yx-ops-stack">
-          <InlineAlert tone="success" title="Filed and locked">
+          <InlineAlert tone="info" title="Filed and locked">
             Acknowledgement 872310045612309 recorded on 29 Sep 2026. Corrections now go through a correction return.
           </InlineAlert>
         </div>
@@ -845,7 +846,7 @@ function SampleForm16Bulk({ rows, current = 'partA', notYet, q2Linked }: { rows:
             content: q2Linked ? (
               <InlineAlert tone="danger">The return you chose is Q2 (Jul–Sep 2025). Form 16 needs the filed Q4 return (Jan–Mar 2026).</InlineAlert>
             ) : (
-              <InlineAlert tone="success">Linked: 24Q Q4 FY 2025-26, filed 28 May 2026, acknowledgement 872310045119004.</InlineAlert>
+              <InlineAlert tone="info">Linked: 24Q Q4 FY 2025-26, filed 28 May 2026, acknowledgement 872310045119004.</InlineAlert>
             ),
           },
           {
@@ -859,7 +860,7 @@ function SampleForm16Bulk({ rows, current = 'partA', notYet, q2Linked }: { rows:
               </div>
             ),
           },
-          { id: 'partB', title: 'Generate Part B', content: <InlineAlert tone="success">Part B generated for {rows.length} employees from payroll: salary, exemptions, deductions and tax.</InlineAlert> },
+          { id: 'partB', title: 'Generate Part B', content: <InlineAlert tone="info">Part B generated for {rows.length} employees from payroll: salary, exemptions, deductions and tax.</InlineAlert> },
           {
             id: 'sign',
             title: 'Sign with DSC',
@@ -1042,26 +1043,18 @@ function SampleRulesBrowser({ rules, advisories, tab = 'rules', openRuleId = nul
             <DescriptionList items={[{ label: 'Valid from', value: formatDate(rule.validFrom) }, { label: 'Status', value: rule.status }, { label: 'Source', value: rule.source }, { label: 'Stored copy', value: 'PDF, checked by compliance owner and a second reviewer' }]} />
             {rule.statute === 'IN.PT' && (
               <Card title="Monthly slabs">
-                <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-                <table className="yx-ops-matrix">
-                  <thead>
-                    <tr>
-                      <th scope="col">Gross monthly salary</th>
-                      <th scope="col">PT</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <th scope="row">Below {rule.version === '2026-10' ? '₹25,000' : '₹25,000'}</th>
-                      <td data-num>₹0</td>
-                    </tr>
-                    <tr>
-                      <th scope="row">₹25,000 and above</th>
-                      <td data-num>₹200 (₹300 in February)</td>
-                    </tr>
-                  </tbody>
-                </table>
-                </div>
+                <PlainTable
+                  label="Monthly slabs"
+                  rows={[
+                    { band: 'Below ₹25,000', pt: '₹0' },
+                    { band: '₹25,000 and above', pt: '₹200 (₹300 in February)' },
+                  ]}
+                  getRowId={(r) => r.band}
+                  columns={[
+                    { key: 'band', header: 'Gross monthly salary', rowHeader: true, cell: (r) => r.band },
+                    { key: 'pt', header: 'PT', cell: (r) => r.pt },
+                  ]}
+                />
               </Card>
             )}
             <Card title="Version history">

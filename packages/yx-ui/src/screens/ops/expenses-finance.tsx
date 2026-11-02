@@ -7,7 +7,8 @@ import { Button, IconButton } from '../../components/button';
 import { Badge } from '../../components/display';
 import { EmptyState, InlineAlert } from '../../components/feedback';
 import { FormField, StickySaveBar } from '../../components/field';
-import { TextArea } from '../../components/inputs';
+import { TextArea, TextField } from '../../components/inputs';
+import { PlainTable } from '../../components/plain-table';
 import { RadioGroup, Switch } from '../../components/choice';
 import { Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
@@ -162,34 +163,22 @@ export function PolicyMatrixScreen({ matrix, dirty: startDirty, persona = 'fin' 
                 <Select value={grade} onChange={setGrade} options={matrix.grades.map((g) => ({ value: g, label: g }))} />
               </FormField>
             </div>
-            <div className="yx-ops-scroll">
-              <table className="yx-ops-matrix" aria-label={`Limits for ${grade}`}>
-                <thead>
-                  <tr>
-                    <th scope="col">Category</th>
-                    {matrix.tiers.map((t) => (
-                      <th key={t} scope="col">
-                        {t}
-                      </th>
-                    ))}
-                    <th scope="col">Over the limit</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {matrix.categories.map((c, ci) => (
-                    <tr key={c}>
-                      <th scope="row">{c}</th>
-                      {matrix.tiers.map((t, ti) => (
-                        <td key={t} data-num>
-                          <input className="yx-input" aria-label={`${c}, ${t}, ${grade}`} inputMode="numeric" value={limits[ci][gi][ti] ? groupIndian(limits[ci][gi][ti]) : ''} placeholder="Not allowed" onChange={(e) => set(ci, ti, e.target.value)} disabled={persona === 'hr'} />
-                        </td>
-                      ))}
-                      <td>{c.startsWith('Client') ? <Badge tone="danger">Hard block</Badge> : <Badge tone="neutral">Reason + extra approval</Badge>}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <PlainTable
+              label={`Limits for ${grade}`}
+              rows={matrix.categories.map((c, ci) => ({ c, ci }))}
+              getRowId={(r) => r.c}
+              columns={[
+                { key: 'category', header: 'Category', rowHeader: true, cell: (r) => r.c },
+                ...matrix.tiers.map((t, ti) => ({
+                  key: t,
+                  header: t,
+                  cell: (r: { c: string; ci: number }) => (
+                    <TextField aria-label={`${r.c}, ${t}, ${grade}`} inputMode="numeric" value={limits[r.ci][gi][ti] ? groupIndian(limits[r.ci][gi][ti]) : ''} placeholder="Not allowed" onChange={(v) => set(r.ci, ti, v)} disabled={persona === 'hr'} />
+                  ),
+                })),
+                { key: 'over', header: 'Over the limit', cell: (r) => (r.c.startsWith('Client') ? <Badge tone="danger">Hard block</Badge> : <Badge tone="neutral">Reason + extra approval</Badge>) },
+              ]}
+            />
             <p className="yx-ops-muted">An empty cell means the category isn't allowed for that grade and tier. Tiers are editable in city tiers.</p>
           </div>
         </TabsContent>
