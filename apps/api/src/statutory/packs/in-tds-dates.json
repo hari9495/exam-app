@@ -1,0 +1,24 @@
+{
+  "pack": "in-tds-dates",
+  "note": "CMP-06 NotYetAvailable: when year-end salary certificates can be made. Part A comes from TRACES only after the fourth-quarter salary TDS return (January to March) is filed, so the certificates page says they are available after that return's due date. Read with the calendar evaluator (key tds_return_q4, from the March of the tax year). Loaded by two staff through the console flow (scripts/load-rule-pack.ts, the seed). Marked verify until the compliance owner and the partner CA confirm it.",
+  "ruleSets": [
+    {
+      "statute": "IN.TDS-DATES",
+      "jurisdiction": "IN",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Income-tax Rules, 1962 r.31A(2) (the quarterly statement for January to March is due by 31 May); Income-tax Act, 2025 and its rules carry the same date for tax years from 2026-27.",
+      "values": {
+        "kind": "calendar",
+        "items": [{ "key": "tds_return_q4", "label": "Salary TDS return for January to March", "dueDay": 31, "monthOffset": 2 }]
+      },
+      "golden": [
+        { "name": "The 2025-26 Q4 return is due 31 May 2026", "fn": "calendar", "input": { "key": "tds_return_q4", "month": "2026-03" }, "expected": { "due": "2026-05-31" } },
+        { "name": "The 2026-27 Q4 return is due 31 May 2027", "fn": "calendar", "input": { "key": "tds_return_q4", "month": "2027-03" }, "expected": { "due": "2027-05-31" } }
+      ]
+    }
+  ]
+}

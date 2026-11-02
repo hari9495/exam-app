@@ -19,6 +19,7 @@ import { PayDocumentsService } from './documents.service';
 import { PayFileStore, sha256 } from './pay-file-store';
 import { PayKey, entitiesFor, payHolders, payScope, payViewer, requireEntity, requireSelf, withPayScope } from './pay-access';
 import { lawVersionFor, projectTax, taxForms, taxYearOf, type TaxInputs, type TaxProjection } from './tax';
+import { form16Block } from './form16-link';
 
 // Income tax (M03-BUILD-DESIGN §8.5, §8.6, PAY-5.01 … 5.08): the employee's tax workspace (regime until the company's
 // cut-off, then only HR with a reason; residential status; other income), declarations (Form 12BB or its successor) and
@@ -1038,6 +1039,9 @@ export class TaxService implements OnModuleInit {
       if (t.payDocumentId && !revise) throw new ConflictException('This certificate is already issued.');
       if (!t.payDocumentId && revise) throw new ConflictException('This certificate is not issued yet.');
       if (!t.partARef) throw new ConflictException('Attach Part A from TRACES first.');
+      // CMP-06: a link to anything but the year's filed Q4 return blocks issuing.
+      const block = await form16Block(tx, org, t.legalEntityId, t.taxYear);
+      if (block) throw new ConflictException(block);
       const phrase = `ISSUE ${t.form.toUpperCase()} ${t.taxYear}`;
       if (confirmation.phrase !== phrase) throw new BadRequestException(`Type ${phrase} to confirm.`);
       const old = t.payDocumentId ? await tx.payDocument.findFirstOrThrow({ where: { organizationId: org, id: t.payDocumentId } }) : null;

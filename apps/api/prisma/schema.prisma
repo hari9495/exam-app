@@ -8274,6 +8274,21 @@ model TdsReturn {
   @@map("tds_returns")
 }
 
+/// CMP-06: the salary return a legal entity's year-end certificates are issued against (one per entity and tax year).
+model Form16ReturnLink {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  legalEntityId  String   @map("legal_entity_id") @db.Uuid
+  taxYear        String   @map("tax_year") @db.VarChar(7)
+  tdsReturnId    String   @map("tds_return_id") @db.Uuid
+  linkedBy       String   @map("linked_by") @db.Uuid
+  linkedAt       DateTime @default(now()) @map("linked_at") @db.Timestamptz(3)
+  version        Int      @default(1)
+
+  @@unique([organizationId, legalEntityId, taxYear], map: "form16_return_links_key")
+  @@map("form16_return_links")
+}
+
 model StatutoryRegister {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String    @map("organization_id") @db.Uuid

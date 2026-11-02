@@ -399,6 +399,8 @@ async function main() {
       // Founder 30 Oct 2026 (item 12): state due dates for PT and LWF (verify), by the same flow.
       const dueRules = (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', 'in-dues.json'), 'utf8')) as { ruleSets: RuleFileSet[] }).ruleSets;
       await loadRuleSets(tx, dueRules, anand.id, reviewer.id);
+      // CMP-06: when year-end salary certificates become available (the Q4 return's due date, verify), by the same flow.
+      await loadRuleSets(tx, (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', 'in-tds-dates.json'), 'utf8')) as { ruleSets: RuleFileSet[] }).ruleSets, anand.id, reviewer.id);
       // Batch 5g: retrenchment under the IR Code (verify), by the same flow.
       const exitRules = (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', 'in-exit.json'), 'utf8')) as { ruleSets: RuleFileSet[] }).ruleSets;
       await loadRuleSets(tx, exitRules, anand.id, reviewer.id);
