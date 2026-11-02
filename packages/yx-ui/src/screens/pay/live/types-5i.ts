@@ -42,6 +42,16 @@ export interface IncentivePlanView {
   capPercent: string | null;
   clawbackDays: number;
   status: string;
+  /** PAY-32: the plan's dates, payout frequency, metric source, who is on it, and its version. */
+  effectiveFrom?: string | null;
+  effectiveTo?: string | null;
+  payoutFrequency?: 'monthly' | 'quarterly';
+  metricSource?: 'manual' | 'import' | 'api' | 'projects';
+  departmentId?: string | null;
+  locationId?: string | null;
+  planVersion?: number;
+  previousId?: string | null;
+  version?: number;
 }
 
 export interface UnionsView {

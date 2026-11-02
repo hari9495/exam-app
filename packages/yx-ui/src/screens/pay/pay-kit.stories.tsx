@@ -3,7 +3,9 @@ import { Badge } from '../../components/display';
 import { Button } from '../../components/button';
 import { formatINR, groupIndian } from '../../lib/format';
 import { PAY_CALENDAR, TODAY } from '../_kit/data';
-import { CompareBars, DaysStrip, DueDateStrip, IrreversibleSheet, MoneySummary, RangeMarker, RunProgress, RunStageTrack, StateBlock, WhyThisNumber } from './pay-kit';
+import { CompareBars, DaysStrip, DueDateStrip, FormDrawer, IrreversibleSheet, MoneySummary, RangeMarker, RunProgress, RunStageTrack, StateBlock, WhyThisNumber } from './pay-kit';
+import { FormField } from '../../components/field';
+import { TextField } from '../../components/inputs';
 import { CONFIRM_PHRASE, DUE_ITEMS, MY_DAYS, MY_DEDUCTIONS, MY_GROSS, MY_LINES, MY_NET, MY_PAYSLIP, MY_PREV_NET, PAYROLL_ADMIN, FIN_APPROVER, RUN, RUN_ROWS } from './pay-data';
 
 const meta: Meta = { title: 'Screens/Pay/Kit · Pay building blocks', parameters: { layout: 'padded' } };
@@ -77,6 +79,20 @@ export const Progress: S = {
 };
 export const Bars: S = { name: 'CompareBars and RangeMarker', render: () => <div style={col}><CompareBars label="Tax" items={[{ label: 'New regime', value: MY_PAYSLIP.tax?.projectedTax ?? 0, emphasis: true, note: '(your choice)' }, { label: 'Old regime', value: 1_86_420 }]} /><RangeMarker label="Band" min={15_00_000} max={24_00_000} mid={19_50_000} value={18_00_000} /></div> };
 export const States: S = { name: 'StateBlock · loading and error', render: () => <div style={col}><StateBlock state="loading">x</StateBlock><StateBlock state="error">x</StateBlock></div> };
+/** A form drawer with a second way to save (PAY-32: "Save draft" next to "Publish plan"); both check the form first. */
+export const FormDrawerSecondary: S = {
+  name: 'FormDrawer · save draft and publish',
+  render: () => (
+    <FormDrawer title="New incentive plan" confirm="Publish plan" secondary={{ label: 'Save draft', onSave: async () => undefined }} errors={[]} onClose={() => {}} onSave={async () => undefined}>
+      {() => (
+        <FormField id="kit-fd-name" label="Name" required>
+          <TextField defaultValue="Sales commission FY27" />
+        </FormField>
+      )}
+    </FormDrawer>
+  ),
+};
+
 export const Irreversible: S = {
   name: 'IrreversibleSheet · open',
   render: () => (

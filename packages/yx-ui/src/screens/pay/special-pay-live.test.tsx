@@ -227,7 +227,7 @@ describe('Incentives tab (PAY-32 live)', () => {
 
   it('publishes a new plan, and refuses tiers that do not go up', async () => {
     const onAddPlan = ok();
-    render(<SpecialPayHomeScreen live={live({ onAddPlan })} />);
+    render(<SpecialPayHomeScreen live={live({ onAddPlan, today: '2026-10-01' })} />);
     await tab('Incentives');
     await ue.click(screen.getByRole('button', { name: 'New plan' }));
     await ue.type(within(drawer()).getByRole('textbox', { name: /^Name/ }), 'Plant output');
@@ -242,7 +242,51 @@ describe('Incentives tab (PAY-32 live)', () => {
     await ue.clear(t2);
     await ue.type(t2, '100');
     await ue.click(within(drawer()).getByRole('button', { name: 'Publish plan' }));
-    await waitFor(() => expect(onAddPlan).toHaveBeenCalledWith({ name: 'Plant output', kind: 'sales', metric: 'pieces', targetAmount: '5000', tiers: [{ from: 0, multiplier: 1 }, { from: 100, multiplier: 1.5 }], clawbackDays: 90 }));
+    await waitFor(() =>
+      expect(onAddPlan).toHaveBeenCalledWith({ name: 'Plant output', kind: 'sales', metric: 'pieces', targetAmount: '5000', tiers: [{ from: 0, multiplier: 1 }, { from: 100, multiplier: 1.5 }], clawbackDays: 90, effectiveFrom: '2026-10-01', payoutFrequency: 'monthly', metricSource: 'manual' }),
+    );
+  });
+
+  it('PAY-32 Draft: dates the wrong way round are refused (negative); a quarterly plan for a location is saved as a draft', async () => {
+    const onAddPlan = ok();
+    render(<SpecialPayHomeScreen live={live({ onAddPlan, today: '2026-10-01', departments: [{ id: 'd1', name: 'Sales' }] })} />);
+    await tab('Incentives');
+    await ue.click(screen.getByRole('button', { name: 'New plan' }));
+    await ue.type(within(drawer()).getByRole('textbox', { name: /^Name/ }), 'Quarterly sales');
+    await ue.type(within(drawer()).getByRole('textbox', { name: /Measured on/ }), 'net sales');
+    await ue.type(within(drawer()).getByRole('textbox', { name: /Target pay/ }), '20000');
+    await ue.type(within(drawer()).getByLabelText(/Effective to/), '2026-09-30');
+    await ue.click(within(drawer()).getByRole('button', { name: 'Save draft' }));
+    expect(within(drawer()).getAllByText('Effective to must be after Effective from.').length).toBeGreaterThan(0);
+    expect(onAddPlan).not.toHaveBeenCalled();
+    await ue.clear(within(drawer()).getByLabelText(/Effective to/));
+    await ue.type(within(drawer()).getByLabelText(/Effective to/), '2027-03-31');
+    await ue.click(within(drawer()).getByRole('radio', { name: 'Quarterly' }));
+    await ue.click(within(drawer()).getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(onAddPlan).toHaveBeenCalledWith(expect.objectContaining({ name: 'Quarterly sales', effectiveFrom: '2026-10-01', effectiveTo: '2027-03-31', payoutFrequency: 'quarterly', draft: true })));
+  });
+
+  it('PAY-32 versions: a draft is published from the list; a published plan starts a new version only with a date', async () => {
+    const onPublishPlan = ok();
+    const onNewPlanVersion = ok();
+    const base = live().plans![0];
+    const plans = [
+      { ...base, id: 'pl2', name: 'South sales 2026-27', status: 'draft', planVersion: 2, previousId: base.id, effectiveFrom: '2027-01-01', version: 1 },
+      { ...base, planVersion: 1, effectiveFrom: '2026-04-01', version: 3 },
+    ];
+    render(<SpecialPayHomeScreen live={live({ plans, onPublishPlan, onNewPlanVersion, onUpdatePlan: ok() })} />);
+    await tab('Incentives');
+    expect(screen.getByText('Draft · version 2')).toBeInTheDocument();
+    expect(screen.getByText('Published · version 1')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Publish' }));
+    await waitFor(() => expect(onPublishPlan).toHaveBeenCalledWith('pl2'));
+    await ue.click(screen.getByRole('button', { name: 'New version' }));
+    await ue.click(screen.getByRole('button', { name: 'Start new version' }));
+    expect(await screen.findByText('Choose the day the new version starts.')).toBeInTheDocument();
+    expect(onNewPlanVersion).not.toHaveBeenCalled();
+    await ue.type(screen.getByLabelText(/New version starts on/), '2027-04-01');
+    await ue.click(screen.getByRole('button', { name: 'Start new version' }));
+    await waitFor(() => expect(onNewPlanVersion).toHaveBeenCalledWith(base.id, '2027-04-01'));
   });
 
   it('says so when there is no plan', async () => {

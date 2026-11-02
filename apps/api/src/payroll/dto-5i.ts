@@ -142,6 +142,50 @@ export class IncentivePlanDto {
   @Min(0)
   @Max(730)
   clawbackDays!: number;
+
+  /** PAY-32: the plan's terms. Left out: from today, open-ended, monthly, entered by hand, for everyone in the entity. */
+  @IsOptional()
+  @Matches(DAY)
+  effectiveFrom?: string;
+
+  @IsOptional()
+  @Matches(DAY)
+  effectiveTo?: string;
+
+  @IsOptional()
+  @IsIn(['monthly', 'quarterly'])
+  payoutFrequency?: 'monthly' | 'quarterly';
+
+  @IsOptional()
+  @IsIn(['manual', 'import', 'api', 'projects'])
+  metricSource?: 'manual' | 'import' | 'api' | 'projects';
+
+  @IsOptional()
+  @IsUUID()
+  departmentId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  locationId?: string;
+
+  /** PAY-32: save it as a draft (published later); otherwise it is published now. */
+  @IsOptional()
+  @IsBoolean()
+  draft?: boolean;
+}
+
+/** PAY-32: a draft's changes (optimistic: the version it was read at). */
+export class IncentivePlanUpdateDto extends IncentivePlanDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  version!: number;
+}
+
+/** PAY-32: a new version of a published plan, from a later date. */
+export class IncentivePlanVersionDto {
+  @Matches(DAY)
+  effectiveFrom!: string;
 }
 
 export class ResultRowDto {

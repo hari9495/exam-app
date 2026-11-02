@@ -98,7 +98,13 @@ export interface LiveSpecialPay {
   onAddCard: (x: { operationCode: string; name: string; unit: string; rate: string; validFrom: string }) => Promise<unknown>;
   onSaveOutput: (x: { employeeId: string; workDate: string; operationCode: string; quantity: string }) => Promise<unknown>;
   onImportOutputs: (file: File) => Promise<unknown>;
-  onAddPlan: (x: { name: string; kind: 'production' | 'attendance' | 'sales'; metric: string; targetAmount: string; tiers: { from: number; multiplier: number }[]; capPercent?: string; clawbackDays: number }) => Promise<unknown>;
+  onAddPlan: (x: PlanInput) => Promise<unknown>;
+  /** PAY-32: departments for "who is on the plan" (locations come from `locations`). */
+  departments?: { id: string; name: string }[];
+  /** PAY-32: change a draft, publish a draft, start a new version of a published plan. */
+  onUpdatePlan?: (id: string, x: PlanInput & { version: number }) => Promise<unknown>;
+  onPublishPlan?: (id: string) => Promise<unknown>;
+  onNewPlanVersion?: (id: string, effectiveFrom: string) => Promise<unknown>;
   onSaveResult: (planId: string, x: { employeeId: string; quota: string; actual: string }) => Promise<unknown>;
   onAddPool: (x: { locationId: string; amount: string; method: 'points' | 'hours' | 'shifts'; paidDirect: boolean; shares: { employeeId: string; basis: string }[] }) => Promise<{ id: string }>;
   onAddRule: (x: { name: string; standbyAmount: string; calloutMinHours: string; calloutRate: string; multiplier: string; holidayMultiplier?: string; payStandbyWhenCalled?: boolean; countTowardsWeekly?: boolean }) => Promise<unknown>;
@@ -156,6 +162,31 @@ export interface SettlementPreview {
   employees: { employeeId: string; category: string; from: string; months: { month: string; days: number; of: number; amount: string }[]; total: string }[];
   total: string;
 }
+
+/** What a new or changed incentive plan sends (POST / PUT payroll/special/plans). */
+export interface PlanInput {
+  name: string;
+  kind: 'production' | 'attendance' | 'sales';
+  metric: string;
+  targetAmount: string;
+  tiers: { from: number; multiplier: number }[];
+  capPercent?: string;
+  clawbackDays: number;
+  effectiveFrom?: string;
+  effectiveTo?: string;
+  payoutFrequency?: 'monthly' | 'quarterly';
+  metricSource?: 'manual' | 'import' | 'api' | 'projects';
+  departmentId?: string;
+  locationId?: string;
+  draft?: boolean;
+}
+const PLAN_SOURCES: { value: NonNullable<PlanInput['metricSource']>; label: string }[] = [
+  { value: 'manual', label: 'Entered by hand' },
+  { value: 'import', label: 'Monthly import' },
+  { value: 'api', label: 'API from the sales system' },
+  { value: 'projects', label: 'Projects billing' },
+];
+const planStatus = (p: IncentivePlanView) => (p.status === 'draft' ? `Draft · version ${p.planVersion ?? 1}` : p.status === 'active' ? `Published · version ${p.planVersion ?? 1}` : 'Switched off');
 
 const TAB_LABEL: Record<SpecialTab, string> = { home: 'Home', piece: 'Piece-rate', incentives: 'Incentives', tips: 'Tips', oncall: 'On-call', unions: 'Union dues', settlements: 'Settlements' };
 
@@ -490,7 +521,15 @@ const tierText = (t: Tier[]) => t.map((x) => `from ${x.from} % × ${x.multiplier
 const KIND_LABEL: Record<IncentivePlanView['kind'], string> = { sales: 'Sales commission', production: 'Production', attendance: 'Attendance' };
 
 export function LiveIncentivePlans({ live }: { live: LiveSpecialPay }) {
+  const { toast } = useToast();
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<IncentivePlanView | null>(null);
+  const [versioning, setVersioning] = useState<IncentivePlanView | null>(null);
+  const [verFrom, setVerFrom] = useState('');
+  const [verTried, setVerTried] = useState(false);
+  const { busy: planBusy, run: planRun } = useRun();
+  const say = (title: string, tone: 'success' | 'error' = 'success') => toast({ tone, title });
+  const dated = (p: IncentivePlanView) => (p.effectiveFrom ? `${dateText(p.effectiveFrom)}${p.effectiveTo ? ` to ${dateText(p.effectiveTo)}` : ' on'}` : 'Open-ended');
   const [result, setResult] = useState<IncentivePlanView | null>(null);
   const month = monthName(live.month);
   const cols: TableColumn<IncentivePlanView>[] = [
@@ -499,7 +538,8 @@ export function LiveIncentivePlans({ live }: { live: LiveSpecialPay }) {
     { key: 'tiers', header: 'Tiers', value: (p) => tierText(p.tiers), width: 220, optional: true },
     { key: 'cap', header: 'Cap', value: (p) => p.capPercent ?? '', render: (p) => (p.capPercent ? `${Number(p.capPercent)} % of target` : 'No cap'), width: 130, optional: true },
     { key: 'claw', header: 'Clawback window', value: (p) => p.clawbackDays, render: (p) => `${p.clawbackDays} days`, width: 130, optional: true },
-    { key: 'status', header: 'Status', type: 'status', value: (p) => (p.status === 'active' ? 'Published' : p.status), statusTone: (v) => (v === 'Published' ? 'success' : 'neutral'), width: 110 },
+    { key: 'when', header: 'Effective', value: (p) => dated(p), render: (p) => <div>{dated(p)}<p className="yx-pay-note">{p.payoutFrequency === 'quarterly' ? 'Paid quarterly' : 'Paid monthly'} · {PLAN_SOURCES.find((x) => x.value === (p.metricSource ?? 'manual'))?.label}</p></div>, width: 220, optional: true },
+    { key: 'status', header: 'Status', type: 'status', value: (p) => planStatus(p), statusTone: (v) => (String(v).startsWith('Published') ? 'success' : String(v).startsWith('Draft') ? 'warning' : 'neutral'), width: 170 },
   ];
   return (
     <div className="yx-pay-stack">
@@ -522,33 +562,82 @@ export function LiveIncentivePlans({ live }: { live: LiveSpecialPay }) {
         getRowId={(p) => p.id}
         state={tableState(live.plans)}
         empty={<EmptyState compact title="No incentive plans yet" description="A plan pays a target amount by attainment of the quota, with tiers and a cap." action={<Button onClick={() => setAdding(true)}>New plan</Button>} />}
-        rowButtons={(p) => (
-          <>
-            <Button size="sm" onClick={() => setResult(p)}>
-              Add a result
-            </Button>
-            <SendToPayroll label="Send month" title={`Send ${p.name} results for ${month}?`} consequence={`Every ${month} result of the plan goes to payroll as one-time pay, for a payroll approver to approve.`} done={`${p.name} results for ${month} sent to payroll for approval.`} onSend={() => live.onPost({ kind: 'plan', id: p.id })} size="sm" />
-          </>
-        )}
+        rowButtons={(p) =>
+          p.status === 'draft' ? (
+            <>
+              {live.onUpdatePlan && (
+                <Button size="sm" onClick={() => setEditing(p)}>
+                  Edit draft
+                </Button>
+              )}
+              {live.onPublishPlan && (
+                <Button size="sm" variant="primary" loading={planBusy === `pub-${p.id}`} onClick={() => void planRun(`pub-${p.id}`, async () => { try { await live.onPublishPlan!(p.id); say(`${p.name} published.`); } catch (e) { say(e instanceof Error && e.message ? e.message : 'Not published. Try again.', 'error'); throw e; } })}>
+                  Publish
+                </Button>
+              )}
+            </>
+          ) : (
+            <>
+              <Button size="sm" onClick={() => setResult(p)}>
+                Add a result
+              </Button>
+              <SendToPayroll label="Send month" title={`Send ${p.name} results for ${month}?`} consequence={`Every ${month} result of the plan goes to payroll as one-time pay, for a payroll approver to approve.`} done={`${p.name} results for ${month} sent to payroll for approval.`} onSend={() => live.onPost({ kind: 'plan', id: p.id })} size="sm" />
+              {live.onNewPlanVersion && p.status === 'active' && (
+                <Button size="sm" onClick={() => (setVerFrom(''), setVerTried(false), setVersioning(p))}>
+                  New version
+                </Button>
+              )}
+            </>
+          )
+        }
       />
-      {adding && <PlanDrawer onClose={() => setAdding(false)} onSave={live.onAddPlan} />}
+      {adding && <PlanDrawer live={live} onClose={() => setAdding(false)} onSave={live.onAddPlan} />}
+      {editing && live.onUpdatePlan && <PlanDrawer live={live} plan={editing} onClose={() => setEditing(null)} onSave={(x) => live.onUpdatePlan!(editing.id, { ...x, version: editing.version ?? 1 })} />}
+      <ConfirmDialog
+        open={!!versioning}
+        onOpenChange={(o) => !o && setVersioning(null)}
+        title={versioning ? `Start a new version of ${versioning.name}?` : ''}
+        consequence="A draft copy you can change. When it is published, the current version ends the day before; results before that stay on it."
+        confirmLabel="Start new version"
+        onConfirm={async () => {
+          setVerTried(true);
+          if (!DAY.test(verFrom)) return false;
+          const p = versioning!;
+          await live.onNewPlanVersion!(p.id, verFrom);
+          setVersioning(null);
+          say(`Draft version ${(p.planVersion ?? 1) + 1} of ${p.name} started.`);
+        }}
+      >
+        <FormField id="pl-ver-from" label="New version starts on" required error={verTried && !DAY.test(verFrom) ? 'Choose the day the new version starts.' : null}>
+          <TextField type="date" value={verFrom} onChange={setVerFrom} />
+        </FormField>
+      </ConfirmDialog>
       {result && <ResultDrawer plan={result} month={month} onSearch={live.onSearch} onClose={() => setResult(null)} onSave={(x) => live.onSaveResult(result.id, x)} />}
     </div>
   );
 }
 
-function PlanDrawer({ onClose, onSave }: { onClose: () => void; onSave: LiveSpecialPay['onAddPlan'] }) {
+function PlanDrawer({ live, plan, onClose, onSave }: { live: LiveSpecialPay; /** A draft being changed. */ plan?: IncentivePlanView; onClose: () => void; onSave: (x: PlanInput) => Promise<unknown> }) {
   const { toast } = useToast();
-  const [name, setName] = useState('');
-  const [kind, setKind] = useState<IncentivePlanView['kind']>('sales');
-  const [metric, setMetric] = useState('');
-  const [target, setTarget] = useState('');
-  const [tiers, setTiers] = useState<{ from: string; multiplier: string }[]>([
-    { from: '0', multiplier: '1' },
-    { from: '100', multiplier: '1.5' },
-  ]);
-  const [cap, setCap] = useState('');
-  const [claw, setClaw] = useState('90');
+  const [name, setName] = useState(plan?.name ?? '');
+  const [kind, setKind] = useState<IncentivePlanView['kind']>(plan?.kind ?? 'sales');
+  const [metric, setMetric] = useState(plan?.metric ?? '');
+  const [target, setTarget] = useState(plan ? String(Number(plan.targetAmount)) : '');
+  const [tiers, setTiers] = useState<{ from: string; multiplier: string }[]>(
+    plan?.tiers.map((t) => ({ from: String(t.from), multiplier: String(t.multiplier) })) ?? [
+      { from: '0', multiplier: '1' },
+      { from: '100', multiplier: '1.5' },
+    ],
+  );
+  const [cap, setCap] = useState(plan?.capPercent ? String(Number(plan.capPercent)) : '');
+  const [claw, setClaw] = useState(plan ? String(plan.clawbackDays) : '90');
+  // PAY-32: the plan's dates, payout frequency, metric source and who is on it.
+  const [from, setFrom] = useState(plan?.effectiveFrom ?? live.today ?? '');
+  const [to, setTo] = useState(plan?.effectiveTo ?? '');
+  const [freq, setFreq] = useState<'monthly' | 'quarterly'>(plan?.payoutFrequency ?? 'monthly');
+  const [source, setSource] = useState<NonNullable<PlanInput['metricSource']>>(plan?.metricSource ?? 'manual');
+  const [dept, setDept] = useState<string | null>(plan?.departmentId ?? null);
+  const [loc, setLoc] = useState<string | null>(plan?.locationId ?? null);
   const [achieved, setAchieved] = useState('110');
   const tierErr = tiers.findIndex((t, i) => !/^\d{1,4}$/.test(t.from) || !/^\d(\.\d{1,2})?$/.test(t.multiplier) || (i === 0 ? Number(t.from) !== 0 : Number(t.from) <= Number(tiers[i - 1].from)));
   const errors: FormErrorItem[] = [
@@ -558,20 +647,38 @@ function PlanDrawer({ onClose, onSave }: { onClose: () => void; onSave: LiveSpec
     ...(tierErr >= 0 ? [{ fieldId: `pl-tier-${tierErr}`, message: tierErr === 0 ? 'Tier 1 starts at 0 % with a multiplier like 1 (0 makes it a threshold).' : `Tier ${tierErr + 1} must start above tier ${tierErr}, with a multiplier like 1.5.` }] : []),
     ...(cap && !/^\d{1,4}$/.test(cap) ? [{ fieldId: 'pl-cap', message: 'The cap as a whole per cent of the target, like 200.' }] : []),
     ...(!/^\d{1,3}$/.test(claw) || Number(claw) > 365 ? [{ fieldId: 'pl-claw', message: 'Days from 0 to 365.' }] : []),
+    ...(!DAY.test(from) ? [{ fieldId: 'pl-from', message: 'Choose the day the plan starts.' }] : []),
+    ...(to && (!DAY.test(to) || to <= from) ? [{ fieldId: 'pl-to', message: 'Effective to must be after Effective from.' }] : []),
   ];
   const parsed = tiers.map((t) => ({ from: Number(t.from), multiplier: Number(t.multiplier) }));
+  const body = (): PlanInput => ({
+    name: name.trim(),
+    kind,
+    metric: metric.trim(),
+    targetAmount: target,
+    tiers: parsed,
+    ...(cap ? { capPercent: cap } : {}),
+    clawbackDays: Number(claw),
+    effectiveFrom: from,
+    ...(to ? { effectiveTo: to } : {}),
+    payoutFrequency: freq,
+    metricSource: source,
+    ...(dept ? { departmentId: dept } : {}),
+    ...(loc ? { locationId: loc } : {}),
+  });
   const preview = tierErr < 0 && Number(target) > 0 ? incentivePay(Number(target), parsed, cap ? Number(cap) : null, Number(achieved) || 0) : null;
   const setTier = (i: number, patch: Partial<{ from: string; multiplier: string }>) => setTiers((ts) => ts.map((x, j) => (j === i ? { ...x, ...patch } : x)));
   return (
     <FormDrawer
-      title="New incentive plan"
+      title={plan ? `Edit draft · ${plan.name}` : 'New incentive plan'}
       subtitle="Results are calculated with these tiers and paid as one-time pay once a payroll approver approves the month."
-      confirm="Publish plan"
+      confirm={plan ? 'Save draft' : 'Publish plan'}
       errors={errors}
       onClose={onClose}
+      secondary={plan ? undefined : { label: 'Save draft', onSave: async () => { await onSave({ ...body(), draft: true }); toast({ tone: 'success', title: `Draft of ${name.trim()} saved.` }); } }}
       onSave={async () => {
-        await onSave({ name: name.trim(), kind, metric: metric.trim(), targetAmount: target, tiers: parsed, ...(cap ? { capPercent: cap } : {}), clawbackDays: Number(claw) });
-        toast({ tone: 'success', title: `${name.trim()} published.` });
+        await onSave(body());
+        toast({ tone: 'success', title: plan ? `Draft of ${name.trim()} saved.` : `${name.trim()} published.` });
       }}
     >
       {(errorOf) => (
@@ -586,6 +693,32 @@ function PlanDrawer({ onClose, onSave }: { onClose: () => void; onSave: LiveSpec
             <FormField id="pl-metric" label="Measured on" required error={errorOf('pl-metric')}>
               <TextField value={metric} onChange={setMetric} maxLength={80} />
             </FormField>
+          </FormSection>
+          <FormSection title="Terms">
+            <FieldRow>
+              <FormField id="pl-from" label="Effective from" required error={errorOf('pl-from')}>
+                <TextField type="date" value={from} onChange={setFrom} />
+              </FormField>
+              <FormField id="pl-to" label="Effective to" optional error={errorOf('pl-to')}>
+                <TextField type="date" value={to} onChange={setTo} />
+              </FormField>
+            </FieldRow>
+            <FieldRow>
+              <FormField id="pl-freq" label="Payout frequency" helper={freq === 'quarterly' ? 'Paid in the last month of each quarter.' : undefined}>
+                <Segment label="Payout frequency" value={freq} onChange={setFreq} options={[{ value: 'monthly', label: 'Monthly' }, { value: 'quarterly', label: 'Quarterly' }]} />
+              </FormField>
+              <FormField id="pl-source" label="Metric source">
+                <Select value={source} onChange={(v) => v && setSource(v as NonNullable<PlanInput['metricSource']>)} options={PLAN_SOURCES} />
+              </FormField>
+            </FieldRow>
+            <FieldRow>
+              <FormField id="pl-dept" label="Department" optional helper="Left empty: every department.">
+                <Select value={dept} onChange={setDept} clearable placeholder="Every department" options={(live.departments ?? []).map((d) => ({ value: d.id, label: d.name }))} />
+              </FormField>
+              <FormField id="pl-loc" label="Location" optional helper="Left empty: every location.">
+                <Select value={loc} onChange={setLoc} clearable placeholder="Every location" options={live.locations.map((l) => ({ value: l.id, label: l.name }))} />
+              </FormField>
+            </FieldRow>
           </FormSection>
           <FormSection title="Quota and tiers">
             <FormField id="pl-target" label="Target pay at 100 % of quota (₹)" required error={errorOf('pl-target')}>

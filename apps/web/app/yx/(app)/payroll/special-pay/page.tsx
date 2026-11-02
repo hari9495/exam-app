@@ -27,6 +27,7 @@ export default function YxPaySpecialPage() {
   const unions = usePay<UnionsView>(q('unions'));
   const rules = usePay<OncallRuleView[]>(q('oncall-rules'));
   const locations = useOrg<{ id: string; name: string; legalEntityId: string | null }[]>('/locations');
+  const departments = useOrg<{ id: string; name: string; archivedAt: string | null }[]>('/masters/departments');
   const write = useApiWrite();
   const nameOf = useNames();
   const search = usePeopleSearch();
@@ -62,6 +63,10 @@ export default function YxPaySpecialPage() {
           return write('/payroll/special/outputs/import', form);
         },
         onAddPlan: (x) => sp('plans', { legalEntityId: entityId, ...x }),
+        departments: (departments.data ?? []).filter((d) => !d.archivedAt).map((d) => ({ id: d.id, name: d.name })),
+        onUpdatePlan: (id, x) => write(`/payroll/special/plans/${e(id)}`, { legalEntityId: entityId, ...x }, 'PUT'),
+        onPublishPlan: (id) => sp(`plans/${e(id)}/publish`),
+        onNewPlanVersion: (id, effectiveFrom) => sp(`plans/${e(id)}/versions`, { effectiveFrom }),
         onSaveResult: (planId, x) => sp(`plans/${e(planId)}/results`, { month, rows: [x] }),
         onAddPool: (x) => sp('tip-pools', { ...x, month }) as Promise<{ id: string }>,
         onAddRule: (x) => sp('oncall-rules', { legalEntityId: entityId, ...x }),

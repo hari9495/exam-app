@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
@@ -13,7 +13,7 @@ import {
   AuthorisationDto,
   ClawbackDto,
   EntityMonthQuery,
-  IncentivePlanDto,
+  IncentivePlanDto, IncentivePlanUpdateDto, IncentivePlanVersionDto,
   IncentiveResultsDto,
   LayoffDto,
   OncallRuleDto,
@@ -113,6 +113,26 @@ export class Payroll5iController {
   @RequirePermissions('payroll.special.manage')
   addPlan(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: IncentivePlanDto) {
     return this.special.addPlan(ctx, this.user(req), dto);
+  }
+
+  /** PAY-32: a draft's changes; publishing a draft; a new version of a published plan. */
+  @Put('plans/:id')
+  @RequirePermissions('payroll.special.manage')
+  updatePlan(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: IncentivePlanUpdateDto) {
+    return this.special.updatePlan(ctx, this.user(req), id, dto);
+  }
+
+  @Post('plans/:id/publish')
+  @HttpCode(200)
+  @RequirePermissions('payroll.special.manage')
+  publishPlan(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.special.publishPlan(ctx, this.user(req), id);
+  }
+
+  @Post('plans/:id/versions')
+  @RequirePermissions('payroll.special.manage')
+  newPlanVersion(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: IncentivePlanVersionDto) {
+    return this.special.newPlanVersion(ctx, this.user(req), id, dto.effectiveFrom);
   }
 
   @Get('plans/:id/results')

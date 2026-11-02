@@ -37,7 +37,7 @@ describe('Payroll batch 5i', () => {
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
-  const api = (who: Who, method: 'get' | 'post' | 'patch', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+  const api = (who: Who, method: 'get' | 'post' | 'patch' | 'put', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const inA = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false }, fn);
   const scoped = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) =>
     inA(async (tx) => {
@@ -282,6 +282,42 @@ describe('Payroll batch 5i', () => {
     await api('payAdminB', 'get', `/payroll/special/settlements/${s}/preview`).query({ month }).expect(404);
     await api('payAdmin', 'get', `/payroll/special/settlements/${s}/preview`).query({ month: 'soon' }).expect(400);
     await api('payAdmin', 'get', `/payroll/special/settlements/${s}/preview`).query({ month: prevMonth }).expect(400);
+  });
+
+  it('PAY-32 plans: drafts, dates, payout frequency, who is on it, and versions', async () => {
+    const plan = { legalEntityId: ids.entity, name: 'Quarter bonus', kind: 'production', metric: 'pieces', targetAmount: '1000', tiers: [{ from: 0, multiplier: 1 }], clawbackDays: 0 };
+    await api('payAdmin', 'post', '/payroll/special/plans').send({ ...plan, effectiveFrom: first, effectiveTo: first }).expect(400);
+    await api('payAdmin', 'post', '/payroll/special/plans').send({ ...plan, payoutFrequency: 'weekly' }).expect(400);
+    await api('payAdmin', 'post', '/payroll/special/plans').send({ ...plan, locationId: randomUUID() }).expect(400);
+    await api('approver1', 'post', '/payroll/special/plans').send({ ...plan, draft: true }).expect(403);
+    const d = (await api('payAdmin', 'post', '/payroll/special/plans').send({ ...plan, draft: true, effectiveFrom: `${prevMonth}-01`, metricSource: 'import', locationId: ids.loc }).expect(201)).body;
+    expect(d.status).toBe('draft');
+    // A draft takes no results; it changes only at the version it was read at.
+    expect((await api('payAdmin', 'post', `/payroll/special/plans/${d.id}/results`).send({ month, rows: [{ employeeId: ids.emp1, quota: '100', actual: '100' }] }).expect(409)).body.message).toMatch(/draft/);
+    await api('payAdmin', 'put', `/payroll/special/plans/${d.id}`).send({ ...plan, version: 9, payoutFrequency: 'quarterly' }).expect(409);
+    await api('payAdmin', 'put', `/payroll/special/plans/${d.id}`).send({ ...plan, version: 1, effectiveFrom: `${prevMonth}-01`, metricSource: 'import', locationId: ids.loc, payoutFrequency: 'quarterly' }).expect(200);
+    await api('payAdminB', 'post', `/payroll/special/plans/${d.id}/publish`).expect(404);
+    await api('payAdmin', 'post', `/payroll/special/plans/${d.id}/publish`).expect(200);
+    await api('payAdmin', 'post', `/payroll/special/plans/${d.id}/publish`).expect(409);
+    await api('payAdmin', 'put', `/payroll/special/plans/${d.id}`).send({ ...plan, version: 2 }).expect(409);
+    const listed = ((await api('payAdmin', 'get', '/payroll/special/plans').query({ legalEntityId: ids.entity }).expect(200)).body as { id: string }[]).find((x) => x.id === d.id);
+    expect(listed).toMatchObject({ status: 'active', payoutFrequency: 'quarterly', metricSource: 'import', locationId: ids.loc, planVersion: 1, effectiveFrom: `${prevMonth}-01` });
+    // A quarterly plan pays in the last month of a quarter; before its start is refused.
+    const quarterEnd = Number(month.slice(5)) % 3 === 0;
+    const r = await api('payAdmin', 'post', `/payroll/special/plans/${d.id}/results`).send({ month, rows: [{ employeeId: ids.emp1, quota: '100', actual: '100' }] });
+    expect(r.status).toBe(quarterEnd ? 200 : 400);
+    await api('payAdmin', 'post', `/payroll/special/plans/${d.id}/results`).send({ month: '2020-03', rows: [{ employeeId: ids.emp1, quota: '100', actual: '100' }] }).expect(400);
+    // A new version from a later date; publishing it ends this one the day before.
+    await api('payAdmin', 'post', `/payroll/special/plans/${d.id}/versions`).send({ effectiveFrom: `${prevMonth}-01` }).expect(400);
+    const nextYear = `${Number(month.slice(0, 4)) + 1}-04-01`;
+    const nv = (await api('payAdmin', 'post', `/payroll/special/plans/${d.id}/versions`).send({ effectiveFrom: nextYear }).expect(201)).body;
+    expect(nv).toMatchObject({ status: 'draft', planVersion: 2 });
+    await api('payAdmin', 'post', `/payroll/special/plans/${d.id}/versions`).send({ effectiveFrom: nextYear }).expect(409);
+    await api('payAdmin', 'post', `/payroll/special/plans/${nv.id}/publish`).expect(200);
+    const all = (await api('payAdmin', 'get', '/payroll/special/plans').query({ legalEntityId: ids.entity }).expect(200)).body as { id: string; effectiveTo: string | null; previousId: string | null }[];
+    expect(all.find((x) => x.id === d.id)!.effectiveTo).toBe(`${Number(month.slice(0, 4)) + 1}-03-31`);
+    expect(all.find((x) => x.id === nv.id)!.previousId).toBe(d.id);
+    expect(await scoped((tx) => tx.auditLog.count({ where: { action: { in: ['payroll.incentive.plan_drafted', 'payroll.incentive.plan_published', 'payroll.incentive.plan_versioned', 'payroll.incentive.plan_changed'] } } }))).toBe(5);
   });
 
   it('IR pay: union dues only with an authorisation, the remittance statement; VRS within the lifetime limit; lay-off pay', async () => {

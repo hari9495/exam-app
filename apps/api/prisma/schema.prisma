@@ -9994,6 +9994,15 @@ model IncentivePlan {
   capPercent     Decimal? @map("cap_percent") @db.Decimal(7, 2)
   clawbackDays   Int      @default(0) @map("clawback_days")
   status         String   @default("active") @db.VarChar(10)
+  /// PAY-32: effective dates, payout frequency (monthly, quarterly), metric source, who is on it, and its version.
+  effectiveFrom   DateTime? @map("effective_from") @db.Date
+  effectiveTo     DateTime? @map("effective_to") @db.Date
+  payoutFrequency String    @default("monthly") @map("payout_frequency") @db.VarChar(10)
+  metricSource    String    @default("manual") @map("metric_source") @db.VarChar(10)
+  departmentId    String?   @map("department_id") @db.Uuid
+  locationId      String?   @map("location_id") @db.Uuid
+  planVersion     Int       @default(1) @map("plan_version")
+  previousId      String?   @map("previous_id") @db.Uuid
   createdBy      String   @map("created_by") @db.Uuid
   version        Int      @default(1)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)

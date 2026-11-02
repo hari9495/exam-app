@@ -8,6 +8,7 @@ import type { ScopeUser, Viewer } from '../access/scope';
 import { StatutoryRulesService } from '../statutory/statutory.service';
 import { inForce, layoff as layoffRule, minWage, minWageTableFor } from '../statutory/evaluator';
 import { asDate, dateOf, monthRange } from '../time/time-core';
+import { addDays } from '../time/time-maths';
 import { ApprovalsEngine } from '../workflow/approvals-engine.service';
 import type { AuthorisationDto, ClawbackDto, IncentivePlanDto, IncentiveResultsDto, LayoffDto, OncallRuleDto, OncallSlotDto, OutputRowDto, RateCardDto, SettlementDto, TipPoolDto, UnionDto, VrsDto } from './dto-5i';
 import { MODULE_SOURCES, PayrollIntakeService } from './intake.service';
@@ -326,23 +327,116 @@ export class SpecialPayService implements OnModuleInit {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       await this.entity(tx, c, v, entityId);
-      const rows = await tx.incentivePlan.findMany({ where: { organizationId: c.organizationId, legalEntityId: entityId }, orderBy: { name: 'asc' } });
-      return rows.map((p) => ({ id: p.id, name: p.name, kind: p.kind, metric: p.metric, targetAmount: p.targetAmount.toFixed(2), tiers: p.tiers as unknown as Tier[], capPercent: p.capPercent?.toString() ?? null, clawbackDays: p.clawbackDays, status: p.status }));
+      const rows = await tx.incentivePlan.findMany({ where: { organizationId: c.organizationId, legalEntityId: entityId }, orderBy: [{ name: 'asc' }, { planVersion: 'desc' }] });
+      return rows.map((p) => ({
+        id: p.id,
+        name: p.name,
+        kind: p.kind,
+        metric: p.metric,
+        targetAmount: p.targetAmount.toFixed(2),
+        tiers: p.tiers as unknown as Tier[],
+        capPercent: p.capPercent?.toString() ?? null,
+        clawbackDays: p.clawbackDays,
+        status: p.status,
+        effectiveFrom: p.effectiveFrom ? dateOf(p.effectiveFrom) : null,
+        effectiveTo: p.effectiveTo ? dateOf(p.effectiveTo) : null,
+        payoutFrequency: p.payoutFrequency,
+        metricSource: p.metricSource,
+        departmentId: p.departmentId,
+        locationId: p.locationId,
+        planVersion: p.planVersion,
+        previousId: p.previousId,
+        version: p.version,
+      }));
     });
   }
 
-  async addPlan(ctx: TenantContext, user: ScopeUser, dto: IncentivePlanDto) {
-    const v = await this.viewer(user);
+  /** PAY-32: the plan's terms checked: tiers, dates the right way round, and a department and location of the entity. */
+  private async planTerms(tx: Tx, org: string, dto: IncentivePlanDto) {
     try {
       incentive({ targetAmount: dto.targetAmount, tiers: dto.tiers, capPercent: dto.capPercent ?? null }, '100', '100');
     } catch (e) {
       this.fail(e);
     }
+    if (dto.effectiveFrom && dto.effectiveTo && dto.effectiveTo <= dto.effectiveFrom) throw new BadRequestException('Effective to must be after Effective from.');
+    if (dto.departmentId && !(await tx.department.findFirst({ where: { organizationId: org, id: dto.departmentId }, select: { id: true } }))) throw new BadRequestException('That department is not in this company.');
+    if (dto.locationId && !(await tx.location.findFirst({ where: { organizationId: org, id: dto.locationId, legalEntityId: dto.legalEntityId }, select: { id: true } }))) throw new BadRequestException('That location is not in this legal entity.');
+    return {
+      name: dto.name,
+      kind: dto.kind,
+      metric: dto.metric,
+      targetAmount: D(dto.targetAmount),
+      tiers: dto.tiers as unknown as Prisma.InputJsonValue,
+      capPercent: dto.capPercent ? D(dto.capPercent) : null,
+      clawbackDays: dto.clawbackDays,
+      effectiveFrom: asDate(dto.effectiveFrom ?? todayIst()),
+      effectiveTo: dto.effectiveTo ? asDate(dto.effectiveTo) : null,
+      payoutFrequency: dto.payoutFrequency ?? 'monthly',
+      metricSource: dto.metricSource ?? 'manual',
+      departmentId: dto.departmentId ?? null,
+      locationId: dto.locationId ?? null,
+    };
+  }
+
+  async addPlan(ctx: TenantContext, user: ScopeUser, dto: IncentivePlanDto) {
+    const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       await this.entity(tx, c, v, dto.legalEntityId);
-      const p = await tx.incentivePlan.create({ data: { organizationId: c.organizationId, legalEntityId: dto.legalEntityId, name: dto.name, kind: dto.kind, metric: dto.metric, targetAmount: D(dto.targetAmount), tiers: dto.tiers as unknown as Prisma.InputJsonValue, capPercent: dto.capPercent ? D(dto.capPercent) : null, clawbackDays: dto.clawbackDays, createdBy: v.userId! } });
-      await audit(tx, c, 'payroll.incentive.plan_added', 'incentive_plan', p.id, { name: dto.name, kind: dto.kind, tiers: dto.tiers.length });
-      return { id: p.id };
+      const terms = await this.planTerms(tx, c.organizationId, dto);
+      const p = await tx.incentivePlan.create({ data: { organizationId: c.organizationId, legalEntityId: dto.legalEntityId, ...terms, status: dto.draft ? 'draft' : 'active', createdBy: v.userId! } });
+      await audit(tx, c, dto.draft ? 'payroll.incentive.plan_drafted' : 'payroll.incentive.plan_added', 'incentive_plan', p.id, { name: dto.name, kind: dto.kind, tiers: dto.tiers.length, payoutFrequency: terms.payoutFrequency, metricSource: terms.metricSource });
+      return { id: p.id, status: p.status };
+    });
+  }
+
+  /** PAY-32: a draft's changes (only a draft; optimistic on the version read). */
+  async updatePlan(ctx: TenantContext, user: ScopeUser, id: string, dto: IncentivePlanDto & { version: number }) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const p = await this.planFor(tx, c, v, id);
+      if (p.legalEntityId !== dto.legalEntityId) throw new BadRequestException('A plan stays in its legal entity.');
+      if (p.status !== 'draft') throw new ConflictException('A published plan is not changed. Make a new version of it.');
+      const terms = await this.planTerms(tx, c.organizationId, dto);
+      const n = await tx.incentivePlan.updateMany({ where: { organizationId: c.organizationId, id, version: dto.version, status: 'draft' }, data: { ...terms, version: { increment: 1 } } });
+      if (!n.count) throw new ConflictException('Someone else changed this draft. Reload it and try again.');
+      await audit(tx, c, 'payroll.incentive.plan_changed', 'incentive_plan', id, { name: dto.name, planVersion: p.planVersion });
+      return { id, status: 'draft', version: dto.version + 1 };
+    });
+  }
+
+  /** PAY-32: a draft is published; a new version ends the one it replaces the day before it starts. */
+  async publishPlan(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      await tx.$queryRaw`SELECT id FROM incentive_plans WHERE organization_id = ${org}::uuid AND id = ${id}::uuid FOR UPDATE`;
+      const p = await this.planFor(tx, c, v, id);
+      if (p.status !== 'draft') throw new ConflictException('This plan is already published.');
+      const from = dateOf(p.effectiveFrom ?? asDate(todayIst()));
+      if (p.previousId) {
+        const prev = await tx.incentivePlan.findFirstOrThrow({ where: { organizationId: org, id: p.previousId } });
+        if (prev.effectiveFrom && dateOf(prev.effectiveFrom) >= from) throw new ConflictException(`The new version must start after the published one (${dateOf(prev.effectiveFrom)}).`);
+        await tx.incentivePlan.update({ where: { id: prev.id }, data: { effectiveTo: asDate(addDays(from, -1)), version: { increment: 1 } } });
+      }
+      await tx.incentivePlan.update({ where: { id }, data: { status: 'active', version: { increment: 1 } } });
+      await audit(tx, c, 'payroll.incentive.plan_published', 'incentive_plan', id, { planVersion: p.planVersion, effectiveFrom: from, replaces: p.previousId });
+      return { id, status: 'active' };
+    });
+  }
+
+  /** PAY-32: a new draft version of a published plan, from a later date (results before it stay on the published one). */
+  async newPlanVersion(ctx: TenantContext, user: ScopeUser, id: string, effectiveFrom: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const p = await this.planFor(tx, c, v, id);
+      if (p.status !== 'active') throw new ConflictException('Only a published plan gets a new version.');
+      if (p.effectiveFrom && dateOf(p.effectiveFrom) >= effectiveFrom) throw new BadRequestException(`The new version starts after ${dateOf(p.effectiveFrom)}.`);
+      if (await tx.incentivePlan.findFirst({ where: { organizationId: org, previousId: p.id, status: 'draft' }, select: { id: true } })) throw new ConflictException('A new version of this plan is already being drafted.');
+      const { id: _i, createdAt: _c, version: _v, status: _s, createdBy: _b, ...copy } = p;
+      const n = await tx.incentivePlan.create({ data: { ...copy, tiers: p.tiers as Prisma.InputJsonValue, effectiveFrom: asDate(effectiveFrom), effectiveTo: p.effectiveTo && dateOf(p.effectiveTo) > effectiveFrom ? p.effectiveTo : null, planVersion: p.planVersion + 1, previousId: p.id, status: 'draft', createdBy: v.userId! } });
+      await audit(tx, c, 'payroll.incentive.plan_versioned', 'incentive_plan', n.id, { from: p.id, planVersion: n.planVersion, effectiveFrom });
+      return { id: n.id, status: 'draft', planVersion: n.planVersion };
     });
   }
 
@@ -360,13 +454,22 @@ export class SpecialPayService implements OnModuleInit {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       const p = await this.planFor(tx, c, v, planId);
+      if (p.status === 'draft') throw new ConflictException('This plan is a draft. Publish it before entering results.');
       if (p.status !== 'active') throw new ConflictException('This plan is switched off.');
+      // PAY-32: inside the plan's dates; a quarterly plan pays in the last month of each quarter.
+      if ((p.effectiveFrom && dto.month < dateOf(p.effectiveFrom).slice(0, 7)) || (p.effectiveTo && dto.month > dateOf(p.effectiveTo).slice(0, 7))) throw new BadRequestException(`${dto.month} is outside the plan's dates.`);
+      if (p.payoutFrequency === 'quarterly' && Number(dto.month.slice(5)) % 3 !== 0) throw new BadRequestException('A quarterly plan pays in the last month of each quarter (March, June, September, December).');
       const posted = await tx.incentiveResult.count({ where: { organizationId: org, planId, month: monthStart(dto.month), postingId: { not: null } } });
       if (posted) throw new ConflictException(`${dto.month}'s results are already sent to payroll.`);
       const { from, to } = monthRange(dto.month);
       const out = [];
       for (const r of dto.rows) {
         const e = await this.employment(tx, org, p.legalEntityId, r.employeeId, from, to);
+        // PAY-32: only people the plan is for (its department and location, when set).
+        if (p.departmentId || p.locationId) {
+          const a = await tx.employeeAssignment.findFirst({ where: { organizationId: org, employmentId: e.id, supersededAt: null, validFrom: { lte: asDate(to) }, OR: [{ validTo: null }, { validTo: { gte: asDate(from) } }] }, orderBy: { validFrom: 'desc' }, select: { departmentId: true, locationId: true } });
+          if (!a || (p.departmentId && a.departmentId !== p.departmentId) || (p.locationId && a.locationId !== p.locationId)) throw new BadRequestException('That person is not in the department or location this plan is for.');
+        }
         let x: ReturnType<typeof incentive>;
         try {
           x = incentive({ targetAmount: p.targetAmount.toString(), tiers: p.tiers as unknown as Tier[], capPercent: p.capPercent?.toString() ?? null }, r.quota, r.actual);

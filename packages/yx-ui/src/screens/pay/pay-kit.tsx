@@ -937,9 +937,20 @@ export function PartnerLink({ children, href = 'https://partner.example.in' }: {
 /* ------------------------------------------------------------------ Form drawer and file button (moved from the live copies) */
 
 /** A drawer with a form: errors show only after Save is pressed (no red while typing); the first bad field takes focus. */
-export function FormDrawer({ title, subtitle, confirm, errors, onClose, onSave, children }: { title: string; subtitle?: string; confirm: string; errors: FormErrorItem[]; onClose: () => void; onSave: () => Promise<unknown>; children: (errorOf: (id: string) => string | undefined) => ReactNode }) {
+export function FormDrawer({ title, subtitle, confirm, errors, onClose, onSave, secondary, children }: { title: string; subtitle?: string; confirm: string; errors: FormErrorItem[]; onClose: () => void; onSave: () => Promise<unknown>; /** A second way to save (e.g. "Save draft"), checked the same way. */ secondary?: { label: string; onSave: () => Promise<unknown> }; children: (errorOf: (id: string) => string | undefined) => ReactNode }) {
   const { busy, error, run } = useRun();
   const save = useSaveErrors(errors);
+  const press = (key: string, fn: () => Promise<unknown>) => {
+    if (errors.length) {
+      save.reveal();
+      // Founder rule: the first bad field takes focus (after the error summary's own focus on show).
+      return void setTimeout(() => document.getElementById(errors[0].fieldId)?.focus());
+    }
+    void run(key, async () => {
+      await fn();
+      onClose();
+    });
+  };
   return (
     <Drawer
       open
@@ -949,21 +960,12 @@ export function FormDrawer({ title, subtitle, confirm, errors, onClose, onSave, 
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button
-            variant="primary"
-            loading={busy === 'save'}
-            onClick={() => {
-              if (errors.length) {
-                save.reveal();
-                // Founder rule: the first bad field takes focus (after the error summary's own focus on show).
-                return void setTimeout(() => document.getElementById(errors[0].fieldId)?.focus());
-              }
-              void run('save', async () => {
-                await onSave();
-                onClose();
-              });
-            }}
-          >
+          {secondary && (
+            <Button loading={busy === 'secondary'} onClick={() => press('secondary', secondary.onSave)}>
+              {secondary.label}
+            </Button>
+          )}
+          <Button variant="primary" loading={busy === 'save'} onClick={() => press('save', onSave)}>
             {confirm}
           </Button>
         </>
