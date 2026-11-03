@@ -25,8 +25,8 @@ feature not built** (no API) · **phone view, mobile app not built**.
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Helpdesk HLP-01 … 14 | 14 | 128 | 3 | 0 | 53 | 0 | 184 |
-| B. Service desk designs | 5 | 54 | 2 | 0 | 0 | 0 | 56 |
-| **All Helpdesk groups (A–B)** | **19** | **182** | **5** | **0** | **53** | **0** | **240** |
+| B. Service desk designs | 5 | 55 | 2 | 0 | 0 | 0 | 57 |
+| **All Helpdesk groups (A–B)** | **19** | **183** | **5** | **0** | **53** | **0** | **241** |
 Round 10 recount (script, 3 Nov 2026, `feat/yukthix-hlp-10-11`, from `test/yukthix-main` without the HLP-03 branch):
 HLP-10 has 13 stories (the 10 approved plus 3 drawn: typed name, a newer version, no access): 12 live, 1 live (gap)
 (the quiz). HLP-11 has 22 stories (the 6 approved plus 16 drawn for the real records' states), all live.
