@@ -13,6 +13,12 @@ stand-in copies they replaced are deleted with their stories and tests (`expense
 ClaimScreen; `expenses/live/travel.tsx`: TripsScreen, TripScreen, AdvancesScreen, AdvanceScreen). EXP-06 (to pay),
 EXP-07 (policy matrix) and EXP-09 (reports) still render stand-ins (round 2); EXP-08 (card statement import) has no API.
 
+Round 2b (branch `feat/yukthix-exp-2b`, 3 Nov 2026): the manager's read-only **Team claims** list (founder answer 1;
+new design stories in EXP-01, page /yx/expenses/team) with the home cards drilling into it; EXP-05's recovery
+instalment amounts and the separate forex card; the real receipt thumbnail (kit `ReceiptImage` takes the stored photo
+or shows a PDF tile); the foreign-rate tolerance is the company setting `expense.fx_tolerance_pct` (default 3); and the
+breadcrumbs name each Expenses page (Pay › Expenses, Pay › Trips, Pay › Advances, Pay › Team claims).
+
 Verdicts (the same words as People and Performance): **live** (the live page renders the designed screen and can reach
 this state; the note says how) · **live (gap)** (the design is live, but this state can't be fully reached yet; the
 note says why) · **wire design** (a live page exists for this job but renders something else) · **design only,
@@ -22,9 +28,14 @@ feature not built** (no API) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Claims, trips and advances (EXP-01 … 05, round 1) | 5 | 36 | 3 | 0 | 0 | 3 | 42 |
+| A. Claims, trips and advances (EXP-01 … 05, rounds 1 and 2b) | 5 | 44 | 0 | 0 | 0 | 3 | 47 |
 | B. Finance (EXP-06 … 09, round 2) | 4 | 0 | 0 | 17 | 5 | 0 | 22 |
-| **All EXP groups (A–B)** | **9** | **36** | **3** | **17** | **5** | **3** | **64** |
+| **All EXP groups (A–B)** | **9** | **44** | **0** | **17** | **5** | **3** | **69** |
+
+Round 2b recount (script, 3 Nov 2026, `feat/yukthix-exp-2b`): EXP-01 gains 5 design stories (Team claims: manager,
+over-limit lines, nothing sent yet, not a manager, phone); the 3 "live (gap)" rows are now live (the manager cards drill
+into Team claims; EXP-05 finance recovery shows the instalment amounts; the forex card is drawn). The Ops kit gains one
+story (Receipt · stored photo and PDF), not counted here.
 
 Counted by script 3 Nov 2026 on `feat/yukthix-exp-1` (the script is in the appendix): every `export const` story in the
 nine `exp-NN.stories.tsx` files against the rows in section 4. The script fails unless each story file has exactly one
@@ -66,10 +77,11 @@ element count for `expenses` goes from 8 to 4 (the stand-ins' hidden file inputs
 |---|---|---|---|---|
 | /yx/expenses (?new=1) | `ExpensesHomeScreen` live: my claims with "You will receive" and the payroll month; "Waiting for me" (claims, trips, advances; team spend and over-limit lines) for approvers; "Finance" (to pay, failed, flagged, advances overdue, cut-off) for finance; Segment when someone has more than one view | EXP-01 | `GET me/home` (implicit: own claims; `team` only for a manager's direct reports today; `payroll` from the company setting), `GET claims?view=approvals` (implicit, the task holder), `GET trips?view=approvals`, `GET advances?view=approvals` (implicit), `GET advances` (own), `GET to-pay` (`expense.payout.manage`), `GET advances?view=payout` (`expense.payout.manage`), `GET claims?view=review` (`expense.finance.review`), `POST claims` (implicit: an employee with a current job) | live |
 | /yx/expenses/claims/[id] (?add=receipt\|mileage\|perdiem\|bill) | the claimant gets `ClaimComposerScreen` live (lines with their checks, add-a-line sheet, line form, submit, withdraw); anyone else allowed to see it gets `ClaimReviewScreen` live (lines table, receipt rail, reduce and reject a line, approve, send back, reject, finance flags, approval timeline) | EXP-02, EXP-03 | `GET claims/:id` (implicit: claimant, approver holding or having held a task, `expense.claim.view` in scope, `expense.finance.review` for the entity; now with `can.own` and each route step's approvers and decision time), `GET categories`, `POST claims/:id/receipts`, `POST/PUT/DELETE claims/:id/lines`, `POST claims/:id/submit`, `/withdraw` (claimant), `PATCH claims/:id/lines/:lineId/approve-amount`, `POST claims/:id/decide` (the open task's holder), `POST flags/:id` (`expense.finance.review`), receipt and rate-proof files (streamed after the same checks) | live |
+| /yx/expenses/team (?month=yyyy-mm, ?over=1) | `TeamClaimsScreen` live: a manager's read-only list of their direct reports' sent claims in this month or last (Segment), all or only those with over-limit lines (Segment); team spend as on the home card; Open only on claims the manager may open anyway (an approver on it, scope or finance) | EXP-01 (Team stories) | `GET claims?view=team&month=` (implicit: someone with direct reports today; 403 for anyone else, 400 for a bad month) | live |
 | /yx/expenses/trips (?new=1) | `TripScreen` live, list view: my trips, waiting for me, to book (travel desk); request sheet | EXP-04 | `GET trips`, `GET trips?view=approvals` (implicit), `GET trips?view=desk` (`travel.booking.manage`), `POST trips`, `POST trips/:id/submit` (traveller) | live |
 | /yx/expenses/trips/[id] | `TripScreen` live, record view: timeline, itinerary and bookings, settlement, claims on the trip; approve / reject, cancel, close, add claim | EXP-04 | `GET trips/:id` (implicit; money hidden from the travel desk), bookings (`can.book`), `POST trips/:id/close` (`travel.booking.manage`), `POST workflow/approvals/tasks/:id/decide` (the task holder) | live |
 | /yx/expenses/advances | `AdvanceScreen` live, list view: mine, waiting for me, finance; request sheet | EXP-05 | `GET advances`, `?view=approvals` (implicit), `?view=payout` (`expense.payout.manage`), `POST advances` (implicit) | live |
-| /yx/expenses/advances/[id] | `AdvanceScreen` live, record view: balance card and ledger, overdue message with the company's recovery instalments; approve less, approve / reject, record payment, record a return, claim against it | EXP-05 | `GET advances/:id` (implicit; now with `policy`: settle-by days and recovery instalments from the company settings), `PATCH advances/:id/amount` (the task holder), `POST advances/:id/pay`, `/return` (`expense.payout.manage`) | live |
+| /yx/expenses/advances/[id] | `AdvanceScreen` live, record view: balance card and ledger, overdue message with the recovery instalment amounts and months (round 2b), the forex settlement card for a foreign-currency advance (round 2b); approve less, approve / reject, record payment, record a return, claim against it | EXP-05 | `GET advances/:id` (implicit; now with `policy`: settle-by days and recovery instalments from the company settings, and `recovery` for the employee and finance: the loan engine's schedule once the recovery loan exists, else the preview), `PATCH advances/:id/amount` (the task holder), `POST advances/:id/pay`, `/return` (`expense.payout.manage`) | live |
 | /yx/expenses/to-pay | `ToPayLiveScreen` (stand-in) | EXP-06 | `to-pay`, `payouts`, `journal` (`expense.payout.manage`) | wire design |
 | /yx/settings/expenses | `ExpenseSetupScreen` (stand-in: starters, categories, tiers, policies, rates, GST, FX) | EXP-07 | setup routes (`expense.policy.manage`) | wire design |
 | /yx/expenses/reports | `ExpenseReportsScreen` (stand-in copy in `expenses/live/reports.tsx`) | EXP-09 | `GET reports/:kind` (`expense.report.view`) | wire design |
@@ -104,7 +116,7 @@ for me" when something waits for them or they manage people; "Finance" with the 
 | story (sub-page) | verdict | note |
 |---|---|---|
 | Employee · Employee (my claims) | live | my claims as tiles (name links to the claim, amount, sent date, status and payment badges, "Approved ₹X of ₹Y" when cut); rail: "You will receive" with the payroll month (setting `expense.payroll_cutoff_day`), open advance card |
-| Manager · Manager (waiting for me) | live (gap) | "Waiting for you" lists claims, trips and advances waiting (Review opens each); team spend and over-limit lines for direct reports today, by IST month, against last month. Gap: the cards' drill goes to Approvals; there is no team claims list yet (question 1); the waiting items have no due date |
+| Manager · Manager (waiting for me) | live | "Waiting for you" lists claims, trips and advances waiting (Review opens each); team spend and over-limit lines for direct reports today, by IST month, against last month. Round 2b: "View team claims" and "View over-limit lines" open Team claims (all, or ?over=1). The waiting items have no due date (none in the API) |
 | Finance · Finance (to pay) | live | to pay (exact sum of net payable), payment failed, flagged for audit, advances overdue; the payroll cut-off card with the claims queued for that payroll; the "Flagged for audit" table (Check opens the review) |
 | Empty · Empty (first use) | live | no claims: "Snap a receipt" starts a claim that opens on a receipt |
 | Loading · Loading | live | while GET me/home loads |
@@ -112,6 +124,11 @@ for me" when something waits for them or they manage people; "Finance" with the 
 | Phone · Employee · phone (camera first) | live | under 768 px: "You will receive", Snap a receipt, Request a trip, Add mileage, My claims |
 | NewClaim · New claim · name it first | live | "New claim" (or Ctrl K, N E: ?new=1); pressed too early says why and focuses the box |
 | ManyRoles · Employee who also approves and pays (view switch) | live | Segment "My expenses / Waiting for me / Finance", shown only to someone with more than one view |
+| Team · Team claims · manager, read only | live | /yx/expenses/team: direct reports' sent claims this month (drafts and withdrawn stay private); month Segment (this, last); Open only where the manager may open the claim |
+| TeamOverLimit · Team claims · with over-limit lines | live | the "Over-limit lines" card's drill (?over=1), or the Show Segment |
+| TeamEmpty · Team claims · nothing sent yet | live | a month with no sent claims |
+| TeamNoAccess · Team claims · not a manager (no access) | live | the API refuses (403) anyone with no one reporting to them today; the page shows the kit's no-access state |
+| TeamPhone · Team claims · phone | live | under 768 px: the table becomes cards |
 
 #### EXP-02 · Claim composer
 
@@ -120,7 +137,7 @@ goes back to the home with a toast saying so.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Draft · Draft · policy flags, per diem, mileage | live | line cards with the server's policy check (over the limit with the reason box, receipt needed, flags), worked-out mileage and per diem, policy limit; rail: what I will receive after the advance |
+| Draft · Draft · policy flags, per diem, mileage | live | line cards with the real receipt thumbnail (round 2b: the stored photo, or a PDF tile; the drawn receipt while it loads or before the virus check) and the server's policy check (over the limit with the reason box, receipt needed, flags), worked-out mileage and per diem, policy limit; rail: what I will receive after the advance |
 | Gst · GST capture on | live | GST details on lines where captured; the rail note shows when a category is GST-eligible |
 | ForeignCurrency · Foreign currency · rate variance flag | live | a bill in another currency with the rate used; a rate I entered shows how far it is from the company rate (the server flags it for the approver beyond its tolerance); "Add rate proof" opens the line form with the statement upload |
 | FieldDraft · Field-visit distance to confirm | live | a field-day draft line: "Confirm distance" saves it as it is; "Edit distance" opens the form |
@@ -142,7 +159,7 @@ reduce, send back, reject), finance (`expense.finance.review`: clear or confirm 
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Manager · Manager review · receipt beside lines | live | lines table (policy badge from the server's check and open flags, decision); clicking a row shows its receipt and the employee's reason in the rail; approval timeline with who holds each step (new: route step approvers and decision time) |
+| Manager · Manager review · receipt beside lines | live | lines table (policy badge from the server's check and open flags, decision); clicking a row shows its real receipt (round 2b) and the employee's reason in the rail; approval timeline with who holds each step (new: route step approvers and decision time) |
 | Reduce · Reduce with reason | live | "Reduce" opens the design's drawer; the amount is checked (at most claimed, two decimals) and the reason is required; the preview shows what the employee sees; "Reject line" approves nil with a reason |
 | ReasonMissing · Reduce · reason missing | live | pressed too early: the field error, focus on the field, nothing sent |
 | FinanceAudit · Finance audit step | live | finance sees the audit message and the flags; no approve or reduce buttons |
@@ -170,8 +187,8 @@ Live pages: /yx/expenses/advances (list and request sheet) and /yx/expenses/adva
 |---|---|---|
 | Ledger · Balance ledger (settled by claim) | live | paid, open balance, settle by; ledger rows link to their claims |
 | Overdue · Overdue · recovery warning | live | "Settlement window ended" with the company's number of salary instalments (setting `expense.advance.recovery_instalments`, default 3) |
-| FinanceRecovery · Finance · recovery instalments | live (gap) | finance sees the recovery message and records returns; recovery is scheduled by the daily job (no "Schedule recovery" button needed); the instalment amounts come from the loan engine and are not shown here yet |
-| Forex · Forex advance · exchange difference | live (gap) | a forex advance shows its loading rate and the ledger in both currencies, with the exchange-difference row; the design's separate forex settlement card is not drawn |
+| FinanceRecovery · Finance · recovery instalments | live | round 2b: "Recover ₹X from salary in N instalments: ₹a (Dec 2026), ₹b (Jan 2027), …": before the daily job, the preview (balance ÷ the company's instalments from next month, the loan engine's own rounding); after it, the loan engine's schedule ("Being recovered"). The employee sees the same amounts; an approver who is neither sees none. Recovery is scheduled by the daily job (no "Schedule recovery" button) |
+| Forex · Forex advance · exchange difference | live | a forex advance shows its loading rate, the ledger in both currencies and (round 2b) the design's forex settlement card: loaded, spent on trip lines, each return at its rate, the exchange difference, worked out exactly from the ledger |
 | Request · Request an advance | live | standing imprest: amount and purpose (pressed too early says why); "For a trip" sends you to the trip request |
 | Phone · Advances · phone | live | under 768 px |
 | PhoneRequest · Request · phone | live | under 768 px: bottom sheet |
@@ -242,6 +259,15 @@ Live page: /yx/expenses/reports renders the stand-in copy in `expenses/live/repo
   without money). The home's team figures are totals only; they name no claim.
 - **Money**: exact decimals end to end (paise on the page).
 
+- **Round 2b rules.** Team claims: direct reports today (the same people as the home's team figures), claims by the
+  IST month sent, statuses sent / sent back / approved / partly approved / rejected; the list grants no new access (Open
+  only where the manager already may open the claim). Recovery preview = what the daily job hands the loan engine
+  (open balance, in the pay currency for a forex advance, ÷ `expense.advance.recovery_instalments`, rounded up, the last
+  instalment smaller). Foreign-rate tolerance: setting `expense.fx_tolerance_pct` (1, 2, 3, 5, 10; default 3; per
+  company or legal entity) replaces the code constant. Receipt thumbnail: the file streams through the receipt route
+  (claim access checked, other companies get 404, never a storage link); photos only, a PDF shows a tile because the
+  repo has no safe PDF renderer.
+
 ## 6. Questions for the founder (safe default built)
 
 1. **Team claims list.** The manager's "Team spend" and "Over-limit lines" cards drill to Approvals, because there is no
@@ -259,6 +285,16 @@ Live page: /yx/expenses/reports renders the stand-in copy in `expenses/live/repo
    "applies to" is a single grade condition (one column per policy), list the others below it, and draw stories for
    categories, tiers, rates, GST registrations and FX rates before wiring (round 2, L).
 
+### Round 2b questions (safe default built)
+
+7. **Team claims reach.** Built: direct reports only (as the home cards). *Suggested:* keep; add "whole reporting line"
+   later only if managers of managers ask.
+8. **Opening a team claim.** Built: the list is read only and Open shows only where the manager already may open the
+   claim (they approve it). *Suggested:* keep; a manager reading every report's claim would be a new access rule.
+9. **PDF receipts.** Built: a "PDF" tile; "View receipt" opens the file. *Suggested:* keep until a vetted PDF renderer
+   (pdf.js in the browser, or a worker) is chosen.
+10. **Who sees the recovery amounts.** Built: the employee and finance; not an approver alone. *Suggested:* keep.
+
 ## 7. Left for round 2 (sizes)
 
 | piece | what | size |
@@ -267,9 +303,9 @@ Live page: /yx/expenses/reports renders the stand-in copy in `expenses/live/repo
 | EXP-09 reports | server figures for the charts (spend by category, paid through, ageing buckets), entity filter, CSV; draw the approver-patterns report; delete the reports copy and its 3 Live stories | M |
 | EXP-07 policy matrix and set-up | founder decision 6, then stories for the set-up parts, then wire; delete `ExpenseSetupScreen` and its 3 Live stories | L |
 | EXP-08 card statement import | the feature: statement upload and mapping, matching engine, tables with RLS, employee explanations, bank formats (provider: to decide) | L |
-| Team claims list (question 1) | read-only list for managers, drill target for the home cards | S–M |
-| EXP-05 recovery and forex | show the loan engine's instalment amounts; draw the forex settlement card from the ledger | S |
-| Receipt picture | show the real receipt thumbnail in the line card and review rail (today the kit's receipt drawing stands in, with "View receipt" opening the file) | S |
+| ~~Team claims list (question 1)~~ | done in round 2b | — |
+| ~~EXP-05 recovery and forex~~ | done in round 2b | — |
+| ~~Receipt picture~~ | done in round 2b (photos; PDFs show a tile) | — |
 | Phone camera (3 stories) | the mobile app's in-page camera | mobile app |
 
 ## Appendix: the count script
