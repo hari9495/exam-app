@@ -539,3 +539,16 @@ if (errs.length) { console.error(errs.join('\n')); process.exit(1); }
 the designed no-access state ("Screens/Performance/No access") on every Performance page, never "check your connection";
 refused visitors see no header actions; the shell names each Performance sub-page in the breadcrumb and highlights its own
 (or parent) menu entry, also for a typed address. Manual tests MT-PRF-B3-16..18.
+
+## Founder answers, 3 Nov 2026 (all three Performance builders, "all good")
+Build: (3) a disagreement needs at least 20 characters on every route; (4) retire the old reviews list (home and the
+control room open every review); (6) drop the old 360° panel from the review page (the "Nominate reviewers" link covers
+it); (7) the PRF-16 coach card also shows on the PRF-01 manager home; (8) `perf.goal.view` joins the "Performance set-up"
+role template (and the demo role), so its holders can open the goal map; (9) feedback shared "with them, their manager
+and HR" is also visible to HR with review access on the person's Performance tab; (12) comp market data starts as a
+salary-survey CSV upload per grade (a provider later); (13) the manager proposes 9-box potential in the PRF-05 review.
+Keep as built: (1) weights and scale on the template; (2) fixed mid-cycle joiner and transfer rules; (5) a cycle runner
+who manages a team sees the HR home; (10) only the calibration facilitator moves ratings; (11) only HR records a PIP
+outcome; (14) AI review summaries off until HR turns them on; (15) coach and agenda wording from fixed rules; (16) rating
+disputes only for the "Rating disputes" role, not HR Admin by default; (17) escalation window 15 days. Founder to do:
+(18) a lawyer confirms the evidence-export certificate wording before first use.
