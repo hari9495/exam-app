@@ -16,7 +16,7 @@ describe('buildNav: areas', () => {
     const n = nav();
     expect(areas(n)).toEqual(['home', 'helpdesk']);
     expect(labels(n, 'home')).toEqual(['Home', 'Approvals', 'Notifications', 'Search', 'My requests']);
-    expect(labels(n, 'helpdesk')).toEqual(['Help centre', 'Service catalogue', 'Chat with us']);
+    expect(labels(n, 'helpdesk')).toEqual(['Help centre', 'Policies', 'Service catalogue', 'Chat with us']);
   });
 
   it('areas come in the designed rail order, Settings last; unbuilt modules never appear', () => {
@@ -295,5 +295,16 @@ describe('pageLink: each Performance page names itself (walk-through 3 Nov 2026)
 describe('pageLink: the Help centre names itself (HLP-01, Helpdesk design wiring round 1)', () => {
   it.each(['/yx/desk/help', '/yx/desk/help/t1'])('%s reads Helpdesk › Help centre', (path) => {
     expect(pageLink(nav([], { employee: true }), path)).toMatchObject({ area: { id: 'helpdesk' }, link: { label: 'Help centre' }, inMenu: true });
+  });
+});
+
+describe('pageLink: Policies and Policy admin name themselves (HLP-10 / HLP-11)', () => {
+  it('every employee has Helpdesk › Policies', () => {
+    expect(pageLink(nav([], { employee: true }), '/yx/desk/policies')).toMatchObject({ area: { id: 'helpdesk' }, link: { label: 'Policies' }, inMenu: true });
+  });
+  it('Policy admin only with policy.manage or policy.publish', () => {
+    expect(pageLink(nav(['policy.manage'], { employee: true }), '/yx/desk/policy-admin')).toMatchObject({ link: { label: 'Policy admin' }, inMenu: true });
+    expect(pageLink(nav(['policy.publish'], { employee: true }), '/yx/desk/policy-admin')).toMatchObject({ link: { label: 'Policy admin' }, inMenu: true });
+    expect(pageLink(nav([], { employee: true }), '/yx/desk/policy-admin')?.inMenu).not.toBe(true);
   });
 });

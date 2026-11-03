@@ -635,7 +635,7 @@ export class PoliciesService {
   async myList(ctx: TenantContext) {
     return this.tx(ctx, async (tx, c) => {
       const me = await this.me(tx, c);
-      if (!me) return { policies: [], typedName: false };
+      if (!me) return { policies: [], typedName: false, managerAfterDays: null };
       const today = todayIst();
       const s = await this.settings(tx, c);
       const out = [];
@@ -644,7 +644,7 @@ export class PoliciesService {
         if (!m) continue;
         out.push({ id: p.id, code: policyCode(p.number), title: p.title, category: p.category, method: p.method, version: `v${m.cur.number}`, versionId: m.cur.id, effectiveOn: iso(m.cur.effectiveOn), changeSummary: m.cur.changeSummary, status: m.row.status, dueOn: m.row.done ? null : m.row.due, acknowledgedOn: m.row.last ? iso(m.row.last.acknowledgedAt) : null, acknowledgedVersion: m.ackedVersion });
       }
-      return { policies: out, typedName: s.typedName };
+      return { policies: out, typedName: s.typedName, managerAfterDays: s.managerAfterDays };
     });
   }
 

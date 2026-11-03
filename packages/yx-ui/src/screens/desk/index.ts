@@ -33,6 +33,10 @@ export { YukthixSupportScreen, YX_SEVERITY, severityWords, type YukthixSupportSc
 export { KbEditorScreen } from '../ops/helpdesk';
 export { categoryTree, articleStatus, AUDIENCE_LABEL, ARTICLE_STATE_LABEL, VERSION_STATE_LABEL, type LiveKb } from '../ops/helpdesk-kb-live';
 export * from './kb-types';
+// HLP-10 Policy library + acknowledgement and HLP-11 Policy admin: the designed screens with `live`.
+export { PolicyLibraryScreen, PolicyAdminScreen } from '../ops/helpdesk';
+export { METHOD_LABEL, VERSION_LABEL, type LivePolicyLibrary, type LivePolicyAdmin, type PolicyAdminTab } from '../ops/helpdesk-policy-live';
+export * from './policy-types';
 // Batch 4: reports
 export { WallScreen } from './reports';
 export * from './report-types';

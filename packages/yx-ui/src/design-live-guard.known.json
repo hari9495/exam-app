@@ -139,8 +139,6 @@
     "ops: LoadingCase",
     "ops: MyCasesScreen",
     "ops: OwnLicencesScreen",
-    "ops: PolicyAdminScreen",
-    "ops: PolicyLibraryScreen",
     "ops: PolicyWriterScreen",
     "ops: PoshCaseScreen",
     "ops: PoshComplaintScreen",

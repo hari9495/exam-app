@@ -311,6 +311,8 @@ export function buildNav(n: NavInput): NavArea[] {
           L('desk-help', 'Help centre', '/yx/desk/help'),
           ...when(has('desk.ticket.view'), L('desk-tickets', 'Tickets', '/yx/desk/tickets', 'myTickets')),
           ...when(any('desk.kb.view_internal', 'desk.kb.author', 'desk.kb.publish'), L('desk-knowledge', 'Knowledge base', '/yx/desk/knowledge')),
+          L('desk-policies', 'Policies', '/yx/desk/policies'),
+          ...when(any('policy.manage', 'policy.publish'), L('desk-policy-admin', 'Policy admin', '/yx/desk/policy-admin')),
           L('desk-catalog', 'Service catalogue', '/yx/desk/catalog'),
           L('desk-chat', 'Chat with us', '/yx/desk/chat'),
           ...when(has('desk.chat.work'), L('desk-live-chat', 'Live chat', '/yx/desk/live-chat')),

@@ -45,6 +45,19 @@ export function useDeskFile() {
   };
 }
 
+/** Saves a file the desk API sends (a policy attachment, the evidence CSV) under the name the server gives it. */
+export function useDeskDownload() {
+  const { accessToken } = useAuth();
+  return async (path: string, fallback = 'download') => {
+    const { blob, filename } = await apiFetchBlob(`/desk${path}`, {}, accessToken ?? undefined);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename ?? fallback;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+}
+
 /** The CSV of a ticket list, as the server builds it (only what the person may see). */
 export function useDeskExport() {
   const { accessToken } = useAuth();

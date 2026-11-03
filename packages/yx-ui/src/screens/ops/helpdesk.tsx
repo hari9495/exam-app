@@ -1,5 +1,5 @@
 // Helpdesk screens (M08 §7): HLP-01 help centre, HLP-02 agent desk, HLP-03 ticket workspace, HLP-04 knowledge base editor,
-// HLP-05 SLA dashboard, HLP-10 policy library + acknowledgement, HLP-11 policy admin.
+// HLP-05 SLA dashboard, HLP-10 policy library + acknowledgement, HLP-11 policy admin (HLP-10 / 11 live: helpdesk-policy-live.tsx).
 import { useMemo, useState } from 'react';
 import { ArrowLeft, BookOpen, FileText, Lock, MessageSquare, Plus, Search, Send, Ticket as TicketIcon } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
@@ -31,6 +31,7 @@ import { LiveAgentDesk, type LiveAgentDesk as LiveAgentDeskProps } from './helpd
 import { LiveTicketWorkspace, type LiveTicket } from './helpdesk-ticket-live';
 import { LiveKbEditor, type LiveKb } from './helpdesk-kb-live';
 import { LiveSlaDashboard, type LiveSla } from './helpdesk-sla-live';
+import { LivePolicyAdmin, LivePolicyLibrary, type LivePolicyAdmin as LivePolicyAdminProps, type LivePolicyLibrary as LivePolicyLibraryProps } from './helpdesk-policy-live';
 
 export type ListState = 'ready' | 'loading' | 'error' | 'empty';
 export type Device = 'desk' | 'phone';
@@ -1060,7 +1061,10 @@ export interface PolicyLibraryScreenProps {
   done?: boolean;
   quizAnswers?: Record<string, string>;
 }
-export function PolicyLibraryScreen({ device = 'desk', policies, today, state = 'ready', openId = null, otpSent, done, quizAnswers }: PolicyLibraryScreenProps) {
+export function PolicyLibraryScreen(props: PolicyLibraryScreenProps | { live: LivePolicyLibraryProps }) {
+  return 'live' in props ? <LivePolicyLibrary live={props.live} /> : <SamplePolicyLibrary {...props} />;
+}
+function SamplePolicyLibrary({ device = 'desk', policies, today, state = 'ready', openId = null, otpSent, done, quizAnswers }: PolicyLibraryScreenProps) {
   const [open, setOpen] = useState<string | null>(openId);
   const [tab, setTab] = useState('pending');
   const pending = policies.filter((p) => p.myStatus === 'Pending' || p.myStatus === 'Overdue');
@@ -1168,7 +1172,10 @@ export interface PolicyAdminScreenProps {
   publishOpen?: boolean;
   tab?: 'overview' | 'versions' | 'audience' | 'pending';
 }
-export function PolicyAdminScreen({ policy, byDept, pendingPeople, versions, today, publishOpen, tab = 'overview' }: PolicyAdminScreenProps) {
+export function PolicyAdminScreen(props: PolicyAdminScreenProps | { live: LivePolicyAdminProps }) {
+  return 'live' in props ? <LivePolicyAdmin live={props.live} /> : <SamplePolicyAdmin {...props} />;
+}
+function SamplePolicyAdmin({ policy, byDept, pendingPeople, versions, today, publishOpen, tab = 'overview' }: PolicyAdminScreenProps) {
   const [open, setOpen] = useState(!!publishOpen);
   const [reack, setReack] = useState(true);
   const [current, setCurrent] = useState(tab);
