@@ -299,4 +299,45 @@ describe('Expenses batch E2', () => {
     await api('adminB', 'get', `/claims/${c.id}`).expect(404);
     expect(((await api('adminB', 'get', '/claims').expect(200)).body as { claims: unknown[] }).claims).toEqual([]);
   });
+
+  it('EXP-01 home: the manager sees the team figures, exactly; nobody else does; the payroll line follows the company setting', async () => {
+    type Home = { claims: unknown[]; team: { people: number; month: string; spend: string; previous: string | null; trend: string[]; overLimit: number; overLimitPrevious: number | null } | null; payroll: { cutoffDay: number; month: string } };
+    const mine = (await api('mgr', 'get', '/me/home').expect(200)).body as Home;
+    // The same figures straight from the database: Ravi's and Sita's claims sent this IST month, approved amount once decided.
+    const rows = await inA((tx) => tx.$queryRaw<{ spend: string; over: number }[]>`
+      SELECT coalesce(sum(coalesce(c.approved_total, c.claimed_total)), 0)::numeric(14,2)::text AS spend,
+             (SELECT count(*)::int FROM expense_lines l WHERE l.claim_id = ANY(array_agg(c.id)) AND l.removed_at IS NULL AND l.policy_result->>'outcome' IN ('over_justify', 'blocked')) AS over
+      FROM expense_claims c WHERE c.employee_id IN (${emp.ravi}::uuid, ${emp.sita}::uuid) AND c.status IN ('submitted', 'approved', 'partly_approved')
+        AND to_char(c.submitted_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM') = ${today.slice(0, 7)}`);
+    expect(mine.team).toMatchObject({ people: 2, month: today.slice(0, 7), spend: rows[0].spend, overLimit: rows[0].over });
+    expect(mine.team!.trend).toHaveLength(5);
+    expect(mine.team!.trend[4]).toBe(rows[0].spend);
+    expect(Number(mine.team!.spend)).toBeGreaterThan(0);
+    // The manager's manager counts only their own direct reports (the manager and finance), not the whole chain.
+    expect(((await api('head', 'get', '/me/home').expect(200)).body as Home).team).toMatchObject({ people: 2 });
+    // An employee with no reports, HR without an employee record and another company see no team figures.
+    for (const who of ['ravi', 'adminA', 'adminB'] as const) expect(((await api(who, 'get', '/me/home').expect(200)).body as Home).team).toBeNull();
+    expect(((await api('adminB', 'get', '/me/home').expect(200)).body as Home).claims).toEqual([]);
+    // Default cut-off day 23; a company override moves the payroll month.
+    const day = Number(today.slice(8, 10));
+    const next = today.slice(5, 7) === '12' ? `${Number(today.slice(0, 4)) + 1}-01` : `${today.slice(0, 4)}-${String(Number(today.slice(5, 7)) + 1).padStart(2, '0')}`;
+    expect(mine.payroll).toEqual({ cutoffDay: 23, month: day <= 23 ? today.slice(0, 7) : next });
+    await inA((tx) => tx.setting.create({ data: { organizationId: org.A.id, scopeType: 'tenant', scopeId: org.A.id, key: 'expense.payroll_cutoff_day', value: '15' } }));
+    expect(((await api('ravi', 'get', '/me/home').expect(200)).body as Home).payroll).toEqual({ cutoffDay: 15, month: day <= 15 ? today.slice(0, 7) : next });
+    await inA((tx) => tx.setting.deleteMany({ where: { organizationId: org.A.id, key: 'expense.payroll_cutoff_day' } }));
+  });
+
+  it('EXP-03 approval timeline: each step names who holds it and when it was decided; the claimant is marked as the owner', async () => {
+    const list = ((await api('ravi', 'get', '/claims').expect(200)).body as { claims: { id: string; status: string }[] }).claims;
+    const sent = list.find((c) => c.status !== 'draft' && c.status !== 'withdrawn')!;
+    const mineView = (await api('ravi', 'get', `/claims/${sent.id}`).expect(200)).body as Omit<Claim, 'route'> & { route: { steps: { name: string; state: string; approvers: string[]; decidedAt: string | null }[] } };
+    expect(mineView.can.own).toBe(true);
+    expect(mineView.route.steps[0].approvers).toEqual([`mgr ${run}`]);
+    const decided = mineView.route.steps.filter((s) => s.state === 'approved');
+    for (const s of decided) expect(new Date(s.decidedAt!).getTime()).not.toBeNaN();
+    expect(((await api('mgr', 'get', `/claims/${sent.id}`).expect(200)).body as Claim).can.own).toBe(false);
+    // Someone with no reason to see it still gets no such claim, approver names included.
+    await api('sita', 'get', `/claims/${sent.id}`).expect(404);
+    await api('adminB', 'get', `/claims/${sent.id}`).expect(404);
+  });
 });
