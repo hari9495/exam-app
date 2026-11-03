@@ -39,6 +39,10 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'speakup.anonymous': { label: 'Speak-up: who may report without a name', scopes: ['tenant'], dated: false, values: ['all', 'ethics_only', 'off'], default: 'all' },
   'speakup.ack_days': { label: 'Speak-up: days for the case team to acknowledge a report', scopes: ['tenant'], dated: false, values: ['1', '2', '3', '5', '7'], default: '2' },
   'speakup.categories.grievance': { label: 'Speak-up: topics of a grievance (one a line)', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 600 }, default: 'Pay and benefits\nWorking conditions\nA manager\nTransport\nSafety\nOther' },
+  // HLP-12 accident cases (map 4g): the injury types people choose from, and how often the safety team is reminded while a
+  // contractor has not filed a contract worker's ESIC report. Legal deadlines come from IN.ESI.ACCIDENT and IN.EC.CLAIM.
+  'accident.injury_types': { label: 'Accidents: injury types people choose from (one a line)', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 600 }, default: 'Crush\nCut\nBurn\nFall\nSprain or strain\nOther' },
+  'accident.contractor_reminder_days': { label: 'Accidents: remind the safety team while a contractor has not filed, every (days)', scopes: ['tenant'], dated: false, values: ['off', '1', '2', '3', '7'], default: '1' },
   // HLP-07/08/09 (map 4f): days a respondent has to reply to a grievance or ethics notice. POSH days come from the rule
   // set IN.POSH.INQUIRY, never from here.
   'cases.reply_days': { label: 'Cases: days a respondent has to reply to a grievance or ethics notice', scopes: ['tenant'], dated: false, values: ['5', '7', '10', '15'], default: '7' },

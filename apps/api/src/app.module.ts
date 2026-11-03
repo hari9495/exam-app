@@ -95,6 +95,7 @@ import { LifecycleModule } from './lifecycle/lifecycle.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { PoliciesModule } from './policies/policies.module';
 import { SpeakupModule } from './speakup/speakup.module';
+import { AccidentsModule } from './accidents/accidents.module';
 import { CasesModule } from './cases/cases.module';
 import { PerformanceModule } from './performance/performance.module';
 import { StatutoryModule } from './statutory/statutory.module';
@@ -197,6 +198,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     ExpensesModule,
     PoliciesModule,
     SpeakupModule,
+    AccidentsModule,
     CasesModule,
     PerformanceModule,
     StatutoryModule,

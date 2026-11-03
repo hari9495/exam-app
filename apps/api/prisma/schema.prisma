@@ -11833,3 +11833,58 @@ model SpeakupCaseStep {
   @@index([caseId, at], map: "speakup_case_steps_case_idx")
   @@map("speakup_case_steps")
 }
+
+/// HLP-12: a workplace accident or injury, reported by anyone (also for someone else). Append-only; state from its steps.
+model AccidentCase {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String   @map("organization_id") @db.Uuid
+  number            Int
+  reporterUserId    String   @map("reporter_user_id") @db.Uuid
+  injuredKind       String   @map("injured_kind") @db.VarChar(10)
+  injuredEmployeeId String?  @map("injured_employee_id") @db.Uuid
+  injuredName       String   @map("injured_name") @db.VarChar(150)
+  contractor        String?  @db.VarChar(150)
+  occurredAt        DateTime @map("occurred_at") @db.Timestamptz(3)
+  occurredOn        DateTime @map("occurred_on") @db.Date
+  locationId        String   @map("location_id") @db.Uuid
+  place             String   @db.VarChar(200)
+  description       String
+  injuryType        String   @map("injury_type") @db.VarChar(80)
+  bodyPart          String?  @map("body_part") @db.VarChar(100)
+  firstAid          Boolean  @default(false) @map("first_aid")
+  witnesses         String?  @db.VarChar(300)
+  filedAt           DateTime @default(now()) @map("filed_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, number], map: "accident_cases_number_key")
+  @@map("accident_cases")
+}
+
+/// HLP-12: one step of an accident case (facts, statement, photo, filings, EC claim, reminder, closing). Append-only.
+model AccidentStep {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  caseId         String   @map("case_id") @db.Uuid
+  kind           String   @db.VarChar(20)
+  actorUserId    String?  @map("actor_user_id") @db.Uuid
+  data           Json     @default("{}")
+  at             DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([caseId, at], map: "accident_steps_case_idx")
+  @@map("accident_steps")
+}
+
+/// HLP-12: a medical record of an accident case (special data). Append-only; a file keeps its SHA-256 fingerprint.
+model AccidentMedicalRecord {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  caseId         String   @map("case_id") @db.Uuid
+  kind           String   @db.VarChar(12)
+  note           String   @db.VarChar(2000)
+  fileId         String?  @map("file_id") @db.Uuid
+  fileSha256     String?  @map("file_sha256") @db.Char(64)
+  addedBy        String   @map("added_by") @db.Uuid
+  at             DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([caseId, at], map: "accident_medical_records_case_idx")
+  @@map("accident_medical_records")
+}

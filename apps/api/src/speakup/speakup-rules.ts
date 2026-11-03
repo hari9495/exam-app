@@ -32,8 +32,9 @@ export function anonymousAllowed(setting: string, kind: SpeakupKind): boolean {
  * team (the ethics team when it has nobody). About one of the officers of that list: the escalation list instead.
  * Returns the list and its members, never the officer it is about; null when nobody can receive it.
  */
-export function route(kind: SpeakupKind, teams: Record<SpeakupTeam, string[]>, aboutUserId: string | null): { team: SpeakupTeam; members: string[] } | null {
-  let team: SpeakupTeam = kind === 'posh' ? 'ic' : kind === 'whistleblower' ? 'ethics' : teams.grievance.length ? 'grievance' : 'ethics';
+type RouteTeam = Exclude<SpeakupTeam, 'safety'>;
+export function route(kind: SpeakupKind, teams: Record<RouteTeam, string[]>, aboutUserId: string | null): { team: RouteTeam; members: string[] } | null {
+  let team: RouteTeam = kind === 'posh' ? 'ic' : kind === 'whistleblower' ? 'ethics' : teams.grievance.length ? 'grievance' : 'ethics';
   if (kind === 'posh' && !teams.ic.length) return null;
   if (aboutUserId && teams[team].includes(aboutUserId)) team = 'escalation';
   const members = teams[team].filter((u) => u !== aboutUserId);

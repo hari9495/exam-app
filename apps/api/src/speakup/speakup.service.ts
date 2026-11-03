@@ -31,7 +31,7 @@ const iso = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : 
 const day = (s: string) => new Date(`${s}T00:00:00Z`);
 const lines = (v: string) => v.split('\n').map((x) => x.trim()).filter(Boolean);
 const KIND_WORDS: Record<SpeakupKind, string> = { grievance: 'grievance', whistleblower: 'fraud or ethics report', posh: 'sexual harassment complaint' };
-const TEAM_WORDS: Record<SpeakupTeam, string> = { grievance: 'the Grievance Redressal Committee', ethics: 'the ethics team', ic: 'the Internal Committee', escalation: 'the escalation list (for example the audit committee chair)' };
+const TEAM_WORDS: Record<SpeakupTeam, string> = { grievance: 'the Grievance Redressal Committee', ethics: 'the ethics team', ic: 'the Internal Committee', escalation: 'the escalation list (for example the audit committee chair)', safety: 'the safety team' };
 
 /** Two reports numbered at the same moment (unique index): say so instead of a server error. */
 const clash = (e: unknown): never => {

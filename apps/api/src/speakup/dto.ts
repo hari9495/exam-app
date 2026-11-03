@@ -16,7 +16,8 @@ const Opt = (max: number) => (target: object, key: string) => {
 };
 export const SPEAKUP_KINDS = ['grievance', 'whistleblower', 'posh'] as const;
 export type SpeakupKind = (typeof SPEAKUP_KINDS)[number];
-export const SPEAKUP_TEAMS = ['grievance', 'ethics', 'ic', 'escalation'] as const;
+// 'safety' (HLP-12): the safety team who receives accident reports; not a speak-up route.
+export const SPEAKUP_TEAMS = ['grievance', 'ethics', 'ic', 'escalation', 'safety'] as const;
 export type SpeakupTeam = (typeof SPEAKUP_TEAMS)[number];
 
 export class ReportDto {
