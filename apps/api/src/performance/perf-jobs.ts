@@ -6,10 +6,11 @@ import { PerformanceFeedbackService } from './feedback.service';
 import { PerformanceGoalsService } from './goals.service';
 import { PerformanceReviewsService } from './reviews.service';
 import { PerformancePipsService } from './pips.service';
+import { PerformanceHomeService } from './home.service';
 
 const QUEUE = 'performance-jobs';
 
-/** M06 jobs on BullMQ (§18.3): daily goal check-in reminders (PM2), 1:1 reminders (PM3), review stage reminders (PM4), improvement plans (PM8). */
+/** M06 jobs on BullMQ (§18.3): daily goal check-in reminders (PM2), 1:1 reminders (PM3), review stage reminders (PM4), improvement plans (PM8), the HR home's monthly snapshot (PRF-01). */
 @Injectable()
 export class PerformanceJobs implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PerformanceJobs.name);
@@ -22,6 +23,7 @@ export class PerformanceJobs implements OnModuleInit, OnModuleDestroy {
     private readonly feedback: PerformanceFeedbackService,
     private readonly reviews: PerformanceReviewsService,
     private readonly pips: PerformancePipsService,
+    private readonly home: PerformanceHomeService,
   ) {
     this.queue = logBullErrors(new Queue(QUEUE, bullOpts(connection)), QUEUE);
   }
@@ -44,6 +46,7 @@ export class PerformanceJobs implements OnModuleInit, OnModuleDestroy {
         await this.reviews.handOverAll();
         await this.reviews.sweep();
         await this.pips.sweep();
+        await this.home.snapshotAll();
       }
     } catch (e) {
       this.logger.warn(`${name}: ${(e as Error).message}`);

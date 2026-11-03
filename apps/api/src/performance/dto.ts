@@ -195,9 +195,21 @@ export class CompetencyDto {
   @Type(() => RoleLevelDto)
   roles!: RoleLevelDto[];
 
+  /** PRF-14: the question-bank tag used as the skills test; null takes it off, left out keeps it. */
+  @IsOptional()
+  @IsUUID()
+  questionTagId?: string | null;
+
   @IsOptional()
   @IsInt()
   version?: number;
+}
+
+/** PRF-14 Import: the CSV file's text (the page reads the file; at most 256 KB). */
+export class CompetencyImportDto {
+  @IsString()
+  @Length(1, 256 * 1024)
+  csv!: string;
 }
 
 export class CompetencyLevelDto {

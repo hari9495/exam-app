@@ -20,6 +20,15 @@ export class HandoverDecideDto {
   note?: string;
 }
 
+/** PRF-13 bulk "Reassign to HR": the hand-overs HR takes over (up to 200 at once). */
+export class HandoverWithHrDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @IsUUID('all', { each: true })
+  ids!: string[];
+}
+
 export class RaiseDisputeDto {
   @trim()
   @IsString()

@@ -9,7 +9,7 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import type { ScopeUser } from '../access/scope';
-import { BiasCheckDto, BiasDecisionDto, CoachDismissDto, CoachOptOutDto, DisputeDecisionDto, DisputeExportDto, HandoverDecideDto, LegalHoldDto, RaiseDisputeDto } from './b3-dto';
+import { BiasCheckDto, BiasDecisionDto, CoachDismissDto, CoachOptOutDto, DisputeDecisionDto, DisputeExportDto, HandoverDecideDto, HandoverWithHrDto, LegalHoldDto, RaiseDisputeDto } from './b3-dto';
 import { PerformanceHandoversService } from './handovers.service';
 import { PerformanceDisputesService } from './disputes.service';
 import { PerformanceCoachService } from './coach.service';
@@ -54,6 +54,21 @@ export class PerformanceB3Controller {
   @RequirePermissions('perf.cycle.manage')
   handoverAll(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     return this.handovers.all(ctx, this.user(req));
+  }
+
+  /** PRF-13 bulk "Reassign to HR" (HR with company-wide perf.cycle.manage, checked again by the service). */
+  @Post('handover-list/with-hr')
+  @HttpCode(200)
+  @RequirePermissions('perf.cycle.manage')
+  handoverWithHr(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: HandoverWithHrDto) {
+    return this.handovers.withHr(ctx, this.user(req), dto);
+  }
+
+  /** PRF-13 "View audit entry". */
+  @Get('handover-list/:id/audit')
+  @RequirePermissions('perf.cycle.manage')
+  handoverAudit(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.handovers.auditOf(ctx, this.user(req), id);
   }
 
   @Get('handover-list/:id/parent-options')

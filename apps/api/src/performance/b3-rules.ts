@@ -80,6 +80,12 @@ export interface CoachSignals {
   plannedOverdueDays: number;
   /** Active goals whose latest check-in is off track or at risk. */
   goalsOff: { id: string; title: string; confidence: 'off_track' | 'at_risk' }[];
+  /** Earned leave balance in days (counts only, never reasons); null = no earned leave type. */
+  leaveBalance?: number | null;
+  /** How many of the last 3 weeks had overtime (claimed or approved). */
+  overtimeWeeks?: number;
+  /** Open tasks of the person's onboarding checklist (a new joiner); 0 = none. */
+  onboardingOpen?: number;
 }
 
 export interface CoachNudge {
@@ -91,9 +97,12 @@ export interface CoachNudge {
   link: string;
 }
 
-export const COACH_LOOKS_AT = ['No feedback given in 6 weeks', '1:1s due or overdue', 'Goals off track or at risk'];
+export const COACH_LOOKS_AT = ['No feedback given in 6 weeks', '1:1s due or overdue', 'Unused leave balance above 12 days (counts only)', 'Overtime 3 weeks running', 'Goals off track or at risk', 'New joiners’ open onboarding tasks'];
 const FEEDBACK_DAYS = 42;
 const ONE_ON_ONE_DAYS = 35;
+export const LEAVE_UNUSED_DAYS = 12;
+export const OVERTIME_WEEKS = 3;
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /** One nudge per person, naming every signal; the first signal decides the action. */
 export function coachNudges(team: CoachSignals[]): CoachNudge[] {
@@ -103,8 +112,11 @@ export function coachNudges(team: CoachSignals[]): CoachNudge[] {
     if (p.feedbackDays === null || p.feedbackDays >= FEEDBACK_DAYS) parts.push({ kind: 'fb', text: p.feedbackDays === null ? 'No feedback from you yet.' : `No feedback from you in ${Math.floor(p.feedbackDays / 7)} weeks.`, action: 'Give feedback', link: '/yx/performance/feedback' });
     if (p.plannedOverdueDays > 0) parts.push({ kind: '1on1', text: `1:1 overdue by ${p.plannedOverdueDays} ${p.plannedOverdueDays === 1 ? 'day' : 'days'}.`, action: 'Book 1:1', link: '/yx/performance/one-on-ones' });
     else if (p.lastOneOnOneDays === null || p.lastOneOnOneDays > ONE_ON_ONE_DAYS) parts.push({ kind: '1on1', text: p.lastOneOnOneDays === null ? 'No 1:1 held yet.' : `Last 1:1 was ${p.lastOneOnOneDays} days ago.`, action: 'Book 1:1', link: '/yx/performance/one-on-ones' });
+    if ((p.leaveBalance ?? 0) > LEAVE_UNUSED_DAYS) parts.push({ kind: 'leave', text: `${plural(Math.floor(p.leaveBalance!), 'leave day', 'leave days')} unused this year.`, action: 'Suggest leave', link: '/yx/performance/one-on-ones' });
+    if ((p.overtimeWeeks ?? 0) >= OVERTIME_WEEKS) parts.push({ kind: 'ot', text: `Overtime ${OVERTIME_WEEKS} weeks running.`, action: 'Book 1:1', link: '/yx/performance/one-on-ones' });
     const g = p.goalsOff[0];
     if (g) parts.push({ kind: 'goal', text: `Goal “${g.title}” is ${g.confidence === 'off_track' ? 'off track' : 'at risk'}${p.goalsOff.length > 1 ? ` (and ${p.goalsOff.length - 1} more)` : ''}.`, action: 'View goal', link: `/yx/performance/goals/${g.id}` });
+    if (p.onboardingOpen) parts.push({ kind: 'onb', text: `New joiner: ${plural(p.onboardingOpen, 'onboarding task', 'onboarding tasks')} still open.`, action: 'View tasks', link: '/yx/people/my-tasks' });
     if (!parts.length) continue;
     out.push({ key: `${p.employeeId}:${parts.map((x) => x.kind).join('+')}`.slice(0, 80), employeeId: p.employeeId, person: p.name, signal: parts.map((x) => x.text).join(' '), action: parts[0].action, link: parts[0].link });
   }

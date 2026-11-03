@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { ScopeUser, Viewer, buildViewer, tenantWide } from '../access/scope';
-import type { HandoverDecideDto } from './b3-dto';
+import type { HandoverDecideDto, HandoverWithHrDto } from './b3-dto';
 
 // PRF-13 hand-over list (M06 D7). When a manager leaves or changes, the open review, improvement plan, open 1:1 actions
 // and goals aligned to the old manager's goal move to the new manager (reviews.service handOver, pips.service). This
@@ -10,6 +10,9 @@ import type { HandoverDecideDto } from './b3-dto';
 // A goal aligned to the old manager's goal needs a decision: align it to one of the new manager's goals, or leave it
 // unaligned. The new manager or HR decides, once; the decision is audited. A moved improvement plan shows in HR's list
 // only to HR who also hold perf.pip.manage company-wide.
+// "Reassign to HR" (bulk, HR only): HR takes a decision that is still open off the new manager; it leaves their list and
+// only HR decides it. Rows that need no decision, or are decided already, are left as they are and named in the answer.
+// "View audit entry" (HR only): the move itself (made by YukthiX when the manager changed) and every audited change.
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 export const ARTEFACT_LABEL: Record<string, string> = { review: 'Manager review stage', goal_parent: 'Goal parent', pip: 'PIP', one_on_one_actions: '1:1 thread' };
@@ -73,7 +76,8 @@ export class PerformanceHandoversService {
       artefactId: r.artefactId,
       detail: detail(r),
       from: people.get(r.oldManagerEmployeeId ?? '') ?? '',
-      to: people.get(r.newManagerEmployeeId ?? '') ?? '',
+      to: r.withHrAt ? 'HR' : (people.get(r.newManagerEmployeeId ?? '') ?? ''),
+      withHr: Boolean(r.withHrAt),
       effectiveOn: iso(r.effectiveOn),
       status: r.decidedAt ? 'Decided' : r.decisionNeeded ? 'Needs decision' : 'Moved',
       decision: r.decision,
@@ -87,7 +91,7 @@ export class PerformanceHandoversService {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const me = await this.me(tx, c.organizationId, v);
       if (!me) return [];
-      const rows = await tx.perfOwnerTransfer.findMany({ where: { organizationId: c.organizationId, newManagerEmployeeId: me }, orderBy: [{ effectiveOn: 'desc' }, { createdAt: 'desc' }], take: 500 });
+      const rows = await tx.perfOwnerTransfer.findMany({ where: { organizationId: c.organizationId, newManagerEmployeeId: me, withHrAt: null }, orderBy: [{ effectiveOn: 'desc' }, { createdAt: 'desc' }], take: 500 });
       return this.view(tx, c.organizationId, rows);
     });
   }
@@ -108,7 +112,7 @@ export class PerformanceHandoversService {
   private async decidable(tx: Tx, c: CompanyContext, v: Viewer, id: string) {
     const r = await tx.perfOwnerTransfer.findFirst({ where: { organizationId: c.organizationId, id } });
     const me = await this.me(tx, c.organizationId, v);
-    if (!r || !(this.hr(v) || (me && r.newManagerEmployeeId === me))) throw new NotFoundException('No such hand-over.');
+    if (!r || !(this.hr(v) || (me && r.newManagerEmployeeId === me && !r.withHrAt))) throw new NotFoundException('No such hand-over.');
     return r;
   }
 
@@ -122,6 +126,66 @@ export class PerformanceHandoversService {
       if (!goal) return [];
       const rows = await tx.goal.findMany({ where: { organizationId: c.organizationId, ownerType: 'person', ownerEmployeeId: r.newManagerEmployeeId, periodId: goal.periodId, status: { in: ['draft', 'submitted', 'active'] } }, orderBy: { title: 'asc' }, select: { id: true, title: true } });
       return rows.map((g) => ({ value: g.id, label: g.title }));
+    });
+  }
+
+  /** HR's company-wide actions, or 403 (the same rule as the list). */
+  private hrOnly(v: Viewer) {
+    if (!this.hr(v)) throw new ForbiddenException('Only HR with company-wide access to review cycles can do this.');
+  }
+
+  /** PRF-13 bulk "Reassign to HR": open decisions move from the new manager to HR; anything else is skipped and named. */
+  async withHr(ctx: TenantContext, user: ScopeUser, dto: HandoverWithHrDto) {
+    const v = await this.viewer(user);
+    this.hrOnly(v);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const ids = [...new Set(dto.ids)];
+      const rows = await tx.perfOwnerTransfer.findMany({ where: { organizationId: org, id: { in: ids } } });
+      const pips = tenantWide(v, 'perf.pip.manage');
+      const skipped: { id: string; reason: string }[] = [];
+      let moved = 0;
+      const now = new Date();
+      for (const id of ids) {
+        const r = rows.find((x) => x.id === id);
+        // Not in this company, or a plan this HR may not see: the same answer as "no such row".
+        if (!r || (r.artefactType === 'pip' && !pips)) skipped.push({ id, reason: 'No such hand-over.' });
+        else if (r.withHrAt) skipped.push({ id, reason: 'HR already has this one.' });
+        else if (!r.decisionNeeded) skipped.push({ id, reason: 'It needs no decision: it already moved to the new manager.' });
+        else if (r.decidedAt) skipped.push({ id, reason: 'It was already decided.' });
+        else {
+          const n = await tx.perfOwnerTransfer.updateMany({ where: { organizationId: org, id, withHrAt: null, decidedAt: null }, data: { withHrAt: now, withHrBy: v.userId } });
+          if (!n.count) {
+            skipped.push({ id, reason: 'Someone else changed it. Reload the list.' });
+            continue;
+          }
+          moved++;
+          await audit(tx, c, 'perf.handover.with_hr', 'perf_owner_transfer', id, { from: r.newManagerEmployeeId, artefactType: r.artefactType, artefactId: r.artefactId });
+        }
+      }
+      return { moved, skipped };
+    });
+  }
+
+  /** PRF-13 "View audit entry": the move (made when the manager changed) and each audited change to this hand-over. */
+  async auditOf(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
+    this.hrOnly(v);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const r = await tx.perfOwnerTransfer.findFirst({ where: { organizationId: org, id } });
+      if (!r || (r.artefactType === 'pip' && !tenantWide(v, 'perf.pip.manage'))) throw new NotFoundException('No such hand-over.');
+      const people = await this.names(tx, org, [r.employeeId, r.oldManagerEmployeeId, r.newManagerEmployeeId]);
+      const logs = await tx.auditLog.findMany({ where: { organizationId: org, entityType: 'perf_owner_transfer', entityId: id }, orderBy: { createdAt: 'asc' }, take: 50 });
+      const WHAT: Record<string, string> = { 'perf.handover.with_hr': 'reassigned the decision to HR', 'perf.handover.decided': 'recorded the decision' };
+      const how = (m: Record<string, unknown>) => (m.decision === 'realigned' ? ': aligned to a goal of the new manager' : m.decision === 'unaligned' ? ': left unaligned' : '');
+      return [
+        { id: `${r.id}-moved`, at: r.createdAt.toISOString(), who: null, what: `moved the ${(ARTEFACT_LABEL[r.artefactType] ?? r.artefactType).toLowerCase()} of ${people.get(r.employeeId) ?? ''} from ${people.get(r.oldManagerEmployeeId ?? '') ?? ''} to ${people.get(r.newManagerEmployeeId ?? '') ?? ''} when the manager changed` },
+        ...logs.map((l) => {
+          const m = (l.metadataJson ? JSON.parse(l.metadataJson) : {}) as Record<string, unknown>;
+          return { id: l.id, at: l.createdAt.toISOString(), who: l.actorName ?? l.actorEmail ?? null, what: `${WHAT[l.action] ?? l.action}${l.action === 'perf.handover.decided' ? how(m) : ''}` };
+        }),
+      ];
     });
   }
 

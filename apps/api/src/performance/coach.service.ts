@@ -11,7 +11,9 @@ import type { BiasCheckDto, BiasDecisionDto } from './b3-dto';
 
 // PRF-16 manager coach and suggested 1:1 agenda; PRF-17 review assistant and bias check.
 //   coach     the manager's direct reports only, from data the manager already sees (their own feedback, their 1:1s,
-//             the person's goal check-ins); never health, leave reasons, POSH or disciplinary data. The company sets how
+//             the person's goal check-ins) and, read-only from Time and People, counts only: the earned leave balance,
+//             weeks with overtime and open onboarding tasks; never health, leave reasons or types of leave taken, POSH
+//             or disciplinary data. The company sets how
 //             often (perf.coach.frequency, default weekly; off turns it off); each manager may turn it off for themself
 //             (HR does not see the choice) and dismiss a nudge for the week. Wording is fixed rule text: no AI call.
 //   agenda    for the manager of a 1:1: goals off track or at risk, open actions from earlier 1:1s, recent praise.
@@ -65,6 +67,27 @@ export class PerformanceCoachService {
         AND c.confidence IN ('off_track', 'at_risk') ORDER BY (c.confidence = 'off_track') DESC, g.weight DESC`;
   }
 
+  /**
+   * PRF-16 signals from Time and People, read-only and counts only: the earned leave balance (the ledger's sum, never a
+   * reason or the kind of leave taken), how many of the last 3 weeks (ending yesterday) had overtime claimed or approved,
+   * and the open tasks of an active onboarding checklist.
+   */
+  private async timeAndPeople(tx: Tx, org: string, ids: string[], today: string) {
+    const leave = await tx.$queryRaw<{ e: string; days: number }[]>`
+      SELECT l.employee_id::text AS e, SUM(l.days)::float8 AS days FROM leave_ledger l JOIN leave_types t ON t.organization_id = l.organization_id AND t.id = l.leave_type_id
+      WHERE l.organization_id = ${org}::uuid AND t.kind = 'earned' AND l.employee_id = ANY(${ids}::uuid[]) AND l.entry_on <= ${today}::date GROUP BY l.employee_id`;
+    const overtime = await tx.$queryRaw<{ e: string; weeks: number }[]>`
+      SELECT employee_id::text AS e, COUNT(DISTINCT ((${today}::date - 1 - work_on) / 7))::int AS weeks FROM overtime_requests
+      WHERE organization_id = ${org}::uuid AND employee_id = ANY(${ids}::uuid[]) AND status IN ('pending', 'approved') AND worked_minutes > 0
+        AND work_on BETWEEN ${today}::date - 21 AND ${today}::date - 1 GROUP BY employee_id`;
+    const onboarding = await tx.$queryRaw<{ e: string; n: number }[]>`
+      SELECT e.id::text AS e, COUNT(t.id)::int AS n FROM employees e
+      JOIN journeys j ON j.organization_id = e.organization_id AND j.person_id = e.person_id AND j.kind = 'onboarding' AND j.status = 'active'
+      JOIN journey_tasks t ON t.organization_id = j.organization_id AND t.journey_id = j.id AND t.status IN ('open', 'waiting')
+      WHERE e.organization_id = ${org}::uuid AND e.id = ANY(${ids}::uuid[]) GROUP BY e.id`;
+    return { leave: new Map(leave.map((r) => [r.e, r.days])), overtime: new Map(overtime.map((r) => [r.e, r.weeks])), onboarding: new Map(onboarding.map((r) => [r.e, r.n])) };
+  }
+
   // ------------------------------------------------------------------------------------------ PRF-16 coach card
 
   async coach(ctx: TenantContext, user: ScopeUser) {
@@ -90,6 +113,7 @@ export class PerformanceCoachService {
       const late = new Map((await tx.$queryRaw<{ e: string; on: Date }[]>`SELECT employee_id::text AS e, min("on") AS on FROM one_on_ones WHERE organization_id = ${org}::uuid AND manager_employee_id = ${me.id}::uuid AND status = 'planned' AND "on" < ${today}::date AND employee_id = ANY(${ids}::uuid[]) GROUP BY employee_id`).map((r) => [r.e, r.on]));
       const goals = await this.goalsOff(tx, org, ids);
       const people = await this.names(tx, org, ids);
+      const extra = await this.timeAndPeople(tx, org, ids, today);
       const signals: CoachSignals[] = ids.map((id) => ({
         employeeId: id,
         name: people.get(id) ?? '',
@@ -97,6 +121,9 @@ export class PerformanceCoachService {
         lastOneOnOneDays: held.has(id) ? days(held.get(id)!, today) : null,
         plannedOverdueDays: late.has(id) ? days(late.get(id)!, today) : 0,
         goalsOff: goals.filter((g) => g.owner === id).map((g) => ({ id: g.id, title: g.title, confidence: g.confidence })),
+        leaveBalance: extra.leave.get(id) ?? null,
+        overtimeWeeks: extra.overtime.get(id) ?? 0,
+        onboardingOpen: extra.onboarding.get(id) ?? 0,
       }));
       const dismissed = new Set((await tx.perfCoachDismissal.findMany({ where: { organizationId: org, userId: v.userId!, weekOf: new Date(`${base.weekOf}T00:00:00Z`) }, select: { nudgeKey: true } })).map((d) => d.nudgeKey));
       const nudges = coachNudges(signals).filter((n) => !dismissed.has(n.key)).sort((a, b) => a.person.localeCompare(b.person));

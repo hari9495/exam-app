@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, inCompany } from '../org-structure/org-structure.service';
@@ -13,15 +13,26 @@ import type { StageIn } from './review-rules';
 // may already read elsewhere (their own goals and reviews, their team's through the manager chain, and for HR who run
 // cycles the company's cycle figures); the parts come from the same services, so the same access rules apply.
 //   persona  hr: runs review cycles company-wide (perf.cycle.manage) · mgr: has direct reports today · emp: anyone else
-//   numbers  counts only for HR (cycles, overdue stages, released bands by department, live PIPs, goals aligned)
+//   numbers  counts only for HR (cycles, overdue stages, released bands by department, live PIPs, goals aligned), each
+//            with last month's figure from the monthly snapshot (founder answer b, 3 Nov 2026)
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const ACTIVE_PIP = ['active', 'extended'];
 
 type Action = { id: string; type: string; title: string; who: string; due: string | null; href: string; actionLabel?: string };
 
+/** The first day of the month of an ISO date, and of the month before. */
+export const monthOf = (day: string) => `${day.slice(0, 7)}-01`;
+export function monthBefore(day: string): string {
+  const [y, m] = day.split('-').map(Number);
+  return m === 1 ? `${y - 1}-12-01` : `${y}-${String(m - 1).padStart(2, '0')}-01`;
+}
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
 @Injectable()
 export class PerformanceHomeService {
+  private readonly logger = new Logger(PerformanceHomeService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
@@ -42,7 +53,7 @@ export class PerformanceHomeService {
       const org = c.organizationId;
       const me = v.userId && !v.actingForOther ? await tx.employee.findFirst({ where: { organizationId: org, userId: v.userId }, select: { id: true, givenName: true, preferredName: true } }) : null;
       const u = v.userId ? await tx.user.findFirst({ where: { id: v.userId }, select: { name: true } }) : null;
-      const period = await tx.goalPeriod.findFirst({ where: { organizationId: org, status: 'open', fromOn: { lte: new Date(`${today}T00:00:00Z`) }, toOn: { gte: new Date(`${today}T00:00:00Z`) } }, orderBy: { fromOn: 'desc' } }) ?? (await tx.goalPeriod.findFirst({ where: { organizationId: org, status: 'open' }, orderBy: { fromOn: 'desc' } }));
+      const period = await this.openPeriod(tx, org, today);
       const reports = me
         ? await tx.$queryRaw<{ id: string; designation: string | null }[]>`
             SELECT DISTINCT ON (a.employee_id) a.employee_id::text AS id, d.name AS designation FROM employee_assignments a
@@ -136,7 +147,7 @@ export class PerformanceHomeService {
       nextOneOnOne: rest.nextOneOnOne,
       team: rest.team,
       teamGoals,
-      hr: rest.hr ? { cycles: rest.hr.cycles, ratingDistribution: rest.hr.ratingDistribution, pipsActive: rest.hr.pipsActive, goalsAligned: rest.hr.goalsAligned } : null,
+      hr: rest.hr ? { cycles: rest.hr.cycles, ratingDistribution: rest.hr.ratingDistribution, pipsActive: rest.hr.pipsActive, goalsAligned: rest.hr.goalsAligned, cyclesRunning: rest.hr.figures.cyclesRunning, overdueStages: rest.hr.figures.overdueStages, previous: rest.hr.previous } : null,
     };
   }
 
@@ -206,7 +217,8 @@ export class PerformanceHomeService {
       const depts = [...new Set(got.map((g) => g.dept))].sort();
       ratingDistribution = { cycle: last.name, bands, rows: depts.map((dept) => { const counts = bands.map((b) => got.find((g) => g.dept === dept && g.band === b)?.n ?? 0); return { dept, counts, size: counts.reduce((t, n) => t + n, 0) }; }) };
     }
-    const pipsActive = pips ? await tx.pip.count({ where: { organizationId: org, status: { in: ACTIVE_PIP } } }) : null;
+    const pipsAll = await tx.pip.count({ where: { organizationId: org, status: { in: ACTIVE_PIP } } });
+    const pipsActive = pips ? pipsAll : null;
     let goalsAligned: number | null = null;
     if (periodId) {
       const [a] = await tx.$queryRaw<{ total: number; aligned: number }[]>(Prisma.sql`
@@ -214,6 +226,44 @@ export class PerformanceHomeService {
         WHERE organization_id = ${org}::uuid AND period_id = ${periodId}::uuid AND owner_type <> 'company' AND status IN ('submitted', 'active', 'done')`);
       goalsAligned = a && a.total ? Math.round((a.aligned / a.total) * 100) : null;
     }
-    return { cycles: out, disagreements: disagreements.map((d) => ({ cycleId: d.cycle_id, cycle: d.name, count: d.n })), ratingDistribution, pipsActive, goalsAligned };
+    // Last month's figures (the snapshot of the month before this one); PIPs only for HR who may see plans.
+    const prev = await tx.perfHomeSnapshot.findFirst({ where: { organizationId: org, month: new Date(`${monthBefore(today)}T00:00:00Z`) } });
+    const previous = prev ? { label: MONTH_NAMES[prev.month.getUTCMonth()], cyclesRunning: prev.cyclesRunning, overdueStages: prev.overdueStages, pipsActive: pips ? prev.pipsActive : null, goalsAligned: prev.goalsAligned } : null;
+    const figures = { cyclesRunning: cycles.filter((x) => x.status === 'launched' || x.status === 'calibrating').length, overdueStages: out.reduce((t, x) => t + x.overdue, 0), pipsActive: pipsAll, goalsAligned };
+    return { cycles: out, disagreements: disagreements.map((d) => ({ cycleId: d.cycle_id, cycle: d.name, count: d.n })), ratingDistribution, pipsActive, goalsAligned, previous, figures };
+  }
+
+  /** The open goal period today (the latest open one if none covers today), as the home picks it. */
+  private async openPeriod(tx: Tx, org: string, today: string) {
+    const on = new Date(`${today}T00:00:00Z`);
+    return (await tx.goalPeriod.findFirst({ where: { organizationId: org, status: 'open', fromOn: { lte: on }, toOn: { gte: on } }, orderBy: { fromOn: 'desc' } })) ?? (await tx.goalPeriod.findFirst({ where: { organizationId: org, status: 'open' }, orderBy: { fromOn: 'desc' } }));
+  }
+
+  /**
+   * Founder answer (b): the HR home's numbers for this month, written again by every daily run until the month ends, so a
+   * past month's row holds its last figures. Safe to re-run (one row per company and month); BullMQ runs one job at a time.
+   */
+  async snapshotOrg(org: string, today = todayIst()) {
+    const c: CompanyContext = { organizationId: org, isSuperAdmin: false, userId: null };
+    return this.tenantPrisma.forTenant(c, async (tx) => {
+      const period = await this.openPeriod(tx, org, today);
+      const { figures: f } = await this.hrFigures(tx, org, period?.id ?? null, true, today);
+      const month = new Date(`${monthOf(today)}T00:00:00Z`);
+      const data = { cyclesRunning: f.cyclesRunning, overdueStages: f.overdueStages, pipsActive: f.pipsActive, goalsAligned: f.goalsAligned, takenAt: new Date() };
+      return tx.perfHomeSnapshot.upsert({ where: { organizationId_month: { organizationId: org, month } }, create: { organizationId: org, month, ...data }, update: data });
+    });
+  }
+
+  async snapshotAll(today = todayIst()) {
+    const SUPER = { organizationId: null, isSuperAdmin: true };
+    const orgs = await this.tenantPrisma.forTenant(SUPER, (tx) => tx.$queryRaw<{ id: string }[]>`SELECT organization_id::text AS id FROM review_cycles UNION SELECT organization_id::text FROM pips UNION SELECT organization_id::text FROM goal_periods`);
+    for (const { id } of orgs) {
+      try {
+        await this.snapshotOrg(id, today);
+      } catch (e) {
+        this.logger.warn(`home snapshot ${id}: ${(e as Error).message}`);
+      }
+    }
+    return orgs.length;
   }
 }
