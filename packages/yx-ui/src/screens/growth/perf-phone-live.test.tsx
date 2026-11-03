@@ -15,6 +15,7 @@ import { NOMINATIONS } from './perf-data-3';
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const show = (ui: ReactElement) => render(<ToastProvider>{ui}</ToastProvider>);
 const ok = () => vi.fn(async () => ({}));
+const done = () => vi.fn(async () => {});
 const realMatchMedia = window.matchMedia;
 const width = (px: number) => {
   window.matchMedia = ((q: string) => ({ matches: px <= Number(/max-width: (\d+)px/.exec(q)?.[1] ?? 0), media: q, addEventListener: () => {}, removeEventListener: () => {} })) as unknown as typeof window.matchMedia;
@@ -29,8 +30,8 @@ const nomLive = (o: Partial<LiveNominations> = {}): LiveNominations => ({ onRetr
 const fbLive = (o: Partial<LiveQuickFeedback> = {}): LiveQuickFeedback => ({ onRetry: () => {}, defaultVisibility: 'Only them', onPeopleSearch: vi.fn(), onRecipient: vi.fn(), team: null, concerns: null, askAbout: [{ value: 'me', label: 'Myself' }], concernHref: '/yx/desk/help', onGive: ok(), onWithdraw: ok(), onAsk: ok(), onDecline: ok(), onSeal: ok(), ...o });
 const ooLive = (o: Partial<LiveOneOnOnes> = {}): LiveOneOnOnes => ({ today: new Date(2026, 8, 29), onRetry: vi.fn(), record: ONE_ON_ONES[0]!, recordState: 'ready', onOpen: vi.fn(), partners: [{ value: 'e2', label: 'Rohit Bhat' }], defaultCadence: 14, owners: [{ value: 'e1', label: 'Meera Iyer' }], goals: [], onSchedule: ok(), onAgenda: ok(), onSharedNotes: ok(), onPrivateNote: ok(), onAction: ok(), onActionDone: ok(), onHeld: ok(), onReschedule: ok(), ...o });
 const pipLive = (o: Partial<LivePip> = {}): LivePip => ({ today: new Date(2026, 6, 20), can: { decide: false, acknowledge: false, checkin: false, employeeNote: false, outcome: false, letter: false, startExit: false }, extendDays: 30, askHrHref: '/yx/desk/help', onDecide: ok(), onAcknowledge: ok(), onCheckin: ok(), onEmployeeNote: ok(), onOutcome: ok(), onLetter: ok(), onStartExit: ok(), ...o });
-const raiseLive = (o: Partial<LiveDisputeRaise> = {}): LiveDisputeRaise => ({ state: 'ready', onRetry: vi.fn(), cycle: 'H1 FY 2026-27', score: 2.6, band: 'Partly meets', disagreement: { raisedOn: new Date(2026, 9, 10), answeredOn: new Date(2026, 9, 20) }, escalateBy: new Date(2026, 10, 4), why: null, dispute: null, steps: [], onRaise: ok(), onUpload: ok(), ...o });
-const coachLive = (o: Partial<LiveCoach> = {}): LiveCoach => ({ state: 'ready', onRetry: vi.fn(), firstName: 'Priya', weekOf: new Date(2026, 10, 2), optedOut: false, looksAt: ['No feedback given in 6 weeks'], nudges: [{ id: 'n1', person: 'Divya R', signal: '1:1 overdue by 9 days.', action: 'Book 1:1', link: '/yx/performance/one-on-ones' }], onAct: vi.fn(), onDismiss: ok(), onOptOut: ok(), ...o });
+const raiseLive = (o: Partial<LiveDisputeRaise> = {}): LiveDisputeRaise => ({ state: 'ready', onRetry: vi.fn(), cycle: 'H1 FY 2026-27', score: 2.6, band: 'Partly meets', disagreement: { raisedOn: new Date(2026, 9, 10), answeredOn: new Date(2026, 9, 20) }, escalateBy: new Date(2026, 10, 4), why: null, dispute: null, steps: [], onRaise: done(), onUpload: done(), ...o });
+const coachLive = (o: Partial<LiveCoach> = {}): LiveCoach => ({ state: 'ready', onRetry: vi.fn(), firstName: 'Priya', weekOf: new Date(2026, 10, 2), optedOut: false, looksAt: ['No feedback given in 6 weeks'], nudges: [{ id: 'n1', person: 'Divya R', signal: '1:1 overdue by 9 days.', action: 'Book 1:1', link: '/yx/performance/one-on-ones' }], onAct: vi.fn(), onDismiss: done(), onOptOut: done(), ...o });
 
 describe('PRF-07 360° nominations on a phone', () => {
   it('phone layout under 768 px; Send below the minimum says why, at the minimum it sends', async () => {
