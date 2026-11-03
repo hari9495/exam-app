@@ -290,6 +290,44 @@ describe('HLP-07/08/09 cases', () => {
     expect((await call('eth1', 'get', '/ethics/reports').expect(200)).body.find((r: { id: string }) => r.id === ids.anon).routed).toBe(true);
   });
 
+  it('severity (answer 35): Standard by default; only an ethics officer on the report changes it; each change is a step with old and new', async () => {
+    expect((await call('eth1', 'get', '/ethics/reports').expect(200)).body.find((r: { id: string }) => r.id === ids.anon).severity).toBe('standard');
+    expect((await detail('eth1', ids.anon))).toMatchObject({ severity: 'standard', me: { canSetSeverity: true } });
+    expect((await detail('chair', ids.anon)).me.canSetSeverity).toBe(false);
+    await call('eth1', 'post', `/ethics/reports/${ids.anon}/severity`).send({ severity: 'urgent' }).expect(400);
+    await call('eth1', 'post', `/ethics/reports/${ids.anon}/severity`).send({}).expect(400);
+    expect((await call('chair', 'post', `/ethics/reports/${ids.anon}/severity`).send({ severity: 'serious' }).expect(403)).body.code).toBe('CASE_NOT_ETHICS_OFFICER');
+    for (const who of ['hr', 'adminA', 'adminB', 'divya'] as Who[]) await call(who, 'post', `/ethics/reports/${ids.anon}/severity`).send({ severity: 'serious' }).expect(404);
+    await call('eth1', 'post', `/ethics/reports/${ids.anon}/severity`).send({ severity: 'standard' }).expect(409);
+    await call('eth1', 'post', `/ethics/reports/${ids.anon}/severity`).send({ severity: 'serious' }).expect(200);
+    expect((await call('eth2', 'get', '/ethics/reports').expect(200)).body.find((r: { id: string }) => r.id === ids.anon).severity).toBe('serious');
+    const st = await inA((tx) => tx.speakupCaseStep.findFirstOrThrow({ where: { caseId: ids.anon, kind: 'severity_set' } }));
+    expect(st).toMatchObject({ actorUserId: users.eth1, data: { from: 'standard', to: 'serious' } });
+    const a = await inA((tx) => tx.auditLog.findFirstOrThrow({ where: { entityId: ids.anon, action: 'cases.severity_set' } }));
+    expect(JSON.parse(a.metadataJson ?? '{}')).toMatchObject({ from: 'standard', to: 'serious' });
+    await expect(inA((tx) => tx.speakupCaseStep.create({ data: { organizationId: org.A.id, caseId: ids.anon, kind: 'severity_set', actorUserId: users.eth1, data: { from: 'serious', to: 'serious' } } }))).rejects.toThrow(/severity_check/);
+    await expect(inA((tx) => tx.speakupCaseStep.update({ where: { id: st.id }, data: { data: { from: 'standard', to: 'standard' } } }))).rejects.toThrow(/permission denied/);
+    await call('eth1', 'post', `/ethics/reports/${ids.g}/severity`).send({ severity: 'serious' }).expect(400);
+    await call('eth1', 'post', `/ethics/reports/${ids.eth}/severity`).send({ severity: 'serious' }).expect(409);
+    // A report filed by someone who fears retaliation starts Serious.
+    const worried = (await call('divya', 'post', '/speakup/reports').send({ kind: 'whistleblower', summary: 'Cash taken from the canteen till every Friday.', retaliationWorry: true }).expect(201)).body.id;
+    expect((await call('eth1', 'get', '/ethics/reports').expect(200)).body.find((r: { id: string }) => r.id === worried).severity).toBe('serious');
+  });
+
+  it('menu flags (answer 36): Cases for a speak-up list or a case member, the Ethics desk for the ethics or escalation list', async () => {
+    const counts = async (who: Who) => (await request(server()).get('/api/v1/workspace/counts').set('Authorization', `Bearer ${token[who]}`).expect(200)).body;
+    expect(await counts('eth1')).toMatchObject({ casesOpen: expect.any(Number), ethicsReports: expect.any(Number) });
+    expect((await counts('eth1')).ethicsReports).toBeGreaterThanOrEqual(2);
+    expect(await counts('chair')).toMatchObject({ casesOpen: expect.any(Number), ethicsReports: expect.any(Number) });
+    const ic = await counts('ic2');
+    expect(ic.casesOpen).toEqual(expect.any(Number));
+    expect(ic.ethicsReports).toBeUndefined();
+    for (const who of ['divya', 'hr', 'adminA', 'resp', 'manager', 'adminB'] as Who[]) {
+      const c = await counts(who);
+      expect([who, c.casesOpen, c.ethicsReports]).toEqual([who, undefined, undefined]);
+    }
+  });
+
   it('another company never sees these cases', async () => {
     for (const id of [ids.eth, ids.posh, ids.g, ids.anon]) await call('adminB', 'get', `/cases/${id}`).expect(404);
     expect((await call('adminB', 'get', '/my/cases').expect(200)).body).toEqual([]);

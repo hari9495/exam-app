@@ -9,7 +9,7 @@ import { settingFor } from '../people/probation';
 import { SpeakupService } from '../speakup/speakup.service';
 import { caseNumber } from '../speakup/speakup-rules';
 import type { SpeakupKind } from '../speakup/dto';
-import { addDays, canDecide, conflictWith, fold, isoDay, majority, type Folded, type Step } from './case-rules';
+import { addDays, canDecide, conflictWith, fold, isoDay, majority, severityOf, type Folded, type Severity, type Step } from './case-rules';
 import type { AddMemberDto, DelayDto, IcReportDto, MoreTimeDecisionDto, NoticeDto, ProposeDto, ReliefDto, ReplyDto, SendBackDto, VoteDto } from './dto';
 
 // HLP-07 My cases, HLP-08 Cases (case team), HLP-09 Ethics desk on the HLP-06 case record (rules:
@@ -232,7 +232,8 @@ export class CasesService {
         report: { summary: row.summary, category: row.category, happenedOn: iso(row.happenedOn), involved: row.involved, witnesses: row.witnesses, outside: row.outsideName ? `${row.outsideName}${row.outsideEmployer ? ` (${row.outsideEmployer})` : ''}` : null, retaliationWorry: row.retaliationWorry, late: row.late },
         dates,
         datesSource: source,
-        me: { memberId: me, canWork: !closed, canApprove: !posh && !closed && f.outcome.status === 'proposed' && f.outcome.proposedBy !== me, ic: posh, presiding: posh && presidingId === me, recused: false },
+        severity: row.kind === 'whistleblower' ? severityOf(f, row.retaliationWorry) : null,
+        me: { memberId: me, canWork: !closed, canApprove: !posh && !closed && f.outcome.status === 'proposed' && f.outcome.proposedBy !== me, ic: posh, presiding: posh && presidingId === me, recused: false, canSetSeverity: row.kind === 'whistleblower' && !closed && (await this.ethicsOfficer(tx, c)) },
         canDecide: decide,
         members: l.allMembers.map((uid) => ({
           id: uid,
@@ -565,12 +566,31 @@ export class CasesService {
         receivedOn: isoDay(row.filedAt)!,
         entity: [org?.name, locs.find((x) => x.id === row.locationId)?.name].filter(Boolean).join(' · ') || '—',
         anonymous: row.identity === 'anonymous',
-        severity: row.retaliationWorry ? 'serious' : null,
+        severity: severityOf(f, row.retaliationWorry),
         routed: row.routedTo === 'escalation' || Boolean(f.routedToChair),
         stage: this.stage(row, f).stage,
         clock: !f.acknowledgedOn ? { label: 'Acknowledge by', on: iso(row.ackDueOn)! } : null,
         aboutOfficer: Boolean(row.aboutUserId),
       }));
+    });
+  }
+
+  /** On the company's ethics list today (the escalation list reads, but does not grade, reports). */
+  private async ethicsOfficer(tx: Tx, c: CompanyContext) {
+    return Boolean(c.userId && (await tx.speakupTeamMember.findFirst({ where: { organizationId: c.organizationId, team: 'ethics', userId: c.userId, removedAt: null }, select: { id: true } })));
+  }
+
+  /** Founder answer 35: an ethics officer on the report sets it Serious or Standard; each change is a step with old and new. */
+  async setSeverity(ctx: TenantContext, id: string, severity: Severity) {
+    return this.tx(ctx, async (tx, c) => {
+      const l = await this.memberCase(tx, c, id);
+      if (l.row.kind !== 'whistleblower') throw new BadRequestException('Only fraud and ethics reports have a severity.');
+      this.open(l);
+      if (!(await this.ethicsOfficer(tx, c))) throw new ForbiddenException({ statusCode: 403, code: 'CASE_NOT_ETHICS_OFFICER', message: 'Only an ethics officer on this report sets its severity.' });
+      const from = severityOf(l.f, l.row.retaliationWorry);
+      if (from === severity) throw new ConflictException(`This report is already ${severity === 'serious' ? 'Serious' : 'Standard'}.`);
+      await this.step(tx, c, l.row, 'severity_set', { from, to: severity });
+      return { severity };
     });
   }
 
@@ -783,5 +803,6 @@ const STEP_WORDS: Record<string, string> = {
   member_added: 'Added a member to the case',
   routed_to_chair: 'Routed the report to the audit committee chair',
   file_added: 'Added a file',
+  severity_set: 'Changed the severity',
 };
 const RELIEF_WORDS: Record<string, string> = { transfer: 'transfer', leave: 'leave', reporting: 'stop reporting to the accused', other: 'other relief' };

@@ -434,6 +434,18 @@ export class WorkspaceService {
       if (!support && own && (await tx.bfsiDesignation.count({ where: { organizationId: org, employeeId: own.id } }))) {
         out.declarationsDue = (await tx.bfsiDeclaration.count({ where: { organizationId: org, employeeId: own.id, cycle: cycleOf(todayIst()), status: 'submitted' } })) ? 0 : 1;
       }
+      // HLP-07/08/09 (founder answer 36): Cases shows only to someone on a speak-up list or a member of any case, and the
+      // Ethics desk only to the ethics or escalation list. Absent for everyone else. The case pages check membership again.
+      if (!support) {
+        const lists = new Set((await tx.speakupTeamMember.findMany({ where: { organizationId: org, userId: me, removedAt: null }, select: { team: true } })).map((t) => t.team));
+        const open = (kind: string | null) => one(Prisma.sql`SELECT count(*) AS n FROM speakup_case_members m JOIN speakup_cases k ON k.id = m.case_id
+          WHERE m.organization_id = ${org}::uuid AND m.user_id = ${me}::uuid AND k.status <> 'closed' AND (${kind}::text IS NULL OR k.kind = ${kind}::text)
+          AND NOT EXISTS (SELECT 1 FROM speakup_case_steps s WHERE s.case_id = k.id AND s.kind = 'recused' AND s.actor_user_id = ${me}::uuid)`);
+        const member = lists.size > 0 || (await one(Prisma.sql`SELECT count(*) AS n FROM speakup_case_members m WHERE m.organization_id = ${org}::uuid AND m.user_id = ${me}::uuid
+          AND NOT EXISTS (SELECT 1 FROM speakup_case_steps s WHERE s.case_id = m.case_id AND s.kind = 'recused' AND s.actor_user_id = ${me}::uuid)`)) > 0;
+        if (member) out.casesOpen = await open(null);
+        if (lists.has('ethics') || lists.has('escalation')) out.ethicsReports = await open('whistleblower');
+      }
       if (keys.has('document.manage')) out.documentsToVerify = await tx.document.count({ where: { organizationId: org, status: 'uploaded' } });
       // People menu (PPL designs): accepted offers not yet onboarded; probations whose review is due or overdue (a manager's
       // count leaves out reviews that went to HR, which only HR decides) (company-wide

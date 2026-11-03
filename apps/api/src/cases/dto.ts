@@ -1,6 +1,6 @@
 import { Transform, Type } from 'class-transformer';
 import { ArrayMaxSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, MaxLength, Min, MinLength } from 'class-validator';
-import { FINDINGS, MEMBER_ROLES, RELIEF_ACTIONS, type Finding, type ReliefAction } from './case-rules';
+import { FINDINGS, MEMBER_ROLES, RELIEF_ACTIONS, SEVERITIES, type Finding, type ReliefAction, type Severity } from './case-rules';
 
 // HLP-07/08/09 case inputs. Whitelisted by the global ValidationPipe (unknown fields are refused).
 
@@ -120,6 +120,11 @@ export class ReliefDto {
   /** The person in HR who carries it out. */
   @IsUUID()
   assigneeUserId!: string;
+}
+
+export class SeverityDto {
+  @IsIn(SEVERITIES)
+  severity!: Severity;
 }
 
 export class ReasonDto {

@@ -121,7 +121,7 @@ const IMPLICIT: Record<string, string[]> = {
   SpeakupController: ['form', 'file', 'addFile', 'cases', 'caseDetail', 'teamReply'],
   // HLP-07/08/09: membership of the case is the access (404 otherwise); My cases is one's own part.
   CasesController: ['list', 'detail', 'message', 'notice', 'delay', 'moreTime', 'propose', 'approve', 'sendBack', 'icReport', 'vote', 'sign', 'relief', 'reliefDone', 'recuse', 'addMember', 'upload', 'file'],
-  EthicsController: ['reports', 'route'],
+  EthicsController: ['reports', 'severity', 'route'],
   MyCasesController: ['mine', 'one', 'message', 'reply', 'moreTime', 'upload', 'file'],
   MyPoliciesController: ['mine', 'one', 'myFile', 'code', 'acknowledge'], // HLP-10: one's own policies (audience checked per policy)
   PeopleRegistersController: [],

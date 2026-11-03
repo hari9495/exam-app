@@ -7,6 +7,11 @@ export const RELIEF_ACTIONS = ['transfer', 'leave', 'reporting', 'other'] as con
 export type ReliefAction = (typeof RELIEF_ACTIONS)[number];
 export const MEMBER_ROLES = ['officer', 'investigator'] as const;
 
+export type Severity = 'serious' | 'standard';
+export const SEVERITIES: readonly Severity[] = ['serious', 'standard'];
+/** Founder answer 35: Serious when the reporter fears retaliation, else Standard, until an ethics officer sets it. */
+export const severityOf = (f: Pick<Folded, 'severity'>, retaliationWorry: boolean): Severity => f.severity ?? (retaliationWorry ? 'serious' : 'standard');
+
 export interface Step {
   id: string;
   kind: string;
@@ -64,6 +69,8 @@ export interface Folded {
   recused: Map<string, { on: string; reason: string }>;
   added: Map<string, { role: string; overrideReason: string | null }>;
   routedToChair: { at: string; reason: string } | null;
+  /** The latest severity an ethics officer set (null: never set, the default applies). */
+  severity: Severity | null;
   fileIds: { fileId: string; by: string; at: string }[];
 }
 
@@ -78,6 +85,7 @@ export function fold(steps: Step[]): Folded {
     recused: new Map(),
     added: new Map(),
     routedToChair: null,
+    severity: null,
     fileIds: [],
   };
   for (const st of [...steps].sort((a, b) => a.at.getTime() - b.at.getTime())) {
@@ -140,6 +148,9 @@ export function fold(steps: Step[]): Folded {
         break;
       case 'routed_to_chair':
         f.routedToChair ??= { at, reason: s(d.reason) ?? '' };
+        break;
+      case 'severity_set':
+        if (d.to === 'serious' || d.to === 'standard') f.severity = d.to;
         break;
       case 'file_added':
         if (s(d.fileId)) f.fileIds.push({ fileId: s(d.fileId)!, by: st.actorUserId, at });

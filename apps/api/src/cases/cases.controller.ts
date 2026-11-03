@@ -9,7 +9,7 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import { assertOwnSession } from '../service-desk/desk-access';
-import { AddMemberDto, DelayDto, IcReportDto, MessageDto, MoreTimeDecisionDto, NoticeDto, ProposeDto, ReasonDto, ReliefDto, ReplyDto, SendBackDto, VersionDto, VoteDto } from './dto';
+import { AddMemberDto, DelayDto, IcReportDto, MessageDto, MoreTimeDecisionDto, NoticeDto, ProposeDto, ReasonDto, ReliefDto, ReplyDto, SendBackDto, SeverityDto, VersionDto, VoteDto } from './dto';
 import { CasesService } from './cases.service';
 
 // HLP-07/08/09 cases (rules: docs/yukthix/helpdesk-design-map.md section 4f). No key: being a member of the case is the
@@ -147,6 +147,13 @@ export class EthicsController {
   reports(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     assertOwnSession(req);
     return this.cases.ethics(ctx);
+  }
+
+  @Post('reports/:id/severity')
+  @HttpCode(200)
+  severity(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', id) caseId: string, @Body() dto: SeverityDto) {
+    assertOwnSession(req);
+    return this.cases.setSeverity(ctx, caseId, dto.severity);
   }
 
   @Post('reports/:id/route')
