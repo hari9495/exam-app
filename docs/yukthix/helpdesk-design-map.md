@@ -898,3 +898,14 @@ quick view).
 agrees (go-live checklist). (4) The demo HR Admin role gets `policy.manage` and `policy.publish` (demo script).
 (5) "Retire a policy" only when a company asks, drawn first. (6) The "waiting to publish" notice goes to every publisher
 except the writer. (7) Confirmed: HLP-10/11 only shows and records policies and makes no legal decision.
+
+## Founder decisions, 3 Nov 2026 (HLP-06 Speak-up, before any server work)
+(1) Anonymous reports are allowed: the reporter gets a private reply code to follow up and answer questions without a
+name; a company setting can turn anonymous reporting off. (2) Reports go to a separate ethics / case team of named case
+officers chosen by the company, not ordinary HR; a report about a case officer goes to the next person (e.g. the audit
+committee chair, Companies Act s.177 vigil mechanism — verify with counsel). (3) Sexual-harassment (POSH) complaints go
+straight to the Internal Committee: only IC members see them; the POSH Act filing window and IC timelines are tracked as
+settings from the statutory rules (verify with counsel). (4) A named reporter's identity is visible only to the assigned
+case officers; hidden from managers and other HR; every view audited (retaliation protection).
+Other choices built as company settings with safe defaults (categories, acknowledgement days, reminder schedule,
+retention) and listed for the founder at the stop.
