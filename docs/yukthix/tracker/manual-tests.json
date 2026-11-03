@@ -10918,5 +10918,230 @@
     ],
     "expected": "Step 1: \"Choose how it is going.\" and nothing is saved. Step 2: toast \"Check-in recorded\"; the badge says On track. Step 3: toasts \"Plan acknowledged\" and \"Your note was added\"; acknowledging says it is not agreeing. Step 4: toast \"Plan extended to <date>\". A \"not met\" outcome starts nothing by itself; HR then sees \"Open exit case in People\", which asks for a last working day and a reason.",
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PRF-B3-01",
+    "area": "PRF-13 Hand-over list",
+    "screen": "Manager: handed over to you",
+    "url": "http://localhost:3000/yx/performance/handovers",
+    "account": "panel@demo-org.test (Manager - Divya). Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PRF-13 New manager",
+      "PRF-13 Re-parent a moved goal"
+    ],
+    "steps": [
+      "1. Ask the developer to move one of Arjun’s open reviews or a goal aligned to his old manager’s goal to Divya (change Arjun’s manager to Divya in People, effective today, then run the nightly hand-over job).",
+      "2. As Divya open Performance › Hand-over list.",
+      "3. On the “Goal parent” row press Re-parent goal, choose one of your goals, press Save decision."
+    ],
+    "expected": "Step 2: the page is called “Handed over to you” with a row per moved artefact (Manager review stage, Goal parent, 1:1 thread) and “N need a decision”. Step 3: toast “Goal re-aligned”; the row shows Decided; Arjun’s goal now sits under the chosen goal on the goal map. No page scroll.",
+    "note": "Positive."
+  },
+  {
+    "id": "MT-PRF-B3-02",
+    "area": "PRF-13 Hand-over list",
+    "screen": "Re-parent: refused cases",
+    "url": "http://localhost:3000/yx/performance/handovers",
+    "account": "panel@demo-org.test (Manager - Divya); arjun@demo-org.test (Arjun Kulkarni, reports to Divya). Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PRF-13 Re-parent a moved goal"
+    ],
+    "steps": [
+      "1. As Divya press Re-parent goal on a Needs decision row and press Save decision without choosing a goal.",
+      "2. Open the same row in a second tab, decide it there, then press Save decision in the first tab.",
+      "3. As Arjun open the Hand-over list."
+    ],
+    "expected": "Step 1 (negative): field error “Choose the goal to align it to, or leave it unaligned.” and the goal field gets focus; nothing saves. Step 2 (negative): the dialog shows “This hand-over was already decided. Reload the list.” Step 3 (negative): Arjun has no Hand-over list menu entry; the URL shows “Nothing to hand over”.",
+    "note": "Negative."
+  },
+  {
+    "id": "MT-PRF-B3-03",
+    "area": "PRF-13 Hand-over list",
+    "screen": "HR: company list",
+    "url": "http://localhost:3000/yx/performance/handovers",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi), who also needs Review cycles (perf.cycle.manage). Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PRF-13 HR · needs decision"
+    ],
+    "steps": [
+      "1. Open Performance › Hand-over list.",
+      "2. Pick the saved view “All artefacts”, then “Needs decision”.",
+      "3. Decide a goal row with “Leave unaligned”."
+    ],
+    "expected": "Step 1: “Hand-over list” filtered to Needs decision. Step 2: the views switch the filter. Step 3: toast “Goal left unaligned”. A moved improvement plan shows only to HR who also hold PIPs (perf.pip.manage). Negative: HR without Review cycles gets no menu entry.",
+    "note": "Positive + negative."
+  },
+  {
+    "id": "MT-PRF-B3-04",
+    "area": "PRF-14 Competency framework",
+    "screen": "Add, map, merge, retire",
+    "url": "http://localhost:3000/yx/performance/competencies",
+    "account": "hr@demo-org.test with the Performance set-up role. Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PRF-14 Competency with levels and roles",
+      "PRF-14 Add competency",
+      "PRF-14 Map a role to a level",
+      "PRF-14 Merge into another competency"
+    ],
+    "steps": [
+      "1. Open Performance › Skills & competencies (empty company: press Load starter library).",
+      "2. Press Add competency, name “Customer focus”, group Core, keep the levels, press Add competency.",
+      "3. Press Map a role, choose a designation and Level 2, press Map role.",
+      "4. On another competency press Merge into…, choose “Customer focus”, press Merge competency.",
+      "5. Press Retire on a competency and confirm."
+    ],
+    "expected": "Each action shows a toast (“… added”, “Role mapped …”, “… merged”, “… retired”). The merged and retired ones show the Retired badge and their buttons go away; past reviews keep them. Settings › Performance shows the same competencies.",
+    "note": "Positive."
+  },
+  {
+    "id": "MT-PRF-B3-05",
+    "area": "PRF-14 Competency framework",
+    "screen": "Refused input and access",
+    "url": "http://localhost:3000/yx/performance/competencies",
+    "account": "hr@demo-org.test with the Performance set-up role; panel@demo-org.test (Manager - Divya). Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PRF-14 Add competency"
+    ],
+    "steps": [
+      "1. Press Add competency and press Add competency again with no name.",
+      "2. Leave only one line in Levels and press Add competency.",
+      "3. Press Map a role and press Map role with nothing chosen.",
+      "4. As Divya type the page URL."
+    ],
+    "expected": "Step 1: “Give the competency a name of at least 2 characters.” Step 2: “Write 2 to 10 levels, one per line, the lowest first.” Step 3: “Choose the job title.” Step 4: no menu entry; the page shows that it did not load (the API refuses without perf.setup.manage). Nothing is saved in steps 1 to 3.",
+    "note": "Negative."
+  },
+  {
+    "id": "MT-PRF-B3-06",
+    "area": "PRF-15 Disputes",
+    "screen": "Employee escalates",
+    "url": "http://localhost:3000/yx/performance/reviews/<review id>/dispute",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya); hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PRF-15 Employee · escalate",
+      "PRF-15 Employee · escalation raised"
+    ],
+    "steps": [
+      "1. With a released review, Arjun disagrees on it; Lakshmi answers the disagreement in Review cycles.",
+      "2. Arjun opens /yx/performance/reviews/<review id>/dispute, writes why (20+ characters), adds a PDF, presses Escalate dispute."
+    ],
+    "expected": "Step 2: toast “Escalation raised”; the page shows reference PRF-D-0001, the steps (Disagreement raised, HR reply, Escalated, Decision current) and the attachment name. People with the Rating disputes role get a notification. The rating does not change.",
+    "note": "Positive."
+  },
+  {
+    "id": "MT-PRF-B3-07",
+    "area": "PRF-15 Disputes",
+    "screen": "Escalation refused",
+    "url": "http://localhost:3000/yx/performance/reviews/<review id>/dispute",
+    "account": "arjun@demo-org.test; panel@demo-org.test (Manager - Divya). Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PRF-15 Employee · escalate"
+    ],
+    "steps": [
+      "1. Arjun opens the page before HR answered his disagreement.",
+      "2. Arjun writes 10 characters and presses Escalate dispute (after HR answered).",
+      "3. After escalating, Arjun opens the page again and tries a .exe renamed .pdf as an attachment.",
+      "4. Divya opens Arjun’s dispute URL."
+    ],
+    "expected": "Step 1: “HR has not answered your disagreement yet…”, no Escalate button. Step 2: “Say what you are escalating and why, in at least 20 characters.” and focus on the field. Step 3: “… was not added. Upload a PDF, JPG, PNG file.” Step 4: “Your review did not load” (not found). After the window (15 days after HR’s answer by default) the page says the escalation closed.",
+    "note": "Negative."
+  },
+  {
+    "id": "MT-PRF-B3-08",
+    "area": "PRF-15 Disputes",
+    "screen": "HR record, legal hold, decision, export",
+    "url": "http://localhost:3000/yx/performance/disputes",
+    "account": "A user given the “Rating disputes” role by admin@demo-org.test (Settings › Roles). Codes come by email. Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PRF-15 HR · open disputes",
+      "PRF-15 HR · dispute record with legal hold",
+      "PRF-15 HR · evidence export",
+      "PRF-15 HR · record decision"
+    ],
+    "steps": [
+      "1. Open Performance › Rating disputes and open PRF-D-0001.",
+      "2. Turn Legal hold on.",
+      "3. Press Export evidence, keep all items, choose the signatory, Generate export, confirm.",
+      "4. Press Record decision, choose Not upheld, write the reasons, Record decision.",
+      "5. Settings › Audit log: filter perf.dispute."
+    ],
+    "expected": "Step 1: case, evidence tab with SHA-256 per item, activity. Step 2: toast “Legal hold on”. Step 3: the PDF downloads (cover sheet with hashes, certificate page, items); “Evidence exported” stays with a Download button. Step 4: toast “Decision recorded”; Arjun is told and sees it. Step 5: entries for listed, viewed, legal hold, exported (with hashes), downloaded, decided.",
+    "note": "Positive."
+  },
+  {
+    "id": "MT-PRF-B3-09",
+    "area": "PRF-15 Disputes",
+    "screen": "Who may not see a dispute",
+    "url": "http://localhost:3000/yx/performance/disputes",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi, without the Rating disputes role); admin@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PRF-15 HR · dispute record with legal hold"
+    ],
+    "steps": [
+      "1. As Lakshmi open /yx/performance/disputes.",
+      "2. As admin open /yx/performance/disputes/<id>.",
+      "3. As the disputes user press Export evidence and untick every item, then Generate export.",
+      "4. Record a decision with no choice."
+    ],
+    "expected": "Step 1: no menu entry; the list does not load (403). Step 2: not shown (only people given the role see disputes). Step 3: “Choose at least one item to export.” Step 4: “Choose the decision.” A second decision on a decided dispute is refused.",
+    "note": "Negative."
+  },
+  {
+    "id": "MT-PRF-B3-10",
+    "area": "PRF-16 Manager coach",
+    "screen": "Nudges, dismiss, opt out",
+    "url": "http://localhost:3000/yx/performance/coach",
+    "account": "panel@demo-org.test (Manager - Divya). Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PRF-16 Coach card on manager home",
+      "PRF-16 Opted out",
+      "PRF-16 No nudges this week"
+    ],
+    "steps": [
+      "1. Open Performance › Manager coach.",
+      "2. Press the action on a nudge (Give feedback / Book 1:1 / View goal).",
+      "3. Come back and dismiss a nudge with ×.",
+      "4. Press Turn off coach nudges, then Turn coach nudges on."
+    ],
+    "expected": "Step 1: “Manager coach · week of <Monday>” with one line per team member who has no feedback from Divya in 6 weeks, a 1:1 overdue or over 35 days ago, or a goal off track. Step 2: opens that page. Step 3: the nudge stays hidden for the week after a reload. Step 4: the card says nudges are off; turning on brings them back (not the dismissed one).",
+    "note": "Positive."
+  },
+  {
+    "id": "MT-PRF-B3-11",
+    "area": "PRF-16 Manager coach",
+    "screen": "Not a manager, company off",
+    "url": "http://localhost:3000/yx/performance/coach",
+    "account": "arjun@demo-org.test; hr@demo-org.test for the setting. Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PRF-16 No team yet",
+      "PRF-16 Turned off by the company"
+    ],
+    "steps": [
+      "1. As Arjun type the coach URL.",
+      "2. As Lakshmi set Settings › Company rules › “Performance: manager coach nudges” to off; Divya reloads the coach."
+    ],
+    "expected": "Step 1: no menu entry; “No team yet”. Step 2: “Your company has turned off coach nudges.” Set it back to weekly after the test.",
+    "note": "Negative."
+  },
+  {
+    "id": "MT-PRF-B3-12",
+    "area": "PRF-17 Review assistant",
+    "screen": "Assistant off, not set up, bias check (API until the PRF-05 page shows the panel)",
+    "url": "http://localhost:3001/api/v1/performance/reviews/<review id>/assistant",
+    "account": "panel@demo-org.test (Manager - Divya); arjun@demo-org.test.",
+    "stories": [
+      "PRF-17 AI review summaries off for the company",
+      "PRF-17 AI provider not set up",
+      "PRF-17 Bias flags with Accept or Ignore",
+      "PRF-17 Assistant panel · rating spread flag"
+    ],
+    "steps": [
+      "1. As Divya (manager of Arjun’s open review) GET …/assistant.",
+      "2. HR sets “Performance: AI review summaries” to on; repeat with no AI key configured.",
+      "3. POST …/assistant/check with {\"text\":\"She is emotional. Good job.\",\"rating\":3}.",
+      "4. As Arjun repeat step 3."
+    ],
+    "expected": "Step 1: {\"enabled\":false,\"reason\":\"company-off\"} (default off). Step 2: reason \"not-configured\" until an AI provider is set; the panel then shows “AI is not set up for your company yet”. Step 3: two flags (loaded word, vague) and the review is unchanged. Step 4 (negative): 404. The panel shows on the review page once the PRF-05 page passes useReviewAssistant.",
+    "note": "Positive + negative."
   }
 ]
