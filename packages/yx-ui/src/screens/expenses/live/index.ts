@@ -9,6 +9,9 @@ export { EXP_LINKS, type AddKind, type LiveClaim, type LiveHome } from '../../op
 export { STATUS as CLAIM_STATUS, PAYMENT as CLAIM_PAYMENT, paymentText } from '../../ops/expenses-live-data';
 // EXP-04 trips and EXP-05 advances: the designed screens, a list or one record by `live.view`.
 export { TripScreen, AdvanceScreen } from '../../ops/expenses';
+// Round 2: a manager's read-only Team claims (founder answer 1), the drill of the EXP-01 manager cards.
+export { TeamClaimsScreen } from '../../ops/expenses';
+export { type LiveTeam } from '../../ops/expenses-team-live';
 export { type LiveTrips, type LiveTrip, type LiveAdvances, type LiveAdvance } from '../../ops/expenses-travel-live';
 export { TRIP_STATUS, ADVANCE_STATUS } from '../../ops/expenses-live-data';
 export { ExpenseReportsScreen, REPORT_TABS, type ExpenseReportsScreenProps } from './reports';

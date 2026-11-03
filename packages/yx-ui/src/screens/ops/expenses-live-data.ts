@@ -1,8 +1,9 @@
 // The live Expenses designs (EXP-01 … EXP-05) read the API's shapes (../expenses/live/types). This file holds the pure
 // parts: status words, money as exact paise, what a line's checks say, and the approval steps. Unit-tested.
 import type { BadgeTone } from '../../components/display';
+import { formatDate } from '../../lib/format';
 import type { ApprovalStep } from '../../components/timeline';
-import type { AdvanceStatus, ClaimDetail, ClaimLine, ClaimStatus, LineInput, PaymentStatus, TripStatus } from '../expenses/live/types';
+import type { AdvanceDetail, AdvanceStatus, ClaimDetail, ClaimLine, ClaimStatus, ClaimSummary, LineInput, PaymentStatus, TripStatus } from '../expenses/live/types';
 
 export type { LoadState } from '../org/types';
 
@@ -140,4 +141,46 @@ export function approvalSteps(c: Pick<ClaimDetail, 'person' | 'submittedAt' | 'r
 export function cutText(currency: string, approved: string | null, claimed: string, reason: string | null): string | null {
   if (approved === null || paise(approved) >= paise(claimed)) return null;
   return `Approved ${money(currency, approved)} of ${money(currency, claimed)}${reason ? ` — ${reason}` : ''}`;
+}
+
+/** The month before: "2026-11" → "2026-10", "2026-01" → "2025-12". */
+export function prevMonthOf(m: string): string {
+  const [y, n] = m.split('-').map(Number);
+  return n === 1 ? `${y! - 1}-12` : `${y}-${String(n! - 1).padStart(2, '0')}`;
+}
+
+/** Team claims (round 2): the same "team spend" as the home card: sent claims, the approved amount once decided. */
+export function teamSpend(claims: Pick<ClaimSummary, 'status' | 'claimedTotal' | 'approvedTotal'>[]): string {
+  return sumMoney(claims.filter((c) => c.status === 'submitted' || c.status === 'approved' || c.status === 'partly_approved').map((c) => c.approvedTotal ?? c.claimedTotal));
+}
+
+/** EXP-05 recovery: "₹334.00 (Dec), ₹334.00 (Jan 2027), ₹332.00 (Feb 2027)": the month, with its year when it changes. */
+export function instalmentsText(currency: string, rows: NonNullable<AdvanceDetail['recovery']>['instalments']): string {
+  const due = rows.filter((r) => r.status !== 'paused');
+  return due
+    .map((r, i) => {
+      const d = new Date(`${r.month}-01T00:00:00`);
+      const year = i === 0 || r.month.slice(0, 4) !== due[i - 1]!.month.slice(0, 4);
+      return `${money(currency, r.amount)} (${d.toLocaleDateString('en-GB', year ? { month: 'short', year: 'numeric' } : { month: 'short' })}${r.status === 'recovered' ? ', recovered' : ''})`;
+    })
+    .join(', ');
+}
+
+export type ForexRow = { id: string; label: string; fc: string; pay: string };
+/**
+ * EXP-05 forex card: the advance's own-currency money and its pay-currency value, from the ledger: loaded, spent on the
+ * trip's lines in that currency, each return at its day's rate, and the exchange difference (pay currency only). Exact.
+ */
+export function forexRows(a: Pick<AdvanceDetail, 'fxRate' | 'ledger'>): ForexRow[] {
+  const by = (k: string) => a.ledger.filter((l) => l.kind === k);
+  const paid = by('paid')[0];
+  if (!a.fxRate || !paid) return [];
+  const spent = by('claim');
+  const diff = by('exchange_difference');
+  return [
+    { id: 'loaded', label: `Advance loaded at ${Number(a.fxRate).toLocaleString('en-IN', { maximumFractionDigits: 4 })}`, fc: paid.amount, pay: paid.amountPay ?? '0.00' },
+    ...(spent.length ? [{ id: 'spent', label: 'Spent on trip lines (same currency)', fc: sumMoney(spent.map((l) => l.amount)), pay: sumMoney(spent.map((l) => l.amountPay)) }] : []),
+    ...by('return').map((l) => ({ id: l.id, label: `${l.text}, ${formatDate(D(l.on))}`, fc: l.amount, pay: l.amountPay ?? '0.00' })),
+    ...(diff.length ? [{ id: 'diff', label: 'Exchange difference (to the exchange-difference account)', fc: '0.00', pay: sumMoney(diff.map((l) => l.amountPay)) }] : []),
+  ];
 }

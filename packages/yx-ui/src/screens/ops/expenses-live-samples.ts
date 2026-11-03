@@ -1,5 +1,5 @@
 // The API's shapes, filled with the design's fictional people, for the live-state stories and the unit tests.
-import type { AdvanceSummary, ClaimDetail, ClaimLine, ClaimSummary, ExpenseCategory, ExpenseHome, ToPayData, TripSummary } from '../expenses/live/types';
+import type { AdvanceSummary, ClaimDetail, ClaimLine, ClaimSummary, ExpenseCategory, ExpenseHome, TeamClaims, ToPayData, TripSummary } from '../expenses/live/types';
 
 export const CATEGORIES: ExpenseCategory[] = [
   { id: 'k1', code: 'AIR', name: 'Air travel', kind: 'spend', receiptAbove: '0', gstEligible: true, itcBlockedReason: null, taxable: 'never', ledgerCode: null, active: true, version: 1 },
@@ -54,6 +54,18 @@ export const HOME: ExpenseHome = {
   toReceive: '2142.00',
   team: { people: 6, month: '2026-09', spend: '184320.00', previous: '162400.00', trend: ['140200.00', '151900.00', '170300.00', '162400.00', '184320.00'], overLimit: 3, overLimitPrevious: 5 },
   payroll: { cutoffDay: 23, month: '2026-09' },
+};
+
+/** Team claims (round 2): a manager with six direct reports, September 2026. */
+export const TEAM: TeamClaims = {
+  month: '2026-09',
+  people: 6,
+  claims: [
+    { ...summary(SUBMITTED), overLimit: 1, canOpen: true },
+    { ...summary(DRAFT), id: 'c1038', title: 'Pune plant audit', person: 'Sana Nizami', status: 'approved', paymentStatus: 'in_payroll', claimedTotal: '8450.00', approvedTotal: '8450.00', netPayable: '8450.00', advanceAdjusted: '0.00', submittedAt: '2026-09-12T05:00:00Z', overLimit: 0, canOpen: true },
+    { ...summary(DRAFT), id: 'c1035', title: 'Hyderabad dealer visits', person: 'Arjun Kulkarni', status: 'partly_approved', paymentStatus: 'approved_unpaid', claimedTotal: '12600.00', approvedTotal: '11200.00', netPayable: '11200.00', advanceAdjusted: '0.00', submittedAt: '2026-09-08T05:00:00Z', overLimit: 2, canOpen: true },
+    { ...summary(DRAFT), id: 'c1033', title: 'Team offsite supplies', person: 'Meera Iyer', status: 'sent_back', paymentStatus: 'not_due', claimedTotal: '3120.00', approvedTotal: null, netPayable: '3120.00', advanceAdjusted: '0.00', submittedAt: '2026-09-04T05:00:00Z', overLimit: 0, canOpen: false },
+  ],
 };
 
 export const TRIP_WAITING: TripSummary = { id: 't0219', purpose: 'Dubai trade show', person: 'Sana Nizami', fromOn: '2026-11-02', toOn: '2026-11-06', currency: 'INR', estimate: '145000.00', advanceRequested: '500.00', advanceCurrency: 'USD', bookingNeeded: true, status: 'submitted', version: 1 };

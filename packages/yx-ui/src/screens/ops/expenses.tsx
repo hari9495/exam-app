@@ -26,6 +26,8 @@ import { LiveClaimComposer, LiveClaimReview, LiveExpensesHome, NewClaimDialog, t
 import { Segment } from '../../components/segment';
 import { LiveAdvanceRecord, LiveAdvancesList, LiveTripRecord, LiveTripsList, type LiveAdvance, type LiveAdvances, type LiveTrip, type LiveTrips } from './expenses-travel-live';
 import type { ApprovalStatus, Claim, ExpenseLine, PaymentStatus } from './expenses-data';
+import { LiveTeamClaims, type LiveTeam } from './expenses-team-live';
+import { TEAM } from './expenses-live-samples';
 
 export type Device = 'desk' | 'phone';
 export type ExpPersona = 'emp' | 'mgr' | 'fin';
@@ -63,6 +65,24 @@ export interface ExpensesHomeProps {
   /** The "New claim" dialog open (name the claim first). */
   naming?: boolean;
 }
+export interface TeamClaimsProps {
+  today: string;
+  /** 'empty': nothing sent this month; 'no-access': someone with no one reporting to them. */
+  state?: 'ready' | 'empty' | 'no-access';
+  /** Opened from the "Over-limit lines" card: only claims with over-limit lines. */
+  over?: boolean;
+}
+/** EXP-01 › Team claims (round 2): a manager's read-only list of their direct reports' claims. The live app passes `live`. */
+export function TeamClaimsScreen(props: TeamClaimsProps | { live: LiveTeam }) {
+  return 'live' in props ? <LiveTeamClaims live={props.live} /> : <SampleTeamClaims {...props} />;
+}
+function SampleTeamClaims({ today, state = 'ready', over: startOver = false }: TeamClaimsProps) {
+  const [month, setMonth] = useState(today.slice(0, 7));
+  const [over, setOver] = useState(startOver);
+  const team = { ...TEAM, month, claims: state === 'empty' || month !== today.slice(0, 7) ? [] : TEAM.claims };
+  return <LiveTeamClaims live={{ state: state === 'no-access' ? 'no-access' : 'ready', onRetry: () => {}, team, today, month, onMonth: setMonth, over, onOver: setOver, onOpen: () => {} }} />;
+}
+
 /** EXP-01 Expenses home. The live app passes `live` (employee, approver or finance view). */
 export function ExpensesHomeScreen(props: ExpensesHomeProps | { live: LiveHome }) {
   return 'live' in props ? <LiveExpensesHome live={props.live} /> : <SampleExpensesHome {...props} />;

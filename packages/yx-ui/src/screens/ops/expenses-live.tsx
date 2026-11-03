@@ -2,7 +2,7 @@
 // data (expenses round 1). The designs' parts are reused as they are (OpsDesk, PageHeader, Workspace, MoneyLead, the
 // line card, the review table, the reduce drawer, the approval timeline); only what the real record needs is added
 // (naming a new claim, reading a receipt, a line's form, the server's refusals, the finance check).
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowLeft, Camera, Car, Check, FileText, Plane, Plus, Receipt, RotateCcw, Send, Trash2, X } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { Button, IconButton, Link } from '../../components/button';
@@ -28,7 +28,7 @@ import { dayKey } from '../../lib/dates';
 import { errorText } from '../org/org-kit';
 import { useAct } from '../growth/perf-live';
 import { Actions, CardGrid, Facts, MoneyLead, OpsDesk, ReceiptImage, Workspace } from './ops-kit';
-import { FLAG_TEXT, PAYMENT, PAY_MODE, STATUS, amount, approvalSteps, cutText, day, lineChecks, money, moneyInput, monthName, paise, paymentText, sumMoney, toLineInput, type LoadState } from './expenses-live-data';
+import { FLAG_TEXT, PAYMENT, PAY_MODE, STATUS, amount, approvalSteps, cutText, day, lineChecks, money, moneyInput, monthName, paise, paymentText, prevMonthOf, sumMoney, toLineInput, type LoadState } from './expenses-live-data';
 import type { AdvanceSummary, ClaimDetail, ClaimLine, ClaimSummary, ExpenseCategory, ExpenseHome, LineInput, ToPayData, TripSummary } from '../expenses/live/types';
 
 /** Where the live pages are (the Expenses menu). */
@@ -41,6 +41,9 @@ export const EXP_LINKS = {
   advance: (id: string) => `/yx/expenses/advances/${encodeURIComponent(id)}`,
   toPay: '/yx/expenses/to-pay',
   approvals: '/yx/approvals',
+  /** Round 2: a manager's read-only team claims; `?over=1` shows only claims with over-limit lines. */
+  team: '/yx/expenses/team',
+  teamOver: '/yx/expenses/team?over=1',
 };
 
 export type AddKind = 'receipt' | 'mileage' | 'perdiem' | 'bill';
@@ -205,8 +208,8 @@ export function LiveExpensesHome({ live }: { live: LiveHome }) {
         <NeedsActionList title="Waiting for you" today={day(live.today)} viewAllHref={EXP_LINKS.approvals} total={items.length} loading={live.state === 'loading'} items={items} onReview={open} />
         {t && (
           <CardGrid min="sm">
-            <StatCard label={`Team spend, ${monthName(t.month)}`} value={amount(t.spend)} money {...(t.previous !== null ? { previous: amount(t.previous), previousLabel: monthName(prevMonthOf(t.month)) } : {})} trend={t.trend.map(amount)} drill={{ label: 'Open approvals', href: EXP_LINKS.approvals, onClick: (e) => (e.preventDefault(), live.onGo(EXP_LINKS.approvals)) }} />
-            <StatCard label="Over-limit lines" value={t.overLimit} {...(t.overLimitPrevious !== null ? { previous: t.overLimitPrevious, previousLabel: monthName(prevMonthOf(t.month)) } : {})} drill={{ label: 'Open approvals', href: EXP_LINKS.approvals, onClick: (e) => (e.preventDefault(), live.onGo(EXP_LINKS.approvals)) }} />
+            <StatCard label={`Team spend, ${monthName(t.month)}`} value={amount(t.spend)} money {...(t.previous !== null ? { previous: amount(t.previous), previousLabel: monthName(prevMonthOf(t.month)) } : {})} trend={t.trend.map(amount)} drill={{ label: 'View team claims', href: EXP_LINKS.team, onClick: (e) => (e.preventDefault(), live.onGo(EXP_LINKS.team)) }} />
+            <StatCard label="Over-limit lines" value={t.overLimit} {...(t.overLimitPrevious !== null ? { previous: t.overLimitPrevious, previousLabel: monthName(prevMonthOf(t.month)) } : {})} drill={{ label: 'View over-limit lines', href: EXP_LINKS.teamOver, onClick: (e) => (e.preventDefault(), live.onGo(EXP_LINKS.teamOver)) }} />
           </CardGrid>
         )}
         {dialog}
@@ -295,9 +298,32 @@ export function LiveExpensesHome({ live }: { live: LiveHome }) {
   );
 }
 
-function prevMonthOf(m: string) {
-  const [y, mm] = m.split('-').map(Number);
-  return mm === 1 ? `${y! - 1}-12` : `${y}-${String(mm! - 1).padStart(2, '0')}`;
+/**
+ * Round 2: a line's real receipt thumbnail: the stored photo (fetched once through the API, freed when it goes), or a
+ * PDF tile; the drawn receipt shows while it loads or when it cannot be shown (for example before the virus check).
+ */
+function LineReceipt({ line, load }: { line: ClaimLine; load?: (lineId: string) => Promise<string> }) {
+  const [src, setSrc] = useState<string | null>(null);
+  const photo = line.receiptType !== 'pdf';
+  // The page passes a new function each render; fetch again only when the line's receipt changes.
+  const loader = useRef(load);
+  loader.current = load;
+  useEffect(() => {
+    const load = loader.current;
+    setSrc(null);
+    if (!photo || !load) return;
+    let gone = false;
+    let url: string | null = null;
+    load(line.id).then(
+      (u) => (gone ? URL.revokeObjectURL(u) : ((url = u), setSrc(u))),
+      () => undefined,
+    );
+    return () => {
+      gone = true;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [line.id, line.version, photo]);
+  return <ReceiptImage merchant={line.merchant ?? 'Receipt'} amount={amount(line.fx?.amount ?? line.claimed)} date={day(line.spentOn)} src={src} kind={photo ? 'image' : 'pdf'} />;
 }
 
 /* ================================================================== EXP-02 · Claim composer (live) */
@@ -318,6 +344,8 @@ export interface LiveClaim {
   onSubmit: () => Promise<unknown>;
   onWithdraw: () => Promise<unknown>;
   onOpenReceipt: (lineId: string) => Promise<unknown>;
+  /** Round 2: the stored receipt photo as an object URL for the thumbnail (streamed through the API's checks). */
+  onReceiptUrl?: (lineId: string) => Promise<string>;
   onUploadFxProof?: (lineId: string, file: File) => Promise<unknown>;
   onOpenFxProof?: (lineId: string) => Promise<unknown>;
   /** Review (EXP-03): the approver whose turn it is, and finance. */
@@ -356,7 +384,7 @@ function LiveLineCard({ line: l, claim, categories, editable, act, busy, onEdit,
       <div className="yx-ops-split">
         {l.hasReceipt ? (
           <div className="yx-ops-stack" data-gap="sm">
-            <ReceiptImage merchant={l.merchant ?? 'Receipt'} amount={amount(l.fx?.amount ?? l.claimed)} date={day(l.spentOn)} />
+            <LineReceipt line={l} load={live.onReceiptUrl} />
             <Button size="sm" loading={busy === `v-${l.id}`} onClick={() => void act(`v-${l.id}`, () => live.onOpenReceipt(l.id))}>
               View receipt
             </Button>
@@ -1024,7 +1052,7 @@ export function LiveClaimReview({ live }: { live: LiveClaim }) {
                 <div className="yx-ops-stack" data-gap="sm">
                   {line.hasReceipt ? (
                     <>
-                      <ReceiptImage merchant={line.merchant ?? 'Receipt'} amount={amount(line.fx?.amount ?? line.claimed)} date={day(line.spentOn)} />
+                      <LineReceipt line={line} load={live.onReceiptUrl} />
                       <Button size="sm" loading={busy === `v-${line.id}`} onClick={() => void act(`v-${line.id}`, () => live.onOpenReceipt(line.id))}>
                         View receipt
                       </Button>

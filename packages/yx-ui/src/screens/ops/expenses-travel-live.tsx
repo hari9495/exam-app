@@ -26,7 +26,7 @@ import { errorText } from '../org/org-kit';
 import { useAct } from '../growth/perf-live';
 import { Actions, Facts, OpsDesk, StatusTrail, Workspace, type TrailStep } from './ops-kit';
 import { ReasonDialog } from './expenses-live';
-import { ADVANCE_STATUS, STATUS, TRIP_STATUS, day, money, moneyInput, paise, type LoadState } from './expenses-live-data';
+import { ADVANCE_STATUS, STATUS, TRIP_STATUS, day, forexRows, instalmentsText, money, moneyInput, paise, type ForexRow, type LoadState } from './expenses-live-data';
 import type { AdvanceDetail, AdvanceSummary, BookingInput, TravelMode, TripDetail, TripInput, TripSummary } from '../expenses/live/types';
 
 const MODES: { value: TravelMode; label: string }[] = [
@@ -52,8 +52,8 @@ function Busy({ what, phone, title }: { what: string; phone: boolean; title: str
   );
   return phone ? <PhoneFrame tab="pay" title={title}>{inner}</PhoneFrame> : <>{inner}</>;
 }
-function NotReady({ state, onRetry, what, title, active, phone }: { state: LoadState; onRetry: () => void; what: string; title: string; active: string; phone: boolean }) {
-  const inner = state === 'loading' ? <Busy what={what} phone={false} title={title} /> : state === 'no-access' ? <NoAccessState what={what} grantedBy="HR or finance" /> : <ErrorState title={`We couldn't load ${what}.`} description="It may have been removed, or the connection dropped. Nothing has changed." onRetry={onRetry} />;
+export function NotReady({ state, onRetry, what, title, active, phone, grantedBy = 'HR or finance', note }: { state: LoadState; onRetry: () => void; what: string; title: string; active: string; phone: boolean; grantedBy?: string; note?: string }) {
+  const inner = state === 'loading' ? <Busy what={what} phone={false} title={title} /> : state === 'no-access' ? <NoAccessState what={what} grantedBy={grantedBy} note={note} /> : <ErrorState title={`We couldn't load ${what}.`} description="It may have been removed, or the connection dropped. Nothing has changed." onRetry={onRetry} />;
   if (phone) return <PhoneFrame tab="pay" title={title}>{inner}</PhoneFrame>;
   return (
     <OpsDesk area="expenses" active={active}>
@@ -658,6 +658,9 @@ export function LiveAdvanceRecord({ live }: { live: LiveAdvance }) {
     setDialog(d);
   };
   const n = a.policy?.recoveryInstalments;
+  const r = a.recovery ?? null;
+  const pay = a.payCurrency ?? a.currency;
+  const fxRows = forex ? forexRows(a) : [];
   const card = (
     <Card title={a.purpose}>
       <div className="yx-ops-stack">
@@ -677,9 +680,15 @@ export function LiveAdvanceRecord({ live }: { live: LiveAdvance }) {
         {a.changeReason && <InlineAlert tone="info" title="Approver's reason">{a.changeReason}</InlineAlert>}
         {a.overdue && paise(a.balance) > 0 && (
           <InlineAlert tone="danger" title="Settlement window ended">
-            {a.can.recordReturn
-              ? `${money(a.currency, a.balance)} is recovered from salary${n ? ` in ${n} ${n === 1 ? 'instalment' : 'instalments'}` : ''} from the next payroll. Protected net pay applies. An open balance at exit goes to full and final settlement.`
-              : `Submit claims or return ${money(a.currency, a.balance)}. Otherwise it is recovered from salary${n ? ` in ${n} ${n === 1 ? 'instalment' : 'instalments'}` : ''}.`}
+            {r && r.instalments.length
+              ? a.can.recordReturn
+                ? `${r.scheduled ? 'Being recovered' : 'Recover'} ${money(pay, r.total)} from salary in ${r.instalments.length} ${r.instalments.length === 1 ? 'instalment' : 'instalments'}: ${instalmentsText(pay, r.instalments)}. Protected net pay applies. An open balance at exit goes to full and final settlement.`
+                : r.scheduled
+                  ? `${money(pay, r.total)} is being recovered from your salary: ${instalmentsText(pay, r.instalments)}. A return by bank lowers what is left.`
+                  : `Submit claims or return ${money(a.currency, a.balance)}. Otherwise it is recovered from salary in ${r.instalments.length} ${r.instalments.length === 1 ? 'instalment' : 'instalments'}: ${instalmentsText(pay, r.instalments)}.`
+              : a.can.recordReturn
+                ? `${money(a.currency, a.balance)} is recovered from salary${n ? ` in ${n} ${n === 1 ? 'instalment' : 'instalments'}` : ''} from the next payroll. Protected net pay applies. An open balance at exit goes to full and final settlement.`
+                : `Submit claims or return ${money(a.currency, a.balance)}. Otherwise it is recovered from salary${n ? ` in ${n} ${n === 1 ? 'instalment' : 'instalments'}` : ''}.`}
           </InlineAlert>
         )}
         <DataTable
@@ -696,6 +705,21 @@ export function LiveAdvanceRecord({ live }: { live: LiveAdvance }) {
           empty={<EmptyState compact title="Nothing yet." description="The advance shows here once finance pays it." />}
           rowButtons={(l) => (l.claimId ? <Button size="sm" onClick={() => live.onOpenClaim(l.claimId!)}>Open claim</Button> : null)}
         />
+        {fxRows.length > 0 && (
+          <Card title={`Forex advance · ${a.currency}`}>
+            <DataTable
+              label="Forex settlement"
+              columns={[
+                { key: 'l', header: 'Line', value: (x: ForexRow) => x.label, width: 260 },
+                { key: 'f', header: a.currency, value: (x) => paise(x.fc), render: (x) => (x.id === 'diff' ? '—' : money(a.currency, x.fc)) },
+                { key: 'p', header: pay, value: (x) => paise(x.pay), render: (x) => money(pay, x.pay) },
+              ]}
+              rows={fxRows}
+              getRowId={(x) => x.id}
+              rowNoun={['line', 'lines']}
+            />
+          </Card>
+        )}
       </div>
     </Card>
   );

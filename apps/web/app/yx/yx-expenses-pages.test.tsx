@@ -13,6 +13,7 @@ import YxTripsPage from './(app)/expenses/trips/page';
 import YxTripPage from './(app)/expenses/trips/[id]/page';
 import YxAdvancePage from './(app)/expenses/advances/[id]/page';
 import YxExpenseReportsPage from './(app)/expenses/reports/page';
+import YxTeamClaimsPage from './(app)/expenses/team/page';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn(), useParams: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn() }));
@@ -164,4 +165,30 @@ describe('Expense reports (M05 batch E5)', () => {
     expect(seen[0]).toMatch(/^\/expenses\/reports\/summary\?from=\d{4}-\d{2}-01&to=\d{4}-\d{2}-\d{2}$/);
   });
 
+});
+
+describe('Team claims (round 2, founder answer 1)', () => {
+  const ROW = { id: 'c9', title: 'Pune plant audit', person: 'Sana Nizami', currency: 'INR', status: 'approved', paymentStatus: 'in_payroll', claimedTotal: '8450.00', approvedTotal: '8450.00', advanceAdjusted: '0.00', netPayable: '8450.00', risk: 'none', submittedAt: '2026-10-12T05:00:00Z', decidedAt: null, version: 1, overLimit: 1, canOpen: true };
+  it('asks for this month; the over-limit drill and the month switch change the address; Open goes to the claim', async () => {
+    const push = jest.fn();
+    const replace = jest.fn();
+    (useRouter as jest.Mock).mockReturnValue({ push, replace });
+    (usePathname as jest.Mock).mockReturnValue('/yx/expenses/team');
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('over=1'));
+    const seen: string[] = [];
+    route({ 'GET /expenses/claims': (p: string) => (seen.push(p), { month: p.slice(-7), people: 3, claims: [ROW] }) });
+    wrap(<YxTeamClaimsPage />);
+    expect(await screen.findByText('Pune plant audit')).toBeInTheDocument();
+    expect(seen[0]).toMatch(/^\/expenses\/claims\?view=team&month=\d{4}-\d{2}$/);
+    expect(screen.getByRole('radio', { name: /With over-limit lines/ })).toBeChecked();
+    await userEvent.click(screen.getByRole('radio', { name: /All claims/ }));
+    expect(replace).toHaveBeenCalledWith(expect.stringMatching(/^\/yx\/expenses\/team\?month=\d{4}-\d{2}$/), { scroll: false });
+    await userEvent.click(screen.getByRole('button', { name: 'Open' }));
+    expect(push).toHaveBeenCalledWith('/yx/expenses/claims/c9');
+  });
+  it('someone with no one reporting to them gets the no-access state (403)', async () => {
+    route({ 'GET /expenses/claims': () => Promise.reject(Object.assign(new Error('Team claims are for managers.'), { status: 403 })) });
+    wrap(<YxTeamClaimsPage />);
+    expect(await screen.findByText("You don't have access to team claims")).toBeInTheDocument();
+  });
 });

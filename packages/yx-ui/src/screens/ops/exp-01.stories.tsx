@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { ExpensesHomeScreen } from './expenses';
+import { ExpensesHomeScreen, TeamClaimsScreen } from './expenses';
 import { MY_CLAIMS, TO_PAY } from './expenses-data';
 import { TODAY } from '../_kit/data';
 
@@ -18,3 +18,10 @@ export const Error: S = { render: () => <ExpensesHomeScreen {...base} state="err
 export const Phone: S = { name: 'Employee · phone (camera first)', globals: PHONE, render: () => <ExpensesHomeScreen {...base} device="phone" /> };
 export const NewClaim: S = { name: 'New claim · name it first', render: () => <ExpensesHomeScreen {...base} naming /> };
 export const ManyRoles: S = { name: 'Employee who also approves and pays (view switch)', render: () => <ExpensesHomeScreen {...base} persona="mgr" views /> };
+// Round 2 (founder answer 1): the manager's cards drill into a read-only list of the team's claims.
+const T = { today: '2026-09-29' };
+export const Team: S = { name: 'Team claims · manager, read only', render: () => <TeamClaimsScreen {...T} /> };
+export const TeamOverLimit: S = { name: 'Team claims · with over-limit lines', render: () => <TeamClaimsScreen {...T} over /> };
+export const TeamEmpty: S = { name: 'Team claims · nothing sent yet', render: () => <TeamClaimsScreen {...T} state="empty" /> };
+export const TeamNoAccess: S = { name: 'Team claims · not a manager (no access)', render: () => <TeamClaimsScreen {...T} state="no-access" /> };
+export const TeamPhone: S = { name: 'Team claims · phone', globals: PHONE, render: () => <TeamClaimsScreen {...T} /> };

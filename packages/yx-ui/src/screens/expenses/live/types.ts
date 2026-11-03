@@ -159,6 +159,13 @@ export interface ExpenseHome {
   payroll?: { cutoffDay: number; month: string };
 }
 
+/** Round 2 (founder answer 1): a manager's read-only list of their direct reports' sent claims in one IST month. */
+export interface TeamClaims {
+  month: string;
+  people: number;
+  claims: (ClaimSummary & { overLimit: number; canOpen: boolean })[];
+}
+
 export interface Suggested {
   value: string;
   confidence: number;
@@ -176,6 +183,8 @@ export interface ClaimLine {
   payMode: 'personal' | 'company_card' | 'company_paid';
   description: string | null;
   hasReceipt: boolean;
+  /** Round 2: what the receipt thumbnail shows: the photo itself, or a PDF tile (no PDF page is drawn). */
+  receiptType?: 'image' | 'pdf' | null;
   selfDeclared: boolean;
   claimed: string;
   approved: string | null;
@@ -313,6 +322,12 @@ export interface AdvanceDetail extends AdvanceSummary {
   payCurrency?: string;
   /** EXP-05: the company's settle-by days and how many salary instalments recover an overdue balance. */
   policy?: { settleDays: number; recoveryInstalments: number };
+  /**
+   * Round 2 (EXP-05 recovery): the salary instalments of an overdue balance, in the pay currency: `scheduled` once the
+   * daily job has made the recovery loan (the loan engine's schedule), else what it will recover. Only for the employee
+   * and finance; null when nothing is recovered from salary.
+   */
+  recovery?: { scheduled: boolean; total: string; instalments: { month: string; amount: string; status: 'recovered' | 'paused' | 'scheduled' }[] } | null;
   ledger: { id: string; on: string; kind: string; text: string; amount: string; amountPay?: string; claimId: string | null }[];
   can: { changeAmount: boolean; decide: string | null; pay: boolean; recordReturn: boolean; claim: boolean };
 }

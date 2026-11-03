@@ -4,7 +4,7 @@ import { Suspense } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { ClaimComposerScreen, ClaimReviewScreen, EXP_LINKS, type AddKind, type ClaimDetail, type ExpenseCategory, type LiveClaim } from '@yukthix/ui/expenses';
 import { loadState, todayIst } from '../../../../../../lib/yx-org';
-import { useExp, useExpWrite, useReceiptOpen } from '../../../../../../lib/yx-expenses';
+import { useExp, useExpWrite, useReceiptOpen, useReceiptUrl } from '../../../../../../lib/yx-expenses';
 
 const ADD: AddKind[] = ['receipt', 'mileage', 'perdiem', 'bill'];
 
@@ -19,6 +19,7 @@ function Claim() {
   const categories = useExp<ExpenseCategory[]>('/categories');
   const write = useExpWrite();
   const open = useReceiptOpen();
+  const thumb = useReceiptUrl();
   const file = (f: File) => {
     const form = new FormData();
     form.append('file', f);
@@ -39,6 +40,7 @@ function Claim() {
     onSubmit: () => write('POST', `${base}/submit`, { version: claim.data!.version }),
     onWithdraw: () => write('POST', `${base}/withdraw`),
     onOpenReceipt: (lineId) => open(`${base}/lines/${encodeURIComponent(lineId)}/receipt`),
+    onReceiptUrl: (lineId) => thumb(`${base}/lines/${encodeURIComponent(lineId)}/receipt`),
     onUploadFxProof: (lineId, f) => write('POST', `${base}/lines/${encodeURIComponent(lineId)}/fx-proof`, file(f)),
     onOpenFxProof: (lineId) => open(`${base}/lines/${encodeURIComponent(lineId)}/fx-proof`),
     onApproveAmount: (lineId, amount, reason) => write('PATCH', `${base}/lines/${encodeURIComponent(lineId)}/approve-amount`, { amount, ...(reason ? { reason } : {}) }),

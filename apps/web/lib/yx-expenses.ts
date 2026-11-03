@@ -67,3 +67,9 @@ export function useReceiptOpen() {
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   };
 }
+
+/** A stored receipt photo as an object URL for a thumbnail (the caller frees it); streamed after the API's checks. */
+export function useReceiptUrl() {
+  const { accessToken } = useAuth();
+  return async (path: string) => URL.createObjectURL((await apiFetchBlob(`/expenses${path}`, {}, accessToken ?? undefined)).blob);
+}
