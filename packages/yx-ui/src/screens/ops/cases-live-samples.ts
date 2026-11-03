@@ -24,7 +24,7 @@ const file = (id: string, name: string, addedBy: string, addedAt: string, over: 
 export const MY_CASE_ROWS: MyCaseRow[] = [
   { id: 'c1', ref: 'GRV-0142', kind: 'grievance', role: 'reporter', stage: 'Inquiry', status: 'open', next: { label: 'Committee decision', on: '2026-10-12' }, unread: 1 },
   { id: 'c2', ref: 'POSH-0007', kind: 'posh', role: 'respondent', stage: 'Notice sent', status: 'action', next: { label: 'Your reply due', on: '2026-10-04' }, unread: 0 },
-  { id: 'c3', ref: 'GRV-0098', kind: 'grievance', role: 'witness', stage: 'Closed', status: 'closed', next: null, unread: 0 },
+  { id: 'c3', ref: 'GRV-0098', kind: 'grievance', role: 'reporter', stage: 'Closed', status: 'closed', next: null, unread: 0 },
 ];
 
 export function reporterCase(over: Partial<MyCaseAsReporter> = {}): MyCaseAsReporter {
@@ -139,7 +139,8 @@ export function ethicsCase(over: Partial<CaseDetail> = {}): CaseDetail {
       { key: 'outcome', label: 'Outcome', due: '2026-10-27', doneOn: null },
     ],
     datesSource: 'Company vigil policy: 60 days to an outcome',
-    me: { memberId: 'mb-joseph', canWork: true, canApprove: true, ic: false, presiding: false, recused: false },
+    me: { memberId: 'mb-joseph', canWork: true, canApprove: true, ic: false, presiding: false, recused: false, canSetSeverity: true },
+    severity: 'serious',
     canDecide: { ok: true, reason: null },
     members: [
       { id: 'mb-rekha', name: 'Rekha Iyengar', role: 'Case officer (owner)', access: 'full', recused: null },
@@ -226,7 +227,8 @@ export function poshCase(over: Partial<CaseDetail> = {}): CaseDetail {
       { key: 'report', label: 'IC report to employer', due: null, doneOn: null, note: 'Starts when the inquiry ends' },
     ],
     datesSource: 'POSH rules 2013 · company rule set v2013-12 (verify with counsel)',
-    me: { memberId: 'ic-anuradha', canWork: true, canApprove: false, ic: true, presiding: true, recused: false },
+    me: { memberId: 'ic-anuradha', canWork: true, canApprove: false, ic: true, presiding: true, recused: false, canSetSeverity: false },
+    severity: null,
     canDecide: { ok: false, reason: 'The report waits for the respondent’s reply or the reply date (4 Oct 2026).' },
     members: [
       { id: 'ic-anuradha', name: 'Dr. Anuradha Menon', role: 'IC member', access: 'full', presiding: true, recused: null },
@@ -284,6 +286,7 @@ export function liveWorkspace(over: Partial<LiveCaseWorkspace> = {}): LiveCaseWo
     onSign: noop,
     onRelief: async () => ({ taskRef: 'POSH-0007-R1' }),
     onReliefDone: noop,
+    onSetSeverity: noop,
     onRecuse: noop,
     onAddMember: noop,
     onUpload: noop,

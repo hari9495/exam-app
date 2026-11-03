@@ -216,6 +216,21 @@ describe('HLP-08 Cases (live)', () => {
     expect(screen.getByText(/Remarks of a sexual nature to me/)).toBeInTheDocument();
   });
 
+  it('severity: the ethics officer picks Serious or Standard (one choice); others only read it', async () => {
+    const onSetSeverity = vi.fn().mockResolvedValue(undefined);
+    const { unmount } = show(<CaseWorkspaceScreen live={liveWorkspace({ onSetSeverity, detail: ethicsCase({ severity: 'standard' }) })} />);
+    const group = screen.getByRole('radiogroup', { name: 'Severity' });
+    expect(within(group).getByRole('radio', { name: 'Standard' })).toHaveAttribute('aria-checked', 'true');
+    await ue.click(within(group).getByRole('radio', { name: 'Serious' }));
+    expect(onSetSeverity).toHaveBeenCalledWith('k2', 'serious');
+    expect((await screen.findAllByText('WB-0011 is now Serious')).length).toBeGreaterThan(0);
+    unmount();
+    const c = ethicsCase();
+    show(<CaseWorkspaceScreen live={liveWorkspace({ detail: ethicsCase({ me: { ...c.me, canSetSeverity: false } }) })} />);
+    expect(screen.queryByRole('radiogroup', { name: 'Severity' })).not.toBeInTheDocument();
+    expect(screen.getByText('Set by the ethics officers.')).toBeInTheDocument();
+  });
+
   it('not a member shows Not found; no key shows no access', () => {
     const { unmount } = show(<CaseWorkspaceScreen live={liveWorkspace({ state: 'not-found', detail: null })} />);
     expect(screen.getByText('Not found')).toBeInTheDocument();

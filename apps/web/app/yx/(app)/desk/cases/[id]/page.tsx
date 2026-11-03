@@ -43,6 +43,9 @@ export default function YxCasePage() {
         onSign: (_c, version) => post('/ic-report/sign', { version }),
         onRelief: (_c, input) => write<{ taskRef: string }>(`${base}/relief`, 'POST', input),
         onReliefDone: (_c, reliefId) => post(`/relief/${enc(reliefId)}/done`),
+        onSetSeverity: async (_c, severity) => {
+          await write(`/ethics/reports/${enc(id)}/severity`, 'POST', { severity });
+        },
         onRecuse: async (_c, reason) => {
           await post('/recuse', { reason });
           router.push('/yx/desk/cases');

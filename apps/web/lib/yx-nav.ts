@@ -5,7 +5,7 @@ import type { AreaId } from '@yukthix/ui/frame';
 // hidden; a link shows only to someone who may open it (the API still checks every call). Pure, so it is unit-tested.
 
 /** Side-menu counts from GET /workspace/counts. */
-export type CountKey = 'approvals' | 'notifications' | 'documentsToVerify' | 'exitCases' | 'payslipQueries' | 'myTickets' | 'scorecardsToDo' | 'readyToOnboard' | 'probationsDue' | 'clearanceToDo' | 'possibleSamePerson' | 'declarationsDue';
+export type CountKey = 'approvals' | 'notifications' | 'documentsToVerify' | 'exitCases' | 'payslipQueries' | 'myTickets' | 'scorecardsToDo' | 'readyToOnboard' | 'probationsDue' | 'clearanceToDo' | 'possibleSamePerson' | 'declarationsDue' | 'casesOpen' | 'ethicsReports';
 
 export interface NavLink {
   id: string;
@@ -43,6 +43,10 @@ export interface NavInput {
   samePerson?: boolean;
   /** A designated person (BFSI): their annual declarations (the server decides). */
   designated?: boolean;
+  /** HLP-08 (founder answer 36): on a speak-up list or a member of any case (the server decides, via the counts). */
+  caseTeam?: boolean;
+  /** HLP-09: on the ethics or escalation list. */
+  ethicsDesk?: boolean;
 }
 
 /** Possible same person is in the menu when the server sends its count: company-wide HR while a pair waits or for 90 days after any merge, even at 0. */
@@ -313,11 +317,11 @@ export function buildNav(n: NavInput): NavArea[] {
           ...when(any('desk.kb.view_internal', 'desk.kb.author', 'desk.kb.publish'), L('desk-knowledge', 'Knowledge base', '/yx/desk/knowledge')),
           L('desk-policies', 'Policies', '/yx/desk/policies'),
           L('desk-speakup', 'Speak up', '/yx/desk/speakup'),
-          // HLP-07/08/09: one's own part of a case; the case team's cases and the ethics queue (membership is checked by the
-          // API: someone on no case sees an empty list).
+          // HLP-07/08/09: one's own part of a case for everyone; Cases and the Ethics desk only for the people they concern
+          // (founder answer 36). Hiding is not security: every case route checks membership again.
           L('desk-my-cases', 'My cases', '/yx/desk/my-cases'),
-          L('desk-cases', 'Cases', '/yx/desk/cases'),
-          L('desk-ethics', 'Ethics desk', '/yx/desk/ethics'),
+          ...when(!support && Boolean(n.caseTeam), L('desk-cases', 'Cases', '/yx/desk/cases', 'casesOpen')),
+          ...when(!support && Boolean(n.ethicsDesk), L('desk-ethics', 'Ethics desk', '/yx/desk/ethics', 'ethicsReports')),
           ...when(has('speakup.setup.manage'), L('desk-speakup-setup', 'Speak-up set-up', '/yx/desk/speakup-setup')),
           ...when(any('policy.manage', 'policy.publish'), L('desk-policy-admin', 'Policy admin', '/yx/desk/policy-admin')),
           L('desk-catalog', 'Service catalogue', '/yx/desk/catalog'),
@@ -386,7 +390,7 @@ export function activeLink(areas: NavArea[], pathname: string): { area: NavArea;
 
 /** Every page of the menu, as if one person held every key: names a page the viewer's own menu has no entry for. */
 let every: NavArea[] | null = null;
-const everyPage = () => (every ??= buildNav({ has: () => true, role: null, support: false, employee: true, manager: true, history: true, clearance: true, tasks: true, firstDays: true, samePerson: true, designated: true }));
+const everyPage = () => (every ??= buildNav({ has: () => true, role: null, support: false, employee: true, manager: true, history: true, clearance: true, tasks: true, firstDays: true, samePerson: true, designated: true, caseTeam: true, ethicsDesk: true }));
 
 /**
  * The page for the breadcrumb and the menu highlight (walk-through 3 Nov 2026). The viewer's own deepest entry, unless a

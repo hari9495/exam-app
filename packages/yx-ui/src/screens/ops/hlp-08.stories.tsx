@@ -53,4 +53,5 @@ export const RecordRelief: S = { name: 'Interim relief · record (gives HR a tas
 export const StepAside: S = { name: 'Step aside from a case (with a reason)', render: () => live({ detail: poshCase(), start: { dialog: 'recuse' } }) };
 export const ConflictOverride: S = { name: 'Add member · conflict found, override with a reason', render: () => live({ start: { dialog: 'add', conflict: 'Ravi Shankar is in the respondent’s manager chain.' } }) };
 export const Evidence: S = { name: 'Evidence · fingerprints, virus check and access log', render: () => live({ start: { tab: 'evidence' } }) };
+export const Severity: S = { name: 'Ethics report · the ethics officer sets Serious or Standard', render: () => live({ detail: ethicsCase({ severity: 'standard' }) }) };
 export const NoAccess: S = { name: 'No access (no case-team key)', render: () => live({ state: 'no-access' }) };

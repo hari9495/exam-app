@@ -103,6 +103,8 @@ function Frame({ children }: { children: React.ReactNode }) {
         firstDays: Boolean(firstDays.data?.card),
         samePerson: samePersonInMenu(counts.data),
         designated: counts.data?.declarationsDue !== undefined,
+        caseTeam: counts.data?.casesOpen !== undefined,
+        ethicsDesk: counts.data?.ethicsReports !== undefined,
       }),
     // perms.data drives perms.has
     // eslint-disable-next-line react-hooks/exhaustive-deps

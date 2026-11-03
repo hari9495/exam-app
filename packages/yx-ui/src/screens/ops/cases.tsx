@@ -420,7 +420,7 @@ function SampleMyCases({ device = 'desk', cases, showCause, today, state = 'read
     );
   return (
     <OpsDesk area="helpdesk" active="Speak-up" member={false}>
-      <PageHeader title="My cases" description="Cases where you are the complainant, the respondent or a witness. Only people on each case can see it." />
+      <PageHeader title="My cases" description="Cases where you raised something or are asked to reply. Only people on each case can see it." />
       {cases.some((c) => c.status === 'Action needed') && (
         <PageBanner tone="warning" action={<Button size="sm" onClick={() => setOpen(true)}>Reply to notice</Button>}>
           You have a show-cause notice. Reply by {formatDate(showCauseDue(showCause.issuedOn))}.

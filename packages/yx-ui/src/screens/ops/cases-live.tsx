@@ -56,6 +56,7 @@ import type {
   ReliefAction,
   NoticeInput,
   ReliefInput,
+  Severity,
 } from './cases-live-types';
 
 /* ---------------- shared ---------------- */
@@ -66,7 +67,7 @@ const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padSt
 export const KIND_LABEL: Record<CaseKind, string> = { grievance: 'Grievance', whistleblower: 'Fraud or ethics concern', posh: 'Sexual harassment (POSH)' };
 const STATUS_LABEL: Record<CaseStatus, string> = { open: 'Open', action: 'Action needed', 'on-hold': 'On hold', closed: 'Closed' };
 const STATUS_TONE: Record<CaseStatus, BadgeTone> = { open: 'info', action: 'warning', 'on-hold': 'neutral', closed: 'neutral' };
-const ROLE_LABEL = { reporter: 'You raised it', respondent: 'You are asked to reply', witness: 'Witness' } as const;
+const ROLE_LABEL = { reporter: 'You raised it', respondent: 'You are asked to reply' } as const;
 export const FINDING_LABEL: Record<CaseFinding, string> = { proved: 'Proved', 'proved-in-part': 'Proved in part', 'not-proved': 'Not proved', 'false-or-malicious': 'False or malicious' };
 const RELIEF_LABEL: Record<ReliefAction, string> = { transfer: 'Transfer', leave: 'Leave', reporting: 'Stop reporting', other: 'Other' };
 const RELIEF_LONG: Record<ReliefAction, string> = { transfer: 'Transfer', leave: 'Leave', reporting: 'Stop reporting to the accused', other: 'Other relief' };
@@ -297,7 +298,7 @@ function MyCasePart({ live, c }: { live: LiveMyCases; c: MyCaseDetail }) {
         {KIND_LABEL[c.kind]} · {ROLE_LABEL[c.role]} · opened {day(c.openedOn)} · <Badge tone={STATUS_TONE[c.status]}>{c.stage}</Badge>
       </p>
       {c.dates.length > 0 && <ClockPanel title={c.role === 'respondent' ? 'Your dates' : 'Dates'} items={c.dates.map(toClock)} today={today} source={c.datesSource} />}
-      {c.role !== 'witness' && c.outcome && (
+      {c.outcome && (
         <InlineAlert tone="info" title="Outcome">
           {c.outcome}
           {c.appealUntil ? ` If you disagree, you can appeal until ${day(c.appealUntil)}.` : ''}
@@ -381,7 +382,7 @@ export function LiveMyCases({ live }: { live: LiveMyCases }) {
     );
   return (
     <OpsDesk area="helpdesk" active="Speak-up" member={false} counts={{ 'Speak-up': action.length }}>
-      <PageHeader title="My cases" description="Cases where you raised something, are asked to reply, or are a witness. Only people on each case can see it." />
+      <PageHeader title="My cases" description="Cases where you raised something or are asked to reply. Only people on each case can see it." />
       {action.length > 0 && (
         <PageBanner tone="warning" action={<Button size="sm" onClick={() => live.onOpen(action[0]!.id)}>Open {action[0]!.ref}</Button>}>
           {action[0]!.next?.on ? `You are asked to reply by ${day(action[0]!.next.on)}.` : 'A case needs your reply.'}
@@ -502,6 +503,8 @@ export interface LiveCaseWorkspace {
   onRelief: (caseId: string, input: ReliefInput) => Promise<{ taskRef: string }>;
   /** HR confirmed the relief is carried out. */
   onReliefDone: (caseId: string, reliefId: string) => Promise<void>;
+  /** Fraud and ethics reports: an ethics officer sets Serious or Standard (answer 35). */
+  onSetSeverity: (caseId: string, severity: Severity) => Promise<void>;
   onRecuse: (caseId: string, reason: string) => Promise<void>;
   /** Rejects with code CASE_CONFLICT when the person has a conflict; a second call with overrideReason records it. */
   onAddMember: (caseId: string, input: AddMemberInput) => Promise<void>;
@@ -954,6 +957,30 @@ function EvidenceTab({ live, c }: { live: LiveCaseWorkspace; c: CaseDetail }) {
   );
 }
 
+const SEVERITY_LABEL: Record<Severity, string> = { serious: 'Serious', standard: 'Standard' };
+
+/** Answer 35: the ethics officer grades a fraud or ethics report; others read it. Every change is a case step. */
+function SeverityCard({ live, c }: { live: LiveCaseWorkspace; c: CaseDetail }) {
+  const { busy, act, alert } = useAct();
+  const set = (v: Severity) => {
+    if (v === c.severity || busy) return;
+    void act('severity', () => live.onSetSeverity(c.id, v), `${c.ref} is now ${SEVERITY_LABEL[v]}`, 'The change is on the case record.');
+  };
+  return (
+    <Card title="Severity">
+      <div className="yx-ops-stack" data-gap="sm">
+        {alert}
+        {c.me.canSetSeverity ? (
+          <Segment label="Severity" options={(['standard', 'serious'] as Severity[]).map((v) => ({ value: v, label: SEVERITY_LABEL[v] }))} value={c.severity} onChange={set} />
+        ) : (
+          <Badge tone={c.severity === 'serious' ? 'danger' : 'neutral'}>{SEVERITY_LABEL[c.severity!]}</Badge>
+        )}
+        <p className="yx-ops-muted">{c.me.canSetSeverity ? 'Serious when it needs the fastest attention. Each change is kept with who made it.' : 'Set by the ethics officers.'}</p>
+      </div>
+    </Card>
+  );
+}
+
 const MEMBER_ROLES: { value: 'officer' | 'investigator'; label: string }[] = [
   { value: 'investigator', label: 'Investigator' },
   { value: 'officer', label: 'Case officer' },
@@ -1071,6 +1098,7 @@ export function LiveCaseWorkspace({ live }: { live: LiveCaseWorkspace }) {
             <>
               <Badge tone="info">{c.stage}</Badge>
               {c.anonymous && <Badge tone="neutral">Anonymous reporter</Badge>}
+              {c.severity && <Badge tone={c.severity === 'serious' ? 'danger' : 'neutral'}>{SEVERITY_LABEL[c.severity]}</Badge>}
               {c.me.recused && <Badge tone="warning">You stepped aside</Badge>}
             </>
           }
@@ -1179,9 +1207,12 @@ export function LiveCaseWorkspace({ live }: { live: LiveCaseWorkspace }) {
             </Tabs>
           }
           rail={
-            <Card>
-              <MembersList members={members} />
-            </Card>
+            <>
+              {c.severity && <SeverityCard live={live} c={c} />}
+              <Card>
+                <MembersList members={members} />
+              </Card>
+            </>
           }
         />
       </Confidential>
@@ -1332,7 +1363,7 @@ export function LiveEthicsDesk({ live }: { live: LiveEthicsDesk }) {
     { key: 'received', header: 'Received', value: (r) => r.receivedOn, render: (r) => day(r.receivedOn) },
     { key: 'entity', header: 'Entity', value: (r) => r.entity, width: 200 },
     { key: 'by', header: 'Reporter', value: (r) => (r.anonymous ? 'Anonymous' : 'Named, confidential') },
-    { key: 'severity', header: 'Severity', type: 'status', value: (r) => (r.severity === 'serious' ? 'Serious' : r.severity === 'standard' ? 'Standard' : 'Not set'), statusTone: (v) => (v === 'Serious' ? 'danger' : 'neutral') },
+    { key: 'severity', header: 'Severity', type: 'status', value: (r) => SEVERITY_LABEL[r.severity], statusTone: (v) => (v === 'Serious' ? 'danger' : 'neutral') },
     { key: 'clock', header: 'Next date', value: (r) => r.clock?.on ?? '', render: (r) => (r.clock ? `${r.clock.label} ${day(r.clock.on)}` : 'None (company policy)'), width: 200 },
     {
       key: 'routed',

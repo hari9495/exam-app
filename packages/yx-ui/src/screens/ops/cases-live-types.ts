@@ -6,6 +6,7 @@
 /** The HLP-06 case kinds (disciplinary cases have no record yet: question 34). */
 export type CaseKind = 'grievance' | 'whistleblower' | 'posh';
 export type CaseStatus = 'open' | 'action' | 'on-hold' | 'closed';
+export type Severity = 'serious' | 'standard';
 
 /** A dated step of the case. `source` names where the date came from (rule set and version, or company setting). */
 export interface CaseDate {
@@ -43,7 +44,8 @@ export interface CaseMessage {
 
 /* ---------------- HLP-07 · My cases (the person's own part only, founder decision 4) ---------------- */
 
-export type MyCaseRole = 'reporter' | 'respondent' | 'witness';
+/** Witnesses come after counsel (founder answer 37). */
+export type MyCaseRole = 'reporter' | 'respondent';
 
 /** GET my/cases → cases[]. */
 export interface MyCaseRow {
@@ -113,12 +115,8 @@ export interface MyCaseAsRespondent extends MyCaseBase {
   appealUntil: string | null;
 }
 
-export interface MyCaseAsWitness extends MyCaseBase {
-  role: 'witness';
-}
-
 /** GET my/cases/:id. */
-export type MyCaseDetail = MyCaseAsReporter | MyCaseAsRespondent | MyCaseAsWitness;
+export type MyCaseDetail = MyCaseAsReporter | MyCaseAsRespondent;
 
 export interface MyReplyInput {
   text: string;
@@ -250,7 +248,11 @@ export interface CaseDetail {
     ic: boolean;
     presiding: boolean;
     recused: boolean;
+    /** An ethics officer on a fraud or ethics report (founder answer 35). */
+    canSetSeverity: boolean;
   };
+  /** Fraud and ethics reports only: Serious or Standard (the default follows the retaliation worry). */
+  severity: Severity | null;
   /** Outcome or IC report may be recorded: the reply came or its date passed (natural justice). */
   canDecide: { ok: boolean; reason: string | null };
   members: CaseTeamMember[];
@@ -306,8 +308,8 @@ export interface EthicsRow {
   receivedOn: string;
   entity: string;
   anonymous: boolean;
-  /** 'serious' when the reporter fears retaliation; null otherwise (no severity is recorded yet: question 35). */
-  severity: 'serious' | 'standard' | null;
+  /** Set by an ethics officer; until then Serious when the reporter fears retaliation, else Standard (answer 35). */
+  severity: Severity;
   routed: boolean;
   stage: string;
   clock: { label: string; on: string } | null;

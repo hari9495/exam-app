@@ -16,7 +16,7 @@ describe('buildNav: areas', () => {
     const n = nav();
     expect(areas(n)).toEqual(['home', 'helpdesk']);
     expect(labels(n, 'home')).toEqual(['Home', 'Approvals', 'Notifications', 'Search', 'My requests']);
-    expect(labels(n, 'helpdesk')).toEqual(['Help centre', 'Policies', 'Speak up', 'My cases', 'Cases', 'Ethics desk', 'Service catalogue', 'Chat with us']);
+    expect(labels(n, 'helpdesk')).toEqual(['Help centre', 'Policies', 'Speak up', 'My cases', 'Service catalogue', 'Chat with us']);
   });
 
   it('areas come in the designed rail order, Settings last; unbuilt modules never appear', () => {
@@ -306,6 +306,24 @@ describe('pageLink: Policies and Policy admin name themselves (HLP-10 / HLP-11)'
     expect(pageLink(nav(['policy.manage'], { employee: true }), '/yx/desk/policy-admin')).toMatchObject({ link: { label: 'Policy admin' }, inMenu: true });
     expect(pageLink(nav(['policy.publish'], { employee: true }), '/yx/desk/policy-admin')).toMatchObject({ link: { label: 'Policy admin' }, inMenu: true });
     expect(pageLink(nav([], { employee: true }), '/yx/desk/policy-admin')?.inMenu).not.toBe(true);
+  });
+});
+
+describe('Cases and Ethics desk only for the people they concern (HLP-07/08/09, founder answer 36)', () => {
+  const desk = (over: Partial<NavInput>) => labels(nav([], { employee: true, ...over }), 'helpdesk');
+  it('My cases for everyone; Cases with the case-team flag; Ethics desk with the ethics flag; never in a support session', () => {
+    expect(desk({})).toEqual(expect.arrayContaining(['My cases']));
+    expect(desk({})).not.toEqual(expect.arrayContaining(['Cases']));
+    expect(desk({})).not.toEqual(expect.arrayContaining(['Ethics desk']));
+    expect(desk({ caseTeam: true })).toEqual(expect.arrayContaining(['My cases', 'Cases']));
+    expect(desk({ caseTeam: true })).not.toEqual(expect.arrayContaining(['Ethics desk']));
+    expect(desk({ caseTeam: true, ethicsDesk: true })).toEqual(expect.arrayContaining(['Cases', 'Ethics desk']));
+    expect(desk({ caseTeam: true, ethicsDesk: true, support: true })).not.toEqual(expect.arrayContaining(['Cases']));
+  });
+  it('the menu items carry the counts', () => {
+    const items = nav([], { employee: true, caseTeam: true, ethicsDesk: true }).find((a) => a.id === 'helpdesk')!.sections.flatMap((x) => x.items);
+    expect(items.find((l) => l.label === 'Cases')?.count).toBe('casesOpen');
+    expect(items.find((l) => l.label === 'Ethics desk')?.count).toBe('ethicsReports');
   });
 });
 

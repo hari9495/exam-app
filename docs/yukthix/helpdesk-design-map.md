@@ -24,9 +24,10 @@ feature not built** (no API) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Helpdesk HLP-01 … 14 | 14 | 193 | 13 | 0 | 15 | 0 | 221 |
+| A. Helpdesk HLP-01 … 14 | 14 | 194 | 13 | 0 | 15 | 0 | 222 |
 | B. Service desk designs | 5 | 55 | 2 | 0 | 0 | 0 | 57 |
-| **All Helpdesk groups (A–B)** | **19** | **248** | **15** | **0** | **15** | **0** | **278** |
+| **All Helpdesk groups (A–B)** | **19** | **249** | **15** | **0** | **15** | **0** | **279** |
+Round 9b (script, 4 Nov 2026, `feat/yukthix-hlp-07-09`): HLP-08 gains 1 story (Severity), live: 29 stories, 25 live.
 Round 7-9 recount (script, 4 Nov 2026, `feat/yukthix-hlp-07-09`): HLP-07 has 13 stories (the 8 approved plus 5 drawn:
 the reporter's view, the outcome shared, the respondent's notice, more time asked, no access): 9 live, 4 live (gap)
 (the disciplinary show-cause stories: no disciplinary record yet). HLP-08 has 28 (the 12 approved plus 16 drawn: second
@@ -103,7 +104,7 @@ groups them).
 | /yx/desk/speakup-setup | `SpeakUpSetupScreen` (HLP-06 set-up stories) | HLP-06 | `GET desk/speakup/setup`, `POST /setup/members`, `/setup/members/:id/remove` (`speakup.setup.manage`); case officers: `GET desk/speakup/cases`, `/cases/:id`, `POST /cases/:id/messages` (being routed is the access; 404 otherwise; every look audited) | live |
 | /yx/desk/my-cases (?case=) | the designed `MyCasesScreen` (HLP-07) with `live` | HLP-07 | `GET desk/my/cases`, `/:id`, `POST …/messages` (reporter), `/reply`, `/more-time`, `/files`, `GET …/files/:fileId` (respondent) (implicit: one's own part only; 403 while acting for someone else) | live |
 | /yx/desk/cases, /yx/desk/cases/[id] | the designed `CaseListScreen` and `CaseWorkspaceScreen` (HLP-08) with `live` | HLP-08 | `GET desk/cases`, `/:id`, `POST …/messages`, `/notice`, `/notice/delay`, `/more-time`, `/outcome`, `/outcome/approve`, `/outcome/send-back`, `/ic-report`, `/ic-report/vote`, `/ic-report/sign`, `/relief`, `/relief/:reliefId/done`, `/recuse`, `/members`, `/files`, `GET …/files/:fileId` (no key: a member who has not stepped aside; 404 otherwise; 403 while acting for someone else) | live |
-| /yx/desk/ethics | the designed `EthicsDeskScreen` (HLP-09) with `live` | HLP-09 | `GET desk/ethics/reports`, `POST …/:id/route` (no key: an officer on the report) | live |
+| /yx/desk/ethics | the designed `EthicsDeskScreen` (HLP-09) with `live` | HLP-09 | `GET desk/ethics/reports`, `POST …/:id/route`, `POST …/:id/severity` (no key: an officer on the report; severity only an ethics officer); in the menu only for the ethics or escalation list (`GET workspace/counts` → `ethicsReports`) | live |
 | /yx/wall/[org]/[token] | `WallScreen` | Reports (HLP-05) Wall | `GET desk/wall/:org/:token` (the secret link; counts only) | live |
 | /yx/desk/setup | `DeskSetupScreen` (desks, calendars, SLA, email, help pages, banners, `SetupStart`) and the stand-ins `CatalogAdmin`, `RulesAdmin`, `LifecycleAdmin`, `ChatQueuesAdmin`, `DeskOrgAdmin`, `SchedulesAdmin`, `MessagingAdmin` | Phase 3b-1 Setup and set-up tabs; Batch 4 GetStarted | desk set-up routes (`desk.settings.manage`, `desk.desk.create`, `desk.sla.manage`, `desk.mailbox.manage`, `desk.portal.manage`, `desk.catalog.manage`, `desk.rule.manage`, `desk.lifecycle.manage`, `desk.channel.manage`) | live |
 | /yx/desk/calendar | `MyCalendarScreen` | Phase 3b-1 Calendar | `GET desk/me/calendar`, `GET desk/tasks` (implicit: an agent) | live |
@@ -403,6 +404,7 @@ Live pages: /yx/desk/my-cases (HLP-07), /yx/desk/cases and /yx/desk/cases/[id] (
 | StepAside · Step aside from a case (with a reason) | live | new story: recusal; the rail marks the member |
 | ConflictOverride · Add member · conflict found, override with a reason | live | new story: 409 `CASE_CONFLICT`, then the second try with the reason |
 | Evidence · Evidence · fingerprints, virus check and access log | live | new story: SHA-256, opens count, only clean files open |
+| Severity · Ethics report · the ethics officer sets Serious or Standard | live | new story (founder answer 35): the rail's Severity card, a kit Segment for an ethics officer on the report (`POST desk/ethics/reports/:id/severity`; 403 `CASE_NOT_ETHICS_OFFICER` for the chair, 404 for non-members, 409 for the same value or a closed case); a badge for everyone else; each change is an append-only case step and an audit entry with the old and new value |
 | NoAccess · No access (no case-team key) | live | new story: 403; a case one is not on stays "Not found" |
 
 #### HLP-09 · Ethics desk
@@ -955,6 +957,15 @@ or investigator; the conflict check reads the reporting line from today's assign
 reporter sees no officer names; the respondent never sees the reporter or the messages; the team's first message
 acknowledges the report. A report about an officer is already with the escalation list (HLP-06); "Route to chair" adds
 the escalation list to any other ethics report. Days are India days.
+
+**Built (round 9b, founder answers 35 and 36, 4 Nov 2026):** severity on fraud and ethics reports: the latest
+`severity_set` step (old and new value in the step and the audit; migration `20261650000002_case_severity` adds the kind and
+a check that the value is one of the two and changes); default Serious when the reporter fears retaliation, else
+Standard; set only by an ethics officer (on the company's ethics list) who is on the report; shown in the queue, the case
+header and the rail. The menu: `GET workspace/counts` now carries `casesOpen` (present only for someone on a speak-up list
+or a member of any case who has not stepped aside) and `ethicsReports` (only for the ethics or escalation list); the
+menu shows Cases and Ethics desk with those counts; My cases stays for everyone. Witnesses are out of the My cases
+description and type until counsel (answer 37).
 
 ## 5. Two designs for one job
 
