@@ -909,3 +909,13 @@ settings from the statutory rules (verify with counsel). (4) A named reporter's 
 case officers; hidden from managers and other HR; every view audited (retaliation protection).
 Other choices built as company settings with safe defaults (categories, acknowledgement days, reminder schedule,
 retention) and listed for the founder at the stop.
+
+## Founder decisions, 3 Nov 2026 (HLP-07, 08, 09 Cases, before any server work)
+(1) Outcome: ethics cases need two people — the case officer proposes, a second officer approves; POSH cases: the
+Internal Committee records its findings and recommendation (majority, presiding officer signs), as the POSH Act expects —
+verify with counsel. (2) The respondent is told and given a copy and time to reply, per law (natural justice); for POSH
+the time limits come from the statutory rule sets, never code; officers may delay notice only with a recorded reason.
+(3) Interim relief (transfer, leave, stop reporting to the accused) is recorded as a case action and HR gets a task to
+carry it out; nothing changes in People automatically. (4) "My cases" shows the reporter status, dates and messages only —
+never investigation notes, witness names or the respondent's reply.
+Built after HLP-06 is merged (it creates the case record HLP-07 … 09 use).
