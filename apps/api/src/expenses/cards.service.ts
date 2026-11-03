@@ -9,7 +9,7 @@ import { ScopeUser, Viewer, buildViewer, tenantWide } from '../access/scope';
 import { NotificationsService } from '../notifications/notifications.service';
 import { FilesService, checkUpload } from '../documents/files.service';
 import { PayrollIntakeService } from '../payroll/intake.service';
-import { dupKey } from './checks';
+import { COMPANY_PAID, dupKey } from './checks';
 import { headerIndex, mappingProblem, parseRows, readTable, scrub, suggestMatches, type CardMapping, type MatchCandidate } from './card-statement';
 import type { CardImportDto, CardMappingDto } from './cards-dto';
 
@@ -79,7 +79,7 @@ export class ExpenseCardsService {
   }
 
   private async rules(tx: Tx, c: CompanyContext) {
-    return { within: await settingFor(tx, c, 'expense.card.match_amount_within', ANY_ENTITY), days: Number(await settingFor(tx, c, 'expense.card.match_days', ANY_ENTITY)) };
+    return { within: await settingFor(tx, c, 'expense.card.match_amount_within', ANY_ENTITY), days: Number(await settingFor(tx, c, 'expense.card.match_days', ANY_ENTITY)), recoveryInstalments: Number(await settingFor(tx, c, 'expense.card.recovery_instalments', ANY_ENTITY)) };
   }
 
   private async tell(org: string, users: string[], text: string) {
@@ -146,7 +146,7 @@ export class ExpenseCardsService {
     const parsed = parseRows(table, mapping);
     if (parsed.problems.length) {
       const n = parsed.problems.filter((p) => p.rowNo > 0).length;
-      throw new BadRequestException({ statusCode: 400, code: 'ROWS_TO_FIX', message: n ? `${n} ${n === 1 ? 'row needs' : 'rows need'} fixing. Nothing was imported. Fix the file and upload it again.` : `${parsed.problems[0].problems[0]} Nothing was imported.`, rows: parsed.problems.slice(0, 200), total: n });
+      throw new BadRequestException({ statusCode: 400, code: 'ROWS_TO_FIX', message: n ? `${n} ${n === 1 ? 'row needs' : 'rows need'} fixing. Nothing was imported. Fix the file and upload it again.` : `${parsed.problems[0].problems[0]} Nothing was imported.`, problems: parsed.problems.slice(0, 200), total: n });
     }
     const hash = sha256(file!.buffer);
     const dates = parsed.rows.map((r) => r.txnOn).sort();
@@ -356,10 +356,7 @@ export class ExpenseCardsService {
       if (target.payMode === 'personal') {
         // Not paid twice: a personal line becomes a company-card line, only while the claim is not decided yet.
         if (!UNDECIDED.includes(claim.status)) throw new ConflictException('That line is already approved to be paid to the employee. Ask the employee instead.');
-        await tx.expenseLine.update({ where: { id: target.id }, data: { payMode: 'company_card', version: { increment: 1 } } });
-        const sum = await tx.expenseLine.aggregate({ where: { organizationId: org, claimId: claim.id, removedAt: null, payMode: { notIn: ['company_paid', 'company_card'] } }, _sum: { claimed: true } });
-        await tx.expenseClaim.update({ where: { id: claim.id }, data: { claimedTotal: sum._sum.claimed ?? 0, version: { increment: 1 } } });
-        await audit(tx, c, 'expense.line.paid_by_card', 'expense_claim', claim.id, { lineId: target.id, cardLineId: l.id });
+        await this.toCompanyCard(tx, c, claim.id, target.id, l.id);
       }
       try {
         await tx.expenseCardLine.update({ where: { id: l.id }, data: { status: 'matched', matchedLineId: target.id, matchedBy: v.userId, matchedAt: new Date(), employeeId: claim.employeeId, version: { increment: 1 } } });
@@ -370,6 +367,14 @@ export class ExpenseCardsService {
       await audit(tx, c, 'expense.card.line.matched', 'expense_card_statement', s.id, { cardLineId: l.id, claimLineId: target.id, before: l.matchedLineId, cardAmount: l.amount.toFixed(2), claimAmount: (target.receiptAmount ?? target.claimed).toFixed(2) });
       return { ok: true };
     });
+  }
+
+  /** A personal line found on the card statement becomes a company-card line (never paid to the employee). */
+  private async toCompanyCard(tx: Tx, c: CompanyContext, claimId: string, lineId: string, cardLineId: string) {
+    await tx.expenseLine.update({ where: { id: lineId }, data: { payMode: 'company_card', version: { increment: 1 } } });
+    const sum = await tx.expenseLine.aggregate({ where: { organizationId: c.organizationId, claimId, removedAt: null, payMode: { notIn: COMPANY_PAID } }, _sum: { claimed: true } });
+    await tx.expenseClaim.update({ where: { id: claimId }, data: { claimedTotal: sum._sum.claimed ?? 0, version: { increment: 1 } } });
+    await audit(tx, c, 'expense.line.paid_by_card', 'expense_claim', claimId, { lineId, cardLineId });
   }
 
   /** "Ask employee": the card line goes to its holder to explain. */
@@ -498,6 +503,17 @@ export class ExpenseCardsService {
         await audit(tx, c, 'expense.card.line.personal', 'expense_card_statement', s.id, { cardLineId: l.id, loanId: loan.id, instalments: n, firstMonth: first });
         return { choice, instalments: n, firstMonth: first, emi: loan.emi };
       }
+      // A claim line of mine that matches by the company's rules is used; otherwise a new draft line.
+      const rules = await this.rules(tx, c);
+      const cands = await this.candidates(tx, org, [me], iso(l.txnOn), iso(l.txnOn), rules.days);
+      const hit = suggestMatches([{ id: l.id, txnOn: iso(l.txnOn), amount: l.amount.toFixed(2), currency: l.currency, direction: 'debit', merchant: l.merchant ?? l.description, holders: [me] }], cands, rules).get(l.id);
+      const found = hit ? cands.find((x) => x.id === hit)! : null;
+      if (found) {
+        if (found.payMode === 'personal') await this.toCompanyCard(tx, c, found.claimId, found.id, l.id);
+        await tx.expenseCardLine.update({ where: { id: l.id }, data: { status: 'matched', matchedLineId: found.id, matchedBy: v.userId, matchedAt: new Date(), explainedBy: v.userId, explainedAt: new Date(), version: { increment: 1 } } });
+        await audit(tx, c, 'expense.card.line.business', 'expense_card_statement', s.id, { cardLineId: l.id, claimId: found.claimId, lineId: found.id, existing: true });
+        return { choice, claimId: found.claimId, lineId: found.id, existing: true };
+      }
       const on = iso(l.txnOn);
       const title = `Company card, ${l.txnOn.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })}`;
       const claim =
@@ -513,7 +529,7 @@ export class ExpenseCardsService {
       await tx.expenseClaim.update({ where: { id: claim.id }, data: { version: { increment: 1 } } });
       await tx.expenseCardLine.update({ where: { id: l.id }, data: { status: 'matched', matchedLineId: line.id, matchedBy: v.userId, matchedAt: new Date(), explainedBy: v.userId, explainedAt: new Date(), version: { increment: 1 } } });
       await audit(tx, c, 'expense.card.line.business', 'expense_card_statement', s.id, { cardLineId: l.id, claimId: claim.id, lineId: line.id });
-      return { choice, claimId: claim.id, lineId: line.id };
+      return { choice, claimId: claim.id, lineId: line.id, existing: false };
     });
   }
 

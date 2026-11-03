@@ -181,7 +181,7 @@ describe('Expenses: card statements (EXP-08)', () => {
   it('a file with wrong rows: every bad row listed with what to fix, and nothing saved', async () => {
     const res = await upload('fin', csv([[dmy(d(-3)), '1234', 'OK ROW', '10.00'], ['31/02/2026', '1234', 'BAD DATE', '10'], [dmy(d(-3)), '12', '', 'ten']]), 'bad.csv', { bankName: BANK, mapping: JSON.stringify(MAP) }).expect(400);
     expect(res.body).toMatchObject({ code: 'ROWS_TO_FIX', total: 2, message: '2 rows need fixing. Nothing was imported. Fix the file and upload it again.' });
-    expect(res.body.rows).toEqual([
+    expect(res.body.problems).toEqual([
       { rowNo: 5, problems: ['"31/02/2026" is not a date written as DD/MM/YYYY.'] },
       { rowNo: 6, problems: ['No description.', '"ten" is not an amount (up to 2 decimals).', 'The card number has fewer than 4 digits.'] },
     ]);
