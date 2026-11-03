@@ -24,9 +24,9 @@ feature not built** (no API) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Helpdesk HLP-01 … 14 | 14 | 56 | 2 | 9 | 69 | 0 | 136 |
-| B. Service desk designs | 5 | 72 | 2 | 0 | 0 | 0 | 74 |
-| **All Helpdesk groups (A–B)** | **19** | **128** | **4** | **9** | **69** | **0** | **210** |
+| A. Helpdesk HLP-01 … 14 | 14 | 94 | 2 | 0 | 69 | 0 | 165 |
+| B. Service desk designs | 5 | 54 | 2 | 0 | 0 | 0 | 56 |
+| **All Helpdesk groups (A–B)** | **19** | **148** | **4** | **0** | **69** | **0** | **221** |
 Round 3 recount (script, 3 Nov 2026, `feat/yukthix-hlp-03`): HLP-03 has 18 stories (the 6 approved plus 12 drawn for
 the old workspace's states), all live; Phase 3b-1 loses the stand-in's 4 stories (Workspace, WorkspaceCollaborator,
 WorkspaceUnverified, ReplyTooEarly) and has 26; esm-live loses the 16 "Live ·" stories of the ticket side cards and the
