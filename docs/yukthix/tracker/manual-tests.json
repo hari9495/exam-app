@@ -11143,5 +11143,59 @@
     ],
     "expected": "Step 1: {\"enabled\":false,\"reason\":\"company-off\"} (default off). Step 2: reason \"not-configured\" until an AI provider is set; the panel then shows “AI is not set up for your company yet”. Step 3: two flags (loaded word, vague) and the review is unchanged. Step 4 (negative): 404. The panel shows on the review page once the PRF-05 page passes useReviewAssistant.",
     "note": "Positive + negative."
+  },
+  {
+    "id": "MT-PRF-B3-13",
+    "area": "PRF-17 Review assistant",
+    "screen": "On the review page (manager)",
+    "url": "http://localhost:3000/yx/performance/reviews/<review id>",
+    "account": "panel@demo-org.test (Manager - Divya), with an open review of Arjun at the manager stage. Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PRF-17 Help me draft",
+      "PRF-17 Bias flags with Accept or Ignore",
+      "PRF-17 AI review summaries off for the company"
+    ],
+    "steps": [
+      "1. Open Arjun’s review. Under \"Summary for the employee\" read the Review assistant panel.",
+      "2. Type \"She is emotional. Good job.\" and press Check wording; press Accept on one flag.",
+      "3. HR turns \"Performance: AI review summaries\" on (an AI key must be set); press Help me draft, then Use as starting text.",
+      "4. As Arjun open the same review."
+    ],
+    "expected": "Step 1: by default \"Review assistant is off\" (company setting off). Step 2: two flags; Accept marks only the words in the text box; nothing is saved until Save draft. Step 3: the draft appears with what it was drafted from; the text box fills only on Use as starting text. Step 4 (negative): Arjun sees no assistant.",
+    "note": "Positive + negative."
+  },
+  {
+    "id": "MT-PRF-B3-14",
+    "area": "PRF-16 Suggested agenda",
+    "screen": "On the 1:1 (manager)",
+    "url": "http://localhost:3000/yx/performance/one-on-ones/<1:1 id>",
+    "account": "panel@demo-org.test (Manager - Divya); arjun@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PRF-16 Suggested 1:1 agenda panel"
+    ],
+    "steps": [
+      "1. As Divya open a planned 1:1 with Arjun (Arjun has a goal off track or an open action from an earlier 1:1).",
+      "2. Press Add to agenda on a suggestion.",
+      "3. As Arjun open the same 1:1."
+    ],
+    "expected": "Step 1: \"Suggested agenda for Arjun\" with a reason per item. Step 2: toast \"Agenda item added\"; the item moves to the shared agenda and leaves the suggestions. Step 3 (negative): Arjun sees no suggested agenda.",
+    "note": "Positive + negative."
+  },
+  {
+    "id": "MT-PRF-B3-15",
+    "area": "PRF-06 / PRF-15",
+    "screen": "Escalate link and Nominate reviewers link",
+    "url": "http://localhost:3000/yx/performance/reviews/<review id>",
+    "account": "arjun@demo-org.test; hr@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PRF-15 Employee · escalate"
+    ],
+    "steps": [
+      "1. As Arjun acknowledge a released review with a disagreement; look for an Escalate link.",
+      "2. HR answers the disagreement; Arjun reloads the review.",
+      "3. In a cycle with 360° feedback, as Arjun open his open review."
+    ],
+    "expected": "Step 1 (negative): no Escalate link while HR has not answered. Step 2: \"Escalate the dispute\" links to the escalation page; after escalating it reads \"See your escalation PRF-D-…\". Step 3: \"Nominate reviewers\" opens the nominations page.",
+    "note": "Positive + negative."
   }
 ]
