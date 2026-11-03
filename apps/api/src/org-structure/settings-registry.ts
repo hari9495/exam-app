@@ -69,6 +69,12 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // this from the company rate (was FX_TOLERANCE_PCT = 3 in code).
   'expense.fx_tolerance_pct': { label: 'Expenses: flag a typed exchange rate this far (%) from the company rate', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '2', '3', '5', '10'], default: '3' },
   'expense.gst.capture': { label: 'Expenses: capture GST for input credit', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', 'on'], default: 'off' },
+  // EXP-08 card statements (founder answer 3 Nov 2026): how close a claim line must be to a card line to be suggested,
+  // how often an employee is reminded about a card line to explain, and how personal spend is recovered from salary.
+  'expense.card.match_amount_within': { label: 'Card statements: suggest a claim line when the amount is within (₹)', scopes: ['tenant'], dated: false, values: ['0', '0.50', '1', '5', '10'], default: '1' },
+  'expense.card.match_days': { label: 'Card statements: suggest a claim line dated within this many days of the card line', scopes: ['tenant'], dated: false, values: ['0', '1', '2', '3', '5', '7'], default: '3' },
+  'expense.card.reminder_days': { label: 'Card statements: remind the employee about a card line to explain after these days', scopes: ['tenant'], dated: false, values: ['3,7,14', '7,14', '7', '14', 'off'], default: '3,7,14' },
+  'expense.card.recovery_instalments': { label: 'Card statements: personal spend is recovered from salary in this many instalments', scopes: ['tenant'], dated: false, values: ['1', '2', '3', '6'], default: '3' },
   // M06 performance PM2 (§6.1, D2): whether the manager approves a person's goals; how often check-ins are expected.
   'perf.goal.approval': { label: 'Performance: the manager approves a person’s goals', scopes: ['tenant'], dated: false, values: ['manager', 'none'], default: 'manager' },
   'perf.self_review.visible_to_manager': { label: 'Performance: the manager reads the self review', scopes: ['tenant'], dated: false, values: ['after_manager_draft', 'immediately'], default: 'after_manager_draft' },

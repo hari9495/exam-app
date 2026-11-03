@@ -8848,6 +8848,94 @@ model ExpenseJournal {
   @@map("expense_journals")
 }
 
+// EXP-08 card statement import and matching (migration 20261540000000). Only the last 4 digits of a card are kept.
+model ExpenseCardMapping {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  bankName       String   @map("bank_name") @db.VarChar(80)
+  columns        Json
+  createdBy      String?  @map("created_by") @db.Uuid
+  updatedBy      String?  @map("updated_by") @db.Uuid
+  version        Int      @default(1)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("expense_card_mappings")
+}
+
+model ExpenseCard {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  bankName       String    @map("bank_name") @db.VarChar(80)
+  last4          String    @db.Char(4)
+  createdBy      String?   @map("created_by") @db.Uuid
+  removedAt      DateTime? @map("removed_at") @db.Timestamptz(3)
+  removedBy      String?   @map("removed_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("expense_cards")
+}
+
+model ExpenseCardStatement {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  bankName           String    @map("bank_name") @db.VarChar(80)
+  mappingId          String    @map("mapping_id") @db.Uuid
+  revision           Int       @default(1)
+  replacesId         String?   @map("replaces_id") @db.Uuid
+  periodFrom         DateTime  @map("period_from") @db.Date
+  periodTo           DateTime  @map("period_to") @db.Date
+  fileId             String?   @map("file_id") @db.Uuid
+  fileName           String    @map("file_name") @db.VarChar(200)
+  fileSha256         String    @map("file_sha256") @db.Char(64)
+  rowCount           Int       @map("row_count")
+  debitTotal         Decimal   @map("debit_total") @db.Decimal(14, 2)
+  creditTotal        Decimal   @map("credit_total") @db.Decimal(14, 2)
+  fullNumbersDropped Int       @default(0) @map("full_numbers_dropped")
+  status             String    @default("open") @db.VarChar(10)
+  note               String?   @db.VarChar(500)
+  importedBy         String    @map("imported_by") @db.Uuid
+  closedBy           String?   @map("closed_by") @db.Uuid
+  closedAt           DateTime? @map("closed_at") @db.Timestamptz(3)
+  version            Int       @default(1)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("expense_card_statements")
+}
+
+model ExpenseCardLine {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  statementId    String    @map("statement_id") @db.Uuid
+  rowNo          Int       @map("row_no")
+  txnOn          DateTime  @map("txn_on") @db.Date
+  description    String    @db.VarChar(200)
+  merchant       String?   @db.VarChar(120)
+  amount         Decimal   @db.Decimal(14, 2)
+  direction      String    @db.VarChar(6)
+  currency       String    @default("INR") @db.Char(3)
+  cardLast4      String?   @map("card_last4") @db.Char(4)
+  employeeId     String?   @map("employee_id") @db.Uuid
+  status         String    @default("open") @db.VarChar(10)
+  matchedLineId  String?   @map("matched_line_id") @db.Uuid
+  matchedBy      String?   @map("matched_by") @db.Uuid
+  matchedAt      DateTime? @map("matched_at") @db.Timestamptz(3)
+  chasedOn       DateTime? @map("chased_on") @db.Date
+  remindersSent  Int       @default(0) @map("reminders_sent")
+  explainedBy    String?   @map("explained_by") @db.Uuid
+  explainedAt    DateTime? @map("explained_at") @db.Timestamptz(3)
+  recoveryLoanId String?   @map("recovery_loan_id") @db.Uuid
+  version        Int       @default(1)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([organizationId, statementId, rowNo], map: "expense_card_lines_statement_idx")
+  @@index([organizationId, employeeId, status], map: "expense_card_lines_employee_idx")
+  @@map("expense_card_lines")
+}
+
 model AdvanceSettlement {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid
