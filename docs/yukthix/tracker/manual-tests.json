@@ -13694,5 +13694,88 @@
       "Screens/Service desk/Phase 3b-1 (wired screens)"
     ],
     "note": "Negative."
+  },
+  {
+    "id": "MT-HLP-05-12",
+    "area": "Helpdesk · HLP-05b at-risk point per desk (3 Nov 2026)",
+    "screen": "Desk set-up · Settings · At risk from",
+    "url": "http://localhost:3000/yx/desk/setup?tab=settings",
+    "account": "A desk admin of \"IT help desk\" (desk admin role: desk.settings.manage). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Helpdesk › Desk set-up, choose IT help desk, open Settings.",
+      "2. Look at \"At risk from\".",
+      "3. Choose 50 % and press Save settings."
+    ],
+    "expected": "\"At risk from\" is a joined Segment of 50 %, 60 %, 70 %, 80 %, 90 % with 80 % chosen at first. After Save a toast says \"Desk settings saved.\" Reloading the page shows 50 %.",
+    "stories": [
+      "Screens/Service desk/Phase 3b-1 (wired screens)"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HLP-05-13",
+    "area": "Helpdesk · HLP-05b at-risk point per desk (3 Nov 2026)",
+    "screen": "SLAs and Tickets follow the desk point",
+    "url": "http://localhost:3000/yx/desk/reports",
+    "account": "An IT help desk team lead. Browser window 1278 x 635.",
+    "steps": [
+      "1. Before: in Desk set-up › SLA give IT help desk a P4 resolution target of 10 minutes; as arjun@demo-org.test raise a P4 ticket; wait 6 minutes.",
+      "2. With \"At risk from\" at 80 %: open Helpdesk › SLAs, then Helpdesk › Tickets › At risk or breached.",
+      "3. As the desk admin set \"At risk from\" to 50 % (MT-HLP-05-12); reload both pages.",
+      "4. Set it to 90 %; reload both pages."
+    ],
+    "expected": "At 80 % the ticket (60 % used) is not at risk: not in \"At risk or breached\" on either page, its badge is plain. At 50 % it is listed on both pages and its badge turns amber. At 90 % it is gone again. Once the 10 minutes pass it shows as Breached whatever the point.",
+    "stories": [
+      "Screens/Helpdesk/HLP-05 · SLA dashboard",
+      "Screens/Helpdesk/HLP-02 · Agent desk"
+    ],
+    "note": "Positive (50 % vs 90 %)."
+  },
+  {
+    "id": "MT-HLP-05-14",
+    "area": "Helpdesk · HLP-05b at-risk point per desk (3 Nov 2026)",
+    "screen": "Other desks untouched",
+    "url": "http://localhost:3000/yx/desk/setup?tab=settings",
+    "account": "The Service Desk admin of the company.",
+    "steps": [
+      "1. Set IT help desk to 50 %.",
+      "2. Open HR help desk › Settings."
+    ],
+    "expected": "HR help desk still shows 80 %; its tickets are judged by 80 %.",
+    "stories": [
+      "Screens/Service desk/Phase 3b-1 (wired screens)"
+    ],
+    "note": "Negative (scope)."
+  },
+  {
+    "id": "MT-HLP-05-15",
+    "area": "Helpdesk · HLP-05b at-risk point per desk (3 Nov 2026)",
+    "screen": "Desk set-up · Settings · no right to change",
+    "url": "http://localhost:3000/yx/desk/setup?tab=settings",
+    "account": "An IT help desk agent or team lead (no desk admin role).",
+    "steps": [
+      "1. Open Helpdesk › Desk set-up (if shown) › Settings for IT help desk.",
+      "2. Press 90 % on \"At risk from\"."
+    ],
+    "expected": "The settings are read-only: the choice does not move and there is no Save settings button. The API refuses a direct change (403).",
+    "stories": [
+      "Screens/Service desk/Phase 3b-1 (wired screens)"
+    ],
+    "note": "Negative (permission)."
+  },
+  {
+    "id": "MT-HLP-05-16",
+    "area": "Helpdesk · HLP-05b at-risk point per desk (3 Nov 2026)",
+    "screen": "At risk from · another company",
+    "url": "http://localhost:3000/yx/desk/setup?tab=settings",
+    "account": "An admin of a second demo company.",
+    "steps": [
+      "1. Open Desk set-up › Settings for that company's own desk."
+    ],
+    "expected": "Only that company's desks are listed; their point is their own (80 % unless changed). The first company's desks are not there.",
+    "stories": [
+      "Screens/Service desk/Phase 3b-1 (wired screens)"
+    ],
+    "note": "Negative (tenant)."
   }
 ]

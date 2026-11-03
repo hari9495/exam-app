@@ -25,8 +25,8 @@ feature not built** (no API) · **phone view, mobile app not built**.
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Helpdesk HLP-01 … 14 | 14 | 94 | 2 | 0 | 69 | 0 | 165 |
-| B. Service desk designs | 5 | 54 | 2 | 0 | 0 | 0 | 56 |
-| **All Helpdesk groups (A–B)** | **19** | **148** | **4** | **0** | **69** | **0** | **221** |
+| B. Service desk designs | 5 | 55 | 2 | 0 | 0 | 0 | 57 |
+| **All Helpdesk groups (A–B)** | **19** | **149** | **4** | **0** | **69** | **0** | **222** |
 Round 3 recount (script, 3 Nov 2026, `feat/yukthix-hlp-03`): HLP-03 has 18 stories (the 6 approved plus 12 drawn for
 the old workspace's states), all live; Phase 3b-1 loses the stand-in's 4 stories (Workspace, WorkspaceCollaborator,
 WorkspaceUnverified, ReplyTooEarly) and has 26; esm-live loses the 16 "Live ·" stories of the ticket side cards and the
@@ -38,6 +38,8 @@ Round 4 recount (script, 3 Nov 2026, `feat/yukthix-hlp-04`): HLP-04 has 24 stori
 the old knowledge screen's states): 23 live, 1 live (gap) (Review due: the design's group audience). The Service desk
 group "HLP-04 Knowledge" (6 stories) is deleted with its stand-in `KnowledgeScreen`, so B has 5 groups; the script no
 longer reads `knowledge.stories.tsx`.
+Round 5b (script, 3 Nov 2026, `feat/yukthix-hlp-05b`): Phase 3b-1 gains 1 story (Desk set-up · Settings · at risk from
+(per desk)), live.
 Round 5 recount (script, 3 Nov 2026, `feat/yukthix-hlp-05`): HLP-05 has 20 stories (the 3 approved plus 17 drawn for
 the old reports page's tabs and states), all live; Reports (HLP-05) loses the stand-in's 14 stories and keeps the wall
 screen's 2.
@@ -178,7 +180,7 @@ the quick view with both targets, an agent who is not a lead, no access).
 | story (sub-page) | verdict | note |
 |---|---|---|
 | MyOpenTickets · My open tickets | live | the page opens on "My open tickets" (`assignee=me`, open states). Columns as the design: ticket, subject (lock on sensitive or private, VIP and not-verified marks), requester, queue (the desk), category, priority, status, Resolution SLA (new: business minutes used of the target from `GET desk/tickets`), assignee; facts "N in this view · M past the target" |
-| AtRisk · At risk or breached view | live | built-in view "At risk or breached" (`breaching`: a target missed or due within 4 hours); the banner's "Show breaching tickets" opens it |
+| AtRisk · At risk or breached view | live | built-in view "At risk or breached" (`breaching`: a target missed, or at risk by the desk's own at-risk point, HLP-05b); the banner's "Show breaching tickets" opens it |
 | Unassigned · Unassigned | live | built-in view "Unassigned" |
 | QuickView · Row quick view | live | a row opens the design's drawer: requester, priority, assignee, raised (date and channel), first response and resolution targets (new clocks; "Met" once answered or solved); "Assign to me" (`POST desk/tickets/:id/assign`, `desk.ticket.work`, toast) and "Open ticket" |
 | Bulk · Bulk selection | live | team leads only (`canBulk`: `desk.ticket.bulk` and lead on that desk): "Assign N to me", "Change priority", "Move to queue", "Add a tag", up to two scenarios; a toast says how many changed |
@@ -439,6 +441,7 @@ the HLP-01 stand-in and are not rows.
 | MyTicket · HLP-01 My ticket (requester view) | live | /yx/desk/help/[id] renders MyTicketScreen; replies, colleagues, files through `desk/my/tickets/:id` |
 | Setup · Desk set-up | live | /yx/desk/setup renders DeskSetupScreen |
 | SetupKbReview · Desk set-up · Settings · check help articles again every | live | HLP-04b (founder 3 Nov 2026): Settings tab, company's Service Desk owner (`desk.desk.create`): Segment 3, 6, 12 or 24 months; `GET/PUT desk/kb/settings` (registry `desk.kb.review_months`, default 12), toast |
+| SetupAtRisk · Desk set-up · Settings · at risk from (per desk) | live | HLP-05b (founder 3 Nov 2026): Settings tab, `desk.settings.manage` like the other desk settings: Segment 50 / 60 / 70 / 80 / 90 % (default 80), saved with Save settings (`PATCH desk/desks/:id`, version check, audited), toast |
 | Calendar · SD-1.11 My calendar | live | /yx/desk/calendar; the calendar feed link can be made and revoked |
 | SlaSetupTab · SD-1.14 Response targets (desk set-up tab) | live | /yx/desk/setup, SLA tab (`desk.sla.manage`) |
 | EmailSetup · SD-1.18 Email (desk set-up tab) | live | /yx/desk/setup, Email tab (`desk.mailbox.manage`) |
@@ -548,11 +551,11 @@ Live page: /yx/support (Security › Contact YukthiX), with `org.yukthix_support
   `desk.ticket.work`; moving to another desk `desk.ticket.move` and the desk's own forward list. No seat: 403 and the
   no-access state.
 - **Clocks** (product default): first response and resolution as business minutes used of the target on the desk's
-  calendar (the same engine as the ticket page); on track under 80 %, at risk from 80 %, missed at 100 %; paused while
+  calendar (the same engine as the ticket page); at risk from the desk's at-risk point (HLP-05b, default 80 %), missed at 100 %; paused while
   waiting on the employee. The banner counts tickets in the view with a missed target.
 - **Raised filter:** India days, both ends included; a bad or reversed range is refused (400).
-- **Built-in views** take the design's names: My open tickets, Unassigned, At risk or breached (missed or due within
-  4 hours), Waiting on employee, All open, Snoozed by me, All in my queues.
+- **Built-in views** take the design's names: My open tickets, Unassigned, At risk or breached (missed, or at risk by
+  the desk's at-risk point), Waiting on employee, All open, Snoozed by me, All in my queues.
 - Every success is a toast; bulk refusals stay on the page with each ticket and its reason; no button is greyed out
   (pressed too early, the field says why).
 
@@ -582,7 +585,8 @@ Live page: /yx/support (Security › Contact YukthiX), with `org.yukthix_support
   desk); collaborators and employees get 403 and the no-access state. `desk.survey.manage` alone opens on Surveys.
   Reassign shows with `desk.ticket.assign`; the server checks the assign itself. Another company's desk id is 404.
 - **Figures** (`GET desk/reports/sla`, India dates, both ends included, a year at most): open now and missed now;
-  at risk = 80 % of the resolution target used, missed = 100 %, paused while waiting on the employee (the HLP-02 rule);
+  at risk = the desk's at-risk point of the resolution target used (HLP-05b), missed = 100 %, paused while waiting on
+  the employee (the HLP-02 rule);
   the clock is the SLA engine's own business-minute maths (`SlaService.clocks`, no second implementation). Met % counts
   targets kept or missed in the period, excluded ones left out (the dashboard's rule); the change is against the same
   number of days just before. "Answered by an article" is the self-service rate (solved by an article, of those solved
@@ -593,6 +597,20 @@ Live page: /yx/support (Security › Contact YukthiX), with `org.yukthix_support
 - **Limit:** the newest 5000 open tickets get a live clock (code note `shortcut:`); a bigger desk set needs a stored
   clock state.
 - No new table and no migration. Success is a toast; nothing is greyed out.
+
+## 4d. HLP-05b rules built (the at-risk point per desk)
+
+- **Setting:** `sd_desks.at_risk_percent`, one of 50, 60, 70, 80, 90 (default 80; a CHECK in the database, the same
+  five in the API, anything else including null is 400). Migration `20261620000000_sd_desk_at_risk_percent` (adds a
+  column with a default to a table that already has RLS; no data change). A copied desk keeps it.
+- **Who:** set in Desk set-up › Settings with the other desk settings: `desk.settings.manage` and desk admin on that
+  desk (or the Service Desk admin); agents, leads and employees 403; another company's desk 404. Optimistic version
+  check (409); audited as `desk.desk.updated` with before and after.
+- **One rule:** `clockState` (api `sla.service.ts`) and `slaState` (kit `ops-rules.ts`) read the desk's point, which
+  every clock now carries (`atRiskPercent` in `GET desk/tickets`, `GET desk/reports/sla`, `GET desk/tickets/:id/sla`
+  and the help centre's clocks). Used by the HLP-05 cards and at-risk table, the HLP-02 "At risk or breached" view
+  (it was "missed or due within 4 hours") and the row and quick-view badges, and the ticket page and help-centre
+  badges. Missed stays at 100 %.
 
 ## 5. Two designs for one job
 
@@ -665,8 +683,7 @@ surveys). The HLP screens are the founder-approved look, sample-only.
 14. **HLP-05: period choice.** The design offers 7 / 30 / 90 days; the old page had any From / To dates (up to a year)
     for the library and funnel. *Suggested:* keep the design's three; add "Last 365 days" to the design first if
     finance-year reports are asked for.
-15. **HLP-05: at-risk point.** 80 % of the resolution target, the same as HLP-02, a product default. *Suggested:* keep;
-    make it a desk setting only if a customer asks.
+15. **HLP-05: at-risk point.** Answered 3 Nov 2026: a desk setting now (default 80 %, built in round 5b, see 4d).
 16. **HLP-05: the target line** shows only with one queue chosen (each queue has its own target). *Suggested:* keep.
 16. **HLP-04: review every 12 months.** Answered 3 Nov 2026: a company setting now (built in round 4b, see 4c).
 
