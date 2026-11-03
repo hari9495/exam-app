@@ -24,9 +24,15 @@ feature not built** (no API) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Helpdesk HLP-01 … 14 | 14 | 33 | 1 | 12 | 69 | 0 | 115 |
-| B. Service desk designs | 6 | 77 | 2 | 0 | 0 | 0 | 79 |
-| **All Helpdesk groups (A–B)** | **20** | **110** | **3** | **12** | **69** | **0** | **194** |
+| A. Helpdesk HLP-01 … 14 | 14 | 51 | 1 | 6 | 69 | 0 | 127 |
+| B. Service desk designs | 6 | 73 | 2 | 0 | 0 | 0 | 75 |
+| **All Helpdesk groups (A–B)** | **20** | **124** | **3** | **6** | **69** | **0** | **202** |
+
+Round 3 recount (script, 3 Nov 2026, `feat/yukthix-hlp-03`): HLP-03 has 18 stories (the 6 approved plus 12 drawn for
+the old workspace's states), all live; Phase 3b-1 loses the stand-in's 4 stories (Workspace, WorkspaceCollaborator,
+WorkspaceUnverified, ReplyTooEarly) and has 26; esm-live loses the 16 "Live ·" stories of the ticket side cards and the
+escalate dialog (94 left).
+Round 2 (HLP-02):
 
 Round 2 recount (script, 3 Nov 2026, `feat/yukthix-hlp-02`): HLP-02 has 20 stories (the 10 approved plus 10 drawn for
 the old agent screen's states), all live; Phase 3b-1 loses the stand-in's 3 stories (Tickets, Board,
@@ -63,7 +69,7 @@ groups them).
 | /yx/desk/help (?new=1, ?article=) | the designed `HelpCentreScreen` (HLP-01) with `live`: Find an answer, resolved-ticket card, My tickets with the resolution promise, the raise drawer (phone: bottom sheet); known issues, the chat offer, WhatsApp / SMS, reading aids and My data in the same layout | HLP-01 | `GET desk/my/tickets` (now with `clock`, `closesOn`, `reopenUntil`, `rating`, `canRate`), `POST desk/my/tickets`, `POST desk/my/tickets/:id/attachments`, `POST desk/my/tickets/:id/rating`, `GET desk/my/desks`, `GET desk/my/kb`, `/kb/suggest`, `/kb/articles/:n`, `POST /kb/articles/:id/feedback`, `GET desk/my/banners`, `POST …/me-too`, `GET/POST desk/my/privacy-requests`, `GET desk/my/chat/prompt`, `desk/my/messaging` (all implicit: the signed-in person's own records; 403 while acting for someone else) | live |
 | /yx/desk/help/[id] | `MyTicketScreen` with `RequestTracker`, `MyDocumentsCard` (stand-ins) | Phase 3b-1 MyTicket | `GET desk/my/tickets/:id`, `POST …/messages`, `/watchers`, `/attachments`, `GET desk/my/requests/:id`, `/documents`, `POST desk/my/documents/:id/sign` (implicit: the requester or a watcher) | live |
 | /yx/desk/tickets | the designed `AgentDeskScreen` (HLP-02) with `live`: views, filters (queue, priority, status, raised), table or board, quick view, bulk for team leads, move to another queue, new ticket for an employee, CSV | HLP-02 | `GET desk/tickets` (`desk.ticket.view`; now with `firstResponse`, `resolution`, `firstResponseAt`, and `createdFrom` / `createdTo`), `GET/POST desk/views` (`desk.ticket.view`), `POST desk/tickets`, `/:id/assign`, `PATCH desk/tickets/:id` (`desk.ticket.work`), `POST desk/tickets/bulk` (`desk.ticket.bulk`, lead of the desk), `POST desk/tickets/:id/move` (`desk.ticket.move`), `GET desk/tickets/export` (`desk.ticket.export`) | live |
-| /yx/desk/tickets/[id] | `TicketScreen` with `TicketWorkRail`, `ResolveDialog`, `EscalateDialog`, `RequestPanel`, `TicketEsmRail`, `TicketKbCard` (the last four are stand-ins) | Phase 3b-1 Workspace; HLP-03 not wired | `GET desk/tickets/:id`, `/timeline`, `/context`, `/sla`, `/work` (`desk.ticket.view`), `POST …/messages` (`desk.ticket.work` or `desk.ticket.note`), `/resolve`, `/escalate`, `/assign` (`desk.ticket.work`), `/merge` (`desk.ticket.merge`) | live (B); wire design (HLP-03) |
+| /yx/desk/tickets/[id] | the designed `TicketWorkspaceScreen` (HLP-03) with `live`: header with the resolution target, Wait on employee / Resume, Resolve; Conversation and Respond; rail with Requester, Details, the side cards (`RequestPanel`, `TicketEsmRail`, `TicketKbCard`, `TicketWorkRail`), Activity, source, people, time; `ResolveDialog`, `EscalateDialog` | HLP-03 | `GET desk/tickets/:id` (`desk.ticket.view`; now with `closesOn`, `rating`), `/timeline`, `/context`, `/sla`, `/work`, `POST …/messages` (`desk.ticket.work` or `desk.ticket.note`), `PATCH desk/tickets/:id`, `/resolve`, `/escalate`, `/assign` (`desk.ticket.work`), `/merge` (`desk.ticket.merge`), `/move` (`desk.ticket.move`) | live |
 | /yx/desk/knowledge | `KnowledgeScreen` (spaces, articles, editor with review, gaps, recycle bin) | HLP-04 Knowledge; HLP-04 Knowledge base editor not wired | `GET desk/kb/spaces`, `/articles` (`desk.kb.view_internal`, `desk.kb.author` or `desk.kb.publish`), `POST desk/kb/articles`, `/versions`, `/submit` (`desk.kb.author`), `/review`, `/retire` (`desk.kb.publish`), `GET desk/kb/gaps` (`desk.report.view` or `desk.kb.publish`) | live (B); wire design (HLP-04) |
 | /yx/desk/reports | `ReportsScreen` (dashboard, KPIs, library, funnel, my reports, walls, customers, NPS surveys) | Reports (HLP-05); HLP-05 SLA dashboard not wired | `GET desk/reports/*` (`desk.report.view`), custom reports, schedules, wallboards, KPI targets (`desk.report.manage`), `GET/POST desk/surveys` (`desk.survey.manage`); no-access state without either | live (B); wire design (HLP-05) |
 | /yx/wall/[org]/[token] | `WallScreen` | Reports (HLP-05) Wall | `GET desk/wall/:org/:token` (the secret link; counts only) | live |
@@ -87,14 +93,13 @@ groups them).
 
 ## 2. Live pages with no design (stand-in copies still)
 
-The design-live guard (`packages/yx-ui/src/design-live-guard.known.json`) lists 18 desk screens (20 before HLP-01: `ChatPromptBanner` and `MyChannelsCard` left with their 7 Live stories) under `liveCopies`:
+The design-live guard (`packages/yx-ui/src/design-live-guard.known.json`) lists 14 desk screens (18 before HLP-03, which took `EscalateDialog`, `RequestPanel`, `TicketEsmRail` and `TicketKbCard` into its design; 20 before HLP-01: `ChatPromptBanner` and `MyChannelsCard` left with their 7 Live stories) under `liveCopies`:
 live, but drawn only as "Live ·" pictures in `esm-live.stories.tsx`. Grouped by the design that should replace them:
 
 | stand-in (`liveCopies`) | live page | "Live ·" stories | design that should replace it |
 |---|---|---|---|
 | `ArticleBody` | /yx/desk/help (inside the article drawer), the portal | Help article (3) | HLP-01 "Article open" now draws it in the Help centre; it stays listed because the portal and agents' knowledge pages still show it only through Live stories |
 | `RequestTracker`, `MyDocumentsCard` | /yx/desk/help/[id] | My request (9) | HLP-01 (ticket and request view); no HLP story draws the approval route or documents to sign yet: draw first |
-| `RequestPanel`, `TicketEsmRail`, `TicketKbCard`, `EscalateDialog` | /yx/desk/tickets/[id] | Ticket (12), Escalate (4) | HLP-03 Ticket workspace (its rail must take these cards: kit first) |
 | `CatalogScreen` | /yx/desk/catalog | Catalogue (9) | none; HLP-01's "Raise ticket" is the nearest. Needs a design (service catalogue) |
 | `RequesterChatScreen`, `AgentChatScreen` | /yx/desk/chat, /yx/desk/live-chat | Chat (12), Live chat (8), Calls (1) | none (HLP-01's assistant thread is the AI assistant, not live chat). Needs a design |
 | `TeamScreen` | /yx/desk/team | Desk team (11) | none (HLP-05 is SLAs, not shifts). Needs a design |
@@ -185,17 +190,32 @@ the quick view with both targets, an agent who is not a lead, no access).
 
 #### HLP-03 · Ticket workspace
 
-Live page for this job: /yx/desk/tickets/[id] renders `TicketScreen` with `TicketWorkRail` (Phase 3b-1) and four
-stand-in cards (section 2).
+Live page: /yx/desk/tickets/[id] (from Helpdesk › Tickets, with `desk.ticket.view` and a seat on the desk). The page
+renders the designed `TicketWorkspaceScreen` (`screens/ops/helpdesk.tsx`) with `live`; the live part is
+`screens/ops/helpdesk-ticket-live.tsx`, and the side cards (request and approvals, move / share / documents /
+follow-ups, articles, related tickets and the rest of the work rail) sit in the design's rail. Round 3 (founder answer
+1): 12 stories were drawn in the same layout for the states the old workspace had.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Reply · Reply | wire design | live page /yx/desk/tickets/[id] renders TicketScreen (Phase 3b-1); reply through `POST desk/tickets/:id/messages` |
-| MacroInserted · Reply with saved reply | wire design | saved replies are the desk's canned responses (`desks/:id/my-canned-responses`), used by TicketScreen |
-| InternalNote · Internal note | wire design | notes exist (`desk.ticket.note`); a collaborator can only write notes |
-| WaitingOnEmployee · Waiting on employee (SLA paused) | wire design | the SLA engine pauses timers in a waiting state; TicketScreen shows the timers |
-| Breached · Breached SLA | wire design | the SLA engine marks breaches and asks for a breach reason (`POST …/sla/:timerId/breach-reason`) |
-| Resolved · Resolved | wire design | resolve with a code and note (`ResolveDialog`, `POST …/resolve`) |
+| Reply · Reply | live | the design's header (subject, number · queue · category · raised date via channel; status, priority, Resolution target badge from the ticket's timers; Wait on employee / Resume, Resolve, Assign to me), Conversation (replies, notes, files, merged messages), Respond with "Reply to <name>" (`POST desk/tickets/:id/messages`, `desk.ticket.work`), files (virus-checked), "Then set the status", toast; pressed with nothing written says so |
+| MacroInserted · Reply with saved reply | live | "Insert saved reply": the desk's saved replies (shared and mine) with the first name, number and agent filled in; "Insert an article" adds a link the requester can open |
+| InternalNote · Internal note | live | the Internal note tab (`desk.ticket.note`); "Tell colleagues" mentions; notes are marked "Internal note, not visible to <name>" and never reach the requester (e2e) |
+| WaitingOnEmployee · Waiting on employee (SLA paused) | live | "Wait on employee" sets the desk's waiting status (toast); the paused note and the paused badge; "Resume" sets the open status |
+| Breached · Breached SLA | live | the Resolution badge says "Breached …" from the timer; the breach reason and exclusion are in the rail's Response targets card |
+| Resolved · Resolved | live | Resolve opens the resolve dialog (code and note when the desk asks); the resolved note says "Closes on <date> if <name> doesn't reply" (new: `closesOn`, the desk's auto-close days) and the rating (new: `rating`) |
+| AgentWorking · Agent · colleague writing, mentions and files | live | new story: who else is on the ticket and who is writing (every 15 seconds); mentions; files |
+| RequestApprovals · Request and approvals · ask a colleague to approve | live | new story: the ordered items with their approval route and tasks; "Ask for approval" (any or all, the question; pressed too early says so) |
+| MoveShareDocs · Move, share, documents and follow-ups | live | new story: the HR summary, move to another desk (reason), share with another desk, documents to sign, follow-up sequences |
+| Articles · Articles used · solved by, out of date, make one | live | new story: articles used on the ticket, "Solved by this", "Out of date" with a reason, make a draft article |
+| RelatedTickets · Related tickets, merge, tasks, side conversations, targets, reminders | live | new story: link, merge (the design's "Merge into another ticket"), split, parent, tracker; tasks; side conversations; Response targets with breach reasons; reminders and snooze; hidden personal data |
+| Escalate · Move to another support level | live | new story: the header menu's "Move to another support level" (L1 / L2 / L3, group, reason; pressed with no reason says so) |
+| ResolveWithCode · Resolve · code and note | live | new story: the resolve dialog |
+| ResolvedRated · Resolved · closes on, the rating | live | new story |
+| Collaborator · Collaborator · notes only | live | new story: no Reply tab, no work controls (the server refuses a collaborator's reply, e2e) |
+| ReadOnly · Desk admin · read only | live | new story: "Read-only: you set this desk up"; no Respond card (the server refuses their notes) |
+| SenderUnverified · Email from an unproven sender, customer | live | new story: the warning; customer, plan and product in the rail |
+| NoAccess · No access (not on this desk) | live | new story: a 403 shows the no-access state |
 
 #### HLP-04 · Knowledge base editor
 
@@ -362,8 +382,6 @@ the HLP-01 stand-in and are not rows.
 | story (sub-page) | verdict | note |
 |---|---|---|
 | MyTicket · HLP-01 My ticket (requester view) | live | /yx/desk/help/[id] renders MyTicketScreen; replies, colleagues, files through `desk/my/tickets/:id` |
-| Workspace · HLP-03 Ticket workspace · agent, colleague typing | live | /yx/desk/tickets/[id] renders TicketScreen; presence through `POST desk/tickets/:id/presence` |
-| WorkspaceCollaborator · HLP-03 Ticket workspace · collaborator (notes only) | live | a collaborator (`desk.ticket.note`) writes notes only |
 | Setup · Desk set-up | live | /yx/desk/setup renders DeskSetupScreen |
 | Calendar · SD-1.11 My calendar | live | /yx/desk/calendar; the calendar feed link can be made and revoked |
 | SlaSetupTab · SD-1.14 Response targets (desk set-up tab) | live | /yx/desk/setup, SLA tab (`desk.sla.manage`) |
@@ -372,11 +390,9 @@ the HLP-01 stand-in and are not rows.
 | BannerSetup · SD-1.23 Banners (desk set-up tab) | live | /yx/desk/setup, Banners tab |
 | Customers · SD-1.22 Customers | live | /yx/desk/customers |
 | HelpDrawerOpen · US-B-100 In-app Help drawer | live | `HelpDrawer` on every signed-in page (`desk-help.tsx`) |
-| WorkspaceUnverified · SD-1.19 Ticket workspace · sender not verified, customer | live | an email ticket from a sender the mail checks did not verify; customer account and product |
 | PortalLogin · US-G-021 Outside portal · sign in | live | /yx/portal/[org]/[portal] renders PortalScreen |
 | PortalHomeStory · US-G-021 Outside portal · my tickets | live | the portal's own sign-in, then my tickets |
 | PortalTicketStory · US-G-021 Outside portal · one ticket | live | |
-| ReplyTooEarly · HLP-03 Ticket workspace · Send reply pressed with nothing written | live | |
 | ResolveTooEarly · SD-1.10 Resolve · pressed without a code or note | live | `ResolveDialog` when the desk needs a resolution code |
 | NewDeskTooEarly · Desk set-up · Create desk pressed with nothing filled | live | |
 | HolidayTooEarly · Desk set-up · Add holiday pressed with no date or name | live | |
@@ -518,7 +534,7 @@ HLP-02 … 05 (founder-approved Helpdesk designs, `screens/ops/helpdesk.tsx`) an
 | job | HLP design (not live) | B design (live) | live page |
 |---|---|---|---|
 | agent's ticket list | HLP-02 `AgentDeskScreen` | done in round 2: the HLP design is live, `DeskTicketsScreen` deleted | /yx/desk/tickets |
-| one ticket | HLP-03 `TicketWorkspaceScreen` | `TicketScreen` + `TicketWorkRail` | /yx/desk/tickets/[id] |
+| one ticket | HLP-03 `TicketWorkspaceScreen` | done in round 3: the HLP design is live, `TicketScreen` deleted (its side cards sit in the design's rail) | /yx/desk/tickets/[id] |
 | knowledge articles | HLP-04 `KbEditorScreen` | `KnowledgeScreen` | /yx/desk/knowledge |
 | SLA view | HLP-05 `SlaDashboardScreen` | `ReportsScreen` | /yx/desk/reports |
 
@@ -560,12 +576,20 @@ surveys). The HLP screens are the founder-approved look, sample-only.
 12. **HLP-02: the row opens the quick view** (the design), not the ticket page; "Open ticket" is one more click.
     *Suggested:* keep (agents can scan and assign without leaving the list).
 
+13. **HLP-03: the design's "Change queue" and "Merge into another ticket"** menu items are the rail's Move card and
+    Related tickets card (they need the desk, the other ticket and a reason). The header menu keeps Change ticket type,
+    Move to another support level and the desk's scenarios. *Suggested:* keep.
+14. **HLP-03: the design's "Related articles" card** is the live "Articles used" card (articles linked or that solved
+    it, out of date, make one); suggesting articles by the subject happens in "Insert an article". *Suggested:* keep.
+15. **HLP-03: Details are editable** (status, priority with a reason, assignee, group, category, tags, private) where
+    the design shows them read only; an agent who cannot work the ticket sees them as text. *Suggested:* keep.
+
 ## 7. Next pages (recommended order, with sizes)
 
 | order | page | size | why |
 |---|---|---|---|
 | 1 | ~~HLP-02 Agent desk~~ (done, round 2) | M | most used by agents; design and server exist; replace `DeskTicketsScreen` at /yx/desk/tickets (draw board and saved views first) |
-| 2 | HLP-03 Ticket workspace | L | design and server exist; replace `TicketScreen`; the rail must take the 4 stand-in cards (request panel, ESM rail, KB card, escalate) |
+| 2 | ~~HLP-03 Ticket workspace~~ (done, round 3) | L | design and server exist; replace `TicketScreen`; the rail must take the 4 stand-in cards (request panel, ESM rail, KB card, escalate) |
 | 3 | HLP-04 Knowledge base editor | M | design and server exist (versions, review due); replace `KnowledgeScreen` (draw spaces and gaps first) |
 | 4 | HLP-05 SLA dashboard | M | server has SLA timers and reports; add the per-queue at-risk view to /yx/desk/reports and fold the report tabs into the HLP look |
 | 5 | Request tracker and documents (help/[id]) | S | draw in HLP-01's look, replace `RequestTracker`, `MyDocumentsCard` |

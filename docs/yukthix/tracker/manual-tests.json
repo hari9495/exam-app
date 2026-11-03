@@ -13094,5 +13094,197 @@
       "Screens/Helpdesk/HLP-02 · Agent desk"
     ],
     "note": "Negative."
+  },
+  {
+    "id": "MT-HLP-03-01",
+    "area": "Helpdesk · HLP-03 Ticket workspace (3 Nov 2026)",
+    "screen": "Workspace · the design layout",
+    "url": "http://localhost:3000/yx/desk/tickets",
+    "account": "An IT help desk agent (agent seat on \"IT help desk\"). Browser window 1278 x 635, sidebar open. Before: arjun@demo-org.test raises \"VPN drops at home\" on IT help desk.",
+    "steps": [
+      "1. Open Tickets › All open, click Arjun's ticket, press Open ticket."
+    ],
+    "expected": "The page matches the HLP-03 design: header with subject, number · queue · raised date via channel, status, priority and the Resolution badge; buttons Assign to me, Wait on employee, Resolve; Conversation; Respond (Reply to Arjun / Internal note); rail with Requester, Details, the side cards, Activity. The breadcrumb reads Helpdesk › Tickets.",
+    "stories": [
+      "Screens/Helpdesk/HLP-03 · Ticket workspace"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HLP-03-02",
+    "area": "Helpdesk · HLP-03 Ticket workspace (3 Nov 2026)",
+    "screen": "Reply · pressed too early, then sent",
+    "url": "http://localhost:3000/yx/desk/tickets",
+    "account": "An IT help desk agent (agent seat on \"IT help desk\"). Browser window 1278 x 635, sidebar open. Before: arjun@demo-org.test raises \"VPN drops at home\" on IT help desk.",
+    "steps": [
+      "1. Press Send reply with nothing written.",
+      "2. Write \"Please restart the VPN client.\", Then set the status = Waiting on employee, press Send reply."
+    ],
+    "expected": "Step 1: \"Write your reply to Arjun first.\" and nothing is sent. Step 2: toast \"Reply sent to Arjun.\"; the reply is in the Conversation; the status is waiting and the Resolution badge says Paused. Arjun sees the reply in his Help centre.",
+    "stories": [
+      "Screens/Helpdesk/HLP-03 · Ticket workspace"
+    ],
+    "note": "Positive + negative."
+  },
+  {
+    "id": "MT-HLP-03-03",
+    "area": "Helpdesk · HLP-03 Ticket workspace (3 Nov 2026)",
+    "screen": "Internal note with a mention",
+    "url": "http://localhost:3000/yx/desk/tickets",
+    "account": "An IT help desk agent (agent seat on \"IT help desk\"). Browser window 1278 x 635, sidebar open. Before: arjun@demo-org.test raises \"VPN drops at home\" on IT help desk.",
+    "steps": [
+      "1. Choose Internal note, write \"Proxy logs checked\", tell a colleague, press Add note.",
+      "2. As Arjun open the ticket in the Help centre."
+    ],
+    "expected": "Step 1: toast \"Note added. Only colleagues see it.\"; the note is marked \"Internal note, not visible to Arjun\"; the colleague gets a notice. Step 2: Arjun does not see the note.",
+    "stories": [
+      "Screens/Helpdesk/HLP-03 · Ticket workspace"
+    ],
+    "note": "Positive + negative (privacy)."
+  },
+  {
+    "id": "MT-HLP-03-04",
+    "area": "Helpdesk · HLP-03 Ticket workspace (3 Nov 2026)",
+    "screen": "Saved reply and an article link",
+    "url": "http://localhost:3000/yx/desk/tickets",
+    "account": "An IT help desk agent (agent seat on \"IT help desk\"). Browser window 1278 x 635, sidebar open. Before: arjun@demo-org.test raises \"VPN drops at home\" on IT help desk.",
+    "steps": [
+      "1. Press Insert saved reply and pick one.",
+      "2. Press Insert an article, search \"wifi\" and pick one."
+    ],
+    "expected": "The saved reply text comes in with Arjun's first name and the ticket number; the article link is added to the reply and the article shows in \"Articles used\".",
+    "stories": [
+      "Screens/Helpdesk/HLP-03 · Ticket workspace"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HLP-03-05",
+    "area": "Helpdesk · HLP-03 Ticket workspace (3 Nov 2026)",
+    "screen": "Wait on employee and Resume",
+    "url": "http://localhost:3000/yx/desk/tickets",
+    "account": "An IT help desk agent (agent seat on \"IT help desk\"). Browser window 1278 x 635, sidebar open. Before: arjun@demo-org.test raises \"VPN drops at home\" on IT help desk.",
+    "steps": [
+      "1. Press Wait on employee.",
+      "2. Press Resume."
+    ],
+    "expected": "Step 1: toast; the info note \"The response clock is paused while you wait for Arjun\"; the badge says Paused. Step 2: toast \"The clock runs again.\"",
+    "stories": [
+      "Screens/Helpdesk/HLP-03 · Ticket workspace"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HLP-03-06",
+    "area": "Helpdesk · HLP-03 Ticket workspace (3 Nov 2026)",
+    "screen": "Priority change needs a reason",
+    "url": "http://localhost:3000/yx/desk/tickets",
+    "account": "An IT help desk agent (agent seat on \"IT help desk\"). Browser window 1278 x 635, sidebar open. Before: arjun@demo-org.test raises \"VPN drops at home\" on IT help desk.",
+    "steps": [
+      "1. In Details choose P1.",
+      "2. Press Change priority with no reason.",
+      "3. Write \"CEO cannot work\" and press Change priority."
+    ],
+    "expected": "Step 2: \"Say why (at least 3 letters).\" Step 3: toast \"Priority changed to P1.\"; Activity shows \"Priority changed: P2 → P1: CEO cannot work\".",
+    "stories": [
+      "Screens/Helpdesk/HLP-03 · Ticket workspace"
+    ],
+    "note": "Positive + negative."
+  },
+  {
+    "id": "MT-HLP-03-07",
+    "area": "Helpdesk · HLP-03 Ticket workspace (3 Nov 2026)",
+    "screen": "Resolve and the resolved note",
+    "url": "http://localhost:3000/yx/desk/tickets",
+    "account": "An IT help desk agent (agent seat on \"IT help desk\"). Browser window 1278 x 635, sidebar open. Before: arjun@demo-org.test raises \"VPN drops at home\" on IT help desk.",
+    "steps": [
+      "1. Press Resolve; if the desk asks for a code, press Resolve in the dialog with nothing chosen.",
+      "2. Choose a code, write a note, resolve.",
+      "3. As Arjun rate it 4 in the Help centre; reload the agent's page."
+    ],
+    "expected": "Step 1: the dialog says what is missing. Step 2: the status is resolved; the note says \"Closes on <3 days later> if Arjun doesn't reply. Arjun has not rated it yet.\" Step 3: \"Arjun rated this ticket 4 of 5.\"",
+    "stories": [
+      "Screens/Helpdesk/HLP-03 · Ticket workspace"
+    ],
+    "note": "Positive + negative."
+  },
+  {
+    "id": "MT-HLP-03-08",
+    "area": "Helpdesk · HLP-03 Ticket workspace (3 Nov 2026)",
+    "screen": "Move to another support level",
+    "url": "http://localhost:3000/yx/desk/tickets",
+    "account": "An IT help desk agent (agent seat on \"IT help desk\"). Browser window 1278 x 635, sidebar open. Before: arjun@demo-org.test raises \"VPN drops at home\" on IT help desk.",
+    "steps": [
+      "1. In the header menu choose Move to another support level, press the move button without a reason.",
+      "2. Give the reason and move."
+    ],
+    "expected": "Step 1: the reason field says it is needed. Step 2: toast; the header shows Level L2.",
+    "stories": [
+      "Screens/Helpdesk/HLP-03 · Ticket workspace"
+    ],
+    "note": "Positive + negative."
+  },
+  {
+    "id": "MT-HLP-03-09",
+    "area": "Helpdesk · HLP-03 Ticket workspace (3 Nov 2026)",
+    "screen": "Side cards",
+    "url": "http://localhost:3000/yx/desk/tickets",
+    "account": "An IT help desk agent (agent seat on \"IT help desk\"). Browser window 1278 x 635, sidebar open. Before: arjun@demo-org.test raises \"VPN drops at home\" on IT help desk.",
+    "steps": [
+      "1. In the rail: ask a colleague to approve (Request and approvals) with nothing filled, then properly.",
+      "2. Mark an article Out of date with a reason.",
+      "3. In Related tickets link another of Arjun's tickets."
+    ],
+    "expected": "Step 1: \"Write the question.\" and \"Choose at least one colleague.\" first, then the approval request shows in the card. Step 2 and 3: each card updates.",
+    "stories": [
+      "Screens/Helpdesk/HLP-03 · Ticket workspace"
+    ],
+    "note": "Positive + negative."
+  },
+  {
+    "id": "MT-HLP-03-10",
+    "area": "Helpdesk · HLP-03 Ticket workspace (3 Nov 2026)",
+    "screen": "Collaborator · notes only",
+    "url": "http://localhost:3000/yx/desk/tickets",
+    "account": "The agent, then a desk collaborator of IT help desk",
+    "steps": [
+      "1. Add a desk collaborator to the ticket (People on this ticket).",
+      "2. Sign in as that collaborator and open the ticket."
+    ],
+    "expected": "No \"Reply to Arjun\" tab, no Resolve or Wait buttons, no Log time; Internal note works.",
+    "stories": [
+      "Screens/Helpdesk/HLP-03 · Ticket workspace"
+    ],
+    "note": "Negative + positive."
+  },
+  {
+    "id": "MT-HLP-03-11",
+    "area": "Helpdesk · HLP-03 Ticket workspace (3 Nov 2026)",
+    "screen": "Desk admin · read only",
+    "url": "http://localhost:3000/yx/desk/tickets",
+    "account": "An IT help desk admin (admin seat)",
+    "steps": [
+      "1. Sign in as an IT help desk admin (set-up seat, not an agent) and open the ticket."
+    ],
+    "expected": "\"Read-only: you set this desk up\"; no Respond card; Details show as text.",
+    "stories": [
+      "Screens/Helpdesk/HLP-03 · Ticket workspace"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-HLP-03-12",
+    "area": "Helpdesk · HLP-03 Ticket workspace (3 Nov 2026)",
+    "screen": "No access and another person's ticket",
+    "url": "http://localhost:3000/yx/desk/tickets",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, employee)",
+    "steps": [
+      "1. As arjun@demo-org.test open /yx/desk/tickets/<the ticket id>."
+    ],
+    "expected": "\"You don't have access to this ticket\" (not an error); nothing of the ticket shows.",
+    "stories": [
+      "Screens/Helpdesk/HLP-03 · Ticket workspace"
+    ],
+    "note": "Negative."
   }
 ]
