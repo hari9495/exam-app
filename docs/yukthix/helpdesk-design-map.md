@@ -4,11 +4,13 @@ This file checks, story by story, that every Helpdesk / Service desk design sub-
 People, Pay, Time, Performance and Expenses were checked the same way (see `expenses-design-map.md` and the others).
 Founder rule: never build a second, simpler version of a designed screen; make the designed one live.
 
-Status 3 Nov 2026 (branch `feat/yukthix-hlp-01`): two sets of designs cover the same jobs. **A.** The founder's
+Status 3 Nov 2026 (branch `feat/yukthix-hlp-02`): two sets of designs cover the same jobs. **A.** The founder's
 Helpdesk designs HLP-01 … 14 (`packages/yx-ui/src/screens/ops/helpdesk.tsx`, `cases.tsx`, `cases-more.tsx`) and **B.**
 the Service desk designs built with the desk server (`packages/yx-ui/src/screens/desk/*`). Every live page under
 /yx/desk renders a B screen (or a stand-in copy) except /yx/desk/help, which now renders the designed HLP-01 screen
-with `live` (round 1). The stand-in it replaced (desk `HelpCentreScreen` in `screens/desk/help.tsx`) is deleted with
+with `live` (round 1), and /yx/desk/tickets, which now renders the designed HLP-02 agent desk with `live` (round 2;
+its stand-in `DeskTicketsScreen` in `screens/desk/tickets.tsx` is deleted with its 3 Phase 3b-1 stories and 3 tests).
+The HLP-01 stand-in (desk `HelpCentreScreen` in `screens/desk/help.tsx`) is deleted with
 its six stories in `desk.stories.tsx`, its tests, and the 7 "Live ·" stories of its chat offer and WhatsApp / SMS cards. The server for HLP-01 … 05
 exists (`apps/api/src/service-desk`: tickets, catalogue, SLA, knowledge base, surveys, reports). HLP-06 … 14 (speak-up,
 cases, ethics desk, policies, accidents, disputes, the policy writer) have no server at all.
@@ -22,9 +24,14 @@ feature not built** (no API) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Helpdesk HLP-01 … 14 | 14 | 13 | 1 | 22 | 69 | 0 | 105 |
-| B. Service desk designs | 6 | 80 | 2 | 0 | 0 | 0 | 82 |
-| **All Helpdesk groups (A–B)** | **20** | **93** | **3** | **22** | **69** | **0** | **187** |
+| A. Helpdesk HLP-01 … 14 | 14 | 33 | 1 | 12 | 69 | 0 | 115 |
+| B. Service desk designs | 6 | 77 | 2 | 0 | 0 | 0 | 79 |
+| **All Helpdesk groups (A–B)** | **20** | **110** | **3** | **12** | **69** | **0** | **194** |
+
+Round 2 recount (script, 3 Nov 2026, `feat/yukthix-hlp-02`): HLP-02 has 20 stories (the 10 approved plus 10 drawn for
+the old agent screen's states), all live; Phase 3b-1 loses the stand-in's 3 stories (Tickets, Board,
+NewTicketTooEarly) and has 30.
+Round 1 (HLP-01):
 
 Counted by script 3 Nov 2026 on `feat/yukthix-hlp-01` (the script is in the appendix): every `export const` story in
 the fourteen `hlp-NN.stories.tsx` files and the six Service desk design files against the rows in section 4. HLP-01 has
@@ -55,7 +62,7 @@ groups them).
 |---|---|---|---|---|
 | /yx/desk/help (?new=1, ?article=) | the designed `HelpCentreScreen` (HLP-01) with `live`: Find an answer, resolved-ticket card, My tickets with the resolution promise, the raise drawer (phone: bottom sheet); known issues, the chat offer, WhatsApp / SMS, reading aids and My data in the same layout | HLP-01 | `GET desk/my/tickets` (now with `clock`, `closesOn`, `reopenUntil`, `rating`, `canRate`), `POST desk/my/tickets`, `POST desk/my/tickets/:id/attachments`, `POST desk/my/tickets/:id/rating`, `GET desk/my/desks`, `GET desk/my/kb`, `/kb/suggest`, `/kb/articles/:n`, `POST /kb/articles/:id/feedback`, `GET desk/my/banners`, `POST …/me-too`, `GET/POST desk/my/privacy-requests`, `GET desk/my/chat/prompt`, `desk/my/messaging` (all implicit: the signed-in person's own records; 403 while acting for someone else) | live |
 | /yx/desk/help/[id] | `MyTicketScreen` with `RequestTracker`, `MyDocumentsCard` (stand-ins) | Phase 3b-1 MyTicket | `GET desk/my/tickets/:id`, `POST …/messages`, `/watchers`, `/attachments`, `GET desk/my/requests/:id`, `/documents`, `POST desk/my/documents/:id/sign` (implicit: the requester or a watcher) | live |
-| /yx/desk/tickets | `DeskTicketsScreen` (list and board, built-in and saved views, bulk, new ticket) | Phase 3b-1 Tickets, Board; HLP-02 not wired | `GET desk/tickets`, `GET/POST desk/views` (`desk.ticket.view`), `POST desk/tickets` (`desk.ticket.work`), `POST desk/tickets/bulk` (`desk.ticket.bulk`), `GET desk/tickets/export` (`desk.ticket.export`) | live (B); wire design (HLP-02) |
+| /yx/desk/tickets | the designed `AgentDeskScreen` (HLP-02) with `live`: views, filters (queue, priority, status, raised), table or board, quick view, bulk for team leads, move to another queue, new ticket for an employee, CSV | HLP-02 | `GET desk/tickets` (`desk.ticket.view`; now with `firstResponse`, `resolution`, `firstResponseAt`, and `createdFrom` / `createdTo`), `GET/POST desk/views` (`desk.ticket.view`), `POST desk/tickets`, `/:id/assign`, `PATCH desk/tickets/:id` (`desk.ticket.work`), `POST desk/tickets/bulk` (`desk.ticket.bulk`, lead of the desk), `POST desk/tickets/:id/move` (`desk.ticket.move`), `GET desk/tickets/export` (`desk.ticket.export`) | live |
 | /yx/desk/tickets/[id] | `TicketScreen` with `TicketWorkRail`, `ResolveDialog`, `EscalateDialog`, `RequestPanel`, `TicketEsmRail`, `TicketKbCard` (the last four are stand-ins) | Phase 3b-1 Workspace; HLP-03 not wired | `GET desk/tickets/:id`, `/timeline`, `/context`, `/sla`, `/work` (`desk.ticket.view`), `POST …/messages` (`desk.ticket.work` or `desk.ticket.note`), `/resolve`, `/escalate`, `/assign` (`desk.ticket.work`), `/merge` (`desk.ticket.merge`) | live (B); wire design (HLP-03) |
 | /yx/desk/knowledge | `KnowledgeScreen` (spaces, articles, editor with review, gaps, recycle bin) | HLP-04 Knowledge; HLP-04 Knowledge base editor not wired | `GET desk/kb/spaces`, `/articles` (`desk.kb.view_internal`, `desk.kb.author` or `desk.kb.publish`), `POST desk/kb/articles`, `/versions`, `/submit` (`desk.kb.author`), `/review`, `/retire` (`desk.kb.publish`), `GET desk/kb/gaps` (`desk.report.view` or `desk.kb.publish`) | live (B); wire design (HLP-04) |
 | /yx/desk/reports | `ReportsScreen` (dashboard, KPIs, library, funnel, my reports, walls, customers, NPS surveys) | Reports (HLP-05); HLP-05 SLA dashboard not wired | `GET desk/reports/*` (`desk.report.view`), custom reports, schedules, wallboards, KPI targets (`desk.report.manage`), `GET/POST desk/surveys` (`desk.survey.manage`); no-access state without either | live (B); wire design (HLP-05) |
@@ -93,8 +100,7 @@ live, but drawn only as "Live ·" pictures in `esm-live.stories.tsx`. Grouped by
 | `TeamScreen` | /yx/desk/team | Desk team (11) | none (HLP-05 is SLAs, not shifts). Needs a design |
 | `CatalogAdmin`, `RulesAdmin`, `LifecycleAdmin`, `ChatQueuesAdmin`, `DeskOrgAdmin`, `SchedulesAdmin`, `MessagingAdmin` | /yx/desk/setup | Set-up (41) | none; the Phase 3b-1 set-up tabs are designs for the rest of the same page. Needs designs per tab |
 
-And under `notLive`: designed, with no live page rendering them. `ops: AgentDeskScreen` (HLP-02), `ops:
-TicketWorkspaceScreen` (HLP-03), `ops: KbEditorScreen` (HLP-04), `ops: SlaDashboardScreen` (HLP-05) have a live page
+And under `notLive`: designed, with no live page rendering them. `ops: TicketWorkspaceScreen` (HLP-03; HLP-02 left the list in round 2), `ops: KbEditorScreen` (HLP-04), `ops: SlaDashboardScreen` (HLP-05) have a live page
 doing the same job with a B screen (section 5). `ops: SpeakUpScreen`, `ops: CheckReportScreen` (HLP-06), `ops:
 MyCasesScreen` (HLP-07), `ops: CaseListScreen`, `ops: CaseWorkspaceScreen`, `ops: LoadingCase`, `ops: ErrorCase`
 (HLP-08), `ops: EthicsDeskScreen` (HLP-09), `ops: PolicyLibraryScreen` (HLP-10), `ops: PolicyAdminScreen` (HLP-11),
@@ -148,21 +154,34 @@ chat offer and WhatsApp / SMS help, no access).
 
 #### HLP-02 · Agent desk
 
-Live page for this job: /yx/desk/tickets renders `DeskTicketsScreen` (Phase 3b-1). The server has everything the
-design shows (views, SLA "breaching soon", unassigned, bulk, sensitive tickets hidden by `desk-access.ts`).
+Live page: /yx/desk/tickets (menu Helpdesk › Tickets, with `desk.ticket.view`). The page renders the designed
+`AgentDeskScreen` (`screens/ops/helpdesk.tsx`) with `live`; the live part is `screens/ops/helpdesk-desk-live.tsx`. Round
+2 (founder answer 1: the HLP design wins): 10 stories were drawn in the same layout for the states the old agent screen
+had (board, saved views, change priority, move to another queue, tags, bulk refusals, a new ticket for an employee,
+the quick view with both targets, an agent who is not a lead, no access).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| MyOpenTickets · My open tickets | wire design | live page /yx/desk/tickets renders DeskTicketsScreen (Phase 3b-1); its built-in view "My open tickets" is the same filter |
-| AtRisk · At risk or breached view | wire design | live: built-in view "Breaching soon" (`breaching` filter from the SLA timers) |
-| Unassigned · Unassigned | wire design | live: built-in view "Unassigned" |
-| QuickView · Row quick view | wire design | DeskTicketsScreen has no quick view; a row opens the ticket page |
-| Bulk · Bulk selection | wire design | live: bulk move / assign through `POST desk/tickets/bulk` (`desk.ticket.bulk`) |
-| ItAgentNoSensitive · IT agent (sensitive tickets hidden) | wire design | the server already hides sensitive and private tickets from anyone not on the desk's HR side |
-| Filtered · Filtered to nothing | wire design | DeskTicketsScreen's own empty filter state |
-| Empty · Empty | wire design | DeskTicketsScreen's empty state |
-| Loading · Loading | wire design | DeskTicketsScreen `state="loading"` |
-| Error · Error | wire design | DeskTicketsScreen `state="error"` |
+| MyOpenTickets · My open tickets | live | the page opens on "My open tickets" (`assignee=me`, open states). Columns as the design: ticket, subject (lock on sensitive or private, VIP and not-verified marks), requester, queue (the desk), category, priority, status, Resolution SLA (new: business minutes used of the target from `GET desk/tickets`), assignee; facts "N in this view · M past the target" |
+| AtRisk · At risk or breached view | live | built-in view "At risk or breached" (`breaching`: a target missed or due within 4 hours); the banner's "Show breaching tickets" opens it |
+| Unassigned · Unassigned | live | built-in view "Unassigned" |
+| QuickView · Row quick view | live | a row opens the design's drawer: requester, priority, assignee, raised (date and channel), first response and resolution targets (new clocks; "Met" once answered or solved); "Assign to me" (`POST desk/tickets/:id/assign`, `desk.ticket.work`, toast) and "Open ticket" |
+| Bulk · Bulk selection | live | team leads only (`canBulk`: `desk.ticket.bulk` and lead on that desk): "Assign N to me", "Change priority", "Move to queue", "Add a tag", up to two scenarios; a toast says how many changed |
+| ItAgentNoSensitive · IT agent (sensitive tickets hidden) | live | the server lists sensitive and private tickets only to their own team (`visibleTickets`, RLS); desk admins never see them (e2e) |
+| Filtered · Filtered to nothing | live | filter bar: queue (when on more than one desk), priority, status, Raised (new `createdFrom` / `createdTo`, India days); "Clear filters" goes back to the view |
+| Empty · Empty | live | "No tickets in your queues." |
+| Loading · Loading | live | while desks and views load (the table's loading rows) |
+| Error · Error | live | either fails; Try again refetches (a 403 shows the no-access state instead) |
+| Board · Board · tickets by state | live | new story: the "Show as" Segment's Board; moving a card changes the state through the desk's status for it (a desk without one says so) |
+| SavedView · Saved views · my own view open | live | new story: built-in and saved views in the design's view menu; "Save as" (`POST desk/views`, shared only with one desk), toast |
+| ChangePriority · Bulk · change priority (with a reason) | live | new story: Segment P1 … P4 and the reason (3 to 300 letters, pressed too early says so); `POST desk/tickets/bulk` |
+| MoveQueue · Bulk · move to another queue | live | new story: the desks this desk may forward to (Desk set-up); desk and reason required; each ticket `POST desk/tickets/:id/move` (`desk.ticket.move`); the ones refused are listed |
+| AddTag · Bulk · add a tag | live | new story: letters, digits, spaces, dashes, up to 40 |
+| BulkRefused · Bulk · some tickets not changed | live | new story: "N changed. M not changed: <ticket>: <reason>" stays on the page |
+| NewTicket · New ticket for an employee | live | new story: desk, find the employee, category, subject, what they need (all required but category; pressed too early says so); `POST desk/tickets` (`desk.ticket.work`), then the ticket opens |
+| QuickViewLive · Quick view · both response targets, assign to me | live | new story: a ticket past both targets |
+| AgentNotLead · Agent (not a team lead) · no bulk selection | live | new story: no tick boxes; row actions Assign to me, Set waiting on employee (the desk's waiting status, pauses the clock, toast), Open ticket (reply, merge, resolve) |
+| NoAccess · No access (no desk seat) | live | new story: the API refuses (403) anyone without `desk.ticket.view`; the kit's no-access state |
 
 #### HLP-03 · Ticket workspace
 
@@ -343,8 +362,6 @@ the HLP-01 stand-in and are not rows.
 | story (sub-page) | verdict | note |
 |---|---|---|
 | MyTicket · HLP-01 My ticket (requester view) | live | /yx/desk/help/[id] renders MyTicketScreen; replies, colleagues, files through `desk/my/tickets/:id` |
-| Tickets · HLP-02 Agent desk · list | live | /yx/desk/tickets renders DeskTicketsScreen, list layout (HLP-02 design not wired: section 5) |
-| Board · HLP-02 Agent desk · board | live | /yx/desk/tickets, board layout; moving a card changes the state |
 | Workspace · HLP-03 Ticket workspace · agent, colleague typing | live | /yx/desk/tickets/[id] renders TicketScreen; presence through `POST desk/tickets/:id/presence` |
 | WorkspaceCollaborator · HLP-03 Ticket workspace · collaborator (notes only) | live | a collaborator (`desk.ticket.note`) writes notes only |
 | Setup · Desk set-up | live | /yx/desk/setup renders DeskSetupScreen |
@@ -359,7 +376,6 @@ the HLP-01 stand-in and are not rows.
 | PortalLogin · US-G-021 Outside portal · sign in | live | /yx/portal/[org]/[portal] renders PortalScreen |
 | PortalHomeStory · US-G-021 Outside portal · my tickets | live | the portal's own sign-in, then my tickets |
 | PortalTicketStory · US-G-021 Outside portal · one ticket | live | |
-| NewTicketTooEarly · HLP-02 New ticket · Raise ticket pressed with nothing filled | live | the field errors, focus on the first, nothing sent |
 | ReplyTooEarly · HLP-03 Ticket workspace · Send reply pressed with nothing written | live | |
 | ResolveTooEarly · SD-1.10 Resolve · pressed without a code or note | live | `ResolveDialog` when the desk needs a resolution code |
 | NewDeskTooEarly · Desk set-up · Create desk pressed with nothing filled | live | |
@@ -478,6 +494,22 @@ Live page: /yx/support (Security › Contact YukthiX), with `org.yukthix_support
 - **Plain refusals stay on the page**; every success is a toast; Raise ticket and Send rating are never disabled
   (pressed too early they say what is missing and focus the field).
 
+## 4b. HLP-02 rules built (round 2)
+
+- **Who:** `desk.ticket.view` lists tickets; the server lists only what the person may see (their desks; sensitive and
+  private tickets only to their own team, never to desk admins; RLS). Changing many at once needs `desk.ticket.bulk`
+  and being a team lead of that desk (`canBulk` per row; an agent gets no tick boxes). Assign to me and Set waiting need
+  `desk.ticket.work`; moving to another desk `desk.ticket.move` and the desk's own forward list. No seat: 403 and the
+  no-access state.
+- **Clocks** (product default): first response and resolution as business minutes used of the target on the desk's
+  calendar (the same engine as the ticket page); on track under 80 %, at risk from 80 %, missed at 100 %; paused while
+  waiting on the employee. The banner counts tickets in the view with a missed target.
+- **Raised filter:** India days, both ends included; a bad or reversed range is refused (400).
+- **Built-in views** take the design's names: My open tickets, Unassigned, At risk or breached (missed or due within
+  4 hours), Waiting on employee, All open, Snoozed by me, All in my queues.
+- Every success is a toast; bulk refusals stay on the page with each ticket and its reason; no button is greyed out
+  (pressed too early, the field says why).
+
 ## 5. Two designs for one job
 
 HLP-02 … 05 (founder-approved Helpdesk designs, `screens/ops/helpdesk.tsx`) and the Service desk designs (Phase 3b-1,
@@ -485,7 +517,7 @@ HLP-02 … 05 (founder-approved Helpdesk designs, `screens/ops/helpdesk.tsx`) an
 
 | job | HLP design (not live) | B design (live) | live page |
 |---|---|---|---|
-| agent's ticket list | HLP-02 `AgentDeskScreen` | `DeskTicketsScreen` | /yx/desk/tickets |
+| agent's ticket list | HLP-02 `AgentDeskScreen` | done in round 2: the HLP design is live, `DeskTicketsScreen` deleted | /yx/desk/tickets |
 | one ticket | HLP-03 `TicketWorkspaceScreen` | `TicketScreen` + `TicketWorkRail` | /yx/desk/tickets/[id] |
 | knowledge articles | HLP-04 `KbEditorScreen` | `KnowledgeScreen` | /yx/desk/knowledge |
 | SLA view | HLP-05 `SlaDashboardScreen` | `ReportsScreen` | /yx/desk/reports |
@@ -521,11 +553,18 @@ surveys). The HLP screens are the founder-approved look, sample-only.
 9. **HLP-01: the resolved card shows one ticket** (the newest that can still be rated or reopened), as the design.
    *Suggested:* keep; older ones are rated from the ticket page.
 
+10. **HLP-02: "Merge into another ticket"** (a design row action) opens the ticket, where merge already lives (it needs
+    the other ticket chosen and checked). *Suggested:* keep.
+11. **HLP-02: "Move to queue"** moves only to the desks this desk may forward to (Desk set-up), one ticket at a time on
+    the server, each with the reason. *Suggested:* keep.
+12. **HLP-02: the row opens the quick view** (the design), not the ticket page; "Open ticket" is one more click.
+    *Suggested:* keep (agents can scan and assign without leaving the list).
+
 ## 7. Next pages (recommended order, with sizes)
 
 | order | page | size | why |
 |---|---|---|---|
-| 1 | HLP-02 Agent desk | M | most used by agents; design and server exist; replace `DeskTicketsScreen` at /yx/desk/tickets (draw board and saved views first) |
+| 1 | ~~HLP-02 Agent desk~~ (done, round 2) | M | most used by agents; design and server exist; replace `DeskTicketsScreen` at /yx/desk/tickets (draw board and saved views first) |
 | 2 | HLP-03 Ticket workspace | L | design and server exist; replace `TicketScreen`; the rail must take the 4 stand-in cards (request panel, ESM rail, KB card, escalate) |
 | 3 | HLP-04 Knowledge base editor | M | design and server exist (versions, review due); replace `KnowledgeScreen` (draw spaces and gaps first) |
 | 4 | HLP-05 SLA dashboard | M | server has SLA timers and reports; add the per-queue at-risk view to /yx/desk/reports and fold the report tabs into the HLP look |

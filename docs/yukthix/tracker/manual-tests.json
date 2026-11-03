@@ -12896,5 +12896,203 @@
       "Screens/Helpdesk/HLP-01 · Help centre"
     ],
     "note": "Negative (privacy)."
+  },
+  {
+    "id": "MT-HLP-02-01",
+    "area": "Helpdesk · HLP-02 Agent desk (3 Nov 2026)",
+    "screen": "Tickets · My open tickets",
+    "url": "http://localhost:3000/yx/desk/tickets",
+    "account": "An IT help desk agent (give a demo user an agent seat on \"IT help desk\" in Helpdesk › Desk set-up › Members first). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Before: as arjun@demo-org.test raise a ticket on IT help desk from the Help centre.",
+      "2. As the agent open Helpdesk › Tickets.",
+      "3. Open the view menu and choose All open."
+    ],
+    "expected": "The page matches the HLP-02 design: title Tickets, \"Your queues: …\", facts \"N in this view · M past the target\", the table with Ticket, Subject, Requester, Queue, Category, Priority, Status, Resolution SLA (\"… left\", \"Paused…\" or \"Breached …\"), Assignee. Arjun's ticket is listed in All open. No page scroll at 1278 x 635 unless the list is long.",
+    "stories": [
+      "Screens/Helpdesk/HLP-02 · Agent desk"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HLP-02-02",
+    "area": "Helpdesk · HLP-02 Agent desk (3 Nov 2026)",
+    "screen": "Quick view · assign to me, open",
+    "url": "http://localhost:3000/yx/desk/tickets",
+    "account": "An IT help desk agent (give a demo user an agent seat on \"IT help desk\" in Helpdesk › Desk set-up › Members first). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Click Arjun's ticket row.",
+      "2. Press Assign to me.",
+      "3. Press Open ticket."
+    ],
+    "expected": "Step 1: a drawer with requester, priority, assignee, raised date and channel, First response and Resolution badges. Step 2: toast \"IT-… is now yours.\"; the Assignee column shows you. Step 3: the ticket page opens.",
+    "stories": [
+      "Screens/Helpdesk/HLP-02 · Agent desk"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HLP-02-03",
+    "area": "Helpdesk · HLP-02 Agent desk (3 Nov 2026)",
+    "screen": "Views and the missed-target banner",
+    "url": "http://localhost:3000/yx/desk/tickets",
+    "account": "An IT help desk agent (give a demo user an agent seat on \"IT help desk\" in Helpdesk › Desk set-up › Members first). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Choose the view At risk or breached.",
+      "2. Choose Unassigned, then Waiting on employee."
+    ],
+    "expected": "Each view lists only its tickets. When any ticket in a view has passed a target, a yellow banner says how many with \"Show breaching tickets\".",
+    "stories": [
+      "Screens/Helpdesk/HLP-02 · Agent desk"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HLP-02-04",
+    "area": "Helpdesk · HLP-02 Agent desk (3 Nov 2026)",
+    "screen": "Filters · Raised and clear",
+    "url": "http://localhost:3000/yx/desk/tickets",
+    "account": "An IT help desk agent (give a demo user an agent seat on \"IT help desk\" in Helpdesk › Desk set-up › Members first). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. In the filter bar set Raised from today to today.",
+      "2. Set Raised from tomorrow.",
+      "3. Press Clear filters."
+    ],
+    "expected": "Step 1 lists today's tickets. Step 2 shows \"No tickets match\" with Clear filters. Step 3 goes back to the view.",
+    "stories": [
+      "Screens/Helpdesk/HLP-02 · Agent desk"
+    ],
+    "note": "Positive + negative."
+  },
+  {
+    "id": "MT-HLP-02-05",
+    "area": "Helpdesk · HLP-02 Agent desk (3 Nov 2026)",
+    "screen": "Agent · no bulk",
+    "url": "http://localhost:3000/yx/desk/tickets",
+    "account": "An IT help desk agent (give a demo user an agent seat on \"IT help desk\" in Helpdesk › Desk set-up › Members first). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As the agent (not a lead) look for tick boxes on the rows.",
+      "2. Open a row's menu (…)."
+    ],
+    "expected": "No tick boxes. The menu offers Assign to me, Set waiting on employee and Open ticket (reply, merge, resolve). Set waiting gives a toast and the Resolution badge shows Paused.",
+    "stories": [
+      "Screens/Helpdesk/HLP-02 · Agent desk"
+    ],
+    "note": "Negative + positive."
+  },
+  {
+    "id": "MT-HLP-02-06",
+    "area": "Helpdesk · HLP-02 Agent desk (3 Nov 2026)",
+    "screen": "Team lead · bulk change priority",
+    "url": "http://localhost:3000/yx/desk/tickets",
+    "account": "An IT help desk team lead (lead seat on \"IT help desk\"). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As the team lead tick two tickets.",
+      "2. Press Change priority, then press Change priority in the dialog without a reason.",
+      "3. Choose P2 · High, write \"Payroll run tomorrow\" and press Change priority."
+    ],
+    "expected": "Step 2: \"Say why, in 3 letters or more.\" and nothing changes. Step 3: toast \"2 tickets changed.\"; both show P2 · High.",
+    "stories": [
+      "Screens/Helpdesk/HLP-02 · Agent desk"
+    ],
+    "note": "Positive + negative."
+  },
+  {
+    "id": "MT-HLP-02-07",
+    "area": "Helpdesk · HLP-02 Agent desk (3 Nov 2026)",
+    "screen": "Team lead · move to queue and add a tag",
+    "url": "http://localhost:3000/yx/desk/tickets",
+    "account": "An IT help desk team lead (lead seat on \"IT help desk\"). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Tick one ticket and press Move to queue.",
+      "2. Press Move with nothing chosen.",
+      "3. Choose a desk (if IT may forward to it) and a reason, press Move.",
+      "4. Tick a ticket, press Add a tag, type \"vpn\" and Add tag."
+    ],
+    "expected": "Step 1: if the desk may not forward anywhere, a toast says to set it up in Desk set-up. Step 2: \"Choose the desk.\" Step 3: toast \"1 ticket moved.\"; it leaves the list. Step 4: the Tags column (show it from Columns) has vpn.",
+    "stories": [
+      "Screens/Helpdesk/HLP-02 · Agent desk"
+    ],
+    "note": "Positive + negative."
+  },
+  {
+    "id": "MT-HLP-02-08",
+    "area": "Helpdesk · HLP-02 Agent desk (3 Nov 2026)",
+    "screen": "New ticket for an employee",
+    "url": "http://localhost:3000/yx/desk/tickets",
+    "account": "An IT help desk agent (give a demo user an agent seat on \"IT help desk\" in Helpdesk › Desk set-up › Members first). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Press New ticket for an employee, then Raise ticket at once.",
+      "2. Find Arjun, write a subject and what he needs, press Raise ticket."
+    ],
+    "expected": "Step 1: \"Choose who the ticket is for.\", \"Write a subject.\", \"Say what they need.\"; nothing is raised. Step 2: the new ticket's page opens.",
+    "stories": [
+      "Screens/Helpdesk/HLP-02 · Agent desk"
+    ],
+    "note": "Positive + negative."
+  },
+  {
+    "id": "MT-HLP-02-09",
+    "area": "Helpdesk · HLP-02 Agent desk (3 Nov 2026)",
+    "screen": "Board and saved view",
+    "url": "http://localhost:3000/yx/desk/tickets",
+    "account": "An IT help desk agent (give a demo user an agent seat on \"IT help desk\" in Helpdesk › Desk set-up › Members first). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Switch Show as to Board.",
+      "2. Drag a New ticket to Open.",
+      "3. Back to List; set a filter, open the view menu and Save as \"My VPN\"."
+    ],
+    "expected": "Step 1: columns New, Open, Waiting, On hold, Resolved. Step 2: the ticket moves and stays there after reload. Step 3: toast \"View “My VPN” saved.\" and it is in the view menu.",
+    "stories": [
+      "Screens/Helpdesk/HLP-02 · Agent desk"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HLP-02-10",
+    "area": "Helpdesk · HLP-02 Agent desk (3 Nov 2026)",
+    "screen": "Sensitive tickets stay with their team",
+    "url": "http://localhost:3000/yx/desk/tickets",
+    "account": "An IT help desk agent (give a demo user an agent seat on \"IT help desk\" in Helpdesk › Desk set-up › Members first). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As Arjun raise a ticket in a sensitive category of HR help desk (marked private).",
+      "2. As the IT agent and as a desk admin open Tickets › All in my queues."
+    ],
+    "expected": "Neither sees the HR sensitive ticket.",
+    "stories": [
+      "Screens/Helpdesk/HLP-02 · Agent desk"
+    ],
+    "note": "Negative (privacy)."
+  },
+  {
+    "id": "MT-HLP-02-11",
+    "area": "Helpdesk · HLP-02 Agent desk (3 Nov 2026)",
+    "screen": "No access",
+    "url": "http://localhost:3000/yx/desk/tickets",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, employee)",
+    "steps": [
+      "1. Sign in as arjun@demo-org.test (no desk seat) and open /yx/desk/tickets."
+    ],
+    "expected": "The page shows \"You don't have access to the agent desk\" (not an error). Tickets is not in the Helpdesk menu.",
+    "stories": [
+      "Screens/Helpdesk/HLP-02 · Agent desk"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-HLP-02-12",
+    "area": "Helpdesk · HLP-02 Agent desk (3 Nov 2026)",
+    "screen": "Error and retry",
+    "url": "http://localhost:3000/yx/desk/tickets",
+    "account": "An IT help desk agent (give a demo user an agent seat on \"IT help desk\" in Helpdesk › Desk set-up › Members first). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Ask the developer to stop the API and reload.",
+      "2. Start it and press Try again."
+    ],
+    "expected": "Step 1: \"We couldn't load tickets.\" with Try again. Step 2: the list loads.",
+    "stories": [
+      "Screens/Helpdesk/HLP-02 · Agent desk"
+    ],
+    "note": "Negative."
   }
 ]
