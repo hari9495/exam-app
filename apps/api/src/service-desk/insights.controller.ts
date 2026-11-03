@@ -293,6 +293,13 @@ export class DeskInsightsController {
     return this.reports.dashboard(await this.actor(req, t), q);
   }
 
+  /** HLP-05 SLA dashboard: targets met by desk, the weekly trend, at risk or missed now, agent load. */
+  @Get('reports/sla')
+  @RequirePermissions('desk.report.view')
+  async slaDashboard(@Req() req: Request, @CurrentTenant() t: TenantContext, @Query() q: ReportRunDto) {
+    return this.reports.slaDashboard(await this.actor(req, t), q);
+  }
+
   @Get('reports/library')
   @RequirePermissions('desk.report.view')
   library() {
