@@ -4,7 +4,9 @@
 // (the statutory rule set or a company setting), never from the screen. Rules: helpdesk-design-map.md section 4f.
 
 /** The HLP-06 case kinds (disciplinary cases have no record yet: question 34). */
-export type CaseKind = 'grievance' | 'whistleblower' | 'posh';
+export type CaseKind = 'grievance' | 'whistleblower' | 'posh' | 'disciplinary';
+/** Disciplinary cases (founder answer 34): an inquiry is recorded only (question 51). */
+export type CaseDecision = 'dropped' | 'warning' | 'inquiry';
 export type CaseStatus = 'open' | 'action' | 'on-hold' | 'closed';
 export type Severity = 'serious' | 'standard';
 
@@ -101,6 +103,8 @@ export interface RespondentNotice {
   /** e.g. "POSH rules 2013, rule 7(4) · company rule set v2013-12". */
   replySource: string;
   allegations: string;
+  /** Disciplinary: the standing orders clause. */
+  rule?: string | null;
   files: CaseFile[];
   moreTime: MoreTimeAsk | null;
   /** True once the person has asked (they may ask once). */
@@ -169,6 +173,8 @@ export type CaseFinding = 'proved' | 'proved-in-part' | 'not-proved' | 'false-or
 export interface OutcomeState {
   status: 'none' | 'proposed' | 'approved' | 'sent-back';
   finding: CaseFinding | null;
+  /** Disciplinary cases. */
+  decision: CaseDecision | null;
   action: string | null;
   reasons: string | null;
   /** What the reporter (and the respondent) are told once it is approved. */
@@ -201,7 +207,8 @@ export interface IcReportState {
   signedOn: string | null;
 }
 
-export type ReliefAction = 'transfer' | 'leave' | 'reporting' | 'other';
+/** 'suspension' only on a disciplinary case; every relief is an HR task, never a change in People or Pay. */
+export type ReliefAction = 'transfer' | 'leave' | 'reporting' | 'suspension' | 'other';
 export interface ReliefRecord {
   id: string;
   action: ReliefAction;
@@ -260,6 +267,8 @@ export interface CaseDetail {
   /** People who may be added (case officers, investigators, IC members, HR), from the server. */
   /** Active people of the company not on the case: the respondent, the HR person for a relief task, a new member. */
   people: { id: string; name: string; email: string }[];
+  /** Disciplinary: the standing orders clause (the misconduct is report.category, the facts report.summary). */
+  rule: string | null;
   /** What the reporter filed (HLP-06). */
   report: { summary: string; category: string | null; happenedOn: string | null; involved: string | null; witnesses: string | null; outside: string | null; retaliationWorry: boolean; late: boolean };
   timeline: { id: string; at: string; who: string; text: string }[];
@@ -276,7 +285,10 @@ export interface CaseDetail {
 }
 
 export interface ProposeInput {
-  finding: CaseFinding;
+  /** Grievance and ethics cases. */
+  finding?: CaseFinding;
+  /** Disciplinary cases. */
+  decision?: CaseDecision;
   action: string;
   reasons: string;
   reporterSummary: string;
@@ -324,4 +336,12 @@ export interface NoticeInput {
   allegations: string;
   /** Case files shared with the respondent. */
   fileIds: string[];
+}
+
+/** HLP-08: HR opens a disciplinary show-cause case about an employee. */
+export interface RaiseInput {
+  employeeUserId: string;
+  misconduct: string;
+  facts: string;
+  rule?: string;
 }

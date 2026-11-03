@@ -46,7 +46,11 @@ describe('Helpdesk › My cases (HLP-07 live)', () => {
 
 describe('Helpdesk › Cases (HLP-08 live)', () => {
   it('the list opens a case; a case I am not on shows Not found', async () => {
-    api.mockImplementation(async (path: string) => (path === '/desk/accidents' ? [] : [{ id: 'k1', ref: 'WB-0001', kind: 'whistleblower', subject: 'Bribery', location: '—', stage: 'Received', raisedBy: null, anonymous: true, owner: 'Rekha', next: null, overdue: false, status: 'open' }]));
+    api.mockImplementation(async (path: string) => {
+      if (path === '/desk/cases/disciplinary/people') throw err(403);
+      if (path === '/desk/accidents') return [];
+      return [{ id: 'k1', ref: 'WB-0001', kind: 'whistleblower', subject: 'Bribery', location: '—', stage: 'Received', raisedBy: null, anonymous: true, owner: 'Rekha', next: null, overdue: false, status: 'open' }];
+    });
     const { unmount } = wrap(<YxCasesPage />);
     await userEvent.click(await screen.findByText('Bribery'));
     expect(push).toHaveBeenCalledWith('/yx/desk/cases/k1');
@@ -55,6 +59,35 @@ describe('Helpdesk › Cases (HLP-08 live)', () => {
     api.mockRejectedValue(err(404));
     wrap(<YxCasePage />);
     expect(await screen.findByText('Not found')).toBeInTheDocument();
+  });
+});
+
+describe('Helpdesk › Cases · disciplinary (HLP-08, answer 34)', () => {
+  it('HR with the key opens a show-cause case; without it there is no button', async () => {
+    api.mockImplementation(async (path: string, opts?: { method?: string }) => {
+      if (path === '/desk/cases/disciplinary/people') return { people: [{ id: 'u-manoj', name: 'Manoj Kumar', email: 'manoj@kf.in' }] };
+      if (path === '/desk/cases/disciplinary' && opts?.method === 'POST') return { id: 'k9', ref: 'DSC-0001' };
+      return [];
+    });
+    const { unmount } = wrap(<YxCasesPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Open a case' }));
+    await userEvent.click(screen.getByRole('combobox', { name: /Employee/ }));
+    await userEvent.click(await screen.findByRole('option', { name: /Manoj Kumar/ }));
+    await userEvent.type(screen.getByRole('textbox', { name: /^Misconduct/ }), 'Absence without leave');
+    await userEvent.type(screen.getByRole('textbox', { name: /Facts relied on/ }), 'Absent five working days without leave.');
+    await userEvent.click(screen.getByRole('button', { name: 'Open the case' }));
+    expect(await screen.findByText('Case opened')).toBeInTheDocument();
+    const call = api.mock.calls.find(([p, o]) => p === '/desk/cases/disciplinary' && o?.method === 'POST')!;
+    expect(JSON.parse(call[1].body)).toEqual({ employeeUserId: 'u-manoj', misconduct: 'Absence without leave', facts: 'Absent five working days without leave.' });
+    expect(push).toHaveBeenCalledWith('/yx/desk/cases/k9');
+    unmount();
+    api.mockImplementation(async (path: string) => {
+      if (path === '/desk/cases/disciplinary/people') throw err(403);
+      return [];
+    });
+    wrap(<YxCasesPage />);
+    expect(await screen.findByText("You're not on any case.")).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open a case' })).not.toBeInTheDocument();
   });
 });
 

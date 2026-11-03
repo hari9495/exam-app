@@ -114,6 +114,8 @@ export const YX_KEYS = [
   'policy.publish',
   // HLP-06 speak-up set-up.
   'speakup.setup.manage',
+  // HLP-08 disciplinary show-cause cases.
+  'case.disciplinary.raise',
   'expense.claim.view',
   'expense.finance.review',
   'travel.booking.manage',

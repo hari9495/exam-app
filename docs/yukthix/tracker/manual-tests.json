@@ -14203,10 +14203,10 @@
     "area": "Helpdesk · HLP-07/08/09 Cases (4 Nov 2026)",
     "screen": "Cases",
     "url": "http://localhost:3000/yx/desk/cases",
-    "account": "arjun@demo-org.test (employee) files; kavya@ (ethics officer); hr@ (HR Admin); admin@ (System Admin). Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (kavya@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, murugan@ on Escalation).",
+    "account": "arjun@demo-org.test (employee) files; it-lead@ (ethics officer); hr@ (HR Admin); admin@ (System Admin). Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (it-lead@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, murugan@ on Escalation).",
     "steps": [
       "1. As arjun@ open Helpdesk › Speak up and file a named fraud or ethics concern: \"A vendor paid for the purchase manager’s holiday in August.\"",
-      "2. As kavya@ open Helpdesk › Cases.",
+      "2. As it-lead@ open Helpdesk › Cases.",
       "3. Open the new WB case.",
       "4. As hr@, then as admin@, open Helpdesk › Cases and then type the case address from step 3."
     ],
@@ -14221,14 +14221,14 @@
     "area": "Helpdesk · HLP-07/08/09 Cases (4 Nov 2026)",
     "screen": "Case · messages",
     "url": "http://localhost:3000/yx/desk/cases/[id]",
-    "account": "kavya@; arjun@. Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (kavya@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, murugan@ on Escalation).",
+    "account": "it-lead@; arjun@. Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (it-lead@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, murugan@ on Escalation).",
     "steps": [
-      "1. As kavya@ open the case from MT-HLP-07-01 › Messages; press Send message with nothing written.",
+      "1. As it-lead@ open the case from MT-HLP-07-01 › Messages; press Send message with nothing written.",
       "2. Write \"Thank you. We are looking into it.\" and send.",
       "3. As arjun@ open Helpdesk › My cases and open the case.",
       "4. Write \"I have the hotel bill too.\" and send."
     ],
-    "expected": "Step 1: \"Write the message first.\" and the box takes the focus. Step 2: toast \"Message sent\"; the stage moves to Acknowledged. Step 3: role \"You raised it\", stage \"Being looked into\"; the message shows from \"Case team\" (no officer name); no notice, no notes, no witnesses. Step 4: toast; kavya@ gets a notice.",
+    "expected": "Step 1: \"Write the message first.\" and the box takes the focus. Step 2: toast \"Message sent\"; the stage moves to Acknowledged. Step 3: role \"You raised it\", stage \"Being looked into\"; the message shows from \"Case team\" (no officer name); no notice, no notes, no witnesses. Step 4: toast; it-lead@ gets a notice.",
     "stories": [
       "Screens/Helpdesk/HLP-08 · Cases (case team)",
       "Screens/Helpdesk/HLP-07 · My cases"
@@ -14240,9 +14240,9 @@
     "area": "Helpdesk · HLP-07/08/09 Cases (4 Nov 2026)",
     "screen": "Case · notice",
     "url": "http://localhost:3000/yx/desk/cases/[id]",
-    "account": "kavya@; arjun@; it-agent@ (the respondent). Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (kavya@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, murugan@ on Escalation).",
+    "account": "it-lead@; arjun@; it-agent@ (the respondent). Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (it-lead@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, murugan@ on Escalation).",
     "steps": [
-      "1. As kavya@ on the case › Notice and reply › Send notice and copy; press Send notice with nobody chosen.",
+      "1. As it-lead@ on the case › Notice and reply › Send notice and copy; press Send notice with nobody chosen.",
       "2. Choose arjun@ as respondent and send.",
       "3. Choose it-agent@, keep the allegation text, tick no papers, send.",
       "4. Press Delay notice."
@@ -14258,15 +14258,15 @@
     "area": "Helpdesk · HLP-07/08/09 Cases (4 Nov 2026)",
     "screen": "My cases · respondent",
     "url": "http://localhost:3000/yx/desk/my-cases",
-    "account": "it-agent@; kavya@; kiran@. Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (kavya@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, murugan@ on Escalation).",
+    "account": "it-agent@; it-lead@; kiran@. Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (it-lead@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, murugan@ on Escalation).",
     "steps": [
       "1. As it-agent@ open Helpdesk › My cases.",
       "2. Open the case; press Send reply with nothing written.",
       "3. Ask for more time: \"Travelling until next week.\"",
-      "4. As kavya@ give more time to a date before the current reply date, then to a later date.",
+      "4. As it-lead@ give more time to a date before the current reply date, then to a later date.",
       "5. As it-agent@ write a reply and send it."
     ],
-    "expected": "Step 1: banner \"You are asked to reply by …\", status Action needed. Step 2: \"Write your reply first (at least a few words).\" Step 3: toast; the button is gone (once only). Step 4: the earlier date is refused; the later date shows \"More time given\". Step 5: toast \"Reply sent\"; kavya@ sees the reply under Notice and reply. it-agent@ never sees arjun’s name or the messages.",
+    "expected": "Step 1: banner \"You are asked to reply by …\", status Action needed. Step 2: \"Write your reply first (at least a few words).\" Step 3: toast; the button is gone (once only). Step 4: the earlier date is refused; the later date shows \"More time given\". Step 5: toast \"Reply sent\"; it-lead@ sees the reply under Notice and reply. it-agent@ never sees arjun’s name or the messages.",
     "stories": [
       "Screens/Helpdesk/HLP-07 · My cases",
       "Screens/Helpdesk/HLP-08 · Cases (case team)"
@@ -14278,11 +14278,11 @@
     "area": "Helpdesk · HLP-07/08/09 Cases (4 Nov 2026)",
     "screen": "Case · outcome by two people",
     "url": "http://localhost:3000/yx/desk/cases/[id]",
-    "account": "kavya@; kiran@; arjun@. Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (kavya@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, murugan@ on Escalation).",
+    "account": "it-lead@; kiran@; arjun@. Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (it-lead@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, murugan@ on Escalation).",
     "steps": [
-      "1. As kavya@ press Propose outcome; press Propose outcome with nothing filled.",
+      "1. As it-lead@ press Propose outcome; press Propose outcome with nothing filled.",
       "2. Fill Proved in part, action \"Written warning\", reasons, \"What the reporter is told\", and propose.",
-      "3. As kavya@ look at the Outcome tab.",
+      "3. As it-lead@ look at the Outcome tab.",
       "4. As kiran@ open the case › Outcome › Approve outcome.",
       "5. As arjun@ open My cases."
     ],
@@ -14298,7 +14298,7 @@
     "area": "Helpdesk · HLP-07/08/09 Cases (4 Nov 2026)",
     "screen": "POSH case · IC report",
     "url": "http://localhost:3000/yx/desk/cases/[id]",
-    "account": "compliance@ files; plant-hr@ (presiding), payroll@ and finance@ (add both to the Internal Committee first); it-agent@ respondent. Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (kavya@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, murugan@ on Escalation).",
+    "account": "compliance@ files; plant-hr@ (presiding), payroll@ and finance@ (add both to the Internal Committee first); it-agent@ respondent. Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (it-lead@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, murugan@ on Escalation).",
     "steps": [
       "1. As compliance@ file a sexual harassment complaint.",
       "2. As an IC member (not presiding) open IC report and press Save draft report.",
@@ -14318,7 +14318,7 @@
     "area": "Helpdesk · HLP-07/08/09 Cases (4 Nov 2026)",
     "screen": "Case · interim relief, members",
     "url": "http://localhost:3000/yx/desk/cases/[id]",
-    "account": "plant-hr@ (POSH) or kavya@ (other cases); hr@ (HR). Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (kavya@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, murugan@ on Escalation).",
+    "account": "plant-hr@ (POSH) or it-lead@ (other cases); hr@ (HR). Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (it-lead@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, murugan@ on Escalation).",
     "steps": [
       "1. On a POSH case before the report is signed: Interim relief › Record interim relief; press Record with nothing filled.",
       "2. Choose Stop reporting, write the request it answers, choose hr@, record.",
@@ -14338,12 +14338,12 @@
     "area": "Helpdesk · HLP-07/08/09 Cases (4 Nov 2026)",
     "screen": "Ethics desk",
     "url": "http://localhost:3000/yx/desk/ethics",
-    "account": "anyone not signed in files; kavya@; murugan@ (escalation). Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (kavya@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, murugan@ on Escalation).",
+    "account": "anyone not signed in files; it-lead@; murugan@ (escalation). Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (it-lead@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, murugan@ on Escalation).",
     "steps": [
       "1. Signed out, file an anonymous ethics concern with \"Tell me when there’s an update\" on and your own test email.",
-      "2. As kavya@ open Helpdesk › Ethics desk; press Route to chair, then Route to chair in the dialog with no reason.",
+      "2. As it-lead@ open Helpdesk › Ethics desk; press Route to chair, then Route to chair in the dialog with no reason.",
       "3. Write a reason and route.",
-      "4. As kavya@ open the case and send a message.",
+      "4. As it-lead@ open the case and send a message.",
       "5. As murugan@ open the case."
     ],
     "expected": "Step 2: the report shows Anonymous; \"Write why the chair should see this report.\" Step 3: toast; Audit committee: Routed. Step 4: the test inbox gets only \"You have an update\". Step 5: the case opens; murugan@ is listed as Audit committee chair.",
@@ -14357,9 +14357,9 @@
     "area": "Helpdesk · HLP-07/08/09 Cases (4 Nov 2026)",
     "screen": "Case · severity",
     "url": "http://localhost:3000/yx/desk/cases/[id]",
-    "account": "kavya@ (ethics officer); murugan@ (escalation); hr@. Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01.",
+    "account": "it-lead@ (ethics officer); murugan@ (escalation); hr@. Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01.",
     "steps": [
-      "1. As kavya@ open Helpdesk › Ethics desk and look at the Severity column of a report filed without \"worried about retaliation\", and one filed with it.",
+      "1. As it-lead@ open Helpdesk › Ethics desk and look at the Severity column of a report filed without \"worried about retaliation\", and one filed with it.",
       "2. Open the first report; in the Severity card press Serious.",
       "3. Press Serious again.",
       "4. Route the report to the chair; as murugan@ open it.",
@@ -14377,12 +14377,12 @@
     "area": "Helpdesk · HLP-07/08/09 Cases (4 Nov 2026)",
     "screen": "Helpdesk menu",
     "url": "http://localhost:3000/yx/desk/help",
-    "account": "kavya@ (ethics list); plant-hr@ (Internal Committee); murugan@ (escalation); arjun@ (employee on no list and no case); hr@. Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01.",
+    "account": "it-lead@ (ethics list); plant-hr@ (Internal Committee); murugan@ (escalation); arjun@ (employee on no list and no case); hr@. Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01.",
     "steps": [
       "1. As each account open the Helpdesk menu.",
       "2. As arjun@ type /yx/desk/cases and /yx/desk/ethics."
     ],
-    "expected": "Step 1: everyone has My cases. kavya@ and murugan@ also have Cases and Ethics desk with counts; plant-hr@ has Cases but no Ethics desk; arjun@ and hr@ have neither (unless they are on a case). Step 2: Cases says \"You’re not on any case.\"; the Ethics desk shows \"No open reports.\" (the pages still check membership).",
+    "expected": "Step 1: everyone has My cases. it-lead@ and murugan@ also have Cases and Ethics desk with counts; plant-hr@ has Cases but no Ethics desk; arjun@ and hr@ have neither (unless they are on a case). Step 2: Cases says \"You’re not on any case.\"; the Ethics desk shows \"No open reports.\" (the pages still check membership).",
     "stories": [
       "Screens/Helpdesk/HLP-08 · Cases (case team)",
       "Screens/Helpdesk/HLP-09 · Ethics desk"
@@ -14485,5 +14485,82 @@
       "Screens/Helpdesk/HLP-12 · Accident case workspace"
     ],
     "note": "Positive and negative: contractor late, missing EC field. No government filing from the app."
+  },
+  {
+    "id": "MT-HLP-08D-01",
+    "area": "Helpdesk · HLP-08 Disciplinary show-cause cases (4 Nov 2026)",
+    "screen": "Cases · open a case",
+    "url": "http://localhost:3000/yx/desk/cases",
+    "account": "hr@demo-org.test (HR Admin; holds case.disciplinary.raise); panel@ (manager); arjun@ (employee). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As panel@ open Helpdesk: look for Cases; then type /yx/desk/cases.",
+      "2. As hr@ open Helpdesk › Cases › Open a case; press Open the case with nothing filled.",
+      "3. Choose arjun@, misconduct \"Absence without leave for more than 4 days\", clause \"14(2)(c)\", the facts; open the case.",
+      "4. As panel@ (arjun’s manager) type the case address.",
+      "5. As arjun@ open Helpdesk › My cases."
+    ],
+    "expected": "Step 1: no Cases menu item; the page says \"You’re not on any case.\" with no Open a case button. Step 2: \"Choose the employee.\" and the field takes the focus. Step 3: toast \"Case opened\"; the case DSC-… opens with the Misconduct card; only hr@ is a member. Step 4: Not found. Step 5: nothing yet (the employee sees the case only after the notice).",
+    "stories": [
+      "Screens/Helpdesk/HLP-08 · Cases (case team)"
+    ],
+    "note": "Positive and negative; founder answer 34 (a), (g)."
+  },
+  {
+    "id": "MT-HLP-08D-02",
+    "area": "Helpdesk · HLP-08 Disciplinary show-cause cases (4 Nov 2026)",
+    "screen": "Case · show-cause notice",
+    "url": "http://localhost:3000/yx/desk/cases/[id]",
+    "account": "hr@; arjun@. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As hr@ on the case press Propose outcome.",
+      "2. Show-cause and reply › Send notice and copy › Send notice.",
+      "3. As arjun@ open My cases and the case; press Send reply with nothing written.",
+      "4. Ask for more time with a reason; try again.",
+      "5. Write a reply, attach a PDF, send."
+    ],
+    "expected": "Step 1: \"No decision before the employee has the show-cause notice and a chance to reply. Send the notice first.\" Step 2: toast; Reply by = today + the legal entity’s days, or 7 days from \"IN.SO.MODEL 1946-v1 (verify)\". Step 3: the notice shows what is alleged, the Rule and the reply date; \"Write your reply first …\". Step 4: toast once; the button is gone. Step 5: toast \"Reply sent\"; hr@ sees the reply and the file.",
+    "stories": [
+      "Screens/Helpdesk/HLP-08 · Cases (case team)",
+      "Screens/Helpdesk/HLP-07 · My cases"
+    ],
+    "note": "Positive and negative; founder answer 34 (b), (c)."
+  },
+  {
+    "id": "MT-HLP-08D-03",
+    "area": "Helpdesk · HLP-08 Disciplinary show-cause cases (4 Nov 2026)",
+    "screen": "Case · two-person decision",
+    "url": "http://localhost:3000/yx/desk/cases/[id]",
+    "account": "hr@; admin@ (System Admin, also holds the key); panel@; arjun@. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As hr@ Add member: admin@ as Case officer; then panel@.",
+      "2. As hr@ Propose outcome with nothing chosen; then Warning, the action, reasons and what the employee is told.",
+      "3. As hr@ look at the Decision tab.",
+      "4. As admin@ open the case › Decision › Approve outcome.",
+      "5. As arjun@ open My cases."
+    ],
+    "expected": "Step 1: admin@ added (toast); panel@ refused: conflict of interest (reporting line), an override reason is asked for. Step 2: \"Choose the decision.\"; then toast \"Outcome proposed\". Step 3: \"You proposed this outcome, so another officer approves it.\" (no Approve). Step 4: toast; the case is Decided and closed. Step 5: the case is Closed with the decision text only. Nothing changed in arjun’s People record or pay.",
+    "stories": [
+      "Screens/Helpdesk/HLP-08 · Cases (case team)",
+      "Screens/Helpdesk/HLP-07 · My cases"
+    ],
+    "note": "Positive and negative; founder answer 34 (d), (f)."
+  },
+  {
+    "id": "MT-HLP-08D-04",
+    "area": "Helpdesk · HLP-08 Disciplinary show-cause cases (4 Nov 2026)",
+    "screen": "Case · inquiry and suspension",
+    "url": "http://localhost:3000/yx/desk/cases/[id]",
+    "account": "hr@; admin@; arjun@. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open a second case about arjun@ and send the notice; as arjun@ reply.",
+      "2. As hr@ Actions for HR › Record interim relief: choose Suspension, write the note, choose admin@ to carry it out.",
+      "3. As hr@ propose Inquiry; as admin@ approve it.",
+      "4. As arjun@ open My cases."
+    ],
+    "expected": "Step 2: toast; the row shows task DSC-…-R1 Waiting for HR; admin@ gets a notice with the task only; arjun’s People record and pay are unchanged. Step 3: the case stays open at \"Inquiry ordered\" (the inquiry itself is outside the app for now). Step 4: stage \"Inquiry ordered\".",
+    "stories": [
+      "Screens/Helpdesk/HLP-08 · Cases (case team)"
+    ],
+    "note": "Positive and negative; founder answer 34 (e), (f)."
   }
 ]

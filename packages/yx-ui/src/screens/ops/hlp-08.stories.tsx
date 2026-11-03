@@ -4,7 +4,7 @@ import { ANON_MESSAGES, CASES } from './helpdesk-data';
 import { ANON_MEMBERS, CASE_DOCUMENTS, CASE_TIMELINE, DISC_MEMBERS, GRIEVANCE_MEMBERS } from './cases-data';
 import { TODAY } from '../_kit/data';
 import type { LiveCaseWorkspace } from './cases-live';
-import { ethicsCase, icReport, liveWorkspace, poshCase } from './cases-live-samples';
+import { CASE_LIST_ROWS, disciplinaryCase, ethicsCase, icReport, liveCaseList, liveWorkspace, poshCase } from './cases-live-samples';
 
 const meta: Meta = { title: 'Screens/Helpdesk/HLP-08 · Cases (case team)', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -54,4 +54,13 @@ export const StepAside: S = { name: 'Step aside from a case (with a reason)', re
 export const ConflictOverride: S = { name: 'Add member · conflict found, override with a reason', render: () => live({ start: { dialog: 'add', conflict: 'Ravi Shankar is in the respondent’s manager chain.' } }) };
 export const Evidence: S = { name: 'Evidence · fingerprints, virus check and access log', render: () => live({ start: { tab: 'evidence' } }) };
 export const Severity: S = { name: 'Ethics report · the ethics officer sets Serious or Standard', render: () => live({ detail: ethicsCase({ severity: 'standard' }) }) };
+// Disciplinary show-cause cases (founder answer 34), in the same layout.
+const people = [{ id: 'p-manoj', name: 'Manoj Kumar', email: 'manoj.kumar@kaverifoods.in' }, { id: 'p-sathish', name: 'Sathish Kumar', email: 'sathish.k@kaverifoods.in' }];
+export const OpenCase: S = { name: 'Disciplinary · HR opens a show-cause case', render: () => <CaseListScreen live={liveCaseList({ cases: CASE_LIST_ROWS, raise: { people, onRaise: async () => ({ id: 'k9', ref: 'DSC-0032' }) }, start: { raising: true } })} /> };
+export const DisciplinaryLive: S = { name: 'Disciplinary · the misconduct, the show-cause notice and the reply', render: () => live({ detail: disciplinaryCase(), start: { tab: 'notice' } }) };
+export const DisciplinaryDecide: S = { name: 'Disciplinary · propose: dropped, warning or inquiry', render: () => live({ detail: disciplinaryCase(), start: { dialog: 'propose' } }) };
+export const InquiryOrdered: S = {
+  name: 'Disciplinary · inquiry ordered (recorded only)',
+  render: () => live({ detail: disciplinaryCase({ stage: 'Inquiry ordered', stageIndex: 4, outcome: { ...disciplinaryCase().outcome!, status: 'approved', decision: 'inquiry', action: 'Domestic inquiry by an inquiry officer', reasons: 'The employee says he was in hospital; the record needs testing.', reporterSummary: 'The company will hold a domestic inquiry.', proposedBy: 'Lakshmi Venkatesan', proposedAt: '2026-10-01', approvedBy: 'Harish Bhat', approvedAt: '2026-10-02' } }), start: { tab: 'decision' } }),
+};
 export const NoAccess: S = { name: 'No access (no case-team key)', render: () => live({ state: 'no-access' }) };

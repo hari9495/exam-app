@@ -24,9 +24,12 @@ feature not built** (no API) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Helpdesk HLP-01 … 14 | 14 | 209 | 15 | 0 | 7 | 0 | 231 |
+| A. Helpdesk HLP-01 … 14 | 14 | 221 | 8 | 0 | 7 | 0 | 236 |
 | B. Service desk designs | 5 | 55 | 2 | 0 | 0 | 0 | 57 |
-| **All Helpdesk groups (A–B)** | **19** | **264** | **17** | **0** | **7** | **0** | **288** |
+| **All Helpdesk groups (A–B)** | **19** | **276** | **10** | **0** | **7** | **0** | **293** |
+Round 8d (script, 4 Nov 2026, `feat/yukthix-hlp-07-09`): the 7 disciplinary show-cause stories (HLP-07: 4, HLP-08: 3)
+move from live (gap) to live; HLP-07 gains 1 story (ShowCauseLive) and HLP-08 gains 4 (OpenCase, DisciplinaryLive,
+DisciplinaryDecide, InquiryOrdered), all live.
 Round 9b (script, 4 Nov 2026, `feat/yukthix-hlp-07-09`): HLP-08 gains 1 story (Severity), live: 29 stories, 25 live.
 Round 12 recount (script, 4 Nov 2026, `feat/yukthix-hlp-12`): HLP-12 has 17 stories (the 8 approved plus 9 drawn: ESI
 cover not recorded, case details, mark submitted, ESIC details to print, work out compensation, medical records, manager
@@ -159,6 +162,8 @@ portal designs also wait: `settings: MobileHelpTicketsScreen`, `MobilePolicyAckS
 | ~~HLP-06 Speak-up filing~~ (done, round 6) | grievance and whistleblower intake, anonymous access code and the no-login "check my report", POSH redirect to the internal committee; tables with RLS, a public route with throttling | L |
 | Disciplinary cases (HLP-07/08 show-cause stories) | a disciplinary case record raised by a manager or HR, standing orders per entity, show-cause, inquiry, penalties and letters | L (question 34) |
 | ~~HLP-12 Accident case workspace~~ (done, round 12) | accident reports, ESIC report and EC claim clocks, contract workers, manager view | L |
+| Domestic inquiry and penalties (after a disciplinary show-cause) | inquiry officer, hearings, findings, second show-cause on the penalty, penalties beyond a warning, letters | L (questions 51, 52, 56) |
+| HLP-12 Accident case workspace (8) | accident reports, ESIC report and EC claim clocks, contract workers, manager view | L |
 | HLP-13 Collective dispute / settlement (3) | dispute record, conciliation, signed settlement sent to payroll arrears | L |
 | HLP-14 Write policies with AI (4) | questionnaire, AI draft, law findings that block approval, approve and load into HLP-10 | L (after HLP-10) |
 
@@ -362,17 +367,18 @@ Live pages: /yx/desk/my-cases (HLP-07), /yx/desk/cases and /yx/desk/cases/[id] (
 | story (sub-page) | verdict | note |
 |---|---|---|
 | List · My cases (complainant, respondent, witness) | live | `GET desk/my/cases` (implicit: own part only): role reporter or respondent, stage, next date, status; a row opens the drawer (`?case=`). Witness: no witness record yet (question 37) |
-| ShowCauseReply · Show-cause reply | live (gap) | disciplinary cases have no record yet (question 34); the same steps are live for a POSH, grievance or ethics respondent (RespondentNotice, MoreTimeAsked) |
-| ExtensionAsked · Show-cause · extension requested | live (gap) | disciplinary cases have no record yet (question 34); the same steps are live for a POSH, grievance or ethics respondent (RespondentNotice, MoreTimeAsked) |
-| Replied · Reply sent | live (gap) | a respondent's reply is live (`POST desk/my/cases/:id/reply`, final once sent, added to, never replaced); disciplinary cases have no record yet (question 34); the same steps are live for a POSH, grievance or ethics respondent (RespondentNotice, MoreTimeAsked) |
+| ShowCauseReply · Show-cause reply | live | disciplinary cases are live (answer 34, round 8d): the employee opens the show-cause notice in My cases: what is alleged, the standing orders clause, the reply date and its source (the legal entity's setting or IN.SO.MODEL); reply with files |
+| ExtensionAsked · Show-cause · extension requested | live | disciplinary cases are live (answer 34, round 8d): "Ask for more time" once, with a reason; the first date stands until HR decides |
+| Replied · Reply sent | live | disciplinary cases are live (answer 34, round 8d): `POST desk/my/cases/:id/reply`, final once sent, added to, never replaced |
 | Empty · Empty | live | "You're not part of any case." with Speak up |
 | Loading · Loading | live | while `GET desk/my/cases` loads |
 | Phone · My cases · phone | live | under 768 px: the design's phone list |
-| PhoneReply · Show-cause reply · phone | live (gap) | under 768 px the respondent's notice and reply fill the phone; disciplinary cases have no record yet (question 34); the same steps are live for a POSH, grievance or ethics respondent (RespondentNotice, MoreTimeAsked) |
+| PhoneReply · Show-cause reply · phone | live | disciplinary cases are live (answer 34, round 8d): under 768 px the notice and the reply fill the phone |
 | ReporterView · Reporter · status, dates and messages only | live | new story: founder decision 4; the reporter's shape has no field for notes, witnesses or the respondent's reply |
 | OutcomeShared · Reporter · closed, the outcome and the appeal date | live | new story: the summary the case team sends; the appeal date from the rule set |
 | RespondentNotice · Respondent · notice, copy of the complaint, reply date | live | new story: the reply date with its source; Send reply (too early says why), files |
 | MoreTimeAsked · Respondent · more time asked, waiting for the case team | live | new story: asked once, with a reason |
+| ShowCauseLive · Show-cause notice (disciplinary) · rule, facts, reply date | live | new story (answer 34): the employee's view of a disciplinary case |
 | NoAccess · No access (acting for someone else) | live | new story: 403 shows the kit's no-access state |
 
 #### HLP-08 · Cases (case team)
@@ -385,9 +391,9 @@ Live pages: /yx/desk/my-cases (HLP-07), /yx/desk/cases and /yx/desk/cases/[id] (
 | CaseListEmpty · Case list · empty | live | "You're not on any case." |
 | Grievance · Grievance workspace (GRC, disposal clock) | live | `GET desk/cases/:id` (members only, audited): header, stages, due dates from IN.GRC / the settings, tabs, members rail |
 | AnonymousMessages · Whistleblower · anonymous messages | live | "Anonymous messages" tab; `POST desk/cases/:id/messages`; the first message acknowledges; the reporter gets only "You have an update" by email when they left an address |
-| Disciplinary · Disciplinary · reply awaited | live (gap) | no disciplinary record yet (question 34) |
-| DecisionBlocked · Disciplinary · decision blocked before reply | live (gap) | the block itself is live for every case kind (ProposeOutcome: `CASE_TOO_EARLY`); no disciplinary record yet |
-| DecisionAllowed · Disciplinary · record decision | live (gap) | live as Propose outcome and the second officer's approval; no disciplinary penalties or letters yet |
+| Disciplinary · Disciplinary · reply awaited | live | disciplinary cases are live (answer 34, round 8d): `GET desk/cases/:id` for the HR members only: the Misconduct card (misconduct, standing orders clause, facts, employee), the Show-cause and reply tab, Decision, Actions for HR |
+| DecisionBlocked · Disciplinary · decision blocked before reply | live | disciplinary cases are live (answer 34, round 8d): no decision before the notice and the reply or its date (409 `CASE_TOO_EARLY`); the drawer says why |
+| DecisionAllowed · Disciplinary · record decision | live | disciplinary cases are live (answer 34, round 8d): Propose outcome with the Decision Segment (dropped, warning, inquiry), then a second HR person approves (never the proposer); no penalty or letter is generated (questions 52, 56) |
 | ConflictBlock · Add member · conflict of interest | live | `POST desk/cases/:id/members`: 409 `CASE_CONFLICT` for a party or anyone above one in the reporting line |
 | NonMember · Not a case member (shows Not found) | live | a case one is not on (HR, managers, System Admin, another company) is 404: the kit's Not found |
 | NonMemberList · Case list · not a member (shows Not found) | live (gap) | someone on no case sees the empty list, not Not found (the list only ever holds their own cases) |
@@ -409,6 +415,10 @@ Live pages: /yx/desk/my-cases (HLP-07), /yx/desk/cases and /yx/desk/cases/[id] (
 | ConflictOverride · Add member · conflict found, override with a reason | live | new story: 409 `CASE_CONFLICT`, then the second try with the reason |
 | Evidence · Evidence · fingerprints, virus check and access log | live | new story: SHA-256, opens count, only clean files open |
 | Severity · Ethics report · the ethics officer sets Serious or Standard | live | new story (founder answer 35): the rail's Severity card, a kit Segment for an ethics officer on the report (`POST desk/ethics/reports/:id/severity`; 403 `CASE_NOT_ETHICS_OFFICER` for the chair, 404 for non-members, 409 for the same value or a closed case); a badge for everyone else; each change is an append-only case step and an audit entry with the old and new value |
+| OpenCase · Disciplinary · HR opens a show-cause case | live | new story (answer 34): "Open a case" on Cases for HR with `case.disciplinary.raise` (`GET desk/cases/disciplinary/people`: the people in their HR scope; `POST desk/cases/disciplinary`: employee, misconduct, clause, facts; a manager alone, oneself, someone outside the HR scope (403 `CASE_OUT_OF_SCOPE`) refused) |
+| DisciplinaryLive · Disciplinary · the misconduct, the show-cause notice and the reply | live | new story: the reply date from the legal entity's `cases.disciplinary.reply_days` or the rule set IN.SO.MODEL (7 days, verify flag on) |
+| DisciplinaryDecide · Disciplinary · propose: dropped, warning or inquiry | live | new story: Decision Segment; "What the employee is told" |
+| InquiryOrdered · Disciplinary · inquiry ordered (recorded only) | live | new story: an approved inquiry keeps the case open at "Inquiry ordered"; the inquiry itself is not built (question 51) |
 | NoAccess · No access (no case-team key) | live | new story: 403; a case one is not on stays "Not found" |
 
 #### HLP-09 · Ethics desk
@@ -1006,6 +1016,19 @@ Built 4 Nov 2026 (`feat/yukthix-hlp-12`) from the founder decisions of 4 Nov 202
   support sessions excluded); a medical file keeps its SHA-256 and is opened only if clean and matching, every open
   audited. Closing needs ESI cover recorded and every clock done.
 
+**Built (round 8d, founder answer 34, 4 Nov 2026):** disciplinary show-cause cases on the same case record and steps.
+Migration `20261670000000_disciplinary_cases`: the kind `disciplinary` (numbers DSC-0001 …), routed to `hr`, always
+about an employee and named; the employee's legal entity and the standing orders clause on the case; the rule set
+`IN.SO.MODEL` (show-cause reply 7 days, verify flag on); the key `case.disciplinary.raise` (System Admin and the HR
+Admin template, granted in the normal role grants; it reaches only the people in the HR grant's scope, like
+`perf.pip.manage`). Company setting `cases.disciplinary.reply_days` per legal entity (default `rule_set`). HR opens a
+case; its members are the opener and the HR people they add (the manager joins only with a recorded override; the
+employee is the respondent, never a member). The show-cause notice, the reply with files and "ask for more time" once
+are the respondent flow of HLP-07. No decision before the reply or its date; two people decide (dropped, warning or
+inquiry; an inquiry is recorded and keeps the case open). Suspension pending inquiry is an HR task like interim relief;
+nothing changes in People or Pay. A disciplinary case has no messages; the employee is told through the notice and the
+decision text. HR who hold the key see Cases in the menu.
+
 ## 5. Two designs for one job
 
 HLP-02 … 05 (founder-approved Helpdesk designs, `screens/ops/helpdesk.tsx`) and the Service desk designs (Phase 3b-1,
@@ -1157,6 +1180,22 @@ surveys). The HLP screens are the founder-approved look, sample-only.
     *Suggested:* keep; a search box when a company is larger.
 47. **HLP-12: a menu link "Report an accident".** Today the way in is Speak up's fourth choice. *Built:* no extra link.
     *Suggested:* add it under Helpdesk for everyone (and on the phone's Me tab).
+51. **HLP-08: the domestic inquiry** (inquiry officer, presenting officer, hearings, findings, a second show-cause on
+    the penalty) is not built. An approved "inquiry" decision is recorded as a step and the case stays open at
+    "Inquiry ordered". *Suggested:* build it next on the same case steps, after counsel on the standing orders' steps.
+52. **HLP-08: penalties beyond a warning** (fine, stoppage of increment, suspension as a punishment, discharge,
+    dismissal) are not offered: the decisions are dropped, warning or inquiry. *Suggested:* add them with the inquiry,
+    each major penalty only after an inquiry, as the standing orders require.
+53. **HLP-08: suspension pending inquiry** is an HR task only; nothing changes in People and no subsistence allowance
+    is paid by the app. *Suggested:* keep; link to Pay once payroll can pay subsistence allowance at the state's rates.
+54. **HLP-08: show-cause reply days** come from the legal entity's setting `cases.disciplinary.reply_days` (3, 5, 7,
+    10, 14 or 15), else the rule set IN.SO.MODEL (7 calendar days, verify flag on). *Suggested:* counsel confirms the
+    figure and whether working days are meant; certified standing orders' own figure goes in the entity setting.
+55. **HLP-08: how a manager reports misconduct.** Only HR with `case.disciplinary.raise` (in their HR scope) opens a
+    case; a manager tells HR outside the app. *Suggested:* a short "Report misconduct to HR" form for managers that
+    lands with HR as a draft case, which HR opens or drops.
+56. **HLP-08: the warning letter** is not generated; the employee sees the decision text in My cases. *Suggested:*
+    issue it through Letters (an HR letter template) once the decision is approved.
 
 ## 7. Next pages (recommended order, with sizes)
 

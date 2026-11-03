@@ -14,7 +14,7 @@ import { Badge, type BadgeTone } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, ErrorState, InlineAlert, NoAccessState, Skeleton } from '../../components/feedback';
 import { FormField, useTooEarly } from '../../components/field';
-import { TextArea } from '../../components/inputs';
+import { TextArea, TextField } from '../../components/inputs';
 import { Checkbox } from '../../components/choice';
 import { Select } from '../../components/select';
 import { Segment } from '../../components/segment';
@@ -56,6 +56,8 @@ import type {
   ReliefAction,
   NoticeInput,
   ReliefInput,
+  CaseDecision,
+  RaiseInput,
   Severity,
 } from './cases-live-types';
 
@@ -64,13 +66,17 @@ import type {
 const asDate = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00`);
 const day = (iso: string | null | undefined) => (iso ? formatDate(asDate(iso)) : '—');
 const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-export const KIND_LABEL: Record<CaseKind | 'accident', string> = { grievance: 'Grievance', whistleblower: 'Fraud or ethics concern', posh: 'Sexual harassment (POSH)', accident: 'Workplace accident' };
+export const KIND_LABEL: Record<CaseKind | 'accident', string> = { grievance: 'Grievance', whistleblower: 'Fraud or ethics concern', posh: 'Sexual harassment (POSH)', disciplinary: 'Disciplinary', accident: 'Workplace accident' };
+export const DECISION_LABEL: Record<CaseDecision, string> = { dropped: 'Dropped', warning: 'Warning', inquiry: 'Inquiry' };
+const DECISION_LONG: Record<CaseDecision, string> = { dropped: 'Dropped: no action', warning: 'Written warning', inquiry: 'Domestic inquiry (recorded; held outside the app for now)' };
 const STATUS_LABEL: Record<CaseStatus, string> = { open: 'Open', action: 'Action needed', 'on-hold': 'On hold', closed: 'Closed' };
 const STATUS_TONE: Record<CaseStatus, BadgeTone> = { open: 'info', action: 'warning', 'on-hold': 'neutral', closed: 'neutral' };
 const ROLE_LABEL = { reporter: 'You raised it', respondent: 'You are asked to reply' } as const;
 export const FINDING_LABEL: Record<CaseFinding, string> = { proved: 'Proved', 'proved-in-part': 'Proved in part', 'not-proved': 'Not proved', 'false-or-malicious': 'False or malicious' };
-const RELIEF_LABEL: Record<ReliefAction, string> = { transfer: 'Transfer', leave: 'Leave', reporting: 'Stop reporting', other: 'Other' };
-const RELIEF_LONG: Record<ReliefAction, string> = { transfer: 'Transfer', leave: 'Leave', reporting: 'Stop reporting to the accused', other: 'Other relief' };
+const RELIEF_LABEL: Record<ReliefAction, string> = { transfer: 'Transfer', leave: 'Leave', reporting: 'Stop reporting', suspension: 'Suspension', other: 'Other' };
+const RELIEF_LONG: Record<ReliefAction, string> = { transfer: 'Transfer', leave: 'Leave', reporting: 'Stop reporting to the accused', suspension: 'Suspension pending inquiry (no pay change by itself)', other: 'Other relief' };
+/** Four choices each (a Segment): a disciplinary case has suspension instead of "stop reporting". */
+const reliefChoices = (kind: CaseKind): ReliefAction[] => (kind === 'disciplinary' ? ['suspension', 'transfer', 'leave', 'other'] : ['transfer', 'leave', 'reporting', 'other']);
 const toClock = (d: CaseDate): ClockItem => ({ key: d.key, label: d.label, due: d.due ? asDate(d.due) : null, doneOn: d.doneOn ? asDate(d.doneOn) : null, note: d.note ?? undefined });
 const codeOf = (e: unknown) => (e as { code?: string } | null)?.code;
 const asAttachments = (files: CaseFile[]) =>
@@ -231,6 +237,7 @@ function RespondentPart({ live, c }: { live: LiveMyCases; c: Extract<MyCaseDetai
             { label: 'Sent to you', value: day(n.sentOn) },
             { label: 'Reply by', value: `${day(n.moreTime?.status === 'granted' && n.moreTime.newDue ? n.moreTime.newDue : n.replyBy)} (${n.replySource})` },
             { label: 'What is alleged', value: n.allegations },
+            ...(n.rule ? [{ label: 'Rule', value: n.rule }] : []),
           ]}
         />
         <FileList files={asAttachments(n.files)} title="Copy of the complaint and papers" onOpen={(f) => live.onOpenFile(c.id, f)} />
@@ -422,10 +429,74 @@ export interface LiveCaseList {
   onRetry?: () => void;
   cases: CaseListRow[];
   onOpen: (id: string) => void;
+  /** HR with case.disciplinary.raise (answer 34): the people in their HR scope and opening a show-cause case. */
+  raise?: { people: { id: string; name: string; email: string }[]; onRaise: (input: RaiseInput) => Promise<{ id: string; ref: string }> };
+  /** Stories and tests only. */
+  start?: { raising?: boolean };
+}
+
+/** HR opens a disciplinary show-cause case: the employee, the misconduct, the standing orders clause and the facts. */
+function RaiseDrawer({ open, onOpenChange, raise, onOpened }: { open: boolean; onOpenChange: (o: boolean) => void; raise: NonNullable<LiveCaseList['raise']>; onOpened: (id: string) => void }) {
+  const [employee, setEmployee] = useState<string | null>(null);
+  const [misconduct, setMisconduct] = useState('');
+  const [rule, setRule] = useState('');
+  const [facts, setFacts] = useState('');
+  const { busy, act, alert } = useAct();
+  const early = useTooEarly([
+    ...(!employee ? [{ fieldId: 'dc-employee', message: 'Choose the employee.' }] : []),
+    ...(misconduct.trim().length < 3 ? [{ fieldId: 'dc-misconduct', message: 'Name the misconduct, in short.' }] : []),
+    ...(facts.trim().length < 10 ? [{ fieldId: 'dc-facts', message: 'Write the facts relied on (10 letters or more).' }] : []),
+  ]);
+  const submit = async () => {
+    if (early.stop()) return;
+    let id = '';
+    const ok = await act(
+      'raise',
+      async () => {
+        id = (await raise.onRaise({ employeeUserId: employee!, misconduct: misconduct.trim(), facts: facts.trim(), ...(rule.trim() ? { rule: rule.trim() } : {}) })).id;
+      },
+      'Case opened',
+      'Send the show-cause notice from the case when you are ready. The employee sees nothing before that.',
+    );
+    if (ok) onOpened(id);
+  };
+  return (
+    <Drawer
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Open a disciplinary case"
+      subtitle="Seen only by you, the HR people you add, and (after the notice) the employee"
+      notice={alert}
+      footer={
+        <>
+          <Button onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="primary" loading={busy === 'raise'} onClick={() => void submit()}>
+            Open the case
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-ops-stack">
+        <FormField id="dc-employee" label="Employee" required helper="People in your HR scope." error={early.errorOf('dc-employee')}>
+          <Select value={employee} onChange={setEmployee} options={raise.people.map((p) => ({ value: p.id, label: `${p.name} · ${p.email}` }))} placeholder="Choose a person" />
+        </FormField>
+        <FormField id="dc-misconduct" label="Misconduct" required helper="In short, for example: Absence without leave for more than 4 days." error={early.errorOf('dc-misconduct')}>
+          <TextField value={misconduct} onChange={setMisconduct} maxLength={80} />
+        </FormField>
+        <FormField id="dc-rule" label="Standing orders clause" optional helper="As written in the certified standing orders.">
+          <TextField value={rule} onChange={setRule} maxLength={200} />
+        </FormField>
+        <FormField id="dc-facts" label="Facts relied on" required error={early.errorOf('dc-facts')}>
+          <TextArea rows={5} value={facts} onChange={setFacts} maxLength={5000} />
+        </FormField>
+      </div>
+    </Drawer>
+  );
 }
 
 export function LiveCaseList({ live }: { live: LiveCaseList }) {
   const [filters, setFilters] = useState<FilterValue[]>([]);
+  const [raising, setRaising] = useState(Boolean(live.start?.raising));
   if (live.state === 'no-access')
     return (
       <OpsDesk area="helpdesk" active="Cases" member={false}>
@@ -458,7 +529,7 @@ export function LiveCaseList({ live }: { live: LiveCaseList }) {
   ];
   return (
     <OpsDesk area="helpdesk" active="Cases" counts={{ Cases: live.cases.filter((c) => c.status !== 'closed').length }}>
-      <PageHeader title="Cases" description="Only cases you are a member of are listed. Cases can't be deleted; they close with an outcome." />
+      <PageHeader title="Cases" description="Only cases you are a member of are listed. Cases can't be deleted; they close with an outcome." actions={live.raise ? <Button icon={Briefcase} onClick={() => setRaising(true)}>Open a case</Button> : undefined} />
       <Confidential>
         <DataTable
           label="Cases"
@@ -475,6 +546,7 @@ export function LiveCaseList({ live }: { live: LiveCaseList }) {
           onRowClick={(c) => live.onOpen(c.id)}
         />
       </Confidential>
+      {live.raise && <RaiseDrawer open={raising} onOpenChange={setRaising} raise={live.raise} onOpened={(id) => (setRaising(false), live.onOpen(id))} />}
     </OpsDesk>
   );
 }
@@ -596,7 +668,7 @@ function NoticeTab({ live, c }: { live: LiveCaseWorkspace; c: CaseDetail }) {
       <Dialog
         open={sending}
         onOpenChange={setSending}
-        title="Send the notice and the papers"
+        title={c.kind === 'disciplinary' ? 'Send the show-cause notice' : 'Send the notice and the papers'}
         description={`The respondent gets the notice, what is alleged, the files you tick and the reply date (${n.replySource}). The clock starts today.`}
         notice={alert}
         footer={
@@ -684,7 +756,7 @@ function OutcomeTab({ live, c, onPropose }: { live: LiveCaseWorkspace; c: CaseDe
         <>
           <DescriptionList
             items={[
-              { label: 'Finding', value: o.finding ? FINDING_LABEL[o.finding] : '—' },
+              o.decision ? { label: 'Decision', value: DECISION_LONG[o.decision] } : { label: 'Finding', value: o.finding ? FINDING_LABEL[o.finding] : '—' },
               { label: 'Action', value: o.action ?? '—' },
               { label: 'Reasons', value: o.reasons ?? '—' },
               { label: 'The reporter is told', value: o.reporterSummary ?? '—' },
@@ -994,6 +1066,7 @@ export function LiveCaseWorkspace({ live }: { live: LiveCaseWorkspace }) {
   const [action, setAction] = useState('');
   const [reasons, setReasons] = useState('');
   const [summary, setSummary] = useState('');
+  const [decision, setDecision] = useState<CaseDecision | null>(null);
   const [relief, setRelief] = useState<ReliefAction | null>(null);
   const [reliefNote, setReliefNote] = useState('');
   const [assignee, setAssignee] = useState<string | null>(null);
@@ -1004,7 +1077,7 @@ export function LiveCaseWorkspace({ live }: { live: LiveCaseWorkspace }) {
   const [override, setOverride] = useState('');
   const { busy, act, alert, say, toast, setProblem } = useAct();
   const proposeEarly = useTooEarly([
-    ...(!finding ? [{ fieldId: 'cw-finding', message: 'Choose the finding.' }] : []),
+    ...(c?.kind === 'disciplinary' ? (!decision ? [{ fieldId: 'cw-decision', message: 'Choose the decision.' }] : []) : !finding ? [{ fieldId: 'cw-finding', message: 'Choose the finding.' }] : []),
     ...(action.trim().length < 3 ? [{ fieldId: 'cw-action', message: 'Write the action (or “No action”).' }] : []),
     ...(reasons.trim().length < 20 ? [{ fieldId: 'cw-reasons', message: 'Write the reasons (at least 20 letters).' }] : []),
     ...(summary.trim().length < 3 ? [{ fieldId: 'cw-summary', message: 'Write what the reporter is told.' }] : []),
@@ -1048,7 +1121,7 @@ export function LiveCaseWorkspace({ live }: { live: LiveCaseWorkspace }) {
   const propose = async () => {
     if (!c.canDecide.ok) return say(c.canDecide.reason ?? 'No outcome yet: wait for the reply or its date.');
     if (proposeEarly.stop()) return;
-    if (await act('propose', () => live.onPropose(c.id, { finding: finding!, action: action.trim(), reasons: reasons.trim(), reporterSummary: summary.trim(), version: c.version }), 'Outcome proposed', 'A second officer approves it.')) {
+    if (await act('propose', () => live.onPropose(c.id, { ...(c.kind === 'disciplinary' ? { decision: decision! } : { finding: finding! }), action: action.trim(), reasons: reasons.trim(), reporterSummary: summary.trim(), version: c.version }), 'Outcome proposed', 'A second officer approves it.')) {
       close();
       setTab('decision');
     }
@@ -1088,7 +1161,7 @@ export function LiveCaseWorkspace({ live }: { live: LiveCaseWorkspace }) {
         {!dialog && alert}
         <ObjectHeader
           name={c.subject}
-          icon={posh || c.kind === 'whistleblower' ? ShieldAlert : c.kind === 'grievance' ? Megaphone : Briefcase}
+          icon={posh || c.kind === 'whistleblower' ? ShieldAlert : c.kind === 'grievance' ? Megaphone : c.kind === 'disciplinary' ? FileText : Briefcase}
           secondary={
             <span>
               <span className="yx-ops-mono">{c.ref}</span> · {KIND_LABEL[c.kind]} · {c.location} · opened {day(c.openedOn)}
@@ -1147,20 +1220,27 @@ export function LiveCaseWorkspace({ live }: { live: LiveCaseWorkspace }) {
                 <TabsTrigger value="evidence" count={c.files.length}>
                   Evidence
                 </TabsTrigger>
-                <TabsTrigger value="messages" count={c.messages.length}>
-                  {c.anonymous ? 'Anonymous messages' : 'Messages'}
-                </TabsTrigger>
-                {c.notice && <TabsTrigger value="notice">Notice and reply</TabsTrigger>}
-                <TabsTrigger value="decision">{posh ? 'IC report' : 'Outcome'}</TabsTrigger>
+                {c.kind !== 'disciplinary' && (
+                  <TabsTrigger value="messages" count={c.messages.length}>
+                    {c.anonymous ? 'Anonymous messages' : 'Messages'}
+                  </TabsTrigger>
+                )}
+                {c.notice && <TabsTrigger value="notice">{c.kind === 'disciplinary' ? 'Show-cause and reply' : 'Notice and reply'}</TabsTrigger>}
+                <TabsTrigger value="decision">{posh ? 'IC report' : c.kind === 'disciplinary' ? 'Decision' : 'Outcome'}</TabsTrigger>
                 <TabsTrigger value="relief" count={c.relief.length}>
-                  Interim relief
+                  {c.kind === 'disciplinary' ? 'Actions for HR' : 'Interim relief'}
                 </TabsTrigger>
               </TabsList>
               <TabsContent value="timeline">
                 <div className="yx-ops-stack">
-                <Card title="The report">
+                <Card title={c.kind === 'disciplinary' ? 'Misconduct' : 'The report'}>
                   <DescriptionList
-                    items={[
+                    items={c.kind === 'disciplinary' ? [
+                      { label: 'Misconduct', value: c.report.category ?? '—' },
+                      ...(c.rule ? [{ label: 'Standing orders', value: c.rule }] : []),
+                      { label: 'Facts', value: c.report.summary },
+                      { label: 'Employee', value: c.respondent ?? '—' },
+                    ] : [
                       { label: 'What happened', value: c.report.summary },
                       ...(c.report.category ? [{ label: 'Topic', value: c.report.category }] : []),
                       ...(c.report.happenedOn ? [{ label: 'When', value: day(c.report.happenedOn) }] : []),
@@ -1233,16 +1313,22 @@ export function LiveCaseWorkspace({ live }: { live: LiveCaseWorkspace }) {
       >
         <div className="yx-ops-stack">
           {!c.canDecide.ok && <InlineAlert tone="warning">{c.canDecide.reason}</InlineAlert>}
-          <FormField id="cw-finding" label="Finding" required helper="“Not proved” is not “false or malicious”; that needs its own reasons." error={proposeEarly.errorOf('cw-finding')}>
-            <Segment label="Finding" options={FINDINGS} value={finding} onChange={setFinding} />
-          </FormField>
+          {c.kind === 'disciplinary' ? (
+            <FormField id="cw-decision" label="Decision" required helper="Nothing changes in People or Pay by itself. An inquiry is recorded; the inquiry is held outside the app for now." error={proposeEarly.errorOf('cw-decision')}>
+              <Segment label="Decision" options={(['dropped', 'warning', 'inquiry'] as CaseDecision[]).map((v) => ({ value: v, label: DECISION_LABEL[v] }))} value={decision} onChange={setDecision} />
+            </FormField>
+          ) : (
+            <FormField id="cw-finding" label="Finding" required helper="“Not proved” is not “false or malicious”; that needs its own reasons." error={proposeEarly.errorOf('cw-finding')}>
+              <Segment label="Finding" options={FINDINGS} value={finding} onChange={setFinding} />
+            </FormField>
+          )}
           <FormField id="cw-action" label="Action" required helper="For example: written warning; no action; training." error={proposeEarly.errorOf('cw-action')}>
             <TextArea rows={2} value={action} onChange={setAction} maxLength={500} />
           </FormField>
           <FormField id="cw-reasons" label="Reasons" required error={proposeEarly.errorOf('cw-reasons')}>
             <TextArea rows={5} value={reasons} onChange={setReasons} maxLength={5000} />
           </FormField>
-          <FormField id="cw-summary" label="What the reporter is told" required helper="Sent once a second officer approves. No witness names or notes." error={proposeEarly.errorOf('cw-summary')}>
+          <FormField id="cw-summary" label={c.kind === 'disciplinary' ? 'What the employee is told' : 'What the reporter is told'} required helper="Sent once a second person approves. No witness names or notes." error={proposeEarly.errorOf('cw-summary')}>
             <TextArea rows={2} value={summary} onChange={setSummary} maxLength={1000} />
           </FormField>
         </div>
@@ -1264,7 +1350,7 @@ export function LiveCaseWorkspace({ live }: { live: LiveCaseWorkspace }) {
       >
         <div className="yx-ops-stack">
           <FormField id="cw-relief" label="Relief" required error={reliefEarly.errorOf('cw-relief')}>
-            <Segment label="Relief" options={(Object.keys(RELIEF_LABEL) as ReliefAction[]).map((v) => ({ value: v, label: RELIEF_LABEL[v] }))} value={relief} onChange={setRelief} />
+            <Segment label="Relief" options={reliefChoices(c.kind).map((v) => ({ value: v, label: RELIEF_LABEL[v] }))} value={relief} onChange={setRelief} />
           </FormField>
           <FormField id="cw-relief-note" label="What HR should do" required helper="Name the request it answers (for example, the complainant's written request of 24 Sep)." error={reliefEarly.errorOf('cw-relief-note')}>
             <TextArea rows={3} value={reliefNote} onChange={setReliefNote} maxLength={1000} />

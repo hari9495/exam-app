@@ -147,6 +147,7 @@ export function ethicsCase(over: Partial<CaseDetail> = {}): CaseDetail {
       { id: 'mb-joseph', name: 'Joseph Mathew', role: 'Second officer', access: 'full', recused: null },
       { id: 'mb-sn', name: 'Justice (retd.) S. Narayanan', role: 'Audit committee chair', access: 'reports and outcome', external: true, recused: null },
     ],
+    rule: null,
     people: [
       { id: 'p-harish', name: 'Harish Bhat', email: 'harish.bhat@kaverifoods.in' },
       { id: 'p-ravi', name: 'Ravi Shankar', email: 'ravi.shankar@kaverifoods.in' },
@@ -189,6 +190,7 @@ export function ethicsCase(over: Partial<CaseDetail> = {}): CaseDetail {
       action: 'Written warning; gifts training for the purchase team',
       reasons: 'Two of the four hampers were above the limit and not declared. The register shows one declared on 16 Aug.',
       reporterSummary: 'We looked into your concern and took action with the purchase team.',
+      decision: null,
       proposedBy: 'Rekha Iyengar',
       proposedByMe: false,
       proposedAt: '2026-09-27',
@@ -307,4 +309,91 @@ export const ETHICS_ROWS: EthicsRow[] = [
 
 export function liveEthics(over: Partial<LiveEthicsDesk> = {}): LiveEthicsDesk {
   return { state: 'ready', rows: ETHICS_ROWS, onOpen: () => undefined, onRoute: noop, ...over };
+}
+
+/* ---------------- HLP-08 disciplinary (answer 34) ---------------- */
+
+/** A disciplinary case opened by HR: the show-cause notice sent, the employee replied; the viewer is the second HR person. */
+export function disciplinaryCase(over: Partial<CaseDetail> = {}): CaseDetail {
+  const base = ethicsCase();
+  return {
+    ...base,
+    id: 'k4',
+    ref: 'DSC-0031',
+    kind: 'disciplinary',
+    subject: 'Absence without leave for more than 4 days: Absent from 8 to 12 Sep 2026…',
+    location: 'Hosur plant',
+    openedOn: '2026-09-15',
+    stage: 'Reply',
+    stages: ['Opened', 'Show-cause notice', 'Reply', 'Decision proposed', 'Decided'],
+    stageIndex: 2,
+    status: 'open',
+    owner: 'Lakshmi Venkatesan',
+    reporter: 'Lakshmi Venkatesan',
+    anonymous: false,
+    respondent: 'Manoj Kumar',
+    rule: 'Standing orders (certified, v3 from 1 Apr 2026), clause 14(2)(c)',
+    report: { summary: 'Absent from 8 Sep 2026 to 12 Sep 2026 (5 working days) without applying for leave or informing the supervisor.', category: 'Absence without leave for more than 4 days', happenedOn: null, involved: null, witnesses: null, outside: null, retaliationWorry: false, late: false },
+    severity: null,
+    dates: [
+      { key: 'reply', label: 'Respondent reply', due: '2026-09-30', doneOn: '2026-09-27' },
+      { key: 'decide', label: 'Decision (two people)', due: null, doneOn: null, note: 'After the reply or the reply date' },
+    ],
+    datesSource: 'Standing orders setting for the legal entity: 7 days to reply',
+    me: { memberId: 'mb-harish', canWork: true, canApprove: false, ic: false, presiding: false, recused: false, canSetSeverity: false },
+    canDecide: { ok: true, reason: null },
+    members: [
+      { id: 'mb-lakshmi', name: 'Lakshmi Venkatesan', role: 'HR (disciplinary)', access: 'full', recused: null },
+      { id: 'mb-harish', name: 'Harish Bhat', role: 'Case officer', access: 'full', recused: null },
+    ],
+    timeline: [
+      { id: 'd1', at: '2026-09-15T06:00:00Z', who: 'Lakshmi Venkatesan', text: 'Opened the case' },
+      { id: 'd2', at: '2026-09-23T05:30:00Z', who: 'Lakshmi Venkatesan', text: 'Sent the notice and the papers to the respondent' },
+      { id: 'd3', at: '2026-09-27T10:00:00Z', who: 'Manoj Kumar', text: 'Replied to the notice' },
+    ],
+    files: [],
+    accessLog: [],
+    messages: [],
+    notice: {
+      status: 'sent',
+      delay: null,
+      sentOn: '2026-09-23',
+      replyBy: '2026-09-30',
+      replySource: 'Standing orders setting for the legal entity: 7 days to reply',
+      replies: [{ at: '2026-09-27T10:00:00Z', text: 'I was admitted to hospital in my village from 8 to 11 Sep and could not reach my supervisor.', files: [] }],
+      moreTime: null,
+    },
+    outcome: { status: 'none', finding: null, decision: null, action: null, reasons: null, reporterSummary: null, proposedBy: null, proposedByMe: false, proposedAt: null, approvedBy: null, approvedAt: null, sendBackNote: null },
+    icReport: null,
+    relief: [],
+    ...over,
+  };
+}
+
+/** The employee's view of a show-cause notice (My cases). */
+export function showCauseCase(over: Partial<MyCaseAsRespondent> = {}): MyCaseAsRespondent {
+  const base = respondentCase();
+  return {
+    ...base,
+    id: 'c4',
+    ref: 'DSC-0031',
+    kind: 'disciplinary',
+    stage: 'Show-cause notice',
+    openedOn: '2026-09-23',
+    dates: [
+      { key: 'notice', label: 'Notice sent to you', due: '2026-09-23', doneOn: '2026-09-23' },
+      { key: 'reply', label: 'Your reply', due: '2026-09-30', doneOn: null },
+    ],
+    datesSource: 'Standing orders setting for the legal entity: 7 days to reply',
+    notice: {
+      ...base.notice,
+      sentOn: '2026-09-23',
+      replyBy: '2026-09-30',
+      replySource: 'Standing orders setting for the legal entity: 7 days to reply',
+      allegations: 'Absence without leave for more than 4 days. You were absent from 8 Sep 2026 to 12 Sep 2026 (5 working days) without applying for leave or informing your supervisor.',
+      rule: 'Standing orders (certified, v3 from 1 Apr 2026), clause 14(2)(c)',
+      files: [],
+    },
+    ...over,
+  };
 }

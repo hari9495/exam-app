@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
 import { CaseListScreen, CaseWorkspaceScreen, EthicsDeskScreen, MyCasesScreen } from './cases';
-import { ethicsCase, icReport, liveCaseList, liveEthics, liveMyCases, liveWorkspace, poshCase, reporterCase, respondentCase } from './cases-live-samples';
+import { disciplinaryCase, ethicsCase, icReport, liveCaseList, liveEthics, liveMyCases, liveWorkspace, poshCase, reporterCase, respondentCase, showCauseCase } from './cases-live-samples';
 
 // HLP-07 My cases, HLP-08 Cases and HLP-09 Ethics desk, live (the designed screens with records in the server's shapes).
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -259,5 +259,62 @@ describe('HLP-09 Ethics desk (live)', () => {
   it('no access without the ethics officer role', () => {
     show(<EthicsDeskScreen live={liveEthics({ state: 'no-access' })} />);
     expect(screen.getByText("You don't have access to the ethics desk")).toBeInTheDocument();
+  });
+});
+
+describe('HLP-08 disciplinary show-cause cases (live, answer 34)', () => {
+  it('HR opens a case: each field says what is missing, then the case opens', async () => {
+    const onRaise = vi.fn().mockResolvedValue({ id: 'k9', ref: 'DSC-0032' });
+    const onOpen = vi.fn();
+    show(<CaseListScreen live={liveCaseList({ onOpen, raise: { people: [{ id: 'p-manoj', name: 'Manoj Kumar', email: 'manoj@kf.in' }], onRaise } })} />);
+    await ue.click(screen.getByRole('button', { name: 'Open a case' }));
+    const d = screen.getByRole('dialog', { name: 'Open a disciplinary case' });
+    await ue.click(within(d).getByRole('button', { name: 'Open the case' }));
+    expect(await within(d).findByText('Choose the employee.')).toBeInTheDocument();
+    expect(onRaise).not.toHaveBeenCalled();
+    await ue.click(within(d).getByRole('combobox', { name: /Employee/ }));
+    await ue.click(await screen.findByRole('option', { name: /Manoj Kumar/ }));
+    await ue.type(within(d).getByRole('textbox', { name: /^Misconduct/ }), 'Absence without leave');
+    await ue.type(within(d).getByRole('textbox', { name: /Facts relied on/ }), 'Absent five working days without leave.');
+    await ue.click(within(d).getByRole('button', { name: 'Open the case' }));
+    expect(onRaise).toHaveBeenCalledWith({ employeeUserId: 'p-manoj', misconduct: 'Absence without leave', facts: 'Absent five working days without leave.' });
+    expect(onOpen).toHaveBeenCalledWith('k9');
+  });
+
+  it('without the key there is no Open a case button', () => {
+    show(<CaseListScreen live={liveCaseList()} />);
+    expect(screen.queryByRole('button', { name: 'Open a case' })).not.toBeInTheDocument();
+  });
+
+  it('the case shows the misconduct and the standing orders clause; no messages tab; the decision is dropped, warning or inquiry', async () => {
+    const onPropose = vi.fn().mockResolvedValue(undefined);
+    show(<CaseWorkspaceScreen live={liveWorkspace({ onPropose, detail: disciplinaryCase(), start: { dialog: 'propose' } })} />);
+    expect(screen.getByText('Standing orders (certified, v3 from 1 Apr 2026), clause 14(2)(c)')).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /Messages/ })).not.toBeInTheDocument();
+    const d = screen.getByRole('dialog');
+    expect(within(d).queryByRole('radiogroup', { name: 'Finding' })).not.toBeInTheDocument();
+    await ue.click(within(d).getByRole('button', { name: 'Propose outcome' }));
+    expect(await within(d).findByText('Choose the decision.')).toBeInTheDocument();
+    await ue.click(within(d).getByRole('radio', { name: 'Warning' }));
+    await ue.type(within(d).getByRole('textbox', { name: /Action/ }), 'Written warning');
+    await ue.type(within(d).getByRole('textbox', { name: /Reasons/ }), 'One day of absence is not explained by the hospital stay.');
+    await ue.type(within(d).getByRole('textbox', { name: /What the employee is told/ }), 'A written warning.');
+    await ue.click(within(d).getByRole('button', { name: 'Propose outcome' }));
+    expect(onPropose).toHaveBeenCalledWith('k4', { decision: 'warning', action: 'Written warning', reasons: 'One day of absence is not explained by the hospital stay.', reporterSummary: 'A written warning.', version: 7 });
+  });
+
+  it('suspension is offered as an HR action on a disciplinary case only', async () => {
+    const { unmount } = show(<CaseWorkspaceScreen live={liveWorkspace({ detail: disciplinaryCase(), start: { tab: 'relief', dialog: 'relief' } })} />);
+    expect(within(screen.getByRole('dialog')).getByRole('radio', { name: 'Suspension' })).toBeInTheDocument();
+    unmount();
+    show(<CaseWorkspaceScreen live={liveWorkspace({ detail: poshCase(), start: { tab: 'relief', dialog: 'relief' } })} />);
+    expect(within(screen.getByRole('dialog')).queryByRole('radio', { name: 'Suspension' })).not.toBeInTheDocument();
+  });
+
+  it('the employee sees the show-cause notice with the rule and the reply date', () => {
+    show(<MyCasesScreen live={liveMyCases({ openId: 'c4', detail: showCauseCase() })} />);
+    expect(screen.getByText('Standing orders (certified, v3 from 1 Apr 2026), clause 14(2)(c)')).toBeInTheDocument();
+    expect(screen.getByText('30 Sep 2026 (Standing orders setting for the legal entity: 7 days to reply)')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send reply' })).toBeInTheDocument();
   });
 });
