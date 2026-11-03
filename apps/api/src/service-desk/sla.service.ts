@@ -656,6 +656,22 @@ export class SlaService implements OnModuleInit, OnModuleDestroy {
     return x ? { resolveBy: x.state === 'running' ? x.dueAt : null, paused: x.state === 'paused' } : null;
   }
 
+  /**
+   * HLP-01 "My tickets": the same resolution promise for many tickets at once, as minutes used of the target (business
+   * time on the desk's calendar, so it matches the agent's clock). Only the resolution timer, never internal ones.
+   */
+  async requesterClocks(tx: Tx, org: string, ticketIds: string[], now = new Date()): Promise<Map<string, { usedMinutes: number; targetMinutes: number; paused: boolean }>> {
+    const out = new Map<string, { usedMinutes: number; targetMinutes: number; paused: boolean }>();
+    if (!ticketIds.length) return out;
+    const cache = new Map<string, CalendarSpec>();
+    const timers = await tx.sdSlaTimer.findMany({ where: { organizationId: org, ticketId: { in: ticketIds }, kind: 'sla', metric: 'resolution', state: { in: LIVE } } });
+    for (const x of timers) {
+      const used = elapsed(await this.specFor(tx, x, cache), this.clock(x), now);
+      out.set(x.ticketId, { usedMinutes: Math.floor(used / 60), targetMinutes: Math.round(x.targetSeconds / 60), paused: x.state === 'paused' });
+    }
+    return out;
+  }
+
   // ------------------------------------------------------------------------------------------ compliance (US-G-015)
 
   /**

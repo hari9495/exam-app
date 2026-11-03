@@ -166,19 +166,37 @@ export class RequesterService {
       const watched = await this.visibleIds(tx, org, ids);
       const rows = await tx.sdTicket.findMany({ where: { organizationId: org, OR: [...(this.mine(org, ids).OR ?? []), { id: { in: watched }, private: false, sensitive: false }] }, orderBy: { updatedAt: 'desc' }, take: 200 });
       const statuses = new Map((await tx.sdStatus.findMany({ where: { organizationId: org, id: { in: rows.map((t) => t.statusId) } }, select: { id: true, label: true } })).map((s) => [s.id, s.label]));
-      const desks = new Map((await tx.sdDesk.findMany({ where: { organizationId: org, id: { in: rows.map((t) => t.deskId) } }, select: { id: true, name: true } })).map((d) => [d.id, d.name]));
-      return rows.map((t) => ({
-        id: t.id,
-        number: t.number,
-        subject: t.subject,
-        desk: desks.get(t.deskId) ?? '',
-        status: statuses.get(t.statusId) ?? '',
-        systemState: t.systemState,
-        private: t.private || t.sensitive,
-        role: ids.includes(t.requesterPersonId) ? 'requester' : t.requestedForPersonId && ids.includes(t.requestedForPersonId) ? 'requested_for' : 'watcher',
-        createdAt: t.createdAt,
-        updatedAt: t.updatedAt,
-      }));
+      const desks = new Map((await tx.sdDesk.findMany({ where: { organizationId: org, id: { in: rows.map((t) => t.deskId) } }, select: { id: true, name: true, reopenWindowDays: true, requesterCanReopen: true, autoCloseDays: true } })).map((d) => [d.id, d]));
+      // HLP-01: the resolution promise on open tickets, and on solved ones when it closes, until when a reply reopens
+      // it (the desk's own settings) and whether the person who raised it can still rate it.
+      const clocks = await this.tickets.sla.requesterClocks(tx, org, rows.filter((t) => !['solved', 'closed'].includes(t.systemState)).map((t) => t.id));
+      const done = rows.filter((t) => ['solved', 'closed'].includes(t.systemState)).map((t) => t.id);
+      const rated = new Map((done.length ? await tx.sdRating.findMany({ where: { organizationId: org, ticketId: { in: done } }, select: { ticketId: true, score: true } }) : []).map((x) => [x.ticketId, x.score]));
+      const day = 86_400_000;
+      return rows.map((t) => {
+        const d = desks.get(t.deskId);
+        const solved = t.systemState === 'solved' && t.resolvedAt;
+        const isRequester = ids.includes(t.requesterPersonId);
+        return {
+          id: t.id,
+          number: t.number,
+          subject: t.subject,
+          desk: d?.name ?? '',
+          status: statuses.get(t.statusId) ?? '',
+          systemState: t.systemState,
+          private: t.private || t.sensitive,
+          role: isRequester ? 'requester' : t.requestedForPersonId && ids.includes(t.requestedForPersonId) ? 'requested_for' : 'watcher',
+          createdAt: t.createdAt,
+          updatedAt: t.updatedAt,
+          clock: clocks.get(t.id) ?? null,
+          resolvedAt: t.resolvedAt,
+          closedAt: t.closedAt,
+          closesOn: solved && d?.autoCloseDays ? new Date(t.resolvedAt!.getTime() + d.autoCloseDays * day) : null,
+          reopenUntil: solved && d?.requesterCanReopen ? new Date(t.resolvedAt!.getTime() + d.reopenWindowDays * day) : null,
+          rating: rated.get(t.id) ?? null,
+          canRate: isRequester && !rated.has(t.id) && ['solved', 'closed'].includes(t.systemState),
+        };
+      });
     });
   }
 
