@@ -13,3 +13,4 @@ export const Settled: S = { render: () => <TripScreen trip={TRIP} spent={7000} s
 export const Request: S = { name: 'Request sheet', render: () => <TripScreen trip={TRIP} view="request" /> };
 export const PhoneRequest: S = { name: 'Request · phone', globals: PHONE, render: () => <TripScreen device="phone" trip={TRIP} view="request" /> };
 export const PhoneRecord: S = { name: 'Trip · phone', globals: PHONE, render: () => <TripScreen device="phone" trip={TRIP} spent={7000} /> };
+export const List: S = { name: 'Trips list · mine, waiting for me, to book', render: () => <TripScreen trip={TRIP} view="list" /> };

@@ -1,12 +1,12 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { AdvancesScreen, type AdvanceSummary } from '@yukthix/ui/expenses';
+import { AdvanceScreen, EXP_LINKS, type AdvanceSummary } from '@yukthix/ui/expenses';
 import { loadState, useYxPermissions } from '../../../../../lib/yx-org';
 import { useExp, useExpWrite } from '../../../../../lib/yx-expenses';
 import { useScopeParams, withParams } from '../../../../../lib/yx-shell';
 
-// Advances (EXP-05, M05 batch E4): mine, those waiting for me, and finance's list to pay and settle.
+// Advances (EXP-05, the designed screen with `live`): mine, those waiting for me, and finance's list to pay and settle.
 export default function YxAdvancesPage() {
   const sp = useScopeParams();
   const router = useRouter();
@@ -16,17 +16,21 @@ export default function YxAdvancesPage() {
   const payout = useExp<{ advances: AdvanceSummary[] }>(withParams('/advances?view=payout', sp.entity), perms.has('expense.payout.manage'));
   const write = useExpWrite();
   return (
-    <AdvancesScreen
-      state={loadState(mine, approvals)}
-      onRetry={() => void Promise.all([mine.refetch(), approvals.refetch()])}
-      mine={mine.data?.advances ?? null}
-      approvals={approvals.data?.advances ?? null}
-      payout={perms.has('expense.payout.manage') ? (payout.data?.advances ?? []) : null}
-      onRequest={async (purpose, amount) => {
-        const a = await write<{ id: string }>('POST', '/advances', { purpose, amount });
-        router.push(`/yx/expenses/advances/${encodeURIComponent(a.id)}`);
+    <AdvanceScreen
+      live={{
+        view: 'list',
+        state: loadState(mine, approvals),
+        onRetry: () => void Promise.all([mine.refetch(), approvals.refetch()]),
+        mine: mine.data?.advances ?? null,
+        approvals: approvals.data?.advances ?? null,
+        payout: perms.has('expense.payout.manage') ? (payout.data?.advances ?? []) : null,
+        onRequest: async (purpose, amount) => {
+          const a = await write<{ id: string }>('POST', '/advances', { purpose, amount });
+          router.push(EXP_LINKS.advance(a.id));
+        },
+        onRequestTrip: () => router.push(`${EXP_LINKS.trips}?new=1`),
+        onOpen: (id) => router.push(EXP_LINKS.advance(id)),
       }}
-      onOpen={(id) => router.push(`/yx/expenses/advances/${encodeURIComponent(id)}`)}
     />
   );
 }

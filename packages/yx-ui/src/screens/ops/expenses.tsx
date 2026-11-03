@@ -24,6 +24,7 @@ import { checkLine, flagText, fxFlagged, fxVariancePct, mileageAmount, perDiemAm
 import type { ListState } from './helpdesk';
 import { LiveClaimComposer, LiveClaimReview, LiveExpensesHome, NewClaimDialog, type LiveClaim, type LiveHome } from './expenses-live';
 import { Segment } from '../../components/segment';
+import { LiveAdvanceRecord, LiveAdvancesList, LiveTripRecord, LiveTripsList, type LiveAdvance, type LiveAdvances, type LiveTrip, type LiveTrips } from './expenses-travel-live';
 import type { ApprovalStatus, Claim, ExpenseLine, PaymentStatus } from './expenses-data';
 
 export type Device = 'desk' | 'phone';
@@ -641,8 +642,45 @@ export function TripRequestForm() {
     </div>
   );
 }
-export function TripScreen({ device = 'desk', trip, view = 'record', spent = 19794, settled }: { device?: Device; trip: TripData; view?: 'request' | 'record'; spent?: number; settled?: boolean }) {
+export interface TripScreenProps {
+  device?: Device;
+  trip: TripData;
+  /** 'list': the Trips page (the request sheet opens over it). */
+  view?: 'list' | 'request' | 'record';
+  spent?: number;
+  settled?: boolean;
+}
+/** EXP-04 Trip: the trips list with its request sheet, and one trip. The live app passes `live`. */
+export function TripScreen(props: TripScreenProps | { live: LiveTrips | LiveTrip }) {
+  if (!('live' in props)) return <SampleTrip {...props} />;
+  return props.live.view === 'list' ? <LiveTripsList live={props.live} /> : <LiveTripRecord live={props.live} />;
+}
+function SampleTripsList({ trip }: { trip: TripData }) {
+  return (
+    <DataTable
+      label="Trips"
+      columns={[
+        { key: 'p', header: 'Trip', value: (t: TripData) => t.purpose, width: 260 },
+        { key: 'd', header: 'Dates', value: (t) => `${formatDate(t.from)} to ${formatDate(t.to)}`, width: 230 },
+        { key: 'e', header: 'Estimate', type: 'money', value: (t) => t.estimate },
+        { key: 's', header: 'Status', value: (t) => t.status, render: (t) => <Badge tone="success">{t.status}</Badge> },
+      ]}
+      rows={[trip, { ...trip, id: 'TRP-0219', purpose: 'Dubai trade show', from: new Date(2026, 10, 2), to: new Date(2026, 10, 6), estimate: 145000, status: 'Requested' }]}
+      getRowId={(t) => t.id}
+      rowButtons={() => <Button size="sm">Open</Button>}
+    />
+  );
+}
+function SampleTrip({ device = 'desk', trip, view = 'record', spent = 19794, settled }: TripScreenProps) {
   const s = settlement(spent, trip.advance);
+  if (view === 'list')
+    return (
+      <OpsDesk area="expenses" active="Trips">
+        <PageHeader title="Trips" description="Ask before you travel. An approved trip gets its advance, and its bookings and claims stay together." actions={<Button variant="primary" icon={Plane}>Request a trip</Button>} />
+        <Segment label="Show" value="mine" onChange={() => {}} options={[{ value: 'mine', label: 'My trips' }, { value: 'approvals', label: 'Waiting for me (1)' }, { value: 'desk', label: 'To book (2)' }]} />
+        <SampleTripsList trip={trip} />
+      </OpsDesk>
+    );
   if (view === 'request') {
     if (device === 'phone')
       return (
@@ -655,7 +693,8 @@ export function TripScreen({ device = 'desk', trip, view = 'record', spent = 197
       );
     return (
       <OpsDesk area="expenses" active="Trips">
-        <PageHeader title="Trips" />
+        <PageHeader title="Trips" description="Ask before you travel. An approved trip gets its advance, and its bookings and claims stay together." />
+        <SampleTripsList trip={trip} />
         <Drawer open onOpenChange={() => {}} size="lg" title="Request a trip" subtitle="Your manager approves; an approved advance is created automatically." footer={<><Button>Cancel</Button><Button variant="primary">Send for approval</Button></>}>
           <TripRequestForm />
         </Drawer>
@@ -751,8 +790,36 @@ export interface AdvanceScreenProps {
   requestOpen?: boolean;
   forex?: { currency: string; amount: number; spent: number; issueRate: number; returnRate: number; returnedOn: Date };
   persona?: 'emp' | 'fin';
+  /** The Advances page: my advances, those waiting for me and finance's, as a list. */
+  list?: boolean;
 }
-export function AdvanceScreen({ device = 'desk', advance, today, requestOpen, forex, persona = 'emp' }: AdvanceScreenProps) {
+/** EXP-05 Advance card + request: the advances list, and one advance with its balance ledger. The live app passes `live`. */
+export function AdvanceScreen(props: AdvanceScreenProps | { live: LiveAdvances | LiveAdvance }) {
+  if (!('live' in props)) return props.list ? <SampleAdvancesList {...props} /> : <SampleAdvance {...props} />;
+  return props.live.view === 'list' ? <LiveAdvancesList live={props.live} /> : <LiveAdvanceRecord live={props.live} />;
+}
+function SampleAdvancesList({ advance }: AdvanceScreenProps) {
+  const rows = [advance, { ...advance, id: 'ADV-0061', purpose: 'Imprest, Hosur plant petty expenses', amount: 15000 }];
+  return (
+    <OpsDesk area="expenses" active="Advances">
+      <PageHeader title="Advances" description="Money paid to you before you spend it. Your claims settle it first; what is left you return." actions={<Button variant="primary">Request an advance</Button>} />
+      <Segment label="Show" value="mine" onChange={() => {}} options={[{ value: 'mine', label: 'My advances' }, { value: 'approvals', label: 'Waiting for me (1)' }, { value: 'payout', label: 'Finance (3)' }]} />
+      <DataTable
+        label="Advances"
+        columns={[
+          { key: 'p', header: 'Advance', value: (a: AdvanceData) => a.purpose, width: 260 },
+          { key: 'a', header: 'Paid', type: 'money', value: (a) => a.amount },
+          { key: 'b', header: 'Open balance', type: 'money', value: (a) => a.ledger.reduce((s, l) => s + l.amount, 0) },
+          { key: 'd', header: 'Settle by', type: 'date', value: (a) => a.windowEnds },
+        ]}
+        rows={rows}
+        getRowId={(a) => a.id}
+        rowButtons={() => <Button size="sm">Open</Button>}
+      />
+    </OpsDesk>
+  );
+}
+function SampleAdvance({ device = 'desk', advance, today, requestOpen, forex, persona = 'emp' }: AdvanceScreenProps) {
   const [open, setOpen] = useState(!!requestOpen);
   const [amt, setAmt] = useState<number | null>(15000);
   const balance = advance.ledger.reduce((s, l) => s + l.amount, 0);

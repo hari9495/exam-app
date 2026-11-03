@@ -687,6 +687,8 @@ export class ExpenseTripsService implements OnModuleInit {
         ...s,
         person,
         payCurrency: (await tx.legalEntity.findFirstOrThrow({ where: { organizationId: org, id: adv.legalEntityId }, select: { currency: true } })).currency,
+        // EXP-05 design: the company's settings behind the settle-by date and the salary recovery of an overdue balance.
+        policy: { settleDays: Number(await settingFor(tx, c, 'expense.advance.settle_days', { legalEntityId: adv.legalEntityId })), recoveryInstalments: Number(await settingFor(tx, c, 'expense.advance.recovery_instalments', { legalEntityId: adv.legalEntityId })) },
         ledger: [
           ...(adv.paidOn ? [{ id: `${adv.id}-paid`, on: iso(adv.paidOn), kind: 'paid', text: adv.fxRate ? `Advance paid at ${adv.fxRate.toFixed(4)}` : 'Advance paid', amount: adv.amount!.toFixed(2), amountPay: adv.fxRate ? toPay(adv.amount!, adv.fxRate) : adv.amount!.toFixed(2), claimId: null }] : []),
           ...ledger.map((l) => ({

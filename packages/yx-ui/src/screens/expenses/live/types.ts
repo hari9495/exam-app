@@ -311,6 +311,8 @@ export interface BookingInput {
 export interface AdvanceDetail extends AdvanceSummary {
   person: string;
   payCurrency?: string;
+  /** EXP-05: the company's settle-by days and how many salary instalments recover an overdue balance. */
+  policy?: { settleDays: number; recoveryInstalments: number };
   ledger: { id: string; on: string; kind: string; text: string; amount: string; amountPay?: string; claimId: string | null }[];
   can: { changeAmount: boolean; decide: string | null; pay: boolean; recordReturn: boolean; claim: boolean };
 }

@@ -33,7 +33,7 @@ const ALLOWED_RULES: { why: string; test: (tag: string) => boolean }[] = [
 /** Raw elements still left per area, outside ALLOWED. Only goes down. */
 const LEFT: Record<string, number> = {
   desk: 30,
-  expenses: 5,
+  expenses: 4,
   growth: 11,
   hiring: 7,
   history: 0,

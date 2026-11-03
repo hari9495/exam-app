@@ -130,7 +130,7 @@ describe('Trips and advances (M05 batch E4)', () => {
     });
     wrap(<YxTripPage />);
     await userEvent.click(await screen.findByRole('button', { name: 'Approve' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Add a claim to this trip' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Add claim to this trip' }));
     await waitFor(() => expect(push).toHaveBeenCalledWith('/yx/expenses/claims/c9'));
     expect(posted).toEqual([
       ['/workflow/approvals/tasks/task1/decide', { decision: 'approve' }],

@@ -7,7 +7,10 @@ export { fromRows, toRows, sameRules, type MatrixRow, type Per } from './matrix'
 export { ExpensesHomeScreen, ClaimComposerScreen, ClaimReviewScreen } from '../../ops/expenses';
 export { EXP_LINKS, type AddKind, type LiveClaim, type LiveHome } from '../../ops/expenses-live';
 export { STATUS as CLAIM_STATUS, PAYMENT as CLAIM_PAYMENT, paymentText } from '../../ops/expenses-live-data';
-export { TripsScreen, TripScreen, AdvancesScreen, AdvanceScreen, TRIP_STATUS, ADVANCE_STATUS, type TripsScreenProps, type TripScreenProps, type AdvancesScreenProps, type AdvanceScreenProps } from './travel';
+// EXP-04 trips and EXP-05 advances: the designed screens, a list or one record by `live.view`.
+export { TripScreen, AdvanceScreen } from '../../ops/expenses';
+export { type LiveTrips, type LiveTrip, type LiveAdvances, type LiveAdvance } from '../../ops/expenses-travel-live';
+export { TRIP_STATUS, ADVANCE_STATUS } from '../../ops/expenses-live-data';
 export { ExpenseReportsScreen, REPORT_TABS, type ExpenseReportsScreenProps } from './reports';
 // Batch E3: what finance pays (EXP-06), bank files and the expense journal.
 export { ToPayLiveScreen, type ToPayLiveScreenProps } from './topay';

@@ -68,3 +68,22 @@ export const TO_PAY_DATA: ToPayData = {
   ],
   batches: [],
 };
+
+export const TRIP_DETAIL: import('../expenses/live/types').TripDetail = {
+  id: 't0211', purpose: 'Mumbai distributor meet', person: 'Vikram Rao', fromOn: '2026-09-14', toOn: '2026-09-16', currency: 'INR', estimate: '32000.00', advanceRequested: '10000.00', bookingNeeded: false, status: 'approved', version: 4,
+  decisionNote: null, closedAt: null, closeReason: null,
+  legs: [{ seq: 1, fromCity: 'Bengaluru', toCity: 'Mumbai', country: 'IN', departOn: '2026-09-14', mode: 'air', stayNights: 2 }, { seq: 2, fromCity: 'Mumbai', toCity: 'Bengaluru', country: 'IN', departOn: '2026-09-16', mode: 'air', stayNights: 0 }],
+  bookings: [{ id: 'b1', kind: 'ticket', title: 'Mumbai → Bengaluru (air)', amount: '5920.00', paidBy: 'company', provider: null, providerRef: null, hasFile: true }],
+  budget: { estimate: '32000.00', companyPaid: '5920.00', claimed: '7000.00', used: '12920.00', left: '19080.00' },
+  claims: [{ id: 'c1042', title: 'Mumbai distributor meet', status: 'submitted', claimedTotal: '7000.00', approvedTotal: null, advanceAdjusted: '7000.00' }],
+  advance: { ...OPEN_ADVANCE, balance: '3000.00' },
+  route: null,
+  can: { edit: false, submit: false, cancel: false, book: true, partner: false, decide: null, claim: true, close: false },
+};
+
+export const ADVANCE_DETAIL: import('../expenses/live/types').AdvanceDetail = {
+  ...OPEN_ADVANCE, id: 'a0061', kind: 'imprest', tripId: null, purpose: 'Imprest, Hosur plant petty expenses', requested: '15000.00', amount: '15000.00', settleBy: '2026-07-31', balance: '6600.00', overdue: true, person: 'Vikram Rao', payCurrency: 'INR',
+  policy: { settleDays: 15, recoveryInstalments: 3 },
+  ledger: [{ id: 'x1', on: '2026-06-12', kind: 'paid', text: 'Advance paid', amount: '15000.00', amountPay: '15000.00', claimId: null }, { id: 'x2', on: '2026-07-28', kind: 'claim', text: 'Settled by claim: Hosur plant visit', amount: '-8400.00', amountPay: '-8400.00', claimId: 'c0977' }],
+  can: { changeAmount: false, decide: null, pay: false, recordReturn: false, claim: true },
+};
