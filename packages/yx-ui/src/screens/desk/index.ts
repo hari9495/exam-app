@@ -26,8 +26,9 @@ export { ReadingAidsCard, ReadingAidsFrame, useReadingAids, type ReadingAidsValu
 export { ArticleBody, ArticleDrawer, KnowledgeCard, RateTicketCard, SuggestList, useSuggestions, LANGUAGE_LABEL, type KbArticleView, type KbHome, type KbSuggestion, type ArticleBodyProps } from './help-kb';
 // Batch 4: YukthiX support
 export { YukthixSupportScreen, YX_SEVERITY, severityWords, type YukthixSupportScreenProps, type YxSupportRow, type YxSupportTicket, type YxSupportRaise } from './yukthix-support';
-// Batch 4: knowledge
-export { KnowledgeScreen, categoryTree, AUDIENCE_LABEL, ARTICLE_STATE_LABEL, VERSION_STATE_LABEL, type KnowledgeScreenProps } from './knowledge';
+// HLP-04 Knowledge base editor: the designed screen with `live` (Helpdesk design wiring, round 4).
+export { KbEditorScreen } from '../ops/helpdesk';
+export { categoryTree, articleStatus, AUDIENCE_LABEL, ARTICLE_STATE_LABEL, VERSION_STATE_LABEL, type LiveKb } from '../ops/helpdesk-kb-live';
 export * from './kb-types';
 // Batch 4: reports
 export { ReportsScreen, WallScreen, Tile, REPORT_COLUMNS, numText, npsText, type ReportsScreenProps, type ReportsTab } from './reports';

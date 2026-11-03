@@ -29,6 +29,7 @@ import type { KbArticle, PolicyRow, Ticket, TicketStatus } from './helpdesk-data
 import { LiveHelpCentre, type LiveHelp } from './helpdesk-live';
 import { LiveAgentDesk, type LiveAgentDesk as LiveAgentDeskProps } from './helpdesk-desk-live';
 import { LiveTicketWorkspace, type LiveTicket } from './helpdesk-ticket-live';
+import { LiveKbEditor, type LiveKb } from './helpdesk-kb-live';
 
 export type ListState = 'ready' | 'loading' | 'error' | 'empty';
 export type Device = 'desk' | 'phone';
@@ -737,7 +738,12 @@ export interface KbEditorScreenProps {
   mode?: 'draft' | 'published' | 'review-due';
   today: Date;
 }
-export function KbEditorScreen({ article, html, versions, mode = 'draft', today }: KbEditorScreenProps) {
+/** HLP-04. Stories draw it with sample props; the live page passes `live` (helpdesk-kb-live.tsx) with the real articles. */
+export function KbEditorScreen(props: KbEditorScreenProps | { live: LiveKb }) {
+  return 'live' in props ? <LiveKbEditor live={props.live} /> : <SampleKbEditor {...props} />;
+}
+
+function SampleKbEditor({ article, html, versions, mode = 'draft', today }: KbEditorScreenProps) {
   const [title, setTitle] = useState(article.title);
   const [cats, setCats] = useState<string[]>([article.category.toLowerCase()]);
   const [audience, setAudience] = useState<string[]>(['all']);

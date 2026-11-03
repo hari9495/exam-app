@@ -98,6 +98,10 @@ export interface KbArticle {
   featured: boolean;
   outdated: boolean;
   outdatedReason: string | null;
+  /** HLP-04 "Also suggest for these words" (comma-separated). */
+  keywords: string | null;
+  /** HLP-04 "Use in assistant answers". */
+  assistantUse: boolean;
   version: number;
   updatedAt: string;
   space: Omit<KbSpace, 'publicUrl' | 'canAuthor' | 'canPublish' | 'canManage' | 'categories'>;
@@ -127,6 +131,8 @@ export interface KbArticleMeta {
   expiresAt?: string | null;
   expiryAction?: 'flag' | 'hide';
   ownerUserId?: string;
+  keywords?: string;
+  assistantUse?: boolean;
 }
 
 export interface KbNewArticle {

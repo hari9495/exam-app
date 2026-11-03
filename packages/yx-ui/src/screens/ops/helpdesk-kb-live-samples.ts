@@ -1,8 +1,9 @@
-import { DESK } from './data';
-import type { KnowledgeScreenProps } from './knowledge';
-import type { BinItem, KbArticle, KbArticleRow, KbBlock, KbSpace, KbTemplate } from './kb-types';
+import { DESK } from '../desk/data';
+import type { BinItem, KbArticle, KbArticleRow, KbBlock, KbSpace, KbTemplate } from '../desk/kb-types';
+import type { LiveKb } from './helpdesk-kb-live';
 
-// Sample knowledge data for stories and tests (Kaveri Foods, IT desk).
+// Sample `live` data for the HLP-04 stories of states the real knowledge base has (Kaveri Foods, IT desk) and for the
+// tests. Not used by the app.
 
 export const KB_SPACES: KbSpace[] = [
   {
@@ -24,7 +25,7 @@ export const KB_ROWS: KbArticleRow[] = [
 export const KB_ARTICLE: KbArticle = {
   id: 'a1', number: 12, spaceId: 'sp1', categoryId: 'c3', slug: 'wi-fi-keeps-dropping', language: 'en', translationOfId: null, audience: 'requesters', state: 'published',
   title: 'Wi-Fi keeps dropping', summary: 'What to try when the office Wi-Fi drops.', bodyHtml: '<p>Forget the network and join again.</p>', seoTitle: null, seoDescription: null,
-  publishedVersion: 1, publishedAt: '2026-09-01T09:00:00Z', publishAt: null, expiresAt: null, expiryAction: 'flag', reviewDueOn: '2027-04-01T00:00:00Z', featured: true, outdated: false, outdatedReason: null, version: 4, updatedAt: '2026-10-07T09:00:00Z',
+  publishedVersion: 1, publishedAt: '2026-09-01T09:00:00Z', publishAt: null, expiresAt: null, expiryAction: 'flag', reviewDueOn: '2027-04-01T00:00:00Z', featured: true, outdated: false, outdatedReason: null, keywords: 'wifi, wireless, network drops', assistantUse: true, version: 4, updatedAt: '2026-10-07T09:00:00Z',
   space: { id: 'sp1', deskId: 'd-it', slug: 'it-help', name: 'IT help', audience: 'requesters', languages: ['en', 'hi'], status: 'active', version: 1 },
   publicUrl: null, renderedHtml: '<p>Forget the network and join again.</p>', owner: { id: 'u1', name: 'Suresh Pillai' }, sourceTicket: { id: 't1', number: 1004 },
   stats: { views: 120, solved: 6, yes: 14, no: 2 }, health: 78, reviewOverdue: false, following: false, translations: [],
@@ -40,8 +41,8 @@ export const KB_TEMPLATES: KbTemplate[] = [{ id: 'tp1', name: 'How-to', bodyHtml
 export const KB_BIN: BinItem[] = [{ id: 'bin1', kind: 'kb_article', label: 'KB-9 Old VPN guide', deskId: 'd-it', deletedAt: '2026-10-05T09:00:00Z', purgeAfter: '2026-11-04T09:00:00Z' }];
 
 const ok = async () => {};
-/** Every prop a ready screen needs; tests and stories override what they look at. */
-export const kbProps = (over: Partial<KnowledgeScreenProps> = {}): KnowledgeScreenProps => ({
+/** Every `live` field a ready page needs; tests and stories override what they look at. */
+export const liveKb = (over: Partial<LiveKb> = {}): LiveKb => ({
   state: 'ready',
   spaces: KB_SPACES,
   spaceId: 'sp1',
@@ -71,6 +72,7 @@ export const kbProps = (over: Partial<KnowledgeScreenProps> = {}): KnowledgeScre
   onSubmit: ok,
   onReview: ok,
   onUpdateMeta: ok,
+  onMarkReviewed: async () => ({ reviewDueOn: '2027-10-29' }),
   onRetire: ok,
   onRepublish: ok,
   onDelete: ok,
@@ -80,3 +82,14 @@ export const kbProps = (over: Partial<KnowledgeScreenProps> = {}): KnowledgeScre
   onSaveTemplate: ok,
   ...over,
 });
+
+/** The same article as its own author sees it before anyone reviewed it (a draft, no publish rights). */
+export const KB_DRAFT: KbArticle = {
+  ...KB_ARTICLE,
+  id: 'a2', number: 14, state: 'draft', title: 'Reset your laptop password', publishedVersion: null, publishedAt: null, featured: false, keywords: null, reviewDueOn: null, sourceTicket: null,
+  stats: { views: 0, solved: 0, yes: 0, no: 0 }, health: 50, canPublish: false,
+  versions: [{ version: 1, title: 'Reset your laptop password', summary: null, bodyHtml: '<p>Press Ctrl + Alt + Del, then Change a password.</p>', note: null, author: 'Farah Khan', mine: true, submittedAt: null, reviewedBy: null, reviewedAt: null, reviewNote: null, publishedAt: null, createdAt: '2026-10-06T08:00:00Z', state: 'draft' }],
+};
+/** Published, its review date passed (YX-GRO-07: checked every 12 months). */
+export const KB_REVIEW_DUE: KbArticle = { ...KB_ARTICLE, reviewDueOn: '2026-09-01T00:00:00Z', reviewOverdue: true, health: 52, versions: KB_ARTICLE.versions.slice(1) };
+export const openKb = (article: KbArticle, over: Partial<LiveKb> = {}): LiveKb => liveKb({ articleId: article.id, article, ...over });
