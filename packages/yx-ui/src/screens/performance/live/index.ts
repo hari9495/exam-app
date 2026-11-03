@@ -30,3 +30,4 @@ export { ManagerCoachHome, type LiveCoach } from '../../growth/perf-goals';
 export type { CoachNudge } from '../../growth/growth-kit';
 export type { BiasFlag } from '../../growth/growth-logic';
 export type { ApprovalStep } from '../../../components/timeline';
+export { PerfNoAccessScreen, type PerfNoAccessProps } from '../../growth/perf-access';

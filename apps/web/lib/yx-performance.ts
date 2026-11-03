@@ -108,3 +108,11 @@ export function usePerfGet() {
   const { accessToken } = useAuth();
   return <T,>(path: string): Promise<T> => apiFetch(`/performance${path}`, {}, accessToken ?? undefined) as Promise<T>;
 }
+
+/** The API refused the page (a plain 403, not the MFA floor): the page shows its no-access state, never "try again". */
+export function refused(...queries: { isError: boolean; error: unknown }[]): boolean {
+  return queries.some((q) => {
+    const e = q.error as { status?: number; code?: string } | null;
+    return q.isError && e?.status === 403 && e.code !== 'MFA_REQUIRED';
+  });
+}

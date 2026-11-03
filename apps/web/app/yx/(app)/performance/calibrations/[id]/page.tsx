@@ -1,8 +1,8 @@
 'use client';
 
 import { useParams } from 'next/navigation';
-import { CalibrationScreen, type CalibrationBoard, type CalibrationPerson } from '@yukthix/ui/performance';
-import { designState, usePerf, usePerfWrite } from '../../../../../../lib/yx-performance';
+import { CalibrationScreen, type CalibrationBoard, type CalibrationPerson, PerfNoAccessScreen } from '@yukthix/ui/performance';
+import { designState, usePerf, usePerfWrite, refused } from '../../../../../../lib/yx-performance';
 
 // PRF-09 Calibration board and 9-box, the designed screen with live data: the cycle's bands as the board's columns,
 // the distribution against the guide (a guide only), moves with reasons, potential on the 9-box, sign-off. Only the
@@ -31,6 +31,7 @@ export default function YxCalibrationBoardPage() {
     potential: r.potential ?? undefined,
   }));
   const guide = b?.guide ? levels.map((l) => b.guide!.bands.find((g) => g.label === l)?.share ?? 0) : [];
+  if (refused(board)) return <PerfNoAccessScreen title="Calibration" what="calibration sessions" grantedBy="HR" active="Calibration & comp review" persona="hr" />;
   return (
     <CalibrationScreen
       persona={b?.can.change ? 'hr' : 'mgr'}

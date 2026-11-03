@@ -1,11 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { FEEDBACK_VISIBILITY, QuickFeedbackScreen, type FeedbackItem, type FeedbackRequest, type QuickFeedbackItem } from '@yukthix/ui/performance';
+import { FEEDBACK_VISIBILITY, QuickFeedbackScreen, type FeedbackItem, type FeedbackRequest, type QuickFeedbackItem, PerfNoAccessScreen } from '@yukthix/ui/performance';
 import type { TeamMember } from '@yukthix/ui/workforce';
 import { useYxPermissions } from '../../../../../lib/yx-org';
 import { usePeople } from '../../../../../lib/yx-people';
-import { day, designState, usePerf, usePerfWrite } from '../../../../../lib/yx-performance';
+import { day, designState, usePerf, usePerfWrite, refused } from '../../../../../lib/yx-performance';
 
 // PRF-08 Quick feedback, the designed screen with live data: received, given, requests to me, my team's (managers),
 // and for HR who handle concerns one person's feedback with sealing. A concern goes to the confidential channel; until
@@ -48,6 +48,7 @@ export default function YxFeedbackPage() {
   const directory = usePeople<{ people: { id: string; name: string; designation: { name: string | null } | null; department: { name: string | null } | null }[] }>(`/directory?limit=25${search ? `&q=${encodeURIComponent(search)}` : ''}`, { keepPrevious: true });
   const write = usePerfWrite();
   const myId = me.data?.employeeId ?? null;
+  if (refused(received)) return <PerfNoAccessScreen title="Feedback" what="feedback" grantedBy="HR" active="Feedback" persona="emp" />;
   return (
     <QuickFeedbackScreen
       state={designState(received, given, requests)}

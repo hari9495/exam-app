@@ -2,10 +2,10 @@
 
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
-import { CompReviewScreen, type CompReviewRow, type CompSheet, type PayEquity } from '@yukthix/ui/performance';
+import { CompReviewScreen, type CompReviewRow, type CompSheet, type PayEquity, PerfNoAccessScreen } from '@yukthix/ui/performance';
 import type { MasterRecord } from '@yukthix/ui/org';
 import { useOrg, useYxPermissions } from '../../../../../../lib/yx-org';
-import { day, designState, usePerf, usePerfWrite } from '../../../../../../lib/yx-performance';
+import { day, designState, usePerf, usePerfWrite, refused } from '../../../../../../lib/yx-performance';
 import { formatDate } from '@yukthix/ui';
 
 // PRF-10 Comp review sheet, the designed screen with live data (PAY-39, M06 batch PM7): managers propose for their
@@ -58,6 +58,7 @@ export default function YxCompSheetPage() {
     };
   });
   const byId = new Map((s?.proposals ?? []).map((p) => [p.id, p]));
+  if (refused(sheet)) return <PerfNoAccessScreen title="Comp review" what="comp review" grantedBy="HR" active="Calibration & comp review" persona="hr" />;
   return (
     <CompReviewScreen
       persona={s?.role === 'hr' ? 'hr' : s?.role === 'finance' ? 'fin' : 'mgr'}

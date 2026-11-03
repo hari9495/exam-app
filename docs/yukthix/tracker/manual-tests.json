@@ -11197,5 +11197,58 @@
     ],
     "expected": "Step 1 (negative): no Escalate link while HR has not answered. Step 2: \"Escalate the dispute\" links to the escalation page; after escalating it reads \"See your escalation PRF-D-…\". Step 3: \"Nominate reviewers\" opens the nominations page.",
     "note": "Positive + negative."
+  },
+  {
+    "id": "MT-PRF-B3-16",
+    "area": "Performance · access",
+    "screen": "A refused page says no access",
+    "url": "http://localhost:3000/yx/performance/disputes",
+    "account": "arjun@demo-org.test (Employee); panel@demo-org.test (Manager - Divya); hr-tester@demo-org.test (HR without the Rating disputes role). Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "Performance No access · Rating disputes",
+      "Performance No access · Competency framework"
+    ],
+    "steps": [
+      "1. As each of the three, type /yx/performance/disputes.",
+      "2. As Arjun type /yx/performance/competencies.",
+      "3. As Arjun type /yx/performance/goal-map and /yx/performance/calibrations/<any id>."
+    ],
+    "expected": "Step 1 (negative): the page title \"Rating disputes\" and \"You don’t have access to rating disputes. Ask your System Admin to give you access.\" No Retry, no \"check your connection\". Step 2: \"You don’t have access to the competency framework\"; no Add competency button. Step 3: the same no-access state for the company goal map and calibration sessions.",
+    "note": "Negative."
+  },
+  {
+    "id": "MT-PRF-B3-17",
+    "area": "Performance · access",
+    "screen": "Allowed roles still see the page",
+    "url": "http://localhost:3000/yx/performance/disputes",
+    "account": "A user with the Rating disputes role; hr@demo-org.test with Performance set-up. Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "PRF-15 HR · open disputes",
+      "PRF-14 Competency with levels and roles"
+    ],
+    "steps": [
+      "1. As the disputes user open Performance › Rating disputes.",
+      "2. As HR with Performance set-up open Performance › Skills & competencies.",
+      "3. Ask the developer to stop the API for a moment and reload either page."
+    ],
+    "expected": "Steps 1 and 2: the list and the framework load, with Add competency for HR. Step 3: the error state with Retry (a connection failure is not a refusal).",
+    "note": "Positive + negative."
+  },
+  {
+    "id": "MT-PRF-B3-18",
+    "area": "Performance · breadcrumbs",
+    "screen": "Each page names itself",
+    "url": "http://localhost:3000/yx/performance",
+    "account": "hr@demo-org.test with Review cycles, Calibration, Performance set-up and Rating disputes; arjun@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "Performance No access · Rating disputes"
+    ],
+    "steps": [
+      "1. As HR open Calibration & comp review, Rating disputes, Skills & competencies, Goal map, Hand-over list; as a manager open Manager coach.",
+      "2. As Arjun type /yx/performance/disputes and /yx/performance/competencies.",
+      "3. As Arjun open a review, then its /dispute page."
+    ],
+    "expected": "Step 1: the breadcrumb reads \"Performance › <that page>\" and the side menu highlights that page, never \"Performance home\". Step 2: the breadcrumb names the page; nothing in Arjun’s menu is highlighted. Step 3: \"Reviews & cycles\" stays highlighted on the sub-page.",
+    "note": "Positive + negative."
   }
 ]

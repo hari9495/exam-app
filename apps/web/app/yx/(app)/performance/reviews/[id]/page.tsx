@@ -2,9 +2,9 @@
 
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
-import { PeerPanel, ReviewAcknowledgeScreen, ReviewWorkspaceScreen, type Nominations, type PeerGroups, type ReviewDetail } from '@yukthix/ui/performance';
+import { PeerPanel, ReviewAcknowledgeScreen, ReviewWorkspaceScreen, type Nominations, type PeerGroups, type ReviewDetail, PerfNoAccessScreen } from '@yukthix/ui/performance';
 import { loadState } from '../../../../../../lib/yx-org';
-import { perfState, usePerf, usePerfWrite, useReviewAssistant } from '../../../../../../lib/yx-performance';
+import { perfState, usePerf, usePerfWrite, useReviewAssistant, refused } from '../../../../../../lib/yx-performance';
 
 // One review. The employee's released review is PRF-06 (acknowledge, with a disagreement in the same step); every other
 // view is the PRF-05 workspace (self, manager, former manager, skip-level, the chain above and HR). 360° nominations are
@@ -31,6 +31,7 @@ export default function YxReviewPage() {
     : escalation.data?.canEscalate
       ? { href: `/yx/performance/reviews/${encodeURIComponent(id)}/dispute`, label: 'Escalate the dispute' }
       : null;
+  if (refused(review)) return <PerfNoAccessScreen title="Review" what="this review" grantedBy="HR" active="Reviews & cycles" persona="emp" />;
   if (r && r.role === 'employee' && r.released)
     return <ReviewAcknowledgeScreen live={{ review: r, onAcknowledge: (comment, disagreement) => write('POST', `${base}/acknowledge`, { comment, ...(disagreement ? { disagreement } : {}) }), onDisagree: (text) => write('POST', `${base}/disagree`, { text }), escalate }} />;
   const questions = Object.fromEntries((r?.template.sections ?? []).flatMap((s) => s.questions.map((x) => [x.id, x.wholeSection ? s.title : x.text])));

@@ -22,7 +22,7 @@ import { todayIst, useOrg, useYxPermissions, type Reference } from '../../../lib
 import { hiddenToday, hideForToday, localStore } from '../../../lib/yx-notice';
 import { usePeople } from '../../../lib/yx-people';
 import { useLife } from '../../../lib/yx-lifecycle';
-import { ME_SECURITY, accountLinks, activeLink, buildNav, panelOf, samePersonInMenu, withAccount, type NavArea } from '../../../lib/yx-nav';
+import { ME_SECURITY, accountLinks, pageLink, buildNav, panelOf, samePersonInMenu, withAccount, type NavArea } from '../../../lib/yx-nav';
 import { ScopeProvider, recentMonths, useScope, useWorkspaceCounts } from '../../../lib/yx-shell';
 import { DeskHelp } from './desk-help';
 
@@ -145,7 +145,7 @@ function Frame({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const hit = activeLink(nav, pathname);
+  const hit = pageLink(nav, pathname);
   const areaId: AreaId = hit?.area.id ?? AREA_BY_PATH.find(([p]) => pathname.startsWith(p))?.[1] ?? 'home';
   const area: NavArea = nav.find((a) => a.id === areaId) ?? nav[0];
   const first = (a: NavArea) => a.sections[0].items[0];
@@ -157,7 +157,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   const shown = panelOf(area, hit?.link.id);
   const panel = shown.sections.map((s) => ({
     label: s.label,
-    items: s.items.map((l) => ({ label: l.label, href: l.href, active: l.id === hit?.link.id, count: l.count ? counts.data?.[l.count] : undefined })),
+    items: s.items.map((l) => ({ label: l.label, href: l.href, active: Boolean(hit?.inMenu) && l.id === hit?.link.id, count: l.count ? counts.data?.[l.count] : undefined })),
   }));
   // Breadcrumbs below the top level (founder decision 15 Oct 2026): Area › Page.
   const top = shown.sections[0]?.items[0];

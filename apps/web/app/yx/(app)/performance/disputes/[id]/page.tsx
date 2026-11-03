@@ -1,9 +1,9 @@
 'use client';
 
 import { useParams } from 'next/navigation';
-import { DisputeRecordScreen, type ApprovalStep } from '@yukthix/ui/performance';
+import { DisputeRecordScreen, type ApprovalStep, PerfNoAccessScreen } from '@yukthix/ui/performance';
 import { loadState } from '../../../../../../lib/yx-org';
-import { usePerf, usePerfDownload, usePerfWrite } from '../../../../../../lib/yx-performance';
+import { usePerf, usePerfDownload, usePerfWrite, refused } from '../../../../../../lib/yx-performance';
 
 type Step = Omit<ApprovalStep, 'at'> & { at?: string };
 interface DisputeView {
@@ -36,6 +36,7 @@ export default function YxDisputePage() {
   const download = usePerfDownload();
   const state = loadState(rec);
   const x = rec.data;
+  if (refused(rec)) return <PerfNoAccessScreen title="Rating dispute" what="rating disputes" grantedBy="your System Admin" active="Reviews & cycles" persona="hr" />;
   return (
     <DisputeRecordScreen
       dispute={{ id: '', employee: '', cycle: '', raised: new Date(), status: 'Raised', grounds: '', sought: '', legalHold: false, steps: [], evidence: [], activity: [] }}

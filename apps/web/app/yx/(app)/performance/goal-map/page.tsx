@@ -2,10 +2,10 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CompanyGoalMapScreen, type GoalItem, type GoalPeriod } from '@yukthix/ui/performance';
+import { CompanyGoalMapScreen, type GoalItem, type GoalPeriod, PerfNoAccessScreen } from '@yukthix/ui/performance';
 import type { MasterRecord } from '@yukthix/ui/org';
 import { loadState, useOrg, useYxPermissions } from '../../../../../lib/yx-org';
-import { perfState, usePerf, usePerfWrite } from '../../../../../lib/yx-performance';
+import { perfState, usePerf, usePerfWrite, refused } from '../../../../../lib/yx-performance';
 
 // PRF-03 Company goal map: company → team → person, unaligned and at-risk goals. HR with perf.goal.manage add company and
 // team goals, open periods and suggest parents; others with perf.goal.view read it (the leadership view).
@@ -20,6 +20,7 @@ export default function YxGoalMapPage() {
   const align = usePerf<{ id: string; title: string; owner: string }[]>(periodId && manage ? `/goals/align-options?period=${periodId}` : null);
   const departments = useOrg<MasterRecord[]>('/masters/departments');
   const write = usePerfWrite();
+  if (refused(periods, map)) return <PerfNoAccessScreen title="Company goal map" what="the company goal map" grantedBy="HR" active="Goals" persona="hr" />;
   return (
     <CompanyGoalMapScreen
       live={{

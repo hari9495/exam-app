@@ -1,4 +1,4 @@
-import { accountLinks, activeLink, buildNav, panelOf, samePersonInMenu, type NavInput } from './yx-nav';
+import { accountLinks, activeLink, buildNav, pageLink, panelOf, samePersonInMenu, type NavInput } from './yx-nav';
 
 // The menu by product area (design audit step 1). These replace the old WorkspaceShell menu tests: each link shows to
 // exactly the people who may open its page, by the same keys as before.
@@ -244,5 +244,30 @@ describe('the Me menu under People (founder 28 Oct 2026: follow the design)', ()
     expect(panelOf(dir.area, dir.link.id).title).toBe('People');
     expect(panelOf(dir.area, dir.link.id).sections.flatMap((s) => s.items.map((l) => l.label))).not.toContain('Privacy');
     expect(activeLink(n, '/yx/me/declarations/pre-clearance')?.link.label).toBe('Declarations');
+  });
+});
+
+describe('pageLink: each Performance page names itself (walk-through 3 Nov 2026)', () => {
+  const employee = nav([], { employee: true });
+  const hr = nav(['perf.cycle.manage', 'perf.calibration.facilitate', 'perf.setup.manage', 'perf.dispute.manage', 'perf.goal.view'], { employee: true, manager: true });
+  const pages: [string, string][] = [
+    ['/yx/performance/calibrations', 'Calibration & comp review'],
+    ['/yx/performance/calibrations/c1', 'Calibration & comp review'],
+    ['/yx/performance/disputes', 'Rating disputes'],
+    ['/yx/performance/disputes/d1', 'Rating disputes'],
+    ['/yx/performance/competencies', 'Skills & competencies'],
+    ['/yx/performance/coach', 'Manager coach'],
+    ['/yx/performance/goal-map', 'Goal map'],
+    ['/yx/performance/handovers', 'Hand-over list'],
+  ];
+  it.each(pages)('%s is "%s" and highlighted for someone whose menu has it', (path, label) => {
+    expect(pageLink(hr, path)).toMatchObject({ link: { label }, inMenu: true });
+  });
+  it.each(pages)('%s is still "%s" (never Performance home) by direct address, with nothing highlighted', (path, label) => {
+    expect(pageLink(employee, path)).toMatchObject({ area: { id: 'performance' }, link: { label }, inMenu: false });
+  });
+  it('a sub-page without its own entry lights up its parent; the area root is itself', () => {
+    expect(pageLink(employee, '/yx/performance/reviews/r1/dispute')).toMatchObject({ link: { label: 'Reviews & cycles' }, inMenu: true });
+    expect(pageLink(employee, '/yx/performance')).toMatchObject({ link: { label: 'Performance home' }, inMenu: true });
   });
 });

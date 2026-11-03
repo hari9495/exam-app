@@ -13,6 +13,8 @@ import YxDisputeRaisePage from './(app)/performance/reviews/[id]/dispute/page';
 import YxCoachPage from './(app)/performance/coach/page';
 import YxReviewPage from './(app)/performance/reviews/[id]/page';
 import { OneOnOnesPage } from './(app)/performance/one-on-ones/one-on-ones-view';
+import YxGoalMapPage from './(app)/performance/goal-map/page';
+import YxCalibrationBoardPage from './(app)/performance/calibrations/[id]/page';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn(), useParams: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), apiFetchBlob: jest.fn() }));
@@ -196,5 +198,57 @@ describe('hookups on the live review and 1:1 pages', () => {
     wrap(<OneOnOnesPage openId="o1" />);
     await userEvent.click(await screen.findByRole('button', { name: 'Add to agenda' }));
     await waitFor(() => expect(calls.find((c) => c.method === 'POST')).toEqual({ method: 'POST', path: '/performance/one-on-ones/o1/agenda', body: { text: 'Rejects: agree one next step' } }));
+  });
+});
+
+const deny = () => {
+  throw Object.assign(new Error('You do not have permission.'), { status: 403 });
+};
+const fail = () => {
+  throw Object.assign(new Error('Server error'), { status: 500 });
+};
+
+describe('a refused page shows no access, never "check your connection" (walk-through 3 Nov 2026)', () => {
+  it('Rating disputes, refused: no access, no Retry', async () => {
+    serve({ 'GET /performance/disputes': deny });
+    wrap(<YxDisputesPage />);
+    expect(await screen.findByText("You don't have access to rating disputes")).toBeInTheDocument();
+    expect(screen.getByText(/Ask your System Admin/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Retry|Try again/ })).toBeNull();
+  });
+
+  it('Rating disputes, a server failure: the error state with Retry', async () => {
+    serve({ 'GET /performance/disputes': fail });
+    wrap(<YxDisputesPage />);
+    expect((await screen.findAllByRole('button', { name: /Retry|Try again/ })).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/You don't have access/)).toBeNull();
+  });
+
+  it('Competency framework, refused: no access and no Add competency button', async () => {
+    serve({ 'GET /performance/competencies': deny, 'GET /org/masters/designations': [] });
+    wrap(<YxCompetenciesPage />);
+    expect(await screen.findByText("You don't have access to the competency framework")).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add competency' })).toBeNull();
+  });
+
+  it('a dispute record, the escalation page and the coach, refused: no access', async () => {
+    serve({ 'GET /performance/disputes/x1': deny, 'GET /performance/reviews/x1/dispute': deny, 'GET /performance/coach': deny });
+    const a = wrap(<YxDisputePage />);
+    expect(await screen.findByText("You don't have access to rating disputes")).toBeInTheDocument();
+    a.unmount();
+    const b = wrap(<YxDisputeRaisePage />);
+    expect(await screen.findByText("You don't have access to this review")).toBeInTheDocument();
+    b.unmount();
+    wrap(<YxCoachPage />);
+    expect(await screen.findByText("You don't have access to the manager coach")).toBeInTheDocument();
+  });
+
+  it('builder 1 and 2 pages too: the company goal map and a calibration board, refused', async () => {
+    serve({ 'GET /performance/goal-periods': deny, 'GET /org/masters/departments': [], 'GET /performance/calibrations/x1': deny }, []);
+    const a = wrap(<YxGoalMapPage />);
+    expect(await screen.findByText("You don't have access to the company goal map")).toBeInTheDocument();
+    a.unmount();
+    wrap(<YxCalibrationBoardPage />);
+    expect(await screen.findByText("You don't have access to calibration sessions")).toBeInTheDocument();
   });
 });

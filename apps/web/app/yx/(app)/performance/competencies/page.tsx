@@ -1,9 +1,9 @@
 'use client';
 
-import { CompetencyFrameworkScreen, type Competency, type CompetencySave, type FrameworkCompetency } from '@yukthix/ui/performance';
+import { CompetencyFrameworkScreen, type Competency, type CompetencySave, type FrameworkCompetency, PerfNoAccessScreen } from '@yukthix/ui/performance';
 import type { MasterRecord } from '@yukthix/ui/org';
 import { loadState, todayIst, useOrg, useYxPermissions } from '../../../../../lib/yx-org';
-import { usePerf, usePerfWrite } from '../../../../../lib/yx-performance';
+import { usePerf, usePerfWrite, refused } from '../../../../../lib/yx-performance';
 
 const GROUP = { core: 'Core', functional: 'Functional', leadership: 'Leadership' } as const;
 const KEY = { Core: 'core', Functional: 'functional', Leadership: 'leadership' } as const;
@@ -44,6 +44,7 @@ export default function YxCompetenciesPage() {
     roles: x.roles.map((r) => ({ designationId: r.designationId, level: r.level, validFrom: today })),
     ...(x.version === undefined ? {} : { version: x.version }),
   });
+  if (refused(list)) return <PerfNoAccessScreen title="Competency framework" what="the competency framework" grantedBy="your System Admin" active="Skills & competencies" persona="hr" />;
   return (
     <CompetencyFrameworkScreen
       items={[]}

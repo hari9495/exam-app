@@ -1,9 +1,9 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { ManagerCoachHome } from '@yukthix/ui/performance';
+import { ManagerCoachHome, PerfNoAccessScreen } from '@yukthix/ui/performance';
 import { loadState } from '../../../../../lib/yx-org';
-import { usePerf, usePerfWrite } from '../../../../../lib/yx-performance';
+import { usePerf, usePerfWrite, refused } from '../../../../../lib/yx-performance';
 
 interface Coach {
   state: 'ready' | 'not-manager' | 'company-off';
@@ -22,6 +22,7 @@ export default function YxCoachPage() {
   const write = usePerfWrite();
   const state = loadState(coach);
   const x = coach.data;
+  if (refused(coach)) return <PerfNoAccessScreen title="Manager coach" what="the manager coach" grantedBy="HR" active="Performance home" persona="mgr" />;
   return (
     <ManagerCoachHome
       nudges={[]}

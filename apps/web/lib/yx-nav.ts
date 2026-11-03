@@ -369,6 +369,23 @@ export function activeLink(areas: NavArea[], pathname: string): { area: NavArea;
   return best;
 }
 
+/** Every page of the menu, as if one person held every key: names a page the viewer's own menu has no entry for. */
+let every: NavArea[] | null = null;
+const everyPage = () => (every ??= buildNav({ has: () => true, role: null, support: false, employee: true, manager: true, history: true, clearance: true, tasks: true, firstDays: true, samePerson: true, designated: true }));
+
+/**
+ * The page for the breadcrumb and the menu highlight (walk-through 3 Nov 2026). The viewer's own deepest entry, unless a
+ * deeper page exists that their menu lacks (a direct address such as /yx/performance/disputes for an employee): then
+ * that page's own name, with nothing highlighted, instead of the area's first page.
+ */
+export function pageLink(areas: NavArea[], pathname: string): { area: NavArea; link: NavLink; inMenu: boolean } | null {
+  const mine = activeLink(areas, pathname);
+  const any = activeLink(everyPage(), pathname);
+  if (!any || (mine && mine.link.href.length >= any.link.href.length)) return mine ? { ...mine, inMenu: true } : null;
+  const area = areas.find((a) => a.id === any.area.id) ?? mine?.area;
+  return area ? { area, link: any.link, inMenu: false } : null;
+}
+
 /**
  * The avatar menu's personal settings (founder decisions 15 and 26 Oct 2026): delegation, notification preferences, my
  * assets (the Me menu in the design has no place for them), language and my security.

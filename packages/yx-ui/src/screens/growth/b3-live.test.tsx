@@ -307,3 +307,14 @@ describe('hookups on the live PRF-05 and PRF-06 pages', () => {
     expect(screen.queryByRole('link', { name: 'Escalate the dispute' })).toBeNull();
   });
 });
+
+describe('Performance no-access state', () => {
+  it('says what and who can give access, with no retry', async () => {
+    const { PerfNoAccessScreen } = await import('./perf-access');
+    show(<PerfNoAccessScreen title="Rating disputes" what="rating disputes" grantedBy="your System Admin" />);
+    expect(screen.getByRole('heading', { name: 'Rating disputes' })).toBeInTheDocument();
+    expect(screen.getByText("You don't have access to rating disputes")).toBeInTheDocument();
+    expect(screen.getByText(/Ask your System Admin to give you access/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Retry|Try again/ })).toBeNull();
+  });
+});

@@ -1,8 +1,8 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { OneOnOneScreen, cadenceLabel, type Choice, type OneOnOne, type OneOnOnePair, type OneOnOneRow } from '@yukthix/ui/performance';
-import { day, designState, usePerf, usePerfWrite, useSuggestedAgenda } from '../../../../../lib/yx-performance';
+import { OneOnOneScreen, cadenceLabel, type Choice, type OneOnOne, type OneOnOnePair, type OneOnOneRow, PerfNoAccessScreen } from '@yukthix/ui/performance';
+import { day, designState, usePerf, usePerfWrite, useSuggestedAgenda, refused } from '../../../../../lib/yx-performance';
 
 // PRF-11 1:1s, the designed screen with live data: one row per pair (my manager, my direct reports), the record in a
 // drawer (shared agenda and notes, my private note, action items), schedule with a rhythm, reschedule, mark as held.
@@ -37,6 +37,7 @@ export function OneOnOnesPage({ openId }: { openId: string | null }) {
   const pairs = data.data?.pairs ?? [];
   const persona = pairs.some((p) => p.role === 'manager') ? 'mgr' : 'emp';
   const go = (id: string | null) => router.push(id ? `/yx/performance/one-on-ones/${encodeURIComponent(id)}` : '/yx/performance/one-on-ones');
+  if (refused(data)) return <PerfNoAccessScreen title="1:1s" what="1:1s" grantedBy="HR" active="1:1s" persona="emp" />;
   return (
     <OneOnOneScreen
       persona={persona}

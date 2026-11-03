@@ -1,10 +1,10 @@
 'use client';
 
 import { useParams, useRouter } from 'next/navigation';
-import { CalibrationSessions, CycleControlRoomScreen, type CalibrationSession, type Disagreement, type EligibilityRow, type ReviewCycle, type StagePerson } from '@yukthix/ui/performance';
+import { CalibrationSessions, CycleControlRoomScreen, type CalibrationSession, type Disagreement, type EligibilityRow, type ReviewCycle, type StagePerson, PerfNoAccessScreen } from '@yukthix/ui/performance';
 import type { MasterRecord } from '@yukthix/ui/org';
 import { loadState, useOrg, useYxPermissions } from '../../../../../../lib/yx-org';
-import { perfState, usePerf, usePerfRead, usePerfWrite } from '../../../../../../lib/yx-performance';
+import { perfState, usePerf, usePerfRead, usePerfWrite, refused } from '../../../../../../lib/yx-performance';
 import { CycleSetup } from '../setup';
 
 // PRF-04 one review cycle: a draft opens the set-up; a launched cycle opens the control room (funnel with names, overdue
@@ -26,6 +26,7 @@ export default function YxReviewCyclePage() {
   const write = usePerfWrite();
   const read = usePerfRead();
   const state = perfState(loadState(cycle));
+  if (refused(cycle)) return <PerfNoAccessScreen title="Review cycle" what="review cycles" grantedBy="HR" active="Reviews & cycles" persona="hr" />;
   if (cycle.data?.status === 'draft' || state !== 'ready') return <CycleSetup cycle={cycle.data ?? null} state={state} onRetry={() => void cycle.refetch()} />;
   const depts = (departments.data ?? []).filter((d) => !d.archivedAt).map((d) => ({ value: d.id, label: d.name }));
   return (

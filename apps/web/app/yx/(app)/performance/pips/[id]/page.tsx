@@ -2,8 +2,8 @@
 
 import { useParams } from 'next/navigation';
 import { ErrorState, Skeleton } from '@yukthix/ui';
-import { PipRecordScreen, type Pip, type PipRecord } from '@yukthix/ui/performance';
-import { day, designState, usePerf, usePerfWrite } from '../../../../../../lib/yx-performance';
+import { PipRecordScreen, type Pip, type PipRecord, PerfNoAccessScreen } from '@yukthix/ui/performance';
+import { day, designState, usePerf, usePerfWrite, refused } from '../../../../../../lib/yx-performance';
 
 // PRF-12 PIP record, the designed screen with live data: the plan, its check-ins, the employee's acknowledgement, the
 // outcome, HR's approval from the plan, the letter and the exit link. The API decides who sees and does what.
@@ -19,6 +19,7 @@ export default function YxPipPage() {
   const write = usePerfWrite();
   const p = q.data;
   const state = designState(q);
+  if (refused(q)) return <PerfNoAccessScreen title="Improvement plan" what="this improvement plan" grantedBy="HR" active="PIPs" persona="emp" />;
   if (state === 'loading') return <Skeleton height={420} />;
   if (state === 'error' || !p) return <ErrorState title="We couldn’t load this plan" description="It may not exist, or it isn’t yours to see. Check the link and try again." onRetry={() => void q.refetch()} />;
   const version = p.version;

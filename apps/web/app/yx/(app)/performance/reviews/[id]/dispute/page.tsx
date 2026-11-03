@@ -1,9 +1,9 @@
 'use client';
 
 import { useParams } from 'next/navigation';
-import { DisputeRaiseScreen, type ApprovalStep } from '@yukthix/ui/performance';
+import { DisputeRaiseScreen, type ApprovalStep, PerfNoAccessScreen } from '@yukthix/ui/performance';
 import { loadState } from '../../../../../../../lib/yx-org';
-import { usePerf, usePerfUpload, usePerfWrite } from '../../../../../../../lib/yx-performance';
+import { usePerf, usePerfUpload, usePerfWrite, refused } from '../../../../../../../lib/yx-performance';
 
 interface Mine {
   cycle: string;
@@ -27,6 +27,7 @@ export default function YxDisputeRaisePage() {
   const upload = usePerfUpload();
   const state = loadState(mine);
   const x = mine.data;
+  if (refused(mine)) return <PerfNoAccessScreen title="Escalate a rating dispute" what="this review" grantedBy="HR" active="Reviews & cycles" persona="emp" />;
   return (
     <DisputeRaiseScreen
       live={{

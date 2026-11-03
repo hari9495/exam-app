@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { MyGoalsScreen, type GoalDetail, type GoalItem, type GoalPeriod } from '@yukthix/ui/performance';
+import { MyGoalsScreen, type GoalDetail, type GoalItem, type GoalPeriod, PerfNoAccessScreen } from '@yukthix/ui/performance';
 import type { TeamMember } from '@yukthix/ui/workforce';
 import { loadState } from '../../../../../lib/yx-org';
 import { usePeople } from '../../../../../lib/yx-people';
-import { perfState, usePerf, usePerfWrite } from '../../../../../lib/yx-performance';
+import { perfState, usePerf, usePerfWrite, refused } from '../../../../../lib/yx-performance';
 
 type List = { goals: GoalItem[]; totalWeight: number | null; canDecide: boolean };
 
@@ -39,6 +39,7 @@ export default function YxMyGoalsPage() {
     else next.delete('goal');
     router.replace(`/yx/performance/goals${next.toString() ? `?${next.toString()}` : ''}`);
   };
+  if (refused(periods)) return <PerfNoAccessScreen title="Goals" what="goals" grantedBy="HR" active="Goals" persona="emp" />;
   return (
     <MyGoalsScreen
       live={{

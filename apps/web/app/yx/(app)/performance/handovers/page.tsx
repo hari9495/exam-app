@@ -1,8 +1,8 @@
 'use client';
 
-import { HandoverListScreen, type HandoverDecision, type HandoverRow } from '@yukthix/ui/performance';
+import { HandoverListScreen, type HandoverDecision, type HandoverRow, PerfNoAccessScreen } from '@yukthix/ui/performance';
 import { loadState, useYxPermissions } from '../../../../../lib/yx-org';
-import { usePerf, usePerfGet, usePerfWrite } from '../../../../../lib/yx-performance';
+import { usePerf, usePerfGet, usePerfWrite, refused } from '../../../../../lib/yx-performance';
 
 type Row = Omit<HandoverRow, 'effective'> & { effectiveOn: string; decision: string | null };
 
@@ -15,6 +15,7 @@ export default function YxHandoversPage() {
   const get = usePerfGet();
   const write = usePerfWrite();
   const state = loadState(rows);
+  if (refused(rows)) return <PerfNoAccessScreen title="Hand-over list" what="the hand-over list" grantedBy="HR" active="Reviews & cycles" persona="hr" />;
   return (
     <HandoverListScreen
       persona={hr ? 'hr' : 'mgr'}

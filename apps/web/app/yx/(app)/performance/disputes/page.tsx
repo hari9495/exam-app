@@ -1,9 +1,9 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { DisputeListScreen } from '@yukthix/ui/performance';
+import { DisputeListScreen, PerfNoAccessScreen } from '@yukthix/ui/performance';
 import { loadState } from '../../../../../lib/yx-org';
-import { usePerf } from '../../../../../lib/yx-performance';
+import { usePerf, refused } from '../../../../../lib/yx-performance';
 
 type Row = { id: string; ref: string; employee: string; cycle: string; raisedOn: string; status: 'raised' | 'resolved'; legalHold: boolean };
 
@@ -12,6 +12,7 @@ export default function YxDisputesPage() {
   const router = useRouter();
   const rows = usePerf<Row[]>('/disputes');
   const state = loadState(rows);
+  if (refused(rows)) return <PerfNoAccessScreen title="Rating disputes" what="rating disputes" grantedBy="your System Admin" active="Reviews & cycles" persona="hr" />;
   return (
     <DisputeListScreen
       state={state === 'no-access' ? 'error' : state}
