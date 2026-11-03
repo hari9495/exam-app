@@ -76,3 +76,6 @@ Things deliberately left for launch. Development runs locally until then (test k
 - [ ] **Remembered company.** After a sign-in the device keeps an HttpOnly, signed `yx_company` cookie (180 days)
       so the screen says "Signing in to <company> · Not your company?". It is signed with
       `ORG_SECRETS_ENCRYPTION_KEY` (HKDF, purpose `remembered-company`): rotating that key forgets every device.
+- [ ] **Policy acknowledgements: how long to keep them.** Ask counsel (DPDP Act 2023, Evidence Act / BSA 63). If they
+      agree, build the company setting "Keep policy acknowledgements for" with the default employment plus 8 years
+      (founder answer, 3 Nov 2026). Until then acknowledgements are kept with no end date.
