@@ -41,6 +41,13 @@ export class PerformanceFeedbackController {
     return this.svc.counts(ctx, this.user(req), employeeId);
   }
 
+  /** Founder answer 9: feedback shared with HR, for HR with perf.review.view for the person (the service checks the scope). */
+  @Get('feedback/employee/:employeeId/shared')
+  @RequirePermissions('perf.review.view')
+  sharedWithHr(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) employeeId: string) {
+    return this.svc.sharedWithHr(ctx, this.user(req), employeeId);
+  }
+
   /** PRF-08: the recipient's goals the giver may link to; empty unless the giver may see that person's goals. */
   @Get('feedback/goal-options/:employeeId')
   goalOptions(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) employeeId: string) {

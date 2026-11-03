@@ -15,7 +15,8 @@ import { LettersService } from '../documents/letters/letters.service';
 import { bandFor } from './perf-rules';
 import { bandPosition, belowMedian, budgetUse, cellFor, compaRatio, matrixProblem, meritFor, outOfRange, payGap, splitPool, type Cell } from './comp-rules';
 import { STARTER_MATRIX } from './starters';
-import type { BudgetsDto, CompCycleDto, CompDecideDto, MatrixDto, ProposalDto } from './review-dto';
+import type { BudgetsDto, CompCycleDto, CompDecideDto, MarketUploadDto, MatrixDto, ProposalDto } from './review-dto';
+import { marketStale, readMarketCsv } from './market-rules';
 
 // Performance batch PM7 (M06-BUILD-DESIGN §12; PM-7.01 … 7.07): from ratings to pay.
 //   matrices   bands × compa-ratio ranges with min / target / max %; cells tile the axis (checked on save)
@@ -367,10 +368,14 @@ export class PerformanceCompService implements OnModuleInit {
       const scores = new Map((await tx.review.findMany({ where: { organizationId: org, id: { in: rows.map((p) => p.reviewId).filter((r): r is string => Boolean(r)) } }, select: { id: true, finalScore: true, calibratedScore: true } })).map((r) => [r.id, num(r.calibratedScore) ?? num(r.finalScore)]));
       const below = a.hr || a.finance ? new Set(belowMedian(rows.map((p) => ({ id: p.employeeId, grade: facts.get(p.employeeId)?.grade ?? '—', role: facts.get(p.employeeId)?.role ?? '—', pay: num(p.currentCtc)! })), Number(await settingFor(tx, c, 'perf.pay_equity.flag_pct', { legalEntityId: x.legalEntityId })))) : new Set<string>();
       const decide = await this.myTasks(tx, org, v, rows);
+      // PRF-10: the entity's latest salary survey gives each grade's market range (read inside the pay scope).
+      const survey = await this.latestSurvey(tx, c, x.legalEntityId);
+      const rates = survey ? new Map(survey.rates.map((m) => [m.gradeId, m])) : new Map<string, { min: number; median: number; max: number }>();
       return {
+        benchmark: survey ? { source: survey.source, asOf: survey.asOf, version: survey.version, currency: survey.currency, stale: survey.stale } : null,
         cycle: this.cycleView(x),
         role: a.hr ? 'hr' : a.finance ? 'finance' : 'manager',
-        proposals: rows.map((p) => ({ ...this.proposalView(p, people), grade: facts.get(p.employeeId)?.grade ?? null, department: depts.get(p.departmentId) ?? '', score: p.reviewId ? (scores.get(p.reviewId) ?? null) : null, belowPeers: below.has(p.employeeId) })),
+        proposals: rows.map((p) => ({ ...this.proposalView(p, people), grade: facts.get(p.employeeId)?.grade ?? null, department: depts.get(p.departmentId) ?? '', score: p.reviewId ? (scores.get(p.reviewId) ?? null) : null, belowPeers: below.has(p.employeeId), market: rates.get(facts.get(p.employeeId)?.gradeId ?? '') ?? null })),
         budgets: a.hr || a.finance ? await this.budgets(tx, org, x) : (await this.budgets(tx, org, x)).filter((b) => rows.some((p) => p.departmentId === b.departmentId)),
         overrun,
         can: { edit: x.status === 'open', submit: x.status === 'open' && rows.some((p) => p.status === 'draft' && (a.hr || p.managerEmployeeId === a.me)), apply: a.hr && x.status === 'approved', decide: decide.length > 0 },
@@ -381,13 +386,67 @@ export class PerformanceCompService implements OnModuleInit {
   /** Today's grade and designation of each employee (the sheet and the pay-equity view). */
   private async facts(tx: Tx, org: string, ids: string[]) {
     const today = todayIst();
-    const rows = await tx.$queryRaw<{ employee_id: string; grade: string | null; role: string | null }[]>`
-      SELECT a.employee_id::text, g.name AS grade, d.name AS role FROM employee_assignments a
+    const rows = await tx.$queryRaw<{ employee_id: string; grade_id: string | null; grade: string | null; role: string | null }[]>`
+      SELECT a.employee_id::text, a.grade_id::text, g.name AS grade, d.name AS role FROM employee_assignments a
         LEFT JOIN grades g ON g.organization_id = a.organization_id AND g.id = a.grade_id
         LEFT JOIN designations d ON d.organization_id = a.organization_id AND d.id = a.designation_id
       WHERE a.organization_id = ${org}::uuid AND a.employee_id = ANY(${ids}::uuid[]) AND a.superseded_at IS NULL
         AND a.valid_from <= ${today}::date AND (a.valid_to IS NULL OR a.valid_to >= ${today}::date)`;
-    return new Map(rows.map((r) => [r.employee_id, { grade: r.grade, role: r.role }]));
+    return new Map(rows.map((r) => [r.employee_id, { gradeId: r.grade_id, grade: r.grade, role: r.role }]));
+  }
+
+  // ------------------------------------------------------------------------------------------ market data (PRF-10, answer 12)
+
+  /** The latest survey of an entity with its rates, and whether it is older than the company allows. */
+  private async latestSurvey(tx: Tx, c: CompanyContext, legalEntityId: string) {
+    return withPayScope(tx, [legalEntityId], async () => {
+      const s = await tx.compMarketSurvey.findFirst({ where: { organizationId: c.organizationId, legalEntityId }, orderBy: { version: 'desc' } });
+      if (!s) return null;
+      const rates = await tx.compMarketRate.findMany({ where: { organizationId: c.organizationId, surveyId: s.id } });
+      const months = Number(await settingFor(tx, c, 'perf.comp.market_stale_months', { legalEntityId }));
+      return { id: s.id, version: s.version, source: s.source, currency: s.currency, asOf: iso(s.asOf), fileName: s.fileName, rowCount: s.rowCount, uploadedBy: s.uploadedBy, createdAt: s.createdAt, stale: marketStale(iso(s.asOf), todayIst(), months), rates: rates.map((m) => ({ gradeId: m.gradeId, min: num(m.minAmount)!, median: num(m.medianAmount)!, max: num(m.maxAmount)! })) };
+    });
+  }
+
+  /** HR (perf.comp.manage for the entity): every version of an entity's survey, the latest with its grades. Reading it is recorded. */
+  async market(ctx: TenantContext, user: ScopeUser, legalEntityId: string) {
+    const v = await this.viewer(user);
+    if (!this.reaches(v, 'perf.comp.manage', legalEntityId)) throw new ForbiddenException('Market data is for HR who run comp reviews for this company.');
+    return this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      if (!(await tx.legalEntity.findFirst({ where: { organizationId: org, id: legalEntityId }, select: { id: true } }))) throw new NotFoundException('No such company.');
+      const versions = await withPayScope(tx, [legalEntityId], () => tx.compMarketSurvey.findMany({ where: { organizationId: org, legalEntityId }, orderBy: { version: 'desc' }, take: 50 }));
+      const latest = await this.latestSurvey(tx, c, legalEntityId);
+      const grades = new Map((await tx.grade.findMany({ where: { organizationId: org, id: { in: latest?.rates.map((r) => r.gradeId) ?? [] } }, select: { id: true, name: true, rank: true } })).map((g) => [g.id, g]));
+      const users = new Map((await tx.user.findMany({ where: { organizationId: org, id: { in: versions.map((s) => s.uploadedBy).filter((u): u is string => Boolean(u)) } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
+      await audit(tx, c, 'perf.comp.market_viewed', 'legal_entity', legalEntityId, { version: latest?.version ?? null });
+      return {
+        staleMonths: Number(await settingFor(tx, c, 'perf.comp.market_stale_months', { legalEntityId })),
+        latest: latest && { version: latest.version, source: latest.source, currency: latest.currency, asOf: latest.asOf, stale: latest.stale, rows: latest.rates.map((r) => ({ grade: grades.get(r.gradeId)?.name ?? '', rank: grades.get(r.gradeId)?.rank ?? 0, min: r.min, median: r.median, max: r.max })).sort((a, b) => a.rank - b.rank) },
+        versions: versions.map((s) => ({ version: s.version, source: s.source, currency: s.currency, asOf: iso(s.asOf), fileName: s.fileName, rows: s.rowCount, uploadedBy: users.get(s.uploadedBy ?? '') ?? '', uploadedAt: s.createdAt.toISOString() })),
+      };
+    });
+  }
+
+  /** HR uploads a survey: every row checked; one bad row and nothing is saved (the bad rows are listed). A new version each time. */
+  async uploadMarket(ctx: TenantContext, user: ScopeUser, dto: MarketUploadDto) {
+    const v = await this.viewer(user);
+    if (!this.reaches(v, 'perf.comp.manage', dto.legalEntityId)) throw new ForbiddenException('Market data is for HR who run comp reviews for this company.');
+    if (dto.asOf > todayIst()) throw new BadRequestException('The as-of date cannot be in the future.');
+    return this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      if (!(await tx.legalEntity.findFirst({ where: { organizationId: org, id: dto.legalEntityId }, select: { id: true } }))) throw new NotFoundException('No such company.');
+      const grades = await tx.grade.findMany({ where: { organizationId: org, archivedAt: null, OR: [{ ownerLegalEntityId: null }, { ownerLegalEntityId: dto.legalEntityId }] }, select: { id: true, name: true, code: true } });
+      const { rows, errors } = readMarketCsv(dto.csv, grades);
+      if (errors.length) throw new BadRequestException({ message: `${errors.length} ${errors.length === 1 ? 'row needs' : 'rows need'} fixing. Nothing was saved.`, errors });
+      return withPayScope(tx, [dto.legalEntityId], async () => {
+        const last = await tx.compMarketSurvey.findFirst({ where: { organizationId: org, legalEntityId: dto.legalEntityId }, orderBy: { version: 'desc' }, select: { version: true } });
+        const s = await tx.compMarketSurvey.create({ data: { organizationId: org, legalEntityId: dto.legalEntityId, version: (last?.version ?? 0) + 1, source: dto.source, currency: rows[0]!.currency, asOf: asDate(dto.asOf), fileName: dto.fileName ?? null, rowCount: rows.length, uploadedBy: v.userId } });
+        await tx.compMarketRate.createMany({ data: rows.map((r) => ({ organizationId: org, surveyId: s.id, legalEntityId: dto.legalEntityId, gradeId: r.gradeId, minAmount: money(r.min), medianAmount: money(r.median), maxAmount: money(r.max) })) });
+        await audit(tx, c, 'perf.comp.market_uploaded', 'comp_market_survey', s.id, { legalEntityId: dto.legalEntityId, version: s.version, rows: rows.length, source: dto.source, asOf: dto.asOf });
+        return { version: s.version, rows: rows.length };
+      });
+    });
   }
 
   /** PRF-10: the approval tasks of this cycle's sent proposals that wait for me. */

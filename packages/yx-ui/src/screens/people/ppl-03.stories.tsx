@@ -27,6 +27,7 @@ export const Time: S = { name: 'Time tab', render: () => <PersonWorkspace person
 export const Documents: S = { name: 'Documents tab · HR verify', render: () => <PersonWorkspace persona="hr" relation="other" today={TODAY} defaultTab="documents" /> };
 export const DocumentsManager: S = { name: 'Documents tab · manager (restricted classes hidden)', render: () => <PersonWorkspace persona="mgr" relation="team" today={TODAY} defaultTab="documents" /> };
 export const Performance: S = { name: 'Performance tab', render: () => <PersonWorkspace persona="mgr" relation="team" today={TODAY} defaultTab="performance" /> };
+export const PerformanceHr: S = { name: 'Performance tab · HR sees feedback shared with HR', render: () => <PersonWorkspace persona="hr" relation="other" today={TODAY} defaultTab="performance" /> };
 export const Learning: S = { name: 'Learning tab', render: () => <PersonWorkspace persona="emp" relation="self" today={TODAY} defaultTab="learning" /> };
 export const Assets: S = { name: 'Assets tab', render: () => <PersonWorkspace persona="hr" relation="other" today={TODAY} defaultTab="assets" /> };
 export const History: S = { name: 'History tab (timeline, corrections, roles)', render: () => <PersonWorkspace persona="hr" relation="other" today={TODAY} defaultTab="history" /> };

@@ -27,7 +27,7 @@ describe('Performance batch PM3', () => {
   const server = () => app.getHttpServer();
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'adminA' | 'adminB' | 'head' | 'priya' | 'arjun' | 'sita' | 'hr';
+  type Who = 'adminA' | 'adminB' | 'head' | 'priya' | 'arjun' | 'sita' | 'hr' | 'rev';
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const emp = {} as Record<string, string>;
@@ -66,6 +66,7 @@ describe('Performance batch PM3', () => {
       ['arjun', 'A', 'panel', []],
       ['sita', 'A', 'panel', []],
       ['hr', 'A', 'panel', ['perf.concern.seal']],
+      ['rev', 'A', 'panel', ['perf.review.view']],
     ];
     for (const [who, k, role, keys] of roster) {
       const o = org[k].id;
@@ -259,6 +260,27 @@ describe('Performance batch PM3', () => {
     await api('priya', 'post', '/feedback-requests').send({ aboutEmployeeId: emp.arjun, askedEmployeeIds: [emp.sita], question: 'How was the route plan?' }).expect(201);
     const asked = (await api('sita', 'get', '/feedback-requests').expect(200)).body.requests as { askedAt: string }[];
     expect(asked[0]!.askedAt).toBeTruthy();
+  });
+
+  // Founder answer 9: HR with review access read feedback shared "with them, their manager and HR"; nobody else.
+  it('answer 9: HR with review access read only the feedback shared with HR, each read recorded; others cannot', async () => {
+    const shared = (await api('sita', 'post', '/feedback').send({ toEmployeeId: emp.arjun, kind: 'suggestion', text: 'Share the dealer visit plan a week ahead.', visibility: 'with_hr' }).expect(201)).body as { id: string };
+    const quiet = (await api('sita', 'post', '/feedback').send({ toEmployeeId: emp.arjun, kind: 'praise', text: 'Only for Arjun to read.', visibility: 'recipient_only' }).expect(201)).body as { id: string };
+    const sealed = (await api('sita', 'post', '/feedback').send({ toEmployeeId: emp.arjun, kind: 'suggestion', text: 'This belongs to the concern channel.', visibility: 'with_hr' }).expect(201)).body as { id: string };
+    await api('hr', 'post', `/feedback/${sealed.id}/seal`).send({ reason: 'Passed to the confidential channel' }).expect(200);
+    const got = (await api('rev', 'get', `/feedback/employee/${emp.arjun}/shared`).expect(200)).body.items as { id: string; from: string; text: string }[];
+    expect(got.map((x) => x.id)).toContain(shared.id);
+    expect(got.map((x) => x.id)).not.toContain(quiet.id);
+    expect(got.map((x) => x.id)).not.toContain(sealed.id);
+    expect(got.find((x) => x.id === shared.id)).toMatchObject({ from: expect.stringMatching(/^Sita/), text: 'Share the dealer visit plan a week ahead.' });
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'perf.feedback.hr_viewed', entityId: emp.arjun } }))).toBe(1);
+    // A manager, a peer, HR who only seal concerns, another company: refused.
+    await api('priya', 'get', `/feedback/employee/${emp.arjun}/shared`).expect(403);
+    await api('sita', 'get', `/feedback/employee/${emp.arjun}/shared`).expect(403);
+    await api('hr', 'get', `/feedback/employee/${emp.arjun}/shared`).expect(403);
+    await api('adminB', 'get', `/feedback/employee/${emp.arjun}/shared`).expect(404);
+    await api('rev', 'get', '/feedback/employee/not-a-uuid/shared').expect(400);
+    await api('rev', 'get', `/feedback/employee/${randomUUID()}/shared`).expect(404);
   });
 
   it('keeps companies apart', async () => {

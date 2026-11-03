@@ -22,13 +22,19 @@ API) · **phone view, mobile app not built**.
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Goals and reviews (PRF-01 … 06, builder 1) | 6 | 55 | 8 | 0 | 0 | 0 | 63 |
-| B. Feedback, calibration, pay, plans and help (PRF-07 … 17, builders 2 and 3) | 11 | 76 | 16 | 0 | 1 | 0 | 93 |
-| **All PRF groups (A–B)** | **17** | **131** | **24** | **0** | **1** | **0** | **156** |
+| B. Feedback, calibration, pay, plans and help (PRF-07 … 17, builders 2 and 3) | 11 | 81 | 16 | 0 | 0 | 0 | 97 |
+| **All PRF groups (A–B)** | **17** | **136** | **24** | **0** | **0** | **0** | **160** |
 | C. Shared parts (Kit · Growth building blocks, Calibration · Sessions list) | 2 | 17 | 0 | 0 | 4 | 0 | 21 |
+
+Recounted by script 3 Nov 2026 on `feat/yukthix-perf-followups-b` (founder answers 9 and 12): B has 97 stories, 4 new for the
+PRF-10 market data upload; "Stale market data" is now live, so no PRF story is left not built. PPL-03 gains one story
+(Performance tab, HR sees feedback shared with HR), counted in `people-design-map.md`. Before that, recounted on `feat/yukthix-perf-map` after the builder 2 and 3 notes were folded in: B grew from 64 to
+
 
 Recounted by script 3 Nov 2026 on `feat/yukthix-perf-followups-a` (two PRF stories and one kit story added: PRF-01
 EmployeeEarlierReviews, PRF-05 ManagerPotential, Kit Potential; PRF-01 Manager and ManagerPhone now live with the coach
 card). Before that, recounted on `feat/yukthix-perf-map` after the builder 2 and 3 notes were folded in: B grew from 64 to
+
 93 stories (builders 2 and 3 added 29 design stories for states the real record has); the one story still not built is
 PRF-10 "Stale market data" (no market data source). The four kit stories not built are Engage and Learning parts
 (eNPS, rotating QR, feed posts, poll), not Performance. First counted on `feat/yukthix-perf-1` (the script is in the appendix): every `export const` story in
@@ -78,6 +84,7 @@ PerformanceHomeScreen, ReviewAcknowledgeScreen, ReviewWorkspaceScreen.
 | /yx/performance/calibrations | `CalibrationListScreen` | Calibration · Sessions list | `GET calibrations` (`perf.calibration.facilitate`) | live |
 | /yx/performance/calibrations/[id] | `CalibrationScreen` live (board, 9-box, changes, close) | PRF-09 | calibration routes (`perf.calibration.facilitate`; board read implicit) | live |
 | /yx/performance/comp/[id] | `CompReviewScreen` live | PRF-10 | comp sheet routes (`perf.comp.manage`, `perf.comp.approve`; managers implicit) | live |
+| /yx/performance/comp/market | `MarketDataScreen` live | PRF-10 | `GET` / `POST comp-market` (`perf.comp.manage` for the entity) | live |
 | /yx/performance/one-on-ones, /one-on-ones/[id] | `OneOnOneScreen` live (with the PRF-16 suggested agenda for the manager) | PRF-11, PRF-16 | 1:1 routes (implicit) | live |
 | /yx/performance/pips/[id] | `PipRecordScreen` live | PRF-12 | PIP routes (`perf.pip.manage`; person and manager implicit) | live |
 | /yx/performance/handovers | `HandoverListScreen` live | PRF-13 | handover-list routes (implicit; all `perf.cycle.manage`) | live |
@@ -107,7 +114,7 @@ none can be swapped; each needs a design story first (rule 18).
 | PRF-01 HR stat cards' "last week / last period" | a daily snapshot of the figures (overdue stages, aligned %) | S |
 | PRF-05 kudos card | Engage recognition (kudos) | L (Engage) |
 | PRF-05 / PRF-06 "Download PDF" | a review PDF (the dispute export already renders one with pdf-lib) | M |
-| PRF-10 market data, stale market data | a salary benchmark source (provider: to decide) | M |
+| PRF-10 market data from a provider | built as a salary-survey CSV upload (answer 12); a benchmark provider later (to decide) | M |
 | PRF-13 "Reassign to HR", "View audit entry" | a bulk reassign and a link into the audit log | S |
 | PRF-14 Import and the skills-test link | a file import and the question-bank link | M |
 | PRF-15 legal hold that blocks something | a retention purge for reviews (the hold is a flag today) | M |
@@ -296,6 +303,13 @@ Live page: /yx/performance/comp/[id] (`CompReviewScreen` with `live`). API: `GET
 and "below peers" only for HR and finance), `PUT comp-proposals/:id`, `POST comp-cycles/:id/submit`, `PUT
 comp-cycles/:id/budgets`, `POST comp-cycles/:id/open`, `POST comp-cycles/:id/apply` (step-up), `GET
 comp-cycles/:id/pay-equity`, `POST comp-cycles/:id/decide` (whoever holds an open approval task of the cycle).
+Market data (founder answer 12, branch `feat/yukthix-perf-followups-b`): /yx/performance/comp/market
+(`MarketDataScreen`, menu "Market data" for perf.comp.manage); `GET comp-market?legalEntityId=` and `POST comp-market`
+(perf.comp.manage for the entity). A salary-survey CSV per grade (grade, min, median, max, currency) with its source and
+as-of date; every row checked, nothing saved until all are right (the bad rows listed); each upload a new version, never
+changed (no update or delete for the app), audited (`perf.comp.market_uploaded`, reads `perf.comp.market_viewed`), read
+only inside the pay scope. The sheet takes the entity's latest survey for each person's grade; it is stale after the
+company setting `perf.comp.market_stale_months` (default 12). Migration `20261480000000_comp_market_data`.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
@@ -303,12 +317,16 @@ comp-cycles/:id/pay-equity`, `POST comp-cycles/:id/decide` (whoever holds an ope
 | Justify · Manager · justification for out-of-range | live | the proposal drawer asks for a reason outside the range or with a promotion |
 | HrApproves · HR · approve with pay-equity panel | live | gap by gender, grade or location (Segment); small groups suppressed |
 | FinanceOverBudget · Finance · over budget | live | budget use from the API |
-| NoMarketData · No market data | live | always the state today: no benchmark source yet (provider: to decide) |
-| StaleMarketData · Stale market data | design only, feature not built | no market data source, so nothing can be stale |
+| NoMarketData · No market data | live | until HR uploads a salary survey for the company (a provider later) |
+| StaleMarketData · Stale market data | live | the latest survey is older than perf.comp.market_stale_months (default 12) |
 | Proposal · Manager · proposal with promotion and bonus | live | PUT comp-proposals/:id |
 | Budgets · HR · set a department budget | live | PUT comp-cycles/:id/budgets |
 | SendBack · HR · send back with what to change | live | POST comp-cycles/:id/decide |
 | Apply · HR · apply approved pay changes | live | POST comp-cycles/:id/apply (step-up) |
+| MarketData · HR · market data (salary survey) | live | /yx/performance/comp/market: the latest survey by grade and its versions |
+| MarketBadRows · HR · survey upload with rows to fix | live | POST comp-market refused: every bad row listed with what to fix; nothing saved |
+| MarketStale · HR · market data out of date | live | older than the company setting |
+| MarketNone · HR · no market data yet | live | before the first upload |
 
 #### PRF-11 · 1:1s
 
@@ -500,6 +518,17 @@ Live page: /yx/performance/calibrations (`CalibrationListScreen`), and the contr
    (suggested: also `perf.review.view` in scope on the person's Performance tab); only the calibration facilitator moves
    ratings (suggested: keep); only HR records a PIP outcome (suggested: keep); market data: a salary-survey CSV per grade
    first, a provider later; 9-box potential set by the facilitator (suggested: let the manager propose it in PRF-05).
+
+## Founder answers 9 and 12 built (branch `feat/yukthix-perf-followups-b`)
+
+- **9. Feedback shared with HR.** Feedback a colleague shares "with them, their manager and HR" is also read by HR who hold
+  `perf.review.view` for the person, on the Performance tab of the person's record (PPL-03 story "Performance tab · HR
+  sees feedback shared with HR", design first). `GET performance/feedback/employee/:id/shared` (perf.review.view, and the
+  service checks the person is in that HR's scope today): only `with_hr` items, never sealed or withdrawn ones, never
+  private or recipient-only ones. A manager, a peer, HR who only seal concerns and another company are refused. Each
+  read is audited (`perf.feedback.hr_viewed`). Manual tests MT-PRF-B2-16, 17.
+- **12. Comp market data.** See PRF-10 above: the salary-survey upload, versions, the ranges on the sheet and the stale
+  state. Manual tests MT-PRF-B2-18 … 20.
 
 ## Appendix: the count script
 

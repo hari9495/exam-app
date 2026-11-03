@@ -1,5 +1,7 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
+import { Throttle } from '@nestjs/throttler';
+import { PUBLIC_API_THROTTLE } from '../rate-limit-tiers';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
@@ -8,7 +10,7 @@ import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.de
 import { RequireStepUp } from '../auth/step-up.decorator';
 import type { ScopeUser } from '../access/scope';
 import { VersionDto } from './dto';
-import { BudgetsDto, CompCycleDto, CompDecideDto, EquityQueryDto, MatrixDto, ProposalDto } from './review-dto';
+import { BudgetsDto, CompCycleDto, CompDecideDto, EquityQueryDto, MarketQueryDto, MarketUploadDto, MatrixDto, ProposalDto } from './review-dto';
 import { PerformanceCompService } from './comp.service';
 
 // Performance batch PM7 (M06-BUILD-DESIGN §19 "Comp"). Matrices, cycles, budgets and apply need perf.comp.manage (for
@@ -100,6 +102,21 @@ export class PerformanceCompController {
   @RequireStepUp()
   apply(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: VersionDto) {
     return this.svc.apply(ctx, this.user(req), id, dto.version);
+  }
+
+  /** PRF-10 market data: an entity's salary-survey versions and the latest grades (perf.comp.manage for the entity). */
+  @Get('comp-market')
+  @RequirePermissions('perf.comp.manage')
+  market(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: MarketQueryDto) {
+    return this.svc.market(ctx, this.user(req), q.legalEntityId);
+  }
+
+  /** PRF-10 market data: upload a salary survey as CSV; nothing is saved unless every row is right. */
+  @Post('comp-market')
+  @RequirePermissions('perf.comp.manage')
+  @Throttle(PUBLIC_API_THROTTLE)
+  uploadMarket(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: MarketUploadDto) {
+    return this.svc.uploadMarket(ctx, this.user(req), dto);
   }
 
   @Get('comp-cycles/:id/pay-equity')

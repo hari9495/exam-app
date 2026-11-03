@@ -11501,3 +11501,37 @@ model TradingWindow {
   @@index([organizationId, startsOn], map: "trading_windows_org_idx")
   @@map("trading_windows")
 }
+
+// ---- PRF-10 comp market data (migration 20261480000000_comp_market_data): salary-survey uploads per legal entity,
+// versioned; RLS, the pay guard and no update/delete live in the migration.
+model CompMarketSurvey {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  legalEntityId  String   @map("legal_entity_id") @db.Uuid
+  version        Int
+  source         String   @db.VarChar(200)
+  currency       String   @db.VarChar(3)
+  asOf           DateTime @map("as_of") @db.Date
+  fileName       String?  @map("file_name") @db.VarChar(200)
+  rowCount       Int      @map("row_count")
+  uploadedBy     String?  @map("uploaded_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id], map: "comp_market_surveys_org_id_key")
+  @@unique([organizationId, legalEntityId, version], map: "comp_market_surveys_version_key")
+  @@map("comp_market_surveys")
+}
+
+model CompMarketRate {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  surveyId       String  @map("survey_id") @db.Uuid
+  legalEntityId  String  @map("legal_entity_id") @db.Uuid
+  gradeId        String  @map("grade_id") @db.Uuid
+  minAmount      Decimal @map("min_amount") @db.Decimal(14, 2)
+  medianAmount   Decimal @map("median_amount") @db.Decimal(14, 2)
+  maxAmount      Decimal @map("max_amount") @db.Decimal(14, 2)
+
+  @@unique([surveyId, gradeId], map: "comp_market_rates_grade_key")
+  @@map("comp_market_rates")
+}

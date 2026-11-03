@@ -553,6 +553,34 @@ export class PipCheckinDto {
   rating?: 'on_track' | 'some_progress' | 'no_progress' | null;
 }
 
+/** PRF-10 market data: a salary-survey CSV for one legal entity (columns grade, min, median, max, currency). */
+export class MarketUploadDto {
+  @IsUUID()
+  legalEntityId!: string;
+
+  @trim()
+  @IsString()
+  @Length(2, 200)
+  source!: string;
+
+  @Matches(ISO)
+  asOf!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  fileName?: string | null;
+
+  @IsString()
+  @Length(1, 1_000_000)
+  csv!: string;
+}
+
+export class MarketQueryDto {
+  @IsUUID()
+  legalEntityId!: string;
+}
+
 /** PRF-10: an approver approves the sheet's proposals waiting for them, or sends them back with what to change. */
 export class CompDecideDto {
   @IsIn(['approve', 'send_back'])

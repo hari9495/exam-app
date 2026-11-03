@@ -98,6 +98,46 @@ export interface RecordPerformance {
   /** "3 received · 1 given" this quarter; null while unknown (the line is then left out). */
   feedback?: string | null;
   onOpenGoals?: () => void;
+  /** Founder answer 9: feedback colleagues shared "with them, their manager and HR", for HR with review access for the
+   * person; undefined hides the card (anyone else never gets it). Reading it is recorded. */
+  sharedFeedback?: SharedFeedback[];
+}
+
+export interface SharedFeedback {
+  id: string;
+  from: string;
+  kind: 'Praise' | 'Suggestion';
+  text: string;
+  at: Date;
+  goal?: string | null;
+}
+
+const SAMPLE_SHARED: SharedFeedback[] = [
+  { id: 's1', from: 'Manoj Patil', kind: 'Praise', text: 'The label-printer mock means we no longer stop the line to test.', at: new Date(2026, 8, 2) },
+  { id: 's2', from: 'Karthik Subramanian', kind: 'Suggestion', text: 'Share the test plan earlier with the plant team so they can book the line.', at: new Date(2026, 7, 11), goal: 'Automate regression tests' },
+];
+
+function SharedFeedbackCard({ items }: { items: SharedFeedback[] }) {
+  return (
+    <Card title="Feedback shared with HR" actions={<Badge tone="info">Reading this is recorded</Badge>}>
+      {items.length ? (
+        <ul className="yx-ppl__successors">
+          {items.map((f) => (
+            <li key={f.id}>
+              <span>
+                <Text as="span" weight="medium">{f.from}</Text> · {formatDate(f.at)}
+                {f.goal ? ` · goal: ${f.goal}` : ''}
+                <Text as="p" size="sm">{f.text}</Text>
+              </span>
+              <Badge tone={f.kind === 'Praise' ? 'success' : 'info'}>{f.kind}</Badge>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <Text size="sm" tone="secondary" as="p">No colleague has shared feedback with HR.</Text>
+      )}
+    </Card>
+  );
 }
 
 /** PPL-34 Identity panel, live: HR's identity checks on the person (Special class; opening it is recorded). */
@@ -985,6 +1025,7 @@ export function PerformanceTab({ persona, data }: { persona: Persona; data?: Rec
             {data.feedback != null && <div><dt>Feedback this quarter</dt><dd>{data.feedback}</dd></div>}
           </dl>
         </Card>
+        {data.sharedFeedback && <SharedFeedbackCard items={data.sharedFeedback} />}
       </div>
     );
   return (
@@ -1003,6 +1044,7 @@ export function PerformanceTab({ persona, data }: { persona: Persona; data?: Rec
           <div><dt>Feedback this quarter</dt><dd>3 received · 1 given</dd></div>
         </dl>
       </Card>
+      {persona === 'hr' && <SharedFeedbackCard items={SAMPLE_SHARED} />}
     </div>
   );
 }

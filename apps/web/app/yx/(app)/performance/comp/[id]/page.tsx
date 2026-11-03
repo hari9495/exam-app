@@ -42,6 +42,7 @@ export default function YxCompSheetPage() {
       proposed: p.meritPct,
       justification: p.justification ?? undefined,
       peerMedian: 0,
+      market: p.market ? { p25: p.market.min, p50: p.market.median, p75: p.market.max } : undefined,
       live: {
         band: p.band ?? 'Not rated',
         compa: p.compaRatio,
@@ -65,7 +66,7 @@ export default function YxCompSheetPage() {
       state={designState(sheet)}
       rows={rows}
       budget={[]}
-      benchmark={null}
+      benchmark={s?.benchmark ? { source: s.benchmark.source, effective: day(s.benchmark.asOf), stale: s.benchmark.stale } : null}
       live={{
         onRetry: () => void sheet.refetch(),
         title: s ? `Comp review · ${s.cycle.name}` : 'Comp review',
@@ -83,6 +84,7 @@ export default function YxCompSheetPage() {
         onBudgets: ({ departmentId, merit, bonus }) => write('PUT', `${base}/budgets`, { budgets: [...(merit !== null ? [{ departmentId, kind: 'merit', amount: merit }] : []), ...(bonus !== null ? [{ departmentId, kind: 'bonus', amount: bonus }] : [])] }),
         onOpenCycle: () => write('POST', `${base}/open`, { version }),
         onApply: () => write('POST', `${base}/apply`, { version }),
+        marketHref: perms.has('perf.comp.manage') ? '/yx/performance/comp/market' : undefined,
       }}
     />
   );

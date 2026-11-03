@@ -17,7 +17,7 @@ export { scoreSoFar, type LiveCycleSetup, type LiveControlRoom, type LiveReviewW
 export { toGoal, type GoalItem, type PerfHome } from '../../growth/perf-live-data';
 export { CompCyclesScreen, type CompCyclesScreenProps } from './comp';
 // PRF-10 Comp review sheet, the designed screen made live (builder 2).
-export { CompReviewScreen, type CompProposalInput, type CompRow as CompReviewRow, type LiveCompReview } from '../../growth/perf-talent';
+export { CompReviewScreen, MarketDataScreen, MARKET_TEMPLATE, type CompProposalInput, type CompRow as CompReviewRow, type LiveCompReview, type MarketDataProps, type MarketSurveyRow, type MarketVersion } from '../../growth/perf-talent';
 export { PipsScreen, type PipsScreenProps } from './pips';
 // PRF-07 360° nominations, PRF-12 PIP record: the designed screens made live (builder 2).
 export { NominationsScreen, type LiveNominations, type Nomination as NominationRow } from '../../growth/perf-reviews';

@@ -11352,5 +11352,93 @@
       "Performance · PRF-03 · HR · goal map"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PRF-B2-16",
+    "area": "Performance · answer 9 (feedback shared with HR)",
+    "screen": "Person record › Performance tab, HR with review access",
+    "url": "http://localhost:3000/yx/people/directory/<Arjun's id>",
+    "account": "arjun@demo-org.test (Arjun) to give the feedback; then hr@demo-org.test (HR Admin - Lakshmi, holds perf.review.view). Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "People PPL-03 PerformanceHr",
+      "Performance PRF-08 Give"
+    ],
+    "steps": [
+      "1. As a colleague of Arjun (e.g. Kavya) open Performance › Feedback › Give feedback, To: Arjun, write 20+ characters, Who can see it: \"Arjun, their manager and HR\", send.",
+      "2. Give Arjun a second item with \"Only Arjun\".",
+      "3. As Lakshmi open People › Directory › Arjun › Performance tab."
+    ],
+    "expected": "Step 3: a card \"Feedback shared with HR\" shows the first item (who, date, Praise or Suggestion, the text) and the badge \"Reading this is recorded\". The \"Only Arjun\" item is NOT shown. The audit log has \"perf.feedback.hr_viewed\" for Arjun.",
+    "note": "Positive."
+  },
+  {
+    "id": "MT-PRF-B2-17",
+    "area": "Performance · answer 9 (feedback shared with HR)",
+    "screen": "Nobody else sees it",
+    "url": "http://localhost:3000/yx/people/directory/<Arjun's id>",
+    "account": "panel@demo-org.test (Manager - Divya, no perf.review.view); then a peer of Arjun. Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "People PPL-03 Performance"
+    ],
+    "steps": [
+      "1. As Divya (Arjun's manager) open Arjun › Performance tab.",
+      "2. As HR seal the shared item (Performance › Feedback › Concerns), then reopen Arjun's Performance tab as Lakshmi."
+    ],
+    "expected": "Step 1: no \"Feedback shared with HR\" card (Divya still sees the item in Feedback › My team, as before). Step 2: the sealed item no longer shows on the card; with nothing left the card says \"No colleague has shared feedback with HR.\"",
+    "note": "Negative."
+  },
+  {
+    "id": "MT-PRF-B2-18",
+    "area": "Performance · answer 12 (comp market data)",
+    "screen": "Upload a salary survey",
+    "url": "http://localhost:3000/yx/performance/comp/market",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi, perf.comp.manage). Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "Performance PRF-10 MarketNone",
+      "Performance PRF-10 MarketData"
+    ],
+    "steps": [
+      "1. Open Performance › Market data. Press Download template and open the file.",
+      "2. Put one row per demo grade (grade, min, median, max, currency INR) and save as CSV.",
+      "3. Choose the file, Source \"Aon salary survey 2026\", As of 1 Oct 2026, press Upload survey.",
+      "4. Open a comp cycle of the same company (Performance › Comp review)."
+    ],
+    "expected": "Step 1: \"No market data yet\" before the first upload; the template has the five columns. Step 3: toast \"Survey uploaded: <file>\"; \"Current survey · version 1\" lists each grade with Min, Median, Max; Versions shows version 1 with who and when. Step 4: Market P25–P75 shows a range per person and the \"No market data\" note is gone.",
+    "note": "Positive."
+  },
+  {
+    "id": "MT-PRF-B2-19",
+    "area": "Performance · answer 12 (comp market data)",
+    "screen": "Bad rows, missing fields, no access",
+    "url": "http://localhost:3000/yx/performance/comp/market",
+    "account": "hr@demo-org.test; then panel@demo-org.test (Manager - Divya) and a finance approver without perf.comp.manage. Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "Performance PRF-10 MarketBadRows"
+    ],
+    "steps": [
+      "1. Press Upload survey with nothing chosen.",
+      "2. Upload a CSV with a grade that does not exist (e.g. G9), a row where min is above max, and the same grade twice.",
+      "3. As Divya or the finance approver open /yx/performance/comp/market."
+    ],
+    "expected": "Step 1: \"Choose the CSV file.\" (and the Source and As of errors) with focus on the first; nothing is sent. Step 2: red \"N rows need fixing. Nothing was saved.\" and a table of each row number with what to fix; the current survey and versions do not change. Step 3: the menu has no \"Market data\" entry and the page shows the no-access state.",
+    "note": "Negative."
+  },
+  {
+    "id": "MT-PRF-B2-20",
+    "area": "Performance · answer 12 (comp market data)",
+    "screen": "Out-of-date survey and the company setting",
+    "url": "http://localhost:3000/yx/performance/comp/market",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Browser window 1278 x 635, sidebar open.",
+    "stories": [
+      "Performance PRF-10 MarketStale",
+      "Performance PRF-10 StaleMarketData"
+    ],
+    "steps": [
+      "1. Upload a survey with As of more than 12 months ago.",
+      "2. Open a comp cycle of that company.",
+      "3. In Settings › company settings set \"Performance: market data is out of date after (months)\" to 24, and reload both pages."
+    ],
+    "expected": "Step 1: version 2; the warning \"Market data is older than 12 months\" and the badge \"Out of date\". Step 2: the sheet shows \"Market data is older than 12 months\" with the source and date. Step 3: both warnings are gone (the survey is under 24 months old). Old versions stay listed; nothing is edited.",
+    "note": "Positive and negative."
   }
 ]

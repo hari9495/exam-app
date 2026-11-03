@@ -2,7 +2,7 @@
 // budget and pay-equity panel (PRF-10).
 import { useMemo, useState } from 'react';
 import { MoreHorizontal, MoveRight, Send } from 'lucide-react';
-import { Button, IconButton } from '../../components/button';
+import { Button, IconButton, Link } from '../../components/button';
 import { Badge, PersonLabel } from '../../components/display';
 import { Text } from '../../components/foundations';
 import { EmptyState, ErrorState, InlineAlert, Meter, Skeleton } from '../../components/feedback';
@@ -13,8 +13,11 @@ import { DataTable, tableToCsv, type TableColumn } from '../../components/table'
 import { downloadText } from '../workforce/workforce-kit';
 import { Drawer } from '../../components/drawer';
 import { ConfirmDialog } from '../../components/overlay';
-import { FormField } from '../../components/field';
-import { NumberField, TextArea } from '../../components/inputs';
+import { FormField, useTooEarly } from '../../components/field';
+import { DatePicker } from '../../components/date';
+import { FileUpload } from '../../components/upload';
+import { dayKey } from '../../lib/dates';
+import { NumberField, TextArea, TextField } from '../../components/inputs';
 import { Segment } from '../../components/segment';
 import { Select } from '../../components/select';
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuTrigger } from '../../components/menu';
@@ -360,6 +363,8 @@ export interface LiveCompReview {
   onBudgets: (input: { departmentId: string; merit: number | null; bonus: number | null }) => Promise<unknown>;
   onOpenCycle: () => Promise<unknown>;
   onApply: () => Promise<unknown>;
+  /** HR: where the salary survey is uploaded (market data). */
+  marketHref?: string;
 }
 
 const EQUITY_DIMENSIONS = [
@@ -453,7 +458,7 @@ export function CompReviewScreen({ persona, rows: initial, budget, equity: sampl
         if (r.live) {
           const l = r.live;
           const check = l.range ? { range: l.range, within: !l.outOfRange, needsJustification: l.outOfRange } : null;
-          return { ...r, band: l.band, compa: l.compa ?? 0, check, suggested: l.range ?? ([0, 0] as [number, number]), increment: l.increment, newCtc: l.newCtc, belowPeer: l.belowPeers, marketRatio: null as number | null };
+          return { ...r, band: l.band, compa: l.compa ?? 0, check, suggested: l.range ?? ([0, 0] as [number, number]), increment: l.increment, newCtc: l.newCtc, belowPeer: l.belowPeers, marketRatio: (r.market ? Math.round((r.ctc / r.market.p50) * 100) / 100 : null) as number | null };
         }
         const band = bandFor(r.score ?? 0) as Band;
         const compa = Math.round((r.ctc / r.gradeMid) * 100) / 100;
@@ -561,6 +566,11 @@ export function CompReviewScreen({ persona, rows: initial, budget, equity: sampl
   };
   const hrActions = live && (
     <>
+      {live.marketHref && (
+        <Button asChild>
+          <Link href={live.marketHref}>Market data</Link>
+        </Button>
+      )}
       {live.can.budgets && <Button onClick={() => setBudgeting(true)}>Budgets</Button>}
       {live.can.open && (
         <Button variant="primary" loading={busy === 'open'} onClick={() => void act('open', live.onOpenCycle, 'Cycle opened. Managers can propose now.')}>
@@ -793,6 +803,208 @@ export function CompReviewScreen({ persona, rows: initial, budget, equity: sampl
           toast({ title: 'Pay changes applied', tone: 'success' });
         }}
       />
+    </GrowthFrame>
+  );
+}
+
+/* ================================================================== PRF-10 · Market data (salary survey upload) */
+
+export interface MarketSurveyRow {
+  grade: string;
+  min: number;
+  median: number;
+  max: number;
+}
+export interface MarketVersion {
+  version: number;
+  source: string;
+  currency: string;
+  asOf: Date;
+  fileName: string | null;
+  rows: number;
+  uploadedBy: string;
+  uploadedAt: Date;
+}
+export interface MarketDataProps {
+  /** The legal entities HR runs comp reviews for; one is chosen. */
+  entities: { value: string; label: string }[];
+  entityId: string | null;
+  onEntity?: (id: string) => void;
+  latest: { version: number; source: string; currency: string; asOf: Date; stale: boolean; rows: MarketSurveyRow[] } | null;
+  versions: MarketVersion[];
+  staleMonths: number;
+  state?: LoadState;
+  /** Stories: the bad rows a refused upload listed. */
+  problems?: { row: number; message: string }[];
+  /** Sends the file; a refusal carries the bad rows (`errors` on the error). The app passes it. */
+  onUpload?: (input: { source: string; asOf: string; fileName: string; csv: string }) => Promise<unknown>;
+  onRetry?: () => void;
+}
+
+/** A file's text (FileReader works in every browser the app supports). */
+const readText = (f: File) =>
+  new Promise<string>((ok, fail) => {
+    const r = new FileReader();
+    r.onload = () => ok(String(r.result ?? ''));
+    r.onerror = () => fail(new Error('The file could not be read. Choose it again.'));
+    r.readAsText(f);
+  });
+
+export const MARKET_TEMPLATE = 'grade,min,median,max,currency\nG3,510000,600000,720000,INR\nG4,765000,900000,1080000,INR\n';
+
+/** PRF-10 market data: HR uploads a salary survey per grade (CSV); every row is checked and nothing is saved until all are right. */
+export function MarketDataScreen({ entities, entityId, onEntity, latest, versions, staleMonths, state = 'ready', problems: shownProblems, onUpload, onRetry }: MarketDataProps) {
+  const [source, setSource] = useState('');
+  const [asOf, setAsOf] = useState<Date | null>(null);
+  const [file, setFile] = useState<{ name: string; text: string } | null>(null);
+  const [problems, setProblems] = useState(shownProblems ?? []);
+  const [refusal, setRefusal] = useState<string | null>(shownProblems?.length ? `${shownProblems.length} rows need fixing. Nothing was saved.` : null);
+  const [key, setKey] = useState(0);
+  const { busy, act, toast } = useAct();
+  const check = useTooEarly([
+    ...(!file ? [{ fieldId: 'mk-file', message: 'Choose the CSV file.' }] : []),
+    ...(source.trim().length < 2 ? [{ fieldId: 'mk-source', message: 'Say where the survey comes from.' }] : []),
+    ...(!asOf ? [{ fieldId: 'mk-asof', message: 'Choose the date the survey describes.' }] : []),
+  ]);
+  const send = async () => {
+    if (check.stop()) return;
+    if (!onUpload) return;
+    setProblems([]);
+    setRefusal(null);
+    let bad: { row: number; message: string }[] | undefined;
+    const ok = await act('upload', async () => {
+      try {
+        await onUpload({ source: source.trim(), asOf: dayKey(asOf!), fileName: file!.name, csv: file!.text });
+      } catch (e) {
+        bad = (e as { body?: { errors?: { row: number; message: string }[] } }).body?.errors;
+        if (!bad?.length) throw e;
+        setProblems(bad);
+        setRefusal((e as Error).message);
+      }
+    });
+    if (!ok || bad?.length) return;
+    toast({ title: `Survey uploaded: ${file!.name}`, tone: 'success' });
+    setFile(null);
+    setSource('');
+    setAsOf(null);
+    setKey((k) => k + 1);
+    check.reset();
+  };
+  const template = () => downloadText('salary-survey-template.csv', MARKET_TEMPLATE);
+  return (
+    <GrowthFrame area="performance" active="Calibration & comp review" persona="hr">
+      <PageHeader title="Market data" status={<ConfidentialTag />} description="Salary survey by grade. Comp review sheets show where each person sits against it." actions={<Button onClick={template}>Download template</Button>} />
+      {entities.length > 1 && (
+        <FormField label="Company">
+          <Select value={entityId} onChange={(v) => v && onEntity?.(v)} options={entities} />
+        </FormField>
+      )}
+      {state === 'error' ? (
+        <ErrorState title="We couldn’t load the market data" description="Check your connection and try again." onRetry={onRetry} />
+      ) : state === 'loading' ? (
+        <Skeleton height={360} />
+      ) : (
+        <SplitLayout
+          main={
+            <div className="yx-growth-stack">
+              {latest?.stale && (
+                <InlineAlert tone="warning" title={`Market data is older than ${staleMonths} months`}>
+                  {latest.source}, as of {formatDate(latest.asOf)}. Upload newer data so comp sheets compare with today’s market.
+                </InlineAlert>
+              )}
+              {latest ? (
+                <Card title={`Current survey · version ${latest.version}`} actions={<Badge tone={latest.stale ? 'warning' : 'success'}>{latest.stale ? 'Out of date' : 'Current'}</Badge>}>
+                  <Text size="sm" tone="secondary">
+                    {latest.source} · as of {formatDate(latest.asOf)} · {latest.currency}
+                  </Text>
+                  <DataTable
+                    label="Market range by grade"
+                    rows={latest.rows}
+                    getRowId={(r) => r.grade}
+                    columns={[
+                      { key: 'grade', header: 'Grade', value: (r) => r.grade, width: 140 },
+                      { key: 'min', header: 'Min', type: 'money', value: (r) => r.min, width: 140 },
+                      { key: 'median', header: 'Median', type: 'money', value: (r) => r.median, width: 140 },
+                      { key: 'max', header: 'Max', type: 'money', value: (r) => r.max, width: 140 },
+                    ]}
+                  />
+                </Card>
+              ) : (
+                <EmptyState title="No market data yet" description="Upload a salary survey (CSV, one row per grade). Comp sheets show “No market data” until then." />
+              )}
+              {versions.length > 0 && (
+                <Card title="Versions">
+                  <ul className="yx-growth-list">
+                    {versions.map((v) => (
+                      <li key={v.version} className="yx-growth-list__item">
+                        <div className="yx-growth-list__main">
+                          <span className="yx-growth-list__title">
+                            Version {v.version} · {v.source}
+                          </span>
+                          <span className="yx-growth-meta">
+                            As of {formatDate(v.asOf)} · {v.rows} grades · uploaded by {v.uploadedBy || 'someone'} on {formatDate(v.uploadedAt)}
+                            {v.fileName ? ` · ${v.fileName}` : ''}
+                          </span>
+                        </div>
+                        {v.version === latest?.version && <Badge tone="info">In use</Badge>}
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              )}
+            </div>
+          }
+          side={
+            <Card title="Upload a salary survey">
+              <div className="yx-growth-stack">
+                <Text size="sm" tone="secondary">
+                  One row per grade with the columns grade, min, median, max, currency (yearly amounts). Every row is checked; if any row is wrong, nothing is saved and the rows to fix are listed. A new upload becomes a new version.
+                </Text>
+                <FormField label="CSV file" required id="mk-file" error={check.errorOf('mk-file')}>
+                  <FileUpload
+                    key={key}
+                    accept={['.csv']}
+                    maxSize={1024 * 1024}
+                    multiple={false}
+                    upload={async (f) => {
+                      setFile({ name: f.name, text: await readText(f) });
+                      setProblems([]);
+                      setRefusal(null);
+                    }}
+                  />
+                </FormField>
+                <FormField label="Source" required id="mk-source" error={check.errorOf('mk-source')} helper="For example: Aon salary survey 2026, South India.">
+                  <TextField value={source} onChange={setSource} maxLength={200} />
+                </FormField>
+                <FormField label="As of" required id="mk-asof" error={check.errorOf('mk-asof')}>
+                  <DatePicker value={asOf} onChange={setAsOf} max={new Date()} />
+                </FormField>
+                {refusal && (
+                  <InlineAlert tone="danger" title={refusal}>
+                    Fix these rows in the file and upload it again.
+                  </InlineAlert>
+                )}
+                {problems.length > 0 && (
+                  <DataTable
+                    label="Rows to fix"
+                    rows={problems}
+                    getRowId={(r) => String(r.row)}
+                    columns={[
+                      { key: 'row', header: 'Row', type: 'number', value: (r) => r.row, width: 70 },
+                      { key: 'message', header: 'What to fix', value: (r) => r.message, width: 320 },
+                    ]}
+                  />
+                )}
+                <div className="yx-growth-row">
+                  <Button variant="primary" loading={busy === 'upload'} onClick={() => void send()}>
+                    Upload survey
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          }
+        />
+      )}
     </GrowthFrame>
   );
 }

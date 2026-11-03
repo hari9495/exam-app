@@ -194,6 +194,43 @@ describe('Performance batch PM7', () => {
     expect(hrSheet.proposals.some((x) => typeof x.score === 'number')).toBe(true);
   });
 
+  // Founder answer 12: market data is a salary-survey CSV per grade, checked row by row, versioned, audited, pay-scoped.
+  it('PRF-10 market data: HR uploads a survey (bad rows listed, nothing saved); the sheet shows the range and stale data', async () => {
+    const q = `/comp-market?legalEntityId=${ids.entity}`;
+    await api('fin', 'get', q).expect(403);
+    await api('priya', 'get', q).expect(403);
+    await api('adminB', 'get', q).expect((r) => expect([403, 404]).toContain(r.status));
+    expect((await api('hr', 'get', q).expect(200)).body).toMatchObject({ latest: null, versions: [], staleMonths: 12 });
+    const up = (body: object) => api('hr', 'post', '/comp-market').send({ legalEntityId: ids.entity, source: 'Aon salary survey 2026', asOf: shift(today, -30), fileName: 'aon.csv', ...body });
+    const bad = (await up({ csv: 'grade,min,median,max,currency\nG1,700000,800000,950000,INR\nG9,1,2,3,INR\nG1,900,800,700,INR\n' }).expect(400)).body as { message: string; errors: { row: number; message: string }[] };
+    expect(bad.message).toBe('2 rows need fixing. Nothing was saved.');
+    expect(bad.errors.map((e) => e.row)).toEqual([3, 4]);
+    expect((await api('hr', 'get', q).expect(200)).body.latest).toBeNull();
+    await up({ csv: 'grade,min,median,max,currency\nG1,700000,800000,950000,INR\n', asOf: shift(today, 3) }).expect(400);
+    await up({ csv: 'grade,min,median,max,currency\nG1,700000,800000,950000,INR\n', source: '' }).expect(400);
+    await api('fin', 'post', '/comp-market').send({ legalEntityId: ids.entity, source: 'x survey', asOf: today, csv: 'grade,min,median,max,currency\nG1,1,2,3,INR' }).expect(403);
+    expect((await up({ csv: 'grade,min,median,max,currency\ng1,"7,00,000",800000,950000,inr\n' }).expect(201)).body).toEqual({ version: 1, rows: 1 });
+    const m = (await api('hr', 'get', q).expect(200)).body;
+    expect(m.latest).toMatchObject({ version: 1, currency: 'INR', stale: false, rows: [{ grade: 'G1', min: 700000, median: 800000, max: 950000 }] });
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'perf.comp.market_uploaded' } }))).toBe(1);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'perf.comp.market_viewed' } }))).toBeGreaterThan(0);
+    // The manager's sheet shows each person's grade range; nothing outside the pay scope reads the rows.
+    type S = { benchmark: { version: number; stale: boolean } | null; proposals: { market: { median: number } | null }[] };
+    let s = (await api('priya', 'get', `/comp-cycles/${ids.comp}/sheet`).expect(200)).body as S;
+    expect(s.benchmark).toMatchObject({ version: 1, stale: false });
+    expect(s.proposals.every((p) => p.market?.median === 800000)).toBe(true);
+    expect(await inA((tx) => tx.compMarketRate.count())).toBe(0);
+    await expect(inA(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`;
+      return tx.$executeRaw`UPDATE comp_market_rates SET median_amount = 1`;
+    })).rejects.toThrow(/permission denied/);
+    // An older survey becomes version 2 and is stale after the company's 12 months.
+    expect((await up({ csv: 'grade,min,median,max,currency\nG1,600000,700000,800000,INR\n', asOf: shift(today, -400) }).expect(201)).body.version).toBe(2);
+    s = (await api('priya', 'get', `/comp-cycles/${ids.comp}/sheet`).expect(200)).body as S;
+    expect(s.benchmark).toMatchObject({ version: 2, stale: true });
+    expect((await api('hr', 'get', q).expect(200)).body.versions.map((v: { version: number }) => v.version)).toEqual([2, 1]);
+  });
+
   it('over budget blocks with "block" and adds a finance step with "extra_approval"; the chain approves (PM-7.03, 7.05)', async () => {
     await request(server()).put('/api/v1/org/settings').set('Authorization', `Bearer ${token.adminA}`).send({ key: 'perf.comp.budget_overrun', scopeType: 'tenant', value: 'block' }).expect(200);
     expect((await api('priya', 'post', `/comp-cycles/${ids.comp}/submit`).expect(409)).body.message).toMatch(/Over budget/);

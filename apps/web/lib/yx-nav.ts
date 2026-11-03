@@ -283,6 +283,7 @@ export function buildNav(n: NavInput): NavArea[] {
       ...when(employee, L('feedback', 'Feedback', '/yx/performance/feedback'), L('feedback-tasks', 'Feedback I owe', '/yx/performance/feedback-tasks'), L('one-on-ones', '1:1s', '/yx/performance/one-on-ones')),
       ...when(has('perf.calibration.facilitate'), L('calibration', 'Calibration & comp review', '/yx/performance/calibrations')),
       ...when(any('perf.comp.manage', 'perf.comp.approve'), L('comp-review', 'Comp review', '/yx/performance/comp')),
+      ...when(has('perf.comp.manage'), L('comp-market', 'Market data', '/yx/performance/comp/market')),
       ...when(manager || has('perf.pip.manage'), L('pips', 'PIPs', '/yx/performance/pips')),
       ...when(has('perf.concern.seal'), L('reviewer-blocks', 'Reviewer blocks', '/yx/performance/reviewer-blocks')),
       ...when(has('perf.report.view'), L('perf-reports', 'Reports', '/yx/performance/reports')),

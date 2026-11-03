@@ -249,7 +249,7 @@ describe('the Me menu under People (founder 28 Oct 2026: follow the design)', ()
 
 describe('pageLink: each Performance page names itself (walk-through 3 Nov 2026)', () => {
   const employee = nav([], { employee: true });
-  const hr = nav(['perf.cycle.manage', 'perf.calibration.facilitate', 'perf.setup.manage', 'perf.dispute.manage', 'perf.goal.view'], { employee: true, manager: true });
+  const hr = nav(['perf.cycle.manage', 'perf.calibration.facilitate', 'perf.setup.manage', 'perf.dispute.manage', 'perf.goal.view', 'perf.comp.manage'], { employee: true, manager: true });
   const pages: [string, string][] = [
     ['/yx/performance/calibrations', 'Calibration & comp review'],
     ['/yx/performance/calibrations/c1', 'Calibration & comp review'],
@@ -259,6 +259,8 @@ describe('pageLink: each Performance page names itself (walk-through 3 Nov 2026)
     ['/yx/performance/coach', 'Manager coach'],
     ['/yx/performance/goal-map', 'Goal map'],
     ['/yx/performance/handovers', 'Hand-over list'],
+    ['/yx/performance/comp/market', 'Market data'],
+    ['/yx/performance/comp/c1', 'Comp review'],
   ];
   it.each(pages)('%s is "%s" and highlighted for someone whose menu has it', (path, label) => {
     expect(pageLink(hr, path)).toMatchObject({ link: { label }, inMenu: true });

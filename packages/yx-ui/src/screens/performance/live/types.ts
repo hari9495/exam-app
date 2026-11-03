@@ -586,6 +586,8 @@ export interface CompProposal {
   department?: string;
   score?: number | null;
   belowPeers?: boolean;
+  /** PRF-10: the grade's range in the entity's latest salary survey (yearly). */
+  market?: { min: number; median: number; max: number } | null;
 }
 
 export interface CompSheet {
@@ -595,6 +597,8 @@ export interface CompSheet {
   budgets: { departmentId: string; department: string; kind: 'merit' | 'bonus'; amount: number; used: number; remaining: number; over: boolean }[];
   overrun: string;
   can: { edit: boolean; submit: boolean; apply: boolean; decide?: boolean };
+  /** PRF-10: the salary survey the ranges come from; null when none is uploaded. */
+  benchmark?: { source: string; asOf: string; version: number; currency: string; stale: boolean } | null;
 }
 
 export interface MyPayBand {

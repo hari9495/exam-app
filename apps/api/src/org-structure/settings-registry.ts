@@ -78,6 +78,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // PRF-08 / PRF-11 / PRF-12 (performance designs, builder 2): the choice each form starts with.
   'perf.feedback.default_visibility': { label: 'Performance: new feedback is shown to', scopes: ['tenant'], dated: false, values: ['private', 'recipient_only', 'with_hr'], default: 'private' },
   'perf.one_on_one.cadence_days': { label: 'Performance: a new 1:1 repeats every (days)', scopes: ['tenant'], dated: false, values: ['7', '14', '30'], default: '14' },
+  // PRF-10 market data (founder answer 12): a salary survey older than this shows as stale on the comp sheet.
+  'perf.comp.market_stale_months': { label: 'Performance: market data is out of date after (months)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['6', '12', '18', '24'], default: '12' },
   'perf.pip.extend_days': { label: 'Performance: an improvement plan is extended by (days)', scopes: ['tenant'], dated: false, values: ['15', '30', '45', '60'], default: '30' },
   // Performance builder 3 (PRF-15, PRF-16, PRF-17): how long after HR's answer a dispute may be escalated; how often the
   // manager coach writes nudges (each manager may still turn them off); whether managers get the AI review assistant.

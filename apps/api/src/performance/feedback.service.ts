@@ -36,7 +36,7 @@ export class PerformanceFeedbackService {
   ) {}
 
   private viewer(user: ScopeUser) {
-    return buildViewer(this.prisma, this.tenantPrisma, user, ['perf.concern.seal', 'perf.goal.view']);
+    return buildViewer(this.prisma, this.tenantPrisma, user, ['perf.concern.seal', 'perf.goal.view', 'perf.review.view']);
   }
 
   /** A person's goals: their manager chain and perf.goal.view in scope (the goals rule, PM2). */
@@ -231,6 +231,28 @@ export class PerformanceFeedbackService {
       const base = { organizationId: org, withdrawnAt: null, sealedAt: null, createdAt: { gte: new Date(`${from}T00:00:00+05:30`) }, ...(self ? {} : { visibility: { in: ['private', 'with_hr'] } }) };
       const [received, given] = await Promise.all([tx.feedbackItem.count({ where: { ...base, toEmployeeId: employeeId } }), tx.feedbackItem.count({ where: { ...base, fromEmployeeId: employeeId } })]);
       return { from, received, given };
+    });
+  }
+
+  /**
+   * Founder answer 9: feedback shared "with them, their manager and HR" is read by HR who hold perf.review.view for the
+   * person (the Performance tab of their record). Only that kind: never private or recipient-only items, never sealed or
+   * withdrawn ones; nobody else gets it (404). Each read is recorded.
+   */
+  async sharedWithHr(ctx: TenantContext, user: ScopeUser, employeeId: string) {
+    const v = await this.viewer(user);
+    if (v.actingForOther) throw new ForbiddenException('Shared feedback is read by HR themselves.');
+    return this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const today = todayIst();
+      const me = (await this.me(tx, org, v))?.id ?? null;
+      if (!(await tx.employee.findFirst({ where: { organizationId: org, id: employeeId }, select: { id: true } }))) throw new NotFoundException('Not found');
+      if (!covers(started(await grantPeriods(tx, c, v, 'perf.review.view', employeeId, me), today), today)) throw new NotFoundException('Not found');
+      const rows = await tx.feedbackItem.findMany({ where: { organizationId: org, toEmployeeId: employeeId, visibility: 'with_hr', withdrawnAt: null, sealedAt: null }, orderBy: { createdAt: 'desc' }, take: 100 });
+      const people = await this.names(tx, org, rows.map((x) => x.fromEmployeeId));
+      const goals = new Map((await tx.goal.findMany({ where: { organizationId: org, id: { in: rows.map((x) => x.goalId).filter((g): g is string => Boolean(g)) } }, select: { id: true, title: true } })).map((g) => [g.id, g.title]));
+      await audit(tx, c, 'perf.feedback.hr_viewed', 'employee', employeeId, { items: rows.length });
+      return { items: rows.map((x) => ({ id: x.id, from: people.get(x.fromEmployeeId) ?? '', kind: x.kind, text: x.text, goal: x.goalId ? (goals.get(x.goalId) ?? null) : null, at: x.createdAt.toISOString() })) };
     });
   }
 

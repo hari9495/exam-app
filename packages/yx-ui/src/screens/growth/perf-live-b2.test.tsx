@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { OneOnOneScreen, PipRecordScreen, QuickFeedbackScreen, type LiveOneOnOnes, type LivePip, type LiveQuickFeedback } from './perf-people';
 import { ONE_ON_ONES, PEOPLE, PIP, PIP_PROPOSED, PIP_TO_ACK, RECEIVED, REQUESTS } from './perf-data-2';
 import { NOMINATIONS } from './perf-data-3';
 import { NominationsScreen, type LiveNominations } from './perf-reviews';
-import { CalibrationScreen, CompReviewScreen, type CompRow, type LiveCalibration, type LiveCompReview } from './perf-talent';
+import { CalibrationScreen, CompReviewScreen, MarketDataScreen, type CompRow, type LiveCalibration, type LiveCompReview } from './perf-talent';
 
 // The designed Performance screens with `live` (builder 2): every action calls the app, pressed too early shows a
 // field error and calls nothing (positive and negative).
@@ -350,3 +351,42 @@ describe('PRF-10 Comp review sheet, live', () => {
     expect(screen.queryByRole('button', { name: /Approve/ })).toBeNull();
   });
 });
+
+describe('PRF-10 market data upload (answer 12)', () => {
+  const props = { entities: [{ value: 'kf', label: 'Kaveri Foods' }], entityId: 'kf', latest: null, versions: [], staleMonths: 12 };
+  const csvFile = (text: string) => new File([text], 'survey.csv', { type: 'text/csv' });
+
+  it('pressed too early it says what is missing and sends nothing', () => {
+    const onUpload = ok();
+    render(<MarketDataScreen {...props} onUpload={onUpload} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Upload survey' }));
+    expect(screen.getByText('Choose the CSV file.')).toBeInTheDocument();
+    expect(onUpload).not.toHaveBeenCalled();
+    expect(screen.getByText('No market data yet')).toBeInTheDocument();
+  });
+
+  it('a refused upload lists the rows to fix; a good one sends the file text, source and date', async () => {
+    const refused = Object.assign(new Error('1 row needs fixing. Nothing was saved.'), { body: { errors: [{ row: 3, message: 'No grade "G9" in this company.' }] } });
+    const onUpload = vi.fn().mockRejectedValueOnce(refused).mockResolvedValueOnce({ version: 1, rows: 1 });
+    const { container } = render(<MarketDataScreen {...props} onUpload={onUpload} />);
+    fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [csvFile('grade,min,median,max,currency\nG1,1,2,3,INR\n')] } });
+    fireEvent.change(screen.getByRole('textbox', { name: /Source/ }), { target: { value: 'Aon 2026' } });
+    expect(await screen.findByText('survey.csv')).toBeInTheDocument();
+    await userEvent.setup({ pointerEventsCheck: 0 }).type(screen.getByRole('textbox', { name: /As of/ }), '01/10/2026{Enter}');
+    fireEvent.click(screen.getByRole('button', { name: 'Upload survey' }));
+    expect(await screen.findByText('No grade "G9" in this company.')).toBeInTheDocument();
+    expect(screen.getByText('1 row needs fixing. Nothing was saved.')).toBeInTheDocument();
+    expect(onUpload).toHaveBeenCalledWith({ source: 'Aon 2026', asOf: '2026-10-01', fileName: 'survey.csv', csv: 'grade,min,median,max,currency\nG1,1,2,3,INR\n' });
+    fireEvent.click(screen.getByRole('button', { name: 'Upload survey' }));
+    await waitFor(() => expect(onUpload).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText('1 row needs fixing. Nothing was saved.')).toBeNull());
+  });
+
+  it('shows the current survey, its versions and when it is out of date', () => {
+    render(<MarketDataScreen {...props} latest={{ version: 2, source: 'Aon 2025', currency: 'INR', asOf: new Date(2025, 3, 1), stale: true, rows: [{ grade: 'G3', min: 510000, median: 600000, max: 720000 }] }} versions={[{ version: 2, source: 'Aon 2025', currency: 'INR', asOf: new Date(2025, 3, 1), fileName: 'aon.csv', rows: 1, uploadedBy: 'Lakshmi', uploadedAt: new Date(2025, 3, 2) }]} />);
+    expect(screen.getByText('Market data is older than 12 months')).toBeInTheDocument();
+    expect(screen.getByText('Out of date')).toBeInTheDocument();
+    expect(screen.getByText(/Version 2 · Aon 2025/)).toBeInTheDocument();
+  });
+});
+

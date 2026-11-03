@@ -18,16 +18,16 @@ API) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Directory, record and changes | 9 | 138 | 0 | 0 | 2 | 0 | 140 |
+| A. Directory, record and changes | 9 | 139 | 0 | 0 | 2 | 0 | 141 |
 | B. Onboarding and probation | 7 | 69 | 2 | 0 | 0 | 0 | 71 |
 | C. Exits | 7 | 56 | 0 | 0 | 0 | 3 | 59 |
 | D. Assets, documents, letters and self-service | 9 | 55 | 2 | 0 | 0 | 9 | 66 |
 | E. Identity, same person and records | 6 | 18 | 3 | 0 | 2 | 0 | 23 |
 | F. Declarations, relations, special cases and checklists | 11 | 72 | 0 | 0 | 0 | 3 | 75 |
-| **All PPL groups (A–F)** | **49** | **408** | **7** | **0** | **4** | **15** | **434** |
+| **All PPL groups (A–F)** | **49** | **409** | **7** | **0** | **4** | **15** | **435** |
 | G. Other People stories (no PPL number) | 4 | 44 | 0 | 0 | 0 | 0 | 44 |
 
-Counted by script (3 Nov 2026, branch `feat/yukthix-people-last`: the last rows we can build ourselves are live: PPL-28 Held (+ story LiveHeld), PPL-33 MyData (+ Correction, Nominate), PPL-36 Queue, PPL-44 Blocked (+ OfficerWindow), PPL-46 SplitPay, OnPayTab, OverSplit; four design stories added; the C row was already 56 live by the script (the table said 55); what is left needs a provider (penny drop and PAN check PPL-27, face match PPL-34/36) or another module (contract workers, learning). Before that, 2 Nov 2026, branch `feat/yukthix-people-changes`: builder 2 added 24 design stories (PPL-03 12, PPL-04 3, PPL-05 3, PPL-24 6) and made the 8 "wire design" stories live; earlier counts 30 Oct 2026, on `test/yukthix-main`; the script is in the appendix): every `export const` story in the 49 `ppl-NN.stories.tsx`
+Counted by script (3 Nov 2026, branch `feat/yukthix-perf-followups-b`: PPL-03 gains PerformanceHr, live (founder answer 9). Before that, branch `feat/yukthix-people-last`: the last rows we can build ourselves are live: PPL-28 Held (+ story LiveHeld), PPL-33 MyData (+ Correction, Nominate), PPL-36 Queue, PPL-44 Blocked (+ OfficerWindow), PPL-46 SplitPay, OnPayTab, OverSplit; four design stories added; the C row was already 56 live by the script (the table said 55); what is left needs a provider (penny drop and PAN check PPL-27, face match PPL-34/36) or another module (contract workers, learning). Before that, 2 Nov 2026, branch `feat/yukthix-people-changes`: builder 2 added 24 design stories (PPL-03 12, PPL-04 3, PPL-05 3, PPL-24 6) and made the 8 "wire design" stories live; earlier counts 30 Oct 2026, on `test/yukthix-main`; the script is in the appendix): every `export const` story in the 49 `ppl-NN.stories.tsx`
 
 
 Recounted by script 2 Nov 2026 (branch `feat/yukthix-exit-order-callout`): PPL-40 gets two stories, both live (PermissionDecide,
@@ -384,6 +384,7 @@ Live pages: /yx/people/directory/[id] (HR, managers from My team), /yx/people/pr
 | Documents · Documents tab · HR verify | live | HR with `document.manage`: verify, send back (reason dialog), ask for upload, upload for them |
 | DocumentsManager · Documents tab · manager (restricted classes hidden) | live | manager: GET documents/team/:personId (below Confidential only) |
 | Performance · Performance tab | live | goals, reviews, 1:1s, feedback counts from the performance API |
+| PerformanceHr · Performance tab · HR sees feedback shared with HR | live | founder answer 9 (3 Nov 2026): HR with perf.review.view for the person read the feedback colleagues shared "with them, their manager and HR" (`GET /performance/feedback/employee/:id/shared`); each read recorded |
 | Learning · Learning tab | design only, feature not built | no learning module; the live record leaves the tab out (record.tsx "Learning … left out") |
 | Assets · Assets tab | live | `asset.view` (all), manager (team assets) or self (my assets) |
 | History · History tab (timeline, corrections, roles) | live | GET employees/:id/history and /person (roles) |
