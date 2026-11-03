@@ -61,7 +61,7 @@ const like = (t: string) => `%${t.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 const enc = encodeURIComponent;
 
 /** The keys the counts and search sections need; each section shows only what its key reaches. */
-const KEYS = ['candidate:view', 'candidate:manage', 'document.manage', 'lifecycle.exit.manage', 'lifecycle.exit.view', 'payroll.query.handle', 'desk.ticket.work', 'lifecycle.onboarding.view', 'lifecycle.onboarding.manage'] as const;
+const KEYS = ['candidate:view', 'candidate:manage', 'document.manage', 'lifecycle.exit.manage', 'lifecycle.exit.view', 'payroll.query.handle', 'desk.ticket.work', 'lifecycle.onboarding.view', 'lifecycle.onboarding.manage', 'case.disciplinary.raise'] as const;
 
 /** Home (PLT-02) widgets for the HR, payroll and manager homes. A widget is absent when the person may not see it. */
 export interface HomeWidgets {

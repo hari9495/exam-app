@@ -322,9 +322,14 @@ describe('HLP-07/08/09 cases', () => {
     const ic = await counts('ic2');
     expect(ic.casesOpen).toEqual(expect.any(Number));
     expect(ic.ethicsReports).toBeUndefined();
-    for (const who of ['divya', 'hr', 'adminA', 'resp', 'manager', 'adminB'] as Who[]) {
+    for (const who of ['divya', 'resp', 'manager'] as Who[]) {
       const c = await counts(who);
       expect([who, c.casesOpen, c.ethicsReports]).toEqual([who, undefined, undefined]);
+    }
+    // HR who may open disciplinary cases (answer 34: the HR Admin template, the System Admin) see Cases, not the Ethics desk.
+    for (const who of ['hr', 'adminA', 'adminB'] as Who[]) {
+      const c = await counts(who);
+      expect([who, c.casesOpen, c.ethicsReports]).toEqual([who, 0, undefined]);
     }
   });
 
