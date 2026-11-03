@@ -579,3 +579,11 @@ console.table(counts);
 if (errs.length) { console.error(errs.join('\n')); process.exit(1); }
 console.log('ok');
 ```
+
+## Founder answers, 3 Nov 2026 (HLP-01, "all good")
+(1) For HLP-02 … 05 the HLP design wins; the extra Service desk states are drawn into it first. (2) "How soon do you need
+it?" stays off the raise form; the agent sets the priority. (3) "Reopen ticket" opens the ticket; a reply there reopens it.
+(4) The assistant rail says "not switched on yet" until an assistant exists. (5) Keep the 4 extra HLP-01 stories (known
+issue, article open, chat offer, no access). (6) The resolved card shows only the newest ticket that can be rated or
+reopened. (7) HLP-06 … 14 (POSH and the internal committee, whistle-blower, disciplinary steps, accident reporting,
+industrial disputes): one founder decision session per area before any server work.
