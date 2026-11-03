@@ -371,17 +371,32 @@ describe('PRF-10 market data upload (answer 12)', () => {
     const { container } = render(<MarketDataScreen {...props} onUpload={onUpload} />);
     fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [csvFile('grade,min,median,max,currency\nG1,1,2,3,INR\n')] } });
     fireEvent.change(screen.getByRole('textbox', { name: /Source/ }), { target: { value: 'Aon 2026' } });
-    expect(await screen.findByText('survey.csv', {}, { timeout: 5000 })).toBeInTheDocument();
+    // The file name shows as soon as it is chosen, before its text is read; wait until it is read ("Uploaded").
+    expect(await screen.findByText(/Uploaded/)).toBeInTheDocument();
     await userEvent.setup({ pointerEventsCheck: 0 }).type(screen.getByRole('textbox', { name: /As of/ }), '01/10/2026{Enter}');
     fireEvent.click(screen.getByRole('button', { name: 'Upload survey' }));
-    expect(await screen.findByText('No grade "G9" in this company.', {}, { timeout: 5000 })).toBeInTheDocument();
+    expect(await screen.findByText('No grade "G9" in this company.')).toBeInTheDocument();
     expect(screen.getByText('1 row needs fixing. Nothing was saved.')).toBeInTheDocument();
     expect(onUpload).toHaveBeenCalledWith({ source: 'Aon 2026', asOf: '2026-10-01', fileName: 'survey.csv', csv: 'grade,min,median,max,currency\nG1,1,2,3,INR\n' });
     fireEvent.click(screen.getByRole('button', { name: 'Upload survey' }));
-    await waitFor(() => expect(onUpload).toHaveBeenCalledTimes(2), { timeout: 5000 });
-    await waitFor(() => expect(screen.queryByText('1 row needs fixing. Nothing was saved.')).toBeNull(), { timeout: 5000 });
-    // Slow under a full parallel run (file read and date typing), so it gets more time than the 5 s default.
-  }, 20_000);
+    await waitFor(() => expect(onUpload).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText('1 row needs fixing. Nothing was saved.')).toBeNull());
+  });
+
+  it('pressed while the chosen file is still being read, it says so and sends nothing', async () => {
+    const read = vi.spyOn(FileReader.prototype, 'readAsText').mockImplementation(() => undefined);
+    try {
+      const onUpload = ok();
+      const { container } = render(<MarketDataScreen {...props} onUpload={onUpload} />);
+      fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [csvFile('grade,min,median,max,currency\n')] } });
+      expect(await screen.findByText('survey.csv')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Upload survey' }));
+      expect(screen.getByText('The file is still being read. Press Upload survey again in a moment.')).toBeInTheDocument();
+      expect(onUpload).not.toHaveBeenCalled();
+    } finally {
+      read.mockRestore();
+    }
+  });
 
   it('shows the current survey, its versions and when it is out of date', () => {
     render(<MarketDataScreen {...props} latest={{ version: 2, source: 'Aon 2025', currency: 'INR', asOf: new Date(2025, 3, 1), stale: true, rows: [{ grade: 'G3', min: 510000, median: 600000, max: 720000 }] }} versions={[{ version: 2, source: 'Aon 2025', currency: 'INR', asOf: new Date(2025, 3, 1), fileName: 'aon.csv', rows: 1, uploadedBy: 'Lakshmi', uploadedAt: new Date(2025, 3, 2) }]} />);

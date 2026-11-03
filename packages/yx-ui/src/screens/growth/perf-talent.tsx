@@ -857,12 +857,14 @@ export function MarketDataScreen({ entities, entityId, onEntity, latest, version
   const [source, setSource] = useState('');
   const [asOf, setAsOf] = useState<Date | null>(null);
   const [file, setFile] = useState<{ name: string; text: string } | null>(null);
+  // A chosen file is read before it can be sent; pressed meanwhile, say so (not "choose the file").
+  const [reading, setReading] = useState(false);
   const [problems, setProblems] = useState(shownProblems ?? []);
   const [refusal, setRefusal] = useState<string | null>(shownProblems?.length ? `${shownProblems.length} rows need fixing. Nothing was saved.` : null);
   const [key, setKey] = useState(0);
   const { busy, act, toast } = useAct();
   const check = useTooEarly([
-    ...(!file ? [{ fieldId: 'mk-file', message: 'Choose the CSV file.' }] : []),
+    ...(reading ? [{ fieldId: 'mk-file', message: 'The file is still being read. Press Upload survey again in a moment.' }] : !file ? [{ fieldId: 'mk-file', message: 'Choose the CSV file.' }] : []),
     ...(source.trim().length < 2 ? [{ fieldId: 'mk-source', message: 'Say where the survey comes from.' }] : []),
     ...(!asOf ? [{ fieldId: 'mk-asof', message: 'Choose the date the survey describes.' }] : []),
   ]);
@@ -967,7 +969,12 @@ export function MarketDataScreen({ entities, entityId, onEntity, latest, version
                     maxSize={1024 * 1024}
                     multiple={false}
                     upload={async (f) => {
-                      setFile({ name: f.name, text: await readText(f) });
+                      setReading(true);
+                      try {
+                        setFile({ name: f.name, text: await readText(f) });
+                      } finally {
+                        setReading(false);
+                      }
                       setProblems([]);
                       setRefusal(null);
                     }}
