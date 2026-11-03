@@ -4,6 +4,7 @@ import { createHash } from 'crypto';
 import Redis from 'ioredis';
 import { OrgSecretsCryptoService, TenantContext, TenantPrismaService, isOrganizationActive } from '@exam-platform/shared';
 import { REDIS_CONNECTION } from '../jobs/redis-connection';
+import { EmailService } from '../email/email.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { FilesService } from '../documents/files.service';
 import { CompanyContext, Tx, audit, companyContext } from '../org-structure/org-structure.service';
@@ -54,6 +55,7 @@ export class SpeakupService {
     private readonly files: FilesService,
     private readonly crypto: OrgSecretsCryptoService,
     @Inject(REDIS_CONNECTION) private readonly redis: Redis,
+    private readonly email: EmailService,
   ) {}
 
   private tx<T>(ctx: TenantContext, fn: (tx: Tx, c: CompanyContext) => Promise<T>) {
@@ -211,13 +213,15 @@ export class SpeakupService {
     const org = await this.orgBySlug(dto.org);
     const c = this.system(org.id);
     const code = newReplyCode();
-    const { org: _drop, ...report } = dto;
+    const { org: _drop, alertEmail, ...report } = dto;
     void _drop;
     const out = await this.tenantPrisma.forTenant(c, async (tx) => {
       const s = await this.settings(tx, c);
       if (!anonymousAllowed(s.anonymous, dto.kind))
         throw new ForbiddenException({ statusCode: 403, code: 'SPEAKUP_ANON_OFF', message: dto.kind === 'posh' ? 'A sexual harassment complaint is made with your name: the Internal Committee must be able to hear you. Only its members see it.' : 'Your company has switched anonymous reports of this kind off. You can report with your name; it is kept confidential.' });
-      return this.file(tx, c, report, { codeHash: this.hash(code) });
+      const filed = await this.file(tx, c, report, { codeHash: this.hash(code) });
+      if (alertEmail) await tx.speakupCase.update({ where: { id: filed.row.id }, data: { alertContactEnc: this.crypto.encrypt(alertEmail.toLowerCase()) } });
+      return filed;
     }).catch(clash);
     await this.tell(org.id, out.members, out.row);
     return { ...this.view(out.row, out.rs), code: showCode(code) };
@@ -380,8 +384,25 @@ export class SpeakupService {
       if (row.status === 'closed') throw new ConflictException('This report is closed.');
       const m = await tx.speakupMessage.create({ data: { organizationId: c.organizationId, caseId: row.id, sender: 'team', authorUserId: c.userId!, body } });
       await audit(tx, c, 'speakup.team_replied', 'speakup_case', row.id, { messageId: m.id });
-      return { id: m.id, at: m.sentAt.toISOString() };
+      return { id: m.id, at: m.sentAt.toISOString(), alert: row.alertContactEnc };
+    }).then(async ({ alert, ...out }) => {
+      await this.alertReporter(alert);
+      return out;
     });
+  }
+
+  /**
+   * HLP-06 decision 1: an anonymous reporter who left an address hears only "You have an update" (no case, no company
+   * detail, no link that names the case). Best effort: a failure is logged, never shown to the case team.
+   */
+  async alertReporter(alertContactEnc: string | null) {
+    if (!alertContactEnc) return;
+    try {
+      const to = this.crypto.decrypt(alertContactEnc);
+      await this.email.send({ to, subject: 'You have an update', text: 'You have an update. Open “Check my report” and enter your reply code to read it.', html: '<p>You have an update. Open “Check my report” and enter your reply code to read it.</p>' });
+    } catch (e) {
+      this.logger.warn(`speak-up alert not sent: ${(e as Error).message}`);
+    }
   }
 
   // ------------------------------------------------------------------------------------------ set-up (speakup.setup.manage)

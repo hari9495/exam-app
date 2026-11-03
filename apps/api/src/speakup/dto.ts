@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsDateString, IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsDateString, IsEmail, IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
 
 // HLP-06 speak-up inputs. Whitelisted by the global ValidationPipe (unknown fields are refused).
 
@@ -63,6 +63,12 @@ export class ReportDto {
 export class AnonymousReportDto extends ReportDto {
   @Text(1, 80)
   org!: string;
+
+  /** HLP-06 decision 1: where to say "You have an update". Stored encrypted; nobody at the company can read it. */
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(254)
+  alertEmail?: string;
 }
 
 export class CodeDto {
