@@ -22,15 +22,14 @@ API) · **phone view, mobile app not built**.
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Goals and reviews (PRF-01 … 06, builder 1) | 6 | 55 | 8 | 0 | 0 | 0 | 63 |
-| B. Feedback, calibration, pay, plans and help (PRF-07 … 17, builders 2 and 3) | 11 | 81 | 16 | 0 | 0 | 0 | 97 |
-| **All PRF groups (A–B)** | **17** | **136** | **24** | **0** | **0** | **0** | **160** |
+| B. Feedback, calibration, pay, plans and help (PRF-07 … 17, builders 2 and 3) | 11 | 90 | 7 | 0 | 0 | 0 | 97 |
+| **All PRF groups (A–B)** | **17** | **145** | **15** | **0** | **0** | **0** | **160** |
 | C. Shared parts (Kit · Growth building blocks, Calibration · Sessions list) | 2 | 17 | 0 | 0 | 4 | 0 | 21 |
-
+Recounted by script 3 Nov 2026 on `feat/yukthix-perf-phone`: the nine PRF-07, 08, 11, 12, 15 and 16 phone stories are live
+(B: 76 → 85 live, 16 → 7 gaps). Before that, recounted on `feat/yukthix-perf-followups-a` (two PRF stories and one kit story added: PRF-01
 Recounted by script 3 Nov 2026 on `feat/yukthix-perf-followups-b` (founder answers 9 and 12): B has 97 stories, 4 new for the
 PRF-10 market data upload; "Stale market data" is now live, so no PRF story is left not built. PPL-03 gains one story
 (Performance tab, HR sees feedback shared with HR), counted in `people-design-map.md`. Before that, recounted on `feat/yukthix-perf-map` after the builder 2 and 3 notes were folded in: B grew from 64 to
-
-
 Recounted by script 3 Nov 2026 on `feat/yukthix-perf-followups-a` (two PRF stories and one kit story added: PRF-01
 EmployeeEarlierReviews, PRF-05 ManagerPotential, Kit Potential; PRF-01 Manager and ManagerPhone now live with the coach
 card). Before that, recounted on `feat/yukthix-perf-map` after the builder 2 and 3 notes were folded in: B grew from 64 to
@@ -119,7 +118,6 @@ none can be swapped; each needs a design story first (rule 18).
 | PRF-14 Import and the skills-test link | a file import and the question-bank link | M |
 | PRF-15 legal hold that blocks something | a retention purge for reviews (the hold is a flag today) | M |
 | PRF-16 more signals | unused leave, overtime, onboarding tasks | M |
-| Phone frames for PRF-07 … 17 | switch the designs' phone layout on below 768 px, as PRF-01, 02 and 06 do | M |
 
 ## 4. Design groups, story by story
 
@@ -235,9 +233,9 @@ Live page: /yx/performance/reviews/[id] as the employee once released.
 
 ### B. Feedback, calibration, pay, plans and help (PRF-07 … 17)
 
-Phone stories here: the PRF-07 … 17 live pages render the desktop layout, which reflows at phone width; the designs'
-phone frame (bottom tabs, pinned buttons) is not switched on below 768 px (only PRF-01, 02 and 06 do that). They are
-"live (gap)".
+Phone stories here: since `feat/yukthix-perf-phone` (3 Nov 2026) the PRF-07, 08, 11, 12, 15 and 16 live screens switch to
+the designed phone layout below 768 px with the same switch as PRF-01, 02 and 06 (`useNarrow` inside the live screen), and
+keep every desktop action there (pinned buttons). Manual tests MT-PRF-P-01 … 06.
 
 #### PRF-07 · 360° nominations
 
@@ -253,8 +251,8 @@ reviews/:id/nominations/send`, `POST reviews/:id/nominations/approve-all`, `POST
 | BelowMinimum · Employee · below minimum | live | Send is never disabled: pressed, it says "Nominate at least N reviewers. You have M." |
 | Sent · Employee · sent for approval | live | POST nominations/send; the manager is told once per list |
 | ManagerApproves · Manager · approve list | live | approve one, remove one, or approve the whole list |
-| Phone · Employee · phone | live (gap) | desktop layout at phone width; the phone frame is not switched on |
-| ManagerPhone · Manager · phone | live (gap) | as above |
+| Phone · Employee · phone | live | under 768 px; Send pinned at the bottom |
+| ManagerPhone · Manager · phone | live | under 768 px; Approve, Remove and "Approve list and invite" |
 | Empty · Empty | live | no one nominated yet |
 | LoadError · Error | live | the read fails; Retry |
 
@@ -271,8 +269,8 @@ may see). Company setting `perf.feedback.default_visibility` (default "them and 
 | Give · Give feedback sheet | live | type is a Segment; a line links to the confidential concern channel |
 | Sent · Sent confirmation | live | a toast |
 | Requests · Requests to me | live | Give feedback answers the request; Decline |
-| Phone · Phone | live (gap) | desktop layout at phone width |
-| PhoneGive · Phone · give feedback | live (gap) | as above |
+| Phone · Phone | live | under 768 px; Give and Ask pinned; the tab strip scrolls sideways inside itself, the page does not |
+| PhoneGive · Phone · give feedback | live | under 768 px, bottom sheet |
 | Empty · Empty | live | nothing received yet |
 | Ask · Ask for feedback sheet | live | POST feedback-requests |
 | LoadError · Error | live | the read fails; Retry |
@@ -340,7 +338,7 @@ the next on its rhythm; past dates refused; audited), agenda, private note, acti
 | ManagerList · Manager · list | live | my reports and my manager, one row per pair |
 | ManagerRecord · Manager · 1:1 record | live | notes save on leaving the box (toast); private notes stay with their author |
 | EmployeeRecord · Employee · 1:1 record | live | as the employee |
-| Phone · Employee · phone | live (gap) | desktop layout at phone width |
+| Phone · Employee · phone | live | under 768 px; the record replaces the list ("All 1:1s" goes back); Mark as held, Reschedule and Schedule 1:1 pinned |
 | Empty · Empty | live | no 1:1 yet |
 | Loading · Loading | live | while it loads |
 | Schedule · Manager · schedule 1:1 | live | POST one-on-ones with a rhythm |
@@ -362,7 +360,7 @@ pips/:id/start-exit`, `POST pips/:id/decide` (`perf.pip.manage`, HR whose approv
 | RecordOutcome · Manager · record outcome | live (gap) | only HR records the outcome (API, YX-PERF-11: "HR records the outcome.") |
 | NotMet · HR · not met (next step is manual) | live (gap) | "Extend plan" hidden after not met (a plan is extended once, while it runs); the exit case opens from a dialog |
 | EmployeeAck · Employee · acknowledge | live | plus "Add my note" on a held check-in |
-| EmployeeAckPhone · Employee · acknowledge on phone | live (gap) | desktop layout at phone width |
+| EmployeeAckPhone · Employee · acknowledge on phone | live | under 768 px; HR and the manager keep approve, send back, the letter and the approval trail there too |
 | RecordCheckIn · Manager · record check-in | live | POST pips/:id/checkins |
 | SendBack · HR · send back with a reason | live | POST pips/:id/decide |
 | StartExit · HR · open exit case after not met | live | POST pips/:id/start-exit |
@@ -409,7 +407,7 @@ disputes/:id/exports/:exportId/file`. Company setting `perf.dispute.escalate_day
 |---|---|---|
 | EmployeeEscalates · Employee · escalate | live | within the window after HR's answer |
 | EmployeeSent · Employee · escalation raised | live | "See your escalation …" from PRF-06 |
-| EmployeePhone · Employee · phone | live (gap) | desktop layout at phone width |
+| EmployeePhone · Employee · phone | live | under 768 px; Escalate pinned; a failed load offers Try again |
 | HrRecord · HR · dispute record with legal hold | live (gap) | legal hold is a flag: no retention purge exists for reviews yet, so it blocks nothing today |
 | HrExport · HR · evidence export | live | a PDF (pdf-lib) stored with its hash; the certificate wording is still to be confirmed by counsel |
 | HrDecision · HR · record decision | live | a decision never changes the rating |
@@ -426,14 +424,14 @@ Live pages: /yx/performance/coach (`ManagerCoachHome` with `live`, managers) and
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| CoachCard · Coach card on manager home | live (gap) | on its own page, not yet on the PRF-01 manager home; signals built: feedback in 6 weeks, 1:1 overdue or over 35 days, goals off track or at risk (unused leave, overtime and onboarding-task signals not built); wording is fixed text, no AI call |
-| CoachCardPhone · Coach card · phone | live (gap) | desktop layout at phone width |
+| CoachCard · Coach card on manager home | live (gap) | on /yx/performance/coach and on the PRF-01 manager home; signals built: feedback in 6 weeks, 1:1 overdue or over 35 days, goals off track or at risk (unused leave, overtime and onboarding-task signals not built); wording is fixed text, no AI call |
+| CoachCardPhone · Coach card · phone | live | under 768 px on /yx/performance/coach (and on the PRF-01 manager home, ManagerPhone) |
 | NoNudges · No nudges this week | live | nothing to suggest |
 | OptedOut · Opted out | live | POST coach/opt-out |
 | CompanyOff · Turned off by the company | live | `perf.coach.frequency` off |
 | NotManager · No team yet | live | a viewer with no reports |
 | SuggestedAgenda · Suggested 1:1 agenda panel | live | "Add to agenda" uses PRF-11's agenda route |
-| SuggestedAgendaPhone · Suggested 1:1 agenda · phone | live (gap) | desktop layout at phone width |
+| SuggestedAgendaPhone · Suggested 1:1 agenda · phone | live | under 768 px in the 1:1 record |
 
 #### PRF-17 · Review assistant and bias check
 

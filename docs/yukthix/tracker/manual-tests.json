@@ -11440,5 +11440,116 @@
     ],
     "expected": "Step 1: version 2; the warning \"Market data is older than 12 months\" and the badge \"Out of date\". Step 2: the sheet shows \"Market data is older than 12 months\" with the source and date. Step 3: both warnings are gone (the survey is under 24 months old). Old versions stay listed; nothing is edited.",
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PRF-P-01",
+    "area": "Performance · phone layouts (3 Nov 2026)",
+    "screen": "360° nominations on a phone",
+    "url": "http://localhost:3000/yx/performance/reviews/<Arjun's open review id>/nominations",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya); then panel@demo-org.test (Manager - Divya). Phone width: open the browser DevTools device bar at 375 x 812 (or a real phone). Desktop check at 1278 x 635.",
+    "steps": [
+      "1. As Arjun at 375 px open the nominations page with fewer than the minimum reviewers and press \"Send to manager for approval\".",
+      "2. Add reviewers up to the minimum and press Send again.",
+      "3. As Divya at 375 px open the same page; approve one, remove one, press \"Approve list and invite\".",
+      "4. Widen the window past 768 px."
+    ],
+    "expected": "Step 1: the phone layout (title \"360° reviewers\", Send pinned at the bottom); it says \"Nominate at least N reviewers. You have M.\" and nothing is sent. Step 2: a toast \"Sent to Divya ...\" Step 3: each button works with a toast. Step 4: the desktop layout with the cycle and due date in the header. No sideways page scroll at 375 px.",
+    "stories": [
+      "Performance · PRF-07 · Employee · phone",
+      "Performance · PRF-07 · Manager · phone"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PRF-P-02",
+    "area": "Performance · phone layouts (3 Nov 2026)",
+    "screen": "Quick feedback on a phone",
+    "url": "http://localhost:3000/yx/performance/feedback",
+    "account": "arjun@demo-org.test (Arjun Kulkarni). Phone width: open the browser DevTools device bar at 375 x 812 (or a real phone). Desktop check at 1278 x 635.",
+    "steps": [
+      "1. At 375 px open Feedback. Press \"Give feedback\".",
+      "2. Press \"Send feedback\" with nobody chosen.",
+      "3. Choose a colleague, write fewer than 20 characters, Send.",
+      "4. Write a full sentence and Send.",
+      "5. Press \"Ask for feedback\"."
+    ],
+    "expected": "Step 1: the phone layout with Give and Ask pinned; a bottom sheet opens. Step 2: \"Choose who the feedback is for.\" and the To field gets focus. Step 3: \"Write at least 20 characters ...\" and nothing is sent. Step 4: toast \"Feedback sent to ...\"; it shows under Given. Step 5: the ask sheet opens. The tab strip may slide sideways by itself; the page never scrolls sideways.",
+    "stories": [
+      "Performance · PRF-08 · Phone",
+      "Performance · PRF-08 · Phone · give feedback"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PRF-P-03",
+    "area": "Performance · phone layouts (3 Nov 2026)",
+    "screen": "1:1s and the suggested agenda on a phone",
+    "url": "http://localhost:3000/yx/performance/one-on-ones",
+    "account": "panel@demo-org.test (Manager - Divya); then arjun@demo-org.test. Phone width: open the browser DevTools device bar at 375 x 812 (or a real phone). Desktop check at 1278 x 635.",
+    "steps": [
+      "1. As Divya at 375 px open 1:1s. Press \"Schedule 1:1\" and then \"Schedule 1:1\" in the sheet with nothing chosen.",
+      "2. Press Open on Arjun's 1:1.",
+      "3. Press \"Add to agenda\" on a suggested item, then \"Mark as held\".",
+      "4. Press \"All 1:1s\".",
+      "5. As Arjun open the same 1:1 at 375 px."
+    ],
+    "expected": "Step 1: the phone list, Schedule pinned; the sheet says \"Choose who the 1:1 is with.\" and saves nothing. Step 2: the record replaces the list, with Mark as held and Reschedule pinned. Step 3: toasts; the next 1:1 is planned. Step 4: back to the list. Step 5: Arjun sees the record with no suggested agenda (only the manager gets it).",
+    "stories": [
+      "Performance · PRF-11 · Employee · phone",
+      "Performance · PRF-16 · Suggested 1:1 agenda · phone"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PRF-P-04",
+    "area": "Performance · phone layouts (3 Nov 2026)",
+    "screen": "PIP acknowledge on a phone",
+    "url": "http://localhost:3000/yx/performance/pips/<plan id>",
+    "account": "arjun@demo-org.test (the employee on the plan); hr@demo-org.test (HR Admin - Lakshmi) for a proposed plan. Phone width: open the browser DevTools device bar at 375 x 812 (or a real phone). Desktop check at 1278 x 635.",
+    "steps": [
+      "1. As Arjun at 375 px open his approved plan he has not acknowledged. Press \"Acknowledge plan\".",
+      "2. As Lakshmi at 375 px open a proposed plan. Press \"Send back\" and confirm with no reason.",
+      "3. Give a reason, or press \"Approve and start\"."
+    ],
+    "expected": "Step 1: the phone layout with the acknowledge panel; toast \"Plan acknowledged\", then the plan tabs. Step 2: the send-back dialog asks for a reason and sends nothing. Step 3: toast; the approval trail shows at the bottom.",
+    "stories": [
+      "Performance · PRF-12 · Employee · acknowledge on phone"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PRF-P-05",
+    "area": "Performance · phone layouts (3 Nov 2026)",
+    "screen": "Dispute escalation on a phone",
+    "url": "http://localhost:3000/yx/performance/reviews/<review id>/dispute",
+    "account": "arjun@demo-org.test, with a released review whose disagreement HR has answered. Phone width: open the browser DevTools device bar at 375 x 812 (or a real phone). Desktop check at 1278 x 635.",
+    "steps": [
+      "1. At 375 px open the escalation page and press \"Escalate dispute\" with the box empty.",
+      "2. Write the grounds (20+ characters) and press Escalate.",
+      "3. Open the page for a review with no answered disagreement."
+    ],
+    "expected": "Step 1: the phone layout, Escalate pinned; \"Say what you are escalating and why, in at least 20 characters.\" and the box gets focus. Step 2: toast \"Escalation raised\" and the reference. Step 3: the reason shows and there is no Escalate button.",
+    "stories": [
+      "Performance · PRF-15 · Employee · phone"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PRF-P-06",
+    "area": "Performance · phone layouts (3 Nov 2026)",
+    "screen": "Coach card on a phone",
+    "url": "http://localhost:3000/yx/performance/coach",
+    "account": "panel@demo-org.test (Manager - Divya); then arjun@demo-org.test. Phone width: open the browser DevTools device bar at 375 x 812 (or a real phone). Desktop check at 1278 x 635.",
+    "steps": [
+      "1. As Divya at 375 px open /yx/performance/coach. Dismiss one nudge; press the action on another.",
+      "2. Open /yx/performance at 375 px.",
+      "3. As Arjun (no team) open /yx/performance/coach at 375 px."
+    ],
+    "expected": "Step 1: the phone layout with the coach card; the dismissed nudge goes away; the action opens its page. Step 2: the manager home phone layout with the coach card on top. Step 3: \"No team yet\".",
+    "stories": [
+      "Performance · PRF-16 · Coach card · phone",
+      "Performance · PRF-01 · Manager · phone"
+    ],
+    "note": "Positive and negative."
   }
 ]
