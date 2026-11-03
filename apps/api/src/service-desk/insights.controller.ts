@@ -26,6 +26,7 @@ import {
   PeriodDto,
   ReviewDto,
   TemplateDto,
+  KbSettingsDto,
   VersionDto,
 } from './dto-kb';
 import { CustomReportDto, DecideDto, DirectorySourceDto, KpiQueryDto, KpiTargetDto, MonthDto, PeopleImportDto, PersonDto, PrivacySettingsDto, ReportRunDto, ScheduleDto, SearchDto, StatusQueryDto, SurveyDto, WallboardDto } from './dto-ops';
@@ -58,6 +59,20 @@ export class DeskInsightsController {
   }
 
   // ---------------------------------------------------------------- knowledge (SD-1.24, SD-1.25)
+
+  @Get('kb/settings')
+  @RequireAnyPermission(...KB_READ, 'desk.desk.create')
+  async kbSettings(@Req() req: Request, @CurrentTenant() t: TenantContext) {
+    return this.kb.kbSettings(await this.actor(req, t));
+  }
+
+  // A company-wide rule: the company's Service Desk owner (desk.desk.create) changes it, as with company-wide spaces.
+  @Put('kb/settings')
+  @RequirePermissions('desk.desk.create')
+  async setKbSettings(@Req() req: Request, @CurrentTenant() t: TenantContext, @Body() dto: KbSettingsDto) {
+    assertOwnSession(req);
+    return this.kb.setKbSettings(await this.actor(req, t), dto.reviewMonths);
+  }
 
   @Get('kb/spaces')
   @RequireAnyPermission(...KB_READ, 'desk.settings.manage', 'desk.desk.create')

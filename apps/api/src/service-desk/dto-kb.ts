@@ -206,6 +206,12 @@ export class ArticleMetaDto {
   assistantUse?: boolean;
 }
 
+/** HLP-04: the company's article review interval (the registry key desk.kb.review_months). */
+export class KbSettingsDto {
+  @IsIn([3, 6, 12, 24])
+  reviewMonths!: 3 | 6 | 12 | 24;
+}
+
 export class VersionDto {
   @IsInt()
   @Min(1)

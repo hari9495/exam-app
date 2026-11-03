@@ -1,5 +1,5 @@
 import { forecast, ragOf, safeCell, toCsv, nextRun } from './reports.service';
-import { healthScore, keywordList, prefixQuery, renderBlocks, slugify } from './kb.service';
+import { addMonthsIso, healthScore, keywordList, prefixQuery, renderBlocks, reviewMonthsOf, slugify } from './kb.service';
 import { npsOf } from './surveys.service';
 import { ldapUser, scimUser } from './directory.service';
 
@@ -26,6 +26,16 @@ describe('knowledge helpers', () => {
     expect(keywordList(' LOP ,loss  of pay, lop,, payslip deduction ')).toBe('LOP, loss of pay, payslip deduction');
     expect(keywordList(' , ,')).toBe('');
     expect(keywordList('vpn')).toBe('vpn');
+  });
+
+  it('the review interval: calendar months, the 31st kept inside the month, leap years; bad stored values are 12', () => {
+    expect(addMonthsIso('2026-11-03', 12)).toBe('2027-11-03');
+    expect(addMonthsIso('2026-11-03', 3)).toBe('2027-02-03');
+    expect(addMonthsIso('2027-08-31', 6)).toBe('2028-02-29');
+    expect(addMonthsIso('2026-08-31', 6)).toBe('2027-02-28');
+    expect(addMonthsIso('2026-01-31', 24)).toBe('2028-01-31');
+    expect([3, 6, 12, 24, '6'].map(reviewMonthsOf)).toEqual([3, 6, 12, 24, 6]);
+    expect([undefined, null, '7', 0, 'x'].map(reviewMonthsOf)).toEqual([12, 12, 12, 12, 12]);
   });
 
   it('scores health from use, feedback and flags', () => {

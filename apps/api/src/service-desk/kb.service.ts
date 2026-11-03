@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService, TenantPrismaService, isOrganizationActive } from '@exam-platform/shared';
 import { NotificationsService } from '../notifications/notifications.service';
 import { Tx } from '../org-structure/org-structure.service';
-import { addDays, todayIst } from '../org-structure/org-validation';
+import { todayIst } from '../org-structure/org-validation';
 import { DeskActor, activeOn, audit, deskSystem, emit, has, isAgentOn, requireWork } from './desk-access';
 import { ArticleDto, ArticleMetaDto, BlockDto, CategoryDto, DraftDto, KbFeedbackDto, KbListQueryDto, KbSpaceDto, ReviewDto, TemplateDto } from './dto-kb';
 import { maskPii } from './pii';
@@ -33,7 +33,18 @@ export function keywordList(raw: string): string {
     .join(', ');
 }
 
-const REVIEW_MONTHS = 12; // YX-GRO-07: an article not reviewed for 12 months is flagged.
+// YX-GRO-07: a published article is checked again after the company's interval (registry desk.kb.review_months).
+export const REVIEW_KEY = 'desk.kb.review_months';
+const REVIEW_CHOICES = [3, 6, 12, 24];
+const REVIEW_DEFAULT = 12;
+/** The stored value (text from the registry screen, or a number) as months; anything else is the default. */
+export const reviewMonthsOf = (v: unknown): number => (REVIEW_CHOICES.includes(Number(v)) ? Number(v) : REVIEW_DEFAULT);
+/** "2026-11-03" + n calendar months; the 31st becomes the month's last day (31 Jan + 1 → 28 or 29 Feb). */
+export function addMonthsIso(iso: string, n: number): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const last = new Date(Date.UTC(y, m - 1 + n + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(y, m - 1 + n, Math.min(d, last))).toISOString().slice(0, 10);
+}
 const webOrigin = () => (process.env.WEB_ORIGIN ?? 'http://localhost:3000').replace(/\/$/, '');
 type Space = Prisma.SdKbSpaceGetPayload<object>;
 type Article = Prisma.SdKbArticleGetPayload<object>;
@@ -440,7 +451,7 @@ export class KbService {
           ownerUserId: a.userId,
           title: dto.title,
           summary: dto.summary ?? null,
-          reviewDueOn: new Date(`${addDays(todayIst(), REVIEW_MONTHS * 30)}T00:00:00Z`),
+          reviewDueOn: new Date(`${addMonthsIso(todayIst(), await this.reviewMonths(tx, org))}T00:00:00Z`),
           sourceTicketId,
           createdBy: a.userId,
         },
@@ -515,13 +526,37 @@ export class KbService {
     });
   }
 
-  /** HLP-04 "Mark reviewed": the owner checked a published article still holds; the next check is due in 12 months. */
+  private async reviewMonths(tx: Tx, org: string): Promise<number> {
+    const row = await tx.setting.findFirst({ where: { organizationId: org, key: REVIEW_KEY, scopeType: 'tenant', scopeId: org }, select: { value: true } });
+    return reviewMonthsOf(row?.value);
+  }
+
+  /** HLP-04: the company's review interval. Anyone who reads knowledge may see it; desk.desk.create changes it. */
+  async kbSettings(a: DeskActor) {
+    return this.tx(a, async (tx) => ({ reviewMonths: await this.reviewMonths(tx, a.ctx.organizationId), choices: REVIEW_CHOICES, defaultMonths: REVIEW_DEFAULT }));
+  }
+
+  async setKbSettings(a: DeskActor, reviewMonths: number) {
+    return this.tx(a, async (tx) => {
+      const org = a.ctx.organizationId;
+      const from = await this.reviewMonths(tx, org);
+      // Stored as the registry stores it (text), so Settings › registry shows the same value.
+      const where = { organizationId: org, key: REVIEW_KEY, scopeType: 'tenant', scopeId: org, validFrom: null };
+      const row = await tx.setting.findFirst({ where, select: { id: true } });
+      if (row) await tx.setting.update({ where: { id: row.id }, data: { value: String(reviewMonths), updatedBy: a.userId } });
+      else await tx.setting.create({ data: { ...where, value: String(reviewMonths), updatedBy: a.userId } });
+      await audit(tx, a, 'desk.kb.settings_changed', 'setting', REVIEW_KEY, { reviewMonths: { from, to: reviewMonths } });
+      return { reviewMonths, choices: REVIEW_CHOICES, defaultMonths: REVIEW_DEFAULT };
+    });
+  }
+
+  /** HLP-04 "Mark reviewed": the owner checked a published article still holds; the next check is due after the company's interval. */
   async markReviewed(a: DeskActor, id: string, version: number) {
     return this.tx(a, async (tx) => {
       const { art } = await this.article(tx, a, id, 'author');
       if (version !== art.version) throw new ConflictException({ statusCode: 409, code: 'KB_ARTICLE_CHANGED', message: 'Someone changed this article. Reload to see the latest.' });
       if (art.state !== 'published') throw new BadRequestException('Only a published article is marked reviewed. Send this one for review instead.');
-      const reviewDueOn = addDays(todayIst(), REVIEW_MONTHS * 30);
+      const reviewDueOn = addMonthsIso(todayIst(), await this.reviewMonths(tx, a.ctx.organizationId));
       await tx.sdKbArticle.update({ where: { id: art.id }, data: { reviewDueOn: new Date(`${reviewDueOn}T00:00:00Z`), version: { increment: 1 } } });
       await audit(tx, a, 'desk.kb.article_reviewed', 'sd_kb_article', art.id, { before: art.reviewDueOn?.toISOString().slice(0, 10) ?? null, after: reviewDueOn });
       return { reviewDueOn };

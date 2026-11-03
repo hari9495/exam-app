@@ -10,6 +10,7 @@ import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
+import { addMonthsIso } from '../src/service-desk/kb.service';
 
 // HLP-04 Knowledge base editor (Helpdesk design wiring, round 4), end to end against the real database (forced RLS, app
 // role): the design's "Also suggest for these words" (keywords, found by search) and "Use in assistant answers", and
@@ -30,7 +31,7 @@ describe('Service Desk HLP-04 Knowledge base editor: keywords, assistant use, ma
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
-  const api = (who: Who, method: 'get' | 'post' | 'patch', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+  const api = (who: Who, method: 'get' | 'post' | 'patch' | 'put', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const asA = (): TenantContext => ({ organizationId: org.A.id, isSuperAdmin: false, userId: null });
   const article = async (who: Who = 'agent') => (await api(who, 'get', `/desk/kb/articles/${ids.art}`).expect(200)).body as { version: number; keywords: string | null; assistantUse: boolean; reviewDueOn: string | null; state: string };
   const today = new Date(Date.now() + 5.5 * 3_600_000).toISOString().slice(0, 10);
@@ -140,13 +141,12 @@ describe('Service Desk HLP-04 Knowledge base editor: keywords, assistant use, ma
     expect(found.map((x) => x.title)).toContain(`Connect to the office network ${run}`);
   });
 
-  it('an author marks a published article reviewed: the next check is 12 months on; audited with before and after', async () => {
+  it('an author marks a published article reviewed: the next check is 12 months on (the default); audited with before and after', async () => {
     const before = await article();
     await tenantPrisma.forTenant(SUPER, (tx) => tx.sdKbArticle.update({ where: { id: ids.art }, data: { reviewDueOn: new Date('2026-01-01T00:00:00Z') } }));
     expect((await api('agent', 'get', `/desk/kb/articles?spaceId=${ids.space}`).expect(200)).body.find((r: { id: string }) => r.id === ids.art).reviewOverdue).toBe(true);
     const r = (await api('agent', 'post', `/desk/kb/articles/${ids.art}/reviewed`).send({ version: before.version }).expect(200)).body as { reviewDueOn: string };
-    const days = (Date.parse(`${r.reviewDueOn}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000;
-    expect(days).toBe(360);
+    expect(r.reviewDueOn).toBe(addMonthsIso(today, 12));
     const after = await article();
     expect(after.reviewDueOn?.slice(0, 10)).toBe(r.reviewDueOn);
     expect(after.version).toBe(before.version + 1);
@@ -166,5 +166,45 @@ describe('Service Desk HLP-04 Knowledge base editor: keywords, assistant use, ma
     await request(server()).post(`/api/v1/desk/kb/articles/${ids.art}/reviewed`).send({ version }).expect(401);
     // A publisher may mark it reviewed too.
     await api('lead', 'post', `/desk/kb/articles/${ids.art}/reviewed`).send({ version }).expect(200);
+  });
+
+  // Founder 3 Nov 2026: the review interval is a company setting (registry desk.kb.review_months, default 12).
+  describe('the article review interval (company setting)', () => {
+    it('reads 12 months by default for anyone who reads knowledge', async () => {
+      expect((await api('agent', 'get', '/desk/kb/settings').expect(200)).body).toMatchObject({ reviewMonths: 12, choices: [3, 6, 12, 24], defaultMonths: 12 });
+      await api('divya', 'get', '/desk/kb/settings').expect(403);
+    });
+
+    it('the Service Desk owner sets 6 months: audited; Mark reviewed and a new article follow it', async () => {
+      expect((await api('adminA', 'put', '/desk/kb/settings').send({ reviewMonths: 6 }).expect(200)).body.reviewMonths).toBe(6);
+      const log = await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, action: 'desk.kb.settings_changed' } }));
+      expect(log).toHaveLength(1);
+      expect(JSON.parse(log[0].metadataJson ?? '{}')).toMatchObject({ reviewMonths: { from: 12, to: 6 } });
+      const { version } = await article();
+      const r = (await api('agent', 'post', `/desk/kb/articles/${ids.art}/reviewed`).send({ version }).expect(200)).body;
+      expect(r.reviewDueOn).toBe(addMonthsIso(today, 6));
+      const fresh = (await api('agent', 'post', '/desk/kb/articles').send({ spaceId: ids.space, title: `Printer jams ${run}`, bodyHtml: '<p>Open tray 2.</p>' }).expect(201)).body.id;
+      expect((await api('agent', 'get', `/desk/kb/articles/${fresh}`).expect(200)).body.reviewDueOn.slice(0, 10)).toBe(addMonthsIso(today, 6));
+    });
+
+    it('the registry screen (Settings) changes the same value', async () => {
+      await api('adminA', 'put', '/org/settings').send({ key: 'desk.kb.review_months', scopeType: 'tenant', value: '24' }).expect(200);
+      expect((await api('agent', 'get', '/desk/kb/settings').expect(200)).body.reviewMonths).toBe(24);
+      await api('adminA', 'put', '/org/settings').send({ key: 'desk.kb.review_months', scopeType: 'tenant', value: '7' }).expect(400);
+    });
+
+    it('refused: a value not offered, text, nothing; an agent, a desk admin, the employee; nobody signed in', async () => {
+      for (const bad of [{ reviewMonths: 7 }, { reviewMonths: '6' }, { reviewMonths: 0 }, {}, { reviewMonths: 6, extra: true }]) await api('adminA', 'put', '/desk/kb/settings').send(bad).expect(400);
+      for (const who of ['agent', 'deskAdmin', 'divya'] as const) await api(who, 'put', '/desk/kb/settings').send({ reviewMonths: 3 }).expect(403);
+      await request(server()).put('/api/v1/desk/kb/settings').send({ reviewMonths: 3 }).expect(401);
+      expect((await api('agent', 'get', '/desk/kb/settings').expect(200)).body.reviewMonths).toBe(24);
+    });
+
+    it('another company is untouched (still 12), and its owner changes only its own', async () => {
+      expect((await api('agentB', 'get', '/desk/kb/settings').expect(200)).body.reviewMonths).toBe(12);
+      await api('adminB', 'put', '/desk/kb/settings').send({ reviewMonths: 3 }).expect(200);
+      expect((await api('agent', 'get', '/desk/kb/settings').expect(200)).body.reviewMonths).toBe(24);
+      expect((await api('agentB', 'get', '/desk/kb/settings').expect(200)).body.reviewMonths).toBe(3);
+    });
   });
 });

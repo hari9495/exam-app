@@ -24,6 +24,8 @@ export interface SettingDef {
 }
 
 export const SETTINGS: Readonly<Record<string, SettingDef>> = {
+  // HLP-04 (founder 3 Nov 2026): how often a published help article is checked again (YX-GRO-07). Desk set-up › Settings.
+  'desk.kb.review_months': { label: 'Check help articles again every (months)', scopes: ['tenant'], dated: false, values: ['3', '6', '12', '24'], default: '12' },
   // YX-ORG-16: employee codes unique per legal entity (default) or across the company.
   'employee_code.scope': { label: 'Employee codes are unique', scopes: ['tenant'], dated: false, values: ['legal_entity', 'tenant'], default: 'legal_entity' },
   // YX-ORG-15: whether a new structure master starts shared or entity-only.
