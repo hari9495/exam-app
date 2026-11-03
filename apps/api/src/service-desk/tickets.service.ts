@@ -521,8 +521,12 @@ export class TicketsService {
         t.customerAccountId ? tx.sdCustomerAccount.findFirst({ where: { organizationId: org, id: t.customerAccountId }, select: { id: true, name: true } }) : null,
         t.productId ? tx.sdProduct.findFirst({ where: { organizationId: org, id: t.productId }, select: { id: true, name: true } }) : null,
       ]);
+      // HLP-03 resolved state: when a solved ticket closes by itself (the desk's setting) and the requester's rating.
+      const rating = ['solved', 'closed'].includes(t.systemState) ? await tx.sdRating.findFirst({ where: { organizationId: org, ticketId: t.id }, select: { score: true } }) : null;
       return {
         ...this.summary(t),
+        closesOn: t.systemState === 'solved' && t.resolvedAt && desk.autoCloseDays ? new Date(t.resolvedAt.getTime() + desk.autoCloseDays * 86_400_000) : null,
+        rating: rating?.score ?? null,
         subject: health.get('subject') ? unmaskHealth(t.subject, health.get('subject')!) : t.subject,
         customer: account ? { account, plan: t.planTier } : null,
         product,
