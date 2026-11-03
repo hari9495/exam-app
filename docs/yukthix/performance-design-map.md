@@ -22,9 +22,12 @@ API) · **phone view, mobile app not built**.
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Goals and reviews (PRF-01 … 06, builder 1) | 6 | 62 | 2 | 0 | 0 | 0 | 64 |
-| B. Feedback, calibration, pay, plans and help (PRF-07 … 17, builders 2 and 3) | 11 | 102 | 1 | 0 | 0 | 0 | 103 |
-| **All PRF groups (A–B)** | **17** | **164** | **3** | **0** | **0** | **0** | **167** |
+| B. Feedback, calibration, pay, plans and help (PRF-07 … 17, builders 2 and 3) | 11 | 105 | 1 | 0 | 0 | 0 | 106 |
+| **All PRF groups (A–B)** | **17** | **167** | **3** | **0** | **0** | **0** | **170** |
 | C. Shared parts (Kit · Growth building blocks, Calibration · Sessions list) | 2 | 18 | 0 | 0 | 4 | 0 | 22 |
+Recounted by script 3 Nov 2026 on `feat/yukthix-pip-phone-designs` (founder answer 2 on the phone layouts): PRF-12 has three
+new phone design stories, Manager · phone, HR · phone and HR · phone · issue letter, all live (B: 97 → 100 stories, 90 → 93
+live). Before that, recounted on `feat/yukthix-perf-phone`: the nine PRF-07, 08, 11, 12, 15 and 16 phone stories are live
 Recounted by script 3 Nov 2026 on `feat/yukthix-perf-pieces` (the "live, gap" pieces): seven PRF stories added (PRF-04
 SetupCalibration, PRF-12 ExtendAfterNotMet, PRF-13 HrReassign and AuditEntry, PRF-14 ImportFile, ImportProblems and
 SkillsTest) and one kit story (Kit CalibrationSessions); 14 rows moved from "live (gap)" to "live" (PRF-01 HrAdmin, PRF-04
@@ -363,7 +366,10 @@ pips/:id/start-exit`, `POST pips/:id/decide` (`perf.pip.manage`, HR whose approv
 | RecordOutcome · Manager · record outcome | live | live by founder decision (11): HR records the outcome (YX-PERF-11) |
 | NotMet · HR · not met (next step is manual) | live | founder answer (a): "Extend plan" once more after not met (below); then only close it (met / not met) or open the exit case |
 | EmployeeAck · Employee · acknowledge | live | plus "Add my note" on a held check-in |
-| EmployeeAckPhone · Employee · acknowledge on phone | live | under 768 px; HR and the manager keep approve, send back, the letter and the approval trail there too |
+| EmployeeAckPhone · Employee · acknowledge on phone | live | under 768 px |
+| ManagerPhone · Manager · phone | live | under 768 px: the person's name, "Record check-in" pinned, the approval history (founder, 3 Nov 2026) |
+| HrPhone · HR · phone | live | under 768 px: "Approve and start" and "Send back" pinned, the case-owner warning and the approval history |
+| HrLetterPhone · HR · phone · issue letter | live | under 768 px: "Issue PIP letter" pinned once the plan runs (it replaces approve and send back) |
 | RecordCheckIn · Manager · record check-in | live | POST pips/:id/checkins |
 | SendBack · HR · send back with a reason | live | POST pips/:id/decide |
 | ExtendAfterNotMet · HR · extend once more after not met | live | `POST pips/:id/extend-again` (HR with `perf.pip.manage`; a reason of 10+ characters; the version): the plan runs `perf.pip.after_not_met_days` (default 30) more days from today, with check-ins; once only, never with an exit case open; audited (`perf.pip.extended_again`); the employee and manager are told |

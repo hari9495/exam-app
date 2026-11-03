@@ -2,11 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
+import { composeStories } from '@storybook/react-vite';
 import { ToastProvider } from '../../components/notify';
+import * as prf12 from './prf-12.stories';
 import { OneOnOneScreen, PipRecordScreen, QuickFeedbackScreen, type LiveOneOnOnes, type LivePip, type LiveQuickFeedback } from './perf-people';
 import { DisputeRaiseScreen, NominationsScreen, type LiveDisputeRaise, type LiveNominations } from './perf-reviews';
 import { ManagerCoachHome, type LiveCoach } from './perf-goals';
-import { ONE_ON_ONES, PEOPLE, PIP_PROPOSED, PIP_TO_ACK, RECEIVED, REQUESTS, SUGGESTED_AGENDA } from './perf-data-2';
+import { ONE_ON_ONES, PEOPLE, PIP, PIP_PROPOSED, PIP_TO_ACK, RECEIVED, REQUESTS, SUGGESTED_AGENDA } from './perf-data-2';
 import { NOMINATIONS } from './perf-data-3';
 
 // PRF-07, 08, 11, 12, 15 and 16 live: under 768 px the page takes the designed phone layout (as PRF-01, 02 and 06),
@@ -204,5 +206,33 @@ describe('PRF-16 coach card on a phone', () => {
     show(<ManagerCoachHome nudges={[]} weekOf={new Date()} live={coachLive()} />);
     expect(phoneFrame()).toBeNull();
     expect(screen.getByText(/Priya$/)).toBeInTheDocument();
+  });
+});
+
+// The PRF-12 phone design stories for the manager and HR (founder, 3 Nov 2026) are the live phone screen with sample data.
+describe('PRF-12 phone design stories', () => {
+  const s = composeStories(prf12);
+  it('Manager · phone: name, Record check-in pinned, approval history; no letter download', () => {
+    render(<ToastProvider><s.ManagerPhone /></ToastProvider>);
+    expect(phoneFrame()).not.toBeNull();
+    expect(screen.getAllByText(PIP.employee).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: 'Record check-in' }).length).toBeGreaterThan(0);
+    expect(screen.getByRole('heading', { name: 'Approval' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Download PIP letter' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Approve and start' })).toBeNull();
+  });
+  it('HR · phone: approve and send back, the warning and the approval history', () => {
+    render(<ToastProvider><s.HrPhone /></ToastProvider>);
+    expect(screen.getAllByText(PIP_PROPOSED.employee).length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'Approve and start' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send back' })).toBeInTheDocument();
+    expect(screen.getByText('Check with the case owner before you decide')).toBeInTheDocument();
+    expect(screen.getByText('Waiting for your approval')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Approval' })).toBeInTheDocument();
+  });
+  it('HR · phone · issue letter: the letter button and no approve buttons', () => {
+    render(<ToastProvider><s.HrLetterPhone /></ToastProvider>);
+    expect(screen.getByRole('button', { name: 'Issue PIP letter' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Approve and start' })).toBeNull();
   });
 });
