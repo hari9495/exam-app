@@ -24,9 +24,9 @@ feature not built** (no API) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Helpdesk HLP-01 … 14 | 14 | 151 | 5 | 0 | 41 | 0 | 197 |
+| A. Helpdesk HLP-01 … 14 | 14 | 152 | 5 | 0 | 41 | 0 | 198 |
 | B. Service desk designs | 5 | 55 | 2 | 0 | 0 | 0 | 57 |
-| **All Helpdesk groups (A–B)** | **19** | **206** | **7** | **0** | **41** | **0** | **254** |
+| **All Helpdesk groups (A–B)** | **19** | **207** | **7** | **0** | **41** | **0** | **255** |
 Round 6 recount (script, 3 Nov 2026, `feat/yukthix-hlp-06`): HLP-06 has 25 stories (the 12 approved plus 13 drawn for
 the real records: topics and "about an officer", not set up, no IC, late POSH, too early, loading, error, no access, an
 empty report, and four set-up states): 23 live, 2 live (gap) (the accident choice; update alerts for anonymous reporters).
@@ -337,6 +337,7 @@ already has the minimum it needs (the officers' case list, one case with the aud
 | NoAccess · No access (acting for someone else) | live | new story |
 | CheckEmpty · Check my report · no messages yet | live | new story |
 | Setup · Set-up · who receives reports | live | new story: `GET desk/speakup/setup` (`speakup.setup.manage`): the grievance committee, the ethics team, the Internal Committee (presiding, member, external) and the escalation list; Remove (`POST …/members/:id/remove`), toast |
+| SetupUnfinished · Set-up · Internal Committee and Escalation still empty | live | new story: page warning for the System Admin (founder approved 4 Nov) |
 | SetupAddIc · Set-up · add to the Internal Committee | live | new story: `POST desk/speakup/setup/members` (one presiding officer) |
 | SetupTooEarly · Set-up · Add pressed with nobody chosen | live | new story |
 | SetupNoAccess · Set-up · no access (HR without the key) | live | new story: HR templates do not carry the key (403) |
@@ -1020,6 +1021,14 @@ settings from the statutory rules (verify with counsel). (4) A named reporter's 
 case officers; hidden from managers and other HR; every view audited (retaliation protection).
 Other choices built as company settings with safe defaults (categories, acknowledgement days, reminder schedule,
 retention) and listed for the founder at the stop.
+
+Founder approved, 4 Nov 2026 (HLP-06 follow-ups): (5) anonymous update alerts built with HLP-08 (contact stored encrypted,
+alert text only "You have an update"); (6) accident reports stay off Speak-up until HLP-12; (7) POSH complaints are always
+named, an anonymous tip goes in as an ethics concern; (8) no Internal Committee: refuse POSH and point to the district Local
+Committee, plus a set-up warning for the System Admin; (9) a report about a case officer goes only to the escalation list,
+refused if that list is empty; (10) outside reporters (vendors) may use the anonymous page, limited per network, challenge
+only if spam appears; (11) retention is a setting after counsel agrees (GO-LIVE-CHECKLIST); (12) only the System Admin sets
+officer lists.
 
 ## Founder decisions, 3 Nov 2026 (HLP-07, 08, 09 Cases, before any server work)
 (1) Outcome: ethics cases need two people — the case officer proposes, a second officer approves; POSH cases: the

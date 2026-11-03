@@ -38,6 +38,7 @@ export const FormError: S = { name: 'Error', render: () => su({ state: 'error', 
 export const NoAccess: S = { name: 'No access (acting for someone else)', render: () => su({ state: 'no-access' }) };
 export const CheckEmpty: S = { name: 'Check my report · no messages yet', render: () => <CheckReportScreen live={liveCheck({ start: { view: { ...REPORTER_VIEW, status: 'received', messages: [] } } })} /> };
 export const Setup: S = { name: 'Set-up · who receives reports', render: () => setup() };
+export const SetupUnfinished: S = { name: 'Set-up · Internal Committee and Escalation still empty', render: () => { const b = liveSetup(); return <SpeakUpSetupScreen live={{ ...b, data: { ...b.data!, members: b.data!.members.filter((m) => m.team === 'ethics') } }} />; } };
 export const SetupAddIc: S = { name: 'Set-up · add to the Internal Committee', render: () => setup({ start: { adding: 'ic' } }) };
 export const SetupTooEarly: S = { name: 'Set-up · Add pressed with nobody chosen', render: () => setup({ start: { adding: 'ethics', tooEarly: true } }) };
 export const SetupNoAccess: S = { name: 'Set-up · no access (HR without the key)', render: () => setup({ state: 'no-access' }) };

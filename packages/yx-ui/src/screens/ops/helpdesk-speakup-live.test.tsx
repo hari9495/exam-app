@@ -119,6 +119,17 @@ describe('HLP-06 Speak-up set-up (live)', () => {
     expect(onAdd).not.toHaveBeenCalled();
   });
 
+  it('warns the System Admin while the Internal Committee or Escalation is empty; no warning once both are set', () => {
+    const base = liveSetup();
+    const { unmount } = show(<SpeakUpSetupScreen live={{ ...base, data: { ...base.data!, members: base.data!.members.filter((m) => m.team === 'ethics') } }} />);
+    expect(screen.getByText('Set-up is not finished')).toBeInTheDocument();
+    expect(screen.getByText(/Local Committee/)).toBeInTheDocument();
+    expect(screen.getByText(/reports about a case officer are refused/)).toBeInTheDocument();
+    unmount();
+    show(<SpeakUpSetupScreen live={base} />);
+    expect(screen.queryByText('Set-up is not finished')).not.toBeInTheDocument();
+  });
+
   it('no access without the key', () => {
     show(<SpeakUpSetupScreen live={liveSetup({ state: 'no-access' })} />);
     expect(screen.getByText(/HR does not/)).toBeInTheDocument();
