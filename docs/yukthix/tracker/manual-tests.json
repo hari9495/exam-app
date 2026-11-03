@@ -11551,5 +11551,155 @@
       "Performance · PRF-01 · Manager · phone"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PRF-22",
+    "area": "Performance · live-gap pieces (3 Nov 2026)",
+    "screen": "Review PDF · positive and negative",
+    "url": "http://localhost:3000/yx/performance/reviews/<Arjun's submitted or released review>",
+    "account": "panel@demo-org.test (Manager - Divya); arjun@demo-org.test (Employee - Arjun); kavya@demo-org.test (Manager - Kavya). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As Divya open Arjun's review after she completed the manager review and press Download PDF.",
+      "2. As Arjun open the same review after release and acknowledgement; press Download review.",
+      "3. As Arjun open the review before he acknowledged it.",
+      "4. As Kavya open http://localhost:3001/api/v1/performance/reviews/<the same id>/pdf."
+    ],
+    "expected": "Step 1: a PDF downloads with the questions, Divya's ratings and summary, and 'Downloaded by Divya … · Confidential' at the foot of each page. Step 2: the PDF shows the released score and band, never the proposed potential. Step 3: no Download button until he acknowledges. Step 4: 404, no file. Every download is in the audit log (perf.review.downloaded).",
+    "stories": [
+      "Performance · PRF-05 · Submitted (locked)",
+      "Performance · PRF-06 · Acknowledge"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PRF-23",
+    "area": "Performance · live-gap pieces (3 Nov 2026)",
+    "screen": "HR home · change against last month",
+    "url": "http://localhost:3000/yx/performance",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi); arjun@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As Lakshmi open the Performance home in the first month after the snapshot job ran (or after the lead adds last month's row to perf_home_snapshots).",
+      "2. Look at the four stat cards.",
+      "3. As Arjun open the Performance home."
+    ],
+    "expected": "Step 2: each card shows the change against last month named by the month (e.g. 'October'); before any month has passed the cards show no comparison, never a made-up one. PIPs active shows only for HR with PIP access. Step 3: no HR cards.",
+    "stories": [
+      "Performance · PRF-01 · HR admin"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PRF-24",
+    "area": "Performance · live-gap pieces (3 Nov 2026)",
+    "screen": "Hand-over list · reassign to HR and audit entry",
+    "url": "http://localhost:3000/yx/performance/handovers",
+    "account": "hr-tester@demo-org.test (HR tester, review cycles); panel@demo-org.test (Manager - Divya), who received a moved goal. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As the HR tester tick a 'Needs decision' row and a 'Moved' row; press Reassign to HR.",
+      "2. Confirm.",
+      "3. Open the row menu of the reassigned row and choose View audit entry.",
+      "4. As Divya open Hand-over list.",
+      "5. As Divya open http://localhost:3001/api/v1/performance/handover-list/<row id>/audit."
+    ],
+    "expected": "Step 1: the dialog marks one row 'Moves to HR' and one 'Stays'. Step 2: toast '1 decision moved to HR', with the reason the other stayed; the row's To reads HR. Step 3: the drawer lists the move ('Automatic', when the manager changed) and 'reassigned the decision to HR' by the HR tester. Step 4: the reassigned row is gone from her list; no checkboxes and no audit menu. Step 5: 403.",
+    "stories": [
+      "Performance · PRF-13 · HR · reassign to HR (bulk)",
+      "Performance · PRF-13 · HR · audit entry",
+      "Performance · PRF-13 · HR · needs decision"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PRF-25",
+    "area": "Performance · live-gap pieces (3 Nov 2026)",
+    "screen": "Competencies · import from a file",
+    "url": "http://localhost:3000/yx/performance/competencies",
+    "account": "hr-tester@demo-org.test (HR tester, \"Performance set-up\" role); panel@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Press Import and upload a CSV with the header name,group,description,levels,roles and two good rows (levels like 'Aware|Applies|Leads', roles like 'Quality Inspector=2').",
+      "2. Upload a file where one row has one level only and another names a designation that does not exist.",
+      "3. Upload the good file again.",
+      "4. As Divya open the page."
+    ],
+    "expected": "Step 1: toast '2 competencies imported'; they appear in their groups with levels and roles. Step 2: nothing is imported; 'Rows with problems (2)' lists each row number, name and what to fix. Step 3: both rows are refused as already in the group; nothing changes. Step 4: the no-access page.",
+    "stories": [
+      "Performance · PRF-14 · Import from a file",
+      "Performance · PRF-14 · Import · rows with problems"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PRF-26",
+    "area": "Performance · live-gap pieces (3 Nov 2026)",
+    "screen": "Competencies · skills test from the question bank",
+    "url": "http://localhost:3000/yx/performance/competencies",
+    "account": "hr-tester@demo-org.test (HR tester, \"Performance set-up\" role); the question bank has at least one tag (/v2/questions). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open a competency; press Choose a question tag; pick a tag; Save skills test.",
+      "2. Press the skills test link.",
+      "3. Press Change, clear the tag and save."
+    ],
+    "expected": "Step 1: toast 'Skills test saved'; Skills test shows the tag with its active question count. Step 2: the question bank opens. Step 3: 'None. Add one from the question bank.' Only this company's tags are offered.",
+    "stories": [
+      "Performance · PRF-14 · Skills test from the question bank",
+      "Performance · PRF-14 · Competency with levels and roles"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PRF-27",
+    "area": "Performance · live-gap pieces (3 Nov 2026)",
+    "screen": "Coach card · leave, overtime and onboarding",
+    "url": "http://localhost:3000/yx/performance",
+    "account": "panel@demo-org.test (Manager - Divya), with a report who has more than 12 days of earned leave, one with overtime in each of the last 3 weeks, or a new joiner with open onboarding tasks; arjun@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As Divya open the Performance home and read the coach card and 'What the coach looks at'.",
+      "2. As Arjun open http://localhost:3000/yx/performance/coach."
+    ],
+    "expected": "Step 1: nudges such as '14 leave days unused this year.', 'Overtime 3 weeks running.', 'New joiner: 3 onboarding tasks still open.'; never a leave reason, the kind of leave taken or anything about health. Step 2: 'No team yet', no nudges.",
+    "stories": [
+      "Performance · PRF-16 · Coach card on manager home",
+      "Performance · PRF-01 · Manager"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PRF-28",
+    "area": "Performance · live-gap pieces (3 Nov 2026)",
+    "screen": "Cycle set-up · stage days and calibration sessions",
+    "url": "http://localhost:3000/yx/performance/cycles/new",
+    "account": "hr-tester@demo-org.test (HR tester, review cycles); a facilitator with the Calibration role. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Fill the steps; on Stages and deadlines set the due dates and read the Days column.",
+      "2. Tick Include Calibration and press Save and exit without adding a session.",
+      "3. Add a session (name, facilitator, Sales), save, then launch.",
+      "4. Have the manager complete a Sales review."
+    ],
+    "expected": "Step 1: each dated stage shows its days from the stage before. Step 2: refused: 'Add a calibration session, or leave calibration out.' Step 3: the session opens at launch (Calibration list). Step 4: the review goes into the session (In calibration), not straight to release.",
+    "stories": [
+      "Performance · PRF-04 · Set-up · stages and deadlines",
+      "Performance · PRF-04 · Set-up · calibration sessions"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PRF-29",
+    "area": "Performance · live-gap pieces (3 Nov 2026)",
+    "screen": "PIP · extend once more after not met",
+    "url": "http://localhost:3000/yx/performance/pips/<a plan with outcome not met>",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi); panel@demo-org.test (Manager - Divya). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As Lakshmi open the Outcome tab; press Extend plan; press Extend by 30 days with a 5-character reason.",
+      "2. Write a reason of 10 or more characters and confirm.",
+      "3. Record the outcome again.",
+      "4. If not met again, look at the next step card.",
+      "5. As Divya open the plan."
+    ],
+    "expected": "Step 1: 'Give the reason, in at least 10 characters.' and nothing saved. Step 2: toast 'Plan extended to …'; status Extended, check-ins added, the employee and manager are told. Step 3: only Met or Not met (no third extension). Step 4: only the exit case; no Extend plan. Step 5: no Extend plan button. The days come from Settings (perf.pip.after_not_met_days, default 30).",
+    "stories": [
+      "Performance · PRF-12 · HR · extend once more after not met",
+      "Performance · PRF-12 · HR · not met (next step is manual)"
+    ],
+    "note": "Positive and negative."
   }
 ]

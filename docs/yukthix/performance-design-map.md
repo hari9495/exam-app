@@ -21,10 +21,17 @@ API) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Goals and reviews (PRF-01 … 06, builder 1) | 6 | 55 | 8 | 0 | 0 | 0 | 63 |
-| B. Feedback, calibration, pay, plans and help (PRF-07 … 17, builders 2 and 3) | 11 | 90 | 7 | 0 | 0 | 0 | 97 |
-| **All PRF groups (A–B)** | **17** | **145** | **15** | **0** | **0** | **0** | **160** |
-| C. Shared parts (Kit · Growth building blocks, Calibration · Sessions list) | 2 | 17 | 0 | 0 | 4 | 0 | 21 |
+| A. Goals and reviews (PRF-01 … 06, builder 1) | 6 | 62 | 2 | 0 | 0 | 0 | 64 |
+| B. Feedback, calibration, pay, plans and help (PRF-07 … 17, builders 2 and 3) | 11 | 102 | 1 | 0 | 0 | 0 | 103 |
+| **All PRF groups (A–B)** | **17** | **164** | **3** | **0** | **0** | **0** | **167** |
+| C. Shared parts (Kit · Growth building blocks, Calibration · Sessions list) | 2 | 18 | 0 | 0 | 4 | 0 | 22 |
+Recounted by script 3 Nov 2026 on `feat/yukthix-perf-pieces` (the "live, gap" pieces): seven PRF stories added (PRF-04
+SetupCalibration, PRF-12 ExtendAfterNotMet, PRF-13 HrReassign and AuditEntry, PRF-14 ImportFile, ImportProblems and
+SkillsTest) and one kit story (Kit CalibrationSessions); 14 rows moved from "live (gap)" to "live" (PRF-01 HrAdmin, PRF-04
+SetupStages, PRF-05 Submitted, PRF-06 Default, PRF-12 NotMet, PRF-13 HrDecisions, PRF-14 Default, PRF-16 CoachCard, and by
+founder decision PRF-04 SetupPopulation and SetupTemplate, PRF-09 ManagerView, PRF-12 RecordOutcome). The 12 gaps left:
+kudos on PRF-05 SelfReview and ManagerReview (needs Engage), the PRF-15 legal hold (needs a retention purge) and nine
+phone views (desktop layout at phone width).
 Recounted by script 3 Nov 2026 on `feat/yukthix-perf-phone`: the nine PRF-07, 08, 11, 12, 15 and 16 phone stories are live
 (B: 76 → 85 live, 16 → 7 gaps). Before that, recounted on `feat/yukthix-perf-followups-a` (two PRF stories and one kit story added: PRF-01
 Recounted by script 3 Nov 2026 on `feat/yukthix-perf-followups-b` (founder answers 9 and 12): B has 97 stories, 4 new for the
@@ -110,14 +117,9 @@ none can be swapped; each needs a design story first (rule 18).
 
 | design | what it needs | size |
 |---|---|---|
-| PRF-01 HR stat cards' "last week / last period" | a daily snapshot of the figures (overdue stages, aligned %) | S |
 | PRF-05 kudos card | Engage recognition (kudos) | L (Engage) |
-| PRF-05 / PRF-06 "Download PDF" | a review PDF (the dispute export already renders one with pdf-lib) | M |
-| PRF-10 market data from a provider | built as a salary-survey CSV upload (answer 12); a benchmark provider later (to decide) | M |
-| PRF-13 "Reassign to HR", "View audit entry" | a bulk reassign and a link into the audit log | S |
-| PRF-14 Import and the skills-test link | a file import and the question-bank link | M |
+| PRF-10 market data, stale market data | a salary benchmark source (provider: to decide) | M |
 | PRF-15 legal hold that blocks something | a retention purge for reviews (the hold is a flag today) | M |
-| PRF-16 more signals | unused leave, overtime, onboarding tasks | M |
 
 ## 4. Design groups, story by story
 
@@ -132,7 +134,7 @@ cycles company-wide, a manager with direct reports today, or an employee.
 |---|---|---|
 | Employee · Employee | live | as an employee: needs-action list (self review, acknowledgement, feedback asked of you), review stages, my goals with check-in, next 1:1, feedback received |
 | Manager · Manager | live | team table (goal progress, review stage, last 1:1, my last feedback; Review and Goals links), team goals, and the PRF-16 coach card beside the team (founder 3 Nov 2026; GET performance/coach) |
-| HrAdmin · HR admin | live (gap) | cycles with done / eligible / overdue, overdue stages, PIPs (with `perf.pip.manage`), goals aligned %, last released bands by department; the stat cards have no "last week / last period" comparison (no history kept) |
+| HrAdmin · HR admin | live | cycles with done / eligible / overdue, overdue stages, PIPs (with `perf.pip.manage`), goals aligned %, last released bands by department; each stat card shows the change against last month from the monthly snapshot (founder answer b; `perf_home_snapshots`, written by the daily performance job, one row per company and month; no comparison until a month has passed) |
 | EmployeePhone · Employee · phone | live | page width under 768 px |
 | ManagerPhone · Manager · phone | live | under 768 px, with the coach card on top |
 | NoCycleRunning · HR · empty (no cycle) | live | first use: nothing to do, no goals, no cycle; "Start a review cycle" opens /cycles/new |
@@ -189,9 +191,10 @@ room). HR with `perf.cycle.manage` company-wide.
 | story (sub-page) | verdict | note |
 |---|---|---|
 | SetupBasics · Set-up · basics | live | name, type, period |
-| SetupPopulation · Set-up · population and eligibility | live (gap) | departments, joining cut-off, leavers; the design's "Mid-cycle joiners" and "Transfers" choices are fixed rules in the API (months served; current manager with the earlier one's input), shown as text (Q2) |
-| SetupTemplate · Set-up · template and scale | live (gap) | an active template of the type; weights, half points and the scale belong to the template (Settings › Performance), shown as a note, not edited per cycle (Q3) |
-| SetupStages · Set-up · stages and deadlines | live (gap) | self, 360°, manager, skip-level with due days (the design shows "days"); calibration sessions are set up after launch; acknowledgement shows the company's disagreement window |
+| SetupPopulation · Set-up · population and eligibility | live | live by founder decision (2): departments, joining cut-off, leavers; mid-cycle joiners and transfers are fixed rules (months served; current manager with the earlier one's input), shown as text |
+| SetupTemplate · Set-up · template and scale | live | live by founder decision (1): an active template of the type; weights, half points and the scale belong to the template (Settings › Performance), shown as a note |
+| SetupStages · Set-up · stages and deadlines | live | each stage with its owner, due date and the design's "Days" (from the stage before; the first from today); calibration can be included here with its sessions (below); acknowledgement shows the company's disagreement window |
+| SetupCalibration · Set-up · calibration sessions | live | kit `CalibrationPlan`: name, facilitator (`GET calibration-facilitators`), departments; saved with the cycle (`calibration` on POST/PUT cycles, checked: the facilitator can run sessions, departments of the company); the sessions open at launch and each finished review goes into the first session that takes its department |
 | ControlRoom · Control room · clickable funnel | live | GET cycles/:id/funnel and overdue |
 | FunnelDrill · Control room · names behind a stage | live | GET cycles/:id/funnel/people; Open goes to the review |
 | Loading · Loading | live | while the cycle loads |
@@ -210,7 +213,7 @@ Live page: /yx/performance/reviews/[id] (from the home's actions and team table,
 | SelfReview · Employee · self review | live (gap) | the template's sections with the company's scale; Save draft and Complete self review; no kudos card (Engage not built) |
 | ManagerReview · Manager · manager review with advisory peer panel | live (gap) | the self rating shows under each question once the manager saved a draft; the peer card shows the 360° groups (advisory); no kudos card (Engage not built); the PRF-17 assistant shows under the summary when the company has it on; nominations are the PRF-07 page ("Nominate reviewers"), the old 360° panel is gone |
 | SectionExcluded · Section without goals excluded | live | a rated section with no ratings is named and left out (YX-PERF-02) |
-| Submitted · Submitted (locked) | live (gap) | locked after submit; "Download PDF" is not built |
+| Submitted · Submitted (locked) | live | locked after submit; "Download PDF" (`GET reviews/:id/pdf`): what this viewer may read on the page, never more; refused (404) to anyone who may not open the review; every download audited (`perf.review.downloaded`) |
 | SkipLevel · Skip-level · agree or send back | live | the manager's manager; POST skip/agree or send-back with a reason |
 | HrReopen · HR · reopen a finished review | live | POST reviews/:id/reopen with a reason |
 | FormerManager · Former manager · advisory input | live | an "other" reviewer added by HR answers the manager's questions |
@@ -222,7 +225,7 @@ Live page: /yx/performance/reviews/[id] as the employee once released.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Default · Acknowledge | live (gap) | released score, band, section scores, the manager's summary; "Download review" is not built |
+| Default · Acknowledge | live | released score, band, section scores, the manager's summary; "Download review" once acknowledged (`GET reviews/:id/pdf`, audited) |
 | Disagree · With disagreement flag | live | the disagreement goes with the acknowledgement in one call (20+ characters) |
 | Done · Acknowledged | live | after acknowledging; the rating stays |
 | Phone · Phone | live | under 768 px |
@@ -288,7 +291,7 @@ calibrations/:id/changes`, `POST calibrations/:id/sign-off`, `POST calibrations/
 |---|---|---|
 | HrBoard · HR · ratings board with guide | live | columns are the cycle's bands; no chart for a small group |
 | ChangeWithReason · HR · change rating with reason | live | moves to a band (the server takes the band's middle score) |
-| ManagerView · Manager · own team movable | live (gap) | managers look only: the API lets only the facilitator change ratings (`can.change`, YX-PERF-08) |
+| ManagerView · Manager · own team movable | live | live by founder decision (10): managers look only; the facilitator changes ratings (`can.change`, YX-PERF-08) |
 | NineBox · 9-box (wave 6) | live | potential (1–3) set on the 9-box by the facilitator; empty shows as medium |
 | ChangeLog · Changes log | live | band and score, reason, who, when |
 | Empty · Empty (no manager ratings yet) | live | a session with no rated reviews |
@@ -357,12 +360,13 @@ pips/:id/start-exit`, `POST pips/:id/decide` (`perf.pip.manage`, HR whose approv
 | ManagerActive · Manager · active plan | live | "Download PIP letter" hidden: HR issues it; it is in the person's documents |
 | CheckIns · Manager · check-ins | live | from the plan's schedule; protected leave moves the end |
 | HrApproval · HR · approve proposed plan | live | approve and start, or send back with a reason |
-| RecordOutcome · Manager · record outcome | live (gap) | only HR records the outcome (API, YX-PERF-11: "HR records the outcome.") |
-| NotMet · HR · not met (next step is manual) | live (gap) | "Extend plan" hidden after not met (a plan is extended once, while it runs); the exit case opens from a dialog |
+| RecordOutcome · Manager · record outcome | live | live by founder decision (11): HR records the outcome (YX-PERF-11) |
+| NotMet · HR · not met (next step is manual) | live | founder answer (a): "Extend plan" once more after not met (below); then only close it (met / not met) or open the exit case |
 | EmployeeAck · Employee · acknowledge | live | plus "Add my note" on a held check-in |
 | EmployeeAckPhone · Employee · acknowledge on phone | live | under 768 px; HR and the manager keep approve, send back, the letter and the approval trail there too |
 | RecordCheckIn · Manager · record check-in | live | POST pips/:id/checkins |
 | SendBack · HR · send back with a reason | live | POST pips/:id/decide |
+| ExtendAfterNotMet · HR · extend once more after not met | live | `POST pips/:id/extend-again` (HR with `perf.pip.manage`; a reason of 10+ characters; the version): the plan runs `perf.pip.after_not_met_days` (default 30) more days from today, with check-ins; once only, never with an exit case open; audited (`perf.pip.extended_again`); the employee and manager are told |
 | StartExit · HR · open exit case after not met | live | POST pips/:id/start-exit |
 
 #### PRF-13 · Hand-over list
@@ -374,8 +378,10 @@ handover-list/:id/parent-options`, `POST handover-list/:id/decide` (once; audite
 | story (sub-page) | verdict | note |
 |---|---|---|
 | NewManager · New manager · handed over to you | live | reviews, goal parents, PIPs and 1:1 actions from perf_owner_transfers |
-| HrDecisions · HR · needs decision | live (gap) | "Reassign to HR" (bulk) and "View audit entry" are not built (hidden); a moved PIP shows only to HR with `perf.pip.manage` company-wide |
+| HrDecisions · HR · needs decision | live | HR selects rows: "Reassign to HR" and "View audit entry" (below); a moved PIP shows only to HR with `perf.pip.manage` company-wide |
 | ReparentGoal · Re-parent a moved goal | live | align to one of the new manager's goals in the same period, or leave unaligned |
+| HrReassign · HR · reassign to HR (bulk) | live | `POST handover-list/with-hr` (`perf.cycle.manage` company-wide): open decisions leave the new manager's list and only HR decides them; rows that need no decision or are decided stay as they are and are named in the answer; audited (`perf.handover.with_hr`) |
+| AuditEntry · HR · audit entry | live | `GET handover-list/:id/audit` (HR only): the move made when the manager changed, then each audited change (reassigned, decided) |
 | Empty · Empty | live | nothing handed over |
 | Loading · Loading | live | while it loads |
 
@@ -387,12 +393,15 @@ setup/from-starter`.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Default · Competency with levels and roles | live (gap) | "Rated in" lists active templates with a competencies section; Import (file) is hidden and the skills-test link shows "None" (no question bank link yet) |
+| Default · Competency with levels and roles | live | "Rated in" lists active templates with a competencies section; Import and the skills test (below) |
 | StarterItem · Starter template item | live | POST setup/from-starter |
 | RetireInUse · Retire (in use, cannot delete) | live | POST competencies/:id/retire |
 | AddCompetency · Add competency | live | POST competencies |
 | MapRole · Map a role to a level | live | PUT competencies/:id |
 | MergeInto · Merge into another competency | live | POST competencies/:id/merge; the merged one retires, its job titles move |
+| ImportFile · Import from a file | live | `POST competencies/import` with the CSV text (name, group, description, levels and roles separated by "\|", a role as "Designation=level"); up to 200 rows and 256 KB; all rows or none (one transaction); audited per competency |
+| ImportProblems · Import · rows with problems | live | every row is checked (the file, then designations and names in the company); any problem: 400 with each bad row (line, name, what to fix) and nothing saved |
+| SkillsTest · Skills test from the question bank | live | the exam platform's question tags (`tags`, `question_tags`): `GET competencies/question-tags` (names and active-question counts only), saved as `questionTagId` on the competency (a tag of the same company); the link opens the question bank (/v2/questions) |
 | Empty · Empty | live | "Load starter library" |
 
 #### PRF-15 · Dispute escalation and evidence export
@@ -424,7 +433,7 @@ Live pages: /yx/performance/coach (`ManagerCoachHome` with `live`, managers) and
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| CoachCard · Coach card on manager home | live (gap) | on /yx/performance/coach and on the PRF-01 manager home; signals built: feedback in 6 weeks, 1:1 overdue or over 35 days, goals off track or at risk (unused leave, overtime and onboarding-task signals not built); wording is fixed text, no AI call |
+| CoachCard · Coach card on manager home | live | on the PRF-01 manager home and its own page; signals: feedback in 6 weeks, 1:1 overdue or over 35 days, unused earned leave above 12 days, overtime in each of the last 3 weeks, goals off track or at risk, a new joiner's open onboarding tasks (Time and People, read-only, counts only: never leave reasons, types of leave taken or health data); wording is fixed text, no AI call |
 | CoachCardPhone · Coach card · phone | live | under 768 px on /yx/performance/coach (and on the PRF-01 manager home, ManagerPhone) |
 | NoNudges · No nudges this week | live | nothing to suggest |
 | OptedOut · Opted out | live | POST coach/opt-out |
@@ -464,6 +473,7 @@ Shared parts, not pages. Live where a live Performance page uses them.
 | Rating · Rating | live | PRF-05 |
 | RatingCompanyScale · Rating · the company’s own scale and band | live | PRF-05 / 06 with the company's levels and the server's band |
 | Potential · Potential · the manager’s proposal | live | PRF-05 manager review (`PotentialChoice`) |
+| CalibrationSessions · Calibration sessions · planned in the cycle wizard | live | PRF-04 stages step (`CalibrationPlan`) |
 | Stages · Stages | live | PRF-01, PRF-05 |
 | NineBoxGrid · 9-box | live | PRF-09 calibration board (potential on the 9-box) |
 | NineBoxMoveReason · NineBoxMoveReason | live | PRF-09: moving someone asks for a reason |
@@ -606,3 +616,20 @@ mid-cycle rules, facilitator-only calibration moves, HR-only PIP outcome) are li
 (1) the 1:1 record on a phone keeps a plain "All 1:1s" button at the top until the app's phone header has a working back
 arrow; (2) draw PRF-12 "Manager · phone" and "HR · phone" design stories to match what the live phone PIP shows (a small
 design follow-up).
+
+## Built 3 Nov 2026: the "live, gap" pieces (branch `feat/yukthix-perf-pieces`)
+Migration 20261490000000_perf_pieces (forward only, no data rewritten): `perf_home_snapshots` (forced RLS, no DELETE for
+the app), `perf_owner_transfers.with_hr_at/by`, `competencies.question_tag_id`, `review_cycles.calibration_plan`,
+`pips.reextended_*`. New setting `perf.pip.after_not_met_days` (15 / 30 / 45 / 60, default 30). New routes, each with its
+permission: `GET reviews/:id/pdf` (whoever may open the review, decided by the service, like `GET reviews/:id`),
+`POST handover-list/with-hr` and `GET handover-list/:id/audit` (`perf.cycle.manage`, company-wide, checked again),
+`POST competencies/import` and `GET competencies/question-tags` (`perf.setup.manage`), `POST pips/:id/extend-again`
+(`perf.pip.manage`, HR in scope, checked again). Changed: `POST/PUT cycles` take `calibration` (planned sessions),
+`PUT competencies/:id` takes `questionTagId`, `GET performance/home` gives `hr.previous`, `GET coach` reads Time and People.
+(1) The review PDF is drawn with PDFKit and the Noto fonts (`writeText`), as the payslip and "my data" are: the review is
+data, not a Word letter, so Gotenberg (the letters' converter, which turns a .docx into a PDF) is not used. (2) The snapshot
+runs in the daily performance job (BullMQ, one job at a time), writing this month's row until the month ends. (3) Reassign
+to HR moves only open decisions (today: a goal's alignment). (4) The skills-test link is the exam platform's question tag
+(`tags`); a competency names one tag of its company. (5) Coach thresholds are fixed rules like the existing ones (founder
+answer 15): earned leave above 12 days, overtime in each of the last 3 weeks, any open onboarding task. Manual tests
+MT-PRF-22 … 29.
