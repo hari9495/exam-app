@@ -104,7 +104,8 @@ describe('HLP-11 Policy admin (live)', () => {
     show(<PolicyAdminScreen live={liveAdmin({ onDeptFilter })} />);
     expect(screen.getByText('69%')).toBeInTheDocument();
     expect(screen.getByText('248 people')).toBeInTheDocument();
-    await ue.click(screen.getByRole('cell', { name: 'Operations' }));
+    await ue.click(screen.getByRole('combobox', { name: /See who is pending in/ }));
+    await ue.click(await screen.findByRole('option', { name: 'Operations · 41 pending' }));
     expect(onDeptFilter).toHaveBeenCalledWith('d-ops');
     expect(await screen.findByText('Ravi Shankar')).toBeInTheDocument();
     expect(screen.getByText('Manager told')).toBeInTheDocument();

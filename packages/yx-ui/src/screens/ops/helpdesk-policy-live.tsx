@@ -889,18 +889,9 @@ export function LivePolicyAdmin({ live }: { live: LivePolicyAdmin }) {
                 groupSizes={p.byDept.map((d) => d.audience)}
                 minGroupSize={5}
               />
-              <DataTable
-                label="By department"
-                columns={[
-                  { key: 'dept', header: 'Department', value: (r: PolicyAdmin['byDept'][number]) => r.dept },
-                  { key: 'aud', header: 'People', type: 'number', value: (r) => r.audience },
-                  { key: 'ack', header: 'Acknowledged', type: 'number', value: (r) => r.acknowledged },
-                  { key: 'pend', header: 'Pending', type: 'number', value: (r) => r.audience - r.acknowledged },
-                ]}
-                rows={p.byDept}
-                getRowId={(r) => r.departmentId ?? 'none'}
-                onRowClick={(r) => (live.onDeptFilter(r.departmentId), setTab('pending'))}
-              />
+              <FormField label="See who is pending in" helper="Opens Pending people for that department">
+                <Select value={null} onChange={(d) => d && (live.onDeptFilter(d), setTab('pending'))} options={p.byDept.filter((d) => d.departmentId).map((d) => ({ value: d.departmentId!, label: `${d.dept} · ${d.audience - d.acknowledged} pending` }))} placeholder="Choose a department" />
+              </FormField>
             </div>
           )}
         </TabsContent>

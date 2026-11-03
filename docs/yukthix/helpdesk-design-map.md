@@ -24,9 +24,12 @@ feature not built** (no API) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Helpdesk HLP-01 … 14 | 14 | 94 | 2 | 0 | 69 | 0 | 165 |
-| B. Service desk designs | 5 | 55 | 2 | 0 | 0 | 0 | 57 |
-| **All Helpdesk groups (A–B)** | **19** | **149** | **4** | **0** | **69** | **0** | **222** |
+| A. Helpdesk HLP-01 … 14 | 14 | 128 | 3 | 0 | 53 | 0 | 184 |
+| B. Service desk designs | 5 | 54 | 2 | 0 | 0 | 0 | 56 |
+| **All Helpdesk groups (A–B)** | **19** | **182** | **5** | **0** | **53** | **0** | **240** |
+Round 10 recount (script, 3 Nov 2026, `feat/yukthix-hlp-10-11`, from `test/yukthix-main` without the HLP-03 branch):
+HLP-10 has 13 stories (the 10 approved plus 3 drawn: typed name, a newer version, no access): 12 live, 1 live (gap)
+(the quiz). HLP-11 has 22 stories (the 6 approved plus 16 drawn for the real records' states), all live.
 Round 3 recount (script, 3 Nov 2026, `feat/yukthix-hlp-03`): HLP-03 has 18 stories (the 6 approved plus 12 drawn for
 the old workspace's states), all live; Phase 3b-1 loses the stand-in's 4 stories (Workspace, WorkspaceCollaborator,
 WorkspaceUnverified, ReplyTooEarly) and has 26; esm-live loses the 16 "Live ·" stories of the ticket side cards and the
@@ -83,6 +86,8 @@ groups them).
 | /yx/desk/knowledge | `KnowledgeScreen` (spaces, articles, editor with review, gaps, recycle bin) | HLP-04 Knowledge; HLP-04 Knowledge base editor not wired | `GET desk/kb/spaces`, `/articles` (`desk.kb.view_internal`, `desk.kb.author` or `desk.kb.publish`), `POST desk/kb/articles`, `/versions`, `/submit` (`desk.kb.author`), `/review`, `/retire` (`desk.kb.publish`), `GET desk/kb/gaps` (`desk.report.view` or `desk.kb.publish`) | live (B); wire design (HLP-04) |
 | /yx/desk/knowledge (?article=) | the designed `KbEditorScreen` (HLP-04) with `live`: the article list per space, the article editor with four-eyes review, compare, preview, details, translations; categories, blocks, templates, content gaps and the recycle bin as tabs | HLP-04 | `GET desk/kb/spaces`, `/articles` (`desk.kb.view_internal`, `desk.kb.author` or `desk.kb.publish`), `POST desk/kb/articles`, `/versions`, `/submit`, `PATCH desk/kb/articles/:id` (now with `keywords`, `assistantUse`), `POST …/reviewed` (new) (`desk.kb.author`), `/review`, `/retire`, `/republish`, `DELETE` (`desk.kb.publish`), `GET desk/kb/gaps` (`desk.report.view` or `desk.kb.publish`) | live |
 | /yx/desk/reports | `SlaDashboardScreen` with `live` (HLP-05; menu Helpdesk › SLAs); the report tabs (desk numbers, KPIs, library, self-service, my reports, walls, customers, NPS surveys) inside it | HLP-05 SLA dashboard | `GET desk/reports/sla` (new, `desk.report.view`), `GET desk/reports/*` (`desk.report.view`), custom reports, schedules, wallboards, KPI targets (`desk.report.manage`), `GET/POST desk/surveys` (`desk.survey.manage`), Reassign `POST desk/tickets/:id/assign` (`desk.ticket.assign` to show it); no-access state without either | live (HLP-05) |
+| /yx/desk/policies (?policy=) | the designed `PolicyLibraryScreen` (HLP-10) with `live` | HLP-10 | `GET desk/my/policies`, `/:id`, `/:id/files/:fileId`, `POST …/versions/:versionId/code`, `POST …/acknowledge` (implicit: one's own policies; 403 while acting for someone else) | live |
+| /yx/desk/policy-admin (?policy=) | the designed `PolicyAdminScreen` (HLP-11) with `live` | HLP-11 | `GET desk/policies`, `/:id`, `/:id/pending`, `/:id/files/:fileId` (`policy.manage` or `policy.publish`), `GET /options`, `POST`, `PATCH /:id`, `PUT /:id/draft`, `POST /:id/draft/files`, `/remove`, `/submit`, `/remind`, `GET /:id/evidence` (`policy.manage`), `POST /:id/publish`, `/send-back` (`policy.publish`); every route needs the key for the whole company | live |
 | /yx/wall/[org]/[token] | `WallScreen` | Reports (HLP-05) Wall | `GET desk/wall/:org/:token` (the secret link; counts only) | live |
 | /yx/desk/setup | `DeskSetupScreen` (desks, calendars, SLA, email, help pages, banners, `SetupStart`) and the stand-ins `CatalogAdmin`, `RulesAdmin`, `LifecycleAdmin`, `ChatQueuesAdmin`, `DeskOrgAdmin`, `SchedulesAdmin`, `MessagingAdmin` | Phase 3b-1 Setup and set-up tabs; Batch 4 GetStarted | desk set-up routes (`desk.settings.manage`, `desk.desk.create`, `desk.sla.manage`, `desk.mailbox.manage`, `desk.portal.manage`, `desk.catalog.manage`, `desk.rule.manage`, `desk.lifecycle.manage`, `desk.channel.manage`) | live |
 | /yx/desk/calendar | `MyCalendarScreen` | Phase 3b-1 Calendar | `GET desk/me/calendar`, `GET desk/tasks` (implicit: an agent) | live |
@@ -120,7 +125,7 @@ And under `notLive`: designed, with no live page rendering them. `ops: TicketWor
 And under `notLive`: designed, with no live page rendering them. `ops: TicketWorkspaceScreen` (HLP-03; HLP-02 left the list in round 2), `ops: KbEditorScreen` (HLP-04) have a live page (HLP-05 `ops: SlaDashboardScreen` left the list: live)
 doing the same job with a B screen (section 5). `ops: SpeakUpScreen`, `ops: CheckReportScreen` (HLP-06), `ops:
 MyCasesScreen` (HLP-07), `ops: CaseListScreen`, `ops: CaseWorkspaceScreen`, `ops: LoadingCase`, `ops: ErrorCase`
-(HLP-08), `ops: EthicsDeskScreen` (HLP-09), `ops: PolicyLibraryScreen` (HLP-10), `ops: PolicyAdminScreen` (HLP-11),
+(HLP-08), `ops: EthicsDeskScreen` (HLP-09), (HLP-10 `PolicyLibraryScreen` and HLP-11 `PolicyAdminScreen` left the list: live)
 `ops: AccidentWorkspaceScreen`, `ops: ReportAccidentScreen` (HLP-12), `ops: CollectiveDisputeScreen` (HLP-13), `ops:
 PolicyWriterScreen` (HLP-14) and `ops: PoshCaseScreen` (no HLP story; the POSH case) have no server. Related phone and
 portal designs also wait: `settings: MobileHelpTicketsScreen`, `MobilePolicyAckScreen`, `MobileSpeakUpScreen`,
@@ -134,8 +139,6 @@ portal designs also wait: `settings: MobileHelpTicketsScreen`, `MobilePolicyAckS
 | HLP-07 My cases (8) | the complainant / respondent / witness view, show-cause reply and extension request | M (after HLP-08) |
 | HLP-08 Cases, case team (12) | case records, members and conflict-of-interest check, disposal clocks, disciplinary steps (no decision before the reply), "not found" for non-members | XL |
 | HLP-09 Ethics desk (6) | the ethics officer's whistleblower queue, route to the audit committee chair | M (after HLP-06, 08) |
-| HLP-10 Policy library + acknowledgement (10) | policies, versions, acknowledgement by click, one-time code or quiz. The desk's document read-and-sign with a code (`POST desk/documents/:id/sign-code`, `/sign`) is the only near part; it signs one ticket document, not a company policy | L |
-| HLP-11 Policy admin (6) | acknowledgement % by department, pending people and reminders, audience and method, re-acknowledge on a new version | M (with HLP-10) |
 | HLP-12 Accident case workspace (8) | accident reports, ESIC report and EC claim clocks, contract workers, manager view | L |
 | HLP-13 Collective dispute / settlement (3) | dispute record, conciliation, signed settlement sent to payroll arrears | L |
 | HLP-14 Write policies with AI (4) | questionnaire, AI draft, law findings that block approval, approve and load into HLP-10 | L (after HLP-10) |
@@ -364,34 +367,58 @@ No server.
 
 #### HLP-10 · Policy library + acknowledgement
 
-No server for company policies. The only near part is the desk's read-and-sign of one ticket document with a one-time
-code (`POST desk/documents/:id/sign-code`, `/sign`).
+Live page: /yx/desk/policies (menu Helpdesk › Policies, every employee; ?policy=<id> opens one). The page renders the
+designed `PolicyLibraryScreen` (`screens/ops/helpdesk.tsx`) with `live`; the live part is
+`screens/ops/helpdesk-policy-live.tsx`. Rules: section 4d. Three stories were drawn in the same layout for states only
+the real record has (typed name, a newer version published meanwhile, no access).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| ToAcknowledge · To acknowledge | design only, feature not built | no policy API |
-| ClickAck · Acknowledge by click | design only, feature not built | |
-| OtpAck · Critical policy · one-time code | design only, feature not built | the desk document signing code could be reused |
-| QuizAck · Quiz · one wrong answer | design only, feature not built | |
-| Acknowledged · Acknowledged | design only, feature not built | |
-| UpToDate · Empty (nothing to acknowledge) | design only, feature not built | |
-| Loading · Loading | design only, feature not built | |
-| Error · Error | design only, feature not built | |
-| Phone · Policies · phone | design only, feature not built | the feature itself is not built |
-| PhoneOtp · One-time code · phone | design only, feature not built | |
+| ToAcknowledge · To acknowledge | live | `GET desk/my/policies` (implicit: the person's own; the audience covers their job today): pending and overdue with the due date (the company's due days from the later of the effective day and joining), "needs a one-time code"; the overdue banner names the company's manager-reminder days |
+| ClickAck · Acknowledge by click | live | the reader drawer (`GET desk/my/policies/:id`): version, effective date, owner, "What changed", the cleaned text, attachments (clean files only, `GET …/files/:fileId`); tick, then Acknowledge (`POST …/acknowledge` with the version read), toast; pressed too early the tick says so and takes the focus |
+| OtpAck · Critical policy · one-time code | live | "Send code to acknowledge" (`POST …/versions/:versionId/code`): 6 digits to the sign-in email (5 minutes, the send limits of letters); the design's "by SMS" reads "by email" (like letters) |
+| QuizAck · Quiz · one wrong answer | live (gap) | no quiz on the server (the design's quiz comes from Learning, not built): a policy is acknowledged by confirmation or one-time code (question 17) |
+| Acknowledged · Acknowledged | live | "You acknowledged vN on <date> by <method>"; the record (version, text fingerprint, time, method, typed name, IP, device) cannot be changed or deleted by the app (e2e) |
+| UpToDate · Empty (nothing to acknowledge) | live | "Nothing to acknowledge." |
+| Loading · Loading | live | while `GET desk/my/policies` loads |
+| Error · Error | live | "Try again" refetches (a 403 shows the no-access state instead) |
+| Phone · Policies · phone | live | under 768 px: the design's phone layout (the two lists) |
+| PhoneOtp · One-time code · phone | live | under 768 px the reader and the code step fill the phone screen |
+| TypedName · Acknowledge · type your name (company setting) | live | new story: `policy.ack.typed_name` on: the name as on the record (any case, any spacing), refused otherwise (400) |
+| NewerVersion · A newer version was published meanwhile | live | new story: acknowledging an older version is refused (409 `POLICY_NEWER_VERSION`); "Read the new version" reloads it |
+| NoAccess · No access (acting for someone else) | live | new story: every `desk/my/policies` route refuses (403) anyone acting for someone else |
 
 #### HLP-11 · Policy admin
 
-No server.
+Live page: /yx/desk/policy-admin (menu Helpdesk › Policy admin, with `policy.manage` or `policy.publish` held for the
+whole company; ?policy=<id> opens one). The page renders the designed `PolicyAdminScreen` with `live`. Sixteen stories
+were drawn in the same layout for states only the real records have (the list, a new policy, writing a version, the
+second person, sent back, the drill-down, editing the audience, not published yet, loading, error, no access).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Acknowledgement · Acknowledgement % | design only, feature not built | no policy API |
-| Pending · Pending people · remind | design only, feature not built | |
-| Versions · Versions | design only, feature not built | |
-| Audience · Audience & method | design only, feature not built | |
-| PublishReack · Publish new version · re-acknowledge | design only, feature not built | |
-| AllDone · Everyone acknowledged | design only, feature not built | |
+| Acknowledgement · Acknowledgement % | live | `GET desk/policies/:id`: the design's header (version, effective, owner, Published, "Critical: one-time code"; facts Acknowledged %, Audience, Pending, Due), the meter, "Acknowledged by department" (groups under 5 hidden) and a "By department" table whose row opens the pending people of that department |
+| Pending · Pending people · remind | live | `GET desk/policies/:id/pending` (most overdue first; manager, due, days overdue, Reminded <date> / Manager told); tick people and "Remind N", or "Send reminder" for all (`POST …/remind`, `policy.manage`; skips anyone reminded today; toast) |
+| Versions · Versions | live | every published version: effective, what changed, asked again, written / published by, acknowledged |
+| Audience · Audience & method | live | entities, locations, departments (with the ones under them), grades from the org structure (`GET desk/policies/options`, `PATCH desk/policies/:id` with the row version), the method, and the company's rules read from the settings |
+| PublishReack · Publish new version · re-acknowledge | live | the design's dialog is the publisher's step (`POST …/publish`, `policy.publish`, never the writer while `policy.publish.second_person` is on, also a DB check); the re-acknowledge switch sits on the version being written (default from `policy.reack.default`) |
+| AllDone · Everyone acknowledged | live | "Everyone has acknowledged." |
+| PolicyList · All policies | live | new story: `GET desk/policies`; a row opens the policy |
+| NoPolicies · No policies yet | live | new story |
+| NewPolicy · New policy | live | new story: title, kind, method; `POST desk/policies` (a title used before is 409); toast, then the version tab |
+| NewPolicyTooEarly · New policy · Make pressed with nothing filled | live | new story |
+| Write · Write a new version (text, what changed, attachments) | live | new story: the kit editor (server allow-list), "What changed", re-acknowledge, attachments (`POST …/draft/files`, PDF / Word / image, 10 MB, virus-checked); Save draft (`PUT …/draft`), Send to be published (`POST …/submit`), toasts |
+| WriteTooEarly · Send to be published pressed with no “what changed” | live | new story |
+| WaitingWriter · Writer · waiting for a second person to publish | live | new story: "You wrote vN, so another publisher publishes it." |
+| PublishLive · Publisher · publish the waiting version | live | new story |
+| SendBack · Publisher · send back with a note | live | new story: `POST …/send-back` (note 3 to 500 letters) |
+| SentBack · Writer · sent back with the note | live | new story |
+| PendingByDept · Pending people · one department (drill-down) | live | new story |
+| AudienceEdit · Audience & method · change who it applies to | live | new story |
+| NotPublished · New policy · not published yet | live | new story |
+| Loading · Loading | live | new story |
+| Error · Error | live | new story |
+| NoAccess · No access | live | new story: no key, or a key granted for one legal entity only (403) |
 
 #### HLP-12 · Accident case workspace
 
@@ -761,6 +788,21 @@ surveys). The HLP screens are the founder-approved look, sample-only.
 16. **HLP-05: the target line** shows only with one queue chosen (each queue has its own target). *Suggested:* keep.
 16. **HLP-04: review every 12 months.** Answered 3 Nov 2026: a company setting now (built in round 4b, see 4c).
 
+17. **HLP-10: the quiz** (design story QuizAck). The design takes the quiz from Learning, which is not built; a policy
+    is acknowledged by confirmation or a one-time code. *Suggested:* add the quiz with Learning (questions per version,
+    all answers right to pass), drawn into HLP-11 first.
+18. **HLP-10: the one-time code goes by email**, not SMS as the design says (the same as letters and desk documents).
+    *Suggested:* keep email; SMS when the company's SMS channel is set up.
+19. **HLP-10/11: keeping acknowledgements** (DPDP). Records are kept with no end date today. *Suggested:* keep them for
+    the employment plus the company's records period (a setting, default 8 years after the person leaves), after counsel.
+20. **HLP-11: the demo HR Admin** (hr@demo-org.test) does not get the new keys: its role was changed from the template,
+    so the migration leaves it alone (by design). *Suggested:* the founder adds `policy.manage` and `policy.publish` in
+    Security › Roles, or tests with admin@ and admin2@ (System Admins carry both).
+21. **HLP-11: retiring a policy** (not in the design). A policy can only get new versions today. *Suggested:* add
+    "Retire" (it stops showing; records stay) when a company asks, drawn first.
+22. **HLP-11: who gets "waiting to be published" notices**: every user whose role carries `policy.publish` (up to 25)
+    and the System Admins without a role, not the writer. *Suggested:* keep.
+
 ## 7. Next pages (recommended order, with sizes)
 
 | order | page | size | why |
@@ -773,7 +815,7 @@ surveys). The HLP screens are the founder-approved look, sample-only.
 | 6 | Service catalogue | M | live stand-in `CatalogScreen` with 9 "Live ·" stories; needs a design |
 | 7 | Live chat (requester and agent) | M | stand-ins `RequesterChatScreen`, `AgentChatScreen`; needs a design |
 | 8 | Desk team and the set-up admins | L | stand-ins `TeamScreen` and 7 set-up admins (41 "Live ·" stories); needs designs per tab |
-| 9 | HLP-10 + HLP-11 Policy library and admin | L | no server; most staff touch it (acknowledgements); reuse the desk signing code for one-time codes; founder decisions on audience and quiz |
+| 9 | ~~HLP-10 + HLP-11 Policy library and admin~~ (done, round 10) | L | no server; most staff touch it (acknowledgements); reuse the desk signing code for one-time codes; founder decisions on audience and quiz |
 | 10 | HLP-06 Speak-up filing | L | no server; needs POSH Act 2013 internal committee and whistleblower decisions; public no-login route |
 | 11 | HLP-08 + HLP-07 + HLP-09 Cases, my cases, ethics desk | XL | no server; one case engine for grievance, disciplinary and whistleblower cases, members, conflict check, clocks; standing orders and show-cause decisions |
 | 12 | HLP-12 Accident case | L | no server; ESIC accident report, EC Act claim interest, Factories Act / OSH Code notices |
