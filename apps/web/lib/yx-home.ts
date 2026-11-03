@@ -225,7 +225,7 @@ export function managerHome(input: {
   }
   if (input.reviews) {
     const toWrite = input.reviews.filter((r) => r.next.stage === 'manager');
-    stats.push({ id: 'reviews', title: 'Reviews', label: 'Reviews to write', value: toWrite.length, drill: { label: 'Open reviews', href: '/yx/performance/reviews' } });
+    stats.push({ id: 'reviews', title: 'Reviews', label: 'Reviews to write', value: toWrite.length, drill: { label: 'Open reviews', href: '/yx/performance' } });
   }
   const month = today.slice(0, 7);
   const dueProbations = (input.probations ?? []).filter((r) => !r.confirmedFrom && !r.pendingConfirmationId && r.reviewDueOn);

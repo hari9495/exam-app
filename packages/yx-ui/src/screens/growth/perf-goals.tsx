@@ -20,7 +20,7 @@ import { formatDate } from '../../lib/format';
 import { TODAY } from '../_kit/data';
 import { CoachCard, GoalTree, GrowthFrame, ProgressRing, StageTrack, type CoachNudge, type Device, type StageItem } from './growth-kit';
 import { goalProgress, krProgress, weightCheck, type Goal, type GoalConfidence } from './growth-logic';
-import { LiveCompanyGoalMap, LiveMyGoalsScreen, LivePerformanceHome, type LiveGoalMap, type LiveHome, type LiveMyGoals } from './perf-goals-live';
+import { EarlierReviews, LiveCompanyGoalMap, LiveMyGoalsScreen, LivePerformanceHome, type LiveGoalMap, type LiveHome, type LiveMyGoals } from './perf-goals-live';
 import './growth.css';
 
 export type LoadState = 'ready' | 'loading' | 'error' | 'empty';
@@ -56,6 +56,8 @@ export interface PerformanceHomeProps {
   stages?: StageItem[];
   feedback?: { id: string; from: string; text: string; at: Date; kind: 'Praise' | 'Suggestion' }[];
   nextOneOnOne?: { with: string; at: Date; agenda: number };
+  /** Links to my earlier reviews under My review. */
+  earlierReviews?: { id: string; cycle: string }[];
   team?: TeamMemberPerf[];
   coach?: { nudges: CoachNudge[]; weekOf: Date; optedOut?: boolean };
   cycles?: CycleSummary[];
@@ -205,7 +207,7 @@ function SamplePerformanceHome(p: PerformanceHomeProps) {
   ];
   if (persona === 'emp') {
     widgets.push(
-      { id: 'review', title: 'My review · Half-yearly H1 FY 2026-27', size: 12, content: p.stages ? <StageTrack stages={p.stages} nextStep="360° feedback from your nominated reviewers" /> : null, empty: p.stages ? undefined : 'No review running for you' },
+      { id: 'review', title: 'My review · Half-yearly H1 FY 2026-27', size: 12, content: p.stages ? <><StageTrack stages={p.stages} nextStep="360° feedback from your nominated reviewers" /><EarlierReviews items={p.earlierReviews ?? []} /></> : null, empty: p.stages ? undefined : 'No review running for you' },
       { id: 'goals', title: 'My goals · Apr–Sep 2026', size: 8, content: <MyGoalsMini goals={p.goals} onCheckIn={setCheckIn} />, actions: <Link href="#goals">View all goals</Link> },
       {
         id: 'oneonone',

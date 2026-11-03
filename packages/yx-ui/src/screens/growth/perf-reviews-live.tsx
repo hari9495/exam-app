@@ -24,7 +24,7 @@ import { useToast } from '../../components/notify';
 import { countText, formatDate } from '../../lib/format';
 import { dayKey } from '../../lib/dates';
 import type { Choice, CycleInput, CycleStage, Disagreement, EligibilityRow, EntryInput, PeerConfig, PeerGroups, Preflight, ReviewCycle, ReviewDetail, ReviewEntry, TemplateKind } from '../performance/live/types';
-import { ConfidentialTag, GrowthFrame, RatingScale, ScoreBand, SplitLayout, StageTrack } from './growth-kit';
+import { ConfidentialTag, PotentialChoice, GrowthFrame, RatingScale, ScoreBand, SplitLayout, StageTrack } from './growth-kit';
 import { reviewStages, reviewScore } from './growth-logic';
 import { PerfReasonDialog, PERF_LINKS } from './perf-goals-live';
 import { day, type LoadState } from './perf-live-data';
@@ -712,8 +712,6 @@ export interface LiveReviewWorkspace {
   review: ReviewDetail | null;
   /** Grouped 360° answers (advisory), when the cycle has them and the viewer may read them. */
   peer: PeerGroups | null;
-  /** Nominations of colleagues for 360° feedback (PRF-07, built separately). */
-  nominations?: ReactNode;
   onSave: (stage: 'self' | 'manager' | 'other', input: EntryInput, submit: boolean) => Promise<unknown>;
   onSkip: (agree: boolean, text: string | null) => Promise<unknown>;
   onReopen: (reason: string) => Promise<unknown>;
@@ -760,6 +758,7 @@ function ReviewBody({ live, r }: { live: LiveReviewWorkspace; r: ReviewDetail })
   const shownEntry = mine ?? (r.role === 'employee' ? r.self : (r.managerEntry ?? r.self));
   const [answers, setAnswers] = useState<Answers>(shownEntry?.answers ?? {});
   const [overall, setOverall] = useState<number | null>(shownEntry?.overallRating ?? null);
+  const [potential, setPotential] = useState<1 | 2 | 3 | null>((r.proposedPotential as 1 | 2 | 3 | null | undefined) ?? null);
   const [summary, setSummary] = useState(shownEntry?.comment ?? '');
   const [busy, setBusy] = useState<'save' | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
@@ -770,7 +769,7 @@ function ReviewBody({ live, r }: { live: LiveReviewWorkspace; r: ReviewDetail })
   const label = (v: number | null | undefined) => (v == null ? 'Not given' : `${v} · ${levels.find((l) => l.value === v)?.label ?? ''}`);
   const sections = r.template.sections.filter((s) => (stage ? s.whoAnswers.includes(stage === 'other' ? 'manager' : stage) : true));
   const score = scoreSoFar(r, answers, overall);
-  const input = (): EntryInput => ({ answers: Object.entries(answers).map(([questionId, a]) => ({ questionId, rating: a.rating, text: a.text })), overallRating: overall, comment: summary.trim() || null });
+  const input = (): EntryInput => ({ answers: Object.entries(answers).map(([questionId, a]) => ({ questionId, rating: a.rating, text: a.text })), overallRating: overall, comment: summary.trim() || null, ...(stage === 'manager' ? { potential } : {}) });
   const saveDraft = async () => {
     setBusy('save');
     setFailed(null);
@@ -941,6 +940,7 @@ function ReviewBody({ live, r }: { live: LiveReviewWorkspace; r: ReviewDetail })
             {(editable || shownEntry) && (
               <Card title={stage === 'manager' || r.role !== 'employee' ? 'Overall rating and summary' : 'Your summary'}>
                 {r.template.scoring === 'manager_overall' && (stage === 'manager' || (!editable && shownEntry === r.managerEntry)) && <RatingScale label="Overall rating" value={overall} onChange={setOverall} disabled={!editable} levels={levels} />}
+                {stage === 'manager' ? <PotentialChoice value={potential} onChange={setPotential} /> : r.role !== 'employee' && r.proposedPotential ? <PotentialChoice value={r.proposedPotential as 1 | 2 | 3} readOnly /> : null}
                 <FormField id="rv-summary" label={stage === 'self' || (r.role === 'employee' && !stage) ? 'What went well, and what you’d like to grow in' : 'Summary for the employee'} optional>
                   <TextArea value={summary} onChange={setSummary} rows={5} maxLength={4000} disabled={!editable} />
                 </FormField>
@@ -963,7 +963,6 @@ function ReviewBody({ live, r }: { live: LiveReviewWorkspace; r: ReviewDetail })
                   {o.comment && <Text as="p">{o.comment}</Text>}
                 </Card>
               ))}
-            {live.nominations}
           </>
         }
         side={

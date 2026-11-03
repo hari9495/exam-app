@@ -368,6 +368,8 @@ export interface ReviewDetail {
   excludedSections: string[];
   /** PRF-06: each rated section's score, once the manager's review is visible. */
   sectionScores?: { title: string; score: number }[];
+  /** PRF-05: the manager's proposed 9-box potential (1–3); never sent to the employee. */
+  proposedPotential?: number | null;
   trail: { stage: string; event: string; reason: string | null; at: string }[];
   /** The skip-level's comment when they agreed (not shown to the employee before release). */
   skipComment?: string | null;
@@ -386,6 +388,8 @@ export interface EntryInput {
   answers: { questionId: string; rating?: number | null; text?: string | null }[];
   overallRating?: number | null;
   comment?: string | null;
+  /** The manager's proposed potential (manager stage only). */
+  potential?: 1 | 2 | 3 | null;
 }
 
 export interface Disagreement {

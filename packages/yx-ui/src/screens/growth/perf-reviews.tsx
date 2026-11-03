@@ -23,7 +23,7 @@ import { FileUpload } from '../../components/upload';
 import { ApprovalTimeline, Timeline, type ApprovalStep, type TimelineItem } from '../../components/timeline';
 import { formatDate } from '../../lib/format';
 import { TODAY } from '../_kit/data';
-import { BiasFlagList, ConfidentialTag, GrowthFrame, RatingScale, ScoreBand, SplitLayout, StageTrack, type Device, type StageItem } from './growth-kit';
+import { BiasFlagList, ConfidentialTag, PotentialChoice, GrowthFrame, RatingScale, ScoreBand, SplitLayout, StageTrack, type Device, type StageItem } from './growth-kit';
 import { anonymityGroups, bandFor, detectBiasFlags, nominationCheck, RATING_LABELS, reviewScore, type BiasFlag, type Relationship, type ReviewSection } from './growth-logic';
 import type { LoadState } from './perf-goals';
 import { ReviewAssistantPanel, type ReviewAssistantProps } from './perf-assistant';
@@ -350,6 +350,8 @@ export interface ReviewData {
   peer: { relationship: Relationship; anonymous: boolean; author?: string; text: string }[];
   kudos: { value: string; count: number; latest: string }[];
   summary: string;
+  /** The manager's proposed 9-box potential (PRF-05 → PRF-09). */
+  potential?: 1 | 2 | 3;
 }
 
 export interface ReviewWorkspaceProps {
@@ -372,6 +374,7 @@ function SampleReviewWorkspace({ persona, review, assistant, submitted }: Review
   const [comp, setComp] = useState<Record<string, number | null>>(Object.fromEntries(review.competencies.map((c) => [c.id, persona === 'mgr' ? c.manager : c.self])));
   const [summary, setSummary] = useState(review.summary);
   const [overall, setOverall] = useState<number | null>(persona === 'mgr' ? 4 : null);
+  const [potential, setPotential] = useState<1 | 2 | 3 | null>(review.potential ?? null);
   const goalAvg = (() => {
     const done = review.goals.filter((g) => ratings[g.id] != null);
     const w = done.reduce((a, g) => a + g.weight, 0);
@@ -538,6 +541,7 @@ function SampleReviewWorkspace({ persona, review, assistant, submitted }: Review
               ))}
             <Card title={persona === 'mgr' ? 'Overall rating and summary' : 'Your summary'}>
               {persona === 'mgr' && <RatingScale label="Overall rating" value={overall} onChange={setOverall} disabled={locked} />}
+              {persona === 'mgr' && <PotentialChoice value={potential} onChange={setPotential} readOnly={locked} />}
               <FormField label={persona === 'mgr' ? 'Summary for the employee' : 'What went well, and what you’d like to grow in'}>
                 <TextArea value={summary} onChange={setSummary} rows={5} disabled={locked} />
               </FormField>

@@ -1,14 +1,13 @@
 'use client';
 
-import { useState } from 'react';
 import { useParams } from 'next/navigation';
-import { PeerPanel, ReviewAcknowledgeScreen, ReviewWorkspaceScreen, type Nominations, type PeerGroups, type ReviewDetail, PerfNoAccessScreen } from '@yukthix/ui/performance';
+import { ReviewAcknowledgeScreen, ReviewWorkspaceScreen, type Nominations, type PeerGroups, type ReviewDetail, PerfNoAccessScreen } from '@yukthix/ui/performance';
 import { loadState } from '../../../../../../lib/yx-org';
 import { perfState, usePerf, usePerfWrite, useReviewAssistant, refused } from '../../../../../../lib/yx-performance';
 
 // One review. The employee's released review is PRF-06 (acknowledge, with a disagreement in the same step); every other
 // view is the PRF-05 workspace (self, manager, former manager, skip-level, the chain above and HR). 360° nominations are
-// PRF-07, built separately; until then its live panel sits inside the workspace.
+// the PRF-07 page, linked from the workspace ("Nominate reviewers"); the workspace shows the grouped answers.
 export default function YxReviewPage() {
   const { id } = useParams<{ id: string }>();
   const base = `/reviews/${encodeURIComponent(id)}`;
@@ -16,9 +15,7 @@ export default function YxReviewPage() {
   const nominations = usePerf<Nominations>(`${base}/nominations`, Boolean(review.data && review.data.role !== 'other'));
   const peerOn = Boolean(nominations.data?.peer);
   const groups = usePerf<PeerGroups>(`${base}/peer-feedback`, peerOn);
-  const [q, setQ] = useState('');
   const canNominate = Boolean(nominations.data?.can.propose || nominations.data?.can.add);
-  const options = usePerf<{ id: string; name: string }[]>(`${base}/nominee-options?q=${encodeURIComponent(q)}`, peerOn && canNominate);
   const write = usePerfWrite();
   const r = review.data;
   // PRF-17: the assistant only for the review's current manager (the API answers 404 to anyone else).
@@ -34,7 +31,6 @@ export default function YxReviewPage() {
   if (refused(review)) return <PerfNoAccessScreen title="Review" what="this review" grantedBy="HR" active="Reviews & cycles" persona="emp" />;
   if (r && r.role === 'employee' && r.released)
     return <ReviewAcknowledgeScreen live={{ review: r, onAcknowledge: (comment, disagreement) => write('POST', `${base}/acknowledge`, { comment, ...(disagreement ? { disagreement } : {}) }), onDisagree: (text) => write('POST', `${base}/disagree`, { text }), escalate }} />;
-  const questions = Object.fromEntries((r?.template.sections ?? []).flatMap((s) => s.questions.map((x) => [x.id, x.wholeSection ? s.title : x.text])));
   return (
     <ReviewWorkspaceScreen
       live={{
@@ -42,18 +38,6 @@ export default function YxReviewPage() {
         onRetry: () => void review.refetch(),
         review: r ?? null,
         peer: groups.data ?? null,
-        nominations: nominations.data?.peer ? (
-          <PeerPanel
-            data={nominations.data}
-            groups={null}
-            questions={questions}
-            options={options.data ?? []}
-            onSearch={setQ}
-            onNominate={(reviewerEmployeeId, relationship) => write('POST', `${base}/nominations`, { reviewerEmployeeId, relationship })}
-            onDecide={(nid, approve) => write('POST', `/nominations/${encodeURIComponent(nid)}/${approve ? 'approve' : 'decline'}`)}
-            onWithdraw={(nid) => write('POST', `/nominations/${encodeURIComponent(nid)}/withdraw`)}
-          />
-        ) : undefined,
         onSave: (stage, input, submit) => (submit ? write('POST', `${base}/entries/${stage}/submit`, input) : write('PUT', `${base}/entries/${stage}`, input)),
         onSkip: (agree, text) => (agree ? write('POST', `${base}/skip/agree`, { comment: text }) : write('POST', `${base}/send-back`, { reason: text })),
         onReopen: (reason) => write('POST', `${base}/reopen`, { reason }),

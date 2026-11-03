@@ -8,6 +8,7 @@ import { useAuth } from '../../lib/auth-context';
 import YxPerformanceHomePage from './(app)/performance/page';
 import YxMyGoalsPage from './(app)/performance/goals/page';
 import YxGoalMapPage from './(app)/performance/goal-map/page';
+import YxReviewsPage from './(app)/performance/reviews/page';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn(), useParams: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn() }));
@@ -121,5 +122,32 @@ describe('PRF-01 … 03 live (performance builder 1)', () => {
     await userEvent.click(await screen.findByRole('option', { name: /Grow revenue 20%/ }));
     await userEvent.click(within(dialog).getByRole('button', { name: 'Send suggestion' }));
     await waitFor(() => expect(posted).toEqual([{ parentGoalId: 'c1' }]));
+  });
+
+  it('a manager’s home shows the coach card from GET /performance/coach (founder 3 Nov 2026)', async () => {
+    const seen: string[] = [];
+    route({
+      'GET /rbac/me/permissions': [],
+      'GET /performance/home': { ...HOME, persona: 'mgr', team: [{ id: 'e1', name: 'Arjun Rao', role: 'Executive', goalProgress: 33, reviewStage: 'Self review', reviewId: 'r1', lastOneOnOne: null, lastFeedback: null }] },
+      'GET /performance/coach': (p: string) => (seen.push(p), { state: 'ready', weekOf: '2026-11-02', firstName: 'Priya', optedOut: false, looksAt: [], nudges: [{ id: 'n1', person: 'Arjun Rao', signal: 'No feedback given in 6 weeks', action: 'Give feedback', link: '/yx/performance/feedback' }] }),
+    });
+    wrap(<YxPerformanceHomePage />);
+    expect(await screen.findByText('No feedback given in 6 weeks')).toBeInTheDocument();
+    expect(seen).toEqual(['/performance/coach']);
+  });
+
+  it('an employee’s home does not ask for the coach', async () => {
+    const seen: string[] = [];
+    route({ 'GET /rbac/me/permissions': [], 'GET /performance/home': HOME, 'GET /performance/coach': (p: string) => (seen.push(p), {}) });
+    wrap(<YxPerformanceHomePage />);
+    expect(await screen.findByText('Your self review · FY annual')).toBeInTheDocument();
+    expect(seen).toEqual([]);
+  });
+
+  it('the old reviews list sends people to the home', async () => {
+    const replace = jest.fn();
+    (useRouter as jest.Mock).mockReturnValue({ push: jest.fn(), replace });
+    wrap(<YxReviewsPage />);
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/yx/performance'));
   });
 });

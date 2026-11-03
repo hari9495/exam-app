@@ -26,7 +26,7 @@ import { dayKey } from '../../lib/dates';
 import type { CheckinInput, Choice, GoalDetail, GoalInput, GoalPeriod } from '../performance/live/types';
 import { CoachCard, GoalTree, GrowthFrame, ProgressRing, StageTrack } from './growth-kit';
 import { goalProgress, krProgress, reviewStages, weightCheck, type Goal, type GoalConfidence } from './growth-logic';
-import { GoalCheckInSheet } from './perf-goals';
+import { GoalCheckInSheet, type LiveCoach } from './perf-goals';
 import { CONFIDENCE, day, toActions, toGoal, type GoalItem, type LoadState, type PerfHome } from './perf-live-data';
 
 /** Where the live pages are (the performance menu). */
@@ -67,6 +67,24 @@ export interface LiveHome {
   onRetry: () => void;
   data: PerfHome | null;
   onCheckIn: (goalId: string, input: CheckinInput) => Promise<unknown>;
+  /** PRF-16 coach card on the manager home (founder 3 Nov 2026); the same data as /yx/performance/coach. */
+  coach?: LiveCoach | null;
+}
+
+/** Links to my earlier reviews (the old reviews list is retired, founder 3 Nov 2026). */
+export function EarlierReviews({ items }: { items: { id: string; cycle: string }[] }) {
+  if (!items.length) return null;
+  return (
+    <p className="yx-growth-meta">
+      Earlier reviews:{' '}
+      {items.map((x, i) => (
+        <span key={x.id}>
+          {i > 0 && ' · '}
+          <Link href={PERF_LINKS.review(x.id)}>{x.cycle}</Link>
+        </span>
+      ))}
+    </p>
+  );
 }
 
 const dateOrNever = (iso: string | null) => (iso ? formatDate(day(iso)) : 'Never');
@@ -122,7 +140,7 @@ export function LivePerformanceHome({ live }: { live: LiveHome }) {
   );
   const hasCycle = persona === 'hr' && (h.hr?.cycles.length ?? 0) > 0;
   // First use: nothing to do and nothing running.
-  if (!actions.length && !goals.length && !h.myReview && !h.team.length && !hasCycle && !h.feedback.length)
+  if (!actions.length && !goals.length && !h.myReview && !(h.earlierReviews ?? []).length && !h.team.length && !hasCycle && !h.feedback.length)
     return frame(
       <>
         <PageHeader title={title} />
@@ -174,9 +192,26 @@ export function LivePerformanceHome({ live }: { live: LiveHome }) {
     );
   const nextStep = h.myReview ? h.myReview.next.label : undefined;
 
+  // PRF-16 coach card on the manager home (founder 3 Nov 2026), desktop and phone.
+  const kc = live.coach;
+  const coachCard =
+    kc && (kc.state === 'ready' || kc.state === 'company-off') ? (
+      <CoachCard
+        key={`${kc.weekOf.getTime()}:${kc.nudges.map((n) => n.id).join(',')}:${kc.optedOut}`}
+        nudges={kc.nudges}
+        weekOf={kc.weekOf}
+        optedOut={kc.optedOut}
+        companyOff={kc.state === 'company-off'}
+        onAct={kc.onAct}
+        onDismiss={(n) => void kc.onDismiss(n.id).catch(() => undefined)}
+        onOptOut={() => void kc.onOptOut(true).catch(() => undefined)}
+        onOptIn={() => void kc.onOptOut(false).catch(() => undefined)}
+      />
+    ) : null;
   if (phone)
     return (
       <GrowthFrame area="performance" active="Performance home" persona={persona} device="phone" phone={{ tab: persona === 'mgr' ? 'home' : 'me', title: persona === 'mgr' ? 'Team performance' : 'Goals & reviews' }}>
+        {coachCard}
         <NeedsActionList items={actions} viewAllHref={PERF_LINKS.inbox} today={today} title="To do" />
         {stages && (
           <section className="yx-growth-panel" aria-label="My review">
@@ -214,7 +249,7 @@ export function LivePerformanceHome({ live }: { live: LiveHome }) {
   const widgets: DashboardWidget[] = [{ id: 'actions', title: 'Needs your action', size: 12, pinned: true, bare: true, content: <NeedsActionList items={actions} viewAllHref={PERF_LINKS.inbox} today={today} /> }];
   if (persona !== 'hr' || h.myReview || goals.length) {
     widgets.push(
-      { id: 'review', title: h.myReview ? `My review · ${h.myReview.cycle}` : 'My review', size: 12, content: stages ? <StageTrack stages={stages} nextStep={nextStep} /> : null, empty: stages ? undefined : 'No review running for you', actions: h.myReview ? <Link href={PERF_LINKS.review(h.myReview.id)}>Open my review</Link> : undefined },
+      { id: 'review', title: h.myReview ? `My review · ${h.myReview.cycle}` : 'My review', size: 12, content: stages ? <>{<StageTrack stages={stages} nextStep={nextStep} />}<EarlierReviews items={h.earlierReviews ?? []} /></> : (h.earlierReviews ?? []).length ? <EarlierReviews items={h.earlierReviews ?? []} /> : null, empty: stages || (h.earlierReviews ?? []).length ? undefined : 'No review running for you', actions: h.myReview ? <Link href={PERF_LINKS.review(h.myReview.id)}>Open my review</Link> : undefined },
       { id: 'goals', title: h.period ? `My goals · ${h.period.name}` : 'My goals', size: persona === 'emp' ? 8 : 12, content: myGoals, actions: <Link href={PERF_LINKS.goals}>View all goals</Link> },
     );
   }
@@ -238,6 +273,21 @@ export function LivePerformanceHome({ live }: { live: LiveHome }) {
     );
   }
   if (persona === 'mgr' || (persona === 'hr' && h.team.length)) {
+    // PRF-16 coach card beside the team (as in the PRF-01 manager design): nudges about my own team, dismiss, opt out.
+    const k = live.coach;
+    const coachWidget: DashboardWidget | null =
+      k && k.state !== 'not-manager'
+        ? {
+            id: 'coach',
+            title: 'Manager coach',
+            size: 4,
+            bare: k.state === 'ready' || k.state === 'company-off',
+            state: k.state === 'loading' ? 'loading' : k.state === 'error' ? 'error' : undefined,
+            onRetry: k.onRetry,
+            content:
+              coachCard,
+          }
+        : null;
     const cols: TableColumn<PerfHome['team'][number]>[] = [
       { key: 'name', header: 'Team member', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: r.role }), width: 220 },
       { key: 'goals', header: 'Goal progress', type: 'number', value: (r) => r.goalProgress, render: (r) => (r.goalProgress == null ? 'No goals yet' : `${r.goalProgress}%`), width: 130 },
@@ -246,8 +296,8 @@ export function LivePerformanceHome({ live }: { live: LiveHome }) {
       { key: 'feedback', header: 'Last feedback', type: 'date', value: (r) => r.lastFeedback, render: (r) => dateOrNever(r.lastFeedback), width: 140 },
     ];
     widgets.push(
-      // PRF-16's coach is not built yet (builder 3); the team table takes the full width until it is.
-      { id: 'team', title: 'My team', size: 12, content: <DataTable label="My team" columns={cols} rows={h.team} getRowId={(r) => r.id} rowButtons={(r) => <>{r.reviewId && <Link href={PERF_LINKS.review(r.reviewId)}>Review</Link>} <Link href={PERF_LINKS.personGoals(r.id)}>Goals</Link></>} /> },
+      ...(coachWidget ? [coachWidget] : []),
+      { id: 'team', title: 'My team', size: coachWidget ? 8 : 12, content: <DataTable label="My team" columns={cols} rows={h.team} getRowId={(r) => r.id} rowButtons={(r) => <>{r.reviewId && <Link href={PERF_LINKS.review(r.reviewId)}>Review</Link>} <Link href={PERF_LINKS.personGoals(r.id)}>Goals</Link></>} /> },
       { id: 'teamgoals', title: 'Team goals', size: 12, content: teamGoals.length ? <GoalTree goals={teamGoals} aria-label="Team goals" compact onOpen={(g) => window.location.assign(PERF_LINKS.goal(g.id))} /> : null, empty: teamGoals.length ? undefined : 'No team goals in this period yet' },
     );
   }

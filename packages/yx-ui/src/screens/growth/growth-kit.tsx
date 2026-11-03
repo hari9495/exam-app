@@ -30,6 +30,7 @@ import { Menu, MenuContent, MenuItem, MenuLabel, MenuTrigger } from '../../compo
 import { RadioGroup } from '../../components/choice';
 import { ConfirmDialog } from '../../components/overlay';
 import { FormField } from '../../components/field';
+import { Segment } from '../../components/segment';
 import { TextArea } from '../../components/inputs';
 import { formatDate } from '../../lib/format';
 import { cx } from '../../lib/cx';
@@ -919,5 +920,25 @@ export function SplitLayout({ main, side, className }: { main: ReactNode; side: 
       <div className="yx-growth-split__main">{main}</div>
       <aside className="yx-growth-split__side">{side}</aside>
     </div>
+  );
+}
+
+/* ================================================================== 9-box potential (PRF-05 → PRF-09) */
+
+export const POTENTIAL_LABELS: Record<1 | 2 | 3, string> = { 1: 'Low', 2: 'Medium', 3: 'High' };
+
+/**
+ * The manager's proposed 9-box potential in the manager review (founder 3 Nov 2026): a pick-one Segment, or the chosen
+ * word when read-only. The calibration facilitator decides; the employee never sees it.
+ */
+export function PotentialChoice({ value, onChange, readOnly }: { value: 1 | 2 | 3 | null; onChange?: (v: 1 | 2 | 3) => void; readOnly?: boolean }) {
+  return (
+    <FormField id="rv-potential" label="Potential, for calibration" optional helper="Your proposal for the 9-box; the calibration facilitator decides. The employee does not see it.">
+      {readOnly ? (
+        <Text>{value ? POTENTIAL_LABELS[value] : 'Not proposed'}</Text>
+      ) : (
+        <Segment label="Potential" value={value} onChange={(v) => onChange?.(v)} options={([1, 2, 3] as const).map((v) => ({ value: v, label: POTENTIAL_LABELS[v] }))} />
+      )}
+    </FormField>
   );
 }

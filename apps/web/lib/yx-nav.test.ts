@@ -267,7 +267,7 @@ describe('pageLink: each Performance page names itself (walk-through 3 Nov 2026)
     expect(pageLink(employee, path)).toMatchObject({ area: { id: 'performance' }, link: { label }, inMenu: false });
   });
   it('a sub-page without its own entry lights up its parent; the area root is itself', () => {
-    expect(pageLink(employee, '/yx/performance/reviews/r1/dispute')).toMatchObject({ link: { label: 'Reviews & cycles' }, inMenu: true });
+    expect(pageLink(employee, '/yx/performance/reviews/r1/dispute')).toMatchObject({ link: { label: 'Performance home' }, inMenu: true });
     expect(pageLink(employee, '/yx/performance')).toMatchObject({ link: { label: 'Performance home' }, inMenu: true });
   });
 });

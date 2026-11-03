@@ -164,3 +164,42 @@ describe('PRF-05 workspace and PRF-06 acknowledgement', () => {
     await waitFor(() => expect(ack).toHaveBeenCalledWith(null, 'Too short, the vendor delay is missing'));
   });
 });
+
+describe('founder followups A (3 Nov 2026)', () => {
+  const managerHome = { persona: 'mgr' as const, name: 'Karthik', period: null, actions: [], myGoals: [], myReview: null, feedback: [], nextOneOnOne: null, team: [{ id: 'e1', name: 'Divya Raghunathan', role: 'QA lead', goalProgress: 62, reviewStage: 'Manager review', reviewId: 'r1', lastOneOnOne: null, lastFeedback: null }], teamGoals: [], hr: null };
+  const coach = { state: 'ready' as const, onRetry: vi.fn(), firstName: 'Karthik', weekOf: new Date(2026, 10, 2), optedOut: false, nudges: [{ id: 'n1', person: 'Divya Raghunathan', signal: 'No feedback given in 6 weeks', action: 'Give feedback' }], looksAt: [], onAct: vi.fn(), onDismiss: vi.fn(async () => undefined), onOptOut: vi.fn(async () => undefined) };
+
+  it('(7) the manager home carries the coach card; dismissing a nudge calls the API', async () => {
+    show(<PerformanceHomeScreen live={{ state: 'ready', onRetry: vi.fn(), data: managerHome, onCheckIn: vi.fn(), coach }} />);
+    const card = screen.getAllByRole('region', { name: 'Manager coach' }).find((e) => e.classList.contains('yx-coach'))!;
+    expect(within(card).getByText('No feedback given in 6 weeks')).toBeInTheDocument();
+    await ue.click(within(card).getByRole('button', { name: 'Dismiss nudge about Divya Raghunathan' }));
+    expect(coach.onDismiss).toHaveBeenCalledWith('n1');
+  });
+  it('(7) no coach card without a team, or while the coach does not apply', () => {
+    const { unmount } = show(<PerformanceHomeScreen live={{ state: 'ready', onRetry: vi.fn(), data: managerHome, onCheckIn: vi.fn(), coach: null }} />);
+    expect(screen.queryAllByRole('region', { name: 'Manager coach' })).toHaveLength(0);
+    unmount();
+    show(<PerformanceHomeScreen live={{ state: 'ready', onRetry: vi.fn(), data: managerHome, onCheckIn: vi.fn(), coach: { ...coach, state: 'not-manager' } }} />);
+    expect(screen.queryAllByRole('region', { name: 'Manager coach' })).toHaveLength(0);
+  });
+  it('(4) the home links my earlier reviews', () => {
+    show(<PerformanceHomeScreen live={{ state: 'ready', onRetry: vi.fn(), data: { ...managerHome, persona: 'emp', team: [], earlierReviews: [{ id: 'r0', cycle: 'Annual review FY 2025-26' }] }, onCheckIn: vi.fn() }} />);
+    expect(screen.getByRole('link', { name: 'Annual review FY 2025-26' })).toHaveAttribute('href', '/yx/performance/reviews/r0');
+  });
+  it('(13) the manager proposes potential with the review; a reader sees it read-only; the employee never', async () => {
+    const save = vi.fn(async () => ({}));
+    const asManager = { ...REVIEW, role: 'manager' as const, status: 'open' as const, next: { stage: 'manager', label: 'Manager review', owner: 'Karthik Subramanian', dueOn: '2027-04-20' }, managerEntry: { ...REVIEW.managerEntry!, status: 'draft' as const }, finalScore: null, band: null, proposedPotential: null, can: { self: false, manager: true } };
+    const { unmount } = show(<ReviewWorkspaceScreen live={{ ...WORKSPACE, review: asManager, onSave: save }} />);
+    await ue.click(within(screen.getByRole('radiogroup', { name: 'Potential' })).getByRole('radio', { name: 'High' }));
+    await ue.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(save).toHaveBeenCalledWith('manager', expect.objectContaining({ potential: 3 }), false));
+    unmount();
+    const r2 = show(<ReviewWorkspaceScreen live={{ ...WORKSPACE, review: { ...REVIEW, proposedPotential: 2 } }} />);
+    expect(screen.getByText('Medium')).toBeInTheDocument();
+    expect(screen.queryByRole('radiogroup', { name: 'Potential' })).toBeNull();
+    r2.unmount();
+    show(<ReviewWorkspaceScreen live={{ ...WORKSPACE, review: { ...REVIEW, role: 'employee', proposedPotential: null, can: { self: false, manager: false } } }} />);
+    expect(screen.queryByText('Potential, for calibration')).toBeNull();
+  });
+});

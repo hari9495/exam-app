@@ -6,6 +6,7 @@ import {
   EnpsScale,
   GoalTree,
   NineBox,
+  PotentialChoice,
   PollBlock,
   PostCard,
   ProgressRing,
@@ -60,6 +61,18 @@ export const RatingCompanyScale: S = {
       <div style={box}>
         <RatingScale label="Rating" value={v} onChange={setV} levels={[{ value: 1, label: 'Below' }, { value: 2, label: 'Meets' }, { value: 3, label: 'Above' }, { value: 4, label: 'Far above' }]} />
         <ScoreBand score={2.6} band="Solid performer" />
+      </div>
+    );
+  },
+};
+export const Potential: S = {
+  name: 'Potential · the manager’s proposal',
+  render: () => {
+    const [v, setV] = useState<1 | 2 | 3 | null>(null);
+    return (
+      <div style={box}>
+        <PotentialChoice value={v} onChange={setV} />
+        <PotentialChoice value={3} readOnly />
       </div>
     );
   },

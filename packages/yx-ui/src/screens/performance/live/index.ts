@@ -2,8 +2,7 @@
 // Import the stylesheet once: '@yukthix/ui/styles.css'.
 export * from './types';
 export { PerformanceSetupScreen, type PerformanceSetupScreenProps } from './setup';
-export { ReviewsScreen, type ReviewsScreenProps, type ReviewsView } from './reviews';
-export { PeerPanel, FeedbackTasksScreen, PeerFormScreen, ReviewerBlocksScreen, type PeerPanelProps, type FeedbackTasksScreenProps, type PeerFormScreenProps, type ReviewerBlocksScreenProps } from './peer';
+export { FeedbackTasksScreen, PeerFormScreen, ReviewerBlocksScreen, type FeedbackTasksScreenProps, type PeerFormScreenProps, type ReviewerBlocksScreenProps } from './peer';
 // Designed screens made live (builder 2): PRF-08 Quick feedback, PRF-11 1:1s.
 export { QuickFeedbackScreen, VISIBILITY as FEEDBACK_VISIBILITY, type FeedbackAsk, type FeedbackItem as QuickFeedbackItem, type FeedbackVisibility, type LiveQuickFeedback } from '../../growth/perf-people';
 export { OneOnOneScreen, cadenceLabel, type Cadence, type LiveOneOnOnes, type OneOnOne as OneOnOneRow } from '../../growth/perf-people';

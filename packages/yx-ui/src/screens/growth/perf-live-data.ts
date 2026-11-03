@@ -44,6 +44,8 @@ export interface PerfHome {
   period: { id: string; name: string; fromOn: string; toOn: string } | null;
   actions: { id: string; type: string; title: string; who: string; due: string | null; href: string; actionLabel?: string }[];
   myGoals: GoalItem[];
+  /** My other reviews, newest first (released, acknowledged or closed). */
+  earlierReviews?: { id: string; cycle: string }[];
   myReview: { id: string; cycle: string; status: ReviewSummary['status']; stage: string; next: ReviewSummary['next']; employee: string; manager: string; stages: CycleStage[] } | null;
   feedback: { id: string; from: string; text: string; at: string; kind: 'praise' | 'suggestion' }[];
   nextOneOnOne: { id: string; with: string; on: string; agenda: number } | null;
