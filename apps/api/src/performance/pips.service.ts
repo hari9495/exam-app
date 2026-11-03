@@ -10,8 +10,8 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { holdersOf } from '../time/time-core';
 import { LettersService } from '../documents/letters/letters.service';
 import { ExitsService } from '../lifecycle/exits.service';
-import { checkinDates, extensionProblem, isMissed, onLeave, pausedEnd, planProblem, type Span } from './pip-rules';
-import type { PipCheckinDto, PipDecideDto, PipExitDto, PipOutcomeDto, PipProposeDto } from './review-dto';
+import { checkinDates, extendAgainEnd, extendAgainProblem, extensionProblem, isMissed, onLeave, pausedEnd, planProblem, type Span } from './pip-rules';
+import type { PipCheckinDto, PipDecideDto, PipExitDto, PipExtendAgainDto, PipOutcomeDto, PipProposeDto } from './review-dto';
 
 // Performance batch PM8 (M06-BUILD-DESIGN §13; PM-8.01 … 8.03): performance improvement plans.
 //   propose     the manager (or the chain above) proposes for a report: reason, expectations with measures, support,
@@ -20,6 +20,8 @@ import type { PipCheckinDto, PipDecideDto, PipExitDto, PipOutcomeDto, PipPropose
 //               when the employee or the manager is in an active reviewer block (§15.3) — the warning says nothing more
 //   plan        the employee reads and acknowledges it, with a comment (acknowledging is not agreeing); HR issues the
 //               P05 'pip' letter; check-ins on a fixed schedule, the manager records each, the employee may add a note
+//   again       founder answer (a): after "not met" HR may extend the plan once more (perf.pip.after_not_met_days, a
+//               reason); after that only met / not met and the exit case are left
 //   pause       protected leave inside the plan moves its end by the same days (computed, never stored over)
 //   outcome     HR: met, extended once (new end and a reason) or not met; "not met" never opens an exit by itself — HR's
 //               "Start an exit case" opens a company-initiated M01 exit linked to the plan (§4.1 change 4)
@@ -152,6 +154,8 @@ export class PerformancePipsService implements OnModuleInit {
       employeeComment: p.employeeComment,
       extendedFrom: p.extendedFrom ? iso(p.extendedFrom) : null,
       extendReason: p.extendReason,
+      reextendedFrom: p.reextendedFrom ? iso(p.reextendedFrom) : null,
+      reextendReason: p.reextendReason,
       outcomeNote: p.outcomeNote,
       outcomeAt: p.outcomeAt?.toISOString() ?? null,
       letterId: p.letterId,
@@ -162,6 +166,7 @@ export class PerformancePipsService implements OnModuleInit {
       approval: await this.approval(tx, org, v, p, people),
       proposedOn: iso(p.createdAt),
       extendDays: Number(await settingFor(tx, c, 'perf.pip.extend_days', { legalEntityId: '' })),
+      extendAgainDays: Number(await settingFor(tx, c, 'perf.pip.after_not_met_days', { legalEntityId: '' })),
       // §15.3: HR only, and only that there is something to check with the case owner.
       warning: a.hr && (live || p.status === 'proposed') ? await this.blocked(tx, org, [p.employeeId, p.managerEmployeeId], today) : false,
       role: a.own ? 'employee' : lead ? 'manager' : 'hr',
@@ -170,7 +175,8 @@ export class PerformancePipsService implements OnModuleInit {
         checkin: lead && live,
         employeeNote: a.own && live,
         outcome: a.hr && live,
-        extend: a.hr && live && !p.extendedFrom,
+        extend: a.hr && live && !p.extendedFrom && !p.reextendedFrom,
+        extendAgain: a.hr && !extendAgainProblem({ status: p.status, exitCaseId: p.exitCaseId, reextended: Boolean(p.reextendedFrom) }),
         letter: a.hr && live && !p.letterId,
         startExit: a.hr && p.status === 'not_met' && !p.exitCaseId && v.grants.has('lifecycle.exit.manage'),
       },
@@ -404,7 +410,7 @@ export class PerformancePipsService implements OnModuleInit {
       this.versioned(p, dto.version);
       let next: Pip;
       if (dto.outcome === 'extended') {
-        const problem = extensionProblem(iso(p.endsOn), dto.extendTo, Boolean(p.extendedFrom));
+        const problem = extensionProblem(iso(p.endsOn), dto.extendTo, Boolean(p.extendedFrom || p.reextendedFrom));
         if (problem) throw new BadRequestException(problem);
         const dates = checkinDates(iso(p.startsOn), dto.extendTo!, p.checkinEveryDays, iso(p.endsOn));
         await tx.pipCheckin.createMany({ data: dates.map((d) => ({ organizationId: org, pipId: id, dueOn: asDate(d) })), skipDuplicates: true });
@@ -419,6 +425,35 @@ export class PerformancePipsService implements OnModuleInit {
       await audit(tx, c, 'perf.pip.outcome', 'pip', id, { outcome: dto.outcome });
       return this.view(tx, c, v, next, a);
     });
+  }
+
+  /** Founder answer (a): HR extends a plan that was not met, once, by the company's days, with a reason. */
+  async extendAgain(ctx: TenantContext, user: ScopeUser, id: string, dto: PipExtendAgainDto) {
+    const v = await this.viewer(user);
+    const out = await this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const { p, a } = await this.pipOr404(tx, c, v, id);
+      if (!a.hr) throw new ForbiddenException('HR extends a plan.');
+      const problem = extendAgainProblem({ status: p.status, exitCaseId: p.exitCaseId, reextended: Boolean(p.reextendedFrom) });
+      if (problem) throw new ConflictException(problem);
+      this.versioned(p, dto.version);
+      const today = todayIst();
+      const days = Number(await settingFor(tx, c, 'perf.pip.after_not_met_days', { legalEntityId: '' }));
+      const endsOn = extendAgainEnd(iso(p.endsOn), today, days);
+      const dates = checkinDates(today, endsOn, p.checkinEveryDays);
+      await tx.pipCheckin.createMany({ data: dates.map((d) => ({ organizationId: org, pipId: id, dueOn: asDate(d) })), skipDuplicates: true });
+      const n = await tx.pip.updateMany({
+        where: { organizationId: org, id, status: 'not_met', version: dto.version },
+        data: { status: 'extended', endsOn: asDate(endsOn), reextendedFrom: p.endsOn, reextendReason: dto.reason, reextendedBy: v.userId, reextendedAt: new Date(), outcomeNote: null, outcomeBy: null, outcomeAt: null, version: { increment: 1 } },
+      });
+      if (!n.count) throw new ConflictException('Someone else changed this plan. Reload it.');
+      await audit(tx, c, 'perf.pip.extended_again', 'pip', id, { from: iso(p.endsOn), to: endsOn, days, reason: dto.reason, notMetNote: p.outcomeNote });
+      const next = await tx.pip.findFirstOrThrow({ where: { id } });
+      return { view: await this.view(tx, c, v, next, a), tell: [p.employeeId, p.managerEmployeeId], endsOn };
+    });
+    const users = await this.run(ctx, async (tx, c) => (await tx.employee.findMany({ where: { organizationId: c.organizationId, id: { in: out.tell } }, select: { userId: true } })).map((e) => e.userId));
+    await this.tell(ctx.organizationId!, users, 'perf.pip.extended', `An improvement plan was extended to ${out.endsOn}`, `/yx/performance/pips/${id}`);
+    return out.view;
   }
 
   /** §4.1 change 4: HR opens a company-initiated M01 exit (M01's own checks and approval) linked back to the plan. */

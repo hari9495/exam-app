@@ -12,6 +12,7 @@ import { bandFor, bandsProblem, templateProblem, type SectionIn } from './perf-r
 import { DEFAULT_RULES, STAGE_ORDER, eligibilityFor, scoreReview, stagesProblem, type EligibilityRules, type StageIn, type StageKey } from './review-rules';
 import { holdersOf } from '../time/time-core';
 import type { CycleDto, DecideDisagreementDto, EntryDto, OverrideDto } from './review-dto';
+import { reviewPdf } from './review-pdf';
 
 // Performance batch PM4 (M06-BUILD-DESIGN §9; PM-4.01 … 4.04): review cycles and the reviews in them.
 //   cycles     HR with perf.cycle.manage (company-wide) set the period, an active template version (its scale comes
@@ -39,6 +40,7 @@ const num = (x: Prisma.Decimal | null) => (x === null ? null : Number(x.toString
 const addDays = (d: string, n: number) => iso(new Date(asDate(d).getTime() + n * 86_400_000));
 const asJson = (x: unknown) => x as Prisma.InputJsonValue;
 const CHUNK = 500;
+type PlannedSession = { name: string; facilitatorUserId: string; departmentIds: string[] };
 /** A sealed entry keeps its ratings; its texts leave every view but the sealer's (§15.3). */
 const withoutTexts = (answers: Prisma.JsonValue) => Object.fromEntries(Object.entries((answers ?? {}) as Record<string, { rating?: number | null }>).map(([k, a]) => [k, { rating: a?.rating ?? null, text: null }]));
 const STAGE_LABEL: Record<string, string> = { self: 'Self review', manager: 'Manager review', skip: 'Skip-level review', release: 'Waiting for release', done: 'Done' };
@@ -111,6 +113,7 @@ export class PerformanceReviewsService {
       stages: x.stages as StageIn[],
       eligibilityRules: x.eligibilityRules as EligibilityRules,
       peerFeedback: x.peerFeedback ?? null,
+      calibration: (x.calibrationPlan as PlannedSession[] | null) ?? [],
       status: x.status,
       launchedAt: x.launchedAt?.toISOString() ?? null,
       version: x.version,
@@ -152,7 +155,8 @@ export class PerformanceReviewsService {
       const t = await tx.reviewTemplate.findFirst({ where: { organizationId: org, id: dto.templateId, status: 'active' } });
       if (!t) throw new BadRequestException('Choose an active review template.');
       if (t.kind !== dto.kind) throw new BadRequestException(`That template is for ${t.kind.replace('_', '-')} reviews.`);
-      const data = { name: dto.name, kind: dto.kind, periodFrom: asDate(dto.periodFrom), periodTo: asDate(dto.periodTo), templateId: t.id, scaleId: t.scaleId, population: population ? asJson(population) : Prisma.DbNull, stages: asJson(dto.stages.map((s) => ({ key: s.key, dueOn: s.dueOn, optional: Boolean(s.optional) }))), eligibilityRules: asJson({ cutoffMonths: dto.eligibilityRules.cutoffMonths, rateLeavers: dto.eligibilityRules.rateLeavers }) };
+      const plan = dto.calibration === undefined ? undefined : await this.checkPlan(tx, org, dto.calibration);
+      const data = { name: dto.name, kind: dto.kind, periodFrom: asDate(dto.periodFrom), periodTo: asDate(dto.periodTo), templateId: t.id, scaleId: t.scaleId, population: population ? asJson(population) : Prisma.DbNull, stages: asJson(dto.stages.map((s) => ({ key: s.key, dueOn: s.dueOn, optional: Boolean(s.optional) }))), eligibilityRules: asJson({ cutoffMonths: dto.eligibilityRules.cutoffMonths, rateLeavers: dto.eligibilityRules.rateLeavers }), ...(plan !== undefined ? { calibrationPlan: plan.length ? asJson(plan) : Prisma.DbNull } : {}) };
       if (!id) {
         const x = await tx.reviewCycle.create({ data: { organizationId: org, ...data, createdBy: v.userId } });
         await audit(tx, c, 'perf.cycle.created', 'review_cycle', x.id, { name: dto.name });
@@ -167,6 +171,46 @@ export class PerformanceReviewsService {
       await audit(tx, c, 'perf.cycle.updated', 'review_cycle', id, {});
       return this.cycleView(await tx.reviewCycle.findFirstOrThrow({ where: { id } }));
     });
+  }
+
+  /** Users who may facilitate calibration: holders of perf.calibration.facilitate, or a company admin. */
+  private async facilitators(tx: Tx, org: string, ids: string[]) {
+    const holders = new Set(await holdersOf(tx, org, 'perf.calibration.facilitate', '00000000-0000-0000-0000-000000000000', todayIst()));
+    const users = await tx.user.findMany({ where: { organizationId: org, id: { in: ids }, status: 'active' }, select: { id: true, role: true } });
+    return new Set(users.filter((u) => holders.has(u.id) || u.role === 'org_admin').map((u) => u.id));
+  }
+
+  /** PRF-04: the wizard's planned calibration sessions, checked: facilitators who can run them, this company's departments. */
+  private async checkPlan(tx: Tx, org: string, plan: NonNullable<CycleDto['calibration']>): Promise<PlannedSession[]> {
+    if (new Set(plan.map((p) => p.name.toLowerCase())).size !== plan.length) throw new BadRequestException('Give each calibration session its own name.');
+    const ok = await this.facilitators(tx, org, plan.map((p) => p.facilitatorUserId));
+    const bad = plan.find((p) => !ok.has(p.facilitatorUserId));
+    if (bad) throw new BadRequestException(`Choose a facilitator who can run calibration sessions for ${bad.name}.`);
+    const depts = [...new Set(plan.flatMap((p) => p.departmentIds ?? []))];
+    if (depts.length && (await tx.department.count({ where: { organizationId: org, id: { in: depts } } })) !== depts.length) throw new BadRequestException('Choose departments of this company for calibration.');
+    return plan.map((p) => ({ name: p.name, facilitatorUserId: p.facilitatorUserId, departmentIds: [...new Set(p.departmentIds ?? [])] }));
+  }
+
+  /**
+   * PRF-04: a review that is ready goes into an open calibration session of its cycle when one takes the person's
+   * department today (or every department); the first such session wins. Otherwise it stays ready to release.
+   */
+  private async intoCalibration(tx: Tx, org: string, reviewId: string) {
+    const r = await tx.review.findFirst({ where: { organizationId: org, id: reviewId, status: 'ready', calibrationSessionId: null } });
+    if (!r) return null;
+    const sessions = await tx.calibrationSession.findMany({ where: { organizationId: org, cycleId: r.cycleId, status: 'open' }, orderBy: { createdAt: 'asc' } });
+    if (!sessions.length) return null;
+    const today = todayIst();
+    const [a] = await tx.$queryRaw<{ dept: string }[]>`
+      SELECT department_id::text AS dept FROM employee_assignments WHERE organization_id = ${org}::uuid AND employee_id = ${r.employeeId}::uuid AND superseded_at IS NULL
+        AND valid_from <= ${today}::date AND (valid_to IS NULL OR valid_to >= ${today}::date) ORDER BY valid_from DESC LIMIT 1`;
+    const s = sessions.find((x) => {
+      const ids = ((x.population as { departmentIds?: string[] } | null)?.departmentIds ?? []);
+      return !ids.length || (a && ids.includes(a.dept));
+    });
+    if (!s) return null;
+    await tx.review.update({ where: { id: r.id }, data: { status: 'in_calibration', calibrationSessionId: s.id, version: { increment: 1 } } });
+    return s.id;
   }
 
   /** The people of the company on the period, with today's job facts, joining and leaving dates and protected leave. */
@@ -216,6 +260,11 @@ export class PerformanceReviewsService {
     if (bp) problems.push({ text: `Scale: ${bp}`, fix: '/yx/settings/performance' });
     const sp = stagesProblem(x.stages as StageIn[], x.status === 'draft' ? todayIst() : iso(x.createdAt));
     if (sp) problems.push({ text: sp, fix: null });
+    const plan = (x.calibrationPlan as PlannedSession[] | null) ?? [];
+    if (plan.length) {
+      const ok = await this.facilitators(tx, org, plan.map((p) => p.facilitatorUserId));
+      for (const p of plan.filter((p) => !ok.has(p.facilitatorUserId))) problems.push({ text: `The facilitator of calibration session ${p.name} can no longer run sessions. Choose another one.`, fix: null });
+    }
     const rows = await this.eligibleRows(tx, org, x);
     const reviewed = rows.filter((r) => r.e.reviewed);
     if (!reviewed.length) problems.push({ text: 'No one is reviewed in this cycle. Check who is in and the period.', fix: null });
@@ -272,6 +321,11 @@ export class PerformanceReviewsService {
         await tx.reviewStageLog.createMany({ data: made.slice(i, i + CHUNK).map((r) => ({ organizationId: org, reviewId: r.id, stage: first, toOwner: first === 'self' ? r.employeeId : r.managerEmployeeId, event: 'opened', byUserId: v.userId })) });
       }
       await tx.reviewCycle.update({ where: { id }, data: { status: 'launched', launchedAt: new Date(), version: { increment: 1 } } });
+      // PRF-04: the sessions planned in the wizard open now, empty; finished reviews go into them as they become ready.
+      for (const p of (x.calibrationPlan as PlannedSession[] | null) ?? []) {
+        const s = await tx.calibrationSession.create({ data: { organizationId: org, cycleId: id, name: p.name, facilitatorUserId: p.facilitatorUserId, population: p.departmentIds.length ? asJson({ departmentIds: p.departmentIds }) : Prisma.DbNull, createdBy: v.userId } });
+        await audit(tx, c, 'perf.calibration.opened', 'calibration_session', s.id, { reviews: 0, planned: true });
+      }
       await audit(tx, c, 'perf.cycle.launched', 'review_cycle', id, { reviews: made.length, eligibility: rows.length });
       const owners = first === 'self' ? made.map((r) => r.employeeId) : made.map((r) => r.managerEmployeeId);
       const users = (await tx.employee.findMany({ where: { organizationId: org, id: { in: [...new Set(owners)] } }, select: { userId: true } })).map((e) => e.userId);
@@ -593,6 +647,17 @@ export class PerformanceReviewsService {
     });
   }
 
+  /** PRF-05 / PRF-06: the review as a PDF, exactly what this viewer may read on the page (get decides); audited. */
+  async pdf(ctx: TenantContext, user: ScopeUser, id: string) {
+    const r = await this.get(ctx, user, id);
+    const by = await this.run(ctx, async (tx, c) => {
+      await audit(tx, c, 'perf.review.downloaded', 'review', id, { role: r.role, status: r.status });
+      return c.userId ? ((await tx.user.findFirst({ where: { id: c.userId }, select: { name: true } }))?.name ?? '') : '';
+    });
+    const file = await reviewPdf(r, { name: by, at: new Date() });
+    return { file, name: `review-${r.cycle.name}-${r.employee}.pdf`, contentType: 'application/pdf' };
+  }
+
   // Shared with the peer service (PM5): the same access rules, template and answer checks.
   accessOf(tx: Tx, c: CompanyContext, v: Viewer, r: Review) {
     return this.access(tx, c, v, r);
@@ -701,6 +766,7 @@ export class PerformanceReviewsService {
       const n = await tx.review.updateMany({ where: { id, version: r.version }, data: { ...(patch as Prisma.ReviewUpdateManyMutationInput), stage: next, remindedOn: null, version: { increment: 1 } } });
       if (!n.count) throw new ConflictException('Someone else changed this review. Reload it.');
       await tx.reviewStageLog.createMany({ data: log });
+      if (next === 'release') await this.intoCalibration(tx, org, id);
       await audit(tx, c, `perf.review.${stage}_submitted`, 'review', id, {});
       if (next === 'manager') return { notify: [(await tx.employee.findFirst({ where: { id: r.managerEmployeeId }, select: { userId: true } }))?.userId ?? null], type: 'perf.review.stage_due' };
       return { notify: [] as (string | null)[], type: '' };
@@ -727,6 +793,7 @@ export class PerformanceReviewsService {
       if (agree) {
         await tx.reviewEntry.upsert({ where: { reviewId_stage_authorUserId: { reviewId: id, stage: 'skip', authorUserId: v.userId! } }, create: { organizationId: org, reviewId: id, stage: 'skip', authorUserId: v.userId!, authorEmployeeId: a.me, relationship: 'skip', comment: text, status: 'submitted', submittedAt: new Date() }, update: { comment: text, status: 'submitted', submittedAt: new Date(), version: { increment: 1 } } });
         await tx.review.update({ where: { id }, data: { stage: 'release', status: 'ready', remindedOn: null, version: { increment: 1 } } });
+        await this.intoCalibration(tx, org, id);
         await tx.reviewStageLog.create({ data: { organizationId: org, reviewId: id, stage: 'skip', fromOwner: a.me, event: 'submitted', byUserId: v.userId } });
         await audit(tx, c, 'perf.review.skip_agreed', 'review', id, {});
         return null;

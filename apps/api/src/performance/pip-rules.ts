@@ -57,6 +57,20 @@ export function extensionProblem(endsOn: string, extendTo: string | null | undef
   return null;
 }
 
+/**
+ * Founder answer (a), 3 Nov 2026: after "not met" HR may extend the plan once more, before any exit case is opened. Then
+ * the only steps left are closing it (met or not met) or opening an exit case.
+ */
+export function extendAgainProblem(p: { status: string; exitCaseId: string | null; reextended: boolean }): string | null {
+  if (p.status !== 'not_met') return 'Only a plan that was not met is extended again.';
+  if (p.exitCaseId) return 'An exit case is open for this plan, so it is not extended again.';
+  if (p.reextended) return 'This plan was already extended after "not met". Close it or open an exit case.';
+  return null;
+}
+
+/** The new end of a plan extended again: the company's days from today, or from the planned end if that is later. */
+export const extendAgainEnd = (endsOn: string, today: string, days: number) => addDays(endsOn > today ? endsOn : today, days);
+
 /** A check-in is missed when it was not held within the grace days after it was due (and not during protected leave). */
 export const MISSED_AFTER_DAYS = 3;
 export const isMissed = (dueOn: string, today: string, leave: readonly Span[]) => days(dueOn, today) > MISSED_AFTER_DAYS && !onLeave(dueOn, leave);

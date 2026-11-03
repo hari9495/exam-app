@@ -6,7 +6,7 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import type { ScopeUser } from '../access/scope';
-import { PipAcknowledgeDto, PipCheckinDto, PipDecideDto, PipExitDto, PipListQueryDto, PipOutcomeDto, PipProposeDto } from './review-dto';
+import { PipAcknowledgeDto, PipCheckinDto, PipDecideDto, PipExitDto, PipExtendAgainDto, PipListQueryDto, PipOutcomeDto, PipProposeDto } from './review-dto';
 import { PerformancePipsService } from './pips.service';
 
 // Performance batch PM8 (M06-BUILD-DESIGN §19 "PIPs"). A plan is about one person: the employee, their manager chain and
@@ -68,6 +68,14 @@ export class PerformancePipsController {
   @RequirePermissions('perf.pip.manage')
   outcome(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PipOutcomeDto) {
     return this.svc.outcome(ctx, this.user(req), id, dto);
+  }
+
+  /** Founder answer (a): one more extension after "not met" (HR, with a reason; checked again by the service). */
+  @Post('pips/:id/extend-again')
+  @HttpCode(200)
+  @RequirePermissions('perf.pip.manage')
+  extendAgain(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PipExtendAgainDto) {
+    return this.svc.extendAgain(ctx, this.user(req), id, dto);
   }
 
   @Post('pips/:id/start-exit')

@@ -6,6 +6,24 @@ import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsNumber, 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
+/** PRF-04: a calibration session planned in the cycle wizard; it is made when the cycle launches. */
+export class PlannedSessionDto {
+  @trim()
+  @IsString()
+  @Length(2, 100)
+  name!: string;
+
+  @IsUUID()
+  facilitatorUserId!: string;
+
+  /** Departments whose finished reviews go into the session; empty = every finished review of the cycle. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200)
+  @IsUUID('all', { each: true })
+  departmentIds?: string[];
+}
+
 export class StageDto {
   @IsIn(['self', 'manager', 'skip'])
   key!: 'self' | 'manager' | 'skip';
@@ -62,6 +80,14 @@ export class CycleDto {
   @ValidateNested()
   @Type(() => EligibilityRulesDto)
   eligibilityRules!: EligibilityRulesDto;
+
+  /** PRF-04: calibration sessions set up in the wizard (left out keeps them; an empty list removes them). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => PlannedSessionDto)
+  calibration?: PlannedSessionDto[];
 
   @IsOptional()
   @IsInt()
@@ -617,6 +643,17 @@ export class PipOutcomeDto {
   @IsOptional()
   @Matches(ISO)
   extendTo?: string | null;
+
+  @IsInt()
+  version!: number;
+}
+
+/** Founder answer (a): extend a plan once more after "not met"; the days are the company's setting. */
+export class PipExtendAgainDto {
+  @trim()
+  @IsString()
+  @Length(10, 1000, { message: 'Give the reason for one more extension, in at least 10 characters.' })
+  reason!: string;
 
   @IsInt()
   version!: number;

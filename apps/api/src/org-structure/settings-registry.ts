@@ -81,6 +81,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // PRF-10 market data (founder answer 12): a salary survey older than this shows as stale on the comp sheet.
   'perf.comp.market_stale_months': { label: 'Performance: market data is out of date after (months)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['6', '12', '18', '24'], default: '12' },
   'perf.pip.extend_days': { label: 'Performance: an improvement plan is extended by (days)', scopes: ['tenant'], dated: false, values: ['15', '30', '45', '60'], default: '30' },
+  // Founder answer (a), 3 Nov 2026: after "not met", HR may extend a plan once more, by this many days.
+  'perf.pip.after_not_met_days': { label: 'Performance: after "not met", an improvement plan may be extended once more by (days)', scopes: ['tenant'], dated: false, values: ['15', '30', '45', '60'], default: '30' },
   // Performance builder 3 (PRF-15, PRF-16, PRF-17): how long after HR's answer a dispute may be escalated; how often the
   // manager coach writes nudges (each manager may still turn them off); whether managers get the AI review assistant.
   'perf.dispute.escalate_days': { label: 'Performance: days after HR answers a disagreement to escalate it', scopes: ['tenant'], dated: false, values: ['7', '15', '30'], default: '15' },

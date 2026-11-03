@@ -83,6 +83,7 @@ describe('notification catalog', () => {
       'perf.pip.warning',
       'perf.pip.checkin_missed',
       'perf.pip.handed_over',
+      'perf.pip.extended',
     ];
     for (const k of expected) expect(keys).toContain(k);
     expect(NOTIFICATION_TYPES.length).toBe(expected.length);

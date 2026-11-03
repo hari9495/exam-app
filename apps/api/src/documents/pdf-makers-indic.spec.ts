@@ -8,6 +8,7 @@ import { PayDocumentsService } from '../payroll/documents.service';
 import { renderPayslipPdf } from '../payroll/payslip-pdf';
 import { renderRegister } from '../payroll/statutory-registers.service';
 import { myDataPdf } from '../people/my-data-pdf';
+import { reviewPdf } from '../performance/review-pdf';
 import { exportResultsToPdf } from '../reports/exporters/pdf-exporter';
 import type { ExportResultRow } from '../reports/reports.service';
 import { pdf as deskPdf } from '../service-desk/documents.service';
@@ -137,6 +138,30 @@ describe('Indian-script names in every PDF', () => {
         '700.00',
       ),
       [ta, hi, te, kn],
+    );
+  });
+
+  it('performance review (PRF-05 / PRF-06)', async () => {
+    const answers = { q1: { rating: 4, text: ml }, q2: { rating: null, text: bn } };
+    expectNamesIn(
+      await reviewPdf(
+        {
+          cycle: { name: `${ta} H1`, periodFrom: '2026-04-01', periodTo: '2026-09-30' },
+          employee: hi,
+          manager: te,
+          status: 'released',
+          template: { name: kn, sections: [{ id: 's1', title: gu, questions: [{ id: 'q1', text: 'Delivery', answer: 'rating' }, { id: 'q2', text: 'Notes', answer: 'text' }] }], levels: [{ value: 4, label: 'Exceeds' }] },
+          self: { answers, overallRating: null, comment: null },
+          managerEntry: { answers, overallRating: 4, comment: ml },
+          finalScore: 4,
+          band: 'Exceeds',
+          sectionScores: [{ title: gu, score: 4 }],
+          skipComment: null,
+          released: { at: '2026-11-03T05:00:00.000Z', acknowledgedAt: null, acknowledgeComment: null },
+        },
+        { name: ta, at: new Date('2026-11-03T05:00:00Z') },
+      ),
+      [ta, hi, te, kn, ml, bn, gu],
     );
   });
 

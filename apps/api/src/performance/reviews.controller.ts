@@ -1,6 +1,6 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { Request } from 'express';
+import { Request, Response } from 'express';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
@@ -121,6 +121,15 @@ export class PerformanceReviewsController {
   @Get('reviews/:id')
   get(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.svc.get(ctx, this.user(req), id);
+  }
+
+  /** PRF-05 / PRF-06: the review as a PDF for anyone who may open it (the service decides per review; audited). */
+  @Get('reviews/:id/pdf')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  async pdf(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    const out = await this.svc.pdf(ctx, this.user(req), id);
+    res.set({ 'Content-Type': out.contentType, 'Content-Disposition': `attachment; filename="${out.name.replace(/[^A-Za-z0-9._-]/g, '_')}"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+    return new StreamableFile(out.file);
   }
 
   @Put('reviews/:id/entries/self')
