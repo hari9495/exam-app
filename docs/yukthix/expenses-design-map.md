@@ -386,3 +386,10 @@ month, using the approved amount once decided; (3) keep "A bill without a receip
 shows the category × grade × city-tier grid for policies that apply to a single grade and lists the rest below it.
 Also: the foreign-rate tolerance (today `FX_TOLERANCE_PCT` = 3 in API code) becomes a company setting with that default.
 Card statement import (EXP-08) waits for a bank-format decision.
+
+## Founder answers, 3 Nov 2026 (Expenses round 2, "all good")
+Build: HR gets a view-only expense policy key (`expense.policy.view`): HR sees the limits, rates and tabs without editing.
+Keep as built: "Paid through" counts a claim with no route yet as payroll; team claims = direct reports only; the team list
+is read-only, "Open" only where the manager already approves; PDF receipts show a "PDF" tile until a vetted PDF viewer is
+chosen; recovery amounts only for the employee and finance. Card statement import (EXP-08): format decision pending.
+Demo: the starters were copied into demo-org by admin-tester on 3 Nov 2026 (founder OK).
