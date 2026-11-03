@@ -654,3 +654,10 @@ industrial disputes): one founder decision session per area before any server wo
 ## Founder answers, 3 Nov 2026 (HLP-02, "all good")
 Keep as built: "Merge into another ticket" opens the ticket page; "Move to queue" only to desks this desk may hand
 tickets to, with a reason; a row click opens the quick view, "Open ticket" goes to the ticket page.
+
+## Founder answers, 3 Nov 2026 (HLP-03 and HLP-04, "all good")
+HLP-03, keep as built: "Change queue" and "Merge" through the Move and Related tickets cards (target and reason needed);
+"Related articles" is the live "Articles used" card; the Details card is editable for agents, plain text for others.
+HLP-04: keep audience per space (group audiences when a customer needs them); one category per article with sections;
+an author sends for review and only a publisher who did not write the version publishes. Build: the article review
+interval becomes a company setting in Desk set-up (default 12 months), instead of a fixed product rule.
