@@ -51,7 +51,7 @@ test('raise → assign → reply → resolve', async ({ browser }) => {
   await expect(agent.getByRole('heading', { name: subject })).toBeVisible();
   const take = agent.getByRole('button', { name: 'Assign to me' });
   if (await take.isVisible()) await take.click();
-  await expect(agent.getByRole('combobox', { name: 'Owner', exact: true })).toContainText('Suresh Pillai (me)');
+  await expect(agent.getByRole('combobox', { name: 'Assignee', exact: true })).toContainText('Suresh Pillai (me)');
 
   await agent.getByRole('tab', { name: 'Internal note' }).click();
   await writeInEditor(agent, 'Checked the proxy logs: her account is not in the intranet group.');

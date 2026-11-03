@@ -2,10 +2,9 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { LinksFrame, type StoryLink } from '../_kit/story-frame';
 import { pick, play, press, pressFirst, tab, type } from '../_kit/story-play';
 import { HelpDrawer, MyTicketScreen } from './help';
-import { TicketScreen } from './ticket';
 import { DeskSetupScreen } from './setup';
 import { CAL_ITEMS, CANNED, COMPLIANCE, CONTEXT, DESK, DETAIL, HR_DESK, MY_ROWS, MY_TICKET, RAISE_DESKS, ROWS, SLA_SETUP, TEMPLATES, TICKET, TIMELINE, WORK } from './data';
-import { ResolveDialog, TicketWorkRail } from './work';
+import { ResolveDialog } from './work';
 import { MyCalendarScreen } from './calendar';
 import { SlaTab } from './setup-sla';
 import { BannersTab, EmailTab, PortalTab, type EmailSetupProps } from './setup-channels';
@@ -37,70 +36,6 @@ export const MyTicket: S = {
   render: () => shell('desk-help', <MyTicketScreen state="ready" ticket={MY_TICKET} onBack={() => {}} onReply={noop} onUpload={async () => ({ ...MY_TICKET.attachments[0], id: 'n', scanStatus: 'pending' })} onOpenFile={noop} onAddWatcher={noop} />),
 };
 
-const rail = (ticket: typeof TICKET) => (
-  <TicketWorkRail
-    ticket={ticket}
-    detail={DETAIL}
-    work={WORK}
-    desks={[DESK]}
-    meId="u-suresh"
-    onFindTicket={async () => []}
-    onOpenTicket={() => {}}
-    onLink={noop}
-    onUnlink={noop}
-    onMerge={noop}
-    onSplit={async () => ({ id: 'n' })}
-    onSetParent={noop}
-    onSetTracker={noop}
-    onStartSide={noop}
-    onSideMessage={noop}
-    onCloseSide={noop}
-    onAddTask={noop}
-    onUpdateTask={noop}
-    onBreachReason={noop}
-    onExclude={noop}
-    onRemind={noop}
-    onSnooze={noop}
-    onDoneReminder={noop}
-    onUnmask={async () => 'ABCPE1234F'}
-  />
-);
-const workspace = (ticket = TICKET, others = [{ userId: 'u-farah', name: 'Farah Khan', typing: true }]) =>
-  shell(
-    'desk-tickets',
-    <TicketScreen
-      state="ready"
-      ticket={ticket}
-      detail={DETAIL}
-      canned={CANNED}
-      timeline={TIMELINE}
-      context={CONTEXT}
-      others={others}
-      meName="Suresh Pillai"
-      meId="u-suresh"
-      onBack={() => {}}
-      onUpdate={noop}
-      onAssign={noop}
-      onPost={noop}
-      onUpload={async () => ({ ...TICKET.attachments[0], id: 'n', scanStatus: 'pending', messageId: null })}
-      onOpenFile={noop}
-      onAddTime={noop}
-      onRunScenario={noop}
-      onConvert={noop}
-      onAddCollaborator={noop}
-      onRemoveCollaborator={noop}
-      onAddWatcher={noop}
-      onRemoveWatcher={noop}
-      onSearchPeople={async () => []}
-      onTyping={() => {}}
-      onOpenTicket={() => {}}
-      rail={rail(ticket)}
-      onResolveClick={() => {}}
-      onEscalateClick={() => {}}
-    />,
-  );
-export const Workspace: S = { name: 'HLP-03 Ticket workspace · agent, colleague typing', render: () => workspace() };
-export const WorkspaceCollaborator: S = { name: 'HLP-03 Ticket workspace · collaborator (notes only)', render: () => workspace({ ...TICKET, access: 'collaborator', canWork: false }, []) };
 
 export const Setup: S = {
   name: 'Desk set-up',
@@ -194,7 +129,6 @@ export const Customers: S = {
     ),
 };
 export const HelpDrawerOpen: S = { name: 'US-B-100 In-app Help drawer', render: () => shell('desk-tickets', <HelpDrawer open onOpenChange={() => {}} desks={RAISE_DESKS} tickets={MY_ROWS} banners={MY_BANNERS} onMeToo={noop} onRaise={async () => ({ id: 'x', number: 'IT-1005' })} ticketHref={(id) => `#${id}`} />) };
-export const WorkspaceUnverified: S = { name: 'SD-1.19 Ticket workspace · sender not verified, customer', render: () => workspace({ ...TICKET, channel: 'email', senderVerified: false, customer: { account: { id: 'ac1', name: 'Sunrise Retail' }, plan: 'gold' }, product: { id: 'pr1', name: 'Kaveri billing app' }, fields: { order_number: '4471' } }, []) };
 
 const portal = (over: Partial<PortalScreenProps>) => (
   <PortalScreen
@@ -222,7 +156,6 @@ export const PortalHomeStory: S = { name: 'US-G-021 Outside portal · my tickets
 export const PortalTicketStory: S = { name: 'US-G-021 Outside portal · one ticket', render: () => portal({ me: ME, ticket: PORTAL_TICKET, ticketState: 'ready' }) };
 
 // Pressed too early: the buttons stay pressable and say what is missing (founder rule, no greyed-out buttons).
-export const ReplyTooEarly: S = { name: 'HLP-03 Ticket workspace · Send reply pressed with nothing written', render: () => workspace(), play: play(press('Send reply')) };
 export const ResolveTooEarly: S = { name: 'SD-1.10 Resolve · pressed without a code or note', render: () => shell('desk-tickets', <ResolveDialog open onOpenChange={() => {}} ticket={TICKET} codes={TEMPLATES.resolutionCodes} required linked={0} onResolve={noop} />), play: play(press('Resolve')) };
 export const NewDeskTooEarly: S = { name: 'Desk set-up · Create desk pressed with nothing filled', render: Setup.render, play: play(press('New desk'), press('Create desk')) };
 export const HolidayTooEarly: S = { name: 'Desk set-up · Add holiday pressed with no date or name', render: Setup.render, play: play(tab('Calendars'), press('Add holiday')) };

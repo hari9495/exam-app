@@ -256,6 +256,9 @@ export interface TicketDetail {
   canWork: boolean;
   canNote: boolean;
   canAssignOthers: boolean;
+  /** HLP-03: a solved ticket closes by itself on this day (the desk's setting); the requester's rating once given. */
+  closesOn?: string | null;
+  rating?: number | null;
   desk: { id: string; key: string; name: string; audience: 'employee' | 'customer' };
   type: { id: string; name: string } | null;
   status: { id: string; label: string } | null;

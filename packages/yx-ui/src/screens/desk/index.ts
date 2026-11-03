@@ -8,7 +8,10 @@ export { topicOptions, rateCandidate, type LiveHelp } from '../ops/helpdesk-live
 // HLP-02 Agent desk: the designed screen with `live` (Helpdesk design wiring, round 2).
 export { AgentDeskScreen } from '../ops/helpdesk';
 export { BUILT_IN_VIEWS, toFilters, type TicketQuery, type LiveAgentDesk, type BulkAction, type BulkResult } from '../ops/helpdesk-desk-live';
-export { TicketScreen, eventText, type TicketScreenProps } from './ticket';
+export { eventText } from './ticket';
+// HLP-03 Ticket workspace: the designed screen with `live` (Helpdesk design wiring, round 3).
+export { TicketWorkspaceScreen } from '../ops/helpdesk';
+export { activityOf, type LiveTicket } from '../ops/helpdesk-ticket-live';
 export { DeskSetupScreen, type DeskSetupScreenProps } from './setup';
 export { DeskPage, STATE_LABEL, PRIORITY_LABEL, OPEN_STATES, fillCanned, minutesText, when, browserTimeZone, CopyValue } from './desk-kit';
 export { TicketWorkRail, SlaCard, TasksCard, FamilyCard, SideCard, RemindCard, MaskedCard, ResolveDialog, EscalateDialog, TaskListCard, type TicketWorkProps } from './work';

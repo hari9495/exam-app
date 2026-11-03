@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { HelpDrawer, MyTicketScreen } from './help';
-import { TicketScreen, eventText, type TicketScreenProps } from './ticket';
+import { eventText } from './ticket';
 import { fillCanned, minutesText } from './desk-kit';
 import { CAL_ITEMS, CANNED, COMPLIANCE, CONTEXT, DESK, DETAIL, MY_ROWS, MY_TICKET, RAISE_DESKS, ROWS, SLA_SETUP, TEMPLATES, TICKET, TIMELINE, WORK } from './data';
 import { ResolveDialog, TicketWorkRail, type TicketWorkProps } from './work';
@@ -32,70 +32,6 @@ describe('HLP-01 my ticket', () => {
     render(<MyTicketScreen state="ready" ticket={MY_TICKET} onBack={() => {}} onReply={ok()} onUpload={vi.fn()} onOpenFile={ok()} onAddWatcher={ok()} />);
     expect(screen.queryByText(/Same router model/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /vpn-log.txt/ })).toBeInTheDocument();
-  });
-});
-
-describe('HLP-03 ticket workspace', () => {
-  const props = (over: Partial<TicketScreenProps> = {}): TicketScreenProps => ({
-    state: 'ready',
-    ticket: TICKET,
-    detail: DETAIL,
-    canned: CANNED,
-    timeline: TIMELINE,
-    context: CONTEXT,
-    others: [],
-    meName: 'Suresh Pillai',
-    meId: 'u-suresh',
-    onBack: () => {},
-    onUpdate: ok(),
-    onAssign: ok(),
-    onPost: ok(),
-    onUpload: vi.fn(),
-    onOpenFile: ok(),
-    onAddTime: ok(),
-    onRunScenario: ok(),
-    onConvert: ok(),
-    onAddCollaborator: ok(),
-    onRemoveCollaborator: ok(),
-    onAddWatcher: ok(),
-    onRemoveWatcher: ok(),
-    onSearchPeople: async () => [],
-    onTyping: () => {},
-    onOpenTicket: () => {},
-    ...over,
-  });
-
-  it('an agent sees reply and note; notes are marked internal; a colleague on the ticket is shown', () => {
-    render(<TicketScreen {...props({ others: [{ userId: 'u-farah', name: 'Farah Khan', typing: true }] })} />);
-    expect(screen.getByRole('tab', { name: 'Reply to Divya' })).toBeInTheDocument();
-    expect(screen.getByText(/Internal note: Divya never sees it/)).toBeInTheDocument();
-    expect(screen.getByText('Farah Khan is writing on this ticket')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Resolve' })).toBeInTheDocument();
-  });
-
-  it('a collaborator gets notes only and no work controls', () => {
-    render(<TicketScreen {...props({ ticket: { ...TICKET, access: 'collaborator', canWork: false } })} />);
-    expect(screen.queryByRole('tab', { name: /Reply to/ })).not.toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Internal note' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Resolve' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Log time' })).not.toBeInTheDocument();
-  });
-
-  it('Send reply pressed with nothing written says so and sends nothing', async () => {
-    const onPost = ok();
-    render(<TicketScreen {...props({ onPost })} />);
-    await ue.click(screen.getByRole('button', { name: 'Send reply' }));
-    expect(screen.getByText('Write the reply first.')).toBeInTheDocument();
-    expect(onPost).not.toHaveBeenCalled();
-  });
-
-  it('changing priority asks for a reason first', async () => {
-    const onUpdate = ok();
-    render(<TicketScreen {...props({ onUpdate })} />);
-    await ue.click(screen.getByRole('radio', { name: 'P1' }));
-    await ue.type(screen.getByRole('textbox', { name: /Reason/ }), 'CEO cannot work');
-    await ue.click(screen.getByRole('button', { name: 'Change priority' }));
-    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ priority: 1, priorityReason: 'CEO cannot work' }));
   });
 });
 
@@ -197,11 +133,6 @@ describe('batch 2 panels (SD-1.09 … SD-1.17)', () => {
 });
 
 describe('batch 3 (SD-1.18 … SD-1.23, SD-1.28)', () => {
-  const ticketProps = (over: Partial<TicketScreenProps> = {}): TicketScreenProps => ({
-    state: 'ready', ticket: TICKET, detail: DETAIL, canned: CANNED, timeline: TIMELINE, context: CONTEXT, others: [], meName: 'Suresh Pillai', meId: 'u-suresh',
-    onBack: () => {}, onUpdate: ok(), onAssign: ok(), onPost: ok(), onUpload: vi.fn(), onOpenFile: ok(), onAddTime: ok(), onRunScenario: ok(), onConvert: ok(), onAddCollaborator: ok(), onRemoveCollaborator: ok(), onAddWatcher: ok(), onRemoveWatcher: ok(), onSearchPeople: async () => [], onTyping: () => {}, onOpenTicket: () => {},
-    ...over,
-  });
   const email = (over: Partial<EmailSetupProps> = {}): EmailSetupProps => ({
     state: 'ready',
     mailboxes: MAILBOXES,
@@ -306,15 +237,6 @@ describe('batch 3 (SD-1.18 … SD-1.23, SD-1.28)', () => {
     expect(screen.getByText('Choose the date.')).toBeInTheDocument();
     expect(screen.getByText('Name the holiday.')).toBeInTheDocument();
     expect(onAddHoliday).not.toHaveBeenCalled();
-  });
-
-  it('ticket: an unproven sender gets a clear warning; customer, plan, product and source are shown', () => {
-    render(<TicketScreen {...ticketProps({ ticket: { ...TICKET, senderVerified: false, customer: { account: { id: 'ac1', name: 'Sunrise Retail' }, plan: 'gold' }, product: { id: 'pr1', name: 'Kaveri billing app' }, screen: '/yx/people/directory', fields: { screen: '/yx/people/directory', order_number: '4471' } } })} />);
-    expect(screen.getByText('We could not prove who sent this email. Do not share private details until you are sure.')).toBeInTheDocument();
-    expect(screen.getByText('Sunrise Retail')).toBeInTheDocument();
-    expect(screen.getByText('Kaveri billing app')).toBeInTheDocument();
-    expect(screen.getByText('Raised from')).toBeInTheDocument();
-    expect(screen.getByText('Order number (from the email)')).toBeInTheDocument();
   });
 
   it('help drawer: Raise ticket pressed too early says what is missing', async () => {

@@ -1,17 +1,12 @@
-import { useState } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { choose, fails, never, ok, pick, play, press, pressFirst, tab, tick, type } from '../_kit/story-play';
 import { CatalogScreen, RequestTracker, type CatalogScreenProps } from './catalog';
 import { CatalogAdmin, type CatalogAdminProps } from './catalog-admin';
 import { ArticleBody, type KbArticleView } from './help-kb';
 import { AgentChatScreen, RequesterChatScreen, type AgentChatProps, type RequesterChatProps } from './chat';
-import { ChatQueuesAdmin, DeskOrgAdmin, LifecycleAdmin, MyDocumentsCard, SchedulesAdmin, TicketEsmRail, type DeskOrgAdminProps, type TicketEsmRailProps } from './esm2';
+import { ChatQueuesAdmin, DeskOrgAdmin, LifecycleAdmin, MyDocumentsCard, SchedulesAdmin, type DeskOrgAdminProps } from './esm2';
 import { MessagingAdmin, TeamScreen, type TeamScreenProps } from './esm3';
-import { RequestPanel } from './request-panel';
 import { RulesAdmin, type RulesAdminProps } from './rules-admin';
-import { TicketKbCard, type TicketKbCardProps } from './ticket-kb';
-import { EscalateDialog } from './work';
-import { DETAIL, TICKET } from './data';
 import {
   ADMIN_CHAT_QUEUES,
   AVAILABILITY,
@@ -23,15 +18,12 @@ import {
   CHAT_ENDED,
   CHAT_QUEUED,
   CHAT_QUEUES,
-  DOCS_VIEW,
   DOCUMENTS,
   DOC_TEMPLATES,
   FORECAST,
-  HR_SUMMARY,
   INTERACTIONS,
   JOINER_GUIDE,
   JOURNEYS,
-  KB_LINKS,
   LAPTOP_PAGE,
   LIFECYCLE,
   MSG_SETUP,
@@ -42,11 +34,8 @@ import {
   RULE_RUNS,
   RULE_SCHEMA,
   SEQUENCES,
-  SEQUENCE_RUNS,
-  SHARES,
   SHIFTS,
   TEAM,
-  TICKET_REQUEST,
   WEBHOOKS,
   WIDGETS,
 } from './esm-data';
@@ -79,9 +68,6 @@ export const Tracker: S = { name: 'My request · tracker with the approval route
 export const TrackerCancel: S = { name: 'My request · cancel, asks why', render: () => <RequestTracker request={MY_REQUEST} onCancel={ok} timeZone="Asia/Kolkata" />, play: play(pressFirst('Cancel this')) };
 export const TrackerCancelFailed: S = { name: 'My request · cancel refused', render: () => <RequestTracker request={MY_REQUEST} onCancel={fails('The laptop is already being imaged; ask IT to stop it.')} timeZone="Asia/Kolkata" />, play: play(pressFirst('Cancel this'), type(/Why/, 'Got a laptop from the spare pool'), press(/^Cancel/)) };
 export const TrackerReadOnly: S = { name: 'My request · cannot cancel any more', render: () => <RequestTracker request={{ ...MY_REQUEST, items: MY_REQUEST.items.map((i) => ({ ...i, canCancel: false, stage: 'fulfilment' as const })) }} timeZone="Asia/Kolkata" /> };
-export const Panel: S = { name: 'Ticket · request panel (agent can ask for approval)', render: () => <RequestPanel view={TICKET_REQUEST} canAsk onAsk={ok} onFindPeople={picks} /> };
-export const PanelAsk: S = { name: 'Ticket · ask for approval, open', render: () => <RequestPanel view={TICKET_REQUEST} canAsk onAsk={ok} onFindPeople={picks} />, play: play(press(/^Ask for approval/)) };
-export const PanelReadOnly: S = { name: 'Ticket · request panel, read only', render: () => <RequestPanel view={TICKET_REQUEST} canAsk={false} onAsk={ok} onFindPeople={picks} /> };
 
 const docs = (over: Partial<Parameters<typeof MyDocumentsCard>[0]> = {}) => <MyDocumentsCard documents={DOCUMENTS} onSendCode={async () => ({ to: 'ar****@kaverifoods.test', minutes: 5 })} onSign={ok} onDecline={ok} {...over} />;
 export const Documents: S = { name: 'My request · documents to sign', render: () => docs() };
@@ -146,49 +132,6 @@ export const AgentChatEmpty: S = { name: 'Live chat · agent, no chats', render:
 export const AgentChatLoading: S = { name: 'Live chat · agent, loading', render: () => agent({ state: 'loading' }) };
 export const AgentChatError: S = { name: 'Live chat · agent, could not load', render: () => agent({ state: 'error', onRetry: () => undefined }) };
 export const AgentChatNoAccess: S = { name: 'Live chat · no access', render: () => agent({ state: 'no-access' }) };
-
-// ------------------------------------------------------------------ Ticket side cards and dialogs
-const rail = (over: Partial<TicketEsmRailProps> = {}) => (
-  <TicketEsmRail
-    canWork
-    canMove
-    hr={HR_SUMMARY}
-    desks={[{ id: 'd-it', name: 'IT help desk' }, { id: 'd-hr', name: 'HR help desk' }]}
-    currentDeskId="d-it"
-    shares={SHARES}
-    categories={() => [{ id: 'cat-pay', name: 'Payslips', sensitive: true }, { id: 'cat-let', name: 'Letters', sensitive: false }]}
-    sensitive={false}
-    onMove={ok}
-    onShare={ok}
-    onUnshare={ok}
-    documents={DOCS_VIEW}
-    onMakeDocument={ok}
-    onWithdrawDocument={ok}
-    sequences={SEQUENCES}
-    runs={SEQUENCE_RUNS}
-    onStartSequence={ok}
-    onStopSequence={ok}
-    {...over}
-  />
-);
-export const Rail: S = { name: 'Ticket · HR summary, sharing, documents, follow-ups', render: () => rail() };
-export const RailReadOnly: S = { name: 'Ticket · side cards, someone who cannot work it', render: () => rail({ canWork: false, canMove: false }) };
-export const RailMoveMissing: S = { name: 'Ticket · Move pressed with no reason', render: () => rail(), play: play(choose('Move'), press('Move ticket')) };
-export const RailSensitive: S = { name: 'Ticket · sensitive ticket (no HR details shown)', render: () => rail({ sensitive: true, hr: null }) };
-const kb = (over: Partial<TicketKbCardProps> = {}) => <TicketKbCard links={KB_LINKS} solved={false} canWork spaces={[{ id: 's1', name: 'IT help' }]} onSolvedBy={ok} onFlag={ok} onMakeArticle={async () => ({ id: 'a9' })} onOpenArticle={() => undefined} {...over} />;
-export const Kb: S = { name: 'Ticket · articles linked', render: () => kb() };
-export const KbFlag: S = { name: 'Ticket · flag an article out of date', render: () => kb(), play: play(pressFirst('Out of date')) };
-export const KbSolved: S = { name: 'Ticket · solved by an article', render: () => kb({ solved: true }) };
-export const KbNone: S = { name: 'Ticket · no articles yet (make one)', render: () => kb({ links: [] }) };
-export const KbMakeFailed: S = { name: 'Ticket · make an article refused', render: () => kb({ solved: true, onMakeArticle: fails('You cannot write in the IT help space.') }), play: play(pick(/^Make an article/, 'IT help'), press('Make draft article')) };
-function Escalate({ onEscalate = ok as never }: { onEscalate?: (i: { tier: string; groupId?: string; reason: string }) => Promise<void> }) {
-  const [open, setOpen] = useState(true);
-  return <EscalateDialog open={open} onOpenChange={setOpen} ticket={TICKET} detail={DETAIL} onEscalate={onEscalate} />;
-}
-export const EscalateOpen: S = { name: 'Escalate · open', render: () => <Escalate /> };
-export const EscalateFilled: S = { name: 'Escalate · reason given', render: () => <Escalate />, play: play(type(/^Reason/, 'Needs the network team: the core switch at Hosur')) };
-export const EscalateMissing: S = { name: 'Escalate · pressed with no reason', render: () => <Escalate />, play: play(press(/^Move to/)) };
-export const EscalateFailed: S = { name: 'Escalate · the server refuses', render: () => <Escalate onEscalate={fails('L3 has no group on this desk yet.')} />, play: play(type(/^Reason/, 'Needs the network team'), press(/^Move to/)) };
 
 // ------------------------------------------------------------------ Desk set-up admin cards
 export const Lifecycle: S = { name: 'Set-up · ticket lifecycle designer', render: () => <LifecycleAdmin setup={LIFECYCLE} onCreate={ok} onSave={ok} onCheck={async () => ({ ok: true, problem: null })} onPublish={ok} onRetire={ok} /> };

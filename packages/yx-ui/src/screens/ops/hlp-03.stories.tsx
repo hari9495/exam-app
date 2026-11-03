@@ -1,7 +1,16 @@
+import { useState } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { TicketWorkspaceScreen } from './helpdesk';
 import { ARTICLES, MACROS, TICKETS, TICKET_ACTIVITY, TICKET_MESSAGES } from './helpdesk-data';
 import { TODAY } from '../_kit/data';
+import { liveTicket } from './helpdesk-ticket-live-samples';
+import { DESK, DETAIL, TICKET, WORK } from '../desk/data';
+import { DOCS_VIEW, HR_SUMMARY, KB_LINKS, PICKS, SEQUENCES, SEQUENCE_RUNS, SHARES, TICKET_REQUEST } from '../desk/esm-data';
+import { RequestPanel } from '../desk/request-panel';
+import { TicketEsmRail } from '../desk/esm2';
+import { TicketKbCard } from '../desk/ticket-kb';
+import { EscalateDialog, ResolveDialog, TicketWorkRail } from '../desk/work';
+import type { TicketDetail } from '../desk/types';
 
 const meta: Meta = { title: 'Screens/Helpdesk/HLP-03 · Ticket workspace', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -14,3 +23,100 @@ export const InternalNote: S = { name: 'Internal note', render: () => <TicketWor
 export const WaitingOnEmployee: S = { name: 'Waiting on employee (SLA paused)', render: () => <TicketWorkspaceScreen {...base} ticket={TICKETS[2]} messages={TICKET_MESSAGES.slice(0, 2)} /> };
 export const Breached: S = { name: 'Breached SLA', render: () => <TicketWorkspaceScreen {...base} ticket={TICKETS[4]} messages={TICKET_MESSAGES.slice(0, 1)} /> };
 export const Resolved: S = { render: () => <TicketWorkspaceScreen {...base} resolved /> };
+
+// States the real ticket workspace has (Helpdesk design wiring, round 3; founder answer 1: the HLP design wins). Drawn in
+// the same layout as the stories above, with the side cards the live page shows under the design's rail.
+const ok = async () => undefined;
+/** The side cards the page passes as `rail`: request and approvals, move / share / documents / follow-ups, articles, related tickets. */
+function sampleRail(over: { ticket?: TicketDetail; canWork?: boolean; only?: 'request' | 'esm' | 'kb' | 'work' } = {}) {
+  const t = over.ticket ?? TICKET;
+  const canWork = over.canWork ?? true;
+  const show = (k: string) => !over.only || over.only === k;
+  return (
+    <>
+      {show('request') && <RequestPanel view={TICKET_REQUEST} canAsk={canWork} onAsk={ok} onFindPeople={async () => PICKS} />}
+      {show('esm') && (
+        <TicketEsmRail
+          canWork={canWork}
+          canMove={canWork}
+          hr={HR_SUMMARY}
+          desks={[{ id: 'd-it', name: 'IT help desk' }, { id: 'd-hr', name: 'HR help desk' }]}
+          currentDeskId="d-it"
+          shares={SHARES}
+          categories={() => [{ id: 'cat-let', name: 'Letters', sensitive: false }]}
+          sensitive={false}
+          onMove={ok}
+          onShare={ok}
+          onUnshare={ok}
+          documents={DOCS_VIEW}
+          onMakeDocument={ok}
+          onWithdrawDocument={ok}
+          sequences={SEQUENCES}
+          runs={SEQUENCE_RUNS}
+          onStartSequence={ok}
+          onStopSequence={ok}
+        />
+      )}
+      {show('kb') && <TicketKbCard links={KB_LINKS} solved={false} canWork={canWork} spaces={[{ id: 's1', name: 'IT help' }]} onSolvedBy={ok} onFlag={ok} onMakeArticle={async () => ({ id: 'a9' })} onOpenArticle={() => undefined} />}
+      {show('work') && (
+        <TicketWorkRail
+          ticket={t}
+          detail={DETAIL}
+          work={WORK}
+          desks={[DESK]}
+          meId="u-suresh"
+          onFindTicket={async () => []}
+          onOpenTicket={() => undefined}
+          onLink={ok}
+          onUnlink={ok}
+          onMerge={ok}
+          onSplit={async () => ({ id: 'n' })}
+          onSetParent={ok}
+          onSetTracker={ok}
+          onStartSide={ok}
+          onSideMessage={ok}
+          onCloseSide={ok}
+          onAddTask={ok}
+          onUpdateTask={ok}
+          onBreachReason={ok}
+          onExclude={ok}
+          onRemind={ok}
+          onSnooze={ok}
+          onDoneReminder={ok}
+          onUnmask={async () => 'ABCPE1234F'}
+        />
+      )}
+    </>
+  );
+}
+
+const WithEscalate = () => {
+  const [open, setOpen] = useState(true);
+  return (
+    <>
+      <TicketWorkspaceScreen live={liveTicket({ rail: sampleRail({ only: 'work' }) })} />
+      <EscalateDialog open={open} onOpenChange={setOpen} ticket={TICKET} detail={DETAIL} onEscalate={async () => undefined} />
+    </>
+  );
+};
+const WithResolve = () => {
+  const [open, setOpen] = useState(true);
+  return (
+    <>
+      <TicketWorkspaceScreen live={liveTicket({ rail: sampleRail({ only: 'work' }) })} />
+      <ResolveDialog open={open} onOpenChange={setOpen} ticket={TICKET} codes={[{ id: 'rc1', code: 'fixed', label: 'Fixed', active: true }]} required linked={0} onResolve={async () => undefined} />
+    </>
+  );
+};
+export const AgentWorking: S = { name: 'Agent · colleague writing, mentions and files', render: () => <TicketWorkspaceScreen live={liveTicket({ others: [{ userId: 'u-farah', name: 'Farah Khan', typing: true }], rail: sampleRail({ only: 'kb' }) })} /> };
+export const RequestApprovals: S = { name: 'Request and approvals · ask a colleague to approve', render: () => <TicketWorkspaceScreen live={liveTicket({ rail: sampleRail({ only: 'request' }) })} /> };
+export const MoveShareDocs: S = { name: 'Move, share, documents and follow-ups', render: () => <TicketWorkspaceScreen live={liveTicket({ rail: sampleRail({ only: 'esm' }) })} /> };
+export const Articles: S = { name: 'Articles used · solved by, out of date, make one', render: () => <TicketWorkspaceScreen live={liveTicket({ rail: sampleRail({ only: 'kb' }) })} /> };
+export const RelatedTickets: S = { name: 'Related tickets, merge, tasks, side conversations, targets, reminders', render: () => <TicketWorkspaceScreen live={liveTicket({ rail: sampleRail({ only: 'work' }) })} /> };
+export const Escalate: S = { name: 'Move to another support level', render: () => <WithEscalate /> };
+export const ResolveWithCode: S = { name: 'Resolve · code and note', render: () => <WithResolve /> };
+export const ResolvedRated: S = { name: 'Resolved · closes on, the rating', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, systemState: 'solved', resolvedAt: '2026-10-08T05:00:00Z', closesOn: '2026-10-11T05:00:00Z', rating: 4 } })} /> };
+export const Collaborator: S = { name: 'Collaborator · notes only', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, access: 'collaborator', canWork: false }, rail: sampleRail({ canWork: false, only: 'kb' }) })} /> };
+export const ReadOnly: S = { name: 'Desk admin · read only', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, access: 'observer', canWork: false, canNote: false } })} /> };
+export const SenderUnverified: S = { name: 'Email from an unproven sender, customer', render: () => <TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, channel: 'email', senderVerified: false, customer: { account: { id: 'ac1', name: 'Sunrise Retail' }, plan: 'gold' }, product: { id: 'pr1', name: 'Kaveri billing app' } } })} /> };
+export const NoAccess: S = { name: 'No access (not on this desk)', render: () => <TicketWorkspaceScreen live={liveTicket({ state: 'no-access', ticket: null })} /> };

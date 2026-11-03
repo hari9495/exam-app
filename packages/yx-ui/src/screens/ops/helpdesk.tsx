@@ -28,6 +28,7 @@ import { ackPercent, slaState, ticketCloseInfo } from './ops-rules';
 import type { KbArticle, PolicyRow, Ticket, TicketStatus } from './helpdesk-data';
 import { LiveHelpCentre, type LiveHelp } from './helpdesk-live';
 import { LiveAgentDesk, type LiveAgentDesk as LiveAgentDeskProps } from './helpdesk-desk-live';
+import { LiveTicketWorkspace, type LiveTicket } from './helpdesk-ticket-live';
 
 export type ListState = 'ready' | 'loading' | 'error' | 'empty';
 export type Device = 'desk' | 'phone';
@@ -564,7 +565,12 @@ export interface TicketWorkspaceScreenProps {
   /** Shows the "resolved" state with the employee's rating. */
   resolved?: boolean;
 }
-export function TicketWorkspaceScreen({ ticket, messages, macros, articles, activity, today, defaultMode = 'reply', defaultDraft = '', resolved }: TicketWorkspaceScreenProps) {
+/** HLP-03. Stories draw it with sample props; the live page passes `live` (helpdesk-ticket-live.tsx) with the real ticket. */
+export function TicketWorkspaceScreen(props: TicketWorkspaceScreenProps | { live: LiveTicket }) {
+  return 'live' in props ? <LiveTicketWorkspace live={props.live} /> : <SampleTicketWorkspace {...props} />;
+}
+
+function SampleTicketWorkspace({ ticket, messages, macros, articles, activity, today, defaultMode = 'reply', defaultDraft = '', resolved }: TicketWorkspaceScreenProps) {
   const [mode, setMode] = useState(defaultMode);
   const [draft, setDraft] = useState(defaultDraft);
   const [thread, setThread] = useState(messages);

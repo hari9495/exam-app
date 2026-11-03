@@ -7,7 +7,7 @@ import {
   RequestPanel,
   ResolveDialog,
   TicketKbCard,
-  TicketScreen,
+  TicketWorkspaceScreen,
   TicketWorkRail,
   type ArticleOption,
   type TicketArticleLink,
@@ -38,10 +38,11 @@ import { useAuth } from '../../../../../../lib/auth-context';
 import { useCurrentUser } from '../../../../../../lib/hooks/useCurrentUser';
 import { deskState, useDesk, useDeskFile, useDeskUpload, useDeskWrite } from '../../../../../../lib/yx-desk';
 
-// Service desk › Tickets › one ticket (HLP-03, M14 SD-1.08 … SD-1.17): reply, note, assign, files, time, the requester's
-// other tickets, who else is on it (YX-SD-07, every 15 seconds), and batch 2: response targets with their timeline,
-// tasks, related tickets (link, merge, split, parent, tracker), side conversations, reminders, snooze, hidden personal
-// data, resolve with a code and support levels.
+// Helpdesk › Tickets › one ticket: the designed HLP-03 workspace with `live` (Helpdesk design wiring, round 3). Reply,
+// note, assign, files, time, the requester's other tickets, who else is on it (YX-SD-07, every 15 seconds); the side
+// cards: request and approvals, move / share / documents / follow-ups, articles, related tickets (link, merge, split,
+// parent, tracker), tasks, side conversations, response targets, reminders, snooze, hidden personal data; resolve with
+// a code and support levels.
 export default function YxDeskTicketPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -96,63 +97,65 @@ export default function YxDeskTicketPage() {
   const open = (other: string) => router.push(`/yx/desk/tickets/${encodeURIComponent(other)}`);
   return (
     <>
-      <TicketScreen
-        state={deskState(ticket)}
-        onRetry={() => void ticket.refetch()}
-        ticket={t ?? null}
-        detail={d ?? null}
-        canned={canned.data ?? []}
-        timeline={timeline.data ?? []}
-        context={context.data ?? null}
-        others={others}
-        meName={me.data?.name || me.data?.email || 'Me'}
-        meId={me.data?.id ?? ''}
-        onBack={() => router.push('/yx/desk/tickets')}
-        onUpdate={async (change) => {
+      <TicketWorkspaceScreen
+        live={{
+        state: deskState(ticket),
+        onRetry: () => void ticket.refetch(),
+        ticket: t ?? null,
+        detail: d ?? null,
+        work: work.data ?? null,
+        canned: canned.data ?? [],
+        timeline: timeline.data ?? [],
+        context: context.data ?? null,
+        others,
+        meName: me.data?.name || me.data?.email || 'Me',
+        meId: me.data?.id ?? '',
+        autoCloseDays: deskRules?.autoCloseDays ?? null,
+        onUpdate: async (change) => {
           await write(path, 'PATCH', { version, ...change });
-        }}
-        onAssign={async (userId) => {
+        },
+        onAssign: async (userId) => {
           await write(`${path}/assign`, 'POST', { userId });
-        }}
-        onPost={async (m) => {
+        },
+        onPost: async (m) => {
           await write(`${path}/messages`, 'POST', m);
-        }}
-        onUpload={(file) => upload(`${path}/attachments`, file)}
-        onOpenFile={(attachmentId) => openFile(`${path}/attachments/${encodeURIComponent(attachmentId)}/link`)}
-        onAddTime={async (minutes, note) => {
+        },
+        onUpload: (file) => upload(`${path}/attachments`, file),
+        onOpenFile: (attachmentId) => openFile(`${path}/attachments/${encodeURIComponent(attachmentId)}/link`),
+        onAddTime: async (minutes, note) => {
           await write(`${path}/time-entries`, 'POST', { minutes, ...(note ? { note } : {}) });
-        }}
-        onRunScenario={async (scenarioId) => {
+        },
+        onRunScenario: async (scenarioId) => {
           await write(`${path}/scenarios/${encodeURIComponent(scenarioId)}`, 'POST', { version });
-        }}
-        onConvert={async (typeId, reason) => {
+        },
+        onConvert: async (typeId, reason) => {
           await write(`${path}/convert`, 'POST', { typeId, reason });
-        }}
-        onAddCollaborator={async (userId) => {
+        },
+        onAddCollaborator: async (userId) => {
           await write(`${path}/collaborators`, 'POST', { userId });
-        }}
-        onRemoveCollaborator={async (userId) => {
+        },
+        onRemoveCollaborator: async (userId) => {
           await write(`${path}/collaborators/${encodeURIComponent(userId)}`, 'DELETE');
-        }}
-        onAddWatcher={async (personId) => {
+        },
+        onAddWatcher: async (personId) => {
           await write(`${path}/watchers`, 'POST', { personId });
-        }}
-        onRemoveWatcher={async (watcherId) => {
+        },
+        onRemoveWatcher: async (watcherId) => {
           await write(`${path}/watchers/${encodeURIComponent(watcherId)}`, 'DELETE');
-        }}
-        onSearchPeople={(q) => apiFetch(`/desk/people?search=${encodeURIComponent(q)}`, {}, token) as Promise<Person[]>}
-        onTyping={(now) => {
+        },
+        onSearchPeople: (q) => apiFetch(`/desk/people?search=${encodeURIComponent(q)}`, {}, token) as Promise<Person[]>,
+        onTyping: (now) => {
           if (now !== typing.current) {
             typing.current = now;
             beat();
           }
-        }}
-        onOpenTicket={open}
-        onFindArticle={(q) => apiFetch(`/desk${path}/kb?q=${encodeURIComponent(q)}`, {}, token) as Promise<ArticleOption[]>}
-        onArticleInserted={(articleId) => void write(`${path}/kb-links`, 'POST', { articleId, kind: 'linked' }).catch(() => undefined)}
-        onResolveClick={() => setResolving(true)}
-        onEscalateClick={() => setEscalating(true)}
-        rail={
+        },
+        onOpenTicket: open,
+        onFindArticle: (q) => apiFetch(`/desk${path}/kb?q=${encodeURIComponent(q)}`, {}, token) as Promise<ArticleOption[]>,
+        onArticleInserted: (articleId) => void write(`${path}/kb-links`, 'POST', { articleId, kind: 'linked' }).catch(() => undefined),
+        onResolveClick: () => setResolving(true),
+        onEscalateClick: () => setEscalating(true),
+        rail:
           t && d ? (
             <>
             {request.data && (
@@ -254,8 +257,8 @@ export default function YxDeskTicketPage() {
               onUnmask={async (valueId) => ((await write<{ value: string }>(`${path}/unmask/${encodeURIComponent(valueId)}`, 'POST')).value)}
             />
             </>
-          ) : null
-        }
+          ) : null,
+        }}
       />
       {t && d && resolving && (
         <ResolveDialog
