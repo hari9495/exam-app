@@ -12223,5 +12223,40 @@
       "Expenses · EXP-07 · Expense policy matrix · GST registrations · add one"
     ],
     "note": "Negative."
+  },
+  {
+    "id": "MT-EXP-22",
+    "area": "Expenses · policy view (3 Nov 2026)",
+    "screen": "Expense policy · HR reads it (positive)",
+    "url": "http://localhost:3000/yx/settings/expenses",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi; the HR Admin role now includes expense.policy.view)",
+    "steps": [
+      "1. Open Settings › Expense policy (or the Expense policy menu entry).",
+      "2. Look through Limits matrix, Mileage & per diem, Receipts & over-limit, City tiers, GST registrations and Exchange rates.",
+      "3. In \"Other policies\" click \"Show limits\" on another policy."
+    ],
+    "expected": "Step 1: the page opens with a \"Read only\" badge; the limits show as amounts (e.g. ₹7,500), the kind of limit and \"Reason + extra approval\" or \"Hard block\" as text. Step 2: every tab shows its rows; there is no Add, Edit, End, Copy as a new policy, save bar or \"Use the starters\" button anywhere. Step 3: the grid shows that policy's limits.",
+    "stories": [
+      "Expenses · EXP-07 · Expense policy matrix · HR (read only)"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-EXP-23",
+    "area": "Expenses · policy view (3 Nov 2026)",
+    "screen": "Expense policy · HR cannot change it; others are refused (negative)",
+    "url": "http://localhost:3000/yx/settings/expenses",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi; the HR Admin role now includes expense.policy.view); hr-exec or an employee such as arjun@demo-org.test (Arjun Kulkarni); panel@demo-org.test (Manager - Divya); an admin of another company",
+    "steps": [
+      "1. As Lakshmi, try a change through the API (developer step): PUT /api/v1/expenses/policies/<id> or POST /api/v1/expenses/categories.",
+      "2. As Arjun and as Divya, open /yx/settings/expenses.",
+      "3. As another company's HR Admin, open the page.",
+      "4. Check the audit log for access.role.template_synced on HR Admin roles that still follow the template."
+    ],
+    "expected": "Step 1: refused with 403; nothing changes (no new expense.* audit entry). Step 2: no Expense policy menu entry; the page shows \"You don't have access to the expense policy\" (never \"check your connection\"). Step 3: only their own company's policy (none of this company's). Step 4: one entry per HR Admin role that followed the template, adding expense.policy.view (roles someone edited are left alone).",
+    "stories": [
+      "Expenses · EXP-07 · Expense policy matrix · HR (read only)"
+    ],
+    "note": "Negative."
   }
 ]

@@ -29,8 +29,11 @@ feature not built** (no API) · **phone view, mobile app not built**.
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Claims, trips and advances (EXP-01 … 05, rounds 1 and 2b) | 5 | 44 | 0 | 0 | 0 | 3 | 47 |
-| B. Finance (EXP-06 … 09, round 2) | 4 | 32 | 1 | 0 | 5 | 0 | 38 |
-| **All EXP groups (A–B)** | **9** | **76** | **1** | **0** | **5** | **3** | **85** |
+| B. Finance (EXP-06 … 09, rounds 2 and policy view) | 4 | 33 | 0 | 0 | 5 | 0 | 38 |
+| **All EXP groups (A–B)** | **9** | **77** | **0** | **0** | **5** | **3** | **85** |
+
+Policy-view recount (script, 3 Nov 2026, `feat/yukthix-exp-policy-view`): EXP-07 "HR (read only)" is live with the new
+view-only key `expense.policy.view` (founder answer, round 2), so no "live (gap)" row is left in Expenses.
 Round 2b recount (script, 3 Nov 2026, `feat/yukthix-exp-2b`): EXP-01 gains 5 design stories (Team claims: manager,
 over-limit lines, nothing sent yet, not a manager, phone); the 3 "live (gap)" rows are now live (the manager cards drill
 into Team claims; EXP-05 finance recovery shows the instalment amounts; the forex card is drawn). The Ops kit gains one
@@ -90,7 +93,7 @@ element count for `expenses` goes from 8 to 4 (the stand-ins' hidden file inputs
 | /yx/expenses/advances | `AdvanceScreen` live, list view: mine, waiting for me, finance; request sheet | EXP-05 | `GET advances`, `?view=approvals` (implicit), `?view=payout` (`expense.payout.manage`), `POST advances` (implicit) | live |
 | /yx/expenses/advances/[id] | `AdvanceScreen` live, record view: balance card and ledger, overdue message with the company's recovery instalments; approve less, approve / reject, record payment, record a return, claim against it | EXP-05 | `GET advances/:id` (implicit; now with `policy`: settle-by days and recovery instalments from the company settings), `PATCH advances/:id/amount` (the task holder), `POST advances/:id/pay`, `/return` (`expense.payout.manage`) | live |
 | /yx/expenses/to-pay | `ToPayScreen` live: the claims queue (saved views Unpaid / Payment failed / All approved, filters, search, bulk "Add to <month> payroll" and "Pay now by bank file" with the pay-from account, re-route a failed payment), Bank files (download, release by someone other than the maker with the typed phrase, cancel, the bank's results) and Journal (codes to map, export, mark posted); the payroll cut-off line | EXP-06 | `GET to-pay` (`expense.payout.manage` for the entity; now with `payroll`: cut-off day and month from the company setting), `POST to-pay/payroll`, `POST payouts`, `GET payouts/:id/file`, `POST payouts/:id/release` (not the maker; step-up and phrase), `/cancel`, `/results`, `GET journal`, `POST journal/export`, `POST journal/:id/posted` (all `expense.payout.manage`) | live |
-| /yx/settings/expenses | `PolicyMatrixScreen` live: Limits matrix (grade band grid for policies that apply to one grade; other policies listed below and opened in the grid; sticky save bar saves a new version from a date; copy as a new policy), Mileage & per diem, Receipts & over-limit (categories), City tiers, GST registrations, Exchange rates; set-up check; starters for a new company | EXP-07 | setup routes (`expense.policy.manage`) | live |
+| /yx/settings/expenses | `PolicyMatrixScreen` live (read only with `expense.policy.view`): Limits matrix (grade band grid for policies that apply to one grade; other policies listed below and opened in the grid; sticky save bar saves a new version from a date; copy as a new policy), Mileage & per diem, Receipts & over-limit (categories), City tiers, GST registrations, Exchange rates; set-up check; starters for a new company | EXP-07 | reads: `GET setup-check`, `policies`, `rates`, `fx-rates`, `gst-registrations` (`expense.policy.manage` or `expense.policy.view`), `categories`, `tiers` (everyone who claims); every write `expense.policy.manage` | live |
 | /yx/expenses/reports | `ExpenseReportsScreen` live: Summary (spend by category, paid through, table), Advance ageing (chart, buckets, detail), Unpaid claims, Over limit, GST input, Approver patterns; filter bar (department, period; the legal entity comes from the top bar); Export (CSV) and Download as XLSX | EXP-09 | `GET reports/:kind` (`expense.report.view` for the entities granted; now with `charts` (exact decimal strings) and `departments`; `departmentId` takes up to 20 ids; `format=xlsx`) | live |
 
 ## 2. Live Expenses pages with no design (stand-in copies still)
@@ -228,7 +231,7 @@ policy is listed below and opens in the same grid.
 |---|---|---|
 | Matrix · Matrix (finance edits) | live | grade band picker; category rows with the kind of limit, an Any city column and one per city tier, and over the limit (reason + extra approval, or hard block) |
 | Unsaved · Unsaved changes · new version | live | the sticky save bar: a policy in force saves as the next version from a date after its start (pressed too early says why); one not yet in force saves in place; Discard |
-| HrReadOnly · HR (read only) | live (gap) | no view-only key for the policy: every set-up route needs `expense.policy.manage`, so HR without it sees the no-access state |
+| HrReadOnly · HR (read only) | live | `expense.policy.view` (founder 3 Nov 2026; in the HR Admin template): every tab shows with a "Read only" badge; limits, kinds of limit and over-the-limit rules show as text; no copy, save bar, add, edit or end button anywhere (the API refuses every change without `expense.policy.manage`); without either key the no-access state |
 | GradeBands · Grade band grid · other policies listed below | live | "Other policies" table (company-wide, by location or other conditions) with Edit limits |
 | CopyPolicy · Copy as a new policy (for one grade) | live | name, applies to (Everyone or conditions; a single grade makes a new grade band), priority, start date |
 | Rates · Mileage & per diem · add a rate | live | dated mileage and per-diem rates |
@@ -338,7 +341,6 @@ no-access state.
 | ~~EXP-05 recovery and forex~~ | done in round 2b | — |
 | ~~Receipt picture~~ | done in round 2b (photos; PDFs show a tile) | — |
 ## 7. Left after round 2 (sizes)
-| EXP-07 HR read only | a view-only key for the expense policy (`expense.policy.view`), if HR should see it without editing | S |
 | Team claims, advance instalments and forex card, receipt thumbnail, FX tolerance setting | another builder (round 2b) | — |
 | Phone camera (3 stories) | the mobile app's in-page camera | mobile app |
 
