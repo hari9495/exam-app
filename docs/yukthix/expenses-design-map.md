@@ -29,7 +29,7 @@ feature not built** (no API) · **phone view, mobile app not built**.
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Claims, trips and advances (EXP-01 … 05, rounds 1 and 2b) | 5 | 44 | 0 | 0 | 0 | 3 | 47 |
-| B. Finance (EXP-06 … 09, rounds 2 and policy view) | 4 | 33 | 0 | 0 | 5 | 0 | 38 |
+| B. Finance (EXP-06 … 09, rounds 2, policy view and card import) | 4 | 47 | 0 | 0 | 0 | 0 | 47 |
 | **All EXP groups (A–B)** | **9** | **91** | **0** | **0** | **0** | **3** | **94** |
 
 Policy-view recount (script, 3 Nov 2026, `feat/yukthix-exp-policy-view`): EXP-07 "HR (read only)" is live with the new
