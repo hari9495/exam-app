@@ -26,6 +26,7 @@ import { addDays, formatAccessCode, showCauseDue, type ClockItem } from './ops-r
 import type { AnonMessage, CaseRow, CaseType } from './helpdesk-data';
 import type { Device, ListState } from './helpdesk';
 import { LiveCheckReport, LiveSpeakUp, type LiveCheckReport as LiveCheckReportProps, type LiveSpeakUp as LiveSpeakUpProps } from './helpdesk-speakup-live';
+import { LiveCaseList, LiveCaseWorkspace, LiveEthicsDesk, LiveMyCases, type LiveCaseList as LiveCaseListProps, type LiveCaseWorkspace as LiveCaseWorkspaceProps, type LiveEthicsDesk as LiveEthicsDeskProps, type LiveMyCases as LiveMyCasesProps } from './cases-live';
 
 const LOCATIONS = [
   { value: 'blr', label: 'Bengaluru head office' },
@@ -353,7 +354,11 @@ export function ShowCauseReply({ notice, today, replied, extensionRequested }: {
     </div>
   );
 }
-export function MyCasesScreen({ device = 'desk', cases, showCause, today, state = 'ready', replyOpen, replied, extensionRequested }: MyCasesScreenProps) {
+/** The designed screen; with `live` it renders the real records (cases-live.tsx). */
+export function MyCasesScreen(props: MyCasesScreenProps | { live: LiveMyCasesProps }) {
+  return 'live' in props ? <LiveMyCases live={props.live} /> : <SampleMyCases {...props} />;
+}
+function SampleMyCases({ device = 'desk', cases, showCause, today, state = 'ready', replyOpen, replied, extensionRequested }: MyCasesScreenProps) {
   const [open, setOpen] = useState(!!replyOpen || !!replied);
   const columns: TableColumn<MyCase>[] = [
     { key: 'id', header: 'Case', type: 'id', value: (c) => c.id },
@@ -455,7 +460,10 @@ export interface CaseListScreenProps {
   member?: boolean;
   defaultFilters?: FilterValue[];
 }
-export function CaseListScreen({ cases, today, state = 'ready', member = true, defaultFilters = [] }: CaseListScreenProps) {
+export function CaseListScreen(props: CaseListScreenProps | { live: LiveCaseListProps }) {
+  return 'live' in props ? <LiveCaseList live={props.live} /> : <SampleCaseList {...props} />;
+}
+function SampleCaseList({ cases, today, state = 'ready', member = true, defaultFilters = [] }: CaseListScreenProps) {
   const [filters, setFilters] = useState<FilterValue[]>(defaultFilters);
   if (!member) return <RestrictedNotFound />;
   let rows = cases;
@@ -527,7 +535,10 @@ export interface CaseWorkspaceScreenProps {
 }
 const CASE_ICON: Record<CaseType, typeof Lock> = { Grievance: Megaphone, Disciplinary: FileText, Whistleblower: ShieldAlert, 'Workplace accident': ShieldAlert, 'Collective dispute': Briefcase, POSH: Lock };
 
-export function CaseWorkspaceScreen({ variant, caseRow, members, timeline, documents, messages = [], today, member = true, tab, addMemberConflict, decisionOpen, replyReceived }: CaseWorkspaceScreenProps) {
+export function CaseWorkspaceScreen(props: CaseWorkspaceScreenProps | { live: LiveCaseWorkspaceProps }) {
+  return 'live' in props ? <LiveCaseWorkspace live={props.live} /> : <SampleCaseWorkspace {...props} />;
+}
+function SampleCaseWorkspace({ variant, caseRow, members, timeline, documents, messages = [], today, member = true, tab, addMemberConflict, decisionOpen, replyReceived }: CaseWorkspaceScreenProps) {
   const [current, setCurrent] = useState(tab ?? (variant === 'anonymous' ? 'messages' : 'timeline'));
   const [addOpen, setAddOpen] = useState(!!addMemberConflict);
   const [decision, setDecision] = useState(!!decisionOpen);
@@ -781,7 +792,10 @@ export interface EthicsDeskScreenProps {
   member?: boolean;
   routeId?: string | null;
 }
-export function EthicsDeskScreen({ rows, today, state = 'ready', member = true, routeId = null }: EthicsDeskScreenProps) {
+export function EthicsDeskScreen(props: EthicsDeskScreenProps | { live: LiveEthicsDeskProps }) {
+  return 'live' in props ? <LiveEthicsDesk live={props.live} /> : <SampleEthicsDesk {...props} />;
+}
+function SampleEthicsDesk({ rows, today, state = 'ready', member = true, routeId = null }: EthicsDeskScreenProps) {
   const [route, setRoute] = useState<string | null>(routeId);
   if (!member) return <RestrictedNotFound />;
   const columns: TableColumn<WbRow>[] = [
