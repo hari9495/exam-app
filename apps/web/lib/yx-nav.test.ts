@@ -291,3 +291,9 @@ describe('pageLink: each Performance page names itself (walk-through 3 Nov 2026)
     expect(pageLink(employee, '/yx/performance')).toMatchObject({ link: { label: 'Performance home' }, inMenu: true });
   });
 });
+
+describe('pageLink: the Help centre names itself (HLP-01, Helpdesk design wiring round 1)', () => {
+  it.each(['/yx/desk/help', '/yx/desk/help/t1'])('%s reads Helpdesk › Help centre', (path) => {
+    expect(pageLink(nav([], { employee: true }), path)).toMatchObject({ area: { id: 'helpdesk' }, link: { label: 'Help centre' }, inMenu: true });
+  });
+});
