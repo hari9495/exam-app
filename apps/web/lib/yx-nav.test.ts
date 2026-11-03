@@ -144,8 +144,25 @@ describe('buildNav: Time, Pay, Compliance', () => {
   });
 
   it('Expenses sit under Pay (founder decision 15 Oct 2026), each by its key', () => {
-    expect(labels(nav(['expense.payout.manage', 'expense.report.view', 'expense.policy.manage']), 'pay')).toEqual(['To pay', 'Expense reports', 'Expense policy']);
-    expect(labels(nav([], { employee: true }), 'pay')).toContain('Claims');
+    expect(labels(nav(['expense.payout.manage', 'expense.report.view', 'expense.policy.manage']), 'pay')).toEqual(['Advances', 'To pay', 'Expense reports', 'Expense policy']);
+    expect(labels(nav([], { employee: true }), 'pay')).toEqual(expect.arrayContaining(['Expenses', 'Trips', 'Advances']));
+    expect(labels(nav([], { employee: true }), 'pay')).not.toContain('Team claims');
+    expect(labels(nav([], { employee: true, manager: true }), 'pay')).toContain('Team claims');
+    expect(labels(nav(['travel.booking.manage']), 'pay')).toContain('Trips');
+  });
+
+  // Walk-through 3 Nov 2026: the breadcrumb named /yx/expenses "Pay › Claims" while its title is "Expenses".
+  const pays = nav([], { employee: true, manager: true });
+  it.each([
+    ['/yx/expenses', 'Expenses'],
+    ['/yx/expenses/claims/c1', 'Expenses'],
+    ['/yx/expenses/team', 'Team claims'],
+    ['/yx/expenses/trips', 'Trips'],
+    ['/yx/expenses/trips/t1', 'Trips'],
+    ['/yx/expenses/advances', 'Advances'],
+    ['/yx/expenses/advances/a1', 'Advances'],
+  ])('the breadcrumb of %s names "%s" under Pay', (path, label) => {
+    expect(pageLink(pays, path)).toMatchObject({ area: { id: 'pay' }, link: { label }, inMenu: true });
   });
 
   it('an employee has My pay; nobody in a support session sees pay, hiring, the desk or self-service', () => {

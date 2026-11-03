@@ -214,7 +214,12 @@ export function buildNav(n: NavInput): NavArea[] {
           ]),
           // Founder decision 15 Oct 2026: Expenses sit under Pay.
           ...sec('Expenses & advances', [
-            ...when(employee || has('expense.finance.review'), L('expenses', 'Claims', '/yx/expenses')),
+            // Each page's link names the page, so the breadcrumb reads Pay › Expenses, Pay › Trips … (walk-through 3 Nov 2026);
+            // a claim, trip or advance names its parent list.
+            ...when(employee || has('expense.finance.review'), L('expenses', 'Expenses', '/yx/expenses')),
+            ...when(manager, L('expense-team', 'Team claims', '/yx/expenses/team')),
+            ...when(employee || has('travel.booking.manage'), L('expense-trips', 'Trips', '/yx/expenses/trips')),
+            ...when(employee || has('expense.payout.manage'), L('expense-advances', 'Advances', '/yx/expenses/advances')),
             ...when(has('expense.payout.manage'), L('expense-to-pay', 'To pay', '/yx/expenses/to-pay')),
             ...when(has('expense.report.view'), L('expense-reports', 'Expense reports', '/yx/expenses/reports')),
             ...when(has('expense.policy.manage'), L('expense-setup', 'Expense policy', '/yx/settings/expenses')),
