@@ -393,3 +393,9 @@ Keep as built: "Paid through" counts a claim with no route yet as payroll; team 
 is read-only, "Open" only where the manager already approves; PDF receipts show a "PDF" tile until a vetted PDF viewer is
 chosen; recovery amounts only for the employee and finance. Card statement import (EXP-08): format decision pending.
 Demo: the starters were copied into demo-org by admin-tester on 3 Nov 2026 (founder OK).
+
+## Founder answer, 3 Nov 2026 (card statement import)
+EXP-08 starts as one import that works for any bank: finance uploads the statement as CSV or Excel, maps the columns once
+per bank (date, description, amount, debit/credit, card number last 4, merchant, currency), and the mapping is saved per
+company and bank for next time. Ready-made bank templates come later from real sample files; direct bank feeds need a
+partner and are not in scope.
