@@ -24,9 +24,9 @@ feature not built** (no API) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Helpdesk HLP-01 … 14 | 14 | 74 | 2 | 3 | 69 | 0 | 148 |
-| B. Service desk designs | 5 | 67 | 2 | 0 | 0 | 0 | 69 |
-| **All Helpdesk groups (A–B)** | **19** | **141** | **4** | **3** | **69** | **0** | **217** |
+| A. Helpdesk HLP-01 … 14 | 14 | 53 | 1 | 9 | 69 | 0 | 132 |
+| B. Service desk designs | 6 | 63 | 2 | 0 | 0 | 0 | 65 |
+| **All Helpdesk groups (A–B)** | **20** | **116** | **3** | **9** | **69** | **0** | **197** |
 Round 3 recount (script, 3 Nov 2026, `feat/yukthix-hlp-03`): HLP-03 has 18 stories (the 6 approved plus 12 drawn for
 the old workspace's states), all live; Phase 3b-1 loses the stand-in's 4 stories (Workspace, WorkspaceCollaborator,
 WorkspaceUnverified, ReplyTooEarly) and has 26; esm-live loses the 16 "Live ·" stories of the ticket side cards and the
@@ -36,6 +36,9 @@ Round 4 recount (script, 3 Nov 2026, `feat/yukthix-hlp-04`): HLP-04 has 24 stori
 the old knowledge screen's states): 23 live, 1 live (gap) (Review due: the design's group audience). The Service desk
 group "HLP-04 Knowledge" (6 stories) is deleted with its stand-in `KnowledgeScreen`, so B has 5 groups; the script no
 longer reads `knowledge.stories.tsx`.
+Round 5 recount (script, 3 Nov 2026, `feat/yukthix-hlp-05`): HLP-05 has 20 stories (the 3 approved plus 17 drawn for
+the old reports page's tabs and states), all live; Reports (HLP-05) loses the stand-in's 14 stories and keeps the wall
+screen's 2.
 
 Round 2 recount (script, 3 Nov 2026, `feat/yukthix-hlp-02`): HLP-02 has 20 stories (the 10 approved plus 10 drawn for
 the old agent screen's states), all live; Phase 3b-1 loses the stand-in's 3 stories (Tickets, Board,
@@ -75,7 +78,7 @@ groups them).
 | /yx/desk/tickets/[id] | `TicketScreen` with `TicketWorkRail`, `ResolveDialog`, `EscalateDialog`, `RequestPanel`, `TicketEsmRail`, `TicketKbCard` (the last four are stand-ins) | Phase 3b-1 Workspace; HLP-03 not wired | `GET desk/tickets/:id`, `/timeline`, `/context`, `/sla`, `/work` (`desk.ticket.view`), `POST …/messages` (`desk.ticket.work` or `desk.ticket.note`), `/resolve`, `/escalate`, `/assign` (`desk.ticket.work`), `/merge` (`desk.ticket.merge`) | live (B); wire design (HLP-03) |
 | /yx/desk/knowledge | `KnowledgeScreen` (spaces, articles, editor with review, gaps, recycle bin) | HLP-04 Knowledge; HLP-04 Knowledge base editor not wired | `GET desk/kb/spaces`, `/articles` (`desk.kb.view_internal`, `desk.kb.author` or `desk.kb.publish`), `POST desk/kb/articles`, `/versions`, `/submit` (`desk.kb.author`), `/review`, `/retire` (`desk.kb.publish`), `GET desk/kb/gaps` (`desk.report.view` or `desk.kb.publish`) | live (B); wire design (HLP-04) |
 | /yx/desk/knowledge (?article=) | the designed `KbEditorScreen` (HLP-04) with `live`: the article list per space, the article editor with four-eyes review, compare, preview, details, translations; categories, blocks, templates, content gaps and the recycle bin as tabs | HLP-04 | `GET desk/kb/spaces`, `/articles` (`desk.kb.view_internal`, `desk.kb.author` or `desk.kb.publish`), `POST desk/kb/articles`, `/versions`, `/submit`, `PATCH desk/kb/articles/:id` (now with `keywords`, `assistantUse`), `POST …/reviewed` (new) (`desk.kb.author`), `/review`, `/retire`, `/republish`, `DELETE` (`desk.kb.publish`), `GET desk/kb/gaps` (`desk.report.view` or `desk.kb.publish`) | live |
-| /yx/desk/reports | `ReportsScreen` (dashboard, KPIs, library, funnel, my reports, walls, customers, NPS surveys) | Reports (HLP-05); HLP-05 SLA dashboard not wired | `GET desk/reports/*` (`desk.report.view`), custom reports, schedules, wallboards, KPI targets (`desk.report.manage`), `GET/POST desk/surveys` (`desk.survey.manage`); no-access state without either | live (B); wire design (HLP-05) |
+| /yx/desk/reports | `SlaDashboardScreen` with `live` (HLP-05; menu Helpdesk › SLAs); the report tabs (desk numbers, KPIs, library, self-service, my reports, walls, customers, NPS surveys) inside it | HLP-05 SLA dashboard | `GET desk/reports/sla` (new, `desk.report.view`), `GET desk/reports/*` (`desk.report.view`), custom reports, schedules, wallboards, KPI targets (`desk.report.manage`), `GET/POST desk/surveys` (`desk.survey.manage`), Reassign `POST desk/tickets/:id/assign` (`desk.ticket.assign` to show it); no-access state without either | live (HLP-05) |
 | /yx/wall/[org]/[token] | `WallScreen` | Reports (HLP-05) Wall | `GET desk/wall/:org/:token` (the secret link; counts only) | live |
 | /yx/desk/setup | `DeskSetupScreen` (desks, calendars, SLA, email, help pages, banners, `SetupStart`) and the stand-ins `CatalogAdmin`, `RulesAdmin`, `LifecycleAdmin`, `ChatQueuesAdmin`, `DeskOrgAdmin`, `SchedulesAdmin`, `MessagingAdmin` | Phase 3b-1 Setup and set-up tabs; Batch 4 GetStarted | desk set-up routes (`desk.settings.manage`, `desk.desk.create`, `desk.sla.manage`, `desk.mailbox.manage`, `desk.portal.manage`, `desk.catalog.manage`, `desk.rule.manage`, `desk.lifecycle.manage`, `desk.channel.manage`) | live |
 | /yx/desk/calendar | `MyCalendarScreen` | Phase 3b-1 Calendar | `GET desk/me/calendar`, `GET desk/tasks` (implicit: an agent) | live |
@@ -110,6 +113,7 @@ live, but drawn only as "Live ·" pictures in `esm-live.stories.tsx`. Grouped by
 | `CatalogAdmin`, `RulesAdmin`, `LifecycleAdmin`, `ChatQueuesAdmin`, `DeskOrgAdmin`, `SchedulesAdmin`, `MessagingAdmin` | /yx/desk/setup | Set-up (41) | none; the Phase 3b-1 set-up tabs are designs for the rest of the same page. Needs designs per tab |
 
 And under `notLive`: designed, with no live page rendering them. `ops: TicketWorkspaceScreen` (HLP-03; HLP-02 left the list in round 2, HLP-04 in round 4), `ops: SlaDashboardScreen` (HLP-05) have a live page
+And under `notLive`: designed, with no live page rendering them. `ops: TicketWorkspaceScreen` (HLP-03; HLP-02 left the list in round 2), `ops: KbEditorScreen` (HLP-04) have a live page (HLP-05 `ops: SlaDashboardScreen` left the list: live)
 doing the same job with a B screen (section 5). `ops: SpeakUpScreen`, `ops: CheckReportScreen` (HLP-06), `ops:
 MyCasesScreen` (HLP-07), `ops: CaseListScreen`, `ops: CaseWorkspaceScreen`, `ops: LoadingCase`, `ops: ErrorCase`
 (HLP-08), `ops: EthicsDeskScreen` (HLP-09), `ops: PolicyLibraryScreen` (HLP-10), `ops: PolicyAdminScreen` (HLP-11),
@@ -258,14 +262,34 @@ templates, content gaps, recycle bin, four-eyes review, compare, preview, detail
 
 #### HLP-05 · SLA dashboard
 
-Live page for this job: /yx/desk/reports renders `ReportsScreen` (the "Reports (HLP-05)" B design); response targets
-are set in /yx/desk/setup (SLA tab).
+Live page: /yx/desk/reports (menu Helpdesk › SLAs, with `desk.report.view` or `desk.survey.manage`). The page renders the
+designed `SlaDashboardScreen` (`screens/ops/helpdesk.tsx`) with `live`; the live part is `screens/ops/helpdesk-sla-live.tsx`.
+Round 5 (founder answer 1: the HLP design wins): the old reports page's tabs are drawn as tabs under the design's header
+(17 new stories); its stand-in `ReportsScreen` is deleted with 14 stories and 6 tests. Response targets are still set
+in /yx/desk/setup (SLA tab).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| QueueLead · Queue lead | wire design | live page /yx/desk/reports renders ReportsScreen (B design "Reports (HLP-05)"); its dashboard and KPI tabs show SLA met / breached per desk, not the design's per-queue at-risk table |
-| Loading · Loading | wire design | ReportsScreen tab loading |
-| Empty · Empty (no tickets in period) | wire design | ReportsScreen's empty period |
+| QueueLead · Queue lead | live | the page opens on "Response targets": the four design cards from `GET desk/reports/sla` (open now; missed now; first response met % with the period before and the weekly trend; answered by an article = the self-service rate), resolution met / missed by queue, the weekly met % with the queue's own target line (one queue chosen), the at-risk table (live resolution clock from the SLA engine, Reassign, a row opens the ticket) and agent load (open, at risk, rating). Period 7 / 30 / 90 days and Queue in the header; Export downloads the "Response targets met" CSV |
+| Loading · Loading | live | while permissions or the figures load (card, chart and table skeletons) |
+| Empty · Empty (no tickets in period) | live | no open tickets and no target finished in the period |
+| Reassign · Reassign an at-risk ticket | live | new story: the queue's agents (`GET desk/desks/:id/team`), not the current one; `POST desk/tickets/:id/assign`, toast "IT-1002 is now with …"; the clock is not restarted |
+| NoReassign · Desk admin · no Reassign, sensitive tickets counted but not listed | live | new story: without `desk.ticket.assign` the row offers Open ticket; sensitive and private tickets count in the figures but stay out of the list ("1 more is sensitive or private …") |
+| DeskNumbers · Desk numbers (backlog, times, ratings, agents) | live | new story: was the reports Dashboard tab (`GET desk/reports/dashboard`), now design stat cards with drill links, ageing chart and the agents table |
+| Kpis · KPIs with targets and forecast | live | new story: `GET desk/reports/kpis/:deskId`; colour in words; the trend and the 7-day forecast as a kit line chart; Set target needs `desk.report.manage` (toast) |
+| Library · Report library | live | new story: `GET desk/reports/library`, Run and Download CSV |
+| Funnel · Self-service funnel | live | new story: `GET desk/reports/funnel` |
+| MyReports · My reports and schedules | live | new story: custom reports and schedules (`desk.report.manage` to change; toasts) |
+| Walls · Wall screens | live | new story: make (link shown once) and switch off the secret wall link |
+| Customers · Customer reports | live | new story: `GET desk/reports/customers/:accountId` |
+| Surveys · NPS surveys | live | new story: `GET/POST desk/surveys` (`desk.survey.manage`) |
+| SurveysOnly · Surveys only (no report access) | live | new story: with `desk.survey.manage` but not `desk.report.view` the page opens on Surveys and never asks for the figures |
+| Error · Error | live | new story: permissions fail; a tab that fails shows its own Try again |
+| NoAccess · No access | live | new story: neither key; the kit's no-access state |
+| ReassignTooEarly · Reassign pressed with nobody chosen | live | new story: "Choose who takes the ticket." |
+| WallTooEarly · Wall screens · Make the link pressed with nothing filled | live | new story |
+| CustomerTooEarly · Customer reports · Show report pressed with no company | live | new story |
+| SurveyTooEarly · NPS surveys · Save survey pressed with nothing filled | live | new story |
 
 #### HLP-06 · Speak-up filing
 
@@ -439,26 +463,13 @@ the HLP-01 stand-in and are not rows.
 
 #### Reports (HLP-05)
 
-Live page: /yx/desk/reports (only the open tab's data is fetched); the wall screen at /yx/wall/[org]/[token].
+Live page: the wall screen at /yx/wall/[org]/[token]. The report tabs moved into HLP-05 SLA dashboard (round 5); their 14
+stories were deleted with `ReportsScreen`.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Dashboard · Dashboard | live | `GET desk/reports/dashboard` (`desk.report.view`) |
-| Kpis · KPIs with targets and forecast | live | `GET desk/reports/kpis/:deskId`; targets need `desk.report.manage` |
-| Library · Report library | live | `GET desk/reports/library` |
-| Funnel · Self-service funnel | live | `GET desk/reports/funnel` |
-| MyReports · My reports and schedules | live | custom reports and schedules (`desk.report.manage` to change) |
-| Walls · Wall screens | live | make and revoke the secret wall link |
-| Customers · Customer reports | live | `GET desk/reports/customers/:accountId` |
-| Surveys · NPS surveys | live | `GET/POST desk/surveys` (`desk.survey.manage`) |
-| SurveysOnly · Surveys only (no report access) | live | with `desk.survey.manage` but not `desk.report.view` the page opens on Surveys |
-| TabLoading · Tab loading | live | |
-| NoAccess · No access | live | neither key: the page's `no-access` state |
 | Wall · Wall screen (TV) | live | /yx/wall/[org]/[token], counts only, no session |
 | WallOff · Wall screen · switched off | live | a revoked link |
-| WallTooEarly · Wall screens · Make the link pressed with nothing filled | live | |
-| CustomerTooEarly · Customer reports · Show report pressed with no company | live | |
-| SurveyTooEarly · NPS surveys · Save survey pressed with nothing filled | live | |
 
 #### Approval link and chat apps
 
@@ -543,7 +554,6 @@ Live page: /yx/support (Security › Contact YukthiX), with `org.yukthix_support
   (pressed too early, the field says why).
 
 ## 4c. HLP-04 rules built (round 4)
-
 - **Who:** reading needs `desk.kb.view_internal`, `desk.kb.author` or `desk.kb.publish` and a space one may read
   (company-wide, or a desk one is on). Authors (`desk.kb.author`) write drafts, send them for review, set the "Where it
   shows" choices and mark a published article reviewed. Publishers (`desk.kb.publish`) publish, send back, retire, put
@@ -560,6 +570,22 @@ Live page: /yx/support (Security › Contact YukthiX), with `org.yukthix_support
   success is a toast; refusals stay on the page; no button is greyed out (pressed too early, the field says why).
 - Article text is cleaned on the server (sanitize-html allow-list). The preview of unsaved text uses the editor's own
   reading view, never raw HTML.
+## 4c. HLP-05 rules built (round 5)
+- **Who:** `desk.report.view` sees the figures for the desks they lead, work or run (the Service Desk admin: every
+  desk); collaborators and employees get 403 and the no-access state. `desk.survey.manage` alone opens on Surveys.
+  Reassign shows with `desk.ticket.assign`; the server checks the assign itself. Another company's desk id is 404.
+- **Figures** (`GET desk/reports/sla`, India dates, both ends included, a year at most): open now and missed now;
+  at risk = 80 % of the resolution target used, missed = 100 %, paused while waiting on the employee (the HLP-02 rule);
+  the clock is the SLA engine's own business-minute maths (`SlaService.clocks`, no second implementation). Met % counts
+  targets kept or missed in the period, excluded ones left out (the dashboard's rule); the change is against the same
+  number of days just before. "Answered by an article" is the self-service rate (solved by an article, of those solved
+  by an article or raised as a ticket). Weeks start on Monday (India). The target line is the queue's own resolution
+  target (Desk set-up › SLA), shown only with one queue chosen.
+- **Privacy:** counts cover every ticket of the desks (YX-HD-03: numbers show); the at-risk list holds only tickets the
+  person may open, and says how many more stay with their own team.
+- **Limit:** the newest 5000 open tickets get a live clock (code note `shortcut:`); a bigger desk set needs a stored
+  clock state.
+- No new table and no migration. Success is a toast; nothing is greyed out.
 
 ## 5. Two designs for one job
 
@@ -570,8 +596,8 @@ HLP-02 … 05 (founder-approved Helpdesk designs, `screens/ops/helpdesk.tsx`) an
 |---|---|---|---|
 | agent's ticket list | HLP-02 `AgentDeskScreen` | done in round 2: the HLP design is live, `DeskTicketsScreen` deleted | /yx/desk/tickets |
 | one ticket | HLP-03 `TicketWorkspaceScreen` | `TicketScreen` + `TicketWorkRail` | /yx/desk/tickets/[id] |
-| knowledge articles | HLP-04 `KbEditorScreen` | done in round 4: the HLP design is live, `KnowledgeScreen` deleted | /yx/desk/knowledge |
-| SLA view | HLP-05 `SlaDashboardScreen` | `ReportsScreen` | /yx/desk/reports |
+| knowledge articles | HLP-04 `KbEditorScreen` | `KnowledgeScreen` | /yx/desk/knowledge |
+| SLA view | HLP-05 `SlaDashboardScreen` | done in round 5: the HLP design is live, `ReportsScreen` deleted | /yx/desk/reports |
 
 The B screens do more today (board layout, saved views, collaborators, ESM rails, spaces, gaps, report library, walls,
 surveys). The HLP screens are the founder-approved look, sample-only.
@@ -627,6 +653,14 @@ surveys). The HLP screens are the founder-approved look, sample-only.
     did not write the waiting version sees "Publish". *Suggested:* keep.
 16. **HLP-04: review every 12 months** is a product rule today. *Suggested:* add a company setting (default 12 months)
     in Desk set-up when a company asks.
+13. **HLP-05: the page name.** The menu item and title are now "SLAs" (the design); the page also holds the reports and
+    surveys tabs. *Suggested:* keep "SLAs"; rename to "SLAs and reports" only if people can't find the reports.
+14. **HLP-05: period choice.** The design offers 7 / 30 / 90 days; the old page had any From / To dates (up to a year)
+    for the library and funnel. *Suggested:* keep the design's three; add "Last 365 days" to the design first if
+    finance-year reports are asked for.
+15. **HLP-05: at-risk point.** 80 % of the resolution target, the same as HLP-02, a product default. *Suggested:* keep;
+    make it a desk setting only if a customer asks.
+16. **HLP-05: the target line** shows only with one queue chosen (each queue has its own target). *Suggested:* keep.
 
 ## 7. Next pages (recommended order, with sizes)
 
@@ -634,8 +668,8 @@ surveys). The HLP screens are the founder-approved look, sample-only.
 |---|---|---|---|
 | 1 | ~~HLP-02 Agent desk~~ (done, round 2) | M | most used by agents; design and server exist; replace `DeskTicketsScreen` at /yx/desk/tickets (draw board and saved views first) |
 | 2 | HLP-03 Ticket workspace | L | design and server exist; replace `TicketScreen`; the rail must take the 4 stand-in cards (request panel, ESM rail, KB card, escalate) |
-| 3 | ~~HLP-04 Knowledge base editor~~ (done, round 4) | M | design and server exist (versions, review due); replace `KnowledgeScreen` (draw spaces and gaps first) |
-| 4 | HLP-05 SLA dashboard | M | server has SLA timers and reports; add the per-queue at-risk view to /yx/desk/reports and fold the report tabs into the HLP look |
+| 3 | HLP-04 Knowledge base editor | M | design and server exist (versions, review due); replace `KnowledgeScreen` (draw spaces and gaps first) |
+| 4 | ~~HLP-05 SLA dashboard~~ (done, round 5) | M | server has SLA timers and reports; add the per-queue at-risk view to /yx/desk/reports and fold the report tabs into the HLP look |
 | 5 | Request tracker and documents (help/[id]) | S | draw in HLP-01's look, replace `RequestTracker`, `MyDocumentsCard` |
 | 6 | Service catalogue | M | live stand-in `CatalogScreen` with 9 "Live ·" stories; needs a design |
 | 7 | Live chat (requester and agent) | M | stand-ins `RequesterChatScreen`, `AgentChatScreen`; needs a design |

@@ -264,7 +264,7 @@ function SlaBody({ live, loading }: { live: LiveSla; loading: boolean }) {
     { key: 'assignee', header: 'Assignee', type: 'person', value: (t) => t.assignee?.name ?? 'Unassigned', person: (t) => ({ name: t.assignee?.name ?? 'Unassigned' }) },
   ];
   return (
-    <>
+    <div className="yx-ops-stack">
       <CardGrid min="sm">
         <StatCard label="Open tickets" value={s?.open ?? 0} drill={{ label: `View ${s?.open ?? 0} open tickets`, href: live.ticketsHref }} loading={loading} />
         <StatCard label="Breached now" value={s?.breachedNow ?? 0} drill={{ label: 'View breached tickets', href: '#sla-at-risk' }} loading={loading} />
@@ -358,7 +358,7 @@ function SlaBody({ live, loading }: { live: LiveSla; loading: boolean }) {
         />
       </Card>
       {reassign && <ReassignDialog ticket={reassign} live={live} onClose={() => setReassign(null)} />}
-    </>
+    </div>
   );
 }
 
@@ -515,7 +515,7 @@ function KpisView({ live }: { live: LiveSla }) {
                   <LineChart
                     title={`${k.label}, by day`}
                     xLabel="Day"
-                    height={120}
+                    height={72}
                     categories={[...days.map(dayMonth), ...ahead]}
                     series={[
                       { name: 'Recorded', values: [...k.points.map((p) => p.value), ...k.forecast.map(() => null)] },
@@ -653,14 +653,12 @@ function FunnelView({ live }: { live: LiveSla }) {
   const counts = live.funnel.filter((s) => s.key !== 'rate');
   const rate = live.funnel.find((s) => s.key === 'rate');
   return (
-    <div className="yx-ops-stack">
+    <CardGrid min="md">
       {rate && (
-        <CardGrid min="sm">
           <StatCard label="Self-service rate" value={rate.count} unit="%" drill={{ label: 'Solved by an article, of those solved by an article or raised as a ticket', href: '#library', onClick: toTab(() => live.onTab('library')) }} />
-        </CardGrid>
       )}
       <BarChart title="From a search to a ticket" xLabel="Step" orientation="horizontal" categories={counts.map((s) => s.label)} series={[{ name: 'Count', values: counts.map((s) => s.count) }]} />
-    </div>
+    </CardGrid>
   );
 }
 

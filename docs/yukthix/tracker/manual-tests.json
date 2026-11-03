@@ -13481,5 +13481,182 @@
       "Screens/Helpdesk/HLP-04 · Knowledge base editor"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HLP-05-01",
+    "area": "Helpdesk · HLP-05 SLA dashboard (3 Nov 2026)",
+    "screen": "SLAs · Response targets",
+    "url": "http://localhost:3000/yx/desk/reports",
+    "account": "An IT help desk team lead (give a demo user a lead seat on \"IT help desk\" in Helpdesk › Desk set-up › Members first; the desk lead role has desk.report.view and desk.ticket.assign). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Before: as arjun@demo-org.test raise two tickets on IT help desk from the Help centre.",
+      "2. As the lead open Helpdesk › SLAs."
+    ],
+    "expected": "The breadcrumb and title say SLAs. The page matches the HLP-05 design: Queue and Period (Last 30 days) and Export in the header, then the tabs, then four cards (Open tickets, Breached now, First response met, Answered by an article), the two charts, \"At risk or breached (N)\" and \"Agent load\". Open tickets counts both new tickets. A figure with nothing to count says so in words, not 0.",
+    "stories": [
+      "Screens/Helpdesk/HLP-05 · SLA dashboard"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HLP-05-02",
+    "area": "Helpdesk · HLP-05 SLA dashboard (3 Nov 2026)",
+    "screen": "SLAs · Period and queue",
+    "url": "http://localhost:3000/yx/desk/reports",
+    "account": "An IT help desk team lead (give a demo user a lead seat on \"IT help desk\" in Helpdesk › Desk set-up › Members first; the desk lead role has desk.report.view and desk.ticket.assign). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Helpdesk › SLAs.",
+      "2. Change Period to Last 7 days, then Queue to IT help desk.",
+      "3. Change Queue back to All my queues."
+    ],
+    "expected": "The cards, the by-queue chart and the weekly chart change with each choice; with one queue chosen the weekly chart shows that queue's resolution target line if one is set in Desk set-up › SLA. Period and Queue are dropdowns (one choice each).",
+    "stories": [
+      "Screens/Helpdesk/HLP-05 · SLA dashboard"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HLP-05-03",
+    "area": "Helpdesk · HLP-05 SLA dashboard (3 Nov 2026)",
+    "screen": "SLAs · At risk table and Reassign",
+    "url": "http://localhost:3000/yx/desk/reports",
+    "account": "An IT help desk team lead (give a demo user a lead seat on \"IT help desk\" in Helpdesk › Desk set-up › Members first; the desk lead role has desk.report.view and desk.ticket.assign). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Before: in Desk set-up › SLA give IT help desk a resolution target of a few minutes for P4 and raise a P4 ticket as Arjun; wait past 80 % of it.",
+      "2. Open Helpdesk › SLAs.",
+      "3. In \"At risk or breached\" press Reassign on that ticket, choose an agent and press Reassign."
+    ],
+    "expected": "The ticket is listed with an \"at risk\" or \"Breached\" badge. The dialog lists the queue's agents except the current one. After Reassign a toast says \"IT-… is now with …\" and the Assignee column changes. The clock is not restarted.",
+    "stories": [
+      "Screens/Helpdesk/HLP-05 · SLA dashboard"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HLP-05-04",
+    "area": "Helpdesk · HLP-05 SLA dashboard (3 Nov 2026)",
+    "screen": "SLAs · Reassign pressed too early",
+    "url": "http://localhost:3000/yx/desk/reports",
+    "account": "An IT help desk team lead (give a demo user a lead seat on \"IT help desk\" in Helpdesk › Desk set-up › Members first; the desk lead role has desk.report.view and desk.ticket.assign). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Helpdesk › SLAs.",
+      "2. Press Reassign on a row, then press Reassign in the dialog without choosing anyone."
+    ],
+    "expected": "The button is not greyed out; the field says \"Choose who takes the ticket.\" and gets the focus. Nothing changes.",
+    "stories": [
+      "Screens/Helpdesk/HLP-05 · SLA dashboard"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-HLP-05-05",
+    "area": "Helpdesk · HLP-05 SLA dashboard (3 Nov 2026)",
+    "screen": "SLAs · Row opens the ticket; Export",
+    "url": "http://localhost:3000/yx/desk/reports",
+    "account": "An IT help desk team lead (give a demo user a lead seat on \"IT help desk\" in Helpdesk › Desk set-up › Members first; the desk lead role has desk.report.view and desk.ticket.assign). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Helpdesk › SLAs.",
+      "2. Press Export.",
+      "3. Click a row in \"At risk or breached\"."
+    ],
+    "expected": "Export downloads a CSV of response targets met by desk and priority for the period. The row opens the ticket page.",
+    "stories": [
+      "Screens/Helpdesk/HLP-05 · SLA dashboard"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HLP-05-06",
+    "area": "Helpdesk · HLP-05 SLA dashboard (3 Nov 2026)",
+    "screen": "SLAs · Desk admin and sensitive tickets",
+    "url": "http://localhost:3000/yx/desk/reports",
+    "account": "A desk admin of IT help desk (desk admin role: reports but no ticket assigning).",
+    "steps": [
+      "1. Before: as Arjun raise a ticket in a sensitive category (for example Security) and let it pass the at-risk point as in MT-HLP-05-03.",
+      "2. As the desk admin open Helpdesk › SLAs."
+    ],
+    "expected": "The ticket is counted in Breached now / the card title, but not listed; a line says \"1 more is sensitive or private and stays with that desk's own team\". Rows offer Open ticket, not Reassign.",
+    "stories": [
+      "Screens/Helpdesk/HLP-05 · SLA dashboard"
+    ],
+    "note": "Negative (privacy)."
+  },
+  {
+    "id": "MT-HLP-05-07",
+    "area": "Helpdesk · HLP-05 SLA dashboard (3 Nov 2026)",
+    "screen": "SLAs · Report tabs",
+    "url": "http://localhost:3000/yx/desk/reports",
+    "account": "An IT help desk team lead (give a demo user a lead seat on \"IT help desk\" in Helpdesk › Desk set-up › Members first; the desk lead role has desk.report.view and desk.ticket.assign). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Helpdesk › SLAs.",
+      "2. Open each tab: Desk numbers, KPIs, Report library (run Tickets by status), Self-service, My reports, Wall screens, Customer reports, Surveys."
+    ],
+    "expected": "Each tab shows its figures in the same page; Desk numbers has the backlog, times and ratings cards and the Agents table; KPIs needs a queue (the first is chosen); Run shows a table. Only Response targets, Desk numbers and long lists need a page scroll at 1278 x 635.",
+    "stories": [
+      "Screens/Helpdesk/HLP-05 · SLA dashboard"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HLP-05-08",
+    "area": "Helpdesk · HLP-05 SLA dashboard (3 Nov 2026)",
+    "screen": "SLAs · Wall screen, report and survey pressed too early",
+    "url": "http://localhost:3000/yx/desk/reports",
+    "account": "An IT help desk team lead (give a demo user a lead seat on \"IT help desk\" in Helpdesk › Desk set-up › Members first; the desk lead role has desk.report.view and desk.ticket.assign). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Wall screens: press New wall screen, then Make the link with nothing filled.",
+      "2. Customer reports: press Show report with no company.",
+      "3. Surveys: press New survey, then Save survey with the desk empty."
+    ],
+    "expected": "Each button works but says what is missing (\"Name the wall screen.\", \"Choose at least one desk.\", \"Choose a company first.\", \"Choose a desk.\") and focuses the first field. Nothing is saved.",
+    "stories": [
+      "Screens/Helpdesk/HLP-05 · SLA dashboard"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-HLP-05-09",
+    "area": "Helpdesk · HLP-05 SLA dashboard (3 Nov 2026)",
+    "screen": "SLAs · Surveys only",
+    "url": "http://localhost:3000/yx/desk/reports",
+    "account": "A user with only desk.survey.manage (no desk.report.view).",
+    "steps": [
+      "1. Open Helpdesk › SLAs."
+    ],
+    "expected": "The page opens on the Surveys tab; no other tab is shown and no SLA figures are loaded.",
+    "stories": [
+      "Screens/Helpdesk/HLP-05 · SLA dashboard"
+    ],
+    "note": "Negative (permission)."
+  },
+  {
+    "id": "MT-HLP-05-10",
+    "area": "Helpdesk · HLP-05 SLA dashboard (3 Nov 2026)",
+    "screen": "SLAs · No access",
+    "url": "http://localhost:3000/yx/desk/reports",
+    "account": "arjun@demo-org.test (an employee with no desk seat).",
+    "steps": [
+      "1. Open http://localhost:3000/yx/desk/reports directly."
+    ],
+    "expected": "There is no SLAs item in the Helpdesk menu, and the page shows \"You don't have access to SLAs and desk reports\" with who can grant it.",
+    "stories": [
+      "Screens/Helpdesk/HLP-05 · SLA dashboard"
+    ],
+    "note": "Negative (permission)."
+  },
+  {
+    "id": "MT-HLP-05-11",
+    "area": "Helpdesk · HLP-05 SLA dashboard (3 Nov 2026)",
+    "screen": "SLAs · Another company",
+    "url": "http://localhost:3000/yx/desk/reports",
+    "account": "An admin of a second demo company.",
+    "steps": [
+      "1. Open Helpdesk › SLAs."
+    ],
+    "expected": "Only that company's desks appear in Queue and the charts; none of the first company's tickets or numbers show.",
+    "stories": [
+      "Screens/Helpdesk/HLP-05 · SLA dashboard"
+    ],
+    "note": "Negative (tenant)."
   }
 ]
