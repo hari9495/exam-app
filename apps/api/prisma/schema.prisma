@@ -11777,13 +11777,18 @@ model SpeakupCase {
   retaliationWorry   Boolean   @default(false) @map("retaliation_worry")
   aboutUserId        String?   @map("about_user_id") @db.Uuid
   routedTo           String    @map("routed_to") @db.VarChar(12)
-  status             String    @default("received") @db.VarChar(12)
+  status             String    @default("received") @db.VarChar(14)
   fileIds            String[]  @default([]) @map("file_ids") @db.Uuid
   late               Boolean   @default(false)
   ackDueOn           DateTime  @map("ack_due_on") @db.Date
   decideDueOn        DateTime? @map("decide_due_on") @db.Date
   ruleSet            String?   @map("rule_set") @db.VarChar(60)
   filedAt            DateTime  @default(now()) @map("filed_at") @db.Timestamptz(3)
+  /// HLP-08: the person the case is about (named by the case team when the notice is sent).
+  respondentUserId   String?   @map("respondent_user_id") @db.Uuid
+  version            Int       @default(1)
+  /// HLP-06 decision 1: an anonymous reporter's alert address, encrypted (org secrets key).
+  alertContactEnc    String?   @map("alert_contact_enc")
 
   @@unique([organizationId, kind, number], map: "speakup_cases_number_key")
   @@map("speakup_cases")
@@ -11813,4 +11818,18 @@ model SpeakupMessage {
   sentAt         DateTime @default(now()) @map("sent_at") @db.Timestamptz(3)
 
   @@map("speakup_messages")
+}
+
+/// HLP-07/08/09: every step of a case, append-only (notice, reply, outcome, IC report, relief, recusal, members, files).
+model SpeakupCaseStep {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  caseId         String   @map("case_id") @db.Uuid
+  kind           String   @db.VarChar(20)
+  actorUserId    String   @map("actor_user_id") @db.Uuid
+  data           Json     @default("{}")
+  at             DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([caseId, at], map: "speakup_case_steps_case_idx")
+  @@map("speakup_case_steps")
 }

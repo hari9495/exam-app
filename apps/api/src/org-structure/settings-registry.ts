@@ -39,6 +39,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'speakup.anonymous': { label: 'Speak-up: who may report without a name', scopes: ['tenant'], dated: false, values: ['all', 'ethics_only', 'off'], default: 'all' },
   'speakup.ack_days': { label: 'Speak-up: days for the case team to acknowledge a report', scopes: ['tenant'], dated: false, values: ['1', '2', '3', '5', '7'], default: '2' },
   'speakup.categories.grievance': { label: 'Speak-up: topics of a grievance (one a line)', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 600 }, default: 'Pay and benefits\nWorking conditions\nA manager\nTransport\nSafety\nOther' },
+  // HLP-07/08/09 (map 4f): days a respondent has to reply to a grievance or ethics notice. POSH days come from the rule
+  // set IN.POSH.INQUIRY, never from here.
+  'cases.reply_days': { label: 'Cases: days a respondent has to reply to a grievance or ethics notice', scopes: ['tenant'], dated: false, values: ['5', '7', '10', '15'], default: '7' },
   'speakup.categories.ethics': { label: 'Speak-up: topics of a fraud or ethics concern (one a line)', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 600 }, default: 'Fraud or theft\nBribery or corruption\nConflict of interest\nMisuse of data\nOther' },
   // YX-ORG-16: employee codes unique per legal entity (default) or across the company.
   'employee_code.scope': { label: 'Employee codes are unique', scopes: ['tenant'], dated: false, values: ['legal_entity', 'tenant'], default: 'legal_entity' },

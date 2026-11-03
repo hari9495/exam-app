@@ -38,6 +38,9 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'helpdesk.policy.decided', group: 'approvals', label: 'A policy version you wrote was published or sent back' },
   // HLP-06 speak-up.
   { type: 'helpdesk.speakup.received', group: 'assignments', label: 'A speak-up report was routed to you' },
+  // HLP-07/08/09 cases.
+  { type: 'helpdesk.case.update', group: 'assignments', label: 'There is an update on a case you are part of' },
+  { type: 'helpdesk.case.task', group: 'assignments', label: 'A case needs you to carry out an action (interim relief)' },
   // P03 approvals engine and Service Desk 3b-2 (SD-2.03 … SD-2.05, SD-2.12).
   { type: 'workflow.approval.needed', group: 'approvals', label: 'A request needs your approval' },
   { type: 'workflow.approval.reminder', group: 'reminders', label: 'A request is still waiting for your approval' },

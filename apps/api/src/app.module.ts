@@ -95,6 +95,7 @@ import { LifecycleModule } from './lifecycle/lifecycle.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { PoliciesModule } from './policies/policies.module';
 import { SpeakupModule } from './speakup/speakup.module';
+import { CasesModule } from './cases/cases.module';
 import { PerformanceModule } from './performance/performance.module';
 import { StatutoryModule } from './statutory/statutory.module';
 import { DEFAULT_THROTTLE_LIMIT } from './rate-limit-tiers';
@@ -196,6 +197,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     ExpensesModule,
     PoliciesModule,
     SpeakupModule,
+    CasesModule,
     PerformanceModule,
     StatutoryModule,
     WorkspaceModule,
