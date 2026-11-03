@@ -43,6 +43,16 @@ export interface TeamClaim {
 
 const COUNTS = new Set(['submitted', 'approved', 'partly_approved']);
 const OVER = new Set(['over_justify', 'blocked']);
+/** A line whose policy check said over the limit (needs a reason, or blocked). */
+export const isOverLimit = (policyResult: unknown) => OVER.has((policyResult as { outcome?: string } | null)?.outcome ?? '');
+/** Team claims list (round 2): the claims a manager sees: sent to approvers (drafts and withdrawn stay private). */
+export const TEAM_LIST_STATUSES = ['submitted', 'sent_back', 'approved', 'partly_approved', 'rejected'];
+/** The instants an IST calendar month (yyyy-mm) starts and ends at, for a submitted_at range. */
+export function istMonthRange(month: string): { from: Date; to: Date } {
+  const [y, m] = month.split('-').map(Number);
+  const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+  return { from: new Date(Date.parse(`${month}-01T00:00:00Z`) - IST_MS), to: new Date(Date.parse(`${next}-01T00:00:00Z`) - IST_MS) };
+}
 
 /** Spend and over-limit lines per month (exact decimals, as strings), for the months asked. */
 export function teamFigures(months: string[], claims: TeamClaim[], lines: { claimId: string; policyResult: unknown }[]) {
@@ -58,8 +68,7 @@ export function teamFigures(months: string[], claims: TeamClaim[], lines: { clai
   }
   for (const l of lines) {
     const m = monthOf.get(l.claimId);
-    const outcome = (l.policyResult as { outcome?: string } | null)?.outcome;
-    if (m && outcome && OVER.has(outcome)) over.set(m, over.get(m)! + 1);
+    if (m && isOverLimit(l.policyResult)) over.set(m, over.get(m)! + 1);
   }
   const last = months[months.length - 1];
   const before = months[months.length - 2] ?? null;

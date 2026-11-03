@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { istMonth, lastMonths, payMonthFor, prevMonth, teamFigures } from './home-rules';
+import { isOverLimit, istMonth, istMonthRange, lastMonths, payMonthFor, prevMonth, teamFigures } from './home-rules';
 
 const D = (x: string) => new Prisma.Decimal(x);
 
@@ -44,5 +44,27 @@ describe('expenses home rules (EXP-01)', () => {
 
   it('with no claims every figure is zero', () => {
     expect(teamFigures(['2026-11'], [], [])).toEqual({ month: '2026-11', spend: '0.00', previous: null, trend: ['0.00'], overLimit: 0, overLimitPrevious: null });
+  });
+});
+
+describe('team claims list (round 2)', () => {
+  it('an IST month runs from 18:30 UTC the day before the 1st to the same time before the next 1st', () => {
+    expect(istMonthRange('2026-11')).toEqual({ from: new Date('2026-10-31T18:30:00Z'), to: new Date('2026-11-30T18:30:00Z') });
+    // The year end and a leap February.
+    expect(istMonthRange('2026-12').to).toEqual(new Date('2026-12-31T18:30:00Z'));
+    expect(istMonthRange('2028-02')).toEqual({ from: new Date('2028-01-31T18:30:00Z'), to: new Date('2028-02-29T18:30:00Z') });
+    // A claim sent at 00:10 IST on 1 Nov belongs to November, one sent at 23:50 IST on 31 Oct to October.
+    const nov = istMonthRange('2026-11');
+    expect(new Date('2026-10-31T18:40:00Z') >= nov.from).toBe(true);
+    expect(new Date('2026-10-31T18:20:00Z') >= nov.from).toBe(false);
+  });
+
+  it('only over-the-limit lines (needs a reason, or blocked) count', () => {
+    expect(isOverLimit({ outcome: 'over_justify' })).toBe(true);
+    expect(isOverLimit({ outcome: 'blocked' })).toBe(true);
+    expect(isOverLimit({ outcome: 'ok' })).toBe(false);
+    expect(isOverLimit({ outcome: 'not_allowed' })).toBe(false);
+    expect(isOverLimit(null)).toBe(false);
+    expect(isOverLimit(undefined)).toBe(false);
   });
 });

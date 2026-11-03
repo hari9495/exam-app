@@ -16,8 +16,8 @@ import { lowConfidence, type OcrFields } from './ocr-parse';
 import { ExpenseSetupService } from './setup.service';
 import { ExpensePaymentsService } from './payments.service';
 import { closeTripIfDone, settleAdvanceByClaim } from './trips.service';
-import { lastMonths, payMonthFor, teamFigures } from './home-rules';
-import { FX_TOLERANCE_PCT, LOOK_ALIKE_BITS, toPay, variancePct } from './fx';
+import { TEAM_LIST_STATUSES, isOverLimit, istMonthRange, lastMonths, payMonthFor, teamFigures } from './home-rules';
+import { LOOK_ALIKE_BITS, toPay, variancePct } from './fx';
 import { fxRateFor } from './setup.service';
 
 // Expenses batch E2 (M05-BUILD-DESIGN §8, §9, §13, §15; XP-2.01 … XP-2.08): claims and lines, snap-first receipts
@@ -221,7 +221,7 @@ export class ExpenseClaimsService implements OnModuleInit {
     });
   }
 
-  private lineView(l: Line, seeGst: boolean) {
+  private lineView(l: Line, seeGst: boolean, receiptMime: string | undefined) {
     const ocr = (l.ocr ?? null) as { fields?: OcrFields; adapter?: string; confirmed?: boolean; einvoice?: string } | null;
     return {
       id: l.id,
@@ -235,6 +235,8 @@ export class ExpenseClaimsService implements OnModuleInit {
       payMode: l.payMode,
       description: l.description,
       hasReceipt: Boolean(l.receiptFileId),
+      // Round 2: what the receipt thumbnail shows (a photo, or a PDF tile); the file itself comes from the receipt route.
+      receiptType: l.receiptFileId ? (receiptMime === 'application/pdf' ? 'pdf' : 'image') : null,
       selfDeclared: l.selfDeclared,
       claimed: l.claimed.toFixed(2),
       approved: money(l.approved),
@@ -256,6 +258,8 @@ export class ExpenseClaimsService implements OnModuleInit {
   private async view(tx: Tx, c: CompanyContext, claim: Claim, a: Access) {
     const org = c.organizationId;
     const lines = await tx.expenseLine.findMany({ where: { organizationId: org, claimId: claim.id, removedAt: null }, orderBy: { lineNo: 'asc' } });
+    const receiptIds = lines.map((l) => l.receiptFileId).filter((x): x is string => Boolean(x));
+    const mimes = new Map(receiptIds.length ? (await tx.file.findMany({ where: { organizationId: org, id: { in: receiptIds } }, select: { id: true, mime: true } })).map((f) => [f.id, f.mime]) : []);
     const changes = await tx.expenseLineChange.findMany({ where: { organizationId: org, claimId: claim.id }, orderBy: { createdAt: 'asc' } });
     const flags = await tx.expenseFlag.findMany({ where: { organizationId: org, claimId: claim.id }, orderBy: { createdAt: 'asc' } });
     const person = (await this.names(tx, org, [claim.employeeId])).get(claim.employeeId) ?? '';
@@ -265,7 +269,7 @@ export class ExpenseClaimsService implements OnModuleInit {
     return {
       ...this.summary(claim, person),
       decisionNote: claim.decisionNote,
-      lines: lines.map((l) => this.lineView(l, true)),
+      lines: lines.map((l) => this.lineView(l, true, mimes.get(l.receiptFileId ?? ''))),
       changes: changes.map((x) => ({ lineId: x.lineId, from: x.oldAmount.toFixed(2), to: x.newAmount.toFixed(2), reason: x.reason, at: x.createdAt.toISOString() })),
       // Flags name other claims only by reference, so nothing of another person leaks (§15).
       flags: flags.map((f) => ({ id: f.id, lineId: f.lineId, kind: f.kind, detail: f.detail, status: f.status, note: f.note })),
@@ -670,6 +674,7 @@ export class ExpenseClaimsService implements OnModuleInit {
     const cats = new Map((await tx.expenseCategory.findMany({ where: { organizationId: org } })).map((x) => [x.code, x]));
     const employment = await tx.employment.findFirstOrThrow({ where: { organizationId: org, id: claim.employmentId } });
     const windowDays = Number(await settingFor(tx, c, 'expense.claim_window_days', { legalEntityId: claim.legalEntityId }));
+    const fxTolerance = Number(await settingFor(tx, c, 'expense.fx_tolerance_pct', { legalEntityId: claim.legalEntityId }));
     const today = todayIst();
     for (const l of lines) {
       const cat = cats.get(l.categoryCode)!;
@@ -680,7 +685,7 @@ export class ExpenseClaimsService implements OnModuleInit {
       if (!l.confirmed) blockers.push({ lineId: l.id, text: `${name}: check the distance from your field day and save the line.` });
       // F12: an entered rate needs its statement, and is flagged when far from the company rate (B18).
       if (l.fxSource === 'manual' && !l.fxProofFileId) blockers.push({ lineId: l.id, text: `${name}: upload the statement that shows your rate.` });
-      if (l.fxSource === 'manual' && l.fxVariancePct && l.fxVariancePct.abs().gt(FX_TOLERANCE_PCT)) flags.push({ kind: 'fx_rate', detail: `${name}: the rate entered is ${l.fxVariancePct.toFixed(2)} % from the company rate.`, lineId: l.id });
+      if (l.fxSource === 'manual' && l.fxVariancePct && l.fxVariancePct.abs().gt(fxTolerance)) flags.push({ kind: 'fx_rate', detail: `${name}: the rate entered is ${l.fxVariancePct.toFixed(2)} % from the company rate.`, lineId: l.id });
       // F4: a re-photographed receipt (a near-identical image of another live bill in the company).
       if (l.receiptPhash) {
         // shortcut: compares against every live line of the company; add an index-friendly prefilter when volumes grow.
@@ -959,6 +964,43 @@ export class ExpenseClaimsService implements OnModuleInit {
 
   // ------------------------------------------------------------------------------------------ home (EXP-01)
 
+  /** My direct reports today (the manager on their current job). */
+  private directReports(tx: Tx, org: string, managerId: string, today: string) {
+    return tx.$queryRaw<{ id: string }[]>`
+      SELECT DISTINCT a.employee_id::text AS id FROM employee_assignments a
+      WHERE a.organization_id = ${org}::uuid AND a.manager_employee_id = ${managerId}::uuid AND a.superseded_at IS NULL
+        AND a.valid_from <= ${today}::date AND (a.valid_to IS NULL OR a.valid_to >= ${today}::date)`;
+  }
+
+  /**
+   * Team claims (founder answer 1, round 2): read only, for a manager; the claims my direct reports today sent in an IST
+   * month (this month when not given), with their over-limit lines. Drafts and withdrawn claims stay private. A row opens
+   * only when the manager may open the claim anyway (an approver on it, scope or finance): the list itself grants nothing.
+   */
+  async team(ctx: TenantContext, user: ScopeUser, month?: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const today = todayIst();
+      const me = await this.myEmployee(tx, org, v);
+      const reports = me ? await this.directReports(tx, org, me.id, today) : [];
+      if (!reports.length) throw new ForbiddenException('Team claims are for managers. No one reports to you today.');
+      const m = month ?? today.slice(0, 7);
+      const { from, to } = istMonthRange(m);
+      const rows = await tx.expenseClaim.findMany({ where: { organizationId: org, employeeId: { in: reports.map((r) => r.id) }, status: { in: TEAM_LIST_STATUSES }, submittedAt: { gte: from, lt: to } }, orderBy: { submittedAt: 'desc' }, take: 500 });
+      const lines = rows.length ? await tx.expenseLine.findMany({ where: { organizationId: org, claimId: { in: rows.map((x) => x.id) }, removedAt: null }, select: { claimId: true, policyResult: true } }) : [];
+      const over = new Map<string, number>();
+      for (const l of lines) if (isOverLimit(l.policyResult)) over.set(l.claimId, (over.get(l.claimId) ?? 0) + 1);
+      const people = await this.names(tx, org, rows.map((x) => x.employeeId));
+      const claims = [];
+      for (const x of rows) {
+        const a = await this.access(tx, c, v, x);
+        claims.push({ ...this.summary(x, people.get(x.employeeId) ?? ''), overLimit: over.get(x.id) ?? 0, canOpen: a.approver || a.scope || a.finance });
+      }
+      return { month: m, people: reports.length, claims };
+    });
+  }
+
   async home(ctx: TenantContext, user: ScopeUser) {
     const v = await this.viewer(user);
     const mine = await this.list(ctx, user, 'mine');
@@ -973,12 +1015,7 @@ export class ExpenseClaimsService implements OnModuleInit {
       const me = await this.myEmployee(tx, org, v);
       const job = me ? await tx.employeeAssignment.findFirst({ where: { organizationId: org, employeeId: me.id, supersededAt: null, validFrom: { lte: asDate(today) }, OR: [{ validTo: null }, { validTo: { gte: asDate(today) } }] }, orderBy: { validFrom: 'desc' }, select: { legalEntityId: true } }) : null;
       const cutoffDay = Number(await settingFor(tx, c, 'expense.payroll_cutoff_day', { legalEntityId: job?.legalEntityId ?? '' }));
-      const reports = me
-        ? await tx.$queryRaw<{ id: string }[]>`
-            SELECT DISTINCT a.employee_id::text AS id FROM employee_assignments a
-            WHERE a.organization_id = ${org}::uuid AND a.manager_employee_id = ${me.id}::uuid AND a.superseded_at IS NULL
-              AND a.valid_from <= ${today}::date AND (a.valid_to IS NULL OR a.valid_to >= ${today}::date)`
-        : [];
+      const reports = me ? await this.directReports(tx, org, me.id, today) : [];
       let team = null;
       if (reports.length) {
         const months = lastMonths(today, 5);

@@ -34,6 +34,8 @@ export class ExpenseClaimsController {
 
   @Get('claims')
   list(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: ListQueryDto) {
+    // view=team: a manager's read-only list of their direct reports' claims (refused, 403, to anyone with no reports).
+    if (q.view === 'team') return this.claims.team(ctx, this.user(req), q.month);
     return this.claims.list(ctx, this.user(req), q.view, q.legalEntityId);
   }
 

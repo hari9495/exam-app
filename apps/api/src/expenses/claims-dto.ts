@@ -260,8 +260,13 @@ export class FlagDto {
 
 export class ListQueryDto {
   @IsOptional()
-  @IsIn(['mine', 'approvals', 'review', 'scope'])
-  view?: 'mine' | 'approvals' | 'review' | 'scope';
+  @IsIn(['mine', 'approvals', 'review', 'scope', 'team'])
+  view?: 'mine' | 'approvals' | 'review' | 'scope' | 'team';
+
+  /** Team claims (round 2): the IST month the claims were sent, yyyy-mm; this month when left out. */
+  @IsOptional()
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/, { message: 'Give the month as yyyy-mm, for example 2026-11.' })
+  month?: string;
 
   /** The company chosen in the top bar (design audit step 2); personal views ignore it. */
   @IsOptional()
