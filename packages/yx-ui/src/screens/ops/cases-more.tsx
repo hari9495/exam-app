@@ -23,6 +23,7 @@ import { Actions, CheckList, ClockPanel, Confidential, Facts, MembersList, OpsDe
 import { addDays, ecCompensation, tdsLateInterest, type EcKind } from './ops-rules';
 import { RestrictedNotFound } from './cases';
 import type { Device } from './helpdesk';
+import { LiveAccidentCase, LiveReportAccident, type LiveAccidentWorkspace as LiveAccidentWorkspaceProps, type LiveReportAccident as LiveReportAccidentProps } from './accident-live';
 
 
 /* =========================================================================================
@@ -57,7 +58,10 @@ export interface AccidentWorkspaceProps {
   /** Contract worker: contractor is the immediate employer; principal alerted if not filed. */
   contractorNotFiled?: boolean;
 }
-export function AccidentWorkspaceScreen({ record, members, today, view = 'safety', ec, reportable, esicSubmitted, contractorNotFiled }: AccidentWorkspaceProps) {
+export function AccidentWorkspaceScreen(props: AccidentWorkspaceProps | { live: LiveAccidentWorkspaceProps }) {
+  return 'live' in props ? <LiveAccidentCase live={props.live} /> : <SampleAccidentWorkspace {...props} />;
+}
+function SampleAccidentWorkspace({ record, members, today, view = 'safety', ec, reportable, esicSubmitted, contractorNotFiled }: AccidentWorkspaceProps) {
   const [tab, setTab] = useState('incident');
   if (view === 'non-member') return <RestrictedNotFound />;
   const r = record;
@@ -253,7 +257,10 @@ export function AccidentWorkspaceScreen({ record, members, today, view = 'safety
 }
 
 /** Report an accident (web / phone / on behalf). Near-misses are not recorded here. */
-export function ReportAccidentScreen({ device = 'phone', today }: { device?: Device; today: Date }) {
+export function ReportAccidentScreen(props: { device?: Device; today: Date } | { device?: Device; live: LiveReportAccidentProps }) {
+  return 'live' in props ? <LiveReportAccident live={props.live} device={props.device} /> : <SampleReportAccident device={props.device} today={props.today} />;
+}
+function SampleReportAccident({ device = 'phone', today }: { device?: Device; today: Date }) {
   const [when, setWhen] = useState<Date | null>(today);
   const [person, setPerson] = useState<string>('employee');
   const [loc, setLoc] = useState<string | null>('hsr');

@@ -40,7 +40,7 @@ import {
 import { AnonThread } from "./cases";
 
 export type SpeakUpKindLive = "grievance" | "whistleblower" | "posh";
-export type SpeakUpTeam = "grievance" | "ethics" | "ic" | "escalation";
+export type SpeakUpTeam = "grievance" | "ethics" | "ic" | "escalation" | "safety";
 export interface NamedRef {
   id: string;
   name: string;
@@ -144,6 +144,8 @@ export interface LiveSpeakUp {
   onDone: () => void;
   /** The no-login "Check my report" address for this company. */
   checkHref: string;
+  /** HLP-12: the accident report (the fourth choice sends people there). */
+  accidentHref?: string;
   today: Date;
   /** Stories and tests only. */
   start?: {
@@ -166,7 +168,7 @@ function LiveSpeakUpForm({
   onFiled: (r: FiledReport, failed: string[]) => void;
 }) {
   const s = live.start ?? {};
-  const [kind, setKind] = useState<SpeakUpKindLive>(s.kind ?? "grievance");
+  const [kind, setKind] = useState<SpeakUpKindLive | "accident">(s.kind ?? "grievance");
   const [poshForm, setPoshForm] = useState(Boolean(s.poshForm));
   const [identity, setIdentity] = useState<"named" | "anonymous">(
     s.identity ?? "named",
@@ -190,11 +192,13 @@ function LiveSpeakUpForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useSay();
-  const anonOk = anonymousFor(f.anonymous, kind);
+  const accident = kind === "accident";
+  const sk: SpeakUpKindLive = accident ? "grievance" : kind;
+  const anonOk = anonymousFor(f.anonymous, sk);
   const who = anonOk ? identity : "named";
-  const showForm = kind !== "posh" || poshForm;
-  const ready = f.ready[kind];
-  const cats = kind === "posh" ? [] : f.categories[kind];
+  const showForm = !accident && (kind !== "posh" || poshForm);
+  const ready = accident || f.ready[sk];
+  const cats = sk === "posh" ? [] : f.categories[sk];
   const late =
     kind === "posh" && f.posh && when
       ? when < monthsBefore(live.today, f.posh.filingMonths)
@@ -227,7 +231,7 @@ function LiveSpeakUpForm({
     setError(null);
     try {
       const input: SpeakUpInput = {
-        kind,
+        kind: sk,
         summary: summary.trim(),
         ...(category ? { category } : {}),
         ...(when ? { happenedOn: toIso(when) } : {}),
@@ -400,7 +404,7 @@ function LiveSpeakUpForm({
       <FormField label="What would you like to report?" required>
         <RadioGroup
           value={kind}
-          onChange={(v) => (setKind(v as SpeakUpKindLive), setCategory(null))}
+          onChange={(v) => (setKind(v as SpeakUpKindLive | "accident"), setCategory(null))}
           options={[
             {
               value: "grievance",
@@ -418,9 +422,32 @@ function LiveSpeakUpForm({
               label: "Sexual harassment",
               description: "Filed with the Internal Committee only",
             },
+            ...(live.accidentHref
+              ? [
+                  {
+                    value: "accident",
+                    label: "A workplace accident or injury",
+                    description: "Goes to the safety team and HR",
+                  },
+                ]
+              : []),
           ]}
         />
       </FormField>
+      {accident && (
+        <InlineAlert
+          tone="info"
+          title="Report the accident"
+          actions={
+            <Button size="sm" onClick={() => window.location.assign(live.accidentHref!)}>
+              Continue to the accident report
+            </Button>
+          }
+        >
+          Near-misses are not recorded here; tell your safety officer. You can
+          report for yourself or for someone else.
+        </InlineAlert>
+      )}
       {!ready && (
         <InlineAlert
           tone="warning"
@@ -435,7 +462,7 @@ function LiveSpeakUpForm({
             : "Your company has not chosen its case officers yet, so the app cannot take this report. Tell your System Admin."}
         </InlineAlert>
       )}
-      {kind === "posh" && !poshForm ? (
+      {accident ? null : kind === "posh" && !poshForm ? (
         <InlineAlert
           tone="info"
           title="This goes to the Internal Committee"
@@ -904,6 +931,11 @@ const TEAMS: { team: SpeakUpTeam; title: string; note: string }[] = [
     title: "Escalation (for example the audit committee chair)",
     note: "Reports about one of the officers above go here instead.",
   },
+  {
+    team: "safety",
+    title: "Safety team",
+    note: "Workplace accidents and injuries, medical details included. They name the HR person who files each ESIC report.",
+  },
 ];
 const ROLE_LABEL = {
   member: "Member",
@@ -994,7 +1026,7 @@ export function SpeakUpSetupScreen({ live }: { live: LiveSpeakUpSetup }) {
           {(() => {
             const missing = TEAMS.filter(
               (t) =>
-                (t.team === "ic" || t.team === "escalation") &&
+                (t.team === "ic" || t.team === "escalation" || t.team === "safety") &&
                 !d.members.some((m) => m.team === t.team),
             );
             return missing.length > 0 ? (
@@ -1003,7 +1035,9 @@ export function SpeakUpSetupScreen({ live }: { live: LiveSpeakUpSetup }) {
                   .map((t) =>
                     t.team === "ic"
                       ? "Add the Internal Committee: until then sexual harassment complaints are refused and sent to the district Local Committee."
-                      : "Add someone to Escalation: until then reports about a case officer are refused.",
+                      : t.team === "safety"
+                        ? "Add the safety team: until then accident reports are refused."
+                        : "Add someone to Escalation: until then reports about a case officer are refused.",
                   )
                   .join(" ")}
               </InlineAlert>

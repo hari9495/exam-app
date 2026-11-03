@@ -40,6 +40,9 @@ export { SpeakUpSetupScreen, anonymousFor, type LiveSpeakUp, type LiveCheckRepor
 export { MyCasesScreen, CaseListScreen, CaseWorkspaceScreen, EthicsDeskScreen } from '../ops/cases';
 export { KIND_LABEL as CASE_KIND_LABEL, type LiveMyCases, type LiveCaseList, type LiveCaseWorkspace, type LiveEthicsDesk, type CaseTab } from '../ops/cases-live';
 export type { MyCaseRow, MyCaseDetail, CaseListRow, CaseDetail, EthicsRow, NoticeInput, ProposeInput, IcReportInput, ReliefInput, AddMemberInput, MyReplyInput } from '../ops/cases-live-types';
+// HLP-12 Accident case: the designed workspace and report with `live`.
+export { AccidentWorkspaceScreen, ReportAccidentScreen } from '../ops/cases-more';
+export type { LiveAccidentWorkspace, LiveReportAccident, AccidentDetail, AccidentManagerView, AccidentFormData, AccidentReportInput, AccidentFacts, EcInput as AccidentEcInput, EsicFormView, MedicalKind, AccidentDialog } from '../ops/accident-live';
 // HLP-10 Policy library + acknowledgement and HLP-11 Policy admin: the designed screens with `live`.
 export { PolicyLibraryScreen, PolicyAdminScreen } from '../ops/helpdesk';
 export { METHOD_LABEL, VERSION_LABEL, type LivePolicyLibrary, type LivePolicyAdmin, type PolicyAdminTab } from '../ops/helpdesk-policy-live';

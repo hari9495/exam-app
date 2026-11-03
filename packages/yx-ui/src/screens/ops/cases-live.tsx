@@ -64,7 +64,7 @@ import type {
 const asDate = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00`);
 const day = (iso: string | null | undefined) => (iso ? formatDate(asDate(iso)) : '—');
 const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-export const KIND_LABEL: Record<CaseKind, string> = { grievance: 'Grievance', whistleblower: 'Fraud or ethics concern', posh: 'Sexual harassment (POSH)' };
+export const KIND_LABEL: Record<CaseKind | 'accident', string> = { grievance: 'Grievance', whistleblower: 'Fraud or ethics concern', posh: 'Sexual harassment (POSH)', accident: 'Workplace accident' };
 const STATUS_LABEL: Record<CaseStatus, string> = { open: 'Open', action: 'Action needed', 'on-hold': 'On hold', closed: 'Closed' };
 const STATUS_TONE: Record<CaseStatus, BadgeTone> = { open: 'info', action: 'warning', 'on-hold': 'neutral', closed: 'neutral' };
 const ROLE_LABEL = { reporter: 'You raised it', respondent: 'You are asked to reply' } as const;

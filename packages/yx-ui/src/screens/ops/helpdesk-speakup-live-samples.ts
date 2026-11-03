@@ -77,6 +77,7 @@ export function liveSetup(over: Partial<LiveSpeakUpSetup> = {}): LiveSpeakUpSetu
         { id: 'm3', team: 'ic', userId: 'u-lakshmi', name: 'Lakshmi Venkatesan', role: 'presiding', addedAt: '2026-10-01T05:00:00Z' },
         { id: 'm4', team: 'ic', userId: 'u-ngo', name: 'Farida Sheikh', role: 'external', addedAt: '2026-10-01T05:00:00Z' },
         { id: 'm5', team: 'escalation', userId: 'u-chair', name: 'Anand Rao', role: 'member', addedAt: '2026-10-01T05:00:00Z' },
+        { id: 'm6', team: 'safety', userId: 'u-prakash', name: 'Prakash Nair', role: 'member', addedAt: '2026-11-04T05:00:00Z' },
       ],
       users: [
         { id: 'u-rekha', name: 'Rekha Iyengar', email: 'rekha@kaverifoods.in' },
