@@ -12532,5 +12532,138 @@
       "Notifications · SMS · SMS · no access"
     ],
     "note": "Negative (employee, manager)."
+  },
+  {
+    "id": "MT-EXP-C-01",
+    "area": "Expenses · card statements EXP-08 (3 Nov 2026)",
+    "screen": "Card statements · first import (column mapping, full card numbers)",
+    "url": "http://localhost:3000/yx/expenses/cards",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh; needs expense.payout.manage for the whole company)",
+    "steps": [
+      "1. Before: as Arjun, start a claim \"Mumbai visit\" with a line SkyIndia 6,840 paid by Company card dated the same day as the CSV row (saved, not sent).",
+      "2. As Suresh, open Pay › Card statements. Card programme: \"A new card programme\", name it \"Kaveri Bank\".",
+      "3. Upload a CSV with the heading row \"Txn Date,Card Number,Description,Amount\" and 4 rows dated in the last week: card 4111111111111234 SKYINDIA 6840.00; XXXX1234 FUELPOINT 2100.50; XXXX1234 BOOKNOOK 1450.00; XXXX9999 CLOUDSOFT 3999.00; and one row XXXX1234 REFUND -500.00. Press Continue.",
+      "4. Map: Transaction date = Txn Date (day first), Description, Amount (one amount column, a minus amount is a refund), Card number = Card Number. Press Continue."
+    ],
+    "expected": "A toast says the statement was imported and 1 full card number was cut to the last 4 digits; the Match lines step shows the same note, 5 lines, the refund marked Refund, card 9999 \"not linked\" with Link card, card 1234 lines with Vikram/Arjun as holder. The breadcrumb reads Pay › Card statements. No page scroll at 1278 x 635.",
+    "stories": [
+      "Screens/Expenses/EXP-08 · Card statement import & matching"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-EXP-C-02",
+    "area": "Expenses · card statements EXP-08 (3 Nov 2026)",
+    "screen": "Card statements · rows to fix (nothing imported)",
+    "url": "http://localhost:3000/yx/expenses/cards",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh; needs expense.payout.manage for the whole company)",
+    "steps": [
+      "1. Import a CSV for Kaveri Bank where one row has the date 31/02/2026 and another has the amount \"ten\"."
+    ],
+    "expected": "The Check columns step lists each bad row number with what to fix (\"is not a date written as DD/MM/YYYY\", \"is not an amount\"); the list of statements does not grow.",
+    "stories": [
+      "Screens/Expenses/EXP-08 · Card statement import & matching"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-EXP-C-03",
+    "area": "Expenses · card statements EXP-08 (3 Nov 2026)",
+    "screen": "Card statements · same file again / same period",
+    "url": "http://localhost:3000/yx/expenses/cards",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh; needs expense.payout.manage for the whole company)",
+    "steps": [
+      "1. Upload the same CSV again for Kaveri Bank and Continue.",
+      "2. Add one blank line at the end of the file (a different file, same dates) and upload it again."
+    ],
+    "expected": "Step 1: \"This statement is already imported\" with \"Open that statement\". Step 2: \"This period is already imported\" with \"Import as version 2\"; it is refused while version 1 has matched lines.",
+    "stories": [
+      "Screens/Expenses/EXP-08 · Card statement import & matching"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-EXP-C-04",
+    "area": "Expenses · card statements EXP-08 (3 Nov 2026)",
+    "screen": "Card statements · saved mapping is reused",
+    "url": "http://localhost:3000/yx/expenses/cards",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh; needs expense.payout.manage for the whole company)",
+    "steps": [
+      "1. Import next month's file for Kaveri Bank with the same columns."
+    ],
+    "expected": "Check columns shows the saved columns in words (Column A · Txn Date …) with \"Change columns\"; nothing has to be mapped again.",
+    "stories": [
+      "Screens/Expenses/EXP-08 · Card statement import & matching"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-EXP-C-05",
+    "area": "Expenses · card statements EXP-08 (3 Nov 2026)",
+    "screen": "Card statements · match, link a card, ask, close",
+    "url": "http://localhost:3000/yx/expenses/cards",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh; needs expense.payout.manage for the whole company)",
+    "steps": [
+      "1. On the statement, press Accept match on SKYINDIA.",
+      "2. On CLOUDSOFT press Link card, press Link card again without choosing anyone, then choose Sana and Link card.",
+      "3. Press Ask employee on BOOKNOOK.",
+      "4. Go to Resolve, type a note and press Close statement."
+    ],
+    "expected": "Step 1: toast \"Match accepted\", the line shows Matched and the claim line. Step 2: the field says \"Choose the employee who holds this card.\" and nothing is sent; after choosing, a toast says the card was linked and the line shows Sana. Step 3: the line shows With employee. Step 4: toast \"Statement closed…\"; remaining lines go to the employees.",
+    "stories": [
+      "Screens/Expenses/EXP-08 · Card statement import & matching"
+    ],
+    "note": "Positive + negative."
+  },
+  {
+    "id": "MT-EXP-C-06",
+    "area": "Expenses · card statements EXP-08 (3 Nov 2026)",
+    "screen": "Card statements · personal claim line found on the card",
+    "url": "http://localhost:3000/yx/expenses/cards",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh; needs expense.payout.manage for the whole company); arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
+    "steps": [
+      "1. As Arjun, a draft claim has a Fuelpoint line of 2,100 marked Personal on the same date as FUELPOINT 2100.50.",
+      "2. As Suresh, accept the suggested match.",
+      "3. As Arjun, open the claim and try to save the line as Personal."
+    ],
+    "expected": "Step 2: the claim line becomes Company card and the claim total drops by 2,100 (not paid twice). Step 3: \"This line is on the company card statement, so it stays a company card line.\"",
+    "stories": [
+      "Screens/Expenses/EXP-08 · Card statement import & matching"
+    ],
+    "note": "Positive + negative."
+  },
+  {
+    "id": "MT-EXP-C-07",
+    "area": "Expenses · card statements EXP-08 (3 Nov 2026)",
+    "screen": "Card lines to explain · employee",
+    "url": "http://localhost:3000/yx/expenses/card-lines",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
+    "steps": [
+      "1. As Arjun, open Expenses: the right rail shows \"Company card · Lines to explain 1\" with Explain.",
+      "2. Press Explain. Choose Business expense and press Add receipt.",
+      "3. Next statement, choose Personal spend and press Confirm personal spend."
+    ],
+    "expected": "Step 2: the claim \"Company card, <month>\" opens with the line as Company card, waiting for its receipt. Step 3: toast \"Personal spend confirmed. It is recovered from your salary in 3 instalments.\" On a phone the same page shows the phone tiles.",
+    "stories": [
+      "Screens/Expenses/EXP-08 · Card statement import & matching"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-EXP-C-08",
+    "area": "Expenses · card statements EXP-08 (3 Nov 2026)",
+    "screen": "Card statements · who may see them",
+    "url": "http://localhost:3000/yx/expenses/cards",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya); panel@demo-org.test (Manager - Divya); an admin of another company",
+    "steps": [
+      "1. As Arjun and as Divya open /yx/expenses/cards.",
+      "2. As Arjun open another employee's card line through its link (copy the id from Suresh's statement).",
+      "3. As the other company's admin open the statement link."
+    ],
+    "expected": "Steps 1 and 3: the no-access state (Card statements need expense.payout.manage); no menu item. Step 2: \"No such card line.\" Every view of a statement is in the audit log as expense.card.statement.viewed.",
+    "stories": [
+      "Screens/Expenses/EXP-08 · Card statement import & matching"
+    ],
+    "note": "Negative."
   }
 ]

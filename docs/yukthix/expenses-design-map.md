@@ -30,7 +30,7 @@ feature not built** (no API) · **phone view, mobile app not built**.
 |---|---|---|---|---|---|---|---|
 | A. Claims, trips and advances (EXP-01 … 05, rounds 1 and 2b) | 5 | 44 | 0 | 0 | 0 | 3 | 47 |
 | B. Finance (EXP-06 … 09, rounds 2 and policy view) | 4 | 33 | 0 | 0 | 5 | 0 | 38 |
-| **All EXP groups (A–B)** | **9** | **77** | **0** | **0** | **5** | **3** | **85** |
+| **All EXP groups (A–B)** | **9** | **91** | **0** | **0** | **0** | **3** | **94** |
 
 Policy-view recount (script, 3 Nov 2026, `feat/yukthix-exp-policy-view`): EXP-07 "HR (read only)" is live with the new
 view-only key `expense.policy.view` (founder answer, round 2), so no "live (gap)" row is left in Expenses.
@@ -93,7 +93,9 @@ element count for `expenses` goes from 8 to 4 (the stand-ins' hidden file inputs
 | /yx/expenses/advances | `AdvanceScreen` live, list view: mine, waiting for me, finance; request sheet | EXP-05 | `GET advances`, `?view=approvals` (implicit), `?view=payout` (`expense.payout.manage`), `POST advances` (implicit) | live |
 | /yx/expenses/advances/[id] | `AdvanceScreen` live, record view: balance card and ledger, overdue message with the company's recovery instalments; approve less, approve / reject, record payment, record a return, claim against it | EXP-05 | `GET advances/:id` (implicit; now with `policy`: settle-by days and recovery instalments from the company settings), `PATCH advances/:id/amount` (the task holder), `POST advances/:id/pay`, `/return` (`expense.payout.manage`) | live |
 | /yx/expenses/to-pay | `ToPayScreen` live: the claims queue (saved views Unpaid / Payment failed / All approved, filters, search, bulk "Add to <month> payroll" and "Pay now by bank file" with the pay-from account, re-route a failed payment), Bank files (download, release by someone other than the maker with the typed phrase, cancel, the bank's results) and Journal (codes to map, export, mark posted); the payroll cut-off line | EXP-06 | `GET to-pay` (`expense.payout.manage` for the entity; now with `payroll`: cut-off day and month from the company setting), `POST to-pay/payroll`, `POST payouts`, `GET payouts/:id/file`, `POST payouts/:id/release` (not the maker; step-up and phrase), `/cancel`, `/results`, `GET journal`, `POST journal/export`, `POST journal/:id/posted` (all `expense.payout.manage`) | live |
-| /yx/settings/expenses | `PolicyMatrixScreen` live (read only with `expense.policy.view`): Limits matrix (grade band grid for policies that apply to one grade; other policies listed below and opened in the grid; sticky save bar saves a new version from a date; copy as a new policy), Mileage & per diem, Receipts & over-limit (categories), City tiers, GST registrations, Exchange rates; set-up check; starters for a new company | EXP-07 | reads: `GET setup-check`, `policies`, `rates`, `fx-rates`, `gst-registrations` (`expense.policy.manage` or `expense.policy.view`), `categories`, `tiers` (everyone who claims); every write `expense.policy.manage` | live |
+| /yx/settings/expenses | `PolicyMatrixScreen` live: Limits matrix (grade band grid for policies that apply to one grade; other policies listed below and opened in the grid; sticky save bar saves a new version from a date; copy as a new policy), Mileage & per diem, Receipts & over-limit (categories), City tiers, GST registrations, Exchange rates; set-up check; starters for a new company | EXP-07 | setup routes (`expense.policy.manage`) | live |
+| /yx/expenses/cards | `CardImportScreen` live (finance): upload, check columns (saved per bank, mapping form the first time), rows to fix, the same statement refused, match lines (suggestions, accept, change, link a card, ask the employee), resolve and close; `?id=` opens a statement | EXP-08 | `GET card-statements`, `POST card-statements/preview`, `POST card-statements`, `GET card-statements/:id` (audited view), `POST card-statements/:id/lines/:lineId/match`, `/chase`, `POST card-statements/:id/close`, `POST cards`, `GET cards/people` (all `expense.payout.manage`, checked company-wide in the service) | live |
+| /yx/expenses/card-lines | `CardImportScreen` live (employee): my card lines to explain; business or personal | EXP-08 | `GET card-lines/mine`, `POST card-lines/:id/explain` (implicit: the line must be mine) | live |
 | /yx/expenses/reports | `ExpenseReportsScreen` live: Summary (spend by category, paid through, table), Advance ageing (chart, buckets, detail), Unpaid claims, Over limit, GST input, Approver patterns; filter bar (department, period; the legal entity comes from the top bar); Export (CSV) and Download as XLSX | EXP-09 | `GET reports/:kind` (`expense.report.view` for the entities granted; now with `charts` (exact decimal strings) and `departments`; `departmentId` takes up to 20 ids; `format=xlsx`) | live |
 
 ## 2. Live Expenses pages with no design (stand-in copies still)
@@ -105,7 +107,6 @@ None (round 2). The design-live guard lists no Expenses screen under `liveCopies
 
 | design | what it needs | size |
 |---|---|---|
-| EXP-08 card statement import and matching (5 stories) | statement upload and column mapping, auto-match to claim lines, resolve, employee "explain this line"; tables with RLS, a statement parser per bank (provider: to decide) | L |
 | EXP-02 in-page camera (3 phone stories) | the mobile app's own camera view; the web page opens the phone's camera through the file picker | mobile app |
 
 ## 4. Design groups, story by story
@@ -246,11 +247,20 @@ policy is listed below and opens in the same grid.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Upload · Upload statement | design only, feature not built | no statement import API |
-| Map · Check columns | design only, feature not built | |
-| Match · Auto-match results | design only, feature not built | |
-| Resolve · Resolve | design only, feature not built | |
-| EmployeePhone · Employee explains lines · phone | design only, feature not built | |
+| Upload · Upload statement | live | card programme (saved banks or a new one) and the CSV / Excel file (5 MB), read at once for its columns |
+| Map · Check columns | live | the saved columns of the bank in words, with "Change columns" |
+| Match · Auto-match results | live | Facts and the card-lines table; Accept match, Ask employee, Link card, Change / Choose line; own card lines have no buttons |
+| Resolve · Resolve | live | note; Close statement sends every line not matched to its holder (a card linked to nobody blocks it) |
+| EmployeePhone · Employee explains lines · phone | live | /yx/expenses/card-lines on a phone; Add receipt (a draft company-card line, or the matching claim line) or Confirm personal spend (salary recovery) |
+| FirstBank · Check columns · first statement from a bank | live | the mapping form with the first rows of the file |
+| RowsToFix · Check columns · rows to fix (nothing imported) | live | |
+| Duplicate · Check columns · statement already imported | live | the same file, or the same bank and period (with "Import as version 2") |
+| NothingToMatch · Auto-match results · nothing to match | live | |
+| LinkCard · Auto-match results · link a card to an employee | live | the place finance registers a card's last 4 digits |
+| ChangeMatch · Auto-match results · choose another claim line | live | |
+| NoAccess · No access (not finance) | live | on a 403 |
+| EmployeeDesk · Employee explains lines · computer | live | /yx/expenses/card-lines on a computer |
+| EmployeeHome · Employee home · card lines to explain | live | the rail card on /yx/expenses when lines wait |
 
 #### EXP-09 · Expense reports
 
@@ -401,3 +411,27 @@ EXP-08 starts as one import that works for any bank: finance uploads the stateme
 per bank (date, description, amount, debit/credit, card number last 4, merchant, currency), and the mapping is saved per
 company and bank for next time. Ready-made bank templates come later from real sample files; direct bank feeds need a
 partner and are not in scope.
+
+## Round 3, EXP-08 card statements (branch `feat/yukthix-exp-cards`, 3 Nov 2026)
+Built as the founder's option A. The design group has 14 stories (5 drawn first, 9 drawn for the states the live screen
+needs), all live. Rules:
+- One import for any bank: CSV (csv-parse) or Excel .xlsx (exceljs, first sheet), up to 5 MB and 5,000 rows, through the
+  file service (type and size checked, virus scanned after the commit). The columns are mapped once per company and
+  card programme and saved (a change is a new version of the mapping, audited).
+- Every row is checked (date in the chosen format, a real date, an amount with up to 2 decimals, Dr / Cr, card number,
+  currency code); one bad row and nothing is saved, every bad row listed.
+- Only the last 4 digits of a card are kept. A full number in any cell is cut to its last 4 digits; such a file is
+  stored as a copy cut the same way, and the screen says so.
+- The same file (SHA-256) is refused; the same programme and period is refused unless imported as the next version,
+  which is allowed only while nothing on the old one is matched or explained.
+- Suggestions: the card's holder on file, same currency, amount within `expense.card.match_amount_within` (default ₹1),
+  date within `expense.card.match_days` (default 3); one claim line per card line, closest amount, then nearest date,
+  then a like merchant. Refunds (credits) are never matched or chased.
+- A company-card line is never reimbursed (M05 Q8; it was paid before this round). A personal line matched while its
+  claim is not decided becomes a company-card line; once matched it stays one.
+- Ask employee / Close: the line goes to its holder (notification `expense.card.update`), reminders on
+  `expense.card.reminder_days` (default 3, 7, 14 days). Business: a draft company-card line on "Company card, <month>"
+  (or the matching claim line); personal: an interest-free salary recovery in `expense.card.recovery_instalments`
+  (default 3) through the payroll loan engine.
+- Finance only, company-wide `expense.payout.manage`; never matching one's own card line; every view of a statement and
+  every change audited; RLS and no delete on the four new tables (migration 20261540000000).
