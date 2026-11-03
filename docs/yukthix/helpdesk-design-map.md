@@ -1211,3 +1211,11 @@ the time limits come from the statutory rule sets, never code; officers may dela
 carry it out; nothing changes in People automatically. (4) "My cases" shows the reporter status, dates and messages only —
 never investigation notes, witness names or the respondent's reply.
 Built after HLP-06 is merged (it creates the case record HLP-07 … 09 use).
+
+Founder approved, 4 Nov 2026 (questions 31-40, all as suggested): (31) case-record retention is a company setting after
+counsel, default 8 years after closing (GO-LIVE-CHECKLIST); (32) POSH days become working days on the company holiday
+calendar once counsel confirms (GO-LIVE-CHECKLIST); (33) keep: outcome or signed IC report closes the case, employer
+action is a date; (34) disciplinary show-cause cases are built next on the same steps, reply days a setting per legal
+entity; (35) the ethics officer sets Serious or Standard, audited; (36) Cases and Ethics desk show only to people on a
+speak-up list or a case; (37) witness invite step after counsel; (38) relief tasks join HR My tasks when that page
+exists; (39) one outcome summary for reporter and respondent; (40) status width fixed.

@@ -79,3 +79,8 @@ Things deliberately left for launch. Development runs locally until then (test k
 - [ ] **Policy acknowledgements: how long to keep them.** Ask counsel (DPDP Act 2023, Evidence Act / BSA 63). If they
       agree, build the company setting "Keep policy acknowledgements for" with the default employment plus 8 years
       (founder answer, 3 Nov 2026). Until then acknowledgements are kept with no end date.
+- [ ] **Speak-up and case records: how long to keep them.** Ask counsel (DPDP Act 2023). If they agree, build the company
+      setting with the default 8 years after the case closes (founder answer, 4 Nov 2026). Until then kept with no end date.
+- [ ] **POSH day counting.** Ask counsel whether POSH Rules time limits are working days. If yes, switch the POSH rule
+      sets to working days on the company holiday calendar (founder answer, 4 Nov 2026). Today they count calendar days.
+- [ ] **Witnesses in cases.** Ask counsel what a witness may see; then build the witness invite step (founder, 4 Nov 2026).
