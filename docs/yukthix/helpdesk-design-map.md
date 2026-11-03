@@ -626,3 +626,7 @@ it?" stays off the raise form; the agent sets the priority. (3) "Reopen ticket" 
 issue, article open, chat offer, no access). (6) The resolved card shows only the newest ticket that can be rated or
 reopened. (7) HLP-06 … 14 (POSH and the internal committee, whistle-blower, disciplinary steps, accident reporting,
 industrial disputes): one founder decision session per area before any server work.
+
+## Founder answers, 3 Nov 2026 (HLP-02, "all good")
+Keep as built: "Merge into another ticket" opens the ticket page; "Move to queue" only to desks this desk may hand
+tickets to, with a reason; a row click opens the quick view, "Open ticket" goes to the ticket page.
