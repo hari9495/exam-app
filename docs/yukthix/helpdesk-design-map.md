@@ -1219,3 +1219,13 @@ action is a date; (34) disciplinary show-cause cases are built next on the same 
 entity; (35) the ethics officer sets Serious or Standard, audited; (36) Cases and Ethics desk show only to people on a
 speak-up list or a case; (37) witness invite step after counsel; (38) relief tasks join HR My tasks when that page
 exists; (39) one outcome summary for reporter and respondent; (40) status width fixed.
+
+## Founder decisions, 4 Nov 2026 (HLP-12 Accident case, before any server work)
+(1) Anyone can report an accident or injury: the injured person, a witness or a manager, also on behalf of someone else
+(desk and phone). (2) A named safety team chosen by the System Admin (like the speak-up lists), plus the HR person who
+files the ESIC report, handles the case and sees injury and medical details; the manager sees leave dates only; everyone
+else gets Not found. (3) ESIC accident report and Employee Compensation Act claim: the app keeps the deadline clocks from
+the statutory rule sets (verify with counsel, never in code), prepares the form details for printing, and a person files
+on the ESIC portal and records the date; no direct government filing. (4) Contract workers: the case names the
+contractor, the contractor files; the app reminds the safety team and shows "contractor not filed" when late, because
+the principal employer stays responsible.
