@@ -308,3 +308,11 @@ for (const h in want) errs.push('story file with no rows: ' + h);
 console.table(counts);
 if (errs.length) { console.error(errs.join('\n')); process.exit(1); }
 ```
+
+## Founder answers, 3 Nov 2026 (Expenses round 1, "all good")
+(1) managers get a read-only "Team claims" list; the home cards drill into it; (2) team spend counts claims sent in the
+month, using the approved amount once decided; (3) keep "A bill without a receipt" as a fourth way to add a line;
+(4) "Save draft" returns to the home with a toast; (5) keep finance's "Flagged for audit" table; (6) the policy matrix
+shows the category × grade × city-tier grid for policies that apply to a single grade and lists the rest below it.
+Also: the foreign-rate tolerance (today `FX_TOLERANCE_PCT` = 3 in API code) becomes a company setting with that default.
+Card statement import (EXP-08) waits for a bank-format decision.
