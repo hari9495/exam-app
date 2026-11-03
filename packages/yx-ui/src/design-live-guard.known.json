@@ -45,7 +45,6 @@
   ],
   "notLive": [
     "_kit: LinksFrame",
-    "auth: StepUpDialog",
     "console: CompaniesScreen",
     "console: CompanyScreen",
     "console: ConsoleShell",

@@ -22,7 +22,7 @@ export default function YxSecuritySettingsPage() {
 
   const policy = useQuery(get<PolicyResponse>('policy', '/security/policy'));
   const providers = useQuery(get<IdentityProviderRow[]>('providers', '/security/identity-providers'));
-  const users = useQuery(get<PaginatedResponse<StaffUser>>('users', '/users?pageSize=100'));
+  const users = useQuery(get<PaginatedResponse<StaffUser>>('admins', '/users?role=org_admin&pageSize=100'));
   const domains = useQuery(get<EmailDomainRow[]>('domains', '/security/identity-providers/domains'));
 
   // A plain 403 is a missing permission; MFA_REQUIRED is the MFA floor (the layout says what to do).

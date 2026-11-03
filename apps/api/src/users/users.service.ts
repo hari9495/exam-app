@@ -159,12 +159,13 @@ export class UsersService {
     }
   }
 
-  async list(context: TenantContext, filters: { page?: string; pageSize?: string; search?: string } = {}): Promise<PaginatedResponse<SafeUser>> {
+  async list(context: TenantContext, filters: { page?: string; pageSize?: string; search?: string; role?: string } = {}): Promise<PaginatedResponse<SafeUser>> {
     const { page, pageSize, skip, take } = resolvePaginationParams(filters.page, filters.pageSize);
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const where = {
         organizationId: context.organizationId,
         ...staffSearchWhere(filters.search),
+        ...(filters.role ? { role: filters.role } : {}),
       };
       const [users, total] = await Promise.all([
         tx.user.findMany({ where, select: SAFE_USER_SELECT, orderBy: { createdAt: 'desc' }, skip, take }),

@@ -1,6 +1,7 @@
 import { Throttle } from '@nestjs/throttler';
 import { STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -60,8 +61,11 @@ export class UsersController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('search') search?: string,
+    @Query('role') role?: string,
   ) {
-    return this.usersService.list(tenant, { page, pageSize, search });
+    // The security page picks break-glass admins by role, so a big company's admins are never cut off by paging.
+    if (role !== undefined && !/^[a-z_]{1,40}$/.test(role)) throw new BadRequestException('role must be a role name, such as org_admin.');
+    return this.usersService.list(tenant, { page, pageSize, search, role });
   }
 
   // Org-scoped teammates for the pipeline assign/@mention pickers (results:view, not the

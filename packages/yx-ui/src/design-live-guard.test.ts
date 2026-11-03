@@ -10,7 +10,7 @@ import KNOWN from './design-live-guard.known.json';
 // design-live-guard.known.json; the lists may only shrink. YX_GUARD_WRITE=1 rewrites the file (only to shrink it).
 
 const UI = join(__dirname, '..');
-const WEB = [join(UI, '../../apps/web/app/yx'), join(UI, '../../apps/web/lib')];
+const WEB = [join(UI, '../../apps/web/app/yx'), join(UI, '../../apps/web/lib'), join(UI, '../../apps/web/components/auth')]; // components/auth: the step-up dialog is mounted once in the root layout
 const SCREENS = join(UI, 'src/screens');
 
 const files = (dir: string, ok: (f: string) => boolean): string[] =>

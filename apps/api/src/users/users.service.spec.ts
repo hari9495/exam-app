@@ -774,6 +774,18 @@ describe('UsersService', () => {
 
     expect(whereArg.OR).toBeUndefined();
     expect(whereArg.organizationId).toBe('org-1');
+    expect(whereArg.role).toBeUndefined();
+  });
+
+  it('list filters by role inside the company when asked (the security page picks admins this way)', async () => {
+    let whereArg: any;
+    tenantPrisma.forTenant.mockImplementation(async (_context: unknown, fn: (tx: unknown) => unknown) =>
+      fn({ user: { findMany: async (args: any) => ((whereArg = args.where), []), count: async () => 0 } }),
+    );
+
+    await service.list({ organizationId: 'org-1', isSuperAdmin: false }, { role: 'org_admin' });
+
+    expect(whereArg).toMatchObject({ organizationId: 'org-1', role: 'org_admin' });
   });
 
   it('inviteSuperAdmin rejects an email that already has a platform account', async () => {
