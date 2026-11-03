@@ -105,9 +105,9 @@ export function liveMyCases(over: Partial<LiveMyCases> = {}): LiveMyCases {
 
 export const CASE_LIST_ROWS: CaseListRow[] = [
   { id: 'k1', ref: 'GRV-0142', kind: 'grievance', subject: 'Night-shift bus does not wait at the gate', location: 'Hosur plant', stage: 'Inquiry', raisedBy: 'Farzana Begum', anonymous: false, owner: 'Lakshmi Venkatesan', next: { label: 'Committee decision', on: '2026-10-12' }, overdue: false, status: 'open' },
-  { id: 'k2', ref: 'ETH-0011', kind: 'ethics', subject: 'Supplier gifts above the ₹2,000 limit', location: 'Bengaluru head office', stage: 'Outcome proposed', raisedBy: null, anonymous: true, owner: 'Rekha Iyengar', next: { label: 'Second officer approves', on: null }, overdue: false, status: 'action' },
+  { id: 'k2', ref: 'WB-0011', kind: 'whistleblower', subject: 'Supplier gifts above the ₹2,000 limit', location: 'Bengaluru head office', stage: 'Outcome proposed', raisedBy: null, anonymous: true, owner: 'Rekha Iyengar', next: { label: 'Second officer approves', on: null }, overdue: false, status: 'action' },
   { id: 'k3', ref: 'POSH-0007', kind: 'posh', subject: 'Complaint about remarks in team meetings', location: 'Bengaluru head office', stage: 'Notice sent', raisedBy: 'Withheld', anonymous: false, owner: 'Dr. Anuradha Menon', next: { label: 'Reply due', on: '2026-10-04' }, overdue: false, status: 'open' },
-  { id: 'k4', ref: 'DSC-0031', kind: 'disciplinary', subject: 'Absence without leave, 8 to 12 Sep', location: 'Hosur plant', stage: 'Reply awaited', raisedBy: 'Ravi Shankar', anonymous: false, owner: 'Lakshmi Venkatesan', next: { label: 'Reply due', on: '2026-09-30' }, overdue: false, status: 'open' },
+  { id: 'k4', ref: 'GRV-0140', kind: 'grievance', subject: 'A manager: shift changed without notice', location: 'Hosur plant', stage: 'Notice and reply', raisedBy: 'Ravi Shankar', anonymous: false, owner: 'Lakshmi Venkatesan', next: { label: 'Reply due', on: '2026-09-30' }, overdue: false, status: 'open' },
   { id: 'k5', ref: 'GRV-0139', kind: 'grievance', subject: 'Canteen water not safe to drink', location: 'Chennai office', stage: 'Decision', raisedBy: 'Arun P.', anonymous: false, owner: 'Lakshmi Venkatesan', next: { label: 'Committee decision', on: '2026-09-25' }, overdue: true, status: 'open' },
 ];
 
@@ -119,8 +119,8 @@ export function liveCaseList(over: Partial<LiveCaseList> = {}): LiveCaseList {
 export function ethicsCase(over: Partial<CaseDetail> = {}): CaseDetail {
   return {
     id: 'k2',
-    ref: 'ETH-0011',
-    kind: 'ethics',
+    ref: 'WB-0011',
+    kind: 'whistleblower',
     subject: 'Supplier gifts above the ₹2,000 limit',
     location: 'Bengaluru head office',
     openedOn: '2026-08-27',
@@ -146,10 +146,12 @@ export function ethicsCase(over: Partial<CaseDetail> = {}): CaseDetail {
       { id: 'mb-joseph', name: 'Joseph Mathew', role: 'Second officer', access: 'full', recused: null },
       { id: 'mb-sn', name: 'Justice (retd.) S. Narayanan', role: 'Audit committee chair', access: 'reports and outcome', external: true, recused: null },
     ],
-    addable: [
-      { id: 'p-harish', name: 'Harish Bhat', role: 'Investigator' },
-      { id: 'p-ravi', name: 'Ravi Shankar', role: 'Line supervisor' },
+    people: [
+      { id: 'p-harish', name: 'Harish Bhat', email: 'harish.bhat@kaverifoods.in' },
+      { id: 'p-ravi', name: 'Ravi Shankar', email: 'ravi.shankar@kaverifoods.in' },
+      { id: 'p-lakshmi', name: 'Lakshmi Venkatesan', email: 'lakshmi.v@kaverifoods.in' },
     ],
+    report: { summary: 'Four festival hampers from a packaging vendor reached the purchase team around 14 Aug. Two looked well above the gifts limit.', category: 'Bribery or corruption', happenedOn: '2026-08-14', involved: 'Purchase manager', witnesses: null, outside: 'Sri Lakshmi Packaging (vendor)', retaliationWorry: true, late: false },
     timeline: [
       { id: 't1', at: '2026-08-27T10:00:00Z', who: 'YukthiX', text: 'Report received through Speak-up (anonymous). Routed to the ethics officers.' },
       { id: 't2', at: '2026-08-28T05:00:00Z', who: 'Rekha Iyengar', text: 'Acknowledged to the reporter' },
@@ -185,6 +187,7 @@ export function ethicsCase(over: Partial<CaseDetail> = {}): CaseDetail {
       finding: 'proved-in-part',
       action: 'Written warning; gifts training for the purchase team',
       reasons: 'Two of the four hampers were above the limit and not declared. The register shows one declared on 16 Aug.',
+      reporterSummary: 'We looked into your concern and took action with the purchase team.',
       proposedBy: 'Rekha Iyengar',
       proposedByMe: false,
       proposedAt: '2026-09-27',
@@ -231,7 +234,8 @@ export function poshCase(over: Partial<CaseDetail> = {}): CaseDetail {
       { id: 'ic-joseph', name: 'Joseph Mathew', role: 'IC member', access: 'full', recused: { on: '2026-09-22', reason: 'Works in the same team as the respondent.' } },
       { id: 'ic-shobha', name: 'Adv. Shobha Rao', role: 'IC member (external)', access: 'full', external: true, recused: null },
     ],
-    addable: [],
+    people: base.people,
+    report: { summary: 'Remarks of a sexual nature to me in team meetings on 3, 10 and 17 Sep 2026.', category: null, happenedOn: '2026-09-17', involved: 'My manager in Sales', witnesses: 'Two colleagues in the meeting', outside: null, retaliationWorry: false, late: false },
     timeline: [
       { id: 'p1', at: '2026-09-21T12:35:00Z', who: 'Complainant', text: 'Filed the complaint' },
       { id: 'p2', at: '2026-09-22T04:30:00Z', who: 'Joseph Mathew', text: 'Stepped aside: works in the same team as the respondent' },
@@ -278,7 +282,8 @@ export function liveWorkspace(over: Partial<LiveCaseWorkspace> = {}): LiveCaseWo
     onSaveIcReport: noop,
     onVote: noop,
     onSign: noop,
-    onRelief: async () => ({ taskRef: 'TSK-2291' }),
+    onRelief: async () => ({ taskRef: 'POSH-0007-R1' }),
+    onReliefDone: noop,
     onRecuse: noop,
     onAddMember: noop,
     onUpload: noop,
@@ -291,10 +296,10 @@ export function liveWorkspace(over: Partial<LiveCaseWorkspace> = {}): LiveCaseWo
 /* ---------------- HLP-09 ---------------- */
 
 export const ETHICS_ROWS: EthicsRow[] = [
-  { id: 'w1', ref: 'ETH-0012', subject: 'Overtime register altered at Hosur', receivedOn: '2026-09-27', entity: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', anonymous: true, severity: 'serious', routed: false, stage: 'Received', clock: { label: 'Acknowledge by', on: '2026-10-04' }, aboutOfficer: false },
-  { id: 'w2', ref: 'ETH-0011', subject: 'Supplier gifts above the ₹2,000 limit', receivedOn: '2026-08-27', entity: 'Kaveri Foods Pvt Ltd', anonymous: true, severity: 'standard', routed: false, stage: 'Outcome proposed', clock: { label: 'Outcome by', on: '2026-10-27' }, aboutOfficer: false },
-  { id: 'w3', ref: 'ETH-0010', subject: 'Case officer approved own travel claims', receivedOn: '2026-09-19', entity: 'Kaveri Foods Pvt Ltd', anonymous: false, severity: 'serious', routed: true, stage: 'Inquiry', clock: null, aboutOfficer: true },
-  { id: 'w4', ref: 'ETH-0009', subject: 'Vendor invoices approved without delivery', receivedOn: '2026-09-03', entity: 'Kaveri Foods Pvt Ltd', anonymous: true, severity: 'serious', routed: true, stage: 'Inquiry', clock: null, aboutOfficer: false },
+  { id: 'w1', ref: 'WB-0012', subject: 'Overtime register altered at Hosur', receivedOn: '2026-09-27', entity: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', anonymous: true, severity: 'serious', routed: false, stage: 'Received', clock: { label: 'Acknowledge by', on: '2026-10-04' }, aboutOfficer: false },
+  { id: 'w2', ref: 'WB-0011', subject: 'Supplier gifts above the ₹2,000 limit', receivedOn: '2026-08-27', entity: 'Kaveri Foods Pvt Ltd', anonymous: true, severity: 'standard', routed: false, stage: 'Outcome proposed', clock: { label: 'Outcome by', on: '2026-10-27' }, aboutOfficer: false },
+  { id: 'w3', ref: 'WB-0010', subject: 'Case officer approved own travel claims', receivedOn: '2026-09-19', entity: 'Kaveri Foods Pvt Ltd', anonymous: false, severity: 'serious', routed: true, stage: 'Inquiry', clock: null, aboutOfficer: true },
+  { id: 'w4', ref: 'WB-0009', subject: 'Vendor invoices approved without delivery', receivedOn: '2026-09-03', entity: 'Kaveri Foods Pvt Ltd', anonymous: true, severity: 'serious', routed: true, stage: 'Inquiry', clock: null, aboutOfficer: false },
 ];
 
 export function liveEthics(over: Partial<LiveEthicsDesk> = {}): LiveEthicsDesk {

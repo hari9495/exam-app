@@ -3,7 +3,8 @@
 // (or changes them here with the screens). Dates are ISO strings in India time; every legal date comes from the server
 // (the statutory rule set or a company setting), never from the screen. Rules: helpdesk-design-map.md section 4f.
 
-export type CaseKind = 'grievance' | 'ethics' | 'posh' | 'disciplinary';
+/** The HLP-06 case kinds (disciplinary cases have no record yet: question 34). */
+export type CaseKind = 'grievance' | 'whistleblower' | 'posh';
 export type CaseStatus = 'open' | 'action' | 'on-hold' | 'closed';
 
 /** A dated step of the case. `source` names where the date came from (rule set and version, or company setting). */
@@ -171,6 +172,8 @@ export interface OutcomeState {
   finding: CaseFinding | null;
   action: string | null;
   reasons: string | null;
+  /** What the reporter (and the respondent) are told once it is approved. */
+  reporterSummary: string | null;
   proposedBy: string | null;
   proposedByMe: boolean;
   proposedAt: string | null;
@@ -252,14 +255,17 @@ export interface CaseDetail {
   canDecide: { ok: boolean; reason: string | null };
   members: CaseTeamMember[];
   /** People who may be added (case officers, investigators, IC members, HR), from the server. */
-  addable: { id: string; name: string; role: string }[];
+  /** Active people of the company not on the case: the respondent, the HR person for a relief task, a new member. */
+  people: { id: string; name: string; email: string }[];
+  /** What the reporter filed (HLP-06). */
+  report: { summary: string; category: string | null; happenedOn: string | null; involved: string | null; witnesses: string | null; outside: string | null; retaliationWorry: boolean; late: boolean };
   timeline: { id: string; at: string; who: string; text: string }[];
   files: CaseFile[];
   accessLog: AccessEntry[];
   /** With the reporter (anonymous ones through the reply code). */
   messages: CaseMessage[];
   notice: NoticeState | null;
-  /** Ethics, grievance, disciplinary. */
+  /** Grievance and ethics cases. */
   outcome: OutcomeState | null;
   /** POSH. */
   icReport: IcReportState | null;
@@ -270,6 +276,7 @@ export interface ProposeInput {
   finding: CaseFinding;
   action: string;
   reasons: string;
+  reporterSummary: string;
   version: number;
 }
 export interface IcReportInput {
@@ -281,10 +288,11 @@ export interface IcReportInput {
 export interface ReliefInput {
   action: ReliefAction;
   note: string;
+  assigneeUserId: string;
 }
 export interface AddMemberInput {
   personId: string;
-  role: string;
+  role: 'officer' | 'investigator';
   overrideReason?: string;
 }
 
@@ -298,10 +306,19 @@ export interface EthicsRow {
   receivedOn: string;
   entity: string;
   anonymous: boolean;
-  severity: 'serious' | 'standard';
+  /** 'serious' when the reporter fears retaliation; null otherwise (no severity is recorded yet: question 35). */
+  severity: 'serious' | 'standard' | null;
   routed: boolean;
   stage: string;
   clock: { label: string; on: string } | null;
   /** The report names a case officer: it went to the next person in the routing, not to that officer (s.177). */
   aboutOfficer: boolean;
+}
+
+export interface NoticeInput {
+  /** Required when the case has no respondent yet. */
+  respondentUserId?: string;
+  allegations: string;
+  /** Case files shared with the respondent. */
+  fileIds: string[];
 }

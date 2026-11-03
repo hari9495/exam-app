@@ -313,6 +313,11 @@ export function buildNav(n: NavInput): NavArea[] {
           ...when(any('desk.kb.view_internal', 'desk.kb.author', 'desk.kb.publish'), L('desk-knowledge', 'Knowledge base', '/yx/desk/knowledge')),
           L('desk-policies', 'Policies', '/yx/desk/policies'),
           L('desk-speakup', 'Speak up', '/yx/desk/speakup'),
+          // HLP-07/08/09: one's own part of a case; the case team's cases and the ethics queue (membership is checked by the
+          // API: someone on no case sees an empty list).
+          L('desk-my-cases', 'My cases', '/yx/desk/my-cases'),
+          L('desk-cases', 'Cases', '/yx/desk/cases'),
+          L('desk-ethics', 'Ethics desk', '/yx/desk/ethics'),
           ...when(has('speakup.setup.manage'), L('desk-speakup-setup', 'Speak-up set-up', '/yx/desk/speakup-setup')),
           ...when(any('policy.manage', 'policy.publish'), L('desk-policy-admin', 'Policy admin', '/yx/desk/policy-admin')),
           L('desk-catalog', 'Service catalogue', '/yx/desk/catalog'),

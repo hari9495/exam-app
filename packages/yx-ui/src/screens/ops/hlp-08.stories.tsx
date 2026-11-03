@@ -39,6 +39,7 @@ export const NoticeDelayed: S = {
   name: 'Notice · delayed with a recorded reason',
   render: () => live({ detail: ethicsCase({ notice: { ...notSent, status: 'delayed', delay: { reason: 'The respondent approves the reporter’s leave; telling him now could expose the reporter.', reviewOn: '2026-10-06', by: 'Rekha Iyengar', at: '2026-09-25' } }, outcome: noOutcome }), start: { tab: 'notice' } }),
 };
+export const SendNotice: S = { name: 'Notice · choose the respondent, what is alleged, the papers', render: () => live({ detail: ethicsCase({ respondent: null, notice: notSent, outcome: noOutcome }), start: { tab: 'notice', dialog: 'notice' } }) };
 export const DelayNotice: S = { name: 'Notice · delay (reason and review date)', render: () => live({ detail: ethicsCase({ notice: notSent, outcome: noOutcome }), start: { tab: 'notice', dialog: 'delay' } }) };
 export const MoreTimeDecide: S = {
   name: 'Notice · the respondent asked for more time',
@@ -46,7 +47,7 @@ export const MoreTimeDecide: S = {
 };
 export const InterimRelief: S = {
   name: 'Interim relief · recorded, HR task',
-  render: () => live({ detail: poshCase({ relief: [{ id: 'r1', action: 'reporting', note: 'Priya Sharma reports to Kavya N. instead of the respondent, as she asked in writing on 23 Sep.', by: 'Dr. Anuradha Menon', at: '2026-09-24', task: { ref: 'TSK-2291', status: 'open', assignee: 'Lakshmi Venkatesan (HR)' } }] }), start: { tab: 'relief' } }),
+  render: () => live({ detail: poshCase({ relief: [{ id: 'r1', action: 'reporting', note: 'Priya Sharma reports to Kavya N. instead of the respondent, as she asked in writing on 23 Sep.', by: 'Dr. Anuradha Menon', at: '2026-09-24', task: { ref: 'POSH-0007-R1', status: 'open', assignee: 'Lakshmi Venkatesan (HR)' } }] }), start: { tab: 'relief' } }),
 };
 export const RecordRelief: S = { name: 'Interim relief · record (gives HR a task)', render: () => live({ detail: poshCase(), start: { tab: 'relief', dialog: 'relief' } }) };
 export const StepAside: S = { name: 'Step aside from a case (with a reason)', render: () => live({ detail: poshCase(), start: { dialog: 'recuse' } }) };

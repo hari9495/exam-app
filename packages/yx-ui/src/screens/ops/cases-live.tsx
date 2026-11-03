@@ -15,6 +15,7 @@ import { Drawer } from '../../components/drawer';
 import { EmptyState, ErrorState, InlineAlert, NoAccessState, Skeleton } from '../../components/feedback';
 import { FormField, useTooEarly } from '../../components/field';
 import { TextArea } from '../../components/inputs';
+import { Checkbox } from '../../components/choice';
 import { Select } from '../../components/select';
 import { Segment } from '../../components/segment';
 import { DatePicker } from '../../components/date';
@@ -53,6 +54,7 @@ import type {
   MyReplyInput,
   ProposeInput,
   ReliefAction,
+  NoticeInput,
   ReliefInput,
 } from './cases-live-types';
 
@@ -61,7 +63,7 @@ import type {
 const asDate = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00`);
 const day = (iso: string | null | undefined) => (iso ? formatDate(asDate(iso)) : '—');
 const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-export const KIND_LABEL: Record<CaseKind, string> = { grievance: 'Grievance', ethics: 'Ethics concern', posh: 'Sexual harassment (POSH)', disciplinary: 'Disciplinary' };
+export const KIND_LABEL: Record<CaseKind, string> = { grievance: 'Grievance', whistleblower: 'Fraud or ethics concern', posh: 'Sexual harassment (POSH)' };
 const STATUS_LABEL: Record<CaseStatus, string> = { open: 'Open', action: 'Action needed', 'on-hold': 'On hold', closed: 'Closed' };
 const STATUS_TONE: Record<CaseStatus, BadgeTone> = { open: 'info', action: 'warning', 'on-hold': 'neutral', closed: 'neutral' };
 const ROLE_LABEL = { reporter: 'You raised it', respondent: 'You are asked to reply', witness: 'Witness' } as const;
@@ -303,12 +305,14 @@ function MyCasePart({ live, c }: { live: LiveMyCases; c: MyCaseDetail }) {
       )}
       {c.role === 'reporter' && <p className="yx-ops-muted">You see the stage, the dates and the messages with the case team. The inquiry itself stays with the case team, to protect everyone in it.</p>}
       {c.role === 'respondent' && <RespondentPart live={live} c={c} />}
+      {c.role !== 'respondent' && (
       <Card title="Messages with the case team">
         <div className="yx-ops-stack">
           <Thread messages={c.messages} label="Messages" viewer="person" />
           {c.status !== 'closed' && <MessageBox id="mc-msg" label="Message to the case team" onSend={(t) => live.onSendMessage(c.id, t)} />}
         </div>
       </Card>
+      )}
     </div>
   );
 }
@@ -486,7 +490,7 @@ export interface LiveCaseWorkspace {
   today: string;
   detail: CaseDetail | null;
   onBack: () => void;
-  onSendNotice: (caseId: string) => Promise<void>;
+  onSendNotice: (caseId: string, input: NoticeInput) => Promise<void>;
   onDelayNotice: (caseId: string, input: { reason: string; reviewOn: string }) => Promise<void>;
   onDecideMoreTime: (caseId: string, input: { grant: boolean; newDue?: string }) => Promise<void>;
   onPropose: (caseId: string, input: ProposeInput) => Promise<void>;
@@ -496,6 +500,8 @@ export interface LiveCaseWorkspace {
   onVote: (caseId: string, input: { vote: 'agree' | 'disagree'; note: string }) => Promise<void>;
   onSign: (caseId: string, version: number) => Promise<void>;
   onRelief: (caseId: string, input: ReliefInput) => Promise<{ taskRef: string }>;
+  /** HR confirmed the relief is carried out. */
+  onReliefDone: (caseId: string, reliefId: string) => Promise<void>;
   onRecuse: (caseId: string, reason: string) => Promise<void>;
   /** Rejects with code CASE_CONFLICT when the person has a conflict; a second call with overrideReason records it. */
   onAddMember: (caseId: string, input: AddMemberInput) => Promise<void>;
@@ -503,19 +509,31 @@ export interface LiveCaseWorkspace {
   onOpenFile: (caseId: string, fileId: string) => void;
   onSendMessage: (caseId: string, text: string) => Promise<void>;
   /** Stories and tests only. */
-  start?: { tab?: CaseTab; dialog?: 'propose' | 'delay' | 'relief' | 'recuse' | 'add' | 'send-back'; conflict?: string };
+  start?: { tab?: CaseTab; dialog?: 'propose' | 'notice' | 'delay' | 'relief' | 'recuse' | 'add' | 'send-back'; conflict?: string };
 }
 
 function NoticeTab({ live, c }: { live: LiveCaseWorkspace; c: CaseDetail }) {
   const n = c.notice;
-  const [sending, setSending] = useState(false);
+  const [sending, setSending] = useState(live.start?.dialog === 'notice');
   const [delaying, setDelaying] = useState(live.start?.dialog === 'delay');
+  const [respondent, setRespondent] = useState<string | null>(null);
+  const [allegations, setAllegations] = useState(c.report.summary);
+  const [shared, setShared] = useState<string[]>([]);
   const [reason, setReason] = useState('');
   const [review, setReview] = useState<Date | null>(null);
   const [newDue, setNewDue] = useState<Date | null>(null);
   const { busy, act, alert } = useAct();
   const early = useTooEarly([...(reason.trim().length < 3 ? [{ fieldId: 'cw-delay-reason', message: 'Write why the notice waits. It goes on the case record.' }] : []), ...(!review ? [{ fieldId: 'cw-delay-review', message: 'Choose when to look at it again.' }] : [])]);
   const grantEarly = useTooEarly(!newDue ? [{ fieldId: 'cw-new-due', message: 'Choose the new reply date.' }] : []);
+  const sendEarly = useTooEarly([
+    ...(!c.respondent && !respondent ? [{ fieldId: 'cw-respondent', message: 'Choose who the notice goes to.' }] : []),
+    ...(allegations.trim().length < 10 ? [{ fieldId: 'cw-allegations', message: 'Write what is alleged (10 letters or more).' }] : []),
+  ]);
+  const send = async () => {
+    if (sendEarly.stop()) return;
+    const input: NoticeInput = { allegations: allegations.trim(), fileIds: shared, ...(c.respondent ? {} : { respondentUserId: respondent! }) };
+    if (await act('send', () => live.onSendNotice(c.id, input), 'Notice sent', 'The respondent has the notice, the papers you shared and the reply date.')) setSending(false);
+  };
   if (!n) return <EmptyState compact title="No notice is needed." description="Nobody is accused in this case." />;
   const delay = async () => {
     if (early.stop()) return;
@@ -523,7 +541,7 @@ function NoticeTab({ live, c }: { live: LiveCaseWorkspace; c: CaseDetail }) {
   };
   return (
     <div className="yx-ops-stack">
-      {!delaying && alert}
+      {!delaying && !sending && alert}
       {n.status === 'sent' ? (
         <DescriptionList
           items={[
@@ -572,16 +590,41 @@ function NoticeTab({ live, c }: { live: LiveCaseWorkspace; c: CaseDetail }) {
         </div>
       )}
       <Replies replies={n.replies} mine={false} onOpen={(f) => live.onOpenFile(c.id, f)} />
-      <ConfirmDialog
+      <Dialog
         open={sending}
         onOpenChange={setSending}
-        title={`Send the notice to ${c.respondent ?? 'the respondent'}?`}
-        consequence={`They get the notice, a copy of the complaint and the papers you shared, and the reply date (${n.replySource}). The clock starts today.`}
-        confirmLabel="Send notice"
-        onConfirm={async () => {
-          await live.onSendNotice(c.id);
-        }}
-      />
+        title="Send the notice and the papers"
+        description={`The respondent gets the notice, what is alleged, the files you tick and the reply date (${n.replySource}). The clock starts today.`}
+        notice={alert}
+        footer={
+          <>
+            <Button onClick={() => setSending(false)}>Cancel</Button>
+            <Button variant="primary" icon={Send} loading={busy === 'send'} onClick={() => void send()}>
+              Send notice
+            </Button>
+          </>
+        }
+      >
+        <div className="yx-ops-stack">
+          {!c.respondent && (
+            <FormField id="cw-respondent" label="Respondent" required helper="The person the complaint is about. They can't be on the case team." error={sendEarly.errorOf('cw-respondent')}>
+              <Select value={respondent} onChange={setRespondent} options={c.people.map((p) => ({ value: p.id, label: `${p.name} · ${p.email}` }))} placeholder="Choose a person" />
+            </FormField>
+          )}
+          <FormField id="cw-allegations" label="What is alleged" required helper="In plain words. Leave out anything that would identify the reporter or witnesses unless the law needs it." error={sendEarly.errorOf('cw-allegations')}>
+            <TextArea rows={4} value={allegations} onChange={setAllegations} maxLength={5000} />
+          </FormField>
+          {c.files.length > 0 && (
+            <FormField label="Papers to share" optional>
+              <div className="yx-ops-stack" data-gap="sm">
+                {c.files.map((f) => (
+                  <Checkbox key={f.id} label={f.name} description={`${f.addedBy} · ${day(f.addedAt)}`} checked={shared.includes(f.id)} onChange={(on) => setShared((ids) => (on ? [...ids, f.id] : ids.filter((x) => x !== f.id)))} />
+                ))}
+              </div>
+            </FormField>
+          )}
+        </div>
+      </Dialog>
       <Dialog
         open={delaying}
         onOpenChange={setDelaying}
@@ -641,6 +684,7 @@ function OutcomeTab({ live, c, onPropose }: { live: LiveCaseWorkspace; c: CaseDe
               { label: 'Finding', value: o.finding ? FINDING_LABEL[o.finding] : '—' },
               { label: 'Action', value: o.action ?? '—' },
               { label: 'Reasons', value: o.reasons ?? '—' },
+              { label: 'The reporter is told', value: o.reporterSummary ?? '—' },
               { label: 'Proposed', value: `${o.proposedBy ?? '—'}, ${day(o.proposedAt)}` },
               ...(o.status === 'approved' ? [{ label: 'Approved', value: `${o.approvedBy ?? '—'}, ${day(o.approvedAt)}` }] : []),
             ]}
@@ -817,9 +861,11 @@ function Votes({ votes }: { votes: IcVote[] }) {
   );
 }
 
-function ReliefTab({ c, onRecord }: { c: CaseDetail; onRecord: () => void }) {
+function ReliefTab({ live, c, onRecord }: { live: LiveCaseWorkspace; c: CaseDetail; onRecord: () => void }) {
+  const { busy, act, alert } = useAct();
   return (
     <div className="yx-ops-stack">
+      {alert}
       <p className="yx-ops-muted">Interim relief during the inquiry (POSH Act s.12, verify with counsel). Recording it gives HR a task; nothing changes in People by itself.</p>
       {c.relief.length === 0 ? (
         <EmptyState compact title="No interim relief recorded." action={c.me.canWork ? <Button onClick={onRecord}>Record interim relief</Button> : undefined} />
@@ -834,7 +880,13 @@ function ReliefTab({ c, onRecord }: { c: CaseDetail; onRecord: () => void }) {
                     {r.note} · {r.by}, {day(r.at)} · HR task <span className="yx-ops-mono">{r.task.ref}</span> with {r.task.assignee}
                   </span>
                 </span>
-                <Badge tone={r.task.status === 'done' ? 'success' : 'warning'}>{r.task.status === 'done' ? 'Done by HR' : 'Waiting for HR'}</Badge>
+                {r.task.status === 'open' && c.me.canWork ? (
+                  <Button size="sm" loading={busy === r.id} onClick={() => void act(r.id, () => live.onReliefDone(c.id, r.id), 'Task marked done', `${r.task.assignee} carried it out.`)}>
+                    HR has done it
+                  </Button>
+                ) : (
+                  <Badge tone={r.task.status === 'done' ? 'success' : 'warning'}>{r.task.status === 'done' ? 'Done by HR' : 'Waiting for HR'}</Badge>
+                )}
               </li>
             ))}
           </ul>
@@ -902,25 +954,25 @@ function EvidenceTab({ live, c }: { live: LiveCaseWorkspace; c: CaseDetail }) {
   );
 }
 
-const MEMBER_ROLES = [
+const MEMBER_ROLES: { value: 'officer' | 'investigator'; label: string }[] = [
   { value: 'investigator', label: 'Investigator' },
   { value: 'officer', label: 'Case officer' },
-  { value: 'hr', label: 'HR' },
-  { value: 'witness', label: 'Witness' },
-];
+]
 
 export function LiveCaseWorkspace({ live }: { live: LiveCaseWorkspace }) {
   const c = live.detail;
   const [tab, setTab] = useState<CaseTab>(live.start?.tab ?? (c?.anonymous ? 'messages' : 'timeline'));
-  const [dialog, setDialog] = useState<string | null>(live.start?.dialog && live.start.dialog !== 'delay' && live.start.dialog !== 'send-back' ? live.start.dialog : null);
+  const [dialog, setDialog] = useState<string | null>(live.start?.dialog && !['delay', 'send-back', 'notice'].includes(live.start.dialog) ? live.start.dialog : null);
   const [finding, setFinding] = useState<CaseFinding | null>(null);
   const [action, setAction] = useState('');
   const [reasons, setReasons] = useState('');
+  const [summary, setSummary] = useState('');
   const [relief, setRelief] = useState<ReliefAction | null>(null);
   const [reliefNote, setReliefNote] = useState('');
+  const [assignee, setAssignee] = useState<string | null>(null);
   const [recuseReason, setRecuseReason] = useState('');
   const [person, setPerson] = useState<string | null>(null);
-  const [role, setRole] = useState<string | null>('investigator');
+  const [role, setRole] = useState<'officer' | 'investigator' | null>('investigator');
   const [conflict, setConflict] = useState<string | null>(live.start?.conflict ?? null);
   const [override, setOverride] = useState('');
   const { busy, act, alert, say, toast, setProblem } = useAct();
@@ -928,8 +980,9 @@ export function LiveCaseWorkspace({ live }: { live: LiveCaseWorkspace }) {
     ...(!finding ? [{ fieldId: 'cw-finding', message: 'Choose the finding.' }] : []),
     ...(action.trim().length < 3 ? [{ fieldId: 'cw-action', message: 'Write the action (or “No action”).' }] : []),
     ...(reasons.trim().length < 20 ? [{ fieldId: 'cw-reasons', message: 'Write the reasons (at least 20 letters).' }] : []),
+    ...(summary.trim().length < 3 ? [{ fieldId: 'cw-summary', message: 'Write what the reporter is told.' }] : []),
   ]);
-  const reliefEarly = useTooEarly([...(!relief ? [{ fieldId: 'cw-relief', message: 'Choose the relief.' }] : []), ...(reliefNote.trim().length < 3 ? [{ fieldId: 'cw-relief-note', message: 'Write what HR should do and the request it answers.' }] : [])]);
+  const reliefEarly = useTooEarly([...(!relief ? [{ fieldId: 'cw-relief', message: 'Choose the relief.' }] : []), ...(reliefNote.trim().length < 3 ? [{ fieldId: 'cw-relief-note', message: 'Write what HR should do and the request it answers.' }] : []), ...(!assignee ? [{ fieldId: 'cw-relief-who', message: 'Choose who in HR carries it out.' }] : [])]);
   const recuseEarly = useTooEarly(recuseReason.trim().length < 3 ? [{ fieldId: 'cw-recuse', message: 'Write why you step aside. It goes on the case record.' }] : []);
   const addEarly = useTooEarly([
     ...(!person ? [{ fieldId: 'cw-person', message: 'Choose the person.' }] : []),
@@ -968,14 +1021,14 @@ export function LiveCaseWorkspace({ live }: { live: LiveCaseWorkspace }) {
   const propose = async () => {
     if (!c.canDecide.ok) return say(c.canDecide.reason ?? 'No outcome yet: wait for the reply or its date.');
     if (proposeEarly.stop()) return;
-    if (await act('propose', () => live.onPropose(c.id, { finding: finding!, action: action.trim(), reasons: reasons.trim(), version: c.version }), 'Outcome proposed', 'A second officer approves it.')) {
+    if (await act('propose', () => live.onPropose(c.id, { finding: finding!, action: action.trim(), reasons: reasons.trim(), reporterSummary: summary.trim(), version: c.version }), 'Outcome proposed', 'A second officer approves it.')) {
       close();
       setTab('decision');
     }
   };
   const recordRelief = async () => {
     if (reliefEarly.stop()) return;
-    if (await act('relief', () => live.onRelief(c.id, { action: relief!, note: reliefNote.trim() }), 'Interim relief recorded', 'HR has a task to carry it out; it shows under Interim relief.')) {
+    if (await act('relief', () => live.onRelief(c.id, { action: relief!, note: reliefNote.trim(), assigneeUserId: assignee! }), 'Interim relief recorded', 'HR has a task to carry it out; it shows under Interim relief.')) {
       close();
       setTab('relief');
     }
@@ -991,7 +1044,7 @@ export function LiveCaseWorkspace({ live }: { live: LiveCaseWorkspace }) {
       await live.onAddMember(c.id, { personId: person!, role: role ?? 'investigator', ...(conflict ? { overrideReason: override.trim() } : {}) });
       close();
       setConflict(null);
-      toast({ tone: 'success', title: `${c.addable.find((p) => p.id === person)?.name ?? 'The person'} is on the case` });
+      toast({ tone: 'success', title: `${c.people.find((p) => p.id === person)?.name ?? 'The person'} is on the case` });
     } catch (e) {
       if (codeOf(e) === 'CASE_CONFLICT') setConflict(errorText(e));
       else setProblem(errorText(e));
@@ -1008,7 +1061,7 @@ export function LiveCaseWorkspace({ live }: { live: LiveCaseWorkspace }) {
         {!dialog && alert}
         <ObjectHeader
           name={c.subject}
-          icon={posh || c.kind === 'ethics' ? ShieldAlert : c.kind === 'grievance' ? Megaphone : Briefcase}
+          icon={posh || c.kind === 'whistleblower' ? ShieldAlert : c.kind === 'grievance' ? Megaphone : Briefcase}
           secondary={
             <span>
               <span className="yx-ops-mono">{c.ref}</span> · {KIND_LABEL[c.kind]} · {c.location} · opened {day(c.openedOn)}
@@ -1076,6 +1129,21 @@ export function LiveCaseWorkspace({ live }: { live: LiveCaseWorkspace }) {
                 </TabsTrigger>
               </TabsList>
               <TabsContent value="timeline">
+                <div className="yx-ops-stack">
+                <Card title="The report">
+                  <DescriptionList
+                    items={[
+                      { label: 'What happened', value: c.report.summary },
+                      ...(c.report.category ? [{ label: 'Topic', value: c.report.category }] : []),
+                      ...(c.report.happenedOn ? [{ label: 'When', value: day(c.report.happenedOn) }] : []),
+                      ...(c.report.involved ? [{ label: 'Who was involved', value: c.report.involved }] : []),
+                      ...(c.report.outside ? [{ label: 'Outside the company', value: c.report.outside }] : []),
+                      ...(c.report.witnesses ? [{ label: 'Witnesses', value: c.report.witnesses }] : []),
+                    ]}
+                  />
+                  {c.report.retaliationWorry && <InlineAlert tone="warning">The reporter is worried about retaliation.</InlineAlert>}
+                  {c.report.late && <InlineAlert tone="info">Filed after the law's window from the incident; the committee decides whether to accept it.</InlineAlert>}
+                </Card>
                 <ol className="yx-ops-conv" aria-label="Case timeline">
                   {c.timeline.map((t) => (
                     <li key={t.id} className="yx-ops-msg">
@@ -1087,6 +1155,7 @@ export function LiveCaseWorkspace({ live }: { live: LiveCaseWorkspace }) {
                     </li>
                   ))}
                 </ol>
+                </div>
               </TabsContent>
               <TabsContent value="evidence">
                 <EvidenceTab live={live} c={c} />
@@ -1095,7 +1164,7 @@ export function LiveCaseWorkspace({ live }: { live: LiveCaseWorkspace }) {
                 <div className="yx-ops-stack">
                   {c.anonymous && <InlineAlert tone="info">The reporter reads and replies with their reply code. You can't see who they are.</InlineAlert>}
                   <Thread messages={c.messages} label="Messages with the reporter" viewer="team" />
-                  {c.me.canWork && <MessageBox id="cw-msg" label="Message to the reporter" onSend={(t) => live.onSendMessage(c.id, t)} />}
+                  {c.me.canWork && <MessageBox id="cw-msg" label={c.stageIndex === 0 ? 'Message to the reporter (your first message acknowledges the report)' : 'Message to the reporter'} onSend={(t) => live.onSendMessage(c.id, t)} />}
                 </div>
               </TabsContent>
               {c.notice && (
@@ -1105,7 +1174,7 @@ export function LiveCaseWorkspace({ live }: { live: LiveCaseWorkspace }) {
               )}
               <TabsContent value="decision">{posh ? <IcReportTab live={live} c={c} /> : <OutcomeTab live={live} c={c} onPropose={openPropose} />}</TabsContent>
               <TabsContent value="relief">
-                <ReliefTab c={c} onRecord={() => setDialog('relief')} />
+                <ReliefTab live={live} c={c} onRecord={() => setDialog('relief')} />
               </TabsContent>
             </Tabs>
           }
@@ -1142,6 +1211,9 @@ export function LiveCaseWorkspace({ live }: { live: LiveCaseWorkspace }) {
           <FormField id="cw-reasons" label="Reasons" required error={proposeEarly.errorOf('cw-reasons')}>
             <TextArea rows={5} value={reasons} onChange={setReasons} maxLength={5000} />
           </FormField>
+          <FormField id="cw-summary" label="What the reporter is told" required helper="Sent once a second officer approves. No witness names or notes." error={proposeEarly.errorOf('cw-summary')}>
+            <TextArea rows={2} value={summary} onChange={setSummary} maxLength={1000} />
+          </FormField>
         </div>
       </Drawer>
       <Dialog
@@ -1165,6 +1237,9 @@ export function LiveCaseWorkspace({ live }: { live: LiveCaseWorkspace }) {
           </FormField>
           <FormField id="cw-relief-note" label="What HR should do" required helper="Name the request it answers (for example, the complainant's written request of 24 Sep)." error={reliefEarly.errorOf('cw-relief-note')}>
             <TextArea rows={3} value={reliefNote} onChange={setReliefNote} maxLength={1000} />
+          </FormField>
+          <FormField id="cw-relief-who" label="Who in HR carries it out" required helper="They get a task with only what to do, not the case." error={reliefEarly.errorOf('cw-relief-who')}>
+            <Select value={assignee} onChange={setAssignee} options={c.people.map((p) => ({ value: p.id, label: `${p.name} · ${p.email}` }))} placeholder="Choose a person" />
           </FormField>
         </div>
       </Dialog>
@@ -1203,7 +1278,7 @@ export function LiveCaseWorkspace({ live }: { live: LiveCaseWorkspace }) {
       >
         <div className="yx-ops-stack">
           <FormField id="cw-person" label="Person" required error={addEarly.errorOf('cw-person')}>
-            <Select value={person} onChange={(v) => (setPerson(v), setConflict(null))} options={c.addable.map((p) => ({ value: p.id, label: `${p.name} · ${p.role}` }))} placeholder="Choose a person" />
+            <Select value={person} onChange={(v) => (setPerson(v), setConflict(null))} options={c.people.map((p) => ({ value: p.id, label: `${p.name} · ${p.email}` }))} placeholder="Choose a person" />
           </FormField>
           <FormField label="Role on the case">
             <Select value={role} onChange={setRole} options={MEMBER_ROLES} />
@@ -1257,7 +1332,7 @@ export function LiveEthicsDesk({ live }: { live: LiveEthicsDesk }) {
     { key: 'received', header: 'Received', value: (r) => r.receivedOn, render: (r) => day(r.receivedOn) },
     { key: 'entity', header: 'Entity', value: (r) => r.entity, width: 200 },
     { key: 'by', header: 'Reporter', value: (r) => (r.anonymous ? 'Anonymous' : 'Named, confidential') },
-    { key: 'severity', header: 'Severity', type: 'status', value: (r) => (r.severity === 'serious' ? 'Serious' : 'Standard'), statusTone: (v) => (v === 'Serious' ? 'danger' : 'neutral') },
+    { key: 'severity', header: 'Severity', type: 'status', value: (r) => (r.severity === 'serious' ? 'Serious' : r.severity === 'standard' ? 'Standard' : 'Not set'), statusTone: (v) => (v === 'Serious' ? 'danger' : 'neutral') },
     { key: 'clock', header: 'Next date', value: (r) => r.clock?.on ?? '', render: (r) => (r.clock ? `${r.clock.label} ${day(r.clock.on)}` : 'None (company policy)'), width: 200 },
     {
       key: 'routed',

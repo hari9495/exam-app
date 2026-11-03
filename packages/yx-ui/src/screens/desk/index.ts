@@ -36,6 +36,10 @@ export * from './kb-types';
 // HLP-06 Speak-up filing: the designed screens with `live`, and the set-up of who receives reports.
 export { SpeakUpScreen, CheckReportScreen } from '../ops/cases';
 export { SpeakUpSetupScreen, anonymousFor, type LiveSpeakUp, type LiveCheckReport, type LiveSpeakUpSetup, type SpeakUpFormData, type SpeakUpInput, type FiledReport, type ReporterView, type SpeakUpSetupData, type SpeakUpTeam } from '../ops/helpdesk-speakup-live';
+// HLP-07 My cases, HLP-08 Cases (case team), HLP-09 Ethics desk: the designed screens with `live`.
+export { MyCasesScreen, CaseListScreen, CaseWorkspaceScreen, EthicsDeskScreen } from '../ops/cases';
+export { KIND_LABEL as CASE_KIND_LABEL, type LiveMyCases, type LiveCaseList, type LiveCaseWorkspace, type LiveEthicsDesk, type CaseTab } from '../ops/cases-live';
+export type { MyCaseRow, MyCaseDetail, CaseListRow, CaseDetail, EthicsRow, NoticeInput, ProposeInput, IcReportInput, ReliefInput, AddMemberInput, MyReplyInput } from '../ops/cases-live-types';
 // HLP-10 Policy library + acknowledgement and HLP-11 Policy admin: the designed screens with `live`.
 export { PolicyLibraryScreen, PolicyAdminScreen } from '../ops/helpdesk';
 export { METHOD_LABEL, VERSION_LABEL, type LivePolicyLibrary, type LivePolicyAdmin, type PolicyAdminTab } from '../ops/helpdesk-policy-live';

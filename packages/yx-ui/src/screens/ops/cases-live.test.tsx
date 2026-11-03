@@ -75,7 +75,7 @@ describe('HLP-08 Cases (live)', () => {
     show(<CaseListScreen live={liveCaseList({ onOpen })} />);
     expect(screen.getByText('Anonymous')).toBeInTheDocument();
     expect(screen.getByText('Overdue')).toBeInTheDocument();
-    await ue.click(screen.getByText('Absence without leave, 8 to 12 Sep'));
+    await ue.click(screen.getByText('A manager: shift changed without notice'));
     expect(onOpen).toHaveBeenCalledWith('k4');
   });
 
@@ -110,8 +110,9 @@ describe('HLP-08 Cases (live)', () => {
     await ue.click(within(d).getByRole('radio', { name: 'Not proved' }));
     await ue.type(within(d).getByRole('textbox', { name: /Action/ }), 'No action');
     await ue.type(within(d).getByRole('textbox', { name: /Reasons/ }), 'The register shows every gift was declared.');
+    await ue.type(within(d).getByRole('textbox', { name: /What the reporter is told/ }), 'We looked into it.');
     await ue.click(within(d).getByRole('button', { name: 'Propose outcome' }));
-    expect(onPropose).toHaveBeenCalledWith('k2', { finding: 'not-proved', action: 'No action', reasons: 'The register shows every gift was declared.', version: 7 });
+    expect(onPropose).toHaveBeenCalledWith('k2', { finding: 'not-proved', action: 'No action', reasons: 'The register shows every gift was declared.', reporterSummary: 'We looked into it.', version: 7 });
   });
 
   it('IC report: the presiding officer can sign only with a majority', async () => {
@@ -149,6 +150,21 @@ describe('HLP-08 Cases (live)', () => {
     expect(onDelayNotice).not.toHaveBeenCalled();
   });
 
+  it('send notice: choose the respondent and what is alleged; ticked papers are shared', async () => {
+    const onSendNotice = vi.fn().mockResolvedValue(undefined);
+    const c = ethicsCase();
+    show(<CaseWorkspaceScreen live={liveWorkspace({ onSendNotice, detail: ethicsCase({ respondent: null, notice: { ...c.notice!, status: 'not-sent', sentOn: null, replyBy: null, replies: [] } }), start: { tab: 'notice', dialog: 'notice' } })} />);
+    const d = screen.getByRole('dialog', { name: 'Send the notice and the papers' });
+    await ue.click(within(d).getByRole('button', { name: 'Send notice' }));
+    expect(await within(d).findByText('Choose who the notice goes to.')).toBeInTheDocument();
+    expect(onSendNotice).not.toHaveBeenCalled();
+    await ue.click(within(d).getByRole('combobox', { name: /Respondent/ }));
+    await ue.click(await screen.findByRole('option', { name: /Ravi Shankar/ }));
+    await ue.click(within(d).getByRole('checkbox', { name: /Vendor email 14 Aug.pdf/ }));
+    await ue.click(within(d).getByRole('button', { name: 'Send notice' }));
+    expect(onSendNotice).toHaveBeenCalledWith('k2', { allegations: c.report.summary, fileIds: ['e2'], respondentUserId: 'p-ravi' });
+  });
+
   it('a delayed notice shows who delayed it and why', () => {
     const c = ethicsCase();
     show(<CaseWorkspaceScreen live={liveWorkspace({ detail: ethicsCase({ notice: { ...c.notice!, status: 'delayed', sentOn: null, replyBy: null, replies: [], delay: { reason: 'Safety of the reporter.', reviewOn: '2026-10-06', by: 'Rekha Iyengar', at: '2026-09-25' } } }), start: { tab: 'notice' } })} />);
@@ -156,7 +172,7 @@ describe('HLP-08 Cases (live)', () => {
   });
 
   it('interim relief is recorded as a case action that gives HR a task', async () => {
-    const onRelief = vi.fn().mockResolvedValue({ taskRef: 'TSK-2291' });
+    const onRelief = vi.fn().mockResolvedValue({ taskRef: 'POSH-0007-R1' });
     show(<CaseWorkspaceScreen live={liveWorkspace({ onRelief, detail: poshCase(), start: { tab: 'relief', dialog: 'relief' } })} />);
     const d = screen.getByRole('dialog', { name: 'Record interim relief' });
     await ue.click(within(d).getByRole('button', { name: 'Record and give HR a task' }));
@@ -164,7 +180,11 @@ describe('HLP-08 Cases (live)', () => {
     await ue.click(within(d).getByRole('radio', { name: 'Stop reporting' }));
     await ue.type(within(d).getByRole('textbox'), 'Report to Kavya N., as asked on 23 Sep.');
     await ue.click(within(d).getByRole('button', { name: 'Record and give HR a task' }));
-    expect(onRelief).toHaveBeenCalledWith('k3', { action: 'reporting', note: 'Report to Kavya N., as asked on 23 Sep.' });
+    expect(await within(d).findByText('Choose who in HR carries it out.')).toBeInTheDocument();
+    await ue.click(within(d).getByRole('combobox', { name: /Who in HR/ }));
+    await ue.click(await screen.findByRole('option', { name: /Lakshmi Venkatesan/ }));
+    await ue.click(within(d).getByRole('button', { name: 'Record and give HR a task' }));
+    expect(onRelief).toHaveBeenCalledWith('k3', { action: 'reporting', note: 'Report to Kavya N., as asked on 23 Sep.', assigneeUserId: 'p-lakshmi' });
     expect((await screen.findAllByText('Interim relief recorded')).length).toBeGreaterThan(0);
   });
 
@@ -193,6 +213,7 @@ describe('HLP-08 Cases (live)', () => {
     unmount();
     show(<CaseWorkspaceScreen live={liveWorkspace({ detail: poshCase() })} />);
     expect(screen.getByText('Stepped aside 22 Sep 2026')).toBeInTheDocument();
+    expect(screen.getByText(/Remarks of a sexual nature to me/)).toBeInTheDocument();
   });
 
   it('not a member shows Not found; no key shows no access', () => {
@@ -217,7 +238,7 @@ describe('HLP-09 Ethics desk (live)', () => {
     await ue.type(within(d).getByRole('textbox'), 'A senior manager approved it.');
     await ue.click(within(d).getByRole('button', { name: 'Route to chair' }));
     expect(onRoute).toHaveBeenCalledWith('w1', 'A senior manager approved it.');
-    expect((await screen.findAllByText('ETH-0012 routed to the chair')).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('WB-0012 routed to the chair')).length).toBeGreaterThan(0);
   });
 
   it('no access without the ethics officer role', () => {

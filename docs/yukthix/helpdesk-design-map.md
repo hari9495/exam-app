@@ -24,9 +24,16 @@ feature not built** (no API) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Helpdesk HLP-01 … 14 | 14 | 152 | 5 | 0 | 41 | 0 | 198 |
+| A. Helpdesk HLP-01 … 14 | 14 | 193 | 13 | 0 | 15 | 0 | 221 |
 | B. Service desk designs | 5 | 55 | 2 | 0 | 0 | 0 | 57 |
-| **All Helpdesk groups (A–B)** | **19** | **207** | **7** | **0** | **41** | **0** | **255** |
+| **All Helpdesk groups (A–B)** | **19** | **248** | **15** | **0** | **15** | **0** | **278** |
+Round 7-9 recount (script, 4 Nov 2026, `feat/yukthix-hlp-07-09`): HLP-07 has 13 stories (the 8 approved plus 5 drawn:
+the reporter's view, the outcome shared, the respondent's notice, more time asked, no access): 9 live, 4 live (gap)
+(the disciplinary show-cause stories: no disciplinary record yet). HLP-08 has 28 (the 12 approved plus 16 drawn: second
+officer, proposer waits, propose, IC findings, IC signed, send notice, notice to send, delayed, delay, more time, relief
+recorded, record relief, step aside, conflict override, evidence, no access): 24 live, 4 live (gap) (three disciplinary
+stories; the list for someone on no case). HLP-09 has 8 (the 6 approved plus 2 drawn: a report about an officer, no
+access): 7 live, 1 live (gap) (a non-officer sees an empty queue). HLP-06 Anonymous moves to live (update alerts built).
 Round 6 recount (script, 3 Nov 2026, `feat/yukthix-hlp-06`): HLP-06 has 25 stories (the 12 approved plus 13 drawn for
 the real records: topics and "about an officer", not set up, no IC, late POSH, too early, loading, error, no access, an
 empty report, and four set-up states): 23 live, 2 live (gap) (the accident choice; update alerts for anonymous reporters).
@@ -94,6 +101,9 @@ groups them).
 | /yx/desk/speakup | the designed `SpeakUpScreen` (HLP-06) with `live` | HLP-06 | `GET desk/speakup/form`, `POST desk/speakup/reports`, `/reports/:id/files` (implicit: one's own named report); anonymous: `POST desk/speakup/public/reports` (no login) | live |
 | /yx/speakup/[org]/check | the designed `CheckReportScreen` (HLP-06) with `live` | HLP-06 | `GET desk/speakup/public/company/:org`, `POST desk/speakup/public/check`, `/check/reply`, `/check/files` (no login; the reply code; throttled and locked after 5 wrong codes an hour) | live |
 | /yx/desk/speakup-setup | `SpeakUpSetupScreen` (HLP-06 set-up stories) | HLP-06 | `GET desk/speakup/setup`, `POST /setup/members`, `/setup/members/:id/remove` (`speakup.setup.manage`); case officers: `GET desk/speakup/cases`, `/cases/:id`, `POST /cases/:id/messages` (being routed is the access; 404 otherwise; every look audited) | live |
+| /yx/desk/my-cases (?case=) | the designed `MyCasesScreen` (HLP-07) with `live` | HLP-07 | `GET desk/my/cases`, `/:id`, `POST …/messages` (reporter), `/reply`, `/more-time`, `/files`, `GET …/files/:fileId` (respondent) (implicit: one's own part only; 403 while acting for someone else) | live |
+| /yx/desk/cases, /yx/desk/cases/[id] | the designed `CaseListScreen` and `CaseWorkspaceScreen` (HLP-08) with `live` | HLP-08 | `GET desk/cases`, `/:id`, `POST …/messages`, `/notice`, `/notice/delay`, `/more-time`, `/outcome`, `/outcome/approve`, `/outcome/send-back`, `/ic-report`, `/ic-report/vote`, `/ic-report/sign`, `/relief`, `/relief/:reliefId/done`, `/recuse`, `/members`, `/files`, `GET …/files/:fileId` (no key: a member who has not stepped aside; 404 otherwise; 403 while acting for someone else) | live |
+| /yx/desk/ethics | the designed `EthicsDeskScreen` (HLP-09) with `live` | HLP-09 | `GET desk/ethics/reports`, `POST …/:id/route` (no key: an officer on the report) | live |
 | /yx/wall/[org]/[token] | `WallScreen` | Reports (HLP-05) Wall | `GET desk/wall/:org/:token` (the secret link; counts only) | live |
 | /yx/desk/setup | `DeskSetupScreen` (desks, calendars, SLA, email, help pages, banners, `SetupStart`) and the stand-ins `CatalogAdmin`, `RulesAdmin`, `LifecycleAdmin`, `ChatQueuesAdmin`, `DeskOrgAdmin`, `SchedulesAdmin`, `MessagingAdmin` | Phase 3b-1 Setup and set-up tabs; Batch 4 GetStarted | desk set-up routes (`desk.settings.manage`, `desk.desk.create`, `desk.sla.manage`, `desk.mailbox.manage`, `desk.portal.manage`, `desk.catalog.manage`, `desk.rule.manage`, `desk.lifecycle.manage`, `desk.channel.manage`) | live |
 | /yx/desk/calendar | `MyCalendarScreen` | Phase 3b-1 Calendar | `GET desk/me/calendar`, `GET desk/tasks` (implicit: an agent) | live |
@@ -129,9 +139,9 @@ live, but drawn only as "Live ·" pictures in `esm-live.stories.tsx`. Grouped by
 
 And under `notLive`: designed, with no live page rendering them. `ops: TicketWorkspaceScreen` (HLP-03; HLP-02 left the list in round 2, HLP-04 in round 4), `ops: SlaDashboardScreen` (HLP-05) have a live page
 And under `notLive`: designed, with no live page rendering them. `ops: TicketWorkspaceScreen` (HLP-03; HLP-02 left the list in round 2), `ops: KbEditorScreen` (HLP-04) have a live page (HLP-05 `ops: SlaDashboardScreen` left the list: live)
-doing the same job with a B screen (section 5). (HLP-06 `SpeakUpScreen` and `CheckReportScreen` left the list: live) `ops:
-MyCasesScreen` (HLP-07), `ops: CaseListScreen`, `ops: CaseWorkspaceScreen`, `ops: LoadingCase`, `ops: ErrorCase`
-(HLP-08), `ops: EthicsDeskScreen` (HLP-09), (HLP-10 `PolicyLibraryScreen` and HLP-11 `PolicyAdminScreen` left the list: live)
+doing the same job with a B screen (section 5). (HLP-06 `SpeakUpScreen` and `CheckReportScreen` left the list: live) (HLP-07 `MyCasesScreen`,
+HLP-08 `CaseListScreen` and `CaseWorkspaceScreen`, HLP-09 `EthicsDeskScreen` left the list: live; `ops: LoadingCase` and
+`ops: ErrorCase` stay: the live workspace draws its own loading and error in the same look) (HLP-10 `PolicyLibraryScreen` and HLP-11 `PolicyAdminScreen` left the list: live)
 `ops: AccidentWorkspaceScreen`, `ops: ReportAccidentScreen` (HLP-12), `ops: CollectiveDisputeScreen` (HLP-13), `ops:
 PolicyWriterScreen` (HLP-14) and `ops: PoshCaseScreen` (no HLP story; the POSH case) have no server. Related phone and
 portal designs also wait: `settings: MobileHelpTicketsScreen`, `MobilePolicyAckScreen`, `MobileSpeakUpScreen`,
@@ -142,9 +152,7 @@ portal designs also wait: `settings: MobileHelpTicketsScreen`, `MobilePolicyAckS
 | design | what it needs | size |
 |---|---|---|
 | ~~HLP-06 Speak-up filing~~ (done, round 6) | grievance and whistleblower intake, anonymous access code and the no-login "check my report", POSH redirect to the internal committee; tables with RLS, a public route with throttling | L |
-| HLP-07 My cases (8) | the complainant / respondent / witness view, show-cause reply and extension request | M (after HLP-08) |
-| HLP-08 Cases, case team (12) | case records, members and conflict-of-interest check, disposal clocks, disciplinary steps (no decision before the reply), "not found" for non-members | XL |
-| HLP-09 Ethics desk (6) | the ethics officer's whistleblower queue, route to the audit committee chair | M (after HLP-06, 08) |
+| Disciplinary cases (HLP-07/08 show-cause stories) | a disciplinary case record raised by a manager or HR, standing orders per entity, show-cause, inquiry, penalties and letters | L (question 34) |
 | HLP-12 Accident case workspace (8) | accident reports, ESIC report and EC claim clocks, contract workers, manager view | L |
 | HLP-13 Collective dispute / settlement (3) | dispute record, conciliation, signed settlement sent to payroll arrears | L |
 | HLP-14 Write policies with AI (4) | questionnaire, AI draft, law findings that block approval, approve and load into HLP-10 | L (after HLP-10) |
@@ -316,7 +324,7 @@ already has the minimum it needs (the officers' case list, one case with the aud
 | story (sub-page) | verdict | note |
 |---|---|---|
 | NamedGrievance · Grievance · named, confidential | live (gap) | `GET desk/speakup/form`, `POST desk/speakup/reports` (implicit: the signed-in person; 403 while acting for someone else). Gap: the design's fourth choice, "A workplace accident or injury", is left out until HLP-12 (accident reports) is built |
-| Anonymous · Whistleblower · anonymous | live (gap) | sent through the no-login route (`POST desk/speakup/public/reports`, no sign-in, no cookies): no user, IP or device kept. Gap: "Tell me when there's an update" (an encrypted email or phone for alerts) is not offered; it comes with the team's replies in HLP-08 (question 23) |
+| Anonymous · Whistleblower · anonymous | live | sent through the no-login route (`POST desk/speakup/public/reports`, no sign-in, no cookies): no user, IP or device kept. "Tell me when there's an update" (HLP-08 round): an optional email, stored encrypted (`alert_contact_enc`, org secrets key); a team message or an approved outcome sends only "You have an update" (question 23, built; SMS when the company's SMS channel exists) |
 | AnonymousOff · Anonymous switched off by company | live | company setting `speakup.anonymous` (all / ethics_only / off, default all); the option is off and says why; the server refuses too (403) |
 | PoshRedirect · Sexual harassment · goes to IC | live | "Continue to the complaint form": always named, only the Internal Committee members see it |
 | FiledNamed · Filed · named (GRC clock) | live | the number (GRV-0001 …) and "What happens next": acknowledge by the company's days (`speakup.ack_days`, default 2), the decision by the rule set `IN.GRC` (verify) days. "Go to my cases" reads "Back to Help centre" until HLP-07 |
@@ -344,72 +352,73 @@ already has the minimum it needs (the officers' case list, one case with the aud
 
 #### HLP-07 · My cases
 
-No server (no case records).
+Live pages: /yx/desk/my-cases (HLP-07), /yx/desk/cases and /yx/desk/cases/[id] (HLP-08), /yx/desk/ethics (HLP-09), each rendering the designed screen with `live` (`screens/ops/cases-live.tsx`) on the HLP-06 case record. Rules: section 4f.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| List · My cases (complainant, respondent, witness) | design only, feature not built | no case API |
-| ShowCauseReply · Show-cause reply | design only, feature not built | no disciplinary steps |
-| ExtensionAsked · Show-cause · extension requested | design only, feature not built | |
-| Replied · Reply sent | design only, feature not built | |
-| Empty · Empty | design only, feature not built | |
-| Loading · Loading | design only, feature not built | |
-| Phone · My cases · phone | design only, feature not built | the feature itself is not built |
-| PhoneReply · Show-cause reply · phone | design only, feature not built | |
-| ReporterView · Reporter · status, dates and messages only | design only, feature not built | new story (phase A): founder decision 4; the reporter's shape has no field for notes, witnesses or the respondent's reply |
-| OutcomeShared · Reporter · closed, the outcome and the appeal date | design only, feature not built | new story (phase A): the summary the case team sends; the appeal date from the rule set |
-| RespondentNotice · Respondent · notice, copy of the complaint, reply date | design only, feature not built | new story (phase A): the reply date with its source; Send reply (too early says why), files |
-| MoreTimeAsked · Respondent · more time asked, waiting for the case team | design only, feature not built | new story (phase A): asked once, with a reason |
-| NoAccess · No access (acting for someone else) | design only, feature not built | new story (phase A): 403 shows the kit's no-access state |
+| List · My cases (complainant, respondent, witness) | live | `GET desk/my/cases` (implicit: own part only): role reporter or respondent, stage, next date, status; a row opens the drawer (`?case=`). Witness: no witness record yet (question 37) |
+| ShowCauseReply · Show-cause reply | live (gap) | disciplinary cases have no record yet (question 34); the same steps are live for a POSH, grievance or ethics respondent (RespondentNotice, MoreTimeAsked) |
+| ExtensionAsked · Show-cause · extension requested | live (gap) | disciplinary cases have no record yet (question 34); the same steps are live for a POSH, grievance or ethics respondent (RespondentNotice, MoreTimeAsked) |
+| Replied · Reply sent | live (gap) | a respondent's reply is live (`POST desk/my/cases/:id/reply`, final once sent, added to, never replaced); disciplinary cases have no record yet (question 34); the same steps are live for a POSH, grievance or ethics respondent (RespondentNotice, MoreTimeAsked) |
+| Empty · Empty | live | "You're not part of any case." with Speak up |
+| Loading · Loading | live | while `GET desk/my/cases` loads |
+| Phone · My cases · phone | live | under 768 px: the design's phone list |
+| PhoneReply · Show-cause reply · phone | live (gap) | under 768 px the respondent's notice and reply fill the phone; disciplinary cases have no record yet (question 34); the same steps are live for a POSH, grievance or ethics respondent (RespondentNotice, MoreTimeAsked) |
+| ReporterView · Reporter · status, dates and messages only | live | new story: founder decision 4; the reporter's shape has no field for notes, witnesses or the respondent's reply |
+| OutcomeShared · Reporter · closed, the outcome and the appeal date | live | new story: the summary the case team sends; the appeal date from the rule set |
+| RespondentNotice · Respondent · notice, copy of the complaint, reply date | live | new story: the reply date with its source; Send reply (too early says why), files |
+| MoreTimeAsked · Respondent · more time asked, waiting for the case team | live | new story: asked once, with a reason |
+| NoAccess · No access (acting for someone else) | live | new story: 403 shows the kit's no-access state |
 
 #### HLP-08 · Cases (case team)
 
-No server (no case records, members or clocks).
+Live pages: /yx/desk/my-cases (HLP-07), /yx/desk/cases and /yx/desk/cases/[id] (HLP-08), /yx/desk/ethics (HLP-09), each rendering the designed screen with `live` (`screens/ops/cases-live.tsx`) on the HLP-06 case record. Rules: section 4f.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| CaseList · Case list | design only, feature not built | no case API |
-| CaseListEmpty · Case list · empty | design only, feature not built | |
-| Grievance · Grievance workspace (GRC, disposal clock) | design only, feature not built | |
-| AnonymousMessages · Whistleblower · anonymous messages | design only, feature not built | |
-| Disciplinary · Disciplinary · reply awaited | design only, feature not built | |
-| DecisionBlocked · Disciplinary · decision blocked before reply | design only, feature not built | |
-| DecisionAllowed · Disciplinary · record decision | design only, feature not built | |
-| ConflictBlock · Add member · conflict of interest | design only, feature not built | |
-| NonMember · Not a case member (shows Not found) | design only, feature not built | |
-| NonMemberList · Case list · not a member (shows Not found) | design only, feature not built | |
-| Loading · Loading | design only, feature not built | |
-| Error · Error | design only, feature not built | |
-| SecondOfficer · Outcome · second officer approves or sends back | design only, feature not built | new story (phase A): founder decision 1: four eyes; send back needs a note |
-| ProposedByMe · Outcome · proposer waits for a second officer | design only, feature not built | new story (phase A): the proposer gets no Approve |
-| ProposeOutcome · Outcome · propose (finding, action, reasons) | design only, feature not built | new story (phase A): blocked before the reply or its date (says why); "not proved" and "false or malicious" kept apart (POSH s.14) |
-| IcFindings · POSH · IC findings and members' views (1 of 3 agree) | design only, feature not built | new story (phase A): each member agrees or not (a no needs a note); the presiding officer signs only with a majority |
-| IcSigned · POSH · IC report signed by the presiding officer | design only, feature not built | new story (phase A): final and dated; the employer-action clock from the rule set |
-| NoticeToSend · Notice · not sent yet (send or delay) | design only, feature not built | new story (phase A): Send notice and copy (confirm, the reply date's source) |
-| NoticeDelayed · Notice · delayed with a recorded reason | design only, feature not built | new story (phase A): founder decision 2: who, when, why, review date |
-| DelayNotice · Notice · delay (reason and review date) | design only, feature not built | new story (phase A): both required |
-| MoreTimeDecide · Notice · the respondent asked for more time | design only, feature not built | new story (phase A): give (new date) or refuse |
-| InterimRelief · Interim relief · recorded, HR task | design only, feature not built | new story (phase A): founder decision 3: the HR task number and status; nothing changes in People |
-| RecordRelief · Interim relief · record (gives HR a task) | design only, feature not built | new story (phase A): Segment: transfer, leave, stop reporting, other; what HR should do |
-| StepAside · Step aside from a case (with a reason) | design only, feature not built | new story (phase A): recusal; the rail marks the member |
-| ConflictOverride · Add member · conflict found, override with a reason | design only, feature not built | new story (phase A): 409 `CASE_CONFLICT`, then the second try with the reason |
-| Evidence · Evidence · fingerprints, virus check and access log | design only, feature not built | new story (phase A): SHA-256, opens count, only clean files open |
-| NoAccess · No access (no case-team key) | design only, feature not built | new story (phase A): 403; a case one is not on stays "Not found" |
+| CaseList · Case list | live | `GET desk/cases`: only cases the person is a member of and has not stepped aside from; Type and Status filters; a row opens `/yx/desk/cases/[id]` |
+| CaseListEmpty · Case list · empty | live | "You're not on any case." |
+| Grievance · Grievance workspace (GRC, disposal clock) | live | `GET desk/cases/:id` (members only, audited): header, stages, due dates from IN.GRC / the settings, tabs, members rail |
+| AnonymousMessages · Whistleblower · anonymous messages | live | "Anonymous messages" tab; `POST desk/cases/:id/messages`; the first message acknowledges; the reporter gets only "You have an update" by email when they left an address |
+| Disciplinary · Disciplinary · reply awaited | live (gap) | no disciplinary record yet (question 34) |
+| DecisionBlocked · Disciplinary · decision blocked before reply | live (gap) | the block itself is live for every case kind (ProposeOutcome: `CASE_TOO_EARLY`); no disciplinary record yet |
+| DecisionAllowed · Disciplinary · record decision | live (gap) | live as Propose outcome and the second officer's approval; no disciplinary penalties or letters yet |
+| ConflictBlock · Add member · conflict of interest | live | `POST desk/cases/:id/members`: 409 `CASE_CONFLICT` for a party or anyone above one in the reporting line |
+| NonMember · Not a case member (shows Not found) | live | a case one is not on (HR, managers, System Admin, another company) is 404: the kit's Not found |
+| NonMemberList · Case list · not a member (shows Not found) | live (gap) | someone on no case sees the empty list, not Not found (the list only ever holds their own cases) |
+| Loading · Loading | live | while `GET desk/cases/:id` loads |
+| Error · Error | live | any failure but 403 and 404; Try again refetches |
+| SecondOfficer · Outcome · second officer approves or sends back | live | new story: founder decision 1: four eyes; send back needs a note |
+| ProposedByMe · Outcome · proposer waits for a second officer | live | new story: the proposer gets no Approve |
+| ProposeOutcome · Outcome · propose (finding, action, reasons) | live | new story: blocked before the reply or its date (says why); "not proved" and "false or malicious" kept apart (POSH s.14) |
+| IcFindings · POSH · IC findings and members' views (1 of 3 agree) | live | new story: each member agrees or not (a no needs a note); the presiding officer signs only with a majority |
+| IcSigned · POSH · IC report signed by the presiding officer | live | new story: final and dated; the employer-action clock from the rule set |
+| NoticeToSend · Notice · not sent yet (send or delay) | live | new story: Send notice and copy (confirm, the reply date's source) |
+| NoticeDelayed · Notice · delayed with a recorded reason | live | new story: founder decision 2: who, when, why, review date |
+| SendNotice · Notice · choose the respondent, what is alleged, the papers | live | new story: `POST desk/cases/:id/notice` (respondent, allegations 10 letters or more, case files ticked to share); the reply date from IN.POSH.INQUIRY or `cases.reply_days` |
+| DelayNotice · Notice · delay (reason and review date) | live | new story: both required |
+| MoreTimeDecide · Notice · the respondent asked for more time | live | new story: give (new date) or refuse |
+| InterimRelief · Interim relief · recorded, HR task | live | new story: founder decision 3: the HR task number and status; nothing changes in People |
+| RecordRelief · Interim relief · record (gives HR a task) | live | new story: Segment: transfer, leave, stop reporting, other; what HR should do |
+| StepAside · Step aside from a case (with a reason) | live | new story: recusal; the rail marks the member |
+| ConflictOverride · Add member · conflict found, override with a reason | live | new story: 409 `CASE_CONFLICT`, then the second try with the reason |
+| Evidence · Evidence · fingerprints, virus check and access log | live | new story: SHA-256, opens count, only clean files open |
+| NoAccess · No access (no case-team key) | live | new story: 403; a case one is not on stays "Not found" |
 
 #### HLP-09 · Ethics desk
 
-No server.
+Live pages: /yx/desk/my-cases (HLP-07), /yx/desk/cases and /yx/desk/cases/[id] (HLP-08), /yx/desk/ethics (HLP-09), each rendering the designed screen with `live` (`screens/ops/cases-live.tsx`) on the HLP-06 case record. Rules: section 4f.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Queue · Whistleblower queue | design only, feature not built | no whistleblower API |
-| RouteToChair · Route to audit committee chair | design only, feature not built | |
-| Empty · Empty | design only, feature not built | |
-| Loading · Loading | design only, feature not built | |
-| Error · Error | design only, feature not built | |
-| NotEthicsOfficer · Not the ethics officer (shows Not found) | design only, feature not built | |
-| AboutOfficer · Report about a case officer · with the chair, not the officer | design only, feature not built | new story (phase A): Companies Act s.177; no Route button on it; routing needs a reason |
-| NoAccess · No access (not an ethics officer) | design only, feature not built | new story (phase A): 403 |
+| Queue · Whistleblower queue | live | `GET desk/ethics/reports`: open fraud and ethics reports the person is an officer on; next date, routed or not, anonymous |
+| RouteToChair · Route to audit committee chair | live | `POST desk/ethics/reports/:id/route` (reason required): the escalation list joins the case; once only (409) |
+| Empty · Empty | live | "No open reports." |
+| Loading · Loading | live | while the queue loads |
+| Error · Error | live | Try again refetches |
+| NotEthicsOfficer · Not the ethics officer (shows Not found) | live (gap) | someone who is not an officer sees an empty queue, not Not found; any report itself is 404 to them |
+| AboutOfficer · Report about a case officer · with the chair, not the officer | live | new story: Companies Act s.177; no Route button on it; routing needs a reason |
+| NoAccess · No access (not an ethics officer) | live | new story: 403 |
 
 #### HLP-10 · Policy library + acknowledgement
 
@@ -936,6 +945,17 @@ company setting, and the screen shows where each date came from.
 respondent may ask for more time once; the outcome summary to the reporter is written by the case officer, never
 generated; witnesses are not shown to each other.
 
+**Built (rounds 7-9, 4 Nov 2026):** migrations `20261650000000_case_steps` (the append-only `speakup_case_steps`
+log, RLS forced, no update or delete for the app role, the four-eyes check on approvals in SQL; `speakup_cases`
+gains `respondent_user_id`, `version` and the encrypted `alert_contact_enc`; the rule set `IN.POSH.INQUIRY` with notice
+7, reply 10 and appeal 90 days, verify flag on) and `20261650000001_speakup_status_width`. Company setting
+`cases.reply_days` (5, 7, 10 or 15, default 7; Settings › Company rules › Speak-up). Notification types
+`helpdesk.case.update` and `helpdesk.case.task`. Members are the HLP-06 routed officers plus anyone added (role officer
+or investigator; the conflict check reads the reporting line from today's assignment, else the user's manager). The
+reporter sees no officer names; the respondent never sees the reporter or the messages; the team's first message
+acknowledges the report. A report about an officer is already with the escalation list (HLP-06); "Route to chair" adds
+the escalation list to any other ethics report. Days are India days.
+
 ## 5. Two designs for one job
 
 HLP-02 … 05 (founder-approved Helpdesk designs, `screens/ops/helpdesk.tsx`) and the Service desk designs (Phase 3b-1,
@@ -1044,6 +1064,30 @@ surveys). The HLP screens are the founder-approved look, sample-only.
     like policy acknowledgements.
 30. **HLP-06: who may set the lists** is only the System Admin (`speakup.setup.manage`), not HR. *Suggested:* keep.
 
+31. **HLP-07/08/09: keeping case records** (DPDP). Kept with no end date today. *Suggested:* a company setting after
+    counsel (with HLP-06 question 29), default 8 years after the case closes; files on legal hold stay.
+32. **HLP-08: POSH days are counted as calendar days.** The POSH Rules say "working days" for the notice (7) and the
+    reply (10). *Suggested:* count working days on the company's holiday calendar once counsel confirms; until then the
+    rule set `IN.POSH.INQUIRY` (verify flag on) holds 7 and 10 and the screen names it.
+33. **HLP-08: what ends a case.** An approved outcome (grievance, ethics) or the signed IC report (POSH) closes the case
+    in the app; the employer's action on a POSH report is tracked only as a date. *Suggested:* keep; add "Employer
+    action recorded" when HR asks for it.
+34. **Disciplinary cases** (the design's show-cause stories) have no record: speak-up cases come from a report, a
+    disciplinary case from a manager or HR. *Suggested:* the next round builds it on the same steps (notice, reply, two
+    people, relief), with the standing orders' reply days per legal entity as a setting.
+35. **HLP-09: severity.** No one sets a severity yet; the queue shows "Serious" when the reporter fears retaliation and
+    "Not set" otherwise. *Suggested:* the ethics officer sets Serious / Standard on the report (audited).
+36. **Menu: Cases and Ethics desk show to everyone** (an empty list for someone on no case; every case is 404 to
+    non-members). *Suggested:* show them only to people on a speak-up list or a case (a flag on the signed-in profile).
+37. **Witnesses** have no record yet (the design's "witness" role in My cases). *Suggested:* add a witness invite step
+    (the witness sees only the date asked of them and their own statement), after counsel on what they may see.
+38. **Interim relief's HR task** is a notice to the chosen HR person plus "HR has done it" on the case; there is no HR
+    task list. *Suggested:* show these tasks in the HR person's My tasks when that page exists.
+39. **Outcome summary to the reporter and the respondent** is the same text, written by the proposing officer and sent
+    on approval. *Suggested:* keep one text; add a second only if counsel wants different wording for the respondent.
+40. **HLP-06 bug fixed here:** `speakup_cases.status` was VARCHAR(12) while its check allows "investigation" (13
+    letters); migration `20261650000001_speakup_status_width` widens it. *Suggested:* none (fixed).
+
 ## 7. Next pages (recommended order, with sizes)
 
 | order | page | size | why |
@@ -1058,7 +1102,7 @@ surveys). The HLP screens are the founder-approved look, sample-only.
 | 8 | Desk team and the set-up admins | L | stand-ins `TeamScreen` and 7 set-up admins (41 "Live ·" stories); needs designs per tab |
 | 9 | ~~HLP-10 + HLP-11 Policy library and admin~~ (done, round 10) | L | no server; most staff touch it (acknowledgements); reuse the desk signing code for one-time codes; founder decisions on audience and quiz |
 | 10 | ~~HLP-06 Speak-up filing~~ (done, round 6) | L | no server; needs POSH Act 2013 internal committee and whistleblower decisions; public no-login route |
-| 11 | HLP-08 + HLP-07 + HLP-09 Cases, my cases, ethics desk | XL | no server; one case engine for grievance, disciplinary and whistleblower cases, members, conflict check, clocks; standing orders and show-cause decisions |
+| 11 | ~~HLP-08 + HLP-07 + HLP-09 Cases, my cases, ethics desk~~ (done, rounds 7-9; disciplinary cases left, question 34) | XL | no server; one case engine for grievance, disciplinary and whistleblower cases, members, conflict check, clocks; standing orders and show-cause decisions |
 | 12 | HLP-12 Accident case | L | no server; ESIC accident report, EC Act claim interest, Factories Act / OSH Code notices |
 | 13 | HLP-13 Collective dispute | L | no server; Industrial Disputes Act conciliation and settlement to payroll arrears |
 | 14 | HLP-14 Write policies with AI | L | no server; after HLP-10; law findings need a reviewed rule set |

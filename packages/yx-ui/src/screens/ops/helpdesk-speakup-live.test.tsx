@@ -48,6 +48,18 @@ describe('HLP-06 Speak up (live)', () => {
     expect(screen.getByRole('link', { name: 'Check my report' })).toHaveAttribute('href', '/yx/speakup/kaveri-foods/check');
   });
 
+  it('anonymous: update alerts are optional; the email goes with the report, never with a named one', async () => {
+    const onFile = vi.fn().mockResolvedValue(FILED_ANON);
+    show(<SpeakUpScreen live={liveSpeakUp({ onFile, start: { kind: 'whistleblower' } })} />);
+    expect(screen.queryByRole('switch', { name: /Tell me when there's an update/ })).not.toBeInTheDocument();
+    await ue.click(screen.getByRole('radio', { name: /Anonymously/ }));
+    await ue.click(screen.getByRole('switch', { name: /Tell me when there's an update/ }));
+    await ue.type(screen.getByRole('textbox', { name: /Email for alerts/ }), 'tip@example.test');
+    await writeIt('Vendor invoices approved without the goods arriving.');
+    await ue.click(screen.getByRole('button', { name: 'File report' }));
+    expect(onFile.mock.calls[0][0]).toMatchObject({ alertEmail: 'tip@example.test' });
+  });
+
   it('the company switched anonymous grievances off: the option is off and says why', () => {
     show(<SpeakUpScreen live={liveSpeakUp({ form: { ...SU_FORM, anonymous: 'ethics_only' } })} />);
     expect(screen.getByRole('radio', { name: /Anonymously/ })).toBeDisabled();

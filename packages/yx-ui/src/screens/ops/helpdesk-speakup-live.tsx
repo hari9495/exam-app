@@ -19,7 +19,7 @@ import {
 } from "../../components/feedback";
 import { FieldRow, FormField, useTooEarly } from "../../components/field";
 import { TextArea, TextField } from "../../components/inputs";
-import { Checkbox, RadioGroup } from "../../components/choice";
+import { Checkbox, RadioGroup, Switch } from "../../components/choice";
 import { Select } from "../../components/select";
 import { DatePicker } from "../../components/date";
 import { FileUpload } from "../../components/upload";
@@ -74,6 +74,8 @@ export interface SpeakUpInput {
   witnesses?: string;
   retaliationWorry?: boolean;
   aboutUserId?: string;
+  /** Anonymous only (HLP-06 decision 1): where to say "You have an update"; stored encrypted. */
+  alertEmail?: string;
 }
 /** POST desk/speakup/reports (named) or desk/speakup/public/reports (anonymous, with the code). */
 export interface FiledReport {
@@ -182,6 +184,8 @@ function LiveSpeakUpForm({
   const [outsideEmployer, setOutsideEmployer] = useState("");
   const [witnesses, setWitnesses] = useState("");
   const [worry, setWorry] = useState(false);
+  const [alerts, setAlerts] = useState(false);
+  const [alertEmail, setAlertEmail] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -238,6 +242,7 @@ function LiveSpeakUpForm({
           : {}),
         ...(witnesses.trim() ? { witnesses: witnesses.trim() } : {}),
         retaliationWorry: worry,
+        ...(who === "anonymous" && alerts && alertEmail.trim() ? { alertEmail: alertEmail.trim() } : {}),
       };
       const r = await live.onFile(input, who);
       const failed: string[] = [];
@@ -368,6 +373,21 @@ function LiveSpeakUpForm({
         label="I'm worried about retaliation"
         description="The case team is alerted and can act at once. You can also raise this later."
       />
+      {who === "anonymous" && (
+        <div className="yx-ops-stack" data-gap="sm">
+          <Switch
+            checked={alerts}
+            onChange={setAlerts}
+            label="Tell me when there's an update"
+            description="Optional. Your email is stored encrypted; nobody at the company can see it. The alert says only “You have an update”."
+          />
+          {alerts && (
+            <FormField label="Email for alerts" helper="Use a personal address if you want to stay anonymous.">
+              <TextField value={alertEmail} onChange={setAlertEmail} type="email" maxLength={254} autoComplete="off" />
+            </FormField>
+          )}
+        </div>
+      )}
     </>
   );
   return (
