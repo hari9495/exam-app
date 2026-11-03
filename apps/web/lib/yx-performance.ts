@@ -56,6 +56,7 @@ export function designState(...queries: { isError: boolean; isSuccess: boolean; 
 export function day(iso: string): Date {
   const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
   return new Date(y!, m! - 1, d!);
+}
 
 /** Uploads one file under /performance (multipart "file"); refreshes every performance query. */
 export function usePerfUpload() {
