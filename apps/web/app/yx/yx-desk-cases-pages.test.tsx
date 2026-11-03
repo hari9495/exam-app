@@ -46,7 +46,7 @@ describe('Helpdesk › My cases (HLP-07 live)', () => {
 
 describe('Helpdesk › Cases (HLP-08 live)', () => {
   it('the list opens a case; a case I am not on shows Not found', async () => {
-    api.mockResolvedValue([{ id: 'k1', ref: 'WB-0001', kind: 'whistleblower', subject: 'Bribery', location: '—', stage: 'Received', raisedBy: null, anonymous: true, owner: 'Rekha', next: null, overdue: false, status: 'open' }]);
+    api.mockImplementation(async (path: string) => (path === '/desk/accidents' ? [] : [{ id: 'k1', ref: 'WB-0001', kind: 'whistleblower', subject: 'Bribery', location: '—', stage: 'Received', raisedBy: null, anonymous: true, owner: 'Rekha', next: null, overdue: false, status: 'open' }]));
     const { unmount } = wrap(<YxCasesPage />);
     await userEvent.click(await screen.findByText('Bribery'));
     expect(push).toHaveBeenCalledWith('/yx/desk/cases/k1');

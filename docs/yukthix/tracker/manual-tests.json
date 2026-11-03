@@ -14388,5 +14388,102 @@
       "Screens/Helpdesk/HLP-09 · Ethics desk"
     ],
     "note": "Positive and negative; founder answer 36."
+  },
+  {
+    "id": "MT-HLP-12-01",
+    "area": "Helpdesk · HLP-12 Accident case (4 Nov 2026)",
+    "screen": "Speak-up set-up › Safety team",
+    "url": "http://localhost:3000/yx/desk/speakup-setup",
+    "account": "admin-tester@demo-org.test (System Admin); hr-tester@demo-org.test (HR). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As hr-tester open /yx/desk/speakup-setup.",
+      "2. As admin-tester open Helpdesk › Speak-up set-up; read the warning at the top.",
+      "3. Safety team › Add, press Add with nobody chosen.",
+      "4. Add admin-tester to the Safety team; add hr-tester again to the Safety team, then add admin-tester a second time."
+    ],
+    "expected": "Step 1: no access (HR does not choose the safety team). Step 2: five lists plus Company rules; the warning says \"Add the safety team: until then accident reports are refused.\" Step 3: \"Choose who to add.\" and the field takes the focus. Step 4: a toast for each new person; adding the same person twice is refused: \"This person is already on that list.\" The warning about the safety team goes.",
+    "stories": [
+      "Screens/Helpdesk/HLP-06 · Speak-up filing"
+    ],
+    "note": "Positive and negative: HR refused, duplicate refused, too early."
+  },
+  {
+    "id": "MT-HLP-12-02",
+    "area": "Helpdesk · HLP-12 Accident case (4 Nov 2026)",
+    "screen": "Speak up › Report an accident (desk and phone)",
+    "url": "http://localhost:3000/yx/desk/speakup",
+    "account": "arjun@demo-org.test (employee, reporting for a colleague). Browser window 1278 x 635, sidebar open. Then a 390 px wide window for the phone layout.",
+    "steps": [
+      "1. Open Helpdesk › Speak up; choose \"A workplace accident or injury\"; press Continue to the accident report.",
+      "2. Press Send report with nothing filled.",
+      "3. Choose a colleague as Name (not yourself), today, time 10:30 am, Location, Where exactly \"Packing line 2\", What happened (a sentence), Injury type Crush, tick First aid, add a JPG photo; press Send report.",
+      "4. Type a time in the future today (an hour from now) and send.",
+      "5. Narrow the window to 390 px and reload /yx/desk/accidents/report.",
+      "6. Open the case link from the toast's number by typing /yx/desk/cases."
+    ],
+    "expected": "Step 1: the report form, with \"For a near-miss with no injury, tell your safety officer instead.\" Step 2: each missing field says what to do and the first takes the focus; nothing is sent. Step 3: toast \"Accident ACC-00NN reported\" (5 s), back to the Help centre; the safety team gets a notice. Step 4: refused: \"The time it happened can’t be in the future.\" Step 5: the phone layout with Send report at the bottom. Step 6: Arjun does not see the accident (not on the case).",
+    "stories": [
+      "Screens/Helpdesk/HLP-12 · Accident case workspace"
+    ],
+    "note": "Positive and negative: on behalf, too early, future time, reporter cannot open the case."
+  },
+  {
+    "id": "MT-HLP-12-03",
+    "area": "Helpdesk · HLP-12 Accident case (4 Nov 2026)",
+    "screen": "Accident case workspace (safety team)",
+    "url": "http://localhost:3000/yx/desk/cases",
+    "account": "admin-tester@demo-org.test (on the Safety team from MT-HLP-12-01). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Helpdesk › Cases; open the ACC row from MT-HLP-12-02.",
+      "2. Statutory tab: if it asks \"Is this person covered by ESI?\" press Record ESI cover; choose Yes; type IP number 123; Save.",
+      "3. Clear the IP number, type 3110012345, hospital \"ESI dispensary\"; choose hr-tester as HR person; Save.",
+      "4. Review report; then Done. Mark submitted with tomorrow's date (not offered) and with today's date and acknowledgement ESIC/ACC/1.",
+      "5. ⋯ › Record injury leave: last day before the first day; then a 7-day range.",
+      "6. Medical tab › Add medical record: press Add record empty; then a diagnosis with a PDF.",
+      "7. Press Close case.",
+      "8. Check the page has no scroll bar at 1278 x 635 on the Incident tab."
+    ],
+    "expected": "Step 1: the case header with ESI badge, the next-deadline rail (ESIC report from IN.ESI.ACCIDENT 1950-v1 (verify)) and who can see the case. Step 2: \"The ESIC IP number has 10 or 17 digits.\" Step 3: toast \"Case details saved\"; hr-tester gets a notice. Step 4: the details to print (employer, insured person, IP number, date and time, place); Submitted with the acknowledgement; the clock shows Done. Step 5: the date picker does not allow it; then toast \"Injury leave recorded\". Step 6: \"Write what it says.\"; then the record with the file and its fingerprint; opening it is logged. Step 7: toast \"ACC-00NN is closed\" (or the refusal if a deadline is still open). Step 8: no page scroll bar.",
+    "stories": [
+      "Screens/Helpdesk/HLP-12 · Accident case workspace"
+    ],
+    "note": "Positive and negative: bad IP number, future filing date, empty medical record. Medical records cannot be changed."
+  },
+  {
+    "id": "MT-HLP-12-04",
+    "area": "Helpdesk · HLP-12 Accident case (4 Nov 2026)",
+    "screen": "Accident case: manager, HR handler and others",
+    "url": "http://localhost:3000/yx/desk/cases",
+    "account": "panel@demo-org.test (Divya, the injured colleague's manager — choose one of Divya's reports in MT-HLP-12-02); hr-tester@demo-org.test (HR handler); payroll-tester@demo-org.test (other staff). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As panel@ open the notice \"Injury leave was recorded for …\".",
+      "2. As hr-tester open the case from Cases; open ⋯ › Case details.",
+      "3. As payroll-tester type /yx/desk/accidents/<the case id from the address bar of step 2>.",
+      "4. As admin-tester use \"Act as\" for hr-tester and open the same case."
+    ],
+    "expected": "Step 1: \"Injury leave · <name>\" with the dates and the expected return only: no injury, place or medical details. Step 2: the whole case, medical included; the HR person field is not offered (only the safety team names the handler). Step 3: Not found. Step 4: refused: \"Not available while acting for someone else\".",
+    "stories": [
+      "Screens/Helpdesk/HLP-12 · Accident case workspace"
+    ],
+    "note": "Positive and negative: manager dates only, others Not found, acting-for refused."
+  },
+  {
+    "id": "MT-HLP-12-05",
+    "area": "Helpdesk · HLP-12 Accident case (4 Nov 2026)",
+    "screen": "Accident case: contract worker and Employee's Compensation",
+    "url": "http://localhost:3000/yx/desk/accidents/report",
+    "account": "arjun@demo-org.test (reports); admin-tester@demo-org.test (safety team). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As arjun report an accident for \"A contract worker\": name Murugan P., contractor Sri Lakshmi Facility Services, date two days ago.",
+      "2. As admin-tester open it; Case details: ESI Yes; Save. Look at the Statutory tab.",
+      "3. Press Mark contractor filed with today's date.",
+      "4. Report another accident for a colleague; as admin-tester set ESI No; Work out compensation: Permanent partial disablement, wage 42000, age factor 197.06, press Work it out without the loss %.",
+      "5. Add loss 20 %, fell due today; Work it out; then Mark paid through payroll; Close case."
+    ],
+    "expected": "Step 2: \"The contractor hasn't filed yet\" (the deadline from IN.ESI.ACCIDENT passed); the case shows Action needed in Cases; the safety team gets a reminder at 09:00 IST. Step 3: toast; the warning goes. Step 4: \"Enter the loss of earning capacity (per cent).\" Step 5: wage used ₹15,000 (ceiling), the compensation and the pay-by date from IN.EC.CLAIM 2020-v1 (verify); toast on paid; the case closes.",
+    "stories": [
+      "Screens/Helpdesk/HLP-12 · Accident case workspace"
+    ],
+    "note": "Positive and negative: contractor late, missing EC field. No government filing from the app."
   }
 ]

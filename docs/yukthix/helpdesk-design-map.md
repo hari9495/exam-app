@@ -24,10 +24,14 @@ feature not built** (no API) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Helpdesk HLP-01 … 14 | 14 | 194 | 13 | 0 | 15 | 0 | 222 |
+| A. Helpdesk HLP-01 … 14 | 14 | 209 | 15 | 0 | 7 | 0 | 231 |
 | B. Service desk designs | 5 | 55 | 2 | 0 | 0 | 0 | 57 |
-| **All Helpdesk groups (A–B)** | **19** | **249** | **15** | **0** | **15** | **0** | **279** |
+| **All Helpdesk groups (A–B)** | **19** | **264** | **17** | **0** | **7** | **0** | **288** |
 Round 9b (script, 4 Nov 2026, `feat/yukthix-hlp-07-09`): HLP-08 gains 1 story (Severity), live: 29 stories, 25 live.
+Round 12 recount (script, 4 Nov 2026, `feat/yukthix-hlp-12`): HLP-12 has 17 stories (the 8 approved plus 9 drawn: ESI
+cover not recorded, case details, mark submitted, ESIC details to print, work out compensation, medical records, manager
+with no dates, no safety team, too early): 14 live, 3 live (gap) (the inspector notice, the typed EC age factor, the
+roster line of the manager view). HLP-06 NamedGrievance moves to live (the accident choice).
 Round 7-9 recount (script, 4 Nov 2026, `feat/yukthix-hlp-07-09`): HLP-07 has 13 stories (the 8 approved plus 5 drawn:
 the reporter's view, the outcome shared, the respondent's notice, more time asked, no access): 9 live, 4 live (gap)
 (the disciplinary show-cause stories: no disciplinary record yet). HLP-08 has 28 (the 12 approved plus 16 drawn: second
@@ -143,7 +147,7 @@ And under `notLive`: designed, with no live page rendering them. `ops: TicketWor
 doing the same job with a B screen (section 5). (HLP-06 `SpeakUpScreen` and `CheckReportScreen` left the list: live) (HLP-07 `MyCasesScreen`,
 HLP-08 `CaseListScreen` and `CaseWorkspaceScreen`, HLP-09 `EthicsDeskScreen` left the list: live; `ops: LoadingCase` and
 `ops: ErrorCase` stay: the live workspace draws its own loading and error in the same look) (HLP-10 `PolicyLibraryScreen` and HLP-11 `PolicyAdminScreen` left the list: live)
-`ops: AccidentWorkspaceScreen`, `ops: ReportAccidentScreen` (HLP-12), `ops: CollectiveDisputeScreen` (HLP-13), `ops:
+(HLP-12 `AccidentWorkspaceScreen` and `ReportAccidentScreen` left the list: live) `ops: CollectiveDisputeScreen` (HLP-13), `ops:
 PolicyWriterScreen` (HLP-14) and `ops: PoshCaseScreen` (no HLP story; the POSH case) have no server. Related phone and
 portal designs also wait: `settings: MobileHelpTicketsScreen`, `MobilePolicyAckScreen`, `MobileSpeakUpScreen`,
 `portals: AnonymousCaseScreen`, `ExternalPartyCaseScreen`, `HelpEditorScreen`.
@@ -154,7 +158,7 @@ portal designs also wait: `settings: MobileHelpTicketsScreen`, `MobilePolicyAckS
 |---|---|---|
 | ~~HLP-06 Speak-up filing~~ (done, round 6) | grievance and whistleblower intake, anonymous access code and the no-login "check my report", POSH redirect to the internal committee; tables with RLS, a public route with throttling | L |
 | Disciplinary cases (HLP-07/08 show-cause stories) | a disciplinary case record raised by a manager or HR, standing orders per entity, show-cause, inquiry, penalties and letters | L (question 34) |
-| HLP-12 Accident case workspace (8) | accident reports, ESIC report and EC claim clocks, contract workers, manager view | L |
+| ~~HLP-12 Accident case workspace~~ (done, round 12) | accident reports, ESIC report and EC claim clocks, contract workers, manager view | L |
 | HLP-13 Collective dispute / settlement (3) | dispute record, conciliation, signed settlement sent to payroll arrears | L |
 | HLP-14 Write policies with AI (4) | questionnaire, AI draft, law findings that block approval, approve and load into HLP-10 | L (after HLP-10) |
 
@@ -324,7 +328,7 @@ already has the minimum it needs (the officers' case list, one case with the aud
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| NamedGrievance · Grievance · named, confidential | live (gap) | `GET desk/speakup/form`, `POST desk/speakup/reports` (implicit: the signed-in person; 403 while acting for someone else). Gap: the design's fourth choice, "A workplace accident or injury", is left out until HLP-12 (accident reports) is built |
+| NamedGrievance · Grievance · named, confidential | live | `GET desk/speakup/form`, `POST desk/speakup/reports` (implicit: the signed-in person; 403 while acting for someone else). HLP-12 (4 Nov 2026): the fourth choice, "A workplace accident or injury", is live: it shows "Continue to the accident report" (/yx/desk/accidents/report) |
 | Anonymous · Whistleblower · anonymous | live | sent through the no-login route (`POST desk/speakup/public/reports`, no sign-in, no cookies): no user, IP or device kept. "Tell me when there's an update" (HLP-08 round): an optional email, stored encrypted (`alert_contact_enc`, org secrets key); a team message or an approved outcome sends only "You have an update" (question 23, built; SMS when the company's SMS channel exists) |
 | AnonymousOff · Anonymous switched off by company | live | company setting `speakup.anonymous` (all / ethics_only / off, default all); the option is off and says why; the server refuses too (403) |
 | PoshRedirect · Sexual harassment · goes to IC | live | "Continue to the complaint form": always named, only the Internal Committee members see it |
@@ -345,7 +349,7 @@ already has the minimum it needs (the officers' case list, one case with the aud
 | FormError · Error | live | new story |
 | NoAccess · No access (acting for someone else) | live | new story |
 | CheckEmpty · Check my report · no messages yet | live | new story |
-| Setup · Set-up · who receives reports | live | new story: `GET desk/speakup/setup` (`speakup.setup.manage`): the grievance committee, the ethics team, the Internal Committee (presiding, member, external) and the escalation list; Remove (`POST …/members/:id/remove`), toast |
+| Setup · Set-up · who receives reports | live | new story: `GET desk/speakup/setup` (`speakup.setup.manage`): the grievance committee, the ethics team, the Internal Committee (presiding, member, external), the escalation list and (HLP-12) the Safety team; Remove (`POST …/members/:id/remove`), toast |
 | SetupUnfinished · Set-up · Internal Committee and Escalation still empty | live | new story: page warning for the System Admin (founder approved 4 Nov) |
 | SetupAddIc · Set-up · add to the Internal Committee | live | new story: `POST desk/speakup/setup/members` (one presiding officer) |
 | SetupTooEarly · Set-up · Add pressed with nobody chosen | live | new story |
@@ -479,18 +483,28 @@ second person, sent back, the drill-down, editing the audience, not published ye
 
 #### HLP-12 · Accident case workspace
 
-No server (no accident records; ESIC and EC claim clocks not built).
+Live (round 12, 4 Nov 2026, `feat/yukthix-hlp-12`): `apps/api/src/accidents` (`desk/accidents`), pages
+/yx/desk/accidents/report and /yx/desk/accidents/:id, accident rows in /yx/desk/cases. Rules in section 4g.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| EsiCovered · ESI covered · ESIC report due | design only, feature not built | no accident API |
-| Statutory · Non-ESI · EC claim overdue with interest | design only, feature not built | |
-| Submitted · ESIC report submitted | design only, feature not built | |
-| ContractWorker · Contract worker · contractor not filed | design only, feature not built | |
-| ManagerView · Manager view (leave dates only) | design only, feature not built | |
-| NonMember · Not a case member (shows Not found) | design only, feature not built | |
-| ReportDesk · Report an accident | design only, feature not built | |
-| ReportPhone · Report an accident · phone | design only, feature not built | the feature itself is not built |
+| EsiCovered · ESI covered · ESIC report due | live (gap) | `GET desk/accidents/:id` (safety team or the HR handler): ESIC clock from `IN.ESI.ACCIDENT` (verify) on the accident date, Review report (`GET …/esic-form`, print), Mark submitted (`POST …/esic-filed`), toast. Gap: the "Reportable" badge and the inspector notice card (OSH Code / Factories, state rules) are not built: founder decision 3 names only ESIC and EC (question 44) |
+| Statutory · Non-ESI · EC claim overdue with interest | live (gap) | ESI cover No: Work out compensation (`POST …/ec`) from `IN.EC.CLAIM` (verify): wage ceiling, minimums, partial share; pay-by date and interest estimate; Mark paid (`POST …/ec-paid`, payroll or deposit). Gap: the Schedule IV age factor is typed from the Act, not looked up (question 42); "Draft EC letter" not built |
+| Submitted · ESIC report submitted | live | the date filed and the acknowledgement number; the buttons go |
+| ContractWorker · Contract worker · contractor not filed | live | the case names the contractor; the contractor files (`POST …/contractor-filed`); past the deadline "The contractor hasn't filed yet" and the safety team is reminded at 09:00 IST on the company's schedule (`accident.contractor_reminder_days`, default every day) |
+| ManagerView · Manager view (leave dates only) | live (gap) | the injured employee's current manager gets `view: manager` (name, leave dates) and a notice when dates are recorded. Gap: the design's "Roster: shifts marked as injury leave" line is left out: the dates are not written into Time yet (question 43) |
+| NonMember · Not a case member (shows Not found) | live | 404 for the reporter, HR, other staff, the System Admin and other companies; the page shows Not found |
+| ReportDesk · Report an accident | live | `GET desk/accidents/form`, `POST desk/accidents` (anyone signed in, for themselves or someone else; refused while acting for someone else), photos `POST …/photos`; time is India time; toast |
+| ReportPhone · Report an accident · phone | live | the same page on a narrow screen (phone layout, camera for photos) |
+| EsiNotRecorded · ESI cover not recorded yet | live | new story: payroll's ESI setting fills it when known; otherwise "Record ESI cover" |
+| CaseDetails · Case details (ESI cover, hospital, HR handler) | live | new story: `POST …/facts` (Segment Yes / No, IP number, hospital; only the safety team names the HR handler), toast |
+| MarkFiled · Mark submitted (date filed) | live | new story: date between the accident and today, once (409 again) |
+| EsicDetails · ESIC details to print | live | new story: the details to enter on the ESIC portal; Print; every preparation audited |
+| WorkOutCompensation · Work out compensation (not ESI covered) | live | new story |
+| MedicalRecords · Medical records (append-only, fingerprinted) | live | new story: `POST …/medical` (note and file, SHA-256 kept), open `GET …/files/:fileId` (clean files only, fingerprint checked, every open audited) |
+| ManagerNoDates · Manager view · no leave dates yet | live | new story |
+| NoSafetyTeam · Report · no safety team yet | live | new story: 409 `ACCIDENT_NO_TEAM`; the System Admin adds the Safety team in Speak-up set-up |
+| ReportTooEarly · Report · pressed too early | live | new story |
 
 #### HLP-13 · Collective dispute / settlement
 
@@ -966,6 +980,31 @@ header and the rail. The menu: `GET workspace/counts` now carries `casesOpen` (p
 or a member of any case who has not stepped aside) and `ethicsReports` (only for the ethics or escalation list); the
 menu shows Cases and Ethics desk with those counts; My cases stays for everyone. Witnesses are out of the My cases
 description and type until counsel (answer 37).
+## 4g. HLP-12 rules (accident cases)
+Built 4 Nov 2026 (`feat/yukthix-hlp-12`) from the founder decisions of 4 Nov 2026 (end of this file).
+- **Who reports:** anyone signed in, for themselves or someone else (an employee picked from the list, or a contract
+  worker by name with the contractor). Refused (409 `ACCIDENT_NO_TEAM`) until the System Admin names the Safety team.
+  The reporter does not see the case afterwards (only the number in the toast).
+- **Who sees:** the Safety team (a speak-up list, `speakup.setup.manage`, System Admin only, not HR) and the HR person
+  the safety team names as handler on each case: the whole case, medical included. The injured employee's current
+  manager (today's assignment): name and leave dates only, and a notice when dates are recorded. Everyone else, other
+  companies and YukthiX support (RLS): 404 / nothing. Every route 403 while acting for someone else. Each view audited
+  (`accident.viewed` with the view and whether medical details were shown).
+- **Clocks (never in code):** `IN.ESI.ACCIDENT 1950-v1` (verify): ESIC accident report one day after the accident date
+  (India date). `IN.EC.CLAIM 2020-v1` (verify; not `IN.EC`, which payroll's injury pay reads): pay within 30 days of the
+  day compensation fell due, 12 % a year simple interest estimate after that, wage ceiling ₹15,000, minimums, 25 % half-
+  monthly temporary pay after 3 waiting days. ESI covered → ESIC report; not covered → EC claim (ESI Act s.53).
+  ESI cover: recorded on the case, else payroll's `employee_statutory.esi` (yes/no) on the accident date.
+- **Filing:** the app prepares the ESIC details to print; a person files on the ESIC portal and records the date and
+  acknowledgement (once; not in the future, not before the accident). No government filing from the app.
+- **Contract workers:** the contractor files; past the deadline the case shows "contractor not filed" and the safety team
+  is reminded at 09:00 IST, every `accident.contractor_reminder_days` days (setting, default 1; `off` stops it).
+- **Settings (defaults, per company):** `accident.injury_types` (Crush, Cut, Burn, Fall, Sprain or strain, Other),
+  `accident.contractor_reminder_days` (1).
+- **Records:** `accident_cases`, `accident_steps` (facts, statement, photo, esic_filed, contractor_filed, ec_set, ec_paid,
+  reminded, closed) and `accident_medical_records` are append-only (no UPDATE / DELETE for the app role, forced RLS,
+  support sessions excluded); a medical file keeps its SHA-256 and is opened only if clean and matching, every open
+  audited. Closing needs ESI cover recorded and every clock done.
 
 ## 5. Two designs for one job
 
@@ -1060,7 +1099,7 @@ surveys). The HLP screens are the founder-approved look, sample-only.
 23. **HLP-06: update alerts for anonymous reporters** ("Tell me when there's an update"). Not offered yet: nothing would
     send them until the team replies in HLP-08. *Suggested:* build with HLP-08, the contact stored encrypted and used only
     to say "You have an update".
-24. **HLP-06: accident reports** stay off the speak-up form until HLP-12. *Suggested:* keep.
+24. **HLP-06: accident reports** stay off the speak-up form until HLP-12. *Suggested:* keep. (Done in HLP-12: the fourth choice leads to the accident report.)
 25. **HLP-06: POSH complaints are always named** (the committee must hear the complainant; also a database check).
     *Suggested:* keep; an anonymous tip about harassment can go as an ethics concern.
 26. **HLP-06: no Internal Committee** means the app refuses a POSH complaint and names the Local Committee route,
@@ -1099,6 +1138,26 @@ surveys). The HLP screens are the founder-approved look, sample-only.
 40. **HLP-06 bug fixed here:** `speakup_cases.status` was VARCHAR(12) while its check allows "investigation" (13
     letters); migration `20261650000001_speakup_status_width` widens it. *Suggested:* none (fixed).
 
+41. **HLP-12: who can be the HR handler.** The safety team may name any active person of the company; it does not check
+    an HR role. *Built:* any active person, named only by the safety team, audited. *Suggested:* keep (small companies
+    have no HR role); or limit to people with an HR template.
+42. **HLP-12: the EC age factor** (Schedule IV) is typed by the person from the Act, not looked up. *Built:* typed, 1 to
+    500, the working shown. *Suggested:* add the Schedule IV table to the `IN.EC.CLAIM` rule set after counsel checks the
+    numbers, then fill it from the date of birth.
+43. **HLP-12: injury leave in Time.** Leave dates live on the case and the manager sees them; nothing is written into
+    Time or the roster. *Built:* "Record the leave in Time too" on the case. *Suggested:* a follow-up creates the leave
+    (an "injury leave" type) from the case, so payroll and the roster see it.
+44. **HLP-12: the inspector notice** (OSH Code / Factories Act, state rules: a "reportable" accident) is not built;
+    founder decision 3 names only ESIC and EC. *Built:* no badge, no card. *Suggested:* add it with a state rule set
+    (`IN.ACC.NOTICE`, per state, verify) when the first factory customer needs it.
+45. **HLP-12: the reporter's view.** The reporter sees only the case number (toast); "My cases" does not list accident
+    reports. *Built:* nothing more (founder: everyone else gets Not found). *Suggested:* keep; or show the reporter the
+    status only (received, closed).
+46. **HLP-12: the employee picker** lists names of up to 5,000 people to anyone reporting. *Built:* names only.
+    *Suggested:* keep; a search box when a company is larger.
+47. **HLP-12: a menu link "Report an accident".** Today the way in is Speak up's fourth choice. *Built:* no extra link.
+    *Suggested:* add it under Helpdesk for everyone (and on the phone's Me tab).
+
 ## 7. Next pages (recommended order, with sizes)
 
 | order | page | size | why |
@@ -1114,7 +1173,7 @@ surveys). The HLP screens are the founder-approved look, sample-only.
 | 9 | ~~HLP-10 + HLP-11 Policy library and admin~~ (done, round 10) | L | no server; most staff touch it (acknowledgements); reuse the desk signing code for one-time codes; founder decisions on audience and quiz |
 | 10 | ~~HLP-06 Speak-up filing~~ (done, round 6) | L | no server; needs POSH Act 2013 internal committee and whistleblower decisions; public no-login route |
 | 11 | ~~HLP-08 + HLP-07 + HLP-09 Cases, my cases, ethics desk~~ (done, rounds 7-9; disciplinary cases left, question 34) | XL | no server; one case engine for grievance, disciplinary and whistleblower cases, members, conflict check, clocks; standing orders and show-cause decisions |
-| 12 | HLP-12 Accident case | L | no server; ESIC accident report, EC Act claim interest, Factories Act / OSH Code notices |
+| 12 | ~~HLP-12 Accident case~~ (done, round 12; inspector notice left, question 44) | L | no server; ESIC accident report, EC Act claim interest, Factories Act / OSH Code notices |
 | 13 | HLP-13 Collective dispute | L | no server; Industrial Disputes Act conciliation and settlement to payroll arrears |
 | 14 | HLP-14 Write policies with AI | L | no server; after HLP-10; law findings need a reviewed rule set |
 
