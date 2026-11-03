@@ -435,3 +435,9 @@ needs), all live. Rules:
   (default 3) through the payroll loan engine.
 - Finance only, company-wide `expense.payout.manage`; never matching one's own card line; every view of a statement and
   every change audited; RLS and no delete on the four new tables (migration 20261540000000).
+
+## Founder answers, 3 Nov 2026 (card statement import, "all good")
+Keep as built: (1) lines marked "Company card" are never paid to the employee (a card line could otherwise be paid twice);
+(2) card statements need company-wide `expense.payout.manage` (entity-scoped finance later if needed); (3) personal spend
+starts the salary recovery as soon as the employee confirms; (4) a foreign-currency card line is explained by adding it to
+a claim with the rate; (5) "Remove card" comes later; (6) the employee's card-lines page reads "Pay › Expenses".
