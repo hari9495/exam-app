@@ -77,7 +77,7 @@ async function doFetch(path: string, options: RequestInit, accessToken?: string)
 }
 
 // errors: per-field problems from a form the API checks (Settings › Notifications › Email).
-const DETAIL_FIELDS = ['personIds', 'clashes', 'errors', 'retryAfterSeconds', 'changes', 'problems', 'newMessages', 'statementId', 'revision'] as const;
+const DETAIL_FIELDS = ['personIds', 'clashes', 'errors', 'retryAfterSeconds', 'changes', 'problems', 'newMessages', 'statementId', 'revision', 'triesLeft'] as const;
 
 async function throwForResponse(response: Response): Promise<never> {
   const body = await errorBody(response);
@@ -164,6 +164,22 @@ export async function apiFetch(path: string, options: RequestInit = {}, accessTo
   if (!response.ok) {
     await throwForResponse(response);
   }
+  return response.status === 204 ? null : response.json();
+}
+
+/**
+ * HLP-06: a call that must not carry who is asking (an anonymous speak-up report, check my report): no sign-in, no
+ * cookies. Errors throw like apiFetch (status, code, the allowed details).
+ */
+export async function apiFetchAnonymous(path: string, options: RequestInit = {}) {
+  const isFormData = options.body instanceof FormData;
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, { ...options, headers: isFormData ? {} : { 'Content-Type': 'application/json' }, credentials: 'omit', cache: 'no-store' });
+  } catch {
+    throw new NetworkError();
+  }
+  if (!response.ok) await throwForResponse(response);
   return response.status === 204 ? null : response.json();
 }
 

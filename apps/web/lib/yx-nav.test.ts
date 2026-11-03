@@ -16,7 +16,7 @@ describe('buildNav: areas', () => {
     const n = nav();
     expect(areas(n)).toEqual(['home', 'helpdesk']);
     expect(labels(n, 'home')).toEqual(['Home', 'Approvals', 'Notifications', 'Search', 'My requests']);
-    expect(labels(n, 'helpdesk')).toEqual(['Help centre', 'Policies', 'Service catalogue', 'Chat with us']);
+    expect(labels(n, 'helpdesk')).toEqual(['Help centre', 'Policies', 'Speak up', 'Service catalogue', 'Chat with us']);
   });
 
   it('areas come in the designed rail order, Settings last; unbuilt modules never appear', () => {
@@ -306,5 +306,13 @@ describe('pageLink: Policies and Policy admin name themselves (HLP-10 / HLP-11)'
     expect(pageLink(nav(['policy.manage'], { employee: true }), '/yx/desk/policy-admin')).toMatchObject({ link: { label: 'Policy admin' }, inMenu: true });
     expect(pageLink(nav(['policy.publish'], { employee: true }), '/yx/desk/policy-admin')).toMatchObject({ link: { label: 'Policy admin' }, inMenu: true });
     expect(pageLink(nav([], { employee: true }), '/yx/desk/policy-admin')?.inMenu).not.toBe(true);
+  });
+});
+
+describe('pageLink: Speak up and its set-up name themselves (HLP-06)', () => {
+  it('every employee has Helpdesk › Speak up; the set-up only with speakup.setup.manage', () => {
+    expect(pageLink(nav([], { employee: true }), '/yx/desk/speakup')).toMatchObject({ area: { id: 'helpdesk' }, link: { label: 'Speak up' }, inMenu: true });
+    expect(pageLink(nav(['speakup.setup.manage'], { employee: true }), '/yx/desk/speakup-setup')).toMatchObject({ link: { label: 'Speak-up set-up' }, inMenu: true });
+    expect(pageLink(nav(['policy.manage'], { employee: true }), '/yx/desk/speakup-setup')?.inMenu).not.toBe(true);
   });
 });

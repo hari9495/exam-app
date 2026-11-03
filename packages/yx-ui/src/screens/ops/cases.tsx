@@ -25,6 +25,7 @@ import { AccessCodeCard, Actions, ClockPanel, Confidential, MembersList, OpsDesk
 import { addDays, formatAccessCode, showCauseDue, type ClockItem } from './ops-rules';
 import type { AnonMessage, CaseRow, CaseType } from './helpdesk-data';
 import type { Device, ListState } from './helpdesk';
+import { LiveCheckReport, LiveSpeakUp, type LiveCheckReport as LiveCheckReportProps, type LiveSpeakUp as LiveSpeakUpProps } from './helpdesk-speakup-live';
 
 const LOCATIONS = [
   { value: 'blr', label: 'Bengaluru head office' },
@@ -144,7 +145,10 @@ export function SpeakUpForm({ defaultKind = 'grievance', defaultIdentity = 'name
   );
 }
 
-export function SpeakUpScreen({ device = 'desk', defaultKind = 'grievance', defaultIdentity = 'named', anonymousAllowed = true, submitted = null, today, codeSeed = 20260929 }: SpeakUpScreenProps) {
+export function SpeakUpScreen(props: SpeakUpScreenProps | { live: LiveSpeakUpProps }) {
+  return 'live' in props ? <LiveSpeakUp live={props.live} /> : <SampleSpeakUp {...props} />;
+}
+function SampleSpeakUp({ device = 'desk', defaultKind = 'grievance', defaultIdentity = 'named', anonymousAllowed = true, submitted = null, today, codeSeed = 20260929 }: SpeakUpScreenProps) {
   const title = defaultKind === 'whistleblower' ? 'Fraud or ethics report' : 'Speak up';
   const done =
     submitted === 'anonymous' ? (
@@ -213,7 +217,10 @@ export function SpeakUpScreen({ device = 'desk', defaultKind = 'grievance', defa
 }
 
 /** YX-CASE-11 no-login page for anonymous reporters. */
-export function CheckReportScreen({ state = 'enter', messages = [] }: { state?: 'enter' | 'open' | 'wrong-code' | 'locked'; messages?: AnonMessage[] }) {
+export function CheckReportScreen(props: { state?: 'enter' | 'open' | 'wrong-code' | 'locked'; messages?: AnonMessage[] } | { live: LiveCheckReportProps }) {
+  return 'live' in props ? <LiveCheckReport live={props.live} /> : <SampleCheckReport {...props} />;
+}
+function SampleCheckReport({ state = 'enter', messages = [] }: { state?: 'enter' | 'open' | 'wrong-code' | 'locked'; messages?: AnonMessage[] }) {
   const [code, setCode] = useState(state === 'wrong-code' ? 'KF7Q-2MXA-99TR-HPL3' : '');
   const { say } = useSay();
   return (

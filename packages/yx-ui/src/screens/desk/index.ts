@@ -33,6 +33,9 @@ export { YukthixSupportScreen, YX_SEVERITY, severityWords, type YukthixSupportSc
 export { KbEditorScreen } from '../ops/helpdesk';
 export { categoryTree, articleStatus, AUDIENCE_LABEL, ARTICLE_STATE_LABEL, VERSION_STATE_LABEL, type LiveKb } from '../ops/helpdesk-kb-live';
 export * from './kb-types';
+// HLP-06 Speak-up filing: the designed screens with `live`, and the set-up of who receives reports.
+export { SpeakUpScreen, CheckReportScreen } from '../ops/cases';
+export { SpeakUpSetupScreen, anonymousFor, type LiveSpeakUp, type LiveCheckReport, type LiveSpeakUpSetup, type SpeakUpFormData, type SpeakUpInput, type FiledReport, type ReporterView, type SpeakUpSetupData, type SpeakUpTeam } from '../ops/helpdesk-speakup-live';
 // HLP-10 Policy library + acknowledgement and HLP-11 Policy admin: the designed screens with `live`.
 export { PolicyLibraryScreen, PolicyAdminScreen } from '../ops/helpdesk';
 export { METHOD_LABEL, VERSION_LABEL, type LivePolicyLibrary, type LivePolicyAdmin, type PolicyAdminTab } from '../ops/helpdesk-policy-live';
