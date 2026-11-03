@@ -60,6 +60,15 @@ describe('PRF-01 home', () => {
     expect(screen.getByRole('link', { name: 'View 1 cycle' })).toBeInTheDocument();
     expect(screen.queryByText(/View 1 cycles/)).toBeNull();
   });
+  it('HR stat cards show the change against last month from the snapshot, and nothing before the first month', () => {
+    const hr = { cycles: [{ id: 'cy1', name: 'H2 review', status: 'launched', stage: 'Manager review', eligible: 212, done: 40, overdue: 9 }], ratingDistribution: null, pipsActive: 3, goalsAligned: 82 };
+    const data = { persona: 'hr' as const, name: 'Lakshmi', period: null, actions: [], myGoals: [], myReview: null, feedback: [], nextOneOnOne: null, team: [], teamGoals: [] };
+    const { unmount } = show(<PerformanceHomeScreen live={{ state: 'ready', onRetry: vi.fn(), data: { ...data, hr: { ...hr, previous: { label: 'October', cyclesRunning: 1, overdueStages: 12, pipsActive: 4, goalsAligned: 74 } } }, onCheckIn: vi.fn() }} />);
+    expect(screen.getAllByText(/October/).length).toBe(4);
+    unmount();
+    show(<PerformanceHomeScreen live={{ state: 'ready', onRetry: vi.fn(), data: { ...data, hr: { ...hr, previous: null } }, onCheckIn: vi.fn() }} />);
+    expect(screen.queryByText(/October/)).toBeNull();
+  });
   it('counted links read in the plural for more than one', () => {
     const cycle = { id: 'cy', name: 'H2 review', status: 'launched', stage: 'Self review', eligible: 10, done: 0, overdue: 0 };
     show(<PerformanceHomeScreen live={{ state: 'ready', onRetry: vi.fn(), data: { persona: 'hr', name: 'Lakshmi', period: null, actions: [], myGoals: [], myReview: null, feedback: [], nextOneOnOne: null, team: [], teamGoals: [], hr: { cycles: [cycle, { ...cycle, id: 'cy2' }, { ...cycle, id: 'cy3' }], ratingDistribution: null, pipsActive: 1, goalsAligned: null } }, onCheckIn: vi.fn() }} />);

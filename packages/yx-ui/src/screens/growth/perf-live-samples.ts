@@ -74,6 +74,13 @@ export const SETUP: LiveCycleSetup = {
   onDone: noop,
 };
 
+/** PRF-04 set-up with calibration: one planned session and the people who can run one. */
+export const SETUP_CALIBRATION: LiveCycleSetup = {
+  ...SETUP,
+  cycle: { ...CYCLE, calibration: [{ name: 'Quality and lab', facilitatorUserId: 'u1', departmentIds: ['d1'] }] },
+  facilitators: [{ value: 'u1', label: 'Lakshmi Rao' }, { value: 'u2', label: 'Aisha Khan' }],
+};
+
 export const CONTROL: LiveControlRoom = {
   state: 'ready',
   onRetry: noop,

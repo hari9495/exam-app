@@ -1,7 +1,7 @@
 // Performance, people side: quick feedback (PRF-08), 1:1s with suggested agenda (PRF-11, PRF-16), PIP record (PRF-12),
 // hand-over list after a manager change (PRF-13), competency framework (PRF-14).
 import { useEffect, useMemo, useState } from 'react';
-import { Archive, ArrowLeft, CalendarPlus, Check, GitMerge, Lock, MessageSquarePlus, Plus, Send } from 'lucide-react';
+import { Archive, ArrowLeft, CalendarPlus, Check, GitMerge, Lock, MessageSquarePlus, Plus, Send, Upload } from 'lucide-react';
 import { Button, Link } from '../../components/button';
 import { AiBadge, Badge, PersonLabel } from '../../components/display';
 import { Icon, Text } from '../../components/foundations';
@@ -22,7 +22,9 @@ import { TextArea, TextField } from '../../components/inputs';
 import { Checkbox, RadioGroup } from '../../components/choice';
 import { MultiSelect, PersonPicker, Select, type PersonOption } from '../../components/select';
 import { MenuItem } from '../../components/menu';
-import { ApprovalTimeline, type ApprovalStep } from '../../components/timeline';
+import { FileUpload } from '../../components/upload';
+import { PlainTable } from '../../components/plain-table';
+import { ApprovalTimeline, SYSTEM_ACTOR, Timeline, type ApprovalStep } from '../../components/timeline';
 import { formatDate } from '../../lib/format';
 import { matchesFilter, type FilterValue } from '../../lib/table';
 import { TODAY } from '../_kit/data';
@@ -1047,14 +1049,19 @@ export interface Pip {
   /** Protected leave inside the plan moves its end by these days; HR is warned to check with the case owner. */
   pausedDays?: number;
   warning?: boolean;
+  /** Extended once more after "not met" (founder answer a): only met / not met and the exit case are left. */
+  reextended?: boolean;
 }
 
 /** The app's plan: each action is checked again on the server (who may act, the plan's state, the version). */
 export interface LivePip {
   today: Date;
-  can: { decide: boolean; acknowledge: boolean; checkin: boolean; employeeNote: boolean; outcome: boolean; letter: boolean; startExit: boolean };
+  can: { decide: boolean; acknowledge: boolean; checkin: boolean; employeeNote: boolean; outcome: boolean; letter: boolean; startExit: boolean; extend?: boolean; extendAgain?: boolean };
   /** perf.pip.extend_days: "Extend by N days". */
   extendDays: number;
+  /** perf.pip.after_not_met_days: one more extension after "not met". */
+  extendAgainDays?: number;
+  onExtendAgain?: (reason: string) => Promise<unknown>;
   /** Where the employee asks HR a question; the exit case once one is open. */
   askHrHref: string;
   exitHref?: string | null;
@@ -1074,10 +1081,11 @@ export interface PipRecordProps {
   pip: Pip;
   tab?: 'plan' | 'checkins' | 'ack' | 'outcome';
   outcomeOpen?: boolean;
-  /** Stories: open the check-in, send-back or exit-case dialog. */
+  /** Stories: open the check-in, send-back, exit-case or extend-again dialog. */
   checkinOpen?: boolean;
   sendBackOpen?: boolean;
   exitOpen?: boolean;
+  extendAgainOpen?: boolean;
   live?: LivePip;
 }
 
@@ -1161,6 +1169,41 @@ function SendBackDialog({ open, onOpenChange, pip, live }: { open: boolean; onOp
   );
 }
 
+/** Founder answer (a): after "not met", HR may extend the plan once more by the company's days, with a reason. */
+function ExtendAgainDialog({ open, onOpenChange, pip, live }: { open: boolean; onOpenChange: (o: boolean) => void; pip: Pip; live?: LivePip }) {
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  const { toast } = useAct();
+  const days = live?.extendAgainDays ?? 30;
+  const today = live?.today ?? TODAY;
+  const end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + days);
+  return (
+    <ConfirmDialog
+      open={open}
+      onOpenChange={(o) => {
+        onOpenChange(o);
+        if (!o) setTried(false);
+      }}
+      title={`Extend ${pip.employee}’s plan once more?`}
+      consequence={`It runs ${days} more days, to ${formatDate(end)}, with check-ins on the same schedule. This is the last extension: after it, the plan is closed as met or not met, or an exit case is opened.`}
+      confirmLabel={`Extend by ${days} days`}
+      onConfirm={async () => {
+        setTried(true);
+        if (reason.trim().length < 10) {
+          document.getElementById('pip-again-reason')?.focus();
+          return false;
+        }
+        if (live?.onExtendAgain) await live.onExtendAgain(reason.trim());
+        toast({ title: `Plan extended to ${formatDate(end)}`, tone: 'success' });
+      }}
+    >
+      <FormField label="Reason" required id="pip-again-reason" helper="The employee and their manager see it on the plan." error={tried && reason.trim().length < 10 ? 'Give the reason, in at least 10 characters.' : null}>
+        <TextArea value={reason} onChange={setReason} rows={3} maxLength={1000} />
+      </FormField>
+    </ConfirmDialog>
+  );
+}
+
 function ExitDialog({ open, onOpenChange, pip, live }: { open: boolean; onOpenChange: (o: boolean) => void; pip: Pip; live?: LivePip }) {
   const [lwd, setLwd] = useState<Date | null>(null);
   const [reason, setReason] = useState('');
@@ -1199,7 +1242,7 @@ function ExitDialog({ open, onOpenChange, pip, live }: { open: boolean; onOpenCh
 }
 
 /** PRF-12 PIP record (T3): plan, fixed check-ins, employee acknowledgement, outcome; not met never auto-starts an exit (YX-PERF-11). */
-export function PipRecordScreen({ persona, device: deviceProp, pip, tab = 'plan', outcomeOpen, checkinOpen, sendBackOpen, exitOpen, live }: PipRecordProps) {
+export function PipRecordScreen({ persona, device: deviceProp, pip, tab = 'plan', outcomeOpen, checkinOpen, sendBackOpen, exitOpen, extendAgainOpen, live }: PipRecordProps) {
   // The live page takes the designed phone layout under 768 px, as PRF-01, 02 and 06 do.
   const narrow = useNarrow();
   const device: Device = deviceProp ?? (live && narrow ? 'phone' : 'desktop');
@@ -1216,6 +1259,8 @@ export function PipRecordScreen({ persona, device: deviceProp, pip, tab = 'plan'
   const [recording, setRecording] = useState(!!checkinOpen);
   const [sendingBack, setSendingBack] = useState(!!sendBackOpen);
   const [exiting, setExiting] = useState(!!exitOpen);
+  const [extendingAgain, setExtendingAgain] = useState(!!extendAgainOpen);
+  const canExtendAgain = live ? Boolean(live.can.extendAgain) : !pip.reextended;
   const [noting, setNoting] = useState<string | null>(null);
   const [myNote, setMyNote] = useState('');
   const [triedNote, setTriedNote] = useState(false);
@@ -1355,9 +1400,9 @@ export function PipRecordScreen({ persona, device: deviceProp, pip, tab = 'plan'
       )}
       {pip.status === 'Closed: not met' && persona === 'hr' && (
         <Card title="Next step (HR decides)">
-          <Text>Options: change role, or open an exit case in People. Any exit case is started by a person, never by this outcome.</Text>
+          <Text>{canExtendAgain ? `Options: extend the plan once more (${live?.extendAgainDays ?? 30} days), change role, or open an exit case in People.` : 'Options: change role, or open an exit case in People.'} Any exit case is started by a person, never by this outcome.</Text>
           <div className="yx-growth-row">
-            {!live && <Button>Extend plan</Button>}
+            {canExtendAgain && <Button onClick={() => setExtendingAgain(true)}>Extend plan</Button>}
             {live?.exitHref ? (
               <Button asChild>
                 <Link href={live.exitHref}>Open the exit case</Link>
@@ -1416,8 +1461,8 @@ export function PipRecordScreen({ persona, device: deviceProp, pip, tab = 'plan'
           onChange={setOutcome}
           options={[
             { value: 'met', label: 'Met', description: 'All goals met. The plan closes.' },
-            { value: 'extended', label: `Extend by ${live?.extendDays ?? 30} days`, description: `Some progress; it now ends ${formatDate(extendTo)} and check-ins are added. A plan is extended once.` },
-            { value: 'not-met', label: 'Not met', description: 'HR decides the next step with the manager.' },
+            ...(live?.can.extend === false || pip.reextended ? [] : [{ value: 'extended', label: `Extend by ${live?.extendDays ?? 30} days`, description: `Some progress; it now ends ${formatDate(extendTo)} and check-ins are added. A plan is extended once.` }]),
+            { value: 'not-met', label: 'Not met', description: pip.reextended ? 'It was already extended after “not met”: the next step is closing it or an exit case.' : 'HR decides the next step with the manager.' },
           ]}
         />
       </FormField>
@@ -1432,6 +1477,7 @@ export function PipRecordScreen({ persona, device: deviceProp, pip, tab = 'plan'
       <CheckinDialog open={recording} onOpenChange={setRecording} due={live ? recordable : [{ value: 'c4', label: formatDate(sched.checkIns[3] ?? end) }]} live={live} />
       <SendBackDialog open={sendingBack} onOpenChange={setSendingBack} pip={pip} live={live} />
       <ExitDialog open={exiting} onOpenChange={setExiting} pip={pip} live={live} />
+      <ExtendAgainDialog open={extendingAgain} onOpenChange={setExtendingAgain} pip={pip} live={live} />
       <ConfirmDialog
         open={noting != null}
         onOpenChange={(o) => {
@@ -1557,6 +1603,16 @@ export interface HandoverRow {
   effective: Date;
   status: 'Moved' | 'Needs decision' | 'Decided';
   note?: string;
+  /** HR took the decision off the new manager ("Reassign to HR"). */
+  withHr?: boolean;
+}
+
+/** One line of a hand-over's audit trail: who (null = YukthiX itself) did what, when. */
+export interface HandoverAuditEntry {
+  id: string;
+  at: Date;
+  who: string | null;
+  what: string;
 }
 
 /** A goal's alignment after a manager change: to one of the new manager's goals, or none (PRF-13). */
@@ -1574,6 +1630,41 @@ export interface LiveHandover {
   /** The new manager's open goals in the moved goal's period. */
   parentOptions: (id: string) => Promise<{ value: string; label: string }[]>;
   onDecide: (id: string, input: HandoverDecision) => Promise<void>;
+  /** HR only: take open decisions off the new manager; the rest are skipped with a reason. */
+  onWithHr?: (ids: string[]) => Promise<{ moved: number; skipped: { id: string; reason: string }[] }>;
+  /** HR only: the hand-over's audit trail. */
+  auditOf?: (id: string) => Promise<HandoverAuditEntry[]>;
+}
+
+const SAMPLE_AUDIT = (r: HandoverRow): HandoverAuditEntry[] => [
+  { id: 'a1', at: r.effective, who: null, what: `moved the ${r.artefact.toLowerCase()} of ${r.employee} from ${r.from} to ${r.to} when the manager changed` },
+  ...(r.status === 'Decided' ? [{ id: 'a2', at: TODAY, who: 'Lakshmi Rao', what: 'recorded the decision: left unaligned' }] : []),
+];
+
+/** PRF-13 "View audit entry": who moved it and every audited change, oldest first. */
+function HandoverAuditDrawer({ row, entries, failed, onOpenChange }: { row: HandoverRow; entries: HandoverAuditEntry[] | null; failed: string | null; onOpenChange: (o: boolean) => void }) {
+  return (
+    <Drawer open onOpenChange={onOpenChange} title="Audit entry" subtitle={`${row.employee} · ${row.artefact}`} footer={<Button onClick={() => onOpenChange(false)}>Close</Button>}>
+      <div className="yx-growth-stack">
+        <DescriptionList
+          columns={2}
+          items={[
+            { label: 'From', value: row.from },
+            { label: 'To', value: row.to },
+            { label: 'Effective', value: formatDate(row.effective) },
+            { label: 'Status', value: row.status },
+          ]}
+        />
+        {failed ? (
+          <InlineAlert tone="danger">{failed}</InlineAlert>
+        ) : entries ? (
+          <Timeline aria-label="Audit entries" items={entries.map((e) => ({ id: e.id, actor: { name: e.who ?? SYSTEM_ACTOR }, action: e.what, at: e.at }))} />
+        ) : (
+          <Skeleton height={120} />
+        )}
+      </div>
+    </Drawer>
+  );
 }
 
 const HANDOVER_FIELDS: FilterFieldDef[] = [
@@ -1633,13 +1724,19 @@ function ReparentDialog({ row, open, onOpenChange, options, onSave }: { row: Han
 }
 
 /** PRF-13 Hand-over list (T2) after a manager change (YX-PERF-13): what moved and what needs a decision. */
-export function HandoverListScreen({ persona, rows: initial, state = 'ready', leaver, decideId, live }: { persona: 'mgr' | 'hr'; rows: HandoverRow[]; state?: LoadState; leaver?: string; /** Story: the re-parent dialog open on this row. */ decideId?: string; /** The live app's /yx/performance/handovers. */ live?: LiveHandover }) {
+export function HandoverListScreen({ persona, rows: initial, state = 'ready', leaver, decideId, reassignIds, auditId, live }: { persona: 'mgr' | 'hr'; rows: HandoverRow[]; state?: LoadState; leaver?: string; /** Story: the re-parent dialog open on this row. */ decideId?: string; /** Story: these rows selected and "Reassign to HR" asked. */ reassignIds?: string[]; /** Story: the audit entry of this row open. */ auditId?: string; /** The live app's /yx/performance/handovers. */ live?: LiveHandover }) {
   const { toast } = useToast();
   const [sample, setSample] = useState(initial);
   const rows = live ? live.rows : sample;
   const [filters, setFilters] = useState<FilterValue[]>(persona === 'hr' ? NEEDS_DECISION : []);
   const [q, setQ] = useState('');
-  const [selected, setSelected] = useState<string[]>([]);
+  const [selected, setSelected] = useState<string[]>(reassignIds ?? []);
+  const [reassigning, setReassigning] = useState(Boolean(reassignIds?.length));
+  const [auditing, setAuditing] = useState<string | null>(auditId ?? null);
+  const [audit, setAudit] = useState<{ entries: HandoverAuditEntry[] | null; failed: string | null }>(() => {
+    const r = auditId && !live ? initial.find((x) => x.id === auditId) : undefined;
+    return { entries: r ? SAMPLE_AUDIT(r) : null, failed: null };
+  });
   const [deciding, setDeciding] = useState<string | null>(decideId ?? null);
   const [options, setOptions] = useState<{ value: string; label: string }[] | null>(live ? null : SAMPLE_GOALS);
   const shown = useMemo(
@@ -1665,6 +1762,19 @@ export function HandoverListScreen({ persona, rows: initial, state = 'ready', le
     }
   };
   const row = rows.find((r) => r.id === deciding);
+  const auditRow = rows.find((r) => r.id === auditing);
+  const openAudit = (r: HandoverRow) => {
+    setAuditing(r.id);
+    if (!live?.auditOf) return setAudit({ entries: SAMPLE_AUDIT(r), failed: null });
+    setAudit({ entries: null, failed: null });
+    live.auditOf(r.id).then(
+      (entries) => setAudit({ entries, failed: null }),
+      (e: unknown) => setAudit({ entries: null, failed: e instanceof Error && e.message ? e.message : 'The audit entry didn’t load. Try again.' }),
+    );
+  };
+  const chosen = rows.filter((r) => selected.includes(r.id));
+  const canMove = chosen.filter((r) => r.status === 'Needs decision' && !r.withHr);
+  const canHr = persona === 'hr' && (!live || Boolean(live.onWithHr));
   const needs = rows.filter((r) => r.status === 'Needs decision').length;
   const tableState = live ? live.state : state === 'loading' ? 'loading' : state === 'error' ? 'error' : 'ready';
   return (
@@ -1698,11 +1808,19 @@ export function HandoverListScreen({ persona, rows: initial, state = 'ready', le
         empty={<EmptyState title="Nothing to hand over" description="When a manager leaves or changes, their in-flight reviews, PIPs and 1:1s are listed here." />}
         toolbar={<FilterBar fields={HANDOVER_FIELDS} value={filters} onChange={setFilters} search={q} onSearchChange={setQ} searchPlaceholder="Search employee" />}
         views={<SavedViewMenu views={[{ id: 'all', name: 'All artefacts' }, { id: 'decide', name: 'Needs decision', shared: true }]} currentId={filters === NEEDS_DECISION ? 'decide' : 'all'} onSelect={(id) => setFilters(id === 'decide' ? NEEDS_DECISION : [])} />}
-        // Reassigning to HR and the audit entry link are not built yet (performance-design-map.md, section 3).
-        selectable={persona === 'hr' && !live}
+        // HR: open decisions move off the new manager in bulk; every row has its audit entry.
+        selectable={canHr}
         selectedIds={selected}
         onSelectedChange={setSelected}
-        bulkActions={live ? undefined : () => <Button size="sm">Reassign to HR</Button>}
+        bulkActions={
+          canHr
+            ? () => (
+                <Button size="sm" onClick={() => setReassigning(true)}>
+                  Reassign to HR
+                </Button>
+              )
+            : undefined
+        }
         rowButtons={(r) =>
           r.status === 'Needs decision' ? (
             <Button size="sm" onClick={() => open(r)}>
@@ -1710,8 +1828,34 @@ export function HandoverListScreen({ persona, rows: initial, state = 'ready', le
             </Button>
           ) : null
         }
-        rowActions={live ? undefined : () => <MenuItem>View audit entry</MenuItem>}
+        rowActions={persona === 'hr' && (!live || live.auditOf) ? (r) => <MenuItem onSelect={() => openAudit(r)}>View audit entry</MenuItem> : undefined}
       />
+      <ConfirmDialog
+        open={reassigning}
+        onOpenChange={setReassigning}
+        title={`Reassign ${canMove.length === 1 ? '1 decision' : `${canMove.length} decisions`} to HR?`}
+        consequence={`The new manager no longer sees ${canMove.length === 1 ? 'it' : 'them'}; HR decides. ${chosen.length - canMove.length > 0 ? `${chosen.length - canMove.length} of the chosen rows need no decision and stay as they are.` : ''}`}
+        confirmLabel="Reassign to HR"
+        onConfirm={async () => {
+          if (!canMove.length) throw new Error('None of the chosen rows needs a decision. Choose rows marked “Needs decision”.');
+          const out = live?.onWithHr ? await live.onWithHr(chosen.map((r) => r.id)) : { moved: canMove.length, skipped: [] };
+          if (!live) setSample((xs) => xs.map((x) => (canMove.some((m) => m.id === x.id) ? { ...x, to: 'HR', withHr: true } : x)));
+          setSelected([]);
+          toast({ tone: 'success', title: `${out.moved === 1 ? '1 decision' : `${out.moved} decisions`} moved to HR`, description: out.skipped.length ? `${out.skipped.length} left as they were: ${out.skipped[0].reason}` : undefined });
+        }}
+      >
+        <ul className="yx-growth-list">
+          {chosen.map((r) => (
+            <li key={r.id} className="yx-growth-list__item">
+              <span className="yx-growth-grow">
+                {r.employee} · {r.artefact}
+              </span>
+              <Badge tone={canMove.includes(r) ? 'warning' : 'neutral'}>{canMove.includes(r) ? 'Moves to HR' : 'Stays'}</Badge>
+            </li>
+          ))}
+        </ul>
+      </ConfirmDialog>
+      {auditRow && <HandoverAuditDrawer row={auditRow} entries={audit.entries} failed={audit.failed} onOpenChange={(o) => !o && setAuditing(null)} />}
       {row && (
         <ReparentDialog
           key={row.id}
@@ -1745,8 +1889,26 @@ export interface Competency {
   roles: { role: string; level: number; designationId?: string }[];
   usedIn: string[];
   skillsTest?: string;
+  /** The question-bank tag behind the skills test, its active questions and where the bank shows them. */
+  skillsTestTagId?: string | null;
+  skillsTestQuestions?: number;
+  skillsTestHref?: string;
   /** Live: the optimistic version the next save sends. */
   version?: number;
+}
+
+/** PRF-14 Import: a row of the file that needs fixing (its line number in the file). */
+export interface ImportProblem {
+  line: number;
+  name: string;
+  problems: string[];
+}
+
+/** A question-bank tag a competency may use as its skills test. */
+export interface QuestionTagChoice {
+  value: string;
+  label: string;
+  questions: number;
 }
 
 /** PRF-14 save: the competency as the API takes it (levels in order, the level each designation needs from today). */
@@ -1756,6 +1918,8 @@ export interface CompetencySave {
   description: string;
   levels: string[];
   roles: { designationId: string; level: number }[];
+  /** The skills test's question tag; null takes it off; left out keeps it. */
+  questionTagId?: string | null;
   version?: number;
 }
 
@@ -1769,6 +1933,101 @@ export interface LiveCompetencies {
   onRetire: (id: string) => Promise<void>;
   onMerge: (id: string, intoId: string) => Promise<void>;
   onLoadStarters: () => Promise<void>;
+  /** PRF-14 Import: all rows or none; the rows with problems come back to be listed. */
+  onImport?: (csv: string) => Promise<{ imported: number } | { problems: ImportProblem[]; message: string }>;
+  /** PRF-14 skills test: the company's question-bank tags. */
+  questionTags?: () => Promise<QuestionTagChoice[]>;
+}
+
+const SAMPLE_TAGS: QuestionTagChoice[] = [
+  { value: 't1', label: 'Food safety', questions: 24 },
+  { value: 't2', label: 'GMP basics', questions: 12 },
+];
+export const SAMPLE_IMPORT_PROBLEMS: ImportProblem[] = [
+  { line: 3, name: 'Line clearance', problems: ['No designation called Line Lead in this company.'] },
+  { line: 7, name: 'Coaching', problems: ['Give 2 to 10 levels, separated by "|".', 'Group must be core, functional or leadership.'] },
+];
+
+/** PRF-14 Import from a CSV file: every row is checked, nothing is saved unless all rows are right, bad rows are listed. */
+function ImportDialog({ open, onOpenChange, onImport, initialProblems }: { open: boolean; onOpenChange: (o: boolean) => void; onImport: (csv: string) => Promise<{ imported: number } | { problems: ImportProblem[]; message: string }>; initialProblems?: ImportProblem[] }) {
+  const { toast } = useToast();
+  const [problems, setProblems] = useState<ImportProblem[]>(initialProblems ?? []);
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      size="md"
+      title="Import competencies"
+      description="One competency per row. Every row is checked first: nothing is imported unless all rows are right."
+      footer={<Button onClick={() => onOpenChange(false)}>Close</Button>}
+    >
+      <div className="yx-growth-stack">
+        <Text size="sm" tone="secondary">
+          Columns: name, group (core, functional or leadership), description (optional), levels (2 to 10, separated by “|”), roles (optional, “Designation=level” separated by “|”).
+        </Text>
+        <FileUpload
+          accept={['.csv']}
+          maxSize={256 * 1024}
+          multiple={false}
+          upload={async (file) => {
+            setProblems([]);
+            const out = await onImport(await file.text());
+            if ('problems' in out) {
+              setProblems(out.problems);
+              throw new Error(out.message);
+            }
+            toast({ tone: 'success', title: `${out.imported === 1 ? '1 competency' : `${out.imported} competencies`} imported` });
+            onOpenChange(false);
+          }}
+        />
+        {problems.length > 0 && (
+          <PlainTable
+            label="Rows with problems"
+            caption={`Rows with problems (${problems.length}). Fix them in your file and import it again.`}
+            columns={[
+              { key: 'line', header: 'Row', num: true, cell: (p) => p.line },
+              { key: 'name', header: 'Name', rowHeader: true, cell: (p) => p.name || 'No name' },
+              { key: 'problems', header: 'What to fix', cell: (p) => p.problems.join(' ') },
+            ]}
+            rows={problems}
+            getRowId={(p) => String(p.line)}
+          />
+        )}
+      </div>
+    </Dialog>
+  );
+}
+
+/** PRF-14 skills test: one question-bank tag per competency, or none. */
+function SkillsTestDialog({ c, open, onOpenChange, load, onSave }: { c: Competency; open: boolean; onOpenChange: (o: boolean) => void; load: () => Promise<QuestionTagChoice[]>; onSave: (tagId: string | null) => Promise<void> }) {
+  const [tags, setTags] = useState<QuestionTagChoice[] | null>(null);
+  const [tag, setTag] = useState<string | null>(c.skillsTestTagId ?? null);
+  const { run, busy, error } = useRun();
+  useEffect(() => {
+    load().then(setTags, () => setTags([]));
+  }, [load]);
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      size="md"
+      title={`Skills test for ${c.name}`}
+      description="The questions with this tag in the question bank test this competency."
+      notice={error ? <InlineAlert tone="danger">{error}</InlineAlert> : undefined}
+      footer={
+        <>
+          <Button onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="primary" loading={busy === 'tag'} onClick={() => void run('tag', () => onSave(tag))}>
+            Save skills test
+          </Button>
+        </>
+      }
+    >
+      <FormField label="Question tag" id="skills-test-tag" helper={tags && tags.length === 0 ? 'The question bank has no tags yet. Add tags to questions in the question bank first.' : undefined}>
+        <Select value={tag} onChange={setTag} searchable clearable placeholder={tags ? 'No skills test' : 'Loading tags…'} options={(tags ?? []).map((t) => ({ value: t.value, label: `${t.label} (${t.questions === 1 ? '1 question' : `${t.questions} questions`})` }))} />
+      </FormField>
+    </Dialog>
+  );
 }
 
 const GROUPS: Competency['group'][] = ['Core', 'Functional', 'Leadership'];
@@ -1901,7 +2160,7 @@ function MergeDialog({ c, open, onOpenChange, others, onMerge }: { c: Competency
 }
 
 /** PRF-14 Competency framework (T3, HR): library by group, levels with behaviours, role mapping, skills test; in-use can only be retired or merged. */
-export function CompetencyFrameworkScreen({ items: sampleItems, openId, state = 'ready', retireOpen, addOpen, mapOpen, mergeOpen, live }: { items: Competency[]; openId?: string; state?: LoadState; retireOpen?: boolean; /** Story: the add drawer open. */ addOpen?: boolean; /** Story: the map-a-role dialog open. */ mapOpen?: boolean; /** Story: the merge dialog open. */ mergeOpen?: boolean; /** The live app's /yx/performance/competencies. */ live?: LiveCompetencies }) {
+export function CompetencyFrameworkScreen({ items: sampleItems, openId, state = 'ready', retireOpen, addOpen, mapOpen, mergeOpen, importOpen, importProblems, testOpen, live }: { items: Competency[]; openId?: string; state?: LoadState; retireOpen?: boolean; /** Story: the add drawer open. */ addOpen?: boolean; /** Story: the map-a-role dialog open. */ mapOpen?: boolean; /** Story: the merge dialog open. */ mergeOpen?: boolean; /** Story: the import dialog open. */ importOpen?: boolean; /** Story: the import dialog listing these rows. */ importProblems?: ImportProblem[]; /** Story: the skills-test dialog open. */ testOpen?: boolean; /** The live app's /yx/performance/competencies. */ live?: LiveCompetencies }) {
   const { toast } = useToast();
   const [local, setLocal] = useState(sampleItems);
   const items = live ? live.items : local;
@@ -1910,6 +2169,9 @@ export function CompetencyFrameworkScreen({ items: sampleItems, openId, state = 
   const [adding, setAdding] = useState(!!addOpen);
   const [mapping, setMapping] = useState(!!mapOpen);
   const [merging, setMerging] = useState(!!mergeOpen);
+  const [importing, setImporting] = useState(!!importOpen);
+  const [testing, setTesting] = useState(!!testOpen);
+  const [sampleTags] = useState(() => async () => SAMPLE_TAGS);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const { run, busy, error } = useRun();
   const c = items.find((i) => i.id === sel) ?? items[0];
@@ -1939,8 +2201,11 @@ export function CompetencyFrameworkScreen({ items: sampleItems, openId, state = 
         description="One skills library for the company. Competencies here are also used as test question tags and hiring scorecard skills."
         actions={
           <>
-            {/* Import from a file is not built yet in the live app (performance-design-map.md, section 3). */}
-            {!live && <Button>Import</Button>}
+            {(!live || live.onImport) && (
+              <Button icon={Upload} onClick={() => setImporting(true)}>
+                Import
+              </Button>
+            )}
             <Button icon={Plus} onClick={() => setAdding(true)}>
               Add competency
             </Button>
@@ -2079,7 +2344,19 @@ export function CompetencyFrameworkScreen({ items: sampleItems, openId, state = 
                 columns={2}
                 items={[
                   { label: 'Rated in', value: c.usedIn.join(', ') || 'Not used yet' },
-                  { label: 'Skills test', value: c.skillsTest ? <Link href="#test">{c.skillsTest}</Link> : 'None. Add one from the question bank.' },
+                  {
+                    label: 'Skills test',
+                    value: (
+                      <div className="yx-growth-row">
+                        {c.skillsTest ? <Link href={c.skillsTestHref ?? '#test'}>{`${c.skillsTest} (${c.skillsTestQuestions === 1 ? '1 question' : `${c.skillsTestQuestions ?? 0} questions`})`}</Link> : <span>None. Add one from the question bank.</span>}
+                        {c.status === 'Active' && (!live || live.questionTags) && (
+                          <Button size="sm" onClick={() => setTesting(true)}>
+                            {c.skillsTest ? 'Change' : 'Choose a question tag'}
+                          </Button>
+                        )}
+                      </div>
+                    ),
+                  },
                   { label: 'Gaps feed', value: 'Training needs in Learning' },
                   { label: 'Also used as', value: 'Question tag · hiring scorecard skill' },
                 ]}
@@ -2131,6 +2408,32 @@ export function CompetencyFrameworkScreen({ items: sampleItems, openId, state = 
             setMerging(false);
             setSel(intoId);
             toast({ tone: 'success', title: `${c.name} merged` });
+          }}
+        />
+      )}
+      {importing && (
+        <ImportDialog
+          open
+          onOpenChange={setImporting}
+          initialProblems={importProblems}
+          onImport={async (csv) => {
+            if (live?.onImport) return live.onImport(csv);
+            return { imported: csv.trim().split('\n').length - 1 };
+          }}
+        />
+      )}
+      {c && testing && (
+        <SkillsTestDialog
+          c={c}
+          open
+          onOpenChange={setTesting}
+          load={live?.questionTags ?? sampleTags}
+          onSave={async (tagId) => {
+            const tagName = SAMPLE_TAGS.find((t) => t.value === tagId)?.label;
+            if (live) await save(c.id, saveOf(c, { questionTagId: tagId }));
+            else setLocal((xs) => xs.map((x) => (x.id === c.id ? { ...x, skillsTest: tagName, skillsTestTagId: tagId, skillsTestQuestions: SAMPLE_TAGS.find((t) => t.value === tagId)?.questions } : x)));
+            setTesting(false);
+            toast({ tone: 'success', title: tagId ? 'Skills test saved' : 'Skills test taken off' });
           }}
         />
       )}

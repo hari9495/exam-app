@@ -2,7 +2,7 @@
 // designed screens with real data (performance builder 1). What the record needs beyond the design (who is reviewed,
 // HR's answers to disagreements, the skip-level, a reopen, a former manager's input) uses the same parts.
 import { useEffect, useState, type ReactNode } from 'react';
-import { Bell, CalendarPlus, Check, Send } from 'lucide-react';
+import { Bell, CalendarPlus, Check, Download, Send } from 'lucide-react';
 import { Button, Link } from '../../components/button';
 import { Badge, PersonLabel } from '../../components/display';
 import { Text } from '../../components/foundations';
@@ -24,7 +24,7 @@ import { useToast } from '../../components/notify';
 import { countText, formatDate } from '../../lib/format';
 import { dayKey } from '../../lib/dates';
 import type { Choice, CycleInput, CycleStage, Disagreement, EligibilityRow, EntryInput, PeerConfig, PeerGroups, Preflight, ReviewCycle, ReviewDetail, ReviewEntry, TemplateKind } from '../performance/live/types';
-import { ConfidentialTag, PotentialChoice, GrowthFrame, RatingScale, ScoreBand, SplitLayout, StageTrack } from './growth-kit';
+import { CalibrationPlan, ConfidentialTag, PotentialChoice, GrowthFrame, RatingScale, ScoreBand, SplitLayout, StageTrack, type PlannedSession } from './growth-kit';
 import { reviewStages, reviewScore } from './growth-logic';
 import { PerfReasonDialog, PERF_LINKS } from './perf-goals-live';
 import { day, type LoadState } from './perf-live-data';
@@ -44,6 +44,8 @@ const CYCLE_STATUS: Record<ReviewCycle['status'], { label: string; tone: 'neutra
   closed: { label: 'Closed', tone: 'neutral' },
 };
 const toDay = (d: Date | null) => (d ? dayKey(d) : null);
+/** Whole days from one date to another (calendar days, ignoring the time of day). */
+const stageDays = (a: Date, b: Date) => Math.round((Date.UTC(b.getFullYear(), b.getMonth(), b.getDate()) - Date.UTC(a.getFullYear(), a.getMonth(), a.getDate())) / 86_400_000);
 const fromDay = (iso: string | undefined | null) => (iso ? day(iso) : null);
 
 /* ================================================================== PRF-04 · Cycle set-up (live) */
@@ -56,6 +58,8 @@ export interface LiveCycleSetup {
   /** Active template versions to start from. */
   templates: { id: string; name: string; kind: TemplateKind; templateVersion: number }[];
   departments: Choice[];
+  /** People who can run calibration sessions (perf.calibration.facilitate, or a company admin). */
+  facilitators?: Choice[];
   /** Days after release the employee may disagree (company setting perf.disagreement.days). */
   disagreeDays?: number | null;
   /** Saves the draft (new or changed); returns it. */
@@ -96,6 +100,8 @@ export function LiveCycleSetupScreen({ live, defaultStep }: { live: LiveCycleSet
   const [min360, setMin360] = useState<number | null>(x?.peerFeedback?.minNominees ?? 3);
   const [max360, setMax360] = useState<number | null>(x?.peerFeedback?.maxNominees ?? 6);
   const [due360, setDue360] = useState<Date | null>(fromDay(x?.peerFeedback?.dueOn));
+  const [withCal, setWithCal] = useState(Boolean(x?.calibration?.length));
+  const [sessions, setSessions] = useState<PlannedSession[]>(x?.calibration ?? []);
   const [preflight, setPreflight] = useState<Preflight | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const [busy, setBusy] = useState<'count' | 'launch' | null>(null);
@@ -111,6 +117,7 @@ export function LiveCycleSetupScreen({ live, defaultStep }: { live: LiveCycleSet
     ...(withSkip && !skipDue ? [{ step: 'stages', fieldId: 'cy-skip', message: 'Say when the skip-level review is due.' }] : []),
     ...(with360 && (min360 === null || max360 === null || max360 < min360 || max360 < 1) ? [{ step: 'stages', fieldId: 'cy-360', message: 'Give the fewest and most 360° reviewers (most at least the fewest).' }] : []),
     ...(with360 && !due360 ? [{ step: 'stages', fieldId: 'cy-360-due', message: 'Say when 360° feedback is due.' }] : []),
+    ...(withCal && !sessions.length ? [{ step: 'stages', fieldId: 'cal-add', message: 'Add a calibration session, or leave calibration out.' }] : []),
   ];
   const err = (f: string) => (tried ? errors.find((e) => e.fieldId === f)?.message : undefined);
   const stopAt = (steps: string[]) => {
@@ -129,6 +136,7 @@ export function LiveCycleSetupScreen({ live, defaultStep }: { live: LiveCycleSet
     population: depts.length ? { id: 'root', join: 'and', items: [{ id: 'dept', field: 'department_id', operator: 'one_of', value: depts }] } : null,
     stages: [...(withSelf ? [{ key: 'self' as const, dueOn: toDay(selfDue)! }] : []), { key: 'manager' as const, dueOn: toDay(mgrDue)! }, ...(withSkip ? [{ key: 'skip' as const, dueOn: toDay(skipDue)! }] : [])],
     eligibilityRules: { cutoffMonths: cutoff ?? 0, rateLeavers },
+    calibration: withCal ? sessions : [],
     ...(version !== null ? { version } : {}),
   });
   /** Saves the draft and its 360° set-up; returns the saved cycle. */
@@ -171,14 +179,18 @@ export function LiveCycleSetupScreen({ live, defaultStep }: { live: LiveCycleSet
 
   if (live.state === 'loading') return <GrowthFrame area="performance" active="Reviews & cycles" persona="hr"><PageHeader title={x ? x.name : 'New review cycle'} /><Skeleton height={360} /></GrowthFrame>;
   if (live.state === 'error') return <GrowthFrame area="performance" active="Reviews & cycles" persona="hr"><PageHeader title="Review cycle" /><ErrorState title="The cycle didn’t load" onRetry={live.onRetry} /></GrowthFrame>;
+  // The design's "Days": how long each dated stage runs, from the stage before it (the first ones from today).
+  const daysFrom = (from: Date | null, to: Date | null) => (from && to ? `${countText(Math.max(0, stageDays(from, to)), 'day')}` : '—');
+  const today0 = new Date();
+  const selfFrom = withSelf ? selfDue : today0;
   const stageRows = [
-    { id: 'self', label: 'Self review', owner: 'Employee', due: withSelf ? (selfDue ? formatDate(selfDue) : 'Not set') : '—', include: <Checkbox aria-label="Include Self review" checked={withSelf} onChange={setWithSelf} /> },
-    { id: '360', label: '360° feedback', owner: 'Nominated reviewers', due: with360 ? (due360 ? formatDate(due360) : 'Not set') : '—', include: <Checkbox aria-label="Include 360° feedback" checked={with360} onChange={setWith360} /> },
-    { id: 'mgr', label: 'Manager review', owner: 'Manager', due: mgrDue ? formatDate(mgrDue) : 'Not set', include: 'Always' },
-    { id: 'skip', label: 'Skip-level review', owner: 'Manager’s manager', due: withSkip ? (skipDue ? formatDate(skipDue) : 'Not set') : '—', include: <Checkbox aria-label="Include Skip-level review" checked={withSkip} onChange={setWithSkip} /> },
-    { id: 'cal', label: 'Calibration', owner: 'HR', due: 'Sessions set up after launch', include: 'Optional' },
-    { id: 'rel', label: 'Release', owner: 'HR', due: 'When HR releases', include: 'Always' },
-    { id: 'ack', label: 'Employee acknowledgement', owner: 'Employee', due: live.disagreeDays ? `Disagree within ${live.disagreeDays} days` : 'After release', include: 'Always' },
+    { id: 'self', label: 'Self review', owner: 'Employee', due: withSelf ? (selfDue ? formatDate(selfDue) : 'Not set') : '—', days: withSelf ? daysFrom(today0, selfDue) : '—', include: <Checkbox aria-label="Include Self review" checked={withSelf} onChange={setWithSelf} /> },
+    { id: '360', label: '360° feedback', owner: 'Nominated reviewers', due: with360 ? (due360 ? formatDate(due360) : 'Not set') : '—', days: with360 ? daysFrom(today0, due360) : '—', include: <Checkbox aria-label="Include 360° feedback" checked={with360} onChange={setWith360} /> },
+    { id: 'mgr', label: 'Manager review', owner: 'Manager', due: mgrDue ? formatDate(mgrDue) : 'Not set', days: daysFrom(selfFrom, mgrDue), include: 'Always' },
+    { id: 'skip', label: 'Skip-level review', owner: 'Manager’s manager', due: withSkip ? (skipDue ? formatDate(skipDue) : 'Not set') : '—', days: withSkip ? daysFrom(mgrDue, skipDue) : '—', include: <Checkbox aria-label="Include Skip-level review" checked={withSkip} onChange={setWithSkip} /> },
+    { id: 'cal', label: 'Calibration', owner: 'HR', due: withCal ? (sessions.length ? countText(sessions.length, 'session') : 'Add a session below') : 'Not used', days: withCal ? 'Until signed off' : '—', include: <Checkbox aria-label="Include Calibration" checked={withCal} onChange={setWithCal} /> },
+    { id: 'rel', label: 'Release', owner: 'HR', due: 'When HR releases', days: '—', include: 'Always' },
+    { id: 'ack', label: 'Employee acknowledgement', owner: 'Employee', due: live.disagreeDays ? `Disagree within ${live.disagreeDays} days` : 'After release', days: live.disagreeDays ? countText(live.disagreeDays, 'day') : '—', include: 'Always' },
   ];
   return (
     <GrowthFrame area="performance" active="Reviews & cycles" persona="hr">
@@ -306,6 +318,7 @@ export function LiveCycleSetupScreen({ live, defaultStep }: { live: LiveCycleSet
                     { key: 'stage', header: 'Stage', rowHeader: true, cell: (r) => r.label },
                     { key: 'owner', header: 'Owner', cell: (r) => r.owner },
                     { key: 'due', header: 'Due', date: true, cell: (r) => r.due },
+                    { key: 'days', header: 'Days', num: true, cell: (r) => r.days },
                     { key: 'include', header: 'Include', cell: (r) => r.include },
                   ]}
                   rows={stageRows}
@@ -344,9 +357,10 @@ export function LiveCycleSetupScreen({ live, defaultStep }: { live: LiveCycleSet
                     Peers and direct reports stay anonymous and are shown only in groups of 3 or more; the manager is named. 360° feedback is advisory and never scored.
                   </Text>
                 )}
+                {withCal && <CalibrationPlan sessions={sessions} onChange={setSessions} facilitators={live.facilitators ?? []} departments={live.departments} />}
               </div>
             ),
-            summary: <Text>{stageRows.filter((s) => s.include === 'Always' || (s.id === 'self' && withSelf) || (s.id === '360' && with360) || (s.id === 'skip' && withSkip)).map((s) => s.label).join(' → ')}</Text>,
+            summary: <Text>{stageRows.filter((s) => s.include === 'Always' || (s.id === 'self' && withSelf) || (s.id === '360' && with360) || (s.id === 'skip' && withSkip) || (s.id === 'cal' && withCal)).map((s) => s.label).join(' → ')}</Text>,
           },
         ]}
       />
@@ -720,6 +734,8 @@ export interface LiveReviewWorkspace {
   assistant?: LiveReviewAssistant | null;
   /** PRF-07: where the employee or manager nominates 360° reviewers, when the cycle has them. */
   nominateHref?: string | null;
+  /** PRF-05 "Download PDF" once the review is submitted: the review as this viewer sees it (audited by the API). */
+  onDownload?: () => Promise<unknown>;
 }
 
 type Answers = Record<string, { rating: number | null; text: string | null }>;
@@ -763,6 +779,7 @@ function ReviewBody({ live, r }: { live: LiveReviewWorkspace; r: ReviewDetail })
   const [busy, setBusy] = useState<'save' | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const [asking, setAsking] = useState<null | 'submit' | 'agree' | 'send_back' | 'reopen' | 'other'>(null);
+  const [downloading, setDownloading] = useState(false);
   const editable = Boolean(stage);
   const set = (id: string, patch: Partial<{ rating: number | null; text: string | null }>) => setAnswers((a) => ({ ...a, [id]: { rating: a[id]?.rating ?? null, text: a[id]?.text ?? null, ...patch } }));
   const levels = r.template.levels;
@@ -861,8 +878,29 @@ function ReviewBody({ live, r }: { live: LiveReviewWorkspace; r: ReviewDetail })
                 Agree with the review
               </Button>
             </>
-          ) : r.can.reopen ? (
-            <Button onClick={() => setAsking('reopen')}>Reopen for the manager</Button>
+          ) : r.can.reopen || (locked && live.onDownload) ? (
+            <>
+              {locked && live.onDownload && (
+                <Button
+                  icon={Download}
+                  loading={downloading}
+                  onClick={() => {
+                    setDownloading(true);
+                    setFailed(null);
+                    live.onDownload!().then(
+                      () => setDownloading(false),
+                      (e) => {
+                        setDownloading(false);
+                        setFailed(`The PDF didn’t download. ${errorOf(e)}`);
+                      },
+                    );
+                  }}
+                >
+                  Download PDF
+                </Button>
+              )}
+              {r.can.reopen && <Button onClick={() => setAsking('reopen')}>Reopen for the manager</Button>}
+            </>
           ) : undefined
         }
       />
@@ -1061,6 +1099,8 @@ export interface LiveAcknowledge {
   onDisagree: (text: string) => Promise<unknown>;
   /** PRF-15: once HR has answered the disagreement, where to escalate it (or see the escalation). */
   escalate?: { href: string; label: string } | null;
+  /** PRF-06 "Download review" once it is acknowledged (audited by the API). */
+  onDownload?: () => Promise<unknown>;
 }
 
 export function LiveReviewAcknowledgeScreen({ live, defaultDisagree }: { live: LiveAcknowledge; defaultDisagree?: boolean }) {
@@ -1073,6 +1113,8 @@ export function LiveReviewAcknowledgeScreen({ live, defaultDisagree }: { live: L
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadFailed, setDownloadFailed] = useState<string | null>(null);
   const [later, setLater] = useState(false);
   const ackAt = r.released?.acknowledgedAt;
   const score = r.finalScore;
@@ -1175,8 +1217,35 @@ export function LiveReviewAcknowledgeScreen({ live, defaultDisagree }: { live: L
     );
   return (
     <GrowthFrame area="performance" active="Reviews & cycles" persona="emp">
-      <PageHeader title={ackAt ? 'Your review' : 'Acknowledge your review'} description={r.cycle.name} status={<ConfidentialTag />} actions={action || undefined} />
+      <PageHeader
+        title={ackAt ? 'Your review' : 'Acknowledge your review'}
+        description={r.cycle.name}
+        status={<ConfidentialTag />}
+        actions={
+          action ||
+          (live.onDownload ? (
+            <Button
+              icon={Download}
+              loading={downloading}
+              onClick={() => {
+                setDownloading(true);
+                setDownloadFailed(null);
+                live.onDownload!().then(
+                  () => setDownloading(false),
+                  (e) => {
+                    setDownloading(false);
+                    setDownloadFailed(`The review didn’t download. ${errorOf(e)}`);
+                  },
+                );
+              }}
+            >
+              Download review
+            </Button>
+          ) : undefined)
+        }
+      />
       <div className="yx-growth-stack" style={{ maxWidth: 'var(--yx-form-max)' }}>
+        {downloadFailed && <InlineAlert tone="danger">{downloadFailed}</InlineAlert>}
         {body}
       </div>
       {laterDialog}

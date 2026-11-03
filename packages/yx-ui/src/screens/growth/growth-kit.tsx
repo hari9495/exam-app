@@ -24,14 +24,16 @@ import {
 import { DesktopFrame, PhoneFrame, SCREEN_RAIL, type PanelSection } from '../_kit/frames';
 import { Button, IconButton, Link } from '../../components/button';
 import { Badge, AiBadge, Avatar, type BadgeTone } from '../../components/display';
-import { Icon, Text } from '../../components/foundations';
+import { Icon, Text, VisuallyHidden } from '../../components/foundations';
 import { InlineAlert } from '../../components/feedback';
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuTrigger } from '../../components/menu';
 import { RadioGroup } from '../../components/choice';
-import { ConfirmDialog } from '../../components/overlay';
+import { ConfirmDialog, Dialog } from '../../components/overlay';
+import { PlainTable } from '../../components/plain-table';
+import { MultiSelect, Select } from '../../components/select';
 import { FormField } from '../../components/field';
 import { Segment } from '../../components/segment';
-import { TextArea } from '../../components/inputs';
+import { TextArea, TextField } from '../../components/inputs';
 import { formatDate } from '../../lib/format';
 import { cx } from '../../lib/cx';
 import {
@@ -940,5 +942,97 @@ export function PotentialChoice({ value, onChange, readOnly }: { value: 1 | 2 | 
         <Segment label="Potential" value={value} onChange={(v) => onChange?.(v)} options={([1, 2, 3] as const).map((v) => ({ value: v, label: POTENTIAL_LABELS[v] }))} />
       )}
     </FormField>
+  );
+}
+
+/* ================================================================== Calibration sessions planned in the cycle wizard */
+
+/** A calibration session set up before launch: made when the cycle launches; finished reviews go into it. */
+export interface PlannedSession {
+  name: string;
+  facilitatorUserId: string;
+  /** Empty = every department. */
+  departmentIds: string[];
+}
+
+/** PRF-04 "Stages and deadlines": the calibration sessions of a cycle, added and removed before launch. */
+export function CalibrationPlan({ sessions, onChange, facilitators, departments }: { sessions: PlannedSession[]; onChange: (next: PlannedSession[]) => void; facilitators: { value: string; label: string }[]; departments: { value: string; label: string }[] }) {
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState('');
+  const [facilitator, setFacilitator] = useState<string | null>(null);
+  const [depts, setDepts] = useState<string[]>([]);
+  const [tried, setTried] = useState(false);
+  const label = (list: { value: string; label: string }[], v: string) => list.find((x) => x.value === v)?.label ?? 'Unknown';
+  const nameError = !tried ? null : name.trim().length < 2 ? 'Name the session.' : sessions.some((x) => x.name.toLowerCase() === name.trim().toLowerCase()) ? 'Another session has this name.' : null;
+  const facError = tried && !facilitator ? 'Choose who runs the session.' : null;
+  const close = () => {
+    setAdding(false);
+    setTried(false);
+    setName('');
+    setFacilitator(null);
+    setDepts([]);
+  };
+  const add = () => {
+    setTried(true);
+    const bad = name.trim().length < 2 || sessions.some((x) => x.name.toLowerCase() === name.trim().toLowerCase()) ? 'cal-name' : !facilitator ? 'cal-facilitator' : null;
+    if (bad) return void document.getElementById(bad)?.focus();
+    onChange([...sessions, { name: name.trim(), facilitatorUserId: facilitator!, departmentIds: depts }]);
+    close();
+  };
+  return (
+    <div className="yx-growth-stack" data-gap="sm">
+      <div className="yx-growth-row" data-between="">
+        <h3 className="yx-growth-h">Calibration sessions</h3>
+        <Button id="cal-add" size="sm" onClick={() => setAdding(true)}>
+          Add session
+        </Button>
+      </div>
+      {sessions.length ? (
+        <PlainTable
+          label="Calibration sessions"
+          columns={[
+            { key: 'name', header: 'Session', rowHeader: true, cell: (x) => x.name },
+            { key: 'facilitator', header: 'Facilitator', cell: (x) => label(facilitators, x.facilitatorUserId) },
+            { key: 'departments', header: 'Departments', cell: (x) => (x.departmentIds.length ? x.departmentIds.map((d) => label(departments, d)).join(', ') : 'Every department') },
+            { key: 'remove', header: <VisuallyHidden>Remove</VisuallyHidden>, cell: (x) => <Button size="sm" onClick={() => onChange(sessions.filter((y) => y !== x))}>Remove</Button> },
+          ]}
+          rows={sessions}
+          getRowId={(x) => x.name}
+        />
+      ) : (
+        <Text size="sm" tone="secondary">
+          No sessions yet. Add one so finished reviews wait for calibration; without one, HR opens sessions from the control room.
+        </Text>
+      )}
+      <Text size="sm" tone="secondary">
+        Sessions open when the cycle launches. Each finished review goes into the first session that takes its department.
+      </Text>
+      <Dialog
+        open={adding}
+        onOpenChange={(o) => (o ? setAdding(true) : close())}
+        size="md"
+        title="Add a calibration session"
+        footer={
+          <>
+            <Button onClick={close}>Cancel</Button>
+            <Button variant="primary" onClick={add}>
+              Add session
+            </Button>
+          </>
+        }
+      >
+        <div className="yx-growth-stack">
+          <FormField id="cal-name" label="Session name" required error={nameError}>
+            <TextField value={name} onChange={setName} maxLength={100} />
+          </FormField>
+          <FormField id="cal-facilitator" label="Facilitator" required error={facError} helper="People who can run calibration sessions.">
+            <Select aria-label="Facilitator" value={facilitator} onChange={setFacilitator} options={facilitators} searchable placeholder="Choose a facilitator" />
+          </FormField>
+          <FormField id="cal-departments" label="Departments" optional helper="Leave empty for every department.">
+            <MultiSelect aria-label="Departments" value={depts} onChange={setDepts} options={departments} placeholder="Every department" />
+          </FormField>
+        </div>
+      </Dialog>
+    </div>
   );
 }

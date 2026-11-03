@@ -7,6 +7,8 @@ import {
   GoalTree,
   NineBox,
   PotentialChoice,
+  CalibrationPlan,
+  type PlannedSession,
   PollBlock,
   PostCard,
   ProgressRing,
@@ -73,6 +75,18 @@ export const Potential: S = {
       <div style={box}>
         <PotentialChoice value={v} onChange={setV} />
         <PotentialChoice value={3} readOnly />
+      </div>
+    );
+  },
+};
+export const CalibrationSessions: S = {
+  name: 'Calibration sessions · planned in the cycle wizard',
+  render: () => {
+    const [v, setV] = useState<PlannedSession[]>([{ name: 'Quality lab', facilitatorUserId: 'u1', departmentIds: ['qa'] }]);
+    return (
+      <div style={box}>
+        <CalibrationPlan sessions={v} onChange={setV} facilitators={[{ value: 'u1', label: 'Lakshmi Rao' }, { value: 'u2', label: 'Aisha Khan' }]} departments={[{ value: 'qa', label: 'Quality' }, { value: 'pr', label: 'Production' }]} />
+        <CalibrationPlan sessions={[]} onChange={() => {}} facilitators={[]} departments={[]} />
       </div>
     );
   },

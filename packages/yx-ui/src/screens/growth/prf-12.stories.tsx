@@ -16,4 +16,5 @@ export const EmployeeAck: S = { name: 'Employee · acknowledge', render: () => <
 export const EmployeeAckPhone: S = { name: 'Employee · acknowledge on phone', globals: PHONE, render: () => <PipRecordScreen persona="emp" device="phone" pip={PIP_TO_ACK} /> };
 export const RecordCheckIn: S = { name: 'Manager · record check-in', render: () => <PipRecordScreen persona="mgr" pip={PIP} tab="checkins" checkinOpen /> };
 export const SendBack: S = { name: 'HR · send back with a reason', render: () => <PipRecordScreen persona="hr" pip={{ ...PIP_PROPOSED, warning: true }} sendBackOpen /> };
+export const ExtendAfterNotMet: S = { name: 'HR · extend once more after not met', render: () => <PipRecordScreen persona="hr" pip={PIP_NOT_MET} tab="outcome" extendAgainOpen /> };
 export const StartExit: S = { name: 'HR · open exit case after not met', render: () => <PipRecordScreen persona="hr" pip={PIP_NOT_MET} tab="outcome" exitOpen /> };

@@ -56,6 +56,8 @@ export interface PerfHome {
     ratingDistribution: { cycle: string; bands: string[]; rows: { dept: string; counts: number[]; size: number }[] } | null;
     pipsActive: number | null;
     goalsAligned: number | null;
+    /** Last month's figures from the monthly snapshot (founder answer b); null until a month has passed. */
+    previous?: { label: string; cyclesRunning: number; overdueStages: number; pipsActive: number | null; goalsAligned: number | null } | null;
   } | null;
 }
 

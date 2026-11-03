@@ -306,11 +306,14 @@ export function LivePerformanceHome({ live }: { live: LiveHome }) {
     const overdue = c.reduce((a, x) => a + x.overdue, 0);
     const late = c.find((x) => x.overdue > 0);
     const dist = h.hr.ratingDistribution;
+    // Last month's figure from the monthly snapshot, when there is one ("vs last period", founder answer b).
+    const prev = h.hr.previous ?? null;
+    const vs = (n: number | null | undefined) => (prev && n != null ? { previous: n, previousLabel: prev.label } : {});
     widgets.push(
-      { id: 's1', title: 'Cycles running', size: 3, bare: true, content: <StatCard label="Cycles running" value={c.filter((x) => x.status === 'launched' || x.status === 'calibrating').length} drill={{ label: `View ${countText(c.length, 'cycle')}`, href: '#cycles' }} /> },
-      { id: 's2', title: 'Overdue stages', size: 3, bare: true, content: <StatCard label="Overdue review stages" value={overdue} drill={{ label: 'View overdue', href: late ? PERF_LINKS.cycle(late.id) : '#cycles' }} /> },
-      ...(h.hr.pipsActive != null ? [{ id: 's3', title: 'PIPs active', size: 3 as const, bare: true, content: <StatCard label="PIPs active" value={h.hr.pipsActive} drill={{ label: `View ${countText(h.hr.pipsActive, 'PIP')}`, href: PERF_LINKS.pips }} /> }] : []),
-      { id: 's4', title: 'Goals aligned', size: 3, bare: true, content: <StatCard label="Goals aligned to a parent" value={h.hr.goalsAligned ?? 0} unit="%" drill={{ label: 'Open goal map', href: PERF_LINKS.map }} /> },
+      { id: 's1', title: 'Cycles running', size: 3, bare: true, content: <StatCard label="Cycles running" value={c.filter((x) => x.status === 'launched' || x.status === 'calibrating').length} {...vs(prev?.cyclesRunning)} drill={{ label: `View ${countText(c.length, 'cycle')}`, href: '#cycles' }} /> },
+      { id: 's2', title: 'Overdue stages', size: 3, bare: true, content: <StatCard label="Overdue review stages" value={overdue} {...vs(prev?.overdueStages)} drill={{ label: 'View overdue', href: late ? PERF_LINKS.cycle(late.id) : '#cycles' }} /> },
+      ...(h.hr.pipsActive != null ? [{ id: 's3', title: 'PIPs active', size: 3 as const, bare: true, content: <StatCard label="PIPs active" value={h.hr.pipsActive} {...vs(prev?.pipsActive)} drill={{ label: `View ${countText(h.hr.pipsActive, 'PIP')}`, href: PERF_LINKS.pips }} /> }] : []),
+      { id: 's4', title: 'Goals aligned', size: 3, bare: true, content: <StatCard label="Goals aligned to a parent" value={h.hr.goalsAligned ?? 0} unit="%" {...vs(prev?.goalsAligned)} drill={{ label: 'Open goal map', href: PERF_LINKS.map }} /> },
       {
         id: 'cycles',
         title: 'Review cycles',

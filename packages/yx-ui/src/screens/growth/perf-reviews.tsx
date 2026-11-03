@@ -23,7 +23,7 @@ import { FileUpload } from '../../components/upload';
 import { ApprovalTimeline, Timeline, type ApprovalStep, type TimelineItem } from '../../components/timeline';
 import { formatDate } from '../../lib/format';
 import { TODAY } from '../_kit/data';
-import { BiasFlagList, ConfidentialTag, PotentialChoice, GrowthFrame, RatingScale, ScoreBand, SplitLayout, StageTrack, type Device, type StageItem } from './growth-kit';
+import { BiasFlagList, CalibrationPlan, ConfidentialTag, PotentialChoice, GrowthFrame, RatingScale, ScoreBand, SplitLayout, StageTrack, type Device, type PlannedSession, type StageItem } from './growth-kit';
 import { anonymityGroups, bandFor, detectBiasFlags, nominationCheck, RATING_LABELS, reviewScore, type BiasFlag, type Relationship, type ReviewSection } from './growth-logic';
 import type { LoadState } from './perf-goals';
 import { ReviewAssistantPanel, type ReviewAssistantProps } from './perf-assistant';
@@ -48,6 +48,16 @@ const STAGE_DEFAULTS = [
   { id: 'ack', label: 'Employee acknowledgement', owner: 'Employee', days: 7, on: true, optional: false },
 ];
 
+const SAMPLE_FACILITATORS = [
+  { value: 'u1', label: 'Lakshmi Rao' },
+  { value: 'u2', label: 'Aisha Khan' },
+];
+const SAMPLE_DEPARTMENTS = [
+  { value: 'qa', label: 'Quality' },
+  { value: 'pr', label: 'Production' },
+];
+const SAMPLE_SESSIONS: PlannedSession[] = [{ name: 'Quality and lab', facilitatorUserId: 'u1', departmentIds: ['qa'] }];
+
 /** PRF-04 cycle set-up wizard: basics, population and eligibility (J11), template and scale, stages and deadlines. */
 export function CycleSetupScreen(props: CycleSetupProps | { live: LiveCycleSetup; defaultStep?: string }) {
   return 'live' in props ? <LiveCycleSetupScreen live={props.live} defaultStep={props.defaultStep} /> : <SampleCycleSetup {...props} />;
@@ -64,6 +74,7 @@ function SampleCycleSetup({ defaultStep = 'basics', population }: CycleSetupProp
   const [stages, setStages] = useState(STAGE_DEFAULTS);
   const [min360, setMin360] = useState<number | null>(3);
   const [max360, setMax360] = useState<number | null>(6);
+  const [sessions, setSessions] = useState<PlannedSession[]>(SAMPLE_SESSIONS);
   const total = weights.goals + weights.comp + weights.values;
   const weightError = total !== 100 ? `Section weights add up to ${total}%. Make them 100% to save the template.` : null;
   return (
@@ -199,6 +210,7 @@ function SampleCycleSetup({ defaultStep = 'basics', population }: CycleSetupProp
                   </tbody>
                 </table>
                 </div>
+                {stages.find((s) => s.id === 'cal')?.on && <CalibrationPlan sessions={sessions} onChange={setSessions} facilitators={SAMPLE_FACILITATORS} departments={SAMPLE_DEPARTMENTS} />}
                 <FieldRow>
                   <FormField label="360° reviewers, minimum">
                     <NumberField value={min360} onChange={setMin360} />

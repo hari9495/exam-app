@@ -275,6 +275,8 @@ export interface ReviewCycle {
   eligibilityRules: { cutoffMonths: number; rateLeavers: boolean };
   /** PM5: feedback from colleagues; null = off. */
   peerFeedback?: PeerConfig | null;
+  /** PRF-04: calibration sessions planned in the wizard (made at launch). */
+  calibration?: { name: string; facilitatorUserId: string; departmentIds: string[] }[];
   status: 'draft' | 'launched' | 'calibrating' | 'released' | 'closed';
   launchedAt: string | null;
   version: number;
@@ -289,6 +291,8 @@ export interface CycleInput {
   population: unknown;
   stages: CycleStage[];
   eligibilityRules: { cutoffMonths: number; rateLeavers: boolean };
+  /** PRF-04: calibration sessions planned in the wizard. */
+  calibration?: { name: string; facilitatorUserId: string; departmentIds: string[] }[];
   version?: number;
 }
 
