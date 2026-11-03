@@ -1,8 +1,10 @@
 // Expenses (M05), wired to the API (M05-BUILD-DESIGN §19). Batch E1: Settings › Expenses (EXP-07 and set-up).
 // Import the stylesheet once: '@yukthix/ui/styles.css'.
 export * from './types';
-export { ExpenseSetupScreen, type ExpenseSetupScreenProps, type CategoryInput, type TierInput } from './setup';
-export { fromRows, toRows, sameRules, type MatrixRow, type Per } from './matrix';
+// EXP-07 expense policy and set-up: the designed PolicyMatrixScreen with `live` (round 2).
+export { PolicyMatrixScreen } from '../../ops/expenses-finance';
+export { type ExpenseSetupScreenProps, type CategoryInput, type TierInput } from '../../ops/expenses-setup-live';
+export { fromRows, toRows, sameRules, type MatrixRow, type Per } from '../../ops/expenses-matrix';
 // Round 1 of the design wiring: the designed EXP-01 home, EXP-02 composer and EXP-03 review take `live`.
 export { ExpensesHomeScreen, ClaimComposerScreen, ClaimReviewScreen } from '../../ops/expenses';
 export { EXP_LINKS, type AddKind, type LiveClaim, type LiveHome } from '../../ops/expenses-live';
@@ -14,6 +16,6 @@ export { TeamClaimsScreen } from '../../ops/expenses';
 export { type LiveTeam } from '../../ops/expenses-team-live';
 export { type LiveTrips, type LiveTrip, type LiveAdvances, type LiveAdvance } from '../../ops/expenses-travel-live';
 export { TRIP_STATUS, ADVANCE_STATUS } from '../../ops/expenses-live-data';
-export { ExpenseReportsScreen, REPORT_TABS, type ExpenseReportsScreenProps } from './reports';
-// Batch E3: what finance pays (EXP-06), bank files and the expense journal.
-export { ToPayLiveScreen, type ToPayLiveScreenProps } from './topay';
+// Round 2: EXP-06 to pay (bank files, the journal) and EXP-09 reports, the designed screens with `live`.
+export { ToPayScreen, ExpenseReportsScreen } from '../../ops/expenses-finance';
+export { type LiveToPay, type LiveReports } from '../../ops/expenses-finance-live';

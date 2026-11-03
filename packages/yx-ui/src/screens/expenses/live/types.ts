@@ -351,6 +351,15 @@ export interface ExpenseReport {
   to: string;
   columns: { key: string; label: string }[];
   rows: Record<string, string | number | null>[];
+  /** EXP-09: the chart figures (exact decimal strings) and the department filter's choices. */
+  charts?: { byCategory?: ReportBar[]; paidThrough?: ReportBar[]; ageing?: ReportBar[] };
+  departments?: { id: string; name: string }[];
+}
+
+export interface ReportBar {
+  label: string;
+  amount: string;
+  count?: number;
 }
 
 // ------------------------------------------------------------------------------------------ E3: To pay (EXP-06)
@@ -386,6 +395,8 @@ export interface PayoutBatchRow {
 }
 
 export interface ToPayData {
+  /** EXP-06: the payroll cut-off day and the payroll a claim approved today goes to. */
+  payroll?: { cutoffDay: number; month: string };
   entities: { id: string; name: string }[];
   claims: ToPayClaim[];
   batches: PayoutBatchRow[];

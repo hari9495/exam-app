@@ -1,4 +1,4 @@
-import type { ExpenseCategory, OverLimit, PolicyRule } from './types';
+import type { ExpenseCategory, OverLimit, PolicyRule } from '../expenses/live/types';
 
 // The limits matrix (EXP-07) as rows a person edits: one row per category, one kind of limit per row ("per day" for
 // meals, "per line" for hotels, …), an "Any city" column and one per city tier. Pure, so it is tested directly.

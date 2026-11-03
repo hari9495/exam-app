@@ -99,3 +99,45 @@ export const ADVANCE_DETAIL: import('../expenses/live/types').AdvanceDetail = {
   ledger: [{ id: 'x1', on: '2026-06-12', kind: 'paid', text: 'Advance paid', amount: '15000.00', amountPay: '15000.00', claimId: null }, { id: 'x2', on: '2026-07-28', kind: 'claim', text: 'Settled by claim: Hosur plant visit', amount: '-8400.00', amountPay: '-8400.00', claimId: 'c0977' }],
   can: { changeAmount: false, decide: null, pay: false, recordReturn: false, claim: true },
 };
+
+// EXP-06 to pay and EXP-09 reports (round 2).
+export const TO_PAY_FULL: ToPayData = {
+  payroll: { cutoffDay: 23, month: '2026-10' },
+  entities: [{ id: 'e1', name: 'Kaveri Foods Pvt Ltd' }],
+  claims: [
+    { id: 'c1', employeeId: 'p1', employeeName: 'Arjun Kulkarni', legalEntityId: 'e1', title: 'Client visit, Mysuru', approvedTotal: '1114.00', advanceAdjusted: '0.00', netPayable: '1114.00', route: 'payout', paymentStatus: 'approved_unpaid', payMonth: null, ref: null, reason: null, batchId: null, paidOn: null },
+    { id: 'c2', employeeId: 'p2', employeeName: 'Divya Raghunathan', legalEntityId: 'e1', title: 'Dealer meet', approvedTotal: '6200.00', advanceAdjusted: '2000.00', netPayable: '4200.00', route: 'payout', paymentStatus: 'payment_failed', payMonth: null, ref: null, reason: 'Account closed', batchId: 'b0', paidOn: null },
+    { id: 'c3', employeeId: 'p3', employeeName: 'Sridhar Fernandes', legalEntityId: 'e1', title: 'Field days, September', approvedTotal: '2856.00', advanceAdjusted: '0.00', netPayable: '2856.00', route: 'payroll', paymentStatus: 'in_payroll', payMonth: '2026-10', ref: null, reason: null, batchId: null, paidOn: null },
+    { id: 'c4', employeeId: 'p1', employeeName: 'Arjun Kulkarni', legalEntityId: 'e1', title: 'Training, Pune', approvedTotal: '3400.00', advanceAdjusted: '0.00', netPayable: '3400.00', route: 'payout', paymentStatus: 'payout_queued', payMonth: null, ref: null, reason: null, batchId: 'b1', paidOn: null },
+    { id: 'c5', employeeId: 'p2', employeeName: 'Divya Raghunathan', legalEntityId: 'e1', title: 'Phone, September', approvedTotal: '400.00', advanceAdjusted: '0.00', netPayable: '400.00', route: 'payout', paymentStatus: 'payout_queued', payMonth: null, ref: null, reason: null, batchId: 'b2', paidOn: null },
+    { id: 'c6', employeeId: 'p4', employeeName: 'Priya Menon', legalEntityId: 'e1', title: 'Internet, Aug', approvedTotal: '999.00', advanceAdjusted: '0.00', netPayable: '999.00', route: 'payout', paymentStatus: 'paid', payMonth: null, ref: 'UTR KFB2608311204', reason: null, batchId: 'b9', paidOn: '2026-09-02' },
+  ],
+  batches: [
+    { id: 'b1', legalEntityId: 'e1', rows: 1, total: '3400.00', status: 'draft', sha256: 'a'.repeat(64), madeByMe: false, createdAt: '2026-10-11T10:00:00Z', releasedAt: null },
+    { id: 'b2', legalEntityId: 'e1', rows: 1, total: '400.00', status: 'released', sha256: 'b'.repeat(64), madeByMe: true, createdAt: '2026-10-10T10:00:00Z', releasedAt: '2026-10-10T12:00:00Z' },
+  ],
+};
+export const JOURNAL_VIEW: import('../expenses/live/types').ExpenseJournalView = {
+  month: '2026-10',
+  lines: [
+    { accountCode: '6100', accountName: 'Travel', debit: '7400.00', credit: '0.00' },
+    { accountCode: '2400', accountName: 'Reimbursements payable', debit: '3400.00', credit: '7400.00' },
+    { accountCode: 'UNMAPPED', accountName: 'Unmapped', debit: '0.00', credit: '3400.00' },
+  ],
+  unmapped: [{ componentCode: 'exp._bank', amount: '3400.00' }],
+  balanced: true,
+  exports: [],
+};
+export const SUMMARY_REPORT: import('../expenses/live/types').ExpenseReport = {
+  kind: 'summary', from: '2026-09-01', to: '2026-09-30',
+  columns: [{ key: 'category', label: 'Category' }, { key: 'claims', label: 'Claims' }, { key: 'lines', label: 'Bills' }, { key: 'claimed', label: 'Claimed' }, { key: 'approved', label: 'Approved' }],
+  rows: [{ category: 'Air travel', claims: 9, lines: 12, claimed: '182400.00', approved: '182400.00' }, { category: 'Hotel', claims: 8, lines: 15, claimed: '151900.00', approved: '146200.50' }, { category: 'Mileage', claims: 21, lines: 40, claimed: '64300.00', approved: '64300.00' }],
+  charts: { byCategory: [{ label: 'Air travel', amount: '182400.00' }, { label: 'Hotel', amount: '146200.50' }, { label: 'Mileage', amount: '64300.00' }], paidThrough: [{ label: 'Payroll', amount: '318400.00' }, { label: 'Direct payout', amount: '112600.00' }, { label: 'Company paid', amount: '50700.00' }] },
+  departments: [{ id: 'd1', name: 'Sales' }, { id: 'd2', name: 'Operations' }],
+};
+export const PATTERNS_REPORT: import('../expenses/live/types').ExpenseReport = {
+  kind: 'approver-patterns', from: '2026-07-03', to: '2026-09-30',
+  columns: [{ key: 'approver', label: 'Approver' }, { key: 'person', label: 'Person' }, { key: 'claims', label: 'Flagged or over-limit claims approved (90 days)' }],
+  rows: [{ approver: 'Sana Nizami', person: 'Vikram Rao', claims: 4 }],
+  departments: [{ id: 'd1', name: 'Sales' }],
+};

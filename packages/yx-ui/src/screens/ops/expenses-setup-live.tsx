@@ -1,27 +1,32 @@
 import { useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
-import { Button } from '../../../components/button';
-import { Checkbox } from '../../../components/choice';
-import { ConditionBuilder, emptyRule } from '../../../components/condition';
-import { DatePicker } from '../../../components/date';
-import { Badge } from '../../../components/display';
-import { Drawer } from '../../../components/drawer';
-import { EmptyState, InlineAlert } from '../../../components/feedback';
-import { ErrorSummary, FormField, useSaveErrors } from '../../../components/field';
-import { Text } from '../../../components/foundations';
-import { NumberField, TextArea, TextField } from '../../../components/inputs';
-import { ConfirmDialog } from '../../../components/overlay';
-import { Segment } from '../../../components/segment';
-import { Select } from '../../../components/select';
-import { Card, Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/shell';
-import { DataTable, type TableColumn } from '../../../components/table';
-import { dayKey } from '../../../lib/dates';
-import { fromServerGroup, toServerGroup } from '../../../lib/forms';
-import type { Rule, RuleField } from '../../../lib/rules';
-import { errorText, useRun } from '../../org/org-kit';
-import { LivePage, dateText } from '../../time/live/kit';
-import { ANY, fromRows, sameRules, toRows, type MatrixRow, type Per } from './matrix';
-import type { CategoryKind, Choice, CityTier, ExpenseCategory, ExpensePolicy, FxRateRow, GstRegistration, LoadState, OverLimit, Policies, PolicySave, Rates, SetupCheck, Taxable } from './types';
+import { Button } from '../../components/button';
+import { PlainTable } from '../../components/plain-table';
+import { PageHeader } from '../../components/shell';
+import { Checkbox } from '../../components/choice';
+import { ConditionBuilder, emptyRule } from '../../components/condition';
+import { DatePicker } from '../../components/date';
+import { Badge } from '../../components/display';
+import { Drawer } from '../../components/drawer';
+import { EmptyState, ErrorState, InlineAlert, NoAccessState, Skeleton } from '../../components/feedback';
+import { ErrorSummary, FormField, StickySaveBar, useSaveErrors } from '../../components/field';
+import { Text } from '../../components/foundations';
+import { NumberField, TextArea, TextField } from '../../components/inputs';
+import { ConfirmDialog } from '../../components/overlay';
+import { Segment } from '../../components/segment';
+import { Select } from '../../components/select';
+import { Card, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
+import { DataTable, type TableColumn } from '../../components/table';
+import { dayKey } from '../../lib/dates';
+import { fromServerGroup, toServerGroup } from '../../lib/forms';
+import type { Rule, RuleField } from '../../lib/rules';
+import { errorText, useRun } from '../org/org-kit';
+import { dateText } from '../time/live/kit';
+import { useAct } from '../growth/perf-live';
+import { Actions, OpsDesk } from './ops-kit';
+import { day } from './expenses-live-data';
+import { ANY, fromRows, sameRules, toRows, type MatrixRow, type Per } from './expenses-matrix';
+import type { CategoryKind, Choice, CityTier, ExpenseCategory, ExpensePolicy, FxRateRow, GstRegistration, LoadState, OverLimit, Policies, PolicySave, Rates, SetupCheck, Taxable } from '../expenses/live/types';
 
 // Settings › Expenses (M05-BUILD-DESIGN §6, §7; EXP-07 wired, XP-1.06): the limits matrix of each dated policy,
 // categories, city tiers, mileage and per-diem rates, and GST registrations, with the set-up check on top. A policy
@@ -86,67 +91,85 @@ export interface ExpenseSetupScreenProps {
   onAddFxRate?: (r: { base: string; quote: string; rateDate: string; rate: string }) => Promise<unknown>;
 }
 
-export function ExpenseSetupScreen(p: ExpenseSetupScreenProps) {
-  const { busy, error, run } = useRun();
+export type PolicyTab = 'matrix' | 'rates' | 'rules' | 'tiers' | 'gst' | 'fx';
+export type PolicySheet = 'copy' | 'category' | 'tier' | 'mileage' | 'gst' | null;
+
+/** EXP-07 live: the designed Expense policy page with the company's set-up (founder answer 6). */
+export function LivePolicyScreen({ live: p, defaultTab = 'matrix', defaultSheet = null }: { live: ExpenseSetupScreenProps; defaultTab?: PolicyTab; defaultSheet?: PolicySheet }) {
+  const { busy, act } = useAct();
+  const [tab, setTab] = useState<PolicyTab>(defaultTab);
+  if (p.state !== 'ready')
+    return (
+      <OpsDesk area="expenses" active="Expense policy">
+        <PageHeader title="Expense policy" />
+        {p.state === 'loading' ? (
+          <div className="yx-ops-stack" role="status" aria-busy="true" aria-label="Loading expense policy">
+            <Skeleton height={64} />
+            <Skeleton height={240} />
+          </div>
+        ) : p.state === 'no-access' ? (
+          <NoAccessState what="the expense policy" grantedBy="your System Admin" />
+        ) : (
+          <ErrorState title="We couldn't load the expense policy." description="Nothing has changed. Try again in a moment." onRetry={p.onRetry} />
+        )}
+      </OpsDesk>
+    );
   const noCategories = p.categories.length === 0;
+  const today = p.policies?.today ?? dayKey(new Date());
   return (
-    <LivePage title="Expenses" description="Categories, limits by city tier, mileage and per-diem rates, and GST registrations. Claims are checked against the policy valid on the expense date." state={p.state} onRetry={p.onRetry} what="expense set-up" grantedBy="your System Admin">
-      {error && (
-        <InlineAlert tone="danger" title="That didn't work">
-          {error}
-        </InlineAlert>
-      )}
+    <OpsDesk area="expenses" active="Expense policy">
+      <PageHeader title="Expense policy" description="Limits by category, grade and city tier, with the rates, categories and registrations they use. Dated versions; claims use the version valid on the expense date." />
       {noCategories ? (
         <Card title="Start from the YukthiX starters">
-          <Text as="p">Eleven categories, four city tiers, a company-wide policy with limits, and mileage and per-diem rates. Your copy is yours: later YukthiX changes never overwrite it.</Text>
-          <Button variant="primary" loading={busy === 'starters'} onClick={() => void run('starters', p.onUseStarters)}>
-            Use the starters
-          </Button>
+          <p className="yx-ops-p">Eleven categories, four city tiers, a company-wide policy with limits, and mileage and per-diem rates. Your copy is yours: later YukthiX changes never overwrite it.</p>
+          <Actions>
+            <Button variant="primary" loading={busy === 'starters'} onClick={() => void act('starters', p.onUseStarters, 'Starters copied. Check the limits and rates for your company.')}>
+              Use the starters
+            </Button>
+          </Actions>
         </Card>
       ) : (
-        p.check && <SetupCheckCard check={p.check} />
-      )}
-      {!noCategories && (
-        <Tabs defaultValue="limits">
-          <TabsList aria-label="Expense set-up">
-            <TabsTrigger value="limits">Limits</TabsTrigger>
-            <TabsTrigger value="categories">Categories</TabsTrigger>
-            <TabsTrigger value="tiers">City tiers</TabsTrigger>
-            <TabsTrigger value="rates">Mileage and per diem</TabsTrigger>
-            <TabsTrigger value="gst">GST registrations</TabsTrigger>
-            {p.onAddFxRate && <TabsTrigger value="fx">Exchange rates</TabsTrigger>}
-          </TabsList>
-          <TabsContent value="limits">{p.policies && <LimitsTab {...p} policies={p.policies} />}</TabsContent>
-          <TabsContent value="categories">
-            <CategoriesTab categories={p.categories} onSave={p.onSaveCategory} />
-          </TabsContent>
-          <TabsContent value="tiers">
-            <TiersTab tiers={p.tiers} onSave={p.onSaveTier} />
-          </TabsContent>
-          <TabsContent value="rates">{p.rates && <RatesTab rates={p.rates} tiers={p.tiers} today={p.policies?.today ?? dayKey(new Date())} onAddMileage={p.onAddMileage} onAddPerDiem={p.onAddPerDiem} />}</TabsContent>
-          {p.onAddFxRate && (
-            <TabsContent value="fx">
-              <FxTab rows={p.fxRates ?? []} payCurrency={p.payCurrency ?? 'INR'} today={p.policies?.today ?? dayKey(new Date())} onAdd={p.onAddFxRate} />
+        <>
+          {p.check && <SetupCheckCard check={p.check} />}
+          <Tabs value={tab} onValueChange={(v) => setTab(v as PolicyTab)}>
+            <TabsList aria-label="Policy sections">
+              <TabsTrigger value="matrix">Limits matrix</TabsTrigger>
+              <TabsTrigger value="rates">Mileage & per diem</TabsTrigger>
+              <TabsTrigger value="rules">Receipts & over-limit</TabsTrigger>
+              <TabsTrigger value="tiers">City tiers</TabsTrigger>
+              <TabsTrigger value="gst">GST registrations</TabsTrigger>
+              {p.onAddFxRate && <TabsTrigger value="fx">Exchange rates</TabsTrigger>}
+            </TabsList>
+            <TabsContent value="matrix">{p.policies && <LimitsTab {...p} policies={p.policies} startCopy={defaultSheet === 'copy'} />}</TabsContent>
+            <TabsContent value="rates">{p.rates && <RatesTab rates={p.rates} tiers={p.tiers} today={today} onAddMileage={p.onAddMileage} onAddPerDiem={p.onAddPerDiem} start={defaultSheet === 'mileage'} />}</TabsContent>
+            <TabsContent value="rules">
+              <CategoriesTab categories={p.categories} onSave={p.onSaveCategory} start={defaultSheet === 'category'} />
             </TabsContent>
-          )}
-          <TabsContent value="gst">
-            <GstTab gst={p.gst} entities={p.entities} today={p.policies?.today ?? dayKey(new Date())} onAdd={p.onAddGst} onEnd={p.onEndGst} />
-          </TabsContent>
-        </Tabs>
+            <TabsContent value="tiers">
+              <TiersTab tiers={p.tiers} onSave={p.onSaveTier} start={defaultSheet === 'tier'} />
+            </TabsContent>
+            <TabsContent value="gst">
+              <GstTab gst={p.gst} entities={p.entities} today={today} onAdd={p.onAddGst} onEnd={p.onEndGst} start={defaultSheet === 'gst'} />
+            </TabsContent>
+            {p.onAddFxRate && (
+              <TabsContent value="fx">
+                <FxTab rows={p.fxRates ?? []} payCurrency={p.payCurrency ?? 'INR'} today={today} onAdd={p.onAddFxRate} />
+              </TabsContent>
+            )}
+          </Tabs>
+        </>
       )}
-    </LivePage>
+    </OpsDesk>
   );
 }
 
 function SetupCheckCard({ check }: { check: SetupCheck }) {
-  if (check.ready) return <InlineAlert tone="success" title="Ready for claims">Every employee has a policy, and every category has a ledger code and the rates it needs.</InlineAlert>;
+  if (check.ready) return <InlineAlert tone="info" title="Ready for claims">Every employee has a policy, and every category has a ledger code and the rates it needs.</InlineAlert>;
   return (
     <InlineAlert tone="warning" title={`${check.problems.length} ${check.problems.length === 1 ? 'thing needs' : 'things need'} attention before claims`}>
-      <ul className="yx-lif-list">
+      <ul className="yx-ops-plain">
         {check.problems.map((x) => (
-          <li key={x.key}>
-            <Text>{x.text}</Text>
-          </li>
+          <li key={x.key}>{x.text}</li>
         ))}
       </ul>
     </InlineAlert>
@@ -157,23 +180,72 @@ function SetupCheckCard({ check }: { check: SetupCheck }) {
 
 const policyLabel = (x: ExpensePolicy) => `${x.name} · from ${dateText(x.validFrom)}${x.validTo ? ` to ${dateText(x.validTo)}` : ''}${x.status === 'retired' ? ' (retired)' : ''}`;
 
-function LimitsTab(p: ExpenseSetupScreenProps & { policies: Policies }) {
+/** Founder answer 6: a policy that applies to exactly one grade gets a column in the grade picker; the grade's name. */
+export function singleGrade(p: ExpensePolicy, fields: Policies['fields']): { id: string; name: string } | null {
+  const items = (p.appliesIf?.items ?? []) as { field?: string; operator?: string; value?: unknown; items?: unknown }[];
+  if (items.length !== 1 || items[0]!.items || items[0]!.field !== 'grade_id') return null;
+  const v = items[0]!.value;
+  const id = Array.isArray(v) ? (v.length === 1 ? String(v[0]) : null) : items[0]!.operator === 'is' && v != null ? String(v) : null;
+  if (!id) return null;
+  return { id, name: fields.find((f) => f.key === 'grade_id')?.options.find((o) => o.value === id)?.label ?? 'A grade' };
+}
+const inForceOn = (x: ExpensePolicy, today: string) => x.status === 'active' && x.validFrom <= today && (!x.validTo || x.validTo >= today);
+
+function LimitsTab(p: ExpenseSetupScreenProps & { policies: Policies; startCopy: boolean }) {
   const { policies, fields, today } = p.policies;
-  const current = policies.find((x) => x.status === 'active' && x.validFrom <= today && (!x.validTo || x.validTo >= today)) ?? policies[0];
-  const [id, setId] = useState<string | null>(current?.id ?? null);
-  const policy = policies.find((x) => x.id === id) ?? current;
-  if (!policy) return <EmptyState compact title="No policy yet." />;
-  return <PolicyMatrix key={`${policy.id}:${policy.version}`} {...p} fields={fields} today={today} policy={policy} picker={<Select aria-label="Policy" value={policy.id} onChange={(v) => v && setId(v)} options={policies.map((x) => ({ value: x.id, label: policyLabel(x) }))} />} />;
+  const graded = policies.filter((x) => x.status === 'active' && singleGrade(x, fields));
+  const others = policies.filter((x) => !graded.includes(x));
+  const first = graded.find((x) => inForceOn(x, today)) ?? graded[0] ?? others.find((x) => inForceOn(x, today)) ?? policies[0];
+  const [id, setId] = useState<string | null>(first?.id ?? null);
+  const policy = policies.find((x) => x.id === id) ?? first;
+  if (!policy) return <EmptyState compact title="No policy yet." description="Use the starters, or copy a policy." />;
+  const grade = singleGrade(policy, fields);
+  return (
+    <div className="yx-ops-stack">
+      <PolicyMatrix
+        key={`${policy.id}:${policy.version}`}
+        {...p}
+        fields={fields}
+        today={today}
+        policy={policy}
+        startCopy={p.startCopy}
+        picker={
+          graded.length ? (
+            <FormField label="Grade band">
+              <Select aria-label="Grade band" value={grade ? policy.id : null} onChange={(v) => v && setId(v)} placeholder="Another policy (below)" options={graded.map((x) => ({ value: x.id, label: `${singleGrade(x, fields)!.name} · ${policyLabel(x)}` }))} />
+            </FormField>
+          ) : null
+        }
+      />
+      <Card title="Other policies">
+        <DataTable
+          label="Other policies"
+          columns={[
+            { key: 'n', header: 'Policy', value: (x: ExpensePolicy) => x.name, width: 240 },
+            { key: 'a', header: 'Applies to', value: (x) => (x.appliesIf ? (singleGrade(x, fields)?.name ?? 'Some people (conditions)') : 'Everyone without a narrower policy') },
+            { key: 'f', header: 'From', type: 'date', value: (x) => day(x.validFrom) },
+            { key: 's', header: 'Status', value: (x) => x.status, render: (x) => <Badge tone={inForceOn(x, today) ? 'success' : x.status === 'retired' ? 'neutral' : 'info'}>{inForceOn(x, today) ? 'In force' : x.status === 'retired' ? 'Retired' : x.validFrom > today ? `Starts ${dateText(x.validFrom)}` : 'Ended'}</Badge> },
+          ]}
+          rows={others}
+          getRowId={(x) => x.id}
+          rowNoun={['policy', 'policies']}
+          empty={<EmptyState compact title="Every policy applies to one grade." description="They are all in the grade band list above." />}
+          rowButtons={(x) => (x.id === policy.id ? <Badge tone="info">Shown above</Badge> : <Button size="sm" onClick={() => setId(x.id)}>Edit limits</Button>)}
+        />
+      </Card>
+    </div>
+  );
 }
 
-function PolicyMatrix(p: ExpenseSetupScreenProps & { fields: Policies['fields']; today: string; policy: ExpensePolicy; picker: React.ReactNode }) {
+function PolicyMatrix(p: ExpenseSetupScreenProps & { fields: Policies['fields']; today: string; policy: ExpensePolicy; picker: React.ReactNode; startCopy: boolean }) {
   const { policy, today } = p;
   const inForce = policy.validFrom <= today;
   const [rows, setRows] = useState<MatrixRow[]>(() => toRows(policy.rules, p.categories));
   const [from, setFrom] = useState<Date | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [copying, setCopying] = useState(false);
+  const [copying, setCopying] = useState(p.startCopy);
+  const { toast } = useAct();
   const parsed = fromRows(rows);
   const dirty = 'rules' in parsed ? !sameRules(parsed.rules, policy.rules) : true;
   const errors = [
@@ -184,11 +256,16 @@ function PolicyMatrix(p: ExpenseSetupScreenProps & { fields: Policies['fields'];
   const v = useSaveErrors(errors);
   const edit = (code: string, patch: Partial<MatrixRow>) => setRows(rows.map((r) => (r.code === code ? { ...r, ...patch } : r)));
   const save = async () => {
-    if (errors.length || !('rules' in parsed)) return v.reveal();
+    if (errors.length || !('rules' in parsed)) {
+      v.reveal();
+      document.getElementById(errors[0]?.fieldId ?? '')?.focus();
+      return;
+    }
     setSaving(true);
     setFailed(null);
     try {
       await p.onSavePolicy(inForce ? { mode: 'version', policy: { ...policy, rules: parsed.rules }, from: dayKey(from!) } : { mode: 'update', policy: { ...policy, rules: parsed.rules } });
+      toast({ tone: 'success', title: inForce ? `Saved as version ${policy.version + 1} from ${dateText(dayKey(from!))}` : 'Limits saved' });
     } catch (e) {
       setFailed(errorText(e));
     } finally {
@@ -197,83 +274,56 @@ function PolicyMatrix(p: ExpenseSetupScreenProps & { fields: Policies['fields'];
   };
   const tiers = p.tiers.filter((t) => t.active);
   const cols = [{ id: ANY, name: 'Any city' }, ...tiers.map((t) => ({ id: t.id, name: t.name }))];
+  const grade = singleGrade(policy, p.fields);
   return (
-    <div className="yx-tim-stack">
-      <div className="yx-lif-grid">
-        <FormField id="lim-policy" label="Policy">
-          {p.picker}
-        </FormField>
-        <div>
-          <Badge tone={inForce ? 'success' : 'info'}>{inForce ? `In force since ${dateText(policy.validFrom)}` : `Starts ${dateText(policy.validFrom)}`}</Badge>{' '}
-          <Text tone="secondary" size="sm">
-            {policy.appliesIf ? 'For some people (see "Applies to")' : 'For everyone without a narrower policy'}
-          </Text>
-        </div>
+    <div className="yx-ops-stack">
+      <div className="yx-ops-row">
+        {p.picker}
+        <Badge tone={inForce ? 'success' : 'info'}>{`v${policy.version}, ${inForce ? `from ${dateText(policy.validFrom)}` : `starts ${dateText(policy.validFrom)}`}`}</Badge>
+        <span className="yx-ops-muted">{grade ? `${policy.name}: ${grade.name}` : policy.appliesIf ? `${policy.name}: some people (see below)` : `${policy.name}: everyone without a narrower policy`}</span>
       </div>
-      {policy.appliesIf && <ConditionBuilder schema={{ triggers: [], fields: p.fields as RuleField[], recipients: [] }} value={{ ...emptyRule(), conditions: fromServerGroup(policy.appliesIf as never, p.fields as RuleField[]) }} parts={['if']} readOnly />}
+      {policy.appliesIf && !grade && <ConditionBuilder schema={{ triggers: [], fields: p.fields as RuleField[], recipients: [] }} value={{ ...emptyRule(), conditions: fromServerGroup(policy.appliesIf as never, p.fields as RuleField[]) }} parts={['if']} readOnly />}
       {v.showErrors && <ErrorSummary errors={v.shownErrors} />}
-      {failed && (
-        <InlineAlert tone="danger" title="Not saved">
-          {failed}
-        </InlineAlert>
-      )}
-      <div className="yx-ops-scroll">
-        <table className="yx-ops-matrix" aria-label={`Limits of ${policy.name}`}>
-          <thead>
-            <tr>
-              <th scope="col">Category</th>
-              <th scope="col">Limit</th>
-              {cols.map((c) => (
-                <th key={c.id} scope="col">
-                  {c.name}
-                </th>
-              ))}
-              <th scope="col">Over the limit</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => {
-              const amounts = r.per !== 'none' && r.per !== 'free';
-              return (
-                <tr key={r.code} id={`lim-${r.code}`}>
-                  <th scope="row">{r.name}</th>
-                  <td>
-                    <Select aria-label={`${r.name}: limit`} value={r.per} onChange={(x) => x && edit(r.code, { per: x as Per })} options={PER} />
-                  </td>
-                  {cols.map((c) => (
-                    <td key={c.id} data-num>
-                      {amounts ? (
-                        <input className="yx-input" aria-label={`${r.name}, ${c.name}`} inputMode="decimal" value={r.cells[c.id] ?? ''} placeholder={c.id === ANY ? 'Not allowed' : 'As any city'} onChange={(e) => edit(r.code, { cells: { ...r.cells, [c.id]: e.target.value.replace(/[^0-9.]/g, '') } })} />
-                      ) : (
-                        <Text tone="secondary" size="sm">
-                          {r.per === 'free' ? 'No limit' : '—'}
-                        </Text>
-                      )}
-                    </td>
-                  ))}
-                  <td>{r.per === 'none' ? <Text tone="secondary" size="sm">—</Text> : <Select aria-label={`${r.name}: over the limit`} value={r.overLimit} onChange={(x) => x && edit(r.code, { overLimit: x as OverLimit })} options={OVER} />}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <Text as="p" tone="secondary" size="sm">
-        An empty tier cell uses the "Any city" amount; both empty means not allowed there. Over a limit, the employee gives a reason and the excess gets an extra approval, unless it is a hard block.
-      </Text>
-      <div className="yx-lif-row">
-        {inForce && dirty && (
-          <FormField id="lim-from" label="New limits from" required error={v.errorOf('lim-from')}>
-            <DatePicker value={from} onChange={setFrom} min={fromKey(today)} aria-label="New limits from" />
-          </FormField>
-        )}
-        <Button variant="primary" disabled={!dirty} loading={saving} onClick={() => void save()}>
-          {inForce ? 'Save as a new version' : 'Save limits'}
-        </Button>
+      {failed && <InlineAlert tone="danger" title="Not saved">{failed}</InlineAlert>}
+      <PlainTable
+        label={`Limits of ${policy.name}`}
+        rows={rows}
+        getRowId={(r) => r.code}
+        columns={[
+          { key: 'category', header: 'Category', rowHeader: true, cell: (r) => <span id={`lim-${r.code}`}>{r.name}</span> },
+          { key: 'per', header: 'Limit', cell: (r) => <Select aria-label={`${r.name}: limit`} value={r.per} onChange={(x) => x && edit(r.code, { per: x as Per })} options={PER} /> },
+          ...cols.map((c) => ({
+            key: c.id,
+            header: c.name,
+            cell: (r: MatrixRow) =>
+              r.per !== 'none' && r.per !== 'free' ? (
+                <TextField aria-label={`${r.name}, ${c.name}`} inputMode="decimal" value={r.cells[c.id] ?? ''} placeholder={c.id === ANY ? 'Not allowed' : 'As any city'} onChange={(x) => edit(r.code, { cells: { ...r.cells, [c.id]: x.replace(/[^0-9.]/g, '') } })} />
+              ) : (
+                <span className="yx-ops-muted">{r.per === 'free' ? 'No limit' : '—'}</span>
+              ),
+          })),
+          { key: 'over', header: 'Over the limit', cell: (r) => (r.per === 'none' ? <span className="yx-ops-muted">—</span> : <Select aria-label={`${r.name}: over the limit`} value={r.overLimit} onChange={(x) => x && edit(r.code, { overLimit: x as OverLimit })} options={OVER} />) },
+        ]}
+      />
+      <p className="yx-ops-muted">An empty tier cell uses the "Any city" amount; both empty means not allowed there. Over a limit, the employee gives a reason and the excess gets an extra approval, unless it is a hard block. Tiers are editable in City tiers.</p>
+      <Actions>
         <Button icon={Plus} onClick={() => setCopying(true)}>
           Copy as a new policy
         </Button>
-      </div>
+      </Actions>
+      {dirty && (
+        <StickySaveBar dirty>
+          {inForce && (
+            <FormField id="lim-from" label="Effective from" hideLabel error={v.errorOf('lim-from')}>
+              <DatePicker value={from} onChange={setFrom} min={day(today)} aria-label="Effective from" />
+            </FormField>
+          )}
+          <Button onClick={() => (setRows(toRows(policy.rules, p.categories)), setFrom(null))}>Discard</Button>
+          <Button variant="primary" loading={saving} onClick={() => void save()}>
+            {inForce ? `Save as v${policy.version + 1}` : 'Save limits'}
+          </Button>
+        </StickySaveBar>
+      )}
       {copying && <CopyPolicyDrawer policy={policy} rules={'rules' in parsed ? parsed.rules : policy.rules} fields={p.fields} today={today} onClose={() => setCopying(false)} onSave={p.onSavePolicy} />}
     </div>
   );
@@ -336,7 +386,7 @@ function CopyPolicyDrawer({ policy, rules, fields, today, onClose, onSave }: { p
         <Segment label="Applies to" value={everyone ? 'all' : 'some'} onChange={(x) => setEveryone(x === 'all')} options={[{ value: 'all', label: 'Everyone' }, { value: 'some', label: 'Only some people' }]} />
       </FormField>
       {!everyone && <ConditionBuilder schema={{ triggers: [], fields: ruleFields, recipients: [] }} value={applies} onChange={setApplies} parts={['if']} />}
-      <div className="yx-lif-grid">
+      <div className="yx-field-row">
         <FormField id="cp-priority" label="Priority" helper="When two policies are as specific, the lower number wins.">
           <NumberField value={priority} onChange={setPriority} min={1} max={1000} />
         </FormField>
@@ -350,8 +400,8 @@ function CopyPolicyDrawer({ policy, rules, fields, today, onClose, onSave }: { p
 
 // ------------------------------------------------------------------------------------------ categories
 
-function CategoriesTab({ categories, onSave }: { categories: ExpenseCategory[]; onSave: ExpenseSetupScreenProps['onSaveCategory'] }) {
-  const [editing, setEditing] = useState<CategoryInput | null>(null);
+function CategoriesTab({ categories, onSave, start }: { categories: ExpenseCategory[]; onSave: ExpenseSetupScreenProps['onSaveCategory']; start?: boolean }) {
+  const [editing, setEditing] = useState<CategoryInput | null>(start && categories[0] ? { ...categories[0] } : null);
   const columns: TableColumn<ExpenseCategory>[] = [
     { key: 'name', header: 'Category', value: (r) => r.name, render: (r) => <Text>{r.name}</Text>, width: 220, hideable: false },
     { key: 'kind', header: 'Kind', value: (r) => KIND[r.kind], width: 180 },
@@ -361,8 +411,8 @@ function CategoriesTab({ categories, onSave }: { categories: ExpenseCategory[]; 
     { key: 'status', header: 'Status', value: (r) => (r.active ? 'In use' : 'Not in use'), width: 110, optional: true },
   ];
   return (
-    <div className="yx-tim-stack">
-      <div className="yx-lif-row">
+    <div className="yx-ops-stack">
+      <div className="yx-ops-row">
         <Button icon={Plus} onClick={() => setEditing({ code: '', name: '', kind: 'spend', receiptAbove: '500', gstEligible: false, itcBlockedReason: null, taxable: 'never', ledgerCode: null, active: true })}>
           Add a category
         </Button>
@@ -430,7 +480,7 @@ function CategoryDrawer({ value, onClose, onSave }: { value: CategoryInput; onCl
         <TextField value={c.name} onChange={(x) => set({ name: x })} maxLength={80} />
       </FormField>
       <FormField id="cat-code" label="Code" required error={v.errorOf('cat-code')} helper={value.id ? 'A category keeps its code.' : 'Used in reports and the journal, e.g. hotel_stay.'}>
-        <TextField value={c.code} onChange={(x) => set({ code: x.trim().toLowerCase() })} maxLength={30} disabled={Boolean(value.id)} />
+        <TextField value={c.code} onChange={(x) => set({ code: x.trim().toLowerCase() })} maxLength={30} readOnly={Boolean(value.id)} />
       </FormField>
       <FormField id="cat-kind" label="Kind">
         <Select aria-label="Kind" value={c.kind} onChange={(x) => x && set({ kind: x as CategoryKind })} options={(Object.keys(KIND) as CategoryKind[]).map((k) => ({ value: k, label: KIND[k] }))} />
@@ -459,16 +509,16 @@ function CategoryDrawer({ value, onClose, onSave }: { value: CategoryInput; onCl
 
 // ------------------------------------------------------------------------------------------ city tiers
 
-function TiersTab({ tiers, onSave }: { tiers: CityTier[]; onSave: ExpenseSetupScreenProps['onSaveTier'] }) {
-  const [editing, setEditing] = useState<TierInput | null>(null);
+function TiersTab({ tiers, onSave, start }: { tiers: CityTier[]; onSave: ExpenseSetupScreenProps['onSaveTier']; start?: boolean }) {
+  const [editing, setEditing] = useState<TierInput | null>(start && tiers[0] ? { ...tiers[0] } : null);
   const columns: TableColumn<CityTier>[] = [
     { key: 'name', header: 'Tier', value: (r) => r.name, width: 160, hideable: false },
     { key: 'cities', header: 'Cities', value: (r) => (r.cities.length ? r.cities.join(', ') : r.country === 'IN' ? 'Every other city in India' : r.country ? `Every city in ${r.country}` : 'Any city outside India'), width: 420 },
     { key: 'status', header: 'Status', value: (r) => (r.active ? 'In use' : 'Not in use'), width: 110, optional: true },
   ];
   return (
-    <div className="yx-tim-stack">
-      <div className="yx-lif-row">
+    <div className="yx-ops-stack">
+      <div className="yx-ops-row">
         <Button icon={Plus} onClick={() => setEditing({ name: '', rank: tiers.length + 1, country: 'IN', cities: [], active: true })}>
           Add a tier
         </Button>
@@ -550,8 +600,8 @@ function TierDrawer({ value, onClose, onSave }: { value: TierInput; onClose: () 
 
 // ------------------------------------------------------------------------------------------ rates
 
-function RatesTab({ rates, tiers, today, onAddMileage, onAddPerDiem }: { rates: Rates; tiers: CityTier[]; today: string; onAddMileage: ExpenseSetupScreenProps['onAddMileage']; onAddPerDiem: ExpenseSetupScreenProps['onAddPerDiem'] }) {
-  const [adding, setAdding] = useState<'mileage' | 'per_diem' | null>(null);
+function RatesTab({ rates, tiers, today, onAddMileage, onAddPerDiem, start }: { rates: Rates; tiers: CityTier[]; today: string; onAddMileage: ExpenseSetupScreenProps['onAddMileage']; onAddPerDiem: ExpenseSetupScreenProps['onAddPerDiem']; start?: boolean }) {
+  const [adding, setAdding] = useState<'mileage' | 'per_diem' | null>(start ? 'mileage' : null);
   const tierName = useMemo(() => new Map(tiers.map((t) => [t.id, t.name])), [tiers]);
   const until = (to: string | null) => (to ? dateText(to) : 'Open');
   const mileage: TableColumn<Rates['mileage'][number]>[] = [
@@ -569,7 +619,7 @@ function RatesTab({ rates, tiers, today, onAddMileage, onAddPerDiem }: { rates: 
     { key: 'to', header: 'To', value: (r) => until(r.validTo), width: 130 },
   ];
   return (
-    <div className="yx-tim-stack">
+    <div className="yx-ops-stack">
       <Card title="Mileage (own vehicle)" actions={<Button size="sm" icon={Plus} onClick={() => setAdding('mileage')}>Add a rate</Button>}>
         <DataTable label="Mileage rates" columns={mileage} rows={rates.mileage} getRowId={(r) => r.id} rowNoun={['rate', 'rates']} cardSummary />
       </Card>
@@ -663,7 +713,7 @@ function RateDrawer({ kind, tiers, today, onClose, onAddMileage, onAddPerDiem }:
               <TextField value={country} onChange={setCountry} maxLength={2} />
             </FormField>
           )}
-          <div className="yx-lif-grid">
+          <div className="yx-field-row">
             <FormField id="rate-amount" label="Rate per day" required error={v.errorOf('rate-amount')}>
               <TextField value={rate} onChange={(x) => setRate(x.replace(/[^0-9.]/g, ''))} inputMode="decimal" maxLength={15} />
             </FormField>
@@ -683,8 +733,8 @@ function RateDrawer({ kind, tiers, today, onClose, onAddMileage, onAddPerDiem }:
 
 // ------------------------------------------------------------------------------------------ GST registrations
 
-function GstTab({ gst, entities, today, onAdd, onEnd }: { gst: GstRegistration[]; entities: Choice[]; today: string; onAdd: ExpenseSetupScreenProps['onAddGst']; onEnd: ExpenseSetupScreenProps['onEndGst'] }) {
-  const [adding, setAdding] = useState(false);
+function GstTab({ gst, entities, today, onAdd, onEnd, start }: { gst: GstRegistration[]; entities: Choice[]; today: string; onAdd: ExpenseSetupScreenProps['onAddGst']; onEnd: ExpenseSetupScreenProps['onEndGst']; start?: boolean }) {
+  const [adding, setAdding] = useState(Boolean(start));
   const [ending, setEnding] = useState<GstRegistration | null>(null);
   const [endOn, setEndOn] = useState<Date | null>(fromKey(today));
   const [tried, setTried] = useState(false);
@@ -697,11 +747,11 @@ function GstTab({ gst, entities, today, onAdd, onEnd }: { gst: GstRegistration[]
     { key: 'to', header: 'To', value: (r) => (r.validTo ? dateText(r.validTo) : 'Open'), width: 130 },
   ];
   return (
-    <div className="yx-tim-stack">
+    <div className="yx-ops-stack">
       <Text as="p" tone="secondary">
         Input credit on a bill needs your GSTIN in the state where the service is given, for example the hotel&apos;s state. Record each registration here.
       </Text>
-      <div className="yx-lif-row">
+      <div className="yx-ops-row">
         <Button icon={Plus} onClick={() => setAdding(true)}>
           Add a registration
         </Button>

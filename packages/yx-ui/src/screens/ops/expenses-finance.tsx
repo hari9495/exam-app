@@ -26,6 +26,8 @@ import { Actions, CardGrid, Facts, OpsDesk } from './ops-kit';
 import { ClaimBadges, claimTotals } from './expenses';
 import type { ListState } from './helpdesk';
 import type { Claim } from './expenses-data';
+import { LivePolicyScreen, type ExpenseSetupScreenProps, type PolicySheet, type PolicyTab } from './expenses-setup-live';
+import { LiveReportsScreen, LiveToPayScreen, type LiveReports, type LiveToPay, type ToPaySheet, type ToPayTab } from './expenses-finance-live';
 
 /* =========================================================================================
  * EXP-06 · Finance "to pay" queue (T2, Fin)
@@ -42,7 +44,11 @@ export interface ToPayScreenProps {
   defaultSelected?: string[];
   confirm?: 'payroll' | 'payout' | null;
 }
-export function ToPayScreen({ claims, state = 'ready', view = 'unpaid', defaultSelected = [], confirm = null }: ToPayScreenProps) {
+/** EXP-06 To-pay queue. The live app passes `live` (claims, bank files released by a second person, the journal). */
+export function ToPayScreen(props: ToPayScreenProps | { live: LiveToPay; defaultTab?: ToPayTab; defaultSheet?: ToPaySheet }) {
+  return 'live' in props ? <LiveToPayScreen live={props.live} defaultTab={props.defaultTab} defaultSheet={props.defaultSheet} /> : <SampleToPay {...props} />;
+}
+function SampleToPay({ claims, state = 'ready', view = 'unpaid', defaultSelected = [], confirm = null }: ToPayScreenProps) {
   const [viewId, setViewId] = useState(view);
   const [filters, setFilters] = useState<FilterValue[]>([]);
   const [selected, setSelected] = useState<string[]>(defaultSelected);
@@ -136,7 +142,12 @@ export interface PolicyMatrix {
   tiers: string[];
   limits: number[][][];
 }
-export function PolicyMatrixScreen({ matrix, dirty: startDirty, persona = 'fin' }: { matrix: PolicyMatrix; dirty?: boolean; persona?: 'fin' | 'hr' }) {
+/** EXP-07 Expense policy matrix and set-up. The live app passes `live` (founder answer 6: the grade grid for policies
+ *  that apply to one grade, the rest listed below; categories, tiers, rates, GST registrations, exchange rates). */
+export function PolicyMatrixScreen(props: { matrix: PolicyMatrix; dirty?: boolean; persona?: 'fin' | 'hr' } | { live: ExpenseSetupScreenProps; defaultTab?: PolicyTab; defaultSheet?: PolicySheet }) {
+  return 'live' in props ? <LivePolicyScreen live={props.live} defaultTab={props.defaultTab} defaultSheet={props.defaultSheet} /> : <SamplePolicyMatrix {...props} />;
+}
+function SamplePolicyMatrix({ matrix, dirty: startDirty, persona = 'fin' }: { matrix: PolicyMatrix; dirty?: boolean; persona?: 'fin' | 'hr' }) {
   const [limits, setLimits] = useState(() => matrix.limits.map((g) => g.map((t) => [...t])));
   const [dirty, setDirty] = useState(!!startDirty);
   const [grade, setGrade] = useState<string | null>(matrix.grades[1]);
@@ -367,7 +378,11 @@ export interface ExpenseReportsProps {
   tab?: 'summary' | 'ageing' | 'unpaid' | 'over' | 'gst';
   loading?: boolean;
 }
-export function ExpenseReportsScreen({ claims, ageing, tab = 'summary', loading }: ExpenseReportsProps) {
+/** EXP-09 Expense reports. The live app passes `live` (the server's rows and chart figures). */
+export function ExpenseReportsScreen(props: ExpenseReportsProps | { live: LiveReports }) {
+  return 'live' in props ? <LiveReportsScreen live={props.live} /> : <SampleReports {...props} />;
+}
+function SampleReports({ claims, ageing, tab = 'summary', loading }: ExpenseReportsProps) {
   const [current, setCurrent] = useState(tab);
   const [filters, setFilters] = useState<FilterValue[]>([]);
   const gstLines = claims.flatMap((c) => c.lines.filter((l) => l.gst).map((l) => ({ ...l.gst!, claim: c.id, employee: c.employee, date: l.date })));

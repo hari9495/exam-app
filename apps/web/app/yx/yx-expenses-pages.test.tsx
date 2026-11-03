@@ -14,6 +14,7 @@ import YxTripPage from './(app)/expenses/trips/[id]/page';
 import YxAdvancePage from './(app)/expenses/advances/[id]/page';
 import YxExpenseReportsPage from './(app)/expenses/reports/page';
 import YxTeamClaimsPage from './(app)/expenses/team/page';
+import YxExpenseToPayPage from './(app)/expenses/to-pay/page';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn(), useParams: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn() }));
@@ -192,3 +193,28 @@ describe('Team claims (round 2, founder answer 1)', () => {
     expect(await screen.findByText("You don't have access to team claims")).toBeInTheDocument();
   });
 });
+describe('To pay (EXP-06, the designed screen with live data)', () => {
+  it('shows the cut-off from the API and sends chosen claims to the payroll month', async () => {
+    const posted: unknown[] = [];
+    route({
+      'GET /expenses/to-pay': { payroll: { cutoffDay: 23, month: '2026-10' }, entities: [{ id: 'e1', name: 'Kaveri Foods Pvt Ltd' }], claims: [{ id: 'c1', employeeId: 'p1', employeeName: 'Arjun Kulkarni', legalEntityId: 'e1', title: 'Client visit', approvedTotal: '1114.00', advanceAdjusted: '0.00', netPayable: '1114.00', route: 'payout', paymentStatus: 'approved_unpaid', payMonth: null, ref: null, reason: null, batchId: null, paidOn: null }], batches: [] },
+      'GET /expenses/journal': { month: '2026-10', lines: [], unmapped: [], balanced: true, exports: [] },
+      'POST /expenses/to-pay/payroll': (_p: string, init: RequestInit) => (posted.push(JSON.parse(String(init.body))), { moved: 1, refused: [] }),
+    });
+    wrap(<YxExpenseToPayPage />);
+    expect(await screen.findByText('October payroll cut-off 23 Oct 2026')).toBeInTheDocument();
+    await userEvent.click(within(screen.getByRole('row', { name: /Arjun Kulkarni/ })).getByRole('checkbox'));
+    await userEvent.click(screen.getByRole('button', { name: 'Add 1 to October payroll' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Add to payroll' }));
+    await waitFor(() => expect(posted).toEqual([{ claimIds: ['c1'] }]));
+  });
+
+  it('a person without the pay key sees no access, not "check your connection"', async () => {
+    api.mockImplementation(async () => {
+      throw Object.assign(new Error('You cannot pay expense claims.'), { status: 403 });
+    });
+    wrap(<YxExpenseToPayPage />);
+    expect(await screen.findByText(/You don't have access to claims to pay/)).toBeInTheDocument();
+  });
+});
+

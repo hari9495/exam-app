@@ -1,11 +1,18 @@
-import { render, screen, within } from '@testing-library/react';
+import { render as rtl, screen, within } from '@testing-library/react';
+import type { ReactElement } from 'react';
+import { ToastProvider } from '../../components/notify';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { ANY, fromRows, sameRules, toRows } from './matrix';
-import { ExpenseSetupScreen, type ExpenseSetupScreenProps } from './setup';
-import type { CityTier, ExpenseCategory, ExpensePolicy, PolicyRule } from './types';
+import { ANY, fromRows, sameRules, toRows } from './expenses-matrix';
+import { PolicyMatrixScreen } from './expenses-finance';
+import { singleGrade, type ExpenseSetupScreenProps } from './expenses-setup-live';
+import { POLICY_SETUP } from './expenses-setup-samples';
+import type { CityTier, ExpenseCategory, ExpensePolicy, PolicyRule } from '../expenses/live/types';
 
-// Expenses batch E1 screens (M05-BUILD-DESIGN §6–§7, EXP-07; XP-1.06).
+const render = (ui: ReactElement) => rtl(<ToastProvider>{ui}</ToastProvider>);
+const ExpenseSetupScreen = (p: ExpenseSetupScreenProps) => <PolicyMatrixScreen live={p} />;
+
+// EXP-07 expense policy and set-up, the designed screen with `live` (round 2; founder answer 6).
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const cat = (code: string, name: string, o: Partial<ExpenseCategory> = {}): ExpenseCategory => ({ id: `c-${code}`, code, name, kind: 'spend', receiptAbove: '500', gstEligible: true, itcBlockedReason: null, taxable: 'never', ledgerCode: null, active: true, version: 1, ...o });
@@ -69,16 +76,16 @@ describe('Settings › Expenses', () => {
   it('a policy in force saves new limits only as a new version from a date', async () => {
     const onSavePolicy = vi.fn(async () => ({}));
     render(<ExpenseSetupScreen {...props({ onSavePolicy })} />);
-    expect(screen.getByText('In force since 1 Apr 2026')).toBeInTheDocument();
-    const save = screen.getByRole('button', { name: 'Save as a new version' });
-    expect(save).toBeDisabled();
+    expect(screen.getByText('v2, from 1 Apr 2026')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save as v3' })).toBeNull();
     const cell = screen.getByRole('textbox', { name: 'Hotel and lodging, Tier 1' });
     await ue.clear(cell);
     await ue.type(cell, '6000');
+    const save = screen.getByRole('button', { name: 'Save as v3' });
     await ue.click(save);
     expect(onSavePolicy).not.toHaveBeenCalled();
     expect(screen.getAllByText('Choose the day the new limits start.').length).toBeGreaterThan(0);
-    await ue.type(screen.getByRole('textbox', { name: 'New limits from' }), '01 Nov 2026');
+    await ue.type(screen.getByRole('textbox', { name: 'Effective from' }), '01 Nov 2026');
     await ue.tab();
     await ue.click(save);
     expect(onSavePolicy).toHaveBeenCalledWith({ mode: 'version', from: '2026-11-01', policy: expect.objectContaining({ id: 'p1', rules: expect.arrayContaining([expect.objectContaining({ categoryCode: 'lodging', tierId: 't1', perLine: '6000.00' })]) }) });
@@ -87,7 +94,7 @@ describe('Settings › Expenses', () => {
   it('a policy not yet in force is saved in place', async () => {
     const onSavePolicy = vi.fn(async () => ({}));
     render(<ExpenseSetupScreen {...props({ onSavePolicy, policies: { ...props().policies!, policies: [policy({ validFrom: '2026-12-01' })] } })} />);
-    expect(screen.getByText('Starts 1 Dec 2026')).toBeInTheDocument();
+    expect(screen.getByText('v2, starts 1 Dec 2026')).toBeInTheDocument();
     await ue.click(screen.getByRole('combobox', { name: 'Gifts: limit' }));
     await ue.click(screen.getByRole('option', { name: 'No limit' }));
     await ue.click(screen.getByRole('button', { name: 'Save limits' }));
@@ -109,11 +116,11 @@ describe('Settings › Expenses', () => {
   it('categories: unmapped ledger codes stand out; the code is fixed once saved', async () => {
     const onSaveCategory = vi.fn(async () => ({}));
     render(<ExpenseSetupScreen {...props({ onSaveCategory })} />);
-    await ue.click(screen.getByRole('tab', { name: 'Categories' }));
+    await ue.click(screen.getByRole('tab', { name: 'Receipts & over-limit' }));
     expect(screen.getAllByText('Not mapped').length).toBe(4);
     await ue.click(screen.getAllByRole('button', { name: 'Edit' })[0]);
     const sheet = screen.getByRole('dialog');
-    expect(within(sheet).getByRole('textbox', { name: /Code/ })).toBeDisabled();
+    expect(within(sheet).getByRole('textbox', { name: /Code/ })).toHaveAttribute('readonly');
     await ue.type(within(sheet).getByRole('textbox', { name: /Ledger code/ }), '6100');
     await ue.click(within(sheet).getByRole('button', { name: 'Save category' }));
     expect(onSaveCategory).toHaveBeenCalledWith(expect.objectContaining({ ledgerCode: '6100', version: 1 }));
@@ -132,5 +139,28 @@ describe('Settings › Expenses', () => {
     await ue.type(within(sheet).getByRole('textbox', { name: /GSTIN/ }), 'v');
     await ue.click(within(sheet).getByRole('button', { name: 'Save registration' }));
     expect(onAddGst).toHaveBeenCalledWith({ legalEntityId: 'e1', gstin: '27AAPFU0939F1ZV', validFrom: '2026-10-12' });
+  });
+
+  it('founder answer 6: the grade band grid lists the policies for one grade; the rest are listed below and open in the grid', async () => {
+    const onSavePolicy = vi.fn(async () => ({}));
+    render(<ExpenseSetupScreen {...POLICY_SETUP} onSavePolicy={onSavePolicy} />);
+    expect(screen.getByText('Senior band: G4–G6')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Hotel and lodging, Tier 1' })).toHaveValue('7500');
+    const others = screen.getByRole('table', { name: 'Other policies' });
+    expect(within(others).getByText('Everyone without a narrower policy')).toBeInTheDocument();
+    expect(within(others).getByText('Some people (conditions)')).toBeInTheDocument();
+    await ue.click(within(within(others).getByRole('row', { name: /Standard/ })).getByRole('button', { name: 'Edit limits' }));
+    expect(screen.getByText('Standard: everyone without a narrower policy')).toBeInTheDocument();
+  });
+
+  it('a refused page shows no access; a policy with two grades or another field is not a grade band', () => {
+    render(<ExpenseSetupScreen {...POLICY_SETUP} state="no-access" />);
+    expect(screen.getByText(/You don't have access to the expense policy/)).toBeInTheDocument();
+    const f = POLICY_SETUP.policies!.fields;
+    const p = POLICY_SETUP.policies!.policies[0]!;
+    expect(singleGrade(p, f)).toEqual({ id: 'g5', name: 'G4–G6' });
+    expect(singleGrade({ ...p, appliesIf: { id: 'g', join: 'and', items: [{ id: 'c', field: 'grade_id', operator: 'one_of', value: ['g1', 'g5'] }] } }, f)).toBeNull();
+    expect(singleGrade(POLICY_SETUP.policies!.policies[2]!, f)).toBeNull();
+    expect(singleGrade({ ...p, appliesIf: null }, f)).toBeNull();
   });
 });

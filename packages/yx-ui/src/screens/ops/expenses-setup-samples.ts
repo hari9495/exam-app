@@ -1,16 +1,13 @@
-import type { Meta, StoryObj } from '@storybook/react-vite';
-import { ExpenseSetupScreen, type ExpenseSetupScreenProps } from './setup';
-import type { ExpenseCategory, PolicyRule } from './types';
+// EXP-07 policy and set-up samples (round 2): a company-wide policy, one for a single grade (founder answer 6) and one
+// for a location, for the stories and the unit tests.
+import type { ExpenseCategory, PolicyRule } from '../expenses/live/types';
+import type { ExpenseSetupScreenProps } from './expenses-setup-live';
 
-// Settings › Expenses, wired (batch E1). In the affordance guard set ('screens-expenses-live').
-const meta: Meta = { title: 'Screens/Expenses/Live · Expense set-up', parameters: { layout: 'fullscreen' } };
-export default meta;
-type S = StoryObj;
-
-const ok = async () => ({});
 const cat = (code: string, name: string, o: Partial<ExpenseCategory> = {}): ExpenseCategory => ({ id: `c-${code}`, code, name, kind: 'spend', receiptAbove: '500', gstEligible: true, itcBlockedReason: null, taxable: 'never', ledgerCode: '6100', active: true, version: 1, ...o });
 const rule = (o: Partial<PolicyRule>): PolicyRule => ({ categoryCode: 'lodging', tierId: null, perLine: null, perDay: null, perTrip: null, perMonth: null, overLimit: 'justify_and_approve', ...o });
-const BASE: ExpenseSetupScreenProps = {
+const ok = async () => ({});
+
+export const POLICY_SETUP: ExpenseSetupScreenProps = {
   state: 'ready',
   check: { ready: false, problems: [{ key: 'no_ledger_code', text: '2 categories have no ledger code, so their journal lines cannot be posted.', count: 2 }] },
   categories: [cat('lodging', 'Hotel and lodging'), cat('meals', 'Meals', { itcBlockedReason: 'food_beverages', ledgerCode: null }), cat('air', 'Air travel'), cat('mileage', 'Mileage (own vehicle)', { kind: 'mileage', receiptAbove: null, gstEligible: false, ledgerCode: null })],
@@ -20,8 +17,15 @@ const BASE: ExpenseSetupScreenProps = {
     { id: 't3', name: 'Tier 3', rank: 3, country: 'IN', cities: [], active: true, version: 1 },
   ],
   policies: {
-    policies: [{ id: 'p1', name: 'Standard', appliesIf: null, priority: 1000, validFrom: '2026-04-01', validTo: null, status: 'active', version: 1, rules: [rule({ tierId: 't1', perLine: '5000.00' }), rule({ tierId: 't2', perLine: '3500.00' }), rule({ tierId: 't3', perLine: '2500.00' }), rule({ categoryCode: 'meals', perDay: '800.00' }), rule({ categoryCode: 'air' }), rule({ categoryCode: 'mileage' })] }],
-    fields: [{ key: 'grade_id', label: 'Grade', type: 'choice', options: [{ value: 'g1', label: 'G1' }, { value: 'g5', label: 'G5' }] }],
+    policies: [
+      { id: 'p5', name: 'Senior band', appliesIf: { id: 'g', join: 'and', items: [{ id: 'c1', field: 'grade_id', operator: 'one_of', value: ['g5'] }] }, priority: 100, validFrom: '2026-07-01', validTo: null, status: 'active', version: 5, rules: [rule({ tierId: 't1', perLine: '7500.00' }), rule({ tierId: 't2', perLine: '5500.00' }), rule({ tierId: 't3', perLine: '4000.00' }), rule({ categoryCode: 'meals', perDay: '1200.00' }), rule({ categoryCode: 'air', perTrip: '12000.00', overLimit: 'block' }), rule({ categoryCode: 'mileage' })] },
+      { id: 'p1', name: 'Standard', appliesIf: null, priority: 1000, validFrom: '2026-04-01', validTo: null, status: 'active', version: 1, rules: [rule({ tierId: 't1', perLine: '5000.00' }), rule({ tierId: 't2', perLine: '3500.00' }), rule({ tierId: 't3', perLine: '2500.00' }), rule({ categoryCode: 'meals', perDay: '800.00' }), rule({ categoryCode: 'air' }), rule({ categoryCode: 'mileage' })] },
+      { id: 'p7', name: 'Field sales, Hosur', appliesIf: { id: 'g', join: 'and', items: [{ id: 'c1', field: 'location_id', operator: 'one_of', value: ['l1'] }] }, priority: 200, validFrom: '2026-04-01', validTo: null, status: 'active', version: 2, rules: [rule({ categoryCode: 'mileage' })] },
+    ],
+    fields: [
+      { key: 'grade_id', label: 'Grade', type: 'choice', options: [{ value: 'g1', label: 'G1–G3' }, { value: 'g5', label: 'G4–G6' }] },
+      { key: 'location_id', label: 'Location', type: 'choice', options: [{ value: 'l1', label: 'Hosur plant' }] },
+    ],
     today: '2026-10-12',
   },
   rates: { mileage: [{ id: 'm1', vehicle: 'car', ratePerKm: '17.00', currency: 'INR', monthlyKmCap: null, validFrom: '2026-04-01', validTo: null }], perDiem: [{ id: 'd1', tierId: 't1', country: null, ratePerDay: '1200.00', currency: 'INR', partialDayRule: 'half_after_hours', validFrom: '2026-04-01', validTo: null }] },
@@ -36,7 +40,3 @@ const BASE: ExpenseSetupScreenProps = {
   onAddGst: ok,
   onEndGst: ok,
 };
-
-export const Limits: S = { name: 'Limits matrix (in force)', render: () => <ExpenseSetupScreen {...BASE} /> };
-export const Starters: S = { name: 'New company · starters', render: () => <ExpenseSetupScreen {...BASE} categories={[]} /> };
-export const WithExchangeRates: S = { name: 'With the exchange-rate table (E5)', render: () => <ExpenseSetupScreen {...BASE} payCurrency="INR" fxRates={[{ id: 'x1', source: 'company', base: 'AED', quote: 'INR', rateDate: '2026-10-01', rate: '22.75000000' }]} onAddFxRate={ok} /> };
