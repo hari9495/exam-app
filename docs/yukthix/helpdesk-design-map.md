@@ -714,6 +714,76 @@ reminder" reminds the pending people (or the ones ticked) who were not reminded 
 only, not the ones under it (question); no quiz (question).
 **Defaults the product decided:** policy numbers POL-01 …; categories are free text; no quiz (question).
 
+## 4e. HLP-06 rules (speak-up filing)
+
+Written before the build (3 Nov 2026, `feat/yukthix-hlp-06`), from the founder decisions of 3 Nov (end of this file).
+This round builds the filing side only: the forms, the anonymous reply code, routing, and the smallest case record that
+HLP-07 / 08 / 09 (my cases, the case team, the ethics desk) will use. The app records and routes; it decides nothing
+legal. Every legal hook is marked **verify with counsel**; every legal number lives in a statutory rule set (with its
+source and a verify flag), every company choice in a company setting.
+
+**What the app does and why.** Anyone in the company can report a workplace grievance, a fraud or ethics concern, or
+sexual harassment. Grievances and ethics concerns go to a separate case team of named case officers that the company
+chooses (not ordinary HR). Sexual-harassment complaints go only to the Internal Committee (IC). A report about a case
+officer skips that officer and goes to the next person (the escalation list, for example the audit committee chair).
+A reporter may stay anonymous: they get a private reply code, shown once, to read answers and reply without a name.
+A named reporter's identity is shown only to the case officers routed to the case, and every look is audited, so a
+manager or HR who is not on the case can never find out who reported (retaliation protection).
+
+**Indian legal hooks the app supports (it does not replace any of them):**
+- **Companies Act 2013 s.177(9)-(10)** and Rule 7 of the Meetings of Board Rules: listed companies and some others must
+  have a vigil mechanism for directors and employees, with safeguards against victimisation and direct access to the
+  audit committee chair in fit cases. The ethics team, the escalation list and the retaliation flag support it.
+  **Verify with counsel.**
+- **SEBI LODR regulation 22** (listed companies): a vigil mechanism / whistle-blower policy overseen by the audit
+  committee, disclosed on the website. The escalation list can hold the audit committee chair. **Verify with counsel.**
+- **POSH Act 2013**: s.4 (an Internal Committee at every office of 10 or more), s.9 (a written complaint within a
+  window from the incident, which the committee may extend), s.11 (inquiry within a set time), s.13 (report and the
+  employer's action within set times), s.16 (the complainant's identity, the respondent, witnesses and the inquiry are
+  confidential). The window and the timelines come from the statutory rule set `IN.POSH` (verify flag on), never from
+  code. Only IC members on the case see a POSH complaint; it is always named (the committee must hear the complainant).
+  With no IC set up the app does not hand the complaint to anyone else; it says so and names the Local Committee route
+  (s.6). **Verify with counsel.**
+- **Industrial Relations Code 2020 s.4**: a Grievance Redressal Committee where there are 20 or more workers, with a
+  time to finish. That time comes from the rule set `IN.GRC`. **Verify with counsel.**
+- **Whistle Blowers Protection Act 2014**: covers disclosures about public servants to a competent authority; it does
+  not cover private-company vigil mechanisms. The app does not claim that protection. **Verify with counsel.**
+- **DPDP Act 2023**: report text, names and files are personal data; kept for the purpose of handling the case,
+  shown only to those handling it. Retention is a company setting to be built with counsel (question). **Verify with counsel.**
+
+**Anonymity by design:**
+- An anonymous report is sent through the no-login route (the app sends it without the sign-in), so the server never
+  learns who sent it; the record has no user, no employee, no IP and no device. Its audit entry has no actor.
+- The reply code (16 characters from 32 letters and digits, about 80 bits) is shown once and stored only as an HMAC
+  hash. Lost codes cannot be recovered; the reporter can file a follow-up report naming the earlier number.
+- Wrong codes are limited per network address (a short-lived counter, never stored with the report): 5 tries an hour,
+  then locked until the hour ends.
+- Files sent with an anonymous report or reply carry no uploader.
+
+**Company settings** (Settings › Company rules › Speak-up; default first):
+
+| setting | default | choices | what it does |
+|---|---|---|---|
+| `speakup.anonymous` | all | all, ethics_only, off | who may report without a name (ethics_only: fraud and ethics concerns only) |
+| `speakup.ack_days` | 2 | 1, 2, 3, 5, 7 | days for the case team to acknowledge a report |
+| `speakup.categories.grievance` | Pay and benefits, Working conditions, A manager, Transport, Safety, Other | one per line | topics of a grievance |
+| `speakup.categories.ethics` | Fraud or theft, Bribery or corruption, Conflict of interest, Misuse of data, Other | one per line | topics of an ethics concern |
+
+**Who:**
+- **Any signed-in person** files a named report; anyone (no login) files anonymously and follows up with the code.
+  Someone acting for another person cannot file a named report (403).
+- **Case officers** are people on the company's lists (grievance team, ethics team, Internal Committee, escalation),
+  set by **`speakup.setup.manage`** (new key; the System Admin, not the HR templates). Being on a list is the access:
+  a case shows only to the officers routed to it; anyone else gets 404 (not found), including HR, the manager and admins.
+- **Routing:** grievance → grievance team (the ethics team when it has nobody); fraud or ethics → ethics team;
+  sexual harassment → IC. A report about one of the officers → the escalation list, never that officer.
+- Every view of a case by an officer is audited, saying whether the named reporter's identity was shown.
+
+**On filing:** a number (GRV-0001, WB-0001, POSH-0001 per company), the clock (acknowledge by the company's days;
+decide or finish the inquiry by the rule set's days for grievances and POSH), a notice to the routed officers that says
+only the number and "worried about retaliation" when ticked. Messages between the anonymous reporter and the team are
+append-only. Nothing a reporter files can be changed or deleted by the app.
+
 ## 5. Two designs for one job
 
 HLP-02 … 05 (founder-approved Helpdesk designs, `screens/ops/helpdesk.tsx`) and the Service desk designs (Phase 3b-1,
