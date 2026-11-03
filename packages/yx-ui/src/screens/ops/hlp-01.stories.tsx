@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { HelpCentreScreen } from './helpdesk';
 import { ARTICLES, ASSISTANT_THREAD, MY_TICKETS } from './helpdesk-data';
 import { TODAY } from '../_kit/data';
+import { HELP_BANNERS, HELP_CHANNELS, HELP_CHAT, liveHelp } from './helpdesk-live-samples';
 
 const meta: Meta = { title: 'Screens/Helpdesk/HLP-01 · Help centre', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -18,3 +19,9 @@ export const Loading: S = { render: () => <HelpCentreScreen articles={ARTICLES} 
 export const Error: S = { render: () => <HelpCentreScreen articles={ARTICLES} tickets={MY_TICKETS} today={TODAY} state="error" /> };
 export const Phone: S = { name: 'Help centre · phone', globals: PHONE, render: () => <HelpCentreScreen device="phone" articles={ARTICLES} tickets={MY_TICKETS} today={TODAY} /> };
 export const PhoneRaise: S = { name: 'Raise ticket · phone', globals: PHONE, render: () => <HelpCentreScreen device="phone" articles={ARTICLES} tickets={MY_TICKETS} today={TODAY} raiseOpen raiseSubject="Form 16 not visible" /> };
+
+// States only the real record has (Helpdesk design wiring, round 1): drawn in the same layout as the stories above.
+export const KnownIssue: S = { name: 'Known issue · Me too, reading aids and my data', render: () => <HelpCentreScreen live={liveHelp({ banners: HELP_BANNERS })} /> };
+export const ArticleOpen: S = { name: 'Article open · was it helpful, this solved it', render: () => <HelpCentreScreen live={liveHelp({ kb: { ...liveHelp().kb, openNumber: 12 } })} /> };
+export const ChatAndPhone: S = { name: 'Chat offer and help on WhatsApp or SMS', render: () => <HelpCentreScreen live={liveHelp({ chatPrompt: HELP_CHAT, channels: HELP_CHANNELS })} /> };
+export const NoAccess: S = { name: 'No access (acting for someone else)', render: () => <HelpCentreScreen live={liveHelp({ state: 'no-access' })} /> };

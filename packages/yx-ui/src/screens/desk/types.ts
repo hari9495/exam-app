@@ -338,6 +338,17 @@ export interface MyTicketRow {
   role: 'requester' | 'requested_for' | 'watcher';
   createdAt: string;
   updatedAt: string;
+  /** HLP-01: the resolution promise of an open ticket (business minutes used of the target). */
+  clock?: { usedMinutes: number; targetMinutes: number; paused: boolean } | null;
+  resolvedAt?: string | null;
+  closedAt?: string | null;
+  /** A solved ticket closes on this day without a reply (the desk's setting). */
+  closesOn?: string | null;
+  /** Until then a reply reopens a solved ticket (the desk's setting); after it a reply starts a new ticket. */
+  reopenUntil?: string | null;
+  rating?: number | null;
+  /** The person who raised it can still rate it. */
+  canRate?: boolean;
 }
 
 export interface MyTicket {

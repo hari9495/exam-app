@@ -4,9 +4,9 @@ import { choose, fails, never, ok, pick, play, press, pressFirst, tab, tick, typ
 import { CatalogScreen, RequestTracker, type CatalogScreenProps } from './catalog';
 import { CatalogAdmin, type CatalogAdminProps } from './catalog-admin';
 import { ArticleBody, type KbArticleView } from './help-kb';
-import { AgentChatScreen, ChatPromptBanner, RequesterChatScreen, type AgentChatProps, type RequesterChatProps } from './chat';
+import { AgentChatScreen, RequesterChatScreen, type AgentChatProps, type RequesterChatProps } from './chat';
 import { ChatQueuesAdmin, DeskOrgAdmin, LifecycleAdmin, MyDocumentsCard, SchedulesAdmin, TicketEsmRail, type DeskOrgAdminProps, type TicketEsmRailProps } from './esm2';
-import { MessagingAdmin, MyChannelsCard, TeamScreen, type TeamScreenProps } from './esm3';
+import { MessagingAdmin, TeamScreen, type TeamScreenProps } from './esm3';
 import { RequestPanel } from './request-panel';
 import { RulesAdmin, type RulesAdminProps } from './rules-admin';
 import { TicketKbCard, type TicketKbCardProps } from './ticket-kb';
@@ -23,7 +23,6 @@ import {
   CHAT_ENDED,
   CHAT_QUEUED,
   CHAT_QUEUES,
-  DEV_OUTBOX,
   DOCS_VIEW,
   DOCUMENTS,
   DOC_TEMPLATES,
@@ -36,7 +35,6 @@ import {
   LAPTOP_PAGE,
   LIFECYCLE,
   MSG_SETUP,
-  MY_CHANNELS,
   MY_REQUEST,
   PICKS,
   RECURRING,
@@ -85,15 +83,6 @@ export const Panel: S = { name: 'Ticket · request panel (agent can ask for appr
 export const PanelAsk: S = { name: 'Ticket · ask for approval, open', render: () => <RequestPanel view={TICKET_REQUEST} canAsk onAsk={ok} onFindPeople={picks} />, play: play(press(/^Ask for approval/)) };
 export const PanelReadOnly: S = { name: 'Ticket · request panel, read only', render: () => <RequestPanel view={TICKET_REQUEST} canAsk={false} onAsk={ok} onFindPeople={picks} /> };
 
-// ------------------------------------------------------------------ Help centre cards
-export const PromptBanner: S = { name: 'Help centre · chat prompt banner', render: () => <ChatPromptBanner prompt={{ text: 'Questions about your payslip? Chat with us.', desk: 'HR help desk', afterSeconds: 30 }} onChat={() => undefined} onDismiss={() => undefined} /> };
-export const PromptBannerNone: S = { name: 'Help centre · no chat prompt', render: () => <ChatPromptBanner prompt={null} onChat={() => undefined} onDismiss={() => undefined} /> };
-const channels = (over: Partial<Parameters<typeof MyChannelsCard>[0]> = {}) => <MyChannelsCard channels={MY_CHANNELS} onJoinCode={async () => ({ code: 'KF7Q2M9X', text: 'JOIN KF7Q2M9X', expiresInMinutes: 15 })} onUnlink={ok} {...over} />;
-export const Channels: S = { name: 'Help centre · my WhatsApp and SMS', render: () => channels() };
-export const ChannelsLink: S = { name: 'Help centre · link my phone (the JOIN message)', render: () => channels(), play: play(press('Link my phone')) };
-export const ChannelsLinkFailed: S = { name: 'Help centre · link my phone refused', render: () => channels({ onJoinCode: fails('Too many codes asked for today. Try again tomorrow.') }), play: play(press('Link my phone')) };
-export const ChannelsDemo: S = { name: 'Help centre · my channels with the demo phone', render: () => channels({ channels: { ...MY_CHANNELS, devTransport: true }, dev: { outbox: DEV_OUTBOX, onSend: ok } }) };
-export const ChannelsNone: S = { name: 'Help centre · no messaging lines', render: () => channels({ channels: { devTransport: false, lines: [] } }) };
 const docs = (over: Partial<Parameters<typeof MyDocumentsCard>[0]> = {}) => <MyDocumentsCard documents={DOCUMENTS} onSendCode={async () => ({ to: 'ar****@kaverifoods.test', minutes: 5 })} onSign={ok} onDecline={ok} {...over} />;
 export const Documents: S = { name: 'My request · documents to sign', render: () => docs() };
 export const DocumentsSign: S = { name: 'My request · read and sign, open', render: () => docs(), play: play(press('Read and sign')) };

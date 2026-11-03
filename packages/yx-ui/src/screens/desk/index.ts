@@ -1,7 +1,10 @@
 // Service Desk (M14 phase 3b-1): help centre, agent tickets, ticket workspace, desk set-up.
 // Import the stylesheet once: '@yukthix/ui/styles.css'.
 export * from './types';
-export { HelpCentreScreen, MyTicketScreen, FileList, BannerList, HelpDrawer, type HelpCentreProps, type MyTicketScreenProps, type HelpDrawerProps } from './help';
+export { MyTicketScreen, FileList, BannerList, HelpDrawer, type MyTicketScreenProps, type HelpDrawerProps } from './help';
+// HLP-01 Help centre: the designed screen with `live` (Helpdesk design wiring, round 1).
+export { HelpCentreScreen } from '../ops/helpdesk';
+export { topicOptions, rateCandidate, type LiveHelp } from '../ops/helpdesk-live';
 export { DeskTicketsScreen, BUILT_IN_VIEWS, type DeskTicketsScreenProps, type TicketQuery } from './tickets';
 export { TicketScreen, eventText, type TicketScreenProps } from './ticket';
 export { DeskSetupScreen, type DeskSetupScreenProps } from './setup';
@@ -16,7 +19,6 @@ export { PortalScreen, PortalSignIn, PortalHomeView, PortalTicketView, PrivacyRe
 export { ReadingAidsCard, ReadingAidsFrame, useReadingAids, type ReadingAidsValue } from './reading-aids';
 // Batch 4: the requester's help articles, suggestions while typing and ratings (SD-1.24 to SD-1.26).
 export { ArticleBody, ArticleDrawer, KnowledgeCard, RateTicketCard, SuggestList, useSuggestions, LANGUAGE_LABEL, type KbArticleView, type KbHome, type KbSuggestion, type ArticleBodyProps } from './help-kb';
-export type { HelpKbProps } from './help';
 // Batch 4: YukthiX support
 export { YukthixSupportScreen, YX_SEVERITY, severityWords, type YukthixSupportScreenProps, type YxSupportRow, type YxSupportTicket, type YxSupportRaise } from './yukthix-support';
 // Batch 4: knowledge

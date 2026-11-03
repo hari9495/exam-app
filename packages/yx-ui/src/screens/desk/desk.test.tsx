@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { HelpCentreScreen, HelpDrawer, MyTicketScreen } from './help';
+import { HelpDrawer, MyTicketScreen } from './help';
 import { TicketScreen, eventText, type TicketScreenProps } from './ticket';
 import { BUILT_IN_VIEWS, DeskTicketsScreen } from './tickets';
 import { fillCanned, minutesText } from './desk-kit';
@@ -28,25 +28,8 @@ describe('Service Desk helpers', () => {
   });
 });
 
-describe('HLP-01 help centre', () => {
-  it('raises a ticket with the chosen team and shows the number', async () => {
-    const onRaise = vi.fn().mockResolvedValue({ id: 'n', number: 'IT-1009' });
-    render(<HelpCentreScreen state="ready" desks={RAISE_DESKS} tickets={MY_ROWS} onRaise={onRaise} onOpen={() => {}} />);
-    await ue.click(screen.getByRole('button', { name: 'Raise a ticket' }));
-    await ue.click(screen.getByRole('combobox', { name: /Which team/ }));
-    await ue.click(await screen.findByRole('option', { name: /IT help desk/ }));
-    await ue.type(screen.getByRole('textbox', { name: /Subject/ }), 'Wi-Fi drops');
-    await ue.type(screen.getByRole('textbox', { name: /Details/ }), 'Every hour on floor 2');
-    await ue.click(screen.getByRole('radio', { name: 'Today' }));
-    await ue.click(screen.getByRole('button', { name: 'Raise ticket' }));
-    await waitFor(() => expect(onRaise).toHaveBeenCalledWith(expect.objectContaining({ deskId: 'd-it', subject: 'Wi-Fi drops', description: 'Every hour on floor 2', urgency: 2 })));
-    expect((await screen.findAllByText(/Your ticket number is IT-1009/))[0]).toBeInTheDocument();
-  });
-
-  it('lists my open tickets with private ones marked; the requester view has no notes', () => {
-    render(<HelpCentreScreen state="ready" desks={RAISE_DESKS} tickets={MY_ROWS} onRaise={vi.fn()} onOpen={() => {}} />);
-    expect(screen.getByRole('button', { name: 'LOP on my September payslip' })).toBeInTheDocument();
-    expect(screen.getByText('Private')).toBeInTheDocument();
+describe('HLP-01 my ticket', () => {
+  it('the requester view has no notes and lists the files', () => {
     render(<MyTicketScreen state="ready" ticket={MY_TICKET} onBack={() => {}} onReply={ok()} onUpload={vi.fn()} onOpenFile={ok()} onAddWatcher={ok()} />);
     expect(screen.queryByText(/Same router model/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /vpn-log.txt/ })).toBeInTheDocument();
@@ -365,20 +348,6 @@ describe('batch 3 (SD-1.18 … SD-1.23, SD-1.28)', () => {
       <DeskTicketsScreen state="ready" desks={[DESK]} details={[DETAIL]} views={[]} page={{ items: [{ ...ROWS[0], senderVerified: false }], total: 1, nextCursor: null }} pageState="ready" query={{ viewId: 'open', filters: BUILT_IN_VIEWS[2].filters, layout: 'list' }} onQueryChange={() => {}} onOpen={() => {}} onMove={ok()} onBulk={vi.fn()} onSaveView={ok()} onExport={ok()} onSearchPeople={async () => []} onCreate={vi.fn()} />,
     );
     expect(screen.getByText('Not verified')).toBeInTheDocument();
-  });
-
-  it('help centre: “Me too” joins the known issue once; times name the time zone', async () => {
-    const onMeToo = vi.fn().mockResolvedValue({ linked: true, already: false });
-    render(<HelpCentreScreen state="ready" desks={RAISE_DESKS} tickets={MY_ROWS} onRaise={vi.fn()} onOpen={() => {}} banners={MY_BANNERS} onMeToo={onMeToo} timeZone="Asia/Kolkata" />);
-    await ue.click(screen.getByRole('button', { name: 'Me too' }));
-    expect(onMeToo).toHaveBeenCalledWith('bn1');
-    await ue.click(await screen.findByRole('button', { name: 'You are on it' }));
-    expect(onMeToo).toHaveBeenCalledTimes(1);
-    expect((await screen.findAllByText(/You are already on this issue/))[0]).toBeInTheDocument();
-    expect(screen.getByText(/We added you to this issue/)).toBeInTheDocument();
-    expect(screen.getByText('Times are in your time zone: Asia/Kolkata.')).toBeInTheDocument();
-    await ue.click(screen.getByRole('switch', { name: /Larger text/ }));
-    expect(document.querySelector('.yx-reading')).toHaveAttribute('data-large', 'true');
   });
 
   it('help drawer: Raise ticket pressed too early says what is missing', async () => {

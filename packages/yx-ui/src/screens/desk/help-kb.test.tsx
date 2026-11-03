@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { HelpCentreScreen, MyTicketScreen } from './help';
+import { MyTicketScreen } from './help';
 import { ArticleBody, RateTicketCard, type KbArticleView, type KbHome } from './help-kb';
 import { InsertArticleButton, TicketKbCard, articleLinkHtml } from './ticket-kb';
 import { MY_ROWS, MY_TICKET, RAISE_DESKS } from './data';
@@ -13,18 +13,6 @@ const ARTICLE: KbArticleView = { id: 'a1', number: 12, title: 'Connect to the of
 const HOME: KbHome = { spaces: [{ id: 's1', slug: 'it-help', name: 'IT help', categories: [{ id: 'c1', parentId: null, name: 'Network' }] }], featured: [{ id: 'a1', number: 12, title: 'Connect to the office Wi-Fi', summary: null }], articles: [{ id: 'a1', number: 12, title: 'Connect to the office Wi-Fi', summary: null, categoryId: 'c1', spaceId: 's1' }] };
 
 describe('help articles for requesters', () => {
-  it('suggests articles while the person types the subject, and opens one', async () => {
-    const onSearch = vi.fn().mockResolvedValue([{ id: 'a1', number: 12, title: 'Connect to the office Wi-Fi', summary: 'Join KaveriStaff.' }]);
-    const onArticle = vi.fn().mockResolvedValue(ARTICLE);
-    render(<HelpCentreScreen state="ready" desks={RAISE_DESKS} tickets={MY_ROWS} onRaise={vi.fn()} onOpen={() => {}} kb={{ home: HOME, onSearch, onArticle, onFeedback: vi.fn(), onSolved: vi.fn() }} />);
-    await ue.click(screen.getByRole('button', { name: 'Raise a ticket' }));
-    await ue.type(screen.getByRole('textbox', { name: /Subject/ }), 'wifi down');
-    await waitFor(() => expect(onSearch).toHaveBeenCalledWith(expect.stringContaining('wifi down')));
-    const links = await screen.findAllByRole('button', { name: 'Connect to the office Wi-Fi' });
-    await ue.click(links[links.length - 1]);
-    await waitFor(() => expect(onArticle).toHaveBeenCalledWith(12, undefined));
-  });
-
   it('"This solved it" counts and needs no ticket; feedback once; language is a single choice', async () => {
     const onSolved = vi.fn().mockResolvedValue(undefined);
     const onFeedback = vi.fn().mockResolvedValue(undefined);

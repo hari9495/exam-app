@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { LinksFrame, type StoryLink } from '../_kit/story-frame';
 import { pick, play, press, pressFirst, tab, type } from '../_kit/story-play';
-import { HelpCentreScreen, HelpDrawer, MyTicketScreen } from './help';
+import { HelpDrawer, MyTicketScreen } from './help';
 import { BUILT_IN_VIEWS, DeskTicketsScreen } from './tickets';
 import { TicketScreen } from './ticket';
 import { DeskSetupScreen } from './setup';
@@ -33,8 +33,6 @@ const shell = (active: string, children: React.ReactNode) => (
 );
 const noop = () => wait();
 
-export const Help: S = { name: 'HLP-01 Help centre', render: () => shell('desk-help', <HelpCentreScreen state="ready" desks={RAISE_DESKS} tickets={MY_ROWS} onRaise={async () => ({ id: 'x', number: 'IT-1005' })} onOpen={() => {}} />) };
-export const HelpEmpty: S = { name: 'HLP-01 Help centre · no tickets', render: () => shell('desk-help', <HelpCentreScreen state="ready" desks={RAISE_DESKS} tickets={[]} onRaise={async () => ({ id: 'x', number: 'IT-1005' })} onOpen={() => {}} />) };
 export const MyTicket: S = {
   name: 'HLP-01 My ticket (requester view)',
   render: () => shell('desk-help', <MyTicketScreen state="ready" ticket={MY_TICKET} onBack={() => {}} onReply={noop} onUpload={async () => ({ ...MY_TICKET.attachments[0], id: 'n', scanStatus: 'pending' })} onOpenFile={noop} onAddWatcher={noop} />),
@@ -220,7 +218,6 @@ export const Customers: S = {
       />,
     ),
 };
-export const HelpWithBanner: S = { name: 'US-G-020 Help centre · known issue and reading aids', render: () => shell('desk-help', <HelpCentreScreen state="ready" desks={RAISE_DESKS} tickets={MY_ROWS} onRaise={async () => ({ id: 'x', number: 'IT-1005' })} onOpen={() => {}} banners={MY_BANNERS} onMeToo={noop} timeZone="Asia/Kolkata" />) };
 export const HelpDrawerOpen: S = { name: 'US-B-100 In-app Help drawer', render: () => shell('desk-tickets', <HelpDrawer open onOpenChange={() => {}} desks={RAISE_DESKS} tickets={MY_ROWS} banners={MY_BANNERS} onMeToo={noop} onRaise={async () => ({ id: 'x', number: 'IT-1005' })} ticketHref={(id) => `#${id}`} />) };
 export const WorkspaceUnverified: S = { name: 'SD-1.19 Ticket workspace · sender not verified, customer', render: () => workspace({ ...TICKET, channel: 'email', senderVerified: false, customer: { account: { id: 'ac1', name: 'Sunrise Retail' }, plan: 'gold' }, product: { id: 'pr1', name: 'Kaveri billing app' }, fields: { order_number: '4471' } }, []) };
 
@@ -264,10 +261,6 @@ export const PortalNoDesk: S = { name: 'SD-1.21 Help pages · New help page with
 export const BannerTooEarly: S = { name: 'SD-1.23 Banners · Post pressed with nothing written', render: BannerSetup.render, play: play(press('Post a banner'), press('Post banner')) };
 
 // Helpdesk founder rules (28 Oct 2026): too early says what is missing; done is a toast.
-const helpCentre = () => shell('desk-help', <HelpCentreScreen state="ready" desks={RAISE_DESKS} tickets={MY_ROWS} onRaise={async () => ({ id: 'x', number: 'IT-1005' })} onOpen={() => {}} banners={MY_BANNERS} onMeToo={noop} timeZone="Asia/Kolkata" />);
-export const HelpRaiseTooEarly: S = { name: 'HLP-01 Help centre · Raise ticket pressed with nothing filled', render: helpCentre, play: play(press('Raise a ticket'), press('Raise ticket')) };
-export const HelpRaised: S = { name: 'HLP-01 Help centre · ticket raised (toast with the number)', render: helpCentre, play: play(press('Raise a ticket'), pick(/^Which team/, /IT help desk/), type(/^Subject/, 'Wi-Fi drops on floor 2'), type(/^Details/, 'Every hour since Monday, in the Hosur plant office'), press('Raise ticket')) };
-export const HelpMeTooAgain: S = { name: 'US-G-020 Help centre · Me too pressed again (toast)', render: helpCentre, play: play(press('Me too'), press('You are on it')) };
 export const HelpDrawerTooEarly: S = { name: 'US-B-100 Help drawer · Raise ticket pressed with nothing filled', render: () => shell('desk-tickets', <HelpDrawer open onOpenChange={() => {}} desks={RAISE_DESKS} tickets={MY_ROWS} banners={MY_BANNERS} onMeToo={noop} onRaise={async () => ({ id: 'x', number: 'IT-1005' })} ticketHref={(id) => `#${id}`} />), play: play(press('Raise ticket')) };
 export const MyTicketReplyTooEarly: S = { name: 'HLP-01 My ticket · Send reply pressed with nothing written', render: MyTicket.render, play: play(press('Send reply')) };
 export const MyTicketWatchTooEarly: S = { name: 'HLP-01 My ticket · Add colleague pressed with no email', render: MyTicket.render, play: play(press('Add')) };

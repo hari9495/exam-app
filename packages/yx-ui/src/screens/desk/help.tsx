@@ -1,9 +1,9 @@
-import { useEffect, useId, useState, type ReactNode } from 'react';
-import { Lock, Paperclip, Plus, Send } from 'lucide-react';
+import { useId, useState, type ReactNode } from 'react';
+import { Paperclip, Send } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
 import { Drawer } from '../../components/drawer';
-import { EmptyState, InlineAlert } from '../../components/feedback';
+import { InlineAlert } from '../../components/feedback';
 import { FormField, useTooEarly } from '../../components/field';
 import { useToast } from '../../components/notify';
 import { TextArea, TextField } from '../../components/inputs';
@@ -13,44 +13,12 @@ import { Segment } from '../../components/segment';
 import { FileUpload } from '../../components/upload';
 import { Card } from '../../components/shell';
 import { useRun } from '../org/org-kit';
-import { DeskPage, MessageBody, StatusBadge, browserTimeZone, sizeText, when } from './desk-kit';
-import { ReadingAidsCard, ReadingAidsFrame, useReadingAids } from './reading-aids';
-import { PrivacyRequestCard, type PortalScreenProps } from './portal';
-import { ArticleDrawer, KnowledgeCard, RateTicketCard, SuggestList, useSuggestions, type KbArticleView, type KbHome, type KbSuggestion } from './help-kb';
+import { DeskPage, MessageBody, StatusBadge, sizeText, when } from './desk-kit';
+import { RateTicketCard, SuggestList, useSuggestions, type KbSuggestion } from './help-kb';
 import type { Attachment, BannerSeverity, LoadState, MyTicket, MyTicketRow, PublicBanner, RaiseDesk, RaiseInput } from './types';
 
-// HLP-01 Help centre, wired (US-B-086, US-G-004, YX-SD-16): raise a ticket with the right desk, follow my tickets.
-// Batch 3: known-issue banners with "Me too" (US-G-020), reading aids, times in the person's own zone, and the in-app
-// Help drawer (US-B-100). Batch 4: help articles to search and browse, suggestions while typing, "This solved it"
-// (SD-1.24, US-B-105) and rating a solved ticket (SD-1.26). The assistant arrives with AI (3b-4).
-
-export interface HelpCentreProps {
-  state: LoadState;
-  onRetry?: () => void;
-  desks: RaiseDesk[];
-  tickets: MyTicketRow[];
-  onRaise: (input: RaiseInput) => Promise<{ id: string; number: string }>;
-  onOpen: (id: string) => void;
-  /** Known issues with "Me too". */
-  banners?: PublicBanner[];
-  onMeToo?: (id: string) => Promise<unknown>;
-  /** The person's own time zone (IANA name); the browser's when empty. */
-  timeZone?: string;
-  /** Batch 4: the help articles of the company (absent: no knowledge base yet). */
-  kb?: HelpKbProps;
-  /** SD-1.30: a copy of my desk data, or its erasure. */
-  privacy?: PortalScreenProps['privacy'];
-}
-
-export interface HelpKbProps {
-  home: KbHome | null;
-  onSearch: (q: string) => Promise<KbSuggestion[]>;
-  onArticle: (number: number, language?: string) => Promise<KbArticleView>;
-  onFeedback: (articleId: string, helpful: boolean) => Promise<unknown>;
-  onSolved: (articleId: string) => Promise<unknown>;
-  /** Opened from a link (?article=12). */
-  openNumber?: number | null;
-}
+// The requester's side of the desk: known-issue banners with "Me too" (US-G-020), the in-app Help drawer (US-B-100) and
+// one ticket (HLP-01 My ticket). The Help centre page itself is the designed HLP-01 screen (ops/helpdesk.tsx, `live`).
 
 const URGENCY = [
   { value: '4', label: 'Whenever' },
@@ -58,102 +26,6 @@ const URGENCY = [
   { value: '2', label: 'Today' },
   { value: '1', label: 'Right now' },
 ] as const;
-
-export function HelpCentreScreen(props: HelpCentreProps) {
-  const [open, setOpen] = useState(false);
-  const { toast } = useToast();
-  const [show, setShow] = useState<'open' | 'all'>('open');
-  const [aids, setAids] = useReadingAids();
-  const tz = props.timeZone || browserTimeZone();
-  const rows = props.tickets.filter((t) => show === 'all' || !['solved', 'closed'].includes(t.systemState));
-  const [article, setArticle] = useState<KbArticleView | null>(null);
-  const kb = props.kb;
-  const openArticle = (n: number, lang?: string) => void kb?.onArticle(n, lang).then(setArticle, () => setArticle(null));
-  useEffect(() => {
-    if (kb?.openNumber) openArticle(kb.openNumber);
-    // Only when the link changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kb?.openNumber]);
-  return (
-    <ReadingAidsFrame value={aids}>
-      <DeskPage
-        title="Help centre"
-        description="Raise a ticket with the right team and follow it here."
-        state={props.state}
-        onRetry={props.onRetry}
-        what="your tickets"
-        actions={
-          <Button variant="primary" icon={Plus} onClick={() => (props.desks.length ? setOpen(true) : toast({ title: 'No team takes tickets here yet. Ask your HR or IT admin.' }))}>
-            Raise a ticket
-          </Button>
-        }
-      >
-        {props.banners && props.onMeToo && <BannerList banners={props.banners} onMeToo={props.onMeToo} />}
-
-        {kb && <KnowledgeCard home={kb.home} onSearch={kb.onSearch} onOpen={(a) => openArticle(a.number)} />}
-        <Card title="My tickets" actions={<Segment label="Which tickets" options={[{ value: 'open', label: 'Open' }, { value: 'all', label: 'All' }]} value={show} onChange={setShow} />}>
-          {rows.length === 0 ? (
-            <EmptyState compact title={show === 'open' ? 'You have no open tickets.' : 'You have no tickets yet.'} description="When you raise a ticket, you can follow it here." />
-          ) : (
-            <ul className="yx-ops-list" aria-label="My tickets">
-              {rows.map((t) => (
-                <li key={t.id} className="yx-ops-list__item">
-                  <span className="yx-ops-list__main">
-                    <button type="button" className="yx-desk-link" onClick={() => props.onOpen(t.id)}>
-                      {t.subject}
-                    </button>
-                    <span className="yx-ops-list__sub">
-                      <span className="yx-ops-mono">{t.number}</span> · {t.desk} · raised {when(t.createdAt, tz)}
-                      {t.role === 'requested_for' ? ' · raised for you' : t.role === 'watcher' ? ' · you follow it' : ''}
-                    </span>
-                  </span>
-                  <span className="yx-ops-row">
-                    {t.private && (
-                      <Badge tone="neutral">
-                        <Lock aria-hidden size={12} /> Private
-                      </Badge>
-                    )}
-                    <StatusBadge label={t.status} state={t.systemState} />
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-          <p className="yx-ops-muted">Times are in your time zone: {tz}.</p>
-        </Card>
-        <ReadingAidsCard value={aids} onChange={setAids} />
-        {props.privacy && <PrivacyRequestCard {...props.privacy} />}
-        {article && kb && (
-          <ArticleDrawer
-            open
-            onOpenChange={(o) => !o && setArticle(null)}
-            article={article}
-            timeZone={tz}
-            onLanguage={(l) => openArticle(article.number, l)}
-            onFeedback={(h) => kb.onFeedback(article.id, h)}
-            onSolved={() => kb.onSolved(article.id)}
-            onStillNeedHelp={() => {
-              setArticle(null);
-              setOpen(true);
-            }}
-          />
-        )}
-        <RaiseDrawer
-          open={open}
-          onOpenChange={setOpen}
-          onSuggest={kb?.onSearch}
-          onOpenSuggestion={(a) => openArticle(a.number)}
-          desks={props.desks}
-          onRaise={async (input) => {
-            const r = await props.onRaise(input);
-            toast({ tone: 'success', title: 'Ticket raised', description: `Your ticket number is ${r.number}. The team will reply here.` });
-            setOpen(false);
-          }}
-        />
-      </DeskPage>
-    </ReadingAidsFrame>
-  );
-}
 
 const SEVERITY: Record<BannerSeverity, { tone: 'info' | 'warning' | 'danger'; title: string }> = {
   info: { tone: 'info', title: 'For your information' },
@@ -276,43 +148,6 @@ function useRaiseForm(desks: RaiseDesk[], suggest?: { onSuggest?: (q: string) =>
       setPrivate(false);
     },
   };
-}
-
-function RaiseDrawer({ open, onOpenChange, desks, onRaise, onSuggest, onOpenSuggestion }: { open: boolean; onOpenChange: (o: boolean) => void; desks: RaiseDesk[]; onRaise: (i: RaiseInput) => Promise<void>; onSuggest?: (q: string) => Promise<KbSuggestion[]>; onOpenSuggestion?: (a: KbSuggestion) => void }) {
-  const form = useRaiseForm(desks, { onSuggest, onOpen: onOpenSuggestion });
-  const { busy, error, run } = useRun();
-  return (
-    <Drawer
-      open={open}
-      onOpenChange={onOpenChange}
-      title="Raise a ticket"
-      subtitle="We send it to the right team. You can follow it in My tickets."
-      dirty={form.dirty}
-      footer={
-        <>
-          <Button onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button
-            variant="primary"
-            loading={busy === 'raise'}
-            onClick={() =>
-              !form.stop() &&
-              void run('raise', async () => {
-                await onRaise(form.input());
-                form.clear();
-              })
-            }
-          >
-            Raise ticket
-          </Button>
-        </>
-      }
-    >
-      <div className="yx-ops-stack">
-        {error && <InlineAlert tone="danger" title="The ticket was not raised">{error}</InlineAlert>}
-        {form.fields}
-      </div>
-    </Drawer>
-  );
 }
 
 export interface HelpDrawerProps {

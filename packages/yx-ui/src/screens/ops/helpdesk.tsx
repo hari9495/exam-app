@@ -26,6 +26,7 @@ import type { FilterValue } from '../../lib/table';
 import { Actions, CardGrid, Facts, OpsDesk, SlaBadge, Workspace, useSay } from './ops-kit';
 import { ackPercent, slaState, ticketCloseInfo } from './ops-rules';
 import type { KbArticle, PolicyRow, Ticket, TicketStatus } from './helpdesk-data';
+import { LiveHelpCentre, type LiveHelp } from './helpdesk-live';
 
 export type ListState = 'ready' | 'loading' | 'error' | 'empty';
 export type Device = 'desk' | 'phone';
@@ -145,7 +146,12 @@ export interface HelpCentreScreenProps {
   /** Ticket whose rating / reopen card is shown (resolved tickets). */
   rateTicketId?: string;
 }
-export function HelpCentreScreen({ device = 'desk', articles, tickets, today, state = 'ready', defaultQuery = '', raiseOpen, raiseSubject, assistant, rateTicketId }: HelpCentreScreenProps) {
+/** HLP-01. Stories draw it with sample props; the live page passes `live` (helpdesk-live.tsx) with the real records. */
+export function HelpCentreScreen(props: HelpCentreScreenProps | { live: LiveHelp }) {
+  return 'live' in props ? <LiveHelpCentre live={props.live} /> : <SampleHelpCentre {...props} />;
+}
+
+function SampleHelpCentre({ device = 'desk', articles, tickets, today, state = 'ready', defaultQuery = '', raiseOpen, raiseSubject, assistant, rateTicketId }: HelpCentreScreenProps) {
   const [query, setQuery] = useState(defaultQuery);
   const [open, setOpen] = useState(!!raiseOpen);
   const { toast } = useSay();
