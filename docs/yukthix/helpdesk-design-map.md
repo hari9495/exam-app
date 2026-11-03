@@ -807,6 +807,112 @@ manager or HR who is not on the case can never find out who reported (retaliatio
 decide or finish the inquiry by the rule set's days for grievances and POSH), a notice to the routed officers that says
 only the number and "worried about retaliation" when ticked. Messages between the anonymous reporter and the team are
 append-only. Nothing a reporter files can be changed or deleted by the app.
+## 4f. HLP-07/08/09 rules (my cases, the case team, the ethics desk)
+Written before the build (3 Nov 2026, `feat/yukthix-hlp-07-09`, phase A: designs and the screens' `live` interfaces
+only). The case record itself (tables, routing to case officers or the Internal Committee, the reporter's identity, the
+anonymous reply code) comes from HLP-06; these pages read and act on it. Like HLP-10/11, the app **records** each step
+of a case and keeps its clocks; it decides nothing legal. People decide; the app makes sure the right people decided,
+in the right order, and keeps the proof. Every legal hook is marked **verify with counsel**, and no legal time limit is
+in code: every limit comes from the company's statutory rule set (a dated, versioned set per law and state) or a
+company setting, and the screen shows where each date came from.
+
+**Indian legal hooks the app supports (it does not replace any of them):**
+- **POSH Act 2013, s.11 (inquiry):** the Internal Committee (IC) inquires following the principles of the service rules
+  or, where there are none, the POSH Rules 2013; it sends the respondent a copy of the complaint and hears both sides.
+  The time to send the copy, the respondent's time to reply and the time to finish the inquiry are read from the POSH
+  rule set (the Rules today say 7 days, 10 days and 90 days). The app keeps the clocks and the record of each hearing.
+  **Verify with counsel.**
+- **POSH Act s.12 (interim relief):** during the inquiry the IC may recommend, at the complainant's written request, a
+  transfer, leave or stopping the respondent from reporting on the complainant. The app records the recommendation as a
+  case action and gives HR a task to carry it out; it never moves anyone in People on its own (founder decision 3).
+  **Verify with counsel.**
+- **POSH Act s.13 (inquiry report):** the IC gives its findings and recommendation to the employer within the rule
+  set's time (today 10 days after the inquiry ends), and the employer acts on it within the rule set's time (today 60
+  days). The report is the IC's: members record whether they agree, the majority view is the finding, and the presiding
+  officer signs it (founder decision 1). **Verify with counsel.**
+- **POSH Act s.14 (false or malicious complaint):** the IC may find a complaint false or malicious, but not merely
+  because it could not be proved. The outcome form says so in plain words and keeps "not proved" and "false or
+  malicious" as different outcomes; the second needs written reasons. **Verify with counsel.**
+- **POSH Act s.16 (confidentiality):** the names and addresses of the complainant, respondent and witnesses, the
+  inquiry and the recommendation are not published or told to anyone outside the case. The app shows each person only
+  their own part (the "My cases" rule below), logs every view, and keeps case files out of search, reports and exports.
+  **Verify with counsel.**
+- **POSH Act s.18 (appeal):** a person not satisfied may appeal within the rule set's time (today 90 days from the
+  recommendation). The app shows the appeal window on the case and in My cases; the appeal itself is outside the app.
+  **Verify with counsel.**
+- **Natural justice** (for every case kind): the person accused is told what is alleged, gets a copy of what is relied
+  on, and has a fair time to reply before anything is decided; the person deciding has no stake in the case. The app
+  blocks recording an outcome until the reply came or the reply date passed, and blocks a member with a conflict from
+  the case unless an override is recorded with its reason. **Verify with counsel.**
+- **Companies Act 2013 s.177 (vigil mechanism)** and its rules: listed companies and some others must have a vigil
+  mechanism with direct access to the audit committee chair in fit cases, and safeguards against victimisation. A
+  report about a case officer goes to the next person in the company's routing (for example the audit committee chair),
+  not to that officer. **Verify with counsel.**
+- **Disciplinary steps under Standing Orders** (Industrial Employment (Standing Orders) Act 1946, the certified
+  standing orders, the Industrial Relations Code 2020 once in force): charge-sheet or show-cause, the employee's reply,
+  inquiry where the misconduct is major, then the decision. The reply time comes from the company's standing orders
+  (a setting per entity), never from code. **Verify with counsel.**
+- **DPDP Act 2023:** a case holds personal and sensitive data. It is used only for the case, shown only to people on
+  it, kept for the company's case-records period (a setting, question 31) and then deleted or anonymised. A person's
+  request to see their data is answered with their own part only (the My cases rule). **Verify with counsel.**
+- **Evidence** (Bharatiya Sakshya Adhiniyam 2023 s.63, earlier Indian Evidence Act s.65B): every file on a case keeps
+  who added it, when, its SHA-256 fingerprint and its virus check; files are never changed or deleted (a new file is
+  added instead); every open and download is logged with who and when; a case on legal hold cannot be closed or
+  cleared. The export of a file carries these details so the company can give the certificate. **Verify with counsel.**
+
+**Who:**
+- **Reporter** (the person who raised it, named): sees in My cases only the case number, kind, stage, the dates that
+  concern them, and the messages between them and the case team, plus the outcome summary the case team chooses to
+  send. Never the investigation notes, witness names, the respondent's reply or other people's files (founder decision
+  4). An anonymous reporter follows the case with the reply code (HLP-06), with the same limits.
+- **Respondent:** once told, sees the notice, the copy of the complaint (or the allegations, as the IC decides), the
+  reply date and its source, and sends a reply with files; may ask for more time once (the case team decides). Never
+  sees the reporter's name where the law or the case team withholds it, the witnesses' statements before the case team
+  shares them, or notes.
+- **Witness:** sees that they are on a case, the date asked of them and their own messages and statement.
+- **Case officer** (named by the company per case kind, HLP-06): sees and works the cases routed to them. Proposes the
+  outcome of an ethics, grievance or disciplinary case; a **second officer** approves or sends it back, never the one
+  who proposed it (four eyes, also a database check).
+- **Internal Committee member** (POSH cases only): sees the POSH cases the committee holds; records findings and signs.
+  The **presiding officer** signs the report once a majority agrees. HR, managers and admins never see POSH cases
+  (HLP-06 decision 3).
+- **Ethics officer:** the whistleblower queue (HLP-09); routes a report to the audit committee chair with a reason.
+- **Audit committee chair** (external): reads only the reports routed to them, the updates and the outcome.
+- **HR** (the HR task): gets a task for an interim relief or an outcome action with only what is needed to carry it
+  out (who, what, by when), not the case.
+- Anyone else: a case they are not on is "Not found" (404, never "no access", so its existence is not given away);
+  the case pages without the case-team key show the no-access state (403). Someone acting for another person gets 403
+  on My cases (a reply in a case is one's own act).
+
+**Steps and their rules:**
+- **Notice to the respondent:** "Send notice" sends the notice and the copy; the reply date is the rule set's (POSH) or
+  the standing orders' (disciplinary) or the company setting's (ethics, grievance) days from the sending day, shown with
+  its source. "Delay notice" needs a reason (3 to 500 letters) and a date to review it; the reason is on the case
+  record and in the audit log (founder decision 2); the clock shows "notice delayed" with that reason.
+- **Reply:** the respondent's reply (text 3 to 5000 letters, files optional) is final once sent; a second reply is
+  added, never replaces the first. "Ask for more time" (reason required) goes to the case officer; until they decide,
+  the first date stands.
+- **Outcome (ethics, grievance, disciplinary):** "Propose outcome" (finding: proved, proved in part, not proved, false
+  or malicious; the action; reasons 20 to 5000 letters) is blocked before the reply came or its date passed. The second
+  officer approves (toast, the case moves on) or sends it back with a note. Optimistic version check: a proposal that
+  changed meanwhile is 409.
+- **IC report (POSH):** any IC member on the case drafts the findings and recommendation; each member on the case
+  records "I agree" or "I don't agree" with an optional note; once more than half of the members on the case agree,
+  the presiding officer signs, and the report is final and dated. A recused member does not count. The report date
+  starts the employer-action clock from the rule set.
+- **Interim relief:** the case officer or IC records the action (transfer, leave, stop reporting to the accused, other)
+  with a note and the request it answers; the app creates an HR task (the task number shows on the case); the case
+  shows the task's status. Nothing changes in People automatically.
+- **Recusal and conflicts:** a member may step aside with a reason (the case goes on with the others; for an ethics
+  case with only one officer, to the next person in the routing). Adding a member checks the conflict list (the
+  respondent, the reporter, their managers up the chain, anyone named in the case); a conflict blocks it unless an
+  override reason is recorded (409 `CASE_CONFLICT`, then a second try with the reason).
+- **Evidence:** files up to the company's file limits, virus-checked; only clean files open; each file shows who added
+  it, when, its fingerprint and how many times it was opened; the access log lists every view.
+
+**Defaults the product decided (each a question at the stop):** case numbers by kind (GRV-, ETH-, POSH-, DSC-); the
+respondent may ask for more time once; the outcome summary to the reporter is written by the case officer, never
+generated; witnesses are not shown to each other.
 
 ## 5. Two designs for one job
 
