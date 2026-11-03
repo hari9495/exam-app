@@ -11740,3 +11740,77 @@ model PolicyReminder {
   @@unique([versionId, employeeId, kind, sentOn], map: "policy_reminders_day_key")
   @@map("policy_reminders")
 }
+
+/// HLP-06: the company's speak-up case officers per list (grievance, ethics, ic, escalation).
+model SpeakupTeamMember {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  team           String    @db.VarChar(12)
+  userId         String    @map("user_id") @db.Uuid
+  role           String    @default("member") @db.VarChar(12)
+  addedBy        String?   @map("added_by") @db.Uuid
+  addedAt        DateTime  @default(now()) @map("added_at") @db.Timestamptz(3)
+  removedBy      String?   @map("removed_by") @db.Uuid
+  removedAt      DateTime? @map("removed_at") @db.Timestamptz(3)
+
+  @@map("speakup_team_members")
+}
+
+/// HLP-06: a grievance, ethics concern or POSH complaint. Anonymous: no reporter, only the reply code's hash.
+model SpeakupCase {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  kind               String    @db.VarChar(14)
+  number             Int
+  identity           String    @db.VarChar(10)
+  reporterUserId     String?   @map("reporter_user_id") @db.Uuid
+  reporterEmployeeId String?   @map("reporter_employee_id") @db.Uuid
+  replyCodeHash      String?   @map("reply_code_hash") @db.Char(64)
+  category           String?   @db.VarChar(80)
+  summary            String
+  happenedOn         DateTime? @map("happened_on") @db.Date
+  locationId         String?   @map("location_id") @db.Uuid
+  involved           String?   @db.VarChar(300)
+  outsideName        String?   @map("outside_name") @db.VarChar(150)
+  outsideEmployer    String?   @map("outside_employer") @db.VarChar(150)
+  witnesses          String?   @db.VarChar(300)
+  retaliationWorry   Boolean   @default(false) @map("retaliation_worry")
+  aboutUserId        String?   @map("about_user_id") @db.Uuid
+  routedTo           String    @map("routed_to") @db.VarChar(12)
+  status             String    @default("received") @db.VarChar(12)
+  fileIds            String[]  @default([]) @map("file_ids") @db.Uuid
+  late               Boolean   @default(false)
+  ackDueOn           DateTime  @map("ack_due_on") @db.Date
+  decideDueOn        DateTime? @map("decide_due_on") @db.Date
+  ruleSet            String?   @map("rule_set") @db.VarChar(60)
+  filedAt            DateTime  @default(now()) @map("filed_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, kind, number], map: "speakup_cases_number_key")
+  @@map("speakup_cases")
+}
+
+/// HLP-06: who a case was routed to (append-only).
+model SpeakupCaseMember {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  caseId         String   @map("case_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  addedAt        DateTime @default(now()) @map("added_at") @db.Timestamptz(3)
+
+  @@unique([caseId, userId], map: "speakup_case_members_key")
+  @@map("speakup_case_members")
+}
+
+/// HLP-06: messages between the reporter and the case team (append-only).
+model SpeakupMessage {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  caseId         String   @map("case_id") @db.Uuid
+  sender         String   @db.VarChar(10)
+  authorUserId   String?  @map("author_user_id") @db.Uuid
+  body           String
+  fileIds        String[] @default([]) @map("file_ids") @db.Uuid
+  sentAt         DateTime @default(now()) @map("sent_at") @db.Timestamptz(3)
+
+  @@map("speakup_messages")
+}

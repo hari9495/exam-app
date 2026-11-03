@@ -90,6 +90,7 @@ describe('notification catalog', () => {
       'helpdesk.policy.overdue_report',
       'helpdesk.policy.to_publish',
       'helpdesk.policy.decided',
+      'helpdesk.speakup.received',
     ];
     for (const k of expected) expect(keys).toContain(k);
     expect(NOTIFICATION_TYPES.length).toBe(expected.length);

@@ -34,6 +34,12 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'policy.reack.default': { label: 'Policies: a new version asks everyone to acknowledge again', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'policy.ack.typed_name': { label: 'Policies: people type their name to acknowledge', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   'policy.publish.second_person': { label: 'Policies: a second person publishes each version', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on', guard: 'access.role.manage' },
+  // HLP-06 speak-up (docs/yukthix/helpdesk-design-map.md 4e): who may report without a name, the days to acknowledge,
+  // and the topics people choose from. Legal clocks (POSH, GRC) come from the rule sets IN.POSH and IN.GRC, not from here.
+  'speakup.anonymous': { label: 'Speak-up: who may report without a name', scopes: ['tenant'], dated: false, values: ['all', 'ethics_only', 'off'], default: 'all' },
+  'speakup.ack_days': { label: 'Speak-up: days for the case team to acknowledge a report', scopes: ['tenant'], dated: false, values: ['1', '2', '3', '5', '7'], default: '2' },
+  'speakup.categories.grievance': { label: 'Speak-up: topics of a grievance (one a line)', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 600 }, default: 'Pay and benefits\nWorking conditions\nA manager\nTransport\nSafety\nOther' },
+  'speakup.categories.ethics': { label: 'Speak-up: topics of a fraud or ethics concern (one a line)', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 600 }, default: 'Fraud or theft\nBribery or corruption\nConflict of interest\nMisuse of data\nOther' },
   // YX-ORG-16: employee codes unique per legal entity (default) or across the company.
   'employee_code.scope': { label: 'Employee codes are unique', scopes: ['tenant'], dated: false, values: ['legal_entity', 'tenant'], default: 'legal_entity' },
   // YX-ORG-15: whether a new structure master starts shared or entity-only.

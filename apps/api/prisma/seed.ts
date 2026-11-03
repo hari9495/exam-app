@@ -92,6 +92,8 @@ export const PERMISSIONS = [
   // HLP-10 / HLP-11 company policies (also in the policy_library migration).
   { key: 'policy.manage', description: 'Write company policies and their versions, choose who they apply to, see who acknowledged, send reminders and export the evidence' },
   { key: 'policy.publish', description: 'Publish or send back a policy version written by someone else' },
+  // HLP-06 speak-up (also in the speakup_filing migration).
+  { key: 'speakup.setup.manage', description: 'Choose the speak-up case officers: the grievance team, the ethics team, the Internal Committee and the escalation list' },
 ];
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -200,6 +202,8 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     // HLP-10 / HLP-11: company policies, and publishing a version someone else wrote.
     'policy.manage',
     'policy.publish',
+    // HLP-06: who the speak-up case officers are (the System Admin, not HR).
+    'speakup.setup.manage',
     // E2: claims of people in scope, and the finance check.
     'expense.claim.view',
     'expense.finance.review',

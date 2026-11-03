@@ -112,6 +112,8 @@ export const YX_KEYS = [
   // HLP-10 / HLP-11 company policies.
   'policy.manage',
   'policy.publish',
+  // HLP-06 speak-up set-up.
+  'speakup.setup.manage',
   'expense.claim.view',
   'expense.finance.review',
   'travel.booking.manage',
