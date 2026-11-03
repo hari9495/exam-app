@@ -7,7 +7,7 @@ import { Tx } from '../org-structure/org-structure.service';
 import { DeskActor, audit, canLead, has, visibleTickets } from './desk-access';
 import { TicketFiltersDto, TicketListQueryDto, ViewDto } from './dto';
 import { MeService } from './me.service';
-import { SlaService } from './sla.service';
+import { SlaService, clockState } from './sla.service';
 
 // SD-1.07 agent desk lists (US-B-089, US-G-002, US-G-010): filters, saved views, the board, CSV export. Every list
 // starts from the visibility filter (§5.7), so a search, a count or an export never holds a ticket the person may
@@ -53,8 +53,12 @@ export class TicketListsService {
     if (f.snoozed === 'only') and.push({ id: { in: snoozed } });
     else if (f.snoozed !== 'show' && snoozed.length) and.push({ id: { notIn: snoozed } });
     if (f.breaching) {
-      const soon = await tx.sdSlaTimer.findMany({ where: { organizationId: a.ctx.organizationId, kind: 'sla', state: { in: ['running', 'paused'] }, OR: [{ breachedAt: { not: null } }, { dueAt: { lte: new Date(Date.now() + 4 * 3_600_000) } }] }, select: { ticketId: true }, take: 5000 });
-      and.push({ id: { in: [...new Set(soon.map((x) => x.ticketId))] } });
+      // HLP-05b: missed, or at risk by the desk's own at-risk point (the one clock rule, clockState).
+      // shortcut: the newest 5000 live timers are checked; more needs a stored clock state.
+      const live = await tx.sdSlaTimer.findMany({ where: { organizationId: a.ctx.organizationId, kind: 'sla', state: { in: ['running', 'paused'] } }, select: { ticketId: true, breachedAt: true }, orderBy: { startedAt: 'desc' }, take: 5000 });
+      const clocks = await this.sla.clocks(tx, a.ctx.organizationId, [...new Set(live.map((x) => x.ticketId))], ['first_response', 'resolution']);
+      const late = live.filter((x) => x.breachedAt || Object.values(clocks.get(x.ticketId) ?? {}).some((c) => c && ['at-risk', 'breached'].includes(clockState(c))));
+      and.push({ id: { in: [...new Set(late.map((x) => x.ticketId))] } });
     }
     if (f.createdFrom || f.createdTo) {
       const from = f.createdFrom ? new Date(`${f.createdFrom}T00:00:00+05:30`) : null;

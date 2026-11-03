@@ -3172,6 +3172,8 @@ model SdDesk {
   autoCloseDays      Int?     @default(3) @map("auto_close_days") @db.SmallInt
   /// Founder decision 9 Oct 2026: minutes a new ticket waits for its best-matched agent before routing falls back.
   routingWaitMinutes Int      @default(2) @map("routing_wait_minutes") @db.SmallInt
+  /// HLP-05b: a clock is "at risk" once this share (%) of its target is used: 50, 60, 70, 80 or 90.
+  atRiskPercent      Int      @default(80) @map("at_risk_percent") @db.SmallInt
   /// SD-2.10: desks this desk may move tickets to.
   forwardTo          String[] @default([]) @map("forward_to") @db.Uuid
   status             String   @default("active") @db.VarChar(10)

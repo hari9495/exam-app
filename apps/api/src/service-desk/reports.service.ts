@@ -10,7 +10,7 @@ import { addDays, todayIst } from '../org-structure/org-validation';
 import { planFor } from './customers.service';
 import { DeskAccessService, DeskActor, activeOn, audit, deskSystem, has, visibleTickets } from './desk-access';
 import { CustomReportDto, KpiTargetDto, ReportRunDto, ScheduleDto, WallboardDto } from './dto-ops';
-import { ClockView, SlaService } from './sla.service';
+import { ClockView, SlaService, clockState } from './sla.service';
 import { OPEN_STATES } from './tickets.service';
 
 // SD-1.27 reports (US-B-098, US-B-110, US-B-111, US-G-026 … US-G-028, US-G-223). Dashboards, the KPI history, the
@@ -59,13 +59,6 @@ export function forecast(values: number[], ahead: number): number[] {
   const den = xs.reduce((s, x) => s + (x - mx) ** 2, 0);
   const slope = den ? xs.reduce((s, x, i) => s + (x - mx) * (values[i] - my), 0) / den : 0;
   return Array.from({ length: ahead }, (_, k) => Math.max(0, Math.round((my + slope * (n + k - mx)) * 10) / 10));
-}
-
-/** HLP-05: a live clock as on track / at risk (80 % of the target used) / missed / paused; the rule HLP-02 shows. */
-export function clockState(c: ClockView): 'on-track' | 'at-risk' | 'breached' | 'paused' {
-  if (c.paused) return 'paused';
-  if (c.usedMinutes >= c.targetMinutes) return 'breached';
-  return c.usedMinutes >= c.targetMinutes * 0.8 ? 'at-risk' : 'on-track';
 }
 
 /** HLP-05: the Monday (India date) of every week that touches from … to, oldest first. */

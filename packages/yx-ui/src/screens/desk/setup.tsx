@@ -55,7 +55,7 @@ export interface DeskSetupScreenProps {
   calendars: Calendar[];
   canCalendars: boolean;
   onCreateDesk: (input: { name: string; key: string; kind: DeskKind }) => Promise<void>;
-  onUpdateDesk: (change: Partial<Pick<DeskSummary, 'name' | 'privacy' | 'numberPrefix' | 'numberSuffix' | 'attachmentTypes' | 'attachmentMaxMb' | 'vipRaisesPriority' | 'calendarId' | 'resolutionRequired' | 'reopenWindowDays' | 'requesterCanReopen' | 'autoCloseDays' | 'routingWaitMinutes'>> & { nextNumber?: number }) => Promise<void>;
+  onUpdateDesk: (change: Partial<Pick<DeskSummary, 'name' | 'privacy' | 'numberPrefix' | 'numberSuffix' | 'attachmentTypes' | 'attachmentMaxMb' | 'vipRaisesPriority' | 'calendarId' | 'resolutionRequired' | 'reopenWindowDays' | 'requesterCanReopen' | 'autoCloseDays' | 'routingWaitMinutes' | 'atRiskPercent'>> & { nextNumber?: number }) => Promise<void>;
   onSearchUsers: (q: string) => Promise<{ id: string; name: string | null; email: string }[]>;
   onSeatCost: (userId: string, role: DeskRole) => Promise<SeatCost>;
   onAddMember: (input: { userId: string; role: DeskRole; tier?: string }) => Promise<void>;
@@ -779,7 +779,9 @@ function SettingsTab(props: TabProps) {
   const [canReopen, setCanReopen] = useState(x.requesterCanReopen ?? true);
   const [closeDays, setCloseDays] = useState<number | null>(x.autoCloseDays === undefined ? 3 : x.autoCloseDays);
   const [waitMinutes, setWaitMinutes] = useState<number | null>(x.routingWaitMinutes ?? 2);
+  const [atRisk, setAtRisk] = useState(String(x.atRiskPercent ?? 80));
   const { busy, error, run } = useRun();
+  const { toast } = useToast();
   const can = props.detail.canSetUp;
   return (
     <div className="yx-ops-stack">
@@ -800,6 +802,9 @@ function SettingsTab(props: TabProps) {
       </FormField>
       <FormField label="Business hours" helper="The calendar this desk’s response targets will use.">
         <Select value={calendarId} onChange={setCalendarId} clearable disabled={!can} options={props.calendars.map((c) => ({ value: c.id, label: `${c.name} · ${c.timeZone}` }))} />
+      </FormField>
+      <FormField label="At risk from" helper="A ticket shows as at risk once this share of a response target is used, on the SLA dashboard and the agent desk. Missed stays at 100 %.">
+        <Segment label="At risk from" options={AT_RISK_CHOICES.map((p) => ({ value: String(p), label: `${p} %` }))} value={atRisk} onChange={(v) => can && setAtRisk(v)} />
       </FormField>
       <FormField label="Files people may add" helper="File endings, separated by commas. Every file is checked for viruses too.">
         <TextField value={types} onChange={setTypes} disabled={!can} />
@@ -825,8 +830,8 @@ function SettingsTab(props: TabProps) {
             variant="primary"
             loading={busy === 'save'}
             onClick={() =>
-              void run('save', () =>
-                props.onUpdateDesk({
+              void run('save', async () => {
+                await props.onUpdateDesk({
                   name: name.trim(),
                   privacy,
                   numberPrefix: prefix,
@@ -840,9 +845,11 @@ function SettingsTab(props: TabProps) {
                   reopenWindowDays: reopenDays ?? 7,
                   autoCloseDays: closeDays,
                   routingWaitMinutes: waitMinutes ?? 2,
+                  atRiskPercent: Number(atRisk),
                   ...(next ? { nextNumber: next } : {}),
-                }),
-              )
+                });
+                toast({ tone: 'success', title: 'Desk settings saved.' });
+              })
             }
           >
             Save settings
@@ -855,6 +862,8 @@ function SettingsTab(props: TabProps) {
 }
 
 const REVIEW_CHOICES = [3, 6, 12, 24];
+/** HLP-05b: the at-risk points a desk may choose (the server allows the same five). */
+const AT_RISK_CHOICES = [50, 60, 70, 80, 90];
 
 /** Registry setting desk.kb.review_months: one value for the company, not per desk. */
 function KbReviewRule({ value, onSave }: { value: number; onSave: (months: number) => Promise<unknown> }) {

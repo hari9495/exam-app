@@ -25,6 +25,8 @@ export interface DeskSummary {
   autoCloseDays?: number | null;
   /** Minutes a new ticket waits for its best-matched agent before routing falls back (default 2). */
   routingWaitMinutes?: number;
+  /** HLP-05b: a clock is at risk once this share (%) of its target is used (50, 60, 70, 80 or 90; default 80). */
+  atRiskPercent?: number;
   status: 'active' | 'archived';
   version: number;
   myRole?: DeskRole | null;
@@ -159,8 +161,8 @@ export interface TicketRow {
   tier?: string;
   sla?: { dueAt: string | null; breached: boolean; paused: boolean } | null;
   /** HLP-02: the live first response and resolution clocks (business minutes used of the target). */
-  firstResponse?: { usedMinutes: number; targetMinutes: number; paused: boolean } | null;
-  resolution?: { usedMinutes: number; targetMinutes: number; paused: boolean } | null;
+  firstResponse?: { usedMinutes: number; targetMinutes: number; paused: boolean; atRiskPercent?: number } | null;
+  resolution?: { usedMinutes: number; targetMinutes: number; paused: boolean; atRiskPercent?: number } | null;
   firstResponseAt?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -349,7 +351,7 @@ export interface MyTicketRow {
   createdAt: string;
   updatedAt: string;
   /** HLP-01: the resolution promise of an open ticket (business minutes used of the target). */
-  clock?: { usedMinutes: number; targetMinutes: number; paused: boolean } | null;
+  clock?: { usedMinutes: number; targetMinutes: number; paused: boolean; atRiskPercent?: number } | null;
   resolvedAt?: string | null;
   closedAt?: string | null;
   /** A solved ticket closes on this day without a reply (the desk's setting). */
@@ -424,6 +426,8 @@ export interface SlaTimerView {
   metAt: string | null;
   targetSeconds: number;
   usedSeconds: number;
+  /** HLP-05b: the desk's at-risk point (%). */
+  atRiskPercent?: number;
   percent: number;
   pauseReason: string | null;
   breachReason: string | null;

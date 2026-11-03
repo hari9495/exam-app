@@ -48,6 +48,15 @@ describe('helpdesk SLA', () => {
     expect(slaState(300, 240, { paused: true })).toBe('paused');
     expect(slaState(300, 240, { met: true })).toBe('met');
   });
+
+  it('HLP-05b: the desk\'s own at-risk point moves the warning (50 % vs 90 %), never the breach', () => {
+    expect(slaState(60, 100, { atRiskPercent: 50 })).toBe('at-risk');
+    expect(slaState(60, 100, { atRiskPercent: 90 })).toBe('on-track');
+    expect(slaState(49, 100, { atRiskPercent: 50 })).toBe('on-track');
+    expect(slaState(90, 100, { atRiskPercent: 90 })).toBe('at-risk');
+    expect(slaState(100, 100, { atRiskPercent: 90 })).toBe('breached');
+    expect(slaState(42, 70, { atRiskPercent: 60 })).toBe('at-risk');
+  });
   it('closes 3 days after resolving and can be reopened for 7 more days', () => {
     const r = ticketCloseInfo(d(27, 8), TODAY);
     expect(r.closesOn).toEqual(d(30, 8));

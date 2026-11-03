@@ -42,6 +42,18 @@ export interface ClockView {
   usedMinutes: number;
   targetMinutes: number;
   paused: boolean;
+  /** The desk's at-risk point: a clock is at risk once this share of its target is used (Desk set-up, default 80). */
+  atRiskPercent: number;
+}
+
+/** A desk's at-risk point unless it chose another (Desk set-up; the choices are AT_RISK_CHOICES in dto.ts). */
+export const AT_RISK_DEFAULT = 80;
+
+/** The one rule for a live clock: paused while waiting, missed at 100 %, at risk from the desk's at-risk point. */
+export function clockState(c: Pick<ClockView, 'usedMinutes' | 'targetMinutes' | 'paused'> & { atRiskPercent?: number }): 'on-track' | 'at-risk' | 'breached' | 'paused' {
+  if (c.paused) return 'paused';
+  if (c.usedMinutes >= c.targetMinutes) return 'breached';
+  return c.usedMinutes * 100 >= c.targetMinutes * (c.atRiskPercent ?? AT_RISK_DEFAULT) ? 'at-risk' : 'on-track';
 }
 const H24: CalendarSpec = { zone: 'UTC', hours: [1, 2, 3, 4, 5, 6, 7].map((weekday) => ({ weekday, startMinute: 0, endMinute: 1440, validFrom: '2000-01-01', validTo: null })), holidays: [] };
 const LIVE = ['running', 'paused'];
@@ -599,6 +611,7 @@ export class SlaService implements OnModuleInit, OnModuleDestroy {
     const events = await tx.sdSlaTimerEvent.findMany({ where: { organizationId: org, ticketId: t.id }, orderBy: { at: 'asc' } });
     const groups = new Map((await tx.sdGroup.findMany({ where: { organizationId: org, deskId: t.deskId }, select: { id: true, name: true } })).map((g) => [g.id, g.name]));
     const cache = new Map<string, CalendarSpec>();
+    const point = (await tx.sdDesk.findFirst({ where: { organizationId: org, id: t.deskId }, select: { atRiskPercent: true } }))?.atRiskPercent ?? AT_RISK_DEFAULT;
     const out = [];
     for (const x of timers) {
       const mine = events.filter((e) => e.timerId === x.id);
@@ -617,6 +630,7 @@ export class SlaService implements OnModuleInit, OnModuleDestroy {
         metAt: x.metAt,
         targetSeconds: x.targetSeconds,
         usedSeconds: used,
+        atRiskPercent: point,
         percent: Math.round((used * 100) / x.targetSeconds),
         pauseReason: x.pauseReason,
         breachReason: x.breachReason,
@@ -675,9 +689,11 @@ export class SlaService implements OnModuleInit, OnModuleDestroy {
     if (!ticketIds.length) return out;
     const cache = new Map<string, CalendarSpec>();
     const timers = await tx.sdSlaTimer.findMany({ where: { organizationId: org, ticketId: { in: ticketIds }, kind: 'sla', metric: { in: metrics }, state: { in: LIVE } } });
+    const desks = await tx.sdDesk.findMany({ where: { organizationId: org, id: { in: [...new Set(timers.map((x) => x.deskId))] } }, select: { id: true, atRiskPercent: true } });
+    const point = new Map(desks.map((d) => [d.id, d.atRiskPercent]));
     for (const x of timers) {
       const used = elapsed(await this.specFor(tx, x, cache), this.clock(x), now);
-      out.set(x.ticketId, { ...out.get(x.ticketId), [x.metric]: { usedMinutes: Math.floor(used / 60), targetMinutes: Math.round(x.targetSeconds / 60), paused: x.state === 'paused' } });
+      out.set(x.ticketId, { ...out.get(x.ticketId), [x.metric]: { usedMinutes: Math.floor(used / 60), targetMinutes: Math.round(x.targetSeconds / 60), paused: x.state === 'paused', atRiskPercent: point.get(x.deskId) ?? AT_RISK_DEFAULT } });
     }
     return out;
   }

@@ -25,6 +25,15 @@ describe('HLP-02 rules', () => {
 });
 
 describe('HLP-02 Agent desk (live)', () => {
+  it('HLP-05b: the row badge follows the desk\'s at-risk point', () => {
+    const at = (atRiskPercent: number) => liveDesk({ page: { items: [{ ...DESK_ROWS[0], resolution: { usedMinutes: 300, targetMinutes: 480, paused: false, atRiskPercent } }], total: 1, nextCursor: null } });
+    const { unmount } = render(<AgentDeskScreen live={at(50)} />);
+    expect(screen.getByText('3 h left').closest('.yx-badge')).toHaveAttribute('data-tone', 'warning');
+    unmount();
+    render(<AgentDeskScreen live={at(90)} />);
+    expect(screen.getByText('3 h left').closest('.yx-badge')).not.toHaveAttribute('data-tone', 'warning');
+  });
+
   it('lists tickets with the resolution clock, the missed-target banner and facts', () => {
     render(<AgentDeskScreen live={liveDesk()} />);
     expect(screen.getByText('IT-1001')).toBeInTheDocument();

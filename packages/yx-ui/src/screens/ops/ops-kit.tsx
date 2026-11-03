@@ -85,8 +85,8 @@ export function OpsDesk({ area, active, member = true, counts = {}, children }: 
 /* ---------------- SLA badge (YX-HD-02) ---------------- */
 
 const SLA_TONE: Record<SlaState, BadgeTone> = { 'on-track': 'neutral', 'at-risk': 'warning', breached: 'danger', paused: 'info', met: 'success' };
-export function SlaBadge({ elapsedMin, targetMin, paused, met, label }: { elapsedMin: number; targetMin: number; paused?: boolean; met?: boolean; label?: string }) {
-  const state = slaState(elapsedMin, targetMin, { paused, met });
+export function SlaBadge({ elapsedMin, targetMin, paused, met, label, atRiskPercent }: { elapsedMin: number; targetMin: number; paused?: boolean; met?: boolean; label?: string; atRiskPercent?: number }) {
+  const state = slaState(elapsedMin, targetMin, { paused, met, atRiskPercent });
   return (
     <Badge tone={SLA_TONE[state]}>
       {label ? `${label}: ` : ''}

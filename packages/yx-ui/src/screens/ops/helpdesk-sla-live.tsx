@@ -260,7 +260,7 @@ function SlaBody({ live, loading }: { live: LiveSla; loading: boolean }) {
     { key: 'id', header: 'Ticket', type: 'id', value: (t) => t.number },
     { key: 'subject', header: 'Subject', value: (t) => t.subject },
     { key: 'queue', header: 'Queue', value: (t) => t.deskName },
-    { key: 'sla', header: 'Resolution SLA', value: (t) => t.resolution.usedMinutes / Math.max(1, t.resolution.targetMinutes), render: (t) => <SlaBadge elapsedMin={t.resolution.usedMinutes} targetMin={t.resolution.targetMinutes} paused={t.resolution.paused} /> },
+    { key: 'sla', header: 'Resolution SLA', value: (t) => t.resolution.usedMinutes / Math.max(1, t.resolution.targetMinutes), render: (t) => <SlaBadge elapsedMin={t.resolution.usedMinutes} targetMin={t.resolution.targetMinutes} paused={t.resolution.paused} atRiskPercent={t.resolution.atRiskPercent} /> },
     { key: 'assignee', header: 'Assignee', type: 'person', value: (t) => t.assignee?.name ?? 'Unassigned', person: (t) => ({ name: t.assignee?.name ?? 'Unassigned' }) },
   ];
   return (

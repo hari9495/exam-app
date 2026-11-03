@@ -280,7 +280,7 @@ function MyTickets({ live }: { live: LiveHelp }) {
               <span className="yx-ops-mono">{t.number}</span> · {t.desk} · raised {day(t.createdAt)}
               {t.role === 'requested_for' ? ' · raised for you' : t.role === 'watcher' ? ' · you follow it' : ''}
             </span>
-            {!DONE.includes(t.systemState) && t.clock && <SlaBadge label="Resolve" elapsedMin={t.clock.usedMinutes} targetMin={t.clock.targetMinutes} paused={t.clock.paused} />}
+            {!DONE.includes(t.systemState) && t.clock && <SlaBadge label="Resolve" elapsedMin={t.clock.usedMinutes} targetMin={t.clock.targetMinutes} paused={t.clock.paused} atRiskPercent={t.clock.atRiskPercent} />}
             {t.private ? (
               <Badge tone="neutral">
                 <Lock aria-hidden size={12} /> Private

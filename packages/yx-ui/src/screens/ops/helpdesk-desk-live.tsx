@@ -122,7 +122,7 @@ function columns(): TableColumn<TicketRow>[] {
         DONE.includes(t.systemState) ? (
           <Badge tone="success">Met</Badge>
         ) : t.resolution ? (
-          <SlaBadge elapsedMin={t.resolution.usedMinutes} targetMin={t.resolution.targetMinutes} paused={t.resolution.paused} />
+          <SlaBadge elapsedMin={t.resolution.usedMinutes} targetMin={t.resolution.targetMinutes} paused={t.resolution.paused} atRiskPercent={t.resolution.atRiskPercent} />
         ) : (
           <span className="yx-ops-muted">No target</span>
         ),
@@ -370,8 +370,8 @@ export function LiveAgentDesk({ live }: { live: LiveAgentDesk }) {
                 { label: 'Priority', value: <PriorityBadge priority={open.priority} /> },
                 { label: 'Assignee', value: open.assignee ?? 'Unassigned' },
                 { label: 'Raised', value: `${formatDate(new Date(open.createdAt))}${open.channel ? ` via ${open.channel}` : ''}` },
-                { label: 'First response', value: open.firstResponseAt ? <Badge tone="success">Met</Badge> : open.firstResponse ? <SlaBadge elapsedMin={open.firstResponse.usedMinutes} targetMin={open.firstResponse.targetMinutes} paused={open.firstResponse.paused} /> : 'No target' },
-                { label: 'Resolution', value: DONE.includes(open.systemState) ? <Badge tone="success">Met</Badge> : open.resolution ? <SlaBadge elapsedMin={open.resolution.usedMinutes} targetMin={open.resolution.targetMinutes} paused={open.resolution.paused} /> : 'No target' },
+                { label: 'First response', value: open.firstResponseAt ? <Badge tone="success">Met</Badge> : open.firstResponse ? <SlaBadge elapsedMin={open.firstResponse.usedMinutes} targetMin={open.firstResponse.targetMinutes} paused={open.firstResponse.paused} atRiskPercent={open.firstResponse.atRiskPercent} /> : 'No target' },
+                { label: 'Resolution', value: DONE.includes(open.systemState) ? <Badge tone="success">Met</Badge> : open.resolution ? <SlaBadge elapsedMin={open.resolution.usedMinutes} targetMin={open.resolution.targetMinutes} paused={open.resolution.paused} atRiskPercent={open.resolution.atRiskPercent} /> : 'No target' },
                 ...(open.tags.length ? [{ label: 'Tags', value: open.tags.join(', ') }] : []),
               ]}
             />

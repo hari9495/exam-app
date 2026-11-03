@@ -98,6 +98,7 @@ export class DesksService {
       requesterCanReopen: d.requesterCanReopen,
       autoCloseDays: d.autoCloseDays,
       routingWaitMinutes: d.routingWaitMinutes,
+      atRiskPercent: d.atRiskPercent,
       status: d.status,
       version: d.version,
     };

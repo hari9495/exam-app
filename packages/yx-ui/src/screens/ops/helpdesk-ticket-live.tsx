@@ -162,7 +162,7 @@ export function LiveTicketWorkspace({ live }: { live: LiveTicket }) {
               </Badge>
             )}
             <TicketFlags private={t.private} vip={t.vip} />
-            {!done && resolution && <SlaBadge label="Resolution" elapsedMin={minutes(resolution.usedSeconds)} targetMin={minutes(resolution.targetSeconds)} paused={resolution.state === 'paused'} />}
+            {!done && resolution && <SlaBadge label="Resolution" elapsedMin={minutes(resolution.usedSeconds)} targetMin={minutes(resolution.targetSeconds)} paused={resolution.state === 'paused'} atRiskPercent={resolution.atRiskPercent} />}
             {t.tier && <Badge tone="neutral">Level {t.tier}</Badge>}
             {t.tracker && <Badge tone="info">Tracker</Badge>}
             {t.access === 'observer' && <Badge tone="neutral">Read-only: you set this desk up</Badge>}
@@ -351,7 +351,7 @@ export function LiveTicketWorkspace({ live }: { live: LiveTicket }) {
                   {work ? <Select value={t.categoryId} onChange={(v) => update({ categoryId: v })} clearable options={d.categories.filter((c) => c.active).map((c) => ({ value: c.id, label: c.name, description: c.sensitive ? 'Sensitive: agents only' : undefined }))} placeholder="No category" /> : <span>{t.category?.name ?? 'No category'}</span>}
                 </FormField>
                 <FormField label="First response">
-                  {t.firstResponseAt ? <Badge tone="success">Met</Badge> : response ? <SlaBadge elapsedMin={minutes(response.usedSeconds)} targetMin={minutes(response.targetSeconds)} paused={response.state === 'paused'} /> : <span className="yx-ops-muted">No target</span>}
+                  {t.firstResponseAt ? <Badge tone="success">Met</Badge> : response ? <SlaBadge elapsedMin={minutes(response.usedSeconds)} targetMin={minutes(response.targetSeconds)} paused={response.state === 'paused'} atRiskPercent={response.atRiskPercent} /> : <span className="yx-ops-muted">No target</span>}
                 </FormField>
                 <TagEditor tags={t.tags} disabled={!work} onChange={(tags) => update({ tags })} />
                 {work && <Switch label="Private" description="Only this desk’s agents and the ticket’s collaborators see it." checked={t.private} onChange={(p) => update({ private: p }, p ? 'The ticket is private now.' : 'The ticket is no longer private.')} />}

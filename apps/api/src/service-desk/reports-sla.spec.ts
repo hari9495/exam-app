@@ -1,4 +1,5 @@
-import { clockState, weekStarts } from './reports.service';
+import { weekStarts } from './reports.service';
+import { clockState } from './sla.service';
 
 // HLP-05 SLA dashboard rules: a clock at risk from 80 % of the target, missed at 100 %, paused while waiting; weeks are
 // India weeks starting Monday.
@@ -26,4 +27,22 @@ describe('HLP-05 weeks', () => {
     expect(weekStarts('2028-02-28', '2028-03-01')).toEqual(['2028-02-28']);
   });
   it('30 days touch 5 or 6 weeks', () => expect(weekStarts('2026-10-05', '2026-11-03').length).toBe(5));
+});
+
+describe('HLP-05b at-risk point per desk (clockState)', () => {
+  const c = (usedMinutes: number, atRiskPercent?: number) => ({ usedMinutes, targetMinutes: 100, paused: false, atRiskPercent });
+  it.each([
+    [49, 50, 'on-track'],
+    [50, 50, 'at-risk'],
+    [89, 90, 'on-track'],
+    [90, 90, 'at-risk'],
+    [100, 50, 'breached'],
+    [60, 50, 'at-risk'],
+    [60, 90, 'on-track'],
+  ])('%i of 100 minutes with the point at %i %% is %s', (used, point, want) => expect(clockState(c(used, point))).toBe(want));
+  it('no point given is the 80 % default', () => {
+    expect(clockState(c(79))).toBe('on-track');
+    expect(clockState(c(80))).toBe('at-risk');
+  });
+  it('an odd target rounds the same way as whole numbers (no float error at the line)', () => expect(clockState({ usedMinutes: 42, targetMinutes: 70, paused: false, atRiskPercent: 60 })).toBe('at-risk'));
 });

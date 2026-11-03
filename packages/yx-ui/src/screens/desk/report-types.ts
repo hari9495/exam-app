@@ -186,6 +186,7 @@ export interface SlaClock {
   usedMinutes: number;
   targetMinutes: number;
   paused: boolean;
+  atRiskPercent?: number;
 }
 export interface SlaAtRiskRow {
   id: string;

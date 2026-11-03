@@ -235,6 +235,28 @@ describe('batch 3 (SD-1.18 … SD-1.23, SD-1.28)', () => {
     expect((await screen.findAllByText('Help articles are now checked every 6 months.')).length).toBeGreaterThan(0);
   });
 
+  it('settings: the at-risk point of a desk is a Segment of 50 to 90 %, saved with the other settings and a toast', async () => {
+    const onUpdateDesk = ok();
+    render(<ToastProvider><DeskSetupScreen state="ready" initialTab="settings" desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={{ ...DETAIL, canSetUp: true }} canned={[]} calendars={[]} canCalendars={false} onCreateDesk={ok()} onUpdateDesk={onUpdateDesk} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={ok()} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={ok()} onSetHours={ok()} /></ToastProvider>);
+    const g = screen.getByRole('radiogroup', { name: 'At risk from' });
+    expect(within(g).getAllByRole('radio').map((r) => r.textContent)).toEqual(['50 %', '60 %', '70 %', '80 %', '90 %']);
+    expect(within(g).getByRole('radio', { name: '80 %' })).toBeChecked();
+    await ue.click(within(g).getByRole('radio', { name: '50 %' }));
+    await ue.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(onUpdateDesk).toHaveBeenCalledWith(expect.objectContaining({ atRiskPercent: 50 })));
+    expect((await screen.findAllByText('Desk settings saved.')).length).toBeGreaterThan(0);
+  });
+
+  it('settings: without set-up rights the at-risk point shows but does not change', async () => {
+    const onUpdateDesk = ok();
+    render(<ToastProvider><DeskSetupScreen state="ready" initialTab="settings" desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={{ ...DETAIL, desk: { ...DETAIL.desk, atRiskPercent: 60 }, canSetUp: false }} canned={[]} calendars={[]} canCalendars={false} onCreateDesk={ok()} onUpdateDesk={onUpdateDesk} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={ok()} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={ok()} onSetHours={ok()} /></ToastProvider>);
+    const g = screen.getByRole('radiogroup', { name: 'At risk from' });
+    await ue.click(within(g).getByRole('radio', { name: '90 %' }));
+    expect(within(g).getByRole('radio', { name: '60 %' })).toBeChecked();
+    expect(screen.queryByRole('button', { name: 'Save settings' })).not.toBeInTheDocument();
+    expect(onUpdateDesk).not.toHaveBeenCalled();
+  });
+
   it('calendar: the half-day choice is “Working half”, Morning or Afternoon', async () => {
     const onSetHalfDay = ok();
     const cal = { id: 'cal-1', name: 'Office hours', timeZone: 'Asia/Kolkata', version: 1, hours: [], holidays: [] };

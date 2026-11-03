@@ -56,6 +56,9 @@ export class CreateDeskDto {
   kind!: (typeof DESK_KINDS)[number];
 }
 
+/** The at-risk points a desk may choose (founder 3 Nov 2026): a clock is at risk once this share of its target is used. */
+export const AT_RISK_CHOICES = [50, 60, 70, 80, 90];
+
 export class UpdateDeskDto {
   @IsInt()
   version!: number;
@@ -140,6 +143,11 @@ export class UpdateDeskDto {
   @Min(0)
   @Max(60)
   routingWaitMinutes?: number;
+
+  /** HLP-05b: a clock is at risk once this share (%) of its target is used. */
+  @ValidateIf((_, v) => v !== undefined) // null is refused, not skipped
+  @IsIn(AT_RISK_CHOICES, { message: 'The at-risk point is 50, 60, 70, 80 or 90 %.' })
+  atRiskPercent?: number;
 }
 
 export class AddMemberDto {

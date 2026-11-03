@@ -22,12 +22,13 @@ export function daysBetween(a: Date, b: Date): number {
 
 export type SlaState = 'on-track' | 'at-risk' | 'breached' | 'paused' | 'met';
 
-/** YX-HD-02: warning at 80 % of the target, breach at 100 %. Timers pause while waiting on the employee. */
-export function slaState(elapsedMin: number, targetMin: number, opts: { paused?: boolean; met?: boolean } = {}): SlaState {
+/** YX-HD-02: at risk from the desk's at-risk point (Desk set-up, default 80 % of the target), breach at 100 %. Timers
+ * pause while waiting on the employee. The server's clockState is the same rule. */
+export function slaState(elapsedMin: number, targetMin: number, opts: { paused?: boolean; met?: boolean; atRiskPercent?: number } = {}): SlaState {
   if (opts.met) return 'met';
   if (opts.paused) return 'paused';
   if (elapsedMin >= targetMin) return 'breached';
-  if (elapsedMin >= targetMin * 0.8) return 'at-risk';
+  if (elapsedMin * 100 >= targetMin * (opts.atRiskPercent ?? 80)) return 'at-risk';
   return 'on-track';
 }
 
