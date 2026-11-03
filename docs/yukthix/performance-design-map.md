@@ -633,3 +633,9 @@ to HR moves only open decisions (today: a goal's alignment). (4) The skills-test
 (`tags`); a competency names one tag of its company. (5) Coach thresholds are fixed rules like the existing ones (founder
 answer 15): earned leave above 12 days, overtime in each of the last 3 weeks, any open onboarding task. Manual tests
 MT-PRF-22 … 29.
+
+## Founder answers, 3 Nov 2026 (live-gap pieces, "all good")
+Keep as built: (1) the coach's new signals use fixed rules (earned leave over 12 days, overtime 3 weeks running, any open
+onboarding task); (2) "Reassign to HR" moves only open decisions; (3) the skills-test link opens the question bank list
+(a tag filter there later); (4) reviews finishing after a calibration session is signed off go straight to ready to
+release, and HR may open a new session for them.
