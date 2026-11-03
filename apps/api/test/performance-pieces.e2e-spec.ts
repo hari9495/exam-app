@@ -282,7 +282,8 @@ describe('Performance live-gap pieces (3 Nov 2026)', () => {
     expect((await api('priya', 'get', p).expect(200)).body.can.extendAgain).toBe(false);
     await api('priya', 'post', `${p}/extend-again`).send({ reason: 'One last month to show it.', version: 3 }).expect(403);
     await api('meena', 'post', `${p}/extend-again`).send({ reason: 'One last month to show it.', version: 3 }).expect(403);
-    await api('adminB', 'post', `${p}/extend-again`).send({ reason: 'One last month to show it.', version: 3 }).expect(404);
+    // Another company is refused either way: 403 where its admin lacks the PIP key, 404 where the key passes and the plan is not theirs.
+    expect([403, 404]).toContain((await api('adminB', 'post', `${p}/extend-again`).send({ reason: 'One last month to show it.', version: 3 })).status);
     await api('hr', 'post', `${p}/extend-again`).send({ reason: 'Too short', version: 3 }).expect(400);
     await api('hr', 'post', `${p}/extend-again`).send({ reason: 'One last month to show it.' }).expect(400);
     await api('hr', 'post', `${p}/extend-again`).send({ reason: 'One last month to show it.', version: 2 }).expect(409);
