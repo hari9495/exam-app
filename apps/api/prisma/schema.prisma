@@ -9385,6 +9385,8 @@ model Review {
   calibratedScore      Decimal?  @map("calibrated_score") @db.Decimal(5, 2)
   /// PRF-09 9-box: 1 low, 2 medium, 3 high; null until set.
   potential            Int?      @db.SmallInt
+  /// PRF-05 (founder 3 Nov 2026): the manager's proposed potential (1–3), the 9-box starts from it.
+  proposedPotential    Int?      @map("proposed_potential") @db.SmallInt
   /// PRF-07: when the employee sent their nominations to the manager.
   nominationsSentAt    DateTime? @map("nominations_sent_at") @db.Timestamptz(3)
   releasedAt           DateTime? @map("released_at") @db.Timestamptz(3)

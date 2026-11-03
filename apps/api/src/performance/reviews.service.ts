@@ -277,7 +277,7 @@ export class PerformanceReviewsService {
       const users = (await tx.employee.findMany({ where: { organizationId: org, id: { in: [...new Set(owners)] } }, select: { userId: true } })).map((e) => e.userId);
       return { reviews: made.length, users, name: x.name };
     });
-    void this.tell(ctx.organizationId!, out.users, 'perf.cycle.launched', `${out.name} has started`, '/yx/performance/reviews');
+    void this.tell(ctx.organizationId!, out.users, 'perf.cycle.launched', `${out.name} has started`, '/yx/performance');
     return { reviews: out.reviews };
   }
 
@@ -563,6 +563,8 @@ export class PerformanceReviewsService {
         // After calibration the released score is the calibrated one (YX-PERF-08); the manager's stays visible to them.
         finalScore: showManager ? (num(r.calibratedScore) ?? num(r.finalScore)) : null,
         managerScore: showManager && !a.own ? num(r.finalScore) : null,
+        // The manager's proposed 9-box potential: never shown to the employee.
+        proposedPotential: showManager && !a.own ? r.proposedPotential : null,
         band: showManager ? r.band : null,
         excludedSections: showManager ? ((r.excludedSections as string[] | null) ?? []) : [],
         // PRF-06: each rated section's score, shown with the released rating.
@@ -645,6 +647,7 @@ export class PerformanceReviewsService {
   async saveEntry(ctx: TenantContext, user: ScopeUser, id: string, stage: StageKey, dto: EntryDto, submit: boolean) {
     const v = await this.viewer(user);
     if (stage !== 'self' && stage !== 'manager') throw new BadRequestException('Only the self and manager stages are answered here.');
+    if (stage !== 'manager' && dto.potential !== undefined) throw new BadRequestException('Only the manager proposes potential.');
     const out = await this.run(ctx, async (tx, c) => {
       const org = c.organizationId;
       const r = await tx.review.findFirst({ where: { organizationId: org, id } });
@@ -671,6 +674,11 @@ export class PerformanceReviewsService {
       const data = { answers: asJson(answers), overallRating: dto.overallRating ?? null, comment: dto.comment?.trim() || null, ...(submit ? { status: 'submitted', submittedAt: new Date() } : {}) };
       if (cur) await tx.reviewEntry.update({ where: { id: cur.id }, data: { ...data, version: { increment: 1 } } });
       else await tx.reviewEntry.create({ data: { organizationId: org, reviewId: id, stage, authorUserId: v.userId!, authorEmployeeId: a.me, relationship: stage, ...data } });
+      // PRF-05 (founder 3 Nov 2026): the manager proposes 9-box potential; calibration starts from it.
+      if (stage === 'manager' && dto.potential !== undefined && dto.potential !== r.proposedPotential) {
+        await tx.review.update({ where: { id }, data: { proposedPotential: dto.potential } });
+        await audit(tx, c, 'perf.review.potential_proposed', 'review', id, { before: r.proposedPotential, after: dto.potential });
+      }
       if (!submit) return { notify: [] as (string | null)[], type: '' };
 
       const at = (k: string) => stages.findIndex((x) => x.key === k);
@@ -756,7 +764,7 @@ export class PerformanceReviewsService {
       const users = (await tx.employee.findMany({ where: { organizationId: org, id: { in: ready.map((r) => r.employeeId) } }, select: { userId: true } })).map((e) => e.userId);
       return { released: ready.length, notReady, users };
     });
-    void this.tell(ctx.organizationId!, out.users, 'perf.review.released', 'Your review is ready to read', '/yx/performance/reviews');
+    void this.tell(ctx.organizationId!, out.users, 'perf.review.released', 'Your review is ready to read', '/yx/performance');
     return { released: out.released, notReady: out.notReady };
   }
 
@@ -900,7 +908,7 @@ export class PerformanceReviewsService {
       const to = [...rows.map((r) => r.new), ...pairs.map((p) => p.new)];
       return (await tx.employee.findMany({ where: { organizationId: org, id: { in: to } }, select: { userId: true } })).map((e) => e.userId);
     });
-    await this.tell(org, moved, 'perf.review.stage_due', 'A review was handed over to you', '/yx/performance/reviews');
+    await this.tell(org, moved, 'perf.review.stage_due', 'A review was handed over to you', '/yx/performance/handovers');
     return moved.filter(Boolean).length;
   }
 
@@ -948,6 +956,7 @@ export class PerformanceReviewsService {
       const org = c.organizationId;
       const e = v.userId ? await tx.reviewEntry.findFirst({ where: { organizationId: org, reviewId: id, stage: 'other', authorUserId: v.userId } }) : null;
       if (!e) throw new NotFoundException('No such review.');
+      if (dto.potential !== undefined) throw new BadRequestException('Only the manager proposes potential.');
       if (e.status === 'submitted') throw new ConflictException('You already sent your input.');
       const r = await tx.review.findFirstOrThrow({ where: { id } });
       if (r.status !== 'open') throw new ConflictException('This review is no longer open.');
@@ -1014,8 +1023,8 @@ export class PerformanceReviewsService {
       const users = async (ids: string[]) => (await tx.employee.findMany({ where: { organizationId: org, id: { in: ids } }, select: { userId: true } })).map((e) => e.userId);
       return { soon: await users(soon.map(owner)), late: await users([...lateOwners, ...above.map((a) => a.mgr)]) };
     });
-    await this.tell(org, sends.soon, 'perf.review.stage_due', 'A review you owe is due soon', '/yx/performance/reviews');
-    await this.tell(org, sends.late, 'perf.review.stage_due', 'A review is overdue', '/yx/performance/reviews');
+    await this.tell(org, sends.soon, 'perf.review.stage_due', 'A review you owe is due soon', '/yx/performance');
+    await this.tell(org, sends.late, 'perf.review.stage_due', 'A review is overdue', '/yx/performance');
     return { soon: sends.soon.filter(Boolean).length, late: sends.late.filter(Boolean).length };
   }
 }

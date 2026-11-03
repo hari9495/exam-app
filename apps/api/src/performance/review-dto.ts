@@ -123,6 +123,13 @@ export class EntryDto {
   @IsString()
   @MaxLength(5000)
   comment?: string | null;
+
+  /** PRF-05: the manager's proposed 9-box potential (1 low, 2 medium, 3 high); null clears it. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(3)
+  potential?: number | null;
 }
 
 export class CommentDto {
@@ -140,10 +147,14 @@ export class ReasonDto {
   reason!: string;
 }
 
+/** Founder 3 Nov 2026: a disagreement says what and why, in at least 20 characters, on every route. */
+export const DISAGREEMENT_MIN = 20;
+const DISAGREEMENT_MESSAGE = `Say which part you disagree with and why, in at least ${DISAGREEMENT_MIN} characters.`;
+
 export class DisagreeDto {
   @trim()
   @IsString()
-  @Length(3, 2000)
+  @Length(DISAGREEMENT_MIN, 2000, { message: DISAGREEMENT_MESSAGE })
   text!: string;
 }
 
@@ -611,7 +622,7 @@ export class AcknowledgeDto extends CommentDto {
   @IsOptional()
   @trim()
   @IsString()
-  @Length(20, 2000, { message: 'Say which part you disagree with and why, in at least 20 characters.' })
+  @Length(DISAGREEMENT_MIN, 2000, { message: DISAGREEMENT_MESSAGE })
   disagreement?: string | null;
 }
 

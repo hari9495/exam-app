@@ -153,9 +153,10 @@ const TEMPLATES: readonly RoleTemplate[] = [
     key: 'performance_setup',
     name: 'Performance set-up',
     typicalScope: 'tenant',
-    summary: 'Rating scales, review templates, competencies, the company skills library, goal periods and company and team goals (M06).',
-    cannot: 'See anyone’s goals, reviews or ratings.',
-    permissions: ['perf.setup.manage', 'perf.goal.manage', 'perf.cycle.manage', 'perf.calibration.facilitate'],
+    summary: 'Rating scales, review templates, competencies, the company skills library, goal periods, company and team goals, and the company goal map (M06).',
+    cannot: 'See anyone’s reviews or ratings.',
+    // perf.goal.view: the company goal map (founder 3 Nov 2026, Q8).
+    permissions: ['perf.setup.manage', 'perf.goal.view', 'perf.goal.manage', 'perf.cycle.manage', 'perf.calibration.facilitate'],
   },
   {
     key: 'performance_disputes',

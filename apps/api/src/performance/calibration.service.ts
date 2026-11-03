@@ -158,8 +158,9 @@ export class PerformanceCalibrationService {
           selfIndication: selfAvg(r.id),
           skipAgreed: entries.some((x) => x.reviewId === r.id && x.stage === 'skip'),
           protectedLeave: elig.get(r.employeeId) === 'protected_leave',
-          // PRF-09 9-box: 1 low, 2 medium, 3 high; null until someone sets it.
-          potential: r.potential,
+          // PRF-09 9-box: 1 low, 2 medium, 3 high. The facilitator's value wins; until then the manager's proposal (PRF-05).
+          potential: r.potential ?? r.proposedPotential,
+          proposedPotential: r.proposedPotential,
         };
       });
       const min = Number(await settingFor(tx, c, 'perf.report.min_cell', { legalEntityId: '' }));

@@ -129,6 +129,8 @@ export class PerformanceHomeService {
       period: base.period,
       actions: rest.actions,
       myGoals,
+      // The old reviews list is retired (founder 3 Nov 2026): my other reviews are linked from the home.
+      earlierReviews: mine.filter((r) => r.id !== myReview?.id).slice(0, 6).map((r) => ({ id: r.id, cycle: r.cycle })),
       myReview: myReview ? { id: myReview.id, cycle: myReview.cycle, status: myReview.status, stage: myReview.next.stage, next: myReview.next, employee: myReview.employee, manager: myReview.manager, stages: rest.cycleStages } : null,
       feedback: received.map((x) => ({ id: x.id, from: x.from, text: x.text!, at: x.at, kind: x.kind })),
       nextOneOnOne: rest.nextOneOnOne,
