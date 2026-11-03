@@ -24,9 +24,12 @@ feature not built** (no API) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Helpdesk HLP-01 … 14 | 14 | 128 | 3 | 0 | 53 | 0 | 184 |
+| A. Helpdesk HLP-01 … 14 | 14 | 151 | 5 | 0 | 41 | 0 | 197 |
 | B. Service desk designs | 5 | 55 | 2 | 0 | 0 | 0 | 57 |
-| **All Helpdesk groups (A–B)** | **19** | **183** | **5** | **0** | **53** | **0** | **241** |
+| **All Helpdesk groups (A–B)** | **19** | **206** | **7** | **0** | **41** | **0** | **254** |
+Round 6 recount (script, 3 Nov 2026, `feat/yukthix-hlp-06`): HLP-06 has 25 stories (the 12 approved plus 13 drawn for
+the real records: topics and "about an officer", not set up, no IC, late POSH, too early, loading, error, no access, an
+empty report, and four set-up states): 23 live, 2 live (gap) (the accident choice; update alerts for anonymous reporters).
 Round 10 recount (script, 3 Nov 2026, `feat/yukthix-hlp-10-11`, from `test/yukthix-main` without the HLP-03 branch):
 HLP-10 has 13 stories (the 10 approved plus 3 drawn: typed name, a newer version, no access): 12 live, 1 live (gap)
 (the quiz). HLP-11 has 22 stories (the 6 approved plus 16 drawn for the real records' states), all live.
@@ -88,6 +91,9 @@ groups them).
 | /yx/desk/reports | `SlaDashboardScreen` with `live` (HLP-05; menu Helpdesk › SLAs); the report tabs (desk numbers, KPIs, library, self-service, my reports, walls, customers, NPS surveys) inside it | HLP-05 SLA dashboard | `GET desk/reports/sla` (new, `desk.report.view`), `GET desk/reports/*` (`desk.report.view`), custom reports, schedules, wallboards, KPI targets (`desk.report.manage`), `GET/POST desk/surveys` (`desk.survey.manage`), Reassign `POST desk/tickets/:id/assign` (`desk.ticket.assign` to show it); no-access state without either | live (HLP-05) |
 | /yx/desk/policies (?policy=) | the designed `PolicyLibraryScreen` (HLP-10) with `live` | HLP-10 | `GET desk/my/policies`, `/:id`, `/:id/files/:fileId`, `POST …/versions/:versionId/code`, `POST …/acknowledge` (implicit: one's own policies; 403 while acting for someone else) | live |
 | /yx/desk/policy-admin (?policy=) | the designed `PolicyAdminScreen` (HLP-11) with `live` | HLP-11 | `GET desk/policies`, `/:id`, `/:id/pending`, `/:id/files/:fileId` (`policy.manage` or `policy.publish`), `GET /options`, `POST`, `PATCH /:id`, `PUT /:id/draft`, `POST /:id/draft/files`, `/remove`, `/submit`, `/remind`, `GET /:id/evidence` (`policy.manage`), `POST /:id/publish`, `/send-back` (`policy.publish`); every route needs the key for the whole company | live |
+| /yx/desk/speakup | the designed `SpeakUpScreen` (HLP-06) with `live` | HLP-06 | `GET desk/speakup/form`, `POST desk/speakup/reports`, `/reports/:id/files` (implicit: one's own named report); anonymous: `POST desk/speakup/public/reports` (no login) | live |
+| /yx/speakup/[org]/check | the designed `CheckReportScreen` (HLP-06) with `live` | HLP-06 | `GET desk/speakup/public/company/:org`, `POST desk/speakup/public/check`, `/check/reply`, `/check/files` (no login; the reply code; throttled and locked after 5 wrong codes an hour) | live |
+| /yx/desk/speakup-setup | `SpeakUpSetupScreen` (HLP-06 set-up stories) | HLP-06 | `GET desk/speakup/setup`, `POST /setup/members`, `/setup/members/:id/remove` (`speakup.setup.manage`); case officers: `GET desk/speakup/cases`, `/cases/:id`, `POST /cases/:id/messages` (being routed is the access; 404 otherwise; every look audited) | live |
 | /yx/wall/[org]/[token] | `WallScreen` | Reports (HLP-05) Wall | `GET desk/wall/:org/:token` (the secret link; counts only) | live |
 | /yx/desk/setup | `DeskSetupScreen` (desks, calendars, SLA, email, help pages, banners, `SetupStart`) and the stand-ins `CatalogAdmin`, `RulesAdmin`, `LifecycleAdmin`, `ChatQueuesAdmin`, `DeskOrgAdmin`, `SchedulesAdmin`, `MessagingAdmin` | Phase 3b-1 Setup and set-up tabs; Batch 4 GetStarted | desk set-up routes (`desk.settings.manage`, `desk.desk.create`, `desk.sla.manage`, `desk.mailbox.manage`, `desk.portal.manage`, `desk.catalog.manage`, `desk.rule.manage`, `desk.lifecycle.manage`, `desk.channel.manage`) | live |
 | /yx/desk/calendar | `MyCalendarScreen` | Phase 3b-1 Calendar | `GET desk/me/calendar`, `GET desk/tasks` (implicit: an agent) | live |
@@ -123,7 +129,7 @@ live, but drawn only as "Live ·" pictures in `esm-live.stories.tsx`. Grouped by
 
 And under `notLive`: designed, with no live page rendering them. `ops: TicketWorkspaceScreen` (HLP-03; HLP-02 left the list in round 2, HLP-04 in round 4), `ops: SlaDashboardScreen` (HLP-05) have a live page
 And under `notLive`: designed, with no live page rendering them. `ops: TicketWorkspaceScreen` (HLP-03; HLP-02 left the list in round 2), `ops: KbEditorScreen` (HLP-04) have a live page (HLP-05 `ops: SlaDashboardScreen` left the list: live)
-doing the same job with a B screen (section 5). `ops: SpeakUpScreen`, `ops: CheckReportScreen` (HLP-06), `ops:
+doing the same job with a B screen (section 5). (HLP-06 `SpeakUpScreen` and `CheckReportScreen` left the list: live) `ops:
 MyCasesScreen` (HLP-07), `ops: CaseListScreen`, `ops: CaseWorkspaceScreen`, `ops: LoadingCase`, `ops: ErrorCase`
 (HLP-08), `ops: EthicsDeskScreen` (HLP-09), (HLP-10 `PolicyLibraryScreen` and HLP-11 `PolicyAdminScreen` left the list: live)
 `ops: AccidentWorkspaceScreen`, `ops: ReportAccidentScreen` (HLP-12), `ops: CollectiveDisputeScreen` (HLP-13), `ops:
@@ -135,7 +141,7 @@ portal designs also wait: `settings: MobileHelpTicketsScreen`, `MobilePolicyAckS
 
 | design | what it needs | size |
 |---|---|---|
-| HLP-06 Speak-up filing (12 stories) | grievance and whistleblower intake, anonymous access code and the no-login "check my report", POSH redirect to the internal committee; tables with RLS, a public route with throttling | L |
+| ~~HLP-06 Speak-up filing~~ (done, round 6) | grievance and whistleblower intake, anonymous access code and the no-login "check my report", POSH redirect to the internal committee; tables with RLS, a public route with throttling | L |
 | HLP-07 My cases (8) | the complainant / respondent / witness view, show-cause reply and extension request | M (after HLP-08) |
 | HLP-08 Cases, case team (12) | case records, members and conflict-of-interest check, disposal clocks, disciplinary steps (no decision before the reply), "not found" for non-members | XL |
 | HLP-09 Ethics desk (6) | the ethics officer's whistleblower queue, route to the audit committee chair | M (after HLP-06, 08) |
@@ -300,23 +306,40 @@ in /yx/desk/setup (SLA tab).
 
 #### HLP-06 · Speak-up filing
 
-No server: no grievance, whistleblower or POSH routes or tables in `apps/api` (checked `apps/api/src` and
-`schema.prisma`; `PerfDispute` is a performance review dispute, not this).
+Live pages: /yx/desk/speakup (menu Helpdesk › Speak up, everyone), /yx/speakup/<company>/check (no login, the reply code)
+and /yx/desk/speakup-setup (menu Helpdesk › Speak-up set-up, `speakup.setup.manage`, the System Admin). The pages render
+the designed `SpeakUpScreen` and `CheckReportScreen` (`screens/ops/cases.tsx`) with `live`; the live part and the
+new `SpeakUpSetupScreen` are `screens/ops/helpdesk-speakup-live.tsx`. Rules: section 4e. Thirteen stories were drawn in
+the same look for states only the real records have. The case side (HLP-07 / 08 / 09) is not built this round; the API
+already has the minimum it needs (the officers' case list, one case with the audited identity, team replies).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| NamedGrievance · Grievance · named, confidential | design only, feature not built | no speak-up API |
-| Anonymous · Whistleblower · anonymous | design only, feature not built | no anonymous intake or access codes |
-| AnonymousOff · Anonymous switched off by company | design only, feature not built | needs a company setting (default and HR setting) |
-| PoshRedirect · Sexual harassment · goes to IC | design only, feature not built | no internal committee records |
-| FiledNamed · Filed · named (GRC clock) | design only, feature not built | no grievance clock |
-| FiledAnonymous · Filed · access code shown once | design only, feature not built | |
-| Phone · Speak up · phone | design only, feature not built | the feature itself is not built |
-| PhoneCode · Access code · phone | design only, feature not built | |
-| CheckMyReport · Check my report (no login) | design only, feature not built | needs a public, throttled route |
-| CheckWrongCode · Check my report · wrong code | design only, feature not built | |
-| CheckLocked · Check my report · too many tries | design only, feature not built | |
-| CheckOpen · Check my report · messages | design only, feature not built | |
+| NamedGrievance · Grievance · named, confidential | live (gap) | `GET desk/speakup/form`, `POST desk/speakup/reports` (implicit: the signed-in person; 403 while acting for someone else). Gap: the design's fourth choice, "A workplace accident or injury", is left out until HLP-12 (accident reports) is built |
+| Anonymous · Whistleblower · anonymous | live (gap) | sent through the no-login route (`POST desk/speakup/public/reports`, no sign-in, no cookies): no user, IP or device kept. Gap: "Tell me when there's an update" (an encrypted email or phone for alerts) is not offered; it comes with the team's replies in HLP-08 (question 23) |
+| AnonymousOff · Anonymous switched off by company | live | company setting `speakup.anonymous` (all / ethics_only / off, default all); the option is off and says why; the server refuses too (403) |
+| PoshRedirect · Sexual harassment · goes to IC | live | "Continue to the complaint form": always named, only the Internal Committee members see it |
+| FiledNamed · Filed · named (GRC clock) | live | the number (GRV-0001 …) and "What happens next": acknowledge by the company's days (`speakup.ack_days`, default 2), the decision by the rule set `IN.GRC` (verify) days. "Go to my cases" reads "Back to Help centre" until HLP-07 |
+| FiledAnonymous · Filed · access code shown once | live | the reply code (16 characters, about 80 bits) shown once, kept only as an HMAC hash; files go up with the code |
+| Phone · Speak up · phone | live | under 768 px: the design's phone layout |
+| PhoneCode · Access code · phone | live | under 768 px |
+| CheckMyReport · Check my report (no login) | live | `POST desk/speakup/public/check` (the company and the code; no login) |
+| CheckWrongCode · Check my report · wrong code | live | 404 with the tries left (5 an hour per network address; the counter is never kept with a report) |
+| CheckLocked · Check my report · too many tries | live | 429 with the time to try again |
+| CheckOpen · Check my report · messages | live | the team's messages as "Case team"; reply (`/check/reply`) and files (`/check/files`), toast |
+| TopicAndAbout · Topic and “is it about someone on the case team?” | live | new story: topics from the company settings (one a line); a report about an officer goes to the escalation list, never to them |
+| NotSetUp · Nobody receives reports yet | live | new story: no officers chosen: the form says so, the server refuses (409 `SPEAKUP_NO_TEAM`) |
+| PoshNoIc · Sexual harassment · no Internal Committee yet | live | new story: refused (409 `SPEAKUP_NO_IC`) with the Local Committee route; never sent to anyone else |
+| PoshLate · Sexual harassment · complaint form, past the filing window | live | new story: the window and extension from the rule set `IN.POSH` (verify); still filed, marked late |
+| TooEarly · File report pressed with nothing written | live | new story |
+| FormLoading · Loading | live | new story |
+| FormError · Error | live | new story |
+| NoAccess · No access (acting for someone else) | live | new story |
+| CheckEmpty · Check my report · no messages yet | live | new story |
+| Setup · Set-up · who receives reports | live | new story: `GET desk/speakup/setup` (`speakup.setup.manage`): the grievance committee, the ethics team, the Internal Committee (presiding, member, external) and the escalation list; Remove (`POST …/members/:id/remove`), toast |
+| SetupAddIc · Set-up · add to the Internal Committee | live | new story: `POST desk/speakup/setup/members` (one presiding officer) |
+| SetupTooEarly · Set-up · Add pressed with nobody chosen | live | new story |
+| SetupNoAccess · Set-up · no access (HR without the key) | live | new story: HR templates do not carry the key (403) |
 
 #### HLP-07 · My cases
 
@@ -874,6 +897,24 @@ surveys). The HLP screens are the founder-approved look, sample-only.
 22. **HLP-11: who gets "waiting to be published" notices**: every user whose role carries `policy.publish` (up to 25)
     and the System Admins without a role, not the writer. *Suggested:* keep.
 
+23. **HLP-06: update alerts for anonymous reporters** ("Tell me when there's an update"). Not offered yet: nothing would
+    send them until the team replies in HLP-08. *Suggested:* build with HLP-08, the contact stored encrypted and used only
+    to say "You have an update".
+24. **HLP-06: accident reports** stay off the speak-up form until HLP-12. *Suggested:* keep.
+25. **HLP-06: POSH complaints are always named** (the committee must hear the complainant; also a database check).
+    *Suggested:* keep; an anonymous tip about harassment can go as an ethics concern.
+26. **HLP-06: no Internal Committee** means the app refuses a POSH complaint and names the Local Committee route,
+    instead of handing it to anyone else. *Suggested:* keep, and show the System Admin a set-up warning.
+27. **HLP-06: a report about an officer** goes only to the escalation list (that officer's colleagues on the same list
+    do not get it). With nobody on the escalation list it is refused, never sent to the officer. *Suggested:* keep;
+    the System Admin must fill the escalation list.
+28. **HLP-06: anonymous reports through the no-login route** can also come from outside the company (vendors) by
+    design, limited per network address. *Suggested:* keep (a vigil mechanism may take outside reports); add a
+    challenge if spam appears.
+29. **HLP-06: retention of reports** (DPDP). Kept with no end date today. *Suggested:* a company setting after counsel,
+    like policy acknowledgements.
+30. **HLP-06: who may set the lists** is only the System Admin (`speakup.setup.manage`), not HR. *Suggested:* keep.
+
 ## 7. Next pages (recommended order, with sizes)
 
 | order | page | size | why |
@@ -887,7 +928,7 @@ surveys). The HLP screens are the founder-approved look, sample-only.
 | 7 | Live chat (requester and agent) | M | stand-ins `RequesterChatScreen`, `AgentChatScreen`; needs a design |
 | 8 | Desk team and the set-up admins | L | stand-ins `TeamScreen` and 7 set-up admins (41 "Live ·" stories); needs designs per tab |
 | 9 | ~~HLP-10 + HLP-11 Policy library and admin~~ (done, round 10) | L | no server; most staff touch it (acknowledgements); reuse the desk signing code for one-time codes; founder decisions on audience and quiz |
-| 10 | HLP-06 Speak-up filing | L | no server; needs POSH Act 2013 internal committee and whistleblower decisions; public no-login route |
+| 10 | ~~HLP-06 Speak-up filing~~ (done, round 6) | L | no server; needs POSH Act 2013 internal committee and whistleblower decisions; public no-login route |
 | 11 | HLP-08 + HLP-07 + HLP-09 Cases, my cases, ethics desk | XL | no server; one case engine for grievance, disciplinary and whistleblower cases, members, conflict check, clocks; standing orders and show-cause decisions |
 | 12 | HLP-12 Accident case | L | no server; ESIC accident report, EC Act claim interest, Factories Act / OSH Code notices |
 | 13 | HLP-13 Collective dispute | L | no server; Industrial Disputes Act conciliation and settlement to payroll arrears |
