@@ -297,3 +297,10 @@ for (const h in want) errs.push('story file with no rows: ' + h);
 console.table(counts);
 if (errs.length) { console.error(errs.join('\n')); process.exit(1); }
 ```
+
+## Founder answers, 3 Nov 2026 ("go ahead")
+(1) Add Hindi wording for the sign-in pages (one wording task, reviewed by a native Hindi reader before go-live), then
+switch the language picker on. (2) Before go-live, set `NEXT_PUBLIC_YX_PRIVACY_EMAIL` to the grievance officer's mailbox
+(go-live checklist); until then the privacy page says the contact isn't published yet. (3) Retire the PLT-13 Notification
+settings design stories; the live Email and SMS designs do the same jobs. An email delivery log, if wanted, is drawn into
+the Email design first.
