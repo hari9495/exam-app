@@ -10465,7 +10465,7 @@
     "area": "Performance · PRF-01 … 06 live (3 Nov 2026)",
     "screen": "Company goal map",
     "url": "http://localhost:3000/yx/performance/goal-map",
-    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "account": "hr-tester@demo-org.test (HR tester, \"Performance set-up\" role: goal map, review cycles, goals, calibration; apps/api/prisma/scripts/demo-performance.ts)",
     "steps": [
       "1. Open /yx/performance/goal-map.",
       "2. Choose a department in \"All departments\".",
@@ -10484,9 +10484,9 @@
     "area": "Performance · PRF-01 … 06 live (3 Nov 2026)",
     "screen": "Company goal map · negative",
     "url": "http://localhost:3000/yx/performance/goal-map",
-    "account": "hr@demo-org.test (HR Admin - Lakshmi); then arjun@demo-org.test (Employee - Arjun)",
+    "account": "hr-tester@demo-org.test (HR tester, \"Performance set-up\" role: goal map, review cycles, goals, calibration; apps/api/prisma/scripts/demo-performance.ts); then arjun@demo-org.test (Employee - Arjun)",
     "steps": [
-      "1. As Lakshmi press Suggest parent and Send suggestion without choosing.",
+      "1. As the HR tester press Suggest parent and Send suggestion without choosing.",
       "2. As Arjun open /yx/performance/goal-map."
     ],
     "expected": "Step 1: \"Choose one.\" and nothing is sent. Step 2: no Goal map in the menu; the page shows the error with Retry (the API answers 403 without perf.goal.view).",
@@ -11250,5 +11250,107 @@
     ],
     "expected": "Step 1: the breadcrumb reads \"Performance › <that page>\" and the side menu highlights that page, never \"Performance home\". Step 2: the breadcrumb names the page; nothing in Arjun’s menu is highlighted. Step 3: \"Reviews & cycles\" stays highlighted on the sub-page.",
     "note": "Positive + negative."
+  },
+  {
+    "id": "MT-PRF-16",
+    "area": "Performance · founder followups A (3 Nov 2026)",
+    "screen": "Disagreement · 20 characters on every route",
+    "url": "http://localhost:3000/yx/performance/reviews/<released review>",
+    "account": "arjun@demo-org.test (Employee - Arjun, reports to Divya)",
+    "steps": [
+      "1. On a released review, tick \"I disagree with this rating\", type \"Not what we agreed.\" (19 characters) and press Acknowledge and send disagreement.",
+      "2. Add one more character and press it again.",
+      "3. On an acknowledged review still inside the window, press \"I disagree with this rating\", type 19 characters and Send to HR."
+    ],
+    "expected": "Step 1: \"Say which part you disagree with and why (at least 20 characters).\" and nothing is sent. Step 2: toast \"Review acknowledged\"; the disagreement shows \"Waiting for HR\". Step 3: refused with \"Enter at least 20 characters.\" (the API also refuses fewer than 20 with 400).",
+    "stories": [
+      "Performance · PRF-06 · Disagreement too short (at least 20 characters)"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PRF-17",
+    "area": "Performance · founder followups A (3 Nov 2026)",
+    "screen": "The old reviews list is gone",
+    "url": "http://localhost:3000/yx/performance/reviews",
+    "account": "arjun@demo-org.test (Employee - Arjun), with at least two reviews",
+    "steps": [
+      "1. Open http://localhost:3000/yx/performance/reviews (an old bookmark).",
+      "2. Look at the Performance menu.",
+      "3. On the home, under My review, press a link in \"Earlier reviews\"."
+    ],
+    "expected": "Step 1: the Performance home opens. Step 2: no \"Reviews & cycles\" item. Step 3: that earlier review opens (read-only, or the acknowledgement once released).",
+    "stories": [
+      "Performance · PRF-01 · Employee · earlier reviews"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-PRF-18",
+    "area": "Performance · founder followups A (3 Nov 2026)",
+    "screen": "Coach card on the manager home",
+    "url": "http://localhost:3000/yx/performance",
+    "account": "panel@demo-org.test (Manager - Divya), then arjun@demo-org.test (Employee - Arjun)",
+    "steps": [
+      "1. As Divya open /yx/performance.",
+      "2. Press the dismiss button on one nudge.",
+      "3. As Arjun (no team) open /yx/performance."
+    ],
+    "expected": "Step 1: \"Manager coach\" beside My team, with this week's nudges (the same as /yx/performance/coach). Step 2: the nudge goes and stays gone after reload this week. Step 3: no coach card for Arjun.",
+    "stories": [
+      "Performance · PRF-01 · Manager",
+      "Performance · PRF-16 · Coach card on manager home"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-PRF-19",
+    "area": "Performance · founder followups A (3 Nov 2026)",
+    "screen": "Manager proposes 9-box potential",
+    "url": "http://localhost:3000/yx/performance/reviews/<review at the manager stage>",
+    "account": "panel@demo-org.test (Manager - Divya); then the calibration facilitator (hr-tester@demo-org.test)",
+    "steps": [
+      "1. As Divya open Arjun's review at the manager stage. Under \"Overall rating and summary\", choose Potential High and press Save draft.",
+      "2. Complete the manager review.",
+      "3. As the facilitator open the calibration session that holds Arjun and look at the 9-box."
+    ],
+    "expected": "Step 1: toast \"Draft saved\"; High stays chosen after reload. Step 3: Arjun sits in the High potential row (the facilitator can still move him, with a reason).",
+    "stories": [
+      "Performance · PRF-05 · Manager · potential for calibration",
+      "Performance · PRF-09 · 9-box (wave 6)"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-PRF-20",
+    "area": "Performance · founder followups A (3 Nov 2026)",
+    "screen": "Potential · negative",
+    "url": "http://localhost:3000/yx/performance/reviews/<review>",
+    "account": "arjun@demo-org.test (Employee - Arjun); kavya@demo-org.test (Manager - Kavya)",
+    "steps": [
+      "1. As Arjun open his own review (before and after release).",
+      "2. As Kavya open Arjun's review link."
+    ],
+    "expected": "Step 1: no \"Potential, for calibration\" anywhere for Arjun, before or after release. Step 2: the review does not load for Kavya (not his manager); she cannot propose potential (the API answers 404).",
+    "stories": [
+      "Performance · PRF-05 · Manager · potential for calibration"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-PRF-21",
+    "area": "Performance · founder followups A (3 Nov 2026)",
+    "screen": "Goal map for the Performance set-up role",
+    "url": "http://localhost:3000/yx/performance/goal-map",
+    "account": "hr-tester@demo-org.test (HR tester, \"Performance set-up\" role: goal map, review cycles, goals, calibration; apps/api/prisma/scripts/demo-performance.ts); then panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "1. As the HR tester open Performance › Goal map.",
+      "2. As Divya open http://localhost:3000/yx/performance/goal-map."
+    ],
+    "expected": "Step 1: the map loads with Add company goal and Suggest parent. Step 2: no Goal map in Divya's menu; the page shows the error with Retry (the API answers 403 without perf.goal.view).",
+    "stories": [
+      "Performance · PRF-03 · HR · goal map"
+    ],
+    "note": "Positive and negative."
   }
 ]

@@ -21,12 +21,14 @@ API) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Goals and reviews (PRF-01 … 06, builder 1) | 6 | 51 | 10 | 0 | 0 | 0 | 61 |
+| A. Goals and reviews (PRF-01 … 06, builder 1) | 6 | 55 | 8 | 0 | 0 | 0 | 63 |
 | B. Feedback, calibration, pay, plans and help (PRF-07 … 17, builders 2 and 3) | 11 | 76 | 16 | 0 | 1 | 0 | 93 |
-| **All PRF groups (A–B)** | **17** | **127** | **26** | **0** | **1** | **0** | **154** |
-| C. Shared parts (Kit · Growth building blocks, Calibration · Sessions list) | 2 | 16 | 0 | 0 | 4 | 0 | 20 |
+| **All PRF groups (A–B)** | **17** | **131** | **24** | **0** | **1** | **0** | **156** |
+| C. Shared parts (Kit · Growth building blocks, Calibration · Sessions list) | 2 | 17 | 0 | 0 | 4 | 0 | 21 |
 
-Recounted by script 3 Nov 2026 on `feat/yukthix-perf-map` after the builder 2 and 3 notes were folded in: B grew from 64 to
+Recounted by script 3 Nov 2026 on `feat/yukthix-perf-followups-a` (two PRF stories and one kit story added: PRF-01
+EmployeeEarlierReviews, PRF-05 ManagerPotential, Kit Potential; PRF-01 Manager and ManagerPhone now live with the coach
+card). Before that, recounted on `feat/yukthix-perf-map` after the builder 2 and 3 notes were folded in: B grew from 64 to
 93 stories (builders 2 and 3 added 29 design stories for states the real record has); the one story still not built is
 PRF-10 "Stale market data" (no market data source). The four kit stories not built are Engage and Learning parts
 (eNPS, rotating QR, feed posts, poll), not Performance. First counted on `feat/yukthix-perf-1` (the script is in the appendix): every `export const` story in
@@ -70,6 +72,7 @@ PerformanceHomeScreen, ReviewAcknowledgeScreen, ReviewWorkspaceScreen.
 | /yx/performance/cycles/[id] (running) | `CycleControlRoomScreen` live: funnel with names, overdue by owner, reminders, extend a deadline, release; tabs Who is reviewed, Disagreements, Calibration (`CalibrationSessions`) | PRF-04 | `GET cycles/:id/funnel`, `GET cycles/:id/funnel/people` (new), `GET cycles/:id/overdue` (new), `POST cycles/:id/remind` (new, throttled), `POST cycles/:id/extend` (new, versioned), `POST cycles/:id/release`, `GET cycles/:id/eligibility`, `PUT eligibility/:id`, `GET cycles/:id/disagreements`, `POST disagreements/:id/decide`, calibration routes (all `perf.cycle.manage`) | live |
 | /yx/performance/reviews/[id] | employee after release: `ReviewAcknowledgeScreen` live; everyone else: `ReviewWorkspaceScreen` live (self, manager, former manager, skip-level, chain, HR) | PRF-05, PRF-06 | `GET reviews/:id` (now with section scores), `PUT/POST reviews/:id/entries/self|manager|other[/submit]`, `POST reviews/:id/skip/agree`, `/send-back`, `/reopen` (`perf.cycle.manage`), `/other-reviewers` (`perf.cycle.manage`), `POST reviews/:id/acknowledge` (now takes `disagreement`, both in one step), `/disagree`, peer routes | live |
 
+| /yx/performance/reviews | redirects to the home (the old list is retired; earlier reviews are linked on the home) | PRF-01 | — | live |
 | /yx/performance/reviews/[id]/nominations | `NominationsScreen` live | PRF-07 | nominations routes (implicit; the service decides) | live |
 | /yx/performance/feedback | `QuickFeedbackScreen` live | PRF-08 | feedback and feedback-requests routes (implicit; sealing `perf.concern.seal`) | live |
 | /yx/performance/calibrations | `CalibrationListScreen` | Calibration · Sessions list | `GET calibrations` (`perf.calibration.facilitate`) | live |
@@ -84,13 +87,12 @@ PerformanceHomeScreen, ReviewAcknowledgeScreen, ReviewWorkspaceScreen.
 | /yx/performance/coach | `ManagerCoachHome` live | PRF-16 | coach routes (implicit, managers) | live |
 ## 2. Live Performance pages with no design (stand-in copies still)
 
-The design-live guard's `liveCopies` still lists nine Performance screens. None of them has a PRF design story yet, so
+The design-live guard's `liveCopies` still lists seven Performance screens (the reviews list and the old 360° panel were
+retired 3 Nov 2026, founder Q4 and Q7). None of them has a PRF design story yet, so
 none can be swapped; each needs a design story first (rule 18).
 
 | page | what it renders (live copy) | note |
 |---|---|---|
-| /yx/performance/reviews | `ReviewsScreen`: my reviews, my team's, in my scope, hand-overs | the home and the control room open every review, and PRF-13 is live: suggested, retire it (Q4) |
-| /yx/performance/reviews/[id] | `PeerPanel` (nominations and approvals) inside the PRF-05 workspace | duplicates the PRF-07 page: suggested, drop it and keep the "Nominate reviewers" link (Q7) |
 | /yx/performance/comp | `CompCyclesScreen` (comp cycles list) | no design |
 | /yx/performance/pips | `PipsScreen` (plans list, propose) | no design |
 | /yx/performance/feedback-tasks, /feedback-tasks/[id] | `FeedbackTasksScreen`, `PeerFormScreen` (360° answers owed) | no design |
@@ -102,7 +104,6 @@ none can be swapped; each needs a design story first (rule 18).
 
 | design | what it needs | size |
 |---|---|---|
-| PRF-01 coach card on the manager home | the coach (PRF-16) is live on its own page; show its card on the home too | S |
 | PRF-01 HR stat cards' "last week / last period" | a daily snapshot of the figures (overdue stages, aligned %) | S |
 | PRF-05 kudos card | Engage recognition (kudos) | L (Engage) |
 | PRF-05 / PRF-06 "Download PDF" | a review PDF (the dispute export already renders one with pdf-lib) | M |
@@ -125,13 +126,14 @@ cycles company-wide, a manager with direct reports today, or an employee.
 | story (sub-page) | verdict | note |
 |---|---|---|
 | Employee · Employee | live | as an employee: needs-action list (self review, acknowledgement, feedback asked of you), review stages, my goals with check-in, next 1:1, feedback received |
-| Manager · Manager | live (gap) | team table (goal progress, review stage, last 1:1, my last feedback; Review and Goals links) and team goals tree; the PRF-16 coach card is live on its own page (/yx/performance/coach) but not yet on this home (Q6) |
+| Manager · Manager | live | team table (goal progress, review stage, last 1:1, my last feedback; Review and Goals links), team goals, and the PRF-16 coach card beside the team (founder 3 Nov 2026; GET performance/coach) |
 | HrAdmin · HR admin | live (gap) | cycles with done / eligible / overdue, overdue stages, PIPs (with `perf.pip.manage`), goals aligned %, last released bands by department; the stat cards have no "last week / last period" comparison (no history kept) |
 | EmployeePhone · Employee · phone | live | page width under 768 px |
-| ManagerPhone · Manager · phone | live (gap) | under 768 px; no coach card on the home (Q6) |
+| ManagerPhone · Manager · phone | live | under 768 px, with the coach card on top |
 | NoCycleRunning · HR · empty (no cycle) | live | first use: nothing to do, no goals, no cycle; "Start a review cycle" opens /cycles/new |
 | Loading · Loading | live | while GET performance/home loads |
 | Failed · Error | live | GET performance/home fails; Retry refetches |
+| EmployeeEarlierReviews · Employee · earlier reviews | live | my other reviews linked under My review (`earlierReviews` from GET performance/home); the old reviews list is retired |
 
 #### PRF-02 · My goals and check-in
 
@@ -201,12 +203,13 @@ Live page: /yx/performance/reviews/[id] (from the home's actions and team table,
 | story (sub-page) | verdict | note |
 |---|---|---|
 | SelfReview · Employee · self review | live (gap) | the template's sections with the company's scale; Save draft and Complete self review; no kudos card (Engage not built) |
-| ManagerReview · Manager · manager review with advisory peer panel | live (gap) | the self rating shows under each question once the manager saved a draft; the peer card shows the 360° groups (advisory); no kudos card (Engage not built); the PRF-17 assistant shows under the summary when the company has it on; the old 360° `PeerPanel` still lists nominations under the review as well as the PRF-07 page (section 2) |
+| ManagerReview · Manager · manager review with advisory peer panel | live (gap) | the self rating shows under each question once the manager saved a draft; the peer card shows the 360° groups (advisory); no kudos card (Engage not built); the PRF-17 assistant shows under the summary when the company has it on; nominations are the PRF-07 page ("Nominate reviewers"), the old 360° panel is gone |
 | SectionExcluded · Section without goals excluded | live | a rated section with no ratings is named and left out (YX-PERF-02) |
 | Submitted · Submitted (locked) | live (gap) | locked after submit; "Download PDF" is not built |
 | SkipLevel · Skip-level · agree or send back | live | the manager's manager; POST skip/agree or send-back with a reason |
 | HrReopen · HR · reopen a finished review | live | POST reviews/:id/reopen with a reason |
 | FormerManager · Former manager · advisory input | live | an "other" reviewer added by HR answers the manager's questions |
+| ManagerPotential · Manager · potential for calibration | live | the manager proposes Low / Medium / High with the manager review (`potential` on PUT/POST entries/manager; manager only, 1–3, audited); the employee never sees it; the PRF-09 9-box starts from it |
 
 #### PRF-06 · Review acknowledgement
 
@@ -444,6 +447,7 @@ Shared parts, not pages. Live where a live Performance page uses them.
 | GoalTreeCompact · Goal tree · compact map | live | PRF-01 team goals, PRF-03 |
 | Rating · Rating | live | PRF-05 |
 | RatingCompanyScale · Rating · the company’s own scale and band | live | PRF-05 / 06 with the company's levels and the server's band |
+| Potential · Potential · the manager’s proposal | live | PRF-05 manager review (`PotentialChoice`) |
 | Stages · Stages | live | PRF-01, PRF-05 |
 | NineBoxGrid · 9-box | live | PRF-09 calibration board (potential on the 9-box) |
 | NineBoxMoveReason · NineBoxMoveReason | live | PRF-09: moving someone asks for a reason |
@@ -552,3 +556,15 @@ who manages a team sees the HR home; (10) only the calibration facilitator moves
 outcome; (14) AI review summaries off until HR turns them on; (15) coach and agenda wording from fixed rules; (16) rating
 disputes only for the "Rating disputes" role, not HR Admin by default; (17) escalation window 15 days. Founder to do:
 (18) a lawyer confirms the evidence-export certificate wording before first use.
+
+## Built 3 Nov 2026 from the founder answers (branch `feat/yukthix-perf-followups-a`, builder 1)
+(3) both disagreement routes need 20+ characters (one rule, `DISAGREEMENT_MIN`); (4) /yx/performance/reviews redirects
+to the home, `ReviewsScreen` deleted, the "Reviews & cycles" menu item removed, earlier reviews linked on the home
+(design story PRF-01 EmployeeEarlierReviews), review notifications link to the home or hand-overs; (6) the old 360°
+`PeerPanel` is deleted, nominations are the PRF-07 page; (7) the PRF-16 coach card sits on the PRF-01 manager home,
+desktop and phone; (8) the "Performance set-up" template has `perf.goal.view`; migration 20261470000100 brings following
+company roles up to it (additive, audited as access.role.template_synced; edited roles untouched) and the template sync
+covers older copies at start-up; the demo script adds missing keys, so MT-PRF-06/07 use hr-tester; (13) the manager
+proposes 9-box potential in the manager review (migration 20261470000000, `reviews.proposed_potential`; kit
+`PotentialChoice`, design story PRF-05 ManagerPotential); the calibration board starts from it and the facilitator's
+value wins. Not built here: (9) and (12) (other builders).
