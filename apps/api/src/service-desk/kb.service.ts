@@ -23,6 +23,16 @@ import { Ticket, TicketsService } from './tickets.service';
 // them to published requester / public articles. Searches and views are counted without any user id (YX-GRO-07).
 
 export const KB_LANGUAGES = ['en', 'hi', 'ta', 'te'] as const;
+/** "vpn,  VPN , remote" → "vpn, remote": trimmed, one space, no repeats (case-insensitive), in the order given. */
+export function keywordList(raw: string): string {
+  const seen = new Set<string>();
+  return raw
+    .split(',')
+    .map((w) => w.trim().replace(/\s+/g, ' '))
+    .filter((w) => w && !seen.has(w.toLowerCase()) && seen.add(w.toLowerCase()))
+    .join(', ');
+}
+
 const REVIEW_MONTHS = 12; // YX-GRO-07: an article not reviewed for 12 months is flagged.
 const webOrigin = () => (process.env.WEB_ORIGIN ?? 'http://localhost:3000').replace(/\/$/, '');
 type Space = Prisma.SdKbSpaceGetPayload<object>;
@@ -364,6 +374,8 @@ export class KbService {
       featured: r.featured,
       outdated: r.outdated,
       outdatedReason: r.outdatedReason,
+      keywords: r.keywords,
+      assistantUse: r.assistantUse,
       version: r.version,
       updatedAt: r.updatedAt,
     };
@@ -480,6 +492,8 @@ export class KbService {
         ...(dto.expiresAt !== undefined ? { expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null } : {}),
         ...(dto.expiryAction ? { expiryAction: dto.expiryAction } : {}),
         ...(dto.ownerUserId ? { ownerUserId: dto.ownerUserId } : {}),
+        ...(dto.keywords !== undefined ? { keywords: keywordList(dto.keywords) || null } : {}),
+        ...(dto.assistantUse !== undefined ? { assistantUse: dto.assistantUse } : {}),
         version: { increment: 1 },
       };
       if (dto.slug && dto.slug !== art.slug) {
@@ -498,6 +512,19 @@ export class KbService {
       await tx.sdKbArticle.update({ where: { id: art.id }, data });
       await audit(tx, a, 'desk.kb.article_details_changed', 'sd_kb_article', art.id, { ...dto, version: undefined });
       return { ok: true };
+    });
+  }
+
+  /** HLP-04 "Mark reviewed": the owner checked a published article still holds; the next check is due in 12 months. */
+  async markReviewed(a: DeskActor, id: string, version: number) {
+    return this.tx(a, async (tx) => {
+      const { art } = await this.article(tx, a, id, 'author');
+      if (version !== art.version) throw new ConflictException({ statusCode: 409, code: 'KB_ARTICLE_CHANGED', message: 'Someone changed this article. Reload to see the latest.' });
+      if (art.state !== 'published') throw new BadRequestException('Only a published article is marked reviewed. Send this one for review instead.');
+      const reviewDueOn = addDays(todayIst(), REVIEW_MONTHS * 30);
+      await tx.sdKbArticle.update({ where: { id: art.id }, data: { reviewDueOn: new Date(`${reviewDueOn}T00:00:00Z`), version: { increment: 1 } } });
+      await audit(tx, a, 'desk.kb.article_reviewed', 'sd_kb_article', art.id, { before: art.reviewDueOn?.toISOString().slice(0, 10) ?? null, after: reviewDueOn });
+      return { reviewDueOn };
     });
   }
 

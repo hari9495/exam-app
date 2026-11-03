@@ -4179,6 +4179,8 @@ model SdKbArticle {
   featured         Boolean                  @default(false)
   outdated         Boolean                  @default(false)
   outdatedReason   String?                  @map("outdated_reason") @db.VarChar(300)
+  keywords         String?                  @db.VarChar(300)
+  assistantUse     Boolean                  @default(true) @map("assistant_use")
   sourceTicketId   String?                  @map("source_ticket_id") @db.Uuid
   deletedAt        DateTime?                @map("deleted_at") @db.Timestamptz(3)
   search           Unsupported("tsvector")?

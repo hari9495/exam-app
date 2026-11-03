@@ -148,6 +148,14 @@ export class DeskInsightsController {
     return this.kb.submit(await this.actor(req, t), id, dto.version);
   }
 
+  @Post('kb/articles/:id/reviewed')
+  @HttpCode(200)
+  @RequirePermissions('desk.kb.author')
+  async markReviewed(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: VersionDto) {
+    assertOwnSession(req);
+    return this.kb.markReviewed(await this.actor(req, t), id, dto.version);
+  }
+
   @Post('kb/articles/:id/review')
   @HttpCode(200)
   @RequirePermissions('desk.kb.publish')

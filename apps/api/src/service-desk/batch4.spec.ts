@@ -1,5 +1,5 @@
 import { forecast, ragOf, safeCell, toCsv, nextRun } from './reports.service';
-import { healthScore, prefixQuery, renderBlocks, slugify } from './kb.service';
+import { healthScore, keywordList, prefixQuery, renderBlocks, slugify } from './kb.service';
 import { npsOf } from './surveys.service';
 import { ldapUser, scimUser } from './directory.service';
 
@@ -20,6 +20,12 @@ describe('knowledge helpers', () => {
 
   it('shows the current text of a block and drops unknown ones', () => {
     expect(renderBlocks('<p>Visit {{block:office}} or {{ block:nope }}.</p>', new Map([['office', '<strong>MG Road</strong>']]))).toBe('<p>Visit <strong>MG Road</strong> or .</p>');
+  });
+
+  it('cleans the HLP-04 keywords: trimmed, one space, no repeats in any case, empty ones dropped', () => {
+    expect(keywordList(' LOP ,loss  of pay, lop,, payslip deduction ')).toBe('LOP, loss of pay, payslip deduction');
+    expect(keywordList(' , ,')).toBe('');
+    expect(keywordList('vpn')).toBe('vpn');
   });
 
   it('scores health from use, feedback and flags', () => {

@@ -193,6 +193,17 @@ export class ArticleMetaDto {
   @IsOptional()
   @IsUUID()
   ownerUserId?: string;
+
+  /** HLP-04 "Also suggest for these words": comma-separated; search finds the article by them. */
+  @IsOptional()
+  @Text(0, 300)
+  @Matches(/^[\p{L}\p{M}\p{N} ,'&/-]*$/u, { message: 'Use letters, digits, spaces and commas' })
+  keywords?: string;
+
+  /** HLP-04 "Use in assistant answers" (default on). */
+  @IsOptional()
+  @IsBoolean()
+  assistantUse?: boolean;
 }
 
 export class VersionDto {
