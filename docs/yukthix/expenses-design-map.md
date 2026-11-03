@@ -29,13 +29,20 @@ feature not built** (no API) · **phone view, mobile app not built**.
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Claims, trips and advances (EXP-01 … 05, rounds 1 and 2b) | 5 | 44 | 0 | 0 | 0 | 3 | 47 |
-| B. Finance (EXP-06 … 09, round 2) | 4 | 0 | 0 | 17 | 5 | 0 | 22 |
-| **All EXP groups (A–B)** | **9** | **44** | **0** | **17** | **5** | **3** | **69** |
-
+| B. Finance (EXP-06 … 09, round 2) | 4 | 32 | 1 | 0 | 5 | 0 | 38 |
+| **All EXP groups (A–B)** | **9** | **76** | **1** | **0** | **5** | **3** | **85** |
 Round 2b recount (script, 3 Nov 2026, `feat/yukthix-exp-2b`): EXP-01 gains 5 design stories (Team claims: manager,
 over-limit lines, nothing sent yet, not a manager, phone); the 3 "live (gap)" rows are now live (the manager cards drill
 into Team claims; EXP-05 finance recovery shows the instalment amounts; the forex card is drawn). The Ops kit gains one
 story (Receipt · stored photo and PDF), not counted here.
+| A. Claims, trips and advances (EXP-01 … 05, round 1) | 5 | 36 | 3 | 0 | 0 | 3 | 42 |
+Recounted by script on `feat/yukthix-exp-2a` (round 2): EXP-06, EXP-07 and EXP-09 are live. 16 design stories were drawn
+first for the states the real record has (EXP-06: re-route, bank files, second-person release, the bank's results, the
+journal with codes to map, the journal balanced and exported; EXP-07: the grade band grid with the other policies,
+copy as a new policy, rates, categories, editing a category, city tiers, GST registrations, exchange rates, starters;
+EXP-09: approver patterns). The three stand-ins (`ToPayLiveScreen`, `ExpenseSetupScreen`, the reports copy) are deleted
+with their 8 "Live ·" stories, so no "Live ·" Expenses story is left. Only EXP-08 (card import, waits for a bank-format
+decision) is not built; the one new gap is EXP-07 "HR (read only)" (no view-only key for the policy).
 
 Counted by script 3 Nov 2026 on `feat/yukthix-exp-1` (the script is in the appendix): every `export const` story in the
 nine `exp-NN.stories.tsx` files against the rows in section 4. The script fails unless each story file has exactly one
@@ -81,21 +88,15 @@ element count for `expenses` goes from 8 to 4 (the stand-ins' hidden file inputs
 | /yx/expenses/trips (?new=1) | `TripScreen` live, list view: my trips, waiting for me, to book (travel desk); request sheet | EXP-04 | `GET trips`, `GET trips?view=approvals` (implicit), `GET trips?view=desk` (`travel.booking.manage`), `POST trips`, `POST trips/:id/submit` (traveller) | live |
 | /yx/expenses/trips/[id] | `TripScreen` live, record view: timeline, itinerary and bookings, settlement, claims on the trip; approve / reject, cancel, close, add claim | EXP-04 | `GET trips/:id` (implicit; money hidden from the travel desk), bookings (`can.book`), `POST trips/:id/close` (`travel.booking.manage`), `POST workflow/approvals/tasks/:id/decide` (the task holder) | live |
 | /yx/expenses/advances | `AdvanceScreen` live, list view: mine, waiting for me, finance; request sheet | EXP-05 | `GET advances`, `?view=approvals` (implicit), `?view=payout` (`expense.payout.manage`), `POST advances` (implicit) | live |
-| /yx/expenses/advances/[id] | `AdvanceScreen` live, record view: balance card and ledger, overdue message with the recovery instalment amounts and months (round 2b), the forex settlement card for a foreign-currency advance (round 2b); approve less, approve / reject, record payment, record a return, claim against it | EXP-05 | `GET advances/:id` (implicit; now with `policy`: settle-by days and recovery instalments from the company settings, and `recovery` for the employee and finance: the loan engine's schedule once the recovery loan exists, else the preview), `PATCH advances/:id/amount` (the task holder), `POST advances/:id/pay`, `/return` (`expense.payout.manage`) | live |
-| /yx/expenses/to-pay | `ToPayLiveScreen` (stand-in) | EXP-06 | `to-pay`, `payouts`, `journal` (`expense.payout.manage`) | wire design |
-| /yx/settings/expenses | `ExpenseSetupScreen` (stand-in: starters, categories, tiers, policies, rates, GST, FX) | EXP-07 | setup routes (`expense.policy.manage`) | wire design |
-| /yx/expenses/reports | `ExpenseReportsScreen` (stand-in copy in `expenses/live/reports.tsx`) | EXP-09 | `GET reports/:kind` (`expense.report.view`) | wire design |
+| /yx/expenses/advances/[id] | `AdvanceScreen` live, record view: balance card and ledger, overdue message with the company's recovery instalments; approve less, approve / reject, record payment, record a return, claim against it | EXP-05 | `GET advances/:id` (implicit; now with `policy`: settle-by days and recovery instalments from the company settings), `PATCH advances/:id/amount` (the task holder), `POST advances/:id/pay`, `/return` (`expense.payout.manage`) | live |
+| /yx/expenses/to-pay | `ToPayScreen` live: the claims queue (saved views Unpaid / Payment failed / All approved, filters, search, bulk "Add to <month> payroll" and "Pay now by bank file" with the pay-from account, re-route a failed payment), Bank files (download, release by someone other than the maker with the typed phrase, cancel, the bank's results) and Journal (codes to map, export, mark posted); the payroll cut-off line | EXP-06 | `GET to-pay` (`expense.payout.manage` for the entity; now with `payroll`: cut-off day and month from the company setting), `POST to-pay/payroll`, `POST payouts`, `GET payouts/:id/file`, `POST payouts/:id/release` (not the maker; step-up and phrase), `/cancel`, `/results`, `GET journal`, `POST journal/export`, `POST journal/:id/posted` (all `expense.payout.manage`) | live |
+| /yx/settings/expenses | `PolicyMatrixScreen` live: Limits matrix (grade band grid for policies that apply to one grade; other policies listed below and opened in the grid; sticky save bar saves a new version from a date; copy as a new policy), Mileage & per diem, Receipts & over-limit (categories), City tiers, GST registrations, Exchange rates; set-up check; starters for a new company | EXP-07 | setup routes (`expense.policy.manage`) | live |
+| /yx/expenses/reports | `ExpenseReportsScreen` live: Summary (spend by category, paid through, table), Advance ageing (chart, buckets, detail), Unpaid claims, Over limit, GST input, Approver patterns; filter bar (department, period; the legal entity comes from the top bar); Export (CSV) and Download as XLSX | EXP-09 | `GET reports/:kind` (`expense.report.view` for the entities granted; now with `charts` (exact decimal strings) and `departments`; `departmentId` takes up to 20 ids; `format=xlsx`) | live |
 
 ## 2. Live Expenses pages with no design (stand-in copies still)
 
-The design-live guard's `liveCopies` still lists three Expenses screens. Each has a design (EXP-06, EXP-07, EXP-09)
-that does not show everything the stand-in does, so each needs its missing states drawn first (rule 18).
-
-| page | what it renders (live copy) | note |
-|---|---|---|
-| /yx/expenses/to-pay | `ToPayLiveScreen` | EXP-06 has the queue, bulk payroll and bank file, failed; the bank file release by a second person, the bank's results upload and the expense journal have no design yet |
-| /yx/settings/expenses | `ExpenseSetupScreen` | EXP-07 is a category × grade × tier matrix; the live policies are dated P19 policies (who they apply to) with rules per category × city tier, plus categories, tiers, mileage and per-diem rates, GST registrations and FX rates, none of which have a design |
-| /yx/expenses/reports | `ExpenseReportsScreen` (live/reports.tsx) | EXP-09 has charts (spend by category, paid through, ageing buckets) and a filter bar; the API returns rows per report and has the approver-patterns report the design lacks |
+None (round 2). The design-live guard lists no Expenses screen under `liveCopies`, and only EXP-08's screen under
+`notLive`.
 
 ## 3. Designs with no live page or API
 
@@ -198,28 +199,45 @@ Live pages: /yx/expenses/advances (list and request sheet) and /yx/expenses/adva
 
 #### EXP-06 · To-pay queue
 
-Live page: /yx/expenses/to-pay renders the stand-in `ToPayLiveScreen` (round 2).
+Live page: /yx/expenses/to-pay (menu Expenses › To pay), with `expense.payout.manage`; anyone else sees the no-access state.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Unpaid · Unpaid | wire design | stand-in lists the same claims |
-| BulkPayroll · Bulk · add to payroll | wire design | API `POST to-pay/payroll` exists |
-| BulkPayout · Bulk · pay now by bank file | wire design | API `POST payouts` exists |
-| Failed · Payment failed · re-route | wire design | API results and re-route exist |
-| All · All approved (with paid) | wire design | |
-| Empty · Empty | wire design | |
-| Loading · Loading | wire design | |
-| Error · Error | wire design | |
+| Unpaid · Unpaid | live | saved view Unpaid; net payable, approved, advance adjusted, route (the payroll month or direct payout), status with the bank's reason, payment reference; the cut-off line from the company setting |
+| BulkPayroll · Bulk · add to payroll | live | "Add N to <month> payroll"; refusals (no pay that month, locked month) stay on the page with each person's reason; claims already in a payroll, a bank file or paid cannot be chosen (the table says why) |
+| BulkPayout · Bulk · pay now by bank file | live | the confirm asks for the pay-from account (6–20 digits, pressed too early says why); one legal entity per file (else it says so) |
+| Failed · Payment failed · re-route | live | the danger banner's "Show failed" opens the Payment failed view; a failed bank payment has "Re-route"; a failed salary payment is paid again by payroll |
+| All · All approved (with paid) | live | saved view All approved, with paid claims and their payment reference (a year back) |
+| Empty · Empty | live | "Nothing to pay." |
+| Loading · Loading | live | while GET to-pay loads |
+| Error · Error | live | GET to-pay fails; Retry refetches (a 403 shows the no-access state instead) |
+| Reroute · Payment failed · re-route to payroll or a new bank file | live | Segment: next payroll (moves it) or a new bank file (opens the bank-file confirm for that claim) |
+| BankFiles · Bank files · made by you, released by someone else | live | download; the maker pressing Release is told someone else releases it; cancel with a reason |
+| Release · Bank file · second-person release | live | the kit's irreversible sheet: payments, total, file check, typed phrase "RELEASE n"; the server also asks for step-up |
+| Results · Bank file · the bank's results | live | per payment: Paid / Failed / Came back (Segment), bank reference, the bank's reason (required unless paid) |
+| Journal · Journal · codes to map before export | live | the month's debits and credits for a legal entity; Export is never greyed out, pressed with codes unmapped it says to map them |
+| JournalReady · Journal · balanced, exported, mark posted | live | export (CSV) and mark posted |
 
 #### EXP-07 · Expense policy matrix
 
-Live page: /yx/settings/expenses renders the stand-in `ExpenseSetupScreen` (round 2, needs a founder decision, question 6).
+Live page: /yx/settings/expenses (menu Settings › Expenses), with `expense.policy.manage`; anyone else sees the
+no-access state. Founder answer 6: the grade band grid shows policies that apply to exactly one grade; every other
+policy is listed below and opens in the same grid.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Matrix · Matrix (finance edits) | wire design | live policies are dated P19 policies with rules per category × city tier |
-| Unsaved · Unsaved changes · new version | wire design | the API already versions a policy from a date |
-| HrReadOnly · HR (read only) | wire design | |
+| Matrix · Matrix (finance edits) | live | grade band picker; category rows with the kind of limit, an Any city column and one per city tier, and over the limit (reason + extra approval, or hard block) |
+| Unsaved · Unsaved changes · new version | live | the sticky save bar: a policy in force saves as the next version from a date after its start (pressed too early says why); one not yet in force saves in place; Discard |
+| HrReadOnly · HR (read only) | live (gap) | no view-only key for the policy: every set-up route needs `expense.policy.manage`, so HR without it sees the no-access state |
+| GradeBands · Grade band grid · other policies listed below | live | "Other policies" table (company-wide, by location or other conditions) with Edit limits |
+| CopyPolicy · Copy as a new policy (for one grade) | live | name, applies to (Everyone or conditions; a single grade makes a new grade band), priority, start date |
+| Rates · Mileage & per diem · add a rate | live | dated mileage and per-diem rates |
+| Categories · Receipts & over-limit · categories | live | receipt needed above, GST, ledger code (unmapped ones stand out) |
+| EditCategory · Category · receipt threshold, GST, ledger code | live | the code is kept once saved (read only) |
+| Tiers · City tiers | live | |
+| Gst · GST registrations · add one | live | GSTIN shape checked after Save, before any call |
+| ExchangeRates · Exchange rates | live | the company's own rate table |
+| Starters · New company · start from the starters | live | |
 
 #### EXP-08 · Card statement import & matching
 
@@ -233,16 +251,32 @@ Live page: /yx/settings/expenses renders the stand-in `ExpenseSetupScreen` (roun
 
 #### EXP-09 · Expense reports
 
-Live page: /yx/expenses/reports renders the stand-in copy in `expenses/live/reports.tsx` (round 2).
+Live page: /yx/expenses/reports (menu Expenses › Expense reports), with `expense.report.view`; anyone else sees the
+no-access state.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Summary · Summary | wire design | needs spend by category and "paid through" figures for the charts |
-| Ageing · Advance ageing | wire design | needs ageing buckets |
-| Unpaid · Unpaid claims (net payable first) | wire design | |
-| OverLimit · Over limit | wire design | |
-| Gst · GST input | wire design | |
-| Loading · Loading | wire design | |
+| Summary · Summary | live | spend by category and paid through (payroll, direct payout, company paid) from the server's exact figures; the table |
+| Ageing · Advance ageing | live | chart and bucket table (0–30, 31–60, 61–90, over 90 days; every bucket shown) with the exact total, then each advance |
+| Unpaid · Unpaid claims (net payable first) | live | approved claims not paid yet |
+| OverLimit · Over limit | live | approved bills over a limit with the reason given |
+| Gst · GST input | live | GSTR-2B column order |
+| Loading · Loading | live | while the report loads |
+| ApproverPatterns · Approver patterns · a second look, never a block | live | an approver who approved 3 or more flagged or over-limit claims of the same person in 90 days |
+
+## 5a. Rules built in round 2
+
+- **Paid through** (product default): approved claims decided in the period, their net payable by route (payroll or
+  direct payout; no route yet counts as payroll), and their company-paid bills. **Spend by category** is the approved
+  amount of personal bills, as in the table. Exact decimal strings; the page adds in paise.
+- **Advance ageing buckets** (product default, for reading only): 0–30, 31–60, 61–90 and over 90 days since paid.
+- **Department filter**: people whose job is in the department on the report's end date; up to 20 departments.
+- **Excel export**: every cell written as text, so money stays exact; CSV keeps the formula guard.
+- **To pay cut-off line**: the company setting `expense.payroll_cutoff_day` (for the one legal entity shown, else the
+  company default).
+- **Grade band** (founder answer 6): a policy whose "applies to" is exactly one condition on the grade with one value.
+- **No disabled buttons**: Export journal, Release (by the maker), Pay by bank file (several entities) and Save (nothing
+  changed: the save bar only shows with a change) say why instead of being greyed out.
 
 ## 5. Rules built in round 1 (and where they come from)
 
@@ -286,7 +320,6 @@ Live page: /yx/expenses/reports renders the stand-in copy in `expenses/live/repo
    categories, tiers, rates, GST registrations and FX rates before wiring (round 2, L).
 
 ### Round 2b questions (safe default built)
-
 7. **Team claims reach.** Built: direct reports only (as the home cards). *Suggested:* keep; add "whole reporting line"
    later only if managers of managers ask.
 8. **Opening a team claim.** Built: the list is read only and Open shows only where the manager already may open the
@@ -294,18 +327,19 @@ Live page: /yx/expenses/reports renders the stand-in copy in `expenses/live/repo
 9. **PDF receipts.** Built: a "PDF" tile; "View receipt" opens the file. *Suggested:* keep until a vetted PDF renderer
    (pdf.js in the browser, or a worker) is chosen.
 10. **Who sees the recovery amounts.** Built: the employee and finance; not an approver alone. *Suggested:* keep.
-
 ## 7. Left for round 2 (sizes)
-
 | piece | what | size |
 |---|---|---|
 | EXP-06 to-pay | make the design live with the API that exists; draw the release-by-a-second-person, bank results and expense journal states first; delete `ToPayLiveScreen` and its 2 Live stories | M |
 | EXP-09 reports | server figures for the charts (spend by category, paid through, ageing buckets), entity filter, CSV; draw the approver-patterns report; delete the reports copy and its 3 Live stories | M |
 | EXP-07 policy matrix and set-up | founder decision 6, then stories for the set-up parts, then wire; delete `ExpenseSetupScreen` and its 3 Live stories | L |
-| EXP-08 card statement import | the feature: statement upload and mapping, matching engine, tables with RLS, employee explanations, bank formats (provider: to decide) | L |
+| EXP-08 card statement import | waits for the bank-format decision; then statement upload and mapping, matching, tables with RLS, employee explanations | L |
 | ~~Team claims list (question 1)~~ | done in round 2b | — |
 | ~~EXP-05 recovery and forex~~ | done in round 2b | — |
 | ~~Receipt picture~~ | done in round 2b (photos; PDFs show a tile) | — |
+## 7. Left after round 2 (sizes)
+| EXP-07 HR read only | a view-only key for the expense policy (`expense.policy.view`), if HR should see it without editing | S |
+| Team claims, advance instalments and forex card, receipt thumbnail, FX tolerance setting | another builder (round 2b) | — |
 | Phone camera (3 stories) | the mobile app's in-page camera | mobile app |
 
 ## Appendix: the count script

@@ -11938,146 +11938,290 @@
     ],
     "note": "Positive."
   },
-    {
-      "id": "MT-EXP-B-01",
-      "area": "Expenses · round 2 (3 Nov 2026)",
-      "screen": "Team claims · manager (positive)",
-      "url": "http://localhost:3000/yx/expenses/team",
-      "account": "panel@demo-org.test (Manager - Divya)",
-      "steps": [
-        "1. Sign in as Divya. Open Expenses, choose \"Waiting for me\" and look at the \"Team spend\" card.",
-        "2. Click \"View team claims\" on the Team spend card.",
-        "3. Switch the month to last month, then back.",
-        "4. Choose \"With over-limit lines\".",
-        "5. Click Open on a claim that has the button."
-      ],
-      "expected": "Step 2: the breadcrumb reads \"Pay › Team claims\"; the list shows the claims Divya’s direct reports (Arjun and others) sent this month: person, claim, sent date, amount, over-limit lines, status; \"Team spend\" in the facts equals the card on the home. No drafts are listed. Step 3: the list changes to last month’s claims and the address shows ?month=. Step 4: only claims with over-limit lines stay. Step 5: the claim opens in the review. Claims Divya does not approve have no Open button. The page fits 1278 x 635 without a page scroll bar.",
-      "stories": [
-        "Expenses › EXP-01 › Expenses home › Team claims · manager, read only",
-        "Expenses › EXP-01 › Expenses home › Team claims · with over-limit lines"
-      ],
-      "note": "Positive."
-    },
-    {
-      "id": "MT-EXP-B-02",
-      "area": "Expenses · round 2 (3 Nov 2026)",
-      "screen": "Team claims · over-limit drill and empty month",
-      "url": "http://localhost:3000/yx/expenses",
-      "account": "panel@demo-org.test (Manager - Divya)",
-      "steps": [
-        "1. On Expenses › Waiting for me, click \"View over-limit lines\" on the Over-limit lines card.",
-        "2. Switch to a month in which nobody sent a claim."
-      ],
-      "expected": "Step 1: Team claims opens with \"With over-limit lines\" already chosen and the address ends ?over=1. Step 2: \"No claims sent in <month>.\" (or \"No over-limit lines in <month>.\") with no error.",
-      "stories": [
-        "Expenses › EXP-01 › Expenses home › Team claims · nothing sent yet"
-      ],
-      "note": "Positive and empty state."
-    },
-    {
-      "id": "MT-EXP-B-03",
-      "area": "Expenses · round 2 (3 Nov 2026)",
-      "screen": "Team claims · refused (negative)",
-      "url": "http://localhost:3000/yx/expenses/team",
-      "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya); payroll@demo-org.test (Payroll Admin - Suresh; needs Expenses › pay claims, expense.payout.manage); an admin of another company",
-      "steps": [
-        "1. Sign in as Arjun (no one reports to him) and type /yx/expenses/team in the address bar.",
-        "2. Repeat as Suresh (finance, no direct reports).",
-        "3. As Divya, type /yx/expenses/team?month=2026-13.",
-        "4. As an admin of another company, open the address of one of Divya’s team claims."
-      ],
-      "expected": "Steps 1 and 2: \"You don’t have access to team claims\" with \"Team claims are for managers…\", never \"check your connection\"; their menu has no Team claims link. Step 3: the bad month is ignored and this month shows (the API refuses a bad month with 400 if called directly). Step 4: \"No such claim\" (404); nothing from the other company shows.",
-      "stories": [
-        "Expenses › EXP-01 › Expenses home › Team claims · not a manager (no access)"
-      ],
-      "note": "Negative."
-    },
-    {
-      "id": "MT-EXP-B-04",
-      "area": "Expenses · round 2 (3 Nov 2026)",
-      "screen": "Receipt thumbnail (positive and negative)",
-      "url": "http://localhost:3000/yx/expenses",
-      "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya); panel@demo-org.test (Manager - Divya); hr@demo-org.test (HR Admin - Lakshmi)",
-      "steps": [
-        "1. As Arjun, start a claim and add a receipt photo (JPG or PNG), then a PDF bill as a second line.",
-        "2. Look at each line card straight after the upload, then reload after a few seconds.",
-        "3. Submit the claim. As Divya, open it and click each line row.",
-        "4. As Lakshmi (not an approver, no claim scope), type the claim’s address."
-      ],
-      "expected": "Step 2: while the virus check runs the drawn receipt shows; after it, line 1 shows the real photo and line 2 a \"PDF\" tile; \"View receipt\" opens each file. Step 3: the rail shows the same photo or PDF tile for the chosen line. Step 4: \"No such claim\"; the receipt file is never served to her.",
-      "stories": [
-        "Ops kit › Receipt · stored photo and PDF",
-        "Expenses › EXP-02 › Claim composer › Draft · policy flags, per diem, mileage",
-        "Expenses › EXP-03 › Claim review › Manager review · receipt beside lines"
-      ],
-      "note": "Positive and negative."
-    },
-    {
-      "id": "MT-EXP-B-05",
-      "area": "Expenses · round 2 (3 Nov 2026)",
-      "screen": "Overdue advance · recovery instalments",
-      "url": "http://localhost:3000/yx/expenses/advances",
-      "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya); payroll@demo-org.test (Payroll Admin - Suresh; needs Expenses › pay claims, expense.payout.manage); panel@demo-org.test (Manager - Divya)",
-      "steps": [
-        "1. Use Arjun’s paid advance whose settle-by date has passed (MT-EXP-12 makes one). As Suresh, open it.",
-        "2. As Arjun, open the same advance.",
-        "3. The day after it went overdue (after the daily job), open it again as Suresh.",
-        "4. As Divya (she approved it but is neither Arjun nor finance), open it."
-      ],
-      "expected": "Step 1: \"Settlement window ended\" says \"Recover ₹X from salary in N instalments: ₹a (Mon YYYY), ₹b (Mon), …. Protected net pay applies.\" The amounts add up exactly to the open balance; N is the company setting (default 3). Step 2: Arjun reads \"Submit claims or return ₹X. Otherwise it is recovered from salary in N instalments: …\". Step 3: \"Being recovered …\" with the loan engine’s months. Step 4: the overdue message has no instalment amounts.",
-      "stories": [
-        "Expenses › EXP-05 › Advance card + request › Overdue · recovery warning",
-        "Expenses › EXP-05 › Advance card + request › Finance · recovery instalments"
-      ],
-      "note": "Positive and negative."
-    },
-    {
-      "id": "MT-EXP-B-06",
-      "area": "Expenses · round 2 (3 Nov 2026)",
-      "screen": "Forex advance · settlement card",
-      "url": "http://localhost:3000/yx/expenses/trips",
-      "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya); payroll@demo-org.test (Payroll Admin - Suresh; needs Expenses › pay claims, expense.payout.manage)",
-      "steps": [
-        "1. As Arjun, request a trip with a USD forex card advance of 500; Divya approves; Suresh records payment (leave the rate empty).",
-        "2. Arjun claims USD bills on the trip; Divya approves.",
-        "3. Suresh records a return of the rest at a different rate.",
-        "4. Open a rupee advance."
-      ],
-      "expected": "Steps 1 to 3: the advance shows a \"Forex advance · USD\" card with rows Advance loaded at <rate>, Spent on trip lines, Returned by bank … <date>, Exchange difference; USD and INR columns; the INR figures match the ledger exactly. Step 4: no forex card.",
-      "stories": [
-        "Expenses › EXP-05 › Advance card + request › Forex advance · exchange difference"
-      ],
-      "note": "Positive and negative."
-    },
-    {
-      "id": "MT-EXP-B-07",
-      "area": "Expenses · round 2 (3 Nov 2026)",
-      "screen": "Foreign-rate tolerance setting",
-      "url": "http://localhost:3000/yx/settings",
-      "account": "admin@demo-org.test (System Admin); arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
-      "steps": [
-        "1. As the admin, find the setting \"Expenses: flag a typed exchange rate this far (%) from the company rate\". It shows 3 (the default).",
-        "2. As Arjun, add a foreign bill with a rate you typed 4 % above the company rate, attach the statement and submit.",
-        "3. As the admin, set the tolerance to 5. As Arjun, repeat step 2 on a new claim.",
-        "4. Try a value that is not offered (for example 4) through the settings API."
-      ],
-      "expected": "Step 2: the claim carries the \"the rate entered is 4.00 % from the company rate\" flag for the approver. Step 3: no rate flag. Step 4: refused (400); the value stays 5. Another company still has 3.",
-      "stories": [
-        "Expenses › EXP-02 › Claim composer › Foreign currency · rate variance flag"
-      ],
-      "note": "Positive and negative."
-    },
-    {
-      "id": "MT-EXP-B-08",
-      "area": "Expenses · round 2 (3 Nov 2026)",
-      "screen": "Breadcrumbs name each Expenses page",
-      "url": "http://localhost:3000/yx/expenses",
-      "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
-      "steps": [
-        "1. Open Expenses, then a claim, Trips, a trip, Advances and an advance."
-      ],
-      "expected": "The breadcrumb reads \"Pay › Expenses\" on the home and on a claim, \"Pay › Trips\" on the trips list and a trip, \"Pay › Advances\" on the advances list and an advance. The menu under Expenses & advances shows Expenses, Trips and Advances (and Team claims for a manager).",
-      "stories": [],
-      "note": "Positive (walk-through 3 Nov 2026)."
-    }
+  {
+    "id": "MT-EXP-B-01",
+    "area": "Expenses · round 2 (3 Nov 2026)",
+    "screen": "Team claims · manager (positive)",
+    "url": "http://localhost:3000/yx/expenses/team",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "1. Sign in as Divya. Open Expenses, choose \"Waiting for me\" and look at the \"Team spend\" card.",
+      "2. Click \"View team claims\" on the Team spend card.",
+      "3. Switch the month to last month, then back.",
+      "4. Choose \"With over-limit lines\".",
+      "5. Click Open on a claim that has the button."
+    ],
+    "expected": "Step 2: the breadcrumb reads \"Pay › Team claims\"; the list shows the claims Divya’s direct reports (Arjun and others) sent this month: person, claim, sent date, amount, over-limit lines, status; \"Team spend\" in the facts equals the card on the home. No drafts are listed. Step 3: the list changes to last month’s claims and the address shows ?month=. Step 4: only claims with over-limit lines stay. Step 5: the claim opens in the review. Claims Divya does not approve have no Open button. The page fits 1278 x 635 without a page scroll bar.",
+    "stories": [
+      "Expenses › EXP-01 › Expenses home › Team claims · manager, read only",
+      "Expenses › EXP-01 › Expenses home › Team claims · with over-limit lines"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-EXP-B-02",
+    "area": "Expenses · round 2 (3 Nov 2026)",
+    "screen": "Team claims · over-limit drill and empty month",
+    "url": "http://localhost:3000/yx/expenses",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "1. On Expenses › Waiting for me, click \"View over-limit lines\" on the Over-limit lines card.",
+      "2. Switch to a month in which nobody sent a claim."
+    ],
+    "expected": "Step 1: Team claims opens with \"With over-limit lines\" already chosen and the address ends ?over=1. Step 2: \"No claims sent in <month>.\" (or \"No over-limit lines in <month>.\") with no error.",
+    "stories": [
+      "Expenses › EXP-01 › Expenses home › Team claims · nothing sent yet"
+    ],
+    "note": "Positive and empty state."
+  },
+  {
+    "id": "MT-EXP-B-03",
+    "area": "Expenses · round 2 (3 Nov 2026)",
+    "screen": "Team claims · refused (negative)",
+    "url": "http://localhost:3000/yx/expenses/team",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya); payroll@demo-org.test (Payroll Admin - Suresh; needs Expenses › pay claims, expense.payout.manage); an admin of another company",
+    "steps": [
+      "1. Sign in as Arjun (no one reports to him) and type /yx/expenses/team in the address bar.",
+      "2. Repeat as Suresh (finance, no direct reports).",
+      "3. As Divya, type /yx/expenses/team?month=2026-13.",
+      "4. As an admin of another company, open the address of one of Divya’s team claims."
+    ],
+    "expected": "Steps 1 and 2: \"You don’t have access to team claims\" with \"Team claims are for managers…\", never \"check your connection\"; their menu has no Team claims link. Step 3: the bad month is ignored and this month shows (the API refuses a bad month with 400 if called directly). Step 4: \"No such claim\" (404); nothing from the other company shows.",
+    "stories": [
+      "Expenses › EXP-01 › Expenses home › Team claims · not a manager (no access)"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-EXP-B-04",
+    "area": "Expenses · round 2 (3 Nov 2026)",
+    "screen": "Receipt thumbnail (positive and negative)",
+    "url": "http://localhost:3000/yx/expenses",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya); panel@demo-org.test (Manager - Divya); hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "1. As Arjun, start a claim and add a receipt photo (JPG or PNG), then a PDF bill as a second line.",
+      "2. Look at each line card straight after the upload, then reload after a few seconds.",
+      "3. Submit the claim. As Divya, open it and click each line row.",
+      "4. As Lakshmi (not an approver, no claim scope), type the claim’s address."
+    ],
+    "expected": "Step 2: while the virus check runs the drawn receipt shows; after it, line 1 shows the real photo and line 2 a \"PDF\" tile; \"View receipt\" opens each file. Step 3: the rail shows the same photo or PDF tile for the chosen line. Step 4: \"No such claim\"; the receipt file is never served to her.",
+    "stories": [
+      "Ops kit › Receipt · stored photo and PDF",
+      "Expenses › EXP-02 › Claim composer › Draft · policy flags, per diem, mileage",
+      "Expenses › EXP-03 › Claim review › Manager review · receipt beside lines"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-EXP-B-05",
+    "area": "Expenses · round 2 (3 Nov 2026)",
+    "screen": "Overdue advance · recovery instalments",
+    "url": "http://localhost:3000/yx/expenses/advances",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya); payroll@demo-org.test (Payroll Admin - Suresh; needs Expenses › pay claims, expense.payout.manage); panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "1. Use Arjun’s paid advance whose settle-by date has passed (MT-EXP-12 makes one). As Suresh, open it.",
+      "2. As Arjun, open the same advance.",
+      "3. The day after it went overdue (after the daily job), open it again as Suresh.",
+      "4. As Divya (she approved it but is neither Arjun nor finance), open it."
+    ],
+    "expected": "Step 1: \"Settlement window ended\" says \"Recover ₹X from salary in N instalments: ₹a (Mon YYYY), ₹b (Mon), …. Protected net pay applies.\" The amounts add up exactly to the open balance; N is the company setting (default 3). Step 2: Arjun reads \"Submit claims or return ₹X. Otherwise it is recovered from salary in N instalments: …\". Step 3: \"Being recovered …\" with the loan engine’s months. Step 4: the overdue message has no instalment amounts.",
+    "stories": [
+      "Expenses › EXP-05 › Advance card + request › Overdue · recovery warning",
+      "Expenses › EXP-05 › Advance card + request › Finance · recovery instalments"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-EXP-B-06",
+    "area": "Expenses · round 2 (3 Nov 2026)",
+    "screen": "Forex advance · settlement card",
+    "url": "http://localhost:3000/yx/expenses/trips",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya); payroll@demo-org.test (Payroll Admin - Suresh; needs Expenses › pay claims, expense.payout.manage)",
+    "steps": [
+      "1. As Arjun, request a trip with a USD forex card advance of 500; Divya approves; Suresh records payment (leave the rate empty).",
+      "2. Arjun claims USD bills on the trip; Divya approves.",
+      "3. Suresh records a return of the rest at a different rate.",
+      "4. Open a rupee advance."
+    ],
+    "expected": "Steps 1 to 3: the advance shows a \"Forex advance · USD\" card with rows Advance loaded at <rate>, Spent on trip lines, Returned by bank … <date>, Exchange difference; USD and INR columns; the INR figures match the ledger exactly. Step 4: no forex card.",
+    "stories": [
+      "Expenses › EXP-05 › Advance card + request › Forex advance · exchange difference"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-EXP-B-07",
+    "area": "Expenses · round 2 (3 Nov 2026)",
+    "screen": "Foreign-rate tolerance setting",
+    "url": "http://localhost:3000/yx/settings",
+    "account": "admin@demo-org.test (System Admin); arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
+    "steps": [
+      "1. As the admin, find the setting \"Expenses: flag a typed exchange rate this far (%) from the company rate\". It shows 3 (the default).",
+      "2. As Arjun, add a foreign bill with a rate you typed 4 % above the company rate, attach the statement and submit.",
+      "3. As the admin, set the tolerance to 5. As Arjun, repeat step 2 on a new claim.",
+      "4. Try a value that is not offered (for example 4) through the settings API."
+    ],
+    "expected": "Step 2: the claim carries the \"the rate entered is 4.00 % from the company rate\" flag for the approver. Step 3: no rate flag. Step 4: refused (400); the value stays 5. Another company still has 3.",
+    "stories": [
+      "Expenses › EXP-02 › Claim composer › Foreign currency · rate variance flag"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-EXP-B-08",
+    "area": "Expenses · round 2 (3 Nov 2026)",
+    "screen": "Breadcrumbs name each Expenses page",
+    "url": "http://localhost:3000/yx/expenses",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
+    "steps": [
+      "1. Open Expenses, then a claim, Trips, a trip, Advances and an advance."
+    ],
+    "expected": "The breadcrumb reads \"Pay › Expenses\" on the home and on a claim, \"Pay › Trips\" on the trips list and a trip, \"Pay › Advances\" on the advances list and an advance. The menu under Expenses & advances shows Expenses, Trips and Advances (and Team claims for a manager).",
+    "stories": [],
+    "note": "Positive (walk-through 3 Nov 2026)."
+  },
+  {
+    "id": "MT-EXP-14",
+    "area": "Expenses · design round 2 (3 Nov 2026)",
+    "screen": "To pay · payroll and bank file (positive)",
+    "url": "http://localhost:3000/yx/expenses/to-pay",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh; needs Expenses › pay claims, expense.payout.manage, and expense reports, expense.report.view)",
+    "steps": [
+      "1. Open Expenses › To pay. Read the line under the title.",
+      "2. Tick one waiting claim and click \"Add 1 to <month> payroll\", then \"Add to payroll\".",
+      "3. Tick another and click \"Pay now by bank file\"; enter 00123456789 as \"Pay from account\" and click \"Create bank file\"."
+    ],
+    "expected": "Step 1: \"<Month> payroll cut-off <date>\" from the company setting (default day 23). Step 2: toast \"1 added to the <month> payroll\"; the claim shows \"Payment in the next payroll\". Step 3: toast \"Bank file made: 1 payment, ₹X. Someone else releases it.\"; the Bank files tab shows it \"Waiting for release\" with \"Someone else releases it.\"",
+    "stories": [
+      "Expenses · EXP-06 · To-pay queue · Bulk · add to payroll",
+      "Expenses · EXP-06 · To-pay queue · Bulk · pay now by bank file"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-EXP-15",
+    "area": "Expenses · design round 2 (3 Nov 2026)",
+    "screen": "To pay · pressed too early and refusals (negative)",
+    "url": "http://localhost:3000/yx/expenses/to-pay",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh; needs Expenses › pay claims, expense.payout.manage, and expense reports, expense.report.view); arjun@demo-org.test (Arjun Kulkarni, reports to Divya); panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "1. As Suresh, choose claims and click \"Create bank file\" with the account empty.",
+      "2. Choose claims of two legal entities and click \"Pay now by bank file\".",
+      "3. Click \"Release\" on the bank file you made.",
+      "4. As Arjun and as Divya, open /yx/expenses/to-pay."
+    ],
+    "expected": "Step 1: \"The account the money comes from: 6 to 20 digits.\" under the field, cursor there, nothing made. Step 2: a message says a bank file pays the claims of one legal entity. Step 3: \"You made this bank file, so someone else releases it.\" and nothing is released. Step 4: the page says you don't have access to claims to pay (never \"check your connection\"). No button is greyed out.",
+    "stories": [
+      "Expenses · EXP-06 · To-pay queue · Bank files · made by you, released by someone else"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-EXP-16",
+    "area": "Expenses · design round 2 (3 Nov 2026)",
+    "screen": "To pay · second-person release and the bank's results",
+    "url": "http://localhost:3000/yx/expenses/to-pay",
+    "account": "approver@demo-org.test (Payroll Approver - Meena; also needs expense.payout.manage, to release a bank file someone else made); payroll@demo-org.test (Payroll Admin - Suresh; needs Expenses › pay claims, expense.payout.manage, and expense reports, expense.report.view)",
+    "steps": [
+      "1. As Meena, open Bank files and click \"Release\" on Suresh's file; click \"Release\" in the sheet before typing, then type RELEASE 1 and release.",
+      "2. Click \"Record results\", choose \"Came back\", click \"Record results\" with the reason empty, then type \"Account frozen\" and record."
+    ],
+    "expected": "Step 1: before typing, the sheet says what to type and releases nothing; after: toast \"Bank file released\". Step 2: empty reason shows \"<name>: say what the bank gave as the reason.\"; then toast \"Bank results recorded\"; the claim shows \"Payment failed\" with \"Account frozen\" and a red banner \"1 payment failed\" with \"Show failed\".",
+    "stories": [
+      "Expenses · EXP-06 · To-pay queue · Bank file · second-person release",
+      "Expenses · EXP-06 · To-pay queue · Bank file · the bank's results"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-EXP-17",
+    "area": "Expenses · design round 2 (3 Nov 2026)",
+    "screen": "To pay · re-route and the journal",
+    "url": "http://localhost:3000/yx/expenses/to-pay",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh; needs Expenses › pay claims, expense.payout.manage, and expense reports, expense.report.view)",
+    "steps": [
+      "1. Click \"Show failed\", then \"Re-route\" on the failed bank payment; keep \"Next payroll\" and confirm.",
+      "2. Open Journal, choose the legal entity and this month, click \"Export journal (CSV)\"."
+    ],
+    "expected": "Step 1: toast \"<name>'s claim goes to the <month> payroll\". Step 2: with codes unmapped, the warning lists them and Export says \"Map every code to a ledger account first.\" (nothing downloads); once mapped, the CSV downloads, toast \"Journal exported\", and \"Mark posted\" turns it Posted.",
+    "stories": [
+      "Expenses · EXP-06 · To-pay queue · Payment failed · re-route to payroll or a new bank file",
+      "Expenses · EXP-06 · To-pay queue · Journal · codes to map before export",
+      "Expenses · EXP-06 · To-pay queue · Journal · balanced, exported, mark posted"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-EXP-18",
+    "area": "Expenses · design round 2 (3 Nov 2026)",
+    "screen": "Reports · charts, filters, exports (positive)",
+    "url": "http://localhost:3000/yx/expenses/reports",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh; needs Expenses › pay claims, expense.payout.manage, and expense reports, expense.report.view)",
+    "steps": [
+      "1. Open Expenses › Expense reports.",
+      "2. In the filter bar choose Department \"Sales\" and a period of last month.",
+      "3. Click \"Export\", then \"Download as XLSX\". Open \"Advance ageing\" and \"Approver patterns\"."
+    ],
+    "expected": "Step 1: \"Spend by category\" and \"Paid through\" charts and the table; the line under the title names the period and \"all entities\" (or the entity chosen in the top bar). Step 2: figures change to Sales people only. Step 3: a CSV and an .xlsx download with the same rows; ageing shows the four buckets with counts and the exact total; approver patterns lists any approver with 3 or more flagged claims of one person in 90 days.",
+    "stories": [
+      "Expenses · EXP-09 · Expense reports · Summary",
+      "Expenses · EXP-09 · Expense reports · Advance ageing",
+      "Expenses · EXP-09 · Expense reports · Approver patterns · a second look, never a block"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-EXP-19",
+    "area": "Expenses · design round 2 (3 Nov 2026)",
+    "screen": "Reports · who may read them (negative)",
+    "url": "http://localhost:3000/yx/expenses/reports",
+    "account": "panel@demo-org.test (Manager - Divya); arjun@demo-org.test (Arjun Kulkarni, reports to Divya); an admin of another company",
+    "steps": [
+      "1. As Divya and as Arjun, open /yx/expenses/reports.",
+      "2. As another company's admin, open the reports."
+    ],
+    "expected": "Step 1: the no-access state (\"You don't have access to expense reports\", ask your System Admin), never \"check your connection\". Step 2: their own company's figures only; none of this company's claims appear.",
+    "stories": [
+      "Expenses · EXP-09 · Expense reports · Summary"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-EXP-20",
+    "area": "Expenses · design round 2 (3 Nov 2026)",
+    "screen": "Expense policy · grade bands and a new version (positive)",
+    "url": "http://localhost:3000/yx/settings/expenses",
+    "account": "admin@demo-org.test (System Admin; expense.policy.manage)",
+    "steps": [
+      "1. Open Settings › Expenses. Read the Limits matrix.",
+      "2. Change the Hotel Tier 1 limit, choose an \"Effective from\" date after the policy's start and click \"Save as v<n>\".",
+      "3. In \"Other policies\" click \"Edit limits\" on the company-wide policy."
+    ],
+    "expected": "Step 1: \"Grade band\" lists the policies that apply to one grade; the grid shows categories by Any city and each tier with \"Over the limit\"; every other policy is in \"Other policies\" with who it applies to. Step 2: toast \"Saved as version <n> from <date>\"; claims dated before keep the old limits. Step 3: the grid shows that policy's limits.",
+    "stories": [
+      "Expenses · EXP-07 · Expense policy matrix · Matrix (finance edits)",
+      "Expenses · EXP-07 · Expense policy matrix · Unsaved changes · new version",
+      "Expenses · EXP-07 · Expense policy matrix · Grade band grid · other policies listed below"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-EXP-21",
+    "area": "Expenses · design round 2 (3 Nov 2026)",
+    "screen": "Expense policy · pressed too early and no access (negative)",
+    "url": "http://localhost:3000/yx/settings/expenses",
+    "account": "admin@demo-org.test (System Admin; expense.policy.manage); hr@demo-org.test (HR Admin - Lakshmi)",
+    "steps": [
+      "1. Change a limit on a policy in force and click \"Save as v<n>\" without a date.",
+      "2. Type \"2,000\" in a limit cell and save.",
+      "3. Open GST registrations › Add a registration, type a 14-character GSTIN and save.",
+      "4. As Lakshmi (HR without expense.policy.manage), open Settings › Expenses."
+    ],
+    "expected": "Step 1: \"Choose the day the new limits start.\" and nothing saved. Step 2: \"<Category>: 2,000 is not an amount.\" Step 3: the GSTIN error shows after Save, before anything is sent. Step 4: the no-access state, never \"check your connection\" (a read-only view needs a view key: open item).",
+    "stories": [
+      "Expenses · EXP-07 · Expense policy matrix · HR (read only)",
+      "Expenses · EXP-07 · Expense policy matrix · GST registrations · add one"
+    ],
+    "note": "Negative."
+  }
 ]
