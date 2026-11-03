@@ -38,6 +38,11 @@ export const SLA_QUEUE = 'sd-sla';
 type Timer = Prisma.SdSlaTimerGetPayload<object>;
 type Version = Prisma.SdSlaPolicyVersionGetPayload<object>;
 type TicketRow = Prisma.SdTicketGetPayload<object>;
+export interface ClockView {
+  usedMinutes: number;
+  targetMinutes: number;
+  paused: boolean;
+}
 const H24: CalendarSpec = { zone: 'UTC', hours: [1, 2, 3, 4, 5, 6, 7].map((weekday) => ({ weekday, startMinute: 0, endMinute: 1440, validFrom: '2000-01-01', validTo: null })), holidays: [] };
 const LIVE = ['running', 'paused'];
 const DONE = ['solved', 'closed'];
@@ -660,14 +665,19 @@ export class SlaService implements OnModuleInit, OnModuleDestroy {
    * HLP-01 "My tickets": the same resolution promise for many tickets at once, as minutes used of the target (business
    * time on the desk's calendar, so it matches the agent's clock). Only the resolution timer, never internal ones.
    */
-  async requesterClocks(tx: Tx, org: string, ticketIds: string[], now = new Date()): Promise<Map<string, { usedMinutes: number; targetMinutes: number; paused: boolean }>> {
-    const out = new Map<string, { usedMinutes: number; targetMinutes: number; paused: boolean }>();
+  async requesterClocks(tx: Tx, org: string, ticketIds: string[], now = new Date()): Promise<Map<string, ClockView>> {
+    return new Map([...(await this.clocks(tx, org, ticketIds, ['resolution'], now))].map(([id, c]) => [id, c.resolution!]));
+  }
+
+  /** HLP-02 agent desk: the live response and resolution timers of many tickets (business minutes used of the target). */
+  async clocks(tx: Tx, org: string, ticketIds: string[], metrics: ('first_response' | 'resolution')[], now = new Date()): Promise<Map<string, Partial<Record<'first_response' | 'resolution', ClockView>>>> {
+    const out = new Map<string, Partial<Record<'first_response' | 'resolution', ClockView>>>();
     if (!ticketIds.length) return out;
     const cache = new Map<string, CalendarSpec>();
-    const timers = await tx.sdSlaTimer.findMany({ where: { organizationId: org, ticketId: { in: ticketIds }, kind: 'sla', metric: 'resolution', state: { in: LIVE } } });
+    const timers = await tx.sdSlaTimer.findMany({ where: { organizationId: org, ticketId: { in: ticketIds }, kind: 'sla', metric: { in: metrics }, state: { in: LIVE } } });
     for (const x of timers) {
       const used = elapsed(await this.specFor(tx, x, cache), this.clock(x), now);
-      out.set(x.ticketId, { usedMinutes: Math.floor(used / 60), targetMinutes: Math.round(x.targetSeconds / 60), paused: x.state === 'paused' });
+      out.set(x.ticketId, { ...out.get(x.ticketId), [x.metric]: { usedMinutes: Math.floor(used / 60), targetMinutes: Math.round(x.targetSeconds / 60), paused: x.state === 'paused' } });
     }
     return out;
   }

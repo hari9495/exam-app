@@ -7,6 +7,7 @@ import { Tx } from '../org-structure/org-structure.service';
 import { DeskActor, audit, canLead, has, visibleTickets } from './desk-access';
 import { TicketFiltersDto, TicketListQueryDto, ViewDto } from './dto';
 import { MeService } from './me.service';
+import { SlaService } from './sla.service';
 
 // SD-1.07 agent desk lists (US-B-089, US-G-002, US-G-010): filters, saved views, the board, CSV export. Every list
 // starts from the visibility filter (§5.7), so a search, a count or an export never holds a ticket the person may
@@ -29,7 +30,10 @@ const safeCell = (v: unknown) => {
 
 @Injectable()
 export class TicketListsService {
-  constructor(private readonly tenantPrisma: TenantPrismaService) {}
+  constructor(
+    private readonly tenantPrisma: TenantPrismaService,
+    private readonly sla: SlaService,
+  ) {}
 
   private tx<T>(a: DeskActor, fn: (tx: Tx) => Promise<T>) {
     return this.tenantPrisma.forTenant(a.ctx, fn);
@@ -51,6 +55,13 @@ export class TicketListsService {
     if (f.breaching) {
       const soon = await tx.sdSlaTimer.findMany({ where: { organizationId: a.ctx.organizationId, kind: 'sla', state: { in: ['running', 'paused'] }, OR: [{ breachedAt: { not: null } }, { dueAt: { lte: new Date(Date.now() + 4 * 3_600_000) } }] }, select: { ticketId: true }, take: 5000 });
       and.push({ id: { in: [...new Set(soon.map((x) => x.ticketId))] } });
+    }
+    if (f.createdFrom || f.createdTo) {
+      const from = f.createdFrom ? new Date(`${f.createdFrom}T00:00:00+05:30`) : null;
+      const to = f.createdTo ? new Date(`${f.createdTo}T00:00:00+05:30`) : null;
+      if ((from && isNaN(+from)) || (to && isNaN(+to))) throw new BadRequestException('Give real dates for Raised.');
+      if (from && to && from > to) throw new BadRequestException('Raised from must be on or before Raised to.');
+      and.push({ createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lt: new Date(to.getTime() + 86_400_000) } : {}) } });
     }
     if (f.assignee === 'me') and.push({ assigneeUserId: a.userId });
     else if (f.assignee === 'none') and.push({ assigneeUserId: null });
@@ -111,6 +122,8 @@ export class TicketListsService {
       const dueAt = [cur?.dueAt, x.state === 'running' ? x.dueAt : null].filter((d): d is Date => Boolean(d)).sort((p, q) => p.getTime() - q.getTime())[0] ?? null;
       sla.set(x.ticketId, { dueAt, breached, paused: x.state === 'paused' && (cur?.paused ?? true) });
     }
+    // HLP-02: each ticket's first response and resolution clock (business minutes used of the target).
+    const clocks = await this.sla.clocks(tx, org, rows.map((r) => r.id), ['first_response', 'resolution']);
     const m = <T extends { id: string }>(xs: T[]) => new Map(xs.map((x) => [x.id, x]));
     const [D, S, T, C, G, P, U] = [m(desks), m(statuses), m(types), m(cats), m(groups), m(people), m(users)];
     const person = (id: string | null) => {
@@ -144,6 +157,9 @@ export class TicketListsService {
       customerAccountId: t.customerAccountId,
       senderVerified: t.senderVerified,
       sla: sla.get(t.id) ?? null,
+      firstResponse: clocks.get(t.id)?.first_response ?? null,
+      resolution: clocks.get(t.id)?.resolution ?? null,
+      firstResponseAt: t.firstResponseAt,
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
       // Lead-only actions show only to those who may do them.
