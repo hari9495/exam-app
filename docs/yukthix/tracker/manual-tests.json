@@ -10393,12 +10393,12 @@
     "area": "Performance · PRF-01 … 06 live (3 Nov 2026)",
     "screen": "Performance home · manager and HR",
     "url": "http://localhost:3000/yx/performance",
-    "account": "panel@demo-org.test (Manager - Divya), then hr@demo-org.test (HR Admin - Lakshmi)",
+    "account": "panel@demo-org.test (Manager - Divya), then hr-tester@demo-org.test (HR tester, \"Performance set-up\" role: review cycles, goals, calibration; apps/api/prisma/scripts/demo-performance.ts)",
     "steps": [
       "1. As Divya open /yx/performance.",
       "2. Press Goals on Arjun's row of My team.",
-      "3. As Lakshmi open /yx/performance.",
-      "4. As Lakshmi press Start a review cycle."
+      "3. As the HR tester open /yx/performance.",
+      "4. As the HR tester press Start a review cycle."
     ],
     "expected": "Step 1: \"Performance · my team\" with the team table (goal progress, review stage, last 1:1, last feedback) and Team goals. Step 2: \"Arjun …’s goals\". Step 3: HR home with Review cycles (done of eligible, overdue), stat cards and Last released ratings. Step 4: the New review cycle wizard.",
     "stories": [
@@ -10500,7 +10500,7 @@
     "area": "Performance · PRF-01 … 06 live (3 Nov 2026)",
     "screen": "Cycle set-up",
     "url": "http://localhost:3000/yx/performance/cycles/new",
-    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "account": "hr-tester@demo-org.test (HR tester, \"Performance set-up\" role: review cycles, goals, calibration; apps/api/prisma/scripts/demo-performance.ts)",
     "steps": [
       "1. Open /yx/performance/cycles/new. Fill Basics (name, Half-yearly, period) and Continue.",
       "2. On Population press Count who is included.",
@@ -10519,7 +10519,7 @@
     "area": "Performance · PRF-01 … 06 live (3 Nov 2026)",
     "screen": "Cycle set-up · negative",
     "url": "http://localhost:3000/yx/performance/cycles/new",
-    "account": "hr@demo-org.test (HR Admin - Lakshmi); then panel@demo-org.test (Manager - Divya)",
+    "account": "hr-tester@demo-org.test (HR tester, \"Performance set-up\" role: review cycles, goals, calibration; apps/api/prisma/scripts/demo-performance.ts); then panel@demo-org.test (Manager - Divya)",
     "steps": [
       "1. Press Continue on Basics with no name.",
       "2. Include a department where someone has no manager and press Launch cycle.",
@@ -10536,7 +10536,7 @@
     "area": "Performance · PRF-01 … 06 live (3 Nov 2026)",
     "screen": "Control room",
     "url": "http://localhost:3000/yx/performance/cycles/<running cycle>",
-    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "account": "hr-tester@demo-org.test (HR tester, \"Performance set-up\" role: review cycles, goals, calibration; apps/api/prisma/scripts/demo-performance.ts)",
     "steps": [
       "1. Open a running cycle from the HR home.",
       "2. Press a stage in Progress by stage.",
@@ -10556,7 +10556,7 @@
     "area": "Performance · PRF-01 … 06 live (3 Nov 2026)",
     "screen": "Control room · negative",
     "url": "http://localhost:3000/yx/performance/cycles/<running cycle>",
-    "account": "hr@demo-org.test (HR Admin - Lakshmi)",
+    "account": "hr-tester@demo-org.test (HR tester, \"Performance set-up\" role: review cycles, goals, calibration; apps/api/prisma/scripts/demo-performance.ts)",
     "steps": [
       "1. Press Release ratings when no review is ready.",
       "2. Press Extend a deadline and choose a day before the current one.",
@@ -10959,7 +10959,7 @@
     "area": "PRF-13 Hand-over list",
     "screen": "HR: company list",
     "url": "http://localhost:3000/yx/performance/handovers",
-    "account": "hr@demo-org.test (HR Admin - Lakshmi), who also needs Review cycles (perf.cycle.manage). Browser window 1278 x 635, sidebar open.",
+    "account": "hr-tester@demo-org.test (HR tester, \"Performance set-up\" role: review cycles, goals, calibration; apps/api/prisma/scripts/demo-performance.ts). Browser window 1278 x 635, sidebar open.",
     "stories": [
       "PRF-13 HR · needs decision"
     ],
@@ -10976,7 +10976,7 @@
     "area": "PRF-14 Competency framework",
     "screen": "Add, map, merge, retire",
     "url": "http://localhost:3000/yx/performance/competencies",
-    "account": "hr@demo-org.test with the Performance set-up role. Browser window 1278 x 635, sidebar open.",
+    "account": "hr-tester@demo-org.test (HR tester, \"Performance set-up\" role: review cycles, goals, calibration; apps/api/prisma/scripts/demo-performance.ts). Browser window 1278 x 635, sidebar open.",
     "stories": [
       "PRF-14 Competency with levels and roles",
       "PRF-14 Add competency",
@@ -10998,7 +10998,7 @@
     "area": "PRF-14 Competency framework",
     "screen": "Refused input and access",
     "url": "http://localhost:3000/yx/performance/competencies",
-    "account": "hr@demo-org.test with the Performance set-up role; panel@demo-org.test (Manager - Divya). Browser window 1278 x 635, sidebar open.",
+    "account": "hr-tester@demo-org.test (HR tester, \"Performance set-up\" role: review cycles, goals, calibration; apps/api/prisma/scripts/demo-performance.ts); panel@demo-org.test (Manager - Divya). Browser window 1278 x 635, sidebar open.",
     "stories": [
       "PRF-14 Add competency"
     ],
