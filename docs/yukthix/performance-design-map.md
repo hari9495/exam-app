@@ -568,3 +568,9 @@ covers older copies at start-up; the demo script adds missing keys, so MT-PRF-06
 proposes 9-box potential in the manager review (migration 20261470000000, `reviews.proposed_potential`; kit
 `PotentialChoice`, design story PRF-05 ManagerPotential); the calibration board starts from it and the facilitator's
 value wins. Not built here: (9) and (12) (other builders).
+
+## Founder answers, 3 Nov 2026 (partly-live Performance rows)
+(a) PIP "not met": HR may extend the plan once more after "not met" (days a company setting, with a reason); then only
+close or open an exit case. (b) HR home "vs last period": a scheduled monthly snapshot of the HR home numbers; the stat
+cards show the change against last month. Rows decided by the founder (cycle weights/scale on the template, fixed
+mid-cycle rules, facilitator-only calibration moves, HR-only PIP outcome) are live by decision, not gaps.
