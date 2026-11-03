@@ -8,6 +8,7 @@ import { useAuth } from '../../lib/auth-context';
 import YxSpeakUpPage from './(app)/desk/speakup/page';
 import YxSpeakUpSetupPage from './(app)/desk/speakup-setup/page';
 import YxCheckReportPage from './speakup/[org]/check/page';
+import YxLayout from './layout';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn(), useParams: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), apiFetchAnonymous: jest.fn(), apiFetchBlob: jest.fn(), API_BASE: '' }));
@@ -56,7 +57,8 @@ describe('Helpdesk › Speak up (HLP-06 live)', () => {
   it('check my report opens with the code, without the sign-in', async () => {
     (useParams as jest.Mock).mockReturnValue({ org: 'kaveri' });
     anon.mockImplementation(async (path: string) => (path.includes('/company/') ? { company: 'Kaveri Foods' } : { number: 'WB-0001', kind: 'whistleblower', status: 'received', filedAt: '2026-11-03T05:00:00Z', team: 'the ethics team', messages: [] }));
-    wrap(<YxCheckReportPage />);
+    // Only the YukthiX layout above it: the public page sits outside the signed-in layout.
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><YxLayout><YxCheckReportPage /></YxLayout></QueryClientProvider>);
     await userEvent.type(screen.getByRole('textbox', { name: /Reply code/ }), 'ABCD-EFGH-JKLM-NPQR');
     await userEvent.click(screen.getByRole('button', { name: 'Open my report' }));
     expect(await screen.findByText('Report WB-0001')).toBeInTheDocument();
