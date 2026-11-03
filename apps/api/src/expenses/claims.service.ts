@@ -8,7 +8,7 @@ import { ScopeUser, Viewer, buildViewer, covers, grantPeriods, started, tenantWi
 import { ApprovalsEngine, type StepSpec } from '../workflow/approvals-engine.service';
 import { FilesService } from '../documents/files.service';
 import { holdersOf, hrApprovers } from '../time/time-core';
-import { checkLimit, dupKey, gstMathsProblem, gstinProblem, itcStatusOf, merchantsAlike, mileageAmount, perDiemAmount, receiptNeed, riskOf, ruleFor, taxablePart, tierFor } from './checks';
+import { COMPANY_PAID, checkLimit, dupKey, gstMathsProblem, gstinProblem, itcStatusOf, merchantsAlike, mileageAmount, perDiemAmount, receiptNeed, riskOf, ruleFor, taxablePart, tierFor } from './checks';
 import type { ApproveAmountDto, ClaimDto, LineDto } from './claims-dto';
 import { checkEinvoiceQr, keysFromPem } from './einvoice';
 import { RECEIPT_READER, type ReceiptReader } from './ocr';
@@ -425,6 +425,9 @@ export class ExpenseClaimsService implements OnModuleInit {
       const cur = lineId ? await tx.expenseLine.findFirst({ where: { organizationId: org, id: lineId, claimId: id, removedAt: null } }) : null;
       if (lineId && !cur) throw new NotFoundException('No such line.');
       if (cur && dto.version !== undefined && cur.version !== dto.version) throw new ConflictException('Someone else changed this line. Reload it.');
+      // EXP-08: a line matched to the card statement was paid by the company card, so it is never paid to the employee.
+      if (cur && cur.payMode === 'company_card' && dto.payMode !== 'company_card' && (await tx.expenseCardLine.count({ where: { organizationId: org, matchedLineId: cur.id } })))
+        throw new BadRequestException('This line is on the company card statement, so it stays a company card line.');
       const tiers = await tx.cityTier.findMany({ where: { organizationId: org } });
       const country = dto.country ?? 'IN';
       const tier = tierFor(tiers, dto.city ?? null, country);
@@ -618,7 +621,7 @@ export class ExpenseClaimsService implements OnModuleInit {
   }
 
   private async retotal(tx: Tx, org: string, claimId: string) {
-    const sum = await tx.expenseLine.aggregate({ where: { organizationId: org, claimId, removedAt: null, payMode: { not: 'company_paid' } }, _sum: { claimed: true } });
+    const sum = await tx.expenseLine.aggregate({ where: { organizationId: org, claimId, removedAt: null, payMode: { notIn: COMPANY_PAID } }, _sum: { claimed: true } });
     await tx.expenseClaim.update({ where: { id: claimId }, data: { claimedTotal: sum._sum.claimed ?? 0, version: { increment: 1 } } });
   }
 
@@ -925,7 +928,7 @@ export class ExpenseClaimsService implements OnModuleInit {
       const approved = l.approved ?? l.claimed;
       if (l.approved && l.approved.lt(l.claimed)) reduced = true;
       const over = (l.policyResult as { overBy?: string } | null)?.overBy ?? '0';
-      const payable = l.payMode === 'company_paid' ? D(0) : approved;
+      const payable = COMPANY_PAID.includes(l.payMode) ? D(0) : approved;
       total = total.add(payable);
       await tx.expenseLine.update({ where: { id: l.id }, data: { approved, taxableAmount: taxablePart(cats.get(l.categoryCode)?.taxable ?? 'never', payable.toFixed(2), over) } });
     }

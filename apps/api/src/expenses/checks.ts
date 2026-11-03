@@ -158,6 +158,9 @@ export function tierFor<T extends TierLike>(tiers: readonly T[], city: string | 
   );
 }
 
+/** M05 Q8: a line paid by the company (directly, or on the company card) is never reimbursed to the employee. */
+export const COMPANY_PAID: string[] = ['company_paid', 'company_card'];
+
 /** Merchant names compared loosely: case, punctuation and common suffixes ignored. */
 export const normMerchant = (m: string | null) =>
   (m ?? '')

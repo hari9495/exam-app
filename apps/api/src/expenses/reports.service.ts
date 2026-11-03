@@ -90,7 +90,7 @@ export class ExpenseReportsService {
         const rows = await tx.$queryRaw<{ category: string; claims: number; lines: number; claimed: string; approved: string }[]>`
           SELECT l.category_code AS category, count(DISTINCT c.id)::int AS claims, count(*)::int AS lines, sum(l.claimed)::text AS claimed, sum(COALESCE(l.approved, l.claimed))::text AS approved
           FROM expense_lines l JOIN expense_claims c ON c.organization_id = l.organization_id AND c.id = l.claim_id
-          WHERE l.organization_id = ${org}::uuid AND c.legal_entity_id = ANY(${entities}::uuid[]) AND (${all} OR c.employee_id = ANY(${emps}::uuid[])) AND l.removed_at IS NULL AND l.pay_mode <> 'company_paid'
+          WHERE l.organization_id = ${org}::uuid AND c.legal_entity_id = ANY(${entities}::uuid[]) AND (${all} OR c.employee_id = ANY(${emps}::uuid[])) AND l.removed_at IS NULL AND l.pay_mode NOT IN ('company_paid', 'company_card')
             AND c.status IN ('approved', 'partly_approved') AND c.decided_at >= ${range.gte} AND c.decided_at < ${range.lt}
           GROUP BY l.category_code ORDER BY l.category_code`;
         const cats = new Map((await tx.expenseCategory.findMany({ where: { organizationId: org } })).map((x) => [x.code, x.name]));
@@ -102,7 +102,7 @@ export class ExpenseReportsService {
           GROUP BY c.route`;
         const company = await tx.$queryRaw<{ amount: string | null }[]>`
           SELECT sum(COALESCE(l.approved, l.claimed))::text AS amount FROM expense_lines l JOIN expense_claims c ON c.organization_id = l.organization_id AND c.id = l.claim_id
-          WHERE l.organization_id = ${org}::uuid AND c.legal_entity_id = ANY(${entities}::uuid[]) AND (${all} OR c.employee_id = ANY(${emps}::uuid[])) AND l.removed_at IS NULL AND l.pay_mode = 'company_paid'
+          WHERE l.organization_id = ${org}::uuid AND c.legal_entity_id = ANY(${entities}::uuid[]) AND (${all} OR c.employee_id = ANY(${emps}::uuid[])) AND l.removed_at IS NULL AND l.pay_mode IN ('company_paid', 'company_card')
             AND c.status IN ('approved', 'partly_approved') AND c.decided_at >= ${range.gte} AND c.decided_at < ${range.lt}`;
         const route = (r: string) => routes.filter((x) => (x.route ?? 'payroll') === r).reduce((t, x) => t.add(x.amount), D(0)).toFixed(2);
         const shown = rows.map((r) => ({ ...r, category: cats.get(r.category) ?? r.category, claimed: D(r.claimed).toFixed(2), approved: D(r.approved).toFixed(2) }));

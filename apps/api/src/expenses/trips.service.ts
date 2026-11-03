@@ -10,7 +10,7 @@ import { FilesService } from '../documents/files.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { holdersOf, hrApprovers } from '../time/time-core';
 import { refreezeExitOf } from '../lifecycle/settlement';
-import { tierFor } from './checks';
+import { COMPANY_PAID, tierFor } from './checks';
 import { TRAVEL_BOOKING, openBalance, settleClaim, tripBudget, type TravelBookingAdapter } from './travel';
 import { exchangeDifference, toPay } from './fx';
 import { fxRateFor } from './setup.service';
@@ -62,7 +62,7 @@ export async function settleAdvanceByClaim(tx: Tx, org: string, claim: { id: str
   let pay: string;
   if (adv.fxRate) {
     // YX-EXP-15: a forex advance is settled only by the bills in its own currency, at its own rate.
-    const lines = await tx.expenseLine.findMany({ where: { organizationId: org, claimId: claim.id, removedAt: null, receiptCurrency: adv.currency, payMode: { not: 'company_paid' } } });
+    const lines = await tx.expenseLine.findMany({ where: { organizationId: org, claimId: claim.id, removedAt: null, receiptCurrency: adv.currency, payMode: { notIn: COMPANY_PAID } } });
     const spentFc = lines.reduce((t, l) => t.add(l.receiptAmount!.mul((l.approved ?? l.claimed).div(l.claimed.gt(0) ? l.claimed : 1))), D(0)).toDecimalPlaces(2);
     s = settleClaim(open, spentFc);
     pay = Prisma.Decimal.min(D(toPay(s.adjusted, adv.fxRate)), approved).toFixed(2);

@@ -14,13 +14,16 @@ import { FileStore, sha256 } from './file-store';
 
 export type FileRow = { id: string; organizationId: string; storageRef: string; fileName: string; mime: string; size: number; sha256: string; scanStatus: string };
 const ALIASES: Record<string, string> = { jpeg: 'jpg' };
-const EXT_OF: Record<string, string> = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx' };
+const EXT_OF: Record<string, string> = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx', 'text/csv': 'csv' };
 
 /** The file's real type must be allowed and match its name's extension (a renamed HTML or EXE is refused). */
 export async function checkUpload(name: string, data: Buffer, allowedMime: readonly string[], maxMb: number): Promise<{ ok: true; mime: string } | { ok: false; reason: string }> {
   if (!data.length) return { ok: false, reason: 'The file is empty.' };
   if (data.length > maxMb * 1024 * 1024) return { ok: false, reason: `Files can be up to ${maxMb} MB.` };
   const sniffed = await fileTypeFromBuffer(data);
+  // Plain text has no magic bytes: a .csv is taken as text only when the caller allows CSV and it holds no binary.
+  const ext0 = (name.match(/\.([A-Za-z0-9]{1,10})$/)?.[1] ?? '').toLowerCase();
+  if (!sniffed && ext0 === 'csv' && allowedMime.includes('text/csv')) return data.subarray(0, 65536).includes(0) ? { ok: false, reason: 'This CSV file has unreadable characters.' } : { ok: true, mime: 'text/csv' };
   const allowed = allowedMime.map((m) => EXT_OF[m]).filter(Boolean);
   if (!sniffed || !allowedMime.includes(sniffed.mime)) return { ok: false, reason: `Upload a ${allowed.map((e) => e.toUpperCase()).join(', ')} file.` };
   const ext = (name.match(/\.([A-Za-z0-9]{1,10})$/)?.[1] ?? '').toLowerCase();

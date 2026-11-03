@@ -65,6 +65,7 @@ describe('notification catalog', () => {
       'expense.trip.update',
       'expense.advance.update',
       'expense.payment.update',
+      'expense.card.update',
       'time.web_device.requested',
       'nudge.reminder',
       'perf.goal.checkin_due',

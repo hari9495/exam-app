@@ -542,7 +542,8 @@ function LineSheet({ phone, line, start, categories, today, currency, onClose, l
         spentOn: dayKey(on!),
         merchant: n(merchant),
         city: n(city),
-        payMode: companyPaid ? 'company_paid' : 'personal',
+        // EXP-08: a line paid by the company card (from the card statement) stays a company-card line.
+        payMode: companyPaid ? 'company_paid' : line?.payMode === 'company_card' ? 'company_card' : 'personal',
         description: line?.description ?? null,
         justification: line?.justification ?? null,
         ...(ck === 'mileage' ? { mileage: { vehicle: vehicle ?? 'car', km: km! } } : ck === 'per_diem' ? { perDiem: { fullDays: full ?? 0, partialDays: part ?? 0 } } : foreign ? { fx: { currency: billCur, amount: moneyInput(amt)!, ...(rate ? { rate } : {}) } } : { amount: moneyInput(amt)! }),

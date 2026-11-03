@@ -7,6 +7,8 @@ import { PayrollModule } from '../payroll/payroll.module';
 import { RulesEngineModule } from '../rules-engine/rules-engine.module';
 import { CryptoModule } from '@exam-platform/shared';
 import { WorkflowModule } from '../workflow/workflow.module';
+import { ExpenseCardsController } from './cards.controller';
+import { ExpenseCardsService } from './cards.service';
 import { ExpenseClaimsController } from './claims.controller';
 import { ExpenseClaimsService } from './claims.service';
 import { ExpensesController } from './expenses.controller';
@@ -25,9 +27,10 @@ import { ExpenseTripsService } from './trips.service';
 // EXPENSE_OCR_ADAPTER), approvals and checks. E4: trips, bookings (partner seam, TRAVEL_BOOKING_ADAPTER) and advances.
 // E5: exchange rates (company table), forex lines and advances, field-day drafts, look-alike photos, reports.
 // E3: paying approved claims through payroll (the payroll hooks) or a bank file, the payroll events, and the journal.
+// EXP-08: card statement import and matching.
 @Module({
   imports: [AuthModule, DocumentsModule, WorkflowModule, NotificationsModule, PayrollModule, RulesEngineModule, CryptoModule],
-  controllers: [ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, ExpensePaymentsController],
+  controllers: [ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, ExpensePaymentsController, ExpenseCardsController],
   providers: [
     { provide: REDIS_CONNECTION, useFactory: createRedisConnection },
     ExpenseSetupService,
@@ -35,6 +38,7 @@ import { ExpenseTripsService } from './trips.service';
     ExpenseTripsService,
     ExpenseReportsService,
     ExpensePaymentsService,
+    ExpenseCardsService,
     ExpensesJobs,
     { provide: RECEIPT_READER, useFactory: () => readerFromEnv() },
     { provide: TRAVEL_BOOKING, useFactory: () => travelPartnerFromEnv() },

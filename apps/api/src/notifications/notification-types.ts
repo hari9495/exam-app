@@ -99,6 +99,8 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'nudge.reminder', group: 'reminders', label: 'Your manager or HR reminded you about something waiting' },
   // M05 E3: payment of approved claims.
   { type: 'expense.payment.update', group: 'reminders', label: 'An expense claim was paid, or its payment did not go through' },
+  // EXP-08: a company card line to explain, and its reminders.
+  { type: 'expense.card.update', group: 'reminders', label: 'A company card line needs you to explain it' },
 ];
 
 export const NOTIFICATION_TYPE_BY_KEY = new Map(NOTIFICATION_TYPES.map((t) => [t.type, t]));
