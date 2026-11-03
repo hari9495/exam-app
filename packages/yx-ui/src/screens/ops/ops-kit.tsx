@@ -7,7 +7,7 @@ import { Badge, type BadgeTone } from '../../components/display';
 import { Button } from '../../components/button';
 import { Icon, Text } from '../../components/foundations';
 import { useToast } from '../../components/notify';
-import { formatDate, formatINR } from '../../lib/format';
+import { formatDate, formatINR, formatMoney } from '../../lib/format';
 import { clockState, clockText, slaState, slaText, type ClockItem, type ClockState, type SlaState } from './ops-rules';
 import './ops.css';
 
@@ -344,11 +344,11 @@ export function MembersList({ members, title = 'Who can see this case' }: { memb
 
 /* ---------------- Money lead ("You will receive ₹X", YX-EXP-06) ---------------- */
 
-export function MoneyLead({ label, amount, sub, tone }: { label: string; amount: number; sub?: ReactNode; tone?: 'default' | 'warning' }) {
+export function MoneyLead({ label, amount, sub, tone, currency = 'INR' }: { label: string; amount: number; sub?: ReactNode; tone?: 'default' | 'warning'; currency?: string }) {
   return (
     <div className="yx-ops-lead" data-tone={tone ?? 'default'} aria-live="polite">
       <span className="yx-ops-lead__label">{label}</span>
-      <span className="yx-ops-lead__amount">{formatINR(amount)}</span>
+      <span className="yx-ops-lead__amount">{formatMoney(amount, currency)}</span>
       {sub && <span className="yx-ops-lead__sub">{sub}</span>}
     </div>
   );

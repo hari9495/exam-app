@@ -22,6 +22,8 @@ import { formatDate, formatINR } from '../../lib/format';
 import { Actions, CameraFrame, CardGrid, Facts, MoneyLead, OpsDesk, ReceiptImage, StatusTrail, Workspace, useSay, type CameraState } from './ops-kit';
 import { checkLine, flagText, fxFlagged, fxVariancePct, mileageAmount, perDiemAmount, recoveryInstalments, reductionText, settlement } from './ops-rules';
 import type { ListState } from './helpdesk';
+import { LiveClaimComposer, LiveClaimReview, LiveExpensesHome, NewClaimDialog, type LiveClaim, type LiveHome } from './expenses-live';
+import { Segment } from '../../components/segment';
 import type { ApprovalStatus, Claim, ExpenseLine, PaymentStatus } from './expenses-data';
 
 export type Device = 'desk' | 'phone';
@@ -55,8 +57,23 @@ export interface ExpensesHomeProps {
   toPay: Claim[];
   today: Date;
   state?: ListState;
+  /** Someone with more than one view (their own claims, approvals, finance) switches with a Segment. */
+  views?: boolean;
+  /** The "New claim" dialog open (name the claim first). */
+  naming?: boolean;
 }
-export function ExpensesHomeScreen({ device = 'desk', persona = 'emp', claims, toPay, today, state = 'ready' }: ExpensesHomeProps) {
+/** EXP-01 Expenses home. The live app passes `live` (employee, approver or finance view). */
+export function ExpensesHomeScreen(props: ExpensesHomeProps | { live: LiveHome }) {
+  return 'live' in props ? <LiveExpensesHome live={props.live} /> : <SampleExpensesHome {...props} />;
+}
+const VIEWS = [
+  { value: 'emp', label: 'My expenses' },
+  { value: 'mgr', label: 'Waiting for me' },
+  { value: 'fin', label: 'Finance' },
+];
+function SampleExpensesHome({ device = 'desk', persona = 'emp', claims, toPay, today, state = 'ready', views, naming }: ExpensesHomeProps) {
+  const switcher = views ? <Segment label="Show" value={persona} onChange={() => {}} options={VIEWS} /> : null;
+  const dialog = naming ? <NewClaimDialog open onClose={() => {}} onStart={async () => {}} /> : null;
   const pending = claims.filter((c) => c.status === 'Submitted' || (c.status !== 'Rejected' && c.payment !== 'Paid' && c.payment !== 'Not due'));
   const toReceive = claims.filter((c) => c.status === 'Submitted' || (c.status !== 'Rejected' && c.payment !== 'Paid')).reduce((s, c) => s + claimTotals(c).netPayable, 0);
   const claimList =
@@ -114,6 +131,7 @@ export function ExpensesHomeScreen({ device = 'desk', persona = 'emp', claims, t
     return (
       <OpsDesk area="expenses" active="Expenses home">
         <PageHeader title="Expenses" description="Claims and trips waiting for you, and your team's spend." />
+        {switcher}
         <NeedsActionList
           title="Waiting for you"
           today={today}
@@ -140,6 +158,7 @@ export function ExpensesHomeScreen({ device = 'desk', persona = 'emp', claims, t
     return (
       <OpsDesk area="expenses" active="Expenses home" counts={{ 'To pay': unpaid.length }}>
         <PageHeader title="Expenses" description="What to pay, flagged claims and advances past their settlement window." actions={<Button variant="primary">Open to-pay queue</Button>} />
+        {switcher}
         <CardGrid min="sm">
           <StatCard label="To pay" value={unpaid.reduce((s, c) => s + claimTotals(c).netPayable, 0)} money drill={{ label: `View ${unpaid.length} claims`, href: '#topay' }} />
           <StatCard label="Payment failed" value={toPay.filter((c) => c.payment === 'Payment failed').length} drill={{ label: 'Re-route failed payments', href: '#failed' }} />
@@ -148,6 +167,20 @@ export function ExpensesHomeScreen({ device = 'desk', persona = 'emp', claims, t
         </CardGrid>
         <Card title="October payroll cut-off">
           <p className="yx-ops-p">Claims approved by 23 Oct 2026 are paid in the October payroll. {unpaid.filter((c) => c.route !== 'Direct payout').length} claims are queued for it.</p>
+        </Card>
+        <Card title="Flagged for audit">
+          <DataTable
+            label="Claims flagged for audit"
+            columns={[
+              { key: 'p', header: 'Person', value: (c: Claim) => c.employee },
+              { key: 't', header: 'Claim', value: (c) => c.title, width: 240 },
+              { key: 'a', header: 'Claimed', type: 'money', value: (c) => claimTotals(c).claimed },
+              { key: 'r', header: 'Risk', value: (c) => c.flags ?? 0, render: (c) => <Badge tone="warning">{c.flags} policy flags</Badge> },
+            ]}
+            rows={claims.filter((c) => c.flags)}
+            getRowId={(c) => c.id}
+            rowButtons={() => <Button size="sm">Check</Button>}
+          />
         </Card>
       </OpsDesk>
     );
@@ -167,6 +200,7 @@ export function ExpensesHomeScreen({ device = 'desk', persona = 'emp', claims, t
           </>
         }
       />
+      {switcher}
       <Workspace
         main={<Card title="My claims">{claimList}</Card>}
         rail={
@@ -178,6 +212,7 @@ export function ExpensesHomeScreen({ device = 'desk', persona = 'emp', claims, t
           </>
         }
       />
+      {dialog}
     </OpsDesk>
   );
 }
@@ -274,15 +309,21 @@ export interface ClaimComposerProps {
   camera?: CameraState | null;
   submitted?: boolean;
   trip?: string;
+  /** The "Add a line" sheet open. */
+  addOpen?: boolean;
 }
-export function ClaimComposerScreen({ device = 'desk', title, lines: initial, advance, gstOn, camera = null, submitted: sentBefore, trip }: ClaimComposerProps) {
+/** EXP-02 Claim composer. The live app passes `live` for the person claiming. */
+export function ClaimComposerScreen(props: ClaimComposerProps | { live: LiveClaim }) {
+  return 'live' in props ? <LiveClaimComposer live={props.live} /> : <SampleClaimComposer {...props} />;
+}
+function SampleClaimComposer({ device = 'desk', title, lines: initial, advance, gstOn, camera = null, submitted: sentBefore, trip, addOpen }: ClaimComposerProps) {
   const [lines, setLines] = useState(initial);
   const [submitted, setSubmitted] = useState(!!sentBefore);
   const { say, toast } = useSay();
   const saySubmitted = () => toast({ tone: 'success', title: 'Claim submitted', description: `${title} went to Sana Nizami for approval. Lines over the limit also go to the department head.` });
   // The "just submitted" design state shows the toast the person sees after pressing Submit claim.
   useEffect(() => void (sentBefore && saySubmitted()), []); // eslint-disable-line react-hooks/exhaustive-deps
-  const [addOpen, setAddOpen] = useState(false);
+  const [isAdding, setAddOpen] = useState(!!addOpen);
   const [kind, setKind] = useState('receipt');
   const [km, setKm] = useState<number | null>(42);
   const total = lines.reduce((s, l) => s + (l.kind === 'mileage' || l.kind === 'field-draft' ? mileageAmount(l.km ?? 0, l.rate ?? 0) : l.kind === 'per-diem' ? perDiemAmount(l.days ?? 0, l.rate ?? 0) : l.fx ? Math.round(l.fx.amount * (l.fx.entered ?? l.fx.rate)) : l.amount), 0);
@@ -306,6 +347,7 @@ export function ClaimComposerScreen({ device = 'desk', title, lines: initial, ad
             { value: 'receipt', label: 'A receipt', description: 'We read merchant, date, amount and GST' },
             { value: 'mileage', label: 'Mileage', description: 'Distance × rate for your vehicle' },
             { value: 'perdiem', label: 'Per diem', description: 'Days × rate for the city tier' },
+            { value: 'bill', label: 'A bill without a receipt', description: 'Type it in; you declare it was spent for work' },
           ]}
         />
       </FormField>
@@ -352,7 +394,7 @@ export function ClaimComposerScreen({ device = 'desk', title, lines: initial, ad
             </Button>
           </div>
         )}
-        <BottomSheet open={addOpen} onOpenChange={setAddOpen} title="Add a line" footer={<Button variant="primary" fullWidth onClick={() => setAddOpen(false)}>Add line</Button>}>
+        <BottomSheet open={isAdding} onOpenChange={setAddOpen} title="Add a line" footer={<Button variant="primary" fullWidth onClick={() => setAddOpen(false)}>Add line</Button>}>
           {addForm}
         </BottomSheet>
       </PhoneFrame>
@@ -378,7 +420,7 @@ export function ClaimComposerScreen({ device = 'desk', title, lines: initial, ad
         }
       />
       <Workspace main={body} rail={submitted ? null : <>{lead}{gstOn && <p className="yx-ops-muted">GST capture is on for your company. Check the supplier GSTIN on each line.</p>}</>} />
-      <Drawer open={addOpen} onOpenChange={setAddOpen} title="Add a line" footer={<><Button onClick={() => setAddOpen(false)}>Cancel</Button><Button variant="primary" onClick={() => setAddOpen(false)}>Add line</Button></>}>
+      <Drawer open={isAdding} onOpenChange={setAddOpen} title="Add a line" footer={<><Button onClick={() => setAddOpen(false)}>Cancel</Button><Button variant="primary" onClick={() => setAddOpen(false)}>Add line</Button></>}>
         {addForm}
       </Drawer>
     </OpsDesk>
@@ -398,7 +440,11 @@ export interface ClaimReviewProps {
   reasonMissing?: boolean;
   selected?: string;
 }
-export function ClaimReviewScreen({ claim, today, persona = 'mgr', reducing = null, reasonMissing, selected }: ClaimReviewProps) {
+/** EXP-03 Claim review. The live app passes `live` for the approver whose turn it is, finance and anyone in scope. */
+export function ClaimReviewScreen(props: ClaimReviewProps | { live: LiveClaim }) {
+  return 'live' in props ? <LiveClaimReview live={props.live} /> : <SampleClaimReview {...props} />;
+}
+function SampleClaimReview({ claim, today, persona = 'mgr', reducing = null, reasonMissing, selected }: ClaimReviewProps) {
   const [sel, setSel] = useState(selected ?? claim.lines[0].id);
   const [reduce, setReduce] = useState<string | null>(reducing);
   const [newAmt, setNewAmt] = useState<number | null>(reducing ? 7500 : null);

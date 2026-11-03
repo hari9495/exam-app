@@ -16,3 +16,5 @@ export const Empty: S = { name: 'Empty (first use)', render: () => <ExpensesHome
 export const Loading: S = { render: () => <ExpensesHomeScreen {...base} state="loading" /> };
 export const Error: S = { render: () => <ExpensesHomeScreen {...base} state="error" /> };
 export const Phone: S = { name: 'Employee · phone (camera first)', globals: PHONE, render: () => <ExpensesHomeScreen {...base} device="phone" /> };
+export const NewClaim: S = { name: 'New claim · name it first', render: () => <ExpensesHomeScreen {...base} naming /> };
+export const ManyRoles: S = { name: 'Employee who also approves and pays (view switch)', render: () => <ExpensesHomeScreen {...base} persona="mgr" views /> };

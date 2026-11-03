@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { ClaimReviewScreen } from './expenses';
 import { MY_CLAIMS } from './expenses-data';
 import { TODAY } from '../_kit/data';
+import { CATEGORIES, FINANCE } from './expenses-live-samples';
 
 const meta: Meta = { title: 'Screens/Expenses/EXP-03 · Claim review', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -11,3 +12,12 @@ export const Manager: S = { name: 'Manager review · receipt beside lines', rend
 export const Reduce: S = { name: 'Reduce with reason', render: () => <ClaimReviewScreen claim={MY_CLAIMS[0]} today={TODAY} reducing="l2" /> };
 export const ReasonMissing: S = { name: 'Reduce · reason missing', render: () => <ClaimReviewScreen claim={MY_CLAIMS[0]} today={TODAY} reducing="l2" reasonMissing /> };
 export const FinanceAudit: S = { name: 'Finance audit step', render: () => <ClaimReviewScreen claim={MY_CLAIMS[0]} today={TODAY} persona="fin" selected="l3" /> };
+const noop = async () => ({});
+export const FlagCheck: S = {
+  name: 'Finance · clear or confirm a flag',
+  render: () => (
+    <ClaimReviewScreen
+      live={{ state: 'ready', onRetry: () => {}, claim: FINANCE, categories: CATEGORIES, today: '2026-09-20', onBack: () => {}, onUploadReceipt: noop, onSaveLine: noop, onRemoveLine: noop, onSubmit: noop, onWithdraw: noop, onOpenReceipt: noop, onApproveAmount: noop, onDecide: noop, onFlag: noop }}
+    />
+  ),
+};

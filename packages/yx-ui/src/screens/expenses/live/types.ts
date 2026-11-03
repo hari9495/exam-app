@@ -141,6 +141,8 @@ export interface ClaimSummary {
   /** YX-EXP-06: the headline figure. */
   netPayable: string;
   risk: 'none' | 'low' | 'high';
+  tripId?: string | null;
+  advanceId?: string | null;
   submittedAt: string | null;
   decidedAt: string | null;
   version: number;
@@ -151,6 +153,10 @@ export interface ExpenseHome {
   waitingForMe: number;
   toReview: number | null;
   toReceive: string;
+  /** EXP-01: my direct reports' claims by the month they were sent (null when I have no reports). */
+  team?: { people: number; month: string; spend: string; previous: string | null; trend: string[]; overLimit: number; overLimitPrevious: number | null } | null;
+  /** EXP-01: the company's payroll cut-off day and the payroll a claim approved today goes to. */
+  payroll?: { cutoffDay: number; month: string };
 }
 
 export interface Suggested {
@@ -203,10 +209,10 @@ export interface ClaimDetail extends ClaimSummary {
   lines: ClaimLine[];
   changes: { lineId: string; from: string; to: string; reason: string; at: string }[];
   flags: ClaimFlag[];
-  route: { status: string; currentStep: number; steps: { name: string; state: string }[] } | null;
+  route: { status: string; currentStep: number; steps: { name: string; state: string; approvers?: string[]; decidedAt?: string | null }[] } | null;
   /** E3: how and when an approved claim is paid. */
   payment?: { route: 'payroll' | 'payout'; month: string | null; paidOn: string | null } | null;
-  can: { edit: boolean; withdraw: boolean; decide: boolean; changeAmounts: boolean; review: boolean };
+  can: { own?: boolean; edit: boolean; withdraw: boolean; decide: boolean; changeAmounts: boolean; review: boolean };
 }
 
 /** What a line save sends (the API works out mileage and per diem). */

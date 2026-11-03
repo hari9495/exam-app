@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { paymentText } from './claims';
+import { paymentText } from '../../ops/expenses-live-data';
 import { ToPayLiveScreen, type ToPayLiveScreenProps } from './topay';
 import { JOURNAL, TO_PAY } from './topay-fixtures';
 

@@ -13,7 +13,7 @@ import { DataTable, type TableColumn } from '../../../components/table';
 import { useRun } from '../../org/org-kit';
 import { LivePage, dateText } from '../../time/live/kit';
 import { IrreversibleSheet } from '../../pay/pay-kit';
-import { PAYMENT, money } from './claims';
+import { PAYMENT, money } from '../../ops/expenses-live-data';
 import type { ExpenseJournalView, LoadState, PayoutBatchRow, PayoutResultInput, ToPayClaim, ToPayData } from './types';
 
 // Expenses batch E3, wired (M05-BUILD-DESIGN §10, §12; EXP-06, XP-3.08): what finance pays. Approved claims go to the next

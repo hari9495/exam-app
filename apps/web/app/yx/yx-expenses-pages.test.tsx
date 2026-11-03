@@ -60,14 +60,15 @@ describe('Settings › Expenses', () => {
 
 });
 
-describe('Expenses claims (M05 batch E2)', () => {
-  const CLAIM = { id: 'c1', title: 'Mumbai client visit', person: 'Ravi Kumar', currency: 'INR', status: 'draft', paymentStatus: 'not_due', claimedTotal: '0.00', approvedTotal: null, advanceAdjusted: '0.00', netPayable: '0.00', risk: 'none', submittedAt: null, decidedAt: null, version: 1, decisionNote: null, lines: [], changes: [], flags: [], route: null, can: { edit: true, withdraw: false, decide: false, changeAmounts: false, review: false } };
+describe('Expenses claims (EXP-01 … 03, the designed screens with live data)', () => {
+  const CLAIM = { id: 'c1', title: 'Mumbai client visit', person: 'Ravi Kumar', currency: 'INR', status: 'draft', paymentStatus: 'not_due', claimedTotal: '0.00', approvedTotal: null, advanceAdjusted: '0.00', netPayable: '0.00', risk: 'none', submittedAt: null, decidedAt: null, version: 1, decisionNote: null, lines: [], changes: [], flags: [], route: null, can: { own: true, edit: true, withdraw: false, decide: false, changeAmounts: false, review: false } };
+  const LISTS = { 'GET /rbac/me/permissions': [], 'GET /expenses/trips': { trips: [] }, 'GET /expenses/advances': { advances: [] } };
 
   it('a new claim is created and opened', async () => {
     const push = jest.fn();
     (useRouter as jest.Mock).mockReturnValue({ push, replace: jest.fn() });
     const posted: unknown[] = [];
-    route({ 'GET /expenses/me/home': { claims: [], waitingForMe: 0, toReview: null, toReceive: '0.00' }, 'POST /expenses/claims': (_p: string, init: RequestInit) => (posted.push(JSON.parse(String(init.body))), { id: 'c1' }) });
+    route({ ...LISTS, 'GET /expenses/me/home': { claims: [], waitingForMe: 0, toReview: null, toReceive: '0.00', team: null, payroll: { cutoffDay: 23, month: '2026-10' } }, 'POST /expenses/claims': (_p: string, init: RequestInit) => (posted.push(JSON.parse(String(init.body))), { id: 'c1' }) });
     wrap(<YxExpensesPage />);
     await userEvent.click(await screen.findByRole('button', { name: 'New claim' }));
     await userEvent.type(screen.getByRole('textbox', { name: /What is it for/ }), 'Mumbai client visit');
@@ -81,8 +82,29 @@ describe('Expenses claims (M05 batch E2)', () => {
     const sent: unknown[] = [];
     route({ 'GET /expenses/claims/c1': { ...CLAIM, lines: [{ id: 'l1', lineNo: 1, categoryCode: 'meals', spentOn: '2026-10-09', merchant: 'Cafe', city: 'Mumbai', country: 'IN', tierId: null, payMode: 'personal', description: null, hasReceipt: false, selfDeclared: true, claimed: '300.00', approved: null, reduceReason: null, justification: null, policy: null, flags: [], mileage: null, perDiem: null, ocr: null, gst: null, version: 1 }] }, 'GET /expenses/categories': [{ id: 'k1', code: 'meals', name: 'Meals', kind: 'spend', receiptAbove: '500', gstEligible: false, itcBlockedReason: null, taxable: 'never', ledgerCode: null, active: true, version: 1 }], 'POST /expenses/claims/c1/submit': (_p: string, init: RequestInit) => (sent.push(JSON.parse(String(init.body))), CLAIM) });
     wrap(<YxClaimPage />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Send for approval' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Submit claim' }));
     await waitFor(() => expect(sent).toEqual([{ version: 1 }]));
+  });
+
+  it('a claim that is not mine opens as the review, and approving sends the decision', async () => {
+    (useParams as jest.Mock).mockReturnValue({ id: 'c1' });
+    const sent: unknown[] = [];
+    route({ 'GET /expenses/claims/c1': { ...CLAIM, status: 'submitted', submittedAt: '2026-10-10T05:00:00Z', can: { own: false, edit: false, withdraw: false, decide: true, changeAmounts: true, review: false } }, 'GET /expenses/categories': [], 'POST /expenses/claims/c1/decide': (_p: string, init: RequestInit) => (sent.push(JSON.parse(String(init.body))), CLAIM) });
+    wrap(<YxClaimPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Approve all' }));
+    await waitFor(() => expect(sent).toEqual([{ decision: 'approve' }]));
+  });
+
+  it('a person who pays claims sees the finance view with what is to pay', async () => {
+    route({
+      ...LISTS,
+      'GET /rbac/me/permissions': ['expense.payout.manage'],
+      'GET /expenses/me/home': { claims: [], waitingForMe: 0, toReview: null, toReceive: '0.00', team: null, payroll: { cutoffDay: 23, month: '2026-10' } },
+      'GET /expenses/to-pay': { entities: [], claims: [{ id: 'x', employeeId: 'p', employeeName: 'Priya', legalEntityId: 'e1', title: 'Internet', approvedTotal: '999.00', advanceAdjusted: '0.00', netPayable: '999.00', route: 'payout', paymentStatus: 'approved_unpaid', payMonth: null, ref: null, reason: null, batchId: null, paidOn: null }], batches: [] },
+    });
+    wrap(<YxExpensesPage />);
+    await userEvent.click(await screen.findByRole('radio', { name: 'Finance' }));
+    expect(await screen.findByText('₹999')).toBeInTheDocument();
   });
 });
 

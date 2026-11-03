@@ -16,7 +16,8 @@ import { DataTable, type TableColumn } from '../../../components/table';
 import { dayKey } from '../../../lib/dates';
 import { errorText, useRun } from '../../org/org-kit';
 import { LivePage, dateText } from '../../time/live/kit';
-import { ReasonDialog, STATUS as CLAIM_STATUS, money } from './claims';
+import { ReasonDialog } from '../../ops/expenses-live';
+import { STATUS as CLAIM_STATUS, money } from '../../ops/expenses-live-data';
 import type { AdvanceDetail, AdvanceStatus, AdvanceSummary, BookingInput, LoadState, Route, TripDetail, TripInput, TripStatus, TripSummary, TravelMode } from './types';
 
 // Expenses batch E4, wired (M05-BUILD-DESIGN §5.5, §9.4, §19; EXP-04 trip, EXP-05 advance). A trip request goes to

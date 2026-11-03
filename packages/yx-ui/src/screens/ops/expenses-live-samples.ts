@@ -1,0 +1,70 @@
+// The API's shapes, filled with the design's fictional people, for the live-state stories and the unit tests.
+import type { AdvanceSummary, ClaimDetail, ClaimLine, ClaimSummary, ExpenseCategory, ExpenseHome, ToPayData, TripSummary } from '../expenses/live/types';
+
+export const CATEGORIES: ExpenseCategory[] = [
+  { id: 'k1', code: 'AIR', name: 'Air travel', kind: 'spend', receiptAbove: '0', gstEligible: true, itcBlockedReason: null, taxable: 'never', ledgerCode: null, active: true, version: 1 },
+  { id: 'k2', code: 'HOTEL', name: 'Hotel', kind: 'spend', receiptAbove: '0', gstEligible: true, itcBlockedReason: null, taxable: 'never', ledgerCode: null, active: true, version: 1 },
+  { id: 'k3', code: 'CAB', name: 'Local cab', kind: 'spend', receiptAbove: '500', gstEligible: false, itcBlockedReason: null, taxable: 'never', ledgerCode: null, active: true, version: 1 },
+  { id: 'k4', code: 'MILEAGE', name: 'Mileage', kind: 'mileage', receiptAbove: null, gstEligible: false, itcBlockedReason: null, taxable: 'above_limit', ledgerCode: null, active: true, version: 1 },
+  { id: 'k5', code: 'PERDIEM', name: 'Per diem', kind: 'per_diem', receiptAbove: null, gstEligible: false, itcBlockedReason: null, taxable: 'above_limit', ledgerCode: null, active: true, version: 1 },
+];
+
+const base: Omit<ClaimLine, 'id' | 'lineNo' | 'categoryCode' | 'claimed'> = {
+  spentOn: '2026-09-14', merchant: null, city: 'Mumbai', country: 'IN', tierId: 't1', payMode: 'personal', description: null, hasReceipt: false, selfDeclared: false,
+  approved: null, reduceReason: null, justification: null, policy: { outcome: 'ok', overBy: '0.00', limit: null, receipt: 'none', policy: 'Standard' }, flags: [], mileage: null, perDiem: null, ocr: null, gst: null, fx: null, origin: 'employee', confirmed: true, version: 1,
+};
+
+export const LINES: ClaimLine[] = [
+  { ...base, id: 'l1', lineNo: 1, categoryCode: 'AIR', merchant: 'SkyIndia Airlines', claimed: '6840.00', hasReceipt: true, ocr: { adapter: 'dev-fake', fields: {}, lowConfidence: [], confirmed: true, einvoice: null }, gst: { supplierGstin: '27AABCS1429B1ZB', invoiceNo: 'SI-4471-2026', invoiceDate: null, placeOfSupply: null, taxableValue: '6514.00', cgst: null, sgst: null, igst: '326.00', cess: null, billedToGstin: null, itcStatus: 'eligible', einvoiceVerified: false } },
+  { ...base, id: 'l2', lineNo: 2, categoryCode: 'HOTEL', merchant: 'Harbour View Residency', claimed: '9200.00', hasReceipt: true, justification: 'Conference hotel; the cheaper listed hotels were full.', policy: { outcome: 'over_justify', overBy: '1700.00', limit: { kind: 'per_line', amount: '7500.00' }, receipt: 'required', policy: 'Standard' } },
+  { ...base, id: 'l3', lineNo: 3, categoryCode: 'CAB', merchant: 'CityRide', spentOn: '2026-09-15', claimed: '640.00', policy: { outcome: 'ok', overBy: '0.00', limit: { kind: 'per_day', amount: '1500.00' }, receipt: 'required', policy: 'Standard' } },
+  { ...base, id: 'l4', lineNo: 4, categoryCode: 'PERDIEM', spentOn: '2026-09-15', claimed: '2400.00', perDiem: { fullDays: 2, partialDays: 0, meals: {}, ratePerDay: '1200.00' } },
+  { ...base, id: 'l5', lineNo: 5, categoryCode: 'MILEAGE', merchant: 'Home to Bengaluru airport', city: 'Bengaluru', spentOn: '2026-09-16', claimed: '714.00', mileage: { vehicle: 'car', km: 42, from: null, to: null, ratePerKm: '17.00' } },
+];
+
+export const DRAFT: ClaimDetail = {
+  id: 'c1042', title: 'Mumbai distributor meet', person: 'Vikram Rao', currency: 'INR', status: 'draft', paymentStatus: 'not_due', claimedTotal: '19794.00', approvedTotal: null, advanceAdjusted: '10000.00', netPayable: '9794.00', risk: 'low', tripId: 't0211', submittedAt: null, decidedAt: null, version: 3,
+  decisionNote: null, lines: LINES, changes: [], flags: [], route: null, payment: null, can: { own: true, edit: true, withdraw: false, decide: false, changeAmounts: false, review: false },
+};
+
+/** A line just read from a receipt, waiting for the person to check it. */
+export const READ_LINE: ClaimLine = { ...base, id: 'l6', lineNo: 6, categoryCode: 'HOTEL', merchant: 'Creek Side Hotel', claimed: '4720.00', hasReceipt: true, ocr: { adapter: 'dev-fake', fields: { amount: { value: '4720.00', confidence: 0.92 }, merchant: { value: 'Creek Side Hotel', confidence: 0.55 } }, lowConfidence: ['merchant'], confirmed: false, einvoice: null } };
+
+export const SUBMITTED: ClaimDetail = {
+  ...DRAFT, status: 'submitted', submittedAt: '2026-09-17T06:30:00Z', can: { own: false, edit: false, withdraw: false, decide: true, changeAmounts: true, review: false },
+  route: { status: 'pending', currentStep: 0, steps: [{ name: 'Manager approval', state: 'open', approvers: ['Sana Nizami'], decidedAt: null }, { name: 'Department head (over-limit excess)', state: 'pending', approvers: [], decidedAt: null }] },
+};
+
+export const FINANCE: ClaimDetail = {
+  ...SUBMITTED, can: { own: false, edit: false, withdraw: false, decide: false, changeAmounts: false, review: true },
+  route: { status: 'pending', currentStep: 1, steps: [{ name: 'Manager approval', state: 'approved', approvers: ['Sana Nizami'], decidedAt: '2026-09-18T05:00:00Z' }, { name: 'Department head (over-limit excess)', state: 'open', approvers: ['Harish Bhat'], decidedAt: null }] },
+  flags: [{ id: 'f1', lineId: 'l3', kind: 'look_alike', detail: 'Looks like a bill on claim EXP-1036.', status: 'open', note: null }],
+};
+
+const summary = (c: ClaimDetail): ClaimSummary => ({ id: c.id, title: c.title, person: c.person, currency: c.currency, status: c.status, paymentStatus: c.paymentStatus, claimedTotal: c.claimedTotal, approvedTotal: c.approvedTotal, advanceAdjusted: c.advanceAdjusted, netPayable: c.netPayable, risk: c.risk, submittedAt: c.submittedAt, decidedAt: c.decidedAt, version: c.version });
+
+export const HOME: ExpenseHome = {
+  claims: [
+    { ...summary(SUBMITTED), status: 'submitted' },
+    { ...summary(DRAFT), id: 'c1031', title: 'Client visits, Hosur and Krishnagiri', status: 'approved', paymentStatus: 'in_payroll', claimedTotal: '2142.00', approvedTotal: '2142.00', advanceAdjusted: '0.00', netPayable: '2142.00', submittedAt: '2026-09-05T06:00:00Z' },
+    { ...summary(DRAFT), id: 'c1019', title: 'Chennai quarterly review', status: 'partly_approved', paymentStatus: 'paid', claimedTotal: '2000.00', approvedTotal: '1200.00', advanceAdjusted: '0.00', netPayable: '1200.00', submittedAt: '2026-08-20T06:00:00Z' },
+  ],
+  waitingForMe: 1,
+  toReview: 1,
+  toReceive: '2142.00',
+  team: { people: 6, month: '2026-09', spend: '184320.00', previous: '162400.00', trend: ['140200.00', '151900.00', '170300.00', '162400.00', '184320.00'], overLimit: 3, overLimitPrevious: 5 },
+  payroll: { cutoffDay: 23, month: '2026-09' },
+};
+
+export const TRIP_WAITING: TripSummary = { id: 't0219', purpose: 'Dubai trade show', person: 'Sana Nizami', fromOn: '2026-11-02', toOn: '2026-11-06', currency: 'INR', estimate: '145000.00', advanceRequested: '500.00', advanceCurrency: 'USD', bookingNeeded: true, status: 'submitted', version: 1 };
+export const OPEN_ADVANCE: AdvanceSummary = { id: 'a0087', kind: 'trip', tripId: 't0211', purpose: 'Mumbai distributor meet', currency: 'INR', requested: '10000.00', amount: '10000.00', changeReason: null, status: 'paid', paidOn: '2026-09-05', settleBy: '2026-10-16', balance: '10000.00', overdue: false, version: 2 };
+
+export const TO_PAY_DATA: ToPayData = {
+  entities: [{ id: 'e1', name: 'Kaveri Foods Pvt Ltd' }],
+  claims: [
+    { id: 'c1037', employeeId: 'p2', employeeName: 'Divya Raghunathan', legalEntityId: 'e1', title: 'Plant audit travel', approvedTotal: '1860.00', advanceAdjusted: '0.00', netPayable: '1860.00', route: 'payroll', paymentStatus: 'in_payroll', payMonth: '2026-09', ref: null, reason: null, batchId: null, paidOn: null },
+    { id: 'c1029', employeeId: 'p3', employeeName: 'Priya Menon', legalEntityId: 'e1', title: 'Internet, Aug', approvedTotal: '999.00', advanceAdjusted: '0.00', netPayable: '999.00', route: 'payout', paymentStatus: 'payment_failed', payMonth: null, ref: null, reason: 'Account closed', batchId: null, paidOn: null },
+    { id: 'c1035', employeeId: 'p4', employeeName: 'Sana Nizami', legalEntityId: 'e1', title: 'Trade fair stall, Pune', approvedTotal: '48500.50', advanceAdjusted: '20000.00', netPayable: '28500.50', route: 'payout', paymentStatus: 'approved_unpaid', payMonth: null, ref: null, reason: null, batchId: null, paidOn: null },
+  ],
+  batches: [],
+};

@@ -16,6 +16,7 @@ import { lowConfidence, type OcrFields } from './ocr-parse';
 import { ExpenseSetupService } from './setup.service';
 import { ExpensePaymentsService } from './payments.service';
 import { closeTripIfDone, settleAdvanceByClaim } from './trips.service';
+import { lastMonths, payMonthFor, teamFigures } from './home-rules';
 import { FX_TOLERANCE_PCT, LOOK_ALIKE_BITS, toPay, variancePct } from './fx';
 import { fxRateFor } from './setup.service';
 
@@ -269,8 +270,10 @@ export class ExpenseClaimsService implements OnModuleInit {
       // Flags name other claims only by reference, so nothing of another person leaks (§15).
       flags: flags.map((f) => ({ id: f.id, lineId: f.lineId, kind: f.kind, detail: f.detail, status: f.status, note: f.note })),
       payment: claim.route ? { route: claim.route, month: pay?.payMonth ? iso(pay.payMonth).slice(0, 7) : null, paidOn: claim.paidAt ? iso(claim.paidAt) : null } : null,
-      route: route ? { status: route.status, currentStep: route.currentStep, steps: (route.steps as { name: string; state: string }[]).map((s) => ({ name: s.name, state: s.state })) } : null,
+      // EXP-03 design: who holds each step and when it was decided, for the approval timeline.
+      route: route ? { status: route.status, currentStep: route.currentStep, steps: await this.routeSteps(tx, org, claim.wfRequestId!, route.steps as { name: string; state: string }[]) } : null,
       can: {
+        own: a.own,
         edit: a.own && (claim.status === 'draft' || claim.status === 'sent_back'),
         withdraw: a.own && claim.status === 'submitted',
         decide: Boolean(a.openTaskId),
@@ -278,6 +281,17 @@ export class ExpenseClaimsService implements OnModuleInit {
         review: a.finance && claim.status === 'submitted',
       },
     };
+  }
+
+  private async routeSteps(tx: Tx, org: string, requestId: string, steps: { name: string; state: string }[]) {
+    const tasks = await tx.wfTask.findMany({ where: { organizationId: org, requestId }, select: { step: true, assigneeUserId: true, decidedAt: true }, orderBy: { createdAt: 'asc' } });
+    const users = tasks.length ? await tx.user.findMany({ where: { id: { in: [...new Set(tasks.map((t) => t.assigneeUserId))] } }, select: { id: true, name: true } }) : [];
+    const name = new Map(users.map((u) => [u.id, u.name]));
+    return steps.map((s, i) => {
+      const mine = tasks.filter((t) => t.step === i);
+      const at = mine.map((t) => t.decidedAt).filter((d): d is Date => Boolean(d)).sort((x, y) => y.getTime() - x.getTime())[0];
+      return { name: s.name, state: s.state, approvers: [...new Set(mine.map((t) => name.get(t.assigneeUserId) ?? '').filter(Boolean))], decidedAt: at?.toISOString() ?? null };
+    });
   }
 
   // ------------------------------------------------------------------------------------------ receipts (snap first, §8.1)
@@ -952,6 +966,29 @@ export class ExpenseClaimsService implements OnModuleInit {
     const review = v.grants.has('expense.finance.review') ? (await this.list(ctx, user, 'review')).claims.length : null;
     // YX-EXP-06: what the person will receive from claims approved but not yet paid.
     const toReceive = mine.claims.filter((x) => x.paymentStatus === 'approved_unpaid' || x.paymentStatus === 'in_payroll' || x.paymentStatus === 'payout_queued').reduce((t, x) => t.add(D(x.netPayable)), D(0));
-    return { claims: mine.claims, waitingForMe: waiting, toReview: review, toReceive: toReceive.toFixed(2) };
+    // EXP-01 design: the manager's team figures (direct reports today) and the payroll cut-off line (company setting).
+    const more = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const today = todayIst();
+      const me = await this.myEmployee(tx, org, v);
+      const job = me ? await tx.employeeAssignment.findFirst({ where: { organizationId: org, employeeId: me.id, supersededAt: null, validFrom: { lte: asDate(today) }, OR: [{ validTo: null }, { validTo: { gte: asDate(today) } }] }, orderBy: { validFrom: 'desc' }, select: { legalEntityId: true } }) : null;
+      const cutoffDay = Number(await settingFor(tx, c, 'expense.payroll_cutoff_day', { legalEntityId: job?.legalEntityId ?? '' }));
+      const reports = me
+        ? await tx.$queryRaw<{ id: string }[]>`
+            SELECT DISTINCT a.employee_id::text AS id FROM employee_assignments a
+            WHERE a.organization_id = ${org}::uuid AND a.manager_employee_id = ${me.id}::uuid AND a.superseded_at IS NULL
+              AND a.valid_from <= ${today}::date AND (a.valid_to IS NULL OR a.valid_to >= ${today}::date)`
+        : [];
+      let team = null;
+      if (reports.length) {
+        const months = lastMonths(today, 5);
+        const since = new Date(asDate(`${months[0]}-01`).getTime() - 330 * 60_000);
+        const claims = await tx.expenseClaim.findMany({ where: { organizationId: org, employeeId: { in: reports.map((r) => r.id) }, submittedAt: { gte: since } }, select: { id: true, status: true, submittedAt: true, claimedTotal: true, approvedTotal: true } });
+        const lines = claims.length ? await tx.expenseLine.findMany({ where: { organizationId: org, claimId: { in: claims.map((x) => x.id) }, removedAt: null }, select: { claimId: true, policyResult: true } }) : [];
+        team = { people: reports.length, ...teamFigures(months, claims, lines) };
+      }
+      return { team, payroll: { cutoffDay, month: payMonthFor(today, cutoffDay) } };
+    });
+    return { claims: mine.claims, waitingForMe: waiting, toReview: review, toReceive: toReceive.toFixed(2), ...more };
   }
 }
