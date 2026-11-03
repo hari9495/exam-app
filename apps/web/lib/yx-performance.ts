@@ -91,13 +91,14 @@ export function useReviewAssistant(reviewId: string | null): LiveReviewAssistant
 
 /**
  * PRF-16 the suggested agenda for a 1:1 the signed-in person manages, ready for
- * `<SuggestedAgendaPanel employee={…} items={agenda.items} onAdd={agenda.onAdd} />` (the PRF-11 page renders it).
+ * `<OneOnOneScreen suggestedAgenda={agenda.items} … />` on the PRF-11 page.
  */
 export function useSuggestedAgenda(oneOnOneId: string | null, enabled = true) {
   const items = usePerf<{ id: string; text: string; why: string }[]>(oneOnOneId ? `/one-on-ones/${oneOnOneId}/suggested-agenda` : null, enabled);
   const write = usePerfWrite();
   return {
-    items: items.data ?? [],
+    /** Undefined while loading, and for anyone who is not the 1:1's manager (the API answers 404): the panel stays hidden. */
+    items: items.data,
     onAdd: async (item: { text: string }) => void (await write('POST', `/one-on-ones/${encodeURIComponent(oneOnOneId!)}/agenda`, { text: item.text })),
   };
 }

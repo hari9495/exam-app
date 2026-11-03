@@ -6,6 +6,8 @@ import { ToastProvider } from '../../components/notify';
 import { CompetencyFrameworkScreen, HandoverListScreen, SuggestedAgendaPanel, type Competency, type HandoverRow, type LiveCompetencies, type LiveHandover } from './perf-people';
 import { DisputeRaiseScreen, DisputeRecordScreen, ReviewAssistantPanel, type DisputeCase, type LiveDisputeRaise, type LiveDisputeRecord, type LiveReviewAssistant } from './perf-reviews';
 import { ManagerCoachHome, type LiveCoach } from './perf-goals';
+import { ReviewAcknowledgeScreen, ReviewWorkspaceScreen } from './perf-reviews';
+import { ACKNOWLEDGED, REVIEW, WORKSPACE } from './perf-live-samples';
 
 // Performance builder 3: the live paths of PRF-13 … PRF-17 (positive and negative), inside the toast provider.
 
@@ -277,5 +279,31 @@ describe('PRF-17 review assistant (live)', () => {
     expect(screen.getByText(/AI is not set up for your company yet/)).toBeInTheDocument();
     rerender(<ToastProvider><ReviewAssistantPanel assistant={{ enabled: true, live: assistant({ reason: 'company-off' }) }} summary="" rating={null} onSummary={vi.fn()} /></ToastProvider>);
     expect(screen.getByText(/hasn’t turned on AI review summaries/)).toBeInTheDocument();
+  });
+});
+
+describe('hookups on the live PRF-05 and PRF-06 pages', () => {
+  const managerReview = { ...REVIEW, role: 'manager' as const, can: { ...REVIEW.can, self: false, manager: true, skip: false } };
+
+  it('PRF-05: the current manager gets the assistant under the summary, and the nominate link when given', async () => {
+    const live = assistant();
+    show(<ReviewWorkspaceScreen live={{ ...WORKSPACE, review: managerReview, assistant: live, nominateHref: '/yx/performance/reviews/r1/nominations' }} />);
+    expect(screen.getByRole('region', { name: 'Review assistant' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Nominate reviewers' })).toHaveAttribute('href', '/yx/performance/reviews/r1/nominations');
+    await ue.click(screen.getByRole('button', { name: 'Check wording' }));
+    await waitFor(() => expect(live.onCheck).toHaveBeenCalled());
+  });
+
+  it('PRF-05: anyone else (the skip-level here) gets no assistant and no nominate link', () => {
+    show(<ReviewWorkspaceScreen live={{ ...WORKSPACE, assistant: assistant() }} />);
+    expect(screen.queryByRole('region', { name: 'Review assistant' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Nominate reviewers' })).toBeNull();
+  });
+
+  it('PRF-06: once HR answered, the acknowledged review links to the escalation; without it, no link', () => {
+    const { rerender } = show(<ReviewAcknowledgeScreen live={{ review: ACKNOWLEDGED, onAcknowledge: vi.fn(), onDisagree: vi.fn(), escalate: { href: '/yx/performance/reviews/r1/dispute', label: 'Escalate the dispute' } }} />);
+    expect(screen.getByRole('link', { name: 'Escalate the dispute' })).toHaveAttribute('href', '/yx/performance/reviews/r1/dispute');
+    rerender(<ToastProvider><ReviewAcknowledgeScreen live={{ review: ACKNOWLEDGED, onAcknowledge: vi.fn(), onDisagree: vi.fn(), escalate: null }} /></ToastProvider>);
+    expect(screen.queryByRole('link', { name: 'Escalate the dispute' })).toBeNull();
   });
 });

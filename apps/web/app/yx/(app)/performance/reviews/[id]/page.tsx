@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { PeerPanel, ReviewAcknowledgeScreen, ReviewWorkspaceScreen, type Nominations, type PeerGroups, type ReviewDetail } from '@yukthix/ui/performance';
 import { loadState } from '../../../../../../lib/yx-org';
-import { perfState, usePerf, usePerfWrite } from '../../../../../../lib/yx-performance';
+import { perfState, usePerf, usePerfWrite, useReviewAssistant } from '../../../../../../lib/yx-performance';
 
 // One review. The employee's released review is PRF-06 (acknowledge, with a disagreement in the same step); every other
 // view is the PRF-05 workspace (self, manager, former manager, skip-level, the chain above and HR). 360° nominations are
@@ -21,8 +21,18 @@ export default function YxReviewPage() {
   const options = usePerf<{ id: string; name: string }[]>(`${base}/nominee-options?q=${encodeURIComponent(q)}`, peerOn && canNominate);
   const write = usePerfWrite();
   const r = review.data;
+  // PRF-17: the assistant only for the review's current manager (the API answers 404 to anyone else).
+  const assistant = useReviewAssistant(r?.role === 'manager' ? id : null);
+  // PRF-15: once HR answered my disagreement, I may escalate it (the API says whether, and until when).
+  const answered = Boolean(r?.role === 'employee' && r.released && (r.disagreements ?? []).some((d) => d.status !== 'open'));
+  const escalation = usePerf<{ canEscalate: boolean; dispute: { ref: string } | null }>(`${base}/dispute`, answered);
+  const escalate = escalation.data?.dispute
+    ? { href: `/yx/performance/reviews/${encodeURIComponent(id)}/dispute`, label: `See your escalation ${escalation.data.dispute.ref}` }
+    : escalation.data?.canEscalate
+      ? { href: `/yx/performance/reviews/${encodeURIComponent(id)}/dispute`, label: 'Escalate the dispute' }
+      : null;
   if (r && r.role === 'employee' && r.released)
-    return <ReviewAcknowledgeScreen live={{ review: r, onAcknowledge: (comment, disagreement) => write('POST', `${base}/acknowledge`, { comment, ...(disagreement ? { disagreement } : {}) }), onDisagree: (text) => write('POST', `${base}/disagree`, { text }) }} />;
+    return <ReviewAcknowledgeScreen live={{ review: r, onAcknowledge: (comment, disagreement) => write('POST', `${base}/acknowledge`, { comment, ...(disagreement ? { disagreement } : {}) }), onDisagree: (text) => write('POST', `${base}/disagree`, { text }), escalate }} />;
   const questions = Object.fromEntries((r?.template.sections ?? []).flatMap((s) => s.questions.map((x) => [x.id, x.wholeSection ? s.title : x.text])));
   return (
     <ReviewWorkspaceScreen
@@ -47,6 +57,9 @@ export default function YxReviewPage() {
         onSkip: (agree, text) => (agree ? write('POST', `${base}/skip/agree`, { comment: text }) : write('POST', `${base}/send-back`, { reason: text })),
         onReopen: (reason) => write('POST', `${base}/reopen`, { reason }),
         onAddOther: (employeeId) => write('POST', `${base}/other-reviewers`, { employeeId }),
+        assistant,
+        // PRF-07 page (builder 2): nominating 360° reviewers, when the cycle has them and I may nominate.
+        nominateHref: peerOn && canNominate ? `/yx/performance/reviews/${encodeURIComponent(id)}/nominations` : null,
       }}
     />
   );

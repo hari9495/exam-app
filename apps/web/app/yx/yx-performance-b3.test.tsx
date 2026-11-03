@@ -11,6 +11,8 @@ import YxDisputesPage from './(app)/performance/disputes/page';
 import YxDisputePage from './(app)/performance/disputes/[id]/page';
 import YxDisputeRaisePage from './(app)/performance/reviews/[id]/dispute/page';
 import YxCoachPage from './(app)/performance/coach/page';
+import YxReviewPage from './(app)/performance/reviews/[id]/page';
+import { OneOnOnesPage } from './(app)/performance/one-on-ones/one-on-ones-view';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn(), useParams: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), apiFetchBlob: jest.fn() }));
@@ -153,5 +155,46 @@ describe('PRF-16 coach page', () => {
     serve({ 'GET /performance/coach': { state: 'not-manager', weekOf: '2026-11-02', firstName: 'Divya', optedOut: false, looksAt: [], nudges: [] } });
     wrap(<YxCoachPage />);
     expect(await screen.findByText('No team yet')).toBeInTheDocument();
+  });
+});
+
+const REVIEW = { id: 'r1', cycle: { id: 'c1', name: 'FY annual', periodFrom: '2025-04-01', periodTo: '2026-03-31', stages: [{ key: 'manager', dueOn: '2026-11-20' }] }, employee: 'Arjun', employeeId: 'e1', manager: 'Priya', role: 'manager', status: 'open', next: { stage: 'manager', label: 'Manager review', owner: 'Priya', dueOn: '2026-11-20' }, template: { name: 'Annual', scoring: 'manager_overall', levels: [{ value: 3, label: 'Meets' }, { value: 4, label: 'Exceeds' }], sections: [{ id: 'g', kind: 'goals', title: 'Goals', weight: 100, rated: true, whoAnswers: ['manager'], questions: [{ id: 'g', text: 'Goals', answer: 'both', required: false, maxChars: 2000, wholeSection: true }] }] }, goals: [], self: null, selfSubmitted: false, managerEntry: null, finalScore: null, band: null, excludedSections: [], trail: [], can: { self: false, manager: true }, version: 1 };
+
+describe('hookups on the live review and 1:1 pages', () => {
+  it('PRF-05: the manager checks wording through the assistant, and is offered the nominations page', async () => {
+    serve({
+      'GET /performance/reviews/x1': REVIEW,
+      'GET /performance/reviews/x1/nominations': { peer: { min: 3, max: 6 }, can: { propose: false, add: true }, nominations: [] },
+      'GET /performance/reviews/x1/peer-feedback': null,
+      'GET /performance/reviews/x1/nominee-options?q=': [],
+      'GET /performance/reviews/x1/assistant': { enabled: true, reason: null },
+      'POST /performance/reviews/x1/assistant/check': [{ id: 'w1', kind: 'Vague, no example', match: 'Good job', suggestion: 'Add one example.' }],
+    });
+    wrap(<YxReviewPage />);
+    expect(await screen.findByRole('link', { name: 'Nominate reviewers' })).toHaveAttribute('href', '/yx/performance/reviews/x1/nominations');
+    await userEvent.type(await screen.findByRole('textbox', { name: /Summary for the employee/ }), 'Good job');
+    await userEvent.click(await screen.findByRole('button', { name: 'Check wording' }));
+    await waitFor(() => expect(calls.find((c) => c.path.endsWith('/assistant/check'))?.body).toEqual({ text: 'Good job' }));
+    expect(await screen.findByText(/Add one example/)).toBeInTheDocument();
+  });
+
+  it('PRF-06: an answered disagreement links to the escalation; an open one does not ask', async () => {
+    const released = { ...REVIEW, role: 'employee', status: 'acknowledged', released: { at: '2026-10-01T09:00:00.000Z', acknowledgedAt: '2026-10-02T09:00:00.000Z', acknowledgeComment: null, disagreeBy: '2026-10-16' }, disagreements: [{ id: 'd1', text: 'Goal 2', status: 'answered', hrNote: 'Noted.' }], can: { self: false, manager: false, acknowledge: false, disagree: false }, finalScore: 3, band: 'Meets' };
+    serve({ 'GET /performance/reviews/x1': released, 'GET /performance/reviews/x1/nominations': { peer: null, can: {}, nominations: [] }, 'GET /performance/reviews/x1/dispute': { canEscalate: true, dispute: null } });
+    wrap(<YxReviewPage />);
+    expect(await screen.findByRole('link', { name: 'Escalate the dispute' })).toHaveAttribute('href', '/yx/performance/reviews/x1/dispute');
+  });
+
+  it('PRF-11: the manager of the open 1:1 sees the suggested agenda and adds an item to the 1:1', async () => {
+    const one = { id: 'o1', employee: 'Arjun', employeeId: 'e1', manager: 'Priya', managerEmployeeId: 'e2', on: '2026-11-10', status: 'planned', cadenceDays: 14, lastHeldOn: null, agenda: [], sharedNotes: '', privateNote: '', actions: [], goals: [], version: 1 };
+    serve({
+      'GET /performance/one-on-ones': { pairs: [{ id: 'o1', employee: 'Arjun', manager: 'Priya', partnerRole: 'Direct report', role: 'manager', cadenceDays: 14, on: '2026-11-10', lastHeldOn: null, status: 'planned', agendaItems: 0, openActions: 0 }], partners: [], defaultCadenceDays: 14 },
+      'GET /performance/one-on-ones/o1': one,
+      'GET /performance/one-on-ones/o1/suggested-agenda': [{ id: 'goal:g1', text: 'Rejects: agree one next step', why: 'Goal is off track since 2026-10-30' }],
+      'POST /performance/one-on-ones/o1/agenda': one,
+    });
+    wrap(<OneOnOnesPage openId="o1" />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Add to agenda' }));
+    await waitFor(() => expect(calls.find((c) => c.method === 'POST')).toEqual({ method: 'POST', path: '/performance/one-on-ones/o1/agenda', body: { text: 'Rejects: agree one next step' } }));
   });
 });

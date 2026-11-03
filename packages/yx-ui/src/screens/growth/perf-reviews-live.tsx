@@ -28,6 +28,7 @@ import { ConfidentialTag, GrowthFrame, RatingScale, ScoreBand, SplitLayout, Stag
 import { reviewStages, reviewScore } from './growth-logic';
 import { PerfReasonDialog, PERF_LINKS } from './perf-goals-live';
 import { day, type LoadState } from './perf-live-data';
+import { ReviewAssistantPanel, type LiveReviewAssistant } from './perf-assistant';
 
 function useDone() {
   const { toast } = useToast();
@@ -717,6 +718,10 @@ export interface LiveReviewWorkspace {
   onSkip: (agree: boolean, text: string | null) => Promise<unknown>;
   onReopen: (reason: string) => Promise<unknown>;
   onAddOther: (employeeId: string) => Promise<unknown>;
+  /** PRF-17: the review assistant for the review's current manager (null for anyone else). */
+  assistant?: LiveReviewAssistant | null;
+  /** PRF-07: where the employee or manager nominates 360° reviewers, when the cycle has them. */
+  nominateHref?: string | null;
 }
 
 type Answers = Record<string, { rating: number | null; text: string | null }>;
@@ -863,6 +868,11 @@ function ReviewBody({ live, r }: { live: LiveReviewWorkspace; r: ReviewDetail })
         }
       />
       <StageTrack stages={stages} nextStep={r.next.owner ? `${r.next.label} by ${r.next.owner}` : r.next.label} />
+      {live.nominateHref && (
+        <div className="yx-growth-row">
+          <Link href={live.nominateHref}>Nominate reviewers</Link>
+        </div>
+      )}
       {failed && (
         <InlineAlert tone="danger" title="Not saved">
           {failed}
@@ -934,6 +944,7 @@ function ReviewBody({ live, r }: { live: LiveReviewWorkspace; r: ReviewDetail })
                 <FormField id="rv-summary" label={stage === 'self' || (r.role === 'employee' && !stage) ? 'What went well, and what you’d like to grow in' : 'Summary for the employee'} optional>
                   <TextArea value={summary} onChange={setSummary} rows={5} maxLength={4000} disabled={!editable} />
                 </FormField>
+                {stage === 'manager' && live.assistant && <ReviewAssistantPanel assistant={{ enabled: true, live: live.assistant }} summary={summary} rating={overall ?? score.score} onSummary={setSummary} />}
               </Card>
             )}
             {(r.others ?? [])
@@ -1049,6 +1060,8 @@ export interface LiveAcknowledge {
   review: ReviewDetail;
   onAcknowledge: (comment: string | null, disagreement: string | null) => Promise<unknown>;
   onDisagree: (text: string) => Promise<unknown>;
+  /** PRF-15: once HR has answered the disagreement, where to escalate it (or see the escalation). */
+  escalate?: { href: string; label: string } | null;
 }
 
 export function LiveReviewAcknowledgeScreen({ live, defaultDisagree }: { live: LiveAcknowledge; defaultDisagree?: boolean }) {
@@ -1109,6 +1122,11 @@ export function LiveReviewAcknowledgeScreen({ live, defaultDisagree }: { live: L
           {d.hrNote && <Text tone="secondary">HR: {d.hrNote}</Text>}
         </Card>
       ))}
+      {live.escalate && (
+        <div className="yx-growth-row">
+          <Link href={live.escalate.href}>{live.escalate.label}</Link>
+        </div>
+      )}
       {r.can.disagree && (
         <Button onClick={() => setLater(true)}>{`I disagree with this rating${r.released?.disagreeBy ? ` (until ${formatDate(day(r.released.disagreeBy))})` : ''}`}</Button>
       )}

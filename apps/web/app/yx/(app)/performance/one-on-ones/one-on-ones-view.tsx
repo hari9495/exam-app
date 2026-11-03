@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { OneOnOneScreen, cadenceLabel, type Choice, type OneOnOne, type OneOnOnePair, type OneOnOneRow } from '@yukthix/ui/performance';
-import { day, designState, usePerf, usePerfWrite } from '../../../../../lib/yx-performance';
+import { day, designState, usePerf, usePerfWrite, useSuggestedAgenda } from '../../../../../lib/yx-performance';
 
 // PRF-11 1:1s, the designed screen with live data: one row per pair (my manager, my direct reports), the record in a
 // drawer (shared agenda and notes, my private note, action items), schedule with a rhythm, reschedule, mark as held.
@@ -30,6 +30,8 @@ export function OneOnOnesPage({ openId }: { openId: string | null }) {
   const data = usePerf<Meetings>('/one-on-ones');
   const open = usePerf<OneOnOne>(openId ? `/one-on-ones/${encodeURIComponent(openId)}` : null);
   const write = usePerfWrite();
+  // PRF-16: the suggested agenda for the open 1:1, only when I am its manager (the API answers 404 to anyone else).
+  const agenda = useSuggestedAgenda(openId);
   const base = openId ? `/one-on-ones/${encodeURIComponent(openId)}` : '';
   const m = open.data;
   const pairs = data.data?.pairs ?? [];
@@ -40,6 +42,7 @@ export function OneOnOnesPage({ openId }: { openId: string | null }) {
       persona={persona}
       state={designState(data)}
       openId={openId ?? undefined}
+      suggestedAgenda={agenda.items}
       items={pairs.map((p) => ({
         id: p.id,
         employee: p.employee,
