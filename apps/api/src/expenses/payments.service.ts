@@ -14,6 +14,7 @@ import { writeBankFile, type BankLayout, type BankRow } from '../statutory/bank-
 import { PayrollIntakeService } from '../payroll/intake.service';
 import { withPayScope } from '../payroll/pay-access';
 import { refreezeExitOf } from '../lifecycle/settlement';
+import { payMonthFor } from './home-rules';
 import { buildExpenseJournal, journalCsv, type ExpenseMapping, type JournalInput } from './journal';
 
 // Expenses batch E3 (M05-BUILD-DESIGN §10 – §12; XP-3.03 … XP-3.07): paying approved claims.
@@ -199,7 +200,10 @@ export class ExpensePaymentsService implements OnModuleInit {
       const name = new Map(people.map((p) => [p.id, [p.givenName, p.familyName].filter(Boolean).join(' ')]));
       const entities = await tx.legalEntity.findMany({ where: { organizationId: org, id: { in: ids } }, select: { id: true, name: true } });
       const batches = await tx.expensePayoutBatch.findMany({ where: { organizationId: org, legalEntityId: { in: ids } }, orderBy: { createdAt: 'desc' }, take: 50 });
+      // EXP-06 design: the payroll cut-off line (company setting, for the one entity shown, else the company default).
+      const cutoffDay = Number(await settingFor(tx, c, 'expense.payroll_cutoff_day', { legalEntityId: ids.length === 1 ? ids[0] : '' }));
       return {
+        payroll: { cutoffDay, month: payMonthFor(todayIst(), cutoffDay) },
         entities,
         claims: claims.map((x) => {
           const p = payments.find((y) => y.claimId === x.id);
