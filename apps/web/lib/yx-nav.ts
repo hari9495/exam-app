@@ -317,7 +317,7 @@ export function buildNav(n: NavInput): NavArea[] {
           ...when(has('desk.ticket.view'), L('desk-calendar', 'My calendar', '/yx/desk/calendar'), L('desk-known-issues', 'Known issues', '/yx/desk/known-issues')),
           ...when(any('desk.ticket.work', 'desk.report.view'), L('desk-team', 'Team and shifts', '/yx/desk/team')),
           ...when(any('desk.customer.manage', 'desk.ticket.view'), L('desk-customers', 'Customers', '/yx/desk/customers')),
-          ...when(any('desk.report.view', 'desk.survey.manage'), L('desk-reports', 'Reports', '/yx/desk/reports')),
+          ...when(any('desk.report.view', 'desk.survey.manage'), L('desk-reports', 'SLAs', '/yx/desk/reports')),
           ...when(has('desk.directory.manage'), L('desk-people-list', 'People list', '/yx/desk/people-list')),
           ...when(has('desk.desk.create'), L('desk-privacy', 'Privacy requests', '/yx/desk/privacy')),
           ...when(deskSetup, L('desk-setup', 'Desk set-up', '/yx/desk/setup')),

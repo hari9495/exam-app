@@ -1,10 +1,4 @@
-/* Service Desk reports (SD-1.27) and the wall screen. Tokens only. */
-.yx-rep-period { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--yx-space-3) var(--yx-space-4); margin-block: var(--yx-space-4); }
-.yx-rep-period > * { min-width: min(100%, calc(var(--yx-space-16) * 3)); }
-.yx-rep-scroll { overflow-x: auto; max-width: 100%; }
-.yx-rep-trend { display: block; max-width: 100%; height: auto; overflow: visible; }
-.yx-rep-trend path { fill: none; stroke: var(--yx-chart-1); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-.yx-rep-trend .yx-rep-trend__forecast { stroke: var(--yx-color-text-secondary); stroke-dasharray: 4 3; }
+/* The Service Desk wall screen (SD-1.27). Tokens only. */
 
 /* The wall screen: full screen, dark, large numbers readable across a room. */
 .yx-wall { min-height: 100vh; box-sizing: border-box; padding: var(--yx-space-8); background: var(--yx-color-bg-page); color: var(--yx-color-text); }

@@ -12,6 +12,9 @@ export { eventText } from './ticket';
 // HLP-03 Ticket workspace: the designed screen with `live` (Helpdesk design wiring, round 3).
 export { TicketWorkspaceScreen } from '../ops/helpdesk';
 export { activityOf, type LiveTicket } from '../ops/helpdesk-ticket-live';
+// HLP-05 SLA dashboard: the designed screen with `live` (Helpdesk design wiring)
+export { SlaDashboardScreen } from '../ops/helpdesk';
+export { REPORT_COLUMNS, numText, npsText, type LiveSla, type SlaReportTab, type SlaDays } from '../ops/helpdesk-sla-live';
 export { DeskSetupScreen, type DeskSetupScreenProps } from './setup';
 export { DeskPage, STATE_LABEL, PRIORITY_LABEL, OPEN_STATES, fillCanned, minutesText, when, browserTimeZone, CopyValue } from './desk-kit';
 export { TicketWorkRail, SlaCard, TasksCard, FamilyCard, SideCard, RemindCard, MaskedCard, ResolveDialog, EscalateDialog, TaskListCard, type TicketWorkProps } from './work';
@@ -31,7 +34,7 @@ export { KbEditorScreen } from '../ops/helpdesk';
 export { categoryTree, articleStatus, AUDIENCE_LABEL, ARTICLE_STATE_LABEL, VERSION_STATE_LABEL, type LiveKb } from '../ops/helpdesk-kb-live';
 export * from './kb-types';
 // Batch 4: reports
-export { ReportsScreen, WallScreen, Tile, REPORT_COLUMNS, numText, npsText, type ReportsScreenProps, type ReportsTab } from './reports';
+export { WallScreen } from './reports';
 export * from './report-types';
 // Batch 4: standalone and privacy
 export { PeopleListScreen, ScimTokenBox, type PeopleListScreenProps, type DeskPerson, type PersonInput, type ImportResult, type DirectorySource, type DirectorySourceInput, type GroupMapRow, type GroupRole } from './people-list';

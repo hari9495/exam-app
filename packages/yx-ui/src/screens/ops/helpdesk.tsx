@@ -30,6 +30,7 @@ import { LiveHelpCentre, type LiveHelp } from './helpdesk-live';
 import { LiveAgentDesk, type LiveAgentDesk as LiveAgentDeskProps } from './helpdesk-desk-live';
 import { LiveTicketWorkspace, type LiveTicket } from './helpdesk-ticket-live';
 import { LiveKbEditor, type LiveKb } from './helpdesk-kb-live';
+import { LiveSlaDashboard, type LiveSla } from './helpdesk-sla-live';
 
 export type ListState = 'ready' | 'loading' | 'error' | 'empty';
 export type Device = 'desk' | 'phone';
@@ -875,7 +876,12 @@ export interface SlaDashboardScreenProps {
   loading?: boolean;
   empty?: boolean;
 }
-export function SlaDashboardScreen({ tickets, loading, empty }: SlaDashboardScreenProps) {
+/** The designed SLA dashboard; with `live` it shows the real figures and the desk reports (HLP-05 wiring). */
+export function SlaDashboardScreen(props: SlaDashboardScreenProps | { live: LiveSla }) {
+  return 'live' in props ? <LiveSlaDashboard live={props.live} /> : <SampleSlaDashboard {...props} />;
+}
+
+function SampleSlaDashboard({ tickets, loading, empty }: SlaDashboardScreenProps) {
   const [period, setPeriod] = useState<string | null>('30');
   const open = tickets.filter((t) => t.status !== 'Closed' && t.status !== 'Resolved');
   const states = open.map((t) => slaState(t.resolution.elapsed, t.resolution.target, { paused: t.status === 'Waiting on employee' }));

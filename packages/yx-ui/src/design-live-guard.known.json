@@ -146,7 +146,6 @@
     "ops: PoshComplaintScreen",
     "ops: PreRegisterScreen",
     "ops: ReportAccidentScreen",
-    "ops: SlaDashboardScreen",
     "ops: SpeakUpScreen",
     "ops: StatutorySetupScreen",
     "ops: VendorComplianceScreen",

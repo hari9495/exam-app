@@ -1,5 +1,3 @@
-import { CS_DESK, DESK } from './data';
-import type { ReportsScreenProps } from './reports';
 import type { CustomReport, Kpi, ReportDashboard, Survey, WallData } from './report-types';
 
 // Sample reports data for stories and tests (Kaveri Foods).
@@ -59,56 +57,3 @@ export const WALL: WallData = {
     { name: 'Customer support', open: 18, unassigned: 0, urgent: 0, solvedToday: 11, dueWithinHour: 0, late: 0 },
   ],
 };
-
-const wait = <T,>(v: T) => new Promise<T>((r) => setTimeout(() => r(v), 300));
-
-/** Every prop filled, for stories and tests to override. */
-export const reportsProps = (over: Partial<ReportsScreenProps> = {}): ReportsScreenProps => ({
-  state: 'ready',
-  canView: true,
-  canManage: true,
-  canSurveys: true,
-  canCustomers: true,
-  desks: [DESK, CS_DESK],
-  tab: 'dashboard',
-  onTab: () => {},
-  tabState: 'ready',
-  period: { deskId: null, from: '2026-09-09', to: '2026-10-08' },
-  onPeriod: () => {},
-  dashboard: REPORT_DASHBOARD,
-  kpiDeskId: 'd-it',
-  onKpiDesk: () => {},
-  kpis: KPIS,
-  onSetTarget: () => wait(undefined),
-  library: [
-    { key: 'by_status', practice: 'Incidents and requests', name: 'Tickets by status' },
-    { key: 'sla', practice: 'SLA', name: 'Response targets met, by desk and priority' },
-  ],
-  onRunReport: () => wait({ title: 'Tickets by status', columns: ['Status', 'Tickets'], rows: [['Open', 30], ['Waiting', 12]] }),
-  onDownloadReport: () => wait(undefined),
-  funnel: [
-    { key: 'searches', label: 'Searches', count: 1290 },
-    { key: 'views', label: 'Articles read', count: 812 },
-    { key: 'clicks', label: 'Search results opened', count: 640 },
-    { key: 'solved', label: '"This solved it"', count: 37 },
-    { key: 'raised', label: 'Tickets raised', count: 318 },
-    { key: 'rate', label: 'Self-service rate (%)', count: 10.4 },
-  ],
-  customReports: CUSTOM_REPORTS,
-  onSaveCustom: () => wait(undefined),
-  onDeleteCustom: () => wait(undefined),
-  onRunCustom: () => wait({ title: 'Open P1 and P2 tickets', columns: ['Number', 'Subject', 'Priority'], rows: [['IT-1001', 'VPN down', 'P1']] }),
-  onDownloadCustom: () => wait(undefined),
-  onSchedule: () => wait(undefined),
-  onEndSchedule: () => wait(undefined),
-  onSearchUsers: async () => [{ id: 'u2', name: 'Farah Khan', email: 'farah@kaveri.test' }],
-  wallboards: [{ id: 'w1', name: 'IT floor TV', deskIds: ['d-it'], backlogAlert: 60, createdAt: '2026-10-01T05:00:00Z' }],
-  onCreateWallboard: () => wait({ id: 'w2', url: 'https://app.yukthix.test/yx/wall/org-1/abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG' }),
-  onRevokeWallboard: () => wait(undefined),
-  accounts: [{ id: 'ac1', name: 'Shakti Retail' }],
-  onCustomerReport: () => wait({ account: 'Shakti Retail', month: '2026-09', tickets: 14, lines: [{ measure: 'First reply', severity: 1, kept: 3, missed: 1 }] }),
-  surveys: SURVEYS,
-  onSaveSurvey: () => wait(undefined),
-  onLoadAnswers: () => wait([{ score: 9, comment: 'Quick and kind.', account: 'Shakti Retail', at: '2026-09-20T06:00:00Z' }]),
-  ...over,
-});
