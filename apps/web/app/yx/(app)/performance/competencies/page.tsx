@@ -1,9 +1,9 @@
 'use client';
 
-import { CompetencyFrameworkScreen, type Competency, type CompetencySave, type FrameworkCompetency, PerfNoAccessScreen } from '@yukthix/ui/performance';
+import { CompetencyFrameworkScreen, type Competency, type CompetencySave, type FrameworkCompetency, type ImportProblem, type QuestionTagChoice, PerfNoAccessScreen } from '@yukthix/ui/performance';
 import type { MasterRecord } from '@yukthix/ui/org';
 import { loadState, todayIst, useOrg, useYxPermissions } from '../../../../../lib/yx-org';
-import { usePerf, usePerfWrite, refused } from '../../../../../lib/yx-performance';
+import { usePerf, usePerfGet, usePerfWrite, refused } from '../../../../../lib/yx-performance';
 
 const GROUP = { core: 'Core', functional: 'Functional', leadership: 'Leadership' } as const;
 const KEY = { Core: 'core', Functional: 'functional', Leadership: 'leadership' } as const;
@@ -24,6 +24,11 @@ const toScreen = (c: Competency & { usedIn?: string[] }): FrameworkCompetency =>
   levels: c.levels.map(levelText),
   roles: c.roles.map((r) => ({ role: r.designation, designationId: r.designationId, level: r.level })),
   usedIn: c.usedIn ?? [],
+  // PRF-14: the skills test is a question-bank tag; the bank is the exam platform's question list.
+  skillsTest: c.skillsTest?.name,
+  skillsTestTagId: c.skillsTest?.tagId ?? null,
+  skillsTestQuestions: c.skillsTest?.questions,
+  skillsTestHref: c.skillsTest ? '/v2/questions' : undefined,
   version: c.version,
 });
 
@@ -34,6 +39,7 @@ export default function YxCompetenciesPage() {
   const list = usePerf<(Competency & { usedIn?: string[] })[]>('/competencies');
   const designations = useOrg<MasterRecord[]>('/masters/designations', perms.has('org.structure.view') || perms.has('org.settings.manage'));
   const write = usePerfWrite();
+  const get = usePerfGet();
   const state = loadState(list);
   const today = todayIst();
   const body = (x: CompetencySave) => ({
@@ -42,6 +48,7 @@ export default function YxCompetenciesPage() {
     description: x.description || null,
     levels: x.levels.map(levelOf),
     roles: x.roles.map((r) => ({ designationId: r.designationId, level: r.level, validFrom: today })),
+    ...(x.questionTagId === undefined ? {} : { questionTagId: x.questionTagId }),
     ...(x.version === undefined ? {} : { version: x.version }),
   });
   if (refused(list)) return <PerfNoAccessScreen title="Competency framework" what="the competency framework" grantedBy="your System Admin" active="Skills & competencies" persona="hr" />;
@@ -57,6 +64,17 @@ export default function YxCompetenciesPage() {
         onRetire: async (id) => void (await write('POST', `/competencies/${encodeURIComponent(id)}/retire`)),
         onMerge: async (id, intoId) => void (await write('POST', `/competencies/${encodeURIComponent(id)}/merge`, { intoId })),
         onLoadStarters: async () => void (await write('POST', '/setup/from-starter')),
+        // PRF-14 Import: all rows or none; a refusal carries the rows with problems.
+        onImport: async (csv) => {
+          try {
+            return await write<{ imported: number }>('POST', '/competencies/import', { csv });
+          } catch (e) {
+            const problems = (e as { body?: { problems?: ImportProblem[] } }).body?.problems;
+            if (problems?.length) return { problems, message: (e as Error).message };
+            throw e;
+          }
+        },
+        questionTags: () => get<QuestionTagChoice[]>('/competencies/question-tags'),
       }}
     />
   );

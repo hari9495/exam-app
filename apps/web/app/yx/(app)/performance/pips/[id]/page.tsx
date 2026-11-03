@@ -43,7 +43,8 @@ export default function YxPipPage() {
     schedule: p.checkins.map((c) => ({ id: c.id, due: day(c.dueOn), status: c.status, note: c.managerNote ? `${p.manager}: ${c.managerNote}` : null, employeeNote: c.employeeNote, rating: c.rating ? RATING[c.rating] : null })),
     acknowledgement: p.acknowledgedAt ? { at: new Date(p.acknowledgedAt), comment: p.employeeComment ?? undefined } : null,
     approval: steps,
-    outcomeNote: p.outcomeNote ?? p.extendReason,
+    outcomeNote: p.outcomeNote ?? p.reextendReason ?? p.extendReason,
+    reextended: Boolean(p.reextendedFrom),
   };
   return (
     <PipRecordScreen
@@ -51,8 +52,11 @@ export default function YxPipPage() {
       pip={pip}
       live={{
         today: new Date(),
-        can: { decide: Boolean(p.approval?.canDecide), acknowledge: p.can.acknowledge, checkin: p.can.checkin, employeeNote: p.can.employeeNote, outcome: p.can.outcome, letter: p.can.letter, startExit: p.can.startExit },
+        can: { decide: Boolean(p.approval?.canDecide), acknowledge: p.can.acknowledge, checkin: p.can.checkin, employeeNote: p.can.employeeNote, outcome: p.can.outcome, letter: p.can.letter, startExit: p.can.startExit, extend: p.can.extend, extendAgain: Boolean(p.can.extendAgain) },
         extendDays: p.extendDays ?? 30,
+        extendAgainDays: p.extendAgainDays ?? 30,
+        // Founder answer (a): one more extension after "not met", with a reason (HR; the API checks again).
+        onExtendAgain: (reason) => write('POST', `${base}/extend-again`, { reason, version }),
         askHrHref: '/yx/desk/help',
         exitHref: p.exitCaseId ? `/yx/people/exits/${encodeURIComponent(p.exitCaseId)}` : null,
         onDecide: (decision, reason) => write('POST', `${base}/decide`, { decision, reason }),

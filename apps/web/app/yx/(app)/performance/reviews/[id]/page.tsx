@@ -3,7 +3,7 @@
 import { useParams } from 'next/navigation';
 import { ReviewAcknowledgeScreen, ReviewWorkspaceScreen, type Nominations, type PeerGroups, type ReviewDetail, PerfNoAccessScreen } from '@yukthix/ui/performance';
 import { loadState } from '../../../../../../lib/yx-org';
-import { perfState, usePerf, usePerfWrite, useReviewAssistant, refused } from '../../../../../../lib/yx-performance';
+import { perfState, usePerf, usePerfDownload, usePerfWrite, useReviewAssistant, refused } from '../../../../../../lib/yx-performance';
 
 // One review. The employee's released review is PRF-06 (acknowledge, with a disagreement in the same step); every other
 // view is the PRF-05 workspace (self, manager, former manager, skip-level, the chain above and HR). 360° nominations are
@@ -17,6 +17,9 @@ export default function YxReviewPage() {
   const groups = usePerf<PeerGroups>(`${base}/peer-feedback`, peerOn);
   const canNominate = Boolean(nominations.data?.can.propose || nominations.data?.can.add);
   const write = usePerfWrite();
+  const download = usePerfDownload();
+  // PRF-05 / PRF-06: the review as this viewer sees it, as a PDF (the API decides and records the download).
+  const onDownload = () => download(`${base}/pdf`, 'review.pdf');
   const r = review.data;
   // PRF-17: the assistant only for the review's current manager (the API answers 404 to anyone else).
   const assistant = useReviewAssistant(r?.role === 'manager' ? id : null);
@@ -30,7 +33,7 @@ export default function YxReviewPage() {
       : null;
   if (refused(review)) return <PerfNoAccessScreen title="Review" what="this review" grantedBy="HR" active="Reviews & cycles" persona="emp" />;
   if (r && r.role === 'employee' && r.released)
-    return <ReviewAcknowledgeScreen live={{ review: r, onAcknowledge: (comment, disagreement) => write('POST', `${base}/acknowledge`, { comment, ...(disagreement ? { disagreement } : {}) }), onDisagree: (text) => write('POST', `${base}/disagree`, { text }), escalate }} />;
+    return <ReviewAcknowledgeScreen live={{ review: r, onAcknowledge: (comment, disagreement) => write('POST', `${base}/acknowledge`, { comment, ...(disagreement ? { disagreement } : {}) }), onDisagree: (text) => write('POST', `${base}/disagree`, { text }), escalate, onDownload }} />;
   return (
     <ReviewWorkspaceScreen
       live={{
@@ -45,6 +48,7 @@ export default function YxReviewPage() {
         assistant,
         // PRF-07 page (builder 2): nominating 360° reviewers, when the cycle has them and I may nominate.
         nominateHref: peerOn && canNominate ? `/yx/performance/reviews/${encodeURIComponent(id)}/nominations` : null,
+        onDownload,
       }}
     />
   );

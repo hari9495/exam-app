@@ -66,6 +66,8 @@ export interface Competency {
   starter: boolean;
   levels: { level: number; label: string; behaviours: string | null }[];
   roles: { designationId: string; designation: string; level: number; validFrom: string }[];
+  /** PRF-14: the question-bank tag used as the skills test, with its active questions. */
+  skillsTest?: { tagId: string; name: string; questions: number } | null;
   version: number;
 }
 
@@ -657,6 +659,9 @@ export interface Pip {
   employeeComment: string | null;
   extendedFrom: string | null;
   extendReason: string | null;
+  /** Founder answer (a): extended once more after "not met" (the old end and the reason). */
+  reextendedFrom?: string | null;
+  reextendReason?: string | null;
   outcomeNote: string | null;
   outcomeAt: string | null;
   letterId: string | null;
@@ -667,8 +672,9 @@ export interface Pip {
   approval?: { steps: { id: string; label: string; status: 'done' | 'current' | 'pending' | 'rejected'; approver?: string; at?: string; comment?: string }[]; canDecide: boolean };
   /** perf.pip.extend_days */
   extendDays?: number;
+  extendAgainDays?: number;
   warning: boolean;
   role: 'employee' | 'manager' | 'hr';
-  can: { acknowledge: boolean; checkin: boolean; employeeNote: boolean; outcome: boolean; extend: boolean; letter: boolean; startExit: boolean };
+  can: { acknowledge: boolean; checkin: boolean; employeeNote: boolean; outcome: boolean; extend: boolean; letter: boolean; startExit: boolean; extendAgain?: boolean };
   version: number;
 }

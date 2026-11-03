@@ -13,6 +13,8 @@ export function CycleSetup({ cycle, state, onRetry }: { cycle: ReviewCycle | nul
   const router = useRouter();
   const templates = usePerf<Templates>('/cycle-templates');
   const departments = useOrg<MasterRecord[]>('/masters/departments');
+  // PRF-04: who can run calibration sessions, for the sessions planned in the wizard.
+  const facilitators = usePerf<{ value: string; label: string }[]>('/calibration-facilitators');
   const write = usePerfWrite();
   const ready = perfState(loadState(templates));
   return (
@@ -24,6 +26,7 @@ export function CycleSetup({ cycle, state, onRetry }: { cycle: ReviewCycle | nul
         cycle,
         templates: templates.data ?? [],
         departments: (departments.data ?? []).filter((d) => !d.archivedAt).map((d) => ({ value: d.id, label: d.name })),
+        facilitators: facilitators.data ?? [],
         onSave: (input, id) => (id ? write<ReviewCycle>('PUT', `/cycles/${encodeURIComponent(id)}`, input) : write<ReviewCycle>('POST', '/cycles', input)),
         onPeer: (id, peer) => (peer ? write('PUT', `/cycles/${encodeURIComponent(id)}/peer-feedback`, peer) : cycle?.peerFeedback ? write('DELETE', `/cycles/${encodeURIComponent(id)}/peer-feedback`) : Promise.resolve()),
         onCheck: (id) => write<Preflight>('POST', `/cycles/${encodeURIComponent(id)}/preflight`),
