@@ -26,11 +26,10 @@ export function toPay(receiptAmount: Prisma.Decimal.Value, rate: Prisma.Decimal.
   return D(receiptAmount).mul(D(rate)).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP).toFixed(2);
 }
 
-/** How far an entered rate is from the reference, in percent (F12 flags above the 3 % tolerance, B18). */
+/** How far an entered rate is from the reference, in percent (F12 flags above the company's tolerance, setting expense.fx_tolerance_pct, B18). */
 export function variancePct(entered: Prisma.Decimal.Value, reference: Prisma.Decimal.Value): string {
   return D(entered).sub(D(reference)).div(D(reference)).mul(100).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP).toFixed(2);
 }
-export const FX_TOLERANCE_PCT = 3;
 
 /**
  * A forex advance's unspent balance comes back at the day's rate; the gap to the loading rate is the exchange

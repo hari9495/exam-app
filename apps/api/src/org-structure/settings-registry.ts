@@ -65,6 +65,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'expense.payroll_cutoff_day': { label: 'Expenses: claims approved after this day of the month go to the next payroll', scopes: ['tenant', 'legal_entity'], dated: false, values: ['15', '20', '23', '25', '28'], default: '23' },
   'expense.advance.recovery_instalments': { label: 'Expenses: an overdue advance is recovered from salary in this many instalments', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '2', '3', '6'], default: '3' },
   'expense.advance.settle_days': { label: 'Expenses: a trip advance is settled within this many days of the trip ending', scopes: ['tenant', 'legal_entity'], dated: false, values: ['7', '15', '30', '45'], default: '15' },
+  // Expenses round 2 (founder 3 Nov 2026): a rate the employee typed is flagged for the approver when it is further than
+  // this from the company rate (was FX_TOLERANCE_PCT = 3 in code).
+  'expense.fx_tolerance_pct': { label: 'Expenses: flag a typed exchange rate this far (%) from the company rate', scopes: ['tenant', 'legal_entity'], dated: false, values: ['1', '2', '3', '5', '10'], default: '3' },
   'expense.gst.capture': { label: 'Expenses: capture GST for input credit', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', 'on'], default: 'off' },
   // M06 performance PM2 (§6.1, D2): whether the manager approves a person's goals; how often check-ins are expected.
   'perf.goal.approval': { label: 'Performance: the manager approves a person’s goals', scopes: ['tenant'], dated: false, values: ['manager', 'none'], default: 'manager' },
