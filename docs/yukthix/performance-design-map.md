@@ -645,3 +645,6 @@ Keep as built: (1) the coach's new signals use fixed rules (earned leave over 12
 onboarding task); (2) "Reassign to HR" moves only open decisions; (3) the skills-test link opens the question bank list
 (a tag filter there later); (4) reviews finishing after a calibration session is signed off go straight to ready to
 release, and HR may open a new session for them.
+
+## Founder answer, 3 Nov 2026 (PIP phone designs)
+Keep the extra PRF-12 "HR · phone · issue letter" story, so every action on the live HR phone page has a design.
