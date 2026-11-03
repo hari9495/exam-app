@@ -210,3 +210,18 @@ describe('console and partner rules', () => {
     expect(L.healthBand(44)).toBe('at-risk');
   });
 });
+
+describe('TenantPortal language and notices (kit)', () => {
+  it('offers only the languages a page is written in, and names the notices in its language', async () => {
+    const { TenantPortal } = await import('./portals-kit');
+    render(
+      <TenantPortal tenant="Kaveri" portal="HR" access={{ kind: 'note', text: 'Note' }} footer={{ privacy: 'गोपनीयता सूचना', labels: { terms: 'उपयोग की शर्तें' }, hrefs: { terms: '/t' } }} language="hi" onLanguageChange={vi.fn()} languages={[{ value: 'en', label: 'English' }, { value: 'hi', label: 'हिन्दी (Hindi)' }]}>
+        <p>Body</p>
+      </TenantPortal>,
+    );
+    expect(screen.getByRole('link', { name: 'उपयोग की शर्तें' })).toHaveAttribute('href', '/t');
+    expect(screen.getByRole('link', { name: 'Accessibility statement' })).toBeTruthy();
+    await userEvent.click(screen.getByRole('combobox', { name: 'Language' }));
+    expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual(['English', 'हिन्दी (Hindi)']);
+  });
+});

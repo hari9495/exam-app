@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { ForgotPasswordScreen } from '@yukthix/ui/auth';
 import { apiFetch } from '../../../lib/api-client';
+import { SignInLanguage } from '../../../lib/sign-in-language';
 
 // "Forgot your password?" from the YukthiX sign-in: the work email only (no company code). The API
 // sends one link per company account with that email and answers the same either way.
@@ -25,5 +26,9 @@ export default function YxForgotPasswordPage() {
     }
   };
 
-  return <ForgotPasswordScreen email={email} onEmailChange={setEmail} onSubmit={() => void submit()} sent={sent} busy={busy} error={error} signInHref="/yx/sign-in" />;
+  return (
+    <SignInLanguage>
+      <ForgotPasswordScreen email={email} onEmailChange={setEmail} onSubmit={() => void submit()} sent={sent} busy={busy} error={error} signInHref="/yx/sign-in" />
+    </SignInLanguage>
+  );
 }

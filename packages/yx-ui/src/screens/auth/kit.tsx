@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type FormEvent, type ReactNode } from 'react';
+import { useContext, useState, type FormEvent, type ReactNode } from 'react';
 import { TenantPortal } from '../portals/portals-kit';
 import { Button } from '../../components/button';
 import { Checkbox, MethodCards, type MethodCardOption } from '../../components/choice';
@@ -9,6 +9,9 @@ import { CodeField, TextField } from '../../components/inputs';
 import { Fingerprint, KeyRound, MessageSquare, Smartphone } from 'lucide-react';
 import type { BadgeTone } from '../../components/display';
 import type { LoginResult, MfaProof } from './types';
+import { AUTH_LANGUAGES, AuthLanguageContext, authWords, useAuthWords, type AuthWords } from './words';
+
+export { AuthLanguageContext };
 
 /* ---------- words ---------- */
 
@@ -102,12 +105,6 @@ export const LEGAL_LINKS = {
   openSource: '/yx/legal/open-source',
 } as const;
 
-/**
- * The language picked on the sign-in pages (P04 Q4, G1 people.language). The live app provides it and keeps the
- * choice; without a provider (stories) the picker works on its own.
- */
-export const AuthLanguageContext = createContext<{ value: string; onChange: (lang: string) => void } | null>(null);
-
 export interface AuthFrameProps {
   title: string;
   /** The helper line under the title. */
@@ -126,18 +123,19 @@ export interface AuthFrameProps {
  * (company and product), the note and language picker, one card with the title and helper line, then the legal
  * notices and "Powered by YukthiX". Fits 390 px phones.
  */
-export function AuthFrame({ title, subtitle, children, footer, company, note = 'For company staff only' }: AuthFrameProps) {
+export function AuthFrame({ title, subtitle, children, footer, company, note }: AuthFrameProps) {
   const lang = useContext(AuthLanguageContext);
+  const w = useAuthWords();
   return (
     <TenantPortal
       tenant={company || 'YukthiX'}
       portal={company ? 'YukthiX HR' : 'HR Suite'}
       narrow
-      access={{ kind: 'note', text: note }}
-      footer={{ privacy: 'Privacy notice', hrefs: LEGAL_LINKS }}
-      {...(lang ? { language: lang.value, onLanguageChange: lang.onChange } : { noLanguage: true })}
+      access={{ kind: 'note', text: note ?? w.note }}
+      footer={{ privacy: w.footer.privacy, hrefs: LEGAL_LINKS, labels: w.footer }}
+      {...(lang ? { language: lang.value, onLanguageChange: lang.onChange, languages: AUTH_LANGUAGES } : { noLanguage: true })}
     >
-      <section className="yx-signin" aria-labelledby="yx-auth-title">
+      <section className="yx-signin" aria-labelledby="yx-auth-title" lang={w.lang}>
         <div className="yx-signin__head">
           <h1 id="yx-auth-title" className="yx-signin__title">{title}</h1>
           {subtitle && <p className="yx-signin__intro">{subtitle}</p>}
@@ -154,27 +152,19 @@ export function AuthFrame({ title, subtitle, children, footer, company, note = '
 /** A sign-in method a person can set up. */
 export type SetupMethod = 'passkey' | 'totp';
 
-const SETUP_METHODS: Record<SetupMethod, MethodCardOption> = {
-  passkey: { value: 'passkey', title: 'Passkey', description: 'Sign in with your face, fingerprint or PIN. No password or code needed.', icon: Fingerprint, badge: 'Recommended' },
-  totp: { value: 'totp', title: 'Authenticator app', description: 'Enter a 6-digit code from Google or Microsoft Authenticator after your password.', icon: Smartphone },
-};
+const SETUP_ICONS = { passkey: Fingerprint, totp: Smartphone } as const;
 
-/** The setup cards for the methods given, passkey first. */
-export const setupMethodOptions = (methods: string[]): MethodCardOption[] =>
-  (['passkey', 'totp'] as const).filter((m) => methods.includes(m)).map((m) => SETUP_METHODS[m]);
+/** The setup cards for the methods given, passkey first (English unless the sign-in words are passed). */
+export const setupMethodOptions = (methods: string[], w: AuthWords = authWords('en')): MethodCardOption[] =>
+  (['passkey', 'totp'] as const).filter((m) => methods.includes(m)).map((m) => ({ value: m, icon: SETUP_ICONS[m], ...w.setup[m] }));
 
 /* ---------- second factor (sign-in challenge and step-up) ---------- */
 
 type CodeFactor = 'totp' | 'recovery_code' | 'otp';
 type Choice = 'passkey' | CodeFactor;
 
-const CHOICES: Record<Choice, MethodCardOption> = {
-  passkey: { value: 'passkey', title: 'Passkey', description: 'Use your face, fingerprint or PIN on this device, or your security key.', icon: Fingerprint },
-  totp: { value: 'totp', title: 'Authenticator app', description: 'Enter the 6-digit code from your authenticator app.', icon: Smartphone },
-  otp: { value: 'otp', title: 'Text message', description: 'We text a 6-digit code to your phone.', icon: MessageSquare },
-  recovery_code: { value: 'recovery_code', title: 'Recovery code', description: 'Use one of the codes you saved when you set this up.', icon: KeyRound },
-};
-const CODE_LABEL: Record<CodeFactor, string> = { totp: '6-digit code from your authenticator app', otp: '6-digit code we sent to your phone', recovery_code: 'Recovery code' };
+const CHOICE_ICONS = { passkey: Fingerprint, totp: Smartphone, otp: MessageSquare, recovery_code: KeyRound } as const;
+const choiceCard = (w: AuthWords, c: Choice): MethodCardOption => ({ value: c, icon: CHOICE_ICONS[c], ...w.choices[c] });
 
 export interface SecondFactorPanelProps {
   /** Factor types the account holds, from the API ('passkey', 'totp', and 'otp' when a text code may be sent). */
@@ -205,7 +195,8 @@ export function SecondFactorPanel({ factors, getPasskey, submit, sendCode, recov
   const [code, setCode] = useState('');
   const [sent, setSent] = useState<'sms' | 'whatsapp' | null>(null);
   const { busy, error, setError, run } = useStep();
-  const early = useTooEarly(choice && choice !== 'passkey' && !code.trim() ? [{ fieldId: 'yx-2fa-code', message: choice === 'recovery_code' ? 'Enter one of your recovery codes.' : 'Enter the 6-digit code.' }] : []);
+  const w = useAuthWords();
+  const early = useTooEarly(choice && choice !== 'passkey' && !code.trim() ? [{ fieldId: 'yx-2fa-code', message: choice === 'recovery_code' ? w.enterRecoveryCode : w.enterCode }] : []);
 
   const withPasskey = () => run(async () => submit({ factor: 'passkey', credential: await getPasskey() }));
   const pick = (c: Choice) => {
@@ -238,8 +229,8 @@ export function SecondFactorPanel({ factors, getPasskey, submit, sendCode, recov
   if (choice === null) {
     return (
       <div className="yx-auth__form">
-        <MethodCards aria-label="Ways to confirm it's you" options={choices.map((c) => CHOICES[c])} onSelect={(v) => pick(v as Choice)} busy={pending} />
-        {error && <InlineAlert tone="danger">{error}</InlineAlert>}
+        <MethodCards aria-label={w.waysToConfirm} options={choices.map((c) => choiceCard(w, c))} onSelect={(v) => pick(v as Choice)} busy={pending} />
+        {error && <InlineAlert tone="danger">{w.err(error)}</InlineAlert>}
       </div>
     );
   }
@@ -247,17 +238,17 @@ export function SecondFactorPanel({ factors, getPasskey, submit, sendCode, recov
   return (
     <form className="yx-auth__form" onSubmit={onSubmit} noValidate>
       {choice === 'passkey' ? (
-        <Text as="p" tone="secondary">{CHOICES.passkey.description}</Text>
+        <Text as="p" tone="secondary">{w.choices.passkey.description}</Text>
       ) : (
         <>
           {choice === 'otp' && (
             <div className="yx-auth__row">
-              <Button size="sm" loading={busy && !sent} onClick={() => text('sms')}>{sent ? 'Send a new code' : 'Text me a code'}</Button>
-              <Button size="sm" onClick={() => !busy && text('whatsapp')}>Send on WhatsApp</Button>
+              <Button size="sm" loading={busy && !sent} onClick={() => text('sms')}>{sent ? w.sendNewCode : w.textMeACode}</Button>
+              <Button size="sm" onClick={() => !busy && text('whatsapp')}>{w.sendOnWhatsApp}</Button>
             </div>
           )}
-          {choice === 'otp' && sent && <Text as="p" tone="secondary" role="status">We sent a code by {sent === 'sms' ? 'SMS' : 'WhatsApp'}. It expires in 5 minutes.</Text>}
-          <FormField id="yx-2fa-code" label={CODE_LABEL[choice]} required error={early.errorOf('yx-2fa-code')} helper={choice === 'recovery_code' ? 'Each recovery code works once.' : undefined}>
+          {choice === 'otp' && sent && <Text as="p" tone="secondary" role="status">{w.sentBy(sent === 'sms' ? 'SMS' : 'WhatsApp')}</Text>}
+          <FormField id="yx-2fa-code" label={w.codeLabel[choice]} required error={early.errorOf('yx-2fa-code')} helper={choice === 'recovery_code' ? w.recoveryHelper : undefined}>
             {choice === 'recovery_code' ? (
               <TextField value={code} onChange={setCode} autoComplete="one-time-code" maxLength={40} spellCheck={false} />
             ) : (
@@ -266,11 +257,11 @@ export function SecondFactorPanel({ factors, getPasskey, submit, sendCode, recov
           </FormField>
         </>
       )}
-      {error && <InlineAlert tone="danger">{error}</InlineAlert>}
+      {error && <InlineAlert tone="danger">{w.err(error)}</InlineAlert>}
       <Button type="submit" variant="primary" fullWidth loading={busy}>
-        {choice === 'passkey' ? 'Use my passkey' : 'Confirm'}
+        {choice === 'passkey' ? w.useMyPasskey : w.confirm}
       </Button>
-      {several && <Button fullWidth onClick={() => !busy && back()}>Choose another way</Button>}
+      {several && <Button fullWidth onClick={() => !busy && back()}>{w.chooseAnotherWay}</Button>}
     </form>
   );
 }
@@ -278,10 +269,11 @@ export function SecondFactorPanel({ factors, getPasskey, submit, sendCode, recov
 /* ---------- recovery codes (shown once) ---------- */
 
 /** The new recovery codes, shown once. Continue says to tick the box first until the person says they saved them. */
-export function RecoveryCodes({ codes, onDone, doneLabel = 'Done' }: { codes: string[]; onDone: () => void; doneLabel?: string }) {
+export function RecoveryCodes({ codes, onDone, doneLabel }: { codes: string[]; onDone: () => void; doneLabel?: string }) {
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
-  const early = useTooEarly(saved ? [] : [{ fieldId: 'yx-codes-saved', message: 'Save the codes, then tick this box.' }]);
+  const w = useAuthWords();
+  const early = useTooEarly(saved ? [] : [{ fieldId: 'yx-codes-saved', message: w.tickTheBox }]);
   const copy = () => {
     void navigator.clipboard?.writeText(codes.join('\n')).then(() => setCopied(true));
   };
@@ -293,22 +285,22 @@ export function RecoveryCodes({ codes, onDone, doneLabel = 'Done' }: { codes: st
   };
   return (
     <div className="yx-auth__codes">
-      <InlineAlert tone="warning" title="Save these recovery codes now">
-        Each code works once, if you lose your passkey or phone. We won't show them again.
+      <InlineAlert tone="warning" title={w.saveCodesNow}>
+        {w.eachCodeOnce}
       </InlineAlert>
-      <ol className="yx-auth__code-list yx-mono" aria-label="Recovery codes">
+      <ol className="yx-auth__code-list yx-mono" aria-label={w.recoveryCodes}>
         {codes.map((c) => (
           <li key={c}>{c}</li>
         ))}
       </ol>
       <div className="yx-auth__row">
-        <Button size="sm" onClick={copy}>{copied ? 'Copied' : 'Copy codes'}</Button>
-        <Button size="sm" onClick={download}>Download</Button>
-        {copied && <span className="yx-visually-hidden" role="status">Codes copied</span>}
+        <Button size="sm" onClick={copy}>{copied ? w.copied : w.copyCodes}</Button>
+        <Button size="sm" onClick={download}>{w.download}</Button>
+        {copied && <span className="yx-visually-hidden" role="status">{w.codesCopied}</span>}
       </div>
-      <Checkbox id="yx-codes-saved" checked={saved} onChange={setSaved} label="I have saved my recovery codes" />
+      <Checkbox id="yx-codes-saved" checked={saved} onChange={setSaved} label={w.savedCodes} />
       {early.errorOf('yx-codes-saved') && <Text as="p" tone="danger" size="sm" role="alert">{early.errorOf('yx-codes-saved')}</Text>}
-      <Button variant="primary" onClick={() => !early.stop() && onDone()}>{doneLabel}</Button>
+      <Button variant="primary" onClick={() => !early.stop() && onDone()}>{doneLabel ?? w.done}</Button>
     </div>
   );
 }

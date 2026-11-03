@@ -8,6 +8,7 @@ import { Spinner, Text } from '../../components/foundations';
 import { CodeField, PasswordField, TextField } from '../../components/inputs';
 import { isEmail, isPhoneNumber } from '../../lib/validators';
 import { AuthFrame } from './kit';
+import { useAuthWords } from './words';
 import { GoogleMark, MicrosoftMark } from './marks';
 import type { SignInOptions, SsoProviderOption } from './types';
 
@@ -80,8 +81,10 @@ export interface SignInScreenProps {
   forgotPasswordHref: string;
 }
 
+const providerName = (p: SsoProviderOption) => (p.type === 'oidc_google' ? 'Google' : p.type === 'oidc_entra' ? 'Microsoft' : p.name);
+
 export function providerButtonLabel(p: SsoProviderOption): string {
-  return p.type === 'oidc_google' ? 'Continue with Google' : p.type === 'oidc_entra' ? 'Continue with Microsoft' : `Continue with ${p.name}`;
+  return `Continue with ${providerName(p)}`;
 }
 
 export const isMobileIdentifier = (value: string) => value.trim() !== '' && !value.includes('@');
@@ -89,8 +92,9 @@ export const isMobileIdentifier = (value: string) => value.trim() !== '' && !val
 /** A box that says what is wrong once the person leaves it or presses Enter, never while they type. */
 function CheckedField({ id, label, value, onChange, autoComplete, mobile, helper, early }: { id?: string; label: string; value: string; onChange: (v: string) => void; autoComplete: string; mobile?: boolean; helper?: string; /** Pressed too early: what is missing. */ early?: string }) {
   const [left, setLeft] = useState(false);
+  const w = useAuthWords();
   const wrong = left && value.trim() !== '' && !(mobile ? isPhoneNumber(value) : isEmail(value));
-  const message = mobile ? 'Enter your full mobile number, like 98450 12345' : 'Enter your full email, like name@company.com';
+  const message = mobile ? w.enterFullMobile : w.enterFullEmail;
   return (
     <FormField id={id} label={label} required helper={helper} error={early ?? (wrong ? message : undefined)}>
       <TextField
@@ -123,16 +127,17 @@ export function SignInScreen(props: SignInScreenProps) {
   const microsoftOn = Boolean(options?.microsoft && props.onSocial) && !providers.some((p) => p.type === 'oidc_entra');
   const textFirst: 'sms' | 'whatsapp' = options?.sms ? 'sms' : 'whatsapp';
   const typed = isEmail(identifier);
+  const w = useAuthWords();
   // Never a greyed-out button (founder rule): pressed too early, the box says what is missing and takes the focus.
   const early = useTooEarly(
     step === 'identify' && !typed
-      ? [{ fieldId: 'yx-signin-email', message: identifier ? 'Enter your full email, like name@company.com' : 'Enter your work email.' }]
+      ? [{ fieldId: 'yx-signin-email', message: identifier ? w.enterFullEmail : w.enterWorkEmail }]
       : step === 'mobile' && !isPhoneNumber(mobile)
-        ? [{ fieldId: 'yx-signin-mobile', message: mobile ? 'Enter your full mobile number, like 98450 12345' : 'Enter your mobile number.' }]
+        ? [{ fieldId: 'yx-signin-mobile', message: mobile ? w.enterFullMobile : w.enterMobile }]
         : step === 'password' && !fields.password
-          ? [{ fieldId: 'yx-signin-password', message: 'Enter your password.' }]
+          ? [{ fieldId: 'yx-signin-password', message: w.enterPassword }]
           : (step === 'code' || step === 'mobile-code') && fields.code.trim().length < 6
-            ? [{ fieldId: 'yx-signin-code', message: 'Enter the 6-digit code.' }]
+            ? [{ fieldId: 'yx-signin-code', message: w.enterCode }]
             : [],
   );
   // While a request runs the other buttons do nothing (the busy one shows `loading`), so nothing is sent twice.
@@ -152,50 +157,51 @@ export function SignInScreen(props: SignInScreenProps) {
   const who = (shown: string) => (
     <div className="yx-auth__row yx-auth__who">
       <Text as="span" className="yx-auth__who-id">{shown}</Text>
-      <Button size="sm" onClick={idle(props.onRestart)}>Change</Button>
+      <Button size="sm" onClick={idle(props.onRestart)}>{w.change}</Button>
     </div>
   );
-  const alert = error && <InlineAlert tone="danger">{error}</InlineAlert>;
+  const alert = error && <InlineAlert tone="danger">{w.err(error)}</InlineAlert>;
   const companyButtons = providers.map((p) => (
-    <Button key={p.id} fullWidth size="lg" icon={KeyRound} onClick={idle(() => props.onSso(p.id))}>{providerButtonLabel(p)}</Button>
+    <Button key={p.id} fullWidth size="lg" icon={KeyRound} onClick={idle(() => props.onSso(p.id))}>{w.continueWith(providerName(p))}</Button>
   ));
   // One blue button: the passkey until an email is typed, then Continue (founder review 19 Oct).
   const passkeyButton = passkeyOn && (
-    <Button variant={typed ? 'secondary' : 'primary'} fullWidth size="lg" icon={Fingerprint} onClick={idle(props.onPasskey)}>Sign in with a passkey</Button>
+    <Button variant={typed ? 'secondary' : 'primary'} fullWidth size="lg" icon={Fingerprint} onClick={idle(props.onPasskey)}>{w.passkeyButton}</Button>
   );
   const ways = (mobileOn || googleOn || microsoftOn || providers.length > 0) && (
-    <div className="yx-auth__ways" role="group" aria-label="Other ways to sign in">
+    <div className="yx-auth__ways" role="group" aria-label={w.otherWays}>
       {/* One row, short labels, so the page fits a laptop at 150 % (founder review 19 Oct); the names stay in full. */}
       {(mobileOn || microsoftOn || googleOn) && (
         <div className="yx-auth__ways-row">
-          {mobileOn && <Button fullWidth size="lg" icon={Smartphone} onClick={idle(props.onMobile)} aria-label="Continue with mobile">Mobile</Button>}
-          {microsoftOn && <Button fullWidth size="lg" icon={MicrosoftMark} onClick={idle(() => props.onSocial!('microsoft'))} aria-label="Continue with Microsoft">Microsoft</Button>}
-          {googleOn && <Button fullWidth size="lg" icon={GoogleMark} onClick={idle(() => props.onSocial!('google'))} aria-label="Continue with Google">Google</Button>}
+          {mobileOn && <Button fullWidth size="lg" icon={Smartphone} onClick={idle(props.onMobile)} aria-label={w.continueWithMobile}>{w.mobile}</Button>}
+          {microsoftOn && <Button fullWidth size="lg" icon={MicrosoftMark} onClick={idle(() => props.onSocial!('microsoft'))} aria-label={w.continueWith('Microsoft')}>Microsoft</Button>}
+          {googleOn && <Button fullWidth size="lg" icon={GoogleMark} onClick={idle(() => props.onSocial!('google'))} aria-label={w.continueWith('Google')}>Google</Button>}
         </div>
       )}
       {companyButtons}
     </div>
   );
-  const or = <div className="yx-auth__divider" role="separator"><span>or</span></div>;
+  const or = <div className="yx-auth__divider" role="separator"><span>{w.or}</span></div>;
   const optionsFailedLine = props.optionsFailed && props.onRetryOptions && (
     <Text as="p" size="sm" tone="secondary" className="yx-auth__options-failed" role="status">
-      Couldn&apos;t load other sign-in methods ·{' '}
+      {w.optionsFailed} ·{' '}
       <Link asChild>
-        <button type="button" onClick={props.onRetryOptions}>Try again</button>
+        <button type="button" onClick={props.onRetryOptions}>{w.tryAgain}</button>
       </Link>
     </Text>
   );
 
-  const title = step === 'choose-company' ? 'Choose your company' : 'Sign in';
+  const title = step === 'choose-company' ? w.chooseCompany : w.signIn;
   const subtitle: Record<SignInStep, string | undefined> = {
-    identify: passkeyOn ? 'Use your passkey, or start with your work email.' : 'Start with your work email. We take you to the right way in for your company.',
-    mobile: 'We send a 6-digit code to your mobile number.',
-    redirecting: props.redirectingTo ? undefined : 'Your company signs in with single sign-on, so there is no YukthiX password.',
-    password: 'Your company lets you sign in with a password.',
+    identify: passkeyOn ? w.subIdentifyPasskey : w.subIdentify,
+    mobile: w.subMobile,
+    redirecting: props.redirectingTo ? undefined : w.subRedirecting,
+    password: w.subPassword,
     code: undefined,
     'mobile-code': undefined,
-    'choose-company': 'Your sign-in works for more than one company. Pick the one you want now.',
+    'choose-company': w.subChooseCompany,
   };
+  const [before, companyName, after] = w.signingInTo(company?.name ?? '');
   const channelName = props.codeChannel === 'whatsapp' ? 'WhatsApp' : 'SMS';
 
   return (
@@ -203,21 +209,21 @@ export function SignInScreen(props: SignInScreenProps) {
       {company && step !== 'choose-company' && (
         <div className="yx-auth__row yx-auth__company-line">
           <span aria-hidden="true"><Avatar name={company.name} src={company.logoUrl} size={24} /></span>
-          <Text as="span" role="status">Signing in to <b>{company.name}</b></Text>
-          {props.onForgetCompany && <Button size="sm" onClick={idle(props.onForgetCompany)}>Not your company?</Button>}
+          <Text as="span" role="status">{before}<b>{companyName}</b>{after}</Text>
+          {props.onForgetCompany && <Button size="sm" onClick={idle(props.onForgetCompany)}>{w.notYourCompany}</Button>}
         </div>
       )}
 
       {step === 'redirecting' && (
         <div className="yx-auth__row" role="status">
           <Spinner />
-          <Text as="span">{props.redirectingTo ? `Taking you to ${props.redirectingTo}…` : `Taking you to your company's sign-in page…`}</Text>
+          <Text as="span">{props.redirectingTo ? w.takingYouTo(props.redirectingTo) : w.takingYouToCompany}</Text>
         </div>
       )}
 
       {step === 'choose-company' && (
         <div className="yx-auth__form">
-          <ul className="yx-auth__companies" aria-label="Companies">
+          <ul className="yx-auth__companies" aria-label={w.companies}>
             {(props.companies ?? []).map((c) => (
               <li key={c.id}>
                 <Button fullWidth onClick={idle(() => props.onPickCompany(c.id))}>
@@ -230,7 +236,7 @@ export function SignInScreen(props: SignInScreenProps) {
             ))}
           </ul>
           {alert}
-          <Button onClick={idle(props.onRestart)}>Sign in another way</Button>
+          <Button onClick={idle(props.onRestart)}>{w.signInAnotherWay}</Button>
         </div>
       )}
 
@@ -242,9 +248,9 @@ export function SignInScreen(props: SignInScreenProps) {
               {passkeyButton}
               {passkeyOn && ways}
               {passkeyOn && or}
-              <CheckedField id="yx-signin-email" early={early.errorOf('yx-signin-email')} label="Work email" value={fields.identifier} onChange={(v) => set('identifier', v)} autoComplete="username webauthn" />
+              <CheckedField id="yx-signin-email" early={early.errorOf('yx-signin-email')} label={w.workEmail} value={fields.identifier} onChange={(v) => set('identifier', v)} autoComplete="username webauthn" />
               {alert}
-              <Button type="submit" variant={passkeyOn && !typed ? 'secondary' : 'primary'} fullWidth size="lg" loading={busy}>Continue</Button>
+              <Button type="submit" variant={passkeyOn && !typed ? 'secondary' : 'primary'} fullWidth size="lg" loading={busy}>{w.continue}</Button>
               {!passkeyOn && ways && (
                 <>
                   {or}
@@ -257,35 +263,35 @@ export function SignInScreen(props: SignInScreenProps) {
 
           {step === 'mobile' && (
             <>
-              <CheckedField id="yx-signin-mobile" early={early.errorOf('yx-signin-mobile')} mobile label="Mobile number" helper="Add the country code if it isn't an Indian number." value={fields.mobile} onChange={(v) => set('mobile', v)} autoComplete="tel" />
+              <CheckedField id="yx-signin-mobile" early={early.errorOf('yx-signin-mobile')} mobile label={w.mobileNumber} helper={w.mobileHelper} value={fields.mobile} onChange={(v) => set('mobile', v)} autoComplete="tel" />
               {alert}
-              {options?.sms && <Button type="submit" variant="primary" fullWidth loading={busy}>Text me a code</Button>}
+              {options?.sms && <Button type="submit" variant="primary" fullWidth loading={busy}>{w.textMeACode}</Button>}
               {options?.whatsapp &&
                 (options.sms ? (
-                  <Button fullWidth onClick={idle(() => !early.stop() && props.onSendCode('whatsapp'))}>Send a code on WhatsApp</Button>
+                  <Button fullWidth onClick={idle(() => !early.stop() && props.onSendCode('whatsapp'))}>{w.sendCodeWhatsApp}</Button>
                 ) : (
-                  <Button type="submit" variant="primary" fullWidth loading={busy}>Send a code on WhatsApp</Button>
+                  <Button type="submit" variant="primary" fullWidth loading={busy}>{w.sendCodeWhatsApp}</Button>
                 ))}
-              <Button onClick={idle(props.onRestart)}>Use my work email instead</Button>
+              <Button onClick={idle(props.onRestart)}>{w.useEmailInstead}</Button>
             </>
           )}
 
           {step === 'password' && (
             <>
               {who(identifier)}
-              <FormField id="yx-signin-password" label="Password" required error={early.errorOf('yx-signin-password')}>
+              <FormField id="yx-signin-password" label={w.password} required error={early.errorOf('yx-signin-password')}>
                 <PasswordField value={fields.password} onChange={(v) => set('password', v)} autoComplete="current-password" />
               </FormField>
               {alert}
-              <Button type="submit" variant="primary" fullWidth loading={busy}>Sign in</Button>
+              <Button type="submit" variant="primary" fullWidth loading={busy}>{w.signIn}</Button>
               {options?.emailCode !== false && (
                 <div className="yx-auth__row">
-                  <Button size="sm" onClick={idle(() => props.onSendCode())}>Email me a code instead</Button>
+                  <Button size="sm" onClick={idle(() => props.onSendCode())}>{w.emailMeCode}</Button>
                 </div>
               )}
-              <Link href={props.forgotPasswordHref}>Forgot your password?</Link>
+              <Link href={props.forgotPasswordHref}>{w.forgot}</Link>
               {providers.length > 0 && (
-                <div className="yx-auth__or" role="group" aria-label="Or sign in with your company account">
+                <div className="yx-auth__or" role="group" aria-label={w.orCompanyAccount}>
                   {companyButtons}
                 </div>
               )}
@@ -296,17 +302,15 @@ export function SignInScreen(props: SignInScreenProps) {
             <>
               {who(step === 'code' ? identifier : mobile)}
               <Text as="p" tone="secondary" role="status">
-                {step === 'code'
-                  ? `If ${identifier} can sign in by code, we sent it a 6-digit code. It expires in 5 minutes.`
-                  : `If ${mobile} can sign in by code, we sent it a 6-digit code by ${channelName}. It expires in 5 minutes.`}
+                {step === 'code' ? w.codeSentEmail(identifier) : w.codeSentMobile(mobile, channelName)}
               </Text>
-              <FormField id="yx-signin-code" label="6-digit code" required error={early.errorOf('yx-signin-code')}>
+              <FormField id="yx-signin-code" label={w.sixDigitCode} required error={early.errorOf('yx-signin-code')}>
                 <CodeField value={fields.code} onChange={(v) => set('code', v)} />
               </FormField>
               {alert}
-              <Button type="submit" variant="primary" fullWidth loading={busy}>Sign in</Button>
+              <Button type="submit" variant="primary" fullWidth loading={busy}>{w.signIn}</Button>
               <div className="yx-auth__row">
-                <Button size="sm" onClick={idle(() => props.onSendCode(step === 'code' ? undefined : (props.codeChannel ?? textFirst)))}>Send a new code</Button>
+                <Button size="sm" onClick={idle(() => props.onSendCode(step === 'code' ? undefined : (props.codeChannel ?? textFirst)))}>{w.sendNewCode}</Button>
               </div>
             </>
           )}
@@ -367,25 +371,26 @@ export interface ForgotPasswordScreenProps {
 
 /** "Forgot your password?" by work email only: every company account with it gets its own link. */
 export function ForgotPasswordScreen({ email, onEmailChange, onSubmit, sent, busy, error, signInHref }: ForgotPasswordScreenProps) {
-  const early = useTooEarly(isEmail(email) ? [] : [{ fieldId: 'yx-forgot-email', message: email.trim() ? 'Enter your full email, like name@company.com' : 'Enter your work email.' }]);
+  const w = useAuthWords();
+  const early = useTooEarly(isEmail(email) ? [] : [{ fieldId: 'yx-forgot-email', message: email.trim() ? w.enterFullEmail : w.enterWorkEmail }]);
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (busy || early.stop()) return;
     onSubmit();
   };
   return (
-    <AuthFrame title="Reset your password" subtitle={sent ? undefined : 'We email a link to reset it. It works for 15 minutes.'}>
+    <AuthFrame title={w.resetTitle} subtitle={sent ? undefined : w.resetSub}>
       {sent ? (
         <div className="yx-auth__form">
-          <Text as="p" role="status">If {email.trim()} has a YukthiX account, we sent it a reset link. With accounts in more than one company, each gets its own link.</Text>
-          <Link href={signInHref}>Back to sign in</Link>
+          <Text as="p" role="status">{w.linkSent(email.trim())}</Text>
+          <Link href={signInHref}>{w.backToSignIn}</Link>
         </div>
       ) : (
         <form className="yx-auth__form" onSubmit={submit} noValidate>
-          <CheckedField id="yx-forgot-email" early={early.errorOf('yx-forgot-email')} label="Work email" value={email} onChange={onEmailChange} autoComplete="username" />
-          {error && <InlineAlert tone="danger">{error}</InlineAlert>}
-          <Button type="submit" variant="primary" fullWidth loading={busy}>Email me a reset link</Button>
-          <Link href={signInHref}>Back to sign in</Link>
+          <CheckedField id="yx-forgot-email" early={early.errorOf('yx-forgot-email')} label={w.workEmail} value={email} onChange={onEmailChange} autoComplete="username" />
+          {error && <InlineAlert tone="danger">{w.err(error)}</InlineAlert>}
+          <Button type="submit" variant="primary" fullWidth loading={busy}>{w.emailResetLink}</Button>
+          <Link href={signInHref}>{w.backToSignIn}</Link>
         </form>
       )}
     </AuthFrame>
@@ -412,9 +417,10 @@ export interface ResetPasswordScreenProps {
 /** The page the reset email links to: a new password twice, then back to sign in. The API checks length and breach lists. */
 export function ResetPasswordScreen({ password, confirm, onPasswordChange, onConfirmChange, onSubmit, done, busy, error, minLength = 12, signInHref, forgotHref }: ResetPasswordScreenProps) {
   const mismatch = confirm.length > 0 && confirm !== password;
+  const w = useAuthWords();
   const early = useTooEarly([
-    ...(password ? [] : [{ fieldId: 'yx-reset-new', message: 'Enter a new password.' }]),
-    ...(!confirm ? [{ fieldId: 'yx-reset-again', message: 'Type the new password again.' }] : mismatch ? [{ fieldId: 'yx-reset-again', message: 'The two passwords are not the same' }] : []),
+    ...(password ? [] : [{ fieldId: 'yx-reset-new', message: w.enterNewPassword }]),
+    ...(!confirm ? [{ fieldId: 'yx-reset-again', message: w.typeNewAgain }] : mismatch ? [{ fieldId: 'yx-reset-again', message: w.notSame }] : []),
   ]);
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -423,32 +429,32 @@ export function ResetPasswordScreen({ password, confirm, onPasswordChange, onCon
   };
   if (done) {
     return (
-      <AuthFrame title="Password changed">
+      <AuthFrame title={w.passwordChanged}>
         <div className="yx-auth__form">
-          <Text as="p" role="status">Your new password works now. You were signed out on every device, so sign in again.</Text>
+          <Text as="p" role="status">{w.newPasswordWorks}</Text>
           <Button asChild variant="primary" fullWidth>
-            <a href={signInHref}>Sign in</a>
+            <a href={signInHref}>{w.signIn}</a>
           </Button>
         </div>
       </AuthFrame>
     );
   }
   return (
-    <AuthFrame title="Choose a new password" subtitle={`At least ${minLength} characters. Passwords found in known breaches are refused.`}>
+    <AuthFrame title={w.chooseNewPassword} subtitle={w.passwordRule(minLength)}>
       <form className="yx-auth__form" onSubmit={submit} noValidate>
-        <FormField id="yx-reset-new" label="New password" required error={early.errorOf('yx-reset-new')}>
+        <FormField id="yx-reset-new" label={w.newPassword} required error={early.errorOf('yx-reset-new')}>
           <PasswordField value={password} onChange={onPasswordChange} autoComplete="new-password" />
         </FormField>
-        <FormField id="yx-reset-again" label="Type it again" required error={early.errorOf('yx-reset-again') ?? (mismatch ? 'The two passwords are not the same' : undefined)}>
+        <FormField id="yx-reset-again" label={w.typeItAgain} required error={early.errorOf('yx-reset-again') ?? (mismatch ? w.notSame : undefined)}>
           <PasswordField value={confirm} onChange={onConfirmChange} autoComplete="new-password" />
         </FormField>
         {error && (
           <InlineAlert tone="danger">
-            {error} {/expired|invalid/i.test(error) && <Link href={forgotHref}>Get a new link</Link>}
+            {w.err(error)} {/expired|invalid/i.test(error) && <Link href={forgotHref}>{w.getNewLink}</Link>}
           </InlineAlert>
         )}
-        <Button type="submit" variant="primary" fullWidth loading={busy}>Save new password</Button>
-        <Link href={signInHref}>Back to sign in</Link>
+        <Button type="submit" variant="primary" fullWidth loading={busy}>{w.saveNewPassword}</Button>
+        <Link href={signInHref}>{w.backToSignIn}</Link>
       </form>
     </AuthFrame>
   );

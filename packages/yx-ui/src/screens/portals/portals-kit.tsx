@@ -42,13 +42,13 @@ export const PORTAL_LANGUAGES = [
 ];
 
 /** Uncontrolled in the portal stories; pass `value` and `onChange` where the choice is kept (the live sign-in). */
-export function LanguageSwitcher({ defaultValue = 'en', size = 'sm', value, onChange }: { defaultValue?: string; size?: 'sm' | 'md'; value?: string; onChange?: (lang: string) => void }) {
+export function LanguageSwitcher({ defaultValue = 'en', size = 'sm', value, onChange, languages = PORTAL_LANGUAGES }: { defaultValue?: string; size?: 'sm' | 'md'; value?: string; onChange?: (lang: string) => void; /** The languages offered; a page lists only those it is written in. */ languages?: { value: string; label: string }[] }) {
   const [own, setOwn] = useState<string | null>(defaultValue);
   const lang = value ?? own;
   return (
     <div className="yx-lang">
       <Icon icon={Globe2} />
-      <Select aria-label="Language" size={size} options={PORTAL_LANGUAGES} value={lang} onChange={(v) => (onChange && v ? onChange(v) : setOwn(v))} />
+      <Select aria-label="Language" size={size} options={languages} value={lang} onChange={(v) => (onChange && v ? onChange(v) : setOwn(v))} />
     </div>
   );
 }
@@ -66,12 +66,15 @@ export interface FooterNotices {
   terms?: string;
   /** Where each notice lives; the stories leave them out (#). */
   hrefs?: Partial<Record<FooterNotice, string>>;
+  /** The notices' names in the page's language (English when left out). */
+  labels?: Partial<Record<FooterNotice, string>>;
 }
 
 export type FooterNotice = 'privacy' | 'terms' | 'accessibility' | 'cookies' | 'grievance' | 'openSource';
 
-export function PortalFooterLinks({ privacy, cookies, terms = 'Terms of use', hrefs = {} }: FooterNotices) {
-  const links: [FooterNotice, string][] = [['privacy', privacy], ['terms', terms], ['accessibility', 'Accessibility statement'], ...(cookies ? [['cookies', 'Cookie notice'] as [FooterNotice, string]] : []), ['grievance', 'Grievance officer'], ['openSource', 'Open-source notices']];
+export function PortalFooterLinks({ privacy, cookies, terms = 'Terms of use', hrefs = {}, labels = {} }: FooterNotices) {
+  const named: [FooterNotice, string][] = [['privacy', privacy], ['terms', terms], ['accessibility', 'Accessibility statement'], ...(cookies ? [['cookies', 'Cookie notice'] as [FooterNotice, string]] : []), ['grievance', 'Grievance officer'], ['openSource', 'Open-source notices']];
+  const links = named.map(([k, l]): [FooterNotice, string] => [k, labels[k] ?? l]);
   return (
     <nav className="yx-portal-notices" aria-label="Legal notices">
       {links.map(([k, l]) => (
@@ -109,16 +112,18 @@ export interface TenantPortalProps {
   /** Narrow single-column content (forms, sign-in). */
   narrow?: boolean;
   language?: string;
-  /** No language picker (the live sign-in until YukthiX's screens are translated: a picker that changes nothing). */
+  /** No language picker (a page not written in other languages: a picker that changes nothing). */
   noLanguage?: boolean;
   /** A signed-in portal (live): "Sign out" sits in the header band next to the access note, not in the page body. */
   onSignOut?: () => void;
   /** Keeps the language choice; without it the switcher is uncontrolled. */
   onLanguageChange?: (lang: string) => void;
+  /** The languages the picker offers (default: every portal language). */
+  languages?: { value: string; label: string }[];
   children: ReactNode;
 }
 
-export function TenantPortal({ tenant, portal, nav, accent, whiteLabel, access, footer, pinned, narrow, noLanguage, onSignOut, language = 'en', onLanguageChange, children }: TenantPortalProps) {
+export function TenantPortal({ tenant, portal, nav, accent, whiteLabel, access, footer, pinned, narrow, noLanguage, onSignOut, language = 'en', onLanguageChange, languages, children }: TenantPortalProps) {
   const res = resolveTenantAccent(accent);
   const style = res.accent ? ({ '--yx-tenant-accent': res.accent } as CSSProperties) : undefined;
   const user = access.kind === 'otp' ? access.identity : undefined;
@@ -140,7 +145,7 @@ export function TenantPortal({ tenant, portal, nav, accent, whiteLabel, access, 
                 Sign out
               </Button>
             )}
-            {!noLanguage && <LanguageSwitcher defaultValue={language} {...(onLanguageChange ? { value: language, onChange: onLanguageChange } : {})} />}
+            {!noLanguage && <LanguageSwitcher defaultValue={language} languages={languages} {...(onLanguageChange ? { value: language, onChange: onLanguageChange } : {})} />}
           </div>
         }
       >

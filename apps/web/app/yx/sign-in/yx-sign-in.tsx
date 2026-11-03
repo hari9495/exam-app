@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { MfaChallengeScreen, SignInScreen } from '@yukthix/ui/auth';
 import { useYxSignIn } from '../../../lib/hooks/useYxSignIn';
 import { passkeyAssertion } from '../../../lib/yx-security';
+import { SignInLanguage } from '../../../lib/sign-in-language';
 
 // The API puts the single-use code (or "it did not work") in the URL fragment, which never reaches a
 // server, a log or a Referer header (ASVS V3.1.1). Read it once, then the address bar is the plain
@@ -19,6 +20,14 @@ function takeCallbackParams(): URLSearchParams {
 // the sign-in opens several, and the second step when the account has one. `callback`: back from
 // Google / Microsoft (/yx/sign-in/callback).
 export function YxSignIn({ callback = false }: { callback?: boolean }) {
+  return (
+    <SignInLanguage>
+      <SignInSteps callback={callback} />
+    </SignInLanguage>
+  );
+}
+
+function SignInSteps({ callback }: { callback: boolean }) {
   const s = useYxSignIn();
 
   // The code is single-use and wiped from the URL on first read: run once (React Strict Mode).

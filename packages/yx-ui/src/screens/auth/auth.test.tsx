@@ -1035,7 +1035,7 @@ describe('SEC-01 sign-in frame (design audit SI-01)', () => {
 });
 
 describe('sign-in frame', () => {
-  it('has no language picker until YukthiX is translated, no stripe without a brand colour, and a plain note', () => {
+  it('has no language picker without the sign-in language provider (in-app screens), no stripe without a brand colour, and a plain note', () => {
     const { container } = render(<SignIn />);
     expect(screen.queryByRole('combobox', { name: 'Language' })).toBeNull();
     expect(container.querySelector('.yx-tportal')).toHaveAttribute('data-accent', 'default');

@@ -10,6 +10,7 @@ import { apiFetch } from '../../../lib/api-client';
 import { useLanding } from '../../../lib/yx-landing';
 import { addPasskey, confirmTotp, startTotp } from '../../../lib/yx-security';
 import { nextFromLocation } from '../../../lib/safe-next';
+import { SignInLanguage } from '../../../lib/sign-in-language';
 
 // First sign-in for an account whose role needs a second step (P12 §6.1 steps 2–3, §8 grace).
 export default function YxSetupMfaPage() {
@@ -42,14 +43,16 @@ export default function YxSetupMfaPage() {
   }
 
   return (
-    <MfaEnrolScreen
-      allowedFactors={staff ? status.data.allowedFactors.filter((f) => f === 'passkey') : status.data.allowedFactors}
-      dueAt={status.data.enrolmentDueAt}
-      onAddPasskey={() => addPasskey(token)}
-      onStartTotp={() => startTotp(token)}
-      onConfirmTotp={(code) => confirmTotp(code, token)}
-      // The next page must not see the cached "no second step yet" status (banners, the console's key check).
-      onContinue={() => void queryClient.invalidateQueries({ queryKey: ['yx', 'mfa'] }).then(() => router.push(landing))}
-    />
+    <SignInLanguage>
+      <MfaEnrolScreen
+        allowedFactors={staff ? status.data.allowedFactors.filter((f) => f === 'passkey') : status.data.allowedFactors}
+        dueAt={status.data.enrolmentDueAt}
+        onAddPasskey={() => addPasskey(token)}
+        onStartTotp={() => startTotp(token)}
+        onConfirmTotp={(code) => confirmTotp(code, token)}
+        // The next page must not see the cached "no second step yet" status (banners, the console's key check).
+        onContinue={() => void queryClient.invalidateQueries({ queryKey: ['yx', 'mfa'] }).then(() => router.push(landing))}
+      />
+    </SignInLanguage>
   );
 }
