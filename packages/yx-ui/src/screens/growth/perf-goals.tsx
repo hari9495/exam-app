@@ -15,6 +15,7 @@ import { FormField } from '../../components/field';
 import { NumberField, TextArea } from '../../components/inputs';
 import { RadioGroup } from '../../components/choice';
 import { Select } from '../../components/select';
+import { useNarrow } from '../../components/stepper';
 import { Timeline, type TimelineItem } from '../../components/timeline';
 import { formatDate } from '../../lib/format';
 import { TODAY } from '../_kit/data';
@@ -773,7 +774,10 @@ const COACH_LOOKS_AT = ['No feedback given in 6 weeks', '1:1s due or overdue', '
 const greeting = (d: Date) => (d.getHours() < 12 ? 'Good morning' : d.getHours() < 17 ? 'Good afternoon' : 'Good evening');
 
 /** PRF-16 coach card as it sits on the manager's home (T1 card). */
-export function ManagerCoachHome({ device = 'desktop', nudges, weekOf, optedOut, state = 'ready', companyOff, notManager, live }: { device?: Device; nudges: CoachNudge[]; weekOf: Date; optedOut?: boolean; state?: LoadState; /** The company turned nudges off. */ companyOff?: boolean; /** Someone with no team opened the page. */ notManager?: boolean; /** The live app's /yx/performance/coach. */ live?: LiveCoach }) {
+export function ManagerCoachHome({ device: deviceProp, nudges, weekOf, optedOut, state = 'ready', companyOff, notManager, live }: { device?: Device; nudges: CoachNudge[]; weekOf: Date; optedOut?: boolean; state?: LoadState; /** The company turned nudges off. */ companyOff?: boolean; /** Someone with no team opened the page. */ notManager?: boolean; /** The live app's /yx/performance/coach. */ live?: LiveCoach }) {
+  // The live page takes the designed phone layout under 768 px, as PRF-01, 02 and 06 do.
+  const narrow = useNarrow();
+  const device: Device = deviceProp ?? (live && narrow ? 'phone' : 'desktop');
   const [sampleOut, setOut] = useState(!!optedOut);
   const out = live ? live.optedOut : sampleOut;
   const loading = live ? live.state === 'loading' : state === 'loading';

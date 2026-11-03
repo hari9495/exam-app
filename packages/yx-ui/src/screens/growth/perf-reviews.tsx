@@ -18,7 +18,7 @@ import { NumberField, TextArea, TextField } from '../../components/inputs';
 import { Checkbox, RadioGroup, Switch } from '../../components/choice';
 import { MultiSelect, PersonPicker, Select, type PersonOption } from '../../components/select';
 import { DatePicker } from '../../components/date';
-import { Stepper } from '../../components/stepper';
+import { Stepper, useNarrow } from '../../components/stepper';
 import { FileUpload } from '../../components/upload';
 import { ApprovalTimeline, Timeline, type ApprovalStep, type TimelineItem } from '../../components/timeline';
 import { formatDate } from '../../lib/format';
@@ -677,7 +677,10 @@ export interface LiveNominations {
 const REL: Record<Relationship, 'peer' | 'report' | 'other'> = { Peer: 'peer', 'Direct report': 'report', Other: 'other', Manager: 'other' };
 
 /** PRF-07 360° nominations (T4): employee nominates (min–max), manager approves or adds; anonymity explained (Q4). */
-export function NominationsScreen({ persona, device = 'desktop', employee, people, nominations: initial, min = 3, max = 6, submitted, state = 'ready', live }: { persona: 'emp' | 'mgr'; device?: Device; employee: string; people: PersonOption[]; nominations: Nomination[]; min?: number; max?: number; submitted?: boolean; state?: LoadState; live?: LiveNominations }) {
+export function NominationsScreen({ persona, device: deviceProp, employee, people, nominations: initial, min = 3, max = 6, submitted, state = 'ready', live }: { persona: 'emp' | 'mgr'; device?: Device; employee: string; people: PersonOption[]; nominations: Nomination[]; min?: number; max?: number; submitted?: boolean; state?: LoadState; live?: LiveNominations }) {
+  // The live page takes the designed phone layout under 768 px, as PRF-01, 02 and 06 do.
+  const narrow = useNarrow();
+  const device: Device = deviceProp ?? (live && narrow ? 'phone' : 'desktop');
   const [own, setList] = useState(initial);
   const list = live ? initial : own;
   const [pick, setPick] = useState<string | null>(null);
@@ -799,7 +802,7 @@ export function NominationsScreen({ persona, device = 'desktop', employee, peopl
   const description = live ? `${live.cycle} · nominations close ${formatDate(live.dueOn)}` : 'Half-yearly review H1 FY 2026-27 · nominations close 2 Oct 2026';
   if (state === 'error')
     return (
-      <GrowthFrame area="performance" active="Reviews & cycles" persona={persona}>
+      <GrowthFrame area="performance" active="Reviews & cycles" persona={persona} device={device} phone={{ title: '360° reviewers', back: true }}>
         <PageHeader title="360° reviewers" />
         <ErrorState title="We couldn’t load the nominations" description="Check your connection and try again." onRetry={live?.onRetry} />
       </GrowthFrame>
@@ -865,7 +868,9 @@ const SOUGHT_OPTIONS = [
 ];
 
 /** PRF-15 employee escalation (T4): after a disagreement isn’t resolved, escalate with grounds and attachments. */
-export function DisputeRaiseScreen({ device = 'desktop', dispute, sent, live }: { device?: Device; dispute?: DisputeCase; sent?: boolean; /** The live app's /yx/performance/reviews/[id]/dispute. */ live?: LiveDisputeRaise }) {
+export function DisputeRaiseScreen({ device: deviceProp, dispute, sent, live }: { device?: Device; dispute?: DisputeCase; sent?: boolean; /** The live app's /yx/performance/reviews/[id]/dispute. */ live?: LiveDisputeRaise }) {
+  const narrow = useNarrow();
+  const device: Device = deviceProp ?? (live && narrow ? 'phone' : 'desktop');
   const { toast } = useToast();
   const [grounds, setGrounds] = useState('');
   const [sought, setSought] = useState<string>('rereview');
@@ -936,7 +941,14 @@ export function DisputeRaiseScreen({ device = 'desktop', dispute, sent, live }: 
       Escalate dispute
     </Button>
   );
-  const body = live && live.state !== 'ready' ? <Skeleton height={320} /> : form;
+  const body =
+    live?.state === 'error' ? (
+      <EmptyState title="Your review did not load" description="Check your connection and try again." action={<Button onClick={live.onRetry}>Try again</Button>} />
+    ) : live && live.state !== 'ready' ? (
+      <Skeleton height={320} />
+    ) : (
+      form
+    );
   if (device === 'phone')
     return (
       <GrowthFrame area="performance" active="Reviews & cycles" persona="emp" device="phone" phone={{ title: 'Escalate a dispute', back: true }}>
@@ -947,13 +959,9 @@ export function DisputeRaiseScreen({ device = 'desktop', dispute, sent, live }: 
   return (
     <GrowthFrame area="performance" active="Reviews & cycles" persona="emp">
       <PageHeader title="Escalate a rating dispute" description={subtitle} status={<ConfidentialTag />} actions={btn || undefined} />
-      {live?.state === 'error' ? (
-        <EmptyState title="Your review did not load" description="Check your connection and try again." action={<Button onClick={live.onRetry}>Try again</Button>} />
-      ) : (
-        <div className="yx-growth-stack" style={{ maxWidth: 'var(--yx-form-max)' }}>
-          {body}
-        </div>
-      )}
+      <div className="yx-growth-stack" style={{ maxWidth: 'var(--yx-form-max)' }}>
+        {body}
+      </div>
     </GrowthFrame>
   );
 }

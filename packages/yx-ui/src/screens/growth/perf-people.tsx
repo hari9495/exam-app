@@ -1,7 +1,7 @@
 // Performance, people side: quick feedback (PRF-08), 1:1s with suggested agenda (PRF-11, PRF-16), PIP record (PRF-12),
 // hand-over list after a manager change (PRF-13), competency framework (PRF-14).
 import { useEffect, useMemo, useState } from 'react';
-import { Archive, CalendarPlus, Check, GitMerge, Lock, MessageSquarePlus, Plus, Send } from 'lucide-react';
+import { Archive, ArrowLeft, CalendarPlus, Check, GitMerge, Lock, MessageSquarePlus, Plus, Send } from 'lucide-react';
 import { Button, Link } from '../../components/button';
 import { AiBadge, Badge, PersonLabel } from '../../components/display';
 import { Icon, Text } from '../../components/foundations';
@@ -16,6 +16,7 @@ import { FormField, useTooEarly } from '../../components/field';
 import { DatePicker } from '../../components/date';
 import { Segment } from '../../components/segment';
 import { dayKey } from '../../lib/dates';
+import { useNarrow } from '../../components/stepper';
 import { useAct } from './perf-live';
 import { TextArea, TextField } from '../../components/inputs';
 import { Checkbox, RadioGroup } from '../../components/choice';
@@ -254,7 +255,10 @@ function SealDialog({ item, onClose, onSeal }: { item: FeedbackItem | null; onCl
 }
 
 /** PRF-08 Quick feedback (T4): give anytime to any colleague, visibility rule shown before sending (YX-PERF-04). */
-export function QuickFeedbackScreen({ device = 'desktop', me, people, goals, received, given, requests = [], defaultTab = 'received', composerOpen, sent: sentProp, askOpen, sealOpen, state = 'ready', live }: QuickFeedbackProps) {
+export function QuickFeedbackScreen({ device: deviceProp, me, people, goals, received, given, requests = [], defaultTab = 'received', composerOpen, sent: sentProp, askOpen, sealOpen, state = 'ready', live }: QuickFeedbackProps) {
+  // The live page takes the designed phone layout under 768 px, as PRF-01, 02 and 06 do.
+  const narrow = useNarrow();
+  const device: Device = deviceProp ?? (live && narrow ? 'phone' : 'desktop');
   const [open, setOpen] = useState(!!composerOpen);
   const [to, setTo] = useState<string | null>(composerOpen && !live ? (people[1]?.id ?? null) : null);
   const [kind, setKind] = useState<'Praise' | 'Suggestion'>('Praise');
@@ -459,7 +463,7 @@ export function QuickFeedbackScreen({ device = 'desktop', me, people, goals, rec
   const title = answering ? `Feedback about ${answering.about}` : 'Give feedback';
   if (state === 'error')
     return (
-      <GrowthFrame area="performance" active="Feedback" persona="emp">
+      <GrowthFrame area="performance" active="Feedback" persona="emp" device={device} phone={{ title: 'Feedback' }}>
         <PageHeader title="Feedback" />
         <ErrorState title="We couldn’t load your feedback" description="Check your connection and try again." onRetry={live?.onRetry} />
       </GrowthFrame>
@@ -886,7 +890,10 @@ function RescheduleDialog({ open, onOpenChange, current, live, today }: { open: 
 }
 
 /** PRF-11 1:1s (T2 list + T3 record): shared agenda, shared notes, private notes, action items linked to goals. */
-export function OneOnOneScreen({ persona, device = 'desktop', items, openId, suggestedAgenda, state = 'ready', scheduleOpen, actionOpen, rescheduleOpen, live }: OneOnOneProps) {
+export function OneOnOneScreen({ persona, device: deviceProp, items, openId, suggestedAgenda, state = 'ready', scheduleOpen, actionOpen, rescheduleOpen, live }: OneOnOneProps) {
+  // The live page takes the designed phone layout under 768 px, as PRF-01, 02 and 06 do.
+  const narrow = useNarrow();
+  const device: Device = deviceProp ?? (live && narrow ? 'phone' : 'desktop');
   const [ownOpen, setOwnOpen] = useState<string | null>(openId ?? null);
   const open = live ? (openId ?? null) : ownOpen;
   const setOpen = (id: string | null) => (live ? live.onOpen(id) : setOwnOpen(id));
@@ -914,15 +921,51 @@ export function OneOnOneScreen({ persona, device = 'desktop', items, openId, sug
   const recordBody = current ? record(current) : live?.recordState === 'error' ? <ErrorState title="We couldn’t load this 1:1" description="Check your connection and try again." onRetry={live.onRetry} /> : <Skeleton height={320} />;
   const canSchedule = persona === 'mgr' || (live?.partners.length ?? 0) > 0;
   const scheduleButton = canSchedule ? (
-    <Button variant="primary" icon={Plus} onClick={() => setScheduling(true)}>
+    <Button variant="primary" icon={Plus} fullWidth={device === 'phone'} onClick={() => setScheduling(true)}>
       Schedule 1:1
     </Button>
   ) : undefined;
+  const open1on1 = heading && heading.status !== 'held' && heading.status !== 'cancelled';
+  const heldButton = heading && (
+    <Button variant="primary" icon={Check} fullWidth={device === 'phone'} loading={busy === 'held'} onClick={() => (live ? void act('held', live.onHeld, heading.cadence === 'One-off' ? '1:1 marked as held' : '1:1 marked as held. The next one is planned.') : undefined)}>
+      Mark as held
+    </Button>
+  );
+  const sheets = (
+    <>
+      {heading && <RescheduleDialog open={moving} onOpenChange={setMoving} current={heading} live={live} today={today} />}
+      <ScheduleSheet open={scheduling} onOpenChange={setScheduling} live={live} today={today} />
+    </>
+  );
+  const empty = <EmptyState title="No 1:1s yet" description={persona === 'mgr' ? 'Set a regular 1:1 with each team member. Fortnightly works for most teams.' : 'Your manager schedules your 1:1s. You can also schedule one with them.'} />;
   if (device === 'phone')
     return (
       <GrowthFrame area="performance" active="1:1s" persona={persona} device="phone" phone={{ title: heading ? `1:1 with ${persona === 'mgr' ? heading.employee : heading.manager}` : '1:1s', back: !!heading }}>
         {heading ? (
-          recordBody
+          <>
+            {live && (
+              <div className="yx-growth-row">
+                <Button size="sm" icon={ArrowLeft} onClick={() => setOpen(null)}>
+                  All 1:1s
+                </Button>
+              </div>
+            )}
+            {recordBody}
+            {open1on1 && (
+              <div className="yx-growth-pinned">
+                {heldButton}
+                <Button fullWidth onClick={() => setMoving(true)}>
+                  Reschedule
+                </Button>
+              </div>
+            )}
+          </>
+        ) : state === 'loading' ? (
+          <Skeleton height={240} />
+        ) : state === 'error' ? (
+          <ErrorState title="We couldn’t load your 1:1s" description="Check your connection and try again." onRetry={live?.onRetry} />
+        ) : items.length === 0 ? (
+          empty
         ) : (
           <ul className="yx-growth-list">
             {items.map((o) => (
@@ -935,6 +978,8 @@ export function OneOnOneScreen({ persona, device = 'desktop', items, openId, sug
             ))}
           </ul>
         )}
+        {!heading && scheduleButton && <div className="yx-growth-pinned">{scheduleButton}</div>}
+        {sheets}
       </GrowthFrame>
     );
   return (
@@ -947,7 +992,7 @@ export function OneOnOneScreen({ persona, device = 'desktop', items, openId, sug
         getRowId={(r) => r.id}
         state={state === 'loading' ? 'loading' : state === 'error' ? 'error' : 'ready'}
         onRetry={live?.onRetry ?? (() => {})}
-        empty={<EmptyState title="No 1:1s yet" description={persona === 'mgr' ? 'Set a regular 1:1 with each team member. Fortnightly works for most teams.' : 'Your manager schedules your 1:1s. You can also schedule one with them.'} />}
+        empty={empty}
         onRowClick={(r) => setOpen(r.id)}
         activeRowId={open}
       />
@@ -959,21 +1004,18 @@ export function OneOnOneScreen({ persona, device = 'desktop', items, openId, sug
           title={`1:1 with ${persona === 'mgr' ? heading.employee : heading.manager}`}
           subtitle={`${heading.cadence} · ${heading.status === 'held' ? `held ${formatDate(heading.next)}` : `next ${formatDate(heading.next)}`}`}
           footer={
-            heading.status === 'held' || heading.status === 'cancelled' ? undefined : (
+            open1on1 ? (
               <div className="yx-growth-foot">
                 <Button onClick={() => setMoving(true)}>Reschedule</Button>
-                <Button variant="primary" icon={Check} loading={busy === 'held'} onClick={() => (live ? void act('held', live.onHeld, heading.cadence === 'One-off' ? '1:1 marked as held' : '1:1 marked as held. The next one is planned.') : undefined)}>
-                  Mark as held
-                </Button>
+                {heldButton}
               </div>
-            )
+            ) : undefined
           }
         >
           {recordBody}
         </Drawer>
       )}
-      {heading && <RescheduleDialog open={moving} onOpenChange={setMoving} current={heading} live={live} today={today} />}
-      <ScheduleSheet open={scheduling} onOpenChange={setScheduling} live={live} today={today} />
+      {sheets}
     </GrowthFrame>
   );
 }
@@ -1157,7 +1199,10 @@ function ExitDialog({ open, onOpenChange, pip, live }: { open: boolean; onOpenCh
 }
 
 /** PRF-12 PIP record (T3): plan, fixed check-ins, employee acknowledgement, outcome; not met never auto-starts an exit (YX-PERF-11). */
-export function PipRecordScreen({ persona, device = 'desktop', pip, tab = 'plan', outcomeOpen, checkinOpen, sendBackOpen, exitOpen, live }: PipRecordProps) {
+export function PipRecordScreen({ persona, device: deviceProp, pip, tab = 'plan', outcomeOpen, checkinOpen, sendBackOpen, exitOpen, live }: PipRecordProps) {
+  // The live page takes the designed phone layout under 768 px, as PRF-01, 02 and 06 do.
+  const narrow = useNarrow();
+  const device: Device = deviceProp ?? (live && narrow ? 'phone' : 'desktop');
   const today = live?.today ?? TODAY;
   const sched = pipSchedule(pip.start, (pip.days === 30 || pip.days === 60 ? pip.days : 90) as 30 | 60 | 90, 10);
   const end = pip.end ?? sched.end;
@@ -1416,15 +1461,57 @@ export function PipRecordScreen({ persona, device = 'desktop', pip, tab = 'plan'
     </>
   );
 
+  const headerActions = canDecide ? (
+    <>
+      <Button fullWidth={device === 'phone'} onClick={() => setSendingBack(true)}>
+        Send back
+      </Button>
+      <Button variant="approve" fullWidth={device === 'phone'} loading={busy === 'approve'} onClick={() => live && void act('approve', () => live.onDecide('approve', null), 'Plan approved. It starts now.')}>
+        Approve and start
+      </Button>
+    </>
+  ) : persona === 'mgr' && (pip.status === 'Active' || pip.status === 'Extended') ? (
+    <>
+      {!live && <Button>Download PIP letter</Button>}
+      {checkinButton('primary')}
+    </>
+  ) : live?.can.letter ? (
+    <Button fullWidth={device === 'phone'} loading={busy === 'letter'} onClick={() => void act('letter', live.onLetter, 'PIP letter issued')}>
+      Issue PIP letter
+    </Button>
+  ) : undefined;
+  const alerts = (
+    <>
+      {pip.warning && (
+        <InlineAlert tone="warning" title="Check with the case owner before you decide">
+          There is something open that concerns this plan. Ask the case owner before you approve it or record an outcome.
+        </InlineAlert>
+      )}
+      {pip.status === 'Proposed' && (
+        <InlineAlert tone="info" title={canDecide ? 'Waiting for your approval' : 'Waiting for HR approval'}>
+          The plan starts only after HR approves it. {pip.employee} is not told until then.
+        </InlineAlert>
+      )}
+    </>
+  );
+
   if (device === 'phone')
     return (
       <GrowthFrame area="performance" active="PIPs" persona={persona} device="phone" phone={{ title: 'Performance plan', back: true }}>
+        {persona !== 'emp' && <PersonLabel name={pip.employee} secondary={pip.role} />}
         <div className="yx-growth-row">
           <Badge tone={statusTone}>{pip.status}</Badge>
           <ConfidentialTag />
         </div>
         <DescriptionList items={facts} />
+        {alerts}
         {!ack && persona === 'emp' ? ackPanel : body}
+        {persona !== 'emp' && (
+          <Card title="Approval">
+            <ApprovalTimeline steps={pip.approval} now={today} />
+          </Card>
+        )}
+        {headerActions && <div className="yx-growth-pinned">{headerActions}</div>}
         {dialogs}
       </GrowthFrame>
     );
@@ -1442,36 +1529,9 @@ export function PipRecordScreen({ persona, device = 'desktop', pip, tab = 'plan'
           </>
         }
         facts={facts}
-        actions={
-          canDecide ? (
-            <>
-              <Button onClick={() => setSendingBack(true)}>Send back</Button>
-              <Button variant="approve" loading={busy === 'approve'} onClick={() => live && void act('approve', () => live.onDecide('approve', null), 'Plan approved. It starts now.')}>
-                Approve and start
-              </Button>
-            </>
-          ) : persona === 'mgr' && (pip.status === 'Active' || pip.status === 'Extended') ? (
-            <>
-              {!live && <Button>Download PIP letter</Button>}
-              {checkinButton('primary')}
-            </>
-          ) : live?.can.letter ? (
-            <Button loading={busy === 'letter'} onClick={() => void act('letter', live.onLetter, 'PIP letter issued')}>
-              Issue PIP letter
-            </Button>
-          ) : undefined
-        }
+        actions={headerActions}
       />
-      {pip.warning && (
-        <InlineAlert tone="warning" title="Check with the case owner before you decide">
-          There is something open that concerns this plan. Ask the case owner before you approve it or record an outcome.
-        </InlineAlert>
-      )}
-      {pip.status === 'Proposed' && (
-        <InlineAlert tone="info" title={canDecide ? 'Waiting for your approval' : 'Waiting for HR approval'}>
-          The plan starts only after HR approves it. {pip.employee} is not told until then.
-        </InlineAlert>
-      )}
+      {alerts}
       <SplitLayout
         main={body}
         side={
