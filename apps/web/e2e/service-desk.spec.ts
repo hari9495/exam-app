@@ -45,7 +45,9 @@ test('raise → assign → reply → resolve', async ({ browser }) => {
   await agent.getByRole('button', { name: /View:/ }).click();
   await agent.getByRole('menuitemradio', { name: 'All open' }).or(agent.getByRole('menuitem', { name: 'All open' })).click();
   await agent.getByRole('textbox', { name: /Search/ }).fill(number);
+  // HLP-02: a row opens the quick view; "Open ticket" goes to the ticket.
   await agent.getByText(subject).click();
+  await agent.getByRole('dialog').getByRole('button', { name: 'Open ticket' }).click();
   await expect(agent.getByRole('heading', { name: subject })).toBeVisible();
   const take = agent.getByRole('button', { name: 'Assign to me' });
   if (await take.isVisible()) await take.click();
@@ -91,8 +93,9 @@ test('SLA: a ticket near its breach is listed and its timeline shows', async ({ 
   await agent.waitForURL(/\/yx\/home/);
   await agent.goto('/yx/desk/tickets');
   await agent.getByRole('button', { name: /View:/ }).click();
-  await agent.getByRole('menuitemradio', { name: 'Breaching soon' }).or(agent.getByRole('menuitem', { name: 'Breaching soon' })).click();
+  await agent.getByRole('menuitemradio', { name: 'At risk or breached' }).or(agent.getByRole('menuitem', { name: 'At risk or breached' })).click();
   await agent.getByText('Payroll export keeps timing out').first().click();
+  await agent.getByRole('dialog').getByRole('button', { name: 'Open ticket' }).click();
   await expect(agent.getByRole('heading', { name: 'Payroll export keeps timing out' })).toBeVisible();
   await expect(agent.getByRole('heading', { name: 'Response targets' })).toBeVisible();
   await expect(agent.getByRole('list', { name: 'Resolution timeline' })).toBeVisible();

@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { HelpDrawer, MyTicketScreen } from './help';
 import { TicketScreen, eventText, type TicketScreenProps } from './ticket';
-import { BUILT_IN_VIEWS, DeskTicketsScreen } from './tickets';
 import { fillCanned, minutesText } from './desk-kit';
 import { CAL_ITEMS, CANNED, COMPLIANCE, CONTEXT, DESK, DETAIL, MY_ROWS, MY_TICKET, RAISE_DESKS, ROWS, SLA_SETUP, TEMPLATES, TICKET, TIMELINE, WORK } from './data';
 import { ResolveDialog, TicketWorkRail, type TicketWorkProps } from './work';
@@ -33,31 +32,6 @@ describe('HLP-01 my ticket', () => {
     render(<MyTicketScreen state="ready" ticket={MY_TICKET} onBack={() => {}} onReply={ok()} onUpload={vi.fn()} onOpenFile={ok()} onAddWatcher={ok()} />);
     expect(screen.queryByText(/Same router model/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /vpn-log.txt/ })).toBeInTheDocument();
-  });
-});
-
-describe('HLP-02 agent desk', () => {
-  it('lead bulk actions run on the selected tickets', async () => {
-    const onBulk = vi.fn().mockResolvedValue({ done: ['t1'], failed: [] });
-    render(
-      <DeskTicketsScreen state="ready" desks={[DESK]} details={[DETAIL]} views={[]} page={{ items: ROWS, total: 3, nextCursor: null }} pageState="ready" query={{ viewId: 'open', filters: BUILT_IN_VIEWS[2].filters, layout: 'list' }} onQueryChange={() => {}} onOpen={() => {}} onMove={ok()} onBulk={onBulk} onSaveView={ok()} onExport={ok()} onSearchPeople={async () => []} onCreate={vi.fn()} />,
-    );
-    await ue.click(screen.getAllByRole('checkbox', { name: /Select/ })[1]);
-    await ue.click(screen.getByRole('button', { name: 'Assign to me' }));
-    await waitFor(() => expect(onBulk).toHaveBeenCalledWith(expect.any(Array), { assignee: 'me' }));
-    expect(await screen.findByText('1 changed.')).toBeInTheDocument();
-  });
-
-  it('Raise ticket pressed too early says what is missing; nothing is sent', async () => {
-    const onCreate = vi.fn();
-    render(
-      <DeskTicketsScreen state="ready" desks={[DESK]} details={[DETAIL]} views={[]} page={{ items: ROWS, total: 3, nextCursor: null }} pageState="ready" query={{ viewId: 'open', filters: BUILT_IN_VIEWS[2].filters, layout: 'list' }} onQueryChange={() => {}} onOpen={() => {}} onMove={ok()} onBulk={ok()} onSaveView={ok()} onExport={ok()} onSearchPeople={async () => []} onCreate={onCreate} />,
-    );
-    await ue.click(screen.getByRole('button', { name: 'New ticket' }));
-    await ue.click(await screen.findByRole('button', { name: 'Raise ticket' }));
-    expect(screen.getByText('Choose who the ticket is for.')).toBeInTheDocument();
-    expect(screen.getByText('Write a subject.')).toBeInTheDocument();
-    expect(onCreate).not.toHaveBeenCalled();
   });
 });
 
@@ -341,13 +315,6 @@ describe('batch 3 (SD-1.18 … SD-1.23, SD-1.28)', () => {
     expect(screen.getByText('Kaveri billing app')).toBeInTheDocument();
     expect(screen.getByText('Raised from')).toBeInTheDocument();
     expect(screen.getByText('Order number (from the email)')).toBeInTheDocument();
-  });
-
-  it('ticket list: an unproven email sender shows “Not verified”', () => {
-    render(
-      <DeskTicketsScreen state="ready" desks={[DESK]} details={[DETAIL]} views={[]} page={{ items: [{ ...ROWS[0], senderVerified: false }], total: 1, nextCursor: null }} pageState="ready" query={{ viewId: 'open', filters: BUILT_IN_VIEWS[2].filters, layout: 'list' }} onQueryChange={() => {}} onOpen={() => {}} onMove={ok()} onBulk={vi.fn()} onSaveView={ok()} onExport={ok()} onSearchPeople={async () => []} onCreate={vi.fn()} />,
-    );
-    expect(screen.getByText('Not verified')).toBeInTheDocument();
   });
 
   it('help drawer: Raise ticket pressed too early says what is missing', async () => {

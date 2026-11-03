@@ -2,7 +2,6 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { LinksFrame, type StoryLink } from '../_kit/story-frame';
 import { pick, play, press, pressFirst, tab, type } from '../_kit/story-play';
 import { HelpDrawer, MyTicketScreen } from './help';
-import { BUILT_IN_VIEWS, DeskTicketsScreen } from './tickets';
 import { TicketScreen } from './ticket';
 import { DeskSetupScreen } from './setup';
 import { CAL_ITEMS, CANNED, COMPLIANCE, CONTEXT, DESK, DETAIL, HR_DESK, MY_ROWS, MY_TICKET, RAISE_DESKS, ROWS, SLA_SETUP, TEMPLATES, TICKET, TIMELINE, WORK } from './data';
@@ -37,30 +36,6 @@ export const MyTicket: S = {
   name: 'HLP-01 My ticket (requester view)',
   render: () => shell('desk-help', <MyTicketScreen state="ready" ticket={MY_TICKET} onBack={() => {}} onReply={noop} onUpload={async () => ({ ...MY_TICKET.attachments[0], id: 'n', scanStatus: 'pending' })} onOpenFile={noop} onAddWatcher={noop} />),
 };
-
-const list = (layout: 'list' | 'board') =>
-  shell(
-    'desk-tickets',
-    <DeskTicketsScreen
-      state="ready"
-      desks={[DESK]}
-      details={[DETAIL]}
-      views={[]}
-      page={{ items: ROWS, total: ROWS.length, nextCursor: null }}
-      pageState="ready"
-      query={{ viewId: 'open', filters: BUILT_IN_VIEWS[2].filters, layout }}
-      onQueryChange={() => {}}
-      onOpen={() => {}}
-      onMove={noop}
-      onBulk={async () => ({ done: [], failed: [] })}
-      onSaveView={noop}
-      onExport={noop}
-      onSearchPeople={async () => []}
-      onCreate={async () => ({ id: 'x' })}
-    />,
-  );
-export const Tickets: S = { name: 'HLP-02 Agent desk · list', render: () => list('list') };
-export const Board: S = { name: 'HLP-02 Agent desk · board', render: () => list('board') };
 
 const rail = (ticket: typeof TICKET) => (
   <TicketWorkRail
@@ -247,7 +222,6 @@ export const PortalHomeStory: S = { name: 'US-G-021 Outside portal · my tickets
 export const PortalTicketStory: S = { name: 'US-G-021 Outside portal · one ticket', render: () => portal({ me: ME, ticket: PORTAL_TICKET, ticketState: 'ready' }) };
 
 // Pressed too early: the buttons stay pressable and say what is missing (founder rule, no greyed-out buttons).
-export const NewTicketTooEarly: S = { name: 'HLP-02 New ticket · Raise ticket pressed with nothing filled', render: () => list('list'), play: play(press('New ticket'), press('Raise ticket')) };
 export const ReplyTooEarly: S = { name: 'HLP-03 Ticket workspace · Send reply pressed with nothing written', render: () => workspace(), play: play(press('Send reply')) };
 export const ResolveTooEarly: S = { name: 'SD-1.10 Resolve · pressed without a code or note', render: () => shell('desk-tickets', <ResolveDialog open onOpenChange={() => {}} ticket={TICKET} codes={TEMPLATES.resolutionCodes} required linked={0} onResolve={noop} />), play: play(press('Resolve')) };
 export const NewDeskTooEarly: S = { name: 'Desk set-up · Create desk pressed with nothing filled', render: Setup.render, play: play(press('New desk'), press('Create desk')) };

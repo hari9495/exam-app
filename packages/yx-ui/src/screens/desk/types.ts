@@ -158,6 +158,10 @@ export interface TicketRow {
   version: number;
   tier?: string;
   sla?: { dueAt: string | null; breached: boolean; paused: boolean } | null;
+  /** HLP-02: the live first response and resolution clocks (business minutes used of the target). */
+  firstResponse?: { usedMinutes: number; targetMinutes: number; paused: boolean } | null;
+  resolution?: { usedMinutes: number; targetMinutes: number; paused: boolean } | null;
+  firstResponseAt?: string | null;
   createdAt: string;
   updatedAt: string;
   canBulk: boolean;
@@ -186,6 +190,9 @@ export interface TicketFilters {
   search?: string;
   snoozed?: 'show' | 'only';
   breaching?: boolean;
+  /** HLP-02 "Raised": days (yyyy-mm-dd), both included. */
+  createdFrom?: string;
+  createdTo?: string;
 }
 
 export interface SavedTicketView {

@@ -128,7 +128,6 @@
     "hiring: TimesheetCorrectionScreen",
     "hiring: VendorsScreen",
     "ops: AccidentWorkspaceScreen",
-    "ops: AgentDeskScreen",
     "ops: CaseListScreen",
     "ops: CaseWorkspaceScreen",
     "ops: CheckReportScreen",

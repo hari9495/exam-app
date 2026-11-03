@@ -27,6 +27,7 @@ import { Actions, CardGrid, Facts, OpsDesk, SlaBadge, Workspace, useSay } from '
 import { ackPercent, slaState, ticketCloseInfo } from './ops-rules';
 import type { KbArticle, PolicyRow, Ticket, TicketStatus } from './helpdesk-data';
 import { LiveHelpCentre, type LiveHelp } from './helpdesk-live';
+import { LiveAgentDesk, type LiveAgentDesk as LiveAgentDeskProps } from './helpdesk-desk-live';
 
 export type ListState = 'ready' | 'loading' | 'error' | 'empty';
 export type Device = 'desk' | 'phone';
@@ -417,7 +418,12 @@ export interface AgentDeskScreenProps {
   /** The agent's own queues: sensitive tickets from other queues are never listed (YX-HD-03). */
   myQueues?: Ticket['queue'][];
 }
-export function AgentDeskScreen({ tickets, state = 'ready', view = 'open', defaultFilters = [], openTicketId = null, defaultSelected = [], myQueues }: AgentDeskScreenProps) {
+/** HLP-02. Stories draw it with sample props; the live page passes `live` (helpdesk-desk-live.tsx) with the real tickets. */
+export function AgentDeskScreen(props: AgentDeskScreenProps | { live: LiveAgentDeskProps }) {
+  return 'live' in props ? <LiveAgentDesk live={props.live} /> : <SampleAgentDesk {...props} />;
+}
+
+function SampleAgentDesk({ tickets, state = 'ready', view = 'open', defaultFilters = [], openTicketId = null, defaultSelected = [], myQueues }: AgentDeskScreenProps) {
   const [filters, setFilters] = useState<FilterValue[]>(defaultFilters);
   const [search, setSearch] = useState('');
   const [viewId, setViewId] = useState(view);

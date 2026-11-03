@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { AgentDeskScreen } from './helpdesk';
 import { TICKETS } from './helpdesk-data';
+import { DESK_ROWS, liveDesk } from './helpdesk-desk-live-samples';
 
 const meta: Meta = { title: 'Screens/Helpdesk/HLP-02 · Agent desk', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -27,3 +28,16 @@ export const Filtered: S = {
 export const Empty: S = { render: () => <AgentDeskScreen tickets={TICKETS} state="empty" /> };
 export const Loading: S = { render: () => <AgentDeskScreen tickets={TICKETS} state="loading" /> };
 export const Error: S = { render: () => <AgentDeskScreen tickets={TICKETS} state="error" /> };
+
+// States the real agent desk has (Helpdesk design wiring, round 2; founder answer 1: the HLP design wins). Drawn in the
+// same layout as the stories above.
+export const Board: S = { name: 'Board · tickets by state', render: () => <AgentDeskScreen live={liveDesk({ query: { ...liveDesk().query, layout: 'board' } })} /> };
+export const SavedView: S = { name: 'Saved views · my own view open', render: () => <AgentDeskScreen live={liveDesk({ query: { viewId: 'v1', filters: { search: 'vpn' }, layout: 'list' }, page: { items: [DESK_ROWS[0]], total: 1, nextCursor: null } })} /> };
+export const ChangePriority: S = { name: 'Bulk · change priority (with a reason)', render: () => <AgentDeskScreen live={liveDesk({ start: { selected: ['t1', 't2'], dialog: 'priority' } })} /> };
+export const MoveQueue: S = { name: 'Bulk · move to another queue', render: () => <AgentDeskScreen live={liveDesk({ start: { selected: ['t1'], dialog: 'move' } })} /> };
+export const AddTag: S = { name: 'Bulk · add a tag', render: () => <AgentDeskScreen live={liveDesk({ start: { selected: ['t1', 't3'], dialog: 'tag' } })} /> };
+export const BulkRefused: S = { name: 'Bulk · some tickets not changed', render: () => <AgentDeskScreen live={liveDesk({ start: { bulkResult: '1 changed. 1 not changed: IT-1004: This ticket was changed by someone else. Open it again.' } })} /> };
+export const NewTicket: S = { name: 'New ticket for an employee', render: () => <AgentDeskScreen live={liveDesk({ start: { dialog: 'new' } })} /> };
+export const QuickViewLive: S = { name: 'Quick view · both response targets, assign to me', render: () => <AgentDeskScreen live={liveDesk({ start: { openId: 't2' } })} /> };
+export const AgentNotLead: S = { name: 'Agent (not a team lead) · no bulk selection', render: () => <AgentDeskScreen live={liveDesk({ page: { items: DESK_ROWS.map((r) => ({ ...r, canBulk: false })), total: 3, nextCursor: null } })} /> };
+export const NoAccess: S = { name: 'No access (no desk seat)', render: () => <AgentDeskScreen live={liveDesk({ state: 'no-access' })} /> };

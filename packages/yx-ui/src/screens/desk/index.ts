@@ -5,7 +5,9 @@ export { MyTicketScreen, FileList, BannerList, HelpDrawer, type MyTicketScreenPr
 // HLP-01 Help centre: the designed screen with `live` (Helpdesk design wiring, round 1).
 export { HelpCentreScreen } from '../ops/helpdesk';
 export { topicOptions, rateCandidate, type LiveHelp } from '../ops/helpdesk-live';
-export { DeskTicketsScreen, BUILT_IN_VIEWS, type DeskTicketsScreenProps, type TicketQuery } from './tickets';
+// HLP-02 Agent desk: the designed screen with `live` (Helpdesk design wiring, round 2).
+export { AgentDeskScreen } from '../ops/helpdesk';
+export { BUILT_IN_VIEWS, toFilters, type TicketQuery, type LiveAgentDesk, type BulkAction, type BulkResult } from '../ops/helpdesk-desk-live';
 export { TicketScreen, eventText, type TicketScreenProps } from './ticket';
 export { DeskSetupScreen, type DeskSetupScreenProps } from './setup';
 export { DeskPage, STATE_LABEL, PRIORITY_LABEL, OPEN_STATES, fillCanned, minutesText, when, browserTimeZone, CopyValue } from './desk-kit';

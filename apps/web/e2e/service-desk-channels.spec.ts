@@ -59,6 +59,8 @@ async function openTicket(agent: Page, text: string) {
   await agent.getByRole('menuitemradio', { name: 'All open' }).or(agent.getByRole('menuitem', { name: 'All open' })).click();
   await agent.getByRole('textbox', { name: /Search/ }).fill(text);
   await agent.getByText(text).first().click();
+  // HLP-02: a row opens the quick view; "Open ticket" goes to the ticket.
+  await agent.getByRole('dialog').getByRole('button', { name: 'Open ticket' }).click();
 }
 
 test('outside customer: portal sign-in → raise → agent replies → customer sees the reply', async ({ browser }) => {
