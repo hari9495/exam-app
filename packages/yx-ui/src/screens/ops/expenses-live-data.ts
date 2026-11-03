@@ -91,6 +91,7 @@ export const FLAG_TEXT: Record<string, string> = {
   gst_maths: 'GST does not add up',
   einvoice_invalid: 'E-invoice signature mismatch',
   over_limit: 'Over the limit',
+  fx_rate: 'Rate far from the company rate',
 };
 export const PAY_MODE: Record<ClaimLine['payMode'], string> = { personal: 'Personal', company_card: 'Company card', company_paid: 'Company paid' };
 
@@ -131,7 +132,7 @@ const STEP: Record<string, ApprovalStep['status']> = { approved: 'done', open: '
 export function approvalSteps(c: Pick<ClaimDetail, 'person' | 'submittedAt' | 'route'>): ApprovalStep[] {
   return [
     { id: 'sent', label: 'Submitted', status: c.submittedAt ? 'done' : 'current', approver: c.person, ...(c.submittedAt ? { at: new Date(c.submittedAt) } : {}) },
-    ...(c.route?.steps ?? []).map((s, i) => ({ id: `s${i}`, label: s.name, status: STEP[s.state] ?? 'pending', ...(s.approvers?.length ? { approver: s.approvers.join(', ') } : {}), ...(s.decidedAt ? { at: new Date(s.decidedAt) } : {}) })),
+    ...(c.route?.steps ?? []).map((s, i) => ({ id: `s${i}`, label: s.name, status: STEP[s.state] ?? 'pending', ...(s.approvers?.length ? { approver: s.approvers.join(', ') } : {}), ...(s.decidedAt ? { at: new Date(s.decidedAt) } : {}), ...(s.state === 'sent_back' ? { comment: 'Sent back for changes' } : {}) })),
   ];
 }
 

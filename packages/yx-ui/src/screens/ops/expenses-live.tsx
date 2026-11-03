@@ -381,7 +381,7 @@ function LiveLineCard({ line: l, claim, categories, editable, act, busy, onEdit,
               {money(l.fx.currency, l.fx.amount)} at {Number(l.fx.rate).toLocaleString('en-IN', { maximumFractionDigits: 4 })} ({l.fx.source === 'manual' ? 'your card or bank rate' : 'company rate'}{l.fx.rateDate ? `, ${formatDate(day(l.fx.rateDate))}` : ''})
             </p>
           )}
-          {l.fx?.source === 'manual' && l.fx.variancePct !== null && Math.abs(Number(l.fx.variancePct)) > 3 && <InlineAlert tone="warning">Your rate is {l.fx.variancePct} % from the reference rate. Your approver will see both. Attach the statement.</InlineAlert>}
+          {l.fx?.source === 'manual' && l.fx.variancePct !== null && paise(l.fx.variancePct) !== 0 && <InlineAlert tone="warning">Your rate is {l.fx.variancePct} % from the reference rate. Your approver will see both. Attach the statement.</InlineAlert>}
           {l.gst && (l.gst.supplierGstin || l.gst.invoiceNo) && (
             <DescriptionList
               items={[
@@ -1062,7 +1062,7 @@ export function LiveClaimReview({ live }: { live: LiveClaim }) {
           onClose={() => setDeciding(null)}
           onConfirm={async (reason) => {
             await live.onDecide(deciding, reason);
-            toast({ tone: 'success', title: deciding === 'reject' ? 'Claim rejected' : `Claim sent back to ${c.person}` });
+            toast({ tone: 'success', title: deciding === 'reject' ? 'Claim rejected' : `Claim sent back to ${c.person} for changes` });
           }}
         />
       )}

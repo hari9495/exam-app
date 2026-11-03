@@ -7647,14 +7647,14 @@
     "url": "http://localhost:3000/yx/expenses",
     "account": "panel@demo-org.test (Manager - Divya)",
     "steps": [
-      "As Arjun, create a claim \"Client visit\" with one meals bill of 300 and click \"Send for approval\".",
+      "As Arjun, create a claim \"Client visit\" with one meals bill of 300 and click \"Submit claim\".",
       "Sign in as Divya, open the claim from Approvals (or /yx/expenses).",
       "Click \"Send back\", type \"Add the restaurant name\", click \"Send back\"."
     ],
     "expected": "A toast \"Claim sent back to Arjun Kulkarni for changes\" shows for 5 seconds. The claim no longer waits for Divya. The Manager step shows \"Sent back\".",
     "stories": [
       "Platform · Inbox & requests › PLT-04 · Approvals · send back for changes",
-      "Expenses · Live · Claims"
+      "Expenses · EXP-03 · Claim review"
     ],
     "note": ""
   },
@@ -7668,10 +7668,10 @@
       "Open a claim waiting for you, click \"Send back\".",
       "Click \"Send back\" with the box empty, then with \"ab\"."
     ],
-    "expected": "The button is never greyed out; it shows \"Enter a reason of at least 3 characters.\" under the box and nothing is sent. From the approvals inbox, \"ab\" is refused with \"Say what the employee should change.\"",
+    "expected": "The button is never greyed out; it shows \"Enter a reason of at least 3 characters. The employee sees it.\" under the box and nothing is sent. From the approvals inbox, \"ab\" is refused with \"Say what the employee should change.\"",
     "stories": [
       "Platform · Inbox & requests › PLT-04 · Approvals · send back for changes",
-      "Expenses · Live · Claims"
+      "Expenses · EXP-03 · Claim review"
     ],
     "note": ""
   },
@@ -7683,13 +7683,13 @@
     "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
     "steps": [
       "Do MT-TIM-Q-06 first.",
-      "Open the claim: read \"Approver's note: Add the restaurant name\".",
-      "Change the bill (add the restaurant name), click \"Send for approval\"."
+      "Open the claim: read the \"Sent back to you\" note \"Add the restaurant name\".",
+      "Change the bill (add the restaurant name), click \"Submit claim\"."
     ],
-    "expected": "The bell says the claim was \"sent back for changes\" (not \"not approved\"). After sending: a toast \"Claim sent again. Approval starts over.\" and the Manager step is Waiting again (the whole route starts over). The audit log shows expense.claim.sent_back and expense.claim.resent.",
+    "expected": "The bell says the claim was \"sent back for changes\" (not \"not approved\"). After sending: a toast \"Claim sent again\" that says approval starts over, and the Approvals card shows the Manager step waiting again (the whole route starts over). The audit log shows expense.claim.sent_back and expense.claim.resent.",
     "stories": [
       "Platform · Inbox & requests › PLT-04 · Approvals · send back for changes",
-      "Expenses · Live · Claims"
+      "Expenses · EXP-03 · Claim review"
     ],
     "note": ""
   },
@@ -7705,7 +7705,7 @@
     "expected": "No \"Send back\" button; if the API is called directly it answers 403 \"This claim is not waiting for you.\" (or 404 for someone who cannot see the claim). The claim stays waiting for Divya.",
     "stories": [
       "Platform · Inbox & requests › PLT-04 · Approvals · send back for changes",
-      "Expenses · Live · Claims"
+      "Expenses · EXP-03 · Claim review"
     ],
     "note": ""
   },
@@ -7717,12 +7717,12 @@
     "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
     "steps": [
       "Do MT-TIM-Q-06 first.",
-      "Remove every bill from the claim and click \"Send for approval\"."
+      "Remove every line from the claim (bin button, then \"Remove line\") and click \"Submit claim\"."
     ],
-    "expected": "The button is not greyed out; the claim is not sent and the page says \"Add at least one bill.\" No toast shows. The claim stays \"Sent back to you\".",
+    "expected": "The button is not greyed out; the claim is not sent and a message says \"Add a line first: a receipt, mileage or per diem.\" The claim stays \"Sent back\".",
     "stories": [
       "Platform · Inbox & requests › PLT-04 · Approvals · send back for changes",
-      "Expenses · Live · Claims"
+      "Expenses · EXP-03 · Claim review"
     ],
     "note": ""
   },
@@ -11701,5 +11701,241 @@
       "Performance · PRF-12 · HR · not met (next step is manual)"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-EXP-01",
+    "area": "Expenses · design round 1 (3 Nov 2026)",
+    "screen": "Home · employee (positive)",
+    "url": "http://localhost:3000/yx/expenses",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
+    "steps": [
+      "1. Open Expenses from the menu.",
+      "2. Read the right-hand column, then click the name of a claim in \"My claims\"."
+    ],
+    "expected": "\"You will receive\" shows the amount of approved, unpaid claims and the line \"Approved claims are paid in the <month> payroll unless finance pays sooner\". Each claim shows its amount, \"Submitted <date>\" and status badges; a cut claim shows \"Approved ₹X of ₹Y\". The claim name looks like a link and opens the claim. With an advance still open, an \"Open advance\" card shows its balance and settle-by date.",
+    "stories": [
+      "Expenses · EXP-01 · Expenses home · Employee (my claims)"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-EXP-02",
+    "area": "Expenses · design round 1 (3 Nov 2026)",
+    "screen": "Home · new claim needs a name (negative, then positive)",
+    "url": "http://localhost:3000/yx/expenses",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
+    "steps": [
+      "1. Click \"New claim\".",
+      "2. Click \"Start claim\" with the box empty.",
+      "3. Type \"Pune plant visit\" and click \"Start claim\"."
+    ],
+    "expected": "Step 2: the button is not greyed out; \"Say what the claim is for, in at least 2 characters.\" shows under the box and the cursor goes there; nothing is created. Step 3: the claim opens on its own page as a Draft named \"Pune plant visit\".",
+    "stories": [
+      "Expenses · EXP-01 · Expenses home · New claim · name it first"
+    ],
+    "note": "Negative, then positive."
+  },
+  {
+    "id": "MT-EXP-03",
+    "area": "Expenses · design round 1 (3 Nov 2026)",
+    "screen": "Home · approver and finance views",
+    "url": "http://localhost:3000/yx/expenses",
+    "account": "panel@demo-org.test (Manager - Divya); payroll@demo-org.test (Payroll Admin - Suresh; needs Expenses › pay claims, expense.payout.manage, and finance check, expense.finance.review)",
+    "steps": [
+      "1. As Divya, click \"Waiting for me\" at the top of the page.",
+      "2. As Suresh, click \"Finance\".",
+      "3. As Arjun (no reports, no finance keys), look for the same switch."
+    ],
+    "expected": "Step 1: \"Waiting for you\" lists the claims, trips and advances waiting for Divya with a Review button each; \"Team spend, <month>\" and \"Over-limit lines\" show her direct reports' figures against last month. Step 2: \"To pay\", \"Payment failed\", \"Flagged for audit\" and \"Advances overdue\" cards, the payroll cut-off card and the \"Flagged for audit\" table with a Check button per claim; \"Open to-pay queue\" opens To pay. Step 3: no switch; Arjun only sees his own expenses.",
+    "stories": [
+      "Expenses · EXP-01 · Expenses home · Manager (waiting for me)",
+      "Expenses · EXP-01 · Expenses home · Finance (to pay)",
+      "Expenses · EXP-01 · Expenses home · Employee who also approves and pays (view switch)"
+    ],
+    "note": "Positive and negative (Arjun sees no other views)."
+  },
+  {
+    "id": "MT-EXP-04",
+    "area": "Expenses · design round 1 (3 Nov 2026)",
+    "screen": "Composer · add lines (positive)",
+    "url": "http://localhost:3000/yx/expenses/claims/<claim>",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
+    "steps": [
+      "1. Open a draft claim and click \"Add line\".",
+      "2. Choose \"A receipt\" and drop a photo of a bill.",
+      "3. Click \"Check and confirm\" on the new line, check the values and click \"Confirm line\".",
+      "4. Click \"Add line\", choose \"Mileage\", enter 42 km and click \"Add line\"."
+    ],
+    "expected": "Step 2: a toast \"Receipt read\" and a new line with \"Read from receipt\" and \"Check the values read from the receipt\". Step 3: toast \"Line confirmed\"; the warning goes. Step 4: toast \"Line added\"; the line says \"42 km × ₹<rate> per km (car)\" and its amount comes from the company rate (never typed). \"You will receive\" on the right updates.",
+    "stories": [
+      "Expenses · EXP-02 · Claim composer · Add a line · what are you adding",
+      "Expenses · EXP-02 · Claim composer · Line read from a receipt · check and confirm"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-EXP-05",
+    "area": "Expenses · design round 1 (3 Nov 2026)",
+    "screen": "Composer · pressed too early and policy checks (negative)",
+    "url": "http://localhost:3000/yx/expenses/claims/<claim>",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
+    "steps": [
+      "1. Click \"Add line\", choose \"Mileage\" and click \"Add line\" without a distance.",
+      "2. Add a hotel bill above your limit, then click \"Save reason\" with the reason box empty.",
+      "3. Upload the same receipt photo again.",
+      "4. On a claim with no lines, click \"Submit claim\"."
+    ],
+    "expected": "Step 1: \"Enter the distance in km.\" under the field, cursor there, nothing saved. Step 2: the line shows \"Over the ₹X limit by ₹Y\" and \"Add a reason so your approver can decide on the excess.\"; nothing is saved. Step 3: refused with \"This receipt is already on this claim.\" Step 4: \"Add a line first: a receipt, mileage or per diem.\" and nothing is sent. No button is ever greyed out.",
+    "stories": [
+      "Expenses · EXP-02 · Claim composer · Draft · policy flags, per diem, mileage",
+      "Expenses · EXP-02 · Claim composer · Hard block and duplicate",
+      "Expenses · EXP-02 · Claim composer · Empty claim"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-EXP-06",
+    "area": "Expenses · design round 1 (3 Nov 2026)",
+    "screen": "Composer · submit and withdraw (positive)",
+    "url": "http://localhost:3000/yx/expenses/claims/<claim>",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
+    "steps": [
+      "1. On a claim with a confirmed line, click \"Submit claim\".",
+      "2. Click \"Withdraw to change it\"."
+    ],
+    "expected": "Step 1: toast \"Claim submitted\": \"<title> went to Divya Raghunathan for approval.\"; the badge says Submitted, the editing buttons go, and the \"Approvals\" card shows Submitted (done) then Manager approval (Divya, current). Step 2: toast \"Claim withdrawn. Change it and submit it again.\"; the claim is a Draft again.",
+    "stories": [
+      "Expenses · EXP-02 · Claim composer · Submitted"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-EXP-07",
+    "area": "Expenses · design round 1 (3 Nov 2026)",
+    "screen": "Review · reduce a line, approve (positive)",
+    "url": "http://localhost:3000/yx/expenses/claims/<claim>",
+    "account": "panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "1. Open Arjun's submitted claim from Waiting for you.",
+      "2. Click a line row: its receipt and the employee's reason show on the right.",
+      "3. Click \"Reduce\" on the hotel line, enter 7500 and reason \"Hotel cap Tier 1\", click \"Save reduction\".",
+      "4. Click \"Approve with changes\"."
+    ],
+    "expected": "Step 3: toast \"Line 2 reduced\"; the Decision column says \"Reduced to ₹7,500.00\"; the drawer previewed \"Approved ₹7,500.00 of ₹9,200.00 — Hotel cap Tier 1\". Step 4: toast \"Claim approved with your changes\"; Arjun sees \"Approved ₹7,500.00 of ₹9,200.00 — Hotel cap Tier 1\" on that line.",
+    "stories": [
+      "Expenses · EXP-03 · Claim review · Manager review · receipt beside lines",
+      "Expenses · EXP-03 · Claim review · Reduce with reason"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-EXP-08",
+    "area": "Expenses · design round 1 (3 Nov 2026)",
+    "screen": "Review · reason missing, not your turn, another company (negative)",
+    "url": "http://localhost:3000/yx/expenses/claims/<claim>",
+    "account": "panel@demo-org.test (Manager - Divya); hr@demo-org.test (HR Admin - Lakshmi); an admin of another company",
+    "steps": [
+      "1. As Divya, click \"Reduce\" and \"Save reduction\" with the reason empty; then enter 99999 (more than claimed).",
+      "2. As Divya, click \"Reject\" and \"Reject claim\" with the box empty.",
+      "3. As Lakshmi (HR, not an approver), open the same claim link.",
+      "4. As another company's admin, open the link."
+    ],
+    "expected": "Step 1: \"Enter a reason. The employee sees it next to the amount.\" then \"Enter at most ₹<claimed>, the amount claimed.\"; nothing is saved. Step 2: \"Enter a reason of at least 3 characters. The employee sees it.\"; nothing is sent. Step 3: no Approve, Reduce or Reject buttons (only \"Back to expenses\"), or \"We couldn't load this claim\" when she has no reason to see it. Step 4: the claim does not load (API answers 404).",
+    "stories": [
+      "Expenses · EXP-03 · Claim review · Reduce · reason missing"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-EXP-09",
+    "area": "Expenses · design round 1 (3 Nov 2026)",
+    "screen": "Review · finance clears or confirms a flag",
+    "url": "http://localhost:3000/yx/expenses/claims/<claim>",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh; needs Expenses › pay claims, expense.payout.manage, and finance check, expense.finance.review)",
+    "steps": [
+      "1. Open a flagged claim from Finance › Flagged for audit › Check.",
+      "2. Click the flagged line, click \"Clear\", click \"Clear flag\" with the note empty, then type \"Different trip, checked\" and click \"Clear flag\"."
+    ],
+    "expected": "The \"Finance audit step\" message shows; there are no Approve or Reduce buttons for finance. The empty note shows \"Enter a reason of at least 3 characters. The employee sees it.\" and nothing is saved; with the note a toast \"Flag cleared\" shows and the flag leaves the line.",
+    "stories": [
+      "Expenses · EXP-03 · Claim review · Finance audit step",
+      "Expenses · EXP-03 · Claim review · Finance · clear or confirm a flag"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-EXP-10",
+    "area": "Expenses · design round 1 (3 Nov 2026)",
+    "screen": "Trips · request (negative, then positive)",
+    "url": "http://localhost:3000/yx/expenses/trips",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
+    "steps": [
+      "1. From the expenses home click \"Request a trip\".",
+      "2. Click \"Send for approval\" with nothing filled.",
+      "3. Fill purpose \"Pune distributor meetings\", the dates, one leg (Bengaluru to Pune, air) inside the dates, estimate 20000, advance 10000; click \"Send for approval\"."
+    ],
+    "expected": "Step 1: the Trips page opens with the \"Request a trip\" sheet. Step 2: the list of what is missing shows (purpose, dates, leg, estimated cost) and the cursor goes to the first one; nothing is sent. Step 3: toast \"Trip sent for approval\"; the trip opens with status Requested and the timeline at Approved.",
+    "stories": [
+      "Expenses · EXP-04 · Trip · Request sheet",
+      "Expenses · EXP-04 · Trip · Trips list · mine, waiting for me, to book"
+    ],
+    "note": "Negative, then positive."
+  },
+  {
+    "id": "MT-EXP-11",
+    "area": "Expenses · design round 1 (3 Nov 2026)",
+    "screen": "Trip · approve, settle, travel desk sees no money",
+    "url": "http://localhost:3000/yx/expenses/trips/<trip>",
+    "account": "panel@demo-org.test (Manager - Divya); arjun@demo-org.test (Arjun Kulkarni, reports to Divya); a travel desk user (travel.booking.manage)",
+    "steps": [
+      "1. As Divya open the trip from Waiting for you; click \"Reject\" then \"Reject trip\" with the box empty; cancel, then click \"Approve\".",
+      "2. As Arjun, after finance pays the advance and a claim of ₹7,000 on the trip, open the trip.",
+      "3. As the travel desk, open the trip."
+    ],
+    "expected": "Step 1: the empty reason shows \"Enter a reason of at least 3 characters. The employee sees it.\"; Approve gives a toast \"Trip approved\". Step 2: the Settlement card shows Advance ₹10,000.00, Spent ₹7,000.00, company-paid bookings and \"You return ₹3,000.00\" with the date to return it by. Step 3: no amounts anywhere; the Settlement card says the money is for the traveller and finance.",
+    "stories": [
+      "Expenses · EXP-04 · Trip · Trip record · employee receives balance",
+      "Expenses · EXP-04 · Trip · Settlement · advance to return"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-EXP-12",
+    "area": "Expenses · design round 1 (3 Nov 2026)",
+    "screen": "Advances · request, overdue, record a return",
+    "url": "http://localhost:3000/yx/expenses/advances",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya); payroll@demo-org.test (Payroll Admin - Suresh; needs Expenses › pay claims, expense.payout.manage, and finance check, expense.finance.review)",
+    "steps": [
+      "1. As Arjun click \"Request an advance\", choose \"Standing imprest\" and click \"Send for approval\" empty; then enter 15000 and \"Hosur site petty cash\" and send.",
+      "2. Choose \"For a trip\" in the same sheet.",
+      "3. As Suresh open an overdue advance and click \"Record a return\"; enter more than the open balance, then the balance, a bank reference and send."
+    ],
+    "expected": "Step 1: \"Enter an amount above 0, e.g. 15000.\" and the purpose message; nothing sent; then toast \"Advance sent for approval\". Step 2: the button becomes \"Request a trip\" and opens the trip request. Step 3: \"Settlement window ended\" says the balance is recovered from salary in the company's number of instalments (setting, default 3); too much shows \"Enter at most the open balance, ₹X.\"; the right amount gives toast \"Return recorded\" and a new ledger row.",
+    "stories": [
+      "Expenses · EXP-05 · Advance card + request · Request an advance",
+      "Expenses · EXP-05 · Advance card + request · Overdue · recovery warning",
+      "Expenses · EXP-05 · Advance card + request · Advances list · mine, waiting for me, finance"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-EXP-13",
+    "area": "Expenses · design round 1 (3 Nov 2026)",
+    "screen": "Expenses on a phone (positive)",
+    "url": "http://localhost:3000/yx/expenses",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, reports to Divya)",
+    "steps": [
+      "1. Narrow the browser below 768 px (or use a phone) and open Expenses.",
+      "2. Tap \"Snap a receipt\", name the claim and start it.",
+      "3. Open a trip and an advance."
+    ],
+    "expected": "Step 1: \"You will receive\" first, then \"Snap a receipt\", \"Request a trip\", \"Add mileage\" and My claims, with no page scroll sideways. Step 2: the claim opens with the \"Add a line\" sheet from the bottom on \"A receipt\"; the phone offers its camera. Step 3: the trip shows its settlement first; the advance its balance card and ledger.",
+    "stories": [
+      "Expenses · EXP-01 · Expenses home · Employee · phone (camera first)",
+      "Expenses · EXP-02 · Claim composer · Claim · phone (you will receive)",
+      "Expenses · EXP-04 · Trip · Trip · phone",
+      "Expenses · EXP-05 · Advance card + request · Advances · phone"
+    ],
+    "note": "Positive."
   }
 ]
