@@ -42,7 +42,7 @@ Related Notifications designs in the **Platform** group (not counted above; thei
 | PLT-03 · Notifications inbox (desktop) | 6 | /yx/notifications (`NotificationsInboxScreen` live) | live |
 | PLT-03 · Notifications · phone | 1 | /yx/notifications under 768 px (this branch) | live |
 | PLT-65 · Notification preferences | 5 | /yx/me/notifications (`NotificationPreferencesScreen`) | live |
-| PLT-13 · Notification settings (template editor, test sent, channels, delivery log, usage) | 5 | none: the same jobs are done by the newer Email and SMS designs below | design only (question 1) |
+| PLT-13 · Notification settings (template editor, test sent, channels, delivery log, usage) | 5 | retired 3 Nov 2026 (founder answer 3): the 5 stories and `NotificationSettingsScreen` are deleted; the Email and SMS designs below do the same jobs | retired |
 
 ## How it is wired
 
@@ -132,3 +132,13 @@ SMS cap (default none), own accounts and their order, email branding and wording
 | item | why | size |
 |---|---|---|
 | PLT-13 Notification settings | question 1 | none if retired; M for an email delivery log |
+
+## PLT-13 retired (branch `feat/yukthix-sec-hindi`, 3 Nov 2026)
+
+Founder answer 3: the five PLT-13 stories (`Screens/Platform/Set-up & administration`, "PLT-13 · Notification
+settings · …") and their component `NotificationSettingsScreen` (with its `DeliveryRow` type) are deleted from
+`packages/yx-ui/src/screens/platform-a/`; nothing else used them. The design-live guard's `notLive` list loses
+`platform-a: NotificationSettingsScreen`. An email delivery log, if wanted, is drawn into the Email design first.
+The settings registry (`screens/settings/registry-*.ts`, a design not live yet) still names "PLT-13" as the link
+target of "Notification settings"; when the settings home goes live those links go to Settings › Notifications ›
+Emails and SMS (/yx/settings/emails, /yx/settings/sms).

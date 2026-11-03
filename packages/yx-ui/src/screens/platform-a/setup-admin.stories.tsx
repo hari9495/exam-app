@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { at, d } from './platform-data';
+import { d } from './platform-data';
 import {
-  NotificationSettingsScreen, PolicyEditorScreen, RolesAccessScreen, SetupHubScreen, TenantWizardScreen, type DeliveryRow, type ImportPreviewRow, type ModuleCard, type RoleRow,
+  PolicyEditorScreen, RolesAccessScreen, SetupHubScreen, TenantWizardScreen, type ImportPreviewRow, type ModuleCard, type RoleRow,
 } from './setup-admin';
 
 const meta: Meta = { title: 'Screens/Platform/Set-up & administration', parameters: { layout: 'fullscreen' } };
@@ -57,15 +57,3 @@ export const PLT12Editor: S = { name: 'PLT-12 · Approval policy editor', render
 export const PLT12Simulated: S = { name: 'PLT-12 · Approval policy editor · simulate result', render: () => <PolicyEditorScreen simulated /> };
 export const PLT12SaveBlocked: S = { name: 'PLT-12 · Approval policy editor · save needs simulate', render: () => <PolicyEditorScreen saveTried /> };
 
-/* PLT-13 */
-const LOG: DeliveryRow[] = [
-  { id: 'l1', at: at(29, 9, 12), template: 'Leave applied', channel: 'Push', to: 'Karthik Subramanian', status: 'Delivered', detail: 'Opened 9:14 am' },
-  { id: 'l2', at: at(29, 7, 5), template: 'Payslip ready', channel: 'Email', to: 'divya.r@kaverifoods.in', status: 'Delivered', detail: 'Password-protected PDF' },
-  { id: 'l3', at: at(29, 7, 5), template: 'Payslip ready', channel: 'SMS', to: '+91 98••• ••210', status: 'Failed', detail: 'Number not reachable. Check the mobile number in the profile.' },
-  { id: 'l4', at: at(28, 18, 30), template: 'Leave approved', channel: 'WhatsApp', to: '+91 97••• ••455', status: 'Retrying', detail: 'Provider busy · next try 9:50 am' },
-];
-export const PLT13Templates: S = { name: 'PLT-13 · Notification settings · template editor', render: () => <NotificationSettingsScreen deliveries={LOG} /> };
-export const PLT13TestSent: S = { name: 'PLT-13 · Notification settings · test sent', render: () => <NotificationSettingsScreen deliveries={LOG} testSent /> };
-export const PLT13Channels: S = { name: 'PLT-13 · Notification settings · channels', render: () => <NotificationSettingsScreen tab="channels" deliveries={LOG} /> };
-export const PLT13Log: S = { name: 'PLT-13 · Notification settings · delivery log', render: () => <NotificationSettingsScreen tab="log" deliveries={LOG} /> };
-export const PLT13Usage: S = { name: 'PLT-13 · Notification settings · usage', render: () => <NotificationSettingsScreen tab="usage" deliveries={LOG} /> };

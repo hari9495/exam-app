@@ -35,9 +35,9 @@ not built** (no API) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Signing in (SEC-01, Confirm it's you, SEC-02) | 3 | 55 | 1 | 0 | 0 | 0 | 56 |
+| A. Signing in (SEC-01, Confirm it's you, SEC-02) | 3 | 56 | 0 | 0 | 0 | 0 | 56 |
 | B. Security settings and my security (Admin, Single sign-on providers, My security) | 3 | 39 | 0 | 0 | 0 | 0 | 39 |
-| **All Security groups (A–B)** | **6** | **94** | **1** | **0** | **0** | **0** | **95** |
+| **All Security groups (A–B)** | **6** | **95** | **0** | **0** | **0** | **0** | **95** |
 
 Counted by the script in the appendix, 3 Nov 2026, on `feat/yukthix-sec-notif`: every `export const` story in the six
 `Screens/Security/...` story files against the rows in section 4. The lead's "about 95" is exact. Phone stories are
@@ -135,7 +135,7 @@ drives the steps from the API's answers; `GET auth/sign-in-options` decides whic
 | MobileLocked · Sign in · mobile code, locked after too many tries | live | the API's `retryAfterSeconds` in words ("Try again in 14 min 32 sec.") |
 | PasswordLocked · Sign in · password, locked after too many tries | live | as above, from the login lock-out |
 | PausedForBlockLeave · Sign in · access paused for block leave | live | TIM-39: `paused-access.ts` answers only after the password or code is right |
-| Hindi · Sign in · language picked (हिन्दी) | live (gap) | the live sign-in has no `AuthLanguageContext` provider, so no picker shows: there is no Hindi wording yet (question 1) |
+| Hindi · Sign in · language picked (हिन्दी) | live | founder answer 1: the sign-in pages are written in English and Hindi (`words.ts`, Hindi needs native review before go-live); the picker offers both, English is the default, the choice is kept on this device (`yx.signInLanguage`) |
 
 #### Confirm it’s you
 
@@ -304,3 +304,30 @@ switch the language picker on. (2) Before go-live, set `NEXT_PUBLIC_YX_PRIVACY_E
 (go-live checklist); until then the privacy page says the contact isn't published yet. (3) Retire the PLT-13 Notification
 settings design stories; the live Email and SMS designs do the same jobs. An email delivery log, if wanted, is drawn into
 the Email design first.
+
+## Hindi sign-in (branch `feat/yukthix-sec-hindi`, 3 Nov 2026)
+
+Founder answers 1 and 2 are built. Recount (script in the appendix): **A. Signing in 56 live of 56; all Security groups
+95 live of 95**; nothing left in section 3.
+
+- **Words.** `packages/yx-ui/src/screens/auth/words.ts` holds every sentence a person sees on sign-in (email, mobile,
+  password, codes, company choice, SSO and social redirects), "Confirm it's you" (method cards, codes, passkey),
+  forgot / reset password, first sign-in set-up (method cards, authenticator QR and key, recovery codes) and the frame
+  (staff note, legal notice names), in English and Hindi. The file is marked **NEEDS NATIVE REVIEW BEFORE GO-LIVE**
+  (go-live checklist item 31). There was no translation library in the app; the joiner portal's `LanguageSwitcher` is
+  the picker the sign-in already drew, so the words are a small typed table (Hindi must have every English key).
+- **Errors.** `authError` shows the known API and app sentences in Hindi (wrong password, lock-out with the real wait
+  in Hindi units, wrong code, passkey refused, link expired, paused for block leave); an unknown sentence stays in
+  English rather than a guess. A wrong password and an unknown email share one English sentence, so they share one
+  Hindi sentence; "If … can sign in by code, we sent …" and "If … has a YukthiX account, we sent …" stay conditional
+  in Hindi ("अगर … तो …"), so Hindi says no more than English does.
+- **Picker.** The live sign-in pages (/yx/sign-in and its callback, /yx/forgot-password, /yx/reset-password/[token],
+  /yx/setup-mfa) wrap the screens in `SignInLanguage` (apps/web/lib/sign-in-language.tsx): English by default, the
+  picker offers English and हिन्दी only, the choice is kept in this browser's storage (never the account or a cookie)
+  and sets the page's `lang`. Blocked storage: English, and the picker still works for that visit.
+- **Stays English:** the step-up dialog, My security and every in-app screen (no picker there), and the YukthiX staff
+  sign-in. The legal notice pages keep their English text (their link names in the footer follow the picker).
+- **Kit first (rule 18):** `TenantPortal` / `LanguageSwitcher` take the languages a page offers (`languages`), and the
+  footer notices take names in the page's language (`labels`); tested in `portals.test.tsx`.
+- **Privacy contact (answer 2):** go-live checklist item 30 sets `NEXT_PUBLIC_YX_PRIVACY_EMAIL` to the grievance
+  officer's mailbox.

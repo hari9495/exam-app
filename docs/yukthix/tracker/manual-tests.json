@@ -12665,5 +12665,42 @@
       "Screens/Expenses/EXP-08 · Card statement import & matching"
     ],
     "note": "Negative."
+  },
+  {
+    "id": "MT-SEC-11",
+    "area": "Security · Hindi sign-in (3 Nov 2026)",
+    "screen": "Sign in · language picker (positive)",
+    "url": "http://localhost:3000/yx/sign-in",
+    "account": "Not signed in. Own browser, never the app’s built-in preview pane. Browser window 1278 x 635.",
+    "steps": [
+      "1. Open the sign-in page in a fresh browser profile.",
+      "2. In the top band, open Language and pick हिन्दी (Hindi).",
+      "3. Reload the page, then open \"पासवर्ड भूल गए?\" (Forgot your password?).",
+      "4. Pick English again."
+    ],
+    "expected": "Step 1: English, and the picker offers only English and हिन्दी (Hindi). Step 2: the whole page turns to Hindi (title \"साइन इन करें\", \"कार्य ईमेल\", the note and the legal links). Step 3: still Hindi after the reload and on the forgot-password page (kept on this device). Step 4: back to English. Signing in from another browser starts in English.",
+    "stories": [
+      "Security · SEC-01 · Sign in · language picked (हिन्दी)"
+    ],
+    "note": "Positive. The Hindi wording still needs a native reader’s review before go-live."
+  },
+  {
+    "id": "MT-SEC-12",
+    "area": "Security · Hindi sign-in (3 Nov 2026)",
+    "screen": "Sign in in Hindi · wrong password, unknown email, code (negative)",
+    "url": "http://localhost:3000/yx/sign-in",
+    "account": "arjun@demo-org.test, and the made-up nobody@demo-org.test. Hindi picked. Own browser, never the app’s built-in preview pane. Browser window 1278 x 635.",
+    "steps": [
+      "1. Click \"आगे बढ़ें\" with the box empty.",
+      "2. Sign in as arjun@demo-org.test with a wrong password.",
+      "3. Start again with nobody@demo-org.test and, if asked, a password.",
+      "4. With an account that signs in by code, ask for a code and type a wrong one."
+    ],
+    "expected": "Step 1: \"अपना कार्य ईमेल लिखें।\" under the box, cursor in it, nothing sent. Steps 2 and 3 give exactly the same Hindi sentence (\"ईमेल या पासवर्ड गलत है।\"), so the page never tells whether an account exists. Step 4: the code line says \"अगर … कोड से साइन इन कर सकता है, तो हमने … भेजा है\" (it never says the account exists), and the wrong code gives \"यह कोड काम नहीं किया…\". After too many tries the wait shows in Hindi (मिनट / सेकंड).",
+    "stories": [
+      "Security · SEC-01 · Sign in · wrong password",
+      "Security · SEC-01 · Sign in · code sent"
+    ],
+    "note": "Negative."
   }
 ]

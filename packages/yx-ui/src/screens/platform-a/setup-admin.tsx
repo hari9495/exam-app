@@ -1,26 +1,24 @@
 // Set-up hub, tenant wizard, roles & access, approval policy editor, notification settings (PLT-08, 09, 11, 12, 13).
 import { useState } from 'react';
-import { ArrowDown, ArrowUp, Copy, Plus, Send, ShieldCheck, Trash2, UserCog, Workflow } from 'lucide-react';
+import { ArrowDown, ArrowUp, Copy, Plus, ShieldCheck, Trash2, UserCog, Workflow } from 'lucide-react';
 import { PageHeader, ObjectHeader, Card, Tabs, TabsContent, TabsList, TabsTrigger, DescriptionList } from '../../components/shell';
 import { Button, IconButton, Link } from '../../components/button';
 import { Badge, PersonLabel } from '../../components/display';
-import { EmptyState, InlineAlert, Meter } from '../../components/feedback';
+import { InlineAlert, Meter } from '../../components/feedback';
 import { Stepper, SetupChecklist, type ChecklistSection } from '../../components/stepper';
 import { FormField, FieldRow, FormSection } from '../../components/field';
 import { TextField, CurrencyField } from '../../components/inputs';
 import { Select } from '../../components/select';
-import { Checkbox, RadioGroup, Switch } from '../../components/choice';
+import { Checkbox, RadioGroup } from '../../components/choice';
 import { ConditionBuilder } from '../../components/condition';
-import { RichTextEditor } from '../../components/editor';
 import { DataTable, type TableColumn } from '../../components/table';
-import { BarChart } from '../../components/charts';
 import { Timeline } from '../../components/timeline';
 import { MenuItem } from '../../components/menu';
 import { emptyGroup, type Rule, type RuleSchema } from '../../lib/rules';
 import { formatDate, formatINR } from '../../lib/format';
 import { DesktopFrame } from '../_kit/frames';
 import { ENTITIES, LOCATIONS, TODAY } from '../_kit/data';
-import { ListPage, Tile, Workspace, readiness, settingsPanel, simulatePolicy, sodConflicts, toneFor, type PolicyDef, type ReadinessCheck } from './platform-kit';
+import { ListPage, Tile, Workspace, readiness, settingsPanel, simulatePolicy, sodConflicts, type PolicyDef, type ReadinessCheck } from './platform-kit';
 import { PEOPLE, at, d } from './platform-data';
 
 /* ================================================================ PLT-08 Set-up hub */
@@ -611,133 +609,6 @@ export function PolicyEditorScreen({ simulated: simProp = false, saveTried = fal
           </Card>
         ))}
       </Workspace>
-    </DesktopFrame>
-  );
-}
-
-/* ================================================================ PLT-13 Notification settings */
-
-export interface DeliveryRow {
-  id: string;
-  at: Date;
-  template: string;
-  channel: 'Email' | 'SMS' | 'WhatsApp' | 'Push' | 'In-app';
-  to: string;
-  status: 'Delivered' | 'Failed' | 'Retrying';
-  detail: string;
-}
-
-export function NotificationSettingsScreen({ tab = 'templates', deliveries, testSent }: { tab?: 'channels' | 'templates' | 'log' | 'usage'; deliveries: DeliveryRow[]; testSent?: boolean }) {
-  const [body, setBody] = useState('<p>Hi {{employee.name}},</p><p>Your leave from {{leave.from}} to {{leave.to}} was approved by {{approver.name}}.</p>');
-  const [sent, setSent] = useState(Boolean(testSent));
-  const preview = body.replace('{{employee.name}}', 'Arjun Mehta').replace('{{leave.from}}', '01 Oct 2026').replace('{{leave.to}}', '02 Oct 2026').replace('{{approver.name}}', 'Karthik Subramanian');
-  return (
-    <DesktopFrame area="settings" panelTitle="Settings" panel={settingsPanel('5.2 Notifications')}>
-      <PageHeader title="Notifications" description="Channels, sender, templates, delivery log and usage for Kaveri Foods." />
-      <Tabs defaultValue={tab}>
-        <TabsList aria-label="Notification settings">
-          <TabsTrigger value="channels">Channels & sender</TabsTrigger>
-          <TabsTrigger value="templates">Templates</TabsTrigger>
-          <TabsTrigger value="log" count={deliveries.filter((x) => x.status !== 'Delivered').length || undefined}>Delivery log</TabsTrigger>
-          <TabsTrigger value="usage">Usage</TabsTrigger>
-        </TabsList>
-        <TabsContent value="channels">
-          <div className="yx-plt-grid" data-cols="2">
-            <Card title="Channels">
-              <div className="yx-plt-stack">
-                <Switch label="Email" description="From people@kaverifoods.in (verified)" defaultChecked />
-                <Switch label="SMS" description="DLT sender KAVERI · for staff without the app" defaultChecked />
-                <Switch label="WhatsApp" description="Approved templates only; sensitive data never sent" defaultChecked />
-                <Switch label="Push and in-app" description="Always on" checked disabled />
-              </div>
-            </Card>
-            <Card title="Company defaults">
-              <FormField label="Quiet hours" helper="Employees can change their own.">
-                <TextField value="9:00 pm to 7:00 am" readOnly />
-              </FormField>
-              <FormField label="Digest">
-                <Select options={[{ value: 'daily', label: 'Daily at 9:00 am' }, { value: 'off', label: 'Off' }]} value="daily" onChange={() => {}} />
-              </FormField>
-            </Card>
-          </div>
-        </TabsContent>
-        <TabsContent value="templates">
-          <Workspace
-            asideLabel="Preview"
-            aside={
-              <>
-                <h2 className="yx-plt-h">Preview as Arjun Mehta</h2>
-                <Card>
-                  <RichTextEditor key={preview} value={preview} readOnly aria-label="Message preview" mergeFields={[]} />
-                </Card>
-                <FormField label="Send a test to">
-                  <TextField value="lakshmi.v@kaverifoods.in" readOnly />
-                </FormField>
-                <Button icon={Send} onClick={() => setSent(true)}>
-                  Send test
-                </Button>
-                <span aria-live="polite">{sent && <Badge tone="success">Test sent to lakshmi.v@kaverifoods.in at 9:42 am</Badge>}</span>
-              </>
-            }
-          >
-            <FieldRow>
-              <FormField label="Template">
-                <Select options={[{ value: 'leave.approved', label: 'Leave approved' }, { value: 'payslip.ready', label: 'Payslip ready' }]} value="leave.approved" onChange={() => {}} />
-              </FormField>
-              <FormField label="Channel">
-                <Select options={[{ value: 'email', label: 'Email' }, { value: 'inapp', label: 'In-app' }]} value="email" onChange={() => {}} />
-              </FormField>
-              <FormField label="Language">
-                <Select options={[{ value: 'en', label: 'English' }, { value: 'ta', label: 'Tamil' }]} value="en" onChange={() => {}} />
-              </FormField>
-            </FieldRow>
-            <Badge tone="info">YukthiX starter — edit for your company</Badge>
-            <FormField label="Subject">
-              <TextField defaultValue="Your leave is approved" />
-            </FormField>
-            <FormField label="Message" helper="Use Insert field for names and dates. External channels only allow safe fields.">
-              <RichTextEditor
-                value={body}
-                onChange={setBody}
-                mergeFields={[
-                  { value: 'employee.name', label: 'Employee name' },
-                  { value: 'leave.from', label: 'Leave from' },
-                  { value: 'leave.to', label: 'Leave to' },
-                  { value: 'approver.name', label: 'Approver name' },
-                ]}
-              />
-            </FormField>
-          </Workspace>
-        </TabsContent>
-        <TabsContent value="log">
-          <DataTable
-            label="Delivery log"
-            columns={[
-              { key: 'at', header: 'Time', type: 'date', value: (r: DeliveryRow) => r.at, render: (r) => `${formatDate(r.at)}, ${r.at.getHours() % 12 || 12}:${String(r.at.getMinutes()).padStart(2, '0')} ${r.at.getHours() < 12 ? 'am' : 'pm'}` },
-              { key: 'template', header: 'Template', value: (r) => r.template },
-              { key: 'channel', header: 'Channel', value: (r) => r.channel },
-              { key: 'to', header: 'To', value: (r) => r.to },
-              { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => toneFor(v) },
-              { key: 'detail', header: 'Detail', value: (r) => r.detail, width: 300 },
-            ]}
-            rows={deliveries}
-            getRowId={(r) => r.id}
-            empty={<EmptyState title="No messages sent yet." />}
-            rowButtons={(r) => (r.status === 'Failed' ? <Button size="sm">Retry</Button> : null)}
-          />
-        </TabsContent>
-        <TabsContent value="usage">
-          <div className="yx-plt-stack">
-            <BarChart
-              title="Messages sent in September"
-              categories={['Email', 'SMS', 'WhatsApp', 'Push']}
-              series={[{ name: 'Messages', values: [4820, 1260, 2310, 9120] }]}
-              xLabel="Channel"
-            />
-            <DescriptionList columns={2} items={[{ label: 'SMS cost this month', value: formatINR(315) }, { label: 'WhatsApp cost this month', value: formatINR(1848) }, { label: 'Email', value: 'Included' }, { label: 'Push and in-app', value: 'Included' }]} />
-          </div>
-        </TabsContent>
-      </Tabs>
     </DesktopFrame>
   );
 }
