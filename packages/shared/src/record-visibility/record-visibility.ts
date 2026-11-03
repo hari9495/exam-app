@@ -75,6 +75,8 @@ export function grantScopesFor(key: string): readonly GrantScopeType[] {
   if (key === 'expense.payout.manage' || key === 'expense.report.view') return ['tenant', 'legal_entity'];
   // Founder 3 Nov 2026: HR reads the company's expense policy (company-wide, read only) whatever their HR scope.
   if (key === 'expense.policy.view') return GRANT_SCOPE_TYPES;
+  // HLP-10 / HLP-11: company policies are company configuration with company-wide completion figures: whole company only.
+  if (key.startsWith('policy.')) return ['tenant'];
   // M03 batch 5a: payroll and its audit work per legal entity (the pay guard reads the granted entities); legal holds are company-wide.
   // Batch 5e: income tax (workspaces, proofs, regime) works per legal entity like the rest of payroll.
   // Batch 5h: consultants are registered and paid per legal entity like payroll.

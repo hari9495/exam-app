@@ -11654,3 +11654,89 @@ model CompMarketRate {
   @@unique([surveyId, gradeId], map: "comp_market_rates_grade_key")
   @@map("comp_market_rates")
 }
+
+/// HLP-10 / HLP-11: a company policy (code of conduct, POSH, leave …) and who it applies to (empty list = everyone).
+model PolicyDocument {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  number         Int
+  title          String   @db.VarChar(150)
+  category       String   @db.VarChar(60)
+  /// click (confirmation) or otp (a one-time code to the sign-in email).
+  method         String   @default("click") @db.VarChar(10)
+  ownerUserId    String?  @map("owner_user_id") @db.Uuid
+  legalEntityIds String[] @default([]) @map("legal_entity_ids") @db.Uuid
+  locationIds    String[] @default([]) @map("location_ids") @db.Uuid
+  departmentIds  String[] @default([]) @map("department_ids") @db.Uuid
+  gradeIds       String[] @default([]) @map("grade_ids") @db.Uuid
+  version        Int      @default(1)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, number], map: "policy_documents_number_key")
+  @@map("policy_documents")
+}
+
+/// A version of a policy: draft → waiting → published (or sent back). A published version never changes (trigger).
+model PolicyVersion {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  policyId          String    @map("policy_id") @db.Uuid
+  number            Int
+  status            String    @default("draft") @db.VarChar(10)
+  bodyHtml          String    @default("") @map("body_html")
+  bodySha256        String?   @map("body_sha256") @db.Char(64)
+  changeSummary     String?   @map("change_summary") @db.VarChar(500)
+  fileIds           String[]  @default([]) @map("file_ids") @db.Uuid
+  reack             Boolean   @default(true)
+  needsSecondPerson Boolean   @default(true) @map("needs_second_person")
+  effectiveOn       DateTime? @map("effective_on") @db.Date
+  writtenBy         String    @map("written_by") @db.Uuid
+  submittedAt       DateTime? @map("submitted_at") @db.Timestamptz(3)
+  sentBackNote      String?   @map("sent_back_note") @db.VarChar(500)
+  publishedBy       String?   @map("published_by") @db.Uuid
+  publishedAt       DateTime? @map("published_at") @db.Timestamptz(3)
+  version           Int       @default(1)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([policyId, number], map: "policy_versions_number_key")
+  @@map("policy_versions")
+}
+
+/// Who acknowledged which version, when and how. Append-only: the app's database role cannot change or delete it.
+model PolicyAcknowledgement {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  policyId       String   @map("policy_id") @db.Uuid
+  versionId      String   @map("version_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  method         String   @db.VarChar(10)
+  typedName      String?  @map("typed_name") @db.VarChar(200)
+  bodySha256     String   @map("body_sha256") @db.Char(64)
+  ip             String?  @db.VarChar(64)
+  userAgent      String?  @map("user_agent") @db.VarChar(300)
+  acknowledgedAt DateTime @default(now()) @map("acknowledged_at") @db.Timestamptz(3)
+
+  @@unique([versionId, employeeId], map: "policy_acknowledgements_once_key")
+  @@map("policy_acknowledgements")
+}
+
+/// A reminder sent about a policy version (append-only; one per person, kind and day).
+model PolicyReminder {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  policyId       String   @map("policy_id") @db.Uuid
+  versionId      String   @map("version_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  /// employee or manager.
+  kind           String   @db.VarChar(10)
+  sentOn         DateTime @map("sent_on") @db.Date
+  byUserId       String?  @map("by_user_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([versionId, employeeId, kind, sentOn], map: "policy_reminders_day_key")
+  @@map("policy_reminders")
+}

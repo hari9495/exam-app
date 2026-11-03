@@ -109,6 +109,9 @@ export const YX_KEYS = [
   // M05 expenses E1.
   'expense.policy.manage',
   'expense.policy.view',
+  // HLP-10 / HLP-11 company policies.
+  'policy.manage',
+  'policy.publish',
   'expense.claim.view',
   'expense.finance.review',
   'travel.booking.manage',

@@ -85,6 +85,11 @@ describe('notification catalog', () => {
       'perf.pip.checkin_missed',
       'perf.pip.handed_over',
       'perf.pip.extended',
+      // HLP-10 / HLP-11 company policies.
+      'helpdesk.policy.to_acknowledge',
+      'helpdesk.policy.overdue_report',
+      'helpdesk.policy.to_publish',
+      'helpdesk.policy.decided',
     ];
     for (const k of expected) expect(keys).toContain(k);
     expect(NOTIFICATION_TYPES.length).toBe(expected.length);

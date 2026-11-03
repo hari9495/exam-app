@@ -89,6 +89,9 @@ export const PERMISSIONS = [
   ...PAY_PERMISSIONS,
   // M01 lifecycle batch 6a (also in the lifecycle_6a migration).
   ...LIFE_PERMISSIONS,
+  // HLP-10 / HLP-11 company policies (also in the policy_library migration).
+  { key: 'policy.manage', description: 'Write company policies and their versions, choose who they apply to, see who acknowledged, send reminders and export the evidence' },
+  { key: 'policy.publish', description: 'Publish or send back a policy version written by someone else' },
 ];
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -194,6 +197,9 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'expense.policy.manage',
     // Founder 3 Nov 2026: the expense policy, read only (HR).
     'expense.policy.view',
+    // HLP-10 / HLP-11: company policies, and publishing a version someone else wrote.
+    'policy.manage',
+    'policy.publish',
     // E2: claims of people in scope, and the finance check.
     'expense.claim.view',
     'expense.finance.review',

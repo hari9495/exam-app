@@ -26,6 +26,14 @@ export interface SettingDef {
 export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // HLP-04 (founder 3 Nov 2026): how often a published help article is checked again (YX-GRO-07). Desk set-up › Settings.
   'desk.kb.review_months': { label: 'Check help articles again every (months)', scopes: ['tenant'], dated: false, values: ['3', '6', '12', '24'], default: '12' },
+  // HLP-10 / HLP-11 company policies (docs/yukthix/helpdesk-design-map.md 4d): when acknowledgements fall due, reminders,
+  // re-acknowledging a new version, typing one's name, and the second person who publishes (loosening that is access).
+  'policy.ack.due_days': { label: 'Policies: days to acknowledge a policy', scopes: ['tenant'], dated: false, values: ['7', '14', '15', '30', '45', '60'], default: '14' },
+  'policy.reminder.every_days': { label: 'Policies: remind people who have not acknowledged every (days)', scopes: ['tenant'], dated: false, values: ['off', '1', '2', '3', '7'], default: '3' },
+  'policy.reminder.manager_after_days': { label: 'Policies: tell the manager when someone is this many days overdue', scopes: ['tenant'], dated: false, values: ['off', '3', '7', '14', '30'], default: '7' },
+  'policy.reack.default': { label: 'Policies: a new version asks everyone to acknowledge again', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
+  'policy.ack.typed_name': { label: 'Policies: people type their name to acknowledge', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
+  'policy.publish.second_person': { label: 'Policies: a second person publishes each version', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on', guard: 'access.role.manage' },
   // YX-ORG-16: employee codes unique per legal entity (default) or across the company.
   'employee_code.scope': { label: 'Employee codes are unique', scopes: ['tenant'], dated: false, values: ['legal_entity', 'tenant'], default: 'legal_entity' },
   // YX-ORG-15: whether a new structure master starts shared or entity-only.
