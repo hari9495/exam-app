@@ -266,7 +266,17 @@ function Toolbar({ editor, mergeFields, hide = [], disabled }: { editor: Editor;
   // Which picker is open, and whether from its own button or from the "More formatting" menu.
   const [picker, setPicker] = useState<{ key: EditorTool; at: 'bar' | 'more' } | null>(null);
   const close = () => setPicker(null);
-  const run = (fn: (c: Chain) => Chain) => fn(editor.chain().focus()).run();
+  // TipTap gives the editor focus on the next animation frame. A menu or popover that closes because of the action must
+  // not then move focus back to its button: which came last depended on timing (it lost under load). An action marks it.
+  const editorTakesFocus = useRef(false);
+  const run = (fn: (c: Chain) => Chain) => {
+    editorTakesFocus.current = true;
+    return fn(editor.chain().focus()).run();
+  };
+  const keepEditorFocus = (e: Event, also = false) => {
+    if (editorTakesFocus.current || also) e.preventDefault();
+    editorTakesFocus.current = false;
+  };
 
   const groups: Tool[][] = [
     [
@@ -389,11 +399,13 @@ function Toolbar({ editor, mergeFields, hide = [], disabled }: { editor: Editor;
           t === 'divider' ? (
             <span key={`d${i}`} className="yx-editor__divider" aria-hidden="true" />
           ) : t.panel ? (
-            <Popover key={t.key} open={picker?.key === t.key && picker.at === 'bar'} onOpenChange={(o) => setPicker(o ? { key: t.key, at: 'bar' } : null)}>
+            <Popover key={t.key} open={picker?.key === t.key && picker.at === 'bar'} onOpenChange={(o) => { if (o) editorTakesFocus.current = false; setPicker(o ? { key: t.key, at: 'bar' } : null); }}>
               <PopoverTrigger asChild>
                 <IconButton icon={t.icon} label={t.label} aria-pressed={t.active} disabled={disabled} />
               </PopoverTrigger>
-              <PopoverContent className={t.key === 'link' ? 'yx-editor__link' : undefined}>{t.panel(close)}</PopoverContent>
+              <PopoverContent className={t.key === 'link' ? 'yx-editor__link' : undefined} onCloseAutoFocus={(e) => keepEditorFocus(e)}>
+                {t.panel(close)}
+              </PopoverContent>
             </Popover>
           ) : (
             <IconButton key={t.key} icon={t.icon} label={t.label} aria-pressed={t.active} disabled={disabled || t.disabled} onClick={() => run(t.apply!)} />
@@ -401,14 +413,14 @@ function Toolbar({ editor, mergeFields, hide = [], disabled }: { editor: Editor;
         )}
         {extra.length > 0 && (
           <Popover open={Boolean(morePanel)} onOpenChange={(o) => !o && close()}>
-            <Menu>
+            <Menu onOpenChange={(o) => o && (editorTakesFocus.current = false)}>
               <PopoverAnchor asChild>
                 <MenuTrigger asChild>
                   <IconButton ref={moreRef} icon={MoreHorizontal} label="More formatting" disabled={disabled} />
                 </MenuTrigger>
               </PopoverAnchor>
               {/* A picker chosen here opens in a popover by this button; the menu mustn't take focus back first. */}
-              <MenuContent align="end" onCloseAutoFocus={(e) => picker?.at === 'more' && e.preventDefault()}>
+              <MenuContent align="end" onCloseAutoFocus={(e) => keepEditorFocus(e, picker?.at === 'more')}>
                 {extra.map((t, i) =>
                   t === 'divider' ? (
                     <MenuSeparator key={`d${i}`} />
@@ -428,20 +440,20 @@ function Toolbar({ editor, mergeFields, hide = [], disabled }: { editor: Editor;
                 )}
               </MenuContent>
             </Menu>
-            <PopoverContent align="end" className={picker?.key === 'link' ? 'yx-editor__link' : undefined}>
+            <PopoverContent align="end" className={picker?.key === 'link' ? 'yx-editor__link' : undefined} onCloseAutoFocus={(e) => keepEditorFocus(e)}>
               {morePanel?.(close)}
             </PopoverContent>
           </Popover>
         )}
       </div>
       {mergeFields.length > 0 && (
-        <Menu>
+        <Menu onOpenChange={(o) => o && (editorTakesFocus.current = false)}>
           <MenuTrigger asChild>
             <Button size="sm" icon={Braces} disabled={disabled}>
               Insert field
             </Button>
           </MenuTrigger>
-          <MenuContent align="end">
+          <MenuContent align="end" onCloseAutoFocus={(e) => keepEditorFocus(e)}>
             {mergeFields.map((f) => (
               <MenuItem key={f.value} onSelect={() => run((c) => c.insertContent(`{{${f.value}}}`))} shortcut={<code>{`{{${f.value}}}`}</code>}>
                 {f.label}

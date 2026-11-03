@@ -200,7 +200,41 @@ describe('RichTextEditor', () => {
     expect(screen.queryByRole('button', { name: 'Highlight' })).toBeNull();
   });
 
-  it('moves the buttons that do not fit into "More formatting"', async () => {
+  it('keeps focus in the text when the menu closes after the editor took focus (as under load)', async () => {
+    const u = userEvent.setup();
+    const real = window.setTimeout;
+    // Under load the menu's "focus back to its button" timer (0 ms) can run after the editor's focus frame. Make every
+    // 0 ms page timer late to force that order: the text must keep focus (it lost it to "More formatting" before).
+    window.setTimeout = ((fn: TimerHandler, ms?: number, ...a: unknown[]) => real(fn as () => void, ms ? ms : 40, ...a)) as typeof window.setTimeout;
+    // jsdom has no layout: every slot is 32 px wide with a 2 px gap, the toolbar 200 px.
+    const proto = HTMLElement.prototype;
+    const saved = ['offsetWidth', 'offsetLeft', 'clientWidth'].map((k) => [k, Object.getOwnPropertyDescriptor(proto, k)] as const);
+    Object.defineProperty(proto, 'offsetWidth', { configurable: true, get: () => 32 });
+    Object.defineProperty(proto, 'offsetLeft', { configurable: true, get(this: HTMLElement) { return [...(this.parentElement?.children ?? [])].indexOf(this) * 34; } });
+    Object.defineProperty(proto, 'clientWidth', { configurable: true, get(this: HTMLElement) { return this.classList.contains('yx-editor__tools') ? 200 : 0; } });
+    try {
+      render(<RichTextEditor aria-label="Message" defaultValue="<p>Hello</p>" />);
+      expect(await screen.findByRole('button', { name: 'Strikethrough' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Heading 2' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
+      await u.click(screen.getByRole('button', { name: 'More formatting' }));
+      expect(await screen.findByRole('menuitemcheckbox', { name: 'Heading 2' })).toHaveAttribute('aria-checked', 'false');
+      expect(screen.getByRole('menuitem', { name: 'Undo' })).toHaveAttribute('aria-disabled', 'true');
+      await u.click(screen.getByRole('menuitem', { name: 'Text colour' }));
+      await u.click(await screen.findByRole('button', { name: 'Red' }));
+      // The editor takes focus back on the next frame; a menu opened before that would close again.
+      await waitFor(() => expect(screen.getByRole('textbox', { name: 'Message' })).toHaveFocus());
+      await u.click(screen.getByRole('button', { name: 'More formatting' }));
+      await u.click(await screen.findByRole('menuitemcheckbox', { name: 'Heading 2' }));
+      await waitFor(() => expect(screen.getByRole('textbox', { name: 'Message' })).toHaveFocus());
+      await u.click(screen.getByRole('button', { name: 'More formatting' }));
+      expect(await screen.findByRole('menuitemcheckbox', { name: 'Heading 2' })).toHaveAttribute('aria-checked', 'true');
+    } finally {
+      window.setTimeout = real;
+      for (const [k, d] of saved) if (d) Object.defineProperty(proto, k, d);
+      else delete (proto as unknown as Record<string, unknown>)[k];
+    }
+  });  it('moves the buttons that do not fit into "More formatting"', async () => {
     const u = userEvent.setup();
     // jsdom has no layout: every slot is 32 px wide with a 2 px gap, the toolbar 200 px.
     const proto = HTMLElement.prototype;
