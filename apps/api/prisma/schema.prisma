@@ -9128,6 +9128,8 @@ model Competency {
   description    String?  @db.VarChar(500)
   status         String   @default("active") @db.VarChar(8)
   starterKey     String?  @map("starter_key") @db.VarChar(40)
+  /// PRF-14 (migration 20261490000000_perf_pieces): the question-bank tag used as this competency's skills test.
+  questionTagId  String?  @map("question_tag_id") @db.Uuid
   version        Int      @default(1)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -9337,6 +9339,8 @@ model ReviewCycle {
   stages           Json
   eligibilityRules Json      @map("eligibility_rules")
   peerFeedback     Json?     @map("peer_feedback")
+  /// PRF-04 (migration 20261490000000_perf_pieces): calibration sessions planned in the wizard, made at launch.
+  calibrationPlan  Json?     @map("calibration_plan")
   status           String    @default("draft") @db.VarChar(12)
   launchedAt       DateTime? @map("launched_at") @db.Timestamptz(3)
   releasedAt       DateTime? @map("released_at") @db.Timestamptz(3)
@@ -9476,8 +9480,26 @@ model PerfOwnerTransfer {
   decisionNote         String?   @map("decision_note") @db.VarChar(500)
   decidedBy            String?   @map("decided_by") @db.Uuid
   decidedAt            DateTime? @map("decided_at") @db.Timestamptz(3)
+  // PRF-13 (migration 20261490000000_perf_pieces): HR took the decision off the new manager ("Reassign to HR").
+  withHrAt             DateTime? @map("with_hr_at") @db.Timestamptz(3)
+  withHrBy             String?   @map("with_hr_by") @db.Uuid
 
   @@map("perf_owner_transfers")
+}
+
+/// PRF-01 (migration 20261490000000_perf_pieces): the HR home's numbers per company and month (founder answer b).
+model PerfHomeSnapshot {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  month          DateTime @db.Date
+  cyclesRunning  Int      @map("cycles_running")
+  overdueStages  Int      @map("overdue_stages")
+  pipsActive     Int      @map("pips_active")
+  goalsAligned   Int?     @map("goals_aligned")
+  takenAt        DateTime @default(now()) @map("taken_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, month])
+  @@map("perf_home_snapshots")
 }
 
 // ---- Performance builder 3 (migration 20261460000000_performance_b3): PRF-15 disputes, PRF-16 manager coach.
@@ -10531,6 +10553,11 @@ model Pip {
   outcomeAt         DateTime? @map("outcome_at") @db.Timestamptz(3)
   letterId          String?   @map("letter_id") @db.Uuid
   exitCaseId        String?   @map("exit_case_id") @db.Uuid
+  /// PRF-12 (migration 20261490000000_perf_pieces): extended once more after "not met" (founder answer a).
+  reextendedFrom    DateTime? @map("reextended_from") @db.Date
+  reextendReason    String?   @map("reextend_reason") @db.VarChar(1000)
+  reextendedBy      String?   @map("reextended_by") @db.Uuid
+  reextendedAt      DateTime? @map("reextended_at") @db.Timestamptz(3)
   version           Int       @default(1)
   createdBy         String?   @map("created_by") @db.Uuid
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
