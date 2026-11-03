@@ -12258,5 +12258,279 @@
       "Expenses · EXP-07 · Expense policy matrix · HR (read only)"
     ],
     "note": "Negative."
+  },
+  {
+    "id": "MT-SEC-01",
+    "area": "Security · design check (3 Nov 2026)",
+    "screen": "Sign in · Continue pressed too early (negative)",
+    "url": "http://localhost:3000/yx/sign-in",
+    "account": "Not signed in. Use your own browser, never the app’s built-in preview pane. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open the sign-in page and click Continue without typing anything.",
+      "2. Type hr@demo-org (no ending) and click Continue again."
+    ],
+    "expected": "Nothing is sent. Step 1: under Work email it says \"Enter your work email.\" and the cursor is in the box. Step 2: it says \"Enter your full email, like name@company.com\". The Continue button is never greyed out.",
+    "stories": [
+      "Security · SEC-01 · Sign in · work email, or another way"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-SEC-02",
+    "area": "Security · design check (3 Nov 2026)",
+    "screen": "Sign in · email and password (positive)",
+    "url": "http://localhost:3000/yx/sign-in",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi). Own browser, not the preview pane. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Type hr@demo-org.test and click Continue.",
+      "2. Click Sign in with the password box empty.",
+      "3. Type the password from the demo list and click Sign in; give the second step if asked."
+    ],
+    "expected": "Step 2: nothing is sent; \"Enter your password.\" shows under the box and the cursor is in it. Step 3: you are signed in and land on a YukthiX page.",
+    "stories": [
+      "Security · SEC-01 · Sign in · password"
+    ],
+    "note": "Positive, with a negative step."
+  },
+  {
+    "id": "MT-SEC-03",
+    "area": "Security · design check (3 Nov 2026)",
+    "screen": "Sign in · wrong password and lock-out (negative)",
+    "url": "http://localhost:3000/yx/sign-in",
+    "account": "arjun@demo-org.test (Arjun Kulkarni). Own browser. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Type arjun@demo-org.test, Continue, then a wrong password, and click Sign in.",
+      "2. Repeat until the page says to wait."
+    ],
+    "expected": "Step 1: \"Invalid email or password.\" (no hint which one was wrong). Step 2: \"Too many tries. Try again in …\" with the real wait; Sign in does nothing more until then. The lock-out is the company setting on Settings › Security.",
+    "stories": [
+      "Security · SEC-01 · Sign in · wrong password",
+      "Security · SEC-01 · Sign in · password, locked after too many tries"
+    ],
+    "note": "Negative. Ask the developer to unlock Arjun afterwards (or use MT-SEC-07)."
+  },
+  {
+    "id": "MT-SEC-04",
+    "area": "Security · design check (3 Nov 2026)",
+    "screen": "Forgot and reset password (positive and negative)",
+    "url": "http://localhost:3000/yx/forgot-password",
+    "account": "arjun@demo-org.test. Own browser. The reset email is in the developer’s mail log. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Click \"Email me a reset link\" with the box empty.",
+      "2. Type nobody@demo-org.test and send.",
+      "3. Type arjun@demo-org.test and send; open the link from the mail log.",
+      "4. On the new-password page type two different passwords and click Save new password.",
+      "5. Type the same new password twice (12 characters or more) and save."
+    ],
+    "expected": "Step 1: \"Enter your work email.\" and the cursor is in the box; nothing is sent. Step 2: the same \"If … has a YukthiX account, we sent it a reset link\" answer as step 3 (no hint that the account does not exist). Step 4: nothing is sent; \"The two passwords are not the same\" and the cursor is in the second box. Step 5: \"Password changed\"; the old password no longer works.",
+    "stories": [
+      "Security · SEC-01 · Forgot password · work email only",
+      "Security · SEC-01 · Reset password · new password"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-SEC-05",
+    "area": "Security · design check (3 Nov 2026)",
+    "screen": "Confirm it’s you (step-up) before a sensitive change",
+    "url": "http://localhost:3000/yx/settings/security",
+    "account": "admin@demo-org.test (System Admin), with an authenticator app set up. Own browser. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Change \"Lock after\" by one and click Save changes.",
+      "2. In \"Confirm it’s you\", choose Authenticator app and click Confirm with the box empty.",
+      "3. Type a wrong code and Confirm.",
+      "4. Type the right code and Confirm."
+    ],
+    "expected": "Step 2: nothing is sent; \"Enter the 6-digit code.\" and the cursor is in the box. Step 3: the refusal shows in the dialog. Step 4: the dialog closes and a toast \"Security settings saved\" appears for 5 seconds (no green box on the page).",
+    "stories": [
+      "Security · Confirm it’s you · Step-up · passkey and app",
+      "Security · Confirm it’s you · Step-up · wrong code",
+      "Security · Admin · 2.3 Security"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-SEC-06",
+    "area": "Security · design check (3 Nov 2026)",
+    "screen": "Security settings · nothing changed, emergency admins (positive and negative)",
+    "url": "http://localhost:3000/yx/settings/security",
+    "account": "admin@demo-org.test (System Admin). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open the page and click Save changes without changing anything.",
+      "2. With an identity provider on, tick \"Sign in only through your identity provider\" and open the emergency admins list.",
+      "3. Click Discard changes."
+    ],
+    "expected": "Step 1: nothing is sent; \"No changes yet\" stays beside the button. Step 2: every active System Admin of the company is in the list, however many people the company has. Step 3: the page is back as saved.",
+    "stories": [
+      "Security · Admin · 2.3 Security",
+      "Security · Admin · 2.3 Security · single sign-on only"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-SEC-07",
+    "area": "Security · design check (3 Nov 2026)",
+    "screen": "Login activity · unlock and access (positive and negative)",
+    "url": "http://localhost:3000/yx/admin/login-activity",
+    "account": "admin@demo-org.test (System Admin); then arjun@demo-org.test (employee) in a second browser. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As the admin, find Arjun’s locked attempts (from MT-SEC-03) and click Unlock; give a reason and confirm it’s you.",
+      "2. As Arjun, open the same address."
+    ],
+    "expected": "Step 1: the account unlocks and the list updates. Step 2: Arjun sees the no-access page (\"ask … for access\"), never \"check your connection\".",
+    "stories": [
+      "Security · Admin · Login activity · unlock a locked account",
+      "Security · Admin · Login activity · attempts"
+    ],
+    "note": "Positive and negative (employee)."
+  },
+  {
+    "id": "MT-SEC-08",
+    "area": "Security · design check (3 Nov 2026)",
+    "screen": "My security · only method, mobile number, password (negative)",
+    "url": "http://localhost:3000/yx/me/security",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi), with exactly one sign-in method and a role that needs one. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Click Remove on the only sign-in method.",
+      "2. In Mobile number, click \"Text me a code\" with the box empty.",
+      "3. Click Change password, then Change password again with the boxes empty."
+    ],
+    "expected": "Step 1: no dialog opens; the line \"You can’t remove your only sign-in method…\" turns red and is read out. Step 2: \"Enter your mobile number.\" and the cursor is in the box. Step 3: each empty box says what is missing and the cursor goes to the first. No button is ever greyed out.",
+    "stories": [
+      "Security · My security · My security"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-SEC-09",
+    "area": "Security · design check (3 Nov 2026)",
+    "screen": "Recovery codes · Continue before saving (negative, then positive)",
+    "url": "http://localhost:3000/yx/me/security",
+    "account": "hr@demo-org.test (HR Admin - Lakshmi), with a sign-in method set up. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Click \"Make new codes\" and confirm it’s you.",
+      "2. Click Done without ticking the box.",
+      "3. Tick \"I have saved my recovery codes\" and click Done."
+    ],
+    "expected": "Step 2: the codes stay; \"Save the codes, then tick this box.\" shows and the box has the focus. Step 3: the codes close. The codes never appear in the address bar.",
+    "stories": [
+      "Security · Confirm it’s you · Recovery codes · shown once"
+    ],
+    "note": "Negative and positive."
+  },
+  {
+    "id": "MT-SEC-10",
+    "area": "Security · design check (3 Nov 2026)",
+    "screen": "Identity providers · turn on, another company (positive and negative)",
+    "url": "http://localhost:3000/yx/settings/identity-providers",
+    "account": "admin@demo-org.test (System Admin); hr@demo-org.test for step 3. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Add a provider and click Add with nothing filled.",
+      "2. Fill it in, add it, then click Turn on.",
+      "3. As HR (no settings key), open the same address."
+    ],
+    "expected": "Step 1: each missing field says what to fill and the first takes the focus. Step 2: toasts \"<name> added\" and \"<name> is on\" (one each). Step 3: the no-access page.",
+    "stories": [
+      "Security · Single sign-on providers · Add a provider · Add pressed with nothing filled",
+      "Security · Single sign-on providers · Providers · no access"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-NTF-01",
+    "area": "Notifications · design check (3 Nov 2026)",
+    "screen": "Emails · branding (positive and negative)",
+    "url": "http://localhost:3000/yx/settings/emails",
+    "account": "admin@demo-org.test (System Admin). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Click Save branding without changing anything.",
+      "2. Type #FFD966 as the button colour and save.",
+      "3. Type #1F4E79 and a sender name \"Kaveri People\", then save."
+    ],
+    "expected": "Step 1: nothing is sent; \"No changes yet\" beside the button. Step 2: the colour is refused before saving (too light to read). Step 3: toast \"Branding saved\" (5 s), no green box.",
+    "stories": [
+      "Notifications · Email · List"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-NTF-02",
+    "area": "Notifications · design check (3 Nov 2026)",
+    "screen": "Emails · one email’s wording and test (positive and negative)",
+    "url": "http://localhost:3000/yx/settings/emails",
+    "account": "admin@demo-org.test (System Admin). The test email is in the developer’s mail log. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Click Edit on Password reset; click Save wording without a change.",
+      "2. Add {{code}} to the subject and save.",
+      "3. Undo that, change the heading, save; then click Send me a test."
+    ],
+    "expected": "Step 1: nothing is sent; \"No changes yet\". Step 2: the API’s refusal shows under Subject. Step 3: toasts \"Wording saved\" and \"Test sent to admin@demo-org.test\"; the test email’s subject starts with \"Test:\".",
+    "stories": [
+      "Notifications · Email · Editor"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-NTF-03",
+    "area": "Notifications · design check (3 Nov 2026)",
+    "screen": "SMS · policy save (positive and negative)",
+    "url": "http://localhost:3000/yx/settings/sms",
+    "account": "admin@demo-org.test (System Admin). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Click Save changes without a change.",
+      "2. Set the monthly SMS limit to 500 and save."
+    ],
+    "expected": "Step 1: nothing is sent; \"No changes yet\". Step 2: toast \"SMS settings saved\"; \"This month\" shows the limit.",
+    "stories": [
+      "Notifications · SMS · SMS · own accounts, then YukthiX"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-NTF-04",
+    "area": "Notifications · design check (3 Nov 2026)",
+    "screen": "SMS · Send test without a verified number (negative)",
+    "url": "http://localhost:3000/yx/settings/sms",
+    "account": "admin@demo-org.test (System Admin) with no verified mobile number, and at least one SMS account. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Click Send test on an account."
+    ],
+    "expected": "Nothing is sent. A box next to the account says the test goes only to your own verified number and to verify it in My security first. The button is not greyed out.",
+    "stories": [
+      "Notifications · SMS · SMS · send test off (number not verified)"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-NTF-05",
+    "area": "Notifications · design check (3 Nov 2026)",
+    "screen": "SMS · add an account (positive)",
+    "url": "http://localhost:3000/yx/settings/sms",
+    "account": "admin@demo-org.test (System Admin), mobile number verified in My security. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Click Add account, choose the Development gateway, fill the Name, and Save; confirm it’s you.",
+      "2. Click Send test on it."
+    ],
+    "expected": "Step 1: the drawer closes and a toast \"<name> added\" shows. Step 2: toast \"Test sent from <name> to +91 …\" and the delivery log gets a test row. No secret is ever shown back.",
+    "stories": [
+      "Notifications · SMS · SMS · add account"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-NTF-06",
+    "area": "Notifications · design check (3 Nov 2026)",
+    "screen": "SMS and emails · no access (negative)",
+    "url": "http://localhost:3000/yx/settings/sms",
+    "account": "arjun@demo-org.test (employee); then panel@demo-org.test (Manager - Divya). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As Arjun open /yx/settings/sms, then /yx/settings/emails.",
+      "2. As Divya do the same."
+    ],
+    "expected": "Both see the no-access page on both addresses (no settings key), never an error or a blank page.",
+    "stories": [
+      "Notifications · SMS · SMS · no access"
+    ],
+    "note": "Negative (employee, manager)."
   }
 ]

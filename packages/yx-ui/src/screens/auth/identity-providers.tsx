@@ -8,7 +8,6 @@ import { EmptyState, ErrorState, InlineAlert, NoAccessState, Skeleton } from '..
 import { ErrorSummary, FormField, FormSection, useSaveErrors } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { PasswordField, TextArea, TextField } from '../../components/inputs';
-import { useToast } from '../../components/notify';
 import { ConfirmDialog } from '../../components/overlay';
 import { Segment } from '../../components/segment';
 import { Breadcrumbs, PageHeader } from '../../components/shell';
@@ -114,7 +113,6 @@ function IdentityProviderEditor({ provider, onClose, onSave }: EditorProps) {
   const [draft, setDraft] = useState(() => idpDraftOf(provider));
   const [dirty, setDirty] = useState(false);
   const [status, setStatus] = useState<{ kind: 'idle' | 'saving' } | { kind: 'failed'; message: string }>({ kind: 'idle' });
-  const { toast } = useToast();
   const { input, errors } = idpInput(draft, provider);
   const saveErrors = useSaveErrors(errors);
   const { errorOf } = saveErrors;
@@ -130,7 +128,6 @@ function IdentityProviderEditor({ provider, onClose, onSave }: EditorProps) {
       await onSave(input);
       setDirty(false);
       onClose();
-      toast({ tone: 'success', title: provider ? `${input.name ?? provider.name} saved` : `${input.name ?? 'Identity provider'} added` });
     } catch (err) {
       setStatus({ kind: 'failed', message: errorText(err) });
     }
@@ -279,14 +276,12 @@ function Providers({ providers, samlMetadataUrl, oidcRedirectUri, onSave, onSetS
   const [editing, setEditing] = useState<{ provider: IdentityProviderDetail | null; key: number } | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const { toast } = useToast();
   const add = () => setEditing({ provider: null, key: Date.now() });
   const toggle = async (p: IdentityProviderDetail) => {
     setError(null);
     setToggling(p.id);
     try {
       await onSetStatus(p.id, p.status === 'active' ? 'disabled' : 'active');
-      toast({ tone: 'success', title: `${p.name} is ${p.status === 'active' ? 'off' : 'on'}` });
     } catch (err) {
       setError(errorText(err));
     } finally {
