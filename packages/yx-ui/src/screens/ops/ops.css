@@ -62,6 +62,9 @@
 .yx-ops-receipt__line { fill: var(--yx-color-border-strong); }
 .yx-ops-receipt__cap { display: flex; flex-direction: column; align-items: center; font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); text-align: center; }
 .yx-ops-receipt[data-large] .yx-ops-receipt__svg { width: calc(var(--yx-space-16) * 4); }
+.yx-ops-receipt__img { display: block; width: calc(var(--yx-space-16) * 2); max-height: calc(var(--yx-space-16) * 3); object-fit: contain; border-radius: var(--yx-radius-control); background: var(--yx-color-bg-surface); }
+.yx-ops-receipt[data-large] .yx-ops-receipt__img { width: calc(var(--yx-space-16) * 4); max-height: calc(var(--yx-space-16) * 5); }
+.yx-ops-receipt__pdf { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--yx-space-1); width: calc(var(--yx-space-16) * 2); aspect-ratio: 3 / 4; border: var(--yx-border-width) solid var(--yx-color-border-strong); border-radius: var(--yx-radius-control); background: var(--yx-color-bg-surface); color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); font-weight: 600; }
 
 /* Camera */
 .yx-ops-camera { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--yx-space-3); min-height: calc(var(--yx-space-16) * 4); padding: var(--yx-space-4); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-inverse); color: var(--yx-color-text-inverse); text-align: center; }
