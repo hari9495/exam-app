@@ -37,39 +37,36 @@ export const MyTicket: S = {
 };
 
 
-export const Setup: S = {
-  name: 'Desk set-up',
-  render: () =>
-    shell(
-      'desk-setup',
-      <DeskSetupScreen
-        state="ready"
-        desks={[DESK, HR_DESK]}
-        canCreate
-        selectedId="d-it"
-        onSelect={() => {}}
-        detail={{ ...DETAIL, canSetUp: true, canManageMembers: true }}
-        canned={CANNED}
-        calendars={[{ id: 'cal-1', name: 'Office hours', timeZone: 'Asia/Kolkata', version: 1, hours: [1, 2, 3, 4, 5].map((weekday) => ({ id: `h${weekday}`, weekday, startMinute: 540, endMinute: 1080, validFrom: '2026-01-01', validTo: null })), holidays: [{ id: 'hol1', on: '2026-10-20', name: 'Dussehra', halfDay: false }] }]}
-        canCalendars
-        onCreateDesk={noop}
-        onUpdateDesk={noop}
-        onSearchUsers={async () => [{ id: 'u-new', name: 'Ravi Menon', email: 'ravi.menon@kaveri.test' }]}
-        onSeatCost={async () => ({ paid: true, reason: 'Adds ₹999 a month (one agent).' })}
-        onAddMember={noop}
-        onEndMember={noop}
-        onSaveGroup={noop}
-        onSaveCategory={noop}
-        onSaveType={noop}
-        onSaveStatus={noop}
-        onSaveMatrix={noop}
-        onSaveCanned={noop}
-        onSaveScenario={noop}
-        onAddHoliday={noop}
-        onSetHours={noop}
-      />,
-    ),
+const setupProps: React.ComponentProps<typeof DeskSetupScreen> = {
+  state: 'ready',
+  desks: [DESK, HR_DESK],
+  canCreate: true,
+  selectedId: 'd-it',
+  onSelect: () => {},
+  detail: { ...DETAIL, canSetUp: true, canManageMembers: true },
+  canned: CANNED,
+  calendars: [{ id: 'cal-1', name: 'Office hours', timeZone: 'Asia/Kolkata', version: 1, hours: [1, 2, 3, 4, 5].map((weekday) => ({ id: `h${weekday}`, weekday, startMinute: 540, endMinute: 1080, validFrom: '2026-01-01', validTo: null })), holidays: [{ id: 'hol1', on: '2026-10-20', name: 'Dussehra', halfDay: false }] }],
+  canCalendars: true,
+  onCreateDesk: noop,
+  onUpdateDesk: noop,
+  onSearchUsers: async () => [{ id: 'u-new', name: 'Ravi Menon', email: 'ravi.menon@kaveri.test' }],
+  onSeatCost: async () => ({ paid: true, reason: 'Adds ₹999 a month (one agent).' }),
+  onAddMember: noop,
+  onEndMember: noop,
+  onSaveGroup: noop,
+  onSaveCategory: noop,
+  onSaveType: noop,
+  onSaveStatus: noop,
+  onSaveMatrix: noop,
+  onSaveCanned: noop,
+  onSaveScenario: noop,
+  onAddHoliday: noop,
+  onSetHours: noop,
 };
+export const Setup: S = { name: 'Desk set-up', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} />) };
+// HLP-04 (founder 3 Nov 2026): the article review interval is a company setting, on the Settings tab for the company's
+// Service Desk owner (desk.desk.create).
+export const SetupKbReview: S = { name: 'Desk set-up · Settings · check help articles again every', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="settings" kbReviewMonths={12} onKbReviewMonths={noop} />) };
 
 export const Calendar: S = { name: 'SD-1.11 My calendar', render: () => shell('desk-tickets', <MyCalendarScreen state="ready" items={CAL_ITEMS} tasks={WORK.tasks} feed={null} onOpenTicket={() => {}} onNewFeed={async () => 'https://api.example.test/desk/calendar-feed/o/u/secret.ics'} onRevokeFeed={noop} />) };
 export const SlaSetupTab: S = { name: 'SD-1.14 Response targets (desk set-up tab)', render: () => shell('desk-setup', <SlaTab detail={DETAIL} calendars={[]} setup={SLA_SETUP} compliance={COMPLIANCE} month="2026-10" onMonth={() => {}} onCreatePolicy={noop} onAddVersion={noop} onUpdatePolicy={noop} onSaveTargets={noop} />) };

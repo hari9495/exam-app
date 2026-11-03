@@ -13658,5 +13658,41 @@
       "Screens/Helpdesk/HLP-05 · SLA dashboard"
     ],
     "note": "Negative (tenant)."
+  },
+  {
+    "id": "MT-HLP-04-13",
+    "area": "Helpdesk · HLP-04 Knowledge base editor (3 Nov 2026)",
+    "screen": "Desk set-up › Settings · check help articles again every",
+    "url": "http://localhost:3000/yx/desk/setup?tab=settings",
+    "account": "The company's Service Desk owner (a demo user with desk.desk.create, e.g. the company admin). Browser window 1278 x 635.",
+    "steps": [
+      "1. Open Helpdesk › Desk set-up, Settings tab, scroll to \"Check help articles again every\".",
+      "2. Press Save without changing it.",
+      "3. Choose 6 months and press Save.",
+      "4. As a knowledge author open a published article, ask the developer to set its review date to yesterday, press Mark reviewed.",
+      "5. Start a new article and open Change details."
+    ],
+    "expected": "Step 1: 12 months is chosen (the default), as a joined Segment. Step 2: toast \"Nothing has changed yet.\" Step 3: toast \"Help articles are now checked every 6 months.\" Step 4: toast \"Marked reviewed. The next check is due on <today + 6 months>.\" Step 5: Review by is today + 6 months. Settings › the settings registry shows the same 6.",
+    "stories": [
+      "Screens/Service desk/Phase 3b-1 (wired screens)",
+      "Screens/Helpdesk/HLP-04 · Knowledge base editor"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HLP-04-14",
+    "area": "Helpdesk · HLP-04 Knowledge base editor (3 Nov 2026)",
+    "screen": "Review interval · who may change it, another company",
+    "url": "http://localhost:3000/yx/desk/setup?tab=settings",
+    "account": "A desk admin of \"IT help desk\" without desk.desk.create; then the admin of a second demo company. Browser window 1278 x 635.",
+    "steps": [
+      "1. As the desk admin open Desk set-up › Settings.",
+      "2. As the second company's admin open the same tab."
+    ],
+    "expected": "Step 1: the card is not shown (and the API refuses a change with 403). Step 2: the second company still shows 12 months; changing it there does not change the first company.",
+    "stories": [
+      "Screens/Service desk/Phase 3b-1 (wired screens)"
+    ],
+    "note": "Negative."
   }
 ]

@@ -24,14 +24,16 @@ feature not built** (no API) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Helpdesk HLP-01 … 14 | 14 | 94 | 2 | 0 | 69 | 0 | 165 |
-| B. Service desk designs | 5 | 53 | 2 | 0 | 0 | 0 | 55 |
-| **All Helpdesk groups (A–B)** | **19** | **147** | **4** | **0** | **69** | **0** | **220** |
+| A. Helpdesk HLP-01 … 14 | 14 | 56 | 2 | 9 | 69 | 0 | 136 |
+| B. Service desk designs | 5 | 72 | 2 | 0 | 0 | 0 | 74 |
+| **All Helpdesk groups (A–B)** | **19** | **128** | **4** | **9** | **69** | **0** | **210** |
 Round 3 recount (script, 3 Nov 2026, `feat/yukthix-hlp-03`): HLP-03 has 18 stories (the 6 approved plus 12 drawn for
 the old workspace's states), all live; Phase 3b-1 loses the stand-in's 4 stories (Workspace, WorkspaceCollaborator,
 WorkspaceUnverified, ReplyTooEarly) and has 26; esm-live loses the 16 "Live ·" stories of the ticket side cards and the
 escalate dialog (94 left).
 Round 2 (HLP-02):
+Round 4b (script, 3 Nov 2026, `feat/yukthix-hlp-04b`): Phase 3b-1 gains 1 story (Desk set-up · Settings · check help
+articles again every), live.
 Round 4 recount (script, 3 Nov 2026, `feat/yukthix-hlp-04`): HLP-04 has 24 stories (the 3 approved plus 21 drawn for
 the old knowledge screen's states): 23 live, 1 live (gap) (Review due: the design's group audience). The Service desk
 group "HLP-04 Knowledge" (6 stories) is deleted with its stand-in `KnowledgeScreen`, so B has 5 groups; the script no
@@ -237,7 +239,7 @@ templates, content gaps, recycle bin, four-eyes review, compare, preview, detail
 |---|---|---|
 | Published · Published | live | an open article: the design's header (KB-n, by the last writer, updated date, Published badge), title and answer, rail "Where it shows" (space, who can read it, category, "Also suggest for these words", "Use in assistant answers"), "How it's doing" (views 90 days, answered without a ticket, helpful, health), "Versions" with Compare. The primary button is "Publish changes" when another writer's version waits and the viewer is a publisher, else "Send for review" (four eyes) |
 | Draft · New draft | live | "New article" starts a draft (`POST desk/kb/articles`, `desk.kb.author`); Save draft (`PATCH desk/kb/articles/:id` for the rail choices, then `POST …/versions`), toast |
-| ReviewDue · Review due | live (gap) | review date passed (12 months after publishing, YX-GRO-07): "Review due" badge and the banner with Mark reviewed (new `POST desk/kb/articles/:id/reviewed`, `desk.kb.author`: next check 12 months on, toast). Gap: the design's Audience is a list of groups (Hosur plant, managers); the server's audience is per space (agents, people who ask this desk, public), shown read only (question 13) |
+| ReviewDue · Review due | live (gap) | review date passed (the company's interval after the article was started or last marked reviewed, YX-GRO-07; default 12 months): "Review due" badge and the banner with Mark reviewed (new `POST desk/kb/articles/:id/reviewed`, `desk.kb.author`: next check after the company's interval, toast). Gap: the design's Audience is a list of groups (Hosur plant, managers); the server's audience is per space (agents, people who ask this desk, public), shown read only (question 13) |
 | Articles · Knowledge base · articles in a space | live | new story: `GET desk/kb/spaces`, `GET desk/kb/articles?spaceId=` (search, state Segment, out of date); the space Select; a row opens the article (`?article=`) |
 | NewArticle · New article | live | new story: title (required), summary, category, template; "Start the draft" |
 | NewSpace · New space | live | new story: `POST desk/kb/spaces` (`desk.desk.create`, or `desk.settings.manage` for one's own desk); who can read it is a Segment; toast |
@@ -436,6 +438,7 @@ the HLP-01 stand-in and are not rows.
 |---|---|---|
 | MyTicket · HLP-01 My ticket (requester view) | live | /yx/desk/help/[id] renders MyTicketScreen; replies, colleagues, files through `desk/my/tickets/:id` |
 | Setup · Desk set-up | live | /yx/desk/setup renders DeskSetupScreen |
+| SetupKbReview · Desk set-up · Settings · check help articles again every | live | HLP-04b (founder 3 Nov 2026): Settings tab, company's Service Desk owner (`desk.desk.create`): Segment 3, 6, 12 or 24 months; `GET/PUT desk/kb/settings` (registry `desk.kb.review_months`, default 12), toast |
 | Calendar · SD-1.11 My calendar | live | /yx/desk/calendar; the calendar feed link can be made and revoked |
 | SlaSetupTab · SD-1.14 Response targets (desk set-up tab) | live | /yx/desk/setup, SLA tab (`desk.sla.manage`) |
 | EmailSetup · SD-1.18 Email (desk set-up tab) | live | /yx/desk/setup, Email tab (`desk.mailbox.manage`) |
@@ -564,8 +567,12 @@ Live page: /yx/support (Security › Contact YukthiX), with `org.yukthix_support
   search finds a published article by them, weighted like the title.
 - **Use in assistant answers** (new column `assistant_use`, default on): kept per article; the help assistant is not
   built, so it changes nothing yet (the switch says so).
-- **Mark reviewed** (product default, YX-GRO-07): only a published article; the next review is 12 months (360 days) from
-  today (India date); audited with the old and new date; a stale version is 409.
+- **Mark reviewed** (YX-GRO-07): only a published article; the next review is the company's interval from today (India
+  date), in calendar months (31 Aug + 6 → 28 or 29 Feb); audited with the old and new date; a stale version is 409.
+- **Review interval** (founder 3 Nov 2026, round 4b): company setting `desk.kb.review_months` in the settings registry:
+  3, 6, 12 or 24 months, default 12. Changed in Desk set-up › Settings by the company's Service Desk owner
+  (`desk.desk.create`, `PUT desk/kb/settings`) or in the Settings registry (`org.settings.manage`); both audited. A new
+  article and Mark reviewed take it; review dates already set stay as they are (they may have been set by hand).
 - Save draft saves the rail choices first (`PATCH`, with the article's version), then the words as a version. Every
   success is a toast; refusals stay on the page; no button is greyed out (pressed too early, the field says why).
 - Article text is cleaned on the server (sanitize-html allow-list). The preview of unsaved text uses the editor's own
@@ -661,6 +668,7 @@ surveys). The HLP screens are the founder-approved look, sample-only.
 15. **HLP-05: at-risk point.** 80 % of the resolution target, the same as HLP-02, a product default. *Suggested:* keep;
     make it a desk setting only if a customer asks.
 16. **HLP-05: the target line** shows only with one queue chosen (each queue has its own target). *Suggested:* keep.
+16. **HLP-04: review every 12 months.** Answered 3 Nov 2026: a company setting now (built in round 4b, see 4c).
 
 ## 7. Next pages (recommended order, with sizes)
 
@@ -739,3 +747,7 @@ HLP-03, keep as built: "Change queue" and "Merge" through the Move and Related t
 HLP-04: keep audience per space (group audiences when a customer needs them); one category per article with sections;
 an author sends for review and only a publisher who did not write the version publishes. Build: the article review
 interval becomes a company setting in Desk set-up (default 12 months), instead of a fixed product rule.
+## Founder answers, 3 Nov 2026 (HLP-04)
+Answers 1–3 as suggested: articles keep their space's audience; one category per article; four eyes stay ("Send for
+review" for authors). Answer 4: the review interval is a company setting now (3, 6, 12 or 24 months, default 12) in
+Desk set-up › Settings; built in round 4b.

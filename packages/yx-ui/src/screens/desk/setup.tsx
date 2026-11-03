@@ -13,6 +13,7 @@ import { RichTextEditor, STYLE_TOOLS } from '../../components/editor';
 import { DataTable, type TableColumn } from '../../components/table';
 import { Dialog } from '../../components/overlay';
 import { Card, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
+import { useToast } from '../../components/notify';
 import { useRun } from '../org/org-kit';
 import { DeskPage, PRIORITY_LABEL, STATE_LABEL } from './desk-kit';
 import type { Calendar, CannedResponse, DeskDetail, DeskGroup, DeskKind, DeskMember, DeskRole, DeskSummary, DuplicatePerson, LoadState, SeatCost, SystemState } from './types';
@@ -70,6 +71,10 @@ export interface DeskSetupScreenProps {
   onSetHours: (calendarId: string, input: { effectiveFrom: string; hours: { weekday: number; startMinute: number; endMinute: number }[] }) => Promise<void>;
   /** Founder decision 8 Oct 2026: which half of a half-day holiday stays open. */
   onSetHalfDay?: (calendar: Calendar, half: 'first' | 'second') => Promise<void>;
+  /** HLP-04 (founder 3 Nov 2026): how often help articles are checked again, for the whole company. Shown on the
+   *  Settings tab to the company's Service Desk owner (desk.desk.create); null: not theirs to change. */
+  kbReviewMonths?: number | null;
+  onKbReviewMonths?: (months: number) => Promise<unknown>;
   /** Batch 2 tabs: response targets, and resolution codes with templates. */
   sla?: Omit<SlaTabProps, 'detail' | 'calendars'>;
   workSetup?: Omit<WorkSetupProps, 'detail'>;
@@ -844,7 +849,32 @@ function SettingsTab(props: TabProps) {
           </Button>
         </div>
       )}
+      {props.onKbReviewMonths && props.kbReviewMonths != null && <KbReviewRule key={props.kbReviewMonths} value={props.kbReviewMonths} onSave={props.onKbReviewMonths} />}
     </div>
+  );
+}
+
+const REVIEW_CHOICES = [3, 6, 12, 24];
+
+/** Registry setting desk.kb.review_months: one value for the company, not per desk. */
+function KbReviewRule({ value, onSave }: { value: number; onSave: (months: number) => Promise<unknown> }) {
+  const [months, setMonths] = useState(String(value));
+  const { busy, error, run } = useRun();
+  const { toast } = useToast();
+  return (
+    <Card title="Check help articles again every">
+      <div className="yx-ops-stack">
+        {error && <InlineAlert tone="danger" title="It was not saved">{error}</InlineAlert>}
+        <FormField label="Check help articles again every" hideLabel helper="For the whole company, not only this desk. A new article, and one marked reviewed, is due for its next check after this long. Dates already set stay as they are.">
+          <Segment label="Check help articles again every" options={REVIEW_CHOICES.map((m) => ({ value: String(m), label: `${m} months` }))} value={months} onChange={setMonths} />
+        </FormField>
+        <div className="yx-ops-row">
+          <Button loading={busy === 'save'} onClick={() => (Number(months) === value ? toast({ title: 'Nothing has changed yet.' }) : void run('save', async () => { await onSave(Number(months)); toast({ tone: 'success', title: `Help articles are now checked every ${months} months.` }); }))}>
+            Save
+          </Button>
+        </div>
+      </div>
+    </Card>
   );
 }
 
