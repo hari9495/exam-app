@@ -751,3 +751,9 @@ interval becomes a company setting in Desk set-up (default 12 months), instead o
 Answers 1–3 as suggested: articles keep their space's audience; one category per article; four eyes stay ("Send for
 review" for authors). Answer 4: the review interval is a company setting now (3, 6, 12 or 24 months, default 12) in
 Desk set-up › Settings; built in round 4b.
+
+## Founder answers, 3 Nov 2026 (HLP-05, "all good")
+Keep: the menu item and title read "SLAs"; the period offers 7, 30 and 90 days ("Last 365 days" only after it is drawn
+into the design); the target line shows when one queue is chosen. Build: the "at risk" point becomes a desk setting
+(default 80% of the target), used by the HLP-05 dashboard and the HLP-02 agent desk ("At risk or breached" view and
+quick view).
