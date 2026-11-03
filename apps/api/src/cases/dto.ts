@@ -1,6 +1,6 @@
 import { Transform, Type } from 'class-transformer';
 import { ArrayMaxSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, MaxLength, Min, MinLength } from 'class-validator';
-import { FINDINGS, MEMBER_ROLES, RELIEF_ACTIONS, SEVERITIES, type Finding, type ReliefAction, type Severity } from './case-rules';
+import { DECISIONS, FINDINGS, MEMBER_ROLES, RELIEF_ACTIONS, SEVERITIES, type Decision, type Finding, type ReliefAction, type Severity } from './case-rules';
 
 // HLP-07/08/09 case inputs. Whitelisted by the global ValidationPipe (unknown fields are refused).
 
@@ -60,8 +60,15 @@ export class MoreTimeDecisionDto {
 }
 
 export class ProposeDto {
+  /** Grievance and ethics cases (the service checks which one the case needs). */
+  @IsOptional()
   @IsIn(FINDINGS)
-  finding!: Finding;
+  finding?: Finding;
+
+  /** Disciplinary cases: dropped, warning or an inquiry. */
+  @IsOptional()
+  @IsIn(DECISIONS)
+  decision?: Decision;
 
   @Text(3, 500)
   action!: string;
@@ -120,6 +127,25 @@ export class ReliefDto {
   /** The person in HR who carries it out. */
   @IsUUID()
   assigneeUserId!: string;
+}
+
+/** HLP-08: HR opens a disciplinary show-cause case about an employee. */
+export class RaiseDto {
+  @IsUUID()
+  employeeUserId!: string;
+
+  /** The misconduct, in short: "Absence without leave for more than 4 days". */
+  @Text(3, 80)
+  misconduct!: string;
+
+  /** The facts relied on. */
+  @Text(10, 5_000)
+  facts!: string;
+
+  /** The standing orders clause, as written in the certified standing orders. */
+  @IsOptional()
+  @Text(0, 200)
+  rule?: string;
 }
 
 export class SeverityDto {

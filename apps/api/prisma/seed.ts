@@ -94,6 +94,8 @@ export const PERMISSIONS = [
   { key: 'policy.publish', description: 'Publish or send back a policy version written by someone else' },
   // HLP-06 speak-up (also in the speakup_filing migration).
   { key: 'speakup.setup.manage', description: 'Choose the speak-up case officers: the grievance team, the ethics team, the Internal Committee and the escalation list' },
+  // HLP-08 disciplinary show-cause cases (also in the disciplinary_cases migration).
+  { key: 'case.disciplinary.raise', description: 'Open a disciplinary show-cause case about an employee (HR); the case is seen only by its HR members and the employee' },
 ];
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -204,6 +206,8 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'policy.publish',
     // HLP-06: who the speak-up case officers are (the System Admin, not HR).
     'speakup.setup.manage',
+    // HLP-08: HR opens disciplinary show-cause cases (never a manager by default).
+    'case.disciplinary.raise',
     // E2: claims of people in scope, and the finance check.
     'expense.claim.view',
     'expense.finance.review',

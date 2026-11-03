@@ -11789,6 +11789,9 @@ model SpeakupCase {
   version            Int       @default(1)
   /// HLP-06 decision 1: an anonymous reporter's alert address, encrypted (org secrets key).
   alertContactEnc    String?   @map("alert_contact_enc")
+  /// HLP-08 disciplinary: the employee's legal entity when opened, and the standing orders clause.
+  legalEntityId      String?   @map("legal_entity_id") @db.Uuid
+  ruleClause         String?   @map("rule_clause") @db.VarChar(200)
 
   @@unique([organizationId, kind, number], map: "speakup_cases_number_key")
   @@map("speakup_cases")

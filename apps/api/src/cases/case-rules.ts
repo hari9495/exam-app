@@ -3,7 +3,11 @@
 
 export type Finding = 'proved' | 'proved-in-part' | 'not-proved' | 'false-or-malicious';
 export const FINDINGS: readonly Finding[] = ['proved', 'proved-in-part', 'not-proved', 'false-or-malicious'];
-export const RELIEF_ACTIONS = ['transfer', 'leave', 'reporting', 'other'] as const;
+/** 'suspension' (pending inquiry) only on a disciplinary case; like the rest it is an HR task, never a change in People or Pay. */
+export const RELIEF_ACTIONS = ['transfer', 'leave', 'reporting', 'suspension', 'other'] as const;
+/** Founder answer 34: what a disciplinary case can end in. An inquiry is recorded only (the inquiry itself: question 51). */
+export const DECISIONS = ['dropped', 'warning', 'inquiry'] as const;
+export type Decision = (typeof DECISIONS)[number];
 export type ReliefAction = (typeof RELIEF_ACTIONS)[number];
 export const MEMBER_ROLES = ['officer', 'investigator'] as const;
 
@@ -45,6 +49,8 @@ export interface Folded {
     status: 'none' | 'proposed' | 'approved' | 'sent-back';
     proposalId: string | null;
     finding: Finding | null;
+    /** Disciplinary cases. */
+    decision: Decision | null;
     action: string | null;
     reasons: string | null;
     reporterSummary: string | null;
@@ -79,7 +85,7 @@ export function fold(steps: Step[]): Folded {
   const f: Folded = {
     acknowledgedOn: null,
     notice: { status: 'not-sent', delay: null, sentOn: null, respondentUserId: null, allegations: null, fileIds: [], firstReplyBy: null, replyBy: null, source: null, replies: [], moreTime: null },
-    outcome: { status: 'none', proposalId: null, finding: null, action: null, reasons: null, reporterSummary: null, proposedBy: null, proposedAt: null, approvedBy: null, approvedAt: null, sendBackNote: null },
+    outcome: { status: 'none', proposalId: null, finding: null, decision: null, action: null, reasons: null, reporterSummary: null, proposedBy: null, proposedAt: null, approvedBy: null, approvedAt: null, sendBackNote: null },
     ic: { status: 'none', draftId: null, finding: null, findings: null, recommendation: null, votes: new Map(), signedBy: null, signedOn: null },
     relief: [],
     recused: new Map(),
@@ -115,7 +121,7 @@ export function fold(steps: Step[]): Folded {
         f.notice.replies.push({ at, text: s(d.text) ?? '', fileIds: arr(d.fileIds) });
         break;
       case 'proposed':
-        f.outcome = { ...f.outcome, status: 'proposed', proposalId: st.id, finding: s(d.finding) as Finding, action: s(d.action), reasons: s(d.reasons), reporterSummary: s(d.reporterSummary), proposedBy: st.actorUserId, proposedAt: isoDay(st.at), approvedBy: null, approvedAt: null, sendBackNote: null };
+        f.outcome = { ...f.outcome, status: 'proposed', proposalId: st.id, finding: s(d.finding) as Finding, decision: s(d.decision) as Decision | null, action: s(d.action), reasons: s(d.reasons), reporterSummary: s(d.reporterSummary), proposedBy: st.actorUserId, proposedAt: isoDay(st.at), approvedBy: null, approvedAt: null, sendBackNote: null };
         break;
       case 'approved':
         if (f.outcome.status === 'proposed' && d.proposalId === f.outcome.proposalId) f.outcome = { ...f.outcome, status: 'approved', approvedBy: st.actorUserId, approvedAt: isoDay(st.at) };
@@ -166,7 +172,11 @@ export function fold(steps: Step[]): Folded {
  */
 export function canDecide(kind: string, f: Folded, today: string): { ok: boolean; reason: string | null } {
   if (f.notice.status !== 'sent')
-    return kind === 'posh' ? { ok: false, reason: 'The Internal Committee reports after the respondent has the notice and a chance to reply. Send the notice first.' } : f.notice.status === 'delayed' ? { ok: false, reason: 'The notice is delayed. Send it and wait for the reply, or its date, before the outcome.' } : { ok: true, reason: null };
+    return kind === 'posh'
+      ? { ok: false, reason: 'The Internal Committee reports after the respondent has the notice and a chance to reply. Send the notice first.' }
+      : kind === 'disciplinary'
+        ? { ok: false, reason: 'No decision before the employee has the show-cause notice and a chance to reply. Send the notice first.' }
+        : f.notice.status === 'delayed' ? { ok: false, reason: 'The notice is delayed. Send it and wait for the reply, or its date, before the outcome.' } : { ok: true, reason: null };
   if (f.notice.replies.length || (f.notice.replyBy && f.notice.replyBy < today)) return { ok: true, reason: null };
   return { ok: false, reason: `No outcome yet: wait for the respondent's reply or the reply date (${f.notice.replyBy}).` };
 }

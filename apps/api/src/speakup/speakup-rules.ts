@@ -18,8 +18,9 @@ export function readCode(typed: string): string | null {
   return c.length === 16 && [...c].every((ch) => CODE_ALPHABET.includes(ch)) ? c : null;
 }
 
-export const PREFIX: Record<SpeakupKind, string> = { grievance: 'GRV', whistleblower: 'WB', posh: 'POSH' };
-export const caseNumber = (kind: SpeakupKind, n: number) => `${PREFIX[kind]}-${String(n).padStart(4, '0')}`;
+/** HLP-08 adds disciplinary cases (opened by HR, never through speak-up) to the same numbering. */
+export const PREFIX: Record<SpeakupKind | 'disciplinary', string> = { grievance: 'GRV', whistleblower: 'WB', posh: 'POSH', disciplinary: 'DSC' };
+export const caseNumber = (kind: SpeakupKind | 'disciplinary', n: number) => `${PREFIX[kind]}-${String(n).padStart(4, '0')}`;
 
 /** Who may report without a name, from the company setting: all, ethics_only (fraud and ethics only), off. POSH never. */
 export function anonymousAllowed(setting: string, kind: SpeakupKind): boolean {

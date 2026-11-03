@@ -46,6 +46,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // HLP-07/08/09 (map 4f): days a respondent has to reply to a grievance or ethics notice. POSH days come from the rule
   // set IN.POSH.INQUIRY, never from here.
   'cases.reply_days': { label: 'Cases: days a respondent has to reply to a grievance or ethics notice', scopes: ['tenant'], dated: false, values: ['5', '7', '10', '15'], default: '7' },
+  // HLP-08 disciplinary (answer 34): days to reply to a show-cause notice, per legal entity from its certified standing
+  // orders; 'rule_set' takes the model standing orders figure from IN.SO.MODEL (verify with counsel), never a number in code.
+  'cases.disciplinary.reply_days': { label: 'Cases: days to reply to a show-cause notice (from the standing orders)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['rule_set', '3', '5', '7', '10', '14', '15'], default: 'rule_set' },
   'speakup.categories.ethics': { label: 'Speak-up: topics of a fraud or ethics concern (one a line)', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 600 }, default: 'Fraud or theft\nBribery or corruption\nConflict of interest\nMisuse of data\nOther' },
   // YX-ORG-16: employee codes unique per legal entity (default) or across the company.
   'employee_code.scope': { label: 'Employee codes are unique', scopes: ['tenant'], dated: false, values: ['legal_entity', 'tenant'], default: 'legal_entity' },

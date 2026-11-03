@@ -78,6 +78,8 @@ export function grantScopesFor(key: string): readonly GrantScopeType[] {
   // HLP-10 / HLP-11: company policies are company configuration; granted company-wide or per legal entity like
   // org.settings.manage, but the policy routes need the company-wide grant (PoliciesService.companyWide).
   if (key.startsWith('policy.')) return ['tenant', 'legal_entity'];
+  // HLP-08 (answer 34): a disciplinary case is about an employee, so HR opens one only about people in their HR scope.
+  if (key === 'case.disciplinary.raise') return GRANT_SCOPE_TYPES;
   // HLP-06: the speak-up case officer lists are company-wide.
   if (key.startsWith('speakup.')) return ['tenant'];
   // M03 batch 5a: payroll and its audit work per legal entity (the pay guard reads the granted entities); legal holds are company-wide.

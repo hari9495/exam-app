@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { ScopeUser, buildViewer, covers, grantPeriods, grantPeriodsFor } from '../access/scope';
 import { NotificationsService } from '../notifications/notifications.service';
 import { FilesService } from '../documents/files.service';
 import { CompanyContext, Tx, audit, companyContext } from '../org-structure/org-structure.service';
@@ -10,7 +11,7 @@ import { SpeakupService } from '../speakup/speakup.service';
 import { caseNumber } from '../speakup/speakup-rules';
 import type { SpeakupKind } from '../speakup/dto';
 import { addDays, canDecide, conflictWith, fold, isoDay, majority, severityOf, type Folded, type Severity, type Step } from './case-rules';
-import type { AddMemberDto, DelayDto, IcReportDto, MoreTimeDecisionDto, NoticeDto, ProposeDto, ReliefDto, ReplyDto, SendBackDto, VoteDto } from './dto';
+import type { AddMemberDto, DelayDto, IcReportDto, MoreTimeDecisionDto, NoticeDto, ProposeDto, RaiseDto, ReliefDto, ReplyDto, SendBackDto, VoteDto } from './dto';
 
 // HLP-07 My cases, HLP-08 Cases (case team), HLP-09 Ethics desk on the HLP-06 case record (rules:
 // docs/yukthix/helpdesk-design-map.md section 4f). Access is membership, not a key: a case shows only to its members who
@@ -21,13 +22,19 @@ import type { AddMemberDto, DelayDto, IcReportDto, MoreTimeDecisionDto, NoticeDt
 type Case = Prisma.SpeakupCaseGetPayload<object>;
 const ANY_ENTITY = { legalEntityId: '00000000-0000-0000-0000-000000000000' };
 const FILE_TYPES = ['application/pdf', 'image/jpeg', 'image/png', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'] as const;
+const RAISE = 'case.disciplinary.raise';
 const NOBODY = '00000000-0000-0000-0000-000000000000';
 const iso = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : null);
 const dayOf = (s: string) => new Date(`${s}T00:00:00Z`);
-const TEAM_ROLE: Record<string, string> = { grievance: 'Grievance committee', ethics: 'Ethics officer', ic: 'IC member', escalation: 'Escalation (audit committee)' };
+const TEAM_ROLE: Record<string, string> = { grievance: 'Grievance committee', ethics: 'Ethics officer', ic: 'IC member', escalation: 'Escalation (audit committee)', hr: 'HR (disciplinary)' };
 const ADDED_ROLE: Record<string, string> = { officer: 'Case officer', investigator: 'Investigator', chair: 'Audit committee chair' };
-const KIND: Record<string, 'grievance' | 'whistleblower' | 'posh'> = { grievance: 'grievance', whistleblower: 'whistleblower', posh: 'posh' };
-const STAGES = { posh: ['Filed', 'Notice to respondent', 'Inquiry and hearings', 'IC report', 'Employer action'], other: ['Received', 'Acknowledged', 'Notice and reply', 'Outcome proposed', 'Closed'] };
+const KIND: Record<string, 'grievance' | 'whistleblower' | 'posh' | 'disciplinary'> = { grievance: 'grievance', whistleblower: 'whistleblower', posh: 'posh', disciplinary: 'disciplinary' };
+const STAGES = {
+  posh: ['Filed', 'Notice to respondent', 'Inquiry and hearings', 'IC report', 'Employer action'],
+  disciplinary: ['Opened', 'Show-cause notice', 'Reply', 'Decision proposed', 'Decided'],
+  other: ['Received', 'Acknowledged', 'Notice and reply', 'Outcome proposed', 'Closed'],
+};
+const DECISION_WORDS: Record<string, string> = { dropped: 'Dropped: no action', warning: 'Written warning', inquiry: 'Domestic inquiry ordered' };
 const POSH_DONE = 'The Internal Committee finished its inquiry and sent its report to the employer.';
 const changed = () => new ConflictException({ statusCode: 409, code: 'CASE_CHANGED', message: 'Someone changed this case meanwhile. Reload it and try again.' });
 
@@ -45,6 +52,7 @@ export class CasesService {
   private readonly logger = new Logger(CasesService.name);
 
   constructor(
+    private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly notifications: NotificationsService,
     private readonly files: FilesService,
@@ -101,10 +109,16 @@ export class CasesService {
       .catch((e: Error) => this.logger.warn(`case notice: ${e.message}`));
   }
 
-  private ref = (row: Case) => caseNumber(row.kind as SpeakupKind, row.number);
+  private ref = (row: Case) => caseNumber(row.kind as SpeakupKind | 'disciplinary', row.number);
 
   private stage(row: Case, f: Folded) {
     const posh = row.kind === 'posh';
+    if (row.kind === 'disciplinary') {
+      const stages = STAGES.disciplinary;
+      const i = f.outcome.status === 'approved' ? 4 : f.outcome.status === 'proposed' ? 3 : f.notice.replies.length ? 2 : f.notice.status !== 'not-sent' ? 1 : 0;
+      // An approved inquiry is recorded only (question 51): the case stays open at "Inquiry ordered".
+      return { stages, index: i, stage: i === 4 && f.outcome.decision === 'inquiry' ? 'Inquiry ordered' : stages[i]! };
+    }
     const stages = posh ? STAGES.posh : STAGES.other;
     const i = posh
       ? f.ic.status === 'signed' ? 4 : f.ic.status === 'draft' ? 3 : f.notice.status === 'sent' ? 2 : f.notice.status === 'delayed' || f.acknowledgedOn ? 1 : 0
@@ -118,18 +132,18 @@ export class CasesService {
     const posh = row.kind === 'posh' ? await this.ruleSet(tx, 'IN.POSH', today) : null;
     const inq = row.kind === 'posh' ? await this.ruleSet(tx, 'IN.POSH.INQUIRY', today) : null;
     const filed = isoDay(row.filedAt)!;
-    const out: { key: string; label: string; due: string | null; doneOn: string | null; note?: string | null }[] = [
-      { key: 'ack', label: 'Acknowledge to the reporter', due: iso(row.ackDueOn), doneOn: f.acknowledgedOn },
-    ];
+    const out: { key: string; label: string; due: string | null; doneOn: string | null; note?: string | null }[] =
+      row.kind === 'disciplinary' ? [] : [{ key: 'ack', label: 'Acknowledge to the reporter', due: iso(row.ackDueOn), doneOn: f.acknowledgedOn }];
     if (row.kind === 'posh' && inq) out.push({ key: 'notice', label: 'Notice to respondent', due: addDays(filed, inq.values.noticeDays), doneOn: f.notice.sentOn, note: f.notice.status === 'delayed' ? `Notice delayed: ${f.notice.delay?.reason}` : null });
     out.push({ key: 'reply', label: 'Respondent reply', due: f.notice.replyBy, doneOn: f.notice.replies[0] ? f.notice.replies[0].at.slice(0, 10) : null, note: f.notice.status === 'delayed' ? `Notice delayed: ${f.notice.delay?.reason}` : 'Starts with the notice' });
     if (row.kind === 'grievance') out.push({ key: 'decide', label: 'Decision by the committee', due: iso(row.decideDueOn), doneOn: f.outcome.approvedAt });
     if (row.kind === 'whistleblower') out.push({ key: 'decide', label: 'Outcome', due: null, doneOn: f.outcome.approvedAt, note: 'No legal date: the company vigil policy' });
+    if (row.kind === 'disciplinary') out.push({ key: 'decide', label: 'Decision (two people)', due: null, doneOn: f.outcome.approvedAt, note: 'After the reply or the reply date' });
     if (row.kind === 'posh') {
       out.push({ key: 'inquiry', label: 'Inquiry complete (IC report signed)', due: iso(row.decideDueOn), doneOn: f.ic.signedOn });
       out.push({ key: 'action', label: 'Employer acts on the report', due: f.ic.signedOn && posh ? addDays(f.ic.signedOn, posh.values.actionDays) : null, doneOn: null, note: 'Starts when the report is signed' });
     }
-    const source = [row.ruleSet, inq?.label].filter(Boolean).join(' · ') || 'Company speak-up settings';
+    const source = row.kind === 'disciplinary' ? (f.notice.source ?? 'Standing orders (set when the notice is sent)') : [row.ruleSet, inq?.label].filter(Boolean).join(' · ') || 'Company speak-up settings';
     return { dates: out, source, posh, inq };
   }
 
@@ -229,6 +243,7 @@ export class CasesService {
         reporter: row.reporterUserId ? nm(row.reporterUserId) : null,
         anonymous: row.identity === 'anonymous',
         respondent: row.respondentUserId ? nm(row.respondentUserId) : null,
+        rule: row.ruleClause,
         report: { summary: row.summary, category: row.category, happenedOn: iso(row.happenedOn), involved: row.involved, witnesses: row.witnesses, outside: row.outsideName ? `${row.outsideName}${row.outsideEmployer ? ` (${row.outsideEmployer})` : ''}` : null, retaliationWorry: row.retaliationWorry, late: row.late },
         dates,
         datesSource: source,
@@ -263,7 +278,7 @@ export class CasesService {
         },
         outcome: posh
           ? null
-          : { status: f.outcome.status, finding: f.outcome.finding, action: f.outcome.action, reasons: f.outcome.reasons, reporterSummary: f.outcome.reporterSummary, proposedBy: f.outcome.proposedBy ? nm(f.outcome.proposedBy) : null, proposedByMe: f.outcome.proposedBy === me, proposedAt: f.outcome.proposedAt, approvedBy: f.outcome.approvedBy ? nm(f.outcome.approvedBy) : null, approvedAt: f.outcome.approvedAt, sendBackNote: f.outcome.sendBackNote },
+          : { status: f.outcome.status, finding: f.outcome.finding, decision: f.outcome.decision, action: f.outcome.action, reasons: f.outcome.reasons, reporterSummary: f.outcome.reporterSummary, proposedBy: f.outcome.proposedBy ? nm(f.outcome.proposedBy) : null, proposedByMe: f.outcome.proposedBy === me, proposedAt: f.outcome.proposedAt, approvedBy: f.outcome.approvedBy ? nm(f.outcome.approvedBy) : null, approvedAt: f.outcome.approvedAt, sendBackNote: f.outcome.sendBackNote },
         icReport: posh
           ? { status: f.ic.status, finding: f.ic.finding, findings: f.ic.findings, recommendation: f.ic.recommendation, votes: voters.map((uid) => ({ memberId: uid, name: nm(uid), presiding: uid === presidingId, vote: f.ic.votes.get(uid)?.vote ?? null, note: f.ic.votes.get(uid)?.note ?? null, at: f.ic.votes.get(uid)?.at ?? null })), signedBy: f.ic.signedBy ? nm(f.ic.signedBy) : null, signedOn: f.ic.signedOn }
           : null,
@@ -291,6 +306,13 @@ export class CasesService {
       if (!inq) throw new ConflictException({ statusCode: 409, code: 'CASE_NO_RULE_SET', message: 'No POSH rule set is in force, so the reply date cannot be set. Ask your System Admin to check Statutory set-up.' });
       return { days: inq.values.replyDays, source: `${inq.label}: ${inq.values.replyDays} days` };
     }
+    if (row.kind === 'disciplinary') {
+      const own = row.legalEntityId ? await settingFor(tx, c, 'cases.disciplinary.reply_days', { legalEntityId: row.legalEntityId }) : 'rule_set';
+      if (own !== 'rule_set') return { days: Number(own), source: `Standing orders setting for the legal entity: ${own} days to reply` };
+      const so = await this.ruleSet(tx, 'IN.SO.MODEL', today);
+      if (!so) throw new ConflictException({ statusCode: 409, code: 'CASE_NO_RULE_SET', message: 'No standing orders rule set is in force and the legal entity has no reply days set, so the reply date cannot be set. Set it in Settings › Company rules › Speak-up.' });
+      return { days: so.values.showCauseReplyDays, source: `${so.label}: ${so.values.showCauseReplyDays} days` };
+    }
     const days = Number(await settingFor(tx, c, 'cases.reply_days', ANY_ENTITY)) || 7;
     return { days, source: `Company setting: ${days} days to reply` };
   }
@@ -299,6 +321,7 @@ export class CasesService {
     const out = await this.tx(ctx, async (tx, c) => {
       const l = await this.memberCase(tx, c, id);
       this.open(l);
+      if (l.row.kind === 'disciplinary') throw new BadRequestException('A disciplinary case speaks to the employee through the show-cause notice and their reply.');
       const m = await tx.speakupMessage.create({ data: { organizationId: c.organizationId, caseId: l.row.id, sender: 'team', authorUserId: c.userId!, body } });
       // The first message from the team acknowledges the report.
       if (!l.f.acknowledgedOn) await this.step(tx, c, l.row, 'acknowledged', {}, undefined, l.row.status === 'received' ? { status: 'acknowledged' } : {});
@@ -365,8 +388,10 @@ export class CasesService {
       if (l.f.outcome.status === 'proposed') throw new ConflictException('An outcome is already waiting for a second officer.');
       const d = canDecide(l.row.kind, l.f, todayIst());
       if (!d.ok) throw new ConflictException({ statusCode: 409, code: 'CASE_TOO_EARLY', message: d.reason });
+      const disc = l.row.kind === 'disciplinary';
+      if (disc ? !dto.decision || dto.finding : !dto.finding || dto.decision) throw new BadRequestException(disc ? 'Choose the decision: dropped, a warning or an inquiry.' : 'Choose the finding.');
       if (dto.finding === 'false-or-malicious' && dto.reasons.length < 50) throw new BadRequestException('“False or malicious” needs fuller reasons (50 letters or more): not proving a complaint is not enough.');
-      await this.step(tx, c, l.row, 'proposed', { finding: dto.finding, action: dto.action, reasons: dto.reasons, reporterSummary: dto.reporterSummary }, dto.version);
+      await this.step(tx, c, l.row, 'proposed', { ...(disc ? { decision: dto.decision } : { finding: dto.finding }), action: dto.action, reasons: dto.reasons, reporterSummary: dto.reporterSummary }, dto.version);
       return { row: l.row, others: [...l.members.keys()].filter((u) => u !== c.userId) };
     });
     await this.notify(out.row.organizationId, out.others, 'helpdesk.case.update', out.row.id, `An outcome on ${this.ref(out.row)} is waiting for a second officer`, `/yx/desk/cases/${out.row.id}`);
@@ -379,10 +404,13 @@ export class CasesService {
       this.open(l);
       if (l.f.outcome.status !== 'proposed') throw new ConflictException('There is no outcome waiting for approval.');
       if (l.f.outcome.proposedBy === c.userId) throw new ForbiddenException({ statusCode: 403, code: 'CASE_FOUR_EYES', message: 'You proposed this outcome, so another officer approves it.' });
-      await this.step(tx, c, l.row, 'approved', { proposalId: l.f.outcome.proposalId, proposedBy: l.f.outcome.proposedBy }, version, { status: 'closed' });
+      // An approved inquiry is recorded only (question 51): the case stays open; nothing changes in People or Pay.
+      const inquiry = l.f.outcome.decision === 'inquiry';
+      await this.step(tx, c, l.row, 'approved', { proposalId: l.f.outcome.proposalId, proposedBy: l.f.outcome.proposedBy, ...(l.f.outcome.decision ? { decision: l.f.outcome.decision } : {}) }, version, { status: inquiry ? 'investigation' : 'closed' });
       return l.row;
     });
-    const to = [out.reporterUserId, out.respondentUserId].filter((x): x is string => Boolean(x));
+    // A disciplinary case's opener is HR, not a reporter: only the employee is told.
+    const to = (out.kind === 'disciplinary' ? [out.respondentUserId] : [out.reporterUserId, out.respondentUserId]).filter((x): x is string => Boolean(x));
     await this.notify(out.organizationId, to, 'helpdesk.case.update', out.id, `There is an outcome on ${this.ref(out)}`, '/yx/desk/my-cases');
     if (!out.reporterUserId) await this.speakup.alertReporter(out.alertContactEnc);
     return { approved: true };
@@ -452,7 +480,8 @@ export class CasesService {
       const l = await this.memberCase(tx, c, id);
       this.open(l);
       if (!(await tx.user.findFirst({ where: { organizationId: c.organizationId, id: dto.assigneeUserId, status: 'active' }, select: { id: true } }))) throw new BadRequestException('Choose an active person of this company to carry it out.');
-      if ([l.row.respondentUserId, l.row.reporterUserId].includes(dto.assigneeUserId)) throw new BadRequestException('A party to the case can’t carry out its relief.');
+      if (dto.action === 'suspension' && l.row.kind !== 'disciplinary') throw new BadRequestException('Suspension is an action on a disciplinary case only.');
+      if (l.row.respondentUserId === dto.assigneeUserId || (l.row.kind !== 'disciplinary' && l.row.reporterUserId === dto.assigneeUserId)) throw new BadRequestException('A party to the case can’t carry out its relief.');
       const ref = `${this.ref(l.row)}-R${l.f.relief.length + 1}`;
       const st = await this.step(tx, c, l.row, 'relief', { action: dto.action, note: dto.note, assigneeUserId: dto.assigneeUserId, ref });
       return { row: l.row, ref, id: st.id };
@@ -512,7 +541,9 @@ export class CasesService {
       if (!(await tx.user.findFirst({ where: { organizationId: c.organizationId, id: dto.personId, status: 'active' }, select: { id: true } }))) throw new BadRequestException('Choose an active person of this company.');
       if (l.allMembers.includes(dto.personId)) throw new ConflictException('This person is already on the case (or stepped aside from it).');
       if (l.row.kind === 'posh') throw new BadRequestException('Only Internal Committee members work on a POSH case; the System Admin changes the committee in Speak-up set-up.');
-      const why = conflictWith(dto.personId, [l.row.reporterUserId, l.row.respondentUserId, l.row.aboutUserId], await this.managers(tx, c.organizationId));
+      // A disciplinary case is about the employee only; its opener is HR, not a party.
+      const parties = l.row.kind === 'disciplinary' ? [l.row.respondentUserId] : [l.row.reporterUserId, l.row.respondentUserId, l.row.aboutUserId];
+      const why = conflictWith(dto.personId, parties, await this.managers(tx, c.organizationId));
       if (why && !dto.overrideReason) {
         const n = await this.names(tx, c.organizationId, [dto.personId]);
         throw new ConflictException({ statusCode: 409, code: 'CASE_CONFLICT', message: `${n.get(dto.personId) ?? 'This person'} ${why}. Add them only with a recorded reason for the override, or choose someone else.` });
@@ -548,6 +579,64 @@ export class CasesService {
       return f;
     });
     return { file: await this.files.bytes(row), name: row.fileName, contentType: row.mime };
+  }
+
+  // ------------------------------------------------------------------------------------------ HLP-08 disciplinary (answer 34)
+
+  /** Who HR may open a case about: active people with an employee record, never oneself. */
+  async raiseOptions(ctx: TenantContext, user: ScopeUser) {
+    const v = await buildViewer(this.prisma, this.tenantPrisma, user, [RAISE]);
+    return this.tx(ctx, async (tx, c) => {
+      const today = todayIst();
+      const emps = await tx.employee.findMany({ where: { organizationId: c.organizationId, userId: { not: null } }, select: { id: true, userId: true } });
+      const periods = await grantPeriodsFor(tx, c, v, [RAISE], emps.map((e) => e.id), c.userId ?? null);
+      const inScope = emps.filter((e) => covers(periods.get(e.id) ?? [], today)).map((e) => e.userId!);
+      const users = await tx.user.findMany({ where: { organizationId: c.organizationId, status: 'active', id: { in: inScope.filter((u) => u !== c.userId) } }, select: { id: true, name: true, email: true }, orderBy: { name: 'asc' }, take: 2000 });
+      return { people: users.map((u) => ({ id: u.id, name: u.name ?? u.email, email: u.email })) };
+    });
+  }
+
+  /**
+   * HR (case.disciplinary.raise, company-wide) opens a show-cause case about an employee. Its members are HR only: the
+   * opener, and whoever they add (a second HR person decides with them). The manager sees nothing unless added.
+   */
+  async raise(ctx: TenantContext, user: ScopeUser, dto: RaiseDto) {
+    const v = await buildViewer(this.prisma, this.tenantPrisma, user, [RAISE]);
+    return this.tx(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      if (!c.userId) throw new ForbiddenException('Sign in to open a case.');
+      if (dto.employeeUserId === c.userId) throw new BadRequestException('You can’t open a disciplinary case about yourself.');
+      const emp = await tx.employee.findFirst({ where: { organizationId: org, userId: dto.employeeUserId }, select: { id: true } });
+      const person = await tx.user.findFirst({ where: { organizationId: org, id: dto.employeeUserId, status: 'active' }, select: { id: true } });
+      if (!emp || !person) throw new BadRequestException('Choose an active employee of this company.');
+      const today = todayIst();
+      // An HR grant for one entity, location or department reaches only the people in it today.
+      if (!covers(await grantPeriods(tx, c, v, RAISE, emp.id, c.userId), today)) throw new ForbiddenException({ statusCode: 403, code: 'CASE_OUT_OF_SCOPE', message: 'This employee is outside your HR scope, so you can’t open a case about them.' });
+      const asg = await tx.employeeAssignment.findFirst({ where: { organizationId: org, employeeId: emp.id, supersededAt: null, validFrom: { lte: dayOf(today) }, OR: [{ validTo: null }, { validTo: { gte: dayOf(today) } }] }, orderBy: { validFrom: 'desc' }, select: { legalEntityId: true } });
+      const last = await tx.speakupCase.aggregate({ where: { organizationId: org, kind: 'disciplinary' }, _max: { number: true } });
+      const row = await tx.speakupCase.create({
+        data: {
+          organizationId: org,
+          kind: 'disciplinary',
+          number: (last._max.number ?? 0) + 1,
+          identity: 'named',
+          reporterUserId: c.userId,
+          category: dto.misconduct,
+          summary: dto.facts,
+          ruleClause: dto.rule || null,
+          respondentUserId: dto.employeeUserId,
+          legalEntityId: asg?.legalEntityId ?? null,
+          routedTo: 'hr',
+          ackDueOn: dayOf(today),
+        },
+      }).catch((e: unknown) => {
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('Another case was opened at the same moment. Press Open the case again.');
+        throw e;
+      });
+      await tx.speakupCaseMember.create({ data: { organizationId: org, caseId: row.id, userId: c.userId } });
+      await audit(tx, c, 'cases.disciplinary_opened', 'speakup_case', row.id, { number: this.ref(row), employeeUserId: dto.employeeUserId, legalEntityId: row.legalEntityId });
+      return { id: row.id, ref: this.ref(row) };
+    });
   }
 
   // ------------------------------------------------------------------------------------------ HLP-09 ethics desk
@@ -620,7 +709,7 @@ export class CasesService {
     const out: { l: Loaded; role: 'reporter' | 'respondent' }[] = [];
     for (const r of rows) {
       const l = await this.load(tx, c.organizationId, r);
-      if (r.reporterUserId === me) out.push({ l, role: 'reporter' });
+      if (r.reporterUserId === me && r.kind !== 'disciplinary') out.push({ l, role: 'reporter' });
       else if (l.f.notice.status === 'sent' && l.f.notice.respondentUserId === me) out.push({ l, role: 'respondent' });
     }
     return out;
@@ -629,6 +718,7 @@ export class CasesService {
   private personStage(row: Case, f: Folded) {
     if (row.status === 'closed') return 'Closed';
     if (row.kind === 'posh') return f.notice.status === 'sent' ? 'Inquiry' : 'With the Internal Committee';
+    if (row.kind === 'disciplinary') return f.outcome.status === 'approved' && f.outcome.decision === 'inquiry' ? 'Inquiry ordered' : f.notice.replies.length ? 'Reply sent' : 'Show-cause notice';
     return f.acknowledgedOn || row.status !== 'received' ? 'Being looked into' : 'Received';
   }
 
@@ -703,6 +793,7 @@ export class CasesService {
           replyBy: f.notice.firstReplyBy,
           replySource: f.notice.source ?? '',
           allegations: f.notice.allegations ?? '',
+          rule: row.ruleClause,
           files: files.filter((x) => f.notice.fileIds.includes(x.id)),
           moreTime: f.notice.moreTime,
           askedMoreTime: Boolean(f.notice.moreTime),
@@ -805,4 +896,4 @@ const STEP_WORDS: Record<string, string> = {
   file_added: 'Added a file',
   severity_set: 'Changed the severity',
 };
-const RELIEF_WORDS: Record<string, string> = { transfer: 'transfer', leave: 'leave', reporting: 'stop reporting to the accused', other: 'other relief' };
+const RELIEF_WORDS: Record<string, string> = { transfer: 'transfer', leave: 'leave', reporting: 'stop reporting to the accused', suspension: 'suspension pending inquiry (no pay change by itself)', other: 'other relief' };

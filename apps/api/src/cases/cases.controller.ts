@@ -8,8 +8,10 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
+import { RequirePermissions } from '../rbac/permissions.decorator';
+import type { ScopeUser } from '../access/scope';
 import { assertOwnSession } from '../service-desk/desk-access';
-import { AddMemberDto, DelayDto, IcReportDto, MessageDto, MoreTimeDecisionDto, NoticeDto, ProposeDto, ReasonDto, ReliefDto, ReplyDto, SendBackDto, SeverityDto, VersionDto, VoteDto } from './dto';
+import { AddMemberDto, DelayDto, IcReportDto, MessageDto, MoreTimeDecisionDto, NoticeDto, ProposeDto, RaiseDto, ReasonDto, ReliefDto, ReplyDto, SendBackDto, SeverityDto, VersionDto, VoteDto } from './dto';
 import { CasesService } from './cases.service';
 
 // HLP-07/08/09 cases (rules: docs/yukthix/helpdesk-design-map.md section 4f). No key: being a member of the case is the
@@ -31,6 +33,21 @@ export class CasesController {
   list(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     assertOwnSession(req);
     return this.cases.list(ctx);
+  }
+
+  /** HLP-08 answer 34: HR opens a disciplinary show-cause case (case.disciplinary.raise; the key is granted company-wide only). */
+  @Get('disciplinary/people')
+  @RequirePermissions('case.disciplinary.raise')
+  raiseOptions(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    assertOwnSession(req);
+    return this.cases.raiseOptions(ctx, req.user as ScopeUser);
+  }
+
+  @Post('disciplinary')
+  @RequirePermissions('case.disciplinary.raise')
+  raise(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: RaiseDto) {
+    assertOwnSession(req);
+    return this.cases.raise(ctx, req.user as ScopeUser, dto);
   }
 
   @Get(':id')

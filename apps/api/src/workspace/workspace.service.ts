@@ -441,7 +441,8 @@ export class WorkspaceService {
         const open = (kind: string | null) => one(Prisma.sql`SELECT count(*) AS n FROM speakup_case_members m JOIN speakup_cases k ON k.id = m.case_id
           WHERE m.organization_id = ${org}::uuid AND m.user_id = ${me}::uuid AND k.status <> 'closed' AND (${kind}::text IS NULL OR k.kind = ${kind}::text)
           AND NOT EXISTS (SELECT 1 FROM speakup_case_steps s WHERE s.case_id = k.id AND s.kind = 'recused' AND s.actor_user_id = ${me}::uuid)`);
-        const member = lists.size > 0 || (await one(Prisma.sql`SELECT count(*) AS n FROM speakup_case_members m WHERE m.organization_id = ${org}::uuid AND m.user_id = ${me}::uuid
+        // HR who may open disciplinary cases sees Cases too (the Open a case button lives there).
+        const member = lists.size > 0 || keys.has('case.disciplinary.raise') || (await one(Prisma.sql`SELECT count(*) AS n FROM speakup_case_members m WHERE m.organization_id = ${org}::uuid AND m.user_id = ${me}::uuid
           AND NOT EXISTS (SELECT 1 FROM speakup_case_steps s WHERE s.case_id = m.case_id AND s.kind = 'recused' AND s.actor_user_id = ${me}::uuid)`)) > 0;
         if (member) out.casesOpen = await open(null);
         if (lists.has('ethics') || lists.has('escalation')) out.ethicsReports = await open('whistleblower');
