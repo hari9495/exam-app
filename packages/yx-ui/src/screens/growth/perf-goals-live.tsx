@@ -21,7 +21,7 @@ import { DatePicker } from '../../components/date';
 import { Timeline, type TimelineItem } from '../../components/timeline';
 import { useToast } from '../../components/notify';
 import { useNarrow } from '../../components/stepper';
-import { formatDate } from '../../lib/format';
+import { countText, formatDate } from '../../lib/format';
 import { dayKey } from '../../lib/dates';
 import type { CheckinInput, Choice, GoalDetail, GoalInput, GoalPeriod } from '../performance/live/types';
 import { CoachCard, GoalTree, GrowthFrame, ProgressRing, StageTrack } from './growth-kit';
@@ -228,7 +228,7 @@ export function LivePerformanceHome({ live }: { live: LiveHome }) {
           <div className="yx-growth-stack" data-gap="sm">
             <PersonLabel name={h.nextOneOnOne.with} secondary="Your manager" />
             <Text>{formatDate(day(h.nextOneOnOne.on))}</Text>
-            <Text tone="secondary">{h.nextOneOnOne.agenda === 1 ? '1 agenda item so far' : `${h.nextOneOnOne.agenda} agenda items so far`}</Text>
+            <Text tone="secondary">{`${countText(h.nextOneOnOne.agenda, 'agenda item')} so far`}</Text>
             <Link href={PERF_LINKS.oneOnOne(h.nextOneOnOne.id)}>Add to agenda</Link>
           </div>
         ) : null,
@@ -257,9 +257,9 @@ export function LivePerformanceHome({ live }: { live: LiveHome }) {
     const late = c.find((x) => x.overdue > 0);
     const dist = h.hr.ratingDistribution;
     widgets.push(
-      { id: 's1', title: 'Cycles running', size: 3, bare: true, content: <StatCard label="Cycles running" value={c.filter((x) => x.status === 'launched' || x.status === 'calibrating').length} drill={{ label: `View ${c.length} cycles`, href: '#cycles' }} /> },
+      { id: 's1', title: 'Cycles running', size: 3, bare: true, content: <StatCard label="Cycles running" value={c.filter((x) => x.status === 'launched' || x.status === 'calibrating').length} drill={{ label: `View ${countText(c.length, 'cycle')}`, href: '#cycles' }} /> },
       { id: 's2', title: 'Overdue stages', size: 3, bare: true, content: <StatCard label="Overdue review stages" value={overdue} drill={{ label: 'View overdue', href: late ? PERF_LINKS.cycle(late.id) : '#cycles' }} /> },
-      ...(h.hr.pipsActive != null ? [{ id: 's3', title: 'PIPs active', size: 3 as const, bare: true, content: <StatCard label="PIPs active" value={h.hr.pipsActive} drill={{ label: `View ${h.hr.pipsActive} PIPs`, href: PERF_LINKS.pips }} /> }] : []),
+      ...(h.hr.pipsActive != null ? [{ id: 's3', title: 'PIPs active', size: 3 as const, bare: true, content: <StatCard label="PIPs active" value={h.hr.pipsActive} drill={{ label: `View ${countText(h.hr.pipsActive, 'PIP')}`, href: PERF_LINKS.pips }} /> }] : []),
       { id: 's4', title: 'Goals aligned', size: 3, bare: true, content: <StatCard label="Goals aligned to a parent" value={h.hr.goalsAligned ?? 0} unit="%" drill={{ label: 'Open goal map', href: PERF_LINKS.map }} /> },
       {
         id: 'cycles',
@@ -1011,7 +1011,7 @@ export function LiveMyGoalsScreen({ live, defaultDialog }: { live: LiveMyGoals; 
       <PageHeader
         title={heading}
         description={period ? `${period.name} (${formatDate(day(period.fromOn))} – ${formatDate(day(period.toOn))})` : undefined}
-        facts={mine.length ? `${mine.length} goals · weights ${w.total}% · ${mine.reduce((a, g) => a + g.keyResults.length, 0)} key results` : undefined}
+        facts={mine.length ? `${countText(mine.length, 'goal')} · weights ${w.total}% · ${countText(mine.reduce((a, g) => a + g.keyResults.length, 0), 'key result')}` : undefined}
         actions={
           <>
             {live.periods.length > 0 && periodSelect}
@@ -1094,7 +1094,7 @@ export function LiveCompanyGoalMap({ live, defaultDialog }: { live: LiveGoalMap;
     a.download = `goal-map-${(period?.name ?? 'period').replace(/\s+/g, '-')}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
-    done('Goal map exported', `${shown.length} goals in the file.`);
+    done('Goal map exported', `${countText(shown.length, 'goal')} in the file.`);
   };
   return (
     <GrowthFrame area="performance" active="Goals" persona={live.persona === 'exec' ? 'mgr' : 'hr'}>
@@ -1129,9 +1129,9 @@ export function LiveCompanyGoalMap({ live, defaultDialog }: { live: LiveGoalMap;
         <>
           <div className="yx-growth-kpis">
             <StatCard label="Company goals" value={company.length} drill={{ label: 'View company goals', href: '#map' }} />
-            <StatCard label="Goals aligned" value={nonCompany.length ? Math.round((aligned / nonCompany.length) * 100) : 0} unit="%" drill={{ label: `View ${aligned} aligned goals`, href: '#map' }} />
-            <StatCard label="At risk or off track" value={offTrack.length} drill={{ label: `View ${offTrack.length} goals`, href: '#risk' }} />
-            <StatCard label="Unaligned goals" value={unaligned.length} drill={{ label: `View ${unaligned.length} goals`, href: '#unaligned' }} />
+            <StatCard label="Goals aligned" value={nonCompany.length ? Math.round((aligned / nonCompany.length) * 100) : 0} unit="%" drill={{ label: `View ${countText(aligned, 'aligned goal')}`, href: '#map' }} />
+            <StatCard label="At risk or off track" value={offTrack.length} drill={{ label: `View ${countText(offTrack.length, 'goal')}`, href: '#risk' }} />
+            <StatCard label="Unaligned goals" value={unaligned.length} drill={{ label: `View ${countText(unaligned.length, 'goal')}`, href: '#unaligned' }} />
           </div>
           <div className="yx-growth-split">
             <div className="yx-growth-split__main" id="map">

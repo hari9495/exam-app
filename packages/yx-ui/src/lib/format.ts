@@ -29,6 +29,11 @@ export function formatMoney(value: number, currency = 'INR', locale = 'en-IN'): 
 }
 
 /** d MMM yyyy, no leading zero, e.g. "1 Jan 2027". Uses local calendar date. */
+/** "1 cycle", "3 cycles", "1,200 goals": a counted noun, singular for one (Indian digit grouping). `many` for irregular nouns. */
+export function countText(n: number, one: string, many = `${one}s`): string {
+  return `${groupIndian(n)} ${n === 1 ? one : many}`;
+}
+
 export function formatDate(date: Date | null | undefined): string {
   if (!date || Number.isNaN(date.getTime())) return '';
   return `${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`;

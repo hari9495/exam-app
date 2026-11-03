@@ -56,6 +56,15 @@ describe('PRF-01 home', () => {
     show(<PerformanceHomeScreen live={{ state: 'ready', onRetry: vi.fn(), data: { persona: 'hr', name: 'Lakshmi', period: null, actions: [], myGoals: [], myReview: null, feedback: [], nextOneOnOne: null, team: [], teamGoals: [], hr: { cycles: [{ id: 'cy1', name: 'H2 review', status: 'launched', stage: 'Manager review', eligible: 212, done: 40, overdue: 9 }], ratingDistribution: null, pipsActive: 3, goalsAligned: 82 } }, onCheckIn: vi.fn() }} />);
     expect(screen.getByRole('link', { name: 'H2 review' })).toHaveAttribute('href', '/yx/performance/cycles/cy1');
     expect(screen.getByText('9 overdue')).toBeInTheDocument();
+    // One cycle and one PIP read in the singular (counted links say "1 cycle", never "1 cycles").
+    expect(screen.getByRole('link', { name: 'View 1 cycle' })).toBeInTheDocument();
+    expect(screen.queryByText(/View 1 cycles/)).toBeNull();
+  });
+  it('counted links read in the plural for more than one', () => {
+    const cycle = { id: 'cy', name: 'H2 review', status: 'launched', stage: 'Self review', eligible: 10, done: 0, overdue: 0 };
+    show(<PerformanceHomeScreen live={{ state: 'ready', onRetry: vi.fn(), data: { persona: 'hr', name: 'Lakshmi', period: null, actions: [], myGoals: [], myReview: null, feedback: [], nextOneOnOne: null, team: [], teamGoals: [], hr: { cycles: [cycle, { ...cycle, id: 'cy2' }, { ...cycle, id: 'cy3' }], ratingDistribution: null, pipsActive: 1, goalsAligned: null } }, onCheckIn: vi.fn() }} />);
+    expect(screen.getByRole('link', { name: 'View 3 cycles' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'View 1 PIP' })).toBeInTheDocument();
   });
 });
 

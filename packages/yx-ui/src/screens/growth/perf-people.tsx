@@ -1638,7 +1638,7 @@ export function HandoverListScreen({ persona, rows: initial, state = 'ready', le
         empty={<EmptyState title="Nothing to hand over" description="When a manager leaves or changes, their in-flight reviews, PIPs and 1:1s are listed here." />}
         toolbar={<FilterBar fields={HANDOVER_FIELDS} value={filters} onChange={setFilters} search={q} onSearchChange={setQ} searchPlaceholder="Search employee" />}
         views={<SavedViewMenu views={[{ id: 'all', name: 'All artefacts' }, { id: 'decide', name: 'Needs decision', shared: true }]} currentId={filters === NEEDS_DECISION ? 'decide' : 'all'} onSelect={(id) => setFilters(id === 'decide' ? NEEDS_DECISION : [])} />}
-        // Reassigning to HR and the audit entry link are not built yet (performance-map-notes-b3.md).
+        // Reassigning to HR and the audit entry link are not built yet (performance-design-map.md, section 3).
         selectable={persona === 'hr' && !live}
         selectedIds={selected}
         onSelectedChange={setSelected}
@@ -1879,7 +1879,7 @@ export function CompetencyFrameworkScreen({ items: sampleItems, openId, state = 
         description="One skills library for the company. Competencies here are also used as test question tags and hiring scorecard skills."
         actions={
           <>
-            {/* Import from a file is not built yet in the live app (performance-map-notes-b3.md). */}
+            {/* Import from a file is not built yet in the live app (performance-design-map.md, section 3). */}
             {!live && <Button>Import</Button>}
             <Button icon={Plus} onClick={() => setAdding(true)}>
               Add competency

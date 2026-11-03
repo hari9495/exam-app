@@ -21,7 +21,7 @@ import { Segment } from '../../components/segment';
 import { Stepper, useNarrow } from '../../components/stepper';
 import { Timeline, type TimelineItem } from '../../components/timeline';
 import { useToast } from '../../components/notify';
-import { formatDate } from '../../lib/format';
+import { countText, formatDate } from '../../lib/format';
 import { dayKey } from '../../lib/dates';
 import type { Choice, CycleInput, CycleStage, Disagreement, EligibilityRow, EntryInput, PeerConfig, PeerGroups, Preflight, ReviewCycle, ReviewDetail, ReviewEntry, TemplateKind } from '../performance/live/types';
 import { ConfidentialTag, GrowthFrame, RatingScale, ScoreBand, SplitLayout, StageTrack } from './growth-kit';
@@ -164,7 +164,7 @@ export function LiveCycleSetupScreen({ live, defaultStep }: { live: LiveCycleSet
       setPreflight(pf);
       if (pf.problems.length) throw new Error(`Fix ${pf.problems.length === 1 ? 'this' : `these ${pf.problems.length}`} before you launch: ${pf.problems.map((p) => p.text).join(' ')}`);
       await live.onLaunch(c.id, c.version);
-      done('Cycle launched', `${pf.reviewed} reviews are open and their owners are told.`);
+      done('Cycle launched', `${countText(pf.reviewed, 'review')} opened; their owners are told.`);
       live.onDone(c.id, true);
     });
   const stepError = (s: string) => (tried && errors.some((e) => e.step === s) ? errors.find((e) => e.step === s)!.message : undefined);
@@ -272,7 +272,7 @@ export function LiveCycleSetupScreen({ live, defaultStep }: { live: LiveCycleSet
                 </div>
               </div>
             ),
-            summary: <Text>{preflight ? `${preflight.reviewed} people` : depts.length ? `${depts.length} departments` : 'Everyone'} · cut-off {cutoff ?? 0} months</Text>,
+            summary: <Text>{preflight ? countText(preflight.reviewed, 'person', 'people') : depts.length ? countText(depts.length, 'department') : 'Everyone'} · cut-off {countText(cutoff ?? 0, 'month')}</Text>,
           },
           {
             id: 'template',
@@ -427,7 +427,7 @@ export function LiveCycleControlRoom({ live, defaultTab, defaultStage }: { live:
       <PageHeader
         title={x.name}
         status={<Badge tone={CYCLE_STATUS[x.status].tone}>{CYCLE_STATUS[x.status].label}</Badge>}
-        facts={`${formatDate(day(x.periodFrom))} – ${formatDate(day(x.periodTo))} · ${live.eligibility.filter((r) => r.reviewed).length} people${x.launchedAt ? ` · launched ${formatDate(day(x.launchedAt))}` : ''}`}
+        facts={`${formatDate(day(x.periodFrom))} – ${formatDate(day(x.periodTo))} · ${countText(live.eligibility.filter((r) => r.reviewed).length, 'person', 'people')}${x.launchedAt ? ` · launched ${formatDate(day(x.launchedAt))}` : ''}`}
         actions={
           <>
             {x.status === 'launched' && (
@@ -570,7 +570,7 @@ export function LiveCycleControlRoom({ live, defaultTab, defaultStage }: { live:
         {live.calibration && <TabsContent value="calibration">{live.calibration}</TabsContent>}
       </Tabs>
       {current && (
-        <Drawer open onOpenChange={(o) => !o && setOpen(null)} title={current.label} subtitle={`${current.count} people`}>
+        <Drawer open onOpenChange={(o) => !o && setOpen(null)} title={current.label} subtitle={countText(current.count, 'person', 'people')}>
           {peopleFailed ? (
             <ErrorState title="The names didn’t load" description={peopleFailed} onRetry={() => void drill(current.stage)} />
           ) : !people ? (
