@@ -73,3 +73,9 @@ export function useReceiptUrl() {
   const { accessToken } = useAuth();
   return async (path: string) => URL.createObjectURL((await apiFetchBlob(`/expenses${path}`, {}, accessToken ?? undefined)).blob);
 }
+
+/** A one-off GET under /expenses (a search as the person types); not cached. */
+export function useExpGet() {
+  const { accessToken } = useAuth();
+  return async <T>(path: string): Promise<T> => (await apiFetch(`/expenses${path}`, {}, accessToken ?? undefined)) as T;
+}

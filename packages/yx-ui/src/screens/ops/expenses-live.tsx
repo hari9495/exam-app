@@ -44,6 +44,9 @@ export const EXP_LINKS = {
   /** Round 2: a manager's read-only team claims; `?over=1` shows only claims with over-limit lines. */
   team: '/yx/expenses/team',
   teamOver: '/yx/expenses/team?over=1',
+  /** EXP-08: the employee's company card lines to explain; finance's card statements. */
+  cardLines: '/yx/expenses/card-lines',
+  cards: '/yx/expenses/cards',
 };
 
 export type AddKind = 'receipt' | 'mileage' | 'perdiem' | 'bill';
@@ -78,11 +81,22 @@ export interface LiveHome {
   onOpenAdvance: (id: string) => void;
   onRequestTrip: () => void;
   onGo: (href: string) => void;
+  /** EXP-08: how many of my company card lines wait for me to explain (null: none, or not loaded). */
+  cardLines?: number | null;
   /** Opens the new-claim dialog at once (the "New expense claim" action, Ctrl K, N E). */
   startNew?: boolean;
 }
 
 type View = 'emp' | 'mgr' | 'fin';
+
+/** EXP-08: the rail card telling the employee that company card lines wait for them. */
+export function CardLinesCard({ count, onOpen }: { count: number; onOpen?: () => void }) {
+  return (
+    <Card title="Company card" actions={<Button size="sm" onClick={onOpen}>Explain</Button>}>
+      <Facts items={[{ label: 'Lines to explain', value: count, tone: 'warning' }]} />
+    </Card>
+  );
+}
 
 export function NewClaimDialog({ open, onClose, onStart }: { open: boolean; onClose: () => void; onStart: (title: string) => Promise<unknown> }) {
   const [title, setTitle] = useState('');
@@ -285,6 +299,7 @@ export function LiveExpensesHome({ live }: { live: LiveHome }) {
         rail={
           <>
             <MoneyLead label="You will receive" amount={toReceive} sub={payroll} />
+            {live.cardLines ? <CardLinesCard count={live.cardLines} onOpen={() => live.onGo(EXP_LINKS.cardLines)} /> : null}
             {adv && (
               <Card title="Open advance" actions={<Button size="sm" onClick={() => live.onOpenAdvance(adv.id)}>Open</Button>}>
                 <Facts items={[{ label: 'Balance', value: money(adv.currency, adv.balance), tone: adv.overdue ? 'danger' : undefined }, { label: 'Settle by', value: adv.settleBy ? formatDate(day(adv.settleBy)) : '—' }]} />

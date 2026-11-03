@@ -19,3 +19,6 @@ export { TRIP_STATUS, ADVANCE_STATUS } from '../../ops/expenses-live-data';
 // Round 2: EXP-06 to pay (bank files, the journal) and EXP-09 reports, the designed screens with `live`.
 export { ToPayScreen, ExpenseReportsScreen } from '../../ops/expenses-finance';
 export { type LiveToPay, type LiveReports } from '../../ops/expenses-finance-live';
+// EXP-08 card statements: the designed CardImportScreen with `live` (finance) or `employee` (their card lines).
+export { CardImportScreen } from '../../ops/expenses-finance';
+export { type LiveCardImport, type LiveCardLines } from '../../ops/expenses-cards-live';

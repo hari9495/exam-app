@@ -15,6 +15,8 @@ import YxAdvancePage from './(app)/expenses/advances/[id]/page';
 import YxExpenseReportsPage from './(app)/expenses/reports/page';
 import YxTeamClaimsPage from './(app)/expenses/team/page';
 import YxExpenseToPayPage from './(app)/expenses/to-pay/page';
+import YxCardStatementsPage from './(app)/expenses/cards/page';
+import YxCardLinesPage from './(app)/expenses/card-lines/page';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn(), useParams: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn() }));
@@ -225,3 +227,63 @@ describe('To pay (EXP-06, the designed screen with live data)', () => {
   });
 });
 
+
+describe('Card statements (EXP-08, the designed screen with live data)', () => {
+  const LINE = { id: 'l1', rowNo: 4, txnOn: '2026-09-14', description: 'SKYINDIA AIRLINES BOM', merchant: null, amount: '6840.00', direction: 'debit', currency: 'INR', cardLast4: '1234', holders: [{ id: 'e1', name: 'Vikram Rao' }], status: 'open', matchGone: false, matchedTo: null, suggestion: { lineId: 'x1', claimId: 'k1', text: 'Mumbai visit · line 1', amount: '6840.00', spentOn: '2026-09-14' }, chasedOn: null, own: false, version: 3 };
+  const UNLINKED = { ...LINE, id: 'l2', description: 'CLOUDSOFT SUBSCRIPTION', cardLast4: '9999', holders: [], suggestion: null, version: 1 };
+  const HEAD = { id: 's1', bankName: 'Kaveri Bank', revision: 1, periodFrom: '2026-09-01', periodTo: '2026-09-30', fileName: 'kf.csv', rowCount: 2, debitTotal: '10839.00', creditTotal: '0.00', fullNumbersDropped: 1, status: 'open', note: null, version: 2, importedAt: '2026-10-02T05:00:00.000Z' };
+  const LIST = { statements: [{ ...HEAD, open: 2, toChase: 0 }], banks: [{ bankName: 'Kaveri Bank', mapping: { date: 'Txn Date', dateFormat: 'DD/MM/YYYY', description: 'Description', amountMode: 'signed', amount: 'Amount', card: 'Card No' }, version: 1 }], rules: { within: '1', days: 3, recoveryInstalments: 3 } };
+
+  it('opens a statement: says full card numbers were cut, accepts a suggested match with the line version', async () => {
+    const posted: unknown[] = [];
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('id=s1'));
+    route({
+      'GET /expenses/card-statements': LIST,
+      'GET /expenses/card-statements/s1': { statement: HEAD, rules: LIST.rules, lines: [LINE, UNLINKED], candidates: [] },
+      'POST /expenses/card-statements/s1/lines/l1/match': (_p: string, init: RequestInit) => (posted.push(JSON.parse(String(init.body))), { ok: true }),
+    });
+    wrap(<YxCardStatementsPage />);
+    expect(await screen.findByText('Card statement · September 2026')).toBeInTheDocument();
+    expect(screen.getByText(/This file had 1 full card number/)).toBeInTheDocument();
+    expect(within(screen.getByRole('row', { name: /CLOUDSOFT/ })).getByRole('button', { name: 'Link card' })).toBeInTheDocument();
+    await userEvent.click(within(screen.getByRole('row', { name: /SKYINDIA/ })).getByRole('button', { name: 'Accept match' }));
+    await waitFor(() => expect(posted).toEqual([{ claimLineId: 'x1', version: 3 }]));
+  });
+
+  it('linking a card: pressed without an employee, it says so and sends nothing', async () => {
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('id=s1'));
+    route({ 'GET /expenses/card-statements': LIST, 'GET /expenses/card-statements/s1': { statement: HEAD, rules: LIST.rules, lines: [UNLINKED], candidates: [] } });
+    wrap(<YxCardStatementsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Link card' }));
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Link card' }));
+    expect(await screen.findByText('Choose the employee who holds this card.')).toBeInTheDocument();
+    expect(api.mock.calls.some(([p]) => String(p).startsWith('/expenses/cards'))).toBe(false);
+  });
+
+  it('a new import: Continue without a file says what is missing', async () => {
+    route({ 'GET /expenses/card-statements': { ...LIST, statements: [] } });
+    wrap(<YxCardStatementsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Continue' }));
+    expect(await screen.findByText('Upload the statement file (CSV or Excel).')).toBeInTheDocument();
+  });
+
+  it('someone without the pay key sees the no-access state (403)', async () => {
+    api.mockImplementation(async () => {
+      throw Object.assign(new Error('Card statements need expense.payout.manage for the whole company.'), { status: 403 });
+    });
+    wrap(<YxCardStatementsPage />);
+    expect(await screen.findByText(/You don't have access to card statements/)).toBeInTheDocument();
+  });
+
+  it('the employee explains a line as personal spend', async () => {
+    const posted: unknown[] = [];
+    route({
+      'GET /expenses/card-lines/mine': { lines: [{ id: 'm1', txnOn: '2026-09-21', description: 'BOOKNOOK MG ROAD', merchant: null, amount: '1450.00', currency: 'INR', cardLast4: '1234', bankName: 'Kaveri Bank', periodFrom: '2026-09-01', periodTo: '2026-09-30', suggestion: null, version: 2 }], recoveryInstalments: 3 },
+      'POST /expenses/card-lines/m1/explain': (_p: string, init: RequestInit) => (posted.push(JSON.parse(String(init.body))), { choice: 'personal' }),
+    });
+    wrap(<YxCardLinesPage />);
+    await userEvent.click(await screen.findByRole('radio', { name: /Personal spend/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm personal spend' }));
+    await waitFor(() => expect(posted).toEqual([{ choice: 'personal', version: 2 }]));
+  });
+});

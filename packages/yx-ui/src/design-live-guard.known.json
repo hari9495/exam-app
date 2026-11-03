@@ -131,7 +131,6 @@
     "hiring: VendorsScreen",
     "ops: AccidentWorkspaceScreen",
     "ops: AgentDeskScreen",
-    "ops: CardImportScreen",
     "ops: CaseListScreen",
     "ops: CaseWorkspaceScreen",
     "ops: CheckReportScreen",

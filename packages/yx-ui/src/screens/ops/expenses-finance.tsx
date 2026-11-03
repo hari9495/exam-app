@@ -1,11 +1,11 @@
 // Finance-side expense screens (M05): EXP-06 to-pay queue, EXP-07 policy matrix, EXP-08 card statement import & matching,
 // EXP-09 expense reports.
 import { useMemo, useState } from 'react';
-import { ArrowLeft, Download, Upload } from 'lucide-react';
+import { ArrowLeft, Download, Link2, Upload } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { Button, IconButton } from '../../components/button';
 import { Badge } from '../../components/display';
-import { EmptyState, InlineAlert } from '../../components/feedback';
+import { EmptyState, InlineAlert, NoAccessState } from '../../components/feedback';
 import { FormField, StickySaveBar } from '../../components/field';
 import { TextArea, TextField } from '../../components/inputs';
 import { PlainTable } from '../../components/plain-table';
@@ -21,12 +21,15 @@ import { PageBanner } from '../../components/notify';
 import { BarChart, DonutChart } from '../../components/charts';
 import { Stepper } from '../../components/stepper';
 import { formatDate, formatINR, groupIndian } from '../../lib/format';
+import { dayKey } from '../../lib/dates';
 import type { FilterValue } from '../../lib/table';
 import { Actions, CardGrid, Facts, OpsDesk } from './ops-kit';
 import { ClaimBadges, claimTotals } from './expenses';
 import type { ListState } from './helpdesk';
 import type { Claim } from './expenses-data';
 import { LivePolicyScreen, type ExpenseSetupScreenProps, type PolicySheet, type PolicyTab } from './expenses-setup-live';
+import { CARD_PAGE, CardLinesToExplain, ChangeMatchDialog, ImportRefused, LinkCardDialog, LiveCardImportScreen, LiveCardLinesScreen, MappingForm, RowsToFix, type LiveCardImport, type LiveCardLines } from './expenses-cards-live';
+import type { CardMapping, MyCardLine } from '../expenses/live/types';
 import { LiveReportsScreen, LiveToPayScreen, type LiveReports, type LiveToPay, type ToPaySheet, type ToPayTab } from './expenses-finance-live';
 
 /* =========================================================================================
@@ -245,9 +248,49 @@ export interface CardLine {
   to: string;
 }
 const MATCH_TONE = { Matched: 'success', Suggested: 'warning', Unmatched: 'danger' } as const;
-export function CardImportScreen({ lines, current = 'match', device = 'desk', explainId }: { lines: CardLine[]; current?: string; device?: 'desk' | 'phone'; explainId?: string }) {
+export interface CardImportProps {
+  lines: CardLine[];
+  current?: string;
+  device?: 'desk' | 'phone';
+  explainId?: string;
+  /** States drawn for the live screen (EXP-08 round 3): a bank's first file, rows to fix, the same statement again, nothing left to match. */
+  variant?: 'first-bank' | 'rows-to-fix' | 'duplicate' | 'nothing' | 'link-card' | 'change-match' | 'no-access' | 'employee-desk';
+}
+/** EXP-08 card statement import and matching. The live app passes `live` (finance) or `employee` (their card lines). */
+export function CardImportScreen(props: CardImportProps | { live: LiveCardImport; defaultSheet?: 'link' | 'change' | null } | { employee: LiveCardLines; device?: 'desk' | 'phone' }) {
+  if ('live' in props) return <LiveCardImportScreen live={props.live} defaultSheet={props.defaultSheet} />;
+  if ('employee' in props) return <LiveCardLinesScreen live={props.employee} device={props.device} />;
+  return <SampleCardImport {...props} />;
+}
+const SAMPLE_COLUMNS = ['Txn Date', 'Card No', 'Description', 'Ref', 'Debit', 'Credit'];
+const SAMPLE_ROWS = [
+  ['14/09/2026', 'XXXX1234', 'SKYINDIA AIRLINES BOM', 'R8812', '6,840.00', ''],
+  ['19/09/2026', 'XXXX1234', 'FUELPOINT KORAMANGALA', 'R8840', '2,100.00', ''],
+  ['24/09/2026', 'XXXX1234', 'REFUND SKYINDIA', 'R8901', '', '500.00'],
+];
+function SampleCardImport({ lines, current = 'match', device = 'desk', explainId, variant }: CardImportProps) {
   const [choice, setChoice] = useState('business');
+  const [sampleMap, setSampleMap] = useState<Partial<CardMapping>>({ dateFormat: 'DD/MM/YYYY', amountMode: 'split', date: 'Txn Date', description: 'Description', card: 'Card No' });
   const mine = lines.filter((l) => l.employee === 'Vikram Rao' && l.match !== 'Matched');
+  const myLines: MyCardLine[] = mine.map((x) => ({ id: x.id, txnOn: dayKey(x.date), description: x.merchant, merchant: x.merchant, amount: x.amount.toFixed(2), currency: 'INR', cardLast4: '1234', bankName: 'Kaveri Foods corporate cards', periodFrom: '2026-09-01', periodTo: '2026-09-30', suggestion: x.match === 'Suggested' ? { claimId: 'c', text: x.to } : null, version: 1 }));
+  if (variant === 'no-access')
+    return (
+      <OpsDesk area="expenses" active="Card statements">
+        <PageHeader title={CARD_PAGE.title} />
+        <NoAccessState what="card statements" grantedBy="your finance admin" note="Card statements need expense.payout.manage for the whole company." />
+      </OpsDesk>
+    );
+  if (variant === 'employee-desk')
+    return (
+      <OpsDesk area="expenses" active="Expenses home">
+        <PageHeader title="Card lines to explain" description={`Your company card, September statement. ${mine.length} lines need you.`} />
+        <Card title="Your company card">
+          <div className="yx-ops-stack">
+            <CardLinesToExplain lines={myLines} recoveryInstalments={3} onExplain={() => {}} busy={null} />
+          </div>
+        </Card>
+      </OpsDesk>
+    );
   if (device === 'phone') {
     const l = mine.find((x) => x.id === explainId) ?? mine[0];
     return (
@@ -308,16 +351,29 @@ export function CardImportScreen({ lines, current = 'match', device = 'desk', ex
           {
             id: 'map',
             title: 'Check columns',
-            content: (
-              <DescriptionList
-                items={[
-                  { label: 'Transaction date', value: 'Column A · Txn Date' },
-                  { label: 'Merchant', value: 'Column C · Description' },
-                  { label: 'Amount (₹)', value: 'Column E · Debit' },
-                  { label: 'Card holder', value: 'Column B · Card last 4 → employee' },
-                ]}
-              />
-            ),
+            content:
+              variant === 'first-bank' ? (
+                <div className="yx-ops-stack">
+                  <InlineAlert tone="info">The first statement from Kaveri Foods corporate cards: say which column holds what. It is saved for next time.</InlineAlert>
+                  <MappingForm columns={SAMPLE_COLUMNS} sample={SAMPLE_ROWS} value={sampleMap} onChange={setSampleMap} />
+                </div>
+              ) : variant === 'rows-to-fix' ? (
+                <RowsToFix message="2 rows need fixing. Nothing was imported. Fix the file and upload it again." problems={[{ rowNo: 9, problems: ['"31/09/2026" is not a date written as DD/MM/YYYY.'] }, { rowNo: 14, problems: ['No date.', 'The card number has fewer than 4 digits.'] }]} />
+              ) : variant === 'duplicate' ? (
+                <div className="yx-ops-stack">
+                  <ImportRefused problem={{ kind: 'duplicate', message: 'This file was already imported on 2 Oct 2026 (Kaveri Foods corporate cards, 1 Sep 2026 to 30 Sep 2026). Nothing was imported.', statementId: 's1' }} onOpen={() => {}} />
+                  <ImportRefused problem={{ kind: 'period', message: 'Kaveri Foods corporate cards already has a statement for 1 Sep 2026 to 30 Sep 2026 (version 1). Import this file as version 2 to replace it, or choose another file.', statementId: 's1', revision: 1 }} onOpen={() => {}} onReplace={() => {}} />
+                </div>
+              ) : (
+                <DescriptionList
+                  items={[
+                    { label: 'Transaction date', value: 'Column A · Txn Date' },
+                    { label: 'Merchant', value: 'Column C · Description' },
+                    { label: 'Amount (₹)', value: 'Column E · Debit' },
+                    { label: 'Card holder', value: 'Column B · Card last 4 → employee' },
+                  ]}
+                />
+              ),
             summary: '4 columns mapped',
           },
           {
@@ -325,6 +381,7 @@ export function CardImportScreen({ lines, current = 'match', device = 'desk', ex
             title: 'Match lines',
             content: (
               <div className="yx-ops-stack">
+                {variant === 'nothing' && <InlineAlert tone="info">Nothing to match. Every line is matched, with the employee, explained or a refund.</InlineAlert>}
                 <Facts
                   items={[
                     { label: 'Matched', value: counts.m, tone: 'success' },
@@ -344,8 +401,20 @@ export function CardImportScreen({ lines, current = 'match', device = 'desk', ex
                   ]}
                   rows={lines}
                   getRowId={(l) => l.id}
-                  rowButtons={(l) => (l.match === 'Suggested' ? <Button size="sm">Accept match</Button> : l.match === 'Unmatched' ? <Button size="sm">Ask employee</Button> : null)}
+                  rowButtons={(l) => (l.match === 'Suggested' ? <Button size="sm">Accept match</Button> : l.match === 'Unmatched' ? (l.employee.startsWith('Card') ? <Button size="sm" icon={Link2}>Link card</Button> : <Button size="sm">Ask employee</Button>) : null)}
                 />
+                {variant === 'link-card' && <LinkCardDialog line={{ cardLast4: '4417' }} bankName="Kaveri Foods corporate cards" people={[{ id: 'p1', name: 'Sana Nizami', code: 'KF-0142' }, { id: 'p2', name: 'Sanjay Rao', code: 'KF-0208' }]} onSearch={() => {}} onClose={() => {}} onLink={async () => {}} />}
+                {variant === 'change-match' && (
+                  <ChangeMatchDialog
+                    line={{ id: 'c3', rowNo: 4, txnOn: '2026-09-19', description: 'FUELPOINT KORAMANGALA', merchant: null, amount: '2100.00', direction: 'debit', currency: 'INR', cardLast4: '1234', holders: [{ id: 'e1', name: 'Vikram Rao' }], status: 'open', matchGone: false, matchedTo: null, suggestion: { lineId: 'l7', claimId: 'k1', text: 'Client visits · line 2 · Fuelpoint', amount: '2100.00', spentOn: '2026-09-19' }, chasedOn: null, own: false, version: 1 }}
+                    candidates={[
+                      { lineId: 'l7', claimId: 'k1', employeeId: 'e1', text: 'Client visits · line 2 · Fuelpoint', amount: '2100.00', currency: 'INR', spentOn: '2026-09-19', payMode: 'company_card' },
+                      { lineId: 'l8', claimId: 'k1', employeeId: 'e1', text: 'Client visits · line 3 · Fuel', amount: '2050.00', currency: 'INR', spentOn: '2026-09-21', payMode: 'personal' },
+                    ]}
+                    onClose={() => {}}
+                    onMatch={async () => {}}
+                  />
+                )}
               </div>
             ),
             summary: `${counts.m} matched, ${counts.s} suggested, ${counts.u} unmatched`,

@@ -221,6 +221,7 @@ export function buildNav(n: NavInput): NavArea[] {
             ...when(employee || has('travel.booking.manage'), L('expense-trips', 'Trips', '/yx/expenses/trips')),
             ...when(employee || has('expense.payout.manage'), L('expense-advances', 'Advances', '/yx/expenses/advances')),
             ...when(has('expense.payout.manage'), L('expense-to-pay', 'To pay', '/yx/expenses/to-pay')),
+            ...when(has('expense.payout.manage'), L('expense-cards', 'Card statements', '/yx/expenses/cards')),
             ...when(has('expense.report.view'), L('expense-reports', 'Expense reports', '/yx/expenses/reports')),
             ...when(has('expense.policy.manage') || has('expense.policy.view'), L('expense-setup', 'Expense policy', '/yx/settings/expenses')),
           ]),

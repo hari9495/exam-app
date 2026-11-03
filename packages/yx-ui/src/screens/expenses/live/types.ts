@@ -416,3 +416,114 @@ export interface PayoutResultInput {
   ref?: string;
   reason?: string;
 }
+
+// EXP-08 card statements (apps/api/src/expenses/cards.service.ts). Only the last 4 digits of a card ever arrive.
+export type CardDateFormat = 'DD/MM/YYYY' | 'MM/DD/YYYY' | 'YYYY-MM-DD' | 'DD-MMM-YYYY';
+export interface CardMapping {
+  date: string;
+  dateFormat: CardDateFormat;
+  description: string;
+  amountMode: 'signed' | 'split' | 'indicator';
+  amount?: string;
+  negativeIs?: 'credit' | 'debit';
+  debit?: string;
+  credit?: string;
+  indicator?: string;
+  card?: string;
+  merchant?: string;
+  currency?: string;
+}
+export interface CardBank {
+  bankName: string;
+  mapping: CardMapping;
+  version: number;
+}
+export interface CardPreview {
+  fileName: string;
+  columns: string[];
+  sample: string[][];
+  rows: number;
+  mapping: CardBank | null;
+}
+export type CardStatementStatus = 'open' | 'closed' | 'replaced';
+export interface CardStatementHead {
+  id: string;
+  bankName: string;
+  revision: number;
+  periodFrom: string;
+  periodTo: string;
+  fileName: string;
+  rowCount: number;
+  debitTotal: string;
+  creditTotal: string;
+  fullNumbersDropped: number;
+  status: CardStatementStatus;
+  note: string | null;
+  version: number;
+  importedAt: string;
+}
+export interface CardStatements {
+  statements: (CardStatementHead & { open: number; toChase: number })[];
+  banks: CardBank[];
+  rules: { within: string; days: number; recoveryInstalments: number };
+}
+export type CardLineStatus = 'open' | 'matched' | 'to_chase' | 'personal' | 'refund' | 'replaced';
+export interface CardLineRow {
+  id: string;
+  rowNo: number;
+  txnOn: string;
+  description: string;
+  merchant: string | null;
+  amount: string;
+  direction: 'debit' | 'credit';
+  currency: string;
+  cardLast4: string | null;
+  holders: { id: string; name: string }[];
+  status: CardLineStatus;
+  matchGone: boolean;
+  matchedTo: { lineId: string; claimId: string; text: string } | null;
+  suggestion: { lineId: string; claimId: string; text: string; amount: string; spentOn: string } | null;
+  chasedOn: string | null;
+  own: boolean;
+  version: number;
+}
+export interface CardCandidate {
+  lineId: string;
+  claimId: string;
+  employeeId: string;
+  text: string;
+  amount: string;
+  currency: string;
+  spentOn: string;
+  payMode: 'personal' | 'company_card';
+}
+export interface CardStatementView {
+  statement: CardStatementHead;
+  rules: { within: string; days: number };
+  lines: CardLineRow[];
+  candidates: CardCandidate[];
+}
+/** A refusal of an import: the rows to fix, the same file, or the same bank and period. */
+export type CardImportProblem =
+  | { kind: 'rows'; message: string; problems: { rowNo: number; problems: string[] }[] }
+  | { kind: 'duplicate'; message: string; statementId: string | null }
+  | { kind: 'period'; message: string; statementId: string | null; revision: number | null }
+  | { kind: 'other'; message: string };
+export interface MyCardLine {
+  id: string;
+  txnOn: string;
+  description: string;
+  merchant: string | null;
+  amount: string;
+  currency: string;
+  cardLast4: string | null;
+  bankName: string;
+  periodFrom: string;
+  periodTo: string;
+  suggestion: { claimId: string; text: string } | null;
+  version: number;
+}
+export interface MyCardLines {
+  lines: MyCardLine[];
+  recoveryInstalments: number;
+}

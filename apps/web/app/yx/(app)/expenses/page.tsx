@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ExpensesHomeScreen, EXP_LINKS, type AdvanceSummary, type ClaimSummary, type ExpenseHome, type ToPayData, type TripSummary } from '@yukthix/ui/expenses';
+import { ExpensesHomeScreen, EXP_LINKS, type AdvanceSummary, type ClaimSummary, type ExpenseHome, type MyCardLines, type ToPayData, type TripSummary } from '@yukthix/ui/expenses';
 import { loadState, todayIst, useYxPermissions } from '../../../../lib/yx-org';
 import { useExp, useExpWrite } from '../../../../lib/yx-expenses';
 import { useScopeParams, withParams } from '../../../../lib/yx-shell';
@@ -26,6 +26,8 @@ function ExpensesHome() {
   const trips = useExp<{ trips: TripSummary[] }>(withParams('/trips?view=approvals', sp.entity), Boolean(h));
   const advances = useExp<{ advances: AdvanceSummary[] }>(withParams('/advances?view=approvals', sp.entity), Boolean(h));
   const mine = useExp<{ advances: AdvanceSummary[] }>('/advances', Boolean(h));
+  // EXP-08: my company card lines waiting for me to explain.
+  const cardLines = useExp<MyCardLines>('/card-lines/mine', Boolean(h));
   const pays = perms.has('expense.payout.manage');
   const toPay = useExp<ToPayData>(withParams('/to-pay', sp.entity), pays);
   const payout = useExp<{ advances: AdvanceSummary[] }>(withParams('/advances?view=payout', sp.entity), pays);
@@ -52,6 +54,7 @@ function ExpensesHome() {
         onOpenAdvance: (id) => router.push(EXP_LINKS.advance(id)),
         onRequestTrip: () => router.push(`${EXP_LINKS.trips}?new=1`),
         onGo: (href) => router.push(href),
+        cardLines: cardLines.data?.lines.length ?? null,
         startNew,
       }}
     />

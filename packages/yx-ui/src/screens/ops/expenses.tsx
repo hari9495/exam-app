@@ -22,7 +22,7 @@ import { formatDate, formatINR } from '../../lib/format';
 import { Actions, CameraFrame, CardGrid, Facts, MoneyLead, OpsDesk, ReceiptImage, StatusTrail, Workspace, useSay, type CameraState } from './ops-kit';
 import { checkLine, flagText, fxFlagged, fxVariancePct, mileageAmount, perDiemAmount, recoveryInstalments, reductionText, settlement } from './ops-rules';
 import type { ListState } from './helpdesk';
-import { LiveClaimComposer, LiveClaimReview, LiveExpensesHome, NewClaimDialog, type LiveClaim, type LiveHome } from './expenses-live';
+import { CardLinesCard, LiveClaimComposer, LiveClaimReview, LiveExpensesHome, NewClaimDialog, type LiveClaim, type LiveHome } from './expenses-live';
 import { Segment } from '../../components/segment';
 import { LiveAdvanceRecord, LiveAdvancesList, LiveTripRecord, LiveTripsList, type LiveAdvance, type LiveAdvances, type LiveTrip, type LiveTrips } from './expenses-travel-live';
 import type { ApprovalStatus, Claim, ExpenseLine, PaymentStatus } from './expenses-data';
@@ -64,6 +64,8 @@ export interface ExpensesHomeProps {
   views?: boolean;
   /** The "New claim" dialog open (name the claim first). */
   naming?: boolean;
+  /** EXP-08: company card lines waiting for the employee to explain. */
+  cardLines?: number;
 }
 export interface TeamClaimsProps {
   today: string;
@@ -92,7 +94,7 @@ const VIEWS = [
   { value: 'mgr', label: 'Waiting for me' },
   { value: 'fin', label: 'Finance' },
 ];
-function SampleExpensesHome({ device = 'desk', persona = 'emp', claims, toPay, today, state = 'ready', views, naming }: ExpensesHomeProps) {
+function SampleExpensesHome({ device = 'desk', persona = 'emp', claims, toPay, today, state = 'ready', views, naming, cardLines }: ExpensesHomeProps) {
   const switcher = views ? <Segment label="Show" value={persona} onChange={() => {}} options={VIEWS} /> : null;
   const dialog = naming ? <NewClaimDialog open onClose={() => {}} onStart={async () => {}} /> : null;
   const pending = claims.filter((c) => c.status === 'Submitted' || (c.status !== 'Rejected' && c.payment !== 'Paid' && c.payment !== 'Not due'));
@@ -227,6 +229,7 @@ function SampleExpensesHome({ device = 'desk', persona = 'emp', claims, toPay, t
         rail={
           <>
             <MoneyLead label="You will receive" amount={toReceive} sub="Approved claims are paid in the next payroll unless finance pays sooner" />
+            {cardLines ? <CardLinesCard count={cardLines} /> : null}
             <Card title="Open advance">
               <Facts items={[{ label: 'ADV-0087 balance', value: formatINR(0) }, { label: 'Settle by', value: '16 Oct 2026' }]} />
             </Card>
