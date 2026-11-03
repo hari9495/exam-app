@@ -1,7 +1,7 @@
 // HLP-07 My cases, HLP-08 Cases (case team), HLP-09 Ethics desk: the shapes the screens need from the server.
 // Phase A (3 Nov 2026): written before the server. HLP-06 builds the case record; phase B maps it onto these shapes
 // (or changes them here with the screens). Dates are ISO strings in India time; every legal date comes from the server
-// (the statutory rule set or a company setting), never from the screen. Rules: helpdesk-design-map.md section 4e.
+// (the statutory rule set or a company setting), never from the screen. Rules: helpdesk-design-map.md section 4f.
 
 export type CaseKind = 'grievance' | 'ethics' | 'posh' | 'disciplinary';
 export type CaseStatus = 'open' | 'action' | 'on-hold' | 'closed';
@@ -16,7 +16,7 @@ export interface CaseDate {
   note?: string | null;
 }
 
-/** A file on the case. Never changed or deleted: a new file is added instead (evidence rule, 4e). */
+/** A file on the case. Never changed or deleted: a new file is added instead (evidence rule, 4f). */
 export interface CaseFile {
   id: string;
   name: string;

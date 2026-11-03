@@ -5,7 +5,7 @@
 // the reporter's limited view, the respondent's notice and reply, the delayed notice with its reason, two-person outcome
 // approval, the IC report with members' views and the presiding officer's signature, interim relief with its HR task,
 // stepping aside, conflicts, evidence with its fingerprint and access log, no access. Every rule is the server's again
-// (helpdesk-design-map.md 4e); no legal date is worked out here.
+// (helpdesk-design-map.md 4f); no legal date is worked out here.
 import { useState } from 'react';
 import { ArrowLeft, Briefcase, FileText, Megaphone, Send, ShieldAlert } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
