@@ -601,3 +601,8 @@ value wins. Not built here: (9) and (12) (other builders).
 close or open an exit case. (b) HR home "vs last period": a scheduled monthly snapshot of the HR home numbers; the stat
 cards show the change against last month. Rows decided by the founder (cycle weights/scale on the template, fixed
 mid-cycle rules, facilitator-only calibration moves, HR-only PIP outcome) are live by decision, not gaps.
+
+## Founder answers, 3 Nov 2026 (phone layouts)
+(1) the 1:1 record on a phone keeps a plain "All 1:1s" button at the top until the app's phone header has a working back
+arrow; (2) draw PRF-12 "Manager · phone" and "HR · phone" design stories to match what the live phone PIP shows (a small
+design follow-up).
