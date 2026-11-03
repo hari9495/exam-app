@@ -356,6 +356,11 @@ No server (no case records).
 | Loading · Loading | design only, feature not built | |
 | Phone · My cases · phone | design only, feature not built | the feature itself is not built |
 | PhoneReply · Show-cause reply · phone | design only, feature not built | |
+| ReporterView · Reporter · status, dates and messages only | design only, feature not built | new story (phase A): founder decision 4; the reporter's shape has no field for notes, witnesses or the respondent's reply |
+| OutcomeShared · Reporter · closed, the outcome and the appeal date | design only, feature not built | new story (phase A): the summary the case team sends; the appeal date from the rule set |
+| RespondentNotice · Respondent · notice, copy of the complaint, reply date | design only, feature not built | new story (phase A): the reply date with its source; Send reply (too early says why), files |
+| MoreTimeAsked · Respondent · more time asked, waiting for the case team | design only, feature not built | new story (phase A): asked once, with a reason |
+| NoAccess · No access (acting for someone else) | design only, feature not built | new story (phase A): 403 shows the kit's no-access state |
 
 #### HLP-08 · Cases (case team)
 
@@ -375,6 +380,21 @@ No server (no case records, members or clocks).
 | NonMemberList · Case list · not a member (shows Not found) | design only, feature not built | |
 | Loading · Loading | design only, feature not built | |
 | Error · Error | design only, feature not built | |
+| SecondOfficer · Outcome · second officer approves or sends back | design only, feature not built | new story (phase A): founder decision 1: four eyes; send back needs a note |
+| ProposedByMe · Outcome · proposer waits for a second officer | design only, feature not built | new story (phase A): the proposer gets no Approve |
+| ProposeOutcome · Outcome · propose (finding, action, reasons) | design only, feature not built | new story (phase A): blocked before the reply or its date (says why); "not proved" and "false or malicious" kept apart (POSH s.14) |
+| IcFindings · POSH · IC findings and members' views (1 of 3 agree) | design only, feature not built | new story (phase A): each member agrees or not (a no needs a note); the presiding officer signs only with a majority |
+| IcSigned · POSH · IC report signed by the presiding officer | design only, feature not built | new story (phase A): final and dated; the employer-action clock from the rule set |
+| NoticeToSend · Notice · not sent yet (send or delay) | design only, feature not built | new story (phase A): Send notice and copy (confirm, the reply date's source) |
+| NoticeDelayed · Notice · delayed with a recorded reason | design only, feature not built | new story (phase A): founder decision 2: who, when, why, review date |
+| DelayNotice · Notice · delay (reason and review date) | design only, feature not built | new story (phase A): both required |
+| MoreTimeDecide · Notice · the respondent asked for more time | design only, feature not built | new story (phase A): give (new date) or refuse |
+| InterimRelief · Interim relief · recorded, HR task | design only, feature not built | new story (phase A): founder decision 3: the HR task number and status; nothing changes in People |
+| RecordRelief · Interim relief · record (gives HR a task) | design only, feature not built | new story (phase A): Segment: transfer, leave, stop reporting, other; what HR should do |
+| StepAside · Step aside from a case (with a reason) | design only, feature not built | new story (phase A): recusal; the rail marks the member |
+| ConflictOverride · Add member · conflict found, override with a reason | design only, feature not built | new story (phase A): 409 `CASE_CONFLICT`, then the second try with the reason |
+| Evidence · Evidence · fingerprints, virus check and access log | design only, feature not built | new story (phase A): SHA-256, opens count, only clean files open |
+| NoAccess · No access (no case-team key) | design only, feature not built | new story (phase A): 403; a case one is not on stays "Not found" |
 
 #### HLP-09 · Ethics desk
 
@@ -388,6 +408,8 @@ No server.
 | Loading · Loading | design only, feature not built | |
 | Error · Error | design only, feature not built | |
 | NotEthicsOfficer · Not the ethics officer (shows Not found) | design only, feature not built | |
+| AboutOfficer · Report about a case officer · with the chair, not the officer | design only, feature not built | new story (phase A): Companies Act s.177; no Route button on it; routing needs a reason |
+| NoAccess · No access (not an ethics officer) | design only, feature not built | new story (phase A): 403 |
 
 #### HLP-10 · Policy library + acknowledgement
 

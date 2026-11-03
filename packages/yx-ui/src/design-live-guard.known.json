@@ -143,6 +143,7 @@
     "ops: PoshComplaintScreen",
     "ops: PreRegisterScreen",
     "ops: ReportAccidentScreen",
+    "ops: ShowCauseReply",
     "ops: StatutorySetupScreen",
     "ops: VendorComplianceScreen",
     "ops: VisitorDeskScreen",
