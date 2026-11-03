@@ -599,7 +599,6 @@ Live page: /yx/support (Security › Contact YukthiX), with `org.yukthix_support
 - No new table and no migration. Success is a toast; nothing is greyed out.
 
 ## 4d. HLP-05b rules built (the at-risk point per desk)
-
 - **Setting:** `sd_desks.at_risk_percent`, one of 50, 60, 70, 80, 90 (default 80; a CHECK in the database, the same
   five in the API, anything else including null is 400). Migration `20261620000000_sd_desk_at_risk_percent` (adds a
   column with a default to a table that already has RLS; no data change). A copied desk keeps it.
@@ -611,6 +610,77 @@ Live page: /yx/support (Security › Contact YukthiX), with `org.yukthix_support
   and the help centre's clocks). Used by the HLP-05 cards and at-risk table, the HLP-02 "At risk or breached" view
   (it was "missed or due within 4 hours") and the row and quick-view badges, and the ticket page and help-centre
   badges. Missed stays at 100 %.
+## 4d. HLP-10/11 rules (policy library, acknowledgement and policy admin)
+Written before the build (3 Nov 2026, `feat/yukthix-hlp-10-11`). Founder answer 7 (3 Nov) asks for care in law areas:
+this feature only records that a policy was shown and acknowledged; it decides nothing legal. Every legal hook below is
+marked **verify with counsel**, and no legal figure is in code (every number is a company setting).
+**What the app does and why.** HR writes the company's policies (code of conduct, POSH, leave, IT security …) as rich
+text with attachments. Every change is a new version with a short "what changed". A version goes live only after a
+second person publishes it (maker-checker, like letters), and a published version never changes again. Each policy has
+an audience built from the existing org structure. The people in it see the policy under Helpdesk › Policies, read the
+exact version and acknowledge it. The app keeps who acknowledged which version, when, how and from where. The app
+cannot change or delete that record. HR sees completion per policy and per department, sends reminders, and exports
+the record as evidence that the policy was communicated.
+**Indian legal hooks the app supports (it does not replace any of them):**
+- **POSH Act 2013** (Sexual Harassment of Women at Workplace Act): the employer must have a written policy against
+  sexual harassment and make it known to employees, with the Internal Committee and how to complain. The app publishes
+  it, keeps the acknowledgements and shows who has not read it. It does not set up the Internal Committee or replace
+  displaying the notice at the workplace. **Verify with counsel.**
+- **Industrial Employment (Standing Orders) Act 1946** (and the Industrial Relations Code 2020 once in force): certified
+  standing orders are displayed at the workplace in English and the local language. **State Shops and Establishments
+  Acts**: some states ask for notices and abstracts to be displayed; a few accept electronic display. The app's copy and
+  acknowledgements add to the notice board; they do not replace it. Which states accept an electronic notice is a
+  per-state question. **Verify with counsel.**
+- **IT Act 2000** (sections 4 and 10A): electronic records and agreements made electronically are valid. A click, a
+  typed name or a one-time code is not an "electronic signature" under section 3A (that needs Aadhaar eSign or a DSC),
+  so the record is proof that the policy was shown and accepted, not a signed contract. **Verify with counsel.**
+- **Evidence** (Indian Evidence Act 1872 section 65B, Bharatiya Sakshya Adhiniyam 2023 section 63): an electronic record
+  used in a hearing needs a certificate about the system that made it. The export carries, per acknowledgement, the
+  version, the SHA-256 fingerprint of the exact text read, the time (IST), the method, the typed name, the IP and the
+  device, so the company can give that certificate. A one-time code makes the record stronger than a click.
+  **Verify with counsel.**
+- **DPDP Act 2023**: an acknowledgement holds personal data (name, time, IP, device). It is kept for employment
+  compliance (a legitimate use for employment, section 7), shown to the person, and kept no longer than needed.
+  Retention is not built yet (question). **Verify with counsel.**
+**Company settings** (Settings registry, `org.settings.manage`, company-wide, every change audited; the default is
+what a new company gets):
+| setting | default | choices | what it does |
+|---|---|---|---|
+| `policy.ack.due_days` | 14 | 7, 14, 15, 30, 45, 60 | days to acknowledge, from the version's effective date or the person's joining date, whichever is later |
+| `policy.reminder.every_days` | 3 | off, 1, 2, 3, 7 | a pending person is reminded every this many days |
+| `policy.reminder.manager_after_days` | 7 | off, 3, 7, 14, 30 | the manager is told once when someone is this many days overdue |
+| `policy.reack.default` | on | on, off | whether "Ask everyone to acknowledge again" starts switched on for a new version |
+| `policy.ack.typed_name` | off | off, on | the person also types their name as on their record |
+| `policy.publish.second_person` | on | on, off | a version is published by someone other than its writer; turning it off loosens a control, so it also needs `access.role.manage` |
+**Who:**
+- **Employee** (implicit, own records only): sees published policies whose audience covers their current job today,
+  reads the current version and its attachments, acknowledges it. Someone acting for another person gets 403.
+- **`policy.manage`** (new key; HR Admin template): makes policies, writes and sends versions, sets the audience and
+  the method, sees completion, the pending people, sends reminders, exports the evidence. Company-wide only.
+- **`policy.publish`** (new key; HR Admin template): publishes or sends back a waiting version, never their own while
+  the second-person setting is on (also a database check).
+- Anyone else: 403 and the no-access state. Another company's policy: 404.
+**Versions:** v1, v2 … Each is a draft, then waiting for publishing, then published (or sent back with a note, then
+draft again). One open version per policy. From v2 "What changed" is required (3 to 500 letters). Text is cleaned on
+the server (the sanitize-html allow-list of the desk editor); attachments go through the file service (PDF, DOCX, PNG,
+JPG, up to 10 MB, virus-checked; only clean files open). A published version never changes (database trigger) and is
+never deleted (the app's database role has no delete). The effective date is the publish day (India).
+**Audience:** any of legal entities, locations, departments and grades (empty = all), matched against each person's
+assignment in force today (the existing org structure). Leavers drop out. Someone moved out of the audience is no longer
+pending; their acknowledgements stay on record. A new joiner is in from their joining day.
+**Acknowledgement:** a policy needs acknowledging for its latest version that asked for it (v1 always does). A person
+is done once they acknowledged that version or a later one. Only the current version can be acknowledged (an older one
+is refused, 409, "A newer version …"); once per version per person (a repeat is 409). Methods per policy: confirmation
+(tick "I have read and understood", plus the typed name when the setting is on) or one-time code (6 digits to the
+sign-in email, 5 minutes, the send limits of letters). The record: person, version, text fingerprint, time, method,
+typed name, IP, device. Append-only: the app's database role cannot change or delete it.
+**Due and reminders:** due = the later of the version's effective date and the joining date, plus the due days.
+Overdue the day after. On publish, everyone who must acknowledge gets a notice. Every morning (09:00 IST) the job reminds
+each pending person every N days and tells their manager once at M days overdue; it is safe to run twice. HR's "Send
+reminder" reminds the pending people (or the ones ticked) who were not reminded today.
+**Export:** CSV of every acknowledgement of every version of one policy (`policy.manage`, audited).
+**Defaults the product decided:** policy numbers POL-01 …; categories are free text; department means that department
+only, not the ones under it (question); no quiz (question).
 
 ## 5. Two designs for one job
 
