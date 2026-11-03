@@ -24,15 +24,18 @@ feature not built** (no API) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Helpdesk HLP-01 … 14 | 14 | 51 | 1 | 6 | 69 | 0 | 127 |
-| B. Service desk designs | 6 | 73 | 2 | 0 | 0 | 0 | 75 |
-| **All Helpdesk groups (A–B)** | **20** | **124** | **3** | **6** | **69** | **0** | **202** |
-
+| A. Helpdesk HLP-01 … 14 | 14 | 74 | 2 | 3 | 69 | 0 | 148 |
+| B. Service desk designs | 5 | 67 | 2 | 0 | 0 | 0 | 69 |
+| **All Helpdesk groups (A–B)** | **19** | **141** | **4** | **3** | **69** | **0** | **217** |
 Round 3 recount (script, 3 Nov 2026, `feat/yukthix-hlp-03`): HLP-03 has 18 stories (the 6 approved plus 12 drawn for
 the old workspace's states), all live; Phase 3b-1 loses the stand-in's 4 stories (Workspace, WorkspaceCollaborator,
 WorkspaceUnverified, ReplyTooEarly) and has 26; esm-live loses the 16 "Live ·" stories of the ticket side cards and the
 escalate dialog (94 left).
 Round 2 (HLP-02):
+Round 4 recount (script, 3 Nov 2026, `feat/yukthix-hlp-04`): HLP-04 has 24 stories (the 3 approved plus 21 drawn for
+the old knowledge screen's states): 23 live, 1 live (gap) (Review due: the design's group audience). The Service desk
+group "HLP-04 Knowledge" (6 stories) is deleted with its stand-in `KnowledgeScreen`, so B has 5 groups; the script no
+longer reads `knowledge.stories.tsx`.
 
 Round 2 recount (script, 3 Nov 2026, `feat/yukthix-hlp-02`): HLP-02 has 20 stories (the 10 approved plus 10 drawn for
 the old agent screen's states), all live; Phase 3b-1 loses the stand-in's 3 stories (Tickets, Board,
@@ -69,8 +72,9 @@ groups them).
 | /yx/desk/help (?new=1, ?article=) | the designed `HelpCentreScreen` (HLP-01) with `live`: Find an answer, resolved-ticket card, My tickets with the resolution promise, the raise drawer (phone: bottom sheet); known issues, the chat offer, WhatsApp / SMS, reading aids and My data in the same layout | HLP-01 | `GET desk/my/tickets` (now with `clock`, `closesOn`, `reopenUntil`, `rating`, `canRate`), `POST desk/my/tickets`, `POST desk/my/tickets/:id/attachments`, `POST desk/my/tickets/:id/rating`, `GET desk/my/desks`, `GET desk/my/kb`, `/kb/suggest`, `/kb/articles/:n`, `POST /kb/articles/:id/feedback`, `GET desk/my/banners`, `POST …/me-too`, `GET/POST desk/my/privacy-requests`, `GET desk/my/chat/prompt`, `desk/my/messaging` (all implicit: the signed-in person's own records; 403 while acting for someone else) | live |
 | /yx/desk/help/[id] | `MyTicketScreen` with `RequestTracker`, `MyDocumentsCard` (stand-ins) | Phase 3b-1 MyTicket | `GET desk/my/tickets/:id`, `POST …/messages`, `/watchers`, `/attachments`, `GET desk/my/requests/:id`, `/documents`, `POST desk/my/documents/:id/sign` (implicit: the requester or a watcher) | live |
 | /yx/desk/tickets | the designed `AgentDeskScreen` (HLP-02) with `live`: views, filters (queue, priority, status, raised), table or board, quick view, bulk for team leads, move to another queue, new ticket for an employee, CSV | HLP-02 | `GET desk/tickets` (`desk.ticket.view`; now with `firstResponse`, `resolution`, `firstResponseAt`, and `createdFrom` / `createdTo`), `GET/POST desk/views` (`desk.ticket.view`), `POST desk/tickets`, `/:id/assign`, `PATCH desk/tickets/:id` (`desk.ticket.work`), `POST desk/tickets/bulk` (`desk.ticket.bulk`, lead of the desk), `POST desk/tickets/:id/move` (`desk.ticket.move`), `GET desk/tickets/export` (`desk.ticket.export`) | live |
-| /yx/desk/tickets/[id] | the designed `TicketWorkspaceScreen` (HLP-03) with `live`: header with the resolution target, Wait on employee / Resume, Resolve; Conversation and Respond; rail with Requester, Details, the side cards (`RequestPanel`, `TicketEsmRail`, `TicketKbCard`, `TicketWorkRail`), Activity, source, people, time; `ResolveDialog`, `EscalateDialog` | HLP-03 | `GET desk/tickets/:id` (`desk.ticket.view`; now with `closesOn`, `rating`), `/timeline`, `/context`, `/sla`, `/work`, `POST …/messages` (`desk.ticket.work` or `desk.ticket.note`), `PATCH desk/tickets/:id`, `/resolve`, `/escalate`, `/assign` (`desk.ticket.work`), `/merge` (`desk.ticket.merge`), `/move` (`desk.ticket.move`) | live |
+| /yx/desk/tickets/[id] | `TicketScreen` with `TicketWorkRail`, `ResolveDialog`, `EscalateDialog`, `RequestPanel`, `TicketEsmRail`, `TicketKbCard` (the last four are stand-ins) | Phase 3b-1 Workspace; HLP-03 not wired | `GET desk/tickets/:id`, `/timeline`, `/context`, `/sla`, `/work` (`desk.ticket.view`), `POST …/messages` (`desk.ticket.work` or `desk.ticket.note`), `/resolve`, `/escalate`, `/assign` (`desk.ticket.work`), `/merge` (`desk.ticket.merge`) | live (B); wire design (HLP-03) |
 | /yx/desk/knowledge | `KnowledgeScreen` (spaces, articles, editor with review, gaps, recycle bin) | HLP-04 Knowledge; HLP-04 Knowledge base editor not wired | `GET desk/kb/spaces`, `/articles` (`desk.kb.view_internal`, `desk.kb.author` or `desk.kb.publish`), `POST desk/kb/articles`, `/versions`, `/submit` (`desk.kb.author`), `/review`, `/retire` (`desk.kb.publish`), `GET desk/kb/gaps` (`desk.report.view` or `desk.kb.publish`) | live (B); wire design (HLP-04) |
+| /yx/desk/knowledge (?article=) | the designed `KbEditorScreen` (HLP-04) with `live`: the article list per space, the article editor with four-eyes review, compare, preview, details, translations; categories, blocks, templates, content gaps and the recycle bin as tabs | HLP-04 | `GET desk/kb/spaces`, `/articles` (`desk.kb.view_internal`, `desk.kb.author` or `desk.kb.publish`), `POST desk/kb/articles`, `/versions`, `/submit`, `PATCH desk/kb/articles/:id` (now with `keywords`, `assistantUse`), `POST …/reviewed` (new) (`desk.kb.author`), `/review`, `/retire`, `/republish`, `DELETE` (`desk.kb.publish`), `GET desk/kb/gaps` (`desk.report.view` or `desk.kb.publish`) | live |
 | /yx/desk/reports | `ReportsScreen` (dashboard, KPIs, library, funnel, my reports, walls, customers, NPS surveys) | Reports (HLP-05); HLP-05 SLA dashboard not wired | `GET desk/reports/*` (`desk.report.view`), custom reports, schedules, wallboards, KPI targets (`desk.report.manage`), `GET/POST desk/surveys` (`desk.survey.manage`); no-access state without either | live (B); wire design (HLP-05) |
 | /yx/wall/[org]/[token] | `WallScreen` | Reports (HLP-05) Wall | `GET desk/wall/:org/:token` (the secret link; counts only) | live |
 | /yx/desk/setup | `DeskSetupScreen` (desks, calendars, SLA, email, help pages, banners, `SetupStart`) and the stand-ins `CatalogAdmin`, `RulesAdmin`, `LifecycleAdmin`, `ChatQueuesAdmin`, `DeskOrgAdmin`, `SchedulesAdmin`, `MessagingAdmin` | Phase 3b-1 Setup and set-up tabs; Batch 4 GetStarted | desk set-up routes (`desk.settings.manage`, `desk.desk.create`, `desk.sla.manage`, `desk.mailbox.manage`, `desk.portal.manage`, `desk.catalog.manage`, `desk.rule.manage`, `desk.lifecycle.manage`, `desk.channel.manage`) | live |
@@ -105,7 +109,7 @@ live, but drawn only as "Live ·" pictures in `esm-live.stories.tsx`. Grouped by
 | `TeamScreen` | /yx/desk/team | Desk team (11) | none (HLP-05 is SLAs, not shifts). Needs a design |
 | `CatalogAdmin`, `RulesAdmin`, `LifecycleAdmin`, `ChatQueuesAdmin`, `DeskOrgAdmin`, `SchedulesAdmin`, `MessagingAdmin` | /yx/desk/setup | Set-up (41) | none; the Phase 3b-1 set-up tabs are designs for the rest of the same page. Needs designs per tab |
 
-And under `notLive`: designed, with no live page rendering them. `ops: TicketWorkspaceScreen` (HLP-03; HLP-02 left the list in round 2), `ops: KbEditorScreen` (HLP-04), `ops: SlaDashboardScreen` (HLP-05) have a live page
+And under `notLive`: designed, with no live page rendering them. `ops: TicketWorkspaceScreen` (HLP-03; HLP-02 left the list in round 2, HLP-04 in round 4), `ops: SlaDashboardScreen` (HLP-05) have a live page
 doing the same job with a B screen (section 5). `ops: SpeakUpScreen`, `ops: CheckReportScreen` (HLP-06), `ops:
 MyCasesScreen` (HLP-07), `ops: CaseListScreen`, `ops: CaseWorkspaceScreen`, `ops: LoadingCase`, `ops: ErrorCase`
 (HLP-08), `ops: EthicsDeskScreen` (HLP-09), `ops: PolicyLibraryScreen` (HLP-10), `ops: PolicyAdminScreen` (HLP-11),
@@ -219,13 +223,38 @@ follow-ups, articles, related tickets and the rest of the work rail) sit in the 
 
 #### HLP-04 · Knowledge base editor
 
-Live page for this job: /yx/desk/knowledge renders `KnowledgeScreen` (the "HLP-04 Knowledge" B design).
+Live page: /yx/desk/knowledge (menu Helpdesk › Knowledge base, with `desk.kb.view_internal`, `desk.kb.author` or
+`desk.kb.publish`). The page renders the designed `KbEditorScreen` (`screens/ops/helpdesk.tsx`) with `live`; the live
+part is `screens/ops/helpdesk-kb-live.tsx`. Round 4 (founder answer 1: the HLP design wins): 21 stories were drawn in
+the same look for the states the old Service desk knowledge screen had (the article list, spaces, categories, blocks,
+templates, content gaps, recycle bin, four-eyes review, compare, preview, details, read only, no access).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Published · Published | wire design | live page /yx/desk/knowledge renders KnowledgeScreen (B design "HLP-04 Knowledge"); versions and publish exist |
-| Draft · New draft | wire design | live: new article, save draft, submit for review (`desk.kb.author`) |
-| ReviewDue · Review due | wire design | the server keeps `reviewDueOn` and marks overdue reviews in article health |
+| Published · Published | live | an open article: the design's header (KB-n, by the last writer, updated date, Published badge), title and answer, rail "Where it shows" (space, who can read it, category, "Also suggest for these words", "Use in assistant answers"), "How it's doing" (views 90 days, answered without a ticket, helpful, health), "Versions" with Compare. The primary button is "Publish changes" when another writer's version waits and the viewer is a publisher, else "Send for review" (four eyes) |
+| Draft · New draft | live | "New article" starts a draft (`POST desk/kb/articles`, `desk.kb.author`); Save draft (`PATCH desk/kb/articles/:id` for the rail choices, then `POST …/versions`), toast |
+| ReviewDue · Review due | live (gap) | review date passed (12 months after publishing, YX-GRO-07): "Review due" badge and the banner with Mark reviewed (new `POST desk/kb/articles/:id/reviewed`, `desk.kb.author`: next check 12 months on, toast). Gap: the design's Audience is a list of groups (Hosur plant, managers); the server's audience is per space (agents, people who ask this desk, public), shown read only (question 13) |
+| Articles · Knowledge base · articles in a space | live | new story: `GET desk/kb/spaces`, `GET desk/kb/articles?spaceId=` (search, state Segment, out of date); the space Select; a row opens the article (`?article=`) |
+| NewArticle · New article | live | new story: title (required), summary, category, template; "Start the draft" |
+| NewSpace · New space | live | new story: `POST desk/kb/spaces` (`desk.desk.create`, or `desk.settings.manage` for one's own desk); who can read it is a Segment; toast |
+| NoSpaces · No spaces yet | live | new story |
+| Categories · Categories of a space | live | new story: add, rename, move up / down, delete an empty one (`desk.kb.publish`, `desk.settings.manage` or `desk.desk.create`); three levels |
+| Blocks · Reusable blocks | live | new story: `GET/POST/PATCH desk/kb/blocks` (publishers change them) |
+| Templates · Article templates | live | new story: `GET/POST/PATCH desk/kb/templates` |
+| Gaps · Content gaps | live | new story: `GET desk/kb/gaps` (`desk.report.view` or `desk.kb.publish`); article-request task (`desk.task.work`), toast |
+| RecycleBin · Recycle bin | live | new story: `GET desk/recycle-bin`, Put back, toast |
+| WaitingReview · Publisher · a version waiting for your review | live | new story: banner "Version N by … is waiting for your review" with Compare and Send back |
+| PublishConfirm · Publisher · publish the reviewed version | live | new story: the design's publish dialog; `POST desk/kb/articles/:id/review` approve (`desk.kb.publish`, never one's own version), toast |
+| SendBack · Publisher · send back with a note | live | new story: note of 3 letters or more; pressed too early says so |
+| Compare · Versions · compare with the published one | live | new story: the version beside the one published now (or the one before it) |
+| AuthorDraft · Author · own draft, send for review | live | new story: no Publish for an author; Send for review saves, then `POST …/submit` |
+| SendTooEarly · Author · Send for review pressed with no answer | live | new story: the field says why and takes the focus |
+| ReviewDueLive · Review due · mark reviewed | live | new story |
+| OutOfDate · Marked out of date | live | new story: `POST …/flag` (a reason), shown as a banner; publishing a new version clears it |
+| Preview · Preview as employee | live | new story: the editor's own reading view of the current text (its schema keeps only safe tags) |
+| Details · Details · web address, dates, owner | live | new story: web address, search title and description, review by, when it expires; featured, publish at, expires at and owner for publishers |
+| ReadOnly · Reader (no author rights) · read only | live | new story: `desk.kb.view_internal` only (a desk admin): the article as published, the rail read only |
+| NoAccess · No access | live | new story: the API refuses (403) anyone without a knowledge key; the kit's no-access state |
 
 #### HLP-05 · SLA dashboard
 
@@ -466,19 +495,6 @@ Live pages: /yx/approvals (the chat apps card) and /yx/act/[token] (the approval
 | GetStartedTooEarly · Get started · Create desk pressed with nothing filled | live | |
 | SignUpTooEarly · Sign up · Start free trial pressed with nothing filled | live | |
 
-#### HLP-04 Knowledge
-
-Live page: /yx/desk/knowledge renders `KnowledgeScreen`.
-
-| story (sub-page) | verdict | note |
-|---|---|---|
-| Articles · SD-1.24 Spaces and articles | live | `GET desk/kb/spaces`, `/articles` |
-| Editor · SD-1.24 Article editor with review | live | versions, submit, review (`desk.kb.publish`) |
-| Author · SD-1.24 Article editor · author only | live | `desk.kb.author` without publish: no publish, no gaps |
-| EditorTooEarly · SD-1.24 Article editor · Save draft pressed with no title | live | |
-| EditorSaved · SD-1.24 Article editor · draft saved (toast) | live | |
-| NewCategoryTooEarly · SD-1.24 Categories · Add category pressed with no name | live | |
-
 #### Contact YukthiX (SD-1.31)
 
 Live page: /yx/support (Security › Contact YukthiX), with `org.yukthix_support.raise`.
@@ -526,6 +542,25 @@ Live page: /yx/support (Security › Contact YukthiX), with `org.yukthix_support
 - Every success is a toast; bulk refusals stay on the page with each ticket and its reason; no button is greyed out
   (pressed too early, the field says why).
 
+## 4c. HLP-04 rules built (round 4)
+
+- **Who:** reading needs `desk.kb.view_internal`, `desk.kb.author` or `desk.kb.publish` and a space one may read
+  (company-wide, or a desk one is on). Authors (`desk.kb.author`) write drafts, send them for review, set the "Where it
+  shows" choices and mark a published article reviewed. Publishers (`desk.kb.publish`) publish, send back, retire, put
+  back and delete, and set featured, dates and owner; never their own version (four eyes, also in SQL). A desk admin
+  with only `desk.kb.view_internal` reads. No key: 403 and the no-access state. Another company: 404.
+- **Keywords** ("Also suggest for these words", new column `keywords`, migration `20261590000000_kb_article_keywords`):
+  letters, digits, spaces and commas, up to 300; cleaned on the server (trimmed, one space, no repeats in any case);
+  search finds a published article by them, weighted like the title.
+- **Use in assistant answers** (new column `assistant_use`, default on): kept per article; the help assistant is not
+  built, so it changes nothing yet (the switch says so).
+- **Mark reviewed** (product default, YX-GRO-07): only a published article; the next review is 12 months (360 days) from
+  today (India date); audited with the old and new date; a stale version is 409.
+- Save draft saves the rail choices first (`PATCH`, with the article's version), then the words as a version. Every
+  success is a toast; refusals stay on the page; no button is greyed out (pressed too early, the field says why).
+- Article text is cleaned on the server (sanitize-html allow-list). The preview of unsaved text uses the editor's own
+  reading view, never raw HTML.
+
 ## 5. Two designs for one job
 
 HLP-02 … 05 (founder-approved Helpdesk designs, `screens/ops/helpdesk.tsx`) and the Service desk designs (Phase 3b-1,
@@ -534,8 +569,8 @@ HLP-02 … 05 (founder-approved Helpdesk designs, `screens/ops/helpdesk.tsx`) an
 | job | HLP design (not live) | B design (live) | live page |
 |---|---|---|---|
 | agent's ticket list | HLP-02 `AgentDeskScreen` | done in round 2: the HLP design is live, `DeskTicketsScreen` deleted | /yx/desk/tickets |
-| one ticket | HLP-03 `TicketWorkspaceScreen` | done in round 3: the HLP design is live, `TicketScreen` deleted (its side cards sit in the design's rail) | /yx/desk/tickets/[id] |
-| knowledge articles | HLP-04 `KbEditorScreen` | `KnowledgeScreen` | /yx/desk/knowledge |
+| one ticket | HLP-03 `TicketWorkspaceScreen` | `TicketScreen` + `TicketWorkRail` | /yx/desk/tickets/[id] |
+| knowledge articles | HLP-04 `KbEditorScreen` | done in round 4: the HLP design is live, `KnowledgeScreen` deleted | /yx/desk/knowledge |
 | SLA view | HLP-05 `SlaDashboardScreen` | `ReportsScreen` | /yx/desk/reports |
 
 The B screens do more today (board layout, saved views, collaborators, ESM rails, spaces, gaps, report library, walls,
@@ -583,14 +618,23 @@ surveys). The HLP screens are the founder-approved look, sample-only.
     it, out of date, make one); suggesting articles by the subject happens in "Insert an article". *Suggested:* keep.
 15. **HLP-03: Details are editable** (status, priority with a reason, assignee, group, category, tags, private) where
     the design shows them read only; an agent who cannot work the ticket sees them as text. *Suggested:* keep.
+13. **HLP-04: Audience.** The design picks groups (a plant, an entity, managers); the server decides who reads by the
+    space (agents, people who ask this desk, public). The article shows its space's audience, read only. *Suggested:*
+    keep spaces for now; add group audiences when a customer needs one article hidden inside a space.
+14. **HLP-04: one category per article.** The design allows several; the server keeps one (with sections under it).
+    *Suggested:* keep one.
+15. **HLP-04: "Publish" for an author.** Four eyes stay: an author's button is "Send for review"; only a publisher who
+    did not write the waiting version sees "Publish". *Suggested:* keep.
+16. **HLP-04: review every 12 months** is a product rule today. *Suggested:* add a company setting (default 12 months)
+    in Desk set-up when a company asks.
 
 ## 7. Next pages (recommended order, with sizes)
 
 | order | page | size | why |
 |---|---|---|---|
 | 1 | ~~HLP-02 Agent desk~~ (done, round 2) | M | most used by agents; design and server exist; replace `DeskTicketsScreen` at /yx/desk/tickets (draw board and saved views first) |
-| 2 | ~~HLP-03 Ticket workspace~~ (done, round 3) | L | design and server exist; replace `TicketScreen`; the rail must take the 4 stand-in cards (request panel, ESM rail, KB card, escalate) |
-| 3 | HLP-04 Knowledge base editor | M | design and server exist (versions, review due); replace `KnowledgeScreen` (draw spaces and gaps first) |
+| 2 | HLP-03 Ticket workspace | L | design and server exist; replace `TicketScreen`; the rail must take the 4 stand-in cards (request panel, ESM rail, KB card, escalate) |
+| 3 | ~~HLP-04 Knowledge base editor~~ (done, round 4) | M | design and server exist (versions, review due); replace `KnowledgeScreen` (draw spaces and gaps first) |
 | 4 | HLP-05 SLA dashboard | M | server has SLA timers and reports; add the per-queue at-risk view to /yx/desk/reports and fold the report tabs into the HLP look |
 | 5 | Request tracker and documents (help/[id]) | S | draw in HLP-01's look, replace `RequestTracker`, `MyDocumentsCard` |
 | 6 | Service catalogue | M | live stand-in `CatalogScreen` with 9 "Live ·" stories; needs a design |
@@ -613,7 +657,7 @@ and Service desk design story file has exactly one row per story, in file order,
 // every Helpdesk (screens/ops/hlp-NN) and Service desk design story file has exactly one row per story, in file order.
 const fs = require('fs');
 const OPS = 'packages/yx-ui/src/screens/ops/', DESK = 'packages/yx-ui/src/screens/desk/';
-const DESK_FILES = ['desk', 'reports', 'approval-links', 'people-privacy', 'knowledge', 'yukthix-support'].map((f) => DESK + f + '.stories.tsx');
+const DESK_FILES = ['desk', 'reports', 'approval-links', 'people-privacy', 'yukthix-support'].map((f) => DESK + f + '.stories.tsx');
 const files = [...fs.readdirSync(OPS).filter((f) => /^hlp-\d+\.stories\.tsx$/.test(f)).map((f) => OPS + f), ...DESK_FILES];
 const want = {};
 for (const f of files) {

@@ -13286,5 +13286,200 @@
       "Screens/Helpdesk/HLP-03 · Ticket workspace"
     ],
     "note": "Negative."
+  },
+  {
+    "id": "MT-HLP-04-01",
+    "area": "Helpdesk · HLP-04 Knowledge base editor (3 Nov 2026)",
+    "screen": "Knowledge base · articles",
+    "url": "http://localhost:3000/yx/desk/knowledge",
+    "account": "An IT help desk agent (knowledge author: give a demo user an agent seat on \"IT help desk\" in Helpdesk › Desk set-up › Members first). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Before: as a desk admin add a space \"IT help\" for IT help desk, who can read it: People who ask this desk.",
+      "2. As the agent open Helpdesk › Knowledge base.",
+      "3. Type \"vpn\" in Find an article, then choose Draft in Show."
+    ],
+    "expected": "Title Knowledge base, the facts \"N articles in IT help · People who ask this desk\", New article button, tabs Articles / Blocks / Templates. The table shows Article, Title, Category, Status, Owner, Review by, Health. Filtering to nothing shows Clear filters. No page scroll at 1278 x 635 unless the list is long.",
+    "stories": [
+      "Screens/Helpdesk/HLP-04 · Knowledge base editor"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HLP-04-02",
+    "area": "Helpdesk · HLP-04 Knowledge base editor (3 Nov 2026)",
+    "screen": "New article and Save draft",
+    "url": "http://localhost:3000/yx/desk/knowledge",
+    "account": "An IT help desk agent (knowledge author: give a demo user an agent seat on \"IT help desk\" in Helpdesk › Desk set-up › Members first). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Press New article; press Start the draft with the title empty.",
+      "2. Type title \"Connect to the office VPN\" and press Start the draft.",
+      "3. Write the answer, type \"vpn, remote access, VPN\" in Also suggest for these words, press Save draft."
+    ],
+    "expected": "Step 1: \"Give the article a title.\" under Title, the field has the focus. Step 2: the article opens in the HLP-04 layout (KB-n, Draft badge, Preview as employee, Save draft, Send for review; no Publish). Step 3: toast \"Draft saved as version 1.\"; after reload the words read \"vpn, remote access\" (repeat dropped).",
+    "stories": [
+      "Screens/Helpdesk/HLP-04 · Knowledge base editor"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HLP-04-03",
+    "area": "Helpdesk · HLP-04 Knowledge base editor (3 Nov 2026)",
+    "screen": "Send for review pressed too early",
+    "url": "http://localhost:3000/yx/desk/knowledge",
+    "account": "An IT help desk agent (knowledge author: give a demo user an agent seat on \"IT help desk\" in Helpdesk › Desk set-up › Members first). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open a new draft with no answer written.",
+      "2. Press Send for review.",
+      "3. Type \"<b>\" in Also suggest for these words and leave the field."
+    ],
+    "expected": "Step 2: \"Write the answer before sending it for review.\" under Answer; nothing is sent. Step 3: \"Use letters, digits, spaces and commas\"; Save draft does not save until it is fixed. No button is greyed out.",
+    "stories": [
+      "Screens/Helpdesk/HLP-04 · Knowledge base editor"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-HLP-04-04",
+    "area": "Helpdesk · HLP-04 Knowledge base editor (3 Nov 2026)",
+    "screen": "Send for review (author)",
+    "url": "http://localhost:3000/yx/desk/knowledge",
+    "account": "An IT help desk agent (knowledge author: give a demo user an agent seat on \"IT help desk\" in Helpdesk › Desk set-up › Members first). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open the VPN draft with an answer.",
+      "2. Press Send for review."
+    ],
+    "expected": "Toast \"Version 1 sent for review.\" A blue banner says \"Version 1 is waiting for a publisher to review it.\" The author has no Publish button.",
+    "stories": [
+      "Screens/Helpdesk/HLP-04 · Knowledge base editor"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HLP-04-05",
+    "area": "Helpdesk · HLP-04 Knowledge base editor (3 Nov 2026)",
+    "screen": "Publish (publisher, four eyes)",
+    "url": "http://localhost:3000/yx/desk/knowledge",
+    "account": "A second demo user with a lead seat on \"IT help desk\" (knowledge publisher), who did not write the article. Browser window 1278 x 635.",
+    "steps": [
+      "1. Open the VPN article.",
+      "2. Press Compare in the banner, close it.",
+      "3. Press Publish, then Publish article."
+    ],
+    "expected": "Step 1: banner \"Version 1 by <agent> is waiting for your review\" with Compare and Send back. Step 2: the version shows (first version: \"nothing to compare it with\"). Step 3: the design dialog \"Publish “Connect to the office VPN”?\" says who sees it; toast \"Version 1 is published.\"; the badge reads Published.",
+    "stories": [
+      "Screens/Helpdesk/HLP-04 · Knowledge base editor"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HLP-04-06",
+    "area": "Helpdesk · HLP-04 Knowledge base editor (3 Nov 2026)",
+    "screen": "A publisher cannot publish their own version",
+    "url": "http://localhost:3000/yx/desk/knowledge",
+    "account": "A second demo user with a lead seat on \"IT help desk\" (knowledge publisher), who did not write the article. Browser window 1278 x 635.",
+    "steps": [
+      "1. As the lead edit the published VPN article and press Send for review.",
+      "2. Look at the buttons and the banner."
+    ],
+    "expected": "No Publish button for the lead on their own version; the banner says \"You wrote version 2, so another publisher reviews it.\" (The server refuses it too.)",
+    "stories": [
+      "Screens/Helpdesk/HLP-04 · Knowledge base editor"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-HLP-04-07",
+    "area": "Helpdesk · HLP-04 Knowledge base editor (3 Nov 2026)",
+    "screen": "Send back with a note",
+    "url": "http://localhost:3000/yx/desk/knowledge",
+    "account": "A second demo user with a lead seat on \"IT help desk\" (knowledge publisher), who did not write the article. Browser window 1278 x 635.",
+    "steps": [
+      "1. Agent sends a new version; the lead opens the article.",
+      "2. Press Send back in the banner, then Send back with the note empty.",
+      "3. Type \"Add the new server name\" and press Send back."
+    ],
+    "expected": "Step 2: \"Write at least 3 letters so the writer knows what to fix.\" Step 3: toast \"Version N sent back to <agent>\"; in Versions it shows \"Sent back\" with the reviewer's note.",
+    "stories": [
+      "Screens/Helpdesk/HLP-04 · Knowledge base editor"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HLP-04-08",
+    "area": "Helpdesk · HLP-04 Knowledge base editor (3 Nov 2026)",
+    "screen": "Employee finds it by a keyword",
+    "url": "http://localhost:3000/yx/desk/help",
+    "account": "arjun@demo-org.test (employee). Browser window 1278 x 635.",
+    "steps": [
+      "1. Open Help centre and type \"remote access\" in Find an answer."
+    ],
+    "expected": "The published VPN article is suggested although its title and text do not say \"remote access\".",
+    "stories": [
+      "Screens/Helpdesk/HLP-04 · Knowledge base editor"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HLP-04-09",
+    "area": "Helpdesk · HLP-04 Knowledge base editor (3 Nov 2026)",
+    "screen": "Review due and Mark reviewed",
+    "url": "http://localhost:3000/yx/desk/knowledge",
+    "account": "An IT help desk agent (knowledge author: give a demo user an agent seat on \"IT help desk\" in Helpdesk › Desk set-up › Members first). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Ask the developer to set the VPN article's review date to yesterday (or open Change details and set Review by to yesterday as the lead).",
+      "2. Open the article as the agent; press Mark reviewed."
+    ],
+    "expected": "Header badge \"Review due\" and the yellow banner \"This article was due for review on …\". After Mark reviewed: toast \"Marked reviewed. The next check is due on <today + 360 days>.\" and the banner goes. A draft never shows Mark reviewed.",
+    "stories": [
+      "Screens/Helpdesk/HLP-04 · Knowledge base editor"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HLP-04-10",
+    "area": "Helpdesk · HLP-04 Knowledge base editor (3 Nov 2026)",
+    "screen": "Reader without author rights",
+    "url": "http://localhost:3000/yx/desk/knowledge",
+    "account": "A desk admin of \"IT help desk\" with no knowledge author key. Browser window 1278 x 635.",
+    "steps": [
+      "1. Open Helpdesk › Knowledge base and the VPN article."
+    ],
+    "expected": "The article shows as published, read only; no Save draft, Send for review or Publish; \"Where it shows\" is read only. Preview as employee works.",
+    "stories": [
+      "Screens/Helpdesk/HLP-04 · Knowledge base editor"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-HLP-04-11",
+    "area": "Helpdesk · HLP-04 Knowledge base editor (3 Nov 2026)",
+    "screen": "No access",
+    "url": "http://localhost:3000/yx/desk/knowledge",
+    "account": "arjun@demo-org.test (employee, no desk seat).",
+    "steps": [
+      "1. Open http://localhost:3000/yx/desk/knowledge directly."
+    ],
+    "expected": "\"You don't have access to the knowledge base\" with who grants it. Nothing else loads.",
+    "stories": [
+      "Screens/Helpdesk/HLP-04 · Knowledge base editor"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-HLP-04-12",
+    "area": "Helpdesk · HLP-04 Knowledge base editor (3 Nov 2026)",
+    "screen": "Set-up tabs: categories, content gaps, recycle bin",
+    "url": "http://localhost:3000/yx/desk/knowledge",
+    "account": "A second demo user with a lead seat on \"IT help desk\" (knowledge publisher), who did not write the article. Browser window 1278 x 635.",
+    "steps": [
+      "1. Categories: press Add category with no name, then add \"Network\".",
+      "2. Content gaps: press Show with To before From.",
+      "3. Delete the VPN article from the ⋯ menu, then Recycle bin › Put back."
+    ],
+    "expected": "Step 1: \"Name the category.\" then toast \"Category Network added.\" Step 2: \"The last day is before the first.\" Step 3: toast \"KB-n is in the recycle bin.\" then \"… is back.\"; the article is listed again.",
+    "stories": [
+      "Screens/Helpdesk/HLP-04 · Knowledge base editor"
+    ],
+    "note": "Positive and negative."
   }
 ]
