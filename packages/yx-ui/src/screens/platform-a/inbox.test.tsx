@@ -170,3 +170,25 @@ describe('PLT-04 live (the approvals engine)', () => {
     expect(await screen.findByText('When I am away')).toBeInTheDocument();
   });
 });
+
+describe('PLT-03 notifications inbox, live on a phone', () => {
+  it('under 768 px the live page takes the designed phone layout, with the preferences link and the same actions', async () => {
+    const real = window.matchMedia;
+    window.matchMedia = ((q: string) => ({ matches: true, media: q, addEventListener: () => {}, removeEventListener: () => {} })) as unknown as typeof window.matchMedia;
+    try {
+      const onMarkAllRead = vi.fn();
+      render(<NotificationsInboxScreen items={NOTIFICATIONS} live={{ onOpen: vi.fn(), onMarkRead: vi.fn(), onMarkAllRead, preferencesHref: '/yx/me/notifications' }} />);
+      expect(document.querySelector('.yx-phone')).toBeTruthy();
+      expect(screen.getByRole('link', { name: 'Notification preferences' }).getAttribute('href')).toBe('/yx/me/notifications');
+      await userEvent.click(screen.getByRole('button', { name: 'Mark all read' }));
+      expect(onMarkAllRead).toHaveBeenCalledOnce();
+    } finally {
+      window.matchMedia = real;
+    }
+  });
+
+  it('the desktop page stays the desktop layout on a wide screen', () => {
+    render(<NotificationsInboxScreen items={NOTIFICATIONS} live={{ onOpen: vi.fn(), onMarkRead: vi.fn(), onMarkAllRead: vi.fn(), preferencesHref: '/yx/me/notifications' }} />);
+    expect(document.querySelector('.yx-phone')).toBeNull();
+  });
+});

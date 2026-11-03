@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Badge } from '../../components/display';
 import { Button } from '../../components/button';
 import { EmptyState, ErrorState, InlineAlert, Skeleton } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
 import { Heading, Text } from '../../components/foundations';
 import { CodeField, PasswordField, TextField } from '../../components/inputs';
 import { ConfirmDialog } from '../../components/overlay';
@@ -98,6 +98,8 @@ function TwoStepCard({ mfa, onAddPasskey, onStartTotp, onConfirmTotp, onRemoveFa
   const [name, setName] = useState('');
   const [tried, setTried] = useState(false);
   const [adding, setAdding] = useState<SetupMethod | null>(null);
+  // Remove pressed on the only method a role needs: the line below says why, out loud.
+  const [toldLast, setToldLast] = useState(false);
   const { busy, error, run } = useStep();
   const show = (r: { recoveryCodes?: string[] }) => r.recoveryCodes?.length && setCodes(r.recoveryCodes);
   const confirmTotp = (e: FormEvent) => {
@@ -138,7 +140,7 @@ function TwoStepCard({ mfa, onAddPasskey, onStartTotp, onConfirmTotp, onRemoveFa
                   {f.type === 'passkey' && (
                     <Button size="sm" aria-label={`Rename ${f.label}`} onClick={() => { setName(f.label); setTried(false); setRenaming(f); }}>Rename</Button>
                   )}
-                  <Button size="sm" disabled={lastOne} title={lastOne ? 'Your role needs at least one' : undefined} onClick={() => setRemoving(f)} aria-label={`Remove ${nameOf(f)}`}>
+                  <Button size="sm" title={lastOne ? 'Your role needs at least one' : undefined} onClick={() => (lastOne ? setToldLast(true) : setRemoving(f))} aria-label={`Remove ${nameOf(f)}`}>
                     Remove
                   </Button>
                 </span>
@@ -148,7 +150,7 @@ function TwoStepCard({ mfa, onAddPasskey, onStartTotp, onConfirmTotp, onRemoveFa
         ) : (
           !mfa.required && <EmptyState compact title="No passkey or authenticator app yet." description="Add a passkey: you sign in with your face, fingerprint or PIN, and it can't be phished." />
         )}
-        {lastOne && <Text as="p" tone="secondary" size="sm">You can't remove your only sign-in method, because your role needs one. Add another first.</Text>}
+        {lastOne && <Text as="p" tone={toldLast ? 'danger' : 'secondary'} size="sm" role={toldLast ? 'alert' : undefined}>You can't remove your only sign-in method, because your role needs one. Add another first.</Text>}
 
         {codes && <RecoveryCodes codes={codes} onDone={() => setCodes(null)} />}
         {totp && <TotpConfirm setup={totp} code={code} onCode={setCode} onSubmit={confirmTotp} busy={busy} error={error} onCancel={() => setTotp(null)} />}
@@ -167,7 +169,7 @@ function TwoStepCard({ mfa, onAddPasskey, onStartTotp, onConfirmTotp, onRemoveFa
               {mfa.recoveryCodesRemaining} of 10 left. Use one if you lose your passkey or phone. Making new codes stops the old ones.
             </Text>
             <div className="yx-auth__row">
-              <Button disabled={busy} onClick={() => void run(async () => setCodes(await onNewRecoveryCodes()))}>
+              <Button loading={busy && !adding && !totp} onClick={() => !busy && void run(async () => setCodes(await onNewRecoveryCodes()))}>
                 Make new codes
               </Button>
             </div>
@@ -212,7 +214,13 @@ function PasswordCard({ onChangePassword, minLength }: { onChangePassword: (curr
   const [again, setAgain] = useState('');
   const [done, setDone] = useState(false);
   const { busy, error, setError, run } = useStep();
+  const early = useTooEarly([
+    ...(current ? [] : [{ fieldId: 'yx-pw-current', message: 'Enter your current password.' }]),
+    ...(next ? [] : [{ fieldId: 'yx-pw-new', message: 'Enter a new password.' }]),
+    ...(again ? [] : [{ fieldId: 'yx-pw-again', message: 'Type the new password again.' }]),
+  ]);
   const reset = () => {
+    early.reset();
     setOpen(false);
     setCurrent('');
     setNext('');
@@ -221,6 +229,7 @@ function PasswordCard({ onChangePassword, minLength }: { onChangePassword: (curr
   };
   const submit = (e: FormEvent) => {
     e.preventDefault();
+    if (busy || early.stop()) return;
     if (next.length < minLength) return setError(`Use at least ${minLength} characters.`);
     if (next !== again) return setError('The two new passwords are not the same.');
     if (next === current) return setError('Choose a password you have not used here before.');
@@ -243,18 +252,18 @@ function PasswordCard({ onChangePassword, minLength }: { onChangePassword: (curr
         </div>
       ) : (
         <form className="yx-auth__form" onSubmit={submit} noValidate>
-          <FormField label="Current password" required>
+          <FormField id="yx-pw-current" label="Current password" required error={early.errorOf('yx-pw-current')}>
             <PasswordField value={current} onChange={setCurrent} autoComplete="current-password" maxLength={1024} />
           </FormField>
-          <FormField label="New password" required helper={`At least ${minLength} characters. Passwords found in known breaches are refused.`}>
+          <FormField id="yx-pw-new" label="New password" required error={early.errorOf('yx-pw-new')} helper={`At least ${minLength} characters. Passwords found in known breaches are refused.`}>
             <PasswordField value={next} onChange={setNext} autoComplete="new-password" maxLength={128} />
           </FormField>
-          <FormField label="New password again" required>
+          <FormField id="yx-pw-again" label="New password again" required error={early.errorOf('yx-pw-again')}>
             <PasswordField value={again} onChange={setAgain} autoComplete="new-password" maxLength={128} />
           </FormField>
           {error && <InlineAlert tone="danger">{error}</InlineAlert>}
           <div className="yx-auth__row">
-            <Button type="submit" variant="primary" loading={busy} disabled={!current || !next || !again}>Change password</Button>
+            <Button type="submit" variant="primary" loading={busy}>Change password</Button>
             <Button onClick={reset}>Cancel</Button>
           </div>
         </form>
@@ -268,12 +277,16 @@ function MobileCard({ mfa, onSendMobileCode, onVerifyMobile, onRemoveMobile }: M
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [code, setCode] = useState('');
   const { busy, error, run } = useStep();
+  const earlyNumber = useTooEarly(number.trim() ? [] : [{ fieldId: 'yx-mobile-number', message: 'Enter your mobile number.' }]);
+  const earlyCode = useTooEarly(code.trim().length < 6 ? [{ fieldId: 'yx-mobile-code', message: 'Enter the 6-digit code from the text.' }] : []);
   const send = (e: FormEvent) => {
     e.preventDefault();
+    if (busy || earlyNumber.stop()) return;
     void run(async () => setSentTo(await onSendMobileCode(number.trim())));
   };
   const verify = (e: FormEvent) => {
     e.preventDefault();
+    if (busy || earlyCode.stop()) return;
     void run(async () => {
       await onVerifyMobile(code.trim());
       setSentTo(null);
@@ -301,23 +314,23 @@ function MobileCard({ mfa, onSendMobileCode, onVerifyMobile, onRemoveMobile }: M
       ) : sentTo ? (
         <form className="yx-auth__form" onSubmit={verify} noValidate>
           <Text as="p" tone="secondary" role="status">We texted a 6-digit code to {formatPhone(sentTo)}. It expires in 5 minutes.</Text>
-          <FormField label="Code from the text" required>
+          <FormField id="yx-mobile-code" label="Code from the text" required error={earlyCode.errorOf('yx-mobile-code')}>
             <CodeField value={code} onChange={setCode} />
           </FormField>
           {error && <InlineAlert tone="danger">{error}</InlineAlert>}
           <div className="yx-auth__row">
-            <Button type="submit" variant="primary" loading={busy} disabled={code.trim().length < 6}>Verify number</Button>
+            <Button type="submit" variant="primary" loading={busy}>Verify number</Button>
             <Button onClick={() => setSentTo(null)}>Cancel</Button>
           </div>
         </form>
       ) : (
         <form className="yx-auth__form" onSubmit={send} noValidate>
-          <FormField label="Mobile number" helper="With country code, for example +91 98450 12345.">
+          <FormField id="yx-mobile-number" label="Mobile number" error={earlyNumber.errorOf('yx-mobile-number')} helper="With country code, for example +91 98450 12345.">
             <TextField value={number} onChange={setNumber} type="tel" inputMode="tel" autoComplete="tel" maxLength={32} />
           </FormField>
           {error && <InlineAlert tone="danger">{error}</InlineAlert>}
           <div className="yx-auth__row">
-            <Button type="submit" loading={busy} disabled={!number.trim()}>Text me a code</Button>
+            <Button type="submit" loading={busy}>Text me a code</Button>
           </div>
         </form>
       )}

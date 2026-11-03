@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { ConsoleShell, CONSOLE_LINKS, type ConsolePageId } from '@yukthix/ui/console';
 import type { MfaStatus } from '@yukthix/ui/auth';
-import { Button, InlineAlert, Spinner } from '@yukthix/ui';
+import { Button, InlineAlert, Spinner, ToastProvider } from '@yukthix/ui';
 import { STAFF_SIGN_IN, apiFetch } from '../../../lib/api-client';
 import { useAuth } from '../../../lib/auth-context';
 import { useCurrentUser } from '../../../lib/hooks/useCurrentUser';
@@ -40,44 +40,47 @@ export default function ConsoleLayout({ children }: { children: React.ReactNode 
 
   const active: ConsolePageId = CONSOLE_LINKS.find((l) => pathname?.startsWith(l.href))?.id ?? 'companies';
   const noKey = Boolean(mfa.data && mfa.data.factors.length === 0);
+  // Screens say "done" with a toast (the SMS settings among them), as in the company app.
   return (
-    <ConsoleShell
-      active={active}
-      name={me.data?.name || me.data?.email || 'YukthiX staff'}
-      email={me.data?.email}
-      securityHref={SECURITY}
-      onNavigate={(href) => router.push(href)}
-      onSignOut={() => void logout().then((to) => router.push(to))}
-    >
-      <div className="yx-auth__page">
-        {actingSuperAdmin ? (
-          <InlineAlert
-            tone="warning"
-            title={`You are inside ${actingOrgName ?? 'a company'} on a support session`}
-            actions={
-              <Button size="sm" onClick={() => void switchOutOfOrg()}>
-                Leave the company
-              </Button>
-            }
-          >
-            Leave it to use the console.
-          </InlineAlert>
-        ) : noKey && pathname !== SECURITY ? (
-          <InlineAlert
-            tone="warning"
-            title="Add your security key first"
-            actions={
-              <Button asChild size="sm">
-                <Link href={SECURITY}>Add a security key</Link>
-              </Button>
-            }
-          >
-            YukthiX staff use the console only with a hardware security key. Sign in again with it after adding it.
-          </InlineAlert>
-        ) : (
-          children
-        )}
-      </div>
-    </ConsoleShell>
+    <ToastProvider>
+      <ConsoleShell
+        active={active}
+        name={me.data?.name || me.data?.email || 'YukthiX staff'}
+        email={me.data?.email}
+        securityHref={SECURITY}
+        onNavigate={(href) => router.push(href)}
+        onSignOut={() => void logout().then((to) => router.push(to))}
+      >
+        <div className="yx-auth__page">
+          {actingSuperAdmin ? (
+            <InlineAlert
+              tone="warning"
+              title={`You are inside ${actingOrgName ?? 'a company'} on a support session`}
+              actions={
+                <Button size="sm" onClick={() => void switchOutOfOrg()}>
+                  Leave the company
+                </Button>
+              }
+            >
+              Leave it to use the console.
+            </InlineAlert>
+          ) : noKey && pathname !== SECURITY ? (
+            <InlineAlert
+              tone="warning"
+              title="Add your security key first"
+              actions={
+                <Button asChild size="sm">
+                  <Link href={SECURITY}>Add a security key</Link>
+                </Button>
+              }
+            >
+              YukthiX staff use the console only with a hardware security key. Sign in again with it after adding it.
+            </InlineAlert>
+          ) : (
+            children
+          )}
+        </div>
+      </ConsoleShell>
+    </ToastProvider>
   );
 }

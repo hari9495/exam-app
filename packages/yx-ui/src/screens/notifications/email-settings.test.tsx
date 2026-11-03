@@ -69,7 +69,7 @@ describe('EmailSettingsScreen', () => {
 
     await ue.click(screen.getByRole('button', { name: 'Save wording' }));
     expect(onSaveWording).toHaveBeenCalledWith('password_reset', expect.objectContaining({ heading: 'Hello {{firstName}}', buttonLabel: 'Reset password' }));
-    expect(await screen.findByText(/The next password reset email uses your wording/)).toBeTruthy();
+    expect((await screen.findAllByText(/The next password reset email uses your wording/))[0]).toBeTruthy();
   });
 
   it('shows the API’s problem next to the field, sends a test to the admin and resets custom wording after confirming', async () => {
@@ -84,7 +84,7 @@ describe('EmailSettingsScreen', () => {
     expect(await screen.findByText("{{code}} can't be used in this email.")).toBeTruthy();
 
     await ue.click(screen.getByRole('button', { name: 'Send me a test' }));
-    expect(await screen.findByText(/Test sent to arjun@kaveri.example/)).toBeTruthy();
+    expect((await screen.findAllByText(/Test sent to arjun@kaveri.example/))[0]).toBeTruthy();
 
     await ue.click(screen.getByRole('button', { name: 'Reset to YukthiX wording' }));
     await ue.click(within(await screen.findByRole('dialog', { name: /Reset Invitation/ })).getByRole('button', { name: 'Reset wording' }));

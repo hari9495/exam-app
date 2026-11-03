@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Button, Link } from '../../components/button';
 import { InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { CodeField } from '../../components/inputs';
 import { Dialog } from '../../components/overlay';
@@ -171,19 +171,20 @@ export function TotpConfirm({ setup, code, onCode, onSubmit, busy, error, onCanc
   onCancel?: () => void;
   cancelLabel?: string;
 }) {
+  const early = useTooEarly(code.trim().length < 6 ? [{ fieldId: 'yx-totp-code', message: 'Enter the 6-digit code your app shows.' }] : []);
   return (
-    <form className="yx-auth__form" onSubmit={onSubmit} noValidate>
+    <form className="yx-auth__form" onSubmit={(e) => (busy || early.stop() ? e.preventDefault() : onSubmit(e))} noValidate>
       <Text as="p">Scan this with your authenticator app, then enter the 6-digit code it shows.</Text>
       <img className="yx-auth__qr" src={setup.qrDataUrl} alt="QR code for your authenticator app" />
       <Text as="p" tone="secondary" size="sm">Can't scan it? Enter this key in the app instead:</Text>
       <SecretKey secret={setup.secret} />
-      <FormField label="6-digit code" required>
+      <FormField id="yx-totp-code" label="6-digit code" required error={early.errorOf('yx-totp-code')}>
         <CodeField value={code} onChange={onCode} />
       </FormField>
       {error && <InlineAlert tone="danger">{error}</InlineAlert>}
       <div className="yx-auth__row">
-        <Button type="submit" variant="primary" loading={busy} disabled={code.trim().length < 6}>Turn on</Button>
-        {onCancel && <Button disabled={busy} onClick={onCancel}>{cancelLabel}</Button>}
+        <Button type="submit" variant="primary" loading={busy}>Turn on</Button>
+        {onCancel && <Button onClick={() => !busy && onCancel()}>{cancelLabel}</Button>}
       </div>
     </form>
   );

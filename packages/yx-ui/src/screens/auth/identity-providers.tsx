@@ -8,6 +8,7 @@ import { EmptyState, ErrorState, InlineAlert, NoAccessState, Skeleton } from '..
 import { ErrorSummary, FormField, FormSection, useSaveErrors } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { PasswordField, TextArea, TextField } from '../../components/inputs';
+import { useToast } from '../../components/notify';
 import { ConfirmDialog } from '../../components/overlay';
 import { Segment } from '../../components/segment';
 import { Breadcrumbs, PageHeader } from '../../components/shell';
@@ -113,6 +114,7 @@ function IdentityProviderEditor({ provider, onClose, onSave }: EditorProps) {
   const [draft, setDraft] = useState(() => idpDraftOf(provider));
   const [dirty, setDirty] = useState(false);
   const [status, setStatus] = useState<{ kind: 'idle' | 'saving' } | { kind: 'failed'; message: string }>({ kind: 'idle' });
+  const { toast } = useToast();
   const { input, errors } = idpInput(draft, provider);
   const saveErrors = useSaveErrors(errors);
   const { errorOf } = saveErrors;
@@ -121,12 +123,14 @@ function IdentityProviderEditor({ provider, onClose, onSave }: EditorProps) {
     setDirty(true);
   };
   const save = async () => {
+    if (status.kind === 'saving') return;
     if (!input) return saveErrors.reveal();
     setStatus({ kind: 'saving' });
     try {
       await onSave(input);
       setDirty(false);
       onClose();
+      toast({ tone: 'success', title: provider ? `${input.name ?? provider.name} saved` : `${input.name ?? 'Identity provider'} added` });
     } catch (err) {
       setStatus({ kind: 'failed', message: errorText(err) });
     }
@@ -144,7 +148,7 @@ function IdentityProviderEditor({ provider, onClose, onSave }: EditorProps) {
       subtitle={provider ? IDP_TYPE_LABEL[provider.type] : 'New providers start switched off. Turn one on once its settings are in.'}
       footer={
         <>
-          <Button onClick={onClose} disabled={status.kind === 'saving'}>Cancel</Button>
+          <Button onClick={() => status.kind !== 'saving' && onClose()}>Cancel</Button>
           <Button variant="primary" loading={status.kind === 'saving'} onClick={() => void save()}>{provider ? 'Save changes' : 'Add provider'}</Button>
         </>
       }
@@ -275,12 +279,14 @@ function Providers({ providers, samlMetadataUrl, oidcRedirectUri, onSave, onSetS
   const [editing, setEditing] = useState<{ provider: IdentityProviderDetail | null; key: number } | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
   const add = () => setEditing({ provider: null, key: Date.now() });
   const toggle = async (p: IdentityProviderDetail) => {
     setError(null);
     setToggling(p.id);
     try {
       await onSetStatus(p.id, p.status === 'active' ? 'disabled' : 'active');
+      toast({ tone: 'success', title: `${p.name} is ${p.status === 'active' ? 'off' : 'on'}` });
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -318,7 +324,7 @@ function Providers({ providers, samlMetadataUrl, oidcRedirectUri, onSave, onSetS
                     </div>
                     <div className="yx-auth__row">
                       <Button size="sm" onClick={() => setEditing({ provider: p, key: Date.now() })} aria-label={`Edit ${p.name}`}>Edit</Button>
-                      <Button size="sm" loading={toggling === p.id} disabled={toggling !== null && toggling !== p.id} onClick={() => void toggle(p)} aria-label={`${on ? 'Turn off' : 'Turn on'} ${p.name}`}>
+                      <Button size="sm" loading={toggling === p.id} onClick={() => toggling === null && void toggle(p)} aria-label={`${on ? 'Turn off' : 'Turn on'} ${p.name}`}>
                         {on ? 'Turn off' : 'Turn on'}
                       </Button>
                       <ConfirmDialog

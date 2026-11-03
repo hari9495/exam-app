@@ -13,7 +13,8 @@ import { describe, expect, it } from 'vitest';
 const SCREENS = join(__dirname, 'screens');
 // Time: every designed Time file (the live pages render them); its old live copies are gone.
 // Widened 2 Nov 2026 to Pay, People and Ops (designs included: the live pages render them).
-const AREAS = ['time', 'desk', 'pay', 'people', 'ops'];
+// Widened 3 Nov 2026 to Security (auth) and Notifications: their live pages render these designs.
+const AREAS = ['time', 'desk', 'pay', 'people', 'ops', 'auth', 'notifications'];
 
 /** Allowed, with the reason. Matched against "file: text of the offending tag". */
 const ALLOWED: Record<string, string> = {

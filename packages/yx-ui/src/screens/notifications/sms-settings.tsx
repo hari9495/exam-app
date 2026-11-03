@@ -7,6 +7,7 @@ import { EmptyState, ErrorState, InlineAlert, Meter, NoAccessState, Skeleton } f
 import { ErrorSummary, FormField, FormSection, useSaveErrors } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { NumberField, PasswordField, TextArea, TextField } from '../../components/inputs';
+import { useToast } from '../../components/notify';
 import { ConfirmDialog } from '../../components/overlay';
 import { Segment } from '../../components/segment';
 import { Select } from '../../components/select';
@@ -232,7 +233,9 @@ export function SmsAccountEditor({ account, open, onOpenChange, allowDevProvider
   const { errorOf } = saveErrors;
   const providers = (['http', 'twilio', ...(allowDevProvider || account?.provider === 'dev' ? ['dev'] : [])] as SmsProvider[]).map((p) => ({ value: p, label: p === 'http' ? 'Any gateway' : p === 'twilio' ? 'Twilio' : 'Development' }));
 
+  const { toast } = useToast();
   const save = async () => {
+    if (status.kind === 'saving') return;
     if (!input) return saveErrors.reveal();
     setStatus({ kind: 'saving' });
     try {
@@ -240,6 +243,7 @@ export function SmsAccountEditor({ account, open, onOpenChange, allowDevProvider
       setStatus({ kind: 'idle' });
       setDirty(false);
       onOpenChange(false);
+      toast({ tone: 'success', title: account ? `${input.name ?? account.name} saved` : `${input.name ?? 'SMS account'} added` });
     } catch (err) {
       setStatus({ kind: 'failed', message: err instanceof Error && err.message ? err.message : 'We couldn’t save. Nothing has changed.' });
     }
@@ -269,7 +273,7 @@ export function SmsAccountEditor({ account, open, onOpenChange, allowDevProvider
               }}
             />
           )}
-          <Button onClick={() => onOpenChange(false)} disabled={status.kind === 'saving'}>Cancel</Button>
+          <Button onClick={() => status.kind !== 'saving' && onOpenChange(false)}>Cancel</Button>
           <Button variant="primary" loading={status.kind === 'saving'} onClick={() => void save()}>
             {account ? 'Save changes' : 'Add account'}
           </Button>
@@ -468,7 +472,8 @@ export function SmsSettingsScreen(props: SmsSettingsScreenProps) {
 function PolicyForm({ overview, onSave }: { overview: SmsOverview; onSave: SmsSettingsScreenProps['onSavePolicy'] }) {
   const saved = overview.policy!;
   const [draft, setDraft] = useState(saved);
-  const [status, setStatus] = useState<{ kind: 'idle' | 'saving' | 'saved' } | { kind: 'failed'; message: string }>({ kind: 'idle' });
+  const [status, setStatus] = useState<{ kind: 'idle' | 'saving' } | { kind: 'failed'; message: string }>({ kind: 'idle' });
+  const { toast } = useToast();
   const changes = useMemo(() => ({
     ...(draft.useSharedAccount !== saved.useSharedAccount ? { useSharedAccount: draft.useSharedAccount } : {}),
     ...(draft.monthlyCap !== saved.monthlyCap ? { monthlyCap: draft.monthlyCap } : {}),
@@ -476,10 +481,13 @@ function PolicyForm({ overview, onSave }: { overview: SmsOverview; onSave: SmsSe
   const dirty = Object.keys(changes).length > 0;
   const own = overview.accounts.filter((a) => a.status === 'active').length;
   const save = async () => {
+    // Nothing changed: "No changes yet" already shows beside the button.
+    if (status.kind === 'saving' || !dirty) return;
     setStatus({ kind: 'saving' });
     try {
       await onSave(changes);
-      setStatus({ kind: 'saved' });
+      setStatus({ kind: 'idle' });
+      toast({ tone: 'success', title: 'SMS settings saved' });
     } catch (err) {
       setStatus({ kind: 'failed', message: err instanceof Error && err.message ? err.message : 'We couldn’t save. Nothing has changed.' });
     }
@@ -524,11 +532,11 @@ function PolicyForm({ overview, onSave }: { overview: SmsOverview; onSave: SmsSe
           />
         </FormField>
       </FormSection>
-      {status.kind === 'saved' && <InlineAlert tone="success">Saved.</InlineAlert>}
       {status.kind === 'failed' && <InlineAlert tone="danger" title="Not saved">{status.message}</InlineAlert>}
       <div className="yx-auth__row yx-auth__save">
-        <Button type="submit" variant="primary" loading={status.kind === 'saving'} disabled={!dirty}>Save changes</Button>
-        <Button onClick={() => { setDraft(saved); setStatus({ kind: 'idle' }); }} disabled={!dirty || status.kind === 'saving'}>Discard changes</Button>
+        <Button type="submit" variant="primary" loading={status.kind === 'saving'}>Save changes</Button>
+        <Button onClick={() => { if (!dirty || status.kind === 'saving') return; setDraft(saved); setStatus({ kind: 'idle' }); }}>Discard changes</Button>
+        {!dirty && <Text tone="secondary" size="sm">No changes yet</Text>}
       </div>
     </form>
   );
@@ -538,10 +546,20 @@ function SmsSettings(props: SmsSettingsScreenProps & { overview: SmsOverview }) 
   const { overview } = props;
   const [editing, setEditing] = useState<{ account: SmsAccount | null; key: number } | null>(null);
   const [tests, setTests] = useState<Record<string, { kind: 'sending' } | { kind: 'done'; result: SmsTestResult } | { kind: 'failed'; message: string }>>({});
+  const { toast } = useToast();
   const test = async (account: SmsAccount) => {
+    // Pressed too early: say why next to the account instead of a greyed-out button.
+    const why = !props.myMobile ? 'Test messages go only to your own verified mobile number. Verify it in My security first.' : account.status !== 'active' ? 'This account is off. Turn it on, then send a test.' : null;
+    if (why) return setTests((t) => ({ ...t, [account.id]: { kind: 'failed', message: why } }));
+    if (tests[account.id]?.kind === 'sending') return;
     setTests((t) => ({ ...t, [account.id]: { kind: 'sending' } }));
     try {
       const result = await props.onTestAccount(account.id);
+      if (result.status === 'sent') {
+        setTests(({ [account.id]: _, ...rest }) => rest);
+        toast({ tone: 'success', title: `Test sent from ${account.name} to ${result.to ? formatPhone(result.to) : 'your number'}`, description: 'Check your phone. The delivery log below shows the gateway’s report when it arrives.' });
+        return;
+      }
       setTests((t) => ({ ...t, [account.id]: { kind: 'done', result } }));
     } catch (err) {
       setTests((t) => ({ ...t, [account.id]: { kind: 'failed', message: err instanceof Error && err.message ? err.message : 'The test could not be sent.' } }));
@@ -600,7 +618,6 @@ function SmsSettings(props: SmsSettingsScreenProps & { overview: SmsOverview }) 
     if (!t || t.kind === 'sending') return [];
     if (t.kind === 'failed') return [<InlineAlert key={a.id} tone="danger" title={`Test from ${a.name} not sent`}>{t.message}</InlineAlert>];
     const { result } = t;
-    if (result.status === 'sent') return [<InlineAlert key={a.id} tone="success" title={`Test sent from ${a.name} to ${result.to ? formatPhone(result.to) : 'your number'}`}>Check your phone. The delivery log below shows the gateway’s report when it arrives.</InlineAlert>];
     return [<InlineAlert key={a.id} tone="warning" title={`Test from ${a.name} not sent`}>{deliveryDetail({ status: 'fallback', error: result.error }) ?? 'The gateway did not confirm the message.'}</InlineAlert>];
   });
 
@@ -642,7 +659,7 @@ function SmsSettings(props: SmsSettingsScreenProps & { overview: SmsOverview }) 
           rowButtons={(a) => (
             <>
               <Button size="sm" onClick={() => setEditing({ account: a, key: Date.now() })}>Edit</Button>
-              <Button size="sm" disabled={!props.myMobile || a.status !== 'active'} loading={tests[a.id]?.kind === 'sending'} onClick={() => void test(a)} aria-label={`Send test from ${a.name}`}>
+              <Button size="sm" loading={tests[a.id]?.kind === 'sending'} onClick={() => void test(a)} aria-label={`Send test from ${a.name}`}>
                 Send test
               </Button>
             </>

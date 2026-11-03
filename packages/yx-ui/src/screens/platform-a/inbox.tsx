@@ -16,6 +16,7 @@ import { DatePicker } from '../../components/date';
 import { Checkbox, RadioGroup, Switch } from '../../components/choice';
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '../../components/menu';
 import { Icon } from '../../components/foundations';
+import { useNarrow } from '../../components/stepper';
 import type { TableColumn } from '../../components/table';
 import { formatDate, formatINR } from '../../lib/format';
 import { dayLabel } from '../../components/notify';
@@ -317,7 +318,10 @@ function NotificationBody({ state, shown, unreadOnly, cat, onShowAll, onRetry, a
 
 // PLT-03 · Notifications inbox (desktop). Personal page: no company / period button.
 export function NotificationsInboxScreen(props: NotificationsInboxProps) {
+  // The live page takes the designed phone layout under 768 px, as the Performance and Expenses pages do.
+  const narrow = useNarrow();
   const unread = props.items.filter((n) => !n.read).length;
+  if (props.live && narrow) return <NotificationsInboxPhone {...props} />;
   return (
     <DesktopFrame area="home" panelTitle="Home" panel={homePanel('Notifications')} scope="none">
       <PageHeader
@@ -346,6 +350,15 @@ export function NotificationsInboxScreen(props: NotificationsInboxProps) {
 export function NotificationsInboxPhone(props: NotificationsInboxProps) {
   return (
     <PhoneFrame tab="home" title="Notifications" back={<IconButton icon={ArrowLeft} label="Back" />} actions={<IconButton icon={SettingsIcon} label="Notification preferences" />}>
+      {/* In the live app the shell is the phone's header, so the preferences link sits with the list. */}
+      {props.live && (
+        <Button asChild size="sm">
+          <a href={props.live.preferencesHref}>
+            <Icon icon={SettingsIcon} />
+            <span className="yx-button__label">Notification preferences</span>
+          </a>
+        </Button>
+      )}
       <NotificationList {...props} compact />
     </PhoneFrame>
   );

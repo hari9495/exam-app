@@ -3,7 +3,7 @@ import { TenantPortal } from '../portals/portals-kit';
 import { Button } from '../../components/button';
 import { Checkbox, MethodCards, type MethodCardOption } from '../../components/choice';
 import { InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { CodeField, TextField } from '../../components/inputs';
 import { Fingerprint, KeyRound, MessageSquare, Smartphone } from 'lucide-react';
@@ -205,6 +205,7 @@ export function SecondFactorPanel({ factors, getPasskey, submit, sendCode, recov
   const [code, setCode] = useState('');
   const [sent, setSent] = useState<'sms' | 'whatsapp' | null>(null);
   const { busy, error, setError, run } = useStep();
+  const early = useTooEarly(choice && choice !== 'passkey' && !code.trim() ? [{ fieldId: 'yx-2fa-code', message: choice === 'recovery_code' ? 'Enter one of your recovery codes.' : 'Enter the 6-digit code.' }] : []);
 
   const withPasskey = () => run(async () => submit({ factor: 'passkey', credential: await getPasskey() }));
   const pick = (c: Choice) => {
@@ -224,8 +225,9 @@ export function SecondFactorPanel({ factors, getPasskey, submit, sendCode, recov
   };
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
+    if (busy) return;
     if (choice === 'passkey') return void withPasskey();
-    if (choice) void run(() => submit({ factor: choice, code: code.trim() }));
+    if (choice && !early.stop()) void run(() => submit({ factor: choice, code: code.trim() }));
   };
   const text = (channel: 'sms' | 'whatsapp') =>
     void run(async () => {
@@ -251,11 +253,11 @@ export function SecondFactorPanel({ factors, getPasskey, submit, sendCode, recov
           {choice === 'otp' && (
             <div className="yx-auth__row">
               <Button size="sm" loading={busy && !sent} onClick={() => text('sms')}>{sent ? 'Send a new code' : 'Text me a code'}</Button>
-              <Button size="sm" onClick={() => text('whatsapp')} disabled={busy}>Send on WhatsApp</Button>
+              <Button size="sm" onClick={() => !busy && text('whatsapp')}>Send on WhatsApp</Button>
             </div>
           )}
           {choice === 'otp' && sent && <Text as="p" tone="secondary" role="status">We sent a code by {sent === 'sms' ? 'SMS' : 'WhatsApp'}. It expires in 5 minutes.</Text>}
-          <FormField label={CODE_LABEL[choice]} required helper={choice === 'recovery_code' ? 'Each recovery code works once.' : undefined}>
+          <FormField id="yx-2fa-code" label={CODE_LABEL[choice]} required error={early.errorOf('yx-2fa-code')} helper={choice === 'recovery_code' ? 'Each recovery code works once.' : undefined}>
             {choice === 'recovery_code' ? (
               <TextField value={code} onChange={setCode} autoComplete="one-time-code" maxLength={40} spellCheck={false} />
             ) : (
@@ -265,20 +267,21 @@ export function SecondFactorPanel({ factors, getPasskey, submit, sendCode, recov
         </>
       )}
       {error && <InlineAlert tone="danger">{error}</InlineAlert>}
-      <Button type="submit" variant="primary" fullWidth loading={busy} disabled={choice !== 'passkey' && !code.trim()}>
+      <Button type="submit" variant="primary" fullWidth loading={busy}>
         {choice === 'passkey' ? 'Use my passkey' : 'Confirm'}
       </Button>
-      {several && <Button fullWidth disabled={busy} onClick={back}>Choose another way</Button>}
+      {several && <Button fullWidth onClick={() => !busy && back()}>Choose another way</Button>}
     </form>
   );
 }
 
 /* ---------- recovery codes (shown once) ---------- */
 
-/** The new recovery codes, shown once. Continue stays disabled until the person says they saved them. */
+/** The new recovery codes, shown once. Continue says to tick the box first until the person says they saved them. */
 export function RecoveryCodes({ codes, onDone, doneLabel = 'Done' }: { codes: string[]; onDone: () => void; doneLabel?: string }) {
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
+  const early = useTooEarly(saved ? [] : [{ fieldId: 'yx-codes-saved', message: 'Save the codes, then tick this box.' }]);
   const copy = () => {
     void navigator.clipboard?.writeText(codes.join('\n')).then(() => setCopied(true));
   };
@@ -303,8 +306,9 @@ export function RecoveryCodes({ codes, onDone, doneLabel = 'Done' }: { codes: st
         <Button size="sm" onClick={download}>Download</Button>
         {copied && <span className="yx-visually-hidden" role="status">Codes copied</span>}
       </div>
-      <Checkbox checked={saved} onChange={setSaved} label="I have saved my recovery codes" />
-      <Button variant="primary" disabled={!saved} onClick={onDone}>{doneLabel}</Button>
+      <Checkbox id="yx-codes-saved" checked={saved} onChange={setSaved} label="I have saved my recovery codes" />
+      {early.errorOf('yx-codes-saved') && <Text as="p" tone="danger" size="sm" role="alert">{early.errorOf('yx-codes-saved')}</Text>}
+      <Button variant="primary" onClick={() => !early.stop() && onDone()}>{doneLabel}</Button>
     </div>
   );
 }

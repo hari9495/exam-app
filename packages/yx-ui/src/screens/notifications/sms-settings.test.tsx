@@ -42,11 +42,14 @@ describe('SmsSettingsScreen', () => {
     const onSavePolicy = vi.fn().mockResolvedValue(undefined);
     render(<Screen onSavePolicy={onSavePolicy} />);
     const save = screen.getByRole('button', { name: 'Save changes' });
-    expect((save as HTMLButtonElement).disabled).toBe(true);
+    // Nothing changed yet: Save sends nothing, and the page says so beside it.
+    expect(screen.getByText('No changes yet')).toBeTruthy();
+    await userEvent.click(save);
+    expect(onSavePolicy).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole('checkbox', { name: /Use the YukthiX shared account/ }));
     await userEvent.click(save);
     expect(onSavePolicy).toHaveBeenCalledWith({ useSharedAccount: false });
-    expect(await screen.findByText('Saved.')).toBeTruthy();
+    expect((await screen.findAllByText('SMS settings saved'))[0]).toBeTruthy();
   });
 
   it('warns when nothing would send: shared account off and no account of its own', async () => {
@@ -62,11 +65,21 @@ describe('SmsSettingsScreen', () => {
     expect(screen.getByText('Monthly limit reached')).toBeTruthy();
   });
 
-  it('Send test is off, with the reason and the way to fix it, until the admin’s own number is verified', () => {
-    render(<Screen myMobile={null} />);
+  it('Send test is off, with the reason and the way to fix it, until the admin’s own number is verified', async () => {
+    const onTestAccount = vi.fn();
+    render(<Screen myMobile={null} onTestAccount={onTestAccount} />);
     expect(screen.getByText('Send test is off')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Verify my number' }).getAttribute('href')).toBe('/yx/me/security');
-    for (const b of screen.getAllByRole('button', { name: /^Send test from/ })) expect((b as HTMLButtonElement).disabled).toBe(true);
+    // Never greyed out: pressed, it says why next to the account and sends nothing.
+    await userEvent.click(screen.getByRole('button', { name: 'Send test from Kaveri DLT gateway' }));
+    expect(onTestAccount).not.toHaveBeenCalled();
+    expect(screen.getByText('Test from Kaveri DLT gateway not sent')).toBeTruthy();
+  });
+
+  it('a sent test says so in a toast', async () => {
+    render(<Screen onTestAccount={vi.fn().mockResolvedValue({ status: 'sent', to: '+919845012345' })} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Send test from Kaveri DLT gateway' }));
+    expect((await screen.findAllByText(/^Test sent from Kaveri DLT gateway to/))[0]).toBeTruthy();
   });
 
   it('a test goes to the admin’s own number and the result is shown', async () => {
