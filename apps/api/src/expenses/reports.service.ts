@@ -67,7 +67,7 @@ export class ExpenseReportsService {
     private readonly tenantPrisma: TenantPrismaService,
   ) {}
 
-  async report(ctx: TenantContext, user: ScopeUser, kind: ReportKind, from?: string, to?: string, entityId?: string | null, departmentId?: string | null): Promise<Report> {
+  async report(ctx: TenantContext, user: ScopeUser, kind: ReportKind, from?: string, to?: string, entityId?: string | null, departmentIds?: string[] | null): Promise<Report> {
     const v = await buildViewer(this.prisma, this.tenantPrisma, user, ['expense.report.view']);
     if (!v.grants.has('expense.report.view') || v.actingForOther) throw new ForbiddenException('You cannot see expense reports.');
     const end = to ?? todayIst();
@@ -78,8 +78,8 @@ export class ExpenseReportsService {
       const entities = reach.filter((id) => !entityId || id === entityId);
       // The department filter: people whose job today is in that department (their claims, whenever made).
       const departments = await tx.department.findMany({ where: { organizationId: org }, select: { id: true, name: true }, orderBy: { name: 'asc' } });
-      const inDept = departmentId
-        ? (await tx.employeeAssignment.findMany({ where: { organizationId: org, departmentId, supersededAt: null, validFrom: { lte: asDate(end) }, OR: [{ validTo: null }, { validTo: { gte: asDate(end) } }] }, select: { employeeId: true } })).map((a) => a.employeeId)
+      const inDept = departmentIds?.length
+        ? (await tx.employeeAssignment.findMany({ where: { organizationId: org, departmentId: { in: departmentIds }, supersededAt: null, validFrom: { lte: asDate(end) }, OR: [{ validTo: null }, { validTo: { gte: asDate(end) } }] }, select: { employeeId: true } })).map((a) => a.employeeId)
         : null;
       const all = inDept === null;
       const emps = inDept ?? [];

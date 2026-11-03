@@ -24,9 +24,9 @@ export class ReportQueryDto {
   @IsIn(['json', 'csv', 'xlsx'])
   format?: 'json' | 'csv' | 'xlsx';
 
-  /** EXP-09 design: only people whose job today is in this department. */
+  /** EXP-09 design: only people whose job today is in one of these departments (comma-separated ids, up to 20). */
   @IsOptional()
-  @IsUUID()
+  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,19}$/i, { message: 'Choose departments from the list.' })
   departmentId?: string;
 
   /** The company chosen in the top bar (design audit step 2); personal views ignore it. */
@@ -46,7 +46,7 @@ export class ExpenseReportsController {
   async report(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext, @Param('kind') kind: string, @Query() q: ReportQueryDto) {
     if (!(REPORTS as readonly string[]).includes(kind)) throw new BadRequestException('No such report.');
     if (q.from && q.to && q.from > q.to) throw new BadRequestException('The report starts after it ends.');
-    const r = await this.reports.report(ctx, req.user as ScopeUser, kind as ReportKind, q.from, q.to, q.legalEntityId, q.departmentId);
+    const r = await this.reports.report(ctx, req.user as ScopeUser, kind as ReportKind, q.from, q.to, q.legalEntityId, q.departmentId ? q.departmentId.split(',') : null);
     if (q.format === 'xlsx') {
       res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="expenses-${kind}-${r.from}-to-${r.to}.xlsx"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
       return new StreamableFile(await toXlsx(r));
