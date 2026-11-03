@@ -12,13 +12,15 @@ import ConsoleSupportPage from './(console)/support/page';
 import ConsoleAuditPage from './(console)/audit/page';
 import ConsoleChannelsPage from './(console)/channels/page';
 import YxSupportAccessPage from '../yx/(app)/settings/support-access/page';
+import { ToastProvider } from '@yukthix/ui';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useParams: jest.fn(), useSearchParams: jest.fn(() => new URLSearchParams('')) }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), STAFF_SIGN_IN: '/staff/sign-in' }));
 jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn() }));
 
 // The platform console (step 3) wired to /platform/*, and the company's Support access page to /support-access.
-const wrap = (ui: React.ReactElement) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{ui}</QueryClientProvider>);
+// The console layout gives every page a toast host (the SMS screen says "done" with toasts).
+const wrap = (ui: React.ReactElement) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ToastProvider>{ui}</ToastProvider></QueryClientProvider>);
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const api = apiFetch as jest.Mock;
 const calls: string[] = [];

@@ -37,8 +37,13 @@ jest.mock('@simplewebauthn/browser', () => ({
   WebAuthnAbortService: { cancelCeremony: jest.fn() },
 }));
 
+// The app's layout gives every page a toast host; pages and screens say "done" with toasts.
 const wrap = (ui: React.ReactElement) =>
-  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{ui}</QueryClientProvider>);
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <ToastProvider>{ui}</ToastProvider>
+    </QueryClientProvider>,
+  );
 
 const NOW = '2026-09-29T09:02:00+05:30';
 const SESSION = { id: 's-2', method: 'password', assuranceLevel: 'aal2', userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Safari/604.1', ipAddress: '49.207.12.8', geo: null, createdAt: NOW, lastSeenAt: NOW, absoluteExpiresAt: NOW };

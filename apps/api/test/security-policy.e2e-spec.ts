@@ -230,6 +230,16 @@ describe('Password floor and tenant security policy (P12 YX-IAM-04/06/08/09)', (
       await call('patch', '/security/policy', recruiter.access, recruiter.ip).send({ mfaScope: 'all' }).expect(403);
     });
 
+    it('lists the emergency-admin candidates by role: only this company’s admins; a bad role is refused', async () => {
+      const admin = await signIn(orgA().slug, ADMIN_A);
+      const res = await call('get', '/users?role=org_admin&pageSize=100', admin.access, admin.ip).expect(200);
+      const emails = (res.body.data as { email: string }[]).map((u) => u.email);
+      expect(emails).toEqual(expect.arrayContaining([ADMIN_A, ADMIN2_A]));
+      expect(emails).not.toContain(RECRUITER_A);
+      expect(emails).not.toContain(ADMIN_B);
+      for (const bad of ['Org_Admin', 'org_admin%27--', 'x'.repeat(41)]) await call('get', `/users?role=${bad}`, admin.access, admin.ip).expect(400);
+    });
+
     it.each([
       [{ sessionIdleMinutes: 481 }],
       [{ sessionAbsoluteMinutes: 24 * 60 }],
