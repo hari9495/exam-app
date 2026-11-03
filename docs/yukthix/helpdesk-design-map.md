@@ -891,3 +891,10 @@ Keep: the menu item and title read "SLAs"; the period offers 7, 30 and 90 days (
 into the design); the target line shows when one queue is chosen. Build: the "at risk" point becomes a desk setting
 (default 80% of the target), used by the HLP-05 dashboard and the HLP-02 agent desk ("At risk or breached" view and
 quick view).
+
+## Founder answers, 3 Nov 2026 (HLP-10/11, "all good")
+(1) The quiz comes with Learning. (2) Acknowledgement codes go by email; SMS once the company's SMS channel is set up.
+(3) Keeping acknowledgements becomes a company setting, default employment plus 8 years — built only after counsel
+agrees (go-live checklist). (4) The demo HR Admin role gets `policy.manage` and `policy.publish` (demo script).
+(5) "Retire a policy" only when a company asks, drawn first. (6) The "waiting to publish" notice goes to every publisher
+except the writer. (7) Confirmed: HLP-10/11 only shows and records policies and makes no legal decision.

@@ -3,9 +3,10 @@ import { PrismaClient } from '@prisma/client';
 // Demo access for Expenses (Kaveri Foods, demo-org; founder 3 Nov 2026): the demo HR Admin role was edited earlier, so
 // migration 20261530000000 left it alone; add the view-only expense policy key to it, so HR (hr-tester) sees the policy
 // read-only. Adds only, never removes. Safe to run again. Run from apps/api:
-//   npx ts-node --transpile-only prisma/scripts/demo-expenses.ts
+//   npx ts-node --transpile-only prisma/scripts/demo-hr-admin-keys.ts
 const prisma = new PrismaClient();
-const KEY = 'expense.policy.view';
+// Founder 3 Nov 2026: the view-only expense policy key, and the policy library keys (HLP-10/11).
+const KEYS = ['expense.policy.view', 'policy.manage', 'policy.publish'];
 
 (async () => {
   const log: string[] = [];
@@ -16,9 +17,10 @@ const KEY = 'expense.policy.view';
     const role = await tx.permissionProfile.findFirst({ where: { organizationId: org, name: 'HR Admin' } });
     if (!role) throw new Error('The demo company has no "HR Admin" role.');
     const have = JSON.parse(role.permissionsJson) as string[];
-    if (!have.includes(KEY)) {
-      await tx.permissionProfile.update({ where: { id: role.id }, data: { permissionsJson: JSON.stringify([...have, KEY].sort()) } });
-      log.push(`HR Admin: added ${KEY}`);
+    const missing = KEYS.filter((k) => !have.includes(k));
+    if (missing.length) {
+      await tx.permissionProfile.update({ where: { id: role.id }, data: { permissionsJson: JSON.stringify([...have, ...missing].sort()) } });
+      log.push(`HR Admin: added ${missing.join(', ')}`);
     }
   });
   console.log(log.length ? log.join('\n') : 'Nothing to add: the demo access is already there.');
