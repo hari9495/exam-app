@@ -138,6 +138,7 @@ export const SETTING_SECTIONS: Record<SettingsArea, SettingsSection[]> = {
     { title: 'Work permits and visas', description: 'The person is reminded before a visa, permit or national ID on their record expires. An expired employment visa or work permit holds payroll approval.', keys: ['work_auth.reminder_days'] },
     { title: 'Regulated declarations', description: 'For designated persons (BFSI): when each financial year’s holdings, related persons and conflicts are due, and the trading pre-clearance rules.', keys: ['bfsi.declaration_due', 'bfsi.preclearance_threshold', 'bfsi.preclearance_valid_days', 'bfsi.preclearance_decide_days'] },
     { title: 'Employee records', description: 'The personal details every record must hold. The personal details form marks them Required and does not save without them.', keys: ['employee.personal.required'] },
+    { title: 'Company policies', description: 'How people acknowledge the policies in Helpdesk › Policies: how long they have, reminders, typing their name, and whether a second person publishes each version. A change applies from today; acknowledgements already given stay as they are.', keys: ['policy.ack.due_days', 'policy.reminder.every_days', 'policy.reminder.manager_after_days', 'policy.reack.default', 'policy.ack.typed_name', 'policy.publish.second_person'] },
     { title: 'Working week and language', description: 'A full-time week (part-time jobs show their share of it) and the language people see your company words in.', keys: ['work.normal_week_hours', 'people.language'] },
   ],
   access: [

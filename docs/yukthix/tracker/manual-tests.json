@@ -13777,5 +13777,223 @@
       "Screens/Service desk/Phase 3b-1 (wired screens)"
     ],
     "note": "Negative (tenant)."
+  },
+  {
+    "id": "MT-HLP-10-01",
+    "area": "Helpdesk · HLP-10 / HLP-11 Policies and Policy admin (3 Nov 2026)",
+    "screen": "Policy admin · list and new policy",
+    "url": "http://localhost:3000/yx/desk/policy-admin",
+    "account": "admin@demo-org.test (System Admin; carries policy.manage and policy.publish). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Helpdesk › Policy admin.",
+      "2. Press New policy, then Make the policy with nothing filled.",
+      "3. Type the title \"Code of conduct\", kind \"Conduct\", keep Confirmation click, press Make the policy.",
+      "4. Press New policy again and make \"CODE OF CONDUCT\" again."
+    ],
+    "expected": "Step 1: breadcrumb and title say Policy admin; \"No policies yet.\" (or the list). Step 2: the title and kind say what is missing and the title takes the focus; nothing is made. Step 3: toast \"POL-NN made\"; the policy opens on its version tab, \"not published yet\". Step 4: refused: \"A policy with this title already exists.\" (stays on the dialog).",
+    "stories": [
+      "Screens/Helpdesk/HLP-11 · Policy admin"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HLP-10-02",
+    "area": "Helpdesk · HLP-10 / HLP-11 Policies and Policy admin (3 Nov 2026)",
+    "screen": "Policy admin · write and send v1",
+    "url": "http://localhost:3000/yx/desk/policy-admin",
+    "account": "admin@demo-org.test (System Admin; carries policy.manage and policy.publish). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open the policy from MT-HLP-10-01, tab v1.",
+      "2. Press Send to be published with an empty text.",
+      "3. Type a few paragraphs (headings, a list, a link), paste <script>alert(1)</script> as text, attach a PDF, Save draft.",
+      "4. Attach a .exe renamed to .pdf.",
+      "5. Press Send to be published."
+    ],
+    "expected": "Step 2: \"Write the policy text first.\" and the editor takes the focus. Step 3: toast \"v1 saved as a draft\"; the file shows \"Being checked for viruses\", then \"Checked\". Step 4: refused with the file type message. Step 5: toast \"v1 sent to be published, Someone other than you publishes it.\"; banner \"You wrote v1, so another publisher publishes it.\"; no Publish version button.",
+    "stories": [
+      "Screens/Helpdesk/HLP-11 · Policy admin"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HLP-10-03",
+    "area": "Helpdesk · HLP-10 / HLP-11 Policies and Policy admin (3 Nov 2026)",
+    "screen": "Policy admin · second person publishes",
+    "url": "http://localhost:3000/yx/desk/policy-admin",
+    "account": "admin2@demo-org.test (a second System Admin, the publisher); then admin@demo-org.test (System Admin; carries policy.manage and policy.publish). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As admin2 open the waiting policy (the bell notice \"… is waiting to be published\" links there).",
+      "2. Press Send back, press Send back with no note, then write \"Add the gifts limit\" and send.",
+      "3. As admin change the text, send it again.",
+      "4. As admin2 press Publish version and confirm."
+    ],
+    "expected": "Step 1: banner \"v1 by … is waiting for you to publish it.\" with Read it and Send back. Step 2: \"Say what to change (3 letters or more).\" first; then toast \"v1 sent back\"; admin gets a notice; the policy shows \"v1 was sent back: “Add the gifts limit”\". Step 4: the design dialog \"Publish Code of conduct v1? Effective <today>…\"; toast \"… published, N people were asked to acknowledge it\"; header shows Published, v1, the facts; audit has policy.version_published.",
+    "stories": [
+      "Screens/Helpdesk/HLP-11 · Policy admin"
+    ],
+    "note": "Maker-checker: the writer never publishes their own version (also checked by the database)."
+  },
+  {
+    "id": "MT-HLP-10-04",
+    "area": "Helpdesk · HLP-10 / HLP-11 Policies and Policy admin (3 Nov 2026)",
+    "screen": "Policies · employee reads and acknowledges",
+    "url": "http://localhost:3000/yx/desk/policies",
+    "account": "arjun@demo-org.test (employee Arjun Kulkarni). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Helpdesk › Policies (or the bell notice).",
+      "2. Open Code of conduct.",
+      "3. Press Acknowledge without ticking.",
+      "4. Tick \"I have read and understood…\", press Acknowledge.",
+      "5. Open the policy again."
+    ],
+    "expected": "Step 1: \"To acknowledge\" lists it with \"due <14 days after today>\"; breadcrumb says Policies. Step 2: drawer with version, effective date, owner, the text (no script runs, the link opens in a new tab), the PDF under Attachments. Step 3: the tick says why and takes the focus. Step 4: toast \"Code of conduct acknowledged\". Step 5: \"You acknowledged v1 on <today> by confirmation…\"; the policy moved to All policies only.",
+    "stories": [
+      "Screens/Helpdesk/HLP-10 · Policy library + acknowledgement"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HLP-10-05",
+    "area": "Helpdesk · HLP-10 / HLP-11 Policies and Policy admin (3 Nov 2026)",
+    "screen": "Policies · audience (in and out)",
+    "url": "http://localhost:3000/yx/desk/policy-admin",
+    "account": "admin@demo-org.test (System Admin; carries policy.manage and policy.publish); arjun@demo-org.test (employee Arjun Kulkarni); panel@demo-org.test (Divya, another department). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As admin open the policy, Audience & method: choose only Arjun’s department, Save audience and method.",
+      "2. As Arjun open Helpdesk › Policies.",
+      "3. As Divya (another department) open Helpdesk › Policies, then paste /yx/desk/policies?policy=<id> from Arjun’s address bar."
+    ],
+    "expected": "Step 1: toast \"Audience and method saved\"; Audience fact shows that department’s head count. Step 2: Arjun still sees it. Step 3: Divya does not see it; the pasted link shows \"We couldn’t open this policy.\" (the API says 404).",
+    "stories": [
+      "Screens/Helpdesk/HLP-11 · Policy admin",
+      "Screens/Helpdesk/HLP-10 · Policy library + acknowledgement"
+    ],
+    "note": "Positive and negative: employee in and out of the audience."
+  },
+  {
+    "id": "MT-HLP-10-06",
+    "area": "Helpdesk · HLP-10 / HLP-11 Policies and Policy admin (3 Nov 2026)",
+    "screen": "Policies · new version asks again",
+    "url": "http://localhost:3000/yx/desk/policy-admin",
+    "account": "admin@demo-org.test (System Admin; carries policy.manage and policy.publish); admin2@demo-org.test (a second System Admin, the publisher); arjun@demo-org.test (employee Arjun Kulkarni). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As admin open the policy, press Publish new version: change a sentence, leave What changed empty, press Send to be published.",
+      "2. Fill What changed \"Adds a gifts limit\", keep \"Ask everyone to acknowledge again\" on, send; admin2 publishes.",
+      "3. As Arjun open Helpdesk › Policies.",
+      "4. In a second tab keep the old v1 drawer open from before step 2, press Acknowledge there."
+    ],
+    "expected": "Step 1: \"Say what changed (3 letters or more)…\" and the field takes the focus. Step 3: the policy is back in To acknowledge as v2 with \"What changed: Adds a gifts limit\". Step 4: stays on the page: \"A newer version was published\", with \"Read the new version\". After acknowledging v2, Versions tab shows v2 and v1 with who wrote and published each.",
+    "stories": [
+      "Screens/Helpdesk/HLP-11 · Policy admin",
+      "Screens/Helpdesk/HLP-10 · Policy library + acknowledgement"
+    ],
+    "note": "Positive and negative: acknowledging an old version (409)."
+  },
+  {
+    "id": "MT-HLP-10-07",
+    "area": "Helpdesk · HLP-10 / HLP-11 Policies and Policy admin (3 Nov 2026)",
+    "screen": "Policies · one-time code",
+    "url": "http://localhost:3000/yx/desk/policies",
+    "account": "admin@demo-org.test (System Admin; carries policy.manage and policy.publish) (sets the method); arjun@demo-org.test (employee Arjun Kulkarni). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As admin set How people acknowledge = One-time code on the policy (Audience & method), then publish a new version that asks again.",
+      "2. As Arjun open it, tick, press Send code to acknowledge.",
+      "3. Type 000000, press Acknowledge.",
+      "4. Type the code from the email, press Acknowledge.",
+      "5. Press Acknowledge again (another tab)."
+    ],
+    "expected": "Step 1: header badge \"Critical: one-time code\". Step 2: \"Sent by email to ar•••@… It expires in 5 minutes.\" Step 3: \"That code is not right or has expired. Ask for a new code.\" stays on the page. Step 4: toast \"… acknowledged\". Step 5: \"You have already acknowledged this version.\" (409).",
+    "stories": [
+      "Screens/Helpdesk/HLP-10 · Policy library + acknowledgement"
+    ],
+    "note": "Positive and negative: wrong code, double acknowledgement."
+  },
+  {
+    "id": "MT-HLP-10-08",
+    "area": "Helpdesk · HLP-10 / HLP-11 Policies and Policy admin (3 Nov 2026)",
+    "screen": "Policies · typed name (company setting)",
+    "url": "http://localhost:3000/yx/settings/company-rules",
+    "account": "admin@demo-org.test (System Admin; carries policy.manage and policy.publish); arjun@demo-org.test (employee Arjun Kulkarni). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As admin open Settings › Company rules › Company policies, set \"Policies: people type their name to acknowledge\" = on.",
+      "2. As Arjun open a pending policy, tick, press Acknowledge with the name empty.",
+      "3. Type \"Someone Else\", press Acknowledge.",
+      "4. Type \"  arjun   KULKARNI \", press Acknowledge.",
+      "5. Admin sets the setting back to off."
+    ],
+    "expected": "Step 2: \"Type your name as on your record: Arjun Kulkarni.\" and the field takes the focus. Step 3: the server refuses with the same words. Step 4: toast; the evidence CSV shows the typed name \"arjun KULKARNI\". The setting change is audited.",
+    "stories": [
+      "Screens/Helpdesk/HLP-10 · Policy library + acknowledgement"
+    ],
+    "note": "Company policy is a setting with a default (off)."
+  },
+  {
+    "id": "MT-HLP-10-09",
+    "area": "Helpdesk · HLP-10 / HLP-11 Policies and Policy admin (3 Nov 2026)",
+    "screen": "Policy admin · pending, drill-down, reminders",
+    "url": "http://localhost:3000/yx/desk/policy-admin",
+    "account": "admin@demo-org.test (System Admin; carries policy.manage and policy.publish). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open a published policy that some people have not acknowledged.",
+      "2. Under the chart choose a department in \"See who is pending in\".",
+      "3. Press Send reminder.",
+      "4. Press Send reminder again.",
+      "5. Tick one person, press Remind 1."
+    ],
+    "expected": "Step 1: Acknowledged %, Audience, Pending, Due facts; the meter and the department chart. Step 2: Pending people opens filtered to that department (manager, due, days overdue, Reminded <date>). Step 3: toast \"Reminder sent to N people\" (or \"Nobody needed a reminder now, N already got one today\" right after publishing). Step 4: nobody twice the same day. The employee’s bell shows the reminder.",
+    "stories": [
+      "Screens/Helpdesk/HLP-11 · Policy admin"
+    ],
+    "note": "Reminders respect the company settings (every 3 days, manager after 7 days overdue by default)."
+  },
+  {
+    "id": "MT-HLP-10-10",
+    "area": "Helpdesk · HLP-10 / HLP-11 Policies and Policy admin (3 Nov 2026)",
+    "screen": "Policy admin · evidence export",
+    "url": "http://localhost:3000/yx/desk/policy-admin",
+    "account": "admin@demo-org.test (System Admin; carries policy.manage and policy.publish). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open a policy with acknowledgements, ⋯ menu › Export evidence (CSV).",
+      "2. Open the file."
+    ],
+    "expected": "A CSV POL-NN-acknowledgements.csv downloads; toast \"Evidence downloaded\". One row per acknowledgement of every version: policy, version, effective date, employee, code, time (IST), method, typed name, the 64-letter text fingerprint, IP, device. Audit has policy.evidence_exported.",
+    "stories": [
+      "Screens/Helpdesk/HLP-11 · Policy admin"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HLP-10-11",
+    "area": "Helpdesk · HLP-10 / HLP-11 Policies and Policy admin (3 Nov 2026)",
+    "screen": "Policy admin · who may open it",
+    "url": "http://localhost:3000/yx/desk/policy-admin",
+    "account": "arjun@demo-org.test (employee Arjun Kulkarni); hr@demo-org.test (HR Admin role edited before this build, no policy keys); an admin of another company. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As Arjun type /yx/desk/policy-admin.",
+      "2. As hr@ open Helpdesk.",
+      "3. As another company’s admin paste /yx/desk/policy-admin?policy=<this company’s id>."
+    ],
+    "expected": "Step 1: no Policy admin in the menu; the page shows \"You don’t have access to policy admin\" (never \"check your connection\"). Step 2: same as step 1 until the policy keys are added to that role (question 20; or add them in Settings › Roles & access). Step 3: their own (empty) list; the pasted policy shows \"We couldn’t open this policy.\" (404).",
+    "stories": [
+      "Screens/Helpdesk/HLP-11 · Policy admin"
+    ],
+    "note": "Negative: no key, another company."
+  },
+  {
+    "id": "MT-HLP-10-12",
+    "area": "Helpdesk · HLP-10 / HLP-11 Policies and Policy admin (3 Nov 2026)",
+    "screen": "Policies · phone and the record",
+    "url": "http://localhost:3000/yx/desk/policies",
+    "account": "arjun@demo-org.test (employee Arjun Kulkarni). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Make the window narrower than 768 px.",
+      "2. Open a pending policy and acknowledge it.",
+      "3. Ask the System Admin to look at Security › Audit for policy.acknowledged."
+    ],
+    "expected": "Step 1: the design’s phone layout (title Policies, back arrow, the two lists). Step 2: the reader fills the phone screen; toast. Step 3: one entry with the version and method; the acknowledgement cannot be changed or deleted from anywhere in the app.",
+    "stories": [
+      "Screens/Helpdesk/HLP-10 · Policy library + acknowledgement"
+    ],
+    "note": "Positive."
   }
 ]

@@ -670,6 +670,7 @@ the record as evidence that the policy was communicated.
   compliance (a legitimate use for employment, section 7), shown to the person, and kept no longer than needed.
   Retention is not built yet (question). **Verify with counsel.**
 **Company settings** (Settings registry, `org.settings.manage`, company-wide, every change audited; the default is
+**Company settings** (Settings › Company rules › Company policies; `org.settings.manage`, company-wide, every change audited; the default is
 what a new company gets):
 | setting | default | choices | what it does |
 |---|---|---|---|
@@ -797,7 +798,7 @@ surveys). The HLP screens are the founder-approved look, sample-only.
     the employment plus the company's records period (a setting, default 8 years after the person leaves), after counsel.
 20. **HLP-11: the demo HR Admin** (hr@demo-org.test) does not get the new keys: its role was changed from the template,
     so the migration leaves it alone (by design). *Suggested:* the founder adds `policy.manage` and `policy.publish` in
-    Security › Roles, or tests with admin@ and admin2@ (System Admins carry both).
+    Settings › Roles & access, or tests with admin@ and admin2@ (System Admins carry both).
 21. **HLP-11: retiring a policy** (not in the design). A policy can only get new versions today. *Suggested:* add
     "Retire" (it stops showing; records stay) when a company asks, drawn first.
 22. **HLP-11: who gets "waiting to be published" notices**: every user whose role carries `policy.publish` (up to 25)

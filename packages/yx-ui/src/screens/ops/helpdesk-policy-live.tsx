@@ -609,7 +609,7 @@ function AudienceTab({ live, p }: { live: LivePolicyAdmin; p: PolicyAdmin }) {
         </div>
         <MethodChoice value={method} onChange={setMethod} />
         <DescriptionList columns={2} items={rules} />
-        <p className="yx-ops-muted">These rules are company settings (Settings › Settings registry, Policies).</p>
+        <p className="yx-ops-muted">These rules are company settings (Settings › Company rules, Company policies).</p>
         <Actions>
           <Button variant="primary" loading={busy} onClick={() => void save()}>
             Save audience and method
