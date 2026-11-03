@@ -534,3 +534,8 @@ for (const h in want) errs.push('story file with no rows: ' + h);
 console.table(counts);
 if (errs.length) { console.error(errs.join('\n')); process.exit(1); }
 ```
+
+3 Nov 2026 (walk as HR, manager and employee in the test app; branch `feat/yukthix-perf-walkfix`): a refused page (403) shows
+the designed no-access state ("Screens/Performance/No access") on every Performance page, never "check your connection";
+refused visitors see no header actions; the shell names each Performance sub-page in the breadcrumb and highlights its own
+(or parent) menu entry, also for a typed address. Manual tests MT-PRF-B3-16..18.
