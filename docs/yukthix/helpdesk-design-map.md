@@ -656,7 +656,9 @@ what a new company gets):
 - **Employee** (implicit, own records only): sees published policies whose audience covers their current job today,
   reads the current version and its attachments, acknowledges it. Someone acting for another person gets 403.
 - **`policy.manage`** (new key; HR Admin template): makes policies, writes and sends versions, sets the audience and
-  the method, sees completion, the pending people, sends reminders, exports the evidence. Company-wide only.
+  the method, sees completion, the pending people, sends reminders, exports the evidence. It may be granted per legal
+  entity (the HR Admin template's usual scope), but the policy pages need it for the whole company (an entity grant
+  gets 403: one policy set serves the company).
 - **`policy.publish`** (new key; HR Admin template): publishes or sends back a waiting version, never their own while
   the second-person setting is on (also a database check).
 - Anyone else: 403 and the no-access state. Another company's policy: 404.
@@ -666,6 +668,7 @@ the server (the sanitize-html allow-list of the desk editor); attachments go thr
 JPG, up to 10 MB, virus-checked; only clean files open). A published version never changes (database trigger) and is
 never deleted (the app's database role has no delete). The effective date is the publish day (India).
 **Audience:** any of legal entities, locations, departments and grades (empty = all), matched against each person's
+**Audience:** any of legal entities, locations, departments (with the ones under them) and grades (empty = all), matched against each person's
 assignment in force today (the existing org structure). Leavers drop out. Someone moved out of the audience is no longer
 pending; their acknowledgements stay on record. A new joiner is in from their joining day.
 **Acknowledgement:** a policy needs acknowledging for its latest version that asked for it (v1 always does). A person
@@ -681,6 +684,7 @@ reminder" reminds the pending people (or the ones ticked) who were not reminded 
 **Export:** CSV of every acknowledgement of every version of one policy (`policy.manage`, audited).
 **Defaults the product decided:** policy numbers POL-01 …; categories are free text; department means that department
 only, not the ones under it (question); no quiz (question).
+**Defaults the product decided:** policy numbers POL-01 …; categories are free text; no quiz (question).
 
 ## 5. Two designs for one job
 

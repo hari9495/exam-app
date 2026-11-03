@@ -29,7 +29,7 @@ describe('HLP-10 / HLP-11 company policies', () => {
   const server = () => app.getHttpServer();
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'adminA' | 'adminB' | 'writer' | 'publisher' | 'hrExec' | 'divya' | 'arjun' | 'meena' | 'hrB';
+  type Who = 'adminA' | 'adminB' | 'writer' | 'publisher' | 'hrExec' | 'hrEntity' | 'divya' | 'arjun' | 'meena' | 'hrB';
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const emp = {} as Record<string, string>;
@@ -95,6 +95,8 @@ describe('HLP-10 / HLP-11 company policies', () => {
       ['writer', 'A', 'panel', tpl('hr_admin')],
       ['publisher', 'A', 'panel', tpl('hr_admin')],
       ['hrExec', 'A', 'panel', tpl('hr_executive')],
+      // HR Admin keys granted for one legal entity only (the template's typical scope): no company policies.
+      ['hrEntity', 'A', 'panel', null],
       ['divya', 'A', 'panel', []],
       ['arjun', 'A', 'panel', []],
       ['meena', 'A', 'panel', []],
@@ -120,6 +122,8 @@ describe('HLP-10 / HLP-11 company policies', () => {
       ids.field = (await tx.department.create({ data: { ...x, id: field, name: 'Field sales', code: 'FLD', parentId: sales, path: `/${sales}/${field}/` } })).id;
       ids.desig = (await tx.designation.create({ data: { ...x, name: 'Executive', code: 'EX' } })).id;
       ids.perm = (await tx.employmentType.create({ data: { ...x, name: 'Permanent', code: 'PERM', category: 'permanent' } })).id;
+      const role = await tx.permissionProfile.create({ data: { ...x, name: `hr-entity-${run}`, permissionsJson: JSON.stringify(tpl('hr_admin')) } });
+      await tx.roleGrant.create({ data: { ...x, userId: users.hrEntity, permissionProfileId: role.id, scopeType: 'legal_entity', legalEntityId: ids.entity, validFrom: new Date('2020-01-01T00:00:00Z'), status: 'active', reason: 'Entity HR' } });
     });
     const hire = async (who: Who, given: string, code: string, departmentId: string, managerEmployeeId: string | null) =>
       (await request(server()).post('/api/v1/people/employees').set('Authorization', `Bearer ${token.adminA}`).send({ legalEntityId: ids.entity, status: 'confirmed', reason: 'Joined', givenName: given, familyName: 'Raghunathan', employeeCode: code, joinedOn: '2026-04-06', userId: users[who], workEmail: `${who}@hlp10-${run}.test`, assignment: { locationId: ids.blr, departmentId, designationId: ids.desig, employmentTypeId: ids.perm, managerEmployeeId } }).expect(201)).body.id as string;
@@ -139,6 +143,9 @@ describe('HLP-10 / HLP-11 company policies', () => {
   it('only policy.manage / policy.publish reach policy admin; the HR Admin template carries both', async () => {
     expect(ROLE_TEMPLATES.find((t) => t.key === 'hr_admin')!.permissions).toEqual(expect.arrayContaining(['policy.manage', 'policy.publish']));
     await api('hrExec', 'get', '/policies').expect(403);
+    // A legal-entity grant passes the route guard but confers nothing on company-wide policies (fail closed).
+    await api('hrEntity', 'get', '/policies').expect(403);
+    await api('hrEntity', 'post', '/policies').send({ title: 'Code of conduct', category: 'Conduct', method: 'click' }).expect(403);
     await api('divya', 'get', '/policies').expect(403);
     await api('hrExec', 'post', '/policies').send({ title: 'Code of conduct', category: 'Conduct', method: 'click' }).expect(403);
     await api('writer', 'get', '/policies').expect(200);

@@ -1,7 +1,8 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { createHash } from 'crypto';
-import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { ScopeUser, buildViewer, tenantWide } from '../access/scope';
 import { NotificationsService } from '../notifications/notifications.service';
 import { OTP_TTL_SECONDS, OtpService } from '../auth/otp.service';
 import { FilesService } from '../documents/files.service';
@@ -65,6 +66,7 @@ export class PoliciesService {
   private readonly logger = new Logger(PoliciesService.name);
 
   constructor(
+    private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly notifications: NotificationsService,
     private readonly files: FilesService,
@@ -78,6 +80,15 @@ export class PoliciesService {
     } catch (e) {
       throw mapDb(e);
     }
+  }
+
+  /**
+   * Policies are company-wide: an HR key granted for one legal entity only (the HR Admin template's typical scope) passes
+   * the route guard but confers nothing here (fail closed); the key must be held for the whole company.
+   */
+  async companyWide(user: ScopeUser, keys: ('policy.manage' | 'policy.publish')[]) {
+    const v = await buildViewer(this.prisma, this.tenantPrisma, user, keys);
+    if (!keys.some((k) => tenantWide(v, k))) throw new ForbiddenException('Company policies apply to the whole company: this needs the key for the whole company, not one legal entity.');
   }
 
   // ------------------------------------------------------------------------------------------ shared reads

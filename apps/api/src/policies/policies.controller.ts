@@ -12,6 +12,7 @@ import { MODERATE_UPLOAD_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-ti
 import { assertOwnSession } from '../service-desk/desk-access';
 import { AcknowledgeDto, DraftDto, NewPolicyDto, PendingQueryDto, PolicyChangeDto, RemindDto, SendBackDto, SubmitDto } from './dto';
 import { PoliciesService } from './policies.service';
+import type { ScopeUser } from '../access/scope';
 
 // HLP-10 / HLP-11 company policies (rules: docs/yukthix/helpdesk-design-map.md section 4d). Keys (P02 YX-SEC-01):
 //   policy.manage     policies, versions, audience, completion, pending people, reminders, evidence (company-wide)
@@ -29,48 +30,60 @@ const out = (res: Response, f: { file: Buffer | string; name: string; contentTyp
 export class PoliciesAdminController {
   constructor(private readonly policies: PoliciesService) {}
 
+  /** The key must be held for the whole company (a legal-entity grant confers nothing here). */
+  private gate(req: Request, ...keys: ('policy.manage' | 'policy.publish')[]) {
+    return this.policies.companyWide(req.user as ScopeUser, keys);
+  }
+
   @Get()
   @RequireAnyPermission('policy.manage', 'policy.publish')
-  list(@CurrentTenant() ctx: TenantContext) {
+  async list(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    await this.gate(req, 'policy.manage', 'policy.publish');
     return this.policies.list(ctx);
   }
 
   @Get('options')
   @RequirePermissions('policy.manage')
-  options(@CurrentTenant() ctx: TenantContext) {
+  async options(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    await this.gate(req, 'policy.manage');
     return this.policies.options(ctx);
   }
 
   @Post()
   @RequirePermissions('policy.manage')
-  create(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: NewPolicyDto) {
+  async create(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: NewPolicyDto) {
     assertOwnSession(req);
+    await this.gate(req, 'policy.manage');
     return this.policies.create(ctx, dto);
   }
 
   @Get(':id')
   @RequireAnyPermission('policy.manage', 'policy.publish')
-  detail(@CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+  async detail(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    await this.gate(req, 'policy.manage', 'policy.publish');
     return this.policies.detail(ctx, id);
   }
 
   @Get(':id/pending')
   @RequireAnyPermission('policy.manage', 'policy.publish')
-  pending(@CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Query() q: PendingQueryDto) {
+  async pending(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Query() q: PendingQueryDto) {
+    await this.gate(req, 'policy.manage', 'policy.publish');
     return this.policies.pending(ctx, id, q.departmentId);
   }
 
   @Patch(':id')
   @RequirePermissions('policy.manage')
-  update(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PolicyChangeDto) {
+  async update(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PolicyChangeDto) {
     assertOwnSession(req);
+    await this.gate(req, 'policy.manage');
     return this.policies.update(ctx, id, dto);
   }
 
   @Put(':id/draft')
   @RequirePermissions('policy.manage')
-  draft(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DraftDto) {
+  async draft(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DraftDto) {
     assertOwnSession(req);
+    await this.gate(req, 'policy.manage');
     return this.policies.saveDraft(ctx, id, dto);
   }
 
@@ -78,57 +91,65 @@ export class PoliciesAdminController {
   @RequirePermissions('policy.manage')
   @Throttle(MODERATE_UPLOAD_THROTTLE)
   @UseInterceptors(UPLOAD)
-  addFile(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @UploadedFile() file: Express.Multer.File | undefined) {
+  async addFile(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @UploadedFile() file: Express.Multer.File | undefined) {
     assertOwnSession(req);
+    await this.gate(req, 'policy.manage');
     return this.policies.addFile(ctx, id, file ? { name: file.originalname, data: file.buffer } : null);
   }
 
   @Post(':id/draft/files/:fileId/remove')
   @RequirePermissions('policy.manage')
-  removeFile(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('fileId', ParseUUIDPipe) fileId: string) {
+  async removeFile(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('fileId', ParseUUIDPipe) fileId: string) {
     assertOwnSession(req);
+    await this.gate(req, 'policy.manage');
     return this.policies.removeFile(ctx, id, fileId);
   }
 
   @Post(':id/submit')
   @RequirePermissions('policy.manage')
-  submit(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SubmitDto) {
+  async submit(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SubmitDto) {
     assertOwnSession(req);
+    await this.gate(req, 'policy.manage');
     return this.policies.submit(ctx, id, dto);
   }
 
   @Post(':id/publish')
   @RequirePermissions('policy.publish')
-  publish(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SubmitDto) {
+  async publish(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SubmitDto) {
     assertOwnSession(req);
+    await this.gate(req, 'policy.publish');
     return this.policies.publish(ctx, id, dto);
   }
 
   @Post(':id/send-back')
   @RequirePermissions('policy.publish')
-  sendBack(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SendBackDto) {
+  async sendBack(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SendBackDto) {
     assertOwnSession(req);
+    await this.gate(req, 'policy.publish');
     return this.policies.sendBack(ctx, id, dto);
   }
 
   @Post(':id/remind')
   @RequirePermissions('policy.manage')
   @Throttle(MODERATE_UPLOAD_THROTTLE)
-  remind(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RemindDto) {
+  async remind(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RemindDto) {
     assertOwnSession(req);
+    await this.gate(req, 'policy.manage');
     return this.policies.remind(ctx, id, dto);
   }
 
   @Get(':id/evidence')
   @RequirePermissions('policy.manage')
-  async evidence(@CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Res({ passthrough: true }) res: Response) {
+  async evidence(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Res({ passthrough: true }) res: Response) {
+    await this.gate(req, 'policy.manage');
     const f = await this.policies.evidence(ctx, id);
     return out(res, { file: f.csv, name: f.name, contentType: 'text/csv; charset=utf-8' });
   }
 
   @Get(':id/files/:fileId')
   @RequireAnyPermission('policy.manage', 'policy.publish')
-  async file(@CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('fileId', ParseUUIDPipe) fileId: string, @Res({ passthrough: true }) res: Response) {
+  async file(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('fileId', ParseUUIDPipe) fileId: string, @Res({ passthrough: true }) res: Response) {
+    await this.gate(req, 'policy.manage', 'policy.publish');
     return out(res, await this.policies.file(ctx, id, fileId));
   }
 }
