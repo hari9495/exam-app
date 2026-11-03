@@ -8,6 +8,7 @@ import { Checkbox, MethodCards, RadioGroup, Switch, type MethodCardOption } from
 import { Combobox, MultiSelect, PersonPicker, Select } from '../components/select';
 import { DatePicker, DateRangePicker, type DateRange } from '../components/date';
 import { FileUpload } from '../components/upload';
+import { KIT_WORDS_EN, KitWordsContext } from '../components/kit-words';
 import { Icon } from '../components/foundations';
 import { Section, Stack } from './story-kit';
 
@@ -299,4 +300,24 @@ export const AddEmployeeForm: StoryObj = {
       </div>
     );
   },
+};
+
+/** The kit's own words (field tags, password eye) follow a page written in another language; English everywhere else. */
+export const FieldWordsHindi: StoryObj = {
+  name: 'Field tags in the page language (Hindi sign-in)',
+  render: () => (
+    <KitWordsContext.Provider value={{ ...KIT_WORDS_EN, required: 'आवश्यक', optional: 'वैकल्पिक', showPassword: 'पासवर्ड दिखाएँ', hidePassword: 'पासवर्ड छिपाएँ' }}>
+      <div style={{ maxWidth: 360, display: 'grid', gap: 'var(--yx-space-4)' }}>
+        <FormField label="कार्य ईमेल" required>
+          <TextField value="" onChange={() => {}} />
+        </FormField>
+        <FormField label="पासवर्ड" required>
+          <PasswordField value="" onChange={() => {}} />
+        </FormField>
+        <FormField label="टिप्पणी" optional>
+          <TextField value="" onChange={() => {}} />
+        </FormField>
+      </div>
+    </KitWordsContext.Provider>
+  ),
 };

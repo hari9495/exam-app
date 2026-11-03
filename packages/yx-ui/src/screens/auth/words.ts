@@ -1,4 +1,5 @@
 import { createContext, useContext } from 'react';
+import { KIT_WORDS_EN, type KitWords } from '../../components/kit-words';
 
 /*
  * The words of the sign-in pages (SEC-01, "Confirm it's you", first sign-in set-up) in English and Hindi.
@@ -27,6 +28,8 @@ export const AuthLanguageContext = createContext<{ value: string; onChange: (lan
 
 const EN = {
   lang: 'en' as AuthLang,
+  /** The kit's own words on these pages (field tags, password eye, footer). */
+  kit: KIT_WORDS_EN as KitWords,
   // frame
   note: 'For company staff only',
   footer: { privacy: 'Privacy notice', terms: 'Terms of use', accessibility: 'Accessibility statement', grievance: 'Grievance officer', openSource: 'Open-source notices' },
@@ -147,6 +150,15 @@ export type AuthWords = typeof EN;
 
 const HI: AuthWords = {
   lang: 'hi',
+  kit: {
+    required: 'आवश्यक',
+    optional: 'वैकल्पिक',
+    showPassword: 'पासवर्ड दिखाएँ',
+    hidePassword: 'पासवर्ड छिपाएँ',
+    poweredBy: { before: '', after: 'द्वारा संचालित', label: 'YukthiX द्वारा संचालित' },
+    legalNotices: 'कानूनी सूचनाएँ',
+    language: 'भाषा (Language)',
+  },
   note: 'केवल कंपनी के कर्मचारियों के लिए',
   footer: { privacy: 'गोपनीयता सूचना', terms: 'उपयोग की शर्तें', accessibility: 'सुगम्यता विवरण', grievance: 'शिकायत अधिकारी', openSource: 'ओपन-सोर्स सूचनाएँ' },
   signIn: 'साइन इन करें',

@@ -9,6 +9,7 @@ import { CodeField, TextField } from '../../components/inputs';
 import { Fingerprint, KeyRound, MessageSquare, Smartphone } from 'lucide-react';
 import type { BadgeTone } from '../../components/display';
 import type { LoginResult, MfaProof } from './types';
+import { KitWordsContext } from '../../components/kit-words';
 import { AUTH_LANGUAGES, AuthLanguageContext, authWords, useAuthWords, type AuthWords } from './words';
 
 export { AuthLanguageContext };
@@ -127,23 +128,25 @@ export function AuthFrame({ title, subtitle, children, footer, company, note }: 
   const lang = useContext(AuthLanguageContext);
   const w = useAuthWords();
   return (
-    <TenantPortal
-      tenant={company || 'YukthiX'}
-      portal={company ? 'YukthiX HR' : 'HR Suite'}
-      narrow
-      access={{ kind: 'note', text: note ?? w.note }}
-      footer={{ privacy: w.footer.privacy, hrefs: LEGAL_LINKS, labels: w.footer }}
-      {...(lang ? { language: lang.value, onLanguageChange: lang.onChange, languages: AUTH_LANGUAGES } : { noLanguage: true })}
-    >
-      <section className="yx-signin" aria-labelledby="yx-auth-title" lang={w.lang}>
-        <div className="yx-signin__head">
-          <h1 id="yx-auth-title" className="yx-signin__title">{title}</h1>
-          {subtitle && <p className="yx-signin__intro">{subtitle}</p>}
-        </div>
-        {children}
-      </section>
-      {footer && <div className="yx-auth__foot">{footer}</div>}
-    </TenantPortal>
+    <KitWordsContext.Provider value={w.kit}>
+      <TenantPortal
+        tenant={company || 'YukthiX'}
+        portal={company ? 'YukthiX HR' : 'HR Suite'}
+        narrow
+        access={{ kind: 'note', text: note ?? w.note }}
+        footer={{ privacy: w.footer.privacy, hrefs: LEGAL_LINKS, labels: w.footer }}
+        {...(lang ? { language: lang.value, onLanguageChange: lang.onChange, languages: AUTH_LANGUAGES } : { noLanguage: true })}
+      >
+        <section className="yx-signin" aria-labelledby="yx-auth-title" lang={w.lang}>
+          <div className="yx-signin__head">
+            <h1 id="yx-auth-title" className="yx-signin__title">{title}</h1>
+            {subtitle && <p className="yx-signin__intro">{subtitle}</p>}
+          </div>
+          {children}
+        </section>
+        {footer && <div className="yx-auth__foot">{footer}</div>}
+      </TenantPortal>
+    </KitWordsContext.Provider>
   );
 }
 

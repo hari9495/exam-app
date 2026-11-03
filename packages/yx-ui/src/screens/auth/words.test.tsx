@@ -17,7 +17,7 @@ function Picked({ start = 'en', children, onChange }: { start?: string; children
 }
 
 const devanagari = /[ऀ-ॿ]/;
-const flat = (o: unknown): string[] => (typeof o === 'string' ? [o] : typeof o === 'function' ? [String((o as (...a: string[]) => unknown)('X', 'Y'))] : o && typeof o === 'object' ? Object.values(o).flatMap(flat) : []);
+const flat = (o: unknown): string[] => (typeof o === 'string' ? (o ? [o] : []) : typeof o === 'function' ? [String((o as (...a: string[]) => unknown)('X', 'Y'))] : o && typeof o === 'object' ? Object.values(o).flatMap(flat) : []);
 
 describe('sign-in words (English and Hindi)', () => {
   it('every Hindi sentence is written in Devanagari (no English left behind)', () => {
@@ -64,7 +64,12 @@ describe('sign-in language picker', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'साइन इन करें' })).toBeInTheDocument();
     expect(screen.getByLabelText(/कार्य ईमेल/)).toBeInTheDocument();
     expect(screen.getByText('केवल कंपनी के कर्मचारियों के लिए')).toBeInTheDocument();
-    expect(within(screen.getByRole('navigation', { name: 'Legal notices' })).getByRole('link', { name: 'गोपनीयता सूचना' })).toHaveAttribute('href', '/yx/legal/privacy');
+    expect(within(screen.getByRole('navigation', { name: 'कानूनी सूचनाएँ' })).getByRole('link', { name: 'गोपनीयता सूचना' })).toHaveAttribute('href', '/yx/legal/privacy');
+    // The kit's own words follow the page too: the field tag, the picker's name and "Powered by".
+    expect(screen.getByText('आवश्यक')).toBeInTheDocument();
+    expect(screen.queryByText('Required')).toBeNull();
+    expect(screen.getByRole('combobox', { name: 'भाषा (Language)' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'YukthiX द्वारा संचालित' })).toBeInTheDocument();
     expect(document.querySelector('.yx-signin')).toHaveAttribute('lang', 'hi');
   });
 
@@ -109,6 +114,7 @@ describe('sign-in language picker', () => {
   it('without a provider (in the app: step-up, My security) the words are English and there is no picker', () => {
     render(<SignInScreen {...signInProps} step="identify" />);
     expect(screen.getByRole('heading', { level: 1, name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.getByText('Required')).toBeInTheDocument();
     expect(screen.queryByRole('combobox', { name: 'Language' })).toBeNull();
   });
 });

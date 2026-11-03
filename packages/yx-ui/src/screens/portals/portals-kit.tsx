@@ -29,6 +29,7 @@ import {
   type ComponentStatus,
 } from './portals-logic';
 import './portals.css';
+import { useKitWords } from '../../components/kit-words';
 
 /* ================================================================== */
 /* Language switcher (P04 Q4)                                          */
@@ -45,10 +46,11 @@ export const PORTAL_LANGUAGES = [
 export function LanguageSwitcher({ defaultValue = 'en', size = 'sm', value, onChange, languages = PORTAL_LANGUAGES }: { defaultValue?: string; size?: 'sm' | 'md'; value?: string; onChange?: (lang: string) => void; /** The languages offered; a page lists only those it is written in. */ languages?: { value: string; label: string }[] }) {
   const [own, setOwn] = useState<string | null>(defaultValue);
   const lang = value ?? own;
+  const words = useKitWords();
   return (
     <div className="yx-lang">
       <Icon icon={Globe2} />
-      <Select aria-label="Language" size={size} options={languages} value={lang} onChange={(v) => (onChange && v ? onChange(v) : setOwn(v))} />
+      <Select aria-label={words.language} size={size} options={languages} value={lang} onChange={(v) => (onChange && v ? onChange(v) : setOwn(v))} />
     </div>
   );
 }
@@ -75,8 +77,9 @@ export type FooterNotice = 'privacy' | 'terms' | 'accessibility' | 'cookies' | '
 export function PortalFooterLinks({ privacy, cookies, terms = 'Terms of use', hrefs = {}, labels = {} }: FooterNotices) {
   const named: [FooterNotice, string][] = [['privacy', privacy], ['terms', terms], ['accessibility', 'Accessibility statement'], ...(cookies ? [['cookies', 'Cookie notice'] as [FooterNotice, string]] : []), ['grievance', 'Grievance officer'], ['openSource', 'Open-source notices']];
   const links = named.map(([k, l]): [FooterNotice, string] => [k, labels[k] ?? l]);
+  const words = useKitWords();
   return (
-    <nav className="yx-portal-notices" aria-label="Legal notices">
+    <nav className="yx-portal-notices" aria-label={words.legalNotices}>
       {links.map(([k, l]) => (
         <a key={k} href={hrefs[k] ?? '#'}>
           {l}

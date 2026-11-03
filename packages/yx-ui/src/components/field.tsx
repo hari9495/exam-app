@@ -10,6 +10,7 @@ import {
   type HTMLAttributes,
   type ReactNode,
 } from 'react';
+import { useKitWords } from './kit-words';
 import { AlertCircle } from 'lucide-react';
 import { cx } from '../lib/cx';
 import { Icon } from './foundations';
@@ -70,6 +71,7 @@ export function FormField({ label, children, required = false, optional, helper,
   // No error under a field while the person is typing in it (founder review 8 Oct 2026): it shows again when they
   // leave the field or press Save. One rule for every field, whatever set the error.
   const [typing, setTyping] = useState(false);
+  const words = useKitWords();
   // The control's own message is about what was typed ("Choose a date on or after …"), so it beats the form's generic one.
   const shownError = typing ? null : internalError ?? error;
   const shownRule = shownError ? undefined : rule;
@@ -103,8 +105,8 @@ export function FormField({ label, children, required = false, optional, helper,
       >
         <label htmlFor={fieldId} className="yx-field__label" data-hidden={hideLabel || undefined}>
           <span>{label}</span>
-          {required && <span className="yx-field__req">Required</span>}
-          {!required && optional && <span className="yx-field__req">Optional</span>}
+          {required && <span className="yx-field__req">{words.required}</span>}
+          {!required && optional && <span className="yx-field__req">{words.optional}</span>}
         </label>
         {children}
         {shownError && (

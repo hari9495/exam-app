@@ -1,4 +1,5 @@
 import { cx } from '../lib/cx';
+import { useKitWords } from './kit-words';
 
 /*
  * PLACEHOLDERS — replace with the designer's SVG wordmark and X monogram when delivered
@@ -46,11 +47,13 @@ export interface PoweredByProps {
 
 /** Small "Powered by YukthiX" footer lockup for employee and candidate surfaces. */
 export function PoweredBy({ whiteLabel, href = 'https://yukthix.com', className }: PoweredByProps) {
+  const { poweredBy } = useKitWords();
   if (whiteLabel) return null;
   return (
-    <a className={cx('yx-powered-by', className)} href={href} target="_blank" rel="noopener noreferrer" aria-label="Powered by YukthiX">
-      <span>Powered by</span>
+    <a className={cx('yx-powered-by', className)} href={href} target="_blank" rel="noopener noreferrer" aria-label={poweredBy.label}>
+      {poweredBy.before && <span>{poweredBy.before}</span>}
       <Logo size="sm" />
+      {poweredBy.after && <span>{poweredBy.after}</span>}
     </a>
   );
 }

@@ -329,5 +329,12 @@ Founder answers 1 and 2 are built. Recount (script in the appendix): **A. Signin
   sign-in. The legal notice pages keep their English text (their link names in the footer follow the picker).
 - **Kit first (rule 18):** `TenantPortal` / `LanguageSwitcher` take the languages a page offers (`languages`), and the
   footer notices take names in the page's language (`labels`); tested in `portals.test.tsx`.
+- **Kit words (follow-up, branch `feat/yukthix-sec-hindi-2`):** the words the kit itself shows on these pages follow
+  the page too: the field tags "Required" / "Optional" (आवश्यक / वैकल्पिक), the password eye's names (पासवर्ड
+  दिखाएँ / छिपाएँ), "Powered by YukthiX" (YukthiX द्वारा संचालित), and the screen-reader names of the language picker
+  and the legal-notices list. They come from `components/kit-words.tsx` (`KitWordsContext`, English by default
+  everywhere); `AuthFrame` provides the page's set. The field error icon and the alert icons are decorative (hidden
+  from screen readers), and the code box has no words of its own, so nothing else needed it. Kit story: Inputs ›
+  "Field tags in the page language (Hindi sign-in)".
 - **Privacy contact (answer 2):** go-live checklist item 30 sets `NEXT_PUBLIC_YX_PRIVACY_EMAIL` to the grievance
   officer's mailbox.
