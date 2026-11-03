@@ -12702,5 +12702,199 @@
       "Security · SEC-01 · Sign in · code sent"
     ],
     "note": "Negative."
+  },
+  {
+    "id": "MT-HLP-01-01",
+    "area": "Helpdesk · HLP-01 Help centre (3 Nov 2026)",
+    "screen": "Help centre · my tickets and the promise",
+    "url": "http://localhost:3000/yx/desk/help",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, employee). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Helpdesk › Help centre."
+    ],
+    "expected": "The page matches the HLP-01 design: \"Find an answer\" with popular articles, \"My tickets\" (each with number, team, raised date, status; open ones show a \"Resolve: … left\" badge; private ones a Private badge), and the rail \"Ask the assistant\" saying it is not switched on yet, then Reading aids and My data. The breadcrumb/title reads Help centre. No page scroll at 1278 x 635 unless the ticket list is long.",
+    "stories": [
+      "Screens/Helpdesk/HLP-01 · Help centre"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HLP-01-02",
+    "area": "Helpdesk · HLP-01 Help centre (3 Nov 2026)",
+    "screen": "Find an answer · search and no match",
+    "url": "http://localhost:3000/yx/desk/help",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, employee). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Type \"wifi\" in the search box.",
+      "2. Click the first article title.",
+      "3. Close it and type \"gym membership\"."
+    ],
+    "expected": "Step 1: \"N articles for “wifi”\" with the matching articles. Step 2: the article opens in a drawer with Yes / No and \"This solved it\". Step 3: \"No articles match these words.\"",
+    "stories": [
+      "Screens/Helpdesk/HLP-01 · Help centre"
+    ],
+    "note": "Positive + negative."
+  },
+  {
+    "id": "MT-HLP-01-03",
+    "area": "Helpdesk · HLP-01 Help centre (3 Nov 2026)",
+    "screen": "Raise ticket · pressed too early",
+    "url": "http://localhost:3000/yx/desk/help",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, employee). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Press Raise a ticket, then press Raise ticket at once."
+    ],
+    "expected": "Nothing is sent. \"Choose what it is about.\", \"Write a subject.\" and \"Add the details.\" show under the fields and the topic field has focus. The button was never greyed out.",
+    "stories": [
+      "Screens/Helpdesk/HLP-01 · Help centre"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-HLP-01-04",
+    "area": "Helpdesk · HLP-01 Help centre (3 Nov 2026)",
+    "screen": "Raise ticket · with a topic and a file",
+    "url": "http://localhost:3000/yx/desk/help",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, employee). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Press Raise a ticket. What is it about? choose a topic under \"IT help desk\" (each topic says its team).",
+      "2. Subject \"VPN drops at home\", Details \"Every ten minutes since Monday\". Add a small PDF.",
+      "3. Press Raise ticket."
+    ],
+    "expected": "A toast says \"Ticket raised\" with the ticket number (IT-…). The drawer closes, the ticket is first in My tickets with \"Resolve: … left\". Opening it shows the PDF (being checked, then clean).",
+    "stories": [
+      "Screens/Helpdesk/HLP-01 · Help centre"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HLP-01-05",
+    "area": "Helpdesk · HLP-01 Help centre (3 Nov 2026)",
+    "screen": "Raise ticket · an article answers it",
+    "url": "http://localhost:3000/yx/desk/help",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, employee). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Press Raise a ticket and type a subject that matches an article, e.g. \"wifi password\".",
+      "2. Under \"These articles may answer your question\" press This answers it."
+    ],
+    "expected": "No ticket is raised; a toast says \"Glad that helped\" and the drawer closes. My tickets is unchanged.",
+    "stories": [
+      "Screens/Helpdesk/HLP-01 · Help centre"
+    ],
+    "note": "Positive (self-service)."
+  },
+  {
+    "id": "MT-HLP-01-06",
+    "area": "Helpdesk · HLP-01 Help centre (3 Nov 2026)",
+    "screen": "Raise ticket · private topic",
+    "url": "http://localhost:3000/yx/desk/help",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, employee). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Press Raise a ticket and choose a topic marked \"private to this team’s agents\" (e.g. under HR help desk)."
+    ],
+    "expected": "\"Private by default\" shows instead of the Keep this private box. After raising, the ticket shows the Private badge, and an IT agent cannot see it.",
+    "stories": [
+      "Screens/Helpdesk/HLP-01 · Help centre"
+    ],
+    "note": "Positive + negative (privacy)."
+  },
+  {
+    "id": "MT-HLP-01-07",
+    "area": "Helpdesk · HLP-01 Help centre (3 Nov 2026)",
+    "screen": "Resolved ticket · rate and reopen",
+    "url": "http://localhost:3000/yx/desk/help",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, employee). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Before: an IT help desk agent solves Arjun's ticket from MT-HLP-01-04.",
+      "2. As Arjun, reload the Help centre.",
+      "3. Press Send rating with nothing chosen.",
+      "4. Choose 4 and press Send rating.",
+      "5. Press Reopen ticket."
+    ],
+    "expected": "Step 2: a card \"Resolved: VPN drops at home\" says when it closes (3 days after solving) and until when it can be reopened (7 days). Step 3: \"Choose a rating from 1 to 5.\" and nothing is sent. Step 4: toast \"Thanks. Your rating is saved.\" and the card says \"You rated the help 4 of 5\". Step 5: the ticket opens; a reply there reopens it.",
+    "stories": [
+      "Screens/Helpdesk/HLP-01 · Help centre"
+    ],
+    "note": "Positive + negative."
+  },
+  {
+    "id": "MT-HLP-01-08",
+    "area": "Helpdesk · HLP-01 Help centre (3 Nov 2026)",
+    "screen": "Rating · only the person who raised it",
+    "url": "http://localhost:3000/yx/desk/help",
+    "account": "arjun@demo-org.test, then panel@demo-org.test (Manager - Divya)",
+    "steps": [
+      "1. On MT-HLP-01-04's ticket add a colleague (panel@demo-org.test, Divya) as a follower.",
+      "2. Sign in as Divya and open the Help centre."
+    ],
+    "expected": "Divya sees the ticket marked \"you follow it\" but no rating choices on its card (only the raiser rates).",
+    "stories": [
+      "Screens/Helpdesk/HLP-01 · Help centre"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-HLP-01-09",
+    "area": "Helpdesk · HLP-01 Help centre (3 Nov 2026)",
+    "screen": "Known issue · Me too",
+    "url": "http://localhost:3000/yx/desk/help",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, employee). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Before: an IT agent posts a banner on IT help desk (Helpdesk › Known issues) for everyone.",
+      "2. As Arjun, open the Help centre and press Me too.",
+      "3. Press You are on it."
+    ],
+    "expected": "Step 2: the banner shows at the top with Me too; after it \"We added you to this issue\". Step 3: a toast says you are already on this issue; nothing is sent twice.",
+    "stories": [
+      "Screens/Helpdesk/HLP-01 · Help centre"
+    ],
+    "note": "Positive + negative."
+  },
+  {
+    "id": "MT-HLP-01-10",
+    "area": "Helpdesk · HLP-01 Help centre (3 Nov 2026)",
+    "screen": "Phone · Help centre and raise sheet",
+    "url": "http://localhost:3000/yx/desk/help",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, employee). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Make the window 375 x 812 and reload.",
+      "2. Press Raise a ticket."
+    ],
+    "expected": "The design's phone layout: title Help, search, Raise a ticket, the resolved card, My tickets. The raise form opens as a bottom sheet with the same fields.",
+    "stories": [
+      "Screens/Helpdesk/HLP-01 · Help centre"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HLP-01-11",
+    "area": "Helpdesk · HLP-01 Help centre (3 Nov 2026)",
+    "screen": "Error and retry",
+    "url": "http://localhost:3000/yx/desk/help",
+    "account": "arjun@demo-org.test (Arjun Kulkarni, employee). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Ask the developer to stop the API, then reload.",
+      "2. Start the API and press Try again."
+    ],
+    "expected": "Step 1: \"We couldn't load your tickets.\" with Try again (not a blank page). Step 2: the tickets load.",
+    "stories": [
+      "Screens/Helpdesk/HLP-01 · Help centre"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-HLP-01-12",
+    "area": "Helpdesk · HLP-01 Help centre (3 Nov 2026)",
+    "screen": "No access while acting for someone else",
+    "url": "http://localhost:3000/yx/desk/help",
+    "account": "admin@demo-org.test (System Admin)",
+    "steps": [
+      "1. As System Admin, start acting for Arjun (support session / impersonation) and open /yx/desk/help."
+    ],
+    "expected": "The page shows \"You don't have access to the Help centre\" explaining it shows only your own tickets; no tickets of Arjun are shown.",
+    "stories": [
+      "Screens/Helpdesk/HLP-01 · Help centre"
+    ],
+    "note": "Negative (privacy)."
   }
 ]
