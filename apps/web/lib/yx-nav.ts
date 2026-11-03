@@ -222,7 +222,7 @@ export function buildNav(n: NavInput): NavArea[] {
             ...when(employee || has('expense.payout.manage'), L('expense-advances', 'Advances', '/yx/expenses/advances')),
             ...when(has('expense.payout.manage'), L('expense-to-pay', 'To pay', '/yx/expenses/to-pay')),
             ...when(has('expense.report.view'), L('expense-reports', 'Expense reports', '/yx/expenses/reports')),
-            ...when(has('expense.policy.manage'), L('expense-setup', 'Expense policy', '/yx/settings/expenses')),
+            ...when(has('expense.policy.manage') || has('expense.policy.view'), L('expense-setup', 'Expense policy', '/yx/settings/expenses')),
           ]),
           ...sec('Payments & files', [
             ...when(has('payroll.payment.record'), L('pay-modes', 'Payment modes', '/yx/payroll/payment-modes')),

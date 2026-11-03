@@ -163,4 +163,27 @@ describe('Settings › Expenses', () => {
     expect(singleGrade(POLICY_SETUP.policies!.policies[2]!, f)).toBeNull();
     expect(singleGrade({ ...p, appliesIf: null }, f)).toBeNull();
   });
+
+  it('read only (expense.policy.view): every tab shows, no edit control anywhere', async () => {
+    render(<ExpenseSetupScreen {...POLICY_SETUP} canEdit={false} />);
+    expect(screen.getByText('Read only')).toBeInTheDocument();
+    expect(screen.getAllByText('₹7,500').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Copy as a new policy' })).toBeNull();
+    expect(screen.getAllByText('Hard block').length).toBeGreaterThan(0);
+    await ue.click(within(screen.getByRole('row', { name: /Standard/ })).getByRole('button', { name: 'Show limits' }));
+    expect(screen.getByText('₹5,000')).toBeInTheDocument();
+    for (const [tab, add] of [['Receipts & over-limit', 'Add a category'], ['City tiers', 'Add a tier'], ['Mileage & per diem', 'Add a rate'], ['GST registrations', 'Add a registration']] as const) {
+      await ue.click(screen.getByRole('tab', { name: tab }));
+      expect(screen.queryByRole('button', { name: add })).toBeNull();
+      expect(screen.queryByRole('button', { name: /^(Edit|End)$/ })).toBeNull();
+    }
+  });
+
+  it('read only on a new company: no starters button, a plain note instead', () => {
+    render(<ExpenseSetupScreen {...POLICY_SETUP} categories={[]} canEdit={false} />);
+    expect(screen.queryByRole('button', { name: 'Use the starters' })).toBeNull();
+    expect(screen.getByText(/Expenses are not set up yet/)).toBeInTheDocument();
+  });
 });
+

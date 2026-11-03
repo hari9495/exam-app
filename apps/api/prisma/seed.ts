@@ -192,6 +192,8 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'asset.manage',
     // M05 expenses E1: categories, limits, rates and GST registrations.
     'expense.policy.manage',
+    // Founder 3 Nov 2026: the expense policy, read only (HR).
+    'expense.policy.view',
     // E2: claims of people in scope, and the finance check.
     'expense.claim.view',
     'expense.finance.review',

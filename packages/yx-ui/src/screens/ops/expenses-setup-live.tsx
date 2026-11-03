@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { createContext, useContext, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Button } from '../../components/button';
 import { PlainTable } from '../../components/plain-table';
@@ -89,7 +89,12 @@ export interface ExpenseSetupScreenProps {
   fxRates?: FxRateRow[];
   payCurrency?: string;
   onAddFxRate?: (r: { base: string; quote: string; rateDate: string; rate: string }) => Promise<unknown>;
+  /** False for someone with expense.policy.view only (HR, founder 3 Nov 2026): every edit control is hidden. */
+  canEdit?: boolean;
 }
+
+/** Read only (expense.policy.view without expense.policy.manage): the tabs hide their add, edit and end buttons. */
+const CanEdit = createContext(true);
 
 export type PolicyTab = 'matrix' | 'rates' | 'rules' | 'tiers' | 'gst' | 'fx';
 export type PolicySheet = 'copy' | 'category' | 'tier' | 'mileage' | 'gst' | null;
@@ -116,17 +121,23 @@ export function LivePolicyScreen({ live: p, defaultTab = 'matrix', defaultSheet 
     );
   const noCategories = p.categories.length === 0;
   const today = p.policies?.today ?? dayKey(new Date());
+  const canEdit = p.canEdit !== false;
   return (
+    <CanEdit.Provider value={canEdit}>
     <OpsDesk area="expenses" active="Expense policy">
-      <PageHeader title="Expense policy" description="Limits by category, grade and city tier, with the rates, categories and registrations they use. Dated versions; claims use the version valid on the expense date." />
+      <PageHeader title="Expense policy" description="Limits by category, grade and city tier, with the rates, categories and registrations they use. Dated versions; claims use the version valid on the expense date." status={canEdit ? undefined : <Badge tone="neutral">Read only</Badge>} />
       {noCategories ? (
         <Card title="Start from the YukthiX starters">
           <p className="yx-ops-p">Eleven categories, four city tiers, a company-wide policy with limits, and mileage and per-diem rates. Your copy is yours: later YukthiX changes never overwrite it.</p>
-          <Actions>
-            <Button variant="primary" loading={busy === 'starters'} onClick={() => void act('starters', p.onUseStarters, 'Starters copied. Check the limits and rates for your company.')}>
-              Use the starters
-            </Button>
-          </Actions>
+          {canEdit ? (
+            <Actions>
+              <Button variant="primary" loading={busy === 'starters'} onClick={() => void act('starters', p.onUseStarters, 'Starters copied. Check the limits and rates for your company.')}>
+                Use the starters
+              </Button>
+            </Actions>
+          ) : (
+            <p className="yx-ops-muted">Expenses are not set up yet. Whoever manages the expense policy starts from the starters.</p>
+          )}
         </Card>
       ) : (
         <>
@@ -160,6 +171,7 @@ export function LivePolicyScreen({ live: p, defaultTab = 'matrix', defaultSheet 
         </>
       )}
     </OpsDesk>
+    </CanEdit.Provider>
   );
 }
 
@@ -200,6 +212,7 @@ function LimitsTab(p: ExpenseSetupScreenProps & { policies: Policies; startCopy:
   const policy = policies.find((x) => x.id === id) ?? first;
   if (!policy) return <EmptyState compact title="No policy yet." description="Use the starters, or copy a policy." />;
   const grade = singleGrade(policy, fields);
+  const canEdit = useContext(CanEdit);
   return (
     <div className="yx-ops-stack">
       <PolicyMatrix
@@ -230,7 +243,7 @@ function LimitsTab(p: ExpenseSetupScreenProps & { policies: Policies; startCopy:
           getRowId={(x) => x.id}
           rowNoun={['policy', 'policies']}
           empty={<EmptyState compact title="Every policy applies to one grade." description="They are all in the grade band list above." />}
-          rowButtons={(x) => (x.id === policy.id ? <Badge tone="info">Shown above</Badge> : <Button size="sm" onClick={() => setId(x.id)}>Edit limits</Button>)}
+          rowButtons={(x) => (x.id === policy.id ? <Badge tone="info">Shown above</Badge> : <Button size="sm" onClick={() => setId(x.id)}>{canEdit ? 'Edit limits' : 'Show limits'}</Button>)}
         />
       </Card>
     </div>
@@ -275,6 +288,8 @@ function PolicyMatrix(p: ExpenseSetupScreenProps & { fields: Policies['fields'];
   const tiers = p.tiers.filter((t) => t.active);
   const cols = [{ id: ANY, name: 'Any city' }, ...tiers.map((t) => ({ id: t.id, name: t.name }))];
   const grade = singleGrade(policy, p.fields);
+  const canEdit = useContext(CanEdit);
+  const perText = (r: MatrixRow) => PER.find((x) => x.value === r.per)?.label ?? r.per;
   return (
     <div className="yx-ops-stack">
       <div className="yx-ops-row">
@@ -291,27 +306,31 @@ function PolicyMatrix(p: ExpenseSetupScreenProps & { fields: Policies['fields'];
         getRowId={(r) => r.code}
         columns={[
           { key: 'category', header: 'Category', rowHeader: true, cell: (r) => <span id={`lim-${r.code}`}>{r.name}</span> },
-          { key: 'per', header: 'Limit', cell: (r) => <Select aria-label={`${r.name}: limit`} value={r.per} onChange={(x) => x && edit(r.code, { per: x as Per })} options={PER} /> },
+          { key: 'per', header: 'Limit', cell: (r) => (canEdit ? <Select aria-label={`${r.name}: limit`} value={r.per} onChange={(x) => x && edit(r.code, { per: x as Per })} options={PER} /> : perText(r)) },
           ...cols.map((c) => ({
             key: c.id,
             header: c.name,
             cell: (r: MatrixRow) =>
-              r.per !== 'none' && r.per !== 'free' ? (
+              r.per !== 'none' && r.per !== 'free' && !canEdit ? (
+                <span>{r.cells[c.id] ? `₹${Number(r.cells[c.id]).toLocaleString('en-IN')}` : c.id === ANY ? 'Not allowed' : 'As any city'}</span>
+              ) : r.per !== 'none' && r.per !== 'free' ? (
                 <TextField aria-label={`${r.name}, ${c.name}`} inputMode="decimal" value={r.cells[c.id] ?? ''} placeholder={c.id === ANY ? 'Not allowed' : 'As any city'} onChange={(x) => edit(r.code, { cells: { ...r.cells, [c.id]: x.replace(/[^0-9.]/g, '') } })} />
               ) : (
                 <span className="yx-ops-muted">{r.per === 'free' ? 'No limit' : '—'}</span>
               ),
           })),
-          { key: 'over', header: 'Over the limit', cell: (r) => (r.per === 'none' ? <span className="yx-ops-muted">—</span> : <Select aria-label={`${r.name}: over the limit`} value={r.overLimit} onChange={(x) => x && edit(r.code, { overLimit: x as OverLimit })} options={OVER} />) },
+          { key: 'over', header: 'Over the limit', cell: (r) => (r.per === 'none' ? <span className="yx-ops-muted">—</span> : !canEdit ? <Badge tone={r.overLimit === 'block' ? 'danger' : 'neutral'}>{OVER.find((x) => x.value === r.overLimit)?.label}</Badge> : <Select aria-label={`${r.name}: over the limit`} value={r.overLimit} onChange={(x) => x && edit(r.code, { overLimit: x as OverLimit })} options={OVER} />) },
         ]}
       />
       <p className="yx-ops-muted">An empty tier cell uses the "Any city" amount; both empty means not allowed there. Over a limit, the employee gives a reason and the excess gets an extra approval, unless it is a hard block. Tiers are editable in City tiers.</p>
-      <Actions>
-        <Button icon={Plus} onClick={() => setCopying(true)}>
-          Copy as a new policy
-        </Button>
-      </Actions>
-      {dirty && (
+      {canEdit && (
+        <Actions>
+          <Button icon={Plus} onClick={() => setCopying(true)}>
+            Copy as a new policy
+          </Button>
+        </Actions>
+      )}
+      {canEdit && dirty && (
         <StickySaveBar dirty>
           {inForce && (
             <FormField id="lim-from" label="Effective from" hideLabel error={v.errorOf('lim-from')}>
@@ -324,7 +343,7 @@ function PolicyMatrix(p: ExpenseSetupScreenProps & { fields: Policies['fields'];
           </Button>
         </StickySaveBar>
       )}
-      {copying && <CopyPolicyDrawer policy={policy} rules={'rules' in parsed ? parsed.rules : policy.rules} fields={p.fields} today={today} onClose={() => setCopying(false)} onSave={p.onSavePolicy} />}
+      {canEdit && copying && <CopyPolicyDrawer policy={policy} rules={'rules' in parsed ? parsed.rules : policy.rules} fields={p.fields} today={today} onClose={() => setCopying(false)} onSave={p.onSavePolicy} />}
     </div>
   );
 }
@@ -401,6 +420,7 @@ function CopyPolicyDrawer({ policy, rules, fields, today, onClose, onSave }: { p
 // ------------------------------------------------------------------------------------------ categories
 
 function CategoriesTab({ categories, onSave, start }: { categories: ExpenseCategory[]; onSave: ExpenseSetupScreenProps['onSaveCategory']; start?: boolean }) {
+  const canEdit = useContext(CanEdit);
   const [editing, setEditing] = useState<CategoryInput | null>(start && categories[0] ? { ...categories[0] } : null);
   const columns: TableColumn<ExpenseCategory>[] = [
     { key: 'name', header: 'Category', value: (r) => r.name, render: (r) => <Text>{r.name}</Text>, width: 220, hideable: false },
@@ -412,12 +432,14 @@ function CategoriesTab({ categories, onSave, start }: { categories: ExpenseCateg
   ];
   return (
     <div className="yx-ops-stack">
-      <div className="yx-ops-row">
-        <Button icon={Plus} onClick={() => setEditing({ code: '', name: '', kind: 'spend', receiptAbove: '500', gstEligible: false, itcBlockedReason: null, taxable: 'never', ledgerCode: null, active: true })}>
-          Add a category
-        </Button>
-      </div>
-      <DataTable label="Expense categories" columns={columns} rows={categories} getRowId={(r) => r.id} rowNoun={['category', 'categories']} cardSummary rowButtons={(r) => <Button size="sm" onClick={() => setEditing({ ...r })}>Edit</Button>} />
+      {canEdit && (
+        <div className="yx-ops-row">
+          <Button icon={Plus} onClick={() => setEditing({ code: '', name: '', kind: 'spend', receiptAbove: '500', gstEligible: false, itcBlockedReason: null, taxable: 'never', ledgerCode: null, active: true })}>
+            Add a category
+          </Button>
+        </div>
+      )}
+      <DataTable label="Expense categories" columns={columns} rows={categories} getRowId={(r) => r.id} rowNoun={['category', 'categories']} cardSummary rowButtons={canEdit ? (r) => <Button size="sm" onClick={() => setEditing({ ...r })}>Edit</Button> : undefined} />
       {editing && (
         <CategoryDrawer
           value={editing}
@@ -510,6 +532,7 @@ function CategoryDrawer({ value, onClose, onSave }: { value: CategoryInput; onCl
 // ------------------------------------------------------------------------------------------ city tiers
 
 function TiersTab({ tiers, onSave, start }: { tiers: CityTier[]; onSave: ExpenseSetupScreenProps['onSaveTier']; start?: boolean }) {
+  const canEdit = useContext(CanEdit);
   const [editing, setEditing] = useState<TierInput | null>(start && tiers[0] ? { ...tiers[0] } : null);
   const columns: TableColumn<CityTier>[] = [
     { key: 'name', header: 'Tier', value: (r) => r.name, width: 160, hideable: false },
@@ -518,12 +541,14 @@ function TiersTab({ tiers, onSave, start }: { tiers: CityTier[]; onSave: Expense
   ];
   return (
     <div className="yx-ops-stack">
-      <div className="yx-ops-row">
-        <Button icon={Plus} onClick={() => setEditing({ name: '', rank: tiers.length + 1, country: 'IN', cities: [], active: true })}>
-          Add a tier
-        </Button>
-      </div>
-      <DataTable label="City tiers" columns={columns} rows={tiers} getRowId={(r) => r.id} rowNoun={['tier', 'tiers']} cardSummary rowButtons={(r) => <Button size="sm" onClick={() => setEditing({ ...r })}>Edit</Button>} />
+      {canEdit && (
+        <div className="yx-ops-row">
+          <Button icon={Plus} onClick={() => setEditing({ name: '', rank: tiers.length + 1, country: 'IN', cities: [], active: true })}>
+            Add a tier
+          </Button>
+        </div>
+      )}
+      <DataTable label="City tiers" columns={columns} rows={tiers} getRowId={(r) => r.id} rowNoun={['tier', 'tiers']} cardSummary rowButtons={canEdit ? (r) => <Button size="sm" onClick={() => setEditing({ ...r })}>Edit</Button> : undefined} />
       {editing && (
         <TierDrawer
           value={editing}
@@ -601,6 +626,7 @@ function TierDrawer({ value, onClose, onSave }: { value: TierInput; onClose: () 
 // ------------------------------------------------------------------------------------------ rates
 
 function RatesTab({ rates, tiers, today, onAddMileage, onAddPerDiem, start }: { rates: Rates; tiers: CityTier[]; today: string; onAddMileage: ExpenseSetupScreenProps['onAddMileage']; onAddPerDiem: ExpenseSetupScreenProps['onAddPerDiem']; start?: boolean }) {
+  const canEdit = useContext(CanEdit);
   const [adding, setAdding] = useState<'mileage' | 'per_diem' | null>(start ? 'mileage' : null);
   const tierName = useMemo(() => new Map(tiers.map((t) => [t.id, t.name])), [tiers]);
   const until = (to: string | null) => (to ? dateText(to) : 'Open');
@@ -620,10 +646,10 @@ function RatesTab({ rates, tiers, today, onAddMileage, onAddPerDiem, start }: { 
   ];
   return (
     <div className="yx-ops-stack">
-      <Card title="Mileage (own vehicle)" actions={<Button size="sm" icon={Plus} onClick={() => setAdding('mileage')}>Add a rate</Button>}>
+      <Card title="Mileage (own vehicle)" actions={canEdit ? <Button size="sm" icon={Plus} onClick={() => setAdding('mileage')}>Add a rate</Button> : undefined}>
         <DataTable label="Mileage rates" columns={mileage} rows={rates.mileage} getRowId={(r) => r.id} rowNoun={['rate', 'rates']} cardSummary />
       </Card>
-      <Card title="Per diem" actions={<Button size="sm" icon={Plus} onClick={() => setAdding('per_diem')}>Add a rate</Button>}>
+      <Card title="Per diem" actions={canEdit ? <Button size="sm" icon={Plus} onClick={() => setAdding('per_diem')}>Add a rate</Button> : undefined}>
         <DataTable label="Per-diem rates" columns={perDiem} rows={rates.perDiem} getRowId={(r) => r.id} rowNoun={['rate', 'rates']} cardSummary />
       </Card>
       {adding && <RateDrawer kind={adding} tiers={tiers} today={today} onClose={() => setAdding(null)} onAddMileage={onAddMileage} onAddPerDiem={onAddPerDiem} />}
@@ -734,6 +760,7 @@ function RateDrawer({ kind, tiers, today, onClose, onAddMileage, onAddPerDiem }:
 // ------------------------------------------------------------------------------------------ GST registrations
 
 function GstTab({ gst, entities, today, onAdd, onEnd, start }: { gst: GstRegistration[]; entities: Choice[]; today: string; onAdd: ExpenseSetupScreenProps['onAddGst']; onEnd: ExpenseSetupScreenProps['onEndGst']; start?: boolean }) {
+  const canEdit = useContext(CanEdit);
   const [adding, setAdding] = useState(Boolean(start));
   const [ending, setEnding] = useState<GstRegistration | null>(null);
   const [endOn, setEndOn] = useState<Date | null>(fromKey(today));
@@ -751,12 +778,14 @@ function GstTab({ gst, entities, today, onAdd, onEnd, start }: { gst: GstRegistr
       <Text as="p" tone="secondary">
         Input credit on a bill needs your GSTIN in the state where the service is given, for example the hotel&apos;s state. Record each registration here.
       </Text>
-      <div className="yx-ops-row">
-        <Button icon={Plus} onClick={() => setAdding(true)}>
-          Add a registration
-        </Button>
-      </div>
-      <DataTable label="GST registrations" columns={columns} rows={gst} getRowId={(r) => r.id} rowNoun={['registration', 'registrations']} cardSummary empty={<EmptyState compact title="No GST registrations yet." />} rowButtons={(r) => (r.validTo ? null : <Button size="sm" onClick={() => setEnding(r)}>End</Button>)} />
+      {canEdit && (
+        <div className="yx-ops-row">
+          <Button icon={Plus} onClick={() => setAdding(true)}>
+            Add a registration
+          </Button>
+        </div>
+      )}
+      <DataTable label="GST registrations" columns={columns} rows={gst} getRowId={(r) => r.id} rowNoun={['registration', 'registrations']} cardSummary empty={<EmptyState compact title="No GST registrations yet." />} rowButtons={(r) => (r.validTo || !canEdit ? null : <Button size="sm" onClick={() => setEnding(r)}>End</Button>)} />
       {adding && <GstDrawer entities={entities} today={today} onClose={() => setAdding(false)} onAdd={onAdd} />}
       {ending && (
         <ConfirmDialog
@@ -843,6 +872,7 @@ function GstDrawer({ entities, today, onClose, onAdd }: { entities: Choice[]; to
 }
 
 function FxTab({ rows, payCurrency, today, onAdd }: { rows: FxRateRow[]; payCurrency: string; today: string; onAdd: NonNullable<ExpenseSetupScreenProps['onAddFxRate']> }) {
+  const canEdit = useContext(CanEdit);
   const [adding, setAdding] = useState(false);
   const [base, setBase] = useState('');
   const [on, setOn] = useState<Date | null>(fromKey(today));
@@ -856,7 +886,7 @@ function FxTab({ rows, payCurrency, today, onAdd }: { rows: FxRateRow[]; payCurr
     { key: 'date', header: 'From', value: (r) => dateText(r.rateDate), width: 140 },
   ];
   return (
-    <Card title="Exchange rates" actions={<Button size="sm" icon={Plus} onClick={() => (setTried(false), setAdding(true))}>Add a rate</Button>}>
+    <Card title="Exchange rates" actions={canEdit ? <Button size="sm" icon={Plus} onClick={() => (setTried(false), setAdding(true))}>Add a rate</Button> : undefined}>
       <Text as="p" tone="secondary" size="sm">
         {`Bills in another currency are converted to ${payCurrency} at the last rate on or before the bill's date. Official rate feeds are switched on once their terms of reuse are confirmed.`}
       </Text>

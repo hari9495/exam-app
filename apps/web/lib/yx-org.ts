@@ -108,6 +108,7 @@ export const YX_KEYS = [
   'asset.manage',
   // M05 expenses E1.
   'expense.policy.manage',
+  'expense.policy.view',
   'expense.claim.view',
   'expense.finance.review',
   'travel.booking.manage',

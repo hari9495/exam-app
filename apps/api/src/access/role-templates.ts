@@ -78,7 +78,7 @@ const TEMPLATES: readonly RoleTemplate[] = [
     cannot: 'Pay, payroll approval.',
     // Founder 27 Oct 2026: HR admins see Special data (the identity panel, Aadhaar in full); every look is recorded.
     // Founder 28 Oct 2026: HR approves a manager's request to see their team's pay (two different HR people).
-    permissions: [...HR_VIEW, 'org.settings.manage', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.pay_access.approve', 'employee.personal.view', 'employee.profile.edit', 'employee.identity.view', 'employee.identity.manage', 'employee.identity.approve', 'employee.aadhaar.view', 'request.raise_on_behalf', ...TIME_HR_ADMIN, ...LIFE_HR_ADMIN, 'expense.claim.view', 'perf.goal.view', 'perf.review.view', 'perf.report.view', 'perf.pip.manage'],
+    permissions: [...HR_VIEW, 'org.settings.manage', 'employee.change.manage', 'employee.change.approve', 'employee.change.retro', 'employee.pay_access.approve', 'employee.personal.view', 'employee.profile.edit', 'employee.identity.view', 'employee.identity.manage', 'employee.identity.approve', 'employee.aadhaar.view', 'request.raise_on_behalf', ...TIME_HR_ADMIN, ...LIFE_HR_ADMIN, 'expense.claim.view', 'expense.policy.view', 'perf.goal.view', 'perf.review.view', 'perf.report.view', 'perf.pip.manage'],
   },
   {
     // Founder 28 Oct 2026 (option B): HR Admin cannot see pay, so pay changes are approved by HR people given this role.

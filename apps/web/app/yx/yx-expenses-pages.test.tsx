@@ -52,9 +52,16 @@ const EMPTY = {
 };
 
 describe('Settings › Expenses', () => {
+  it('HR with the view key only sees the policy read only (no starters, no edit controls)', async () => {
+    route({ ...EMPTY, 'GET /rbac/me/permissions': ['expense.policy.view'], 'GET /expenses/fx-rates': [] });
+    wrap(<YxExpenseSetupPage />);
+    expect(await screen.findByText('Read only')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Use the starters' })).toBeNull();
+  });
+
   it('a new company copies the YukthiX starters', async () => {
     const posted: string[] = [];
-    route({ ...EMPTY, 'POST /expenses/setup/from-starter': (p: string) => (posted.push(p), { categories: 11, tiers: 4, policies: 1, rates: 5 }) });
+    route({ ...EMPTY, 'GET /rbac/me/permissions': ['expense.policy.manage'], 'GET /expenses/fx-rates': [], 'POST /expenses/setup/from-starter': (p: string) => (posted.push(p), { categories: 11, tiers: 4, policies: 1, rates: 5 }) });
     wrap(<YxExpenseSetupPage />);
     await userEvent.click(await screen.findByRole('button', { name: 'Use the starters' }));
     await waitFor(() => expect(posted).toEqual(['/expenses/setup/from-starter']));

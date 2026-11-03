@@ -11,7 +11,7 @@ import {
   type SetupCheck,
 } from "@yukthix/ui/expenses";
 import type { LegalEntity } from "@yukthix/ui/org";
-import { loadState, useOrg } from "../../../../../lib/yx-org";
+import { loadState, useOrg, useYxPermissions } from "../../../../../lib/yx-org";
 import {
   policyRequest,
   useExp,
@@ -31,11 +31,14 @@ export default function YxExpenseSetupPage() {
   const entities = useOrg<LegalEntity[]>("/legal-entities");
   const fx = useExp<FxRateRow[]>("/fx-rates");
   const write = useExpWrite();
+  // HR with expense.policy.view only sees the policy; every edit needs expense.policy.manage (the API checks it too).
+  const canEdit = useYxPermissions().has('expense.policy.manage');
   const all = [check, categories, tiers, policies, rates, gst];
   return (
     <PolicyMatrixScreen
       live={{
         state: loadState(...all),
+        canEdit,
         onRetry: () => void Promise.all(all.map((q) => q.refetch())),
         check: check.data ?? null,
         categories: categories.data ?? [],
