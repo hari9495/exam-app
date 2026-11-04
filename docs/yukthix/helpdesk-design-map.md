@@ -1639,3 +1639,8 @@ default; (108) prefill probation months from probation.default_months. Industry:
 each industry names the law tables that apply, and a draft for an industry without its own tables shows "Law check
 covers general labour law only; <industry> rules are not checked yet; review with counsel", which the publisher must tick
 as seen.
+
+Founder approved, 4 Nov 2026 (questions 121-124, all as suggested): (121) a late injury correction gets "Not paid, with a
+reason", logged; (122) keep the four-month look-back; (123) keep maternity and suspension days in the same card; (124) keep:
+the System Admin decides a report nobody else may; give an HR person the key for that entity. Demo: the November payroll run
+may be started for one demo-org pay group to walk the Special days card.
