@@ -263,16 +263,18 @@ export class AccidentsService {
   /** Photos with the report: the reporter (right after sending) or the case team. */
   async addPhoto(ctx: TenantContext, id: string, file: { name: string; data: Buffer } | null) {
     if (!file?.data?.length) throw new BadRequestException('Choose a photo to attach.');
-    return this.tx(ctx, async (tx, c) => {
+    const out = await this.tx(ctx, async (tx, c) => {
       const l = await this.load(tx, c, id);
       if (!l || !(l.row.reporterUserId === c.userId || l.safety.includes(c.userId!) || l.facts.handlerUserId === c.userId)) throw new NotFoundException(NOT_FOUND);
       this.open(l);
       if (l.steps.filter((s) => s.kind === 'photo').length >= MAX_PHOTOS) throw new BadRequestException(`A case can have up to ${MAX_PHOTOS} photos.`);
       const f = await this.files.storeIn(tx, c, { area: 'accident', name: safeName(file.name), data: file.data, allowedMime: PHOTO_TYPES, maxMb: FILE_MAX_MB, via: 'self' });
       await this.step(tx, c, l, 'photo', { fileId: f.id, sha256: f.sha256 }, 'accident.photo_added');
-      void this.files.scan(c.organizationId, f.id).catch(() => undefined);
-      return { id: f.id, name: f.fileName, size: f.size, scan: f.scanStatus };
+      return { id: f.id, name: f.fileName, size: f.size, scan: f.scanStatus, org: c.organizationId };
     });
+    // Scanned once the file row is committed (a scan inside the transaction may not see it, and then waits for the sweep).
+    void this.files.scan(out.org, out.id).catch(() => undefined);
+    return { id: out.id, name: out.name, size: out.size, scan: out.scan };
   }
 
   // ------------------------------------------------------------------------------------------ reading
@@ -530,14 +532,15 @@ export class AccidentsService {
 
   /** A medical record (special data): append-only; a file keeps its fingerprint. */
   async addMedical(ctx: TenantContext, id: string, dto: MedicalDto, file: { name: string; data: Buffer } | null) {
-    return this.tx(ctx, async (tx, c) => {
+    const out = await this.tx(ctx, async (tx, c) => {
       const l = await this.teamCase(tx, c, id);
       const f = file?.data?.length ? await this.files.storeIn(tx, c, { area: 'accident-medical', name: safeName(file.name), data: file.data, allowedMime: MEDICAL_TYPES, maxMb: FILE_MAX_MB, via: 'staff' }) : null;
       const m = await tx.accidentMedicalRecord.create({ data: { organizationId: c.organizationId, caseId: l.row.id, kind: dto.kind, note: dto.note, fileId: f?.id ?? null, fileSha256: f?.sha256 ?? null, addedBy: c.userId! } });
       await audit(tx, c, 'accident.medical_added', 'accident_case', l.row.id, { recordId: m.id, kind: dto.kind, ...(f ? { fileId: f.id, sha256: f.sha256 } : {}) });
-      if (f) void this.files.scan(c.organizationId, f.id).catch(() => undefined);
-      return { id: m.id };
+      return { id: m.id, fileId: f?.id ?? null, org: c.organizationId };
     });
+    if (out.fileId) void this.files.scan(out.org, out.fileId).catch(() => undefined);
+    return { id: out.id };
   }
 
   /** Opens a medical file or a photo of the case for the team: clean files only; every open is audited. */

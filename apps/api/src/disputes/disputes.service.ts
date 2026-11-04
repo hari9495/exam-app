@@ -307,15 +307,17 @@ export class DisputesService {
   /** A paper (minutes, the charter, the signed settlement): append-only, its fingerprint kept. */
   async addPaper(ctx: TenantContext, id: string, title: string, file: { name: string; data: Buffer } | null) {
     if (!file?.data?.length) throw new BadRequestException('Choose a file to add.');
-    return this.tx(ctx, async (tx, c) => {
+    const out = await this.tx(ctx, async (tx, c) => {
       const l = await this.load(tx, c, id);
       if (l.f.closed) throw new ConflictException('This dispute is closed.');
       if (l.f.papers.length >= MAX_PAPERS) throw new BadRequestException(`A dispute can have up to ${MAX_PAPERS} papers.`);
       const f = await this.files.storeIn(tx, c, { area: 'ir-dispute', name: safeName(file.name), data: file.data, allowedMime: PAPER_TYPES, maxMb: FILE_MAX_MB, via: 'staff' });
       await this.step(tx, c, l, 'paper', { fileId: f.id, sha256: f.sha256, title, name: f.fileName }, 'dispute.paper_added');
-      void this.files.scan(c.organizationId, f.id).catch(() => undefined);
-      return { id: f.id, name: f.fileName, sha256: f.sha256, scan: f.scanStatus };
+      return { id: f.id, name: f.fileName, sha256: f.sha256, scan: f.scanStatus, org: c.organizationId };
     });
+    // Scanned once the file row is committed (a scan inside the transaction may not see it, and then waits for the sweep).
+    void this.files.scan(out.org, out.id).catch(() => undefined);
+    return { id: out.id, name: out.name, sha256: out.sha256, scan: out.scan };
   }
 
   /** Opens a paper: clean files only, the fingerprint checked, every open audited. */
