@@ -14619,5 +14619,78 @@
       "Screens/Helpdesk/HLP-08 · Cases (case team)"
     ],
     "note": "Positive and negative; founder answer 56."
+  },
+  {
+    "id": "MT-HLP-12-06",
+    "area": "Helpdesk · HLP-12 Accident case (4 Nov 2026, founder answers 43, 45, 46, 47)",
+    "screen": "Accident case › Record injury leave (goes to Time)",
+    "url": "http://localhost:3000/yx/desk/cases",
+    "account": "admin-tester@demo-org.test (on the Safety team); hr-tester@demo-org.test (HR, Time set-up); panel@demo-org.test (Divya, the injured person's manager). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As admin-tester open an employee's accident case (one of Divya's reports, from MT-HLP-12-02); ⋯ › Record injury leave: the day after the accident to a week later; Save.",
+      "2. As hr-tester open Time › Leave types and add a type with code INJURY (name Injury leave, unpaid).",
+      "3. As admin-tester repeat step 1.",
+      "4. Repeat step 1 again with other dates.",
+      "5. As panel@ open the leave approval in My approvals; approve it; then open the notice \"Injury leave was recorded for …\"."
+    ],
+    "expected": "Step 1: refused: \"Your company has no active leave type with the code INJURY …\" (nothing saved). Step 3: toast \"Injury leave recorded\"; the Statutory tab says \"In Time it is waiting for approval\". Step 4: refused: \"Injury leave for this case is already in Time. To change the dates, cancel that leave in Time first …\". Step 5: the request says \"Injury leave (accident case ACC-00NN)\" (no injury or medical detail); after approval the manager page shows the dates and \"Roster: Shifts in this period are marked as injury leave\".",
+    "stories": [
+      "Screens/Helpdesk/HLP-12 · Accident case workspace"
+    ],
+    "note": "Positive and negative: no leave type, live leave blocks new dates. The leave type code is the company setting accident.injury_leave_type (default INJURY)."
+  },
+  {
+    "id": "MT-HLP-12-07",
+    "area": "Helpdesk · HLP-12 Accident case (4 Nov 2026, founder answers 43, 45, 46, 47)",
+    "screen": "My cases › an accident I reported (status only)",
+    "url": "http://localhost:3000/yx/desk/my-cases",
+    "account": "arjun@demo-org.test (reported in MT-HLP-12-02); payroll-tester@demo-org.test (other staff). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As arjun open Helpdesk › My cases.",
+      "2. Open the ACC row.",
+      "3. After the safety team closes the case (MT-HLP-12-03 step 7), open it again.",
+      "4. As payroll-tester type /yx/desk/my-cases?case=<the same id>."
+    ],
+    "expected": "Step 1: the ACC row, Workplace accident, Received. Step 2: \"The safety team has your report\" and \"You see the status only …\"; no injury, place, medical details, team names or message box. Step 3: Closed, \"The safety team has closed this case\". Step 4: the case does not open (Not found).",
+    "stories": [
+      "Screens/Helpdesk/HLP-12 · Accident case workspace"
+    ],
+    "note": "Positive and negative: another person cannot open it."
+  },
+  {
+    "id": "MT-HLP-12-08",
+    "area": "Helpdesk · HLP-12 Accident case (4 Nov 2026, founder answers 43, 45, 46, 47)",
+    "screen": "Report an accident › search for the injured person",
+    "url": "http://localhost:3000/yx/desk/accidents/report",
+    "account": "arjun@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open the Name list: it shows Arjun (me).",
+      "2. Type one letter in the search.",
+      "3. Type \"div\".",
+      "4. Type a name that does not exist, like \"zzzz\"."
+    ],
+    "expected": "Step 2: \"Type 2 or more letters of the name\" and no list. Step 3: Divya Raghunathan (names only, up to 20). Step 4: \"Type 2 or more letters of the name\" (no matches). Choosing a person keeps the name in the field.",
+    "stories": [
+      "Screens/Helpdesk/HLP-12 · Accident case workspace"
+    ],
+    "note": "Positive and negative. Works for companies over 5,000 people (the server searches)."
+  },
+  {
+    "id": "MT-HLP-12-09",
+    "area": "Helpdesk · HLP-12 Accident case (4 Nov 2026, founder answers 43, 45, 46, 47)",
+    "screen": "Helpdesk menu › Report an accident (desk and phone width)",
+    "url": "http://localhost:3000/yx/desk/help",
+    "account": "arjun@demo-org.test (employee) and payroll-tester@demo-org.test. Browser window 1278 x 635, sidebar open. Then a 390 px wide window.",
+    "steps": [
+      "1. Open Helpdesk: find Report an accident in the menu (both accounts).",
+      "2. Open it.",
+      "3. Narrow the window to 390 px."
+    ],
+    "expected": "Step 1: the link is there for everyone, under Speak up. Step 2: the report form. Step 3: the phone layout with Send report at the bottom. (The phone app's Me tab shows the same row in the design; the phone app itself is not built.)",
+    "stories": [
+      "Screens/Helpdesk/HLP-12 · Accident case workspace",
+      "Screens/Mobile/Requests and Me tabs"
+    ],
+    "note": "Positive."
   }
 ]

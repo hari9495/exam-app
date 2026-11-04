@@ -24,11 +24,15 @@ feature not built** (no API) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Helpdesk HLP-01 … 14 | 14 | 226 | 8 | 0 | 7 | 0 | 241 |
+| A. Helpdesk HLP-01 … 14 | 14 | 229 | 7 | 0 | 7 | 0 | 243 |
 | B. Service desk designs | 5 | 55 | 2 | 0 | 0 | 0 | 57 |
-| **All Helpdesk groups (A–B)** | **19** | **281** | **10** | **0** | **7** | **0** | **298** |
+| **All Helpdesk groups (A–B)** | **19** | **284** | **9** | **0** | **7** | **0** | **300** |
 Round 8e (script, 4 Nov 2026, `feat/yukthix-hlp-07-09`): HLP-08 gains 5 stories (warning letter waiting and issued,
 reports from managers, report misconduct, nobody reports to you), all live.
+Round 12b (script, 4 Nov 2026, `feat/yukthix-hlp-12`, founder answers 43, 45, 46, 47): HLP-12 gains 2 stories
+(ManagerLeavePending, ReporterStatus), both live; ManagerView moves from live (gap) to live (the roster line from the
+injury leave in Time). HLP-12: 19 stories, 17 live, 2 live (gap) (questions 42 and 44, left for counsel and the first
+factory customer).
 Round 8d (script, 4 Nov 2026, `feat/yukthix-hlp-07-09`): the 7 disciplinary show-cause stories (HLP-07: 4, HLP-08: 3)
 move from live (gap) to live; HLP-07 gains 1 story (ShowCauseLive) and HLP-08 gains 4 (OpenCase, DisciplinaryLive,
 DisciplinaryDecide, InquiryOrdered), all live.
@@ -509,9 +513,9 @@ Live (round 12, 4 Nov 2026, `feat/yukthix-hlp-12`): `apps/api/src/accidents` (`d
 | Statutory · Non-ESI · EC claim overdue with interest | live (gap) | ESI cover No: Work out compensation (`POST …/ec`) from `IN.EC.CLAIM` (verify): wage ceiling, minimums, partial share; pay-by date and interest estimate; Mark paid (`POST …/ec-paid`, payroll or deposit). Gap: the Schedule IV age factor is typed from the Act, not looked up (question 42); "Draft EC letter" not built |
 | Submitted · ESIC report submitted | live | the date filed and the acknowledgement number; the buttons go |
 | ContractWorker · Contract worker · contractor not filed | live | the case names the contractor; the contractor files (`POST …/contractor-filed`); past the deadline "The contractor hasn't filed yet" and the safety team is reminded at 09:00 IST on the company's schedule (`accident.contractor_reminder_days`, default every day) |
-| ManagerView · Manager view (leave dates only) | live (gap) | the injured employee's current manager gets `view: manager` (name, leave dates) and a notice when dates are recorded. Gap: the design's "Roster: shifts marked as injury leave" line is left out: the dates are not written into Time yet (question 43) |
+| ManagerView · Manager view (leave dates only) | live | the injured employee's current manager gets `view: manager` (name, leave dates, `leaveStatus`) and a notice when dates are recorded; the Roster line comes from the injury leave request in Time (founder answer 43): "Shifts in this period are marked as injury leave" once approved |
 | NonMember · Not a case member (shows Not found) | live | 404 for the reporter, HR, other staff, the System Admin and other companies; the page shows Not found |
-| ReportDesk · Report an accident | live | `GET desk/accidents/form`, `POST desk/accidents` (anyone signed in, for themselves or someone else; refused while acting for someone else), photos `POST …/photos`; time is India time; toast |
+| ReportDesk · Report an accident | live | `GET desk/accidents/form`, `POST desk/accidents` (anyone signed in, for themselves or someone else; refused while acting for someone else), photos `POST …/photos`; the injured person is found by server search `GET desk/accidents/people?q=` (founder answer 46: 2+ letters, 20 names, own company); time is India time; toast; Helpdesk menu "Report an accident" for everyone (answer 47) |
 | ReportPhone · Report an accident · phone | live | the same page on a narrow screen (phone layout, camera for photos) |
 | EsiNotRecorded · ESI cover not recorded yet | live | new story: payroll's ESI setting fills it when known; otherwise "Record ESI cover" |
 | CaseDetails · Case details (ESI cover, hospital, HR handler) | live | new story: `POST …/facts` (Segment Yes / No, IP number, hospital; only the safety team names the HR handler), toast |
@@ -522,6 +526,8 @@ Live (round 12, 4 Nov 2026, `feat/yukthix-hlp-12`): `apps/api/src/accidents` (`d
 | ManagerNoDates · Manager view · no leave dates yet | live | new story |
 | NoSafetyTeam · Report · no safety team yet | live | new story: 409 `ACCIDENT_NO_TEAM`; the System Admin adds the Safety team in Speak-up set-up |
 | ReportTooEarly · Report · pressed too early | live | new story |
+| ManagerLeavePending · Manager view · injury leave waiting for approval in Time | live | new story (answer 43): the Roster line says it waits for approval |
+| ReporterStatus · My cases · the reporter sees the status only | live | new story (answer 45): `GET desk/accidents/mine` and `mine/:id` (the reporter only; 404 for anyone else): number, Received / Closed, date; no injury, medical details, team or messages |
 
 #### HLP-13 · Collective dispute / settlement
 
@@ -1016,7 +1022,19 @@ Built 4 Nov 2026 (`feat/yukthix-hlp-12`) from the founder decisions of 4 Nov 202
   acknowledgement (once; not in the future, not before the accident). No government filing from the app.
 - **Contract workers:** the contractor files; past the deadline the case shows "contractor not filed" and the safety team
   is reminded at 09:00 IST, every `accident.contractor_reminder_days` days (setting, default 1; `off` stops it).
-- **Settings (defaults, per company):** `accident.injury_types` (Crush, Cut, Burn, Fall, Sprain or strain, Other),
+- **Injury leave in Time (answer 43):** recording an employee's leave dates on the case raises a leave request in Time
+  of the company's injury leave type (setting `accident.injury_leave_type`, a leave type code, default `INJURY`; 409
+  `ACCIDENT_NO_LEAVE_TYPE` until HR adds that type), through `LeaveService.applyForCase`: the type's own rules and the
+  person's normal approval chain, reason "Injury leave (accident case ACC-NNNN)", raised by the safety team member or
+  handler. New dates are refused (409 `ACCIDENT_LEAVE_IN_TIME`) while that request is live; cancelled, withdrawn or
+  rejected frees them. A contract worker has no leave in Time; the dates stay on the case. The manager's Roster line
+  and the team's note read the request's status.
+- **Reporter (answer 45):** My cases lists the accidents the person reported (`GET desk/accidents/mine`), status only:
+  Received or Closed, number and date; no injury, medical details, team or messages; each look audited.
+- **Search (answer 46):** `GET desk/accidents/people?q=` (2 to 80 letters, every word in a name, 20 names, own company).
+- **Menu (answer 47):** "Report an accident" under Helpdesk for everyone; the phone Me tab design has the row (the live
+  phone app is not built, question 61).
+- **Settings (defaults, per company):** `accident.injury_leave_type` (INJURY), `accident.injury_types` (Crush, Cut, Burn, Fall, Sprain or strain, Other),
   `accident.contractor_reminder_days` (1).
 - **Records:** `accident_cases`, `accident_steps` (facts, statement, photo, esic_filed, contractor_filed, ec_set, ec_paid,
   reminded, closed) and `accident_medical_records` are append-only (no UPDATE / DELETE for the app role, forced RLS,
@@ -1230,7 +1248,19 @@ surveys). The HLP screens are the founder-approved look, sample-only.
     subtree / direct reports only" setting if HR asks.
 75. **HLP-08: the warning letter is made only once per case** (a second Warning on the same case is not possible).
     *Suggested:* keep; a corrected letter is issued from People › Letters as a correction, like any letter.
-
+61. **HLP-12: the phone Me tab.** The live app has no phone Me tab yet; "Report an accident" is in the Me tab design
+    (`MobileMeTabScreen`, Help list) and in the Helpdesk menu, and the report page takes the phone layout on a narrow
+    screen. *Built:* design row and menu link. *Suggested:* keep; it goes live with the phone app.
+62. **HLP-12: the injury leave type.** The setting's default code is `INJURY`, but no company has that type until HR adds
+    it (paid or not, its rules); until then recording leave dates says so (409). *Built:* setting plus clear refusal.
+    *Suggested:* the Time set-up checklist offers "Add injury leave" (kind Other, unpaid by default: ESI pays the benefit).
+63. **HLP-12: who approves injury leave.** It goes through the person's normal approval chain (the manager), with the
+    case number in the reason. *Built:* the normal chain. *Suggested:* keep; or approved at once when the handler holds
+    `leave.approve` over the person (the "on behalf" setting).
+64. **HLP-12: changing injury leave dates.** Refused while the leave in Time is live; HR cancels it in Time, then the new
+    dates are recorded on the case. *Built:* refusal with that next step. *Suggested:* keep.
+65. **HLP-12: payroll's injury days** (Payroll inputs › special days, kind injury) are still typed by payroll, not taken
+    from the approved injury leave. *Built:* nothing. *Suggested:* fill them from approved injury leave each month.
 
 ## 7. Next pages (recommended order, with sizes)
 
