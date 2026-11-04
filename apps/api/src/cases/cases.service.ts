@@ -592,8 +592,11 @@ export class CasesService {
       this.open(l);
       const f = await this.files.storeIn(tx, c, { area: 'cases', name: file.name, data: file.data, allowedMime: FILE_TYPES, maxMb: 10, via: 'staff' });
       await this.step(tx, c, l.row, 'file_added', { fileId: f.id, sha256: f.sha256 });
-      void this.files.scan(c.organizationId, f.id).catch(() => undefined);
       return { id: f.id, name: f.fileName, size: f.size, scan: f.scanStatus };
+    }).then((r) => {
+      // Scanned once the file is committed (inside the transaction the scan may not see it and waits for the sweep).
+      void this.files.scan(companyContext(ctx).organizationId, r.id).catch(() => undefined);
+      return r;
     });
   }
 
@@ -978,8 +981,10 @@ export class CasesService {
     return this.tx(ctx, async (tx, c) => {
       await this.respondentCase(tx, c, id);
       const f = await this.files.storeIn(tx, c, { area: 'cases', name: file.name, data: file.data, allowedMime: FILE_TYPES, maxMb: 10, via: 'self' });
-      void this.files.scan(c.organizationId, f.id).catch(() => undefined);
       return { id: f.id };
+    }).then((r) => {
+      void this.files.scan(companyContext(ctx).organizationId, r.id).catch(() => undefined);
+      return r;
     });
   }
 

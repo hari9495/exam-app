@@ -236,7 +236,13 @@ export class SpeakupService {
       const row = await tx.speakupCase.findFirst({ where: { organizationId: c.organizationId, id, reporterUserId: c.userId ?? '00000000-0000-0000-0000-000000000000' } });
       if (!row) throw new NotFoundException('Not found.');
       return this.attach(tx, c, row, file);
-    });
+    }).then((r) => this.scanAfter(companyContext(ctx).organizationId, r));
+  }
+
+  /** Starts the virus scan once the file row is committed; a failure leaves it for the hourly sweep. */
+  private scanAfter<T extends { id: string }>(org: string, r: T): T {
+    void this.files.scan(org, r.id).catch(() => undefined);
+    return r;
   }
 
   private async attach(tx: Tx, c: CompanyContext, row: Case, file: { name: string; data: Buffer }) {
@@ -244,7 +250,7 @@ export class SpeakupService {
     const f = await this.files.storeIn(tx, c, { area: 'speakup', name: safeName(file.name), data: file.data, allowedMime: FILE_TYPES, maxMb: FILE_MAX_MB, via: c.userId ? 'self' : 'system' });
     await tx.speakupCase.update({ where: { id: row.id }, data: { fileIds: [...row.fileIds, f.id] } });
     await audit(tx, c, 'speakup.file_added', 'speakup_case', row.id, { fileId: f.id });
-    void this.files.scan(c.organizationId, f.id).catch(() => undefined);
+    // The caller starts the scan after the commit (scanAfter): inside the transaction the scan may not see the file.
     return { id: f.id, name: f.fileName, size: f.size, scan: f.scanStatus };
   }
 
@@ -320,7 +326,7 @@ export class SpeakupService {
   async addAnonymousFile(slug: string, code: string, file: { name: string; data: Buffer } | null, ip: string | null) {
     if (!file?.data?.length) throw new BadRequestException('Choose a file to attach.');
     const { c, row } = await this.byCode(slug, code, ip);
-    return this.tenantPrisma.forTenant(c, (tx) => this.attach(tx, c, row, file));
+    return this.tenantPrisma.forTenant(c, (tx) => this.attach(tx, c, row, file)).then((r) => this.scanAfter(c.organizationId, r));
   }
 
   // ------------------------------------------------------------------------------------------ the case officers (minimum for HLP-07/08/09)
