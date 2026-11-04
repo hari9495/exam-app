@@ -114,7 +114,7 @@ describe('HLP-06 speak-up filing', () => {
     await api('adminA', 'post', '/setup/members').send({ team: 'ic', userId: users.chair, role: 'presiding' }).expect(409);
     const form = (await api('divya', 'get', '/form').expect(200)).body;
     expect(form.ready).toEqual({ grievance: true, whistleblower: true, posh: true });
-    expect(form.posh).toMatchObject({ filingMonths: 3, extensionMonths: 3, source: 'IN.POSH 2013-v1 (verify)' });
+    expect(form.posh).toMatchObject({ filingMonths: 3, extensionMonths: 3, source: 'IN.POSH 2013-v2 (verify)' });
     expect(form.officers.map((o: { id: string }) => o.id).sort()).toEqual([users.ethics1, users.ethics2].sort());
   });
 
