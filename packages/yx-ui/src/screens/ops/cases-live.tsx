@@ -7,7 +7,7 @@
 // stepping aside, conflicts, evidence with its fingerprint and access log, no access. Every rule is the server's again
 // (helpdesk-design-map.md 4f); no legal date is worked out here.
 import { useState } from 'react';
-import { ArrowLeft, Briefcase, FileText, Megaphone, Send, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, Briefcase, FileText, Handshake, Megaphone, Send, ShieldAlert } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { Button, IconButton } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
@@ -35,6 +35,7 @@ import type { LoadState } from '../desk/types';
 import { Actions, ClockPanel, Confidential, MembersList, OpsDesk, StatusTrail, Workspace, useSay } from './ops-kit';
 import type { ClockItem } from './ops-rules';
 import { RestrictedNotFound } from './cases';
+import { RecordDisputeDrawer, type DisputeRecord } from './dispute-live';
 import type {
   AddMemberInput,
   CaseDate,
@@ -69,7 +70,7 @@ import type {
 const asDate = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00`);
 const day = (iso: string | null | undefined) => (iso ? formatDate(asDate(iso)) : '—');
 const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-export const KIND_LABEL: Record<CaseKind | 'accident', string> = { grievance: 'Grievance', whistleblower: 'Fraud or ethics concern', posh: 'Sexual harassment (POSH)', disciplinary: 'Disciplinary', accident: 'Workplace accident' };
+export const KIND_LABEL: Record<CaseKind | 'accident' | 'dispute', string> = { grievance: 'Grievance', whistleblower: 'Fraud or ethics concern', posh: 'Sexual harassment (POSH)', disciplinary: 'Disciplinary', accident: 'Workplace accident', dispute: 'Collective dispute' };
 export const DECISION_LABEL: Record<CaseDecision, string> = { dropped: 'Dropped', warning: 'Warning', inquiry: 'Inquiry' };
 const DECISION_LONG: Record<CaseDecision, string> = { dropped: 'Dropped: no action', warning: 'Written warning', inquiry: 'Domestic inquiry (recorded; held outside the app for now)' };
 const STATUS_LABEL: Record<CaseStatus, string> = { open: 'Open', action: 'Action needed', 'on-hold': 'On hold', closed: 'Closed' };
@@ -446,8 +447,12 @@ export interface LiveCaseList {
     onOpenDraft: (id: string) => Promise<{ id: string }>;
     onDeclineDraft: (id: string, reason: string) => Promise<void>;
   };
+  /** HLP-13: the industrial relations team records a collective dispute. */
+  dispute?: DisputeRecord;
+  /** Today in India (the dispute's "received on" can't be later). */
+  today?: Date;
   /** Stories and tests only. */
-  start?: { raising?: boolean };
+  start?: { raising?: boolean; recording?: boolean };
 }
 
 /** Answer 55: reports from managers, waiting for HR in scope: open one as a case, or decline it with a reason. */
@@ -581,6 +586,7 @@ function RaiseDrawer({ open, onOpenChange, raise, onOpened }: { open: boolean; o
 export function LiveCaseList({ live }: { live: LiveCaseList }) {
   const [filters, setFilters] = useState<FilterValue[]>([]);
   const [raising, setRaising] = useState(Boolean(live.start?.raising));
+  const [recording, setRecording] = useState(Boolean(live.start?.recording));
   if (live.state === 'no-access')
     return (
       <OpsDesk area="helpdesk" active="Cases" member={false}>
@@ -613,7 +619,23 @@ export function LiveCaseList({ live }: { live: LiveCaseList }) {
   ];
   return (
     <OpsDesk area="helpdesk" active="Cases" counts={{ Cases: live.cases.filter((c) => c.status !== 'closed').length }}>
-      <PageHeader title="Cases" description="Only cases you are a member of are listed. Cases can't be deleted; they close with an outcome." actions={live.raise ? <Button icon={Briefcase} onClick={() => setRaising(true)}>Open a case</Button> : undefined} />
+      <PageHeader title="Cases" description="Only cases you are a member of are listed. Cases can't be deleted; they close with an outcome." actions={
+          live.raise || live.dispute ? (
+            <>
+              {live.dispute && (
+                <Button icon={Handshake} onClick={() => setRecording(true)}>
+                  Record a dispute
+                </Button>
+              )}
+              {live.raise && (
+                <Button icon={Briefcase} onClick={() => setRaising(true)}>
+                  Open a case
+                </Button>
+              )}
+            </>
+          ) : undefined
+        }
+      />
       <Confidential>
         <DataTable
           label="Cases"
@@ -632,6 +654,7 @@ export function LiveCaseList({ live }: { live: LiveCaseList }) {
       </Confidential>
       {live.raise && <RaiseDrawer open={raising} onOpenChange={setRaising} raise={live.raise} onOpened={(id) => (setRaising(false), live.onOpen(id))} />}
       {live.raise && live.raise.drafts.length > 0 && <ManagerReports raise={live.raise} onOpened={live.onOpen} />}
+      {live.dispute && <RecordDisputeDrawer open={recording} onOpenChange={setRecording} record={live.dispute} today={live.today ?? new Date()} onRecorded={(id) => (setRecording(false), live.onOpen(id))} />}
     </OpsDesk>
   );
 }

@@ -126,7 +126,6 @@
     "ops: ClientEstablishmentsScreen",
     "ops: ClientPacksScreen",
     "ops: ClraRegistersScreen",
-    "ops: CollectiveDisputeScreen",
     "ops: ContractorsScreen",
     "ops: ConvertWorkerScreen",
     "ops: ErrorCase",

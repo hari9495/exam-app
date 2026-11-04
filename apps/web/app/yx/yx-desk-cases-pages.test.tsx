@@ -49,7 +49,8 @@ describe('Helpdesk › Cases (HLP-08 live)', () => {
   it('the list opens a case; a case I am not on shows Not found', async () => {
     api.mockImplementation(async (path: string) => {
       if (path === '/desk/cases/disciplinary/people') throw err(403);
-      if (path === '/desk/accidents') return [];
+      if (path === '/desk/accidents' || path === '/desk/disputes') return [];
+      if (path === '/desk/disputes/form') throw err(404);
       return [{ id: 'k1', ref: 'WB-0001', kind: 'whistleblower', subject: 'Bribery', location: '—', stage: 'Received', raisedBy: null, anonymous: true, owner: 'Rekha', next: null, overdue: false, status: 'open' }];
     });
     const { unmount } = wrap(<YxCasesPage />);

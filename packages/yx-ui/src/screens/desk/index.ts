@@ -44,6 +44,9 @@ export type { MyCaseRow, MyCaseDetail, CaseListRow, CaseDetail, EthicsRow, Notic
 // HLP-12 Accident case: the designed workspace and report with `live`.
 export { AccidentWorkspaceScreen, ReportAccidentScreen } from '../ops/cases-more';
 export type { LiveAccidentWorkspace, LiveReportAccident, AccidentDetail, AccidentManagerView, AccidentFormData, AccidentReportInput, AccidentFacts, EcInput as AccidentEcInput, EsicFormView, MedicalKind, AccidentDialog } from '../ops/accident-live';
+// HLP-13 Collective dispute: the designed workspace with `live` (and "Record a dispute" on the Cases list).
+export { CollectiveDisputeScreen } from '../ops/cases-more';
+export type { LiveDispute, DisputeDetail, DisputeDialog, DisputeRecord, DemandInput, MeetingInput, SettlementInput, RecordDisputeInput, DemandStatus, WorkerCategory } from '../ops/dispute-live';
 // HLP-10 Policy library + acknowledgement and HLP-11 Policy admin: the designed screens with `live`.
 export { PolicyLibraryScreen, PolicyAdminScreen } from '../ops/helpdesk';
 export { METHOD_LABEL, VERSION_LABEL, type LivePolicyLibrary, type LivePolicyAdmin, type PolicyAdminTab } from '../ops/helpdesk-policy-live';

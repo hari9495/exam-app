@@ -135,8 +135,8 @@ export interface MyReplyInput {
 export interface CaseListRow {
   id: string;
   ref: string;
-  /** HLP-12: accident cases join the list for the safety team and the case's handler. */
-  kind: CaseKind | 'accident';
+  /** HLP-12: accident cases join the list for the safety team and the case's handler; HLP-13: disputes for the IR team. */
+  kind: CaseKind | 'accident' | 'dispute';
   subject: string;
   location: string;
   stage: string;

@@ -21,6 +21,7 @@ import { FieldRow, FormField, useTooEarly } from "../../components/field";
 import { TextArea, TextField } from "../../components/inputs";
 import { Checkbox, RadioGroup, Switch } from "../../components/choice";
 import { Select } from "../../components/select";
+import { Segment } from "../../components/segment";
 import { DatePicker } from "../../components/date";
 import { FileUpload } from "../../components/upload";
 import { DataTable } from "../../components/table";
@@ -40,7 +41,7 @@ import {
 import { AnonThread } from "./cases";
 
 export type SpeakUpKindLive = "grievance" | "whistleblower" | "posh";
-export type SpeakUpTeam = "grievance" | "ethics" | "ic" | "escalation" | "safety";
+export type SpeakUpTeam = "grievance" | "ethics" | "ic" | "escalation" | "safety" | "ir";
 export interface NamedRef {
   id: string;
   name: string;
@@ -936,6 +937,11 @@ const TEAMS: { team: SpeakUpTeam; title: string; note: string }[] = [
     title: "Safety team",
     note: "Workplace accidents and injuries, medical details included. They name the HR person who files each ESIC report.",
   },
+  {
+    team: "ir",
+    title: "Industrial relations team",
+    note: "Collective disputes with a union: the demands, conciliation, papers and the signed settlement. An outside lawyer can be added. Two of them are needed to send a settlement to payroll.",
+  },
 ];
 const ROLE_LABEL = {
   member: "Member",
@@ -982,7 +988,7 @@ export function SpeakUpSetupScreen({ live }: { live: LiveSpeakUpSetup }) {
       await live.onAdd({
         team: adding,
         userId: userId!,
-        ...(adding === "ic" ? { role } : {}),
+        ...(adding === "ic" || adding === "ir" ? { role } : {}),
       });
       toast({
         tone: "success",
@@ -1074,7 +1080,10 @@ export function SpeakUpSetupScreen({ live }: { live: LiveSpeakUpSetup }) {
                         {
                           key: "role",
                           header: "Role",
-                          value: (r) => ROLE_LABEL[r.role],
+                          value: (r) =>
+                            r.team === "ir" && r.role === "external"
+                              ? "Outside lawyer"
+                              : ROLE_LABEL[r.role],
                         },
                       ]}
                       rows={rows}
@@ -1172,6 +1181,19 @@ export function SpeakUpSetupScreen({ live }: { live: LiveSpeakUpSetup }) {
               searchable
             />
           </FormField>
+          {adding === "ir" && (
+            <FormField label="Who they are">
+              <Segment
+                label="Who they are"
+                value={role === "external" ? "external" : "member"}
+                onChange={(v) => setRole(v)}
+                options={[
+                  { value: "member", label: "Company member" },
+                  { value: "external", label: "Outside lawyer" },
+                ]}
+              />
+            </FormField>
+          )}
           {adding === "ic" && (
             <FormField label="Role on the committee">
               <RadioGroup

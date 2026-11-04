@@ -23,6 +23,7 @@ import { Actions, CheckList, ClockPanel, Confidential, Facts, MembersList, OpsDe
 import { addDays, ecCompensation, tdsLateInterest, type EcKind } from './ops-rules';
 import { RestrictedNotFound } from './cases';
 import type { Device } from './helpdesk';
+import { LiveDisputeCase, type LiveDispute } from './dispute-live';
 import { LiveAccidentCase, LiveReportAccident, type LiveAccidentWorkspace as LiveAccidentWorkspaceProps, type LiveReportAccident as LiveReportAccidentProps } from './accident-live';
 
 
@@ -346,7 +347,10 @@ export interface DisputeScreenProps {
   stage?: 'conciliation' | 'signed';
   member?: boolean;
 }
-export function CollectiveDisputeScreen({ demands, stages, members, today, stage = 'conciliation', member = true }: DisputeScreenProps) {
+export function CollectiveDisputeScreen(props: DisputeScreenProps | { live: LiveDispute }) {
+  return 'live' in props ? <LiveDisputeCase live={props.live} /> : <SampleCollectiveDispute {...props} />;
+}
+function SampleCollectiveDispute({ demands, stages, members, today, stage = 'conciliation', member = true }: DisputeScreenProps) {
   const [tab, setTab] = useState(stage === 'signed' ? 'settlement' : 'demands');
   if (!member) return <RestrictedNotFound />;
   const signed = stage === 'signed';
