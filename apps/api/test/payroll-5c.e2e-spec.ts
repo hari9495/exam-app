@@ -598,6 +598,10 @@ describe('Payroll batch 5c', () => {
     await api('approver2', 'post', `/people/changes/${pay.changeId}/approve`).send({ confirmRebase: true }).expect(201);
     await api('payAdmin', 'post', '/payroll/holds').send({ employeeId: payAdminEmp, reasonCode: 'other', note: 'My own hold' }).expect(403);
     await api('payAdmin', 'put', '/payroll/special-days').send({ employeeId: payAdminEmp, month: '2099-01', kind: 'injury', days: '2', note: 'My own days' }).expect(403);
+    // HLP-12 answer 65: the month's special days list with each row's source; nothing was saved for their own pay.
+    expect(((await api('payAdmin', 'get', '/payroll/special-days?month=2099-01').expect(200)).body as { employeeId: string }[]).some((r) => r.employeeId === payAdminEmp)).toBe(false);
+    await api('payAdmin', 'get', '/payroll/special-days?month=99-1').expect(400);
+    await api('payAdmin', 'get', '/payroll/special-days').expect(400);
     await api('payAdmin', 'post', '/payroll/court-orders').send({ employeeId: payAdminEmp, orderRef: 'X 1/2026', amount: '1', priorityDate: '2026-01-01', payee: 'Account 123456789' }).expect(403);
     await api('payAdmin', 'post', '/payroll/loans')
       .send({ employeeId: approverEmp, loanType: 'advance', principal: '6000', instalments: 3, firstMonth: '2099-01', reason: 'Advance for the approver' })
