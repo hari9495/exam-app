@@ -1218,6 +1218,20 @@ Built 4 Nov 2026 (`feat/yukthix-hlp-14`) from the founder decisions of 4 Nov 202
   twenty days worked), shown as "ask counsel". Both rows name their sections in `source`. For leave policies those two
   industries no longer carry the counsel note; their other policy types, and the other eight industries, still do.
   Time's leave minimums do not read industry tables (question 131). Migration `202616g0000000_factory_leave_table`.
+- **Answers 131 and 132 (4 Nov 2026):**
+  - *Company industry:* setting `company.industry` (whole company, default "none" = Not chosen), its choices read from
+    `policy_industries` when the settings are listed (labels too) and checked on save (an unknown or switched-off code is
+    400). Settings › Company policies. Write policies with AI starts the questionnaire from it; a draft may still choose
+    another industry.
+  - *Registered factory:* a flag per location (`locations.registered_factory`, default off), edited in the location form
+    (kit Checkbox; a "Factory" column in the list); every change audited `org.location.factory_changed` (from, to). Same
+    keys and company rules as the rest of the location (org structure); another company 404.
+  - *Time:* `statutoryOn` (the path the state `IN.SE` minimums take) adds `IN.FACTORIES.LEAVE` (the row valid on the
+    date: Factories Act to 20 Nov 2025, OSH Code from 21 Nov 2025) only when the person's location on that date is a
+    registered factory; the higher carry-forward minimum per kind wins, and each rule set used is named. It reaches the
+    year-end carry forward and the leave-year change preview, as the state minimums do. Offices are unchanged. Time ›
+    Leave policies "Minimums set by law" names "Registered factories (IN.FACTORIES.LEAVE 2020-v1)" while any location is
+    flagged. Migration `202616h0000000_registered_factory`.
 
 ## 5. Two designs for one job
 
@@ -1450,6 +1464,20 @@ surveys). The HLP screens are the founder-approved look, sample-only.
     worked per year (a company setting) and counsel's sign-off.
 134. **HLP-14: the factory table is national.** States amend the Factories Act (Rajasthan, for example, changed the
     240 days). *Suggested:* keep national with verify; add state rows when counsel lists the amendments that apply.
+141. **Answers 131-132: two "factory" switches.** Time already has the dated setting `attendance.factories_act`
+    (covered / not covered, per company, entity, location, department or employment type) for overtime at the legal rate
+    and the 240-day leave eligibility; the new location flag drives the factory leave minimum. *Built:* both, separate.
+    *Suggested:* make the location flag the one fact: a location marked as a registered factory counts as "covered"
+    unless the setting says otherwise for a department or employment type (office staff in a factory), and the location
+    form says so.
+142. **Answer 131: whom the factory minimum covers.** *Built:* everyone whose location is a registered factory,
+    including office staff on that site. *Suggested:* limit it to the employment categories IN.FACTORIES counts as
+    workers (as overtime already does), after counsel confirms.
+143. **Answer 132: the industry per legal entity.** *Built:* one industry for the whole company. *Suggested:* keep;
+    a group with a plant entity and a services entity chooses per draft.
+144. **Answer 131: the yearly factory leave rate in Time.** Time raises only the carry forward; the one-day-per-twenty
+    rate is not applied to credits. *Suggested:* keep until counsel signs off the rate and the days-worked source
+    (attendance), then apply it as a minimum at registered factories.
 
 71. **HLP-08: a warning letter shows in People › Letters** (the HR register) to HR who hold `letter.issue` for the
     employee, not only to the case's HR members, because Letters keeps every issued letter in one register. The letter

@@ -15075,6 +15075,45 @@
     "note": "Negative."
   },
   {
+    "id": "MT-HLP-14-16",
+    "area": "Helpdesk · HLP-14 answers 131-132 (4 Nov 2026): company industry, registered factory, Time factory minimum",
+    "screen": "Settings › Company policies · Industry of the company; the writer starts from it",
+    "url": "http://localhost:3000/yx/settings/company-rules",
+    "account": "admin-tester@demo-org.test, then hr-tester@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As admin-tester open Settings › Company rules › Company policies and look at \"Industry of the company\".",
+      "2. Change it, open the list.",
+      "3. Choose Manufacturing and save.",
+      "4. As hr-tester open Helpdesk › Write policies with AI.",
+      "5. Change the industry to IT services in the questionnaire and draft a Work from home policy.",
+      "6. As admin-tester set the industry back to Not chosen."
+    ],
+    "expected": "Step 1: \"Not chosen\". Step 2: Not chosen, then the ten industries (Manufacturing first, Other last). Step 3: toast; the row shows Manufacturing. Step 4: Industry is already Manufacturing. Step 5: the draft uses IT services (its Ask counsel note names IT services); the company setting stays Manufacturing. Step 6: the questionnaire opens with Industry empty again.",
+    "stories": [
+      "Screens/Helpdesk/HLP-14 · Write policies with AI"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HLP-14-17",
+    "area": "Helpdesk · HLP-14 answers 131-132 (4 Nov 2026): company industry, registered factory, Time factory minimum",
+    "screen": "Settings › Locations · Registered factory; Time applies the factory carry forward there only",
+    "url": "http://localhost:3000/yx/settings/locations",
+    "account": "admin-tester@demo-org.test (locations), hr-tester@demo-org.test (Time), payroll-tester@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As admin-tester open a plant location (for example Hosur plant), tick \"Registered factory\" and save.",
+      "2. Open an office location: the box is not ticked; save without changing it.",
+      "3. As hr-tester open Time › Leave policies and read \"Minimums set by law\".",
+      "4. As admin-tester untick Registered factory on the plant and save; as hr-tester reload Leave policies.",
+      "5. As payroll-tester type /yx/settings/locations and try to tick the box (if the page opens)."
+    ],
+    "expected": "Step 1: toast; the list shows \"Registered factory\" in the Factory column. Step 2: the office stays without it. Step 3: the alert adds \"Registered factories (IN.FACTORIES.LEAVE 2020-v1): earned leave carries forward up to at least 30 days. Being confirmed with our compliance partner.\" Step 4: that line is gone. Step 5: refused or no edit control (location editing needs the org structure key). The year-end carry forward at the plant is raised to 30 (shown in Time › Year end for last year) only while it is flagged.",
+    "stories": [
+      "Screens/Helpdesk/HLP-14 · Write policies with AI"
+    ],
+    "note": "Positive (1, 3) and negative (2, 4, 5)."
+  },
+  {
     "id": "MT-HLP-12-10",
     "area": "Helpdesk · HLP-12 Accident case (4 Nov 2026, founder answers 62 and 65)",
     "screen": "Time › Leave policies › Add injury leave",

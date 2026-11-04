@@ -441,7 +441,7 @@ location in Settings, key in brackets):
 | 2 | Accrual monthly or yearly, pro rata for joiners and leavers, rounding per policy line | company (policy lines) | per policy |
 | 3 | Never below the state's Shops & Establishments floor (days a year, carry-forward floor) | law, per state (P07 IN.SE rule sets) | — |
 | 4 | Earned leave in a factory needs 240 days worked in the calendar year before; a joiner last year needs 2/3 of the days from joining; a joiner this year earns it from next year | law, Factories Act 1948 s.79 (applies where `attendance.factories_act` = covered) | not covered |
-| 5 | Carry forward up to the policy cap (never below the state floor), the rest lapses at year end | company + law | per policy |
+| 5 | Carry forward up to the policy cap (never below the state floor, or the factory floor at a location marked as a registered factory: `IN.FACTORIES.LEAVE`, the row valid on the date, HLP-14 answer 131), the rest lapses at year end; "Minimums set by law" names the factory rule set | company + law | per policy |
 | 6 | Year end lists requests still waiting with days in the closing year; posting is refused (409) unless HR ticks Post anyway, and they stay pending | product | — |
 | 7 | Half days, minimum / maximum days, negative balance limit, sandwich rule, certificate after N days | company (leave type rules) | per type |
 | 8 | Short notice: refused, or allowed and flagged to the approver; each type its own notice days, blank = the company default (sick leave 0); HR applying for someone skips it | company (type rule `noticeMode`, `leave.notice_days.default`, `leave.notice.on_behalf`) | refused, 0, skip |
