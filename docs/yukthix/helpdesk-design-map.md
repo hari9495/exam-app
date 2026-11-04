@@ -1350,3 +1350,17 @@ suspension as an HR task, link to Pay when payroll can pay subsistence at state 
 standing-orders reply days and whether they are working days (GO-LIVE-CHECKLIST); (55) a "Report misconduct to HR" form
 for managers that reaches HR as a draft; (56) the warning letter is issued through Letters once the decision is approved.
 Demo: the demo HR Admin role gets case.disciplinary.raise (prisma/scripts/demo-hr-admin-keys.ts).
+
+## Founder decisions, 4 Nov 2026 (HLP-13 Collective dispute, before any server work)
+(1) A named industrial-relations team chosen by the System Admin (HR head, legal; an outside lawyer can be added) handles
+disputes; everyone else gets Not found. (2) The app keeps the record (demand, conciliation meetings, papers) and the legal
+clocks from statutory rule sets marked verify (never in code); people negotiate. Strike / lock-out notices and tribunal
+stages wait for the first customer with a union. (3) A signed settlement is recorded by one IR member and approved by a
+second; then it goes to payroll as an arrears worksheet that payroll checks and runs as usual; nothing is paid
+automatically. (4) Company side only: no union or worker view in the app.
+
+## Founder decisions, 4 Nov 2026 (HLP-14 Write policies with AI, before any server work)
+(1) The AI is the company's own AI setting through the existing AI service (provider, limits); with AI off the page says
+so and offers the policy starters. (2) Only the questionnaire answers go to the AI, never employee names or personal data;
+every run is logged. (3) The draft is checked against the law tables and any finding blocks approval until fixed; then one
+policy manager approves and a second publishes through the HLP-10/11 policy library with its version history.
