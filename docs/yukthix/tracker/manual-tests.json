@@ -15134,6 +15134,27 @@
     "note": "Positive (1, 3, 4) and negative (2, 5)."
   },
   {
+    "id": "MT-HLP-14-19",
+    "area": "Helpdesk · HLP-14 answer 151 (4 Nov 2026): old location-level Factories Act values",
+    "screen": "Settings › Locations, Time › Set-up › Locations, Settings › Attendance · \"Mark the location as a registered factory\"",
+    "url": "http://localhost:3000/yx/time/setup/locations",
+    "account": "hr-tester@demo-org.test (Time), admin-tester@demo-org.test (locations, settings), payroll-tester@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As hr-tester open Time › Set-up › Locations › Hosur plant and read the Factories Act section.",
+      "2. Press Edit the location.",
+      "3. As admin-tester open Hosur plant in Settings › Locations.",
+      "4. Tick Registered factory (do not save yet), then untick it; then tick it and save.",
+      "5. Reopen Hosur plant in Time › Set-up › Locations, and open Settings › Attendance › Factories Act.",
+      "6. Open an office location in both pages.",
+      "7. As payroll-tester type /yx/settings/company-rules."
+    ],
+    "expected": "Step 1: an info alert \"Mark the location as a registered factory to make it the one source\" with an Edit the location button. Step 2: Settings › Locations opens. Step 3: the same alert above the Registered factory box. Step 4: while ticked the alert changes to \"The Factories Act setting for this location is no longer needed\"; unticked it goes back; after saving, the location list shows Registered factory. Step 5: Time says \"Covered: this location is a registered factory\" and \"no longer needed\"; Settings › Attendance shows the Hosur plant value with \"No longer needed: the location is a registered factory\"; the value is still there until someone removes it. Step 6: no alert. Step 7: no access to change settings.",
+    "stories": [
+      "Screens/Helpdesk/HLP-14 · Write policies with AI"
+    ],
+    "note": "Positive (1-5) and negative (6, 7). After the walk, HR may remove the Hosur plant value; coverage stays."
+  },
+  {
     "id": "MT-HLP-12-10",
     "area": "Helpdesk · HLP-12 Accident case (4 Nov 2026, founder answers 62 and 65)",
     "screen": "Time › Leave policies › Add injury leave",

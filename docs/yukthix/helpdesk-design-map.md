@@ -1242,6 +1242,13 @@ Built 4 Nov 2026 (`feat/yukthix-hlp-14`) from the founder decisions of 4 Nov 202
   Locations shows per location "Covered: registered factory", "Covered / Not covered: the Factories Act setting for …"
   or "Not covered", and the excluded departments and employment types; Settings › Attendance explains the rule.
   Overtime still also needs an employment category IN.FACTORIES counts as workers (unchanged).
+- **Answer 151 (4 Nov 2026): the old location values.** Where a location has its own "covered" value for
+  `attendance.factories_act` in force today but no Registered factory flag, Settings › Locations (in the location form)
+  and Time › Set-up › Locations show the info alert "Mark the location as a registered factory to make it the one
+  source" (Time links to Settings › Locations). Once the location is flagged, both say "The Factories Act setting for this
+  location is no longer needed", and Settings › Attendance marks that value "No longer needed: the location is a
+  registered factory". Nothing is flagged or removed by itself; removing the value afterwards changes nothing for the
+  flagged location. demo-org's Hosur plant shows the alert today.
 
 ## 5. Two designs for one job
 
