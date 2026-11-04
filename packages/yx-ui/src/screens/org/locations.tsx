@@ -148,7 +148,7 @@ function LocationEditor({ location, entities, states, onClose, onSave }: { locat
           </FormField>
           <Checkbox
             label="Registered factory"
-            description="Time then applies the factory leave minimum here (Factories Act 1948 / OSH Code 2020), as it applies the state's. Offices stay as they are."
+            description="Factories Act here: overtime at the legal rate, the 240-day earned leave rule and the factory leave minimum, except departments or employment types set to Not covered in Settings › Attendance."
             checked={draft.factory}
             onChange={(factory) => set({ factory })}
           />

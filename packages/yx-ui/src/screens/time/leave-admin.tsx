@@ -24,7 +24,7 @@ import { EMPLOYEES, ENTITIES, LOCATIONS, entityHeadcount, locationHeadcount } fr
 import { DueBadge, GeoMap, Kpis, TimePage, type TimeNav } from './time-kit';
 import { formatDate } from '../../lib/format';
 import { errorText, useRun } from '../org/org-kit';
-import type { BlockDateInput, BlockDates, GeoPointInput, HolidayFeeds, HolidayRow, LeaveRules, LeaveTypeRow, LoadState, LocationRule, PolicyLine, TimeSetup, YearChangePreview, YearEndPreview } from './live/types';
+import type { BlockDateInput, BlockDates, FactoriesActCover, GeoPointInput, HolidayFeeds, HolidayRow, LeaveRules, LeaveTypeRow, LoadState, LocationRule, PolicyLine, TimeSetup, YearChangePreview, YearEndPreview } from './live/types';
 import { EL_ENCASH_MAX, EL_ENCASH_MIN_LEFT, HR_ADMIN, LEAVE_REQUESTS, TODAY, balancesFor, elEncashLeftAtYearEnd } from './time-data';
 import { countLeaveDays, yearEndSplit, type YearEndRow } from './time-logic';
 import type { ViewState } from './attendance';
@@ -3590,6 +3590,24 @@ const hhmm = (m: number) => `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
 const minuteOf = (t: string | null) => (t ? Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5)) : null);
 const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
+const FA_SCOPE: Record<string, string> = { tenant: 'the whole company', legal_entity: 'the legal entity', location: 'this location', department: 'a department', employment_type: 'an employment type' };
+/** Answer 141: where this location's Factories Act coverage comes from (overtime at the legal rate, the 240-day rule). */
+function FactoriesActSection({ fa, settingsHref }: { fa: FactoriesActCover; settingsHref?: string }) {
+  const where =
+    fa.source === 'registered_factory'
+      ? 'Covered: this location is a registered factory (Settings › Locations).'
+      : fa.source === 'setting'
+        ? `${fa.covered ? 'Covered' : 'Not covered'}: the Factories Act setting for ${FA_SCOPE[fa.scopeType ?? ''] ?? 'the company'} (Settings › Attendance). Mark the location as a registered factory to make it the one source.`
+        : 'Not covered: not a registered factory, and no Factories Act setting applies.';
+  return (
+    <FormSection title="Factories Act">
+      <p className="yx-tim-muted">{where}</p>
+      {fa.covered && fa.exclusions.length > 0 && <p className="yx-tim-muted">Not covered here: {fa.exclusions.map((x) => `${x.name} (${x.scopeType === 'department' ? 'department' : 'employment type'})`).join(', ')}.</p>}
+      {settingsHref && fa.source !== 'registered_factory' && <p className="yx-tim-muted">Locations are edited in Settings › Locations.</p>}
+    </FormSection>
+  );
+}
+
 function LiveLocationsScreen({ live }: { live: LiveLocations }) {
   return (
     <SetupGate live={live} active="Locations & geofences" header={<PageHeader title="Locations" />}>
@@ -3687,6 +3705,7 @@ function LiveLocationForm({ d, loc, live, picker }: { d: TimeSetup; loc: SetupLo
         <div className="yx-tim-form">
           <ErrorSummary errors={saveErrors.shownErrors} />
           {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
+          {loc.factoriesAct && <FactoriesActSection fa={loc.factoriesAct} settingsHref={live.settingsHref} />}
           <FormSection title="Check-in mode">
             <RadioGroup aria-label="Check-in mode" value={mode} onChange={setMode} options={[{ value: 'restricted', label: 'Restricted', description: 'Must be inside a point or on the office network' }, { value: 'field', label: 'Field', description: 'Location recorded, not restricted' }]} />
           </FormSection>

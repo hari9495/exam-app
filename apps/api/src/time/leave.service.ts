@@ -15,6 +15,7 @@ import {
   TIME_KEYS,
   asDate,
   dateOf,
+  factoriesActOn,
   factsOn,
   grantCovers,
   hasBalance,
@@ -345,7 +346,8 @@ export class LeaveService implements OnModuleInit {
       }
     }
     // Earned leave in a factory: 240 days worked in the calendar year before (Factories Act 1948 s.79).
-    if (t.kind === 'earned' && !override && (await setting('attendance.factories_act')) === 'covered') {
+    // Answer 141: the location's Registered factory flag decides, unless a department or employment type is excluded.
+    if (t.kind === 'earned' && !override && (await factoriesActOn(tx, c, f, dto.from)).covered) {
       const y = Number(dto.from.slice(0, 4)) - 1;
       const prev = { prevYearStart: `${y}-01-01`, prevYearEnd: `${y}-12-31` };
       const statuses = await tx.attendanceDay.findMany({ where: { organizationId: org, employeeId: f.employeeId, workOn: { gte: asDate(prev.prevYearStart), lte: asDate(prev.prevYearEnd) } }, select: { status: true } });

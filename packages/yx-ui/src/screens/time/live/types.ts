@@ -462,7 +462,7 @@ export interface TimeSetup {
   covered?: number;
   uncovered?: { count: number; people: { id: string; name: string; code: string | null; joinedOn: string }[] };
   order?: { current: string[] | null; currentFrom: string | null; upcoming: { validFrom: string; policyIds: string[] } | null };
-  locations: { id: string; name: string; state: string; timezone: string; geofence: { lat: number; lng: number; radiusM: number } | null; /** TIM-31 Multi: every check-in point. */ points?: GeoPointInput[]; /** Sent back with a points change (409 when someone else changed it first). */ updatedAt?: string; ipRanges: string[]; rule: LocationRule; upcoming: LocationRule[] }[];
+  locations: { id: string; name: string; state: string; timezone: string; geofence: { lat: number; lng: number; radiusM: number } | null; /** TIM-31 Multi: every check-in point. */ points?: GeoPointInput[]; /** Sent back with a points change (409 when someone else changed it first). */ updatedAt?: string; ipRanges: string[]; /** Answers 131, 141: Settings › Locations › Registered factory. */ registeredFactory?: boolean; /** Answer 141: Factories Act coverage here and where it comes from. */ factoriesAct?: FactoriesActCover; rule: LocationRule; upcoming: LocationRule[] }[];
   entities: { id: string; name: string }[];
   /** Founder decision 2: days' notice for a leave type without its own number (company setting; sick leave 0). */
   noticeDefault?: number;
@@ -1127,4 +1127,14 @@ export interface DevicePreview {
   lateAdded: number;
   corrections: number;
   changes: { employeeId: string; name: string; code: string | null; on: string; open: boolean; stage: string; punches: { kind: string; at: string | null }[]; before: DeviceDayView | null; after: DeviceDayView | null }[];
+}
+
+/** Answer 141: who the Factories Act covers at a location (overtime at the legal rate, the 240-day earned leave rule). */
+export interface FactoriesActCover {
+  covered: boolean;
+  /** registered_factory: the location's flag; setting: attendance.factories_act (where no flag); default: neither. */
+  source: 'registered_factory' | 'excluded' | 'setting' | 'default';
+  scopeType: string | null;
+  /** Departments and employment types the setting marks "not covered" (office staff on a factory site). */
+  exclusions: { scopeType: string; name: string }[];
 }

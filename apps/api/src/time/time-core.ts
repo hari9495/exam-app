@@ -246,6 +246,33 @@ export async function settingOn(tx: Tx, c: CompanyContext, key: string, f: Facts
   return String(resolveSetting(def, rows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: r.validFrom ? iso(r.validFrom) : null })), scopeContext(c, f), on).value);
 }
 
+/**
+ * Founder answer 141 (4 Nov 2026): who the Factories Act covers (overtime at the legal rate, the 240-day earned leave
+ * rule). The location's Registered factory flag is the single source: a flagged location is covered unless
+ * attendance.factories_act says "not covered" for the person's department or employment type (office staff on a
+ * factory site). At a location that is not flagged the setting decides as before, so no value set before the flag
+ * existed changes anyone's result. `source` says where the answer came from (the Time set-up page shows it).
+ */
+export interface FactoriesActCover {
+  covered: boolean;
+  source: 'registered_factory' | 'excluded' | 'setting' | 'default';
+  /** The scope of the setting value that decided (or excluded); null for the flag or the default. */
+  scopeType: string | null;
+}
+export function factoriesActFrom(registeredFactory: boolean, r: { value: unknown; source: { scopeType: string } }): FactoriesActCover {
+  const scope = r.source.scopeType === 'default' ? null : r.source.scopeType;
+  if (registeredFactory) {
+    if (r.value === 'not_covered' && (scope === 'department' || scope === 'employment_type')) return { covered: false, source: 'excluded', scopeType: scope };
+    return { covered: true, source: 'registered_factory', scopeType: null };
+  }
+  return { covered: r.value === 'covered', source: scope ? 'setting' : 'default', scopeType: scope };
+}
+export async function factoriesActOn(tx: Tx, c: CompanyContext, f: Facts, on: string): Promise<FactoriesActCover> {
+  const rows = await tx.setting.findMany({ where: { organizationId: c.organizationId, key: 'attendance.factories_act' } });
+  const r = resolveSetting(SETTINGS['attendance.factories_act'], rows.map((x) => ({ id: x.id, scopeType: x.scopeType, scopeId: x.scopeId, value: x.value, validFrom: x.validFrom ? iso(x.validFrom) : null })), scopeContext(c, f), on);
+  return factoriesActFrom(f.factory, r);
+}
+
 /** A company-wide setting (the company's own value, else the default), for set-up choices that belong to no one person. */
 export async function companySetting(tx: Tx, c: CompanyContext, key: string): Promise<string> {
   const rows = await tx.setting.findMany({ where: { organizationId: c.organizationId, key, scopeType: 'tenant' } });

@@ -10,7 +10,7 @@ import { OtClaimDto, OtPlanDto, OtRuleDto } from './dto';
 import { hoursText, otPlanProblem, preApprovalCheck } from './ot-plan-rules';
 import { ScheduleBook, assertOpen, lockedDates } from './schedule';
 import { SCOPE_MODEL, TimeSetupService } from './setup.service';
-import { TIME_KEYS, Facts, asDate, dateOf, factsOn, grantCovers, holidaysFor, hrApprovers, inReportingLine, monthRange, myEmployeeId, num, settingOn, todayIn, visibleSql } from './time-core';
+import { TIME_KEYS, Facts, asDate, dateOf, factoriesActOn, factsOn, grantCovers, holidaysFor, hrApprovers, inReportingLine, monthRange, myEmployeeId, num, settingOn, todayIn, visibleSql } from './time-core';
 import { addDays } from './time-maths';
 import { OtCategory, compOffDays, otSettlement, overtimeFor, quarterOf, scheduledMinutes } from './time-rules';
 
@@ -20,7 +20,8 @@ import { OtCategory, compOffDays, otSettlement, overtimeFor, quarterOf, schedule
 // approval); minutes over a cap are paid only after an HR override with a reason. A rule may settle approved OT as
 // comp-off: the credit goes into the leave ledger (YX-LV-01) exactly once, in the approval's transaction.
 // Founder decision 9 Oct 2026: factory overtime is paid, not comp-off. Where the Factories Act covers the person (the
-// dated setting attendance.factories_act, and an employment category P07 IN.FACTORIES counts as workers), approved OT
+// location is a registered factory unless attendance.factories_act excludes the department or employment type, else the
+// dated setting as before, founder answer 141; and an employment category P07 IN.FACTORIES counts as workers), approved OT
 // is always paid at the legal rate (P07: 2× ordinary wages, on the compliance verify list) through the payroll feed,
 // whatever the rule says; comp-off settlement is offered only where the Act does not apply.
 
@@ -107,7 +108,8 @@ export class OvertimeService implements OnModuleInit {
 
   /** Whether the Factories Act covers the person on a date: the company says the place is a factory, P07 the category. */
   private async factoriesAct(tx: Tx, org: string, f: Facts, on: string, coveredCategories: string[]): Promise<boolean> {
-    if ((await settingOn(tx, { organizationId: org, isSuperAdmin: false }, 'attendance.factories_act', f, on)) !== 'covered') return false;
+    // Answer 141: a registered factory location covers, unless the setting excludes the department or employment type.
+    if (!(await factoriesActOn(tx, { organizationId: org, isSuperAdmin: false }, f, on)).covered) return false;
     const t = await tx.employmentType.findFirst({ where: { organizationId: org, id: f.employmentTypeId }, select: { category: true } });
     return Boolean(t && coveredCategories.includes(t.category));
   }

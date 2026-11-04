@@ -418,3 +418,20 @@ describe('HLP-12 answer 62: Add injury leave', () => {
     expect((await screen.findAllByText('A leave type with the code INJURY already exists.')).length).toBeGreaterThan(0);
   });
 });
+
+// Founder answer 141: the location editor says where Factories Act coverage comes from.
+describe('TIM-31 Locations: Factories Act coverage (answer 141)', () => {
+  const withFa = (factoriesAct: NonNullable<(typeof base.data.locations)[number]['factoriesAct']>) => ({ ...base.data, locations: base.data.locations.map((l, i) => (i === 0 ? { ...l, factoriesAct } : l)) });
+  it('a registered factory names the flag and the exclusions; the setting and none say so too', () => {
+    const { unmount } = wrap(<GeofenceEditorScreen live={{ ...base, data: withFa({ covered: true, source: 'registered_factory', scopeType: null, exclusions: [{ scopeType: 'employment_type', name: 'Office staff' }] }), settingsHref: '/yx/settings/locations', onSetRule: vi.fn() }} />);
+    expect(screen.getByText('Covered: this location is a registered factory (Settings › Locations).')).toBeInTheDocument();
+    expect(screen.getByText('Not covered here: Office staff (employment type).')).toBeInTheDocument();
+    unmount();
+    const second = wrap(<GeofenceEditorScreen live={{ ...base, data: withFa({ covered: true, source: 'setting', scopeType: 'location', exclusions: [] }), settingsHref: '/yx/settings/locations', onSetRule: vi.fn() }} />);
+    expect(screen.getByText(/^Covered: the Factories Act setting for this location \(Settings › Attendance\)\. Mark the location as a registered factory/)).toBeInTheDocument();
+    second.unmount();
+    wrap(<GeofenceEditorScreen live={{ ...base, data: withFa({ covered: false, source: 'default', scopeType: null, exclusions: [] }), settingsHref: '/yx/settings/locations', onSetRule: vi.fn() }} />);
+    expect(screen.getByText('Not covered: not a registered factory, and no Factories Act setting applies.')).toBeInTheDocument();
+  });
+});
+

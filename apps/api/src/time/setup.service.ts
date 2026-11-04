@@ -7,7 +7,7 @@ import { isCidr, todayIst } from '../org-structure/org-validation';
 import { SETTINGS, resolveSetting } from '../org-structure/settings-registry';
 import { AssignPolicyDto, AttendanceRuleDto, CalendarDto, HolidayDto, LeaveTypeDto, PolicyDto, PolicyVersionDto } from './dto';
 import { LeaveService } from './leave.service';
-import { DEFAULT_RULE, LeaveRules, asDate, dateOf, parseLines, parseRules, maternityValues, policyFor, statutoryMinimum, yearChangeFor } from './time-core';
+import { DEFAULT_RULE, LeaveRules, asDate, dateOf, factoriesActFrom, parseLines, parseRules, maternityValues, policyFor, statutoryMinimum, yearChangeFor } from './time-core';
 import { leaveYearWith, monthsIn, shortYearEnd, statutoryProblem, yearChangeProblem } from './leave-rules';
 import { addDays, geoPointsOf, type GeoPoint } from './time-maths';
 
@@ -65,6 +65,17 @@ export class TimeSetupService {
         tx.legalEntity.findMany({ where: { organizationId: org, archivedAt: null }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
       ]);
       const scopeName = await this.scopeNames(tx, org, assignments.map((a) => ({ type: a.scopeType, id: a.scopeId })));
+      // Answer 141: the Factories Act setting rows, and the departments / employment types it excludes today.
+      const faSettings = await tx.setting.findMany({ where: { organizationId: org, key: 'attendance.factories_act' } });
+      const faRows = faSettings.map((x) => ({ id: x.id, scopeType: x.scopeType, scopeId: x.scopeId, value: x.value, validFrom: x.validFrom ? dateOf(x.validFrom) : null }));
+      const faToday = todayIst();
+      const faLatest = new Map<string, (typeof faRows)[number]>();
+      for (const r of faRows) if ((r.scopeType === 'department' || r.scopeType === 'employment_type') && r.validFrom !== null && r.validFrom <= faToday) {
+        const k = `${r.scopeType}:${r.scopeId}`;
+        if (!faLatest.has(k) || faLatest.get(k)!.validFrom! < r.validFrom) faLatest.set(k, r);
+      }
+      const faNames = await this.scopeNames(tx, org, [...faLatest.values()].filter((r) => r.value === 'not_covered').map((r) => ({ type: r.scopeType, id: r.scopeId })));
+      const faExclusions = [...faLatest.values()].filter((r) => r.value === 'not_covered').map((r) => ({ scopeType: r.scopeType, name: faNames.get(r.scopeId) ?? 'Archived record' }));
       const today = todayIst();
       const grades = await tx.grade.findMany({ where: { organizationId: org }, orderBy: { name: 'asc' }, select: { id: true, name: true } });
       const [moveRows, drafts, feedWaiting] = await Promise.all([
@@ -110,6 +121,8 @@ export class TimeSetupService {
         }),
         templates: Object.fromEntries(locations.filter((l) => FEED_STATES[l.state]).map((l) => [l.id, FEED_STATES[l.state]])),
         locations: locations.map((l) => {
+          // Answer 141: where the location's Factories Act coverage comes from (department / employment type exclusions listed apart).
+          const fa = factoriesActFrom(l.registeredFactory, resolveSetting(SETTINGS['attendance.factories_act'], faRows, { tenant: org, legal_entity: l.legalEntityId, location: l.id }, today));
           const mine = rules.filter((r) => r.locationId === l.id);
           const now = mine.find((r) => dateOf(r.validFrom) <= today);
           return {
@@ -122,6 +135,8 @@ export class TimeSetupService {
             points: geoPointsOf(l),
             updatedAt: l.updatedAt,
             ipRanges: l.ipRanges,
+            registeredFactory: l.registeredFactory,
+            factoriesAct: { covered: fa.covered, source: fa.source, scopeType: fa.scopeType, exclusions: l.registeredFactory ? faExclusions : [] },
             rule: now ? this.ruleView(now) : { ...DEFAULT_RULE, validFrom: null, starter: true },
             upcoming: mine.filter((r) => dateOf(r.validFrom) > today).map((r) => this.ruleView(r)),
           };

@@ -8,7 +8,8 @@ import { randomUUID } from 'crypto';
 import { PrismaClient } from '@prisma/client';
 import { AiApiKeyResolverService, AiNotConfiguredError, BlobStorageService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { PolicyWriterService } from '../src/policies/policy-writer.service';
-import { statutoryOn } from '../src/time/time-core';
+import { factsOn, statutoryOn } from '../src/time/time-core';
+import { OvertimeService } from '../src/time/overtime.service';
 import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
@@ -30,7 +31,7 @@ describe('HLP-14 Write policies with AI', () => {
   const server = () => app.getHttpServer();
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'adminA' | 'manager' | 'second' | 'hrExec' | 'hrEntity' | 'staff' | 'hrB' | 'acting';
+  type Who = 'adminA' | 'manager' | 'second' | 'hrExec' | 'hrEntity' | 'staff' | 'hrB' | 'acting' | 'fw' | 'ow' | 'bw';
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
@@ -95,6 +96,9 @@ describe('HLP-14 Write policies with AI', () => {
       ['hrEntity', 'A', 'panel', null],
       ['staff', 'A', 'panel', []],
       ['hrB', 'B', 'panel', tpl('hr_admin')],
+      ['fw', 'A', 'panel', []],
+      ['ow', 'A', 'panel', []],
+      ['bw', 'B', 'panel', []],
     ];
     for (const [who, k, role, keys] of roster) {
       const o = org[k].id;
@@ -527,9 +531,9 @@ describe('HLP-14 Write policies with AI', () => {
       ids.leavePolicy = (await v1('manager', 'post', '/time/setup/policies').send({ name: `Staff ${run}` }).expect(201)).body.id;
       await v1('manager', 'post', `/time/setup/policies/${ids.leavePolicy}/versions`).send({ validFrom: '2024-01-01', lines: [{ leaveTypeId: ids.EL, annualDays: 0, frequency: 'yearly', proRata: false, rounding: 0.5, carryForwardMax: 10 }] }).expect(201);
       await v1('manager', 'post', `/time/setup/policies/${ids.leavePolicy}/assign`).send({ scopeType: 'legal_entity', scopeId: ids.entity, validFrom: '2024-01-01' }).expect(201);
-      const hire = async (given: string, code: string, locationId: string) => (await v1('adminA', 'post', '/people/employees').send({ legalEntityId: ids.entity, status: 'confirmed', reason: 'Joined', givenName: given, familyName: 'Patel', employeeCode: code.toUpperCase(), joinedOn: '2024-01-01', overrideReason: 'Joined before the system went live', workEmail: `${code.toLowerCase()}@hlp14-${run}.test`, assignment: { locationId, departmentId: ids.ops, designationId: ids.desig, employmentTypeId: ids.perm, managerEmployeeId: null } }).then((r) => (r.status === 201 ? r : Promise.reject(new Error(JSON.stringify(r.body)))))).body.id as string;
-      ids.fEmp = await hire('Hetal', `KW-F${run.slice(0, 3)}`, ids.factory);
-      ids.oEmp = await hire('Jignesh', `KW-O${run.slice(0, 3)}`, ids.office);
+      const hire = async (given: string, code: string, locationId: string, userId?: string) => (await v1('adminA', 'post', '/people/employees').send({ ...(userId ? { userId } : {}), legalEntityId: ids.entity, status: 'confirmed', reason: 'Joined', givenName: given, familyName: 'Patel', employeeCode: code.toUpperCase(), joinedOn: '2024-01-01', overrideReason: 'Joined before the system went live', workEmail: userId === users.fw ? `fw@hlp14-${run}.test` : userId === users.ow ? `ow@hlp14-${run}.test` : `${code.toLowerCase()}@hlp14-${run}.test`, assignment: { locationId, departmentId: ids.ops, designationId: ids.desig, employmentTypeId: ids.perm, managerEmployeeId: null } }).then((r) => (r.status === 201 ? r : Promise.reject(new Error(JSON.stringify(r.body)))))).body.id as string;
+      ids.fEmp = await hire('Hetal', `KW-F${run.slice(0, 3)}`, ids.factory, users.fw);
+      ids.oEmp = await hire('Jignesh', `KW-O${run.slice(0, 3)}`, ids.office, users.ow);
       for (const e of [ids.fEmp, ids.oEmp]) await inA((tx) => tx.leaveLedgerEntry.create({ data: { organizationId: org.A.id, employeeId: e, leaveTypeId: ids.EL, entryOn: new Date(`${LY.slice(0, 4)}-06-30T00:00:00Z`), kind: 'adjustment', days: 40, reason: 'Last year' } }));
       let rows = await yearEnd();
       expect(rows.find((r) => r.employeeId === ids.fEmp)).toMatchObject({ carry: 30, lapse: 10 });
@@ -564,6 +568,55 @@ describe('HLP-14 Write policies with AI', () => {
       const tn = await inA((tx) => statutoryOn(tx, 'IN-TN', '2026-06-30', true));
       expect(tn.carry.earned).toBe(30);
       expect(tn.rules).toEqual([expect.stringMatching(/^IN\.SE IN-TN /), 'IN.FACTORIES.LEAVE IN 2020-v1']);
+    });
+    it('141: the flag is the single source for overtime and the 240-day rule; a department or employment type can be excluded', async () => {
+      const ot = app.get(OvertimeService);
+      const on = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
+      const covered = async (employeeId: string) => inA(async (tx) => (await ot.planHints(tx, org.A.id, (await factsOn(tx, org.A.id, employeeId, on))!, on)).factoriesAct);
+      const elBlock = async (who: Who) => ((await v1(who, 'post', '/time/me/leave/preview').send({ leaveTypeId: ids.EL, from: on, to: on }).expect(200)).body.blocks as string[]).find((b) => /Earned leave in a factory/.test(b)) ?? null;
+      const setFa = (scopeType: string, scopeId: string, value: string) => inA(async (tx) => {
+        await tx.setting.deleteMany({ where: { organizationId: org.A.id, key: 'attendance.factories_act', scopeType, scopeId } });
+        if (value) await tx.setting.create({ data: { organizationId: org.A.id, key: 'attendance.factories_act', scopeType, scopeId, value, validFrom: new Date('2024-01-01T00:00:00Z') } });
+      });
+      // The plant is a registered factory: overtime is paid by law and earned leave needs 240 days worked last year.
+      expect(await covered(ids.fEmp)).toBe(true);
+      expect(await elBlock('fw')).toMatch(/needs \d+ days worked/);
+      // The office is not flagged and no setting applies: neither rule.
+      expect(await covered(ids.oEmp)).toBe(false);
+      expect(await elBlock('ow')).toBeNull();
+      // Even a company-wide "not covered" does not undo the flag.
+      await setFa('tenant', org.A.id, 'not_covered');
+      expect(await covered(ids.fEmp)).toBe(true);
+      // An employment type set to not covered is excluded at the factory (office staff on a factory site).
+      await setFa('employment_type', ids.perm, 'not_covered');
+      expect(await covered(ids.fEmp)).toBe(false);
+      expect(await elBlock('fw')).toBeNull();
+      await setFa('employment_type', ids.perm, '');
+      // A department excluded the same way.
+      await setFa('department', ids.ops, 'not_covered');
+      expect(await covered(ids.fEmp)).toBe(false);
+      await setFa('department', ids.ops, '');
+      await setFa('tenant', org.A.id, '');
+      expect(await covered(ids.fEmp)).toBe(true);
+      // Flag off: back to the setting alone (none here), so not covered.
+      await v1('adminA', 'put', `/org/locations/${ids.factory}`).send(loc('Vapi plant', P(), false)).expect(200);
+      expect(await covered(ids.fEmp)).toBe(false);
+      expect(await elBlock('fw')).toBeNull();
+      // A value set before the flag existed still works where nothing is flagged (no silent change).
+      await setFa('location', ids.office, 'covered');
+      expect(await covered(ids.oEmp)).toBe(true);
+      expect(await elBlock('ow')).toMatch(/needs \d+ days worked/);
+      await setFa('location', ids.office, '');
+      await v1('adminA', 'put', `/org/locations/${ids.factory}`).send(loc('Vapi plant', P(), true)).expect(200);
+      // Time set-up says where coverage comes from, with the exclusions listed.
+      await setFa('employment_type', ids.perm, 'not_covered');
+      const locs = (await v1('manager', 'get', '/time/setup').expect(200)).body.locations as { id: string; factoriesAct: { covered: boolean; source: string; exclusions: { scopeType: string; name: string }[] } }[];
+      expect(locs.find((l) => l.id === ids.factory)!.factoriesAct).toEqual({ covered: true, source: 'registered_factory', scopeType: null, exclusions: [{ scopeType: 'employment_type', name: 'Permanent' }] });
+      expect(locs.find((l) => l.id === ids.office)!.factoriesAct).toMatchObject({ covered: false, source: 'default', exclusions: [] });
+      await setFa('employment_type', ids.perm, '');
+      // Another company: its people and set-up are untouched by company A's flag.
+      expect(((await v1('hrB', 'get', '/time/setup').expect(200)).body.locations as { id: string }[]).some((l) => l.id === ids.factory)).toBe(false);
+      await v1('bw', 'post', '/time/me/leave/preview').send({ leaveTypeId: ids.EL, from: on, to: on }).expect(404);
     });
   });
 });
