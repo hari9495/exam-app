@@ -433,6 +433,8 @@ export interface LocationRule {
 
 export interface TimeSetup {
   today: string;
+  /** HLP-12 answer 62: the injury leave type code (company setting) and whether the company has that type yet. */
+  injuryLeave?: { code: string; missing: boolean };
   types: LeaveTypeRow[];
   policies: { id: string; name: string; archived: boolean; versions: { id: string; validFrom: string; lines: PolicyLine[]; note: string | null }[]; assignments: { id: string; scopeType: string; scopeId: string; scopeName: string; validFrom: string; removable: boolean }[] }[];
   calendars: {

@@ -1964,6 +1964,8 @@ export interface LiveLeavePolicies extends SetupLive {
   onOpenType: (id: string) => void;
   /** Founder decision 1: the company block dates card. */
   blockDates?: LiveBlockDates;
+  /** HLP-12 answer 62: creates the injury leave type (only when HR presses "Add injury leave"). */
+  onAddInjuryLeave?: () => Promise<unknown>;
 }
 export interface LiveLeaveTypeEditor extends SetupLive {
   /** A leave type's id, or 'new'. */
@@ -2289,7 +2291,18 @@ function LivePolicies({ live }: { live: LiveLeavePolicies }) {
   const [orderFrom, setOrderFrom] = useState<Date | null>(null);
   const [triedOrder, setTriedOrder] = useState(false);
   const [showUncovered, setShowUncovered] = useState(false);
+  const [addingInjury, setAddingInjury] = useState(false);
   const { toast } = useToast();
+  const addInjury = async () => {
+    setAddingInjury(true);
+    try {
+      await live.onAddInjuryLeave!();
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : 'That didn’t work. Try again.' });
+    } finally {
+      setAddingInjury(false);
+    }
+  };
   return (
     <SetupGate live={live} active="Leave types & policies" header={<PageHeader title="Leave policies" description={POLICIES_TEXT} />}>
       {(d) => {
@@ -2385,6 +2398,15 @@ function LivePolicies({ live }: { live: LiveLeavePolicies }) {
             />
             <PoliciesAndBlocks blocks={live.blockDates ? <BlockDatesCard {...live.blockDates} today={d.today} /> : null}>
             <Statutory d={d} />
+            {d.injuryLeave?.missing && live.onAddInjuryLeave && (
+              <InlineAlert
+                tone="info"
+                title="No injury leave type yet"
+                actions={<Button size="sm" loading={addingInjury} onClick={() => void addInjury()}>Add injury leave</Button>}
+              >
+                Accident cases put an employee's injury leave into Time as {d.injuryLeave.code}. Adding it creates an unpaid type with no balance and no notice (ESI pays the benefit; payroll adds injury pay where it is due). You can change it afterwards.
+              </InlineAlert>
+            )}
             {uncovered > 0 && (
               <InlineAlert
                 tone="warning"

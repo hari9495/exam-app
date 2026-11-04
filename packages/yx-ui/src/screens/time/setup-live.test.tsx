@@ -397,3 +397,24 @@ describe('TIM-31 Locations, live', () => {
     expect((await screen.findAllByText(/Line 1: 10.0.0.0\/33 is not a valid range/)).length).toBeGreaterThan(0);
   });
 });
+
+describe('HLP-12 answer 62: Add injury leave', () => {
+  it('shows only while the injury leave type is missing, and creates it only when pressed', async () => {
+    const onAddInjuryLeave = vi.fn(async () => ({ id: 'lt-inj' }));
+    const { unmount } = wrap(<LeavePoliciesScreen live={policies({ onAddInjuryLeave, data: { ...TIME_SETUP, injuryLeave: { code: 'INJURY', missing: true } } })} />);
+    expect(screen.getByText('No injury leave type yet')).toBeInTheDocument();
+    expect(onAddInjuryLeave).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Add injury leave' }));
+    expect(onAddInjuryLeave).toHaveBeenCalledTimes(1);
+    unmount();
+    wrap(<LeavePoliciesScreen live={policies({ onAddInjuryLeave, data: { ...TIME_SETUP, injuryLeave: { code: 'INJURY', missing: false } } })} />);
+    expect(screen.queryByText('No injury leave type yet')).not.toBeInTheDocument();
+  });
+
+  it('a refusal shows as a toast', async () => {
+    const onAddInjuryLeave = vi.fn(async () => { throw new Error('A leave type with the code INJURY already exists.'); });
+    wrap(<LeavePoliciesScreen live={policies({ onAddInjuryLeave, data: { ...TIME_SETUP, injuryLeave: { code: 'INJURY', missing: true } } })} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Add injury leave' }));
+    expect((await screen.findAllByText('A leave type with the code INJURY already exists.')).length).toBeGreaterThan(0);
+  });
+});

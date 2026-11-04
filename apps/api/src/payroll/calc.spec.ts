@@ -97,6 +97,18 @@ describe('calculatePayslip', () => {
     expect([neg.net, neg.carryForward]).toEqual(['0.00', '5000.00']);
   });
 
+  it('HLP-12 answer 65: injury days already unpaid in the Time feed are not taken off twice; manual LOP still adds them', () => {
+    const feed = (lop: string) => ({ lopDays: lop, source: 'feed' as const, otMinutes: { normal: 0, weeklyOff: 0, holiday: 0 }, timesheetMinutes: 0 });
+    const onlyLop = calculatePayslip(snapshot({ attendance: feed('5') }), RULES);
+    const filled = calculatePayslip(snapshot({ attendance: feed('5'), special: [{ kind: 'injury', days: '5', daysBefore: 0, inFeedDays: '5' }] }), RULES);
+    expect(amount(filled, 'basic')).toBe(amount(onlyLop, 'basic'));
+    expect(amount(filled, 'injury_pay')).not.toBe('0.00');
+    const typed = calculatePayslip(snapshot({ attendance: feed('0'), special: [{ kind: 'injury', days: '5', daysBefore: 0 }] }), RULES);
+    expect(amount(typed, 'basic')).toBe(amount(onlyLop, 'basic'));
+    const manual = calculatePayslip(snapshot({ attendance: { ...feed('0'), source: 'manual' }, special: [{ kind: 'injury', days: '5', daysBefore: 0, inFeedDays: '5' }] }), RULES);
+    expect(amount(manual, 'basic')).toBe(amount(onlyLop, 'basic'));
+  });
+
   it('hourly pay from timesheet hours; overtime at the agreed multiplier', () => {
     const seg = { ...snapshot().segments[0], payBasis: 'hourly' as const, rate: '400', otMultiplier: '2' };
     const r = calculatePayslip(snapshot({ segments: [seg], attendance: { lopDays: '0', source: 'feed', otMinutes: { normal: 120, weeklyOff: 0, holiday: 0 }, timesheetMinutes: 160 * 60 } }), RULES);

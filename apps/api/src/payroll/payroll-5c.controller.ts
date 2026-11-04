@@ -7,7 +7,7 @@ import { RequireStepUp } from '../auth/step-up.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import type { ScopeUser } from '../access/scope';
-import { AckDto, CostRateListDto, CourtOrderDto, HoldDto, HoldReleaseDto, JournalExportDto, LoanChangeDto, LoanRequestDto, LopInputsDto, OneTimeBulkDto, OneTimeDto, OneTimeListDto, ReasonDto, RemittanceDto, RunCreateDto, RunDecisionDto, RunListDto, SpecialDaysDto, SubmitRunDto } from './dto-5c';
+import { AckDto, CostRateListDto, CourtOrderDto, HoldDto, HoldReleaseDto, JournalExportDto, LoanChangeDto, LoanRequestDto, LopInputsDto, OneTimeBulkDto, OneTimeDto, OneTimeListDto, ReasonDto, RemittanceDto, RunCreateDto, RunDecisionDto, RunListDto, SpecialDaysDto, SpecialDaysListDto, SubmitRunDto } from './dto-5c';
 import { PayInputsService } from './inputs.service';
 import { PayRunsService } from './runs.service';
 import { LedgerService } from './ledger.service';
@@ -198,6 +198,13 @@ export class Payroll5cController {
   @RequirePermissions('payroll.input.manage')
   cancelOneTime(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.inputs.cancelOneTime(ctx, this.user(req), id);
+  }
+
+  /** HLP-12 answer 65: the month's special days with their source (filled from injury leave, or payroll's own). */
+  @Get('special-days')
+  @RequirePermissions('payroll.input.manage')
+  specialDaysList(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: SpecialDaysListDto) {
+    return this.inputs.specialDaysList(ctx, this.user(req), q.month);
   }
 
   @Put('special-days')

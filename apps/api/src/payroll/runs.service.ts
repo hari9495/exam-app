@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { fillInjuryDays } from './injury-days';
 import { ModuleRef } from '@nestjs/core';
 import { Prisma } from '@prisma/client';
 import { Queue, Worker } from 'bullmq';
@@ -558,6 +559,8 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`run:${run0.id}`}))`;
       const run = await tx.payrollRun.findFirstOrThrow({ where: { id: run0.id } });
       if (!['draft', 'calculated', 'in_review', 'reopened'].includes(run.status)) throw new ConflictException(`A ${run.status} run is not calculated again.`);
+      // HLP-12 answer 65: injury days up to date from approved injury leave (a locked month is never changed).
+      if (run.runType === 'regular') await fillInjuryDays(tx, c, run.legalEntityId, this.month(run), todayIst());
       const version = run.calcVersion + 1;
       await this.validate(tx, c, run, version);
       const checks = await this.current(tx, org, run, version);
@@ -893,7 +896,8 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       },
       ytd: { pt: (ytdPt._sum.amount ?? D(0)).toFixed(2) },
       oneTime: oneTime.map((o) => ({ id: o.id, code: o.componentCode, amount: o.amount.toFixed(2), days: o.endOn && dateOf(o.endOn) <= to && dateOf(o.periodStart) < from ? Number(dateOf(o.endOn).slice(8)) : null, ...(o.label ? { label: o.label } : {}) })),
-      special: special.map((x) => ({ kind: x.kind as 'suspension' | 'maternity' | 'injury', days: x.days.toFixed(2), daysBefore: x.daysBefore })),
+      // HLP-12 answer 65: a row filled from leave may be 0 days (the leave was cancelled); inFeed: already unpaid in the feed.
+      special: special.filter((x) => x.days.gt(0)).map((x) => ({ kind: x.kind as 'suspension' | 'maternity' | 'injury', days: x.days.toFixed(2), daysBefore: x.daysBefore, inFeedDays: x.inFeedDays.toFixed(2) })),
       averageDailyWage: recentDays ? recent.reduce((t, x) => t.add(x.gross), D(0)).div(recentDays).toFixed(2) : null,
       recoveries: {
         courtOrders: courts.map((o) => ({ id: o.id, ref: o.orderRef, amount: o.amount?.toFixed(2) ?? null, percent: o.percent?.toFixed(2) ?? null, priorityDate: dateOf(o.priorityDate), remaining: o.capTotal ? o.capTotal.sub(o.remittedTotal).toFixed(2) : null })),
@@ -1083,7 +1087,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       const people = (await tx.payslip.findMany({ where: { organizationId: org, runId: run.id, calcVersion: run.calcVersion, status: 'draft' }, select: { employeeId: true } })).map((s) => s.employeeId);
       const makers = new Set<string>([me]);
       for (const r of await tx.lopInput.findMany({ where: { organizationId: org, periodStart: run.periodStart, employeeId: { in: people } }, select: { enteredBy: true } })) makers.add(r.enteredBy);
-      for (const r of await tx.specialDays.findMany({ where: { organizationId: org, periodStart: run.periodStart, employeeId: { in: people } }, select: { enteredBy: true } })) makers.add(r.enteredBy);
+      for (const r of await tx.specialDays.findMany({ where: { organizationId: org, periodStart: run.periodStart, employeeId: { in: people } }, select: { enteredBy: true } })) if (r.enteredBy) makers.add(r.enteredBy);
       for (const r of await tx.oneTimePay.findMany({ where: { organizationId: org, periodStart: { lte: run.periodStart }, status: 'approved', employeeId: { in: people } }, select: { createdBy: true } })) makers.add(r.createdBy);
       // Nobody approves a payroll that pays themselves.
       const paid = new Set((await tx.employee.findMany({ where: { organizationId: org, id: { in: people } }, select: { userId: true } })).map((e) => e.userId).filter((u): u is string => !!u));

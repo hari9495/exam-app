@@ -26,6 +26,8 @@ export default function YxTimeSetupPage() {
         onRemoveAssignment: (aid) => write(`/setup/assignments/${id(aid)}/remove`, 'POST', undefined, true, 'Policy removed from there'),
         onSaveOrder: (policyIds, validFrom) => write('/setup/policy-order', 'POST', { policyIds, validFrom }, true, 'Policy order saved'),
         onOpenType: (tid) => router.push(`/yx/time/setup/types/${id(tid)}`),
+        // HLP-12 answer 62: only when HR presses it.
+        onAddInjuryLeave: () => write('/setup/types/injury-leave', 'POST', undefined, true, 'Injury leave added'),
         blockDates: {
           state: timeState(blocks),
           onRetry: () => void blocks.refetch(),

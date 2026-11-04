@@ -228,6 +228,13 @@ export class TimeController {
     return this.setup.createType(ctx, this.user(req), dto);
   }
 
+  /** HLP-12 answer 62: creates the injury leave type on HR's press (never automatically). */
+  @Post('setup/types/injury-leave')
+  @RequirePermissions('leave.settings.manage')
+  addInjuryLeave(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.setup.addInjuryLeave(ctx, this.user(req));
+  }
+
   @Put('setup/types/:id')
   @RequirePermissions('leave.settings.manage')
   updateType(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: LeaveTypeDto) {

@@ -10,6 +10,7 @@ import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { AccidentsService } from '../src/accidents/accidents.service';
+import { PayInputsService } from '../src/payroll/inputs.service';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 
 // HLP-12 accident cases end to end against the real database (forced RLS, the app role). Positive and negative: anyone
@@ -28,7 +29,7 @@ describe('HLP-12 accident cases', () => {
   const server = () => app.getHttpServer();
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'adminA' | 'adminB' | 'hr' | 'safety' | 'handler' | 'manager' | 'injured' | 'witness' | 'other' | 'acting';
+  type Who = 'adminA' | 'adminB' | 'hr' | 'safety' | 'handler' | 'manager' | 'injured' | 'witness' | 'other' | 'pay' | 'acting';
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
@@ -74,6 +75,7 @@ describe('HLP-12 accident cases', () => {
       ['injured', 'A', 'panel', []],
       ['witness', 'A', 'panel', []],
       ['other', 'A', 'panel', []],
+      ['pay', 'A', 'panel', tpl('payroll_admin')],
     ];
     for (const [who, k, role, keys] of roster) {
       const o = org[k].id;
@@ -155,7 +157,15 @@ describe('HLP-12 accident cases', () => {
     const facts = { esiCovered: true, ipNumber: '3110012345', hospital: 'ESI dispensary, Hosur', handlerUserId: users.handler, leaveFrom: shift(-2), leaveTo: shift(5) };
     expect((await api('safety', 'post', `/${ids.acc}/facts`).send(facts).expect(409)).body.code).toBe('ACCIDENT_NO_LEAVE_TYPE');
     expect((await api('safety', 'get', `/${ids.acc}`).expect(200)).body.leave).toBeNull();
-    ids.injuryType = (await request(server()).post('/api/v1/time/setup/types').set('Authorization', `Bearer ${token.adminA}`).send({ code: 'INJURY', name: 'Injury leave', kind: 'lop', paid: false }).expect(201)).body.id;
+    // Answer 62: the Time set-up offers "Add injury leave"; nothing is created until someone with the key presses it.
+    const time = (who: Who, method: 'get' | 'post', path: string) => request(server())[method](`/api/v1/time${path}`).set('Authorization', `Bearer ${token[who]}`);
+    expect((await time('adminA', 'get', '/setup').expect(200)).body.injuryLeave).toEqual({ code: 'INJURY', missing: true });
+    await time('other', 'post', '/setup/types/injury-leave').expect(403);
+    expect(await inA((tx) => tx.leaveType.count({ where: { organizationId: org.A.id, code: 'INJURY' } }))).toBe(0);
+    ids.injuryType = (await time('adminA', 'post', '/setup/types/injury-leave').expect(201)).body.id;
+    await time('adminA', 'post', '/setup/types/injury-leave').expect(409);
+    expect((await time('adminA', 'get', '/setup').expect(200)).body.injuryLeave).toEqual({ code: 'INJURY', missing: false });
+    expect(await inA((tx) => tx.leaveType.findFirstOrThrow({ where: { id: ids.injuryType } }))).toMatchObject({ code: 'INJURY', name: 'Injury leave', kind: 'lop', paid: false, active: true, rules: expect.objectContaining({ noticeDays: 0 }) });
     await api('safety', 'post', `/${ids.acc}/facts`).send({ ...facts, leaveTo: shift(-3) }).expect(400);
     await api('safety', 'post', `/${ids.acc}/facts`).send({ ...facts, leaveFrom: shift(-9) }).expect(400);
     await api('safety', 'post', `/${ids.acc}/facts`).send(facts).expect(201);
@@ -237,6 +247,48 @@ describe('HLP-12 accident cases', () => {
     await api('safety', 'post', `/${ids.acc}/close`).expect(409);
     await api('safety', 'post', `/${ids.acc}/statements`).send({ who: 'Ravi K.', text: 'One more thing I remembered.' }).expect(409);
     expect((await api('safety', 'get', '').expect(200)).body.find((x: { id: string }) => x.id === ids.acc)).toMatchObject({ status: 'closed', stage: 'Closed' });
+  });
+
+  it("payroll's injury days fill from approved injury leave; payroll's own value wins; a locked month never changes", async () => {
+    const lr = (await api('safety', 'get', `/${ids.acc}`).expect(200)).body.leave.inTime.id as string;
+    const month = today.slice(0, 7);
+    const expected = async () => Number((await inA((tx) => tx.$queryRaw<{ n: string }[]>`SELECT coalesce(sum(portion), 0)::text AS n FROM leave_request_days WHERE request_id = ${lr}::uuid AND active AND to_char(leave_on, 'YYYY-MM') = ${month}`))[0].n).toFixed(2);
+    const fill = () => app.get(PayInputsService).fillInjuryAll(today);
+    const rows = async () => (await request(server()).get(`/api/v1/payroll/special-days?month=${month}`).set('Authorization', `Bearer ${token.pay}`).expect(200)).body.filter((r: { employeeId: string }) => r.employeeId === emp.injured);
+    // Pending leave fills nothing.
+    await fill();
+    expect(await rows()).toEqual([]);
+    // Approved (here directly; the approval flow is Time's own test).
+    await inA((tx) => tx.leaveRequest.update({ where: { id: lr }, data: { status: 'approved' } }));
+    await fill();
+    const days = await expected();
+    expect(await rows()).toEqual([expect.objectContaining({ kind: 'injury', days, inFeedDays: days, source: 'leave', note: 'From approved INJURY leave in Time' })]);
+    await fill();
+    expect((await rows()).length).toBe(1);
+    // Cancelled: the filled row drops to 0 days; approved again, it comes back.
+    await inA((tx) => tx.leaveRequest.update({ where: { id: lr }, data: { status: 'cancelled' } }));
+    await fill();
+    expect((await rows())[0]).toMatchObject({ days: '0.00', source: 'leave' });
+    await inA((tx) => tx.leaveRequest.update({ where: { id: lr }, data: { status: 'approved' } }));
+    await fill();
+    expect((await rows())[0]).toMatchObject({ days, source: 'leave' });
+    await request(server()).get(`/api/v1/payroll/special-days?month=${month}`).set('Authorization', `Bearer ${token.other}`).expect(403);
+    await request(server()).get('/api/v1/payroll/special-days?month=2026-13').set('Authorization', `Bearer ${token.pay}`).expect(400);
+    // A locked month is never changed.
+    const legalEntityId = (await rows())[0].legalEntityId as string;
+    const period = await inA((tx) => tx.payPeriod.create({ data: { organizationId: org.A.id, legalEntityId, periodStart: new Date(`${month}-01T00:00:00Z`), periodEnd: new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)), stage: 'locked' } }));
+    await inA((tx) => tx.leaveRequest.update({ where: { id: lr }, data: { status: 'cancelled' } }));
+    await fill();
+    expect((await rows())[0]).toMatchObject({ days, source: 'leave' });
+    await inA((tx) => tx.payPeriod.update({ where: { id: period.id }, data: { stage: 'open' } }));
+    await inA((tx) => tx.leaveRequest.update({ where: { id: lr }, data: { status: 'approved' } }));
+    // Payroll edits it: payroll's value wins from then on.
+    await request(server()).put('/api/v1/payroll/special-days').set('Authorization', `Bearer ${token.pay}`).send({ employeeId: emp.injured, month, kind: 'injury', days: '1', note: 'Doctor certified one day only' }).expect(200);
+    await inA((tx) => tx.leaveRequest.update({ where: { id: lr }, data: { status: 'cancelled' } }));
+    await fill();
+    expect((await rows())[0]).toMatchObject({ days: '1.00', source: 'payroll', inFeedDays: Number(days) >= 1 ? '1.00' : days });
+    const log = await inA((tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'payroll.special_days.filled', entityId: emp.injured } }));
+    expect(log).toBeGreaterThanOrEqual(3);
   });
 
   it('the injured person is found by a server search (names only, own company, at least 2 letters)', async () => {

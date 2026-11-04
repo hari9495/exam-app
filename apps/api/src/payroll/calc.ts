@@ -67,7 +67,8 @@ export interface Snapshot {
   ytd: { pt: string };
   /** `label`: the payslip text of an arrears or F&F item (batch 5g). */
   oneTime: { id: string; code: string; amount: string; days: number | null; label?: string }[];
-  special: { kind: 'suspension' | 'maternity' | 'injury'; days: string; daysBefore: number }[];
+  /** inFeedDays: the part of `days` the Time feed already counts as unpaid (HLP-12 answer 65), not taken off again. */
+  special: { kind: 'suspension' | 'maternity' | 'injury'; days: string; daysBefore: number; inFeedDays?: string }[];
   averageDailyWage: string | null;
   recoveries: {
     courtOrders: { id: string; ref: string; amount: string | null; percent: string | null; priorityDate: string; remaining: string | null }[];
@@ -154,7 +155,9 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
 
   // 1–2. Days: LOP from the feed or the manual entry, plus days paid as a benefit instead of salary; split by segment.
   const special = (k: string) => s.special.filter((x) => x.kind === k).reduce((t, x) => t.add(x.days), ZERO);
-  const unpaid = D(s.attendance.lopDays).add(special('suspension')).add(special('maternity')).add(special('injury'));
+  // Injury days already counted as unpaid by the Time feed (an unpaid injury leave type) are not taken off twice.
+  const inFeed = s.attendance.source === 'feed' ? s.special.filter((x) => x.kind === 'injury').reduce((t, x) => t.add(x.inFeedDays ?? 0), ZERO) : ZERO;
+  const unpaid = D(s.attendance.lopDays).add(special('suspension')).add(special('maternity')).add(Prisma.Decimal.max(ZERO, special('injury').sub(inFeed)));
   if (unpaid.gt(monthDays)) throw new StatutoryError(`Unpaid days (${unpaid.toFixed(2)}) are more than the days in the month.`);
   const segDays = s.segments.reduce((t, g) => t + g.days, 0);
   const lopOf = (g: Segment) => (segDays ? unpaid.mul(g.days).div(segDays) : ZERO);

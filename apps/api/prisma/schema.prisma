@@ -7672,8 +7672,13 @@ model SpecialDays {
   days           Decimal  @db.Decimal(5, 2)
   daysBefore     Int      @default(0) @map("days_before")
   note           String   @db.VarChar(300)
-  enteredBy      String   @map("entered_by") @db.Uuid
+  /// Null only for a row the app filled from approved injury leave (source 'leave').
+  enteredBy      String?  @map("entered_by") @db.Uuid
   enteredAt      DateTime @default(now()) @map("entered_at") @db.Timestamptz(3)
+  /// HLP-12 answer 65: 'leave' (filled from approved injury leave, follows it) or 'payroll' (typed or edited by payroll).
+  source         String   @default("payroll") @db.VarChar(8)
+  /// The part of `days` Time's attendance feed already counts as unpaid (not taken off twice).
+  inFeedDays     Decimal  @default(0) @map("in_feed_days") @db.Decimal(5, 2)
 
   @@unique([organizationId, employmentId, periodStart, kind], map: "special_days_key")
   @@map("special_days")

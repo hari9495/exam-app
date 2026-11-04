@@ -173,6 +173,11 @@ export class OneTimeListDto {
   month?: string;
 }
 
+export class SpecialDaysListDto {
+  @Matches(MONTH)
+  month!: string;
+}
+
 export class SpecialDaysDto {
   @IsUUID()
   employeeId!: string;

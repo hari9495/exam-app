@@ -76,8 +76,11 @@ export class TimeSetupService {
       const noticeDefault = Number(resolveSetting(SETTINGS['leave.notice_days.default'], noticeRows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: null })), { tenant: org }, today).value);
       // TIM-27 Statutory: what the law fixes for maternity (and paternity where a state rule gives it).
       const law = { maternity: await statutoryMinimum(tx, org, 'maternity', today), paternity: await statutoryMinimum(tx, org, 'paternity', today) };
+      // HLP-12 answer 62: the set-up offers "Add injury leave" while the company has no type with the injury leave code.
+      const injury = await this.injuryCode(tx, c);
       return {
         today,
+        injuryLeave: { code: injury, missing: !types.some((t) => t.code.toUpperCase() === injury.toUpperCase()) },
         types: types.map((t) => ({ id: t.id, code: t.code, name: t.name, kind: t.kind, paid: t.paid, colour: t.colour, active: t.active, rules: t.rules as unknown as LeaveRules, version: t.version, statutory: law[t.kind as keyof typeof law] ?? null })),
         maternity: await maternityValues(tx, today),
         policies: policies.map((p) => ({
@@ -224,6 +227,30 @@ export class TimeSetupService {
       const t = await tx.leaveType.create({ data: { organizationId: c.organizationId, code: dto.code, name: dto.name, kind: dto.kind, paid: dto.paid, colour: dto.colour ?? 'blue', rules: rules as unknown as Prisma.InputJsonValue, active: dto.active ?? true, createdBy: c.userId ?? null } });
       await audit(tx, c, 'leave.type.created', 'leave_type', t.id, { code: t.code, kind: t.kind, rules });
       return { id: t.id };
+    });
+  }
+
+  /** The leave type code accident cases use for injury leave (the company setting accident.injury_leave_type). */
+  private async injuryCode(tx: Tx, c: CompanyContext): Promise<string> {
+    const rows = await tx.setting.findMany({ where: { organizationId: c.organizationId, key: 'accident.injury_leave_type' } });
+    return String(resolveSetting(SETTINGS['accident.injury_leave_type'], rows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: null })), { tenant: c.organizationId }, todayIst()).value).trim();
+  }
+
+  /**
+   * HLP-12 founder answer 62: "Add injury leave", only when HR presses it. Creates the company's injury leave type
+   * (the code from accident.injury_leave_type): unpaid (ESI pays the benefit; payroll pays injury pay where it is due)
+   * with no balance, so it works for everyone at once without a policy line; no notice, as accidents are not planned.
+   * HR can change it afterwards like any type.
+   */
+  addInjuryLeave(ctx: TenantContext, user: ScopeUser) {
+    return this.run(ctx, user, true, async (tx, c) => {
+      const code = await this.injuryCode(tx, c);
+      if (!/^[A-Z][A-Z0-9]{0,7}$/.test(code)) throw new ConflictException(`The injury leave code "${code}" in Company rules is not a leave type code (1 to 8 capital letters or digits). Change "Accidents: the leave type code for injury leave" first.`);
+      if (await tx.leaveType.findFirst({ where: { organizationId: c.organizationId, code } })) throw new ConflictException(`A leave type with the code ${code} already exists. Open it from Leave types to change it.`);
+      const rules = parseRules({ noticeDays: 0 });
+      const t = await tx.leaveType.create({ data: { organizationId: c.organizationId, code, name: 'Injury leave', kind: 'lop', paid: false, colour: 'red', rules: rules as unknown as Prisma.InputJsonValue, active: true, createdBy: c.userId ?? null } });
+      await audit(tx, c, 'leave.type.created', 'leave_type', t.id, { code: t.code, kind: t.kind, rules, via: 'add_injury_leave' });
+      return { id: t.id, code };
     });
   }
 

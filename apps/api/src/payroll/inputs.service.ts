@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { OrgSecretsCryptoService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
@@ -6,6 +6,7 @@ import { todayIst } from '../org-structure/org-validation';
 import { settingFor } from '../people/probation';
 import type { ScopeUser, Viewer } from '../access/scope';
 import { asDate, dateOf, monthRange } from '../time/time-core';
+import { fillInjuryDays } from './injury-days';
 import { ApprovalsEngine, type Notice } from '../workflow/approvals-engine.service';
 import { CourtOrderDto, HoldDto, HoldReleaseDto, LoanChangeDto, LoanRequestDto, LopRowDto, OneTimeDto, SpecialDaysDto } from './dto-5c';
 import { PayKey, entitiesFor, payHolders, payScope, payViewer, requireEntity, requireSelf, withPayScope } from './pay-access';
@@ -57,6 +58,7 @@ export function loanRoute(v: Awaited<ReturnType<ApprovalsEngine['viewIn']>>) {
 
 @Injectable()
 export class PayInputsService implements OnModuleInit {
+  private readonly logger = new Logger(PayInputsService.name);
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
@@ -253,10 +255,44 @@ export class PayInputsService implements OnModuleInit {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const e = await this.person(tx, c, v, 'payroll.input.manage', dto.employeeId, monthRange(dto.month).to);
       await this.notLocked(tx, c.organizationId, e.legalEntityId, dto.month);
-      await tx.specialDays.upsert({ where: { organizationId_employmentId_periodStart_kind: { organizationId: c.organizationId, employmentId: e.id, periodStart: asDate(`${dto.month}-01`), kind: dto.kind } }, update: { days: dto.days, daysBefore: dto.daysBefore ?? 0, note: dto.note, enteredBy: v.userId!, enteredAt: new Date() }, create: { organizationId: c.organizationId, legalEntityId: e.legalEntityId, employeeId: e.employeeId, employmentId: e.id, periodStart: asDate(`${dto.month}-01`), kind: dto.kind, days: dto.days, daysBefore: dto.daysBefore ?? 0, note: dto.note, enteredBy: v.userId! } });
+      // HLP-12 answer 65: payroll's own value wins from now on (a row filled from leave becomes payroll's); the part already
+      // unpaid in the Time feed stays known, up to the new days.
+      const was = await tx.specialDays.findUnique({ where: { organizationId_employmentId_periodStart_kind: { organizationId: c.organizationId, employmentId: e.id, periodStart: asDate(`${dto.month}-01`), kind: dto.kind } } });
+      const inFeedDays = was ? Prisma.Decimal.min(was.inFeedDays, new Prisma.Decimal(dto.days)) : 0;
+      await tx.specialDays.upsert({ where: { organizationId_employmentId_periodStart_kind: { organizationId: c.organizationId, employmentId: e.id, periodStart: asDate(`${dto.month}-01`), kind: dto.kind } }, update: { days: dto.days, daysBefore: dto.daysBefore ?? 0, note: dto.note, enteredBy: v.userId!, enteredAt: new Date(), source: 'payroll', inFeedDays }, create: { organizationId: c.organizationId, legalEntityId: e.legalEntityId, employeeId: e.employeeId, employmentId: e.id, periodStart: asDate(`${dto.month}-01`), kind: dto.kind, days: dto.days, daysBefore: dto.daysBefore ?? 0, note: dto.note, enteredBy: v.userId! } });
       await audit(tx, c, 'payroll.special_days.saved', 'employee', e.employeeId, { month: dto.month, kind: dto.kind, days: dto.days });
       return { saved: true };
     });
+  }
+
+  /** Special days of a month (payroll.input.manage, in scope), with where each came from (HLP-12 answer 65). */
+  async specialDaysList(ctx: TenantContext, user: ScopeUser, month: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const ids = await entitiesFor(tx, c, v, 'payroll.input.manage');
+      await payScope(tx, ids);
+      const rows = await tx.specialDays.findMany({ where: { organizationId: c.organizationId, legalEntityId: { in: ids }, periodStart: asDate(`${month}-01`) }, orderBy: [{ kind: 'asc' }, { enteredAt: 'asc' }], take: 2000 });
+      return rows.map((r) => ({ id: r.id, employeeId: r.employeeId, legalEntityId: r.legalEntityId, month, kind: r.kind, days: r.days.toFixed(2), daysBefore: r.daysBefore, note: r.note, source: r.source, inFeedDays: r.inFeedDays.toFixed(2), enteredAt: r.enteredAt }));
+    });
+  }
+
+  /** The morning job: this month and last month, every entity with injury leave, filled from approved leave. */
+  async fillInjuryAll(today = todayIst()): Promise<number> {
+    const last = new Date(`${today.slice(0, 7)}-01T00:00:00Z`);
+    last.setUTCMonth(last.getUTCMonth() - 1);
+    const months = [today.slice(0, 7), last.toISOString().slice(0, 7)];
+    const pairs = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
+      tx.$queryRaw<{ org: string; entity: string }[]>`SELECT DISTINCT em.organization_id::text AS org, em.legal_entity_id::text AS entity FROM leave_request_days d
+        JOIN employments em ON em.organization_id = d.organization_id AND em.employee_id = d.employee_id
+        WHERE d.leave_on >= ${`${months[1]}-01`}::date`,
+    );
+    let n = 0;
+    for (const p of pairs)
+      for (const m of months)
+        n += await this.tenantPrisma
+          .forTenant({ organizationId: p.org, isSuperAdmin: false }, (tx) => fillInjuryDays(tx, { organizationId: p.org, isSuperAdmin: false, userId: null }, p.entity, m, today))
+          .catch((e: Error) => (this.logger.warn(`injury days ${p.org}/${m}: ${e.message}`), 0));
+    return n;
   }
 
   // ------------------------------------------------------------------------------------------ holds (PAY-3.11)
