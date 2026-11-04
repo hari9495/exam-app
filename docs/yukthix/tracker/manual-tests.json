@@ -15114,6 +15114,26 @@
     "note": "Positive (1, 3) and negative (2, 4, 5)."
   },
   {
+    "id": "MT-HLP-14-18",
+    "area": "Helpdesk · HLP-14 answer 141 (4 Nov 2026): the Registered factory flag is the one source of Factories Act coverage",
+    "screen": "Settings › Locations and Time › Set-up › Locations · Factories Act coverage",
+    "url": "http://localhost:3000/yx/time/setup/locations",
+    "account": "admin-tester@demo-org.test (locations, settings), hr-tester@demo-org.test (Time). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As hr-tester open Time › Set-up › Locations and open the plant (for example Hosur plant); read the Factories Act section.",
+      "2. Open an office location and read it.",
+      "3. As admin-tester tick Registered factory on the plant (Settings › Locations); read the one-line explanation under the box.",
+      "4. As hr-tester reload the plant in Time › Set-up › Locations.",
+      "5. As admin-tester in Settings › Attendance set the Factories Act setting to Not covered for the office staff employment type (from today); as hr-tester reload the plant.",
+      "6. Remove that value and untick Registered factory again."
+    ],
+    "expected": "Step 1: \"Covered: the Factories Act setting for this location (Settings › Attendance). Mark the location as a registered factory to make it the one source.\" (the value set before the flag still works). Step 2: \"Not covered: not a registered factory, and no Factories Act setting applies.\" Step 3: the line says overtime at the legal rate, the 240-day earned leave rule and the factory leave minimum apply, except departments or employment types set to Not covered. Step 4: \"Covered: this location is a registered factory (Settings › Locations).\" Step 5: also \"Not covered here: <office staff type> (employment type).\" Step 6: back to step 1.",
+    "stories": [
+      "Screens/Helpdesk/HLP-14 · Write policies with AI"
+    ],
+    "note": "Positive (1, 3, 4) and negative (2, 5)."
+  },
+  {
     "id": "MT-HLP-12-10",
     "area": "Helpdesk · HLP-12 Accident case (4 Nov 2026, founder answers 62 and 65)",
     "screen": "Time › Leave policies › Add injury leave",

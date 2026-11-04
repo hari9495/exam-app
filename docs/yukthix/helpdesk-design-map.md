@@ -1232,6 +1232,16 @@ Built 4 Nov 2026 (`feat/yukthix-hlp-14`) from the founder decisions of 4 Nov 202
     year-end carry forward and the leave-year change preview, as the state minimums do. Offices are unchanged. Time ›
     Leave policies "Minimums set by law" names "Registered factories (IN.FACTORIES.LEAVE 2020-v1)" while any location is
     flagged. Migration `202616h0000000_registered_factory`.
+- **Answer 141 (4 Nov 2026): one source for "factory".** `factoriesActOn` (Time core) decides Factories Act coverage for
+  overtime at the legal rate and the 240-day earned leave rule: a location marked Registered factory is covered, unless
+  `attendance.factories_act` resolves to "not covered" at the person's department or employment type (office staff on a
+  factory site); a company, entity or location value never undoes the flag. At a location that is not flagged the
+  setting decides exactly as before (reading rule, no data migration), so no company's result changes until HR ticks
+  the flag. Checked on this database (examapp_pay_check, 4 Nov 2026): no location is flagged; demo-org has one
+  location-level "covered" value (Hosur plant, from 1 Jan 2026), which keeps working. The location form says it in one line; Time › Set-up ›
+  Locations shows per location "Covered: registered factory", "Covered / Not covered: the Factories Act setting for …"
+  or "Not covered", and the excluded departments and employment types; Settings › Attendance explains the rule.
+  Overtime still also needs an employment category IN.FACTORIES counts as workers (unchanged).
 
 ## 5. Two designs for one job
 
@@ -1478,6 +1488,18 @@ surveys). The HLP screens are the founder-approved look, sample-only.
 144. **Answer 131: the yearly factory leave rate in Time.** Time raises only the carry forward; the one-day-per-twenty
     rate is not applied to credits. *Suggested:* keep until counsel signs off the rate and the days-worked source
     (attendance), then apply it as a minimum at registered factories.
+151. **Answer 141: move the old "covered" values onto the flag.** demo-org's plant is covered by a location-level
+    "covered" value, not by the flag. *Built:* nothing moved (ticking the flag would also add the factory leave minimum
+    of answer 131, which would change carry forward without anyone deciding it). *Suggested:* the location page and
+    Time set-up show "Mark the location as a registered factory to make it the one source"; HR ticks it, then the old
+    value can be removed.
+152. **Answer 141: company, entity or location "covered" values.** They still cover unflagged locations, so the flag
+    is the single source only where it is used. *Suggested:* after go-live, stop offering company / entity / location
+    scopes for `attendance.factories_act` (keep department and employment type for exclusions) once no company has
+    such a value left.
+153. **Answer 141: excluding a department that spans several sites.** A "not covered" department excludes it at every
+    flagged site. *Suggested:* keep (the usual case is office staff); per-site exclusions would need a location +
+    department scope.
 
 71. **HLP-08: a warning letter shows in People › Letters** (the HR register) to HR who hold `letter.issue` for the
     employee, not only to the case's HR members, because Letters keeps every issued letter in one register. The letter

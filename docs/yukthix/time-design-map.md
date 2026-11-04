@@ -440,7 +440,7 @@ location in Settings, key in brackets):
 | 1 | Leave year starts in a month (calendar or financial year) | company (`leave.year_start_month`) | January |
 | 2 | Accrual monthly or yearly, pro rata for joiners and leavers, rounding per policy line | company (policy lines) | per policy |
 | 3 | Never below the state's Shops & Establishments floor (days a year, carry-forward floor) | law, per state (P07 IN.SE rule sets) | — |
-| 4 | Earned leave in a factory needs 240 days worked in the calendar year before; a joiner last year needs 2/3 of the days from joining; a joiner this year earns it from next year | law, Factories Act 1948 s.79 (applies where `attendance.factories_act` = covered) | not covered |
+| 4 | Earned leave in a factory needs 240 days worked in the calendar year before; a joiner last year needs 2/3 of the days from joining; a joiner this year earns it from next year | law, Factories Act 1948 s.79 (applies at a location marked Registered factory unless `attendance.factories_act` excludes the department or employment type; at other locations where the setting says covered; founder answer 141) | not covered |
 | 5 | Carry forward up to the policy cap (never below the state floor, or the factory floor at a location marked as a registered factory: `IN.FACTORIES.LEAVE`, the row valid on the date, HLP-14 answer 131), the rest lapses at year end; "Minimums set by law" names the factory rule set | company + law | per policy |
 | 6 | Year end lists requests still waiting with days in the closing year; posting is refused (409) unless HR ticks Post anyway, and they stay pending | product | — |
 | 7 | Half days, minimum / maximum days, negative balance limit, sandwich rule, certificate after N days | company (leave type rules) | per type |
