@@ -1696,3 +1696,8 @@ annual leave for Manufacturing and Food and consumer goods, as a reviewed rule s
 tables also set Time's leave minimums in those states; counsel confirms the rows before go-live; (113) keep Maharashtra
 earned leave as "ask counsel"; (114) keep: only the platform adds an industry; (115) keep: POSH under 10 people is
 unchecked, the district Local Committee may apply.
+
+Founder approved, 4 Nov 2026 (questions 131-134, all as suggested): (132) a company setting for industry (default none)
+and a "registered factory" flag per location, read by both the policy writer and Time; (131) then Time applies the
+factory carry-forward minimum at registered-factory locations only; (133) keep the 1-in-20 rate as "ask counsel"; (134)
+keep the factory table national and verify; add state rows once counsel lists the amendments.

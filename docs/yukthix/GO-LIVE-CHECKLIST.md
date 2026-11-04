@@ -100,3 +100,5 @@ Things deliberately left for launch. Development runs locally until then (test k
       tables before go-live (all marked verify; HLP-14 answer 104, 4 Nov 2026).
 - [ ] **Factories Act annual leave table.** Counsel reviews the Manufacturing / Food and consumer goods industry table
       before it is relied on (HLP-14 answer 111, 4 Nov 2026).
+- [ ] **OSH Code leave figures.** Check the OSH Code 2020 s.32 Gazette text (rate, 180 days, carry forward) in
+      IN.FACTORIES.LEAVE, and counsel lists state amendments to the Factories Act leave rules (answers 111, 134, 4 Nov 2026).
