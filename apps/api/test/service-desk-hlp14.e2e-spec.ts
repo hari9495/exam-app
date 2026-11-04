@@ -49,8 +49,8 @@ describe('HLP-14 Write policies with AI', () => {
     { title: 'How to apply', text: 'Apply in YukthiX before you take leave. <img src=x onerror=alert(1)>' },
     { title: 'Records', text: 'YukthiX keeps every request.' },
   ];
-  const ANSWERS = { mode: 'ai', type: 'leave', industry: 'fmcg', states: ['IN-KA', 'IN-TN'], headcount: 248, workPattern: 'shift', earned: 15, sick: 12, casual: 12, carry: 45, notes: 'Plant staff work Sundays in season.' };
-  type View = { id: string; status: string; version: number; discardReason?: string | null; discardedBy?: string | null; counselNote?: string | null; mode: string; values: Record<string, number>; clauses: { id: string; title: string; text: string; source: string; ref?: string; editable: boolean; finding?: string }[]; findings: { id: string; status: string; fix?: { key: string; value: number } }[]; openFindings: number; target: { title: string; policyId: string | null; number: number }; approvedByMe: boolean };
+  const ANSWERS = { mode: 'ai', type: 'leave', industry: 'it_services', states: ['IN-KA', 'IN-TN'], headcount: 248, workPattern: 'shift', earned: 15, sick: 12, casual: 12, carry: 45, notes: 'Plant staff work Sundays in season.' };
+  type View = { id: string; status: string; version: number; discardReason?: string | null; discardedBy?: string | null; counselNote?: string | null; mode: string; values: Record<string, number>; clauses: { id: string; title: string; text: string; source: string; ref?: string; editable: boolean; finding?: string }[]; findings: { id: string; status: string; text: string; state?: string; fix?: { key: string; value: number } }[]; openFindings: number; target: { title: string; policyId: string | null; number: number }; approvedByMe: boolean };
   // Platform data (industries, law tables) is written with the schema owner, never the app role (which only reads it).
   const owner = new PrismaClient({ datasources: { db: { url: process.env.MIGRATION_DATABASE_URL } } });
   const IND = `t${run}`;
@@ -294,7 +294,7 @@ describe('HLP-14 Write policies with AI', () => {
     const seen = (await desk('second', 'get', `/policies/${ids.pol}`).expect(200)).body;
     expect(seen.open.writtenByMe).toBe(false);
     // The industry's own rules are not checked: the note travels with the version; the publisher must tick it.
-    expect(seen.open.counselNote).toBe('Law check covers general labour law only; Food and consumer goods rules are not checked yet; review with counsel');
+    expect(seen.open.counselNote).toBe('Law check covers general labour law only; IT services rules are not checked yet; review with counsel');
     expect((await desk('second', 'post', `/policies/${ids.pol}/publish`).send({ version: seen.open.version }).expect(400)).body.code).toBe('POLICY_COUNSEL_UNSEEN');
     await desk('second', 'post', `/policies/${ids.pol}/publish`).send({ version: seen.open.version, counselSeen: false }).expect(400);
     await expect(inA((tx) => tx.policyVersion.update({ where: { id: seen.open.id }, data: { status: 'published', publishedBy: users.second, publishedAt: new Date(), effectiveOn: new Date(), bodySha256: 'a'.repeat(64) } }))).rejects.toThrow(/check/i);
@@ -435,5 +435,43 @@ describe('HLP-14 Write policies with AI', () => {
     await w('manager', 'post', '/drafts').send({ ...ANSWERS, mode: 'starter', industry: 'Bad Code!' }).expect(400);
     // The app role can never write the industry list.
     await expect(prisma.$executeRaw`INSERT INTO policy_industries (code, label) VALUES ('hack', 'Hack')`).rejects.toThrow();
+  });
+
+  // ---------------------------------------------------------------------------------------------- answer 111
+
+  it('Manufacturing and Food and consumer goods: the factory leave table (verify) is checked for leave; no counsel note', async () => {
+    for (const industry of ['manufacturing', 'fmcg']) {
+      const r = (await w('manager', 'post', '/drafts').send({ ...ANSWERS, mode: 'starter', industry, carry: 20 }).expect(201)).body;
+      let v = await view(r.id);
+      const label = industry === 'fmcg' ? 'Food and consumer goods' : 'Manufacturing';
+      expect(v.counselNote).toBeNull();
+      // The carry-forward minimum is a number in the Act: checked, with the fix. The yearly leave is a rate: ask counsel.
+      expect(v.findings.find((f) => f.id === 'f-ind-IN.FACTORIES.LEAVE-IN-carry')).toMatchObject({ state: label, status: 'open', fix: { key: 'carry', value: 30 } });
+      expect(v.findings.find((f) => f.id === 'f-ind-IN.FACTORIES.LEAVE-IN-note1')).toMatchObject({ state: label, status: 'unchecked' });
+      expect(v.findings.some((f) => f.status === 'open' && /factory|twenty days/i.test(f.text))).toBe(false);
+      const line = v.clauses.find((c) => c.id === 'law-ind-IN.FACTORIES.LEAVE-IN')!;
+      expect(line).toMatchObject({ source: 'law', ref: 'IN.FACTORIES.LEAVE IN 2020-v1 (verify)', title: `${label} rules` });
+      expect(line.text).toBe(`The ${label.toLowerCase()} rules give at least 30 days of unused earned leave to carry forward. Where this policy gives more, the policy applies.`);
+      // Karnataka's own carry forward (30) is open too; raising it to 30 clears both.
+      await w('manager', 'put', `/drafts/${r.id}`).send({ version: v.version, carry: 30, earned: 18 }).expect(200);
+      v = await view(r.id);
+      expect(v.openFindings).toBe(0);
+    }
+  });
+
+  it('the factory table covers leave policies only: other policy types and other industries keep the counsel note', async () => {
+    const wfh = (await w('manager', 'post', '/drafts').send({ ...ANSWERS, mode: 'starter', type: 'work_from_home', industry: 'manufacturing', wfhDays: 2 }).expect(201)).body;
+    expect((await view(wfh.id)).counselNote).toBe('Law check covers general labour law only; Manufacturing rules are not checked yet; review with counsel');
+    const it = (await w('manager', 'post', '/drafts').send({ ...ANSWERS, mode: 'starter' }).expect(201)).body;
+    const v = await view(it.id);
+    expect(v.counselNote).toBe('Law check covers general labour law only; IT services rules are not checked yet; review with counsel');
+    expect(v.findings.some((f) => f.id.startsWith('f-ind-'))).toBe(false);
+  });
+
+  it('a leave draft dated before the OSH Code would read the Factories Act row; today reads the OSH Code row', async () => {
+    const rows = await prisma.statutoryRuleSet.findMany({ where: { statute: 'IN.FACTORIES.LEAVE' }, orderBy: { validFrom: 'asc' } });
+    expect(rows.map((r) => [r.version, r.validTo?.toISOString().slice(0, 10) ?? null, r.verify])).toEqual([['1948-v1', '2025-11-20', true], ['2020-v1', null, true]]);
+    expect(rows[0].source).toMatch(/Factories Act, 1948: s\.79\(1\)/);
+    expect(rows[1].source).toMatch(/OSH Code 2020, s\.32/);
   });
 });

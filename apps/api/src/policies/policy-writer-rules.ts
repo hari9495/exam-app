@@ -189,9 +189,10 @@ export function lawClauses(type: PolicyType, law: Pick<Law, 'leave' | 'maternity
   const maternity = law.maternity;
   const out: Clause[] = laws.map((l) => {
     const parts = l.floors.map((f) => `${plural(f.days, 'day')} of ${f.kinds.map((k) => (KIND_WORD[k] ?? k).replace(' leave', '').toLowerCase()).join(' and ')} leave`);
-    const carry = l.carry.earned ? `, and at least ${plural(l.carry.earned, 'day')} of earned leave carry forward` : '';
+    // A table may give only a carry-forward minimum (the Factories Act: its yearly leave is a rate, shown as "ask counsel").
+    const said = [parts.length ? `at least ${parts.join(', ')} a year` : '', l.carry.earned ? `at least ${plural(l.carry.earned, 'day')} of unused earned leave to carry forward` : ''].filter(Boolean);
     const ind = law.industry?.tables.includes(l);
-    return { id: ind ? `law-ind-${l.ref.split(' ')[0]}-${l.state}` : `law-${l.state}`, title: ind ? `${law.industry!.label} rules${l.state === 'IN' ? '' : ` in ${stateName(l.state)}`}` : `The law in ${stateName(l.state)}`, text: `The ${ind ? `${law.industry!.label.toLowerCase()} rules` : `${stateName(l.state)} rules`} set at least ${parts.join(', ')} a year${carry}. Where this policy gives more, the policy applies.`, source: 'law', ref: l.ref, editable: false };
+    return { id: ind ? `law-ind-${l.ref.split(' ')[0]}-${l.state}` : `law-${l.state}`, title: ind ? `${law.industry!.label} rules${l.state === 'IN' ? '' : ` in ${stateName(l.state)}`}` : `The law in ${stateName(l.state)}`, text: `The ${ind ? `${law.industry!.label.toLowerCase()} rules` : `${stateName(l.state)} rules`} give ${said.join(', and ')}. Where this policy gives more, the policy applies.`, source: 'law', ref: l.ref, editable: false };
   });
   if (maternity) out.push({ id: 'law-maternity', title: 'Maternity leave', text: `Women employees get maternity leave as the Maternity Benefit Act sets: ${plural(maternity.weeks, 'week')}, or ${plural(maternity.thirdChildWeeks, 'week')} from the third child.`, source: 'law', ref: maternity.ref, editable: false });
   return out;

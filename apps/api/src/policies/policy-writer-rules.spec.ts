@@ -179,4 +179,16 @@ describe('HLP-14 round 2: POSH, code of conduct, industry tables and the counsel
     expect(data.industry).toBe('Mines');
     expect(data.ruleLinesAlreadyWritten).toEqual(['Internal Committee members', 'Women on the Internal Committee', 'Who sits on the Internal Committee', 'Time limits']);
   });
+
+  it('answer 111: a carry-only industry table (the factory leave rate is not a number) covers leave; the rate is ask-counsel', () => {
+    const factory: StateLaw = { state: 'IN', ref: 'IN.FACTORIES.LEAVE IN 2020-v1 (verify)', floors: [], carry: { earned: 30 }, notes: ['A rate, not checked.'] };
+    const ind: IndustryLaw = { code: 'manufacturing', label: 'Manufacturing', statutes: ['IN.FACTORIES.LEAVE'], tables: [factory], missing: [] };
+    const f = lawFindings('leave', { ...values, carry: 29 }, ['IN-KA'], { leave: [KA], posh: null, industry: ind }, []);
+    expect(f.filter((x) => x.id.startsWith('f-ind-')).map((x) => [x.id, x.status])).toEqual([['f-ind-IN.FACTORIES.LEAVE-IN-carry', 'open'], ['f-ind-IN.FACTORIES.LEAVE-IN-note1', 'unchecked']]);
+    expect(lawFindings('leave', { ...values, carry: 30 }, ['IN-KA'], { leave: [KA], posh: null, industry: ind }, []).find((x) => x.id === 'f-ind-IN.FACTORIES.LEAVE-IN-carry')!.status).toBe('resolved');
+    expect(industryNote('leave', ind)).toBeNull();
+    expect(industryNote('posh', ind)).not.toBeNull();
+    expect(lawClauses('leave', { leave: [], maternity: null, posh: null, industry: ind })[0]).toMatchObject({ title: 'Manufacturing rules', text: 'The manufacturing rules give at least 30 days of unused earned leave to carry forward. Where this policy gives more, the policy applies.' });
+    expect(lawClauses('leave', { leave: [KA], maternity: null, posh: null })[0].text).toBe('The Karnataka rules give at least 18 days of earned leave, 12 days of casual leave, 12 days of sick leave a year, and at least 30 days of unused earned leave to carry forward. Where this policy gives more, the policy applies.');
+  });
 });

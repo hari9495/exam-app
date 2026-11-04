@@ -124,7 +124,7 @@ export const WRITER_DRAFT: WriterDraft = {
     {
       id: 'law-IN-KA',
       title: 'The law in Karnataka',
-      text: 'The Karnataka rules set at least 18 days of earned leave a year.',
+      text: 'The Karnataka rules give at least 18 days of earned leave a year.',
       source: 'law',
       ref: 'IN.SE KA 1961-v1',
       editable: false,
