@@ -1507,3 +1507,9 @@ the normal leave approval chain; (64) keep: HR cancels the Time leave before new
 month from approved injury leave; (71) keep: the warning letter is a normal HR record in People › Letters; (72) keep: no
 e-sign unless the company template switches it on; (73) a count on the Cases menu item and a notice to HR in scope when a
 manager's report arrives; (74) keep: the whole team down the reporting line; (75) keep: one warning letter per case.
+
+Founder approved, 4 Nov 2026 (HLP-13 questions 81-88, all as suggested): (81) strike and lock-out notices come with the
+first customer that has a union; (82) tribunal stages after counsel (GO-LIVE-CHECKLIST); (83) keep rupee-a-month rates per
+category, add a percentage rate if customers need it; (84) keep dispute.lawyer_may_approve default no; (85) offer
+payroll's union list when the legal entity has one; (86) keep: no set-up warning while the IR team is empty; (87) counsel
+confirms the 60 and 10 days, per-state rule sets later (GO-LIVE-CHECKLIST); (88) keep the payroll notice recipients.

@@ -90,3 +90,5 @@ Things deliberately left for launch. Development runs locally until then (test k
 - [ ] **Standing orders reply days.** Counsel confirms the 7 days in IN.SO.MODEL and whether they are working days
       (founder, 4 Nov 2026).
 - [ ] **Domestic inquiry.** Counsel reviews the inquiry steps and major penalties before they are built (founder, 4 Nov 2026).
+- [ ] **Collective dispute clocks.** Counsel confirms the conciliation report (60 days) and settlement copy (10 days, may
+      differ by state) in the HLP-13 rule set, and reviews tribunal stages before they are built (founder, 4 Nov 2026).
