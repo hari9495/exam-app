@@ -24,9 +24,12 @@ feature not built** (no API) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Helpdesk HLP-01 … 14 | 14 | 252 | 7 | 0 | 0 | 0 | 259 |
+| A. Helpdesk HLP-01 … 14 | 14 | 257 | 7 | 0 | 0 | 0 | 264 |
 | B. Service desk designs | 5 | 55 | 2 | 0 | 0 | 0 | 57 |
-| **All Helpdesk groups (A–B)** | **19** | **307** | **9** | **0** | **0** | **0** | **316** |
+| **All Helpdesk groups (A–B)** | **19** | **312** | **9** | **0** | **0** | **0** | **321** |
+Round 14b recount (script, 4 Nov 2026, `feat/yukthix-hlp-14`, founder answers 101-108 and the industry warning): HLP-14
+gains 4 stories (counsel note, POSH draft, discard, discarded) and HLP-11 1 (the publisher's counsel tick), all live.
+HLP-14: 9 stories, all live.
 Round 13b (script, 4 Nov 2026, `feat/yukthix-hlp-13`, answer 85): HLP-13 gains 1 story (Record a dispute · union from
 payroll's register), live: 18 stories, all live.
 Round 14 recount (script, 4 Nov 2026, `feat/yukthix-hlp-14`): HLP-14 has 5 stories (the 4 approved plus 1 drawn: AI off
@@ -502,6 +505,7 @@ second person, sent back, the drill-down, editing the audience, not published ye
 | WriteTooEarly · Send to be published pressed with no “what changed” | live | new story |
 | WaitingWriter · Writer · waiting for a second person to publish | live | new story: "You wrote vN, so another publisher publishes it." |
 | PublishLive · Publisher · publish the waiting version | live | new story |
+| PublishCounsel · Publisher · counsel note to tick (HLP-14 draft) | live | new story (HLP-14 industry warning): the note shows; Publish too early asks for the tick; `POST …/publish` with `counselSeen: true`, audited `policy.counsel_note_seen`; a database CHECK keeps an unticked version unpublished |
 | SendBack · Publisher · send back with a note | live | new story: `POST …/send-back` (note 3 to 500 letters) |
 | SentBack · Writer · sent back with the note | live | new story |
 | PendingByDept · Pending people · one department (drill-down) | live | new story |
@@ -570,11 +574,15 @@ Live page: /yx/desk/policy-writer (?draft=), menu Helpdesk › Write policies wi
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Questionnaire · Questionnaire | live | `GET desk/policy-writer` (the choices, AI state, the latest open draft); Policy to write is a Segment (Leave, Work from home, Notice and probation); the numbers of the chosen type and optional notes (500, no names, emails or phones) |
+| Questionnaire · Questionnaire | live | `GET desk/policy-writer` (the choices, AI state, the latest open draft); Policy to write is a dropdown (five types: Leave, Work from home, Notice and probation, Code of conduct, POSH; more than four, so not a Segment); industries from the `policy_industries` table; probation months start at the company's `probation.default_months` (answer 108); the numbers of the chosen type and optional notes (500, no names, emails or phones). The page text says Helpdesk › Write policies with AI; the review step says "Check your answers" once (kit fix) |
 | Generating · Drafting (loading) | live | `POST desk/policy-writer/drafts` (the company's AI through `AiInvocationService`: provider and credit limit; throttled); a refusal returns to the same step with every answer |
 | DraftBlocked · Draft · law finding blocks approval | live | `GET/PUT desk/policy-writer/drafts/:id`: rule and law lines read-only (from the numbers and the dated tables), prose editable; "Use the legal minimum" saves the fix; a number typed into prose is a finding too; Approve & load says what to fix (toast) |
 | ApproveLoad · Findings resolved · Approve & load | live | `POST …/:id/approve`: the text becomes the next version of the HLP-10/11 policy (made if none), waiting; a second person publishes it in Policy admin (the approver refused: 403 and a database CHECK); toast, then Policy admin opens. Live dialog: policy, new version, who publishes (Time leave values do not change, question 102) |
 | AiOff · AI off · start from a YukthiX starter | live | new story: the company setting `policy.ai_writer` off, or no AI provider: the page says so and Use a starter drafts the same way without the AI |
+| CounselNote · Draft · counsel note (industry rules not checked) | live | new story (founder, industry warning): "Law check covers general labour law only; <industry> rules are not checked yet; review with counsel" on the draft and in the approve dialog; never blocks; carried to the version for the publisher's tick (HLP-11 PublishCounsel) |
+| PoshDraft · POSH draft · Internal Committee below the IN.POSH minimum | live | new story (answer 101): the committee size and women share against `IN.POSH 2013-v2` (verify); the committee make-up and time limits quoted as law lines |
+| Discard · Draft · Discard (confirm) | live | new story (answer 106): `POST …/:id/discard` (version check; audited); toast, back to the questions |
+| Discarded · Discarded by the daily clean-up | live | new story (answer 106): read-only; by a person or by the morning clean-up after the company's `policy.ai_draft.discard_days` (default 90) |
 
 ### B. Service desk designs
 
@@ -1180,6 +1188,29 @@ Built 4 Nov 2026 (`feat/yukthix-hlp-14`) from the founder decisions of 4 Nov 202
   `policy_versions_ai_approver_check` refuses it too. Publishers get the usual notice; the version history is HLP-10/11's.
 - **Records:** `policy_ai_drafts` (forced RLS; no DELETE for the app role; an approved draft never changes, trigger).
   Migration `202616c0000000_policy_ai_drafts`.
+- **Round 2 (founder answers 101, 104, 106, 108 and the industry warning, 4 Nov 2026):**
+  - *Industries* live in `policy_industries` (global, read-only to the app; a platform admin adds a row, no deploy),
+    seeded with the 10 of round 1, each naming the law tables (`law_statutes`) that apply to it. None is named yet
+    (question 111). A table with leave floors (the `IN.SE` shape) is checked like a state's; anything else is not
+    checked. When the industry's tables were not all checked, the draft shows "Law check covers general labour law
+    only; <industry> rules are not checked yet; review with counsel". It never blocks approval; it is copied to the
+    version (`policy_versions.counsel_note`) and the publisher ticks it as seen (400 `POLICY_COUNSEL_UNSEEN` without;
+    audited `policy.counsel_note_seen`; CHECK `policy_versions_counsel_check`). An unknown or switched-off industry is
+    400 `POLICY_INDUSTRY_UNKNOWN`.
+  - *Types:* Code of conduct (no rule lines, no law table: unchecked) and POSH (Internal Committee members and women on
+    it, checked against `IN.POSH 2013-v2`: at least a presiding woman, two employees and one outside member, at least
+    half women; under ten people "unchecked: Local Committee"; the committee make-up and the time limits quoted as law
+    lines). Titles: Code of conduct; Prevention of sexual harassment (POSH) policy. Same check, approval and publishing.
+  - *State tables (verify):* `IN.SE` Maharashtra 2017 (casual 8, carry forward 45; earned leave is a rate, one day per
+    twenty worked, so it shows "not checked"), Telangana 1988 (earned 15, sick 12, casual 12, carry forward 60), Delhi
+    1954 (earned 15, casual and sick together 12, carry forward 45). Each row's `source` names the sections. These
+    tables also apply to Time's leave floors for locations in those states (question 112).
+  - *Discard:* `POST desk/policy-writer/drafts/:id/discard` (`policy.manage`, version check, 403 acting for someone,
+    404 another company) marks the draft discarded (who, when, `manual`); the morning job (09:00 India time, with the
+    policy reminders) discards drafts untouched for the company's `policy.ai_draft.discard_days` (30 / 60 / 90 / 180 /
+    365, default 90) as `expired`; each audited `policy.ai_draft_discarded`. A discarded draft never changes (trigger).
+  - *Probation* starts at the company's `probation.default_months` (whole-company value).
+  - Migration `202616e0000000_policy_writer_more`.
 
 ## 5. Two designs for one job
 
@@ -1387,6 +1418,18 @@ surveys). The HLP screens are the founder-approved look, sample-only.
     in Settings › Company policies.
 108. **HLP-14: probation months in the questionnaire** start at 6, not from the company's `probation.default_months`.
     *Suggested:* prefill from the company setting.
+111. **HLP-14: which industries get their own law tables.** *Built:* the table and the check; no industry names a table
+    yet, so every draft carries the counsel note. *Suggested:* first the Factories Act annual leave (one day per twenty
+    worked) for Manufacturing and Food and consumer goods, written as a reviewed rule set by the compliance owner.
+112. **HLP-14: the new Maharashtra, Telangana and Delhi leave tables also raise Time's leave floors** for locations in
+    those states (the same `IN.SE` tables). *Built:* yes, as for Karnataka and Tamil Nadu. *Suggested:* keep; counsel
+    confirms the three rows before go-live (all marked verify).
+113. **HLP-14: Maharashtra earned leave is a rate** (one day per twenty days worked), not checked against the policy's
+    yearly number. *Suggested:* keep "not checked, ask counsel"; a rate check needs the expected days worked.
+114. **HLP-14: who may add an industry.** *Built:* only the platform (the table is read-only to the app). *Suggested:*
+    keep; a company that needs one asks YukthiX support.
+115. **HLP-14: the POSH committee under ten people.** *Built:* "unchecked: the district's Local Committee may handle
+    complaints" (not blocking). *Suggested:* keep.
 
 71. **HLP-08: a warning letter shows in People › Letters** (the HR register) to HR who hold `letter.issue` for the
     employee, not only to the case's HR members, because Letters keeps every issued letter in one register. The letter
