@@ -527,6 +527,21 @@ export class LeaveService implements OnModuleInit {
     });
   }
 
+  /**
+   * HLP-12 (founder answer 43): injury leave from an accident case, raised inside the case's transaction by the safety
+   * team or the case's HR handler (the case checks that). The leave type's own rules and the person's normal approval
+   * chain apply, as for any request; the caller sends `notices` after the transaction (sendNotices).
+   */
+  async applyForCase(tx: Tx, c: CompanyContext, employeeId: string, dto: ApplyLeaveDto, notices: Notice[]) {
+    const f = (await factsOn(tx, c.organizationId, employeeId, todayIn('Asia/Kolkata'))) ?? (await factsOn(tx, c.organizationId, employeeId, dto.from));
+    if (!f) throw new BadRequestException('That person has no job on those dates.');
+    return this.applyIn(tx, c, f, todayIn(f.zone), dto, notices);
+  }
+
+  sendNotices(ctx: TenantContext, notices: Notice[]) {
+    return this.engine.send(ctx, notices);
+  }
+
   /** 'chain': the normal approvers decide; 'approved': approved at once (setting + HR holds leave.approve over them). */
   private async hrApproval(tx: Tx, c: CompanyContext, f: Facts, today: string, v: Viewer, own: string | null): Promise<'chain' | 'approved'> {
     if ((await settingOn(tx, c, 'leave.on_behalf.approval', f, today)) !== 'approved') return 'chain';

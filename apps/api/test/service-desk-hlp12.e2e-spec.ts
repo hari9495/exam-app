@@ -111,7 +111,7 @@ describe('HLP-12 accident cases', () => {
   });
 
   it('before set-up nothing can be reported; only the System Admin names the safety team (not HR)', async () => {
-    expect((await api('witness', 'get', '/form').expect(200)).body).toMatchObject({ ready: false, injuryTypes: ['Crush', 'Cut', 'Burn', 'Fall', 'Sprain or strain', 'Other'], meEmployeeId: emp.witness });
+    expect((await api('witness', 'get', '/form').expect(200)).body).toEqual({ ready: false, injuryTypes: ['Crush', 'Cut', 'Burn', 'Fall', 'Sprain or strain', 'Other'], meEmployeeId: emp.witness, me: { id: emp.witness, name: 'Ravi Kumar' }, locations: [{ id: ids.hosur, name: 'Hosur plant' }] });
     expect((await api('witness', 'post', '').send(REPORT()).expect(409)).body.code).toBe('ACCIDENT_NO_TEAM');
     await request(server()).post('/api/v1/desk/speakup/setup/members').set('Authorization', `Bearer ${token.hr}`).send({ team: 'safety', userId: users.hr }).expect(403);
     await request(server()).post('/api/v1/desk/speakup/setup/members').set('Authorization', `Bearer ${token.adminA}`).send({ team: 'safety', userId: users.safety }).expect(201);
@@ -151,12 +151,23 @@ describe('HLP-12 accident cases', () => {
     const c = (await api('safety', 'get', `/${ids.acc}`).expect(200)).body;
     expect(c).toMatchObject({ view: 'team', number: 'ACC-0001', injured: { kind: 'employee', name: 'Sathish Kumar' }, place: 'Packing line 2', reportedBy: `witness ${run}`, esi: null, clocks: [], canAssign: true });
     expect((await api('safety', 'get', '').expect(200)).body.find((x: { id: string }) => x.id === ids.acc)).toMatchObject({ ref: 'ACC-0001', kind: 'accident', stage: 'Check ESI cover', status: 'action', owner: 'Safety team' });
-    await api('safety', 'post', `/${ids.acc}/facts`).send({ esiCovered: true, ipNumber: '3110012345', hospital: 'ESI dispensary, Hosur', handlerUserId: users.handler, leaveFrom: shift(-2), leaveTo: shift(5) }).expect(201);
+    // Answer 43: the leave dates become a leave request in Time, of the company's injury leave type (a setting).
+    const facts = { esiCovered: true, ipNumber: '3110012345', hospital: 'ESI dispensary, Hosur', handlerUserId: users.handler, leaveFrom: shift(-2), leaveTo: shift(5) };
+    expect((await api('safety', 'post', `/${ids.acc}/facts`).send(facts).expect(409)).body.code).toBe('ACCIDENT_NO_LEAVE_TYPE');
+    expect((await api('safety', 'get', `/${ids.acc}`).expect(200)).body.leave).toBeNull();
+    ids.injuryType = (await request(server()).post('/api/v1/time/setup/types').set('Authorization', `Bearer ${token.adminA}`).send({ code: 'INJURY', name: 'Injury leave', kind: 'lop', paid: false }).expect(201)).body.id;
+    await api('safety', 'post', `/${ids.acc}/facts`).send({ ...facts, leaveTo: shift(-3) }).expect(400);
+    await api('safety', 'post', `/${ids.acc}/facts`).send({ ...facts, leaveFrom: shift(-9) }).expect(400);
+    await api('safety', 'post', `/${ids.acc}/facts`).send(facts).expect(201);
     const d = (await api('safety', 'get', `/${ids.acc}`).expect(200)).body;
-    expect(d).toMatchObject({ esi: true, esiFrom: 'case', handler: { id: users.handler }, leave: { from: shift(-2), to: shift(5), days: 8 }, source: 'IN.ESI.ACCIDENT 1950-v1 (verify)' });
+    expect(d).toMatchObject({ esi: true, esiFrom: 'case', handler: { id: users.handler }, leave: { from: shift(-2), to: shift(5), days: 8, inTime: { status: 'pending' } }, source: 'IN.ESI.ACCIDENT 1950-v1 (verify)' });
+    const lr = await inA((tx) => tx.leaveRequest.findFirstOrThrow({ where: { id: d.leave.inTime.id } }));
+    expect(lr).toMatchObject({ employeeId: emp.injured, leaveTypeId: ids.injuryType, raisedBy: users.safety, reason: 'Injury leave (accident case ACC-0001)' });
+    expect(lr.fromOn.toISOString().slice(0, 10)).toBe(shift(-2));
+    expect((await api('safety', 'post', `/${ids.acc}/facts`).send({ leaveFrom: shift(-1), leaveTo: shift(3) }).expect(409)).body.code).toBe('ACCIDENT_LEAVE_IN_TIME');
     expect(d.clocks).toEqual([{ key: 'esic', label: 'ESIC accident report (employer’s report)', due: shift(-2), doneOn: null }]);
     const views = await inA((tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, action: 'accident.viewed', entityId: ids.acc } }));
-    expect(views.length).toBe(2);
+    expect(views.length).toBe(3);
     expect(JSON.parse(views[0].metadataJson!)).toEqual({ view: 'team', medicalShown: true });
   });
 
@@ -165,7 +176,7 @@ describe('HLP-12 accident cases', () => {
     await api('handler', 'post', `/${ids.acc}/facts`).send({ handlerUserId: users.other }).expect(403);
     await api('handler', 'post', `/${ids.acc}/medical`).field('kind', 'diagnosis').field('note', 'Crush injury, fracture of the left index finger').attach('file', Buffer.from('%PDF-1.4\n%medical\n'), 'certificate.pdf').expect(201);
     const m = (await api('manager', 'get', `/${ids.acc}`).expect(200)).body;
-    expect(m).toEqual({ view: 'manager', id: ids.acc, number: 'ACC-0001', injuredName: 'Sathish Kumar', leaveFrom: shift(-2), leaveTo: shift(5) });
+    expect(m).toEqual({ view: 'manager', id: ids.acc, number: 'ACC-0001', injuredName: 'Sathish Kumar', leaveFrom: shift(-2), leaveTo: shift(5), leaveStatus: 'pending' });
     expect((await api('manager', 'get', '').expect(200)).body).toEqual([]);
     await api('manager', 'get', `/${ids.acc}/esic-form`).expect(404);
     await api('manager', 'post', `/${ids.acc}/statements`).send({ who: 'Ravi', text: 'I saw the guard was open.' }).expect(404);
@@ -228,11 +239,36 @@ describe('HLP-12 accident cases', () => {
     expect((await api('safety', 'get', '').expect(200)).body.find((x: { id: string }) => x.id === ids.acc)).toMatchObject({ status: 'closed', stage: 'Closed' });
   });
 
+  it('the injured person is found by a server search (names only, own company, at least 2 letters)', async () => {
+    expect((await api('witness', 'get', '/people?q=sath').expect(200)).body).toEqual([{ id: emp.injured, name: 'Sathish Kumar' }]);
+    expect((await api('witness', 'get', '/people?q=kumar%20ravi').expect(200)).body).toEqual([{ id: emp.witness, name: 'Ravi Kumar' }]);
+    expect((await api('witness', 'get', '/people?q=zzzz').expect(200)).body).toEqual([]);
+    await api('witness', 'get', '/people?q=s').expect(400);
+    await api('witness', 'get', '/people').expect(400);
+    expect((await api('adminB', 'get', '/people?q=sath').expect(200)).body).toEqual([]);
+    await api('acting', 'get', '/people?q=sath').expect(403);
+  });
+
+  it('the reporter sees the status only in My cases (received, then closed); never the injury, medical details or the team', async () => {
+    const rows = (await api('witness', 'get', '/mine').expect(200)).body;
+    expect(rows).toEqual([{ id: ids.acc, ref: 'ACC-0001', kind: 'accident', role: 'reporter', stage: 'Closed', status: 'closed', next: null, unread: 0 }]);
+    const one = (await api('witness', 'get', `/mine/${ids.acc}`).expect(200)).body;
+    expect(Object.keys(one).sort()).toEqual(['appealUntil', 'dates', 'datesSource', 'id', 'kind', 'messages', 'openedOn', 'outcome', 'ref', 'role', 'stage', 'status']);
+    expect(JSON.stringify(one)).not.toMatch(/Packing|fracture|Crush|safety/i);
+    const mine2 = (await api('injured', 'get', '/mine').expect(200)).body;
+    expect(mine2).toEqual([expect.objectContaining({ ref: 'ACC-0002', stage: 'Received', status: 'open' })]);
+    for (const who of ['injured', 'safety', 'manager', 'adminB'] as const) await api(who, 'get', `/mine/${ids.acc}`).expect(404);
+    expect((await api('adminB', 'get', '/mine').expect(200)).body).toEqual([]);
+    await api('acting', 'get', '/mine').expect(403);
+  });
+
   it('a contract worker: the contractor files; late shows "contractor not filed" and the safety team is reminded once a day', async () => {
     const r = (await api('manager', 'post', '').send({ ...REPORT(), injuredKind: 'contract', injuredEmployeeId: undefined, injuredName: 'Murugan P.', contractor: 'Sri Lakshmi Facility Services' }).expect(201)).body;
     ids.cw = r.id;
     await api('manager', 'get', `/${ids.cw}`).expect(404);
-    await api('safety', 'post', `/${ids.cw}/facts`).send({ esiCovered: true }).expect(201);
+    await api('safety', 'post', `/${ids.cw}/facts`).send({ esiCovered: true, leaveFrom: shift(-2), leaveTo: shift(1) }).expect(201);
+    // No leave in Time for a contract worker: the dates stay on the case.
+    expect((await api('safety', 'get', `/${ids.cw}`).expect(200)).body.leave).toMatchObject({ from: shift(-2), inTime: null });
     const c = (await api('safety', 'get', `/${ids.cw}`).expect(200)).body;
     expect(c).toMatchObject({ injured: { kind: 'contract', name: 'Murugan P.', contractor: 'Sri Lakshmi Facility Services' }, contractorNotFiled: true, clocks: [{ key: 'esic', label: 'ESIC accident report (the contractor files)', due: shift(-2), doneOn: null }] });
     expect((await api('safety', 'get', '').expect(200)).body.find((x: { id: string }) => x.id === ids.cw)).toMatchObject({ stage: 'Contractor not filed', overdue: true, status: 'action' });

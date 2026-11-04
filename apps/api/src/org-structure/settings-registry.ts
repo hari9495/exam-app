@@ -42,6 +42,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // HLP-12 accident cases (map 4g): the injury types people choose from, and how often the safety team is reminded while a
   // contractor has not filed a contract worker's ESIC report. Legal deadlines come from IN.ESI.ACCIDENT and IN.EC.CLAIM.
   'accident.injury_types': { label: 'Accidents: injury types people choose from (one a line)', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 600 }, default: 'Crush\nCut\nBurn\nFall\nSprain or strain\nOther' },
+  // Founder answer 43: injury leave recorded on a case becomes a leave request of this type (its code in Time › Leave types).
+  'accident.injury_leave_type': { label: 'Accidents: the leave type code for injury leave', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 30 }, default: 'INJURY' },
   'accident.contractor_reminder_days': { label: 'Accidents: remind the safety team while a contractor has not filed, every (days)', scopes: ['tenant'], dated: false, values: ['off', '1', '2', '3', '7'], default: '1' },
   // HLP-07/08/09 (map 4f): days a respondent has to reply to a grievance or ethics notice. POSH days come from the rule
   // set IN.POSH.INQUIRY, never from here.

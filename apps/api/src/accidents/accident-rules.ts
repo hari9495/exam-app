@@ -84,6 +84,8 @@ export interface Facts {
   hospital?: string;
   leaveFrom?: string;
   leaveTo?: string;
+  /** Set by the app (never from input): the leave request in Time made from the leave dates. */
+  leaveRequestId?: string;
 }
 export const mergeFacts = (steps: { kind: string; data: unknown }[]): Facts =>
   steps.filter((s) => s.kind === 'facts').reduce<Facts>((f, s) => ({ ...f, ...(s.data as Facts) }), {});

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
@@ -9,7 +9,7 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import { assertOwnSession } from '../service-desk/desk-access';
-import { EcDto, EcPaidDto, FactsDto, FiledDto, MedicalDto, ReportAccidentDto, StatementDto } from './dto';
+import { EcDto, EcPaidDto, FactsDto, FiledDto, MedicalDto, PeopleQueryDto, ReportAccidentDto, StatementDto } from './dto';
 import { AccidentsService } from './accidents.service';
 
 // HLP-12 accident cases (rules: docs/yukthix/helpdesk-design-map.md section 4g). No key: anyone signed in reports;
@@ -28,6 +28,24 @@ export class AccidentsController {
   form(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     assertOwnSession(req);
     return this.accidents.form(ctx);
+  }
+
+  @Get('people')
+  people(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() dto: PeopleQueryDto) {
+    assertOwnSession(req);
+    return this.accidents.people(ctx, dto.q);
+  }
+
+  @Get('mine')
+  mine(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    assertOwnSession(req);
+    return this.accidents.mine(ctx);
+  }
+
+  @Get('mine/:id')
+  mineOne(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', id) caseId: string) {
+    assertOwnSession(req);
+    return this.accidents.mineOne(ctx, caseId);
   }
 
   @Post()

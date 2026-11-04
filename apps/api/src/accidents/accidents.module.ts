@@ -4,6 +4,7 @@ import Redis from 'ioredis';
 import { DocumentsModule } from '../documents/documents.module';
 import { REDIS_CONNECTION, bullOpts, createRedisConnection, logBullErrors } from '../jobs/redis-connection';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { TimeModule } from '../time/time.module';
 import { AccidentsController } from './accidents.controller';
 import { AccidentsService } from './accidents.service';
 
@@ -41,7 +42,7 @@ export class AccidentJobs implements OnModuleInit, OnModuleDestroy {
 
 // HLP-12 accident cases: reports, the safety team's workspace, ESIC and EC clocks, medical records.
 @Module({
-  imports: [DocumentsModule, NotificationsModule],
+  imports: [DocumentsModule, NotificationsModule, TimeModule],
   controllers: [AccidentsController],
   providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, AccidentsService, AccidentJobs],
 })

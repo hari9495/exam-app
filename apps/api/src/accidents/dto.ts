@@ -157,3 +157,9 @@ export class MedicalDto {
   @Text(1, 2_000)
   note!: string;
 }
+
+/** Founder answer 46: the injured-person search. */
+export class PeopleQueryDto {
+  @Text(2, 80)
+  q!: string;
+}

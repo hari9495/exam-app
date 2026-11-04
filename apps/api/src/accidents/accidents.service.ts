@@ -2,6 +2,8 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { Prisma } from '@prisma/client';
 import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { NotificationsService } from '../notifications/notifications.service';
+import { LeaveService } from '../time/leave.service';
+import type { Notice } from '../workflow/approvals-engine.service';
 import { FilesService } from '../documents/files.service';
 import { CompanyContext, Tx, audit, companyContext } from '../org-structure/org-structure.service';
 import { localDate, todayIst } from '../org-structure/org-validation';
@@ -29,6 +31,9 @@ const iso = (d: Date) => d.toISOString().slice(0, 10);
 const day = (s: string) => new Date(`${s}T00:00:00Z`);
 const lines = (v: string) => v.split('\n').map((x) => x.trim()).filter(Boolean);
 const NOT_FOUND = 'Not found.';
+const personName = (e: { givenName: string; familyName: string | null; preferredName: string | null }) => e.preferredName ?? [e.givenName, e.familyName].filter(Boolean).join(' ');
+/** A leave request in these states no longer holds the dates; injury leave may be recorded again. */
+const LEAVE_GONE = ['rejected', 'withdrawn', 'cancelled'];
 
 const clash = (e: unknown): never => {
   if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('Another accident was reported at the same moment. Press Send report again.');
@@ -50,6 +55,7 @@ export class AccidentsService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly notifications: NotificationsService,
     private readonly files: FilesService,
+    private readonly leave: LeaveService,
   ) {}
 
   private tx<T>(ctx: TenantContext, fn: (tx: Tx, c: CompanyContext) => Promise<T>) {
@@ -94,6 +100,12 @@ export class AccidentsService {
     const l = await this.load(tx, c, id);
     if (!l || !(l.safety.includes(c.userId!) || l.facts.handlerUserId === c.userId)) throw new NotFoundException(NOT_FOUND);
     return l;
+  }
+
+  /** The injury leave request in Time made from this case, with its status. */
+  private async leaveRequest(tx: Tx, l: Loaded) {
+    if (!l.facts.leaveRequestId) return null;
+    return tx.leaveRequest.findFirst({ where: { organizationId: l.row.organizationId, id: l.facts.leaveRequestId }, select: { id: true, status: true } });
   }
 
   private open(l: Loaded) {
@@ -151,21 +163,50 @@ export class AccidentsService {
   async form(ctx: TenantContext) {
     return this.tx(ctx, async (tx, c) => {
       const org = c.organizationId;
-      const [locations, employees, types, safety, me] = await Promise.all([
+      const [locations, types, safety, me] = await Promise.all([
         tx.location.findMany({ where: { organizationId: org, archivedAt: null }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
-        // shortcut: names of up to 5,000 people for the picker; a search route when a company is larger.
-        tx.employee.findMany({ where: { organizationId: org }, select: { id: true, givenName: true, familyName: true, preferredName: true, userId: true }, orderBy: { givenName: 'asc' }, take: 5000 }),
         settingFor(tx, c, 'accident.injury_types', ANY_ENTITY),
         this.safetyTeam(tx, org),
-        tx.employee.findFirst({ where: { organizationId: org, userId: c.userId! }, select: { id: true } }),
+        tx.employee.findFirst({ where: { organizationId: org, userId: c.userId! }, select: { id: true, givenName: true, familyName: true, preferredName: true } }),
       ]);
-      return {
-        locations,
-        employees: employees.map((e) => ({ id: e.id, name: e.preferredName ?? [e.givenName, e.familyName].filter(Boolean).join(' ') })),
-        injuryTypes: lines(types),
-        ready: safety.length > 0,
-        meEmployeeId: me?.id ?? null,
-      };
+      // Founder answer 46: the injured person is found with a server search (GET desk/accidents/people?q=), not a list.
+      return { locations, injuryTypes: lines(types), ready: safety.length > 0, meEmployeeId: me?.id ?? null, me: me ? { id: me.id, name: personName(me) } : null };
+    });
+  }
+
+  /** Founder answer 46: up to 20 people of the company whose name has the typed words (names only). */
+  async people(ctx: TenantContext, q: string) {
+    return this.tx(ctx, async (tx, c) => {
+      const words = q.split(/\s+/).filter(Boolean).slice(0, 4);
+      const rows = await tx.employee.findMany({
+        where: { organizationId: c.organizationId, AND: words.map((w) => ({ OR: [{ givenName: { contains: w, mode: 'insensitive' as const } }, { familyName: { contains: w, mode: 'insensitive' as const } }, { preferredName: { contains: w, mode: 'insensitive' as const } }] })) },
+        select: { id: true, givenName: true, familyName: true, preferredName: true },
+        orderBy: [{ givenName: 'asc' }, { familyName: 'asc' }],
+        take: 20,
+      });
+      return rows.map((e) => ({ id: e.id, name: personName(e) }));
+    });
+  }
+
+  // ------------------------------------------------------------------------------------------ the reporter (answer 45)
+
+  /** Founder answer 45: the accidents the person reported, as My cases rows: the status only (received / closed). */
+  async mine(ctx: TenantContext) {
+    return this.tx(ctx, async (tx, c) => {
+      const rows = await tx.accidentCase.findMany({ where: { organizationId: c.organizationId, reporterUserId: c.userId! }, orderBy: { filedAt: 'desc' }, take: 200 });
+      const closed = new Set((await tx.accidentStep.findMany({ where: { organizationId: c.organizationId, caseId: { in: rows.map((r) => r.id) }, kind: 'closed' }, select: { caseId: true } })).map((x) => x.caseId));
+      return rows.map((r) => ({ id: r.id, ref: caseNumber(r.number), kind: 'accident' as const, role: 'reporter' as const, stage: closed.has(r.id) ? 'Closed' : 'Received', status: closed.has(r.id) ? ('closed' as const) : ('open' as const), next: null, unread: 0 }));
+    });
+  }
+
+  /** One report for its reporter: number, status and date only. Never the injury, medical details or the team. */
+  async mineOne(ctx: TenantContext, id: string) {
+    return this.tx(ctx, async (tx, c) => {
+      const r = await tx.accidentCase.findFirst({ where: { organizationId: c.organizationId, id, reporterUserId: c.userId! } });
+      if (!r) throw new NotFoundException(NOT_FOUND);
+      const closed = await tx.accidentStep.findFirst({ where: { organizationId: c.organizationId, caseId: r.id, kind: 'closed' }, select: { id: true } });
+      await audit(tx, c, 'accident.viewed', 'accident_case', r.id, { view: 'reporter', medicalShown: false });
+      return { id: r.id, ref: caseNumber(r.number), kind: 'accident' as const, role: 'reporter' as const, stage: closed ? 'Closed' : 'Received', status: closed ? ('closed' as const) : ('open' as const), openedOn: iso(r.occurredOn), dates: [], datesSource: '', messages: [], outcome: null, appealUntil: null };
     });
   }
 
@@ -186,7 +227,7 @@ export class AccidentsService {
       if (dto.injuredKind === 'employee') {
         const e = await tx.employee.findFirst({ where: { organizationId: org, id: dto.injuredEmployeeId! }, select: { givenName: true, familyName: true, preferredName: true } });
         if (!e) throw new BadRequestException('Choose the injured person from the list.');
-        name = e.preferredName ?? [e.givenName, e.familyName].filter(Boolean).join(' ');
+        name = personName(e);
       }
       const last = await tx.accidentCase.aggregate({ where: { organizationId: org }, _max: { number: true } });
       const row = await tx.accidentCase.create({
@@ -290,7 +331,7 @@ export class AccidentsService {
         const manager = await this.managerUser(tx, org, l.row.injuredEmployeeId);
         if (!manager || manager !== c.userId) throw new NotFoundException(NOT_FOUND);
         await audit(tx, c, 'accident.viewed', 'accident_case', l.row.id, { view: 'manager', medicalShown: false });
-        return { view: 'manager' as const, id: l.row.id, number: caseNumber(l.row.number), injuredName: l.row.injuredName, leaveFrom: l.facts.leaveFrom ?? null, leaveTo: l.facts.leaveTo ?? null };
+        return { view: 'manager' as const, id: l.row.id, number: caseNumber(l.row.number), injuredName: l.row.injuredName, leaveFrom: l.facts.leaveFrom ?? null, leaveTo: l.facts.leaveTo ?? null, leaveStatus: (await this.leaveRequest(tx, l))?.status ?? null };
       }
       const today = todayIst();
       const esi = await this.esiCovered(tx, l);
@@ -327,7 +368,7 @@ export class AccidentsService {
         ipNumber: l.facts.ipNumber ?? null,
         hospital: l.facts.hospital ?? null,
         handler: l.facts.handlerUserId ? { id: l.facts.handlerUserId, name: name(l.facts.handlerUserId) } : null,
-        leave: l.facts.leaveFrom && l.facts.leaveTo ? { from: l.facts.leaveFrom, to: l.facts.leaveTo, days: leaveDays } : null,
+        leave: l.facts.leaveFrom && l.facts.leaveTo ? { from: l.facts.leaveFrom, to: l.facts.leaveTo, days: leaveDays, inTime: await this.leaveRequest(tx, l) } : null,
         statements: l.steps.filter((s) => s.kind === 'statement').map((s) => ({ id: s.id, ...(s.data as { who: string; text: string }), by: name(s.actorUserId), at: s.at.toISOString() })),
         photos: photoIds.flatMap((fid) => fileRows.filter((f) => f.id === fid).map((f) => ({ id: f.id, name: f.fileName, size: f.size, scan: scan(f.scanStatus) }))),
         ...k,
@@ -392,10 +433,23 @@ export class AccidentsService {
         if (to < from) throw new BadRequestException('The last day of leave can’t be before the first.');
         if (from < iso(l.row.occurredOn)) throw new BadRequestException('Injury leave can’t start before the accident.');
       }
+      // Founder answer 43: an employee's injury leave becomes a leave request in Time (the company's leave type, its own
+      // rules and the normal approval chain). A contract worker has no leave in Time; the dates stay on the case.
+      const notices: Notice[] = [];
+      if ((data.leaveFrom || data.leaveTo) && l.row.injuredEmployeeId) {
+        const prev = l.facts.leaveRequestId ? await tx.leaveRequest.findFirst({ where: { organizationId: c.organizationId, id: l.facts.leaveRequestId }, select: { status: true } }) : null;
+        if (prev && !LEAVE_GONE.includes(prev.status)) throw new ConflictException({ statusCode: 409, code: 'ACCIDENT_LEAVE_IN_TIME', message: 'Injury leave for this case is already in Time. To change the dates, cancel that leave in Time first, then record the new dates here.' });
+        const code = (await settingFor(tx, c, 'accident.injury_leave_type', ANY_ENTITY)).trim();
+        const type = code ? await tx.leaveType.findFirst({ where: { organizationId: c.organizationId, code, active: true }, select: { id: true } }) : null;
+        if (!type) throw new ConflictException({ statusCode: 409, code: 'ACCIDENT_NO_LEAVE_TYPE', message: `Your company has no active leave type with the code ${code || '(none set)'}. HR adds it in Time › Leave types, or changes "Accidents: the leave type code for injury leave" in Company rules.` });
+        const r = await this.leave.applyForCase(tx, c, l.row.injuredEmployeeId, { leaveTypeId: type.id, from: from!, to: to!, reason: `Injury leave (accident case ${caseNumber(l.row.number)})` }, notices);
+        data.leaveRequestId = r.id;
+      }
       await this.step(tx, c, l, 'facts', data as Record<string, unknown>, 'accident.facts');
       const manager = data.leaveFrom || data.leaveTo ? await this.managerUser(tx, c.organizationId, l.row.injuredEmployeeId) : null;
-      return { l, handler: data.handlerUserId && data.handlerUserId !== l.facts.handlerUserId ? data.handlerUserId : null, manager };
+      return { l, handler: data.handlerUserId && data.handlerUserId !== l.facts.handlerUserId ? data.handlerUserId : null, manager, notices };
     });
+    if (out.notices.length) await this.leave.sendNotices(ctx, out.notices).catch((e: Error) => this.logger.warn(`leave notices: ${e.message}`));
     const n = caseNumber(out.l.row.number);
     const link = `/yx/desk/accidents/${out.l.row.id}`;
     const send = (to: string, text: string) =>
