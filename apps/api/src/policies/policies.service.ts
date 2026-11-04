@@ -12,7 +12,7 @@ import { settingFor } from '../people/probation';
 import { safeName } from '../service-desk/attachments.service';
 import { cleanHtml, htmlToText } from '../service-desk/rich-text';
 import { toCsv } from '../time/leave-rules';
-import type { AcknowledgeDto, DraftDto, NewPolicyDto, PolicyChangeDto, RemindDto, SendBackDto, SubmitDto } from './dto';
+import type { AcknowledgeDto, DraftDto, NewPolicyDto, PolicyChangeDto, PublishDto, RemindDto, SendBackDto, SubmitDto } from './dto';
 import { ackVersionNumber, daysBetween, daysSetting, dueOn, isDone, policyCode, remindNow, sameName, statusOf, tellManagerNow } from './policy-rules';
 
 // HLP-10 / HLP-11 company policies (rules: docs/yukthix/helpdesk-design-map.md section 4d). HR (policy.manage) writes a
@@ -244,6 +244,8 @@ export class PoliciesService {
         writtenByMe: v.writtenBy === c.userId || v.aiApprovedBy === c.userId,
         publishedBy: v.publishedBy ? (names.get(v.publishedBy) ?? null) : null,
         needsSecondPerson: v.needsSecondPerson,
+        // HLP-14: the counsel note the publisher ticks as seen (null when none).
+        counselNote: v.counselNote,
         sentBackNote: v.sentBackNote,
         acknowledged: ackCount.get(v.id) ?? 0,
         version: v.version,
@@ -468,7 +470,7 @@ export class PoliciesService {
     return rows.map((r) => r.id);
   }
 
-  async publish(ctx: TenantContext, id: string, dto: SubmitDto) {
+  async publish(ctx: TenantContext, id: string, dto: PublishDto) {
     const out = await this.tx(ctx, async (tx, c) => {
       const org = c.organizationId;
       const p = await this.policy(tx, org, id);
@@ -478,8 +480,11 @@ export class PoliciesService {
       if (v.needsSecondPerson && v.writtenBy === c.userId) throw new ForbiddenException({ statusCode: 403, code: 'POLICY_SECOND_PERSON', message: 'Someone other than the writer publishes this version. Ask another publisher.' });
       // HLP-14: the person who approved the AI draft never publishes it (also a database CHECK).
       if (v.aiApprovedBy && v.aiApprovedBy === c.userId) throw new ForbiddenException({ statusCode: 403, code: 'POLICY_SECOND_PERSON', message: 'You approved this draft, so someone else publishes it. Ask another publisher.' });
+      // HLP-14: a counsel note (industry rules not checked) is ticked as seen by the publisher; never a block (database CHECK).
+      if (v.counselNote && dto.counselSeen !== true) throw new BadRequestException({ statusCode: 400, code: 'POLICY_COUNSEL_UNSEEN', message: 'Tick that you have read the counsel note first.' });
+      if (v.counselNote) await audit(tx, c, 'policy.counsel_note_seen', 'policy_version', v.id, { policyId: p.id, number: v.number, note: v.counselNote });
       const today = todayIst();
-      await tx.policyVersion.update({ where: { id: v.id }, data: { status: 'published', publishedBy: c.userId!, publishedAt: new Date(), effectiveOn: new Date(`${today}T00:00:00Z`), bodySha256: sha256(v.bodyHtml), version: { increment: 1 } } });
+      await tx.policyVersion.update({ where: { id: v.id }, data: { status: 'published', ...(v.counselNote ? { counselSeenBy: c.userId!, counselSeenAt: new Date() } : {}), publishedBy: c.userId!, publishedAt: new Date(), effectiveOn: new Date(`${today}T00:00:00Z`), bodySha256: sha256(v.bodyHtml), version: { increment: 1 } } });
       await audit(tx, c, 'policy.version_published', 'policy_version', v.id, { policyId: p.id, number: v.number, reack: v.reack || v.number === 1, writtenBy: v.writtenBy });
       // The notice on publish counts as the first reminder for everyone who must acknowledge.
       const s = await this.settings(tx, c);

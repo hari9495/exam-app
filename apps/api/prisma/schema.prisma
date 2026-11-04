@@ -11704,6 +11704,10 @@ model PolicyVersion {
   publishedAt       DateTime? @map("published_at") @db.Timestamptz(3)
   /// HLP-14: who approved the AI draft this version came from; that person never publishes it (CHECK).
   aiApprovedBy      String?   @map("ai_approved_by") @db.Uuid
+  /// HLP-14: the counsel note (industry rules not checked); never published until the publisher ticks it as seen (CHECK).
+  counselNote       String?   @map("counsel_note") @db.VarChar(300)
+  counselSeenBy     String?   @map("counsel_seen_by") @db.Uuid
+  counselSeenAt     DateTime? @map("counsel_seen_at") @db.Timestamptz(3)
   version           Int       @default(1)
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -11750,11 +11754,27 @@ model PolicyAiDraft {
   approvedAt      DateTime? @map("approved_at") @db.Timestamptz(3)
   policyId        String?   @map("policy_id") @db.Uuid
   policyVersionId String?   @map("policy_version_id") @db.Uuid
+  discardedBy     String?   @map("discarded_by") @db.Uuid
+  discardedAt     DateTime? @map("discarded_at") @db.Timestamptz(3)
+  /// manual or expired (the daily clean-up).
+  discardReason   String?   @map("discard_reason") @db.VarChar(10)
   version         Int       @default(1)
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("policy_ai_drafts")
+}
+
+/// HLP-14: the industries the policy writer offers (global, read-only to the app) and the law tables each one adds.
+model PolicyIndustry {
+  code        String   @id @db.VarChar(30)
+  label       String   @db.VarChar(80)
+  lawStatutes String[] @default([]) @map("law_statutes") @db.VarChar(20)
+  sort        Int      @default(100)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("policy_industries")
 }
 
 /// A reminder sent about a policy version (append-only; one per person, kind and day).

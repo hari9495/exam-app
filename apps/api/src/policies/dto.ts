@@ -94,6 +94,17 @@ export class SubmitDto {
   version!: number;
 }
 
+export class PublishDto {
+  @IsInt()
+  @Min(1)
+  version!: number;
+
+  /** HLP-14: the publisher read the counsel note on the version (required when it has one). */
+  @IsOptional()
+  @IsBoolean()
+  counselSeen?: boolean;
+}
+
 export class SendBackDto {
   @IsInt()
   @Min(1)

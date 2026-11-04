@@ -5,7 +5,9 @@ import request from 'supertest';
 import * as argon2 from 'argon2';
 import cookieParser from 'cookie-parser';
 import { randomUUID } from 'crypto';
+import { PrismaClient } from '@prisma/client';
 import { AiApiKeyResolverService, AiNotConfiguredError, BlobStorageService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { PolicyWriterService } from '../src/policies/policy-writer.service';
 import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
@@ -48,7 +50,11 @@ describe('HLP-14 Write policies with AI', () => {
     { title: 'Records', text: 'YukthiX keeps every request.' },
   ];
   const ANSWERS = { mode: 'ai', type: 'leave', industry: 'fmcg', states: ['IN-KA', 'IN-TN'], headcount: 248, workPattern: 'shift', earned: 15, sick: 12, casual: 12, carry: 45, notes: 'Plant staff work Sundays in season.' };
-  type View = { id: string; status: string; version: number; mode: string; values: Record<string, number>; clauses: { id: string; title: string; text: string; source: string; ref?: string; editable: boolean; finding?: string }[]; findings: { id: string; status: string; fix?: { key: string; value: number } }[]; openFindings: number; target: { title: string; policyId: string | null; number: number }; approvedByMe: boolean };
+  type View = { id: string; status: string; version: number; discardReason?: string | null; discardedBy?: string | null; counselNote?: string | null; mode: string; values: Record<string, number>; clauses: { id: string; title: string; text: string; source: string; ref?: string; editable: boolean; finding?: string }[]; findings: { id: string; status: string; fix?: { key: string; value: number } }[]; openFindings: number; target: { title: string; policyId: string | null; number: number }; approvedByMe: boolean };
+  // Platform data (industries, law tables) is written with the schema owner, never the app role (which only reads it).
+  const owner = new PrismaClient({ datasources: { db: { url: process.env.MIGRATION_DATABASE_URL } } });
+  const IND = `t${run}`;
+  const STATUTE = `IN.T${run}`;
   const view = async (id: string, who: Who = 'manager') => (await w(who, 'get', `/drafts/${id}`).expect(200)).body as View;
 
   beforeAll(async () => {
@@ -112,6 +118,12 @@ describe('HLP-14 Write policies with AI', () => {
   }, 120_000);
 
   afterAll(async () => {
+    // The test industry (a platform row: the owner connection, as a platform admin would add one).
+    await owner.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.is_super_admin', 'on', true)`;
+      await tx.$executeRaw`DELETE FROM policy_industries WHERE code = ${IND}`;
+    });
+    await owner.$disconnect();
     await tenantPrisma.forTenant(SUPER, async (tx) => {
       for (const k of ['A', 'B'] as const) await tx.organization.delete({ where: { id: org[k].id } }).catch(() => undefined);
     });
@@ -127,7 +139,13 @@ describe('HLP-14 Write policies with AI', () => {
     const home = (await w('manager', 'get').expect(200)).body;
     expect(home.ai).toBe('on');
     expect(home.latest).toBeNull();
-    expect(home.options.types.map((t: { value: string }) => t.value)).toEqual(['leave', 'work_from_home', 'notice']);
+    expect(home.options.types.map((t: { value: string }) => t.value)).toEqual(['leave', 'work_from_home', 'notice', 'conduct', 'posh']);
+    // Industries come from the table (answer: no deploy for a new one); probation starts at the company default.
+    expect(home.options.industries.slice(0, 3).map((i: { value: string }) => i.value)).toEqual(['manufacturing', 'fmcg', 'it_services']);
+    expect(home.options.values.notice.find((v: { key: string }) => v.key === 'probationMonths').default).toBe(6);
+    await setting('probation.default_months', '9');
+    expect((await w('manager', 'get').expect(200)).body.options.values.notice.find((v: { key: string }) => v.key === 'probationMonths').default).toBe(9);
+    await setting('probation.default_months', null);
     expect(home.options.values.leave.map((v: { key: string }) => v.key)).toEqual(['earned', 'sick', 'casual', 'carry']);
   });
 
@@ -275,7 +293,16 @@ describe('HLP-14 Write policies with AI', () => {
     // The second person sees it as someone else's and publishes it: version 1 in the history.
     const seen = (await desk('second', 'get', `/policies/${ids.pol}`).expect(200)).body;
     expect(seen.open.writtenByMe).toBe(false);
-    await desk('second', 'post', `/policies/${ids.pol}/publish`).send({ version: seen.open.version }).expect(201);
+    // The industry's own rules are not checked: the note travels with the version; the publisher must tick it.
+    expect(seen.open.counselNote).toBe('Law check covers general labour law only; Food and consumer goods rules are not checked yet; review with counsel');
+    expect((await desk('second', 'post', `/policies/${ids.pol}/publish`).send({ version: seen.open.version }).expect(400)).body.code).toBe('POLICY_COUNSEL_UNSEEN');
+    await desk('second', 'post', `/policies/${ids.pol}/publish`).send({ version: seen.open.version, counselSeen: false }).expect(400);
+    await expect(inA((tx) => tx.policyVersion.update({ where: { id: seen.open.id }, data: { status: 'published', publishedBy: users.second, publishedAt: new Date(), effectiveOn: new Date(), bodySha256: 'a'.repeat(64) } }))).rejects.toThrow(/check/i);
+    await desk('second', 'post', `/policies/${ids.pol}/publish`).send({ version: seen.open.version, counselSeen: true }).expect(201);
+    const seenLog = await inA((tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, action: 'policy.counsel_note_seen', entityId: seen.open.id } }));
+    expect(seenLog).toHaveLength(1);
+    expect(seenLog[0].actorUserId).toBe(users.second);
+    expect(await inA((tx) => tx.policyVersion.findUnique({ where: { id: seen.open.id }, select: { counselSeenBy: true } }))).toEqual({ counselSeenBy: users.second });
     const after = (await desk('second', 'get', `/policies/${ids.pol}`).expect(200)).body;
     expect(after.current).toMatchObject({ number: 1 });
     expect(after.open).toBeNull();
@@ -293,11 +320,120 @@ describe('HLP-14 Write policies with AI', () => {
     const d = (await desk('second', 'get', `/policies/${ids.pol}`).expect(200)).body;
     expect(d.open).toMatchObject({ number: 2, status: 'waiting', changeSummary: expect.stringContaining('Write policies with AI') });
     await desk('second', 'post', `/policies/${ids.pol}/publish`).send({ version: d.open.version }).expect(403);
-    await desk('manager', 'post', `/policies/${ids.pol}/publish`).send({ version: d.open.version }).expect(201);
+    await desk('manager', 'post', `/policies/${ids.pol}/publish`).send({ version: d.open.version, counselSeen: true }).expect(201);
     // While a version is being written, a new draft cannot be approved into the same policy.
     await desk('manager', 'put', `/policies/${ids.pol}/draft`).send({ bodyHtml: '<p>Manual change.</p>', changeSummary: 'Manual.' }).expect(200);
     const third = (await w('manager', 'post', '/drafts').send({ ...ANSWERS, earned: 18 }).expect(201)).body;
     const t = await view(third.id);
     expect((await w('manager', 'post', `/drafts/${third.id}/approve`).send({ version: t.version }).expect(409)).body.code).toBe('POLICY_VERSION_OPEN');
+  });
+
+  // ---------------------------------------------------------------------------------------------- round 2
+
+  it('discard: the manager sets an unapproved draft aside (audited); nothing more happens to it; others are refused', async () => {
+    const r = (await w('manager', 'post', '/drafts').send({ ...ANSWERS, mode: 'starter' }).expect(201)).body;
+    const v = await view(r.id);
+    await w('hrExec', 'post', `/drafts/${r.id}/discard`).send({ version: v.version }).expect(403);
+    await w('hrB', 'post', `/drafts/${r.id}/discard`).send({ version: v.version }).expect(404);
+    await w('acting', 'post', `/drafts/${r.id}/discard`).send({ version: v.version }).expect(403);
+    await w('manager', 'post', `/drafts/${r.id}/discard`).send({ version: v.version + 1 }).expect(409);
+    await w('manager', 'post', `/drafts/${r.id}/discard`).send({}).expect(400);
+    expect((await w('manager', 'post', `/drafts/${r.id}/discard`).send({ version: v.version }).expect(201)).body).toEqual({ status: 'discarded' });
+    const after = await view(r.id);
+    expect(after).toMatchObject({ status: 'discarded', discardReason: 'manual', discardedBy: `manager ${run}` });
+    expect(after.clauses.every((c) => !c.editable)).toBe(true);
+    await w('manager', 'post', `/drafts/${r.id}/discard`).send({ version: after.version }).expect(409);
+    await w('manager', 'put', `/drafts/${r.id}`).send({ version: after.version, earned: 20 }).expect(409);
+    await w('manager', 'post', `/drafts/${r.id}/approve`).send({ version: after.version }).expect(409);
+    expect((await w('manager', 'get').expect(200)).body.latest?.id).not.toBe(r.id);
+    expect(await inA((tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'policy.ai_draft_discarded', entityId: r.id } }))).toBe(1);
+    await expect(inA((tx) => tx.policyAiDraft.update({ where: { id: r.id }, data: { status: 'draft' } }))).rejects.toThrow(/never changes/);
+  });
+
+  it('clean-up: drafts untouched for the company days (setting, default 90) are discarded once; younger ones stay', async () => {
+    await setting('policy.ai_draft.discard_days', '30');
+    const oldOne = (await w('manager', 'post', '/drafts').send({ ...ANSWERS, mode: 'starter' }).expect(201)).body.id as string;
+    const young = (await w('manager', 'post', '/drafts').send({ ...ANSWERS, mode: 'starter' }).expect(201)).body.id as string;
+    await inA((tx) => tx.$executeRaw`UPDATE policy_ai_drafts SET updated_at = now() - interval '31 days' WHERE id = ${oldOne}::uuid`);
+    await inA((tx) => tx.$executeRaw`UPDATE policy_ai_drafts SET updated_at = now() - interval '29 days' WHERE id = ${young}::uuid`);
+    const writer = app.get(PolicyWriterService);
+    expect(await writer.discardExpired(new Date(), org.A.id)).toBe(1);
+    expect((await view(oldOne)).status).toBe('discarded');
+    expect((await view(oldOne)).discardReason).toBe('expired');
+    expect((await view(young)).status).toBe('draft');
+    const n = await inA((tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'policy.ai_draft_discarded', entityId: oldOne } }));
+    expect(n).toBe(1);
+    await writer.discardExpired(new Date(), org.A.id);
+    expect(await inA((tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'policy.ai_draft_discarded', entityId: oldOne } }))).toBe(1);
+    // At the default (90 days) the 31-day-old kind of draft would stay.
+    await setting('policy.ai_draft.discard_days', null);
+    await inA((tx) => tx.$executeRaw`UPDATE policy_ai_drafts SET updated_at = now() - interval '89 days' WHERE id = ${young}::uuid`);
+    await writer.discardExpired(new Date(), org.A.id);
+    expect((await view(young)).status).toBe('draft');
+  });
+
+  it('POSH follows IN.POSH (committee make-up, time limits, verify); a short committee blocks until fixed', async () => {
+    const r = (await w('manager', 'post', '/drafts').send({ ...ANSWERS, mode: 'starter', type: 'posh', icMembers: 3, womenMembers: 1 }).expect(201)).body;
+    let v = await view(r.id);
+    expect(v.clauses.filter((c) => c.source === 'law').map((c) => c.ref)).toEqual(['IN.POSH 2013-v2 (verify)', 'IN.POSH 2013-v2 (verify)']);
+    expect(v.clauses.find((c) => c.id === 'law-posh-time')!.text).toContain('within 90 days');
+    expect(v.findings.filter((f) => f.status === 'open').map((f) => f.id)).toEqual(['f-posh-size', 'f-posh-women']);
+    expect((await w('manager', 'post', `/drafts/${r.id}/approve`).send({ version: v.version }).expect(409)).body.code).toBe('POLICY_LAW_FINDINGS');
+    await w('manager', 'put', `/drafts/${r.id}`).send({ version: v.version, icMembers: 4, womenMembers: 5 }).expect(400);
+    await w('manager', 'put', `/drafts/${r.id}`).send({ version: v.version, icMembers: 4, womenMembers: 2 }).expect(200);
+    v = await view(r.id);
+    expect(v.openFindings).toBe(0);
+    const a = (await w('manager', 'post', `/drafts/${r.id}/approve`).send({ version: v.version }).expect(201)).body;
+    expect(a).toMatchObject({ title: 'Prevention of sexual harassment (POSH) policy', number: 1 });
+    await w('manager', 'post', '/drafts').send({ ...ANSWERS, mode: 'starter', type: 'posh', icMembers: 21, womenMembers: 2 }).expect(400);
+  });
+
+  it('code of conduct: the company AI drafts it; no law table (counsel); same approval path', async () => {
+    const r = (await w('manager', 'post', '/drafts').send({ ...ANSWERS, type: 'conduct', notes: undefined }).expect(201)).body;
+    const v = await view(r.id);
+    expect(v.clauses.every((c) => c.source === 'ai')).toBe(true);
+    expect(v.findings.map((f) => f.status)).toEqual(['unchecked']);
+    expect((await w('manager', 'post', `/drafts/${r.id}/approve`).send({ version: v.version }).expect(201)).body.title).toBe('Code of conduct');
+  });
+
+  it('Maharashtra, Telangana and Delhi leave tables (verify) are checked; a rate stays unchecked', async () => {
+    const r = (await w('manager', 'post', '/drafts').send({ ...ANSWERS, mode: 'starter', states: ['IN-MH', 'IN-TS', 'IN-DL'], earned: 12, sick: 12, casual: 7, carry: 60 }).expect(201)).body;
+    const v = await view(r.id);
+    const by = (id: string) => v.findings.find((f) => f.id === id);
+    expect(by('f-IN-MH-casual')).toMatchObject({ status: 'open', fix: { key: 'casual', value: 8 } });
+    expect(by('f-IN-MH-note1')).toMatchObject({ status: 'unchecked' });
+    expect(by('f-IN-TS-earned')).toMatchObject({ status: 'open', fix: { key: 'earned', value: 15 } });
+    expect(by('f-IN-TS-casual')).toMatchObject({ status: 'open', fix: { key: 'casual', value: 12 } });
+    expect(by('f-IN-DL-earned')).toMatchObject({ status: 'open', fix: { key: 'earned', value: 15 } });
+    expect(by('f-IN-DL-casual-sick')).toMatchObject({ status: 'resolved' });
+    expect(v.clauses.filter((c) => c.source === 'law' && c.ref?.startsWith('IN.SE')).every((c) => c.ref!.endsWith('(verify)'))).toBe(true);
+  });
+
+  it('a new industry needs no deploy; with its own leave table it is checked and carries no counsel note; an inactive or unknown one is refused', async () => {
+    await owner.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.is_super_admin', 'on', true)`;
+      await tx.$executeRaw`INSERT INTO statutory_rule_sets (statute, jurisdiction, version, valid_from, values, source, verify) VALUES (${STATUTE}, 'IN', 'e2e', '2026-01-01', ${JSON.stringify({ floors: [{ kinds: ['earned'], days: 21 }] })}::jsonb, 'HLP-14 e2e test table.', true)`;
+      await tx.$executeRaw`INSERT INTO policy_industries (code, label, law_statutes, sort) VALUES (${IND}, ${`Mines ${run}`}, ARRAY[${STATUTE}]::varchar[], 5)`;
+    });
+    expect((await w('manager', 'get').expect(200)).body.options.industries[0]).toEqual({ value: IND, label: `Mines ${run}` });
+    const r = (await w('manager', 'post', '/drafts').send({ ...ANSWERS, mode: 'starter', industry: IND, earned: 18 }).expect(201)).body;
+    let v = await view(r.id);
+    expect(v.findings.find((f) => f.id === `f-ind-${STATUTE}-IN-earned`)).toMatchObject({ status: 'open', fix: { key: 'earned', value: 21 } });
+    expect((v as unknown as { counselNote: string | null }).counselNote).toBeNull();
+    await w('manager', 'put', `/drafts/${r.id}`).send({ version: v.version, earned: 21 }).expect(200);
+    v = await view(r.id);
+    expect(v.openFindings).toBe(0);
+    // The same industry for a notice policy: its table says nothing about notice, so the note shows.
+    const n = (await w('manager', 'post', '/drafts').send({ ...ANSWERS, mode: 'starter', type: 'notice', industry: IND, noticeDays: 30, probationMonths: 6 }).expect(201)).body;
+    expect(((await view(n.id)) as unknown as { counselNote: string }).counselNote).toBe(`Law check covers general labour law only; Mines ${run} rules are not checked yet; review with counsel`);
+    await owner.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.is_super_admin', 'on', true)`;
+      await tx.$executeRaw`UPDATE policy_industries SET active = false WHERE code = ${IND}`;
+    });
+    expect((await w('manager', 'post', '/drafts').send({ ...ANSWERS, mode: 'starter', industry: IND }).expect(400)).body.code).toBe('POLICY_INDUSTRY_UNKNOWN');
+    expect((await w('manager', 'post', '/drafts').send({ ...ANSWERS, mode: 'starter', industry: 'no_such_one' }).expect(400)).body.code).toBe('POLICY_INDUSTRY_UNKNOWN');
+    await w('manager', 'post', '/drafts').send({ ...ANSWERS, mode: 'starter', industry: 'Bad Code!' }).expect(400);
+    // The app role can never write the industry list.
+    await expect(prisma.$executeRaw`INSERT INTO policy_industries (code, label) VALUES ('hack', 'Hack')`).rejects.toThrow();
   });
 });

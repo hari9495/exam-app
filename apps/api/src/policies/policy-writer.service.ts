@@ -12,7 +12,6 @@ import { policyCode } from './policy-rules';
 import {
   CLAUSES_SCHEMA,
   CLAUSE_TEXT_MAX,
-  INDUSTRIES,
   NOTES_MAX,
   PATTERNS,
   POLICY_TYPES,
@@ -24,6 +23,7 @@ import {
   bodyHtml,
   cleanText,
   findingFor,
+  industryNote,
   lawClauses,
   lawFindings,
   looksPersonal,
@@ -34,7 +34,9 @@ import {
   ruleClauses,
   type Answers,
   type Clause,
-  type Maternity,
+  type IndustryLaw,
+  type Law,
+  type Posh,
   type PolicyType,
   type StateLaw,
   type Values,
@@ -90,21 +92,41 @@ export class PolicyWriterService {
     }
   }
 
-  /** The dated leave law valid today for the chosen states, and maternity (IN.LEAVE). */
-  private async law(tx: Tx, states: string[], today: string): Promise<{ laws: StateLaw[]; maternity: Maternity | null }> {
+  /** The industries offered (a table: a new one needs no deploy). */
+  private industries(tx: Tx) {
+    return tx.policyIndustry.findMany({ where: { active: true }, orderBy: [{ sort: 'asc' }, { label: 'asc' }] });
+  }
+
+  /**
+   * The dated law valid today: leave per state (IN.SE) and maternity (IN.LEAVE), POSH (IN.POSH), and the industry's own
+   * tables (valid for the whole country or a chosen state); an industry table with leave floors is checked like a
+   * state's, any other named statute counts as not checked.
+   */
+  private async law(tx: Tx, states: string[], today: string, industry: string): Promise<Law> {
     const on = new Date(`${today}T00:00:00Z`);
     const valid = { validFrom: { lte: on }, OR: [{ validTo: null }, { validTo: { gte: on } }], status: 'published' };
-    const rows = await tx.statutoryRuleSet.findMany({ where: { statute: 'IN.SE', jurisdiction: { in: states }, ...valid }, orderBy: { validFrom: 'desc' } });
-    const laws: StateLaw[] = [];
-    for (const s of states) {
-      const r = rows.find((x) => x.jurisdiction === s);
-      if (!r) continue;
-      const v = (r.values ?? {}) as { floors?: StateLaw['floors']; carry?: Record<string, number> };
-      laws.push({ state: s, ref: `IN.SE ${s.replace('IN-', '')} ${r.version}`, floors: v.floors ?? [], carry: v.carry ?? {} });
-    }
+    const asTable = (r: { statute: string; jurisdiction: string; version: string; values: Prisma.JsonValue; verify: boolean }): StateLaw => {
+      const v = (r.values ?? {}) as { floors?: StateLaw['floors']; carry?: Record<string, number>; notes?: string[] };
+      return { state: r.jurisdiction, ref: `${r.statute} ${r.jurisdiction.replace('IN-', '')} ${r.version}${r.verify ? ' (verify)' : ''}`, floors: v.floors ?? [], carry: v.carry ?? {}, notes: v.notes };
+    };
+    const latest = <T extends { statute: string; jurisdiction: string }>(rows: T[]) => rows.filter((r, i) => rows.findIndex((x) => x.statute === r.statute && x.jurisdiction === r.jurisdiction) === i);
+    const se = latest(await tx.statutoryRuleSet.findMany({ where: { statute: 'IN.SE', jurisdiction: { in: states }, ...valid }, orderBy: { validFrom: 'desc' } }));
+    const leave = states.map((s) => se.find((r) => r.jurisdiction === s)).filter((r): r is NonNullable<typeof r> => Boolean(r)).map(asTable);
     const m = await tx.statutoryRuleSet.findFirst({ where: { statute: 'IN.LEAVE', jurisdiction: 'IN', ...valid }, orderBy: { validFrom: 'desc' } });
     const mv = (m?.values ?? {}) as { maternityWeeks?: number; maternityWeeksThirdChild?: number };
-    return { laws, maternity: m && mv.maternityWeeks ? { ref: `IN.LEAVE ${m.version}`, weeks: mv.maternityWeeks, thirdChildWeeks: mv.maternityWeeksThirdChild ?? mv.maternityWeeks } : null };
+    const p = await tx.statutoryRuleSet.findFirst({ where: { statute: 'IN.POSH', jurisdiction: 'IN', ...valid }, orderBy: { validFrom: 'desc' } });
+    const pv = (p?.values ?? {}) as Partial<Posh>;
+    const ind = await tx.policyIndustry.findFirst({ where: { code: industry } });
+    const statutes = ind?.lawStatutes ?? [];
+    const own = statutes.length ? latest(await tx.statutoryRuleSet.findMany({ where: { statute: { in: statutes }, jurisdiction: { in: ['IN', ...states] }, ...valid }, orderBy: { validFrom: 'desc' } })) : [];
+    const tables = own.map(asTable).filter((t) => t.floors.length || Object.keys(t.carry).length);
+    const industryLaw: IndustryLaw = { code: industry, label: ind?.label ?? industry, statutes, tables, missing: statutes.filter((st) => !own.some((r) => r.statute === st && tables.some((t) => t.ref.startsWith(`${st} `)))) };
+    return {
+      leave,
+      maternity: m && mv.maternityWeeks ? { ref: `IN.LEAVE ${m.version}`, weeks: mv.maternityWeeks, thirdChildWeeks: mv.maternityWeeksThirdChild ?? mv.maternityWeeks } : null,
+      posh: p && pv.inquiryDays ? { ref: `IN.POSH ${p.version}${p.verify ? ' (verify)' : ''}`, ic: pv.ic ?? null, filingMonths: pv.filingMonths ?? 3, filingExtensionMonths: pv.filingExtensionMonths ?? 3, inquiryDays: pv.inquiryDays, reportDays: pv.reportDays ?? 10, actionDays: pv.actionDays ?? 60 } : null,
+      industry: industryLaw,
+    };
   }
 
   private async draft(tx: Tx, org: string, id: string): Promise<Draft> {
@@ -119,9 +141,9 @@ export class PolicyWriterService {
     const a = d.answers as unknown as Answers;
     const values = d.values as unknown as Values;
     const prose = (d.clauses as unknown as Prose[]).map((p): Clause => ({ ...p, source: d.mode === 'ai' ? 'ai' : 'company', editable: d.status === 'draft' }));
-    const { laws, maternity } = await this.law(tx, a.states, todayIst());
-    const findings = lawFindings(a.type, values, a.states, laws, prose);
-    const clauses = ordered(prose, ruleClauses(a.type, values), lawClauses(a.type, laws, maternity)).map((x) => ({ ...x, finding: findingFor(x.id, findings) }));
+    const law = await this.law(tx, a.states, todayIst(), a.industry);
+    const findings = lawFindings(a.type, values, a.states, law, prose, a.headcount);
+    const clauses = ordered(prose, ruleClauses(a.type, values), lawClauses(a.type, law)).map((x) => ({ ...x, finding: findingFor(x.id, findings) }));
     const target = TARGET[a.type];
     const policy = d.policyId
       ? await tx.policyDocument.findFirst({ where: { organizationId: org, id: d.policyId } })
@@ -131,7 +153,7 @@ export class PolicyWriterService {
     // An open version with no text yet (a policy just made in Policy admin) is filled in; one with text blocks.
     const emptyOpen = open && open.status !== 'waiting' && !htmlToText(open.bodyHtml).trim() ? open : null;
     const made = d.policyVersionId ? versions.find((v) => v.id === d.policyVersionId) : null;
-    const users = await tx.user.findMany({ where: { organizationId: org, id: { in: [d.createdBy, d.approvedBy].filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true, email: true } });
+    const users = await tx.user.findMany({ where: { organizationId: org, id: { in: [d.createdBy, d.approvedBy, d.discardedBy].filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true, email: true } });
     return {
       id: d.id,
       status: d.status,
@@ -139,11 +161,16 @@ export class PolicyWriterService {
       mode: d.mode,
       type: a.type,
       typeLabel: TYPE_LABEL[a.type],
-      answers: { industry: INDUSTRIES[a.industry] ?? a.industry, states: a.states.map((s) => STATES[s] ?? s), headcount: a.headcount, workPattern: PATTERNS[a.workPattern] ?? a.workPattern },
+      answers: { industry: law.industry.label, states: a.states.map((s) => STATES[s] ?? s), headcount: a.headcount, workPattern: PATTERNS[a.workPattern] ?? a.workPattern },
       values,
       clauses,
       findings,
       openFindings: findings.filter((f) => f.status === 'open').length,
+      /** Shown on the draft and carried to the version: the publisher ticks it as seen (never blocks approval). */
+      counselNote: industryNote(a.type, law.industry),
+      discardedBy: nameOf(users.find((u) => u.id === d.discardedBy)),
+      discardedAt: d.discardedAt?.toISOString() ?? null,
+      discardReason: d.discardReason,
       createdBy: nameOf(users.find((u) => u.id === d.createdBy)),
       createdAt: d.createdAt.toISOString(),
       approvedBy: nameOf(users.find((u) => u.id === d.approvedBy)),
@@ -166,16 +193,18 @@ export class PolicyWriterService {
   /** The page: AI state, the questionnaire's choices and the latest open draft. */
   home(ctx: TenantContext) {
     return this.tx(ctx, async (tx, c) => {
+      // Answer 108: probation starts from the company's own default (whole company; entity or grade overrides differ).
+      const probation = Math.min(12, Math.max(0, Number(await settingFor(tx, c, 'probation.default_months', { legalEntityId: '00000000-0000-0000-0000-000000000000' })) || 6));
       const latest = await tx.policyAiDraft.findFirst({ where: { organizationId: c.organizationId, status: 'draft' }, orderBy: { createdAt: 'desc' } });
       return {
         ai: await this.aiState(tx, c),
         latest: latest ? { id: latest.id, type: TYPE_LABEL[latest.policyType as PolicyType], createdAt: latest.createdAt.toISOString() } : null,
         options: {
           types: POLICY_TYPES.map((t) => ({ value: t, label: TYPE_LABEL[t] })),
-          industries: Object.entries(INDUSTRIES).map(([value, label]) => ({ value, label })),
+          industries: (await this.industries(tx)).map((i) => ({ value: i.code, label: i.label })),
           states: Object.entries(STATES).map(([value, label]) => ({ value, label })),
           patterns: Object.entries(PATTERNS).map(([value, label]) => ({ value, label })),
-          values: Object.fromEntries(POLICY_TYPES.map((t) => [t, Object.entries(VALUE_SPEC[t]).map(([key, s]) => ({ key, ...s }))])),
+          values: Object.fromEntries(POLICY_TYPES.map((t) => [t, Object.entries(VALUE_SPEC[t]).map(([key, s]) => ({ key, ...s, ...(key === 'probationMonths' ? { default: probation } : {}) }))])),
           notesMax: NOTES_MAX,
         },
       };
@@ -196,10 +225,12 @@ export class PolicyWriterService {
     if (looksPersonal(notes)) throw new BadRequestException({ statusCode: 400, code: 'POLICY_NOTES_PERSONAL', message: 'Leave emails and phone numbers out of the notes. Only your answers go to the AI.' });
     const answers: Answers = { type: dto.type, industry: dto.industry, states: dto.states, headcount: dto.headcount, workPattern: dto.workPattern, notes };
     const pre = await this.tx(ctx, async (tx, c) => {
+      const industry = await tx.policyIndustry.findFirst({ where: { code: dto.industry, active: true } });
+      if (!industry) throw new BadRequestException({ statusCode: 400, code: 'POLICY_INDUSTRY_UNKNOWN', message: 'Choose an industry from the list.' });
       if (notes && (await this.namesIn(tx, c.organizationId, notes))) throw new BadRequestException({ statusCode: 400, code: 'POLICY_NOTES_PERSONAL', message: 'Leave people’s names out of the notes. Only your answers go to the AI.' });
       const state = await this.aiState(tx, c);
       const org = await tx.organization.findFirst({ where: { id: c.organizationId }, select: { aiProvider: true } });
-      return { state, provider: dto.mode === 'ai' ? (org?.aiProvider ?? 'anthropic') : null };
+      return { state, provider: dto.mode === 'ai' ? (org?.aiProvider ?? 'anthropic') : null, industryLabel: industry.label };
     });
     if (dto.mode === 'ai' && pre.state !== 'on')
       throw new ConflictException({ statusCode: 409, code: 'POLICY_AI_OFF', message: pre.state === 'off' ? 'Your company has switched AI off for policies. Use a YukthiX starter instead.' : 'Your company has no AI set up. Use a YukthiX starter instead, or ask your System Admin to add an AI key.' });
@@ -208,7 +239,7 @@ export class PolicyWriterService {
     if (dto.mode === 'starter') prose = STARTERS[dto.type].map((s, i) => ({ id: `p${i + 1}`, ...s }));
     else {
       try {
-        prose = await this.ai.run(ctx, { source: 'policy_writer' }, (p) => this.draftWithAi(p, answers));
+        prose = await this.ai.run(ctx, { source: 'policy_writer' }, (p) => this.draftWithAi(p, answers, pre.industryLabel));
       } catch (e) {
         await this.tx(ctx, (tx, c) => audit(tx, c, 'policy.ai_draft_failed', 'policy_ai_draft', c.organizationId, { type: dto.type, provider: pre.provider, outcome: e instanceof HttpException ? `refused ${e.getStatus()}` : 'ai_error' })).catch(() => undefined);
         if (e instanceof HttpException) throw e;
@@ -224,8 +255,8 @@ export class PolicyWriterService {
     });
   }
 
-  private async draftWithAi(p: AiProvider, a: Answers): Promise<Prose[]> {
-    const result = await p.generateStructured({ modelTier: 'standard', maxTokens: 3000, prompt: promptFor(a), tool: { name: 'report_policy_clauses', description: 'Report the prose clauses of the policy.', schema: CLAUSES_SCHEMA } });
+  private async draftWithAi(p: AiProvider, a: Answers, industryLabel: string): Promise<Prose[]> {
+    const result = await p.generateStructured({ modelTier: 'standard', maxTokens: 3000, prompt: promptFor(a, industryLabel), tool: { name: 'report_policy_clauses', description: 'Report the prose clauses of the policy.', schema: CLAUSES_SCHEMA } });
     const prose = parseClauses(result);
     if (!prose.length) throw new Error('the AI returned no clauses');
     return prose;
@@ -245,7 +276,7 @@ export class PolicyWriterService {
   save(ctx: TenantContext, id: string, dto: SaveDraftDto) {
     return this.tx(ctx, async (tx, c) => {
       const d = await this.draft(tx, c.organizationId, id);
-      if (d.status !== 'draft') throw new ConflictException('This draft was approved. Its policy version is in Policy admin.');
+      if (d.status !== 'draft') throw new ConflictException(d.status === 'discarded' ? 'This draft was discarded. Start a new one.' : 'This draft was approved. Its policy version is in Policy admin.');
       if (d.version !== dto.version) throw new ConflictException('Someone changed this draft meanwhile. Reload and try again.');
       const type = d.policyType as PolicyType;
       const before = d.values as unknown as Values;
@@ -277,7 +308,7 @@ export class PolicyWriterService {
     const out = await this.tx(ctx, async (tx, c) => {
       const org = c.organizationId;
       const d = await this.draft(tx, org, id);
-      if (d.status !== 'draft') throw new ConflictException('This draft was already approved. Its policy version is in Policy admin.');
+      if (d.status !== 'draft') throw new ConflictException(d.status === 'discarded' ? 'This draft was discarded. Start a new one.' : 'This draft was already approved. Its policy version is in Policy admin.');
       if (d.version !== version) throw new ConflictException('Someone changed this draft meanwhile. Reload and check it again.');
       const v = await this.view(tx, c, d);
       if (v.openFindings) throw new ConflictException({ statusCode: 409, code: 'POLICY_LAW_FINDINGS', message: `Fix the ${v.openFindings === 1 ? 'open law-check finding' : `${v.openFindings} open law-check findings`} first.` });
@@ -292,11 +323,11 @@ export class PolicyWriterService {
         policy = await tx.policyDocument.create({ data: { organizationId: org, number: (last._max.number ?? 0) + 1, title: target.title, category: target.category, method: 'click', ownerUserId: c.userId ?? null, createdBy: c.userId ?? null } });
         await audit(tx, c, 'policy.created', 'policy_document', policy.id, { title: policy.title, category: policy.category, method: policy.method, fromAiDraft: id });
         number = 1;
-        versionId = (await tx.policyVersion.create({ data: { organizationId: org, policyId: policy.id, number, bodyHtml: html, reack: true, needsSecondPerson: true, aiApprovedBy: c.userId!, writtenBy: c.userId!, status: 'waiting', submittedAt: new Date() } })).id;
+        versionId = (await tx.policyVersion.create({ data: { organizationId: org, policyId: policy.id, number, bodyHtml: html, reack: true, needsSecondPerson: true, aiApprovedBy: c.userId!, counselNote: v.counselNote, writtenBy: c.userId!, status: 'waiting', submittedAt: new Date() } })).id;
       } else {
         const s = await this.policies.settings(tx, c);
         number = v.target.number;
-        const data = { bodyHtml: html, changeSummary: number > 1 ? `Rewritten from the ${TYPE_LABEL[d.policyType as PolicyType].toLowerCase()} questionnaire (Write policies with AI).` : null, reack: number === 1 ? true : s.reackDefault, needsSecondPerson: true, aiApprovedBy: c.userId!, writtenBy: c.userId!, status: 'waiting', submittedAt: new Date(), sentBackNote: null };
+        const data = { bodyHtml: html, changeSummary: number > 1 ? `Rewritten from the ${TYPE_LABEL[d.policyType as PolicyType].toLowerCase()} questionnaire (Write policies with AI).` : null, reack: number === 1 ? true : s.reackDefault, needsSecondPerson: true, aiApprovedBy: c.userId!, counselNote: v.counselNote, writtenBy: c.userId!, status: 'waiting', submittedAt: new Date(), sentBackNote: null };
         if (v.target.emptyOpen) {
           const u = await tx.policyVersion.updateMany({ where: { organizationId: org, id: v.target.emptyOpen.id, version: v.target.emptyOpen.version, status: { in: ['draft', 'sent_back'] } }, data: { ...data, version: { increment: 1 } } });
           if (!u.count) throw new ConflictException('Someone started writing this policy meanwhile. Reload and check it again.');
@@ -305,11 +336,49 @@ export class PolicyWriterService {
       }
       const n = await tx.policyAiDraft.updateMany({ where: { organizationId: org, id, version: d.version, status: 'draft' }, data: { status: 'approved', approvedBy: c.userId!, approvedAt: new Date(), policyId: policy.id, policyVersionId: versionId, version: { increment: 1 } } });
       if (!n.count) throw new ConflictException('Someone changed this draft meanwhile. Reload and check it again.');
-      await audit(tx, c, 'policy.ai_draft_approved', 'policy_ai_draft', id, { policyId: policy.id, versionId, number, type: d.policyType, mode: d.mode });
+      await audit(tx, c, 'policy.ai_draft_approved', 'policy_ai_draft', id, { policyId: policy.id, versionId, number, type: d.policyType, mode: d.mode, counselNote: v.counselNote });
       await audit(tx, c, 'policy.version_sent', 'policy_version', versionId, { policyId: policy.id, number, needsSecondPerson: true, fromAiDraft: id });
       return { org, policy: { id: policy.id, title: policy.title }, code: policyCode(policy.number), number, publishers: (await this.policies.publishers(tx, org)).filter((u) => u !== c.userId) };
     });
     await this.policies.noticeToPublish(out.org, out.policy, out.number, out.publishers);
     return { policyId: out.policy.id, code: out.code, title: out.policy.title, number: out.number };
+  }
+
+  /** Answer 106: an unapproved draft is set aside (never deleted); it stays in the audit trail. */
+  discard(ctx: TenantContext, id: string, version: number) {
+    return this.tx(ctx, async (tx, c) => {
+      const d = await this.draft(tx, c.organizationId, id);
+      if (d.status !== 'draft') throw new ConflictException(d.status === 'discarded' ? 'This draft was already discarded.' : 'This draft was approved. Its policy version is in Policy admin.');
+      if (d.version !== version) throw new ConflictException('Someone changed this draft meanwhile. Reload and check it again.');
+      const n = await tx.policyAiDraft.updateMany({ where: { organizationId: c.organizationId, id, version, status: 'draft' }, data: { status: 'discarded', discardedBy: c.userId!, discardedAt: new Date(), discardReason: 'manual', version: { increment: 1 } } });
+      if (!n.count) throw new ConflictException('Someone changed this draft meanwhile. Reload and check it again.');
+      await audit(tx, c, 'policy.ai_draft_discarded', 'policy_ai_draft', id, { type: d.policyType, reason: 'manual' });
+      return { status: 'discarded' };
+    });
+  }
+
+  /**
+   * The daily clean-up (answer 106): every company's unapproved drafts untouched for its policy.ai_draft.discard_days
+   * (default 90) are discarded, each audited. Safe to re-run: a discarded draft is never touched again.
+   */
+  async discardExpired(now = new Date(), onlyOrg?: string): Promise<number> {
+    const orgs = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) => tx.policyAiDraft.findMany({ where: { status: 'draft', ...(onlyOrg ? { organizationId: onlyOrg } : {}) }, distinct: ['organizationId'], select: { organizationId: true } }));
+    let total = 0;
+    for (const { organizationId } of orgs) {
+      const c: CompanyContext = { organizationId, isSuperAdmin: false, userId: null, role: null, supportSessionId: null };
+      total += await this.tenantPrisma.forTenant(c, async (tx) => {
+        const days = Number(await settingFor(tx, c, 'policy.ai_draft.discard_days', { legalEntityId: '00000000-0000-0000-0000-000000000000' })) || 90;
+        const old = await tx.policyAiDraft.findMany({ where: { organizationId, status: 'draft', updatedAt: { lt: new Date(now.getTime() - days * 86_400_000) } }, select: { id: true, version: true, policyType: true } });
+        let n = 0;
+        for (const d of old) {
+          const u = await tx.policyAiDraft.updateMany({ where: { organizationId, id: d.id, version: d.version, status: 'draft' }, data: { status: 'discarded', discardedAt: now, discardReason: 'expired', version: { increment: 1 } } });
+          if (!u.count) continue;
+          await audit(tx, c, 'policy.ai_draft_discarded', 'policy_ai_draft', d.id, { type: d.policyType, reason: 'expired', afterDays: days });
+          n++;
+        }
+        return n;
+      });
+    }
+    return total;
   }
 }

@@ -59,6 +59,14 @@ export class PolicyWriterController {
     return this.writer.save(ctx, id, dto);
   }
 
+  @Post('drafts/:id/discard')
+  @RequirePermissions('policy.manage')
+  async discard(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ApproveDraftDto) {
+    assertOwnSession(req);
+    await this.gate(req);
+    return this.writer.discard(ctx, id, dto.version);
+  }
+
   @Post('drafts/:id/approve')
   @RequirePermissions('policy.manage')
   async approve(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ApproveDraftDto) {

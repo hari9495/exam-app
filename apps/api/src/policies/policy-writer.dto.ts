@@ -1,6 +1,6 @@
 import { Transform, Type } from 'class-transformer';
 import { ArrayMaxSize, ArrayMinSize, ArrayUnique, IsArray, IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
-import { CLAUSES_MAX, CLAUSE_TEXT_MAX, INDUSTRIES, NOTES_MAX, PATTERNS, POLICY_TYPES, STATES, type PolicyType } from './policy-writer-rules';
+import { CLAUSES_MAX, CLAUSE_TEXT_MAX, NOTES_MAX, PATTERNS, POLICY_TYPES, STATES, type PolicyType } from './policy-writer-rules';
 
 // HLP-14 inputs. Whitelisted by the global ValidationPipe (unknown fields are refused); every answer is a fixed choice
 // or a capped number except the optional notes, which are capped and checked for personal data before the AI sees them.
@@ -21,6 +21,8 @@ export class WriterValuesDto {
   @Num(5) wfhDays?: number;
   @Num(180) noticeDays?: number;
   @Num(12) probationMonths?: number;
+  @Num(20) icMembers?: number;
+  @Num(20) womenMembers?: number;
 }
 
 export class GenerateDto extends WriterValuesDto {
@@ -30,7 +32,8 @@ export class GenerateDto extends WriterValuesDto {
   @IsIn(POLICY_TYPES)
   type!: PolicyType;
 
-  @IsIn(Object.keys(INDUSTRIES))
+  /** A code from the industry table (checked again by the service against the active list). */
+  @Matches(/^[a-z][a-z0-9_]{1,29}$/)
   industry!: string;
 
   @IsArray()

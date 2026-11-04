@@ -35,6 +35,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'policy.ack.typed_name': { label: 'Policies: people type their name to acknowledge', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // HLP-14: draft policies with the company's own AI (founder decision 1); off offers the YukthiX starters instead.
   'policy.ai_writer': { label: 'Policies: write policy drafts with the company’s AI', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
+  // HLP-14 (answer 106): unapproved policy drafts are discarded by the daily clean-up after this many days untouched.
+  'policy.ai_draft.discard_days': { label: 'Policies: discard unapproved AI drafts after (days untouched)', scopes: ['tenant'], dated: false, values: ['30', '60', '90', '180', '365'], default: '90' },
   'policy.publish.second_person': { label: 'Policies: a second person publishes each version', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on', guard: 'access.role.manage' },
   // HLP-06 speak-up (docs/yukthix/helpdesk-design-map.md 4e): who may report without a name, the days to acknowledge,
   // and the topics people choose from. Legal clocks (POSH, GRC) come from the rule sets IN.POSH and IN.GRC, not from here.

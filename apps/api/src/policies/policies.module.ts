@@ -14,7 +14,7 @@ import { PolicyWriterService } from './policy-writer.service';
 
 const QUEUE = 'policy-jobs';
 
-/** HLP-10 / HLP-11: every morning at 09:00 India time, reminders and manager notices on each company's schedule. */
+/** HLP-10 / HLP-11: every morning at 09:00 India time, reminders and manager notices on each company's schedule; HLP-14: the draft clean-up. */
 @Injectable()
 export class PolicyJobs implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PolicyJobs.name);
@@ -24,6 +24,7 @@ export class PolicyJobs implements OnModuleInit, OnModuleDestroy {
   constructor(
     @Inject(REDIS_CONNECTION) private readonly connection: Redis,
     private readonly policies: PoliciesService,
+    private readonly writer: PolicyWriterService,
   ) {
     this.queue = logBullErrors(new Queue(QUEUE, bullOpts(connection)), QUEUE);
   }
@@ -41,6 +42,9 @@ export class PolicyJobs implements OnModuleInit, OnModuleDestroy {
   async run() {
     const n = await this.policies.remindAll().catch((e: Error) => (this.logger.warn(`reminders: ${e.message}`), 0));
     if (n) this.logger.log(`reminders: ${n}`);
+    // HLP-14 (answer 106): unapproved AI drafts untouched for the company's days are discarded.
+    const d = await this.writer.discardExpired().catch((e: Error) => (this.logger.warn(`policy drafts clean-up: ${e.message}`), 0));
+    if (d) this.logger.log(`policy drafts discarded: ${d}`);
   }
 }
 

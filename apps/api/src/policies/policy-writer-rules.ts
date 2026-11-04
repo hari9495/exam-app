@@ -4,27 +4,16 @@
 // which are cleaned to plain text and may not state numbers. Only the questionnaire answers ever reach the AI.
 import { cleanHtml, htmlToText, textToHtml } from '../service-desk/rich-text';
 
-export const POLICY_TYPES = ['leave', 'work_from_home', 'notice'] as const;
+export const POLICY_TYPES = ['leave', 'work_from_home', 'notice', 'conduct', 'posh'] as const;
 export type PolicyType = (typeof POLICY_TYPES)[number];
-export const TYPE_LABEL: Record<PolicyType, string> = { leave: 'Leave', work_from_home: 'Work from home', notice: 'Notice and probation' };
+export const TYPE_LABEL: Record<PolicyType, string> = { leave: 'Leave', work_from_home: 'Work from home', notice: 'Notice and probation', conduct: 'Code of conduct', posh: 'POSH' };
 /** The HLP-10/11 policy an approved draft becomes a version of (matched by title, any case). */
 export const TARGET: Record<PolicyType, { title: string; category: string }> = {
   leave: { title: 'Leave policy', category: 'Time off' },
   work_from_home: { title: 'Work from home policy', category: 'Ways of working' },
   notice: { title: 'Notice period and probation policy', category: 'Joining and leaving' },
-};
-
-export const INDUSTRIES: Record<string, string> = {
-  manufacturing: 'Manufacturing',
-  fmcg: 'Food and consumer goods',
-  it_services: 'IT services',
-  retail: 'Retail and shops',
-  bfsi: 'Banking and financial services',
-  healthcare: 'Healthcare',
-  logistics: 'Logistics and transport',
-  construction: 'Construction',
-  education: 'Education',
-  other: 'Other',
+  conduct: { title: 'Code of conduct', category: 'Conduct' },
+  posh: { title: 'Prevention of sexual harassment (POSH) policy', category: 'Conduct' },
 };
 
 export const STATES: Record<string, string> = {
@@ -56,10 +45,15 @@ export const VALUE_SPEC: Record<PolicyType, Record<string, ValueSpec>> = {
   work_from_home: { wfhDays: { label: 'Work-from-home days a week', min: 0, max: 5, default: 2 } },
   notice: {
     noticeDays: { label: 'Notice period (days)', min: 0, max: 180, default: 60 },
+    // The default comes from the company's probation.default_months (answer 108).
     probationMonths: { label: 'Probation (months)', min: 0, max: 12, default: 6 },
   },
+  conduct: {},
+  posh: {
+    icMembers: { label: 'Internal Committee members', min: 1, max: 20, default: 4 },
+    womenMembers: { label: 'Women on the Internal Committee', min: 0, max: 20, default: 2 },
+  },
 };
-export const VALUE_KEYS = ['earned', 'sick', 'casual', 'carry', 'wfhDays', 'noticeDays', 'probationMonths'] as const;
 export type Values = Record<string, number>;
 
 export const NOTES_MAX = 500;
@@ -104,6 +98,33 @@ export interface StateLaw {
   ref: string;
   floors: { kinds: string[]; days: number }[];
   carry: Record<string, number>;
+  /** What the Act states as a rate, not a number: shown as not checked. */
+  notes?: string[];
+}
+/** IN.POSH: the Internal Committee (s.4) and the time limits. */
+export interface Posh {
+  ref: string;
+  ic: { requiredFromHeadcount: number; presidingWoman: boolean; employeeMembersMin: number; externalMembers: number; womenShareMin: number; termYearsMax: number } | null;
+  filingMonths: number;
+  filingExtensionMonths: number;
+  inquiryDays: number;
+  reportDays: number;
+  actionDays: number;
+}
+/** The industry's own law tables: those with leave floors are checked like a state's (state "IN" = all states). */
+export interface IndustryLaw {
+  code: string;
+  label: string;
+  statutes: string[];
+  tables: StateLaw[];
+  /** Statutes named by the industry with no checkable table valid today. */
+  missing: string[];
+}
+export interface Law {
+  leave: StateLaw[];
+  maternity: Maternity | null;
+  posh: Posh | null;
+  industry: IndustryLaw;
 }
 export interface Maternity {
   ref: string;
@@ -118,7 +139,7 @@ const kindsWord = (kinds: string[]) => {
   const words = kinds.map((k) => (KIND_WORD[k] ?? k).replace(' leave', '').toLowerCase()).join(' and ');
   return `${words[0].toUpperCase()}${words.slice(1)} leave together`;
 };
-const stateName = (code: string) => STATES[code] ?? code;
+const stateName = (code: string) => (code === 'IN' ? 'All states' : (STATES[code] ?? code));
 
 /** The values a policy type asks for, from the answers; null with the missing label when one is not given. */
 export function pickValues(type: PolicyType, given: object): { values: Values } | { missing: string } {
@@ -128,6 +149,7 @@ export function pickValues(type: PolicyType, given: object): { values: Values } 
     if (typeof v !== 'number' || !Number.isInteger(v) || v < spec.min || v > spec.max) return { missing: `${spec.label}: a whole number from ${spec.min} to ${spec.max}.` };
     values[key] = v;
   }
+  if (type === 'posh' && values.womenMembers > values.icMembers) return { missing: 'Women on the Internal Committee: not more than its members.' };
   return { values };
 }
 
@@ -141,6 +163,8 @@ export function ruleClauses(type: PolicyType, v: Values): Clause[] {
       c('casual', 'Casual leave', `Employees get ${plural(v.casual, 'day')} of casual leave a year.`),
       c('carry', 'Carry forward', `Up to ${plural(v.carry, 'day')} of unused earned leave carry forward to the next year; days above that lapse at the year end.`),
     ];
+  if (type === 'conduct') return [];
+  if (type === 'posh') return [c('icMembers', 'Internal Committee', `The Internal Committee has ${plural(v.icMembers, 'member')}, ${plural(v.womenMembers, 'woman', 'women')} among them. HR keeps their names on the notice board and in YukthiX.`)];
   if (type === 'work_from_home')
     return [c('wfhDays', 'Work from home', v.wfhDays === 0 ? 'Work from home is not part of normal working. A manager may allow it for a day when there is a clear need.' : `Employees may work from home up to ${plural(v.wfhDays, 'day')} a week, as agreed with their manager.`)];
   return [
@@ -149,13 +173,25 @@ export function ruleClauses(type: PolicyType, v: Values): Clause[] {
   ];
 }
 
-/** The law lines, quoted from the dated tables valid today (leave only: the other types have no law table yet). */
-export function lawClauses(type: PolicyType, laws: StateLaw[], maternity: Maternity | null): Clause[] {
+/** The law lines, quoted from the dated tables valid today (leave and POSH; the other types have no law table yet). */
+export function lawClauses(type: PolicyType, law: Pick<Law, 'leave' | 'maternity' | 'posh'> & { industry?: IndustryLaw }): Clause[] {
+  if (type === 'posh') {
+    const p = law.posh;
+    if (!p) return [];
+    const out: Clause[] = [];
+    if (p.ic)
+      out.push({ id: 'law-posh-ic', title: 'Who sits on the Internal Committee', text: `Every office with ${p.ic.requiredFromHeadcount} or more workers has an Internal Committee. ${p.ic.presidingWoman ? 'A woman employed at a senior level presides. ' : ''}At least ${plural(p.ic.employeeMembersMin, 'member')} come from the employees and ${plural(p.ic.externalMembers, 'member')} from an organisation committed to the cause of women. At least half the members are women. Members serve up to ${plural(p.ic.termYearsMax, 'year')}.`, source: 'law', ref: p.ref, editable: false });
+    out.push({ id: 'law-posh-time', title: 'Time limits', text: `A complaint is made within ${plural(p.filingMonths, 'month')} of the incident; the committee may allow ${plural(p.filingExtensionMonths, 'month')} more for reasons it records. The inquiry ends within ${plural(p.inquiryDays, 'day')}, the report follows within ${plural(p.reportDays, 'day')}, and the company acts on it within ${plural(p.actionDays, 'day')}.`, source: 'law', ref: p.ref, editable: false });
+    return out;
+  }
   if (type !== 'leave') return [];
+  const laws = [...law.leave, ...(law.industry?.tables ?? [])];
+  const maternity = law.maternity;
   const out: Clause[] = laws.map((l) => {
     const parts = l.floors.map((f) => `${plural(f.days, 'day')} of ${f.kinds.map((k) => (KIND_WORD[k] ?? k).replace(' leave', '').toLowerCase()).join(' and ')} leave`);
     const carry = l.carry.earned ? `, and at least ${plural(l.carry.earned, 'day')} of earned leave carry forward` : '';
-    return { id: `law-${l.state}`, title: `The law in ${stateName(l.state)}`, text: `The ${stateName(l.state)} rules set at least ${parts.join(', ')} a year${carry}. Where this policy gives more, the policy applies.`, source: 'law', ref: l.ref, editable: false };
+    const ind = law.industry?.tables.includes(l);
+    return { id: ind ? `law-ind-${l.ref.split(' ')[0]}-${l.state}` : `law-${l.state}`, title: ind ? `${law.industry!.label} rules${l.state === 'IN' ? '' : ` in ${stateName(l.state)}`}` : `The law in ${stateName(l.state)}`, text: `The ${ind ? `${law.industry!.label.toLowerCase()} rules` : `${stateName(l.state)} rules`} set at least ${parts.join(', ')} a year${carry}. Where this policy gives more, the policy applies.`, source: 'law', ref: l.ref, editable: false };
   });
   if (maternity) out.push({ id: 'law-maternity', title: 'Maternity leave', text: `Women employees get maternity leave as the Maternity Benefit Act sets: ${plural(maternity.weeks, 'week')}, or ${plural(maternity.thirdChildWeeks, 'week')} from the third child.`, source: 'law', ref: maternity.ref, editable: false });
   return out;
@@ -167,30 +203,50 @@ export function lawClauses(type: PolicyType, laws: StateLaw[], maternity: Matern
  * table is "unchecked" (counsel review). Every prose clause that states a number is a finding too: numbers come from
  * the answers, so the AI (or an edit) can never slip a lower one past the check.
  */
-export function lawFindings(type: PolicyType, v: Values, states: string[], laws: StateLaw[], prose: Pick<Clause, 'id' | 'title' | 'text'>[]): Finding[] {
+/** One leave table's floors and carry-forward minimum against the numbers (a state's, or an industry's). */
+function floorFindings(prefix: string, name: string, law: StateLaw, v: Values): Finding[] {
+  const out: Finding[] = [];
+  for (const f of law.floors) {
+    const kinds = f.kinds.filter((k) => k in v);
+    if (!kinds.length) continue;
+    const sum = kinds.reduce((n, k) => n + v[k], 0);
+    const id = `${prefix}-${f.kinds.join('-')}`;
+    if (sum < f.days) out.push({ id, state: name, text: `${kindsWord(f.kinds)}: ${plural(sum, 'day')} a year is below the ${name} minimum of ${f.days}.`, status: 'open', fix: { key: kinds[0], value: v[kinds[0]] + (f.days - sum) } });
+    else out.push({ id, state: name, text: `${kindsWord(f.kinds)}: ${plural(sum, 'day')} a year meets the ${name} minimum of ${f.days}.`, status: 'resolved' });
+  }
+  const carry = law.carry.earned;
+  if (carry) {
+    const id = `${prefix}-carry`;
+    if (v.carry < carry) out.push({ id, state: name, text: `Carry forward: ${plural(v.carry, 'day')} is below the ${name} minimum of ${carry} earned leave days.`, status: 'open', fix: { key: 'carry', value: carry } });
+    else out.push({ id, state: name, text: `Carry forward: ${plural(v.carry, 'day')} meets the ${name} minimum of ${carry}.`, status: 'resolved' });
+  }
+  (law.notes ?? []).forEach((n, i) => out.push({ id: `${prefix}-note${i + 1}`, state: name, text: `${n} Ask counsel.`, status: 'unchecked' }));
+  return out;
+}
+
+export function lawFindings(type: PolicyType, v: Values, states: string[], law: Pick<Law, 'leave' | 'posh'> & { industry?: IndustryLaw }, prose: Pick<Clause, 'id' | 'title' | 'text'>[], headcount = 0): Finding[] {
   const out: Finding[] = [];
   if (type === 'leave') {
     for (const code of states) {
-      const law = laws.find((l) => l.state === code);
+      const table = law.leave.find((l) => l.state === code);
       const name = stateName(code);
-      if (!law) {
-        out.push({ id: `f-${code}-none`, state: name, text: `No dated leave law table for ${name} yet. Ask counsel to check this policy for ${name}.`, status: 'unchecked' });
-        continue;
-      }
-      for (const f of law.floors) {
-        const kinds = f.kinds.filter((k) => k in v);
-        if (!kinds.length) continue;
-        const sum = kinds.reduce((n, k) => n + v[k], 0);
-        const id = `f-${code}-${f.kinds.join('-')}`;
-        if (sum < f.days) out.push({ id, state: name, text: `${kindsWord(f.kinds)}: ${plural(sum, 'day')} a year is below the ${name} minimum of ${f.days}.`, status: 'open', fix: { key: kinds[0], value: v[kinds[0]] + (f.days - sum) } });
-        else out.push({ id, state: name, text: `${kindsWord(f.kinds)}: ${plural(sum, 'day')} a year meets the ${name} minimum of ${f.days}.`, status: 'resolved' });
-      }
-      const carry = law.carry.earned;
-      if (carry) {
-        const id = `f-${code}-carry`;
-        if (v.carry < carry) out.push({ id, state: name, text: `Carry forward: ${plural(v.carry, 'day')} is below the ${name} minimum of ${carry} earned leave days.`, status: 'open', fix: { key: 'carry', value: carry } });
-        else out.push({ id, state: name, text: `Carry forward: ${plural(v.carry, 'day')} meets the ${name} minimum of ${carry}.`, status: 'resolved' });
-      }
+      if (!table) out.push({ id: `f-${code}-none`, state: name, text: `No dated leave law table for ${name} yet. Ask counsel to check this policy for ${name}.`, status: 'unchecked' });
+      else out.push(...floorFindings(`f-${code}`, name, table, v));
+    }
+    for (const t of law.industry?.tables ?? []) out.push(...floorFindings(`f-ind-${t.ref.split(' ')[0]}-${t.state}`, `${law.industry!.label}${t.state === 'IN' ? '' : ` (${stateName(t.state)})`}`, t, v));
+  } else if (type === 'posh') {
+    const p = law.posh;
+    if (!p?.ic) out.push({ id: 'f-posh-none', state: 'All states', text: 'No dated POSH law table with the Internal Committee make-up. Ask counsel to check this policy.', status: 'unchecked' });
+    else {
+      const ic = p.ic;
+      const need = 1 + ic.employeeMembersMin + ic.externalMembers;
+      if (headcount && headcount < ic.requiredFromHeadcount)
+        out.push({ id: 'f-posh-small', state: 'All states', text: `Fewer than ${ic.requiredFromHeadcount} people: complaints may go to the district's Local Committee instead. Ask counsel which applies to each office.`, status: 'unchecked' });
+      if (v.icMembers < need) out.push({ id: 'f-posh-size', state: 'All states', text: `Internal Committee: ${plural(v.icMembers, 'member')} is below the minimum of ${need} (a presiding woman, ${ic.employeeMembersMin} employees, ${ic.externalMembers} from outside).`, status: 'open', fix: { key: 'icMembers', value: need } });
+      else out.push({ id: 'f-posh-size', state: 'All states', text: `Internal Committee: ${plural(v.icMembers, 'member')} meets the minimum of ${need}.`, status: 'resolved' });
+      const women = Math.max(ic.presidingWoman ? 1 : 0, Math.ceil(v.icMembers * ic.womenShareMin));
+      if (v.womenMembers < women) out.push({ id: 'f-posh-women', state: 'All states', text: `Women on the Internal Committee: ${v.womenMembers} of ${v.icMembers} is fewer than half (at least ${women}).`, status: 'open', fix: { key: 'womenMembers', value: women } });
+      else out.push({ id: 'f-posh-women', state: 'All states', text: `Women on the Internal Committee: ${v.womenMembers} of ${v.icMembers} meets at least half.`, status: 'resolved' });
     }
   } else {
     out.push({ id: 'f-none', state: 'All states', text: `No law table covers ${TYPE_LABEL[type].toLowerCase()} policies yet. Ask counsel to check this policy.`, status: 'unchecked' });
@@ -198,6 +254,16 @@ export function lawFindings(type: PolicyType, v: Values, states: string[], laws:
   for (const c of prose)
     if (/\d/.test(c.text)) out.push({ id: `f-num-${c.id}`, state: 'All states', text: `"${c.title}" states a number. Numbers come from your answers: take it out of this clause.`, status: 'open' });
   return out;
+}
+
+/**
+ * The counsel note (founder, 4 Nov 2026): the law check covers the industry only when the industry names law tables
+ * and every one of them was checked in this draft. Otherwise the note shows; it never blocks approval, and the publisher
+ * ticks it as seen before publishing.
+ */
+export function industryNote(type: PolicyType, industry: IndustryLaw): string | null {
+  const covered = type === 'leave' && industry.statutes.length > 0 && industry.missing.length === 0 && industry.tables.length > 0;
+  return covered ? null : `Law check covers general labour law only; ${industry.label} rules are not checked yet; review with counsel`;
 }
 
 /** Which clause an open finding points at (the design marks the clause). */
@@ -240,15 +306,15 @@ export const INSTRUCTIONS = [
 ].join('\n');
 
 /** The prompt: fixed instructions, then only the questionnaire answers as JSON in one delimited block. */
-export function promptFor(a: Answers): string {
+export function promptFor(a: Answers, industryLabel: string): string {
   const data = {
     policy: TYPE_LABEL[a.type],
-    industry: INDUSTRIES[a.industry] ?? 'Other',
+    industry: industryLabel,
     states: a.states.map(stateName),
     headcount: a.headcount,
     workPattern: PATTERNS[a.workPattern] ?? PATTERNS.office,
     // The rule lines the policy already states (topics only: the numbers never go to the AI).
-    ruleLinesAlreadyWritten: Object.values(VALUE_SPEC[a.type]).map((s) => s.label.replace(/ \(.*\)$/, '')),
+    ruleLinesAlreadyWritten: [...Object.values(VALUE_SPEC[a.type]).map((s) => s.label.replace(/ \(.*\)$/, '')), ...(a.type === 'posh' ? ['Who sits on the Internal Committee', 'Time limits'] : [])],
     extraNotes: cleanText(a.notes, NOTES_MAX),
   };
   return `${INSTRUCTIONS}\n\n<answers>\n${JSON.stringify(data, null, 2)}\n</answers>\n\nWrite the clauses now, following only the rules above the answers block.`;
@@ -295,6 +361,21 @@ export const STARTERS: Record<PolicyType, { title: string; text: string }[]> = {
     { title: 'Who it covers', text: 'It covers every employee of the company. A letter of appointment that says otherwise applies to that person.' },
     { title: 'Resigning', text: 'Resign in YukthiX or in writing to your manager. HR confirms your last working day and what happens with your leave balance.' },
     { title: 'Records', text: 'YukthiX keeps the dates of joining, confirmation and leaving, and the letters for each.' },
+  ],
+  conduct: [
+    { title: 'Purpose', text: 'This code explains how we expect everyone to behave at work, with colleagues, customers and suppliers.' },
+    { title: 'Who it covers', text: 'It covers every employee, trainee and contract worker, at the workplace and wherever they represent the company.' },
+    { title: 'How we behave', text: 'Treat everyone with respect. Be honest in your work and records. Do not accept gifts that could influence a decision. Keep company and personal data safe.' },
+    { title: 'Conflicts of interest', text: 'Tell your manager or HR about any interest that could conflict with your work, before you act on it.' },
+    { title: 'Raising a concern', text: 'Raise a concern with your manager, HR or through Speak up in YukthiX. Nobody is punished for raising a concern in good faith.' },
+    { title: 'Breaches', text: 'A breach of this code may lead to disciplinary action under the company’s standing orders or rules.' },
+  ],
+  posh: [
+    { title: 'Purpose', text: 'The company does not tolerate sexual harassment. This policy explains how to make a complaint and how it is handled.' },
+    { title: 'Who it covers', text: 'It protects every woman at the workplace, whether employed or visiting, and covers the conduct of every employee, contract worker and visitor.' },
+    { title: 'How to complain', text: 'Make a written complaint to the Internal Committee, or through Speak up in YukthiX. A committee member can help you write it down.' },
+    { title: 'How it is handled', text: 'The committee hears both sides, keeps everything confidential and may recommend interim relief, such as a transfer or leave, while it inquires.' },
+    { title: 'No retaliation', text: 'Nobody may be victimised for complaining or for helping an inquiry. Doing so is itself misconduct.' },
   ],
 };
 

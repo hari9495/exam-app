@@ -10,7 +10,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import { assertOwnSession } from '../service-desk/desk-access';
-import { AcknowledgeDto, DraftDto, NewPolicyDto, PendingQueryDto, PolicyChangeDto, RemindDto, SendBackDto, SubmitDto } from './dto';
+import { AcknowledgeDto, DraftDto, NewPolicyDto, PendingQueryDto, PolicyChangeDto, PublishDto, RemindDto, SendBackDto, SubmitDto } from './dto';
 import { PoliciesService } from './policies.service';
 import type { ScopeUser } from '../access/scope';
 
@@ -115,7 +115,7 @@ export class PoliciesAdminController {
 
   @Post(':id/publish')
   @RequirePermissions('policy.publish')
-  async publish(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SubmitDto) {
+  async publish(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PublishDto) {
     assertOwnSession(req);
     await this.gate(req, 'policy.publish');
     return this.policies.publish(ctx, id, dto);
