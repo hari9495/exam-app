@@ -1687,3 +1687,9 @@ Founder approved, 4 Nov 2026 (questions 121-124, all as suggested): (121) a late
 reason", logged; (122) keep the four-month look-back; (123) keep maternity and suspension days in the same card; (124) keep:
 the System Admin decides a report nobody else may; give an HR person the key for that entity. Demo: the November payroll run
 may be started for one demo-org pay group to walk the Special days card.
+
+Founder approved, 4 Nov 2026 (questions 111-115, all as suggested): (111) the first industry tables are Factories Act
+annual leave for Manufacturing and Food and consumer goods, as a reviewed rule set (verify); (112) keep: the new state
+tables also set Time's leave minimums in those states; counsel confirms the rows before go-live; (113) keep Maharashtra
+earned leave as "ask counsel"; (114) keep: only the platform adds an industry; (115) keep: POSH under 10 people is
+unchecked, the district Local Committee may apply.

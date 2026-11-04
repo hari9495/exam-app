@@ -98,3 +98,5 @@ Things deliberately left for launch. Development runs locally until then (test k
       Time's leave policies (HLP-14 answer 102, 4 Nov 2026). Today the AI policy is text only.
 - [ ] **New state and industry law tables.** Counsel checks the Maharashtra, Telangana and Delhi tables and any industry
       tables before go-live (all marked verify; HLP-14 answer 104, 4 Nov 2026).
+- [ ] **Factories Act annual leave table.** Counsel reviews the Manufacturing / Food and consumer goods industry table
+      before it is relied on (HLP-14 answer 111, 4 Nov 2026).
