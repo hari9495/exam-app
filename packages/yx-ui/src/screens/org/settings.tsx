@@ -303,7 +303,14 @@ function SettingBlock({ settingKey, def, rows, names, canEdit, blockedReason, to
   const inForce = (r: SettingOverride) => def.dated && r.validFrom !== null && r.validFrom <= today;
   const columns: TableColumn<SettingOverride>[] = [
     { key: 'scope', header: 'Applies to', value: names, render: (r) => <span className="yx-auth__item-main"><Text weight="medium">{names(r)}</Text>{r.scopeType !== 'tenant' && <Text tone="secondary" size="sm">{SCOPE_LABEL[r.scopeType]}</Text>}</span>, hideable: false },
-    { key: 'value', header: 'Value', value: (r) => valueLabel(settingKey, r.value, def.labels), width: 200 },
+    {
+      key: 'value',
+      header: 'Value',
+      value: (r) => valueLabel(settingKey, r.value, def.labels),
+      // Answer 151: a location's Factories Act value after the location became a registered factory.
+      render: (r) => (r.noLongerNeeded ? <span className="yx-auth__item-main"><Text>{valueLabel(settingKey, r.value, def.labels)}</Text><Text tone="secondary" size="sm">No longer needed: the location is a registered factory</Text></span> : valueLabel(settingKey, r.value, def.labels)),
+      width: 200,
+    },
     ...(def.dated
       ? [{ key: 'from', header: 'From', value: (r: SettingOverride) => r.validFrom ?? '', render: (r: SettingOverride) => (r.validFrom ? <span className="yx-org__from">{dateLabel(r.validFrom)}{r.validFrom > today && <Badge tone="info">Scheduled</Badge>}</span> : '—'), width: 230 }]
       : []),

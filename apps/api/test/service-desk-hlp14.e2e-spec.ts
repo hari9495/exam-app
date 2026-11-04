@@ -611,12 +611,45 @@ describe('HLP-14 Write policies with AI', () => {
       // Time set-up says where coverage comes from, with the exclusions listed.
       await setFa('employment_type', ids.perm, 'not_covered');
       const locs = (await v1('manager', 'get', '/time/setup').expect(200)).body.locations as { id: string; factoriesAct: { covered: boolean; source: string; exclusions: { scopeType: string; name: string }[] } }[];
-      expect(locs.find((l) => l.id === ids.factory)!.factoriesAct).toEqual({ covered: true, source: 'registered_factory', scopeType: null, exclusions: [{ scopeType: 'employment_type', name: 'Permanent' }] });
+      expect(locs.find((l) => l.id === ids.factory)!.factoriesAct).toEqual({ covered: true, source: 'registered_factory', scopeType: null, exclusions: [{ scopeType: 'employment_type', name: 'Permanent' }], locationSetting: null });
       expect(locs.find((l) => l.id === ids.office)!.factoriesAct).toMatchObject({ covered: false, source: 'default', exclusions: [] });
       await setFa('employment_type', ids.perm, '');
       // Another company: its people and set-up are untouched by company A's flag.
       expect(((await v1('hrB', 'get', '/time/setup').expect(200)).body.locations as { id: string }[]).some((l) => l.id === ids.factory)).toBe(false);
       await v1('bw', 'post', '/time/me/leave/preview').send({ leaveTypeId: ids.EL, from: on, to: on }).expect(404);
+    });
+    it('151: an old location-level "covered" value: the pages say mark it; once flagged, no longer needed; nothing moves by itself', async () => {
+      const setFa = (scopeId: string, value: string) => inA(async (tx) => {
+        await tx.setting.deleteMany({ where: { organizationId: org.A.id, key: 'attendance.factories_act', scopeType: 'location', scopeId } });
+        if (value) await tx.setting.create({ data: { organizationId: org.A.id, key: 'attendance.factories_act', scopeType: 'location', scopeId, value, validFrom: new Date('2024-01-01T00:00:00Z') } });
+      });
+      const orgLoc = async () => (await v1('adminA', 'get', '/org/locations').expect(200)).body.find((l: { id: string }) => l.id === ids.office) as { registeredFactory: boolean; factoriesActSetting: string | null };
+      const timeLoc = async () => ((await v1('manager', 'get', '/time/setup').expect(200)).body.locations as { id: string; factoriesAct: { source: string; locationSetting: string | null } }[]).find((l) => l.id === ids.office)!.factoriesAct;
+      const override = async () => ((await v1('adminA', 'get', '/org/settings').expect(200)).body.overrides as { key: string; scopeId: string; noLongerNeeded?: string }[]).find((o) => o.key === 'attendance.factories_act' && o.scopeId === ids.office);
+      // No value: nothing to say.
+      expect((await orgLoc()).factoriesActSetting).toBeNull();
+      expect((await timeLoc()).locationSetting).toBeNull();
+      // An old "covered" value and no flag: both pages see it; nothing is flagged by itself.
+      await setFa(ids.office, 'covered');
+      expect(await orgLoc()).toMatchObject({ registeredFactory: false, factoriesActSetting: 'covered' });
+      expect(await timeLoc()).toMatchObject({ source: 'setting', locationSetting: 'covered' });
+      expect((await override())!.noLongerNeeded).toBeUndefined();
+      // A value starting later is not in force yet.
+      await inA((tx) => tx.setting.updateMany({ where: { organizationId: org.A.id, key: 'attendance.factories_act', scopeType: 'location', scopeId: ids.office }, data: { validFrom: new Date('2099-01-01T00:00:00Z') } }));
+      expect((await orgLoc()).factoriesActSetting).toBeNull();
+      await setFa(ids.office, 'covered');
+      // HR ticks the flag: the value is shown as no longer needed; it is not removed by itself.
+      await v1('adminA', 'put', `/org/locations/${ids.office}`).send(loc('Vapi office', O(), true)).expect(200);
+      expect(await timeLoc()).toMatchObject({ source: 'registered_factory', locationSetting: 'covered' });
+      expect((await override())!.noLongerNeeded).toBe('registered_factory');
+      expect(await inA((tx) => tx.setting.count({ where: { organizationId: org.A.id, key: 'attendance.factories_act', scopeType: 'location', scopeId: ids.office } }))).toBe(1);
+      // Removing the value afterwards changes nothing for the flagged location.
+      await setFa(ids.office, '');
+      expect(await timeLoc()).toMatchObject({ source: 'registered_factory', locationSetting: null });
+      // Another company and a person without the key see none of it.
+      expect(((await v1('hrB', 'get', '/org/locations').expect(200)).body as { id: string }[]).some((l) => l.id === ids.office)).toBe(false);
+      await v1('staff', 'get', '/org/settings').expect(403);
+      await v1('adminA', 'put', `/org/locations/${ids.office}`).send(loc('Vapi office', O(), false)).expect(200);
     });
   });
 });

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Button } from '../../components/button';
 import { Checkbox } from '../../components/choice';
-import { EmptyState } from '../../components/feedback';
+import { EmptyState, InlineAlert } from '../../components/feedback';
 import { FieldRow, FormField, FormSection, type FormErrorItem, useSaveErrors } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { NumberField, TextArea, TextField } from '../../components/inputs';
@@ -146,6 +146,17 @@ function LocationEditor({ location, entities, states, onClose, onSave }: { locat
           <FormField id="loc-mw" label="Minimum wage zone" optional>
             <TextField value={draft.minWageZone} onChange={(minWageZone) => set({ minWageZone })} maxLength={40} />
           </FormField>
+          {/* Answer 151: an old location-level Factories Act value; nothing moves by itself. */}
+          {location?.factoriesActSetting === 'covered' && !draft.factory && (
+            <InlineAlert tone="info" title="Mark the location as a registered factory to make it the one source">
+              The Factories Act setting for this location covers it today (Settings › Attendance). Tick Registered factory below and save; the setting can then be removed.
+            </InlineAlert>
+          )}
+          {location?.factoriesActSetting && draft.factory && (
+            <InlineAlert tone="info" title="The Factories Act setting for this location is no longer needed">
+              The Registered factory flag decides coverage here. Remove the value for this location in Settings › Attendance.
+            </InlineAlert>
+          )}
           <Checkbox
             label="Registered factory"
             description="Factories Act here: overtime at the legal rate, the 240-day earned leave rule and the factory leave minimum, except departments or employment types set to Not covered in Settings › Attendance."

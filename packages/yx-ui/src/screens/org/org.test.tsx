@@ -595,3 +595,31 @@ describe('Locations: registered factory', () => {
     expect(valueLabel('company.industry', 'retail')).toBe('retail');
   });
 });
+
+// Founder answer 151: an old location-level Factories Act value; the form says what to do; nothing moves by itself.
+describe('Locations: an old Factories Act value (answer 151)', () => {
+  const props = (locations: LocationsScreenProps['locations']): LocationsScreenProps => ({ state: 'ready', locations, entities: ENTITIES, states: STATES, canManage: true, onSave: ok(), onArchive: ok(), onRestore: ok(), onDelete: ok() });
+  const openHosur = async () => {
+    const row = [...screen.getByRole('table', { name: 'Locations' }).querySelectorAll('tbody tr')].find((r) => r.textContent?.includes('Hosur plant')) as HTMLElement;
+    await userEvent.click(within(row).getByRole('button', { name: 'Edit' }));
+  };
+  it('covered by the setting, not flagged: "mark it"; ticking the box says the setting is no longer needed', async () => {
+    render(<LocationsScreen {...props(LOCATIONS.map((l) => (l.id === 'loc-hsr' ? { ...l, registeredFactory: false, factoriesActSetting: 'covered' } : l)))} />);
+    await openHosur();
+    expect(screen.getByText('Mark the location as a registered factory to make it the one source')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('checkbox', { name: /Registered factory/ }));
+    expect(screen.queryByText('Mark the location as a registered factory to make it the one source')).toBeNull();
+    expect(screen.getByText('The Factories Act setting for this location is no longer needed')).toBeInTheDocument();
+  });
+  it('no old value, or "not covered" without the flag: no hint', async () => {
+    render(<LocationsScreen {...props(LOCATIONS.map((l) => (l.id === 'loc-hsr' ? { ...l, registeredFactory: false, factoriesActSetting: 'not_covered' } : l)))} />);
+    await openHosur();
+    expect(screen.queryByText('Mark the location as a registered factory to make it the one source')).toBeNull();
+    expect(screen.queryByText('The Factories Act setting for this location is no longer needed')).toBeNull();
+  });
+  it('Settings › Attendance marks the location value as no longer needed', () => {
+    const base: CompanySettingsScreenProps = { section: 'organisation', state: 'ready', registry: SETTING_REGISTRY, overrides: [{ id: 'fa1', key: 'attendance.factories_act', scopeType: 'location', scopeId: 'loc-hsr', value: 'covered', validFrom: '2026-01-01', noLongerNeeded: 'registered_factory' }], choices: SETTING_CHOICES, canManage: true, heldGuards: [], today: TODAY_ISO, onSave: ok(), onRemove: ok() };
+    render(<ToastProvider><CompanySettingsScreen {...base} /></ToastProvider>);
+    expect(screen.getByText('No longer needed: the location is a registered factory')).toBeInTheDocument();
+  });
+});

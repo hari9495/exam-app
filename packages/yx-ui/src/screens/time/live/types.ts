@@ -1137,4 +1137,6 @@ export interface FactoriesActCover {
   scopeType: string | null;
   /** Departments and employment types the setting marks "not covered" (office staff on a factory site). */
   exclusions: { scopeType: string; name: string }[];
+  /** Answer 151: the location's own setting value in force today (null: none). */
+  locationSetting?: string | null;
 }

@@ -104,7 +104,9 @@ export class OrgSettingsService {
   list(ctx: TenantContext) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const rows = await tx.setting.findMany({ where: { organizationId: c.organizationId }, orderBy: [{ key: 'asc' }, { scopeType: 'asc' }, { validFrom: 'asc' }] });
-      return { registry: await withLists(tx), overrides: rows.map(rowView) };
+      // Answer 151: a location's own Factories Act value is no longer needed once the location is a registered factory.
+      const flagged = new Set((await tx.location.findMany({ where: { organizationId: c.organizationId, registeredFactory: true }, select: { id: true } })).map((l) => l.id));
+      return { registry: await withLists(tx), overrides: rows.map((r) => ({ ...rowView(r), ...(r.key === 'attendance.factories_act' && r.scopeType === 'location' && flagged.has(r.scopeId) ? { noLongerNeeded: 'registered_factory' as const } : {}) })) };
     });
   }
 

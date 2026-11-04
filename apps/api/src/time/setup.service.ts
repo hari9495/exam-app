@@ -4,7 +4,7 @@ import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platfor
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { buildViewer, tenantWide, type ScopeUser } from '../access/scope';
 import { isCidr, todayIst } from '../org-structure/org-validation';
-import { SETTINGS, resolveSetting } from '../org-structure/settings-registry';
+import { SETTINGS, locationValuesInForce, resolveSetting } from '../org-structure/settings-registry';
 import { AssignPolicyDto, AttendanceRuleDto, CalendarDto, HolidayDto, LeaveTypeDto, PolicyDto, PolicyVersionDto } from './dto';
 import { LeaveService } from './leave.service';
 import { DEFAULT_RULE, LeaveRules, asDate, dateOf, factoriesActFrom, parseLines, parseRules, maternityValues, policyFor, statutoryMinimum, yearChangeFor } from './time-core';
@@ -74,6 +74,7 @@ export class TimeSetupService {
         const k = `${r.scopeType}:${r.scopeId}`;
         if (!faLatest.has(k) || faLatest.get(k)!.validFrom! < r.validFrom) faLatest.set(k, r);
       }
+      const faOwn = locationValuesInForce(faRows, faToday);
       const faNames = await this.scopeNames(tx, org, [...faLatest.values()].filter((r) => r.value === 'not_covered').map((r) => ({ type: r.scopeType, id: r.scopeId })));
       const faExclusions = [...faLatest.values()].filter((r) => r.value === 'not_covered').map((r) => ({ scopeType: r.scopeType, name: faNames.get(r.scopeId) ?? 'Archived record' }));
       const today = todayIst();
@@ -136,7 +137,8 @@ export class TimeSetupService {
             updatedAt: l.updatedAt,
             ipRanges: l.ipRanges,
             registeredFactory: l.registeredFactory,
-            factoriesAct: { covered: fa.covered, source: fa.source, scopeType: fa.scopeType, exclusions: l.registeredFactory ? faExclusions : [] },
+            // Answer 151: the location's own setting value: "mark it as a registered factory", or "no longer needed".
+            factoriesAct: { covered: fa.covered, source: fa.source, scopeType: fa.scopeType, exclusions: l.registeredFactory ? faExclusions : [], locationSetting: faOwn.get(l.id) ?? null },
             rule: now ? this.ruleView(now) : { ...DEFAULT_RULE, validFrom: null, starter: true },
             upcoming: mine.filter((r) => dateOf(r.validFrom) > today).map((r) => this.ruleView(r)),
           };

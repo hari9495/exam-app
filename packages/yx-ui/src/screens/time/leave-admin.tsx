@@ -3597,13 +3597,23 @@ function FactoriesActSection({ fa, settingsHref }: { fa: FactoriesActCover; sett
     fa.source === 'registered_factory'
       ? 'Covered: this location is a registered factory (Settings › Locations).'
       : fa.source === 'setting'
-        ? `${fa.covered ? 'Covered' : 'Not covered'}: the Factories Act setting for ${FA_SCOPE[fa.scopeType ?? ''] ?? 'the company'} (Settings › Attendance). Mark the location as a registered factory to make it the one source.`
+        ? `${fa.covered ? 'Covered' : 'Not covered'}: the Factories Act setting for ${FA_SCOPE[fa.scopeType ?? ''] ?? 'the company'} (Settings › Attendance).`
         : 'Not covered: not a registered factory, and no Factories Act setting applies.';
   return (
     <FormSection title="Factories Act">
       <p className="yx-tim-muted">{where}</p>
       {fa.covered && fa.exclusions.length > 0 && <p className="yx-tim-muted">Not covered here: {fa.exclusions.map((x) => `${x.name} (${x.scopeType === 'department' ? 'department' : 'employment type'})`).join(', ')}.</p>}
-      {settingsHref && fa.source !== 'registered_factory' && <p className="yx-tim-muted">Locations are edited in Settings › Locations.</p>}
+      {/* Answer 151: an old location-level "covered" value without the flag; nothing moves by itself. */}
+      {fa.source !== 'registered_factory' && fa.locationSetting === 'covered' && (
+        <InlineAlert tone="info" title="Mark the location as a registered factory to make it the one source" actions={settingsHref ? <Button size="sm" asChild><a href={settingsHref}>Edit the location</a></Button> : undefined}>
+          Tick Registered factory in Settings › Locations; the setting for this location can then be removed.
+        </InlineAlert>
+      )}
+      {fa.source === 'registered_factory' && fa.locationSetting && (
+        <InlineAlert tone="info" title="The Factories Act setting for this location is no longer needed">
+          The Registered factory flag decides. Remove the value for this location in Settings › Attendance.
+        </InlineAlert>
+      )}
     </FormSection>
   );
 }

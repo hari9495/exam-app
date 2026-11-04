@@ -430,6 +430,17 @@ export interface Resolved {
  * The most specific override for `context` (YX-ORG-18). For a dated key, only rows in force on `asOf`
  * count, the latest valid_from winning within a scope.
  */
+/**
+ * Founder answer 151: each location's own attendance.factories_act value in force on `today` (dated: the latest from on
+ * or before it), so the pages can say "mark it as a registered factory" or "no longer needed".
+ */
+export function locationValuesInForce(rows: readonly { scopeType: string; scopeId: string; value: unknown; validFrom: string | null }[], today: string): Map<string, string> {
+  const best = new Map<string, { value: string; validFrom: string }>();
+  for (const r of rows)
+    if (r.scopeType === 'location' && r.validFrom !== null && r.validFrom <= today && (!best.has(r.scopeId) || best.get(r.scopeId)!.validFrom < r.validFrom)) best.set(r.scopeId, { value: String(r.value), validFrom: r.validFrom });
+  return new Map([...best].map(([k, v]) => [k, v.value]));
+}
+
 export function resolveSetting(def: SettingDef, rows: readonly SettingRow[], context: ScopeContext, asOf: string | null): Resolved {
   for (const scopeType of SCOPE_ORDER) {
     const scopeId = context[scopeType];

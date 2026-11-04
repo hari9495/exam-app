@@ -428,10 +428,30 @@ describe('TIM-31 Locations: Factories Act coverage (answer 141)', () => {
     expect(screen.getByText('Not covered here: Office staff (employment type).')).toBeInTheDocument();
     unmount();
     const second = wrap(<GeofenceEditorScreen live={{ ...base, data: withFa({ covered: true, source: 'setting', scopeType: 'location', exclusions: [] }), settingsHref: '/yx/settings/locations', onSetRule: vi.fn() }} />);
-    expect(screen.getByText(/^Covered: the Factories Act setting for this location \(Settings › Attendance\)\. Mark the location as a registered factory/)).toBeInTheDocument();
+    expect(screen.getByText('Covered: the Factories Act setting for this location (Settings › Attendance).')).toBeInTheDocument();
     second.unmount();
     wrap(<GeofenceEditorScreen live={{ ...base, data: withFa({ covered: false, source: 'default', scopeType: null, exclusions: [] }), settingsHref: '/yx/settings/locations', onSetRule: vi.fn() }} />);
     expect(screen.getByText('Not covered: not a registered factory, and no Factories Act setting applies.')).toBeInTheDocument();
   });
 });
 
+// Founder answer 151: Time set-up says what to do with an old location-level value.
+describe('TIM-31 Locations: an old Factories Act value (answer 151)', () => {
+  const withFa = (factoriesAct: NonNullable<(typeof base.data.locations)[number]['factoriesAct']>) => ({ ...base.data, locations: base.data.locations.map((l, i) => (i === 0 ? { ...l, factoriesAct } : l)) });
+  it('setting "covered", no flag: mark it, with a link to edit the location', () => {
+    wrap(<GeofenceEditorScreen live={{ ...base, data: withFa({ covered: true, source: 'setting', scopeType: 'location', exclusions: [], locationSetting: 'covered' }), settingsHref: '/yx/settings/locations', onSetRule: vi.fn() }} />);
+    expect(screen.getByText('Mark the location as a registered factory to make it the one source')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Edit the location' })).toHaveAttribute('href', '/yx/settings/locations');
+  });
+  it('flagged with the old value: no longer needed; flagged without it, or nothing at all: no alert', () => {
+    const one = wrap(<GeofenceEditorScreen live={{ ...base, data: withFa({ covered: true, source: 'registered_factory', scopeType: null, exclusions: [], locationSetting: 'covered' }), settingsHref: '/yx/settings/locations', onSetRule: vi.fn() }} />);
+    expect(screen.getByText('The Factories Act setting for this location is no longer needed')).toBeInTheDocument();
+    expect(screen.queryByText('Mark the location as a registered factory to make it the one source')).toBeNull();
+    one.unmount();
+    const two = wrap(<GeofenceEditorScreen live={{ ...base, data: withFa({ covered: true, source: 'registered_factory', scopeType: null, exclusions: [], locationSetting: null }), settingsHref: '/yx/settings/locations', onSetRule: vi.fn() }} />);
+    expect(screen.queryByText('The Factories Act setting for this location is no longer needed')).toBeNull();
+    two.unmount();
+    wrap(<GeofenceEditorScreen live={{ ...base, data: withFa({ covered: false, source: 'default', scopeType: null, exclusions: [], locationSetting: null }), settingsHref: '/yx/settings/locations', onSetRule: vi.fn() }} />);
+    expect(screen.queryByText('Mark the location as a registered factory to make it the one source')).toBeNull();
+  });
+});

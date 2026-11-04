@@ -70,6 +70,8 @@ export interface OrgLocation {
   ipRanges: string[];
   /** HLP-14 answer 132: a registered factory (Time adds the factory leave minimum there). */
   registeredFactory?: boolean;
+  /** Answer 151: this location's own attendance.factories_act value in force today (null: none). */
+  factoriesActSetting?: string | null;
   archivedAt: string | null;
 }
 
@@ -181,6 +183,8 @@ export interface SettingOverride {
   value: unknown;
   /** YYYY-MM-DD, dated keys only. */
   validFrom: string | null;
+  /** Answer 151: a location's Factories Act value is no longer needed (the location is a registered factory). */
+  noLongerNeeded?: 'registered_factory';
 }
 
 export interface SettingInput {

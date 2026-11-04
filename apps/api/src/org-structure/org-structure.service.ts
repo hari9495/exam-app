@@ -1,3 +1,4 @@
+import { locationValuesInForce } from './settings-registry';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
@@ -376,14 +377,18 @@ export class OrgStructureService {
   }
 
   listLocations(ctx: TenantContext, legalEntityId: string | undefined, includeArchived: boolean) {
-    return this.run(ctx, async (tx, c) =>
-      (
-        await tx.location.findMany({
-          where: { organizationId: c.organizationId, ...(legalEntityId ? { legalEntityId } : {}), ...(includeArchived ? {} : { archivedAt: null }) },
-          orderBy: { name: 'asc' },
-        })
-      ).map(locationView),
-    );
+    return this.run(ctx, async (tx, c) => {
+      const rows = await tx.location.findMany({
+        where: { organizationId: c.organizationId, ...(legalEntityId ? { legalEntityId } : {}), ...(includeArchived ? {} : { archivedAt: null }) },
+        orderBy: { name: 'asc' },
+      });
+      // Answer 151: the location's own Factories Act setting in force today (the form says what to do with it).
+      const fa = locationValuesInForce(
+        (await tx.setting.findMany({ where: { organizationId: c.organizationId, key: 'attendance.factories_act', scopeType: 'location' } })).map((s) => ({ scopeType: s.scopeType, scopeId: s.scopeId, value: s.value, validFrom: s.validFrom ? isoDate(s.validFrom) : null })),
+        todayIst(),
+      );
+      return rows.map((r) => ({ ...locationView(r), factoriesActSetting: fa.get(r.id) ?? null }));
+    });
   }
 
   createLocation(ctx: TenantContext, dto: LocationDto) {
