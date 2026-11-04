@@ -103,8 +103,10 @@ const VALUE_LABEL: Record<string, Record<string, string>> = {
   'payroll.loan.interest_rate.advance': { '0': 'Interest-free', ...rates() },
   'payroll.loan.interest_rate.loan': { '0': 'Interest-free', ...rates() },
 };
-export const valueLabel = (key: string, value: unknown) => {
+export const valueLabel = (key: string, value: unknown, labels?: Record<string, string>) => {
   const v = String(value);
+  // A list the platform keeps (HLP-14: the industries) sends its own labels with the registry.
+  if (labels?.[v]) return labels[v];
   if (VALUE_LABEL[key]?.[v]) return VALUE_LABEL[key][v];
   // A text setting (one thing a line) reads as one line.
   if (v.includes('\n')) return v.split('\n').join(' · ');
@@ -138,7 +140,7 @@ export const SETTING_SECTIONS: Record<SettingsArea, SettingsSection[]> = {
     { title: 'Work permits and visas', description: 'The person is reminded before a visa, permit or national ID on their record expires. An expired employment visa or work permit holds payroll approval.', keys: ['work_auth.reminder_days'] },
     { title: 'Regulated declarations', description: 'For designated persons (BFSI): when each financial year’s holdings, related persons and conflicts are due, and the trading pre-clearance rules.', keys: ['bfsi.declaration_due', 'bfsi.preclearance_threshold', 'bfsi.preclearance_valid_days', 'bfsi.preclearance_decide_days'] },
     { title: 'Employee records', description: 'The personal details every record must hold. The personal details form marks them Required and does not save without them.', keys: ['employee.personal.required'] },
-    { title: 'Company policies', description: 'How people acknowledge the policies in Helpdesk › Policies: how long they have, reminders, typing their name, whether a second person publishes each version, and whether Write policies with AI uses the company’s AI (off offers YukthiX starters). A change applies from today; acknowledgements already given stay as they are.', keys: ['policy.ack.due_days', 'policy.reminder.every_days', 'policy.reminder.manager_after_days', 'policy.reack.default', 'policy.ack.typed_name', 'policy.publish.second_person', 'policy.ai_writer'] },
+    { title: 'Company policies', description: 'How people acknowledge the policies in Helpdesk › Policies: how long they have, reminders, typing their name, whether a second person publishes each version, and whether Write policies with AI uses the company’s AI (off offers YukthiX starters). A change applies from today; acknowledgements already given stay as they are.', keys: ['policy.ack.due_days', 'policy.reminder.every_days', 'policy.reminder.manager_after_days', 'policy.reack.default', 'policy.ack.typed_name', 'policy.publish.second_person', 'policy.ai_writer', 'company.industry'] },
     { title: 'Speak-up', description: 'Who may report a grievance or an ethics concern without a name, how long the case team has to acknowledge a report, the topics people pick, and how long someone accused in a grievance or ethics case has to reply. POSH and Grievance Redressal Committee time limits come from the law tables, not from here.', keys: ['speakup.anonymous', 'speakup.ack_days', 'speakup.categories.grievance', 'speakup.categories.ethics', 'cases.reply_days', 'cases.disciplinary.reply_days'] },
     { title: 'Working week and language', description: 'A full-time week (part-time jobs show their share of it) and the language people see your company words in.', keys: ['work.normal_week_hours', 'people.language'] },
   ],
@@ -240,7 +242,7 @@ function SettingEditor({ settingKey, def, current, choices, today, tooEarly = fa
     void run('save', () => onSave(input)).then((ok) => ok && onClose());
   };
   return (
-    <EditorDrawer open onClose={onClose} dirty={dirty} title={def.label} subtitle={`Starter value: ${valueLabel(settingKey, def.default)}`} errors={saveErrors.shownErrors} saving={busy === 'save'} failed={error} saveLabel="Save" onSave={save}>
+    <EditorDrawer open onClose={onClose} dirty={dirty} title={def.label} subtitle={`Starter value: ${valueLabel(settingKey, def.default, def.labels)}`} errors={saveErrors.shownErrors} saving={busy === 'save'} failed={error} saveLabel="Save" onSave={save}>
       {/* A company-only setting has nothing to choose here: no empty "Applies to" heading (founder review 14 Oct 2026). */}
       {(scopes.length > 1 || draft.scopeType !== 'tenant') && (
       <FormSection title="Applies to">
@@ -265,11 +267,11 @@ function SettingEditor({ settingKey, def, current, choices, today, tooEarly = fa
           {def.text ? (
             <TextArea value={draft.value ?? ''} onChange={(value) => set({ value })} rows={5} aria-label={def.label} />
           ) : def.multi ? (
-            def.values.map((v) => <Checkbox key={v} checked={picked.includes(v)} onChange={(c) => set({ value: def.values.filter((x) => (x === v ? c : picked.includes(x))).join(',') })} label={valueLabel(settingKey, v)} />)
+            def.values.map((v) => <Checkbox key={v} checked={picked.includes(v)} onChange={(c) => set({ value: def.values.filter((x) => (x === v ? c : picked.includes(x))).join(',') })} label={valueLabel(settingKey, v, def.labels)} />)
           ) : isPickOne(def.values.length) ? (
-            <Segment label={def.label} value={draft.value ?? ''} onChange={(value) => set({ value })} options={def.values.map((v) => ({ value: v, label: valueLabel(settingKey, v) }))} />
+            <Segment label={def.label} value={draft.value ?? ''} onChange={(value) => set({ value })} options={def.values.map((v) => ({ value: v, label: valueLabel(settingKey, v, def.labels) }))} />
           ) : (
-            <Select value={draft.value} onChange={(value) => set({ value })} options={def.values.map((v) => ({ value: v, label: valueLabel(settingKey, v) }))} aria-label={def.label} />
+            <Select value={draft.value} onChange={(value) => set({ value })} options={def.values.map((v) => ({ value: v, label: valueLabel(settingKey, v, def.labels) }))} aria-label={def.label} />
           )}
         </FormField>
         {def.dated && (
@@ -301,7 +303,7 @@ function SettingBlock({ settingKey, def, rows, names, canEdit, blockedReason, to
   const inForce = (r: SettingOverride) => def.dated && r.validFrom !== null && r.validFrom <= today;
   const columns: TableColumn<SettingOverride>[] = [
     { key: 'scope', header: 'Applies to', value: names, render: (r) => <span className="yx-auth__item-main"><Text weight="medium">{names(r)}</Text>{r.scopeType !== 'tenant' && <Text tone="secondary" size="sm">{SCOPE_LABEL[r.scopeType]}</Text>}</span>, hideable: false },
-    { key: 'value', header: 'Value', value: (r) => valueLabel(settingKey, r.value), width: 200 },
+    { key: 'value', header: 'Value', value: (r) => valueLabel(settingKey, r.value, def.labels), width: 200 },
     ...(def.dated
       ? [{ key: 'from', header: 'From', value: (r: SettingOverride) => r.validFrom ?? '', render: (r: SettingOverride) => (r.validFrom ? <span className="yx-org__from">{dateLabel(r.validFrom)}{r.validFrom > today && <Badge tone="info">Scheduled</Badge>}</span> : '—'), width: 230 }]
       : []),
@@ -313,7 +315,7 @@ function SettingBlock({ settingKey, def, rows, names, canEdit, blockedReason, to
         <span className="yx-auth__item-main">
           <Text as="p" weight="medium">{def.label}</Text>
           <span className="yx-org__now">
-            <Text weight="semibold">{valueLabel(settingKey, value)}</Text>
+            <Text weight="semibold">{valueLabel(settingKey, value, def.labels)}</Text>
             {source ? <Text tone="secondary" size="sm">{source}</Text> : <Badge>Starter value</Badge>}
           </span>
           {blockedReason && <Text as="p" tone="secondary" size="sm">{blockedReason}</Text>}
@@ -472,7 +474,7 @@ export function CompanySettingsScreen(props: CompanySettingsScreenProps) {
                       onRemove={(r) =>
                         ask({
                           title: `Remove this value for ${name(r)}?`,
-                          consequence: r.scopeType === 'tenant' ? `The company goes back to the starter value, ${valueLabel(k, def.default)}.` : 'It takes the value set above it again.',
+                          consequence: r.scopeType === 'tenant' ? `The company goes back to the starter value, ${valueLabel(k, def.default, def.labels)}.` : 'It takes the value set above it again.',
                           confirmLabel: 'Remove',
                           destructive: true,
                           action: async () => {

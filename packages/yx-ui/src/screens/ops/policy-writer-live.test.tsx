@@ -278,3 +278,16 @@ describe('HLP-14 round 2 (live)', () => {
     expect(screen.getByRole('textbox', { name: 'How to apply' })).toHaveAttribute('readonly');
   });
 });
+
+// HLP-14 answer 132: the questionnaire starts from the company's industry setting; it can still be changed.
+describe('HLP-14 company industry (live)', () => {
+  it('prefills the industry from the company setting; none leaves it empty', async () => {
+    const onGenerate = vi.fn().mockResolvedValue({ id: 'd9' });
+    const { unmount } = show(<PolicyWriterScreen live={liveWriter({ onGenerate, home: { ...WRITER_HOME, defaults: { industry: 'fmcg' } } })} />);
+    expect(screen.getByRole('combobox', { name: /Industry/ })).toHaveTextContent('Food and consumer goods');
+    unmount();
+    show(<PolicyWriterScreen live={liveWriter({ home: { ...WRITER_HOME, defaults: { industry: null } } })} />);
+    await ue.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByText('Choose your industry.')).toBeInTheDocument();
+  });
+});

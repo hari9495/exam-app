@@ -2092,12 +2092,17 @@ function Statutory({ d }: { d: TimeSetup }) {
   if (!d.statutory.length) return null;
   return (
     <InlineAlert tone="info" title="Minimums set by law">
-      {d.statutory.map((s) => (
-        <span key={s.jurisdiction}>
-          {STATE_TEXT[s.jurisdiction] ?? s.jurisdiction}: {(s.values.floors ?? []).map((f) => `${f.kinds.map(kindText).join(' and ')} ${f.days} days a year`).join(', ')}
-          {s.values.carry?.earned ? `; earned leave carries forward up to at least ${s.values.carry.earned} days` : ''}. {s.verify ? 'Being confirmed with our compliance partner.' : ''}{' '}
-        </span>
-      ))}
+      {d.statutory.map((s) => {
+        // HLP-14 answer 131: the factory table applies at locations marked as registered factories, named with its rule set.
+        const factory = s.statute === 'IN.FACTORIES.LEAVE';
+        const floors = (s.values.floors ?? []).map((f) => `${f.kinds.map(kindText).join(' and ')} ${f.days} days a year`);
+        const carry = s.values.carry?.earned ? `earned leave carries forward up to at least ${s.values.carry.earned} days` : '';
+        return (
+          <span key={`${s.statute ?? 'IN.SE'}-${s.jurisdiction}-${s.version}`}>
+            {factory ? `Registered factories (${s.statute} ${s.version})` : (STATE_TEXT[s.jurisdiction] ?? s.jurisdiction)}: {[floors.join(', '), carry].filter(Boolean).join('; ')}. {s.verify ? 'Being confirmed with our compliance partner.' : ''}{' '}
+          </span>
+        );
+      })}
       A policy below the minimum is raised to it when credits are made.
     </InlineAlert>
   );

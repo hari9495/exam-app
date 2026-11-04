@@ -144,7 +144,7 @@ export class LeaveService implements OnModuleInit {
   /** Annual days per policy line with the state's statutory floor applied (P07: never below the law). */
   private async entitlements(tx: Tx, f: Facts, on: string, lines: PolicyLine[], types: LeaveTypeRow[]): Promise<Map<string, number>> {
     const kinds = new Map(types.map((t) => [t.id, t.kind]));
-    const st = await statutoryOn(tx, f.state, on);
+    const st = await statutoryOn(tx, f.state, on, f.factory);
     const floored = applyFloors(lines.map((l) => ({ kind: kinds.get(l.leaveTypeId) ?? 'other', annualDays: l.annualDays })), st.floors);
     return new Map(lines.map((l, i) => [l.leaveTypeId, floored.annual[i]]));
   }
@@ -1149,7 +1149,7 @@ export class LeaveService implements OnModuleInit {
       if (year.end !== yearEnd) continue;
       const policy = await policyOn(tx, c, f, yearEnd);
       if (!policy) continue;
-      const st = await statutoryOn(tx, f.state, yearEnd);
+      const st = await statutoryOn(tx, f.state, yearEnd, f.factory);
       const payOut = (await settingOn(tx, c, 'leave.year_end.encash_excess', f, yearEnd)) === 'on';
       const company = { maxPerYear: Number(await settingOn(tx, c, 'leave.encashment.max_days', f, yearEnd)), minLeft: 0, divisor: 26 };
       for (const l of policy.lines) {
@@ -1193,7 +1193,7 @@ export class LeaveService implements OnModuleInit {
       if (!policy) continue;
       const oldYear = await leaveYearFor(tx, c, f, lastOld);
       const ent = await this.entitlements(tx, f, fromOn, policy.lines, types);
-      const st = await statutoryOn(tx, f.state, lastOld);
+      const st = await statutoryOn(tx, f.state, lastOld, f.factory);
       const company = { maxPerYear: Number(await settingOn(tx, c, 'leave.encashment.max_days', f, today)), minLeft: 0, divisor: 26 };
       const payOut = (await settingOn(tx, c, 'leave.year_end.encash_excess', f, today)) === 'on';
       for (const l of policy.lines) {

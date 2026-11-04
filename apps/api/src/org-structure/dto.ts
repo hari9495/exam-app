@@ -172,6 +172,11 @@ export class LocationDto {
   @IsString({ each: true })
   @MaxLength(43, { each: true })
   ipRanges?: string[];
+
+  /** HLP-14 answer 132: a registered factory (Time applies the factory leave minimum here). Absent keeps it. */
+  @IsOptional()
+  @IsBoolean()
+  registeredFactory?: boolean;
 }
 
 // ---- structure masters (YX-ORG-15) ----

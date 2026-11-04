@@ -2312,6 +2312,8 @@ model Location {
   country        String    @db.Char(2)
   state          String    @db.VarChar(6)
   timezone       String    @db.VarChar(64)
+  /// HLP-14 answer 132: a registered factory; Time applies the factory carry-forward minimum here (answer 131).
+  registeredFactory Boolean @default(false) @map("registered_factory")
   minWageZone    String?   @map("min_wage_zone") @db.VarChar(40)
   geoLat         Decimal?  @map("geo_lat") @db.Decimal(9, 6)
   geoLng         Decimal?  @map("geo_lng") @db.Decimal(9, 6)

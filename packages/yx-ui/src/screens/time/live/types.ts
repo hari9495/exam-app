@@ -470,7 +470,8 @@ export interface TimeSetup {
   leaveDefaults?: Record<string, string>;
   /** The Maternity Benefit Act values in force (P07 IN.LEAVE). */
   maternity?: { maternityWeeks: number; maternityWeeksThirdChild: number; beforeDeliveryWeeks: number; eligibilityDaysWorked: number; miscarriageWeeks?: number; tubectomyWeeks?: number };
-  statutory: { jurisdiction: string; version: string; validFrom: string; values: { floors?: { kinds: string[]; days: number }[]; carry?: Record<string, number> }; source: string; verify: boolean }[];
+  /** statute: IN.SE (a state's minimums) or IN.FACTORIES.LEAVE (registered factories, HLP-14 answer 131). */
+  statutory: { statute?: string; jurisdiction: string; version: string; validFrom: string; values: { floors?: { kinds: string[]; days: number }[]; carry?: Record<string, number> }; source: string; verify: boolean }[];
 }
 
 export interface YearEndPreview {

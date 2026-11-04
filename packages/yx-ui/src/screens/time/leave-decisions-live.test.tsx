@@ -198,3 +198,16 @@ describe('Leave liability (TIM-30, live)', () => {
     expect(screen.getByRole('button', { name: 'Export CSV' })).toBeInTheDocument();
   });
 });
+
+// HLP-14 answer 131: the factory table shows with the state minimums, named with its rule set, when a location is a factory.
+describe('Minimums set by law: registered factories', () => {
+  const policiesWith = (statutory: typeof TIME_SETUP.statutory) => ({ state: 'ready' as const, data: { ...TIME_SETUP, statutory }, onCreatePolicy: vi.fn(), onAddVersion: vi.fn(), onAssign: vi.fn(), onRemoveAssignment: vi.fn(), onSaveOrder: vi.fn(), onOpenType: vi.fn() });
+  it('shows the factory carry forward with its rule set; without it, only the states', () => {
+    const factory = { statute: 'IN.FACTORIES.LEAVE', jurisdiction: 'IN', version: '2020-v1', validFrom: '2025-11-21', values: { floors: [], carry: { earned: 30 } }, source: 'OSH Code 2020, s.32', verify: true };
+    const { unmount } = render(<ToastProvider><LeavePoliciesScreen live={policiesWith([...TIME_SETUP.statutory, factory])} /></ToastProvider>);
+    expect(screen.getByText(/Registered factories \(IN\.FACTORIES\.LEAVE 2020-v1\): earned leave carries forward up to at least 30 days\./)).toBeInTheDocument();
+    unmount();
+    render(<ToastProvider><LeavePoliciesScreen live={policiesWith(TIME_SETUP.statutory)} /></ToastProvider>);
+    expect(screen.queryByText(/Registered factories/)).toBeNull();
+  });
+});

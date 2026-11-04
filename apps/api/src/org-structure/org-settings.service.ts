@@ -76,6 +76,15 @@ async function bonusRatesInOrder(tx: Tx, org: string, key: string, value: string
     );
 }
 
+/** The registry with the platform lists filled in (HLP-14: the industries a company may choose). */
+async function withLists(tx: Tx): Promise<Record<string, SettingDef>> {
+  const industries = await tx.policyIndustry.findMany({ where: { active: true }, orderBy: [{ sort: 'asc' }, { label: 'asc' }] });
+  const out: Record<string, SettingDef> = { ...SETTINGS };
+  for (const [k, def] of Object.entries(SETTINGS))
+    if (def.oneOf === 'policy_industries') out[k] = { ...def, values: [...def.values, ...industries.map((i) => i.code)], labels: { ...def.labels, ...Object.fromEntries(industries.map((i) => [i.code, i.label])) } };
+  return out;
+}
+
 @Injectable()
 export class OrgSettingsService {
   constructor(private readonly tenantPrisma: TenantPrismaService) {}
@@ -95,7 +104,7 @@ export class OrgSettingsService {
   list(ctx: TenantContext) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const rows = await tx.setting.findMany({ where: { organizationId: c.organizationId }, orderBy: [{ key: 'asc' }, { scopeType: 'asc' }, { validFrom: 'asc' }] });
-      return { registry: SETTINGS, overrides: rows.map(rowView) };
+      return { registry: await withLists(tx), overrides: rows.map(rowView) };
     });
   }
 
@@ -107,6 +116,8 @@ export class OrgSettingsService {
       dto.value = dto.value.replace(/\r\n?/g, '\n').trim();
       if (!dto.value) throw new BadRequestException(`Write what goes in "${def.label}", one thing a line.`);
       if (dto.value.length > def.text.maxLength) throw new BadRequestException(`"${def.label}" is ${dto.value.length} characters. Keep it to ${def.text.maxLength} or fewer.`);
+    } else if (def.oneOf) {
+      // Checked against the platform list below, inside the company's transaction.
     } else {
       const parts = def.multi ? (dto.value ? dto.value.split(',') : []) : [dto.value];
       if (!parts.every((p) => def.values.includes(p)) || new Set(parts).size !== parts.length) throw new BadRequestException(`${def.label} is ${def.multi ? 'any of' : 'one of'}: ${def.values.join(', ')}`);
@@ -117,6 +128,7 @@ export class OrgSettingsService {
     if (scopeType === 'tenant' && dto.scopeId) throw new BadRequestException('A company-wide setting has no scope id.');
     if (scopeType !== 'tenant' && !dto.scopeId) throw new BadRequestException('Say which record the setting is for.');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      if (def.oneOf && !(await withLists(tx))[dto.key].values.includes(dto.value)) throw new BadRequestException(`Choose ${def.label.toLowerCase()} from the list.`);
       const scopeId = scopeType === 'tenant' ? c.organizationId : dto.scopeId!;
       if (scopeType !== 'tenant') await this.scopeExists(tx, c, scopeType, scopeId, true);
       const validFrom = dto.validFrom ? asDate(dto.validFrom) : null;

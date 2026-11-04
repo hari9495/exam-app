@@ -68,6 +68,8 @@ export interface OrgLocation {
   minWageZone: string | null;
   geofence: Geofence | null;
   ipRanges: string[];
+  /** HLP-14 answer 132: a registered factory (Time adds the factory leave minimum there). */
+  registeredFactory?: boolean;
   archivedAt: string | null;
 }
 
@@ -80,6 +82,7 @@ export interface LocationInput {
   minWageZone: string | null;
   geofence: Geofence | null;
   ipRanges: string[];
+  registeredFactory: boolean;
 }
 
 export type MasterKind = 'departments' | 'designations' | 'grades' | 'employment-types' | 'cost-centres';
@@ -165,6 +168,8 @@ export interface SettingDef {
   multi?: true;
   /** The value is short text HR writes (one thing a line), up to this many characters; `values` is empty. */
   text?: { maxLength: number };
+  /** Labels of the values when the list is the platform's (HLP-14: the industries). */
+  labels?: Record<string, string>;
 }
 
 export interface SettingOverride {

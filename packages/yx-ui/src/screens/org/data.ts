@@ -74,7 +74,8 @@ const loc = (id: string, legalEntityId: string, name: string, code: string, city
 export const LOCATIONS: OrgLocation[] = [
   loc('loc-blr', 'le-kfpl', 'Bengaluru head office', 'BLR-HO', 'Bengaluru', 'IN-KA', '560025', '14 Residency Road', { lat: 12.9716, lng: 77.5946, radiusM: 150 }, ['203.0.113.0/24']),
   loc('loc-maa', 'le-tn', 'Chennai office', 'MAA-OFF', 'Chennai', 'IN-TN', '600032', '5 Guindy Industrial Estate', { lat: 13.0067, lng: 80.2206, radiusM: 150 }, ['198.51.100.16/28']),
-  loc('loc-hsr', 'le-tn', 'Hosur plant', 'HSR-PLT', 'Hosur', 'IN-TN', '635126', '22 SIPCOT Industrial Complex', { lat: 12.7409, lng: 77.8253, radiusM: 300 }, ['10.20.0.0/16']),
+  // HLP-14 answer 132: the plant is a registered factory (Time adds the factory leave minimum there).
+  { ...loc('loc-hsr', 'le-tn', 'Hosur plant', 'HSR-PLT', 'Hosur', 'IN-TN', '635126', '22 SIPCOT Industrial Complex', { lat: 12.7409, lng: 77.8253, radiusM: 300 }, ['10.20.0.0/16']), registeredFactory: true },
   loc('loc-mys', 'le-kfpl', 'Mysuru depot', 'MYS-DEP', 'Mysuru', 'IN-KA', '570001', '3 Sayyaji Rao Road', null, [], '2026-06-30T18:30:00Z'),
 ];
 

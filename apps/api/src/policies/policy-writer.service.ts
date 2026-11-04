@@ -195,13 +195,17 @@ export class PolicyWriterService {
     return this.tx(ctx, async (tx, c) => {
       // Answer 108: probation starts from the company's own default (whole company; entity or grade overrides differ).
       const probation = Math.min(12, Math.max(0, Number(await settingFor(tx, c, 'probation.default_months', { legalEntityId: '00000000-0000-0000-0000-000000000000' })) || 6));
+      // Answer 132: the company's industry setting starts the questionnaire (a draft may still choose another).
+      const chosen = await settingFor(tx, c, 'company.industry', { legalEntityId: '00000000-0000-0000-0000-000000000000' });
+      const industries = await this.industries(tx);
       const latest = await tx.policyAiDraft.findFirst({ where: { organizationId: c.organizationId, status: 'draft' }, orderBy: { createdAt: 'desc' } });
       return {
         ai: await this.aiState(tx, c),
+        defaults: { industry: industries.some((i) => i.code === chosen) ? chosen : null },
         latest: latest ? { id: latest.id, type: TYPE_LABEL[latest.policyType as PolicyType], createdAt: latest.createdAt.toISOString() } : null,
         options: {
           types: POLICY_TYPES.map((t) => ({ value: t, label: TYPE_LABEL[t] })),
-          industries: (await this.industries(tx)).map((i) => ({ value: i.code, label: i.label })),
+          industries: industries.map((i) => ({ value: i.code, label: i.label })),
           states: Object.entries(STATES).map(([value, label]) => ({ value, label })),
           patterns: Object.entries(PATTERNS).map(([value, label]) => ({ value, label })),
           values: Object.fromEntries(POLICY_TYPES.map((t) => [t, Object.entries(VALUE_SPEC[t]).map(([key, s]) => ({ key, ...s, ...(key === 'probationMonths' ? { default: probation } : {}) }))])),

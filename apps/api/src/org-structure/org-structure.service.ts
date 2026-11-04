@@ -360,6 +360,7 @@ export class OrgStructureService {
       country: dto.address.country,
       state: dto.address.state,
       timezone: dto.timezone,
+      registeredFactory: dto.registeredFactory,
       minWageZone: dto.minWageZone === undefined ? undefined : dto.minWageZone === null ? null : clean(dto.minWageZone) || null,
       geoLat: dto.geofence === undefined ? undefined : (dto.geofence?.lat ?? null),
       geoLng: dto.geofence === undefined ? undefined : (dto.geofence?.lng ?? null),
@@ -393,7 +394,7 @@ export class OrgStructureService {
       const code = dto.code ?? codeFromName(data.name, await this.takenCodes(tx, c, 'location', data.name));
       const geoPoints = (dto.geofence ? [{ name: data.name, ...dto.geofence }] : []) as unknown as Prisma.InputJsonValue;
       const row = await tx.location.create({ data: { ...data, geoPoints, organizationId: c.organizationId, legalEntityId: dto.legalEntityId, code, createdBy: c.userId } });
-      await audit(tx, c, 'org.location.created', 'location', row.id, { name: row.name, code: row.code, legalEntityId: row.legalEntityId, state: row.state });
+      await audit(tx, c, 'org.location.created', 'location', row.id, { name: row.name, code: row.code, legalEntityId: row.legalEntityId, state: row.state, registeredFactory: row.registeredFactory });
       return locationView(row);
     });
   }
@@ -410,6 +411,8 @@ export class OrgStructureService {
       const updated = await tx.location.update({ where: { id }, data: next });
       const fields = changed(locationView(row) as unknown as Record<string, unknown>, locationView(updated) as unknown as Record<string, unknown>).filter((f) => f !== 'updatedAt');
       if (fields.length) await audit(tx, c, 'org.location.updated', 'location', id, { fields });
+      // HLP-14 answer 132: the factory flag changes leave minimums, so its own audit row says from and to.
+      if (row.registeredFactory !== updated.registeredFactory) await audit(tx, c, 'org.location.factory_changed', 'location', id, { from: row.registeredFactory, to: updated.registeredFactory, name: updated.name });
       return locationView(updated);
     });
   }

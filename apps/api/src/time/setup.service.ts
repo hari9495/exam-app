@@ -60,7 +60,8 @@ export class TimeSetupService {
         tx.holiday.findMany({ where: { organizationId: org }, orderBy: { holidayOn: 'asc' } }),
         tx.location.findMany({ where: { organizationId: org, archivedAt: null }, orderBy: { name: 'asc' } }),
         tx.locationAttendanceRule.findMany({ where: { organizationId: org }, orderBy: { validFrom: 'desc' } }),
-        tx.statutoryRuleSet.findMany({ where: { statute: 'IN.SE' }, orderBy: { jurisdiction: 'asc' } }),
+        // HLP-14 answer 131: the factory leave table too, when one of the company's locations is a registered factory.
+        tx.location.count({ where: { organizationId: org, archivedAt: null, registeredFactory: true } }).then((n) => tx.statutoryRuleSet.findMany({ where: { statute: { in: n ? ['IN.SE', 'IN.FACTORIES.LEAVE'] : ['IN.SE'] }, status: 'published', OR: [{ validTo: null }, { validTo: { gte: new Date() } }] }, orderBy: [{ statute: 'asc' }, { jurisdiction: 'asc' }] })),
         tx.legalEntity.findMany({ where: { organizationId: org, archivedAt: null }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
       ]);
       const scopeName = await this.scopeNames(tx, org, assignments.map((a) => ({ type: a.scopeType, id: a.scopeId })));
@@ -138,7 +139,7 @@ export class TimeSetupService {
             }),
           ),
         ),
-        statutory: statutory.map((s) => ({ jurisdiction: s.jurisdiction, version: s.version, validFrom: dateOf(s.validFrom), values: s.values, source: s.source, verify: s.verify })),
+        statutory: statutory.map((s) => ({ statute: s.statute, jurisdiction: s.jurisdiction, version: s.version, validFrom: dateOf(s.validFrom), values: s.values, source: s.source, verify: s.verify })),
       };
     });
   }

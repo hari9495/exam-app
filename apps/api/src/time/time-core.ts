@@ -191,6 +191,8 @@ export interface Facts {
   managerEmployeeId: string | null;
   zone: string;
   state: string;
+  /** HLP-14 answer 131: the location is a registered factory (Time adds the factory leave minimum). */
+  factory: boolean;
 }
 
 /** The employee's assignment and location on `on` (P06: as of that date). Null when not employed on it. */
@@ -201,7 +203,7 @@ export async function factsOn(tx: Tx, org: string, employeeId: string, on: strin
            m.joined_on AS "joinedOn", m.exited_on AS "exitedOn", a.legal_entity_id::text AS "legalEntityId",
            a.location_id::text AS "locationId", a.department_id::text AS "departmentId", a.designation_id::text AS "designationId",
            a.grade_id::text AS "gradeId", a.employment_type_id::text AS "employmentTypeId", a.manager_employee_id::text AS "managerEmployeeId",
-           l.timezone AS zone, l.state
+           l.timezone AS zone, l.state, l.registered_factory AS factory
     FROM employees e
     JOIN employee_assignments a ON a.organization_id = e.organization_id AND a.employee_id = e.id AND a.superseded_at IS NULL
       AND ${on}::date <@ daterange(a.valid_from, a.valid_to, '[]')
@@ -278,11 +280,23 @@ export async function policyOn(tx: Tx, c: CompanyContext, f: Facts, on: string):
   return { policyId, name: policy.name, lines: version.lines as unknown as PolicyLine[] };
 }
 
-/** P07 Shops and Establishments floors for a state on a date (YX-STAT-05: the rule set valid on that date). */
-export async function statutoryOn(tx: Tx, state: string, on: string): Promise<{ floors: Floor[]; carry: Record<string, number>; source: string | null; verify: boolean }> {
-  const rs = await tx.statutoryRuleSet.findFirst({ where: { statute: 'IN.SE', jurisdiction: state, validFrom: { lte: asDate(on) }, OR: [{ validTo: null }, { validTo: { gte: asDate(on) } }] }, orderBy: { validFrom: 'desc' } });
+/**
+ * P07 Shops and Establishments floors for a state on a date (YX-STAT-05: the rule set valid on that date). At a
+ * registered factory (HLP-14 answer 131) the factory leave table valid on that date (IN.FACTORIES.LEAVE) is added the
+ * same way: its floors join the state's and the higher carry-forward minimum per kind wins. `rules` names each rule set
+ * used ("IN.SE IN-KA 1961-v1"), so a minimum always says where it came from.
+ */
+export async function statutoryOn(tx: Tx, state: string, on: string, factory = false): Promise<{ floors: Floor[]; carry: Record<string, number>; source: string | null; verify: boolean; rules: string[] }> {
+  const valid = { validFrom: { lte: asDate(on) }, OR: [{ validTo: null }, { validTo: { gte: asDate(on) } }], status: 'published' };
+  const rs = await tx.statutoryRuleSet.findFirst({ where: { statute: 'IN.SE', jurisdiction: state, ...valid }, orderBy: { validFrom: 'desc' } });
   const v = (rs?.values ?? {}) as { floors?: Floor[]; carry?: Record<string, number> };
-  return { floors: v.floors ?? [], carry: v.carry ?? {}, source: rs?.source ?? null, verify: rs?.verify ?? false };
+  const out = { floors: v.floors ?? [], carry: { ...(v.carry ?? {}) }, source: rs?.source ?? null, verify: rs?.verify ?? false, rules: rs ? [`IN.SE ${state} ${rs.version}`] : [] };
+  if (!factory) return out;
+  const fx = await tx.statutoryRuleSet.findFirst({ where: { statute: 'IN.FACTORIES.LEAVE', jurisdiction: 'IN', ...valid }, orderBy: { validFrom: 'desc' } });
+  if (!fx) return out;
+  const fv = (fx.values ?? {}) as { floors?: Floor[]; carry?: Record<string, number> };
+  for (const [k, n] of Object.entries(fv.carry ?? {})) out.carry[k] = Math.max(out.carry[k] ?? 0, n);
+  return { ...out, floors: [...out.floors, ...(fv.floors ?? [])], verify: out.verify || fx.verify, rules: [...out.rules, `IN.FACTORIES.LEAVE IN ${fx.version}`] };
 }
 
 /** IN.LEAVE maternity values (P07, YX-LV-10): weeks per case, weeks before delivery, days worked for eligibility. */

@@ -21,6 +21,10 @@ export interface SettingDef {
   multi?: true;
   /** The value is short text HR writes (one thing a line), up to this many characters; `values` is empty. */
   text?: { maxLength: number };
+  /** The values come from a platform list (besides `values`), read when the settings are listed and checked on save. */
+  oneOf?: 'policy_industries';
+  /** Labels of the values, when the list is not fixed in code. */
+  labels?: Record<string, string>;
 }
 
 export const SETTINGS: Readonly<Record<string, SettingDef>> = {
@@ -37,6 +41,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'policy.ai_writer': { label: 'Policies: write policy drafts with the company’s AI', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   // HLP-14 (answer 106): unapproved policy drafts are discarded by the daily clean-up after this many days untouched.
   'policy.ai_draft.discard_days': { label: 'Policies: discard unapproved AI drafts after (days untouched)', scopes: ['tenant'], dated: false, values: ['30', '60', '90', '180', '365'], default: '90' },
+  // HLP-14 answer 132: the company's industry (the policy_industries list; none until HR chooses). Write policies with AI
+  // starts from it; a draft can still choose another.
+  'company.industry': { label: 'Industry of the company', scopes: ['tenant'], dated: false, values: ['none'], default: 'none', oneOf: 'policy_industries', labels: { none: 'Not chosen' } },
   'policy.publish.second_person': { label: 'Policies: a second person publishes each version', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on', guard: 'access.role.manage' },
   // HLP-06 speak-up (docs/yukthix/helpdesk-design-map.md 4e): who may report without a name, the days to acknowledge,
   // and the topics people choose from. Legal clocks (POSH, GRC) come from the rule sets IN.POSH and IN.GRC, not from here.

@@ -39,6 +39,8 @@ export interface WriterValueSpec {
 /** GET desk/policy-writer */
 export interface WriterHome {
   ai: WriterAi;
+  /** Answer 132: the company's industry setting (null: not chosen); the questionnaire starts from it. */
+  defaults?: { industry: string | null };
   latest: { id: string; type: string; createdAt: string } | null;
   options: {
     types: { value: WriterType; label: string }[];
@@ -167,7 +169,7 @@ function WriterQuestions({ live, home }: { live: LivePolicyWriter; home: WriterH
   const o = home.options;
   const aiOn = home.ai === 'on';
   const [type, setType] = useState<WriterType>('leave');
-  const [industry, setIndustry] = useState<string>('');
+  const [industry, setIndustry] = useState<string>(home.defaults?.industry ?? '');
   const [states, setStates] = useState<string[]>([]);
   const [headcount, setHeadcount] = useState<number | null>(null);
   const [pattern, setPattern] = useState<string>(o.patterns[0]?.value ?? 'office');

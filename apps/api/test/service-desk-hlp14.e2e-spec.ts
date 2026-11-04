@@ -8,6 +8,7 @@ import { randomUUID } from 'crypto';
 import { PrismaClient } from '@prisma/client';
 import { AiApiKeyResolverService, AiNotConfiguredError, BlobStorageService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { PolicyWriterService } from '../src/policies/policy-writer.service';
+import { statutoryOn } from '../src/time/time-core';
 import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
@@ -473,5 +474,96 @@ describe('HLP-14 Write policies with AI', () => {
     expect(rows.map((r) => [r.version, r.validTo?.toISOString().slice(0, 10) ?? null, r.verify])).toEqual([['1948-v1', '2025-11-20', true], ['2020-v1', null, true]]);
     expect(rows[0].source).toMatch(/Factories Act, 1948: s\.79\(1\)/);
     expect(rows[1].source).toMatch(/OSH Code 2020, s\.32/);
+  });
+
+  // ---------------------------------------------------------------------------------------------- answers 131, 132
+
+  it('132: the company industry is a setting from the platform list (default none); the writer starts from it', async () => {
+    const reg = (await request(server()).get('/api/v1/org/settings').set('Authorization', `Bearer ${token.adminA}`).expect(200)).body.registry['company.industry'];
+    expect(reg).toMatchObject({ default: 'none', labels: { none: 'Not chosen', manufacturing: 'Manufacturing' } });
+    expect(reg.values.slice(0, 3)).toEqual(['none', 'manufacturing', 'fmcg']);
+    expect((await w('manager', 'get').expect(200)).body.defaults).toEqual({ industry: null });
+    const put = (who: Who, value: string) => request(server()).put('/api/v1/org/settings').set('Authorization', `Bearer ${token[who]}`).send({ key: 'company.industry', value, scopeType: 'tenant' });
+    await put('adminA', 'casino').expect(400);
+    await put('adminA', IND).expect(400); // switched off in the earlier test
+    await put('staff', 'manufacturing').expect(403);
+    await put('adminA', 'manufacturing').expect(200);
+    expect((await w('manager', 'get').expect(200)).body.defaults).toEqual({ industry: 'manufacturing' });
+    // Another company keeps its own (none).
+    expect((await w('hrB', 'get').expect(200)).body.defaults).toEqual({ industry: null });
+    // A draft can still choose another industry.
+    const r = (await w('manager', 'post', '/drafts').send({ ...ANSWERS, mode: 'starter', industry: 'retail' }).expect(201)).body;
+    expect((await view(r.id)).counselNote).toMatch(/Retail and shops rules are not checked yet/);
+    await put('adminA', 'none').expect(200);
+    expect((await w('manager', 'get').expect(200)).body.defaults).toEqual({ industry: null });
+  });
+
+  describe('131: Time applies the factory carry-forward minimum at registered factories only', () => {
+    const LY = `${Number(new Date().toISOString().slice(0, 4)) - 1}-12-31`;
+    const loc = (name: string, code: string, registeredFactory?: unknown) => ({ legalEntityId: ids.entity, name, code, address: { lines: ['Plot 4, GIDC'], city: 'Vapi', state: 'IN-GJ', country: 'IN' }, timezone: 'Asia/Kolkata', ...(registeredFactory === undefined ? {} : { registeredFactory }) });
+    const v1 = (who: Who, method: 'get' | 'post' | 'put', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+    const yearEnd = async () => (await v1('manager', 'get', `/time/setup/year-end?yearEnd=${LY}`).expect(200)).body.rows as { employeeId: string; carry: number; lapse: number }[];
+    const P = () => `VP${run.slice(0, 4)}`;
+    const O = () => `VO${run.slice(0, 4)}`;
+
+    it('the flag is set with the location, audited; others are refused', async () => {
+      // Gujarat has no state leave table, so only the factory table can raise the carry forward.
+      ids.factory = (await v1('adminA', 'post', '/org/locations').send(loc('Vapi plant', P(), true)).expect(201)).body.id;
+      ids.office = (await v1('adminA', 'post', '/org/locations').send(loc('Vapi office', O())).expect(201)).body.id;
+      const all = (await v1('adminA', 'get', '/org/locations').expect(200)).body as { id: string; registeredFactory: boolean }[];
+      expect(all.find((l) => l.id === ids.factory)!.registeredFactory).toBe(true);
+      expect(all.find((l) => l.id === ids.office)!.registeredFactory).toBe(false);
+      await v1('adminA', 'put', `/org/locations/${ids.office}`).send(loc('Vapi office', O(), 'yes')).expect(400);
+      await v1('staff', 'put', `/org/locations/${ids.office}`).send(loc('Vapi office', O(), true)).expect(403);
+      await v1('hrB', 'put', `/org/locations/${ids.office}`).send(loc('Vapi office', O(), true)).expect(404);
+      expect((await v1('adminA', 'get', '/org/locations').expect(200)).body.find((l: { id: string }) => l.id === ids.office).registeredFactory).toBe(false);
+      // Saving the form without the field keeps the flag.
+      await v1('adminA', 'put', `/org/locations/${ids.factory}`).send(loc('Vapi plant', P())).expect(200);
+      expect((await v1('adminA', 'get', '/org/locations').expect(200)).body.find((l: { id: string }) => l.id === ids.factory).registeredFactory).toBe(true);
+    });
+
+    it('year end: 40 days at the factory carry 30 (raised from the policy 10); at the office 10; switching the flag moves it', async () => {
+      ids.EL = (await v1('manager', 'post', '/time/setup/types').send({ code: 'EL', name: 'Earned leave', kind: 'earned', paid: true, rules: { halfDays: true } }).expect(201)).body.id;
+      ids.leavePolicy = (await v1('manager', 'post', '/time/setup/policies').send({ name: `Staff ${run}` }).expect(201)).body.id;
+      await v1('manager', 'post', `/time/setup/policies/${ids.leavePolicy}/versions`).send({ validFrom: '2024-01-01', lines: [{ leaveTypeId: ids.EL, annualDays: 0, frequency: 'yearly', proRata: false, rounding: 0.5, carryForwardMax: 10 }] }).expect(201);
+      await v1('manager', 'post', `/time/setup/policies/${ids.leavePolicy}/assign`).send({ scopeType: 'legal_entity', scopeId: ids.entity, validFrom: '2024-01-01' }).expect(201);
+      const hire = async (given: string, code: string, locationId: string) => (await v1('adminA', 'post', '/people/employees').send({ legalEntityId: ids.entity, status: 'confirmed', reason: 'Joined', givenName: given, familyName: 'Patel', employeeCode: code.toUpperCase(), joinedOn: '2024-01-01', overrideReason: 'Joined before the system went live', workEmail: `${code.toLowerCase()}@hlp14-${run}.test`, assignment: { locationId, departmentId: ids.ops, designationId: ids.desig, employmentTypeId: ids.perm, managerEmployeeId: null } }).then((r) => (r.status === 201 ? r : Promise.reject(new Error(JSON.stringify(r.body)))))).body.id as string;
+      ids.fEmp = await hire('Hetal', `KW-F${run.slice(0, 3)}`, ids.factory);
+      ids.oEmp = await hire('Jignesh', `KW-O${run.slice(0, 3)}`, ids.office);
+      for (const e of [ids.fEmp, ids.oEmp]) await inA((tx) => tx.leaveLedgerEntry.create({ data: { organizationId: org.A.id, employeeId: e, leaveTypeId: ids.EL, entryOn: new Date(`${LY.slice(0, 4)}-06-30T00:00:00Z`), kind: 'adjustment', days: 40, reason: 'Last year' } }));
+      let rows = await yearEnd();
+      expect(rows.find((r) => r.employeeId === ids.fEmp)).toMatchObject({ carry: 30, lapse: 10 });
+      expect(rows.find((r) => r.employeeId === ids.oEmp)).toMatchObject({ carry: 10, lapse: 30 });
+      // The set-up page names the rule set the factory minimum comes from.
+      const st = (await v1('manager', 'get', '/time/setup').expect(200)).body.statutory as { statute: string; version: string; values: { carry?: { earned?: number } } }[];
+      expect(st.filter((x) => x.statute === 'IN.FACTORIES.LEAVE')).toEqual([expect.objectContaining({ version: '2020-v1', values: expect.objectContaining({ carry: { earned: 30 } }) })]);
+      // Flag off: the factory is treated as an office; on again: back to 30.
+      await v1('adminA', 'put', `/org/locations/${ids.factory}`).send(loc('Vapi plant', P(), false)).expect(200);
+      rows = await yearEnd();
+      expect(rows.find((r) => r.employeeId === ids.fEmp)).toMatchObject({ carry: 10, lapse: 30 });
+      expect(((await v1('manager', 'get', '/time/setup').expect(200)).body.statutory as { statute: string }[]).some((x) => x.statute === 'IN.FACTORIES.LEAVE')).toBe(false);
+      await v1('adminA', 'put', `/org/locations/${ids.factory}`).send(loc('Vapi plant', P(), true)).expect(200);
+      expect((await yearEnd()).find((r) => r.employeeId === ids.fEmp)).toMatchObject({ carry: 30 });
+      const logs = await inA((tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, action: 'org.location.factory_changed', entityId: ids.factory }, orderBy: { createdAt: 'asc' } }));
+      expect(logs.map((l) => JSON.parse(String(l.metadataJson)))).toEqual([expect.objectContaining({ from: true, to: false }), expect.objectContaining({ from: false, to: true })]);
+      expect(logs[0].actorUserId).toBe(users.adminA);
+      // No Time key, and another company, see nothing of it.
+      await v1('staff', 'get', `/time/setup/year-end?yearEnd=${LY}`).expect(403);
+      expect((await v1('hrB', 'get', `/time/setup/year-end?yearEnd=${LY}`).expect(200)).body.rows).toEqual([]);
+    });
+
+    it('the dated row valid on the date applies: Factories Act before 21 Nov 2025, OSH Code after, nothing before 1949; never at an office', async () => {
+      const at = (on: string, factory: boolean) => inA((tx) => statutoryOn(tx, 'IN-GJ', on, factory));
+      expect((await at('2025-06-30', true)).rules).toEqual(['IN.FACTORIES.LEAVE IN 1948-v1']);
+      expect((await at('2025-11-20', true)).rules).toEqual(['IN.FACTORIES.LEAVE IN 1948-v1']);
+      expect((await at('2025-11-21', true)).rules).toEqual(['IN.FACTORIES.LEAVE IN 2020-v1']);
+      expect((await at('2026-06-30', true)).carry).toEqual({ earned: 30 });
+      expect(await at('1940-12-31', true)).toMatchObject({ carry: {}, rules: [] });
+      expect(await at('2026-06-30', false)).toMatchObject({ carry: {}, rules: [] });
+      // A state table and the factory table together: the higher carry forward wins, both named.
+      const tn = await inA((tx) => statutoryOn(tx, 'IN-TN', '2026-06-30', true));
+      expect(tn.carry.earned).toBe(30);
+      expect(tn.rules).toEqual([expect.stringMatching(/^IN\.SE IN-TN /), 'IN.FACTORIES.LEAVE IN 2020-v1']);
+    });
   });
 });

@@ -5,7 +5,7 @@ import { LegalEntitiesScreen, entityInput, statutoryErrors, type LegalEntitiesSc
 import { LocationsScreen, locationInput, timeZoneOptions, type LocationsScreenProps } from './locations';
 import { StructureScreen, masterInput, payRangeErrors, subtree, type StructureScreenProps } from './structure';
 import { addressDraft, ownershipLabel } from './org-kit';
-import { CompanySettingsScreen, companyValue, settingInput, type CompanySettingsScreenProps } from './settings';
+import { CompanySettingsScreen, companyValue, settingInput, valueLabel, type CompanySettingsScreenProps } from './settings';
 import { ToastProvider } from '../../components/notify';
 import { ENTITIES, ERASURE_DRY_RUN, ERASURE_ON, ERASURE_ON_DUE, LOCATIONS, MASTERS, PAY_RANGES, RULES, SETTING_CHOICES, SETTING_OVERRIDES, SETTING_REGISTRY, STATES, TODAY_ISO } from './data';
 
@@ -159,6 +159,7 @@ describe('LocationsScreen (P01 §4.2)', () => {
         minWageZone: null,
         geofence: { lat: 12.7409, lng: 77.8253, radiusM: 300 },
         ipRanges: ['10.20.0.0/16'],
+        registeredFactory: true,
       }),
     );
   });
@@ -198,7 +199,7 @@ describe('LocationsScreen (P01 §4.2)', () => {
   });
 
   it('YX-ORG-02: state and time zone are required; geofence and networks are checked', () => {
-    const base = { legalEntityId: 'le-tn', name: 'Plant 2', code: '', address: addressDraft(null), timezone: 'Asia/Kolkata', minWageZone: '', fence: false, lat: null, lng: null, radiusM: 200, ipRanges: '' };
+    const base = { legalEntityId: 'le-tn', name: 'Plant 2', code: '', address: addressDraft(null), timezone: 'Asia/Kolkata', minWageZone: '', fence: false, lat: null, lng: null, radiusM: 200, ipRanges: '', factory: false };
     expect(locationInput(base).errors.map((e) => e.fieldId)).toEqual(['loc-addr-lines', 'loc-addr-city', 'loc-addr-state']);
     const filled = { ...base, address: { lines: '1 Main Road', city: 'Hosur', state: 'IN-TN', postalCode: '635126' } };
     expect(locationInput(filled).input).toMatchObject({ address: { state: 'IN-TN', country: 'IN' }, geofence: null, ipRanges: [] });
@@ -578,5 +579,19 @@ describe('Company rules and access settings (P01 §4.6; YX-ORG-12/18)', () => {
     const { unmount } = render(<ToastProvider><CompanySettingsScreen {...base} section="payroll" story={{ editing: 'payroll.loan.interest_rate.loan', tooEarly: true }} /></ToastProvider>);
     expect(within(await screen.findByRole('dialog')).getAllByText('Choose the value').length).toBeGreaterThan(0);
     unmount();
+  });
+});
+
+// HLP-14 answer 132: the Registered factory flag travels with the location (off by default).
+describe('Locations: registered factory', () => {
+  it('the input carries the flag; off unless ticked', () => {
+    const base = { legalEntityId: 'le-tn', name: 'Plant 2', code: '', address: { lines: '1 Main Road', city: 'Hosur', state: 'IN-TN', postalCode: '635126' }, timezone: 'Asia/Kolkata', minWageZone: '', fence: false, lat: null, lng: null, radiusM: 200, ipRanges: '', factory: false };
+    expect(locationInput(base).input).toMatchObject({ registeredFactory: false });
+    expect(locationInput({ ...base, factory: true }).input).toMatchObject({ registeredFactory: true });
+  });
+  it('a platform list setting shows its own labels (the company industry)', () => {
+    expect(valueLabel('company.industry', 'fmcg', { none: 'Not chosen', fmcg: 'Food and consumer goods' })).toBe('Food and consumer goods');
+    expect(valueLabel('company.industry', 'none', { none: 'Not chosen' })).toBe('Not chosen');
+    expect(valueLabel('company.industry', 'retail')).toBe('retail');
   });
 });
