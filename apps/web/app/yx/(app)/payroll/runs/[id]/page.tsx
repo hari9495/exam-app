@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { FrequencyRunsScreen, OffCycleRunScreen, RunWorkspaceScreen, type FnfSettlementView, type LiveRunWorkspaceData, type OffcycleItem, type RunInputSources, type BankFileMade, type BankFileRow, type FilingRow, type PayRun, type PayslipDetail, type RunPayslip, type RunPerson, type RunProgressData, type RunReadiness, type RunVariance } from '@yukthix/ui/pay';
+import { FrequencyRunsScreen, OffCycleRunScreen, RunWorkspaceScreen, type FnfSettlementView, type LiveRunWorkspaceData, type OffcycleItem, type RunInputSources, type RunSpecialDays, type BankFileMade, type BankFileRow, type FilingRow, type PayRun, type PayslipDetail, type RunPayslip, type RunPerson, type RunProgressData, type RunReadiness, type RunVariance } from '@yukthix/ui/pay';
 import { useYxPermissions } from '../../../../../../lib/yx-org';
 import { payState, usePay, usePayDownload, usePayRead, usePayWrite } from '../../../../../../lib/yx-pay';
 import { usePeopleSearch } from '../../../../../../lib/yx-pay-5b';
@@ -23,6 +23,8 @@ export default function YxPayRunPage() {
   const failedLast = run.data?.status === 'draft' && Boolean(run.data.totals?.failed);
   const progress = usePay<RunProgressData>(calculating || failedLast ? `${base}/progress` : null);
   const inputSources = usePay<RunInputSources>(`${base}/input-sources`);
+  // HLP-12 answers 92, 93: special days with their source, and late injury leave to review.
+  const specialDays = usePay<RunSpecialDays>(run.data?.runType === 'regular' ? `${base}/special-days` : null);
   const payslips = usePay<RunPayslip[]>(`${base}/payslips`);
   const variances = usePay<RunVariance[]>(`${base}/variances`);
   const bankFiles = usePay<BankFileRow[]>(run.data && ['approved', 'paid'].includes(run.data.status) ? `${base}/bank-files` : null);
@@ -60,6 +62,11 @@ export default function YxPayRunPage() {
     readiness: readiness.data ?? null,
     progress: progress.data ?? null,
     inputSources: inputSources.data ?? null,
+    specialDays: specialDays.data ?? null,
+    onSaveSpecialDays: async (input) => {
+      await write('/special-days', { ...input, month: run.data!.month }, 'PUT');
+      await specialDays.refetch();
+    },
     payslips: payslips.data ?? null,
     variances: variances.data ?? null,
     bankFiles: bankFiles.data ?? null,

@@ -94,6 +94,13 @@ export class Payroll5cController {
   }
 
   /** PAY-03 "Inputs": what feeds the run, per source (people and amounts), for the run's month and people. */
+  /** HLP-12 answers 92, 93: the run's special days and late injury leave to review. */
+  @Get('runs/:id/special-days')
+  @RequireAnyPermission(...RUN_VIEW)
+  runSpecialDays(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.runs.specialDays(ctx, this.user(req), id);
+  }
+
   @Get('runs/:id/input-sources')
   @RequireAnyPermission(...RUN_VIEW)
   inputSources(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {

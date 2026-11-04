@@ -276,15 +276,18 @@ export class PayInputsService implements OnModuleInit {
     });
   }
 
-  /** The morning job: this month and last month, every entity with injury leave, filled from approved leave. */
+  /** The morning job: this month and the three before, every entity with injury leave, from approved leave. */
   async fillInjuryAll(today = todayIst()): Promise<number> {
-    const last = new Date(`${today.slice(0, 7)}-01T00:00:00Z`);
-    last.setUTCMonth(last.getUTCMonth() - 1);
-    const months = [today.slice(0, 7), last.toISOString().slice(0, 7)];
+    // This month and the three before: open months fill; a locked one raises a correction for late leave (answer 93).
+    const months = [0, 1, 2, 3].map((n) => {
+      const d = new Date(`${today.slice(0, 7)}-01T00:00:00Z`);
+      d.setUTCMonth(d.getUTCMonth() - n);
+      return d.toISOString().slice(0, 7);
+    });
     const pairs = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
       tx.$queryRaw<{ org: string; entity: string }[]>`SELECT DISTINCT em.organization_id::text AS org, em.legal_entity_id::text AS entity FROM leave_request_days d
         JOIN employments em ON em.organization_id = d.organization_id AND em.employee_id = d.employee_id
-        WHERE d.leave_on >= ${`${months[1]}-01`}::date`,
+        WHERE d.leave_on >= ${`${months[3]}-01`}::date`,
     );
     let n = 0;
     for (const p of pairs)

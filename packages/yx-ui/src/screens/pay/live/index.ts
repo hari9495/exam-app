@@ -89,6 +89,8 @@ export type { LiveOffCycleRun, OffcycleItem } from '../offcycle-run-live';
 // PAY-01 · statutory dues and one stage row per pay group (round 2).
 export { groupRuns, homeDueItems, type HomeDues } from '../payroll-home-live';
 export type { RunInputSources } from '../run-workspace-live';
+// HLP-12 answers 92, 93: the run's special days card.
+export type { RunSpecialDays, SpecialDaysInput } from '../special-days-card';
 export type { QueryHandler } from '../payroll-inputs-live';
 export type { RepayInput, RepayRoute } from '../payments-live';
 // Compliance (CMP-01, 03, 04, 05, 06, 08, 13 · ops/compliance.tsx): designed screens with `live`.

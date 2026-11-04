@@ -274,13 +274,40 @@ describe('HLP-12 accident cases', () => {
     expect((await rows())[0]).toMatchObject({ days, source: 'leave' });
     await request(server()).get(`/api/v1/payroll/special-days?month=${month}`).set('Authorization', `Bearer ${token.other}`).expect(403);
     await request(server()).get('/api/v1/payroll/special-days?month=2026-13').set('Authorization', `Bearer ${token.pay}`).expect(400);
-    // A locked month is never changed.
+    // Answer 92: the run's Inputs card lists the person's injury days with their source (a regular run of the month).
     const legalEntityId = (await rows())[0].legalEntityId as string;
+    const payDb = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => inA(async (tx) => (await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${legalEntityId}}`}, true)`, fn(tx)));
+    const group = await payDb((tx) => tx.payGroup.create({ data: { organizationId: org.A.id, legalEntityId, name: 'Monthly' } }));
+    const runOf = (m: string) => payDb((tx) => tx.payrollRun.create({ data: { organizationId: org.A.id, legalEntityId, payGroupId: group.id, periodStart: new Date(`${m}-01T00:00:00Z`), periodEnd: new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 0)), preparedBy: users.pay } }));
+    const run = await runOf(month);
+    const card = async (runId: string, who: Who = 'pay') => (await request(server()).get(`/api/v1/payroll/runs/${runId}/special-days`).set('Authorization', `Bearer ${token[who]}`).expect(200)).body;
+    expect(await card(run.id)).toEqual({ editable: true, rows: [expect.objectContaining({ employeeId: emp.injured, name: 'Sathish Kumar', kind: 'injury', days, source: 'leave' })], corrections: [] });
+    await request(server()).get(`/api/v1/payroll/runs/${run.id}/special-days`).set('Authorization', `Bearer ${token.other}`).expect(403);
+    // A locked month is never changed.
     const period = await inA((tx) => tx.payPeriod.create({ data: { organizationId: org.A.id, legalEntityId, periodStart: new Date(`${month}-01T00:00:00Z`), periodEnd: new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)), stage: 'locked' } }));
     await inA((tx) => tx.leaveRequest.update({ where: { id: lr }, data: { status: 'cancelled' } }));
     await fill();
     expect((await rows())[0]).toMatchObject({ days, source: 'leave' });
+    expect((await card(run.id)).editable).toBe(false);
+    // Answer 93: leave approved after the lock (here: the month paid none of it) becomes a correction shown on the next
+    // open month's run, once; the locked month itself stays as it was.
+    await inA((tx) => tx.leaveRequest.update({ where: { id: lr }, data: { status: 'approved' } }));
+    await payDb((tx) => tx.specialDays.updateMany({ where: { organizationId: org.A.id, employeeId: emp.injured, kind: 'injury' }, data: { days: 0, inFeedDays: 0 } }));
+    await fill();
+    await fill();
+    const next = new Date(`${month}-01T00:00:00Z`);
+    next.setUTCMonth(next.getUTCMonth() + 1);
+    const nextMonth = next.toISOString().slice(0, 7);
+    const later = await runOf(nextMonth);
+    const shown = await card(later.id);
+    expect(shown.corrections).toEqual([expect.objectContaining({ employeeId: emp.injured, name: 'Sathish Kumar', month, days })]);
+    expect((await rows())[0]).toMatchObject({ days: '0.00' });
+    expect(await inA((tx) => tx.payCorrection.count({ where: { organizationId: org.A.id, employeeId: emp.injured, source: 'injury_leave' } }))).toBe(1);
+    expect((await card(run.id)).corrections).toEqual([]);
     await inA((tx) => tx.payPeriod.update({ where: { id: period.id }, data: { stage: 'open' } }));
+    // Open again (test only): the month fills from the leave once more.
+    await fill();
+    expect((await rows())[0]).toMatchObject({ days, source: 'leave' });
     await inA((tx) => tx.leaveRequest.update({ where: { id: lr }, data: { status: 'approved' } }));
     // Payroll edits it: payroll's value wins from then on.
     await request(server()).put('/api/v1/payroll/special-days').set('Authorization', `Bearer ${token.pay}`).send({ employeeId: emp.injured, month, kind: 'injury', days: '1', note: 'Doctor certified one day only' }).expect(200);

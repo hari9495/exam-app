@@ -3,6 +3,7 @@
 // progress, payslips with "why this number", pay changes to acknowledge (Variance), sending for approval, the approver's
 // typed phrase, the bank file (made by one person, released by another) and publishing. The API checks every action
 // again (keys, entities, maker ≠ checker, step-up).
+import { SpecialDaysCard, type RunSpecialDays, type SpecialDaysInput } from './special-days-card';
 import { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, AlertTriangle, CheckCircle2, Download, FileText, Landmark, Lock, Play, Send } from 'lucide-react';
 import { Button } from '../../components/button';
@@ -64,6 +65,10 @@ export interface LiveRunWorkspaceData {
   onAddItem?: (item: { employeeId: string; componentCode: string; amount: string; reason: string; label?: string }) => Promise<unknown>;
   /** PAY-03 Inputs tab: what feeds the run, per source (GET runs/:id/input-sources). */
   inputSources?: RunInputSources | null;
+  /** HLP-12 answers 92, 93: special days per person with their source, and late injury leave to review. */
+  specialDays?: RunSpecialDays | null;
+  /** Saves payroll's own value for a person's special days in the run's month (payroll.input.manage). */
+  onSaveSpecialDays?: (input: SpecialDaysInput) => Promise<unknown>;
   /** PAY-03 "Failed": calculates again only the people whose last calculation failed (payroll.run.prepare). */
   onRetryFailed?: () => Promise<unknown>;
   /** PAY-11 off-cycle run: the design's own title, line and badge in place of the run's. */
@@ -752,6 +757,7 @@ function InputsPanel({ p, run: r, editable }: { p: LiveRunWorkspaceData; run: Pa
       <div className="yx-pay-stack">
         {facts}
         {sources}
+        {r.runType === 'regular' && p.specialDays && <SpecialDaysCard data={p.specialDays} onSave={p.onSaveSpecialDays} />}
         <p className="yx-pay-muted">Attendance, loss of pay, one-time pay, holds, loans and claims are read when the run is calculated. Change them in Payroll › Inputs before calculating.</p>
       </div>
     );

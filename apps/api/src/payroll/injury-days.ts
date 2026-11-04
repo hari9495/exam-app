@@ -22,7 +22,7 @@ async function injuryType(tx: Tx, org: string, today: string) {
 export async function fillInjuryDays(tx: Tx, c: CompanyContext, legalEntityId: string, month: string, today: string): Promise<number> {
   const org = c.organizationId;
   const p = await tx.payPeriod.findFirst({ where: { organizationId: org, legalEntityId, payGroupId: null, periodStart: asDate(`${month}-01`) } });
-  if (p && (p.stage === 'locked' || p.stage === 'filed')) return 0;
+  const locked = p && (p.stage === 'locked' || p.stage === 'filed');
   const type = await injuryType(tx, org, today);
   if (!type) return 0;
   const { from, to } = monthRange(month);
@@ -37,6 +37,9 @@ export async function fillInjuryDays(tx: Tx, c: CompanyContext, legalEntityId: s
   const periodStart = asDate(from);
   return withPayScope(tx, [legalEntityId], async () => {
     const rows = await tx.specialDays.findMany({ where: { organizationId: org, legalEntityId, periodStart, kind: 'injury' } });
+    // Founder answer 93: a locked month never changes. Injury days approved since (more than the month paid) become a
+    // correction shown on the next open month's run for payroll to review; never applied by the app.
+    if (locked) return lateInjury(tx, c, p!.id, legalEntityId, month, type.code, taken, rows);
     let changed = 0;
     for (const t of taken) {
       const days = D(t.days).toDecimalPlaces(2);
@@ -58,4 +61,49 @@ export async function fillInjuryDays(tx: Tx, c: CompanyContext, legalEntityId: s
     }
     return changed;
   });
+}
+
+/** The next month after `month` whose period is not locked or filed (the run that shows the correction). */
+async function nextOpenMonth(tx: Tx, org: string, legalEntityId: string, month: string): Promise<string> {
+  const d = new Date(`${month}-01T00:00:00Z`);
+  for (let i = 0; i < 24; i++) {
+    d.setUTCMonth(d.getUTCMonth() + 1);
+    const m = d.toISOString().slice(0, 7);
+    const p = await tx.payPeriod.findFirst({ where: { organizationId: org, legalEntityId, payGroupId: null, periodStart: asDate(`${m}-01`) }, select: { stage: true } });
+    if (!p || (p.stage !== 'locked' && p.stage !== 'filed')) return m;
+  }
+  return d.toISOString().slice(0, 7);
+}
+
+/** Answer 93: one correction per person and locked month for the days not paid there (a later change adds another). */
+async function lateInjury(
+  tx: Tx,
+  c: CompanyContext,
+  periodId: string,
+  legalEntityId: string,
+  month: string,
+  code: string,
+  taken: { employmentId: string; employeeId: string; days: string }[],
+  rows: { employmentId: string; days: Prisma.Decimal; source: string }[],
+): Promise<number> {
+  const org = c.organizationId;
+  let made = 0;
+  for (const t of taken) {
+    const row = rows.find((r) => r.employmentId === t.employmentId);
+    // Payroll typed its own value for that month: payroll already decided; nothing to raise.
+    if (row?.source === 'payroll') continue;
+    const missing = D(t.days).sub(row?.days ?? 0).toDecimalPlaces(2);
+    if (missing.lte(0)) continue;
+    const earlier = await tx.payCorrection.findMany({ where: { organizationId: org, employeeId: t.employeeId, payPeriodId: periodId, source: 'injury_leave' }, select: { change: true } });
+    const raised = earlier.reduce((s, e) => s.add(D((e.change as { injuryDays?: string }).injuryDays ?? 0)), D(0));
+    const more = missing.sub(raised).toDecimalPlaces(2);
+    if (more.lte(0)) continue;
+    const target = await nextOpenMonth(tx, org, legalEntityId, month);
+    const x = await tx.payCorrection.create({
+      data: { organizationId: org, legalEntityId, employeeId: t.employeeId, payPeriodId: periodId, workOn: asDate(`${month}-01`), kind: 'leave', source: 'injury_leave', change: { injuryDays: more.toFixed(2), month }, reason: `${more.toFixed(2)} days of ${code} leave in ${month} were approved after the month was locked`, status: 'approved', targetPeriod: asDate(`${target}-01`), createdBy: c.userId ?? null, decidedAt: new Date() },
+    });
+    await audit(tx, c, 'payroll.correction.injury_leave', 'pay_correction', x.id, { employeeId: t.employeeId, month, days: more.toFixed(2), showIn: target });
+    made++;
+  }
+  return made;
 }

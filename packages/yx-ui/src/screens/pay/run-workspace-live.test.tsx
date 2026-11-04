@@ -3,6 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { FrequencyRunsScreen, RunWorkspaceScreen } from './payroll-run';
 import { explained, type LiveRunWorkspaceData } from './run-workspace-live';
+import { SPECIAL_DAYS_SAMPLE } from './special-days-card';
+import { ToastProvider } from '../../components/notify';
 import { BANK_FILES, DETAIL, PAYSLIPS, PEOPLE, READINESS, RUN, VARIANCES } from './live/fixtures-5j';
 
 // The designed PAY-03 run workspace (with PAY-02 checks, PAY-07, PAY-08, PAY-09) on one live run: what
@@ -115,6 +117,16 @@ describe('PAY-03 run workspace, live', () => {
     await ue.click(screen.getByRole('tab', { name: /^Inputs/ }));
     expect(screen.queryByRole('table', { name: 'Inputs for this period' })).not.toBeInTheDocument();
     expect(screen.getByText(/are read when the run is calculated/)).toBeInTheDocument();
+  });
+
+  it('HLP-12 answers 92, 93: the Special days card on the Inputs tab of a regular run, saved with the run month by the page', async () => {
+    const onSaveSpecialDays = vi.fn().mockResolvedValue(undefined);
+    render(<ToastProvider><RunWorkspaceScreen live={live({ specialDays: SPECIAL_DAYS_SAMPLE, onSaveSpecialDays })} /></ToastProvider>);
+    await ue.click(screen.getByRole('tab', { name: /^Inputs/ }));
+    expect(screen.getByRole('table', { name: 'Special days' })).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Add to this month' }));
+    await ue.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Save' }));
+    expect(onSaveSpecialDays).toHaveBeenCalledWith(expect.objectContaining({ employeeId: 'e-naveen', kind: 'injury', days: '3' }));
   });
 
   it('PAY-02 Validations (item 11): the same per-source table above the checks; none while it is not read', async () => {

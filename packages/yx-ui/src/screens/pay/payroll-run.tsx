@@ -17,6 +17,7 @@ import { useRun } from '../org/org-kit';
 import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { Stepper, type StepperStep } from '../../components/stepper';
 import { PlainTable } from '../../components/plain-table';
+import { SPECIAL_DAYS_SAMPLE, SpecialDaysCard } from './special-days-card';
 import { DataTable, type TableColumn } from '../../components/table';
 import { FilterBar, SavedViewMenu } from '../../components/filters';
 import { LineChart, StatCard } from '../../components/charts';
@@ -928,6 +929,8 @@ export interface RunWorkspaceProps {
   state?: ViewState;
   /** Attendance exceptions still open at Bengaluru head office (they block approval). Default: open until the run is approved. */
   exceptionsOpen?: boolean;
+  /** HLP-12 answers 92, 93: the Inputs tab's Special days card (stories). */
+  specialDays?: boolean;
 }
 
 const PHASE_STAGE: Record<RunPhase, RunStage> = { calculating: 'Draft', failed: 'Draft', review: 'In review', approved: 'Approved and locked', paid: 'Paid', published: 'Published' };
@@ -940,7 +943,7 @@ export function RunWorkspaceScreen(p: RunWorkspaceProps & { live?: LiveRunWorksp
   return p.live ? <LiveRunWorkspace live={p.live} /> : <SampleRunWorkspace {...p} />;
 }
 
-function SampleRunWorkspace({ persona = 'pa', tab = 'payslips', phase: initialPhase = 'review', rows: inputRows = RUN_ROWS, openRowId, sheet: initialSheet = null, sheetVariant = 'ready', state = 'ready', exceptionsOpen: exceptionsProp }: RunWorkspaceProps) {
+function SampleRunWorkspace({ persona = 'pa', tab = 'payslips', phase: initialPhase = 'review', rows: inputRows = RUN_ROWS, openRowId, sheet: initialSheet = null, sheetVariant = 'ready', state = 'ready', exceptionsOpen: exceptionsProp, specialDays }: RunWorkspaceProps) {
   const isFin = persona === 'fin';
   const approvingDone = initialSheet === 'approve' && sheetVariant === 'done';
   const [phase, setPhase] = useState<RunPhase>(approvingDone ? 'approved' : initialPhase);
@@ -1223,6 +1226,7 @@ function SampleRunWorkspace({ persona = 'pa', tab = 'payslips', phase: initialPh
                   { key: 'amount', header: 'Amount', num: true, cell: (s) => (s.amount != null ? formatINR(s.amount) : '—') },
                 ]}
               />
+              {specialDays && <SpecialDaysCard data={SPECIAL_DAYS_SAMPLE} onSave={async () => undefined} />}
             </div>
           </TabsContent>
           <TabsContent value="payslips">

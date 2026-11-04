@@ -618,6 +618,35 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
     return { runId: out.runId, calcVersion: out.version, queued: out.ids.length };
   }
 
+  /**
+   * HLP-12 answers 92 and 93: the run's special days per person with their source (filled from injury leave, or payroll's
+   * own), editable by payroll (payroll.input.manage) while the run may still be calculated and its month is not locked;
+   * and injury leave approved after an earlier month was locked, shown here for payroll to review (never applied).
+   */
+  async specialDays(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const run = await this.runIn(tx, c, v, id, VIEW);
+      if (run.runType !== 'regular') return { editable: false, rows: [], corrections: [] };
+      const period = await tx.payPeriod.findFirst({ where: { organizationId: org, legalEntityId: run.legalEntityId, payGroupId: null, periodStart: run.periodStart } });
+      const open = ['draft', 'calculated', 'in_review', 'reopened'].includes(run.status) && !(period && (period.stage === 'locked' || period.stage === 'filed'));
+      const editable = open && v.grants.has('payroll.input.manage');
+      const rows = await tx.specialDays.findMany({ where: { organizationId: org, legalEntityId: run.legalEntityId, periodStart: run.periodStart, days: { gt: 0 } }, orderBy: [{ kind: 'asc' }, { enteredAt: 'asc' }] });
+      const corrections = await tx.payCorrection.findMany({ where: { organizationId: org, legalEntityId: run.legalEntityId, source: 'injury_leave', targetPeriod: run.periodStart }, orderBy: { createdAt: 'asc' } });
+      const people = await tx.employee.findMany({ where: { organizationId: org, id: { in: [...rows.map((r) => r.employeeId), ...corrections.map((x) => x.employeeId)] } }, select: { id: true, givenName: true, familyName: true, preferredName: true } });
+      const name = (eid: string) => {
+        const e = people.find((p) => p.id === eid);
+        return e ? (e.preferredName ?? [e.givenName, e.familyName].filter(Boolean).join(' ')) : 'Former employee';
+      };
+      return {
+        editable,
+        rows: rows.map((r) => ({ employeeId: r.employeeId, name: name(r.employeeId), kind: r.kind as 'suspension' | 'maternity' | 'injury', days: r.days.toFixed(2), source: r.source as 'leave' | 'payroll', note: r.note })),
+        corrections: corrections.map((x) => ({ id: x.id, employeeId: x.employeeId, name: name(x.employeeId), month: (x.change as { month: string }).month, days: (x.change as { injuryDays: string }).injuryDays, note: x.reason })),
+      };
+    });
+  }
+
   /** PAY-03 "Inputs": what feeds the run, per source, for its month and people (the same reads as the calculation). */
   async inputSources(ctx: TenantContext, user: ScopeUser, id: string) {
     const v = await this.viewer(user);
