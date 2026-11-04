@@ -24,9 +24,11 @@ feature not built** (no API) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Helpdesk HLP-01 … 14 | 14 | 221 | 8 | 0 | 7 | 0 | 236 |
+| A. Helpdesk HLP-01 … 14 | 14 | 226 | 8 | 0 | 7 | 0 | 241 |
 | B. Service desk designs | 5 | 55 | 2 | 0 | 0 | 0 | 57 |
-| **All Helpdesk groups (A–B)** | **19** | **276** | **10** | **0** | **7** | **0** | **293** |
+| **All Helpdesk groups (A–B)** | **19** | **281** | **10** | **0** | **7** | **0** | **298** |
+Round 8e (script, 4 Nov 2026, `feat/yukthix-hlp-07-09`): HLP-08 gains 5 stories (warning letter waiting and issued,
+reports from managers, report misconduct, nobody reports to you), all live.
 Round 8d (script, 4 Nov 2026, `feat/yukthix-hlp-07-09`): the 7 disciplinary show-cause stories (HLP-07: 4, HLP-08: 3)
 move from live (gap) to live; HLP-07 gains 1 story (ShowCauseLive) and HLP-08 gains 4 (OpenCase, DisciplinaryLive,
 DisciplinaryDecide, InquiryOrdered), all live.
@@ -162,7 +164,7 @@ portal designs also wait: `settings: MobileHelpTicketsScreen`, `MobilePolicyAckS
 | ~~HLP-06 Speak-up filing~~ (done, round 6) | grievance and whistleblower intake, anonymous access code and the no-login "check my report", POSH redirect to the internal committee; tables with RLS, a public route with throttling | L |
 | Disciplinary cases (HLP-07/08 show-cause stories) | a disciplinary case record raised by a manager or HR, standing orders per entity, show-cause, inquiry, penalties and letters | L (question 34) |
 | ~~HLP-12 Accident case workspace~~ (done, round 12) | accident reports, ESIC report and EC claim clocks, contract workers, manager view | L |
-| Domestic inquiry and penalties (after a disciplinary show-cause) | inquiry officer, hearings, findings, second show-cause on the penalty, penalties beyond a warning, letters | L (questions 51, 52, 56) |
+| Domestic inquiry and penalties (after a disciplinary show-cause) | inquiry officer, hearings, findings, second show-cause on the penalty, penalties beyond a warning | L (questions 51, 52; waits for counsel) |
 | HLP-12 Accident case workspace (8) | accident reports, ESIC report and EC claim clocks, contract workers, manager view | L |
 | HLP-13 Collective dispute / settlement (3) | dispute record, conciliation, signed settlement sent to payroll arrears | L |
 | HLP-14 Write policies with AI (4) | questionnaire, AI draft, law findings that block approval, approve and load into HLP-10 | L (after HLP-10) |
@@ -419,6 +421,11 @@ Live pages: /yx/desk/my-cases (HLP-07), /yx/desk/cases and /yx/desk/cases/[id] (
 | DisciplinaryLive · Disciplinary · the misconduct, the show-cause notice and the reply | live | new story: the reply date from the legal entity's `cases.disciplinary.reply_days` or the rule set IN.SO.MODEL (7 days, verify flag on) |
 | DisciplinaryDecide · Disciplinary · propose: dropped, warning or inquiry | live | new story: Decision Segment; "What the employee is told" |
 | InquiryOrdered · Disciplinary · inquiry ordered (recorded only) | live | new story: an approved inquiry keeps the case open at "Inquiry ordered"; the inquiry itself is not built (question 51) |
+| WarningLetterWaiting · Disciplinary · warning approved, the letter waits for the company template | live | new story (answer 56): the Warning letter card; `POST desk/cases/:id/letter` (members; 400 until the company's "warning" template is switched on in Settings › Letter templates; 409 once issued) |
+| WarningLetterIssued · Disciplinary · warning letter issued through Letters | live | new story: the reference number from Letters; the employee finds it with their letters; the case keeps a `letter_issued` step |
+| ManagerReports · Cases · reports from managers (open or decline) | live | new story (answer 55): `GET desk/cases/disciplinary/drafts` (HR with `case.disciplinary.raise`, people in scope only), `POST …/drafts/:id/open` (becomes a case, the HR person its first member), `POST …/drafts/:id/decline` (a reason, kept with HR) |
+| ReportMisconduct · Manager · report misconduct to HR | live | new story: /yx/desk/report-misconduct (menu Helpdesk › Report misconduct, managers only): `GET desk/my/misconduct-reports/people` (the people whose reporting line runs up to the manager today), `POST desk/my/misconduct-reports` (403 `CASE_NOT_YOUR_REPORT` for anyone else), `GET desk/my/misconduct-reports` (received, opened or declined; never the reason or the case) |
+| ReportMisconductNoTeam · Manager · report misconduct · nobody reports to you | live | new story |
 | NoAccess · No access (no case-team key) | live | new story: 403; a case one is not on stays "Not found" |
 
 #### HLP-09 · Ethics desk
@@ -1029,6 +1036,17 @@ inquiry; an inquiry is recorded and keeps the case open). Suspension pending inq
 nothing changes in People or Pay. A disciplinary case has no messages; the employee is told through the notice and the
 decision text. HR who hold the key see Cases in the menu.
 
+**Built (round 8e, founder answers 55 and 56, 4 Nov 2026):** migration `20261690000000_misconduct_reports` (a
+disciplinary case's `source`, hr or manager; statuses `draft` and `declined`, only for a manager's report; the steps
+`report_opened`, `report_declined` (a reason, checked in SQL) and `letter_issued`). A manager reports misconduct by
+someone whose reporting line today runs up to them; it is a draft disciplinary case with no members, numbered DSC-…,
+seen only by HR with `case.disciplinary.raise` whose scope covers the employee (each look audited). HR opens it (it
+becomes an ordinary case, that HR person its first member) or declines it with a reason the manager never sees; the
+manager sees received, opened or declined. An approved Warning is issued through Letters (`LettersService.issueSystem`,
+letter type `warning`, the company's active template; YukthiX adds a "Warning letter" starter with the merge fields
+`case_reference`, `misconduct`, `standing_orders_clause`, `decision_summary`, `decision_date`); with no active template
+the decision stands and the case shows the letter as waiting until a member issues it. Nothing changes in People or Pay.
+
 ## 5. Two designs for one job
 
 HLP-02 … 05 (founder-approved Helpdesk designs, `screens/ops/helpdesk.tsx`) and the Service desk designs (Phase 3b-1,
@@ -1196,6 +1214,23 @@ surveys). The HLP screens are the founder-approved look, sample-only.
     lands with HR as a draft case, which HR opens or drops.
 56. **HLP-08: the warning letter** is not generated; the employee sees the decision text in My cases. *Suggested:*
     issue it through Letters (an HR letter template) once the decision is approved.
+
+71. **HLP-08: a warning letter shows in People › Letters** (the HR register) to HR who hold `letter.issue` for the
+    employee, not only to the case's HR members, because Letters keeps every issued letter in one register. The letter
+    says only the case number, the misconduct and the decision. *Suggested:* keep (a warning on file is normal HR
+    record); hide the register row from HR outside the case only if counsel asks.
+72. **HLP-08: the employee does not sign the warning letter.** The YukthiX starter has "the employee signs" off, so it is
+    issued, not accepted. *Suggested:* keep; a company that wants a signed acknowledgement switches it on in its template
+    (Letters' e-sign then asks the employee to sign for receipt).
+73. **HLP-08: HR is not alerted when a manager's report arrives**; it waits under Cases › Reports from managers.
+    *Suggested:* add the count to the Cases menu item and a notice to HR in scope (both need the scope check per HR
+    person; next round).
+74. **HLP-08: who counts as the manager's "own report".** Anyone whose reporting line today runs up to the manager
+    (their whole team, not only direct reports). *Suggested:* keep, or follow the company's "managers see their whole
+    subtree / direct reports only" setting if HR asks.
+75. **HLP-08: the warning letter is made only once per case** (a second Warning on the same case is not possible).
+    *Suggested:* keep; a corrected letter is issued from People › Letters as a correction, like any letter.
+
 
 ## 7. Next pages (recommended order, with sizes)
 

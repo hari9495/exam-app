@@ -4,7 +4,9 @@ import { ANON_MESSAGES, CASES } from './helpdesk-data';
 import { ANON_MEMBERS, CASE_DOCUMENTS, CASE_TIMELINE, DISC_MEMBERS, GRIEVANCE_MEMBERS } from './cases-data';
 import { TODAY } from '../_kit/data';
 import type { LiveCaseWorkspace } from './cases-live';
-import { CASE_LIST_ROWS, disciplinaryCase, ethicsCase, icReport, liveCaseList, liveWorkspace, poshCase } from './cases-live-samples';
+import type { CaseDetail } from './cases-live-types';
+import { CASE_LIST_ROWS, DRAFT_REPORTS, disciplinaryCase, ethicsCase, icReport, liveCaseList, liveReportMisconduct, liveWorkspace, poshCase } from './cases-live-samples';
+import { ReportMisconductScreen } from './cases-live';
 
 const meta: Meta = { title: 'Screens/Helpdesk/HLP-08 · Cases (case team)', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -56,11 +58,18 @@ export const Evidence: S = { name: 'Evidence · fingerprints, virus check and ac
 export const Severity: S = { name: 'Ethics report · the ethics officer sets Serious or Standard', render: () => live({ detail: ethicsCase({ severity: 'standard' }) }) };
 // Disciplinary show-cause cases (founder answer 34), in the same layout.
 const people = [{ id: 'p-manoj', name: 'Manoj Kumar', email: 'manoj.kumar@kaverifoods.in' }, { id: 'p-sathish', name: 'Sathish Kumar', email: 'sathish.k@kaverifoods.in' }];
-export const OpenCase: S = { name: 'Disciplinary · HR opens a show-cause case', render: () => <CaseListScreen live={liveCaseList({ cases: CASE_LIST_ROWS, raise: { people, onRaise: async () => ({ id: 'k9', ref: 'DSC-0032' }) }, start: { raising: true } })} /> };
+export const OpenCase: S = { name: 'Disciplinary · HR opens a show-cause case', render: () => <CaseListScreen live={liveCaseList({ cases: CASE_LIST_ROWS, raise: { people, onRaise: async () => ({ id: 'k9', ref: 'DSC-0032' }), drafts: [], onOpenDraft: async () => ({ id: 'k9' }), onDeclineDraft: async () => undefined }, start: { raising: true } })} /> };
 export const DisciplinaryLive: S = { name: 'Disciplinary · the misconduct, the show-cause notice and the reply', render: () => live({ detail: disciplinaryCase(), start: { tab: 'notice' } }) };
 export const DisciplinaryDecide: S = { name: 'Disciplinary · propose: dropped, warning or inquiry', render: () => live({ detail: disciplinaryCase(), start: { dialog: 'propose' } }) };
 export const InquiryOrdered: S = {
   name: 'Disciplinary · inquiry ordered (recorded only)',
   render: () => live({ detail: disciplinaryCase({ stage: 'Inquiry ordered', stageIndex: 4, outcome: { ...disciplinaryCase().outcome!, status: 'approved', decision: 'inquiry', action: 'Domestic inquiry by an inquiry officer', reasons: 'The employee says he was in hospital; the record needs testing.', reporterSummary: 'The company will hold a domestic inquiry.', proposedBy: 'Lakshmi Venkatesan', proposedAt: '2026-10-01', approvedBy: 'Harish Bhat', approvedAt: '2026-10-02' } }), start: { tab: 'decision' } }),
 };
+// Answers 55 and 56 (4 Nov 2026): managers report misconduct to HR; the warning letter goes out through Letters.
+const approvedWarning = (letter: CaseDetail['letter']) => disciplinaryCase({ status: 'closed', stage: 'Decided', stageIndex: 4, letter, outcome: { ...disciplinaryCase().outcome!, status: 'approved', decision: 'warning', action: 'Written warning, valid 12 months', reasons: 'One day of absence is not explained by the hospital stay.', reporterSummary: 'You get a written warning for one day of absence without leave.', proposedBy: 'Lakshmi Venkatesan', proposedAt: '2026-10-01', approvedBy: 'Harish Bhat', approvedAt: '2026-10-02' } });
+export const WarningLetterWaiting: S = { name: 'Disciplinary · warning approved, the letter waits for the company template', render: () => live({ detail: approvedWarning({ id: null, status: 'waiting', referenceNo: null, renderError: null }), start: { tab: 'decision' } }) };
+export const WarningLetterIssued: S = { name: 'Disciplinary · warning letter issued through Letters', render: () => live({ detail: approvedWarning({ id: 'l1', status: 'issued', referenceNo: 'KF/WARN/2026/000003', renderError: null }), start: { tab: 'decision' } }) };
+export const ManagerReports: S = { name: 'Cases · reports from managers (open or decline)', render: () => <CaseListScreen live={liveCaseList({ raise: { people, onRaise: async () => ({ id: 'k9', ref: 'DSC-0032' }), drafts: DRAFT_REPORTS, onOpenDraft: async () => ({ id: 'r1' }), onDeclineDraft: async () => undefined } })} /> };
+export const ReportMisconduct: S = { name: 'Manager · report misconduct to HR', render: () => <ReportMisconductScreen live={liveReportMisconduct()} /> };
+export const ReportMisconductNoTeam: S = { name: 'Manager · report misconduct · nobody reports to you', render: () => <ReportMisconductScreen live={liveReportMisconduct({ people: [], reports: [] })} /> };
 export const NoAccess: S = { name: 'No access (no case-team key)', render: () => live({ state: 'no-access' }) };

@@ -38,8 +38,9 @@ export { SpeakUpScreen, CheckReportScreen } from '../ops/cases';
 export { SpeakUpSetupScreen, anonymousFor, type LiveSpeakUp, type LiveCheckReport, type LiveSpeakUpSetup, type SpeakUpFormData, type SpeakUpInput, type FiledReport, type ReporterView, type SpeakUpSetupData, type SpeakUpTeam } from '../ops/helpdesk-speakup-live';
 // HLP-07 My cases, HLP-08 Cases (case team), HLP-09 Ethics desk: the designed screens with `live`.
 export { MyCasesScreen, CaseListScreen, CaseWorkspaceScreen, EthicsDeskScreen } from '../ops/cases';
+export { ReportMisconductScreen, type LiveReportMisconduct } from '../ops/cases-live';
 export { KIND_LABEL as CASE_KIND_LABEL, type LiveMyCases, type LiveCaseList, type LiveCaseWorkspace, type LiveEthicsDesk, type CaseTab } from '../ops/cases-live';
-export type { MyCaseRow, MyCaseDetail, CaseListRow, CaseDetail, EthicsRow, NoticeInput, ProposeInput, RaiseInput, IcReportInput, ReliefInput, AddMemberInput, MyReplyInput } from '../ops/cases-live-types';
+export type { MyCaseRow, MyCaseDetail, CaseListRow, CaseDetail, EthicsRow, NoticeInput, ProposeInput, RaiseInput, DraftReport, MyMisconductReport, MisconductReportInput, IcReportInput, ReliefInput, AddMemberInput, MyReplyInput } from '../ops/cases-live-types';
 // HLP-12 Accident case: the designed workspace and report with `live`.
 export { AccidentWorkspaceScreen, ReportAccidentScreen } from '../ops/cases-more';
 export type { LiveAccidentWorkspace, LiveReportAccident, AccidentDetail, AccidentManagerView, AccidentFormData, AccidentReportInput, AccidentFacts, EcInput as AccidentEcInput, EsicFormView, MedicalKind, AccidentDialog } from '../ops/accident-live';

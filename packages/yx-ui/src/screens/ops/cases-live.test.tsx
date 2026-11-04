@@ -3,7 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
 import { CaseListScreen, CaseWorkspaceScreen, EthicsDeskScreen, MyCasesScreen } from './cases';
-import { disciplinaryCase, ethicsCase, icReport, liveCaseList, liveEthics, liveMyCases, liveWorkspace, poshCase, reporterCase, respondentCase, showCauseCase } from './cases-live-samples';
+import { ReportMisconductScreen } from './cases-live';
+import { DRAFT_REPORTS, liveReportMisconduct, disciplinaryCase, ethicsCase, icReport, liveCaseList, liveEthics, liveMyCases, liveWorkspace, poshCase, reporterCase, respondentCase, showCauseCase } from './cases-live-samples';
 
 // HLP-07 My cases, HLP-08 Cases and HLP-09 Ethics desk, live (the designed screens with records in the server's shapes).
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -266,7 +267,7 @@ describe('HLP-08 disciplinary show-cause cases (live, answer 34)', () => {
   it('HR opens a case: each field says what is missing, then the case opens', async () => {
     const onRaise = vi.fn().mockResolvedValue({ id: 'k9', ref: 'DSC-0032' });
     const onOpen = vi.fn();
-    show(<CaseListScreen live={liveCaseList({ onOpen, raise: { people: [{ id: 'p-manoj', name: 'Manoj Kumar', email: 'manoj@kf.in' }], onRaise } })} />);
+    show(<CaseListScreen live={liveCaseList({ onOpen, raise: { people: [{ id: 'p-manoj', name: 'Manoj Kumar', email: 'manoj@kf.in' }], onRaise, drafts: [], onOpenDraft: async () => ({ id: 'k9' }), onDeclineDraft: async () => undefined } })} />);
     await ue.click(screen.getByRole('button', { name: 'Open a case' }));
     const d = screen.getByRole('dialog', { name: 'Open a disciplinary case' });
     await ue.click(within(d).getByRole('button', { name: 'Open the case' }));
@@ -316,5 +317,55 @@ describe('HLP-08 disciplinary show-cause cases (live, answer 34)', () => {
     expect(screen.getByText('Standing orders (certified, v3 from 1 Apr 2026), clause 14(2)(c)')).toBeInTheDocument();
     expect(screen.getByText('30 Sep 2026 (Standing orders setting for the legal entity: 7 days to reply)')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send reply' })).toBeInTheDocument();
+  });
+});
+
+describe('HLP-08 answers 55 and 56 (live)', () => {
+  it('a manager reports misconduct: each field says what is missing, then it is sent; their list shows only the status', async () => {
+    const onFile = vi.fn().mockResolvedValue({ id: 'r3', ref: 'DSC-0035' });
+    show(<ReportMisconductScreen live={liveReportMisconduct({ onFile })} />);
+    expect(screen.getByText('Opened as a case')).toBeInTheDocument();
+    expect(screen.getByText('Declined by HR')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Send to HR' }));
+    expect((await screen.findAllByText('Choose who it is about.')).length).toBeGreaterThan(0);
+    expect(onFile).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('combobox', { name: /About/ }));
+    await ue.click(await screen.findByRole('option', { name: /Manoj Kumar/ }));
+    await ue.type(screen.getByRole('textbox', { name: /What happened, in short/ }), 'Rude to a customer');
+    await ue.type(screen.getByRole('textbox', { name: /^Facts/ }), 'Shouted at a customer on 2 Nov.');
+    await ue.click(screen.getByRole('button', { name: 'Send to HR' }));
+    expect(onFile).toHaveBeenCalledWith({ employeeUserId: 'p-manoj', misconduct: 'Rude to a customer', facts: 'Shouted at a customer on 2 Nov.' });
+    expect((await screen.findAllByText('Sent to HR')).length).toBeGreaterThan(0);
+  });
+
+  it('HR declines a manager report only with a reason, or opens it as a case', async () => {
+    const onDeclineDraft = vi.fn().mockResolvedValue(undefined);
+    const onOpenDraft = vi.fn().mockResolvedValue({ id: 'r1' });
+    const onOpen = vi.fn();
+    show(<CaseListScreen live={liveCaseList({ onOpen, raise: { people: [], onRaise: vi.fn(), drafts: DRAFT_REPORTS, onOpenDraft, onDeclineDraft } })} />);
+    expect(screen.getByText('Reports from managers · 2')).toBeInTheDocument();
+    await ue.click(screen.getAllByRole('button', { name: 'Decline' })[0]!);
+    const d = screen.getByRole('dialog');
+    await ue.click(within(d).getByRole('button', { name: 'Decline' }));
+    expect(await within(d).findByText('Say why the report does not become a case. The manager does not see it.')).toBeInTheDocument();
+    await ue.type(within(d).getByRole('textbox'), 'A word with him is enough.');
+    await ue.click(within(d).getByRole('button', { name: 'Decline' }));
+    expect(onDeclineDraft).toHaveBeenCalledWith('r1', 'A word with him is enough.');
+    await ue.click(screen.getAllByRole('button', { name: 'Open as a case' })[1]!);
+    expect(onOpenDraft).toHaveBeenCalledWith('r2');
+    expect(onOpen).toHaveBeenCalledWith('r1');
+  });
+
+  it('the warning letter waits for the company template, then issues through Letters', async () => {
+    const onIssueLetter = vi.fn().mockResolvedValue(undefined);
+    const base = disciplinaryCase();
+    const outcome = { ...base.outcome!, status: 'approved' as const, decision: 'warning' as const, reporterSummary: 'A written warning.', approvedAt: '2026-10-02' };
+    const { unmount } = show(<CaseWorkspaceScreen live={liveWorkspace({ onIssueLetter, detail: disciplinaryCase({ status: 'closed', outcome, letter: { id: null, status: 'waiting', referenceNo: null, renderError: null } }), start: { tab: 'decision' } })} />);
+    await ue.click(screen.getByRole('button', { name: 'Issue the warning letter' }));
+    expect(onIssueLetter).toHaveBeenCalledWith('k4');
+    unmount();
+    show(<CaseWorkspaceScreen live={liveWorkspace({ detail: disciplinaryCase({ status: 'closed', outcome, letter: { id: 'l1', status: 'issued', referenceNo: 'KF/WARN/2026/000003', renderError: null } }), start: { tab: 'decision' } })} />);
+    expect(screen.getByText(/KF\/WARN\/2026\/000003 · Issued/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Issue the warning letter' })).not.toBeInTheDocument();
   });
 });

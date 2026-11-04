@@ -269,6 +269,8 @@ export interface CaseDetail {
   people: { id: string; name: string; email: string }[];
   /** Disciplinary: the standing orders clause (the misconduct is report.category, the facts report.summary). */
   rule: string | null;
+  /** Disciplinary, after an approved Warning (answer 56): the letter from Letters, or "waiting" for the company template. */
+  letter: { id: string | null; status: string; referenceNo: string | null; renderError: string | null } | null;
   /** What the reporter filed (HLP-06). */
   report: { summary: string; category: string | null; happenedOn: string | null; involved: string | null; witnesses: string | null; outside: string | null; retaliationWorry: boolean; late: boolean };
   timeline: { id: string; at: string; who: string; text: string }[];
@@ -344,4 +346,34 @@ export interface RaiseInput {
   misconduct: string;
   facts: string;
   rule?: string;
+}
+
+/* ---------------- HLP-08 answer 55: managers report misconduct to HR ---------------- */
+
+/** GET desk/my/misconduct-reports: what the manager sees (never what HR decided or why). */
+export interface MyMisconductReport {
+  id: string;
+  ref: string;
+  employee: string;
+  filedOn: string;
+  status: 'received' | 'opened' | 'declined';
+}
+
+export interface MisconductReportInput {
+  employeeUserId: string;
+  misconduct: string;
+  facts: string;
+  happenedOn?: string;
+}
+
+/** GET desk/cases/disciplinary/drafts: a manager's report waiting for HR in scope. */
+export interface DraftReport {
+  id: string;
+  ref: string;
+  employee: string;
+  reportedBy: string;
+  filedOn: string;
+  misconduct: string;
+  facts: string;
+  happenedOn: string | null;
 }

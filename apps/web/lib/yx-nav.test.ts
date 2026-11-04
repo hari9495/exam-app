@@ -320,6 +320,11 @@ describe('Cases and Ethics desk only for the people they concern (HLP-07/08/09, 
     expect(desk({ caseTeam: true, ethicsDesk: true })).toEqual(expect.arrayContaining(['Cases', 'Ethics desk']));
     expect(desk({ caseTeam: true, ethicsDesk: true, support: true })).not.toEqual(expect.arrayContaining(['Cases']));
   });
+  it('Report misconduct only for a manager (answer 55), never in a support session', () => {
+    expect(desk({ manager: true })).toEqual(expect.arrayContaining(['Report misconduct']));
+    expect(desk({ manager: false })).not.toEqual(expect.arrayContaining(['Report misconduct']));
+    expect(desk({ manager: true, support: true })).not.toEqual(expect.arrayContaining(['Report misconduct']));
+  });
   it('the menu items carry the counts', () => {
     const items = nav([], { employee: true, caseTeam: true, ethicsDesk: true }).find((a) => a.id === 'helpdesk')!.sections.flatMap((x) => x.items);
     expect(items.find((l) => l.label === 'Cases')?.count).toBe('casesOpen');

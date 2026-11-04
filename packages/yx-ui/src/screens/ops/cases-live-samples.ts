@@ -1,7 +1,7 @@
 // Sample records in the shapes the case screens need (cases-live-types.ts), for the HLP-07/08/09 live stories and
 // tests. Fictional Kaveri Foods people, the same as cases-data.ts. Today is 29 Sep 2026.
-import type { LiveCaseList, LiveCaseWorkspace, LiveEthicsDesk, LiveMyCases } from './cases-live';
-import type { CaseDetail, CaseFile, CaseListRow, EthicsRow, MyCaseAsReporter, MyCaseAsRespondent, MyCaseRow } from './cases-live-types';
+import type { LiveCaseList, LiveCaseWorkspace, LiveEthicsDesk, LiveMyCases, LiveReportMisconduct } from './cases-live';
+import type { CaseDetail, CaseFile, CaseListRow, DraftReport, EthicsRow, MyCaseAsReporter, MyCaseAsRespondent, MyCaseRow, MyMisconductReport } from './cases-live-types';
 
 const noop = async () => undefined;
 export const CASE_TODAY = '2026-09-29';
@@ -148,6 +148,7 @@ export function ethicsCase(over: Partial<CaseDetail> = {}): CaseDetail {
       { id: 'mb-sn', name: 'Justice (retd.) S. Narayanan', role: 'Audit committee chair', access: 'reports and outcome', external: true, recused: null },
     ],
     rule: null,
+    letter: null,
     people: [
       { id: 'p-harish', name: 'Harish Bhat', email: 'harish.bhat@kaverifoods.in' },
       { id: 'p-ravi', name: 'Ravi Shankar', email: 'ravi.shankar@kaverifoods.in' },
@@ -289,6 +290,7 @@ export function liveWorkspace(over: Partial<LiveCaseWorkspace> = {}): LiveCaseWo
     onRelief: async () => ({ taskRef: 'POSH-0007-R1' }),
     onReliefDone: noop,
     onSetSeverity: noop,
+    onIssueLetter: noop,
     onRecuse: noop,
     onAddMember: noop,
     onUpload: noop,
@@ -394,6 +396,33 @@ export function showCauseCase(over: Partial<MyCaseAsRespondent> = {}): MyCaseAsR
       rule: 'Standing orders (certified, v3 from 1 Apr 2026), clause 14(2)(c)',
       files: [],
     },
+    ...over,
+  };
+}
+
+/* ---------------- HLP-08 answers 55 and 56 ---------------- */
+
+export const DRAFT_REPORTS: DraftReport[] = [
+  { id: 'r1', ref: 'DSC-0033', employee: 'Manoj Kumar', reportedBy: 'Ravi Shankar', filedOn: '2026-09-28', misconduct: 'Rude to a customer at the counter', facts: 'Shouted at a customer at the Hosur counter on 26 Sep; two colleagues saw it.', happenedOn: '2026-09-26' },
+  { id: 'r2', ref: 'DSC-0034', employee: 'Sathish Kumar', reportedBy: 'Ravi Shankar', filedOn: '2026-09-29', misconduct: 'Smoking in the packing area', facts: 'Seen smoking next to line 2 during the night shift on 28 Sep.', happenedOn: null },
+];
+
+export const MY_REPORTS: MyMisconductReport[] = [
+  { id: 'r2', ref: 'DSC-0034', employee: 'Sathish Kumar', filedOn: '2026-09-29', status: 'received' },
+  { id: 'r1', ref: 'DSC-0033', employee: 'Manoj Kumar', filedOn: '2026-09-28', status: 'opened' },
+  { id: 'r0', ref: 'DSC-0029', employee: 'Manoj Kumar', filedOn: '2026-08-12', status: 'declined' },
+];
+
+export function liveReportMisconduct(over: Partial<LiveReportMisconduct> = {}): LiveReportMisconduct {
+  return {
+    state: 'ready',
+    today: CASE_TODAY,
+    people: [
+      { id: 'p-manoj', name: 'Manoj Kumar', email: 'manoj.kumar@kaverifoods.in' },
+      { id: 'p-sathish', name: 'Sathish Kumar', email: 'sathish.k@kaverifoods.in' },
+    ],
+    reports: MY_REPORTS,
+    onFile: async () => ({ id: 'r3', ref: 'DSC-0035' }),
     ...over,
   };
 }

@@ -58,6 +58,9 @@ import type {
   ReliefInput,
   CaseDecision,
   RaiseInput,
+  DraftReport,
+  MisconductReportInput,
+  MyMisconductReport,
   Severity,
 } from './cases-live-types';
 
@@ -430,9 +433,85 @@ export interface LiveCaseList {
   cases: CaseListRow[];
   onOpen: (id: string) => void;
   /** HR with case.disciplinary.raise (answer 34): the people in their HR scope and opening a show-cause case. */
-  raise?: { people: { id: string; name: string; email: string }[]; onRaise: (input: RaiseInput) => Promise<{ id: string; ref: string }> };
+  raise?: {
+    people: { id: string; name: string; email: string }[];
+    onRaise: (input: RaiseInput) => Promise<{ id: string; ref: string }>;
+    /** Answer 55: managers' reports waiting for this HR person (in their scope). */
+    drafts: DraftReport[];
+    onOpenDraft: (id: string) => Promise<{ id: string }>;
+    onDeclineDraft: (id: string, reason: string) => Promise<void>;
+  };
   /** Stories and tests only. */
   start?: { raising?: boolean };
+}
+
+/** Answer 55: reports from managers, waiting for HR in scope: open one as a case, or decline it with a reason. */
+function ManagerReports({ raise, onOpened }: { raise: NonNullable<LiveCaseList['raise']>; onOpened: (id: string) => void }) {
+  const [declining, setDeclining] = useState<DraftReport | null>(null);
+  const [reason, setReason] = useState('');
+  const { busy, act, alert } = useAct();
+  const early = useTooEarly(reason.trim().length < 3 ? [{ fieldId: 'mr-reason', message: 'Say why the report does not become a case. The manager does not see it.' }] : []);
+  const open = async (r: DraftReport) => {
+    let id = '';
+    if (await act(`open-${r.id}`, async () => void (id = (await raise.onOpenDraft(r.id)).id), `${r.ref} opened as a case`, 'Send the show-cause notice when you are ready.')) onOpened(id);
+  };
+  const decline = async () => {
+    if (early.stop()) return;
+    if (await act('decline', () => raise.onDeclineDraft(declining!.id, reason.trim()), `${declining!.ref} declined`, 'The manager sees only that it was declined.')) {
+      setDeclining(null);
+      setReason('');
+      early.reset();
+    }
+  };
+  return (
+    <Card title={`Reports from managers · ${raise.drafts.length}`}>
+      <div className="yx-ops-stack">
+        {!declining && alert}
+        <ul className="yx-ops-list" aria-label="Reports from managers">
+          {raise.drafts.map((r) => (
+            <li key={r.id} className="yx-ops-list__item">
+              <span className="yx-ops-list__main">
+                <span className="yx-ops-list__title">
+                  {r.employee}: {r.misconduct}
+                </span>
+                <span className="yx-ops-list__sub">
+                  <span className="yx-ops-mono">{r.ref}</span> · reported by {r.reportedBy} on {day(r.filedOn)}
+                  {r.happenedOn ? ` · happened ${day(r.happenedOn)}` : ''} · {r.facts}
+                </span>
+              </span>
+              <Actions>
+                <Button size="sm" onClick={() => setDeclining(r)}>
+                  Decline
+                </Button>
+                <Button size="sm" variant="primary" loading={busy === `open-${r.id}`} onClick={() => void open(r)}>
+                  Open as a case
+                </Button>
+              </Actions>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <Dialog
+        open={Boolean(declining)}
+        onOpenChange={(o) => !o && setDeclining(null)}
+        title={`Decline ${declining?.ref ?? ''}?`}
+        description="It does not become a case. The manager sees only that it was declined; your reason stays with HR."
+        notice={alert}
+        footer={
+          <>
+            <Button onClick={() => setDeclining(null)}>Cancel</Button>
+            <Button variant="primary" loading={busy === 'decline'} onClick={() => void decline()}>
+              Decline
+            </Button>
+          </>
+        }
+      >
+        <FormField id="mr-reason" label="Why" required error={early.errorOf('mr-reason')}>
+          <TextArea rows={3} value={reason} onChange={setReason} maxLength={500} />
+        </FormField>
+      </Dialog>
+    </Card>
+  );
 }
 
 /** HR opens a disciplinary show-cause case: the employee, the misconduct, the standing orders clause and the facts. */
@@ -547,6 +626,7 @@ export function LiveCaseList({ live }: { live: LiveCaseList }) {
         />
       </Confidential>
       {live.raise && <RaiseDrawer open={raising} onOpenChange={setRaising} raise={live.raise} onOpened={(id) => (setRaising(false), live.onOpen(id))} />}
+      {live.raise && live.raise.drafts.length > 0 && <ManagerReports raise={live.raise} onOpened={live.onOpen} />}
     </OpsDesk>
   );
 }
@@ -577,6 +657,8 @@ export interface LiveCaseWorkspace {
   onReliefDone: (caseId: string, reliefId: string) => Promise<void>;
   /** Fraud and ethics reports: an ethics officer sets Serious or Standard (answer 35). */
   onSetSeverity: (caseId: string, severity: Severity) => Promise<void>;
+  /** Answer 56: issue the warning letter once the company's template is switched on. */
+  onIssueLetter: (caseId: string) => Promise<void>;
   onRecuse: (caseId: string, reason: string) => Promise<void>;
   /** Rejects with code CASE_CONFLICT when the person has a conflict; a second call with overrideReason records it. */
   onAddMember: (caseId: string, input: AddMemberInput) => Promise<void>;
@@ -730,6 +812,34 @@ function NoticeTab({ live, c }: { live: LiveCaseWorkspace; c: CaseDetail }) {
 
 const FINDINGS = (Object.keys(FINDING_LABEL) as CaseFinding[]).map((f) => ({ value: f, label: FINDING_LABEL[f] }));
 
+/** Answer 56: the warning letter goes out through Letters, from the company's "Warning letter" template. */
+function WarningLetter({ live, c }: { live: LiveCaseWorkspace; c: CaseDetail }) {
+  const { busy, act, alert } = useAct();
+  const l = c.letter!;
+  return (
+    <Card title="Warning letter">
+      <div className="yx-ops-stack" data-gap="sm">
+        {alert}
+        {l.id ? (
+          <p className="yx-ops-muted">
+            {l.referenceNo ? `${l.referenceNo} · ` : ''}
+            {l.status === 'issued' ? 'Issued. The employee finds it with their letters.' : l.status === 'render_failed' ? `Being made again: ${l.renderError ?? 'the PDF could not be made'}.` : 'Being made in Letters.'}
+          </p>
+        ) : (
+          <>
+            <p className="yx-ops-muted">The letter is made from your company's Warning letter template (Settings › Letter templates; YukthiX has a starter). Switch it on, then issue it here.</p>
+            <Actions>
+              <Button loading={busy === 'letter'} onClick={() => void act('letter', () => live.onIssueLetter(c.id), 'Warning letter issued', 'It goes out through Letters to the employee.')}>
+                Issue the warning letter
+              </Button>
+            </Actions>
+          </>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 function OutcomeTab({ live, c, onPropose }: { live: LiveCaseWorkspace; c: CaseDetail; onPropose: () => void }) {
   const o = c.outcome!;
   const [back, setBack] = useState(live.start?.dialog === 'send-back');
@@ -765,9 +875,12 @@ function OutcomeTab({ live, c, onPropose }: { live: LiveCaseWorkspace; c: CaseDe
             ]}
           />
           {o.status === 'approved' ? (
-            <InlineAlert tone="info" title="Outcome approved">
-              Two officers agreed. Tell the people on the case through their messages; HR gets a task for any action.
-            </InlineAlert>
+            <>
+              <InlineAlert tone="info" title="Outcome approved">
+                {c.kind === 'disciplinary' ? 'Two people agreed. The employee sees the decision in My cases. Nothing changes in People or Pay by itself.' : 'Two officers agreed. Tell the people on the case through their messages; HR gets a task for any action.'}
+              </InlineAlert>
+              {c.letter && <WarningLetter live={live} c={c} />}
+            </>
           ) : o.proposedByMe ? (
             <InlineAlert tone="info" title="Waiting for a second officer">
               You proposed this outcome, so another officer approves it.
@@ -1509,3 +1622,100 @@ export function LiveEthicsDesk({ live }: { live: LiveEthicsDesk }) {
   );
 }
 
+/* =========================================================================================
+ * HLP-08 answer 55 · Report misconduct to HR (a manager, about their own reports)
+ * ======================================================================================= */
+
+const REPORT_STATUS: Record<MyMisconductReport['status'], { label: string; tone: BadgeTone }> = {
+  received: { label: 'Received by HR', tone: 'info' },
+  opened: { label: 'Opened as a case', tone: 'warning' },
+  declined: { label: 'Declined by HR', tone: 'neutral' },
+};
+
+export interface LiveReportMisconduct {
+  state: LoadState;
+  onRetry?: () => void;
+  today: string;
+  /** The people who report to this manager (today). */
+  people: { id: string; name: string; email: string }[];
+  reports: MyMisconductReport[];
+  onFile: (input: MisconductReportInput) => Promise<{ id: string; ref: string }>;
+}
+
+/** The designed screen (drawn in HLP-08, answer 55): the form and the manager's own reports with their status only. */
+export function ReportMisconductScreen({ live }: { live: LiveReportMisconduct }) {
+  const [employee, setEmployee] = useState<string | null>(null);
+  const [misconduct, setMisconduct] = useState('');
+  const [when, setWhen] = useState<Date | null>(null);
+  const [facts, setFacts] = useState('');
+  const { busy, act, alert } = useAct();
+  const early = useTooEarly([
+    ...(!employee ? [{ fieldId: 'rm-employee', message: 'Choose who it is about.' }] : []),
+    ...(misconduct.trim().length < 3 ? [{ fieldId: 'rm-misconduct', message: 'Say what happened, in short.' }] : []),
+    ...(facts.trim().length < 10 ? [{ fieldId: 'rm-facts', message: 'Write the facts (10 letters or more): what, when, where, who saw it.' }] : []),
+  ]);
+  if (live.state === 'no-access')
+    return (
+      <OpsDesk area="helpdesk" active="Speak-up" member={false}>
+        <PageHeader title="Report misconduct to HR" />
+        <NoAccessState what="this page" grantedBy="the person you act for to sign in themselves" note="A report to HR is your own act, so this page is closed while you act for someone else." />
+      </OpsDesk>
+    );
+  const send = async () => {
+    if (early.stop()) return;
+    if (await act('send', () => live.onFile({ employeeUserId: employee!, misconduct: misconduct.trim(), facts: facts.trim(), ...(when ? { happenedOn: isoDay(when) } : {}) }), 'Sent to HR', 'HR decides whether it becomes a case. You see here whether they opened or declined it.')) {
+      setEmployee(null);
+      setMisconduct('');
+      setWhen(null);
+      setFacts('');
+      early.reset();
+    }
+  };
+  const columns: TableColumn<MyMisconductReport>[] = [
+    { key: 'ref', header: 'Report', type: 'id', value: (r) => r.ref },
+    { key: 'employee', header: 'About', value: (r) => r.employee },
+    { key: 'filed', header: 'Sent', value: (r) => r.filedOn, render: (r) => day(r.filedOn) },
+    { key: 'status', header: 'Status', value: (r) => REPORT_STATUS[r.status].label, render: (r) => <Badge tone={REPORT_STATUS[r.status].tone}>{REPORT_STATUS[r.status].label}</Badge> },
+  ];
+  return (
+    <OpsDesk area="helpdesk" active="Speak-up" member={false}>
+      <PageHeader title="Report misconduct to HR" description="About someone who reports to you. HR decides whether it becomes a disciplinary case; you see only whether they opened or declined it." />
+      <Workspace
+        main={
+          <Card title="New report" footer={<Actions end><Button variant="primary" icon={Send} loading={busy === 'send'} onClick={() => void send()}>Send to HR</Button></Actions>}>
+            <div className="yx-ops-stack">
+              {alert}
+              {live.state === 'ready' && live.people.length === 0 && <InlineAlert tone="info">Nobody reports to you today, so there is no one to report.</InlineAlert>}
+              <FormField id="rm-employee" label="About" required error={early.errorOf('rm-employee')}>
+                <Select value={employee} onChange={setEmployee} options={live.people.map((p) => ({ value: p.id, label: `${p.name} · ${p.email}` }))} placeholder="Choose a person" />
+              </FormField>
+              <FormField id="rm-misconduct" label="What happened, in short" required error={early.errorOf('rm-misconduct')}>
+                <TextField value={misconduct} onChange={setMisconduct} maxLength={80} />
+              </FormField>
+              <FormField id="rm-when" label="When" optional>
+                <DatePicker value={when} onChange={setWhen} max={asDate(live.today)} />
+              </FormField>
+              <FormField id="rm-facts" label="Facts" required helper="What, when, where, and who saw it. Facts only; HR may share them with the employee." error={early.errorOf('rm-facts')}>
+                <TextArea rows={5} value={facts} onChange={setFacts} maxLength={5000} />
+              </FormField>
+            </div>
+          </Card>
+        }
+        rail={
+          <Card title="Your reports">
+            <DataTable
+              label="Your reports"
+              columns={columns}
+              rows={live.reports}
+              getRowId={(r) => r.id}
+              state={live.state}
+              errorTitle="We couldn't load your reports."
+              onRetry={live.onRetry}
+              empty={<EmptyState compact title="No reports yet." />}
+            />
+          </Card>
+        }
+      />
+    </OpsDesk>
+  );
+}

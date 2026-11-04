@@ -43,6 +43,7 @@ export default function YxCasePage() {
         onSign: (_c, version) => post('/ic-report/sign', { version }),
         onRelief: (_c, input) => write<{ taskRef: string }>(`${base}/relief`, 'POST', input),
         onReliefDone: (_c, reliefId) => post(`/relief/${enc(reliefId)}/done`),
+        onIssueLetter: (_c) => post('/letter'),
         onSetSeverity: async (_c, severity) => {
           await write(`/ethics/reports/${enc(id)}/severity`, 'POST', { severity });
         },

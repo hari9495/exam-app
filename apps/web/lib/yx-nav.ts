@@ -320,6 +320,8 @@ export function buildNav(n: NavInput): NavArea[] {
           // HLP-07/08/09: one's own part of a case for everyone; Cases and the Ethics desk only for the people they concern
           // (founder answer 36). Hiding is not security: every case route checks membership again.
           L('desk-my-cases', 'My cases', '/yx/desk/my-cases'),
+          // HLP-08 answer 55: a manager reports misconduct by one of their own reports to HR.
+          ...when(!support && manager, L('desk-report-misconduct', 'Report misconduct', '/yx/desk/report-misconduct')),
           ...when(!support && Boolean(n.caseTeam), L('desk-cases', 'Cases', '/yx/desk/cases', 'casesOpen')),
           ...when(!support && Boolean(n.ethicsDesk), L('desk-ethics', 'Ethics desk', '/yx/desk/ethics', 'ethicsReports')),
           ...when(has('speakup.setup.manage'), L('desk-speakup-setup', 'Speak-up set-up', '/yx/desk/speakup-setup')),

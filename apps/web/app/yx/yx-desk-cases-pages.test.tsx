@@ -9,6 +9,7 @@ import YxMyCasesPage from './(app)/desk/my-cases/page';
 import YxCasesPage from './(app)/desk/cases/page';
 import YxCasePage from './(app)/desk/cases/[id]/page';
 import YxEthicsDeskPage from './(app)/desk/ethics/page';
+import YxReportMisconductPage from './(app)/desk/report-misconduct/page';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn(), useParams: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), apiFetchBlob: jest.fn(), API_BASE: '' }));
@@ -88,6 +89,44 @@ describe('Helpdesk › Cases · disciplinary (HLP-08, answer 34)', () => {
     wrap(<YxCasesPage />);
     expect(await screen.findByText("You're not on any case.")).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Open a case' })).not.toBeInTheDocument();
+  });
+});
+
+describe('Helpdesk › Report misconduct and reports from managers (HLP-08, answer 55)', () => {
+  it('a manager sends a report about someone who reports to them', async () => {
+    api.mockImplementation(async (path: string, opts?: { method?: string }) => {
+      if (path === '/desk/my/misconduct-reports/people') return { people: [{ id: 'u-manoj', name: 'Manoj Kumar', email: 'manoj@kf.in' }] };
+      if (path === '/desk/my/misconduct-reports' && opts?.method === 'POST') return { id: 'r1', ref: 'DSC-0003' };
+      return [{ id: 'r0', ref: 'DSC-0002', employee: 'Manoj Kumar', filedOn: '2026-11-01', status: 'declined' }];
+    });
+    wrap(<YxReportMisconductPage />);
+    expect(await screen.findByText('Declined by HR')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('combobox', { name: /About/ }));
+    await userEvent.click(await screen.findByRole('option', { name: /Manoj Kumar/ }));
+    await userEvent.type(screen.getByRole('textbox', { name: /What happened, in short/ }), 'Rude to a customer');
+    await userEvent.type(screen.getByRole('textbox', { name: /^Facts/ }), 'Shouted at a customer on 2 Nov.');
+    await userEvent.click(screen.getByRole('button', { name: 'Send to HR' }));
+    const call = await (async () => {
+      for (let i = 0; i < 20 && !api.mock.calls.some(([p, o]) => p === '/desk/my/misconduct-reports' && o?.method === 'POST'); i++) await new Promise((r) => setTimeout(r, 25));
+      return api.mock.calls.find(([p, o]) => p === '/desk/my/misconduct-reports' && o?.method === 'POST')!;
+    })();
+    expect(JSON.parse(call[1].body)).toEqual({ employeeUserId: 'u-manoj', misconduct: 'Rude to a customer', facts: 'Shouted at a customer on 2 Nov.' });
+  });
+
+  it('HR with the key sees the reports from managers and declines one with a reason', async () => {
+    api.mockImplementation(async (path: string, opts?: { method?: string }) => {
+      if (path === '/desk/cases/disciplinary/people') return { people: [] };
+      if (path === '/desk/cases/disciplinary/drafts') return [{ id: 'r1', ref: 'DSC-0003', employee: 'Manoj Kumar', reportedBy: 'Ravi', filedOn: '2026-11-02', misconduct: 'Rude to a customer', facts: 'Shouted.', happenedOn: null }];
+      if (opts?.method === 'POST') return { declined: true };
+      return [];
+    });
+    wrap(<YxCasesPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Decline' }));
+    await userEvent.type(screen.getByRole('textbox', { name: /Why/ }), 'A word with him is enough.');
+    await userEvent.click(screen.getAllByRole('button', { name: 'Decline' }).at(-1)!);
+    expect((await screen.findAllByText('DSC-0003 declined')).length).toBeGreaterThan(0);
+    const call = api.mock.calls.find(([p]) => p === '/desk/cases/disciplinary/drafts/r1/decline')!;
+    expect(JSON.parse(call[1].body)).toEqual({ reason: 'A word with him is enough.' });
   });
 });
 
