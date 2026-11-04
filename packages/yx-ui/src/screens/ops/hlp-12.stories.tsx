@@ -2,7 +2,9 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { AccidentWorkspaceScreen, ReportAccidentScreen } from './cases-more';
 import { ACCIDENT, ACCIDENT_MEMBERS } from './cases-data';
 import { TODAY } from '../_kit/data';
-import { ACC_ESI_UNKNOWN, ACC_FORM, ACC_MANAGER, ACC_NON_ESI, liveAccident, liveReport } from './accident-live-samples';
+import { MyCasesScreen } from './cases';
+import { liveMyCases } from './cases-live-samples';
+import { ACC_MY_DETAIL, ACC_MY_ROW, ACC_ESI_UNKNOWN, ACC_FORM, ACC_MANAGER, ACC_NON_ESI, liveAccident, liveReport } from './accident-live-samples';
 
 const meta: Meta = { title: 'Screens/Helpdesk/HLP-12 · Accident case workspace', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -33,6 +35,8 @@ export const EsicDetails: S = {
 };
 export const WorkOutCompensation: S = { name: 'Work out compensation (not ESI covered)', render: () => <AccidentWorkspaceScreen live={liveAccident({ detail: { ...ACC_NON_ESI, ec: null, clocks: [] }, start: { tab: 'statutory', dialog: 'ec' } })} /> };
 export const MedicalRecords: S = { name: 'Medical records (append-only, fingerprinted)', render: () => <AccidentWorkspaceScreen live={liveAccident({ start: { tab: 'medical' } })} /> };
-export const ManagerNoDates: S = { name: 'Manager view · no leave dates yet', render: () => <AccidentWorkspaceScreen live={liveAccident({ detail: { ...ACC_MANAGER, leaveFrom: null, leaveTo: null } })} /> };
+export const ManagerNoDates: S = { name: 'Manager view · no leave dates yet', render: () => <AccidentWorkspaceScreen live={liveAccident({ detail: { ...ACC_MANAGER, leaveFrom: null, leaveTo: null, leaveStatus: null } })} /> };
 export const NoSafetyTeam: S = { name: 'Report · no safety team yet', render: () => <ReportAccidentScreen device="desk" live={liveReport({ form: { ...ACC_FORM, ready: false } })} /> };
 export const ReportTooEarly: S = { name: 'Report · pressed too early', render: () => <ReportAccidentScreen device="desk" live={liveReport({ start: { tooEarly: true } })} /> };
+export const ManagerLeavePending: S = { name: 'Manager view · injury leave waiting for approval in Time', render: () => <AccidentWorkspaceScreen live={liveAccident({ detail: { ...ACC_MANAGER, leaveStatus: 'pending' } })} /> };
+export const ReporterStatus: S = { name: 'My cases · the reporter sees the status only', render: () => <MyCasesScreen live={liveMyCases({ cases: [ACC_MY_ROW], openId: 'acc-1', detail: ACC_MY_DETAIL })} /> };

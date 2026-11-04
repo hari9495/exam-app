@@ -1,4 +1,5 @@
 // Sample records for the HLP-12 live accident screens (stories and tests). Shapes match the API (desk/accidents).
+import type { MyCaseAsReporter, MyCaseRow } from './cases-live-types';
 import type { AccidentDetail, AccidentFormData, AccidentManagerView, LiveAccidentWorkspace, LiveReportAccident } from './accident-live';
 
 export const ACC_TODAY = '2026-11-04';
@@ -8,10 +9,7 @@ export const ACC_FORM: AccidentFormData = {
     { id: 'hsr', name: 'Hosur plant' },
     { id: 'maa', name: 'Chennai office' },
   ],
-  employees: [
-    { id: 'e-sathish', name: 'Sathish Kumar' },
-    { id: 'e-ravi', name: 'Ravi K.' },
-  ],
+  me: { id: 'e-ravi', name: 'Ravi K.' },
   injuryTypes: ['Crush', 'Cut', 'Burn', 'Fall', 'Sprain or strain', 'Other'],
   ready: true,
   meEmployeeId: 'e-ravi',
@@ -39,7 +37,7 @@ export const ACC_DETAIL: AccidentDetail = {
   ipNumber: '3110012345',
   hospital: 'ESI dispensary, Hosur',
   handler: { id: 'u-hr', name: 'Anitha (HR)' },
-  leave: { from: '2026-11-02', to: '2026-11-09', days: 8 },
+  leave: { from: '2026-11-02', to: '2026-11-09', days: 8, inTime: { id: 'lr-1', status: 'pending' } },
   statements: [],
   photos: [{ id: 'f-photo', name: 'machine-guard.jpg', size: 120_000, scan: 'clean' }],
   clocks: [{ key: 'esic', label: 'ESIC accident report (employer’s report)', due: '2026-11-02', doneOn: null }],
@@ -71,6 +69,7 @@ export const ACC_CONTRACT: AccidentDetail = {
   injured: { kind: 'contract', name: 'Murugan P.', employeeId: null, contractor: 'Sri Lakshmi Facility Services' },
   clocks: [{ key: 'esic', label: 'ESIC accident report (the contractor files)', due: '2026-11-02', doneOn: null }],
   contractorNotFiled: true,
+  leave: { from: '2026-11-02', to: '2026-11-09', days: 8, inTime: null },
   members: ACC_DETAIL.members.slice(0, 2),
 };
 export const ACC_NON_ESI: AccidentDetail = {
@@ -84,7 +83,7 @@ export const ACC_NON_ESI: AccidentDetail = {
   ec: { kind: 'permanent-partial', factor: 197.06, disablementPct: 20, days: null, monthlyWage: 42000, fellDueOn: '2026-10-04', wageUsed: 15000, amount: 354708, formula: '20 % of the permanent total amount (₹1773540)', deadline: '2026-11-03', interest: 3615, paid: null },
 };
 export const ACC_SUBMITTED: AccidentDetail = { ...ACC_DETAIL, clocks: [{ ...ACC_DETAIL.clocks[0], doneOn: '2026-11-02' }], esicFiled: { on: '2026-11-02', ack: 'ESIC/ACC/2026/0917743' } };
-export const ACC_MANAGER: AccidentManagerView = { view: 'manager', id: 'acc-1', number: 'ACC-0001', injuredName: 'Sathish Kumar', leaveFrom: '2026-11-02', leaveTo: '2026-11-09' };
+export const ACC_MANAGER: AccidentManagerView = { view: 'manager', id: 'acc-1', number: 'ACC-0001', injuredName: 'Sathish Kumar', leaveFrom: '2026-11-02', leaveTo: '2026-11-09', leaveStatus: 'approved' };
 
 const ok = async () => undefined;
 export const liveAccident = (over: Partial<LiveAccidentWorkspace> = {}): LiveAccidentWorkspace => ({
@@ -109,6 +108,11 @@ export const liveReport = (over: Partial<LiveReportAccident> = {}): LiveReportAc
   today: new Date(2026, 10, 4),
   onSend: async () => ({ id: 'acc-9', number: 'ACC-0009' }),
   onPhoto: ok,
+  onSearchPeople: async (q) => [{ id: 'e-sathish', name: 'Sathish Kumar' }, { id: 'e-ravi', name: 'Ravi K.' }].filter((p) => p.name.toLowerCase().includes(q.toLowerCase())),
   onDone: () => undefined,
   ...over,
 });
+
+/** Founder answer 45: an accident in the reporter's My cases (status only). */
+export const ACC_MY_ROW: MyCaseRow = { id: 'acc-1', ref: 'ACC-0001', kind: 'accident', role: 'reporter', stage: 'Received', status: 'open', next: null, unread: 0 };
+export const ACC_MY_DETAIL: MyCaseAsReporter = { id: 'acc-1', ref: 'ACC-0001', kind: 'accident', role: 'reporter', stage: 'Received', status: 'open', openedOn: '2026-11-01', dates: [], datesSource: '', messages: [], outcome: null, appealUntil: null };

@@ -53,7 +53,8 @@ export type MyCaseRole = 'reporter' | 'respondent';
 export interface MyCaseRow {
   id: string;
   ref: string;
-  kind: CaseKind;
+  /** HLP-12 (founder answer 45): the reporter's accident reports, status only. */
+  kind: CaseKind | 'accident';
   role: MyCaseRole;
   stage: string;
   status: CaseStatus;
@@ -64,7 +65,8 @@ export interface MyCaseRow {
 interface MyCaseBase {
   id: string;
   ref: string;
-  kind: CaseKind;
+  /** HLP-12 (founder answer 45): the reporter's accident reports, status only. */
+  kind: CaseKind | 'accident';
   stage: string;
   status: CaseStatus;
   openedOn: string;

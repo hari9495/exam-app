@@ -2,12 +2,13 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ToastProvider } from "@yukthix/ui";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "../../lib/api-client";
 import { useAuth } from "../../lib/auth-context";
 import YxReportAccidentPage from "./(app)/desk/accidents/report/page";
 import YxAccidentPage from "./(app)/desk/accidents/[id]/page";
 import YxCasesPage from "./(app)/desk/cases/page";
+import YxMyCasesPage from "./(app)/desk/my-cases/page";
 
 jest.mock("next/navigation", () => ({
   useRouter: jest.fn(),
@@ -38,10 +39,10 @@ const api = apiFetch as jest.Mock;
 const push = jest.fn();
 const FORM = {
   locations: [{ id: "hsr", name: "Hosur plant" }],
-  employees: [{ id: "e1", name: "Sathish Kumar" }],
   injuryTypes: ["Crush", "Fall"],
   ready: true,
   meEmployeeId: "e1",
+  me: { id: "e1", name: "Sathish Kumar" },
 };
 const MANAGER = {
   view: "manager",
@@ -50,6 +51,7 @@ const MANAGER = {
   injuredName: "Sathish Kumar",
   leaveFrom: "2026-11-02",
   leaveTo: "2026-11-09",
+  leaveStatus: "approved",
 };
 const notFound = Object.assign(new Error("Not found."), { status: 404 });
 
@@ -114,6 +116,9 @@ describe("Helpdesk › accident cases (HLP-12 live)", () => {
     expect(
       await screen.findByText("Injury leave · Sathish Kumar"),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText("Shifts in this period are marked as injury leave"),
+    ).toBeInTheDocument();
     expect(api).toHaveBeenCalledWith("/desk/accidents/a1", {}, "tok");
   });
 
@@ -149,5 +154,71 @@ describe("Helpdesk › accident cases (HLP-12 live)", () => {
     wrap(<YxCasesPage />);
     await userEvent.click(await screen.findByText("Crush, Packing line 2"));
     expect(push).toHaveBeenCalledWith("/yx/desk/accidents/a1");
+  });
+
+  it("the injured person picker searches on the server (2 letters or more)", async () => {
+    api.mockImplementation(async (path: string) =>
+      path === "/desk/accidents/form"
+        ? FORM
+        : path.startsWith("/desk/accidents/people")
+          ? [{ id: "e7", name: "Murali Iyer" }]
+          : {},
+    );
+    wrap(<YxReportAccidentPage />);
+    await userEvent.click(
+      await screen.findByRole("combobox", { name: /^Name/ }),
+    );
+    await userEvent.type(
+      await screen.findByPlaceholderText("Type 2 or more letters of the name"),
+      "Mu",
+    );
+    expect(
+      await screen.findByRole("option", { name: "Murali Iyer" }),
+    ).toBeInTheDocument();
+    expect(api).toHaveBeenCalledWith("/desk/accidents/people?q=Mu", {}, "tok");
+  });
+
+  it("My cases lists accidents the person reported and opens one from its own route, status only", async () => {
+    (useSearchParams as jest.Mock).mockReturnValue(
+      new URLSearchParams("case=a1"),
+    );
+    api.mockImplementation(async (path: string) =>
+      path === "/desk/my/cases"
+        ? []
+        : path === "/desk/accidents/mine"
+          ? [
+              {
+                id: "a1",
+                ref: "ACC-0001",
+                kind: "accident",
+                role: "reporter",
+                stage: "Received",
+                status: "open",
+                next: null,
+                unread: 0,
+              },
+            ]
+          : path === "/desk/accidents/mine/a1"
+            ? {
+                id: "a1",
+                ref: "ACC-0001",
+                kind: "accident",
+                role: "reporter",
+                stage: "Received",
+                status: "open",
+                openedOn: "2026-11-01",
+                dates: [],
+                datesSource: "",
+                messages: [],
+                outcome: null,
+                appealUntil: null,
+              }
+            : Promise.reject(new Error(`unexpected ${path}`)),
+    );
+    wrap(<YxMyCasesPage />);
+    expect(
+      (await screen.findAllByText("The safety team has your report")).length,
+    ).toBeGreaterThan(0);
+    expect(api.mock.calls.some(([p]) => p === "/desk/my/cases/a1")).toBe(false);
   });
 });

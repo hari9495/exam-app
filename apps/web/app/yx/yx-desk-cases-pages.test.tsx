@@ -33,7 +33,7 @@ beforeEach(() => {
 
 describe('Helpdesk › My cases (HLP-07 live)', () => {
   it('lists my part of each case; a row opens it; acting for someone else shows no access', async () => {
-    api.mockResolvedValue([{ id: 'c1', ref: 'GRV-0001', kind: 'grievance', role: 'reporter', stage: 'Being looked into', status: 'open', next: { label: 'Committee decision', on: '2026-12-03' }, unread: 0 }]);
+    api.mockImplementation(async (path: string) => (path === '/desk/accidents/mine' ? [] : [{ id: 'c1', ref: 'GRV-0001', kind: 'grievance', role: 'reporter', stage: 'Being looked into', status: 'open', next: { label: 'Committee decision', on: '2026-12-03' }, unread: 0 }]));
     const { unmount } = wrap(<YxMyCasesPage />);
     await userEvent.click(await screen.findByRole('button', { name: 'Open' }));
     expect(replace).toHaveBeenCalledWith('/yx/desk/my-cases?case=c1');

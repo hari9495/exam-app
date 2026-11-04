@@ -67,7 +67,8 @@ export interface AccidentDetail {
   ipNumber: string | null;
   hospital: string | null;
   handler: NamedRef | null;
-  leave: { from: string; to: string; days: number | null } | null;
+  /** inTime: the leave request made in Time from these dates (founder answer 43); null for a contract worker. */
+  leave: { from: string; to: string; days: number | null; inTime: { id: string; status: LeaveStatus } | null } | null;
   statements: { id: string; who: string; text: string; by: string; at: string }[];
   photos: { id: string; name: string; size: number; scan: 'clean' | 'pending' | 'infected' }[];
   clocks: AccidentClock[];
@@ -105,7 +106,13 @@ export interface AccidentManagerView {
   injuredName: string;
   leaveFrom: string | null;
   leaveTo: string | null;
+  /** The injury leave request in Time (null: none, for example a contract worker). */
+  leaveStatus: LeaveStatus | null;
 }
+export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn' | 'cancel_pending' | 'cancelled' | 'sent_back' | 'resent';
+const LEAVE_WORDS: Record<LeaveStatus, string> = { pending: 'waiting for approval', approved: 'approved', rejected: 'rejected', withdrawn: 'withdrawn', cancel_pending: 'being cancelled', cancelled: 'cancelled', sent_back: 'sent back for changes', resent: 'waiting for approval' };
+/** The roster line (founder answer 43): shifts are marked once the leave in Time is approved. */
+const rosterText = (st: LeaveStatus) => (st === 'approved' || st === 'cancel_pending' ? 'Shifts in this period are marked as injury leave' : `Injury leave in Time is ${LEAVE_WORDS[st]}; shifts are marked once it is approved`);
 export type MedicalKind = 'diagnosis' | 'certificate' | 'disablement' | 'note';
 export interface AccidentFacts {
   esiCovered?: boolean;
@@ -130,7 +137,8 @@ export interface EsicFormView {
 /** GET desk/accidents/form. */
 export interface AccidentFormData {
   locations: NamedRef[];
-  employees: NamedRef[];
+  /** The signed-in person, picked by default (founder answer 46: everyone else is found by search). */
+  me: NamedRef | null;
   injuryTypes: string[];
   ready: boolean;
   meEmployeeId: string | null;
@@ -226,6 +234,7 @@ function ManagerCard({ m }: { m: AccidentManagerView }) {
             items={[
               { label: 'Injury leave', value: `${day(m.leaveFrom)} to ${day(m.leaveTo)} (${days} ${days === 1 ? 'day' : 'days'})` },
               { label: 'Expected return', value: formatDate(new Date(asDate(m.leaveTo).getTime() + 86_400_000)) },
+              ...(m.leaveStatus ? [{ label: 'Roster', value: rosterText(m.leaveStatus) }] : []),
             ]}
           />
         ) : (
@@ -353,7 +362,11 @@ function LiveAccidentWorkspace({ live, c }: { live: LiveAccidentWorkspace; c: Ac
       {esiCard}
       {ecCard}
       <InlineAlert tone="info">
-        {c.leave ? `Injury leave from ${day(c.leave.from)} to ${day(c.leave.to)} is shared with the manager (dates only).` : 'Record the injury leave dates; the manager then sees the dates only.'} Record the leave in Time too.
+        {c.leave
+          ? `Injury leave from ${day(c.leave.from)} to ${day(c.leave.to)} is shared with the manager (dates only).${c.leave.inTime ? ` In Time it is ${LEAVE_WORDS[c.leave.inTime.status]}.` : c.injured.kind === 'contract' ? ' A contract worker has no leave in Time.' : ''}`
+          : c.injured.kind === 'contract'
+            ? 'Record the injury leave dates on the case.'
+            : 'Record the injury leave dates: they go to Time as injury leave, and the manager sees the dates only.'}
       </InlineAlert>
     </div>
   );
@@ -794,6 +807,8 @@ export interface LiveReportAccident {
   today: Date;
   onSend: (input: AccidentReportInput) => Promise<{ id: string; number: string }>;
   onPhoto: (caseId: string, file: File) => Promise<void>;
+  /** Founder answer 46: people of the company whose name has the typed words (the server searches). */
+  onSearchPeople: (q: string) => Promise<NamedRef[]>;
   onDone: () => void;
   /** Stories and tests only. */
   start?: { kind?: 'employee' | 'contract'; tooEarly?: boolean };
@@ -802,6 +817,12 @@ export interface LiveReportAccident {
 function ReportForm({ live, f, device }: { live: LiveReportAccident; f: AccidentFormData; device: Device }) {
   const [kind, setKind] = useState<'employee' | 'contract'>(live.start?.kind ?? 'employee');
   const [person, setPerson] = useState<string | null>(f.meEmployeeId);
+  const [picked, setPicked] = useState<NamedRef | null>(f.me);
+  const [found, setFound] = useState<NamedRef[]>([]);
+  const search = async (q: string) => {
+    if (q.trim().length < 2) return setFound([]);
+    setFound(await live.onSearchPeople(q.trim()).catch(() => []));
+  };
   const [name, setName] = useState('');
   const [contractor, setContractor] = useState('');
   const [when, setWhen] = useState<Date | null>(live.today);
@@ -888,7 +909,16 @@ function ReportForm({ live, f, device }: { live: LiveReportAccident; f: Accident
       </FormField>
       {kind === 'employee' ? (
         <FormField id="ra-person" label="Name" required error={early.errorOf('ra-person')}>
-          <Select value={person} onChange={setPerson} options={f.employees.map((e) => ({ value: e.id, label: e.id === f.meEmployeeId ? `${e.name} (me)` : e.name }))} placeholder="Choose a person" searchable />
+          <Select
+            value={person}
+            onChange={(v) => (setPerson(v), setPicked(found.find((x) => x.id === v) ?? picked))}
+            options={[...(picked ? [picked] : []), ...found.filter((x) => x.id !== picked?.id)].map((e) => ({ value: e.id, label: e.id === f.meEmployeeId ? `${e.name} (me)` : e.name }))}
+            placeholder="Choose a person"
+            searchable
+            searchPlaceholder="Type 2 or more letters of the name"
+            emptyText="Type 2 or more letters of the name"
+            onSearchChange={(q) => void search(q)}
+          />
         </FormField>
       ) : (
         <FieldRow>

@@ -18,17 +18,21 @@ function MyCases() {
   const openId = params.get('case');
   const { toast } = useToast();
   const list = useDesk<MyCaseRow[]>('/my/cases');
-  const one = useDesk<MyCaseDetail>(openId ? `/my/cases/${id(openId)}` : null);
+  // HLP-12 (founder answer 45): accidents the person reported, status only.
+  const accidents = useDesk<MyCaseRow[]>('/accidents/mine');
+  const cases = [...(list.data ?? []), ...(accidents.data ?? [])];
+  const accident = cases.find((c) => c.id === openId)?.kind === 'accident';
+  const one = useDesk<MyCaseDetail>(openId && list.data && accidents.data ? (accident ? `/accidents/mine/${id(openId)}` : `/my/cases/${id(openId)}`) : null);
   const write = useDeskWrite();
   const upload = useDeskUpload();
   const download = useDeskDownload();
   return (
     <MyCasesScreen
       live={{
-        state: deskState(list),
-        onRetry: () => void list.refetch(),
+        state: deskState(list, accidents),
+        onRetry: () => void Promise.all([list.refetch(), accidents.refetch()]),
         today: todayIst(),
-        cases: list.data ?? [],
+        cases,
         openId,
         onOpen: (c) => (c && c === openId ? void one.refetch() : router.replace(c ? `/yx/desk/my-cases?case=${id(c)}` : '/yx/desk/my-cases')),
         detail: one.data ?? null,

@@ -317,6 +317,8 @@ export function buildNav(n: NavInput): NavArea[] {
           ...when(any('desk.kb.view_internal', 'desk.kb.author', 'desk.kb.publish'), L('desk-knowledge', 'Knowledge base', '/yx/desk/knowledge')),
           L('desk-policies', 'Policies', '/yx/desk/policies'),
           L('desk-speakup', 'Speak up', '/yx/desk/speakup'),
+          // HLP-12 (founder answer 47): anyone reports a workplace accident or injury, for themselves or someone else.
+          L('desk-accident', 'Report an accident', '/yx/desk/accidents/report'),
           // HLP-07/08/09: one's own part of a case for everyone; Cases and the Ethics desk only for the people they concern
           // (founder answer 36). Hiding is not security: every case route checks membership again.
           L('desk-my-cases', 'My cases', '/yx/desk/my-cases'),

@@ -307,6 +307,11 @@ function MyCasePart({ live, c }: { live: LiveMyCases; c: MyCaseDetail }) {
       <p className="yx-ops-muted">
         {KIND_LABEL[c.kind]} · {ROLE_LABEL[c.role]} · opened {day(c.openedOn)} · <Badge tone={STATUS_TONE[c.status]}>{c.stage}</Badge>
       </p>
+      {c.kind === 'accident' && (
+        <InlineAlert tone="info" title={c.status === 'closed' ? 'The safety team has closed this case' : 'The safety team has your report'}>
+          You see the status only. The injury, the medical details and who handles it stay with the safety team.
+        </InlineAlert>
+      )}
       {c.dates.length > 0 && <ClockPanel title={c.role === 'respondent' ? 'Your dates' : 'Dates'} items={c.dates.map(toClock)} today={today} source={c.datesSource} />}
       {c.outcome && (
         <InlineAlert tone="info" title="Outcome">
@@ -314,9 +319,9 @@ function MyCasePart({ live, c }: { live: LiveMyCases; c: MyCaseDetail }) {
           {c.appealUntil ? ` If you disagree, you can appeal until ${day(c.appealUntil)}.` : ''}
         </InlineAlert>
       )}
-      {c.role === 'reporter' && <p className="yx-ops-muted">You see the stage, the dates and the messages with the case team. The inquiry itself stays with the case team, to protect everyone in it.</p>}
+      {c.role === 'reporter' && c.kind !== 'accident' && <p className="yx-ops-muted">You see the stage, the dates and the messages with the case team. The inquiry itself stays with the case team, to protect everyone in it.</p>}
       {c.role === 'respondent' && <RespondentPart live={live} c={c} />}
-      {c.role !== 'respondent' && (
+      {c.role !== 'respondent' && c.kind !== 'accident' && (
       <Card title="Messages with the case team">
         <div className="yx-ops-stack">
           <Thread messages={c.messages} label="Messages" viewer="person" />

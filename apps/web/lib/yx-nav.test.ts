@@ -16,7 +16,7 @@ describe('buildNav: areas', () => {
     const n = nav();
     expect(areas(n)).toEqual(['home', 'helpdesk']);
     expect(labels(n, 'home')).toEqual(['Home', 'Approvals', 'Notifications', 'Search', 'My requests']);
-    expect(labels(n, 'helpdesk')).toEqual(['Help centre', 'Policies', 'Speak up', 'My cases', 'Service catalogue', 'Chat with us']);
+    expect(labels(n, 'helpdesk')).toEqual(['Help centre', 'Policies', 'Speak up', 'Report an accident', 'My cases', 'Service catalogue', 'Chat with us']);
   });
 
   it('areas come in the designed rail order, Settings last; unbuilt modules never appear', () => {

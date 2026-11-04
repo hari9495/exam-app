@@ -3,9 +3,10 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
 import { AccidentWorkspaceScreen, ReportAccidentScreen } from './cases-more';
-import { SpeakUpScreen } from './cases';
+import { MyCasesScreen, SpeakUpScreen } from './cases';
 import { SpeakUpSetupScreen } from './helpdesk-speakup-live';
-import { ACC_CONTRACT, ACC_DETAIL, ACC_ESI_UNKNOWN, ACC_MANAGER, ACC_NON_ESI, ACC_SUBMITTED, liveAccident, liveReport } from './accident-live-samples';
+import { liveMyCases } from './cases-live-samples';
+import { ACC_MY_DETAIL, ACC_MY_ROW, ACC_CONTRACT, ACC_DETAIL, ACC_ESI_UNKNOWN, ACC_MANAGER, ACC_NON_ESI, ACC_SUBMITTED, liveAccident, liveReport } from './accident-live-samples';
 import { liveSetup, liveSpeakUp } from './helpdesk-speakup-live-samples';
 
 // HLP-12 Accident case, live (the designed screens with real records): positive and negative.
@@ -66,6 +67,52 @@ describe('HLP-12 Report an accident (live)', () => {
     await ue.click(await screen.findByRole('option', { name: 'Crush' }));
     await ue.click(screen.getByRole('button', { name: 'Send report' }));
     expect(await screen.findByText('Choose one of the injury types in the list.')).toBeInTheDocument();
+  });
+});
+
+describe('HLP-12 founder answers 43, 45, 46', () => {
+  it('the injured person is found by a server search; the choice is sent', async () => {
+    const onSend = vi.fn().mockResolvedValue({ id: 'acc-9', number: 'ACC-0009' });
+    const onSearchPeople = vi.fn(async (q: string) => (q.length >= 2 ? [{ id: 'e-sathish', name: 'Sathish Kumar' }] : []));
+    show(<ReportAccidentScreen device="desk" live={liveReport({ onSend, onSearchPeople })} />);
+    await ue.click(screen.getByRole('combobox', { name: /^Name/ }));
+    await ue.type(await screen.findByPlaceholderText('Type 2 or more letters of the name'), 'Sat');
+    await ue.click(await screen.findByRole('option', { name: 'Sathish Kumar' }));
+    expect(onSearchPeople).toHaveBeenCalledWith('Sat');
+    expect(screen.getByRole('combobox', { name: /^Name/ })).toHaveTextContent('Sathish Kumar');
+    await ue.type(screen.getByRole('textbox', { name: /Time/ }), '10:30 am');
+    await ue.tab();
+    await ue.click(screen.getByRole('combobox', { name: /Location/ }));
+    await ue.click(await screen.findByRole('option', { name: 'Hosur plant' }));
+    await ue.type(screen.getByRole('textbox', { name: /Where exactly/ }), 'Packing line 2');
+    await ue.type(screen.getByRole('textbox', { name: /What happened/ }), 'Hand caught in the machine guard.');
+    await ue.click(screen.getByRole('combobox', { name: /Injury type/ }));
+    await ue.click(await screen.findByRole('option', { name: 'Crush' }));
+    await ue.click(screen.getByRole('button', { name: 'Send report' }));
+    expect(onSend.mock.calls[0][0]).toMatchObject({ injuredKind: 'employee', injuredEmployeeId: 'e-sathish' });
+  });
+
+  it('the manager sees the roster line from the leave in Time: approved marks shifts, pending says it waits', () => {
+    const { unmount } = show(<AccidentWorkspaceScreen live={liveAccident({ detail: ACC_MANAGER })} />);
+    expect(screen.getByText('Shifts in this period are marked as injury leave')).toBeInTheDocument();
+    unmount();
+    show(<AccidentWorkspaceScreen live={liveAccident({ detail: { ...ACC_MANAGER, leaveStatus: 'pending' } })} />);
+    expect(screen.getByText('Injury leave in Time is waiting for approval; shifts are marked once it is approved')).toBeInTheDocument();
+  });
+
+  it('the team sees the leave status in Time; a contract worker has none', () => {
+    const { unmount } = show(<AccidentWorkspaceScreen live={liveAccident({ start: { tab: 'statutory' } })} />);
+    expect(screen.getByText(/In Time it is waiting for approval/)).toBeInTheDocument();
+    unmount();
+    show(<AccidentWorkspaceScreen live={liveAccident({ detail: ACC_CONTRACT, start: { tab: 'statutory' } })} />);
+    expect(screen.getByText(/A contract worker has no leave in Time/)).toBeInTheDocument();
+  });
+
+  it('the reporter sees the status only in My cases: no messages, no injury, no team', () => {
+    show(<MyCasesScreen live={liveMyCases({ cases: [ACC_MY_ROW], openId: 'acc-1', detail: ACC_MY_DETAIL })} />);
+    expect(screen.getAllByText('The safety team has your report').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Messages with the case team')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Packing line|fracture/)).not.toBeInTheDocument();
   });
 });
 
