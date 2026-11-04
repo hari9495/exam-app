@@ -104,3 +104,5 @@ Things deliberately left for launch. Development runs locally until then (test k
       IN.FACTORIES.LEAVE, and counsel lists state amendments to the Factories Act leave rules (answers 111, 134, 4 Nov 2026).
 - [ ] **Factory workers only.** Counsel confirms which employment types count as factory workers for the leave minimum and
       the 1-in-20 rate (HLP-14 answers 142, 144, 4 Nov 2026).
+- [ ] **Old Factories Act scopes.** After go-live, once no company has a company / entity / location value for
+      attendance.factories_act, stop offering those scopes (keep department and employment type) (answer 152, 4 Nov 2026).

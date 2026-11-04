@@ -1778,3 +1778,9 @@ unless attendance.factories_act excludes a department or employment type (for ex
 the location form says so; (142) after counsel confirms, the factory leave minimum covers only the employment types the
 Act counts as workers, as overtime does (GO-LIVE-CHECKLIST); (143) keep one industry per company; (144) keep: the
 1-in-20 rate is not applied to leave credits until counsel signs off the rate and the days-worked source.
+
+Founder approved, 4 Nov 2026 (questions 151-153, all as suggested): (151) nothing moves automatically; the location page and
+Time set-up show "Mark the location as a registered factory to make it the one source" where an old location-level
+"covered" value exists; HR ticks it, then the old value can be removed; (152) after go-live, stop offering company / entity
+/ location scopes for attendance.factories_act once no company uses them (GO-LIVE-CHECKLIST); (153) keep: a department
+exclusion applies at every flagged site.
