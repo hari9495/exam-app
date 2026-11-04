@@ -24,15 +24,19 @@ feature not built** (no API) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Helpdesk HLP-01 … 14 | 14 | 229 | 7 | 0 | 7 | 0 | 243 |
+| A. Helpdesk HLP-01 … 14 | 14 | 246 | 7 | 0 | 4 | 0 | 257 |
 | B. Service desk designs | 5 | 55 | 2 | 0 | 0 | 0 | 57 |
-| **All Helpdesk groups (A–B)** | **19** | **284** | **9** | **0** | **7** | **0** | **300** |
+| **All Helpdesk groups (A–B)** | **19** | **301** | **9** | **0** | **4** | **0** | **314** |
 Round 8e (script, 4 Nov 2026, `feat/yukthix-hlp-07-09`): HLP-08 gains 5 stories (warning letter waiting and issued,
 reports from managers, report misconduct, nobody reports to you), all live.
 Round 12b (script, 4 Nov 2026, `feat/yukthix-hlp-12`, founder answers 43, 45, 46, 47): HLP-12 gains 2 stories
 (ManagerLeavePending, ReporterStatus), both live; ManagerView moves from live (gap) to live (the roster line from the
 injury leave in Time). HLP-12: 19 stories, 17 live, 2 live (gap) (questions 42 and 44, left for counsel and the first
 factory customer).
+Round 13 recount (script, 4 Nov 2026, `feat/yukthix-hlp-13`): HLP-13 has 17 stories (the 3 approved plus 14 drawn for
+the real record: in the Cases list, record a dispute, add and settle a demand, log a meeting, record the settlement, the
+second member approves, the recorder waits, sent back, sent to payroll, copy filed, closed, the close dialog, the IR team
+in set-up), all live. Only HLP-14 (4) is left as design only.
 Round 8d (script, 4 Nov 2026, `feat/yukthix-hlp-07-09`): the 7 disciplinary show-cause stories (HLP-07: 4, HLP-08: 3)
 move from live (gap) to live; HLP-07 gains 1 story (ShowCauseLive) and HLP-08 gains 4 (OpenCase, DisciplinaryLive,
 DisciplinaryDecide, InquiryOrdered), all live.
@@ -156,7 +160,7 @@ And under `notLive`: designed, with no live page rendering them. `ops: TicketWor
 doing the same job with a B screen (section 5). (HLP-06 `SpeakUpScreen` and `CheckReportScreen` left the list: live) (HLP-07 `MyCasesScreen`,
 HLP-08 `CaseListScreen` and `CaseWorkspaceScreen`, HLP-09 `EthicsDeskScreen` left the list: live; `ops: LoadingCase` and
 `ops: ErrorCase` stay: the live workspace draws its own loading and error in the same look) (HLP-10 `PolicyLibraryScreen` and HLP-11 `PolicyAdminScreen` left the list: live)
-(HLP-12 `AccidentWorkspaceScreen` and `ReportAccidentScreen` left the list: live) `ops: CollectiveDisputeScreen` (HLP-13), `ops:
+(HLP-12 `AccidentWorkspaceScreen` and `ReportAccidentScreen` left the list: live) (HLP-13 `CollectiveDisputeScreen` left the list: live) `ops:
 PolicyWriterScreen` (HLP-14) and `ops: PoshCaseScreen` (no HLP story; the POSH case) have no server. Related phone and
 portal designs also wait: `settings: MobileHelpTicketsScreen`, `MobilePolicyAckScreen`, `MobileSpeakUpScreen`,
 `portals: AnonymousCaseScreen`, `ExternalPartyCaseScreen`, `HelpEditorScreen`.
@@ -170,7 +174,7 @@ portal designs also wait: `settings: MobileHelpTicketsScreen`, `MobilePolicyAckS
 | ~~HLP-12 Accident case workspace~~ (done, round 12) | accident reports, ESIC report and EC claim clocks, contract workers, manager view | L |
 | Domestic inquiry and penalties (after a disciplinary show-cause) | inquiry officer, hearings, findings, second show-cause on the penalty, penalties beyond a warning | L (questions 51, 52; waits for counsel) |
 | HLP-12 Accident case workspace (8) | accident reports, ESIC report and EC claim clocks, contract workers, manager view | L |
-| HLP-13 Collective dispute / settlement (3) | dispute record, conciliation, signed settlement sent to payroll arrears | L |
+| ~~HLP-13 Collective dispute / settlement~~ (done, round 13) | dispute record, conciliation, signed settlement sent to payroll arrears | L |
 | HLP-14 Write policies with AI (4) | questionnaire, AI draft, law findings that block approval, approve and load into HLP-10 | L (after HLP-10) |
 
 ## 4. Design groups, story by story
@@ -531,13 +535,28 @@ Live (round 12, 4 Nov 2026, `feat/yukthix-hlp-12`): `apps/api/src/accidents` (`d
 
 #### HLP-13 · Collective dispute / settlement
 
-No server (`WageSettlement`, `FnfSettlement` are pay records, not dispute settlements).
+Live page: /yx/desk/disputes/[id] (`CollectiveDisputeScreen` with `live`, dispute-live.tsx; rules in section 4h), rows
+in /yx/desk/cases for the industrial relations team, the IR team list in /yx/desk/speakup-setup.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Conciliation · Conciliation in progress | design only, feature not built | no dispute API |
-| Signed · Settlement signed · send to payroll arrears | design only, feature not built | payroll arrears exist; the dispute record does not |
-| NonMember · Not a case member (shows Not found) | design only, feature not built | |
+| Conciliation · Conciliation in progress | live | `GET desk/disputes/:id` (IR team only, audited): header facts, the stage trail, demands, meetings, Next dates from `IN.IR.DISPUTE` (verify), who can see it |
+| Signed · Settlement signed · send to payroll arrears | live | the approval itself sends the pay terms: one PAY-37 wage-settlement arrears worksheet that payroll previews, posts and gets approved as usual; "Open signed settlement" opens the fingerprinted copy |
+| NonMember · Not a case member (shows Not found) | live | 404 for HR, the System Admin, managers, payroll, other staff and other companies; the page shows Not found |
+| InCases · In the Cases list (IR team) | live | new story: `GET desk/disputes` rows merged into Cases (empty list for anyone off the IR team) |
+| RecordDispute · Record a dispute | live | new story: `GET desk/disputes/form` (404 off the team: no button), `POST desk/disputes`; toast; opens the new dispute |
+| AddDemand · Add a demand | live | new story: `POST …/demands` (numbered D1, D2 …) |
+| UpdateDemand · Demand agreed or withdrawn | live | new story: `POST …/demands/:demandId`, Segment Open / Agreed / Withdrawn / Not agreed; agreed needs the words |
+| LogMeeting · Log a meeting (minutes fingerprinted) | live | new story: `POST …/papers` (SHA-256 kept) then `POST …/meetings`; conciliation needs the officer; held on ≤ today; next date after it |
+| RecordSettlement · Record settlement (signed copy, pay terms) | live | new story: `POST …/settlement` with the signed copy and the monthly increase per worker category |
+| ToApprove · Settlement · second IR member approves | live | new story: `POST …/settlement/approve`; toast says payroll pays it as usual |
+| ProposerWaits · Settlement · the recorder waits (can’t approve) | live | new story: 403 for the recorder, refused by a database trigger too |
+| SentBack · Settlement sent back | live | new story: `POST …/settlement/send-back` with a reason |
+| SentToPayroll · Approved · sent to payroll arrears | live | new story |
+| CopyFiled · Copy filed with the authorities | live | new story: `POST …/filed` (once, on or after signing, not in the future) |
+| Closed · Closed without a settlement | live | new story |
+| CloseDispute · Close without a settlement (dialog) | live | new story: `POST …/close` (withdrawn / no settlement, a note) |
+| IrTeam · Speak-up set-up · Industrial relations team | live | new story: the System Admin's list (`speakup.setup.manage`); Segment Company member / Outside lawyer |
 
 #### HLP-14 · Write policies with AI
 
@@ -1064,6 +1083,39 @@ manager sees received, opened or declined. An approved Warning is issued through
 letter type `warning`, the company's active template; YukthiX adds a "Warning letter" starter with the merge fields
 `case_reference`, `misconduct`, `standing_orders_clause`, `decision_summary`, `decision_date`); with no active template
 the decision stands and the case shows the letter as waiting until a member issues it. Nothing changes in People or Pay.
+## 4h. HLP-13 rules (collective disputes)
+Built 4 Nov 2026 (`feat/yukthix-hlp-13`) from the founder decisions of 4 Nov 2026 (end of this file). Company side only.
+- **Who:** the Industrial relations team, a speak-up list (`ir`) only the System Admin keeps (`speakup.setup.manage`;
+  HR gets 403). An outside lawyer joins as `external` ("Outside lawyer"); they need a login in the company. The team
+  sees and does everything; HR, the System Admin, managers, payroll, other staff, other companies and YukthiX support
+  (RLS) get 404 (an empty list on Cases, no "Record a dispute"). Every route 403 while acting for someone else. Every
+  look (`dispute.viewed`) and every paper open (`dispute.paper_opened`, with the SHA-256) is audited.
+- **Record:** the dispute (title, union or workers' group as text, location, workers covered, charter received on ≤
+  today), demands (D1 …, union and company positions, then open / agreed with the words / withdrawn / not agreed),
+  bipartite and conciliation meetings (held on ≤ today and ≥ the charter; conciliation names the officer; the next date
+  after it), papers (PDF, JPG, PNG up to 10 MB, scanned, SHA-256 kept, opened only when clean and matching).
+- **Clocks (never in code):** `IN.IR.DISPUTE 2020-v1` (verify, from 21 Nov 2025): the conciliation officer's report 60
+  days after the first conciliation meeting (done when the settlement is approved or the dispute closes); the settlement
+  copy to the authorities 10 days after signing (done when "copy filed" is recorded). No rule set in force: no clock.
+  The next meeting is the team's own date.
+- **Settlement, two people:** one IR member records it (in conciliation or bipartite, signed on, effective from / to,
+  covered, terms, the monthly increase per worker category (unskilled, semi-skilled, skilled, highly skilled) and the
+  signed copy); one waits at a time. A second IR member approves (never the recorder: 403, and the database trigger
+  `ir_dispute_four_eyes` refuses it; one approval per dispute by a unique index). The outside lawyer approves only when
+  the company setting allows. Anyone on the team may send it back with a reason (the recorder: withdraw).
+- **Payroll:** approval creates exactly one PAY-37 wage settlement (`SpecialPayService.settlementIn`, the pay guard
+  opened to the location's legal entity for that one write, audited `payroll.settlement.added` with the dispute as
+  source). Payroll previews it per category, posts it for a pay month and someone else approves it, as for any
+  settlement; nothing is posted or paid from the dispute. The proposer and the entity's `payroll.special.manage` holders
+  get a notice. The IR team gets no payroll access from this.
+- **After:** the record is complete once approved (no more demands, meetings, settlements); "copy filed" once. A dispute
+  with no settlement closes as withdrawn or no settlement with a note. Strike / lock-out notices and tribunal stages are
+  not built (questions 81, 82).
+- **Settings (defaults, per company):** `dispute.lawyer_may_approve` (no).
+- **Records:** `ir_disputes` and `ir_dispute_steps` (demand, demand_update, meeting, paper, settlement_proposed,
+  settlement_sent_back, settlement_approved, filed, closed) are append-only (no UPDATE / DELETE for the app role,
+  forced RLS, support sessions excluded). Migration `202616a0000000_collective_disputes`.
+- **Menu:** Cases shows for anyone on a speak-up list (the IR team included); open disputes join the IR team's count.
 
 ## 5. Two designs for one job
 
@@ -1232,6 +1284,25 @@ surveys). The HLP screens are the founder-approved look, sample-only.
     lands with HR as a draft case, which HR opens or drops.
 56. **HLP-08: the warning letter** is not generated; the employee sees the decision text in My cases. *Suggested:*
     issue it through Letters (an HR letter template) once the decision is approved.
+81. **HLP-13: strike and lock-out notices** (IR Code notice periods, the notice register, conciliation started by a
+    notice) are not built (founder decision 2). *Built:* nothing; a notice is kept as a paper of the dispute.
+    *Suggested:* build with the first customer that has a union, as notices with clocks from a verified rule set.
+82. **HLP-13: tribunal stages** (failure report, reference to the Industrial Tribunal, award, its publication and
+    implementation) are not built. *Built:* "Close without a settlement" (no settlement) with a note. *Suggested:* add
+    the reference and award as steps after counsel, with the award's pay terms going to payroll like a settlement.
+83. **HLP-13: pay terms are a rupee increase a month per worker category** (PAY-37 pays those), not a percentage of
+    basic; the percentage is written in the terms. Payroll's categories are the job's skill class today. *Suggested:*
+    keep; add a percentage-of-basic rate to PAY-37 if a customer's settlements are mostly percentages.
+84. **HLP-13: may the outside lawyer approve a settlement?** *Built:* company setting `dispute.lawyer_may_approve`,
+    default no (only the company's own IR members approve). *Suggested:* keep no.
+85. **HLP-13: the union is free text,** not linked to payroll's union register (PAY-36), so the wage settlement has no
+    union. *Suggested:* offer the payroll union list when the dispute's legal entity has one; free text otherwise.
+86. **HLP-13: no warning in set-up while the IR team is empty** (most companies have no union). *Suggested:* keep;
+    the Cases page simply has no "Record a dispute" until the System Admin names the team.
+87. **HLP-13: the conciliation report and settlement copy days** (60 and 10, IR Code 2020, verify flag on) need counsel;
+    the 10 days are from the rules, which may differ by state. *Suggested:* counsel confirms; per-state rule sets later.
+88. **HLP-13: who in payroll hears about an approved settlement.** *Built:* every `payroll.special.manage` holder of the
+    legal entity gets a notice (and the recorder). *Suggested:* keep.
 
 71. **HLP-08: a warning letter shows in People › Letters** (the HR register) to HR who hold `letter.issue` for the
     employee, not only to the case's HR members, because Letters keeps every issued letter in one register. The letter
@@ -1278,7 +1349,7 @@ surveys). The HLP screens are the founder-approved look, sample-only.
 | 10 | ~~HLP-06 Speak-up filing~~ (done, round 6) | L | no server; needs POSH Act 2013 internal committee and whistleblower decisions; public no-login route |
 | 11 | ~~HLP-08 + HLP-07 + HLP-09 Cases, my cases, ethics desk~~ (done, rounds 7-9; disciplinary cases left, question 34) | XL | no server; one case engine for grievance, disciplinary and whistleblower cases, members, conflict check, clocks; standing orders and show-cause decisions |
 | 12 | ~~HLP-12 Accident case~~ (done, round 12; inspector notice left, question 44) | L | no server; ESIC accident report, EC Act claim interest, Factories Act / OSH Code notices |
-| 13 | HLP-13 Collective dispute | L | no server; Industrial Disputes Act conciliation and settlement to payroll arrears |
+| 13 | ~~HLP-13 Collective dispute~~ (done, round 13; strike notices and tribunal stages left, questions 81, 82) | L | no server; Industrial Disputes Act conciliation and settlement to payroll arrears |
 | 14 | HLP-14 Write policies with AI | L | no server; after HLP-10; law findings need a reviewed rule set |
 
 ## Appendix: the count script

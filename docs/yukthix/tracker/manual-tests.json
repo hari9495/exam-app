@@ -14487,6 +14487,101 @@
     "note": "Positive and negative: contractor late, missing EC field. No government filing from the app."
   },
   {
+    "id": "MT-HLP-13-01",
+    "area": "Helpdesk · HLP-13 Collective dispute (4 Nov 2026)",
+    "screen": "Speak-up set-up · Industrial relations team",
+    "url": "http://localhost:3000/yx/desk/speakup-setup",
+    "account": "admin-tester@demo-org.test (System Admin); hr-tester@demo-org.test (HR). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As hr-tester type /yx/desk/speakup-setup.",
+      "2. As admin-tester open Speak-up set-up; on Industrial relations team press Add, then Add again with no person chosen.",
+      "3. Add it-lead@ as Company member; add kiran@ as Company member; add murugan@ choosing Outside lawyer.",
+      "4. Add it-lead@ to the Industrial relations team again.",
+      "5. Check the page has no scroll bar at 1278 x 635 (the lists may scroll inside their cards)."
+    ],
+    "expected": "Step 1: no access (\"The System Admin chooses the case officers; HR does not.\"). Step 2: \"Choose who to add.\" and the field takes the focus. Step 3: three toasts; murugan shows \"Outside lawyer\". Step 4: \"This person is already on that list.\" Step 5: no page scroll bar.",
+    "stories": [
+      "Screens/Helpdesk/HLP-13 · Collective dispute / settlement"
+    ],
+    "note": "Positive and negative: HR refused, empty add, duplicate. \"Who they are\" is a joined Segment (pick one)."
+  },
+  {
+    "id": "MT-HLP-13-02",
+    "area": "Helpdesk · HLP-13 Collective dispute (4 Nov 2026)",
+    "screen": "Cases · Record a dispute, demands and meetings",
+    "url": "http://localhost:3000/yx/desk/cases",
+    "account": "it-lead@demo-org.test (IR team, from MT-HLP-13-01). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Helpdesk › Cases; press Record a dispute; press Record dispute with nothing filled.",
+      "2. Dispute \"Charter of demands 2026\", raised by \"Kaveri Foods Workers Union\", Hosur plant, 212 workers, received 40 days ago; Record dispute.",
+      "3. ⋯ › Add demand three times: \"Basic pay +18 %\" (18 % / 9 %), \"Night-shift allowance ₹150\" (₹150 / ₹110), \"Two festival holidays\" (2 days / 0).",
+      "4. Click D1; choose Agreed; Save with \"Agreed at\" empty; then type 11 % and Save.",
+      "5. Log meeting: Conciliation, clear the officer, Log meeting; then held 30 days ago, officer \"Assistant Labour Commissioner, Hosur\", attended, what was discussed, minutes PDF, next meeting in 5 days.",
+      "6. Log meeting with tomorrow as Held on."
+    ],
+    "expected": "Step 1: an error under each field; the first takes the focus. Step 2: toast \"Dispute recorded\"; the dispute IRD-NNNN opens with \"Charter received\". Step 3: three toasts; Demands (3). Step 4: \"Write what was agreed.\"; then D1 shows \"Agreed at 11 %\" and the header \"3 (1 agreed)\". Step 5: \"Name the conciliation officer.\"; then toast \"Meeting logged\"; the stage is Conciliation; Next dates show the next meeting and \"Conciliation officer’s report\" 60 days after the meeting, with \"Time limits from IN.IR.DISPUTE 2020-v1 (verify)\"; the minutes show with a fingerprint. Step 6: the date picker does not allow it (the API refuses it too).",
+    "stories": [
+      "Screens/Helpdesk/HLP-13 · Collective dispute / settlement"
+    ],
+    "note": "Positive and negative: empty form, agreed without words, no officer, future meeting."
+  },
+  {
+    "id": "MT-HLP-13-03",
+    "area": "Helpdesk · HLP-13 Collective dispute (4 Nov 2026)",
+    "screen": "Dispute · two-person settlement sent to payroll arrears",
+    "url": "http://localhost:3000/yx/desk/cases",
+    "account": "it-lead@demo-org.test (records); kiran@demo-org.test (approves); murugan@demo-org.test (outside lawyer); payroll-tester@demo-org.test (payroll). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As it-lead open the dispute of MT-HLP-13-02; Record settlement; press Record settlement with nothing filled.",
+      "2. Fill: In conciliation, signed yesterday, takes effect 1 Apr 2026, workers covered, terms \"Basic +11 %, night-shift allowance ₹120\", Skilled ₹1650 and Unskilled ₹1200 a month, the signed PDF; Record settlement.",
+      "3. Still as it-lead: look for an Approve button.",
+      "4. As murugan open the dispute.",
+      "5. As kiran open it; ⋯ › Send the settlement back with reason \"Wrong effective date\"; as it-lead record it again; as kiran press Approve and send to payroll.",
+      "6. As payroll-tester open Payroll › Special pay › Settlements; preview the new settlement for this month. Check payslips and off-cycle runs.",
+      "7. As kiran press Record copy filed with today and reference \"ALC/HSR/2026/118\"."
+    ],
+    "expected": "Step 1: an error under each missing field, including \"Add the signed copy.\" Step 2: toast \"Settlement recorded\"; the stage is \"Settlement to approve\"; kiran and murugan get a notice. Step 3: none; \"Waiting for a second IR member\". Step 4: no Approve button (\"Your company lets only its own IR team members approve it\"; setting Disputes: an outside lawyer may approve, default no). Step 5: the reason shows to it-lead; after approving: toast \"Settlement approved and sent to payroll arrears\"; the header shows \"Settled, file the copy\" and \"Sent to payroll arrears <today>\". Step 6: exactly one new settlement \"Charter of demands 2026 (IRD-NNNN)\" with the two categories; nothing is posted or paid until payroll posts it and someone else approves it. Step 7: toast; the stage is \"Settled, copy filed\"; the dispute shows Closed in Cases.",
+    "stories": [
+      "Screens/Helpdesk/HLP-13 · Collective dispute / settlement"
+    ],
+    "note": "Positive and negative: empty form, the recorder cannot approve, the lawyer cannot approve by default, sent back. Nothing is paid automatically."
+  },
+  {
+    "id": "MT-HLP-13-04",
+    "area": "Helpdesk · HLP-13 Collective dispute (4 Nov 2026)",
+    "screen": "Dispute · who can see it",
+    "url": "http://localhost:3000/yx/desk/cases",
+    "account": "hr-tester@ (HR); admin-tester@ (System Admin); panel@ (manager); payroll-tester@ (payroll); arjun@ (employee). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As each of them open Helpdesk: look for Cases; type /yx/desk/cases.",
+      "2. As each of them type /yx/desk/disputes/<the dispute id from it-lead’s address bar>.",
+      "3. As admin-tester use \"Act as\" for it-lead and open the same dispute."
+    ],
+    "expected": "Step 1: no dispute rows and no \"Record a dispute\" button (Cases may show only for people on another list). Step 2: Not found, for every one of them. Step 3: refused: \"Not available while acting for someone else\".",
+    "stories": [
+      "Screens/Helpdesk/HLP-13 · Collective dispute / settlement"
+    ],
+    "note": "Negative: everyone off the IR team gets Not found; acting-for refused. Company side only: no union or worker view."
+  },
+  {
+    "id": "MT-HLP-13-05",
+    "area": "Helpdesk · HLP-13 Collective dispute (4 Nov 2026)",
+    "screen": "Dispute · close without a settlement",
+    "url": "http://localhost:3000/yx/desk/cases",
+    "account": "kiran@demo-org.test (IR team). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Record a second dispute \"Bonus demand 2026\".",
+      "2. ⋯ › Close without a settlement; press Close dispute with nothing chosen.",
+      "3. Choose Withdrawn, note \"The union withdrew the demand.\"; Close dispute.",
+      "4. Look for Log meeting, Record settlement and the ⋯ menu."
+    ],
+    "expected": "Step 2: \"Choose how it ended.\" and the choice takes the focus. Step 3: toast \"Dispute closed\"; \"Closed (withdrawn)\" with the note. Step 4: none of them: the record stays and nothing can be added.",
+    "stories": [
+      "Screens/Helpdesk/HLP-13 · Collective dispute / settlement"
+    ],
+    "note": "Positive and negative: empty close, closed record is read-only."
+  },
+  {
     "id": "MT-HLP-08D-01",
     "area": "Helpdesk · HLP-08 Disciplinary show-cause cases (4 Nov 2026)",
     "screen": "Cases · open a case",
