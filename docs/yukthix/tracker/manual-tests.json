@@ -15001,5 +15001,61 @@
       "Screens/Helpdesk/HLP-08 · Cases (case team)"
     ],
     "note": "Positive and negative: HR out of scope and other staff are not told."
+  },
+  {
+    "id": "MT-HLP-12-12",
+    "area": "Helpdesk · HLP-12 Accident case (4 Nov 2026, founder answers 92 and 93)",
+    "screen": "Payroll run › Inputs › Special days",
+    "url": "http://localhost:3000/yx/payroll/runs",
+    "account": "payroll-tester@demo-org.test (payroll inputs); arjun@demo-org.test (employee). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As payroll-tester open this month's regular run (draft or in review) › Inputs tab.",
+      "2. Find the person with approved injury leave (MT-HLP-12-11): read the From column.",
+      "3. Press Edit; clear Days and type 40; press Save.",
+      "4. Type 2.5 and a reason; Save.",
+      "5. Open an approved (locked) run of an earlier month › Inputs.",
+      "6. As arjun type the run address."
+    ],
+    "expected": "Step 2: the person, Injury, the days, \"Injury leave in Time\". Step 3: \"A month has at most 31 days.\" and \"Say why (3 letters or more).\"; nothing saved. Step 4: toast \"<name>: 2.5 days saved\"; From changes to \"Entered by payroll\"; calculating again keeps 2.5. Step 5: no Edit buttons; \"Special days can be changed while the run is a draft or in review and its month is not locked.\" Step 6: no access.",
+    "stories": [
+      "Screens/Pay/PAY-03 · Run workspace"
+    ],
+    "note": "Positive and negative: bad days, missing reason, locked run, employee refused."
+  },
+  {
+    "id": "MT-HLP-12-13",
+    "area": "Helpdesk · HLP-12 Accident case (4 Nov 2026, founder answers 92 and 93)",
+    "screen": "Payroll run › late injury leave to review",
+    "url": "http://localhost:3000/yx/payroll/runs",
+    "account": "payroll-tester@demo-org.test; panel@demo-org.test (approves leave). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Lock a month that has an injured person (approve and pay its run).",
+      "2. In Time, record injury leave in that locked month on the accident case (MT-HLP-12-06) and approve it as panel@.",
+      "3. Next morning open the next month's run › Inputs.",
+      "4. Press Add to this month; look at the prefilled days; Save.",
+      "5. Open the locked month's run › Inputs."
+    ],
+    "expected": "Step 3: \"Injury leave approved after its month was locked\" lists the person, the locked month and the days. Nothing was added to the special days by itself. Step 4: the days are this month's injury days plus the late ones, the reason names the month; saved as payroll's value with a toast. Step 5: unchanged (a locked month never changes).",
+    "stories": [
+      "Screens/Pay/PAY-03 · Run workspace"
+    ],
+    "note": "Positive and negative: shown, never applied silently; the locked month stays."
+  },
+  {
+    "id": "MT-HLP-08D-09",
+    "area": "Helpdesk · HLP-08 manager's misconduct report (4 Nov 2026, founder answer 94)",
+    "screen": "Misconduct report with nobody in HR scope",
+    "url": "http://localhost:3000/yx/desk/report-misconduct",
+    "account": "admin-tester@demo-org.test (System Admin); a manager whose report sits in a legal entity no HR person holds case.disciplinary.raise for (set it up in Roles & access first). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As the manager report misconduct by that person.",
+      "2. As admin-tester look at the bell.",
+      "3. Open Cases › Reports from managers."
+    ],
+    "expected": "Step 2: \"A manager's misconduct report DSC-00NN is waiting for HR\" (the number only: no name, no misconduct text). Step 3: the report waits there; the System Admin can open or decline it. The manager and the employee get no such notice.",
+    "stories": [
+      "Screens/Helpdesk/HLP-08 · Cases (case team)"
+    ],
+    "note": "Positive and negative."
   }
 ]

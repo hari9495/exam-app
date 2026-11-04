@@ -1072,6 +1072,11 @@ Built 4 Nov 2026 (`feat/yukthix-hlp-12`) from the founder decisions of 4 Nov 202
   and the app never changes it again; a locked or filed month is never changed. `in_feed_days`: days the Time feed
   already counts as unpaid (an unpaid injury type), not taken off twice by the calculation (attendance from the feed
   only). `GET payroll/special-days?month=` lists the month's rows with their source (`payroll.input.manage`, in scope).
+  Answer 92: the run's Inputs tab shows them per person with their source and payroll edits them there (PAY-03 story
+  `InputsSpecialDays`, `GET payroll/runs/:id/special-days`). Answer 93: the morning fill looks back four months; in a
+  locked month, approved injury days beyond what was paid become a correction (`pay_corrections`, source
+  `injury_leave`, the locked month's period) shown on the next open month's run "to review" with Add to this month;
+  one per person and locked month for the same days; never applied by the app.
 - **Settings (defaults, per company):** `accident.injury_leave_type` (INJURY), `accident.injury_types` (Crush, Cut, Burn, Fall, Sprain or strain, Other),
   `accident.contractor_reminder_days` (1).
 - **Records:** `accident_cases`, `accident_steps` (facts, statement, photo, esic_filed, contractor_filed, ec_set, ec_paid,
@@ -1423,7 +1428,20 @@ surveys). The HLP screens are the founder-approved look, sample-only.
     changes). *Built:* nothing for that case. *Suggested:* the next month's run shows it as a correction to review.
 94. **HLP-08 answer 73: who hears of a manager's report.** People holding `case.disciplinary.raise` whose scope covers the
     employee (up to 25), never the reporter or the employee; if nobody does, nobody is told (the report still waits under
-    Cases). *Built:* that. *Suggested:* fall back to the System Admins when nobody holds the key in scope.
+    Cases). *Built:* that. *Suggested:* fall back to the System Admins when nobody holds the key in scope. (Done 4 Nov
+    2026: the System Admins get the same notice, the number only.)
+
+121. **HLP-12 answer 93: what "reviewed" means.** A late injury correction stays on the next open month's run until that
+     month is paid; payroll adds it with Add to this month (or leaves it). There is no "Reviewed, not paid" button.
+     *Built:* shown with Add to this month. *Suggested:* add "Not paid, with a reason" so the list empties, audited.
+122. **HLP-12 answer 93: corrections from earlier than four months** (leave approved very late) are not raised by the
+     morning fill. *Built:* four months back. *Suggested:* keep; a company setting if anyone needs longer.
+123. **HLP-12 answer 92: maternity and suspension days** show in the same card and payroll edits them there too (they were
+     only in the API). *Built:* that. *Suggested:* keep.
+124. **HLP-08 answer 94: the System Admin decides it then.** The System Admin role carries `case.disciplinary.raise`
+     company-wide, so the notified System Admin can open or decline the waiting report from Cases. *Built:* notice to the
+     System Admins (up to 25, never the reporter or the employee). *Suggested:* keep, and give an HR person the key for
+     that entity in Roles & access so it reaches HR next time.
 
 ## 7. Next pages (recommended order, with sizes)
 

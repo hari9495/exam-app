@@ -23,7 +23,7 @@ Verdicts: **wire design** (a live page and the API exist for this job; the page 
 
 | | pages | live | live, gap | wire | wire, gap | feature not built | phone view | ? | sub-pages |
 |---|---|---|---|---|---|---|---|---|---|
-| A. Runs and payments | 10 | 63 | 0 | 0 | 0 | 0 | 0 | 0 | 63 |
+| A. Runs and payments | 10 | 64 | 0 | 0 | 0 | 0 | 0 | 0 | 64 |
 | B. Inputs, loans, recoveries, queries | 8 | 52 | 0 | 0 | 0 | 0 | 2 | 0 | 54 |
 | C. Structures and set-up | 6 | 43 | 0 | 0 | 0 | 0 | 0 | 0 | 43 |
 | D. Employee pay and tax | 6 | 48 | 0 | 0 | 0 | 1 | 9 | 0 | 58 |
@@ -31,7 +31,10 @@ Verdicts: **wire design** (a live page and the API exist for this job; the page 
 | F. Reports | 1 | 14 | 0 | 0 | 0 | 0 | 0 | 0 | 14 |
 | G. Records | 3 | 44 | 0 | 0 | 0 | 0 | 0 | 0 | 44 |
 | H. New designs, made live | 5 | 50 | 0 | 0 | 0 | 0 | 0 | 0 | 50 |
-| **All** | **53** | **405** | **0** | **0** | **0** | **7** | **19** | **0** | **431** |
+| **All** | **53** | **406** | **0** | **0** | **0** | **7** | **19** | **0** | **432** |
+
+HLP-12 answers 92 and 93 (4 Nov 2026, branch `feat/yukthix-hlp-12`): PAY-03 gains 1 story (Inputs tab · special days and
+late injury leave to review), designed first and live: Runs 63 → 64, All 405 → 406 live, 432 sub-pages.
 
 Pay followups (2 Nov 2026, branch `feat/yukthix-pay-followups`, founder answers 2, 4 and 7): PAY-32 gets 3 results-sheet
 stories, designed first (live); PAY-25 NoAccess and PAY-04 Frozen notes updated. Recounted by the same script: 405 live,
@@ -285,6 +288,7 @@ Live page: /yx/payroll/runs/[id]
 | Failed · Calculation failed · named fixes | live | "Retry N failed": POST runs/:id/retry-failed (payroll.run.prepare, audited) |
 | Variance · Variance tab · acknowledge | live |  |
 | Inputs · Inputs tab | live | GET runs/:id/input-sources: people and days or amount per source |
+| InputsSpecialDays · Inputs tab · special days and late injury leave to review | live | HLP-12 answers 92, 93 (designed first, `SpecialDaysCard`): GET runs/:id/special-days (RUN_VIEW): per person injury / maternity / suspension days with their source ("Injury leave in Time" or "Entered by payroll"); Edit (payroll.input.manage, run a draft or in review, month not locked; PUT special-days with the run's month, payroll's value then wins; field errors and focus; toast); injury leave approved after an earlier month was locked shows as "to review" with Add to this month (prefilled, still saved by payroll; never applied by itself) |
 | Validations · Validations tab | live |  |
 | Approvals · Approvals tab (finance approver) | live |  |
 | Files · Files tab · approved | live | pay gaps: bank file, payslips, disbursement register, Journal (lines, ready or posted; Export journal opens the payments page Journal tab) and one row per statutory file of the month (download through the single-use file link) plus Statutory files (open the hub); rows only for payroll.journal.export / statutory.filing.view |
