@@ -709,7 +709,10 @@ export class CasesService {
       await audit(tx, c, 'cases.misconduct_reported', 'speakup_case', row.id, { number: this.ref(row), employeeUserId: dto.employeeUserId });
       // Founder answer 73: HR holding case.disciplinary.raise whose scope covers the employee hears of it (never the
       // reporter or the employee); the notice names the case number only, not the person or the misconduct.
-      const hr = (await holdersOf(tx, org, RAISE, emp.id, today)).filter((u) => u !== c.userId && u !== dto.employeeUserId);
+      const notMe = (ids: string[]) => ids.filter((u) => u !== c.userId && u !== dto.employeeUserId);
+      let hr = notMe(await holdersOf(tx, org, RAISE, emp.id, today));
+      // Founder answer 94: nobody holds the key over the employee, so the System Admins hear of it instead (same text).
+      if (!hr.length) hr = notMe((await tx.user.findMany({ where: { organizationId: org, role: 'org_admin', status: 'active' }, select: { id: true }, take: 25 })).map((u) => u.id));
       return { id: row.id, ref: this.ref(row), hr, org };
     });
     if (out.hr.length) await this.notify(out.org, out.hr, 'helpdesk.case.misconduct_reported', out.id, `A manager's misconduct report ${out.ref} is waiting for HR`, '/yx/desk/cases');

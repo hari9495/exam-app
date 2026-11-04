@@ -306,6 +306,22 @@ describe('HLP-08 disciplinary show-cause cases', () => {
     expect((await (await request(server()).get('/api/v1/workspace/counts').set('Authorization', `Bearer ${token.hr1}`)).body).casesOpen).toBeGreaterThanOrEqual(1);
   });
 
+  it('answer 94: with nobody holding the key over the employee, the System Admins get the notice (the number only)', async () => {
+    const profiles = await inA((tx) => tx.user.findMany({ where: { id: { in: [users.hr1, users.hr2] } }, select: { id: true, permissionProfileId: true } }));
+    await inA((tx) => tx.user.updateMany({ where: { id: { in: [users.hr1, users.hr2] } }, data: { permissionProfileId: null } }));
+    try {
+      const before = await inA((tx) => tx.userNotification.count({ where: { organizationId: org.A.id, type: 'helpdesk.case.misconduct_reported' } }));
+      const r = (await call('mgr', 'post', '/my/misconduct-reports').send({ employeeUserId: users.emp, misconduct: 'Left the line unattended', facts: 'Left packing line 2 running alone for an hour on 3 Nov.' }).expect(201)).body;
+      const told = await inA((tx) => tx.userNotification.findMany({ where: { organizationId: org.A.id, type: 'helpdesk.case.misconduct_reported', entityId: r.id } }));
+      expect(told.map((n) => n.recipientUserId)).toEqual([users.adminA]);
+      expect(JSON.stringify(told)).toContain(r.ref);
+      expect(JSON.stringify(told)).not.toMatch(/Left the line|packing line|emp /);
+      expect(await inA((tx) => tx.userNotification.count({ where: { organizationId: org.A.id, type: 'helpdesk.case.misconduct_reported' } }))).toBe(before + 1);
+    } finally {
+      for (const p of profiles) await inA((tx) => tx.user.update({ where: { id: p.id }, data: { permissionProfileId: p.permissionProfileId } }));
+    }
+  });
+
   it('another company never sees these cases', async () => {
     for (const id of [ids.c, ids.c2, ids.r1, ids.r2]) await call('adminB', 'get', `/cases/${id}`).expect(404);
     expect((await call('adminB', 'get', '/cases/disciplinary/drafts').expect(200)).body).toEqual([]);
