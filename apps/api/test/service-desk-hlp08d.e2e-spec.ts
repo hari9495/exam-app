@@ -1,4 +1,5 @@
 process.env.SD_SCANNER = 'dev-fake';
+process.env.LETTER_PDF_CONVERTER = 'dev-fake';
 import { Test } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
@@ -10,6 +11,7 @@ import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
+import { markSteppedUp } from './fixtures/step-up';
 
 // HLP-08 disciplinary show-cause cases (founder answer 34) end to end against the real database (forced RLS, the app
 // role). Positive and negative: only HR with case.disciplinary.raise opens one, and only about people in their HR scope
@@ -220,8 +222,80 @@ describe('HLP-08 disciplinary show-cause cases', () => {
     expect((await call('other', 'get', '/my/cases').expect(200)).body).toEqual([expect.objectContaining({ stage: 'Inquiry ordered', status: 'open' })]);
   });
 
+  it('the warning letter (answer 56): waits for the company template, then goes out through Letters once; never for an inquiry', async () => {
+    let d = await detail('hr1', ids.c);
+    expect(d.letter).toMatchObject({ id: null, status: 'waiting' });
+    expect((await call('hr1', 'post', `/cases/${ids.c}/letter`).expect(400)).body.message).toMatch(/no active warning template/);
+    await call('mgr', 'post', `/cases/${ids.c}/letter`).expect(404);
+    await call('hr1', 'post', `/cases/${ids.c2}/letter`).expect(400);
+    // The company switches on its warning letter template from the YukthiX starter, and names who signs.
+    const api = (method: 'get' | 'post', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token.adminA}`);
+    const t = (await api('post', '/letters/templates/starter').send({ letterType: 'warning' }).expect(201)).body;
+    expect(t.fields).toEqual(expect.arrayContaining(['case_reference', 'misconduct', 'decision_summary', 'decision_date']));
+    await api('get', `/letters/templates/${t.id}/preview`).expect(200);
+    await api('post', `/letters/templates/${t.id}/activate`).expect(200);
+    await markSteppedUp(tenantPrisma, token.adminA);
+    await api('post', '/letters/signatories').field('legalEntityId', ids.e1).field('userId', users.adminA).field('title', 'Head of People').expect(201);
+    const r = (await call('hr2', 'post', `/cases/${ids.c}/letter`).expect(201)).body;
+    expect(r.letterId).toEqual(expect.any(String));
+    await call('hr1', 'post', `/cases/${ids.c}/letter`).expect(409);
+    const l = await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { id: r.letterId } }));
+    expect(l).toMatchObject({ letterType: 'warning', subjectType: 'speakup_case', subjectId: ids.c, templateId: t.id });
+    d = await detail('hr1', ids.c);
+    expect(d.letter.id).toBe(r.letterId);
+    expect(d.timeline.map((x: { text: string }) => x.text)).toContain('Issued the warning letter (Letters)');
+    // The employee finds it with their letters.
+    const mine = (await request(server()).get('/api/v1/letters/me').set('Authorization', `Bearer ${token.emp}`).expect(200)).body;
+    expect(JSON.stringify(mine)).toContain(r.letterId);
+  });
+
+  it('a manager reports misconduct by their own report only; it reaches HR in scope as a draft nobody else sees', async () => {
+    expect((await call('mgr', 'get', '/my/misconduct-reports/people').expect(200)).body.people.map((p: { id: string }) => p.id)).toEqual([users.emp]);
+    expect((await call('emp', 'get', '/my/misconduct-reports/people').expect(200)).body.people).toEqual([]);
+    const R = { employeeUserId: users.emp, misconduct: 'Rude to a customer at the counter', facts: 'Shouted at a customer on 2 Nov at the Hosur counter; two colleagues saw it.' };
+    expect((await call('mgr', 'post', '/my/misconduct-reports').send({ ...R, employeeUserId: users.other }).expect(403)).body.code).toBe('CASE_NOT_YOUR_REPORT');
+    expect((await call('emp', 'post', '/my/misconduct-reports').send({ ...R, employeeUserId: users.mgr }).expect(403)).body.code).toBe('CASE_NOT_YOUR_REPORT');
+    await call('mgr', 'post', '/my/misconduct-reports').send({ ...R, facts: 'short' }).expect(400);
+    await call('mgr', 'post', '/my/misconduct-reports').send({ ...R, happenedOn: shift(3) }).expect(400);
+    ids.r1 = (await call('mgr', 'post', '/my/misconduct-reports').send(R).expect(201)).body.id;
+    ids.r2 = (await call('mgr', 'post', '/my/misconduct-reports').send({ ...R, misconduct: 'Late four times this month', happenedOn: shift(-2) }).expect(201)).body.id;
+    expect((await call('mgr', 'get', '/my/misconduct-reports').expect(200)).body).toEqual([
+      expect.objectContaining({ id: ids.r2, employee: `emp ${run}`, status: 'received' }),
+      expect.objectContaining({ id: ids.r1, status: 'received' }),
+    ]);
+    expect(Object.keys((await call('mgr', 'get', '/my/misconduct-reports').expect(200)).body[0]).sort()).toEqual(['employee', 'filedOn', 'id', 'ref', 'status']);
+    // Only HR with the key, in scope, sees the drafts.
+    const drafts = (await call('hr1', 'get', '/cases/disciplinary/drafts').expect(200)).body;
+    expect(drafts).toEqual([expect.objectContaining({ id: ids.r1, reportedBy: `mgr ${run}`, misconduct: R.misconduct }), expect.objectContaining({ id: ids.r2 })]);
+    expect((await call('hrE2', 'get', '/cases/disciplinary/drafts').expect(200)).body).toEqual([]);
+    await call('mgr', 'get', '/cases/disciplinary/drafts').expect(403);
+    for (const who of ['hr1', 'mgr', 'emp', 'adminB'] as Who[]) await call(who, 'get', `/cases/${ids.r1}`).expect(404);
+    expect((await call('emp', 'get', '/my/cases').expect(200)).body.map((c: { id: string }) => c.id)).not.toContain(ids.r1);
+  });
+
+  it('HR declines a report with a reason, or opens it as a case; the manager sees only which', async () => {
+    await call('hr1', 'post', `/cases/disciplinary/drafts/${ids.r1}/decline`).send({ reason: 'x' }).expect(400);
+    await call('hrE2', 'post', `/cases/disciplinary/drafts/${ids.r1}/decline`).send({ reason: 'Not in my scope' }).expect(404);
+    await call('mgr', 'post', `/cases/disciplinary/drafts/${ids.r1}/decline`).send({ reason: 'Changed my mind' }).expect(403);
+    await call('hr1', 'post', `/cases/disciplinary/drafts/${ids.r1}/decline`).send({ reason: 'A word with the employee is enough; no case.' }).expect(201);
+    await call('hr1', 'post', `/cases/disciplinary/drafts/${ids.r1}/decline`).send({ reason: 'Again' }).expect(409);
+    await call('hr1', 'post', `/cases/disciplinary/drafts/${ids.r1}/open`).expect(409);
+    const st = await inA((tx) => tx.speakupCaseStep.findFirstOrThrow({ where: { caseId: ids.r1, kind: 'report_declined' } }));
+    expect(st.data).toMatchObject({ reason: 'A word with the employee is enough; no case.' });
+    await expect(inA((tx) => tx.speakupCaseStep.create({ data: { organizationId: org.A.id, caseId: ids.r1, kind: 'report_declined', actorUserId: users.hr1, data: {} } }))).rejects.toThrow(/declined_check/);
+    const opened = (await call('hr1', 'post', `/cases/disciplinary/drafts/${ids.r2}/open`).expect(201)).body;
+    expect(opened.id).toBe(ids.r2);
+    expect(await detail('hr1', ids.r2)).toMatchObject({ kind: 'disciplinary', stage: 'Opened', respondent: `emp ${run}`, report: { category: 'Late four times this month' }, members: [expect.objectContaining({ id: users.hr1 })] });
+    const mine = (await call('mgr', 'get', '/my/misconduct-reports').expect(200)).body;
+    expect(mine.map((r: { id: string; status: string }) => [r.id, r.status])).toEqual([[ids.r2, 'opened'], [ids.r1, 'declined']]);
+    expect(JSON.stringify(mine)).not.toContain('A word with the employee');
+    await call('mgr', 'get', `/cases/${ids.r2}`).expect(404);
+    expect((await call('hr1', 'get', '/cases/disciplinary/drafts').expect(200)).body).toEqual([]);
+  });
+
   it('another company never sees these cases', async () => {
-    for (const id of [ids.c, ids.c2]) await call('adminB', 'get', `/cases/${id}`).expect(404);
+    for (const id of [ids.c, ids.c2, ids.r1, ids.r2]) await call('adminB', 'get', `/cases/${id}`).expect(404);
+    expect((await call('adminB', 'get', '/cases/disciplinary/drafts').expect(200)).body).toEqual([]);
     expect((await call('hrB', 'get', '/cases').expect(200)).body).toEqual([]);
   });
 });

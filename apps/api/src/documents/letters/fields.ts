@@ -8,6 +8,16 @@ import { buildDocx, type Block, type Run } from './docx';
 // label and its P02 data class. Templates may only use these; an issuer must see a field's class for the person.
 // Values come from the employee record when there is one, else from the joiner's planned job (founder D2).
 
+/** HLP-08 answer 56: what a warning letter says, from the approved disciplinary decision. */
+export interface LetterDiscipline {
+  caseRef: string;
+  misconduct: string;
+  clause: string | null;
+  summary: string;
+  /** ISO day. */
+  decidedOn: string;
+}
+
 export interface FieldDef {
   label: string;
   /** P02 class: internal fields need letter.issue in scope; personal ones also employee.personal.view. */
@@ -66,6 +76,12 @@ export const FIELDS: Readonly<Record<string, FieldDef>> = {
   monthly_gross: { label: 'Gross monthly salary (current)', cls: 'pay', sample: '₹1,12,400' },
   // PPL-15: the reason HR gave when withdrawing an offer (blank when they gave none).
   withdrawal_reason: { label: 'Why the offer is withdrawn (written by HR; blank when not given)', cls: 'internal', optional: true, sample: 'The role was closed after a restructure' },
+  // HLP-08 answer 56: a warning letter, filled only from a disciplinary case's approved decision (never by hand).
+  case_reference: { label: 'Disciplinary case number', cls: 'internal', sample: 'DSC-0031' },
+  misconduct: { label: 'Misconduct (as written by HR on the case)', cls: 'internal', sample: 'Absence without leave for more than 4 days' },
+  standing_orders_clause: { label: 'Standing orders clause (blank when not given)', cls: 'internal', optional: true, sample: 'Clause 14(2)(c) of the certified standing orders' },
+  decision_summary: { label: 'The decision as told to the employee', cls: 'internal', sample: 'You get a written warning for one day of absence without leave.' },
+  decision_date: { label: 'The day the decision was approved', cls: 'internal', sample: '2 October 2026' },
 };
 
 export const longDate = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
@@ -140,7 +156,7 @@ export async function monthlyGross(tx: Tx, c: CompanyContext, personId: string, 
   });
 }
 
-export async function letterData(tx: Tx, c: CompanyContext, personId: string, extra: { signatory?: { name: string; title: string } | null; pay?: LetterPay | null; fnf?: LetterFnf | null; request?: CertificateRequest | null; gross?: string | null; withdrawalReason?: string | null; letterType?: string } = {}): Promise<{ data: Record<string, string | boolean>; legalEntityId: string; joiner: boolean }> {
+export async function letterData(tx: Tx, c: CompanyContext, personId: string, extra: { signatory?: { name: string; title: string } | null; pay?: LetterPay | null; fnf?: LetterFnf | null; request?: CertificateRequest | null; gross?: string | null; withdrawalReason?: string | null; letterType?: string; discipline?: LetterDiscipline | null } = {}): Promise<{ data: Record<string, string | boolean>; legalEntityId: string; joiner: boolean }> {
   const org = c.organizationId;
   const person = await tx.person.findFirstOrThrow({ where: { organizationId: org, id: personId } });
   const today = todayIst();
@@ -220,6 +236,11 @@ export async function letterData(tx: Tx, c: CompanyContext, personId: string, ex
     addressed_to: extra.request?.addressedTo ?? '',
     monthly_gross: extra.gross ? inr(extra.gross) : '',
     withdrawal_reason: extra.withdrawalReason ?? '',
+    case_reference: extra.discipline?.caseRef ?? '',
+    misconduct: extra.discipline?.misconduct ?? '',
+    standing_orders_clause: extra.discipline?.clause ?? '',
+    decision_summary: extra.discipline?.summary ?? '',
+    decision_date: extra.discipline ? longDate(extra.discipline.decidedOn) : '',
   };
   // PPL-15: a joiner from Hiring started without a designation: their offer withdrawal letter names the offered job
   // (the job's title); the joiner record itself is left as it is.
@@ -356,6 +377,23 @@ export const STARTER_LETTERS: readonly { letterType: string; name: string; revis
       'Lines: {{fnf_lines}}',
       'Earnings {{fnf_earnings}}. Recoveries {{fnf_recoveries}}. TDS {{fnf_tds}}. PF, ESI, PT and LWF {{fnf_statutory}}.',
       '{{fnf_net_label}}: {{fnf_net}}',
+    ]),
+  },
+  // HLP-08 answer 56: issued when two people approve a Warning on a disciplinary case. The company adds it from here and
+  // edits it in Word like any template; until one is switched on, the case says the letter waits for it.
+  {
+    letterType: 'warning',
+    name: 'Warning letter',
+    revision: 1,
+    requiresApproval: false,
+    personSigns: false,
+    onePerPerson: false,
+    paragraphs: letter(['{{employee_name}}', '{{designation}}', '{{location}}'], 'Warning: {{misconduct}}', [
+      'Dear {{employee_name}},',
+      'This letter is about case {{case_reference}}: {{misconduct}}.{{#standing_orders_clause}} The standing orders clause: {{standing_orders_clause}}.{{/standing_orders_clause}}',
+      'You were given a show-cause notice and a chance to reply. After considering your reply, the company decided on {{decision_date}}:',
+      '{{decision_summary}}',
+      'Please treat this letter as a formal warning. A copy is kept on your record.',
     ]),
   },
   // PPL-15: drafted when HR withdraws an offer in pre-boarding; HR reviews and issues it from People › Letters.

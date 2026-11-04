@@ -11792,6 +11792,8 @@ model SpeakupCase {
   /// HLP-08 disciplinary: the employee's legal entity when opened, and the standing orders clause.
   legalEntityId      String?   @map("legal_entity_id") @db.Uuid
   ruleClause         String?   @map("rule_clause") @db.VarChar(200)
+  /// HLP-08 answer 55: "hr" (opened by HR) or "manager" (a manager's report, a draft until HR decides).
+  source             String    @default("hr") @db.VarChar(8)
 
   @@unique([organizationId, kind, number], map: "speakup_cases_number_key")
   @@map("speakup_cases")

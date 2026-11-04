@@ -15,7 +15,7 @@ import { dscSigner } from '../signing';
 import { DSC_REVOCATION, DSC_ROOTS, SignatureRefused, verifySignedPdf, type RevocationChecker, type TrustedRoots } from '../signed-pdf';
 import { VERIFY_CODE, referenceNo, registerVerifier, verifyCode, verifyLink } from '../verify-code';
 import { TemplateProblem, buildDocx, docxBlocks, fillDocx, renameFields, templateFields, type Block } from './docx';
-import { FIELDS, STARTER_LETTERS, letterData, longDate, missingFields, monthlyGross, sampleData, starterDocx, suggest, type CertificateRequest, type LetterFnf, type LetterPay } from './fields';
+import { FIELDS, STARTER_LETTERS, letterData, longDate, missingFields, monthlyGross, sampleData, starterDocx, suggest, type CertificateRequest, type LetterFnf, type LetterPay, type LetterDiscipline } from './fields';
 import { PdfConverter, acceptanceCopy, converterFromEnv, previewMark, stampPdf } from './pdf';
 import { appUrl, button, noticeEmail, text } from '../../email/account-emails';
 
@@ -37,7 +37,7 @@ export const SELF_CERTIFICATES = ['salary_certificate', 'address_proof', 'employ
 /** The approval subject of a certificate the employee asked for (its decision notice links back to their page). */
 const SELF_REQUEST = 'certificate_request';
 type BulkInput = { templateId: string; source: 'people' | 'no_appointment'; personIds?: string[] };
-type IssueInput = { letterType: string; personId: string; signatoryId?: string | null; subjectType?: string; subjectId?: string; supersedesId?: string | null; templateId?: string; pay?: LetterPay; fnf?: LetterFnf; request?: CertificateRequest };
+type IssueInput = { letterType: string; personId: string; signatoryId?: string | null; subjectType?: string; subjectId?: string; supersedesId?: string | null; templateId?: string; pay?: LetterPay; fnf?: LetterFnf; request?: CertificateRequest; discipline?: LetterDiscipline };
 /** PPL-28: a system letter made held (an exit with its letters on hold): who held it and why, shown in the register. */
 export type LetterHold = { reason: string; by: string | null };
 const KEYS = ['letter.template.manage', 'letter.issue', 'letter.signatory.manage', 'employee.personal.view', 'employee.salary.view'] as const;
@@ -489,7 +489,7 @@ export class LettersService implements OnModuleInit {
     return { row: s, name: u.name || u.email, title: s.title };
   }
 
-  private async prepare(tx: Tx, c: CompanyContext, v: Viewer | null, dto: { letterType: string; personId: string; signatoryId?: string | null; templateId?: string; template?: Template; pay?: LetterPay; fnf?: LetterFnf; request?: CertificateRequest; withdrawalReason?: string | null }) {
+  private async prepare(tx: Tx, c: CompanyContext, v: Viewer | null, dto: { letterType: string; personId: string; signatoryId?: string | null; templateId?: string; template?: Template; pay?: LetterPay; fnf?: LetterFnf; request?: CertificateRequest; withdrawalReason?: string | null; discipline?: LetterDiscipline }) {
     const base = await letterData(tx, c, dto.personId).catch(() => {
       throw new BadRequestException('This person has no job or joiner record.');
     });
@@ -499,7 +499,7 @@ export class LettersService implements OnModuleInit {
     if (v) await this.mayIssue(tx, c, v, dto.personId, t);
     const signer = await this.signatoryFor(tx, c.organizationId, base.legalEntityId, dto.signatoryId);
     const gross = t.fields.includes('monthly_gross') ? await monthlyGross(tx, c, dto.personId, base.legalEntityId) : null;
-    const { data, joiner } = await letterData(tx, c, dto.personId, { signatory: signer ? { name: signer.name, title: signer.title } : null, pay: dto.pay ?? null, fnf: dto.fnf ?? null, request: dto.request ?? null, gross, withdrawalReason: dto.withdrawalReason ?? null, letterType: t.letterType });
+    const { data, joiner } = await letterData(tx, c, dto.personId, { signatory: signer ? { name: signer.name, title: signer.title } : null, pay: dto.pay ?? null, fnf: dto.fnf ?? null, request: dto.request ?? null, gross, withdrawalReason: dto.withdrawalReason ?? null, discipline: dto.discipline ?? null, letterType: t.letterType });
     const missing = missingFields(t.fields, data);
     if (missing.length) throw new BadRequestException({ statusCode: 400, code: 'LETTER_FIELDS_MISSING', message: missingMessage(missing, joiner), errors: Object.fromEntries(missing.map((m) => [m, FIELDS[m].label])) });
     return { t, data, signer, legalEntityId: base.legalEntityId };

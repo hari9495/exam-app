@@ -8,10 +8,11 @@ import { CompanyContext, Tx, audit, companyContext } from '../org-structure/org-
 import { todayIst } from '../org-structure/org-validation';
 import { settingFor } from '../people/probation';
 import { SpeakupService } from '../speakup/speakup.service';
+import { LettersService } from '../documents/letters/letters.service';
 import { caseNumber } from '../speakup/speakup-rules';
 import type { SpeakupKind } from '../speakup/dto';
 import { addDays, canDecide, conflictWith, fold, isoDay, majority, severityOf, type Folded, type Severity, type Step } from './case-rules';
-import type { AddMemberDto, DelayDto, IcReportDto, MoreTimeDecisionDto, NoticeDto, ProposeDto, RaiseDto, ReliefDto, ReplyDto, SendBackDto, VoteDto } from './dto';
+import type { AddMemberDto, DelayDto, IcReportDto, MisconductReportDto, MoreTimeDecisionDto, NoticeDto, ProposeDto, RaiseDto, ReliefDto, ReplyDto, SendBackDto, VoteDto } from './dto';
 
 // HLP-07 My cases, HLP-08 Cases (case team), HLP-09 Ethics desk on the HLP-06 case record (rules:
 // docs/yukthix/helpdesk-design-map.md section 4f). Access is membership, not a key: a case shows only to its members who
@@ -57,6 +58,7 @@ export class CasesService {
     private readonly notifications: NotificationsService,
     private readonly files: FilesService,
     private readonly speakup: SpeakupService,
+    private readonly letters: LettersService,
   ) {}
 
   private tx<T>(ctx: TenantContext, fn: (tx: Tx, c: CompanyContext) => Promise<T>) {
@@ -244,6 +246,7 @@ export class CasesService {
         anonymous: row.identity === 'anonymous',
         respondent: row.respondentUserId ? nm(row.respondentUserId) : null,
         rule: row.ruleClause,
+        letter: row.kind === 'disciplinary' && f.outcome.decision === 'warning' && f.outcome.status === 'approved' ? ((await this.warningLetter(tx, c.organizationId, row.id)) ?? { id: null, status: 'waiting', referenceNo: null, renderError: null }) : null,
         report: { summary: row.summary, category: row.category, happenedOn: iso(row.happenedOn), involved: row.involved, witnesses: row.witnesses, outside: row.outsideName ? `${row.outsideName}${row.outsideEmployer ? ` (${row.outsideEmployer})` : ''}` : null, retaliationWorry: row.retaliationWorry, late: row.late },
         dates,
         datesSource: source,
@@ -413,7 +416,32 @@ export class CasesService {
     const to = (out.kind === 'disciplinary' ? [out.respondentUserId] : [out.reporterUserId, out.respondentUserId]).filter((x): x is string => Boolean(x));
     await this.notify(out.organizationId, to, 'helpdesk.case.update', out.id, `There is an outcome on ${this.ref(out)}`, '/yx/desk/my-cases');
     if (!out.reporterUserId) await this.speakup.alertReporter(out.alertContactEnc);
-    return { approved: true };
+    // Answer 56: an approved warning goes out through Letters. A missing company template never undoes the decision:
+    // the case shows the letter as waiting, and a member issues it once the template is switched on.
+    let letter: string | null = null;
+    if (out.kind === 'disciplinary') letter = await this.issueWarning(ctx, id).then(() => null, (e: Error) => e.message);
+    return { approved: true, ...(letter ? { letterProblem: letter } : {}) };
+  }
+
+  /** The case's warning letter, if it was issued (Letters keeps it with the case as its subject). */
+  private warningLetter(tx: Tx, org: string, caseId: string) {
+    return tx.letterIssue.findFirst({ where: { organizationId: org, subjectType: 'speakup_case', subjectId: caseId, letterType: 'warning', status: { notIn: ['discarded', 'cancelled'] } }, orderBy: { createdAt: 'desc' }, select: { id: true, status: true, referenceNo: true, renderError: true } });
+  }
+
+  /** Answer 56: the warning letter for an approved Warning, through the company's "warning" letter template. Once only. */
+  async issueWarning(ctx: TenantContext, id: string) {
+    const prep = await this.tx(ctx, async (tx, c) => {
+      const l = await this.memberCase(tx, c, id);
+      const o = l.f.outcome;
+      if (l.row.kind !== 'disciplinary' || o.status !== 'approved' || o.decision !== 'warning') throw new BadRequestException('A warning letter goes out only after two people approve a Warning.');
+      if (await this.warningLetter(tx, c.organizationId, l.row.id)) throw new ConflictException('The warning letter was already issued for this case.');
+      const emp = await tx.employee.findFirst({ where: { organizationId: c.organizationId, userId: l.row.respondentUserId ?? NOBODY }, select: { personId: true } });
+      if (!emp) throw new BadRequestException('The employee has no employee record, so a letter can’t be made.');
+      return { personId: emp.personId, discipline: { caseRef: this.ref(l.row), misconduct: l.row.category ?? '', clause: l.row.ruleClause, summary: o.reporterSummary ?? '', decidedOn: o.approvedAt ?? todayIst() }, row: l.row };
+    });
+    const letter = await this.letters.issueSystem(ctx, { letterType: 'warning', personId: prep.personId, subjectType: 'speakup_case', subjectId: prep.row.id, discipline: prep.discipline });
+    await this.tx(ctx, (tx, c) => this.step(tx, c, prep.row, 'letter_issued', { letterId: letter.id }));
+    return { letterId: letter.id, status: letter.status };
   }
 
   async sendBack(ctx: TenantContext, id: string, dto: SendBackDto) {
@@ -637,6 +665,108 @@ export class CasesService {
       await audit(tx, c, 'cases.disciplinary_opened', 'speakup_case', row.id, { number: this.ref(row), employeeUserId: dto.employeeUserId, legalEntityId: row.legalEntityId });
       return { id: row.id, ref: this.ref(row) };
     });
+  }
+
+  // ------------------------------------------------------------------------------------------ HLP-08 answer 55: managers report
+
+  /** The active people with an employee record whose reporting line (today) runs up to me. */
+  private async myReports(tx: Tx, c: CompanyContext) {
+    const managers = await this.managers(tx, c.organizationId);
+    const me = c.userId ?? NOBODY;
+    const below = [...managers.keys()].filter((u) => {
+      const seen = new Set<string>();
+      for (let m = managers.get(u) ?? null; m && !seen.has(m); m = managers.get(m) ?? null) {
+        if (m === me) return true;
+        seen.add(m);
+      }
+      return false;
+    });
+    const emps = await tx.employee.findMany({ where: { organizationId: c.organizationId, userId: { in: below } }, select: { userId: true } });
+    return tx.user.findMany({ where: { organizationId: c.organizationId, status: 'active', id: { in: emps.map((e) => e.userId!) } }, select: { id: true, name: true, email: true }, orderBy: { name: 'asc' } });
+  }
+
+  async reportPeople(ctx: TenantContext) {
+    return this.tx(ctx, async (tx, c) => ({ people: (await this.myReports(tx, c)).map((u) => ({ id: u.id, name: u.name ?? u.email, email: u.email })) }));
+  }
+
+  /** A manager reports misconduct by one of their own reports: a draft disciplinary case only HR in scope sees. */
+  async fileReport(ctx: TenantContext, dto: MisconductReportDto) {
+    return this.tx(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      if (!(await this.myReports(tx, c)).some((u) => u.id === dto.employeeUserId)) throw new ForbiddenException({ statusCode: 403, code: 'CASE_NOT_YOUR_REPORT', message: 'You can report only people who report to you.' });
+      const today = todayIst();
+      if (dto.happenedOn && dto.happenedOn > today) throw new BadRequestException('The date it happened can’t be in the future.');
+      const emp = await tx.employee.findFirstOrThrow({ where: { organizationId: org, userId: dto.employeeUserId }, select: { id: true } });
+      const asg = await tx.employeeAssignment.findFirst({ where: { organizationId: org, employeeId: emp.id, supersededAt: null, validFrom: { lte: dayOf(today) }, OR: [{ validTo: null }, { validTo: { gte: dayOf(today) } }] }, orderBy: { validFrom: 'desc' }, select: { legalEntityId: true } });
+      const last = await tx.speakupCase.aggregate({ where: { organizationId: org, kind: 'disciplinary' }, _max: { number: true } });
+      const row = await tx.speakupCase.create({
+        data: { organizationId: org, kind: 'disciplinary', source: 'manager', status: 'draft', number: (last._max.number ?? 0) + 1, identity: 'named', reporterUserId: c.userId!, category: dto.misconduct, summary: dto.facts, happenedOn: dto.happenedOn ? dayOf(dto.happenedOn) : null, respondentUserId: dto.employeeUserId, legalEntityId: asg?.legalEntityId ?? null, routedTo: 'hr', ackDueOn: dayOf(today) },
+      }).catch((e: unknown) => {
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('Another case was numbered at the same moment. Press Send to HR again.');
+        throw e;
+      });
+      await audit(tx, c, 'cases.misconduct_reported', 'speakup_case', row.id, { number: this.ref(row), employeeUserId: dto.employeeUserId });
+      return { id: row.id, ref: this.ref(row) };
+    });
+  }
+
+  /** What a manager sees of their reports: the number, who, when, and received / opened / declined. Nothing else. */
+  async myMisconductReports(ctx: TenantContext) {
+    return this.tx(ctx, async (tx, c) => {
+      const rows = await tx.speakupCase.findMany({ where: { organizationId: c.organizationId, kind: 'disciplinary', source: 'manager', reporterUserId: c.userId ?? NOBODY }, orderBy: { filedAt: 'desc' }, take: 200 });
+      const names = await this.names(tx, c.organizationId, rows.map((r) => r.respondentUserId));
+      return rows.map((r) => ({ id: r.id, ref: this.ref(r), employee: names.get(r.respondentUserId!) ?? 'Former employee', filedOn: isoDay(r.filedAt), status: r.status === 'draft' ? 'received' : r.status === 'declined' ? 'declined' : 'opened' }));
+    });
+  }
+
+  private async inScope(tx: Tx, c: CompanyContext, v: Awaited<ReturnType<typeof buildViewer>>, employeeUserId: string | null) {
+    const emp = employeeUserId ? await tx.employee.findFirst({ where: { organizationId: c.organizationId, userId: employeeUserId }, select: { id: true } }) : null;
+    return Boolean(emp && covers(await grantPeriods(tx, c, v, RAISE, emp.id, c.userId ?? null), todayIst()));
+  }
+
+  /** HR in scope: the managers' reports waiting for a decision. */
+  async drafts(ctx: TenantContext, user: ScopeUser) {
+    const v = await buildViewer(this.prisma, this.tenantPrisma, user, [RAISE]);
+    return this.tx(ctx, async (tx, c) => {
+      const rows = await tx.speakupCase.findMany({ where: { organizationId: c.organizationId, kind: 'disciplinary', status: 'draft' }, orderBy: { filedAt: 'asc' }, take: 200 });
+      const mine = [];
+      for (const r of rows) if (r.reporterUserId !== c.userId && r.respondentUserId !== c.userId && (await this.inScope(tx, c, v, r.respondentUserId))) mine.push(r);
+      const names = await this.names(tx, c.organizationId, mine.flatMap((r) => [r.respondentUserId, r.reporterUserId]));
+      await Promise.all(mine.map((r) => audit(tx, c, 'cases.misconduct_report_viewed', 'speakup_case', r.id, {})));
+      return mine.map((r) => ({ id: r.id, ref: this.ref(r), employee: names.get(r.respondentUserId!) ?? 'Former employee', reportedBy: names.get(r.reporterUserId!) ?? 'Former user', filedOn: isoDay(r.filedAt), misconduct: r.category ?? '', facts: r.summary, happenedOn: iso(r.happenedOn) }));
+    });
+  }
+
+  private async draftFor(tx: Tx, c: CompanyContext, v: Awaited<ReturnType<typeof buildViewer>>, id: string) {
+    const row = await tx.speakupCase.findFirst({ where: { organizationId: c.organizationId, id, kind: 'disciplinary', source: 'manager' } });
+    if (!row || row.reporterUserId === c.userId || row.respondentUserId === c.userId || !(await this.inScope(tx, c, v, row.respondentUserId))) throw new NotFoundException('Not found.');
+    if (row.status !== 'draft') throw new ConflictException(row.status === 'declined' ? 'This report was already declined.' : 'This report was already opened as a case.');
+    return row;
+  }
+
+  /** HR opens the report: it becomes an ordinary disciplinary case with this HR person as its first member. */
+  async openDraft(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await buildViewer(this.prisma, this.tenantPrisma, user, [RAISE]);
+    const out = await this.tx(ctx, async (tx, c) => {
+      const row = await this.draftFor(tx, c, v, id);
+      await tx.speakupCaseMember.create({ data: { organizationId: c.organizationId, caseId: row.id, userId: c.userId! } });
+      await this.step(tx, c, row, 'report_opened', {}, row.version, { status: 'received' });
+      return row;
+    });
+    if (out.reporterUserId) await this.notify(out.organizationId, [out.reporterUserId], 'helpdesk.case.update', out.id, `Your report ${this.ref(out)} was opened as a case by HR`, '/yx/desk/report-misconduct');
+    return { id: out.id, ref: this.ref(out) };
+  }
+
+  async declineDraft(ctx: TenantContext, user: ScopeUser, id: string, reason: string) {
+    const v = await buildViewer(this.prisma, this.tenantPrisma, user, [RAISE]);
+    const out = await this.tx(ctx, async (tx, c) => {
+      const row = await this.draftFor(tx, c, v, id);
+      await this.step(tx, c, row, 'report_declined', { reason }, row.version, { status: 'declined' });
+      return row;
+    });
+    // The manager hears that it was declined, not why (the reason stays with HR).
+    if (out.reporterUserId) await this.notify(out.organizationId, [out.reporterUserId], 'helpdesk.case.update', out.id, `Your report ${this.ref(out)} was declined by HR`, '/yx/desk/report-misconduct');
+    return { declined: true };
   }
 
   // ------------------------------------------------------------------------------------------ HLP-09 ethics desk
@@ -894,6 +1024,9 @@ const STEP_WORDS: Record<string, string> = {
   member_added: 'Added a member to the case',
   routed_to_chair: 'Routed the report to the audit committee chair',
   file_added: 'Added a file',
+  report_opened: 'Opened the case from the manager’s report',
+  report_declined: 'Declined the manager’s report',
+  letter_issued: 'Issued the warning letter (Letters)',
   severity_set: 'Changed the severity',
 };
 const RELIEF_WORDS: Record<string, string> = { transfer: 'transfer', leave: 'leave', reporting: 'stop reporting to the accused', suspension: 'suspension pending inquiry (no pay change by itself)', other: 'other relief' };

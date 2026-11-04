@@ -148,6 +148,22 @@ export class RaiseDto {
   rule?: string;
 }
 
+/** HLP-08 answer 55: a manager reports misconduct by one of their own reports. */
+export class MisconductReportDto {
+  @IsUUID()
+  employeeUserId!: string;
+
+  @Text(3, 80)
+  misconduct!: string;
+
+  @Text(10, 5_000)
+  facts!: string;
+
+  @IsOptional()
+  @IsDateString({ strict: true })
+  happenedOn?: string;
+}
+
 export class SeverityDto {
   @IsIn(SEVERITIES)
   severity!: Severity;

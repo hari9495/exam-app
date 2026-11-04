@@ -32,7 +32,7 @@ import { PersonPanelsController } from '../people/person-panels.controller';
 import { BfsiController } from '../people/bfsi.controller';
 import { MyPoliciesController, PoliciesAdminController } from '../policies/policies.controller';
 import { SpeakupController } from '../speakup/speakup.controller';
-import { CasesController, EthicsController, MyCasesController } from '../cases/cases.controller';
+import { CasesController, EthicsController, MisconductReportsController, MyCasesController } from '../cases/cases.controller';
 
 // P02 YX-SEC-01: every HR endpoint declares its permission. The only exceptions are the routes open to the
 // implicit grants (YX-SEC-04: the person themselves, their managers, colleagues' Public fields) and public
@@ -120,9 +120,11 @@ const IMPLICIT: Record<string, string[]> = {
   // HLP-06: the form and one's own named report; cases: being routed to the case is the access (404 otherwise).
   SpeakupController: ['form', 'file', 'addFile', 'cases', 'caseDetail', 'teamReply'],
   // HLP-07/08/09: membership of the case is the access (404 otherwise); My cases is one's own part.
-  CasesController: ['list', 'detail', 'message', 'notice', 'delay', 'moreTime', 'propose', 'approve', 'sendBack', 'icReport', 'vote', 'sign', 'relief', 'reliefDone', 'recuse', 'addMember', 'upload', 'file'],
+  CasesController: ['list', 'detail', 'message', 'notice', 'delay', 'moreTime', 'propose', 'approve', 'sendBack', 'icReport', 'vote', 'sign', 'relief', 'reliefDone', 'recuse', 'addMember', 'upload', 'file', 'letter'],
   EthicsController: ['reports', 'severity', 'route'],
   MyCasesController: ['mine', 'one', 'message', 'reply', 'moreTime', 'upload', 'file'],
+  // HLP-08 answer 55: a manager about their own reports (the reporting line is the access).
+  MisconductReportsController: ['mine', 'people', 'file'],
   MyPoliciesController: ['mine', 'one', 'myFile', 'code', 'acknowledge'], // HLP-10: one's own policies (audience checked per policy)
   PeopleRegistersController: [],
   RestructureController: [],
@@ -130,7 +132,7 @@ const IMPLICIT: Record<string, string[]> = {
 };
 
 describe('every HR endpoint declares a permission (P02 YX-SEC-01)', () => {
-  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, ReverificationController, RestructureController, EmployeeImportController, PeopleRegistersController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController, PerformanceB3Controller, PerformanceHomeController, PersonPanelsController, BfsiController, PoliciesAdminController, MyPoliciesController, SpeakupController, CasesController, EthicsController, MyCasesController]) {
+  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, ReverificationController, RestructureController, EmployeeImportController, PeopleRegistersController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController, PerformanceB3Controller, PerformanceHomeController, PersonPanelsController, BfsiController, PoliciesAdminController, MyPoliciesController, SpeakupController, CasesController, EthicsController, MyCasesController, MisconductReportsController]) {
     it(`${controller.name}`, () => {
       const proto = controller.prototype as unknown as Record<string, unknown>;
       const handlers = Object.getOwnPropertyNames(proto).filter((m) => m !== 'constructor' && typeof proto[m] === 'function' && Reflect.getMetadata(PATH_METADATA, proto[m] as object) !== undefined);

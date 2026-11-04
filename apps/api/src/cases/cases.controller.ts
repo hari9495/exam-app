@@ -11,7 +11,7 @@ import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import type { ScopeUser } from '../access/scope';
 import { assertOwnSession } from '../service-desk/desk-access';
-import { AddMemberDto, DelayDto, IcReportDto, MessageDto, MoreTimeDecisionDto, NoticeDto, ProposeDto, RaiseDto, ReasonDto, ReliefDto, ReplyDto, SendBackDto, SeverityDto, VersionDto, VoteDto } from './dto';
+import { AddMemberDto, DelayDto, IcReportDto, MessageDto, MoreTimeDecisionDto, NoticeDto, MisconductReportDto, ProposeDto, RaiseDto, ReasonDto, ReliefDto, ReplyDto, SendBackDto, SeverityDto, VersionDto, VoteDto } from './dto';
 import { CasesService } from './cases.service';
 
 // HLP-07/08/09 cases (rules: docs/yukthix/helpdesk-design-map.md section 4f). No key: being a member of the case is the
@@ -48,6 +48,28 @@ export class CasesController {
   raise(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: RaiseDto) {
     assertOwnSession(req);
     return this.cases.raise(ctx, req.user as ScopeUser, dto);
+  }
+
+  /** Answer 55: the managers' reports waiting for HR in scope; open one as a case, or decline it with a reason. */
+  @Get('disciplinary/drafts')
+  @RequirePermissions('case.disciplinary.raise')
+  drafts(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    assertOwnSession(req);
+    return this.cases.drafts(ctx, req.user as ScopeUser);
+  }
+
+  @Post('disciplinary/drafts/:id/open')
+  @RequirePermissions('case.disciplinary.raise')
+  openDraft(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', id) caseId: string) {
+    assertOwnSession(req);
+    return this.cases.openDraft(ctx, req.user as ScopeUser, caseId);
+  }
+
+  @Post('disciplinary/drafts/:id/decline')
+  @RequirePermissions('case.disciplinary.raise')
+  declineDraft(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', id) caseId: string, @Body() dto: ReasonDto) {
+    assertOwnSession(req);
+    return this.cases.declineDraft(ctx, req.user as ScopeUser, caseId, dto.reason);
   }
 
   @Get(':id')
@@ -148,10 +170,42 @@ export class CasesController {
     return this.cases.upload(ctx, caseId, file ? { name: file.originalname, data: file.buffer } : null);
   }
 
+  /** Answer 56: issue the warning letter (again after a template is switched on); members only, once. */
+  @Post(':id/letter')
+  letter(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', id) caseId: string) {
+    assertOwnSession(req);
+    return this.cases.issueWarning(ctx, caseId);
+  }
+
   @Get(':id/files/:fileId')
   async file(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', id) caseId: string, @Param('fileId', id) fileId: string, @Res({ passthrough: true }) res: Response) {
     assertOwnSession(req);
     return out(res, await this.cases.file(ctx, caseId, fileId));
+  }
+}
+
+/** Answer 55: a manager reports misconduct by one of their own reports (being their manager is the access). */
+@Controller('desk/my/misconduct-reports')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+export class MisconductReportsController {
+  constructor(private readonly cases: CasesService) {}
+
+  @Get()
+  mine(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    assertOwnSession(req);
+    return this.cases.myMisconductReports(ctx);
+  }
+
+  @Get('people')
+  people(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    assertOwnSession(req);
+    return this.cases.reportPeople(ctx);
+  }
+
+  @Post()
+  file(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: MisconductReportDto) {
+    assertOwnSession(req);
+    return this.cases.fileReport(ctx, dto);
   }
 }
 
