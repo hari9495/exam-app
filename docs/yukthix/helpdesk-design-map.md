@@ -1211,6 +1211,13 @@ Built 4 Nov 2026 (`feat/yukthix-hlp-14`) from the founder decisions of 4 Nov 202
     365, default 90) as `expired`; each audited `policy.ai_draft_discarded`. A discarded draft never changes (trigger).
   - *Probation* starts at the company's `probation.default_months` (whole-company value).
   - Migration `202616e0000000_policy_writer_more`.
+- **Answer 111 (4 Nov 2026): the first industry table.** `IN.FACTORIES.LEAVE` (national, verify), linked to Manufacturing
+  and Food and consumer goods: `1948-v1` (Factories Act 1948 ss.79-82, to 20 Nov 2025) and `2020-v1` (OSH Code 2020
+  s.32, from 21 Nov 2025; 180 days worked instead of 240). The Act fixes one number, the carry forward (at least thirty
+  days for an adult), which is checked with "Use the legal minimum"; the yearly leave is a rate (one day for every
+  twenty days worked), shown as "ask counsel". Both rows name their sections in `source`. For leave policies those two
+  industries no longer carry the counsel note; their other policy types, and the other eight industries, still do.
+  Time's leave minimums do not read industry tables (question 131). Migration `202616g0000000_factory_leave_table`.
 
 ## 5. Two designs for one job
 
@@ -1430,6 +1437,19 @@ surveys). The HLP screens are the founder-approved look, sample-only.
     keep; a company that needs one asks YukthiX support.
 115. **HLP-14: the POSH committee under ten people.** *Built:* "unchecked: the district's Local Committee may handle
     complaints" (not blocking). *Suggested:* keep.
+131. **HLP-14 answer 111: should Time's leave minimums read the factory table?** Time raises leave lines to the state
+    `IN.SE` minimums per location; it does not read industry tables, and a company has no industry on record (the
+    industry is only a questionnaire answer). *Built:* nothing (not wired). *Suggested:* not yet: the factory table
+    fixes only a carry-forward minimum and applies to factory workers, not office staff; first record "this location is
+    a factory" (question 132), then let Time apply the factory carry forward to those locations only.
+132. **HLP-14: where the industry and "factory" live.** *Built:* the industry is chosen per draft. *Suggested:* a
+    company setting for the industry (default none) and a "registered factory" flag per location, so the writer and
+    Time read the same facts.
+133. **HLP-14: the factory leave rate.** One day for every twenty days worked (fifteen for a child or adolescent) is
+    not checked against the policy's yearly days. *Suggested:* keep "ask counsel"; checking it needs the expected days
+    worked per year (a company setting) and counsel's sign-off.
+134. **HLP-14: the factory table is national.** States amend the Factories Act (Rajasthan, for example, changed the
+    240 days). *Suggested:* keep national with verify; add state rows when counsel lists the amendments that apply.
 
 71. **HLP-08: a warning letter shows in People › Letters** (the HR register) to HR who hold `letter.issue` for the
     employee, not only to the case's HR members, because Letters keeps every issued letter in one register. The letter

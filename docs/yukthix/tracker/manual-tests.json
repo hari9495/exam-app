@@ -15041,6 +15041,40 @@
     "note": "Negative (2) and positive (3)."
   },
   {
+    "id": "MT-HLP-14-14",
+    "area": "Helpdesk · HLP-14 Write policies with AI, answer 111 (4 Nov 2026, the factory leave table)",
+    "screen": "Leave draft for Manufacturing · the factory table is checked; no counsel note",
+    "url": "http://localhost:3000/yx/desk/policy-writer",
+    "account": "hr-tester@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Draft a Leave policy (Use a starter or the AI) for Manufacturing, Karnataka, headcount 248, earned 18, sick 12, casual 12, carry forward 20.",
+      "2. Read the alerts, the law lines and the Law check.",
+      "3. Press Use the legal minimum on the Manufacturing carry-forward finding (it clears the Karnataka one too).",
+      "4. Repeat step 1 for Food and consumer goods."
+    ],
+    "expected": "Step 2: no \"Ask counsel\" alert. A law line \"Manufacturing rules\" tagged \"Law · IN.FACTORIES.LEAVE IN 2020-v1 (verify)\" says at least 30 days of unused earned leave carry forward. Law check: \"Manufacturing: Carry forward: 20 days is below the Manufacturing minimum of 30\" (open), the same for Karnataka (open), and \"… one day for every twenty days worked … not checked. Ask counsel.\" (Check). Step 3: carry forward 30; Law check (0 open), the rate stays as Check. Step 4: the same, named Food and consumer goods.",
+    "stories": [
+      "Screens/Helpdesk/HLP-14 · Write policies with AI"
+    ],
+    "note": "Positive (2, 3, 4) and negative (the open finding in 2)."
+  },
+  {
+    "id": "MT-HLP-14-15",
+    "area": "Helpdesk · HLP-14 Write policies with AI, answer 111 (4 Nov 2026, the factory leave table)",
+    "screen": "Other policies and industries keep the counsel note",
+    "url": "http://localhost:3000/yx/desk/policy-writer",
+    "account": "hr-tester@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Draft a Work from home policy for Manufacturing.",
+      "2. Draft a Leave policy for IT services."
+    ],
+    "expected": "Step 1: the \"Ask counsel\" alert says Manufacturing rules are not checked yet (the factory table is about leave only). Step 2: the alert says IT services rules are not checked yet; no Manufacturing law line.",
+    "stories": [
+      "Screens/Helpdesk/HLP-14 · Write policies with AI"
+    ],
+    "note": "Negative."
+  },
+  {
     "id": "MT-HLP-12-10",
     "area": "Helpdesk · HLP-12 Accident case (4 Nov 2026, founder answers 62 and 65)",
     "screen": "Time › Leave policies › Add injury leave",
