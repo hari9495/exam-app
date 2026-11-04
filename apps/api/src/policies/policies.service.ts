@@ -240,7 +240,8 @@ export class PoliciesService {
         reack: v.reack || v.number === 1,
         effectiveOn: iso(v.effectiveOn),
         writtenBy: names.get(v.writtenBy) ?? null,
-        writtenByMe: v.writtenBy === c.userId,
+        // HLP-14: the approver of an AI draft counts as its writer (never its publisher).
+        writtenByMe: v.writtenBy === c.userId || v.aiApprovedBy === c.userId,
         publishedBy: v.publishedBy ? (names.get(v.publishedBy) ?? null) : null,
         needsSecondPerson: v.needsSecondPerson,
         sentBackNote: v.sentBackNote,
@@ -440,19 +441,25 @@ export class PoliciesService {
       if (!htmlToText(v.bodyHtml).trim()) throw new BadRequestException({ statusCode: 400, code: 'POLICY_TEXT_MISSING', message: 'Write the policy text first.' });
       if (v.number > 1 && (v.changeSummary ?? '').trim().length < 3) throw new BadRequestException({ statusCode: 400, code: 'POLICY_SUMMARY_MISSING', message: 'Say what changed (3 letters or more). People see it at the top of the policy.' });
       const s = await this.settings(tx, c);
-      const n = await tx.policyVersion.updateMany({ where: { organizationId: org, id: v.id, version: v.version }, data: { status: 'waiting', submittedAt: new Date(), sentBackNote: null, needsSecondPerson: s.secondPerson, writtenBy: c.userId!, version: { increment: 1 } } });
+      const n = await tx.policyVersion.updateMany({ where: { organizationId: org, id: v.id, version: v.version }, data: { status: 'waiting', submittedAt: new Date(), sentBackNote: null, needsSecondPerson: s.secondPerson || Boolean(v.aiApprovedBy), writtenBy: c.userId!, version: { increment: 1 } } });
       if (!n.count) throw new ConflictException('Someone changed this version meanwhile. Reload and try again.');
-      await audit(tx, c, 'policy.version_sent', 'policy_version', v.id, { policyId: p.id, number: v.number, needsSecondPerson: s.secondPerson });
-      return { org, p, number: v.number, secondPerson: s.secondPerson, publishers: (await this.publishers(tx, org)).filter((u) => !s.secondPerson || u !== c.userId) };
+      const second = s.secondPerson || Boolean(v.aiApprovedBy);
+      await audit(tx, c, 'policy.version_sent', 'policy_version', v.id, { policyId: p.id, number: v.number, needsSecondPerson: second });
+      return { org, p, number: v.number, publishers: (await this.publishers(tx, org)).filter((u) => (!second || u !== c.userId) && u !== v.aiApprovedBy) };
     });
-    await this.notifications
-      .notifySystem({ organizationId: out.org, isSuperAdmin: false }, out.publishers, 'helpdesk.policy.to_publish', { entityType: 'policy_document', entityId: out.p.id, contextText: `${out.p.title} v${out.number} is waiting to be published`, linkPath: LINK_ADMIN(out.p.id) }, { subject: 'A policy version is waiting to be published', html: `<p>${escapeHtml(out.p.title)} v${out.number} is waiting for you to publish it in YukthiX.</p>` })
-      .catch((e: Error) => this.logger.warn(`publish notice: ${e.message}`));
+    await this.noticeToPublish(out.org, out.p, out.number, out.publishers);
     return { status: 'waiting' };
   }
 
+  /** "Waiting to be published" to the people who may publish it (HLP-11 submit, HLP-14 approve). */
+  async noticeToPublish(org: string, p: { id: string; title: string }, number: number, userIds: string[]) {
+    await this.notifications
+      .notifySystem({ organizationId: org, isSuperAdmin: false }, userIds, 'helpdesk.policy.to_publish', { entityType: 'policy_document', entityId: p.id, contextText: `${p.title} v${number} is waiting to be published`, linkPath: LINK_ADMIN(p.id) }, { subject: 'A policy version is waiting to be published', html: `<p>${escapeHtml(p.title)} v${number} is waiting for you to publish it in YukthiX.</p>` })
+      .catch((e: Error) => this.logger.warn(`publish notice: ${e.message}`));
+  }
+
   /** Users who may publish: a role profile with policy.publish, or the System Admin role (which carries it). */
-  private async publishers(tx: Tx, org: string): Promise<string[]> {
+  async publishers(tx: Tx, org: string): Promise<string[]> {
     const rows = await tx.$queryRaw<{ id: string }[]>`
       SELECT u.id::text FROM users u LEFT JOIN permission_profiles p ON p.organization_id = u.organization_id AND p.id = u.permission_profile_id
       WHERE u.organization_id = ${org}::uuid AND u.status = 'active'
@@ -469,6 +476,8 @@ export class PoliciesService {
       if (!v) throw new ConflictException('No version of this policy is waiting to be published.');
       if (v.version !== dto.version) throw new ConflictException('This version changed meanwhile. Reload and check it again.');
       if (v.needsSecondPerson && v.writtenBy === c.userId) throw new ForbiddenException({ statusCode: 403, code: 'POLICY_SECOND_PERSON', message: 'Someone other than the writer publishes this version. Ask another publisher.' });
+      // HLP-14: the person who approved the AI draft never publishes it (also a database CHECK).
+      if (v.aiApprovedBy && v.aiApprovedBy === c.userId) throw new ForbiddenException({ statusCode: 403, code: 'POLICY_SECOND_PERSON', message: 'You approved this draft, so someone else publishes it. Ask another publisher.' });
       const today = todayIst();
       await tx.policyVersion.update({ where: { id: v.id }, data: { status: 'published', publishedBy: c.userId!, publishedAt: new Date(), effectiveOn: new Date(`${today}T00:00:00Z`), bodySha256: sha256(v.bodyHtml), version: { increment: 1 } } });
       await audit(tx, c, 'policy.version_published', 'policy_version', v.id, { policyId: p.id, number: v.number, reack: v.reack || v.number === 1, writtenBy: v.writtenBy });

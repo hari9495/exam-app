@@ -11697,6 +11697,8 @@ model PolicyVersion {
   sentBackNote      String?   @map("sent_back_note") @db.VarChar(500)
   publishedBy       String?   @map("published_by") @db.Uuid
   publishedAt       DateTime? @map("published_at") @db.Timestamptz(3)
+  /// HLP-14: who approved the AI draft this version came from; that person never publishes it (CHECK).
+  aiApprovedBy      String?   @map("ai_approved_by") @db.Uuid
   version           Int       @default(1)
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -11722,6 +11724,32 @@ model PolicyAcknowledgement {
 
   @@unique([versionId, employeeId], map: "policy_acknowledgements_once_key")
   @@map("policy_acknowledgements")
+}
+
+/// HLP-14: a policy drafted from the questionnaire (AI prose or a YukthiX starter), checked against the law tables.
+model PolicyAiDraft {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  /// leave, work_from_home or notice.
+  policyType      String    @map("policy_type") @db.VarChar(20)
+  answers         Json
+  values          Json
+  clauses         Json
+  /// ai or starter.
+  mode            String    @db.VarChar(10)
+  provider        String?   @db.VarChar(40)
+  /// draft or approved (an approved draft never changes).
+  status          String    @default("draft") @db.VarChar(10)
+  createdBy       String    @map("created_by") @db.Uuid
+  approvedBy      String?   @map("approved_by") @db.Uuid
+  approvedAt      DateTime? @map("approved_at") @db.Timestamptz(3)
+  policyId        String?   @map("policy_id") @db.Uuid
+  policyVersionId String?   @map("policy_version_id") @db.Uuid
+  version         Int       @default(1)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("policy_ai_drafts")
 }
 
 /// A reminder sent about a policy version (append-only; one per person, kind and day).
