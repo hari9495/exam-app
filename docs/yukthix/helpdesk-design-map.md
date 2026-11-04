@@ -1749,3 +1749,10 @@ Founder approved, 4 Nov 2026 (questions 131-134, all as suggested): (132) a comp
 and a "registered factory" flag per location, read by both the policy writer and Time; (131) then Time applies the
 factory carry-forward minimum at registered-factory locations only; (133) keep the 1-in-20 rate as "ask counsel"; (134)
 keep the factory table national and verify; add state rows once counsel lists the amendments.
+
+Founder approved, 4 Nov 2026 (questions 141-144, all as suggested): (141) the location's Registered factory flag is the
+single source: a flagged location counts as covered by the Factories Act for overtime and the 240-day eligibility too,
+unless attendance.factories_act excludes a department or employment type (for example office staff on a factory site);
+the location form says so; (142) after counsel confirms, the factory leave minimum covers only the employment types the
+Act counts as workers, as overtime does (GO-LIVE-CHECKLIST); (143) keep one industry per company; (144) keep: the
+1-in-20 rate is not applied to leave credits until counsel signs off the rate and the days-worked source.

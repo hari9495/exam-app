@@ -102,3 +102,5 @@ Things deliberately left for launch. Development runs locally until then (test k
       before it is relied on (HLP-14 answer 111, 4 Nov 2026).
 - [ ] **OSH Code leave figures.** Check the OSH Code 2020 s.32 Gazette text (rate, 180 days, carry forward) in
       IN.FACTORIES.LEAVE, and counsel lists state amendments to the Factories Act leave rules (answers 111, 134, 4 Nov 2026).
+- [ ] **Factory workers only.** Counsel confirms which employment types count as factory workers for the leave minimum and
+      the 1-in-20 rate (HLP-14 answers 142, 144, 4 Nov 2026).
