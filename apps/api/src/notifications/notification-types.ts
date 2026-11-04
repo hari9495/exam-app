@@ -45,6 +45,8 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'helpdesk.accident.reported', group: 'assignments', label: 'A workplace accident was reported to the safety team' },
   { type: 'helpdesk.accident.update', group: 'assignments', label: 'An accident case needs you (you handle it, or injury leave was recorded for your team)' },
   { type: 'helpdesk.accident.contractor_late', group: 'reminders', label: 'A contractor has not filed the ESIC accident report of a contract worker' },
+  // HLP-13 collective disputes.
+  { type: 'helpdesk.dispute.settlement', group: 'assignments', label: 'A dispute settlement waits for your approval, or was approved or sent back' },
   // P03 approvals engine and Service Desk 3b-2 (SD-2.03 … SD-2.05, SD-2.12).
   { type: 'workflow.approval.needed', group: 'approvals', label: 'A request needs your approval' },
   { type: 'workflow.approval.reminder', group: 'reminders', label: 'A request is still waiting for your approval' },

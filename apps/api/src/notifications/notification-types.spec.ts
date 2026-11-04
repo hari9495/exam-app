@@ -96,6 +96,7 @@ describe('notification catalog', () => {
       'helpdesk.accident.reported',
       'helpdesk.accident.update',
       'helpdesk.accident.contractor_late',
+      'helpdesk.dispute.settlement',
     ];
     for (const k of expected) expect(keys).toContain(k);
     expect(NOTIFICATION_TYPES.length).toBe(expected.length);

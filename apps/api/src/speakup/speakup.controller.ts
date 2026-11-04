@@ -17,7 +17,8 @@ import { SpeakupService } from './speakup.service';
 //   no key (self)            the form and a named report by the signed-in person (not while acting for someone else)
 //   no key (case officer)    the cases routed to the signed-in officer: being routed is the access (404 otherwise)
 //   speakup.setup.manage     the lists of case officers (grievance, ethics, Internal Committee, escalation) and the
-//                            safety team who receives accident reports (HLP-12)
+//                            safety team who receives accident reports (HLP-12) and the industrial relations team who
+//                            keeps collective disputes (HLP-13)
 //   no login (public)        an anonymous report and "check my report" with the reply code; throttled; the server
 //                            never learns who sent it (no user, no IP or device stored)
 const UPLOAD = FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 1 } });

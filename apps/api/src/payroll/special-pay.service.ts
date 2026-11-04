@@ -921,10 +921,18 @@ export class SpecialPayService implements OnModuleInit {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       await this.entity(tx, c, v, dto.legalEntityId);
       if (dto.unionId && !(await tx.union.findFirst({ where: { organizationId: c.organizationId, id: dto.unionId, legalEntityId: dto.legalEntityId } }))) throw new NotFoundException('Not found');
-      const s = await tx.wageSettlement.create({ data: { organizationId: c.organizationId, legalEntityId: dto.legalEntityId, unionId: dto.unionId ?? null, title: dto.title, effectiveFrom: asDate(dto.effectiveFrom), signedOn: asDate(dto.signedOn), rates: dto.rates as unknown as Prisma.InputJsonValue, createdBy: v.userId! } });
-      await audit(tx, c, 'payroll.settlement.added', 'wage_settlement', s.id, { title: dto.title, effectiveFrom: dto.effectiveFrom, categories: dto.rates.length });
-      return { id: s.id };
+      return { id: (await this.settlementIn(tx, c, v.userId!, dto)).id };
     });
+  }
+
+  /**
+   * Records a wage settlement in the caller's transaction (PAY-37 pays it later: payroll previews, posts it for a pay month
+   * and someone else approves). HLP-13 uses it for a dispute settlement its IR team approved; nothing is paid here.
+   */
+  async settlementIn(tx: Tx, c: CompanyContext, by: string, dto: Omit<SettlementDto, 'unionId'> & { unionId?: string; source?: string }) {
+    const s = await tx.wageSettlement.create({ data: { organizationId: c.organizationId, legalEntityId: dto.legalEntityId, unionId: dto.unionId ?? null, title: dto.title, effectiveFrom: asDate(dto.effectiveFrom), signedOn: asDate(dto.signedOn), rates: dto.rates as unknown as Prisma.InputJsonValue, createdBy: by } });
+    await audit(tx, c, 'payroll.settlement.added', 'wage_settlement', s.id, { title: dto.title, effectiveFrom: dto.effectiveFrom, categories: dto.rates.length, ...(dto.source ? { source: dto.source } : {}) });
+    return s;
   }
 
   /**

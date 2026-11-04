@@ -445,6 +445,10 @@ export class WorkspaceService {
         const member = lists.size > 0 || keys.has('case.disciplinary.raise') || (await one(Prisma.sql`SELECT count(*) AS n FROM speakup_case_members m WHERE m.organization_id = ${org}::uuid AND m.user_id = ${me}::uuid
           AND NOT EXISTS (SELECT 1 FROM speakup_case_steps s WHERE s.case_id = m.case_id AND s.kind = 'recused' AND s.actor_user_id = ${me}::uuid)`)) > 0;
         if (member) out.casesOpen = await open(null);
+        // HLP-13: the industrial relations team also counts the disputes still open (not closed, copy not filed).
+        if (lists.has('ir'))
+          out.casesOpen = (out.casesOpen ?? 0) + (await one(Prisma.sql`SELECT count(*) AS n FROM ir_disputes d WHERE d.organization_id = ${org}::uuid
+            AND NOT EXISTS (SELECT 1 FROM ir_dispute_steps s WHERE s.dispute_id = d.id AND s.kind IN ('closed', 'filed'))`));
         if (lists.has('ethics') || lists.has('escalation')) out.ethicsReports = await open('whistleblower');
       }
       if (keys.has('document.manage')) out.documentsToVerify = await tx.document.count({ where: { organizationId: org, status: 'uploaded' } });

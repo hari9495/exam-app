@@ -31,7 +31,7 @@ const iso = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : 
 const day = (s: string) => new Date(`${s}T00:00:00Z`);
 const lines = (v: string) => v.split('\n').map((x) => x.trim()).filter(Boolean);
 const KIND_WORDS: Record<SpeakupKind, string> = { grievance: 'grievance', whistleblower: 'fraud or ethics report', posh: 'sexual harassment complaint' };
-const TEAM_WORDS: Record<SpeakupTeam, string> = { grievance: 'the Grievance Redressal Committee', ethics: 'the ethics team', ic: 'the Internal Committee', escalation: 'the escalation list (for example the audit committee chair)', safety: 'the safety team' };
+const TEAM_WORDS: Record<SpeakupTeam, string> = { grievance: 'the Grievance Redressal Committee', ethics: 'the ethics team', ic: 'the Internal Committee', escalation: 'the escalation list (for example the audit committee chair)', safety: 'the safety team', ir: 'the industrial relations team' };
 
 /** Two reports numbered at the same moment (unique index): say so instead of a server error. */
 const clash = (e: unknown): never => {
@@ -427,7 +427,8 @@ export class SpeakupService {
       const org = c.organizationId;
       if (!(await tx.user.findFirst({ where: { organizationId: org, id: dto.userId, status: 'active' }, select: { id: true } }))) throw new BadRequestException('Choose an active person of this company.');
       if (await tx.speakupTeamMember.findFirst({ where: { organizationId: org, team: dto.team, userId: dto.userId, removedAt: null }, select: { id: true } })) throw new ConflictException('This person is already on that list.');
-      const role = dto.team === 'ic' ? (dto.role ?? 'member') : 'member';
+      // The IC has a presiding officer and an external member; the IR team may have an outside lawyer (HLP-13 decision 1).
+      const role = dto.team === 'ic' ? (dto.role ?? 'member') : dto.team === 'ir' && dto.role === 'external' ? 'external' : 'member';
       if (role === 'presiding' && (await tx.speakupTeamMember.findFirst({ where: { organizationId: org, team: 'ic', role: 'presiding', removedAt: null }, select: { id: true } }))) throw new ConflictException('The Internal Committee already has a presiding officer. Remove them first.');
       const m = await tx.speakupTeamMember.create({ data: { organizationId: org, team: dto.team, userId: dto.userId, role, addedBy: c.userId ?? null } });
       await audit(tx, c, 'speakup.team_member_added', 'speakup_team_member', m.id, { team: dto.team, userId: dto.userId, role });

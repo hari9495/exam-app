@@ -11893,3 +11893,35 @@ model AccidentMedicalRecord {
   @@index([caseId, at], map: "accident_medical_records_case_idx")
   @@map("accident_medical_records")
 }
+
+
+/// HLP-13: a collective dispute the industrial relations team keeps (company side only). Append-only.
+model IrDispute {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  number         Int
+  title          String   @db.VarChar(200)
+  unionName      String   @map("union_name") @db.VarChar(200)
+  locationId     String   @map("location_id") @db.Uuid
+  workersCovered Int      @map("workers_covered")
+  receivedOn     DateTime @map("received_on") @db.Date
+  createdBy      String   @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, number], map: "ir_disputes_number_key")
+  @@map("ir_disputes")
+}
+
+/// HLP-13: one step of a dispute (demand, meeting, paper, settlement proposed / sent back / approved, filed, closed). Append-only.
+model IrDisputeStep {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  disputeId      String   @map("dispute_id") @db.Uuid
+  kind           String   @db.VarChar(24)
+  actorUserId    String   @map("actor_user_id") @db.Uuid
+  data           Json     @default("{}")
+  at             DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([disputeId, at], map: "ir_dispute_steps_dispute_idx")
+  @@map("ir_dispute_steps")
+}

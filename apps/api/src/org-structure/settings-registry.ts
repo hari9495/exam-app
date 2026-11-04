@@ -45,6 +45,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // Founder answer 43: injury leave recorded on a case becomes a leave request of this type (its code in Time › Leave types).
   'accident.injury_leave_type': { label: 'Accidents: the leave type code for injury leave', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 30 }, default: 'INJURY' },
   'accident.contractor_reminder_days': { label: 'Accidents: remind the safety team while a contractor has not filed, every (days)', scopes: ['tenant'], dated: false, values: ['off', '1', '2', '3', '7'], default: '1' },
+  // HLP-13 collective disputes (map 4h): whether an outside lawyer on the industrial relations team may be the second
+  // person who approves a settlement. Legal clocks come from IN.IR.DISPUTE.
+  'dispute.lawyer_may_approve': { label: 'Disputes: an outside lawyer on the IR team may approve a settlement', scopes: ['tenant'], dated: false, values: ['no', 'yes'], default: 'no' },
   // HLP-07/08/09 (map 4f): days a respondent has to reply to a grievance or ethics notice. POSH days come from the rule
   // set IN.POSH.INQUIRY, never from here.
   'cases.reply_days': { label: 'Cases: days a respondent has to reply to a grievance or ethics notice', scopes: ['tenant'], dated: false, values: ['5', '7', '10', '15'], default: '7' },
