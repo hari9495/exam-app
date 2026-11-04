@@ -1442,6 +1442,10 @@ surveys). The HLP screens are the founder-approved look, sample-only.
      company-wide, so the notified System Admin can open or decline the waiting report from Cases. *Built:* notice to the
      System Admins (up to 25, never the reporter or the employee). *Suggested:* keep, and give an HR person the key for
      that entity in Roles & access so it reaches HR next time.
+125. **Virus scan started inside a transaction.** HLP-12 photos and medical files and HLP-13 papers started their scan
+     before the file was committed, so under load the scan missed it and the file stayed "being checked" until the hourly
+     sweep (it failed the e2e twice). Fixed there: the scan starts after the commit. Other uploads (speak-up, cases, desk)
+     use the same pattern. *Suggested:* the same small fix everywhere, in one pass with its own tests.
 
 ## 7. Next pages (recommended order, with sizes)
 
