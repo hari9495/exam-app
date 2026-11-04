@@ -69,6 +69,9 @@ export interface LiveRunWorkspaceData {
   specialDays?: RunSpecialDays | null;
   /** Saves payroll's own value for a person's special days in the run's month (payroll.input.manage). */
   onSaveSpecialDays?: (input: SpecialDaysInput) => Promise<unknown>;
+  /** Answer 121: late injury leave not paid in this run (reason required), and its undo while the run is open. */
+  onNotPaid?: (correctionId: string, reason: string) => Promise<unknown>;
+  onUndoNotPaid?: (correctionId: string) => Promise<unknown>;
   /** PAY-03 "Failed": calculates again only the people whose last calculation failed (payroll.run.prepare). */
   onRetryFailed?: () => Promise<unknown>;
   /** PAY-11 off-cycle run: the design's own title, line and badge in place of the run's. */
@@ -757,7 +760,7 @@ function InputsPanel({ p, run: r, editable }: { p: LiveRunWorkspaceData; run: Pa
       <div className="yx-pay-stack">
         {facts}
         {sources}
-        {r.runType === 'regular' && p.specialDays && <SpecialDaysCard data={p.specialDays} onSave={p.onSaveSpecialDays} />}
+        {r.runType === 'regular' && p.specialDays && <SpecialDaysCard data={p.specialDays} onSave={p.onSaveSpecialDays} onNotPaid={p.onNotPaid} onUndoNotPaid={p.onUndoNotPaid} />}
         <p className="yx-pay-muted">Attendance, loss of pay, one-time pay, holds, loans and claims are read when the run is calculated. Change them in Payroll › Inputs before calculating.</p>
       </div>
     );

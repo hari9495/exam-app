@@ -5677,6 +5677,10 @@ model PayCorrection {
   createdBy      String?   @map("created_by") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+  /// HLP-12 answer 121: a late injury correction payroll marked "Not paid" on its run (reason kept; undone while open).
+  notPaidReason  String?   @map("not_paid_reason") @db.VarChar(500)
+  notPaidBy      String?   @map("not_paid_by") @db.Uuid
+  notPaidAt      DateTime? @map("not_paid_at") @db.Timestamptz(3)
 
   @@map("pay_corrections")
 }

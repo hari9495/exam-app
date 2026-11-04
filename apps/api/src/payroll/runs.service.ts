@@ -628,13 +628,16 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       const run = await this.runIn(tx, c, v, id, VIEW);
-      if (run.runType !== 'regular') return { editable: false, rows: [], corrections: [] };
+      if (run.runType !== 'regular') return { editable: false, rows: [], corrections: [], notPaid: [] };
       const period = await tx.payPeriod.findFirst({ where: { organizationId: org, legalEntityId: run.legalEntityId, payGroupId: null, periodStart: run.periodStart } });
       const open = ['draft', 'calculated', 'in_review', 'reopened'].includes(run.status) && !(period && (period.stage === 'locked' || period.stage === 'filed'));
       const editable = open && v.grants.has('payroll.input.manage');
       const rows = await tx.specialDays.findMany({ where: { organizationId: org, legalEntityId: run.legalEntityId, periodStart: run.periodStart, days: { gt: 0 } }, orderBy: [{ kind: 'asc' }, { enteredAt: 'asc' }] });
-      const corrections = await tx.payCorrection.findMany({ where: { organizationId: org, legalEntityId: run.legalEntityId, source: 'injury_leave', targetPeriod: run.periodStart }, orderBy: { createdAt: 'asc' } });
-      const people = await tx.employee.findMany({ where: { organizationId: org, id: { in: [...rows.map((r) => r.employeeId), ...corrections.map((x) => x.employeeId)] } }, select: { id: true, givenName: true, familyName: true, preferredName: true } });
+      const all = await tx.payCorrection.findMany({ where: { organizationId: org, legalEntityId: run.legalEntityId, source: 'injury_leave', targetPeriod: run.periodStart, status: { in: ['approved', 'not_paid'] } }, orderBy: { createdAt: 'asc' } });
+      const corrections = all.filter((x) => x.status === 'approved');
+      const dropped = all.filter((x) => x.status === 'not_paid');
+      const people = await tx.employee.findMany({ where: { organizationId: org, id: { in: [...rows.map((r) => r.employeeId), ...all.map((x) => x.employeeId)] } }, select: { id: true, givenName: true, familyName: true, preferredName: true } });
+      const who = await tx.user.findMany({ where: { organizationId: org, id: { in: dropped.map((x) => x.notPaidBy!) } }, select: { id: true, name: true, email: true } });
       const name = (eid: string) => {
         const e = people.find((p) => p.id === eid);
         return e ? (e.preferredName ?? [e.givenName, e.familyName].filter(Boolean).join(' ')) : 'Former employee';
@@ -643,7 +646,35 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
         editable,
         rows: rows.map((r) => ({ employeeId: r.employeeId, name: name(r.employeeId), kind: r.kind as 'suspension' | 'maternity' | 'injury', days: r.days.toFixed(2), source: r.source as 'leave' | 'payroll', note: r.note })),
         corrections: corrections.map((x) => ({ id: x.id, employeeId: x.employeeId, name: name(x.employeeId), month: (x.change as { month: string }).month, days: (x.change as { injuryDays: string }).injuryDays, note: x.reason })),
+        notPaid: dropped.map((x) => ({ id: x.id, name: name(x.employeeId), month: (x.change as { month: string }).month, days: (x.change as { injuryDays: string }).injuryDays, reason: x.notPaidReason!, by: who.find((u) => u.id === x.notPaidBy)?.name ?? who.find((u) => u.id === x.notPaidBy)?.email ?? 'Former user' })),
       };
+    });
+  }
+
+  /**
+   * HLP-12 answer 121: a late injury correction on this run is "Not paid" (reason kept, audited); it leaves the run and the
+   * fill never raises it again. Undo puts it back to review. Both only while the run is open (payroll.input.manage).
+   */
+  async correctionNotPaid(ctx: TenantContext, user: ScopeUser, id: string, correctionId: string, reason: string | null) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const run = await this.runIn(tx, c, v, id, ['payroll.run.prepare']);
+      if (!(await entitiesFor(tx, c, v, 'payroll.input.manage')).includes(run.legalEntityId)) throw new ForbiddenException('Only payroll with the inputs key for this legal entity can do that.');
+      const period = await tx.payPeriod.findFirst({ where: { organizationId: org, legalEntityId: run.legalEntityId, payGroupId: null, periodStart: run.periodStart } });
+      if (run.runType !== 'regular' || !['draft', 'calculated', 'in_review', 'reopened'].includes(run.status) || (period && (period.stage === 'locked' || period.stage === 'filed'))) throw new ConflictException('This run is locked: nothing on it changes now.');
+      const x = await tx.payCorrection.findFirst({ where: { organizationId: org, id: correctionId, legalEntityId: run.legalEntityId, source: 'injury_leave', targetPeriod: run.periodStart } });
+      if (!x) throw new NotFoundException('Not found');
+      if (reason !== null) {
+        if (x.status !== 'approved') throw new ConflictException('This one is already marked not paid.');
+        await tx.payCorrection.update({ where: { id: x.id }, data: { status: 'not_paid', notPaidReason: reason, notPaidBy: v.userId!, notPaidAt: new Date() } });
+        await audit(tx, c, 'payroll.correction.not_paid', 'pay_correction', x.id, { runId: run.id, employeeId: x.employeeId, reason });
+      } else {
+        if (x.status !== 'not_paid') throw new ConflictException('This one is not marked not paid.');
+        await tx.payCorrection.update({ where: { id: x.id }, data: { status: 'approved', notPaidReason: null, notPaidBy: null, notPaidAt: null } });
+        await audit(tx, c, 'payroll.correction.not_paid_undone', 'pay_correction', x.id, { runId: run.id, employeeId: x.employeeId, was: x.notPaidReason });
+      }
+      return { id: x.id, status: reason !== null ? 'not_paid' : 'approved' };
     });
   }
 

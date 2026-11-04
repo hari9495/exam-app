@@ -281,7 +281,7 @@ describe('HLP-12 accident cases', () => {
     const runOf = (m: string) => payDb((tx) => tx.payrollRun.create({ data: { organizationId: org.A.id, legalEntityId, payGroupId: group.id, periodStart: new Date(`${m}-01T00:00:00Z`), periodEnd: new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 0)), preparedBy: users.pay } }));
     const run = await runOf(month);
     const card = async (runId: string, who: Who = 'pay') => (await request(server()).get(`/api/v1/payroll/runs/${runId}/special-days`).set('Authorization', `Bearer ${token[who]}`).expect(200)).body;
-    expect(await card(run.id)).toEqual({ editable: true, rows: [expect.objectContaining({ employeeId: emp.injured, name: 'Sathish Kumar', kind: 'injury', days, source: 'leave' })], corrections: [] });
+    expect(await card(run.id)).toEqual({ editable: true, rows: [expect.objectContaining({ employeeId: emp.injured, name: 'Sathish Kumar', kind: 'injury', days, source: 'leave' })], corrections: [], notPaid: [] });
     await request(server()).get(`/api/v1/payroll/runs/${run.id}/special-days`).set('Authorization', `Bearer ${token.other}`).expect(403);
     // A locked month is never changed.
     const period = await inA((tx) => tx.payPeriod.create({ data: { organizationId: org.A.id, legalEntityId, periodStart: new Date(`${month}-01T00:00:00Z`), periodEnd: new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)), stage: 'locked' } }));
@@ -303,6 +303,28 @@ describe('HLP-12 accident cases', () => {
     expect(shown.corrections).toEqual([expect.objectContaining({ employeeId: emp.injured, name: 'Sathish Kumar', month, days })]);
     expect((await rows())[0]).toMatchObject({ days: '0.00' });
     expect(await inA((tx) => tx.payCorrection.count({ where: { organizationId: org.A.id, employeeId: emp.injured, source: 'injury_leave' } }))).toBe(1);
+    // Answer 121: "Not paid" with a reason (required, logged): it leaves the run and is never raised again; undo only while
+    // the run is open.
+    const cid = shown.corrections[0].id as string;
+    const np = (who: Who, path: string, body?: object) => request(server()).post(`/api/v1/payroll/runs/${later.id}/special-days/corrections/${cid}/${path}`).set('Authorization', `Bearer ${token[who]}`).send(body ?? {});
+    await np('other', 'not-paid', { reason: 'Paid in the settlement' }).expect(403);
+    await np('pay', 'not-paid', { reason: 'no' }).expect(400);
+    await np('pay', 'not-paid', {}).expect(400);
+    await np('pay', 'undo-not-paid').expect(409);
+    await np('pay', 'not-paid', { reason: 'Paid in the full and final settlement' }).expect(201);
+    await np('pay', 'not-paid', { reason: 'Paid in the full and final settlement' }).expect(409);
+    expect(await card(later.id)).toMatchObject({ corrections: [], notPaid: [expect.objectContaining({ id: cid, reason: 'Paid in the full and final settlement', by: expect.stringMatching(/^pay /), days })] });
+    expect(await inA((tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'payroll.correction.not_paid', entityId: cid } }))).toBe(1);
+    await fill();
+    expect(await inA((tx) => tx.payCorrection.count({ where: { organizationId: org.A.id, employeeId: emp.injured, source: 'injury_leave' } }))).toBe(1);
+    await np('pay', 'undo-not-paid').expect(201);
+    expect((await card(later.id)).corrections).toEqual([expect.objectContaining({ id: cid })]);
+    await np('pay', 'not-paid', { reason: 'Paid in the full and final settlement' }).expect(201);
+    // Once the run is approved it is closed: no undo, no change.
+    await payDb((tx) => tx.payrollRun.update({ where: { id: later.id }, data: { status: 'approved' } }));
+    await np('pay', 'undo-not-paid').expect(409);
+    expect((await card(later.id)).notPaid).toHaveLength(1);
+    await request(server()).post(`/api/v1/payroll/runs/${run.id}/special-days/corrections/${cid}/not-paid`).set('Authorization', `Bearer ${token.pay}`).send({ reason: 'Wrong run for this one' }).expect(409);
     expect((await card(run.id)).corrections).toEqual([]);
     await inA((tx) => tx.payPeriod.update({ where: { id: period.id }, data: { stage: 'open' } }));
     // Open again (test only): the month fills from the leave once more.

@@ -12,6 +12,7 @@ import { Dialog } from '../../components/overlay';
 import { useToast } from '../../components/notify';
 import { PlainTable } from '../../components/plain-table';
 import { VisuallyHidden } from '../../components/foundations';
+import { SectionTitle } from './pay-kit';
 
 export type SpecialKind = 'injury' | 'maternity' | 'suspension';
 /** GET /payroll/runs/:id/special-days. */
@@ -21,6 +22,8 @@ export interface RunSpecialDays {
   rows: { employeeId: string; name: string; kind: SpecialKind; days: string; source: 'leave' | 'payroll'; note: string }[];
   /** Injury leave approved after its month was locked (answer 93): to review, never applied by the app. */
   corrections: { id: string; employeeId: string; name: string; month: string; days: string; note: string }[];
+  /** Answer 121: late injury leave marked "Not paid", with its reason; undone only while the run is open. */
+  notPaid?: { id: string; name: string; month: string; days: string; reason: string; by: string }[];
 }
 export interface SpecialDaysInput {
   employeeId: string;
@@ -33,11 +36,51 @@ const KIND: Record<SpecialKind, string> = { injury: 'Injury', maternity: 'Matern
 const monthText = (m: string) => new Date(`${m}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
 const daysText = (d: string) => `${Number(d)} ${Number(d) === 1 ? 'day' : 'days'}`;
 
-export function SpecialDaysCard({ data, onSave, start }: { data: RunSpecialDays; onSave?: (input: SpecialDaysInput) => Promise<unknown>; start?: { editing?: SpecialDaysInput & { name: string } } }) {
+export function SpecialDaysCard({
+  data,
+  onSave,
+  onNotPaid,
+  onUndoNotPaid,
+  start,
+}: {
+  data: RunSpecialDays;
+  onSave?: (input: SpecialDaysInput) => Promise<unknown>;
+  /** Answer 121: the late injury leave is not paid in this run (a reason is required); it then leaves the run. */
+  onNotPaid?: (correctionId: string, reason: string) => Promise<unknown>;
+  onUndoNotPaid?: (correctionId: string) => Promise<unknown>;
+  start?: { editing?: SpecialDaysInput & { name: string }; notPaid?: { id: string; name: string } };
+}) {
   const [editing, setEditing] = useState<(SpecialDaysInput & { name: string }) | null>(start?.editing ?? null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const [dropping, setDropping] = useState<{ id: string; name: string } | null>(start?.notPaid ?? null);
+  const [why, setWhy] = useState('');
+  const dropEarly = useTooEarly(dropping && why.trim().length < 5 ? [{ fieldId: 'sd-why', message: 'Say why it is not paid (5 letters or more).' }] : []);
+  const drop = async () => {
+    if (!dropping || dropEarly.stop()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onNotPaid!(dropping.id, why.trim());
+      toast({ tone: 'success', title: `${dropping.name}: marked not paid`, description: 'It leaves this run and is not raised again. You can undo it while the run is open.' });
+      setDropping(null);
+      setWhy('');
+      dropEarly.reset();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'That didn’t work. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const undo = async (x: { id: string; name: string }) => {
+    try {
+      await onUndoNotPaid!(x.id);
+      toast({ tone: 'success', title: `${x.name}: back to review` });
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : 'That didn’t work. Try again.' });
+    }
+  };
   const canEdit = data.editable && Boolean(onSave);
   const early = useTooEarly([
     ...(editing && !/^\d{1,2}(\.\d{1,2})?$/.test(editing.days.trim()) ? [{ fieldId: 'sd-days', message: 'Enter the days, like 3 or 2.5.' }] : []),
@@ -62,7 +105,9 @@ export function SpecialDaysCard({ data, onSave, start }: { data: RunSpecialDays;
   const current = (employeeId: string) => data.rows.find((r) => r.employeeId === employeeId && r.kind === 'injury');
   return (
     <section className="yx-pay-panel" aria-label="Special days">
+      <SectionTitle>Special days</SectionTitle>
       <div className="yx-pay-stack">
+        <p className="yx-pay-muted">Days paid as a benefit instead of salary (injury, maternity, suspension), per person, with where each came from.</p>
         {data.corrections.length > 0 && (
           <InlineAlert tone="warning" title="Injury leave approved after its month was locked">
             <div className="yx-pay-stack">
@@ -80,9 +125,16 @@ export function SpecialDaysCard({ data, onSave, start }: { data: RunSpecialDays;
                     header: <VisuallyHidden>Action</VisuallyHidden>,
                     cell: (x) =>
                       canEdit ? (
-                        <Button size="sm" onClick={() => (setError(null), setEditing({ employeeId: x.employeeId, name: x.name, kind: 'injury', days: String(Number(current(x.employeeId)?.days ?? 0) + Number(x.days)), note: `Injury leave of ${monthText(x.month)} approved after the month was locked` }))}>
-                          Add to this month
-                        </Button>
+                        <span className="yx-pay-row">
+                          <Button size="sm" onClick={() => (setError(null), setEditing({ employeeId: x.employeeId, name: x.name, kind: 'injury', days: String(Number(current(x.employeeId)?.days ?? 0) + Number(x.days)), note: `Injury leave of ${monthText(x.month)} approved after the month was locked` }))}>
+                            Add to this month
+                          </Button>
+                          {onNotPaid && (
+                            <Button size="sm" onClick={() => (setError(null), setWhy(''), setDropping({ id: x.id, name: x.name }))}>
+                              Not paid
+                            </Button>
+                          )}
+                        </span>
                       ) : null,
                   },
                 ]}
@@ -112,8 +164,48 @@ export function SpecialDaysCard({ data, onSave, start }: { data: RunSpecialDays;
             },
           ]}
         />
+        {(data.notPaid ?? []).length > 0 && (
+          <PlainTable
+            label="Late injury leave marked not paid"
+            caption="Marked not paid (not raised again)"
+            rows={data.notPaid!}
+            getRowId={(x) => x.id}
+            columns={[
+              { key: 'name', header: 'Person', rowHeader: true, cell: (x) => x.name },
+              { key: 'month', header: 'Month', cell: (x) => monthText(x.month) },
+              { key: 'days', header: 'Days', num: true, cell: (x) => daysText(x.days) },
+              { key: 'reason', header: 'Why', cell: (x) => `${x.reason} (${x.by})` },
+              { key: 'act', header: <VisuallyHidden>Action</VisuallyHidden>, cell: (x) => (data.editable && onUndoNotPaid ? <Button size="sm" onClick={() => void undo(x)}>Undo</Button> : null) },
+            ]}
+          />
+        )}
         {!data.editable && <p className="yx-pay-muted">Special days can be changed while the run is a draft or in review and its month is not locked.</p>}
       </div>
+      <Dialog
+        open={Boolean(dropping)}
+        onOpenChange={(o) => !o && setDropping(null)}
+        size="sm"
+        title={dropping ? `Not paid · ${dropping.name}` : 'Not paid'}
+        footer={
+          <>
+            <Button onClick={() => setDropping(null)}>Cancel</Button>
+            <Button variant="primary" loading={busy} onClick={() => void drop()}>
+              Mark not paid
+            </Button>
+          </>
+        }
+      >
+        <div className="yx-pay-stack">
+          {error && (
+            <InlineAlert tone="danger" title="Not saved">
+              {error}
+            </InlineAlert>
+          )}
+          <FormField id="sd-why" label="Why it is not paid" required error={dropEarly.errorOf('sd-why')} helper="Kept with the run's record. The late leave is not raised again.">
+            <TextField value={why} onChange={setWhy} maxLength={300} />
+          </FormField>
+        </div>
+      </Dialog>
       <Dialog
         open={Boolean(editing)}
         onOpenChange={(o) => !o && setEditing(null)}
@@ -154,4 +246,5 @@ export const SPECIAL_DAYS_SAMPLE: RunSpecialDays = {
     { employeeId: 'e-lakshmi', name: 'Lakshmi Iyer', kind: 'maternity', days: '30.00', source: 'payroll', note: 'Maternity leave from 2 Oct' },
   ],
   corrections: [{ id: 'pc-1', employeeId: 'e-naveen', name: 'Naveen Hegde', month: '2026-09', days: '3.00', note: '3.00 days of INJURY leave in 2026-09 were approved after the month was locked' }],
+  notPaid: [{ id: 'pc-0', name: 'Ravi K.', month: '2026-08', days: '1.00', reason: 'Paid in the full and final settlement', by: 'Meera (Payroll)' }],
 };

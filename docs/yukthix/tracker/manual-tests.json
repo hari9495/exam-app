@@ -15150,5 +15150,26 @@
       "Screens/Helpdesk/HLP-08 · Cases (case team)"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HLP-12-14",
+    "area": "Helpdesk · HLP-12 Accident case (4 Nov 2026, founder answer 121)",
+    "screen": "Payroll run › Inputs › Special days › Not paid",
+    "url": "http://localhost:3000/yx/payroll/runs",
+    "account": "payroll-tester@demo-org.test (payroll inputs); hr-tester@demo-org.test (no payroll inputs). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open the run with \"Injury leave approved after its month was locked\" (MT-HLP-12-13) › Inputs: check the card has the heading \"Special days\" and a one-line note, and the page does not scroll at 1278 x 635 beyond the run's usual height.",
+      "2. Press Not paid; press Mark not paid with no reason.",
+      "3. Type \"Paid in the full and final settlement\"; Mark not paid.",
+      "4. Next morning reload the run.",
+      "5. Press Undo in \"Marked not paid\"; then mark it not paid again.",
+      "6. Approve the run; reload its Inputs tab.",
+      "7. As hr-tester open the run."
+    ],
+    "expected": "Step 2: \"Say why it is not paid (5 letters or more).\" and the field takes the focus; nothing saved. Step 3: toast \"<name>: marked not paid\"; it leaves the review list and shows under \"Marked not paid\" with the reason and who. Step 4: it is not raised again. Step 5: Undo puts it back to review (toast); marking again works. Step 6: no Undo and no Not paid buttons (the run is closed). Step 7: no Not paid or Undo (no payroll inputs key).",
+    "stories": [
+      "Screens/Pay/PAY-03 · Run workspace"
+    ],
+    "note": "Positive and negative: reason required, logged, never raised again, undo only while open."
   }
 ]

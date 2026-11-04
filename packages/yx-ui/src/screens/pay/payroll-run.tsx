@@ -1226,7 +1226,7 @@ function SampleRunWorkspace({ persona = 'pa', tab = 'payslips', phase: initialPh
                   { key: 'amount', header: 'Amount', num: true, cell: (s) => (s.amount != null ? formatINR(s.amount) : '—') },
                 ]}
               />
-              {specialDays && <SpecialDaysCard data={SPECIAL_DAYS_SAMPLE} onSave={async () => undefined} />}
+              {specialDays && <SpecialDaysCard data={SPECIAL_DAYS_SAMPLE} onSave={async () => undefined} onNotPaid={async () => undefined} onUndoNotPaid={async () => undefined} />}
             </div>
           </TabsContent>
           <TabsContent value="payslips">

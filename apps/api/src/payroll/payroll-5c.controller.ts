@@ -101,6 +101,19 @@ export class Payroll5cController {
     return this.runs.specialDays(ctx, this.user(req), id);
   }
 
+  /** HLP-12 answer 121: a late injury correction is not paid in this run (reason required), or back to review. */
+  @Post('runs/:id/special-days/corrections/:cid/not-paid')
+  @RequirePermissions('payroll.input.manage')
+  correctionNotPaid(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('cid', ParseUUIDPipe) cid: string, @Body() dto: ReasonDto) {
+    return this.runs.correctionNotPaid(ctx, this.user(req), id, cid, dto.reason);
+  }
+
+  @Post('runs/:id/special-days/corrections/:cid/undo-not-paid')
+  @RequirePermissions('payroll.input.manage')
+  correctionNotPaidUndo(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('cid', ParseUUIDPipe) cid: string) {
+    return this.runs.correctionNotPaid(ctx, this.user(req), id, cid, null);
+  }
+
   @Get('runs/:id/input-sources')
   @RequireAnyPermission(...RUN_VIEW)
   inputSources(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {

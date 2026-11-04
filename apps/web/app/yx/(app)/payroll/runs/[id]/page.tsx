@@ -67,6 +67,14 @@ export default function YxPayRunPage() {
       await write('/special-days', { ...input, month: run.data!.month }, 'PUT');
       await specialDays.refetch();
     },
+    onNotPaid: async (cid, reason) => {
+      await write(`/runs/${encodeURIComponent(id)}/special-days/corrections/${encodeURIComponent(cid)}/not-paid`, { reason });
+      await specialDays.refetch();
+    },
+    onUndoNotPaid: async (cid) => {
+      await write(`/runs/${encodeURIComponent(id)}/special-days/corrections/${encodeURIComponent(cid)}/undo-not-paid`);
+      await specialDays.refetch();
+    },
     payslips: payslips.data ?? null,
     variances: variances.data ?? null,
     bankFiles: bankFiles.data ?? null,

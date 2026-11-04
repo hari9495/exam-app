@@ -1476,7 +1476,8 @@ surveys). The HLP screens are the founder-approved look, sample-only.
 
 121. **HLP-12 answer 93: what "reviewed" means.** A late injury correction stays on the next open month's run until that
      month is paid; payroll adds it with Add to this month (or leaves it). There is no "Reviewed, not paid" button.
-     *Built:* shown with Add to this month. *Suggested:* add "Not paid, with a reason" so the list empties, audited.
+     *Built:* shown with Add to this month. *Suggested:* add "Not paid, with a reason" so the list empties, audited. (Done 4 Nov
+     2026: Not paid with a reason, logged, never raised again; Undo while the run is open.)
 122. **HLP-12 answer 93: corrections from earlier than four months** (leave approved very late) are not raised by the
      morning fill. *Built:* four months back. *Suggested:* keep; a company setting if anyone needs longer.
 123. **HLP-12 answer 92: maternity and suspension days** show in the same card and payroll edits them there too (they were
@@ -1488,7 +1489,9 @@ surveys). The HLP screens are the founder-approved look, sample-only.
 125. **Virus scan started inside a transaction.** HLP-12 photos and medical files and HLP-13 papers started their scan
      before the file was committed, so under load the scan missed it and the file stayed "being checked" until the hourly
      sweep (it failed the e2e twice). Fixed there: the scan starts after the commit. Other uploads (speak-up, cases, desk)
-     use the same pattern. *Suggested:* the same small fix everywhere, in one pass with its own tests.
+     use the same pattern. *Suggested:* the same small fix everywhere, in one pass with its own tests. (Done 4 Nov 2026:
+     speak-up named and anonymous files and case evidence and replies now scan after the commit; desk tickets, chat and
+     mail-in already did; a guard test fails if a FilesService scan runs inside a transaction or a function taking `tx`.)
 
 ## 7. Next pages (recommended order, with sizes)
 
