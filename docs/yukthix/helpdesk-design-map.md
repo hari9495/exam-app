@@ -1605,3 +1605,15 @@ first customer that has a union; (82) tribunal stages after counsel (GO-LIVE-CHE
 category, add a percentage rate if customers need it; (84) keep dispute.lawyer_may_approve default no; (85) offer
 payroll's union list when the legal entity has one; (86) keep: no set-up warning while the IR team is empty; (87) counsel
 confirms the 60 and 10 days, per-state rule sets later (GO-LIVE-CHECKLIST); (88) keep the payroll notice recipients.
+
+Founder approved, 4 Nov 2026 (questions 91-94 and 101-108, all as suggested, plus the industry warning): (91) keep
+injury leave as leave without pay; (92) a "Special days" line on the run's Inputs card, drawn in the design first; (93)
+injury leave approved after a locked month shows in the next run as a correction to review; (94) with nobody holding the key
+in scope, the System Admins are told; (101) add Code of conduct and POSH policy types next; (102) keep text only, an "apply
+to Time" step with impact preview after counsel (GO-LIVE-CHECKLIST); (103) keep: only fixing clears a finding; (104) keep
+unchecked as "ask counsel", load Maharashtra, Telangana and Delhi tables next (marked verify); (105) keep: a number in a
+clause blocks; (106) a Discard button and automatic clean-up of unapproved drafts after 90 days; (107) keep AI on by
+default; (108) prefill probation months from probation.default_months. Industry: the industry list moves into a table,
+each industry names the law tables that apply, and a draft for an industry without its own tables shows "Law check
+covers general labour law only; <industry> rules are not checked yet; review with counsel", which the publisher must tick
+as seen.

@@ -94,3 +94,7 @@ Things deliberately left for launch. Development runs locally until then (test k
       differ by state) in the HLP-13 rule set, and reviews tribunal stages before they are built (founder, 4 Nov 2026).
 - [ ] **Injury pay sample payslip.** Payroll checks one payslip where injury days overlap unpaid injury leave from the
       attendance feed: the unpaid days must be taken off once, not twice (HLP-12 answer 65, 4 Nov 2026).
+- [ ] **AI policy writer: apply to Time.** Counsel reviews before an "apply to Time" step loads AI policy numbers into
+      Time's leave policies (HLP-14 answer 102, 4 Nov 2026). Today the AI policy is text only.
+- [ ] **New state and industry law tables.** Counsel checks the Maharashtra, Telangana and Delhi tables and any industry
+      tables before go-live (all marked verify; HLP-14 answer 104, 4 Nov 2026).
