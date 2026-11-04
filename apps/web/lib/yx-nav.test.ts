@@ -306,6 +306,8 @@ describe('pageLink: Policies and Policy admin name themselves (HLP-10 / HLP-11)'
     expect(pageLink(nav(['policy.manage'], { employee: true }), '/yx/desk/policy-admin')).toMatchObject({ link: { label: 'Policy admin' }, inMenu: true });
     expect(pageLink(nav(['policy.publish'], { employee: true }), '/yx/desk/policy-admin')).toMatchObject({ link: { label: 'Policy admin' }, inMenu: true });
     expect(pageLink(nav([], { employee: true }), '/yx/desk/policy-admin')?.inMenu).not.toBe(true);
+    expect(pageLink(nav(['policy.manage'], { employee: true }), '/yx/desk/policy-writer')).toMatchObject({ link: { label: 'Write policies with AI' }, inMenu: true });
+    expect(pageLink(nav(['policy.publish'], { employee: true }), '/yx/desk/policy-writer')?.inMenu).not.toBe(true);
   });
 });
 

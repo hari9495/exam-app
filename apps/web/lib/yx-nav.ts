@@ -328,6 +328,8 @@ export function buildNav(n: NavInput): NavArea[] {
           ...when(!support && Boolean(n.ethicsDesk), L('desk-ethics', 'Ethics desk', '/yx/desk/ethics', 'ethicsReports')),
           ...when(has('speakup.setup.manage'), L('desk-speakup-setup', 'Speak-up set-up', '/yx/desk/speakup-setup')),
           ...when(any('policy.manage', 'policy.publish'), L('desk-policy-admin', 'Policy admin', '/yx/desk/policy-admin')),
+          // HLP-14: a policy manager drafts a policy from a questionnaire (the company's AI, or a starter when AI is off).
+          ...when(has('policy.manage'), L('desk-policy-writer', 'Write policies with AI', '/yx/desk/policy-writer')),
           L('desk-catalog', 'Service catalogue', '/yx/desk/catalog'),
           L('desk-chat', 'Chat with us', '/yx/desk/chat'),
           ...when(has('desk.chat.work'), L('desk-live-chat', 'Live chat', '/yx/desk/live-chat')),

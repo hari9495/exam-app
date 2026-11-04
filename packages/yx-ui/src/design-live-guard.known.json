@@ -132,7 +132,6 @@
     "ops: IcConsoleScreen",
     "ops: LoadingCase",
     "ops: OwnLicencesScreen",
-    "ops: PolicyWriterScreen",
     "ops: PoshCaseScreen",
     "ops: PoshComplaintScreen",
     "ops: PreRegisterScreen",

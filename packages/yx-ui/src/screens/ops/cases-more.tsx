@@ -22,6 +22,7 @@ import { formatDate, formatINR } from '../../lib/format';
 import { Actions, CheckList, ClockPanel, Confidential, Facts, MembersList, OpsDesk, PhotoPlaceholder, SourceTag, StatusTrail, Workspace, useSay, type CaseMember, type CheckRow } from './ops-kit';
 import { addDays, ecCompensation, tdsLateInterest, type EcKind } from './ops-rules';
 import { RestrictedNotFound } from './cases';
+import { LivePolicyWriter, type LivePolicyWriter as LivePolicyWriterProps } from './policy-writer-live';
 import type { Device } from './helpdesk';
 import { LiveDisputeCase, type LiveDispute } from './dispute-live';
 import { LiveAccidentCase, LiveReportAccident, type LiveAccidentWorkspace as LiveAccidentWorkspaceProps, type LiveReportAccident as LiveReportAccidentProps } from './accident-live';
@@ -487,8 +488,13 @@ export interface PolicyWriterScreenProps {
   clauses: Clause[];
   findings: Finding[];
   approveOpen?: boolean;
+  /** The company's AI for policies: off (or not set up) offers the YukthiX starters instead. */
+  ai?: 'on' | 'off';
 }
-export function PolicyWriterScreen({ step = 'draft', clauses, findings: initial, approveOpen }: PolicyWriterScreenProps) {
+export function PolicyWriterScreen(props: PolicyWriterScreenProps | { live: LivePolicyWriterProps }) {
+  return 'live' in props ? <LivePolicyWriter live={props.live} /> : <SamplePolicyWriter {...props} />;
+}
+function SamplePolicyWriter({ step = 'draft', clauses, findings: initial, approveOpen, ai = 'on' }: PolicyWriterScreenProps) {
   const [findings, setFindings] = useState(initial);
   const [open, setOpen] = useState(!!approveOpen);
   const [states, setStates] = useState<string[]>(['KA', 'TN']);
@@ -531,10 +537,15 @@ export function PolicyWriterScreen({ step = 'draft', clauses, findings: initial,
         }
       />
       <PageBanner tone="info">Not legal advice; review by counsel recommended.</PageBanner>
+      {step === 'questionnaire' && ai === 'off' && (
+        <InlineAlert tone="warning" title="AI is switched off for policies">
+          Your company switched AI off in Settings › Company policies. You can still answer the questions and start from a YukthiX starter: the same law check and approval apply.
+        </InlineAlert>
+      )}
       {step === 'questionnaire' ? (
         <Stepper
           title="Policy questionnaire"
-          finishLabel="Draft policies"
+          finishLabel={ai === 'off' ? 'Use a starter' : 'Draft policies'}
           review={{ title: 'Check your answers' }}
           steps={[
             {

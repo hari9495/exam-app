@@ -20,3 +20,4 @@ export const Questionnaire: S = { render: () => <PolicyWriterScreen step="questi
 export const Generating: S = { name: 'Drafting (loading)', render: () => <PolicyWriterScreen step="generating" clauses={[]} findings={[]} /> };
 export const DraftBlocked: S = { name: 'Draft · law finding blocks approval', render: () => <PolicyWriterScreen clauses={CLAUSES} findings={FINDINGS} /> };
 export const ApproveLoad: S = { name: 'Findings resolved · Approve & load', render: () => <PolicyWriterScreen clauses={CLAUSES} findings={FINDINGS.map((f) => ({ ...f, status: 'resolved' as const }))} approveOpen /> };
+export const AiOff: S = { name: 'AI off · start from a YukthiX starter', render: () => <PolicyWriterScreen step="questionnaire" ai="off" clauses={[]} findings={[]} /> };

@@ -51,6 +51,9 @@ export type { LiveDispute, DisputeDetail, DisputeDialog, DisputeRecord, DemandIn
 export { PolicyLibraryScreen, PolicyAdminScreen } from '../ops/helpdesk';
 export { METHOD_LABEL, VERSION_LABEL, type LivePolicyLibrary, type LivePolicyAdmin, type PolicyAdminTab } from '../ops/helpdesk-policy-live';
 export * from './policy-types';
+// HLP-14 Write policies with AI: the designed screen with `live`.
+export { PolicyWriterScreen } from '../ops/cases-more';
+export type { LivePolicyWriter, WriterHome, WriterDraft, WriterAnswers, WriterSave, WriterClause, WriterFinding, WriterType, WriterAi } from '../ops/policy-writer-live';
 // Batch 4: reports
 export { WallScreen } from './reports';
 export * from './report-types';
