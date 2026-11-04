@@ -6,7 +6,8 @@ import { PrismaClient } from '@prisma/client';
 //   npx ts-node --transpile-only prisma/scripts/demo-hr-admin-keys.ts
 const prisma = new PrismaClient();
 // Founder 3 Nov 2026: the view-only expense policy key, and the policy library keys (HLP-10/11).
-const KEYS = ['expense.policy.view', 'policy.manage', 'policy.publish'];
+// Founder 4 Nov 2026: opening disciplinary cases (answer 34), so hr-tester can test it.
+const KEYS = ['expense.policy.view', 'policy.manage', 'policy.publish', 'case.disciplinary.raise'];
 
 (async () => {
   const log: string[] = [];

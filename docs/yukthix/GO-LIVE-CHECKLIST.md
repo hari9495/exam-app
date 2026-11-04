@@ -84,3 +84,9 @@ Things deliberately left for launch. Development runs locally until then (test k
 - [ ] **POSH day counting.** Ask counsel whether POSH Rules time limits are working days. If yes, switch the POSH rule
       sets to working days on the company holiday calendar (founder answer, 4 Nov 2026). Today they count calendar days.
 - [ ] **Witnesses in cases.** Ask counsel what a witness may see; then build the witness invite step (founder, 4 Nov 2026).
+- [ ] **Accident case legal numbers.** Counsel checks the ESIC accident report deadline, the EC Act payment days, interest
+      rate, wage ceiling and the Schedule IV age factors in rule sets IN.ESI.ACCIDENT and IN.EC.CLAIM (all marked verify);
+      then the age factor fills from the date of birth (founder, 4 Nov 2026).
+- [ ] **Standing orders reply days.** Counsel confirms the 7 days in IN.SO.MODEL and whether they are working days
+      (founder, 4 Nov 2026).
+- [ ] **Domestic inquiry.** Counsel reviews the inquiry steps and major penalties before they are built (founder, 4 Nov 2026).

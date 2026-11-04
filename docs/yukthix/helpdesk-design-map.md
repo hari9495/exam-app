@@ -1338,3 +1338,15 @@ the statutory rule sets (verify with counsel, never in code), prepares the form 
 on the ESIC portal and records the date; no direct government filing. (4) Contract workers: the case names the
 contractor, the contractor files; the app reminds the safety team and shows "contractor not filed" when late, because
 the principal employer stays responsible.
+
+Founder approved, 4 Nov 2026 (HLP-12 questions 41-47 and disciplinary questions 51-56, all as suggested): (41) keep: any
+active person can be the HR handler, named by the safety team, audited; (42) EC Schedule IV age factors go into the rule set
+after counsel checks them, then fill from the date of birth (GO-LIVE-CHECKLIST); (43) create an injury leave record in Time
+from the case; (44) the inspector notice comes with per-state rule sets when the first factory customer needs it; (45) the
+reporter sees the status (received / closed) only; (46) a search box in the injured-person picker for larger companies;
+(47) "Report an accident" in the Helpdesk menu for everyone and on the phone Me tab; (51) the domestic inquiry is built
+next on the same case steps, after counsel; (52) major penalties come with the inquiry and only after one; (53) keep
+suspension as an HR task, link to Pay when payroll can pay subsistence at state rates; (54) counsel confirms the
+standing-orders reply days and whether they are working days (GO-LIVE-CHECKLIST); (55) a "Report misconduct to HR" form
+for managers that reaches HR as a draft; (56) the warning letter is issued through Letters once the decision is approved.
+Demo: the demo HR Admin role gets case.disciplinary.raise (prisma/scripts/demo-hr-admin-keys.ts).
