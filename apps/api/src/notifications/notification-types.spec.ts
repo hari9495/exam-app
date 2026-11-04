@@ -93,6 +93,7 @@ describe('notification catalog', () => {
       'helpdesk.speakup.received',
       'helpdesk.case.update',
       'helpdesk.case.task',
+      'helpdesk.case.misconduct_reported',
       'helpdesk.accident.reported',
       'helpdesk.accident.update',
       'helpdesk.accident.contractor_late',

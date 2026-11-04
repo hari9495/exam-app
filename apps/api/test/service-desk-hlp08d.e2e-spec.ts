@@ -257,6 +257,9 @@ describe('HLP-08 disciplinary show-cause cases', () => {
     expect((await call('emp', 'post', '/my/misconduct-reports').send({ ...R, employeeUserId: users.mgr }).expect(403)).body.code).toBe('CASE_NOT_YOUR_REPORT');
     await call('mgr', 'post', '/my/misconduct-reports').send({ ...R, facts: 'short' }).expect(400);
     await call('mgr', 'post', '/my/misconduct-reports').send({ ...R, happenedOn: shift(3) }).expect(400);
+    const counts = async (who: Who) => (await request(server()).get('/api/v1/workspace/counts').set('Authorization', `Bearer ${token[who]}`).expect(200)).body as Record<string, number>;
+    const before = (await counts('hr1')).casesOpen ?? 0;
+    const beforeE2 = (await counts('hrE2')).casesOpen ?? 0;
     ids.r1 = (await call('mgr', 'post', '/my/misconduct-reports').send(R).expect(201)).body.id;
     ids.r2 = (await call('mgr', 'post', '/my/misconduct-reports').send({ ...R, misconduct: 'Late four times this month', happenedOn: shift(-2) }).expect(201)).body.id;
     expect((await call('mgr', 'get', '/my/misconduct-reports').expect(200)).body).toEqual([
@@ -268,6 +271,14 @@ describe('HLP-08 disciplinary show-cause cases', () => {
     const drafts = (await call('hr1', 'get', '/cases/disciplinary/drafts').expect(200)).body;
     expect(drafts).toEqual([expect.objectContaining({ id: ids.r1, reportedBy: `mgr ${run}`, misconduct: R.misconduct }), expect.objectContaining({ id: ids.r2 })]);
     expect((await call('hrE2', 'get', '/cases/disciplinary/drafts').expect(200)).body).toEqual([]);
+    // Founder answer 73: a count on Cases and a notice for HR in scope only (the number, never the person or the misconduct).
+    expect((await counts('hr1')).casesOpen).toBe(before + 2);
+    expect((await counts('hrE2')).casesOpen ?? 0).toBe(beforeE2);
+    expect((await counts('mgr')).casesOpen ?? 0).toBe(0);
+    const told = await inA((tx) => tx.userNotification.findMany({ where: { organizationId: org.A.id, type: 'helpdesk.case.misconduct_reported' } }));
+    expect([...new Set(told.map((n) => n.recipientUserId))].sort()).toEqual([users.hr1, users.hr2].sort());
+    expect(told).toHaveLength(4);
+    expect(JSON.stringify(told)).not.toMatch(/Rude to a customer|Late four times|emp /);
     await call('mgr', 'get', '/cases/disciplinary/drafts').expect(403);
     for (const who of ['hr1', 'mgr', 'emp', 'adminB'] as Who[]) await call(who, 'get', `/cases/${ids.r1}`).expect(404);
     expect((await call('emp', 'get', '/my/cases').expect(200)).body.map((c: { id: string }) => c.id)).not.toContain(ids.r1);
@@ -291,6 +302,8 @@ describe('HLP-08 disciplinary show-cause cases', () => {
     expect(JSON.stringify(mine)).not.toContain('A word with the employee');
     await call('mgr', 'get', `/cases/${ids.r2}`).expect(404);
     expect((await call('hr1', 'get', '/cases/disciplinary/drafts').expect(200)).body).toEqual([]);
+    // Decided reports leave the count (the opened one counts as an open case hr1 is on).
+    expect((await (await request(server()).get('/api/v1/workspace/counts').set('Authorization', `Bearer ${token.hr1}`)).body).casesOpen).toBeGreaterThanOrEqual(1);
   });
 
   it('another company never sees these cases', async () => {

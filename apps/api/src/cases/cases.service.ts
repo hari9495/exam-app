@@ -7,6 +7,7 @@ import { FilesService } from '../documents/files.service';
 import { CompanyContext, Tx, audit, companyContext } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
 import { settingFor } from '../people/probation';
+import { holdersOf } from '../time/time-core';
 import { SpeakupService } from '../speakup/speakup.service';
 import { LettersService } from '../documents/letters/letters.service';
 import { caseNumber } from '../speakup/speakup-rules';
@@ -105,7 +106,7 @@ export class CasesService {
     return want.length ? tx.user.findMany({ where: { organizationId: org, id: { in: want } }, select: { id: true, name: true, email: true } }).then((us) => new Map(us.map((u) => [u.id, u.name ?? u.email]))) : Promise.resolve(new Map<string, string>());
   }
 
-  private notify(org: string, to: string[], type: 'helpdesk.case.update' | 'helpdesk.case.task', entityId: string, text: string, link: string) {
+  private notify(org: string, to: string[], type: 'helpdesk.case.update' | 'helpdesk.case.task' | 'helpdesk.case.misconduct_reported', entityId: string, text: string, link: string) {
     return this.notifications
       .notifySystem({ organizationId: org, isSuperAdmin: false }, to, type, { entityType: 'speakup_case', entityId, contextText: text, linkPath: link }, { subject: text, html: `<p>${text.replace(/[<>&"]/g, '')} Open YukthiX to see it.</p>` })
       .catch((e: Error) => this.logger.warn(`case notice: ${e.message}`));
@@ -691,7 +692,7 @@ export class CasesService {
 
   /** A manager reports misconduct by one of their own reports: a draft disciplinary case only HR in scope sees. */
   async fileReport(ctx: TenantContext, dto: MisconductReportDto) {
-    return this.tx(ctx, async (tx, c) => {
+    const out = await this.tx(ctx, async (tx, c) => {
       const org = c.organizationId;
       if (!(await this.myReports(tx, c)).some((u) => u.id === dto.employeeUserId)) throw new ForbiddenException({ statusCode: 403, code: 'CASE_NOT_YOUR_REPORT', message: 'You can report only people who report to you.' });
       const today = todayIst();
@@ -706,8 +707,22 @@ export class CasesService {
         throw e;
       });
       await audit(tx, c, 'cases.misconduct_reported', 'speakup_case', row.id, { number: this.ref(row), employeeUserId: dto.employeeUserId });
-      return { id: row.id, ref: this.ref(row) };
+      // Founder answer 73: HR holding case.disciplinary.raise whose scope covers the employee hears of it (never the
+      // reporter or the employee); the notice names the case number only, not the person or the misconduct.
+      const hr = (await holdersOf(tx, org, RAISE, emp.id, today)).filter((u) => u !== c.userId && u !== dto.employeeUserId);
+      return { id: row.id, ref: this.ref(row), hr, org };
     });
+    if (out.hr.length) await this.notify(out.org, out.hr, 'helpdesk.case.misconduct_reported', out.id, `A manager's misconduct report ${out.ref} is waiting for HR`, '/yx/desk/cases');
+    return { id: out.id, ref: out.ref };
+  }
+
+  /** Founder answer 73: the managers' reports waiting for this HR person (in scope), for the Cases menu count. No audit. */
+  async reportsWaiting(tx: Tx, c: CompanyContext, user: ScopeUser): Promise<number> {
+    const v = await buildViewer(this.prisma, this.tenantPrisma, user, [RAISE]);
+    const rows = await tx.speakupCase.findMany({ where: { organizationId: c.organizationId, kind: 'disciplinary', status: 'draft', NOT: [{ reporterUserId: c.userId ?? NOBODY }, { respondentUserId: c.userId ?? NOBODY }] }, select: { respondentUserId: true }, take: 200 });
+    let n = 0;
+    for (const r of rows) if (await this.inScope(tx, c, v, r.respondentUserId)) n++;
+    return n;
   }
 
   /** What a manager sees of their reports: the number, who, when, and received / opened / declined. Nothing else. */

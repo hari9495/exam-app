@@ -41,6 +41,8 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   // HLP-07/08/09 cases.
   { type: 'helpdesk.case.update', group: 'assignments', label: 'There is an update on a case you are part of' },
   { type: 'helpdesk.case.task', group: 'assignments', label: 'A case needs you to carry out an action (interim relief)' },
+  // HLP-08 founder answer 73: a manager's misconduct report is waiting for HR in scope.
+  { type: 'helpdesk.case.misconduct_reported', group: 'assignments', label: 'A manager reported misconduct by someone in your HR scope' },
   // HLP-12 accident cases.
   { type: 'helpdesk.accident.reported', group: 'assignments', label: 'A workplace accident was reported to the safety team' },
   { type: 'helpdesk.accident.update', group: 'assignments', label: 'An accident case needs you (you handle it, or injury leave was recorded for your team)' },

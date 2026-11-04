@@ -18,6 +18,7 @@ import { JoinersService } from '../lifecycle/joiners.service';
 import { ExitsService } from '../lifecycle/exits.service';
 import { ExitExtrasService } from '../lifecycle/exit-extras.service';
 import { HiringHomeService, type HiringHome } from '../interviewing/hiring-home.service';
+import { CasesService } from '../cases/cases.service';
 import { ApprovalsEngine } from '../workflow/approvals-engine.service';
 import { DeskAccessService, visibleTickets } from '../service-desk/desk-access';
 import { StatutoryFilingsService } from '../payroll/statutory-filings.service';
@@ -449,6 +450,8 @@ export class WorkspaceService {
         if (lists.has('ir'))
           out.casesOpen = (out.casesOpen ?? 0) + (await one(Prisma.sql`SELECT count(*) AS n FROM ir_disputes d WHERE d.organization_id = ${org}::uuid
             AND NOT EXISTS (SELECT 1 FROM ir_dispute_steps s WHERE s.dispute_id = d.id AND s.kind IN ('closed', 'filed'))`));
+        // Founder answer 73: managers' misconduct reports waiting for this HR person (in scope) count on Cases too.
+        if (keys.has('case.disciplinary.raise')) out.casesOpen = (out.casesOpen ?? 0) + (await this.service(CasesService).reportsWaiting(tx, c, user));
         if (lists.has('ethics') || lists.has('escalation')) out.ethicsReports = await open('whistleblower');
       }
       if (keys.has('document.manage')) out.documentsToVerify = await tx.document.count({ where: { organizationId: org, status: 'uploaded' } });
