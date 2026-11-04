@@ -14946,5 +14946,60 @@
       "Screens/Helpdesk/HLP-14 · Write policies with AI"
     ],
     "note": "Negative."
+  },
+  {
+    "id": "MT-HLP-12-10",
+    "area": "Helpdesk · HLP-12 Accident case (4 Nov 2026, founder answers 62 and 65)",
+    "screen": "Time › Leave policies › Add injury leave",
+    "url": "http://localhost:3000/yx/time/setup",
+    "account": "hr-tester@demo-org.test (HR with leave set-up); arjun@demo-org.test (employee). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As arjun type /yx/time/setup.",
+      "2. As hr-tester open Time › Leave policies (if INJURY was added in MT-HLP-12-06, skip to step 5).",
+      "3. Read the alert \"No injury leave type yet\"; reload the page: nothing was created.",
+      "4. Press Add injury leave.",
+      "5. Open Leave types › Injury leave."
+    ],
+    "expected": "Step 1: no access. Step 3: the alert stays until pressed (nothing automatic). Step 4: toast \"Injury leave added\" (5 s); the alert goes. Step 5: code INJURY, unpaid, no notice; HR can change it like any type. Pressing again (two tabs) is refused: \"A leave type with the code INJURY already exists.\"",
+    "stories": [
+      "Screens/Time/TIM-28 · Leave policies"
+    ],
+    "note": "Positive and negative: employee refused, only on the press, duplicate refused."
+  },
+  {
+    "id": "MT-HLP-12-11",
+    "area": "Helpdesk · HLP-12 Accident case (4 Nov 2026, founder answers 62 and 65)",
+    "screen": "Payroll › injury days from approved injury leave",
+    "url": "http://localhost:3000/yx/payroll",
+    "account": "payroll-tester@demo-org.test (payroll inputs); panel@demo-org.test (approves the injury leave from MT-HLP-12-06). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As panel@ approve the injury leave from MT-HLP-12-06 (My approvals).",
+      "2. Next morning (or after Calculate on this month's regular run) as payroll-tester look at the month's injury days (API GET /api/v1/payroll/special-days?month=<this month>, or the run's payslip for that person).",
+      "3. Change that person's injury days to 1 with a note (special days save).",
+      "4. Calculate the run again.",
+      "5. Try the same change on a locked month."
+    ],
+    "expected": "Step 2: the person has injury days equal to the approved injury leave days in the month, source \"leave\", note \"From approved INJURY leave in Time\"; the payslip shows Injury pay (or the ESI line) and the salary is not reduced twice for the same days. Step 3: saved; source \"payroll\". Step 4: the 1 day stays (payroll's value wins). Step 5: refused: \"<month> is locked: record it as a correction for the next payroll.\" A locked month's filled days never change.",
+    "stories": [],
+    "note": "Positive and negative. No payroll screen for special days yet (question 92): use the run's payslip and the API."
+  },
+  {
+    "id": "MT-HLP-08D-08",
+    "area": "Helpdesk · HLP-08 manager's misconduct report (4 Nov 2026, founder answer 73)",
+    "screen": "Cases menu count and HR notice",
+    "url": "http://localhost:3000/yx/desk/report-misconduct",
+    "account": "panel@demo-org.test (Divya, manager); hr-tester@demo-org.test (HR with case.disciplinary.raise); payroll-tester@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As hr-tester note the number on Helpdesk › Cases.",
+      "2. As panel@ report misconduct by one of Divya's reports (Report misconduct).",
+      "3. As hr-tester reload: look at the Cases number and the bell.",
+      "4. As payroll-tester look at the bell and the menu.",
+      "5. As hr-tester open Cases › Reports from managers and decline or open the report; reload."
+    ],
+    "expected": "Step 3: the Cases number is one higher; the bell has \"A manager's misconduct report DSC-00NN is waiting for HR\" (no name, no misconduct text), linking to Cases. Step 4: no notice, no count. Step 5: the count goes down by one (an opened case still counts as an open case you are on).",
+    "stories": [
+      "Screens/Helpdesk/HLP-08 · Cases (case team)"
+    ],
+    "note": "Positive and negative: HR out of scope and other staff are not told."
   }
 ]

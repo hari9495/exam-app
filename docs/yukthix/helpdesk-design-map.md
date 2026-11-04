@@ -1060,6 +1060,18 @@ Built 4 Nov 2026 (`feat/yukthix-hlp-12`) from the founder decisions of 4 Nov 202
 - **Search (answer 46):** `GET desk/accidents/people?q=` (2 to 80 letters, every word in a name, 20 names, own company).
 - **Menu (answer 47):** "Report an accident" under Helpdesk for everyone; the phone Me tab design has the row (the live
   phone app is not built, question 61).
+- **Add injury leave (answer 62):** Time › Leave policies shows "No injury leave type yet" with **Add injury leave** while
+  the company has no leave type with the `accident.injury_leave_type` code (`GET time/setup` → `injuryLeave`). Only a press
+  creates it (`POST time/setup/types/injury-leave`, `leave.settings.manage` for the whole company, never acting for
+  someone, audited): "Injury leave", unpaid with no balance (kind Leave without pay, so it works for everyone without a
+  policy line), no notice; 409 if the code is taken or the setting is not a valid code. HR may change it afterwards.
+- **Payroll's injury days (answer 65):** payroll's special days of kind injury (the IN.EC injury pay) fill from approved
+  leave of the injury leave type in the month, per employment of the legal entity (half days count half): each morning
+  (this month and last) and whenever a regular run is calculated. A filled row is source `leave` and follows the leave
+  (0 days once cancelled; the app may not delete); payroll's edit (`PUT payroll/special-days`) makes it source `payroll`
+  and the app never changes it again; a locked or filed month is never changed. `in_feed_days`: days the Time feed
+  already counts as unpaid (an unpaid injury type), not taken off twice by the calculation (attendance from the feed
+  only). `GET payroll/special-days?month=` lists the month's rows with their source (`payroll.input.manage`, in scope).
 - **Settings (defaults, per company):** `accident.injury_leave_type` (INJURY), `accident.injury_types` (Crush, Cut, Burn, Fall, Sprain or strain, Other),
   `accident.contractor_reminder_days` (1).
 - **Records:** `accident_cases`, `accident_steps` (facts, statement, photo, esic_filed, contractor_filed, ec_set, ec_paid,
@@ -1378,7 +1390,7 @@ surveys). The HLP screens are the founder-approved look, sample-only.
 72. **HLP-08: the employee does not sign the warning letter.** The YukthiX starter has "the employee signs" off, so it is
     issued, not accepted. *Suggested:* keep; a company that wants a signed acknowledgement switches it on in its template
     (Letters' e-sign then asks the employee to sign for receipt).
-73. **HLP-08: HR is not alerted when a manager's report arrives**; it waits under Cases › Reports from managers.
+73. **HLP-08: HR is not alerted when a manager's report arrives** (done 4 Nov 2026: Cases count and a notice to HR in scope); it waits under Cases › Reports from managers.
     *Suggested:* add the count to the Cases menu item and a notice to HR in scope (both need the scope check per HR
     person; next round).
 74. **HLP-08: who counts as the manager's "own report".** Anyone whose reporting line today runs up to the manager
@@ -1399,6 +1411,19 @@ surveys). The HLP screens are the founder-approved look, sample-only.
     dates are recorded on the case. *Built:* refusal with that next step. *Suggested:* keep.
 65. **HLP-12: payroll's injury days** (Payroll inputs › special days, kind injury) are still typed by payroll, not taken
     from the approved injury leave. *Built:* nothing. *Suggested:* fill them from approved injury leave each month.
+
+91. **HLP-12 answer 62: the kind of the injury leave type.** The suggestion said "kind Other", but a type of kind Other
+    has a balance, so nobody could take it until a policy gives days. *Built:* kind Leave without pay (unpaid, no
+    balance), named "Injury leave", no notice; HR can change it. *Suggested:* keep.
+92. **HLP-12 answer 65: payroll does not see the injury days on a screen yet.** The rows are filled and listed by the API
+    (`GET payroll/special-days`) and edited with the existing save; the run's Inputs card has no "special days" line.
+    *Built:* API list, edit, morning fill. *Suggested:* add a "Special days (injury, maternity, suspension)" line to the
+    run's Inputs card, drawn first.
+93. **HLP-12 answer 65: injury leave that is approved after the month is locked** is not added (a locked month never
+    changes). *Built:* nothing for that case. *Suggested:* the next month's run shows it as a correction to review.
+94. **HLP-08 answer 73: who hears of a manager's report.** People holding `case.disciplinary.raise` whose scope covers the
+    employee (up to 25), never the reporter or the employee; if nobody does, nobody is told (the report still waits under
+    Cases). *Built:* that. *Suggested:* fall back to the System Admins when nobody holds the key in scope.
 
 ## 7. Next pages (recommended order, with sizes)
 

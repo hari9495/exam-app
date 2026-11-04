@@ -14,11 +14,14 @@ live page cannot reach yet (the reason is given).
 |---|---|---|---|---|
 | Attendance (TIM-01…04, 07, 10, 12…14, 36, Extra ×2) | 113 | 0 | 19 | 0 |
 | Leave (TIM-17…25) | 48 | 0 | 11 | 0 |
-| Set-up (TIM-26…29, 31, 42) | 35 | 0 | 0 | 0 |
+| Set-up (TIM-26…29, 31, 42) | 36 | 0 | 0 | 0 |
 | Rosters and shifts (TIM-05, 06, 08, 34, 35, 38…41) | 46 | 0 | 10 | 0 |
 | Overtime, periods, reports, timesheets (TIM-09, 11, 15, 16, 30, 37, 43) | 49 | 0 | 3 | 0 |
 | Field force (TIM-32, 33) | 7 | 0 | 9 | 0 |
-| **All 45 design groups (350 sub-pages counted)** | **298** | **0** | **52** | **0** |
+| **All 45 design groups (351 sub-pages counted)** | **299** | **0** | **52** | **0** |
+
+4 Nov 2026 (branch `feat/yukthix-hlp-12`, HLP-12 founder answer 62): TIM-28 gains 1 story (No injury leave type yet · Add
+injury leave), live: Set-up 35 → 36, All 298 → 299 live, 351 sub-pages.
 
 3 Nov 2026 (branch `feat/yukthix-flexi-split`): TIM-06 Flexi and Split made live; recounted by script over the story rows (same rule):
 Rosters 44 → 46 live, 2 → 0 not built; All 291 → 293 live, 4 → 2 not built (TIM-02/Attendance 1 and Set-up 1 left), 52 phone, 0 gaps.
@@ -655,6 +658,7 @@ the three new pages are reachable only by address.
 | Open · Policy drawer | /yx/time/setup → click a policy (or New policy): entitlements (days, carry forward, credited, joiners' share), Applies from, Who gets this policy (remove a future one; Apply to dialog: scope + from, "Choose one." error); New policy without a name → field error |
 | Empty | /yx/time/setup with no policies → "No leave policies yet" + New policy (templates not built) |
 | Loading | /yx/time/setup while loading (also error with Retry, and no access) |
+| InjuryLeaveMissing · No injury leave type yet · Add injury leave | /yx/time/setup while the company has no type with the injury leave code (setting `accident.injury_leave_type`, default INJURY): info alert with **Add injury leave** (HLP-12 answer 62; created only on the press: unpaid, no balance, no notice; toast "Injury leave added"; a refusal shows as a toast) |
 
 ### TIM-29 · Year-end wizard
 
