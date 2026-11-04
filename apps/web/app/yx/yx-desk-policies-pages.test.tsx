@@ -7,6 +7,7 @@ import { apiFetch } from '../../lib/api-client';
 import { useAuth } from '../../lib/auth-context';
 import YxPoliciesPage from './(app)/desk/policies/page';
 import YxPolicyAdminPage from './(app)/desk/policy-admin/page';
+import { WAITING, adminPolicy } from '../../../../packages/yx-ui/src/screens/ops/helpdesk-policy-live-samples';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn(), useParams: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), apiFetchBlob: jest.fn(), API_BASE: '' }));
@@ -88,5 +89,31 @@ describe('Helpdesk › Policy admin (HLP-11 live)', () => {
     route({ 'GET /rbac/me/permissions': [], 'GET /desk/policies': forbidden });
     wrap(<YxPolicyAdminPage />);
     expect(await screen.findByText(/write, publish and track company policies/)).toBeInTheDocument();
+  });
+
+  it('HLP-14: a version with a counsel note is published only with the tick, which is sent', async () => {
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('policy=p1'));
+    const sent: unknown[] = [];
+    const one = adminPolicy({ open: { ...WAITING, counselNote: 'Law check covers general labour law only; IT services rules are not checked yet; review with counsel' } });
+    route({
+      'GET /rbac/me/permissions': ['policy.publish'],
+      'GET /desk/policies': [{ id: 'p1', code: 'POL-01', title: one.title, category: 'Conduct', method: 'click', owner: null, version: 'v4', effectiveOn: '2026-11-01', open: { number: 5, status: 'waiting' }, audience: 10, acknowledged: 4, overdue: 0, dueOn: '2026-11-15' }],
+      'GET /desk/policies/p1': one,
+      'GET /desk/policies/p1/pending': [],
+      'POST /desk/policies/p1/publish': (_p: string, init: RequestInit) => (sent.push(JSON.parse(String(init.body))), { notified: 3 }),
+    });
+    wrap(<YxPolicyAdminPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Publish version' }));
+    const publish = async () => {
+      const b = await screen.findAllByRole('button', { name: 'Publish version' });
+      await userEvent.click(b[b.length - 1]);
+    };
+    await publish();
+    expect(await screen.findByText('Tick that you have read the counsel note.')).toBeInTheDocument();
+    expect(sent).toEqual([]);
+    await userEvent.click(screen.getByRole('checkbox', { name: /I have read this note/ }));
+    await publish();
+    expect(await screen.findByText(`${one.title} v5 published`)).toBeInTheDocument();
+    expect(sent).toEqual([{ version: 4, counselSeen: true }]);
   });
 });

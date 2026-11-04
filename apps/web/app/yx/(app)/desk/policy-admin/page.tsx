@@ -60,7 +60,7 @@ function PolicyAdminPage() {
         onSubmit: async (p, version) => {
           await write(`/policies/${id(p)}/submit`, 'POST', { version });
         },
-        onPublish: (p, version) => write<{ notified: number }>(`/policies/${id(p)}/publish`, 'POST', { version }),
+        onPublish: (p, version, counselSeen) => write<{ notified: number }>(`/policies/${id(p)}/publish`, 'POST', counselSeen === undefined ? { version } : { version, counselSeen }),
         onSendBack: async (p, version, note) => {
           await write(`/policies/${id(p)}/send-back`, 'POST', { version, note });
         },

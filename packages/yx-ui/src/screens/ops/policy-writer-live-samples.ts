@@ -9,6 +9,8 @@ export const WRITER_HOME: WriterHome = {
       { value: 'leave', label: 'Leave' },
       { value: 'work_from_home', label: 'Work from home' },
       { value: 'notice', label: 'Notice and probation' },
+      { value: 'conduct', label: 'Code of conduct' },
+      { value: 'posh', label: 'POSH' },
     ],
     industries: [
       { value: 'fmcg', label: 'Food and consumer goods' },
@@ -78,6 +80,11 @@ export const WRITER_HOME: WriterHome = {
           max: 12,
           default: 6,
         },
+      ],
+      conduct: [],
+      posh: [
+        { key: 'icMembers', label: 'Internal Committee members', min: 1, max: 20, default: 4 },
+        { key: 'womenMembers', label: 'Women on the Internal Committee', min: 0, max: 20, default: 2 },
       ],
     },
     notesMax: 500,
@@ -151,6 +158,10 @@ export const WRITER_DRAFT: WriterDraft = {
   approvedBy: null,
   approvedAt: null,
   approvedByMe: false,
+  counselNote: 'Law check covers general labour law only; Food and consumer goods rules are not checked yet; review with counsel',
+  discardedBy: null,
+  discardedAt: null,
+  discardReason: null,
   target: {
     title: 'Leave policy',
     policyId: null,
@@ -195,5 +206,6 @@ export const liveWriter = (over: Partial<LivePolicyWriter> = {}): LivePolicyWrit
     number: 1,
   }),
   onOpenPolicy: () => undefined,
+  onDiscard: async () => undefined,
   ...over,
 });

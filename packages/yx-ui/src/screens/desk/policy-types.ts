@@ -86,6 +86,8 @@ export interface PolicyVersionView {
   writtenByMe: boolean;
   publishedBy: string | null;
   needsSecondPerson: boolean;
+  /** HLP-14: the counsel note the publisher ticks as seen before publishing (null when none). */
+  counselNote?: string | null;
   sentBackNote: string | null;
   acknowledged: number;
   version: number;

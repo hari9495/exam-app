@@ -12,7 +12,6 @@ import { FieldRow, FormField, useTooEarly } from '../../components/field';
 import { NumberField, TextArea } from '../../components/inputs';
 import { RadioGroup } from '../../components/choice';
 import { MultiSelect, Select } from '../../components/select';
-import { Segment } from '../../components/segment';
 import { Card, PageHeader } from '../../components/shell';
 import { Dialog } from '../../components/overlay';
 import { PageBanner } from '../../components/notify';
@@ -25,7 +24,7 @@ import { Actions, CheckList, Facts, OpsDesk, SourceTag, useSay, type CheckRow } 
 /* ---------------- what the API sends ---------------- */
 
 export type WriterAi = 'on' | 'off' | 'not_set_up';
-export type WriterType = 'leave' | 'work_from_home' | 'notice';
+export type WriterType = 'leave' | 'work_from_home' | 'notice' | 'conduct' | 'posh';
 export interface WriterOption {
   value: string;
   label: string;
@@ -69,7 +68,7 @@ export interface WriterFinding {
 /** GET desk/policy-writer/drafts/:id */
 export interface WriterDraft {
   id: string;
-  status: 'draft' | 'approved';
+  status: 'draft' | 'approved' | 'discarded';
   version: number;
   mode: 'ai' | 'starter';
   type: WriterType;
@@ -89,6 +88,12 @@ export interface WriterDraft {
   approvedBy: string | null;
   approvedAt: string | null;
   approvedByMe: boolean;
+  /** "Law check covers general labour law only; … review with counsel" (null when the industry's tables were checked). */
+  counselNote: string | null;
+  discardedBy: string | null;
+  discardedAt: string | null;
+  /** manual, or expired (the daily clean-up). */
+  discardReason: 'manual' | 'expired' | null;
   target: {
     title: string;
     policyId: string | null;
@@ -133,8 +138,10 @@ export interface LivePolicyWriter {
     number: number;
   }>;
   onOpenPolicy: (policyId: string) => void;
+  /** Answer 106: set an unapproved draft aside (never deleted). */
+  onDiscard: (id: string, version: number) => Promise<void>;
   /** Stories and tests only. */
-  start?: { approveOpen?: boolean; generating?: boolean };
+  start?: { approveOpen?: boolean; generating?: boolean; discardOpen?: boolean };
 }
 
 const day = (iso: string | null) => (iso ? formatDate(new Date(iso)) : '—');
@@ -144,7 +151,7 @@ function Frame({ children, actions }: { children: React.ReactNode; actions?: Rea
     <OpsDesk area="helpdesk" active="Policies">
       <PageHeader
         title="Write policies with AI"
-        description="Settings › Policies. Answer a few questions; we draft the policy and check it against the law for each state. Nothing is published until you approve and a second person publishes it."
+        description="Helpdesk › Write policies with AI. Answer a few questions; we draft the policy and check it against the law for each state. Nothing is published until you approve and a second person publishes it."
         status={<AiBadge />}
         actions={actions}
       />
@@ -286,16 +293,9 @@ function WriterQuestions({ live, home }: { live: LivePolicyWriter; home: WriterH
               title: 'Your company',
               content: (
                 <div className="yx-ops-stack">
-                  <FormField label="Policy to write">
-                    <Segment
-                      label="Policy to write"
-                      value={type}
-                      onChange={(v) => setType(v)}
-                      options={o.types.map((t) => ({
-                        value: t.value,
-                        label: t.label,
-                      }))}
-                    />
+                  <FormField id="pq-type" label="Policy to write">
+                    {/* Five types: a dropdown, not the Segment (2-4 options only). */}
+                    <Select id="pq-type" value={type} onChange={(v) => setType(v as WriterType)} options={o.types} />
                   </FormField>
                   <FormField id="pq-industry" label="Industry" required error={company.errorOf('pq-industry')}>
                     <Select id="pq-industry" value={industry || null} onChange={(v) => setIndustry(String(v))} options={o.industries} />
@@ -325,13 +325,15 @@ function WriterQuestions({ live, home }: { live: LivePolicyWriter; home: WriterH
               title: 'Your choices',
               content: (
                 <div className="yx-ops-stack">
-                  <FieldRow>
-                    {specs.map((s) => (
-                      <FormField key={s.key} id={`pq-${s.key}`} label={s.label} error={choices.errorOf(`pq-${s.key}`)}>
-                        <NumberField id={`pq-${s.key}`} value={values[s.key] ?? null} onChange={(n) => setValues((x) => ({ ...x, [s.key]: n }))} min={s.min} max={s.max} />
-                      </FormField>
-                    ))}
-                  </FieldRow>
+                  {specs.length > 0 && (
+                    <FieldRow>
+                      {specs.map((s) => (
+                        <FormField key={s.key} id={`pq-${s.key}`} label={s.label} error={choices.errorOf(`pq-${s.key}`)}>
+                          <NumberField id={`pq-${s.key}`} value={values[s.key] ?? null} onChange={(n) => setValues((x) => ({ ...x, [s.key]: n }))} min={s.min} max={s.max} />
+                        </FormField>
+                      ))}
+                    </FieldRow>
+                  )}
                   <FormField
                     id="pq-notes"
                     label="Anything else the policy should say"
@@ -356,6 +358,7 @@ function WriterQuestions({ live, home }: { live: LivePolicyWriter; home: WriterH
 function DraftView({ live, d }: { live: LivePolicyWriter; d: WriterDraft }) {
   const [texts, setTexts] = useState<Record<string, string>>(() => Object.fromEntries(d.clauses.filter((c) => c.editable).map((c) => [c.id, c.text])));
   const [open, setOpen] = useState(!!live.start?.approveOpen);
+  const [discardOpen, setDiscardOpen] = useState(!!live.start?.discardOpen);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { toast, say } = useSay();
@@ -363,6 +366,22 @@ function DraftView({ live, d }: { live: LivePolicyWriter; d: WriterDraft }) {
   const changed = d.clauses.filter((c) => c.editable && texts[c.id] !== undefined && texts[c.id] !== c.text);
   const empty = d.clauses.find((c) => c.editable && !(texts[c.id] ?? '').trim());
   const approved = d.status === 'approved';
+  const discarded = d.status === 'discarded';
+  const closed = approved || discarded;
+  const discard = async () => {
+    setBusy('discard');
+    setError(null);
+    try {
+      await live.onDiscard(d.id, d.version);
+      setDiscardOpen(false);
+      toast({ tone: 'success', title: 'Draft discarded', description: 'It stays in the audit trail. Start a new one when you need it.' });
+      live.onOpenDraft(null);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const save = async (extra: Record<string, number> = {}, quiet = false) => {
     if (empty) {
@@ -426,7 +445,7 @@ function DraftView({ live, d }: { live: LivePolicyWriter; d: WriterDraft }) {
           ? 'No law table yet: counsel review recommended'
           : 'Meets the law',
     action:
-      f.status === 'open' && f.fix && !approved ? (
+      f.status === 'open' && f.fix && !closed ? (
         <Actions>
           <Button size="sm" loading={busy === f.id} onClick={() => void run(f.id, () => save({ [f.fix!.key]: f.fix!.value }))}>
             Use the legal minimum
@@ -438,11 +457,16 @@ function DraftView({ live, d }: { live: LivePolicyWriter; d: WriterDraft }) {
   return (
     <Frame
       actions={
-        approved ? (
+        discarded ? (
+          <Button onClick={() => live.onOpenDraft(null)}>Start again</Button>
+        ) : approved ? (
           d.target.policyId && <Button onClick={() => live.onOpenPolicy(d.target.policyId!)}>Open in Policy admin</Button>
         ) : (
           <>
             <Button onClick={() => live.onOpenDraft(null)}>Start again</Button>
+            <Button variant="danger" onClick={() => (setError(null), setDiscardOpen(true))}>
+              Discard
+            </Button>
             <Button loading={busy === 'save'} onClick={() => void run('save', () => save())}>
               Save draft
             </Button>
@@ -464,8 +488,22 @@ function DraftView({ live, d }: { live: LivePolicyWriter; d: WriterDraft }) {
           {d.approvedByMe ? 'Another person with publish rights publishes it; you can’t.' : 'A person with publish rights who did not approve it publishes it.'}
         </InlineAlert>
       )}
+      {discarded && (
+        <InlineAlert
+          tone="info"
+          title={d.discardReason === 'expired' ? `Discarded by the daily clean-up on ${day(d.discardedAt)}` : `Discarded by ${d.discardedBy ?? 'a policy manager'} on ${day(d.discardedAt)}`}
+        >
+          {d.discardReason === 'expired' ? 'Nobody changed it for the days your company set.' : 'It was set aside before approval.'} It stays in the audit trail and can’t be changed. Start again for a
+          new draft.
+        </InlineAlert>
+      )}
+      {d.counselNote && (
+        <InlineAlert tone="warning" title="Ask counsel">
+          {d.counselNote}. {approved ? 'The publisher ticks this as seen before publishing.' : 'It does not stop approval; the publisher ticks it as seen before publishing.'}
+        </InlineAlert>
+      )}
       <div className="yx-ops-split">
-        <Card title={`${d.typeLabel} policy (${approved ? 'approved' : 'draft'})`}>
+        <Card title={`${d.typeLabel} policy (${approved ? 'approved' : discarded ? 'discarded' : 'draft'})`}>
           <div className="yx-ops-stack">
             <p className="yx-ops-muted">
               {d.mode === 'ai' ? 'Drafted by your company’s AI' : 'Started from the YukthiX starter'} from the answers: {d.answers.industry} · {d.answers.states.join(', ')} · {d.answers.headcount}{' '}
@@ -480,7 +518,7 @@ function DraftView({ live, d }: { live: LivePolicyWriter; d: WriterDraft }) {
                 <TextArea
                   value={c.editable ? (texts[c.id] ?? c.text) : c.text}
                   onChange={(v) => setTexts((x) => ({ ...x, [c.id]: v }))}
-                  readOnly={!c.editable || approved}
+                  readOnly={!c.editable || closed}
                   rows={3}
                   maxLength={1500}
                   aria-label={c.title}
@@ -494,8 +532,8 @@ function DraftView({ live, d }: { live: LivePolicyWriter; d: WriterDraft }) {
             <p className="yx-ops-muted">Checked against the law tables valid today for each chosen state. Numbers come from your answers; the AI never sets them.</p>
             <CheckList label="Law-floor findings" items={checks} />
           </Card>
-          {d.openFindings > 0 && !approved && <InlineAlert tone="warning">Approve & load works once every finding is fixed.</InlineAlert>}
-          {d.target.blockedBy && !approved && (
+          {d.openFindings > 0 && !closed && <InlineAlert tone="warning">Approve & load works once every finding is fixed.</InlineAlert>}
+          {d.target.blockedBy && !closed && (
             <InlineAlert tone="warning" title={`${d.target.title} has v${d.target.blockedBy.number} being written`}>
               Finish it or send it back in Policy admin before you approve this draft.
             </InlineAlert>
@@ -530,10 +568,34 @@ function DraftView({ live, d }: { live: LivePolicyWriter; d: WriterDraft }) {
                 label: 'Publishes it',
                 value: 'Another person with publish rights (not you)',
               },
+              ...(d.counselNote ? [{ label: 'Counsel note', value: 'The publisher ticks it as seen', tone: 'warning' as const }] : []),
             ]}
           />
           <p className="yx-ops-muted">Employees see the new version only after it is published in Policies.</p>
         </div>
+      </Dialog>
+      <Dialog
+        open={discardOpen}
+        onOpenChange={setDiscardOpen}
+        size="sm"
+        title="Discard this draft?"
+        description="It stays in the audit trail but can’t be opened to change or approve again."
+        footer={
+          <>
+            <Button onClick={() => setDiscardOpen(false)}>Cancel</Button>
+            <Button variant="danger" loading={busy === 'discard'} onClick={() => void discard()}>
+              Discard draft
+            </Button>
+          </>
+        }
+      >
+        {error ? (
+          <InlineAlert tone="danger">{error}</InlineAlert>
+        ) : (
+          <p className="yx-ops-muted">
+            {d.typeLabel} policy, started {day(d.createdAt)}.
+          </p>
+        )}
       </Dialog>
     </Frame>
   );

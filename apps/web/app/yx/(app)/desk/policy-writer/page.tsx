@@ -36,6 +36,9 @@ function PolicyWriterPage() {
         onSave: (d, input) => write<{ version: number }>(`/policy-writer/drafts/${id(d)}`, 'PUT', input),
         onApprove: (d, version) => write<{ policyId: string; code: string; title: string; number: number }>(`/policy-writer/drafts/${id(d)}/approve`, 'POST', { version }),
         onOpenPolicy: (p) => router.push(`/yx/desk/policy-admin?policy=${id(p)}`),
+        onDiscard: async (d, version) => {
+          await write(`/policy-writer/drafts/${id(d)}/discard`, 'POST', { version });
+        },
       }}
     />
   );

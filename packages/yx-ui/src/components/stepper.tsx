@@ -107,8 +107,9 @@ export function Stepper({
   anyOrder = false,
 }: StepperProps) {
   const reviewTitle = review?.title ?? 'Review';
+  // The default line under the review step repeats nothing: a title that already says "Check your answers" stands alone.
   const steps: StepperStep[] = review
-    ? [...input, { id: REVIEW_ID, title: reviewTitle, description: review.description ?? 'Check your answers', content: null }]
+    ? [...input, { id: REVIEW_ID, title: reviewTitle, description: review.description ?? (reviewTitle === 'Check your answers' ? undefined : 'Check your answers'), content: null }]
     : input;
   const [currentId, setCurrent] = useControllable(current, defaultCurrent ?? steps[0].id, onCurrentChange);
   const index = Math.max(0, steps.findIndex((s) => s.id === currentId));

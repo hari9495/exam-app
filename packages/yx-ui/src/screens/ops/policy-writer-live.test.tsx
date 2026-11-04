@@ -219,3 +219,62 @@ describe('HLP-14 draft (live)', () => {
     expect(screen.getByText('We couldn’t load this draft.')).toBeInTheDocument();
   });
 });
+
+describe('HLP-14 round 2 (live)', () => {
+  it('POSH asks for the committee numbers; Code of conduct asks for none', async () => {
+    const onGenerate = vi.fn().mockResolvedValue({ id: 'd9' });
+    show(<PolicyWriterScreen live={liveWriter({ onGenerate })} />);
+    await ue.click(screen.getByRole('combobox', { name: /Policy to write/ }));
+    await ue.click(await screen.findByRole('option', { name: 'POSH' }));
+    await answerCompany();
+    for (let i = 0; i < 2; i++) await ue.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(screen.getByRole('textbox', { name: /Internal Committee members/ })).toHaveValue('4');
+    expect(screen.queryByRole('textbox', { name: /Earned leave/ })).toBeNull();
+    await ue.click(screen.getByRole('button', { name: 'Continue' }));
+    await ue.click(screen.getByRole('button', { name: 'Draft policies' }));
+    expect(onGenerate.mock.calls[0][0]).toMatchObject({ type: 'posh', icMembers: 4, womenMembers: 2 });
+    expect(onGenerate.mock.calls[0][0]).not.toHaveProperty('earned');
+  });
+
+  it('the description says where the page lives', () => {
+    show(<PolicyWriterScreen live={liveWriter()} />);
+    expect(screen.getByText(/^Helpdesk › Write policies with AI\./)).toBeInTheDocument();
+    expect(screen.queryByText(/Settings › Policies/)).toBeNull();
+  });
+
+  it('the counsel note shows on the draft and in the approve dialog; it does not block approval', async () => {
+    const onApprove = vi.fn().mockResolvedValue({ policyId: 'pol1', code: 'POL-01', title: 'Leave policy', number: 1 });
+    show(<PolicyWriterScreen live={liveWriter({ draftId: 'd1', draft: WRITER_RESOLVED, onApprove })} />);
+    expect(screen.getByText('Ask counsel')).toBeInTheDocument();
+    expect(screen.getByText(/Food and consumer goods rules are not checked yet/)).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Approve & load' }));
+    expect(await screen.findByRole('dialog')).toHaveTextContent('The publisher ticks it as seen');
+    await ue.click(screen.getAllByRole('button', { name: 'Approve & load' }).at(-1)!);
+    expect(onApprove).toHaveBeenCalledWith('d1', 3);
+  });
+
+  it('Discard asks first, then sets the draft aside (toast) and returns to the questions; a refusal stays in the dialog', async () => {
+    const onDiscard = vi.fn().mockResolvedValue(undefined);
+    const onOpenDraft = vi.fn();
+    const { unmount } = show(<PolicyWriterScreen live={liveWriter({ draftId: 'd1', draft: WRITER_DRAFT, onDiscard, onOpenDraft })} />);
+    await ue.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(onDiscard).not.toHaveBeenCalled();
+    await ue.click(await screen.findByRole('button', { name: 'Discard draft' }));
+    expect(onDiscard).toHaveBeenCalledWith('d1', 3);
+    expect(await screen.findByText('Draft discarded')).toBeInTheDocument();
+    expect(onOpenDraft).toHaveBeenCalledWith(null);
+    unmount();
+    const refuse = vi.fn().mockRejectedValue(new Error('This draft was already discarded.'));
+    show(<PolicyWriterScreen live={liveWriter({ draftId: 'd1', draft: WRITER_DRAFT, onDiscard: refuse, start: { discardOpen: true } })} />);
+    await ue.click(screen.getByRole('button', { name: 'Discard draft' }));
+    expect(await screen.findByText('This draft was already discarded.')).toBeInTheDocument();
+  });
+
+  it('a discarded draft is read-only with who or the clean-up', () => {
+    show(<PolicyWriterScreen live={liveWriter({ draftId: 'd1', draft: { ...WRITER_DRAFT, status: 'discarded', discardReason: 'expired', discardedAt: '2026-11-04T03:30:00.000Z' } })} />);
+    expect(screen.getByText('Discarded by the daily clean-up on 4 Nov 2026')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Approve & load' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Use the legal minimum' })).toBeNull();
+    expect(screen.getByRole('textbox', { name: 'How to apply' })).toHaveAttribute('readonly');
+  });
+});

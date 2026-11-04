@@ -149,6 +149,15 @@ function Wizard(props: { onContinue?: (id: string) => boolean | void }) {
 const current = () => screen.getByRole('button', { current: 'step' });
 
 describe('Stepper', () => {
+  // Coordinator walk, 4 Nov 2026 (HLP-14): a review step titled "Check your answers" said it twice.
+  it('a review titled "Check your answers" shows the words once; the default Review keeps its line', () => {
+    const { unmount } = render(<Stepper title="Q" finishLabel="Go" review={{ title: 'Check your answers' }} steps={[{ id: 'a', title: 'A', content: 'A' }]} />);
+    expect(screen.getAllByText('Check your answers')).toHaveLength(1);
+    unmount();
+    render(<Stepper title="Q" finishLabel="Go" review={{}} steps={[{ id: 'a', title: 'A', content: 'A' }]} />);
+    expect(screen.getAllByText('Review').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Check your answers')).toHaveLength(1);
+  });
   // Founder 24 Oct 2026: a visited step with work left says so ("Open · 4 of 6 signed off"), never "Done".
   it('an open step shows its note, not Done, after it was passed', () => {
     render(<Stepper title="Exit" finishLabel="Finish" steps={[{ id: 'a', title: 'Approval', content: 'A' }, { id: 'b', title: 'Clearance', status: 'open', statusNote: '4 of 6 signed off', content: 'B' }, { id: 'c', title: 'Interview', content: 'C' }]} defaultCurrent="c" />);

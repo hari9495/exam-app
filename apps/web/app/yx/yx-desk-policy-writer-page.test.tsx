@@ -27,7 +27,7 @@ function route(table: Record<string, unknown>) {
 }
 const OPT = { types: [{ value: 'leave', label: 'Leave' }], industries: [{ value: 'fmcg', label: 'Food and consumer goods' }], states: [{ value: 'IN-KA', label: 'Karnataka' }], patterns: [{ value: 'office', label: 'Office hours only' }], values: { leave: [{ key: 'earned', label: 'Earned leave days a year', min: 0, max: 60, default: 15 }], work_from_home: [], notice: [] }, notesMax: 500 };
 const HOME = { ai: 'off', latest: null, options: OPT };
-const DRAFT = { id: 'd1', status: 'draft', version: 2, mode: 'starter', type: 'leave', typeLabel: 'Leave', answers: { industry: 'Food and consumer goods', states: ['Karnataka'], headcount: 40, workPattern: 'Office hours only' }, values: { earned: 18 }, clauses: [{ id: 'v-earned', title: 'Earned leave', text: 'Employees earn 18 days of earned leave a year.', source: 'company', editable: false }], findings: [{ id: 'f1', state: 'Karnataka', text: 'Earned leave: 18 days a year meets the Karnataka minimum of 18.', status: 'resolved' }], openFindings: 0, createdBy: 'HR', createdAt: '2026-11-04T05:00:00.000Z', approvedBy: null, approvedAt: null, approvedByMe: false, target: { title: 'Leave policy', policyId: null, code: null, number: 1, blockedBy: null } };
+const DRAFT = { id: 'd1', status: 'draft', version: 2, mode: 'starter', type: 'leave', typeLabel: 'Leave', answers: { industry: 'Food and consumer goods', states: ['Karnataka'], headcount: 40, workPattern: 'Office hours only' }, values: { earned: 18 }, clauses: [{ id: 'v-earned', title: 'Earned leave', text: 'Employees earn 18 days of earned leave a year.', source: 'company', editable: false }], findings: [{ id: 'f1', state: 'Karnataka', text: 'Earned leave: 18 days a year meets the Karnataka minimum of 18.', status: 'resolved' }], openFindings: 0, createdBy: 'HR', createdAt: '2026-11-04T05:00:00.000Z', approvedBy: null, approvedAt: null, approvedByMe: false, counselNote: null, discardedBy: null, discardedAt: null, discardReason: null, target: { title: 'Leave policy', policyId: null, code: null, number: 1, blockedBy: null } };
 const forbidden = Object.assign(new Error('Company policies apply to the whole company.'), { status: 403 });
 
 beforeEach(() => {
@@ -61,6 +61,22 @@ describe('Helpdesk › Write policies with AI (HLP-14 live)', () => {
     expect(await screen.findByText('Leave policy v1 is waiting to be published')).toBeInTheDocument();
     expect(sent).toEqual([{ version: 2 }]);
     expect(push).toHaveBeenCalledWith('/yx/desk/policy-admin?policy=pol1');
+  });
+
+  it('discards a draft: posts the version and goes back to the questions', async () => {
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('draft=d1'));
+    const sent: unknown[] = [];
+    route({
+      'GET /desk/policy-writer': HOME,
+      'GET /desk/policy-writer/drafts/d1': DRAFT,
+      'POST /desk/policy-writer/drafts/d1/discard': (_p: string, init: RequestInit) => (sent.push(JSON.parse(String(init.body))), { status: 'discarded' }),
+    });
+    wrap(<YxPolicyWriterPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Discard' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Discard draft' }));
+    expect(await screen.findByText('Draft discarded')).toBeInTheDocument();
+    expect(sent).toEqual([{ version: 2 }]);
+    expect(replace).toHaveBeenCalledWith('/yx/desk/policy-writer');
   });
 
   it('no policy key: the no-access state', async () => {

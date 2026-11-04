@@ -1,5 +1,5 @@
 // More case screens (M08, P23): HLP-12 accident case workspace with statutory panel, HLP-13 collective dispute / settlement,
-// HLP-14 Settings › Policies › Write with AI.
+// HLP-14 Helpdesk › Write policies with AI.
 import { useState } from 'react';
 import { ArrowLeft, Camera, FileText, Handshake, ShieldAlert } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
@@ -466,7 +466,7 @@ function SampleCollectiveDispute({ demands, stages, members, today, stage = 'con
 }
 
 /* =========================================================================================
- * HLP-14 · Settings › Policies › Write with AI (T3, HR, SA)
+ * HLP-14 · Helpdesk › Write policies with AI (T3, HR, SA)
  * ======================================================================================= */
 
 export interface Clause {
@@ -523,7 +523,7 @@ function SamplePolicyWriter({ step = 'draft', clauses, findings: initial, approv
     <OpsDesk area="helpdesk" active="Policies">
       <PageHeader
         title="Write policies with AI"
-        description="Settings › Policies. Answer a few questions; we draft the policies and check them against the law for each state. Nothing is published until you approve."
+        description="Helpdesk › Write policies with AI. Answer a few questions; we draft the policies and check them against the law for each state. Nothing is published until you approve."
         status={<AiBadge />}
         actions={
           step === 'draft' ? (

@@ -135,6 +135,18 @@ describe('HLP-11 Policy admin (live)', () => {
     expect(await screen.findByText('Code of conduct v5 published')).toBeInTheDocument();
   });
 
+  it('HLP-14 counsel note: Publish too early asks for the tick; then it publishes with it', async () => {
+    const onPublish = vi.fn().mockResolvedValue({ notified: 10 });
+    show(<PolicyAdminScreen live={liveAdmin({ policy: adminPolicy({ open: { ...WAITING, counselNote: 'Law check covers general labour law only; IT services rules are not checked yet; review with counsel' } }), onPublish, start: { dialog: 'publish' } })} />);
+    expect(screen.getByText(/IT services rules are not checked yet/)).toBeInTheDocument();
+    await ue.click(screen.getAllByRole('button', { name: 'Publish version' }).at(-1)!);
+    expect(await screen.findByText('Tick that you have read the counsel note.')).toBeInTheDocument();
+    expect(onPublish).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('checkbox', { name: /I have read this note/ }));
+    await ue.click(screen.getAllByRole('button', { name: 'Publish version' }).at(-1)!);
+    expect(onPublish).toHaveBeenCalledWith('p1', 4, true);
+  });
+
   it('send back needs a note', async () => {
     const onSendBack = vi.fn().mockResolvedValue(undefined);
     show(<PolicyAdminScreen live={liveAdmin({ policy: adminPolicy({ open: WAITING }), onSendBack, start: { dialog: 'send-back' } })} />);

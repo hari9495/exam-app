@@ -308,7 +308,8 @@ export interface LivePolicyAdmin {
   onUpload: (id: string, file: File) => Promise<PolicyFile>;
   onRemoveFile: (id: string, fileId: string) => Promise<void>;
   onSubmit: (id: string, version: number) => Promise<void>;
-  onPublish: (id: string, version: number) => Promise<{ notified: number }>;
+  /** counselSeen: the publisher ticked the version's counsel note (HLP-14). */
+  onPublish: (id: string, version: number, counselSeen?: boolean) => Promise<{ notified: number }>;
   onSendBack: (id: string, version: number, note: string) => Promise<void>;
   onRemind: (id: string, employeeIds?: string[]) => Promise<{ sent: number; skipped: number }>;
   onExport: (id: string) => Promise<void>;
@@ -624,14 +625,17 @@ function PublishDialog({ live, p, open, onOpenChange }: { live: LivePolicyAdmin;
   const v = p.open;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [seen, setSeen] = useState(false);
   const { toast } = useSay();
+  const early = useTooEarly(v?.counselNote && !seen ? [{ fieldId: 'pp-counsel', message: 'Tick that you have read the counsel note.' }] : []);
   if (!v) return null;
   const today = formatDate(new Date());
   const publish = async () => {
+    if (early.stop()) return;
     setBusy(true);
     setError(null);
     try {
-      const r = await live.onPublish(p.id, v.version);
+      const r = v.counselNote ? await live.onPublish(p.id, v.version, seen) : await live.onPublish(p.id, v.version);
       toast({ tone: 'success', title: `${p.title} v${v.number} published`, description: r.notified ? `${r.notified} ${r.notified === 1 ? 'person was' : 'people were'} asked to acknowledge it.` : 'Nobody needed to acknowledge it again.' });
       onOpenChange(false);
     } catch (e) {
@@ -665,6 +669,15 @@ function PublishDialog({ live, p, open, onOpenChange }: { live: LivePolicyAdmin;
             { label: 'Written by', value: v.writtenBy ?? '—' },
           ]}
         />
+        {v.counselNote && (
+          <>
+            <InlineAlert tone="warning" title="Counsel note">
+              {v.counselNote}.
+            </InlineAlert>
+            <Checkbox id="pp-counsel" checked={seen} onChange={setSeen} label="I have read this note; counsel will review the policy" />
+            {early.errorOf('pp-counsel') && <p className="yx-field__error">{early.errorOf('pp-counsel')}</p>}
+          </>
+        )}
         <InlineAlert tone={v.reack ? 'warning' : 'info'}>{v.reack ? `${p.audience} people move to pending and get a reminder. Reminders respect quiet hours.` : 'Nobody is asked again. The new text shows from the effective date.'}</InlineAlert>
       </div>
     </Dialog>
