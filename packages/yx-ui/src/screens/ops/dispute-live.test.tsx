@@ -177,6 +177,24 @@ describe('HLP-13 on the Cases list and in set-up (live)', () => {
     expect(onOpen).toHaveBeenCalledWith('ird-3');
   });
 
+  it('answer 85: with unions in payroll’s register the union is chosen from that list (no free text), and sent by id', async () => {
+    const onRecord = vi.fn().mockResolvedValue({ id: 'ird-4', number: 'IRD-0004' });
+    const unions = [{ id: 'un-kfwu', name: 'Kaveri Foods Workers Union' }];
+    show(<CaseListScreen live={liveCaseList({ today: new Date(2026, 10, 4), dispute: { locations: [{ id: 'hsr', name: 'Hosur plant', unions }], onRecord }, start: { recording: true } })} />);
+    const d = await screen.findByRole('dialog', { name: 'Record a dispute' });
+    expect(within(d).queryByRole('textbox', { name: /Raised by/ })).not.toBeInTheDocument();
+    await ue.type(within(d).getByRole('textbox', { name: /^Dispute/ }), 'Wage revision 2027');
+    await ue.type(within(d).getByRole('textbox', { name: /Workers covered/ }), '180');
+    await ue.type(within(d).getByRole('textbox', { name: /Charter received on/ }), '02 Nov 2026');
+    await ue.click(within(d).getByRole('button', { name: 'Record dispute' }));
+    expect(await within(d).findByText('Choose the union.')).toBeInTheDocument();
+    expect(onRecord).not.toHaveBeenCalled();
+    await ue.click(within(d).getByRole('combobox', { name: /Raised by \(union\)/ }));
+    await ue.click(await screen.findByRole('option', { name: 'Kaveri Foods Workers Union' }));
+    await ue.click(within(d).getByRole('button', { name: 'Record dispute' }));
+    expect(onRecord).toHaveBeenCalledWith({ title: 'Wage revision 2027', unionId: 'un-kfwu', locationId: 'hsr', workersCovered: 180, receivedOn: '2026-11-02' });
+  });
+
   it('without the IR team there is no Record a dispute button', () => {
     show(<CaseListScreen live={liveCaseList()} />);
     expect(screen.queryByRole('button', { name: 'Record a dispute' })).not.toBeInTheDocument();

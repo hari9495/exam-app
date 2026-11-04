@@ -102,6 +102,27 @@ describe('Helpdesk › Collective dispute (HLP-13 live)', () => {
     expect(push).toHaveBeenCalledWith('/yx/desk/disputes/ird9');
   });
 
+  it('answer 85: a location with payroll register unions offers that list; the page sends the union id', async () => {
+    api.mockImplementation(async (path: string, opts?: { method?: string }) => {
+      if (path === '/desk/disputes' && opts?.method === 'POST') return { id: 'ird4', number: 'IRD-0004' };
+      if (path === '/desk/disputes/form') return { locations: [{ id: 'hsr', name: 'Hosur plant', unions: [{ id: 'un1', name: 'Kaveri Foods Workers Union' }] }] };
+      if (path === '/desk/cases/disciplinary/people') throw err(403);
+      return [];
+    });
+    wrap(<YxCasesPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Record a dispute' }));
+    const d = await screen.findByRole('dialog', { name: 'Record a dispute' });
+    await userEvent.type(within(d).getByRole('textbox', { name: /^Dispute/ }), 'Wage revision 2027');
+    await userEvent.click(within(d).getByRole('combobox', { name: /Raised by/ }));
+    await userEvent.click(await screen.findByRole('option', { name: 'Kaveri Foods Workers Union' }));
+    await userEvent.type(within(d).getByRole('textbox', { name: /Workers covered/ }), '180');
+    await userEvent.type(within(d).getByRole('textbox', { name: /Charter received on/ }), '02 Nov 2026');
+    await userEvent.click(within(d).getByRole('button', { name: 'Record dispute' }));
+    const call = api.mock.calls.find(([p, o]) => p === '/desk/disputes' && o?.method === 'POST')!;
+    expect(JSON.parse(call[1].body)).toEqual({ title: 'Wage revision 2027', unionId: 'un1', locationId: 'hsr', workersCovered: 180, receivedOn: '2026-11-02' });
+    expect(push).toHaveBeenCalledWith('/yx/desk/disputes/ird4');
+  });
+
   it('off the IR team: no dispute rows and no Record a dispute button', async () => {
     api.mockImplementation(async (path: string) => {
       if (path === '/desk/disputes/form') throw err(404);

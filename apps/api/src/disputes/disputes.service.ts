@@ -168,8 +168,19 @@ export class DisputesService {
   async form(ctx: TenantContext) {
     return this.tx(ctx, async (tx, c) => {
       await this.member(tx, c);
-      return { locations: await tx.location.findMany({ where: { organizationId: c.organizationId, archivedAt: null }, select: { id: true, name: true }, orderBy: { name: 'asc' } }) };
+      const locs = await tx.location.findMany({ where: { organizationId: c.organizationId, archivedAt: null }, select: { id: true, name: true, legalEntityId: true }, orderBy: { name: 'asc' } });
+      const byEntity = new Map<string, { id: string; name: string }[]>();
+      for (const le of new Set(locs.map((l) => l.legalEntityId).filter((x): x is string => Boolean(x)))) byEntity.set(le, await this.registerUnions(tx, c.organizationId, le));
+      return { locations: locs.map((l) => ({ id: l.id, name: l.name, unions: (l.legalEntityId && byEntity.get(l.legalEntityId)) || [] })) };
     });
+  }
+
+  /**
+   * Answer 85: the unions in payroll's union register (PAY-36) of a legal entity, names only. The pay guard opens to that
+   * one entity for this read; the IR team gets no other payroll access.
+   */
+  private registerUnions(tx: Tx, org: string, legalEntityId: string) {
+    return withPayScope(tx, [legalEntityId], () => tx.union.findMany({ where: { organizationId: org, legalEntityId }, select: { id: true, name: true }, orderBy: { name: 'asc' } }));
   }
 
   async create(ctx: TenantContext, dto: DisputeDto) {
@@ -177,10 +188,22 @@ export class DisputesService {
       const org = c.organizationId;
       await this.member(tx, c);
       if (dto.receivedOn > todayIst()) throw new BadRequestException('The day the charter was received can’t be in the future.');
-      if (!(await tx.location.findFirst({ where: { organizationId: org, id: dto.locationId }, select: { id: true } }))) throw new BadRequestException('Choose one of the company’s locations.');
+      const loc = await tx.location.findFirst({ where: { organizationId: org, id: dto.locationId }, select: { legalEntityId: true } });
+      if (!loc) throw new BadRequestException('Choose one of the company’s locations.');
+      // Answer 85: a union from payroll's register when the entity has any; free text only when it has none.
+      const unions = loc.legalEntityId ? await this.registerUnions(tx, org, loc.legalEntityId) : [];
+      let unionName = dto.unionName ?? '';
+      if (unions.length) {
+        const u = unions.find((x) => x.id === dto.unionId);
+        if (!u) throw new BadRequestException('Choose the union from the list: this location’s legal entity has unions in the payroll union register.');
+        unionName = u.name;
+      } else {
+        if (dto.unionId) throw new BadRequestException('This location’s legal entity has no unions in the payroll union register. Type the union’s name instead.');
+        if (unionName.length < 2) throw new BadRequestException('Name the union or workers’ group.');
+      }
       const last = await tx.irDispute.aggregate({ where: { organizationId: org }, _max: { number: true } });
-      const row = await tx.irDispute.create({ data: { organizationId: org, number: (last._max.number ?? 0) + 1, title: dto.title, unionName: dto.unionName, locationId: dto.locationId, workersCovered: dto.workersCovered, receivedOn: day(dto.receivedOn), createdBy: c.userId! } });
-      await audit(tx, c, 'dispute.recorded', 'ir_dispute', row.id, { number: disputeNumber(row.number), unionName: dto.unionName, workersCovered: dto.workersCovered, receivedOn: dto.receivedOn });
+      const row = await tx.irDispute.create({ data: { organizationId: org, number: (last._max.number ?? 0) + 1, title: dto.title, unionName, unionId: unions.length ? dto.unionId! : null, locationId: dto.locationId, workersCovered: dto.workersCovered, receivedOn: day(dto.receivedOn), createdBy: c.userId! } });
+      await audit(tx, c, 'dispute.recorded', 'ir_dispute', row.id, { number: disputeNumber(row.number), unionName, unionId: row.unionId, workersCovered: dto.workersCovered, receivedOn: dto.receivedOn });
       return { id: row.id, number: disputeNumber(row.number) };
     });
   }
@@ -214,6 +237,7 @@ export class DisputesService {
         number: disputeNumber(row.number),
         title: row.title,
         unionName: row.unionName,
+        unionFromRegister: Boolean(row.unionId),
         location: loc?.name ?? '',
         workersCovered: row.workersCovered,
         receivedOn: iso(row.receivedOn),
@@ -363,7 +387,7 @@ export class DisputesService {
       const number = disputeNumber(l.row.number);
       // Payroll's pay guard opens only for this one write, to the dispute's legal entity.
       const ws = await withPayScope(tx, [loc.legalEntityId], () =>
-        this.special.settlementIn(tx, c, c.userId!, { legalEntityId: loc.legalEntityId!, title: `${l.row.title} (${number})`.slice(0, 200), effectiveFrom: t.effectiveFrom, signedOn: t.signedOn, rates: t.rates, source: `dispute:${l.row.id}` }),
+        this.special.settlementIn(tx, c, c.userId!, { legalEntityId: loc.legalEntityId!, title: `${l.row.title} (${number})`.slice(0, 200), effectiveFrom: t.effectiveFrom, signedOn: t.signedOn, rates: t.rates, ...(l.row.unionId ? { unionId: l.row.unionId } : {}), source: `dispute:${l.row.id}` }),
       );
       await this.step(tx, c, l, 'settlement_approved', { proposalId: s.proposalId, proposedBy: s.proposedBy, wageSettlementId: ws.id }, 'dispute.settlement_approved');
       const payroll = await payHolders(tx, org, 'payroll.special.manage', loc.legalEntityId, todayIst());

@@ -11902,6 +11902,8 @@ model IrDispute {
   number         Int
   title          String   @db.VarChar(200)
   unionName      String   @map("union_name") @db.VarChar(200)
+  /// Answer 85: the union from payroll's register (PAY-36) when the entity has one; null for free text.
+  unionId        String?  @map("union_id") @db.Uuid
   locationId     String   @map("location_id") @db.Uuid
   workersCovered Int      @map("workers_covered")
   receivedOn     DateTime @map("received_on") @db.Date

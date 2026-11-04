@@ -24,9 +24,11 @@ feature not built** (no API) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Helpdesk HLP-01 … 14 | 14 | 246 | 7 | 0 | 4 | 0 | 257 |
+| A. Helpdesk HLP-01 … 14 | 14 | 247 | 7 | 0 | 4 | 0 | 258 |
 | B. Service desk designs | 5 | 55 | 2 | 0 | 0 | 0 | 57 |
-| **All Helpdesk groups (A–B)** | **19** | **301** | **9** | **0** | **4** | **0** | **314** |
+| **All Helpdesk groups (A–B)** | **19** | **302** | **9** | **0** | **4** | **0** | **315** |
+Round 13b (script, 4 Nov 2026, `feat/yukthix-hlp-13`, answer 85): HLP-13 gains 1 story (Record a dispute · union from
+payroll's register), live: 18 stories, all live.
 Round 8e (script, 4 Nov 2026, `feat/yukthix-hlp-07-09`): HLP-08 gains 5 stories (warning letter waiting and issued,
 reports from managers, report misconduct, nobody reports to you), all live.
 Round 12b (script, 4 Nov 2026, `feat/yukthix-hlp-12`, founder answers 43, 45, 46, 47): HLP-12 gains 2 stories
@@ -545,6 +547,7 @@ in /yx/desk/cases for the industrial relations team, the IR team list in /yx/des
 | NonMember · Not a case member (shows Not found) | live | 404 for HR, the System Admin, managers, payroll, other staff and other companies; the page shows Not found |
 | InCases · In the Cases list (IR team) | live | new story: `GET desk/disputes` rows merged into Cases (empty list for anyone off the IR team) |
 | RecordDispute · Record a dispute | live | new story: `GET desk/disputes/form` (404 off the team: no button), `POST desk/disputes`; toast; opens the new dispute |
+| RecordDisputeRegister · Record a dispute · union from payroll’s register | live | new story (answer 85): `GET desk/disputes/form` lists each location’s register unions; the union is chosen from that list (free text refused); the settlement carries it into PAY-37 |
 | AddDemand · Add a demand | live | new story: `POST …/demands` (numbered D1, D2 …) |
 | UpdateDemand · Demand agreed or withdrawn | live | new story: `POST …/demands/:demandId`, Segment Open / Agreed / Withdrawn / Not agreed; agreed needs the words |
 | LogMeeting · Log a meeting (minutes fingerprinted) | live | new story: `POST …/papers` (SHA-256 kept) then `POST …/meetings`; conciliation needs the officer; held on ≤ today; next date after it |
@@ -1111,6 +1114,11 @@ Built 4 Nov 2026 (`feat/yukthix-hlp-13`) from the founder decisions of 4 Nov 202
 - **After:** the record is complete once approved (no more demands, meetings, settlements); "copy filed" once. A dispute
   with no settlement closes as withdrawn or no settlement with a note. Strike / lock-out notices and tribunal stages are
   not built (questions 81, 82).
+- **The union (answer 85, built 4 Nov 2026):** when the location's legal entity has unions in payroll's union register
+  (PAY-36), "Record a dispute" offers that list (names only; the pay guard opens to that one entity for the read) and
+  the API refuses free text, a union of another entity or an unknown one (400). Free text is allowed only when the entity
+  has no register entries. The dispute keeps the union (`ir_disputes.union_id`, migration `202616d0000000_dispute_union`)
+  and the approved settlement's PAY-37 wage settlement carries it (`union_id`).
 - **Settings (defaults, per company):** `dispute.lawyer_may_approve` (no).
 - **Records:** `ir_disputes` and `ir_dispute_steps` (demand, demand_update, meeting, paper, settlement_proposed,
   settlement_sent_back, settlement_approved, filed, closed) are append-only (no UPDATE / DELETE for the app role,

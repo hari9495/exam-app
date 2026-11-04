@@ -26,6 +26,8 @@ const disputeRow = { id: 'ird-2', ref: 'IRD-0002', kind: 'dispute' as const, sub
 const record = { locations: [{ id: 'hsr', name: 'Hosur plant' }, { id: 'maa', name: 'Chennai office' }], onRecord: async () => ({ id: 'ird-3', number: 'IRD-0003' }) };
 export const InCases: S = { name: 'In the Cases list (IR team)', render: () => <CaseListScreen live={liveCaseList({ cases: [disputeRow, ...CASE_LIST_ROWS.slice(0, 3)], dispute: record })} /> };
 export const RecordDispute: S = { name: 'Record a dispute', render: () => <CaseListScreen live={liveCaseList({ cases: [disputeRow], dispute: record, start: { recording: true } })} /> };
+const registered = { ...record, locations: [{ id: 'hsr', name: 'Hosur plant', unions: [{ id: 'un-kfwu', name: 'Kaveri Foods Workers Union' }, { id: 'un-hsr', name: 'Hosur Plant Staff Union' }] }] };
+export const RecordDisputeRegister: S = { name: 'Record a dispute · union from payroll’s register', render: () => <CaseListScreen live={liveCaseList({ cases: [disputeRow], dispute: registered, start: { recording: true } })} /> };
 export const AddDemand: S = { name: 'Add a demand', render: () => <CollectiveDisputeScreen live={liveDispute({ start: { dialog: 'demand' } })} /> };
 export const UpdateDemand: S = { name: 'Demand agreed or withdrawn', render: () => <CollectiveDisputeScreen live={liveDispute({ start: { dialog: 'demand-update', demandId: 'd3' } })} /> };
 export const LogMeeting: S = { name: 'Log a meeting (minutes fingerprinted)', render: () => <CollectiveDisputeScreen live={liveDispute({ start: { tab: 'meetings', dialog: 'meeting' } })} /> };

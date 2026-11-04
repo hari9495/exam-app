@@ -62,6 +62,8 @@ export interface DisputeDetail {
   number: string;
   title: string;
   unionName: string;
+  /** Answer 85: the union is one of payroll's register entries (the settlement carries it). */
+  unionFromRegister?: boolean;
   location: string;
   workersCovered: number;
   receivedOn: string;
@@ -115,7 +117,10 @@ export interface SettlementInput {
 }
 export interface RecordDisputeInput {
   title: string;
-  unionName: string;
+  /** Answer 85: a union from payroll's union register when the location's legal entity has any. */
+  unionId?: string;
+  /** Free text, only when the entity has no register entries. */
+  unionName?: string;
   locationId: string;
   workersCovered: number;
   receivedOn: string;
@@ -746,20 +751,26 @@ export function LiveDisputeCase({ live }: { live: LiveDispute }) {
  * ======================================================================================= */
 
 export interface DisputeRecord {
-  locations: { id: string; name: string }[];
+  /** Each location with the unions in its legal entity's payroll union register (none: the name is typed). */
+  locations: { id: string; name: string; unions?: { id: string; name: string }[] }[];
   onRecord: (input: RecordDisputeInput) => Promise<{ id: string; number: string }>;
 }
 export function RecordDisputeDrawer({ open, onOpenChange, record, today, onRecorded }: { open: boolean; onOpenChange: (o: boolean) => void; record: DisputeRecord; today: Date; onRecorded: (id: string) => void }) {
   const [title, setTitle] = useState('');
   const [unionName, setUnionName] = useState('');
   const [locationId, setLocationId] = useState<string | null>(record.locations.length === 1 ? record.locations[0].id : null);
+  const [unionId, setUnionId] = useState<string | null>(null);
   const [workers, setWorkers] = useState<number | null>(null);
   const [receivedOn, setReceivedOn] = useState<Date | null>(null);
   const { busy, act, alert } = useAct();
+  // Answer 85: the register's unions when the location's legal entity has any; typed only when it has none.
+  const register = record.locations.find((l) => l.id === locationId)?.unions ?? [];
+  const pick = register.length > 0;
   const early = useTooEarly([
     ...(title.trim().length < 3 ? [{ fieldId: 'rd-title', message: 'Name the dispute, like Charter of demands 2026.' }] : []),
-    ...(unionName.trim().length < 2 ? [{ fieldId: 'rd-union', message: 'Name the union or workers’ group.' }] : []),
     ...(!locationId ? [{ fieldId: 'rd-location', message: 'Choose the location.' }] : []),
+    ...(pick && !register.some((u) => u.id === unionId) ? [{ fieldId: 'rd-union', message: 'Choose the union.' }] : []),
+    ...(!pick && unionName.trim().length < 2 ? [{ fieldId: 'rd-union', message: 'Name the union or workers’ group.' }] : []),
     ...(!workers || workers < 1 ? [{ fieldId: 'rd-workers', message: 'Give the number of workers covered.' }] : []),
     ...(!receivedOn ? [{ fieldId: 'rd-received', message: 'Choose the day the charter was received.' }] : []),
   ]);
@@ -768,7 +779,7 @@ export function RecordDisputeDrawer({ open, onOpenChange, record, today, onRecor
     let id = '';
     const ok = await act(
       async () => {
-        id = (await record.onRecord({ title: title.trim(), unionName: unionName.trim(), locationId: locationId!, workersCovered: workers!, receivedOn: isoDay(receivedOn!) })).id;
+        id = (await record.onRecord({ title: title.trim(), ...(pick ? { unionId: unionId! } : { unionName: unionName.trim() }), locationId: locationId!, workersCovered: workers!, receivedOn: isoDay(receivedOn!) })).id;
       },
       'Dispute recorded',
       'Add the demands of the charter next.',
@@ -795,12 +806,18 @@ export function RecordDisputeDrawer({ open, onOpenChange, record, today, onRecor
         <FormField id="rd-title" label="Dispute" required helper="For example: Charter of demands 2026." error={early.errorOf('rd-title')}>
           <TextField value={title} onChange={setTitle} maxLength={200} />
         </FormField>
-        <FormField id="rd-union" label="Raised by (union or workers' group)" required error={early.errorOf('rd-union')}>
-          <TextField value={unionName} onChange={setUnionName} maxLength={200} />
-        </FormField>
         <FormField id="rd-location" label="Location" required helper="Its legal entity pays any settlement arrears." error={early.errorOf('rd-location')}>
-          <Select value={locationId} onChange={setLocationId} options={record.locations.map((l) => ({ value: l.id, label: l.name }))} placeholder="Choose a location" />
+          <Select value={locationId} onChange={(v) => (setLocationId(v), setUnionId(null))} options={record.locations.map((l) => ({ value: l.id, label: l.name }))} placeholder="Choose a location" />
         </FormField>
+        {pick ? (
+          <FormField id="rd-union" label="Raised by (union)" required helper="From payroll's union register for this location's legal entity. The settlement carries it to payroll." error={early.errorOf('rd-union')}>
+            <Select value={unionId} onChange={setUnionId} options={register.map((u) => ({ value: u.id, label: u.name }))} placeholder="Choose the union" />
+          </FormField>
+        ) : (
+          <FormField id="rd-union" label="Raised by (union or workers' group)" required helper="Payroll has no union register for this location's legal entity, so type the name." error={early.errorOf('rd-union')}>
+            <TextField value={unionName} onChange={setUnionName} maxLength={200} />
+          </FormField>
+        )}
         <FieldRow>
           <FormField id="rd-workers" label="Workers covered" required error={early.errorOf('rd-workers')}>
             <NumberField value={workers} onChange={setWorkers} min={1} max={1_000_000} />

@@ -117,7 +117,7 @@ describe('HLP-13 collective disputes', () => {
     await add('adminB', { team: 'ir', userId: users.irB }).expect(201);
     const setup = (await request(server()).get('/api/v1/desk/speakup/setup').set('Authorization', `Bearer ${token.adminA}`).expect(200)).body;
     expect(setup.members).toEqual(expect.arrayContaining([expect.objectContaining({ team: 'ir', userId: users.lawyer, role: 'external' })]));
-    expect((await api('ir1', 'get', '/form').expect(200)).body.locations).toEqual([{ id: ids.hosur, name: 'Hosur plant' }]);
+    expect((await api('ir1', 'get', '/form').expect(200)).body.locations).toEqual([{ id: ids.hosur, name: 'Hosur plant', unions: [] }]);
   });
 
   it('bad input is refused with plain reasons', async () => {
@@ -318,5 +318,40 @@ describe('HLP-13 collective disputes', () => {
     await expect(inA((tx) => tx.irDisputeStep.updateMany({ where: { disputeId: ids.d }, data: { data: {} } }))).rejects.toThrow();
     await expect(inA((tx) => tx.irDisputeStep.deleteMany({ where: { disputeId: ids.d } }))).rejects.toThrow();
     await expect(inA((tx) => tx.irDispute.updateMany({ where: { id: ids.d }, data: { workersCovered: 1 } }))).rejects.toThrow();
+  });
+
+  it('answer 85: with unions in payroll’s register the dispute names one of them, free text is refused, and the settlement carries the union', async () => {
+    const chennai = await inA(async (tx) => {
+      const le = await tx.legalEntity.create({ data: { organizationId: org.A.id, name: 'Kaveri Foods South LLP', shortName: `KS${run.slice(0, 4).toUpperCase()}`, isDefault: false, pan: 'AAPFU0939F' } });
+      const loc = await tx.location.create({ data: { organizationId: org.A.id, legalEntityId: le.id, name: 'Chennai office', code: 'MAA', address: {}, country: 'IN', state: 'IN-TN', timezone: 'Asia/Kolkata' } });
+      return { le: le.id, loc: loc.id };
+    });
+    const union = (le: string, name: string) => request(server()).post('/api/v1/payroll/special/unions').set('Authorization', `Bearer ${token.payAdmin}`).send({ legalEntityId: le, name }).expect(201).then((r) => r.body.id as string);
+    const kfwu = await union(ids.entity, 'Kaveri Foods Workers Union');
+    const south = await union(chennai.le, 'Chennai Food Workers Sangam');
+    // The form lists each location's register unions (names only); a location with none lists none.
+    const form = (await api('ir1', 'get', '/form').expect(200)).body.locations;
+    expect(form).toEqual([
+      { id: chennai.loc, name: 'Chennai office', unions: [{ id: south, name: 'Chennai Food Workers Sangam' }] },
+      { id: ids.hosur, name: 'Hosur plant', unions: [{ id: kfwu, name: 'Kaveri Foods Workers Union' }] },
+    ]);
+    // Negative: free text, a union of another entity, an unknown id, a bad id.
+    const NEW = { title: 'Wage revision 2027', locationId: ids.hosur, workersCovered: 180, receivedOn: shift(-5) };
+    expect((await api('ir1', 'post', '').send({ ...NEW, unionName: 'Some union' }).expect(400)).body.message).toMatch(/Choose the union from the list/);
+    await api('ir1', 'post', '').send({ ...NEW, unionId: south }).expect(400);
+    await api('ir1', 'post', '').send({ ...NEW, unionId: randomUUID() }).expect(400);
+    await api('ir1', 'post', '').send({ ...NEW, unionId: 'kfwu' }).expect(400);
+    await api('ir1', 'post', '').send({ ...NEW, unionId: undefined }).expect(400);
+    // Positive: the register union; its name is the register's.
+    const r = (await api('ir1', 'post', '').send({ ...NEW, unionId: kfwu, unionName: 'typed text is ignored' }).expect(201)).body;
+    expect((await api('ir2', 'get', `/${r.id}`).expect(200)).body).toMatchObject({ unionName: 'Kaveri Foods Workers Union', unionFromRegister: true });
+    const paper = (await api('ir1', 'post', `/${r.id}/papers`).field('title', 'Signed settlement').attach('file', Buffer.from('%PDF-1.4\n%signed-3\n'), 'settlement-3.pdf').expect(201)).body.id;
+    await api('ir1', 'post', `/${r.id}/settlement`).send({ ...SETTLEMENT(), kind: 'bipartite', signedOn: shift(-1), paperId: paper }).expect(201);
+    const ws = (await api('ir2', 'post', `/${r.id}/settlement/approve`).expect(201)).body.wageSettlementId;
+    expect(await asPayroll((tx) => tx.wageSettlement.findFirstOrThrow({ where: { id: ws } }))).toMatchObject({ unionId: kfwu, legalEntityId: ids.entity, title: 'Wage revision 2027 (IRD-0004)' });
+    const pay = (await request(server()).get('/api/v1/payroll/special/unions').query({ legalEntityId: ids.entity }).set('Authorization', `Bearer ${token.payAdmin}`).expect(200)).body;
+    expect(pay.settlements.find((x: { id: string }) => x.id === ws)).toMatchObject({ unionId: kfwu });
+    // The free-text disputes recorded before the register had entries keep no union.
+    expect(await asPayroll((tx) => tx.wageSettlement.count({ where: { organizationId: org.A.id, unionId: null } }))).toBe(2);
   });
 });

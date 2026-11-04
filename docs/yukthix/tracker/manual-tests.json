@@ -14582,6 +14582,25 @@
     "note": "Positive and negative: empty close, closed record is read-only."
   },
   {
+    "id": "MT-HLP-13-06",
+    "area": "Helpdesk · HLP-13 Collective dispute (4 Nov 2026)",
+    "screen": "Cases · Record a dispute · union from payroll’s register (answer 85)",
+    "url": "http://localhost:3000/yx/desk/cases",
+    "account": "payroll-tester@demo-org.test (payroll, holds payroll.special.manage); it-lead@demo-org.test and kiran@demo-org.test (IR team, from MT-HLP-13-01). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As it-lead open Cases › Record a dispute; choose a location whose legal entity has no unions in Payroll › Special pay › Unions. Look at \"Raised by\".",
+      "2. As payroll-tester add the union \"Kaveri Foods Workers Union\" in Payroll › Special pay › Unions for the Hosur plant’s legal entity.",
+      "3. As it-lead open Record a dispute again; choose Hosur plant; fill the rest; press Record dispute without choosing a union.",
+      "4. Choose \"Kaveri Foods Workers Union\"; Record dispute. Record and (as kiran) approve a settlement as in MT-HLP-13-03.",
+      "5. As payroll-tester open Payroll › Special pay › Settlements."
+    ],
+    "expected": "Step 1: a text box \"Raised by (union or workers' group)\" with \"Payroll has no union register for this location's legal entity, so type the name.\" Step 3: a list \"Raised by (union)\" instead of a text box; \"Choose the union.\" and the list takes the focus. Step 4: toast \"Dispute recorded\"; the header names the union. Step 5: the new settlement shows the union Kaveri Foods Workers Union; nothing is posted or paid until payroll posts it.",
+    "stories": [
+      "Screens/Helpdesk/HLP-13 · Collective dispute / settlement"
+    ],
+    "note": "Positive and negative: free text only without a register; with one, the union must be chosen from it (the API refuses free text, another entity’s union or an unknown one)."
+  },
+  {
     "id": "MT-HLP-08D-01",
     "area": "Helpdesk · HLP-08 Disciplinary show-cause cases (4 Nov 2026)",
     "screen": "Cases · open a case",

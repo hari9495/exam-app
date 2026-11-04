@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateIf, ValidateNested } from 'class-validator';
 
 // HLP-13 collective dispute inputs. Whitelisted by the global ValidationPipe (unknown fields are refused).
 
@@ -23,9 +23,15 @@ export class DisputeDto {
   @Text(3, 200)
   title!: string;
 
-  /** The union (or the workers' group) that raised it, as the company knows it. */
+  /** Answer 85: the union from payroll's union register, when the location's legal entity has any (then required). */
+  @IsOptional()
+  @IsUUID()
+  unionId?: string;
+
+  /** Free text, only when the entity has no unions in the register: the union or workers' group, as the company knows it. */
+  @ValidateIf((o: DisputeDto) => !o.unionId)
   @Text(2, 200)
-  unionName!: string;
+  unionName?: string;
 
   @IsUUID()
   locationId!: string;

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   CaseListScreen,
   type CaseListRow,
+  type DisputeRecord,
   type DraftReport,
   type RaiseInput,
   type RecordDisputeInput,
@@ -22,7 +23,7 @@ export default function YxCasesPage() {
   const list = useDesk<CaseListRow[]>("/cases");
   const accidents = useDesk<CaseListRow[]>("/accidents");
   const disputes = useDesk<CaseListRow[]>("/disputes");
-  const disputeForm = useDesk<{ locations: { id: string; name: string }[] }>(
+  const disputeForm = useDesk<{ locations: DisputeRecord["locations"] }>(
     "/disputes/form",
   );
   const people = useDesk<{
