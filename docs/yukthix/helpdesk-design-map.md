@@ -1429,3 +1429,10 @@ automatically. (4) Company side only: no union or worker view in the app.
 so and offers the policy starters. (2) Only the questionnaire answers go to the AI, never employee names or personal data;
 every run is logged. (3) The draft is checked against the law tables and any finding blocks approval until fixed; then one
 policy manager approves and a second publishes through the HLP-10/11 policy library with its version history.
+
+Founder approved, 4 Nov 2026 (questions 61-65 and 71-75, all as suggested): (61) the phone Me tab row goes live with
+the phone app; (62) the Time set-up checklist offers "Add injury leave", unpaid by default (ESI pays the benefit); (63) keep
+the normal leave approval chain; (64) keep: HR cancels the Time leave before new dates; (65) payroll's injury days fill each
+month from approved injury leave; (71) keep: the warning letter is a normal HR record in People › Letters; (72) keep: no
+e-sign unless the company template switches it on; (73) a count on the Cases menu item and a notice to HR in scope when a
+manager's report arrives; (74) keep: the whole team down the reporting line; (75) keep: one warning letter per case.
