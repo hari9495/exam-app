@@ -14806,5 +14806,145 @@
       "Screens/Mobile/Requests and Me tabs"
     ],
     "note": "Positive."
+  },
+  {
+    "id": "MT-HLP-14-01",
+    "area": "Helpdesk · HLP-14 Write policies with AI (4 Nov 2026, founder decisions 1-3)",
+    "screen": "Helpdesk menu · Write policies with AI (who sees it)",
+    "url": "http://localhost:3000/yx/desk/policy-writer",
+    "account": "arjun@demo-org.test (employee), payroll-tester@demo-org.test, then hr-tester@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As arjun open Helpdesk and look for Write policies with AI; then type /yx/desk/policy-writer.",
+      "2. As payroll-tester do the same.",
+      "3. As hr-tester open Helpdesk › Write policies with AI."
+    ],
+    "expected": "Steps 1-2: no menu link; the typed address shows the no-access state (\"HR with policy rights for the whole company write company policies.\"). Step 3: the questionnaire with \"Not legal advice; review by counsel recommended.\" and no page scroll bar.",
+    "stories": [
+      "Screens/Helpdesk/HLP-14 · Write policies with AI"
+    ],
+    "note": "Negative (1, 2) and positive (3)."
+  },
+  {
+    "id": "MT-HLP-14-02",
+    "area": "Helpdesk · HLP-14 Write policies with AI (4 Nov 2026, founder decisions 1-3)",
+    "screen": "Questionnaire · pressed too early and personal data in the notes",
+    "url": "http://localhost:3000/yx/desk/policy-writer",
+    "account": "hr-tester@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Press Continue with nothing chosen.",
+      "2. Choose Leave, industry Food and consumer goods, states Karnataka and Tamil Nadu, headcount 248; Continue; pick Office and plant shifts; Continue.",
+      "3. In \"Anything else the policy should say\" type: Ask Arjun Kulkarni about leave. Continue, then Draft policies.",
+      "4. Go back, change the notes to: Write to hr@demo-org.test. Draft policies.",
+      "5. Type 501 characters in the notes."
+    ],
+    "expected": "Step 1: \"Choose your industry.\", \"Choose at least one state where people work.\" and \"Say how many people work for you.\" under the fields; the first field takes focus. Steps 3 and 4: a red alert (\"Leave people’s names out of the notes…\" / \"Leave emails and phone numbers out of the notes…\"), you stay on the same step and every answer is still there; nothing is drafted. Step 5: the box stops at 500.",
+    "stories": [
+      "Screens/Helpdesk/HLP-14 · Write policies with AI"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-HLP-14-03",
+    "area": "Helpdesk · HLP-14 Write policies with AI (4 Nov 2026, founder decisions 1-3)",
+    "screen": "Draft · the company AI writes the prose; a law finding blocks approval",
+    "url": "http://localhost:3000/yx/desk/policy-writer",
+    "account": "hr-tester@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Clear the notes (or write: Plant staff work Sundays in season.) and press Draft policies; wait for the drafting card.",
+      "2. Read the draft: the source tags, the Law check card.",
+      "3. Press Approve & load.",
+      "4. On \"Karnataka: Earned leave: 15 days a year is below the Karnataka minimum of 18.\" press Use the legal minimum."
+    ],
+    "expected": "Step 1: the drafting card, then the address ends ?draft=… . Step 2: AI clauses tagged \"AI suggestion\" can be edited; the earned / sick / casual / carry lines are \"Company answer\" and read-only; \"The law in Karnataka\" and \"The law in Tamil Nadu\" are \"Law · IN.SE …\"; Law check (1 open). Step 3: a toast \"Fix the open law-check finding first.\" and no dialog. Step 4: toast \"Draft saved\"; the earned leave line now says 18 days; Law check (0 open). (With AI switched off see MT-HLP-14-07.)",
+    "stories": [
+      "Screens/Helpdesk/HLP-14 · Write policies with AI"
+    ],
+    "note": "Negative (3) and positive (1, 2, 4)."
+  },
+  {
+    "id": "MT-HLP-14-04",
+    "area": "Helpdesk · HLP-14 Write policies with AI (4 Nov 2026, founder decisions 1-3)",
+    "screen": "Draft · a number typed into a clause blocks; scripts are only text",
+    "url": "http://localhost:3000/yx/desk/policy-writer",
+    "account": "hr-tester@demo-org.test, on the draft from MT-HLP-14-03. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. In an AI clause add: Apply 3 days ahead. Press Save draft.",
+      "2. Press Approve & load.",
+      "3. Change the clause to: <script>alert(1)</script>Apply early. Press Save draft.",
+      "4. Take the number and the script text out; Save draft."
+    ],
+    "expected": "Step 1: Law check shows \"… states a number. Numbers come from your answers: take it out of this clause.\" and the clause has a red border. Step 2: the toast says to fix it first. Step 3: no alert pops up; the saved text has no script tag. Step 4: Law check (0 open).",
+    "stories": [
+      "Screens/Helpdesk/HLP-14 · Write policies with AI"
+    ],
+    "note": "Negative (1-3) and positive (4)."
+  },
+  {
+    "id": "MT-HLP-14-05",
+    "area": "Helpdesk · HLP-14 Write policies with AI (4 Nov 2026, founder decisions 1-3)",
+    "screen": "Approve & load · the approver cannot publish",
+    "url": "http://localhost:3000/yx/desk/policy-writer",
+    "account": "hr-tester@demo-org.test, on the same draft. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Press Approve & load; read the dialog; press Approve & load in the dialog.",
+      "2. In Policy admin open Leave policy.",
+      "3. Back on /yx/desk/policy-writer?draft=… (the same draft)."
+    ],
+    "expected": "Step 1: the dialog shows Policy \"Leave policy (new)\", New policy version v1, Publishes it \"Another person with publish rights (not you)\"; then a toast \"Leave policy v1 is waiting to be published\" and Policy admin opens. Step 2: v1 Waiting to be published; the banner says another publisher publishes it; no Publish button for hr-tester. Step 3: \"Approved by you on 4 Nov 2026\", every clause read-only, no Approve & load.",
+    "stories": [
+      "Screens/Helpdesk/HLP-14 · Write policies with AI"
+    ],
+    "note": "Positive (1) and negative (2, 3)."
+  },
+  {
+    "id": "MT-HLP-14-06",
+    "area": "Helpdesk · HLP-14 Write policies with AI (4 Nov 2026, founder decisions 1-3)",
+    "screen": "Policy admin · a second person publishes; version history",
+    "url": "http://localhost:3000/yx/desk/policy-writer",
+    "account": "admin-tester@demo-org.test (System Admin, holds policy.publish), then arjun@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As admin-tester open Policy admin › Leave policy and publish v1.",
+      "2. As arjun open Helpdesk › Policies."
+    ],
+    "expected": "Step 1: toast that it was published; v1 shows Published in the version history. Step 2: Leave policy is waiting for Arjun to acknowledge, with the clauses as headings and paragraphs.",
+    "stories": [
+      "Screens/Helpdesk/HLP-14 · Write policies with AI"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HLP-14-07",
+    "area": "Helpdesk · HLP-14 Write policies with AI (4 Nov 2026, founder decisions 1-3)",
+    "screen": "AI off · start from a YukthiX starter",
+    "url": "http://localhost:3000/yx/desk/policy-writer",
+    "account": "admin-tester@demo-org.test for the setting, hr-tester@demo-org.test for the page. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As admin-tester, in Settings › Company policies set \"Policies: write policy drafts with the company’s AI\" to off; save.",
+      "2. As hr-tester open Write policies with AI.",
+      "3. Answer for Work from home (2 days a week) and press Use a starter.",
+      "4. As admin-tester set it back to on."
+    ],
+    "expected": "Step 2: a yellow alert \"AI is switched off for policies\" and the last button reads Use a starter. Step 3: a draft with no \"AI suggestion\" tags; the law check says no law table covers work from home yet (counsel), not a blocking finding. Step 4: the page offers Draft policies again.",
+    "stories": [
+      "Screens/Helpdesk/HLP-14 · Write policies with AI"
+    ],
+    "note": "Positive (company setting with a default)."
+  },
+  {
+    "id": "MT-HLP-14-08",
+    "area": "Helpdesk · HLP-14 Write policies with AI (4 Nov 2026, founder decisions 1-3)",
+    "screen": "Acting for someone else is refused",
+    "url": "http://localhost:3000/yx/desk/policy-writer",
+    "account": "admin-tester@demo-org.test acting for hr-tester@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As admin-tester start acting for hr-tester.",
+      "2. Open Write policies with AI and press Draft policies (or Use a starter) with every answer filled in.",
+      "3. Stop acting."
+    ],
+    "expected": "Step 2: refused (\"Not available while acting for someone else\"); nothing is drafted.",
+    "stories": [
+      "Screens/Helpdesk/HLP-14 · Write policies with AI"
+    ],
+    "note": "Negative."
   }
 ]

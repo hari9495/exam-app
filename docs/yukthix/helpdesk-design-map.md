@@ -24,11 +24,13 @@ feature not built** (no API) · **phone view, mobile app not built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Helpdesk HLP-01 … 14 | 14 | 247 | 7 | 0 | 4 | 0 | 258 |
+| A. Helpdesk HLP-01 … 14 | 14 | 252 | 7 | 0 | 0 | 0 | 259 |
 | B. Service desk designs | 5 | 55 | 2 | 0 | 0 | 0 | 57 |
-| **All Helpdesk groups (A–B)** | **19** | **302** | **9** | **0** | **4** | **0** | **315** |
+| **All Helpdesk groups (A–B)** | **19** | **307** | **9** | **0** | **0** | **0** | **316** |
 Round 13b (script, 4 Nov 2026, `feat/yukthix-hlp-13`, answer 85): HLP-13 gains 1 story (Record a dispute · union from
 payroll's register), live: 18 stories, all live.
+Round 14 recount (script, 4 Nov 2026, `feat/yukthix-hlp-14`): HLP-14 has 5 stories (the 4 approved plus 1 drawn: AI off
+with the starters), all live. No Helpdesk design is left as design only.
 Round 8e (script, 4 Nov 2026, `feat/yukthix-hlp-07-09`): HLP-08 gains 5 stories (warning letter waiting and issued,
 reports from managers, report misconduct, nobody reports to you), all live.
 Round 12b (script, 4 Nov 2026, `feat/yukthix-hlp-12`, founder answers 43, 45, 46, 47): HLP-12 gains 2 stories
@@ -118,6 +120,7 @@ groups them).
 | /yx/desk/reports | `SlaDashboardScreen` with `live` (HLP-05; menu Helpdesk › SLAs); the report tabs (desk numbers, KPIs, library, self-service, my reports, walls, customers, NPS surveys) inside it | HLP-05 SLA dashboard | `GET desk/reports/sla` (new, `desk.report.view`), `GET desk/reports/*` (`desk.report.view`), custom reports, schedules, wallboards, KPI targets (`desk.report.manage`), `GET/POST desk/surveys` (`desk.survey.manage`), Reassign `POST desk/tickets/:id/assign` (`desk.ticket.assign` to show it); no-access state without either | live (HLP-05) |
 | /yx/desk/policies (?policy=) | the designed `PolicyLibraryScreen` (HLP-10) with `live` | HLP-10 | `GET desk/my/policies`, `/:id`, `/:id/files/:fileId`, `POST …/versions/:versionId/code`, `POST …/acknowledge` (implicit: one's own policies; 403 while acting for someone else) | live |
 | /yx/desk/policy-admin (?policy=) | the designed `PolicyAdminScreen` (HLP-11) with `live` | HLP-11 | `GET desk/policies`, `/:id`, `/:id/pending`, `/:id/files/:fileId` (`policy.manage` or `policy.publish`), `GET /options`, `POST`, `PATCH /:id`, `PUT /:id/draft`, `POST /:id/draft/files`, `/remove`, `/submit`, `/remind`, `GET /:id/evidence` (`policy.manage`), `POST /:id/publish`, `/send-back` (`policy.publish`); every route needs the key for the whole company | live |
+| /yx/desk/policy-writer (?draft=) | the designed `PolicyWriterScreen` (HLP-14) with `live` | HLP-14 | `GET desk/policy-writer`, `POST /drafts` (throttled; the company's AI or a starter), `GET/PUT /drafts/:id`, `POST /drafts/:id/approve` (`policy.manage` for the whole company; writes 403 while acting for someone else; another company's draft 404); publishing stays `POST desk/policies/:id/publish` (`policy.publish`, never the approver) | live |
 | /yx/desk/speakup | the designed `SpeakUpScreen` (HLP-06) with `live` | HLP-06 | `GET desk/speakup/form`, `POST desk/speakup/reports`, `/reports/:id/files` (implicit: one's own named report); anonymous: `POST desk/speakup/public/reports` (no login) | live |
 | /yx/speakup/[org]/check | the designed `CheckReportScreen` (HLP-06) with `live` | HLP-06 | `GET desk/speakup/public/company/:org`, `POST desk/speakup/public/check`, `/check/reply`, `/check/files` (no login; the reply code; throttled and locked after 5 wrong codes an hour) | live |
 | /yx/desk/speakup-setup | `SpeakUpSetupScreen` (HLP-06 set-up stories) | HLP-06 | `GET desk/speakup/setup`, `POST /setup/members`, `/setup/members/:id/remove` (`speakup.setup.manage`); case officers: `GET desk/speakup/cases`, `/cases/:id`, `POST /cases/:id/messages` (being routed is the access; 404 otherwise; every look audited) | live |
@@ -162,8 +165,8 @@ And under `notLive`: designed, with no live page rendering them. `ops: TicketWor
 doing the same job with a B screen (section 5). (HLP-06 `SpeakUpScreen` and `CheckReportScreen` left the list: live) (HLP-07 `MyCasesScreen`,
 HLP-08 `CaseListScreen` and `CaseWorkspaceScreen`, HLP-09 `EthicsDeskScreen` left the list: live; `ops: LoadingCase` and
 `ops: ErrorCase` stay: the live workspace draws its own loading and error in the same look) (HLP-10 `PolicyLibraryScreen` and HLP-11 `PolicyAdminScreen` left the list: live)
-(HLP-12 `AccidentWorkspaceScreen` and `ReportAccidentScreen` left the list: live) (HLP-13 `CollectiveDisputeScreen` left the list: live) `ops:
-PolicyWriterScreen` (HLP-14) and `ops: PoshCaseScreen` (no HLP story; the POSH case) have no server. Related phone and
+(HLP-12 `AccidentWorkspaceScreen` and `ReportAccidentScreen` left the list: live) (HLP-13 `CollectiveDisputeScreen` left the list: live) (HLP-14
+`PolicyWriterScreen` left the list: live) `ops: PoshCaseScreen` (no HLP story; the POSH case) has no server. Related phone and
 portal designs also wait: `settings: MobileHelpTicketsScreen`, `MobilePolicyAckScreen`, `MobileSpeakUpScreen`,
 `portals: AnonymousCaseScreen`, `ExternalPartyCaseScreen`, `HelpEditorScreen`.
 
@@ -177,7 +180,7 @@ portal designs also wait: `settings: MobileHelpTicketsScreen`, `MobilePolicyAckS
 | Domestic inquiry and penalties (after a disciplinary show-cause) | inquiry officer, hearings, findings, second show-cause on the penalty, penalties beyond a warning | L (questions 51, 52; waits for counsel) |
 | HLP-12 Accident case workspace (8) | accident reports, ESIC report and EC claim clocks, contract workers, manager view | L |
 | ~~HLP-13 Collective dispute / settlement~~ (done, round 13) | dispute record, conciliation, signed settlement sent to payroll arrears | L |
-| HLP-14 Write policies with AI (4) | questionnaire, AI draft, law findings that block approval, approve and load into HLP-10 | L (after HLP-10) |
+| ~~HLP-14 Write policies with AI~~ (done, round 14) | questionnaire, AI draft, law findings that block approval, approve and load into HLP-10 | L |
 
 ## 4. Design groups, story by story
 
@@ -563,14 +566,15 @@ in /yx/desk/cases for the industrial relations team, the IR team list in /yx/des
 
 #### HLP-14 · Write policies with AI
 
-No server (needs HLP-10's policies first).
+Live page: /yx/desk/policy-writer (?draft=), menu Helpdesk › Write policies with AI (`policy.manage`). Rules in 4i.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Questionnaire · Questionnaire | design only, feature not built | no policy writer API |
-| Generating · Drafting (loading) | design only, feature not built | |
-| DraftBlocked · Draft · law finding blocks approval | design only, feature not built | |
-| ApproveLoad · Findings resolved · Approve & load | design only, feature not built | |
+| Questionnaire · Questionnaire | live | `GET desk/policy-writer` (the choices, AI state, the latest open draft); Policy to write is a Segment (Leave, Work from home, Notice and probation); the numbers of the chosen type and optional notes (500, no names, emails or phones) |
+| Generating · Drafting (loading) | live | `POST desk/policy-writer/drafts` (the company's AI through `AiInvocationService`: provider and credit limit; throttled); a refusal returns to the same step with every answer |
+| DraftBlocked · Draft · law finding blocks approval | live | `GET/PUT desk/policy-writer/drafts/:id`: rule and law lines read-only (from the numbers and the dated tables), prose editable; "Use the legal minimum" saves the fix; a number typed into prose is a finding too; Approve & load says what to fix (toast) |
+| ApproveLoad · Findings resolved · Approve & load | live | `POST …/:id/approve`: the text becomes the next version of the HLP-10/11 policy (made if none), waiting; a second person publishes it in Policy admin (the approver refused: 403 and a database CHECK); toast, then Policy admin opens. Live dialog: policy, new version, who publishes (Time leave values do not change, question 102) |
+| AiOff · AI off · start from a YukthiX starter | live | new story: the company setting `policy.ai_writer` off, or no AI provider: the page says so and Use a starter drafts the same way without the AI |
 
 ### B. Service desk designs
 
@@ -1125,6 +1129,41 @@ Built 4 Nov 2026 (`feat/yukthix-hlp-13`) from the founder decisions of 4 Nov 202
   forced RLS, support sessions excluded). Migration `202616a0000000_collective_disputes`.
 - **Menu:** Cases shows for anyone on a speak-up list (the IR team included); open disputes join the IR team's count.
 
+## 4i. HLP-14 rules (write policies with AI)
+Built 4 Nov 2026 (`feat/yukthix-hlp-14`) from the founder decisions of 4 Nov 2026 (end of this file).
+- **Who:** `policy.manage` for the whole company drafts, edits and approves (a legal-entity grant: 403, as HLP-11);
+  publishing stays in HLP-11 (`policy.publish`). Other staff 403; another company's draft 404 (RLS); every write 403
+  while acting for someone else.
+- **AI (decision 1):** the company's own AI through `AiInvocationService` (its provider, its AI credit limit; usage
+  recorded as `policy_writer`). Company setting `policy.ai_writer` (default on); off, or no provider set up, the page
+  says so and "Use a starter" drafts the same way from YukthiX starter text, with no AI call. A failing AI is a 503 with
+  "try again or use a starter"; nothing is saved.
+- **What reaches the AI (decision 2):** only the answers: policy type, industry, states, headcount, work pattern, the
+  topics of the rule lines (not the numbers) and the optional notes. Notes are capped at 500, cleaned to plain text, and
+  refused when they hold an email, a phone number or the full name of one of the company's employees. The prompt is
+  fixed instructions followed by the answers as JSON in one `<answers>` block (angle brackets removed from the notes, so
+  the block cannot be closed or faked); the instructions say the block is data, never instructions. Every run is audited
+  (`policy.ai_draft_generated` / `policy.ai_draft_failed`: who, when, type, mode, provider, outcome; not the prompt or
+  the notes). Route throttle `STRICT_AI_GENERATE_THROTTLE`.
+- **AI output is untrusted:** at most 10 clauses, titles 120 and text 1500 characters, cleaned to plain text with the
+  policy library's sanitiser (no tags, scripts, links or control characters); empty ones dropped. The policy text is
+  built from escaped text (headings and paragraphs) and cleaned again. Edits are cleaned the same way.
+- **Law check (decision 3):** the rule lines (earned, sick, casual, carry forward; work-from-home days; notice days,
+  probation months) come only from the answers. Leave is checked against `IN.SE` per chosen state valid today (a group
+  such as Tamil Nadu's casual and sick counts together; carry forward against the state's minimum) and quotes `IN.LEAVE`
+  maternity. Any number in a prose clause is a finding (numbers come from the answers). Open findings block approval
+  (409 `POLICY_LAW_FINDINGS`, checked again on approve); "Use the legal minimum" raises the number. A state with no
+  table, and the other two policy types, show "unchecked: ask counsel" and do not block (question 104). Acknowledging a
+  finding (in the design) is not built: only fixing clears it (question 103).
+- **Approve and publish:** one policy manager approves the draft (version check; once only). The text becomes the next
+  version of the policy with the type's title (Leave policy, Work from home policy, Notice period and probation policy),
+  made if none (v1), or v2+ with a change summary; a version already being written with text blocks it (409). The
+  version is sent (waiting) with `needs_second_person` always on and `ai_approved_by` = the approver; the approver is
+  refused on publish (403) even with the company's second-person setting off, and the database CHECK
+  `policy_versions_ai_approver_check` refuses it too. Publishers get the usual notice; the version history is HLP-10/11's.
+- **Records:** `policy_ai_drafts` (forced RLS; no DELETE for the app role; an approved draft never changes, trigger).
+  Migration `202616c0000000_policy_ai_drafts`.
+
 ## 5. Two designs for one job
 
 HLP-02 … 05 (founder-approved Helpdesk designs, `screens/ops/helpdesk.tsx`) and the Service desk designs (Phase 3b-1,
@@ -1311,6 +1350,26 @@ surveys). The HLP screens are the founder-approved look, sample-only.
     the 10 days are from the rules, which may differ by state. *Suggested:* counsel confirms; per-state rule sets later.
 88. **HLP-13: who in payroll hears about an approved settlement.** *Built:* every `payroll.special.manage` holder of the
     legal entity gets a notice (and the recorder). *Suggested:* keep.
+101. **HLP-14: which policies the writer drafts.** *Built:* three types: Leave, Work from home, Notice and probation, one
+    policy per run (the design's "8 policies and the handbook" is not built). *Suggested:* add Code of conduct and POSH
+    next (POSH can quote `IN.POSH`), then others one at a time.
+102. **HLP-14: loading rule values into Time.** The design dialog says the values go to the leave policy with an impact
+    preview. *Built:* text only: the approved text becomes a policy version; Time's leave policies do not change.
+    *Suggested:* keep; a later "apply to Time" step with the impact preview, after counsel.
+103. **HLP-14: acknowledging a law finding** (the design's Acknowledge button). *Built:* not offered: a finding clears
+    only when fixed (decision 3). *Suggested:* keep.
+104. **HLP-14: states with no law table.** Only Karnataka and Tamil Nadu have `IN.SE` leave tables today; other states
+    (and the work-from-home and notice types) show "unchecked: ask counsel" and do not block. *Suggested:* keep; load
+    Maharashtra, Telangana and Delhi tables next (reviewed, with the verify flag).
+105. **HLP-14: numbers in prose.** *Built:* any digit in an AI or starter clause blocks approval until taken out, so the
+    AI can never state a lower number than the answers. *Suggested:* keep.
+106. **HLP-14: drafts that are never approved** are kept (no delete); the page offers the latest one. *Suggested:* keep;
+    add a Discard button and remove drafts untouched for 90 days.
+107. **HLP-14: the AI default.** `policy.ai_writer` is on by default, so a company with no key of its own uses the
+    platform AI key when one is set. *Suggested:* keep on (only questionnaire answers go out); a company switches it off
+    in Settings › Company policies.
+108. **HLP-14: probation months in the questionnaire** start at 6, not from the company's `probation.default_months`.
+    *Suggested:* prefill from the company setting.
 
 71. **HLP-08: a warning letter shows in People › Letters** (the HR register) to HR who hold `letter.issue` for the
     employee, not only to the case's HR members, because Letters keeps every issued letter in one register. The letter
@@ -1358,7 +1417,7 @@ surveys). The HLP screens are the founder-approved look, sample-only.
 | 11 | ~~HLP-08 + HLP-07 + HLP-09 Cases, my cases, ethics desk~~ (done, rounds 7-9; disciplinary cases left, question 34) | XL | no server; one case engine for grievance, disciplinary and whistleblower cases, members, conflict check, clocks; standing orders and show-cause decisions |
 | 12 | ~~HLP-12 Accident case~~ (done, round 12; inspector notice left, question 44) | L | no server; ESIC accident report, EC Act claim interest, Factories Act / OSH Code notices |
 | 13 | ~~HLP-13 Collective dispute~~ (done, round 13; strike notices and tribunal stages left, questions 81, 82) | L | no server; Industrial Disputes Act conciliation and settlement to payroll arrears |
-| 14 | HLP-14 Write policies with AI | L | no server; after HLP-10; law findings need a reviewed rule set |
+| 14 | ~~HLP-14 Write policies with AI~~ (done, round 14; more policy types and state tables, questions 101, 104) | L | no server; after HLP-10; law findings need a reviewed rule set |
 
 ## Appendix: the count script
 
