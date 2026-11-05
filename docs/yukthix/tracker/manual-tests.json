@@ -14003,10 +14003,11 @@
     "url": "http://localhost:3000/yx/desk/speakup-setup",
     "account": "admin@demo-org.test (System Admin; holds speakup.setup.manage); hr@demo-org.test (HR Admin). Browser window 1278 x 635, sidebar open.",
     "steps": [
+      "0. The demo set-up (5 Nov 2026) already filled these lists. As admin, first press Remove on it-lead@, kiran@ (Ethics), plant-hr@ (Internal Committee) and compliance@ (Escalation), so the lists start empty.",
       "1. As hr@ open Helpdesk: look for Speak-up set-up, then type /yx/desk/speakup-setup.",
       "2. As admin open Helpdesk › Speak-up set-up.",
       "3. Ethics team › Add, press Add with nobody chosen.",
-      "4. Add it-lead@ and kiran@ to the Ethics team; add plant-hr@ to the Internal Committee as Presiding officer; add murugan@ to Escalation.",
+      "4. Add it-lead@ and kiran@ to the Ethics team; add plant-hr@ to the Internal Committee as Presiding officer; add compliance@ to Escalation.",
       "5. Add another Presiding officer to the Internal Committee."
     ],
     "expected": "Step 1: no menu entry; the page shows \"You don’t have access to the speak-up set-up\" (HR does not choose officers). Step 2: four lists, Grievance Redressal Committee empty (\"Nobody yet.\"). Step 3: \"Choose who to add.\" and the person field takes the focus. Step 4: a toast for each; the lists show them with their roles. Step 5: refused: \"The Internal Committee already has a presiding officer. Remove them first.\" Audit has speakup.team_member_added.",
@@ -14059,7 +14060,7 @@
       "2. Copy the reply code.",
       "3. Reload the page."
     ],
-    "expected": "Step 1: the page says the report is sent without the sign-in; toast \"WB-NNNN is filed\"; the reply code shows with Copy, the warning that it can’t be recovered and the \"Check my report\" link. murugan@ (escalation) gets a notice; it-lead@ does not, and gets 404 for it. Step 3: the code is gone for good (shown once). Audit speakup.filed for it has no actor.",
+    "expected": "Step 1: the page says the report is sent without the sign-in; toast \"WB-NNNN is filed\"; the reply code shows with Copy, the warning that it can’t be recovered and the \"Check my report\" link. compliance@ (escalation) gets a notice; it-lead@ does not, and gets 404 for it. Step 3: the code is gone for good (shown once). Audit speakup.filed for it has no actor.",
     "stories": [
       "Screens/Helpdesk/HLP-06 · Speak-up filing"
     ],
@@ -14075,9 +14076,9 @@
       "1. Open the address, type ABCD-EFGH-JKLM-NPQR, press Open my report.",
       "2. Type the code from MT-HLP-06-04 in small letters, press Open my report.",
       "3. Press Send reply with nothing written, then write a reply with a file and send.",
-      "4. As murugan@ (developer call POST /desk/speakup/cases/<id>/messages) send \"Please share the GRN numbers\", then open the report again with the code."
+      "4. As compliance@ (developer call POST /desk/speakup/cases/<id>/messages) send \"Please share the GRN numbers\", then open the report again with the code."
     ],
-    "expected": "Step 1: \"That code doesn’t match a report… You have 4 tries left in this hour.\" Step 2: \"Report WB-NNNN\", status Received, \"No messages yet.\" Step 3: \"Write your reply first.\" then toast \"Reply sent…\"; murugan@ gets a notice. Step 4: the message shows from \"Case team\" (no officer name).",
+    "expected": "Step 1: \"That code doesn’t match a report… You have 4 tries left in this hour.\" Step 2: \"Report WB-NNNN\", status Received, \"No messages yet.\" Step 3: \"Write your reply first.\" then toast \"Reply sent…\"; compliance@ gets a notice. Step 4: the message shows from \"Case team\" (no officer name).",
     "stories": [
       "Screens/Helpdesk/HLP-06 · Speak-up filing"
     ],
@@ -14203,7 +14204,7 @@
     "area": "Helpdesk · HLP-07/08/09 Cases (4 Nov 2026)",
     "screen": "Cases",
     "url": "http://localhost:3000/yx/desk/cases",
-    "account": "arjun@demo-org.test (employee) files; it-lead@ (ethics officer); hr@ (HR Admin); admin@ (System Admin). Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (it-lead@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, murugan@ on Escalation).",
+    "account": "arjun@demo-org.test (employee) files; it-lead@ (ethics officer); hr@ (HR Admin); admin@ (System Admin). Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (it-lead@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, compliance@ on Escalation).",
     "steps": [
       "1. As arjun@ open Helpdesk › Speak up and file a named fraud or ethics concern: \"A vendor paid for the purchase manager’s holiday in August.\"",
       "2. As it-lead@ open Helpdesk › Cases.",
@@ -14221,7 +14222,7 @@
     "area": "Helpdesk · HLP-07/08/09 Cases (4 Nov 2026)",
     "screen": "Case · messages",
     "url": "http://localhost:3000/yx/desk/cases/[id]",
-    "account": "it-lead@; arjun@. Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (it-lead@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, murugan@ on Escalation).",
+    "account": "it-lead@; arjun@. Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (it-lead@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, compliance@ on Escalation).",
     "steps": [
       "1. As it-lead@ open the case from MT-HLP-07-01 › Messages; press Send message with nothing written.",
       "2. Write \"Thank you. We are looking into it.\" and send.",
@@ -14240,7 +14241,7 @@
     "area": "Helpdesk · HLP-07/08/09 Cases (4 Nov 2026)",
     "screen": "Case · notice",
     "url": "http://localhost:3000/yx/desk/cases/[id]",
-    "account": "it-lead@; arjun@; it-agent@ (the respondent). Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (it-lead@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, murugan@ on Escalation).",
+    "account": "it-lead@; arjun@; it-agent@ (the respondent). Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (it-lead@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, compliance@ on Escalation).",
     "steps": [
       "1. As it-lead@ on the case › Notice and reply › Send notice and copy; press Send notice with nobody chosen.",
       "2. Choose arjun@ as respondent and send.",
@@ -14258,7 +14259,7 @@
     "area": "Helpdesk · HLP-07/08/09 Cases (4 Nov 2026)",
     "screen": "My cases · respondent",
     "url": "http://localhost:3000/yx/desk/my-cases",
-    "account": "it-agent@; it-lead@; kiran@. Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (it-lead@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, murugan@ on Escalation).",
+    "account": "it-agent@; it-lead@; kiran@. Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (it-lead@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, compliance@ on Escalation).",
     "steps": [
       "1. As it-agent@ open Helpdesk › My cases.",
       "2. Open the case; press Send reply with nothing written.",
@@ -14278,7 +14279,7 @@
     "area": "Helpdesk · HLP-07/08/09 Cases (4 Nov 2026)",
     "screen": "Case · outcome by two people",
     "url": "http://localhost:3000/yx/desk/cases/[id]",
-    "account": "it-lead@; kiran@; arjun@. Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (it-lead@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, murugan@ on Escalation).",
+    "account": "it-lead@; kiran@; arjun@. Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (it-lead@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, compliance@ on Escalation).",
     "steps": [
       "1. As it-lead@ press Propose outcome; press Propose outcome with nothing filled.",
       "2. Fill Proved in part, action \"Written warning\", reasons, \"What the reporter is told\", and propose.",
@@ -14298,7 +14299,7 @@
     "area": "Helpdesk · HLP-07/08/09 Cases (4 Nov 2026)",
     "screen": "POSH case · IC report",
     "url": "http://localhost:3000/yx/desk/cases/[id]",
-    "account": "compliance@ files; plant-hr@ (presiding), payroll@ and finance@ (add both to the Internal Committee first); it-agent@ respondent. Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (it-lead@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, murugan@ on Escalation).",
+    "account": "compliance@ files; plant-hr@ (presiding), payroll@ and finance@ (add both to the Internal Committee first); it-agent@ respondent. Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (it-lead@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, compliance@ on Escalation).",
     "steps": [
       "1. As compliance@ file a sexual harassment complaint.",
       "2. As an IC member (not presiding) open IC report and press Save draft report.",
@@ -14318,7 +14319,7 @@
     "area": "Helpdesk · HLP-07/08/09 Cases (4 Nov 2026)",
     "screen": "Case · interim relief, members",
     "url": "http://localhost:3000/yx/desk/cases/[id]",
-    "account": "plant-hr@ (POSH) or it-lead@ (other cases); hr@ (HR). Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (it-lead@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, murugan@ on Escalation).",
+    "account": "plant-hr@ (POSH) or it-lead@ (other cases); hr@ (HR). Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (it-lead@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, compliance@ on Escalation).",
     "steps": [
       "1. On a POSH case before the report is signed: Interim relief › Record interim relief; press Record with nothing filled.",
       "2. Choose Stop reporting, write the request it answers, choose hr@, record.",
@@ -14338,15 +14339,15 @@
     "area": "Helpdesk · HLP-07/08/09 Cases (4 Nov 2026)",
     "screen": "Ethics desk",
     "url": "http://localhost:3000/yx/desk/ethics",
-    "account": "anyone not signed in files; it-lead@; murugan@ (escalation). Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (it-lead@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, murugan@ on Escalation).",
+    "account": "anyone not signed in files; it-lead@; compliance@ (escalation). Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01 (it-lead@ and kiran@ on the Ethics team, plant-hr@ presiding on the Internal Committee, compliance@ on Escalation).",
     "steps": [
       "1. Signed out, file an anonymous ethics concern with \"Tell me when there’s an update\" on and your own test email.",
       "2. As it-lead@ open Helpdesk › Ethics desk; press Route to chair, then Route to chair in the dialog with no reason.",
       "3. Write a reason and route.",
       "4. As it-lead@ open the case and send a message.",
-      "5. As murugan@ open the case."
+      "5. As compliance@ open the case."
     ],
-    "expected": "Step 2: the report shows Anonymous; \"Write why the chair should see this report.\" Step 3: toast; Audit committee: Routed. Step 4: the test inbox gets only \"You have an update\". Step 5: the case opens; murugan@ is listed as Audit committee chair.",
+    "expected": "Step 2: the report shows Anonymous; \"Write why the chair should see this report.\" Step 3: toast; Audit committee: Routed. Step 4: the test inbox gets only \"You have an update\". Step 5: the case opens; compliance@ is listed as Audit committee chair.",
     "stories": [
       "Screens/Helpdesk/HLP-09 · Ethics desk"
     ],
@@ -14357,15 +14358,15 @@
     "area": "Helpdesk · HLP-07/08/09 Cases (4 Nov 2026)",
     "screen": "Case · severity",
     "url": "http://localhost:3000/yx/desk/cases/[id]",
-    "account": "it-lead@ (ethics officer); murugan@ (escalation); hr@. Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01.",
+    "account": "it-lead@ (ethics officer); compliance@ (escalation); hr@. Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01.",
     "steps": [
       "1. As it-lead@ open Helpdesk › Ethics desk and look at the Severity column of a report filed without \"worried about retaliation\", and one filed with it.",
       "2. Open the first report; in the Severity card press Serious.",
       "3. Press Serious again.",
-      "4. Route the report to the chair; as murugan@ open it.",
+      "4. Route the report to the chair; as compliance@ open it.",
       "5. As hr@ type the case address."
     ],
-    "expected": "Step 1: Standard and Serious. Step 2: toast \"WB-… is now Serious\"; the header badge reads Serious; Timeline shows \"Changed the severity\"; audit cases.severity_set with from standard to serious. Step 3: nothing changes (already chosen). Step 4: murugan@ sees the Severity badge but no Segment (\"Set by the ethics officers.\"). Step 5: Not found.",
+    "expected": "Step 1: Standard and Serious. Step 2: toast \"WB-… is now Serious\"; the header badge reads Serious; Timeline shows \"Changed the severity\"; audit cases.severity_set with from standard to serious. Step 3: nothing changes (already chosen). Step 4: compliance@ sees the Severity badge but no Segment (\"Set by the ethics officers.\"). Step 5: Not found.",
     "stories": [
       "Screens/Helpdesk/HLP-08 · Cases (case team)",
       "Screens/Helpdesk/HLP-09 · Ethics desk"
@@ -14377,12 +14378,12 @@
     "area": "Helpdesk · HLP-07/08/09 Cases (4 Nov 2026)",
     "screen": "Helpdesk menu",
     "url": "http://localhost:3000/yx/desk/help",
-    "account": "it-lead@ (ethics list); plant-hr@ (Internal Committee); murugan@ (escalation); arjun@ (employee on no list and no case); hr@. Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01.",
+    "account": "it-lead@ (ethics list); plant-hr@ (Internal Committee); compliance@ (escalation); arjun@ (employee on no list and no case); hr@. Browser window 1278 x 635, sidebar open. Set up first as in MT-HLP-06-01.",
     "steps": [
       "1. As each account open the Helpdesk menu.",
       "2. As arjun@ type /yx/desk/cases and /yx/desk/ethics."
     ],
-    "expected": "Step 1: everyone has My cases. it-lead@ and murugan@ also have Cases and Ethics desk with counts; plant-hr@ has Cases but no Ethics desk; arjun@ and hr@ have neither (unless they are on a case). Step 2: Cases says \"You’re not on any case.\"; the Ethics desk shows \"No open reports.\" (the pages still check membership).",
+    "expected": "Step 1: everyone has My cases. it-lead@ and compliance@ also have Cases and Ethics desk with counts; plant-hr@ has Cases but no Ethics desk; arjun@ and hr@ have neither (unless they are on a case). Step 2: Cases says \"You’re not on any case.\"; the Ethics desk shows \"No open reports.\" (the pages still check membership).",
     "stories": [
       "Screens/Helpdesk/HLP-08 · Cases (case team)",
       "Screens/Helpdesk/HLP-09 · Ethics desk"
@@ -14396,6 +14397,7 @@
     "url": "http://localhost:3000/yx/desk/speakup-setup",
     "account": "admin-tester@demo-org.test (System Admin); hr-tester@demo-org.test (HR). Browser window 1278 x 635, sidebar open.",
     "steps": [
+      "0. The demo set-up (5 Nov 2026) already put admin-tester on the Safety team. As admin-tester, first press Remove on it, so the list starts empty.",
       "1. As hr-tester open /yx/desk/speakup-setup.",
       "2. As admin-tester open Helpdesk › Speak-up set-up; read the warning at the top.",
       "3. Safety team › Add, press Add with nobody chosen.",
@@ -14493,9 +14495,10 @@
     "url": "http://localhost:3000/yx/desk/speakup-setup",
     "account": "admin-tester@demo-org.test (System Admin); hr-tester@demo-org.test (HR). Browser window 1278 x 635, sidebar open.",
     "steps": [
+      "0. The demo set-up (5 Nov 2026) already filled the Industrial relations team. As admin-tester, first press Remove on it-lead@, kiran@ and consultant@sharma-advisory.test, so the list starts empty.",
       "1. As hr-tester type /yx/desk/speakup-setup.",
       "2. As admin-tester open Speak-up set-up; on Industrial relations team press Add, then Add again with no person chosen.",
-      "3. Add it-lead@ as Company member; add kiran@ as Company member; add murugan@ choosing Outside lawyer.",
+      "3. Add it-lead@ as Company member; add kiran@ as Company member; add consultant@sharma-advisory.test choosing Outside lawyer.",
       "4. Add it-lead@ to the Industrial relations team again.",
       "5. Check the page has no scroll bar at 1278 x 635 (the lists may scroll inside their cards)."
     ],
@@ -14530,7 +14533,7 @@
     "area": "Helpdesk · HLP-13 Collective dispute (4 Nov 2026)",
     "screen": "Dispute · two-person settlement sent to payroll arrears",
     "url": "http://localhost:3000/yx/desk/cases",
-    "account": "it-lead@demo-org.test (records); kiran@demo-org.test (approves); murugan@demo-org.test (outside lawyer); payroll-tester@demo-org.test (payroll). Browser window 1278 x 635, sidebar open.",
+    "account": "it-lead@demo-org.test (records); kiran@demo-org.test (approves); consultant@sharma-advisory.test (outside lawyer); payroll-tester@demo-org.test (payroll). Browser window 1278 x 635, sidebar open.",
     "steps": [
       "1. As it-lead open the dispute of MT-HLP-13-02; Record settlement; press Record settlement with nothing filled.",
       "2. Fill: In conciliation, signed yesterday, takes effect 1 Apr 2026, workers covered, terms \"Basic +11 %, night-shift allowance ₹120\", Skilled ₹1650 and Unskilled ₹1200 a month, the signed PDF; Record settlement.",
