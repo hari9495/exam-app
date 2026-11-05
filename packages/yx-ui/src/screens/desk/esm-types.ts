@@ -114,6 +114,10 @@ export interface ApprovalTask {
   decideAt?: string | null;
   /** The approver may send it back for changes (the type has it and the company allows it). */
   canSendBack?: boolean;
+  /** One-click Approve on Home: the type is simple to judge and needs nothing from the approver. */
+  quickApprove?: boolean;
+  /** Short context from the request's type ("Over the policy limit, so it needs a full review"). */
+  note?: string | null;
 }
 export interface ApprovalHistory {
   decided: { requestId: string; title: string; type: string; decision: string; at: string; requestStatus: string }[];

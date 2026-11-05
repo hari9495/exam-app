@@ -215,6 +215,8 @@ const LIVE_MGR = {
   ],
   offHref: '#leave-calendar',
   onNudge: () => new Promise<void>((r) => setTimeout(r, 600)),
+  // One-click Approve: the row leaves with a toast naming it.
+  onApprove: () => new Promise<void>((r) => setTimeout(r, 600)),
   stats: [
     { id: 'late', title: 'Late', label: 'Late check-ins this week', value: 3, previous: 5, previousLabel: 'last week', drill: { label: 'View late marks', href: '#muster' } },
     { id: 'reviews', title: 'Reviews', label: 'Reviews to write', value: 6, drill: { label: 'Open reviews', href: '#reviews' } },

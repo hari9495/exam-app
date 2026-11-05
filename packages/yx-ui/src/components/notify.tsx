@@ -60,6 +60,9 @@ const ToastContext = createContext<ToastApi | null>(null);
 export const TOAST_DURATION = 5000;
 export const TOAST_MAX = 3;
 
+/** The toast API when a ToastProvider is present, else null (for kit parts that also render on their own). */
+export const useToastIfAny = (): ToastApi | null => useContext(ToastContext);
+
 export function useToast(): ToastApi {
   const api = useContext(ToastContext);
   if (!api) throw new Error('useToast must be used inside <ToastProvider>.');

@@ -705,7 +705,8 @@ export interface LiveHome {
   company: string;
   today: Date;
   approvalsHref: string;
-  onApprove?: (item: ActionItem) => void;
+  /** One-click Approve (items of kind 'approve'): resolves when done, rejects with the server's reason. */
+  onApprove?: (item: ActionItem) => Promise<unknown>;
   onReview?: (item: ActionItem) => void;
   /** The person's "Attendance today" card; left out for people with no attendance. */
   clock?: ReactNode;

@@ -263,3 +263,52 @@ describe('Access states (founder review 30 Sep 2026)', () => {
     expect(screen.getByRole('button', { name: 'Go to Home' })).toBeInTheDocument();
   });
 });
+
+describe('Needs your action on Home: one-click Approve and richer rows (PLT-02, 5 Nov 2026)', () => {
+  const today = new Date(2026, 8, 29, 9, 42);
+  const base = { firstName: 'Lakshmi', company: 'Kaveri Foods', today, approvalsHref: '/yx/approvals' };
+  const leave = { id: 'l1', type: 'Leave', title: 'Earned leave, 1–2 Oct (2 days)', who: 'Rahul Sharma', due: new Date(2026, 8, 30), kind: 'approve' as const, note: '2 others off these days' };
+  const claim = { id: 'c1', type: 'Expense claim', title: 'Hotel stay, Hosur', who: 'Vikram Rao', due: new Date(2026, 8, 27), kind: 'review' as const, note: 'Over the policy limit, so it needs a full review' };
+  const home = (onApprove: (i: { id: string }) => Promise<unknown>) =>
+    render(
+      <ToastProvider>
+        <RoleHomeScreen persona="manager" data={{ actions: [leave, claim], actionsTotal: 2 }} live={{ ...base, onApprove, onReview: vi.fn() }} />
+      </ToastProvider>,
+    );
+
+  it('shows Approve only on simple rows; the due date, the overdue badge and the note', () => {
+    home(vi.fn(async () => undefined));
+    expect(screen.getByRole('button', { name: 'Approve leave for Rahul Sharma' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Approve expense claim/ })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Review expense claim for Vikram Rao' })).toBeInTheDocument();
+    expect(screen.getByText('Due 30 Sep 2026')).toBeInTheDocument();
+    expect(screen.getByText('Overdue since 27 Sep 2026')).toBeInTheDocument();
+    expect(screen.getByText('2 others off these days')).toBeInTheDocument();
+    expect(screen.getByText('Over the policy limit, so it needs a full review')).toBeInTheDocument();
+    // The name is on the person line once, not repeated in the title.
+    expect(screen.getAllByText(/Rahul Sharma/)).toHaveLength(1);
+  });
+
+  it('approved: the row leaves and a toast names it; a double click approves once', async () => {
+    let finish: () => void = () => undefined;
+    const onApprove = vi.fn(() => new Promise<void>((r) => (finish = r)));
+    home(onApprove);
+    const button = screen.getByRole('button', { name: 'Approve leave for Rahul Sharma' });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(onApprove).toHaveBeenCalledTimes(1);
+    finish();
+    expect(await screen.findByText('Approved: Leave for Rahul Sharma')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Approve leave for Rahul Sharma' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'View all 1' })).toBeInTheDocument();
+  });
+
+  it('refused: the row stays and shows the server reason', async () => {
+    home(vi.fn(async () => Promise.reject(new Error('This approval is already closed.'))));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve leave for Rahul Sharma' }));
+    expect(await screen.findByText('This approval is already closed.')).toBeInTheDocument();
+    expect(screen.getByText('Not approved')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Approve leave for Rahul Sharma' })).toBeInTheDocument();
+    expect(screen.queryByText(/^Approved:/)).toBeNull();
+  });
+});
