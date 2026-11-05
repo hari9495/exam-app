@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import Script from 'next/script';
 import './globals.css';
 // YukthiX design system: tokens and .yx-* components (the /yx pages and the step-up prompt).
 import '@yukthix/ui/styles.css';
@@ -33,10 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       {/* Browser extensions (e.g. Grammarly) add attributes to <body> before React loads; only <body>'s own attributes are ignored. */}
       <body suppressHydrationWarning>
         {/* Light or dark before first paint (the OS setting unless chosen in the account menu): no flash. */}
-        {/* beforeInteractive: Next puts it in <head> before hydration; a plain <script> in the tree makes React warn. */}
-        <Script id="yx-theme" strategy="beforeInteractive">
-          {THEME_SCRIPT}
-        </Script>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
         <QueryProvider>
           <ToastProvider>
             <AuthProvider>
