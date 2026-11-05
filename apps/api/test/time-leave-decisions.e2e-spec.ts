@@ -514,6 +514,75 @@ describe('Leave decisions (29 Oct 2026)', () => {
     });
   });
 
+  // Home's "Needs your action" (PLT-02, 5 Nov 2026): the inbox says which rows get one-click Approve; Approve is the
+  // inbox's own decide call with every check; the "others off" count comes from the approver's own team only.
+  describe('Home one-click Approve and row notes (5 Nov 2026)', () => {
+    type Row = { taskId: string; requestId: string; type: string; title: string; person: string; onBehalfOf: string | null; quickApprove?: boolean; note?: string | null; decideAt: string | null };
+    const inbox = async (who: Who) => (await api(who, 'get', '/workflow/approvals/inbox').expect(200)).body as Row[];
+    const decide = (who: Who, taskId: string) => api(who, 'post', `/workflow/approvals/tasks/${taskId}/decide`).send({ decision: 'approve' });
+    let empReq: string;
+    let peerReq: string;
+
+    beforeAll(async () => {
+      empReq = (await api('emp', 'post', '/time/me/leave').send({ leaveTypeId: ids.EL, from: work(50), to: work(50) }).expect(201)).body.id;
+      peerReq = (await api('peer', 'post', '/time/me/leave').send({ leaveTypeId: ids.EL, from: work(50), to: work(50) }).expect(201)).body.id;
+    });
+    const wfOf = async (leaveId: string) => (await inA((tx) => tx.leaveRequest.findFirstOrThrow({ where: { id: leaveId } }))).wfRequestId!;
+
+    it('leave rows are marked for one-click Approve, with no type note; the title still carries the name for the API', async () => {
+      const wf = await wfOf(empReq);
+      const mine = (await inbox('mgr')).find((r) => r.requestId === wf)!;
+      expect(mine).toMatchObject({ type: 'Leave', quickApprove: true, note: null, decideAt: null, person: `emp ${run}` });
+      expect(mine.title.startsWith(`emp ${run}: Earned leave`)).toBe(true);
+    });
+
+    it('the team count for the note is the approver’s own team only: a teammate off the same day counts, nobody else is named', async () => {
+      const home = (await api('mgr', 'get', '/time/team/leave-home').expect(200)).body as { waiting: { taskId: string; employeeId: string; others: { name: string }[] }[] };
+      const wf = await wfOf(empReq);
+      const task = (await inbox('mgr')).find((r) => r.requestId === wf)!;
+      const row = home.waiting.find((w) => w.taskId === task.taskId)!;
+      expect(row.others.map((o) => o.name)).toContain(`peer ${run}`);
+      const team = new Set([`emp ${run}`, `peer ${run}`, `hrNoPay ${run}`]);
+      expect(row.others.every((o) => team.has(o.name))).toBe(true);
+      // Someone outside any team (no direct reports) and another company get no rows at all.
+      expect(((await api('hrPay', 'get', '/time/team/leave-home').expect(200)).body as { waiting: unknown[] }).waiting).toEqual([]);
+      expect(((await api('empB', 'get', '/time/team/leave-home').expect(200)).body as { waiting: unknown[] }).waiting).toEqual([]);
+      expect(await inbox('adminB')).toEqual([]);
+    });
+
+    it('acting for the approver cannot approve; another company and the requester cannot either; the row stays', async () => {
+      const wf = await wfOf(empReq);
+      const task = (await inbox('mgr')).find((r) => r.requestId === wf)!;
+      const acting = (await request(server()).post(`/api/v1/auth/impersonate/${users.mgr}`).set('Authorization', `Bearer ${token.adminA}`).expect(200)).body.accessToken;
+      expect((await request(server()).post(`/api/v1/workflow/approvals/tasks/${task.taskId}/decide`).set('Authorization', `Bearer ${acting}`).send({ decision: 'approve' }).expect(403)).body.message).toBe('Not available while acting for someone else');
+      await decide('adminB', task.taskId).expect(404);
+      await decide('emp', task.taskId).expect(404);
+      expect((await inbox('mgr')).some((r) => r.taskId === task.taskId)).toBe(true);
+    });
+
+    it('the manager approves their own row once; a second press is refused and nothing changes twice', async () => {
+      const wf = await wfOf(empReq);
+      const task = (await inbox('mgr')).find((r) => r.requestId === wf)!;
+      await decide('mgr', task.taskId).expect(200);
+      await decide('mgr', task.taskId).expect(409);
+      expect(await inA((tx) => tx.wfAction.count({ where: { requestId: wf, action: 'approved' } }))).toBe(1);
+      expect((await inbox('mgr')).some((r) => r.taskId === task.taskId)).toBe(false);
+    });
+
+    it('a delegate sees the row for one-click Approve (on behalf of the manager) but no team note; approving twice is refused', async () => {
+      const del = (await api('mgr', 'post', '/workflow/delegations').send({ delegateUserId: users.hrPay, startsOn: today, endsOn: d(3) }).expect(201)).body as { id: string };
+      const wf = await wfOf(peerReq);
+      const row = (await inbox('hrPay')).find((r) => r.requestId === wf)!;
+      expect(row).toMatchObject({ quickApprove: true, onBehalfOf: `mgr ${run}` });
+      // The delegate has no team, so the leave home holds nothing for them and Home shows no "others off" note.
+      expect(((await api('hrPay', 'get', '/time/team/leave-home').expect(200)).body as { waiting: unknown[] }).waiting).toEqual([]);
+      await decide('hrPay', row.taskId).expect(200);
+      expect((await decide('hrPay', row.taskId).expect(409)).body.message).toBe('This approval is already closed.');
+      expect((await inA((tx) => tx.leaveRequest.findFirstOrThrow({ where: { id: peerReq } }))).status).toBe('approved');
+      await api('mgr', 'post', `/workflow/delegations/${del.id}/revoke`).expect(200);
+    });
+  });
+
   /** A person joining in 20 days (not employed before). */
   async function hireLate() {
     return (

@@ -189,6 +189,10 @@ describe('Expenses batch E2', () => {
     expect(c.route!.steps.map((s) => s.name)).toEqual(['Manager', 'Over the limit', 'Finance check']);
     expect(c.flags.map((f) => f.kind)).toContain('over_limit');
     expect(c.can).toMatchObject({ edit: false, withdraw: true, decide: false });
+    // Home (PLT-02): an expense claim is never one-click; a bill over its policy limit gives the row its note.
+    const wfId = (await inA((tx) => tx.expenseClaim.findFirstOrThrow({ where: { id: c.id } }))).wfRequestId;
+    const rows = (await request(server()).get('/api/v1/workflow/approvals/inbox').set('Authorization', `Bearer ${token.mgr}`).expect(200)).body as { requestId: string; quickApprove?: boolean; note?: string | null }[];
+    expect(rows.find((t) => t.requestId === wfId)).toMatchObject({ quickApprove: false, note: 'Over the policy limit, so it needs a full review' });
     // Sita (not an approver) cannot see it; Ravi cannot change amounts.
     await api('sita', 'get', `/claims/${c.id}`).expect(404);
     const hotel = c.lines.find((l) => l.categoryCode === 'lodging')!;
