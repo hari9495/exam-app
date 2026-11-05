@@ -42,6 +42,9 @@ const monthBefore = (m: string) => new Date(Date.UTC(Number(m.slice(0, 4)), Numb
 // - Finance (payroll, statutory): money to pay, net payroll, PF and ESI, TDS, money going out in the next 30 days.
 // Everyone with an attendance record gets the designed "Attendance today" card. Hiring (founder decision 19 Oct 2026):
 // someone whose only keys are hiring keys gets the recruiter Home; others get the recruiter widgets when they hire.
+// Needs your action (founder, 5 Nov 2026): one-click Approve only where the server marks the type quickApprove (leave,
+// WFH, regularisation, timesheets, shift swap, OT pre-approval); expense claims stay Review only even within limit (161);
+// the note uses policy limits, no per-approver money limit until customers ask (162).
 export default function YxHomePage() {
   const router = useRouter();
   const qc = useQueryClient();
