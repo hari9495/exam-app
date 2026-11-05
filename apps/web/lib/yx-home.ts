@@ -1,6 +1,7 @@
 import { formatDate, formatINR, type ActionItem } from '@yukthix/ui';
+import type { ApprovalTask } from '@yukthix/ui/desk';
 import type { LiveHome } from '@yukthix/ui/frame';
-import type { MyAttendance, MyLeave, Muster, TeamCalendar } from '@yukthix/ui/time';
+import type { MyAttendance, MyLeave, Muster, TeamCalendar, TeamLeaveHome } from '@yukthix/ui/time';
 
 // GET /workspace/home (design audit step 2, home parity 19 Oct 2026): the Home widgets, each present only when the
 // person may see it.
@@ -417,4 +418,29 @@ export function financeHome(f: FinanceHome | undefined, month: string, today: st
     : undefined;
   // The approvals inbox lists the same run; the finance row (with its headcount and net) takes its place.
   return { stats, moneyOut, ...(approval ? { approval } : {}), actions, replaces: approve.flatMap((r) => (r.requestId ? [r.requestId] : [])) };
+}
+
+/**
+ * "Needs your action" rows from the approvals inbox (PLT-02, 5 Nov 2026). Approve shows only on types the API marks
+ * quickApprove (never one decided on its own page). The person is on the line below, so their name leaves the title.
+ * The note is the type's own (the API's), or for the approver's own team's leave, how many others are off then (from
+ * GET /time/team/leave-home, one call; it holds only the viewer's own team, so a delegate or HR approver gets no note).
+ */
+export function inboxActions(tasks: ApprovalTask[], teamLeave?: TeamLeaveHome): ActionItem[] {
+  const others = new Map((teamLeave?.waiting ?? []).map((w) => [w.taskId, w.others.length]));
+  return tasks.map((t) => {
+    const who = t.person || t.onBehalfOf || t.requester;
+    const rest = who && t.title.startsWith(`${who}: `) ? t.title.slice(who.length + 2) : t.title;
+    const off = others.get(t.taskId);
+    const note = t.note || (off ? `${off} ${off === 1 ? 'other' : 'others'} off these days` : undefined);
+    return {
+      id: t.taskId,
+      type: t.type,
+      title: rest.charAt(0).toUpperCase() + rest.slice(1),
+      who,
+      ...(t.dueAt ? { due: new Date(t.dueAt) } : {}),
+      kind: t.quickApprove && !t.decideAt ? 'approve' : 'review',
+      ...(note ? { note } : {}),
+    };
+  });
 }

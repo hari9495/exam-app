@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ActionItem } from '@yukthix/ui';
 import type { ApprovalTask } from '@yukthix/ui/desk';
 import { RoleHomeScreen, type LiveHome, type RoleHomeScreenProps } from '@yukthix/ui/frame';
-import { HomeClockCard, type MyAttendance, type MyLeave, type Muster, type PunchResult, type TeamCalendar } from '@yukthix/ui/time';
+import { HomeClockCard, type MyAttendance, type MyLeave, type Muster, type PunchResult, type TeamCalendar, type TeamLeaveHome } from '@yukthix/ui/time';
 import type { TeamMember } from '@yukthix/ui/workforce';
 import { apiFetch } from '../../../../lib/api-client';
 import { useAuth } from '../../../../lib/auth-context';
@@ -16,7 +16,7 @@ import { useYxPermissions } from '../../../../lib/yx-org';
 import { usePeople } from '../../../../lib/yx-people';
 import { usePerf } from '../../../../lib/yx-performance';
 import { useScope } from '../../../../lib/yx-shell';
-import { comingUp, employeeStats, financeHome, hiringHome, homePay, homeWidgets, managerHome, myTasks, weekOf, type HomePayResponse, type HomeWidgets } from '../../../../lib/yx-home';
+import { comingUp, employeeStats, financeHome, hiringHome, homePay, homeWidgets, inboxActions, managerHome, myTasks, weekOf, type HomePayResponse, type HomeWidgets } from '../../../../lib/yx-home';
 import { usePay } from '../../../../lib/yx-pay';
 import { useLife } from '../../../../lib/yx-lifecycle';
 import { browserLocation, todayIndia, useTime, useTimeWrite } from '../../../../lib/yx-time';
@@ -44,6 +44,7 @@ const monthBefore = (m: string) => new Date(Date.UTC(Number(m.slice(0, 4)), Numb
 // someone whose only keys are hiring keys gets the recruiter Home; others get the recruiter widgets when they hire.
 export default function YxHomePage() {
   const router = useRouter();
+  const qc = useQueryClient();
   const { accessToken, actingSuperAdmin } = useAuth();
   const me = useCurrentUser();
   const branding = useOrgBranding();
@@ -113,7 +114,9 @@ export default function YxHomePage() {
   const [hideChoice, setHideChoice] = useState<Record<string, boolean>>({});
   const hidden = hideKey ? (hideChoice[hideKey] ?? readHidden(hideKey)) : false;
 
-  const approvals: ActionItem[] = (inbox.data ?? []).filter((t) => !fin?.replaces.includes(t.requestId)).map((t) => ({ id: t.taskId, type: t.type, title: t.title, who: t.person || t.onBehalfOf || t.requester, ...(t.dueAt ? { due: new Date(t.dueAt) } : {}), kind: 'review' }));
+  // "N others off these days" for leave in the approver's own team: one extra call, only when leave waits for them.
+  const teamLeave = useTime<TeamLeaveHome>(inbox.data?.some((t) => t.type === 'Leave') ? '/team/leave-home' : null);
+  const approvals: ActionItem[] = inboxActions((inbox.data ?? []).filter((t) => !fin?.replaces.includes(t.requestId)), teamLeave.data);
   // People who are not recruiters get the recruiter widgets only when they hire (jobs, interviews or rows waiting).
   const hiringView = persona === 'recruiter' || hiring.actions.length || hiring.view?.jobs?.length || hiring.view?.interviewsToday.length ? hiring.view : undefined;
   const actions = [...(fin?.actions ?? []), ...approvals, ...(hiringView ? hiring.actions : [])];
@@ -123,6 +126,12 @@ export default function YxHomePage() {
     company: branding.data?.name || 'your company',
     today: new Date(),
     approvalsHref: approvals.length || !hiringView ? '/yx/approvals' : '/yx/hiring/jobs',
+    // The Approvals page's own decide call, with all its checks; refused, the row stays and shows why.
+    onApprove: async (item) => {
+      await apiFetch(`/workflow/approvals/tasks/${encodeURIComponent(item.id)}/decide`, { method: 'POST', body: JSON.stringify({ decision: 'approve' }) }, accessToken ?? undefined);
+      void qc.invalidateQueries({ queryKey: ['workflow'] });
+      void qc.invalidateQueries({ queryKey: ['yx', 'workspace', 'counts'] });
+    },
     onReview: () => router.push('/yx/approvals'),
     clock: attendance.data ? (
       <HomeClockCard

@@ -19,6 +19,7 @@ import YxIdentityProvidersPage from './(app)/settings/identity-providers/page';
 import YxAppLayout from './(app)/layout';
 import YxSetupMfaPage from './setup-mfa/page';
 import YxApprovalsPage from './(app)/approvals/page';
+import YxHomePage from './(app)/home/page';
 import YxNotFound from './not-found';
 import YxError from './error';
 import { ToastProvider } from '@yukthix/ui';
@@ -1019,6 +1020,50 @@ describe('/yx/approvals', () => {
     await waitFor(() => expect(within(home).getByRole('link', { name: /Approvals/ })).toHaveTextContent('2'));
     await userEvent.click(await screen.findByRole('button', { name: 'Approve' }));
     await waitFor(() => expect(within(home).getByRole('link', { name: /Approvals/ })).toHaveTextContent('1'));
+  });
+});
+
+describe('/yx/home Needs your action (PLT-02, 5 Nov 2026)', () => {
+  const task = (over: object) => ({ taskId: 't1', requestId: 'r1', type: 'Leave', title: 'Rahul Sharma: Earned leave, 1–2 Oct (2 days)', summary: [], requester: 'Rahul Sharma', raisedBy: null, onBehalfOf: null, person: 'Rahul Sharma', step: { index: 1, of: 1, name: 'Manager', need: 1, approvers: 1 }, dueAt: '2099-12-30T06:00:00Z', submittedAt: NOW, decideAt: null, quickApprove: true, note: null, ...over });
+  const LEAVE = task({});
+  const CLAIM = task({ taskId: 't2', requestId: 'r2', type: 'Expense claim', title: 'Vikram Rao: Hotel stay, Hosur', requester: 'Vikram Rao', person: 'Vikram Rao', quickApprove: false, dueAt: '2026-09-27T06:00:00Z', note: 'Over the policy limit, so it needs a full review' });
+  const TEAM = { today: '2026-09-29', otherWaiting: 1, away: [], waiting: [{ id: 'l1', taskId: 't1', employeeId: 'e1', name: 'Rahul Sharma', type: 'Earned leave', from: '2026-10-01', to: '2026-10-02', fromHalf: 'full', toHalf: 'full', days: 2, certificate: 'none', sent: NOW, others: [{ name: 'A', type: 'Casual leave' }, { name: 'B', type: 'Sick leave' }] }] };
+
+  it('maps the inbox: Approve on simple rows only, no repeated name, due date and notes; Approve uses the decide call', async () => {
+    const posted: string[] = [];
+    let inbox = [LEAVE, CLAIM];
+    api.mockImplementation(async (path: string, init?: RequestInit) => {
+      const key = `${init?.method ?? 'GET'} ${path.split('?')[0]}`;
+      if (key === 'GET /workflow/approvals/inbox') return inbox;
+      if (key === 'GET /time/team/leave-home') return TEAM;
+      if (key === 'POST /workflow/approvals/tasks/t1/decide') return (posted.push(`${path} ${init?.body}`), (inbox = [CLAIM]), {});
+      throw new Error(`unexpected ${key}`);
+    });
+    wrap(<YxHomePage />);
+    expect(await screen.findByText('Earned leave, 1–2 Oct (2 days)')).toBeInTheDocument();
+    expect(screen.getByText('Hotel stay, Hosur')).toBeInTheDocument();
+    expect(await screen.findByText('2 others off these days')).toBeInTheDocument();
+    expect(screen.getByText('Over the policy limit, so it needs a full review')).toBeInTheDocument();
+    expect(screen.getByText('Due 30 Dec 2099')).toBeInTheDocument();
+    expect(screen.getByText('Overdue since 27 Sep 2026')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Approve expense claim/ })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Approve leave for Rahul Sharma' }));
+    expect(await screen.findByText('Approved: Leave for Rahul Sharma')).toBeInTheDocument();
+    expect(posted).toEqual(['/workflow/approvals/tasks/t1/decide {"decision":"approve"}']);
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Approve leave for Rahul Sharma' })).toBeNull());
+  });
+
+  it('a refusal keeps the row and shows the server reason', async () => {
+    api.mockImplementation(async (path: string, init?: RequestInit) => {
+      const key = `${init?.method ?? 'GET'} ${path.split('?')[0]}`;
+      if (key === 'GET /workflow/approvals/inbox') return [LEAVE];
+      if (key === 'POST /workflow/approvals/tasks/t1/decide') throw new Error('You cannot approve a request you raised.');
+      throw new Error(`unexpected ${key}`);
+    });
+    wrap(<YxHomePage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Approve leave for Rahul Sharma' }));
+    expect(await screen.findByText('You cannot approve a request you raised.')).toBeInTheDocument();
+    expect(screen.getByText('Earned leave, 1–2 Oct (2 days)')).toBeInTheDocument();
   });
 });
 

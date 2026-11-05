@@ -1,4 +1,6 @@
-import { comingUp, employeeStats, financeHome, hiringHome, homePay, homeWidgets, managerHome, myTasks } from './yx-home';
+import type { ApprovalTask } from '@yukthix/ui/desk';
+import type { TeamLeaveHome } from '@yukthix/ui/time';
+import { comingUp, employeeStats, financeHome, hiringHome, homePay, homeWidgets, inboxActions, managerHome, myTasks } from './yx-home';
 
 describe('hiringHome (recruiter Home)', () => {
   const now = new Date('2026-10-19T06:00:00Z');
@@ -175,5 +177,36 @@ describe('Finance home (parity with PLT-02 finance)', () => {
       ['Expense claims payout · 2 claims', 900, 'File ready', 'Open'],
       ['October salaries', null, 'Being prepared', 'Open run'],
     ]);
+  });
+});
+
+describe('inboxActions (Home "Needs your action", 5 Nov 2026)', () => {
+  const task = (over: Partial<ApprovalTask>): ApprovalTask => ({ taskId: 't1', requestId: 'r1', type: 'Leave', title: 'Rahul Sharma: Earned leave, 1–2 Oct (2 days)', summary: [], requester: 'Rahul Sharma', raisedBy: null, onBehalfOf: null, person: 'Rahul Sharma', step: { index: 1, of: 1, name: 'Manager', need: 1, approvers: 1 }, dueAt: '2026-09-30T12:00:00Z', submittedAt: '2026-09-28T05:00:00Z', decideAt: null, quickApprove: true, ...over });
+  const team = (others: number): TeamLeaveHome => ({ today: '2026-09-29', otherWaiting: 0, away: [], waiting: [{ id: 'l1', taskId: 't1', employeeId: 'e1', name: 'Rahul Sharma', type: 'Earned leave', from: '2026-10-01', to: '2026-10-02', fromHalf: 'full', toHalf: 'full', days: 2, certificate: 'none', sent: '2026-09-28T05:00:00Z', others: Array.from({ length: others }, (_, i) => ({ name: `P${i}`, type: 'Casual leave' })) }] });
+
+  it('takes the name out of the title when the person line shows it, and keeps the due date', () => {
+    const [row] = inboxActions([task({})]);
+    expect(row).toMatchObject({ id: 't1', title: 'Earned leave, 1–2 Oct (2 days)', who: 'Rahul Sharma', kind: 'approve', due: new Date('2026-09-30T12:00:00Z') });
+    expect(inboxActions([task({ title: 'Rahul Sharma: work from home on 3 Nov', type: 'Work from home' })])[0].title).toBe('Work from home on 3 Nov');
+  });
+
+  it('keeps the name in the title when there is no person line', () => {
+    expect(inboxActions([task({ person: '', requester: '', title: 'Rahul Sharma: Earned leave' })])[0]).toMatchObject({ title: 'Rahul Sharma: Earned leave', who: '' });
+  });
+
+  it('offers Approve only where the API marks the type simple, never one decided on its own page', () => {
+    expect(inboxActions([task({ quickApprove: false, type: 'Expense claim' })])[0].kind).toBe('review');
+    expect(inboxActions([task({ quickApprove: undefined })])[0].kind).toBe('review');
+    expect(inboxActions([task({ decideAt: '/yx/payroll/runs' })])[0].kind).toBe('review');
+    expect(inboxActions([task({ dueAt: null })])[0].due).toBeUndefined();
+  });
+
+  it('notes: the type note from the API, else others off in the own team; none when nobody else is off', () => {
+    expect(inboxActions([task({ note: 'Over the policy limit, so it needs a full review' })])[0].note).toBe('Over the policy limit, so it needs a full review');
+    expect(inboxActions([task({})], team(2))[0].note).toBe('2 others off these days');
+    expect(inboxActions([task({})], team(1))[0].note).toBe('1 other off these days');
+    expect(inboxActions([task({})], team(0))[0].note).toBeUndefined();
+    // A task not in the approver's own team (a delegate's or HR's) gets no note.
+    expect(inboxActions([task({ taskId: 't9' })], team(3))[0].note).toBeUndefined();
   });
 });
