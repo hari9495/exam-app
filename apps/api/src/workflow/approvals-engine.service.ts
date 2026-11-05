@@ -67,6 +67,13 @@ export interface RequestType {
   /** Maker ≠ checker across steps: whoever approved one step never approves a later one of the same request. */
   distinctSteps?: boolean;
   /**
+   * Home's one-click Approve (PLT-02): the approver needs to give nothing and the request is simple to judge from its row
+   * (leave, work from home, a timesheet). It only shows the button; the decision goes through decide() with every check.
+   */
+  quickApprove?: boolean;
+  /** A short note per inbox row ("Over the policy limit…"), for this approver's open requests of the type, in one query. */
+  inboxNotes?(tx: Tx, reqs: Prisma.WfRequestGetPayload<object>[]): Promise<Map<string, string>>;
+  /**
    * "Send back for changes": only types that have it. `allowed` (a company setting) says whether this request may be sent
    * back now; `apply` runs in the decision's transaction and returns the request to the person who asked.
    */
@@ -248,6 +255,10 @@ export interface InboxItem {
   decideAt: string | null;
   /** The approver may send it back for changes (the type has it and the company allows it). */
   canSendBack?: boolean;
+  /** One-click Approve on Home (the type is simple and is not decided on its own page). */
+  quickApprove?: boolean;
+  /** Short context for the row, from the type (inboxNotes). */
+  note?: string | null;
 }
 
 /**
@@ -760,6 +771,10 @@ export class ApprovalsEngine {
         const sb = this.types.get(r.requestType)?.sendBack;
         if (sb && (await sb.allowed(tx, r))) backable.add(r.id);
       }
+      const notes = new Map<string, string>();
+      const byType = new Map<string, Prisma.WfRequestGetPayload<object>[]>();
+      for (const r of reqs.values()) byType.set(r.requestType, [...(byType.get(r.requestType) ?? []), r]);
+      for (const [key, rs] of byType) for (const [id, n] of (await this.types.get(key)?.inboxNotes?.(tx, rs)) ?? []) notes.set(id, n);
       const items: InboxItem[] = tasks
         .filter((t) => reqs.get(t.requestId)?.currentStep === t.step)
         .map((t) => {
@@ -782,6 +797,8 @@ export class ApprovalsEngine {
             // Irreversible requests are decided on their own page (decideOnlyVia): the inbox links there.
             decideAt: this.types.get(r.requestType)?.decideOnlyVia ?? null,
             canSendBack: backable.has(r.id),
+            quickApprove: Boolean(this.types.get(r.requestType)?.quickApprove && !this.types.get(r.requestType)?.decideOnlyVia),
+            note: notes.get(r.id) ?? null,
           };
         });
       return [...items, ...(await this.sourceItems(tx, ctx, userId))];

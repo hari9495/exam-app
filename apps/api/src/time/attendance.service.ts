@@ -57,12 +57,13 @@ export class AttendanceService implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    this.engine.register({ key: REGULARISE, label: 'Attendance fix', risk: 'normal', autoActions: false, onDecided: (tx, req, outcome) => this.decided(tx, req, outcome), requesterLink: () => '/yx/time/attendance' });
-    this.engine.register({ key: WFH, label: 'Work from home', risk: 'normal', autoActions: false, onDecided: (tx, req, outcome) => this.decided(tx, req, outcome), requesterLink: () => '/yx/time/attendance' });
+    this.engine.register({ key: REGULARISE, label: 'Attendance fix', risk: 'normal', quickApprove: true, autoActions: false, onDecided: (tx, req, outcome) => this.decided(tx, req, outcome), requesterLink: () => '/yx/time/attendance' });
+    this.engine.register({ key: WFH, label: 'Work from home', risk: 'normal', quickApprove: true, autoActions: false, onDecided: (tx, req, outcome) => this.decided(tx, req, outcome), requesterLink: () => '/yx/time/attendance' });
     this.engine.register({
       key: ON_DUTY,
       label: 'On duty',
       risk: 'normal',
+      quickApprove: true,
       autoActions: false,
       onDecided: (tx, req, outcome) => this.decided(tx, req, outcome),
       requesterLink: () => '/yx/time/attendance',

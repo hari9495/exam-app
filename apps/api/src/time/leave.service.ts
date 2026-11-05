@@ -118,13 +118,14 @@ export class LeaveService implements OnModuleInit {
       key: LEAVE_REQUEST,
       label: 'Leave',
       risk: 'normal',
+      quickApprove: true,
       autoActions: false,
       onDecided: (tx, req, outcome) => this.requestDecided(tx, req, outcome),
       requesterLink: () => '/yx/time/leave',
       // Founder (30 Oct 2026): "Send back for changes" (setting leave.send_back, default on).
       sendBack: { allowed: (tx, req) => this.sendBackAllowed(tx, req), apply: (tx, req, reason) => this.sentBack(tx, req, reason) },
     });
-    this.engine.register({ key: LEAVE_CANCEL, label: 'Leave cancellation', risk: 'normal', autoActions: false, onDecided: (tx, req, outcome) => this.cancelDecided(tx, req, outcome), requesterLink: () => '/yx/time/leave' });
+    this.engine.register({ key: LEAVE_CANCEL, label: 'Leave cancellation', risk: 'normal', quickApprove: true, autoActions: false, onDecided: (tx, req, outcome) => this.cancelDecided(tx, req, outcome), requesterLink: () => '/yx/time/leave' });
   }
 
   viewer(user: ScopeUser): Promise<Viewer> {

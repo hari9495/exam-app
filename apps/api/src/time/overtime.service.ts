@@ -43,7 +43,7 @@ export class OvertimeService implements OnModuleInit {
 
   onModuleInit() {
     this.engine.register({ key: OVERTIME, label: 'Overtime', risk: 'normal', autoActions: false, onDecided: (tx, req, outcome) => this.decided(tx, req, outcome), requesterLink: () => '/yx/time/overtime' });
-    this.engine.register({ key: OT_PLAN, label: 'Overtime pre-approval', risk: 'normal', autoActions: false, onDecided: (tx, req, outcome) => this.planDecided(tx, req, outcome), requesterLink: () => '/yx/time/attendance' });
+    this.engine.register({ key: OT_PLAN, label: 'Overtime pre-approval', risk: 'normal', quickApprove: true, autoActions: false, onDecided: (tx, req, outcome) => this.planDecided(tx, req, outcome), requesterLink: () => '/yx/time/attendance' });
   }
 
   private viewer(user: ScopeUser): Promise<Viewer> {

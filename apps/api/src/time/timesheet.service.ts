@@ -31,7 +31,7 @@ export class TimesheetService implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    this.engine.register({ key: TIMESHEET, label: 'Timesheet', risk: 'normal', autoActions: false, onDecided: (tx, req, outcome) => this.decided(tx, req, outcome), requesterLink: () => '/yx/time/timesheet' });
+    this.engine.register({ key: TIMESHEET, label: 'Timesheet', risk: 'normal', quickApprove: true, autoActions: false, onDecided: (tx, req, outcome) => this.decided(tx, req, outcome), requesterLink: () => '/yx/time/timesheet' });
   }
 
   // ------------------------------------------------------------------------------------------ projects (set-up)

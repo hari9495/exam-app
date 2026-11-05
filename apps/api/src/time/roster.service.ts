@@ -39,7 +39,7 @@ export class RosterService implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    this.engine.register({ key: SHIFT_SWAP, label: 'Shift swap', risk: 'normal', autoActions: false, onDecided: (tx, req, outcome) => this.swapDecided(tx, req, outcome), requesterLink: () => '/yx/time/roster' });
+    this.engine.register({ key: SHIFT_SWAP, label: 'Shift swap', risk: 'normal', quickApprove: true, autoActions: false, onDecided: (tx, req, outcome) => this.swapDecided(tx, req, outcome), requesterLink: () => '/yx/time/roster' });
   }
 
   private viewer(user: ScopeUser): Promise<Viewer> {

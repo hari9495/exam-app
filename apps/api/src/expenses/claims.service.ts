@@ -69,7 +69,15 @@ export class ExpenseClaimsService implements OnModuleInit {
       requesterLink: (req) => `/yx/expenses/claims/${req.subjectId}`,
       // The engine's shared "Send back for changes" (founder, 30 Oct 2026); always allowed for a claim still waiting.
       sendBack: { allowed: (tx, req) => this.sendBackAllowed(tx, req), apply: (tx, req, reason) => this.sentBack(tx, req, reason) },
+      inboxNotes: (tx, reqs) => this.inboxNotes(tx, reqs),
     });
+  }
+
+  /** Home's row note (PLT-02): claims with a bill over its policy limit, for the approver holding them (one query). */
+  private async inboxNotes(tx: Tx, reqs: Prisma.WfRequestGetPayload<object>[]) {
+    const lines = await tx.expenseLine.findMany({ where: { organizationId: reqs[0].organizationId, claimId: { in: reqs.map((r) => r.subjectId) }, removedAt: null }, select: { claimId: true, policyResult: true } });
+    const over = new Set(lines.filter((l) => isOverLimit(l.policyResult)).map((l) => l.claimId));
+    return new Map(reqs.filter((r) => over.has(r.subjectId)).map((r) => [r.id, 'Over the policy limit, so it needs a full review']));
   }
 
   private viewer(user: ScopeUser) {

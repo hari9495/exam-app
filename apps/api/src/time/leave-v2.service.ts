@@ -58,7 +58,7 @@ export class LeaveV2Service implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    this.engine.register({ key: COMP_OFF_CLAIM, label: 'Comp-off', risk: 'normal', autoActions: false, onDecided: (tx, req, outcome) => this.claimDecided(tx, req, outcome), requesterLink: () => '/yx/time/leave' });
+    this.engine.register({ key: COMP_OFF_CLAIM, label: 'Comp-off', risk: 'normal', quickApprove: true, autoActions: false, onDecided: (tx, req, outcome) => this.claimDecided(tx, req, outcome), requesterLink: () => '/yx/time/leave' });
     this.engine.register({ key: LEAVE_ENCASH, label: 'Leave encashment', risk: 'normal', autoActions: false, onDecided: (tx, req, outcome) => this.encashDecided(tx, req, outcome), requesterLink: () => '/yx/time/leave' });
   }
 
