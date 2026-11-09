@@ -29,7 +29,7 @@ describe('HIR-03 / HIR-24 jobs and pay range', () => {
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
-  const api = (who: Who, method: 'get' | 'post' | 'patch' | 'delete', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+  const api = (who: Who, method: 'get' | 'post' | 'patch' | 'put' | 'delete', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const inA = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false }, fn);
   const setting = (key: string, value: string | null) =>
     inA(async (tx) => {
@@ -254,5 +254,23 @@ describe('HIR-03 / HIR-24 jobs and pay range', () => {
     await api('emp', 'get', '/custom-fields/in-use?entityType=job').expect(403);
     await api('rec', 'get', '/custom-fields/in-use?entityType=offer').expect(400);
     expect((await api('hrB', 'get', '/custom-fields/in-use?entityType=job').expect(200)).body).toEqual([]);
+  });
+
+  // ---------------------------------------------------------------- HIR-04 founder answer 261 (10 Nov 2026): job settings on the workspace
+  it('job settings: the job-manage key sets the scorecard and the fit criteria; reads need results:view; refused while acting; bad input 400', async () => {
+    const job = ids.chennaiJob;
+    expect((await api('rec', 'get', `/hiring/jobs/${job}/interview-settings`).expect(200)).body).toMatchObject({ scorecardTemplateId: null, exams: [] });
+    await api('rec', 'put', `/hiring/jobs/${job}/scorecard`).send({ templateId: null }).expect(200);
+    await api('rec', 'patch', `/jobs/${job}`).send({ fitCriteria: 'Five years in audit and GST filing.', fitRubric: [{ label: 'GST', weight: 3 }], listOnCareers: false }).expect(200);
+    const got = (await api('rec', 'get', `/jobs/${job}`).expect(200)).body;
+    expect(got).toMatchObject({ fitCriteria: 'Five years in audit and GST filing.', listOnCareers: false });
+    await api('emp', 'get', `/hiring/jobs/${job}/interview-settings`).expect(403);
+    await api('emp', 'put', `/hiring/jobs/${job}/scorecard`).send({ templateId: null }).expect(403);
+    await api('hrB', 'get', `/hiring/jobs/${job}/interview-settings`).expect(404);
+    await api('rec', 'put', `/hiring/jobs/${job}/scorecard`).send({ templateId: 'not-an-id' }).expect(400);
+    await api('rec', 'put', '/hiring/jobs/not-an-id/scorecard').send({ templateId: null }).expect(400);
+    token.acting = token.acting ?? (await request(server()).post(`/api/v1/auth/impersonate/${users.rec}`).set('Authorization', `Bearer ${token.hr}`).expect(200)).body.accessToken;
+    await api('acting', 'get', `/hiring/jobs/${job}/interview-settings`).expect(200);
+    await api('acting', 'put', `/hiring/jobs/${job}/scorecard`).send({ templateId: null }).expect(403).expect((r) => expect(r.body.message).toMatch(/acting for someone else/));
   });
 });

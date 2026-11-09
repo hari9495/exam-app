@@ -157,4 +157,24 @@ describe('Hiring › HIR-05 designed screens (live)', () => {
     expect(posted).toEqual([{ path: '/hiring/data-requests/lookup', body: { email: 'someone@example.com' } }]);
     expect(api.mock.calls.some(([p]) => String(p).includes('someone@'))).toBe(false);
   });
+
+  it('?entry= opens that application on the record (answer 261): interviews, messages, notes, offers', async () => {
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('entry=a1'));
+    const row = { entryId: 'a1', candidateId: 'c1', candidateName: 'Priya Raman', candidateEmail: 'priya@example.com', statusId: 'st1', stageId: 's1', category: 'active', enteredVia: 'careers', rejectedReason: null, examResults: [], avgRating: null, feedbackCount: 0, fitScore: null, fitStatus: null, fitStale: false, assignedUserId: null, assigneeName: null, referredByName: null, assignedGroupId: null, assignedGroupName: null, customFields: [], blueprintChecklist: {}, stageEnteredAt: '2026-11-01T00:00:00.000Z', scorecards: null, nextInterviewAt: null, rejectionPendingUntil: null };
+    api.mockImplementation(async (path: string) => {
+      if (path === '/hiring/candidates/c1') return PROFILE;
+      if (path === '/hiring/jobs/j1/board') return { pipeline: { id: 'p', name: 'Standard', stages: [{ id: 's1', name: 'Interview', category: 'active', position: 0, statuses: [{ id: 'st1', name: 'Interview', position: 0 }], rules: [] }] }, columns: { s1: [row] } };
+      if (path === '/hiring/jobs/j1/interview-settings') return { scorecardTemplateId: null, exams: [] };
+      if (path.startsWith('/candidates?')) return { data: [], total: 0 };
+      if (path === '/approvals/gate-status') return { requisition: false, offer: false };
+      if (path.startsWith('/pipeline/entries/a1/fit-assessment')) return null;
+      const c = common(path);
+      return c === undefined ? [] : c;
+    });
+    wrap(<YxHiringCandidatePage />);
+    const d = await screen.findByRole('dialog', { name: 'Priya Raman' });
+    for (const t of [/Interviews/, /Messages/, /Notes/, /Offers/]) expect(within(d).getByRole('tab', { name: t })).toBeInTheDocument();
+    await userEvent.click(within(d).getByRole('button', { name: /Close/ }));
+    expect(router.replace).toHaveBeenCalledWith('/yx/hiring/candidates/c1');
+  });
 });

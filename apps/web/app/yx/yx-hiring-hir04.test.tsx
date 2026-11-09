@@ -14,7 +14,8 @@ jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn() }));
 
 // HIR-04 pipeline board page: the designed board on GET hiring/jobs/:id/board. A recruiter moves (with the card's status,
 // so a repeat or a stale card is refused) and rejects with a reason; a refused move says why; a hiring manager and anyone
-// acting for someone else read only; Bulk actions and Add candidate open the candidates list.
+// acting for someone else read only; Bulk actions and Add candidate are sheets on the board (answer 261); a card opens the
+// HIR-05 record; stage targets show (answer 263).
 
 const wrap = (ui: React.ReactElement) =>
   render(
@@ -66,6 +67,7 @@ function serve(perms: string[], over: (path: string, init?: RequestInit) => unkn
 beforeEach(() => {
   api.mockReset();
   router.push.mockReset();
+  router.replace.mockReset();
   (useRouter as jest.Mock).mockReturnValue(router);
   (usePathname as jest.Mock).mockReturnValue('/yx/hiring/jobs/j1/pipeline');
   (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams(''));
@@ -120,16 +122,67 @@ describe('HIR-04 pipeline board page', () => {
     await waitFor(() => expect(boards).toBeGreaterThan(1));
   });
 
-  it('Bulk actions and Add candidate open the candidates list; the job picker opens another job', async () => {
-    serve(['pipeline:manage', 'results:view']);
+  it('Bulk actions opens the sheet: tick, move needs a stage, then moves through the bulk route', async () => {
+    const posted = serve(['pipeline:manage', 'results:view'], (path) => (path === '/hiring/entries/bulk' ? { succeeded: 1, skipped: [] } : undefined));
     wrap(<YxHiringPipelinePage />);
     await ue.click(await screen.findByRole('button', { name: 'Bulk actions' }));
-    expect(router.push).toHaveBeenCalledWith('/yx/hiring/jobs/j1/pipeline/list');
-    await ue.click(screen.getAllByRole('button', { name: 'Add candidate' })[0]);
-    expect(router.push).toHaveBeenCalledWith('/yx/hiring/jobs/j1/pipeline/list?add=1');
+    const sheet = await screen.findByRole('dialog', { name: 'Bulk actions' });
+    await ue.click(within(sheet).getByRole('checkbox', { name: /Arun Kumar/ }));
+    await ue.click(within(sheet).getByRole('button', { name: 'Move' }));
+    const d = screen.getAllByRole('dialog').at(-1)!;
+    await ue.click(within(d).getByRole('button', { name: 'Move' }));
+    expect(await within(d).findByText('Choose the move to.')).toBeInTheDocument();
+    expect(posted.filter(([p]) => p === '/hiring/entries/bulk')).toEqual([]);
+    await ue.click(within(d).getByRole('combobox', { name: 'Move to' }));
+    await ue.click(await screen.findByRole('option', { name: 'Applied' }));
+    await ue.click(within(d).getByRole('button', { name: 'Move' }));
+    await waitFor(() => expect(posted).toContainEqual(['/hiring/entries/bulk', { entryIds: ['e2'], action: 'move', statusId: 'st1' }]));
+    expect(router.push).not.toHaveBeenCalledWith(expect.stringContaining('/pipeline/list'));
+  });
+
+  it('Add candidate opens the sheet: pressed too early it asks; a new candidate is added to the job', async () => {
+    const posted = serve(['pipeline:manage', 'results:view'], (path) => (path === '/jobs/j1/entries' ? {} : undefined));
+    wrap(<YxHiringPipelinePage />);
+    await ue.click((await screen.findAllByRole('button', { name: 'Add candidate' }))[0]!);
+    const sheet = await screen.findByRole('dialog', { name: 'Add candidate' });
+    await ue.click(within(sheet).getByRole('button', { name: 'Add to job' }));
+    expect(await within(sheet).findByText('Choose the candidate.')).toBeInTheDocument();
+    await ue.click(within(sheet).getByRole('radio', { name: 'New candidate' }));
+    await ue.type(within(sheet).getByLabelText(/^Name/), 'Divya S');
+    await ue.type(within(sheet).getByLabelText(/^Email/), 'divya@example.com');
+    await ue.click(within(sheet).getByRole('button', { name: 'Add to job' }));
+    await waitFor(() => expect(posted).toContainEqual(['/jobs/j1/entries', { newCandidate: { name: 'Divya S', email: 'divya@example.com' } }]));
+  });
+
+  it('a card opens the HIR-05 record with the application; ?entry= links go there too; the job picker opens another job', async () => {
+    serve(['pipeline:manage', 'results:view']);
+    wrap(<YxHiringPipelinePage />);
+    await ue.click(await screen.findByRole('button', { name: 'Priya Raman' }));
+    expect(router.push).toHaveBeenCalledWith('/yx/hiring/candidates/c1?entry=e1');
     await ue.click(screen.getByRole('combobox', { name: 'Job' }));
     await ue.click(await screen.findByRole('option', { name: 'Accountant · JOB-0008' }));
     expect(router.push).toHaveBeenCalledWith('/yx/hiring/jobs/j2/pipeline');
+  });
+
+  it('an old ?entry= link opens the candidate record', async () => {
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('entry=e2'));
+    serve(['results:view']);
+    wrap(<YxHiringPipelinePage />);
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/yx/hiring/candidates/c2?entry=e2'));
+  });
+
+  it('stage targets: a card over the days target and a column over its limit are flagged (answer 263)', async () => {
+    serve(['pipeline:manage', 'results:view'], (path) =>
+      path === '/hiring/jobs/j1/board'
+        ? {
+            pipeline: { ...BOARD.pipeline, stages: BOARD.pipeline.stages.map((s) => (s.id === 's1' ? { ...s, daysTarget: 1, stageLimit: null } : s.id === 's2' ? { ...s, daysTarget: null, stageLimit: 1 } : s)) },
+            columns: { ...BOARD.columns, s2: [...BOARD.columns.s2, { ...BOARD.columns.s2[0]!, entryId: 'e3', candidateId: 'c3', candidateName: 'Meena Iyer' }] },
+          }
+        : undefined,
+    );
+    wrap(<YxHiringPipelinePage />);
+    expect(await screen.findByText(/over 1 day target/)).toBeInTheDocument();
+    expect(screen.getByText('2 of 1')).toBeInTheDocument();
   });
 
   it('a hiring manager (results:view only) reads the board with no move controls', async () => {

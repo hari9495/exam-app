@@ -150,6 +150,7 @@ export class PipelinesService {
   }
 
   async updateStage(context: TenantContext, actorUserId: string, stageId: string, dto: UpdateStageDto) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(stageId)) throw new BadRequestException('That is not a stage id.');
     if (dto.category !== undefined) this.assertValidCategory(dto.category);
     const rulesJson = dto.rules !== undefined ? JSON.stringify(validateBlueprintRules(dto.rules)) : undefined;
 
@@ -165,6 +166,8 @@ export class PipelinesService {
           ...(dto.category !== undefined ? { category: dto.category } : {}),
           ...(dto.position !== undefined ? { position: dto.position } : {}),
           ...(rulesJson !== undefined ? { rulesJson } : {}),
+          ...(dto.daysTarget !== undefined ? { daysTarget: dto.daysTarget } : {}),
+          ...(dto.limit !== undefined ? { stageLimit: dto.limit } : {}),
         },
       });
 
@@ -173,6 +176,9 @@ export class PipelinesService {
         action: 'pipeline.stage_updated',
         entityType: 'pipeline_stage',
         entityId: stageId,
+        ...(dto.daysTarget !== undefined || dto.limit !== undefined
+          ? { metadata: { daysTarget: { from: existing.daysTarget, to: updated.daysTarget }, limit: { from: existing.stageLimit, to: updated.stageLimit } } }
+          : {}),
       });
 
       return updated;

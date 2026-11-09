@@ -31,7 +31,7 @@ describe('HIR-04 pipeline board', () => {
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
   const st: Record<string, string> = {};
-  const api = (who: Who, method: 'get' | 'post', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+  const api = (who: Who, method: 'get' | 'post' | 'patch', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const inA = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false }, fn);
   const statusOf = async (entryId: string) => (await inA((tx) => tx.pipelineEntry.findUniqueOrThrow({ where: { id: entryId } }))).statusId as string;
   const add = async (name: string) => {
@@ -191,5 +191,41 @@ describe('HIR-04 pipeline board', () => {
     const bStages = (await api('hrB', 'get', `/hiring/jobs/${other}/board`).expect(200)).body.pipeline.stages as { statuses: { id: string }[] }[];
     await api('rec', 'post', `/hiring/entries/${ids.priya}/move`).send({ statusId: bStages[0].statuses[0].id, fromStatusId: st.second }).expect(400);
     expect(await statusOf(ids.priya)).toBe(st.second);
+  });
+
+  describe('stage targets (founder answer 263)', () => {
+    let stage: { id: string; name: string };
+    const board = async () => (await api('rec', 'get', `/hiring/jobs/${ids.job}/board`).expect(200)).body.pipeline.stages as { id: string; name: string; category: string; daysTarget: number | null; stageLimit: number | null }[];
+
+    it('no targets by default; the configure key sets a days target and a limit; the board carries them; audited', async () => {
+      const stages = await board();
+      expect(stages.every((s) => s.daysTarget === null && s.stageLimit === null)).toBe(true);
+      stage = stages.find((s) => s.category === 'active')!;
+      await api('hr', 'patch', `/pipelines/stages/${stage.id}`).send({ daysTarget: 5, limit: 6 }).expect(200);
+      expect((await board()).find((s) => s.id === stage.id)).toMatchObject({ daysTarget: 5, stageLimit: 6 });
+      const a = await inA((tx) => tx.auditLog.findFirst({ where: { action: 'pipeline.stage_updated', entityId: stage.id }, orderBy: { createdAt: 'desc' } }));
+      expect(JSON.parse(a!.metadataJson!)).toEqual({ daysTarget: { from: null, to: 5 }, limit: { from: null, to: 6 } });
+    });
+
+    it('null clears a target (none); other fields stay', async () => {
+      await api('hr', 'patch', `/pipelines/stages/${stage.id}`).send({ limit: null }).expect(200);
+      expect((await board()).find((s) => s.id === stage.id)).toMatchObject({ name: stage.name, daysTarget: 5, stageLimit: null });
+    });
+
+    it('bad input is 400: zero, over the maximum, text, an unknown field, not an id', async () => {
+      for (const body of [{ daysTarget: 0 }, { daysTarget: 366 }, { limit: 1001 }, { daysTarget: 'five' }, { limit: 2.5 }, { colour: 'red' }]) await api('hr', 'patch', `/pipelines/stages/${stage.id}`).send(body).expect(400);
+      await api('hr', 'patch', '/pipelines/stages/not-an-id').send({ daysTarget: 3 }).expect(400);
+      expect((await board()).find((s) => s.id === stage.id)).toMatchObject({ daysTarget: 5, stageLimit: null });
+    });
+
+    it('a hiring manager and an employee get 403; another company 404; acting for someone else is refused', async () => {
+      await api('hm', 'patch', `/pipelines/stages/${stage.id}`).send({ daysTarget: 9 }).expect(403);
+      await api('emp', 'patch', `/pipelines/stages/${stage.id}`).send({ daysTarget: 9 }).expect(403);
+      await api('hrB', 'patch', `/pipelines/stages/${stage.id}`).send({ daysTarget: 9 }).expect(404);
+      const acting = (await request(server()).post(`/api/v1/auth/impersonate/${users.rec}`).set('Authorization', `Bearer ${token.hr}`).expect(200)).body.accessToken;
+      const r = await request(server()).patch(`/api/v1/pipelines/stages/${stage.id}`).set('Authorization', `Bearer ${acting}`).send({ daysTarget: 9 });
+      expect(r.status).toBe(403);
+      expect((await board()).find((s) => s.id === stage.id)).toMatchObject({ daysTarget: 5 });
+    });
   });
 });

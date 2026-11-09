@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
+import { assertOwnSession } from '../service-desk/desk-access';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
@@ -48,13 +49,16 @@ export class InterviewingController {
 
   @Put('jobs/:id/scorecard')
   @RequirePermissions('pipeline:manage')
-  setJobScorecard(@CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: JobScorecardDto) {
+  setJobScorecard(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: JobScorecardDto) {
+    // HIR-04 answer 261: the job settings moved onto the HIR-03 workspace; like every write there, not while acting.
+    assertOwnSession(req);
     return this.board.setJobScorecard(ctx, id, dto.templateId ?? null);
   }
 
   @Put('jobs/:id/exams/:examId/send-on')
   @RequirePermissions('pipeline:manage')
-  setSendOn(@CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('examId', ParseUUIDPipe) examId: string, @Body() dto: SendOnStageDto) {
+  setSendOn(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('examId', ParseUUIDPipe) examId: string, @Body() dto: SendOnStageDto) {
+    assertOwnSession(req);
     return this.board.setSendOn(ctx, id, examId, dto.stageId ?? null);
   }
 

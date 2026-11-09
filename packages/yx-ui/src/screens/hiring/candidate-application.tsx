@@ -1,34 +1,39 @@
 import { useState } from 'react';
 import { CalendarPlus, Check, Download, ExternalLink, Mail, MessageSquare, Plus, Sparkles } from 'lucide-react';
-import { Button } from '../../../components/button';
-import { Checkbox } from '../../../components/choice';
-import { DatePicker } from '../../../components/date';
-import { Badge } from '../../../components/display';
-import { EmptyState, InlineAlert } from '../../../components/feedback';
-import { FormField } from '../../../components/field';
-import { Text } from '../../../components/foundations';
-import { TextArea, TextField, TimeField } from '../../../components/inputs';
-import { Drawer } from '../../../components/drawer';
-import { ConfirmDialog, Dialog } from '../../../components/overlay';
-import { Segment } from '../../../components/segment';
-import { MultiSelect, Select } from '../../../components/select';
-import { Card, DescriptionList, Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/shell';
-import { dayKey } from '../../../lib/dates';
-import { useRun } from '../../org/org-kit';
-import { dateText } from '../../time/live/kit';
-import { EmailDialog } from '../candidate-dialogs';
-import { RejectDialog, scorecardText } from './job-workspace';
-import type { ApplicationView, Choice, EmailCompose, EmailTemplateChoice, OfferInput, RejectInput, ScheduleInput } from './types';
+import { Button } from '../../components/button';
+import { Checkbox } from '../../components/choice';
+import { DatePicker } from '../../components/date';
+import { Badge } from '../../components/display';
+import { EmptyState, InlineAlert } from '../../components/feedback';
+import { FormField } from '../../components/field';
+import { Text } from '../../components/foundations';
+import { TextArea, TextField, TimeField } from '../../components/inputs';
+import { Drawer } from '../../components/drawer';
+import { ConfirmDialog, Dialog } from '../../components/overlay';
+import { Segment } from '../../components/segment';
+import { MultiSelect, Select } from '../../components/select';
+import { Card, DescriptionList, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
+import { dayKey } from '../../lib/dates';
+import { useRun } from '../org/org-kit';
+import { useToastIfAny } from '../../components/notify';
+import { dateText } from '../time/live/kit';
+import { EmailDialog } from './candidate-dialogs';
+import { RejectDialog, scorecardText } from './pipeline-sheets';
+import type { ApplicationView, Choice, EmailCompose, EmailTemplateChoice, OfferInput, RejectInput, ScheduleInput } from './live/types';
 
-// Recruitment batch AT5, wired (M10-BUILD-DESIGN §8, §9): one application in the job workspace — the candidate,
-// tests and fit, interviews (schedule with proposed slots or self-booking; calendar events and meeting links come
-// from the existing calendar sync), messages, notes and offers. Replaces the older candidate drawer.
+// HIR-05 Application (founder answer 261, 10 Nov 2026): one application, opened on the candidate record (a card on the
+// HIR-04 board opens the record with it). Tests and fit, interviews (schedule with proposed slots or self-booking;
+// calendar events and meeting links come from the calendar sync), messages, notes, the checklist, the owner and offers
+// (offers stay here until HIR-09). Moved from the AT5 stand-in drawer so nothing it did is lost.
 
 const day = (iso: string) => dateText(iso.slice(0, 10));
 const when = (iso: string) => new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+/** Why SMS or WhatsApp is not offered. */
+const noText = (a: { phone: string | null; smsOptedOut: boolean; whatsappOptedOut: boolean }) =>
+  !a.phone ? 'No mobile number: no SMS or WhatsApp.' : `${[a.smsOptedOut ? 'SMS' : null, a.whatsappOptedOut ? 'WhatsApp' : null].filter(Boolean).join(' and ')}: opted out.`;
 const OFFER_LABEL: Record<string, string> = { draft: 'Draft', pending_approval: 'Waiting for approval', approved: 'Approved', rejected: 'Not approved', sent: 'Sent', accepted: 'Accepted', declined: 'Declined', withdrawn: 'Withdrawn', expired: 'Expired' };
 
-export interface ApplicationPanelProps {
+export interface ApplicationDrawerProps {
   open: boolean;
   onClose: () => void;
   app: ApplicationView | null;
@@ -46,7 +51,8 @@ export interface ApplicationPanelProps {
   surveys: Choice[];
   /** The company asks for approval before an offer goes out. */
   offerApproval: boolean;
-  onOpenProfile: () => void;
+  /** Opens the full record (when the drawer is shown somewhere else). */
+  onOpenProfile?: () => void;
   onStatus: (statusId: string) => Promise<unknown>;
   onReject: (input: RejectInput) => Promise<unknown>;
   onUndo: () => Promise<unknown>;
@@ -72,9 +78,18 @@ export interface ApplicationPanelProps {
   onOfferDecide?: (offerId: string, decision: 'approved' | 'rejected', note?: string) => Promise<unknown>;
 }
 
-export function ApplicationPanel(p: ApplicationPanelProps) {
+export function ApplicationDrawer(p: ApplicationDrawerProps) {
   const a = p.app;
-  const { busy, error, run } = useRun();
+  const toast = useToastIfAny();
+  const { busy, error, run: run0 } = useRun();
+  const DONE: Record<string, string> = { undo: 'Rejection undone', status: 'Stage changed', fit: 'Fit scoring started', check: 'Checklist saved', assign: 'Owner saved', resend: 'Sent again', cancel: 'Cancelled', survey: 'Survey sent', approval: 'Sent for approval', send: 'Offer sent to the candidate', withdraw: 'Offer withdrawn', 'turn-down': 'Offer turned down' };
+  // Success is a toast (5 s); a failure stays in the drawer's notice.
+  const run = (key: string, fn: () => Promise<unknown>) =>
+    run0(key, async () => {
+      await fn();
+      if (DONE[key] || key.startsWith('approve-')) toast?.toast({ tone: 'success', title: key.startsWith('approve-') ? 'Offer approved' : DONE[key]! });
+    });
+  const told = (title: string) => () => void toast?.toast({ tone: 'success', title });
   const [rejecting, setRejecting] = useState(false);
   const [turningDown, setTurningDown] = useState<string | null>(null);
   const [downReason, setDownReason] = useState('');
@@ -97,14 +112,14 @@ export function ApplicationPanel(p: ApplicationPanelProps) {
       {!a ? (
         <Text as="p" tone="secondary">{p.loading ? 'Loading…' : 'Not found.'}</Text>
       ) : (
-        <div className="yx-tim-stack">
+        <div className="yx-hire-stack">
           {a.rejectionPendingUntil && (
             <InlineAlert tone="info" title="Rejected">
               The message goes at {when(a.rejectionPendingUntil)}. {p.canManage && <Button size="sm" onClick={() => void run('undo', p.onUndo)}>Undo rejection</Button>}
             </InlineAlert>
           )}
-          <div className="yx-tim-row">
-            <Button size="sm" icon={ExternalLink} onClick={p.onOpenProfile}>Full profile</Button>
+          <div className="yx-hire-actions">
+            {p.onOpenProfile && <Button size="sm" icon={ExternalLink} onClick={p.onOpenProfile}>Full profile</Button>}
             {p.canManage && a.category !== 'rejected' && <Button size="sm" variant="danger" onClick={() => setRejecting(true)}>Reject</Button>}
           </div>
           {p.canManage && (
@@ -122,13 +137,13 @@ export function ApplicationPanel(p: ApplicationPanelProps) {
             </TabsList>
 
             <TabsContent value="overview">
-              <div className="yx-tim-stack">
+              <div className="yx-hire-stack">
                 <Card title="Résumé">
                   {a.resume ? (
                     <>
                       {a.resume.title && <Text as="p" weight="semibold">{a.resume.title}</Text>}
                       {a.resume.summary && <Text as="p">{a.resume.summary}</Text>}
-                      {a.resume.skills.length > 0 && <div className="yx-tim-row">{a.resume.skills.map((s) => <Badge key={s} tone="neutral">{s}</Badge>)}</div>}
+                      {a.resume.skills.length > 0 && <div className="yx-hire-actions">{a.resume.skills.map((s) => <Badge key={s} tone="neutral">{s}</Badge>)}</div>}
                       {a.resume.hasFile && <div><Button size="sm" icon={Download} onClick={() => void run('resume', p.onResume)}>Open the résumé</Button></div>}
                     </>
                   ) : (
@@ -151,13 +166,19 @@ export function ApplicationPanel(p: ApplicationPanelProps) {
                 </Card>
                 {a.checklist.length > 0 && (
                   <Card title="Checklist">
-                    {a.checklist.map((c) => <Checkbox key={c.id} label={c.label} checked={c.done} disabled={!p.canManage} onChange={(v) => void run('check', () => p.onChecklist(c.id, v))} />)}
+                    {p.canManage
+                      ? a.checklist.map((c) => <Checkbox key={c.id} label={c.label} checked={c.done} onChange={(v) => void run('check', () => p.onChecklist(c.id, v))} />)
+                      : <DescriptionList items={a.checklist.map((c) => ({ label: c.label, value: c.done ? 'Done' : 'Not done' }))} />}
                   </Card>
                 )}
                 <Card title="Details">
-                  <FormField id="ap-owner" label="Owner">
-                    <Select aria-label="Owner" value={a.assignee} disabled={!p.canManage} placeholder="Nobody" onChange={(v) => void run('assign', () => p.onAssign(v))} options={p.people} searchable clearable />
-                  </FormField>
+                  {p.canManage ? (
+                    <FormField id="ap-owner" label="Owner">
+                      <Select aria-label="Owner" value={a.assignee} placeholder="Nobody" onChange={(v) => void run('assign', () => p.onAssign(v))} options={p.people} searchable clearable />
+                    </FormField>
+                  ) : (
+                    <DescriptionList items={[{ label: 'Owner', value: p.people.find((x) => x.value === a.assignee)?.label ?? 'Nobody' }]} />
+                  )}
                   {a.customFields.length > 0 && <DescriptionList items={a.customFields.map((f) => ({ label: f.label, value: f.value }))} />}
                   {a.rejectedReason && <Text as="p" tone="secondary">Rejected: {a.rejectedReason}</Text>}
                 </Card>
@@ -165,14 +186,14 @@ export function ApplicationPanel(p: ApplicationPanelProps) {
             </TabsContent>
 
             <TabsContent value="interviews">
-              <div className="yx-tim-stack">
+              <div className="yx-hire-stack">
                 {p.canManage && <div><Button size="sm" icon={CalendarPlus} onClick={() => setScheduling(true)}>Schedule an interview</Button></div>}
                 {a.interviews.length === 0 && <EmptyState compact title="No interviews yet." />}
                 {a.interviews.map((iv) => (
                   <Card key={iv.id} title={iv.when ? when(iv.when) : 'Time not fixed yet'}>
                     <Text as="p">{iv.status} · {iv.location} · {iv.panel.join(', ') || 'No panel'}</Text>
                     {iv.scorecards && <Text as="p" tone="secondary">{scorecardText(iv.scorecards)}</Text>}
-                    <div className="yx-tim-row">
+                    <div className="yx-hire-actions">
                       <Button size="sm" onClick={() => p.onOpenInterview(iv.id)}>Open interview</Button>
                       {iv.meetingUrl && <Button asChild size="sm"><a href={iv.meetingUrl} target="_blank" rel="noopener noreferrer">Join meeting</a></Button>}
                       {p.canManage && iv.status !== 'cancelled' && <Button size="sm" onClick={() => void run('resend', () => p.onResendInterview(iv.id))}>Send to candidate again</Button>}
@@ -184,19 +205,20 @@ export function ApplicationPanel(p: ApplicationPanelProps) {
             </TabsContent>
 
             <TabsContent value="messages">
-              <div className="yx-tim-stack">
+              <div className="yx-hire-stack">
                 {p.canManage && (
-                  <div className="yx-tim-row">
+                  <div className="yx-hire-actions">
                     <Button size="sm" icon={Mail} onClick={() => setEmailing(true)}>Email</Button>
-                    <Button size="sm" icon={MessageSquare} disabled={a.smsOptedOut || !a.phone} onClick={() => setTexting('sms')}>SMS</Button>
-                    <Button size="sm" icon={MessageSquare} disabled={a.whatsappOptedOut || !a.phone} onClick={() => setTexting('whatsapp')}>WhatsApp</Button>
+                    {!a.smsOptedOut && a.phone && <Button size="sm" icon={MessageSquare} onClick={() => setTexting('sms')}>SMS</Button>}
+                    {!a.whatsappOptedOut && a.phone && <Button size="sm" icon={MessageSquare} onClick={() => setTexting('whatsapp')}>WhatsApp</Button>}
+                    {(!a.phone || a.smsOptedOut || a.whatsappOptedOut) && <Text size="sm" tone="secondary">{noText(a)}</Text>}
                     {p.surveys.length > 0 && <SurveyButton surveys={p.surveys} onSend={(id) => run('survey', () => p.onSurvey(id))} />}
                   </div>
                 )}
                 {[...a.emails.map((m) => ({ ...m, channel: 'email' as const, text: m.subject })), ...a.sms.map((m) => ({ ...m, channel: 'sms' as const, text: m.body })), ...a.whatsapp.map((m) => ({ ...m, channel: 'whatsapp' as const, text: m.body }))]
                   .sort((x, y) => y.at.localeCompare(x.at))
                   .map((m) => (
-                    <div key={`${m.channel}-${m.id}`} className="yx-tim-row">
+                    <div key={`${m.channel}-${m.id}`} className="yx-hire-actions">
                       <Badge tone="neutral">{m.channel === 'email' ? 'Email' : m.channel === 'sms' ? 'SMS' : 'WhatsApp'}</Badge>
                       <Text>{day(m.at)} · {m.text}</Text>
                       {m.status === 'failed' && p.canManage && <Button size="sm" onClick={() => void run('resend', () => p.onResend(m.channel, m.id))}>Send again</Button>}
@@ -207,7 +229,7 @@ export function ApplicationPanel(p: ApplicationPanelProps) {
             </TabsContent>
 
             <TabsContent value="notes">
-              <div className="yx-tim-stack">
+              <div className="yx-hire-stack">
                 <div><Button size="sm" icon={Plus} onClick={() => setNoting(true)}>Add a note</Button></div>
                 {a.notes.length === 0 && <EmptyState compact title="No notes yet." />}
                 {a.notes.map((n) => (
@@ -220,23 +242,23 @@ export function ApplicationPanel(p: ApplicationPanelProps) {
             </TabsContent>
 
             <TabsContent value="offers">
-              <div className="yx-tim-stack">
+              <div className="yx-hire-stack">
                 {p.canManage && <div><Button size="sm" icon={Plus} onClick={() => setOffering(true)}>Create an offer</Button></div>}
                 {a.offers.length === 0 && <EmptyState compact title="No offers yet." />}
                 {a.offers.map((o) => (
                   <Card key={o.id} title={o.compensation}>
                     <Text as="p">{OFFER_LABEL[o.status] ?? o.status} · starts {day(o.startDate)} · answer by {day(o.expiresAt)}</Text>
                     {o.status === 'pending_approval' && p.offersToDecide?.includes(o.id) && p.onOfferDecide && (
-                      <div className="yx-tim-stack" data-gap="sm">
+                      <div className="yx-hire-stack">
                         <Text as="p" tone="secondary">Waiting for your approval.</Text>
-                        <div className="yx-tim-row">
+                        <div className="yx-hire-actions">
                           <Button size="sm" variant="approve" icon={Check} loading={busy === `approve-${o.id}`} onClick={() => void run(`approve-${o.id}`, () => p.onOfferDecide!(o.id, 'approved'))}>Approve offer</Button>
                           <Button size="sm" onClick={() => setTurningDown(o.id)}>Turn down</Button>
                         </div>
                       </div>
                     )}
                     {p.canManage && (
-                      <div className="yx-tim-row">
+                      <div className="yx-hire-actions">
                         <Button size="sm" onClick={() => void run('pdf', () => p.onOfferAction(o.id, 'pdf'))}>Open the letter</Button>
                         {o.status === 'draft' && p.offerApproval && <Button size="sm" variant="primary" onClick={() => void run('approval', () => p.onOfferAction(o.id, 'approval'))}>Send for approval</Button>}
                         {(o.status === 'approved' || (o.status === 'draft' && !p.offerApproval)) && <Button size="sm" variant="primary" onClick={() => void run('send', () => p.onOfferAction(o.id, 'send'))}>Send to candidate</Button>}
@@ -283,12 +305,12 @@ export function ApplicationPanel(p: ApplicationPanelProps) {
               </FormField>
             </Dialog>
           )}
-          {rejecting && <RejectDialog count={1} templates={p.templates} onClose={() => setRejecting(false)} onReject={async (i) => { await p.onReject(i); }} />}
-          {scheduling && <ScheduleDialog {...p} onClose={() => setScheduling(false)} />}
-          {emailing && <EmailDialog count={1} templates={p.templates} senders={p.senders} onClose={() => setEmailing(false)} onSend={async (c) => { await p.onEmail(c); }} />}
-          {texting && <TextDialog channel={texting} templates={texting === 'sms' ? p.smsTemplates : p.whatsappTemplates} onClose={() => setTexting(null)} onSend={(b, t) => (texting === 'sms' ? p.onSms(b, t) : p.onWhatsapp(b, t))} />}
-          {noting && <NoteDialog onClose={() => setNoting(false)} onSave={p.onNote} />}
-          {offering && <OfferDialog templates={p.offerTemplates} approval={p.offerApproval} onClose={() => setOffering(false)} onSave={p.onOffer} />}
+          {rejecting && <RejectDialog count={1} templates={p.templates} onClose={() => setRejecting(false)} onReject={async (i) => { await p.onReject(i); told('Candidate rejected')(); }} />}
+          {scheduling && <ScheduleDialog {...p} onSchedule={(i) => p.onSchedule(i).then(told('Interview scheduled'))} onClose={() => setScheduling(false)} />}
+          {emailing && <EmailDialog count={1} templates={p.templates} senders={p.senders} onClose={() => setEmailing(false)} onSend={async (c) => { await p.onEmail(c); told('Email on its way')(); }} />}
+          {texting && <TextDialog channel={texting} templates={texting === 'sms' ? p.smsTemplates : p.whatsappTemplates} onClose={() => setTexting(null)} onSend={(b, t) => (texting === 'sms' ? p.onSms(b, t) : p.onWhatsapp(b, t)).then(told(texting === 'sms' ? 'SMS sent' : 'WhatsApp message sent'))} />}
+          {noting && <NoteDialog onClose={() => setNoting(false)} onSave={(n, r) => p.onNote(n, r).then(told('Note added'))} />}
+          {offering && <OfferDialog templates={p.offerTemplates} approval={p.offerApproval} onClose={() => setOffering(false)} onSave={(o) => p.onOffer(o).then(told('Offer saved'))} />}
         </div>
       )}
     </Drawer>
@@ -345,7 +367,7 @@ function NoteDialog(p: { onClose: () => void; onSave: (note: string, rating: num
   );
 }
 
-function ScheduleDialog(p: ApplicationPanelProps & { onClose: () => void }) {
+function ScheduleDialog(p: ApplicationDrawerProps & { onClose: () => void }) {
   const [mode, setMode] = useState<'proposed' | 'self_book'>('proposed');
   const [slots, setSlots] = useState<{ date: Date | null; start: string | null; end: string | null }[]>([{ date: null, start: null, end: null }]);
   const [wFrom, setWFrom] = useState<Date | null>(null);
@@ -382,7 +404,7 @@ function ScheduleDialog(p: ApplicationPanelProps & { onClose: () => void }) {
       {mode === 'proposed' ? (
         <>
           {slots.map((s, i) => (
-            <div key={i} className="yx-tim-row">
+            <div key={i} className="yx-hire-actions">
               <FormField id={`sc-d${i}`} label={`Option ${i + 1} date`} error={tried && !s.date ? 'Choose a date.' : null}>
                 <DatePicker aria-label={`Option ${i + 1} date`} value={s.date} onChange={(d) => setSlots((x) => x.map((y, k) => (k === i ? { ...y, date: d } : y)))} min={new Date()} />
               </FormField>
@@ -395,7 +417,7 @@ function ScheduleDialog(p: ApplicationPanelProps & { onClose: () => void }) {
               {slots.length > 1 && <Button size="sm" variant="danger" onClick={() => setSlots((x) => x.filter((_, k) => k !== i))}>Remove option {i + 1}</Button>}
             </div>
           ))}
-          <div><Button size="sm" icon={Plus} disabled={slots.length >= 5} onClick={() => setSlots((x) => [...x, { date: null, start: null, end: null }])}>Add another time</Button></div>
+          <div>{slots.length < 5 && <Button size="sm" icon={Plus} onClick={() => setSlots((x) => [...x, { date: null, start: null, end: null }])}>Add another time</Button>}</div>
         </>
       ) : (
         <>

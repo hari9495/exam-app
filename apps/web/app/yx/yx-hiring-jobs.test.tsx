@@ -136,6 +136,47 @@ describe('Hiring › one job (HIR-03 workspace, HIR-24 pay range, live)', () => 
     expect(patched).toBe(0);
   });
 
+  it('Settings tab (answer 261): the scorecard is set per job; stage targets save only valid numbers (answer 263)', async () => {
+    const calls: [string, unknown][] = [];
+    const BOARD = { pipeline: { id: 'p1', name: 'Standard', stages: [{ id: 's1', name: 'Applied', category: 'active', position: 0, statuses: [], daysTarget: null, stageLimit: null }, { id: 's2', name: 'Rejected', category: 'rejected', position: 1, statuses: [], daysTarget: null, stageLimit: null }] }, columns: {} };
+    routes(
+      (key, init) => {
+        if (init?.method && init.method !== 'GET') calls.push([key, init.body ? JSON.parse(String(init.body)) : undefined]);
+        if (key === 'GET /jobs/j1') return job({});
+        if (key === 'GET /hiring/jobs/j1/board') return BOARD;
+        if (key === 'GET /hiring/scorecard-templates') return [{ id: 'tp1', name: 'Engineer round 1' }];
+        if (key.startsWith('GET /exams') || key.startsWith('GET /organizations/job-boards') || key.startsWith('GET /job-boards')) return key.startsWith('GET /exams') ? { data: [], total: 0 } : [];
+        if (key === 'PUT /hiring/jobs/j1/scorecard' || key === 'PATCH /pipelines/stages/s1') return {};
+        return undefined;
+      },
+      ['pipeline:manage', 'pipelines:configure', 'results:view', 'org.structure.view'],
+    );
+    wrap(<YxHiringJobPage />);
+    await userEvent.click(await screen.findByRole('tab', { name: 'Settings' }));
+    await userEvent.click(await screen.findByRole('combobox', { name: 'Scorecard for new interviews' }));
+    await userEvent.click(await screen.findByRole('option', { name: 'Engineer round 1' }));
+    await waitFor(() => expect(calls).toContainEqual(['PUT /hiring/jobs/j1/scorecard', { templateId: 'tp1' }]));
+    const days = screen.getByLabelText(/^Applied: days target/);
+    await userEvent.type(days, '400');
+    await userEvent.click(screen.getByRole('button', { name: 'Save stage targets' }));
+    expect((await screen.findAllByText(/1 to 365 days|between 1 and 365/)).length).toBeGreaterThan(0);
+    expect(calls.filter(([k]) => k.startsWith('PATCH /pipelines'))).toEqual([]);
+    await userEvent.clear(days);
+    await userEvent.type(days, '3');
+    await userEvent.click(screen.getByRole('button', { name: 'Save stage targets' }));
+    await waitFor(() => expect(calls).toContainEqual(['PATCH /pipelines/stages/s1', { daysTarget: 3, limit: null }]));
+  });
+
+  it('Settings tab without the job-manage key shows the values as text', async () => {
+    const BOARD = { pipeline: { id: 'p1', name: 'Standard', stages: [{ id: 's1', name: 'Applied', category: 'active', position: 0, statuses: [], daysTarget: 3, stageLimit: 6 }] }, columns: {} };
+    routes((key) => (key === 'GET /jobs/j1' ? job({}) : key === 'GET /hiring/jobs/j1/board' ? BOARD : key.startsWith('GET /exams') ? { data: [], total: 0 } : key.includes('job-boards') ? [] : undefined), ['results:view']);
+    wrap(<YxHiringJobPage />);
+    await userEvent.click(await screen.findByRole('tab', { name: 'Settings' }));
+    expect(await screen.findByText('3 days target · limit 6')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save stage targets' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Scorecard for new interviews' })).not.toBeInTheDocument();
+  });
+
   it('an older application link goes to the pipeline page', async () => {
     (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('entry=e1'));
     routes((key) => (key === 'GET /jobs/j1' ? job({}) : undefined));
