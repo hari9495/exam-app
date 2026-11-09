@@ -1,7 +1,9 @@
 const SETTINGS: Record<string, string> = {};
 jest.mock('../people/probation', () => ({ settingFor: jest.fn(async (_tx: unknown, _c: unknown, key: string) => SETTINGS[key] ?? 'off') }));
 
+import { ForbiddenException } from '@nestjs/common';
 import { biasAuditBlock, coveredPlace, resultsProblem, validUntil, type BiasLaw } from './bias-audit';
+import { BiasAuditService } from './bias-audit.service';
 
 const LAW: BiasLaw = {
   name: 'NYC Local Law 144',
@@ -75,5 +77,18 @@ describe('HIR-23 gate on automated tools', () => {
     expect(await biasAuditBlock(tx({ location: { state: 'IN-TN', address: { city: 'Chennai' } } }), c, 'job-1', 'AI notes', NOW)).toBeNull();
     expect(await biasAuditBlock(tx({ text: 'Remote, India' }), c, 'job-1', 'AI notes', NOW)).toBeNull();
     expect(await biasAuditBlock(tx({ text: 'New York office' }), c, 'job-1', 'AI notes', NOW)).not.toBeNull();
+  });
+});
+
+describe('BiasAuditService.record refusals before anything is stored', () => {
+  it('acting for someone else, or without the settings key, is 403; nothing is uploaded', async () => {
+    const blobs = { upload: jest.fn() } as any;
+    const settings = { canEdit: jest.fn().mockResolvedValue(true) } as any;
+    const svc = new BiasAuditService({ forTenant: jest.fn() } as any, blobs, settings);
+    const dto = { auditedOn: '2026-11-01', auditor: 'A', summaryUrl: 'https://x.test', results: { sex: [], race: [] }, reportBase64: 'JVBERi0=', reportName: 'a.pdf' } as any;
+    await expect(svc.record(c, { userId: 'u1', impersonatorUserId: 'admin' } as any, dto)).rejects.toThrow('Not available while acting for someone else');
+    settings.canEdit.mockResolvedValue(false);
+    await expect(svc.record(c, { userId: 'u1' } as any, dto)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(blobs.upload).not.toHaveBeenCalled();
   });
 });

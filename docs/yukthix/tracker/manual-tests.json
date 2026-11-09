@@ -17824,5 +17824,91 @@
       "Screens/Hiring/HIR-25 · Interview notetaker consent · Waiting for the candidate"
     ],
     "note": "Negative (security, erase)."
+  },
+  {
+    "id": "MT-HIR-23-01",
+    "area": "Hiring · HIR-23 Bias audit record (13 Nov 2026)",
+    "screen": "Bias audits · Not applicable",
+    "url": "http://localhost:3000/yx/hiring/bias-audits",
+    "account": "hr-tester@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open Hiring › Reports & compliance › Bias audits.",
+      "Open Settings › Hiring and find \"We use an automated tool for jobs in New York City\"."
+    ],
+    "expected": "Step 1: \"Bias audits aren't needed for your company.\" (the setting is off by default). Step 2: off; turning it on saves with a toast and the last change line names you.",
+    "stories": [
+      "Screens/Hiring/HIR-23 · Bias audit record · Not applicable · NYC setting off"
+    ],
+    "note": "Positive (default off)."
+  },
+  {
+    "id": "MT-HIR-23-02",
+    "area": "Hiring · HIR-23 Bias audit record (13 Nov 2026)",
+    "screen": "Bias audits · Overdue · blocked for NYC jobs",
+    "url": "http://localhost:3000/yx/hiring/bias-audits",
+    "account": "hr-tester@demo-org.test with the NYC setting on; recruiter@demo-org.test for a requisition. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open Bias audits with no audit recorded.",
+      "Turn on AI notes on past candidates (6.1). As a recruiter open a requisition whose location is a New York City office and look at Past candidates.",
+      "Open a requisition in India."
+    ],
+    "expected": "Step 1: the red banner \"… is blocked for New York City jobs. No audit is recorded.\" and Audit overdue. Step 2: a warning \"AI notes are blocked for this job\" with the reason; the plain search still lists people. Step 3: AI notes as usual.",
+    "stories": [
+      "Screens/Hiring/HIR-23 · Bias audit record · Overdue · feature blocked for NYC jobs",
+      "Screens/Hiring/HIR-26 · Rediscovery panel · Panel · AI blocked, bias audit overdue (NYC)"
+    ],
+    "note": "Positive and negative (never silently skipped)."
+  },
+  {
+    "id": "MT-HIR-23-03",
+    "area": "Hiring · HIR-23 Bias audit record (13 Nov 2026)",
+    "screen": "Bias audits · Record new audit",
+    "url": "http://localhost:3000/yx/hiring/bias-audits",
+    "account": "hr-tester@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Press Record audit, then Save audit at once.",
+      "Fill the date (last month), the auditor, an http:// address, all the numbers, and a PDF report; Save.",
+      "Change the address to https://…; put Selected above Assessed for one category; Save.",
+      "Fix it and Save."
+    ],
+    "expected": "Step 1: the button is not greyed out; each missing field says what to enter and the cursor goes to the first. Step 2: the address error. Step 3: \"…: selected (x) cannot be more than assessed (y).\" stays in the drawer. Step 4: a toast \"Bias audit recorded\"; Audit valid; Valid until is the same date next year; the tables show the impact ratios.",
+    "stories": [
+      "Screens/Hiring/HIR-23 · Bias audit record · Record new audit",
+      "Screens/Hiring/HIR-23 · Bias audit record · Audit valid"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-23-04",
+    "area": "Hiring · HIR-23 Bias audit record (13 Nov 2026)",
+    "screen": "Bias audits · Audit valid",
+    "url": "http://localhost:3000/yx/hiring/bias-audits",
+    "account": "recruiter@demo-org.test, then admin-tester@ acting as hr-tester@. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open Bias audits as a recruiter.",
+      "Press Open audit report.",
+      "Act for HR and open the page."
+    ],
+    "expected": "Step 1: the audit, no Record audit button. Step 2: the PDF opens in a new tab. Step 3: no Record audit (the API refuses it while acting).",
+    "stories": [
+      "Screens/Hiring/HIR-23 · Bias audit record · Audit valid"
+    ],
+    "note": "Positive and negative (who may record)."
+  },
+  {
+    "id": "MT-HIR-23-05",
+    "area": "Hiring · HIR-23 Bias audit record (13 Nov 2026)",
+    "screen": "Notetaker · AI draft blocked",
+    "url": "http://localhost:3000/yx/hiring/interviews",
+    "account": "a panellist on an interview for a New York City job, with the notetaker, AI drafting and the NYC setting on and no valid audit. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Give consent, record the candidate's, add a transcript.",
+      "Look for the Draft button."
+    ],
+    "expected": "Step 2: no Draft button; \"AI drafting is blocked for this job\" with the reason; fill the scorecard yourself.",
+    "stories": [
+      "Screens/Hiring/HIR-25 · Interview notetaker consent · Transcript added · AI draft blocked (NYC, bias audit overdue)"
+    ],
+    "note": "Negative (the gate)."
   }
 ]

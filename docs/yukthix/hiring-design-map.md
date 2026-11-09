@@ -15,7 +15,7 @@ was built.
   pay-history question). Since 9 Nov 2026 also HIR-04, the pipeline board (all 7 stories) on /yx/hiring/jobs/[id]/pipeline.
   Counts in the table below.
 - **Few of the Hiring designs are live.** Of the design stories (HIR-01 … 31, the careers site, candidate
-  identity check and the hiring settings), 195 of 304 are live with their design and 11 more live with a gap (recount 13 Nov 2026, after HIR-25 the interview notetaker and HIR-13 Internal jobs merged with test main on /yx/hiring/internal-jobs; before that HIR-10 manual BGV on /yx/hiring/bgv, HIR-20 Talent CRM on /yx/hiring/pools and the HIR-07 scorecard comments). First the "Request a hire" sheet (HIR-02
+  identity check and the hiring settings), 201 of 306 are live with their design and 11 more live with a gap (recount 13 Nov 2026, after HIR-23 the bias audit, HIR-25 the interview notetaker and HIR-13 Internal jobs merged with test main on /yx/hiring/internal-jobs; before that HIR-10 manual BGV on /yx/hiring/bgv, HIR-20 Talent CRM on /yx/hiring/pools and the HIR-07 scorecard comments). First the "Request a hire" sheet (HIR-02
   NewRequisition), which People › My team (/yx/people/team) renders with `live` and sends to `POST jobs/requisitions`. Since 9 Nov 2026 (branch `feat/yukthix-hir-01`) HIR-01, the headcount plan board, is live too: all 10 of
   its stories (section 4). HIR-05 (branch `feat/yukthix-hir-05`): the candidate record with the ex-employee match and merge, plus the newly drawn candidate list (with Possible duplicates) and candidate data retention pages. HIR-11 Recruiting costs (/yx/hiring/costs) and HIR-12 Referrals (/yx/hiring/referrals, with HR's
   All referrals at /yx/hiring/referrals/all) are live too (branch `feat/yukthix-hir-11-12`).
@@ -35,7 +35,7 @@ was built.
 - **Not built at all (no API):** the staffing-agency business (clients, rate cards, submissions to clients, placements,
   bench, client invoices, collections, placement fees, e-invoice window: HIR-14 … 19, 30, 31),
   AI interview review (HIR-08), a recording provider for the notetaker (HIR-25), candidate identity checks (HIR-22, T9-15),
-  bias audit (HIR-23), BGV partner checks (HIR-10), bulk interview day and bulk offers (HIR-27, 28), interview slot finder from calendars (HIR-06), CRM sequences and
+  BGV partner checks (HIR-10), bulk interview day and bulk offers (HIR-27, 28), interview slot finder from calendars (HIR-06), CRM sequences and
   sourced profiles (HIR-20). (Pay-transparency law rules, HIR-24, went live 9 Nov 2026.)
 - **The public careers site** is live on T9-09 since 11 Nov 2026 (/yx/careers/[org], its job pages, /yx/apply/[token])
   with the candidate pages outside the app (status, candidate page, offer accept, interview booking); the Surfaces/Careers
@@ -55,12 +55,13 @@ built**.
 | A. Plans, requisitions, jobs and costs | 4 | 36 | 1 | 0 | 0 | 0 | 37 |
 | B. Candidates, pipeline and interviews | 8 | 46 | 0 | 0 | 13 | 1 | 60 |
 | C. Offers, BGV and joining | 4 | 23 | 4 | 0 | 1 | 0 | 28 |
-| D. Referrals, internal jobs, CRM and rediscovery | 4 | 24 | 0 | 0 | 3 | 4 | 31 |
+| D. Referrals, internal jobs, CRM and rediscovery | 4 | 25 | 0 | 0 | 3 | 4 | 32 |
 | E. Staffing agency | 8 | 0 | 0 | 4 | 44 | 0 | 48 |
-| F. Compliance and fairness | 5 | 12 | 2 | 0 | 15 | 0 | 29 |
+| F. Compliance and fairness | 5 | 17 | 2 | 0 | 11 | 0 | 30 |
 | G. Careers site, portals and settings | 4 | 54 | 4 | 2 | 11 | 0 | 71 |
-| **All Hiring design groups (A–G)** | **37** | **195** | **11** | **6** | **87** | **5** | **304** |
+| **All Hiring design groups (A–G)** | **37** | **201** | **11** | **6** | **83** | **5** | **306** |
 | H. Kit and "Live ·" groups (not designs; own line) | 3 | 5 | 0 | 5 | 5 | 0 | 15 |
+Recounted by script 13 Nov 2026 on `feat/yukthix-hir-23` after HIR-23 went live: its 4 stories design only → live, plus 2 new drawn stories for the gate (HIR-26 AiBlocked, HIR-25 AiBlocked); A–G 201 live, 11 gap, 6 wire, 83 not built, 5 phone, of 306.
 Recounted by script 13 Nov 2026 on `feat/yukthix-hir-25` after HIR-25 went live: its 5 stories design only → 4 live and 1 live (gap, no recording provider), plus 4 new drawn stories (YourAnswer, NoProvider, TranscriptAdded, AiOff), all live; A–G 195 live, 11 gap, 6 wire, 87 not built, 5 phone, of 304.
 Recounted by script 13 Nov 2026 on `feat/yukthix-hir-13` after merging `test/yukthix-main` (Settings rounds 2-3, HIR-09 follow-ups, HIR-28): A–G 187 live, 10 gap, 6 wire, 92 not built, 5 phone, of 300.
 Recounted by script 13 Nov 2026 on `feat/yukthix-hir-13` after HIR-13 went live: Browse, Apply, NotEligible and Empty design only → live (no story added or removed; the two phone stories stay phone views); A–G 180 live, 12 gap, 6 wire, 96 not built, 5 phone, of 299. Settings 6.1 gained the drawn Internal jobs section inside the existing P6_1 stories.
@@ -166,7 +167,6 @@ the web page.
 | HIR-10 partner BGV | no BGV partner integration (founder decision 3: after a vendor contract); manual checks are live on /yx/hiring/bgv | M (per partner) |
 | HIR-14 … 19, 21 (part), 30, 31 | the staffing-agency business: clients, rate cards, submissions to clients, placements, bench, invoices, receivables, fees, e-invoice | XL |
 | HIR-22, T9-15 identity | no candidate ID or selfie check (People's face match waits for a provider too) | M + provider |
-| HIR-23 bias audit | no audit record or NYC setting | S |
 | HIR-25 recording provider | consent, the transcript by upload and the AI draft are live; no recording or transcription provider (question 431) | M + provider |
 | HIR-27, 28 bulk day, bulk offers | no drive scheduling, no batch offers | M each |
 | HIR-06 slot finder | no calendar free/busy (needs Google / Microsoft calendar link) | M + partner |
@@ -591,6 +591,7 @@ No AI runs while acting for someone else. Recruiting adds a person to the pipeli
 | NoMatches · Empty · no matches | live | nothing matches, or no consented candidates |
 | AiNotes · Panel · AI notes, advice only | live | company AI setting on and a provider set up |
 | PlainSearch · Panel · plain search, AI off | live | AI off, not set up, failed, or acting for someone else |
+| AiBlocked · Panel · AI blocked, bias audit overdue (NYC) | live | drawn 13 Nov 2026 (HIR-23): a New York City requisition with the NYC setting on and no audit in the last year; the reason in a warning, plain search below |
 
 ### E. Staffing agency
 
@@ -701,12 +702,27 @@ HIR-21 overlaps with the recruitment-agency feature that exists (Agency, AgencyJ
 
 #### HIR-23 · Bias audit record
 
+Live 13 Nov 2026 (branch `feat/yukthix-hir-23`, founder decision 2, question 7): /yx/hiring/bias-audits (Hiring › Reports
+& compliance › Bias audits; recruiting and the hiring settings holders) renders the designed `BiasAuditScreen` with `live`.
+The company setting `hiring.bias_audit.nyc` ("We use an automated tool for jobs in New York City", default off; Settings
+6.1, in the Interview notetaker section, audited) turns it on. The law is data: rule set `HIR.BIAS_AUDIT` (US-NY,
+NYC Local Law 144: the city names that count, 12 months, the EEO-1 sex and race / ethnicity categories), marked verify
+(GO-LIVE-CHECKLIST: counsel checks it). API: `GET hiring/bias-audits` (`ats.settings.manage`, `org.settings.manage` or
+`pipeline:manage`), `POST hiring/bias-audits` (the hiring settings key for the whole company; refused while acting; the
+date not in the future and still within 12 months; every law category once, selected ≤ assessed; https summary; a real
+PDF report ≤ 5 MB), `GET hiring/bias-audits/:id/report` (a short-lived link; another company 404). Table `bias_audits`
+(forced RLS, append-only; migration `202617r0000000_hir23_bias_audit` also inserts the rule-set row, under
+`set_config('app.is_super_admin','on',true)`). The gate: with the setting on and no audit in the last 12 months, the
+HIR-26 rediscovery AI notes (`ai: 'blocked'` with the reason, plain search still shown, audited) and the HIR-25 AI draft
+scorecard (409 with the reason; the notetaker card says why before anyone presses Draft) are refused for jobs whose
+company location is in a covered city (or whose free-text place names one); other jobs are not affected.
+
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Valid · Audit valid | design only, feature not built | no audit record; only needed for NYC jobs with an automated tool (question 7) |
-| Overdue · Overdue · feature blocked for NYC jobs | design only, feature not built | same |
-| RecordAudit · Record new audit | design only, feature not built | same |
-| NotApplicable · Not applicable · NYC setting off | design only, feature not built | same |
+| Valid · Audit valid | live | the latest audit: auditor, date, valid until (12 months, the rule set), published summary, the impact-ratio tables from the entered results; Open audit report; Download export and Auditor access are hidden (question 472) |
+| Overdue · Overdue · feature blocked for NYC jobs | live | the banner names the tools that are on; the gate refuses them for NYC jobs |
+| RecordAudit · Record new audit | live | drawn 13 Nov 2026 into the drawer: the numbers per law category and the auditor's PDF report; never-disabled Save with field errors; toast |
+| NotApplicable · Not applicable · NYC setting off | live | the NYC setting off (the default) |
 
 #### HIR-24 · Job pay range fields
 
@@ -755,6 +771,7 @@ once. Migration `202617q0000000_hir25_notetaker` (three tables, forced RLS; sche
 | NoProvider · All consented · no provider, add the transcript | live | drawn 13 Nov 2026: "No recording provider is connected"; a .txt file up to 200,000 characters |
 | TranscriptAdded · Transcript added · draft with AI | live | drawn 13 Nov 2026: who added it and when; Draft my scorecard (AI badge) |
 | AiOff · Transcript added · AI drafting off | live | drawn 13 Nov 2026: "AI drafting is off for your company. Fill the scorecard yourself." |
+| AiBlocked · Transcript added · AI draft blocked (NYC, bias audit overdue) | live | drawn 13 Nov 2026 (HIR-23): the reason before anyone presses Draft; the API refuses the draft with 409 |
 
 #### HIR-31 · E-invoice window banner
 
@@ -1571,3 +1588,24 @@ Each has a safe default already built; the suggestion is the answer we propose.
      words fills the scorecard form instead of the draft.*
 435. **Recruiters off the panel.** Built: they see the consent card and record the candidate's answer, but never give
      panel consent, add a transcript or draft. *Suggested: keep.*
+## HIR-23 bias audit built (founder decision 2, question 7; 13 Nov 2026, branch `feat/yukthix-hir-23`)
+- The company setting "We use an automated tool for jobs in New York City" (`hiring.bias_audit.nyc`, off) on Settings 6.1;
+  the law as the rule set HIR.BIAS_AUDIT (verify; GO-LIVE-CHECKLIST line for counsel); audits append-only, each valid 12
+  months; with the setting on and no valid audit, the rediscovery AI notes and the AI draft scorecard are refused for New
+  York City jobs with a plain message. HIR-08 (AI video interview score) must use the same gate before it is offered.
+## Founder questions from the HIR-23 build (13 Nov 2026)
+471. **Which jobs are "New York City".** Built: a job whose company location is in New York state with a city named in the
+     rule set (New York, Manhattan, Brooklyn, Queens, the Bronx, Staten Island); a job with only a free-text place counts
+     when the text names one of them. Remote jobs tied to a NYC office are not modelled. *Suggested: keep; counsel confirms
+     the city list (GO-LIVE) and whether remote roles reporting to a NYC office count.*
+472. **Download export and Auditor access.** Drawn but hidden: YukthiX keeps no sex or race data on candidates, so there is
+     nothing to export, and there is no time-boxed auditor login. *Suggested: keep hidden; the auditor works from the
+     company's own data and the entered results are their summary.*
+473. **Setting off while using AI on NYC jobs.** Built: with the setting off nothing is blocked (the company says it does
+     not use an automated tool for NYC jobs). *Suggested: keep, and show a hint on 6.1 when AI notes or the AI draft are
+     on and the company has a New York City location.*
+474. **Candidate notice.** NYC Local Law 144 also asks for a notice to candidates 10 business days before the tool is
+     used, and an alternative process on request. Not built. *Suggested: add the notice to the T9-09 job page and the
+     apply form for NYC jobs when the setting is on.*
+475. **Data period.** The design shows the period the audit data covers; not stored. *Suggested: add "Data from / to" to
+     the record form if counsel wants it on the page.*
