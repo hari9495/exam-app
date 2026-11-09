@@ -3,7 +3,7 @@
 import { useCallback, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { ShareJobSheet, VendorSheet, VendorsScreen, type ShareOptions, type VendorRowView, type VendorSubmissionView } from '@yukthix/ui/hiring';
+import { ShareJobSheet, VendorSheet, VendorsScreen, type ShareOptions, type VendorBillView, type VendorRowView, type VendorSubmissionView } from '@yukthix/ui/hiring';
 import { rupees, useStaffing, useStaffingGet, useStaffingWrite } from '../../../../../lib/yx-staffing';
 import { apiFetch } from '../../../../../lib/api-client';
 import { useAuth } from '../../../../../lib/auth-context';
@@ -23,8 +23,11 @@ export default function YxHiringVendorsPage() {
   const queryClient = useQueryClient();
   const acting = impersonating || actingSuperAdmin;
   const manages = has('ats.agency.manage') || has('ats.staffing.manage') || has('org:manage_settings');
+  const billing = has('ats.staffing.billing');
   const vendors = useStaffing<VendorRowView[]>('/vendors', manages);
   const subs = useStaffing<VendorSubmissionView[]>('/vendor-submissions');
+  // Slice 3 (answer 490): vendor invoices for staffing finance.
+  const bills = useStaffing<{ canEdit: boolean; rows: VendorBillView[] }>('/vendor-bills', billing);
   const jobs = useStaffing<Job[]>('/vendors/jobs', manages);
   const get = useStaffingGet();
   const write = useStaffingWrite();
@@ -51,7 +54,15 @@ export default function YxHiringVendorsPage() {
           canForward: has('ats.staffing.manage') && !acting,
           canReview: has('pipeline:manage') && !acting,
           showRegister: manages,
-          defaultTab: params.get('tab') === 'submissions' ? 'submissions' : 'register',
+          defaultTab: params.get('tab') === 'submissions' ? 'submissions' : params.get('tab') === 'invoices' ? 'invoices' : 'register',
+          bills: bills.data
+            ? {
+                rows: bills.data.rows,
+                canEdit: bills.data.canEdit && !acting,
+                onConfirm: (placementId, month, vendorInvoiceNo) => write('POST', '/vendor-bills', { placementId, month, vendorInvoiceNo }),
+                onPaid: (id, paidOn) => write('POST', `/vendor-bills/${encodeURIComponent(id)}/paid`, { paidOn }),
+              }
+            : null,
           onAdd: () => setEditing('new'),
           onEdit: (id) => setEditing((vendors.data ?? []).find((v) => v.id === id) ?? null),
           onShare: () => setSharing(true),

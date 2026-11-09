@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { InvoiceRecordScreen, InvoicesScreen } from './hiring-staffing';
+import { CreateInvoicesSheet } from './staffing-sheets';
 import { D, INVOICES } from './hiring-data';
 import { TODAY } from '../_kit/data';
 
@@ -31,3 +32,37 @@ export const InterState: S = { name: 'Invoice · IGST (inter-state)', render: ()
 export const IrnWarning: S = { name: 'Invoice · IRN day 28 warning', render: () => <InvoiceRecordScreen invoice={INVOICES[0]} lines={LINES} supplierState="Tamil Nadu" today={TODAY} /> };
 export const Empty: S = { name: 'Empty', render: () => <InvoicesScreen rows={[]} today={TODAY} /> };
 export const Error: S = { name: 'Error', render: () => <InvoicesScreen rows={[]} today={TODAY} state="error" /> };
+
+// Drawn for the live page (staffing slice 3): drafts from approved hours for a client and month, numbered on issue.
+export const CreateInvoices: S = {
+  name: 'Create invoices · from approved hours',
+  render: () => (
+    <>
+      <InvoicesScreen rows={INVOICES} today={TODAY} />
+      <CreateInvoicesSheet open onOpenChange={() => {}} options={{ clients: [{ id: 'c1', name: 'Nilgiri Retail Pvt Ltd', months: ['2026-09'] }], series: [{ id: 's1', label: 'KF/TN/26-27/ · 33AABCK1234F1Z9 · 2026-27', financialYear: '2026-27' }] }} onSave={async () => {}} />
+    </>
+  ),
+};
+export const Draft: S = {
+  name: 'Invoice · draft before issue',
+  render: () => (
+    <InvoiceRecordScreen
+      live={{
+        state: 'ready',
+        onRetry: () => {},
+        onIssue: async () => {},
+        onDelete: async () => {},
+        onCreditNote: async () => {},
+        onReissue: async () => {},
+        onOpen: () => {},
+        data: {
+          canEdit: true,
+          invoice: { id: 'i1', number: null, kind: 'staffing', creditOf: null, client: 'Nilgiri Retail Pvt Ltd', clientState: 'Tamil Nadu', supplierState: 'Karnataka', interState: true, gstPct: '18', date: null, dueOn: null, period: '2026-09-01 to 2026-09-30', po: 'PO-7781', reason: null, taxable: '192000.00', cgst: '0.00', sgst: '0.00', igst: '34560.00', total: '226560.00', paid: '0.00', outstanding: '226560.00', status: 'draft', irn: 'pending', version: 1, window: null },
+          lines: [{ description: 'Aravind Kumar · Java Developer · 160 h', qty: '160', rate: '1200.00', amount: '192000.00' }],
+          creditNotes: [],
+          rule: { reportWithinDays: 30, warnFromDay: 25 },
+        },
+      }}
+    />
+  ),
+};

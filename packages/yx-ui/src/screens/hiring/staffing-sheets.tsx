@@ -61,6 +61,9 @@ export interface ClientInput {
   noticeDays: number | null;
   slaFirstSubmissionDays: number | null;
   slaFeedbackDays: number | null;
+  /** Slice 3 (answer 454): TDS the client deducts and how its invoices are grouped. */
+  tdsSection?: '194C' | '194J' | null;
+  invoiceGrouping?: 'month' | 'placement';
 }
 
 export interface ClientSheetProps {
@@ -159,6 +162,15 @@ export function ClientSheet({ open, onOpenChange, initial, states, people, defau
           </FormField>
           <FormField id="cl-sla2" label="Client feedback within (working days)" optional>
             <NumberField value={f.slaFeedbackDays} onChange={(v) => set({ slaFeedbackDays: v })} min={1} max={60} />
+          </FormField>
+        </FieldRow>
+        <Text size="sm" weight="medium">Invoicing</Text>
+        <FieldRow>
+          <FormField id="cl-tds" label="TDS the client deducts" optional helper="Rates come from the TDS rule set.">
+            <Segment label="TDS the client deducts" value={f.tdsSection ?? null} onChange={(v) => set({ tdsSection: v })} options={[{ value: '194C', label: '194C contract' }, { value: '194J', label: '194J professional' }]} />
+          </FormField>
+          <FormField id="cl-group" label="Invoices">
+            <Segment label="Invoices" value={f.invoiceGrouping ?? 'month'} onChange={(v) => set({ invoiceGrouping: v })} options={[{ value: 'month', label: 'One a month' }, { value: 'placement', label: 'One per placement' }]} />
           </FormField>
         </FieldRow>
       </div>
@@ -828,6 +840,59 @@ export function ClientJobSheet({ open, onOpenChange, clients, loadLines, onSave 
             <NumberField value={count} onChange={setCount} min={1} max={500} />
           </FormField>
         </FieldRow>
+      </div>
+    </Drawer>
+  );
+}
+
+/* ================================================================== Staffing slice 3 (HIR-18) */
+
+export interface InvoiceOptions {
+  clients: { id: string; name: string; months: string[] }[];
+  series: { id: string; label: string; financialYear: string }[];
+}
+export interface DraftInput {
+  clientId: string;
+  month: string;
+  seriesId: string;
+  po: string | null;
+}
+
+/** HIR-18 Create invoices: a client, a month with approved hours not yet invoiced, the series to number from, a PO. */
+export function CreateInvoicesSheet({ open, onOpenChange, options, onSave }: { open: boolean; onOpenChange: (o: boolean) => void; options: InvoiceOptions; onSave: (input: DraftInput) => Promise<unknown> }) {
+  const [client, setClient] = useState<string | null>(options.clients.length === 1 ? options.clients[0]!.id : null);
+  const months = options.clients.find((c) => c.id === client)?.months ?? [];
+  const [month, setMonth] = useState<string | null>(null);
+  const [series, setSeries] = useState<string | null>(options.series.length === 1 ? options.series[0]!.id : null);
+  const [po, setPo] = useState('');
+  const [tried, setTried] = useState(false);
+  const s = useSave(() => onOpenChange(false));
+  const label = (m: string) => new Date(`${m}-01T00:00:00`).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
+  const save = () => {
+    setTried(true);
+    if (!client) return focus('ci-client');
+    if (!month || !months.includes(month)) return focus('ci-month');
+    if (!series) return focus('ci-series');
+    void s.run(() => onSave({ clientId: client, month, seriesId: series, po: po.trim() || null }), 'Draft invoices created');
+  };
+  return (
+    <Drawer open={open} onOpenChange={onOpenChange} title="Create invoices" subtitle="Invoices" dirty footer={<><Button onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" loading={s.busy} onClick={save}>Create drafts</Button></>}>
+      <div className="yx-hire-stack">
+        {s.failed && <InlineAlert tone="danger" title={s.failed} />}
+        {options.clients.length === 0 && <InlineAlert tone="info">No approved hours are waiting to be invoiced.</InlineAlert>}
+        <FormField id="ci-client" label="Client" required helper="Clients with approved hours not invoiced yet." error={tried && !client ? 'Choose the client.' : null}>
+          <Select value={client} onChange={(v) => (setClient(v), setMonth(null))} options={options.clients.map((c) => ({ value: c.id, label: c.name }))} placeholder="Choose a client" />
+        </FormField>
+        <FormField id="ci-month" label="Month" required helper="A week counts in the month of its Monday." error={tried && (!month || !months.includes(month)) ? 'Choose the month.' : null}>
+          <Select value={month} onChange={setMonth} options={months.map((m) => ({ value: m, label: label(m) }))} placeholder={client ? 'Choose a month' : 'Choose a client first'} />
+        </FormField>
+        <FormField id="ci-series" label="Invoice series" required helper="The number is taken when you issue (Settings › Staffing desk)." error={tried && !series ? (options.series.length ? 'Choose the series.' : 'Add an invoice series first (Settings › Staffing desk).') : null}>
+          <Select value={series} onChange={setSeries} options={options.series.map((x) => ({ value: x.id, label: x.label }))} placeholder="Choose a series" />
+        </FormField>
+        <FormField id="ci-po" label="Client PO" optional>
+          <TextField value={po} onChange={setPo} maxLength={60} />
+        </FormField>
+        <Text size="sm" tone="secondary">The client&rsquo;s invoice grouping decides one draft for the month or one per placement. Check each draft, then issue it.</Text>
       </div>
     </Drawer>
   );

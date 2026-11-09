@@ -1,8 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { BenchBoardScreen, PlacementRecordScreen, PlacementsScreen } from './hiring-staffing';
+import { BenchBoardScreen, PlacementHours, PlacementRecordScreen, PlacementsScreen } from './hiring-staffing';
 import { PLACEMENTS } from './hiring-data';
 import { TODAY } from '../_kit/data';
 import { BenchSheet, PlacementSheet } from './staffing-sheets';
+
 
 const meta: Meta = { title: 'Screens/Hiring/HIR-17 · Placements and bench board', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -41,6 +42,27 @@ export const RecruiterView: S = {
   render: () => (
     <PlacementsScreen
       live={{ state: 'ready', onRetry: () => {}, showPay: false, canManage: false, onNew: () => {}, onOpen: () => {}, onBench: () => {}, rows: [{ id: 'p1', person: 'Aravind Kumar', role: 'Java Developer', unit: 'hour', clientId: 'c1', client: 'Nilgiri Retail', supply: 'own', vendor: null, startOn: '2026-01-05', endOn: '2026-12-31', status: 'active', endedReason: null, billRate: '1200.00', version: 1 }] }}
+    />
+  ),
+};
+
+// Drawn for the live page (staffing slice 3): weekly hours, approved by the client in the portal or recorded here.
+export const Hours: S = {
+  name: 'Placement record · weekly hours',
+  render: () => (
+    <PlacementHours
+      live={{
+        canEnter: true,
+        today: TODAY,
+        contacts: [{ id: 'k1', name: 'Rekha Balan', role: 'Engineering manager' }],
+        rows: [
+          { id: 'h2', weekStart: '2026-09-21', hours: '40', overtime: '2', status: 'waiting', note: null, invoiced: false, version: 1 },
+          { id: 'h1', weekStart: '2026-09-14', hours: '38', overtime: '0', status: 'sent_back', note: 'Thursday was a holiday', invoiced: false, version: 2 },
+          { id: 'h0', weekStart: '2026-09-07', hours: '40', overtime: '0', status: 'approved', note: null, invoiced: true, version: 2 },
+        ],
+        onSave: async () => {},
+        onApprove: async () => {},
+      }}
     />
   ),
 };

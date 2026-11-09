@@ -42,13 +42,15 @@ export default function YxStaffingClientPage() {
           onAddContact: () => setContact('new'),
           onEditContact: (cid) => setContact(d.contacts.find((x) => x.id === cid) ?? null),
           onRemoveContact: (cid) => write('DELETE', `${path}/contacts/${encodeURIComponent(cid)}`),
+          onPortal: canManage ? (cid, access) => write('POST', `${path}/contacts/${encodeURIComponent(cid)}/portal`, { access }) : undefined,
+          onFees: () => router.push(`/yx/staffing/clients/${encodeURIComponent(id)}/fees`),
         }}
       />
       {editing && d.choices && (
         <ClientSheet
           open
           onOpenChange={(o) => !o && setEditing(false)}
-          initial={{ name: c.name, legalName: c.legalName, gstin: c.gstin, state: c.state, billingAddress: c.billingAddress, status: c.status, accountManagerUserId: c.accountManagerUserId, paymentTermsDays: c.paymentTermsDays, contractStart: c.contractStart, contractEnd: c.contractEnd, noticeDays: c.noticeDays, slaFirstSubmissionDays: c.slaFirstSubmissionDays, slaFeedbackDays: c.slaFeedbackDays }}
+          initial={{ name: c.name, legalName: c.legalName, gstin: c.gstin, state: c.state, billingAddress: c.billingAddress, status: c.status, accountManagerUserId: c.accountManagerUserId, paymentTermsDays: c.paymentTermsDays, contractStart: c.contractStart, contractEnd: c.contractEnd, noticeDays: c.noticeDays, slaFirstSubmissionDays: c.slaFirstSubmissionDays, slaFeedbackDays: c.slaFeedbackDays, tdsSection: c.tdsSection ?? null, invoiceGrouping: c.invoiceGrouping ?? 'month' }}
           states={d.choices.states}
           people={d.choices.people}
           defaultTermsDays={c.defaultPaymentTermsDays}

@@ -1,0 +1,86 @@
+'use client';
+
+import { useState } from 'react';
+import { useParams, useSearchParams } from 'next/navigation';
+import { ClientPortalScreen, PortalSignInScreen, type LiveClientPortal, type LiveClientTab } from '@yukthix/ui/hiring';
+import { apiFetch } from '../../../../lib/api-client';
+import { otpSignIn } from '../../../../lib/yx-portal';
+
+const TABS: LiveClientTab[] = ['jobs', 'submissions', 'timesheets', 'invoices'];
+
+// T9-06 client portal (staffing slice 3, answer 453): a client contact the account manager gave access signs in with a
+// one-time code by email, then a session (this tab only) sees only their own company's jobs, submissions, timesheets
+// and invoices. A call answered 401 part-way (the session ended) shows "sign in again".
+export default function YxClientPortalPage() {
+  const { org } = useParams<{ org: string }>();
+  const params = useSearchParams();
+  const tab = (TABS.includes(params.get('tab') as LiveClientTab) ? params.get('tab') : 'jobs') as LiveClientTab;
+  const base = `/public/client-portal/${encodeURIComponent(org)}`;
+  const [token, setToken] = useState<string | null>(null);
+  const [data, setData] = useState<LiveClientPortal['data']>(null);
+  const [state, setState] = useState<LiveClientPortal['state']>('loading');
+  const [ended, setEnded] = useState(false);
+  const headers = (t: string) => ({ 'X-Client-Portal': t });
+  const call = async <T,>(path: string, t: string, init: RequestInit = {}): Promise<T> => {
+    try {
+      return (await apiFetch(`${base}${path}`, { ...init, headers: headers(t) })) as T;
+    } catch (e) {
+      if ((e as { status?: number }).status === 401) setEnded(true);
+      throw e;
+    }
+  };
+  const load = async (t: string) => {
+    setState('loading');
+    try {
+      setData(await call<LiveClientPortal['data']>('/me', t));
+      setState('ready');
+    } catch {
+      setState('error');
+    }
+  };
+  if (!token)
+    return (
+      <PortalSignInScreen
+        tenant={org}
+        portal="Client portal"
+        footer={{ privacy: 'Privacy notice for client contacts (G-09)' }}
+        signIn={{
+          title: 'Sign in to the client portal',
+          intro: 'Use your work email. You also accept the confidentiality and no-onward-sharing undertaking.',
+          notice: 'client confidentiality undertaking (G-09)',
+          live: otpSignIn(base, async (t) => {
+            setToken(t);
+            await load(t);
+          }),
+        }}
+      />
+    );
+  return (
+    <ClientPortalScreen
+      live={{
+        tenant: org,
+        tab,
+        hrefFor: (t) => `?tab=${t}`,
+        state,
+        onRetry: () => void load(token),
+        ended,
+        onSignInAgain: () => (setToken(null), setData(null), setEnded(false)),
+        onSignOut: () => {
+          void call('/sign-out', token, { method: 'POST' }).catch(() => undefined);
+          setToken(null);
+          setData(null);
+        },
+        today: new Date(),
+        data,
+        onDecide: async (id, decision, feedback) => {
+          await call(`/submissions/${encodeURIComponent(id)}/decision`, token, { method: 'POST', body: JSON.stringify({ decision, ...(feedback ? { feedback } : {}) }) });
+          await load(token);
+        },
+        onTimesheet: async (id, action) => {
+          await call(`/timesheets/${encodeURIComponent(id)}/${action === 'approve' ? 'approve' : 'send-back'}`, token, { method: 'POST', body: JSON.stringify({}) });
+          await load(token);
+        },
+      }}
+    />
+  );
+}

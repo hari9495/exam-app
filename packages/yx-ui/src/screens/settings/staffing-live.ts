@@ -30,11 +30,15 @@ const KEY = {
   'staff.bench_pay': 'staffing.bench.pay_pct',
   'staff.bench_days': 'staffing.bench.max_days',
   'staff.bench_after': 'staffing.bench.after',
+  // Slice 3: collections and e-invoicing.
+  'staff.dunning': 'staffing.dunning.schedule',
+  'staff.einvoice': 'staffing.einvoice.applies',
 } as const;
-const TOGGLES = new Set(['staff.desk_enabled', 'staff.mask_contact']);
+const TOGGLES = new Set(['staff.desk_enabled', 'staff.mask_contact', 'staff.einvoice']);
 /** The design's own option labels are kept for these (the stored values are the same). */
 const OWN_LABELS = new Set(['staff.rate_backdate', 'staff.ending_soon', 'staff.statutory_cost', 'staff.vendor_margin', 'staff.vendor_ownership']);
-const LIVE = new Set([...Object.keys(KEY), 'staff.rate_cards', 'staff.invoice_series', 'staff.invoice_series_law']);
+const LIVE = new Set([...Object.keys(KEY), 'staff.rate_cards', 'staff.invoice_series', 'staff.invoice_series_law', 'staff.ageing']);
+const DUNNING_LABELS: Record<string, string> = { standard: 'Standard: 3 days before due, then 7, 21 and 45 days overdue', gentle: 'Gentle: on the due date, then 15 and 45 days overdue', off: 'No reminders' };
 
 export function staffingSettingsPage(design: SettingsPageDef, data: StaffingSettingsData): SettingsPageDef {
   const v = data.values;
@@ -43,6 +47,9 @@ export function staffingSettingsPage(design: SettingsPageDef, data: StaffingSett
     const base: SettingDef = { ...d, overrides: undefined, dated: undefined, scope: d.kind === 'law' || d.kind === 'link' ? d.scope : 'Company' };
     const k = KEY[d.key as keyof typeof KEY];
     if (k && !(k in v)) return null; // an older API without this setting: never shown with a sample value
+    if (d.key === 'staff.einvoice') return { ...base, kind: 'toggle', availability: undefined, value: v[k!] === 'on', starter: v[k!] === data.defaults[k!], helper: 'Our invoices need an IRN (aggregate turnover at or above the e-invoice limit in the rule set, verify with your CA). The invoice shows its reporting window; the IRP itself is not connected, so report on the IRP yourself.' };
+    if (d.key === 'staff.dunning') return { ...base, kind: 'select', columns: undefined, rows: undefined, addLabel: undefined, options: data.choices[k!] ?? [], optionLabels: DUNNING_LABELS, value: v[k!]!, starter: v[k!] === data.defaults[k!], helper: 'Reminders go to the client’s billing contacts; a dispute pauses them for that invoice.' };
+    if (d.key === 'staff.ageing') return { ...base, readOnlyList: true, helper: 'How unpaid invoices are grouped on Receivables (fixed).' };
     if (k && TOGGLES.has(d.key)) return { ...base, kind: 'toggle', value: v[k] === 'on', starter: v[k] === data.defaults[k] };
     if (d.key === 'staff.bench_after') return { ...base, scope: 'Company', kind: 'segment', options: ['review', 'unpaid'], optionLabels: { review: 'Redeploy or exit review', unpaid: 'Unpaid bench' }, value: v[k!]!, starter: v[k!] === data.defaults[k!] };
     if (k) {
@@ -57,7 +64,7 @@ export function staffingSettingsPage(design: SettingsPageDef, data: StaffingSett
   };
   return {
     ...design,
-    summary: 'Turn the staffing desk on; rate-card defaults, submissions, placements, vendors and the bench policy; payment terms and invoice numbering per GSTIN.',
+    summary: 'Turn the staffing desk on; rate-card defaults, submissions, placements, vendors and the bench policy; payment terms, invoice numbering per GSTIN, payment reminders and e-invoicing.',
     note: undefined,
     related: [{ label: 'Clients', screenId: 'HIR-14' }, { label: 'Placements and bench', screenId: 'HIR-17' }, { label: 'Vendors', screenId: 'HIR-21' }],
     scopes: undefined,

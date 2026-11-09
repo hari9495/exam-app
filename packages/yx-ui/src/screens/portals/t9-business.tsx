@@ -71,7 +71,9 @@ export interface ClientPortalProps {
 
 // T9-06
 /** Client contact: own client's jobs, submissions, interviews, timesheets, invoices and tickets only (M10 Q8). */
-export function ClientPortalScreen(p: ClientPortalProps) {
+export function ClientPortalScreen(props: ClientPortalProps | { live: LiveClientPortal }) {
+  if ('live' in props) return <LiveClientPortalView live={props.live} />;
+  const p = props;
   const { tenant, accent, client, today, tab } = p;
   return (
     <TenantPortal
@@ -1147,6 +1149,281 @@ export function VisitorInviteScreen({ tenant, accent, visit, stage: initial, cam
           </div>
         </div>
       )}
+    </TenantPortal>
+  );
+}
+
+/* ================================================================== T9-06 made live (staffing slice 3, answer 453) */
+
+export type LiveClientTab = 'jobs' | 'submissions' | 'timesheets' | 'invoices';
+export interface LiveClientPortal {
+  tenant: string;
+  tab: LiveClientTab;
+  /** Each tab is a link (the page keeps the tab in the address). */
+  hrefFor: (tab: LiveClientTab) => string;
+  state: 'ready' | 'loading' | 'error';
+  onRetry: () => void;
+  /** The session ended part-way (a call answered 401). */
+  ended: boolean;
+  onSignInAgain: () => void;
+  onSignOut: () => void;
+  today: Date;
+  data: {
+    client: { name: string; contact: string; email: string; contractEnds: string | null };
+    jobs: { id: string; title: string; location: string; openings: number; submissions: number; interviews: number; status: 'Open' | 'On hold' | 'Filled' }[];
+    submissions: { id: string; candidate: string; job: string; submittedOn: string; status: ClientSubmission['status']; feedback: string | null }[];
+    timesheets: { id: string; worker: string; role: string; weekStart: string; hours: string; overtime: string; vendor: string | null; status: ClientTimesheet['status']; note: string | null }[];
+    invoices: { id: string; no: string; period: string | null; kind: string; amount: string; gst: string; issuedOn: string; dueOn: string; status: 'Paid' | 'Due' | 'Overdue' | 'Credit' }[];
+  } | null;
+  onDecide: (id: string, decision: 'shortlist' | 'reject', feedback?: string) => Promise<unknown>;
+  onTimesheet: (id: string, action: 'approve' | 'send_back') => Promise<unknown>;
+}
+const LIVE_TABS: { id: LiveClientTab; label: string }[] = [
+  { id: 'jobs', label: 'Jobs' },
+  { id: 'submissions', label: 'Submissions' },
+  { id: 'timesheets', label: 'Timesheets' },
+  { id: 'invoices', label: 'Invoices' },
+];
+const dOf = (s: string) => new Date(`${s}T00:00:00`);
+const weekLabel = (s: string) => `${formatDate(dOf(s))} – ${formatDate(new Date(dOf(s).getTime() + 6 * 86_400_000))}`;
+
+function LiveClientPortalView({ live }: { live: LiveClientPortal }) {
+  const d = live.data;
+  const [busy, setBusy] = useState<string | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const [rejecting, setRejecting] = useState<string | null>(null);
+  const [reason, setReason] = useState<string | null>(null);
+  const [note, setNote] = useState('');
+  const [tried, setTried] = useState(false);
+  const act = async (key: string, fn: () => Promise<unknown>) => {
+    setBusy(key);
+    setFailed(null);
+    try {
+      await fn();
+    } catch (e) {
+      setFailed(e instanceof Error && e.message ? e.message : 'That did not save. Try again.');
+    } finally {
+      setBusy(null);
+    }
+  };
+  const body = () => {
+    if (live.ended) return <EmptyState title="Your session ended." description="Sign in again with a new code." action={<Button variant="primary" onClick={live.onSignInAgain}>Sign in again</Button>} />;
+    if (live.state === 'error') return <EmptyState title="This page could not be loaded." action={<Button onClick={live.onRetry}>Try again</Button>} />;
+    if (live.state === 'loading' || !d) return <EmptyState compact title="Loading…" />;
+    if (live.tab === 'jobs') {
+      const open = d.jobs.filter((j) => j.status === 'Open');
+      return (
+        <>
+          <FactRow label="Hiring summary">
+            <Fact label="Open jobs" value={open.length} />
+            <Fact label="Openings" value={open.reduce((a, j) => a + j.openings, 0)} />
+            <Fact label="New submissions to review" value={d.submissions.filter((x) => x.status === 'New').length} tone="warning" />
+          </FactRow>
+          {d.jobs.length === 0 ? (
+            <EmptyState title="No jobs yet." description="Your account manager adds the jobs you agree with them." />
+          ) : (
+            <Card title="Your jobs">
+              <ul className="yx-ps-list">
+                {d.jobs.map((j) => (
+                  <li key={j.id}>
+                    <div className="yx-ps-list__main">
+                      <span className="yx-ps-list__title">{j.title}</span>
+                      <span className="yx-ps-list__meta">
+                        {j.location ? `${j.location} · ` : ''}
+                        {j.openings} openings · {j.submissions} submissions · {j.interviews} interviews
+                      </span>
+                    </div>
+                    <Badge tone={j.status === 'Open' ? 'success' : j.status === 'On hold' ? 'warning' : 'neutral'}>{j.status}</Badge>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+        </>
+      );
+    }
+    if (live.tab === 'submissions') {
+      if (!d.submissions.length) return <EmptyState title="No submissions yet." description="You'll get an email when someone is submitted for one of your jobs." />;
+      const who = d.submissions.find((r) => r.id === rejecting);
+      return (
+        <Card title="Submissions">
+          <ul className="yx-ps-list" aria-live="polite">
+            {d.submissions.map((x) => (
+              <li key={x.id}>
+                <div className="yx-ps-list__main">
+                  <span className="yx-ps-list__title">{x.candidate}</span>
+                  <span className="yx-ps-list__meta">
+                    {x.job} · submitted {formatDate(dOf(x.submittedOn))}
+                    {x.feedback ? ` · your feedback: ${x.feedback}` : ''}
+                  </span>
+                </div>
+                <Badge tone={SUB_TONE[x.status]}>{x.status}</Badge>
+                {x.status === 'New' && (
+                  <>
+                    <Button size="sm" icon={Check} loading={busy === `s${x.id}`} onClick={() => void act(`s${x.id}`, () => live.onDecide(x.id, 'shortlist'))}>
+                      Shortlist
+                    </Button>
+                    <Button size="sm" icon={X} onClick={() => (setRejecting(x.id), setReason(null), setNote(''), setTried(false))}>
+                      Reject
+                    </Button>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+          <Dialog
+            open={rejecting != null}
+            onOpenChange={(o) => !o && setRejecting(null)}
+            title={`Reject ${who?.candidate ?? ''}?`}
+            description="Your feedback goes to the recruiter, not the candidate."
+            footer={
+              <>
+                <Button onClick={() => setRejecting(null)}>Cancel</Button>
+                <Button
+                  variant="primary"
+                  loading={busy === 'reject'}
+                  onClick={() => {
+                    setTried(true);
+                    if (!reason) return void document.getElementById('cp-reason')?.focus();
+                    const id = rejecting!;
+                    void act('reject', async () => {
+                      await live.onDecide(id, 'reject', note.trim() ? `${reason}: ${note.trim()}` : reason);
+                      setRejecting(null);
+                    });
+                  }}
+                >
+                  Reject with feedback
+                </Button>
+              </>
+            }
+          >
+            <FormField id="cp-reason" label="Reason" required error={tried && !reason ? 'Choose a reason.' : null}>
+              <Select value={reason} onChange={setReason} options={opt(['Not enough experience', 'Salary expectation too high', 'Notice period too long', 'Skills do not match', 'Already in our pipeline', 'Other'])} placeholder="Choose a reason" />
+            </FormField>
+            <FormField label="Feedback" optional>
+              <TextArea value={note} onChange={setNote} rows={3} maxLength={400} />
+            </FormField>
+          </Dialog>
+        </Card>
+      );
+    }
+    if (live.tab === 'timesheets') {
+      const waiting = d.timesheets.filter((r) => r.status === 'Waiting for you');
+      return (
+        <Card
+          title="Timesheets"
+          actions={
+            waiting.length > 1 ? (
+              <ConfirmDialog
+                trigger={<Button size="sm">Approve all {waiting.length}</Button>}
+                title={`Approve ${waiting.length} timesheets?`}
+                consequence={`${waiting.reduce((a, r) => a + Number(r.hours) + Number(r.overtime), 0)} hours will be billed on the next invoice.`}
+                confirmLabel={`Approve ${waiting.length} timesheets`}
+                onConfirm={async () => {
+                  for (const w of waiting) await live.onTimesheet(w.id, 'approve');
+                }}
+              />
+            ) : undefined
+          }
+        >
+          {d.timesheets.length === 0 ? (
+            <EmptyState compact title="No timesheets to approve." />
+          ) : (
+            <ul className="yx-ps-list" aria-live="polite">
+              {d.timesheets.map((t) => (
+                <li key={t.id}>
+                  <div className="yx-ps-list__main">
+                    <span className="yx-ps-list__title">
+                      {t.worker}
+                      {t.role ? ` · ${t.role}` : ''}
+                    </span>
+                    <span className="yx-ps-list__meta">
+                      {weekLabel(t.weekStart)} · {t.hours} hours{Number(t.overtime) ? ` (${t.overtime} overtime)` : ''}
+                      {t.vendor ? ` · supplied by ${t.vendor}` : ''}
+                    </span>
+                  </div>
+                  <Badge tone={t.status === 'Approved' ? 'success' : t.status === 'Sent back' ? 'danger' : 'warning'}>{t.status}</Badge>
+                  {t.status === 'Waiting for you' && (
+                    <>
+                      <Button variant="approve" size="sm" icon={Check} loading={busy === `a${t.id}`} onClick={() => void act(`a${t.id}`, () => live.onTimesheet(t.id, 'approve'))}>
+                        Approve
+                      </Button>
+                      <Button size="sm" loading={busy === `b${t.id}`} onClick={() => void act(`b${t.id}`, () => live.onTimesheet(t.id, 'send_back'))}>
+                        Send back
+                      </Button>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      );
+    }
+    const unpaid = d.invoices.filter((i) => i.status === 'Due' || i.status === 'Overdue');
+    const overdue = d.invoices.filter((i) => i.status === 'Overdue');
+    const sum = (xs: typeof unpaid) => xs.reduce((a, i) => a + Number(i.amount) + Number(i.gst), 0);
+    return (
+      <>
+        <FactRow label="Invoices">
+          <Fact label="Outstanding" value={formatINR(sum(unpaid))} />
+          <Fact label="Overdue" value={`${overdue.length} · ${formatINR(sum(overdue))}`} tone={overdue.length ? 'danger' : undefined} />
+        </FactRow>
+        {d.invoices.length === 0 ? (
+          <EmptyState compact title="No invoices yet." />
+        ) : (
+          <Card title="Invoices">
+            <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Invoices, scrolls sideways on small screens">
+              <table className="yx-ps-slabgrid">
+                <caption className="yx-visually-hidden">Invoices</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Invoice</th>
+                    <th scope="col">Period</th>
+                    <th scope="col">Type</th>
+                    <th scope="col">Amount</th>
+                    <th scope="col">GST</th>
+                    <th scope="col">Due</th>
+                    <th scope="col">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {d.invoices.map((i) => (
+                    <tr key={i.id}>
+                      <td className="yx-ps-mono">{i.no}</td>
+                      <td>{i.period ?? '—'}</td>
+                      <td>{i.kind}</td>
+                      <td data-num>{formatINR(Number(i.amount))}</td>
+                      <td data-num>{formatINR(Number(i.gst))}</td>
+                      <td>
+                        {formatDate(dOf(i.dueOn))}
+                        {i.status === 'Overdue' && ` · ${-daysUntil(dOf(i.dueOn), live.today)} days late`}
+                      </td>
+                      <td>
+                        <Badge tone={i.status === 'Paid' || i.status === 'Credit' ? 'success' : i.status === 'Overdue' ? 'danger' : 'warning'}>{i.status}</Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        )}
+      </>
+    );
+  };
+  return (
+    <TenantPortal
+      tenant={live.tenant}
+      portal={`Client portal${d ? ` · ${d.client.name}` : ''}`}
+      nav={LIVE_TABS.map((t) => ({ label: t.label, active: t.id === live.tab, href: live.hrefFor(t.id) }))}
+      access={{ kind: 'otp', identity: d?.client.email ?? '', endsOn: d?.client.contractEnds ? dOf(d.client.contractEnds) : live.today, today: live.today, endsBecause: 'contract end' }}
+      footer={{ privacy: 'Privacy notice for client contacts (G-09)' }}
+      noLanguage
+      onSignOut={live.onSignOut}
+    >
+      {failed && <InlineAlert tone="danger" title={failed} />}
+      {body()}
     </TenantPortal>
   );
 }
