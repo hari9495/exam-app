@@ -15,7 +15,7 @@ was built.
   pay-history question). Since 9 Nov 2026 also HIR-04, the pipeline board (all 7 stories) on /yx/hiring/jobs/[id]/pipeline.
   Counts in the table below.
 - **Few of the Hiring designs are live.** Of 255 design stories (HIR-01 … 31, the careers site, candidate
-  identity check and the hiring settings), 95 of 264 are live with their design (recount 10 Nov 2026, after Settings 6.1 Hiring went live on /yx/settings/hiring). First the "Request a hire" sheet (HIR-02
+  identity check and the hiring settings), 118 of 271 are live with their design (recount 12 Nov 2026, after HIR-10 manual BGV on /yx/hiring/bgv, HIR-20 Talent CRM on /yx/hiring/pools and the HIR-07 scorecard comments). First the "Request a hire" sheet (HIR-02
   NewRequisition), which People › My team (/yx/people/team) renders with `live` and sends to `POST jobs/requisitions`. Since 9 Nov 2026 (branch `feat/yukthix-hir-01`) HIR-01, the headcount plan board, is live too: all 10 of
   its stories (section 4). HIR-05 (branch `feat/yukthix-hir-05`): the candidate record with the ex-employee match and merge, plus the newly drawn candidate list (with Possible duplicates) and candidate data retention pages. HIR-11 Recruiting costs (/yx/hiring/costs) and HIR-12 Referrals (/yx/hiring/referrals, with HR's
   All referrals at /yx/hiring/referrals/all) are live too (branch `feat/yukthix-hir-11-12`).
@@ -53,14 +53,15 @@ built**.
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Plans, requisitions, jobs and costs | 4 | 36 | 1 | 0 | 0 | 0 | 37 |
-| B. Candidates, pipeline and interviews | 8 | 37 | 0 | 7 | 13 | 1 | 58 |
-| C. Offers, BGV and joining | 4 | 0 | 0 | 13 | 12 | 0 | 25 |
-| D. Referrals, internal jobs, CRM and rediscovery | 4 | 15 | 0 | 3 | 7 | 4 | 29 |
+| B. Candidates, pipeline and interviews | 8 | 46 | 0 | 0 | 13 | 1 | 60 |
+| C. Offers, BGV and joining | 4 | 9 | 0 | 7 | 12 | 0 | 28 |
+| D. Referrals, internal jobs, CRM and rediscovery | 4 | 20 | 0 | 0 | 7 | 4 | 31 |
 | E. Staffing agency | 8 | 0 | 0 | 4 | 44 | 0 | 48 |
 | F. Compliance and fairness | 5 | 4 | 1 | 0 | 20 | 0 | 25 |
 | G. Careers site, portals and settings | 4 | 3 | 0 | 28 | 11 | 0 | 42 |
-| **All Hiring design groups (A–G)** | **37** | **95** | **2** | **55** | **107** | **5** | **264** |
-| H. Kit and "Live ·" groups (not designs; own line) | 5 | 11 | 0 | 6 | 5 | 0 | 22 |
+| **All Hiring design groups (A–G)** | **37** | **118** | **2** | **39** | **107** | **5** | **271** |
+| H. Kit and "Live ·" groups (not designs; own line) | 4 | 7 | 0 | 6 | 5 | 0 | 18 |
+Recounted by script 12 Nov 2026 on `feat/yukthix-hir-10-20` after HIR-10 (manual BGV) and HIR-20 (pools, postings) went live and answer 322 (scorecard comments) was built: HIR-10 6 wire design → live plus 3 new stories (RecordResult, Decide, AddCheck); HIR-20 3 → live plus 2 new (PoolMembers, NewPool); HIR-07 1 new (SubmittedComments, live); the "Live · Candidates" stand-in group (Pools, 1 story) deleted with `TalentPoolsScreen`.
 Recounted by script 11 Nov 2026 on `feat/yukthix-hir-06-07` after HIR-06 and HIR-07 went live: HIR-06 3 stories wire design → live (the slot finder's 2 stay feature not built), HIR-07 4 → live plus 1 new story (Overseer); the 3 "Live · Job workspace and interviews" stand-in stories (Interview, InterviewSubmitted, MyInterviews) were deleted with the stand-ins.
 Recounted by script 10 Nov 2026 on `feat/yukthix-hiring-settings` after Settings 6.1 Hiring went live (P6_1, P6_1_ReadOnly: wire design → live; new P6_1_StageTargets, answer 302) and four new drawn stories went live: HIR-02 Hiring manager cancel (293), HIR-12 All referrals undo paid (283) and paid outside payroll (285).
 Recounted by script 10 Nov 2026 on `feat/yukthix-hir-04-followups` after founder answers 261 and 263: HIR-04 gained 3 sheet stories, HIR-05 the 2 Application stories, HIR-03 the Settings story; the 3 "Live · Job workspace" stand-in stories were deleted with the stand-ins.
@@ -115,7 +116,8 @@ the web page.
 | /yx/hiring/candidates | `CandidateListScreen` with `live` (designed 9 Nov 2026, decision 9) | HIR-05 List | `GET/POST/PATCH candidates`, bulk delete, upload and invite, email, pools (`candidate:manage` / `candidate:view`; writes refused while acting) | live |
 | /yx/hiring/candidates/[id] | `CandidateRecordScreen` with `live` (designed) | HIR-05 | `GET hiring/candidates/:id` (viewer-aware: contact details with `candidate:manage` or data rights; ex-employee match for people who may see the employee), `PUT …/legal-hold`, `POST candidates/:id/erase`, `GET …/export` (`candidate:data_rights`), `POST …/merge` (manage + data rights), `POST …/consents/withdraw`; writes refused while acting | live |
 | /yx/hiring/duplicates | opens /yx/hiring/candidates?view=duplicates (the list's Possible duplicates tab) | HIR-05 List, Merge | `GET hiring/duplicates` (`candidate:manage`), merge (manage + `candidate:data_rights`) | live |
-| /yx/hiring/pools | `TalentPoolsScreen` (stand-in) | HIR-20 Pools | `GET/POST/DELETE hiring/pools`, `…/members` (`candidate:manage`) | wire design |
+| /yx/hiring/pools | the designed `TalentCrmScreen` with `live` (12 Nov 2026; the `TalentPoolsScreen` stand-in is deleted): pools and hotlists with owner, last change and talent-pool consent count, members drawer with consent, new pool, delete, remove, open; job-board postings | HIR-20 Pools, Postings | `GET hiring/pools` (+ `consented`, `ownerName`, `updatedAt`), `GET …/members` (+ each member's `consent`) (`candidate:manage` or `candidate:view`); `POST/DELETE hiring/pools`, `POST/DELETE …/members` (`candidate:manage`; a talent pool takes only consented people; refused while acting); new `GET hiring/postings` (`pipeline:manage` or `results:view`); posting changes are `PATCH jobs/:id jobBoardIds` (`pipeline:manage`) | live |
+| /yx/hiring/bgv | the designed `BgvTrackerScreen` with `live` (12 Nov 2026), menu Hiring › Background checks | HIR-10 (manual) | new `GET lifecycle/bgv` (`lifecycle.bgv.manage` in each joiner's scope; refused while acting; each look audited `bgv.tracker.viewed`), `POST lifecycle/joiners/:id/bgv/ask`, `/bgv/checks`, `POST lifecycle/bgv/checks/:id` (+ `checkedOn`; who checked, report version), new `POST lifecycle/bgv/checks/:id/decision`; evidence opens with `GET documents/:id/file?version=` (document keys) | live |
 | /yx/hiring/retention | `CandidateRetentionScreen` with `live` (designed 9 Nov 2026, decision 9) | HIR-05 Retention | `POST hiring/retention/run`, `GET …/runs`, `POST hiring/data-requests/lookup`, export, erase (`candidate:data_rights`; a real run, export and erase refused while acting) | live |
 | /yx/hiring/interviews | the designed `InterviewCalendarScreen` with `live` (11 Nov 2026); recruiters see the company week, everyone else their own interviews and scorecards; India time | HIR-06 | new `GET hiring/interviews?from=&to=` (≤ 62 days; `pipeline:manage` = company, else panel or the job's hiring manager), `GET hiring/interviews/mine` (+ overdue, setting `hiring.scorecard.overdue_hours`, default 24) | live |
 | /yx/hiring/interviews/[id] | the designed `ScorecardScreen` with `live` (11 Nov 2026): the panellist's form, the panel's submitted scorecards, résumé, earlier rounds; recruiters resend or cancel here (answer 301) | HIR-07 | `GET hiring/interviews/:id`, `PUT …/scorecard`, `POST …/scorecard/submit` (own session only), `POST interviews/:id/send`, `/cancel` (`pipeline:manage`, own session only) | live |
@@ -129,7 +131,7 @@ the web page.
 | /yx/settings/hiring | the designed `SettingsPageScreen` (6.1) with `live` | Settings 6.1 Hiring | `GET/PUT hiring/settings` (read: `pipeline:manage`, `ats.headcount.manage`, `ats.referral.manage`, `ats.settings.manage`, `org.settings.manage`; change: `ats.settings.manage` or `org.settings.manage` company-wide, never while acting), `PATCH pipelines/stages/:id` (`pipelines:configure`) | live |
 | /yx/hiring/requisitions | the designed `RequisitionsScreen` with `live`, its drawer and the designed `RediscoveryPanel` with `live`; the request sheet for managers | HIR-02, HIR-26 | `GET hiring/requisitions` (`pipeline:manage` / `ats.headcount.manage`: all; `ats.requisition.raise`: own, read-only), `GET hiring/requisitions/:id/rediscovery` (and `candidate:view` or `pipeline:manage`), `POST jobs/:id/submit`, `/approval/cancel`, `POST jobs/:id/entries`, `POST jobs/requisitions` (writes refused while acting) | live |
 | /yx/people/team (Request a hire) | the designed `RequisitionSheet` with `live` | HIR-02 NewRequisition | `POST jobs/requisitions` (`ats.requisition.raise`) | live |
-| /yx/people/onboarding/[id] | People onboarding (PPL design) with the joiner's BGV checks | HIR-10 (manual part) | `POST lifecycle joiners/:id/bgv/ask`, `/bgv/checks`, `bgv/checks/:checkId` | wire design (HIR-10) |
+| /yx/people/onboarding/[id] | People onboarding (PPL design) with the joiner's BGV checks (the same store as /yx/hiring/bgv) | HIR-10 (manual part) | `POST lifecycle joiners/:id/bgv/ask`, `/bgv/checks`, `bgv/checks/:checkId` | live (HIR-10 is /yx/hiring/bgv) |
 | /careers/[orgSlug], /jobs/[slug] | hand-written server pages | T9-09, Surfaces/Careers | public careers API | wire design |
 | /apply/[applyToken] | hand-written apply form | T9-09 Job, Surfaces/Careers ApplyForm | public apply API | wire design |
 
@@ -146,7 +148,7 @@ the web page.
 | design | what is missing | size |
 |---|---|---|
 | HIR-08 AI interview review | no async AI interview, recordings or advisory score | L |
-| HIR-10 partner BGV | no BGV partner integration (manual checks exist in People) | M (per partner) |
+| HIR-10 partner BGV | no BGV partner integration (founder decision 3: after a vendor contract); manual checks are live on /yx/hiring/bgv | M (per partner) |
 | HIR-13 internal jobs | no internal posting, eligibility rule or employee apply | M |
 | HIR-14 … 19, 21 (part), 30, 31 | the staffing-agency business: clients, rate cards, submissions to clients, placements, bench, invoices, receivables, fees, e-invoice | XL |
 | HIR-22, T9-15 identity | no candidate ID or selfie check (People's face match waits for a provider too) | M + provider |
@@ -361,8 +363,9 @@ Live page: /yx/hiring/interviews/[id], the designed `ScorecardScreen` with `live
 | MeetsBar · Complete · meets the bar, next-step prompt | live | Save draft = `PUT hiring/interviews/:id/scorecard` (only the interviewer sees a draft; refused while acting); toast |
 | BelowBar · Complete · below the bar on 2 skills | live | same; "Below pass bar" per item against the template's bar |
 | IdentityFlag · Identity flag shown, not a reason | design only, feature not built | no candidate identity check (HIR-22) |
-| Submitted · Submitted · read only | live | `POST …/scorecard/submit` after a confirm: read-only, audited (`ats.scorecard.submitted`), a second submit 409; colleagues' submitted scorecards then show (D7). "Add comment" hidden: no comment feature (question 322) |
-| Overseer · Recruiter or hiring manager · submitted scorecards, resend and cancel | live | new story 11 Nov 2026 (drawn in the same style): recruiters and the job's hiring manager read every submitted scorecard (never drafts) and the panel result; `pipeline:manage` resends or cancels (answer 301) |
+| Submitted · Submitted · read only | live | `POST …/scorecard/submit` after a confirm: read-only, audited (`ats.scorecard.submitted`), a second submit 409; colleagues' submitted scorecards then show (D7). "Add comment" goes to the comment area (answer 322, next row) |
+| SubmittedComments · Submitted · comments (append-only) | live | answer 322 (12 Nov 2026), kit story first (Time and activity › Comment thread, append-only): `POST hiring/interviews/:id/scorecards/:scorecardId/comments` under a submitted scorecard only (a draft 409); whoever may read that scorecard (the panellist, colleagues after their own submit, recruiters, the job's hiring manager; anyone else 404); never while acting (403); append-only (a table trigger refuses edits; the candidate erase redacts the text); audited `ats.scorecard.commented` without the text; a request key makes a retry the same comment; toast |
+| Overseer · Recruiter or hiring manager · submitted scorecards, resend and cancel | live | new story 11 Nov 2026 (drawn in the same style): recruiters and the job's hiring manager read every submitted scorecard (never drafts) and the panel result; `pipeline:manage` resends or cancels (answer 301); each submitted scorecard shows its comments with a composer (answer 322) |
 | Phone · phone | phone view, mobile app not built | `ScorecardPhone` |
 
 #### HIR-08 · AI interview review player
@@ -409,18 +412,31 @@ Live page: the offer part of `ApplicationPanel` on /yx/hiring/jobs/[id] (stand-i
 
 #### HIR-10 · BGV tracker
 
-No hiring page. Manual BGV checks are recorded on the joiner in People onboarding (/yx/people/onboarding/[id]). Designed:
-`BgvTrackerScreen`.
+Live page: /yx/hiring/bgv (12 Nov 2026, branch `feat/yukthix-hir-10-20`), the designed `BgvTrackerScreen` with `live`, on the
+checks People records on each joiner (one store, `bgv_checks`; People onboarding shows the same). Founder decision 3: manual
+tracking now; the BGV partner and the candidate ID / selfie check wait for a vendor contract, so the partner-only parts
+(Start BGV, partner package, partner status) are hidden behind the "No BGV partner" note and stay gaps. Only HR with the
+background-check key (`lifecycle.bgv.manage`, in the joiner's scope) sees the page; nothing while acting; every look is
+audited. A result records who checked it, the day (India date, not in the future, not before the check was added) and
+its evidence (the person's BGV report document keeps each upload as a version; each check points at its version; the
+virus scan runs after the commit and the report opens only when clean). A discrepancy goes to a person: proceed / do not
+proceed with a reason, audited (`bgv.discrepancy.decided`); company setting `hiring.bgv.decider_other_person` (default
+**on**: not the person who recorded it); "proceed" lets a "must be clear before joining" check pass; nothing is ever
+withdrawn automatically ("do not proceed" only records it; HR cancels the joining on the onboarding page). A new result
+clears an earlier decision. Columns show "Not added" for a check type the joiner has none of.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Hr · HR · partner checks | design only, feature not built | no BGV partner integration (question 3) |
-| Discrepancy · Discrepancy · never auto-withdrawn | wire design | manual status `discrepancy` exists (`BgvUpdateDto`); nothing auto-withdraws |
-| ConsentPending · Consent pending | wire design | consent from the joining portal (`POST bgv-consent`) |
-| Manual · Manual tracking · no add-on | wire design | `POST joiners/:id/bgv/checks`, `bgv/checks/:checkId`; API: a company-wide list of checks is missing |
-| Empty · Empty | wire design | no checks |
-| Loading · Loading | wire design | while loading |
-| Error · Error | wire design | API fails |
+| Hr · HR · partner checks | design only, feature not built | no BGV partner integration (decision 3: after a vendor contract) |
+| Discrepancy · Discrepancy · never auto-withdrawn | live | the drawer's alert shows what was found (the check's note) until a person decides |
+| ConsentPending · Consent pending | live | consent pending or not asked: row button Resend consent link / Ask for consent (`POST joiners/:id/bgv/ask`), toast; the joiner consents in the joining portal |
+| Manual · Manual tracking · no add-on | live | `GET lifecycle/bgv`; "No BGV partner" note; package = Manual · N checks |
+| Empty · Empty | live | no joiner has checks or a consent request |
+| Loading · Loading | live | while loading |
+| Error · Error | live | API fails; Try again |
+| RecordResult · Manual · record a result (who, day, evidence) | live | new story 12 Nov 2026: result (joined Segment), day, what was found (required for a discrepancy), report; `POST lifecycle/bgv/checks/:id` (version; 409 when someone else changed it); toast |
+| Decide · Manual · a person decides the discrepancy | live | new story: `POST lifecycle/bgv/checks/:id/decision` (proceed / do not proceed, reason); the recorder sees "another person decides" instead of the button while the setting is on; toast |
+| AddCheck · Manual · add a check | live | new story: `POST lifecycle/joiners/:id/bgv/checks` (needs consent; never for oneself); toast |
 
 #### HIR-28 · Bulk offer screen
 
@@ -492,17 +508,22 @@ No live page, no API. Designed: `InternalJobsScreen`, `InternalJobsPhone`.
 
 #### HIR-20 · Talent CRM
 
-Live pages: /yx/hiring/pools (`TalentPoolsScreen`) and /yx/hiring/job-boards (`JobBoardsScreen`), stand-ins. Designed:
-`TalentCrmScreen`.
+Live page: /yx/hiring/pools (12 Nov 2026, menu Hiring › Talent CRM), the designed `TalentCrmScreen` with `live`; the
+`TalentPoolsScreen` stand-in, its story and test are deleted (every function kept: lists, create, archive, members,
+remove, open). Consent shown: per pool the members with a current talent-pool consent, per member Given / Not given. The
+design's Email / WhatsApp opt-in columns are not shown (no channel opt-in store; candidates only have opt-out flags), and
+the Campaigns and Sourced tabs and New sequence are hidden (not built). Board setup stays on /yx/hiring/job-boards.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Pools · Pools and hotlists | wire design | `hiring/pools`, members |
+| Pools · Pools and hotlists | live | `GET hiring/pools` with owner, last change and the consent count; Delete pool (confirm, toast); New pool needs `candidate:manage` |
 | Campaigns · Sequence and engagement timeline | design only, feature not built | one-off bulk email exists; no sequences or engagement timeline |
 | SequenceBuilder · Sequence builder · consent-based audience | design only, feature not built | same |
 | Sourced · Sourced profiles · pending consent | design only, feature not built | no sourcing |
-| Postings · Job-board postings | wire design | `organizations/job-boards`, publications |
-| Empty · Empty | wire design | no pools |
+| Postings · Job-board postings | live | new `GET hiring/postings`: open / on-hold jobs and any job still posted, with each board's posting (the same as the job workspace); Post / Refresh / Close with `pipeline:manage` (`PATCH jobs/:id`), toast |
+| Empty · Empty | live | no pools |
+| PoolMembers · Pool members · consent, open, remove | live | new story 12 Nov 2026: `GET hiring/pools/:id/members` with consent; Open the candidate; Remove after a confirm (`DELETE …/members/:candidateId`), toast |
+| NewPool · New pool or hotlist | live | new story: type (joined Segment), name (pressed too early: field error and focus), purpose; `POST hiring/pools`, toast |
 
 #### HIR-26 · Rediscovery panel
 
@@ -779,12 +800,6 @@ a design, BUILD-STANDARD rule 1). Each "Live ·" story is deleted with its stand
 | Budget · BudgetBars | design only, feature not built | Projects (no projects API) |
 | Status · StatusLine | wire design | publish readiness (HIR-03, 24) |
 
-#### Live · Candidates
-
-| story (sub-page) | verdict | note |
-|---|---|---|
-| Pools · Pools | live | /yx/hiring/pools; goes with HIR-20 (the candidate list, record, duplicates and retention stand-ins and their stories were deleted with HIR-05) |
-
 #### Live · Careers site and job boards
 
 | story (sub-page) | verdict | note |
@@ -873,9 +888,9 @@ stand-in it replaces with its "Live ·" stories.
 | 8 | ~~HIR-06 interviewer list, HIR-07 scorecard~~ | done 11 Nov 2026: calendar (recruiter week and interviewer), scorecard, Schedule and Move on the record (answer 274) | M |
 | 9 | Settings 6.1 Hiring | wire the settings page; retire /yx/hiring/scorecards and /approval-routes stand-ins | S |
 | 10 | HIR-09 offer builder (after questions 4, 5) | CTC lines, band check, versions, hand-off | L |
-| 11 | HIR-10 BGV tracker, manual | company-wide list of joiner BGV checks | S |
+| 11 | ~~HIR-10 BGV tracker, manual~~ | done 12 Nov 2026: /yx/hiring/bgv on the joiner's checks; a person decides a discrepancy | S |
 | 12 | T9-09 careers site + page builder (after question 8) | public pages and /yx/hiring/careers | M |
-| 13 | HIR-20 talent CRM (pools, postings) | wire the two tabs; sequences later | M |
+| 13 | ~~HIR-20 talent CRM (pools, postings)~~ | done 12 Nov 2026: /yx/hiring/pools; sequences and sourcing later | M |
 | 14 | HIR-13 internal jobs (after question 6) | new API + page | M |
 | later | HIR-25, HIR-08, HIR-22 / T9-15, partner BGV, HIR-27, 28, 29, slot finder, staffing E | after the founder answers and providers | L–XL |
 
@@ -1226,3 +1241,27 @@ suggestion is the answer we propose.
      request flow when that is built.*
 350. **Existing requisitions where the manager is their own recruiter (291):** 0 in the test app's demo-org (1 requisition
      there); none changed. *Suggested: leave them; recruiting uses Assign recruiter.*
+
+## Founder questions from the HIR-10 / HIR-20 build and answer 322 (12 Nov 2026)
+Built on `feat/yukthix-hir-10-20`. Each has a safe default already built; the suggestion is the answer we propose.
+361. **Who may see the BGV tracker.** Built: only holders of the HR background-check key (`lifecycle.bgv.manage`, HR Lifecycle
+     admin), in each joiner's scope; the Hiring admin and Recruiter templates do not get it (Special data). *Suggested: keep;
+     give a hiring admin the key per person when HR wants them to run checks.*
+362. **Who decides a discrepancy.** Built: anyone with the key, but not the person who recorded it (company setting
+     `hiring.bgv.decider_other_person`, default on); "proceed" lets a "must be clear before joining" check pass; "do not
+     proceed" only records it (no automatic withdrawal). The setting has no screen yet (defaults apply; Settings 6.1's
+     "Background checks" section has no place for it). *Suggested: keep; draw the switch into 6.1 under Background checks.*
+363. **"Could not check" (Insufficient).** Built: it is a result like any other; only a discrepancy needs a decision.
+     *Suggested: keep; ask a person only for discrepancies.*
+364. **The "before confirmation" gate.** A check can be marked "must be clear before confirmation", but nothing enforces it
+     at confirmation today (existing gap, found here). *Suggested: block confirming probation while such a check is open,
+     the same way joining is blocked.*
+365. **Email and WhatsApp opt-in columns on Talent CRM.** Built: hidden; the only consent shown is the talent-pool consent
+     (candidates have opt-out flags, no opt-in store). *Suggested: show them when sequences (Campaigns tab) are built.*
+366. **Who may comment on a scorecard (answer 322).** Built: whoever may read that submitted scorecard (its panellist,
+     colleagues who submitted theirs, recruiters, the job's hiring manager); comments show to the same people.
+     *Suggested: keep.*
+367. **Scorecard text on candidate erase.** Built: comments are redacted by the erase. Found: the scorecard's own summary
+     and rating notes are not redacted today (existing gap). *Suggested: redact them in the same erase.*
+368. **BGV export.** Built: Export gives results only (joiner, check, result, who, day, decision), never notes or reports.
+     *Suggested: keep.*
