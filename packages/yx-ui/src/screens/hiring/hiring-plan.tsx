@@ -7,6 +7,7 @@ import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
 import { EmptyState, ErrorState, InlineAlert, Meter, NoAccessState, Skeleton } from '../../components/feedback';
 import { FormField, FieldRow, useTooEarly } from '../../components/field';
 import { Segment } from '../../components/segment';
+import { getCountries } from 'libphonenumber-js';
 import { useToastIfAny } from '../../components/notify';
 import { CurrencyField, NumberField, TextArea, TextField } from '../../components/inputs';
 import { Select } from '../../components/select';
@@ -1209,6 +1210,8 @@ export interface NewJob {
   department?: string;
   locationId?: string;
   location?: string;
+  /** Answer 244: the country of a typed place (ISO); outside India the API wants a company location instead. */
+  locationCountry?: string;
   designationId?: string;
   hiringManagerId?: string;
   headcount?: number;
@@ -1262,6 +1265,10 @@ const SAMPLE_CHOICES: CreateJobChoices = {
 };
 
 const pad = (n: number) => String(n).padStart(2, '0');
+const REGION_NAME = new Intl.DisplayNames(['en'], { type: 'region' });
+const COUNTRY_CHOICES = getCountries()
+  .map((x) => ({ value: x as string, label: REGION_NAME.of(x) ?? x }))
+  .sort((a, b) => a.label.localeCompare(b.label));
 
 // HIR-03 (create): a new job, or a requisition when the company's approval chain is on (the API decides).
 export function CreateJobSheet({ open, onOpenChange, choices = SAMPLE_CHOICES, onCreate, onDraftDescription }: { open: boolean; onOpenChange: (o: boolean) => void; choices?: CreateJobChoices; onCreate?: (input: NewJob) => Promise<void>; onDraftDescription?: (title: string) => Promise<string> }) {
@@ -1272,6 +1279,7 @@ export function CreateJobSheet({ open, onOpenChange, choices = SAMPLE_CHOICES, o
   const [department, setDepartment] = useState('');
   const [locationId, setLocationId] = useState<string | null>(null);
   const [location, setLocation] = useState('');
+  const [country, setCountry] = useState<string | null>('IN');
   const [designationId, setDesignationId] = useState<string | null>(null);
   const [managerId, setManagerId] = useState<string | null>(null);
   const [headcount, setHeadcount] = useState<number | null>(1);
@@ -1298,10 +1306,12 @@ export function CreateJobSheet({ open, onOpenChange, choices = SAMPLE_CHOICES, o
   const rangeBad = min !== null && max !== null && min > max;
   const replacesBad = reason === 'replacement' && !replaces;
   const outsideBad = reason === 'new' && outside && outsideWhy.trim().length < 3;
+  // Answer 244: a typed place abroad is refused (the API checks it too); India keeps typed places.
+  const abroadBad = !c.locations.length && location.trim() !== '' && (country ?? 'IN') !== 'IN';
   const opt = <T,>(v: T | null | '') => (v === null || v === '' ? undefined : v);
   const create = async () => {
     setTried(true);
-    if (!title.trim() || missing.length || rangeBad || replacesBad || outsideBad) {
+    if (!title.trim() || missing.length || rangeBad || replacesBad || outsideBad || abroadBad) {
       titleRef.current?.closest('[role="dialog"]')?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
       if (!title.trim()) titleRef.current?.querySelector('input')?.focus();
       return;
@@ -1317,6 +1327,7 @@ export function CreateJobSheet({ open, onOpenChange, choices = SAMPLE_CHOICES, o
         department: c.departments.length ? undefined : opt(department.trim()),
         locationId: opt(locationId),
         location: c.locations.length ? undefined : opt(location.trim()),
+        locationCountry: !c.locations.length && location.trim() ? (country ?? 'IN') : undefined,
         designationId: opt(designationId),
         hiringManagerId: opt(managerId),
         headcount: opt(headcount),
@@ -1390,6 +1401,11 @@ export function CreateJobSheet({ open, onOpenChange, choices = SAMPLE_CHOICES, o
             {c.locations.length ? <Select aria-label="Location" value={locationId} onChange={setLocationId} options={c.locations} searchable clearable /> : <TextField value={location} onChange={setLocation} maxLength={200} />}
           </FormField>
         </FieldRow>
+        {!c.locations.length && (
+          <FormField label="Country of the place" error={tried && abroadBad ? 'This place is outside India. Add it in Settings › Locations first, then choose it.' : null}>
+            <Select aria-label="Country of the place" value={country} onChange={setCountry} options={COUNTRY_CHOICES} searchable />
+          </FormField>
+        )}
         <FieldRow>
           {c.designations.length > 0 && (
             <FormField label="Designation" optional>
@@ -1598,6 +1614,7 @@ export function JobsScreen({ rows: sample, state = 'ready', createOpen = false, 
               }
             : () => {}
         }
+        exportFormats={['csv']}
       />
       {creating && <CreateJobSheet open onOpenChange={(o) => !o && setCreating(false)} choices={live?.create.choices} onCreate={live?.create.onCreate} onDraftDescription={live?.create.onDraftDescription} />}
       {deleting && (
@@ -1989,6 +2006,8 @@ export interface Referral {
   paid?: boolean;
   /** Left (People exit) before completing the qualifying days: no bonus (founder answer 205). */
   leftEarly?: boolean;
+  /** Their resignation waits for approval: the bonus is on hold (answer 234). */
+  onHold?: boolean;
 }
 
 /** A job one can refer to (the design's Job, only what the form shows). */
@@ -2024,6 +2043,8 @@ function ReferralRows({ rows, today, days = 90 }: { rows: Referral[]; today: Dat
         const b = referralBonusStatus(r.stage === 'Hired' ? r.joined : null, today, days);
         const bonusText = r.leftEarly && !r.paid
           ? `No bonus: they left before completing ${days} days`
+          : r.onHold && !r.paid
+            ? `${formatINR(r.bonus)} bonus on hold while their resignation is decided`
           : r.stage === 'Not selected' || (r.bonus === 0 && !r.paid)
             ? 'No bonus'
             : r.stage !== 'Hired'
@@ -2461,8 +2482,8 @@ export interface AllReferral {
   referrer: string;
   referred: Date;
   stage: Referral['stage'];
-  /** not-hired, waiting (due on `dueOn`), due, paid, left (exited before the qualifying day), none. */
-  bonus: 'not-hired' | 'waiting' | 'due' | 'paid' | 'left' | 'none';
+  /** not-hired, waiting (due on `dueOn`), due, paid, left (exited before the qualifying day), none, on-hold (resignation pending, answer 234). */
+  bonus: 'not-hired' | 'waiting' | 'due' | 'paid' | 'left' | 'none' | 'on-hold';
   dueOn: Date | null;
   amount: number;
 }
@@ -2473,8 +2494,8 @@ export interface LiveAllReferrals {
   onRetry: () => void;
 }
 
-const BONUS_LABEL: Record<AllReferral['bonus'], string> = { 'not-hired': 'Not hired yet', waiting: 'Waiting', due: 'Due', paid: 'Paid', left: 'No bonus: left early', none: 'No bonus' };
-const BONUS_TONE: Record<AllReferral['bonus'], BadgeTone> = { 'not-hired': 'neutral', waiting: 'info', due: 'warning', paid: 'success', left: 'neutral', none: 'neutral' };
+const BONUS_LABEL: Record<AllReferral['bonus'], string> = { 'not-hired': 'Not hired yet', waiting: 'Waiting', due: 'Due', 'on-hold': 'Bonus on hold', paid: 'Paid', left: 'No bonus: left early', none: 'No bonus' };
+const BONUS_TONE: Record<AllReferral['bonus'], BadgeTone> = { 'not-hired': 'neutral', waiting: 'info', due: 'warning', 'on-hold': 'warning', paid: 'success', left: 'neutral', none: 'neutral' };
 
 // HIR-12 · All referrals (HR)
 export function AllReferralsScreen({ rows, state = 'ready', confirmId = null, live }: { rows: AllReferral[]; state?: ListState; confirmId?: string | null; live?: LiveAllReferrals }) {
@@ -2507,7 +2528,7 @@ export function AllReferralsScreen({ rows, state = 'ready', confirmId = null, li
   const due = rows.filter((r) => r.bonus === 'due');
   return (
     <HireFrame active="Candidates & talent CRM">
-      <PageHeader title="All referrals" description="Everyone referred, by whom, and where each bonus stands. Mark a bonus paid once payroll has paid it; it then shows in Recruiting costs." />
+      <PageHeader title="All referrals" description="Everyone referred, by whom, and where each bonus stands. Marking a bonus paid sends it to payroll; it shows in Recruiting costs once that payroll run is approved." />
       <SummaryTiles
         label="Referral bonuses"
         tiles={[
@@ -2528,7 +2549,7 @@ export function AllReferralsScreen({ rows, state = 'ready', confirmId = null, li
         views={list.views}
         filtered={list.filtered}
         onClearFilters={list.clear}
-        rowActions={(r) => (r.bonus === 'due' ? <MenuItem onSelect={() => (setFailed(null), setPaying(r))}>Mark bonus paid</MenuItem> : <MenuItem disabled>{r.bonus === 'paid' ? 'Bonus already paid' : 'No bonus due yet'}</MenuItem>)}
+        rowActions={(r) => (r.bonus === 'due' ? <MenuItem onSelect={() => (setFailed(null), setPaying(r))}>Mark bonus paid</MenuItem> : <MenuItem disabled>{r.bonus === 'paid' ? 'Bonus already paid' : r.bonus === 'on-hold' ? 'On hold: their resignation is pending' : 'No bonus due yet'}</MenuItem>)}
         empty={<EmptyState title="No referrals yet." description="When employees refer people from Hiring › Referrals, they show here." />}
       />
       {paying && (
@@ -2536,13 +2557,13 @@ export function AllReferralsScreen({ rows, state = 'ready', confirmId = null, li
           open
           onOpenChange={(o) => !o && setPaying(null)}
           title={`Mark ${formatINR(paying.amount)} paid to ${paying.referrer}?`}
-          consequence={`For referring ${paying.name} (${paying.job}). Do this once payroll has paid it. It is added to Recruiting costs as a referral bonus.`}
+          consequence={`For referring ${paying.name} (${paying.job}). It goes into payroll as a one-time referral bonus in the next open pay month, and shows in Recruiting costs once that payroll run is approved.`}
           confirmLabel="Mark paid"
           onConfirm={async () => {
             if (!live) return;
             try {
               await live.onMarkPaid(paying.id);
-              toaster?.toast({ tone: 'success', title: 'Bonus marked paid', description: `${formatINR(paying.amount)} · ${paying.referrer}` });
+              toaster?.toast({ tone: 'success', title: 'Bonus sent to payroll', description: `${formatINR(paying.amount)} · ${paying.referrer}` });
               setPaying(null);
             } catch (e) {
               setFailed(e instanceof Error && e.message ? e.message : 'That did not work. Try again.');

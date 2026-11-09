@@ -88,6 +88,7 @@ export function referralRow(r: ApiReferral): Referral {
     bonus: r.bonusInr,
     ...(r.rewardStatus === 'paid' ? { paid: true } : {}),
     ...(r.bonusDue === 'left' ? { leftEarly: true } : {}),
+    ...(r.bonusDue === 'on-hold' ? { onHold: true } : {}),
   };
 }
 

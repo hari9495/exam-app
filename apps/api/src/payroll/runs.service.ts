@@ -1281,6 +1281,8 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
         // PPL-22: the F&F statement letter goes to the person's documents (FnfService issues it).
         await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'payroll.fnf.run_approved', payload: { fnfSettlementId: f.id, runId: run.id } } });
       }
+    // Modules that follow approved pay (HIR-12 answer 231: the referral bonus cost) hear it after the commit.
+    await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'payroll.run.approved', payload: { runId: run.id } } });
     if (run.runType !== 'regular') {
       await audit(tx, c, 'payroll.run.approved', 'payroll_run', run.id, { calcVersion: run.calcVersion, people: slips.length, net: slips.reduce((t, s) => t.add(s.net), D(0)).toFixed(2), offcycle: run.offcycleKind });
       return;

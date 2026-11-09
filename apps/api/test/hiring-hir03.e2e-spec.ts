@@ -255,4 +255,17 @@ describe('HIR-03 / HIR-24 jobs and pay range', () => {
     await api('rec', 'get', '/custom-fields/in-use?entityType=offer').expect(400);
     expect((await api('hrB', 'get', '/custom-fields/in-use?entityType=job').expect(200)).body).toEqual([]);
   });
+
+  it('answer 244: a place abroad needs a company location even under the Indian entity; a typed foreign place is refused', async () => {
+    const msg = /This place is outside India\. Choose it from your company locations/;
+    await api('rec', 'post', '/jobs').send({ title: `Abroad typed ${run}`, location: 'Boston', locationCountry: 'US' }).expect(400).expect((r) => expect(r.body.message).toMatch(msg));
+    await api('rec', 'post', '/jobs').send({ title: `Abroad typed ${run}`, legalEntityId: ids.entity, location: 'Dubai', locationCountry: 'AE' }).expect(400);
+    await api('rec', 'post', '/jobs').send({ title: `Bad country ${run}`, location: 'Boston', locationCountry: 'usa' }).expect(400);
+    const ok = (await api('rec', 'post', '/jobs').send({ title: `Abroad master ${run}`, legalEntityId: ids.entity, locationId: ids.usLoc }).expect(201)).body;
+    expect(ok.location).toBe('Boston office');
+    const india = (await api('rec', 'post', '/jobs').send({ title: `India typed ${run}`, location: 'Madurai', locationCountry: 'IN' }).expect(201)).body;
+    await api('rec', 'patch', `/jobs/${india.id}`).send({ location: 'Singapore', locationCountry: 'SG' }).expect(400).expect((r) => expect(r.body.message).toMatch(msg));
+    await api('rec', 'patch', `/jobs/${india.id}`).send({ location: 'Coimbatore', locationCountry: 'IN' }).expect(200);
+  });
 });
+

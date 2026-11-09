@@ -284,3 +284,38 @@ describe('HIR-03 founder answers 222, 223, 225 (live)', () => {
     expect(screen.queryByRole('button', { name: /More actions/ })).not.toBeInTheDocument();
   });
 });
+
+describe('HIR-03 founder answers 241, 244 (live)', () => {
+  it('Jobs export offers CSV only (241)', async () => {
+    render(<JobsScreen rows={[]} live={jobs({ rows: [{ ...ROWS[0], code: 'JOB-0001' }] })} />);
+    await ue.click(screen.getByRole('button', { name: 'Export' }));
+    expect(screen.getByRole('menuitem', { name: 'CSV (visible columns)' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Excel (visible columns)' })).not.toBeInTheDocument();
+  });
+
+  it('a typed place abroad is refused before sending; India typed is sent with its country (244)', async () => {
+    const live = jobs({ create: { choices: { ...CHOICES, customFields: [] }, onCreate: vi.fn(async () => undefined) } });
+    render(<JobsScreen rows={[]} live={live} />);
+    await ue.click(screen.getByRole('button', { name: 'Create job' }));
+    const d = screen.getByRole('dialog');
+    await ue.type(within(d).getByRole('textbox', { name: /Job title/ }), 'Analyst');
+    await ue.type(within(d).getByRole('textbox', { name: /^Location/ }), 'Boston');
+    await ue.click(within(d).getByRole('combobox', { name: 'Country of the place' }));
+    await ue.type(within(d).getByRole('combobox', { name: 'Country of the place' }), 'United States');
+    await ue.click(await screen.findByRole('option', { name: 'United States' }));
+    await ue.click(within(d).getByRole('button', { name: 'Create job' }));
+    expect(within(d).getByText('This place is outside India. Add it in Settings › Locations first, then choose it.')).toBeInTheDocument();
+    expect(live.create.onCreate).not.toHaveBeenCalled();
+  });
+
+  it('a typed place in India (the default country) is sent with its country (244)', async () => {
+    const live = jobs({ create: { choices: { ...CHOICES, customFields: [] }, onCreate: vi.fn(async () => undefined) } });
+    render(<JobsScreen rows={[]} live={live} />);
+    await ue.click(screen.getByRole('button', { name: 'Create job' }));
+    const d = screen.getByRole('dialog');
+    await ue.type(within(d).getByRole('textbox', { name: /Job title/ }), 'Analyst');
+    await ue.type(within(d).getByRole('textbox', { name: /^Location/ }), 'Madurai');
+    await ue.click(within(d).getByRole('button', { name: 'Create job' }));
+    expect(live.create.onCreate).toHaveBeenCalledWith(expect.objectContaining({ location: 'Madurai', locationCountry: 'IN' }));
+  });
+});

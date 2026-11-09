@@ -16147,5 +16147,94 @@
       "Screens/Hiring/HIR-05 · Candidate data retention · Preview · changes nothing"
     ],
     "note": "Positive and negative. DPDP: erase is audited; legal hold blocks it."
+  },
+  {
+    "id": "MT-HIR-12-10",
+    "area": "Hiring · follow-ups round 2 (10 Nov 2026, founder answers 231, 234, 241, 244)",
+    "screen": "Hiring › All referrals › Mark bonus paid → payroll",
+    "url": "http://localhost:3000/yx/hiring/referrals/all",
+    "account": "hr-tester@demo-org.test (referrals); payroll-tester@demo-org.test (payroll inputs and runs). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Pick a referral whose bonus is Due and whose referrer has an employee record; Mark bonus paid; confirm.",
+      "2. As payroll open Payroll › Inputs › One-time pay for this month.",
+      "3. Open Hiring › Recruiting costs.",
+      "4. Run and approve this month's payroll with the line.",
+      "5. Open Recruiting costs again; try to change or delete the Referral bonus cost.",
+      "6. Try to undo the paid bonus (API PATCH rewardStatus approved).",
+      "7. Mark paid a referral whose referrer is not an employee (e.g. an outside recruiter)."
+    ],
+    "expected": "Step 1: toast \"Bonus sent to payroll\"; the row shows Paid. Step 2: one approved line \"Referral bonus\" for the referrer, source Hiring, reason \"Referral bonus: <name> (<job>)\". Step 3: no Referral bonus cost yet. Step 4: approved. Step 5: one Referral bonus cost for the run month; change and delete refused (read-only). Step 6: refused: \"The bonus was paid in the approved <month> payroll, so it cannot be undone here.\" Step 7: refused: the referrer has no employee record; nothing changes. Negative too: marking twice adds no second line.",
+    "stories": [
+      "Screens/Hiring/HIR-12 · Referrals"
+    ],
+    "note": "Positive and negative: answer 231."
+  },
+  {
+    "id": "MT-HIR-12-11",
+    "area": "Hiring · follow-ups round 2 (10 Nov 2026, founder answers 231, 234, 241, 244)",
+    "screen": "Hiring › All referrals › Undo before payroll",
+    "url": "http://localhost:3000/yx/hiring/referrals/all",
+    "account": "hr-tester@demo-org.test; payroll-tester@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Mark a due bonus paid (no payroll run approved yet this month).",
+      "2. Undo it (API PATCH rewardStatus approved).",
+      "3. As payroll open One-time pay."
+    ],
+    "expected": "Step 2: accepted; the row is Due again. Step 3: the referral line shows Cancelled. No Recruiting cost exists.",
+    "stories": [
+      "Screens/Hiring/HIR-12 · Referrals"
+    ],
+    "note": "Positive: undo before an approved run."
+  },
+  {
+    "id": "MT-HIR-12-12",
+    "area": "Hiring · follow-ups round 2 (10 Nov 2026, founder answers 231, 234, 241, 244)",
+    "screen": "Hiring › Referrals and All referrals › Bonus on hold",
+    "url": "http://localhost:3000/yx/hiring/referrals",
+    "account": "the referred joiner (resigns); arjun@demo-org.test (the referrer); hr-tester@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. The referred joiner submits a resignation (not yet approved).",
+      "2. The referrer opens My referrals.",
+      "3. HR opens All referrals and the row menu.",
+      "4. HR rejects or the joiner withdraws the resignation; reload both lists.",
+      "5. Another time, the resignation is accepted with a last day before the qualifying day."
+    ],
+    "expected": "Step 2: \"₹<amount> bonus on hold while their resignation is decided\". Step 3: Bonus \"Bonus on hold\"; the menu says \"On hold: their resignation is pending\" (no Mark paid); the API refuses mark-paid with the reason. Step 4: back to Due (or Waiting). Step 5: \"No bonus: left early\".",
+    "stories": [
+      "Screens/Hiring/HIR-12 · Referrals"
+    ],
+    "note": "Positive and negative: answer 234."
+  },
+  {
+    "id": "MT-HIR-03-10",
+    "area": "Hiring · follow-ups round 2 (10 Nov 2026, founder answers 231, 234, 241, 244)",
+    "screen": "Hiring › Jobs › Export (CSV only)",
+    "url": "http://localhost:3000/yx/hiring/jobs",
+    "account": "recruiter@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Press Export on the jobs list."
+    ],
+    "expected": "Only \"CSV (visible columns)\" is offered (no Excel); the file has the visible columns.",
+    "stories": [
+      "Screens/Hiring/HIR-03 · Jobs and job workspace"
+    ],
+    "note": "Answer 241."
+  },
+  {
+    "id": "MT-HIR-03-11",
+    "area": "Hiring · follow-ups round 2 (10 Nov 2026, founder answers 231, 234, 241, 244)",
+    "screen": "Hiring › Jobs › Create job (a place abroad under the Indian entity)",
+    "url": "http://localhost:3000/yx/hiring/jobs",
+    "account": "recruiter@demo-org.test in a company without locations set up (typed place), and one with a US location. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Without locations: Create job, type Location \"Boston\", Country of the place United States; Create job.",
+      "2. Change to India and Location \"Madurai\"; Create job.",
+      "3. With locations: choose the US location under the Indian entity; Create job."
+    ],
+    "expected": "Step 1: \"This place is outside India. Add it in Settings › Locations first, then choose it.\" and nothing is sent (the API refuses it too). Step 2: created. Step 3: created (a company location abroad is fine).",
+    "stories": [
+      "Screens/Hiring/HIR-03 · Jobs and job workspace"
+    ],
+    "note": "Positive and negative: answer 244."
   }
 ]

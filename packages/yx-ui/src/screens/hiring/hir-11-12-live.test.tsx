@@ -216,9 +216,10 @@ describe('HIR-11/12 founder answers 204-206 (live)', () => {
     await ue.click(await screen.findByRole('menuitem', { name: 'Mark bonus paid' }));
     const d = screen.getByRole('dialog');
     expect(within(d).getByText('Mark ₹15,000 paid to Neha Joshi?')).toBeInTheDocument();
+    expect(within(d).getByText(/goes into payroll as a one-time referral bonus/)).toBeInTheDocument();
     await ue.click(within(d).getByRole('button', { name: 'Mark paid' }));
     expect(onMarkPaid).toHaveBeenCalledWith('a1');
-    expect(await screen.findByText('Bonus marked paid')).toBeInTheDocument();
+    expect((await screen.findAllByText('Bonus sent to payroll')).length).toBeGreaterThan(0);
   });
 
   it('All referrals: a refusal stays in the dialog, no toast; empty state', async () => {
@@ -227,9 +228,22 @@ describe('HIR-11/12 founder answers 204-206 (live)', () => {
     const d = screen.getByRole('dialog');
     await ue.click(within(d).getByRole('button', { name: 'Mark paid' }));
     expect(await within(d).findByText('They left before the qualifying day, so no bonus is due.')).toBeInTheDocument();
-    expect(screen.queryByText('Bonus marked paid')).not.toBeInTheDocument();
+    expect(screen.queryByText('Bonus sent to payroll')).not.toBeInTheDocument();
     unmount();
     show(<AllReferralsScreen rows={[]} />);
     expect(screen.getByText('No referrals yet.')).toBeInTheDocument();
+  });
+
+  it('a resignation waiting for approval: Bonus on hold in both lists, no Mark paid (answer 234)', async () => {
+    show(<AllReferralsScreen rows={[{ ...ALL[0]!, bonus: 'on-hold' }]} live={{ onMarkPaid: vi.fn(), onRetry: vi.fn() }} />);
+    expect(screen.getAllByText('Bonus on hold').length).toBeGreaterThan(0);
+    await ue.click(screen.getByRole('button', { name: /Row actions|Actions|More/ }));
+    expect(await screen.findByRole('menuitem', { name: 'On hold: their resignation is pending' })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.queryByRole('menuitem', { name: 'Mark bonus paid' })).not.toBeInTheDocument();
+  });
+
+  it('My referrals says the bonus is on hold while the resignation is decided (234)', () => {
+    show(<ReferralsScreen jobs={JOBS} referrals={[{ ...REFS[1]!, stage: 'Hired', joined: new Date(2026, 4, 1), onHold: true }]} today={TODAY} live={refLive()} />);
+    expect(screen.getByText(/bonus on hold while their resignation is decided/)).toBeInTheDocument();
   });
 });

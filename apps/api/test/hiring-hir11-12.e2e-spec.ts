@@ -7,6 +7,8 @@ import { randomUUID } from 'crypto';
 import type Redis from 'ioredis';
 import { BlobStorageService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { AppModule } from '../src/app.module';
+import { ReferralsService } from '../src/referrals/referrals.service';
+import { PrismaClient } from '@prisma/client';
 import { EmailService } from '../src/email/email.service';
 import { LOGIN_PROTECTION_REDIS } from '../src/auth/login-protection.service';
 import { quarterIst } from '../src/hiring/careers-admin.service';
@@ -16,7 +18,8 @@ import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 // who may see and do what (HR, recruiter, hiring manager, an employee referring, settings-only admin, another company),
 // acting for someone else refused, bad input, money in rupees with paise kept exactly, months of the current quarter,
 // the referral bonus settings, no credit for a recent own application, the joining day and exit from People, and HR's
-// All referrals with Mark bonus paid posting a read-only Referral bonus cost.
+// All referrals with Mark bonus paid handing payroll a one-time Referral bonus line for the referrer (answer 231); the
+// read-only Referral bonus cost is posted when the run that pays it is approved; a pending resignation holds the bonus (234).
 
 jest.setTimeout(120_000);
 
@@ -44,6 +47,11 @@ describe('Hiring HIR-11 costs and HIR-12 referrals', () => {
     return m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
   })();
   const api = (who: Who, method: 'get' | 'post' | 'put' | 'patch' | 'delete', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+  // Payroll rows (a run, a payslip) are written with the schema owner, as payroll's own calculation would.
+  const owner = new PrismaClient({ datasources: { db: { url: process.env.MIGRATION_DATABASE_URL } } });
+  let referrals: ReferralsService;
+  /** The schema owner, as the platform (forced row-level security applies to the owner too). */
+  const sudo = <T>(fn: (t: Parameters<Parameters<PrismaClient['$transaction']>[0]>[0]) => Promise<T>) => owner.$transaction(async (t) => (await t.$executeRaw`SELECT set_config('app.is_super_admin', 'on', true)`, await t.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`, fn(t)));
   const inA = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false }, fn);
   const setSetting = (key: string, value: string) =>
     inA(async (tx) => {
@@ -78,6 +86,7 @@ describe('Hiring HIR-11 costs and HIR-12 referrals', () => {
     await app.init();
     prisma = moduleRef.get(PrismaService);
     tenantPrisma = moduleRef.get(TenantPrismaService);
+    referrals = moduleRef.get(ReferralsService);
     const redis = moduleRef.get<Redis>(LOGIN_PROTECTION_REDIS);
     const ipKeys = await redis.keys('auth:otp:ip:*');
     if (ipKeys.length) await redis.del(...ipKeys);
@@ -124,6 +133,9 @@ describe('Hiring HIR-11 costs and HIR-12 referrals', () => {
       const profile = await tx.permissionProfile.create({ data: { ...o, name: `hr-entity-${run}`, permissionsJson: JSON.stringify(['ats.costs.manage', 'ats.referral.manage']) } });
       await tx.roleGrant.create({ data: { ...o, userId: users.hrEntity!, permissionProfileId: profile.id, scopeType: 'legal_entity', legalEntityId: ids.entity, validFrom: new Date('2026-01-01'), status: 'active', reason: 'HR for Kaveri Foods' } });
     });
+    // Answer 231: the employee who refers is paid the bonus through payroll, so emp is an employee with a sign-in.
+    ids.empEmployee = (await api('hr', 'post', '/people/employees').send({ legalEntityId: ids.entity, status: 'confirmed', reason: 'Joined', overrideReason: 'Referrer in the referral tests', givenName: 'Arjun', familyName: `Kulkarni ${run}`, employeeCode: `REF-${run}`, joinedOn: '2025-04-01', assignment: { locationId: ids.loc, departmentId: ids.dept, designationId: ids.desig, employmentTypeId: ids.perm, managerEmployeeId: null } }).expect(201)).body.id;
+    await sudo((t) => t.employee.update({ where: { id: ids.empEmployee }, data: { userId: users.emp! } }));
   });
 
   afterAll(async () => {
@@ -131,6 +143,7 @@ describe('Hiring HIR-11 costs and HIR-12 referrals', () => {
       for (const k of ['A', 'B'] as const) await tx.organization.delete({ where: { id: org[k].id } }).catch(() => undefined);
     });
     await prisma.plan.delete({ where: { id: planId } }).catch(() => undefined);
+    await owner.$disconnect();
     await app.close();
   });
 
@@ -310,7 +323,7 @@ describe('Hiring HIR-11 costs and HIR-12 referrals', () => {
       expect((await api('emp', 'get', '/referrals/mine').expect(200)).body.find((r: { id: string }) => r.id === ids.referral)).toMatchObject({ bonusInr: 0, rewardStatus: 'rejected', bonusDue: 'none' });
     });
 
-    it('a joiner who leaves before the qualifying day gets no bonus (answer 205); once due, HR marks it paid and a read-only cost is posted (answer 203)', async () => {
+    it('a joiner who leaves before the qualifying day gets no bonus (answer 205); a pending resignation holds it (234); once due, HR marks it paid: a payroll line, the cost on approval (231)', async () => {
       ids.ref2 = (await api('emp', 'post', '/referrals').send(friend({ name: 'Rohit Bhat', email: `rohit-${run}@mailbox.in` })).expect(201)).body.id;
       const offer = await hire(ids.ref2, new Date('2026-01-05T00:00:00+05:30'));
       // The joiner in People, made from the accepted offer, joined on 5 Jan 2026 (qualifying day 6 Mar 2026 at 60 days).
@@ -328,23 +341,79 @@ describe('Hiring HIR-11 costs and HIR-12 referrals', () => {
       // A withdrawn exit (or one after the qualifying day) leaves the bonus due.
       await inA((tx) => tx.exitCase.update({ where: { id: exitId }, data: { approvedLwd: new Date('2026-06-30'), standardLwd: new Date('2026-06-30') } }));
       expect((await api('emp', 'get', '/referrals/mine').expect(200)).body.find((r: { id: string }) => r.id === ids.ref2)).toMatchObject({ bonusDue: 'due', bonusInr: 50000 });
-      await api('hr', 'patch', `/referrals/${ids.ref2}/reward`).send({ rewardStatus: 'paid' }).expect(200);
-      await api('hr', 'patch', `/referrals/${ids.ref2}/reward`).send({ rewardStatus: 'paid' }).expect(200); // a repeat posts nothing new
-      const posted = (await api('hr', 'get', '/hiring/costs').expect(200)).body.filter((c: { costType: string }) => c.costType === 'referral_bonus');
-      expect(posted).toEqual([expect.objectContaining({ source: 'Referral: Rohit Bhat', amount: 50000, origin: 'payroll', jobTitle: 'Senior QA Engineer', sourceRef: `referral:${ids.ref2}` })]);
-      await api('hr', 'put', `/hiring/costs/${posted[0].id}`).send(cost).expect(409);
-      await api('hr', 'delete', `/hiring/costs/${posted[0].id}`).expect(409);
+
+      // Answer 234: a resignation waiting for approval holds the bonus (both lists); paid is refused with the reason.
+      const resignation = await inA(async (tx) => {
+        const e = await tx.exitCase.findUniqueOrThrow({ where: { id: exitId } });
+        await tx.exitCase.update({ where: { id: exitId }, data: { status: 'withdrawn' } });
+        return (await tx.exitCase.create({ data: { organizationId: org.A.id, employmentId: e.employmentId, employeeId: e.employeeId, personId: e.personId, exitType: 'resignation', initiatedBy: 'employee', submittedOn: new Date('2026-07-01'), noticePeriod: '30d', standardLwd: new Date('2026-07-31'), status: 'submitted' } })).id;
+      });
+      expect((await api('emp', 'get', '/referrals/mine').expect(200)).body.find((r: { id: string }) => r.id === ids.ref2)).toMatchObject({ bonusDue: 'on-hold', bonusInr: 50000 });
+      expect((await api('hr', 'get', '/referrals').expect(200)).body.find((r: { id: string }) => r.id === ids.ref2)).toMatchObject({ bonusDue: 'on-hold' });
+      expect((await api('hr', 'patch', `/referrals/${ids.ref2}/reward`).send({ rewardStatus: 'paid' }).expect(409)).body.message).toBe('Their resignation is waiting for approval, so the bonus is on hold. Mark it paid after the exit is decided.');
+      await inA((tx) => tx.exitCase.update({ where: { id: resignation }, data: { status: 'withdrawn' } }));
+      expect((await api('emp', 'get', '/referrals/mine').expect(200)).body.find((r: { id: string }) => r.id === ids.ref2)).toMatchObject({ bonusDue: 'due' });
+
+      // Answer 231: paid hands payroll one approved Referral bonus line for the referrer; no cost until a run pays it.
+      const line = () => sudo((t) => t.oneTimePay.findMany({ where: { organizationId: org.A.id, source: 'm10', sourceRef: `referral:${ids.ref2}` }, orderBy: { createdAt: 'asc' } }));
+      const paid = (await api('hr', 'patch', `/referrals/${ids.ref2}/reward`).send({ rewardStatus: 'paid' }).expect(200)).body;
+      await api('hr', 'patch', `/referrals/${ids.ref2}/reward`).send({ rewardStatus: 'paid' }).expect(200); // a repeat adds no second line
+      const lines = await line();
+      expect(lines).toEqual([expect.objectContaining({ employeeId: ids.empEmployee, componentCode: 'referral_bonus', status: 'approved', reason: 'Referral bonus: Rohit Bhat (Senior QA Engineer)' })]);
+      expect(String(lines[0]!.amount)).toBe('50000');
+      expect(lines[0]!.periodStart.toISOString().slice(0, 7)).toBe(paid.payMonth);
+      const bonusCosts = async () => (await api('hr', 'get', '/hiring/costs').expect(200)).body.filter((c: { costType: string }) => c.costType === 'referral_bonus');
+      expect(await bonusCosts()).toEqual([]);
       expect((await api('emp', 'get', '/referrals/mine').expect(200)).body.find((r: { id: string }) => r.id === ids.ref2)).toMatchObject({ rewardStatus: 'paid', bonusDue: 'paid' });
 
-      // Undoing "paid" takes the posted cost back (audited with before and after).
+      // Undo before any approved run: the line is cancelled.
       await api('hr', 'patch', `/referrals/${ids.ref2}/reward`).send({ rewardStatus: 'approved' }).expect(200);
-      expect((await api('hr', 'get', '/hiring/costs').expect(200)).body.filter((c: { costType: string }) => c.costType === 'referral_bonus')).toEqual([]);
+      expect((await line()).map((l) => l.status)).toEqual(['cancelled']);
+      // Paid again: a new line; a draft run with it does not post the cost; its approval does, once.
+      await api('hr', 'patch', `/referrals/${ids.ref2}/reward`).send({ rewardStatus: 'paid' }).expect(200);
+      const live = (await line()).find((l) => l.status === 'approved')!;
+      const group = await sudo((t) => t.payGroup.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity, name: `Monthly ${run}` } }));
+      const runRow = await sudo((t) => t.payrollRun.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity, payGroupId: group.id, periodStart: live.periodStart, periodEnd: live.periodStart, preparedBy: users.hr!, status: 'draft' } }));
+      const slip = await sudo((t) => t.payslip.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity, runId: runRow.id, employmentId: live.employmentId, employeeId: live.employeeId, periodStart: live.periodStart, calcVersion: 1, status: 'draft', gross: 50000, deductions: 0, net: 50000, employerCost: 50000, ruleVersions: {}, snapshotHash: 'a'.repeat(64), resultHash: 'b'.repeat(64) } }));
+      await sudo((t) => t.payslipLine.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity, employeeId: live.employeeId, payslipId: slip.id, position: 0, componentCode: 'referral_bonus', name: 'Referral bonus', kind: 'earning', amount: 50000, explanation: 'One-time pay', sourceRef: live.id } }));
+      expect(await referrals.postPaidCosts(org.A.id, runRow.id)).toEqual([]);
+      expect(await bonusCosts()).toEqual([]);
+      await sudo((t) => t.payrollRun.update({ where: { id: runRow.id }, data: { status: 'approved' } }));
+      await sudo((t) => t.payslip.update({ where: { id: slip.id }, data: { status: 'approved' } }));
+      expect(await referrals.postPaidCosts(org.A.id, runRow.id)).toEqual([ids.ref2]);
+      expect(await referrals.postPaidCosts(org.A.id, runRow.id)).toEqual([]); // once
+      const posted = await bonusCosts();
+      expect(posted).toEqual([expect.objectContaining({ source: 'Referral: Rohit Bhat', amount: 50000, origin: 'payroll', jobTitle: 'Senior QA Engineer', sourceRef: `referral:${ids.ref2}` })]);
+      expect(posted[0].period.slice(0, 7)).toBe(live.periodStart.toISOString().slice(0, 7));
+      await api('hr', 'put', `/hiring/costs/${posted[0].id}`).send(cost).expect(409);
+      await api('hr', 'delete', `/hiring/costs/${posted[0].id}`).expect(409);
+      // Another company's run never posts here.
+      expect(await referrals.postPaidCosts(org.B.id, runRow.id)).toEqual([]);
+
+      // Undo after the approved run is refused with the reason; nothing changes.
+      expect((await api('hr', 'patch', `/referrals/${ids.ref2}/reward`).send({ rewardStatus: 'approved' }).expect(409)).body.message).toBe(`The bonus was paid in the approved ${live.periodStart.toISOString().slice(0, 7)} payroll, so it cannot be undone here. Payroll recovers it if needed.`);
+      expect((await line()).map((l) => l.status)).toEqual(['cancelled', 'approved']);
+      expect(await bonusCosts()).toHaveLength(1);
       const audits = await inA((tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, action: 'referral.reward_updated', entityId: ids.ref2 }, orderBy: { createdAt: 'asc' }, select: { metadataJson: true } }));
       expect(audits.map((a) => JSON.parse(a.metadataJson!))).toEqual([
-        { before: 'pending', rewardStatus: 'paid', amountInr: 50000 },
-        { before: 'paid', rewardStatus: 'paid', amountInr: 50000 },
+        { before: 'pending', rewardStatus: 'paid', amountInr: 50000, payMonth: paid.payMonth },
+        { before: 'paid', rewardStatus: 'paid', amountInr: 50000, payMonth: null },
         { before: 'paid', rewardStatus: 'approved' },
+        { before: 'approved', rewardStatus: 'paid', amountInr: 50000, payMonth: expect.any(String) },
       ]);
+    });
+
+    it('a referrer with no employee record cannot be paid through payroll (409); nothing is written', async () => {
+      const r = await inA((tx) => tx.referral.findFirstOrThrow({ where: { referrerUserId: users.manager } }));
+      await hire(r.id, new Date('2025-01-06T00:00:00+05:30'));
+      expect((await api('hr', 'get', '/referrals').expect(200)).body.find((x: { id: string }) => x.id === r.id)).toMatchObject({ bonusDue: 'due' });
+      expect((await api('hr', 'patch', `/referrals/${r.id}/reward`).send({ rewardStatus: 'paid' }).expect(409)).body.message).toMatch(/no employee record/);
+      expect(await sudo((t) => t.oneTimePay.count({ where: { organizationId: org.A.id, sourceRef: `referral:${r.id}` } }))).toBe(0);
+      expect((await inA((tx) => tx.referral.findUniqueOrThrow({ where: { id: r.id } }))).rewardStatus).not.toBe('paid');
+      // Back to not hired for the next test.
+      await inA(async (tx) => {
+        await tx.offer.deleteMany({ where: { pipelineEntryId: r.entryId } });
+      });
     });
 
     it('a rejected referral reads Not selected', async () => {
