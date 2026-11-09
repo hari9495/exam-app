@@ -889,7 +889,7 @@ describe('OrganizationsService', () => {
 
       const result = await service.getCareers({ organizationId: 'org-1', isSuperAdmin: false });
 
-      expect(result).toEqual({ enabled: true, headline: 'Join us', intro: 'We build things.', bannerUrl: null, assistantEnabled: false });
+      expect(result).toEqual({ enabled: true, headline: 'Join us', intro: 'We build things.', bannerUrl: null, assistantEnabled: false, config: { theme: 'classic', accent: null, sections: expect.any(Array) } });
     });
 
     it('defaults to disabled/null when no org row is found', async () => {
@@ -897,7 +897,7 @@ describe('OrganizationsService', () => {
 
       const result = await service.getCareers({ organizationId: 'org-1', isSuperAdmin: false });
 
-      expect(result).toEqual({ enabled: false, headline: null, intro: null, bannerUrl: null, assistantEnabled: false });
+      expect(result).toEqual({ enabled: false, headline: null, intro: null, bannerUrl: null, assistantEnabled: false, config: { theme: 'classic', accent: null, sections: expect.any(Array) } });
     });
 
     it('signs a stored bannerPath through signIfOurs', async () => {
@@ -944,7 +944,7 @@ describe('OrganizationsService', () => {
         where: { id: 'org-1' },
         data: { careersEnabled: true, careersHeadline: 'Join us', careersIntro: 'We build things.' },
       });
-      expect(result).toEqual({ enabled: true, headline: 'Join us', intro: 'We build things.', bannerUrl: null, assistantEnabled: false });
+      expect(result).toEqual({ enabled: true, headline: 'Join us', intro: 'We build things.', bannerUrl: null, assistantEnabled: false, config: { theme: 'classic', accent: null, sections: expect.any(Array) } });
     });
 
     it('normalizes an empty/whitespace headline and intro to null', async () => {
@@ -974,7 +974,7 @@ describe('OrganizationsService', () => {
 
       expect(audit.record).toHaveBeenCalledWith(
         { organizationId: 'org-1', isSuperAdmin: false },
-        { actorUserId: 'user-1', action: 'organization.careers_updated', entityType: 'organization', entityId: 'org-1' },
+        { actorUserId: 'user-1', action: 'organization.careers_updated', entityType: 'organization', entityId: 'org-1', metadata: { enabled: true } },
       );
     });
 

@@ -30,6 +30,9 @@ export class PublicOffersController {
 
   @Post('offers/:token/respond')
   respond(@Param('token') token: string, @Body() dto: RespondOfferDto, @Req() req?: Request) {
-    return this.offers.respondPublic(token, dto.action, { code: dto.code, disclosureAccepted: dto.disclosureAccepted, ip: req?.ip ?? null, device: req?.get?.('user-agent') ?? null });
+    // Public: only the new status goes back, never the offer row's internal fields (T9-09 candidate pages).
+    return this.offers
+      .respondPublic(token, dto.action, { code: dto.code, disclosureAccepted: dto.disclosureAccepted, ip: req?.ip ?? null, device: req?.get?.('user-agent') ?? null })
+      .then((o) => ({ status: o.status }));
   }
 }

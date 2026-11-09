@@ -334,6 +334,7 @@
   border: var(--yx-border-width) solid var(--yx-color-border);
   border-radius: var(--yx-radius-card);
 }
+.yx-page-builder__site { display: flex; flex-wrap: wrap; gap: var(--yx-space-2); }
 .yx-page-builder__item-legend { padding: 0 var(--yx-space-1); font-size: var(--yx-text-sm); font-weight: var(--yx-weight-medium); color: var(--yx-color-text-secondary); }
 .yx-page-builder__item-remove { position: absolute; top: var(--yx-space-1); right: var(--yx-space-1); }
 
@@ -365,6 +366,16 @@
 .yx-apply__sub { margin: 0; color: var(--yx-color-text-secondary); font-size: var(--yx-text-md); line-height: var(--yx-leading-md); }
 .yx-apply__form { display: flex; flex-direction: column; gap: var(--yx-space-5); }
 .yx-apply__consent-error { color: var(--yx-color-danger-text); font-weight: var(--yx-weight-medium); }
+.yx-apply__consent { display: flex; flex-direction: column; gap: var(--yx-space-2); }
+.yx-apply__notice { margin: 0; white-space: pre-line; color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); line-height: var(--yx-leading-sm); }
+/* Careers assistant (T9-09 live): asks about the listed jobs only. */
+.yx-careers__assistant { display: flex; flex-direction: column; gap: var(--yx-space-3); }
+.yx-careers__assistant-turns { display: flex; flex-direction: column; gap: var(--yx-space-2); margin: 0; padding: 0; list-style: none; }
+.yx-careers__assistant-turns li { margin: 0; white-space: pre-line; }
+.yx-careers__assistant-turns li[data-role='user'] { font-weight: var(--yx-weight-medium); }
+.yx-careers__assistant-form { display: flex; gap: var(--yx-space-2); align-items: flex-end; }
+.yx-careers__assistant-form > :first-child { flex: 1; min-width: 0; }
+.yx-careers__companies { display: flex; flex-wrap: wrap; gap: var(--yx-space-3); }
 .yx-apply__sent { display: flex; flex-direction: column; align-items: flex-start; gap: var(--yx-space-2); }
 .yx-apply__sent > .yx-icon { color: var(--yx-color-success-text); }
 .yx-apply__sent p { margin: 0; color: var(--yx-color-text-secondary); }

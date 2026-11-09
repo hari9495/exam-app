@@ -154,7 +154,7 @@ export default function YxHiringJobPage() {
                   status: j.status as 'open',
                   publicApplyEnabled: j.publicApplyEnabled,
                   listOnCareers: j.listOnCareers,
-                  applyUrl: j.applyToken ? `${origin}/apply/${j.applyToken}` : null,
+                  applyUrl: j.applyToken ? `${origin}/yx/apply/${j.applyToken}` : null,
                   boardIds: j.jobBoardIds ?? [],
                   fitCriteria: j.fitCriteria ?? null,
                   fitRubric: j.fitRubric ? (JSON.parse(j.fitRubric) as { label: string; weight: number }[]) : [],

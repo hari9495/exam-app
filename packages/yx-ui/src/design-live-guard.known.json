@@ -24,8 +24,7 @@
     "performance: PerformanceReportsScreen",
     "performance: PerformanceSetupScreen",
     "performance: PipsScreen",
-    "performance: ReviewerBlocksScreen",
-    "portals: CareersSiteScreen"
+    "performance: ReviewerBlocksScreen"
   ],
   "notLive": [
     "_kit: LinksFrame",
@@ -210,8 +209,6 @@
     "portals: CalculatorsScreen",
     "portals: CampusRegistrationScreen",
     "portals: CandidateRequestScreen",
-    "portals: CareersJobScreen",
-    "portals: CareersSiteScreen",
     "portals: ChatApplyScreen",
     "portals: ClientPortalScreen",
     "portals: ClientSwitcherScreen",

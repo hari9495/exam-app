@@ -52,7 +52,7 @@ export const jobCode = (n: number | null | undefined) => (n ? `JOB-${String(n).p
 
 /** The careers page of a job, only while the careers site lists it (open, public applications on, listed). */
 export function careersUrl(j: ApiJob, origin: string, orgSlug: string | null): string | null {
-  return j.status === 'open' && j.publicApplyEnabled && j.listOnCareers && j.slug && orgSlug ? `${origin}/careers/${orgSlug}/jobs/${j.slug}` : null;
+  return j.status === 'open' && j.publicApplyEnabled && j.listOnCareers && j.slug && orgSlug ? `${origin}/yx/careers/${orgSlug}/jobs/${j.slug}` : null;
 }
 
 export function jobRow(j: ApiJob, names: (userId: string | null) => string, origin: string, orgSlug: string | null): LiveJobRow {

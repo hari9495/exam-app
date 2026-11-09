@@ -102,29 +102,8 @@ export interface CareersSettings {
   bannerUrl: string | null;
 }
 
-export interface CareersEntityPage {
-  slug: string;
-  headline: string | null;
-  intro: string | null;
-  primaryColor: string | null;
-}
-
-/** A legal entity and its own careers page, if it has one. */
-export interface CareersEntity {
-  id: string;
-  name: string;
-  page: CareersEntityPage | null;
-}
-
-export type ConsentPurpose = 'application' | 'talent_pool';
-
-export interface ConsentNotice {
-  id: string;
-  purpose: ConsentPurpose;
-  version: number;
-  text: string;
-  publishedAt: string;
-}
+// Company pages and privacy notices are Surfaces/Careers kit parts now (components/careers-admin).
+export type { CareersEntity, CareersEntityPage, ConsentNotice, ConsentPurpose } from '../../../components/careers-admin';
 
 export interface JobBoardRow {
   id: string;
