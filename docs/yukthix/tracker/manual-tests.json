@@ -15572,5 +15572,81 @@
       "Screens/Hiring/HIR-24 · Job pay range fields"
     ],
     "note": "Negative: read-only users cannot change the pay range."
+  },
+  {
+    "id": "MT-HIR-03-06",
+    "area": "Hiring · HIR-03 Jobs and job workspace (9 Nov 2026, founder answers 222, 223, 225, 229)",
+    "screen": "Hiring › Jobs › On hold",
+    "url": "http://localhost:3000/yx/hiring/jobs",
+    "account": "recruiter@demo-org.test; arjun@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open an open job that is on the careers page; note its careers link and apply link.",
+      "2. Row menu (…) › Put on hold.",
+      "3. Open the careers page and the apply link in a private window.",
+      "4. Open the job: check the candidates on Open pipeline.",
+      "5. Job menu (…) › Resume job; open the careers page again.",
+      "6. Put it on hold again; job menu › Close job and all postings.",
+      "7. Try Put on hold on a draft requisition (row menu)."
+    ],
+    "expected": "Step 2: toast \"<job> is on hold. It is off the careers page and job boards; candidates stay.\"; status On hold. Step 3: the job is not on the careers page; the apply link says the role is not accepting applications. Step 4: every candidate is still there. Step 5: toast \"<job> resumed\"; it is back on the careers page. Step 6: closed with toast. Step 7: a draft has no Put on hold (the API refuses it with \"Only an open job can be put on hold.\").",
+    "stories": [
+      "Screens/Hiring/HIR-03 · Jobs and job workspace"
+    ],
+    "note": "Positive and negative: hold hides, resume shows, candidates stay, drafts cannot be held."
+  },
+  {
+    "id": "MT-HIR-03-07",
+    "area": "Hiring · HIR-03 Jobs and job workspace (9 Nov 2026, founder answers 222, 223, 225, 229)",
+    "screen": "Hiring › Jobs › one job › Change recruiter",
+    "url": "http://localhost:3000/yx/hiring/jobs/<job id>",
+    "account": "recruiter@demo-org.test; hr-tester@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Create a job; open it; read Recruiter on the Overview tab and in the list.",
+      "2. As HR open the job menu (…) › Change recruiter; press Change recruiter without choosing anyone.",
+      "3. Choose another person; press Change recruiter.",
+      "4. Open Admin › Audit log and search the job.",
+      "5. As a results:view-only user open the job."
+    ],
+    "expected": "Step 1: the recruiter is the person who created the job. Step 2: \"Choose someone other than the current recruiter.\" and nothing changes. Step 3: toast \"Recruiter changed to <name>\"; the list Recruiter column shows the new name. Step 4: an entry \"job.recruiter_changed\" with from and to and who did it. Step 5: no job menu.",
+    "stories": [
+      "Screens/Hiring/HIR-03 · Jobs and job workspace"
+    ],
+    "note": "Positive and negative: default, change with the job-manage key, audited, refused for others."
+  },
+  {
+    "id": "MT-HIR-03-08",
+    "area": "Hiring · HIR-03 Jobs and job workspace (9 Nov 2026, founder answers 222, 223, 225, 229)",
+    "screen": "Hiring › Jobs (job numbers and export)",
+    "url": "http://localhost:3000/yx/hiring/jobs",
+    "account": "recruiter@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Read the Job column of the list.",
+      "2. Create two jobs quickly one after another.",
+      "3. Delete the newest job; create another.",
+      "4. Hide the Type column (column menu); Export › CSV (visible columns); open the file."
+    ],
+    "expected": "Step 1: JOB-0001 style numbers, oldest job lowest. Step 2: the two get the next two numbers. Step 3: the new job gets a new number; the deleted number is never given again. Step 4: the file has the visible columns only (no Type), dates like \"3 Nov 2026\", and the job numbers.",
+    "stories": [
+      "Screens/Hiring/HIR-03 · Jobs and job workspace"
+    ],
+    "note": "Positive and negative: numbers never repeat; export follows the visible columns."
+  },
+  {
+    "id": "MT-HIR-03-09",
+    "area": "Hiring · HIR-03 Jobs and job workspace (9 Nov 2026, founder answers 222, 223, 225, 229)",
+    "screen": "Hiring › Jobs › Create job (outside India)",
+    "url": "http://localhost:3000/yx/hiring/jobs",
+    "account": "hr-tester@demo-org.test (adds a US legal entity and location); recruiter@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As HR add a legal entity with country US and a location \"Boston office\" under it.",
+      "2. Through the API (or a company without locations) create a job of the US entity with a free-text location \"Boston\".",
+      "3. Create it with location Boston office.",
+      "4. Create a job of the Indian entity with a free-text place \"Madurai\"."
+    ],
+    "expected": "Step 2: refused: \"A job outside India needs a location from your company locations. Choose one.\" Step 3: created. Step 4: created (India unchanged).",
+    "stories": [
+      "Screens/Hiring/HIR-03 · Jobs and job workspace"
+    ],
+    "note": "Positive and negative: answer 229."
   }
 ]

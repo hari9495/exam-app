@@ -42,17 +42,17 @@ built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Plans, requisitions, jobs and costs | 4 | 18 | 0 | 12 | 0 | 0 | 30 |
+| A. Plans, requisitions, jobs and costs | 4 | 19 | 0 | 12 | 0 | 0 | 31 |
 | B. Candidates, pipeline and interviews | 6 | 0 | 0 | 21 | 13 | 1 | 35 |
 | C. Offers, BGV and joining | 4 | 0 | 0 | 13 | 12 | 0 | 25 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 0 | 0 | 11 | 7 | 4 | 22 |
 | E. Staffing agency | 8 | 0 | 0 | 4 | 44 | 0 | 48 |
 | F. Compliance and fairness | 5 | 4 | 1 | 0 | 20 | 0 | 25 |
 | G. Careers site, portals and settings | 4 | 0 | 0 | 30 | 11 | 0 | 41 |
-| **All Hiring design groups (A–G)** | **35** | **22** | **1** | **91** | **107** | **5** | **226** |
+| **All Hiring design groups (A–G)** | **35** | **23** | **1** | **91** | **107** | **5** | **227** |
 | H. Kit and "Live ·" groups (not designs; own line) | 5 | 19 | 0 | 7 | 5 | 0 | 31 |
 
-Recounted by script 9 Nov 2026 on `feat/yukthix-hir-03-24` after HIR-01 (four new stories, Plans and NoPlans deleted), HIR-03 and HIR-24 went live (HIR-03 gained the Create job sheet story; the "Live · Jobs" stand-in and its 4 stories were deleted). First counted (the script is in the appendix): every `export const`
+Recounted by script 9 Nov 2026 on `feat/yukthix-hir-03-24` after HIR-01 (four new stories, Plans and NoPlans deleted), HIR-03 and HIR-24 went live and the HIR-03 follow-ups added the Change recruiter story (HIR-03 gained the Create job sheet story; the "Live · Jobs" stand-in and its 4 stories were deleted). First counted (the script is in the appendix): every `export const`
 story with a capital first letter (the lower-case exports are sample props, excluded from Storybook by
 `excludeStories`) in the 31 `hir-NN-*.stories.tsx` files, `hiring-kit.stories.tsx`, the five `hiring/live/*.stories.tsx`,
 `portals/t9-09-careers.stories.tsx`, `portals/t9-15-identity.stories.tsx`, `stories/careers.stories.tsx` and the hiring
@@ -184,18 +184,24 @@ Live page: /yx/hiring/jobs (menu Hiring › Jobs & requisitions) lists requisiti
 Live 9 Nov 2026 (branch `feat/yukthix-hir-03-24`): /yx/hiring/jobs renders the designed `JobsScreen` with `live`, and
 /yx/hiring/jobs/[id] the designed `JobWorkspaceScreen` (hiring-plan.tsx) with `live`. The stand-in list (`HiringJobsScreen`)
 is deleted; the stand-in workspace (board, applications, job settings) moved to /yx/hiring/jobs/[id]/pipeline ("Open
-pipeline") until HIR-04 is wired. Gaps: no job codes, no saved views, no export, no "Put on hold", no "Share with vendors",
-no Referrals & internal tab (founder questions 221–227).
+pipeline") until HIR-04 is wired. Founder answers 222, 223, 225 and 229 built the same day (migration 202617c0000001):
+a Recruiter on every job (default who opened it; Change recruiter in the job menu, `pipeline:manage`, audited
+`job.recruiter_changed`), On hold (status `on_hold`: off the careers site, public applications and job boards, which all
+read status `open`; the board sync retracts paid postings; candidates stay; Resume or Close), company job numbers
+(JOB-0001 on, per company, from the `job_number_counters` row lock, never reused) on the list and the workspace, Export of
+the visible columns as CSV, and a location from the masters for jobs of a legal entity outside India. Still waiting:
+saved views (225), the Referrals & internal tab and Share with vendors (226).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| List · Jobs list | live | `GET jobs` (`results:view`); filters, search, row menu: copy careers link, send for approval, withdraw, close, reopen, delete (`pipeline:manage`); recruiter = who opened the job |
-| Workspace · Job workspace · overview | live | `GET jobs/:id` with `payLaw` and `postings`; stage counts from `GET jobs`; close / reopen; Open pipeline |
+| List · Jobs list | live | `GET jobs` (`results:view`); job numbers, filters, search, Export CSV of the visible columns; row menu: copy careers link, send for approval, withdraw, put on hold, resume, close, reopen, delete (`pipeline:manage`); Recruiter column; saved views wait (225) |
+| Workspace · Job workspace · overview | live | `GET jobs/:id` with `payLaw` and `postings`; job number; recruiter; stage counts from `GET jobs`; put on hold, resume, close, reopen; Open pipeline |
 | Postings · Job workspace · board postings (one failed) | live | `postings` (every company board, its publication status and error); post, refresh, retry, close by `PATCH jobs/:id jobBoardIds` |
 | Empty · Empty | live | no jobs |
 | Loading · Loading | live | while `GET jobs` loads |
 | Error · Error | live | `GET jobs` fails |
-| CreateJob · Create job sheet | live | added 9 Nov 2026 (the stand-in's new-job form, drawn from the kit): `POST jobs`; pay fields, plan line, replacement, custom fields, AI draft |
+| CreateJob · Create job sheet | live | added 9 Nov 2026 (the stand-in's new-job form, drawn from the kit): `POST jobs`; pay fields, plan line, replacement, custom fields, AI draft; outside India the API needs a location from the masters (229) |
+| ChangeRecruiter · Job workspace · change recruiter | live | added 9 Nov 2026 (answer 222): `PATCH jobs/:id recruiterUserId` (`pipeline:manage`), audited; pressed with no change: field error |
 
 #### HIR-11 · Recruiting costs entry
 
@@ -877,3 +883,16 @@ Founder approved, 9 Nov 2026 (questions 201-207, 211-216, 221-229, all as sugges
   columns; (226) Referrals & internal tab and Share with vendors wired with HIR-12, HIR-13 and HIR-21; (227) keep the old
   workspace behind Open pipeline until HIR-04; (228) counsel checks every pay-law row (GO-LIVE-CHECKLIST), size limits only
   if a customer needs them; (229) jobs outside India need a location from the masters.
+
+## Founder questions from the HIR-03 follow-ups (9 Nov 2026)
+241. **Export menu offers "Excel" too.** The kit's table always shows CSV and Excel; both download the same CSV file
+     (Excel opens it). *Suggested: keep one file; later add an `exportFormats` option to the kit table to show CSV only.*
+242. **On hold and a job's public link.** On hold, the apply link answers "This role is not accepting applications" and the
+     careers page drops the job; candidates already in the pipeline keep moving. *Suggested: keep; tell applicants nothing
+     extra.*
+243. **Job numbers of older jobs.** Existing jobs (deleted ones too) were numbered by the date they were opened, so a
+     company's numbers start at JOB-0001 for its oldest job. *Suggested: keep.*
+244. **"Outside India" is decided by the job's legal entity** (or the company's default entity when none is chosen). A job
+     of an Indian entity may still use a free-text place abroad. *Suggested: also require a master location whenever the
+     job's place is outside India, once locations carry a country for every company.*
+
