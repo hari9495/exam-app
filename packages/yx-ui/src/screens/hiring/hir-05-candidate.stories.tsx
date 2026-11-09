@@ -85,9 +85,7 @@ export const sampleApplication: ApplicationDrawerProps = {
   senders: [],
   smsTemplates: [],
   whatsappTemplates: [],
-  offerTemplates: [{ value: 'o1', label: 'Standard offer', subject: 'Your offer', body: 'We are pleased to offer you…' }],
   surveys: [{ value: 'sv1', label: 'Candidate experience' }],
-  offerApproval: true,
   onStatus: ok,
   onReject: ok,
   onUndo: ok,
@@ -105,12 +103,12 @@ export const sampleApplication: ApplicationDrawerProps = {
   onResend: ok,
   onNote: ok,
   onSurvey: ok,
-  onOffer: ok,
-  onOfferAction: ok,
+  onNewOffer: () => {},
+  onOpenOffer: () => {},
 };
 
 export const Application: S = { name: 'Application · interviews, messages, notes, offers', render: () => <ApplicationDrawer {...sampleApplication} /> };
-export const ApplicationOfferToApprove: S = {
-  name: 'Application · offer waiting for your approval',
-  render: () => <ApplicationDrawer {...sampleApplication} app={{ ...sampleApplication.app!, offers: [{ id: 'o1', status: 'pending_approval', compensation: '₹12,00,000 a year', startDate: '2026-12-01', expiresAt: '2026-11-15' }] }} offersToDecide={['o1']} onOfferDecide={async () => {}} />,
+export const ApplicationOffer: S = {
+  name: 'Application · an offer opens its record (HIR-09)',
+  render: () => <ApplicationDrawer {...sampleApplication} app={{ ...sampleApplication.app!, offers: [{ id: 'o1', status: 'pending_approval', compensation: 'Fixed CTC ₹12,00,000 a year', startDate: '2026-12-01', expiresAt: '2026-11-15' }] }} />,
 };

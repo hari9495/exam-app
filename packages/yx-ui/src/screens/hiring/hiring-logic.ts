@@ -114,7 +114,8 @@ export type BandPosition = 'below' | 'within' | 'above';
 
 export function bandCheck(ctc: number, band: Band): { position: BandPosition; extraApproval: boolean; text: string } {
   if (ctc > band.max) return { position: 'above', extraApproval: true, text: 'Above the grade pay range. Needs extra approval.' };
-  if (ctc < band.min) return { position: 'below', extraApproval: true, text: 'Below the grade pay range. Needs extra approval.' };
+  // Founder decision 4 (9 Nov 2026): only an offer ABOVE the range adds the extra approval step.
+  if (ctc < band.min) return { position: 'below', extraApproval: false, text: 'Below the grade pay range.' };
   return { position: 'within', extraApproval: false, text: 'Within the grade pay range.' };
 }
 

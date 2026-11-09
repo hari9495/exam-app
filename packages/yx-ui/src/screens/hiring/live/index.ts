@@ -15,6 +15,8 @@ export { TalentPoolsScreen, type TalentPoolsScreenProps } from './talent';
 // workspace, and the application on the HIR-05 record (the old candidates list and application panel are gone).
 export { AddCandidateSheet, BulkActionsSheet, RejectDialog, scorecardText, type AddCandidateInput, type BulkRow } from '../pipeline-sheets';
 export { ApplicationDrawer, type ApplicationDrawerProps } from '../candidate-application';
+// HIR-09 / HIR-29: the designed offer builder and offer record (with its conditions tab), live with their `live` prop.
+export { OfferBuilderScreen, OfferConditionsTab, OfferRecordScreen, type LiveConditions, type OfferBuilderProps, type OfferRecordProps } from '../hiring-offers';
 export { JobSettingsPanel, type LiveJobSettings, type StageTarget, type JobSettingsPatch } from '../job-settings';
 export { MyInterviewsScreen, InterviewScreen, ScorecardTemplatesScreen, type MyInterviewsScreenProps, type InterviewScreenProps, type ScorecardTemplatesScreenProps } from './interviews';
 // HIR-11 and HIR-12: the designed screens themselves (hiring-plan.tsx), made live with their `live` prop.

@@ -19,18 +19,20 @@ import { useToastIfAny } from '../../components/notify';
 import { dateText } from '../time/live/kit';
 import { EmailDialog } from './candidate-dialogs';
 import { RejectDialog, scorecardText } from './pipeline-sheets';
-import type { ApplicationView, Choice, EmailCompose, EmailTemplateChoice, OfferInput, RejectInput, ScheduleInput } from './live/types';
+import type { ApplicationView, Choice, EmailCompose, EmailTemplateChoice, RejectInput, ScheduleInput } from './live/types';
 
 // HIR-05 Application (founder answer 261, 10 Nov 2026): one application, opened on the candidate record (a card on the
 // HIR-04 board opens the record with it). Tests and fit, interviews (schedule with proposed slots or self-booking;
 // calendar events and meeting links come from the calendar sync), messages, notes, the checklist, the owner and offers
-// (offers stay here until HIR-09). Moved from the AT5 stand-in drawer so nothing it did is lost.
+// (HIR-09: the offers tab lists them and opens the offer builder and record). Moved from the AT5 stand-in drawer so nothing it did is lost.
 
 const day = (iso: string) => dateText(iso.slice(0, 10));
 const when = (iso: string) => new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 /** Why SMS or WhatsApp is not offered. */
 const noText = (a: { phone: string | null; smsOptedOut: boolean; whatsappOptedOut: boolean }) =>
   !a.phone ? 'No mobile number: no SMS or WhatsApp.' : `${[a.smsOptedOut ? 'SMS' : null, a.whatsappOptedOut ? 'WhatsApp' : null].filter(Boolean).join(' and ')}: opted out.`;
+/** Offers still in play: one at a time per application (the API refuses a second). */
+const OPEN_OFFER = ['draft', 'pending_approval', 'approved', 'sent', 'accepted'];
 const OFFER_LABEL: Record<string, string> = { draft: 'Draft', pending_approval: 'Waiting for approval', approved: 'Approved', rejected: 'Not approved', sent: 'Sent', accepted: 'Accepted', declined: 'Declined', withdrawn: 'Withdrawn', expired: 'Expired' };
 
 export interface ApplicationDrawerProps {
@@ -47,10 +49,7 @@ export interface ApplicationDrawerProps {
   senders: Choice[];
   smsTemplates: EmailTemplateChoice[];
   whatsappTemplates: EmailTemplateChoice[];
-  offerTemplates: EmailTemplateChoice[];
   surveys: Choice[];
-  /** The company asks for approval before an offer goes out. */
-  offerApproval: boolean;
   /** Opens the full record (when the drawer is shown somewhere else). */
   onOpenProfile?: () => void;
   onStatus: (statusId: string) => Promise<unknown>;
@@ -70,35 +69,28 @@ export interface ApplicationDrawerProps {
   onResend: (channel: 'email' | 'sms' | 'whatsapp', id: string) => Promise<unknown>;
   onNote: (note: string, rating: number | null) => Promise<unknown>;
   onSurvey: (surveyId: string) => Promise<unknown>;
-  onOffer: (input: OfferInput) => Promise<unknown>;
-  onOfferAction: (offerId: string, action: 'send' | 'approval' | 'withdraw' | 'cancel_approval' | 'pdf') => Promise<unknown>;
-  /** Offers waiting for this person's approval (their approval inbox). */
-  offersToDecide?: string[];
-  /** Approve or turn down an offer at the person's step; a reason goes with a turn-down. */
-  onOfferDecide?: (offerId: string, decision: 'approved' | 'rejected', note?: string) => Promise<unknown>;
+  /** HIR-09: a new offer opens the offer builder; an offer opens its record (approval, letter, versions, conditions). */
+  onNewOffer: () => void;
+  onOpenOffer: (offerId: string) => void;
 }
 
 export function ApplicationDrawer(p: ApplicationDrawerProps) {
   const a = p.app;
   const toast = useToastIfAny();
   const { busy, error, run: run0 } = useRun();
-  const DONE: Record<string, string> = { undo: 'Rejection undone', status: 'Stage changed', fit: 'Fit scoring started', check: 'Checklist saved', assign: 'Owner saved', resend: 'Sent again', cancel: 'Cancelled', survey: 'Survey sent', approval: 'Sent for approval', send: 'Offer sent to the candidate', withdraw: 'Offer withdrawn', 'turn-down': 'Offer turned down' };
+  const DONE: Record<string, string> = { undo: 'Rejection undone', status: 'Stage changed', fit: 'Fit scoring started', check: 'Checklist saved', assign: 'Owner saved', resend: 'Sent again', cancel: 'Cancelled', survey: 'Survey sent', };
   // Success is a toast (5 s); a failure stays in the drawer's notice.
   const run = (key: string, fn: () => Promise<unknown>) =>
     run0(key, async () => {
       await fn();
-      if (DONE[key] || key.startsWith('approve-')) toast?.toast({ tone: 'success', title: key.startsWith('approve-') ? 'Offer approved' : DONE[key]! });
+      if (DONE[key]) toast?.toast({ tone: 'success', title: DONE[key]! });
     });
   const told = (title: string) => () => void toast?.toast({ tone: 'success', title });
   const [rejecting, setRejecting] = useState(false);
-  const [turningDown, setTurningDown] = useState<string | null>(null);
-  const [downReason, setDownReason] = useState('');
-  const [downTried, setDownTried] = useState(false);
   const [scheduling, setScheduling] = useState(false);
   const [emailing, setEmailing] = useState(false);
   const [texting, setTexting] = useState<'sms' | 'whatsapp' | null>(null);
   const [noting, setNoting] = useState(false);
-  const [offering, setOffering] = useState(false);
   return (
     <Drawer
       open={p.open}
@@ -243,74 +235,25 @@ export function ApplicationDrawer(p: ApplicationDrawerProps) {
 
             <TabsContent value="offers">
               <div className="yx-hire-stack">
-                {p.canManage && <div><Button size="sm" icon={Plus} onClick={() => setOffering(true)}>Create an offer</Button></div>}
+                {p.canManage && !a.offers.some((o) => OPEN_OFFER.includes(o.status)) && <div><Button size="sm" icon={Plus} onClick={p.onNewOffer}>Create an offer</Button></div>}
                 {a.offers.length === 0 && <EmptyState compact title="No offers yet." />}
                 {a.offers.map((o) => (
-                  <Card key={o.id} title={o.compensation}>
+                  <Card key={o.id} title={o.compensation ?? 'Offer'}>
                     <Text as="p">{OFFER_LABEL[o.status] ?? o.status} · starts {day(o.startDate)} · answer by {day(o.expiresAt)}</Text>
-                    {o.status === 'pending_approval' && p.offersToDecide?.includes(o.id) && p.onOfferDecide && (
-                      <div className="yx-hire-stack">
-                        <Text as="p" tone="secondary">Waiting for your approval.</Text>
-                        <div className="yx-hire-actions">
-                          <Button size="sm" variant="approve" icon={Check} loading={busy === `approve-${o.id}`} onClick={() => void run(`approve-${o.id}`, () => p.onOfferDecide!(o.id, 'approved'))}>Approve offer</Button>
-                          <Button size="sm" onClick={() => setTurningDown(o.id)}>Turn down</Button>
-                        </div>
-                      </div>
-                    )}
-                    {p.canManage && (
-                      <div className="yx-hire-actions">
-                        <Button size="sm" onClick={() => void run('pdf', () => p.onOfferAction(o.id, 'pdf'))}>Open the letter</Button>
-                        {o.status === 'draft' && p.offerApproval && <Button size="sm" variant="primary" onClick={() => void run('approval', () => p.onOfferAction(o.id, 'approval'))}>Send for approval</Button>}
-                        {(o.status === 'approved' || (o.status === 'draft' && !p.offerApproval)) && <Button size="sm" variant="primary" onClick={() => void run('send', () => p.onOfferAction(o.id, 'send'))}>Send to candidate</Button>}
-                        {o.status === 'pending_approval' && <Button size="sm" onClick={() => void run('cancel', () => p.onOfferAction(o.id, 'cancel_approval'))}>Cancel approval</Button>}
-                        {o.status === 'sent' && <Button size="sm" variant="danger" onClick={() => void run('withdraw', () => p.onOfferAction(o.id, 'withdraw'))}>Withdraw offer</Button>}
-                      </div>
-                    )}
+                    <div className="yx-hire-actions">
+                      <Button size="sm" icon={ExternalLink} onClick={() => p.onOpenOffer(o.id)}>Open offer</Button>
+                    </div>
                   </Card>
                 ))}
               </div>
             </TabsContent>
           </Tabs>
 
-          {turningDown && (
-            <Dialog
-              open
-              onOpenChange={(o) => !o && setTurningDown(null)}
-              title="Turn down this offer"
-              description="Your reason is kept with the decision. The offer goes back to draft for the recruiter to change."
-              footer={
-                <>
-                  <Button onClick={() => setTurningDown(null)}>Cancel</Button>
-                  <Button
-                    variant="danger"
-                    loading={busy === 'turn-down'}
-                    onClick={() => {
-                      setDownTried(true);
-                      if (downReason.trim().length < 3) return;
-                      void run('turn-down', async () => {
-                        await p.onOfferDecide!(turningDown, 'rejected', downReason.trim());
-                        setTurningDown(null);
-                        setDownReason('');
-                        setDownTried(false);
-                      });
-                    }}
-                  >
-                    Turn down
-                  </Button>
-                </>
-              }
-            >
-              <FormField label="Reason" required error={downTried && downReason.trim().length < 3 ? 'Say why, in a few words.' : null}>
-                <TextArea value={downReason} onChange={setDownReason} rows={3} />
-              </FormField>
-            </Dialog>
-          )}
           {rejecting && <RejectDialog count={1} templates={p.templates} onClose={() => setRejecting(false)} onReject={async (i) => { await p.onReject(i); told('Candidate rejected')(); }} />}
           {scheduling && <ScheduleDialog {...p} onSchedule={(i) => p.onSchedule(i).then(told('Interview scheduled'))} onClose={() => setScheduling(false)} />}
           {emailing && <EmailDialog count={1} templates={p.templates} senders={p.senders} onClose={() => setEmailing(false)} onSend={async (c) => { await p.onEmail(c); told('Email on its way')(); }} />}
           {texting && <TextDialog channel={texting} templates={texting === 'sms' ? p.smsTemplates : p.whatsappTemplates} onClose={() => setTexting(null)} onSend={(b, t) => (texting === 'sms' ? p.onSms(b, t) : p.onWhatsapp(b, t)).then(told(texting === 'sms' ? 'SMS sent' : 'WhatsApp message sent'))} />}
           {noting && <NoteDialog onClose={() => setNoting(false)} onSave={(n, r) => p.onNote(n, r).then(told('Note added'))} />}
-          {offering && <OfferDialog templates={p.offerTemplates} approval={p.offerApproval} onClose={() => setOffering(false)} onSave={(o) => p.onOffer(o).then(told('Offer saved'))} />}
         </div>
       )}
     </Drawer>
@@ -451,45 +394,4 @@ function ScheduleDialog(p: ApplicationDrawerProps & { onClose: () => void }) {
   );
 }
 
-function OfferDialog(p: { templates: EmailTemplateChoice[]; approval: boolean; onClose: () => void; onSave: (i: OfferInput) => Promise<unknown> }) {
-  const [comp, setComp] = useState('');
-  const [start, setStart] = useState<Date | null>(null);
-  const [expires, setExpires] = useState<Date | null>(null);
-  const [tpl, setTpl] = useState<string | null>(p.templates[0]?.value ?? null);
-  const [subject, setSubject] = useState(p.templates[0]?.subject ?? '');
-  const [body, setBody] = useState(p.templates[0]?.body ?? '');
-  const [then, setThen] = useState<OfferInput['then']>('save');
-  const ok = comp.trim() && start && expires;
-  const [tried, setTried] = useState(false);
-  return (
-    <ConfirmDialog open size="md" onOpenChange={(o) => !o && p.onClose()} title="Create an offer" confirmLabel={then === 'save' ? 'Save draft' : then === 'send' ? 'Send offer' : 'Send for approval'} onConfirm={async () => {
-      setTried(true);
-      if (!ok) return false;
-      await p.onSave({ compensation: comp.trim(), startDate: new Date(`${dayKey(start!)}T00:00:00`).toISOString(), expiresAt: new Date(`${dayKey(expires!)}T23:59:00`).toISOString(), templateId: tpl, subject: subject.trim(), body, then });
-      p.onClose();
-    }}>
-      <FormField id="of-comp" label="Compensation" required helper="As it should read in the letter, e.g. ₹12,00,000 a year." error={tried && !comp.trim() ? 'Enter the compensation.' : null}>
-        <TextField value={comp} onChange={setComp} maxLength={200} />
-      </FormField>
-      <FormField id="of-start" label="Start date" required error={tried && !start ? 'Choose the start date.' : null}>
-        <DatePicker aria-label="Start date" value={start} onChange={setStart} min={new Date()} />
-      </FormField>
-      <FormField id="of-exp" label="Answer by" required error={tried && !expires ? 'Choose the date to answer by.' : null}>
-        <DatePicker aria-label="Answer by" value={expires} onChange={setExpires} min={new Date()} />
-      </FormField>
-      <FormField id="of-tpl" label="Letter template" optional>
-        <Select aria-label="Letter template" value={tpl} onChange={(v) => { setTpl(v); const t = p.templates.find((x) => x.value === v); if (t) { setSubject(t.subject); setBody(t.body); } }} options={p.templates.map((t) => ({ value: t.value, label: t.label }))} clearable />
-      </FormField>
-      <FormField id="of-subj" label="Subject" optional>
-        <TextField value={subject} onChange={setSubject} maxLength={300} />
-      </FormField>
-      <FormField id="of-body" label="Letter" optional>
-        <TextArea value={body} onChange={setBody} rows={8} maxLength={20000} />
-      </FormField>
-      <FormField id="of-then" label="Then">
-        <Segment label="Then" value={then} onChange={setThen} options={[{ value: 'save', label: 'Keep as draft' }, ...(p.approval ? [{ value: 'approval' as const, label: 'Send for approval' }] : [{ value: 'send' as const, label: 'Send to candidate' }])]} />
-      </FormField>
-    </ConfirmDialog>
-  );
-}
 

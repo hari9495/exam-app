@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
@@ -171,18 +171,21 @@ describe('HIR-05 application on the record (answer 261)', () => {
     expect(onSchedule).not.toHaveBeenCalled();
   });
 
-  it('offers stay here until HIR-09: approval when the company asks; the approver decides, a turn-down needs a reason', async () => {
-    const onOfferDecide = vi.fn(async () => ({}));
-    const waiting = { ...sampleApplication.app!, offers: [{ id: 'o1', status: 'pending_approval', compensation: '₹12,00,000 a year', startDate: '2026-12-01', expiresAt: '2026-11-15' }] };
-    show(<ApplicationDrawer {...sampleApplication} app={waiting} offersToDecide={['o1']} onOfferDecide={onOfferDecide} />);
+  it('HIR-09: the offers tab opens the offer builder and each offer’s record; one open offer at a time', async () => {
+    const onNewOffer = vi.fn();
+    const onOpenOffer = vi.fn();
+    show(<ApplicationDrawer {...sampleApplication} onNewOffer={onNewOffer} onOpenOffer={onOpenOffer} app={{ ...sampleApplication.app!, offers: [] }} />);
     await ue.click(screen.getByRole('tab', { name: /Offers/ }));
-    await ue.click(screen.getByRole('button', { name: 'Turn down' }));
-    const d = lastDialog();
-    await ue.click(within(d).getByRole('button', { name: 'Turn down' }));
-    expect(onOfferDecide).not.toHaveBeenCalled();
-    await ue.type(within(d).getByLabelText(/Reason/), 'Above the band');
-    await ue.click(within(d).getByRole('button', { name: 'Turn down' }));
-    await waitFor(() => expect(onOfferDecide).toHaveBeenCalledWith('o1', 'rejected', 'Above the band'));
+    await ue.click(screen.getByRole('button', { name: 'Create an offer' }));
+    expect(onNewOffer).toHaveBeenCalled();
+    cleanup();
+    const open = { ...sampleApplication.app!, offers: [{ id: 'o1', status: 'sent', compensation: null, startDate: '2026-12-01', expiresAt: '2026-11-15' }] };
+    show(<ApplicationDrawer {...sampleApplication} onNewOffer={onNewOffer} onOpenOffer={onOpenOffer} app={open} />);
+    await ue.click(screen.getByRole('tab', { name: /Offers/ }));
+    // Pay hidden (no offer-pay key): the card still opens the offer.
+    expect(screen.queryByRole('button', { name: 'Create an offer' })).not.toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Open offer' }));
+    expect(onOpenOffer).toHaveBeenCalledWith('o1');
   });
 
   it('read-only: no SMS when the person opted out, the owner and checklist as text', async () => {

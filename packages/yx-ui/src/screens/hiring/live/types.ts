@@ -355,7 +355,8 @@ export interface ApplicationView {
   smsOptedOut: boolean;
   whatsappOptedOut: boolean;
   notes: { id: string; author: string; note: string | null; rating: number | null; at: string }[];
-  offers: { id: string; status: string; compensation: string; startDate: string; expiresAt: string }[];
+  /** HIR-09: the pay text only with the offer-pay key (null otherwise). */
+  offers: { id: string; status: string; compensation: string | null; startDate: string; expiresAt: string }[];
 }
 
 export interface ScheduleInput {
@@ -369,16 +370,6 @@ export interface ScheduleInput {
   timeZone: string;
   note: string | null;
   scorecardTemplateId: string | null;
-}
-
-export interface OfferInput {
-  compensation: string;
-  startDate: string;
-  expiresAt: string;
-  templateId: string | null;
-  subject: string;
-  body: string;
-  then: 'save' | 'send' | 'approval';
 }
 
 export interface ScorecardTemplateView {
@@ -423,4 +414,116 @@ export interface MyInterviewRow {
   when: string | null;
   status: string;
   scorecard: 'not_started' | 'draft' | 'submitted' | 'none';
+}
+
+/* ---------------- HIR-09 offer builder and HIR-29 conditions (live) ---------------- */
+
+/** One line of an offer's CTC, as the kit's CTC breakup table shows it (rupees a year and a month). */
+export interface OfferCtcLine {
+  key: string;
+  label: string;
+  kind: 'earning' | 'employer' | 'variable' | 'one-time';
+  annual: number;
+  monthly: number;
+}
+
+/** What the builder needs for one application (GET hiring/offers/setup). */
+export interface OfferSetupView {
+  entryId: string;
+  candidate: { id: string; name: string };
+  job: { id: string; title: string; locationId: string | null };
+  company: string;
+  grade: { id: string | null; name: string } | null;
+  band: { min: number; max: number } | null;
+  /** The company's salary structures the job's legal entity can use (value: the structure version). */
+  structures: Choice[];
+  locations: Choice[];
+  letters: { value: string; label: string; esign: boolean; subject: string; body: string }[];
+  defaultConditions: string[];
+  /** The company's offer route for this sender (the sender is never an approver) and the step above the range. */
+  route: { steps: { name: string; approvers: string[] }[]; bandStep: { name: string; approvers: string[] } };
+}
+
+export interface OfferDraftInput {
+  templateVersionId: string;
+  annualCtc: number;
+  variablePay: number;
+  joiningBonus: number;
+  clawbackMonths: number | null;
+  locationId: string;
+  /** ISO dates. */
+  startDate: string;
+  expiresAt: string;
+  letterKind: 'offer' | 'loi';
+  templateId: string | null;
+  addConditions: boolean;
+}
+
+export interface OfferPreview {
+  lines: OfferCtcLine[];
+  monthlyGross: number;
+  bandPosition: 'within' | 'above' | 'below' | 'none';
+  bandText: string;
+  extraApproval: boolean;
+  warnings: string[];
+}
+
+export interface LiveOfferBuilder {
+  state: 'loading' | 'ready' | 'error' | 'denied' | 'not-found';
+  onRetry: () => void;
+  setup: OfferSetupView | null;
+  /** A revision: the version it starts from (its pay and terms fill the form). */
+  previous?: { version: number; ctc: number; grade: string; input: OfferDraftInput } | null;
+  /** The CTC lines from the company's salary structure (Pay's breakup); nothing is kept. */
+  onPreview: (input: Pick<OfferDraftInput, 'templateVersionId' | 'annualCtc' | 'variablePay' | 'joiningBonus' | 'clawbackMonths' | 'locationId'>) => Promise<OfferPreview>;
+  /** Saves the version and sends it on (for approval, or to the candidate); resolves with the toast text. */
+  onFinish: (input: OfferDraftInput) => Promise<string>;
+  /** Saves the version as a draft and leaves. */
+  onSaveDraft: (input: OfferDraftInput) => Promise<void>;
+  now: Date;
+}
+
+export type OfferApiStatus = 'draft' | 'pending_approval' | 'approved' | 'sent' | 'accepted' | 'declined' | 'withdrawn';
+
+/** One offer as the record shows it (GET hiring/offers/:id). Pay fields only with the offer-pay key. */
+export interface OfferRecordView {
+  id: string;
+  status: OfferApiStatus;
+  entryId: string;
+  candidate: { id: string; name: string };
+  job: { id: string; title: string };
+  grade: string | null;
+  location: string | null;
+  currentVersion: number;
+  startDate: string;
+  expiresAt: string;
+  esign: boolean;
+  canSeePay: boolean;
+  templateId: string | null;
+  current: { version: number; letterKind: 'offer' | 'loi'; templateVersionId: string; locationId: string | null; bandPosition: string; bandText: string; extraApproval: boolean; annualCtc?: number; variablePay?: number; joiningBonus?: number; clawbackMonths?: number | null; lines?: OfferCtcLine[] } | null;
+  versions: { version: number; current: boolean; at: string; by: string | null; note: string | null; needsApproval: boolean; annualCtc: number | null; text?: string | null }[];
+  conditions: { id: string; name: string; dueOn: string; status: 'open' | 'met' | 'waived'; reason: string | null }[];
+  approval: { requestId: string; status: string; steps: { name: string; state: string; approvers: string[] }[]; myTaskId: string | null } | null;
+  activity: { id: string; actor: string; action: string; at: string }[];
+  joiner: { id: string; status: string } | null;
+}
+
+export interface LiveOfferRecord {
+  state: 'loading' | 'ready' | 'error' | 'denied' | 'not-found';
+  onRetry: () => void;
+  offer: OfferRecordView | null;
+  now: Date;
+  onBack: () => void;
+  onRevise: () => void;
+  /** Each resolves when done; the screen shows the toast. */
+  onSubmit: () => Promise<string>;
+  onSend: () => Promise<void>;
+  onWithdraw: () => Promise<void>;
+  onCancelApproval: () => Promise<void>;
+  onLetter: () => Promise<void>;
+  /** People › Ready to onboard, where HR adds the joiner from the accepted offer (PPL-12, unchanged). */
+  onCreateEmployee: () => void;
+  onAddCondition: (name: string, dueOn: string) => Promise<void>;
+  onMet: (conditionId: string) => Promise<void>;
+  onWaive: (conditionId: string, reason: string) => Promise<void>;
 }
