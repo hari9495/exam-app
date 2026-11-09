@@ -4,6 +4,7 @@ import { SettingsGroupScreen, SettingsPageScreen } from './settings-screens';
 import { SETTINGS_GROUPS } from './settings-groups';
 import { StageTargetsSheet } from '../hiring/job-settings';
 import { ScorecardTemplateSheet } from '../hiring/scorecard-template-sheet';
+import { InvoiceSeriesSheet } from '../hiring/staffing-sheets';
 import type { ScorecardTemplateView } from '../hiring/live/types';
 import type { SettingsPageDef } from './settings-types';
 import './settings.css';
@@ -76,6 +77,16 @@ const staleGroups = SETTINGS_GROUPS.map((g) => (g.id === 6 ? { ...g, pages: g.pa
 export const P6_1_StaleRecruiter: S = { name: '6.1 Hiring · default recruiter no longer qualifies', render: () => <SettingsPageScreen groups={staleGroups} pageId="6.1" highlightKey="hire.default_recruiter" /> };
 export const P6_2: S = { name: '6.2 Staffing desk', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.2" /> };
 export const P6_2_ReadOnly: S = { name: '6.2 Staffing desk · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.2" readOnly /> };
+// Staffing slice 1: add an invoice series (one per GSTIN per financial year; the next number only goes up).
+export const P6_2_InvoiceSeries: S = {
+  name: '6.2 Staffing desk · add invoice series',
+  render: () => (
+    <>
+      <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.2" />
+      <InvoiceSeriesSheet open onOpenChange={() => {}} initial={null} entities={[{ id: 'e1', name: 'Kaveri Foods Pvt Ltd', gstins: ['29AABCK1234F1Z5', '33AABCK1234F1Z9'] }]} financialYear="2026-27" onSave={async () => {}} />
+    </>
+  ),
+};
 export const P6_3: S = { name: '6.3 Performance', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.3" /> };
 export const P6_3_ReadOnly: S = { name: '6.3 Performance · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.3" readOnly /> };
 export const P6_4: S = { name: '6.4 Learning', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.4" /> };

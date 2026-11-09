@@ -863,9 +863,17 @@ const staffing: SettingsPageDef = {
   permissionHolder: 'Account managers with finance approval',
   scopes: ['Company', 'Legal entity'],
   sections: [
+    // Staffing slice 1: the desk is off until a company that places people with clients turns it on (its own menu group).
+    {
+      title: 'Staffing desk',
+      settings: [
+        { key: 'staff.desk_enabled', label: 'Turn on the staffing desk', kind: 'toggle', value: false, helper: 'For a company that places its people with client companies: clients, rate cards and, later, placements and client invoices. Off: the staffing menu and pages stay hidden.', starter: true, scope: 'Company', synonyms: ['staffing', 'contract staffing', 'clients'] },
+      ],
+    },
     {
       title: 'Rate cards',
       settings: [
+        { key: 'staff.rate_backdate', label: 'A rate change may start up to', kind: 'select', value: '0', options: ['0', '7', '30', '90'], optionLabels: { '0': 'Today or later', '7': '7 days back', '30': '30 days back', '90': '90 days back' }, helper: 'Today or later keeps the rate of every day already billed.', starter: true, scope: 'Company', synonyms: ['backdate', 'rate change'] },
         { key: 'staff.ot_multiplier', label: 'Overtime bill multiplier', kind: 'number', value: 1.5, unit: '× hourly rate', min: 1, max: 3, starter: true, scope: 'Company', synonyms: ['rate card', 'overtime billing'] },
         { key: 'staff.holiday_multiplier', label: 'Holiday bill multiplier', kind: 'number', value: 2, unit: '× hourly rate', min: 1, max: 3, starter: true, scope: 'Company' },
         { key: 'staff.rate_cards', label: 'Client rate cards', kind: 'link', linkScreenId: 'HIR-15', linkLabel: 'Open rate cards' },
