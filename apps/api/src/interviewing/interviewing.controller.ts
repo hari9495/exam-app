@@ -19,10 +19,12 @@ const viewer = (req: Request): Viewer => {
 };
 
 /** HIR-04: moving and rejecting candidates is the person's own act, never done while acting for someone else. */
-function notActing(req: Request): void {
+function notActing(req: Request, what = 'Candidates cannot be moved or rejected'): void {
   const u = req.user as { impersonatorUserId?: string; actingSuperAdmin?: boolean } | undefined;
-  if (u?.impersonatorUserId || u?.actingSuperAdmin) throw new ForbiddenException('Candidates cannot be moved or rejected while acting for someone else. Sign in as yourself.');
+  if (u?.impersonatorUserId || u?.actingSuperAdmin) throw new ForbiddenException(`${what} while acting for someone else. Sign in as yourself.`);
 }
+// Answer 345: scorecard templates are company settings (Settings 6.1), never changed while acting for someone else.
+const TEMPLATES = 'Scorecard templates cannot be changed';
 
 // Recruitment batch AT5 (M10-BUILD-DESIGN §18.1): the pipeline board, rejection with undo, job interview settings,
 // scorecard templates, and panellist scorecards (D7).
@@ -108,19 +110,22 @@ export class InterviewingController {
 
   @Post('scorecard-templates')
   @RequirePermissions('pipelines:configure')
-  createTemplate(@CurrentTenant() ctx: TenantContext, @Body() dto: ScorecardTemplateDto) {
+  createTemplate(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: ScorecardTemplateDto) {
+    notActing(req, TEMPLATES);
     return this.templates.save(ctx, null, dto);
   }
 
   @Put('scorecard-templates/:id')
   @RequirePermissions('pipelines:configure')
-  updateTemplate(@CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ScorecardTemplateDto) {
+  updateTemplate(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ScorecardTemplateDto) {
+    notActing(req, TEMPLATES);
     return this.templates.save(ctx, id, dto);
   }
 
   @Delete('scorecard-templates/:id')
   @RequirePermissions('pipelines:configure')
-  archiveTemplate(@CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+  archiveTemplate(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    notActing(req, TEMPLATES);
     return this.templates.archive(ctx, id);
   }
 

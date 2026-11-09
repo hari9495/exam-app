@@ -97,7 +97,7 @@ describe('Recruiter Home', () => {
     for (const k of ['d1', 'd2']) await add('rec2', 'job2', k);
     await add('recB', 'jobB', 'b1');
 
-    const t = (await api('admin', 'post', '/hiring/scorecard-templates').send({ name: 'Round 1', scaleMax: 4, passBar: 2.5, items: [{ label: 'Safety', weight: 1 }] }).expect(201)).body;
+    const t = (await api('admin', 'post', '/hiring/scorecard-templates').send({ name: 'Round 1', scaleMax: 4, passBar: 2.5, items: [{ label: 'Safety', weight: 100 }] }).expect(201)).body;
     await api('admin', 'put', `/hiring/jobs/${ids.job1}/scorecard`).send({ templateId: t.id }).expect(200);
 
     // Held 3 hours ago, panel = the panellist and rec1: both owe a scorecard.

@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { assertDefaultRecruiter } from '../hiring/recruiter-key';
 import { ResolveSettingQueryDto, SettingDto } from './dto';
 import { asDate, isoDate, todayIst } from './org-validation';
 import { audit, CompanyContext, inCompany, Tx } from './org-structure.service';
@@ -76,7 +77,6 @@ async function bonusRatesInOrder(tx: Tx, org: string, key: string, value: string
     );
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The registry with the platform lists filled in (HLP-14: the industries a company may choose). */
 async function withLists(tx: Tx): Promise<Record<string, SettingDef>> {
@@ -89,7 +89,10 @@ async function withLists(tx: Tx): Promise<Record<string, SettingDef>> {
 
 @Injectable()
 export class OrgSettingsService {
-  constructor(private readonly tenantPrisma: TenantPrismaService) {}
+  constructor(
+    private readonly tenantPrisma: TenantPrismaService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   private async scopeExists(tx: Tx, c: CompanyContext, scopeType: ScopeType, scopeId: string, mustBeActive: boolean): Promise<{ legalEntityId?: string }> {
     const model = SCOPE_MODEL[scopeType];
@@ -112,8 +115,10 @@ export class OrgSettingsService {
     });
   }
 
-  set(ctx: TenantContext, dto: SettingDto) {
+  async set(ctx: TenantContext, dto: SettingDto) {
     const def = definition(dto.key);
+    // Answer 348: the default recruiter is none or an active person of the company who holds the recruiter key (400).
+    if (def.oneOf === 'company_users' && ctx.organizationId) await assertDefaultRecruiter(this.prisma, this.tenantPrisma, ctx.organizationId, dto.value);
     const scopeType = dto.scopeType as ScopeType;
     if (!def.scopes.includes(scopeType)) throw new BadRequestException(`${def.label} cannot be set per ${scopeType.replace('_', ' ')}.`);
     if (def.text) {
@@ -132,11 +137,7 @@ export class OrgSettingsService {
     if (scopeType === 'tenant' && dto.scopeId) throw new BadRequestException('A company-wide setting has no scope id.');
     if (scopeType !== 'tenant' && !dto.scopeId) throw new BadRequestException('Say which record the setting is for.');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      if (def.oneOf === 'company_users') {
-        // Answer 291: none, or an active person of this company (another company's person reads as not found).
-        if (dto.value !== 'none' && !(UUID.test(dto.value) && (await tx.user.findFirst({ where: { organizationId: c.organizationId, id: dto.value, status: 'active' }, select: { id: true } }))))
-          throw new NotFoundException('That person is not an active user of your company. Choose someone from the list.');
-      } else if (def.oneOf && !(await withLists(tx))[dto.key].values.includes(dto.value)) throw new BadRequestException(`Choose ${def.label.toLowerCase()} from the list.`);
+      if (def.oneOf && def.oneOf !== 'company_users' && !(await withLists(tx))[dto.key].values.includes(dto.value)) throw new BadRequestException(`Choose ${def.label.toLowerCase()} from the list.`);
       const scopeId = scopeType === 'tenant' ? c.organizationId : dto.scopeId!;
       if (scopeType !== 'tenant') await this.scopeExists(tx, c, scopeType, scopeId, true);
       const validFrom = dto.validFrom ? asDate(dto.validFrom) : null;
