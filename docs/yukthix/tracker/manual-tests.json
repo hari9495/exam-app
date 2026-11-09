@@ -15856,5 +15856,130 @@
       "Screens/Hiring/HIR-12 · Referrals · All referrals (HR)"
     ],
     "note": "Answer 205: the exit date comes from People."
+  },
+  {
+    "id": "MT-HIR-02-01",
+    "area": "Hiring · HIR-02 Requisitions and HIR-26 Rediscovery (9 Nov 2026)",
+    "screen": "Requisitions · recruiter list (positive)",
+    "url": "http://localhost:3000/yx/hiring/requisitions",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open Hiring › Requisitions.",
+      "Check the page has no scroll bar at 1278 x 635.",
+      "Type part of a title in Search; then filter Status = Pending approval; then Clear.",
+      "Click Export and open the CSV."
+    ],
+    "expected": "Every requisition of the company is listed (codes REQ-0001 on, position, plan, pay up to, positions, status, waiting on, hiring manager, raised as \"3 Nov 2026\"). Search and the filter narrow the list; Clear brings it back. The CSV has the visible columns with dates as \"3 Nov 2026\". No page scroll bar.",
+    "stories": [
+      "Screens/Hiring/HIR-02 · Requisitions · Recruiter · all requisitions",
+      "Screens/Hiring/HIR-02 · Requisitions · Loading"
+    ],
+    "note": "No saved views, Assign recruiter, Duplicate or Cancel yet (question 253)."
+  },
+  {
+    "id": "MT-HIR-02-02",
+    "area": "Hiring · HIR-02 Requisitions and HIR-26 Rediscovery (9 Nov 2026)",
+    "screen": "Requisition drawer · in plan, outside plan, sent back",
+    "url": "http://localhost:3000/yx/hiring/requisitions",
+    "account": "hr-tester@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open a requisition raised on a plan line.",
+      "Close it and open one marked outside the plan.",
+      "In Approvals, as its approver, send one back with the reason \"Add the client territory\"; reload Requisitions and open it.",
+      "Press Send for approval in its drawer."
+    ],
+    "expected": "Step 1: green \"Inside the approved plan\", plan line, free positions, budget left and the approval route with names and dates. Step 2: orange \"Extra approval needed\" with the outside-plan reason and an \"Outside the plan\" step. Step 3: status Sent back, red alert quoting the reason. Step 4: toast \"<title> sent for approval\" for 5 s; status Pending approval.",
+    "stories": [
+      "Screens/Hiring/HIR-02 · Requisitions · In plan · short chain",
+      "Screens/Hiring/HIR-02 · Requisitions · Outside plan · extra CFO approval"
+    ]
+  },
+  {
+    "id": "MT-HIR-02-03",
+    "area": "Hiring · HIR-02 Requisitions and HIR-26 Rediscovery (9 Nov 2026)",
+    "screen": "Requisitions · hiring manager, read-only (positive and negative)",
+    "url": "http://localhost:3000/yx/hiring/requisitions",
+    "account": "panel@demo-org.test (Divya, hiring manager). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open Hiring › Requisitions.",
+      "Open one of your requisitions that was sent back.",
+      "Press New requisition, press Send for approval at once without filling anything.",
+      "Fill a plan line (or tick outside the plan with a reason), positions and Pay up to; Send for approval."
+    ],
+    "expected": "Step 1: only your own requisitions; the header says \"Read-only: recruiting and HR change them\"; no row menu. Step 2: the reason shows; no Send for approval, no Edit and resubmit; no Budget left. Step 3: the button is not greyed out; the missing fields show their errors and the first one has the focus; nothing is sent. Step 4: toast \"Requisition for … sent for approval\"; it shows in the list as Pending approval.",
+    "stories": [
+      "Screens/Hiring/HIR-02 · Requisitions · Hiring manager · sent back",
+      "Screens/Hiring/HIR-02 · Requisitions · New requisition sheet",
+      "Screens/Hiring/HIR-02 · Requisitions · Empty"
+    ]
+  },
+  {
+    "id": "MT-HIR-02-04",
+    "area": "Hiring · HIR-02 Requisitions and HIR-26 Rediscovery (9 Nov 2026)",
+    "screen": "Requisitions · refused (negative)",
+    "url": "http://localhost:3000/yx/hiring/requisitions",
+    "account": "An employee with no hiring role (employee@demo-org.test), then hr-tester@demo-org.test acting for Divya from Roles & access. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "As the employee open http://localhost:3000/yx/hiring/requisitions.",
+      "As HR start acting for Divya and open Hiring › Requisitions.",
+      "Open a requisition."
+    ],
+    "expected": "Step 1: no Requisitions in the menu; the page shows the error state with Retry (the API refuses). Steps 2-3: Divya's list shows, but there is no New requisition, no Send for approval and no Add to pipeline (the API refuses raising while acting: \"Jobs cannot be changed while acting for someone else\").",
+    "stories": [
+      "Screens/Hiring/HIR-02 · Requisitions · Error"
+    ]
+  },
+  {
+    "id": "MT-HIR-26-01",
+    "area": "Hiring · HIR-02 Requisitions and HIR-26 Rediscovery (9 Nov 2026)",
+    "screen": "Rediscovery · plain search, AI off (positive)",
+    "url": "http://localhost:3000/yx/hiring/requisitions",
+    "account": "hr-tester@demo-org.test. The company AI setting hiring.rediscovery.ai is off (default). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open Hiring › Requisitions and open an approved requisition for a role past candidates applied to (for example QA Engineer).",
+      "Read the panel \"Past candidates to consider\".",
+      "Press Add to pipeline on one person.",
+      "Open the job (Open job) and look at its pipeline."
+    ],
+    "expected": "Step 2: the panel says \"Plain search: AI notes are off for your company. You decide.\"; each person shows their last role and stage, the reasons (past role, skills, location), pool, consent badges and \"Retention until 3 Nov 2027\". Only people who agreed to be kept for other roles appear. Step 3: toast \"<name> added to the pipeline\" and the button becomes \"Added to pipeline\". Step 4: the person is in the pipeline.",
+    "stories": [
+      "Screens/Hiring/HIR-26 · Rediscovery panel · On the requisition · recruiter",
+      "Screens/Hiring/HIR-26 · Rediscovery panel · Panel · recruiter",
+      "Screens/Hiring/HIR-26 · Rediscovery panel · Panel · plain search, AI off"
+    ]
+  },
+  {
+    "id": "MT-HIR-26-02",
+    "area": "Hiring · HIR-02 Requisitions and HIR-26 Rediscovery (9 Nov 2026)",
+    "screen": "Rediscovery · AI notes on (positive)",
+    "url": "http://localhost:3000/yx/hiring/requisitions",
+    "account": "hr-tester@demo-org.test; an admin first sets Settings hiring.rediscovery.ai = on and the company has an AI key. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open the same requisition.",
+      "Compare the list with MT-HIR-26-01.",
+      "As the admin open the audit log and filter ats.rediscovery.run."
+    ],
+    "expected": "Step 1: the panel says AI notes are advice only; people may have \"AI note, advice only: …\". Step 2: the same people in the same order (the AI never adds, drops or moves anyone). Step 3: one row per run with mode ai, the count and the provider; no prompt or note text.",
+    "stories": [
+      "Screens/Hiring/HIR-26 · Rediscovery panel · Panel · AI notes, advice only"
+    ]
+  },
+  {
+    "id": "MT-HIR-26-03",
+    "area": "Hiring · HIR-02 Requisitions and HIR-26 Rediscovery (9 Nov 2026)",
+    "screen": "Rediscovery · who sees whom (negative)",
+    "url": "http://localhost:3000/yx/hiring/requisitions",
+    "account": "panel@demo-org.test (Divya), then an HR user with only the Hiring admin role, then a candidate set up to fail each rule. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "As Divya open one of her requisitions; then try another manager's requisition id in the URL of the API (GET /api/v1/hiring/requisitions/<id>/rediscovery).",
+      "As the Hiring-admin-only user open a requisition.",
+      "As HR withdraw a suggested candidate's talent-pool consent (Candidate › Consents) or put them on legal hold; reopen the requisition.",
+      "Open a requisition nobody matches (for example Data Analyst)."
+    ],
+    "expected": "Step 1: Divya sees the list but no Add to pipeline and no Contact; the other manager's requisition is \"No such requisition.\" (404). Step 2: no past-candidates panel (no candidate access). Step 3: that person is gone from the panel. Step 4: \"No past candidates match this requisition.\"",
+    "stories": [
+      "Screens/Hiring/HIR-26 · Rediscovery panel · Panel · hiring manager",
+      "Screens/Hiring/HIR-26 · Rediscovery panel · Empty · no matches"
+    ]
   }
 ]
