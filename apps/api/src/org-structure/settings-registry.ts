@@ -238,7 +238,7 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // HIR-28 bulk offers: an offer beyond the free places on the job's headcount-plan line is held (not made) until the plan
   // is revised (starter), or the check is off. A bulk offer expires this many days after it is sent (never after joining).
   'hiring.bulk_offer.plan_check': { label: 'Hiring: bulk offers beyond the free places on the plan line', scopes: ['tenant'], dated: false, values: ['hold', 'off'], default: 'hold', labels: { hold: 'Are held until the plan is revised', off: 'Are not checked against the plan' } },
-  'hiring.offer.expiry_days': { label: 'Hiring: a bulk offer expires after (days)', scopes: ['tenant'], dated: false, values: ['3', '5', '7', '10', '14', '30'], default: '7' },
+  'hiring.offer.expiry_days': { label: 'Hiring: an offer expires after (days)', scopes: ['tenant'], dated: false, values: ['3', '5', '7', '10', '14', '30'], default: '7' },
   // Careers answer 352: when an applicant's résumé file fails the safety check, they are emailed a link to their
   // candidate page to upload another (starter on).
   'hiring.resume_quarantine.tell_applicant': { label: 'Hiring: tell applicants when their résumé file could not be accepted', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'on' },

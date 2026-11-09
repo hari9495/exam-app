@@ -42,6 +42,10 @@ export const HIRING_SETTING_KEYS = [
   // HIR-27: the interview day's slot length and how Auto-assign fills it.
   'hiring.interview_day.slot_minutes',
   'hiring.interview_day.assign',
+  // Offers answer 404: one "Offer expires after" for single and bulk offers.
+  'hiring.offer.expiry_days',
+  // Careers answer 443: tell an applicant whose résumé was quarantined.
+  'hiring.resume_quarantine.tell_applicant',
 ] as const;
 export type HiringSettingKey = (typeof HIRING_SETTING_KEYS)[number];
 const EDIT_KEYS = ['ats.settings.manage', 'org.settings.manage'] as const;
@@ -135,10 +139,15 @@ export class HiringSettingsService {
         active,
         chosenName: chosenUser?.name || chosenUser?.email || 'Someone who is no longer in the company',
         // Answer 332: the people who may approve above the range hold the offer-pay key; answer 337: each letter's e-sign switch.
-        offerApprovers: await (async () => {
+        ...(await (async () => {
           const holders = new Set(await holdersOf(tx, org, OFFER_PAY_KEY, NONE, todayIst()));
-          return active.filter((u) => holders.has(u.id)).map((u) => ({ id: u.id, name: u.name || u.email }));
-        })(),
+          const offerApprovers = active.filter((u) => holders.has(u.id)).map((u) => ({ id: u.id, name: u.name || u.email }));
+          // Answer 376: a named band approver who left or lost the offer-pay key, named so HR can choose again.
+          const named = values['hiring.offer.band_approver'];
+          const gone = !SETTINGS['hiring.offer.band_approver']!.values.includes(named) && !offerApprovers.some((p) => p.id === named);
+          const who = gone ? await tx.user.findFirst({ where: { organizationId: org, id: named }, select: { name: true, email: true } }) : null;
+          return { offerApprovers, staleBandApprover: gone ? { id: named, name: who?.name || who?.email || 'Someone who is no longer in the company' } : null };
+        })()),
         offerLetters: await tx.offerTemplate.findMany({ where: { organizationId: org }, orderBy: [{ isDefault: 'desc' }, { name: 'asc' }], select: { id: true, name: true, esign: true } }),
         values,
         defaults: Object.fromEntries(HIRING_SETTING_KEYS.map((k) => [k, SETTINGS[k]!.default])),

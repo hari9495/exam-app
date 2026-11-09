@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { BulkOfferScreen, type BulkBatchView, type BulkOfferSetup } from '@yukthix/ui/hiring';
 import { useApiWrite, useHiring } from '../../../../../../../lib/yx-hiring';
 import { builderState } from '../../../../../../../lib/yx-offers';
@@ -12,6 +12,8 @@ import { builderState } from '../../../../../../../lib/yx-offers';
 export default function YxBulkOffersPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  // Offers answer 402: candidates ticked on the pipeline board's Bulk actions.
+  const picked = useSearchParams()?.get('entries');
   const setup = useHiring<BulkOfferSetup>(`/offer-batches/setup?jobId=${encodeURIComponent(id)}`);
   const write = useApiWrite();
   const batchKey = useMemo(() => crypto.randomUUID(), []);
@@ -37,6 +39,7 @@ export default function YxBulkOffersPage() {
           router.push(`/yx/hiring/offer-batches/${encodeURIComponent(b.id)}`);
         },
         onOpenOffer: (offerId) => router.push(`/yx/hiring/offers/${encodeURIComponent(offerId)}`),
+        selected: picked ? picked.split(',').filter(Boolean) : undefined,
       }}
     />
   );

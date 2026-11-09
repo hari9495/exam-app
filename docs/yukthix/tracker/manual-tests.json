@@ -17499,6 +17499,26 @@
     "note": "Positive and negative."
   },
   {
+    "id": "MT-HIR-SET-19",
+    "area": "Hiring · Settings 6.1 (14 Nov 2026)",
+    "screen": "6.1 · Offer expires after; résumé blocked email; approver above the range who lost the key",
+    "url": "http://localhost:3000/yx/settings/hiring",
+    "account": "hr-tester@demo-org.test (hiring settings key); admin-tester@demo-org.test to change a permission profile. Browser window 1278 x 635.",
+    "steps": [
+      "Open Settings › Hiring › Offers and hand-off; set Offer expires after to 14 days and save.",
+      "Make a single offer for any candidate (HIR-09 builder) and look at the Offer expires date; make bulk offers for a job and look at Expires.",
+      "Under Background checks and candidate data, switch off \"Tell an applicant when their résumé file is blocked\" and save; switch it on again.",
+      "Set \"Who approves an offer above the grade pay range\" to a named person; then, as admin-tester, take the offer-pay key off that person's profile; reload 6.1 as hr-tester.",
+      "Try to choose panel@demo-org.test (no offer-pay key) as the approver and save."
+    ],
+    "expected": "Step 1: toast for 5 s; the field shows 14 days. Step 2: the single offer's date is 14 days from today (changeable); bulk offers say 14 days after sending. Step 3: each save toasts and shows in the audit log. Step 4: the field names the person \"(cannot approve)\" with the warning that offers above the range go to the company admins. Step 5: \"That person cannot see offer pay, so cannot approve it.\" and nothing saves.",
+    "stories": [
+      "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring",
+      "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring · approver above the range can no longer approve"
+    ],
+    "note": "Positive and negative (no pay key; key lost later)."
+  },
+  {
     "id": "MT-HIR-09-08",
     "area": "Hiring · HIR-09 Offer builder and HIR-29 offer conditions (11 Nov 2026)",
     "screen": "Settings 6.1 · offer approver, clawback, e-signed letters (answers 332, 334, 337)",
@@ -17641,6 +17661,23 @@
     "note": "Negative."
   },
   {
+    "id": "MT-HIR-28-04",
+    "area": "Hiring · HIR-28 bulk offers (14 Nov 2026)",
+    "screen": "Pipeline board › Bulk actions › Make bulk offers",
+    "url": "http://localhost:3000/yx/hiring/jobs/<id>/pipeline",
+    "account": "hr-tester@demo-org.test (offer-pay key), then a recruiter without the offer-pay key. Browser window 1278 x 635.",
+    "steps": [
+      "Open a job's pipeline board › Bulk actions; tick two candidates and press Make bulk offers.",
+      "Go back; tick nobody (or one who already has an offer in play) and look at the buttons / the batch page.",
+      "Sign in as a recruiter without the offer-pay key and open Bulk actions with candidates ticked."
+    ],
+    "expected": "Step 1: the bulk offers page opens with those two ticked and the rest unticked (\"2 selected\"). Step 2: with nobody ticked the bulk buttons do not show; a candidate already holding an offer is not on the batch page. Step 3: no Make bulk offers button.",
+    "stories": [
+      "Screens/Hiring/HIR-04 · Pipeline board · Bulk actions · make bulk offers (offer-pay key)"
+    ],
+    "note": "Positive and negative (no key)."
+  },
+  {
     "id": "MT-HIR-27-01",
     "area": "Hiring · HIR-27 bulk interview day and answer 392 (14 Nov 2026)",
     "screen": "Plan an interview day",
@@ -17730,6 +17767,25 @@
       "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring"
     ],
     "note": "Positive."
+  },
+  {
+    "id": "MT-HIR-27-06",
+    "area": "Hiring · HIR-27 interview days (14 Nov 2026)",
+    "screen": "Interview day · leave out and remove single slots",
+    "url": "http://localhost:3000/yx/hiring/interview-days",
+    "account": "hr-tester@demo-org.test (scheduling key). Browser window 1278 x 635.",
+    "steps": [
+      "Plan an interview day with 6 slots from 10:00 am; untick 1:00 pm; untick every slot and press Plan the day; tick 10:00 am again and plan the day.",
+      "Auto-assign; on the board press Remove on the 11:00 am slot; Auto-assign again.",
+      "Send the invites; press Remove on a slot whose invite was sent.",
+      "Remove slots until one is left."
+    ],
+    "expected": "Step 1: with every slot unticked: \"Keep at least one slot.\"; the planned day has no 1:00 pm row. Step 2: toast \"Slot 11:00 am removed\"; the row is gone and Auto-assign places nobody there. Step 3: \"An invite was already sent for this slot. Cancel or move that interview first.\" Step 4: the last slot has no Remove button.",
+    "stories": [
+      "Screens/Hiring/HIR-27 · Bulk interview-day scheduler · Remove a slot · lunch break",
+      "Screens/Hiring/HIR-27 · Bulk interview-day scheduler · Plan an interview day"
+    ],
+    "note": "Positive and negative (no slot kept, sent slot, last slot)."
   },
   {
     "id": "MT-PPL-392-01",

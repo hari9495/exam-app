@@ -151,6 +151,9 @@ describe('Settings 6.1 Hiring', () => {
       { key: 'hiring.bgv.decider_other_person', value: 'off' },
       { key: 'hiring.interview_day.slot_minutes', value: '60' },
       { key: 'hiring.interview_day.assign', value: 'by_panel' },
+      // Answers 404 and 443: one offer expiry for single and bulk offers; the quarantine email switch.
+      { key: 'hiring.offer.expiry_days', value: '14' },
+      { key: 'hiring.resume_quarantine.tell_applicant', value: 'off' },
     ]).expect(200)).body as Settings;
     expect(after.values).toEqual({
       'ats.retention_months': '18',
@@ -170,6 +173,8 @@ describe('Settings 6.1 Hiring', () => {
       'hiring.bgv.decider_other_person': 'off',
       'hiring.interview_day.slot_minutes': '60',
       'hiring.interview_day.assign': 'by_panel',
+      'hiring.offer.expiry_days': '14',
+      'hiring.resume_quarantine.tell_applicant': 'off',
     });
     // Answer 362: the BGV tracker reads the same company setting.
     expect(await inA((tx) => tx.setting.findFirstOrThrow({ where: { organizationId: org.A.id, key: 'hiring.bgv.decider_other_person' } }))).toMatchObject({ value: 'off' });
@@ -177,7 +182,7 @@ describe('Settings 6.1 Hiring', () => {
     // The other screens read the same company settings.
     expect((await api('rec', 'get', '/referrals/policy').expect(200)).body).toMatchObject({ bonusInr: 50000, qualifyDays: 60 });
     const audits = await inA((tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, action: 'org.setting.changed' }, orderBy: { createdAt: 'asc' } }));
-    expect(audits.map((a) => JSON.parse(a.metadataJson!))).toEqual(expect.arrayContaining([expect.objectContaining({ key: 'ats.retention_months', from: null, to: '18' }), expect.objectContaining({ key: 'hiring.requisition.default_recruiter', from: null, to: users.rec }), expect.objectContaining({ key: 'hiring.rehire_flag.blocks_screening', from: null, to: 'on' }), expect.objectContaining({ key: 'ats.headcount_plan', from: null, to: 'required' }), expect.objectContaining({ key: 'hiring.bgv.decider_other_person', from: null, to: 'off' })]));
+    expect(audits.map((a) => JSON.parse(a.metadataJson!))).toEqual(expect.arrayContaining([expect.objectContaining({ key: 'ats.retention_months', from: null, to: '18' }), expect.objectContaining({ key: 'hiring.requisition.default_recruiter', from: null, to: users.rec }), expect.objectContaining({ key: 'hiring.rehire_flag.blocks_screening', from: null, to: 'on' }), expect.objectContaining({ key: 'ats.headcount_plan', from: null, to: 'required' }), expect.objectContaining({ key: 'hiring.bgv.decider_other_person', from: null, to: 'off' }), expect.objectContaining({ key: 'hiring.resume_quarantine.tell_applicant', from: null, to: 'off' }), expect.objectContaining({ key: 'hiring.offer.expiry_days', from: null, to: '14' })]));
     expect(audits.every((a) => a.actorUserId === users.hra)).toBe(true);
     // A second change records the value before.
     await save('adminA', [{ key: 'ats.retention_months', value: '24' }]).expect(200);
@@ -238,6 +243,24 @@ describe('Settings 6.1 Hiring', () => {
     await api('adminA', 'put', '/org/settings').send({ key: 'hiring.requisition.default_recruiter', scopeType: 'tenant', value: users.rec2 }).expect(200);
     await save('hra', [{ key: 'hiring.requisition.default_recruiter', value: 'none' }]).expect(200);
     await save('hra', [{ key: 'hiring.requisition.default_recruiter', value: users.rec2 }]).expect(200);
+  });
+
+  it('answer 376: a named approver above the range who loses the offer-pay key is named on 6.1; a holder is not; an expiry outside the list is refused', async () => {
+    const holder = (await read('hra')) as Settings & { offerApprovers: { id: string; name: string }[]; staleBandApprover: unknown };
+    expect(holder.staleBandApprover).toBeNull();
+    const approver = holder.offerApprovers[0]!;
+    await save('hra', [{ key: 'hiring.offer.band_approver', value: approver.id }]).expect(200);
+    expect(((await read('hra')) as unknown as { staleBandApprover: unknown }).staleBandApprover).toBeNull();
+    // Saving someone without the key is refused; one who loses it later (or leaves) is named with the warning data.
+    await save('hra', [{ key: 'hiring.offer.band_approver', value: users.mgr }]).expect(400);
+    await inA((tx) => tx.setting.updateMany({ where: { organizationId: org.A.id, key: 'hiring.offer.band_approver' }, data: { value: users.mgr } }));
+    const lost = (await read('hra')) as unknown as { staleBandApprover: { id: string; name: string }; offerApprovers: { id: string }[] };
+    expect(lost.staleBandApprover).toEqual({ id: users.mgr, name: `mgr ${run}` });
+    expect(lost.offerApprovers.map((p) => p.id)).not.toContain(users.mgr);
+    // Company B never sees A's approver.
+    expect(((await read('adminB')) as unknown as { staleBandApprover: unknown }).staleBandApprover).toBeNull();
+    await save('hra', [{ key: 'hiring.offer.band_approver', value: 'hr_head' }, { key: 'hiring.offer.expiry_days', value: '7' }]).expect(200);
+    await save('hra', [{ key: 'hiring.offer.expiry_days', value: '61' }]).expect(400);
   });
 
   it('a default recruiter who loses the recruiter key or leaves is treated as none, with a warning naming them (answer 348)', async () => {

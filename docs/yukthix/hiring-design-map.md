@@ -53,14 +53,15 @@ built**.
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Plans, requisitions, jobs and costs | 4 | 36 | 1 | 0 | 0 | 0 | 37 |
-| B. Candidates, pipeline and interviews | 8 | 52 | 1 | 0 | 9 | 1 | 63 |
+| B. Candidates, pipeline and interviews | 8 | 54 | 1 | 0 | 9 | 1 | 65 |
 | C. Offers, BGV and joining | 4 | 23 | 4 | 0 | 1 | 0 | 28 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 20 | 0 | 0 | 7 | 4 | 31 |
 | E. Staffing agency | 8 | 0 | 0 | 4 | 44 | 0 | 48 |
 | F. Compliance and fairness | 5 | 4 | 1 | 0 | 20 | 0 | 25 |
-| G. Careers site, portals and settings | 4 | 57 | 3 | 2 | 11 | 0 | 73 |
-| **All Hiring design groups (A–G)** | **37** | **192** | **10** | **6** | **92** | **5** | **305** |
+| G. Careers site, portals and settings | 4 | 58 | 3 | 2 | 11 | 0 | 74 |
+| **All Hiring design groups (A–G)** | **37** | **195** | **10** | **6** | **92** | **5** | **308** |
 | H. Kit and "Live ·" groups (not designs; own line) | 3 | 5 | 0 | 5 | 5 | 0 | 15 |
+Recounted by script 14 Nov 2026 on `feat/yukthix-offers-3` after answers 376, 402, 404, 423 and 443: 3 new stories drawn and live (HIR-04 BulkActionsOffers, HIR-27 RemoveSlot, 6.1 P6_1_StaleBandApprover): A–G 195 live of 308.
 Recounted by script 14 Nov 2026 on `feat/yukthix-offers-3` after merging the careers follow-ups into `test/yukthix-main` (HIR-27 and HIR-28 in): A–G 192 live, 10 gap, 6 wire, 92 not built, 5 phone, of 305.
 Recounted by script on `test/yukthix-main` after merging HIR-28 bulk offers (with the HIR-09 follow-ups) and HIR-27 interview days: A–G 189 live, 11 gap, 6 wire, 92 not built, 5 phone, of 303.
 Recounted by script 13 Nov 2026 on `feat/yukthix-careers-2` after the careers follow-ups (answers 351-353, 355-357, 359, 362): T9-09 WhiteLabel live (gap) → live; 2 new T9-09 stories drawn and live (JobInternationalPhone, PortalWithLogo); Job stays live (gap) for WhatsApp apply (354).
@@ -296,6 +297,7 @@ moved to the HIR-03 workspace; each stage has an optional days target and limit 
 | Loading · Loading | live | while loading |
 | Error · Error | live | board or job fails to load; Retry |
 | BulkActions · Bulk actions · tick candidates, then move, test, email or reject | live | added 10 Nov 2026 (answer 261): `POST hiring/entries/bulk` (move, assessment, reject; each move follows the stage rules and answer 272), `POST hiring/entries/:id/reject` and `/undo`, `POST bulk-candidate-email/by-entries`, `GET jobs/:id/candidates.csv` (`pipeline:manage`; refused while acting); toasts |
+| BulkActionsOffers · Bulk actions · make bulk offers (offer-pay key) | live | drawn 14 Nov 2026 (answer 402): for holders of the offer-pay key, "Make bulk offers" opens the HIR-28 batch page with the ticked candidates already chosen (`?entries=`); without the key the button is not there |
 | AddCandidate · Add candidate · existing candidate | live | added 10 Nov 2026 (answer 261): `POST jobs/:id/entries {candidateId}`; pressed too early: field error |
 | AddCandidateNew · Add candidate · new candidate | live | `POST jobs/:id/entries {newCandidate}` (an email already known adds that person) |
 
@@ -414,6 +416,7 @@ retry reuses the interview already made; a second send while one runs is 409.
 | SentSomeFailed · Invites sent · some not sent | live | new story (drawn): each row's badge (Invite sent / Not sent) and an alert listing each reason; Send again retries only those |
 | Plan · Plan an interview day | live | new story (drawn): `InterviewDaySheet`: name, job, stage, day, first slot and number of slots (length from 6.1), panels with room and members; checked and focused before saving; a member on two panels is refused |
 | NoDays · No interview days yet | live | new story (drawn): the empty page with Plan an interview day |
+| RemoveSlot · Remove a slot · lunch break | live | drawn 14 Nov 2026 (answer 423): the plan sheet lists each slot to untick; on the board, Remove takes one slot out (`DELETE hiring/interview-days/:id/slots/:start`, audited); its unsent candidates wait again and Auto-assign skips it; refused for a slot with a sent invite (409), the last slot (400) or while sending |
 
 ### C. Offers, BGV and joining
 
@@ -851,6 +854,7 @@ stand-in is gone. Approval routes, careers and job boards stay on their stand-in
 | P6_1_ScorecardUsed · 6.1 Hiring · used scorecard (saved as a copy) | live | a template already used by a scorecard is never changed: “Save as a copy” posts a new template named “(copy)”; the API refuses a change with 409 |
 | P6_1_ScorecardView · 6.1 Hiring · scorecard, view only | live | the view-only sheet (skills with per cent, scale, pass bar) is drawn; live shows the list rows read-only without the pipelines key instead of opening it. Archive scorecard (danger, after a confirmation): `DELETE hiring/scorecard-templates/:id`, jobs using it go back to no scorecard, filled scorecards keep it |
 | P6_1_StaleRecruiter · 6.1 Hiring · default recruiter no longer qualifies | live | answer 348: a stored default who left or no longer holds the recruiter key reads as None with a warning naming them; new requisitions start with no recruiter (`defaultRecruiter`); the API refuses anyone else as default with 400, on both `PUT hiring/settings` and `PUT org/settings` |
+| P6_1_StaleBandApprover · 6.1 Hiring · approver above the range can no longer approve | live | drawn 14 Nov 2026 (answer 376): a named approver who left or lost the offer-pay key stays named ("(cannot approve)") with a warning; the step goes to the company admins until HR chooses again |
 | P6_2 · 6.2 Staffing desk | design only, feature not built | rate cards, bill multipliers, invoice numbering: staffing business (question 1) |
 | P6_2_ReadOnly · 6.2 Staffing desk · read-only | design only, feature not built | same |
 
@@ -1564,4 +1568,29 @@ accepted offers to a People joiner batch (later); (402) add bulk offers to the p
 444. **International number on jobs in India.** The designed form still asks Indian applicants for a 10-digit mobile;
      the API accepts any number (an applicant abroad applying to an India job must use an Indian number). *Suggested:
      keep; add a "my number is not Indian" switch only if recruiters ask.*
+Founder approved, 14 Nov 2026 (questions 441-444, all as suggested): keep 441 and 444; (442) YukthiX staff switch
+white-label per company from the console with the plan; (443) draw the quarantine-email switch on 6.1.
+## Offers round 3 built (answers 376, 402, 404, 423, 443; 14 Nov 2026, branch `feat/yukthix-offers-3`)
+- (376) Settings 6.1: a named approver above the range who left or lost the offer-pay key is named on the field ("Ravi
+  Kumar (cannot approve)") with a warning, like the stale default recruiter; until HR chooses again the step goes to the
+  company admins. `GET hiring/settings` returns `staleBandApprover`. Story P6_1_StaleBandApprover.
+- (402) The pipeline board's Bulk actions sheet has "Make bulk offers" for holders of the offer-pay key: it opens the
+  HIR-28 batch page with the ticked candidates chosen (`?entries=`); the others start unticked. Story BulkActionsOffers.
+- (404) One "Offer expires after" on 6.1 (`hiring.offer.expiry_days`, 3/5/7/10/14/30 days, default 7): bulk offers use it
+  and the single offer builder starts its expiry date that many days from today (the recruiter can change it).
+- (423) Interview days: the plan sheet lists each slot to untick (a lunch break), and on the board Remove takes one slot
+  out (`DELETE hiring/interview-days/:id/slots/:start`, audited `ats.interview_day.slot_removed`); candidates placed there
+  and not yet sent wait again, and Auto-assign skips the slot. Refused for a slot with a sent invite (409), the day's last
+  slot (400), while sending (409). Story RemoveSlot.
+- (443) 6.1 "Tell an applicant when their résumé file is blocked" (on by default) under "Background checks and candidate
+  data", drawn first; saved and audited as `hiring.resume_quarantine.tell_applicant`.
+- (442) Not built: the YukthiX console has no per-company settings page (Companies › one company has lifecycle, trial,
+  support access, admins and history only; Plans has prices only). Left for the coordinator, as asked.
+## Founder questions from offers round 3 (14 Nov 2026)
+461. **A slot removed for one panel only.** Remove takes a time out for every panel of the day (a lunch break for all).
+     One panel cannot break at a different time. *Suggested: keep; add per-panel breaks only if planners ask.*
+462. **Bulk offers from the board.** Ticked candidates who cannot get a bulk offer (for example already holding an offer
+     in play) are not on the batch page, so they quietly drop out. *Suggested: keep; the batch page lists who can get one.*
+463. **Offer expiry choices.** 6.1 offers 3, 5, 7, 10, 14 or 30 days (the design drew any number 1-60). *Suggested: keep
+     the fixed list.*
 

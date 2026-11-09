@@ -41,6 +41,8 @@ export default function YxInterviewDaysPage() {
           onPlan: () => setPlanning(true),
           onAssign: () => write('POST', `/interview-days/${encodeURIComponent(picked!)}/assign`),
           onSend: () => write<{ sent: number; failed: number }>('POST', `/interview-days/${encodeURIComponent(picked!)}/send`),
+          // Answer 423: take one slot out of the day (a lunch break).
+          onRemoveSlot: (start) => write('DELETE', `/interview-days/${encodeURIComponent(picked!)}/slots/${start}`),
         }}
       />
       {planning && options.data && (

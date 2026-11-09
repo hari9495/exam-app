@@ -63,6 +63,20 @@ describe('Hiring › Interview days (HIR-27, live)', () => {
     expect((await screen.findAllByText('1 invite sent')).length).toBeGreaterThan(0);
   });
 
+  it('answer 423: Remove takes one slot out through the API; a one-slot day has no Remove', async () => {
+    routes(['pipeline:manage']);
+    const base = api.getMockImplementation()!;
+    api.mockImplementation(async (path: string, init?: RequestInit) => (path === '/hiring/interview-days/d1' && !init?.method ? { ...DAY, slots: [600, 780] } : base(path, init)));
+    const { unmount } = wrap(<YxInterviewDaysPage />);
+    await ue.click(await screen.findByRole('button', { name: 'Remove the 1:00 pm slot' }));
+    await waitFor(() => expect(calls).toEqual([['DELETE /hiring/interview-days/d1/slots/780', null]]));
+    unmount();
+    routes(['pipeline:manage']);
+    wrap(<YxInterviewDaysPage />);
+    expect(await screen.findByText('Interview day · GET 2027')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Remove the/ })).not.toBeInTheDocument();
+  });
+
   it('Auto-assign posts to the day', async () => {
     routes(['pipeline:manage']);
     wrap(<YxInterviewDaysPage />);

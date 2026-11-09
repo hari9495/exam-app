@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ToastProvider } from '@yukthix/ui';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { apiFetch } from '../../lib/api-client';
 import { useAuth } from '../../lib/auth-context';
 import YxOfferBatchPage from './(app)/hiring/offer-batches/[id]/page';
@@ -43,6 +43,27 @@ describe('HIR-28 bulk offers pages', () => {
     });
     wrap(<YxBulkOffersPage />);
     expect(await screen.findByRole('heading', { name: /Bulk offers · Graduate Engineer Trainee/ })).toBeInTheDocument();
+  });
+
+  it('answer 402: candidates ticked on the board start chosen; without a choice everyone does', async () => {
+    (useParams as jest.Mock).mockReturnValue({ id: 'j1' });
+    const setup = {
+      job: { id: 'j1', title: 'Graduate Engineer Trainee', locationId: 'l1' }, company: 'Kaveri', grade: 'G3', band: { min: 420000, max: 500000 },
+      structures: [{ value: 'tv1', label: 'GET CTC' }], locations: [{ value: 'l1', label: 'Hosur plant' }], letters: [{ value: 't1', label: 'Campus LOI', esign: true, subject: 'LOI', body: 'Dear {{candidateName}}' }],
+      defaultConditions: [], expiryDays: 7, plan: { check: 'off', linked: false, free: null }, route: { steps: [], bandStep: { name: 'Above the pay range (HR head)', approvers: ['Lakshmi'] } },
+      candidates: [{ entryId: 'e1', name: 'Aditi Rao', email: 'a@x.test' }, { entryId: 'e2', name: 'Farhan Sheikh', email: 'f@x.test' }],
+    };
+    api.mockImplementation(async (path: string) => {
+      if (path === '/hiring/offer-batches/setup?jobId=j1') return setup;
+      throw new Error(`unexpected ${path}`);
+    });
+    (useSearchParams as jest.Mock).mockReturnValue({ get: (k: string) => (k === 'entries' ? 'e2' : null) });
+    const { unmount } = wrap(<YxBulkOffersPage />);
+    expect(await screen.findByText(/^1 selected/)).toBeInTheDocument();
+    unmount();
+    (useSearchParams as jest.Mock).mockReturnValue({ get: () => null });
+    wrap(<YxBulkOffersPage />);
+    expect(await screen.findByText(/^2 selected/)).toBeInTheDocument();
   });
 
   it('a refusal of the setup (no offer-pay key) shows no access', async () => {

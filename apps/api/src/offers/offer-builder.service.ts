@@ -184,6 +184,8 @@ export class OfferBuilderService implements OnModuleInit {
         locations: locations.map((l) => ({ value: l.id, label: l.name })),
         letters: letters.length ? letters.map((t) => ({ value: t.id, label: t.name, esign: t.esign, subject: t.subject, body: t.body })) : [{ value: 'default', label: 'Default offer letter', esign: false, ...DEFAULT_OFFER_TEMPLATE }],
         defaultConditions: conditions,
+        // Offers answer 404: the builder's default expiry (days after today), the same setting bulk offers use.
+        expiryDays: Number(await settingFor(tx, c, 'hiring.offer.expiry_days', { legalEntityId: e.job.legalEntityId ?? '' })),
         route: await this.routePreview(tx, c, e.job, user.userId ?? null),
       };
     });
