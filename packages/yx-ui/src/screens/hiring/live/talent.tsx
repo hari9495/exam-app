@@ -13,71 +13,11 @@ import { Card } from '../../../components/shell';
 import { DataTable, type TableColumn } from '../../../components/table';
 import { useRun } from '../../org/org-kit';
 import { LivePage, dateText } from '../../time/live/kit';
-import { STAGE } from './candidates';
-import type { DuplicatePairView, LoadState, MergeChoices, RetentionPreview, RetentionRunRow, TalentList, TalentListMember } from './types';
+import { STAGE } from '../candidate-dialogs';
+import type { LoadState, TalentList, TalentListMember } from './types';
 
-// Recruitment batch AT4, wired (M10-BUILD-DESIGN §7.2, §7.3, §13): possible duplicates with merge, talent pools and
-// hotlists, and the candidate retention sweep (preview, run, history).
-
-const REASON: Record<DuplicatePairView['reasons'][number], string> = { phone: 'Same phone', name_phone: 'Same name and number', resume: 'Similar résumé' };
-
-export interface DuplicatesScreenProps {
-  state: LoadState;
-  onRetry?: () => void;
-  pairs: DuplicatePairView[];
-  onOpen: (id: string) => void;
-  onMerge: (keptId: string, mergedId: string, choices: MergeChoices) => Promise<unknown>;
-}
-
-export function DuplicatesScreen(p: DuplicatesScreenProps) {
-  const [merging, setMerging] = useState<DuplicatePairView | null>(null);
-  const cols: TableColumn<DuplicatePairView>[] = [
-    { key: 'a', header: 'Candidate', value: (x) => x.a.name, render: (x) => <span>{x.a.name} · {x.a.email}</span> },
-    { key: 'b', header: 'Possible duplicate', value: (x) => x.b.name, render: (x) => <span>{x.b.name} · {x.b.email}</span> },
-    { key: 'r', header: 'Why', value: (x) => x.reasons.join(), render: (x) => <span>{x.reasons.map((r) => REASON[r]).join(', ')}{x.score != null ? ` (${Math.round(x.score * 100)}%)` : ''}</span> },
-  ];
-  return (
-    <LivePage title="Possible duplicates" description="Candidates who look like the same person. Merging keeps one and moves everything onto it." state={p.state} onRetry={p.onRetry} what="duplicates" grantedBy="your admin">
-      <DataTable
-        label="Possible duplicates"
-        columns={cols}
-        rows={p.pairs}
-        getRowId={(x) => `${x.a.id}-${x.b.id}`}
-        rowNoun={['pair', 'pairs']}
-        empty={<EmptyState compact title="No possible duplicates." />}
-        rowButtons={(x) => <Button size="sm" onClick={() => setMerging(x)}>Compare and merge</Button>}
-      />
-      {merging && <PairMergeDialog pair={merging} onClose={() => setMerging(null)} onMerge={p.onMerge} />}
-    </LivePage>
-  );
-}
-
-function PairMergeDialog(p: { pair: DuplicatePairView; onClose: () => void; onMerge: DuplicatesScreenProps['onMerge'] }) {
-  const [keep, setKeep] = useState<'a' | 'b'>('a');
-  const [choices, setChoices] = useState<MergeChoices>({ name: 'kept', phone: 'kept', resume: 'kept' });
-  const kept = p.pair[keep];
-  const other = p.pair[keep === 'a' ? 'b' : 'a'];
-  const field = (f: 'name' | 'phone', label: string) => (
-    <FormField id={`pm-${f}`} label={label}>
-      <Segment label={label} value={choices[f]} onChange={(v) => setChoices((c) => ({ ...c, [f]: v }))} options={[{ value: 'kept', label: kept[f] || '(none)' }, { value: 'merged', label: other[f] || '(none)' }]} />
-    </FormField>
-  );
-  return (
-    <ConfirmDialog open destructive size="md" onOpenChange={(o) => !o && p.onClose()} title="Merge these candidates?" consequence={`${other.name} (${other.email}) is merged into the kept candidate. Applications, messages, assessments, interviews, consents and files move across. A merge cannot be undone.`} confirmLabel="Merge" onConfirm={async () => {
-      await p.onMerge(kept.id, other.id, choices);
-      p.onClose();
-    }}>
-      <FormField id="pm-keep" label="Keep">
-        <Segment label="Keep" value={keep} onChange={setKeep} options={[{ value: 'a', label: p.pair.a.email }, { value: 'b', label: p.pair.b.email }]} />
-      </FormField>
-      {field('name', 'Name')}
-      {field('phone', 'Phone')}
-      <FormField id="pm-resume" label="Résumé">
-        <Segment label="Résumé" value={choices.resume} onChange={(v) => setChoices((c) => ({ ...c, resume: v }))} options={[{ value: 'kept', label: 'The kept candidate’s' }, { value: 'merged', label: 'The other one’s' }]} />
-      </FormField>
-    </ConfirmDialog>
-  );
-}
+// Recruitment batch AT4, wired (M10-BUILD-DESIGN §7.3): talent pools and hotlists (HIR-20 will replace it). Duplicates
+// and retention are the designed HIR-05 screens now (hiring-candidates.tsx).
 
 export interface TalentPoolsScreenProps {
   state: LoadState;
@@ -183,61 +123,5 @@ function NewListDialog(p: { onClose: () => void; onCreate: TalentPoolsScreenProp
         <TextField value={description} onChange={setDescription} maxLength={500} />
       </FormField>
     </ConfirmDialog>
-  );
-}
-
-export interface CandidateRetentionScreenProps {
-  state: LoadState;
-  onRetry?: () => void;
-  months: string;
-  monthsOptions: string[];
-  canChange: boolean;
-  onMonths: (m: string) => Promise<unknown>;
-  runs: RetentionRunRow[];
-  onPreview: () => Promise<RetentionPreview>;
-  onRun: () => Promise<RetentionPreview>;
-}
-
-const summary = (r: RetentionPreview) => `${r.renewalsSent} renewal emails, ${r.anonymised} anonymised; skipped: ${r.skippedHold} on legal hold, ${r.skippedHired} hired, ${r.skippedOpen} in an open process.`;
-
-export function CandidateRetentionScreen(p: CandidateRetentionScreenProps) {
-  const { busy, error, run } = useRun();
-  const [preview, setPreview] = useState<RetentionPreview | null>(null);
-  const [confirming, setConfirming] = useState(false);
-  const [last, setLast] = useState<string | null>(null);
-  const cols: TableColumn<RetentionRunRow>[] = [
-    { key: 'd', header: 'Run', value: (r) => r.runAt, render: (r) => <span>{dateText(r.runAt.slice(0, 10))}{r.triggeredBy ? '' : ' (daily)'}</span> },
-    { key: 'r', header: 'Renewal emails', type: 'number', value: (r) => r.renewalsSent },
-    { key: 'a', header: 'Anonymised', type: 'number', value: (r) => r.anonymised },
-    { key: 'h', header: 'On hold', type: 'number', value: (r) => r.skippedHold },
-    { key: 'i', header: 'Hired', type: 'number', value: (r) => r.skippedHired },
-    { key: 'o', header: 'In process', type: 'number', value: (r) => r.skippedOpen },
-  ];
-  return (
-    <LivePage title="Candidate data retention" description="Candidates who were not hired are emailed 30 days before the end of the period, then anonymised. Applications and scores stay without the name." state={p.state} onRetry={p.onRetry} what="retention" grantedBy="your admin">
-      {error && <InlineAlert tone="danger" title="Not done">{error}</InlineAlert>}
-      <Card title="Period">
-        <FormField id="rt-months" label="Keep details for (months after the last activity)">
-          <Select aria-label="Keep details for" value={p.months} disabled={!p.canChange} onChange={(v) => v && void run('months', () => p.onMonths(v))} options={p.monthsOptions.map((m) => ({ value: m, label: `${m} months` }))} />
-        </FormField>
-        <Text as="p" tone="secondary">Anyone on legal hold, hired, or with an open application or offer is never touched.</Text>
-      </Card>
-      <Card title="Run">
-        <div className="yx-tim-row">
-          <Button loading={busy === 'preview'} onClick={() => void run('preview', async () => setPreview(await p.onPreview()))}>Preview (changes nothing)</Button>
-          <Button variant="danger" onClick={() => setConfirming(true)}>Run now</Button>
-        </div>
-        {preview && <Text as="p">Today it would send {summary(preview)}</Text>}
-        {last && <Text as="p">{last}</Text>}
-      </Card>
-      <DataTable label="Retention runs" columns={cols} rows={p.runs} getRowId={(r) => r.id} empty={<EmptyState compact title="No runs yet. It runs every night." />} />
-      {confirming && (
-        <ConfirmDialog open destructive onOpenChange={(o) => !o && setConfirming(false)} title="Run the retention sweep now?" consequence="Due candidates are anonymised for good and renewal emails are sent. It also runs every night." confirmLabel="Run now" onConfirm={async () => {
-          const r = await p.onRun();
-          setLast(`Done: ${summary(r)}`);
-          setConfirming(false);
-        }} />
-      )}
-    </LivePage>
   );
 }

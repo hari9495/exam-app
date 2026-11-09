@@ -16,7 +16,7 @@ import { Card, DescriptionList, Tabs, TabsContent, TabsList, TabsTrigger } from 
 import { DataTable, type TableColumn } from '../../../components/table';
 import { useRun } from '../../org/org-kit';
 import { LivePage } from '../../time/live/kit';
-import { EmailDialog } from './candidates';
+import { EmailDialog } from '../candidate-dialogs';
 import type { BoardRowView, BoardStageView, Choice, EmailCompose, EmailTemplateChoice, JobSettingsView, JobView, LoadState, RejectInput } from './types';
 
 // Recruitment batch AT5, wired (M10-BUILD-DESIGN §8.1, §9): one job — its pipeline as a board or a list, and its

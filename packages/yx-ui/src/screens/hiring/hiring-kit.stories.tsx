@@ -15,7 +15,7 @@ export const Tiles: S = {
 };
 export const Pipeline: S = { name: 'PipelineFacts', render: () => <PipelineFacts scores={[{ label: 'Test', value: '82', tone: 'success' }, { label: 'AI (advisory)', value: '74', tone: 'ai' }]} next="Panel 2 on 1 Oct, 11:00 am" flags={['Ex-employee']} /> };
 export const Consent: S = { name: 'ConsentBadges', render: () => <ConsentBadges email="opted-in" whatsapp="opted-out" /> };
-export const ExEmployee: S = { name: 'ExEmployeeBanner · recruiter and HM', render: () => <div style={{ display: 'grid', gap: 16 }}><ExEmployeeBanner viewer="recruiter" info={{ exitDate: D(2024, 3, 31), exitType: 'Resignation', rehireEligible: false }} /><ExEmployeeBanner viewer="hm" info={{ exitDate: D(2024, 3, 31), exitType: 'Resignation', rehireEligible: false }} /></div> };
+export const ExEmployee: S = { name: 'ExEmployeeBanner · recruiter and HM', render: () => <div style={{ display: 'grid', gap: 16 }}><ExEmployeeBanner viewer="recruiter" info={{ exitDate: D(2024, 3, 31), exitType: 'Resignation', rehireEligible: false, company: 'Kaveri Foods' }} /><ExEmployeeBanner viewer="hm" info={{ exitDate: D(2024, 3, 31), exitType: 'Resignation', rehireEligible: false, company: 'Kaveri Foods' }} /></div> };
 export const Identity: S = { name: 'IdentityStrip', render: () => <IdentityStrip points={ID_POINTS} onReverify={() => {}} onReview={() => {}} /> };
 export const Postings: S = { name: 'PostingStrip', render: () => <PostingStrip postings={POSTINGS} onAction={() => {}} /> };
 export const EInvoice: S = { name: 'EInvoiceBanner · warning', render: () => <EInvoiceBanner invoiceDate={D(2026, 9, 2)} today={TODAY} invoiceNo="KF/TN/26-27/0184" /> };
