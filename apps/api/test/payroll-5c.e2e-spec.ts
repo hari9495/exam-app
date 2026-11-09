@@ -423,6 +423,8 @@ describe('Payroll batch 5c', () => {
     expect((await decide('approver1', ids.run)).status).toBe(404);
     expect((await decide('approver2', ids.run)).status).toBe(200);
     expect((await api('payAdmin', 'get', `/payroll/runs/${ids.run}`).expect(200)).body.status).toBe('approved');
+    // HIR-12 answer 231: modules that follow approved pay hear the approval once (the referral bonus cost).
+    expect(await inA((tx) => tx.eventOutbox.count({ where: { organizationId: org.A.id, eventType: 'payroll.run.approved', payload: { path: ['runId'], equals: ids.run } } }))).toBe(1);
     const period = await inA((tx) => tx.payPeriod.findFirst({ where: { legalEntityId: ids.entity, periodStart: new Date(`${first}T00:00:00Z`) } }));
     expect(period).toMatchObject({ stage: 'locked', lockedByRunId: ids.run });
     await api('payAdmin', 'put', `/payroll/lop-inputs/${month}`)
