@@ -97,35 +97,40 @@ export class HiringController {
   // HIR-11 (founder answer 202): its own hiring key, for HR and recruiters (granted through the role templates).
   @Get('costs')
   @RequirePermissions('ats.costs.manage')
-  costs(@CurrentTenant() ctx: TenantContext) {
+  async costs(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    await this.careers.costsGate(req.user as ScopeUser);
     return this.careers.costs(ctx);
   }
 
   @Get('costs/overview')
   @RequirePermissions('ats.costs.manage')
-  costsOverview(@CurrentTenant() ctx: TenantContext) {
+  async costsOverview(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    await this.careers.costsGate(req.user as ScopeUser);
     return this.careers.costsOverview(ctx);
   }
 
   // HIR-11: entering a cost is the person's own act, so it is refused while acting for someone else.
   @Post('costs')
   @RequirePermissions('ats.costs.manage')
-  addCost(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: RecruitingCostDto) {
+  async addCost(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: RecruitingCostDto) {
     assertOwnSession(req);
+    await this.careers.costsGate(req.user as ScopeUser);
     return this.careers.addCost(ctx, dto);
   }
 
   @Put('costs/:id')
   @RequirePermissions('ats.costs.manage')
-  updateCost(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RecruitingCostDto) {
+  async updateCost(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RecruitingCostDto) {
     assertOwnSession(req);
+    await this.careers.costsGate(req.user as ScopeUser);
     return this.careers.updateCost(ctx, id, dto);
   }
 
   @Delete('costs/:id')
   @RequirePermissions('ats.costs.manage')
-  removeCost(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+  async removeCost(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     assertOwnSession(req);
+    await this.careers.costsGate(req.user as ScopeUser);
     return this.careers.removeCost(ctx, id);
   }
 }

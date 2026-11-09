@@ -1,5 +1,6 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { buildViewer, tenantWide, type ScopeUser } from '../access/scope';
 import { audit, inCompany, type Tx } from '../org-structure/org-structure.service';
 import type { CareersEntityDto, ConsentNoticeDto, RecruitingCostDto } from './hiring-dto';
 
@@ -8,7 +9,16 @@ import type { CareersEntityDto, ConsentNoticeDto, RecruitingCostDto } from './hi
 // they accepted. Each legal entity can have its own careers page (slug, headline, intro, colour).
 @Injectable()
 export class CareersAdminService {
-  constructor(private readonly tenantPrisma: TenantPrismaService) {}
+  constructor(
+    private readonly tenantPrisma: TenantPrismaService,
+    private readonly prisma: PrismaService,
+  ) {}
+
+  /** HIR-11: costs are company-wide; the key granted for one legal entity only confers nothing (fail closed). */
+  async costsGate(user: ScopeUser) {
+    if (!tenantWide(await buildViewer(this.prisma, this.tenantPrisma, user, ['ats.costs.manage']), 'ats.costs.manage'))
+      throw new ForbiddenException('Recruiting costs are company-wide: this needs the costs key for the whole company, not one legal entity.');
+  }
 
   notices(ctx: TenantContext) {
     return inCompany(this.tenantPrisma, ctx, (tx, c) =>

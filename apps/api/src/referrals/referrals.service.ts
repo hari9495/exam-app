@@ -1,6 +1,7 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { TenantContext, TenantPrismaService, AuditService, BlobStorageService } from '@exam-platform/shared';
+import { TenantContext, TenantPrismaService, AuditService, BlobStorageService, PrismaService } from '@exam-platform/shared';
+import { buildViewer, tenantWide, type ScopeUser } from '../access/scope';
 import { JobsService } from '../jobs/jobs.service';
 import { recomputeGlobalStage } from '../candidates/recompute-global-stage';
 import { validatePdfUpload } from '../public-applications/pdf-validation';
@@ -56,7 +57,17 @@ export class ReferralsService {
     private readonly blobStorage: BlobStorageService,
     private readonly jobsService: JobsService,
     private readonly audit: AuditService,
+    private readonly prisma: PrismaService,
   ) {}
+
+  /**
+   * HIR-12 All referrals: the older recruiter key (`legacy`) works as before; ats.referral.manage counts only when held for
+   * the whole company (the HR Admin template is typically per legal entity; referrals are company-wide, fail closed).
+   */
+  async managerGate(user: ScopeUser, legacy: 'candidate:view' | 'pipeline:manage') {
+    const v = await buildViewer(this.prisma, this.tenantPrisma, user, ['ats.referral.manage', legacy]);
+    if (!tenantWide(v, 'ats.referral.manage') && !v.grants.has(legacy)) throw new ForbiddenException('All referrals is company-wide: this needs the referrals key for the whole company, not one legal entity.');
+  }
 
   async policy(context: TenantContext): Promise<ReferralPolicy> {
     return inCompany(this.tenantPrisma, context, (tx, c) => readPolicy(tx, c));

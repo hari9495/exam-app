@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { assertOwnSession } from '../service-desk/desk-access';
+import type { ScopeUser } from '../access/scope';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission } from '../rbac/permissions.decorator';
@@ -44,14 +45,16 @@ export class ReferralsController {
   // HIR-12 All referrals (founder answer 204): HR with ats.referral.manage, or recruiters who see candidates.
   @Get()
   @RequireAnyPermission('ats.referral.manage', 'candidate:view')
-  list(@CurrentTenant() tenant: TenantContext) {
+  async list(@Req() req: Request, @CurrentTenant() tenant: TenantContext) {
+    await this.referrals.managerGate(req.user as ScopeUser, 'candidate:view');
     return this.referrals.listAll(tenant);
   }
 
   @Patch(':id/reward')
   @RequireAnyPermission('ats.referral.manage', 'pipeline:manage')
-  setReward(@Req() req: Request, @CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SetRewardStatusDto) {
+  async setReward(@Req() req: Request, @CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SetRewardStatusDto) {
     assertOwnSession(req);
+    await this.referrals.managerGate(req.user as ScopeUser, 'pipeline:manage');
     return this.referrals.setReward(tenant, userId, id, dto);
   }
 }

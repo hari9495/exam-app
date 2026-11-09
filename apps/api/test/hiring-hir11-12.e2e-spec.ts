@@ -30,7 +30,7 @@ describe('Hiring HIR-11 costs and HIR-12 referrals', () => {
   const server = () => app.getHttpServer();
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'hr' | 'recruiter' | 'manager' | 'emp' | 'settingsOnly' | 'hrB' | 'acting' | 'actingRecruiter';
+  type Who = 'hr' | 'recruiter' | 'manager' | 'emp' | 'settingsOnly' | 'hrEntity' | 'hrB' | 'acting' | 'actingRecruiter';
   const token: Partial<Record<Who, string>> = {};
   const users: Partial<Record<Who, string>> = {};
   const ids: Record<string, string> = {};
@@ -96,6 +96,7 @@ describe('Hiring HIR-11 costs and HIR-12 referrals', () => {
       ['manager', 'A', 'hiring_manager', null],
       ['emp', 'A', 'panel', null],
       ['settingsOnly', 'A', 'panel', settingsProfile],
+      ['hrEntity', 'A', 'panel', null],
       ['hrB', 'B', 'org_admin', null],
     ];
     for (const [who, k, role, permissionProfileId] of roster) {
@@ -119,6 +120,9 @@ describe('Hiring HIR-11 costs and HIR-12 referrals', () => {
       ids.dept = (await tx.department.create({ data: { ...o, id: deptId, name: 'Quality', code: 'QA', path: `/${deptId}/` } })).id;
       ids.desig = (await tx.designation.create({ data: { ...o, name: 'QA Engineer', code: 'QAE' } })).id;
       ids.perm = (await tx.employmentType.create({ data: { ...o, name: 'Permanent', code: 'PERM', category: 'permanent' } })).id;
+      // hrEntity: both keys granted for one legal entity only (how the HR Admin template is usually granted).
+      const profile = await tx.permissionProfile.create({ data: { ...o, name: `hr-entity-${run}`, permissionsJson: JSON.stringify(['ats.costs.manage', 'ats.referral.manage']) } });
+      await tx.roleGrant.create({ data: { ...o, userId: users.hrEntity!, permissionProfileId: profile.id, scopeType: 'legal_entity', legalEntityId: ids.entity, validFrom: new Date('2026-01-01'), status: 'active', reason: 'HR for Kaveri Foods' } });
     });
   });
 
@@ -194,6 +198,14 @@ describe('Hiring HIR-11 costs and HIR-12 referrals', () => {
       const { ROLE_TEMPLATES } = await import('../src/access/role-templates');
       expect(ROLE_TEMPLATES.find((t) => t.key === 'hr_admin')!.permissions).toEqual(expect.arrayContaining(['ats.costs.manage', 'ats.referral.manage']));
       expect(ROLE_TEMPLATES.find((t) => t.key === 'recruiter')!.permissions).toContain('ats.costs.manage');
+    });
+
+    it('the key granted for one legal entity only confers nothing: costs and All referrals are company-wide (403)', async () => {
+      for (const [m, path] of [['get', '/hiring/costs'], ['get', '/hiring/costs/overview'], ['get', '/referrals']] as const) {
+        const res = await api('hrEntity', m, path).expect(403);
+        expect(res.body.message).toMatch(/company-wide/);
+      }
+      await api('hrEntity', 'post', '/hiring/costs').send(cost).expect(403);
     });
 
     it('acting for someone else cannot add, change or delete a cost, even for a recruiter who holds the key (403)', async () => {

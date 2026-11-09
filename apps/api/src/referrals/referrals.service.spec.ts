@@ -10,7 +10,7 @@ function makeService(tx: Record<string, any>) {
   const blobStorage = { upload: jest.fn() } as any;
   const jobsService = { enqueue: jest.fn().mockResolvedValue({}) } as any;
   const audit = { record: jest.fn().mockResolvedValue(undefined) } as any;
-  return new ReferralsService(tenantPrisma, blobStorage, jobsService, audit);
+  return new ReferralsService(tenantPrisma, blobStorage, jobsService, audit, {} as any);
 }
 
 function baseTx(overrides: Record<string, any> = {}) {
