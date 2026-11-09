@@ -16112,5 +16112,81 @@
     ],
     "note": "Positive and negative: states; no writes while acting.",
     "area": "Hiring · HIR-04 Pipeline board (9 Nov 2026, designed screen live)"
+  },
+  {
+    "id": "MT-HIR-02-05",
+    "screen": "Requisition drawer · approver approves or sends back (257)",
+    "account": "The person who holds the approval task of a waiting requisition (see Approvals), for example hr-tester@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open Hiring › Requisitions and open a requisition waiting for you.",
+      "Press Send back, then press Send back again in the dialog without a reason.",
+      "Type the reason \"Lower the pay\" and press Send back.",
+      "Open another one waiting for you and press Approve.",
+      "As the hiring manager who raised a requisition, open it while it waits."
+    ],
+    "expected": "Step 1: the drawer footer shows Send back and Approve. Step 2: \"Enter a reason so the hiring manager knows what to change.\" and nothing is sent. Step 3: toast \"Sent back: …\"; the status is Sent back with the reason. Step 4: toast \"Approved: …\"; the status moves on. Step 5: no Approve or Send back (the sender never holds the task).",
+    "stories": [
+      "Screens/Hiring/HIR-02 · Requisitions · Approver · approve or send back"
+    ],
+    "area": "Hiring · HIR-02 / HIR-26 follow-ups 252-257 (10 Nov 2026)",
+    "url": "http://localhost:3000/yx/hiring/requisitions"
+  },
+  {
+    "id": "MT-HIR-02-06",
+    "screen": "Hiring manager · edit and resubmit (252)",
+    "account": "panel@demo-org.test (Divya) with a requisition sent back in MT-HIR-02-05; then while HR acts for Divya. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "As Divya open the sent-back requisition and press Edit and resubmit.",
+      "Change Pay up to and press Send for approval.",
+      "Open another manager's or an approved requisition.",
+      "As HR acting for Divya open her sent-back requisition."
+    ],
+    "expected": "Step 1: the sheet \"Change and send again\" opens filled in with the earlier answers. Step 2: toast \"Requisition for … sent for approval\"; it shows Pending approval with the new pay. Step 3: no Edit and resubmit. Step 4: no Edit and resubmit (the API refuses too).",
+    "stories": [
+      "Screens/Hiring/HIR-02 · Requisitions · Hiring manager · sent back",
+      "Screens/Hiring/HIR-02 · Requisitions · New requisition sheet"
+    ],
+    "area": "Hiring · HIR-02 / HIR-26 follow-ups 252-257 (10 Nov 2026)",
+    "url": "http://localhost:3000/yx/hiring/requisitions"
+  },
+  {
+    "id": "MT-HIR-02-07",
+    "screen": "Recruiting · assign recruiter, duplicate, cancel (253)",
+    "account": "hr-tester@demo-org.test (Recruiter). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Tick two requisitions and press Assign recruiter; press Assign without choosing.",
+      "Choose a recruiter and press Assign.",
+      "On a requisition row menu press Cancel requisition, then Cancel requisition again without a reason.",
+      "Type a reason and confirm.",
+      "Try Cancel requisition on a filled one (all openings hired).",
+      "As Divya, on one of her rows press Duplicate."
+    ],
+    "expected": "Step 1: \"Choose the recruiter.\" and nothing changes. Step 2: toast \"<name> is the recruiter of 2 requisitions\"; the drawers show the recruiter. Step 3: \"Say why it is cancelled, so the hiring manager knows.\" Step 4: toast \"<title> cancelled\"; status Cancelled and the drawer quotes the reason; a waiting approval is withdrawn. Step 5: no Cancel requisition in the menu (the API refuses: \"This requisition is filled…\"). Step 6: the request sheet opens filled in as a new requisition.",
+    "stories": [
+      "Screens/Hiring/HIR-02 · Requisitions · Assign recruiter",
+      "Screens/Hiring/HIR-02 · Requisitions · Cancel requisition · reason",
+      "Screens/Hiring/HIR-02 · Requisitions · Recruiter · all requisitions"
+    ],
+    "area": "Hiring · HIR-02 / HIR-26 follow-ups 252-257 (10 Nov 2026)",
+    "url": "http://localhost:3000/yx/hiring/requisitions"
+  },
+  {
+    "id": "MT-HIR-26-04",
+    "screen": "Past candidates · Contact and Suggest to recruiter (254, 255)",
+    "account": "hr-tester@demo-org.test (Recruiter), then panel@demo-org.test (Divya). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "As the recruiter open an approved requisition with past candidates; press Contact on someone who opted out of email (consent badge \"opted out\" or \"no consent\").",
+      "Press Contact on someone opted in, pick a template and Send.",
+      "As Divya open her requisition (assign her a recruiter first if it has none) and press Suggest to recruiter on a person.",
+      "Press it again on another day for the same person (reload first).",
+      "As the recruiter open the bell."
+    ],
+    "expected": "Step 1: the text \"<name> has not agreed to email from us, so you can't contact them here.\" and no email. Step 2: the candidate email dialog opens; toast \"Email to <name> is on its way\". Step 3: toast \"<name> suggested to the recruiter\"; the button becomes \"Suggested to recruiter\". If the requisition has no recruiter yet: toast \"This requisition has no recruiter yet. Ask recruiting to assign one.\" Step 4: the badge stays; no second notice. Step 5: one bell notice \"Suggested <name> for <title>\".",
+    "stories": [
+      "Screens/Hiring/HIR-26 · Rediscovery panel · Panel · recruiter",
+      "Screens/Hiring/HIR-26 · Rediscovery panel · Panel · hiring manager"
+    ],
+    "area": "Hiring · HIR-02 / HIR-26 follow-ups 252-257 (10 Nov 2026)",
+    "url": "http://localhost:3000/yx/hiring/requisitions"
   }
 ]

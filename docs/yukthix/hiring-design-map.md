@@ -50,16 +50,16 @@ built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Plans, requisitions, jobs and costs | 4 | 30 | 2 | 0 | 0 | 0 | 32 |
-| B. Candidates, pipeline and interviews | 6 | 0 | 0 | 21 | 13 | 1 | 35 |
+| A. Plans, requisitions, jobs and costs | 4 | 34 | 1 | 0 | 0 | 0 | 35 |
+| B. Candidates, pipeline and interviews | 6 | 7 | 0 | 14 | 13 | 1 | 35 |
 | C. Offers, BGV and joining | 4 | 0 | 0 | 13 | 12 | 0 | 25 |
-| D. Referrals, internal jobs, CRM and rediscovery | 4 | 11 | 2 | 3 | 7 | 4 | 27 |
+| D. Referrals, internal jobs, CRM and rediscovery | 4 | 13 | 0 | 3 | 7 | 4 | 27 |
 | E. Staffing agency | 8 | 0 | 0 | 4 | 44 | 0 | 48 |
 | F. Compliance and fairness | 5 | 4 | 1 | 0 | 20 | 0 | 25 |
 | G. Careers site, portals and settings | 4 | 0 | 0 | 30 | 11 | 0 | 41 |
-| **All Hiring design groups (A–G)** | **35** | **45** | **5** | **71** | **107** | **5** | **233** |
+| **All Hiring design groups (A–G)** | **35** | **58** | **2** | **64** | **107** | **5** | **236** |
 | H. Kit and "Live ·" groups (not designs; own line) | 5 | 19 | 0 | 7 | 5 | 0 | 31 |
-Recounted by script 9 Nov 2026 on `feat/yukthix-hir-02-26` after HIR-02 (8 stories) and HIR-26 (4 stories plus 2 new: AI notes, plain search) went live. Before that, recounted on `feat/yukthix-hir-03-24` after HIR-01 (four new stories, Plans and NoPlans deleted), HIR-03 and HIR-24 went live and the HIR-03 follow-ups added the Change recruiter story (HIR-03 gained the Create job sheet story; the "Live · Jobs" stand-in and its 4 stories were deleted). First counted (the script is in the appendix): every `export const`
+Recounted by script 10 Nov 2026 on `feat/yukthix-hir-02-26` after merging HIR-04 (7 stories live) and the HIR-02 / HIR-26 follow-ups 252-257 (three new HIR-02 stories: Approver, Cancel requisition, Assign recruiter). Before that, recounted 9 Nov 2026 after HIR-02 (8 stories) and HIR-26 (4 stories plus 2 new: AI notes, plain search) went live. Before that, recounted on `feat/yukthix-hir-03-24` after HIR-01 (four new stories, Plans and NoPlans deleted), HIR-03 and HIR-24 went live and the HIR-03 follow-ups added the Change recruiter story (HIR-03 gained the Create job sheet story; the "Live · Jobs" stand-in and its 4 stories were deleted). First counted (the script is in the appendix): every `export const`
 Recounted by script 9 Nov 2026 on `feat/yukthix-hir-11-12` after HIR-11 (5 stories) and HIR-12 (4 stories plus 3 new All referrals design stories, founder answer 204) went live on top of HIR-01. Before that, recounted on `feat/yukthix-hir-01` after HIR-01 went live (four new HIR-01 design stories; the stand-in's Plans and NoPlans stories deleted). First counted by script 9 Nov 2026 on `feat/yukthix-hiring-design-map` (the script is in the appendix): every `export const`
 story with a capital first letter (the lower-case exports are sample props, excluded from Storybook by
 `excludeStories`) in the 31 `hir-NN-*.stories.tsx` files, `hiring-kit.stories.tsx`, the five `hiring/live/*.stories.tsx`,
@@ -187,20 +187,26 @@ flag or approval request, or still draft / waiting). Status: draft, sent back (i
 approval (waiting on the current step), approved (open or on hold), filled or closed. The drawer shows the route the
 approvals engine ran (the company's own approvers, not the drawn HM → HRBP → Finance chain) and the sent-back reason.
 Approvers decide in Approvals (`/workflow/approvals/tasks/:id/decide`); recruiting sends a draft or sent-back requisition
-again and withdraws a waiting one; "Open job" opens the job workspace. Raising a requisition (`POST jobs/requisitions`) is now
+again and withdraws a waiting one; "Open job" opens the job workspace. Follow-ups 10 Nov 2026 (answers 252, 253, 257;
+migration 202617h0000000): the approval task holder approves or sends back in the drawer; a hiring manager changes and
+resends their own sent-back requisition; recruiting assigns a recruiter, duplicates and cancels with a reason
+("Cancelled" status). Raising a requisition (`POST jobs/requisitions`) is now
 refused while acting for someone else, and its "Send for approval" is never greyed out (pressed too early it shows each
 missing field and focuses the first; also on People › My team and the plan board).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Recruiter · Recruiter · all requisitions | live (gap) | live list, filters, search, export; no saved views and no "Assign recruiter" bulk action or Duplicate / Cancel row actions (question 253) |
+| Recruiter · Recruiter · all requisitions | live (gap) | live list, filters, search, export, row selection with Assign recruiter, Duplicate and Cancel (answer 253); saved views wait for the kit's view store |
 | OutsidePlan · Outside plan · extra CFO approval | live | the "Outside the plan" step (holders of `ats.headcount.manage`) and the reason; the panel below shows past candidates |
 | InPlan · In plan · short chain | live | plan line, free positions, budget left (not for hiring managers), the company's route |
-| HiringManagerSentBack · Hiring manager · sent back | live (gap) | the reason shows; read-only, so no "Edit and resubmit" (recruiting sends it again; question 252) |
+| HiringManagerSentBack · Hiring manager · sent back | live | the reason shows; "Edit and resubmit" opens the request sheet filled in, `PUT jobs/requisitions/:id` (own, sent back only; answer 252) |
 | NewRequisition · New requisition sheet | live | "New requisition" for `ats.requisition.raise` (not while acting); also on /yx/people/team and the plan board |
 | Empty · Empty | live | no requisitions |
 | Loading · Loading | live | while `GET hiring/requisitions` loads |
 | Error · Error | live | it fails; Retry |
+| Approver · Approver · approve or send back | live | the holder of the approval task (`myTaskId`): Approve, or Send back with a required reason, through `/workflow/approvals/tasks/:id/decide` (answer 257) |
+| CancelRequisition · Cancel requisition · reason | live | `POST hiring/requisitions/:id/cancel` with a reason (`pipeline:manage`; withdraws a waiting approval, closes the job; refused once filled; audited; answer 253) |
+| AssignRecruiter · Assign recruiter | live | `PATCH jobs/:id` `recruiterUserId` for each chosen requisition (answer 253) |
 
 #### HIR-03 · Jobs and job workspace
 
@@ -453,8 +459,8 @@ No AI runs while acting for someone else. Recruiting adds a person to the pipeli
 | story (sub-page) | verdict | note |
 |---|---|---|
 | OnRequisition · On the requisition · recruiter | live | in the HIR-02 drawer |
-| Recruiter · Panel · recruiter | live (gap) | Add to pipeline; no Contact button (question 254) |
-| HiringManager · Panel · hiring manager | live (gap) | same list, read-only; no "Suggest to recruiter" (question 255) |
+| Recruiter · Panel · recruiter | live | Add to pipeline; Contact opens the candidate email (`bulk-candidate-email/by-candidates`) only for an email opt-in, otherwise it says why (answer 254) |
+| HiringManager · Panel · hiring manager | live | Suggest to recruiter: `POST hiring/requisitions/:id/rediscovery/:candidateId/suggest`, a bell notice to the recruiter, audited, once per person (answer 255) |
 | NoMatches · Empty · no matches | live | nothing matches, or no consented candidates |
 | AiNotes · Panel · AI notes, advice only | live | company AI setting on and a provider set up |
 | PlainSearch · Panel · plain search, AI off | live | AI off, not set up, failed, or acting for someone else |
@@ -1011,3 +1017,20 @@ Founder approved, 10 Nov 2026 (questions 251-259, 261-265, all as suggested):
   default, a template choice later; (263) an optional days target and limit per stage in pipeline settings, empty means
   none; (264) keep Share feedback pointing to a candidate, a feedback sheet only if managers ask; (265) keep moving out of
   Rejected with the job-manage key, cancelling a waiting rejection email.
+
+## Founder questions from the HIR-02 / HIR-26 follow-ups (10 Nov 2026)
+Each has a safe default already built; the suggestion is the answer we propose.
+291. **Who is the recruiter of a manager's request?** Built (unchanged from HIR-03): the person who raises it, so a
+     hiring manager is first the recruiter of their own request; "Suggest to recruiter" then says "no recruiter yet" until
+     recruiting assigns one. *Suggested: a request raised with the requisition key starts with no recruiter (or the
+     company's default recruiter, a setting), so suggestions reach recruiting at once.*
+292. **Cancelled requisitions and the plan.** Built: a cancelled requisition closes its job, so its openings return to
+     the plan line at once. *Suggested: keep.*
+293. **Who may cancel.** Built: recruiting (`pipeline:manage`), never while acting for someone else; a hiring manager
+     cannot cancel their own. *Suggested: let a hiring manager cancel their own requisition while it is still waiting
+     for approval, with a reason.*
+294. **Contact on WhatsApp.** Built: Contact uses the candidate email only (opt-in checked; the email worker also skips
+     anyone who opted out). *Suggested: add WhatsApp when the candidate WhatsApp consent is recorded as an opt-in.*
+295. **Edit and resubmit, and what changed.** Built: the hiring manager's change replaces the requisition's facts and
+     sends it to the route again (audited `ats.requisition.changed` with title and positions). *Suggested: show approvers
+     what changed since it was sent back (a "was → now" line), later.*
