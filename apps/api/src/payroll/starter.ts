@@ -67,6 +67,8 @@ export const MODULE_COMPONENTS: StarterComponent[] = [
   { code: 'perf_bonus', name: 'Performance bonus', kind: 'earning', ptWage: true, codeExclusion: true, prorated: false, inCtc: false },
   // HIR-12 answer 231: a referral bonus HR marks paid in Hiring › All referrals (taxable; flags as the performance bonus).
   { code: 'referral_bonus', name: 'Referral bonus', kind: 'earning', ptWage: true, codeExclusion: true, prorated: false, inCtc: false },
+  // HIR-09 answer 334: the offer's one-time joining bonus, paid in the first run after joining (taxable; flags as above).
+  { code: 'joining_bonus', name: 'Joining bonus', kind: 'earning', ptWage: true, codeExclusion: true, prorated: false, inCtc: false },
   // Batch 5i special pay (YX-PAY-59 … 63): piece wages count as wages; incentives, tips and on-call pay are outside the
   // Code wage like overtime; the company changes the flags when its policy or P07 says otherwise.
   { code: 'piece_pay', name: 'Piece-rate pay', kind: 'earning', ...wage, prorated: false, inCtc: false },

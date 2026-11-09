@@ -1006,6 +1006,8 @@ export interface PublicOffer {
   expiresAt: string;
   status: OfferStatus;
   pdfUrl: string | null;
+  /** HIR-09: the company's letter asks for an e-signature (a one-time code by email). */
+  esign?: boolean;
 }
 
 export type InterviewStatus = 'proposed' | 'confirmed' | 'declined' | 'reschedule_requested' | 'cancelled';

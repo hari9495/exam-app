@@ -33,7 +33,7 @@ export { CandidateListScreen, CandidateRetentionScreen, type CandidateListTab, t
 export { AddCandidateSheet, BulkActionsSheet, RejectDialog, scorecardText, type AddCandidateInput, type BulkRow } from '../pipeline-sheets';
 export { ApplicationDrawer, ScheduleDialog, type ApplicationDrawerProps, type ScheduleDialogProps } from '../candidate-application';
 // HIR-09 / HIR-29: the designed offer builder and offer record (with its conditions tab), live with their `live` prop.
-export { OfferBuilderScreen, OfferConditionsTab, OfferRecordScreen, type LiveConditions, type OfferBuilderProps, type OfferRecordProps } from '../hiring-offers';
+export { BulkOfferScreen, OfferBuilderScreen, OfferConditionsTab, OfferRecordScreen, type LiveConditions, type OfferBuilderProps, type OfferRecordProps } from '../hiring-offers';
 export { JobSettingsPanel, StageTargetsSheet, type LiveJobSettings, type StageTarget, type StageTargetChange, type JobSettingsPatch } from '../job-settings';
 // HIR-06 / HIR-07: the designed interview calendar and scorecard form, live with their `live` prop (stand-ins gone).
 export { InterviewCalendarScreen, ScorecardScreen, type LiveInterviewCalendar, type LiveScorecard } from '../hiring-pipeline';

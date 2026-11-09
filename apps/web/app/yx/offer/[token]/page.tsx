@@ -27,8 +27,13 @@ export default function YxOfferPage() {
     <OfferAcceptScreen
       brand={{ tenant: offer?.orgName ?? '' }}
       state={state}
-      offer={offer ? { jobTitle: offer.jobTitle, compensation: offer.compensation, startDate: new Date(offer.startDate), expiresAt: new Date(offer.expiresAt), status: offer.status, pdfUrl: offer.pdfUrl } : null}
-      live={{ today: new Date(), onRespond: (action) => publicPost(`/offers/${encodeURIComponent(token)}/respond`, { action }) }}
+      offer={offer ? { jobTitle: offer.jobTitle, compensation: offer.compensation, startDate: new Date(offer.startDate), expiresAt: new Date(offer.expiresAt), status: offer.status, pdfUrl: offer.pdfUrl, esign: Boolean(offer.esign) } : null}
+      live={{
+        today: new Date(),
+        // HIR-09 answer 337: with e-sign the code and the agreed disclosure go with the acceptance.
+        onRespond: (action, sign) => publicPost(`/offers/${encodeURIComponent(token)}/respond`, { action, ...(sign ?? {}) }),
+        onSendCode: () => publicPost<{ to: string }>(`/offers/${encodeURIComponent(token)}/esign-code`, {}),
+      }}
     />
   );
 }

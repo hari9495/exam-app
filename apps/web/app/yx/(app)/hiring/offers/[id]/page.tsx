@@ -33,6 +33,7 @@ export default function YxOfferPage() {
           const { blob } = await apiFetchBlob(`/offers/${encodeURIComponent(id)}/pdf`, {}, accessToken ?? undefined);
           window.open(URL.createObjectURL(blob), '_blank', 'noopener');
         },
+        onRemind: async () => ((await write<{ kind: string }>('POST', `${path}/remind`)).kind === 'documents' ? 'Reminder sent: what is still due' : 'Reminder sent: answer the offer'),
         onCreateEmployee: () => router.push('/yx/people/ready-to-onboard'),
         onAddCondition: async (name, dueOn) => void (await write('POST', `${path}/conditions`, { name, dueOn })),
         onMet: async (cid) => void (await write('POST', `${path}/conditions/${encodeURIComponent(cid)}/met`, {})),

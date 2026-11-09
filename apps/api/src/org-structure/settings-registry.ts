@@ -219,7 +219,11 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'hiring.rehire_flag.blocks_screening': { label: 'Hiring: "not eligible for rehire" stops an ex-employee at the first stage', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // HIR-09 founder decision 4: an offer above the grade pay range adds one approval step; who approves it is the
   // company's choice (starter: the HR head, the head of the department coded HR; without one, the people who see offer pay).
-  'hiring.offer.band_approver': { label: 'Hiring: who approves an offer above the grade pay range', scopes: ['tenant'], dated: false, values: ['hr_head', 'hiring_manager'], default: 'hr_head', labels: { hr_head: 'The HR head', hiring_manager: 'The hiring manager' } },
+  // Founder answer 332: or a named person of the company who holds the offer-pay key (the value is their user id).
+  'hiring.offer.band_approver': { label: 'Hiring: who approves an offer above the grade pay range', scopes: ['tenant'], dated: false, values: ['hr_head', 'hiring_manager'], default: 'hr_head', labels: { hr_head: 'The HR head', hiring_manager: 'The hiring manager' }, oneOf: 'company_users' },
+  // Founder answer 334: a joiner who leaves within the offer's clawback months repays the joining bonus in the final
+  // settlement: all of it (starter), or the part for the months not served.
+  'hiring.offer.clawback_basis': { label: 'Hiring: joining bonus repaid when the person leaves within the clawback months', scopes: ['tenant'], dated: false, values: ['full', 'pro_rata'], default: 'full', labels: { full: 'All of it', pro_rata: 'The part for the months not served' } },
   // HIR-29: the conditions a new offer starts with when the recruiter ticks "Add conditions" (one a line; due on the joining day).
   'hiring.offer.default_conditions': { label: 'Hiring: conditions a new offer starts with (one a line)', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 600 }, default: 'Background check clear\nDegree certificate uploaded\nRelieving letter from current employer' },
   // HIR-06: an interviewer's scorecard shows as overdue this many hours after the interview ended (reminders still go
@@ -231,6 +235,10 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // HIR-02 founder answer 291 (Settings 6.1): a hiring manager's request starts with this recruiter, or with none until
   // recruiting assigns one; never the manager themselves. The value is a person of the company (or none).
   'hiring.requisition.default_recruiter': { label: 'Hiring: default recruiter for new requisitions', scopes: ['tenant'], dated: false, values: ['none'], default: 'none', oneOf: 'company_users' },
+  // HIR-28 bulk offers: an offer beyond the free places on the job's headcount-plan line is held (not made) until the plan
+  // is revised (starter), or the check is off. A bulk offer expires this many days after it is sent (never after joining).
+  'hiring.bulk_offer.plan_check': { label: 'Hiring: bulk offers beyond the free places on the plan line', scopes: ['tenant'], dated: false, values: ['hold', 'off'], default: 'hold', labels: { hold: 'Are held until the plan is revised', off: 'Are not checked against the plan' } },
+  'hiring.offer.expiry_days': { label: 'Hiring: a bulk offer expires after (days)', scopes: ['tenant'], dated: false, values: ['3', '5', '7', '10', '14', '30'], default: '7' },
   'home.pay_on_employee_home': { label: 'Show net pay on the employee home', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // P02 §4.5 fraud guard: a new bank account is used for payouts only after this cooling period (starter, D17).
   'employee.bank_change.cooling_hours': { label: 'New bank accounts are used for pay after (hours)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '24', '48', '72'], default: '48', guard: 'access.role.manage' },

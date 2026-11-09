@@ -50,6 +50,9 @@ export function statusAfterRevision(status: string, needsApproval: boolean): 'dr
   return !needsApproval && (status === 'approved' || status === 'sent') ? 'approved' : 'draft';
 }
 
+/** "20 Nov 2026" in India time, as dates are shown everywhere (BUILD-STANDARD rule 8). */
+export const formatIstDate = (d: Date) => new Date(d.getTime() + 330 * 60_000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+
 /** Whole rupees, Indian grouping: ₹16,00,000. */
 export const inr = (x: Prisma.Decimal.Value) => `₹${Number(n(x).toFixed(0)).toLocaleString('en-IN')}`;
 
@@ -75,3 +78,23 @@ export function offerLines(lines: { code: string; name: string; kind: string; mo
 export function conditionNames(setting: string): string[] {
   return [...new Set(setting.split('\n').map((s) => s.trim().slice(0, 200)).filter(Boolean))].slice(0, 20);
 }
+
+/**
+ * Founder answer 334: what a joiner who leaves within the clawback months repays, at the last working day. All of the
+ * bonus (the company starter), or the part for the days of the clawback period not served. Nothing once the period is over.
+ */
+export function clawbackDue(bonus: Prisma.Decimal.Value, joinedOn: string, lastDay: string, months: number | null, basis: 'full' | 'pro_rata'): Prisma.Decimal {
+  if (!months || n(bonus).lte(0)) return n(0);
+  const start = new Date(`${joinedOn}T00:00:00Z`);
+  const end = new Date(start);
+  end.setUTCMonth(end.getUTCMonth() + months);
+  const left = new Date(`${lastDay}T00:00:00Z`);
+  if (left >= end) return n(0);
+  if (basis === 'full') return n(bonus);
+  const total = (end.getTime() - start.getTime()) / 86_400_000;
+  const unserved = (end.getTime() - left.getTime()) / 86_400_000 - 1; // the last day itself was served
+  return n(bonus).mul(Math.max(0, unserved)).div(total).toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP);
+}
+
+/** HIR-28: a row beyond the free places on the plan line is held (rows are taken in the order the screen lists them). */
+export const planHolds = (index: number, free: number | null) => free !== null && index >= free;
