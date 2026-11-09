@@ -23,7 +23,7 @@ import { ApprovalTimeline, Timeline, type ApprovalStep, type TimelineItem } from
 import type { BulkBatchView, LiveBulkOffers, LiveOfferBuilder, LiveOfferRecord, OfferApiStatus, OfferDraftInput, OfferPreview } from './live/types';
 import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { Text } from '../../components/foundations';
-import { formatDate, formatINR } from '../../lib/format';
+import { countText, formatDate, formatINR } from '../../lib/format';
 import { STAGE } from './candidate-dialogs';
 import type { GlobalStage } from './live/types';
 import {
@@ -1087,7 +1087,7 @@ function BulkOfferBuilder({ rows: sampleRows, band: sampleBand, defaultStep, liv
           {
             id: 'values',
             title: 'Candidates and values',
-            description: `${rows.length} candidates`,
+            description: countText(rows.length, 'candidate'),
             content: (
               <div className="yx-hire-stack">
                 {err('bo-rows') && <InlineAlert tone="danger" title="Check the candidates">{err('bo-rows')}</InlineAlert>}
