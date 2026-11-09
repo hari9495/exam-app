@@ -18,9 +18,10 @@ export class ScorecardItemDto {
   @MaxLength(1000)
   guidance?: string | null;
 
+  // Founder answer 345: whole per cent; a template's weights add up to 100 (checked by the service).
   @IsInt()
   @Min(1)
-  @Max(10)
+  @Max(100)
   weight!: number;
 
   @IsOptional()

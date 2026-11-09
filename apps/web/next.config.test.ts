@@ -65,3 +65,10 @@ describe('hiring pages moved to YukthiX', () => {
 it('/yx/me/letters goes to Documents and letters', async () => {
   expect(await config.redirects()).toContainEqual({ source: '/yx/me/letters', destination: '/yx/me/documents', permanent: false });
 });
+
+// Founder answer 345: the scorecard templates stand-in is gone; its old address opens Settings 6.1 Hiring.
+describe('scorecard templates moved to Settings 6.1', () => {
+  it('/yx/hiring/scorecards goes to /yx/settings/hiring for good', async () => {
+    expect(await config.redirects()).toContainEqual({ source: '/yx/hiring/scorecards', destination: '/yx/settings/hiring', permanent: true });
+  });
+});

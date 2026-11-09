@@ -4,7 +4,8 @@ import { audit, inCompany } from '../org-structure/org-structure.service';
 import type { ScorecardTemplateDto } from './interviewing-dto';
 
 // Recruitment batch AT5 (M10-BUILD-DESIGN §8.3): scorecard templates — the skills or questions a panel rates, each
-// with a weight, on the company scale (default 1-4), and the pass bar. Items can start from the M06 competency
+// with a weight in whole per cent (the weights add up to 100, answer 345; templates saved before keep their weights and
+// score the same), on the company scale (default 1-4), and the pass bar. Items can start from the M06 competency
 // library. A template already used by a scorecard is never edited (copy it instead), so every past scorecard keeps
 // the exact items it was scored on.
 @Injectable()
@@ -30,6 +31,8 @@ export class ScorecardTemplatesService {
 
   save(ctx: TenantContext, id: string | null, dto: ScorecardTemplateDto) {
     if (dto.passBar > dto.scaleMax) throw new BadRequestException(`The pass bar must be between 1 and ${dto.scaleMax}.`);
+    const total = dto.items.reduce((t, i) => t + i.weight, 0);
+    if (total !== 100) throw new BadRequestException(`The weights must add up to 100 per cent (now ${total}).`);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       if (dto.items.some((i) => i.competencyId)) {

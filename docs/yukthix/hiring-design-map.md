@@ -58,9 +58,13 @@ built**.
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 20 | 0 | 0 | 7 | 4 | 31 |
 | E. Staffing agency | 8 | 0 | 0 | 4 | 44 | 0 | 48 |
 | F. Compliance and fairness | 5 | 4 | 1 | 0 | 20 | 0 | 25 |
-| G. Careers site, portals and settings | 4 | 49 | 4 | 2 | 11 | 0 | 66 |
-| **All Hiring design groups (A–G)** | **37** | **174** | **10** | **6** | **100** | **5** | **295** |
-| H. Kit and "Live ·" groups (not designs; own line) | 4 | 6 | 0 | 5 | 5 | 0 | 16 |
+| G. Careers site, portals and settings | 4 | 54 | 4 | 2 | 11 | 0 | 71 |
+| **All Hiring design groups (A–G)** | **37** | **179** | **10** | **6** | **100** | **5** | **300** |
+| H. Kit and "Live ·" groups (not designs; own line) | 3 | 5 | 0 | 5 | 5 | 0 | 15 |
+Recounted by script 12 Nov 2026 on `feat/yukthix-hir-09` after merging the Settings 6.1 follow-ups with answers 332 and 334-337: A–G 179 live, 10 gap, 6 wire, 100 not built, 5 phone, of 300.
+
+Recounted by script on `test/yukthix-main` after merging the Settings 6.1 follow-ups with HIR-10/20: A–G 176 live, 12 gap, 6 wire, 100 not built, 5 phone, of 299 (H: the old scorecard-templates group left with its page).
+Recounted by script 12 Nov 2026 on `feat/yukthix-hiring-settings-2` after the Settings 6.1 follow-ups (answers 341, 345, 348): 5 new 6.1 stories drawn and live (edit, add, used and view-only scorecard; default recruiter no longer qualifies); the "Live · Job workspace and interviews" group's last stand-in story (Scorecards) was deleted with the /yx/hiring/scorecards page.
 Recounted by script 11 Nov 2026 on `feat/yukthix-hir-09` after founder answers 332 and 334-337: HIR-09 HrEmployerCost and HIR-29 Reminder became live; a new T9-09 story (OfferSign, the e-sign accept page) is live.
 
 Recounted by script 11 Nov 2026 on `feat/yukthix-hir-09` (merged with HIR-06/07 and Settings 6.1) after HIR-09 / HIR-29 went live: HIR-09 7 live and 3 live (gap), HIR-29 2 live and 2 live (gap); the HIR-05 Application offer story now opens the offer record (answer 301); the kit's CTC breakup table is live.
@@ -77,7 +81,7 @@ Recounted by script 9 Nov 2026 on `feat/yukthix-hir-11-12` after HIR-11 (5 stori
 story with a capital first letter (the lower-case exports are sample props, excluded from Storybook by
 `excludeStories`) in the 31 `hir-NN-*.stories.tsx` files, `hiring-kit.stories.tsx`, the five `hiring/live/*.stories.tsx`,
 `portals/t9-09-careers.stories.tsx`, `portals/t9-15-identity.stories.tsx`, `stories/careers.stories.tsx` and the hiring
-stories of `settings/settings-g6.stories.tsx` (Overview, OverviewLoading, P6_1, P6_1_ReadOnly, P6_1_StageTargets, P6_2, P6_2_ReadOnly; 6.3
+stories of `settings/settings-g6.stories.tsx` (Overview, OverviewLoading, the P6_1 stories, P6_2, P6_2_ReadOnly; 6.3
 Performance, 6.4 Learning and 6.5 Assessments belong to other areas), against the rows in section 4. The script fails
 unless each story file has exactly one row per story, in file order, with one of the five verdicts. Not counted: the
 eight PRJ-01 … 08 project stories that live in the same folder (Projects is its own area).
@@ -125,14 +129,14 @@ the web page.
 | /yx/hiring/retention | `CandidateRetentionScreen` with `live` (designed 9 Nov 2026, decision 9) | HIR-05 Retention | `POST hiring/retention/run`, `GET …/runs`, `POST hiring/data-requests/lookup`, export, erase (`candidate:data_rights`; a real run, export and erase refused while acting) | live |
 | /yx/hiring/interviews | the designed `InterviewCalendarScreen` with `live` (11 Nov 2026); recruiters see the company week, everyone else their own interviews and scorecards; India time | HIR-06 | new `GET hiring/interviews?from=&to=` (≤ 62 days; `pipeline:manage` = company, else panel or the job's hiring manager), `GET hiring/interviews/mine` (+ overdue, setting `hiring.scorecard.overdue_hours`, default 24) | live |
 | /yx/hiring/interviews/[id] | the designed `ScorecardScreen` with `live` (11 Nov 2026): the panellist's form, the panel's submitted scorecards, résumé, earlier rounds; recruiters resend or cancel here (answer 301) | HIR-07 | `GET hiring/interviews/:id`, `PUT …/scorecard`, `POST …/scorecard/submit` (own session only), `POST interviews/:id/send`, `/cancel` (`pipeline:manage`, own session only) | live |
-| /yx/hiring/scorecards | `ScorecardTemplatesScreen` (stand-in) | Settings 6.1 | `GET/POST/PUT/DELETE hiring/scorecard-templates` (`pipelines:configure`) | wire design |
+| /yx/hiring/scorecards | removed 12 Nov 2026 (answer 345): permanent redirect to /yx/settings/hiring; `ScorecardTemplatesScreen` deleted | Settings 6.1 | `GET/POST/PUT/DELETE hiring/scorecard-templates` (`pipelines:configure`, never while acting; weights whole per cent adding to 100) | live |
 | /yx/hiring/approval-routes | `ApprovalRoutesScreen` (stand-in) | Settings 6.1 | approval chains (`approvals:configure`) | wire design |
 | /yx/hiring/careers | `CareersSiteScreen` (stand-in; the guard lists it as `portals: CareersSiteScreen`) | Surfaces/Careers page builder | `organizations/careers` (+ banner), `hiring/careers-entities`, `hiring/consent-notices` (`org:manage_settings`) | wire design |
 | /yx/hiring/job-boards | `JobBoardsScreen` (stand-in): boards | HIR-03 Postings, HIR-20 Postings | `organizations/job-boards` (`org:manage_settings`) | wire design |
 | /yx/hiring/costs | the designed `RecruitingCostsScreen` with `live` | HIR-11 | `GET/POST hiring/costs`, `PUT/DELETE hiring/costs/:id`, `GET hiring/costs/overview` (`ats.costs.manage`; writes refused while acting) | live |
 | /yx/hiring/referrals | the designed `ReferralsScreen` with `live` | HIR-12 | `GET referrals/mine`, `/jobs`, `/policy`, `POST referrals` (anyone signed in; refused while acting) | live |
 | /yx/hiring/referrals/all | the designed `AllReferralsScreen` with `live` | HIR-12 All referrals | `GET referrals`, `PATCH referrals/:id/reward` (`ats.referral.manage` or `candidate:view` / `pipeline:manage`; refused while acting; paid outside payroll and undo paid, answers 283 and 285) | live |
-| /yx/settings/hiring | the designed `SettingsPageScreen` (6.1) with `live` | Settings 6.1 Hiring | `GET/PUT hiring/settings` (read: `pipeline:manage`, `ats.headcount.manage`, `ats.referral.manage`, `ats.settings.manage`, `org.settings.manage`; change: `ats.settings.manage` or `org.settings.manage` company-wide, never while acting), `PATCH pipelines/stages/:id` (`pipelines:configure`) | live |
+| /yx/settings/hiring | the designed `SettingsPageScreen` (6.1) with `live`; scorecard templates in `ScorecardTemplateSheet` (answer 345) | Settings 6.1 Hiring | `GET/PUT hiring/settings` (read: `pipeline:manage`, `pipelines:configure`, `ats.headcount.manage`, `ats.referral.manage`, `ats.settings.manage`, `org.settings.manage`; change: `ats.settings.manage` or `org.settings.manage` company-wide, never while acting), `PATCH pipelines/stages/:id` (`pipelines:configure`) | live |
 | /yx/hiring/requisitions | the designed `RequisitionsScreen` with `live`, its drawer and the designed `RediscoveryPanel` with `live`; the request sheet for managers | HIR-02, HIR-26 | `GET hiring/requisitions` (`pipeline:manage` / `ats.headcount.manage`: all; `ats.requisition.raise`: own, read-only), `GET hiring/requisitions/:id/rediscovery` (and `candidate:view` or `pipeline:manage`), `POST jobs/:id/submit`, `/approval/cancel`, `POST jobs/:id/entries`, `POST jobs/requisitions` (writes refused while acting) | live |
 | /yx/people/team (Request a hire) | the designed `RequisitionSheet` with `live` | HIR-02 NewRequisition | `POST jobs/requisitions` (`ats.requisition.raise`) | live |
 | /yx/people/onboarding/[id] | People onboarding (PPL design) with the joiner's BGV checks (the same store as /yx/hiring/bgv) | HIR-10 (manual part) | `POST lifecycle joiners/:id/bgv/ask`, `/bgv/checks`, `bgv/checks/:checkId` | live (HIR-10 is /yx/hiring/bgv) |
@@ -803,16 +807,22 @@ Google for Jobs JSON-LD and /yx/careers/[org]/sitemap.xml), /yx/apply/[token], a
 
 Only the hiring stories of `settings/settings-g6.stories.tsx` (6.3 Performance, 6.4 Learning and 6.5 Assessments belong
 to other areas). Since 10 Nov 2026 (branch `feat/yukthix-hiring-settings`) /yx/settings/hiring renders `SettingsPageScreen` with `live`
-for 6.1; the group landing (`SettingsGroupScreen`) is not live. Scorecards, approval routes, careers and job boards stay
-on their stand-in pages.
+for 6.1; the group landing (`SettingsGroupScreen`) is not live. Since 12 Nov 2026 (branch `feat/yukthix-hiring-settings-2`,
+answers 341, 345, 348) the seven hiring settings are on 6.1, scorecard templates are edited there and the /yx/hiring/scorecards
+stand-in is gone. Approval routes, careers and job boards stay on their stand-in pages.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
 | Overview · Group 6 · Hiring & Assessments | wire design | the group's landing in Settings |
 | OverviewLoading · Group 6 · loading | wire design | same, loading |
-| P6_1 · 6.1 Hiring | live | /yx/settings/hiring (Settings › Hiring & Assessments › Hiring) renders `SettingsPageScreen` with `live`: pipeline templates (read-only list, Stage targets per row), scorecard templates (read-only), default recruiter for new requisitions (answer 291, drawn in the design), HIR-09 (drawn 11 Nov 2026): who approves an offer above the pay range (`hiring.offer.band_approver`: HR head, hiring manager or a named person with the offer-pay key, answer 332), joining bonus clawback basis (`hiring.offer.clawback_basis`, answer 334), offer letters signed electronically (each offer template's e-sign switch, answer 337), candidate retention (`ats.retention_months`), tell candidates not selected (`hiring.reject.email_candidate`), the referral rule (`ats.referral.bonus_inr`, `ats.referral.qualify_days`, one fixed row). `GET/PUT hiring/settings`: read by `pipeline:manage`, `ats.headcount.manage`, `ats.referral.manage` or the settings keys; changed by `ats.settings.manage` or `org.settings.manage` held company-wide, never while acting; audited `org.setting.changed`; toast. Gap: the designed fields with no setting yet (plan approvers, extra approver, replacement link, offer expiry, clawback, range check, offer template, hand-off, BGV packages and timing, consent renewal, minors, AI interview and languages, careers colour and heading, cost categories) are left out, not shown with sample data |
-| P6_1_ReadOnly · 6.1 Hiring · read-only | live | without the edit keys (or while acting): every value as text, no save, no edit buttons; the Request access button is not shown in live (no request flow) |
+| P6_1 · 6.1 Hiring | live | /yx/settings/hiring (Settings › Hiring & Assessments › Hiring) renders `SettingsPageScreen` with `live`: pipeline templates (read-only list, Stage targets per row), scorecard templates (skills with per cent weights, scale, pass bar; Add and Edit with the pipelines key, answer 345), default recruiter for new requisitions (only people with the recruiter key, answer 348), headcount plan mode (`ats.headcount_plan`, the joined Segment: Not used / Advisory / Required) and the hiring manager's view (`ats.headcount_plan.manager_view`), show the pay range and ask pay history on new jobs (`hiring.pay_range.show`, `hiring.pay_history.ask`, company value), “not eligible for rehire” stops at the first stage (`hiring.rehire_flag.blocks_screening`), candidate retention (`ats.retention_months`), AI notes on past candidates (`hiring.rediscovery.ai`), tell candidates not selected (`hiring.reject.email_candidate`), the referral rule (`ats.referral.bonus_inr`, `ats.referral.qualify_days`, one fixed row) and the self-apply days (`ats.referral.self_apply_days`) — all with their defaults (answer 341); HIR-09 (drawn 11 Nov 2026): who approves an offer above the pay range (`hiring.offer.band_approver`: HR head, hiring manager or a named person with the offer-pay key, answer 332), joining bonus clawback basis (`hiring.offer.clawback_basis`, answer 334), offer letters signed electronically (each offer template's e-sign switch, answer 337). `GET/PUT hiring/settings`: read by `pipeline:manage`, `pipelines:configure`, `ats.headcount.manage`, `ats.referral.manage` or the settings keys; changed by `ats.settings.manage` or `org.settings.manage` held company-wide, never while acting; every key and value checked before any write; audited `org.setting.changed`; toast. Gap: the designed fields with no setting yet (plan approvers, extra approver, replacement link, offer expiry, clawback months, range check, offer template, hand-off, BGV packages and timing, consent renewal, minors, AI interview and languages, careers colour and heading, cost categories) are left out, not shown with sample data (answer 342); pay range and pay history values for one legal entity or location are not shown on 6.1 (question 382) |
+| P6_1_ReadOnly · 6.1 Hiring · read-only | live | without the edit keys (or while acting): every value as text, no save, no edit buttons; the Request access button is not shown in live (no request flow, answer 349). With the pipelines key (not acting) Add scorecard and Edit still show on the scorecard list |
 | P6_1_StageTargets · 6.1 Hiring · stage targets | live | answer 302: Stage targets on a pipeline row opens `StageTargetsSheet`; `PATCH pipelines/stages/:id` (`pipelines:configure`, never while acting; audited); values checked and focused before saving; read-only without the key. The job's Settings tab shows them read-only with "Change in Settings" |
+| P6_1_ScorecardEdit · 6.1 Hiring · edit scorecard | live | answer 345: Edit on a scorecard row opens `ScorecardTemplateSheet`; `PUT hiring/scorecard-templates/:id` (`pipelines:configure`, never while acting; audited `ats.scorecard_template.updated`); name, scale 3-10, pass bar 1 to the scale, skills with whole per cent weights adding to 100 (total shown live), what good looks like, from the competency library; pressed too early: field errors and focus; toast. Older 1-10 weights open as per cent |
+| P6_1_ScorecardNew · 6.1 Hiring · add scorecard | live | Add scorecard: `POST hiring/scorecard-templates` (audited `ats.scorecard_template.created`); one skill at 100 % to start |
+| P6_1_ScorecardUsed · 6.1 Hiring · used scorecard (saved as a copy) | live | a template already used by a scorecard is never changed: “Save as a copy” posts a new template named “(copy)”; the API refuses a change with 409 |
+| P6_1_ScorecardView · 6.1 Hiring · scorecard, view only | live | the view-only sheet (skills with per cent, scale, pass bar) is drawn; live shows the list rows read-only without the pipelines key instead of opening it. Archive scorecard (danger, after a confirmation): `DELETE hiring/scorecard-templates/:id`, jobs using it go back to no scorecard, filled scorecards keep it |
+| P6_1_StaleRecruiter · 6.1 Hiring · default recruiter no longer qualifies | live | answer 348: a stored default who left or no longer holds the recruiter key reads as None with a warning naming them; new requisitions start with no recruiter (`defaultRecruiter`); the API refuses anyone else as default with 400, on both `PUT hiring/settings` and `PUT org/settings` |
 | P6_2 · 6.2 Staffing desk | design only, feature not built | rate cards, bill multipliers, invoice numbering: staffing business (question 1) |
 | P6_2_ReadOnly · 6.2 Staffing desk · read-only | design only, feature not built | same |
 
@@ -844,12 +854,6 @@ a design, BUILD-STANDARD rule 1). Each "Live ·" story is deleted with its stand
 |---|---|---|
 | JobBoards · JobBoards | live | /yx/hiring/job-boards; goes with HIR-03 / 20 postings (costs moved to HIR-11) |
 | NoJobBoards · NoJobBoards | live | same, empty |
-
-#### Live · Job workspace and interviews
-
-| story (sub-page) | verdict | note |
-|---|---|---|
-| Scorecards · Scorecards | live | /yx/hiring/scorecards; goes with Settings 6.1 |
 
 #### Live · Plans and approvals
 
@@ -1378,6 +1382,41 @@ Built on `feat/yukthix-hir-10-20`. Each has a safe default already built; the su
 367. **Scorecard text on candidate erase.** Built: comments are redacted by the erase. Found: the scorecard's own summary
      and rating notes are not redacted today (existing gap). *Suggested: redact them in the same erase.*
 368. **BGV export.** Built: Export gives results only (joiner, check, result, who, day, decision), never notes or reports.
+## Settings 6.1 follow-ups built (answers 341, 345, 348; 12 Nov 2026, branch `feat/yukthix-hiring-settings-2`)
+- (341) The seven settings are drawn into 6.1 and live, each a company setting with its default, audited, changed by the
+  same keys as the page: plan mode (Segment; default Advisory) and the hiring manager's view (on) under "Pipelines,
+  scorecards and approvals"; show pay range (off) and ask pay history (off) under "Offers and hand-off"; the rehire flag
+  (off) under "Background checks and candidate data"; AI notes on past candidates (off) beside AI interview; the
+  self-apply days (90) under the referral rule. The settings kit gained the `segment` kind (2-4 short options).
+- (345) Scorecard templates are added, edited (a used one is saved as a copy) and archived on 6.1 in the new
+  `ScorecardTemplateSheet` (pipelines key, never while acting). Weights are whole per cent adding to 100 (API 400
+  otherwise); older templates keep their weights and score the same. /yx/hiring/scorecards, its menu item and
+  `ScorecardTemplatesScreen` are deleted; the old address redirects to /yx/settings/hiring.
+  Migration `202617o0000000_scorecard_weight_per_cent` widens the item weight check from 1-10 to 1-100 (schema only).
+- (348) The default recruiter's choices are the people who hold the recruiter key (`pipeline:manage`, resolved like the
+  guard: role, profile, role grants, and `ats.job.manage` / `ats.candidate.manage` company-wide). Anyone else is refused
+  with 400 on `PUT hiring/settings` and `PUT org/settings`. A stored default who left or lost the key reads as None with a
+  warning, and new requisitions start with no recruiter.
+## Founder questions from the Settings 6.1 follow-ups (12 Nov 2026)
+381. **Which key makes a recruiter.** Built: `pipeline:manage` (the key recruiting works with). Besides Recruiters, System
+     Admins hold it, and so does the older "hiring_manager" user role and the agency consultant in demo-org (role
+     recruiter). *Suggested: keep; if hiring managers or agency people must not be offered, narrow to people with
+     `ats.job.manage` and not an agency login.*
+382. **Pay range and pay history for one entity or location.** 6.1 shows and saves the company value only; a value set for
+     a legal entity or location (company settings API) still applies there but is not shown on 6.1. *Suggested: show
+     "Different for: …" under each and let HR pick the entity or location, when a customer uses them.*
+383. **Older scorecard weights.** Templates saved before keep their 1-10 weights (scores unchanged); the list and editor
+     show them as per cent, and saving stores per cent. *Suggested: keep; no data change.*
+384. **Referral settings in two places.** The bonus, qualifying days and now self-apply days are on 6.1 and on Settings ›
+     Company rules › Referrals (the same company settings). *Suggested: keep them on 6.1 only and drop the Company rules
+     section.*
+385. **A default recruiter who goes stale.** Built: the warning on 6.1 and None for new requisitions; nobody is told when
+     it happens. *Suggested: tell the hiring settings holders by notification when the default recruiter leaves or loses
+     the key.*
+Founder approved, 9 Nov 2026 (questions 381-385, all as suggested): (381) keep `pipeline:manage` as the recruiter key;
+(382) add "Different for: …" on 6.1 when a customer uses entity or location values; (383) keep older 1-10 weights, no
+data change; (384) referral settings on 6.1 only (remove them from Company rules › Referrals); (385) notify the holders
+of the hiring settings key when the default recruiter goes stale.
 
 ## Founder questions from the HIR-09 answers 332, 334-337 build (11 Nov 2026)
 Each has a safe default already built; the suggestion is the answer we propose.

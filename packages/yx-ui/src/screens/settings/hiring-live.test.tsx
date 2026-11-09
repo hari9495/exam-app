@@ -6,21 +6,55 @@ import { SettingsPageScreen, type LiveSettingsPage } from './settings-screens';
 import { SETTINGS_GROUPS } from './settings-groups';
 import { hiringSettingsChanges, hiringSettingsPage, type HiringSettingsData } from './hiring-live';
 
-// Settings 6.1 Hiring, the designed page with `live` (founder answers 291, 302): positive and negative.
+// Settings 6.1 Hiring, the designed page with `live` (founder answers 291, 302, 341, 345, 348): positive and negative.
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const design = SETTINGS_GROUPS.flatMap((g) => g.pages).find((p) => p.id === '6.1')!;
+const DEFAULTS = {
+  'ats.retention_months': '12',
+  'hiring.reject.email_candidate': 'off',
+  'ats.referral.bonus_inr': '25000',
+  'ats.referral.qualify_days': '90',
+  'hiring.requisition.default_recruiter': 'none',
+  'ats.headcount_plan': 'advisory',
+  'ats.headcount_plan.manager_view': 'own_department',
+  'ats.referral.self_apply_days': '90',
+  'hiring.pay_range.show': 'off',
+  'hiring.pay_history.ask': 'off',
+  'hiring.rediscovery.ai': 'off',
+  'hiring.rehire_flag.blocks_screening': 'off',
+};
 const DATA: HiringSettingsData = {
   canEdit: true,
   people: [
     { id: 'u1', name: 'Neha Joshi' },
     { id: 'u2', name: 'Arjun Kulkarni' },
   ],
-  values: { 'ats.retention_months': '12', 'hiring.reject.email_candidate': 'off', 'ats.referral.bonus_inr': '25000', 'ats.referral.qualify_days': '90', 'hiring.requisition.default_recruiter': 'none' },
-  defaults: { 'ats.retention_months': '12', 'hiring.reject.email_candidate': 'off', 'ats.referral.bonus_inr': '25000', 'ats.referral.qualify_days': '90', 'hiring.requisition.default_recruiter': 'none' },
-  choices: { 'ats.retention_months': ['6', '9', '12', '18', '24', '36'], 'hiring.reject.email_candidate': ['off', 'on'], 'ats.referral.bonus_inr': ['0', '5000', '25000', '50000'], 'ats.referral.qualify_days': ['30', '60', '90', '180'], 'hiring.requisition.default_recruiter': ['none'] },
+  values: { ...DEFAULTS },
+  defaults: DEFAULTS,
+  choices: {
+    'ats.retention_months': ['6', '9', '12', '18', '24', '36'],
+    'hiring.reject.email_candidate': ['off', 'on'],
+    'ats.referral.bonus_inr': ['0', '5000', '25000', '50000'],
+    'ats.referral.qualify_days': ['30', '60', '90', '180'],
+    'hiring.requisition.default_recruiter': ['none'],
+    'ats.headcount_plan': ['off', 'advisory', 'required'],
+    'ats.referral.self_apply_days': ['0', '30', '60', '90', '180'],
+  },
   lastChange: null,
   pipelines: [{ id: 'p1', name: 'Standard', isDefault: true, jobs: 3, stages: [{ id: 's1', name: 'Applied', category: 'active', daysTarget: 3, limit: null }] }],
-  scorecards: [{ id: 'sc1', name: 'Engineer round 1', scaleMax: 4, items: ['Problem solving', 'Teamwork'] }],
+  scorecards: [
+    {
+      id: 'sc1',
+      name: 'Engineer round 1',
+      scaleMax: 4,
+      passBar: 2.5,
+      inUse: false,
+      items: [
+        { id: 'i1', label: 'Problem solving', guidance: null, weight: 2, competencyId: null },
+        { id: 'i2', label: 'Teamwork', guidance: null, weight: 1, competencyId: null },
+      ],
+    },
+  ],
 };
 const live = (over: Partial<LiveSettingsPage> = {}): LiveSettingsPage => ({ page: hiringSettingsPage(design, DATA), canEdit: true, lastChange: null, onSave: vi.fn().mockResolvedValue(undefined), onRowAction: vi.fn(), ...over });
 const show = (l: LiveSettingsPage) => render(<ToastProvider><SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.1" live={l} /></ToastProvider>);
@@ -33,11 +67,70 @@ describe('Settings 6.1 Hiring (live)', () => {
     expect(screen.getByText('Default for new jobs · 3 jobs')).toBeInTheDocument();
     expect(screen.getByText('Engineer round 1')).toBeInTheDocument();
     expect(screen.getByText('₹25,000')).toBeInTheDocument();
-    expect(screen.getByText('90 days')).toBeInTheDocument();
     // Designed fields with nothing behind them yet are left out, never shown with sample data.
     for (const t of ['Offer expires after', 'Headcount plan approvers', 'AI interview', 'Careers site colour', 'Plant worker', 'Recruiting cost categories']) expect(screen.queryByText(t)).not.toBeInTheDocument();
-    // Fixed rows: the referral rule is edited, never added to; templates are read-only lists.
+    // Fixed rows: the referral rule is edited, never added to; without a scorecard editor templates are read-only lists.
     expect(screen.queryByRole('button', { name: /Add referral rule|Add pipeline template|Add scorecard/ })).not.toBeInTheDocument();
+    // Answer 345: skills with weights in per cent (an older 2:1 template reads 67 % and 33 %) and the pass bar.
+    expect(screen.getByText('Problem solving 67 %, Teamwork 33 %')).toBeInTheDocument();
+  });
+
+  it('answer 341: the seven settings are on the page with their defaults; plan mode is the joined Segment', () => {
+    show(live());
+    const plan = screen.getByRole('radiogroup', { name: 'Requisitions and the headcount plan' });
+    expect(within(plan).getByRole('radio', { name: 'Advisory' })).toBeChecked();
+    expect(within(plan).getAllByRole('radio').map((r) => r.textContent)).toEqual(['Not used', 'Advisory', 'Required']);
+    expect(screen.getByRole('checkbox', { name: /Hiring managers see their department’s headcount plan/ })).toBeChecked();
+    for (const t of [/Show the pay range on new jobs/, /Ask applicants about their current or past pay/, /AI notes on past candidates/, /Not eligible for rehire/]) expect(screen.getByRole('checkbox', { name: t })).not.toBeChecked();
+    expect(screen.getByText('No referral credit if the person applied themselves within')).toBeInTheDocument();
+  });
+
+  it('answer 341: changes map back to the company settings with their stored values', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    show(live({ onSave }));
+    await ue.click(screen.getByRole('radio', { name: 'Required' }));
+    await ue.click(screen.getByRole('checkbox', { name: /Hiring managers see their department’s headcount plan/ }));
+    await ue.click(screen.getByRole('checkbox', { name: /Show the pay range on new jobs/ }));
+    await ue.click(screen.getByRole('checkbox', { name: /Ask applicants about their current or past pay/ }));
+    await ue.click(screen.getByRole('checkbox', { name: /AI notes on past candidates/ }));
+    await ue.click(screen.getByRole('checkbox', { name: /Not eligible for rehire/ }));
+    await ue.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    const [values, rows] = onSave.mock.calls[0]!;
+    expect(hiringSettingsChanges(values, rows, DATA)).toEqual(
+      expect.arrayContaining([
+        { key: 'ats.headcount_plan', value: 'required' },
+        { key: 'ats.headcount_plan.manager_view', value: 'off' },
+        { key: 'hiring.pay_range.show', value: 'on' },
+        { key: 'hiring.pay_history.ask', value: 'on' },
+        { key: 'hiring.rediscovery.ai', value: 'on' },
+        { key: 'hiring.rehire_flag.blocks_screening', value: 'on' },
+      ]),
+    );
+    expect(hiringSettingsChanges({ 'hire.referral_self_apply_days': '30', 'hire.plan_manager_view': true }, {}, DATA)).toEqual([
+      { key: 'ats.referral.self_apply_days', value: '30' },
+      { key: 'ats.headcount_plan.manager_view', value: 'own_department' },
+    ]);
+  });
+
+  it('answer 348: a default recruiter who no longer qualifies reads as None, with a warning naming them', () => {
+    show(live({ page: hiringSettingsPage(design, { ...DATA, staleRecruiter: 'Kavya Rao' }) }));
+    expect(screen.getByText(/Kavya Rao no longer holds the recruiter key or has left/)).toBeInTheDocument();
+  });
+
+  it('answer 348: no warning while the default qualifies', () => {
+    show(live({ page: hiringSettingsPage(design, { ...DATA, values: { ...DEFAULTS, 'hiring.requisition.default_recruiter': 'u1' } }) }));
+    expect(screen.queryByText(/no longer holds the recruiter key/)).not.toBeInTheDocument();
+  });
+
+  it('answer 345: with a scorecard editor, Add scorecard and each row’s Edit open it (even on a read-only page)', async () => {
+    const edit = vi.fn();
+    show(live({ canEdit: false, listEditors: { 'hire.scorecards': edit } }));
+    await ue.click(screen.getByRole('button', { name: 'Add scorecard' }));
+    expect(edit).toHaveBeenLastCalledWith('new');
+    await ue.click(screen.getByRole('button', { name: 'Edit Engineer round 1' }));
+    expect(edit).toHaveBeenLastCalledWith(0);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('a change saves through onSave as company settings, then a toast', async () => {
@@ -52,10 +145,10 @@ describe('Settings 6.1 Hiring (live)', () => {
   });
 
   it('a refusal stays on the page with the reason and the edits are kept', async () => {
-    show(live({ onSave: vi.fn().mockRejectedValue(new Error('That person is not an active user of your company. Choose someone from the list.')) }));
+    show(live({ onSave: vi.fn().mockRejectedValue(new Error('Choose someone who holds the recruiter key.')) }));
     await ue.click(screen.getByRole('checkbox', { name: /Tell candidates when they are not selected/ }));
     await ue.click(screen.getByRole('button', { name: 'Save changes' }));
-    expect(await screen.findByText(/not an active user of your company/)).toBeInTheDocument();
+    expect(await screen.findByText(/Choose someone who holds the recruiter key/)).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: /Tell candidates when they are not selected/ })).toBeChecked();
   });
 
@@ -63,6 +156,7 @@ describe('Settings 6.1 Hiring (live)', () => {
     show(live({ canEdit: false }));
     expect(screen.getByText('You can view these settings but not change them')).toBeInTheDocument();
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Request access' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Edit / })).not.toBeInTheDocument();
   });
