@@ -37,6 +37,8 @@ export { OfferBuilderScreen, OfferConditionsTab, OfferRecordScreen, type LiveCon
 export { JobSettingsPanel, StageTargetsSheet, type LiveJobSettings, type StageTarget, type StageTargetChange, type JobSettingsPatch } from '../job-settings';
 // HIR-06 / HIR-07: the designed interview calendar and scorecard form, live with their `live` prop (stand-ins gone).
 export { InterviewCalendarScreen, ScorecardScreen, type LiveInterviewCalendar, type LiveScorecard } from '../hiring-pipeline';
+// HIR-25: the designed notetaker card (inside the scorecard page) and the draft scorecard review, live.
+export { DraftScorecardReview, NotetakerConsentPanel, type DraftRating, type LiveDraftReview, type NotetakerControls, type Participant } from '../hiring-pipeline';
 // Settings 6.1 shows templates read-only; this old page stays until template editing is drawn (answer 345).
 export { ScorecardTemplateSheet, asPerCent, type ScorecardTemplateSheetProps } from '../scorecard-template-sheet';
 // HIR-11 and HIR-12: the designed screens themselves (hiring-plan.tsx), made live with their `live` prop.

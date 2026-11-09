@@ -37,6 +37,10 @@ const KEY = {
   'hire.internal_after_probation': 'hiring.internal.after_probation',
   'hire.internal_months_in_role': 'hiring.internal.months_in_role',
   'hire.internal_tell_manager': 'hiring.internal.tell_manager',
+  // HIR-25 (founder decision 2).
+  'hire.notetaker_enabled': 'hiring.notetaker.enabled',
+  'hire.notetaker_ai_draft': 'hiring.notetaker.ai_draft',
+  'hire.notetaker_keep_days': 'hiring.notetaker.keep_days',
 } as const;
 /** On/off fields: the stored value for on and for off. */
 const TOGGLE: Partial<Record<keyof typeof KEY, [on: string, off: string]>> = {
@@ -47,6 +51,8 @@ const TOGGLE: Partial<Record<keyof typeof KEY, [on: string, off: string]>> = {
   'hire.rediscovery_ai': ['on', 'off'],
   'hire.rehire_blocks_screening': ['on', 'off'],
   'hire.internal_after_probation': ['on', 'off'],
+  'hire.notetaker_enabled': ['on', 'off'],
+  'hire.notetaker_ai_draft': ['on', 'off'],
 };
 const BONUS = 'ats.referral.bonus_inr';
 const DAYS = 'ats.referral.qualify_days';
@@ -96,6 +102,7 @@ export function hiringSettingsPage(design: SettingsPageDef, data: HiringSettings
       }
       case 'hire.headcount_plan':
       case 'hire.internal_months_in_role':
+      case 'hire.notetaker_keep_days':
       case 'hire.internal_tell_manager':
       case 'hire.referral_self_apply_days': {
         const k = KEY[d.key];
@@ -106,7 +113,9 @@ export function hiringSettingsPage(design: SettingsPageDef, data: HiringSettings
       case 'hire.pay_history_ask':
       case 'hire.rediscovery_ai':
       case 'hire.rehire_blocks_screening':
-      case 'hire.internal_after_probation': {
+      case 'hire.internal_after_probation':
+      case 'hire.notetaker_enabled':
+      case 'hire.notetaker_ai_draft': {
         const k = KEY[d.key];
         return { ...base, value: v[k] === TOGGLE[d.key]![0], starter: v[k] === data.defaults[k] };
       }
@@ -146,7 +155,7 @@ export function hiringSettingsPage(design: SettingsPageDef, data: HiringSettings
   };
   return {
     ...design,
-    summary: 'Pipeline and scorecard templates with stage targets, the default recruiter, the headcount plan, pay transparency, rehire and candidate data rules, AI notes on past candidates, telling candidates who are not selected, referral bonuses, and who can apply for internal jobs.',
+    summary: 'Pipeline and scorecard templates with stage targets, the default recruiter, the headcount plan, pay transparency, rehire and candidate data rules, AI notes on past candidates, telling candidates who are not selected, referral bonuses, who can apply for internal jobs, and the interview notetaker.',
     related: undefined,
     scopes: undefined,
     sections: design.sections.map((sec) => ({ ...sec, settings: sec.settings.map(fill).filter((x): x is SettingDef => x !== null) })).filter((sec) => sec.settings.length > 0),

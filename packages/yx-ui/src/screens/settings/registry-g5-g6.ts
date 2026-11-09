@@ -832,6 +832,15 @@ const hiring: SettingsPageDef = {
       ],
     },
     {
+      // HIR-25 (founder decision 2): off by default; consent from every participant before anything is recorded.
+      title: 'Interview notetaker',
+      settings: [
+        { key: 'hire.notetaker_enabled', label: 'Interview notetaker', kind: 'toggle', value: false, helper: 'Keeps an interview transcript only after every participant consents. Anyone saying no means no recording.', starter: true, scope: 'Company', synonyms: ['recording', 'transcript', 'notetaker', 'consent'] },
+        { key: 'hire.notetaker_ai_draft', label: 'AI drafts a scorecard from the transcript', kind: 'toggle', value: false, helper: 'A suggestion only: the interviewer confirms or changes every rating and submits. Uses your company’s AI.', starter: true, scope: 'Company', synonyms: ['ai', 'scorecard', 'draft'] },
+        { key: 'hire.notetaker_keep_days', label: 'Keep transcripts and drafts for', kind: 'select', value: '90', options: ['30', '90', '180', '365'], optionLabels: { '30': '30 days', '90': '90 days', '180': '180 days', '365': '1 year' }, helper: 'Then they are deleted. Erasing a candidate deletes them at once.', starter: true, scope: 'Company', synonyms: ['retention', 'transcript'] },
+      ],
+    },
+    {
       // HIR-13 (founder decision 6): who can apply for internal jobs, and when; the current manager is told, never asked.
       title: 'Internal jobs',
       settings: [
