@@ -179,8 +179,30 @@ describe('Hiring › All referrals (HIR-12, HR)', () => {
     const d = screen.getByRole('dialog');
     expect(within(d).getByText('Mark ₹20,000 paid to Neha Joshi?')).toBeInTheDocument();
     await ue.click(within(d).getByRole('button', { name: 'Mark paid' }));
-    await waitFor(() => expect(patched).toEqual([['/referrals/r1/reward', { rewardStatus: 'paid' }]]));
+    await waitFor(() => expect(patched).toEqual([['/referrals/r1/reward', { rewardStatus: 'paid', paidVia: 'payroll' }]]));
     expect((await screen.findAllByText('Bonus sent to payroll')).length).toBeGreaterThan(0);
+  });
+
+  it('undo paid (283) sends the bonus back to approved; paid outside payroll (285) is sent as such', async () => {
+    const patched: unknown[] = [];
+    api.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (init?.method === 'PATCH') return (patched.push([path, JSON.parse(String(init.body))]), {});
+      if (path === '/referrals') return [{ ...row, bonusDue: 'paid', rewardStatus: 'paid', paidVia: 'payroll' }, { ...row, id: 'r3', candidateName: 'Divya Pillai', referrerIsEmployee: false }];
+      throw new Error(`unexpected ${path}`);
+    });
+    wrap(<YxAllReferralsPage />);
+    const paidRow = (await screen.findByText('Kiran Rao')).closest('tr')!;
+    await ue.click(within(paidRow as HTMLElement).getByRole('button', { name: /Row actions|Actions|More/ }));
+    await ue.click(await screen.findByRole('menuitem', { name: 'Undo paid' }));
+    await ue.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Undo paid' }));
+    await waitFor(() => expect(patched).toEqual([['/referrals/r1/reward', { rewardStatus: 'approved' }]]));
+    const outsideRow = screen.getByText('Divya Pillai').closest('tr')!;
+    await ue.click(within(outsideRow as HTMLElement).getByRole('button', { name: /Row actions|Actions|More/ }));
+    await ue.click(await screen.findByRole('menuitem', { name: 'Mark bonus paid' }));
+    const d = screen.getByRole('dialog');
+    expect(within(d).getByText(/has no employee record/)).toBeInTheDocument();
+    await ue.click(within(d).getByRole('button', { name: 'Mark paid' }));
+    await waitFor(() => expect(patched).toContainEqual(['/referrals/r3/reward', { rewardStatus: 'paid', paidVia: 'outside' }]));
   });
 
   it('a resignation waiting for approval shows Bonus on hold and offers no Mark paid (answer 234)', async () => {

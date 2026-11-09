@@ -727,8 +727,10 @@ const hiring: SettingsPageDef = {
             ['Sales', 'Applied, Phone screen, AI interview, Manager round, Offer, Joined', 'Sales roles'],
           ],
           addLabel: 'Add pipeline template',
+          // Founder answer 302: each pipeline's stage targets (days target and limit per stage) are edited here.
+          rowAction: 'Stage targets',
           starter: true,
-          synonyms: ['stages', 'hiring process'],
+          synonyms: ['stages', 'hiring process', 'stage targets', 'days target'],
         },
         {
           key: 'hire.scorecards',
@@ -744,6 +746,8 @@ const hiring: SettingsPageDef = {
           starter: true,
           synonyms: ['interview feedback', 'rating form'],
         },
+        // Founder answer 291: a hiring manager's request starts with this recruiter, or none; never the manager themselves.
+        { key: 'hire.default_recruiter', label: 'Default recruiter for new requisitions', kind: 'select', value: 'None', options: ['None', 'Neha Joshi', 'Arjun Kulkarni'], helper: 'A hiring manager’s request starts with this recruiter. None: it waits until recruiting assigns one. It is never the manager themselves.', starter: true, scope: 'Company', synonyms: ['recruiter', 'requisition', 'request a hire'] },
         { key: 'hire.plan_approvers', label: 'Headcount plan approvers', kind: 'multiselect', value: ['HR head', 'Finance head'], options: ['HR head', 'Finance head', 'CEO', 'Department head'], starter: true, scope: 'Company', synonyms: ['manpower plan', 'budget approval'] },
         { key: 'hire.outside_plan_approver', label: 'Extra approver for outside-plan or over-budget hiring', kind: 'select', value: 'Chief Financial Officer', options: ['Chief Financial Officer', 'Chief Executive Officer', 'Managing Director', 'HR head'], starter: true, scope: 'Company' },
         { key: 'hire.replacement_link', label: 'Replacement hires use the leaver’s plan line', kind: 'toggle', value: true, starter: true, scope: INHERITED },

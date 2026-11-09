@@ -1348,6 +1348,8 @@ function LiveTimeReportsScreen({ live }: { live: LiveAttendanceReport | LiveNigh
             state={tableState}
             onRetry={live.onRetry}
             toolbar={<FilterBar fields={[{ key: 'loc', label: 'Location', type: 'multi', options: [...new Set(rows.map((x) => x.loc))].map((l) => ({ value: l, label: l })) }, ...(mgr ? [] : [{ key: 'dept', label: 'Department', type: 'multi' as const, options: [...new Set(rows.map((x) => x.label))].map((d) => ({ value: d, label: d })) }])]} value={filters} onChange={setFilters} />}
+            // Answers 241/286: the file is CSV, so the menu offers CSV only.
+            exportFormats={['csv']}
             onExport={exportRows}
             empty={
               filters.length > 0 ? (
@@ -1521,6 +1523,8 @@ function SampleAttendanceReports({ report, persona, month: startMonth, filters: 
             state={tableState}
             onRetry={() => {}}
             toolbar={<FilterBar fields={[{ key: 'loc', label: 'Location', type: 'multi', options: LOCS.map((l) => ({ value: l, label: l })) }, ...(mgr ? [] : [{ key: 'dept', label: 'Department', type: 'multi' as const, options: [...new Set(LATE.map((l) => l.label))].map((d) => ({ value: d, label: d })) }])]} value={filters} onChange={setFilters} />}
+            // Answers 241/286: the file is CSV, so the menu offers CSV only.
+            exportFormats={['csv']}
             onExport={(format) => download(`${reportName} · ${monthLabel}.${format}`)}
             empty={
               filters.length > 0 ? (

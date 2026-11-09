@@ -216,6 +216,8 @@ function LiveAssetRegister({ live, persona }: { live: LiveAssets; persona: Perso
           rows={shown}
           getRowId={(r) => r.id}
           state={live.state === 'loading' ? 'loading' : 'ready'}
+          // Answers 241/286: the file is CSV, so the menu offers CSV only.
+          exportFormats={['csv']}
           onExport={exportCsv('assets', shown, cols)}
           filtered={filters.length > 0 || q !== ''}
           onClearFilters={() => {

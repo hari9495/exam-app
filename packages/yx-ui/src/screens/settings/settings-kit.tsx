@@ -77,16 +77,18 @@ export interface SettingFieldProps {
   onOpenLink?: (screenId: string) => void;
   /** "Different for: …" chip chosen: switch the page to that scope. */
   onPickOverride?: (scope: string) => void;
+  /** list kind: the row's extra button (`def.rowAction`) was pressed. */
+  onRowAction?: (rowIndex: number) => void;
 }
 
-export function SettingField({ def, value, onChange, error, readOnly, highlighted, onResetScope, rows, onRowsChange, onOpenLink, onPickOverride }: SettingFieldProps) {
+export function SettingField({ def, value, onChange, error, readOnly, highlighted, onResetScope, rows, onRowsChange, onOpenLink, onPickOverride, onRowAction }: SettingFieldProps) {
   const wrap = (children: ReactNode) => (
     <div className="yx-set-field" id={`setting-${def.key}`} data-highlight={highlighted || undefined} data-kind={def.kind}>
       {children}
     </div>
   );
 
-  if (def.kind === 'list') return wrap(<MasterList def={def} rows={rows ?? def.rows ?? []} onRowsChange={onRowsChange} readOnly={readOnly} />);
+  if (def.kind === 'list') return wrap(<MasterList def={def} rows={rows ?? def.rows ?? []} onRowsChange={onRowsChange} readOnly={readOnly} onRowAction={onRowAction} />);
   if (def.kind === 'link') return wrap(<LinkedEditor def={def} onOpen={onOpenLink} />);
 
   const helper = (
@@ -261,7 +263,7 @@ function Cell({ col, text }: { col: string; text: string }) {
   return <>{text}</>;
 }
 
-export function MasterList({ def, rows, onRowsChange, readOnly: pageReadOnly, defaultEditing }: { def: SettingDef; rows: string[][]; onRowsChange?: (rows: string[][]) => void; readOnly?: boolean; defaultEditing?: number | 'new' }) {
+export function MasterList({ def, rows, onRowsChange, readOnly: pageReadOnly, defaultEditing, onRowAction }: { def: SettingDef; rows: string[][]; onRowsChange?: (rows: string[][]) => void; readOnly?: boolean; defaultEditing?: number | 'new'; onRowAction?: (rowIndex: number) => void }) {
   const readOnly = pageReadOnly || def.readOnlyList;
   const cols = def.columns ?? ['Name'];
   const [editing, setEditing] = useState<number | 'new' | null>(defaultEditing ?? null);
@@ -300,7 +302,7 @@ export function MasterList({ def, rows, onRowsChange, readOnly: pageReadOnly, de
           {def.label}
           <SettingChips def={def} current={def.value ?? null} />
         </span>
-        {!readOnly && (
+        {!readOnly && !def.fixedRows && (
           <Button size="sm" icon={Plus} onClick={() => open('new')}>
             {def.addLabel ?? 'Add'}
           </Button>
@@ -329,7 +331,7 @@ export function MasterList({ def, rows, onRowsChange, readOnly: pageReadOnly, de
             {rows.length === 0 && (
               <tr>
                 <td colSpan={cols.length + 1} className="yx-set-list__empty">
-                  None yet. {!readOnly && `Use ${def.addLabel ?? 'Add'} to create the first ${noun.toLowerCase()}.`}
+                  None yet. {!readOnly && !def.fixedRows && `Use ${def.addLabel ?? 'Add'} to create the first ${noun.toLowerCase()}.`}
                 </td>
               </tr>
             )}
@@ -344,7 +346,7 @@ export function MasterList({ def, rows, onRowsChange, readOnly: pageReadOnly, de
                   <td className="yx-set-list__act">
                     <span className="yx-set-list__btns">
                       {def.rowAction && (
-                        <Button size="sm" icon={MapPin}>
+                        <Button size="sm" icon={/map/i.test(def.rowAction) ? MapPin : undefined} onClick={() => onRowAction?.(i)}>
                           {def.rowAction}
                           <span className="yx-visually-hidden">: {r.slice(0, 2).join(', ')}</span>
                         </Button>

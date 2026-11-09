@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
 import { AddCandidateSheet, BulkActionsSheet } from './pipeline-sheets';
 import { ApplicationDrawer } from './candidate-application';
-import { JobSettingsPanel, type LiveJobSettings } from './job-settings';
+import { JobSettingsPanel, StageTargetsSheet, type LiveJobSettings } from './job-settings';
 import { PipelineBoardScreen, type LivePipelineBoard } from './hiring-pipeline';
 import { sampleBulk } from './hir-04-pipeline.stories';
 import { sampleApplication } from './hir-05-candidate.stories';
@@ -94,7 +94,7 @@ const settings = (over: Partial<LiveJobSettings> = {}): LiveJobSettings => ({
   onScorecard: vi.fn(async () => undefined),
   onUpdateJob: vi.fn(async () => undefined),
   onCopy: vi.fn(async () => undefined),
-  onStageTargets: vi.fn(async () => undefined),
+  onOpenSettings: vi.fn(),
   ...over,
 });
 
@@ -110,24 +110,41 @@ describe('HIR-03 job settings (answer 261) and stage targets (answer 263)', () =
     expect(live.onLinkExam).not.toHaveBeenCalled();
   });
 
-  it('stage targets: out of range is refused; a change saves only the changed stage, empty clears it', async () => {
+  it('stage targets are read-only on the job (answer 302): Change in Settings opens Settings › Hiring', async () => {
     const live = settings();
     show(<JobSettingsPanel live={live} />);
-    const limit = screen.getByLabelText(/^Interview: limit/);
-    await ue.clear(limit);
-    await ue.click(screen.getByRole('button', { name: 'Save stage targets' }));
-    await waitFor(() => expect(live.onStageTargets).toHaveBeenCalledWith([{ stageId: 's2', daysTarget: 7, limit: null }]));
+    expect(screen.getByText('7 days target · limit 6')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save stage targets' })).not.toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Change in Settings' }));
+    expect(live.onOpenSettings).toHaveBeenCalled();
+  });
+
+  it('stage targets sheet (Settings › Hiring): out of range is refused and focused; a change saves only the changed stage, empty clears it', async () => {
+    const onSave = vi.fn(async () => undefined);
+    const stages = [{ id: 's1', name: 'Applied', daysTarget: null, limit: null }, { id: 's2', name: 'Interview', daysTarget: 7, limit: 6 }];
+    show(<StageTargetsSheet open onOpenChange={() => undefined} pipelineName="Standard" stages={stages} canEdit onSave={onSave} />);
     const days = screen.getByLabelText(/^Applied: days target/);
     await ue.type(days, '0');
     await ue.click(screen.getByRole('button', { name: 'Save stage targets' }));
     expect((await screen.findAllByText(/1 to 365 days|between 1 and 365/)).length).toBeGreaterThan(0);
-    expect(live.onStageTargets).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(document.activeElement?.id).toBe('st-days-0'));
+    expect(onSave).not.toHaveBeenCalled();
+    await ue.clear(days);
+    await ue.clear(screen.getByLabelText(/^Interview: limit/));
+    await ue.click(screen.getByRole('button', { name: 'Save stage targets' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith([{ stageId: 's2', daysTarget: 7, limit: null }]));
+  });
+
+  it('stage targets sheet without the pipelines key shows the values as text', () => {
+    show(<StageTargetsSheet open onOpenChange={() => undefined} pipelineName="Standard" stages={[{ id: 's2', name: 'Interview', daysTarget: 7, limit: 6 }]} canEdit={false} />);
+    expect(screen.getByText('7 days target · limit 6')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save stage targets' })).not.toBeInTheDocument();
   });
 
   it('without the keys the values are text, nothing can be changed', () => {
     show(<JobSettingsPanel live={settings({ canManage: false, canConfigure: false })} />);
     expect(screen.getByText('7 days target · limit 6')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Save stage targets' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Change in Settings' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Link test' })).not.toBeInTheDocument();
     expect(screen.queryByRole('switch')).not.toBeInTheDocument();
   });
@@ -155,22 +172,6 @@ describe('HIR-03 job settings (answer 261) and stage targets (answer 263)', () =
 });
 
 describe('HIR-05 application on the record (answer 261)', () => {
-  it('schedules an interview with the panel; without a booking window it asks', async () => {
-    const onSchedule = vi.fn(async () => ({}));
-    show(<ApplicationDrawer {...sampleApplication} onSchedule={onSchedule} />);
-    await ue.click(screen.getByRole('tab', { name: /Interviews/ }));
-    await ue.click(screen.getByRole('button', { name: 'Schedule an interview' }));
-    const d = lastDialog();
-    await ue.click(within(d).getByRole('radio', { name: 'Candidate books' }));
-    await ue.click(within(d).getByRole('combobox', { name: 'Panel' }));
-    await ue.click(screen.getByRole('option', { name: 'Kavya' }));
-    await ue.keyboard('{Escape}');
-    await ue.type(within(d).getByLabelText(/^Where/), 'Video call');
-    await ue.click(within(d).getByRole('button', { name: 'Schedule' }));
-    expect(within(d).getByText('Choose the first bookable date.')).toBeInTheDocument();
-    expect(onSchedule).not.toHaveBeenCalled();
-  });
-
   it('HIR-09: the offers tab opens the offer builder and each offer’s record; one open offer at a time', async () => {
     const onNewOffer = vi.fn();
     const onOpenOffer = vi.fn();

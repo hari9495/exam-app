@@ -1,6 +1,9 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { PipelinesService } from './pipelines.service';
 
+// updateStage refuses an id that is not a uuid (HIR-04 follow-ups).
+const STAGE_ID = '11111111-1111-4111-8111-111111111111';
+
 describe('PipelinesService guardrails', () => {
   let service: PipelinesService;
   let tenantPrisma: { forTenant: jest.Mock };
@@ -83,7 +86,7 @@ describe('PipelinesService guardrails', () => {
   });
 
   it('rejects an invalid category on updateStage', async () => {
-    await expect(service.updateStage(context, 'u1', 's1', { category: 'bogus' as any })).rejects.toThrow(BadRequestException);
+    await expect(service.updateStage(context, 'u1', STAGE_ID, { category: 'bogus' as any })).rejects.toThrow(BadRequestException);
     expect(tx.pipelineStage.update).not.toHaveBeenCalled();
   });
 
@@ -92,10 +95,10 @@ describe('PipelinesService guardrails', () => {
     tx.pipelineStage.findFirst.mockResolvedValue({ id: 's1', organizationId: 'org-1' });
     tx.pipelineStage.update.mockResolvedValue({ id: 's1', name: 'X', rulesJson: JSON.stringify(rules) });
 
-    const result = await service.updateStage(context, 'u1', 's1', { rules } as any);
+    const result = await service.updateStage(context, 'u1', STAGE_ID, { rules } as any);
 
     expect(tx.pipelineStage.update).toHaveBeenCalledWith({
-      where: { id: 's1' },
+      where: { id: STAGE_ID },
       data: { rulesJson: JSON.stringify(rules) },
     });
     expect(result).toEqual({ id: 's1', name: 'X', rules });
@@ -103,7 +106,7 @@ describe('PipelinesService guardrails', () => {
   });
 
   it('updateStage rejects an invalid rule shape without touching the DB', async () => {
-    await expect(service.updateStage(context, 'u1', 's1', { rules: [{ type: 'bogus' }] } as any)).rejects.toThrow(BadRequestException);
+    await expect(service.updateStage(context, 'u1', STAGE_ID, { rules: [{ type: 'bogus' }] } as any)).rejects.toThrow(BadRequestException);
     expect(tx.pipelineStage.update).not.toHaveBeenCalled();
   });
 

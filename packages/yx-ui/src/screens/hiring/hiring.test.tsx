@@ -227,15 +227,18 @@ describe('screens', () => {
     expect(screen.getByText(/Publishing is blocked/)).toBeInTheDocument();
   });
 
-  it('HIR-07: scorecard submit enables after all ratings and a recommendation', async () => {
+  it('HIR-07: submit is never greyed; pressed too early it names the gap; complete, it asks to confirm', async () => {
     const u = userEvent.setup();
     render(<ScorecardScreen candidate="A" round="Panel 1" skills={[{ skill: 'Test design', weight: 100, passBar: 3, hint: 'h' }]} />);
     const submit = screen.getByRole('button', { name: 'Submit scorecard' });
-    expect(submit).toBeDisabled();
+    expect(submit).toBeEnabled();
+    await u.click(submit);
+    expect(screen.getByText('Rate Test design.')).toBeInTheDocument();
     await u.click(screen.getByRole('radio', { name: '2' }));
     expect(screen.getByText(/Below the pass bar on Test design/)).toBeInTheDocument();
     await u.click(screen.getByRole('radio', { name: 'Yes' }));
-    expect(submit).toBeEnabled();
+    await u.click(submit);
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
   });
 });
 

@@ -15,4 +15,6 @@ export class SubmitReferralDto {
 export class SetRewardStatusDto {
   @IsIn(['pending', 'approved', 'paid', 'rejected']) rewardStatus!: string;
   @IsOptional() @IsString() @MaxLength(2000) rewardNote?: string;
+  // Answer 285: "paid" goes through payroll (default) or was paid outside payroll (the cost is posted at once).
+  @IsOptional() @IsIn(['payroll', 'outside']) paidVia?: 'payroll' | 'outside';
 }

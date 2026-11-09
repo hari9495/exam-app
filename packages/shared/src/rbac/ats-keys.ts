@@ -17,6 +17,8 @@ export const ATS_KEYS = [
   'ats.candidate.data_rights',
   // HIR-11 (founder answer 202): recruiting costs, for HR and recruiters.
   'ats.costs.manage',
+  // Settings 6.1 Hiring (founder answer 302 and the 6.1 build): change the company's hiring settings.
+  'ats.settings.manage',
 ] as const;
 
 /** Older key → the `ats.*` keys that satisfy it. */

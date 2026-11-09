@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { assertOwnSession } from '../service-desk/desk-access';
 import { TenantContext } from '@exam-platform/shared';
@@ -11,7 +11,7 @@ import { CurrentUserRole } from '../auth/current-user-role.decorator';
 import { HiringBoardService } from './hiring-board.service';
 import { ScorecardTemplatesService } from './scorecard-templates.service';
 import { ScorecardsService, type Viewer } from './scorecards.service';
-import { BoardRejectDto, BulkBoardDto, JobScorecardDto, MoveDto, ScorecardDto, ScorecardTemplateDto, SendOnStageDto } from './interviewing-dto';
+import { BoardRejectDto, BulkBoardDto, InterviewRangeDto, JobScorecardDto, MoveDto, ScorecardDto, ScorecardTemplateDto, SendOnStageDto } from './interviewing-dto';
 
 const viewer = (req: Request): Viewer => {
   const u = req.user as { userId: string; role: string; organizationId?: string | null; permissionProfileId?: string | null };
@@ -130,6 +130,14 @@ export class InterviewingController {
     return this.scorecards.mine(ctx, userId);
   }
 
+  // HIR-06 calendar: recruiters (pipeline:manage) see the company's interviews; anyone else only those they are on, or
+  // for jobs they are the hiring manager of.
+  @Get('interviews')
+  @RequireAnyPermission('interview:view_assigned', 'pipeline:manage', 'results:view')
+  interviewRange(@CurrentTenant() ctx: TenantContext, @Req() req: Request, @Query() q: InterviewRangeDto) {
+    return this.scorecards.range(ctx, viewer(req), new Date(q.from), new Date(q.to));
+  }
+
   // Panellists (interview:view_assigned) and recruiters; the service applies D7 per viewer.
   @Get('interviews/:id')
   @RequireAnyPermission('interview:view_assigned', 'pipeline:manage', 'results:view')
@@ -140,6 +148,8 @@ export class InterviewingController {
   @Put('interviews/:id/scorecard')
   @RequireAnyPermission('interview:view_assigned', 'pipeline:manage', 'results:view')
   saveScorecard(@CurrentTenant() ctx: TenantContext, @Req() req: Request, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ScorecardDto) {
+    // HIR-07: a scorecard is the interviewer's own judgement, never written while acting for someone else.
+    assertOwnSession(req);
     return this.scorecards.save(ctx, id, viewer(req), dto, false);
   }
 
@@ -147,6 +157,7 @@ export class InterviewingController {
   @HttpCode(200)
   @RequireAnyPermission('interview:view_assigned', 'pipeline:manage', 'results:view')
   submitScorecard(@CurrentTenant() ctx: TenantContext, @Req() req: Request, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ScorecardDto) {
+    assertOwnSession(req);
     return this.scorecards.save(ctx, id, viewer(req), dto, true);
   }
 }

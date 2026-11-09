@@ -332,6 +332,8 @@ export function LiveAgentDesk({ live }: { live: LiveAgentDesk }) {
               }
             />
           }
+          // Answers 241/286: the file is CSV, so the menu offers CSV only.
+          exportFormats={['csv']}
           onExport={() => void run('export', () => live.onExport(query))}
           rowNoun={['ticket', 'tickets']}
         />

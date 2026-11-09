@@ -5,17 +5,18 @@ import { useYxPermissions } from './yx-org';
 import { templateChoices } from './yx-candidates';
 import { useMessageTemplates } from './hooks/useCandidateMessages';
 import { useOrgSenderAddresses } from './hooks/useOrgSenderAddresses';
-import type { ApplicationDrawerProps, ApplicationView, CandidateProfileView, EmailTemplateChoice, ScorecardSummary } from '@yukthix/ui/hiring';
+import type { ApplicationDrawerProps, ApplicationView, CandidateProfileView, EmailTemplateChoice, LiveCandidateRecord, ScorecardSummary } from '@yukthix/ui/hiring';
 import { apiFetch } from './api-client';
 import { useAuth } from './auth-context';
 import { useApi, useApiWrite, useHiring } from './yx-hiring';
 import { collectChecklistItems } from './blueprintChecklist';
 import { useTeammates } from './hooks/useUserDirectory';
-import type { BoardEntryRow, CandidateEmail, CandidateSms, CandidateWhatsappMessage, FeedbackRow, Interview, Offer, PipelineStageConfig, SurveyDefinition } from './types';
+import type { BoardEntryRow, CandidateEmail, CandidateSms, CandidateWhatsappMessage, FeedbackRow, Offer, PipelineStageConfig, SurveyDefinition } from './types';
 
 // One application, for the designed HIR-05 ApplicationDrawer on the candidate record (founder answer 261: a card on the
-// HIR-04 board opens the record with ?entry=). Interviews, offers (listed; HIR-09 pages make and work them), messages, notes, the checklist and the
-// owner, on the same API the old panel used. Returns null until the application's board row is loaded.
+// HIR-04 board opens the record with ?entry=). Offers (listed; the HIR-09 pages make and work them), messages, notes, the checklist and the owner, on
+// the same API the old panel used. Returns null until the application's board row is loaded. Interviews moved to the
+// record's Schedule interview (useRecordPipeline below, answer 274) and the HIR-06 / HIR-07 pages (answer 301).
 
 export type Row = BoardEntryRow & { stageEnteredAt: string; scorecards: (ScorecardSummary & { interviewId: string }) | null; nextInterviewAt: string | null; rejectionPendingUntil: string | null };
 export type Board = { pipeline: { id: string; name: string; stages: PipelineStageConfig[] }; columns: Record<string, Row[]> };
@@ -27,9 +28,7 @@ export function useApplicationDrawer(entryId: string | null, jobId: string | nul
   const write = useApiWrite();
   const on = Boolean(entryId && jobId);
   const board = useHiring<Board>(on ? `/jobs/${encodeURIComponent(jobId!)}/board` : null);
-  const settings = useHiring<{ scorecardTemplateId: string | null }>(on ? `/jobs/${encodeURIComponent(jobId!)}/interview-settings` : null);
   const canManage = perms.has('pipeline:manage');
-  const scorecards = useHiring<{ id: string; name: string }[]>(on && canManage ? '/scorecard-templates' : null);
   const messageTemplates = useMessageTemplates();
   const senderAddresses = useOrgSenderAddresses();
   const found = Object.values(board.data?.columns ?? {}).flat().find((x) => x.entryId === entryId);
@@ -40,14 +39,11 @@ export function useApplicationDrawer(entryId: string | null, jobId: string | nul
     canManage: on && canManage,
     templates: templateChoices(messageTemplates.data),
     senders: (senderAddresses.data ?? []).map((s) => ({ value: s.id, label: `${s.label} <${s.address}>` })),
-    scorecardTemplates: (scorecards.data ?? []).map((t) => ({ value: t.id, label: t.name })),
-    defaultScorecardId: settings.data?.scorecardTemplateId ?? null,
     onClose,
   };
   const cid = found ? r.candidateId : '';
   const profile = useHiring<CandidateProfileView>(cid ? `/candidates/${cid}` : null);
   const fit = useApi<{ status: string; overallScore: number | null; summary: string | null } | null>(cid ? `/pipeline/entries/${r.entryId}/fit-assessment` : null);
-  const interviews = useApi<(Interview & { meetingUrl?: string | null; pipelineEntryId?: string })[]>(cid && p.canManage ? `/candidates/${cid}/interviews` : null);
   const emails = useApi<(CandidateEmail & { pipelineEntryId?: string | null })[]>(cid ? `/candidates/${cid}/messages` : null);
   const sms = useApi<CandidateSms[]>(cid && p.canManage ? `/candidate-sms/${cid}` : null);
   const wa = useApi<CandidateWhatsappMessage[]>(cid && p.canManage ? `/candidate-whatsapp/${cid}` : null);
@@ -69,10 +65,6 @@ export function useApplicationDrawer(entryId: string | null, jobId: string | nul
     customFields: (r.customFields ?? []).filter((f) => f.value != null).map((f) => ({ label: f.label, value: String(f.value) })),
     checklist: collectChecklistItems(p.stages).map((c) => ({ id: c.id, label: c.label, done: Boolean(r.blueprintChecklist?.[c.id]) })),
     assignee: r.assignedUserId,
-    interviews: (interviews.data ?? []).filter((i) => !i.pipelineEntryId || i.pipelineEntryId === r.entryId).map((i) => {
-      const slot = i.slots.find((s) => s.id === i.confirmedSlotId) ?? i.slots[0];
-      return { id: i.id, status: i.status, when: slot?.startsAt ?? null, panel: i.panelists.map((x) => (people.data ?? []).find((t) => t.id === x.userId)?.name ?? 'Panellist'), location: i.location, meetingUrl: i.meetingUrl ?? null, scorecards: r.scorecards?.interviewId === i.id ? r.scorecards : null };
-    }),
     emails: (emails.data ?? []).map((m) => ({ id: m.id, subject: m.subject, status: m.status, at: m.createdAt })),
     sms: (sms.data ?? []).map((m) => ({ id: m.id, body: m.renderedBody, status: m.status, at: m.createdAt })),
     whatsapp: (wa.data ?? []).map((m) => ({ id: m.id, body: m.renderedBody, status: m.status, at: m.createdAt })),
@@ -89,8 +81,6 @@ export function useApplicationDrawer(entryId: string | null, jobId: string | nul
     canManage: p.canManage,
     statuses: p.stages.filter((s) => s.category !== 'rejected').flatMap((s) => s.statuses.map((x) => ({ value: x.id, label: s.statuses.length > 1 ? `${s.name} · ${x.name}` : s.name }))),
     people: (people.data ?? []).map((t) => ({ value: t.id, label: t.name ?? t.email })),
-    scorecardTemplates: p.scorecardTemplates,
-    defaultScorecardId: p.defaultScorecardId,
     templates: p.templates,
     senders: p.senders,
     smsTemplates: text(smsTemplates.data),
@@ -106,13 +96,6 @@ export function useApplicationDrawer(entryId: string | null, jobId: string | nul
         const { url } = (await call(`/candidates/${cid}/resume`, 'GET')) as { url: string };
         window.open(url, '_blank', 'noopener');
       },
-    onSchedule: (i) => write('POST', `/pipeline/entries/${r.entryId}/interviews`, {
-        panelistUserIds: i.panelistUserIds, location: i.location, timeZone: i.timeZone, ...(i.note ? { recruiterNote: i.note } : {}), ...(i.scorecardTemplateId ? { scorecardTemplateId: i.scorecardTemplateId } : {}),
-        ...(i.mode === 'proposed' ? { bookingMode: 'proposed', slots: i.slots } : { bookingMode: 'self_book', bookingWindowStart: i.windowStart, bookingWindowEnd: i.windowEnd, slotDurationMinutes: i.slotMinutes }),
-      }),
-    onOpenInterview: (ivId) => router.push(`/yx/hiring/interviews/${encodeURIComponent(ivId)}`),
-    onCancelInterview: (ivId) => write('POST', `/interviews/${ivId}/cancel`),
-    onResendInterview: (ivId) => write('POST', `/interviews/${ivId}/send`),
     onEmail: (c) => write('POST', `/pipeline/entries/${r.entryId}/messages`, c),
     onSms: (body, templateId) => write('POST', `/candidate-sms/${r.entryId}`, { body, ...(templateId ? { templateId } : {}) }),
     onWhatsapp: (body, templateId) => write('POST', `/candidate-whatsapp/${r.entryId}`, { body, ...(templateId ? { templateId } : {}) }),
@@ -122,5 +105,43 @@ export function useApplicationDrawer(entryId: string | null, jobId: string | nul
     // HIR-09: offers are made and worked on the offer builder and record pages.
     onNewOffer: () => router.push(`/yx/hiring/offers/new?entry=${encodeURIComponent(r.entryId)}`),
     onOpenOffer: (offerId) => router.push(`/yx/hiring/offers/${encodeURIComponent(offerId)}`),
+  };
+}
+
+/**
+ * HIR-05 record › Schedule interview and Move to next stage (founder answer 274), for the application open on the record
+ * (?entry=) or else the first open one. Null without the pipeline key, while acting for someone else (the API refuses
+ * too), with no open application, or until its board row is loaded.
+ */
+export function useRecordPipeline(view: CandidateProfileView | null, entryId: string | null): LiveCandidateRecord['pipeline'] {
+  const perms = useYxPermissions();
+  const { impersonating, actingSuperAdmin } = useAuth();
+  const write = useApiWrite();
+  const people = useTeammates();
+  const allowed = perms.has('pipeline:manage') && !impersonating && !actingSuperAdmin;
+  const app = view?.applications.find((a) => a.id === entryId && !a.closed) ?? view?.applications.find((a) => !a.closed) ?? null;
+  const jobId = allowed && app ? encodeURIComponent(app.jobId) : null;
+  const board = useHiring<Board>(jobId ? `/jobs/${jobId}/board` : null);
+  const settings = useHiring<{ scorecardTemplateId: string | null }>(jobId ? `/jobs/${jobId}/interview-settings` : null);
+  const templates = useHiring<{ id: string; name: string }[]>(jobId ? '/scorecard-templates' : null);
+  const row = app ? Object.values(board.data?.columns ?? {}).flat().find((x) => x.entryId === app.id) : undefined;
+  if (!jobId || !app || !board.data || !row) return null;
+  const stages = board.data.pipeline.stages.filter((s) => s.category !== 'rejected').sort((a, b) => a.position - b.position);
+  const at = stages.findIndex((s) => s.id === row.stageId);
+  const next = row.category !== 'rejected' && at >= 0 ? stages[at + 1] : undefined;
+  return {
+    jobTitle: app.jobTitle,
+    next: next?.statuses[0] ? { name: next.name } : null,
+    onMove: async () => void (await write('POST', `/hiring/entries/${app.id}/move`, { statusId: next!.statuses[0].id, fromStatusId: row.statusId })),
+    schedule: {
+      people: (people.data ?? []).map((t) => ({ value: t.id, label: t.name ?? t.email })),
+      scorecardTemplates: (templates.data ?? []).map((t) => ({ value: t.id, label: t.name })),
+      defaultScorecardId: settings.data?.scorecardTemplateId ?? null,
+      onSchedule: (i) =>
+        write('POST', `/pipeline/entries/${app.id}/interviews`, {
+          panelistUserIds: i.panelistUserIds, location: i.location, timeZone: i.timeZone, ...(i.note ? { recruiterNote: i.note } : {}), ...(i.scorecardTemplateId ? { scorecardTemplateId: i.scorecardTemplateId } : {}),
+          ...(i.mode === 'proposed' ? { bookingMode: 'proposed', slots: i.slots } : { bookingMode: 'self_book', bookingWindowStart: i.windowStart, bookingWindowEnd: i.windowEnd, slotDurationMinutes: i.slotMinutes }),
+        }),
+    },
   };
 }

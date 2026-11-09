@@ -21,13 +21,13 @@ import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, Tab
 import { Text } from '../../components/foundations';
 import { formatDate, formatINR, formatPhone } from '../../lib/format';
 import { PhoneFrame } from '../_kit/frames';
-import { assignInterviewDay, findSlots, identityFlags, minutesToLabel, scorecardResult, type IdCheckpoint, type Panelist, type ScoreItem, type SlotRules } from './hiring-logic';
+import { assignInterviewDay, findSlots, identityFlags, istWall, istWhen, minutesToLabel, scorecardResult, type IdCheckpoint, type Panelist, type ScoreItem, type SlotRules } from './hiring-logic';
 import { ExEmployeeBanner, HireFrame, IdentityStrip, PipelineFacts, RecordLayout, RecordingPlaceholder, SlotGrid, SummaryTiles, type ExEmployeeInfo, type Score } from './hiring-kit';
 import type { Candidate } from './hiring-data';
 import { EmailDialog, PickDialog, StageBadge, istDay } from './candidate-dialogs';
 import { AddCandidateSheet, BulkActionsSheet, type AddCandidateSheetProps, type BulkActionsSheetProps } from './pipeline-sheets';
-import { ApplicationDrawer, type ApplicationDrawerProps } from './candidate-application';
-import type { CandidateProfileView, Choice, EmailCompose, EmailTemplateChoice, MergeChoices } from './live/types';
+import { ApplicationDrawer, ScheduleDialog, type ApplicationDrawerProps, type ScheduleDialogProps } from './candidate-application';
+import type { CandidateProfileView, Choice, EmailCompose, EmailTemplateChoice, InterviewRangeRow, InterviewView, MergeChoices, MyInterviewRow, Recommendation as LiveRecommendation, ScorecardInput } from './live/types';
 import './hiring.css';
 
 type ListState = 'ready' | 'loading' | 'error';
@@ -387,6 +387,19 @@ export interface LiveCandidateRecord {
   /** Answer 261: one application open on the record (a board card or Open application): interviews, messages, notes, offers. */
   application?: Omit<ApplicationDrawerProps, 'open'> | null;
   onOpenApplication?: (entryId: string) => void;
+  /**
+   * Answer 274: Schedule interview and Move to next stage for the open application, as drawn. Null without the
+   * pipeline key, while acting for someone else, or with no open application.
+   */
+  pipeline?: {
+    jobTitle: string;
+    /** The next stage of the job's pipeline; null at the last one. */
+    next: { name: string } | null;
+    onMove: () => Promise<void>;
+    schedule: Omit<ScheduleDialogProps, 'onClose' | 'forWhat'>;
+  } | null;
+  /** Opens the HIR-07 scorecard page of one interview (the API decides who may read it). */
+  onOpenInterview?: (interviewId: string) => void;
 }
 
 // HIR-05
@@ -550,6 +563,7 @@ function SampleCandidateRecord({ candidate: c, viewer, exEmployee, minor, identi
 }
 
 const PURPOSE: Record<string, string> = { application: 'Processing consent (applying for a job)', talent_pool: 'Kept for other roles (talent pool)' };
+const IV_STATUS: Record<string, string> = { proposed: 'Times proposed', confirmed: 'Confirmed', cancelled: 'Cancelled', declined: 'Declined by the candidate', reschedule_requested: 'Asked to reschedule' };
 const REASON_TEXT: Record<string, string> = { phone: 'the same phone number', name_phone: 'the same name and number', resume: 'a similar résumé' };
 const at = (iso: string) => new Date(iso);
 
@@ -575,7 +589,8 @@ function activityOf(v: CandidateProfileView, team: string): TimelineItem[] {
 
 function LiveCandidateRecordView({ live }: { live: LiveCandidateRecord }) {
   const toast = useToastIfAny();
-  const [dialog, setDialog] = useState<null | 'email' | 'pool' | 'hold' | 'erase' | 'withdraw' | 'clear'>(null);
+  const [dialog, setDialog] = useState<null | 'email' | 'pool' | 'hold' | 'erase' | 'withdraw' | 'clear' | 'schedule'>(null);
+  const [moving, setMoving] = useState(false);
   const [merging, setMerging] = useState<{ otherId: string | null; fromMenu: boolean } | null>(null);
   const done = (title: string, description?: string): void => void toast?.toast({ tone: 'success', title, description });
   const v = live.profile;
@@ -666,7 +681,27 @@ function LiveCandidateRecordView({ live }: { live: LiveCandidateRecord }) {
                     Email
                   </Button>
                 )}
-                {open ? (
+                {live.pipeline && (
+                  <Button icon={CalendarPlus} onClick={() => setDialog('schedule')}>
+                    Schedule interview
+                  </Button>
+                )}
+                {live.pipeline?.next ? (
+                  <Button
+                    variant="primary"
+                    loading={moving}
+                    onClick={() => {
+                      const pl = live.pipeline!;
+                      setMoving(true);
+                      pl.onMove().then(
+                        () => done(`Moved to ${pl.next!.name}`, pl.jobTitle),
+                        (e: unknown) => void toast?.toast({ tone: 'error', title: 'Not moved', description: e instanceof Error ? e.message : 'Try again.' }),
+                      ).finally(() => setMoving(false));
+                    }}
+                  >
+                    Move to next stage
+                  </Button>
+                ) : open ? (
                   <Button variant="primary" onClick={() => live.onOpenJob(open.jobId)}>
                     Open in pipeline
                   </Button>
@@ -771,7 +806,7 @@ function LiveCandidateRecordView({ live }: { live: LiveCandidateRecord }) {
                 tiles={[
                   { label: 'Assessments', value: v.assessments.length ? `${v.assessments.length}` : 'Not taken', sub: v.assessments[0] ? `Latest: ${v.assessments[0].exam}, ${v.assessments[0].status}` : undefined },
                   { label: 'Interviews', value: v.interviews.length ? `${v.interviews.length}` : 'None yet', sub: v.interviews[0] ? `Latest: ${v.interviews[0].status}` : undefined },
-                  { label: 'Panel average', value: 'On the pipeline board', sub: 'Scorecards are read there' },
+                  { label: 'Panel average', value: 'On the pipeline board', sub: 'Open an interview to read its scorecards' },
                 ]}
               />
               {v.assessments.length > 0 && (
@@ -785,6 +820,26 @@ function LiveCandidateRecordView({ live }: { live: LiveCandidateRecord }) {
                         </Text>
                       </div>
                       <Badge>{a.status}</Badge>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {v.interviews.length > 0 && (
+                <ul className="yx-hire-list" aria-label="Interviews">
+                  {v.interviews.map((i) => (
+                    <li key={i.id} className="yx-hire-list__item">
+                      <div className="yx-hire-list__main">
+                        <Text weight="medium">Interview{i.jobTitle ? ` · ${i.jobTitle}` : ''}</Text>
+                        <Text size="sm" tone="secondary">
+                          {i.when ? istWhen(i.when) : 'Time not fixed yet'}
+                        </Text>
+                      </div>
+                      <Badge tone={i.status === 'cancelled' ? 'neutral' : 'info'}>{IV_STATUS[i.status] ?? i.status}</Badge>
+                      {live.onOpenInterview && (
+                        <Button size="sm" onClick={() => live.onOpenInterview!(i.id)}>
+                          Open scorecards
+                        </Button>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -868,6 +923,7 @@ function LiveCandidateRecordView({ live }: { live: LiveCandidateRecord }) {
           }}
         />
       )}
+      {dialog === 'schedule' && live.pipeline && <ScheduleDialog {...live.pipeline.schedule} forWhat={live.pipeline.jobTitle} onClose={() => setDialog(null)} onSchedule={async (i) => (await live.pipeline!.schedule.onSchedule(i), done('Interview scheduled', 'It is on the interview calendar.'))} />}
       {dialog === 'clear' && <ClearRehireDialog onClose={() => setDialog(null)} onSave={async (reason) => (await live.onClearRehire(reason), done('Rehire flag cleared'))} />}
       {live.application && <ApplicationDrawer {...live.application} open />}
       {merging && (
@@ -1096,6 +1152,15 @@ export function MergeDrawer({ open, onOpenChange, a, b, live }: { open: boolean;
 
 /* ================================================================== HIR-06 · Interview calendar + slot finder */
 
+/** One line of the interviewer's Scorecards card. Live adds started, no scorecard and cancelled to the drawn three. */
+export interface MyInterviewItem {
+  id: string;
+  candidate: string;
+  round: string;
+  when: string;
+  scorecard: 'due' | 'overdue' | 'submitted' | 'started' | 'none' | 'cancelled';
+}
+
 export interface InterviewCalendarProps {
   events: CalendarEvent[];
   persona: 'recruiter' | 'interviewer';
@@ -1103,13 +1168,76 @@ export interface InterviewCalendarProps {
   panel?: Panelist[];
   rules?: SlotRules;
   slotFinderOpen?: boolean;
-  myInterviews?: { id: string; candidate: string; round: string; when: string; scorecard: 'due' | 'overdue' | 'submitted' }[];
+  myInterviews?: MyInterviewItem[];
+}
+
+/**
+ * The live calendar (HIR-06): interviews from GET hiring/interviews?from=&to= (recruiters: the company's; anyone else:
+ * theirs and their jobs'), and the viewer's own panel interviews from GET hiring/interviews/mine. Times in India time.
+ */
+export interface LiveInterviewCalendar {
+  state: 'loading' | 'ready' | 'error' | 'denied';
+  onRetry: () => void;
+  persona: 'recruiter' | 'interviewer';
+  now: Date;
+  events: InterviewRangeRow[];
+  mine: MyInterviewRow[];
+  /** The calendar moved to another week or day (an India date); the page loads that range. */
+  onDate: (date: Date) => void;
+  /** Opens the HIR-07 scorecard page. */
+  onOpen: (interviewId: string) => void;
 }
 
 export const DEFAULT_RULES: SlotRules = { dayStart: 9 * 60 + 30, dayEnd: 17 * 60 + 30, duration: 60, buffer: 15, maxPerDay: 3 };
 
+const MINE_BADGE: Record<MyInterviewItem['scorecard'], { label: string; tone: 'neutral' | 'warning' | 'success' | 'info' }> = {
+  due: { label: 'Scorecard due', tone: 'neutral' },
+  overdue: { label: 'Scorecard overdue', tone: 'warning' },
+  submitted: { label: 'Scorecard submitted', tone: 'success' },
+  started: { label: 'Scorecard started', tone: 'info' },
+  none: { label: 'No scorecard', tone: 'neutral' },
+  cancelled: { label: 'Cancelled', tone: 'neutral' },
+};
+const TO_FILL: MyInterviewItem['scorecard'][] = ['due', 'overdue', 'started'];
+
+function ScorecardsCard({ items, onOpen, emptyText }: { items: MyInterviewItem[]; onOpen?: (id: string) => void; emptyText: string }) {
+  return (
+    <Card title="Scorecards">
+      {items.length === 0 ? (
+        <EmptyState compact title={emptyText} />
+      ) : (
+        <ul className="yx-hire-list">
+          {items.map((i) => (
+            <li key={i.id} className="yx-hire-list__item">
+              <div className="yx-hire-list__main">
+                <PersonLabel name={i.candidate} secondary={`${i.round} · ${i.when}`} />
+              </div>
+              <Badge tone={MINE_BADGE[i.scorecard].tone}>{MINE_BADGE[i.scorecard].label}</Badge>
+              {TO_FILL.includes(i.scorecard) ? (
+                <Button size="sm" aria-label={`Fill scorecard for ${i.candidate}`} onClick={onOpen && (() => onOpen(i.id))}>
+                  Fill scorecard
+                </Button>
+              ) : (
+                onOpen && (
+                  <Button size="sm" aria-label={`Open the interview with ${i.candidate}`} onClick={() => onOpen(i.id)}>
+                    Open
+                  </Button>
+                )
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
 // HIR-06
-export function InterviewCalendarScreen({ events, persona, today, panel = [], rules = DEFAULT_RULES, slotFinderOpen = false, myInterviews = [] }: InterviewCalendarProps) {
+export function InterviewCalendarScreen(props: InterviewCalendarProps | { live: LiveInterviewCalendar }) {
+  return 'live' in props ? <LiveInterviewCalendarView live={props.live} /> : <SampleInterviewCalendar {...props} />;
+}
+
+function SampleInterviewCalendar({ events, persona, today, panel = [], rules = DEFAULT_RULES, slotFinderOpen = false, myInterviews = [] }: InterviewCalendarProps) {
   const [open, setOpen] = useState(slotFinderOpen);
   const [chosen, setChosen] = useState<number | null>(null);
   const slots = findSlots(panel, rules);
@@ -1121,27 +1249,7 @@ export function InterviewCalendarScreen({ events, persona, today, panel = [], ru
         description={persona === 'recruiter' ? 'Panel rounds for your jobs. Free / busy comes from connected calendars.' : 'Interviews you are on, and scorecards you owe.'}
         actions={persona === 'recruiter' ? <Button variant="primary" icon={CalendarPlus} onClick={() => setOpen(true)}>Find a slot</Button> : undefined}
       />
-      {persona === 'interviewer' && (
-        <Card title="Scorecards">
-          {myInterviews.length === 0 ? (
-            <EmptyState compact title="No interviews assigned to you this week." />
-          ) : (
-            <ul className="yx-hire-list">
-              {myInterviews.map((i) => (
-                <li key={i.id} className="yx-hire-list__item">
-                  <div className="yx-hire-list__main">
-                    <PersonLabel name={i.candidate} secondary={`${i.round} · ${i.when}`} />
-                  </div>
-                  <Badge tone={i.scorecard === 'overdue' ? 'warning' : i.scorecard === 'submitted' ? 'success' : 'neutral'}>
-                    Scorecard {i.scorecard}
-                  </Badge>
-                  {i.scorecard !== 'submitted' && <Button size="sm">Fill scorecard</Button>}
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      )}
+      {persona === 'interviewer' && <ScorecardsCard items={myInterviews} emptyText="No interviews assigned to you this week." />}
       <Calendar events={events} defaultView={persona === 'recruiter' ? 'week' : 'agenda'} defaultDate={today} today={today} aria-label="Interview calendar" />
       <Drawer
         open={open}
@@ -1185,6 +1293,55 @@ export function InterviewCalendarScreen({ events, persona, today, panel = [], ru
   );
 }
 
+/** The interviewer's list: overdue first, then the rest to fill, then the others; earliest first within each. */
+export function myInterviewItems(rows: MyInterviewRow[]): MyInterviewItem[] {
+  const status = (r: MyInterviewRow): MyInterviewItem['scorecard'] =>
+    r.status === 'cancelled' ? 'cancelled' : r.scorecard === 'none' ? 'none' : r.scorecard === 'submitted' ? 'submitted' : r.overdue ? 'overdue' : r.scorecard === 'draft' ? 'started' : 'due';
+  const rank = (s: MyInterviewItem['scorecard']) => (s === 'overdue' ? 0 : TO_FILL.includes(s) ? 1 : 2);
+  return rows
+    .map((r) => ({ row: r, item: { id: r.id, candidate: r.candidateName, round: r.jobTitle, when: r.when ? istWhen(r.when) : 'Time not fixed yet', scorecard: status(r) } }))
+    .sort((a, b) => rank(a.item.scorecard) - rank(b.item.scorecard) || (a.row.when ?? '9').localeCompare(b.row.when ?? '9'))
+    .map((x) => x.item);
+}
+
+function LiveInterviewCalendarView({ live }: { live: LiveInterviewCalendar }) {
+  const recruiter = live.persona === 'recruiter';
+  const today = istWall(live.now);
+  const header = <PageHeader title={recruiter ? 'Interviews' : 'My interviews'} description={recruiter ? 'Every interview in the company, in India time (IST). Open one to read its scorecards.' : 'Interviews you are on, and scorecards you owe. Times are India time (IST).'} />;
+  if (live.state !== 'ready')
+    return (
+      <HireFrame active="Interviews">
+        {header}
+        {live.state === 'loading' ? (
+          <div className="yx-hire-stack" aria-busy="true" aria-label="Loading interviews">
+            <Skeleton height={64} />
+            <Skeleton height={320} />
+          </div>
+        ) : live.state === 'error' ? (
+          <ErrorState title="Interviews could not be loaded." onRetry={live.onRetry} />
+        ) : (
+          <NoAccessState grantedBy="the recruiter" what="interviews" />
+        )}
+      </HireFrame>
+    );
+  const items = myInterviewItems(live.mine);
+  const events: CalendarEvent[] = live.events.map((r) => ({
+    id: r.id,
+    title: `${r.status === 'cancelled' ? 'Cancelled · ' : ''}${r.candidateName} · ${r.jobTitle}`,
+    start: istWall(r.startsAt),
+    end: istWall(r.endsAt),
+    type: 'interview',
+    pending: !r.confirmed,
+  }));
+  return (
+    <HireFrame active="Interviews">
+      {header}
+      {(!recruiter || items.length > 0) && <ScorecardsCard items={items} onOpen={live.onOpen} emptyText="No interviews assigned to you." />}
+      <Calendar events={events} defaultView={recruiter ? 'week' : 'agenda'} defaultDate={today} today={today} onDateChange={live.onDate} onEventClick={(e) => live.onOpen(e.id)} aria-label="Interview calendar" />
+    </HireFrame>
+  );
+}
+
 /* ================================================================== HIR-07 · Scorecard form */
 
 export interface ScorecardFormProps {
@@ -1196,12 +1353,70 @@ export interface ScorecardFormProps {
   submitted?: boolean;
 }
 
-function ScorecardBody({ candidate, round, skills, defaultRatings, identity, submitted }: ScorecardFormProps) {
+/** What the form holds: a rating and evidence per skill, the recommendation and the summary. */
+interface ScorecardValue {
+  ratings: (number | null)[];
+  evidence: string[];
+  recommendation: string | null;
+  summary: string;
+}
+
+interface ScorecardBodyProps extends ScorecardFormProps {
+  /** Top of the rating scale (the drawn form: 5; live: the template's). */
+  scaleMax?: number;
+  defaultEvidence?: string[];
+  defaultRecommendation?: string | null;
+  defaultSummary?: string;
+  recommendations?: { value: string; label: string }[];
+  /** Live: saves the draft / submits (after the confirm); a failure shows in the form. */
+  onSave?: (v: ScorecardValue) => Promise<unknown>;
+  onSubmit?: (v: ScorecardValue) => Promise<unknown>;
+}
+
+const RECOMMENDATIONS = [
+  { value: 'strong-yes', label: 'Strong yes' },
+  { value: 'yes', label: 'Yes' },
+  { value: 'no', label: 'No' },
+  { value: 'strong-no', label: 'Strong no' },
+];
+const focusFirst = (id: string) => setTimeout(() => document.getElementById(id)?.querySelector<HTMLElement>('[role="radio"]')?.focus(), 0);
+
+function ScorecardBody({ candidate, round, skills, defaultRatings, identity, submitted, scaleMax = 5, defaultEvidence, defaultRecommendation, defaultSummary, recommendations = RECOMMENDATIONS, onSave, onSubmit }: ScorecardBodyProps) {
+  const toast = useToastIfAny();
   const [ratings, setRatings] = useState<(number | null)[]>(defaultRatings ?? skills.map(() => null));
-  const [rec, setRec] = useState<string | undefined>();
+  const [evidence, setEvidence] = useState<string[]>(defaultEvidence ?? skills.map(() => ''));
+  const [rec, setRec] = useState<string | null>(defaultRecommendation ?? null);
+  const [summary, setSummary] = useState(defaultSummary ?? '');
+  const [tried, setTried] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
   const items: ScoreItem[] = skills.map((s, i) => ({ ...s, rating: ratings[i] }));
   const res = scorecardResult(items);
   const flags = identity ? identityFlags(identity) : [];
+  const value = (): ScorecardValue => ({ ratings, evidence, recommendation: rec, summary });
+  const live = Boolean(onSave);
+  const save = async () => {
+    if (!onSave) return;
+    setSaving(true);
+    setFailed(null);
+    try {
+      await onSave(value());
+      toast?.toast({ tone: 'success', title: 'Draft saved', description: 'Only you can see it until you submit.' });
+    } catch (e) {
+      setFailed(e instanceof Error ? e.message : 'Try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+  // Never disabled: pressed too early, it shows what is missing and focuses the first gap.
+  const submit = () => {
+    setTried(true);
+    const gap = ratings.findIndex((r) => r == null);
+    if (gap >= 0) return focusFirst(`sc-skill-${gap}`);
+    if (!rec) return focusFirst('sc-rec');
+    setConfirming(true);
+  };
   return (
     <div className="yx-hire-stack">
       {identity && <IdentityStrip points={identity} compact />}
@@ -1209,56 +1424,59 @@ function ScorecardBody({ candidate, round, skills, defaultRatings, identity, sub
         <InlineAlert tone="info">Rate the interview on its merits. An identity flag goes to review separately and can&rsquo;t be the reason for your recommendation.</InlineAlert>
       )}
       {submitted && (
-        <InlineAlert tone="success" title="Scorecard submitted" actions={<Button size="sm">Add comment</Button>}>
-          The recruiter and hiring manager can see it. You can&rsquo;t edit it now; add a comment instead.
+        <InlineAlert tone="success" title="Scorecard submitted" actions={live ? undefined : <Button size="sm">Add comment</Button>}>
+          The recruiter and hiring manager can see it. You can&rsquo;t edit it now{live ? '.' : '; add a comment instead.'}
+        </InlineAlert>
+      )}
+      {failed && (
+        <InlineAlert tone="danger" title="Not saved">
+          {failed}
         </InlineAlert>
       )}
       {skills.map((s, i) => (
-        <fieldset key={s.skill} className="yx-hire-skill" disabled={submitted}>
+        <fieldset key={s.skill} id={`sc-skill-${i}`} className="yx-hire-skill" disabled={submitted}>
           <legend>
-            <Text weight="semibold">{s.skill}</Text> <Text size="sm" tone="secondary">· weight {s.weight}% · pass bar {s.passBar} of 5</Text>
+            <Text weight="semibold">{s.skill}</Text> <Text size="sm" tone="secondary">· weight {s.weight}% · pass bar {s.passBar} of {scaleMax}</Text>
           </legend>
-          <Text as="p" size="sm" tone="secondary">
-            {s.hint}
-          </Text>
-          <RadioGroup
-            aria-label={`${s.skill} rating`}
-            orientation="horizontal"
-            value={ratings[i] != null ? String(ratings[i]) : undefined}
-            onChange={(v) => setRatings((r) => r.map((x, j) => (j === i ? Number(v) : x)))}
-            options={[1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: String(n) }))}
-          />
+          {s.hint && (
+            <Text as="p" size="sm" tone="secondary">
+              {s.hint}
+            </Text>
+          )}
+          <FormField label={`${s.skill} rating`} hideLabel error={tried && ratings[i] == null ? `Rate ${s.skill}.` : null}>
+            <Segment
+              label={`${s.skill} rating`}
+              value={ratings[i] != null ? String(ratings[i]) : null}
+              onChange={(v) => setRatings((r) => r.map((x, j) => (j === i ? Number(v) : x)))}
+              options={Array.from({ length: scaleMax }, (_, n) => ({ value: String(n + 1), label: String(n + 1) }))}
+            />
+          </FormField>
           {ratings[i] != null && ratings[i]! < s.passBar && <Badge tone="warning">Below pass bar</Badge>}
-          <FormField label="Evidence" optional hideLabel>
-            <TextArea rows={2} placeholder="What did the candidate say or do?" />
+          <FormField label={`Evidence for ${s.skill}`} optional hideLabel>
+            <TextArea rows={2} placeholder="What did the candidate say or do?" value={evidence[i] ?? ''} onChange={(v) => setEvidence((x) => x.map((y, j) => (j === i ? v : y)))} maxLength={4000} />
           </FormField>
         </fieldset>
       ))}
       <div className="yx-hire-result" aria-live="polite">
-        <Text weight="semibold">{res.complete ? `Weighted score ${res.score} of 5` : 'Weighted score appears when every skill is rated'}</Text>
+        <Text weight="semibold">{res.complete ? `Weighted score ${res.score} of ${scaleMax}` : 'Weighted score appears when every skill is rated'}</Text>
         <Text as="p" size="sm">
           {res.prompt}
         </Text>
       </div>
-      <FormField label="Your recommendation" required>
-        <RadioGroup
-          aria-label="Recommendation"
-          value={rec}
-          onChange={setRec}
-          options={[
-            { value: 'strong-yes', label: 'Strong yes' },
-            { value: 'yes', label: 'Yes' },
-            { value: 'no', label: 'No' },
-            { value: 'strong-no', label: 'Strong no' },
-          ]}
-          orientation="horizontal"
-          disabled={submitted}
-        />
-      </FormField>
+      <fieldset id="sc-rec" className="yx-hire-skill" disabled={submitted}>
+        <FormField label="Your recommendation" required error={tried && !rec ? 'Choose your recommendation.' : null}>
+          <Segment label="Recommendation" value={rec} onChange={setRec} options={recommendations} />
+        </FormField>
+        <FormField label="Summary" optional>
+          <TextArea rows={3} placeholder="Anything the panel should know." value={summary} onChange={setSummary} maxLength={8000} />
+        </FormField>
+      </fieldset>
       {!submitted && (
         <div className="yx-hire-actions">
-          <Button>Save draft</Button>
-          <Button variant="primary" disabled={!res.complete || !rec}>
+          <Button loading={saving} onClick={() => void save()}>
+            Save draft
+          </Button>
+          <Button variant="primary" onClick={submit}>
             Submit scorecard
           </Button>
         </div>
@@ -1266,12 +1484,46 @@ function ScorecardBody({ candidate, round, skills, defaultRatings, identity, sub
       <Text size="xs" tone="muted">
         {candidate} · {round}
       </Text>
+      {confirming && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setConfirming(false)}
+          title="Submit your scorecard?"
+          consequence="A submitted scorecard cannot be changed. The recruiter and hiring manager see it, and you then see the other panellists' scorecards."
+          confirmLabel="Submit scorecard"
+          onConfirm={async () => {
+            await onSubmit?.(value());
+            setConfirming(false);
+            toast?.toast({ tone: 'success', title: 'Scorecard submitted', description: 'It can no longer be changed.' });
+          }}
+        />
+      )}
     </div>
   );
 }
 
+/**
+ * The live scorecard page (HIR-07): GET hiring/interviews/:id. A panellist fills their own (a draft only they see);
+ * once submitted it is read-only and audited. Recruiters and the job's hiring manager read every submitted scorecard.
+ */
+export interface LiveScorecard {
+  state: 'loading' | 'ready' | 'error' | 'denied' | 'not-found';
+  onRetry: () => void;
+  view: InterviewView | null;
+  /** pipeline:manage and signed in as themselves: send the invitation again, cancel the interview. */
+  canManage: boolean;
+  onBack: () => void;
+  onOpenCandidate: () => void;
+  onResume?: () => Promise<unknown>;
+  onSave: (input: ScorecardInput) => Promise<unknown>;
+  onSubmit: (input: ScorecardInput) => Promise<unknown>;
+  onResendInterview: () => Promise<unknown>;
+  onCancelInterview: () => Promise<unknown>;
+}
+
 // HIR-07
-export function ScorecardScreen(props: ScorecardFormProps) {
+export function ScorecardScreen(props: ScorecardFormProps | { live: LiveScorecard }) {
+  if ('live' in props) return <LiveScorecardView live={props.live} />;
   return (
     <HireFrame active="Interviews">
       <PageHeader title={`Scorecard · ${props.candidate}`} description={`${props.round} · Senior QA Engineer · rate each skill against its pass bar`} />
@@ -1281,6 +1533,191 @@ export function ScorecardScreen(props: ScorecardFormProps) {
     </HireFrame>
   );
 }
+
+const LIVE_RECS: { value: LiveRecommendation; label: string }[] = [
+  { value: 'strong_yes', label: 'Strong yes' },
+  { value: 'yes', label: 'Yes' },
+  { value: 'no', label: 'No' },
+  { value: 'strong_no', label: 'Strong no' },
+];
+const recText = (r: string | null) => LIVE_RECS.find((x) => x.value === r)?.label ?? '—';
+
+function LiveScorecardView({ live }: { live: LiveScorecard }) {
+  const toast = useToastIfAny();
+  const [cancelling, setCancelling] = useState(false);
+  const [resending, setResending] = useState(false);
+  const v = live.view;
+  if (live.state !== 'ready' || !v)
+    return (
+      <HireFrame active="Interviews">
+        {live.state === 'loading' ? (
+          <div className="yx-hire-stack" aria-busy="true" aria-label="Loading the interview">
+            <Skeleton height={64} />
+            <Skeleton height={320} />
+          </div>
+        ) : live.state === 'error' ? (
+          <ErrorState title="This interview could not be loaded." onRetry={live.onRetry} />
+        ) : live.state === 'denied' ? (
+          <NoAccessState grantedBy="the recruiter (you are not on this panel)" what="this interview" />
+        ) : (
+          <EmptyState title="Not found" description="This interview doesn't exist." action={<Button onClick={live.onBack}>Back to interviews</Button>} />
+        )}
+      </HireFrame>
+    );
+  const iv = v.interview;
+  const t = v.template;
+  const slot = iv.slots.find((s) => s.confirmed) ?? iv.slots[0];
+  const mine = v.scorecards.find((s) => s.mine);
+  const others = v.scorecards.filter((s) => !s.mine && s.status === 'submitted');
+  const total = t ? t.items.reduce((a, i) => a + i.weight, 0) || 1 : 1;
+  const cancelled = iv.status === 'cancelled';
+  const resend = () => {
+    setResending(true);
+    live.onResendInterview().then(
+      () => void toast?.toast({ tone: 'success', title: 'Sent to the candidate again' }),
+      (e: unknown) => void toast?.toast({ tone: 'error', title: 'Not sent', description: e instanceof Error ? e.message : 'Try again.' }),
+    ).finally(() => setResending(false));
+  };
+  return (
+    <HireFrame active="Interviews">
+      <PageHeader
+        title={`Scorecard · ${iv.candidateName}`}
+        description={`${slot ? istWhen(slot.startsAt) : 'Time not fixed yet'} · ${iv.jobTitle} · ${iv.location}`}
+        status={cancelled ? <Badge tone="neutral">Cancelled</Badge> : !iv.slots.some((s) => s.confirmed) ? <Badge tone="info">Time not confirmed</Badge> : undefined}
+        actions={
+          <>
+            <Button onClick={live.onBack}>Interviews</Button>
+            <Button onClick={live.onOpenCandidate}>Candidate record</Button>
+            {iv.meetingUrl && !cancelled && (
+              <Button asChild>
+                <a href={iv.meetingUrl} target="_blank" rel="noopener noreferrer">
+                  Join meeting
+                </a>
+              </Button>
+            )}
+            {live.canManage && !cancelled && (
+              <>
+                <Button loading={resending} onClick={resend}>
+                  Send to candidate again
+                </Button>
+                <Button variant="danger" onClick={() => setCancelling(true)}>
+                  Cancel interview
+                </Button>
+              </>
+            )}
+          </>
+        }
+      />
+      <div className="yx-hire-narrow">
+        <div className="yx-hire-stack">
+          <div className="yx-hire-chips" aria-label="Panel">
+            {v.panel.length === 0 && <Badge tone="neutral">No panel</Badge>}
+            {v.panel.map((m) => (
+              <Badge key={m.userId} tone={m.submitted ? 'success' : 'neutral'}>
+                {m.name}
+                {m.submitted ? ' · submitted' : ''}
+              </Badge>
+            ))}
+          </div>
+          {v.result && t && (
+            <InlineAlert tone={!v.result.complete ? 'info' : v.result.passes ? 'success' : 'warning'} title={!v.result.complete ? `Scorecards ${v.result.submitted} of ${v.result.expected}` : v.result.passes ? `Passes the bar (${v.result.score} against ${t.passBar})` : `Below the bar (${v.result.score} against ${t.passBar})`}>
+              {v.result.complete ? (v.result.passes ? 'Suggested next step: move to the next stage. A person decides.' : 'Suggested next step: reject. A person decides.') : 'The result shows when the whole panel has submitted.'}
+            </InlineAlert>
+          )}
+          {v.viewer.isPanelist &&
+            (!t ? (
+              <InlineAlert tone="warning" title="No scorecard for this interview">
+                Ask the recruiter to pick one for the job.
+              </InlineAlert>
+            ) : (
+              <ScorecardBody
+                key={`${mine?.id ?? 'new'}-${mine?.status ?? ''}`}
+                candidate={iv.candidateName}
+                round={`${t.name} · ${iv.jobTitle}`}
+                skills={t.items.map((it) => ({ skill: it.label, weight: Math.round((it.weight / total) * 100), passBar: t.passBar, hint: it.guidance ?? '' }))}
+                scaleMax={t.scaleMax}
+                defaultRatings={t.items.map((it) => mine?.ratings.find((r) => r.itemId === it.id)?.rating ?? null)}
+                defaultEvidence={t.items.map((it) => mine?.ratings.find((r) => r.itemId === it.id)?.notes ?? '')}
+                defaultRecommendation={mine?.recommendation ?? null}
+                defaultSummary={mine?.summary ?? ''}
+                recommendations={LIVE_RECS}
+                submitted={mine?.status === 'submitted' || cancelled}
+                onSave={(x) => live.onSave(toInput(t.items, x))}
+                onSubmit={(x) => live.onSubmit(toInput(t.items, x))}
+              />
+            ))}
+          {v.viewer.isPanelist && mine?.status !== 'submitted' ? (
+            <Text as="p" tone="secondary">
+              Other panellists&rsquo; scorecards appear here after you submit yours.
+            </Text>
+          ) : others.length === 0 && !v.viewer.isPanelist ? (
+            <EmptyState compact title="No scorecards submitted yet." />
+          ) : (
+            t && others.map((s) => (
+              <Card key={s.id} title={`${s.panelistName}'s scorecard`}>
+                <DescriptionList
+                  items={[
+                    { label: 'Recommendation', value: recText(s.recommendation) },
+                    { label: 'Weighted score', value: s.weightedScore != null ? `${s.weightedScore} of ${t.scaleMax}${s.passes ? ' · passes the bar' : ' · below the bar'}` : '—' },
+                    ...t.items.map((it) => {
+                      const r = s.ratings.find((x) => x.itemId === it.id);
+                      return { label: it.label, value: `${r?.rating ?? '—'} of ${t.scaleMax}${r?.notes ? ` · ${r.notes}` : ''}` };
+                    }),
+                    ...(s.summary ? [{ label: 'Summary', value: s.summary }] : []),
+                    ...(s.submittedAt ? [{ label: 'Submitted', value: istWhen(s.submittedAt) }] : []),
+                  ]}
+                />
+              </Card>
+            ))
+          )}
+          {v.earlier.length > 0 && (
+            <Card title="Earlier rounds">
+              <DescriptionList items={v.earlier.map((e, i) => ({ label: `${e.panelistName} (${i + 1})`, value: `${recText(e.recommendation)} · ${e.weightedScore}${e.summary ? ` · ${e.summary}` : ''}` }))} />
+            </Card>
+          )}
+          <Card title="Résumé">
+            {v.resume ? (
+              <DescriptionList
+                items={[
+                  { label: 'Current role', value: v.resume.title ?? '—' },
+                  { label: 'Summary', value: v.resume.summary ?? '—' },
+                  { label: 'Skills', value: v.resume.skills ?? '—' },
+                  ...(v.resume.hasFile && live.onResume ? [{ label: 'File', value: <Button size="sm" onClick={() => void live.onResume!()}>Open the résumé</Button> }] : []),
+                ]}
+              />
+            ) : (
+              <Text as="p" tone="secondary">
+                No résumé on file.
+              </Text>
+            )}
+          </Card>
+        </div>
+      </div>
+      {cancelling && (
+        <ConfirmDialog
+          open
+          destructive
+          onOpenChange={(o) => !o && setCancelling(false)}
+          title={`Cancel the interview with ${iv.candidateName}?`}
+          consequence="The interview is cancelled and leaves the calendar. Scorecards already submitted are kept."
+          confirmLabel="Cancel interview"
+          cancelLabel="Keep it"
+          onConfirm={async () => {
+            await live.onCancelInterview();
+            setCancelling(false);
+            toast?.toast({ tone: 'success', title: 'Interview cancelled' });
+          }}
+        />
+      )}
+    </HireFrame>
+  );
+}
+
+const toInput = (items: { id: string }[], x: ScorecardValue): ScorecardInput => ({
+  ratings: items.map((it, i) => ({ itemId: it.id, rating: x.ratings[i] ?? null, notes: x.evidence[i]?.trim() || null })),
+  recommendation: (x.recommendation as LiveRecommendation | null) ?? null,
+  summary: x.summary.trim() || null,
+});
 
 // HIR-07 (phone)
 export function ScorecardPhone(props: ScorecardFormProps) {

@@ -173,8 +173,29 @@ describe('Hiring › HIR-05 designed screens (live)', () => {
     });
     wrap(<YxHiringCandidatePage />);
     const d = await screen.findByRole('dialog', { name: 'Priya Raman' });
-    for (const t of [/Interviews/, /Messages/, /Notes/, /Offers/]) expect(within(d).getByRole('tab', { name: t })).toBeInTheDocument();
+    for (const t of [/Messages/, /Notes/, /Offers/]) expect(within(d).getByRole('tab', { name: t })).toBeInTheDocument();
+    // Answer 301: interviews left the application for the record's Schedule interview and the HIR-06 / 07 pages.
+    expect(within(d).queryByRole('tab', { name: /Interviews/ })).not.toBeInTheDocument();
     await userEvent.click(within(d).getByRole('button', { name: /Close/ }));
     expect(router.replace).toHaveBeenCalledWith('/yx/hiring/candidates/c1');
+  });
+
+  it('answer 274: with the pipeline key the record offers Schedule interview and Move to next stage, and moves by the API', async () => {
+    PERMS = { ...PERMS, 'pipeline:manage': true };
+    const row = { entryId: 'a1', candidateId: 'c1', candidateName: 'Priya Raman', candidateEmail: 'priya@example.com', statusId: 'st1', stageId: 's1', category: 'active', examResults: [], customFields: [], blueprintChecklist: {}, scorecards: null, rejectionPendingUntil: null };
+    const posted: { path: string; body: unknown }[] = [];
+    api.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (init?.method === 'POST') return (posted.push({ path, body: JSON.parse(String(init.body)) }), {});
+      if (path === '/hiring/candidates/c1') return PROFILE;
+      if (path === '/hiring/jobs/j1/board') return { pipeline: { id: 'p', name: 'Standard', stages: [{ id: 's1', name: 'Applied', category: 'active', position: 0, statuses: [{ id: 'st1', name: 'Applied', position: 0 }] }, { id: 's2', name: 'Interview', category: 'active', position: 1, statuses: [{ id: 'st2', name: 'Interview', position: 0 }] }] }, columns: { s1: [row] } };
+      if (path === '/hiring/jobs/j1/interview-settings') return { scorecardTemplateId: null, exams: [] };
+      if (path.startsWith('/candidates?')) return { data: [], total: 0 };
+      const c = common(path);
+      return c === undefined ? [] : c;
+    });
+    wrap(<YxHiringCandidatePage />);
+    expect(await screen.findByRole('button', { name: 'Schedule interview' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Move to next stage' }));
+    await waitFor(() => expect(posted).toEqual([{ path: '/hiring/entries/a1/move', body: { statusId: 'st2', fromStatusId: 'st1' } }]));
   });
 });

@@ -76,7 +76,7 @@ export default function YxHiringJobPage() {
         { label: 'Pipeline template', value: pipeline ? `${pipeline.name}, ${pipeline.stages.length} stages` : 'Default' },
         { label: 'Scorecard', value: (scorecards.data ?? []).find((t) => t.id === settings.data?.scorecardTemplateId)?.name ?? (settings.data?.scorecardTemplateId ? 'Set' : 'Not set') },
         { label: 'Candidates by stage', value: counted?.stageCounts ? stageSummary({ ...counted, pipelineId: counted.pipelineId ?? null, stageCounts: counted.stageCounts }, pipelines.data) : 'No candidates yet' },
-        { label: 'Recruiter', value: names(j.recruiterUserId ?? j.createdById) || 'Not set' },
+        { label: 'Recruiter', value: names(j.recruiterUserId ?? null) || 'Not set' },
         { label: 'Opened', value: `${formatDate(new Date(j.createdAt))}${names(j.createdById) ? ` by ${names(j.createdById)}` : ''}` },
       ]
     : [];
@@ -138,7 +138,7 @@ export default function YxHiringJobPage() {
           },
         },
         recruiter: {
-          id: j?.recruiterUserId ?? j?.createdById ?? null,
+          id: j?.recruiterUserId ?? null,
           choices: (teammates.data ?? []).map((t) => ({ value: t.id, label: t.name ?? t.email })),
           onChange: async (userId) => {
             await write('PATCH', `/jobs/${enc(id)}`, { recruiterUserId: userId });
@@ -173,10 +173,8 @@ export default function YxHiringJobPage() {
                 onUpdateJob: (patch) => write('PATCH', `/jobs/${enc(id)}`, patch).then(() => job.refetch()),
                 onScreenAll: canManage ? () => write<{ queued: number }>('POST', `/jobs/${enc(id)}/fit-assessments/score`) : undefined,
                 onCopy: (text) => navigator.clipboard.writeText(text),
-                onStageTargets: async (changes) => {
-                  for (const c of changes) await write('PATCH', `/pipelines/stages/${enc(c.stageId)}`, { daysTarget: c.daysTarget, limit: c.limit });
-                  await board.refetch();
-                },
+                // Answer 302: stage targets are changed in Settings › Hiring (read-only here).
+                onOpenSettings: () => router.push('/yx/settings/hiring'),
               }
             : undefined,
         onOpenPipeline: () => router.push(`/yx/hiring/jobs/${enc(id)}/pipeline`),

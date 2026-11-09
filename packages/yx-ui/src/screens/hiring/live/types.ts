@@ -214,7 +214,7 @@ export interface CandidateProfileView {
   resume: { hasFile: boolean; scan: string; parseStatus: string; title: string | null; summary: string | null; skills: string | null; years: number | null } | null;
   applications: { id: string; jobId: string; jobTitle: string; jobStatus: string; stage: string | null; status: string | null; appliedAt: string; closed: boolean; closedReason: string | null; source: string | null }[];
   assessments: { id: string; exam: string; status: string; invitedAt: string }[];
-  interviews: { id: string; status: string; createdAt: string }[];
+  interviews: { id: string; status: string; createdAt: string; entryId?: string; jobTitle?: string; when?: string | null }[];
   messages: { emails: { id: string; subject: string; status: string; createdAt: string }[]; sms: number; whatsapp: number };
   consents: { id: string; purpose: string; version: number; source: string; givenAt: string; withdrawnAt: string | null }[];
   lists: { id: string; name: string; kind: 'pool' | 'hotlist'; addedAt: string }[];
@@ -348,7 +348,6 @@ export interface ApplicationView {
   customFields: { label: string; value: string }[];
   checklist: { id: string; label: string; done: boolean }[];
   assignee: string | null;
-  interviews: { id: string; status: string; when: string | null; panel: string[]; location: string; meetingUrl: string | null; scorecards: ScorecardSummary | null }[];
   emails: { id: string; subject: string; status: string; at: string }[];
   sms: { id: string; body: string; status: string; at: string }[];
   whatsapp: { id: string; body: string; status: string; at: string }[];
@@ -414,6 +413,22 @@ export interface MyInterviewRow {
   when: string | null;
   status: string;
   scorecard: 'not_started' | 'draft' | 'submitted' | 'none';
+  /** HIR-06: still missing the company's overdue hours after the interview ended. */
+  overdue?: boolean;
+}
+
+/** HIR-06: one interview on the calendar (GET hiring/interviews?from=&to=). */
+export interface InterviewRangeRow {
+  id: string;
+  candidateId: string;
+  candidateName: string;
+  jobTitle: string;
+  startsAt: string;
+  endsAt: string;
+  confirmed: boolean;
+  status: string;
+  /** The viewer is on the panel. */
+  mine: boolean;
 }
 
 /* ---------------- HIR-09 offer builder and HIR-29 conditions (live) ---------------- */

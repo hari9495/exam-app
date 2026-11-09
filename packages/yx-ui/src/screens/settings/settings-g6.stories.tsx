@@ -2,6 +2,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { SettingsGroupScreen, SettingsPageScreen } from './settings-screens';
 import { SETTINGS_GROUPS } from './settings-groups';
+import { StageTargetsSheet } from '../hiring/job-settings';
 import './settings.css';
 
 const meta: Meta = {
@@ -16,6 +17,23 @@ export const OverviewLoading: S = { name: 'Group 6 · loading', render: () => <S
 
 export const P6_1: S = { name: '6.1 Hiring', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.1" /> };
 export const P6_1_ReadOnly: S = { name: '6.1 Hiring · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.1" readOnly /> };
+// Founder answer 302: a pipeline template's Stage targets (days target and limit per stage), moved here from the job.
+const OFFICE_STAGES = [
+  { id: 's1', name: 'Applied', daysTarget: 3, limit: null },
+  { id: 's2', name: 'Screening', daysTarget: 5, limit: null },
+  { id: 's3', name: 'Assessment', daysTarget: null, limit: null },
+  { id: 's4', name: 'Interview', daysTarget: 7, limit: 6 },
+  { id: 's5', name: 'Offer', daysTarget: null, limit: null },
+];
+export const P6_1_StageTargets: S = {
+  name: '6.1 Hiring · stage targets',
+  render: () => (
+    <>
+      <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.1" />
+      <StageTargetsSheet open onOpenChange={() => {}} pipelineName="Office staff" stages={OFFICE_STAGES} canEdit onSave={async () => {}} />
+    </>
+  ),
+};
 export const P6_2: S = { name: '6.2 Staffing desk', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.2" /> };
 export const P6_2_ReadOnly: S = { name: '6.2 Staffing desk · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.2" readOnly /> };
 export const P6_3: S = { name: '6.3 Performance', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.3" /> };

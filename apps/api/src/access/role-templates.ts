@@ -196,9 +196,10 @@ const TEMPLATES: readonly RoleTemplate[] = [
     key: 'hiring_admin',
     name: 'Hiring admin',
     typicalScope: 'tenant',
-    summary: 'Headcount plans and budgets, offer pay, referral rewards, agencies, hiring reports and candidate data rights (M10).',
+    summary: 'Headcount plans and budgets, offer pay, referral rewards, agencies, hiring reports, candidate data rights and the hiring settings (M10).',
     cannot: 'Change payroll or employee records.',
-    permissions: ['ats.headcount.manage', 'ats.offer.compensation.view', 'ats.referral.manage', 'ats.agency.manage', 'ats.report.view', 'ats.candidate.data_rights'],
+    // Settings 6.1 Hiring: the company's hiring settings (ats.settings.manage).
+    permissions: ['ats.headcount.manage', 'ats.offer.compensation.view', 'ats.referral.manage', 'ats.agency.manage', 'ats.report.view', 'ats.candidate.data_rights', 'ats.settings.manage'],
   },
   {
     key: 'compliance_owner',

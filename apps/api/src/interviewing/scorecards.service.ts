@@ -4,6 +4,7 @@ import { Tx, audit, inCompany, type CompanyContext } from '../org-structure/org-
 import { EmailService } from '../email/email.service';
 import { interviewResult, missingForSubmit, visibleScorecards, weightedScore } from './scorecard-rules';
 import type { ScorecardDto } from './interviewing-dto';
+import { SETTINGS } from '../org-structure/settings-registry';
 
 export type Viewer = { userId: string; role: string; organizationId?: string | null; permissionProfileId?: string | null };
 
@@ -73,9 +74,41 @@ export class ScorecardsService {
     });
   }
 
+  /**
+   * HIR-06 calendar: interviews whose time (the confirmed slot, else the first proposed one) falls in [from, to).
+   * Recruiters see the company's; anyone else only interviews they are on or for jobs they are the hiring manager of.
+   */
+  range(ctx: TenantContext, v: Viewer, from: Date, to: Date) {
+    if (!(to > from)) throw new BadRequestException('The end of the range must be after its start.');
+    if (to.getTime() - from.getTime() > 62 * 86_400_000) throw new BadRequestException('Ask for at most 62 days at a time.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const all = await this.isRecruiter(v);
+      const ivs = await tx.interview.findMany({
+        where: {
+          organizationId: c.organizationId,
+          slots: { some: { startsAt: { gte: from, lt: to } } },
+          ...(all ? {} : { OR: [{ panelists: { some: { userId: v.userId } } }, { pipelineEntry: { job: { hiringManagerId: v.userId } } }] }),
+        },
+        take: 500,
+        include: { slots: true, panelists: { select: { userId: true } }, pipelineEntry: { select: { candidateId: true, job: { select: { title: true } }, candidate: { select: { name: true } } } } },
+      });
+      return ivs
+        .map((i) => {
+          const slot = i.slots.find((s) => s.id === i.confirmedSlotId) ?? i.slots[0];
+          return { id: i.id, candidateId: i.pipelineEntry.candidateId, candidateName: i.pipelineEntry.candidate.name, jobTitle: i.pipelineEntry.job.title, startsAt: slot.startsAt, endsAt: slot.endsAt, confirmed: Boolean(i.confirmedSlotId), status: i.status, mine: i.panelists.some((p) => p.userId === v.userId) };
+        })
+        .filter((r) => r.startsAt >= from && r.startsAt < to)
+        .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+    });
+  }
+
   /** The viewer's own interviews as a panellist, newest first, with where their scorecard stands. */
   mine(ctx: TenantContext, userId: string) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      // HIR-06: a scorecard still missing this many hours after the interview ended shows as overdue (company setting).
+      const setting = await tx.setting.findFirst({ where: { organizationId: c.organizationId, key: 'hiring.scorecard.overdue_hours', scopeType: 'tenant' }, select: { value: true } });
+      const overdueMs = Number(setting?.value ?? SETTINGS['hiring.scorecard.overdue_hours'].default) * 3_600_000;
+      const now = Date.now();
       const ivs = await tx.interview.findMany({
         where: { organizationId: c.organizationId, panelists: { some: { userId } } },
         orderBy: { createdAt: 'desc' },
@@ -87,7 +120,9 @@ export class ScorecardsService {
         const slot = i.slots.find((s) => s.id === i.confirmedSlotId) ?? i.slots[0];
         const card = cards.find((x) => x.interviewId === i.id);
         const hasTemplate = Boolean(i.scorecardTemplateId ?? i.pipelineEntry.job.scorecardTemplateId);
-        return { id: i.id, candidateName: i.pipelineEntry.candidate.name, jobTitle: i.pipelineEntry.job.title, when: slot?.startsAt ?? null, endsAt: slot?.endsAt ?? null, confirmed: Boolean(i.confirmedSlotId), status: i.status, scorecard: !hasTemplate ? 'none' : card ? card.status : 'not_started' };
+        const scorecard = !hasTemplate ? 'none' : card ? card.status : 'not_started';
+        const overdue = scorecard !== 'none' && scorecard !== 'submitted' && i.status !== 'cancelled' && Boolean(i.confirmedSlotId) && slot != null && slot.endsAt.getTime() + overdueMs < now;
+        return { id: i.id, candidateName: i.pipelineEntry.candidate.name, jobTitle: i.pipelineEntry.job.title, when: slot?.startsAt ?? null, endsAt: slot?.endsAt ?? null, confirmed: Boolean(i.confirmedSlotId), status: i.status, scorecard, overdue };
       });
     });
   }

@@ -41,8 +41,13 @@ function withRecomputeMocks(tx: any) {
   // default it off (no-op) so pre-existing hire tests that don't care about this feature are
   // unaffected; a test that does care overrides tx.organization itself.
   tx.organization = { findFirst: jest.fn().mockResolvedValue({ autoArchiveSiblingsOnHire: false }), ...tx.organization };
+  // HIR-05 answer 272: a move past the first stage reads the first stage, then the rehire block (mocked to none below).
+  tx.pipelineStage = { findFirst: jest.fn().mockResolvedValue(null), ...tx.pipelineStage };
   return tx;
 }
+
+// The rehire block (answer 272) has its own tests; here nobody is blocked.
+jest.mock('../lifecycle/rehire-policy', () => ({ rehireBlock: jest.fn().mockResolvedValue(null) }));
 
 describe('PipelineService', () => {
   let service: PipelineService;
@@ -1740,6 +1745,7 @@ describe('PipelineService', () => {
       it('blocks the move with BadRequestException naming the stage + unmet item, and never calls update', async () => {
         const update = jest.fn();
         const tx = {
+          pipelineStage: { findFirst: jest.fn().mockResolvedValue(null) },
           pipelineEntry: {
             findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', candidateId: 'cand-1', job: { pipelineId: 'p1' }, status: null, blueprintChecklistJson: null }),
             update,
@@ -1759,6 +1765,7 @@ describe('PipelineService', () => {
       it('allows the move when rules are met (update called)', async () => {
         const update = jest.fn().mockResolvedValue({ id: 'en1', statusId: 'st-int' });
         const tx = {
+          pipelineStage: { findFirst: jest.fn().mockResolvedValue(null) },
           pipelineEntry: {
             findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', candidateId: 'cand-1', job: { pipelineId: 'p1' }, status: null, blueprintChecklistJson: null }),
             update,
@@ -2037,6 +2044,7 @@ describe('PipelineService', () => {
       const update = jest.fn().mockResolvedValue({ id: 'en1', statusId: 'st-int' });
       const candidateUpdate = jest.fn().mockResolvedValue({});
       const tx = {
+        pipelineStage: { findFirst: jest.fn().mockResolvedValue(null) },
         pipelineEntry: {
           findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', candidateId: 'c1', job: { pipelineId: 'p1' }, status: null }),
           update,

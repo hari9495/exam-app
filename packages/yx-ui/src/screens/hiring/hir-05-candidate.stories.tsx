@@ -67,7 +67,6 @@ export const sampleApplication: ApplicationDrawerProps = {
     customFields: [{ label: 'Notice period', value: '30 days' }],
     checklist: [{ id: 'k1', label: 'References checked', done: false }],
     assignee: 'u1',
-    interviews: [{ id: 'iv1', status: 'confirmed', when: inHours(26), panel: ['Anil', 'Kavya'], location: 'Video call', meetingUrl: 'https://meet.example.com/abc', scorecards: { complete: false, submitted: 1, expected: 2, score: null, passes: null } }],
     emails: [{ id: 'm1', subject: 'Interview invitation', status: 'sent', at: inHours(-20) }],
     sms: [],
     whatsapp: [{ id: 'w1', body: 'See you tomorrow at 10.', status: 'failed', at: inHours(-2) }],
@@ -79,8 +78,6 @@ export const sampleApplication: ApplicationDrawerProps = {
   canManage: true,
   statuses: [{ value: 'st1', label: 'Applied' }, { value: 'st2', label: 'Interview' }, { value: 'st3', label: 'Offer' }],
   people: [{ value: 'u1', label: 'Anil' }, { value: 'u2', label: 'Kavya' }],
-  scorecardTemplates: [{ value: 'tp1', label: 'Engineer round 1' }],
-  defaultScorecardId: 'tp1',
   templates: [{ value: 't1', label: 'Regret', subject: 'Your application', body: 'Thank you, {{candidateName}}.' }],
   senders: [],
   smsTemplates: [],
@@ -93,10 +90,6 @@ export const sampleApplication: ApplicationDrawerProps = {
   onChecklist: ok,
   onScoreFit: ok,
   onResume: ok,
-  onSchedule: ok,
-  onOpenInterview: () => undefined,
-  onCancelInterview: ok,
-  onResendInterview: ok,
   onEmail: ok,
   onSms: ok,
   onWhatsapp: ok,
@@ -107,7 +100,7 @@ export const sampleApplication: ApplicationDrawerProps = {
   onOpenOffer: () => {},
 };
 
-export const Application: S = { name: 'Application · interviews, messages, notes, offers', render: () => <ApplicationDrawer {...sampleApplication} /> };
+export const Application: S = { name: 'Application · messages, notes, offers', render: () => <ApplicationDrawer {...sampleApplication} /> };
 export const ApplicationOffer: S = {
   name: 'Application · an offer opens its record (HIR-09)',
   render: () => <ApplicationDrawer {...sampleApplication} app={{ ...sampleApplication.app!, offers: [{ id: 'o1', status: 'pending_approval', compensation: 'Fixed CTC ₹12,00,000 a year', startDate: '2026-12-01', expiresAt: '2026-11-15' }] }} />,
