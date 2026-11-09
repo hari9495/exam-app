@@ -1,3 +1,4 @@
+import { biasAuditBlock } from './bias-audit';
 import { ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -28,7 +29,7 @@ const SCAN = 2000;
 const SETTING = 'hiring.rediscovery.ai';
 
 type Cand = { id: string; name: string; email_out: boolean; wa_out: boolean; parsed_title: string | null; parsed_skills: string | null; years: number | null; last_at: Date };
-export type RediscoveryAi = 'on' | 'off' | 'not_set_up' | 'failed';
+export type RediscoveryAi = 'on' | 'off' | 'not_set_up' | 'failed' | 'blocked';
 
 @Injectable()
 export class RediscoveryService {
@@ -100,7 +101,9 @@ export class RediscoveryService {
         .sort((a, b) => b.m.score - a.m.score || b.r.last_at.getTime() - a.r.last_at.getTime())
         .slice(0, MAX);
       const suggested = new Set((await tx.requisitionSuggestion.findMany({ where: { organizationId: org, jobId: job.id }, select: { candidateId: true } })).map((x) => x.candidateId));
-      return { job, role, ai, provider: orgRow?.aiProvider ?? 'anthropic', months: Number(months), matches, pools, suggested };
+      // HIR-23: a New York City job with the bias audit overdue gets no AI notes; the reason is returned, never skipped silently.
+      const blocked = ai === 'on' ? await biasAuditBlock(tx, c, job.id, 'AI notes on past candidates') : null;
+      return { job, role, ai: blocked ? ('blocked' as const) : ai, blocked, provider: orgRow?.aiProvider ?? 'anthropic', months: Number(months), matches, pools, suggested };
     });
 
     const hidden = await this.fieldPerms.getHiddenFields(ctx, user.role ?? '', 'candidate');
@@ -155,7 +158,7 @@ export class RediscoveryService {
     }
     // Who and when are on the audit row; never the prompt or the notes.
     await inCompany(this.tenantPrisma, ctx, (tx, c) => audit(tx, c, 'ats.rediscovery.run', 'job', jobId, { mode: ai === 'on' ? 'ai' : 'text', ai, provider: ai === 'on' || ai === 'failed' ? found.provider : null, matches: out.length }));
-    return { mode: ai === 'on' ? ('ai' as const) : ('text' as const), ai, matches: out };
+    return { mode: ai === 'on' ? ('ai' as const) : ('text' as const), ai, blocked: found.blocked, matches: out };
   }
 
   /**

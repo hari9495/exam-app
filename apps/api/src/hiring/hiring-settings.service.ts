@@ -47,6 +47,8 @@ export const HIRING_SETTING_KEYS = [
   'hiring.notetaker.enabled',
   'hiring.notetaker.ai_draft',
   'hiring.notetaker.keep_days',
+  // HIR-23 (founder decision 2, question 7): an automated tool for New York City jobs needs a yearly bias audit.
+  'hiring.bias_audit.nyc',
 ] as const;
 export type HiringSettingKey = (typeof HIRING_SETTING_KEYS)[number];
 const EDIT_KEYS = ['ats.settings.manage', 'org.settings.manage'] as const;

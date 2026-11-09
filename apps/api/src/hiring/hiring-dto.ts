@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBase64, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, IsUrl, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 
 // Recruitment batch AT2 request bodies (M10-BUILD-DESIGN §18.1).
 
@@ -187,4 +187,27 @@ export class SaveHiringSettingsDto {
   @ValidateNested({ each: true })
   @Type(() => HiringSettingChangeDto)
   changes!: HiringSettingChangeDto[];
+}
+
+/** HIR-23: one category's numbers, as the auditor reported them (no candidate identities). */
+export class BiasCategoryDto {
+  @IsString() @MaxLength(100) label!: string;
+  @IsInt() @Min(0) @Max(10_000_000) assessed!: number;
+  @IsInt() @Min(0) @Max(10_000_000) selected!: number;
+}
+
+export class BiasResultsDto {
+  @IsArray() @ArrayMaxSize(20) @ValidateNested({ each: true }) @Type(() => BiasCategoryDto) sex!: BiasCategoryDto[];
+  @IsArray() @ArrayMaxSize(20) @ValidateNested({ each: true }) @Type(() => BiasCategoryDto) race!: BiasCategoryDto[];
+}
+
+/** HIR-23: record an independent bias audit (the report is a PDF up to 5 MB). */
+export class RecordBiasAuditDto {
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'The audit date is YYYY-MM-DD.' }) auditedOn!: string;
+  @IsString() @MinLength(2) @MaxLength(200) auditor!: string;
+  @IsUrl({ protocols: ['https'], require_protocol: true }, { message: 'The published summary is a web address starting with https://' }) @MaxLength(500) summaryUrl!: string;
+  @ValidateNested() @Type(() => BiasResultsDto) results!: BiasResultsDto;
+  @IsString() @IsBase64() reportBase64!: string;
+  @IsString() @MinLength(1) @MaxLength(200) reportName!: string;
+  @IsOptional() @IsString() @MaxLength(1000) note?: string;
 }

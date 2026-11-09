@@ -9,10 +9,11 @@ import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.de
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { HiringRequisitionsService } from './requisitions.service';
-import { CancelRequisitionDto, SaveHiringSettingsDto, CareersEntityDto, ConsentNoticeDto, RecruitingCostDto, PlanDto, PlanQueryDto, PlanVersionDto } from './hiring-dto';
+import { CancelRequisitionDto, RecordBiasAuditDto, SaveHiringSettingsDto, CareersEntityDto, ConsentNoticeDto, RecruitingCostDto, PlanDto, PlanQueryDto, PlanVersionDto } from './hiring-dto';
 import { CareersAdminService } from './careers-admin.service';
 import { RediscoveryService } from './rediscovery.service';
 import { HiringSettingsService } from './hiring-settings.service';
+import { BiasAuditService } from './bias-audit.service';
 
 // Recruitment batch AT2 (M10-BUILD-DESIGN §18.1): headcount plans (ats.headcount.manage) and the plan lines a
 // requisition can draw on (anyone who raises or runs requisitions). Requisitions themselves are jobs (/jobs, AT1).
@@ -30,6 +31,7 @@ export class HiringController {
     private readonly careers: CareersAdminService,
     private readonly rediscovery: RediscoveryService,
     private readonly hiringSettings: HiringSettingsService,
+    private readonly biasAudits: BiasAuditService,
   ) {}
 
   // Settings 6.1 Hiring: recruiting, hiring admins and HR read it; the hiring settings key (or HR's settings key), held
@@ -184,5 +186,26 @@ export class HiringController {
     assertOwnSession(req);
     await this.careers.costsGate(req.user as ScopeUser);
     return this.careers.removeCost(ctx, id);
+  }
+
+  // HIR-23 Bias audits: recruiting and the hiring settings holders read; recording needs the hiring settings key for the
+  // whole company (checked in the service) and is refused while acting for someone else.
+  @Get('bias-audits')
+  @RequireAnyPermission('ats.settings.manage', 'org.settings.manage', 'pipeline:manage')
+  biasAuditView(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.biasAudits.view(ctx, req.user as ScopeUser);
+  }
+
+  @Post('bias-audits')
+  @RequireAnyPermission('ats.settings.manage', 'org.settings.manage')
+  recordBiasAudit(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: RecordBiasAuditDto) {
+    assertOwnSession(req);
+    return this.biasAudits.record(ctx, req.user as ScopeUser, dto);
+  }
+
+  @Get('bias-audits/:id/report')
+  @RequireAnyPermission('ats.settings.manage', 'org.settings.manage', 'pipeline:manage')
+  biasAuditReport(@CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.biasAudits.report(ctx, id);
   }
 }

@@ -1,3 +1,5 @@
+import { StorageModule } from '@exam-platform/shared';
+import { BiasAuditService } from './bias-audit.service';
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { WorkflowModule } from '../workflow/workflow.module';
@@ -17,9 +19,9 @@ import { NotificationsModule } from '../notifications/notifications.module';
 // M10 recruitment (M10-BUILD-DESIGN §4). AT1: keys, support masking (app module). AT2: headcount plans and
 // requisitions on P03. AT3: careers site settings (consent notices, entity pages).
 @Module({
-  imports: [AuthModule, WorkflowModule, RulesEngineModule, JobBoardsModule, CryptoModule, AiModule, FieldPermissionsModule, NotificationsModule, OrgStructureModule],
+  imports: [StorageModule, AuthModule, WorkflowModule, RulesEngineModule, JobBoardsModule, CryptoModule, AiModule, FieldPermissionsModule, NotificationsModule, OrgStructureModule],
   controllers: [HiringController],
-  providers: [HiringRequisitionsService, CareersAdminService, RediscoveryService, HiringSettingsService],
+  providers: [HiringRequisitionsService, CareersAdminService, RediscoveryService, HiringSettingsService, BiasAuditService],
   exports: [HiringRequisitionsService, HiringSettingsService],
 })
 export class HiringModule {}
