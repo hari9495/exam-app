@@ -96,7 +96,7 @@ export class CandidateEmailsService {
 
     // Phase 2 (outside any tx): rendering + network calls (blob signing, SMTP send).
     const statusLink = applicationToken
-      ? `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/application/${applicationToken}`
+      ? `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/yx/application/${applicationToken}`
       : '';
     const unsubscribeUrl = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/unsubscribe/${unsubscribeToken}`;
     const rendered = renderTemplate(input.subject, input.body, {

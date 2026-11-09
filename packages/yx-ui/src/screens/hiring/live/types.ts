@@ -325,6 +325,8 @@ export interface ApplicationView {
   fit: { status: string | null; score: number | null; summary: string | null; stale: boolean } | null;
   tests: { examId: string; title: string; score: number | null; passFail: string | null; status: string }[];
   customFields: { label: string; value: string }[];
+  /** Careers answer 355: the pay the applicant gave when asked (rupees a year); only for holders of the offer-pay key. */
+  currentPay?: number | null;
   checklist: { id: string; label: string; done: boolean }[];
   assignee: string | null;
   emails: { id: string; subject: string; status: string; at: string }[];

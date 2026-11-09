@@ -181,7 +181,7 @@ const JOB_DEFINITION_SELECT = {
 } as const;
 
 /** M10 AT2: the requisition columns a job create / update sets (only what the caller sent). */
-function requisitionData(dto: { headcountPlanLineId?: string | null; outsidePlan?: boolean; outsidePlanReason?: string | null; requisitionReason?: 'new' | 'replacement' | null; replacementOfEmployeeId?: string | null; budgetAmount?: number | null; targetStart?: string | null }) {
+function requisitionData(dto: { headcountPlanLineId?: string | null; outsidePlan?: boolean; outsidePlanReason?: string | null; requisitionReason?: 'new' | 'replacement' | null; replacementOfEmployeeId?: string | null; budgetAmount?: number | null; targetStart?: string | null; applyBy?: string | null; experience?: string | null }) {
   const out: Record<string, unknown> = {};
   if (dto.headcountPlanLineId !== undefined) out.headcountPlanLineId = dto.headcountPlanLineId;
   if (dto.outsidePlan !== undefined) out.outsidePlan = dto.outsidePlan;
@@ -190,6 +190,9 @@ function requisitionData(dto: { headcountPlanLineId?: string | null; outsidePlan
   if (dto.replacementOfEmployeeId !== undefined) out.replacementOfEmployeeId = dto.replacementOfEmployeeId;
   if (dto.budgetAmount !== undefined) out.budgetAmount = dto.budgetAmount;
   if (dto.targetStart !== undefined) out.targetStart = dto.targetStart ? new Date(`${dto.targetStart}T00:00:00Z`) : null;
+  // Careers answer 353.
+  if (dto.applyBy !== undefined) out.applyBy = dto.applyBy ? new Date(`${dto.applyBy}T00:00:00Z`) : null;
+  if (dto.experience !== undefined) out.experience = dto.experience?.trim() || null;
   return out;
 }
 
@@ -265,6 +268,8 @@ export class PipelineService {
       replacementOfEmployeeId?: string | null;
       budgetAmount?: number | null;
       targetStart?: string | null;
+      applyBy?: string | null;
+      experience?: string | null;
     },
     asDraft = false,
   ): Promise<Job & { customFields?: CustomFieldRead[] }> {
@@ -593,6 +598,8 @@ export class PipelineService {
       replacementOfEmployeeId?: string | null;
       budgetAmount?: number | null;
       targetStart?: string | null;
+      applyBy?: string | null;
+      experience?: string | null;
     },
     // The caller's role, for field-level write enforcement (read-only/hidden governed fields can't
     // be changed). Optional: undefined skips enforcement (internal callers / ungoverned roles like

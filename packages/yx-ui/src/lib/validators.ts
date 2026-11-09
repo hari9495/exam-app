@@ -9,7 +9,7 @@ export const isPhoneNumber = (value: string) => Boolean(parsePhoneNumberFromStri
 /** A complete email address: something@domain.tld, no spaces (the API checks it again). */
 export const isEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 
-export type IdKind = 'pan' | 'ifsc' | 'uan' | 'aadhaar' | 'phone';
+export type IdKind = 'pan' | 'ifsc' | 'uan' | 'aadhaar' | 'phone' | 'intlPhone';
 
 export interface IdSpec {
   /** Normalises raw typing: case, allowed characters, max length. */
@@ -89,6 +89,14 @@ export const ID_SPECS: Record<IdKind, IdSpec> = {
     display: (v) => v.replace(/^(\d{5})(?=\d)/, '$1 '),
     validate: (v) => (/^[6-9]\d{9}$/.test(v) ? null : 'Enter a 10-digit mobile number starting with 6, 7, 8 or 9'),
     placeholder: '98765 43210',
+    inputMode: 'tel',
+  },
+  intlPhone: {
+    // Careers answer 359: any country, stored as +country code and digits (E.164).
+    normalise: (s) => `+${onlyDigits(s).slice(0, 15)}`.replace(/^\+$/, ''),
+    display: (v) => parsePhoneNumberFromString(v)?.formatInternational() ?? v,
+    validate: (v) => (parsePhoneNumberFromString(v)?.isValid() ? null : 'Enter your number with the country code, like +44 7400 123456'),
+    placeholder: '+44 7400 123456',
     inputMode: 'tel',
   },
 };

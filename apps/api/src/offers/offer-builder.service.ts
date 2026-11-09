@@ -189,6 +189,15 @@ export class OfferBuilderService implements OnModuleInit {
     });
   }
 
+  /** Careers answer 355: the applicant's own answer to the pay-history question (rupees a year), pay-key holders only. */
+  async currentPay(ctx: TenantContext, user: ScopeUser, entryId: string) {
+    this.needPay(await this.viewer(user));
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const e = await this.entry(tx, c.organizationId, entryId);
+      return { currentPay: e.currentPay };
+    });
+  }
+
   /** Breakup preview; nothing is kept. */
   async preview(ctx: TenantContext, user: ScopeUser, dto: OfferPreviewDto & { on?: string }) {
     const v = await this.viewer(user);

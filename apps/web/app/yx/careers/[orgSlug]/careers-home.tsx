@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { EmptyState } from '@yukthix/ui';
+import { EmptyState, TenantLogo } from '@yukthix/ui';
 import { CareersSiteScreen } from '@yukthix/ui/hiring';
 import { kitConfig, kitJob, publicPost } from '../../../../lib/yx-careers';
 import type { CareersPageResponse } from '../../../../lib/types';
@@ -16,7 +16,8 @@ export function CareersHome({ orgSlug, company, data }: { orgSlug: string; compa
   const companies = data.companies?.length ? [{ name: `All of ${data.orgName}`, href: base, current: !company }, ...data.companies.map((c) => ({ name: c.name, href: `${base}?company=${encodeURIComponent(c.slug)}`, current: company === c.slug }))] : undefined;
   return (
     <CareersSiteScreen
-      config={kitConfig(name, data.config, data.bannerUrl, data.headline, data.intro)}
+      // Careers answers 356 and 357: the company's logo in the header, and no "Powered by YukthiX" when it chose white-label.
+      config={{ ...kitConfig(name, data.config, data.bannerUrl, data.headline, data.intro), logo: data.logoUrl ? <TenantLogo src={data.logoUrl} name={name} size="md" /> : undefined, whiteLabel: Boolean(data.whiteLabel) }}
       jobs={data.jobs.map(kitJob)}
       live={{
         onApply: (job) => {

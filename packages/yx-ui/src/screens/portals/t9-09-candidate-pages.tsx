@@ -25,6 +25,10 @@ export interface CandidateBrand {
   tenant: string;
   accent?: string | null;
   careersHref?: string | null;
+  /** Careers answer 357: the company's logo (a signed address) in the header. */
+  logoUrl?: string | null;
+  /** Careers answer 356: no "Powered by YukthiX" (the company's white-label setting). */
+  whiteLabel?: boolean;
 }
 
 function Frame({ brand, portal, children, narrow }: { brand: CandidateBrand; portal: string; children: ReactNode; narrow?: boolean }) {
@@ -33,6 +37,8 @@ function Frame({ brand, portal, children, narrow }: { brand: CandidateBrand; por
       tenant={brand.tenant || 'Careers'}
       portal={portal}
       accent={brand.accent ?? undefined}
+      logoUrl={brand.logoUrl}
+      whiteLabel={brand.whiteLabel}
       access={{ kind: 'note', text: 'Your own link · keep it private' }}
       footer={CAND_FOOTER}
       noLanguage

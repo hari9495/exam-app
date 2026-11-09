@@ -51,7 +51,7 @@ describe('JobBoardPosterService', () => {
 
     expect(a.postJob).toHaveBeenCalledTimes(1);
     // applyUrl was built from the token
-    expect(a.postJob.mock.calls[0][1].applyUrl).toContain('/apply/tok-1');
+    expect(a.postJob.mock.calls[0][1].applyUrl).toContain('/yx/apply/tok-1');
     expect(tx.jobBoardPublication.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { jobBoardId_jobId: { jobBoardId: 'b1', jobId: 'job-1' } },

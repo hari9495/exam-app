@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { InterviewBookingScreen, type CandidatePageState } from '@yukthix/ui/hiring';
-import { publicGet, publicPost } from '../../../../lib/yx-careers';
+import { publicGet, publicPost, candidateBrand } from '../../../../lib/yx-careers';
 import type { PublicInterview } from '../../../../lib/types';
 
 // T9-09 interview booking (founder decision 10): the invitation link. Proposed times: confirm one, ask for another time
@@ -27,7 +27,7 @@ export default function YxInterviewPage() {
   const respond = (body: Record<string, unknown>) => publicPost(`${path}/respond`, body);
   return (
     <InterviewBookingScreen
-      brand={{ tenant: iv?.orgName ?? '' }}
+      brand={candidateBrand(iv?.brand, iv?.orgName)}
       state={state}
       interview={
         iv

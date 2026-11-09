@@ -57,7 +57,7 @@ export class JobBoardPosterService {
       location: job.location ?? '',
       employmentType: job.employmentType ?? '',
       companyName: orgName,
-      applyUrl: job.applyToken ? `${frontendUrl}/apply/${job.applyToken}` : '',
+      applyUrl: job.applyToken ? `${frontendUrl}/yx/apply/${job.applyToken}` : '',
       reference: job.id,
     };
 

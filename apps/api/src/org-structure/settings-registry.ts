@@ -239,6 +239,12 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // is revised (starter), or the check is off. A bulk offer expires this many days after it is sent (never after joining).
   'hiring.bulk_offer.plan_check': { label: 'Hiring: bulk offers beyond the free places on the plan line', scopes: ['tenant'], dated: false, values: ['hold', 'off'], default: 'hold', labels: { hold: 'Are held until the plan is revised', off: 'Are not checked against the plan' } },
   'hiring.offer.expiry_days': { label: 'Hiring: a bulk offer expires after (days)', scopes: ['tenant'], dated: false, values: ['3', '5', '7', '10', '14', '30'], default: '7' },
+  // Careers answer 352: when an applicant's résumé file fails the safety check, they are emailed a link to their
+  // candidate page to upload another (starter on).
+  'hiring.resume_quarantine.tell_applicant': { label: 'Hiring: tell applicants when their résumé file could not be accepted', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'on' },
+  // Careers answer 356 (D15: white-label is in every plan): hide "Powered by YukthiX" on the careers site and the candidate
+  // pages. Starter off.
+  'brand.white_label': { label: 'Hide "Powered by YukthiX" on the careers site and candidate pages', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   'home.pay_on_employee_home': { label: 'Show net pay on the employee home', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // P02 §4.5 fraud guard: a new bank account is used for payouts only after this cooling period (starter, D17).
   'employee.bank_change.cooling_hours': { label: 'New bank accounts are used for pay after (hours)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '24', '48', '72'], default: '48', guard: 'access.role.manage' },

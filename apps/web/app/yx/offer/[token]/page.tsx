@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { OfferAcceptScreen, type CandidatePageState } from '@yukthix/ui/hiring';
-import { publicGet, publicPost } from '../../../../lib/yx-careers';
+import { publicGet, publicPost, candidateBrand } from '../../../../lib/yx-careers';
 import type { PublicOffer } from '../../../../lib/types';
 
 // T9-09 offer accept by link (founder decisions 4 and 10): the existing accept-by-link, on the drawn page. The API
@@ -25,7 +25,7 @@ export default function YxOfferPage() {
   }, [token]);
   return (
     <OfferAcceptScreen
-      brand={{ tenant: offer?.orgName ?? '' }}
+      brand={candidateBrand(offer?.brand, offer?.orgName)}
       state={state}
       offer={offer ? { jobTitle: offer.jobTitle, compensation: offer.compensation, startDate: new Date(offer.startDate), expiresAt: new Date(offer.expiresAt), status: offer.status, pdfUrl: offer.pdfUrl, esign: Boolean(offer.esign) } : null}
       live={{

@@ -190,3 +190,34 @@ describe('Candidate pages outside the app (decision 10)', () => {
     expect((await screen.findAllByText('Your interview is confirmed')).length).toBeGreaterThan(0);
   });
 });
+
+describe('Careers follow-ups (answers 353, 356, 357, 359, 362)', () => {
+  it('a job outside India sends the number with its country code; the closing day and experience show', async () => {
+    mockFetch({ 'POST /jobs/t1/apply': { status: 201, body: { received: true } }, 'POST /jobs/t1/parse-resume': { body: {} } });
+    wrap(<JobPage applyToken="t1" job={{ ...JOB, askPayHistory: false, internationalPhone: true, applyBy: '2099-12-31', experience: '3 to 5 years' }} address="a" allJobsHref={null} />);
+    expect(screen.getByText(/3 to 5 years/)).toBeInTheDocument();
+    await ue.type(screen.getByLabelText(/Full name/), 'Asha Rao');
+    await ue.type(screen.getByLabelText(/^Email/), 'asha@example.in');
+    await ue.type(screen.getByLabelText(/Mobile number/), '+44 7400 123456');
+    await ue.upload(document.querySelector('input[type="file"]') as HTMLInputElement, new File(['%PDF-1.7'], 'cv.pdf', { type: 'application/pdf' }));
+    await ue.click(screen.getByRole('checkbox', { name: 'I have read this and agree.' }));
+    await ue.click(screen.getByRole('button', { name: 'Send application' }));
+    expect(await screen.findByText('Application sent')).toBeInTheDocument();
+    expect(calls.find((c) => c.url.endsWith('/apply'))!.body).toMatchObject({ phone: '+447400123456' });
+  });
+
+  it('the offer page carries the company logo and hides Powered by for a white-label company; without them it keeps the default', async () => {
+    (useParams as jest.Mock).mockReturnValue({ token: 'of3' });
+    const offer = { jobTitle: 'QA Chemist', orgName: 'Kaveri Foods', compensation: 'x', startDate: '2026-12-01T00:00:00.000Z', expiresAt: '2099-12-01T00:00:00.000Z', status: 'sent', pdfUrl: null };
+    mockFetch({ 'GET /offers/of3': { body: { ...offer, brand: { orgName: 'Kaveri Foods', orgLogo: 'https://blob/logo.png', careersSlug: 'kaveri', accent: '#1F6F4A', whiteLabel: true } } } });
+    const { unmount } = wrap(<YxOfferPage />);
+    expect(await screen.findByRole('img', { name: 'Kaveri Foods logo' })).toHaveAttribute('src', 'https://blob/logo.png');
+    expect(screen.queryByText(/Powered by/)).not.toBeInTheDocument();
+    unmount();
+    mockFetch({ 'GET /offers/of3': { body: offer } });
+    wrap(<YxOfferPage />);
+    expect(await screen.findByRole('button', { name: 'Accept offer' })).toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: 'Kaveri Foods logo' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Powered by/)).toBeInTheDocument();
+  });
+});
