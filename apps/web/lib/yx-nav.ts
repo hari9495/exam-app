@@ -281,7 +281,6 @@ export function buildNav(n: NavInput): NavArea[] {
           // follows the bonus (the API lets anyone signed in refer; someone with no record and no keys keeps a bare menu).
           ...when(employee || any('ats.headcount.manage', 'pipeline:manage', 'results:view', 'interview:view_assigned', 'candidate:manage', 'candidate:view'), L('hiring-referrals', 'Referrals', '/yx/hiring/referrals')),
           ...when(has('org:manage_settings'), L('hiring-careers', 'Careers site', '/yx/hiring/careers'), L('hiring-boards', 'Job boards', '/yx/hiring/job-boards')),
-          ...when(has('pipelines:configure'), L('hiring-scorecards', 'Scorecards', '/yx/hiring/scorecards')),
           ...when(has('approvals:configure'), L('hiring-approvals', 'Hiring approvals', '/yx/hiring/approval-routes')),
           ...when(has('candidate:data_rights'), L('hiring-retention', 'Candidate data retention', '/yx/hiring/retention')),
           ...when(any('exam:manage', 'question_bank:manage'), L('hiring-older', 'Assessments & more (older screens)', '/v2/today')),
@@ -384,7 +383,7 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(has('payroll.import.run'), L('pay-imports', 'Import old payroll', '/yx/payroll/imports')),
       ])),
       // Settings 6.1 Hiring: recruiting, hiring admins and HR read it; the hiring settings key changes it.
-      ...sec('Hiring & Assessments', when(!support && any('ats.settings.manage', 'org.settings.manage', 'pipeline:manage', 'ats.headcount.manage', 'ats.referral.manage'), L('hiring-settings', 'Hiring', '/yx/settings/hiring'))),
+      ...sec('Hiring & Assessments', when(!support && any('ats.settings.manage', 'org.settings.manage', 'pipeline:manage', 'pipelines:configure', 'ats.headcount.manage', 'ats.referral.manage'), L('hiring-settings', 'Hiring', '/yx/settings/hiring'))),
       ...sec('Documents & Communication', [
         ...when(any('letter.template.manage', 'letter.signatory.manage'), L('letter-templates', 'Letter templates', '/yx/settings/letters')),
         ...when(has('notification.template.manage') || support, L('emails', 'Emails', '/yx/settings/emails')),
