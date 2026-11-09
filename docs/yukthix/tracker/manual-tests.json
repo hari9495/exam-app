@@ -16680,5 +16680,133 @@
       "Screens/Hiring/HIR-07 · Scorecard form · Recruiter or hiring manager · submitted scorecards, resend and cancel"
     ],
     "note": "Positive and negative (acting for someone else)."
+  },
+  {
+    "id": "MT-HIR-SET-01",
+    "area": "Hiring · Settings 6.1 and answers 283, 285, 286, 291, 293, 302 (10 Nov 2026)",
+    "screen": "Settings › Hiring: read and change (6.1)",
+    "url": "http://localhost:3000/yx/settings/hiring",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Settings › Hiring & Assessments › Hiring.",
+      "2. Check the page: Pipeline templates, Scorecard templates, Default recruiter for new requisitions, Keep non-hired candidates for, Tell candidates when they are not selected, Referral bonus rules. No sample names (Kaveri Foods, Plant worker).",
+      "3. Set Keep non-hired candidates for to 18 months and tick Tell candidates when they are not selected; press Save changes.",
+      "4. Reload the page.",
+      "5. Open Hiring › Candidate data retention.",
+      "6. Put the values back (12 months, untick) and save."
+    ],
+    "expected": "Step 3: toast \"Hiring settings saved\" (5 s); the save bar goes. Step 4: the values stay; the header says Last changed by you. Step 5: retention shows 18 months. Step 6: saved again.",
+    "stories": [
+      "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HIR-SET-02",
+    "area": "Hiring · Settings 6.1 and answers 283, 285, 286, 291, 293, 302 (10 Nov 2026)",
+    "screen": "Settings › Hiring: who may change it",
+    "url": "http://localhost:3000/yx/settings/hiring",
+    "account": "A recruiter without the Hiring admin role (Recruiter only), then a hiring manager (panel@demo-org.test, Divya), then hr-tester while HR acts for someone else.",
+    "steps": [
+      "1. Sign in as a Recruiter-only account and open Settings › Hiring.",
+      "2. Sign in as the hiring manager and look for Settings › Hiring in the menu; open /yx/settings/hiring directly.",
+      "3. As an HR admin, act as another person and open the page."
+    ],
+    "expected": "Step 1: \"You can view these settings but not change them\"; values are text, no Save, no Edit buttons. Step 2: no menu item; the page shows \"We couldn't load Hiring\". Step 3: view only; nothing can be saved.",
+    "stories": [
+      "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring · read-only"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-HIR-SET-03",
+    "area": "Hiring · Settings 6.1 and answers 283, 285, 286, 291, 293, 302 (10 Nov 2026)",
+    "screen": "Stage targets moved to Settings › Hiring (answer 302)",
+    "url": "http://localhost:3000/yx/settings/hiring",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin). Browser window 1278 x 635, sidebar open. The pipelines key comes with the Recruiter role.",
+    "steps": [
+      "1. In Pipeline templates press Stage targets on the Standard row.",
+      "2. Type 0 in Applied: days target and press Save stage targets.",
+      "3. Clear it, set Screening days target 5 and Interview limit 6; Save stage targets.",
+      "4. Open Hiring › Jobs, open a job on that pipeline, tab Settings.",
+      "5. Open the job's pipeline board."
+    ],
+    "expected": "Step 2: the field error shows and the field is focused; nothing saved. Step 3: toast \"Stage targets saved\". Step 4: Stage targets card shows \"5 days target\" and \"limit 6\" as text with \"Change in Settings\" (opens Settings › Hiring); no editor on the job. Step 5: cards over 5 days in Screening show amber.",
+    "stories": [
+      "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring · stage targets"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-SET-04",
+    "area": "Hiring · Settings 6.1 and answers 283, 285, 286, 291, 293, 302 (10 Nov 2026)",
+    "screen": "Default recruiter for new requisitions (answer 291)",
+    "url": "http://localhost:3000/yx/settings/hiring",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin). Browser window 1278 x 635, sidebar open. Then the hiring manager panel@demo-org.test (Divya).",
+    "steps": [
+      "1. With Default recruiter = None, sign in as Divya and raise a request (People › My team › Request a hire).",
+      "2. Open Hiring › Requisitions as hr-tester and open that request.",
+      "3. Set Default recruiter to hr-tester and save; as Divya raise another request.",
+      "4. Set Default recruiter to Divya herself and save; as Divya raise a third request.",
+      "5. Put Default recruiter back to None."
+    ],
+    "expected": "Step 2: Recruiter is empty (not Divya). Step 3: the new request's recruiter is hr-tester. Step 4: the request has no recruiter (never the manager herself). Step 5: saved with a toast.",
+    "stories": [
+      "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-SET-05",
+    "area": "Hiring · Settings 6.1 and answers 283, 285, 286, 291, 293, 302 (10 Nov 2026)",
+    "screen": "Hiring manager cancels own waiting requisition (answer 293)",
+    "url": "http://localhost:3000/yx/hiring/requisitions",
+    "account": "panel@demo-org.test (Divya, hiring manager). Browser window 1278 x 635.",
+    "steps": [
+      "1. Raise a request so it waits for approval.",
+      "2. On Hiring › Requisitions open the row menu of that request and choose Cancel requisition.",
+      "3. Press Cancel requisition with no reason.",
+      "4. Write \"Budget moved to next year\" and press Cancel requisition.",
+      "5. Open the menu of an approved requisition and of someone else's requisition."
+    ],
+    "expected": "Step 3: \"Say why it is cancelled, so recruiting knows.\" and nothing happens. Step 4: toast \"<title> cancelled\"; status Cancelled with the reason. Step 5: no Cancel requisition item (only recruiting cancels approved ones; others' are not shown).",
+    "stories": [
+      "Screens/Hiring/HIR-02 · Requisitions · Hiring manager · cancel own waiting requisition"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-SET-06",
+    "area": "Hiring · Settings 6.1 and answers 283, 285, 286, 291, 293, 302 (10 Nov 2026)",
+    "screen": "All referrals: Paid outside payroll and Undo paid (answers 283, 285)",
+    "url": "http://localhost:3000/yx/hiring/referrals/all",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin). Browser window 1278 x 635, sidebar open. Needs a referral whose bonus is Due.",
+    "steps": [
+      "1. On a Due row choose Mark bonus paid; in Pay through choose Paid outside payroll; press Mark paid.",
+      "2. Open Hiring › Recruiting costs.",
+      "3. Back on All referrals open that row's menu and choose Undo paid; confirm.",
+      "4. Mark it paid again through Payroll; then Undo paid.",
+      "5. For a bonus paid in a payroll run that is already approved, choose Undo paid."
+    ],
+    "expected": "Step 1: toast \"Bonus marked paid outside payroll\"; Bonus shows Paid. Step 2: a Referral bonus cost with origin \"Paid outside payroll\" for this month. Step 3: toast \"Bonus is due again\"; the cost is gone. Step 4: toast \"Bonus sent to payroll\", then \"Bonus is due again\" (the one-time pay line is cancelled). Step 5: refused in the dialog: \"The bonus was paid in the approved <month> payroll, so it cannot be undone here. Payroll recovers it if needed.\"",
+    "stories": [
+      "Screens/Hiring/HIR-12 · Referrals · All referrals · paid outside payroll",
+      "Screens/Hiring/HIR-12 · Referrals · All referrals · undo paid"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-SET-07",
+    "area": "Hiring · Settings 6.1 and answers 283, 285, 286, 291, 293, 302 (10 Nov 2026)",
+    "screen": "Export offers CSV only (answer 286)",
+    "url": "http://localhost:3000/yx/payroll/components",
+    "account": "An HR / payroll admin who sees these pages.",
+    "steps": [
+      "1. Open the Export menu on: Pay component library, Pay inputs (LOP, one-time pay, payment status), Piece-rate check, People › Assets, People › Letters, Helpdesk tickets, Time › Attendance reports.",
+      "2. Choose CSV on one of them."
+    ],
+    "expected": "Step 1: each menu offers only \"CSV (visible columns)\", no Excel. Step 2: a .csv file downloads.",
+    "stories": [],
+    "note": "Positive."
   }
 ]

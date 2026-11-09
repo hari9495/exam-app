@@ -1,8 +1,9 @@
 // HIR-03 job workspace › Settings (founder answer 261, 10 Nov 2026): the job settings that lived on the old candidates
 // list (/pipeline/list), drawn from kit parts: tests and the stage that sends each, the interview scorecard, public
 // applying and the careers site, job boards, fit criteria, and (answer 263) the pipeline's optional days target and
-// limit per stage. Without the job-manage key the values show as text. Buttons are never greyed out: pressed too early
-// they show the field error and focus the field.
+// limit per stage, read-only here: answer 302 moved the editor to Settings › Hiring (StageTargetsSheet). Without the
+// job-manage key the values show as text. Buttons are never greyed out: pressed too early they show the field error and
+// focus the field.
 import { useState } from 'react';
 import { Plus, Sparkles } from 'lucide-react';
 import { Button } from '../../components/button';
@@ -14,6 +15,7 @@ import { NumberField, TextArea, TextField } from '../../components/inputs';
 import { useToastIfAny } from '../../components/notify';
 import { MultiSelect, Select } from '../../components/select';
 import { Card, DescriptionList } from '../../components/shell';
+import { Drawer } from '../../components/drawer';
 import { DataTable, type TableColumn } from '../../components/table';
 import type { Choice, JobSettingsView } from './live/types';
 import './hiring.css';
@@ -43,7 +45,7 @@ export type JobSettingsPatch = Partial<{ publicApplyEnabled: boolean; listOnCare
 export interface LiveJobSettings {
   /** pipeline:manage: change this job's settings. */
   canManage: boolean;
-  /** pipelines:configure: change the pipeline's stage targets (every job on the pipeline). */
+  /** pipelines:configure: may change the pipeline's stage targets in Settings › Hiring (every job on the pipeline). */
   canConfigure: boolean;
   job: JobSettingsJob;
   settings: JobSettingsView | null;
@@ -61,8 +63,88 @@ export interface LiveJobSettings {
   onUpdateJob: (patch: JobSettingsPatch) => Promise<unknown>;
   onScreenAll?: () => Promise<{ queued: number }>;
   onCopy: (text: string) => Promise<unknown>;
-  /** Only the stages that changed. */
-  onStageTargets: (changes: { stageId: string; daysTarget: number | null; limit: number | null }[]) => Promise<unknown>;
+  /** Answer 302: opens Settings › Hiring, where the stage targets are changed. */
+  onOpenSettings?: () => void;
+}
+
+/** One change to a stage's targets (only the stages that changed are sent). */
+export type StageTargetChange = { stageId: string; daysTarget: number | null; limit: number | null };
+
+const badDays = (t: StageTarget) => t.daysTarget != null && (t.daysTarget < 1 || t.daysTarget > 365);
+const badLimit = (t: StageTarget) => t.limit != null && (t.limit < 1 || t.limit > 1000);
+const targetText = (t: StageTarget) => [t.daysTarget != null ? `${t.daysTarget} days target` : null, t.limit != null ? `limit ${t.limit}` : null].filter(Boolean).join(' · ') || 'None';
+
+/**
+ * Founder answer 302: a pipeline's optional days target and limit per stage, edited from Settings › Hiring › Pipeline
+ * templates (the pipelines key). Without the key the values show as text. Save is never greyed out: pressed with a bad
+ * value it shows the field error and focuses the field.
+ */
+export function StageTargetsSheet({ open, onOpenChange, pipelineName, stages, canEdit, onSave }: { open: boolean; onOpenChange: (o: boolean) => void; pipelineName: string; stages: StageTarget[]; canEdit: boolean; onSave?: (changes: StageTargetChange[]) => Promise<unknown> }) {
+  const toast = useToastIfAny();
+  const [targets, setTargets] = useState(stages);
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const changes = targets.filter((t) => { const o = stages.find((s) => s.id === t.id); return o && (o.daysTarget !== t.daysTarget || o.limit !== t.limit); }).map((t) => ({ stageId: t.id, daysTarget: t.daysTarget, limit: t.limit }));
+  const save = async () => {
+    setTried(true);
+    const bad = targets.findIndex((t) => badDays(t) || badLimit(t));
+    if (bad >= 0) return focus(badDays(targets[bad]!) ? `st-days-${bad}` : `st-limit-${bad}`);
+    if (!changes.length) return void toast?.toast({ tone: 'default', title: 'Nothing changed' });
+    setBusy(true);
+    setFailed(null);
+    try {
+      await onSave?.(changes);
+      toast?.toast({ tone: 'success', title: 'Stage targets saved', description: `Every job on ${pipelineName} uses them.` });
+      onOpenChange(false);
+    } catch (e) {
+      setFailed(e instanceof Error && e.message ? e.message : 'That did not save. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Drawer
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`Stage targets: ${pipelineName}`}
+      subtitle="Pipeline templates"
+      dirty={canEdit && changes.length > 0}
+      footer={
+        canEdit ? (
+          <>
+            <Button onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button variant="primary" loading={busy} onClick={() => void save()}>
+              Save stage targets
+            </Button>
+          </>
+        ) : (
+          <Button onClick={() => onOpenChange(false)}>Close</Button>
+        )
+      }
+    >
+      <div className="yx-hire-stack">
+        <Text as="p" size="sm" tone="secondary">
+          Optional. The board shows a card in amber once it is over the days target, and flags a stage holding more than its limit. Nothing is blocked. Empty means none. Every job on {pipelineName} uses them.
+        </Text>
+        {failed && <InlineAlert tone="danger" title={failed} />}
+        {canEdit ? (
+          targets.map((t, i) => (
+            <div key={t.id} className="yx-hire-actions">
+              <FormField id={`st-days-${i}`} label={`${t.name}: days target`} optional error={tried && badDays(t) ? 'Enter 1 to 365 days, or leave it empty.' : null}>
+                <NumberField value={t.daysTarget} onChange={(v) => setTargets((x) => x.map((y, k) => (k === i ? { ...y, daysTarget: v } : y)))} min={1} max={365} />
+              </FormField>
+              <FormField id={`st-limit-${i}`} label={`${t.name}: limit`} optional error={tried && badLimit(t) ? 'Enter 1 to 1000 candidates, or leave it empty.' : null}>
+                <NumberField value={t.limit} onChange={(v) => setTargets((x) => x.map((y, k) => (k === i ? { ...y, limit: v } : y)))} min={1} max={1000} />
+              </FormField>
+            </div>
+          ))
+        ) : (
+          <DescriptionList items={stages.map((t) => ({ label: t.name, value: targetText(t) }))} />
+        )}
+      </div>
+    </Drawer>
+  );
 }
 
 export function JobSettingsPanel({ live }: { live: LiveJobSettings }) {
@@ -75,8 +157,6 @@ export function JobSettingsPanel({ live }: { live: LiveJobSettings }) {
   const [criteria, setCriteria] = useState(live.job.fitCriteria ?? '');
   const [rubric, setRubric] = useState(live.job.fitRubric);
   const [rubricTried, setRubricTried] = useState(false);
-  const [targets, setTargets] = useState(live.stages);
-  const [targetsTried, setTargetsTried] = useState(false);
   const run = async (key: string, fn: () => Promise<unknown>, title?: string) => {
     setBusy(key);
     setFailed(null);
@@ -94,7 +174,6 @@ export function JobSettingsPanel({ live }: { live: LiveJobSettings }) {
   // The API scores against weights in per cent: whole numbers that add up to 100 (an empty rubric is fine).
   const badRubric = rubric.findIndex((r) => !r.label.trim() || !(Number.isInteger(r.weight) && r.weight >= 0 && r.weight <= 100));
   const rubricTotal = rubric.reduce((t, r) => t + (r.weight || 0), 0);
-  const badTarget = targets.findIndex((t) => (t.daysTarget != null && (t.daysTarget < 1 || t.daysTarget > 365)) || (t.limit != null && (t.limit < 1 || t.limit > 1000)));
   const name = (list: Choice[], v: string | null) => list.find((x) => x.value === v)?.label ?? null;
   const testCols: TableColumn<JobSettingsView['exams'][number]>[] = [
     { key: 't', header: 'Test', value: (e) => e.title },
@@ -236,41 +315,12 @@ export function JobSettingsPanel({ live }: { live: LiveJobSettings }) {
         </div>
       </Card>
 
-      <Card title="Stage targets">
+      <Card title="Stage targets" actions={live.canConfigure && live.onOpenSettings ? <Button size="sm" onClick={live.onOpenSettings}>Change in Settings</Button> : undefined}>
         <div className="yx-hire-stack">
           <Text as="p" size="sm" tone="secondary">
-            Optional. The board shows a card in amber once it is over the days target, and flags a stage holding more than its limit. Nothing is blocked. Empty means none. These belong to the pipeline {live.pipelineName}, so every job on it uses them.
+            Optional. The board shows a card in amber once it is over the days target, and flags a stage holding more than its limit. Nothing is blocked. These belong to the pipeline {live.pipelineName}, so every job on it uses them; they are changed in Settings › Hiring › Pipeline templates.
           </Text>
-          {live.canConfigure ? (
-            <>
-              {targets.map((t, i) => (
-                <div key={t.id} className="yx-hire-actions">
-                  <FormField id={`js-days-${i}`} label={`${t.name}: days target`} optional error={targetsTried && t.daysTarget != null && (t.daysTarget < 1 || t.daysTarget > 365) ? 'Enter 1 to 365 days, or leave it empty.' : null}>
-                    <NumberField value={t.daysTarget} onChange={(v) => setTargets((x) => x.map((y, k) => (k === i ? { ...y, daysTarget: v } : y)))} min={1} max={365} />
-                  </FormField>
-                  <FormField id={`js-limit-${i}`} label={`${t.name}: limit`} optional error={targetsTried && t.limit != null && (t.limit < 1 || t.limit > 1000) ? 'Enter 1 to 1000 candidates, or leave it empty.' : null}>
-                    <NumberField value={t.limit} onChange={(v) => setTargets((x) => x.map((y, k) => (k === i ? { ...y, limit: v } : y)))} min={1} max={1000} />
-                  </FormField>
-                </div>
-              ))}
-              <div>
-                <Button size="sm" variant="primary" loading={busy === 'targets'} onClick={() => {
-                  setTargetsTried(true);
-                  if (badTarget >= 0) {
-                    const t = targets[badTarget]!;
-                    return focus(t.daysTarget != null && (t.daysTarget < 1 || t.daysTarget > 365) ? `js-days-${badTarget}` : `js-limit-${badTarget}`);
-                  }
-                  const changes = targets.filter((t) => { const o = live.stages.find((s) => s.id === t.id); return o && (o.daysTarget !== t.daysTarget || o.limit !== t.limit); }).map((t) => ({ stageId: t.id, daysTarget: t.daysTarget, limit: t.limit }));
-                  if (!changes.length) return void toast?.toast({ tone: 'default', title: 'Nothing changed' });
-                  void run('targets', () => live.onStageTargets(changes), 'Stage targets saved');
-                }}>
-                  Save stage targets
-                </Button>
-              </div>
-            </>
-          ) : (
-            <DescriptionList items={live.stages.map((t) => ({ label: t.name, value: [t.daysTarget != null ? `${t.daysTarget} days target` : null, t.limit != null ? `limit ${t.limit}` : null].filter(Boolean).join(' · ') || 'None' }))} />
-          )}
+          <DescriptionList items={live.stages.map((t) => ({ label: t.name, value: targetText(t) }))} />
         </div>
       </Card>
     </div>

@@ -272,6 +272,8 @@ function SampleLopInputScreen({ state = 'ready', upload, locked, rows: initial =
           )
         }
         empty={<EmptyState title="No Assumed-present groups in this run." description="Every group in this pay group uses punches or timesheets, so LOP comes from the attendance feed." />}
+        // Answers 241/286: the file is CSV, so the menu offers CSV only.
+        exportFormats={['csv']}
         onExport={() => saveFile('lop-input-sep-2026.csv', tableToCsv(rows, cols))}
       />
       <BulkUploadDrawer
@@ -611,6 +613,8 @@ function SampleOneTimePayScreen({ state = 'ready', sheet, upload, rows: initialR
                 </MenuItem>
               </>
             )}
+            // Answers 241/286: the file is CSV, so the menu offers CSV only.
+            exportFormats={['csv']}
             onExport={() => saveFile('one-time-pay.csv', tableToCsv(shown, cols))}
           />
         </TabsContent>
@@ -1328,6 +1332,8 @@ function SamplePayments({ persona = 'pa', tab = 'status', state = 'ready', failu
                   </StoryButton>
                 ) : null
               }
+              // Answers 241/286: the file is CSV, so the menu offers CSV only.
+              exportFormats={['csv']}
               onExport={() => {
                 saveFile('payment-status-sep-2026.csv', tableToCsv(lines, cols));
                 setDone(`Payment status exported (${lines.length} rows)`);

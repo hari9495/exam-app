@@ -383,6 +383,8 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(has('payroll.template.manage'), L('pay-templates', 'Salary templates', '/yx/payroll/templates')),
         ...when(has('payroll.import.run'), L('pay-imports', 'Import old payroll', '/yx/payroll/imports')),
       ])),
+      // Settings 6.1 Hiring: recruiting, hiring admins and HR read it; the hiring settings key changes it.
+      ...sec('Hiring & Assessments', when(!support && any('ats.settings.manage', 'org.settings.manage', 'pipeline:manage', 'ats.headcount.manage', 'ats.referral.manage'), L('hiring-settings', 'Hiring', '/yx/settings/hiring'))),
       ...sec('Documents & Communication', [
         ...when(any('letter.template.manage', 'letter.signatory.manage'), L('letter-templates', 'Letter templates', '/yx/settings/letters')),
         ...when(has('notification.template.manage') || support, L('emails', 'Emails', '/yx/settings/emails')),

@@ -142,6 +142,9 @@ describe('HIR-02 requisitions and HIR-26 rediscovery', () => {
     expect(mine.rows.map((r) => r.id).sort()).toEqual([ids.r1, ids.r2].sort());
     expect(mine.rows.find((r) => r.id === ids.r1)!.line).toMatchObject({ approved: 3, budget: null });
     expect((await list('mgr2')).rows.map((r) => r.id)).toEqual([ids.r3]);
+    // Answer 291: with no default recruiter set, a manager's request starts with no recruiter (never the manager).
+    expect(r1.recruiter).toBe('');
+    expect(await inA(async (tx) => (await tx.job.findUniqueOrThrow({ where: { id: ids.r1 } })).recruiterUserId)).toBeNull();
   });
 
   it('an approval opens the requisition; a send-back shows the reason; the manager stays read-only', async () => {
@@ -292,7 +295,7 @@ describe('HIR-02 requisitions and HIR-26 rediscovery', () => {
 
   it('suggest to recruiter: needs a recruiter, a bell notice once per candidate, audited (255); assign recruiter (253)', async () => {
     const suggest = (who: Who, cand: string, job = ids.r1) => api(who, 'post', `/hiring/requisitions/${job}/rediscovery/${cand}/suggest`);
-    // A manager's request starts with the manager as its recruiter: nobody to tell yet.
+    // A manager's request starts with no recruiter (answer 291): nobody to tell yet.
     expect((await suggest('mgr', ids.sana).expect(409)).body.message).toMatch(/no recruiter yet/);
     await api('mgr', 'patch', `/jobs/${ids.r1}`).send({ recruiterUserId: users.rec }).expect(403);
     await api('rec', 'patch', `/jobs/${ids.r1}`).send({ recruiterUserId: users.rec }).expect(200);
@@ -314,7 +317,9 @@ describe('HIR-02 requisitions and HIR-26 rediscovery', () => {
     const cancel = (who: Who, id: string, body: object) => api(who, 'post', `/hiring/requisitions/${id}/cancel`).send(body);
     await cancel('rec', ids.r2, {}).expect(400);
     await cancel('rec', ids.r2, { reason: ' ' }).expect(400);
-    await cancel('mgr', ids.r2, { reason: 'Client deal fell through' }).expect(403);
+    // Not theirs: another manager's requisition is not found (answer 293 lets a manager cancel only their own).
+    await cancel('mgr2', ids.r2, { reason: 'Client deal fell through' }).expect(404);
+    await cancel('emp', ids.r2, { reason: 'Client deal fell through' }).expect(403);
     await cancel('acting', ids.r2, { reason: 'Client deal fell through' }).expect(403);
     await cancel('adminB', ids.r2, { reason: 'Client deal fell through' }).expect(404);
     await cancel('rec', ids.r2, { reason: 'Client deal fell through' }).expect(200);
@@ -344,5 +349,47 @@ describe('HIR-02 requisitions and HIR-26 rediscovery', () => {
     await raise({ headcountPlanLineId: randomUUID() }).expect(400);
     await raise({ outsidePlan: true, headcountPlanLineId: null, outsidePlanReason: '' }).expect(400);
     await raise({ extra: 1 }).expect(400);
+  });
+
+  it('answer 291: a manager’s request starts with the default recruiter from Settings › Hiring, never the manager', async () => {
+    const raise = (who: Who) => api(who, 'post', '/jobs/requisitions').send({ title: 'Test Lead', requisitionReason: 'new', outsidePlan: true, outsidePlanReason: 'New client', headcount: 1, budgetAmount: 900_000 }).expect(201);
+    const recruiterOf = (id: string) => inA(async (tx) => (await tx.job.findUniqueOrThrow({ where: { id } })).recruiterUserId);
+    // The Hiring admin template holds the hiring settings key.
+    await api('hra', 'put', '/hiring/settings').send({ changes: [{ key: 'hiring.requisition.default_recruiter', value: users.rec }] }).expect(200);
+    const a = (await raise('mgr')).body.id;
+    expect(await recruiterOf(a)).toBe(users.rec);
+    expect((await list('mgr')).rows.find((r) => r.id === a)!.recruiter).toBe(`rec ${run}`);
+    // A manager set as the default recruiter: their own request starts with none; another manager's starts with them.
+    await api('hra', 'put', '/hiring/settings').send({ changes: [{ key: 'hiring.requisition.default_recruiter', value: users.mgr }] }).expect(200);
+    expect(await recruiterOf((await raise('mgr')).body.id)).toBeNull();
+    expect(await recruiterOf((await raise('mgr2')).body.id)).toBe(users.mgr);
+    // None again: no recruiter.
+    await api('hra', 'put', '/hiring/settings').send({ changes: [{ key: 'hiring.requisition.default_recruiter', value: 'none' }] }).expect(200);
+    expect(await recruiterOf((await raise('mgr')).body.id)).toBeNull();
+    // Recruiting creating a job is still its own recruiter (unchanged).
+    const job = (await api('rec', 'post', '/jobs').send({ title: 'Support Engineer', location: 'Pune' }).expect(201)).body.id;
+    expect(await recruiterOf(job)).toBe(users.rec);
+    // Another company's person is not found; a manager may not change the setting.
+    await api('hra', 'put', '/hiring/settings').send({ changes: [{ key: 'hiring.requisition.default_recruiter', value: users.adminB }] }).expect(404);
+    await api('mgr', 'put', '/hiring/settings').send({ changes: [{ key: 'hiring.requisition.default_recruiter', value: users.rec }] }).expect(403);
+  });
+
+  it('answer 293: a hiring manager cancels their own requisition while it waits for approval, with a reason; refused once approved or not theirs', async () => {
+    const cancel = (who: Who, id: string, body: object) => api(who, 'post', `/hiring/requisitions/${id}/cancel`).send(body);
+    const own = (await api('mgr', 'post', '/jobs/requisitions').send({ title: 'Automation Engineer', requisitionReason: 'new', outsidePlan: true, outsidePlanReason: 'New client', headcount: 1, budgetAmount: 900_000 }).expect(201)).body.id;
+    expect((await list('mgr')).rows.find((r) => r.id === own)).toMatchObject({ status: 'Pending approval', mine: true });
+    await cancel('mgr', own, {}).expect(400);
+    await cancel('mgr', own, { reason: 'x' }).expect(400);
+    await cancel('mgr2', own, { reason: 'Not needed now' }).expect(404);
+    await cancel('acting', own, { reason: 'Not needed now' }).expect(403);
+    await cancel('adminB', own, { reason: 'Not needed now' }).expect(404);
+    await cancel('mgr', own, { reason: 'Budget moved to next year' }).expect(200);
+    expect((await list('mgr')).rows.find((r) => r.id === own)).toMatchObject({ status: 'Cancelled', cancelReason: 'Budget moved to next year' });
+    expect(await inA(async (tx) => (await tx.wfRequest.findFirstOrThrow({ where: { subjectId: own }, orderBy: { submittedAt: 'desc' } })).status)).toBe('withdrawn');
+    const log = await inA((tx) => tx.auditLog.findFirstOrThrow({ where: { organizationId: org.A.id, action: 'ats.requisition.cancelled', entityId: own } }));
+    expect(JSON.parse(log.metadataJson ?? '{}')).toMatchObject({ reason: 'Budget moved to next year', from: 'pending_approval', by: 'hiring_manager' });
+    await cancel('mgr', own, { reason: 'Again please' }).expect(409);
+    // Approved (r1, recruiting's to cancel): refused with the reason.
+    expect((await cancel('mgr', ids.r1, { reason: 'Not needed now' }).expect(409)).body.message).toMatch(/already approved/);
   });
 });

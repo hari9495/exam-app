@@ -603,6 +603,8 @@ function LiveLettersRegister({ live }: { live: LiveLetters }) {
           columns={cols}
           rows={live.rows}
           getRowId={(r) => r.id}
+          // Answers 241/286: the file is CSV, so the menu offers CSV only.
+          exportFormats={['csv']}
           onExport={exportCsv('letters', live.rows, cols)}
           state={live.state === 'loading' ? 'loading' : 'ready'}
           rowActions={(r) =>

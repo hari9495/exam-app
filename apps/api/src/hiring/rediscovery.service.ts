@@ -174,7 +174,7 @@ export class RediscoveryService {
       if (!job) throw new NotFoundException('No such requisition.');
       const cand = await tx.candidate.findFirst({ where: { organizationId: org, id: candidateId, erasedAt: null, deletedAt: null, mergedIntoId: null, legalHoldAt: null }, select: { id: true, name: true } });
       if (!cand || !(await poolConsented(tx, org, [cand.id])).has(cand.id)) throw new NotFoundException('That person is not a past candidate you can suggest.');
-      // A manager's own request starts with them as its recruiter; a suggestion needs someone else in recruiting.
+      // A manager's request starts with the default recruiter or none (answer 291); a suggestion needs someone else in recruiting.
       if (!job.recruiterUserId || job.recruiterUserId === me) throw new ConflictException('This requisition has no recruiter yet. Ask recruiting to assign one.');
       try {
         await tx.requisitionSuggestion.create({ data: { organizationId: org, jobId: job.id, candidateId: cand.id, suggestedBy: me } });

@@ -410,6 +410,8 @@ function LivePieceCheck({ live }: { live: LiveSpecialPay }) {
           rows={data?.people ?? []}
           getRowId={(r) => r.employeeId}
           state={data ? 'ready' : 'loading'}
+          // Answers 241/286: the file is CSV, so the menu offers CSV only.
+          exportFormats={['csv']}
           onExport={data?.people.length ? exportCheck : undefined}
           empty={<EmptyState compact title={`No output for ${monthName(live.month)} yet`} description="Key or import output first; the check works it out from there." />}
         />

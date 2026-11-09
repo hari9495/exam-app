@@ -295,12 +295,17 @@ export class HiringRequisitionsService implements OnModuleInit {
    * HIR-02 answer 253: cancels a requisition with a reason (audited). A waiting approval is withdrawn, the job is closed
    * (its board postings close after commit). Refused once filled or already closed.
    */
-  async cancel(ctx: TenantContext, userId: string, jobId: string, reason: string) {
+  async cancel(ctx: TenantContext, user: ScopeUser, jobId: string, reason: string) {
+    const userId = user.userId!;
+    // Answer 293: recruiting cancels any requisition; a hiring manager only their own, and only while it waits for approval.
+    const recruiting = has(await buildViewer(this.prisma, this.tenantPrisma, user, ['pipeline:manage']), 'pipeline:manage');
     await this.run(ctx, async (tx, c) => {
       const org = c.organizationId;
-      const job = await tx.job.findFirst({ where: { organizationId: org, id: jobId, deletedAt: null } });
+      const job = await tx.job.findFirst({ where: { organizationId: org, id: jobId, deletedAt: null, ...(recruiting ? {} : { OR: [{ hiringManagerId: userId }, { createdById: userId }] }) } });
       if (!job) throw new NotFoundException('No such requisition.');
       if (job.requisitionCancelledAt) throw new ConflictException('This requisition is already cancelled.');
+      if (!recruiting && job.status !== 'pending_approval')
+        throw new ConflictException(job.status === 'draft' ? 'This requisition is not waiting for approval, so recruiting cancels it. Ask your recruiter.' : 'This requisition is already approved, so only recruiting can cancel it. Ask your recruiter.');
       const [{ n }] = await tx.$queryRaw<{ n: bigint }[]>`
         SELECT count(*) AS n FROM pipeline_entries e JOIN pipeline_statuses s ON s.id = e.status_id JOIN pipeline_stages st ON st.id = s.stage_id
         WHERE e.organization_id = ${org}::uuid AND e.job_id = ${job.id}::uuid AND st.category = 'hired'`;
@@ -312,7 +317,7 @@ export class HiringRequisitionsService implements OnModuleInit {
       }
       const done = await tx.job.updateMany({ where: { id: job.id, requisitionCancelledAt: null }, data: { status: 'closed', requisitionCancelledAt: new Date(), requisitionCancelReason: reason, requisitionCancelledBy: userId } });
       if (!done.count) throw new ConflictException('This requisition is already cancelled.');
-      await audit(tx, c, 'ats.requisition.cancelled', 'job', job.id, { reason, from: job.status });
+      await audit(tx, c, 'ats.requisition.cancelled', 'job', job.id, { reason, from: job.status, by: recruiting ? 'recruiting' : 'hiring_manager' });
     });
     await this.poster.syncJobToPaidBoards(ctx, jobId).catch((e) => this.logger.warn(`boards ${jobId}: ${(e as Error).message}`));
     return { status: 'cancelled' as const };

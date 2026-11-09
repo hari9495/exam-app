@@ -235,7 +235,8 @@ export class PipelineService {
       showSalary?: boolean;
       salaryPeriod?: 'year' | 'month' | 'hour';
       askPayHistory?: boolean;
-      recruiterUserId?: string;
+      /** Who recruits; omitted = the person creating the job; null = nobody yet (answer 291). */
+      recruiterUserId?: string | null;
       locationCountry?: string;
       pipelineId?: string;
       customFields?: Record<string, string | number | null>;
@@ -286,7 +287,7 @@ export class PipelineService {
           showSalary,
           askPayHistory,
           jobNumber,
-          recruiterUserId: dto.recruiterUserId ?? actorUserId,
+          recruiterUserId: dto.recruiterUserId === undefined ? actorUserId : dto.recruiterUserId,
           ...(dto.salaryPeriod ? { salaryPeriod: dto.salaryPeriod } : {}),
           organizationId,
           title: dto.title,
@@ -834,7 +835,16 @@ export class PipelineService {
           return { legalEntityId: plan.legalEntityId, departmentId: plan.departmentId, designationId: line.designationId, gradeId: line.gradeId, locationId: line.locationId };
         })
       : {};
-    const job = await this.createJob(context, actorUserId, { ...dto, ...place, hiringManagerId: actorUserId }, true);
+    // Answer 291: the request starts with the company's default recruiter, or none, never the manager themselves.
+    const recruiterUserId = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const org = context.organizationId as string;
+      const row = await tx.setting.findFirst({ where: { organizationId: org, key: 'hiring.requisition.default_recruiter', scopeType: 'tenant', scopeId: org } });
+      const id = row ? String(row.value) : 'none';
+      if (id === 'none' || id === actorUserId) return null;
+      // A default recruiter who has since left the company is skipped.
+      return (await tx.user.findFirst({ where: { organizationId: org, id, status: 'active' }, select: { id: true } })) ? id : null;
+    });
+    const job = await this.createJob(context, actorUserId, { ...dto, ...place, hiringManagerId: actorUserId, recruiterUserId }, true);
     const sent = await this.hiring.submit(context, actorUserId, job.id, true);
     return { id: job.id, title: job.title, ...sent };
   }

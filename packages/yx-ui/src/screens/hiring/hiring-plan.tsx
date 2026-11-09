@@ -994,14 +994,16 @@ export function RequisitionsScreen({ rows: sample, planLines, persona: samplePer
       New requisition
     </Button>
   );
+  // Answer 293: a hiring manager cancels their own requisition while it waits for approval (the API checks it again).
+  const hmCancel = (r: LiveRequisitionRow) => !can && r.mine && r.status === 'Pending approval';
   const liveActions = (r: LiveRequisitionRow) =>
-    can || live?.onDuplicate ? (
+    can || live?.onDuplicate || (live?.onCancel && hmCancel(r)) ? (
       <>
         {can && live?.onOpenJob && <MenuItem onSelect={() => live.onOpenJob?.(r)}>Open job</MenuItem>}
         {can && (r.status === 'Draft' || r.status === 'Sent back') && <MenuItem onSelect={() => void act(() => live!.onSubmit(r))}>Send for approval</MenuItem>}
         {can && r.status === 'Pending approval' && <MenuItem onSelect={() => void act(() => live!.onWithdraw(r))}>Withdraw from approval</MenuItem>}
         {live?.onDuplicate && <MenuItem onSelect={() => live.onDuplicate?.(r)}>Duplicate</MenuItem>}
-        {can && live?.onCancel && !ENDED.includes(r.status) && (
+        {live?.onCancel && !ENDED.includes(r.status) && (can || hmCancel(r)) && (
           <MenuItem destructive onSelect={() => setCancelling(r.id)}>
             Cancel requisition
           </MenuItem>
@@ -1147,7 +1149,7 @@ export function RequisitionsScreen({ rows: sample, planLines, persona: samplePer
           }}
         />
       )}
-      {cancelRow && <CancelRequisitionDialog row={cancelRow} onClose={() => setCancelling(null)} onCancel={live?.onCancel ? (reason) => live.onCancel!(cancelRow as LiveRequisitionRow, reason) : undefined} />}
+      {cancelRow && <CancelRequisitionDialog row={cancelRow} hm={persona === 'hm'} onClose={() => setCancelling(null)} onCancel={live?.onCancel ? (reason) => live.onCancel!(cancelRow as LiveRequisitionRow, reason) : undefined} />}
       {assigning && <AssignRecruiterDialog rows={assigning} recruiters={live?.assign?.recruiters ?? SAMPLE_RECRUITERS} onClose={() => (setAssigning(null), setPicked([]))} onAssign={live?.assign ? (userId) => live.assign!.onAssign(assigning as LiveRequisitionRow[], userId) : undefined} />}
     </HireFrame>
   );
@@ -1156,7 +1158,7 @@ export function RequisitionsScreen({ rows: sample, planLines, persona: samplePer
 const SAMPLE_RECRUITERS = [{ value: 'u1', label: 'Neha Joshi' }, { value: 'u2', label: 'Imran Qureshi' }];
 
 /** HIR-02 answer 253: why the requisition is cancelled (required); it closes the job. */
-function CancelRequisitionDialog({ row, onClose, onCancel }: { row: { code: string; title: string }; onClose: () => void; onCancel?: (reason: string) => Promise<void> }) {
+function CancelRequisitionDialog({ row, hm, onClose, onCancel }: { row: { code: string; title: string }; hm?: boolean; onClose: () => void; onCancel?: (reason: string) => Promise<void> }) {
   const [reason, setReason] = useState('');
   const [tried, setTried] = useState(false);
   return (
@@ -1164,7 +1166,7 @@ function CancelRequisitionDialog({ row, onClose, onCancel }: { row: { code: stri
       open
       onOpenChange={(o) => !o && onClose()}
       title={`Cancel requisition ${row.code || row.title}?`}
-      consequence="The job closes and its board postings close. A waiting approval is withdrawn. Candidates stay in your candidate list."
+      consequence={hm ? 'The request is withdrawn from approval and closed. Recruiting sees your reason. To hire later, raise a new request.' : 'The job closes and its board postings close. A waiting approval is withdrawn. Candidates stay in your candidate list.'}
       confirmLabel="Cancel requisition"
       destructive
       onConfirm={async () => {
@@ -1173,7 +1175,7 @@ function CancelRequisitionDialog({ row, onClose, onCancel }: { row: { code: stri
         await onCancel?.(reason.trim());
       }}
     >
-      <FormField label="Reason" required error={tried && reason.trim().length < 3 ? 'Say why it is cancelled, so the hiring manager knows.' : null}>
+      <FormField label="Reason" required error={tried && reason.trim().length < 3 ? (hm ? 'Say why it is cancelled, so recruiting knows.' : 'Say why it is cancelled, so the hiring manager knows.') : null}>
         <TextArea value={reason} onChange={setReason} rows={3} maxLength={500} />
       </FormField>
     </ConfirmDialog>
@@ -2254,7 +2256,7 @@ const SAMPLE_JOB_SETTINGS: LiveJobSettings = {
   onUpdateJob: async () => undefined,
   onScreenAll: async () => ({ queued: 12 }),
   onCopy: async () => undefined,
-  onStageTargets: async () => undefined,
+  onOpenSettings: () => undefined,
 };
 
 /** HIR-03 answer 222: change the job's recruiter (pressed with no change: a field error, never a disabled button). */
@@ -2685,7 +2687,7 @@ export interface CostEntry {
   source: string;
   type: 'Job board' | 'Agency fee' | 'Referral bonus' | 'Assessment' | 'Event' | 'Other';
   amount: number;
-  origin: 'Manual' | 'Payroll one-time pay' | 'Assessment cost';
+  origin: 'Manual' | 'Payroll one-time pay' | 'Assessment cost' | 'Paid outside payroll';
   enteredBy: string;
   note?: string;
   /** Live: the job's id and the month (YYYY-MM), so Edit opens with them. */
@@ -2759,7 +2761,7 @@ export function RecruitingCostsScreen({ rows, hires, state = 'ready', addOpen = 
     rows,
     fields: [
       { key: 'type', label: 'Cost type', type: 'multi', options: ['Job board', 'Agency fee', 'Referral bonus', 'Assessment', 'Event', 'Other'].map((v) => ({ value: v, label: v })) },
-      { key: 'origin', label: 'Origin', type: 'multi', options: ['Manual', 'Payroll one-time pay', 'Assessment cost'].map((v) => ({ value: v, label: v })) },
+      { key: 'origin', label: 'Origin', type: 'multi', options: ['Manual', 'Payroll one-time pay', 'Paid outside payroll', 'Assessment cost'].map((v) => ({ value: v, label: v })) },
     ],
     text: (r) => `${r.source} ${r.job ?? ''} ${r.note ?? ''}`,
     fieldValue: (r, k) => (k === 'type' ? r.type : r.origin),
@@ -2916,11 +2918,22 @@ export interface AllReferral {
   bonus: 'not-hired' | 'waiting' | 'due' | 'paid' | 'left' | 'none' | 'on-hold';
   dueOn: Date | null;
   amount: number;
+  /** Answer 285: a paid bonus went through payroll or was paid outside payroll. */
+  paidVia?: 'payroll' | 'outside' | null;
+  /** The referrer has an employee record (payroll can pay them). Unknown = yes. */
+  referrerIsEmployee?: boolean;
 }
 
-/** HIR-12 All referrals live: the mark-paid action (409 with the reason when it is not due) and retry. */
+/** How a bonus is marked paid (answer 285). */
+export type PaidVia = 'payroll' | 'outside';
+
+/**
+ * HIR-12 All referrals live: mark paid through payroll or outside it (409 with the reason when it is not due), undo paid
+ * (answer 283: refused with the reason once an approved pay run has it), and retry.
+ */
 export interface LiveAllReferrals {
-  onMarkPaid: (id: string) => Promise<void>;
+  onMarkPaid: (id: string, via: PaidVia) => Promise<void>;
+  onUndoPaid?: (id: string) => Promise<void>;
   onRetry: () => void;
 }
 
@@ -2928,9 +2941,16 @@ const BONUS_LABEL: Record<AllReferral['bonus'], string> = { 'not-hired': 'Not hi
 const BONUS_TONE: Record<AllReferral['bonus'], BadgeTone> = { 'not-hired': 'neutral', waiting: 'info', due: 'warning', 'on-hold': 'warning', paid: 'success', left: 'neutral', none: 'neutral' };
 
 // HIR-12 · All referrals (HR)
-export function AllReferralsScreen({ rows, state = 'ready', confirmId = null, live }: { rows: AllReferral[]; state?: ListState; confirmId?: string | null; live?: LiveAllReferrals }) {
+export function AllReferralsScreen({ rows, state = 'ready', confirmId = null, undoId = null, live }: { rows: AllReferral[]; state?: ListState; confirmId?: string | null; undoId?: string | null; live?: LiveAllReferrals }) {
   const [paying, setPaying] = useState<AllReferral | null>(rows.find((r) => r.id === confirmId) ?? null);
+  const [undoing, setUndoing] = useState<AllReferral | null>(rows.find((r) => r.id === undoId) ?? null);
+  const [via, setVia] = useState<PaidVia>(rows.find((r) => r.id === confirmId)?.referrerIsEmployee === false ? 'outside' : 'payroll');
   const [failed, setFailed] = useState<string | null>(null);
+  const pay = (r: AllReferral) => {
+    setFailed(null);
+    setVia(r.referrerIsEmployee === false ? 'outside' : 'payroll');
+    setPaying(r);
+  };
   const toaster = useToastIfAny();
   const list = useListControls({
     rows,
@@ -2979,7 +2999,16 @@ export function AllReferralsScreen({ rows, state = 'ready', confirmId = null, li
         views={list.views}
         filtered={list.filtered}
         onClearFilters={list.clear}
-        rowActions={(r) => (r.bonus === 'due' ? <MenuItem onSelect={() => (setFailed(null), setPaying(r))}>Mark bonus paid</MenuItem> : <MenuItem disabled>{r.bonus === 'paid' ? 'Bonus already paid' : r.bonus === 'on-hold' ? 'On hold: their resignation is pending' : 'No bonus due yet'}</MenuItem>)}
+        rowActions={(r) =>
+          r.bonus === 'due' ? (
+            <MenuItem onSelect={() => pay(r)}>Mark bonus paid</MenuItem>
+          ) : r.bonus === 'paid' && (!live || live.onUndoPaid) ? (
+            // Answer 283: undo a paid bonus (payroll: until the pay run is approved; outside payroll: while its quarter is open).
+            <MenuItem onSelect={() => (setFailed(null), setUndoing(r))}>Undo paid</MenuItem>
+          ) : (
+            <MenuItem disabled>{r.bonus === 'paid' ? 'Bonus already paid' : r.bonus === 'on-hold' ? 'On hold: their resignation is pending' : 'No bonus due yet'}</MenuItem>
+          )
+        }
         empty={<EmptyState title="No referrals yet." description="When employees refer people from Hiring › Referrals, they show here." />}
       />
       {paying && (
@@ -2987,14 +3016,59 @@ export function AllReferralsScreen({ rows, state = 'ready', confirmId = null, li
           open
           onOpenChange={(o) => !o && setPaying(null)}
           title={`Mark ${formatINR(paying.amount)} paid to ${paying.referrer}?`}
-          consequence={`For referring ${paying.name} (${paying.job}). It goes into payroll as a one-time referral bonus in the next open pay month, and shows in Recruiting costs once that payroll run is approved.`}
+          consequence={
+            via === 'payroll'
+              ? `For referring ${paying.name} (${paying.job}). It goes into payroll as a one-time referral bonus in the next open pay month, and shows in Recruiting costs once that payroll run is approved.`
+              : `For referring ${paying.name} (${paying.job}). No payroll line is made: you pay it yourself. It shows in Recruiting costs at once, and can be undone while this quarter is open.`
+          }
           confirmLabel="Mark paid"
           onConfirm={async () => {
             if (!live) return;
             try {
-              await live.onMarkPaid(paying.id);
-              toaster?.toast({ tone: 'success', title: 'Bonus sent to payroll', description: `${formatINR(paying.amount)} · ${paying.referrer}` });
+              await live.onMarkPaid(paying.id, via);
+              toaster?.toast({ tone: 'success', title: via === 'payroll' ? 'Bonus sent to payroll' : 'Bonus marked paid outside payroll', description: `${formatINR(paying.amount)} · ${paying.referrer}` });
               setPaying(null);
+            } catch (e) {
+              setFailed(e instanceof Error && e.message ? e.message : 'That did not work. Try again.');
+              return false;
+            }
+          }}
+        >
+          {paying.referrerIsEmployee === false ? (
+            <InlineAlert tone="info" title={`${paying.referrer} has no employee record`}>
+              Payroll cannot pay them, so the bonus is marked paid outside payroll.
+            </InlineAlert>
+          ) : (
+            <Segment
+              label="Pay through"
+              options={[
+                { value: 'payroll' as const, label: 'Payroll' },
+                { value: 'outside' as const, label: 'Paid outside payroll' },
+              ]}
+              value={via}
+              onChange={setVia}
+            />
+          )}
+          {failed && <InlineAlert tone="danger" title={failed} />}
+        </ConfirmDialog>
+      )}
+      {undoing && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setUndoing(null)}
+          title={`Undo the ${formatINR(undoing.amount)} bonus paid to ${undoing.referrer}?`}
+          consequence={
+            undoing.paidVia === 'outside'
+              ? `For referring ${undoing.name} (${undoing.job}). The bonus goes back to due and its cost comes off Recruiting costs. Allowed while this quarter is open.`
+              : `For referring ${undoing.name} (${undoing.job}). The one-time pay line is cancelled and the bonus goes back to due. Allowed until the payroll run that pays it is approved.`
+          }
+          confirmLabel="Undo paid"
+          onConfirm={async () => {
+            if (!live?.onUndoPaid) return;
+            try {
+              await live.onUndoPaid(undoing.id);
+              toaster?.toast({ tone: 'success', title: 'Bonus is due again', description: `${formatINR(undoing.amount)} · ${undoing.referrer}` });
+              setUndoing(null);
             } catch (e) {
               setFailed(e instanceof Error && e.message ? e.message : 'That did not work. Try again.');
               return false;

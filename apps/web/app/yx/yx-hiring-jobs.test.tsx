@@ -136,9 +136,9 @@ describe('Hiring › one job (HIR-03 workspace, HIR-24 pay range, live)', () => 
     expect(patched).toBe(0);
   });
 
-  it('Settings tab (answer 261): the scorecard is set per job; stage targets save only valid numbers (answer 263)', async () => {
+  it('Settings tab (answer 261): the scorecard is set per job; stage targets are read-only and open Settings › Hiring (answer 302)', async () => {
     const calls: [string, unknown][] = [];
-    const BOARD = { pipeline: { id: 'p1', name: 'Standard', stages: [{ id: 's1', name: 'Applied', category: 'active', position: 0, statuses: [], daysTarget: null, stageLimit: null }, { id: 's2', name: 'Rejected', category: 'rejected', position: 1, statuses: [], daysTarget: null, stageLimit: null }] }, columns: {} };
+    const BOARD = { pipeline: { id: 'p1', name: 'Standard', stages: [{ id: 's1', name: 'Applied', category: 'active', position: 0, statuses: [], daysTarget: 3, stageLimit: null }, { id: 's2', name: 'Rejected', category: 'rejected', position: 1, statuses: [], daysTarget: null, stageLimit: null }] }, columns: {} };
     routes(
       (key, init) => {
         if (init?.method && init.method !== 'GET') calls.push([key, init.body ? JSON.parse(String(init.body)) : undefined]);
@@ -146,7 +146,7 @@ describe('Hiring › one job (HIR-03 workspace, HIR-24 pay range, live)', () => 
         if (key === 'GET /hiring/jobs/j1/board') return BOARD;
         if (key === 'GET /hiring/scorecard-templates') return [{ id: 'tp1', name: 'Engineer round 1' }];
         if (key.startsWith('GET /exams') || key.startsWith('GET /organizations/job-boards') || key.startsWith('GET /job-boards')) return key.startsWith('GET /exams') ? { data: [], total: 0 } : [];
-        if (key === 'PUT /hiring/jobs/j1/scorecard' || key === 'PATCH /pipelines/stages/s1') return {};
+        if (key === 'PUT /hiring/jobs/j1/scorecard') return {};
         return undefined;
       },
       ['pipeline:manage', 'pipelines:configure', 'results:view', 'org.structure.view'],
@@ -156,15 +156,11 @@ describe('Hiring › one job (HIR-03 workspace, HIR-24 pay range, live)', () => 
     await userEvent.click(await screen.findByRole('combobox', { name: 'Scorecard for new interviews' }));
     await userEvent.click(await screen.findByRole('option', { name: 'Engineer round 1' }));
     await waitFor(() => expect(calls).toContainEqual(['PUT /hiring/jobs/j1/scorecard', { templateId: 'tp1' }]));
-    const days = screen.getByLabelText(/^Applied: days target/);
-    await userEvent.type(days, '400');
-    await userEvent.click(screen.getByRole('button', { name: 'Save stage targets' }));
-    expect((await screen.findAllByText(/1 to 365 days|between 1 and 365/)).length).toBeGreaterThan(0);
+    expect(screen.getByText('3 days target')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save stage targets' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Change in Settings' }));
+    expect(push).toHaveBeenCalledWith('/yx/settings/hiring');
     expect(calls.filter(([k]) => k.startsWith('PATCH /pipelines'))).toEqual([]);
-    await userEvent.clear(days);
-    await userEvent.type(days, '3');
-    await userEvent.click(screen.getByRole('button', { name: 'Save stage targets' }));
-    await waitFor(() => expect(calls).toContainEqual(['PATCH /pipelines/stages/s1', { daysTarget: 3, limit: null }]));
   });
 
   it('Settings tab without the job-manage key shows the values as text', async () => {

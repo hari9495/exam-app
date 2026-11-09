@@ -20,4 +20,6 @@ export const Loading: S = { name: 'Loading', render: () => <RequisitionsScreen r
 export const Error: S = { name: 'Error', render: () => <RequisitionsScreen rows={[]} planLines={PLAN_LINES} persona="recruiter" state="error" /> };
 export const Approver: S = { name: 'Approver · approve or send back', render: () => <RequisitionsScreen rows={REQUISITIONS} planLines={PLAN_LINES} persona="recruiter" openId="r2" approver now={TODAY} /> };
 export const CancelRequisition: S = { name: 'Cancel requisition · reason', render: () => <RequisitionsScreen rows={REQUISITIONS} planLines={PLAN_LINES} persona="recruiter" cancelId="r2" now={TODAY} /> };
+// Founder answer 293: a hiring manager cancels their own requisition while it waits for approval, with a reason.
+export const HiringManagerCancel: S = { name: 'Hiring manager · cancel own waiting requisition', render: () => <RequisitionsScreen rows={REQUISITIONS} planLines={PLAN_LINES} persona="hm" me="Karthik Subramanian" cancelId="r3" now={TODAY} /> };
 export const AssignRecruiter: S = { name: 'Assign recruiter', render: () => <RequisitionsScreen rows={REQUISITIONS} planLines={PLAN_LINES} persona="recruiter" assignOpen now={TODAY} /> };

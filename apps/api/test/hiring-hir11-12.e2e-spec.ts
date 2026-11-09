@@ -349,7 +349,7 @@ describe('Hiring HIR-11 costs and HIR-12 referrals', () => {
         return (await tx.exitCase.create({ data: { organizationId: org.A.id, employmentId: e.employmentId, employeeId: e.employeeId, personId: e.personId, exitType: 'resignation', initiatedBy: 'employee', submittedOn: new Date('2026-07-01'), noticePeriod: '30d', standardLwd: new Date('2026-07-31'), status: 'submitted' } })).id;
       });
       expect((await api('emp', 'get', '/referrals/mine').expect(200)).body.find((r: { id: string }) => r.id === ids.ref2)).toMatchObject({ bonusDue: 'on-hold', bonusInr: 50000 });
-      expect((await api('hr', 'get', '/referrals').expect(200)).body.find((r: { id: string }) => r.id === ids.ref2)).toMatchObject({ bonusDue: 'on-hold' });
+      expect((await api('hr', 'get', '/referrals').expect(200)).body.find((r: { id: string }) => r.id === ids.ref2)).toMatchObject({ bonusDue: 'on-hold', paidVia: null, referrerIsEmployee: true });
       expect((await api('hr', 'patch', `/referrals/${ids.ref2}/reward`).send({ rewardStatus: 'paid' }).expect(409)).body.message).toBe('Their resignation is waiting for approval, so the bonus is on hold. Mark it paid after the exit is decided.');
       await inA((tx) => tx.exitCase.update({ where: { id: resignation }, data: { status: 'withdrawn' } }));
       expect((await api('emp', 'get', '/referrals/mine').expect(200)).body.find((r: { id: string }) => r.id === ids.ref2)).toMatchObject({ bonusDue: 'due' });
@@ -396,23 +396,59 @@ describe('Hiring HIR-11 costs and HIR-12 referrals', () => {
       expect(await bonusCosts()).toHaveLength(1);
       const audits = await inA((tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, action: 'referral.reward_updated', entityId: ids.ref2 }, orderBy: { createdAt: 'asc' }, select: { metadataJson: true } }));
       expect(audits.map((a) => JSON.parse(a.metadataJson!))).toEqual([
-        { before: 'pending', rewardStatus: 'paid', amountInr: 50000, payMonth: paid.payMonth },
-        { before: 'paid', rewardStatus: 'paid', amountInr: 50000, payMonth: null },
-        { before: 'paid', rewardStatus: 'approved' },
-        { before: 'approved', rewardStatus: 'paid', amountInr: 50000, payMonth: expect.any(String) },
+        { before: 'pending', rewardStatus: 'paid', amountInr: 50000, payMonth: paid.payMonth, paidVia: 'payroll' },
+        { before: 'paid', rewardStatus: 'paid', amountInr: 50000, payMonth: null, paidVia: 'payroll' },
+        { before: 'paid', rewardStatus: 'approved', undonePaidVia: 'payroll' },
+        { before: 'approved', rewardStatus: 'paid', amountInr: 50000, payMonth: expect.any(String), paidVia: 'payroll' },
       ]);
     });
 
-    it('a referrer with no employee record cannot be paid through payroll (409); nothing is written', async () => {
+    it('a referrer with no employee record cannot be paid through payroll (409); paid outside payroll posts the cost at once and undoes while the quarter is open (285, 283)', async () => {
       const r = await inA((tx) => tx.referral.findFirstOrThrow({ where: { referrerUserId: users.manager } }));
       await hire(r.id, new Date('2025-01-06T00:00:00+05:30'));
       expect((await api('hr', 'get', '/referrals').expect(200)).body.find((x: { id: string }) => x.id === r.id)).toMatchObject({ bonusDue: 'due' });
       expect((await api('hr', 'patch', `/referrals/${r.id}/reward`).send({ rewardStatus: 'paid' }).expect(409)).body.message).toMatch(/no employee record/);
       expect(await sudo((t) => t.oneTimePay.count({ where: { organizationId: org.A.id, sourceRef: `referral:${r.id}` } }))).toBe(0);
       expect((await inA((tx) => tx.referral.findUniqueOrThrow({ where: { id: r.id } }))).rewardStatus).not.toBe('paid');
-      // Back to not hired for the next test.
+
+      // Answer 285: Paid outside payroll: no pay line, the cost is posted at once (this month, India time), audited.
+      const before = (await api('hr', 'get', '/referrals').expect(200)).body.find((x: { id: string }) => x.id === r.id);
+      expect(before).toMatchObject({ referrerIsEmployee: false, paidVia: null });
+      const bonus = before.bonusInr as number;
+      await api('hr', 'patch', `/referrals/${r.id}/reward`).send({ rewardStatus: 'paid', paidVia: 'cash' }).expect(400);
+      await api('actingRecruiter', 'patch', `/referrals/${r.id}/reward`).send({ rewardStatus: 'paid', paidVia: 'outside' }).expect(403);
+      await api('hrB', 'patch', `/referrals/${r.id}/reward`).send({ rewardStatus: 'paid', paidVia: 'outside' }).expect(404);
+      expect((await api('hr', 'patch', `/referrals/${r.id}/reward`).send({ rewardStatus: 'paid', paidVia: 'outside' }).expect(200)).body).toEqual({ id: r.id, rewardStatus: 'paid', paidVia: 'outside' });
+      await api('hr', 'patch', `/referrals/${r.id}/reward`).send({ rewardStatus: 'paid', paidVia: 'outside' }).expect(200); // a repeat posts no second cost
+      expect(await sudo((t) => t.oneTimePay.count({ where: { organizationId: org.A.id, sourceRef: `referral:${r.id}` } }))).toBe(0);
+      const outsideCosts = async () => (await api('hr', 'get', '/hiring/costs').expect(200)).body.filter((c: { sourceRef: string | null }) => c.sourceRef === `referral:${r.id}`);
+      const [posted] = await outsideCosts();
+      expect(await outsideCosts()).toHaveLength(1);
+      expect(posted).toMatchObject({ origin: 'outside_payroll', costType: 'referral_bonus', amount: bonus, source: 'Referral: Vikram Reddy', jobTitle: 'Senior QA Engineer' });
+      expect(posted.period.slice(0, 7)).toBe(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit' }).format(new Date()));
+      await api('hr', 'delete', `/hiring/costs/${posted.id}`).expect(409); // posted automatically: changed only by undo
+      expect((await api('hr', 'get', '/referrals').expect(200)).body.find((x: { id: string }) => x.id === r.id)).toMatchObject({ bonusDue: 'paid', paidVia: 'outside' });
+      // Answer 283: Undo paid while the quarter is open removes the cost; the bonus is due again.
+      await api('hr', 'patch', `/referrals/${r.id}/reward`).send({ rewardStatus: 'approved' }).expect(200);
+      expect(await outsideCosts()).toEqual([]);
+      expect((await api('hr', 'get', '/referrals').expect(200)).body.find((x: { id: string }) => x.id === r.id)).toMatchObject({ bonusDue: 'due', paidVia: null });
+      // HR may choose outside payroll for anyone; once the cost's quarter has closed, undo is refused with the reason.
+      await api('hr', 'patch', `/referrals/${r.id}/reward`).send({ rewardStatus: 'paid', paidVia: 'outside' }).expect(200);
+      await inA((tx) => tx.recruitingCost.updateMany({ where: { sourceRef: `referral:${r.id}` }, data: { period: new Date(lastQuarterMonth) } }));
+      expect((await api('hr', 'patch', `/referrals/${r.id}/reward`).send({ rewardStatus: 'approved' }).expect(409)).body.message).toMatch(/quarter that is closed, so it cannot be undone here/);
+      expect(await outsideCosts()).toHaveLength(1);
+      const audits = await inA((tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, action: 'referral.reward_updated', entityId: r.id }, orderBy: { createdAt: 'asc' }, select: { metadataJson: true } }));
+      expect(audits.map((a) => JSON.parse(a.metadataJson!))).toEqual([
+        { before: 'pending', rewardStatus: 'paid', amountInr: bonus, payMonth: null, paidVia: 'outside' },
+        { before: 'paid', rewardStatus: 'paid', amountInr: bonus, payMonth: null, paidVia: 'outside' },
+        { before: 'paid', rewardStatus: 'approved', undonePaidVia: 'outside' },
+        { before: 'approved', rewardStatus: 'paid', amountInr: bonus, payMonth: null, paidVia: 'outside' },
+      ]);
+      // Back to not hired and unpaid for the next test.
       await inA(async (tx) => {
         await tx.offer.deleteMany({ where: { pipelineEntryId: r.entryId } });
+        await tx.recruitingCost.deleteMany({ where: { sourceRef: `referral:${r.id}` } });
+        await tx.referral.update({ where: { id: r.id }, data: { rewardStatus: 'pending' } });
       });
     });
 

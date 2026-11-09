@@ -179,6 +179,24 @@ describe('HIR-02 / HIR-26 follow-ups (answers 252-257)', () => {
     expect(onCancel).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }), 'Client deal fell through');
   });
 
+  it('293: a hiring manager cancels only their own requisition while it waits for approval, with a reason', async () => {
+    const onCancel = vi.fn(async () => undefined);
+    const rows = [row(1, { id: 'own', status: 'Pending approval', mine: true }), row(0, { id: 'approved', status: 'Approved', mine: true }), row(2, { id: 'other', status: 'Pending approval', mine: false })];
+    render(<RequisitionsScreen rows={[]} planLines={[]} persona="recruiter" live={live({ persona: 'hm', canManage: false, rows, onCancel, onNew: undefined, onDuplicate: undefined })} />);
+    const menus = screen.getAllByRole('button', { name: /Row actions|Actions|More/ });
+    expect(menus).toHaveLength(1);
+    await ue.click(menus[0]!);
+    await ue.click(await screen.findByRole('menuitem', { name: 'Cancel requisition' }));
+    const ask = (await screen.findAllByRole('dialog')).at(-1)!;
+    expect(within(ask).getByText(/Recruiting sees your reason/)).toBeInTheDocument();
+    await ue.click(within(ask).getByRole('button', { name: 'Cancel requisition' }));
+    expect(within(ask).getByText('Say why it is cancelled, so recruiting knows.')).toBeInTheDocument();
+    expect(onCancel).not.toHaveBeenCalled();
+    await ue.type(within(ask).getByRole('textbox', { name: /Reason/ }), 'Budget moved to next year');
+    await ue.click(within(ask).getByRole('button', { name: 'Cancel requisition' }));
+    expect(onCancel).toHaveBeenCalledWith(expect.objectContaining({ id: 'own' }), 'Budget moved to next year');
+  });
+
   it('253: assign recruiter needs a choice; then sets it for the chosen rows', async () => {
     const onAssign = vi.fn(async () => undefined);
     render(<RequisitionsScreen rows={[]} planLines={[]} persona="recruiter" live={live({ assign: { recruiters: [{ value: 'u9', label: 'Neha Joshi' }], onAssign } })} />);

@@ -22,7 +22,7 @@ export interface SettingDef {
   /** The value is short text HR writes (one thing a line), up to this many characters; `values` is empty. */
   text?: { maxLength: number };
   /** The values come from a platform list (besides `values`), read when the settings are listed and checked on save. */
-  oneOf?: 'policy_industries';
+  oneOf?: 'policy_industries' | 'company_users';
   /** Labels of the values, when the list is not fixed in code. */
   labels?: Record<string, string>;
 }
@@ -216,6 +216,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // HIR-06: an interviewer's scorecard shows as overdue this many hours after the interview ended (reminders still go
   // at 24 and 48 hours).
   'hiring.scorecard.overdue_hours': { label: 'Hiring: a scorecard is overdue this many hours after the interview', scopes: ['tenant'], dated: false, values: ['12', '24', '48', '72'], default: '24' },
+  // HIR-02 founder answer 291 (Settings 6.1): a hiring manager's request starts with this recruiter, or with none until
+  // recruiting assigns one; never the manager themselves. The value is a person of the company (or none).
+  'hiring.requisition.default_recruiter': { label: 'Hiring: default recruiter for new requisitions', scopes: ['tenant'], dated: false, values: ['none'], default: 'none', oneOf: 'company_users' },
   'home.pay_on_employee_home': { label: 'Show net pay on the employee home', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // P02 §4.5 fraud guard: a new bank account is used for payouts only after this cooling period (starter, D17).
   'employee.bank_change.cooling_hours': { label: 'New bank accounts are used for pay after (hours)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '24', '48', '72'], default: '48', guard: 'access.role.manage' },

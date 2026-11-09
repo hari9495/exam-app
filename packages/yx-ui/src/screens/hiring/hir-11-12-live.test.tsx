@@ -218,7 +218,7 @@ describe('HIR-11/12 founder answers 204-206 (live)', () => {
     expect(within(d).getByText('Mark ₹15,000 paid to Neha Joshi?')).toBeInTheDocument();
     expect(within(d).getByText(/goes into payroll as a one-time referral bonus/)).toBeInTheDocument();
     await ue.click(within(d).getByRole('button', { name: 'Mark paid' }));
-    expect(onMarkPaid).toHaveBeenCalledWith('a1');
+    expect(onMarkPaid).toHaveBeenCalledWith('a1', 'payroll');
     expect((await screen.findAllByText('Bonus sent to payroll')).length).toBeGreaterThan(0);
   });
 
@@ -245,5 +245,50 @@ describe('HIR-11/12 founder answers 204-206 (live)', () => {
   it('My referrals says the bonus is on hold while the resignation is decided (234)', () => {
     show(<ReferralsScreen jobs={JOBS} referrals={[{ ...REFS[1]!, stage: 'Hired', joined: new Date(2026, 4, 1), onHold: true }]} today={TODAY} live={refLive()} />);
     expect(screen.getByText(/bonus on hold while their resignation is decided/)).toBeInTheDocument();
+  });
+
+  it('Paid outside payroll (285): HR picks it in the joined Segment; a referrer with no employee record gets it without a choice', async () => {
+    const onMarkPaid = vi.fn().mockResolvedValue(undefined);
+    const { unmount } = show(<AllReferralsScreen rows={ALL} confirmId="a1" live={{ onMarkPaid, onRetry: vi.fn() }} />);
+    const d = screen.getByRole('dialog');
+    await ue.click(within(d).getByRole('radio', { name: 'Paid outside payroll' }));
+    expect(within(d).getByText(/No payroll line is made/)).toBeInTheDocument();
+    await ue.click(within(d).getByRole('button', { name: 'Mark paid' }));
+    expect(onMarkPaid).toHaveBeenCalledWith('a1', 'outside');
+    expect((await screen.findAllByText('Bonus marked paid outside payroll')).length).toBeGreaterThan(0);
+    unmount();
+    const outsideOnly = vi.fn().mockResolvedValue(undefined);
+    show(<AllReferralsScreen rows={[{ ...ALL[0]!, referrerIsEmployee: false }]} confirmId="a1" live={{ onMarkPaid: outsideOnly, onRetry: vi.fn() }} />);
+    const d2 = screen.getByRole('dialog');
+    expect(within(d2).getByText('Neha Joshi has no employee record')).toBeInTheDocument();
+    expect(within(d2).queryByRole('radio', { name: 'Payroll' })).not.toBeInTheDocument();
+    await ue.click(within(d2).getByRole('button', { name: 'Mark paid' }));
+    expect(outsideOnly).toHaveBeenCalledWith('a1', 'outside');
+  });
+
+  it('Undo paid (283): in the row menu of a paid bonus; done is a toast; a refusal stays in the dialog with the reason', async () => {
+    const paid: AllReferral = { ...ALL[0]!, bonus: 'paid', paidVia: 'payroll' };
+    const onUndoPaid = vi.fn().mockResolvedValue(undefined);
+    const { unmount } = show(<AllReferralsScreen rows={[paid]} live={{ onMarkPaid: vi.fn(), onUndoPaid, onRetry: vi.fn() }} />);
+    await ue.click(screen.getByRole('button', { name: /Row actions|Actions|More/ }));
+    await ue.click(await screen.findByRole('menuitem', { name: 'Undo paid' }));
+    const d = screen.getByRole('dialog');
+    expect(within(d).getByText(/Allowed until the payroll run that pays it is approved/)).toBeInTheDocument();
+    await ue.click(within(d).getByRole('button', { name: 'Undo paid' }));
+    expect(onUndoPaid).toHaveBeenCalledWith('a1');
+    expect((await screen.findAllByText('Bonus is due again')).length).toBeGreaterThan(0);
+    unmount();
+    const refused = vi.fn().mockRejectedValue(new Error('The bonus was paid in the approved 2026-10 payroll, so it cannot be undone here. Payroll recovers it if needed.'));
+    show(<AllReferralsScreen rows={[paid]} undoId="a1" live={{ onMarkPaid: vi.fn(), onUndoPaid: refused, onRetry: vi.fn() }} />);
+    const d2 = screen.getByRole('dialog');
+    await ue.click(within(d2).getByRole('button', { name: 'Undo paid' }));
+    expect(await within(d2).findByText(/paid in the approved 2026-10 payroll/)).toBeInTheDocument();
+    expect(screen.queryByText('Bonus is due again')).not.toBeInTheDocument();
+  });
+
+  it('without an undo action (no live undo) a paid bonus shows Bonus already paid', async () => {
+    show(<AllReferralsScreen rows={[{ ...ALL[0]!, bonus: 'paid' }]} live={{ onMarkPaid: vi.fn(), onRetry: vi.fn() }} />);
+    await ue.click(screen.getByRole('button', { name: /Row actions|Actions|More/ }));
+    expect(await screen.findByRole('menuitem', { name: 'Bonus already paid' })).toHaveAttribute('aria-disabled', 'true');
   });
 });
