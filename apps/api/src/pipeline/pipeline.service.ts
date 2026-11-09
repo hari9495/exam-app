@@ -231,6 +231,7 @@ export class PipelineService {
       salaryPeriod?: 'year' | 'month' | 'hour';
       askPayHistory?: boolean;
       recruiterUserId?: string;
+      locationCountry?: string;
       pipelineId?: string;
       customFields?: Record<string, string | number | null>;
       legalEntityId?: string | null;
@@ -269,7 +270,7 @@ export class PipelineService {
       const askPayHistory = dto.askPayHistory ?? (defaults.askHistory && !law.historyBanned);
       const problem = payProblem({ salaryMin: dto.salaryMin ?? null, salaryMax: dto.salaryMax ?? null, showSalary, askPayHistory, isPublic: false }, law);
       if (problem) throw new BadRequestException(problem);
-      await this.checkPlace(tx, organizationId, dto.legalEntityId ?? null, dto.locationId ?? null);
+      await this.checkPlace(tx, organizationId, dto.legalEntityId ?? null, dto.locationId ?? null, dto.locationCountry);
       if (dto.recruiterUserId) await this.checkRecruiter(tx, organizationId, dto.recruiterUserId);
       const jobNumber = await this.nextJobNumber(tx, organizationId);
       const created = await tx.job.create({
@@ -377,11 +378,13 @@ export class PipelineService {
   }
 
   /**
-   * HIR-03 answer 229: a job outside India (its legal entity, or the company's default entity, is not Indian) needs a
-   * location from the company's locations; a free-text place is refused there. India stays as before.
+   * HIR-03 answers 229 and 244: a job whose place is abroad needs a location from the company's locations. Abroad is the
+   * free-text place's country when given (even under an Indian legal entity), else the job's legal entity (or the
+   * company's default entity). A master location is fine anywhere; India with free text stays as before.
    */
-  private async checkPlace(tx: Prisma.TransactionClient, organizationId: string, legalEntityId: string | null, locationId: string | null): Promise<void> {
+  private async checkPlace(tx: Prisma.TransactionClient, organizationId: string, legalEntityId: string | null, locationId: string | null, placeCountry?: string): Promise<void> {
     if (locationId) return;
+    if (placeCountry && placeCountry !== 'IN') throw new BadRequestException('This place is outside India. Choose it from your company locations (add it in Settings › Locations first); a typed place is only for India.');
     const entity = legalEntityId
       ? await tx.legalEntity.findFirst({ where: { organizationId, id: legalEntityId }, select: { country: true } })
       : await tx.legalEntity.findFirst({ where: { organizationId, isDefault: true, archivedAt: null }, select: { country: true } });
@@ -554,6 +557,7 @@ export class PipelineService {
       salaryPeriod?: 'year' | 'month' | 'hour';
       askPayHistory?: boolean;
       recruiterUserId?: string;
+      locationCountry?: string;
       fitCriteria?: string | null;
       fitRubric?: { label: string; weight: number }[] | null;
       location?: string;
@@ -731,8 +735,8 @@ export class PipelineService {
       if (dto.departmentId && dto.department === undefined) data.department = m.departmentName;
       if (dto.locationId && dto.location === undefined) data.location = m.locationName;
       await this.checkPay(tx, organizationId, job, dto, data);
-      if (dto.locationId !== undefined || dto.legalEntityId !== undefined) {
-        await this.checkPlace(tx, organizationId, dto.legalEntityId !== undefined ? dto.legalEntityId : job.legalEntityId, dto.locationId !== undefined ? dto.locationId : job.locationId);
+      if (dto.locationId !== undefined || dto.legalEntityId !== undefined || dto.locationCountry !== undefined) {
+        await this.checkPlace(tx, organizationId, dto.legalEntityId !== undefined ? dto.legalEntityId : job.legalEntityId, dto.locationId !== undefined ? dto.locationId : job.locationId, dto.locationCountry);
       }
       const updated = await tx.job.update({ where: { id: jobId }, data });
       await this.audit.record(context, {

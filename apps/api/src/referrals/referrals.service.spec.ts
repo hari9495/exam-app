@@ -5,12 +5,12 @@ import { ReferralsService } from './referrals.service';
 
 const ctx = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
-function makeService(tx: Record<string, any>) {
+function makeService(tx: Record<string, any>, intake: Record<string, any> = {}) {
   const tenantPrisma = { forTenant: jest.fn((_c: unknown, fn: (t: unknown) => unknown) => fn(tx)) } as any;
   const blobStorage = { upload: jest.fn() } as any;
   const jobsService = { enqueue: jest.fn().mockResolvedValue({}) } as any;
   const audit = { record: jest.fn().mockResolvedValue(undefined) } as any;
-  return new ReferralsService(tenantPrisma, blobStorage, jobsService, audit, {} as any);
+  return new ReferralsService(tenantPrisma, blobStorage, jobsService, audit, {} as any, intake as any, { subscribe: jest.fn() } as any);
 }
 
 function baseTx(overrides: Record<string, any> = {}) {
@@ -80,7 +80,15 @@ describe('ReferralsService.setReward', () => {
     exitCase: { findMany: jest.fn().mockResolvedValue([]) },
     setting: { findMany: jest.fn().mockResolvedValue([]) },
     recruitingCost: { create: jest.fn().mockResolvedValue({}), deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    employee: { findFirst: jest.fn().mockResolvedValue({ id: 'emp-1' }) },
+    legalEntity: { findMany: jest.fn().mockResolvedValue([{ id: 'le-1' }]) },
+    oneTimePay: { findFirst: jest.fn().mockResolvedValue({ id: 'otp-1' }) },
+    payslipLine: { findMany: jest.fn().mockResolvedValue([]) },
+    payslip: { findFirst: jest.fn().mockResolvedValue(null) },
+    $executeRaw: jest.fn().mockResolvedValue(0),
+    $queryRaw: jest.fn().mockResolvedValue([{ prev: null }]),
   });
+  const intake = () => ({ oneTime: jest.fn().mockResolvedValue({ id: 'otp-1', status: 'approved', existing: false }), cancelOneTime: jest.fn().mockResolvedValue({ cancelled: true }) });
 
   it('updates the reward status', async () => {
     const tx = rewardTx('active', null);
@@ -90,10 +98,37 @@ describe('ReferralsService.setReward', () => {
     expect(res).toEqual({ id: 'ref-1', rewardStatus: 'approved' });
   });
 
-  it('paid, once due (hired 90+ days ago), posts one read-only referral-bonus cost in rupees', async () => {
+  it('paid, once due, hands payroll one Referral bonus line for the referrer (answer 231); no cost until the run is approved', async () => {
     const tx = rewardTx('hired', new Date('2026-01-05T00:00:00Z'));
-    await makeService(tx).setReward(ctx, 'user-1', 'ref-1', { rewardStatus: 'paid' } as any);
-    expect(tx.recruitingCost.create).toHaveBeenCalledWith({ data: expect.objectContaining({ origin: 'payroll', sourceRef: 'referral:ref-1', costType: 'referral_bonus', amount: 20000, currency: 'INR', source: 'Referral: Kiran Rao' }) });
+    const pay = intake();
+    const res = await makeService(tx, pay).setReward(ctx, 'user-1', 'ref-1', { rewardStatus: 'paid' } as any);
+    expect(pay.oneTime).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.objectContaining({ source: 'm10', sourceRef: 'referral:ref-1', employeeId: 'emp-1', componentCode: 'referral_bonus', amount: '20000', reason: 'Referral bonus: Kiran Rao (Accountant)', by: 'user-1' }));
+    expect(tx.recruitingCost.create).not.toHaveBeenCalled();
+    expect(res).toMatchObject({ rewardStatus: 'paid', payMonth: expect.stringMatching(/^\d{4}-\d{2}$/) });
+  });
+
+  it('a locked month moves the line to the next open month; a referrer with no employee record is refused', async () => {
+    const tx = rewardTx('hired', new Date('2026-01-05T00:00:00Z'));
+    const pay = intake();
+    pay.oneTime.mockRejectedValueOnce(new ConflictException({ statusCode: 409, code: 'PERIOD_LOCKED', message: 'locked' }));
+    const res = await makeService(tx, pay).setReward(ctx, 'user-1', 'ref-1', { rewardStatus: 'paid' } as any);
+    const [first, second] = pay.oneTime.mock.calls.map((c: any[]) => c[2].month as string);
+    expect(second > first).toBe(true);
+    expect(res.payMonth).toBe(second);
+    const none = rewardTx('hired', new Date('2026-01-05T00:00:00Z'));
+    none.employee.findFirst.mockResolvedValue(null);
+    await expect(makeService(none, intake()).setReward(ctx, 'user-1', 'ref-1', { rewardStatus: 'paid' } as any)).rejects.toThrow(/no employee record/);
+    expect(none.referral.update).not.toHaveBeenCalled();
+  });
+
+  it('a resignation waiting for approval puts the bonus on hold and refuses paid (answer 234)', async () => {
+    const tx = rewardTx('hired', new Date('2026-01-05T00:00:00Z'));
+    tx.offer.findMany.mockResolvedValue([{ id: 'o1', pipelineEntryId: 'e1', startDate: new Date('2026-01-05T00:00:00Z') }]);
+    tx.preboarding.findMany.mockResolvedValue([{ offerId: 'o1', joiningOn: new Date('2026-01-05'), employmentId: 'em-1' }]);
+    tx.exitCase.findMany.mockImplementation(async (q: any) => (q.where.status === 'submitted' ? [{ employmentId: 'em-1' }] : []));
+    const pay = intake();
+    await expect(makeService(tx, pay).setReward(ctx, 'user-1', 'ref-1', { rewardStatus: 'paid' } as any)).rejects.toThrow(/resignation is waiting for approval/);
+    expect(pay.oneTime).not.toHaveBeenCalled();
   });
 
   it('refuses paid before the bonus is due, and when not hired (409)', async () => {
@@ -105,10 +140,22 @@ describe('ReferralsService.setReward', () => {
     expect(soon.referral.update).not.toHaveBeenCalled();
   });
 
-  it('moving away from paid takes the posted cost back', async () => {
+  it('moving away from paid cancels the payroll line (not yet in an approved run) and any cost', async () => {
     const tx = rewardTx('hired', new Date('2026-01-05T00:00:00Z'), 'paid');
-    await makeService(tx).setReward(ctx, 'user-1', 'ref-1', { rewardStatus: 'approved' } as any);
+    const pay = intake();
+    await makeService(tx, pay).setReward(ctx, 'user-1', 'ref-1', { rewardStatus: 'approved' } as any);
+    expect(pay.cancelOneTime).toHaveBeenCalledWith(expect.anything(), expect.anything(), { source: 'm10', sourceRef: 'referral:ref-1' });
     expect(tx.recruitingCost.deleteMany).toHaveBeenCalledWith({ where: { organizationId: 'org-1', origin: 'payroll', sourceRef: 'referral:ref-1' } });
+  });
+
+  it('undo is refused once an approved run paid the line', async () => {
+    const tx = rewardTx('hired', new Date('2026-01-05T00:00:00Z'), 'paid');
+    tx.payslipLine.findMany.mockResolvedValue([{ payslipId: 'ps-1' }]);
+    tx.payslip.findFirst.mockResolvedValue({ periodStart: new Date('2026-11-01T00:00:00Z') });
+    const pay = intake();
+    await expect(makeService(tx, pay).setReward(ctx, 'user-1', 'ref-1', { rewardStatus: 'approved' } as any)).rejects.toThrow('The bonus was paid in the approved 2026-11 payroll, so it cannot be undone here. Payroll recovers it if needed.');
+    expect(pay.cancelOneTime).not.toHaveBeenCalled();
+    expect(tx.referral.update).not.toHaveBeenCalled();
   });
 
   it('404s on a missing referral', async () => {

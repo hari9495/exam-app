@@ -38,6 +38,13 @@ export class CreateJobDto {
   @IsOptional() @IsBoolean()
   showSalary?: boolean;
 
+  /**
+   * HIR-03 answer 244: the country (ISO, two letters) of a free-text place. Outside India the place must come from the
+   * company's locations instead, so a free-text place with another country is refused. Not stored.
+   */
+  @IsOptional() @Matches(/^[A-Z]{2}$/, { message: 'Country is two capital letters, for example IN.' })
+  locationCountry?: string;
+
   /** HIR-03 answer 222: the job's recruiter (a staff member of the company); default the person who opens it. */
   @IsOptional() @IsUUID()
   recruiterUserId?: string;

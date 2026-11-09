@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { TenantContext, TenantPrismaService, AuditService, BlobStorageService, PrismaService } from '@exam-platform/shared';
 import { buildViewer, tenantWide, type ScopeUser } from '../access/scope';
@@ -8,6 +8,9 @@ import { validatePdfUpload } from '../public-applications/pdf-validation';
 import { SubmitReferralDto, SetRewardStatusDto } from './dto/referral.dto';
 import { inCompany, type CompanyContext, type Tx } from '../org-structure/org-structure.service';
 import { settingFor } from '../people/probation';
+import { PayrollIntakeService } from '../payroll/intake.service';
+import { withPayScope } from '../payroll/pay-access';
+import { AutomationService } from '../rules-engine/automation.service';
 
 export interface ReferralRow {
   id: string;
@@ -30,8 +33,11 @@ export interface ReferralRow {
   eligibleOn: string | null;
   /** Last working day of an accepted exit, if any (People). */
   leftOn: string | null;
-  /** not-hired, waiting, due, paid, left (exited before the qualifying day), none (not selected or turned down). */
-  bonusDue: 'not-hired' | 'waiting' | 'due' | 'paid' | 'left' | 'none';
+  /**
+   * not-hired, waiting, due, paid, left (exited before the qualifying day), none (not selected or turned down), on-hold
+   * (answer 234: their resignation waits for approval; only an accepted exit cancels the bonus).
+   */
+  bonusDue: 'not-hired' | 'waiting' | 'due' | 'paid' | 'left' | 'none' | 'on-hold';
 }
 
 /** HIR-12 company policy: the bonus and the days a referred hire must complete (settings with defaults). */
@@ -49,7 +55,7 @@ const dayLabel = (iso: string) => `${Number(iso.slice(8, 10))} ${['Jan', 'Feb', 
 const addDays = (iso: string, n: number) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 
 @Injectable()
-export class ReferralsService {
+export class ReferralsService implements OnModuleInit {
   private readonly logger = new Logger(ReferralsService.name);
 
   constructor(
@@ -58,7 +64,45 @@ export class ReferralsService {
     private readonly jobsService: JobsService,
     private readonly audit: AuditService,
     private readonly prisma: PrismaService,
+    private readonly intake: PayrollIntakeService,
+    private readonly automation: AutomationService,
   ) {}
+
+  /** Answer 231: the bonus cost follows its payroll line, posted when the run that pays it is approved. */
+  onModuleInit() {
+    this.automation.subscribe(async (ev) => {
+      if (ev.type === 'payroll.run.approved' && typeof ev.payload.runId === 'string') await this.postPaidCosts(ev.organizationId, ev.payload.runId);
+    });
+  }
+
+  /** The referral bonus lines on an approved run's payslips become Referral bonus costs (once each, by referral). */
+  async postPaidCosts(organizationId: string, runId: string) {
+    const c = { organizationId, isSuperAdmin: false };
+    const posted = await this.tenantPrisma.forTenant(c, async (tx) => {
+      const entities = (await tx.legalEntity.findMany({ where: { organizationId }, select: { id: true } })).map((e) => e.id);
+      return withPayScope(tx, entities, async () => {
+        const run = await tx.payrollRun.findFirst({ where: { organizationId, id: runId, status: { in: ['approved', 'paid'] } }, select: { periodStart: true } });
+        if (!run) return [];
+        const slips = (await tx.payslip.findMany({ where: { organizationId, runId, status: { in: ['approved', 'paid'] } }, select: { id: true } })).map((s) => s.id);
+        const refs = (await tx.payslipLine.findMany({ where: { organizationId, payslipId: { in: slips }, componentCode: 'referral_bonus', sourceRef: { not: null } }, select: { sourceRef: true } })).map((l) => l.sourceRef!);
+        const lines = refs.length ? await tx.oneTimePay.findMany({ where: { organizationId, id: { in: refs }, source: 'm10', status: 'approved' } }) : [];
+        const out: string[] = [];
+        for (const l of lines) {
+          const referral = await tx.referral.findFirst({ where: { organizationId, id: (l.sourceRef ?? '').replace(/^referral:/, '') } });
+          if (!referral) continue;
+          const name = (await tx.candidate.findFirst({ where: { organizationId, id: referral.candidateId }, select: { name: true } }))?.name ?? 'referral';
+          const made = await tx.recruitingCost.createMany({
+            data: [{ organizationId, origin: 'payroll', sourceRef: l.sourceRef, jobId: referral.jobId, source: `Referral: ${name}`.slice(0, 120), costType: 'referral_bonus', amount: l.amount, currency: 'INR', period: run.periodStart, note: 'Referral bonus paid in payroll', enteredBy: l.createdBy }],
+            skipDuplicates: true,
+          });
+          if (made.count) out.push(referral.id);
+        }
+        return out;
+      });
+    });
+    for (const id of posted) await this.audit.record(c, { actorUserId: null as unknown as string, action: 'referral.bonus_cost_posted', entityType: 'referral', entityId: id, metadata: { runId } });
+    return posted;
+  }
 
   /**
    * HIR-12 All referrals: the older recruiter key (`legacy`) works as before; ats.referral.manage counts only when held for
@@ -179,31 +223,73 @@ export class ReferralsService {
   }
 
   /**
-   * Reward status (recruiter or HR). HIR-12 founder answers 203-205: "paid" is only for a bonus that is due (hired, the
-   * qualifying days done, not left before); it posts one read-only Referral bonus cost (shown as paid through payroll),
-   * and moving away from "paid" takes that cost back. Both are audited.
+   * Reward status (recruiter or HR). HIR-12 founder answers 203-205, 231, 234: "paid" is only for a bonus that is due
+   * (hired, the qualifying days done, not left before, no resignation waiting for approval). It hands payroll a one-time
+   * Referral bonus line for the person who referred (PayrollIntakeService, linked to the referral), in the first open pay
+   * month; the Recruiting cost is posted when the run that pays it is approved (postPaidCosts). Moving away from "paid"
+   * cancels the line while no approved run has it, and is refused after. Both are audited.
    */
   async setReward(context: TenantContext, actorUserId: string, id: string, dto: SetRewardStatusDto) {
     const out = await inCompany(this.tenantPrisma, context, async (tx, c) => {
       const referral = await tx.referral.findFirst({ where: { id, organizationId: c.organizationId } });
       if (!referral) throw new NotFoundException('Referral not found');
       const [row] = await this.buildRows(tx, [referral], false);
-      const ref = { organizationId: c.organizationId, origin: 'payroll', sourceRef: `referral:${id}` };
+      const sourceRef = `referral:${id}`;
+      let payMonth: string | null = null;
       if (dto.rewardStatus === 'paid' && referral.rewardStatus !== 'paid') {
         if (row!.bonusDue !== 'due')
           throw new ConflictException(
-            row!.bonusDue === 'left' ? 'They left before the qualifying day, so no bonus is due.' : row!.bonusDue === 'waiting' ? `The bonus is due on ${dayLabel(row!.eligibleOn!)}. Mark it paid after that.` : 'The bonus is due only after the person is hired and completes the qualifying days.',
+            row!.bonusDue === 'on-hold'
+              ? 'Their resignation is waiting for approval, so the bonus is on hold. Mark it paid after the exit is decided.'
+              : row!.bonusDue === 'left' ? 'They left before the qualifying day, so no bonus is due.' : row!.bonusDue === 'waiting' ? `The bonus is due on ${dayLabel(row!.eligibleOn!)}. Mark it paid after that.` : 'The bonus is due only after the person is hired and completes the qualifying days.',
           );
-        const month = istDay(new Date()).slice(0, 7);
-        await tx.recruitingCost.create({ data: { ...ref, jobId: referral.jobId, source: `Referral: ${row!.candidateName}`, costType: 'referral_bonus', amount: row!.bonusInr, currency: 'INR', period: new Date(`${month}-01`), note: 'Referral bonus marked paid', enteredBy: actorUserId } });
+        payMonth = await this.toPayroll(tx, c, referral, row!, actorUserId);
       } else if (dto.rewardStatus !== 'paid' && referral.rewardStatus === 'paid') {
-        await tx.recruitingCost.deleteMany({ where: ref });
+        await this.fromPayroll(tx, c, sourceRef);
       }
       await tx.referral.update({ where: { id }, data: { rewardStatus: dto.rewardStatus, rewardNote: dto.rewardNote ?? null } });
-      return { before: referral.rewardStatus, amount: row!.bonusInr };
+      return { before: referral.rewardStatus, amount: row!.bonusInr, payMonth };
     });
-    await this.audit.record(context, { actorUserId, action: 'referral.reward_updated', entityType: 'referral', entityId: id, metadata: { before: out.before, rewardStatus: dto.rewardStatus, ...(dto.rewardStatus === 'paid' ? { amountInr: out.amount } : {}) } });
-    return { id, rewardStatus: dto.rewardStatus };
+    await this.audit.record(context, { actorUserId, action: 'referral.reward_updated', entityType: 'referral', entityId: id, metadata: { before: out.before, rewardStatus: dto.rewardStatus, ...(dto.rewardStatus === 'paid' ? { amountInr: out.amount, payMonth: out.payMonth } : {}) } });
+    return { id, rewardStatus: dto.rewardStatus, ...(out.payMonth ? { payMonth: out.payMonth } : {}) };
+  }
+
+  /** Answer 231: the one-time Referral bonus line for the referrer, in this month or the next open one (up to 3 ahead). */
+  private async toPayroll(tx: Tx, c: CompanyContext, referral: { id: string; referrerUserId: string }, row: ReferralRow, by: string): Promise<string> {
+    const employee = await tx.employee.findFirst({ where: { organizationId: c.organizationId, userId: referral.referrerUserId }, select: { id: true } });
+    if (!employee) throw new ConflictException('The person who referred has no employee record, so payroll cannot pay the bonus. Link their sign-in to their employee record first.');
+    let month = istDay(new Date()).slice(0, 7);
+    for (let i = 0; i < 3; i++) {
+      try {
+        await this.intake.oneTime(tx, c, { source: 'm10', sourceRef: `referral:${referral.id}`, employeeId: employee.id, componentCode: 'referral_bonus', amount: String(row.bonusInr), month, reason: `Referral bonus: ${row.candidateName} (${row.jobTitle})`, by });
+        return month;
+      } catch (e) {
+        const body = e instanceof HttpException ? (e.getResponse() as { code?: string }) : null;
+        if (body?.code === 'PERIOD_LOCKED') {
+          month = nextMonth(month);
+          continue;
+        }
+        if (e instanceof NotFoundException) throw new ConflictException(`The person who referred is not employed in ${month}, so payroll cannot pay the bonus.`);
+        throw e;
+      }
+    }
+    throw new ConflictException('The next three pay months are locked. Ask payroll to open a month, then mark it paid.');
+  }
+
+  /** Undo "paid": the line is cancelled while no approved run has paid it; the cost goes with it. */
+  private async fromPayroll(tx: Tx, c: CompanyContext, sourceRef: string): Promise<void> {
+    const org = c.organizationId;
+    const entities = (await tx.legalEntity.findMany({ where: { organizationId: org }, select: { id: true } })).map((e) => e.id);
+    const paidIn = await withPayScope(tx, entities, async () => {
+      const line = await tx.oneTimePay.findFirst({ where: { organizationId: org, source: 'm10', sourceRef, status: { not: 'cancelled' } }, select: { id: true } });
+      if (!line) return null;
+      const slips = (await tx.payslipLine.findMany({ where: { organizationId: org, sourceRef: line.id }, select: { payslipId: true } })).map((l) => l.payslipId);
+      const run = slips.length ? await tx.payslip.findFirst({ where: { organizationId: org, id: { in: slips }, status: { in: ['approved', 'paid'] } }, select: { periodStart: true } }) : null;
+      return run ? istDay(run.periodStart).slice(0, 7) : null;
+    });
+    if (paidIn) throw new ConflictException(`The bonus was paid in the approved ${paidIn} payroll, so it cannot be undone here. Payroll recovers it if needed.`);
+    await this.intake.cancelOneTime(tx, c, { source: 'm10', sourceRef });
+    await tx.recruitingCost.deleteMany({ where: { organizationId: org, origin: 'payroll', sourceRef } });
   }
 
   // Batch-resolve the candidate/job/entry-status (+ referrer for the recruiter view) for a set of
@@ -230,6 +316,8 @@ export class ReferralsService {
     const joiners = offers.length ? ((await tx.preboarding.findMany({ where: { offerId: { in: offers.map((o) => o.id) } }, select: { offerId: true, joiningOn: true, employmentId: true } })) as { offerId: string; joiningOn: Date; employmentId: string | null }[]) : [];
     const employments = joiners.map((j) => j.employmentId).filter((x): x is string => !!x);
     const exits = employments.length ? ((await tx.exitCase.findMany({ where: { employmentId: { in: employments }, status: { notIn: ['submitted', 'withdrawn', 'rejected'] } }, select: { employmentId: true, approvedLwd: true, standardLwd: true } })) as { employmentId: string; approvedLwd: Date | null; standardLwd: Date }[]) : [];
+    // Answer 234: a resignation waiting for approval puts the bonus on hold (only an accepted exit cancels it).
+    const pendingExit = new Set(employments.length ? ((await tx.exitCase.findMany({ where: { employmentId: { in: employments }, exitType: 'resignation', status: 'submitted' }, select: { employmentId: true } })) as { employmentId: string }[]).map((e) => e.employmentId) : []);
     const joinedByEntry = new Map<string, { on: string; employmentId: string | null }>();
     for (const o of offers) {
       if (joinedByEntry.has(o.pipelineEntryId)) continue;
@@ -257,7 +345,8 @@ export class ReferralsService {
       const eligibleOn = joined ? addDays(joined.on, policy.qualifyDays) : null;
       const left = joined?.employmentId ? lastDay.get(joined.employmentId) ?? null : null;
       const leftEarly = Boolean(left && eligibleOn && left < eligibleOn);
-      const bonusDue: ReferralRow['bonusDue'] = r.rewardStatus === 'paid' ? 'paid' : r.rewardStatus === 'rejected' || stage === 'Not selected' ? 'none' : leftEarly ? 'left' : !eligibleOn ? 'not-hired' : eligibleOn <= today ? 'due' : 'waiting';
+      const onHold = Boolean(joined?.employmentId && pendingExit.has(joined.employmentId));
+      const bonusDue: ReferralRow['bonusDue'] = r.rewardStatus === 'paid' ? 'paid' : r.rewardStatus === 'rejected' || stage === 'Not selected' ? 'none' : leftEarly ? 'left' : onHold ? 'on-hold' : !eligibleOn ? 'not-hired' : eligibleOn <= today ? 'due' : 'waiting';
       return {
         stage,
         joinedOn: joined?.on ?? null,
@@ -288,4 +377,5 @@ async function readPolicy(tx: Tx, c: CompanyContext): Promise<ReferralPolicy> {
   };
 }
 
+const nextMonth = (m: string) => { const y = Number(m.slice(0, 4)); const n = Number(m.slice(5, 7)); return n === 12 ? `${y + 1}-01` : `${y}-${String(n + 1).padStart(2, '0')}`; };
 const istDay = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
