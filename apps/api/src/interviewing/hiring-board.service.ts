@@ -5,6 +5,7 @@ import { PipelineService } from '../pipeline/pipeline.service';
 import { InvitationsService } from '../invitations/invitations.service';
 import { CandidateEmailsService } from '../candidate-emails/candidate-emails.service';
 import { CandidateEmailTemplatesService } from '../candidate-emails/candidate-email-templates.service';
+import { DEFAULT_TEMPLATES } from '../candidate-emails/default-templates';
 import { SETTINGS, resolveSetting } from '../org-structure/settings-registry';
 import { ScorecardsService } from './scorecards.service';
 import type { RejectDto } from './interviewing-dto';
@@ -115,8 +116,10 @@ export class HiringBoardService {
       const e = await tx.pipelineEntry.findFirst({ where: { id: entryId, organizationId: c.organizationId }, select: { status: { select: { stageId: true } } } });
       return e?.status?.stageId ?? null;
     });
-    const tpl = stageId ? await this.templates.resolveForStage(ctx, stageId) : null;
-    return tpl ? { templateId: tpl.id, subject: tpl.subject, body: tpl.body } : null;
+    if (!stageId) return null;
+    // The company's own template for its Rejected stage, else the built-in "Not moving forward".
+    const tpl = (await this.templates.resolveForStage(ctx, stageId)) ?? DEFAULT_TEMPLATES.find((d) => d.key === 'not_moving_forward');
+    return tpl ? { templateId: 'id' in tpl ? tpl.id : null, subject: tpl.subject, body: tpl.body } : null;
   }
 
   /** Undo a rejection while its message is still waiting: the application goes back to where it was. */
