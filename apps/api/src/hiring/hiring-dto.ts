@@ -183,7 +183,8 @@ export class HiringSettingChangeDto {
 export class SaveHiringSettingsDto {
   @IsArray()
   @ArrayMinSize(1)
-  @ArrayMaxSize(20)
+  // Every setting on 6.1 (23 today, and it grows) plus one e-sign switch per offer letter can change in one save.
+  @ArrayMaxSize(100)
   @ValidateNested({ each: true })
   @Type(() => HiringSettingChangeDto)
   changes!: HiringSettingChangeDto[];
