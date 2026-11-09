@@ -5,6 +5,7 @@ import { ToastProvider } from '../../components/notify';
 import { SettingsPageScreen, type LiveSettingsPage } from './settings-screens';
 import { SETTINGS_GROUPS } from './settings-groups';
 import { hiringSettingsChanges, hiringSettingsPage, type HiringSettingsData } from './hiring-live';
+import { SETTING_SECTIONS } from '../org/settings';
 
 // Settings 6.1 Hiring, the designed page with `live` (founder answers 291, 302, 341, 345, 348): positive and negative.
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -22,6 +23,7 @@ const DEFAULTS = {
   'hiring.pay_history.ask': 'off',
   'hiring.rediscovery.ai': 'off',
   'hiring.rehire_flag.blocks_screening': 'off',
+  'hiring.bgv.decider_other_person': 'on',
 };
 const DATA: HiringSettingsData = {
   canEdit: true,
@@ -167,6 +169,32 @@ describe('Settings 6.1 Hiring (live)', () => {
     const table = screen.getByRole('table', { name: 'Pipeline templates' });
     await ue.click(within(table).getByRole('button', { name: /Stage targets/ }));
     expect(onRowAction).toHaveBeenCalledWith('hire.pipelines', 0);
+  });
+
+  it('answer 362: who decides a BGV discrepancy is on the page (default on, someone else) and saves on/off', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    show(live({ onSave }));
+    const box = screen.getByRole('checkbox', { name: /A discrepancy is decided by someone other than who recorded it/ });
+    expect(box).toBeChecked();
+    await ue.click(box);
+    await ue.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    const [values, rows] = onSave.mock.calls[0]!;
+    expect(hiringSettingsChanges(values, rows, DATA)).toEqual([{ key: 'hiring.bgv.decider_other_person', value: 'off' }]);
+  });
+
+  it('answer 362: read-only without the key', () => {
+    show(live({ canEdit: false }));
+    expect(screen.getByText('A discrepancy is decided by someone other than who recorded it')).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /A discrepancy is decided/ })).not.toBeInTheDocument();
+  });
+
+  it('answer 384: the referral settings are on 6.1 only, never on Company rules', () => {
+    const elsewhere = Object.values(SETTING_SECTIONS).flat().flatMap((sec) => sec.keys);
+    for (const k of ['ats.referral.bonus_inr', 'ats.referral.qualify_days', 'ats.referral.self_apply_days']) expect(elsewhere).not.toContain(k);
+    show(live());
+    expect(screen.getAllByText('Referral bonus rules').length).toBeGreaterThan(0);
+    expect(screen.getByText('No referral credit if the person applied themselves within')).toBeInTheDocument();
   });
 
   it('maps the referral rule and the default recruiter back to the company settings', () => {

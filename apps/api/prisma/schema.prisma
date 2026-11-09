@@ -11051,6 +11051,8 @@ model Scorecard {
   weightedScore  Decimal?          @map("weighted_score") @db.Decimal(5, 2)
   passes         Boolean?
   submittedAt    DateTime?         @map("submitted_at") @db.Timestamptz(3)
+  /// Answer 367: when a candidate erase redacted the summary and rating notes (the only change a submitted card allows).
+  redactedAt     DateTime?         @map("redacted_at") @db.Timestamptz(3)
   createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
   ratings        ScorecardRating[]

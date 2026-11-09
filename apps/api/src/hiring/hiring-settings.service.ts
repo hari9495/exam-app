@@ -25,6 +25,8 @@ export const HIRING_SETTING_KEYS = [
   'hiring.pay_history.ask',
   'hiring.rediscovery.ai',
   'hiring.rehire_flag.blocks_screening',
+  // Founder answer 362: who decides a BGV discrepancy.
+  'hiring.bgv.decider_other_person',
 ] as const;
 export type HiringSettingKey = (typeof HIRING_SETTING_KEYS)[number];
 const EDIT_KEYS = ['ats.settings.manage', 'org.settings.manage'] as const;
