@@ -223,6 +223,10 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // HIR-10 (founder decision 3): a BGV discrepancy goes to a person. On: that person must be someone other than whoever
   // recorded the discrepancy (maker and checker). Off: the same HR person may record and decide.
   'hiring.bgv.decider_other_person': { label: 'Hiring: a BGV discrepancy is decided by someone other than who recorded it', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'on' },
+  // HIR-27 bulk interview day: how long each interview lasts, and how Auto-assign fills the day (by_slot: the earliest
+  // slots first across every panel, as drawn; by_panel: one panel's slots before the next panel's).
+  'hiring.interview_day.slot_minutes': { label: 'Hiring: each interview on an interview day lasts (minutes)', scopes: ['tenant'], dated: false, values: ['30', '45', '60', '90'], default: '45' },
+  'hiring.interview_day.assign': { label: 'Hiring: Auto-assign on an interview day fills', scopes: ['tenant'], dated: false, values: ['by_slot', 'by_panel'], default: 'by_slot' },
   'hiring.scorecard.overdue_hours': { label: 'Hiring: a scorecard is overdue this many hours after the interview', scopes: ['tenant'], dated: false, values: ['12', '24', '48', '72'], default: '24' },
   // HIR-02 founder answer 291 (Settings 6.1): a hiring manager's request starts with this recruiter, or with none until
   // recruiting assigns one; never the manager themselves. The value is a person of the company (or none).

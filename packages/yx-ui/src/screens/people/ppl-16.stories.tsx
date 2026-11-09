@@ -11,3 +11,5 @@ export const Hr: S = { name: 'HR · due, overdue, escalated', render: () => <Pro
 export const Manager: S = { name: 'Manager · my team', render: () => <ProbationQueue rows={PROBATIONS.filter((p) => p.manager === ME.name)} today={TODAY} persona="mgr" /> };
 export const Decide: S = { name: 'HR · decide an escalated review', render: () => <ProbationQueue rows={PROBATIONS} today={TODAY} defaultOpenId="p3" /> };
 export const Empty: S = { name: '· empty', render: () => <ProbationQueue rows={[]} today={TODAY} /> };
+// Answer 392: HR sees why approving a confirmation will be refused (an open “before confirmation” background check).
+export const BgvOpen: S = { name: 'HR · decide · background check still open', render: () => <ProbationQueue rows={PROBATIONS.map((p) => (p.id === 'p3' ? { ...p, bgvOpen: 1 } : p))} today={TODAY} defaultOpenId="p3" /> };

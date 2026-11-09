@@ -448,12 +448,17 @@ describe('People core (P01 §4.4–4.5a; M01 §3.2–3.4, §3.10; P02 YX-SEC-04/
         const consent = await tx.consentRecord.create({ data: { organizationId: o, personId: person.personId, purpose: 'bgv', noticeVersion: '1', itemsShown: [], evidence: { via: 'test' } } });
         return (await tx.bgvCheck.create({ data: { organizationId: o, preboardingId: pb.id, consentId: consent.id, checkType: 'criminal', status: 'requested', gate: 'before_confirmation' } })).id;
       });
+      // Answer 392: HR (who confirms) sees the open check on the probation queue; the manager never learns of it.
+      const rowFor = async (who: Who) => (await api(who, 'get', '/people/probations').expect(200)).body.rows.find((r: { employeeId: string }) => r.employeeId === ids.ravi);
+      expect((await rowFor('hrA')).bgvOpenBeforeConfirmation).toBe(1);
+      expect(await rowFor('divyaA')).not.toHaveProperty('bgvOpenBeforeConfirmation');
       await people.probationSweep(at(today));
       await people.probationSweep(at(today));
       expect((await api('hrA', 'get', `/people/employees/${ids.ravi}/as-of`).expect(200)).body.status.status).toBe('probation');
       expect((await auditActions('employee.probation.auto_confirm_held')).map((x) => [x.entityId, x.metadata.openChecks])).toEqual([[ids.ravi, 1]]);
       expect(await auditActions('employee.probation.auto_confirmed')).toEqual([]);
       await tenantPrisma.forTenant(asA(), (tx) => tx.bgvCheck.update({ where: { id: gate }, data: { status: 'clear' } }));
+      expect((await rowFor('hrA')).bgvOpenBeforeConfirmation).toBe(0);
       await people.probationSweep(at(today));
       const status = (await api('hrA', 'get', `/people/employees/${ids.ravi}/as-of`).expect(200)).body.status;
       expect(status).toMatchObject({ status: 'confirmed', validFrom: '2026-04-30' });

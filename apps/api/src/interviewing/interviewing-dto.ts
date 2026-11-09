@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsISO8601, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsISO8601, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { RECOMMENDATIONS } from './scorecard-rules';
 
 // Recruitment batch AT5 request bodies (M10-BUILD-DESIGN §18.1).
@@ -190,4 +190,63 @@ export class ScorecardCommentDto {
   @IsOptional()
   @IsUUID('4')
   requestId?: string;
+}
+
+// HIR-27 bulk interview day.
+export class InterviewDayPanelDto {
+  @trim()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(80)
+  name!: string;
+
+  @trim()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  room!: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(10)
+  @IsUUID('all', { each: true })
+  memberUserIds!: string[];
+}
+
+export class InterviewDayDto {
+  @trim()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  name!: string;
+
+  @IsUUID()
+  jobId!: string;
+
+  @IsUUID()
+  stageId!: string;
+
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  @IsISO8601({ strict: true })
+  day!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  timeZone?: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(20)
+  @IsInt({ each: true })
+  @Min(0, { each: true })
+  @Max(1439, { each: true })
+  slots!: number[];
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => InterviewDayPanelDto)
+  panels!: InterviewDayPanelDto[];
 }

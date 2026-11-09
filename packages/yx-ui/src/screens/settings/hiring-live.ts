@@ -34,6 +34,8 @@ const KEY = {
   'hire.rehire_blocks_screening': 'hiring.rehire_flag.blocks_screening',
   'hire.referral_self_apply_days': 'ats.referral.self_apply_days',
   'hire.bgv_decider_other_person': 'hiring.bgv.decider_other_person',
+  'hire.interview_day_minutes': 'hiring.interview_day.slot_minutes',
+  'hire.interview_day_assign': 'hiring.interview_day.assign',
 } as const;
 /** On/off fields: the stored value for on and for off. */
 const TOGGLE: Partial<Record<keyof typeof KEY, [on: string, off: string]>> = {
@@ -92,6 +94,8 @@ export function hiringSettingsPage(design: SettingsPageDef, data: HiringSettings
         return { ...base, kind: 'select', options, optionLabels: { none: 'None', ...Object.fromEntries(people.map((p) => [p.value, p.label])) }, value, warning, starter: value === data.defaults[k] && !warning };
       }
       case 'hire.headcount_plan':
+      case 'hire.interview_day_minutes':
+      case 'hire.interview_day_assign':
       case 'hire.referral_self_apply_days': {
         const k = KEY[d.key];
         return { ...base, options: data.choices[k] ?? d.options, value: v[k]!, starter: v[k] === data.defaults[k] };

@@ -1264,7 +1264,11 @@ type Prob = (typeof PROBATIONS)[number];
 type ProbState = 'running' | 'review due' | 'overdue' | 'escalated' | 'waiting';
 
 /** A queue row: the sample, or a live probation with where it stands and what the viewer may do. */
-export type ProbRow = Prob & { live?: { stage: ProbState; reviewDueOn: Date; canReview: boolean; maxMonthsLeft: number } };
+export type ProbRow = Prob & {
+  live?: { stage: ProbState; reviewDueOn: Date; canReview: boolean; maxMonthsLeft: number };
+  /** Answer 392: open background checks that must be clear before confirmation (shown to HR, who confirms). */
+  bgvOpen?: number;
+};
 
 /** What the decision form holds (live: sent to the server). */
 export interface ProbationDraft {
@@ -1438,6 +1442,11 @@ export function ProbationQueue({ rows, today, persona = 'hr', defaultOpenId, liv
         {open && (
           <div className="yx-ppl__stack yx-ppl__drawer-body">
             {failed && <InlineAlert tone="danger" title={failed} />}
+            {Boolean(open.bgvOpen) && (
+              <InlineAlert tone="warning" title={open.bgvOpen === 1 ? 'A background check must be clear before confirmation' : `${open.bgvOpen} background checks must be clear before confirmation`}>
+                {first}&apos;s check{open.bgvOpen === 1 ? ' is' : 's are'} still open, so approving a confirmation will be refused until {open.bgvOpen === 1 ? 'it is' : 'they are'} clear. You can still extend the probation or send the review now.
+              </InlineAlert>
+            )}
             {open.state === 'escalated' && (
               <InlineAlert tone="danger">
                 Probation ended on {formatDate(open.end)} and {open.manager || 'the manager'} didn&apos;t review it, so HR decides.{open.manager ? ` ${open.manager} is told the outcome.` : ''}

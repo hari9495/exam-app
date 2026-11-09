@@ -87,6 +87,8 @@ export interface ProbationRow {
   /** Today's designation and manager (the queue's second line and Manager column). */
   designation?: string | null;
   manager?: string | null;
+  /** Answer 392: open "must be clear before confirmation" background checks; sent only to people who confirm (HR). */
+  bgvOpenBeforeConfirmation?: number;
 }
 
 /** One row of a bulk change file after the dry run (M01 §3.3). */

@@ -107,6 +107,7 @@ export function probationRows(rows: ProbationRow[]): ProbRow[] {
       end: day(r.plannedEndOn),
       extended: r.extendedMonths,
       reviewDone: false,
+      bgvOpen: r.bgvOpenBeforeConfirmation ?? 0,
       live: { stage: r.stage === 'overdue' && r.escalatedOn ? 'escalated' : PROB_STATE[r.stage], reviewDueOn: day(r.reviewDueOn), canReview: Boolean(r.canReview), maxMonthsLeft: Math.max(0, r.maxTotalMonths - monthsRun(r)) },
     }));
 }

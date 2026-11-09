@@ -369,6 +369,16 @@ describe('probation reviews', () => {
     expect(screen.getByRole('dialog', { name: /Probation review: Vikram Singh/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Confirm Vikram' })).toBeTruthy();
   });
+  it('answer 392: an open "before confirmation" background check is shown in the review, with why approving is refused', () => {
+    render(<ProbationQueue rows={PROBATIONS.map((p) => (p.id === 'p3' ? { ...p, bgvOpen: 2 } : p))} today={TODAY} defaultOpenId="p3" />);
+    const d = screen.getByRole('dialog');
+    expect(within(d).getByText('2 background checks must be clear before confirmation')).toBeTruthy();
+    expect(within(d).getByText(/approving a confirmation will be refused until they are clear/)).toBeTruthy();
+  });
+  it('answer 392: no open check, no notice', () => {
+    render(<ProbationQueue rows={PROBATIONS.map((p) => (p.id === 'p3' ? { ...p, bgvOpen: 0 } : p))} today={TODAY} defaultOpenId="p3" />);
+    expect(within(screen.getByRole('dialog')).queryByText(/must be clear before confirmation/)).toBeNull();
+  });
   it('manager sees only their reports, without a Manager column', () => {
     render(<ProbationQueue rows={PROBATIONS.filter((p) => p.manager === 'Divya Raghunathan')} today={TODAY} persona="mgr" />);
     expect(screen.queryByRole('columnheader', { name: /Manager/ })).toBeNull();

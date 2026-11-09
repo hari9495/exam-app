@@ -550,6 +550,9 @@ export class PeopleService {
           maxTotalMonths: maxTotal,
           // Once a missed review went to HR (the end date passed), HR decides; the manager no longer reviews.
           canReview: direct.has(e.employeeId) && !confirmedFrom && !state.pendingChange(e.id) && !p.escalatedOn,
+          // Answer 392: people who confirm (HR: raise or approve job changes) see why approving would be refused; a manager
+          // never learns about a background check (Special data, answer 361), only the count reaches HR here.
+          ...(!confirmedFrom && (has(v, 'employee.change.manage') || has(v, 'employee.change.approve')) ? { bgvOpenBeforeConfirmation: await openConfirmationChecks(tx, c.organizationId, e.id) } : {}),
           designation: designations.find((d) => d.id === assigns.find((a) => a.employmentId === e.id)?.designationId)?.name ?? null,
           manager: (() => {
             const m = managers.find((x) => x.id === assigns.find((a) => a.employmentId === e.id)?.managerEmployeeId);
