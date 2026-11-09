@@ -106,7 +106,9 @@ describe('Recruitment batch AT2', () => {
     await decide('fin');
     const [after] = (await api('hrPlan', 'get', '/hiring/plans?fy=2026').expect(200)).body;
     expect(after.status).toBe('approved');
-    await api('hrPlan', 'put', `/hiring/plans/${p.id}`).send({ departmentId: ids.fin, fyStart: 2026, lines: [{ designationId: ids.acct, count: 5 }], version: after.version }).expect(409);
+    // HIR-01: an approved plan is revised; the approved lines stay until the revision is approved.
+    const rev = (await api('hrPlan', 'put', `/hiring/plans/${p.id}`).send({ departmentId: ids.fin, fyStart: 2026, lines: [{ id: ids.line, designationId: ids.acct, count: 5 }], version: after.version }).expect(200)).body;
+    expect(rev).toMatchObject({ status: 'approved', revision: { status: 'draft' }, lines: [{ id: ids.line, count: 2 }] });
   });
 
   it('the company’s requisition chain is the route, run on P03; approval opens the job (AT-2.02, AT-2.03)', async () => {

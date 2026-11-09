@@ -15290,6 +15290,124 @@
     "note": "Positive and negative: reason required, logged, never raised again, undo only while open."
   },
   {
+    "id": "MT-HIR-01-01",
+    "area": "Hiring · HIR-01 Headcount plan board (9 Nov 2026, founder decision 11)",
+    "screen": "Hiring › Headcount plan (HR)",
+    "url": "http://localhost:3000/yx/hiring/plans",
+    "account": "hr-tester@demo-org.test (holds ats.headcount.manage). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Hiring › Headcount plan. Check the page title, the year Segment (three years, this one chosen) and that the page does not scroll at 1278 x 635 with up to two departments.",
+      "2. Press the next year in the Segment.",
+      "3. Press Create plan (or Revise plan), then Send for approval without choosing anything.",
+      "4. Choose a department with no plan; line 1: a designation, Positions 2, Budget 14,00,000; press Save draft.",
+      "5. Press Revise plan, choose the same department, clear Positions, press Save draft; then type 3 and press Send for approval.",
+      "6. Press Export."
+    ],
+    "expected": "Step 1: each department is a column with its own status badge (Draft / Waiting for approval / Sent back / Approved · vN); budgets read in lakh format (₹14,00,000). Step 2: the board shows that year, or \"No headcount plan for FY … yet\" with Create plan. Step 3: \"Choose the department.\" under Department and it takes the focus; nothing saved. Step 4: toast \"<Department> plan saved as a draft\" (5 s); the column shows Draft with the line. Step 5: \"Enter at least 1.\" and nothing saved; then toast \"<Department> plan sent for approval\", a warning \"<Department> plan waiting for approval\" with the approval steps, column Waiting for approval. Step 6: a CSV with department, designation, grade, location, approved, filled, open, free, budget, budget committed.",
+    "stories": [
+      "Screens/Hiring/HIR-01 · Headcount plan board · HR · approved plan",
+      "Screens/Hiring/HIR-01 · Headcount plan board · HR · departments at different steps",
+      "Screens/Hiring/HIR-01 · Headcount plan board · HR · revise plan sheet",
+      "Screens/Hiring/HIR-01 · Headcount plan board · Empty · no plan for the year"
+    ],
+    "note": "Positive and negative: required fields on press (the button is never disabled), toast on save and send, year change."
+  },
+  {
+    "id": "MT-HIR-01-02",
+    "area": "Hiring · HIR-01 Headcount plan board (9 Nov 2026, founder decision 11)",
+    "screen": "Hiring › Headcount plan (approver)",
+    "url": "http://localhost:3000/yx/hiring/plans",
+    "account": "admin-tester@demo-org.test (approves headcount plans when nobody else holds the key; not the sender). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. After MT-HIR-01-01 step 5, open Hiring › Headcount plan.",
+      "2. Press Send back, then Send back in the dialog with no reason.",
+      "3. Type \"Hold till Q4\" and press Send back.",
+      "4. As hr-tester open the board; change the plan with Revise plan and send it again.",
+      "5. As admin-tester press Approve plan."
+    ],
+    "expected": "Step 1: the header shows Send back and Approve plan; the warning shows the route and who it waits for. Step 2: \"Enter a reason so HR knows what to change.\" and nothing is sent. Step 3: toast \"Sent back: <Department> plan\"; the column shows Sent back. Step 4: HR sees a red alert \"<Department> plan sent back\" with “Hold till Q4”; sending again works. Step 5: toast \"Approved: <Department> plan\"; the column shows Approved · v1. hr-tester (the sender) never sees Approve or Send back on their own plan.",
+    "stories": [
+      "Screens/Hiring/HIR-01 · Headcount plan board · Finance · revision pending approval",
+      "Screens/Hiring/HIR-01 · Headcount plan board · Finance · send back with a reason"
+    ],
+    "note": "Positive and negative: reason required; the sender cannot approve their own plan (P03 self-approval never)."
+  },
+  {
+    "id": "MT-HIR-01-03",
+    "area": "Hiring · HIR-01 Headcount plan board (9 Nov 2026, founder decision 11)",
+    "screen": "Hiring › Headcount plan › Revise plan (approved plan)",
+    "url": "http://localhost:3000/yx/hiring/plans",
+    "account": "hr-tester@demo-org.test, then admin-tester@demo-org.test to approve. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. On an approved department with an open requisition on a line, press Revise plan and choose that department.",
+      "2. Lower that line's Positions below its open requisitions and hires; press Save draft.",
+      "3. Raise Positions by 2, add a line, press Send for approval.",
+      "4. As a hiring manager, raise a requisition on the old line while the revision waits.",
+      "5. As admin-tester approve the revision."
+    ],
+    "expected": "Step 1: the sheet title reads \"Revise plan · v2\"; the used line shows \"At least N: open requisitions and hires\", its designation cannot change and it has no Remove button. Step 2: \"Enter at least N.\" and nothing saved. Step 3: toast \"<Department> revision sent for approval\"; the warning \"Revision v2 of <Department> waiting for approval\" says \"Adds … positions and ₹… budget. Requisitions keep drawing on v1 until it is approved.\"; the board still shows the v1 numbers. Step 4: the requisition draws on the approved v1 line. Step 5: the column shows Approved · v2 with the new numbers; the old line keeps its requisitions.",
+    "stories": [
+      "Screens/Hiring/HIR-01 · Headcount plan board · HR · revise plan sheet",
+      "Screens/Hiring/HIR-01 · Headcount plan board · Finance · revision pending approval"
+    ],
+    "note": "Positive and negative: a line never drops below its requisitions; approved lines stay until the revision is approved."
+  },
+  {
+    "id": "MT-HIR-01-04",
+    "area": "Hiring · HIR-01 Headcount plan board (9 Nov 2026, founder decision 11)",
+    "screen": "Hiring › Headcount plan (hiring manager)",
+    "url": "http://localhost:3000/yx/hiring/plans",
+    "account": "panel@demo-org.test (Divya Raghunathan; needs the Hiring manager role (ats.requisition.raise) and to head or belong to a department with an approved plan). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Hiring › Headcount plan from the menu.",
+      "2. Look for budgets, Revise plan and Export.",
+      "3. On a line with free positions press Open requisition.",
+      "4. As admin-tester set the setting \"Hiring: hiring managers see their department’s headcount plan\" to off; as Divya reload the board.",
+      "5. Set it back to own department."
+    ],
+    "expected": "Step 1: only Divya's own department (or the departments she heads), approved plans only; the facts read \"Showing <Department> only · read-only\". Step 2: no budget numbers, no budget meter, no Budget committed tile, no Revise plan, no Export. Step 3: the New requisition sheet opens on that plan line; sending shows a toast. Step 4: \"Only HR sees the headcount plan\" (no error, no data). Step 5: the board is back.",
+    "stories": [
+      "Screens/Hiring/HIR-01 · Headcount plan board · Hiring manager · own department",
+      "Screens/Hiring/HIR-01 · Headcount plan board · Hiring manager · company shows HR only"
+    ],
+    "note": "Positive and negative: founder decision 11 (read-only own department); a company setting with the default own department."
+  },
+  {
+    "id": "MT-HIR-01-05",
+    "area": "Hiring · HIR-01 Headcount plan board (9 Nov 2026, founder decision 11)",
+    "screen": "Hiring › Headcount plan (refused)",
+    "url": "http://localhost:3000/yx/hiring/plans",
+    "account": "arjun@demo-org.test (employee); admin-tester@demo-org.test acting as hr-tester. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. As Arjun open /yx/hiring/plans directly.",
+      "2. As admin-tester use Act as hr-tester and open the board.",
+      "3. Look for Revise plan, Approve and Send back."
+    ],
+    "expected": "Step 1: no Headcount plan in the menu; the page says there is no access (API 403). Step 2: the board loads read-only; the facts end with \"read-only while acting for someone else\". Step 3: none of them show (the API also refuses: \"Not available while acting for someone else.\").",
+    "stories": [
+      "Screens/Hiring/HIR-01 · Headcount plan board · Error"
+    ],
+    "note": "Negative: employee 403; no plan changes or decisions while acting for someone else."
+  },
+  {
+    "id": "MT-HIR-01-06",
+    "area": "Hiring · HIR-01 Headcount plan board (9 Nov 2026, founder decision 11)",
+    "screen": "Hiring › Headcount plan (loading, errors, two editors)",
+    "url": "http://localhost:3000/yx/hiring/plans",
+    "account": "hr-tester@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Reload the board with the network throttled to Slow 3G.",
+      "2. Set the network offline and reload; go online and press Try again.",
+      "3. In two tabs open Revise plan on the same draft; save in tab 1, then save in tab 2."
+    ],
+    "expected": "Step 1: three skeleton columns, then the board. Step 2: \"Couldn't load the headcount plan\" with Try again; Try again loads it. Step 3: tab 2 keeps the sheet open with \"Someone else changed this plan. Reload it.\" and nothing is overwritten.",
+    "stories": [
+      "Screens/Hiring/HIR-01 · Headcount plan board · Loading",
+      "Screens/Hiring/HIR-01 · Headcount plan board · Error"
+    ],
+    "note": "Positive and negative: load states and two people editing at once (version check)."
+  },
+  {
     "id": "MT-HIR-03-01",
     "area": "Hiring · HIR-03 Jobs and job workspace (9 Nov 2026, designed screens live)",
     "screen": "Hiring › Jobs (list)",

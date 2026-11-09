@@ -70,27 +70,6 @@ export interface PlanLine {
   filled: number;
 }
 
-export interface HeadcountPlan {
-  id: string;
-  departmentId: string;
-  department: string;
-  legalEntityId: string | null;
-  fyStart: number;
-  status: 'draft' | 'submitted' | 'approved' | 'rejected';
-  note: string | null;
-  version: number;
-  lines: PlanLine[];
-}
-
-export interface PlanInput {
-  departmentId: string;
-  legalEntityId: string | null;
-  fyStart: number;
-  note: string | null;
-  lines: { designationId: string; gradeId: string | null; locationId: string | null; count: number; budget: number | null }[];
-  version?: number;
-}
-
 /** A line of an approved plan a requisition can draw on. */
 export interface OpenPlanLine extends PlanLine {
   planId: string;

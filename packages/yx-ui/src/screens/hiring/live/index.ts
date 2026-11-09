@@ -1,7 +1,8 @@
 // Recruitment (M10), wired to the hiring API (M10-BUILD-DESIGN). Batch AT1: the jobs list.
 // Import the stylesheet once: '@yukthix/ui/styles.css'.
 export * from './types';
-export { HeadcountPlansScreen, type HeadcountPlansScreenProps } from './plans';
+// HIR-01: the designed headcount plan board, live with its `live` prop (the stand-in is gone).
+export { HeadcountPlanScreen, PlanEditorDrawer, type LiveHeadcountPlan, type LivePlan, type LivePlanLine, type PlanInput as HeadcountPlanInput, type PlanChoice } from '../hiring-plan';
 export { ApprovalRoutesScreen, type ApprovalRoutesScreenProps } from './routes';
 export { CareersSiteScreen, type CareersSiteScreenProps } from './careers';
 export { JobBoardsScreen, type JobBoardsScreenProps } from './boards';

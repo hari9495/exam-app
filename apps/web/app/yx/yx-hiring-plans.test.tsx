@@ -1,6 +1,7 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ToastProvider } from '@yukthix/ui';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { apiFetch } from '../../lib/api-client';
 import { useAuth } from '../../lib/auth-context';
@@ -11,8 +12,8 @@ jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), apiFetchBlob: jest.fn() }));
 jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn() }));
 
-// Hiring › Headcount plans and Hiring approvals on the API (M10 batch AT2).
-const wrap = (ui: React.ReactElement) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{ui}</QueryClientProvider>);
+// Hiring › Headcount plan (HIR-01) and Hiring approvals on the API (M10 batch AT2).
+const wrap = (ui: React.ReactElement) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ToastProvider>{ui}</ToastProvider></QueryClientProvider>);
 const api = apiFetch as jest.Mock;
 
 beforeEach(() => {
@@ -20,22 +21,57 @@ beforeEach(() => {
   (useRouter as jest.Mock).mockReturnValue({ push: jest.fn(), replace: jest.fn() });
   (usePathname as jest.Mock).mockReturnValue('/yx/hiring/plans');
   (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams(''));
-  (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'panel', actingSuperAdmin: false, isLoading: false, logout: jest.fn() });
+  (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'panel', actingSuperAdmin: false, impersonating: false, isLoading: false, logout: jest.fn() });
 });
 
-describe('Hiring › Headcount plans (M10 AT2)', () => {
-  it('lists the year’s plans and sends a draft for approval with its version', async () => {
-    const posted: { path: string; body: unknown }[] = [];
+describe('Hiring › Headcount plan (HIR-01, the designed board)', () => {
+  const line = { id: 'l1', designationId: 'x1', designation: 'Accountant', gradeId: null, grade: null, locationId: null, location: null, count: 2, budget: 1_400_000, committed: 0, committedBudget: 0, filled: 0 };
+  const plan = (o: object = {}) => ({ id: 'p1', departmentId: 'd1', department: 'Finance', legalEntityId: null, fyStart: 2026, status: 'draft', note: null, version: 4, revisionNo: 1, revision: null, approval: null, lines: [line], ...o });
+  const serve = (keys: string[], plans: unknown, writes: { path: string; body: unknown }[] = []) =>
     api.mockImplementation(async (path: string, init?: RequestInit) => {
-      if (path.startsWith('/hiring/plans?fy=')) return [{ id: 'p1', departmentId: 'd1', department: 'Finance', legalEntityId: null, fyStart: 2026, status: 'draft', note: null, version: 4, lines: [{ id: 'l1', designationId: 'x1', designation: 'Accountant', gradeId: null, grade: null, locationId: null, location: null, count: 2, budget: null, committed: 0, committedBudget: 0, filled: 0 }] }];
-      if (path === '/hiring/plans/p1/submit') return (posted.push({ path, body: JSON.parse(String(init!.body)) }), { status: 'submitted' });
-      if (path.startsWith('/org/')) return [];
-      throw new Error(`unexpected ${init?.method ?? 'GET'} ${path}`);
+      if (path.startsWith('/rbac/me/permissions')) return keys;
+      if (path.startsWith('/hiring/plans?fy=')) {
+        if (plans instanceof Error) throw plans;
+        return plans;
+      }
+      if (init?.method) return (writes.push({ path, body: JSON.parse(String(init.body)) }), path.endsWith('/submit') ? { status: 'submitted' } : path.includes('/decide') ? {} : plan());
+      if (path === '/org/masters/departments') return [{ id: 'd1', name: 'Finance', archivedAt: null }];
+      if (path.startsWith('/org/')) return [{ id: 'x1', name: 'Accountant', archivedAt: null }];
+      throw new Error(`unexpected GET ${path}`);
     });
+
+  it('HR sends a draft plan from the plan sheet with its version', async () => {
+    const writes: { path: string; body: unknown }[] = [];
+    serve(['ats.headcount.manage'], [plan()], writes);
     wrap(<YxHeadcountPlansPage />);
-    expect(await screen.findByText(/Finance · FY/)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Send for approval' }));
-    await waitFor(() => expect(posted).toEqual([{ path: '/hiring/plans/p1/submit', body: { version: 4 } }]));
+    expect(await screen.findByRole('listitem', { name: 'Finance' })).toHaveTextContent('Draft');
+    await userEvent.click(screen.getByRole('button', { name: 'Revise plan' }));
+    const d = await screen.findByRole('dialog');
+    await userEvent.click(within(d).getByRole('combobox', { name: /Department/ }));
+    await userEvent.click(await screen.findByRole('option', { name: 'Finance' }));
+    await userEvent.click(within(d).getByRole('button', { name: 'Send for approval' }));
+    await waitFor(() => expect(writes.map((w) => w.path)).toEqual(['/hiring/plans/p1', '/hiring/plans/p1/submit']));
+    expect(writes[0].body).toMatchObject({ departmentId: 'd1', fyStart: expect.any(Number), lines: [{ id: null, designationId: 'x1', count: 2, budget: 1_400_000 }], version: 4 });
+  });
+
+  it('the approver approves the waiting plan on the board through the approvals API', async () => {
+    const writes: { path: string; body: unknown }[] = [];
+    serve(['ats.headcount.manage'], [plan({ status: 'submitted', approval: { kind: 'plan', status: 'pending', reason: null, submittedAt: null, submittedBy: 'Lakshmi', steps: [{ name: 'Finance and HR', state: 'waiting', approvers: ['Ravi'], at: null }], myTaskId: 't9' } })], writes);
+    wrap(<YxHeadcountPlansPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Approve plan' }));
+    await waitFor(() => expect(writes).toEqual([{ path: '/workflow/approvals/tasks/t9/decide', body: { decision: 'approve' } }]));
+  });
+
+  it('a hiring manager reads their department read-only; when the company shows HR only, says so', async () => {
+    serve(['ats.requisition.raise'], [plan({ status: 'approved', lines: [{ ...line, budget: null }] })]);
+    const { unmount } = wrap(<YxHeadcountPlansPage />);
+    expect(await screen.findByText(/Showing Finance only · read-only/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Revise plan' })).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Open requisition' })).toHaveLength(2);
+    unmount();
+    serve(['ats.requisition.raise'], Object.assign(new Error('HR only'), { status: 403 }));
+    wrap(<YxHeadcountPlansPage />);
+    expect(await screen.findByText('Only HR sees the headcount plan')).toBeInTheDocument();
   });
 });
 

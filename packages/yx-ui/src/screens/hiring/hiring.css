@@ -15,6 +15,7 @@
   padding: var(--yx-space-3); background: var(--yx-color-bg-subtle); border-radius: var(--yx-radius-card);
 }
 .yx-hire-board__head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--yx-space-2); }
+.yx-hire-board__title { display: flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-2); min-width: 0; }
 .yx-hire-board__card {
   display: flex; flex-direction: column; align-items: flex-start; gap: var(--yx-space-2);
   padding: var(--yx-space-3); background: var(--yx-color-bg-surface);
@@ -49,6 +50,12 @@
 /* T4 sheet: form + live effect summary */
 .yx-hire-sheet { display: grid; grid-template-columns: minmax(0, 1fr) calc(var(--yx-space-16) * 3.5); gap: var(--yx-space-6); }
 @media (max-width: 900px) { .yx-hire-sheet { grid-template-columns: minmax(0, 1fr); } }
+/* HIR-01 plan sheet: one block per plan line */
+.yx-hire-planline {
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--yx-space-3);
+  padding: var(--yx-space-3); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card);
+}
+.yx-hire-planline > .yx-field-row { align-self: stretch; }
 .yx-hire-sheet__form { display: flex; flex-direction: column; gap: var(--yx-space-4); min-width: 0; }
 .yx-hire-sheet__effect {
   display: flex; flex-direction: column; align-items: flex-start; gap: var(--yx-space-2);

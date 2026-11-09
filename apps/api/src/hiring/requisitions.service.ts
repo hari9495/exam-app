@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { buildViewer, has, type ScopeUser } from '../access/scope';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
 import { settingFor } from '../people/probation';
@@ -23,16 +24,30 @@ import type { PlanDto } from './hiring-dto';
 //                needed; the company's requisition chain (the older approval_chains row, D3) stays the route: its steps
 //                are resolved to people now and run on P03 'ats.requisition'; with neither, the job opens at once
 //   decided      approved → the job opens (boards are synced after commit); sent back → draft again
+//   revision     HIR-01: an approved plan is revised (same department and year); the revision waits on the plan and goes
+//                through the same P03 type; requisitions keep drawing on the approved lines until it is approved, then the
+//                lines change in place (ids kept). A line never drops below its open requisitions and hires.
+//   board        HIR-01 / founder decision 11: holders of ats.headcount.manage see every plan; a hiring manager
+//                (ats.requisition.raise) sees only their own department's approved plans, read-only, without budgets,
+//                unless the company turned that off (ats.headcount_plan.manager_view).
 
 export const REQUISITION_TYPE = 'ats.requisition';
 export const PLAN_TYPE = 'ats.headcount_plan';
 const D = (n: Prisma.Decimal | null) => (n === null ? null : Number(n.toString()));
+type RevLine = { id: string | null; designationId: string; gradeId: string | null; locationId: string | null; count: number; budget: number | null };
+type Revision = { note: string | null; lines: RevLine[] };
+const revOf = (p: { revision: Prisma.JsonValue }) => p.revision as Revision | null;
+/** The plan's open question to approvers (the first approval or a revision), waiting or sent back. */
+const latestRequest = (p: { status: string; wfRequestId: string | null; revisionStatus: string | null; revisionWfRequestId: string | null }) =>
+  p.status === 'submitted' || p.status === 'rejected' ? p.wfRequestId : p.revisionStatus === 'submitted' || p.revisionStatus === 'rejected' ? p.revisionWfRequestId : null;
+const fyLabel = (y: number) => `FY ${y}–${String(y + 1).slice(2)}`;
 
 @Injectable()
 export class HiringRequisitionsService implements OnModuleInit {
   private readonly logger = new Logger(HiringRequisitionsService.name);
 
   constructor(
+    private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly engine: ApprovalsEngine,
     private readonly automation: AutomationService,
@@ -103,38 +118,84 @@ export class HiringRequisitionsService implements OnModuleInit {
 
   // ------------------------------------------------------------------------------------------ plans (AT-2.01)
 
-  private async planView(tx: Tx, org: string, plans: Prisma.HeadcountPlanGetPayload<object>[]) {
+  private async planView(tx: Tx, org: string, plans: Prisma.HeadcountPlanGetPayload<object>[], viewerId: string | null = null) {
     const lines = await tx.headcountPlanLine.findMany({ where: { organizationId: org, planId: { in: plans.map((p) => p.id) } } });
+    const revLines = plans.flatMap((p) => revOf(p)?.lines ?? []);
     const use = await this.usage(tx, org, lines.map((l) => l.id));
     const names = async (model: 'department' | 'designation' | 'grade' | 'location', ids: (string | null)[]) => {
       const list = [...new Set(ids.filter((x): x is string => Boolean(x)))];
       const rows = (await (tx[model] as unknown as { findMany: (a: unknown) => Promise<{ id: string; name: string }[]> }).findMany({ where: { organizationId: org, id: { in: list } }, select: { id: true, name: true } }));
       return new Map(rows.map((r) => [r.id, r.name]));
     };
+    const all = [...lines, ...revLines];
     const dept = await names('department', plans.map((p) => p.departmentId));
-    const desig = await names('designation', lines.map((l) => l.designationId));
-    const grade = await names('grade', lines.map((l) => l.gradeId));
-    const loc = await names('location', lines.map((l) => l.locationId));
-    return plans.map((p) => ({
-      id: p.id,
-      departmentId: p.departmentId,
-      department: dept.get(p.departmentId) ?? '',
-      legalEntityId: p.legalEntityId,
-      fyStart: p.fyStart,
-      status: p.status,
-      note: p.note,
-      version: p.version,
-      lines: lines.filter((l) => l.planId === p.id).map((l) => {
-        const u = use.get(l.id) ?? { committed: 0, committedBudget: 0, filled: 0 };
-        return { id: l.id, designationId: l.designationId, designation: desig.get(l.designationId) ?? '', gradeId: l.gradeId, grade: l.gradeId ? (grade.get(l.gradeId) ?? '') : null, locationId: l.locationId, location: l.locationId ? (loc.get(l.locationId) ?? '') : null, count: l.count, budget: D(l.budget), committed: u.committed, committedBudget: u.committedBudget, filled: u.filled };
-      }),
-    }));
+    const desig = await names('designation', all.map((l) => l.designationId));
+    const grade = await names('grade', all.map((l) => l.gradeId));
+    const loc = await names('location', all.map((l) => l.locationId));
+    // HIR-01: the route of the plan's latest request, why it was sent back, and the viewer's own open task on it.
+    const reqIds = plans.map(latestRequest).filter((x): x is string => Boolean(x));
+    const reqs = reqIds.length ? await tx.wfRequest.findMany({ where: { organizationId: org, id: { in: reqIds } } }) : [];
+    const routes = new Map(await Promise.all(reqs.map(async (r) => [r.id, await this.engine.viewIn(tx, org, r)] as const)));
+    const mine = viewerId && reqIds.length ? await tx.wfTask.findMany({ where: { organizationId: org, requestId: { in: reqIds }, assigneeUserId: viewerId, status: 'open' }, select: { id: true, requestId: true, step: true } }) : [];
+    const named = (l: { designationId: string; gradeId: string | null; locationId: string | null }) => ({ designation: desig.get(l.designationId) ?? '', grade: l.gradeId ? (grade.get(l.gradeId) ?? '') : null, location: l.locationId ? (loc.get(l.locationId) ?? '') : null });
+    return plans.map((p) => {
+      const rev = revOf(p);
+      const req = reqs.find((r) => r.id === latestRequest(p));
+      const route = req ? routes.get(req.id) : undefined;
+      return {
+        id: p.id,
+        departmentId: p.departmentId,
+        department: dept.get(p.departmentId) ?? '',
+        legalEntityId: p.legalEntityId,
+        fyStart: p.fyStart,
+        status: p.status,
+        note: p.note,
+        version: p.version,
+        revisionNo: p.revisionNo,
+        revision: rev && p.revisionStatus ? { status: p.revisionStatus, note: rev.note, lines: rev.lines.map((l) => ({ ...l, ...named(l) })) } : null,
+        approval: route && req
+          ? {
+              requestId: req.id,
+              kind: p.status === 'approved' ? ('revision' as const) : ('plan' as const),
+              status: req.status,
+              reason: req.status === 'rejected' ? ([...route.log].reverse().find((a) => a.reason)?.reason ?? null) : null,
+              submittedAt: route.submittedAt,
+              submittedBy: route.log[0]?.by ?? null,
+              steps: route.steps.map((st, i) => ({ name: st.name, state: st.state, approvers: [...new Set([...st.approvers.map((a) => a.name), ...st.waitingFor])].filter(Boolean), at: [...route.log].reverse().find((a) => a.step === i + 1)?.at ?? null })),
+              myTaskId: mine.find((t) => t.requestId === req.id && t.step === req.currentStep)?.id ?? null,
+            }
+          : null,
+        lines: lines.filter((l) => l.planId === p.id).map((l) => {
+          const u = use.get(l.id) ?? { committed: 0, committedBudget: 0, filled: 0 };
+          return { id: l.id, designationId: l.designationId, ...named(l), gradeId: l.gradeId, locationId: l.locationId, count: l.count, budget: D(l.budget), committed: u.committed, committedBudget: u.committedBudget, filled: u.filled };
+        }),
+      };
+    });
   }
 
-  async plans(ctx: TenantContext, fyStart?: number) {
+  /** Departments a hiring manager sees (decision 11): their own today, and the subtrees they head. */
+  private async myDepartments(tx: Tx, org: string, userId: string | null | undefined): Promise<string[]> {
+    const e = userId ? await tx.employee.findFirst({ where: { organizationId: org, userId }, select: { id: true } }) : null;
+    if (!e) return [];
+    const today = new Date(todayIst());
+    const a = await tx.employeeAssignment.findFirst({ where: { organizationId: org, employeeId: e.id, supersededAt: null, validFrom: { lte: today }, OR: [{ validTo: null }, { validTo: { gte: today } }] }, orderBy: { validFrom: 'desc' }, select: { departmentId: true } });
+    const heads = await tx.department.findMany({ where: { organizationId: org, headEmployeeId: e.id }, select: { id: true } });
+    const sub = heads.length ? await tx.department.findMany({ where: { organizationId: org, OR: heads.map((h) => ({ path: { contains: `/${h.id}/` } })) }, select: { id: true } }) : [];
+    return [...new Set([a?.departmentId, ...sub.map((d) => d.id)].filter((x): x is string => Boolean(x)))];
+  }
+
+  async plans(ctx: TenantContext, user: ScopeUser, fyStart?: number) {
+    const hr = has(await buildViewer(this.prisma, this.tenantPrisma, user, ['ats.headcount.manage']), 'ats.headcount.manage');
     return this.run(ctx, async (tx, c) => {
-      const rows = await tx.headcountPlan.findMany({ where: { organizationId: c.organizationId, ...(fyStart ? { fyStart } : {}) }, orderBy: [{ fyStart: 'desc' }, { createdAt: 'asc' }] });
-      return this.planView(tx, c.organizationId, rows);
+      const org = c.organizationId;
+      let where: Prisma.HeadcountPlanWhereInput = { organizationId: org, ...(fyStart ? { fyStart } : {}) };
+      if (!hr) {
+        if ((await settingFor(tx, c, 'ats.headcount_plan.manager_view', { legalEntityId: '' })) === 'off') throw new ForbiddenException('Your company shows the headcount plan to HR only. Ask HR for your department’s numbers.');
+        where = { ...where, status: 'approved', departmentId: { in: await this.myDepartments(tx, org, user.userId) } };
+      }
+      const view = await this.planView(tx, org, await tx.headcountPlan.findMany({ where, orderBy: [{ fyStart: 'desc' }, { createdAt: 'asc' }] }), user.userId ?? null);
+      // A hiring manager reads the approved positions only: no budgets, notes, revisions or routes.
+      return hr ? view : view.map((p) => ({ ...p, note: null, revision: null, approval: null, lines: p.lines.map((l) => ({ ...l, budget: null, committedBudget: 0 })) }));
     });
   }
 
@@ -149,6 +210,7 @@ export class HiringRequisitionsService implements OnModuleInit {
   async savePlan(ctx: TenantContext, userId: string, id: string | null, dto: PlanDto) {
     return this.run(ctx, async (tx, c) => {
       const org = c.organizationId;
+      if (id && !(await tx.headcountPlan.findFirst({ where: { organizationId: org, id }, select: { id: true } }))) throw new NotFoundException('No such plan.');
       if (!(await tx.department.findFirst({ where: { organizationId: org, id: dto.departmentId }, select: { id: true } }))) throw new BadRequestException('Choose a department of this company.');
       if (dto.legalEntityId && !(await tx.legalEntity.findFirst({ where: { organizationId: org, id: dto.legalEntityId }, select: { id: true } }))) throw new BadRequestException('Choose a legal entity of this company.');
       const check = async (model: 'designation' | 'grade' | 'location', ids: (string | null | undefined)[], label: string) => {
@@ -163,7 +225,8 @@ export class HiringRequisitionsService implements OnModuleInit {
       if (id) {
         plan = await tx.headcountPlan.findFirst({ where: { organizationId: org, id } });
         if (!plan) throw new NotFoundException('No such plan.');
-        if (plan.status !== 'draft' && plan.status !== 'rejected') throw new ConflictException('A plan waiting for approval or approved is not edited. Start next year’s plan instead.');
+        if (plan.status === 'approved') return this.saveRevision(tx, c, plan, dto);
+        if (plan.status !== 'draft' && plan.status !== 'rejected') throw new ConflictException('This plan is with the approvers. Wait for their answer before changing it.');
         const n = await tx.headcountPlan.updateMany({ where: { id, version: dto.version ?? -1 }, data: { departmentId: dto.departmentId, legalEntityId: dto.legalEntityId ?? null, fyStart: dto.fyStart, note: dto.note ?? null, status: 'draft', version: { increment: 1 } } });
         if (!n.count) throw new ConflictException('Someone else changed this plan. Reload it.');
         await tx.headcountPlanLine.deleteMany({ where: { organizationId: org, planId: id } });
@@ -177,25 +240,56 @@ export class HiringRequisitionsService implements OnModuleInit {
     });
   }
 
+  /** HIR-01: saves the revision of an approved plan; the approved lines are unchanged until it is approved. */
+  private async saveRevision(tx: Tx, c: CompanyContext, plan: Prisma.HeadcountPlanGetPayload<object>, dto: PlanDto) {
+    const org = c.organizationId;
+    if (plan.revisionStatus === 'submitted') throw new ConflictException('A revision of this plan is already with the approvers.');
+    if (dto.departmentId !== plan.departmentId || dto.fyStart !== plan.fyStart) throw new BadRequestException('A revision keeps the plan’s department and year.');
+    const current = await tx.headcountPlanLine.findMany({ where: { organizationId: org, planId: plan.id } });
+    const ids = dto.lines.map((l) => l.id).filter((x): x is string => Boolean(x));
+    if (new Set(ids).size !== ids.length || ids.some((x) => !current.some((l) => l.id === x))) throw new BadRequestException('Each line must be a line of this plan or a new line.');
+    const use = await this.usage(tx, org, current.map((l) => l.id));
+    for (const l of current) {
+      const u = use.get(l.id);
+      const taken = (u?.committed ?? 0) + (u?.filled ?? 0);
+      const row = dto.lines.find((r) => r.id === l.id);
+      if (!taken) continue;
+      if (!row) throw new ConflictException(`A line with open requisitions or hires stays in the plan. Keep it with at least ${taken} positions.`);
+      if (row.count < taken) throw new ConflictException(`A line can't have fewer positions than its open requisitions and hires (${taken}).`);
+      if (row.designationId !== l.designationId) throw new ConflictException('A line with requisitions keeps its designation. Add a new line instead.');
+    }
+    const revision: Revision = { note: dto.note ?? null, lines: dto.lines.map((l) => ({ id: l.id ?? null, designationId: l.designationId, gradeId: l.gradeId ?? null, locationId: l.locationId ?? null, count: l.count, budget: l.budget ?? null })) };
+    const n = await tx.headcountPlan.updateMany({ where: { id: plan.id, version: dto.version ?? -1 }, data: { revision, revisionStatus: 'draft', version: { increment: 1 } } });
+    if (!n.count) throw new ConflictException('Someone else changed this plan. Reload it.');
+    await audit(tx, c, 'ats.plan.revision_saved', 'headcount_plan', plan.id, { lines: dto.lines.length });
+    return (await this.planView(tx, org, [await tx.headcountPlan.findFirstOrThrow({ where: { id: plan.id } })]))[0];
+  }
+
   async submitPlan(ctx: TenantContext, userId: string, id: string, version: number) {
     let notices: Notice[] = [];
     const out = await this.run(ctx, async (tx, c) => {
       const org = c.organizationId;
       const p = await tx.headcountPlan.findFirst({ where: { organizationId: org, id } });
       if (!p) throw new NotFoundException('No such plan.');
-      if (p.status !== 'draft' && p.status !== 'rejected') throw new ConflictException('This plan is already with the approvers.');
+      const revising = p.status === 'approved';
+      if (revising ? p.revisionStatus === 'submitted' : p.status === 'submitted') throw new ConflictException('This plan is already with the approvers.');
+      if (revising && p.revisionStatus !== 'draft' && p.revisionStatus !== 'rejected') throw new ConflictException('Revise the plan before sending it.');
       if (p.version !== version) throw new ConflictException('Someone else changed this plan. Reload it.');
       const view = (await this.planView(tx, org, [p]))[0];
-      if (!view.lines.length) throw new BadRequestException('Add at least one line before sending the plan.');
+      const lines = revising ? view.revision!.lines : view.lines;
+      if (!lines.length) throw new BadRequestException('Add at least one line before sending the plan.');
       const approvers = await this.planApprovers(tx, org, [userId]);
-      const total = view.lines.reduce((t, l) => t + l.count, 0);
-      const budget = view.lines.reduce((t, l) => t + (l.budget ?? 0), 0);
+      const total = lines.reduce((t, l) => t + l.count, 0);
+      const budget = lines.reduce((t, l) => t + (l.budget ?? 0), 0);
+      const was = { total: view.lines.reduce((t, l) => t + l.count, 0), budget: view.lines.reduce((t, l) => t + (l.budget ?? 0), 0) };
       const sub = await this.engine.submit(tx, c, {
         type: PLAN_TYPE,
         subjectType: 'headcount_plan',
         subjectId: p.id,
-        title: `Headcount plan: ${view.department} FY ${p.fyStart}–${String(p.fyStart + 1).slice(2)}`,
-        summary: [{ label: 'Positions', value: String(total) }, ...(budget ? [{ label: 'Budget', value: budget.toLocaleString('en-IN') }] : [])],
+        title: `${revising ? `Headcount plan revision v${p.revisionNo + 1}` : 'Headcount plan'}: ${view.department} ${fyLabel(p.fyStart)}`,
+        summary: revising
+          ? [{ label: 'Positions', value: `${was.total} → ${total}` }, { label: 'Budget', value: `${was.budget.toLocaleString('en-IN')} → ${budget.toLocaleString('en-IN')}` }]
+          : [{ label: 'Positions', value: String(total) }, ...(budget ? [{ label: 'Budget', value: budget.toLocaleString('en-IN') }] : [])],
         subjectPersonId: null,
         requesterUserId: userId,
         raisedByUserId: userId,
@@ -206,8 +300,8 @@ export class HiringRequisitionsService implements OnModuleInit {
         fallbackWording: { who: 'the company admins', check: 'Check who approves requisitions and headcount plans' },
       });
       notices = sub.notices;
-      await tx.headcountPlan.update({ where: { id }, data: { status: 'submitted', wfRequestId: sub.id, version: { increment: 1 } } });
-      await audit(tx, c, 'ats.plan.submitted', 'headcount_plan', id, { positions: total });
+      await tx.headcountPlan.update({ where: { id }, data: revising ? { revisionStatus: 'submitted', revisionWfRequestId: sub.id, version: { increment: 1 } } : { status: 'submitted', wfRequestId: sub.id, version: { increment: 1 } } });
+      await audit(tx, c, revising ? 'ats.plan.revision_submitted' : 'ats.plan.submitted', 'headcount_plan', id, { positions: total });
       return { status: 'submitted' };
     });
     if (notices.length) await this.engine.send(ctx, notices);
@@ -215,9 +309,33 @@ export class HiringRequisitionsService implements OnModuleInit {
   }
 
   private async planDecided(tx: Tx, req: Prisma.WfRequestGetPayload<object>, outcome: 'approved' | 'rejected') {
-    const p = await tx.headcountPlan.findFirst({ where: { organizationId: req.organizationId, wfRequestId: req.id } });
-    if (!p || p.status !== 'submitted') return;
-    await tx.headcountPlan.update({ where: { id: p.id }, data: { status: outcome, version: { increment: 1 } } });
+    const org = req.organizationId;
+    const p = await tx.headcountPlan.findFirst({ where: { organizationId: org, OR: [{ wfRequestId: req.id }, { revisionWfRequestId: req.id }] } });
+    if (!p) return;
+    if (p.wfRequestId === req.id && p.status === 'submitted') {
+      await tx.headcountPlan.update({ where: { id: p.id }, data: { status: outcome, version: { increment: 1 } } });
+      return;
+    }
+    const rev = revOf(p);
+    if (p.revisionWfRequestId !== req.id || p.revisionStatus !== 'submitted' || !rev) return;
+    if (outcome === 'rejected') {
+      await tx.headcountPlan.update({ where: { id: p.id }, data: { revisionStatus: 'rejected', version: { increment: 1 } } });
+      return;
+    }
+    // Approved: change the lines in place. Requisitions raised while it waited still count: a line keeps at least its
+    // open requisitions and hires, and a line in use is never removed.
+    const current = await tx.headcountPlanLine.findMany({ where: { organizationId: org, planId: p.id } });
+    const use = await this.usage(tx, org, current.map((l) => l.id));
+    for (const l of current) {
+      const u = use.get(l.id);
+      const taken = (u?.committed ?? 0) + (u?.filled ?? 0);
+      const row = rev.lines.find((r) => r.id === l.id);
+      if (row) await tx.headcountPlanLine.update({ where: { id: l.id }, data: { designationId: taken ? l.designationId : row.designationId, gradeId: row.gradeId, locationId: row.locationId, count: Math.max(row.count, taken), budget: row.budget } });
+      else if (!taken) await tx.headcountPlanLine.delete({ where: { id: l.id } });
+    }
+    const added = rev.lines.filter((r) => !r.id);
+    if (added.length) await tx.headcountPlanLine.createMany({ data: added.map((r) => ({ organizationId: org, planId: p.id, designationId: r.designationId, gradeId: r.gradeId, locationId: r.locationId, count: r.count, budget: r.budget })) });
+    await tx.headcountPlan.update({ where: { id: p.id }, data: { note: rev.note, revision: Prisma.DbNull, revisionStatus: null, revisionNo: { increment: 1 }, version: { increment: 1 } } });
   }
 
   // ------------------------------------------------------------------------------------------ requisitions (AT-2.02 … 2.04)
