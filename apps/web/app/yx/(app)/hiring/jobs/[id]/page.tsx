@@ -198,6 +198,8 @@ export default function YxHiringJobPage() {
             }
           : undefined,
         onOpenPipeline: () => router.push(`/yx/hiring/jobs/${enc(id)}/pipeline`),
+        // HIR-28: bulk offers need the offer-pay key (the API checks it again).
+        onBulkOffers: perms.has('ats.offer.compensation.view') ? () => router.push(`/yx/hiring/jobs/${enc(id)}/bulk-offers`) : undefined,
         onViewCareers: () => {
           if (url) window.open(url, '_blank', 'noopener');
         },

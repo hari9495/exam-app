@@ -137,6 +137,28 @@ describe('Candidate pages outside the app (decision 10)', () => {
     expect(screen.queryByRole('button', { name: 'Accept offer' })).not.toBeInTheDocument();
   });
 
+  it('offer with e-sign (answer 337): agree, get the code, enter it; pressed too early it names what is missing', async () => {
+    const onRespond = vi.fn(async () => undefined);
+    const onSendCode = vi.fn(async () => ({ to: 'j•••@gmail.com' }));
+    wrap(<OfferAcceptScreen brand={CAND_BRAND} state="ready" offer={{ ...OFFER, esign: true }} live={{ onRespond, onSendCode, today: TODAY }} />);
+    expect(screen.queryByRole('button', { name: 'Accept offer' })).not.toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Sign and accept' }));
+    expect(screen.getByText('Agree to sign electronically first.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Email me a code' }));
+    expect(onSendCode).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('checkbox', { name: /sign this offer electronically/ }));
+    await ue.click(screen.getByRole('button', { name: 'Email me a code' }));
+    await waitFor(() => expect(onSendCode).toHaveBeenCalled());
+    expect(screen.getByText(/Sent to j•••@gmail.com/)).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Sign and accept' }));
+    expect(screen.getByText('Enter the 6-digit code from the email.')).toBeInTheDocument();
+    expect(onRespond).not.toHaveBeenCalled();
+    await ue.type(screen.getByLabelText(/Code from the email/), '12ab3456');
+    await ue.click(screen.getByRole('button', { name: 'Sign and accept' }));
+    await waitFor(() => expect(onRespond).toHaveBeenCalledWith('accept', { code: '123456', disclosureAccepted: true }));
+    expect((await screen.findAllByText('You accepted this offer')).length).toBeGreaterThan(0);
+  });
+
   it('interview: Confirm without a time asks for one; confirms a proposed time; asks for another with a note', async () => {
     const onConfirm = vi.fn(async () => undefined);
     const onReschedule = vi.fn(async () => undefined);

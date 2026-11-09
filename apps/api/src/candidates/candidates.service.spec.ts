@@ -1079,6 +1079,8 @@ describe('CandidatesService', () => {
         scorecardComment: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
         interviewTranscript: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
         interviewScorecardDraft: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+        scorecard: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
+        scorecardRating: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
         // HIR-05 answer 276: a requested erase first checks for an accepted offer or an open process (none here).
         $queryRaw: jest.fn().mockResolvedValue([{ accepted: false, open: null }]),
         candidate: {
@@ -1294,6 +1296,27 @@ describe('CandidatesService', () => {
       });
       expect(blobStorage.deleteByUrl).toHaveBeenCalledWith('https://blob.test/container/offers/org-1/tok-1.pdf');
       expect(blobStorage.deleteByUrl).toHaveBeenCalledTimes(1);
+    });
+
+    it('answer 367: redacts each scorecard summary (empty stays empty) and its rating notes, once', async () => {
+      const tx = makeEraseTx() as ReturnType<typeof makeEraseTx> & { scorecard: { findMany: jest.Mock; update: jest.Mock }; scorecardRating: { updateMany: jest.Mock } };
+      tx.scorecard.findMany.mockResolvedValue([{ id: 'sc1', summary: 'Strong; hire her' }, { id: 'sc2', summary: null }]);
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+
+      await service.erase(context, 'user-1', 'cand-1');
+
+      expect(tx.scorecard.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ redactedAt: null }) }));
+      expect(tx.scorecard.update).toHaveBeenCalledWith({ where: { id: 'sc1' }, data: { summary: 'Redacted', redactedAt: expect.any(Date) } });
+      expect(tx.scorecard.update).toHaveBeenCalledWith({ where: { id: 'sc2' }, data: { summary: null, redactedAt: expect.any(Date) } });
+      expect(tx.scorecardRating.updateMany).toHaveBeenCalledWith({ where: expect.objectContaining({ scorecardId: { in: ['sc1', 'sc2'] }, notes: { not: null } }), data: { notes: 'Redacted' } });
+    });
+
+    it('answer 367: no scorecards (or all already redacted): nothing to redact', async () => {
+      const tx = makeEraseTx() as ReturnType<typeof makeEraseTx> & { scorecard: { update: jest.Mock }; scorecardRating: { updateMany: jest.Mock } };
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+      await service.erase(context, 'user-1', 'cand-1');
+      expect(tx.scorecard.update).not.toHaveBeenCalled();
+      expect(tx.scorecardRating.updateMany).not.toHaveBeenCalled();
     });
 
     it('redacts the parsed-résumé PII columns on candidate_profiles, since the FK cascade never fires on an erase (it scrubs, not deletes)', async () => {

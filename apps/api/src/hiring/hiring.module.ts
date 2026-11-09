@@ -20,6 +20,6 @@ import { NotificationsModule } from '../notifications/notifications.module';
   imports: [AuthModule, WorkflowModule, RulesEngineModule, JobBoardsModule, CryptoModule, AiModule, FieldPermissionsModule, NotificationsModule, OrgStructureModule],
   controllers: [HiringController],
   providers: [HiringRequisitionsService, CareersAdminService, RediscoveryService, HiringSettingsService],
-  exports: [HiringRequisitionsService],
+  exports: [HiringRequisitionsService, HiringSettingsService],
 })
 export class HiringModule {}

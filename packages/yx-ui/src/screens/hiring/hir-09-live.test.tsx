@@ -127,6 +127,7 @@ const rec = (over: Partial<LiveOfferRecord> = {}, offer: Partial<OfferRecordView
   onWithdraw: vi.fn(async () => undefined),
   onCancelApproval: vi.fn(async () => undefined),
   onLetter: vi.fn(async () => undefined),
+  onRemind: vi.fn(async () => 'Reminder sent'),
   onCreateEmployee: vi.fn(),
   onAddCondition: vi.fn(async () => undefined),
   onMet: vi.fn(async () => undefined),
@@ -135,6 +136,23 @@ const rec = (over: Partial<LiveOfferRecord> = {}, offer: Partial<OfferRecordView
 });
 
 describe('HIR-09 offer record and HIR-29 conditions (live)', () => {
+  it('answer 336: Send reminder on a sent offer and on an accepted one with open conditions; never on a draft or when nothing is open', async () => {
+    const sent = rec();
+    const first = show(<OfferRecordScreen live={sent} />);
+    await ue.click(screen.getByRole('button', { name: 'Send reminder' }));
+    await waitFor(() => expect(sent.onRemind).toHaveBeenCalled());
+    expect((await screen.findAllByText('Reminder sent')).length).toBeGreaterThan(0);
+    first.unmount();
+    const acc = show(<OfferRecordScreen live={rec({}, { status: 'accepted', joiner: { id: 'p1', status: 'invited' } })} />);
+    expect(screen.getByRole('button', { name: 'Send reminder' })).toBeInTheDocument();
+    acc.unmount();
+    const done = show(<OfferRecordScreen live={rec({}, { status: 'accepted', joiner: { id: 'p1', status: 'invited' }, conditions: OFFER.conditions.map((c) => ({ ...c, status: 'met' as const })) })} />);
+    expect(screen.queryByRole('button', { name: 'Send reminder' })).not.toBeInTheDocument();
+    done.unmount();
+    show(<OfferRecordScreen live={rec({}, { status: 'draft' })} />);
+    expect(screen.queryByRole('button', { name: 'Send reminder' })).not.toBeInTheDocument();
+  });
+
   it('shows the CTC lines, the versions with history and the activity; Revise opens the builder', async () => {
     const live = rec();
     show(<OfferRecordScreen live={live} />);

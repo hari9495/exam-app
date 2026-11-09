@@ -36,6 +36,7 @@ describe('ScheduledSweepsWorkerService', () => {
       scorecards: { remind: jest.fn().mockResolvedValue(0) },
       importDrafts: { prune: jest.fn().mockResolvedValue(0) },
       erasure: { sweep: jest.fn().mockResolvedValue(0) },
+      hiringSettings: { staleRecruiterSweep: jest.fn().mockResolvedValue(0) },
     };
     const service = new ScheduledSweepsWorkerService(
       connection as never,
@@ -57,6 +58,7 @@ describe('ScheduledSweepsWorkerService', () => {
       services.scorecards as never,
       services.importDrafts as never,
       services.erasure as never,
+      services.hiringSettings as never,
     );
     return { service, queue, connection, services };
   };
@@ -96,6 +98,7 @@ describe('ScheduledSweepsWorkerService', () => {
       'hiring-due': services.hiringBoard.sendDue,
       'import-drafts-retention': services.importDrafts.prune,
       'privacy-erasure': services.erasure.sweep,
+      'hiring-default-recruiter': services.hiringSettings.staleRecruiterSweep,
     };
     for (const { id } of SWEEP_SCHEDULE) {
       await mockWorker.processor!({ name: id });

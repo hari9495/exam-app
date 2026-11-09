@@ -17,6 +17,7 @@ import {
   inviteEmail,
   isEmailType,
   newSignInEmail,
+  offerReminderEmail,
   passwordBreachedEmail,
   passwordResetEmail,
   securityChangeEmail,
@@ -92,6 +93,9 @@ function sampleEmail(type: EmailType, base: { to: string; company: string; first
       return accountLockedEmail({ ...base, facts: SAMPLE_FACTS, lockedForSeconds: 15 * 60 });
     case 'security_change':
       return securityChangeEmail({ ...base, subject: 'A passkey was removed from your YukthiX account', what: 'A passkey was removed from your account.', when: new Date(), timeZone: 'Asia/Kolkata' });
+    case 'offer_reminder':
+    case 'offer_documents_reminder':
+      return offerReminderEmail({ ...base, kind: type === 'offer_reminder' ? 'offer' : 'documents', link: appUrl('/yx/offer/sample-link'), jobTitle: 'Senior QA Engineer', answerBy: '20 Nov 2026', due: ['Degree certificate uploaded', 'Relieving letter from current employer'] });
     default:
       return adminAlertEmail(type, { ...base, facts: SAMPLE_ALERTS[type] });
   }

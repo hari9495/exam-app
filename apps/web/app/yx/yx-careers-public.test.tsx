@@ -161,6 +161,22 @@ describe('Candidate pages outside the app (decision 10)', () => {
     expect(calls.find((c) => c.method === 'POST')?.body).toEqual({ action: 'accept' });
   });
 
+  it('offer with e-sign (answer 337): the code is emailed and goes with the acceptance and the disclosure', async () => {
+    (useParams as jest.Mock).mockReturnValue({ token: 'of2' });
+    mockFetch({
+      'GET /offers/of2': { body: { jobTitle: 'QA Chemist', orgName: 'Kaveri Foods', compensation: '₹6,00,000 a year', startDate: '2026-12-01T00:00:00.000Z', expiresAt: '2099-12-01T00:00:00.000Z', status: 'sent', pdfUrl: null, esign: true } },
+      'POST /offers/of2/esign-code': { body: { sent: true, to: 'j•••@mail.test' } },
+      'POST /offers/of2/respond': { status: 201, body: { status: 'accepted' } },
+    });
+    wrap(<YxOfferPage />);
+    await ue.click(await screen.findByRole('checkbox', { name: /sign this offer electronically/ }));
+    await ue.click(screen.getByRole('button', { name: 'Email me a code' }));
+    await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/offers/of2/esign-code'))).toBe(true));
+    await ue.type(screen.getByLabelText(/Code from the email/), '654321');
+    await ue.click(screen.getByRole('button', { name: 'Sign and accept' }));
+    await waitFor(() => expect(calls.find((c) => c.url.endsWith('/offers/of2/respond'))?.body).toEqual({ action: 'accept', code: '654321', disclosureAccepted: true }));
+  });
+
   it('interview: confirms the chosen proposed time', async () => {
     (useParams as jest.Mock).mockReturnValue({ token: 'iv1' });
     mockFetch({

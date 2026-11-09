@@ -5,6 +5,7 @@ import { ToastProvider } from '../../components/notify';
 import { SettingsPageScreen, type LiveSettingsPage } from './settings-screens';
 import { SETTINGS_GROUPS } from './settings-groups';
 import { hiringSettingsChanges, hiringSettingsPage, type HiringSettingsData } from './hiring-live';
+import { SETTING_SECTIONS } from '../org/settings';
 
 // Settings 6.1 Hiring, the designed page with `live` (founder answers 291, 302, 341, 345, 348): positive and negative.
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -28,6 +29,7 @@ const DEFAULTS = {
   'hiring.notetaker.enabled': 'off',
   'hiring.notetaker.ai_draft': 'off',
   'hiring.notetaker.keep_days': '90',
+  'hiring.bgv.decider_other_person': 'on',
 };
 const DATA: HiringSettingsData = {
   canEdit: true,
@@ -213,6 +215,32 @@ describe('Settings 6.1 Hiring (live)', () => {
     expect(onRowAction).toHaveBeenCalledWith('hire.pipelines', 0);
   });
 
+  it('answer 362: who decides a BGV discrepancy is on the page (default on, someone else) and saves on/off', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    show(live({ onSave }));
+    const box = screen.getByRole('checkbox', { name: /A discrepancy is decided by someone other than who recorded it/ });
+    expect(box).toBeChecked();
+    await ue.click(box);
+    await ue.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    const [values, rows] = onSave.mock.calls[0]!;
+    expect(hiringSettingsChanges(values, rows, DATA)).toEqual([{ key: 'hiring.bgv.decider_other_person', value: 'off' }]);
+  });
+
+  it('answer 362: read-only without the key', () => {
+    show(live({ canEdit: false }));
+    expect(screen.getByText('A discrepancy is decided by someone other than who recorded it')).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /A discrepancy is decided/ })).not.toBeInTheDocument();
+  });
+
+  it('answer 384: the referral settings are on 6.1 only, never on Company rules', () => {
+    const elsewhere = Object.values(SETTING_SECTIONS).flat().flatMap((sec) => sec.keys);
+    for (const k of ['ats.referral.bonus_inr', 'ats.referral.qualify_days', 'ats.referral.self_apply_days']) expect(elsewhere).not.toContain(k);
+    show(live());
+    expect(screen.getAllByText('Referral bonus rules').length).toBeGreaterThan(0);
+    expect(screen.getByText('No referral credit if the person applied themselves within')).toBeInTheDocument();
+  });
+
   it('maps the referral rule and the default recruiter back to the company settings', () => {
     expect(hiringSettingsChanges({ 'hire.default_recruiter': 'u2', 'hire.retention_months': '18' }, { 'hire.referral_rules': [['All roles', '₹50,000', '60 days', 'Payroll, or outside payroll']] }, DATA)).toEqual([
       { key: 'hiring.requisition.default_recruiter', value: 'u2' },
@@ -222,5 +250,28 @@ describe('Settings 6.1 Hiring (live)', () => {
     ]);
     // An unchanged rule sends nothing.
     expect(hiringSettingsChanges({}, { 'hire.referral_rules': [['All roles', '₹25,000', '90 days', '']] }, DATA)).toEqual([]);
+  });
+  it('HIR-09 answers 332, 334, 337: the band approver (a named person too), the clawback basis and e-signed letters', async () => {
+    const data: HiringSettingsData = {
+      ...DATA,
+      values: { ...DATA.values, 'hiring.offer.band_approver': 'hr_head', 'hiring.offer.clawback_basis': 'full' },
+      defaults: { ...DATA.defaults, 'hiring.offer.band_approver': 'hr_head', 'hiring.offer.clawback_basis': 'full' },
+      offerApprovers: [{ id: 'u9', name: 'Meenakshi Sundaram' }],
+      offerLetters: [{ id: 't1', name: 'Offer letter', esign: false }, { id: 't2', name: 'Plant offer', esign: true }],
+    };
+    const page = hiringSettingsPage(design, data);
+    const field = (k: string) => page.sections.flatMap((x) => x.settings).find((d) => d.key === k)!;
+    expect(field('hire.band_approver')).toMatchObject({ value: 'hr_head', options: ['hr_head', 'hiring_manager', 'u9'], optionLabels: expect.objectContaining({ u9: 'Meenakshi Sundaram' }) });
+    expect(field('hire.clawback_basis')).toMatchObject({ value: 'full', optionLabels: expect.objectContaining({ pro_rata: 'The part for the months not served' }) });
+    expect(field('hire.offer_esign')).toMatchObject({ value: ['t2'], optionLabels: { t1: 'Offer letter', t2: 'Plant offer' } });
+    expect(hiringSettingsChanges({ 'hire.band_approver': 'u9', 'hire.clawback_basis': 'pro_rata', 'hire.offer_esign': ['t1'] }, {}, data)).toEqual([
+      { key: 'hiring.offer.band_approver', value: 'u9' },
+      { key: 'hiring.offer.clawback_basis', value: 'pro_rata' },
+      { key: 'offer_template.esign', value: 't1:on' },
+      { key: 'offer_template.esign', value: 't2:off' },
+    ]);
+    // Unchanged e-sign choice: nothing to save; a company with no offer letters gets no e-sign field.
+    expect(hiringSettingsChanges({ 'hire.offer_esign': ['t2'] }, {}, data)).toEqual([]);
+    expect(hiringSettingsPage(design, { ...data, offerLetters: [] }).sections.flatMap((x) => x.settings).some((d) => d.key === 'hire.offer_esign')).toBe(false);
   });
 });

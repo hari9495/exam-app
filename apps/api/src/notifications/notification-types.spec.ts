@@ -53,6 +53,7 @@ describe('notification catalog', () => {
       'letter.signed',
       'preboarding.completed',
       'preboarding.declined',
+      'ats.offer.conditions_open',
       'exit.case.update',
       'exit.clearance.assigned',
       'exit.interview.sent',

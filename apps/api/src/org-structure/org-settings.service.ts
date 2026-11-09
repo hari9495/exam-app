@@ -118,7 +118,7 @@ export class OrgSettingsService {
   async set(ctx: TenantContext, dto: SettingDto) {
     const def = definition(dto.key);
     // Answer 348: the default recruiter is none or an active person of the company who holds the recruiter key (400).
-    if (def.oneOf === 'company_users' && ctx.organizationId) await assertDefaultRecruiter(this.prisma, this.tenantPrisma, ctx.organizationId, dto.value);
+    if (def.oneOf === 'company_users' && dto.key === 'hiring.requisition.default_recruiter' && ctx.organizationId) await assertDefaultRecruiter(this.prisma, this.tenantPrisma, ctx.organizationId, dto.value);
     const scopeType = dto.scopeType as ScopeType;
     if (!def.scopes.includes(scopeType)) throw new BadRequestException(`${def.label} cannot be set per ${scopeType.replace('_', ' ')}.`);
     if (def.text) {
@@ -137,7 +137,12 @@ export class OrgSettingsService {
     if (scopeType === 'tenant' && dto.scopeId) throw new BadRequestException('A company-wide setting has no scope id.');
     if (scopeType !== 'tenant' && !dto.scopeId) throw new BadRequestException('Say which record the setting is for.');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      if (def.oneOf && def.oneOf !== 'company_users' && !(await withLists(tx))[dto.key].values.includes(dto.value)) throw new BadRequestException(`Choose ${def.label.toLowerCase()} from the list.`);
+      if (def.oneOf === 'company_users' && dto.key !== 'hiring.requisition.default_recruiter') {
+        // Answer 332: one of the setting's own words ("HR head", "hiring manager") or an active person of this company
+        // (the default recruiter is checked above, answer 348).
+        if (!def.values.includes(dto.value) && !(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(dto.value) && (await tx.user.findFirst({ where: { organizationId: c.organizationId, id: dto.value, status: 'active' }, select: { id: true } }))))
+          throw new NotFoundException('That person is not an active user of your company. Choose someone from the list.');
+      } else if (def.oneOf && def.oneOf !== 'company_users' && !(await withLists(tx))[dto.key].values.includes(dto.value)) throw new BadRequestException(`Choose ${def.label.toLowerCase()} from the list.`);
       const scopeId = scopeType === 'tenant' ? c.organizationId : dto.scopeId!;
       if (scopeType !== 'tenant') await this.scopeExists(tx, c, scopeType, scopeId, true);
       const validFrom = dto.validFrom ? asDate(dto.validFrom) : null;
