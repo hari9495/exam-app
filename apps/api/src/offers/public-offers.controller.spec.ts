@@ -15,12 +15,14 @@ describe('PublicOffersController', () => {
 
   it('respond delegates to service.respondPublic with the token and action', () => {
     const { service, controller } = setup();
+    service.respondPublic.mockResolvedValue({ status: 'accepted' });
     controller.respond('offer-token-1', { action: 'accept' } as any);
     expect(service.respondPublic).toHaveBeenCalledWith('offer-token-1', 'accept');
   });
 
   it('respond passes decline through the same way', () => {
     const { service, controller } = setup();
+    service.respondPublic.mockResolvedValue({ status: 'declined' });
     controller.respond('offer-token-1', { action: 'decline' } as any);
     expect(service.respondPublic).toHaveBeenCalledWith('offer-token-1', 'decline');
   });

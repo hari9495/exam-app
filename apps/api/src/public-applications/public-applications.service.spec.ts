@@ -137,6 +137,11 @@ describe('PublicApplicationsService', () => {
         location: 'Remote',
         employmentType: 'FULL_TIME',
         postedAt: '2026-08-01T00:00:00.000Z',
+        department: undefined,
+        salary: null,
+        askPayHistory: false,
+        careers: null,
+        accent: null,
         orgName: 'Acme',
         orgLogo: 'logos/acme.png?sig=abc',
         applyConsentText: null,
@@ -666,8 +671,13 @@ describe('PublicApplicationsService', () => {
       );
       expect(result).toEqual({
         jobTitle: 'Backend',
+        location: undefined,
         appliedAt: new Date('2026-01-01T00:00:00Z'),
         statusBucket: 'Under review',
+        orgName: '',
+        orgLogo: null,
+        careersSlug: null,
+        accent: null,
       });
     });
 
@@ -714,7 +724,7 @@ describe('PublicApplicationsService', () => {
       expect(out.candidatePhone).toBe('555-1234');
       expect(out.resume).toEqual({ hasResume: true, parseStatus: 'parsed' });
       expect(out.applications).toHaveLength(1);
-      expect(out.applications[0]).toMatchObject({ jobTitle: 'Backend', stage: 'interview', statusToken: 'st1' });
+      expect(out.applications[0]).toMatchObject({ jobTitle: 'Backend', stage: 'Under review', statusToken: 'st1' });
       expect(out.applications[0].interviews[0]).toMatchObject({ token: 'it1', confirmed: false });
       expect(out.applications[0].offers[0]).toMatchObject({ token: 'ot1', status: 'sent' });
     });

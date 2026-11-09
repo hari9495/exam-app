@@ -24,9 +24,10 @@ export const STAGE_FOR_BUCKET = {
   select: { stage: { select: { name: true, category: true, position: true, pipeline: { select: { stages: { where: { category: 'active' }, orderBy: { position: 'asc' as const }, take: 1, select: { position: true } } } } } } },
 };
 
-export function bucketOf(status: { stage: { name: string; category: string; position: number; pipeline: { stages: { position: number }[] } } } | null, rejected: boolean): string {
+export function bucketOf(status: { stage: { name: string; category?: string; position?: number; pipeline?: { stages: { position: number }[] } } } | null, rejected: boolean): string {
   if (!status) return applicationStatusBucket('', rejected);
   const s = status.stage;
-  const first = s.pipeline.stages[0]?.position;
-  return applicationStatusBucket(s.name, rejected, { category: s.category, later: first !== undefined && s.position > first });
+  const first = s.pipeline?.stages[0]?.position;
+  if (!s.category) return applicationStatusBucket(s.name, rejected);
+  return applicationStatusBucket(s.name, rejected, { category: s.category, later: first !== undefined && s.position !== undefined && s.position > first });
 }
