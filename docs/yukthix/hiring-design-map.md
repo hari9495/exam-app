@@ -1,0 +1,811 @@
+# Hiring: live pages and their designs (check)
+
+This file checks, story by story, that every Hiring design sub-page can be reached in the live app. People, Pay, Time,
+Performance, Expenses and Helpdesk were checked the same way (see `people-design-map.md`, `helpdesk-design-map.md`).
+Founder rule: never build a second, simpler version of a designed screen; make the designed one live.
+
+Status 9 Nov 2026 (branch `feat/yukthix-hiring-design-map`, from `test/yukthix-main` at b84c3c671). Audit only: nothing
+was built.
+
+## What is live today (plain English)
+
+- **Almost none of the Hiring designs are live.** Of 221 design stories (HIR-01 … 31, the careers site, candidate
+  identity check and the hiring settings), exactly **one** is live with its design: the "Request a hire" sheet (HIR-02
+  NewRequisition), which People › My team (/yx/people/team) renders with `live` and sends to `POST jobs/requisitions`.
+- **Hiring itself works, but on stand-in screens.** The 14 pages under /yx/hiring render the older "Live ·" screens from
+  `packages/yx-ui/src/screens/hiring/live/*` (the package path `@yukthix/ui/hiring` points there). None of them passes a
+  `live` prop to a designed HIR screen. The design-live guard already lists all 14 as `liveCopies` and every HIR screen
+  as `notLive` (`packages/yx-ui/src/design-live-guard.known.json`).
+- **The server is there for the core hiring flow:** headcount plans, requisitions with approval routes, jobs, the
+  pipeline board (move, reject with reason, bulk), candidates (profile, merge, pools, legal hold, retention), interviews
+  and scorecards, offers (letter, PDF, approval, candidate accept/decline by link), job boards, careers site with entity
+  pages and consent, recruiting costs, referrals, recruitment agencies (submissions by a link). An accepted offer becomes
+  a joiner in People (PPL-12), and background checks are recorded on the joiner (People onboarding).
+- **Not built at all (no API):** the staffing-agency business (clients, rate cards, submissions to clients, placements,
+  bench, client invoices, collections, placement fees, e-invoice window: HIR-14 … 19, 30, 31), internal jobs (HIR-13),
+  AI interview review (HIR-08), notetaker and recording consent (HIR-25), candidate identity checks (HIR-22, T9-15),
+  bias audit (HIR-23), BGV partner checks (HIR-10), offer versions, employer costs and conditions (HIR-09, HIR-29),
+  bulk interview day and bulk offers (HIR-27, 28), interview slot finder from calendars (HIR-06), CRM sequences and
+  sourced profiles (HIR-20), pay-transparency law rules (HIR-24).
+- **The public careers site** (/careers/[org], /careers/[org]/jobs/[slug], /apply/[token]) is hand-written pages, not the
+  designed T9-09 screens, and there are **two designs for it** (T9-09 and the older Surfaces/Careers kit; section 5).
+
+Verdicts (the same words as People and Helpdesk): **live** (the live page renders the designed screen and can reach this
+state; the note says how) · **live (gap)** (the design is live, but this state can't be reached yet; the note says why) ·
+**wire design** (a live page exists for this job but renders something else, so the designed screen must be wired; when
+the API also lacks a field or a route for this state, the note names it; when the API exists but no YukthiX page shows
+it yet, the note says so) · **design only, feature not built** (no API for this feature) · **phone view, mobile app not
+built**.
+
+## Counts (sub-pages = stories)
+
+| | groups | live | live, gap | wire design | feature not built | phone view | stories |
+|---|---|---|---|---|---|---|---|
+| A. Plans, requisitions, jobs and costs | 4 | 1 | 0 | 24 | 0 | 0 | 25 |
+| B. Candidates, pipeline and interviews | 6 | 0 | 0 | 21 | 13 | 1 | 35 |
+| C. Offers, BGV and joining | 4 | 0 | 0 | 13 | 12 | 0 | 25 |
+| D. Referrals, internal jobs, CRM and rediscovery | 4 | 0 | 0 | 11 | 7 | 4 | 22 |
+| E. Staffing agency | 8 | 0 | 0 | 4 | 44 | 0 | 48 |
+| F. Compliance and fairness | 5 | 0 | 0 | 3 | 22 | 0 | 25 |
+| G. Careers site, portals and settings | 4 | 0 | 0 | 30 | 11 | 0 | 41 |
+| **All Hiring design groups (A–G)** | **35** | **1** | **0** | **106** | **109** | **5** | **221** |
+| H. Kit and "Live ·" groups (not designs; own line) | 6 | 25 | 0 | 7 | 5 | 0 | 37 |
+
+Counted by script 9 Nov 2026 on `feat/yukthix-hiring-design-map` (the script is in the appendix): every `export const`
+story with a capital first letter (the lower-case exports are sample props, excluded from Storybook by
+`excludeStories`) in the 31 `hir-NN-*.stories.tsx` files, `hiring-kit.stories.tsx`, the five `hiring/live/*.stories.tsx`,
+`portals/t9-09-careers.stories.tsx`, `portals/t9-15-identity.stories.tsx`, `stories/careers.stories.tsx` and the hiring
+stories of `settings/settings-g6.stories.tsx` (Overview, OverviewLoading, P6_1, P6_1_ReadOnly, P6_2, P6_2_ReadOnly; 6.3
+Performance, 6.4 Learning and 6.5 Assessments belong to other areas), against the rows in section 4. The script fails
+unless each story file has exactly one row per story, in file order, with one of the five verdicts. Not counted: the
+eight PRJ-01 … 08 project stories that live in the same folder (Projects is its own area).
+
+The 5 phone views are the phone stories of the scorecard (HIR-07), referrals (HIR-12) and internal jobs (HIR-13): each is
+a separate phone component (`ScorecardPhone`, `ReferralsPhone`, `InternalJobsPhone`) listed as `notLive` in the guard.
+The careers site's phone stories (T9-09, Surfaces/Careers) are the public web page at phone width and are counted with
+the web page.
+
+## How it is wired today
+
+- Every /yx/hiring page is a client page that reads the API with `useHiring` / `useHiringWrite` (`apps/web/lib/yx-hiring`)
+  or the older hooks in `apps/web/lib/hooks` (`usePipeline`, `useCandidates`, `useJobBoards`, `useCareersSettings`) and
+  renders a stand-in from `@yukthix/ui/hiring` (= `screens/hiring/live/index.ts`). grep for any HIR screen name
+  (`HeadcountPlanScreen`, `RequisitionsScreen`, `PipelineBoardScreen`, `CandidateRecordScreen`, `OfferBuilderScreen`, …)
+  in `apps/web` finds nothing; only `RequisitionSheet` is imported (from `@yukthix/ui/frame`, by /yx/people/team).
+- The designed screens are in `screens/hiring/hiring-plan.tsx` (HIR-01, 02, 03, 11, 12, 13, 24, 26),
+  `hiring-pipeline.tsx` (HIR-04 … 08, 25, 27), `hiring-offers.tsx` (HIR-09, 10, 20, 23, 28, 29) and
+  `hiring-staffing.tsx` (HIR-14 … 19, 21, 30), parts in `hiring-kit.tsx`. Only `RequisitionSheet` has a `live` prop.
+  Making one live means the usual pattern: `'live' in props ? <LiveX live={props.live} /> : <SampleX {...props} />`, the
+  page passes real data, and the stand-in it replaces is deleted with its "Live ·" stories and tests.
+- Permissions: plans `ats.headcount.manage`; requisitions `ats.requisition.raise`; jobs and the board `pipeline:manage`
+  (write) / `results:view` (read); candidates `candidate:manage` / `candidate:view`; data rights `candidate:data_rights`;
+  interviews `interview:view_assigned`; scorecard templates and pipelines `pipelines:configure`; careers, job boards,
+  costs `org:manage_settings`; approval routes `approvals:configure`. Nav: `apps/web/lib/yx-nav.ts` lines 263-281.
+- Outside the signed-in app: the careers site (/careers/[orgSlug], /careers/[orgSlug]/jobs/[slug], sitemap), apply
+  (/apply/[applyToken]), application status (/application/[statusToken]), candidate portal (/portal/[portalToken]),
+  offer (/offer/[token]), interview booking (/interview/[token]) and the agency portal (/agency/[token]). All are
+  hand-written pages, not yx-ui screens.
+
+## 1. Live pages
+
+| page | screen it renders | design | API (permission) | verdict |
+|---|---|---|---|---|
+| /yx/hiring/plans | `HeadcountPlansScreen` (stand-in, live/plans.tsx) | HIR-01 | `GET/POST hiring/plans`, `PUT hiring/plans/:id`, `POST hiring/plans/:id/submit` (`ats.headcount.manage`), `GET hiring/plan-lines` | wire design |
+| /yx/hiring/jobs | `HiringJobsScreen` (stand-in): jobs and requisitions in one list, new job / requisition drawer with pay range | HIR-02, HIR-03 list, HIR-24 | `GET/POST jobs`, `POST jobs/requisitions`, `PATCH/DELETE jobs/:id`, `POST jobs/:id/submit`, `/approval/cancel` (`pipeline:manage`) | wire design |
+| /yx/hiring/jobs/[id] | `JobWorkspaceScreen` + `ApplicationPanel` (stand-ins): board, application, interviews, offers, feedback | HIR-03 workspace, HIR-04, HIR-09 | `GET hiring/jobs/:id/board` (`results:view`), `POST hiring/entries/:id/move`, `/reject`, `/reject/undo`, `hiring/entries/bulk`, `PUT hiring/jobs/:id/scorecard` (`pipeline:manage`), `POST/GET pipeline/entries/:id/offers`, `/interviews`, `offers/:id/send`, `/submit`, `/withdraw` (`pipeline:manage`) | wire design |
+| /yx/hiring/candidates | `HiringCandidatesScreen` (stand-in) | none (section 2) | `GET candidates`, `POST candidates`, CSV, email | no design |
+| /yx/hiring/candidates/[id] | `CandidateProfileScreen` (stand-in) | HIR-05 | `GET hiring/candidates/:id`, `PUT …/legal-hold` (`candidate:data_rights`), `POST …/consents/withdraw` | wire design |
+| /yx/hiring/duplicates | `DuplicatesScreen` (stand-in) | HIR-05 Merge | `GET hiring/duplicates`, `POST hiring/candidates/:id/merge` (`candidate:manage`) | wire design |
+| /yx/hiring/pools | `TalentPoolsScreen` (stand-in) | HIR-20 Pools | `GET/POST/DELETE hiring/pools`, `…/members` (`candidate:manage`) | wire design |
+| /yx/hiring/retention | `CandidateRetentionScreen` (stand-in) | none (section 2) | `POST hiring/retention/run`, `GET …/runs` (`candidate:data_rights`) | no design |
+| /yx/hiring/interviews | `MyInterviewsScreen` (stand-in) | HIR-06 Interviewer | `GET hiring/interviews/mine` | wire design |
+| /yx/hiring/interviews/[id] | `InterviewScreen` (stand-in) | HIR-07 | `GET hiring/interviews/:id`, `PUT …/scorecard`, `POST …/scorecard/submit` | wire design |
+| /yx/hiring/scorecards | `ScorecardTemplatesScreen` (stand-in) | Settings 6.1 | `GET/POST/PUT/DELETE hiring/scorecard-templates` (`pipelines:configure`) | wire design |
+| /yx/hiring/approval-routes | `ApprovalRoutesScreen` (stand-in) | Settings 6.1 | approval chains (`approvals:configure`) | wire design |
+| /yx/hiring/careers | `CareersSiteScreen` (stand-in; the guard lists it as `portals: CareersSiteScreen`) | Surfaces/Careers page builder | `organizations/careers` (+ banner), `hiring/careers-entities`, `hiring/consent-notices` (`org:manage_settings`) | wire design |
+| /yx/hiring/job-boards | `JobBoardsScreen` (stand-in): boards and recruiting costs | HIR-03 Postings, HIR-20 Postings, HIR-11 | `organizations/job-boards` (`org:manage_settings`), `GET/POST hiring/costs` (`org:manage_settings`) | wire design |
+| /yx/people/team (Request a hire) | the designed `RequisitionSheet` with `live` | HIR-02 NewRequisition | `POST jobs/requisitions` (`ats.requisition.raise`) | live |
+| /yx/people/onboarding/[id] | People onboarding (PPL design) with the joiner's BGV checks | HIR-10 (manual part) | `POST lifecycle joiners/:id/bgv/ask`, `/bgv/checks`, `bgv/checks/:checkId` | wire design (HIR-10) |
+| /careers/[orgSlug], /jobs/[slug] | hand-written server pages | T9-09, Surfaces/Careers | public careers API | wire design |
+| /apply/[applyToken] | hand-written apply form | T9-09 Job, Surfaces/Careers ApplyForm | public apply API | wire design |
+
+## 2. Live pages with no design (stand-ins with nothing to wire to)
+
+| page | what it does | suggestion |
+|---|---|---|
+| /yx/hiring/candidates | the candidate list: search, stage filter, add, CSV import, email | draw HIR-05 List stories (founder question 9) |
+| /yx/hiring/retention | candidate data retention run and history | draw it into the kit / Settings 6.1 (question 9) |
+| /application/[statusToken], /portal/[portalToken], /offer/[token], /interview/[token] | candidate's status page, portal, offer accept / decline, interview booking | candidate portal designs are needed (question 10) |
+| /agency/[token] and v2 /settings/agencies, /agency-submissions | recruitment agencies submit candidates by link; the older v2 screens review them | HIR-21 covers part of it (question 1) |
+| v2 /referrals | the older recruiter list of referrals | HIR-12 replaces it |
+
+## 3. Designs with no live page or API
+
+| design | what is missing | size |
+|---|---|---|
+| HIR-08 AI interview review | no async AI interview, recordings or advisory score | L |
+| HIR-10 partner BGV | no BGV partner integration (manual checks exist in People) | M (per partner) |
+| HIR-13 internal jobs | no internal posting, eligibility rule or employee apply | M |
+| HIR-14 … 19, 21 (part), 30, 31 | the staffing-agency business: clients, rate cards, submissions to clients, placements, bench, invoices, receivables, fees, e-invoice | XL |
+| HIR-22, T9-15 identity | no candidate ID or selfie check (People's face match waits for a provider too) | M + provider |
+| HIR-23 bias audit | no audit record or NYC setting | S |
+| HIR-25 notetaker | no recording, consent or AI draft (an older notes-to-scorecard AI route exists: `POST interviews/:id/scorecard`, unused) | L |
+| HIR-27, 28 bulk day, bulk offers | no drive scheduling, no batch offers | M each |
+| HIR-29, HIR-09 versions / employer cost | `Offer` has free-text `compensation`, no versions, conditions, CTC lines or clawback | M |
+| HIR-06 slot finder | no calendar free/busy (needs Google / Microsoft calendar link) | M + partner |
+| Settings 6.2 Staffing desk | goes with the staffing business | with E |
+
+## 4. Design groups, story by story
+
+### A. Plans, requisitions, jobs and costs
+
+#### HIR-01 · Headcount plan board
+
+Live page: /yx/hiring/plans (menu Hiring › Headcount plan, `ats.headcount.manage`) renders the stand-in
+`HeadcountPlansScreen`. Designed screen: `HeadcountPlanScreen` (hiring-plan.tsx).
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| HrApproved · HR · approved plan | wire design | `GET hiring/plans` returns approved plans with lines and budget |
+| FinanceRevision · Finance · revision pending approval | wire design | API: an approved plan cannot be changed ("Start next year's plan instead", requisitions.service.ts); needs plan revisions with a version |
+| HiringManager · Hiring manager · own department | wire design | API: plans need `ats.headcount.manage`; a hiring manager's read of their own department is missing |
+| Empty · Empty · no plan for the year | wire design | no plan for the year |
+| Loading · Loading | wire design | while `GET hiring/plans` loads |
+| Error · Error | wire design | `GET hiring/plans` fails |
+
+#### HIR-02 · Requisitions
+
+Live page: /yx/hiring/jobs (menu Hiring › Jobs & requisitions) lists requisitions as draft jobs in the stand-in
+`HiringJobsScreen`; the request sheet is live on /yx/people/team. Designed screen: `RequisitionsScreen`.
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Recruiter · Recruiter · all requisitions | wire design | `GET jobs` (draft / pending approval); needs its own list or tab |
+| OutsidePlan · Outside plan · extra CFO approval | wire design | `outsidePlan` + reason stored; the route comes from the requisition approval chain (`approvals:configure`) |
+| InPlan · In plan · short chain | wire design | `headcountPlanLineId` set; chain decides |
+| HiringManagerSentBack · Hiring manager · sent back | wire design | approval rejected; the hiring manager's own list is missing (they only raise from My team) |
+| NewRequisition · New requisition sheet | live | /yx/people/team › Request a hire: `RequisitionSheet` with `live`, `POST jobs/requisitions` (`ats.requisition.raise`), toast on send |
+| Empty · Empty | wire design | no requisitions |
+| Loading · Loading | wire design | while `GET jobs` loads |
+| Error · Error | wire design | `GET jobs` fails |
+
+#### HIR-03 · Jobs and job workspace
+
+Live pages: /yx/hiring/jobs (`HiringJobsScreen`) and /yx/hiring/jobs/[id] (`JobWorkspaceScreen`), stand-ins. Designed:
+`JobsScreen`, `JobWorkspaceScreen` (hiring-plan.tsx; same name as the stand-in, different file).
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| List · Jobs list | wire design | `GET jobs` |
+| Workspace · Job workspace · overview | wire design | `GET jobs/:id`, stage summary |
+| Postings · Job workspace · board postings (one failed) | wire design | `JobBoardPublication` rows from `organizations/job-boards`; a failed posting status is stored |
+| Empty · Empty | wire design | no jobs |
+| Loading · Loading | wire design | while loading |
+| Error · Error | wire design | API fails |
+
+#### HIR-11 · Recruiting costs entry
+
+Live page: /yx/hiring/job-boards shows a costs table in the stand-in `JobBoardsScreen`. Designed: `RecruitingCostsScreen`.
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Default · Costs by type with cost per hire | wire design | `GET hiring/costs` (`org:manage_settings`); cost per hire needs the hires count |
+| AddCost · Add cost sheet | wire design | `POST hiring/costs` |
+| Empty · Empty | wire design | no costs |
+| Loading · Loading | wire design | while loading |
+| Error · Error | wire design | API fails |
+
+### B. Candidates, pipeline and interviews
+
+#### HIR-04 · Pipeline board
+
+Live page: /yx/hiring/jobs/[id] (board tab of the stand-in `JobWorkspaceScreen`). Designed: `PipelineBoardScreen`.
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Recruiter · Recruiter · rich cards | wire design | `GET hiring/jobs/:id/board` (`results:view`): stages, cards, scores, fit |
+| HiringManager · Hiring manager | wire design | read with `results:view`; moves need `pipeline:manage` |
+| MoveMenu · Move to menu (keyboard alternative) | wire design | `POST hiring/entries/:id/move` |
+| RejectReason · Reject asks for a reason | wire design | `POST hiring/entries/:id/reject` with `reason`; undo route exists |
+| Empty · Empty | wire design | job with no applicants |
+| Loading · Loading | wire design | while loading |
+| Error · Error | wire design | API fails |
+
+#### HIR-05 · Candidate record
+
+Live page: /yx/hiring/candidates/[id] (`CandidateProfileScreen`, stand-in) and /yx/hiring/duplicates. Designed:
+`CandidateRecordScreen`, `MergeDrawer`.
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Recruiter · Recruiter · default | wire design | `GET hiring/candidates/:id`, applications, interviews, offers |
+| ExEmployeeRecruiter · Ex-employee · recruiter sees exit details | wire design | API: the candidate record has no ex-employee match; the data exists (person by email, last exit, `rehire_eligible`; `offerRehire` does this for offers) |
+| RehireIneligibleHr · Ex-employee · rehire ineligible, HR can clear | wire design | same, plus an HR route to clear the flag with a reason |
+| ExEmployeeHiringManager · Ex-employee · hiring manager sees flag only | wire design | same; field masking by viewer |
+| Merge · Merge duplicate · field-level choice | wire design | `GET hiring/duplicates`, `POST hiring/candidates/:id/merge` (`candidate:manage`) |
+| IdentityFlag · Identity review flag | design only, feature not built | no candidate identity check (HIR-22) |
+| Minor · Under 18 · guardian consent pending | design only, feature not built | no date of birth / guardian consent on candidates |
+| NoAccess · No access | wire design | 403 without `candidate:view` |
+| NotFound · Not found (anonymised) | wire design | retention anonymises candidates (`hiring/retention/run`) |
+
+#### HIR-06 · Interview calendar
+
+Live page: /yx/hiring/interviews (`MyInterviewsScreen`, stand-in). Designed: `InterviewCalendarScreen`.
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| RecruiterWeek · Recruiter · week | wire design | interviews exist per entry and per candidate; API: no company-wide list by week |
+| SlotFinder · Slot finder · proposed slots ranked | design only, feature not built | no panel calendar free/busy (needs a calendar partner); candidate self-booking slots exist (`booking-slots.ts`) |
+| UnknownAvailability · Slot finder · required panelist has no calendar | design only, feature not built | same |
+| Interviewer · Interviewer · my interviews and scorecards | wire design | `GET hiring/interviews/mine` |
+| Empty · Empty · interviewer with nothing assigned | wire design | empty `mine` |
+
+#### HIR-07 · Scorecard form
+
+Live page: /yx/hiring/interviews/[id] (`InterviewScreen`, stand-in). Designed: `ScorecardScreen`, `ScorecardPhone`.
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Blank · Interviewer · blank | wire design | `GET hiring/interviews/:id` with the job's scorecard template |
+| MeetsBar · Complete · meets the bar, next-step prompt | wire design | `PUT hiring/interviews/:id/scorecard` (`scorecard-rules.ts`) |
+| BelowBar · Complete · below the bar on 2 skills | wire design | same |
+| IdentityFlag · Identity flag shown, not a reason | design only, feature not built | no candidate identity check (HIR-22) |
+| Submitted · Submitted · read only | wire design | `POST …/scorecard/submit` |
+| Phone · phone | phone view, mobile app not built | `ScorecardPhone` |
+
+#### HIR-08 · AI interview review player
+
+No live page. Designed: `AiInterviewReviewScreen`.
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| LowScore · Low advisory score · stays in review | design only, feature not built | no async AI interview, recordings or advisory score (question 2) |
+| IdentityFlag · Identity and deepfake flag | design only, feature not built | same, plus HIR-22 |
+| Decided · Decided · moved to panel | design only, feature not built | same |
+| AlternativeProcess · Candidate asked for a human process | design only, feature not built | same |
+
+#### HIR-27 · Bulk interview-day scheduler
+
+No live page. Designed: `BulkInterviewDayScreen`.
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Assigned · Auto-assigned · ready to send | design only, feature not built | no drive / interview-day API |
+| OverCapacity · Over capacity · some unassigned | design only, feature not built | same |
+| NotAssigned · Empty · not assigned yet | design only, feature not built | same |
+| Sent · Invites sent | design only, feature not built | same |
+
+### C. Offers, BGV and joining
+
+#### HIR-09 · Offer builder
+
+Live page: the offer part of `ApplicationPanel` on /yx/hiring/jobs/[id] (stand-in). Designed: `OfferBuilderScreen`,
+`OfferRecordScreen`.
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| WithinRange · Recruiter · within range, CTC breakup preview | wire design | `POST pipeline/entries/:id/offers`; API: `compensation` is free text, needs CTC lines and the grade band |
+| HrEmployerCost · HR · employer costs, joining bonus with clawback | design only, feature not built | no employer-cost lines or clawback |
+| AboveRange · Above range · extra approval | wire design | offer approval chain exists (`POST offers/:id/submit`); API: no band check adding a step |
+| Revision · Revision v2 · re-approval because CTC changed | design only, feature not built | no offer versions |
+| Letter · Letter step | wire design | offer templates, `GET offers/:id/pdf`, `POST offers/:id/send` |
+| AcceptedManual · Accepted · manual hand-off, HR creates employee | wire design | candidate accepts at /offer/[token] (`POST public/offers/:token/respond`); HR adds the joiner from the offer (PPL-12, `joiners.fromOffer`); e-sign: question 4 |
+| AcceptedRehire · Accepted · alumni rehire | wire design | `offerRehire` finds the past employee (lifecycle/rehire-policy.ts) |
+| PartialMatch · Accepted · partial match stops the hand-off | wire design | People's same-person check (PPL-36) exists; API: the offer hand-off does not stop on a partial match yet |
+| Reneged · Reneged · pre-boarding unwound | wire design | joiner "did not join" cancels pre-boarding and BGV (joining.service.ts) |
+| Versions · Versions tab | design only, feature not built | no offer versions |
+
+#### HIR-10 · BGV tracker
+
+No hiring page. Manual BGV checks are recorded on the joiner in People onboarding (/yx/people/onboarding/[id]). Designed:
+`BgvTrackerScreen`.
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Hr · HR · partner checks | design only, feature not built | no BGV partner integration (question 3) |
+| Discrepancy · Discrepancy · never auto-withdrawn | wire design | manual status `discrepancy` exists (`BgvUpdateDto`); nothing auto-withdraws |
+| ConsentPending · Consent pending | wire design | consent from the joining portal (`POST bgv-consent`) |
+| Manual · Manual tracking · no add-on | wire design | `POST joiners/:id/bgv/checks`, `bgv/checks/:checkId`; API: a company-wide list of checks is missing |
+| Empty · Empty | wire design | no checks |
+| Loading · Loading | wire design | while loading |
+| Error · Error | wire design | API fails |
+
+#### HIR-28 · Bulk offer screen
+
+No live page. Designed: `BulkOfferScreen`.
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Values · Per-candidate values · checks | design only, feature not built | no batch offers |
+| Template · Template step | design only, feature not built | same |
+| Preview · Preview step | design only, feature not built | same |
+| Sent · Sent · batch status | design only, feature not built | same |
+
+#### HIR-29 · Offer conditions tab
+
+No live page. Designed: `OfferConditionsTab`.
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| OnTrack · Open conditions · on track | design only, feature not built | `Offer` has no conditions |
+| Reminder · Overdue condition · lapse reminder | design only, feature not built | same |
+| Lapsed · Lapsed · pre-boarding unwound | design only, feature not built | same |
+| AllMet · All met or waived | design only, feature not built | same |
+
+### D. Referrals, internal jobs, CRM and rediscovery
+
+#### HIR-12 · Referrals
+
+API exists (`referrals.controller.ts`: `GET referrals/jobs`, `POST referrals`, `GET referrals/mine` for any signed-in
+person; `GET referrals` `candidate:view`; `PATCH referrals/:id/reward` `pipeline:manage`). No YukthiX page: only the
+older v2 /referrals list. Designed: `ReferralsScreen`, `ReferralsPhone`.
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| MyReferrals · My referrals and bonus status | wire design | no YukthiX page yet; `GET referrals/mine` (reward status from `PATCH :id/reward`) |
+| Refer · Refer sheet | wire design | `POST referrals` |
+| Duplicate · Blocked · already applied | wire design | `POST referrals` returns 409 "already been referred" |
+| Empty · Empty | wire design | no referrals |
+| Phone · phone | phone view, mobile app not built | `ReferralsPhone` |
+| PhoneRefer · phone · refer | phone view, mobile app not built | same |
+
+#### HIR-13 · Internal jobs
+
+No live page, no API. Designed: `InternalJobsScreen`, `InternalJobsPhone`.
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Browse · Browse and my applications | design only, feature not built | no internal posting or employee apply |
+| Apply · Apply sheet | design only, feature not built | same |
+| NotEligible · Blocked · not yet eligible | design only, feature not built | needs an eligibility policy (default + HR setting) |
+| Empty · Empty · no openings | design only, feature not built | same |
+| Phone · phone | phone view, mobile app not built | `InternalJobsPhone` |
+| PhoneApply · phone · apply | phone view, mobile app not built | same |
+
+#### HIR-20 · Talent CRM
+
+Live pages: /yx/hiring/pools (`TalentPoolsScreen`) and /yx/hiring/job-boards (`JobBoardsScreen`), stand-ins. Designed:
+`TalentCrmScreen`.
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Pools · Pools and hotlists | wire design | `hiring/pools`, members |
+| Campaigns · Sequence and engagement timeline | design only, feature not built | one-off bulk email exists; no sequences or engagement timeline |
+| SequenceBuilder · Sequence builder · consent-based audience | design only, feature not built | same |
+| Sourced · Sourced profiles · pending consent | design only, feature not built | no sourcing |
+| Postings · Job-board postings | wire design | `organizations/job-boards`, publications |
+| Empty · Empty | wire design | no pools |
+
+#### HIR-26 · Rediscovery panel
+
+No live page shows it. API: `POST candidates/search`, `GET candidates/:id/similar` (semantic search; inert until the
+company sets up an embeddings provider), `GET jobs/:jobId/fit-assessments`. Designed: `RediscoveryPanel`.
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| OnRequisition · On the requisition · recruiter | wire design | on the HIR-02 page; search past candidates by the requisition text (AI setting: question 2) |
+| Recruiter · Panel · recruiter | wire design | same |
+| HiringManager · Panel · hiring manager | wire design | same; masked fields for the hiring manager |
+| NoMatches · Empty · no matches | wire design | empty search, or AI off |
+
+### E. Staffing agency
+
+HIR-14 … 19 and HIR-30 have no page and no API (no client, rate card, placement, client invoice or collection model).
+HIR-21 overlaps with the recruitment-agency feature that exists (Agency, AgencyJob, AgencySubmission; public
+/agency/[token]; older v2 /settings/agencies and /agency-submissions). Scope: question 1.
+
+#### HIR-14 · Clients
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| List · Account manager · clients list | design only, feature not built | no client model |
+| Workspace · Client workspace · overview | design only, feature not built | same |
+| Contacts · Client workspace · contacts and portal access | design only, feature not built | same |
+| Contracts · Client workspace · contracts | design only, feature not built | same |
+| Slas · Client workspace · SLAs | design only, feature not built | same |
+| Empty · Empty | design only, feature not built | same |
+| Loading · Loading | design only, feature not built | same |
+| Error · Error | design only, feature not built | same |
+
+#### HIR-15 · Rate cards
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Current · Account manager · current rates with margin | design only, feature not built | no rate cards |
+| History · Dated history shown | design only, feature not built | same |
+| ChangeRate · Dated rate change | design only, feature not built | same |
+| Recruiter · Recruiter · no pay rates or margins | design only, feature not built | same |
+| Empty · Empty | design only, feature not built | same |
+
+#### HIR-16 · Submissions board
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Board · Account manager · board | design only, feature not built | no submissions to client companies |
+| Submit · Submit to client (bulk) | design only, feature not built | same |
+| Recruiter · Recruiter · submit sheet | design only, feature not built | same |
+| Empty · Empty | design only, feature not built | same |
+| Loading · Loading | design only, feature not built | same |
+| Error · Error | design only, feature not built | same |
+
+#### HIR-17 · Placements and bench board
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| List · Placements list with margin | design only, feature not built | no placements |
+| Record · Placement record · ending soon | design only, feature not built | same |
+| Extend · Extend (dated change) | design only, feature not built | same |
+| EndEarly · End early · confirmation | design only, feature not built | same |
+| VendorSupplied · Vendor-supplied placement | design only, feature not built | same |
+| Bench · Bench board · policy days | design only, feature not built | same |
+| BenchEmpty · Bench · empty | design only, feature not built | same |
+| Loading · Loading | design only, feature not built | same |
+
+#### HIR-18 · Invoices
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Finance · Finance · invoice list | design only, feature not built | no client invoices |
+| AccountManager · Account manager · read only | design only, feature not built | same |
+| IntraState · Invoice · CGST + SGST, credit note | design only, feature not built | same |
+| InterState · Invoice · IGST (inter-state) | design only, feature not built | same |
+| IrnWarning · Invoice · IRN day 28 warning | design only, feature not built | same (HIR-31) |
+| Empty · Empty | design only, feature not built | same |
+| Error · Error | design only, feature not built | same |
+
+#### HIR-19 · Receivables and collections
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Ageing · Finance · ageing, TDS and disputes | design only, feature not built | no receivables |
+| Receipt · Record part payment | design only, feature not built | same |
+| Empty · Empty · nothing outstanding | design only, feature not built | same |
+| Loading · Loading | design only, feature not built | same |
+| Error · Error | design only, feature not built | same |
+
+#### HIR-21 · Staffing vendors
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Register · Register · one vendor pending documents | wire design | agencies exist (older v2 /settings/agencies); API: no vendor documents |
+| ShareJob · Share job · rate cap and masked client | wire design | `AgencyJob` shares a job; API: no rate cap or masked client |
+| Submissions · Vendor submissions · duplicate and over cap | wire design | `AgencySubmission` with `isDuplicate` (v2 /agency-submissions); API: no rate cap |
+| Invoices · Vendor invoices · proposed from hours | design only, feature not built | no vendor invoices or hours |
+| Scorecards · Scorecards | design only, feature not built | no vendor scorecards |
+| Empty · Empty register | wire design | no agencies |
+
+#### HIR-30 · Placement fee and replacement guarantee
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Percent · Account manager · % of CTC, replacement | design only, feature not built | no placement fees |
+| FixedRefund · Finance · fixed fee, pro-rated credit | design only, feature not built | same |
+| OutsideGuarantee · Left after the guarantee period | design only, feature not built | same |
+
+### F. Compliance and fairness
+
+#### HIR-22 · Identity strip
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Clear · Strip · all matched, interviewer attested | design only, feature not built | no candidate identity checkpoints (T9-15 needs a provider) |
+| Flagged · Strip · mismatch and deepfake signal | design only, feature not built | same |
+| Reverified · Strip · re-verified, flag closed | design only, feature not built | same |
+| OnApplication · On the application | design only, feature not built | same |
+| OnReviewPlayer · On the AI interview review player | design only, feature not built | same (HIR-08) |
+| OnScorecard · On the panel scorecard | design only, feature not built | same |
+
+#### HIR-23 · Bias audit record
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Valid · Audit valid | design only, feature not built | no audit record; only needed for NYC jobs with an automated tool (question 7) |
+| Overdue · Overdue · feature blocked for NYC jobs | design only, feature not built | same |
+| RecordAudit · Record new audit | design only, feature not built | same |
+| NotApplicable · Not applicable · NYC setting off | design only, feature not built | same |
+
+#### HIR-24 · Job pay range fields
+
+Live page: the new-job drawer of /yx/hiring/jobs (stand-in) has `salaryMin`, `salaryMax`, currency and "show salary".
+Designed: `JobPayRangePanel`.
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| RequiredMissing · Required by law · missing, publish blocked | design only, feature not built | no pay-transparency rule by location |
+| RequiredFilled · Required by law · filled, pay-history banned | design only, feature not built | same; no pay-history question to hide |
+| CompanySetting · Company setting · range shown | wire design | `Job.showSalary`, `salaryMin/Max` |
+| InvalidRange · Error · minimum above maximum | wire design | the stand-in checks it; API should refuse it too |
+| InWorkspace · In the job workspace | wire design | /yx/hiring/jobs/[id] |
+
+#### HIR-25 · Interview notetaker consent
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| AllConsented · All consented · recording | design only, feature not built | no recording or consent per participant (question 2) |
+| OneDeclined · One declined · no recording | design only, feature not built | same |
+| Waiting · Waiting for the candidate | design only, feature not built | same |
+| DraftReview · Draft scorecard · 1 of 4 confirmed | design only, feature not built | an older notes-to-scorecard AI route exists (`POST interviews/:id/scorecard`), unused by YukthiX |
+| DraftAllConfirmed · Draft scorecard · all confirmed, ready to submit | design only, feature not built | same |
+
+#### HIR-31 · E-invoice window banner
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| DayTen · Day 10 · within window | design only, feature not built | goes with client invoices (HIR-18) |
+| DayTwentyEight · Day 28 · warning from day 25 | design only, feature not built | same |
+| DayThirtyThree · Day 33 · blocked after day 30 | design only, feature not built | same |
+| BelowThreshold · Entity below threshold · not applicable | design only, feature not built | same |
+| OnInvoice · On the invoice · Send for IRN blocked | design only, feature not built | same |
+
+### G. Careers site, portals and settings
+
+#### T9-09 · Careers site
+
+Live pages: /careers/[orgSlug], /careers/[orgSlug]/jobs/[slug] (server pages, hand-written, with Google for Jobs
+JSON-LD and a sitemap) and /apply/[applyToken]. Designed: `CareersSiteScreen`, `CareersJobScreen`
+(`screens/portals/t9-candidate.tsx`).
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Home · Careers home | wire design | public careers API (headline, intro, banner, open jobs) |
+| HomePhone · Careers home · phone | wire design | same page at phone width |
+| WhiteLabel · Careers home · white-label | wire design | API: no white-label setting |
+| NoJobs · Careers home · no open jobs | wire design | no open jobs |
+| Job · Job page with pay range and apply | wire design | job page + `showSalary` range; apply is a separate page today |
+| JobPhone · Job page · phone | wire design | same page at phone width |
+| Applied · Job page · application sent | wire design | after apply |
+| Closed · Job page · closed | wire design | job not open |
+
+#### T9-15 · Candidate identity verification
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Consent · Consent (biometric) | design only, feature not built | no candidate ID or selfie check; needs a provider (question 3) |
+| Id · ID document | design only, feature not built | same |
+| Selfie · Selfie · camera live | design only, feature not built | same (the assessment's face enrolment is a different product part) |
+| SelfieBlocked · Selfie · camera blocked | design only, feature not built | same |
+| Verified · Verified | design only, feature not built | same |
+| Mismatch · No match · human review, never auto-reject | design only, feature not built | same |
+| ReVerify · Re-verification after a failed match | design only, feature not built | same |
+| Fallback · Consent declined · ID check with a person | design only, feature not built | same |
+| UnderEighteen · Under 18 · ID check only | design only, feature not built | same |
+
+#### Careers
+
+`Surfaces/Careers` (`stories/careers.stories.tsx`, `components/careers.tsx`: `CareersPage`, `PageBuilder`,
+`JobApplyForm`). The older careers design; nothing in `apps/web` imports it. Same job as T9-09 (section 5).
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Classic · Classic | wire design | /careers/[orgSlug] |
+| Compact · Compact | wire design | API: no layout choice |
+| Split · Split | wire design | same |
+| TenantAccent · Tenant accent (#1F6F4A, 6.4:1) | wire design | API: no brand accent setting |
+| AccentTooLight · Tenant accent too light (falls back) | wire design | same |
+| Mobile · Mobile | wire design | phone width |
+| MobileSplit · MobileSplit | wire design | same, split layout |
+| NoOpenJobs · NoOpenJobs | wire design | no open jobs |
+| WhiteLabel · White-label (no Powered by) | wire design | API: no white-label setting |
+| MinimalPage · Minimal (hero text only, jobs) | wire design | headline + intro only |
+| PageBuilderEditing · Page builder — editing | wire design | /yx/hiring/careers (stand-in `CareersSiteScreen`), `PUT organizations/careers` |
+| PageBuilderMobilePreview · Page builder — mobile preview | wire design | same |
+| PageBuilderPublished · Page builder — published | wire design | `enabled` |
+| PageBuilderLightAccent · Page builder — accent too light | wire design | API: no accent |
+| ApplyForm · ApplyForm | wire design | /apply/[applyToken] (hand-written) with consent notices |
+| ApplyFormMobile · ApplyFormMobile | wire design | same at phone width |
+| ApplyFormSent · ApplyFormSent | wire design | after apply |
+| BrandPlaceholders · Logo and monogram (placeholders) | wire design | company logo on the careers page |
+
+#### Group 6 · Hiring & Assessments
+
+Only the hiring stories of `settings/settings-g6.stories.tsx` (6.3 Performance, 6.4 Learning and 6.5 Assessments belong
+to other areas). No live page renders `SettingsGroupScreen` / `SettingsPageScreen`; the hiring settings are on
+separate stand-in pages (/yx/hiring/scorecards, /approval-routes, /careers, /job-boards).
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Overview · Group 6 · Hiring & Assessments | wire design | the group's landing in Settings |
+| OverviewLoading · Group 6 · loading | wire design | same, loading |
+| P6_1 · 6.1 Hiring | wire design | pipeline templates (`pipelines` config API), scorecard templates, approval routes |
+| P6_1_ReadOnly · 6.1 Hiring · read-only | wire design | same without `pipelines:configure` |
+| P6_2 · 6.2 Staffing desk | design only, feature not built | rate cards, bill multipliers, invoice numbering: staffing business (question 1) |
+| P6_2_ReadOnly · 6.2 Staffing desk · read-only | design only, feature not built | same |
+
+### H. Kit and "Live ·" groups (not designs)
+
+The Kit is shared parts; the "Live ·" groups are pictures of today's stand-ins (a story drawn from the live screen is not
+a design, BUILD-STANDARD rule 1). Each "Live ·" story is deleted with its stand-in when its HIR design is wired.
+
+#### Kit · Hiring and projects building blocks
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Tiles · SummaryTiles | wire design | used by HIR list screens |
+| Pipeline · PipelineFacts | wire design | HIR-04 cards |
+| Consent · ConsentBadges | wire design | candidate channel consent exists |
+| ExEmployee · ExEmployeeBanner · recruiter and HM | wire design | HIR-05 |
+| Identity · IdentityStrip | design only, feature not built | HIR-22 |
+| Postings · PostingStrip | wire design | job boards |
+| EInvoice · EInvoiceBanner · warning | design only, feature not built | HIR-31 |
+| Ctc · CtcBreakupTable | wire design | HIR-09 (needs CTC lines in the API) |
+| Recording · RecordingPlaceholder | design only, feature not built | HIR-08, 25 |
+| Slots · SlotGrid | design only, feature not built | HIR-06 slot finder |
+| Budget · BudgetBars | design only, feature not built | Projects (no projects API) |
+| Status · StatusLine | wire design | publish readiness (HIR-03, 24) |
+
+#### Live · Candidates
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Candidates · Candidates | live | /yx/hiring/candidates (stand-in, no HIR design) |
+| NoCandidates · NoCandidates | live | same, empty |
+| Profile · Profile | live | /yx/hiring/candidates/[id]; goes with HIR-05 |
+| ProfileOnHold · ProfileOnHold | live | legal hold; goes with HIR-05 |
+| Duplicates · Duplicates | live | /yx/hiring/duplicates; goes with HIR-05 Merge |
+| Pools · Pools | live | /yx/hiring/pools; goes with HIR-20 |
+| Retention · Retention | live | /yx/hiring/retention (no design) |
+
+#### Live · Careers site and job boards
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| CareersSite · CareersSite | live | /yx/hiring/careers; goes with the careers page builder |
+| CareersSiteNoNotices · CareersSiteNoNotices | live | same, no consent notices yet |
+| JobBoards · JobBoards | live | /yx/hiring/job-boards; goes with HIR-03 / 20 postings and HIR-11 |
+| NoJobBoards · NoJobBoards | live | same, empty |
+
+#### Live · Job workspace and interviews
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Workspace · Workspace | live | /yx/hiring/jobs/[id]; goes with HIR-03 / 04 |
+| Application · Application | live | the application panel; goes with HIR-05 / 09 |
+| ApplicationOfferToApprove · Application · offer waiting for your approval | live | offer approval in the panel; goes with HIR-09 |
+| Interview · Interview | live | /yx/hiring/interviews/[id]; goes with HIR-07 |
+| InterviewSubmitted · InterviewSubmitted | live | same, submitted |
+| MyInterviews · MyInterviews | live | /yx/hiring/interviews; goes with HIR-06 |
+| Scorecards · Scorecards | live | /yx/hiring/scorecards; goes with Settings 6.1 |
+
+#### Live · Jobs
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| List · List | live | /yx/hiring/jobs; goes with HIR-02 / 03 |
+| ReadOnly · ReadOnly | live | `results:view` only |
+| Empty · Empty | live | no jobs |
+| NoMasters · NoMasters | live | no departments / designations yet |
+
+#### Live · Plans and approvals
+
+| story (sub-page) | verdict | note |
+|---|---|---|
+| Plans · Plans | live | /yx/hiring/plans; goes with HIR-01 |
+| NoPlans · NoPlans | live | same, empty |
+| Routes · Department head | live | /yx/hiring/approval-routes; goes with Settings 6.1 |
+
+## 5. Two designs for one job
+
+| job | design 1 | design 2 | suggestion |
+|---|---|---|---|
+| Public careers site and apply | T9-09 (`portals/t9-candidate.tsx`, 8 stories) | Surfaces/Careers (`components/careers.tsx`, 18 stories, with the page builder and apply form) | keep T9-09 for the public pages, Surfaces/Careers' page builder for the admin page; drop the other half (question 8) |
+| Job workspace | `JobWorkspaceScreen` in `hiring-plan.tsx` (HIR-03) | `JobWorkspaceScreen` in `live/job-workspace.tsx` (stand-in) | same name, two files: rename nothing; delete the stand-in when HIR-03 is wired |
+| Pools and postings | HIR-20 Talent CRM tabs | HIR-03 Postings tab | both read the same publications; one source of truth (the API), two views is fine |
+
+## 6. Questions for the founder (before building)
+
+1. **Staffing agency (HIR-14 … 21, 30, 31, Settings 6.2: 54 stories).** These are for a company whose business is placing
+   its candidates with client companies (clients, rate cards, submissions to clients, placements and bench, client
+   invoices with GST and e-invoice, collections, placement fees, sub-vendors). It is a separate product, about as big as
+   all the rest of Hiring. Is it in scope now, later, or never for YukthiX? *Suggested: later (not in the first Hiring
+   release). Keep the designs; build only HIR-21's "recruitment agencies submit candidates to us" part now, because the
+   API for that already exists and normal companies use agencies.*
+2. **AI in hiring (HIR-08 AI interview review, HIR-25 notetaker and AI draft scorecard, HIR-26 rediscovery).** Under the
+   AI rules already decided (company's own AI setting through the existing AI service; off by default; only the needed
+   data goes to the AI; every run logged; a person decides), do we build these? *Suggested: build HIR-26 rediscovery
+   first (search only, advisory, works with AI off as plain text search). Build HIR-25 after, with consent from every
+   participant before any recording, no recording if anyone declines, and the interviewer confirms each drafted rating.
+   Leave HIR-08 (AI video interview with a score) for later: an advisory score never moves or rejects anyone, the
+   candidate can always ask for a human process, and the NYC bias audit (HIR-23) must be in place before it is offered
+   for NYC jobs.*
+3. **BGV and identity partners (HIR-10 partner checks, HIR-22, T9-15).** Treat them like the other partner items (penny
+   drop, PAN check, face match in People): wait for a chosen provider? *Suggested: yes. Wire HIR-10 now with manual
+   tracking (the API exists on the joiner); add the partner (one Indian BGV vendor first) and the candidate ID / selfie
+   check when the provider contract is signed. A failed match always goes to a person, never auto-reject (as drawn).*
+4. **Offer approval and e-sign (HIR-09).** The offer approval route exists. Should an offer above the grade band add an
+   extra approval step, and should the candidate sign the offer electronically? *Suggested: yes to the band step (a
+   company setting: which step, default = HR head). E-sign: same rule as letters (founder answer 72): no e-sign unless
+   the company's offer template switches it on; accepting by the link is the default.*
+5. **Offer pay as CTC lines (HIR-09, 28, 29).** Today an offer's pay is one text field. Change it to CTC lines (fixed,
+   variable, joining bonus with clawback) from the grade band, with versions? *Suggested: yes; it is needed for the band
+   check, the employer-cost view, the hand-off to Pay, and versions. Old text offers stay readable.*
+6. **Internal jobs (HIR-13).** Who can apply, and when? *Suggested: a company setting with a default: employees past
+   probation and at least 12 months in their current role; the manager is told when the person applies (not asked).*
+7. **Pay range and bias audit by location (HIR-24, HIR-23).** Which laws do we ship rules for? *Suggested: a small law
+   table by location (none required in India; the range is a company setting there), with NYC / US states and EU pay
+   transparency as rows; the pay-history question is hidden where it is banned. HIR-23 only when HIR-08 ships.*
+8. **Which careers design wins (section 5)?** *Suggested: T9-09 for the public site and the job page; the Surfaces/Careers
+   page builder for /yx/hiring/careers; delete the Surfaces/Careers public layouts (Classic, Compact, Split) unless you
+   want layout choice.*
+9. **Candidate list and retention have no design.** Draw them (HIR-05 List; retention under Settings 6.1) before wiring?
+   *Suggested: yes, draw both from the kit first, then wire.*
+10. **Candidate pages outside the app** (status page, candidate portal, offer accept, interview booking) have no design.
+    *Suggested: draw them as T9 portal stories with the T9-09 careers look, after the careers site.*
+11. **Hiring manager views (HIR-01, HIR-02).** Should a hiring manager see their own department's plan and their own
+    requisitions in Hiring (today they only raise from My team)? *Suggested: yes, read-only for their department.*
+
+## 7. Next pages (suggested build order, smallest useful first, max 3 builders at once)
+
+One page or area per builder. Each follows BUILD-STANDARD.md (feature sheet, P+N tests, design-live guard) and deletes the
+stand-in it replaces with its "Live ·" stories.
+
+| # | page / area | what | size |
+|---|---|---|---|
+| 1 | HIR-11 recruiting costs (on its own page or tab) | wire `RecruitingCostsScreen` to `hiring/costs`; cost per hire from hires | S |
+| 2 | HIR-12 referrals (/yx/me or Hiring › Refer) | wire to the existing referrals API; phone stories wait for the app | S |
+| 3 | HIR-01 headcount plan | wire `HeadcountPlanScreen`; then plan revisions (API) for FinanceRevision | M |
+| 4 | HIR-02 requisitions list (+ HIR-26 rediscovery panel, AI off = text search) | wire `RequisitionsScreen`; hiring manager's own list | M |
+| 5 | HIR-03 jobs list and workspace, HIR-24 company-setting pay range | wire `JobsScreen`, `JobWorkspaceScreen`, `JobPayRangePanel` | M |
+| 6 | HIR-04 pipeline board | wire `PipelineBoardScreen` on /yx/hiring/jobs/[id] | M |
+| 7 | HIR-05 candidate record (+ ex-employee match, merge) | wire `CandidateRecordScreen`, `MergeDrawer`; ex-employee lookup in the API | M |
+| 8 | HIR-06 interviewer list, HIR-07 scorecard | wire `InterviewCalendarScreen` (interviewer part), `ScorecardScreen`; company-wide week list in the API | M |
+| 9 | Settings 6.1 Hiring | wire the settings page; retire /yx/hiring/scorecards and /approval-routes stand-ins | S |
+| 10 | HIR-09 offer builder (after questions 4, 5) | CTC lines, band check, versions, hand-off | L |
+| 11 | HIR-10 BGV tracker, manual | company-wide list of joiner BGV checks | S |
+| 12 | T9-09 careers site + page builder (after question 8) | public pages and /yx/hiring/careers | M |
+| 13 | HIR-20 talent CRM (pools, postings) | wire the two tabs; sequences later | M |
+| 14 | HIR-13 internal jobs (after question 6) | new API + page | M |
+| later | HIR-25, HIR-08, HIR-22 / T9-15, partner BGV, HIR-27, 28, 29, slot finder, staffing E | after the founder answers and providers | L–XL |
+
+Suggested first wave (3 builders): 1 + 2 (one builder, both S), 3, 5.
+
+## Appendix: the count script
+
+Run from the repo root (`node check.js` after saving the block). It recounts section 4 and fails unless every Hiring
+story file in scope has exactly one row per story, in file order, with one of the five verdicts.
+
+```js
+// Run from the repo root: node check.js. Recounts section 4 of docs/yukthix/hiring-design-map.md and checks that every
+// Hiring story file in scope has exactly one row per story, in file order. Reads the story files, not Storybook.
+const fs = require('fs');
+const UI = 'packages/yx-ui/src/';
+const H = UI + 'screens/hiring/';
+const files = [
+  ...fs.readdirSync(H).filter((f) => /^hir-\d+-.*\.stories\.tsx$/.test(f)).map((f) => H + f),
+  H + 'hiring-kit.stories.tsx',
+  ...fs.readdirSync(H + 'live').filter((f) => f.endsWith('.stories.tsx')).map((f) => H + 'live/' + f),
+  UI + 'screens/portals/t9-09-careers.stories.tsx', UI + 'screens/portals/t9-15-identity.stories.tsx',
+  UI + 'stories/careers.stories.tsx', UI + 'screens/settings/settings-g6.stories.tsx',
+];
+// Only the hiring pages of Settings group 6 (6.3 Performance, 6.4 Learning, 6.5 Assessments are other areas).
+const keep = (f, n) => !f.endsWith('settings-g6.stories.tsx') || /^(Overview|P6_[12])/.test(n);
+const want = {};
+for (const f of files) {
+  const s = fs.readFileSync(f, 'utf8');
+  const title = s.match(/title:\s*'([^']+)'/)[1].split('/').pop();
+  // Capital first letter only: lower-case exports are sample props (excludeStories).
+  want[title] = [...s.matchAll(/^export const ([A-Z]\w*)\s*(?::\s*[\w<>.]+)?\s*=/gm)].map((m) => m[1]).filter((n) => keep(f, n));
+}
+const doc = fs.readFileSync('docs/yukthix/hiring-design-map.md', 'utf8');
+const s4 = doc.split('## 4. Design groups, story by story')[1].split(/^## /m)[0];
+const V = ['live', 'live (gap)', 'wire design', 'design only, feature not built', 'phone view, mobile app not built'];
+const errs = [], counts = {};
+for (const sec of s4.split(/^### /m).slice(1)) {
+  const name = sec.split('\n')[0].slice(0, 40), c = (counts[name] = { groups: 0, stories: 0, ...Object.fromEntries(V.map((v) => [v, 0])) });
+  for (const g of sec.split(/^#### /m).slice(1)) {
+    const head = g.split('\n')[0].trim();
+    const rows = g.split('\n').filter((l) => /^\| \w+ · /.test(l));
+    const got = rows.map((l) => l.match(/^\| (\w+) · /)[1]);
+    if (!want[head]) { errs.push('no story file: ' + head); continue; }
+    if (got.join() !== want[head].join()) errs.push(`${head}: ${got.length} rows, ${want[head].length} stories`);
+    for (const l of rows) { const v = l.split('|')[2].trim(); if (V.includes(v)) c[v]++; else errs.push(`${head}: bad verdict ${v}`); }
+    c.groups++; c.stories += rows.length; delete want[head];
+  }
+}
+for (const h in want) errs.push('story file with no rows: ' + h);
+const all = { groups: 0, stories: 0, ...Object.fromEntries(V.map((v) => [v, 0])) };
+for (const [n, c] of Object.entries(counts)) if (!n.startsWith('H.')) for (const k in all) all[k] += c[k];
+counts['All A-G'] = all;
+console.table(counts);
+if (errs.length) { console.error(errs.join('\n')); process.exit(1); }
+console.log('ok');
+```
