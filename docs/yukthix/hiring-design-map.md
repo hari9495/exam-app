@@ -1146,3 +1146,13 @@ Each has a safe default already built; the suggestion is the answer we propose.
 313. **Erase refused (276)** names the open job and says to reject or close the application and withdraw any offer first;
      with an accepted offer it says the details are kept for joining and HR handles the request on the People record.
      *Suggested: keep.*
+
+Founder approved, 10 Nov 2026 (questions 281-286, 291-295, 301-304, 311-313, all as suggested): (281) keep: only the chosen
+country counts for a typed place; (282) keep undo until the run is approved; (283) draw an "Undo paid" row action in All
+referrals, then wire it; (284) keep the referral bonus pay settings; (285) a "Paid outside payroll" choice that posts the
+cost at once; (286) the nine tables listed under 241 offer CSV only; (291) a manager's request starts with no recruiter,
+or the company default recruiter from a setting; (292) keep: cancelled openings go back to the plan line at once; (293) a
+hiring manager may cancel their own waiting requisition with a reason; (294) WhatsApp contact once a WhatsApp opt-in is
+recorded; (295) a "was / now" line for approvers later; (301) keep the Application drawer until HIR-06/07 and HIR-09
+replace its parts; (302) move the stage-target editor to Settings 6.1 when it is wired; (303) keep whole per-cent rubric
+weights adding to 100; (304) keep Share feedback opening the record; (311-313) keep as built.
