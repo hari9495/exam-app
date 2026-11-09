@@ -107,7 +107,7 @@ describe('OfferTemplatesService', () => {
         data: { isDefault: false },
       });
       expect(tx.offerTemplate.create).toHaveBeenCalledWith({
-        data: { organizationId: 'org-1', name: 'First', subject: 'S', body: 'B', isDefault: true },
+        data: { organizationId: 'org-1', name: 'First', subject: 'S', body: 'B', isDefault: true, esign: false },
       });
       expect(result.isDefault).toBe(true);
       expect(audit.record).toHaveBeenCalledWith(
@@ -132,7 +132,7 @@ describe('OfferTemplatesService', () => {
         data: { isDefault: false },
       });
       expect(tx.offerTemplate.create).toHaveBeenCalledWith({
-        data: { organizationId: 'org-1', name: 'Second', subject: 'S', body: 'B', isDefault: true },
+        data: { organizationId: 'org-1', name: 'Second', subject: 'S', body: 'B', isDefault: true, esign: false },
       });
     });
 
@@ -149,7 +149,7 @@ describe('OfferTemplatesService', () => {
 
       expect(tx.offerTemplate.updateMany).not.toHaveBeenCalled();
       expect(tx.offerTemplate.create).toHaveBeenCalledWith({
-        data: { organizationId: 'org-1', name: 'Third', subject: 'S', body: 'B', isDefault: false },
+        data: { organizationId: 'org-1', name: 'Third', subject: 'S', body: 'B', isDefault: false, esign: false },
       });
     });
 

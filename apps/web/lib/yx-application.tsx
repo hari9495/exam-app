@@ -1,19 +1,20 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useYxPermissions } from './yx-org';
 import { templateChoices } from './yx-candidates';
 import { useMessageTemplates } from './hooks/useCandidateMessages';
 import { useOrgSenderAddresses } from './hooks/useOrgSenderAddresses';
 import type { ApplicationDrawerProps, ApplicationView, CandidateProfileView, EmailTemplateChoice, LiveCandidateRecord, ScorecardSummary } from '@yukthix/ui/hiring';
-import { apiFetch, apiFetchBlob } from './api-client';
+import { apiFetch } from './api-client';
 import { useAuth } from './auth-context';
 import { useApi, useApiWrite, useHiring } from './yx-hiring';
 import { collectChecklistItems } from './blueprintChecklist';
 import { useTeammates } from './hooks/useUserDirectory';
-import type { BoardEntryRow, CandidateEmail, CandidateSms, CandidateWhatsappMessage, FeedbackRow, Offer, OfferTemplate, PipelineStageConfig, SurveyDefinition } from './types';
+import type { BoardEntryRow, CandidateEmail, CandidateSms, CandidateWhatsappMessage, FeedbackRow, Offer, PipelineStageConfig, SurveyDefinition } from './types';
 
 // One application, for the designed HIR-05 ApplicationDrawer on the candidate record (founder answer 261: a card on the
-// HIR-04 board opens the record with ?entry=). Offers (until HIR-09), messages, notes, the checklist and the owner, on
+// HIR-04 board opens the record with ?entry=). Offers (listed; the HIR-09 pages make and work them), messages, notes, the checklist and the owner, on
 // the same API the old panel used. Returns null until the application's board row is loaded. Interviews moved to the
 // record's Schedule interview (useRecordPipeline below, answer 274) and the HIR-06 / HIR-07 pages (answer 301).
 
@@ -21,6 +22,7 @@ export type Row = BoardEntryRow & { stageEnteredAt: string; scorecards: (Scoreca
 export type Board = { pipeline: { id: string; name: string; stages: PipelineStageConfig[] }; columns: Record<string, Row[]> };
 
 export function useApplicationDrawer(entryId: string | null, jobId: string | null, onClose: () => void): Omit<ApplicationDrawerProps, 'open'> | null {
+  const router = useRouter();
   const { accessToken } = useAuth();
   const perms = useYxPermissions();
   const write = useApiWrite();
@@ -47,14 +49,9 @@ export function useApplicationDrawer(entryId: string | null, jobId: string | nul
   const wa = useApi<CandidateWhatsappMessage[]>(cid && p.canManage ? `/candidate-whatsapp/${cid}` : null);
   const notes = useApi<FeedbackRow[]>(cid ? `/entries/${r.entryId}/feedback` : null);
   const offers = useApi<(Offer & { pipelineEntryId?: string })[]>(cid && p.canManage ? `/candidates/${cid}/offers` : null);
-  const offerTemplates = useApi<OfferTemplate[]>(cid && p.canManage ? '/offer-template' : null);
   const smsTemplates = useApi<{ id: string | null; name: string; body: string; enabled: boolean }[]>(cid && p.canManage ? '/candidate-sms-templates' : null);
   const waTemplates = useApi<{ id: string | null; name: string; body: string; enabled: boolean }[]>(cid && p.canManage ? '/candidate-whatsapp-templates' : null);
   const surveys = useApi<SurveyDefinition[]>(cid && p.canManage ? '/surveys' : null);
-  const gate = useApi<{ requisition: boolean; offer: boolean }>(cid ? '/approvals/gate-status' : null);
-  // Offers waiting for this person's approval: their approval inbox (the API decides who may approve).
-  const inbox = useApi<{ id: string; gate: string; subjectId: string }[]>(cid && p.canManage ? '/approvals/requests?scope=inbox' : null);
-  const toDecide = (inbox.data ?? []).filter((x) => x.gate === 'offer');
   const people = useTeammates();
   const v = profile.data;
   const stage = p.stages.find((s) => s.id === r.stageId);
@@ -73,7 +70,7 @@ export function useApplicationDrawer(entryId: string | null, jobId: string | nul
     whatsapp: (wa.data ?? []).map((m) => ({ id: m.id, body: m.renderedBody, status: m.status, at: m.createdAt })),
     smsOptedOut: Boolean(v.candidate.smsOptedOut), whatsappOptedOut: Boolean(v.candidate.whatsappOptedOut),
     notes: (notes.data ?? []).map((n) => ({ id: n.id, author: n.authorName ?? 'Someone', note: n.note, rating: n.rating, at: n.createdAt })),
-    offers: (offers.data ?? []).filter((o) => !o.pipelineEntryId || o.pipelineEntryId === r.entryId).map((o) => ({ id: o.id, status: o.status, compensation: o.compensation, startDate: o.startDate, expiresAt: o.expiresAt })),
+    offers: (offers.data ?? []).filter((o) => !o.pipelineEntryId || o.pipelineEntryId === r.entryId).map((o) => ({ id: o.id, status: o.status, compensation: (o.compensation as string | null) ?? null, startDate: o.startDate, expiresAt: o.expiresAt })),
   } : null;
   const call = (path: string, method: string, body?: unknown) => apiFetch(path, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }, accessToken ?? undefined);
   if (!found) return null;
@@ -88,9 +85,7 @@ export function useApplicationDrawer(entryId: string | null, jobId: string | nul
     senders: p.senders,
     smsTemplates: text(smsTemplates.data),
     whatsappTemplates: text(waTemplates.data),
-    offerTemplates: (offerTemplates.data ?? []).map((t, i) => ({ value: t.id ?? `default-${i}`, label: t.name, subject: t.subject, body: t.body })),
     surveys: (surveys.data ?? []).filter((s) => s.enabled).map((s) => ({ value: s.id, label: s.name })),
-    offerApproval: Boolean(gate.data?.offer),
     onStatus: (statusId) => write('POST', `/hiring/entries/${r.entryId}/move`, { statusId }),
     onReject: (input) => write('POST', `/hiring/entries/${r.entryId}/reject`, { reason: input.reason, delayHours: input.delayHours, ...(input.message ? { message: input.message } : {}) }),
     onUndo: () => write('POST', `/hiring/entries/${r.entryId}/reject/undo`),
@@ -107,24 +102,9 @@ export function useApplicationDrawer(entryId: string | null, jobId: string | nul
     onResend: (channel, mid) => write('POST', channel === 'email' ? `/candidate-emails/${mid}/resend` : channel === 'sms' ? `/candidate-sms/${mid}/resend` : `/candidate-whatsapp/${mid}/resend`),
     onNote: (note, rating) => write('POST', `/entries/${r.entryId}/feedback`, { ...(note ? { note } : {}), ...(rating != null ? { rating } : {}) }),
     onSurvey: (surveyId) => write('POST', `/surveys/${surveyId}/send`, { entryId: r.entryId }),
-    onOffer: async (o) => {
-        const created = await write<{ id: string }>('POST', `/pipeline/entries/${r.entryId}/offers`, { compensation: o.compensation, startDate: o.startDate, expiresAt: o.expiresAt, ...(o.subject ? { subject: o.subject } : {}), ...(o.body ? { body: o.body } : {}), ...(o.templateId && !o.templateId.startsWith('default-') ? { templateId: o.templateId } : {}) });
-        if (o.then === 'send') await write('POST', `/offers/${created.id}/send`);
-        if (o.then === 'approval') await write('POST', `/offers/${created.id}/submit`);
-      },
-    onOfferAction: async (offerId, action) => {
-        if (action === 'pdf') {
-          const { blob } = await apiFetchBlob(`/offers/${offerId}/pdf`, {}, accessToken ?? undefined);
-          window.open(URL.createObjectURL(blob), '_blank', 'noopener');
-          return;
-        }
-        await write('POST', action === 'send' ? `/offers/${offerId}/send` : action === 'approval' ? `/offers/${offerId}/submit` : action === 'withdraw' ? `/offers/${offerId}/withdraw` : `/offers/${offerId}/approval/cancel`);
-      },
-    offersToDecide: toDecide.map((x) => x.subjectId),
-    onOfferDecide: async (offerId, decision, note) => {
-        const req = toDecide.find((x) => x.subjectId === offerId);
-        if (req) await write('POST', `/approvals/requests/${encodeURIComponent(req.id)}/decide`, { decision, ...(note ? { note } : {}) });
-      },
+    // HIR-09: offers are made and worked on the offer builder and record pages.
+    onNewOffer: () => router.push(`/yx/hiring/offers/new?entry=${encodeURIComponent(r.entryId)}`),
+    onOpenOffer: (offerId) => router.push(`/yx/hiring/offers/${encodeURIComponent(offerId)}`),
   };
 }
 

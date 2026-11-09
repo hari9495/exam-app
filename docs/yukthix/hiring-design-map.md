@@ -35,8 +35,7 @@ was built.
 - **Not built at all (no API):** the staffing-agency business (clients, rate cards, submissions to clients, placements,
   bench, client invoices, collections, placement fees, e-invoice window: HIR-14 … 19, 30, 31), internal jobs (HIR-13),
   AI interview review (HIR-08), notetaker and recording consent (HIR-25), candidate identity checks (HIR-22, T9-15),
-  bias audit (HIR-23), BGV partner checks (HIR-10), offer versions, employer costs and conditions (HIR-09, HIR-29),
-  bulk interview day and bulk offers (HIR-27, 28), interview slot finder from calendars (HIR-06), CRM sequences and
+  bias audit (HIR-23), BGV partner checks (HIR-10), bulk interview day and bulk offers (HIR-27, 28), interview slot finder from calendars (HIR-06), CRM sequences and
   sourced profiles (HIR-20). (Pay-transparency law rules, HIR-24, went live 9 Nov 2026.)
 - **The public careers site** (/careers/[org], /careers/[org]/jobs/[slug], /apply/[token]) is hand-written pages, not the
   designed T9-09 screens, and there are **two designs for it** (T9-09 and the older Surfaces/Careers kit; section 5).
@@ -53,14 +52,16 @@ built**.
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Plans, requisitions, jobs and costs | 4 | 36 | 1 | 0 | 0 | 0 | 37 |
-| B. Candidates, pipeline and interviews | 8 | 37 | 0 | 7 | 13 | 1 | 58 |
-| C. Offers, BGV and joining | 4 | 0 | 0 | 13 | 12 | 0 | 25 |
+| B. Candidates, pipeline and interviews | 8 | 45 | 0 | 0 | 13 | 1 | 59 |
+| C. Offers, BGV and joining | 4 | 8 | 6 | 6 | 5 | 0 | 25 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 15 | 0 | 3 | 7 | 4 | 29 |
 | E. Staffing agency | 8 | 0 | 0 | 4 | 44 | 0 | 48 |
 | F. Compliance and fairness | 5 | 4 | 1 | 0 | 20 | 0 | 25 |
 | G. Careers site, portals and settings | 4 | 3 | 0 | 28 | 11 | 0 | 42 |
-| **All Hiring design groups (A–G)** | **37** | **95** | **2** | **55** | **107** | **5** | **264** |
+| **All Hiring design groups (A–G)** | **37** | **111** | **8** | **41** | **100** | **5** | **265** |
 | H. Kit and "Live ·" groups (not designs; own line) | 5 | 11 | 0 | 6 | 5 | 0 | 22 |
+Recounted by script 11 Nov 2026 on `feat/yukthix-hir-09` (merged with HIR-06/07 and Settings 6.1) after HIR-09 / HIR-29 went live: HIR-09 7 live and 3 live (gap), HIR-29 2 live and 2 live (gap); the HIR-05 Application offer story now opens the offer record (answer 301); the kit's CTC breakup table is live.
+
 Recounted by script 11 Nov 2026 on `feat/yukthix-hir-06-07` after HIR-06 and HIR-07 went live: HIR-06 3 stories wire design → live (the slot finder's 2 stay feature not built), HIR-07 4 → live plus 1 new story (Overseer); the 3 "Live · Job workspace and interviews" stand-in stories (Interview, InterviewSubmitted, MyInterviews) were deleted with the stand-ins.
 Recounted by script 10 Nov 2026 on `feat/yukthix-hiring-settings` after Settings 6.1 Hiring went live (P6_1, P6_1_ReadOnly: wire design → live; new P6_1_StageTargets, answer 302) and four new drawn stories went live: HIR-02 Hiring manager cancel (293), HIR-12 All referrals undo paid (283) and paid outside payroll (285).
 Recounted by script 10 Nov 2026 on `feat/yukthix-hir-04-followups` after founder answers 261 and 263: HIR-04 gained 3 sheet stories, HIR-05 the 2 Application stories, HIR-03 the Settings story; the 3 "Live · Job workspace" stand-in stories were deleted with the stand-ins.
@@ -153,7 +154,6 @@ the web page.
 | HIR-23 bias audit | no audit record or NYC setting | S |
 | HIR-25 notetaker | no recording, consent or AI draft (an older notes-to-scorecard AI route exists: `POST interviews/:id/scorecard`, unused) | L |
 | HIR-27, 28 bulk day, bulk offers | no drive scheduling, no batch offers | M each |
-| HIR-29, HIR-09 versions / employer cost | `Offer` has free-text `compensation`, no versions, conditions, CTC lines or clawback | M |
 | HIR-06 slot finder | no calendar free/busy (needs Google / Microsoft calendar link) | M + partner |
 | Settings 6.2 Staffing desk | goes with the staffing business | with E |
 
@@ -301,8 +301,8 @@ list's Possible duplicates tab).
 | Minor · Under 18 · guardian consent pending | design only, feature not built | no date of birth / guardian consent on candidates |
 | NoAccess · No access | live | 403 without a candidate key |
 | NotFound · Not found (anonymised) | live | 404, or an erased candidate |
-| Application · Application · messages, notes, offers | live | added 10 Nov 2026 (answer 261, moved from the deleted `ApplicationPanel`): the record's `?entry=` or Open application; stage, reject / undo, owner, checklist, fit, email / SMS / WhatsApp / survey, notes, offers (create, send, for approval, withdraw, letter; until HIR-09); toasts. Interviews left it 11 Nov 2026 (answer 301): schedule on the record header, open / resend / cancel on HIR-07, the list on HIR-06 and the record's Scores tab |
-| ApplicationOfferToApprove · Application · offer waiting for your approval | live | the approver's step from the approval inbox; turn down needs a reason |
+| Application · Application · messages, notes, offers | live | added 10 Nov 2026 (answer 261, moved from the deleted `ApplicationPanel`): the record's `?entry=` or Open application; stage, reject / undo, owner, checklist, fit, email / SMS / WhatsApp / survey, notes, offers (listed; made and worked on the HIR-09 pages); toasts. Interviews left it 11 Nov 2026 (answer 301): schedule on the record header, open / resend / cancel on HIR-07, the list on HIR-06 and the record's Scores tab |
+| ApplicationOffer · Application · an offer opens its record (HIR-09) | live | HIR-09 (answer 301): the Offers tab lists the offers (pay text only with the key) and opens the offer builder or record; approvers decide in the approvals inbox |
 
 #### HIR-05 · Candidate list
 
@@ -391,21 +391,27 @@ No live page. Designed: `BulkInterviewDayScreen`.
 
 #### HIR-09 · Offer builder
 
-Live page: the offer part of `ApplicationPanel` on /yx/hiring/jobs/[id] (stand-in). Designed: `OfferBuilderScreen`,
-`OfferRecordScreen`.
+Live 11 Nov 2026 (branch `feat/yukthix-hir-09`, founder decisions 4 and 5): /yx/hiring/offers/new?entry= and
+/yx/hiring/offers/[id]/revise render the designed `OfferBuilderScreen` with `live`; /yx/hiring/offers/[id] renders the
+designed `OfferRecordScreen` with `live` (HIR-29 conditions tab inside). The HIR-05 Application drawer's Offers tab lists
+the offers and opens these pages (answer 301). API: `GET hiring/offers/setup`, `POST hiring/offers/preview`,
+`POST hiring/offers`, `GET hiring/offers/:id`, `POST hiring/offers/:id/versions`, `/submit`, `/conditions`, `/conditions/:id/met`,
+`/waive` (`ats.offer.manage` or `pipeline:manage`; amounts and pay writes need `ats.offer.compensation.view`; writes
+refused while acting for someone else); sending, the letter, withdraw and accept by link stay on `offers/:id/*` and
+`public/offers/:token/*` (plus `POST public/offers/:token/esign-code`).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| WithinRange · Recruiter · within range, CTC breakup preview | wire design | `POST pipeline/entries/:id/offers`; API: `compensation` is free text, needs CTC lines and the grade band |
-| HrEmployerCost · HR · employer costs, joining bonus with clawback | design only, feature not built | no employer-cost lines or clawback |
-| AboveRange · Above range · extra approval | wire design | offer approval chain exists (`POST offers/:id/submit`); API: no band check adding a step |
-| Revision · Revision v2 · re-approval because CTC changed | design only, feature not built | no offer versions |
-| Letter · Letter step | wire design | offer templates, `GET offers/:id/pdf`, `POST offers/:id/send` |
-| AcceptedManual · Accepted · manual hand-off, HR creates employee | wire design | candidate accepts at /offer/[token] (`POST public/offers/:token/respond`); HR adds the joiner from the offer (PPL-12, `joiners.fromOffer`); e-sign: question 4 |
-| AcceptedRehire · Accepted · alumni rehire | wire design | `offerRehire` finds the past employee (lifecycle/rehire-policy.ts) |
-| PartialMatch · Accepted · partial match stops the hand-off | wire design | People's same-person check (PPL-36) exists; API: the offer hand-off does not stop on a partial match yet |
-| Reneged · Reneged · pre-boarding unwound | wire design | joiner "did not join" cancels pre-boarding and BGV (joining.service.ts) |
-| Versions · Versions tab | design only, feature not built | no offer versions |
+| WithinRange · Recruiter · within range, CTC breakup preview | live | CTC lines from the company's salary structure (Pay's own breakup for the work location, only lines inside the CTC); live, only holders of the offer-pay key reach the builder, so they see employer costs too (question 331) |
+| HrEmployerCost · HR · employer costs, joining bonus with clawback | live (gap) | employer costs and the joining bonus with its clawback months are kept on the version and in the letter; the clawback is not yet recovered in the final settlement and the bonus is not paid through Pay (question 334) |
+| AboveRange · Above range · extra approval | live | above the grade range adds one P03 step; who approves is `hiring.offer.band_approver` (default the HR head = head of the department coded HR, else the people with the offer-pay key); the sender never approves |
+| Revision · Revision v2 · re-approval because CTC changed | live | `POST hiring/offers/:id/versions`; a changed CTC or grade goes back through approval, the earlier letter's link stops working; unchanged pay stays approved |
+| Letter · Letter step | live | the company's offer templates; e-sign only when the template switches it on (one-time code by email and the disclosure, evidence kept); accept by link otherwise |
+| AcceptedManual · Accepted · manual hand-off, HR creates employee | live | "Create employee" opens People › Ready to onboard (PPL-12, unchanged); at joining the offer's structure and fixed CTC go to Pay as the first salary, a pay change for approval |
+| AcceptedRehire · Accepted · alumni rehire | live (gap) | the rehire is found and chosen in People's create drawer (unchanged); the offer record does not name the person type yet |
+| PartialMatch · Accepted · partial match stops the hand-off | live (gap) | People's same-person check runs when HR creates the joiner; the offer record does not show a partial match |
+| Reneged · Reneged · pre-boarding unwound | live (gap) | withdrawn and declined banners are live; reneging after acceptance is closed on the joiner in People (joining.service.ts), the offer record does not show it |
+| Versions · Versions tab | live | every version with who, when, the note and whether it needed approval; an older text offer reads as version 0 (amounts and text only with the key) |
 
 #### HIR-10 · BGV tracker
 
@@ -435,14 +441,16 @@ No live page. Designed: `BulkOfferScreen`.
 
 #### HIR-29 · Offer conditions tab
 
-No live page. Designed: `OfferConditionsTab`.
+Live 11 Nov 2026: the Conditions tab of /yx/hiring/offers/[id] (`OfferConditionsTab` with `live`). A new offer can start
+with the company's list (`hiring.offer.default_conditions`, one a line, due on the joining day); add, mark met (with an
+optional note) or waive with a reason (refused without one, never twice).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| OnTrack · Open conditions · on track | design only, feature not built | `Offer` has no conditions |
-| Reminder · Overdue condition · lapse reminder | design only, feature not built | same |
-| Lapsed · Lapsed · pre-boarding unwound | design only, feature not built | same |
-| AllMet · All met or waived | design only, feature not built | same |
+| OnTrack · Open conditions · on track | live | due by the joining day |
+| Reminder · Overdue condition · lapse reminder | live (gap) | the warning shows; no reminder goes to the candidate yet (question 336) |
+| Lapsed · Lapsed · pre-boarding unwound | live (gap) | the alert says to decide; nothing lapses or unwinds by itself yet (question 335) |
+| AllMet · All met or waived | live | |
 
 ### D. Referrals, internal jobs, CRM and rediscovery
 
@@ -773,7 +781,7 @@ a design, BUILD-STANDARD rule 1). Each "Live ·" story is deleted with its stand
 | Identity · IdentityStrip | design only, feature not built | HIR-22 |
 | Postings · PostingStrip | wire design | job boards |
 | EInvoice · EInvoiceBanner · warning | design only, feature not built | HIR-31 |
-| Ctc · CtcBreakupTable | wire design | HIR-09 (needs CTC lines in the API) |
+| Ctc · CtcBreakupTable | live | HIR-09 builder and offer record |
 | Recording · RecordingPlaceholder | design only, feature not built | HIR-08, 25 |
 | Slots · SlotGrid | design only, feature not built | HIR-06 slot finder |
 | Budget · BudgetBars | design only, feature not built | Projects (no projects API) |
@@ -1195,6 +1203,31 @@ first; (323) slot finder once a Google or Microsoft calendar provider is chosen;
 follow it later; (325) keep the company-wide week for the pipeline key; (326) keep the hiring manager read-only on
 submitted scorecards; (327) keep Schedule and Move acting on the open application; (328) keep the list order; (329) keep
 one pass bar per card, per-skill bars only if recruiters ask; (330) keep the templates page until Settings 6.1.
+## Founder questions from the HIR-09 / HIR-29 build (11 Nov 2026)
+Each has a safe default already built; the suggestion is the answer we propose.
+331. **Recruiters without the offer-pay key.** Built: building or revising an offer needs `ats.offer.compensation.view`
+     (you cannot set pay you may not see); without it a recruiter sees the offer without pay and can still send an
+     approved offer, withdraw it and work its conditions. *Suggested: keep; give the key to the recruiters who make offers.*
+332. **Who is "the HR head"?** Built: the head of the department coded HR; with none, the people who hold the offer-pay
+     key. *Suggested: add a named "HR head" person to the company setting `hiring.offer.band_approver`.*
+333. **Below the range.** Built per decision 4: shown on the badge, never an extra step. *Suggested: keep.*
+334. **Joining bonus, clawback and variable pay in Pay.** Built: the hand-off carries the salary structure and the fixed
+     CTC (lines worked out again with the employee's own facts); the bonus and its clawback months stay on the offer.
+     *Suggested: pay the joining bonus as one-time pay in the first run and add the clawback to the final settlement when
+     the person leaves within the months.*
+335. **Conditions never lapse by themselves.** Built: the tab warns before and after the joining day; HR decides.
+     *Suggested: keep HR deciding (like a BGV discrepancy, never auto-withdrawn), and tell HR on the joining day.*
+336. **Reminders.** "Send reminder" (sent offers) and the candidate's condition reminder are not built (hidden live).
+     *Suggested: two email templates, sent by the recruiter's button, never automatically.*
+337. **E-sign switch and the candidate's page.** The template switch is in the API only (no settings screen yet) and the
+     public offer page has no design (decision 10). *Suggested: add the switch to the offer-template editor when Settings
+     6.x is wired; draw the T9 accept and sign page.*
+338. **What approvers see.** Built: the approvals inbox summary shows the version, fixed CTC and range check (cards
+     outside the app stay neutral). *Suggested: keep; approvers decide on pay.*
+339. **Older offer routes.** `POST offers/:id/submit` now runs on the P03 engine; requests made before stay on the older
+     inbox; `POST pipeline/entries/:id/offers` (text pay) still exists for older callers. *Suggested: retire the text
+     route when the stand-in /pipeline/list page is deleted.*
+
 ## Founder questions from the Settings 6.1 Hiring build (10 Nov 2026)
 Built on `feat/yukthix-hiring-settings` (answers 283, 285, 286, 291, 293, 302). Each has a safe default already built; the
 suggestion is the answer we propose.

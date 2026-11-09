@@ -354,6 +354,22 @@ export class PayStructuresService {
     );
   }
 
+  /**
+   * HIR-09: a salary template worked out for a candidate, who has no employment yet: the work location's state and wage
+   * zone, a PF member, ESI by the wage, age 30 (no date of birth before joining). The same maths as an employee's breakup.
+   */
+  async offerBreakupIn(tx: Tx, org: string, a: { templateVersionId: string; legalEntityId: string | null; locationId: string; on: string; annualCtc: string }) {
+    const v = await this.loadVersion(tx, org, a.templateVersionId);
+    const t = await tx.salaryTemplate.findFirstOrThrow({ where: { organizationId: org, id: v.ver.templateId }, select: { legalEntityId: true, status: true } });
+    if (t.status !== 'active' || (t.legalEntityId && t.legalEntityId !== a.legalEntityId)) throw new BadRequestException('That salary structure is not for this job’s legal entity.');
+    const loc = await tx.location.findFirst({ where: { organizationId: org, id: a.locationId }, select: { state: true, minWageZone: true } });
+    if (!loc) throw new BadRequestException('Choose a work location of this company.');
+    const facts: Facts = { on: a.on, month: Number(a.on.slice(5, 7)), state: loc.state, age: 30, pf: true, pfOnActualWage: false, esi: 'by_wage', pwd: false, zone: loc.minWageZone };
+    const rules = await this.rules.published();
+    const b = plain(() => breakup({ lines: v.lines, components: v.components, options: v.options, facts, rules, ctc: a.annualCtc }));
+    return { b, components: v.components, options: v.options, warnings: mwWarnings(b) };
+  }
+
   /** CTC breakup with the minimum-wage check and the Code wage add-back; nothing is kept. */
   preview(ctx: TenantContext, user: ScopeUser, dto: CompensationInputDto) {
     return this.history.viewer(user).then((v) =>

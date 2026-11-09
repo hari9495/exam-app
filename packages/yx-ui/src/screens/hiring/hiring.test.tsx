@@ -67,6 +67,8 @@ describe('hiring rules', () => {
   it('YX-ATS-06: CTC ₹14 L on ₹8–12 L range needs extra approval; breakup sums to fixed CTC', () => {
     expect(bandCheck(14_00_000, { min: 8_00_000, max: 12_00_000 }).extraApproval).toBe(true);
     expect(bandCheck(10_00_000, { min: 8_00_000, max: 12_00_000 }).extraApproval).toBe(false);
+    // Founder decision 4: below the range is shown, never an extra step.
+    expect(bandCheck(7_00_000, { min: 8_00_000, max: 12_00_000 })).toMatchObject({ position: 'below', extraApproval: false });
     expect(totalCtc(ctcBreakup(16_00_000))).toBe(16_00_000);
     expect(totalCtc(ctcBreakup(16_00_000, { variable: 1_00_000, joiningBonus: 50_000 }))).toBe(17_00_000);
     expect(revisionNeedsApproval({ ctc: 1, grade: 'G6' }, { ctc: 1, grade: 'G6' })).toBe(false);

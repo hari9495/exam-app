@@ -1,10 +1,12 @@
 // Hiring › Offers (builder, record, conditions, bulk), BGV tracker, talent CRM, bias audit.
 // HIR-09, HIR-29, HIR-28, HIR-10, HIR-20, HIR-23 (M10 Q3 / Q5, YX-ATS-06 / 07 / 08 / 14 / 17 / 20 / 21 / 22 / 23 / 40 / 41, T05 YX-EVAL-32).
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ExternalLink, FileText, Plus, Scale, Send, UserPlus } from 'lucide-react';
 import { Button } from '../../components/button';
 import { AiBadge, Badge, PersonLabel, type BadgeTone } from '../../components/display';
-import { EmptyState, InlineAlert } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, NoAccessState, Skeleton } from '../../components/feedback';
+import { useToastIfAny } from '../../components/notify';
+import { dayKey } from '../../lib/dates';
 import { FieldRow, FormField } from '../../components/field';
 import { CurrencyField, NumberField, TextArea, TextField } from '../../components/inputs';
 import { Select } from '../../components/select';
@@ -16,6 +18,7 @@ import { Stepper } from '../../components/stepper';
 import { DataTable, type TableColumn } from '../../components/table';
 import { MenuItem } from '../../components/menu';
 import { ApprovalTimeline, Timeline, type ApprovalStep, type TimelineItem } from '../../components/timeline';
+import type { LiveOfferBuilder, LiveOfferRecord, OfferApiStatus, OfferDraftInput, OfferPreview } from './live/types';
 import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
@@ -34,6 +37,7 @@ import {
   type AuditCategory,
   type Band,
   type Channel,
+  type CtcLine,
   type CrmMember,
   type OfferCondition,
 } from './hiring-logic';
@@ -46,46 +50,175 @@ type ListState = 'ready' | 'loading' | 'error';
 /* ================================================================== HIR-09 · Offer builder */
 
 export interface OfferBuilderProps {
-  candidate: string;
-  job: string;
-  grade: string;
-  band: Band;
-  defaultCtc: number;
+  candidate?: string;
+  job?: string;
+  grade?: string;
+  band?: Band;
+  defaultCtc?: number;
   defaultVariable?: number;
   defaultJoining?: number;
-  persona: 'recruiter' | 'hr';
+  persona?: 'recruiter' | 'hr';
   /** Previous version, when this is a revision (YX-ATS-17). */
   previous?: { version: number; ctc: number; grade: string } | null;
   defaultStep?: string;
   now?: Date;
+  /** Live (HIR-09): the application's facts, Pay's CTC lines, the company's route, saving and sending. */
+  live?: LiveOfferBuilder;
 }
 
+const fromIso = (s: string) => new Date(`${s.slice(0, 10)}T00:00:00`);
+const failure = (e: unknown) => (e instanceof Error && e.message ? e.message : 'That did not work. Check your connection and try again.');
+/** The letter's merge fields filled from the form (the server fills the same ones when it sends). */
+const fillLetter = (text: string, f: Record<string, string>) => text.replace(/\{\{(\w+)\}\}/g, (m, k: string) => f[k] ?? m);
+
 // HIR-09
-export function OfferBuilderScreen({ candidate, job, grade, band, defaultCtc, defaultVariable = 0, defaultJoining = 0, persona, previous = null, defaultStep = 'comp', now }: OfferBuilderProps) {
-  const [ctc, setCtc] = useState<number | null>(defaultCtc);
-  const [variable, setVariable] = useState<number | null>(defaultVariable);
-  const [joining, setJoining] = useState<number | null>(defaultJoining);
-  const [clawback, setClawback] = useState<number | null>(12);
-  const [kind, setKind] = useState('offer');
+export function OfferBuilderScreen(p: OfferBuilderProps) {
+  const { live } = p;
+  if (live && (live.state !== 'ready' || !live.setup))
+    return (
+      <HireFrame active="Offers & BGV">
+        {live.state === 'loading' ? (
+          <div className="yx-hire-stack" aria-busy="true" aria-label="Loading the offer">
+            <Skeleton height={64} />
+            <Skeleton height={320} />
+          </div>
+        ) : live.state === 'error' ? (
+          <ErrorState title="The offer could not be loaded." onRetry={live.onRetry} />
+        ) : live.state === 'denied' ? (
+          <NoAccessState grantedBy="your admin (the offer-pay key)" what="offer pay" />
+        ) : (
+          <EmptyState title="Not found" description="This application or offer doesn't exist in your company." />
+        )}
+      </HireFrame>
+    );
+  return <OfferBuilderForm {...p} />;
+}
+
+type BuilderField = 'tpl' | 'ctc' | 'claw' | 'start' | 'expires' | 'place' | 'letter';
+const STEP_FIELDS: Record<string, BuilderField[]> = { comp: ['tpl', 'ctc', 'claw'], terms: ['start', 'expires', 'place'], letter: ['letter'], approval: [] };
+const FIELD_ID: Record<BuilderField, string> = { tpl: 'ob-tpl', ctc: 'ob-ctc', claw: 'ob-claw', start: 'ob-start', expires: 'ob-exp', place: 'ob-place', letter: 'ob-letter' };
+
+function OfferBuilderForm({ candidate: sampleCandidate = '', job: sampleJob = '', grade: sampleGrade = '', band: sampleBand = { min: 0, max: 0 }, defaultCtc = 0, defaultVariable = 0, defaultJoining = 0, persona: samplePersona = 'recruiter', previous: samplePrevious = null, defaultStep = 'comp', now, live }: OfferBuilderProps) {
+  const setup = live?.setup ?? null;
+  const prevIn = live?.previous?.input ?? null;
+  const toast = useToastIfAny();
+  const candidate = setup ? setup.candidate.name : sampleCandidate;
+  const job = setup ? setup.job.title : sampleJob;
+  const grade = setup ? (setup.grade?.name ?? 'no grade') : sampleGrade;
+  const band = setup ? setup.band : sampleBand;
+  // Live, only holders of the offer-pay key reach the builder: they see the employer costs too.
+  const persona = live ? 'hr' : samplePersona;
+  const previous = live ? (live.previous ? { version: live.previous.version, ctc: live.previous.ctc, grade: live.previous.grade } : null) : samplePrevious;
+  const [tpl, setTpl] = useState<string | null>(live ? (prevIn?.templateVersionId ?? setup?.structures[0]?.value ?? null) : 'std');
+  const [ctc, setCtc] = useState<number | null>(live ? (prevIn?.annualCtc ?? null) : defaultCtc);
+  const [variable, setVariable] = useState<number | null>(live ? (prevIn?.variablePay ?? 0) : defaultVariable);
+  const [joining, setJoining] = useState<number | null>(live ? (prevIn?.joiningBonus ?? 0) : defaultJoining);
+  const [clawback, setClawback] = useState<number | null>(prevIn?.clawbackMonths ?? 12);
+  const [kind, setKind] = useState<string>(prevIn?.letterKind ?? 'offer');
   const [metro, setMetro] = useState(true);
+  const [start, setStart] = useState<Date | null>(live ? (prevIn ? fromIso(prevIn.startDate) : null) : new Date(2026, 10, 2));
+  const [expires, setExpires] = useState<Date | null>(live ? (prevIn ? fromIso(prevIn.expiresAt) : null) : new Date(2026, 9, 6));
+  const [place, setPlace] = useState<string | null>(live ? (prevIn?.locationId ?? setup?.job.locationId ?? setup?.locations[0]?.value ?? null) : 'maa');
+  const [letter, setLetter] = useState<string | null>(live ? (prevIn?.templateId ?? setup?.letters[0]?.value ?? null) : 't1');
+  const [conditions, setConditions] = useState(true);
+  const [step, setStep] = useState(defaultStep);
+  const [tried, setTried] = useState<Set<string>>(new Set());
+  const [pv, setPv] = useState<OfferPreview | null>(null);
+  const [pvError, setPvError] = useState<string | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const fixed = ctc ?? 0;
-  const lines = ctcBreakup(fixed, { variable: variable ?? 0, joiningBonus: joining ?? 0, metro });
-  const band$ = bandCheck(fixed, band);
+  const bonus = joining ?? 0;
+  // The page passes a new `live` each render; the preview reads it through a ref so it runs only when the pay changes.
+  const liveRef = useRef(live);
+  liveRef.current = live;
+  useEffect(() => {
+    const l = liveRef.current;
+    if (!l || !tpl || !place || !(fixed > 0)) return setPv(null);
+    let gone = false;
+    const t = setTimeout(() => {
+      l.onPreview({ templateVersionId: tpl, annualCtc: fixed, variablePay: variable ?? 0, joiningBonus: bonus, clawbackMonths: bonus > 0 ? clawback : null, locationId: place }).then(
+        (r) => !gone && (setPv(r), setPvError(null)),
+        (e) => !gone && (setPv(null), setPvError(failure(e))),
+      );
+    }, 350);
+    return () => {
+      gone = true;
+      clearTimeout(t);
+    };
+  }, [Boolean(live), tpl, place, fixed, variable, bonus, clawback]);
+
+  const lines: CtcLine[] = live ? (pv?.lines ?? []) : ctcBreakup(fixed, { variable: variable ?? 0, joiningBonus: bonus, metro });
+  const band$ = live
+    ? pv
+      ? { position: pv.bandPosition, extraApproval: pv.extraApproval, text: pv.bandText }
+      : { position: 'none' as const, extraApproval: false, text: band ? 'Enter the fixed CTC to check it against the grade pay range.' : 'No pay range is set for this grade.' }
+    : bandCheck(fixed, band ?? { min: 0, max: 0 });
   const reapprove = previous ? revisionNeedsApproval({ ctc: previous.ctc, grade: previous.grade }, { ctc: fixed, grade }) : true;
   const version = previous ? previous.version + 1 : 1;
-  const steps: ApprovalStep[] = [
-    { id: 'rec', label: 'Recruiter', status: 'done', approver: 'Neha Joshi', at: now },
-    { id: 'hr', label: 'HR business partner', status: 'current', approver: 'Lakshmi Venkatesan' },
-    ...(band$.extraApproval ? [{ id: 'cfo', label: 'Out-of-range approval (CFO)', status: 'pending' as const, approver: 'Meenakshi Sundaram' }] : []),
-  ];
-  const bandBadge = <Badge tone={band$.extraApproval ? 'warning' : 'success'}>{band$.text}</Badge>;
+  const route = setup?.route ?? null;
+  const steps: ApprovalStep[] = route
+    ? [
+        { id: 'you', label: 'You send it', status: 'done' },
+        ...route.steps.map((s, i) => ({ id: `s${i}`, label: s.name, status: (i === 0 ? 'current' : 'pending') as ApprovalStep['status'], approver: s.approvers.join(', ') || 'The company admins' })),
+        ...(band$.extraApproval ? [{ id: 'band', label: route.bandStep.name, status: (route.steps.length ? 'pending' : 'current') as ApprovalStep['status'], approver: route.bandStep.approvers.join(', ') || 'The company admins' }] : []),
+      ]
+    : [
+        { id: 'rec', label: 'Recruiter', status: 'done', approver: 'Neha Joshi', at: now },
+        { id: 'hr', label: 'HR business partner', status: 'current', approver: 'Lakshmi Venkatesan' },
+        ...(band$.extraApproval ? [{ id: 'cfo', label: 'Out-of-range approval (CFO)', status: 'pending' as const, approver: 'Meenakshi Sundaram' }] : []),
+      ];
+  const needsRoute = route ? route.steps.length > 0 || band$.extraApproval : true;
+  const finishLabel = live ? ((previous && !reapprove) || !needsRoute ? 'Send offer' : 'Send for approval') : band$.extraApproval || reapprove ? 'Send for approval' : 'Send offer';
+  const bandBadge = <Badge tone={band$.extraApproval ? 'warning' : band$.position === 'within' ? 'success' : 'neutral'}>{band$.text}</Badge>;
+  const chosenLetter = setup?.letters.find((l) => l.value === letter) ?? null;
+  const place$ = setup?.locations.find((l) => l.value === place)?.label ?? 'Chennai office';
+  const startText = start ? formatDate(start) : 'the joining date';
+  const expiresText = expires ? formatDate(expires) : 'the expiry date';
+
+  const errs: Record<BuilderField, string | null> = {
+    tpl: live && !tpl ? 'Choose the salary structure.' : null,
+    ctc: !(fixed > 0) ? 'Enter the fixed CTC.' : null,
+    claw: bonus > 0 && !(clawback && clawback >= 1 && clawback <= 60) ? 'Give 1 to 60 months.' : null,
+    start: !start ? 'Choose the joining date.' : null,
+    expires: !expires ? 'Choose when the offer expires.' : start && dayKey(expires) > dayKey(start) ? 'The offer must expire on or before the joining date.' : null,
+    place: !place ? 'Choose the work location.' : null,
+    letter: live && !letter ? 'Choose the offer letter.' : null,
+  };
+  const err = (f: BuilderField) => ([...tried].some((s) => STEP_FIELDS[s]?.includes(f)) ? errs[f] : null);
+  /** Pressed too early: the step's field errors show and the first one gets the focus (on its step). */
+  const check = (ids: string[]) => {
+    setTried((t) => new Set([...t, ...ids]));
+    const bad = ids.find((id) => STEP_FIELDS[id]?.some((f) => errs[f]));
+    if (!bad) return true;
+    setStep(bad);
+    const f = STEP_FIELDS[bad]!.find((x) => errs[x])!;
+    setTimeout(() => document.getElementById(FIELD_ID[f])?.focus(), 50);
+    return false;
+  };
+  const input = (): OfferDraftInput => ({ templateVersionId: tpl!, annualCtc: fixed, variablePay: variable ?? 0, joiningBonus: bonus, clawbackMonths: bonus > 0 ? clawback : null, locationId: place!, startDate: dayKey(start!), expiresAt: `${dayKey(expires!)}T23:59:00+05:30`, letterKind: kind as 'offer' | 'loi', templateId: letter && letter !== 'default' ? letter : null, addConditions: !previous && conditions });
+  const act = async (fn: () => Promise<string>) => {
+    if (!check(['comp', 'terms', 'letter'])) return;
+    setBusy(true);
+    setFailed(null);
+    try {
+      toast?.toast({ tone: 'success', title: await fn() });
+    } catch (e) {
+      setFailed(failure(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const letterFields = { candidateName: candidate, jobTitle: job, orgName: setup?.company ?? '', recruiterName: '', compensation: `a fixed CTC of ${formatINR(fixed)} a year${variable ? ` and a target variable pay of ${formatINR(variable)}` : ''}`, startDate: startText, offerExpiry: expiresText, offerLink: '(the link comes with the email)' };
+
   return (
     <HireFrame active="Offers & BGV">
       <PageHeader
         title={`${previous ? 'Revise offer' : 'New offer'} · ${candidate}`}
-        description={`${job} · ${grade} · pay range ${formatINR(band.min)} – ${formatINR(band.max)}`}
+        description={band ? `${job} · ${grade} · pay range ${formatINR(band.min)} – ${formatINR(band.max)}` : `${job} · ${grade} · no pay range set`}
         status={<Badge tone="info">Version {version}</Badge>}
       />
+      {failed && <InlineAlert tone="danger" title="Not saved">{failed}</InlineAlert>}
       {previous && (
         <InlineAlert tone={reapprove ? 'warning' : 'info'} title={`This version supersedes v${previous.version}`}>
           {reapprove
@@ -95,22 +228,26 @@ export function OfferBuilderScreen({ candidate, job, grade, band, defaultCtc, de
       )}
       <Stepper
         title="Offer"
-        defaultCurrent={defaultStep}
-        finishLabel={band$.extraApproval || reapprove ? 'Send for approval' : 'Send offer'}
-        review={{ description: 'Check the offer before it goes for approval.' }}
-        onSaveAndExit={() => {}}
+        current={step}
+        onCurrentChange={setStep}
+        onContinue={(id) => (live ? check([id]) : undefined)}
+        finishLabel={finishLabel}
+        finishing={busy}
+        onFinish={live ? () => void act(() => live.onFinish(input())) : undefined}
+        review={{ description: needsRoute ? 'Check the offer before it goes for approval.' : 'Check the offer before it goes to the candidate.' }}
+        onSaveAndExit={live ? () => void act(async () => (await live.onSaveDraft(input()), 'Offer saved as a draft')) : () => {}}
         steps={[
           {
             id: 'comp',
             title: 'Compensation',
-            description: 'From the M03 CTC template',
+            description: live ? 'From the company’s salary structure' : 'From the M03 CTC template',
             content: (
               <div className="yx-hire-sheet">
                 <div className="yx-hire-sheet__form">
-                  <FormField label="CTC template" required>
-                    <Select value="std" onChange={() => {}} options={[{ value: 'std', label: 'Standard CTC, Tamil Nadu (M03)' }, { value: 'plant', label: 'Plant staff CTC' }]} />
+                  <FormField id={FIELD_ID.tpl} label="CTC template" required error={err('tpl')}>
+                    {live ? <Select aria-label="CTC template" value={tpl} onChange={setTpl} options={setup!.structures} placeholder="Choose the salary structure" /> : <Select value="std" onChange={() => {}} options={[{ value: 'std', label: 'Standard CTC, Tamil Nadu (M03)' }, { value: 'plant', label: 'Plant staff CTC' }]} />}
                   </FormField>
-                  <FormField label="Fixed CTC (annual)" required helper={`Grade ${grade}: ${formatINR(band.min)} – ${formatINR(band.max)}`}>
+                  <FormField id={FIELD_ID.ctc} label="Fixed CTC (annual)" required error={err('ctc')} helper={band ? `Grade ${grade}: ${formatINR(band.min)} – ${formatINR(band.max)}` : 'No pay range is set for this grade.'}>
                     <CurrencyField value={ctc} onChange={setCtc} />
                   </FormField>
                   {bandBadge}
@@ -122,19 +259,31 @@ export function OfferBuilderScreen({ candidate, job, grade, band, defaultCtc, de
                       <CurrencyField value={joining} onChange={setJoining} />
                     </FormField>
                   </FieldRow>
-                  {(joining ?? 0) > 0 && (
-                    <FormField label="Clawback if the person leaves within" helper="Recovered in the final settlement">
+                  {bonus > 0 && (
+                    <FormField id={FIELD_ID.claw} label="Clawback if the person leaves within" helper="Recovered in the final settlement" error={err('claw')}>
                       <NumberField value={clawback} onChange={setClawback} suffix="months" />
                     </FormField>
                   )}
-                  <Switch className="yx-hire-switch" label="Metro city HRA (50% of basic)" checked={metro} onChange={setMetro} />
-                  <Button icon={Scale}>Suggest split</Button>
+                  {/* Live: HRA and every other line come from the company's salary structure. */}
+                  {!live && <Switch className="yx-hire-switch" label="Metro city HRA (50% of basic)" checked={metro} onChange={setMetro} />}
+                  {!live && <Button icon={Scale}>Suggest split</Button>}
                 </div>
                 <aside className="yx-hire-sheet__effect" aria-live="polite" aria-label="CTC breakup preview">
-                  <CtcBreakupTable lines={persona === 'hr' ? lines : lines.filter((l) => l.kind !== 'employer')} caption="Breakup preview" />
-                  <Text size="sm" tone="secondary">
-                    Gross monthly {formatINR(grossMonthly(lines))} · total CTC incl. variable {formatINR(totalCtc(lines))}
-                  </Text>
+                  {live && pvError ? (
+                    <InlineAlert tone="danger" title="No breakup for this CTC">{pvError}</InlineAlert>
+                  ) : live && !pv ? (
+                    <Text size="sm" tone="secondary">Choose the structure, the work location and the fixed CTC to see the breakup.</Text>
+                  ) : (
+                    <>
+                      <CtcBreakupTable lines={persona === 'hr' ? lines : lines.filter((l) => l.kind !== 'employer')} caption="Breakup preview" />
+                      <Text size="sm" tone="secondary">
+                        Gross monthly {formatINR(live ? (pv?.monthlyGross ?? 0) : grossMonthly(lines))} · total CTC incl. variable {formatINR(totalCtc(lines))}
+                      </Text>
+                      {pv?.warnings.map((w) => (
+                        <InlineAlert key={w} tone="warning">{w}</InlineAlert>
+                      ))}
+                    </>
+                  )}
                   {persona === 'recruiter' && (
                     <Text size="xs" tone="muted">
                       Employer contributions are shown to HR.
@@ -148,7 +297,7 @@ export function OfferBuilderScreen({ candidate, job, grade, band, defaultCtc, de
                 items={[
                   { label: 'Fixed CTC', value: formatINR(fixed) },
                   { label: 'Variable', value: formatINR(variable ?? 0) },
-                  { label: 'Joining bonus', value: joining ? `${formatINR(joining)}, clawback ${clawback} months` : 'None' },
+                  { label: 'Joining bonus', value: bonus ? `${formatINR(bonus)}, clawback ${clawback} months` : 'None' },
                   { label: 'Grade range', value: band$.text },
                 ]}
               />
@@ -172,20 +321,20 @@ export function OfferBuilderScreen({ candidate, job, grade, band, defaultCtc, de
                   />
                 </FormField>
                 <FieldRow>
-                  <FormField label="Joining date" required>
-                    <DatePicker value={new Date(2026, 10, 2)} onChange={() => {}} />
+                  <FormField id={FIELD_ID.start} label="Joining date" required error={err('start')}>
+                    <DatePicker id={FIELD_ID.start} aria-label="Joining date" value={start} onChange={live ? setStart : () => {}} min={live ? now : undefined} />
                   </FormField>
-                  <FormField label="Offer expires" required helper="Unsigned offers lapse after this date">
-                    <DatePicker value={new Date(2026, 9, 6)} onChange={() => {}} />
+                  <FormField id={FIELD_ID.expires} label="Offer expires" required helper="Unsigned offers lapse after this date" error={err('expires')}>
+                    <DatePicker id={FIELD_ID.expires} aria-label="Offer expires" value={expires} onChange={live ? setExpires : () => {}} min={live ? now : undefined} />
                   </FormField>
                 </FieldRow>
-                <FormField label="Work location" required>
-                  <Select value="maa" onChange={() => {}} options={[{ value: 'maa', label: 'Chennai office' }, { value: 'blr', label: 'Bengaluru head office' }]} />
+                <FormField id={FIELD_ID.place} label="Work location" required error={err('place')}>
+                  {live ? <Select aria-label="Work location" value={place} onChange={setPlace} options={setup!.locations} placeholder="Choose the work location" /> : <Select value="maa" onChange={() => {}} options={[{ value: 'maa', label: 'Chennai office' }, { value: 'blr', label: 'Bengaluru head office' }]} />}
                 </FormField>
-                <Checkbox label="Add conditions (background check, documents)" defaultChecked />
+                {!previous && <Checkbox label={setup ? `Add conditions (${setup.defaultConditions.join(', ').toLowerCase() || 'none set by the company'})` : 'Add conditions (background check, documents)'} checked={conditions} onChange={setConditions} />}
               </div>
             ),
-            summary: <Text>{kind === 'offer' ? 'Offer letter' : 'Letter of intent'} · joining 2 Nov 2026 · expires 6 Oct 2026</Text>,
+            summary: <Text>{kind === 'offer' ? 'Offer letter' : 'Letter of intent'} · joining {startText} · expires {expiresText}{live ? ` · ${place$}` : ''}</Text>,
           },
           {
             id: 'letter',
@@ -193,22 +342,37 @@ export function OfferBuilderScreen({ candidate, job, grade, band, defaultCtc, de
             description: 'Template and e-sign',
             content: (
               <div className="yx-hire-stack">
-                <FormField label="Letter template" required>
-                  <Select value="t1" onChange={() => {}} options={[{ value: 't1', label: 'Offer letter · Engineering (P05)' }]} />
+                <FormField id={FIELD_ID.letter} label="Letter template" required error={err('letter')}>
+                  {live ? <Select aria-label="Letter template" value={letter} onChange={setLetter} options={setup!.letters.map((l) => ({ value: l.value, label: l.label }))} /> : <Select value="t1" onChange={() => {}} options={[{ value: 't1', label: 'Offer letter · Engineering (P05)' }]} />}
                 </FormField>
                 <div className="yx-hire-letter" role="document" aria-label="Letter preview">
-                  <Text as="p" weight="semibold">
-                    Dear {candidate},
-                  </Text>
-                  <Text as="p">
-                    We are pleased to offer you the position of {job} at Kaveri Foods Pvt Ltd, Chennai, with an annual fixed CTC of {formatINR(fixed)}
-                    {variable ? ` and a target variable pay of ${formatINR(variable)}` : ''}. Your joining date is 2 Nov 2026.
-                  </Text>
-                  <Text as="p">Please accept this offer by 6 Oct 2026 using the one-time password sent to your mobile.</Text>
+                  {chosenLetter ? (
+                    fillLetter(chosenLetter.body, letterFields).split(/\n{2,}/).map((para, i) => (
+                      <Text key={i} as="p" weight={i === 0 ? 'semibold' : undefined}>
+                        {para}
+                      </Text>
+                    ))
+                  ) : (
+                    <>
+                      <Text as="p" weight="semibold">
+                        Dear {candidate},
+                      </Text>
+                      <Text as="p">
+                        We are pleased to offer you the position of {job} at Kaveri Foods Pvt Ltd, Chennai, with an annual fixed CTC of {formatINR(fixed)}
+                        {variable ? ` and a target variable pay of ${formatINR(variable)}` : ''}. Your joining date is 2 Nov 2026.
+                      </Text>
+                      <Text as="p">Please accept this offer by 6 Oct 2026 using the one-time password sent to your mobile.</Text>
+                    </>
+                  )}
                 </div>
+                {chosenLetter && (
+                  <Text size="sm" tone="secondary">
+                    {chosenLetter.esign ? 'The candidate signs with a one-time code sent to their email (this template has e-sign on).' : 'The candidate accepts by the link in the email (this template has no e-sign).'}
+                  </Text>
+                )}
               </div>
             ),
-            summary: <Text>Offer letter · Engineering · OTP e-accept</Text>,
+            summary: <Text>{chosenLetter ? `${chosenLetter.label} · ${chosenLetter.esign ? 'e-sign with a one-time code' : 'accept by the link'}` : 'Offer letter · Engineering · OTP e-accept'}</Text>,
           },
           {
             id: 'approval',
@@ -216,11 +380,17 @@ export function OfferBuilderScreen({ candidate, job, grade, band, defaultCtc, de
             description: band$.extraApproval ? 'Extra approval needed' : 'Standard chain',
             content: (
               <div className="yx-hire-stack">
-                {band$.extraApproval && <InlineAlert tone="warning" title="Out of the grade pay range">{band$.text} The CFO approves after HR.</InlineAlert>}
-                <ApprovalTimeline steps={steps} now={now} />
+                {band$.extraApproval && <InlineAlert tone="warning" title="Out of the grade pay range">{band$.text} {route ? `${route.bandStep.name.replace(/^Above the pay range \((.*)\)$/, 'The $1')} approves${route.steps.length ? ' after the other steps' : ''}.` : 'The CFO approves after HR.'}</InlineAlert>}
+                {live && previous && !reapprove ? (
+                  <InlineAlert tone="info">No new approval is needed: the new letter goes to the candidate when you finish.</InlineAlert>
+                ) : live && !needsRoute ? (
+                  <InlineAlert tone="info">Your company has no approval step for offers in the pay range: the offer goes to the candidate when you finish.</InlineAlert>
+                ) : (
+                  <ApprovalTimeline steps={steps} now={now} />
+                )}
               </div>
             ),
-            summary: <Text>{steps.length} approval steps</Text>,
+            summary: <Text>{live && (!needsRoute || (previous && !reapprove)) ? 'No approval needed' : `${steps.length} approval steps`}</Text>,
           },
         ]}
       />
@@ -230,47 +400,81 @@ export function OfferBuilderScreen({ candidate, job, grade, band, defaultCtc, de
 
 /* ================================================================== Offer record + HIR-29 conditions tab */
 
-export type OfferStatus = 'Waiting for approval' | 'Sent' | 'Accepted' | 'Joined' | 'Declined' | 'Reneged' | 'Withdrawn' | 'Lapsed';
-const OFFER_TONE: Record<OfferStatus, BadgeTone> = { 'Waiting for approval': 'warning', Sent: 'info', Accepted: 'success', Joined: 'success', Declined: 'neutral', Reneged: 'danger', Withdrawn: 'danger', Lapsed: 'danger' };
+export type OfferStatus = 'Draft' | 'Waiting for approval' | 'Approved' | 'Sent' | 'Accepted' | 'Joined' | 'Declined' | 'Reneged' | 'Withdrawn' | 'Lapsed';
+const OFFER_TONE: Record<OfferStatus, BadgeTone> = { Draft: 'neutral', 'Waiting for approval': 'warning', Approved: 'success', Sent: 'info', Accepted: 'success', Joined: 'success', Declined: 'neutral', Reneged: 'danger', Withdrawn: 'danger', Lapsed: 'danger' };
+const API_STATUS: Record<OfferApiStatus, OfferStatus> = { draft: 'Draft', pending_approval: 'Waiting for approval', approved: 'Approved', sent: 'Sent', accepted: 'Accepted', declined: 'Declined', withdrawn: 'Withdrawn' };
 
 export interface OfferRecordProps {
-  candidate: string;
-  job: string;
-  status: OfferStatus;
-  ctc: number;
-  conditions: OfferCondition[];
-  lapseDate: Date;
-  today: Date;
+  candidate?: string;
+  job?: string;
+  status?: OfferStatus;
+  ctc?: number;
+  conditions?: OfferCondition[];
+  lapseDate?: Date;
+  today?: Date;
   handoff?: { mode: 'automatic' | 'manual'; personType: 'New person' | 'Alumni rehire' | 'Internal employee' | 'Contractor conversion' | 'Partial match' };
   declineReason?: string;
-  activity: TimelineItem[];
+  activity?: TimelineItem[];
   defaultTab?: 'overview' | 'conditions' | 'versions';
   persona?: 'recruiter' | 'hr';
+  /** Live (HIR-09 / HIR-29): the offer from the API and its actions. */
+  live?: LiveOfferRecord;
+}
+
+/** Live conditions: the API's list; each action resolves when done (the page reloads the offer). */
+export interface LiveConditions {
+  canChange: boolean;
+  onAdd: (name: string, dueOn: string) => Promise<void>;
+  onMet: (id: string) => Promise<void>;
+  onWaive: (id: string, reason: string) => Promise<void>;
+  /** The note or the waiver's reason, by condition. */
+  notes: Record<string, string | null>;
 }
 
 // HIR-29 (conditions tab on the offer record)
-export function OfferConditionsTab({ conditions: initial, lapseDate, today }: { conditions: OfferCondition[]; lapseDate: Date; today: Date }) {
-  const [conditions, setConditions] = useState(initial);
+export function OfferConditionsTab({ conditions: initial, lapseDate, today, live }: { conditions: OfferCondition[]; lapseDate: Date; today: Date; live?: LiveConditions }) {
+  const [local, setLocal] = useState(initial);
+  const conditions = live ? initial : local;
+  const toast = useToastIfAny();
+  const [waiving, setWaiving] = useState<OfferCondition | null>(null);
+  const [reason, setReason] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState('');
+  const [due, setDue] = useState<Date | null>(lapseDate);
+  const [tried, setTried] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
   const lapse = offerLapse(conditions, lapseDate, today);
-  const set = (id: string, status: OfferCondition['status']) => setConditions((cs) => cs.map((c) => (c.id === id ? { ...c, status } : c)));
+  const set = async (c: OfferCondition, status: OfferCondition['status'], why?: string) => {
+    if (live) await (status === 'met' ? live.onMet(c.id) : live.onWaive(c.id, why!));
+    else setLocal((cs) => cs.map((x) => (x.id === c.id ? { ...x, status } : x)));
+    toast?.toast({ tone: 'success', title: status === 'met' ? `${c.name}: met` : `${c.name}: waived` });
+  };
+  const met = (c: OfferCondition) => {
+    setFailed(null);
+    set(c, 'met').catch((e: unknown) => setFailed(e instanceof Error ? e.message : 'That did not work. Try again.'));
+  };
   return (
     <div className="yx-hire-stack">
+      {failed && <InlineAlert tone="danger" title="Not done">{failed}</InlineAlert>}
       {lapse.state === 'lapsed' ? (
         <InlineAlert tone="danger" title="Offer lapsed">
-          {lapse.open} condition{lapse.open === 1 ? ' was' : 's were'} not met by {formatDate(lapseDate)}. Pre-boarding tasks were cancelled, accounts not created and the headcount slot released.
+          {lapse.open} condition{lapse.open === 1 ? ' was' : 's were'} not met by {formatDate(lapseDate)}.{' '}
+          {live ? 'Decide now: mark each one met, waive it with a reason, or withdraw the offer.' : 'Pre-boarding tasks were cancelled, accounts not created and the headcount slot released.'}
         </InlineAlert>
       ) : lapse.state === 'reminder' ? (
         <InlineAlert tone="warning" title={`Auto-lapse on ${formatDate(lapseDate)} (${lapse.daysToLapse} days)`}>
-          {lapse.overdue.length ? `Overdue: ${lapse.overdue.join(', ')}. ` : ''}The candidate got a reminder. Mark each condition met or waived before the lapse date.
+          {lapse.overdue.length ? `Overdue: ${lapse.overdue.join(', ')}. ` : ''}
+          {live ? 'Mark each condition met or waived before the joining day.' : 'The candidate got a reminder. Mark each condition met or waived before the lapse date.'}
         </InlineAlert>
       ) : lapse.state === 'clear' ? (
         <InlineAlert tone="success" title="All conditions met or waived">The offer won&rsquo;t lapse.</InlineAlert>
       ) : (
-        <InlineAlert tone="info">Auto-lapse on {formatDate(lapseDate)} if any condition is still open.</InlineAlert>
+        <InlineAlert tone="info">{live ? `Due by the joining day, ${formatDate(lapseDate)}.` : `Auto-lapse on ${formatDate(lapseDate)} if any condition is still open.`}</InlineAlert>
       )}
       <ul className="yx-hire-list" aria-label="Offer conditions">
         {conditions.map((c) => {
           const overdue = c.status === 'open' && daysBetween(c.due, today) > 0;
+          const note = live?.notes[c.id] ?? null;
           return (
             <li key={c.id} className="yx-hire-list__item">
               <div className="yx-hire-list__main">
@@ -279,19 +483,27 @@ export function OfferConditionsTab({ conditions: initial, lapseDate, today }: { 
                   Due {formatDate(c.due)}
                   {overdue ? ' · overdue' : ''}
                 </Text>
-                {c.status === 'met' && (
-                  <Text size="sm" tone="secondary">
-                    Evidence: offer-signed.pdf
-                  </Text>
+                {live ? (
+                  note && (
+                    <Text size="sm" tone="secondary">
+                      {c.status === 'waived' ? 'Reason' : 'Note'}: {note}
+                    </Text>
+                  )
+                ) : (
+                  c.status === 'met' && (
+                    <Text size="sm" tone="secondary">
+                      Evidence: offer-signed.pdf
+                    </Text>
+                  )
                 )}
               </div>
               <Badge tone={c.status === 'met' ? 'success' : c.status === 'waived' ? 'info' : overdue ? 'warning' : 'neutral'}>{c.status === 'open' ? 'Open' : c.status === 'met' ? 'Met' : 'Waived'}</Badge>
-              {c.status === 'open' && lapse.state !== 'lapsed' && (
+              {c.status === 'open' && (live ? live.canChange : lapse.state !== 'lapsed') && (
                 <div className="yx-hire-list__actions">
-                  <Button size="sm" onClick={() => set(c.id, 'met')}>
+                  <Button size="sm" onClick={() => met(c)}>
                     Mark met
                   </Button>
-                  <Button size="sm" onClick={() => set(c.id, 'waived')}>
+                  <Button size="sm" onClick={() => (setWaiving(c), setReason(''), setTried(false))}>
                     Waive with reason
                   </Button>
                 </div>
@@ -300,7 +512,55 @@ export function OfferConditionsTab({ conditions: initial, lapseDate, today }: { 
           );
         })}
       </ul>
-      <Button icon={Plus}>Add condition</Button>
+      {conditions.length === 0 && <EmptyState compact title="No conditions on this offer." />}
+      {(!live || live.canChange) && (
+        <Button icon={Plus} onClick={() => (setAdding(true), setName(''), setDue(lapseDate), setTried(false))}>
+          Add condition
+        </Button>
+      )}
+      {waiving && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setWaiving(null)}
+          title={`Waive "${waiving.name}"?`}
+          consequence="The reason is kept with the offer and shown to everyone who opens it."
+          confirmLabel="Waive"
+          onConfirm={async () => {
+            setTried(true);
+            if (reason.trim().length < 3) return (setTimeout(() => document.getElementById('oc-reason')?.focus(), 0), false);
+            await set(waiving, 'waived', reason.trim());
+            setWaiving(null);
+          }}
+        >
+          <FormField id="oc-reason" label="Reason" required error={tried && reason.trim().length < 3 ? 'Say why it is waived, in a few words.' : null}>
+            <TextArea value={reason} onChange={setReason} rows={3} maxLength={500} />
+          </FormField>
+        </ConfirmDialog>
+      )}
+      {adding && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setAdding(false)}
+          title="Add a condition"
+          confirmLabel="Add condition"
+          onConfirm={async () => {
+            setTried(true);
+            if (name.trim().length < 2) return (setTimeout(() => document.getElementById('oc-name')?.focus(), 0), false);
+            if (!due) return (setTimeout(() => document.getElementById('oc-due')?.focus(), 0), false);
+            if (live) await live.onAdd(name.trim(), dayKey(due));
+            else setLocal((cs) => [...cs, { id: `oc${cs.length + 1}`, name: name.trim(), due, status: 'open' }]);
+            toast?.toast({ tone: 'success', title: 'Condition added' });
+            setAdding(false);
+          }}
+        >
+          <FormField id="oc-name" label="Condition" required error={tried && name.trim().length < 2 ? 'Name the condition, e.g. Medical fitness.' : null}>
+            <TextField value={name} onChange={setName} maxLength={200} />
+          </FormField>
+          <FormField id="oc-due" label="Due" required error={tried && !due ? 'Choose the due date.' : null}>
+            <DatePicker id="oc-due" aria-label="Due" value={due} onChange={setDue} min={today} />
+          </FormField>
+        </ConfirmDialog>
+      )}
     </div>
   );
 }
@@ -314,7 +574,29 @@ const PERSON_TYPE_TEXT: Record<NonNullable<OfferRecordProps['handoff']>['personT
 };
 
 // HIR-09 (offer record: status, hand-off, versions) + HIR-29
-export function OfferRecordScreen({ candidate, job, status, ctc, conditions, lapseDate, today, handoff, declineReason, activity, defaultTab = 'overview', persona = 'recruiter' }: OfferRecordProps) {
+export function OfferRecordScreen(p: OfferRecordProps) {
+  const { live } = p;
+  if (live && (live.state !== 'ready' || !live.offer))
+    return (
+      <HireFrame active="Offers & BGV">
+        {live.state === 'loading' ? (
+          <div className="yx-hire-stack" aria-busy="true" aria-label="Loading the offer">
+            <Skeleton height={64} />
+            <Skeleton height={240} />
+          </div>
+        ) : live.state === 'error' ? (
+          <ErrorState title="This offer could not be loaded." onRetry={live.onRetry} />
+        ) : live.state === 'denied' ? (
+          <NoAccessState grantedBy="your admin (a hiring key)" what="this offer" />
+        ) : (
+          <EmptyState title="Not found" description="This offer doesn't exist in your company." action={<Button onClick={live.onBack}>Back</Button>} />
+        )}
+      </HireFrame>
+    );
+  return live ? <LiveOfferRecordView live={live} defaultTab={p.defaultTab} /> : <SampleOfferRecord {...p} />;
+}
+
+function SampleOfferRecord({ candidate = '', job = '', status = 'Sent', ctc = 0, conditions = [], lapseDate = new Date(), today = new Date(), handoff, declineReason, activity = [], defaultTab = 'overview', persona = 'recruiter' }: OfferRecordProps) {
   return (
     <HireFrame active="Offers & BGV">
       <RecordLayout
@@ -415,6 +697,184 @@ export function OfferRecordScreen({ candidate, job, status, ctc, conditions, lap
           </TabsContent>
         </Tabs>
       </RecordLayout>
+    </HireFrame>
+  );
+}
+
+/** The same record with the offer from the API: status-led actions, pay only with the key, versions, conditions. */
+function LiveOfferRecordView({ live, defaultTab = 'overview' }: { live: LiveOfferRecord; defaultTab?: OfferRecordProps['defaultTab'] }) {
+  const o = live.offer!;
+  const toast = useToastIfAny();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<null | 'withdraw' | 'cancel' | 'employee'>(null);
+  const status = API_STATUS[o.status];
+  const lapseDate = fromIso(o.startDate);
+  const conditions: OfferCondition[] = o.conditions.map((c) => ({ id: c.id, name: c.name, due: fromIso(c.dueOn), status: c.status }));
+  const activity: TimelineItem[] = o.activity.map((a) => ({ id: a.id, actor: { name: a.actor }, action: a.action, at: new Date(a.at) }));
+  const ctc = o.current?.annualCtc ?? null;
+  const v0 = o.versions.find((v) => v.version === 0) ?? null;
+  const run = async (key: string, fn: () => Promise<unknown>, title: string | ((r: unknown) => string)) => {
+    setBusy(key);
+    setFailed(null);
+    try {
+      const r = await fn();
+      toast?.toast({ tone: 'success', title: typeof title === 'string' ? title : title(r) });
+    } catch (e) {
+      setFailed(failure(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+  const open = ['draft', 'pending_approval', 'approved', 'sent'].includes(o.status);
+  return (
+    <HireFrame active="Offers & BGV">
+      <RecordLayout
+        banner={
+          <>
+            {failed && <InlineAlert tone="danger" title="Not done">{failed}</InlineAlert>}
+            {o.status === 'withdrawn' ? (
+              <InlineAlert tone="danger" title="Offer withdrawn">The candidate can no longer accept it. Make a new offer from the application if needed.</InlineAlert>
+            ) : o.status === 'declined' ? (
+              <InlineAlert tone="info" title="Offer declined">Counted in offer-acceptance analytics.</InlineAlert>
+            ) : undefined}
+          </>
+        }
+        header={
+          <ObjectHeader
+            name={`Offer · ${o.candidate.name}`}
+            icon={FileText}
+            secondary={`${o.job.title} · version ${o.currentVersion}`}
+            status={<Badge tone={OFFER_TONE[status]}>{status}</Badge>}
+            facts={[
+              { label: 'Fixed CTC', value: !o.canSeePay ? 'Shown with the offer-pay key' : ctc !== null ? formatINR(ctc) : 'Text offer (version 0)' },
+              { label: 'Joining', value: formatDate(lapseDate) },
+              { label: 'Expires', value: formatDate(new Date(o.expiresAt)) },
+              { label: 'Hand-off', value: o.joiner ? 'Manual · joiner added' : o.status === 'accepted' ? 'Manual · waiting for HR' : '—' },
+            ]}
+            actions={
+              o.status === 'accepted' && !o.joiner ? (
+                <Button variant="primary" icon={UserPlus} onClick={() => setDialog('employee')}>
+                  Create employee
+                </Button>
+              ) : open ? (
+                <>
+                  {o.canSeePay && (
+                    <Button variant={o.status === 'sent' ? 'primary' : undefined} onClick={live.onRevise}>
+                      Revise offer
+                    </Button>
+                  )}
+                  {o.status === 'draft' && (
+                    <Button variant="primary" icon={Send} loading={busy === 'submit'} onClick={() => void run('submit', live.onSubmit, (r) => String(r))}>
+                      Send for approval
+                    </Button>
+                  )}
+                  {o.status === 'approved' && (
+                    <Button variant="primary" icon={Send} loading={busy === 'send'} onClick={() => void run('send', live.onSend, 'Offer sent to the candidate')}>
+                      Send offer
+                    </Button>
+                  )}
+                </>
+              ) : undefined
+            }
+            menu={
+              <>
+                {o.canSeePay && <MenuItem onSelect={() => void run('letter', live.onLetter, 'Letter opened')}>Download letter</MenuItem>}
+                {o.status === 'pending_approval' && <MenuItem onSelect={() => setDialog('cancel')}>Take back from approval</MenuItem>}
+                {o.status === 'sent' && (
+                  <MenuItem destructive onSelect={() => setDialog('withdraw')}>
+                    Withdraw offer
+                  </MenuItem>
+                )}
+              </>
+            }
+          />
+        }
+        aside={
+          <>
+            <Text weight="semibold">Activity</Text>
+            <Timeline items={activity} today={live.now} />
+          </>
+        }
+      >
+        {o.status === 'accepted' && (
+          <InlineAlert tone="info" title={o.joiner ? 'Joiner added in People' : 'In "Ready to onboard"'}>
+            {o.joiner ? 'Pre-boarding runs in People.' : 'HR adds the joiner in People from this offer.'} At joining, the offer&rsquo;s pay goes to Pay as the first salary, for approval. Retrying never creates a second employee.
+          </InlineAlert>
+        )}
+        {o.approval?.status === 'pending' && (
+          <InlineAlert tone="info" title="Waiting for approval">
+            {o.approval.steps.map((s) => `${s.name}: ${s.state === 'approved' ? 'approved' : s.state === 'open' ? `waiting for ${s.approvers.join(', ') || 'an approver'}` : s.state}`).join(' · ')}
+          </InlineAlert>
+        )}
+        <Tabs defaultValue={defaultTab}>
+          <TabsList aria-label="Offer sections">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="conditions" count={conditions.filter((c) => c.status === 'open').length}>
+              Conditions
+            </TabsTrigger>
+            <TabsTrigger value="versions" count={o.versions.length}>
+              Versions
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="overview">
+            {!o.canSeePay ? (
+              <InlineAlert tone="info" title="Pay hidden">Only people allowed to see offer pay see the amounts. Everything else about the offer is here.</InlineAlert>
+            ) : o.current?.lines ? (
+              <div className="yx-hire-stack">
+                <CtcBreakupTable lines={o.current.lines} />
+                <Text size="sm" tone="secondary">
+                  {o.current.bandText}
+                  {o.current.joiningBonus ? ` Joining bonus ${formatINR(o.current.joiningBonus)}, repaid if the person leaves within ${o.current.clawbackMonths} months.` : ''}
+                </Text>
+              </div>
+            ) : (
+              <InlineAlert tone="info" title="Text offer (version 0)">{v0?.text ?? 'Made before CTC lines.'} Revise it to give it CTC lines.</InlineAlert>
+            )}
+          </TabsContent>
+          <TabsContent value="conditions">
+            <OfferConditionsTab
+              conditions={conditions}
+              lapseDate={lapseDate}
+              today={live.now}
+              live={{
+                canChange: o.status !== 'withdrawn' && o.status !== 'declined',
+                notes: Object.fromEntries(o.conditions.map((c) => [c.id, c.reason])),
+                onAdd: live.onAddCondition,
+                onMet: live.onMet,
+                onWaive: live.onWaive,
+              }}
+            />
+          </TabsContent>
+          <TabsContent value="versions">
+            <ul className="yx-hire-list" aria-label="Offer versions">
+              {o.versions.map((v) => (
+                <li key={v.version} className="yx-hire-list__item">
+                  <div className="yx-hire-list__main">
+                    <Text weight="medium">
+                      Version {v.version}
+                      {v.annualCtc !== null ? ` · ${formatINR(v.annualCtc)}` : ''}
+                    </Text>
+                    <Text size="sm" tone="secondary">
+                      {v.version === 0 ? (v.text ?? 'Text offer (pay hidden)') : [v.note, v.needsApproval ? 'needed approval' : 'no new approval needed', formatDate(new Date(v.at)), v.by].filter(Boolean).join(' · ')}
+                    </Text>
+                  </div>
+                  <Badge tone={v.current ? 'success' : undefined}>{v.current ? 'Current' : 'Superseded'}</Badge>
+                </li>
+              ))}
+            </ul>
+          </TabsContent>
+        </Tabs>
+      </RecordLayout>
+      {dialog === 'withdraw' && (
+        <ConfirmDialog open destructive onOpenChange={(x) => !x && setDialog(null)} title={`Withdraw the offer to ${o.candidate.name}?`} consequence="The link in their email stops working. You can't undo this." confirmLabel="Withdraw offer" onConfirm={async () => (await live.onWithdraw(), toast?.toast({ tone: 'success', title: 'Offer withdrawn' }), setDialog(null))} />
+      )}
+      {dialog === 'cancel' && (
+        <ConfirmDialog open onOpenChange={(x) => !x && setDialog(null)} title="Take the offer back from approval?" consequence="The approvers' tasks close and the offer goes back to draft for you to change." confirmLabel="Take back" onConfirm={async () => (await live.onCancelApproval(), toast?.toast({ tone: 'success', title: 'Back to draft' }), setDialog(null))} />
+      )}
+      {dialog === 'employee' && (
+        <ConfirmDialog open onOpenChange={(x) => !x && setDialog(null)} title={`Create employee for ${o.candidate.name}?`} consequence="People › Onboarding opens with this offer: check the place and the joining day there, then add the joiner. Someone who worked here before joins on their own record." confirmLabel="Open in People" onConfirm={() => (live.onCreateEmployee(), setDialog(null))} />
+      )}
     </HireFrame>
   );
 }

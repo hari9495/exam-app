@@ -1696,11 +1696,76 @@ model Offer {
   respondedAt     DateTime?     @map("responded_at") @db.Timestamptz(3)
   createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  /// HIR-09: the offered grade, the version in force (0 = an older free-text offer), the letter template, the P03 request.
+  gradeId         String?       @map("grade_id") @db.Uuid
+  currentVersion  Int           @default(0) @map("current_version")
+  templateId      String?       @map("template_id") @db.Uuid
+  wfRequestId     String?       @map("wf_request_id") @db.Uuid
+  /// Founder decision 4: e-sign only when the offer template switches it on (copied at send); the evidence of acceptance.
+  esign           Boolean       @default(false)
+  esignEvidence   Json?         @map("esign_evidence")
+  createdBy       String?       @map("created_by") @db.Uuid
   pipelineEntry   PipelineEntry @relation(fields: [pipelineEntryId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  versions        OfferVersion[]
+  conditions      OfferCondition[]
 
   @@index([organizationId, pipelineEntryId])
   @@index([organizationId, candidateId])
   @@map("offers")
+}
+
+// HIR-09 (founder decision 5): offer pay as CTC lines, one row per version; the lines are the salary template worked out
+// for the candidate (Pay's breakup), kept as given. Pay data: amounts only with ats.offer.compensation.view.
+model OfferVersion {
+  id                      String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId          String   @map("organization_id") @db.Uuid
+  offerId                 String   @map("offer_id") @db.Uuid
+  version                 Int
+  annualCtc               Decimal  @map("annual_ctc") @db.Decimal(14, 2)
+  variablePay             Decimal  @default(0) @map("variable_pay") @db.Decimal(14, 2)
+  joiningBonus            Decimal  @default(0) @map("joining_bonus") @db.Decimal(14, 2)
+  clawbackMonths          Int?     @map("clawback_months")
+  salaryTemplateVersionId String   @map("salary_template_version_id") @db.Uuid
+  gradeId                 String?  @map("grade_id") @db.Uuid
+  bandMin                 Decimal? @map("band_min") @db.Decimal(14, 2)
+  bandMax                 Decimal? @map("band_max") @db.Decimal(14, 2)
+  bandPosition            String   @map("band_position") @db.VarChar(10)
+  lines                   Json
+  monthlyGross            Decimal  @map("monthly_gross") @db.Decimal(14, 2)
+  startDate               DateTime @map("start_date") @db.Timestamptz(3)
+  expiresAt               DateTime @map("expires_at") @db.Timestamptz(3)
+  locationId              String?  @map("location_id") @db.Uuid
+  letterKind              String   @default("offer") @map("letter_kind") @db.VarChar(10)
+  note                    String?  @db.VarChar(500)
+  /// The free-text pay of an older offer this first version replaced (version 0, founder decision 5).
+  replacedText            String?  @map("replaced_text") @db.Text
+  needsApproval           Boolean  @map("needs_approval")
+  createdBy               String?  @map("created_by") @db.Uuid
+  createdAt               DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  offer                   Offer    @relation(fields: [offerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([offerId, version], map: "offer_versions_offer_version_key")
+  @@index([organizationId, offerId], map: "offer_versions_org_offer_idx")
+  @@map("offer_versions")
+}
+
+// HIR-29: an offer's conditions, open until met or waived (a waiver always has its reason).
+model OfferCondition {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  offerId        String    @map("offer_id") @db.Uuid
+  name           String    @db.VarChar(200)
+  dueOn          DateTime  @map("due_on") @db.Date
+  status         String    @default("open") @db.VarChar(10)
+  reason         String?   @db.VarChar(500)
+  decidedBy      String?   @map("decided_by") @db.Uuid
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  offer          Offer     @relation(fields: [offerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([organizationId, offerId], map: "offer_conditions_org_offer_idx")
+  @@map("offer_conditions")
 }
 
 model ApprovalChain {
@@ -1878,6 +1943,8 @@ model OfferTemplate {
   isDefault      Boolean  @default(false) @map("is_default")
   subject        String   @db.Text
   body           String   @db.Text
+  /// HIR-09 (founder decision 4): the candidate signs electronically only when this is on; else accepting by the link.
+  esign          Boolean  @default(false)
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([organizationId, name])

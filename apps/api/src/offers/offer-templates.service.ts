@@ -11,6 +11,8 @@ export interface OfferTemplateView {
   subject: string;
   body: string;
   isDefault: boolean;
+  /** HIR-09: the candidate signs electronically (a one-time code) only when this is on. */
+  esign: boolean;
 }
 
 type Tx = Prisma.TransactionClient;
@@ -23,7 +25,7 @@ export class OfferTemplatesService {
   ) {}
 
   private toView(row: OfferTemplate): OfferTemplateView {
-    return { id: row.id, name: row.name, subject: row.subject, body: row.body, isDefault: row.isDefault };
+    return { id: row.id, name: row.name, subject: row.subject, body: row.body, isDefault: row.isDefault, esign: row.esign };
   }
 
   // The one place that enforces "at most one isDefault row per org" -- clears every row's flag
@@ -53,7 +55,7 @@ export class OfferTemplatesService {
         where: { organizationId: context.organizationId as string, isDefault: true },
       });
       if (row) return this.toView(row);
-      return { id: null, name: 'Default offer letter', isDefault: true, ...DEFAULT_OFFER_TEMPLATE };
+      return { id: null, name: 'Default offer letter', isDefault: true, esign: false, ...DEFAULT_OFFER_TEMPLATE };
     });
   }
 
@@ -79,7 +81,7 @@ export class OfferTemplatesService {
       let row: OfferTemplate;
       try {
         row = await tx.offerTemplate.create({
-          data: { organizationId: orgId, name: dto.name, subject: dto.subject, body: dto.body, isDefault },
+          data: { organizationId: orgId, name: dto.name, subject: dto.subject, body: dto.body, isDefault, esign: dto.esign ?? false },
         });
       } catch (error) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -112,6 +114,7 @@ export class OfferTemplatesService {
       if (dto.name !== undefined) data.name = dto.name;
       if (dto.subject !== undefined) data.subject = dto.subject;
       if (dto.body !== undefined) data.body = dto.body;
+      if (dto.esign !== undefined) data.esign = dto.esign;
       if (dto.isDefault === true) {
         await this.clearOrgDefault(tx, orgId);
         data.isDefault = true;
@@ -132,7 +135,7 @@ export class OfferTemplatesService {
         action: 'offer_template.updated',
         entityType: 'offer_template',
         entityId: id,
-        metadata: { name: row.name },
+        metadata: { name: row.name, ...(dto.esign !== undefined ? { esign: dto.esign } : {}) },
       });
       return this.toView(row);
     });

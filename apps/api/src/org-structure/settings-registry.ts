@@ -213,6 +213,11 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // HIR-05 founder answer 272: an ex-employee HR marked not eligible for rehire cannot move past the first stage (into
   // Screening or later) until HR clears the flag with a reason. Off by default: the banner only tells.
   'hiring.rehire_flag.blocks_screening': { label: 'Hiring: "not eligible for rehire" stops an ex-employee at the first stage', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
+  // HIR-09 founder decision 4: an offer above the grade pay range adds one approval step; who approves it is the
+  // company's choice (starter: the HR head, the head of the department coded HR; without one, the people who see offer pay).
+  'hiring.offer.band_approver': { label: 'Hiring: who approves an offer above the grade pay range', scopes: ['tenant'], dated: false, values: ['hr_head', 'hiring_manager'], default: 'hr_head', labels: { hr_head: 'The HR head', hiring_manager: 'The hiring manager' } },
+  // HIR-29: the conditions a new offer starts with when the recruiter ticks "Add conditions" (one a line; due on the joining day).
+  'hiring.offer.default_conditions': { label: 'Hiring: conditions a new offer starts with (one a line)', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 600 }, default: 'Background check clear\nDegree certificate uploaded\nRelieving letter from current employer' },
   // HIR-06: an interviewer's scorecard shows as overdue this many hours after the interview ended (reminders still go
   // at 24 and 48 hours).
   'hiring.scorecard.overdue_hours': { label: 'Hiring: a scorecard is overdue this many hours after the interview', scopes: ['tenant'], dated: false, values: ['12', '24', '48', '72'], default: '24' },
