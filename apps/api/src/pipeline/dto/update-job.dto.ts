@@ -14,8 +14,9 @@ export class UpdateJobDto {
   @IsOptional() @IsIn(EMPLOYMENT_TYPES as unknown as string[])
   employmentType?: string;
 
-  @IsOptional() @IsIn(['open', 'closed'])
-  status?: 'open' | 'closed';
+  /** HIR-03 answer 223: on_hold hides the job from the careers site, applications and boards; candidates stay. */
+  @IsOptional() @IsIn(['open', 'closed', 'on_hold'])
+  status?: 'open' | 'closed' | 'on_hold';
 
   @IsOptional() @IsBoolean()
   publicApplyEnabled?: boolean;
@@ -26,6 +27,10 @@ export class UpdateJobDto {
   /** M10 AT3: show the salary range on the careers site and in Google for Jobs. */
   @IsOptional() @IsBoolean()
   showSalary?: boolean;
+
+  /** HIR-03 answer 222: the job's recruiter (a staff member of the company); default the person who opens it. */
+  @IsOptional() @IsUUID()
+  recruiterUserId?: string;
 
   /** HIR-24: the period of the pay range. */
   @IsOptional() @IsIn(['year', 'month', 'hour'])

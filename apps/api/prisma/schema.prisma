@@ -1228,6 +1228,9 @@ model Job {
   /// HIR-24: the pay period of the range, and whether the application asks about current or past pay (never where the law bans it).
   salaryPeriod            String                @default("year") @map("salary_period") @db.VarChar(5)
   askPayHistory           Boolean               @default(false) @map("ask_pay_history")
+  /// HIR-03 answers 222, 225: the recruiter (default: who opened it) and the company job number (JOB-0001 on, never reused).
+  recruiterUserId         String?               @map("recruiter_user_id") @db.Uuid
+  jobNumber               Int?                  @map("job_number")
   /// M10 AT5: the scorecard new interviews for this job use, unless the scheduler picks another.
   scorecardTemplateId     String?               @map("scorecard_template_id") @db.Uuid
   headcount               Int?
@@ -1242,8 +1245,17 @@ model Job {
   agencyJobs              AgencyJob[]
   agencySubmissions       AgencySubmission[]
 
+  @@unique([organizationId, jobNumber], map: "jobs_org_job_number_key")
   @@index([organizationId, status])
   @@map("jobs")
+}
+
+/// HIR-03 answer 225: the last job number a company gave out (bumped with each new job; never goes back).
+model JobNumberCounter {
+  organizationId String @id @map("organization_id") @db.Uuid
+  lastNumber     Int    @map("last_number")
+
+  @@map("job_number_counters")
 }
 
 model Pipeline {

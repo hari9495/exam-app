@@ -21,6 +21,10 @@ function withPayMocks(tx: any) {
   tx.statutoryRuleSet = { findMany: jest.fn().mockResolvedValue([]), ...tx.statutoryRuleSet };
   tx.setting = { findMany: jest.fn().mockResolvedValue([]), ...tx.setting };
   tx.jobBoard = { findMany: jest.fn().mockResolvedValue([]), ...tx.jobBoard };
+  // HIR-03 answers 222, 225, 229: the job number counter, the company's default entity (India) and the recruiter.
+  tx.$queryRaw = tx.$queryRaw ?? jest.fn().mockResolvedValue([{ n: 1 }]);
+  tx.legalEntity = { findFirst: jest.fn().mockResolvedValue(null), ...tx.legalEntity };
+  tx.user = { findFirst: jest.fn().mockResolvedValue({ id: 'u' }), ...tx.user };
   tx.jobBoardPublication = { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0), ...tx.jobBoardPublication };
   return tx;
 }

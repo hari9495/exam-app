@@ -38,6 +38,10 @@ export class CreateJobDto {
   @IsOptional() @IsBoolean()
   showSalary?: boolean;
 
+  /** HIR-03 answer 222: the job's recruiter (a staff member of the company); default the person who opens it. */
+  @IsOptional() @IsUUID()
+  recruiterUserId?: string;
+
   /** HIR-24: the period of the pay range. */
   @IsOptional() @IsIn(['year', 'month', 'hour'])
   salaryPeriod?: 'year' | 'month' | 'hour';
