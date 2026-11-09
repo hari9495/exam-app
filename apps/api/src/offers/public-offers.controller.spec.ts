@@ -29,6 +29,7 @@ describe('PublicOffersController', () => {
 
   it('respond passes the e-sign code and the disclosure with the caller (HIR-09)', () => {
     const { service, controller } = setup();
+    service.respondPublic.mockResolvedValue({ status: 'accepted' });
     controller.respond('t', { action: 'accept', code: '123456', disclosureAccepted: true } as any, { ip: '10.0.0.1', get: () => 'UA' } as any);
     expect(service.respondPublic).toHaveBeenCalledWith('t', 'accept', { code: '123456', disclosureAccepted: true, ip: '10.0.0.1', device: 'UA' });
   });
