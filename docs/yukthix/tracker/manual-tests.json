@@ -17228,6 +17228,78 @@
     "note": "Positive and negative (no time chosen, repeat accept, expired)."
   },
   {
+    "id": "MT-HIR-CAR-07",
+    "area": "Hiring · Careers follow-ups (13 Nov 2026)",
+    "screen": "Create job · Apply by and Experience; the job closes after the day",
+    "url": "http://localhost:3000/yx/hiring/jobs",
+    "account": "hr-tester@demo-org.test (recruiter key). Browser window 1278 x 635.",
+    "steps": [
+      "Press Create job; type the title only and press Create job.",
+      "Create another job with Apply by = tomorrow and Experience = \"3 to 5 years\"; publish it on the careers site.",
+      "Open the careers site, then the job page, not signed in.",
+      "Type 61 characters in Experience on a new job and press Create job.",
+      "Change the second job's Apply by to yesterday (job settings) and open its apply link and the careers site again."
+    ],
+    "expected": "Step 1: the job is made with no Apply by or Experience (both optional). Step 2: toast for 5 s. Step 3: the job page shows \"3 to 5 years\" and the closing day. Step 4: the field stops at 60 characters (the API refuses longer). Step 5: the apply link says \"This role is not accepting applications\" and the job is gone from the careers list.",
+    "stories": [
+      "Screens/Hiring/HIR-03 · Jobs and job workspace · Create job sheet",
+      "Screens/Portals/T9-09 · Careers site · Job page with pay range and apply"
+    ],
+    "note": "Positive and negative (empty optional fields, too long, after the day)."
+  },
+  {
+    "id": "MT-HIR-CAR-08",
+    "area": "Hiring · Careers follow-ups (13 Nov 2026)",
+    "screen": "Apply · international number for a job outside India",
+    "url": "http://localhost:3000/yx/apply/<token>",
+    "account": "Not signed in; a published job whose location is outside India (for example a Dubai or New York office) and one in India. Browser window 1278 x 635.",
+    "steps": [
+      "Open the job outside India; type the number 12 and press Send application with the rest filled.",
+      "Type +44 7400 123456 and send.",
+      "Open the job in India; type 447400123456 and press Send application."
+    ],
+    "expected": "Step 1: the field says \"Enter your number with the country code, like +44 7400 123456\"; nothing is sent. Step 2: \"Application sent\"; the candidate's phone is +447400123456. Step 3: the +91 field says \"Enter a 10-digit mobile number starting with 6, 7, 8 or 9\".",
+    "stories": [
+      "Screens/Portals/T9-09 · Careers site · Job page · outside India (international number)"
+    ],
+    "note": "Positive and negative (no country code; non-Indian number on an India job)."
+  },
+  {
+    "id": "MT-HIR-CAR-09",
+    "area": "Hiring · Careers follow-ups (13 Nov 2026)",
+    "screen": "Candidate pages · company logo, colour, careers link and white-label",
+    "url": "http://localhost:3000/yx/candidate/<token>, /yx/offer/<token>, /yx/interview/<token>",
+    "account": "hr-tester@demo-org.test sets the company logo (Settings › Company); the links from MT-HIR-CAR-06. White-label is switched by YukthiX staff (setting brand.white_label). Browser window 1278 x 635.",
+    "steps": [
+      "Open the candidate page, the offer link and the interview link.",
+      "Ask YukthiX staff to switch brand.white_label on for the demo company; reload the three pages and the careers site.",
+      "Switch it off again; reload."
+    ],
+    "expected": "Step 1: the company logo (not text) in the header of each page, the company colour, the careers link; \"Powered by YukthiX\" in the footer. Step 2: no \"Powered by YukthiX\" anywhere. Step 3: it is back. A company with no logo shows its name in text.",
+    "stories": [
+      "Screens/Portals/T9-09 · Careers site · Candidate page · company logo",
+      "Screens/Portals/T9-09 · Careers site · Careers home · white-label"
+    ],
+    "note": "Positive and negative (no logo, white-label off)."
+  },
+  {
+    "id": "MT-HIR-CAR-10",
+    "area": "Hiring · Careers follow-ups (13 Nov 2026)",
+    "screen": "Application drawer · pay history (pay-key holders only); quarantined résumé email",
+    "url": "http://localhost:3000/yx/hiring/candidates",
+    "account": "hr-tester@demo-org.test (offer-pay key), then panel@demo-org.test (no pay key). Browser window 1278 x 635.",
+    "steps": [
+      "Apply to a job that asks about pay (MT-HIR-CAR-02) with 5,20,000; as hr-tester open the candidate › Applications › the application.",
+      "Sign in as panel@demo-org.test and open the same application.",
+      "Apply again with the EICAR test file as the résumé (another email you can read)."
+    ],
+    "expected": "Step 1: a \"Pay history\" card: \"₹5,20,000 a year\" with \"Shown only to people allowed to see offer pay\". Step 2: no Pay history card. Step 3: the application is received, the résumé is quarantined, and the applicant gets \"We could not accept your résumé file for …\" with a link to their candidate page to upload another.",
+    "stories": [
+      "Screens/Hiring/HIR-05 · Candidate record · Application · interviews, messages, notes, offers"
+    ],
+    "note": "Positive and negative (no pay key)."
+  },
+  {
     "id": "MT-HIR-SET-08",
     "area": "Hiring · Settings 6.1 follow-ups, answers 341, 345, 348 (12 Nov 2026)",
     "screen": "Settings › Hiring: the seven settings (341)",
