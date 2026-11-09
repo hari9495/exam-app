@@ -135,6 +135,8 @@ export interface DataTableProps<R> {
   views?: ReactNode;
   /** Export respecting P02 field classes is done by the server; the table passes the visible columns. */
   onExport?: (format: 'csv' | 'xlsx', visibleKeys: string[]) => void;
+  /** The formats the Export menu offers (default both). A screen that only writes CSV passes ['csv']. */
+  exportFormats?: readonly ('csv' | 'xlsx')[];
   /**
    * Phone cards: two lines per row, the primary cell (with the "…" menu beside it) and then the other short cells on one
    * line joined by " · " ("Thu 15 Jan 2026 · Holiday · Past"), instead of one label / value line each.
@@ -297,6 +299,7 @@ export function DataTable<R>(props: DataTableProps<R>) {
     toolbar,
     views,
     onExport,
+    exportFormats = ['csv', 'xlsx'],
     cardSummary,
   } = props;
 
@@ -592,8 +595,8 @@ export function DataTable<R>(props: DataTableProps<R>) {
             </Button>
           </MenuTrigger>
           <MenuContent align="end">
-            <MenuItem onSelect={() => onExport('csv', visible.map((c) => c.key))}>CSV (visible columns)</MenuItem>
-            <MenuItem onSelect={() => onExport('xlsx', visible.map((c) => c.key))}>Excel (visible columns)</MenuItem>
+            {exportFormats.includes('csv') && <MenuItem onSelect={() => onExport('csv', visible.map((c) => c.key))}>CSV (visible columns)</MenuItem>}
+            {exportFormats.includes('xlsx') && <MenuItem onSelect={() => onExport('xlsx', visible.map((c) => c.key))}>Excel (visible columns)</MenuItem>}
           </MenuContent>
         </Menu>
       )}
