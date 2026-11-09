@@ -114,7 +114,7 @@ describe('Settings 6.1 Hiring', () => {
       { key: 'ats.referral.qualify_days', value: '60' },
       { key: 'hiring.requisition.default_recruiter', value: users.rec },
     ]).expect(200)).body as Settings;
-    expect(after.values).toEqual({ 'ats.retention_months': '18', 'hiring.reject.email_candidate': 'on', 'ats.referral.bonus_inr': '50000', 'ats.referral.qualify_days': '60', 'hiring.requisition.default_recruiter': users.rec });
+    expect(after.values).toEqual({ 'ats.retention_months': '18', 'hiring.reject.email_candidate': 'on', 'ats.referral.bonus_inr': '50000', 'ats.referral.qualify_days': '60', 'hiring.requisition.default_recruiter': users.rec, 'hiring.offer.band_approver': 'hr_head', 'hiring.offer.clawback_basis': 'full' });
     expect(after.lastChange).toMatchObject({ by: `hra ${run}` });
     // The other screens read the same company settings.
     expect((await api('rec', 'get', '/referrals/policy').expect(200)).body).toMatchObject({ bonusInr: 50000, qualifyDays: 60 });
