@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { BulkInterviewDayScreen } from './hiring-pipeline';
+import { InterviewDaySheet } from './interview-day';
 import { D } from './hiring-data';
 import { makeEmployees } from '../_kit/data';
 
@@ -20,3 +21,23 @@ export const Assigned: S = { name: 'Auto-assigned · ready to send', render: () 
 export const OverCapacity: S = { name: 'Over capacity · some unassigned', render: () => <BulkInterviewDayScreen drive={drive} date={D(2026, 10, 14)} candidates={CANDS} panels={PANELS} slots={SLOTS} /> };
 export const NotAssigned: S = { name: 'Empty · not assigned yet', render: () => <BulkInterviewDayScreen drive={drive} date={D(2026, 10, 14)} candidates={CANDS.slice(0, 22)} panels={PANELS} slots={SLOTS} autoAssigned={false} /> };
 export const Sent: S = { name: 'Invites sent', render: () => <BulkInterviewDayScreen drive={drive} date={D(2026, 10, 14)} candidates={CANDS.slice(0, 22)} panels={PANELS} slots={SLOTS} invitesSent /> };
+// Drawn for the live page (HIR-27 build): each row's own result, the plan sheet, and no day yet.
+export const SentSomeFailed: S = {
+  name: 'Invites sent · some not sent',
+  render: () => <BulkInterviewDayScreen drive={drive} date={D(2026, 10, 14)} candidates={CANDS.slice(0, 22)} panels={PANELS} slots={SLOTS} invitesSent failures={{ [CANDS[4]!]: 'The invite email did not go. Send again.', [CANDS[9]!]: 'No longer in the hiring process (rejected or archived).' }} />,
+};
+const JOBS = [{ value: 'j1', label: 'Graduate Engineer Trainee', stages: [{ value: 's1', label: 'Shortlisted' }, { value: 's2', label: 'Panel interview' }] }];
+const PEOPLE = ['Prakash Menon', 'Deepa Das', 'Karthik Subramanian', 'Thomas George'].map((n, i) => ({ value: `u${i}`, label: n }));
+export const Plan: S = {
+  name: 'Plan an interview day',
+  render: () => (
+    <>
+      <BulkInterviewDayScreen drive={drive} date={D(2026, 10, 14)} candidates={CANDS.slice(0, 22)} panels={PANELS} slots={SLOTS} autoAssigned={false} />
+      <InterviewDaySheet open onOpenChange={() => {}} jobs={JOBS} people={PEOPLE} slotMinutes={45} today={D(2026, 10, 10)} onCreate={async () => {}} />
+    </>
+  ),
+};
+export const NoDays: S = {
+  name: 'No interview days yet',
+  render: () => <BulkInterviewDayScreen live={{ state: 'ready', onRetry: () => {}, days: [], day: null, canManage: true, onPickDay: () => {}, onPlan: () => {}, onAssign: async () => {}, onSend: async () => ({ sent: 0, failed: 0 }) }} />,
+};

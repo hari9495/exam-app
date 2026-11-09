@@ -28,6 +28,7 @@ import { EmailDialog, PickDialog, StageBadge, istDay } from './candidate-dialogs
 import { AddCandidateSheet, BulkActionsSheet, type AddCandidateSheetProps, type BulkActionsSheetProps } from './pipeline-sheets';
 import { ApplicationDrawer, ScheduleDialog, type ApplicationDrawerProps, type ScheduleDialogProps } from './candidate-application';
 import type { CandidateProfileView, Choice, EmailCompose, EmailTemplateChoice, InterviewRangeRow, InterviewView, MergeChoices, MyInterviewRow, Recommendation as LiveRecommendation, ScorecardInput } from './live/types';
+import { DayBoard, LiveInterviewDayView, type LiveInterviewDay } from './interview-day';
 import './hiring.css';
 
 type ListState = 'ready' | 'loading' | 'error';
@@ -1186,6 +1187,8 @@ export interface LiveInterviewCalendar {
   onDate: (date: Date) => void;
   /** Opens the HIR-07 scorecard page. */
   onOpen: (interviewId: string) => void;
+  /** HIR-27: recruiting opens the interview days. */
+  onInterviewDays?: () => void;
 }
 
 export const DEFAULT_RULES: SlotRules = { dayStart: 9 * 60 + 30, dayEnd: 17 * 60 + 30, duration: 60, buffer: 15, maxPerDay: 3 };
@@ -1247,7 +1250,14 @@ function SampleInterviewCalendar({ events, persona, today, panel = [], rules = D
       <PageHeader
         title={persona === 'recruiter' ? 'Interviews' : 'My interviews'}
         description={persona === 'recruiter' ? 'Panel rounds for your jobs. Free / busy comes from connected calendars.' : 'Interviews you are on, and scorecards you owe.'}
-        actions={persona === 'recruiter' ? <Button variant="primary" icon={CalendarPlus} onClick={() => setOpen(true)}>Find a slot</Button> : undefined}
+        actions={
+          persona === 'recruiter' ? (
+            <>
+              <Button icon={Shuffle}>Interview days</Button>
+              <Button variant="primary" icon={CalendarPlus} onClick={() => setOpen(true)}>Find a slot</Button>
+            </>
+          ) : undefined
+        }
       />
       {persona === 'interviewer' && <ScorecardsCard items={myInterviews} emptyText="No interviews assigned to you this week." />}
       <Calendar events={events} defaultView={persona === 'recruiter' ? 'week' : 'agenda'} defaultDate={today} today={today} aria-label="Interview calendar" />
@@ -1307,7 +1317,13 @@ export function myInterviewItems(rows: MyInterviewRow[]): MyInterviewItem[] {
 function LiveInterviewCalendarView({ live }: { live: LiveInterviewCalendar }) {
   const recruiter = live.persona === 'recruiter';
   const today = istWall(live.now);
-  const header = <PageHeader title={recruiter ? 'Interviews' : 'My interviews'} description={recruiter ? 'Every interview in the company, in India time (IST). Open one to read its scorecards.' : 'Interviews you are on, and scorecards you owe. Times are India time (IST).'} />;
+  const header = (
+    <PageHeader
+      title={recruiter ? 'Interviews' : 'My interviews'}
+      description={recruiter ? 'Every interview in the company, in India time (IST). Open one to read its scorecards.' : 'Interviews you are on, and scorecards you owe. Times are India time (IST).'}
+      actions={recruiter && live.onInterviewDays ? <Button icon={Shuffle} onClick={live.onInterviewDays}>Interview days</Button> : undefined}
+    />
+  );
   if (live.state !== 'ready')
     return (
       <HireFrame active="Interviews">
@@ -2019,78 +2035,33 @@ export interface BulkDayProps {
   slots: number[];
   invitesSent?: boolean;
   autoAssigned?: boolean;
+  /** Drawn (HIR-27 live): candidates whose invite did not go, with the reason shown on their row. */
+  failures?: Record<string, string>;
 }
 
-// HIR-27
-export function BulkInterviewDayScreen({ drive, date, candidates, panels, slots, invitesSent = false, autoAssigned = true }: BulkDayProps) {
+// HIR-27: the sample board, or the live page (`live`): the same DayBoard (interview-day.tsx).
+export function BulkInterviewDayScreen(props: BulkDayProps | { live: LiveInterviewDay }) {
+  return 'live' in props ? <LiveInterviewDayView live={props.live} /> : <SampleBulkInterviewDay {...props} />;
+}
+
+function SampleBulkInterviewDay({ drive, date, candidates, panels, slots, invitesSent = false, autoAssigned = true, failures = {} }: BulkDayProps) {
   const [assigned, setAssigned] = useState(autoAssigned);
   const [sent, setSent] = useState(invitesSent);
   const plan = assignInterviewDay(candidates, panels, slots);
-  const at = (panel: string, slot: number) => plan.assigned.find((a) => a.panel === panel && a.start === slot);
   return (
-    <HireFrame active="Interviews">
-      <PageHeader
-        title={`Interview day · ${drive}`}
-        description={`${formatDate(date)} · ${panels.length} panels × ${slots.length} slots = ${panels.length * slots.length} interviews`}
-        status={<Badge tone={sent ? 'success' : 'neutral'}>{sent ? 'Invites sent' : 'Draft'}</Badge>}
-        actions={
-          <>
-            <Button icon={Shuffle} onClick={() => setAssigned(true)} disabled={sent}>
-              Auto-assign
-            </Button>
-            <ConfirmDialog
-              trigger={
-                <Button variant="primary" icon={Send} disabled={!assigned || sent}>
-                  Send {plan.assigned.length} invites
-                </Button>
-              }
-              title={`Send ${plan.assigned.length} interview invites?`}
-              consequence={`Candidates get their slot, room and panel by email and WhatsApp (where they opted in). Panel members get calendar invites. ${plan.unassigned.length ? `${plan.unassigned.length} candidates without a slot get nothing yet.` : ''}`}
-              confirmLabel={`Send ${plan.assigned.length} invites`}
-              onConfirm={() => setSent(true)}
-            />
-          </>
-        }
-      />
-      {plan.unassigned.length > 0 && (
-        <InlineAlert tone="warning" title={`${plan.unassigned.length} candidates don't fit this day`}>
-          Add a panel or a slot, or move them to the next interview day: {plan.unassigned.join(', ')}.
-        </InlineAlert>
-      )}
-      {!assigned ? (
-        <EmptyState title="No one is assigned yet." description={`${candidates.length} shortlisted candidates are waiting. Auto-assign fills slots panel by panel; you can swap afterwards.`} action={<Button variant="primary" icon={Shuffle} onClick={() => setAssigned(true)}>Auto-assign</Button>} />
-      ) : (
-        <div className="yx-hire-slots__scroll" tabIndex={0} role="region" aria-label="Interview day assignments, scroll sideways">
-          <table className="yx-hire-daygrid">
-            <caption className="yx-visually-hidden">Assignments by panel and slot</caption>
-            <thead>
-              <tr>
-                <th scope="col">Slot</th>
-                {panels.map((p) => (
-                  <th scope="col" key={p.id}>
-                    {p.name}
-                    <Text size="xs" tone="secondary" as="div">
-                      {p.room} · {p.members}
-                    </Text>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {slots.map((s) => (
-                <tr key={s}>
-                  <th scope="row">{minutesToLabel(s)}</th>
-                  {panels.map((p) => {
-                    const a = at(p.id, s);
-                    return <td key={p.id}>{a ? <PersonLabel name={a.candidate} size={20} /> : <Text size="sm" tone="muted">Free</Text>}</td>;
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      <Checkbox label="Send WhatsApp reminders 2 hours before each slot (only to candidates who opted in)" defaultChecked />
-    </HireFrame>
+    <DayBoard
+      drive={drive}
+      date={date}
+      panels={panels}
+      slots={slots}
+      placed={plan.assigned.map((a) => ({ candidate: a.candidate, panel: a.panel, start: a.start, result: failures[a.candidate] ? 'failed' : sent ? 'sent' : 'ready', error: failures[a.candidate] ?? null }))}
+      unassigned={assigned ? plan.unassigned : []}
+      status={sent ? 'sent' : 'draft'}
+      assignedYet={assigned}
+      canManage
+      onAssign={() => setAssigned(true)}
+      onSend={() => (setSent(true), { sent: plan.assigned.length - Object.keys(failures).length, failed: Object.keys(failures).length })}
+      showReminders
+    />
   );
 }

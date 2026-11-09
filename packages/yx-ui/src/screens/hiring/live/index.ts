@@ -36,7 +36,7 @@ export { ApplicationDrawer, ScheduleDialog, type ApplicationDrawerProps, type Sc
 export { BulkOfferScreen, OfferBuilderScreen, OfferConditionsTab, OfferRecordScreen, type LiveConditions, type OfferBuilderProps, type OfferRecordProps } from '../hiring-offers';
 export { JobSettingsPanel, StageTargetsSheet, type LiveJobSettings, type StageTarget, type StageTargetChange, type JobSettingsPatch } from '../job-settings';
 // HIR-06 / HIR-07: the designed interview calendar and scorecard form, live with their `live` prop (stand-ins gone).
-export { InterviewCalendarScreen, ScorecardScreen, type LiveInterviewCalendar, type LiveScorecard } from '../hiring-pipeline';
+export { BulkInterviewDayScreen, InterviewCalendarScreen, ScorecardScreen, type LiveInterviewCalendar, type LiveScorecard } from '../hiring-pipeline';
 // Settings 6.1 shows templates read-only; this old page stays until template editing is drawn (answer 345).
 export { ScorecardTemplateSheet, asPerCent, type ScorecardTemplateSheetProps } from '../scorecard-template-sheet';
 // HIR-11 and HIR-12: the designed screens themselves (hiring-plan.tsx), made live with their `live` prop.
@@ -53,3 +53,5 @@ export { hiringSettingsPage, hiringSettingsChanges, type HiringSettingsData } fr
 // HIR-10 and HIR-20: the designed BGV tracker and Talent CRM (hiring-offers.tsx), live with their `live` prop (the
 // pools stand-in is gone).
 export { BgvTrackerScreen, TalentCrmScreen, type BgvResultInput, type LiveBgv, type LiveBgvCheck, type LiveBgvJoiner, type LivePool, type LivePoolMember, type LivePostingJob, type LiveTalentCrm } from '../hiring-offers';
+// HIR-27 bulk interview day.
+export { InterviewDaySheet, type InterviewDayInput, type InterviewDaySheetProps, type InterviewDayView, type LiveInterviewDay } from '../interview-day';

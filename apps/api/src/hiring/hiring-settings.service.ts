@@ -39,6 +39,9 @@ export const HIRING_SETTING_KEYS = [
   'hiring.offer.clawback_basis',
   // Founder answer 362: who decides a BGV discrepancy.
   'hiring.bgv.decider_other_person',
+  // HIR-27: the interview day's slot length and how Auto-assign fills it.
+  'hiring.interview_day.slot_minutes',
+  'hiring.interview_day.assign',
 ] as const;
 export type HiringSettingKey = (typeof HIRING_SETTING_KEYS)[number];
 const EDIT_KEYS = ['ats.settings.manage', 'org.settings.manage'] as const;

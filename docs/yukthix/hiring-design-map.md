@@ -53,19 +53,21 @@ built**.
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
 | A. Plans, requisitions, jobs and costs | 4 | 36 | 1 | 0 | 0 | 0 | 37 |
-| B. Candidates, pipeline and interviews | 8 | 46 | 0 | 0 | 13 | 1 | 60 |
+| B. Candidates, pipeline and interviews | 8 | 52 | 1 | 0 | 9 | 1 | 63 |
 | C. Offers, BGV and joining | 4 | 23 | 4 | 0 | 1 | 0 | 28 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 20 | 0 | 0 | 7 | 4 | 31 |
 | E. Staffing agency | 8 | 0 | 0 | 4 | 44 | 0 | 48 |
 | F. Compliance and fairness | 5 | 4 | 1 | 0 | 20 | 0 | 25 |
 | G. Careers site, portals and settings | 4 | 54 | 4 | 2 | 11 | 0 | 71 |
-| **All Hiring design groups (A–G)** | **37** | **183** | **10** | **6** | **96** | **5** | **300** |
+| **All Hiring design groups (A–G)** | **37** | **189** | **11** | **6** | **92** | **5** | **303** |
 | H. Kit and "Live ·" groups (not designs; own line) | 3 | 5 | 0 | 5 | 5 | 0 | 15 |
+Recounted by script on `test/yukthix-main` after merging HIR-28 bulk offers (with the HIR-09 follow-ups) and HIR-27 interview days: A–G 189 live, 11 gap, 6 wire, 92 not built, 5 phone, of 303.
 Recounted by script 12 Nov 2026 on `feat/yukthix-hir-28` after HIR-28 went live (all 4 stories).
 
 Recounted by script 12 Nov 2026 on `feat/yukthix-hir-09` after merging the Settings 6.1 follow-ups with answers 332 and 334-337: A–G 179 live, 10 gap, 6 wire, 100 not built, 5 phone, of 300.
 
 Recounted by script on `test/yukthix-main` after merging the Settings 6.1 follow-ups with HIR-10/20: A–G 176 live, 12 gap, 6 wire, 100 not built, 5 phone, of 299 (H: the old scorecard-templates group left with its page).
+Recounted by script 14 Nov 2026 on `feat/yukthix-hir-27` after HIR-27 went live: its 4 stories design only → live (1 with a gap) plus 3 new drawn stories (some not sent, plan sheet, no days yet).
 Recounted by script 12 Nov 2026 on `feat/yukthix-hiring-settings-2` after the Settings 6.1 follow-ups (answers 341, 345, 348): 5 new 6.1 stories drawn and live (edit, add, used and view-only scorecard; default recruiter no longer qualifies); the "Live · Job workspace and interviews" group's last stand-in story (Scorecards) was deleted with the /yx/hiring/scorecards page.
 Recounted by script 11 Nov 2026 on `feat/yukthix-hir-09` after founder answers 332 and 334-337: HIR-09 HrEmployerCost and HIR-29 Reminder became live; a new T9-09 story (OfferSign, the e-sign accept page) is live.
 
@@ -390,14 +392,25 @@ No live page. Designed: `AiInterviewReviewScreen`.
 
 #### HIR-27 · Bulk interview-day scheduler
 
-No live page. Designed: `BulkInterviewDayScreen`.
+Live 14 Nov 2026 (branch `feat/yukthix-hir-27`): /yx/hiring/interview-days (from Hiring › Interviews › Interview days)
+renders the designed `BulkInterviewDayScreen` with `live`. API `GET/POST hiring/interview-days`, `GET
+hiring/interview-days/options`, `GET hiring/interview-days/:id`, `POST …/:id/assign`, `POST …/:id/send`, all
+`pipeline:manage` (the key that schedules interviews), writes never while acting (403), another company 404. Migration
+`202617o0000002_hir27_interview_days` (three tables with RLS). Company settings (6.1): `hiring.interview_day.slot_minutes`
+(30/45/60/90, default 45) and `hiring.interview_day.assign` (by slot as drawn / by panel, default by slot). Each candidate
+becomes an ordinary HIR-06 interview (the panel as panellists, the room, the job's scorecard, the same invite emails)
+when sent, row by row: a row that fails keeps its reason and never stops the others; a sent row is never sent again; a
+retry reuses the interview already made; a second send while one runs is 409.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Assigned · Auto-assigned · ready to send | design only, feature not built | no drive / interview-day API |
-| OverCapacity · Over capacity · some unassigned | design only, feature not built | same |
-| NotAssigned · Empty · not assigned yet | design only, feature not built | same |
-| Sent · Invites sent | design only, feature not built | same |
+| Assigned · Auto-assigned · ready to send | live | Auto-assign places the job's candidates of the chosen stage (oldest in the stage first; erased, rejected and archived left out) by the company rule; rows already sent keep their place |
+| OverCapacity · Over capacity · some unassigned | live | candidates who do not fit are listed (they get nothing) |
+| NotAssigned · Empty · not assigned yet | live | a new day; Auto-assign |
+| Sent · Invites sent | live (gap) | the WhatsApp reminder switch is hidden: no interview reminders exist (question 421) |
+| SentSomeFailed · Invites sent · some not sent | live | new story (drawn): each row's badge (Invite sent / Not sent) and an alert listing each reason; Send again retries only those |
+| Plan · Plan an interview day | live | new story (drawn): `InterviewDaySheet`: name, job, stage, day, first slot and number of slots (length from 6.1), panels with room and members; checked and focused before saving; a member on two panels is refused |
+| NoDays · No interview days yet | live | new story (drawn): the empty page with Plan an interview day |
 
 ### C. Offers, BGV and joining
 
@@ -1502,3 +1515,19 @@ accepted offers to a People joiner batch (later); (402) add bulk offers to the p
 "Offer expires after" on 6.1, used by single and bulk offers; (405) background job with progress if batches grow (later);
 (406) bulk edit in the kit table (later); (421) WhatsApp slot reminders with interview reminders, opted-in only (later);
 (422) drag to swap on the interview-day board (later); (423) let the planner remove single slots.
+## HIR-27 bulk interview day and answer 392 built (14 Nov 2026, branch `feat/yukthix-hir-27`)
+- HIR-27: see its section above. Interview days open from Hiring › Interviews (a new "Interview days" button, drawn on the
+  HIR-06 header).
+- (392) People › Probation: HR (who raises or approves job changes) sees "A background check must be clear before
+  confirmation" in the review drawer while such a check is open, with why approving will be refused; a manager is never
+  told (the count is not sent to them). Story PPL-16 BgvOpen.
+## Founder questions from the HIR-27 build (14 Nov 2026)
+421. **WhatsApp reminders 2 hours before each slot** (drawn on the day). No interview reminders exist, so the switch is
+     hidden. *Suggested: add them with the HIR-06 reminder work (only to candidates who opted in).*
+422. **Swapping two candidates** ("you can swap afterwards" in the design). Not built: Auto-assign places everyone; a
+     single interview can still be moved on its own. *Suggested: drag to swap on the board in a later round.*
+423. **Breaks in the day.** Slots are evenly spaced from the first slot (the 6.1 length); a lunch break needs a second
+     day or fewer slots. *Suggested: let the planner remove single slots.*
+424. **Time zone.** Every day is India time (IST), like HIR-06. *Suggested: keep; add a zone when a company hires abroad.*
+425. **Panel email on a retry.** A row whose candidate email bounced is resent as HIR-06 resends: the panel gets the invite
+     again. *Suggested: keep (same as a single resend).*

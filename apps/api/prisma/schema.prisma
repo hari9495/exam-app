@@ -12155,3 +12155,60 @@ model RequisitionSuggestion {
   @@index([organizationId, jobId], map: "requisition_suggestions_org_job_idx")
   @@map("requisition_suggestions")
 }
+
+/// HIR-27 bulk interview day: a job's hiring day with panels and fixed slots; each row becomes an ordinary interview.
+model InterviewDay {
+  id             String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String              @map("organization_id") @db.Uuid
+  jobId          String              @map("job_id") @db.Uuid
+  stageId        String              @map("stage_id") @db.Uuid
+  name           String              @db.VarChar(120)
+  day            DateTime            @db.Date
+  timeZone       String              @map("time_zone") @db.VarChar(64)
+  slots          Int[]
+  slotMinutes    Int                 @map("slot_minutes")
+  status         String              @default("draft") @db.VarChar(10)
+  sendingAt      DateTime?           @map("sending_at") @db.Timestamptz(3)
+  createdBy      String?             @map("created_by") @db.Uuid
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  panels         InterviewDayPanel[]
+  rows           InterviewDayRow[]
+
+  @@index([organizationId, day], map: "interview_days_org_day_idx")
+  @@map("interview_days")
+}
+
+model InterviewDayPanel {
+  id             String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String            @map("organization_id") @db.Uuid
+  dayId          String            @map("day_id") @db.Uuid
+  position       Int
+  name           String            @db.VarChar(80)
+  room           String            @db.VarChar(120)
+  memberUserIds  String[]          @map("member_user_ids") @db.Uuid
+  day            InterviewDay      @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  rows           InterviewDayRow[]
+
+  @@index([organizationId, dayId, position], map: "interview_day_panels_day_idx")
+  @@map("interview_day_panels")
+}
+
+model InterviewDayRow {
+  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String             @map("organization_id") @db.Uuid
+  dayId           String             @map("day_id") @db.Uuid
+  pipelineEntryId String             @map("pipeline_entry_id") @db.Uuid
+  panelId         String?            @map("panel_id") @db.Uuid
+  slotStart       Int?               @map("slot_start")
+  interviewId     String?            @map("interview_id") @db.Uuid
+  status          String             @default("unassigned") @db.VarChar(12)
+  error           String?            @db.VarChar(300)
+  sentAt          DateTime?          @map("sent_at") @db.Timestamptz(3)
+  day             InterviewDay       @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  panel           InterviewDayPanel? @relation(fields: [panelId], references: [id])
+
+  @@unique([dayId, pipelineEntryId], map: "interview_day_rows_entry_key")
+  @@index([organizationId, dayId], map: "interview_day_rows_day_idx")
+  @@map("interview_day_rows")
+}

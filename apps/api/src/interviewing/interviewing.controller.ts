@@ -11,7 +11,8 @@ import { CurrentUserRole } from '../auth/current-user-role.decorator';
 import { HiringBoardService } from './hiring-board.service';
 import { ScorecardTemplatesService } from './scorecard-templates.service';
 import { ScorecardsService, type Viewer } from './scorecards.service';
-import { BoardRejectDto, BulkBoardDto, InterviewRangeDto, JobScorecardDto, MoveDto, ScorecardCommentDto, ScorecardDto, ScorecardTemplateDto, SendOnStageDto } from './interviewing-dto';
+import { BoardRejectDto, BulkBoardDto, InterviewDayDto, InterviewRangeDto, JobScorecardDto, MoveDto, ScorecardCommentDto, ScorecardDto, ScorecardTemplateDto, SendOnStageDto } from './interviewing-dto';
+import { InterviewDaysService } from './interview-days.service';
 
 const viewer = (req: Request): Viewer => {
   const u = req.user as { userId: string; role: string; organizationId?: string | null; permissionProfileId?: string | null };
@@ -25,6 +26,7 @@ function notActing(req: Request, what = 'Candidates cannot be moved or rejected'
 }
 // Answer 345: scorecard templates are company settings (Settings 6.1), never changed while acting for someone else.
 const TEMPLATES = 'Scorecard templates cannot be changed';
+const DAYS = 'An interview day cannot be planned or sent';
 
 // Recruitment batch AT5 (M10-BUILD-DESIGN §18.1): the pipeline board, rejection with undo, job interview settings,
 // scorecard templates, and panellist scorecards (D7).
@@ -35,7 +37,51 @@ export class InterviewingController {
     private readonly board: HiringBoardService,
     private readonly templates: ScorecardTemplatesService,
     private readonly scorecards: ScorecardsService,
+    private readonly days: InterviewDaysService,
   ) {}
+
+  // HIR-27 bulk interview day: recruiting (the key that schedules interviews). Planning, assigning and sending are the
+  // person's own acts, never done while acting for someone else; another company's day reads as not found.
+  @Get('interview-days')
+  @RequirePermissions('pipeline:manage')
+  listDays(@CurrentTenant() ctx: TenantContext) {
+    return this.days.list(ctx);
+  }
+
+  @Get('interview-days/options')
+  @RequirePermissions('pipeline:manage')
+  dayOptions(@CurrentTenant() ctx: TenantContext) {
+    return this.days.options(ctx);
+  }
+
+  @Post('interview-days')
+  @RequirePermissions('pipeline:manage')
+  createDay(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: InterviewDayDto) {
+    notActing(req, DAYS);
+    return this.days.create(ctx, dto);
+  }
+
+  @Get('interview-days/:id')
+  @RequirePermissions('pipeline:manage')
+  getDay(@CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.days.get(ctx, id);
+  }
+
+  @Post('interview-days/:id/assign')
+  @HttpCode(200)
+  @RequirePermissions('pipeline:manage')
+  assignDay(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    notActing(req, DAYS);
+    return this.days.assign(ctx, id);
+  }
+
+  @Post('interview-days/:id/send')
+  @HttpCode(200)
+  @RequirePermissions('pipeline:manage')
+  sendDay(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
+    notActing(req, DAYS);
+    return this.days.send(ctx, userId, id);
+  }
 
   @Get('jobs/:id/board')
   @RequirePermissions('results:view')
