@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Organization, Prisma } from '@prisma/client';
+import { careersLayout, layoutProblem, type CareersLayout } from '../hiring/careers-rules';
 import { randomBytes, createHash } from 'crypto';
 import * as argon2 from 'argon2';
 import * as nodemailer from 'nodemailer';
@@ -139,6 +140,8 @@ export interface CareersSettingsResponse {
   intro: string | null;
   bannerUrl: string | null;
   assistantEnabled: boolean;
+  /** T9-09 page builder layout (made from headline and intro until first saved). */
+  config: CareersLayout;
 }
 
 export interface WhatsappConfigResponse {
@@ -1055,7 +1058,7 @@ export class OrganizationsService {
     const organizationId = this.requireOrganizationId(context);
     const org = await this.prisma.organization.findUnique({
       where: { id: organizationId },
-      select: { careersEnabled: true, careersHeadline: true, careersIntro: true, careersBannerPath: true, careersAssistantEnabled: true },
+      select: { name: true, careersEnabled: true, careersHeadline: true, careersIntro: true, careersBannerPath: true, careersAssistantEnabled: true, careersConfig: true },
     });
     return {
       enabled: org?.careersEnabled ?? false,
@@ -1063,6 +1066,7 @@ export class OrganizationsService {
       intro: org?.careersIntro ?? null,
       bannerUrl: org?.careersBannerPath ? ((await this.blobStorage.signIfOurs(org.careersBannerPath)) as string | null) : null,
       assistantEnabled: org?.careersAssistantEnabled ?? false,
+      config: careersLayout(org?.careersConfig ?? null, { name: org?.name ?? '', careersHeadline: org?.careersHeadline ?? null, careersIntro: org?.careersIntro ?? null }),
     };
   }
 
@@ -1072,16 +1076,23 @@ export class OrganizationsService {
       const t = (s ?? '').trim();
       return t.length ? t : null;
     };
+    const problem = dto.config ? layoutProblem(dto.config.sections) : null;
+    if (problem) throw new BadRequestException(problem);
+    // The builder's hero is the page's headline and intro (the job feed, the assistant and older pages read those).
+    const hero = dto.config?.sections.find((x) => x.type === 'hero');
+    const headline = dto.headline !== undefined ? dto.headline : hero?.title;
+    const intro = dto.intro !== undefined ? dto.intro : hero?.text;
     await this.prisma.organization.update({
       where: { id: organizationId },
       data: {
         careersEnabled: dto.enabled,
-        ...(dto.headline !== undefined && { careersHeadline: norm(dto.headline) }),
-        ...(dto.intro !== undefined && { careersIntro: norm(dto.intro) }),
+        ...(headline !== undefined && { careersHeadline: norm(headline) }),
+        ...(intro !== undefined && { careersIntro: norm(intro) }),
         ...(dto.assistantEnabled !== undefined && { careersAssistantEnabled: dto.assistantEnabled }),
+        ...(dto.config && { careersConfig: { theme: dto.config.theme, accent: dto.config.accent ?? null, sections: dto.config.sections } as unknown as Prisma.InputJsonValue }),
       },
     });
-    await this.audit.record(context, { actorUserId, action: 'organization.careers_updated', entityType: 'organization', entityId: organizationId });
+    await this.audit.record(context, { actorUserId, action: 'organization.careers_updated', entityType: 'organization', entityId: organizationId, metadata: { enabled: dto.enabled, ...(dto.config && { theme: dto.config.theme, sections: dto.config.sections.map((x) => x.type) }) } });
     return this.getCareers(context);
   }
 

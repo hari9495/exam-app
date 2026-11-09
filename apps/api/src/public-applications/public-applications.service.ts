@@ -1,14 +1,14 @@
 import { randomUUID } from 'crypto';
 import pdfParse from 'pdf-parse';
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { PrismaService, TenantPrismaService, BlobStorageService, AiApiKeyResolverService, AiNotConfiguredError, OrgSecretsCryptoService } from '@exam-platform/shared';
+import { AuditService, PrismaService, TenantPrismaService, BlobStorageService, AiApiKeyResolverService, AiNotConfiguredError, OrgSecretsCryptoService } from '@exam-platform/shared';
 import { getEasyApplyProvider } from '../easy-apply/providers';
 import { QuotaService } from '../billing/quota.service';
 import { ParseResumeDto } from './dto/parse-resume.dto';
 import { JobsService } from '../jobs/jobs.service';
 import { IntegrationEventsService } from '../integrations/integration-events.service';
 import { expandedName } from '../walk-in/walk-in.service';
-import { applicationStatusBucket } from './application-status';
+import { STAGE_FOR_BUCKET, bucketOf } from './application-status';
 import { validatePdfUpload } from './pdf-validation';
 import { ApplyDto } from './dto/apply.dto';
 import { UpdatePortalProfileDto } from './dto/update-portal-profile.dto';
@@ -18,7 +18,8 @@ import { upsertCustomFieldValues, serializeCustomFieldValues, CustomFieldDefinit
 import { resolveConsentStamp } from '../common/consent-check';
 import { EmailService } from '../email/email.service';
 import { scannerFromEnv, type Scanner } from '../common/scanner';
-import { checkConsents, ipHash, isSlug, safeColor } from '../hiring/careers-rules';
+import { careersLayout, withHero, type CareersLayout, checkConsents, ipHash, isSlug, safeColor } from '../hiring/careers-rules';
+import { payLawFor } from '../hiring/pay-law';
 import { poolConsented, withdrawConsent } from '../talent/pools.service';
 import { QuickApplyDto } from './dto/quick-apply.dto';
 import { CareersAssistantDto } from './dto/careers-assistant.dto';
@@ -52,6 +53,8 @@ export interface CareersPageResponse {
   accentColor: string | null;
   textColor: string | null;
   companies: { slug: string; name: string }[];
+  /** T9-09 page builder layout (theme, accent, sections), made from headline and intro until first saved. */
+  config: CareersLayout;
   jobs: {
     slug: string | null;
     applyToken: string;
@@ -118,6 +121,14 @@ export class PublicApplicationsService {
     return ['application', 'talent_pool'].map((p) => rows.find((r) => r.purpose === p)).filter((r): r is NonNullable<typeof r> => Boolean(r));
   }
 
+  /** HIR-24 answer 224: ask about current or past pay only when the job asks and its location's law allows it (checked on the day). */
+  private async asksPayHistory(job: { organizationId: string; locationId: string | null; askPayHistory: boolean }) {
+    if (!job.askPayHistory) return false;
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+    const { law } = await this.tenantPrisma.forTenant({ organizationId: job.organizationId, isSuperAdmin: true }, (tx) => payLawFor(tx, job.organizationId, job.locationId, today));
+    return !law.historyBanned;
+  }
+
   private async resolveJob(applyToken: string) {
     const job = await this.tenantPrisma.forTenant(
       { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
@@ -136,6 +147,18 @@ export class PublicApplicationsService {
             employmentType: true,
             createdAt: true,
             pipelineId: true,
+            // T9-09: the job page's facts and HIR-24's pay rules (range shown, pay-history question allowed).
+            slug: true,
+            department: true,
+            publishedAt: true,
+            locationId: true,
+            showSalary: true,
+            salaryMin: true,
+            salaryMax: true,
+            salaryCurrency: true,
+            salaryPeriod: true,
+            askPayHistory: true,
+            listOnCareers: true,
           },
         }),
     );
@@ -215,8 +238,9 @@ export class PublicApplicationsService {
     const job = await this.resolveJob(applyToken);
     const org = await this.prisma.organization.findUnique({
       where: { id: job.organizationId },
-      select: { name: true, logoPath: true, applyConsentText: true, applyConsentVersion: true },
+      select: { name: true, slug: true, logoPath: true, applyConsentText: true, applyConsentVersion: true, careersEnabled: true, careersHeadline: true, careersIntro: true, careersConfig: true },
     });
+    const askPayHistory = await this.asksPayHistory(job);
     // Apply-visible candidate custom fields, cross-tenant super-admin read (same LOOKUP_ORG
     // pattern as resolveJob -- there is no org context until the applyToken resolves one).
     const defs = await this.tenantPrisma.forTenant(
@@ -233,7 +257,14 @@ export class PublicApplicationsService {
       jobDescription: job.description,
       location: job.location,
       employmentType: job.employmentType,
-      postedAt: job.createdAt.toISOString(),
+      postedAt: (job.publishedAt ?? job.createdAt).toISOString(),
+      department: job.department,
+      // HIR-24: the range only when the job shows it; the pay-history question only where the job asks and the law allows.
+      salary: job.showSalary && job.salaryMin != null && job.salaryMax != null ? { min: job.salaryMin, max: job.salaryMax, currency: job.salaryCurrency ?? 'INR', period: job.salaryPeriod } : null,
+      askPayHistory,
+      // The careers site this job sits on (null when the company has no public careers page or the job is unlisted).
+      careers: org?.careersEnabled && org.slug ? { orgSlug: org.slug, jobSlug: job.listOnCareers ? job.slug : null } : null,
+      accent: org ? careersLayout(org.careersConfig, { name: org.name, careersHeadline: org.careersHeadline, careersIntro: org.careersIntro }).accent : null,
       orgName: org?.name ?? '',
       // Container is private -- unsigned logoPath 403s in <img src>. signIfOurs mints a
       // read-only SAS for blobs we own and passes anything else through untouched.
@@ -361,12 +392,11 @@ export class PublicApplicationsService {
     if (!validated.ok) {
       throw new BadRequestException(validated.reason === 'too_large' ? 'Résumé exceeds 5 MB' : 'Résumé must be a PDF');
     }
-    // M10 AT3: virus scan before anything is stored. Infected is refused; no scanner or a scanner error keeps the file
-    // 'pending', and recruiters cannot open it until it is checked (fail closed, as documents do).
-    const scanner = this.scan();
-    const verdict = scanner ? await scanner.scan(buf) : null;
-    if (verdict?.verdict === 'infected') throw new BadRequestException('This file cannot be accepted. Upload a different PDF.');
-    const resumeScan = verdict?.verdict === 'clean' ? 'clean' : 'pending';
+    // Question 125: the virus scan starts after the commit (scanResume below). Until it says clean the résumé stays
+    // 'pending' and recruiters cannot open it; infected is quarantined for good (fail closed, as documents do).
+    const resumeScan = 'pending';
+    // HIR-24 answer 224: the pay answer is kept only where the job asks and the law allows today; otherwise it is dropped.
+    const currentPay = dto.currentPay !== undefined && (await this.asksPayHistory(job)) ? dto.currentPay : null;
 
     // Uploaded OUTSIDE the tenant tx (ADO #6810): blob I/O inside a tx holds the transaction open
     // for the duration of a network call to storage, which is the known mistake to avoid here.
@@ -377,7 +407,7 @@ export class PublicApplicationsService {
     );
 
     const context = { organizationId: job.organizationId, isSuperAdmin: true };
-    const { entry, candidateId, isNewCandidate, portalToken } = await this.tenantPrisma.forTenant(context, async (tx) => {
+    const { entry, candidateId, isNewCandidate, portalToken, newResume } = await this.tenantPrisma.forTenant(context, async (tx) => {
       // Public, unauthenticated endpoint: an existing candidate match must NOT be overwritten
       // with request-body name/phone -- anyone who knows a candidate's email could tamper with
       // their stored details. Same rule as WalkInService.register; expandedName carries the one
@@ -426,7 +456,8 @@ export class PublicApplicationsService {
       // M10 AT3: the public page proves nothing about who is applying, so it never replaces a résumé already on file
       // (the candidate changes it from their portal link, which only reaches their own inbox).
       const profile = await tx.candidateProfile.findUnique({ where: { candidateId: candidate.id }, select: { resumePath: true } });
-      if (!profile?.resumePath) {
+      const newResume = !profile?.resumePath;
+      if (newResume) {
         await tx.candidateProfile.upsert({
           where: { candidateId: candidate.id },
           create: { organizationId: job.organizationId, candidateId: candidate.id, resumePath, resumeScan, parseStatus: 'pending' },
@@ -459,6 +490,7 @@ export class PublicApplicationsService {
           enteredVia: 'application',
           applicationToken: randomUUID(),
           statusId,
+          currentPay,
         },
         // Stamp-if-absent: a re-apply keeps the existing entry (and its token) untouched, even
         // though the profile above IS refreshed with the newly-uploaded résumé.
@@ -466,8 +498,9 @@ export class PublicApplicationsService {
       });
       // Last write in the tx: a public application always makes the candidate at least 'engaged'.
       await recomputeGlobalStage(tx, job.organizationId, candidate.id);
-      return { entry, candidateId: candidate.id, isNewCandidate, portalToken };
+      return { entry, candidateId: candidate.id, isNewCandidate, portalToken, newResume };
     });
+    if (newResume) void this.scanResume(job.organizationId, candidateId, resumePath, buf);
 
     await this.jobsService.enqueue(context, 'resume_parse', JSON.stringify({ candidateId }), job.createdById);
 
@@ -483,6 +516,27 @@ export class PublicApplicationsService {
     // links go only to that address.
     await this.sendApplyLinks(job.organizationId, dto.email, job.title, entry.applicationToken!, portalToken).catch((e) => this.logger.warn(`apply email: ${(e as Error).message}`));
     return { received: true };
+  }
+
+  /**
+   * Question 125: scans a public résumé after the commit that stored it. Only the same file, still pending, is marked; an
+   * error or no scanner leaves it pending (recruiters cannot open it). Never throws: the application is already in.
+   */
+  private async scanResume(organizationId: string, candidateId: string, resumePath: string, buf: Buffer) {
+    try {
+      const scanner = this.scan();
+      if (!scanner) return;
+      const v = await scanner.scan(buf);
+      if (v.verdict === 'error') throw new Error(v.detail);
+      const ctx = { organizationId, isSuperAdmin: true };
+      await this.tenantPrisma.forTenant(ctx, async (tx) => {
+        const { count } = await tx.candidateProfile.updateMany({ where: { organizationId, candidateId, resumePath, resumeScan: 'pending' }, data: { resumeScan: v.verdict } });
+        if (count) await AuditService.recordIn(tx, ctx, { actorUserId: null, action: `candidate.resume.scan.${v.verdict}`, entityType: 'candidate', entityId: candidateId, metadata: { scanner: scanner.name } });
+      });
+      if (v.verdict === 'infected') this.logger.warn(`Public résumé of candidate ${candidateId} quarantined (${v.detail})`);
+    } catch (e) {
+      this.logger.warn(`Scan of a public résumé failed, it stays pending: ${(e as Error).message}`);
+    }
   }
 
   private async sendApplyLinks(organizationId: string, to: string, jobTitle: string, statusToken: string, portalToken: string) {
@@ -540,7 +594,7 @@ export class PublicApplicationsService {
   // in one place. Read-only aggregation; actions happen on the existing per-artifact token pages.
   async getPortal(portalToken: string) {
     const { id: candidateId, organizationId } = await this.resolvePortalCandidate(portalToken);
-    const org = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } });
+    const brand = await this.brand(organizationId);
     // Now that the token has resolved a real org, look up the display fields + résumé state
     // through normal org-scoped RLS (candidateId) rather than another LOOKUP_ORG bypass.
     const { candidate, entries, profile, inPools } = await this.tenantPrisma.forTenant(
@@ -552,7 +606,7 @@ export class PublicApplicationsService {
           orderBy: { createdAt: 'desc' },
           select: {
             applicationToken: true,
-            status: { select: { stage: { select: { name: true } } } },
+            status: STAGE_FOR_BUCKET,
             rejected: true,
             createdAt: true,
             job: { select: { title: true } },
@@ -574,10 +628,11 @@ export class PublicApplicationsService {
       resume: { hasResume: Boolean(profile?.resumePath), parseStatus: profile?.parseStatus ?? null },
       /** M10 AT4: whether they agreed to be kept for other roles (they can withdraw it here). */
       talentPool: inPools,
-      orgName: org?.name ?? '',
+      ...brand,
       applications: entries.map((e) => ({
         jobTitle: e.job.title,
-        stage: e.status?.stage.name ?? '',
+        // Candidate words only (the internal stage name is never shown outside the app).
+        stage: bucketOf(e.status, e.rejected),
         rejected: e.rejected,
         appliedAt: e.createdAt.toISOString(),
         statusToken: e.applicationToken,
@@ -856,7 +911,7 @@ export class PublicApplicationsService {
     return this.tenantPrisma.forTenant({ organizationId: this.LOOKUP_ORG, isSuperAdmin: true }, (tx) =>
       tx.organization.findFirst({
         where: { slug: orgSlug, careersEnabled: true },
-        select: { id: true, name: true, careersHeadline: true, careersIntro: true, careersAssistantEnabled: true, careersBannerPath: true, logoPath: true, primaryColor: true, accentColor: true, textColor: true },
+        select: { id: true, name: true, careersHeadline: true, careersIntro: true, careersAssistantEnabled: true, careersBannerPath: true, logoPath: true, primaryColor: true, accentColor: true, textColor: true, careersConfig: true },
       }),
     );
   }
@@ -915,6 +970,8 @@ export class PublicApplicationsService {
       accentColor: safeColor(org.accentColor),
       textColor: safeColor(org.textColor),
       companies: pages.map((p) => ({ slug: p.slug, name: entities.find((e) => e.id === p.legalEntityId)?.name ?? p.slug })),
+      // A company page (?company=) keeps the layout but leads with its own headline and intro.
+      config: withHero(careersLayout(org.careersConfig, org), page ? { title: page.headline, text: page.intro } : null),
       jobs: shown.map((j) => this.publicJob(j, company)),
     };
   }
@@ -937,6 +994,7 @@ export class PublicApplicationsService {
       orgName: org.name,
       logoUrl: org.logoPath ? ((await this.blobStorage.signIfOurs(org.logoPath)) as string | null) : null,
       primaryColor: safeColor(org.primaryColor),
+      accent: careersLayout(org.careersConfig, org).accent,
     };
   }
 
@@ -1037,6 +1095,18 @@ export class PublicApplicationsService {
     ].join('\n');
   }
 
+  /** The company's public face for the candidate pages: name, logo, careers link and accent (no internal data). */
+  private async brand(organizationId: string) {
+    const org = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true, slug: true, logoPath: true, careersEnabled: true, careersHeadline: true, careersIntro: true, careersConfig: true } });
+    if (!org) return { orgName: '', orgLogo: null, careersSlug: null, accent: null };
+    return {
+      orgName: org.name,
+      orgLogo: org.logoPath ? ((await this.blobStorage.signIfOurs(org.logoPath)) as string | null) : null,
+      careersSlug: org.careersEnabled ? org.slug : null,
+      accent: careersLayout(org.careersConfig, org).accent,
+    };
+  }
+
   async getApplicationStatus(statusToken: string) {
     const row = await this.tenantPrisma.forTenant(
       { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
@@ -1044,18 +1114,22 @@ export class PublicApplicationsService {
         tx.pipelineEntry.findUnique({
           where: { applicationToken: statusToken },
           select: {
-            status: { select: { stage: { select: { name: true } } } },
+            organizationId: true,
+            status: STAGE_FOR_BUCKET,
             rejected: true,
             createdAt: true,
-            job: { select: { title: true } },
+            job: { select: { title: true, location: true } },
           },
         }),
     );
     if (!row) throw new NotFoundException('Application not found');
+    // T9-09 status page: only this application, in candidate words; never the stage, owner, notes or other applicants.
     return {
       jobTitle: row.job.title,
+      location: row.job.location,
       appliedAt: row.createdAt,
-      statusBucket: applicationStatusBucket(row.status?.stage.name ?? '', row.rejected),
+      statusBucket: bucketOf(row.status, row.rejected),
+      ...(await this.brand(row.organizationId)),
     };
   }
 }

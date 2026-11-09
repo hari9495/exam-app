@@ -22,6 +22,7 @@ export class PublicOffersController {
 
   @Post('offers/:token/respond')
   respond(@Param('token') token: string, @Body() dto: RespondOfferDto) {
-    return this.offers.respondPublic(token, dto.action);
+    // Public: only the new status goes back, never the offer row's internal fields (T9-09 candidate pages).
+    return this.offers.respondPublic(token, dto.action).then((o) => ({ status: o.status }));
   }
 }

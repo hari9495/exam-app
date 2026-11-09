@@ -81,6 +81,8 @@ model Organization {
   careersBannerPath             String?                   @map("careers_banner_path") @db.VarChar(1000)
   // Opt-in public AI assistant on the careers site (default off — it is public AI spend).
   careersAssistantEnabled       Boolean                   @default(false) @map("careers_assistant_enabled")
+  /// T9-09 / Surfaces Careers page builder: { theme, accent, sections } (validated by UpdateCareersDto). Null = built from headline/intro.
+  careersConfig                 Json?                     @map("careers_config")
   smsEnabled                    Boolean                   @default(false) @map("sms_enabled")
   smsProvider                   String                    @default("twilio") @map("sms_provider") @db.VarChar(1000)
   smsConfigEncrypted            String?                   @map("sms_config_encrypted") @db.Text
@@ -1319,6 +1321,8 @@ model PipelineEntry {
   rejectedAt             DateTime?               @map("rejected_at") @db.Timestamptz(3)
   enteredVia             String                  @map("entered_via") @db.VarChar(1000)
   applicationToken       String?                 @unique @map("application_token") @db.VarChar(1000)
+  /// HIR-24 answer 224: the applicant's own answer to the pay-history question (rupees a year), only where the job asks and the law allows.
+  currentPay             Int?                    @map("current_pay")
   assignedUserId         String?                 @map("assigned_user_id") @db.Uuid
   assignedGroupId        String?                 @map("assigned_group_id") @db.Uuid
   createdAt              DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)

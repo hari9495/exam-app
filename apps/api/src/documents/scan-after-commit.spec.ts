@@ -23,10 +23,11 @@ export function scansInsideTx(source: string, fileName = 'x.ts'): number[] {
   const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const out: number[] = [];
   const visit = (n: ts.Node) => {
-    if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && n.expression.name.text === 'scan') {
+    if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && ['scan', 'scanResume'].includes(n.expression.name.text)) {
       const target = n.expression.expression;
       const files = ts.isPropertyAccessExpression(target) ? target.name.text : ts.isIdentifier(target) ? target.text : '';
-      if (files === 'files' || files === 'sharedFiles') {
+      // scanResume: the public careers apply (T9-09) scans the stored résumé after the commit too.
+      if (files === 'files' || files === 'sharedFiles' || n.expression.name.text === 'scanResume') {
         for (let a: ts.Node | undefined = n.parent; a; a = a.parent) {
           if (!isFn(a)) continue;
           const takesTx = a.parameters.some((p) => ts.isIdentifier(p.name) && p.name.text === 'tx');
@@ -58,6 +59,9 @@ describe('virus scan after the commit (question 125)', () => {
     expect(scansInsideTx(`const r = await this.tenantPrisma.forTenant(c, async (tx) => { if (x) { void this.sharedFiles.scan(o, id); } });`)).toEqual([1]);
     expect(scansInsideTx(`const out = await this.tx(ctx, async (tx) => ({ id: 1 }));\nvoid this.files.scan(o, out.id);`)).toEqual([]);
     expect(scansInsideTx(`return this.tx(ctx, async (tx) => ({ id: 1 })).then((r) => { void this.files.scan(o, r.id); return r; });`)).toEqual([]);
+    expect(scansInsideTx(`await this.tenantPrisma.forTenant(c, async (tx) => { void this.scanResume(o, id, p, buf); });`)).toEqual([1]);
+    expect(scansInsideTx(`const r = await this.tenantPrisma.forTenant(c, async (tx) => 1);
+void this.scanResume(o, id, p, buf);`)).toEqual([]);
     // Other things called scan (Redis, the scanner itself) are not this rule.
     expect(scansInsideTx(`await this.tx(ctx, async (tx) => { await this.redis.scan(0); await this.scanner.scan(buf); });`)).toEqual([]);
   });
