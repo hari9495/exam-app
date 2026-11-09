@@ -4,12 +4,13 @@ import { toCsv } from '@yukthix/ui';
 import { RecruitingCostsScreen, type CostEntry } from '@yukthix/ui/hiring';
 import { loadState } from '../../../../../lib/yx-org';
 import { useHiring, useHiringWrite } from '../../../../../lib/yx-hiring';
-import { costMonths, costRow, quarterOf, type ApiCost } from '../../../../../lib/yx-hiring-costs';
+import { costMonths, costRow, quarterOf, thisMonth, type ApiCost } from '../../../../../lib/yx-hiring-costs';
 
 type Overview = { from: string; to: string; hires: number; jobs: { id: string; title: string }[] };
 
 // Hiring › Recruiting costs: the designed HIR-11 screen with `live`. Rupees in and out (the API keeps Decimal 14,2).
-// Months and the quarter are India time; the API checks the key (org:manage_settings) and refuses acting for someone.
+// Months (any of this quarter) and the quarter are India time; the API checks the key (ats.costs.manage) and refuses
+// acting for someone else.
 export default function YxHiringCostsPage() {
   const costs = useHiring<ApiCost[]>('/costs');
   const overview = useHiring<Overview>('/costs/overview');
@@ -24,6 +25,7 @@ export default function YxHiringCostsPage() {
       live={{
         quarter,
         months: costMonths(new Date()),
+        defaultMonth: thisMonth(),
         jobs: (overview.data?.jobs ?? []).map((j) => ({ value: j.id, label: j.title })),
         onRetry: () => void Promise.all([costs.refetch(), overview.refetch()]),
         onSave: async (input, id) => {

@@ -6,7 +6,8 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { apiFetch } from '../../lib/api-client';
 import { useAuth } from '../../lib/auth-context';
 import { buildNav } from '../../lib/yx-nav';
-import { costMonths, costRow, quarterOf, referralRow, todayInIndia } from '../../lib/yx-hiring-costs';
+import { allReferralRow, costMonths, costRow, quarterOf, referralRow, thisMonth, todayInIndia } from '../../lib/yx-hiring-costs';
+import YxAllReferralsPage from './(app)/hiring/referrals/all/page';
 import YxHiringCostsPage from './(app)/hiring/costs/page';
 import YxReferralsPage from './(app)/hiring/referrals/page';
 
@@ -35,14 +36,19 @@ beforeEach(() => {
 describe('HIR-11 / HIR-12 glue (India time, rupees)', () => {
   it('months and the quarter are India time; amounts stay rupees with paise', () => {
     // 31 Oct 2026 19:00 UTC is 1 Nov 00:30 in India.
-    expect(costMonths(new Date('2026-10-31T19:00:00Z'))).toEqual([{ value: '2026-10', label: 'Oct' }, { value: '2026-11', label: 'Nov' }]);
-    expect(costMonths(new Date('2027-01-05T06:00:00Z'))).toEqual([{ value: '2026-12', label: 'Dec' }, { value: '2027-01', label: 'Jan' }]);
+    // Any month of the current quarter (founder answer 206); the quarter turns at India midnight.
+    expect(costMonths(new Date('2026-10-31T19:00:00Z'))).toEqual([{ value: '2026-10', label: 'Oct' }, { value: '2026-11', label: 'Nov' }, { value: '2026-12', label: 'Dec' }]);
+    expect(costMonths(new Date('2026-12-31T19:00:00Z'))).toEqual([{ value: '2027-01', label: 'Jan' }, { value: '2027-02', label: 'Feb' }, { value: '2027-03', label: 'Mar' }]);
+    expect(thisMonth(new Date('2026-10-31T19:00:00Z'))).toBe('2026-11');
     expect(quarterOf('2026-10-01', '2026-12-31')).toEqual({ label: 'Oct–Dec 2026', months: ['2026-10', '2026-11', '2026-12'] });
     const row = costRow({ id: 'c1', source: 'Naukri', costType: 'posting', jobId: null, jobTitle: null, amount: '4500.50', period: null, origin: 'manual', note: null, enteredByName: null, createdAt: '2026-10-31T19:00:00Z' });
     expect(row).toMatchObject({ amount: 4500.5, type: 'Job board', month: '2026-11', period: 'Nov 2026', origin: 'Manual' });
     expect(costRow({ ...{ id: 'c2', source: 'Referral: Kiran', costType: 'referral_bonus', jobId: null, jobTitle: null, amount: 15000, period: '2026-10-01', origin: 'payroll', note: null, enteredByName: null, createdAt: '2026-10-02T00:00:00Z' } })).toMatchObject({ origin: 'Payroll one-time pay', enteredBy: 'System', type: 'Referral bonus' });
     expect(todayInIndia(new Date('2026-11-08T19:00:00Z')).getDate()).toBe(9);
-    expect(referralRow({ id: 'r', candidateName: 'A', jobTitle: 'J', stage: 'Hired', joinedOn: '2026-12-01', bonusInr: 20000, rewardStatus: 'paid', createdAt: '2026-11-08T19:00:00Z' })).toMatchObject({ paid: true, bonus: 20000, joined: new Date(2026, 11, 1), referred: new Date(2026, 10, 9) });
+    const api1 = { id: 'r', candidateName: 'A', jobTitle: 'J', stage: 'Hired' as const, joinedOn: '2026-12-01', bonusInr: 20000, rewardStatus: 'paid', createdAt: '2026-11-08T19:00:00Z', eligibleOn: '2027-03-01', bonusDue: 'paid' as const, referrerName: 'Neha' };
+    expect(referralRow(api1)).toMatchObject({ paid: true, bonus: 20000, joined: new Date(2026, 11, 1), referred: new Date(2026, 10, 9) });
+    expect(referralRow({ ...api1, rewardStatus: 'pending', bonusInr: 0, bonusDue: 'left' })).toMatchObject({ leftEarly: true, bonus: 0 });
+    expect(allReferralRow(api1)).toMatchObject({ referrer: 'Neha', bonus: 'paid', dueOn: new Date(2027, 2, 1), amount: 20000 });
   });
 
   it('menu: Referrals for employees and hiring people; Recruiting costs only with the settings key; nothing in a support session', () => {
@@ -52,10 +58,12 @@ describe('HIR-11 / HIR-12 glue (India time, rupees)', () => {
     const links = (a: ReturnType<typeof hire>) => a.sections.flatMap((s) => s.items.map((i) => i.href));
     expect(links(hire(() => false))).toEqual(['/yx/hiring/referrals']); // an employee with no keys
     expect(buildNav({ ...base, employee: false, has: () => false }).find((a) => a.id === 'hire')).toBeUndefined();
-    const hr = hire((k) => k === 'org:manage_settings');
-    expect(links(hr)).toContain('/yx/hiring/costs');
-    expect(hr.sections.find((s) => s.label === 'Reports & compliance')?.items.map((i) => i.label)).toEqual(['Recruiting costs']);
+    // Founder answers 202 and 204: costs with ats.costs.manage (not the settings key); All referrals for HR.
+    const hr = hire((k) => k === 'ats.costs.manage' || k === 'ats.referral.manage');
+    expect(hr.sections.find((s) => s.label === 'Reports & compliance')?.items.map((i) => i.label)).toEqual(['Recruiting costs', 'All referrals']);
+    expect(links(hire((k) => k === 'org:manage_settings'))).not.toContain('/yx/hiring/costs');
     expect(links(hire((k) => k === 'pipeline:manage'))).not.toContain('/yx/hiring/costs');
+    expect(links(hire((k) => k === 'pipeline:manage'))).not.toContain('/yx/hiring/referrals/all');
     expect(hireArea(true)).toBeUndefined(); // a support session has no Hiring at all
   });
 });
@@ -150,5 +158,42 @@ describe('Hiring › Referrals (HIR-12)', () => {
     await ue.click(within(d).getByRole('checkbox', { name: /My friend agreed/ }));
     await ue.click(within(d).getByRole('button', { name: 'Send referral' }));
     expect(await within(d).findByText('Not available while acting for someone else')).toBeInTheDocument();
+  });
+});
+
+describe('Hiring › All referrals (HIR-12, HR)', () => {
+  const row = { id: 'r1', candidateName: 'Kiran Rao', jobTitle: 'Accountant', stage: 'Hired', joinedOn: '2026-06-01', bonusInr: 20000, rewardStatus: 'pending', createdAt: '2026-05-02T00:00:00Z', eligibleOn: '2026-08-30', bonusDue: 'due', referrerName: 'Neha Joshi' };
+  it('marks a due bonus paid after a confirm, with a toast', async () => {
+    const patched: unknown[] = [];
+    api.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (init?.method === 'PATCH') return (patched.push([path, JSON.parse(String(init.body))]), {});
+      if (path === '/referrals') return [row, { ...row, id: 'r2', candidateName: 'Rohit Bhat', bonusDue: 'left', bonusInr: 0 }];
+      throw new Error(`unexpected ${path}`);
+    });
+    wrap(<YxAllReferralsPage />);
+    expect(await screen.findByText('Kiran Rao')).toBeInTheDocument();
+    expect(screen.getByText('No bonus: left early')).toBeInTheDocument();
+    const rowEl = screen.getByText('Kiran Rao').closest('tr')!;
+    await ue.click(within(rowEl as HTMLElement).getByRole('button', { name: /Row actions|Actions|More/ }));
+    await ue.click(await screen.findByRole('menuitem', { name: 'Mark bonus paid' }));
+    const d = screen.getByRole('dialog');
+    expect(within(d).getByText('Mark ₹20,000 paid to Neha Joshi?')).toBeInTheDocument();
+    await ue.click(within(d).getByRole('button', { name: 'Mark paid' }));
+    await waitFor(() => expect(patched).toEqual([['/referrals/r1/reward', { rewardStatus: 'paid' }]]));
+    expect(await screen.findByText('Bonus marked paid')).toBeInTheDocument();
+  });
+
+  it('a refusal (not due) stays in the dialog', async () => {
+    api.mockImplementation(async (_path: string, init?: RequestInit) => {
+      if (init?.method === 'PATCH') throw Object.assign(new Error('The bonus is due on 1 Dec 2026. Mark it paid after that.'), { status: 409 });
+      return [row];
+    });
+    wrap(<YxAllReferralsPage />);
+    await screen.findByText('Kiran Rao');
+    await ue.click(screen.getByRole('button', { name: /Row actions|Actions|More/ }));
+    await ue.click(await screen.findByRole('menuitem', { name: 'Mark bonus paid' }));
+    const d = screen.getByRole('dialog');
+    await ue.click(within(d).getByRole('button', { name: 'Mark paid' }));
+    expect(await within(d).findByText('The bonus is due on 1 Dec 2026. Mark it paid after that.')).toBeInTheDocument();
   });
 });

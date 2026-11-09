@@ -1437,6 +1437,8 @@ export interface Referral {
   joined: Date | null;
   bonus: number;
   paid?: boolean;
+  /** Left (People exit) before completing the qualifying days: no bonus (founder answer 205). */
+  leftEarly?: boolean;
 }
 
 /** A job one can refer to (the design's Job, only what the form shows). */
@@ -1470,8 +1472,9 @@ function ReferralRows({ rows, today, days = 90 }: { rows: Referral[]; today: Dat
     <ul className="yx-hire-list">
       {rows.map((r) => {
         const b = referralBonusStatus(r.stage === 'Hired' ? r.joined : null, today, days);
-        const bonusText =
-          r.stage === 'Not selected' || (r.bonus === 0 && !r.paid)
+        const bonusText = r.leftEarly && !r.paid
+          ? `No bonus: they left before completing ${days} days`
+          : r.stage === 'Not selected' || (r.bonus === 0 && !r.paid)
             ? 'No bonus'
             : r.stage !== 'Hired'
               ? `Bonus after they join and complete ${days} days`
@@ -1704,8 +1707,10 @@ export interface CostInput {
 export interface LiveRecruitingCosts {
   /** e.g. "Oct–Dec 2026" and its months as YYYY-MM. */
   quarter: { label: string; months: string[] };
-  /** Months a cost can be entered for, oldest first (value YYYY-MM, label e.g. "Oct"). */
+  /** Months a cost can be entered for: the months of this quarter, oldest first (value YYYY-MM, label e.g. "Oct"). */
   months: { value: string; label: string }[];
+  /** The month the Segment starts on (this month); defaults to the last one offered. */
+  defaultMonth?: string;
   jobs: { value: string; label: string }[];
   onRetry: () => void;
   /** `id` null = a new cost. */
@@ -1722,6 +1727,7 @@ const ENTERED_TYPES = [
 ] as const;
 const typeValue = (label: string) => ENTERED_TYPES.find((t) => t.label === label)?.value ?? 'other';
 const SAMPLE_MONTHS = [
+  { value: 'jul', label: 'Jul' },
   { value: 'aug', label: 'Aug' },
   { value: 'sep', label: 'Sep' },
 ];
@@ -1729,7 +1735,7 @@ const SAMPLE_MONTHS = [
 // HIR-11
 export function RecruitingCostsScreen({ rows, hires, state = 'ready', addOpen = false, live }: { rows: CostEntry[]; hires: number; state?: ListState; addOpen?: boolean; live?: LiveRecruitingCosts }) {
   const months = live?.months ?? SAMPLE_MONTHS;
-  const lastMonth = months[months.length - 1]?.value ?? '';
+  const lastMonth = live?.defaultMonth ?? months[months.length - 1]?.value ?? '';
   const [open, setOpen] = useState(addOpen);
   const [editing, setEditing] = useState<CostEntry | null>(null);
   const [deleting, setDeleting] = useState<CostEntry | null>(null);
@@ -1890,6 +1896,112 @@ export function RecruitingCostsScreen({ rows, hires, state = 'ready', addOpen = 
             setDeleting(null);
           }}
         />
+      )}
+    </HireFrame>
+  );
+}
+
+/* ================================================================== HIR-12 · All referrals (HR) */
+
+/** One referral as HR sees it (founder answer 204). Dates are calendar days (India time). */
+export interface AllReferral {
+  id: string;
+  name: string;
+  job: string;
+  referrer: string;
+  referred: Date;
+  stage: Referral['stage'];
+  /** not-hired, waiting (due on `dueOn`), due, paid, left (exited before the qualifying day), none. */
+  bonus: 'not-hired' | 'waiting' | 'due' | 'paid' | 'left' | 'none';
+  dueOn: Date | null;
+  amount: number;
+}
+
+/** HIR-12 All referrals live: the mark-paid action (409 with the reason when it is not due) and retry. */
+export interface LiveAllReferrals {
+  onMarkPaid: (id: string) => Promise<void>;
+  onRetry: () => void;
+}
+
+const BONUS_LABEL: Record<AllReferral['bonus'], string> = { 'not-hired': 'Not hired yet', waiting: 'Waiting', due: 'Due', paid: 'Paid', left: 'No bonus: left early', none: 'No bonus' };
+const BONUS_TONE: Record<AllReferral['bonus'], BadgeTone> = { 'not-hired': 'neutral', waiting: 'info', due: 'warning', paid: 'success', left: 'neutral', none: 'neutral' };
+
+// HIR-12 · All referrals (HR)
+export function AllReferralsScreen({ rows, state = 'ready', confirmId = null, live }: { rows: AllReferral[]; state?: ListState; confirmId?: string | null; live?: LiveAllReferrals }) {
+  const [paying, setPaying] = useState<AllReferral | null>(rows.find((r) => r.id === confirmId) ?? null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const toaster = useToastIfAny();
+  const list = useListControls({
+    rows,
+    fields: [
+      { key: 'bonus', label: 'Bonus', type: 'multi', options: (Object.keys(BONUS_LABEL) as AllReferral['bonus'][]).map((v) => ({ value: v, label: BONUS_LABEL[v] })) },
+      { key: 'stage', label: 'Stage', type: 'multi', options: ['Applied', 'In process', 'Hired', 'Not selected'].map((v) => ({ value: v, label: v })) },
+    ],
+    text: (r) => `${r.name} ${r.job} ${r.referrer}`,
+    fieldValue: (r, k) => (k === 'bonus' ? r.bonus : r.stage),
+    views: [{ id: 'all', name: 'All referrals' }],
+  });
+  const cols: TableColumn<AllReferral>[] = useMemo(
+    () => [
+      { key: 'name', header: 'Person', value: (r) => r.name },
+      { key: 'job', header: 'Job', value: (r) => r.job },
+      { key: 'referrer', header: 'Referred by', value: (r) => r.referrer },
+      { key: 'referred', header: 'Referred', type: 'date', value: (r) => r.referred, render: (r) => formatDate(r.referred) },
+      { key: 'stage', header: 'Stage', type: 'status', value: (r) => r.stage, statusTone: (v) => (v === 'Hired' ? 'success' : v === 'Not selected' ? 'neutral' : 'info') },
+      { key: 'bonus', header: 'Bonus', value: (r) => BONUS_LABEL[r.bonus], render: (r) => <Badge tone={BONUS_TONE[r.bonus]}>{BONUS_LABEL[r.bonus]}</Badge> },
+      { key: 'dueOn', header: 'Due on', value: (r) => (r.dueOn ? formatDate(r.dueOn) : '—') },
+      { key: 'amount', header: 'Amount', type: 'money', value: (r) => (r.bonus === 'none' || r.bonus === 'left' ? 0 : r.amount), total: 'sum' },
+    ],
+    [],
+  );
+  const due = rows.filter((r) => r.bonus === 'due');
+  return (
+    <HireFrame active="Candidates & talent CRM">
+      <PageHeader title="All referrals" description="Everyone referred, by whom, and where each bonus stands. Mark a bonus paid once payroll has paid it; it then shows in Recruiting costs." />
+      <SummaryTiles
+        label="Referral bonuses"
+        tiles={[
+          { label: 'Referred', value: rows.length },
+          { label: 'Hired', value: rows.filter((r) => r.stage === 'Hired').length },
+          { label: 'Due now', value: formatINR(due.reduce((s, r) => s + r.amount, 0)), sub: `${due.length} to pay` },
+          { label: 'Paid', value: formatINR(rows.filter((r) => r.bonus === 'paid').reduce((s, r) => s + r.amount, 0)) },
+        ]}
+      />
+      <DataTable
+        label="All referrals"
+        columns={cols}
+        rows={list.rows}
+        getRowId={(r) => r.id}
+        state={state}
+        onRetry={live?.onRetry ?? (() => {})}
+        toolbar={list.toolbar}
+        views={list.views}
+        filtered={list.filtered}
+        onClearFilters={list.clear}
+        rowActions={(r) => (r.bonus === 'due' ? <MenuItem onSelect={() => (setFailed(null), setPaying(r))}>Mark bonus paid</MenuItem> : <MenuItem disabled>{r.bonus === 'paid' ? 'Bonus already paid' : 'No bonus due yet'}</MenuItem>)}
+        empty={<EmptyState title="No referrals yet." description="When employees refer people from Hiring › Referrals, they show here." />}
+      />
+      {paying && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setPaying(null)}
+          title={`Mark ${formatINR(paying.amount)} paid to ${paying.referrer}?`}
+          consequence={`For referring ${paying.name} (${paying.job}). Do this once payroll has paid it. It is added to Recruiting costs as a referral bonus.`}
+          confirmLabel="Mark paid"
+          onConfirm={async () => {
+            if (!live) return;
+            try {
+              await live.onMarkPaid(paying.id);
+              toaster?.toast({ tone: 'success', title: 'Bonus marked paid', description: `${formatINR(paying.amount)} · ${paying.referrer}` });
+              setPaying(null);
+            } catch (e) {
+              setFailed(e instanceof Error && e.message ? e.message : 'That did not work. Try again.');
+              return false;
+            }
+          }}
+        >
+          {failed && <InlineAlert tone="danger" title={failed} />}
+        </ConfirmDialog>
       )}
     </HireFrame>
   );

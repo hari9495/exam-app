@@ -15,6 +15,8 @@ export const ATS_KEYS = [
   'ats.agency.manage',
   'ats.report.view',
   'ats.candidate.data_rights',
+  // HIR-11 (founder answer 202): recruiting costs, for HR and recruiters.
+  'ats.costs.manage',
 ] as const;
 
 /** Older key → the `ats.*` keys that satisfy it. */

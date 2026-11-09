@@ -150,6 +150,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // due. The amount is kept on each referral when it is made, so a later change never alters a promise already made.
   'ats.referral.bonus_inr': { label: 'Hiring: referral bonus (₹) for a referred hire', scopes: ['tenant'], dated: false, values: ['0', '5000', '10000', '15000', '20000', '25000', '50000', '100000'], default: '25000' },
   'ats.referral.qualify_days': { label: 'Hiring: days a referred hire must complete before the bonus is due', scopes: ['tenant'], dated: false, values: ['30', '60', '90', '180'], default: '90' },
+  // Founder answer 201: no credit when the person applied for the job on their own this many days before (0 = always credit).
+  'ats.referral.self_apply_days': { label: 'Hiring: no referral credit if the person applied themselves within (days)', scopes: ['tenant'], dated: false, values: ['0', '30', '60', '90', '180'], default: '90' },
   'perf.goal.checkin_days': { label: 'Performance: remind about goal check-ins after (days)', scopes: ['tenant'], dated: false, values: ['14', '30', '90'], default: '30' },
   'alumni.access_years': { label: 'Alumni can read their documents for (years after leaving)', scopes: ['tenant'], dated: false, values: ['3', '5', '7', '10'], default: '7' },
   // M01 YX-LC-18 (lifecycle 6e): the rehire policy. Starter template "fresh start, same record, code and UAN"; HR may

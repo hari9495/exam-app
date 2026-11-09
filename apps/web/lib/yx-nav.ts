@@ -285,8 +285,12 @@ export function buildNav(n: NavInput): NavArea[] {
           ...when(any('exam:manage', 'question_bank:manage'), L('hiring-older', 'Assessments & more (older screens)', '/v2/today')),
           ...when(has('results:view') && !any('exam:manage', 'question_bank:manage'), L('hiring-results', 'Test results (older screens)', '/v2/panel/reports')),
           ]),
-          // HIR-11: the design puts Recruiting costs under "Reports & compliance"; the API needs org:manage_settings.
-          ...sec('Reports & compliance', when(has('org:manage_settings'), L('hiring-costs', 'Recruiting costs', '/yx/hiring/costs'))),
+          // HIR-11: the design puts Recruiting costs under "Reports & compliance" (key ats.costs.manage, founder answer 202).
+          // HIR-12 All referrals (answer 204): HR with ats.referral.manage, or recruiters who see candidates.
+          ...sec('Reports & compliance', [
+            ...when(has('ats.costs.manage'), L('hiring-costs', 'Recruiting costs', '/yx/hiring/costs')),
+            ...when(any('ats.referral.manage', 'candidate:view'), L('hiring-all-referrals', 'All referrals', '/yx/hiring/referrals/all')),
+          ]),
         ],
   };
 

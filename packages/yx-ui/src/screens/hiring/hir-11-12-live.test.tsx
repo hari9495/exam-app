@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
-import { RecruitingCostsScreen, ReferralsScreen, type CostEntry, type LiveRecruitingCosts, type LiveReferrals, type Referral } from './hiring-plan';
+import { AllReferralsScreen, RecruitingCostsScreen, ReferralsScreen, type AllReferral, type CostEntry, type LiveRecruitingCosts, type LiveReferrals, type Referral } from './hiring-plan';
 
 // HIR-11 recruiting costs and HIR-12 referrals, the designed screens with `live`: positive and negative.
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -181,5 +181,55 @@ describe('HIR-12 Referrals (live)', () => {
     show(<ReferralsScreen jobs={JOBS} referrals={[]} today={TODAY} live={live} />);
     await ue.click(screen.getByRole('button', { name: /Try again|Retry/ }));
     expect(live.onRetry).toHaveBeenCalled();
+  });
+});
+
+describe('HIR-11/12 founder answers 204-206 (live)', () => {
+  it('any month of the quarter: three joined segments, starting on this month (206)', async () => {
+    const live = costsLive({ months: [{ value: '2026-10', label: 'Oct' }, { value: '2026-11', label: 'Nov' }, { value: '2026-12', label: 'Dec' }], defaultMonth: '2026-11' });
+    show(<RecruitingCostsScreen rows={[]} hires={0} live={live} />);
+    await ue.click(screen.getAllByRole('button', { name: 'Add cost' })[0]!);
+    const month = within(screen.getByRole('dialog')).getByRole('radiogroup', { name: 'Month' });
+    expect(within(month).getAllByRole('radio').map((r) => r.textContent)).toEqual(['Oct', 'Nov', 'Dec']);
+    expect(within(month).getByRole('radio', { name: 'Nov' })).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('a referral who left before the qualifying day shows no bonus (205)', () => {
+    show(<ReferralsScreen jobs={JOBS} referrals={[{ ...REFS[1]!, bonus: 0, leftEarly: true }]} today={TODAY} live={refLive()} />);
+    expect(screen.getByText('No bonus: they left before completing 60 days')).toBeInTheDocument();
+  });
+
+  const ALL: AllReferral[] = [
+    { id: 'a1', name: 'Kiran Rao', job: 'Accountant', referrer: 'Neha Joshi', referred: new Date(2026, 4, 2), stage: 'Hired', bonus: 'due', dueOn: new Date(2026, 8, 29), amount: 15_000 },
+    { id: 'a2', name: 'Sana Sheikh', job: 'Senior QA Engineer', referrer: 'Arjun Kulkarni', referred: new Date(2026, 6, 1), stage: 'Hired', bonus: 'waiting', dueOn: new Date(2026, 10, 20), amount: 25_000 },
+  ];
+
+  it('All referrals: totals, Mark bonus paid only when due, confirm then toast (204)', async () => {
+    const onMarkPaid = vi.fn().mockResolvedValue(undefined);
+    show(<AllReferralsScreen rows={ALL} live={{ onMarkPaid, onRetry: vi.fn() }} />);
+    expect(screen.getByText('1 to pay')).toBeInTheDocument();
+    const [due, waiting] = screen.getAllByRole('button', { name: /Row actions|Actions|More/ });
+    await ue.click(waiting!);
+    expect(await screen.findByRole('menuitem', { name: 'No bonus due yet' })).toHaveAttribute('aria-disabled', 'true');
+    await ue.keyboard('{Escape}');
+    await ue.click(due!);
+    await ue.click(await screen.findByRole('menuitem', { name: 'Mark bonus paid' }));
+    const d = screen.getByRole('dialog');
+    expect(within(d).getByText('Mark ₹15,000 paid to Neha Joshi?')).toBeInTheDocument();
+    await ue.click(within(d).getByRole('button', { name: 'Mark paid' }));
+    expect(onMarkPaid).toHaveBeenCalledWith('a1');
+    expect(await screen.findByText('Bonus marked paid')).toBeInTheDocument();
+  });
+
+  it('All referrals: a refusal stays in the dialog, no toast; empty state', async () => {
+    const onMarkPaid = vi.fn().mockRejectedValue(new Error('They left before the qualifying day, so no bonus is due.'));
+    const { unmount } = show(<AllReferralsScreen rows={ALL} confirmId="a1" live={{ onMarkPaid, onRetry: vi.fn() }} />);
+    const d = screen.getByRole('dialog');
+    await ue.click(within(d).getByRole('button', { name: 'Mark paid' }));
+    expect(await within(d).findByText('They left before the qualifying day, so no bonus is due.')).toBeInTheDocument();
+    expect(screen.queryByText('Bonus marked paid')).not.toBeInTheDocument();
+    unmount();
+    show(<AllReferralsScreen rows={[]} />);
+    expect(screen.getByText('No referrals yet.')).toBeInTheDocument();
   });
 });

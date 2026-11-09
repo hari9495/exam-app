@@ -3,7 +3,7 @@ import type { Request } from 'express';
 import { assertOwnSession } from '../service-desk/desk-access';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
-import { RequirePermissions } from '../rbac/permissions.decorator';
+import { RequireAnyPermission } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
@@ -41,14 +41,15 @@ export class ReferralsController {
     return this.referrals.myReferrals(tenant, userId);
   }
 
+  // HIR-12 All referrals (founder answer 204): HR with ats.referral.manage, or recruiters who see candidates.
   @Get()
-  @RequirePermissions('candidate:view')
+  @RequireAnyPermission('ats.referral.manage', 'candidate:view')
   list(@CurrentTenant() tenant: TenantContext) {
     return this.referrals.listAll(tenant);
   }
 
   @Patch(':id/reward')
-  @RequirePermissions('pipeline:manage')
+  @RequireAnyPermission('ats.referral.manage', 'pipeline:manage')
   setReward(@Req() req: Request, @CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SetRewardStatusDto) {
     assertOwnSession(req);
     return this.referrals.setReward(tenant, userId, id, dto);

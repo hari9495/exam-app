@@ -1,4 +1,4 @@
-import type { CostEntry, Referral } from '@yukthix/ui/hiring';
+import type { AllReferral, CostEntry, Referral } from '@yukthix/ui/hiring';
 
 // HIR-11 / HIR-12 glue: API rows to the designed screens' rows. Pure, so it is unit-tested. Months and days are India
 // time (the one live region); money stays in rupees as the API sends it.
@@ -26,6 +26,9 @@ export interface ApiReferral {
   bonusInr: number;
   rewardStatus: string;
   createdAt: string;
+  eligibleOn: string | null;
+  bonusDue: AllReferral['bonus'];
+  referrerName?: string;
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -56,13 +59,15 @@ export function costRow(c: ApiCost): CostEntry {
   };
 }
 
-/** The months a new cost can be for: last month and this month, India time (as designed). */
+/** The months a cost can be for: every month of the current quarter, India time (founder answer 206). */
 export function costMonths(now: Date): { value: string; label: string }[] {
   const [y, m] = istDay(now).split('-').map(Number) as [number, number];
-  const prev = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
-  const cur = `${y}-${String(m).padStart(2, '0')}`;
-  return [prev, cur].map((v) => ({ value: v, label: MONTHS[Number(v.slice(5, 7)) - 1]! }));
+  const first = Math.floor((m - 1) / 3) * 3 + 1;
+  return [0, 1, 2].map((i) => ({ value: `${y}-${String(first + i).padStart(2, '0')}`, label: MONTHS[first + i - 1]! }));
 }
+
+/** This month in India time (YYYY-MM): the Segment starts on it. */
+export const thisMonth = (now = new Date()) => istDay(now).slice(0, 7);
 
 /** "Oct–Dec 2026" and its three months, from the API's quarter (first and last day). */
 export function quarterOf(from: string, to: string): { label: string; months: string[] } {
@@ -82,6 +87,22 @@ export function referralRow(r: ApiReferral): Referral {
     joined: r.joinedOn ? dayToDate(r.joinedOn) : null,
     bonus: r.bonusInr,
     ...(r.rewardStatus === 'paid' ? { paid: true } : {}),
+    ...(r.bonusDue === 'left' ? { leftEarly: true } : {}),
+  };
+}
+
+/** HR's All referrals row (founder answer 204). */
+export function allReferralRow(r: ApiReferral): AllReferral {
+  return {
+    id: r.id,
+    name: r.candidateName,
+    job: r.jobTitle,
+    referrer: r.referrerName ?? 'Unknown',
+    referred: dayToDate(istDay(new Date(r.createdAt))),
+    stage: r.stage,
+    bonus: r.bonusDue,
+    dueOn: r.eligibleOn ? dayToDate(r.eligibleOn) : null,
+    amount: r.bonusInr,
   };
 }
 

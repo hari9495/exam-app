@@ -90,7 +90,7 @@ export class CareersAdminService {
 
   addCost(ctx: TenantContext, dto: RecruitingCostDto) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const data = await this.costData(tx, c.organizationId, dto);
+      const data = await this.costData(tx, c.organizationId, dto, null);
       const cost = await tx.recruitingCost.create({ data: { organizationId: c.organizationId, ...data, enteredBy: c.userId ?? null } });
       await audit(tx, c, 'ats.cost.added', 'recruiting_cost', cost.id, { type: cost.costType, amount: dto.amount });
       return { ...cost, amount: Number(cost.amount) };
@@ -100,7 +100,7 @@ export class CareersAdminService {
   updateCost(ctx: TenantContext, id: string, dto: RecruitingCostDto) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const before = await this.manualCost(tx, c.organizationId, id);
-      const data = await this.costData(tx, c.organizationId, dto);
+      const data = await this.costData(tx, c.organizationId, dto, before.period);
       const cost = await tx.recruitingCost.update({ where: { id }, data });
       await audit(tx, c, 'ats.cost.changed', 'recruiting_cost', id, { before: { ...pick(before), amount: Number(before.amount) }, after: { ...pick(data), amount: dto.amount } });
       return { ...cost, amount: Number(cost.amount) };
@@ -123,7 +123,15 @@ export class CareersAdminService {
     return row;
   }
 
-  private async costData(tx: Tx, org: string, dto: RecruitingCostDto) {
+  /** `kept`: the row's month before an edit, which may stay as it is even when it is outside this quarter. */
+  private async costData(tx: Tx, org: string, dto: RecruitingCostDto, kept: Date | null) {
+    // Founder answer 206: a cost is for a month of the current quarter (India time).
+    if (dto.period) {
+      const q = quarterIst(new Date());
+      const month = dto.period.slice(0, 7);
+      const keptMonth = kept ? kept.toISOString().slice(0, 7) : null;
+      if (month !== keptMonth && (month < q.from.slice(0, 7) || month > q.to.slice(0, 7))) throw new BadRequestException('Choose a month of this quarter.');
+    }
     const board = dto.jobBoardId ? await tx.jobBoard.findFirst({ where: { id: dto.jobBoardId, organizationId: org }, select: { name: true } }) : null;
     if (dto.jobBoardId && !board) throw new NotFoundException('That job board is not in your organisation.');
     if (dto.jobId && !(await tx.job.findFirst({ where: { id: dto.jobId, organizationId: org }, select: { id: true } }))) throw new NotFoundException('That job is not in your organisation.');

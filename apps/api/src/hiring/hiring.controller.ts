@@ -94,35 +94,36 @@ export class HiringController {
     return this.careers.removeEntity(ctx, id);
   }
 
+  // HIR-11 (founder answer 202): its own hiring key, for HR and recruiters (granted through the role templates).
   @Get('costs')
-  @RequirePermissions('org:manage_settings')
+  @RequirePermissions('ats.costs.manage')
   costs(@CurrentTenant() ctx: TenantContext) {
     return this.careers.costs(ctx);
   }
 
   @Get('costs/overview')
-  @RequirePermissions('org:manage_settings')
+  @RequirePermissions('ats.costs.manage')
   costsOverview(@CurrentTenant() ctx: TenantContext) {
     return this.careers.costsOverview(ctx);
   }
 
   // HIR-11: entering a cost is the person's own act, so it is refused while acting for someone else.
   @Post('costs')
-  @RequirePermissions('org:manage_settings')
+  @RequirePermissions('ats.costs.manage')
   addCost(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: RecruitingCostDto) {
     assertOwnSession(req);
     return this.careers.addCost(ctx, dto);
   }
 
   @Put('costs/:id')
-  @RequirePermissions('org:manage_settings')
+  @RequirePermissions('ats.costs.manage')
   updateCost(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RecruitingCostDto) {
     assertOwnSession(req);
     return this.careers.updateCost(ctx, id, dto);
   }
 
   @Delete('costs/:id')
-  @RequirePermissions('org:manage_settings')
+  @RequirePermissions('ats.costs.manage')
   removeCost(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     assertOwnSession(req);
     return this.careers.removeCost(ctx, id);
