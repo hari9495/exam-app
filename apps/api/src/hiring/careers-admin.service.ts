@@ -133,7 +133,7 @@ export class CareersAdminService {
       jobId: dto.jobId ?? null,
       jobBoardId: dto.jobBoardId ?? null,
       source,
-      costType: dto.costType ?? (dto.jobBoardId ? 'job_board' : 'other'),
+      costType: dto.costType ?? (dto.jobBoardId ? 'posting' : 'other'), // 'posting' = a board's cost (shown as Job board)
       amount: dto.amount,
       currency: dto.currency,
       period: dto.period ? new Date(dto.period) : null,
