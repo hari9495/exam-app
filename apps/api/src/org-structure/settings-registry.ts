@@ -22,7 +22,7 @@ export interface SettingDef {
   /** The value is short text HR writes (one thing a line), up to this many characters; `values` is empty. */
   text?: { maxLength: number };
   /** The values come from a platform list (besides `values`), read when the settings are listed and checked on save. */
-  oneOf?: 'policy_industries';
+  oneOf?: 'policy_industries' | 'company_users';
   /** Labels of the values, when the list is not fixed in code. */
   labels?: Record<string, string>;
 }
@@ -213,6 +213,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // HIR-05 founder answer 272: an ex-employee HR marked not eligible for rehire cannot move past the first stage (into
   // Screening or later) until HR clears the flag with a reason. Off by default: the banner only tells.
   'hiring.rehire_flag.blocks_screening': { label: 'Hiring: "not eligible for rehire" stops an ex-employee at the first stage', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
+  // HIR-02 founder answer 291 (Settings 6.1): a hiring manager's request starts with this recruiter, or with none until
+  // recruiting assigns one; never the manager themselves. The value is a person of the company (or none).
+  'hiring.requisition.default_recruiter': { label: 'Hiring: default recruiter for new requisitions', scopes: ['tenant'], dated: false, values: ['none'], default: 'none', oneOf: 'company_users' },
   'home.pay_on_employee_home': { label: 'Show net pay on the employee home', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // P02 §4.5 fraud guard: a new bank account is used for payouts only after this cooling period (starter, D17).
   'employee.bank_change.cooling_hours': { label: 'New bank accounts are used for pay after (hours)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '24', '48', '72'], default: '48', guard: 'access.role.manage' },

@@ -9,9 +9,10 @@ import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.de
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { HiringRequisitionsService } from './requisitions.service';
-import { CancelRequisitionDto, CareersEntityDto, ConsentNoticeDto, RecruitingCostDto, PlanDto, PlanQueryDto, PlanVersionDto } from './hiring-dto';
+import { CancelRequisitionDto, SaveHiringSettingsDto, CareersEntityDto, ConsentNoticeDto, RecruitingCostDto, PlanDto, PlanQueryDto, PlanVersionDto } from './hiring-dto';
 import { CareersAdminService } from './careers-admin.service';
 import { RediscoveryService } from './rediscovery.service';
+import { HiringSettingsService } from './hiring-settings.service';
 
 // Recruitment batch AT2 (M10-BUILD-DESIGN §18.1): headcount plans (ats.headcount.manage) and the plan lines a
 // requisition can draw on (anyone who raises or runs requisitions). Requisitions themselves are jobs (/jobs, AT1).
@@ -28,7 +29,23 @@ export class HiringController {
     private readonly svc: HiringRequisitionsService,
     private readonly careers: CareersAdminService,
     private readonly rediscovery: RediscoveryService,
+    private readonly hiringSettings: HiringSettingsService,
   ) {}
+
+  // Settings 6.1 Hiring: recruiting, hiring admins and HR read it; the hiring settings key (or HR's settings key), held
+  // for the whole company, changes it; never while acting for someone else.
+  @Get('settings')
+  @RequireAnyPermission('ats.settings.manage', 'org.settings.manage', 'pipeline:manage', 'ats.headcount.manage', 'ats.referral.manage')
+  settings(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.hiringSettings.read(ctx, req.user as ScopeUser);
+  }
+
+  @Put('settings')
+  @RequireAnyPermission('ats.settings.manage', 'org.settings.manage')
+  saveSettings(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: SaveHiringSettingsDto) {
+    ownSession(req);
+    return this.hiringSettings.save(ctx, req.user as ScopeUser, dto.changes);
+  }
 
   // HIR-01: HR sees every plan; a hiring manager their own department's approved plan, read-only (decision 11).
   @Get('plans')
@@ -73,13 +90,14 @@ export class HiringController {
     return this.rediscovery.suggest(ctx, req.user as ScopeUser, id);
   }
 
-  // HIR-02 answer 253: cancel a requisition with a reason (recruiting; never while acting for someone else).
+  // HIR-02 answers 253 and 293: cancel a requisition with a reason: recruiting any, a hiring manager their own while it
+  // waits for approval; never while acting for someone else.
   @Post('requisitions/:id/cancel')
   @HttpCode(200)
-  @RequirePermissions('pipeline:manage')
-  cancelRequisition(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CancelRequisitionDto) {
+  @RequireAnyPermission('pipeline:manage', 'ats.requisition.raise')
+  cancelRequisition(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CancelRequisitionDto) {
     ownSession(req);
-    return this.svc.cancel(ctx, userId, id, dto.reason);
+    return this.svc.cancel(ctx, req.user as ScopeUser, id, dto.reason);
   }
 
   // HIR-26 answer 255: suggest a past candidate to the requisition's recruiter (bell notice, once per candidate).

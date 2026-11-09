@@ -11,6 +11,7 @@ import { settingFor } from '../people/probation';
 import { PayrollIntakeService } from '../payroll/intake.service';
 import { withPayScope } from '../payroll/pay-access';
 import { AutomationService } from '../rules-engine/automation.service';
+import { quarterIst } from '../hiring/careers-admin.service';
 
 export interface ReferralRow {
   id: string;
@@ -38,6 +39,10 @@ export interface ReferralRow {
    * (answer 234: their resignation waits for approval; only an accepted exit cancels the bonus).
    */
   bonusDue: 'not-hired' | 'waiting' | 'due' | 'paid' | 'left' | 'none' | 'on-hold';
+  /** Answer 285: a paid bonus went through payroll, or was paid outside payroll (null while not paid). */
+  paidVia: 'payroll' | 'outside' | null;
+  /** HR's list only: the referrer has an employee record, so payroll can pay them. */
+  referrerIsEmployee?: boolean;
 }
 
 /** HIR-12 company policy: the bonus and the days a referred hire must complete (settings with defaults). */
@@ -236,6 +241,7 @@ export class ReferralsService implements OnModuleInit {
       const [row] = await this.buildRows(tx, [referral], false);
       const sourceRef = `referral:${id}`;
       let payMonth: string | null = null;
+      const outside = dto.paidVia === 'outside';
       if (dto.rewardStatus === 'paid' && referral.rewardStatus !== 'paid') {
         if (row!.bonusDue !== 'due')
           throw new ConflictException(
@@ -243,15 +249,18 @@ export class ReferralsService implements OnModuleInit {
               ? 'Their resignation is waiting for approval, so the bonus is on hold. Mark it paid after the exit is decided.'
               : row!.bonusDue === 'left' ? 'They left before the qualifying day, so no bonus is due.' : row!.bonusDue === 'waiting' ? `The bonus is due on ${dayLabel(row!.eligibleOn!)}. Mark it paid after that.` : 'The bonus is due only after the person is hired and completes the qualifying days.',
           );
-        payMonth = await this.toPayroll(tx, c, referral, row!, actorUserId);
+        if (outside) await this.paidOutside(tx, c, referral, row!, actorUserId);
+        else payMonth = await this.toPayroll(tx, c, referral, row!, actorUserId);
       } else if (dto.rewardStatus !== 'paid' && referral.rewardStatus === 'paid') {
-        await this.fromPayroll(tx, c, sourceRef);
+        if (row!.paidVia === 'outside') await this.undoOutside(tx, c, sourceRef);
+        else await this.fromPayroll(tx, c, sourceRef);
       }
       await tx.referral.update({ where: { id }, data: { rewardStatus: dto.rewardStatus, rewardNote: dto.rewardNote ?? null } });
-      return { before: referral.rewardStatus, amount: row!.bonusInr, payMonth };
+      const paidVia = dto.rewardStatus === 'paid' ? (referral.rewardStatus === 'paid' ? row!.paidVia : outside ? 'outside' : 'payroll') : null;
+      return { before: referral.rewardStatus, amount: row!.bonusInr, payMonth, paidVia, undone: referral.rewardStatus === 'paid' && dto.rewardStatus !== 'paid' ? row!.paidVia : null };
     });
-    await this.audit.record(context, { actorUserId, action: 'referral.reward_updated', entityType: 'referral', entityId: id, metadata: { before: out.before, rewardStatus: dto.rewardStatus, ...(dto.rewardStatus === 'paid' ? { amountInr: out.amount, payMonth: out.payMonth } : {}) } });
-    return { id, rewardStatus: dto.rewardStatus, ...(out.payMonth ? { payMonth: out.payMonth } : {}) };
+    await this.audit.record(context, { actorUserId, action: 'referral.reward_updated', entityType: 'referral', entityId: id, metadata: { before: out.before, rewardStatus: dto.rewardStatus, ...(dto.rewardStatus === 'paid' ? { amountInr: out.amount, payMonth: out.payMonth, paidVia: out.paidVia } : {}), ...(out.undone ? { undonePaidVia: out.undone } : {}) } });
+    return { id, rewardStatus: dto.rewardStatus, ...(out.payMonth ? { payMonth: out.payMonth } : {}), ...(out.paidVia ? { paidVia: out.paidVia } : {}) };
   }
 
   /** Answer 231: the one-time Referral bonus line for the referrer, in this month or the next open one (up to 3 ahead). */
@@ -274,6 +283,31 @@ export class ReferralsService implements OnModuleInit {
       }
     }
     throw new ConflictException('The next three pay months are locked. Ask payroll to open a month, then mark it paid.');
+  }
+
+  /**
+   * Answer 285: the bonus was paid outside payroll (a referrer with no employee record, or HR's choice). No pay line; the
+   * Referral bonus cost is posted at once for this month (India time), linked to the referral.
+   */
+  private async paidOutside(tx: Tx, c: CompanyContext, referral: { id: string; jobId: string }, row: ReferralRow, by: string): Promise<void> {
+    await tx.recruitingCost.create({
+      data: { organizationId: c.organizationId, origin: OUTSIDE, sourceRef: `referral:${referral.id}`, jobId: referral.jobId, source: `Referral: ${row.candidateName}`.slice(0, 120), costType: 'referral_bonus', amount: row.bonusInr, currency: 'INR', period: new Date(`${istDay(new Date()).slice(0, 7)}-01T00:00:00Z`), note: 'Referral bonus paid outside payroll', enteredBy: by },
+    });
+  }
+
+  /**
+   * Undo a bonus paid outside payroll: the posted cost is removed while its quarter is still open (recruiting costs are
+   * entered and changed only for months of the current quarter, answer 206); after that it is part of a closed quarter's
+   * cost per hire and is refused with the reason.
+   */
+  private async undoOutside(tx: Tx, c: CompanyContext, sourceRef: string): Promise<void> {
+    const cost = await tx.recruitingCost.findFirst({ where: { organizationId: c.organizationId, origin: OUTSIDE, sourceRef } });
+    if (cost?.period) {
+      const month = cost.period.toISOString().slice(0, 7);
+      const q = quarterIst(new Date());
+      if (month < q.from.slice(0, 7)) throw new ConflictException(`The bonus cost is in the ${month} recruiting costs, a quarter that is closed, so it cannot be undone here. Enter a correction in Recruiting costs instead.`);
+    }
+    await tx.recruitingCost.deleteMany({ where: { organizationId: c.organizationId, origin: OUTSIDE, sourceRef } });
   }
 
   /** Undo "paid": the line is cancelled while no approved run has paid it; the cost goes with it. */
@@ -330,6 +364,9 @@ export class ReferralsService implements OnModuleInit {
     const referrers = includeReferrer
       ? ((await tx.user.findMany({ where: { id: { in: referrals.map((r) => r.referrerUserId) } }, select: { id: true, name: true } })) as { id: string; name: string }[])
       : [];
+    // Answer 285: paid outside payroll = the referral has an outside-payroll cost row.
+    const paidOutside = new Set(((await tx.recruitingCost.findMany({ where: { origin: OUTSIDE, sourceRef: { in: referrals.map((r) => `referral:${r.id}`) } }, select: { sourceRef: true } })) as { sourceRef: string }[]).map((x) => x.sourceRef));
+    const employeeUsers = includeReferrer ? new Set(((await tx.employee.findMany({ where: { userId: { in: referrals.map((r) => r.referrerUserId) } }, select: { userId: true } })) as { userId: string }[]).map((e) => e.userId)) : null;
     const candidateById = new Map(candidates.map((c) => [c.id, c]));
     const jobById = new Map(jobs.map((j) => [j.id, j]));
     const entryById = new Map(entries.map((e) => [e.id, e]));
@@ -353,6 +390,8 @@ export class ReferralsService implements OnModuleInit {
         eligibleOn,
         leftOn: left,
         bonusDue,
+        paidVia: r.rewardStatus === 'paid' ? (paidOutside.has(`referral:${r.id}`) ? 'outside' : 'payroll') : null,
+        ...(employeeUsers ? { referrerIsEmployee: employeeUsers.has(r.referrerUserId) } : {}),
         bonusInr: r.rewardStatus === 'rejected' || (leftEarly && r.rewardStatus !== 'paid') ? 0 : r.bonusInr ?? policy.bonusInr,
         id: r.id,
         candidateName: candidateById.get(r.candidateId)?.name ?? '(unknown)',
@@ -377,5 +416,7 @@ async function readPolicy(tx: Tx, c: CompanyContext): Promise<ReferralPolicy> {
   };
 }
 
+/** Answer 285: the origin of a Referral bonus cost paid outside payroll. */
+const OUTSIDE = 'outside_payroll';
 const nextMonth = (m: string) => { const y = Number(m.slice(0, 4)); const n = Number(m.slice(5, 7)); return n === 12 ? `${y + 1}-01` : `${y}-${String(n + 1).padStart(2, '0')}`; };
 const istDay = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);

@@ -168,3 +168,23 @@ export class CancelRequisitionDto {
   @MaxLength(500)
   reason!: string;
 }
+
+/** Settings 6.1 Hiring: one changed company setting (the service checks the key and value against the registry). */
+export class HiringSettingChangeDto {
+  @Matches(/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/)
+  @MaxLength(100)
+  key!: string;
+
+  @IsString()
+  @MaxLength(100)
+  value!: string;
+}
+
+export class SaveHiringSettingsDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(20)
+  @ValidateNested({ each: true })
+  @Type(() => HiringSettingChangeDto)
+  changes!: HiringSettingChangeDto[];
+}
