@@ -38,8 +38,9 @@ was built.
   bias audit (HIR-23), BGV partner checks (HIR-10), offer versions, employer costs and conditions (HIR-09, HIR-29),
   bulk interview day and bulk offers (HIR-27, 28), interview slot finder from calendars (HIR-06), CRM sequences and
   sourced profiles (HIR-20). (Pay-transparency law rules, HIR-24, went live 9 Nov 2026.)
-- **The public careers site** (/careers/[org], /careers/[org]/jobs/[slug], /apply/[token]) is hand-written pages, not the
-  designed T9-09 screens, and there are **two designs for it** (T9-09 and the older Surfaces/Careers kit; section 5).
+- **The public careers site** is live on T9-09 since 11 Nov 2026 (/yx/careers/[org], its job pages, /yx/apply/[token])
+  with the candidate pages outside the app (status, candidate page, offer accept, interview booking); the Surfaces/Careers
+  page builder is live at /yx/hiring/careers (decision 8).
 
 Verdicts (the same words as People and Helpdesk): **live** (the live page renders the designed screen and can reach this
 state; the note says how) · **live (gap)** (the design is live, but this state can't be reached yet; the note says why) ·
@@ -58,9 +59,10 @@ built**.
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 13 | 0 | 3 | 7 | 4 | 27 |
 | E. Staffing agency | 8 | 0 | 0 | 4 | 44 | 0 | 48 |
 | F. Compliance and fairness | 5 | 4 | 1 | 0 | 20 | 0 | 25 |
-| G. Careers site, portals and settings | 4 | 0 | 0 | 30 | 11 | 0 | 41 |
-| **All Hiring design groups (A–G)** | **37** | **97** | **2** | **50** | **107** | **5** | **261** |
-| H. Kit and "Live ·" groups (not designs; own line) | 5 | 8 | 0 | 6 | 5 | 0 | 19 |
+| G. Careers site, portals and settings | 4 | 45 | 4 | 4 | 11 | 0 | 64 |
+| **All Hiring design groups (A–G)** | **37** | **142** | **6** | **24** | **107** | **5** | **284** |
+| H. Kit and "Live ·" groups (not designs; own line) | 5 | 6 | 0 | 6 | 5 | 0 | 17 |
+Recounted by script 11 Nov 2026 on `feat/yukthix-careers` after the careers site went live (decisions 8 and 10): T9-09 8 stories wire design → live (2 with a gap) plus 17 new (the pay question, on hold, and the drawn candidate pages: status 4, candidate page 3, offer 4, interview 4); Surfaces/Careers 18 → live (2 with a gap) plus 6 new (site settings, company pages, notices 2, company switch and assistant, full apply form); the 2 "Live · Careers site" stand-in stories were deleted with the stand-in.
 Recounted by script 11 Nov 2026 on `feat/yukthix-hir-06-07` after HIR-06 and HIR-07 went live: HIR-06 3 stories wire design → live (the slot finder's 2 stay feature not built), HIR-07 4 → live plus 1 new story (Overseer); the 3 "Live · Job workspace and interviews" stand-in stories (Interview, InterviewSubmitted, MyInterviews) were deleted with the stand-ins.
 Recounted by script 10 Nov 2026 on `feat/yukthix-hir-04-followups` after founder answers 261 and 263: HIR-04 gained 3 sheet stories, HIR-05 the 2 Application stories, HIR-03 the Settings story; the 3 "Live · Job workspace" stand-in stories were deleted with the stand-ins.
 Recounted by script 9 Nov 2026 on `feat/yukthix-hir-04` after HIR-04 went live (its 7 stories: wire design → live; no story added or removed). Before that, recounted on `feat/yukthix-hir-03-24` after HIR-01 (four new stories, Plans and NoPlans deleted), HIR-03 and HIR-24 went live and the HIR-03 follow-ups added the Change recruiter story (HIR-03 gained the Create job sheet story; the "Live · Jobs" stand-in and its 4 stories were deleted). First counted (the script is in the appendix): every `export const`
@@ -680,20 +682,39 @@ both ends where required. Jobs now keep `salaryPeriod` and `askPayHistory`.
 
 #### T9-09 · Careers site
 
-Live pages: /careers/[orgSlug], /careers/[orgSlug]/jobs/[slug] (server pages, hand-written, with Google for Jobs
-JSON-LD and a sitemap) and /apply/[applyToken]. Designed: `CareersSiteScreen`, `CareersJobScreen`
-(`screens/portals/t9-candidate.tsx`).
+Live (11 Nov 2026, founder decisions 8 and 10): /yx/careers/[org] (+ ?company=), /yx/careers/[org]/jobs/[slug] (with
+Google for Jobs JSON-LD and /yx/careers/[org]/sitemap.xml), /yx/apply/[token], and the candidate pages outside the app
+/yx/application/[token], /yx/candidate/[token], /yx/offer/[token], /yx/interview/[token] (old addresses redirect).
+`CareersSiteScreen`, `CareersJobScreen` (`screens/portals/t9-candidate.tsx`) and the newly drawn candidate pages
+(`screens/portals/t9-09-candidate-pages.tsx`) take a `live` prop.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Home · Careers home | wire design | public careers API (headline, intro, banner, open jobs) |
-| HomePhone · Careers home · phone | wire design | same page at phone width |
-| WhiteLabel · Careers home · white-label | wire design | API: no white-label setting |
-| NoJobs · Careers home · no open jobs | wire design | no open jobs |
-| Job · Job page with pay range and apply | wire design | job page + `showSalary` range; apply is a separate page today |
-| JobPhone · Job page · phone | wire design | same page at phone width |
-| Applied · Job page · application sent | wire design | after apply |
-| Closed · Job page · closed | wire design | job not open |
+| Home · Careers home | live | builder layout, banner as hero photo, company pages, assistant when on |
+| HomePhone · Careers home · phone | live | same page at phone width |
+| WhiteLabel · Careers home · white-label | live (gap) | no white-label setting in the API: "Powered by YukthiX" always shows (question 356) |
+| NoJobs · Careers home · no open jobs | live | no open jobs |
+| Job · Job page with pay range and apply | live (gap) | range only when the job shows it; no "apply by" date, experience or requirements list on a job (question 353); no WhatsApp apply (question 354) |
+| JobPhone · Job page · phone | live | same page at phone width |
+| Applied · Job page · application sent | live | after apply |
+| Closed · Job page · closed | live | closed, on hold or unknown link: "This role is not accepting applications" (answer 242) |
+| JobPayQuestion · Job page · pay question where the law allows | live | answer 224: only where the job asks and HIR-24's law row allows; dropped by the API otherwise |
+| JobOnHold · Job page · not accepting applications (on hold) | live | answer 242 |
+| Status · Application status | live | /yx/application/[token]: this application only, candidate words (no stage name) |
+| StatusPhone · Application status · phone | live | same page at phone width |
+| StatusDecision · Application status · decision made | live | rejected or archived |
+| StatusNotFound · Application status · link not valid | live | unknown token |
+| Portal · Candidate page | live | /yx/candidate/[token]: details, resume, own applications, interviews, offers, other open jobs |
+| PortalPhone · Candidate page · phone | live | same page at phone width |
+| PortalEmpty · Candidate page · no applications, full form to apply | live | one click only with a resume, no consent and no required questions |
+| Offer · Offer to accept | live | /yx/offer/[token]: the existing accept-by-link; answers once, refuses expired |
+| OfferPhone · Offer to accept · phone | live | same page at phone width |
+| OfferAccepted · Offer · accepted | live | after accept, or opened again later |
+| OfferExpired · Offer · expired | live | past the answer-by date |
+| Interview · Interview · choose a proposed time | live | /yx/interview/[token]: confirm, ask for another time, decline |
+| InterviewPhone · Interview · phone | live | same page at phone width |
+| InterviewSelfBook · Interview · book a free time | live | self-booking: free times from the panel's calendars, re-checked on booking |
+| InterviewConfirmed · Interview · confirmed | live | confirmed time in the interview's time zone |
 
 #### T9-15 · Candidate identity verification
 
@@ -711,29 +732,36 @@ JSON-LD and a sitemap) and /apply/[applyToken]. Designed: `CareersSiteScreen`, `
 
 #### Careers
 
-`Surfaces/Careers` (`stories/careers.stories.tsx`, `components/careers.tsx`: `CareersPage`, `PageBuilder`,
-`JobApplyForm`). The older careers design; nothing in `apps/web` imports it. Same job as T9-09 (section 5).
+`Surfaces/Careers` (`stories/careers.stories.tsx`, `components/careers.tsx`: `CareersPage`, `PageBuilder`, `JobApplyForm`;
+`components/careers-admin.tsx`: `CareersCompanyPages`, `CareersNotices`). The page builder is live at /yx/hiring/careers
+(decision 8); `CareersPage` and `JobApplyForm` render inside the T9-09 screens.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Classic · Classic | wire design | /careers/[orgSlug] |
-| Compact · Compact | wire design | API: no layout choice |
-| Split · Split | wire design | same |
-| TenantAccent · Tenant accent (#1F6F4A, 6.4:1) | wire design | API: no brand accent setting |
-| AccentTooLight · Tenant accent too light (falls back) | wire design | same |
-| Mobile · Mobile | wire design | phone width |
-| MobileSplit · MobileSplit | wire design | same, split layout |
-| NoOpenJobs · NoOpenJobs | wire design | no open jobs |
-| WhiteLabel · White-label (no Powered by) | wire design | API: no white-label setting |
-| MinimalPage · Minimal (hero text only, jobs) | wire design | headline + intro only |
-| PageBuilderEditing · Page builder — editing | wire design | /yx/hiring/careers (stand-in `CareersSiteScreen`), `PUT organizations/careers` |
-| PageBuilderMobilePreview · Page builder — mobile preview | wire design | same |
-| PageBuilderPublished · Page builder — published | wire design | `enabled` |
-| PageBuilderLightAccent · Page builder — accent too light | wire design | API: no accent |
-| ApplyForm · ApplyForm | wire design | /apply/[applyToken] (hand-written) with consent notices |
-| ApplyFormMobile · ApplyFormMobile | wire design | same at phone width |
-| ApplyFormSent · ApplyFormSent | wire design | after apply |
-| BrandPlaceholders · Logo and monogram (placeholders) | wire design | company logo on the careers page |
+| Classic · Classic | live | layout theme "Classic" (inside T9-09 careers home) |
+| Compact · Compact | live | theme saved by the builder |
+| Split · Split | live | same |
+| TenantAccent · Tenant accent (#1F6F4A, 6.4:1) | live | accent saved by the builder; under 4.5:1 falls back |
+| AccentTooLight · Tenant accent too light (falls back) | live | same |
+| Mobile · Mobile | live | phone width |
+| MobileSplit · MobileSplit | live | same, split layout |
+| NoOpenJobs · NoOpenJobs | live | no open jobs |
+| WhiteLabel · White-label (no Powered by) | live (gap) | no white-label setting (question 356) |
+| MinimalPage · Minimal (hero text only, jobs) | live | the layout before anyone used the builder (headline + intro) |
+| PageBuilderEditing · Page builder — editing | live | /yx/hiring/careers; edits are a draft until Publish |
+| PageBuilderMobilePreview · Page builder — mobile preview | live | same |
+| PageBuilderPublished · Page builder — published | live | published = the careers site is on and unchanged since Publish |
+| PageBuilderLightAccent · Page builder — accent too light | live | same |
+| PageBuilderSiteSettings · Page builder — site settings (photo, assistant, offline) | live | the old page's banner, assistant and on/off |
+| CompanyPages · Company pages (one per company in the group) | live | /yx/hiring/careers, under the builder (the old stand-in's card) |
+| PrivacyNotices · Privacy notices (versioned) | live | same |
+| PrivacyNoticesNone · Privacy notices · none yet | live | same |
+| CompaniesAndAssistant · Company switch and careers assistant | live | ?company= pages and the assistant on the public page |
+| ApplyForm · ApplyForm | live | inside the T9-09 job page |
+| ApplyFormMobile · ApplyFormMobile | live | same at phone width |
+| ApplyFormSent · ApplyFormSent | live | after apply |
+| ApplyFormFull · Apply form · notices, pay question and company questions | live | versioned notices, answer 224, candidate custom fields shown on apply |
+| BrandPlaceholders · Logo and monogram (placeholders) | live (gap) | the company logo is not shown on the careers pages yet (question 357) |
 
 #### Group 6 · Hiring & Assessments
 
@@ -782,8 +810,6 @@ a design, BUILD-STANDARD rule 1). Each "Live ·" story is deleted with its stand
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| CareersSite · CareersSite | live | /yx/hiring/careers; goes with the careers page builder |
-| CareersSiteNoNotices · CareersSiteNoNotices | live | same, no consent notices yet |
 | JobBoards · JobBoards | live | /yx/hiring/job-boards; goes with HIR-03 / 20 postings (costs moved to HIR-11) |
 | NoJobBoards · NoJobBoards | live | same, empty |
 
@@ -1182,3 +1208,33 @@ Each has a safe default already built; the suggestion is the answer we propose.
      per-item bars only if recruiters ask.*
 330. **Scorecard templates page** (/yx/hiring/scorecards) stays the stand-in until Settings 6.1 is wired (queue item 9).
      *Suggested: keep.*
+## Founder questions from the careers site build (11 Nov 2026)
+Each has a safe default already built; the suggestion is the answer we propose.
+351. **Old addresses.** The careers site and the candidate pages moved under /yx (/yx/careers, /yx/apply, /yx/application,
+     /yx/candidate, /yx/offer, /yx/interview). Emails, the job-board feeds and search results still carry the old
+     addresses; built: permanent redirects from each. *Suggested: switch the API's links to the /yx addresses in one small
+     change and keep the redirects for a year.*
+352. **An infected resume (question 125).** The scan now runs after the application is saved, so the application goes in
+     and the resume is quarantined (recruiters can never open it); the applicant is not told. *Suggested: email the
+     applicant "we could not accept your resume file" with their candidate-page link to upload another.*
+353. **Job facts the design shows but a job does not have:** "Apply by" date, experience and a requirements list. Built:
+     hidden; the job's description fills "The job". *Suggested: optional Apply-by (the job closes itself that night) and
+     Experience fields on the job; keep requirements inside the description.*
+354. **"Apply on WhatsApp"** (T9-09 design). Built: hidden (no WhatsApp apply). *Suggested: add it with T9-20 chat apply.*
+355. **The pay-history answer** (answer 224) is stored on the application in rupees a year, only where allowed. Built:
+     nobody sees it in the app yet. *Suggested: show it in the HIR-05 Application drawer to people with the pay key only.*
+356. **White-label** (no "Powered by YukthiX"). Built: no setting; it always shows. *Suggested: a plan-level company
+     setting (D15), default off.*
+357. **Company logo on the careers pages.** Built: the company name in text (the kit has no tenant-logo part). *Suggested:
+     add a TenantLogo kit part (image with alt text, size-capped) and show the company logo on every candidate page.*
+358. **Careers assistant** moved from a floating chat bubble to an "Ask about these jobs" section on the page (new kit
+     part, same API, same company setting). *Suggested: keep.*
+359. **Mobile number** is required and Indian (10 digits) on the designed apply form; the API takes any. Applicants
+     abroad cannot enter theirs. *Suggested: an international number field when the job's place is outside India.*
+360. **Builder drafts.** Edits stay in the browser until Publish; leaving the page loses unpublished edits. *Suggested:
+     keep; save drafts on the server only if HR asks.*
+361. **Status words.** The stage's category decides the candidate words (first active stage: "Application received";
+     later: "Under review"; offer or hired: "Moving forward"; rejected: "A decision has been made"); the stage name is
+     never shown (the candidate page showed it before). *Suggested: keep.*
+362. **Offer and interview pages** show the company name but not its colour or careers link (those APIs send the name
+     only). *Suggested: add the company's brand to those two answers.*

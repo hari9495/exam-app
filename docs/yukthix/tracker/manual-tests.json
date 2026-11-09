@@ -16680,5 +16680,122 @@
       "Screens/Hiring/HIR-07 · Scorecard form · Recruiter or hiring manager · submitted scorecards, resend and cancel"
     ],
     "note": "Positive and negative (acting for someone else)."
+  },
+  {
+    "id": "MT-HIR-CAR-01",
+    "area": "Hiring · Careers site and candidate pages (T9-09, 11 Nov 2026)",
+    "screen": "Careers page builder (Surfaces/Careers) at Hiring › Careers site",
+    "url": "http://localhost:3000/yx/hiring/careers",
+    "account": "admin-tester@demo-org.test (Org admin). Browser window 1278 x 635.",
+    "steps": [
+      "Open the page; compare with the stories \"Surfaces/Careers › Page builder — editing\" and \"Page builder — site settings\".",
+      "Select the Hero section and change the Heading to \"Make the snacks South India shares\". Add a Benefits section with one benefit (Health, \"Family health cover\").",
+      "Type \"12\" in Accent colour and press Publish.",
+      "Type \"1F6F4A\" in Accent colour and press Publish.",
+      "Press Open the careers site.",
+      "Back in the builder, tick Careers assistant; then press Take the page offline; then Publish again."
+    ],
+    "expected": "Step 1: Sections list, preview and settings; Published or Draft badge; Company pages and Privacy notices cards below. Step 2: the preview changes at once and the badge says Draft. Step 3: nothing is saved; the field says \"Enter a 6-digit hex colour like 1F6F4A\" and has focus (the button is not greyed out). Step 4: toast \"Careers page published\", badge Published. Step 5: a new tab shows the public page with the new heading, the Benefits section and green buttons. Step 6: toast \"Careers assistant is on\"; then \"Careers page is offline\" and the public page says it is not available; Publish brings it back.",
+    "stories": [
+      "Surfaces/Careers › Page builder — editing",
+      "Surfaces/Careers › Page builder — site settings (photo, assistant, offline)"
+    ],
+    "note": "Positive and negative (bad colour). The layout is checked by the API too: a second Hero is refused."
+  },
+  {
+    "id": "MT-HIR-CAR-02",
+    "area": "Hiring · Careers site and candidate pages (T9-09, 11 Nov 2026)",
+    "screen": "Company pages and privacy notices under the builder",
+    "url": "http://localhost:3000/yx/hiring/careers",
+    "account": "admin-tester@demo-org.test (Org admin). Browser window 1278 x 635.",
+    "steps": [
+      "Under Company pages press \"Set up page for\" a company; press Save page with the web address empty; then type \"Demo Retail\"; then \"demo-retail\" with brand colour \"red\"; then \"#1F6F4A\".",
+      "Under Privacy notices press \"Publish a new version: applying for a job\" and press Publish version without changing the words; then add \" We keep them for 12 months.\" and publish.",
+      "Open /yx/careers/demo-org?company=demo-retail."
+    ],
+    "expected": "Step 1: \"Enter the web address.\", then the plain-address error, then the colour error, each with focus on the field; the last one saves (toast \"Company page saved\"). Step 2: \"Change the words to publish a new version.\"; then toast \"Notice published\" and a new version row. Step 3: the company's own page with its headline and only its jobs; the bar links \"All of …\" and the company.",
+    "stories": [
+      "Surfaces/Careers › Company pages (one per company in the group)",
+      "Surfaces/Careers › Privacy notices (versioned)"
+    ],
+    "note": "Positive and negative. Every setting of the old stand-in page is here."
+  },
+  {
+    "id": "MT-HIR-CAR-03",
+    "area": "Hiring · Careers site and candidate pages (T9-09, 11 Nov 2026)",
+    "screen": "Public careers home and job page (T9-09)",
+    "url": "http://localhost:3000/yx/careers/demo-org",
+    "account": "Not signed in (a private window). Browser window 1278 x 635.",
+    "steps": [
+      "Open the page; compare with \"T9-09 · Careers site › Careers home\".",
+      "Search \"zzz\" in Search jobs; press Clear filters.",
+      "Press Apply on an open job that shows its pay range.",
+      "Open an on-hold job's apply link /yx/apply/<token> (HR: put a job On hold first), and the old address /careers/demo-org.",
+      "Open /yx/careers/no-such-company."
+    ],
+    "expected": "Step 1: only published open jobs of this company; no recruiter name anywhere. Step 2: \"No jobs match your search.\" then all jobs again. Step 3: the job page with Pay range, The job, and the apply form. Step 4: \"This role is not accepting applications.\" with See open jobs; the old address opens /yx/careers/demo-org. Step 5: \"This careers page is not available.\"",
+    "stories": [
+      "Screens/Portals/T9-09 · Careers site › Careers home",
+      "Screens/Portals/T9-09 · Careers site › Job page · not accepting applications (on hold)"
+    ],
+    "note": "Positive and negative (no match, on hold, unknown company)."
+  },
+  {
+    "id": "MT-HIR-CAR-04",
+    "area": "Hiring · Careers site and candidate pages (T9-09, 11 Nov 2026)",
+    "screen": "Apply with consent and the pay question (answers 224, 242)",
+    "url": "http://localhost:3000/yx/careers/demo-org",
+    "account": "Not signed in. HR first sets one India job to ask the pay question (job Settings). Use a real inbox you can read (Mailpit). Browser window 1278 x 635.",
+    "steps": [
+      "On that job press Send application with nothing filled in.",
+      "Fill Full name, Email, a 10-digit mobile, a PDF resume, \"520000\" in Your current or last pay; press Send without ticking the notice.",
+      "Tick \"I have read this and agree.\" and send.",
+      "Upload a .docx or a renamed .exe as the resume and send (fresh form).",
+      "Open a job in a location whose law bans the question (New York), if the demo has one."
+    ],
+    "expected": "Step 1: \"Enter your full name\" with focus on Full name; Send is never greyed out. Step 2: \"Tick the box so we can process your application.\" Step 3: \"Application sent\"; an email with \"See where your application is\" and \"Open your candidate page\". Step 4: the file is refused (\"Résumé must be a PDF\"). Step 5: no pay question; the page says it never asks about pay.",
+    "stories": [
+      "Screens/Portals/T9-09 · Careers site › Job page · pay question where the law allows",
+      "Surfaces/Careers › Apply form · notices, pay question and company questions"
+    ],
+    "note": "Positive and negative. The résumé is virus-checked after it is saved; recruiters can open it only once it is clean."
+  },
+  {
+    "id": "MT-HIR-CAR-05",
+    "area": "Hiring · Careers site and candidate pages (T9-09, 11 Nov 2026)",
+    "screen": "Application status and candidate page (by the candidate's own links)",
+    "url": "http://localhost:3000/yx/application/<status token from the email>",
+    "account": "Not signed in; the links from the MT-HIR-CAR-04 email. Browser window 1278 x 635.",
+    "steps": [
+      "Open \"See where your application is\"; then change one letter of the address.",
+      "Open \"Open your candidate page\"; clear Full name and press Save details; then type a name and save.",
+      "Upload a new PDF resume; then press Apply on another open job (if one-click is offered).",
+      "As HR, move the candidate to a later stage, then reject; reload the status page each time."
+    ],
+    "expected": "Step 1: the job, \"Applied on\" (e.g. 9 Nov 2026) and \"Application received\", nothing about other applicants or recruiters; the changed link says \"We could not find this application.\" Step 2: \"Enter your name\" with focus; then toast \"Your details are saved\". Step 3: toasts \"Your resume is uploaded\" and \"You applied for …\", and the new application appears. Step 4: \"Under review\", then \"A decision has been made\"; never the stage name.",
+    "stories": [
+      "Screens/Portals/T9-09 · Careers site › Application status",
+      "Screens/Portals/T9-09 · Careers site › Candidate page"
+    ],
+    "note": "Positive and negative (bad link, empty name)."
+  },
+  {
+    "id": "MT-HIR-CAR-06",
+    "area": "Hiring · Careers site and candidate pages (T9-09, 11 Nov 2026)",
+    "screen": "Offer accept and interview booking (by link)",
+    "url": "http://localhost:3000/yx/offer/<token> and /yx/interview/<token>",
+    "account": "hr-tester@demo-org.test sends an interview invitation with 3 proposed times and an offer to the MT-HIR-CAR-04 candidate; then not signed in with the emailed links. Browser window 1278 x 635.",
+    "steps": [
+      "Open the interview link; press Confirm this time without choosing; choose the second time and confirm.",
+      "Open the offer link; press Decline, then Cancel; press Accept offer.",
+      "Open the offer link again and press Accept offer if shown; open an expired offer's link.",
+      "Open the old addresses /offer/<token> and /interview/<token>."
+    ],
+    "expected": "Step 1: \"Choose one of the times\"; then toast \"Interview confirmed\" and the time in India time. Step 2: the decline question, nothing sent on Cancel; then toast \"Offer accepted\" and \"You accepted this offer\". Step 3: no Accept button (already answered); the expired one says \"This offer has expired\". Step 4: they open the /yx pages.",
+    "stories": [
+      "Screens/Portals/T9-09 · Careers site › Interview · choose a proposed time",
+      "Screens/Portals/T9-09 · Careers site › Offer to accept"
+    ],
+    "note": "Positive and negative (no time chosen, repeat accept, expired)."
   }
 ]
