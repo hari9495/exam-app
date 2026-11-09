@@ -177,3 +177,16 @@ export class InterviewRangeDto {
   @IsISO8601({ strict: true })
   to!: string;
 }
+
+/** HIR-07 answer 322: one comment under a submitted scorecard (plain text, append-only). */
+export class ScorecardCommentDto {
+  @trim()
+  @IsString()
+  @MinLength(1, { message: 'Write a comment before you post it.' })
+  @MaxLength(2000, { message: 'Keep the comment under 2,000 characters.' })
+  body!: string;
+
+  @IsOptional()
+  @IsUUID('4')
+  requestId?: string;
+}

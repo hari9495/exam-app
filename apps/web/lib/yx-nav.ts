@@ -276,7 +276,7 @@ export function buildNav(n: NavInput): NavArea[] {
           // HIR-02: recruiting and HR see every requisition; a hiring manager their own, read-only (decision 11).
           ...when(any('pipeline:manage', 'ats.headcount.manage', 'ats.requisition.raise'), L('hiring-requisitions', 'Requisitions', '/yx/hiring/requisitions')),
           ...when(any('interview:view_assigned', 'pipeline:manage'), L('hiring-interviews', 'Interviews', '/yx/hiring/interviews', 'scorecardsToDo')),
-          ...when(any('candidate:manage', 'candidate:view'), L('hiring-candidates', 'Candidates & talent CRM', '/yx/hiring/candidates'), L('hiring-pools', 'Talent pools', '/yx/hiring/pools')),
+          ...when(any('candidate:manage', 'candidate:view'), L('hiring-candidates', 'Candidates & talent CRM', '/yx/hiring/candidates'), L('hiring-pools', 'Talent CRM', '/yx/hiring/pools')),
           // HIR-12 (design: under Hiring): an employee, or anyone already in Hiring, refers a friend to an open job and
           // follows the bonus (the API lets anyone signed in refer; someone with no record and no keys keeps a bare menu).
           ...when(employee || any('ats.headcount.manage', 'pipeline:manage', 'results:view', 'interview:view_assigned', 'candidate:manage', 'candidate:view'), L('hiring-referrals', 'Referrals', '/yx/hiring/referrals')),
@@ -284,6 +284,8 @@ export function buildNav(n: NavInput): NavArea[] {
           ...when(has('pipelines:configure'), L('hiring-scorecards', 'Scorecards', '/yx/hiring/scorecards')),
           ...when(has('approvals:configure'), L('hiring-approvals', 'Hiring approvals', '/yx/hiring/approval-routes')),
           ...when(has('candidate:data_rights'), L('hiring-retention', 'Candidate data retention', '/yx/hiring/retention')),
+          // HIR-10: HR with the background-check key (Special data; the API checks the joiner's scope).
+          ...when(has('lifecycle.bgv.manage'), L('hiring-bgv', 'Background checks', '/yx/hiring/bgv')),
           ...when(any('exam:manage', 'question_bank:manage'), L('hiring-older', 'Assessments & more (older screens)', '/v2/today')),
           ...when(has('results:view') && !any('exam:manage', 'question_bank:manage'), L('hiring-results', 'Test results (older screens)', '/v2/panel/reports')),
           ]),

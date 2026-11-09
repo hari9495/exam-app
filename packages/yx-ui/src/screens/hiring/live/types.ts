@@ -368,13 +368,23 @@ export interface ScorecardTemplateInput {
 
 export type Recommendation = 'strong_no' | 'no' | 'yes' | 'strong_yes';
 
+/** HIR-07 answer 322: one append-only comment under a submitted scorecard. */
+export interface ScorecardCommentView {
+  id: string;
+  authorUserId: string;
+  author: string;
+  body: string;
+  at: string;
+  redacted: boolean;
+}
+
 export interface InterviewView {
   interview: { id: string; status: string; location: string; timeZone: string; meetingUrl: string | null; slots: { startsAt: string; endsAt: string; confirmed: boolean }[]; jobId: string; jobTitle: string; candidateId: string; candidateName: string };
   panel: { userId: string; name: string; submitted: boolean }[];
   resume: { title: string | null; summary: string | null; skills: string | null; hasFile: boolean } | null;
   template: { id: string; name: string; scaleMax: number; passBar: number; items: { id: string; label: string; guidance: string | null; weight: number }[] } | null;
   viewer: { isPanelist: boolean; isOverseer: boolean };
-  scorecards: { id: string; panelistUserId: string; panelistName: string; mine: boolean; status: 'draft' | 'submitted'; recommendation: Recommendation | null; summary: string | null; weightedScore: number | null; passes: boolean | null; submittedAt: string | null; ratings: { itemId: string; rating: number | null; notes: string | null }[] }[];
+  scorecards: { id: string; panelistUserId: string; panelistName: string; mine: boolean; status: 'draft' | 'submitted'; recommendation: Recommendation | null; summary: string | null; weightedScore: number | null; passes: boolean | null; submittedAt: string | null; ratings: { itemId: string; rating: number | null; notes: string | null }[]; comments?: ScorecardCommentView[] }[];
   result: (ScorecardSummary & { score: number | null }) | null;
   earlier: { interviewId: string; panelistName: string; recommendation: string | null; weightedScore: number; passes: boolean | null; summary: string | null }[];
 }

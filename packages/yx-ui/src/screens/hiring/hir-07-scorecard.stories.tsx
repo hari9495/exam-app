@@ -19,7 +19,7 @@ export const sampleInterview: InterviewView = {
   resume: { title: 'QA Engineer', summary: 'Five years testing payment apps.', skills: 'Selenium, Playwright, SQL', hasFile: true },
   template: { id: 'tp1', name: 'Engineer round 1', scaleMax: 5, passBar: 3, items: [{ id: 'a', label: 'Test design', guidance: 'Finds the edge cases', weight: 2 }, { id: 'b', label: 'Communication', guidance: null, weight: 1 }] },
   viewer: { isPanelist: false, isOverseer: true },
-  scorecards: [{ id: 'sc1', panelistUserId: 'u1', panelistName: 'Anil Kumar', mine: false, status: 'submitted', recommendation: 'yes', summary: 'Solid on test design.', weightedScore: 3.67, passes: true, submittedAt: '2026-09-29T08:00:00.000Z', ratings: [{ itemId: 'a', rating: 4, notes: 'Named the boundary cases' }, { itemId: 'b', rating: 3, notes: null }] }],
+  scorecards: [{ id: 'sc1', panelistUserId: 'u1', panelistName: 'Anil Kumar', mine: false, status: 'submitted', recommendation: 'yes', summary: 'Solid on test design.', weightedScore: 3.67, passes: true, submittedAt: '2026-09-29T08:00:00.000Z', ratings: [{ itemId: 'a', rating: 4, notes: 'Named the boundary cases' }, { itemId: 'b', rating: 3, notes: null }], comments: [{ id: 'cm1', authorUserId: 'u1', author: 'Anil Kumar', body: 'I forgot to add: she also named the boundary cases for the refund flow.', at: '2026-09-29T09:10:00.000Z', redacted: false }] }],
   result: { complete: false, submitted: 1, expected: 2, score: null, passes: null },
   earlier: [],
 };
@@ -36,6 +36,7 @@ export const sampleLive: LiveScorecard = {
   onSubmit: ok,
   onResendInterview: ok,
   onCancelInterview: ok,
+  onComment: ok,
 };
 
 export const Blank: S = { name: 'Interviewer · blank', render: () => <ScorecardScreen {...base} identity={ID_POINTS_CLEAR} /> };
@@ -44,5 +45,12 @@ export const BelowBar: S = { name: 'Complete · below the bar on 2 skills', rend
 export const IdentityFlag: S = { name: 'Identity flag shown, not a reason', render: () => <ScorecardScreen {...base} candidate="Rahul Ghosh" identity={ID_POINTS} defaultRatings={[3, null, null, null]} /> };
 export const Submitted: S = { name: 'Submitted · read only', render: () => <ScorecardScreen {...base} defaultRatings={[4, 4, 3, 5]} submitted /> };
 // HIR-07 build (founder brief): the recruiter's and hiring manager's view of an interview, drawn in the same style.
+// HIR-07 answer 322 (kit story first: Time and activity › Comment thread, append-only): comments under a submitted
+// scorecard. Append-only, audited, seen by whoever may read the scorecard; never on a draft.
+const COMMENTS = [
+  { id: 'cm1', author: { id: 'u1', name: 'Anil Kumar' }, body: 'I forgot to add: she also named the boundary cases for the refund flow.', at: new Date('2026-09-29T09:10:00Z') },
+  { id: 'cm2', author: { id: 'u3', name: 'Neha Joshi' }, body: 'Thanks, noted for the debrief.', at: new Date('2026-09-29T10:02:00Z') },
+];
+export const SubmittedComments: S = { name: 'Submitted · comments (append-only)', render: () => <ScorecardScreen {...base} defaultRatings={[4, 4, 3, 5]} submitted comments={COMMENTS} /> };
 export const Overseer: S = { name: 'Recruiter or hiring manager · submitted scorecards, resend and cancel', render: () => <ScorecardScreen live={sampleLive} /> };
 export const Phone: S = { name: 'phone', globals: PHONE, render: () => <ScorecardPhone {...base} defaultRatings={[4, null, null, null]} /> };

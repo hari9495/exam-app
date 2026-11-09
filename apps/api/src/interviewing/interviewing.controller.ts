@@ -11,7 +11,7 @@ import { CurrentUserRole } from '../auth/current-user-role.decorator';
 import { HiringBoardService } from './hiring-board.service';
 import { ScorecardTemplatesService } from './scorecard-templates.service';
 import { ScorecardsService, type Viewer } from './scorecards.service';
-import { BoardRejectDto, BulkBoardDto, InterviewRangeDto, JobScorecardDto, MoveDto, ScorecardDto, ScorecardTemplateDto, SendOnStageDto } from './interviewing-dto';
+import { BoardRejectDto, BulkBoardDto, InterviewRangeDto, JobScorecardDto, MoveDto, ScorecardCommentDto, ScorecardDto, ScorecardTemplateDto, SendOnStageDto } from './interviewing-dto';
 
 const viewer = (req: Request): Viewer => {
   const u = req.user as { userId: string; role: string; organizationId?: string | null; permissionProfileId?: string | null };
@@ -159,5 +159,13 @@ export class InterviewingController {
   submitScorecard(@CurrentTenant() ctx: TenantContext, @Req() req: Request, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ScorecardDto) {
     assertOwnSession(req);
     return this.scorecards.save(ctx, id, viewer(req), dto, true);
+  }
+
+  // HIR-07 answer 322: an append-only comment under a submitted scorecard; whoever may read it; never while acting.
+  @Post('interviews/:id/scorecards/:scorecardId/comments')
+  @RequireAnyPermission('interview:view_assigned', 'pipeline:manage', 'results:view')
+  commentScorecard(@CurrentTenant() ctx: TenantContext, @Req() req: Request, @Param('id', ParseUUIDPipe) id: string, @Param('scorecardId', ParseUUIDPipe) scorecardId: string, @Body() dto: ScorecardCommentDto) {
+    assertOwnSession(req);
+    return this.scorecards.comment(ctx, id, scorecardId, viewer(req), dto);
   }
 }

@@ -115,6 +115,11 @@ export const Resolved: S = {
   name: 'Comment thread, resolved',
   render: () => panel(<CommentThread currentUser={ME} people={PEOPLE} defaultComments={COMMENTS} now={NOW} defaultResolved />),
 };
+// HIR-07 answer 322: comments that stay as written (no edit, attachment, private note or resolve).
+export const AppendOnly: S = {
+  name: 'Comment thread, append-only',
+  render: () => panel(<CommentThread currentUser={ME} people={[]} defaultComments={COMMENTS.map((c) => ({ ...c, attachments: undefined, private: undefined, editedAt: undefined, body: c.body.replace(/@\[([^\]]+)\]\([^)]+\)/g, '$1') }))} now={NOW} appendOnly maxLength={2000} emptyHint="Comments stay as written and everyone who can read this sees them." />),
+};
 export const Empty: S = { name: 'Comment thread, empty', render: () => panel(<CommentThread currentUser={ME} people={PEOPLE} now={NOW} canWritePrivate />) };
 export const Mobile: S = {
   name: 'Comment thread, mobile',

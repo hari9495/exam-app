@@ -1075,6 +1075,8 @@ describe('CandidatesService', () => {
       } = {},
     ) {
       return {
+        // HIR-07 answer 322: the erase also redacts scorecard comments on the candidate's interviews (none here).
+        scorecardComment: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
         // HIR-05 answer 276: a requested erase first checks for an accepted offer or an open process (none here).
         $queryRaw: jest.fn().mockResolvedValue([{ accepted: false, open: null }]),
         candidate: {
@@ -1118,6 +1120,7 @@ describe('CandidatesService', () => {
           updateMany: jest.fn(),
         },
         interview: {
+          findMany: jest.fn().mockResolvedValue([]),
           updateMany: overrides.interview?.updateMany ?? jest.fn(),
         },
       };

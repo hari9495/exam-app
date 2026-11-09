@@ -193,6 +193,19 @@ function requisitionData(dto: { headcountPlanLineId?: string | null; outsidePlan
   return out;
 }
 
+/** HIR-03 / HIR-20: a job's postings on every company board (the job workspace and the talent CRM read the same). */
+export async function boardPostings(tx: Prisma.TransactionClient, organizationId: string, job: Pick<Job, 'id' | 'status' | 'publicApplyEnabled'>) {
+  const boards = await tx.jobBoard.findMany({ where: { organizationId }, select: { id: true, name: true, provider: true }, orderBy: { name: 'asc' } });
+  const pubs = await tx.jobBoardPublication.findMany({ where: { jobId: job.id }, select: { jobBoardId: true, postStatus: true, postError: true, postedAt: true } });
+  const live = job.status === 'open' && job.publicApplyEnabled;
+  return boards.map((b) => {
+    const p = pubs.find((x) => x.jobBoardId === b.id);
+    // A feed board (pull) has no post status: it shows the job while the job takes public applications.
+    const status = !p ? 'not posted' : p.postStatus === 'failed' ? 'failed' : p.postStatus === 'removed' ? 'closed' : p.postStatus === 'pending' ? 'draft' : live ? 'live' : 'draft';
+    return { boardId: b.id, board: b.name, provider: b.provider, status, error: p?.postError ?? null, postedAt: p?.postedAt ?? null };
+  });
+}
+
 @Injectable()
 export class PipelineService {
   private readonly logger = new Logger(PipelineService.name);
@@ -421,15 +434,7 @@ export class PipelineService {
   async jobPayAndPostings(tx: Prisma.TransactionClient, organizationId: string, job: Job) {
     const { law, legalEntityId, place } = await payLawFor(tx, organizationId, job.locationId, todayIst());
     const defaults = await payDefaults(tx, organizationId, { legalEntityId: job.legalEntityId ?? legalEntityId, locationId: job.locationId });
-    const boards = await tx.jobBoard.findMany({ where: { organizationId }, select: { id: true, name: true, provider: true }, orderBy: { name: 'asc' } });
-    const pubs = await tx.jobBoardPublication.findMany({ where: { jobId: job.id }, select: { jobBoardId: true, postStatus: true, postError: true, postedAt: true } });
-    const live = job.status === 'open' && job.publicApplyEnabled;
-    const postings = boards.map((b) => {
-      const p = pubs.find((x) => x.jobBoardId === b.id);
-      // A feed board (pull) has no post status: it shows the job while the job takes public applications.
-      const status = !p ? 'not posted' : p.postStatus === 'failed' ? 'failed' : p.postStatus === 'removed' ? 'closed' : p.postStatus === 'pending' ? 'draft' : live ? 'live' : 'draft';
-      return { boardId: b.id, board: b.name, provider: b.provider, status, error: p?.postError ?? null, postedAt: p?.postedAt ?? null };
-    });
+    const postings = await boardPostings(tx, organizationId, job);
     const payLaw: PayLaw & { place: string | null; showByDefault: boolean; askByDefault: boolean } = { ...law, place, showByDefault: defaults.showRange, askByDefault: defaults.askHistory };
     return { payLaw, postings };
   }

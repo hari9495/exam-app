@@ -16682,6 +16682,141 @@
     "note": "Positive and negative (acting for someone else)."
   },
   {
+    "id": "MT-HIR-10-01",
+    "area": "Hiring · HIR-10 BGV tracker (12 Nov 2026)",
+    "screen": "Background checks · list, consent and who may see it",
+    "url": "http://localhost:3000/yx/hiring/bgv",
+    "account": "hr-tester@demo-org.test (HR with the background-check key; also Recruiter and Hiring admin). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open Hiring › Background checks; compare with the stories \"HIR-10 · Manual tracking · no add-on\" and \"Consent pending\".",
+      "On People › Onboarding open Sneha Pillai (or any joiner) and press Ask for consent; come back to Background checks.",
+      "On her row press Resend consent link.",
+      "Sign in as panel@demo-org.test (a manager, no background-check key) and open /yx/hiring/bgv."
+    ],
+    "expected": "Step 1: the \"No BGV partner\" note; no Start BGV button; no page scroll. Step 2: Sneha shows with Consent \"Pending\" and every check \"Not added\". Step 3: toast \"Consent asked of Sneha Pillai\" for 5 s. Step 4: no Background checks in the menu; the page says it needs HR (the background-check key); no names shown.",
+    "stories": [
+      "Screens/Hiring/HIR-10 · BGV tracker · Manual tracking · no add-on",
+      "Screens/Hiring/HIR-10 · BGV tracker · Consent pending"
+    ],
+    "note": "Positive and negative (no key)."
+  },
+  {
+    "id": "MT-HIR-10-02",
+    "area": "Hiring · HIR-10 BGV tracker (12 Nov 2026)",
+    "screen": "Background checks · add a check and record a result with evidence",
+    "url": "http://localhost:3000/yx/hiring/bgv",
+    "account": "hr-tester@demo-org.test, after Sneha gave consent in the joining portal (her emailed code). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open Sneha's row; press Add manual check, then Add check without choosing anything.",
+      "Choose Employment, Joining = \"Must be clear or decided first\", Add check.",
+      "On Employment press Record result; choose Discrepancy and press Save result with the note empty.",
+      "Set the day to tomorrow and press Save result.",
+      "Set today, type \"Dates at the previous employer differ by 4 months\", attach a small PDF, Save result.",
+      "Wait a minute and reopen the drawer."
+    ],
+    "expected": "Step 1: \"Choose what to check.\" and the dialog stays. Step 2: toast; Employment shows \"Not started\". Step 3: \"Say what differs, for the person who decides.\" Step 4: \"The day cannot be in the future.\" Step 5: toast \"Employment result saved for Sneha Pillai\"; the line says \"Checked by <hr-tester> on <today>\"; the alert \"Discrepancy to review · Employment\" shows the note. Step 6: \"Report being virus-checked\" until the scan ends, then View report downloads the PDF.",
+    "stories": [
+      "Screens/Hiring/HIR-10 · BGV tracker · Manual · add a check",
+      "Screens/Hiring/HIR-10 · BGV tracker · Manual · record a result (who, day, evidence)"
+    ],
+    "note": "Positive and negative (pressed too early, a future day)."
+  },
+  {
+    "id": "MT-HIR-10-03",
+    "area": "Hiring · HIR-10 BGV tracker (12 Nov 2026)",
+    "screen": "Background checks · a person decides the discrepancy",
+    "url": "http://localhost:3000/yx/hiring/bgv",
+    "account": "hr-tester@demo-org.test, then admin-tester@demo-org.test (needs the background-check key). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "As hr-tester (who recorded it) open Sneha's drawer.",
+      "Sign in as admin-tester, open the drawer, press Decide, then Record decision with nothing chosen.",
+      "Choose Proceed, leave the reason empty, Record decision.",
+      "Type \"Career break, proof seen\" and Record decision.",
+      "Check Sneha on People › Onboarding."
+    ],
+    "expected": "Step 1: no Decide button; the text says another person with the key decides it (company setting). Step 2: \"Choose proceed or do not proceed.\" Step 3: \"Give the reason for the decision.\" Step 4: toast \"Sneha Pillai: proceed recorded\"; the line shows \"Decided: proceed by <admin> …\". Step 5: she is still a joiner (nothing withdrawn); Mark joined is no longer blocked by the background check.",
+    "stories": [
+      "Screens/Hiring/HIR-10 · BGV tracker · Manual · a person decides the discrepancy",
+      "Screens/Hiring/HIR-10 · BGV tracker · Discrepancy · never auto-withdrawn"
+    ],
+    "note": "Positive and negative (the recorder cannot decide; pressed too early)."
+  },
+  {
+    "id": "MT-HIR-20-01",
+    "area": "Hiring · HIR-20 Talent CRM (12 Nov 2026)",
+    "screen": "Talent CRM · pools, new pool, delete",
+    "url": "http://localhost:3000/yx/hiring/pools",
+    "account": "hr-tester@demo-org.test (Recruiter). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open Hiring › Talent CRM; compare with the story \"Pools and hotlists\".",
+      "Press New pool, then Create with the name empty.",
+      "Choose Hotlist, name \"Plant supervisors\", Create.",
+      "Row menu of \"Plant supervisors\" › Delete pool, confirm.",
+      "Sign in as panel@demo-org.test and open /yx/hiring/pools."
+    ],
+    "expected": "Step 1: only the tabs Pools & hotlists and Job-board postings (Campaigns and Sourced are not built); columns include \"With talent-pool consent\". Step 2: \"Enter the name.\" and focus in Name. Step 3: toast \"Plant supervisors created\"; it lists as Hotlist with you as owner. Step 4: toast \"Plant supervisors deleted\". Step 5: no Talent CRM in the menu and no lists.",
+    "stories": [
+      "Screens/Hiring/HIR-20 · Talent CRM · Pools and hotlists",
+      "Screens/Hiring/HIR-20 · Talent CRM · New pool or hotlist",
+      "Screens/Hiring/HIR-20 · Talent CRM · Empty"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-20-02",
+    "area": "Hiring · HIR-20 Talent CRM (12 Nov 2026)",
+    "screen": "Talent CRM · members with consent",
+    "url": "http://localhost:3000/yx/hiring/pools",
+    "account": "hr-tester@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Make a Talent pool \"QA silver medallists\". On Hiring › Candidates select one candidate who gave talent-pool consent and one who did not, and add both to it.",
+      "Back on Talent CRM open the pool.",
+      "Press Open on a member, come back; press Remove on the member and confirm."
+    ],
+    "expected": "Step 1: only the consented candidate is added; the other is refused with the reason (a talent pool keeps only people who agreed). Step 2: the drawer lists the member with Talent-pool consent \"Given\". Step 3: Open goes to the candidate record; Remove asks first, then toast \"<name> removed from QA silver medallists\".",
+    "stories": [
+      "Screens/Hiring/HIR-20 · Talent CRM · Pool members · consent, open, remove"
+    ],
+    "note": "Positive and negative (no consent is refused)."
+  },
+  {
+    "id": "MT-HIR-20-03",
+    "area": "Hiring · HIR-20 Talent CRM (12 Nov 2026)",
+    "screen": "Talent CRM · job-board postings",
+    "url": "http://localhost:3000/yx/hiring/pools",
+    "account": "hr-tester@demo-org.test; then panel@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open the Job-board postings tab; compare with the story \"Job-board postings\".",
+      "On an open job press Post on a board.",
+      "Open the same job's workspace › Postings."
+    ],
+    "expected": "Step 1: each open job with every company board and its status. Step 2: toast \"<job> posted to <board>\". Step 3: the workspace shows the same posting (one source). A job on hold has no buttons.",
+    "stories": [
+      "Screens/Hiring/HIR-20 · Talent CRM · Job-board postings"
+    ],
+    "note": "Positive; negative: someone without the pipeline key sees no buttons."
+  },
+  {
+    "id": "MT-HIR-07-04",
+    "area": "Hiring · HIR-07 Scorecard form (12 Nov 2026)",
+    "screen": "Scorecard · append-only comments",
+    "url": "http://localhost:3000/yx/hiring/interviews",
+    "account": "panel@demo-org.test (Divya, interviewer), then hr-tester@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open an interview where Divya's scorecard is still a draft.",
+      "Submit it, then press Add comment in the green banner, then Post comment with the box empty.",
+      "Type \"Also strong on SQL.\" and Post comment.",
+      "Sign in as hr-tester and open the same interview; add \"Noted for the debrief.\" under Divya's scorecard.",
+      "Have admin-tester act as hr-tester (Act as) and try to post a comment."
+    ],
+    "expected": "Step 1: no comment area on a draft. Step 2: focus moves to the comment box; \"Write a comment before you post it.\" Step 3: toast \"Comment added\"; the comment shows with no edit, delete or attach. Step 4: both comments show in time order; hr-tester's posts with a toast. Step 5: refused with \"…while acting for someone else. Sign in as yourself.\"; the text stays in the box.",
+    "stories": [
+      "Screens/Hiring/HIR-07 · Scorecard form · Submitted · comments (append-only)",
+      "Time and activity/Timelines and comments · Comment thread, append-only"
+    ],
+    "note": "Positive and negative (draft, empty, acting)."
+  },
+  {
     "id": "MT-HIR-SET-01",
     "area": "Hiring · Settings 6.1 and answers 283, 285, 286, 291, 293, 302 (10 Nov 2026)",
     "screen": "Settings › Hiring: read and change (6.1)",

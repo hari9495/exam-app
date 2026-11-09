@@ -11,7 +11,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
-import { BgvCheckDto, BgvUpdateDto, CancelJoinerDto, CompleteTaskDto, JoinDto, JoinerDto, JoinerImportDto, OfferJoinerDto, PlanDto, PostponeDto, ReassignTaskDto, SkipTaskDto, StarterDto, TemplateDto } from './dto';
+import { BgvCheckDto, BgvDecisionDto, BgvUpdateDto, CancelJoinerDto, CompleteTaskDto, JoinDto, JoinerDto, JoinerImportDto, OfferJoinerDto, PlanDto, PostponeDto, ReassignTaskDto, SkipTaskDto, StarterDto, TemplateDto } from './dto';
 import { JoiningService } from './joining.service';
 import { JoinersService } from './joiners.service';
 import { LifecycleJourneysService } from './journeys.service';
@@ -202,6 +202,20 @@ export class LifecycleController {
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 1 } }))
   updateCheck(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('checkId', ParseUUIDPipe) checkId: string, @Body() dto: BgvUpdateDto, @UploadedFile() file: Express.Multer.File | undefined) {
     return this.joining.updateCheck(ctx, this.user(req), checkId, dto, file);
+  }
+
+  // HIR-10: the BGV tracker (every joiner's checks in the key's scope) and a person's decision on a discrepancy.
+  @Get('bgv')
+  @RequirePermissions('lifecycle.bgv.manage')
+  bgvTracker(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.joining.bgvTracker(ctx, this.user(req));
+  }
+
+  @Post('bgv/checks/:checkId/decision')
+  @HttpCode(200)
+  @RequirePermissions('lifecycle.bgv.manage')
+  decideCheck(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('checkId', ParseUUIDPipe) checkId: string, @Body() dto: BgvDecisionDto) {
+    return this.joining.decideCheck(ctx, this.user(req), checkId, dto);
   }
 
   @Get('ready-to-onboard')

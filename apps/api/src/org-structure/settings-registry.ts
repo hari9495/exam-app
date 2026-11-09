@@ -220,6 +220,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'hiring.offer.default_conditions': { label: 'Hiring: conditions a new offer starts with (one a line)', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 600 }, default: 'Background check clear\nDegree certificate uploaded\nRelieving letter from current employer' },
   // HIR-06: an interviewer's scorecard shows as overdue this many hours after the interview ended (reminders still go
   // at 24 and 48 hours).
+  // HIR-10 (founder decision 3): a BGV discrepancy goes to a person. On: that person must be someone other than whoever
+  // recorded the discrepancy (maker and checker). Off: the same HR person may record and decide.
+  'hiring.bgv.decider_other_person': { label: 'Hiring: a BGV discrepancy is decided by someone other than who recorded it', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'on' },
   'hiring.scorecard.overdue_hours': { label: 'Hiring: a scorecard is overdue this many hours after the interview', scopes: ['tenant'], dated: false, values: ['12', '24', '48', '72'], default: '24' },
   // HIR-02 founder answer 291 (Settings 6.1): a hiring manager's request starts with this recruiter, or with none until
   // recruiting assigns one; never the manager themselves. The value is a person of the company (or none).
