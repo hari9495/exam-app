@@ -15288,5 +15288,135 @@
       "Screens/Pay/PAY-03 · Run workspace"
     ],
     "note": "Positive and negative: reason required, logged, never raised again, undo only while open."
+  },
+  {
+    "id": "MT-HIR-11-01",
+    "area": "Hiring · HIR-11 Recruiting costs (9 Nov 2026)",
+    "screen": "Recruiting costs · Costs by type with cost per hire",
+    "url": "http://localhost:3000/yx/hiring/costs",
+    "account": "hr-tester@demo-org.test (HR). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open Hiring in the side menu: check \"Recruiting costs\" sits under \"Reports & compliance\".",
+      "Open it; compare with the story \"Costs by type with cost per hire\" element by element (header, three tiles, table grouped by cost type).",
+      "Check the tile label says \"Cost summary, Oct–Dec 2026\" and that the page does not scroll at 1278 x 635 with up to 6 rows.",
+      "Note \"Hires this quarter\" and \"Total spend\"; check Cost per hire = spend / hires, rounded to the rupee."
+    ],
+    "expected": "Step 1: the link is there. Step 2: same layout as the design. Step 3: the quarter is the India one (Oct–Dec on 9 Nov 2026); no page scroll bar. Step 4: the numbers agree; with 0 hires the tile shows \"—\".",
+    "stories": [
+      "Screens/Hiring/HIR-11 · Recruiting costs entry · Costs by type with cost per hire"
+    ],
+    "note": "Positive. Quarter and months are India time."
+  },
+  {
+    "id": "MT-HIR-11-02",
+    "area": "Hiring · HIR-11 Recruiting costs (9 Nov 2026)",
+    "screen": "Recruiting costs · Add cost sheet",
+    "url": "http://localhost:3000/yx/hiring/costs",
+    "account": "hr-tester@demo-org.test (HR). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Press Add cost; press Add cost in the sheet with nothing filled.",
+      "Choose Agency fee, Source \"Sahyadri Staffing\", Job \"any open job\", Amount 64000.75, Month: press the left (last month) segment.",
+      "Press Add cost.",
+      "Open the new row's menu › Edit; change Amount to 60000.50; Save cost.",
+      "Open the row menu › Delete; confirm."
+    ],
+    "expected": "Step 1: \"Say where the money went, for example Naukri.\" and \"Enter the amount in rupees.\" show and the Source field takes the focus; nothing saved; the button is never greyed out. Step 2: Month is one joined Segment (pick one). Step 3: toast \"Cost added\" (5 s); the row shows ₹64,000.75 in last month; totals change only if that month is in this quarter. Step 4: toast \"Cost saved\"; ₹60,000.50 shown. Step 5: a confirm dialog says it can't be undone; toast \"Cost deleted\"; the row is gone.",
+    "stories": [
+      "Screens/Hiring/HIR-11 · Recruiting costs entry · Add cost sheet"
+    ],
+    "note": "Positive and negative: too-early press, paise kept, edit and delete with toasts."
+  },
+  {
+    "id": "MT-HIR-11-03",
+    "area": "Hiring · HIR-11 Recruiting costs (9 Nov 2026)",
+    "screen": "Recruiting costs · refusals and states",
+    "url": "http://localhost:3000/yx/hiring/costs",
+    "account": "arjun@demo-org.test (employee) and panel@demo-org.test (manager); then hr-tester@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "As arjun@ open Hiring in the menu.",
+      "As arjun@ type the address /yx/hiring/costs.",
+      "As panel@ do the same.",
+      "As hr-tester@ open the page with the network offline (DevTools › Offline), then press Try again online.",
+      "As hr-tester@ add a cost with Amount 0."
+    ],
+    "expected": "Step 1: no \"Recruiting costs\" link (only Referrals). Steps 2-3: the error state with Try again, no costs shown (the API refuses, 403). Step 4: the error state, then the list after Try again. Step 5: \"Enter the amount in rupees.\"; nothing saved.",
+    "stories": [
+      "Screens/Hiring/HIR-11 · Recruiting costs entry · Error",
+      "Screens/Hiring/HIR-11 · Recruiting costs entry · Loading"
+    ],
+    "note": "Negative: no key, offline, zero amount."
+  },
+  {
+    "id": "MT-HIR-11-04",
+    "area": "Hiring · HIR-11 Recruiting costs (9 Nov 2026)",
+    "screen": "Recruiting costs · Empty and export",
+    "url": "http://localhost:3000/yx/hiring/costs",
+    "account": "hr-tester@demo-org.test (HR) in a company with no costs (or after deleting all). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open Recruiting costs with no costs.",
+      "Press Add cost in the empty state.",
+      "Add two costs, then Export › CSV."
+    ],
+    "expected": "Step 1: \"No recruiting costs this quarter.\" as in the Empty story. Step 2: the Add sheet opens. Step 3: recruiting-costs.csv downloads with Month, Cost type, Source, Job, Amount (INR) with two decimals, Origin, Entered by, Note.",
+    "stories": [
+      "Screens/Hiring/HIR-11 · Recruiting costs entry · Empty"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HIR-12-01",
+    "area": "Hiring · HIR-12 Referrals (9 Nov 2026)",
+    "screen": "Referrals · My referrals and bonus status",
+    "url": "http://localhost:3000/yx/hiring/referrals",
+    "account": "arjun@demo-org.test (employee). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open Hiring › Referrals.",
+      "Compare with the story \"My referrals and bonus status\": header, four tiles, My referrals card.",
+      "Check the header sentence names the company's days (90 by default) and the drawer subtitle the bonus (₹25,000 by default)."
+    ],
+    "expected": "Step 1: the link is there for an employee. Step 2: same layout; with no referrals the card says \"You haven't referred anyone yet.\" (Empty story). Step 3: the numbers match Settings › Company rules › Referrals.",
+    "stories": [
+      "Screens/Hiring/HIR-12 · Referrals · My referrals and bonus status",
+      "Screens/Hiring/HIR-12 · Referrals · Empty"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HIR-12-02",
+    "area": "Hiring · HIR-12 Referrals (9 Nov 2026)",
+    "screen": "Referrals · Refer sheet",
+    "url": "http://localhost:3000/yx/hiring/referrals",
+    "account": "arjun@demo-org.test (employee). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Press Refer someone; press Send referral with nothing filled.",
+      "Fill Ananya Iyer, ananya.test@mailbox.in, mobile 12345; tick the consent box; Send referral.",
+      "Change mobile to 9876543210; attach a PDF résumé; Send referral.",
+      "Press Refer someone again with the same person and job; Send referral."
+    ],
+    "expected": "Step 1: errors under full name, email, mobile and the consent box; the name field takes the focus; nothing sent. Step 2: \"Enter a 10-digit mobile number.\"; nothing sent. Step 3: toast \"Ananya Iyer referred\" (5 s); the row shows \"Applied\" and \"Bonus after they join and complete 90 days\". Step 4: amber \"Already in our system\" with \"This person has already been referred for this role\"; nothing new in the list.",
+    "stories": [
+      "Screens/Hiring/HIR-12 · Referrals · Refer sheet",
+      "Screens/Hiring/HIR-12 · Referrals · Blocked · already applied"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-12-03",
+    "area": "Hiring · HIR-12 Referrals (9 Nov 2026)",
+    "screen": "Referrals · bonus rules and acting for someone",
+    "url": "http://localhost:3000/yx/hiring/referrals",
+    "account": "hr-tester@demo-org.test (HR); admin-tester@demo-org.test acting for a recruiter; arjun@demo-org.test. Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "As hr-tester@ open Settings › Company rules › Referrals; set the referral bonus to 20000 and the days to 60.",
+      "As arjun@ reload Referrals; open Refer someone.",
+      "As arjun@ check the earlier referral (MT-HIR-12-02).",
+      "As admin-tester@ act for a recruiter (Act as), open Hiring › Referrals and try to send a referral.",
+      "As hr-tester@ move the referred candidate to Hired with an accepted offer starting on a date; as arjun@ reload."
+    ],
+    "expected": "Step 2: subtitle \"Referral bonus up to ₹20,000\"; header says 60 days. Step 3: it still promises the bonus it was made with (₹25,000): a later change never alters a promise. Step 4: \"Not available while acting for someone else\" in the sheet; nothing sent. Step 5: the row shows Hired and \"₹25,000 on <start + 60 days> (N days to go)\", dates like \"1 Dec 2026\".",
+    "stories": [
+      "Screens/Hiring/HIR-12 · Referrals · My referrals and bonus status"
+    ],
+    "note": "Settings with defaults; acting refused; India dates."
   }
 ]

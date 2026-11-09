@@ -274,8 +274,9 @@ export function buildNav(n: NavInput): NavArea[] {
           ...when(any('pipeline:manage', 'results:view'), L('hiring-jobs', 'Jobs & requisitions', '/yx/hiring/jobs')),
           ...when(any('interview:view_assigned', 'pipeline:manage'), L('hiring-interviews', 'Interviews', '/yx/hiring/interviews', 'scorecardsToDo')),
           ...when(any('candidate:manage', 'candidate:view'), L('hiring-candidates', 'Candidates & talent CRM', '/yx/hiring/candidates'), L('hiring-pools', 'Talent pools', '/yx/hiring/pools')),
-          // HIR-12 (design: under Hiring): anyone signed in refers a friend to an open job and follows the bonus.
-          L('hiring-referrals', 'Referrals', '/yx/hiring/referrals'),
+          // HIR-12 (design: under Hiring): an employee, or anyone already in Hiring, refers a friend to an open job and
+          // follows the bonus (the API lets anyone signed in refer; someone with no record and no keys keeps a bare menu).
+          ...when(employee || any('ats.headcount.manage', 'pipeline:manage', 'results:view', 'interview:view_assigned', 'candidate:manage', 'candidate:view'), L('hiring-referrals', 'Referrals', '/yx/hiring/referrals')),
           ...when(has('org:manage_settings'), L('hiring-careers', 'Careers site', '/yx/hiring/careers'), L('hiring-boards', 'Job boards', '/yx/hiring/job-boards')),
           ...when(has('pipelines:configure'), L('hiring-scorecards', 'Scorecards', '/yx/hiring/scorecards')),
           ...when(has('approvals:configure'), L('hiring-approvals', 'Hiring approvals', '/yx/hiring/approval-routes')),

@@ -45,12 +45,13 @@ describe('HIR-11 / HIR-12 glue (India time, rupees)', () => {
     expect(referralRow({ id: 'r', candidateName: 'A', jobTitle: 'J', stage: 'Hired', joinedOn: '2026-12-01', bonusInr: 20000, rewardStatus: 'paid', createdAt: '2026-11-08T19:00:00Z' })).toMatchObject({ paid: true, bonus: 20000, joined: new Date(2026, 11, 1), referred: new Date(2026, 10, 9) });
   });
 
-  it('menu: Referrals for everyone signed in; Recruiting costs only with the settings key; nothing in a support session', () => {
+  it('menu: Referrals for employees and hiring people; Recruiting costs only with the settings key; nothing in a support session', () => {
     const base = { role: 'panel', support: false, employee: true, manager: false, history: false, clearance: false, tasks: false, firstDays: false };
     const hire = (has: (k: string) => boolean, support = false) => buildNav({ ...base, has, support }).find((a) => a.id === 'hire')!;
     const hireArea = (support: boolean) => buildNav({ ...base, has: () => true, support }).find((a) => a.id === 'hire');
     const links = (a: ReturnType<typeof hire>) => a.sections.flatMap((s) => s.items.map((i) => i.href));
-    expect(links(hire(() => false))).toEqual(['/yx/hiring/referrals']);
+    expect(links(hire(() => false))).toEqual(['/yx/hiring/referrals']); // an employee with no keys
+    expect(buildNav({ ...base, employee: false, has: () => false }).find((a) => a.id === 'hire')).toBeUndefined();
     const hr = hire((k) => k === 'org:manage_settings');
     expect(links(hr)).toContain('/yx/hiring/costs');
     expect(hr.sections.find((s) => s.label === 'Reports & compliance')?.items.map((i) => i.label)).toEqual(['Recruiting costs']);

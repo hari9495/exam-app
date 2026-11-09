@@ -21,6 +21,8 @@ function baseTx(overrides: Record<string, any> = {}) {
     pipeline: { findFirst: jest.fn().mockResolvedValue({ stages: [{ category: 'active', statuses: [{ id: 'st-1' }] }] }) },
     pipelineEntry: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'entry-1' }), update: jest.fn().mockResolvedValue({ id: 'entry-1' }) },
     referral: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'ref-1' }) },
+    // HIR-12 company settings: none set, so the defaults (₹25,000, 90 days) apply.
+    setting: { findMany: jest.fn().mockResolvedValue([]) },
     ...overrides,
   };
 }
@@ -35,7 +37,7 @@ describe('ReferralsService.submit', () => {
       data: expect.objectContaining({ jobId: 'job-1', candidateId: 'cand-1', enteredVia: 'referral', referrerUserId: 'user-1', statusId: 'st-1' }),
     }));
     expect(tx.referral.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ referrerUserId: 'user-1', jobId: 'job-1', candidateId: 'cand-1', entryId: 'entry-1' }),
+      data: expect.objectContaining({ referrerUserId: 'user-1', jobId: 'job-1', candidateId: 'cand-1', entryId: 'entry-1', bonusInr: 25000 }),
     }));
     expect(res).toEqual({ id: 'ref-1' });
   });
