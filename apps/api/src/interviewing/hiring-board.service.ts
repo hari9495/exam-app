@@ -132,7 +132,7 @@ export class HiringBoardService {
       await audit(tx, c, 'ats.rejection.undone', 'pipeline_entry', entryId);
       return p;
     });
-    if (pending.previousStatusId) await this.pipeline.patchEntry(ctx, userId, entryId, { statusId: pending.previousStatusId }, { skipComms: true });
+    if (pending.previousStatusId) await this.pipeline.patchEntry(ctx, userId, entryId, { statusId: pending.previousStatusId }, { skipComms: true, skipRehireCheck: true });
     else await this.pipeline.patchEntry(ctx, userId, entryId, { rejected: false }, { skipComms: true });
     return { undone: true };
   }

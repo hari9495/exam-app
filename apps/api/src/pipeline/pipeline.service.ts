@@ -1,4 +1,6 @@
 import { randomUUID } from 'crypto';
+import { rehireBlock } from '../lifecycle/rehire-policy';
+import type { Tx } from '../org-structure/org-structure.service';
 import { payDefaults, payLawFor, payProblem, type PayLaw } from '../hiring/pay-law';
 import { todayIst } from '../org-structure/org-validation';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
@@ -90,6 +92,9 @@ export interface BoardStage {
   position: number;
   statuses: { id: string; name: string; position: number }[];
   rules: BlueprintRule[];
+  /** HIR-04 answer 263: optional days target and card limit (null = none). */
+  daysTarget: number | null;
+  stageLimit: number | null;
 }
 
 export interface Board {
@@ -1006,13 +1011,15 @@ export class PipelineService {
         pipeline: {
           id: job.pipeline?.id ?? '',
           name: job.pipeline?.name ?? '',
-          stages: stages.map((s: { id: string; name: string; category: string; position: number; rulesJson?: string | null; statuses: { id: string; name: string; position: number }[] }) => ({
+          stages: stages.map((s: { id: string; name: string; category: string; position: number; rulesJson?: string | null; daysTarget?: number | null; stageLimit?: number | null; statuses: { id: string; name: string; position: number }[] }) => ({
             id: s.id,
             name: s.name,
             category: s.category as StageCategory,
             position: s.position,
             statuses: s.statuses.map((st) => ({ id: st.id, name: st.name, position: st.position })),
             rules: parseRules(s.rulesJson),
+            daysTarget: s.daysTarget ?? null,
+            stageLimit: s.stageLimit ?? null,
           })),
         },
         columns,
@@ -1083,7 +1090,7 @@ export class PipelineService {
   }
 
   /** opts.skipComms: the caller sends the candidate message itself (M10 AT5 delayed rejection). */
-  async patchEntry(context: TenantContext, actorUserId: string, entryId: string, dto: PatchEntryDto, opts: { skipComms?: boolean; expectStatusId?: string } = {}): Promise<PatchEntryResult> {
+  async patchEntry(context: TenantContext, actorUserId: string, entryId: string, dto: PatchEntryDto, opts: { skipComms?: boolean; expectStatusId?: string; skipRehireCheck?: boolean } = {}): Promise<PatchEntryResult> {
     let didHire = false;
     // The stage a template's triggerStageId is matched against for the post-commit comms hook.
     let commsStageId: string | null = null;
@@ -1110,6 +1117,14 @@ export class PipelineService {
           throw new BadRequestException('status does not belong to the job pipeline');
         }
         const category = resolved.stage.category;
+        // HIR-05 answer 272: past the first stage, a not-eligible ex-employee is stopped while the company setting is on.
+        if (!opts.skipRehireCheck && (category === 'active' || category === 'offer' || category === 'hired')) {
+          const first = await tx.pipelineStage.findFirst({ where: { pipelineId: resolved.stage.pipelineId, category: 'active' }, orderBy: { position: 'asc' }, select: { id: true } });
+          if (first?.id !== resolved.stage.id) {
+            const block = await rehireBlock(tx as unknown as Tx, context.organizationId as string, existing.candidateId);
+            if (block) throw new ConflictException(block);
+          }
+        }
         data = {
           statusId: dto.statusId,
           rejected: category === 'rejected',

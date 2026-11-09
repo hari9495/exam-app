@@ -49,3 +49,24 @@ export async function personByEmail(tx: Tx, org: string, email: string) {
   const lastEmployment = await tx.employment.findFirstOrThrow({ where: { organizationId: org, employeeId: emp.id }, orderBy: { exitedOn: 'desc' } });
   return { employeeId: emp.id, personId: emp.personId, current, lastEmployment };
 }
+
+/**
+ * HIR-05 founder answer 272: when the company setting `hiring.rehire_flag.blocks_screening` is on, a candidate who is an
+ * ex-employee (the person match above) whose exit record says not eligible for rehire may not move past the first stage.
+ * Returns the refusal, or null. HR clears the flag on the exit record (PUT lifecycle/exits/:id/hr) with a reason.
+ */
+export async function rehireBlock(tx: Tx, org: string, candidateId: string): Promise<string | null> {
+  const row = await tx.setting.findFirst({ where: { organizationId: org, key: 'hiring.rehire_flag.blocks_screening', scopeType: 'tenant' }, select: { value: true } });
+  if ((row?.value ?? SETTINGS['hiring.rehire_flag.blocks_screening'].default) !== 'on') return null;
+  const cand = await tx.candidate.findFirst({ where: { organizationId: org, id: candidateId }, select: { email: true } });
+  const m = cand ? await personByEmail(tx, org, cand.email) : null;
+  if (!m || m.current) return null;
+  const k = await tx.exitCase.findFirst({ where: { organizationId: org, employmentId: m.lastEmployment.id }, orderBy: { createdAt: 'desc' }, select: { id: true } });
+  if (!k) return null;
+  // The flag is HR-only data: read for this check alone, never returned (the message names no reason).
+  await tx.$executeRaw`SELECT set_config('app.lifecycle_confidential', 'on', true)`;
+  const hr = await tx.exitCaseHr.findUnique({ where: { exitCaseId: k.id }, select: { rehireEligible: true } });
+  return hr?.rehireEligible === false
+    ? 'This candidate worked here before and is marked not eligible for rehire, so they stay in the first stage (company setting). Ask HR to review the flag on the candidate record; once cleared, move them on.'
+    : null;
+}
