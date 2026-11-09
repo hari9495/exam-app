@@ -11,7 +11,8 @@ was built.
 
 - **Almost none of the Hiring designs are live.** Of 221 design stories (HIR-01 … 31, the careers site, candidate
   identity check and the hiring settings), exactly **one** is live with its design: the "Request a hire" sheet (HIR-02
-  NewRequisition), which People › My team (/yx/people/team) renders with `live` and sends to `POST jobs/requisitions`.
+  NewRequisition), which People › My team (/yx/people/team) renders with `live` and sends to `POST jobs/requisitions`. Since 9 Nov 2026 (branch `feat/yukthix-hir-01`) HIR-01, the headcount plan board, is live too: all 10 of
+  its stories (section 4).
 - **Hiring itself works, but on stand-in screens.** The 14 pages under /yx/hiring render the older "Live ·" screens from
   `packages/yx-ui/src/screens/hiring/live/*` (the package path `@yukthix/ui/hiring` points there). None of them passes a
   `live` prop to a designed HIR screen. The design-live guard already lists all 14 as `liveCopies` and every HIR screen
@@ -41,17 +42,17 @@ built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Plans, requisitions, jobs and costs | 4 | 1 | 0 | 24 | 0 | 0 | 25 |
+| A. Plans, requisitions, jobs and costs | 4 | 11 | 0 | 18 | 0 | 0 | 29 |
 | B. Candidates, pipeline and interviews | 6 | 0 | 0 | 21 | 13 | 1 | 35 |
 | C. Offers, BGV and joining | 4 | 0 | 0 | 13 | 12 | 0 | 25 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 0 | 0 | 11 | 7 | 4 | 22 |
 | E. Staffing agency | 8 | 0 | 0 | 4 | 44 | 0 | 48 |
 | F. Compliance and fairness | 5 | 0 | 0 | 3 | 22 | 0 | 25 |
 | G. Careers site, portals and settings | 4 | 0 | 0 | 30 | 11 | 0 | 41 |
-| **All Hiring design groups (A–G)** | **35** | **1** | **0** | **106** | **109** | **5** | **221** |
-| H. Kit and "Live ·" groups (not designs; own line) | 6 | 25 | 0 | 7 | 5 | 0 | 37 |
+| **All Hiring design groups (A–G)** | **35** | **11** | **0** | **100** | **109** | **5** | **225** |
+| H. Kit and "Live ·" groups (not designs; own line) | 6 | 23 | 0 | 7 | 5 | 0 | 35 |
 
-Counted by script 9 Nov 2026 on `feat/yukthix-hiring-design-map` (the script is in the appendix): every `export const`
+Recounted by script 9 Nov 2026 on `feat/yukthix-hir-01` after HIR-01 went live (four new HIR-01 design stories; the stand-in's Plans and NoPlans stories deleted). First counted by script 9 Nov 2026 on `feat/yukthix-hiring-design-map` (the script is in the appendix): every `export const`
 story with a capital first letter (the lower-case exports are sample props, excluded from Storybook by
 `excludeStories`) in the 31 `hir-NN-*.stories.tsx` files, `hiring-kit.stories.tsx`, the five `hiring/live/*.stories.tsx`,
 `portals/t9-09-careers.stories.tsx`, `portals/t9-15-identity.stories.tsx`, `stories/careers.stories.tsx` and the hiring
@@ -90,7 +91,7 @@ the web page.
 
 | page | screen it renders | design | API (permission) | verdict |
 |---|---|---|---|---|
-| /yx/hiring/plans | `HeadcountPlansScreen` (stand-in, live/plans.tsx) | HIR-01 | `GET/POST hiring/plans`, `PUT hiring/plans/:id`, `POST hiring/plans/:id/submit` (`ats.headcount.manage`), `GET hiring/plan-lines` | wire design |
+| /yx/hiring/plans | `HeadcountPlanScreen` with `live` (designed) | HIR-01 | `GET hiring/plans` (`ats.headcount.manage` or `ats.requisition.raise`), `POST/PUT hiring/plans`, `POST hiring/plans/:id/submit` (`ats.headcount.manage`), `GET hiring/plan-lines` | live |
 | /yx/hiring/jobs | `HiringJobsScreen` (stand-in): jobs and requisitions in one list, new job / requisition drawer with pay range | HIR-02, HIR-03 list, HIR-24 | `GET/POST jobs`, `POST jobs/requisitions`, `PATCH/DELETE jobs/:id`, `POST jobs/:id/submit`, `/approval/cancel` (`pipeline:manage`) | wire design |
 | /yx/hiring/jobs/[id] | `JobWorkspaceScreen` + `ApplicationPanel` (stand-ins): board, application, interviews, offers, feedback | HIR-03 workspace, HIR-04, HIR-09 | `GET hiring/jobs/:id/board` (`results:view`), `POST hiring/entries/:id/move`, `/reject`, `/reject/undo`, `hiring/entries/bulk`, `PUT hiring/jobs/:id/scorecard` (`pipeline:manage`), `POST/GET pipeline/entries/:id/offers`, `/interviews`, `offers/:id/send`, `/submit`, `/withdraw` (`pipeline:manage`) | wire design |
 | /yx/hiring/candidates | `HiringCandidatesScreen` (stand-in) | none (section 2) | `GET candidates`, `POST candidates`, CSV, email | no design |
@@ -141,17 +142,25 @@ the web page.
 
 #### HIR-01 · Headcount plan board
 
-Live page: /yx/hiring/plans (menu Hiring › Headcount plan, `ats.headcount.manage`) renders the stand-in
-`HeadcountPlansScreen`. Designed screen: `HeadcountPlanScreen` (hiring-plan.tsx).
+Live page: /yx/hiring/plans (menu Hiring › Headcount plan, `ats.headcount.manage` or `ats.requisition.raise`) renders
+the designed `HeadcountPlanScreen` with `live` (branch `feat/yukthix-hir-01`, 9 Nov 2026). The stand-in
+`HeadcountPlansScreen` and its "Live ·" stories are deleted. API: `GET hiring/plans` (HR: every plan with its route and
+the viewer's own task; hiring manager: own department's approved plans, no budgets, setting
+`ats.headcount_plan.manager_view`), `POST/PUT hiring/plans`, `POST hiring/plans/:id/submit` (an approved plan is
+revised; refused while acting for someone else), decisions on `POST workflow/approvals/tasks/:id/decide`.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| HrApproved · HR · approved plan | wire design | `GET hiring/plans` returns approved plans with lines and budget |
-| FinanceRevision · Finance · revision pending approval | wire design | API: an approved plan cannot be changed ("Start next year's plan instead", requisitions.service.ts); needs plan revisions with a version |
-| HiringManager · Hiring manager · own department | wire design | API: plans need `ats.headcount.manage`; a hiring manager's read of their own department is missing |
-| Empty · Empty · no plan for the year | wire design | no plan for the year |
-| Loading · Loading | wire design | while `GET hiring/plans` loads |
-| Error · Error | wire design | `GET hiring/plans` fails |
+| HrApproved · HR · approved plan | live | HR with every plan approved; Export (CSV) and Revise plan |
+| FinanceRevision · Finance · revision pending approval | live | whoever holds the approval task sees Send back / Approve revision and the route; the change is worded from the revision |
+| HiringManager · Hiring manager · own department | live | decision 11: own department (or the subtrees they head), approved plan only, no budgets; Open requisition opens the PPL-08 sheet on that line |
+| HrDepartments · HR · departments at different steps | live | plans are kept per department: each column shows Draft / Waiting / Sent back / Revision pending / Approved · vN |
+| HrRevisePlan · HR · revise plan sheet | live | new plan, draft or revision of an approved plan; a line in use keeps its designation and at least its requisitions and hires |
+| FinanceSendBack · Finance · send back with a reason | live | reason required; HR sees it on the board |
+| NoAccess · Hiring manager · company shows HR only | live | setting `ats.headcount_plan.manager_view` = off |
+| Empty · Empty · no plan for the year | live | no plan for the chosen year (year Segment) |
+| Loading · Loading | live | while `GET hiring/plans` loads |
+| Error · Error | live | `GET hiring/plans` fails; Try again |
 
 #### HIR-02 · Requisitions
 
@@ -679,8 +688,6 @@ a design, BUILD-STANDARD rule 1). Each "Live ·" story is deleted with its stand
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Plans · Plans | live | /yx/hiring/plans; goes with HIR-01 |
-| NoPlans · NoPlans | live | same, empty |
 | Routes · Department head | live | /yx/hiring/approval-routes; goes with Settings 6.1 |
 
 ## 5. Two designs for one job
