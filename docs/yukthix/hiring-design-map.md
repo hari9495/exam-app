@@ -1182,3 +1182,10 @@ Each has a safe default already built; the suggestion is the answer we propose.
      per-item bars only if recruiters ask.*
 330. **Scorecard templates page** (/yx/hiring/scorecards) stays the stand-in until Settings 6.1 is wired (queue item 9).
      *Suggested: keep.*
+
+Founder approved, 10 Nov 2026 (questions 321-330, all as suggested): (321) keep India time for staff, a location's own zone
+only for jobs abroad; (322) append-only scorecard comments, audited, visible to whoever reads the scorecard, kit story
+first; (323) slot finder once a Google or Microsoft calendar provider is chosen; (324) keep the overdue setting, reminders
+follow it later; (325) keep the company-wide week for the pipeline key; (326) keep the hiring manager read-only on
+submitted scorecards; (327) keep Schedule and Move acting on the open application; (328) keep the list order; (329) keep
+one pass bar per card, per-skill bars only if recruiters ask; (330) keep the templates page until Settings 6.1.
