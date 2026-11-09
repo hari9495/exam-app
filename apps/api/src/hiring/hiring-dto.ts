@@ -118,6 +118,9 @@ export class CareersEntityDto {
   primaryColor?: string | null;
 }
 
+/** HIR-11 cost types a person enters (posting = a job-board cost recorded before HIR-11). */
+export const COST_TYPES_ENTERED = ['job_board', 'agency_fee', 'event', 'other'] as const;
+
 export class RecruitingCostDto {
   @IsOptional()
   @IsUUID()
@@ -140,6 +143,11 @@ export class RecruitingCostDto {
 
   @Matches(/^[A-Z]{3}$/, { message: 'Use a 3-letter currency code like INR.' })
   currency!: string;
+
+  /** HIR-11: what the money was for. Referral bonuses and assessments are posted by the system, never typed here. */
+  @IsOptional()
+  @IsIn(COST_TYPES_ENTERED, { message: 'Choose job board, agency fee, event or other.' })
+  costType?: (typeof COST_TYPES_ENTERED)[number];
 
   @IsOptional()
   @IsDateString({ strict: true })

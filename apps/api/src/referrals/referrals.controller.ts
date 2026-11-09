@@ -1,7 +1,10 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
+import { assertOwnSession } from '../service-desk/desk-access';
+import type { ScopeUser } from '../access/scope';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
-import { RequirePermissions } from '../rbac/permissions.decorator';
+import { RequireAnyPermission } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
@@ -21,8 +24,16 @@ export class ReferralsController {
     return this.referrals.referableJobs(tenant);
   }
 
+  /** HIR-12: the company's bonus and qualifying days (settings with defaults), for the Refer page. */
+  @Get('policy')
+  policy(@CurrentTenant() tenant: TenantContext) {
+    return this.referrals.policy(tenant);
+  }
+
+  // Referring is the person's own act (the bonus is theirs), so it is refused while acting for someone else.
   @Post()
-  submit(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: SubmitReferralDto) {
+  submit(@Req() req: Request, @CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: SubmitReferralDto) {
+    assertOwnSession(req);
     return this.referrals.submit(tenant, userId, dto);
   }
 
@@ -31,15 +42,19 @@ export class ReferralsController {
     return this.referrals.myReferrals(tenant, userId);
   }
 
+  // HIR-12 All referrals (founder answer 204): HR with ats.referral.manage, or recruiters who see candidates.
   @Get()
-  @RequirePermissions('candidate:view')
-  list(@CurrentTenant() tenant: TenantContext) {
+  @RequireAnyPermission('ats.referral.manage', 'candidate:view')
+  async list(@Req() req: Request, @CurrentTenant() tenant: TenantContext) {
+    await this.referrals.managerGate(req.user as ScopeUser, 'candidate:view');
     return this.referrals.listAll(tenant);
   }
 
   @Patch(':id/reward')
-  @RequirePermissions('pipeline:manage')
-  setReward(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string, @Body() dto: SetRewardStatusDto) {
+  @RequireAnyPermission('ats.referral.manage', 'pipeline:manage')
+  async setReward(@Req() req: Request, @CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SetRewardStatusDto) {
+    assertOwnSession(req);
+    await this.referrals.managerGate(req.user as ScopeUser, 'pipeline:manage');
     return this.referrals.setReward(tenant, userId, id, dto);
   }
 }

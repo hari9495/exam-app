@@ -45,22 +45,14 @@ describe('Hiring › Careers site (M10 AT3)', () => {
 });
 
 describe('Hiring › Job boards (M10 AT3)', () => {
-  it('lists boards with their costs and records a posting cost', async () => {
-    const posted: unknown[] = [];
+  it('lists boards (costs moved to Hiring › Recruiting costs, HIR-11)', async () => {
     api.mockImplementation(async (path: string, init?: RequestInit) => {
       if (path === '/organizations/job-boards') return [{ id: 'b1', name: 'Naukri', provider: 'xml_feed', configured: true, publishedJobCount: 2, feedUrl: 'https://x/feed.xml' }];
       if (path === '/organizations/job-boards/providers') return [];
-      if (path.startsWith('/jobs')) return [{ id: 'j1', title: 'Senior Accountant' }];
-      if (path === '/hiring/costs' && !init?.method) return [{ id: 'c1', source: 'Naukri', jobId: 'j1', amount: '4500.00', currency: 'INR', createdAt: '2026-10-11T00:00:00.000Z' }];
-      if (path === '/hiring/costs' && init?.method === 'POST') return (posted.push(JSON.parse(String(init.body))), {});
       throw new Error(`unexpected ${init?.method ?? 'GET'} ${path}`);
     });
     wrap(<YxHiringJobBoardsPage />);
-    expect(await screen.findByText('INR 4,500')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Record a posting cost' }));
-    const d = screen.getByRole('dialog');
-    await userEvent.type(within(d).getByLabelText(/Amount/), '1200');
-    await userEvent.click(within(d).getByRole('button', { name: 'Record cost' }));
-    await waitFor(() => expect(posted).toEqual([{ jobBoardId: 'b1', jobId: null, amount: 1200, currency: 'INR', note: null }]));
+    expect(await screen.findByText('Naukri')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Record a posting cost' })).not.toBeInTheDocument();
   });
 });

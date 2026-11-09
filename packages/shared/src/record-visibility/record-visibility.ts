@@ -37,6 +37,9 @@ export const TENANT_SCOPE: GrantScope = Object.freeze({ type: 'tenant', id: null
 export function grantScopesFor(key: string): readonly GrantScopeType[] {
   // Reading the structure masters is Public / Internal configuration every HR screen needs, whatever the scope.
   if (key.startsWith('employee.') || key === 'request.raise_on_behalf' || key === 'org.structure.view') return GRANT_SCOPE_TYPES;
+  // HIR-11/12 (founder answers 202, 204): the HR Admin template (typically per legal entity) carries these two; costs and
+  // referrals are company-wide, so a grant for one legal entity passes the route but confers nothing (fail closed).
+  if (key === 'ats.costs.manage' || key === 'ats.referral.manage') return ['tenant', 'legal_entity'];
   // M10 AT1: hiring keys are company-wide until their endpoints become scope-aware (M10-BUILD-DESIGN §17).
   if (key.startsWith('ats.')) return ['tenant'];
   // M02 leave and attendance of people: scoped like employee records. The leave set-up is company configuration: it

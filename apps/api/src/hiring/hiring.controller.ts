@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import type { ScopeUser } from '../access/scope';
+import { assertOwnSession } from '../service-desk/desk-access';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
@@ -93,15 +94,43 @@ export class HiringController {
     return this.careers.removeEntity(ctx, id);
   }
 
+  // HIR-11 (founder answer 202): its own hiring key, for HR and recruiters (granted through the role templates).
   @Get('costs')
-  @RequirePermissions('org:manage_settings')
-  costs(@CurrentTenant() ctx: TenantContext) {
+  @RequirePermissions('ats.costs.manage')
+  async costs(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    await this.careers.costsGate(req.user as ScopeUser);
     return this.careers.costs(ctx);
   }
 
+  @Get('costs/overview')
+  @RequirePermissions('ats.costs.manage')
+  async costsOverview(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    await this.careers.costsGate(req.user as ScopeUser);
+    return this.careers.costsOverview(ctx);
+  }
+
+  // HIR-11: entering a cost is the person's own act, so it is refused while acting for someone else.
   @Post('costs')
-  @RequirePermissions('org:manage_settings')
-  addCost(@CurrentTenant() ctx: TenantContext, @Body() dto: RecruitingCostDto) {
+  @RequirePermissions('ats.costs.manage')
+  async addCost(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: RecruitingCostDto) {
+    assertOwnSession(req);
+    await this.careers.costsGate(req.user as ScopeUser);
     return this.careers.addCost(ctx, dto);
+  }
+
+  @Put('costs/:id')
+  @RequirePermissions('ats.costs.manage')
+  async updateCost(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RecruitingCostDto) {
+    assertOwnSession(req);
+    await this.careers.costsGate(req.user as ScopeUser);
+    return this.careers.updateCost(ctx, id, dto);
+  }
+
+  @Delete('costs/:id')
+  @RequirePermissions('ats.costs.manage')
+  async removeCost(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    assertOwnSession(req);
+    await this.careers.costsGate(req.user as ScopeUser);
+    return this.careers.removeCost(ctx, id);
   }
 }

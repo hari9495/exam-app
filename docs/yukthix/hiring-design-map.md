@@ -13,6 +13,11 @@ was built.
   the headcount plan board (all 10 stories); and HIR-03 Jobs list, Create job sheet and job workspace on /yx/hiring/jobs and
   /yx/hiring/jobs/[id], with the HIR-24 pay range by location law (one story live with a gap: the apply form has no
   pay-history question). Counts in the table below.
+- **Few of the Hiring designs are live.** Of 228 design stories (HIR-01 … 31, the careers site, candidate
+  identity check and the hiring settings), 23 are live with their design. First the "Request a hire" sheet (HIR-02
+  NewRequisition), which People › My team (/yx/people/team) renders with `live` and sends to `POST jobs/requisitions`. Since 9 Nov 2026 (branch `feat/yukthix-hir-01`) HIR-01, the headcount plan board, is live too: all 10 of
+  its stories (section 4). HIR-11 Recruiting costs (/yx/hiring/costs) and HIR-12 Referrals (/yx/hiring/referrals, with HR's
+  All referrals at /yx/hiring/referrals/all) are live too (branch `feat/yukthix-hir-11-12`).
 - **Hiring itself works, but on stand-in screens.** The 14 pages under /yx/hiring render the older "Live ·" screens from
   `packages/yx-ui/src/screens/hiring/live/*` (the package path `@yukthix/ui/hiring` points there). None of them passes a
   `live` prop to a designed HIR screen. The design-live guard already lists all 14 as `liveCopies` and every HIR screen
@@ -42,17 +47,17 @@ built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Plans, requisitions, jobs and costs | 4 | 20 | 0 | 12 | 0 | 0 | 32 |
+| A. Plans, requisitions, jobs and costs | 4 | 25 | 0 | 7 | 0 | 0 | 32 |
 | B. Candidates, pipeline and interviews | 6 | 0 | 0 | 21 | 13 | 1 | 35 |
 | C. Offers, BGV and joining | 4 | 0 | 0 | 13 | 12 | 0 | 25 |
-| D. Referrals, internal jobs, CRM and rediscovery | 4 | 0 | 0 | 11 | 7 | 4 | 22 |
+| D. Referrals, internal jobs, CRM and rediscovery | 4 | 7 | 0 | 7 | 7 | 4 | 25 |
 | E. Staffing agency | 8 | 0 | 0 | 4 | 44 | 0 | 48 |
 | F. Compliance and fairness | 5 | 4 | 1 | 0 | 20 | 0 | 25 |
 | G. Careers site, portals and settings | 4 | 0 | 0 | 30 | 11 | 0 | 41 |
-| **All Hiring design groups (A–G)** | **35** | **24** | **1** | **91** | **107** | **5** | **228** |
+| **All Hiring design groups (A–G)** | **35** | **36** | **1** | **82** | **107** | **5** | **231** |
 | H. Kit and "Live ·" groups (not designs; own line) | 5 | 19 | 0 | 7 | 5 | 0 | 31 |
-
 Recounted by script 9 Nov 2026 on `feat/yukthix-hir-03-24` after HIR-01 (four new stories, Plans and NoPlans deleted), HIR-03 and HIR-24 went live and the HIR-03 follow-ups added the Change recruiter story (HIR-03 gained the Create job sheet story; the "Live · Jobs" stand-in and its 4 stories were deleted). First counted (the script is in the appendix): every `export const`
+Recounted by script 9 Nov 2026 on `feat/yukthix-hir-11-12` after HIR-11 (5 stories) and HIR-12 (4 stories plus 3 new All referrals design stories, founder answer 204) went live on top of HIR-01. Before that, recounted on `feat/yukthix-hir-01` after HIR-01 went live (four new HIR-01 design stories; the stand-in's Plans and NoPlans stories deleted). First counted by script 9 Nov 2026 on `feat/yukthix-hiring-design-map` (the script is in the appendix): every `export const`
 story with a capital first letter (the lower-case exports are sample props, excluded from Storybook by
 `excludeStories`) in the 31 `hir-NN-*.stories.tsx` files, `hiring-kit.stories.tsx`, the five `hiring/live/*.stories.tsx`,
 `portals/t9-09-careers.stories.tsx`, `portals/t9-15-identity.stories.tsx`, `stories/careers.stories.tsx` and the hiring
@@ -105,7 +110,10 @@ the web page.
 | /yx/hiring/scorecards | `ScorecardTemplatesScreen` (stand-in) | Settings 6.1 | `GET/POST/PUT/DELETE hiring/scorecard-templates` (`pipelines:configure`) | wire design |
 | /yx/hiring/approval-routes | `ApprovalRoutesScreen` (stand-in) | Settings 6.1 | approval chains (`approvals:configure`) | wire design |
 | /yx/hiring/careers | `CareersSiteScreen` (stand-in; the guard lists it as `portals: CareersSiteScreen`) | Surfaces/Careers page builder | `organizations/careers` (+ banner), `hiring/careers-entities`, `hiring/consent-notices` (`org:manage_settings`) | wire design |
-| /yx/hiring/job-boards | `JobBoardsScreen` (stand-in): boards and recruiting costs | HIR-03 Postings, HIR-20 Postings, HIR-11 | `organizations/job-boards` (`org:manage_settings`), `GET/POST hiring/costs` (`org:manage_settings`) | wire design |
+| /yx/hiring/job-boards | `JobBoardsScreen` (stand-in): boards | HIR-03 Postings, HIR-20 Postings | `organizations/job-boards` (`org:manage_settings`) | wire design |
+| /yx/hiring/costs | the designed `RecruitingCostsScreen` with `live` | HIR-11 | `GET/POST hiring/costs`, `PUT/DELETE hiring/costs/:id`, `GET hiring/costs/overview` (`ats.costs.manage`; writes refused while acting) | live |
+| /yx/hiring/referrals | the designed `ReferralsScreen` with `live` | HIR-12 | `GET referrals/mine`, `/jobs`, `/policy`, `POST referrals` (anyone signed in; refused while acting) | live |
+| /yx/hiring/referrals/all | the designed `AllReferralsScreen` with `live` | HIR-12 All referrals | `GET referrals`, `PATCH referrals/:id/reward` (`ats.referral.manage` or `candidate:view` / `pipeline:manage`; refused while acting) | live |
 | /yx/people/team (Request a hire) | the designed `RequisitionSheet` with `live` | HIR-02 NewRequisition | `POST jobs/requisitions` (`ats.requisition.raise`) | live |
 | /yx/people/onboarding/[id] | People onboarding (PPL design) with the joiner's BGV checks | HIR-10 (manual part) | `POST lifecycle joiners/:id/bgv/ask`, `/bgv/checks`, `bgv/checks/:checkId` | wire design (HIR-10) |
 | /careers/[orgSlug], /jobs/[slug] | hand-written server pages | T9-09, Surfaces/Careers | public careers API | wire design |
@@ -208,15 +216,18 @@ list `GET custom-fields` stays `org:manage_settings` and is no longer called by 
 
 #### HIR-11 · Recruiting costs entry
 
-Live page: /yx/hiring/job-boards shows a costs table in the stand-in `JobBoardsScreen`. Designed: `RecruitingCostsScreen`.
+Live page: /yx/hiring/costs (Hiring › Reports & compliance › Recruiting costs, key `ats.costs.manage`: HR Admin and Recruiter
+templates, System Admin, founder answer 202) renders the designed `RecruitingCostsScreen` with `live` (branch
+`feat/yukthix-hir-11-12`, 9 Nov 2026). Costs left the Job boards stand-in. A referral bonus marked paid in All referrals
+posts a read-only Referral bonus row (answer 203); assessments have no cost anywhere yet, so none is posted.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Default · Costs by type with cost per hire | wire design | `GET hiring/costs` (`org:manage_settings`); cost per hire needs the hires count |
-| AddCost · Add cost sheet | wire design | `POST hiring/costs` |
-| Empty · Empty | wire design | no costs |
-| Loading · Loading | wire design | while loading |
-| Error · Error | wire design | API fails |
+| Default · Costs by type with cost per hire | live | `GET hiring/costs`, `GET hiring/costs/overview` (quarter in India time, its hires, jobs); spend and cost per hire add only this quarter; Edit / Delete (`PUT/DELETE hiring/costs/:id`) for typed rows, posted rows read-only (409); CSV export |
+| AddCost · Add cost sheet | live | `POST hiring/costs`: rupees with paise, month as a Segment of the three months of this quarter, starting on this month (India time; the API refuses others, answer 206); never disabled, too-early errors; toast |
+| Empty · Empty | live | no costs |
+| Loading · Loading | live | while loading |
+| Error · Error | live | API fails or no key; Try again |
 
 ### B. Candidates, pipeline and interviews
 
@@ -359,18 +370,27 @@ No live page. Designed: `OfferConditionsTab`.
 
 #### HIR-12 · Referrals
 
-API exists (`referrals.controller.ts`: `GET referrals/jobs`, `POST referrals`, `GET referrals/mine` for any signed-in
-person; `GET referrals` `candidate:view`; `PATCH referrals/:id/reward` `pipeline:manage`). No YukthiX page: only the
-older v2 /referrals list. Designed: `ReferralsScreen`, `ReferralsPhone`.
+Live page: /yx/hiring/referrals (Hiring › Referrals for employees and anyone with a hiring key; never in a support session) renders the designed
+`ReferralsScreen` with `live` (branch `feat/yukthix-hir-11-12`). `GET referrals/mine` (now with stage, joining day and the
+bonus promised), `GET referrals/jobs`, `GET referrals/policy`, `POST referrals`. The bonus (default ₹25,000), the days
+before it is due (default 90) and the days an own application blocks credit (default 90, answer 201) are company settings
+`ats.referral.bonus_inr` / `qualify_days` / `self_apply_days` (Settings › Company rules › Referrals); the amount is kept on
+each referral when it is made. The joining day and any exit come from People: leaving before the qualifying day means no
+bonus (answer 205). HR's All referrals (answer 204) is at /yx/hiring/referrals/all (Hiring › Reports & compliance;
+`ats.referral.manage` or `candidate:view`): `GET referrals`, `PATCH referrals/:id/reward` (paid only when due, posts the
+cost; refused while acting).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| MyReferrals · My referrals and bonus status | wire design | no YukthiX page yet; `GET referrals/mine` (reward status from `PATCH :id/reward`) |
-| Refer · Refer sheet | wire design | `POST referrals` |
-| Duplicate · Blocked · already applied | wire design | `POST referrals` returns 409 "already been referred" |
-| Empty · Empty | wire design | no referrals |
+| MyReferrals · My referrals and bonus status | live | tiles and rows; Applied / In process / Hired / Not selected; countdown from the accepted offer's start date (India time); paid or turned down from the reward status |
+| Refer · Refer sheet | live | `POST referrals` with consent (audited); PDF résumé up to 5 MB; never disabled, too-early errors and focus; toast |
+| Duplicate · Blocked · already applied | live | 409 when already referred for this role, or when the person applied for this job on their own within the set days (answer 201); the sheet says why |
+| Empty · Empty | live | no referrals; no open jobs shows its own message in the sheet |
 | Phone · phone | phone view, mobile app not built | `ReferralsPhone` |
 | PhoneRefer · phone · refer | phone view, mobile app not built | same |
+| AllReferrals · All referrals (HR) | live | /yx/hiring/referrals/all: tiles, filters by bonus and stage, Due on, amounts |
+| AllReferralsMarkPaid · All referrals · mark bonus paid | live | confirm, then toast; refused with the reason when not due or left early (409) |
+| AllReferralsEmpty · All referrals · empty | live | no referrals |
 
 #### HIR-13 · Internal jobs
 
@@ -679,7 +699,7 @@ a design, BUILD-STANDARD rule 1). Each "Live ·" story is deleted with its stand
 |---|---|---|
 | CareersSite · CareersSite | live | /yx/hiring/careers; goes with the careers page builder |
 | CareersSiteNoNotices · CareersSiteNoNotices | live | same, no consent notices yet |
-| JobBoards · JobBoards | live | /yx/hiring/job-boards; goes with HIR-03 / 20 postings and HIR-11 |
+| JobBoards · JobBoards | live | /yx/hiring/job-boards; goes with HIR-03 / 20 postings (costs moved to HIR-11) |
 | NoJobBoards · NoJobBoards | live | same, empty |
 
 #### Live · Job workspace and interviews
@@ -757,8 +777,8 @@ stand-in it replaces with its "Live ·" stories.
 
 | # | page / area | what | size |
 |---|---|---|---|
-| 1 | HIR-11 recruiting costs (on its own page or tab) | wire `RecruitingCostsScreen` to `hiring/costs`; cost per hire from hires | S |
-| 2 | HIR-12 referrals (/yx/me or Hiring › Refer) | wire to the existing referrals API; phone stories wait for the app | S |
+| 1 | ~~HIR-11 recruiting costs~~ | done 9 Nov 2026: /yx/hiring/costs | S |
+| 2 | ~~HIR-12 referrals~~ | done 9 Nov 2026: /yx/hiring/referrals; phone stories wait for the app | S |
 | 3 | HIR-01 headcount plan | wire `HeadcountPlanScreen`; then plan revisions (API) for FinanceRevision | M |
 | 4 | HIR-02 requisitions list (+ HIR-26 rediscovery panel, AI off = text search) | wire `RequisitionsScreen`; hiring manager's own list | M |
 | 5 | HIR-03 jobs list and workspace, HIR-24 company-setting pay range | wire `JobsScreen`, `JobWorkspaceScreen`, `JobPayRangePanel` | M |

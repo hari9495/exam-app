@@ -1350,6 +1350,8 @@ model Referral {
   note           String?  @db.Text
   rewardStatus   String   @default("pending") @map("reward_status") @db.VarChar(1000) // 'pending' | 'approved' | 'paid' | 'rejected'
   rewardNote     String?  @map("reward_note") @db.Text
+  /// HIR-12: the bonus (whole rupees) promised when the referral was made; NULL = made before, read the current setting.
+  bonusInr       Int?     @map("bonus_inr")
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -10818,6 +10820,8 @@ model RecruitingCost {
   currency       String    @db.Char(3)
   period         DateTime? @db.Date
   origin         String    @default("manual") @db.VarChar(20)
+  /// HIR-12: what a posted row came from (a referral id for its paid bonus); unique per company and origin.
+  sourceRef      String?   @map("source_ref") @db.VarChar(80)
   note           String?   @db.VarChar(500)
   enteredBy      String?   @map("entered_by") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)

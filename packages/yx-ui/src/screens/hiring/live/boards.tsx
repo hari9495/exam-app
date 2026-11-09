@@ -4,18 +4,16 @@ import { Button } from '../../../components/button';
 import { Badge } from '../../../components/display';
 import { FormField } from '../../../components/field';
 import { Text } from '../../../components/foundations';
-import { NumberField, PasswordField, TextField } from '../../../components/inputs';
+import { PasswordField, TextField } from '../../../components/inputs';
 import { ConfirmDialog } from '../../../components/overlay';
 import { Segment } from '../../../components/segment';
-import { Select } from '../../../components/select';
-import { Card } from '../../../components/shell';
 import { DataTable, type TableColumn } from '../../../components/table';
 import { LivePage } from '../../time/live/kit';
-import type { BoardProvider, BoardSettings, Choice, CostInput, JobBoardRow, LoadState, RecruitingCostRow } from './types';
+import type { BoardProvider, BoardSettings, JobBoardRow, LoadState } from './types';
 
 // Recruitment batch AT3, wired (M10-BUILD-DESIGN §6, founder D12): the job-board seam. Each board posts through one
-// provider: the free feed (the board pulls a link) or a push provider with the company's own account. Posting costs
-// are recorded against a board and, optionally, a job. Replaces the older Settings › Job boards page.
+// provider: the free feed (the board pulls a link) or a push provider with the company's own account. Replaces the older
+// Settings › Job boards page. Posting costs moved to Hiring › Recruiting costs (HIR-11, the designed screen).
 
 const PROVIDERS = [
   { value: 'xml_feed', label: 'Feed link' },
@@ -34,9 +32,6 @@ export interface JobBoardsScreenProps {
   onSave: (board: JobBoardRow, s: BoardSettings) => Promise<unknown>;
   onDelete: (boardId: string) => Promise<unknown>;
   onCopy: (text: string) => Promise<unknown>;
-  costs: RecruitingCostRow[];
-  jobs: Choice[];
-  onAddCost: (c: CostInput) => Promise<unknown>;
 }
 
 export function JobBoardsScreen(p: JobBoardsScreenProps) {
@@ -45,7 +40,6 @@ export function JobBoardsScreen(p: JobBoardsScreenProps) {
   const [editing, setEditing] = useState<JobBoardRow | null>(null);
   const [deleting, setDeleting] = useState<JobBoardRow | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
-  const [addingCost, setAddingCost] = useState(false);
   const [tried, setTried] = useState(false);
   const cols: TableColumn<JobBoardRow>[] = [
     { key: 'name', header: 'Board', value: (b) => b.name },
@@ -72,12 +66,6 @@ export function JobBoardsScreen(p: JobBoardsScreenProps) {
       ),
     },
   ];
-  const costCols: TableColumn<RecruitingCostRow>[] = [
-    { key: 'source', header: 'Board', value: (c) => c.source },
-    { key: 'job', header: 'Job', value: (c) => c.jobTitle ?? '' },
-    { key: 'amount', header: 'Amount', type: 'number', value: (c) => c.amount, render: (c) => <Text>{`${c.currency} ${c.amount.toLocaleString('en-IN')}`}</Text> },
-    { key: 'createdAt', header: 'Recorded', type: 'date', value: (c) => c.createdAt },
-  ];
   return (
     <LivePage
       title="Job boards"
@@ -89,13 +77,6 @@ export function JobBoardsScreen(p: JobBoardsScreenProps) {
       actions={<Button variant="primary" icon={Plus} onClick={() => { setTried(false); setCreating(true); }}>Add a board</Button>}
     >
       <DataTable label="Job boards" columns={cols} rows={p.boards} getRowId={(b) => b.id} empty={<Text tone="secondary">No boards yet. Add one, then choose it on a job.</Text>} />
-      <Card title="Posting costs">
-        <Text as="p" tone="secondary">What each posting cost, for the cost-per-hire report.</Text>
-        <div>
-          <Button size="sm" icon={Plus} disabled={!p.boards.length} onClick={() => setAddingCost(true)}>Record a posting cost</Button>
-        </div>
-        <DataTable label="Posting costs" columns={costCols} rows={p.costs} getRowId={(c) => c.id} empty={<Text tone="secondary">No costs recorded yet.</Text>} />
-      </Card>
       {creating && (
         <ConfirmDialog open onOpenChange={(o) => { if (!o) { setCreating(false); setName(''); } }} title="Add a job board" confirmLabel="Add board" onConfirm={async () => { setTried(true); if (!name.trim()) return false; await p.onCreate(name.trim()); setCreating(false); setName(''); }}>
           <FormField id="jb-name" label="Board name" required helper="For example Naukri or your college placement cell." error={tried && !name.trim() ? 'Enter the board name.' : null}>
@@ -105,9 +86,8 @@ export function JobBoardsScreen(p: JobBoardsScreenProps) {
       )}
       {editing && <BoardDialog board={editing} {...p} onClose={() => setEditing(null)} />}
       {deleting && (
-        <ConfirmDialog open destructive onOpenChange={(o) => !o && setDeleting(null)} title={`Delete job board ${deleting.name}?`} consequence="Jobs stop posting to it. Posting costs already recorded stay." confirmLabel="Delete board" onConfirm={async () => { await p.onDelete(deleting.id); setDeleting(null); }} />
+        <ConfirmDialog open destructive onOpenChange={(o) => !o && setDeleting(null)} title={`Delete job board ${deleting.name}?`} consequence="Jobs stop posting to it. Recruiting costs already recorded stay." confirmLabel="Delete board" onConfirm={async () => { await p.onDelete(deleting.id); setDeleting(null); }} />
       )}
-      {addingCost && <CostDialog {...p} onClose={() => setAddingCost(false)} />}
     </LivePage>
   );
 }
@@ -147,40 +127,6 @@ function BoardDialog(p: JobBoardsScreenProps & { board: JobBoardRow; onClose: ()
           )}
         </FormField>
       ))}
-    </ConfirmDialog>
-  );
-}
-
-function CostDialog(p: JobBoardsScreenProps & { onClose: () => void }) {
-  const [board, setBoard] = useState<string | null>(p.boards[0]?.id ?? null);
-  const [job, setJob] = useState<string | null>(null);
-  const [amount, setAmount] = useState<number | null>(null);
-  const [currency, setCurrency] = useState('INR');
-  const [note, setNote] = useState('');
-  const curBad = !/^[A-Z]{3}$/.test(currency);
-  const [tried, setTried] = useState(false);
-  return (
-    <ConfirmDialog open size="md" onOpenChange={(o) => !o && p.onClose()} title="Record a posting cost" confirmLabel="Record cost" onConfirm={async () => {
-      setTried(true);
-      if (!board || amount == null || amount < 0 || curBad) return false;
-      await p.onAddCost({ jobBoardId: board, jobId: job, amount, currency, note: note.trim() || null });
-      p.onClose();
-    }}>
-      <FormField id="rc-board" label="Board" required error={tried && !board ? 'Choose the board.' : null}>
-        <Select aria-label="Board" value={board} onChange={setBoard} options={p.boards.map((b) => ({ value: b.id, label: b.name }))} />
-      </FormField>
-      <FormField id="rc-job" label="Job" optional>
-        <Select aria-label="Job" value={job} onChange={setJob} options={p.jobs} searchable clearable />
-      </FormField>
-      <FormField id="rc-amount" label="Amount" required error={tried && (amount == null || amount < 0) ? 'Enter an amount of 0 or more.' : null}>
-        <NumberField value={amount} onChange={setAmount} min={0} />
-      </FormField>
-      <FormField id="rc-cur" label="Currency" required error={curBad ? 'Three capital letters, for example INR.' : undefined}>
-        <TextField value={currency} onChange={(v) => setCurrency(v.toUpperCase())} maxLength={3} />
-      </FormField>
-      <FormField id="rc-note" label="Note" optional>
-        <TextField value={note} onChange={setNote} maxLength={500} />
-      </FormField>
     </ConfirmDialog>
   );
 }

@@ -147,23 +147,6 @@ export interface BoardSettings {
   config?: Record<string, string>;
 }
 
-export interface RecruitingCostRow {
-  id: string;
-  source: string;
-  jobTitle: string | null;
-  amount: number;
-  currency: string;
-  createdAt: string;
-}
-
-export interface CostInput {
-  jobBoardId: string;
-  jobId: string | null;
-  amount: number;
-  currency: string;
-  note: string | null;
-}
-
 // ------------------------------------------------------------------------------------------ AT4: candidates
 
 export type GlobalStage = 'new' | 'in_review' | 'engaged' | 'available' | 'offered' | 'hired' | 'rejected';

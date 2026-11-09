@@ -268,19 +268,30 @@ export function buildNav(n: NavInput): NavArea[] {
     title: 'Hiring',
     sections: support
       ? []
-      : sec(undefined, [
+      : [
+          ...sec(undefined, [
           // HIR-01 (founder decision 11): a hiring manager reads their own department's plan.
           ...when(any('ats.headcount.manage', 'ats.requisition.raise'), L('hiring-plans', 'Headcount plan', '/yx/hiring/plans')),
           ...when(any('pipeline:manage', 'results:view'), L('hiring-jobs', 'Jobs & requisitions', '/yx/hiring/jobs')),
           ...when(any('interview:view_assigned', 'pipeline:manage'), L('hiring-interviews', 'Interviews', '/yx/hiring/interviews', 'scorecardsToDo')),
           ...when(any('candidate:manage', 'candidate:view'), L('hiring-candidates', 'Candidates & talent CRM', '/yx/hiring/candidates'), L('hiring-pools', 'Talent pools', '/yx/hiring/pools')),
+          // HIR-12 (design: under Hiring): an employee, or anyone already in Hiring, refers a friend to an open job and
+          // follows the bonus (the API lets anyone signed in refer; someone with no record and no keys keeps a bare menu).
+          ...when(employee || any('ats.headcount.manage', 'pipeline:manage', 'results:view', 'interview:view_assigned', 'candidate:manage', 'candidate:view'), L('hiring-referrals', 'Referrals', '/yx/hiring/referrals')),
           ...when(has('org:manage_settings'), L('hiring-careers', 'Careers site', '/yx/hiring/careers'), L('hiring-boards', 'Job boards', '/yx/hiring/job-boards')),
           ...when(has('pipelines:configure'), L('hiring-scorecards', 'Scorecards', '/yx/hiring/scorecards')),
           ...when(has('approvals:configure'), L('hiring-approvals', 'Hiring approvals', '/yx/hiring/approval-routes')),
           ...when(has('candidate:data_rights'), L('hiring-retention', 'Candidate data retention', '/yx/hiring/retention')),
           ...when(any('exam:manage', 'question_bank:manage'), L('hiring-older', 'Assessments & more (older screens)', '/v2/today')),
           ...when(has('results:view') && !any('exam:manage', 'question_bank:manage'), L('hiring-results', 'Test results (older screens)', '/v2/panel/reports')),
-        ]),
+          ]),
+          // HIR-11: the design puts Recruiting costs under "Reports & compliance" (key ats.costs.manage, founder answer 202).
+          // HIR-12 All referrals (answer 204): HR with ats.referral.manage, or recruiters who see candidates.
+          ...sec('Reports & compliance', [
+            ...when(has('ats.costs.manage'), L('hiring-costs', 'Recruiting costs', '/yx/hiring/costs')),
+            ...when(any('ats.referral.manage', 'candidate:view'), L('hiring-all-referrals', 'All referrals', '/yx/hiring/referrals/all')),
+          ]),
+        ],
   };
 
   const performance: NavArea = {
