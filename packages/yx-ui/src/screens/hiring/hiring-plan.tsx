@@ -693,18 +693,64 @@ export interface RediscoveryMatch {
   consent: { email: ConsentValue; whatsapp: ConsentValue };
   retentionUntil: Date;
   pool?: string;
+  /** The company's AI's short "why" (advice only; it never changes who is listed or the order). */
+  aiNote?: string | null;
 }
 
+/** The live panel for one requisition (GET hiring/requisitions/:id/rediscovery); the page shows the toasts. */
+export interface LiveRediscovery {
+  state: ListState;
+  onRetry: () => void;
+  /** text: the plain search (AI off, not set up, failed, or acting for someone); ai: plus the AI's notes. */
+  mode: 'ai' | 'text';
+  ai: 'on' | 'off' | 'not_set_up' | 'failed';
+  matches: RediscoveryMatch[];
+  /** Recruiting only, signed in as themselves: adds the person to this requisition's pipeline. */
+  onAdd?: (m: RediscoveryMatch) => Promise<void>;
+}
+
+const AI_TEXT: Record<LiveRediscovery['ai'], string> = {
+  on: 'Notes by your company’s AI are advice only: they never change who is listed or the order. You decide.',
+  off: 'Plain search: AI notes are off for your company. You decide.',
+  not_set_up: 'Plain search: your company has no AI set up. You decide.',
+  failed: 'Plain search: the AI did not answer this time. You decide.',
+};
+
 // HIR-26
-export function RediscoveryPanel({ matches, viewer, onAdd }: { matches: RediscoveryMatch[]; viewer: 'recruiter' | 'hm'; onAdd?: (id: string) => void }) {
+export function RediscoveryPanel({ matches: sample, viewer, onAdd, live }: { matches: RediscoveryMatch[]; viewer: 'recruiter' | 'hm'; onAdd?: (id: string) => void; live?: LiveRediscovery }) {
   const [added, setAdded] = useState<string[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const matches = live ? live.matches : sample;
+  const add = async (m: RediscoveryMatch) => {
+    if (!live?.onAdd) return;
+    setBusy(m.id);
+    try {
+      await live.onAdd(m);
+      setAdded((a) => [...a, m.id]);
+    } catch {
+      // The page shows why in a toast; the button stays so it can be tried again.
+    } finally {
+      setBusy(null);
+    }
+  };
   return (
-    <Card title="Past candidates to consider" actions={<Badge tone="info">{matches.length} suggested</Badge>}>
+    <Card title="Past candidates to consider" actions={live?.state === 'ready' || !live ? <Badge tone="info">{matches.length} suggested</Badge> : undefined}>
       <Text as="p" size="sm" tone="secondary">
-        Silver medallists and pool members matched on skills and location. Only people whose consent and retention period are still valid appear here.
+        {live
+          ? 'Past candidates matched on this requisition’s words: past roles, skills and location. Only people who agreed to be kept for other roles, within their retention period, appear here.'
+          : 'Silver medallists and pool members matched on skills and location. Only people whose consent and retention period are still valid appear here.'}
       </Text>
-      {matches.length === 0 ? (
-        <EmptyState compact title="No past candidates match this requisition." description="Suggestions refresh when the skills or location change." />
+      {live && live.state === 'ready' && (
+        <Text as="p" size="sm" tone="secondary">
+          {AI_TEXT[live.ai]}
+        </Text>
+      )}
+      {live?.state === 'loading' ? (
+        <Skeleton height={120} />
+      ) : live?.state === 'error' ? (
+        <ErrorState title="Couldn't load past candidates" description="Check your connection and try again." onRetry={live.onRetry} reference="HIR-26" />
+      ) : matches.length === 0 ? (
+        <EmptyState compact title="No past candidates match this requisition." description={live ? 'Suggestions change when the title, designation or description change, or when new people agree to be kept.' : 'Suggestions refresh when the skills or location change.'} />
       ) : (
         <ul className="yx-hire-list">
           {matches.map((m) => (
@@ -717,12 +763,30 @@ export function RediscoveryPanel({ matches, viewer, onAdd }: { matches: Rediscov
                   ))}
                   {m.pool && <Badge tone="info">Pool: {m.pool}</Badge>}
                 </div>
+                {m.aiNote && (
+                  <Text as="p" size="sm" tone="secondary">
+                    <Sparkles size={14} aria-hidden /> AI note, advice only: {m.aiNote}
+                  </Text>
+                )}
                 <ConsentBadges email={m.consent.email} whatsapp={m.consent.whatsapp} />
                 <Text size="xs" tone="muted">
                   Retention until {formatDate(m.retentionUntil)}
                 </Text>
               </div>
-              {viewer === 'recruiter' ? (
+              {live ? (
+                live.onAdd &&
+                (added.includes(m.id) ? (
+                  <div className="yx-hire-list__actions">
+                    <Badge tone="success">Added to pipeline</Badge>
+                  </div>
+                ) : (
+                  <div className="yx-hire-list__actions">
+                    <Button size="sm" icon={UserPlus} loading={busy === m.id} onClick={() => void add(m)}>
+                      Add to pipeline
+                    </Button>
+                  </div>
+                ))
+              ) : viewer === 'recruiter' ? (
                 <div className="yx-hire-list__actions">
                   <Button size="sm" disabled={m.consent.email !== 'opted-in' && m.consent.whatsapp !== 'opted-in'}>
                     Contact
@@ -767,22 +831,66 @@ export interface RequisitionsScreenProps {
   rediscovery?: RediscoveryMatch[];
   state?: ListState;
   now?: Date;
+  live?: LiveRequisitions;
+}
+
+/** A requisition as the live list reads it (GET hiring/requisitions). */
+export type LiveRequisitionRow = Omit<Requisition, 'proposedMax' | 'planLineId'> & {
+  proposedMax: number | null;
+  /** The approved plan line it draws on (budget 0 when it is not shown to the viewer). */
+  line: PlanLine | null;
+  outsidePlan: boolean;
+  outsidePlanReason: string | null;
+  /** Why the approvers sent it back. */
+  sentBackReason: string | null;
+  /** The route: submitted, then each step as the approvals engine ran it. */
+  steps: ApprovalStep[];
+};
+
+/** The live list (HIR-02): recruiting and HR see every requisition; a hiring manager their own, read-only (decision 11). */
+export interface LiveRequisitions {
+  persona: 'recruiter' | 'hm';
+  rows: LiveRequisitionRow[];
+  state: ListState;
+  onRetry: () => void;
+  /** pipeline:manage, signed in as themselves: send for approval and withdraw. */
+  canManage: boolean;
+  /** Opens the requisition's job (recruiting). */
+  onOpenJob?: (row: LiveRequisitionRow) => void;
+  onSubmit: (row: LiveRequisitionRow) => Promise<void>;
+  onWithdraw: (row: LiveRequisitionRow) => Promise<void>;
+  /** ats.requisition.raise, signed in as themselves: opens the request sheet. */
+  onNew?: () => void;
+  /** Tells the page which requisition is open, so it can load its past candidates. */
+  onOpenRow?: (id: string | null) => void;
+  /** The open requisition's past candidates; absent when the viewer may not see candidates. */
+  rediscovery?: LiveRediscovery;
+  now?: Date;
 }
 
 const REQ_TONE: Record<Requisition['status'], BadgeTone> = { Draft: 'neutral', 'Pending approval': 'warning', Approved: 'success', 'Sent back': 'danger', Filled: 'info', Closed: 'neutral' };
 
 // HIR-02
-export function RequisitionsScreen({ rows, planLines, persona, me = 'Karthik Subramanian', openId = null, sheetOpen = false, rediscovery = [], state = 'ready', now }: RequisitionsScreenProps) {
-  const base = persona === 'hm' ? rows.filter((r) => r.hiringManager === me) : rows;
-  const [open, setOpen] = useState<string | null>(openId);
+export function RequisitionsScreen({ rows: sample, planLines, persona: samplePersona, me = 'Karthik Subramanian', openId = null, sheetOpen = false, rediscovery = [], state = 'ready', now, live }: RequisitionsScreenProps) {
+  type Row = Requisition | LiveRequisitionRow;
+  const persona = live ? live.persona : samplePersona;
+  // Live: the API already returns only what the viewer may see.
+  const base: Row[] = live ? live.rows : persona === 'hm' ? sample.filter((r) => r.hiringManager === me) : sample;
+  const [open, setOpenState] = useState<string | null>(openId);
+  const setOpen = (id: string | null) => {
+    setOpenState(id);
+    live?.onOpenRow?.(id);
+  };
   const [sheet, setSheet] = useState(sheetOpen);
-  const lineOf = (r: Requisition) => planLines.find((l) => l.id === r.planLineId) ?? null;
-  const planText = (r: Requisition) => (r.replacementFor ? 'Replacement' : r.planLineId ? 'In plan' : 'Outside plan');
-  const list = useListControls({
+  const [busy, setBusy] = useState(false);
+  const isLive = (r: Row): r is LiveRequisitionRow => Boolean(live) && 'steps' in r;
+  const planText = (r: Row) => (r.replacementFor ? 'Replacement' : isLive(r) ? (r.line ? 'In plan' : r.outsidePlan ? 'Outside plan' : 'No plan line') : (r as Requisition).planLineId ? 'In plan' : 'Outside plan');
+  const statuses = live ? ['Draft', 'Pending approval', 'Approved', 'Sent back', 'Filled', 'Closed'] : ['Draft', 'Pending approval', 'Approved', 'Sent back', 'Filled'];
+  const list = useListControls<Row>({
     rows: base,
     fields: [
-      { key: 'status', label: 'Status', type: 'multi', options: ['Draft', 'Pending approval', 'Approved', 'Sent back', 'Filled'].map((v) => ({ value: v, label: v })) },
-      { key: 'plan', label: 'Plan', type: 'multi', options: ['In plan', 'Outside plan', 'Replacement'].map((v) => ({ value: v, label: v })) },
+      { key: 'status', label: 'Status', type: 'multi', options: statuses.map((v) => ({ value: v, label: v })) },
+      { key: 'plan', label: 'Plan', type: 'multi', options: (live ? ['In plan', 'Outside plan', 'Replacement', 'No plan line'] : ['In plan', 'Outside plan', 'Replacement']).map((v) => ({ value: v, label: v })) },
     ],
     text: (r) => `${r.code} ${r.title} ${r.department}`,
     fieldValue: (r, k) => (k === 'status' ? r.status : planText(r)),
@@ -792,10 +900,10 @@ export function RequisitionsScreen({ rows, planLines, persona, me = 'Karthik Sub
     ],
     searchPlaceholder: 'Search requisitions',
   });
-  const cols: TableColumn<Requisition>[] = [
+  const cols: TableColumn<Row>[] = [
     { key: 'code', header: 'Requisition', type: 'id', value: (r) => r.code, width: 120 },
-    { key: 'title', header: 'Position', value: (r) => r.title, render: (r) => <PersonLabel name={r.title} secondary={`${r.department} · ${r.location}`} size={24} /> },
-    { key: 'plan', header: 'Plan', type: 'status', value: planText, statusTone: (v) => (v === 'Outside plan' ? 'warning' : v === 'Replacement' ? 'info' : 'success') },
+    { key: 'title', header: 'Position', value: (r) => r.title, render: (r) => <PersonLabel name={r.title} secondary={[r.department, r.location].filter(Boolean).join(' · ')} size={24} /> },
+    { key: 'plan', header: 'Plan', type: 'status', value: planText, statusTone: (v) => (v === 'Outside plan' ? 'warning' : v === 'Replacement' ? 'info' : v === 'No plan line' ? 'neutral' : 'success') },
     { key: 'max', header: 'Pay up to', type: 'money', value: (r) => r.proposedMax },
     { key: 'positions', header: 'Positions', type: 'number', value: (r) => r.positions, total: 'sum' },
     { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => REQ_TONE[v as Requisition['status']] },
@@ -804,43 +912,88 @@ export function RequisitionsScreen({ rows, planLines, persona, me = 'Karthik Sub
     { key: 'raised', header: 'Raised', type: 'date', value: (r) => r.raised },
   ];
   const current = base.find((r) => r.id === open) ?? null;
+  const can = Boolean(live?.canManage);
+  const act = async (fn: () => Promise<void>) => {
+    setBusy(true);
+    try {
+      await fn();
+    } catch {
+      // The page shows why in a toast.
+    } finally {
+      setBusy(false);
+    }
+  };
+  const newButton = (!live || live.onNew) && (
+    <Button variant="primary" icon={Plus} onClick={() => (live ? live.onNew?.() : setSheet(true))}>
+      New requisition
+    </Button>
+  );
+  const liveActions = (r: LiveRequisitionRow) =>
+    can ? (
+      <>
+        {live?.onOpenJob && <MenuItem onSelect={() => live.onOpenJob?.(r)}>Open job</MenuItem>}
+        {(r.status === 'Draft' || r.status === 'Sent back') && <MenuItem onSelect={() => void act(() => live!.onSubmit(r))}>Send for approval</MenuItem>}
+        {r.status === 'Pending approval' && <MenuItem onSelect={() => void act(() => live!.onWithdraw(r))}>Withdraw from approval</MenuItem>}
+      </>
+    ) : null;
 
   return (
     <HireFrame active="Jobs & requisitions">
       <PageHeader
         title="Requisitions"
-        description="Requests to hire against the headcount plan. Outside plan or above the plan budget adds an extra approval."
-        actions={
-          <Button variant="primary" icon={Plus} onClick={() => setSheet(true)}>
-            New requisition
-          </Button>
+        description={
+          live && persona === 'hm'
+            ? 'Your requests to hire and where each one is. Read-only: recruiting and HR change them.'
+            : 'Requests to hire against the headcount plan. Outside plan or above the plan budget adds an extra approval.'
         }
+        actions={newButton || undefined}
       />
       <DataTable
         label="Requisitions"
         columns={cols}
         rows={list.rows}
         getRowId={(r) => r.id}
-        state={state}
-        onRetry={() => {}}
+        state={live ? live.state : state}
+        onRetry={live ? live.onRetry : () => {}}
         errorReference="REQ-4410"
         filtered={list.filtered}
         onClearFilters={list.clear}
         toolbar={list.toolbar}
-        views={list.views}
+        views={live ? undefined : list.views}
         onRowClick={(r) => setOpen(r.id)}
         activeRowId={open}
-        selectable={persona === 'recruiter'}
-        bulkActions={() => <Button size="sm">Assign recruiter</Button>}
-        rowActions={() => (
-          <>
-            <MenuItem>Open job</MenuItem>
-            <MenuItem>Duplicate</MenuItem>
-            <MenuItem destructive>Cancel requisition</MenuItem>
-          </>
-        )}
-        empty={<EmptyState title="No requisitions yet." description="Open one from a free position on the headcount plan, or outside the plan with a reason." action={<Button variant="primary" icon={Plus} onClick={() => setSheet(true)}>New requisition</Button>} />}
-        onExport={() => {}}
+        selectable={!live && persona === 'recruiter'}
+        bulkActions={live ? undefined : () => <Button size="sm">Assign recruiter</Button>}
+        rowActions={
+          live
+            ? (r) => liveActions(r as LiveRequisitionRow)
+            : () => (
+                <>
+                  <MenuItem>Open job</MenuItem>
+                  <MenuItem>Duplicate</MenuItem>
+                  <MenuItem destructive>Cancel requisition</MenuItem>
+                </>
+              )
+        }
+        empty={
+          <EmptyState
+            title="No requisitions yet."
+            description={live && persona === 'hm' ? 'Ask for a hire with New requisition, or from a free position on the headcount plan.' : 'Open one from a free position on the headcount plan, or outside the plan with a reason.'}
+            action={newButton || undefined}
+          />
+        }
+        onExport={
+          live
+            ? (_format, keys) => {
+                const shown = cols.filter((c) => keys.includes(c.key));
+                const text = (c: TableColumn<Row>, r: Row) => {
+                  const v = c.value(r);
+                  return v instanceof Date ? formatDate(v) : v == null ? '' : String(v);
+                };
+                downloadText(`requisitions-${formatDate(live.now ?? new Date()).replace(/ /g, '-')}.csv`, toCsv(shown.map((c) => String(c.header)), list.rows.map((r) => shown.map((c) => text(c, r)))));
+              }
+            : () => {}
+        }
       />
       {current && (
         <Drawer
@@ -848,10 +1001,24 @@ export function RequisitionsScreen({ rows, planLines, persona, me = 'Karthik Sub
           onOpenChange={(o) => !o && setOpen(null)}
           size="lg"
           title={`${current.code} · ${current.title}`}
-          subtitle={`${current.department} · ${current.location} · ${current.grade}`}
+          subtitle={[current.department, current.location, current.grade].filter(Boolean).join(' · ')}
           meta={<Badge tone={REQ_TONE[current.status]}>{current.status}</Badge>}
           footer={
-            persona === 'hm' && current.status === 'Sent back' ? (
+            live ? (
+              <>
+                <Button onClick={() => setOpen(null)}>Close</Button>
+                {can && current.status === 'Approved' && live.onOpenJob && (
+                  <Button variant="primary" onClick={() => live.onOpenJob?.(current as LiveRequisitionRow)}>
+                    Open job
+                  </Button>
+                )}
+                {can && (current.status === 'Draft' || current.status === 'Sent back') && (
+                  <Button variant="primary" icon={Send} loading={busy} onClick={() => void act(() => live.onSubmit(current as LiveRequisitionRow))}>
+                    Send for approval
+                  </Button>
+                )}
+              </>
+            ) : persona === 'hm' && current.status === 'Sent back' ? (
               <>
                 <Button onClick={() => setOpen(null)}>Close</Button>
                 <Button variant="primary">Edit and resubmit</Button>
@@ -864,16 +1031,56 @@ export function RequisitionsScreen({ rows, planLines, persona, me = 'Karthik Sub
             )
           }
         >
-          <RequisitionDetail req={current} line={lineOf(current)} now={now} />
-          {persona === 'recruiter' || persona === 'hm' ? <RediscoveryPanel matches={rediscovery} viewer={persona === 'hm' ? 'hm' : 'recruiter'} /> : null}
+          <RequisitionDetail req={current} line={isLive(current) ? current.line : (planLines.find((l) => l.id === current.planLineId) ?? null)} now={live ? live.now : now} />
+          {live ? live.rediscovery && <RediscoveryPanel matches={[]} viewer={persona === 'hm' ? 'hm' : 'recruiter'} live={live.rediscovery} /> : <RediscoveryPanel matches={rediscovery} viewer={persona === 'hm' ? 'hm' : 'recruiter'} />}
         </Drawer>
       )}
-      <RequisitionSheet open={sheet} onOpenChange={setSheet} planLines={planLines} />
+      {!live && <RequisitionSheet open={sheet} onOpenChange={setSheet} planLines={planLines} />}
     </HireFrame>
   );
 }
 
-function RequisitionDetail({ req, line, now }: { req: Requisition; line: PlanLine | null; now?: Date }) {
+/** The live detail: the plan facts and the route the approvals engine ran (the company's own approvers). */
+function LiveRequisitionDetail({ req, now }: { req: LiveRequisitionRow; now?: Date }) {
+  const line = req.line;
+  return (
+    <div className="yx-hire-stack">
+      {req.status === 'Sent back' ? (
+        <InlineAlert tone="danger" title="Sent back">
+          {req.sentBackReason ? `“${req.sentBackReason}” ` : ''}Recruiting can change it and send it again.
+        </InlineAlert>
+      ) : req.replacementFor ? (
+        <InlineAlert tone="info" title="Replacement hire">
+          Replacement for {req.replacementFor}; no new plan line used.
+        </InlineAlert>
+      ) : req.outsidePlan ? (
+        <InlineAlert tone="warning" title="Extra approval needed">
+          Outside the approved headcount plan{req.outsidePlanReason ? `: “${req.outsidePlanReason}”` : ''}. The people who approve headcount plans approve it too.
+        </InlineAlert>
+      ) : line ? (
+        <InlineAlert tone="success" title="Inside the approved plan">
+          It goes through your company&apos;s requisition approvers.
+        </InlineAlert>
+      ) : null}
+      <DescriptionList
+        columns={2}
+        items={[
+          { label: 'Plan line', value: line ? [line.designation, line.grade, line.location].filter(Boolean).join(' · ') : req.outsidePlan ? 'Outside plan' : '—' },
+          { label: 'Free on line', value: line ? `${planLineFree(line)} of ${line.approved}` : '—' },
+          { label: 'Budget left on line', value: line && line.budget > 0 ? formatINR(planBudgetLeft(line)) : '—' },
+          { label: 'Pay up to', value: req.proposedMax == null ? '—' : formatINR(req.proposedMax) },
+          { label: 'Recruiter', value: req.recruiter || '—' },
+          { label: 'Raised', value: formatDate(req.raised) },
+        ]}
+      />
+      {req.steps.length > 0 && <ApprovalTimeline steps={req.steps} now={now} />}
+    </div>
+  );
+}
+
+function RequisitionDetail({ req, line, now }: { req: Requisition | LiveRequisitionRow; line: PlanLine | null; now?: Date }) {
+  // Live: the route the approvals engine ran, not the drawn sample chain.
+  if ('steps' in req) return <LiveRequisitionDetail req={req} now={now} />;
   const route = requisitionRoute({ planLine: line, proposedMax: req.proposedMax, replacementFor: req.replacementFor });
   const done = req.status === 'Approved' || req.status === 'Filled';
   const waitingIdx = req.waitingOn ? route.steps.indexOf(req.waitingOn) : -1;
@@ -936,6 +1143,9 @@ export function RequisitionSheet({ open, onOpenChange, planLines, defaultLine = 
   const [start, setStart] = useState<Date | null>(live ? null : new Date(2026, 11, 1));
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
+  // Live: Send is never greyed out; pressed too early it shows each missing field and focuses the first.
+  const [tried, setTried] = useState(false);
+  const form = useRef<HTMLDivElement>(null);
   const line = outside || (live && replacement) ? null : planLines.find((l) => l.id === lineId) ?? null;
   const leaverName = live ? live.team.find((t) => t.value === leaver)?.label ?? 'a leaver' : 'Rohit Bhat';
   const route = requisitionRoute({ planLine: line, proposedMax: max ?? 0, replacementFor: replacement ? leaverName : null });
@@ -944,7 +1154,12 @@ export function RequisitionSheet({ open, onOpenChange, planLines, defaultLine = 
   const needTitle = Boolean(live) && !line && !title.trim();
   const liveIncomplete = Boolean(live) && (!positions || needTitle || (replacement ? !leaver : !outside && !line));
   const send = async () => {
-    if (!live || needReason || !max || liveIncomplete) return;
+    setTried(true);
+    if (live && (needReason || !max || liveIncomplete)) {
+      requestAnimationFrame(() => form.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
+      return;
+    }
+    if (!live) return;
     setBusy(true);
     setFailed(null);
     try {
@@ -969,23 +1184,23 @@ export function RequisitionSheet({ open, onOpenChange, planLines, defaultLine = 
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
           {/* Live: a manager's request is not kept as a draft yet (left out). */}
           {!live && <Button>Save draft</Button>}
-          <Button variant="primary" icon={Send} disabled={needReason || !max || liveIncomplete} loading={busy} onClick={live ? () => void send() : undefined}>
+          <Button variant="primary" icon={Send} disabled={!live && (needReason || !max)} loading={busy} onClick={live ? () => void send() : undefined}>
             Send for approval
           </Button>
         </>
       }
     >
       <div className="yx-hire-sheet">
-        <div className="yx-hire-sheet__form">
+        <div className="yx-hire-sheet__form" ref={form}>
           {failed && <InlineAlert tone="danger" title={failed} />}
           <Switch className="yx-hire-switch" label="Replacement for a leaver" description="Linked to the exit; doesn't use a new plan line." checked={replacement} onChange={setReplacement} />
           {live && replacement ? (
-            <FormField label="Who is leaving" required>
+            <FormField label="Who is leaving" required error={tried && !leaver ? 'Choose who is leaving.' : null}>
               <Select value={leaver} onChange={setLeaver} options={live.team} />
             </FormField>
           ) : (
             <>
-              <FormField label="Plan line" required helper="Only lines with a free position are listed.">
+              <FormField label="Plan line" required helper="Only lines with a free position are listed." error={live && tried && !outside && !line ? 'Choose a plan line, or tick that the hire is outside the plan.' : null}>
                 <Select
                   value={outside ? null : lineId}
                   onChange={(v) => {
@@ -998,22 +1213,22 @@ export function RequisitionSheet({ open, onOpenChange, planLines, defaultLine = 
               </FormField>
               <Checkbox label="This hire is outside the approved plan" checked={outside} onChange={setOutside} />
               {outside && (
-                <FormField label="Why is this needed outside the plan?" required error={needReason && (!live || reason.length > 0) ? 'Enter a reason so the CFO can decide.' : null}>
+                <FormField label="Why is this needed outside the plan?" required error={needReason && (!live || reason.length > 0 || tried) ? 'Enter a reason so the CFO can decide.' : null}>
                   <TextArea value={reason} onChange={setReason} rows={3} />
                 </FormField>
               )}
             </>
           )}
           {live && !line && (
-            <FormField label="Position" required helper="The job title, for example Quality Analyst.">
+            <FormField label="Position" required helper="The job title, for example Quality Analyst." error={tried && needTitle ? 'Enter the position.' : null}>
               <TextField value={title} onChange={setTitle} maxLength={200} />
             </FormField>
           )}
           <FieldRow>
-            <FormField label="Positions" required>
+            <FormField label="Positions" required error={live && tried && !positions ? 'Enter at least 1.' : null}>
               <NumberField value={positions} onChange={setPositions} min={1} max={20} />
             </FormField>
-            <FormField label="Pay up to (annual CTC)" required helper="From the grade pay range">
+            <FormField label="Pay up to (annual CTC)" required helper="From the grade pay range" error={live && tried && !max ? 'Enter the most you can pay.' : null}>
               <CurrencyField value={max} onChange={setMax} />
             </FormField>
           </FieldRow>
