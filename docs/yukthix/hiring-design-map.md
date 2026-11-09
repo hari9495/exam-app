@@ -11,7 +11,7 @@ was built.
 
 - **Almost none of the Hiring designs are live.** Of 221 design stories (HIR-01 … 31, the careers site, candidate
   identity check and the hiring settings), exactly **one** is live with its design: the "Request a hire" sheet (HIR-02
-  NewRequisition), which People › My team (/yx/people/team) renders with `live` and sends to `POST jobs/requisitions`. Since 9 Nov 2026 (branch `feat/yukthix-hir-01`) HIR-01, the headcount plan board, is live too: all 10 of
+  NewRequisition), which People › My team (/yx/people/team) renders with `live` and sends to `POST jobs/requisitions`. Since 9 Nov 2026 (branch `feat/yukthix-hir-01`) HIR-01, the headcount plan board, is live too: all 11 of
   its stories (section 4).
 - **Hiring itself works, but on stand-in screens.** The 14 pages under /yx/hiring render the older "Live ·" screens from
   `packages/yx-ui/src/screens/hiring/live/*` (the package path `@yukthix/ui/hiring` points there). None of them passes a
@@ -42,17 +42,17 @@ built**.
 
 | | groups | live | live, gap | wire design | feature not built | phone view | stories |
 |---|---|---|---|---|---|---|---|
-| A. Plans, requisitions, jobs and costs | 4 | 11 | 0 | 18 | 0 | 0 | 29 |
+| A. Plans, requisitions, jobs and costs | 4 | 12 | 0 | 18 | 0 | 0 | 30 |
 | B. Candidates, pipeline and interviews | 6 | 0 | 0 | 21 | 13 | 1 | 35 |
 | C. Offers, BGV and joining | 4 | 0 | 0 | 13 | 12 | 0 | 25 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 0 | 0 | 11 | 7 | 4 | 22 |
 | E. Staffing agency | 8 | 0 | 0 | 4 | 44 | 0 | 48 |
 | F. Compliance and fairness | 5 | 0 | 0 | 3 | 22 | 0 | 25 |
 | G. Careers site, portals and settings | 4 | 0 | 0 | 30 | 11 | 0 | 41 |
-| **All Hiring design groups (A–G)** | **35** | **11** | **0** | **100** | **109** | **5** | **225** |
+| **All Hiring design groups (A–G)** | **35** | **12** | **0** | **100** | **109** | **5** | **226** |
 | H. Kit and "Live ·" groups (not designs; own line) | 6 | 23 | 0 | 7 | 5 | 0 | 35 |
 
-Recounted by script 9 Nov 2026 on `feat/yukthix-hir-01` after HIR-01 went live (four new HIR-01 design stories; the stand-in's Plans and NoPlans stories deleted). First counted by script 9 Nov 2026 on `feat/yukthix-hiring-design-map` (the script is in the appendix): every `export const`
+Recounted by script 9 Nov 2026 on `feat/yukthix-hir-01` after HIR-01 went live (five new HIR-01 design stories, the last the plain no-access state added 10 Nov 2026; the stand-in's Plans and NoPlans stories deleted). First counted by script 9 Nov 2026 on `feat/yukthix-hiring-design-map` (the script is in the appendix): every `export const`
 story with a capital first letter (the lower-case exports are sample props, excluded from Storybook by
 `excludeStories`) in the 31 `hir-NN-*.stories.tsx` files, `hiring-kit.stories.tsx`, the five `hiring/live/*.stories.tsx`,
 `portals/t9-09-careers.stories.tsx`, `portals/t9-15-identity.stories.tsx`, `stories/careers.stories.tsx` and the hiring
@@ -157,7 +157,8 @@ revised; refused while acting for someone else), decisions on `POST workflow/app
 | HrDepartments · HR · departments at different steps | live | plans are kept per department: each column shows Draft / Waiting / Sent back / Revision pending / Approved · vN |
 | HrRevisePlan · HR · revise plan sheet | live | new plan, draft or revision of an approved plan; a line in use keeps its designation and at least its requisitions and hires |
 | FinanceSendBack · Finance · send back with a reason | live | reason required; HR sees it on the board |
-| NoAccess · Hiring manager · company shows HR only | live | setting `ats.headcount_plan.manager_view` = off |
+| HrOnly · Hiring manager · company shows HR only | live | only when the API refuses with code `HEADCOUNT_PLAN_HR_ONLY` (setting `ats.headcount_plan.manager_view` = off) |
+| NoAccess · No access · no hiring role | live | any other 403 (no `ats.headcount.manage` and no `ats.requisition.raise`): kit NoAccessState, your System Admin gives it through Roles & access |
 | Empty · Empty · no plan for the year | live | no plan for the chosen year (year Segment) |
 | Loading · Loading | live | while `GET hiring/plans` loads |
 | Error · Error | live | `GET hiring/plans` fails; Try again |

@@ -15365,7 +15365,7 @@
       "4. As admin-tester set the setting \"Hiring: hiring managers see their department’s headcount plan\" to off; as Divya reload the board.",
       "5. Set it back to own department."
     ],
-    "expected": "Step 1: only Divya's own department (or the departments she heads), approved plans only; the facts read \"Showing <Department> only · read-only\". Step 2: no budget numbers, no budget meter, no Budget committed tile, no Revise plan, no Export. Step 3: the New requisition sheet opens on that plan line; sending shows a toast. Step 4: \"Only HR sees the headcount plan\" (no error, no data). Step 5: the board is back.",
+    "expected": "Step 1: only Divya's own department (or the departments she heads), approved plans only; the facts read \"Showing <Department> only · read-only\". Step 2: no budget numbers, no budget meter, no Budget committed tile, no Revise plan, no Export. Step 3: the New requisition sheet opens on that plan line; sending shows a toast. Step 4: \"Only HR sees the headcount plan\" with \"Ask HR for your department's numbers\" (no error, no data; the API refuses with code HEADCOUNT_PLAN_HR_ONLY). Step 5: the board is back.",
     "stories": [
       "Screens/Hiring/HIR-01 · Headcount plan board · Hiring manager · own department",
       "Screens/Hiring/HIR-01 · Headcount plan board · Hiring manager · company shows HR only"
@@ -15377,17 +15377,17 @@
     "area": "Hiring · HIR-01 Headcount plan board (9 Nov 2026, founder decision 11)",
     "screen": "Hiring › Headcount plan (refused)",
     "url": "http://localhost:3000/yx/hiring/plans",
-    "account": "arjun@demo-org.test (employee); admin-tester@demo-org.test acting as hr-tester. Browser window 1278 x 635, sidebar open.",
+    "account": "arjun@demo-org.test (employee); hr-tester@demo-org.test only if its HR Admin role has no hiring key; admin-tester@demo-org.test acting as hr-tester. Browser window 1278 x 635, sidebar open.",
     "steps": [
-      "1. As Arjun open /yx/hiring/plans directly.",
+      "1. As Arjun (and as an HR person without the Hiring admin or Hiring manager role) open /yx/hiring/plans directly.",
       "2. As admin-tester use Act as hr-tester and open the board.",
       "3. Look for Revise plan, Approve and Send back."
     ],
-    "expected": "Step 1: no Headcount plan in the menu; the page says there is no access (API 403). Step 2: the board loads read-only; the facts end with \"read-only while acting for someone else\". Step 3: none of them show (the API also refuses: \"Not available while acting for someone else.\").",
+    "expected": "Step 1: no Headcount plan in the menu; the page shows \"You don't have access to the headcount plan\" and says your System Admin gives it through Roles & access (the Hiring admin role, or Hiring manager for your own department). It never says \"Only HR sees the headcount plan\". Step 2: the board loads read-only; the facts end with \"read-only while acting for someone else\". Step 3: none of them show (the API also refuses: \"Not available while acting for someone else.\").",
     "stories": [
-      "Screens/Hiring/HIR-01 · Headcount plan board · Error"
+      "Screens/Hiring/HIR-01 · Headcount plan board · No access · no hiring role"
     ],
-    "note": "Negative: employee 403; no plan changes or decisions while acting for someone else."
+    "note": "Negative: no hiring key gives a plain no access (not the company's HR-only message); no plan changes or decisions while acting for someone else. Fix 10 Nov 2026 after the founder walk."
   },
   {
     "id": "MT-HIR-01-06",

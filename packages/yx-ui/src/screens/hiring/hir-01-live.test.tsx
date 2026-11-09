@@ -139,14 +139,19 @@ describe('HIR-01 live board', () => {
     expect(screen.getByText(/read-only while acting for someone else/)).toBeInTheDocument();
   });
 
-  it('empty, loading, error and no-access states', () => {
+  it('empty, loading, error, HR-only and no-access states', () => {
     const { rerender } = show(live({ plans: [] }));
     expect(screen.getByText('No headcount plan for FY 2026–27 yet')).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Create plan' }).length).toBeGreaterThan(0);
     rerender(<ToastProvider><HeadcountPlanScreen live={live({ state: 'error' })} /></ToastProvider>);
     expect(screen.getByText("Couldn't load the headcount plan")).toBeInTheDocument();
-    rerender(<ToastProvider><HeadcountPlanScreen live={live({ state: 'no-access', persona: 'hm' })} /></ToastProvider>);
+    rerender(<ToastProvider><HeadcountPlanScreen live={live({ state: 'hr-only', persona: 'hm' })} /></ToastProvider>);
     expect(screen.getByText('Only HR sees the headcount plan')).toBeInTheDocument();
+    expect(screen.getByText("Your company shows the headcount plan to HR only. Ask HR for your department's numbers.")).toBeInTheDocument();
+    rerender(<ToastProvider><HeadcountPlanScreen live={live({ state: 'no-access' })} /></ToastProvider>);
+    expect(screen.getByText("You don't have access to the headcount plan")).toBeInTheDocument();
+    expect(screen.getByText(/Your System Admin gives this through Roles & access.*Ask your System Admin to give you access\./)).toBeInTheDocument();
+    expect(screen.queryByText('Only HR sees the headcount plan')).toBeNull();
   });
 
   it('revisionChange says what a revision changes, both ways', () => {

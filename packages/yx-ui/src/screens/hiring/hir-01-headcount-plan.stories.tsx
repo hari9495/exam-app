@@ -31,7 +31,8 @@ export const FinanceSendBack: S = {
   name: 'Finance · send back with a reason',
   render: () => <HeadcountPlanScreen fy={PLAN_FY} lines={PLAN_LINES} persona="finance" planStatus="Revision pending" version={3} revisionSteps={PLAN_REVISION_STEPS} now={TODAY} sendBackOpen />,
 };
-export const NoAccess: S = { name: 'Hiring manager · company shows HR only', render: () => <HeadcountPlanScreen fy={PLAN_FY} lines={PLAN_LINES} persona="hm" myDepartment="Engineering" planStatus="Approved" version={2} state="no-access" /> };
+export const HrOnly: S = { name: 'Hiring manager · company shows HR only', render: () => <HeadcountPlanScreen fy={PLAN_FY} lines={PLAN_LINES} persona="hm" myDepartment="Engineering" planStatus="Approved" version={2} state="hr-only" /> };
+export const NoAccess: S = { name: 'No access · no hiring role', render: () => <HeadcountPlanScreen fy={PLAN_FY} lines={PLAN_LINES} persona="hr" planStatus="Approved" version={2} state="no-access" /> };
 export const Empty: S = { name: 'Empty · no plan for the year', render: () => <HeadcountPlanScreen fy="FY 2027–28" lines={[]} persona="hr" planStatus="Draft" version={1} /> };
 export const Loading: S = { name: 'Loading', render: () => <HeadcountPlanScreen fy={PLAN_FY} lines={PLAN_LINES} persona="hr" planStatus="Approved" version={2} state="loading" /> };
 export const Error: S = { name: 'Error', render: () => <HeadcountPlanScreen fy={PLAN_FY} lines={PLAN_LINES} persona="hr" planStatus="Approved" version={2} state="error" /> };

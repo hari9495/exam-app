@@ -33,6 +33,8 @@ import type { PlanDto } from './hiring-dto';
 
 export const REQUISITION_TYPE = 'ats.requisition';
 export const PLAN_TYPE = 'ats.headcount_plan';
+/** HIR-01: the refusal when the company shows the plan to HR only (ats.headcount_plan.manager_view = off); the web reads it. */
+export const HEADCOUNT_PLAN_HR_ONLY = 'HEADCOUNT_PLAN_HR_ONLY';
 const D = (n: Prisma.Decimal | null) => (n === null ? null : Number(n.toString()));
 type RevLine = { id: string | null; designationId: string; gradeId: string | null; locationId: string | null; count: number; budget: number | null };
 type Revision = { note: string | null; lines: RevLine[] };
@@ -190,7 +192,7 @@ export class HiringRequisitionsService implements OnModuleInit {
       const org = c.organizationId;
       let where: Prisma.HeadcountPlanWhereInput = { organizationId: org, ...(fyStart ? { fyStart } : {}) };
       if (!hr) {
-        if ((await settingFor(tx, c, 'ats.headcount_plan.manager_view', { legalEntityId: '' })) === 'off') throw new ForbiddenException('Your company shows the headcount plan to HR only. Ask HR for your department’s numbers.');
+        if ((await settingFor(tx, c, 'ats.headcount_plan.manager_view', { legalEntityId: '' })) === 'off') throw new ForbiddenException({ statusCode: 403, code: HEADCOUNT_PLAN_HR_ONLY, message: 'Your company shows the headcount plan to HR only. Ask HR for your department’s numbers.' });
         where = { ...where, status: 'approved', departmentId: { in: await this.myDepartments(tx, org, user.userId) } };
       }
       const view = await this.planView(tx, org, await tx.headcountPlan.findMany({ where, orderBy: [{ fyStart: 'desc' }, { createdAt: 'asc' }] }), user.userId ?? null);

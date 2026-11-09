@@ -172,13 +172,16 @@ describe('HIR-01 headcount plan board', () => {
     await api('mgr', 'post', `/hiring/plans/${ops.id}/submit`).send({ version: ops.version }).expect(403);
     // The company may show the plan to HR only.
     await api('adminA', 'put', '/org/settings').send({ key: 'ats.headcount_plan.manager_view', scopeType: 'tenant', value: 'off' }).expect(200);
-    expect((await api('mgr', 'get', '/hiring/plans?fy=2026').expect(403)).body.message).toMatch(/HR only/);
+    expect((await api('mgr', 'get', '/hiring/plans?fy=2026').expect(403)).body).toMatchObject({ code: 'HEADCOUNT_PLAN_HR_ONLY', message: expect.stringMatching(/HR only/) });
     await api('adminA', 'put', '/org/settings').send({ key: 'ats.headcount_plan.manager_view', scopeType: 'tenant', value: 'own_department' }).expect(200);
     await api('adminA', 'put', '/org/settings').send({ key: 'ats.headcount_plan.manager_view', scopeType: 'tenant', value: 'everyone' }).expect(400);
   });
 
   it('an employee is refused; another company sees and changes nothing', async () => {
-    await api('emp', 'get', '/hiring/plans').expect(403);
+    // No hiring key: a plain 403, never the company's "HR only" code (the web shows no access, not the setting message).
+    const refused = (await api('emp', 'get', '/hiring/plans').expect(403)).body;
+    expect(refused.code).toBeUndefined();
+    expect(refused.message).toMatch(/ats\.headcount\.manage, ats\.requisition\.raise/);
     await api('emp', 'post', '/hiring/plans').send({ departmentId: ids.eng, fyStart: 2027, lines: [{ designationId: ids.qa, count: 1 }] }).expect(403);
     expect(await board('adminB')).toEqual([]);
     const p = await planOf('hr', ids.engPlan);

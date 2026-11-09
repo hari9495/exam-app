@@ -69,9 +69,17 @@ describe('Hiring › Headcount plan (HIR-01, the designed board)', () => {
     expect(screen.queryByRole('button', { name: 'Revise plan' })).toBeNull();
     expect(screen.getAllByRole('button', { name: 'Open requisition' })).toHaveLength(2);
     unmount();
-    serve(['ats.requisition.raise'], Object.assign(new Error('HR only'), { status: 403 }));
+    serve(['ats.requisition.raise'], Object.assign(new Error('HR only'), { status: 403, code: 'HEADCOUNT_PLAN_HR_ONLY' }));
     wrap(<YxHeadcountPlansPage />);
     expect(await screen.findByText('Only HR sees the headcount plan')).toBeInTheDocument();
+  });
+
+  it('any other 403 (an HR person without a hiring role) is plain no access, not the HR-only message', async () => {
+    serve(['employee.change.manage'], Object.assign(new Error('Missing any of required permission(s): ats.headcount.manage, ats.requisition.raise'), { status: 403 }));
+    wrap(<YxHeadcountPlansPage />);
+    expect(await screen.findByText("You don't have access to the headcount plan")).toBeInTheDocument();
+    expect(screen.getByText(/Your System Admin gives this through Roles & access/)).toBeInTheDocument();
+    expect(screen.queryByText('Only HR sees the headcount plan')).toBeNull();
   });
 });
 

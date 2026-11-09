@@ -45,7 +45,8 @@ export default function YxHeadcountPlansPage() {
       <HeadcountPlanScreen
         live={{
           persona: hr ? 'hr' : 'hm',
-          state: perms.isLoading ? 'loading' : loadState(plans),
+          // HIR-01: only the company's "HR only" setting gets its own message; any other refusal is plain no access.
+          state: perms.isLoading ? 'loading' : (plans.error as { code?: string } | null)?.code === 'HEADCOUNT_PLAN_HR_ONLY' ? 'hr-only' : loadState(plans),
           onRetry: () => void plans.refetch(),
           fy,
           years: [fyNow() - 1, fyNow(), fyNow() + 1],

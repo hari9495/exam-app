@@ -4,7 +4,7 @@ import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { Briefcase, ExternalLink, Plus, Send, Trash2, UserPlus } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
-import { EmptyState, ErrorState, InlineAlert, Meter, Skeleton } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, Meter, NoAccessState, Skeleton } from '../../components/feedback';
 import { FormField, FieldRow } from '../../components/field';
 import { CurrencyField, NumberField, TextArea, TextField } from '../../components/inputs';
 import { Select } from '../../components/select';
@@ -45,6 +45,9 @@ const L = (n: number) => formatINR(n);
 
 /* ================================================================== HIR-01 · Headcount plan board */
 
+/** hr-only: refused only because the company shows the plan to HR only; no-access: refused for any other reason. */
+export type PlanBoardState = ListState | 'no-access' | 'hr-only';
+
 export interface HeadcountPlanScreenProps {
   fy: string;
   lines: PlanLine[];
@@ -54,7 +57,7 @@ export interface HeadcountPlanScreenProps {
   planStatus: 'Approved' | 'Revision pending' | 'Draft';
   version: number;
   revisionSteps?: ApprovalStep[];
-  state?: ListState | 'no-access';
+  state?: PlanBoardState;
   now?: Date;
   /** Design state: the status of each department's own plan, shown on its column (plans are kept per department). */
   departmentStatus?: Record<string, { label: string; tone: BadgeTone }>;
@@ -126,8 +129,8 @@ export interface PlanChoice {
 /** The live board: HR (ats.headcount.manage) or a hiring manager (their own department, read-only; decision 11). */
 export interface LiveHeadcountPlan {
   persona: 'hr' | 'hm';
-  /** no-access: the company shows the plan to HR only (ats.headcount_plan.manager_view). */
-  state: ListState | 'no-access';
+  /** hr-only: the company shows the plan to HR only (ats.headcount_plan.manager_view); no-access: any other refusal. */
+  state: PlanBoardState;
   onRetry: () => void;
   fy: number;
   years: number[];
@@ -179,7 +182,7 @@ interface PlanBoardView {
   departmentStatus?: Record<string, { label: string; tone: BadgeTone }>;
   alerts?: ReactNode;
   actions: ReactNode;
-  state: ListState | 'no-access';
+  state: PlanBoardState;
   onRetry?: () => void;
   emptyAction?: ReactNode;
   /** Budgets are not shown to hiring managers. */
@@ -203,8 +206,10 @@ function PlanBoard({ fy, persona, facts, status, lines: shown, departmentStatus,
             <Skeleton key={i} height={240} />
           ))}
         </div>
-      ) : state === 'no-access' ? (
+      ) : state === 'hr-only' ? (
         <EmptyState title="Only HR sees the headcount plan" description="Your company shows the headcount plan to HR only. Ask HR for your department's numbers." />
+      ) : state === 'no-access' ? (
+        <NoAccessState what="the headcount plan" grantedBy="your System Admin" note="Your System Admin gives this through Roles & access: the Hiring admin role for every plan, or the Hiring manager role for your own department." />
       ) : state === 'error' ? (
         <ErrorState title="Couldn't load the headcount plan" description="Check your connection and try again. Your plan is unchanged." onRetry={onRetry ?? (() => {})} reference="HC-5021" />
       ) : shown.length === 0 ? (
