@@ -1489,18 +1489,19 @@ export interface LiveJobs {
   onOpen: (id: string) => void;
   create: { choices: CreateJobChoices; onCreate: (input: NewJob) => Promise<void>; onDraftDescription?: (title: string) => Promise<string> };
   onCopyLink: (row: LiveJobRow) => void;
-  onStatus: (row: LiveJobRow, to: 'open' | 'closed') => void;
+  /** open: reopen or resume; on_hold: hidden from careers and boards, candidates stay (answer 223). */
+  onStatus: (row: LiveJobRow, to: 'open' | 'closed' | 'on_hold') => void;
   onSubmit: (row: LiveJobRow) => void;
   onWithdraw: (row: LiveJobRow) => void;
   onDelete: (row: LiveJobRow) => Promise<void>;
 }
 
 // HIR-03
-export function JobsScreen({ rows: sample, state = 'ready', createOpen = false, live }: { rows: Job[]; state?: ListState; createOpen?: boolean; live?: LiveJobs }) {
+export function JobsScreen({ rows: sample, state = 'ready', createOpen = false, live, now }: { rows: Job[]; state?: ListState; createOpen?: boolean; live?: LiveJobs; now?: Date }) {
   const rows: Job[] = live ? live.rows : sample;
   const [creating, setCreating] = useState(createOpen);
   const [deleting, setDeleting] = useState<LiveJobRow | null>(null);
-  const statuses = live ? ['Open', 'Draft', 'Waiting for approval', 'Closed'] : ['Open', 'Draft', 'On hold', 'Closed'];
+  const statuses = live ? ['Open', 'On hold', 'Draft', 'Waiting for approval', 'Closed'] : ['Open', 'Draft', 'On hold', 'Closed'];
   const types = live ? [...new Set(rows.map((r) => r.type).filter(Boolean))].sort() : ['Full time', 'Contract', 'Campus'];
   const list = useListControls({
     rows,
@@ -1517,7 +1518,7 @@ export function JobsScreen({ rows: sample, state = 'ready', createOpen = false, 
     searchPlaceholder: 'Search jobs',
   });
   const cols: TableColumn<Job>[] = [
-    ...(live ? [] : [{ key: 'code', header: 'Job', type: 'id', value: (r: Job) => r.code, width: 110 } as TableColumn<Job>]),
+    { key: 'code', header: 'Job', type: 'id', value: (r) => r.code, width: 110 },
     { key: 'title', header: 'Title', value: (r) => r.title, render: (r) => <PersonLabel name={r.title} secondary={[r.client ?? r.department, r.location].filter(Boolean).join(' · ')} /> },
     { key: 'type', header: 'Type', value: (r) => r.type, groupable: true },
     { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => JOB_TONE[v as Job['status']] },
@@ -1538,7 +1539,9 @@ export function JobsScreen({ rows: sample, state = 'ready', createOpen = false, 
       {can && r.status === 'Draft' && <MenuItem onSelect={() => live!.onSubmit(r)}>Send for approval</MenuItem>}
       {can && r.status === 'Waiting for approval' && <MenuItem onSelect={() => live!.onWithdraw(r)}>Withdraw from approval</MenuItem>}
       {can && r.status === 'Closed' && <MenuItem onSelect={() => live!.onStatus(r, 'open')}>Reopen job</MenuItem>}
-      {can && r.status === 'Open' && (
+      {can && r.status === 'Open' && <MenuItem onSelect={() => live!.onStatus(r, 'on_hold')}>Put on hold</MenuItem>}
+      {can && r.status === 'On hold' && <MenuItem onSelect={() => live!.onStatus(r, 'open')}>Resume job</MenuItem>}
+      {can && (r.status === 'Open' || r.status === 'On hold') && (
         <MenuItem destructive onSelect={() => live!.onStatus(r, 'closed')}>
           Close job
         </MenuItem>
@@ -1577,7 +1580,19 @@ export function JobsScreen({ rows: sample, state = 'ready', createOpen = false, 
               )
         }
         empty={<EmptyState title="No jobs yet." description={live && !can ? 'Jobs your company opens show here.' : 'Create a job from an approved requisition.'} action={createButton || undefined} />}
-        onExport={live ? undefined : () => {}}
+        onExport={
+          live
+            ? (_format, keys) => {
+                // Answer 225: the visible columns as CSV (Excel opens it too); dates as "3 Nov 2026".
+                const shown = cols.filter((c) => keys.includes(c.key));
+                const text = (c: TableColumn<Job>, r: Job) => {
+                  const v = c.value(r);
+                  return v instanceof Date ? formatDate(v) : v == null ? '' : String(v);
+                };
+                downloadText(`jobs-${formatDate(now ?? new Date()).replace(/ /g, '-')}.csv`, toCsv(shown.map((c) => String(c.header)), list.rows.map((r) => shown.map((c) => text(c, r)))));
+              }
+            : () => {}
+        }
       />
       {creating && <CreateJobSheet open onOpenChange={(o) => !o && setCreating(false)} choices={live?.create.choices} onCreate={live?.create.onCreate} onDraftDescription={live?.create.onDraftDescription} />}
       {deleting && (
@@ -1617,7 +1632,9 @@ export interface LiveJobWorkspace {
   pay: LivePayRange;
   onOpenPipeline: () => void;
   onViewCareers: () => void;
-  onStatus: (to: 'open' | 'closed') => Promise<void>;
+  onStatus: (to: 'open' | 'closed' | 'on_hold') => Promise<void>;
+  /** Answer 222: the recruiter and who it can be changed to (job-manage key); the API audits the change. */
+  recruiter: { id: string | null; choices: { value: string; label: string }[]; onChange: (userId: string) => Promise<void> };
 }
 
 export interface JobWorkspaceScreenProps {
@@ -1629,11 +1646,14 @@ export interface JobWorkspaceScreenProps {
   defaultTab?: 'overview' | 'postings' | 'pay' | 'sharing';
   now?: Date;
   live?: LiveJobWorkspace;
+  /** The Change recruiter dialog open (story). */
+  recruiterOpen?: boolean;
 }
 
 // HIR-03 (workspace)
-export function JobWorkspaceScreen({ job, postings: initial, law, range, activity, defaultTab = 'overview', now, live }: JobWorkspaceScreenProps) {
+export function JobWorkspaceScreen({ job, postings: initial, law, range, activity, defaultTab = 'overview', now, live, recruiterOpen = false }: JobWorkspaceScreenProps) {
   const [own, setPostings] = useState(initial);
+  const [changing, setChanging] = useState(recruiterOpen);
   const [msg, setMsg] = useState('');
   const postings = live ? live.postings : own;
   const act = (board: string, action: 'post' | 'refresh' | 'close') => {
@@ -1661,7 +1681,7 @@ export function JobWorkspaceScreen({ job, postings: initial, law, range, activit
           <ObjectHeader
             name={job.title}
             icon={Briefcase}
-            secondary={[live ? null : job.code, job.department, job.location].filter(Boolean).join(' · ')}
+            secondary={[job.code, job.department, job.location].filter(Boolean).join(' · ')}
             status={<Badge tone={JOB_TONE[job.status]}>{job.status}</Badge>}
             facts={[
               { label: 'Applicants', value: job.applicants },
@@ -1684,17 +1704,22 @@ export function JobWorkspaceScreen({ job, postings: initial, law, range, activit
             }
             menu={
               live ? (
-                can && (job.status === 'Open' || job.status === 'Closed') ? (
-                  job.status === 'Open' ? (
-                    <MenuItem destructive onSelect={() => void live.onStatus('closed').catch(() => undefined)}>
-                      Close job and all postings
-                    </MenuItem>
-                  ) : (
-                    <MenuItem onSelect={() => void live.onStatus('open').catch(() => undefined)}>Reopen job</MenuItem>
-                  )
+                can ? (
+                  <>
+                    <MenuItem onSelect={() => setChanging(true)}>Change recruiter</MenuItem>
+                    {job.status === 'Open' && <MenuItem onSelect={() => void live.onStatus('on_hold').catch(() => undefined)}>Put on hold</MenuItem>}
+                    {job.status === 'On hold' && <MenuItem onSelect={() => void live.onStatus('open').catch(() => undefined)}>Resume job</MenuItem>}
+                    {job.status === 'Closed' && <MenuItem onSelect={() => void live.onStatus('open').catch(() => undefined)}>Reopen job</MenuItem>}
+                    {(job.status === 'Open' || job.status === 'On hold') && (
+                      <MenuItem destructive onSelect={() => void live.onStatus('closed').catch(() => undefined)}>
+                        Close job and all postings
+                      </MenuItem>
+                    )}
+                  </>
                 ) : undefined
               ) : (
                 <>
+                  <MenuItem onSelect={() => setChanging(true)}>Change recruiter</MenuItem>
                   <MenuItem>Share with vendors</MenuItem>
                   <MenuItem>Put on hold</MenuItem>
                   <MenuItem destructive>Close job and all postings</MenuItem>
@@ -1767,7 +1792,42 @@ export function JobWorkspaceScreen({ job, postings: initial, law, range, activit
           )}
         </Tabs>
       </RecordLayout>
+      {changing && (
+        <RecruiterDialog
+          current={live ? live.recruiter.id : null}
+          choices={live ? live.recruiter.choices : [{ value: 'u1', label: 'Neha Joshi' }, { value: 'u2', label: 'Imran Qureshi' }]}
+          name={job.recruiter}
+          onClose={() => setChanging(false)}
+          onSave={live ? live.recruiter.onChange : async () => undefined}
+        />
+      )}
     </HireFrame>
+  );
+}
+
+/** HIR-03 answer 222: change the job's recruiter (pressed with no change: a field error, never a disabled button). */
+function RecruiterDialog({ current, choices, name, onClose, onSave }: { current: string | null; choices: { value: string; label: string }[]; name: string; onClose: () => void; onSave: (userId: string) => Promise<void> }) {
+  const [to, setTo] = useState<string | null>(current);
+  const [tried, setTried] = useState(false);
+  const bad = !to || to === current;
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      size="sm"
+      title="Change recruiter"
+      consequence={`${name || 'Nobody'} is the recruiter now. The change is recorded with your name.`}
+      confirmLabel="Change recruiter"
+      onConfirm={async () => {
+        setTried(true);
+        if (bad) return false;
+        await onSave(to!);
+      }}
+    >
+      <FormField label="New recruiter" required error={tried && bad ? 'Choose someone other than the current recruiter.' : null}>
+        <Select aria-label="New recruiter" value={to} onChange={setTo} options={choices} searchable />
+      </FormField>
+    </ConfirmDialog>
   );
 }
 

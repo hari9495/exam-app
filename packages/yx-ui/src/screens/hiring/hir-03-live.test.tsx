@@ -152,6 +152,7 @@ const ws = (o: Partial<LiveJobWorkspace> = {}): LiveJobWorkspace => ({
   onOpenPipeline: vi.fn(),
   onViewCareers: vi.fn(),
   onStatus: vi.fn(async () => undefined),
+  recruiter: { id: 'u1', choices: [{ value: 'u1', label: 'Neha Joshi' }, { value: 'u2', label: 'Imran Qureshi' }], onChange: vi.fn(async () => undefined) },
   ...o,
 });
 
@@ -221,5 +222,65 @@ describe('HIR-03 job workspace and HIR-24 pay range (live)', () => {
     expect(screen.getByLabelText('Loading the job')).toBeInTheDocument();
     rerender(<JobWorkspaceScreen job={JOBS[0]} postings={[]} law={NONE} range={{ min: null, max: null }} activity={[]} live={ws({ state: 'error' })} />);
     expect(screen.getByText('This job could not be loaded.')).toBeInTheDocument();
+  });
+});
+
+describe('HIR-03 founder answers 222, 223, 225 (live)', () => {
+  it('shows the job number; puts an open job on hold, resumes or closes a held one', async () => {
+    const held: LiveJobRow = { ...JOBS[3], id: 'j4', code: 'JOB-0004', status: 'On hold', careersUrl: null };
+    const live = jobs({ rows: [{ ...ROWS[0], code: 'JOB-0001' }, held] });
+    render(<JobsScreen rows={[]} live={live} />);
+    expect(screen.getByText('JOB-0001')).toBeInTheDocument();
+    await ue.click(screen.getAllByRole('button', { name: /More actions/ })[0]);
+    await ue.click(screen.getByRole('menuitem', { name: 'Put on hold' }));
+    expect(live.onStatus).toHaveBeenCalledWith(expect.objectContaining({ id: 'j1' }), 'on_hold');
+    await ue.click(screen.getAllByRole('button', { name: /More actions/ })[1]);
+    expect(screen.queryByRole('menuitem', { name: 'Put on hold' })).not.toBeInTheDocument();
+    await ue.click(screen.getByRole('menuitem', { name: 'Resume job' }));
+    expect(live.onStatus).toHaveBeenCalledWith(held, 'open');
+    await ue.click(screen.getAllByRole('button', { name: /More actions/ })[1]);
+    await ue.click(screen.getByRole('menuitem', { name: 'Close job' }));
+    expect(live.onStatus).toHaveBeenCalledWith(held, 'closed');
+  });
+
+  it('exports the visible columns as CSV', async () => {
+    const made: Blob[] = [];
+    const create = vi.fn((b: Blob) => (made.push(b), 'blob:x'));
+    Object.assign(URL, { createObjectURL: create, revokeObjectURL: vi.fn() });
+    render(<JobsScreen rows={[]} live={jobs({ rows: [{ ...ROWS[0], code: 'JOB-0001' }] })} now={new Date(2026, 10, 9)} />);
+    await ue.click(screen.getByRole('button', { name: 'Export' }));
+    await ue.click(screen.getByRole('menuitem', { name: 'CSV (visible columns)' }));
+    expect(create).toHaveBeenCalledTimes(1);
+    const text = await made[0].text();
+    expect(text).toContain('Job,Title,Type,Status');
+    expect(text).toContain('JOB-0001,Senior QA Engineer');
+  });
+
+  it('workspace: put on hold, resume; change recruiter needs a different person', async () => {
+    const live = ws();
+    const { rerender } = render(<JobWorkspaceScreen job={{ ...JOBS[0], code: 'JOB-0001', status: 'Open' }} postings={[]} law={NONE} range={{ min: 1, max: 2 }} activity={[]} live={live} />);
+    expect(screen.getByText(/JOB-0001/)).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: /More actions|More/ }));
+    await ue.click(screen.getByRole('menuitem', { name: 'Put on hold' }));
+    expect(live.onStatus).toHaveBeenCalledWith('on_hold');
+    rerender(<JobWorkspaceScreen job={{ ...JOBS[0], status: 'On hold' }} postings={[]} law={NONE} range={{ min: 1, max: 2 }} activity={[]} live={live} />);
+    await ue.click(screen.getByRole('button', { name: /More actions|More/ }));
+    await ue.click(screen.getByRole('menuitem', { name: 'Resume job' }));
+    expect(live.onStatus).toHaveBeenCalledWith('open');
+    await ue.click(screen.getByRole('button', { name: /More actions|More/ }));
+    await ue.click(screen.getByRole('menuitem', { name: 'Change recruiter' }));
+    const d = screen.getByRole('dialog');
+    await ue.click(within(d).getByRole('button', { name: 'Change recruiter' }));
+    expect(within(d).getByText('Choose someone other than the current recruiter.')).toBeInTheDocument();
+    expect(live.recruiter.onChange).not.toHaveBeenCalled();
+    await ue.click(within(d).getByRole('combobox', { name: 'New recruiter' }));
+    await ue.click(screen.getByRole('option', { name: 'Imran Qureshi' }));
+    await ue.click(within(d).getByRole('button', { name: 'Change recruiter' }));
+    expect(live.recruiter.onChange).toHaveBeenCalledWith('u2');
+  });
+
+  it('read-only: no job menu (no hold, no recruiter change)', () => {
+    render(<JobWorkspaceScreen job={{ ...JOBS[0], status: 'Open' }} postings={[]} law={NONE} range={{ min: 1, max: 2 }} activity={[]} live={ws({ canManage: false })} />);
+    expect(screen.queryByRole('button', { name: /More actions/ })).not.toBeInTheDocument();
   });
 });

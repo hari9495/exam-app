@@ -7,7 +7,7 @@ export interface Choice {
   label: string;
 }
 
-export type HiringJobStatus = 'draft' | 'pending_approval' | 'open' | 'closed';
+export type HiringJobStatus = 'draft' | 'pending_approval' | 'open' | 'on_hold' | 'closed';
 
 export interface HiringJob {
   id: string;
