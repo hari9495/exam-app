@@ -9,6 +9,11 @@ import { holdersOf } from '../time/time-core';
 import { ApprovalsEngine, type Notice, type StepSpec } from '../workflow/approvals-engine.service';
 import { resolveSteps, type ChainStepInput } from '../approvals/approver-resolver';
 import { ApprovalsService } from '../approvals/approvals.service';
+import { EmailService } from '../email/email.service';
+import { EmailLookService } from '../email/email-look.service';
+import { offerReminderEmail } from '../email/account-emails';
+import { NotificationsService } from '../notifications/notifications.service';
+import { formatIstDate } from './offer-rules';
 import { PayStructuresService } from '../payroll/structures.service';
 import { breakupJson, inCtcOf } from '../payroll/structure';
 import { DEFAULT_OFFER_TEMPLATE } from './default-offer-template';
@@ -35,6 +40,9 @@ const PAY_KEY = 'ats.offer.compensation.view';
 const NONE = '00000000-0000-0000-0000-000000000000';
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const D = (x: Prisma.Decimal.Value) => new Prisma.Decimal(x);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Founder answer 336: a reminder of one kind goes at most once a day per offer (the recruiter's button, never automatic). */
+const REMIND_GAP_MS = 20 * 3_600_000;
 
 type OfferRow = Prisma.OfferGetPayload<{ include: { pipelineEntry: { include: { candidate: true; job: true } } } }>;
 
@@ -53,6 +61,10 @@ const ACTIVITY: Record<string, (m: Record<string, unknown>) => string> = {
   'offer.withdrawn': () => 'withdrew the offer',
   'ats.offer.pay_handed_off': (m) => `the joiner's first salary went to Pay from version ${m.version}, for approval`,
   'ats.offer.pay_handoff_failed': (m) => `the offer pay did not go to Pay: ${m.reason}`,
+  'ats.offer.joining_bonus_queued': (m) => `the joining bonus goes to Pay as one-time pay in ${m.month}`,
+  'ats.offer.joining_bonus_failed': (m) => `the joining bonus did not go to Pay: ${m.reason}`,
+  'ats.offer.reminder_sent': (m) => (m.kind === 'documents' ? `reminded the candidate about what is still due` : 'reminded the candidate to answer the offer'),
+  'ats.offer.joining_day_notice': (m) => `told HR on the joining day: ${m.open} condition${m.open === 1 ? '' : 's'} still open`,
   'ats.offer.condition.added': (m) => `added the condition "${m.name}"`,
   'ats.offer.condition.met': (m) => `marked "${m.name}" met`,
   'ats.offer.condition.waived': (m) => `waived "${m.name}": ${m.reason}`,
@@ -66,6 +78,9 @@ export class OfferBuilderService implements OnModuleInit {
     private readonly engine: ApprovalsEngine,
     private readonly structures: PayStructuresService,
     private readonly approvals: ApprovalsService,
+    private readonly email: EmailService,
+    private readonly looks: EmailLookService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   onModuleInit() {
@@ -192,13 +207,20 @@ export class OfferBuilderService implements OnModuleInit {
     const who = await settingFor(tx, c, 'hiring.offer.band_approver', { legalEntityId: job.legalEntityId ?? '' });
     const org = c.organizationId;
     let ids: string[] = [];
+    let label = who === 'hiring_manager' ? 'Above the pay range (hiring manager)' : 'Above the pay range (HR head)';
     if (who === 'hiring_manager') ids = job.hiringManagerId ? [job.hiringManagerId] : [];
-    else {
+    else if (UUID_RE.test(who)) {
+      // Answer 332: a named person who holds the offer-pay key (approving pay they may not see is refused at save).
+      const u = await tx.user.findFirst({ where: { organizationId: org, id: who, status: 'active' }, select: { id: true, name: true, email: true } });
+      const holds = u ? (await holdersOf(tx, org, PAY_KEY, NONE, todayIst())).includes(u.id) : false;
+      ids = u && holds ? [u.id] : [];
+      if (u) label = `Above the pay range (${u.name || u.email})`;
+    } else {
       const hr = await tx.department.findFirst({ where: { organizationId: org, code: 'HR', archivedAt: null, headEmployeeId: { not: null } }, select: { headEmployeeId: true } });
       const head = hr ? await tx.employee.findFirst({ where: { organizationId: org, id: hr.headEmployeeId! }, select: { userId: true } }) : null;
       ids = head?.userId ? [head.userId] : await holdersOf(tx, org, PAY_KEY, NONE, todayIst());
     }
-    return { label: who === 'hiring_manager' ? 'Above the pay range (hiring manager)' : 'Above the pay range (HR head)', ids: ids.filter((u) => u !== not).slice(0, 25) };
+    return { label, ids: ids.filter((u) => u !== not).slice(0, 25) };
   }
 
   private async chainSteps(tx: Tx, org: string, offerId: string | null, sender: string | null): Promise<StepSpec[]> {
@@ -454,6 +476,75 @@ export class OfferBuilderService implements OnModuleInit {
         joiner,
       };
     });
+  }
+
+  // ------------------------------------------------------------------------------------------ reminders (answer 336)
+
+  /**
+   * The recruiter's Send reminder: a sent offer not answered yet (the offer reminder), or an accepted or sent offer with
+   * conditions still open (the documents reminder). The company's own email templates; never sent automatically; logged.
+   */
+  async remind(ctx: TenantContext, offerId: string) {
+    const prep = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const o = await this.load(tx, org, offerId);
+      const open = await tx.offerCondition.findMany({ where: { organizationId: org, offerId, status: 'open' }, orderBy: { dueOn: 'asc' }, select: { name: true } });
+      const kind: 'offer' | 'documents' | null = o.status === 'sent' && o.expiresAt > new Date() ? 'offer' : (o.status === 'accepted' || o.status === 'sent') && open.length ? 'documents' : null;
+      if (!kind) throw new ConflictException(o.status === 'sent' ? 'This offer has expired: there is nothing to remind about. Revise it to send a new one.' : 'There is nothing to remind the candidate about: the offer is not waiting for an answer and no condition is open.');
+      if (o.pipelineEntry.candidate.erasedAt) throw new BadRequestException('This candidate’s details were erased.');
+      if (!o.offerToken) throw new ConflictException('This offer has no live link. Send it again first.');
+      const last = await tx.auditLog.findFirst({ where: { organizationId: org, entityType: 'offer', entityId: offerId, action: 'ats.offer.reminder_sent', createdAt: { gt: new Date(Date.now() - REMIND_GAP_MS) } }, select: { metadataJson: true } });
+      if (last && last.metadataJson?.includes(`"kind":"${kind}"`)) throw new ConflictException('A reminder already went in the last day. Try again tomorrow.');
+      const company = (await tx.organization.findUnique({ where: { id: org }, select: { name: true } }))?.name ?? null;
+      return { kind, o, due: open.map((x) => x.name), company, org };
+    });
+    const to = prep.o.pipelineEntry.candidate.email;
+    const link = `${(process.env.FRONTEND_URL ?? 'http://localhost:3000').replace(/\/$/, '')}/yx/offer/${prep.o.offerToken}`;
+    const look = await this.looks.forCompany(prep.org, prep.kind === 'offer' ? 'offer_reminder' : 'offer_documents_reminder');
+    const mail = await offerReminderEmail({ to, company: prep.company, firstName: prep.o.pipelineEntry.candidate.name.split(/\s+/)[0] ?? null, look, kind: prep.kind, link, jobTitle: prep.o.pipelineEntry.job.title, answerBy: formatIstDate(prep.o.expiresAt), due: prep.due });
+    const sent = await this.email.send({ to, ...mail, organizationId: prep.org });
+    if (!sent.success) throw new ConflictException('The reminder could not be sent. Try again in a few minutes.');
+    await inCompany(this.tenantPrisma, ctx, (tx, c) => audit(tx, c, 'ats.offer.reminder_sent', 'offer', offerId, { kind: prep.kind, items: prep.due.length }));
+    return { sent: true, kind: prep.kind };
+  }
+
+  // ------------------------------------------------------------------------------------------ joining day (answer 335)
+
+  /**
+   * Hourly: on an accepted offer's joining day (IST), HR is told once which conditions are still open. HR decides; nothing
+   * lapses or is withdrawn by itself. HR = the joiner's HR owner in People, else whoever made and sent the offer.
+   */
+  async joiningDaySweep(now = new Date()) {
+    const today = todayIst(now);
+    const from = new Date(`${today}T00:00:00+05:30`);
+    const to = new Date(from.getTime() + 86_400_000);
+    const due = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
+      tx.offer.findMany({ where: { status: 'accepted', conditionsNoticeAt: null, startDate: { gte: from, lt: to }, conditions: { some: { status: 'open' } } }, select: { id: true, organizationId: true }, take: 500 }),
+    );
+    let told = 0;
+    for (const d of due) {
+      const ctx = { organizationId: d.organizationId, isSuperAdmin: false };
+      try {
+        const n = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+          const claimed = await tx.offer.updateMany({ where: { organizationId: c.organizationId, id: d.id, conditionsNoticeAt: null }, data: { conditionsNoticeAt: now } });
+          if (!claimed.count) return null;
+          const o = await this.load(tx, c.organizationId, d.id);
+          const open = await tx.offerCondition.findMany({ where: { organizationId: c.organizationId, offerId: d.id, status: 'open' }, orderBy: { dueOn: 'asc' }, select: { name: true } });
+          const pb = await tx.preboarding.findFirst({ where: { organizationId: c.organizationId, offerId: d.id, status: { not: 'cancelled' } }, select: { hrOwnerUserId: true } });
+          await AuditService.recordIn(tx, c, { actorUserId: null, action: 'ats.offer.joining_day_notice', entityType: 'offer', entityId: d.id, metadata: { open: open.length } });
+          return { to: [pb?.hrOwnerUserId ?? null, o.createdBy, o.sentByUserId].filter((x): x is string => Boolean(x)), name: o.pipelineEntry.candidate.name, open: open.map((x) => x.name) };
+        });
+        if (!n || !n.to.length) continue;
+        const text = `${n.name} joins today with ${n.open.length} offer condition${n.open.length === 1 ? '' : 's'} still open: ${n.open.join(', ')}. Mark each met or waive it with a reason.`;
+        await this.notifications
+          .notifySystem(ctx, [...new Set(n.to)], 'ats.offer.conditions_open', { entityType: 'offer', entityId: d.id, contextText: text.slice(0, 300), linkPath: `/yx/hiring/offers/${d.id}` }, { subject: `${n.name} joins today: offer conditions still open`, html: `<p>${text.replace(/[<>&]/g, '')}</p>` })
+          .catch(() => undefined);
+        told++;
+      } catch {
+        // One company's problem never stops the others; the offer is tried again next hour only if the claim rolled back.
+      }
+    }
+    return told;
   }
 
   // ------------------------------------------------------------------------------------------ conditions (HIR-29)

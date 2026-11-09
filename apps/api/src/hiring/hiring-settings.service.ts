@@ -4,13 +4,19 @@ import { buildViewer, tenantWide, type ScopeUser } from '../access/scope';
 import { inCompany } from '../org-structure/org-structure.service';
 import { OrgSettingsService } from '../org-structure/org-settings.service';
 import { SETTINGS } from '../org-structure/settings-registry';
+import { todayIst } from '../org-structure/org-validation';
+import { holdersOf } from '../time/time-core';
+
+/** Answer 332: the band approver may be a named person who holds the offer-pay key (they decide on pay). */
+const OFFER_PAY_KEY = 'ats.offer.compensation.view';
+const NONE = '00000000-0000-0000-0000-000000000000';
 
 /**
  * Settings 6.1 Hiring: the company hiring settings the design has a place for (the others stay where they are and are
  * founder questions 341+). Every value is a scoped company setting with a default (org-settings.service), audited there
  * as org.setting.changed with before and after.
  */
-export const HIRING_SETTING_KEYS = ['ats.retention_months', 'hiring.reject.email_candidate', 'ats.referral.bonus_inr', 'ats.referral.qualify_days', 'hiring.requisition.default_recruiter'] as const;
+export const HIRING_SETTING_KEYS = ['ats.retention_months', 'hiring.reject.email_candidate', 'ats.referral.bonus_inr', 'ats.referral.qualify_days', 'hiring.requisition.default_recruiter', 'hiring.offer.band_approver', 'hiring.offer.clawback_basis'] as const;
 export type HiringSettingKey = (typeof HIRING_SETTING_KEYS)[number];
 const EDIT_KEYS = ['ats.settings.manage', 'org.settings.manage'] as const;
 
@@ -44,9 +50,14 @@ export class HiringSettingsService {
       const scorecards = await tx.scorecardTemplate.findMany({ where: { organizationId: org, archivedAt: null }, orderBy: { name: 'asc' }, select: { id: true, name: true, scaleMax: true, items: { orderBy: { position: 'asc' }, select: { label: true } } } });
       // Answer 291: the people a requisition's recruiter can be (any active person of the company, as on a job).
       const people = await tx.user.findMany({ where: { organizationId: org, status: 'active' }, orderBy: [{ name: 'asc' }, { email: 'asc' }], take: 1000, select: { id: true, name: true, email: true } });
+      const payHolders = new Set(await holdersOf(tx, org, OFFER_PAY_KEY, NONE, todayIst()));
+      // Answer 337: the e-sign switch of each offer letter template (accepting by the link is the default).
+      const letters = await tx.offerTemplate.findMany({ where: { organizationId: org }, orderBy: [{ isDefault: 'desc' }, { name: 'asc' }], select: { id: true, name: true, esign: true } });
       return {
         canEdit,
         people: people.map((u) => ({ id: u.id, name: u.name || u.email })),
+        offerApprovers: people.filter((u) => payHolders.has(u.id)).map((u) => ({ id: u.id, name: u.name || u.email })),
+        offerLetters: letters,
         values,
         defaults: Object.fromEntries(HIRING_SETTING_KEYS.map((k) => [k, SETTINGS[k]!.default])),
         choices: Object.fromEntries(HIRING_SETTING_KEYS.map((k) => [k, SETTINGS[k]!.values])),
@@ -78,6 +89,13 @@ export class HiringSettingsService {
       await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
         if (!/^[0-9a-f-]{36}$/i.test(recruiter.value) || !(await tx.user.findFirst({ where: { organizationId: c.organizationId, id: recruiter.value, status: 'active' }, select: { id: true } })))
           throw new NotFoundException('That person is not an active user of your company. Choose someone from the list.');
+      });
+    const approver = changes.find((ch) => ch.key === 'hiring.offer.band_approver' && !SETTINGS['hiring.offer.band_approver']!.values.includes(ch.value));
+    if (approver)
+      await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+        const ok = /^[0-9a-f-]{36}$/i.test(approver.value) && (await tx.user.findFirst({ where: { organizationId: c.organizationId, id: approver.value, status: 'active' }, select: { id: true } }));
+        if (!ok) throw new NotFoundException('That person is not an active user of your company. Choose someone from the list.');
+        if (!(await holdersOf(tx, c.organizationId, OFFER_PAY_KEY, NONE, todayIst())).includes(approver.value)) throw new BadRequestException('That person cannot see offer pay, so cannot approve it. Choose someone with the offer-pay key.');
       });
     for (const ch of changes) await this.settings.set(ctx, { key: ch.key, scopeType: 'tenant', value: ch.value } as Parameters<OrgSettingsService['set']>[1]);
     return this.read(ctx, user);

@@ -79,6 +79,8 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'letter.signed', group: 'reminders', label: 'A joiner or employee accepted a letter' },
   { type: 'preboarding.completed', group: 'reminders', label: 'A joiner finished their pre-boarding forms' },
   { type: 'preboarding.declined', group: 'reminders', label: 'A joiner declined the offer in the joining portal' },
+  // HIR-09 answer 335: on the joining day, the offer's conditions still open (HR decides; nothing lapses by itself).
+  { type: 'ats.offer.conditions_open', group: 'reminders', label: 'Someone joins today with offer conditions still open' },
   // Batch 6c: exits, clearance, exit interviews, assets, probation reviews.
   { type: 'exit.case.update', group: 'reminders', label: 'A resignation or exit you are part of moved on (received, accepted, withdrawn, new last day)' },
   { type: 'exit.clearance.assigned', group: 'assignments', label: 'A clearance item for a leaver was given to you or your team' },

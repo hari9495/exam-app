@@ -18,6 +18,7 @@ import { asDate, dateOf, monthRange } from '../time/time-core';
 import { addDays } from '../time/time-maths';
 import { PAY_RUN_EDITABLE, entitiesFor, payHolders, payScope, payViewer, requireSelf } from './pay-access';
 import { FNF_COMPONENTS } from './starter';
+import { clawbackDue } from '../offers/offer-rules';
 import type { FnfPatchDto, FnfPayeesDto } from './dto-5g';
 
 // Full and final settlement (M03-BUILD-DESIGN §9.9, PAY-7.04 … 7.06). When lifecycle freezes the payroll hand-off for an
@@ -301,6 +302,20 @@ export class FnfService implements OnModuleInit {
       (await tx.payslipLine.aggregate({ where: { organizationId: org, payslipId: { in: slips.map((s) => s.id) }, componentCode: 'bonus', kind: 'earning' }, _sum: { amount: true } }))._sum.amount ??
       D(0);
     if (provided.sub(paid).gt(0)) items.push({ code: 'bonus', amount: r2(provided.sub(paid)), label: 'Statutory bonus provided this year and not yet paid.' });
+    // HIR-09 founder answer 334: a joiner from an offer who leaves within its clawback months repays the joining bonus
+    // (all of it, or the part for the days not served: company setting hiring.offer.clawback_basis). Only a bonus a run
+    // already paid is recovered; one still waiting for its run is simply not paid.
+    const pb = await tx.preboarding.findFirst({ where: { organizationId: org, employmentId: em.id, offerId: { not: null } }, select: { offerId: true } });
+    const ov = pb?.offerId ? await tx.offer.findFirst({ where: { organizationId: org, id: pb.offerId }, select: { id: true, currentVersion: true } }) : null;
+    const ver = ov?.currentVersion ? await tx.offerVersion.findFirst({ where: { organizationId: org, offerId: ov.id, version: ov.currentVersion }, select: { joiningBonus: true, clawbackMonths: true } }) : null;
+    if (ov && ver && ver.joiningBonus.gt(0) && ver.clawbackMonths) {
+      const bonusRow = await tx.oneTimePay.findFirst({ where: { organizationId: org, source: 'm10', sourceRef: `offer:${ov.id}:joining`, status: { not: 'cancelled' } } });
+      const basis = (await settingFor(tx, c, 'hiring.offer.clawback_basis', lev)) === 'pro_rata' ? 'pro_rata' : 'full';
+      const due = clawbackDue(ver.joiningBonus, dateOf(em.joinedOn), lwd, ver.clawbackMonths, basis);
+      if (bonusRow && !bonusRow.runId && due.gt(0)) await tx.oneTimePay.update({ where: { id: bonusRow.id }, data: { status: 'cancelled' } });
+      else if (bonusRow?.runId && due.gt(0))
+        items.push({ code: 'fnf_recovery', amount: due, label: `Joining bonus repaid: left within ${ver.clawbackMonths} months of joining${basis === 'pro_rata' ? ' (the part not served)' : ''}.` });
+    }
     // Clearance and asset recoveries from the hand-off: recorded ones recovered, open ones held until settled.
     const input = await tx.exitSettlementInput.findFirst({ where: { organizationId: org, exitCaseId: f.exitCaseId, supersededAt: null } });
     for (const r of ((input?.recoveries as { title: string; amount: string | null; reason: string | null; status: string }[] | undefined) ?? []).filter((x) => x.amount && D(x.amount).gt(0)))

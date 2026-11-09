@@ -134,7 +134,8 @@ export class OrgSettingsService {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       if (def.oneOf === 'company_users') {
         // Answer 291: none, or an active person of this company (another company's person reads as not found).
-        if (dto.value !== 'none' && !(UUID.test(dto.value) && (await tx.user.findFirst({ where: { organizationId: c.organizationId, id: dto.value, status: 'active' }, select: { id: true } }))))
+        // Answer 332: or one of the setting's own words (the band approver's "HR head" / "hiring manager").
+        if (dto.value !== 'none' && !def.values.includes(dto.value) && !(UUID.test(dto.value) && (await tx.user.findFirst({ where: { organizationId: c.organizationId, id: dto.value, status: 'active' }, select: { id: true } }))))
           throw new NotFoundException('That person is not an active user of your company. Choose someone from the list.');
       } else if (def.oneOf && !(await withLists(tx))[dto.key].values.includes(dto.value)) throw new BadRequestException(`Choose ${def.label.toLowerCase()} from the list.`);
       const scopeId = scopeType === 'tenant' ? c.organizationId : dto.scopeId!;
