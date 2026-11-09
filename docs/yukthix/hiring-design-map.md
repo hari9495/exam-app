@@ -1024,3 +1024,11 @@ Founder approved, 10 Nov 2026 (questions 251-259, 261-265, all as suggested):
      Data Protection Board rules fix it.*
 278. **Writes refused while acting** are added on the candidate, merge, hold, consent, pool and erase/export routes.
      Invitations, bulk email and re-engage (other modules) still allow it. *Suggested: refuse them too in their own build.*
+
+Founder approved, 10 Nov 2026 (questions 271-278, all as suggested): (271) keep: the ex-employee match only for people who
+may see the employee; give the People profile key to whoever should see the flag; (272) a company setting "not eligible
+for rehire blocks Screening", default off; (273) keep: merge needs the data-rights key, give Hiring admin to whoever
+cleans duplicates; (274) Move and Schedule come onto the candidate record when HIR-06 is wired; (275) keep: an erased
+candidate shows Not found; (276) a requested erase is also refused while an offer is accepted or a process is open, the
+same as the sweep; (277) a data-request log with due dates once the DPDP rules fix the deadline; (278) assessment
+invites, bulk email and re-engage refuse acting-for in those modules' own builds.
