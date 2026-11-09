@@ -63,3 +63,6 @@ export { InterviewDaySheet, type InterviewDayInput, type InterviewDaySheetProps,
 export { ClientsScreen, ClientWorkspaceScreen, RateCardScreen, type ClientRowView, type ClientView, type ContactView, type LiveClients, type LiveClientWorkspace, type LiveRateCard, type RateChangeInput, type RateRowView } from '../hiring-staffing';
 export { ClientSheet, ContactSheet, InvoiceSeriesSheet, RateLineSheet, type ClientInput, type ContactInput, type InvoiceSeriesInput, type RateLineInput } from '../staffing-sheets';
 export { staffingSettingsPage, staffingSettingsChanges, type StaffingSettingsData } from '../../settings/staffing-live';
+// HIR-23: the designed bias audit record, live with its `live` prop.
+export { BiasAuditScreen, type BiasAuditInput, type LiveBiasAudit } from '../hiring-offers';
+export type { AuditCategory } from '../hiring-logic';

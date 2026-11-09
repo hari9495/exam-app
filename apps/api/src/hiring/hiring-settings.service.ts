@@ -54,6 +54,8 @@ export const HIRING_SETTING_KEYS = [
   'hiring.offer.expiry_days',
   // Careers answer 443: tell an applicant whose résumé was quarantined.
   'hiring.resume_quarantine.tell_applicant',
+  // HIR-23 (founder decision 2, question 7): an automated tool for New York City jobs needs a yearly bias audit.
+  'hiring.bias_audit.nyc',
 ] as const;
 export type HiringSettingKey = (typeof HIRING_SETTING_KEYS)[number];
 const EDIT_KEYS = ['ats.settings.manage', 'org.settings.manage'] as const;

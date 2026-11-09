@@ -6,6 +6,7 @@ import { audit, inCompany, type CompanyContext, type Tx } from '../org-structure
 import { settingFor } from '../people/probation';
 import { ScorecardsService, type Viewer } from './scorecards.service';
 import { draftScorecard, type DraftItem } from './notetaker-draft.client';
+import { biasAuditBlock } from '../hiring/bias-audit';
 
 export type ConsentValue = 'given' | 'declined' | 'waiting';
 export interface NotetakerParticipant {
@@ -81,6 +82,8 @@ export class NotetakerService {
         myDraft: Boolean(myDraft),
         submitted: mine?.status === 'submitted',
         cancelled: s.iv.status === 'cancelled',
+        // HIR-23: why the AI draft cannot run for this job (NYC, bias audit overdue), shown before anyone presses Draft.
+        aiBlocked: s.aiDraft ? await biasAuditBlock(tx, c, s.iv.pipelineEntry.jobId, 'The AI draft scorecard') : null,
       };
     });
   }
@@ -144,6 +147,9 @@ export class NotetakerService {
       if (mine?.status === 'submitted') throw new ConflictException('You already submitted this scorecard; it cannot change.');
       const t = await tx.interviewTranscript.findUnique({ where: { interviewId }, select: { text: true } });
       if (!t) throw new ConflictException('Add the transcript first.');
+      // HIR-23: a New York City job with the bias audit overdue gets no AI draft (a plain refusal, never a silent skip).
+      const blocked = await biasAuditBlock(tx, c, s.iv.pipelineEntry.jobId, 'The AI draft scorecard');
+      if (blocked) throw new ConflictException(`${blocked} Fill the scorecard yourself.`);
       return { jobTitle: s.iv.pipelineEntry.job.title, scaleMax: s.template.scaleMax, skills: s.template.items.map((i) => ({ id: i.id, label: i.label, guidance: i.guidance })), transcript: t.text };
     });
     let items: DraftItem[];

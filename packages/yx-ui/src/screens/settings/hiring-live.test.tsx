@@ -29,6 +29,7 @@ const DEFAULTS = {
   'hiring.notetaker.enabled': 'off',
   'hiring.notetaker.ai_draft': 'off',
   'hiring.notetaker.keep_days': '90',
+  'hiring.bias_audit.nyc': 'off',
   'hiring.bgv.decider_other_person': 'on',
 };
 const DATA: HiringSettingsData = {
@@ -157,6 +158,18 @@ describe('Settings 6.1 Hiring (live)', () => {
     const [values, rows] = onSave.mock.calls[0]!;
     expect(hiringSettingsChanges(values, rows, DATA)).toEqual(expect.arrayContaining([{ key: 'hiring.notetaker.enabled', value: 'on' }, { key: 'hiring.notetaker.ai_draft', value: 'on' }]));
     expect(hiringSettingsChanges({ 'hire.notetaker_keep_days': '30' }, {}, DATA)).toEqual([{ key: 'hiring.notetaker.keep_days', value: '30' }]);
+  });
+
+  it('HIR-23: "We use an automated tool for jobs in New York City" is off by default and saves to its company setting', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    show(live({ onSave }));
+    const nyc = screen.getByRole('checkbox', { name: /We use an automated tool for jobs in New York City/ });
+    expect(nyc).not.toBeChecked();
+    await ue.click(nyc);
+    await ue.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    const [values, rows] = onSave.mock.calls[0]!;
+    expect(hiringSettingsChanges(values, rows, DATA)).toEqual([{ key: 'hiring.bias_audit.nyc', value: 'on' }]);
   });
 
   it('answer 348: a default recruiter who no longer qualifies reads as None, with a warning naming them', () => {

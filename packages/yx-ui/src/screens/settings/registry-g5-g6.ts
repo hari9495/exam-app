@@ -849,6 +849,8 @@ const hiring: SettingsPageDef = {
         { key: 'hire.notetaker_enabled', label: 'Interview notetaker', kind: 'toggle', value: false, helper: 'Keeps an interview transcript only after every participant consents. Anyone saying no means no recording.', starter: true, scope: 'Company', synonyms: ['recording', 'transcript', 'notetaker', 'consent'] },
         { key: 'hire.notetaker_ai_draft', label: 'AI drafts a scorecard from the transcript', kind: 'toggle', value: false, helper: 'A suggestion only: the interviewer confirms or changes every rating and submits. Uses your company’s AI.', starter: true, scope: 'Company', synonyms: ['ai', 'scorecard', 'draft'] },
         { key: 'hire.notetaker_keep_days', label: 'Keep transcripts and drafts for', kind: 'select', value: '90', options: ['30', '90', '180', '365'], optionLabels: { '30': '30 days', '90': '90 days', '180': '180 days', '365': '1 year' }, helper: 'Then they are deleted. Erasing a candidate deletes them at once.', starter: true, scope: 'Company', synonyms: ['retention', 'transcript'] },
+        // HIR-23 (founder decision 2, question 7): NYC Local Law 144; on = a yearly independent bias audit in Hiring › Bias audits.
+        { key: 'hire.bias_audit_nyc', label: 'We use an automated tool for jobs in New York City', kind: 'toggle', value: false, helper: 'On: AI notes on past candidates and AI draft scorecards for New York City jobs need an independent bias audit in the last year (Hiring › Bias audits). Without one they are blocked for those jobs.', starter: true, scope: 'Company', synonyms: ['bias audit', 'nyc', 'local law 144', 'aedt'] },
       ],
     },
     {

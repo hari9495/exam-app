@@ -30,3 +30,12 @@ export const PlainSearch: S = {
     </div>
   ),
 };
+// Drawn 13 Nov 2026 (HIR-23): a New York City requisition while the company's bias audit is overdue: no AI notes, said plainly.
+export const AiBlocked: S = {
+  name: 'Panel · AI blocked, bias audit overdue (NYC)',
+  render: () => (
+    <div style={{ maxWidth: 640 }}>
+      <RediscoveryPanel matches={[]} viewer="recruiter" live={{ state: 'ready', onRetry: () => {}, mode: 'text', ai: 'blocked', blocked: 'AI notes on past candidates is blocked for New York City jobs. The last bias audit was on 20 Aug 2025, more than a year ago. HR records a new independent audit in Hiring › Bias audits; other jobs are not affected.', matches: REDISCOVERY, onAdd: async () => {} }} />
+    </div>
+  ),
+};

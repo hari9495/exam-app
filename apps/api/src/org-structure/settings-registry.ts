@@ -152,6 +152,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'ats.referral.qualify_days': { label: 'Hiring: days a referred hire must complete before the bonus is due', scopes: ['tenant'], dated: false, values: ['30', '60', '90', '180'], default: '90' },
   // Founder answer 201: no credit when the person applied for the job on their own this many days before (0 = always credit).
   'ats.referral.self_apply_days': { label: 'Hiring: no referral credit if the person applied themselves within (days)', scopes: ['tenant'], dated: false, values: ['0', '30', '60', '90', '180'], default: '90' },
+  // HIR-23 (founder decision 2, question 7): the company uses an automated tool for New York City jobs, so it needs a
+  // yearly independent bias audit (Hiring › Bias audits); off = not applicable.
+  'hiring.bias_audit.nyc': { label: 'Hiring: we use an automated tool for jobs in New York City', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // HIR-25 interview notetaker (founder decision 2): off by default; consent from every participant first; the AI draft
   // scorecard is a separate switch (also off) and needs the company's AI; transcripts and drafts are kept for N days.
   'hiring.notetaker.enabled': { label: 'Hiring: interview notetaker (transcript with everyone’s consent)', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },

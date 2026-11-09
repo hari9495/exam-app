@@ -54,6 +54,8 @@ const KEY = {
   'hire.interview_day_assign': 'hiring.interview_day.assign',
   'hire.offer_expiry': 'hiring.offer.expiry_days',
   'hire.resume_quarantine_notice': 'hiring.resume_quarantine.tell_applicant',
+  // HIR-23 (founder decision 2, question 7).
+  'hire.bias_audit_nyc': 'hiring.bias_audit.nyc',
 } as const;
 /** On/off fields: the stored value for on and for off. */
 const TOGGLE: Partial<Record<keyof typeof KEY, [on: string, off: string]>> = {
@@ -68,6 +70,7 @@ const TOGGLE: Partial<Record<keyof typeof KEY, [on: string, off: string]>> = {
   'hire.notetaker_ai_draft': ['on', 'off'],
   'hire.bgv_decider_other_person': ['on', 'off'],
   'hire.resume_quarantine_notice': ['on', 'off'],
+  'hire.bias_audit_nyc': ['on', 'off'],
 };
 const BASIS: Record<string, string> = { full: 'All of it', pro_rata: 'The part for the months not served' };
 const BONUS = 'ats.referral.bonus_inr';
@@ -135,7 +138,8 @@ export function hiringSettingsPage(design: SettingsPageDef, data: HiringSettings
       case 'hire.notetaker_enabled':
       case 'hire.notetaker_ai_draft':
       case 'hire.bgv_decider_other_person':
-      case 'hire.resume_quarantine_notice': {
+      case 'hire.resume_quarantine_notice':
+      case 'hire.bias_audit_nyc': {
         const k = KEY[d.key];
         return { ...base, value: v[k] === TOGGLE[d.key]![0], starter: v[k] === data.defaults[k] };
       }

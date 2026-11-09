@@ -1353,6 +1353,24 @@ model PipelineEntry {
   @@map("pipeline_entries")
 }
 
+/// HIR-23: an independent bias audit of the company's automated hiring tools (NYC Local Law 144); append-only.
+model BiasAudit {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  auditedOn      DateTime @map("audited_on") @db.Date
+  auditor        String   @db.VarChar(200)
+  summaryUrl     String   @map("summary_url") @db.VarChar(500)
+  results        Json
+  reportPath     String   @map("report_path") @db.VarChar(500)
+  reportName     String   @map("report_name") @db.VarChar(200)
+  note           String?  @db.VarChar(1000)
+  createdBy      String   @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, auditedOn(sort: Desc)], map: "bias_audits_org_date_idx")
+  @@map("bias_audits")
+}
+
 /// HIR-13: an employee's own application to an internal job (the pipeline entry is enteredVia='internal'): their own
 /// words, their manager at the time, and when that manager was told (founder decision 6: told, not asked).
 model InternalApplication {

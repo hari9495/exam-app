@@ -126,6 +126,7 @@ describe('Settings 6.1 Hiring', () => {
     'hiring.notetaker.enabled': 'off',
     'hiring.notetaker.ai_draft': 'off',
     'hiring.notetaker.keep_days': '90',
+    'hiring.bias_audit.nyc': 'off',
   };
 
   it('reads: recruiting and hiring admins see the defaults; only the settings keys may edit; employees and managers are refused', async () => {
@@ -168,6 +169,7 @@ describe('Settings 6.1 Hiring', () => {
       // Answers 404 and 443: one offer expiry for single and bulk offers; the quarantine email switch.
       { key: 'hiring.offer.expiry_days', value: '14' },
       { key: 'hiring.resume_quarantine.tell_applicant', value: 'off' },
+      { key: 'hiring.bias_audit.nyc', value: 'on' },
     ]).expect(200)).body as Settings;
     expect(after.values).toEqual({
       'ats.retention_months': '18',
@@ -195,6 +197,7 @@ describe('Settings 6.1 Hiring', () => {
       'hiring.notetaker.keep_days': '30',
       'hiring.offer.expiry_days': '14',
       'hiring.resume_quarantine.tell_applicant': 'off',
+      'hiring.bias_audit.nyc': 'on',
     });
     // Answer 362: the BGV tracker reads the same company setting.
     expect(await inA((tx) => tx.setting.findFirstOrThrow({ where: { organizationId: org.A.id, key: 'hiring.bgv.decider_other_person' } }))).toMatchObject({ value: 'off' });
@@ -237,6 +240,7 @@ describe('Settings 6.1 Hiring', () => {
       [{ key: 'hiring.interview_day.assign', value: 'random' }],
       [{ key: 'hiring.notetaker.keep_days', value: '45' }],
       [{ key: 'hiring.notetaker.enabled', value: 'yes' }],
+      [{ key: 'hiring.bias_audit.nyc', value: 'true' }],
       [{ key: 'hiring.rediscovery.ai', value: 'on' }, { key: 'hiring.requisition.default_recruiter', value: 'not-a-person' }],
       [{ key: 'not.a.setting', value: 'x' }],
       [{ key: 'ats.retention_months', value: '6' }, { key: 'ats.retention_months', value: '9' }],
