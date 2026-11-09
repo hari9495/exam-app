@@ -942,3 +942,25 @@ Founder approved, 9 Nov 2026 (questions 201-207, 211-216, 221-229, all as sugges
      of an Indian entity may still use a free-text place abroad. *Suggested: also require a master location whenever the
      job's place is outside India, once locations carry a country for every company.*
 
+
+## Founder questions from the HIR-02 / HIR-26 build (9 Nov 2026)
+Each has a safe default already built; the suggestion is the answer we propose.
+251. **AI notes on past candidates by default?** Built: company setting `hiring.rediscovery.ai`, default **off** (plain
+     text search). *Suggested: keep off; HR switches it on per company once they have an AI key.*
+252. **Hiring manager "Edit and resubmit" on a sent-back requisition.** Not built: decision 11 makes the hiring manager's
+     list read-only, so recruiting sends it again. *Suggested: let a hiring manager edit and resend only their own
+     sent-back requisition (refused while acting for someone else).*
+253. **Saved views, "Assign recruiter" (bulk), Duplicate and Cancel requisition.** Hidden in live (no view store; no bulk
+     recruiter change; no cancel state). *Suggested: Assign recruiter with the HIR-03 recruiter field; Duplicate opens the
+     request sheet filled in; Cancel closes a draft or waiting requisition with a reason; saved views when the kit's store exists.*
+254. **"Contact" on a past candidate.** Hidden in live (no messaging from the panel). *Suggested: open the existing
+     candidate email with the consent check (only "opted in").*
+255. **Hiring manager "Suggest to recruiter".** Hidden (read-only). *Suggested: a bell notice to the requisition's
+     recruiter naming the person, audited; refused while acting.*
+256. **Who sees "New requisition".** Built: holders of `ats.requisition.raise` (hiring managers), not while acting.
+     The Recruiter role does not hold it, so recruiters open requisitions with Jobs › Create job. *Suggested: keep.*
+257. **Approve / Send back in the requisition drawer.** Not built: approvers decide in Approvals (the drawn screen has no
+     approver persona). *Suggested: add the approver's Approve / Send back to the drawer (kit story first), as on the HIR-01 board.*
+258. **Requisition code.** Built: REQ-0007 uses the job's number (the same requisition is JOB-0007 on Jobs). *Suggested: keep.*
+259. **Who can be rediscovered.** Built: only candidates with talent-pool consent (not withdrawn), in their retention
+     period, not on legal hold, not hired. *Suggested: keep (consent law); no company setting, as it is not a choice.*
