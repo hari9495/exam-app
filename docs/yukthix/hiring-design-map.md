@@ -1408,3 +1408,7 @@ Built on `feat/yukthix-hir-10-20`. Each has a safe default already built; the su
 385. **A default recruiter who goes stale.** Built: the warning on 6.1 and None for new requisitions; nobody is told when
      it happens. *Suggested: tell the hiring settings holders by notification when the default recruiter leaves or loses
      the key.*
+Founder approved, 9 Nov 2026 (questions 381-385, all as suggested): (381) keep `pipeline:manage` as the recruiter key;
+(382) add "Different for: …" on 6.1 when a customer uses entity or location values; (383) keep older 1-10 weights, no
+data change; (384) referral settings on 6.1 only (remove them from Company rules › Referrals); (385) notify the holders
+of the hiring settings key when the default recruiter goes stale.
