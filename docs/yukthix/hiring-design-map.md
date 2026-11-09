@@ -1332,3 +1332,11 @@ the pay-history answer in the HIR-05 Application drawer to pay-key holders only;
 setting, default off; (357) a tenant-logo kit part; (358) keep the assistant as a page section; (359) an international
 number field for jobs outside India; (360) keep builder edits as a draft until Publish; (361) keep candidate status words
 from the stage category; (362) add the company colour and careers link to the offer and interview page answers.
+
+Founder approved, 9 Nov 2026 (HIR-10/20/07 questions 361-368, all as suggested): (361) keep the BGV tracker to holders of
+lifecycle.bgv.manage, give a hiring admin the key per person when HR wants; (362) keep: a discrepancy is decided by someone
+other than the recorder (setting hiring.bgv.decider_other_person, default on), draw the switch into 6.1 under Background
+checks; (363) keep: only a discrepancy needs a decision; (364) block confirming probation while a "clear before
+confirmation" check is open, the same way joining is blocked; (365) show email and WhatsApp opt-in columns when sequences
+are built; (366) keep who may comment on a scorecard; (367) redact the scorecard summary and rating notes in the candidate
+erase too; (368) keep the BGV export to results only.
