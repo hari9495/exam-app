@@ -244,7 +244,7 @@ export const MaskedField = forwardRef<HTMLInputElement, MaskedFieldProps>(functi
       ref={ref}
       inputMode={spec.inputMode}
       autoCapitalize={kind === 'pan' || kind === 'ifsc' ? 'characters' : undefined}
-      autoComplete={kind === 'phone' ? 'tel-national' : 'off'}
+      autoComplete={kind === 'phone' ? 'tel-national' : kind === 'intlPhone' ? 'tel' : 'off'}
       spellCheck={false}
       className="yx-input--mono"
       placeholder={placeholder ?? spec.placeholder}

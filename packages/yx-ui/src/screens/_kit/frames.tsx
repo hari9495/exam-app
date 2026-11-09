@@ -21,7 +21,7 @@ import {
 import { IconButton } from '../../components/button';
 import { Drawer } from '../../components/drawer';
 import { AssistantPanel, type AssistantMessage } from '../../components/notify';
-import { Monogram, PoweredBy } from '../../components/brand';
+import { Monogram, PoweredBy, TenantLogo } from '../../components/brand';
 import { ENTITIES, ME } from './data';
 import { timeCounts } from '../time/time-data';
 import './frames.css';
@@ -297,14 +297,16 @@ export interface PortalFrameProps {
   foot?: ReactNode;
   children: ReactNode;
   whiteLabel?: boolean;
+  /** Careers answer 357: the company's logo in the header (the name stays as its alt text and fallback). */
+  tenantLogoUrl?: string | null;
 }
 
 /** T9 external-portal shell (APX-D §4): tenant header, simple top nav, Powered by YukthiX footer. */
-export function PortalFrame({ tenant, portal, nav = [], user, aside, foot, children, whiteLabel }: PortalFrameProps) {
+export function PortalFrame({ tenant, portal, nav = [], user, aside, foot, children, whiteLabel, tenantLogoUrl }: PortalFrameProps) {
   return (
     <div className="yx-portal">
       <header className="yx-portal__head">
-        <span className="yx-portal__tenant">{tenant}</span>
+        <span className="yx-portal__tenant">{tenantLogoUrl ? <TenantLogo src={tenantLogoUrl} name={tenant} /> : tenant}</span>
         <span className="yx-portal__name">{portal}</span>
         <nav className="yx-portal__nav" aria-label={portal}>
           {nav.map((n) => (

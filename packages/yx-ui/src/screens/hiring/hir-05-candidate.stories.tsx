@@ -65,6 +65,7 @@ export const sampleApplication: ApplicationDrawerProps = {
     fit: { status: 'done', score: 81, summary: 'Strong plant background.', stale: false },
     tests: [{ examId: 'x1', title: 'Plant aptitude', score: 78, passFail: 'pass', status: 'completed' }],
     customFields: [{ label: 'Notice period', value: '30 days' }],
+    currentPay: 9_60_000,
     checklist: [{ id: 'k1', label: 'References checked', done: false }],
     assignee: 'u1',
     emails: [{ id: 'm1', subject: 'Interview invitation', status: 'sent', at: inHours(-20) }],
