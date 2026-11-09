@@ -4,8 +4,26 @@ export * from './types';
 // HIR-01: the designed headcount plan board, live with its `live` prop (the stand-in is gone).
 export { HeadcountPlanScreen, PlanEditorDrawer, type LiveHeadcountPlan, type LivePlan, type LivePlanLine, type PlanInput as HeadcountPlanInput, type PlanChoice } from '../hiring-plan';
 export { ApprovalRoutesScreen, type ApprovalRoutesScreenProps } from './routes';
-export { CareersSiteScreen, type CareersSiteScreenProps } from './careers';
 export { JobBoardsScreen, type JobBoardsScreenProps } from './boards';
+// T9-09 careers site and the candidate pages outside the app (founder decisions 8 and 10), live with their `live` prop.
+export { CareersJobScreen, CareersSiteScreen, type CareersJobDetail, type LiveCareersJob, type LiveCareersSite } from '../../portals/t9-candidate';
+export {
+  ApplicationStatusScreen,
+  CandidatePortalScreen,
+  InterviewBookingScreen,
+  OfferAcceptScreen,
+  type ApplicationStatusView,
+  type CandidateBrand,
+  type CandidatePageState,
+  type CandidatePortalView,
+  type InterviewView as CandidateInterviewView,
+  type LiveCandidatePortal,
+  type LiveInterviewBooking,
+  type LiveOfferAccept,
+  type OfferView,
+  type PortalApplication as CandidatePortalApplication,
+  type PortalOpenJob as CandidatePortalOpenJob,
+} from '../../portals/t9-09-candidate-pages';
 // HIR-05: the designed candidate record, merge, candidate list and retention, live with their `live` prop.
 export { EmailDialog, STAGE } from '../candidate-dialogs';
 export { CandidateRecordScreen, MergeDrawer, type LiveCandidateRecord, type LiveDuplicate, type LiveMergeDrawer, type MergeFieldRow } from '../hiring-pipeline';

@@ -51,6 +51,16 @@ const nextConfig = {
       // reset and reset link is the YukthiX one (old bookmarks and emails included). The query string
       // carries over; a ?next= path is honoured only when it is same-site (lib/safe-next.ts).
       // YukthiX platform staff sign in at /staff/sign-in, which nothing links to.
+      // T9-09 (founder decisions 8 and 10): the careers site and the candidate pages live under /yx; older emails, job
+      // boards and search results still carry these addresses.
+      { source: '/careers/:orgSlug', destination: '/yx/careers/:orgSlug', permanent: true },
+      { source: '/careers/:orgSlug/jobs/:slug', destination: '/yx/careers/:orgSlug/jobs/:slug', permanent: true },
+      { source: '/careers/:orgSlug/sitemap.xml', destination: '/yx/careers/:orgSlug/sitemap.xml', permanent: true },
+      { source: '/apply/:applyToken', destination: '/yx/apply/:applyToken', permanent: true },
+      { source: '/application/:statusToken', destination: '/yx/application/:statusToken', permanent: true },
+      { source: '/portal/:portalToken', destination: '/yx/candidate/:portalToken', permanent: true },
+      { source: '/offer/:token', destination: '/yx/offer/:token', permanent: true },
+      { source: '/interview/:token', destination: '/yx/interview/:token', permanent: true },
       { source: '/login', destination: '/yx/sign-in', permanent: true },
       { source: '/v2/login', destination: '/yx/sign-in', permanent: true },
       { source: '/forgot-password', destination: '/yx/forgot-password', permanent: true },

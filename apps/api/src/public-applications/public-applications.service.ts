@@ -611,7 +611,7 @@ export class PublicApplicationsService {
             createdAt: true,
             job: { select: { title: true } },
             interviews: {
-              select: { interviewToken: true, status: true, location: true, timeZone: true, confirmedSlotId: true, slots: { select: { startsAt: true, endsAt: true } } },
+              select: { interviewToken: true, status: true, location: true, timeZone: true, confirmedSlotId: true, slots: { select: { id: true, startsAt: true, endsAt: true } } },
             },
             offers: { select: { offerToken: true, status: true, compensation: true, startDate: true, expiresAt: true } },
           },
@@ -642,6 +642,7 @@ export class PublicApplicationsService {
           location: i.location,
           timeZone: i.timeZone,
           confirmed: Boolean(i.confirmedSlotId),
+          confirmedAt: i.slots.find((s) => s.id === i.confirmedSlotId)?.startsAt.toISOString() ?? null,
           slots: i.slots.map((s) => ({ startsAt: s.startsAt.toISOString(), endsAt: s.endsAt.toISOString() })),
         })),
         offers: e.offers

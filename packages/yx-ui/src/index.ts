@@ -32,6 +32,7 @@ export * from './components/timeline';
 export * from './components/brand';
 export * from './components/exam';
 export * from './components/careers';
+export * from './components/careers-admin';
 export * from './components/print';
 export * from './components/stepper';
 export * from './components/kanban';

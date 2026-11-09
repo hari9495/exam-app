@@ -542,6 +542,13 @@ export interface PublicJob {
   // M10 AT3: every consent notice at its current version; 'application' is required, 'talent_pool' optional.
   consents?: { purpose: 'application' | 'talent_pool'; version: number; text: string; required: boolean }[];
   customFields: PublicCustomFieldDef[];
+  /** T9-09: the job's department, the range when shown, and the pay-history question where the job asks and the law allows. */
+  department?: string | null;
+  salary?: { min: number; max: number; currency: string; period: string } | null;
+  askPayHistory?: boolean;
+  /** The careers site this job sits on (jobSlug null when unlisted); null when the company has no public page. */
+  careers?: { orgSlug: string; jobSlug: string | null } | null;
+  accent?: string | null;
 }
 
 // GET /public/careers/:orgSlug -- unauthenticated, mirrors PublicApplicationsService.getCareers
@@ -569,6 +576,14 @@ export interface CareersJobDetail extends CareersJob {
   orgName: string;
   logoUrl: string | null;
   primaryColor: string | null;
+  accent?: string | null;
+}
+
+/** T9-09 page builder layout: the fixed section library (plain text only). */
+export interface CareersLayout {
+  theme: 'classic' | 'compact' | 'split';
+  accent: string | null;
+  sections: { id: string; type: string; title: string; hidden?: boolean; text?: string; photoAlt?: string; items?: Record<string, string>[] }[];
 }
 
 export interface CareersPageResponse {
@@ -584,6 +599,7 @@ export interface CareersPageResponse {
   primaryColor: string | null;
   accentColor: string | null;
   textColor: string | null;
+  config?: CareersLayout;
   jobs: CareersJob[];
 }
 
@@ -595,6 +611,7 @@ export interface CareersSettingsResponse {
   intro: string | null;
   bannerUrl: string | null;
   assistantEnabled: boolean;
+  config: CareersLayout;
 }
 
 export interface PortalApplication {
@@ -603,7 +620,7 @@ export interface PortalApplication {
   rejected: boolean;
   appliedAt: string;
   statusToken: string | null;
-  interviews: { token: string | null; status: string; location: string; timeZone: string; confirmed: boolean; slots: { startsAt: string; endsAt: string }[] }[];
+  interviews: { token: string | null; status: string; location: string; timeZone: string; confirmed: boolean; confirmedAt?: string | null; slots: { startsAt: string; endsAt: string }[] }[];
   offers: { token: string | null; status: string; compensation: string; startDate: string; expiresAt: string }[];
 }
 
@@ -614,6 +631,9 @@ export interface PortalView {
   resume: { hasResume: boolean; parseStatus: string | null };
   orgName: string;
   applications: PortalApplication[];
+  /** T9-09 branding: the company's careers page (null when it has none) and accent. */
+  careersSlug?: string | null;
+  accent?: string | null;
 }
 
 export interface PortalOpenJob {
@@ -632,8 +652,12 @@ export interface PortalOpenJobs {
 
 export interface ApplicationStatus {
   jobTitle: string;
+  location?: string | null;
   appliedAt: string;
   statusBucket: string;
+  orgName?: string;
+  careersSlug?: string | null;
+  accent?: string | null;
 }
 
 // StageCounts mirrors apps/api/src/pipeline/pipeline.service.ts's StageCounts -- a job's
