@@ -31,7 +31,7 @@ describe('HIR-02 requisitions and HIR-26 rediscovery', () => {
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
-  const api = (who: Who, method: 'get' | 'post' | 'put', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+  const api = (who: Who, method: 'get' | 'post' | 'put' | 'patch', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const at = (o: string) => <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: o, isSuperAdmin: false }, fn);
   const inA = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => at(org.A.id)(fn);
   const setting = (key: string, value: string | null) =>
@@ -39,7 +39,7 @@ describe('HIR-02 requisitions and HIR-26 rediscovery', () => {
       await tx.setting.deleteMany({ where: { organizationId: org.A.id, key } });
       if (value) await tx.setting.create({ data: { organizationId: org.A.id, scopeType: 'tenant', scopeId: org.A.id, key, value } });
     });
-  type Row = { id: string; title: string; status: string; positions: number; outsidePlan: boolean; budgetAmount: number | null; hiringManager: string; line: { budget: number | null; approved: number } | null; approval: { status: string; reason: string | null; waitingOn: string | null; myTaskId: string | null; steps: { name: string; state: string }[] } | null };
+  type Row = { id: string; title: string; status: string; recruiter: string; mine: boolean; cancelReason: string | null; request: { headcountPlanLineId: string | null }; positions: number; outsidePlan: boolean; budgetAmount: number | null; hiringManager: string; line: { budget: number | null; approved: number } | null; approval: { status: string; reason: string | null; waitingOn: string | null; myTaskId: string | null; steps: { name: string; state: string }[] } | null };
   const list = async (who: Who) => (await api(who, 'get', '/hiring/requisitions').expect(200)).body as { viewer: string; rows: Row[] };
   type Match = { id: string; name: string; lastRole: string; lastStage: string; reasons: string[]; aiNote: string | null; consent: { email: string; whatsapp: string }; retentionUntil: string; pool: string | null };
   const rediscover = async (who: Who, id: string) => (await api(who, 'get', `/hiring/requisitions/${id}/rediscovery`).expect(200)).body as { mode: string; ai: string; matches: Match[] };
@@ -258,6 +258,79 @@ describe('HIR-02 requisitions and HIR-26 rediscovery', () => {
     expect(await rediscover('acting', ids.r1)).toMatchObject({ mode: 'text', ai: 'off', matches: [{ id: ids.sana }] });
     expect(fake.prompts).toHaveLength(n);
     await setting('hiring.rediscovery.ai', null);
+  });
+
+  it('the approver decides in the drawer: the task is theirs only, the sender never; send-back needs a reason (257)', async () => {
+    ids.r4 = (await api('mgr', 'post', '/jobs/requisitions').send({ title: 'QA Engineer', requisitionReason: 'new', headcountPlanLineId: ids.line, outsidePlan: false, headcount: 1, budgetAmount: 800_000 }).expect(201)).body.id;
+    const task = await inA(async (tx) => tx.wfTask.findFirstOrThrow({ where: { requestId: (await tx.job.findFirstOrThrow({ where: { id: ids.r4 } })).wfRequestId!, status: 'open' } }));
+    const approver = whoIs(task.assigneeUserId);
+    expect(approver).not.toBe('mgr');
+    expect((await list(approver)).rows.find((r) => r.id === ids.r4)!.approval!.myTaskId).toBe(task.id);
+    expect((await list('mgr')).rows.find((r) => r.id === ids.r4)!.approval!.myTaskId).toBeNull();
+    const decide4 = (who: Who, body: object) => request(server()).post(`/api/v1/workflow/approvals/tasks/${task.id}/decide`).set('Authorization', `Bearer ${token[who]}`).send(body);
+    // The sender holds no task, so cannot decide; a send-back without a reason is refused.
+    expect([403, 404]).toContain((await decide4('mgr', { decision: 'approve' })).status);
+    await decide4(approver, { decision: 'reject' }).expect(400);
+    await decide4(approver, { decision: 'reject', reason: 'Lower the pay' }).expect(200);
+    expect((await list('mgr')).rows.find((r) => r.id === ids.r4)).toMatchObject({ status: 'Sent back', mine: true, approval: { reason: 'Lower the pay' }, request: { headcountPlanLineId: ids.line } });
+  });
+
+  it('a hiring manager changes their own sent-back requisition and sends it again; nobody else, nothing else (252)', async () => {
+    const body = { title: 'QA Engineer', requisitionReason: 'new', headcountPlanLineId: ids.line, outsidePlan: false, headcount: 2, budgetAmount: 700_000 };
+    const put = (who: Who, id: string, b: object = body) => api(who, 'put', `/jobs/requisitions/${id}`).send(b);
+    await put('mgr2', ids.r4).expect(404);
+    await put('emp', ids.r4).expect(403);
+    await put('acting', ids.r4).expect(403);
+    await put('mgr', ids.r1).expect(409);
+    await put('mgr', ids.r4, { ...body, headcount: 0 }).expect(400);
+    await put('mgr', ids.r4, { ...body, headcountPlanLineId: randomUUID() }).expect(400);
+    expect((await put('mgr', ids.r4).expect(200)).body).toMatchObject({ id: ids.r4, status: 'pending_approval' });
+    expect((await list('mgr')).rows.find((r) => r.id === ids.r4)).toMatchObject({ status: 'Pending approval', positions: 2, budgetAmount: 700_000 });
+    // Once it waits again it is not "sent back" any more.
+    await put('mgr', ids.r4).expect(409);
+  });
+
+  it('suggest to recruiter: needs a recruiter, a bell notice once per candidate, audited (255); assign recruiter (253)', async () => {
+    const suggest = (who: Who, cand: string, job = ids.r1) => api(who, 'post', `/hiring/requisitions/${job}/rediscovery/${cand}/suggest`);
+    // A manager's request starts with the manager as its recruiter: nobody to tell yet.
+    expect((await suggest('mgr', ids.sana).expect(409)).body.message).toMatch(/no recruiter yet/);
+    await api('mgr', 'patch', `/jobs/${ids.r1}`).send({ recruiterUserId: users.rec }).expect(403);
+    await api('rec', 'patch', `/jobs/${ids.r1}`).send({ recruiterUserId: users.rec }).expect(200);
+    expect((await list('mgr')).rows.find((r) => r.id === ids.r1)!.recruiter).toBe(`rec ${run}`);
+    await suggest('acting', ids.sana).expect(403);
+    await suggest('mgr2', ids.sana).expect(404);
+    await suggest('mgr', ids.otherCo).expect(404);
+    await suggest('mgr', ids.withdrawn).expect(404);
+    await suggest('hra', ids.sana).expect(403);
+    await suggest('mgr', ids.sana).expect(200);
+    expect((await suggest('mgr', ids.sana).expect(409)).body.message).toMatch(/already suggested/);
+    const bell = await inA((tx) => tx.userNotification.findMany({ where: { organizationId: org.A.id, recipientUserId: users.rec, type: 'ats.rediscovery.suggested' } }));
+    expect(bell).toHaveLength(1);
+    expect(await inA((tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'ats.rediscovery.suggested', entityId: ids.r1 } }))).toBe(1);
+    expect((await rediscover('rec', ids.r1)).matches[0]).toMatchObject({ id: ids.sana, suggested: true });
+  });
+
+  it('cancel a requisition: reason required, recruiting only, audited; a waiting approval is withdrawn; refused once filled (253)', async () => {
+    const cancel = (who: Who, id: string, body: object) => api(who, 'post', `/hiring/requisitions/${id}/cancel`).send(body);
+    await cancel('rec', ids.r2, {}).expect(400);
+    await cancel('rec', ids.r2, { reason: ' ' }).expect(400);
+    await cancel('mgr', ids.r2, { reason: 'Client deal fell through' }).expect(403);
+    await cancel('acting', ids.r2, { reason: 'Client deal fell through' }).expect(403);
+    await cancel('adminB', ids.r2, { reason: 'Client deal fell through' }).expect(404);
+    await cancel('rec', ids.r2, { reason: 'Client deal fell through' }).expect(200);
+    expect((await list('mgr')).rows.find((r) => r.id === ids.r2)).toMatchObject({ status: 'Cancelled', cancelReason: 'Client deal fell through' });
+    expect(await inA(async (tx) => (await tx.wfRequest.findFirstOrThrow({ where: { subjectId: ids.r2 }, orderBy: { submittedAt: 'desc' } })).status)).toBe('withdrawn');
+    expect(await inA((tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'ats.requisition.cancelled', entityId: ids.r2 } }))).toBe(1);
+    await cancel('rec', ids.r2, { reason: 'Again' }).expect(409);
+    // Filled: the one opening of r1 is hired.
+    await inA(async (tx) => {
+      const job = await tx.job.findFirstOrThrow({ where: { id: ids.r1 } });
+      const entry = await tx.pipelineEntry.findFirstOrThrow({ where: { jobId: ids.r1 } });
+      const hired = await tx.pipelineStatus.findFirstOrThrow({ where: { stage: { category: 'hired', pipelineId: job.pipelineId! } } });
+      await tx.pipelineEntry.update({ where: { id: entry.id }, data: { statusId: hired.id } });
+    });
+    expect((await cancel('rec', ids.r1, { reason: 'No longer needed' }).expect(409)).body.message).toMatch(/filled/);
+    expect((await list('rec')).rows.find((r) => r.id === ids.r1)!.status).toBe('Approved');
   });
 
   it('bad input is refused', async () => {

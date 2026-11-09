@@ -830,6 +830,35 @@ export class PipelineService {
     return { id: job.id, title: job.title, ...sent };
   }
 
+  /**
+   * HIR-02 answer 252: the hiring manager changes their own sent-back requisition and sends it again (the same checks as
+   * raising it). Only a requisition they raised or manage, only while it is sent back (a draft whose latest request was
+   * rejected).
+   */
+  async resendRequisition(context: TenantContext, actorUserId: string, jobId: string, dto: RaiseRequisitionDto) {
+    await this.tenantPrisma.forTenant(context, async (tx) => {
+      const organizationId = context.organizationId as string;
+      const job = await tx.job.findFirst({ where: { id: jobId, organizationId, deletedAt: null, OR: [{ hiringManagerId: actorUserId }, { createdById: actorUserId }] } });
+      if (!job) throw new NotFoundException('No such requisition.');
+      const req = job.wfRequestId ? await tx.wfRequest.findFirst({ where: { organizationId, id: job.wfRequestId }, select: { status: true } }) : null;
+      if (job.status !== 'draft' || req?.status !== 'rejected' || job.requisitionCancelledAt) throw new ConflictException('Only a sent-back requisition can be changed and sent again.');
+      let place = {};
+      if (dto.headcountPlanLineId) {
+        const line = await tx.headcountPlanLine.findFirst({ where: { organizationId, id: dto.headcountPlanLineId } });
+        const plan = line ? await tx.headcountPlan.findFirst({ where: { organizationId, id: line.planId, status: 'approved' } }) : null;
+        if (!line || !plan) throw new BadRequestException('Choose a line of an approved headcount plan.');
+        place = { legalEntityId: plan.legalEntityId, departmentId: plan.departmentId, designationId: line.designationId, gradeId: line.gradeId, locationId: line.locationId };
+      }
+      const m = await this.masters(tx, organizationId, place);
+      await this.hiring.checkLinks(tx, organizationId, dto);
+      const data = { headcountPlanLineId: null, outsidePlan: false, outsidePlanReason: null, replacementOfEmployeeId: null, budgetAmount: null, targetStart: null, ...dto };
+      await tx.job.update({ where: { id: job.id }, data: { title: dto.title, headcount: dto.headcount, ...m.links, ...(m.departmentName ? { department: m.departmentName } : {}), ...(m.locationName ? { location: m.locationName } : {}), ...requisitionData(data) } });
+      await this.audit.record(context, { actorUserId, action: 'ats.requisition.changed', entityType: 'job', entityId: job.id, metadata: { title: dto.title, headcount: dto.headcount } });
+    });
+    const sent = await this.hiring.submit(context, actorUserId, jobId, true);
+    return { id: jobId, title: dto.title, ...sent };
+  }
+
   async submitRequisition(context: TenantContext, actorUserId: string, jobId: string): Promise<SubmitResult> {
     const job = await this.tenantPrisma.forTenant(context, (tx) =>
       tx.job.findFirst({ where: { id: jobId, organizationId: context.organizationId as string } }),

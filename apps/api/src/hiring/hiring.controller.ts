@@ -9,7 +9,7 @@ import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.de
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { HiringRequisitionsService } from './requisitions.service';
-import { CareersEntityDto, ConsentNoticeDto, RecruitingCostDto, PlanDto, PlanQueryDto, PlanVersionDto } from './hiring-dto';
+import { CancelRequisitionDto, CareersEntityDto, ConsentNoticeDto, RecruitingCostDto, PlanDto, PlanQueryDto, PlanVersionDto } from './hiring-dto';
 import { CareersAdminService } from './careers-admin.service';
 import { RediscoveryService } from './rediscovery.service';
 
@@ -71,6 +71,24 @@ export class HiringController {
   @RequireAnyPermission('pipeline:manage', 'ats.headcount.manage', 'ats.requisition.raise')
   rediscover(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.rediscovery.suggest(ctx, req.user as ScopeUser, id);
+  }
+
+  // HIR-02 answer 253: cancel a requisition with a reason (recruiting; never while acting for someone else).
+  @Post('requisitions/:id/cancel')
+  @HttpCode(200)
+  @RequirePermissions('pipeline:manage')
+  cancelRequisition(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CancelRequisitionDto) {
+    ownSession(req);
+    return this.svc.cancel(ctx, userId, id, dto.reason);
+  }
+
+  // HIR-26 answer 255: suggest a past candidate to the requisition's recruiter (bell notice, once per candidate).
+  @Post('requisitions/:id/rediscovery/:candidateId/suggest')
+  @HttpCode(200)
+  @RequireAnyPermission('pipeline:manage', 'ats.headcount.manage', 'ats.requisition.raise')
+  suggestCandidate(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('candidateId', ParseUUIDPipe) candidateId: string) {
+    ownSession(req);
+    return this.rediscovery.suggestToRecruiter(ctx, req.user as ScopeUser, id, candidateId);
   }
 
   @Get('plan-lines')

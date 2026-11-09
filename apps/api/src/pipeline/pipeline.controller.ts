@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, ForbiddenException, Get, Header, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Header, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
@@ -40,6 +40,14 @@ export class PipelineController {
   raiseRequisition(@Req() req: Parameters<typeof notActing>[0], @CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: RaiseRequisitionDto) {
     notActing(req);
     return this.pipelineService.raiseRequisition(tenant, userId, dto);
+  }
+
+  /** HIR-02 answer 252: the hiring manager changes their own sent-back requisition and sends it again. */
+  @Put('jobs/requisitions/:id')
+  @RequirePermissions('ats.requisition.raise')
+  resendRequisition(@Req() req: Parameters<typeof notActing>[0], @CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RaiseRequisitionDto) {
+    notActing(req);
+    return this.pipelineService.resendRequisition(tenant, userId, id, dto);
   }
 
   @Get('jobs')

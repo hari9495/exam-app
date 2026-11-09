@@ -1231,6 +1231,10 @@ model Job {
   /// HIR-03 answers 222, 225: the recruiter (default: who opened it) and the company job number (JOB-0001 on, never reused).
   recruiterUserId         String?               @map("recruiter_user_id") @db.Uuid
   jobNumber               Int?                  @map("job_number")
+  /// HIR-02 answer 253: a cancelled requisition (the job is closed), with the reason, by whom and when.
+  requisitionCancelledAt  DateTime?             @map("requisition_cancelled_at") @db.Timestamptz(3)
+  requisitionCancelReason String?               @map("requisition_cancel_reason") @db.VarChar(500)
+  requisitionCancelledBy  String?               @map("requisition_cancelled_by") @db.Uuid
   /// M10 AT5: the scorecard new interviews for this job use, unless the scheduler picks another.
   scorecardTemplateId     String?               @map("scorecard_template_id") @db.Uuid
   headcount               Int?
@@ -12010,4 +12014,17 @@ model IrDisputeStep {
 
   @@index([disputeId, at], map: "ir_dispute_steps_dispute_idx")
   @@map("ir_dispute_steps")
+}
+
+/// HIR-26 answer 255: a hiring manager suggested a past candidate to the requisition's recruiter (once per pair).
+model RequisitionSuggestion {
+  organizationId String   @map("organization_id") @db.Uuid
+  jobId          String   @map("job_id") @db.Uuid
+  candidateId    String   @map("candidate_id") @db.Uuid
+  suggestedBy    String   @map("suggested_by") @db.Uuid
+  suggestedAt    DateTime @default(now()) @map("suggested_at") @db.Timestamptz(3)
+
+  @@id([jobId, candidateId])
+  @@index([organizationId, jobId], map: "requisition_suggestions_org_job_idx")
+  @@map("requisition_suggestions")
 }

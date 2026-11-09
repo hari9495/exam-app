@@ -10,11 +10,12 @@ import { RediscoveryService } from './rediscovery.service';
 import { CryptoModule } from '@exam-platform/shared';
 import { AiModule } from '../ai/ai.module';
 import { FieldPermissionsModule } from '../field-permissions/field-permissions.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 // M10 recruitment (M10-BUILD-DESIGN §4). AT1: keys, support masking (app module). AT2: headcount plans and
 // requisitions on P03. AT3: careers site settings (consent notices, entity pages).
 @Module({
-  imports: [AuthModule, WorkflowModule, RulesEngineModule, JobBoardsModule, CryptoModule, AiModule, FieldPermissionsModule],
+  imports: [AuthModule, WorkflowModule, RulesEngineModule, JobBoardsModule, CryptoModule, AiModule, FieldPermissionsModule, NotificationsModule],
   controllers: [HiringController],
   providers: [HiringRequisitionsService, CareersAdminService, RediscoveryService],
   exports: [HiringRequisitionsService],

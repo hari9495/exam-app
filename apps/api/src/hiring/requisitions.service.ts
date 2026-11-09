@@ -244,8 +244,9 @@ export class HiringRequisitionsService implements OnModuleInit {
         rows: jobs.map((j) => {
           const req = reqs.find((r) => r.id === j.wfRequestId);
           const route = req ? routes.get(req.id) : undefined;
-          const status =
-            j.status === 'pending_approval' ? 'Pending approval' : j.status === 'draft' ? (req?.status === 'rejected' ? 'Sent back' : 'Draft') : j.status === 'closed' ? ((hired.get(j.id) ?? 0) >= (j.headcount ?? 1) ? 'Filled' : 'Closed') : 'Approved';
+          const status = j.requisitionCancelledAt
+            ? 'Cancelled'
+            : j.status === 'pending_approval' ? 'Pending approval' : j.status === 'draft' ? (req?.status === 'rejected' ? 'Sent back' : 'Draft') : j.status === 'closed' ? ((hired.get(j.id) ?? 0) >= (j.headcount ?? 1) ? 'Filled' : 'Closed') : 'Approved';
           const l = lines.find((x) => x.id === j.headcountPlanLineId);
           const u = l ? (use.get(l.id) ?? { committed: 0, committedBudget: 0, filled: 0 }) : null;
           return {
@@ -256,6 +257,12 @@ export class HiringRequisitionsService implements OnModuleInit {
             location: j.location ?? '',
             grade: j.gradeId ? (grades.get(j.gradeId) ?? '') : '',
             hiringManager: users.get(j.hiringManagerId ?? j.createdById) ?? '',
+            recruiterUserId: j.recruiterUserId,
+            // Answer 252: the hiring manager's own requisition (they may change a sent-back one and send it again).
+            mine: j.hiringManagerId === me || j.createdById === me,
+            // What the request sheet needs to open it filled in (edit and resend, Duplicate).
+            request: { requisitionReason: j.requisitionReason, headcountPlanLineId: j.headcountPlanLineId, replacementOfEmployeeId: j.replacementOfEmployeeId, targetStart: j.targetStart ? j.targetStart.toISOString().slice(0, 10) : null },
+            cancelReason: j.requisitionCancelReason,
             recruiter: j.recruiterUserId ? (users.get(j.recruiterUserId) ?? '') : '',
             replacementFor: j.requisitionReason === 'replacement' ? (leavers.get(j.replacementOfEmployeeId ?? '') ?? 'a leaver') : null,
             outsidePlan: j.outsidePlan,
@@ -282,6 +289,33 @@ export class HiringRequisitionsService implements OnModuleInit {
         }),
       };
     });
+  }
+
+  /**
+   * HIR-02 answer 253: cancels a requisition with a reason (audited). A waiting approval is withdrawn, the job is closed
+   * (its board postings close after commit). Refused once filled or already closed.
+   */
+  async cancel(ctx: TenantContext, userId: string, jobId: string, reason: string) {
+    await this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const job = await tx.job.findFirst({ where: { organizationId: org, id: jobId, deletedAt: null } });
+      if (!job) throw new NotFoundException('No such requisition.');
+      if (job.requisitionCancelledAt) throw new ConflictException('This requisition is already cancelled.');
+      const [{ n }] = await tx.$queryRaw<{ n: bigint }[]>`
+        SELECT count(*) AS n FROM pipeline_entries e JOIN pipeline_statuses s ON s.id = e.status_id JOIN pipeline_stages st ON st.id = s.stage_id
+        WHERE e.organization_id = ${org}::uuid AND e.job_id = ${job.id}::uuid AND st.category = 'hired'`;
+      if (Number(n) >= (job.headcount ?? 1)) throw new ConflictException('This requisition is filled, so it cannot be cancelled. Close the job instead.');
+      if (job.status === 'closed') throw new ConflictException('This requisition is already closed.');
+      if (job.status === 'pending_approval' && job.wfRequestId) {
+        const req = await tx.wfRequest.findFirst({ where: { organizationId: org, id: job.wfRequestId } });
+        if (req?.status === 'pending') await this.engine.withdraw(tx, c, req.id, userId, 'Requisition cancelled');
+      }
+      const done = await tx.job.updateMany({ where: { id: job.id, requisitionCancelledAt: null }, data: { status: 'closed', requisitionCancelledAt: new Date(), requisitionCancelReason: reason, requisitionCancelledBy: userId } });
+      if (!done.count) throw new ConflictException('This requisition is already cancelled.');
+      await audit(tx, c, 'ats.requisition.cancelled', 'job', job.id, { reason, from: job.status });
+    });
+    await this.poster.syncJobToPaidBoards(ctx, jobId).catch((e) => this.logger.warn(`boards ${jobId}: ${(e as Error).message}`));
+    return { status: 'cancelled' as const };
   }
 
   /** Lines of approved plans a requisition can draw on (pickers), with what is left. */

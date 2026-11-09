@@ -1,4 +1,6 @@
-import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
 import { AiApiKeyResolverService, AiNotConfiguredError, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { buildViewer, has, type ScopeUser } from '../access/scope';
 import { AiInvocationService } from '../ai/ai-invocation.service';
@@ -38,6 +40,7 @@ export class RediscoveryService {
     private readonly ai: AiInvocationService,
     private readonly aiKeys: AiApiKeyResolverService,
     private readonly fieldPerms: FieldPermissionsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   private async aiState(tx: Tx, c: CompanyContext): Promise<'on' | 'off' | 'not_set_up'> {
@@ -96,7 +99,8 @@ export class RediscoveryService {
         .filter((x): x is NonNullable<typeof x> => Boolean(x))
         .sort((a, b) => b.m.score - a.m.score || b.r.last_at.getTime() - a.r.last_at.getTime())
         .slice(0, MAX);
-      return { job, role, ai, provider: orgRow?.aiProvider ?? 'anthropic', months: Number(months), matches, pools };
+      const suggested = new Set((await tx.requisitionSuggestion.findMany({ where: { organizationId: org, jobId: job.id }, select: { candidateId: true } })).map((x) => x.candidateId));
+      return { job, role, ai, provider: orgRow?.aiProvider ?? 'anthropic', months: Number(months), matches, pools, suggested };
     });
 
     const hidden = await this.fieldPerms.getHiddenFields(ctx, user.role ?? '', 'candidate');
@@ -112,6 +116,8 @@ export class RediscoveryService {
         consent: { email: r.email_out ? 'opted-out' : 'opted-in', whatsapp: r.wa_out ? 'opted-out' : 'none' },
         retentionUntil: addMonths(r.last_at, found.months),
         pool: found.pools.find((p) => p.candidateId === r.id)?.pool.name ?? null,
+        // Answer 255: already suggested to the recruiter for this requisition.
+        suggested: found.suggested.has(r.id),
       };
     });
 
@@ -150,5 +156,36 @@ export class RediscoveryService {
     // Who and when are on the audit row; never the prompt or the notes.
     await inCompany(this.tenantPrisma, ctx, (tx, c) => audit(tx, c, 'ats.rediscovery.run', 'job', jobId, { mode: ai === 'on' ? 'ai' : 'text', ai, provider: ai === 'on' || ai === 'failed' ? found.provider : null, matches: out.length }));
     return { mode: ai === 'on' ? ('ai' as const) : ('text' as const), ai, matches: out };
+  }
+
+  /**
+   * HIR-26 answer 255: a hiring manager suggests a past candidate to the requisition's recruiter: a bell notice, audited,
+   * once per candidate per requisition. Only someone who may see the panel on that requisition, about a candidate the
+   * panel may show (this company's, kept for other roles, not erased, merged or on legal hold).
+   */
+  async suggestToRecruiter(ctx: TenantContext, user: ScopeUser, jobId: string, candidateId: string) {
+    const v = await buildViewer(this.prisma, this.tenantPrisma, user, ['pipeline:manage', 'ats.headcount.manage', 'candidate:view']);
+    if (!has(v, 'pipeline:manage') && !has(v, 'candidate:view')) throw new ForbiddenException('Past candidates show only to people who may see candidates. Ask your System Admin for a hiring role that does.');
+    const all = has(v, 'pipeline:manage') || has(v, 'ats.headcount.manage');
+    const me = user.userId ?? '00000000-0000-0000-0000-000000000000';
+    const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const job = await tx.job.findFirst({ where: { organizationId: org, id: jobId, deletedAt: null, ...(all ? {} : { OR: [{ hiringManagerId: me }, { createdById: me }] }) } });
+      if (!job) throw new NotFoundException('No such requisition.');
+      const cand = await tx.candidate.findFirst({ where: { organizationId: org, id: candidateId, erasedAt: null, deletedAt: null, mergedIntoId: null, legalHoldAt: null }, select: { id: true, name: true } });
+      if (!cand || !(await poolConsented(tx, org, [cand.id])).has(cand.id)) throw new NotFoundException('That person is not a past candidate you can suggest.');
+      // A manager's own request starts with them as its recruiter; a suggestion needs someone else in recruiting.
+      if (!job.recruiterUserId || job.recruiterUserId === me) throw new ConflictException('This requisition has no recruiter yet. Ask recruiting to assign one.');
+      try {
+        await tx.requisitionSuggestion.create({ data: { organizationId: org, jobId: job.id, candidateId: cand.id, suggestedBy: me } });
+      } catch (e) {
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException(`You already suggested ${cand.name} for this requisition.`);
+        throw e;
+      }
+      await audit(tx, c, 'ats.rediscovery.suggested', 'job', job.id, { candidateId: cand.id, recruiterUserId: job.recruiterUserId });
+      return { recruiter: job.recruiterUserId, name: cand.name, title: job.title };
+    });
+    await this.notifications.notify(ctx, me, [out.recruiter], 'ats.rediscovery.suggested', { entityType: 'job', entityId: jobId, contextText: `Suggested ${out.name} for ${out.title}`, linkPath: '/yx/hiring/requisitions' });
+    return { suggested: true };
   }
 }
