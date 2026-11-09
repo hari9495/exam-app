@@ -10,6 +10,10 @@ export interface ApiJob {
   status: JobStatus;
   createdAt: string;
   createdById: string;
+  /** Answer 222: the recruiter (older rows: who opened it). */
+  recruiterUserId?: string | null;
+  /** Answer 225: the company job number (JOB-0001 on). */
+  jobNumber?: number | null;
   closedAt: string | null;
   publishedAt?: string | null;
   slug?: string | null;
@@ -41,7 +45,10 @@ export interface ApiJob {
 }
 
 const TYPE: Record<string, string> = { FULL_TIME: 'Full time', PART_TIME: 'Part time', CONTRACTOR: 'Contract', TEMPORARY: 'Temporary', INTERN: 'Internship', VOLUNTEER: 'Volunteer', PER_DIEM: 'Per day', OTHER: 'Other' };
-const STATUS: Record<JobStatus, HiringJobRow['status']> = { open: 'Open', draft: 'Draft', pending_approval: 'Waiting for approval', closed: 'Closed' };
+const STATUS: Record<JobStatus, HiringJobRow['status']> = { open: 'Open', on_hold: 'On hold', draft: 'Draft', pending_approval: 'Waiting for approval', closed: 'Closed' };
+
+/** JOB-0001 (more digits past 9999). */
+export const jobCode = (n: number | null | undefined) => (n ? `JOB-${String(n).padStart(4, '0')}` : '');
 
 /** The careers page of a job, only while the careers site lists it (open, public applications on, listed). */
 export function careersUrl(j: ApiJob, origin: string, orgSlug: string | null): string | null {
@@ -52,13 +59,12 @@ export function jobRow(j: ApiJob, names: (userId: string | null) => string, orig
   const c = j.stageCounts?.byCategory;
   return {
     id: j.id,
-    code: '',
+    code: jobCode(j.jobNumber),
     title: j.title,
     department: j.department ?? '',
     location: j.location ?? '',
     type: j.employmentType ? (TYPE[j.employmentType] ?? j.employmentType) : 'Not set',
-    // No recruiter field on a job yet: the person who opened it (founder question 222).
-    recruiter: names(j.createdById),
+    recruiter: names(j.recruiterUserId ?? j.createdById),
     hiringManager: names(j.hiringManagerId),
     status: STATUS[j.status] ?? 'Draft',
     applicants: c ? c.active + c.offer + c.hired + c.rejected + c.archived : 0,

@@ -68,6 +68,7 @@ export default function YxHiringJobPage() {
         { label: 'Pipeline template', value: pipeline ? `${pipeline.name}, ${pipeline.stages.length} stages` : 'Default' },
         { label: 'Scorecard', value: (scorecards.data ?? []).find((t) => t.id === settings.data?.scorecardTemplateId)?.name ?? (settings.data?.scorecardTemplateId ? 'Set' : 'Not set') },
         { label: 'Candidates by stage', value: counted?.stageCounts ? stageSummary({ ...counted, pipelineId: counted.pipelineId ?? null, stageCounts: counted.stageCounts }, pipelines.data) : 'No candidates yet' },
+        { label: 'Recruiter', value: names(j.recruiterUserId ?? j.createdById) || 'Not set' },
         { label: 'Opened', value: `${formatDate(new Date(j.createdAt))}${names(j.createdById) ? ` by ${names(j.createdById)}` : ''}` },
       ]
     : [];
@@ -128,6 +129,14 @@ export default function YxHiringJobPage() {
             done(x.publish ? `${j?.title ?? 'The job'} is published on the careers page` : 'Pay range saved');
           },
         },
+        recruiter: {
+          id: j?.recruiterUserId ?? j?.createdById ?? null,
+          choices: (teammates.data ?? []).map((t) => ({ value: t.id, label: t.name ?? t.email })),
+          onChange: async (userId) => {
+            await write('PATCH', `/jobs/${enc(id)}`, { recruiterUserId: userId });
+            done(`Recruiter changed to ${names(userId) || 'the new recruiter'}`);
+          },
+        },
         onOpenPipeline: () => router.push(`/yx/hiring/jobs/${enc(id)}/pipeline`),
         onViewCareers: () => {
           if (url) window.open(url, '_blank', 'noopener');
@@ -135,7 +144,8 @@ export default function YxHiringJobPage() {
         onStatus: async (to) => {
           try {
             await write('PATCH', `/jobs/${enc(id)}`, { status: to });
-            done(to === 'closed' ? `${j?.title ?? 'The job'} closed. Its board postings close too.` : `${j?.title ?? 'The job'} reopened`);
+            const t = j?.title ?? 'The job';
+            done(to === 'closed' ? `${t} closed. Its board postings close too.` : to === 'on_hold' ? `${t} is on hold. It is off the careers page and job boards; candidates stay.` : j?.status === 'on_hold' ? `${t} resumed` : `${t} reopened`);
           } catch (e) {
             toast({ tone: 'error', title: 'The job was not changed', description: (e as Error).message });
             throw e;

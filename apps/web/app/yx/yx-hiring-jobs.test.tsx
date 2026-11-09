@@ -20,7 +20,7 @@ const replace = jest.fn();
 
 const COUNTS = { byStageId: { s1: 2 }, byCategory: { active: 2, offer: 1, hired: 0, rejected: 3, archived: 0 } };
 const JOB = {
-  id: 'j1', title: 'Senior accountant', status: 'open', createdAt: '2026-10-01T09:00:00Z', createdById: 'u1', closedAt: null, publishedAt: '2026-10-02T09:00:00Z', slug: 'senior-accountant-chennai',
+  id: 'j1', title: 'Senior accountant', status: 'open', createdAt: '2026-10-01T09:00:00Z', createdById: 'u9', recruiterUserId: 'u1', jobNumber: 1, closedAt: null, publishedAt: '2026-10-02T09:00:00Z', slug: 'senior-accountant-chennai',
   department: 'Finance', location: 'Chennai', employmentType: 'FULL_TIME', hiringManagerId: null, headcount: 1, publicApplyEnabled: true, listOnCareers: true, applyToken: 't', salaryMin: null, salaryMax: null,
   salaryCurrency: 'INR', salaryPeriod: 'year', showSalary: false, askPayHistory: false, pipelineId: 'p1', approval: null, stageCounts: COUNTS, jobBoardIds: ['b1'],
 };
@@ -46,7 +46,7 @@ const routes = (extra: (key: string, init?: RequestInit) => unknown, perms = ['p
     if (key === 'GET /jobs') return [JOB];
     if (key === 'GET /jobs/pay-settings') return { showRange: false, askHistory: false };
     if (key === 'GET /pipelines') return [{ id: 'p1', name: 'Standard', isDefault: true, stages: [{ id: 's1', name: 'Interview' }] }];
-    if (key === 'GET /users/teammates') return [{ id: 'u1', name: 'Neha Joshi', email: 'neha@x.test' }];
+    if (key === 'GET /users/teammates') return [{ id: 'u1', name: 'Neha Joshi', email: 'neha@x.test' }, { id: 'u9', name: 'Imran Qureshi', email: 'imran@x.test' }];
     if (key.startsWith('GET /org/masters') || key === 'GET /org/locations' || key.startsWith('GET /custom-fields') || key === 'GET /hiring/plan-lines' || key === 'GET /hiring/scorecard-templates') return key === 'GET /org/masters/departments' ? [{ id: 'd1', name: 'Finance', archivedAt: null }] : [];
     if (key === 'GET /hiring/jobs/j1/interview-settings') return { scorecardTemplateId: null, exams: [] };
     throw new Error(`unexpected ${key}`);
@@ -74,6 +74,17 @@ describe('Hiring › Jobs (HIR-03 list, live)', () => {
     expect((await screen.findAllByText('Job Accountant created')).length).toBeGreaterThan(0);
   });
 
+  it('shows the job number; puts a job on hold with a toast (answers 223, 225)', async () => {
+    const patches: unknown[] = [];
+    routes((key, init) => (key === 'PATCH /jobs/j1' ? (patches.push(JSON.parse(String(init!.body))), {}) : undefined));
+    wrap(<YxHiringJobsPage />);
+    expect(await screen.findByText('JOB-0001')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /More actions/ }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Put on hold' }));
+    await waitFor(() => expect(patches).toEqual([{ status: 'on_hold' }]));
+    expect((await screen.findAllByText(/Senior accountant is on hold/)).length).toBeGreaterThan(0);
+  });
+
   it('read-only (results:view only): no Create job', async () => {
     routes(() => undefined, ['results:view']);
     wrap(<YxHiringJobsPage />);
@@ -95,6 +106,9 @@ describe('Hiring › one job (HIR-03 workspace, HIR-24 pay range, live)', () => 
     expect((await screen.findAllByText('Posted to Indeed')).length).toBeGreaterThan(0);
     await userEvent.click(screen.getByRole('button', { name: 'Open pipeline' }));
     expect(push).toHaveBeenCalledWith('/yx/hiring/jobs/j1/pipeline');
+    // Answer 222: the recruiter shows and can be changed.
+    await userEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+    expect(await screen.findByText('Neha Joshi')).toBeInTheDocument();
   });
 
   it('where the law requires the range: saving without it is stopped; a server refusal shows on the panel', async () => {

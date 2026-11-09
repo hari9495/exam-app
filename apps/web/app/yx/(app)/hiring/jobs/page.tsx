@@ -49,6 +49,7 @@ export default function YxHiringJobsPage() {
   return (
     <JobsScreen
       rows={[]}
+      now={new Date()}
       live={{
         rows,
         state: loadState(jobs) === 'no-access' ? 'error' : (loadState(jobs) as 'ready' | 'loading' | 'error'),
@@ -77,7 +78,8 @@ export default function YxHiringJobsPage() {
           void navigator.clipboard.writeText(r.careersUrl ?? '').then(() => done('Careers link copied'), failed('The link could not be copied'));
         },
         onStatus: (r, to) => {
-          void write('PATCH', `/jobs/${id(r.id)}`, { status: to }).then(() => done(to === 'closed' ? `${r.title} closed. Its board postings close too.` : `${r.title} reopened`), failed(`Could not change ${r.title}`));
+          const said = to === 'closed' ? `${r.title} closed. Its board postings close too.` : to === 'on_hold' ? `${r.title} is on hold. It is off the careers page and job boards; candidates stay.` : r.status === 'On hold' ? `${r.title} resumed` : `${r.title} reopened`;
+          void write('PATCH', `/jobs/${id(r.id)}`, { status: to }).then(() => done(said), failed(`Could not change ${r.title}`));
         },
         onSubmit: (r) => {
           void write<{ status?: string }>('POST', `/jobs/${id(r.id)}/submit`).then((x) => done(x?.status === 'approved' ? `${r.title} approved` : `${r.title} sent for approval`), failed(`Could not send ${r.title}`));
