@@ -20,7 +20,7 @@ import { useToastIfAny } from '../../components/notify';
 import { DataTable, type TableColumn } from '../../components/table';
 import { MenuItem } from '../../components/menu';
 import { ApprovalTimeline, Timeline, type ApprovalStep, type TimelineItem } from '../../components/timeline';
-import type { LiveOfferBuilder, LiveOfferRecord, OfferApiStatus, OfferDraftInput, OfferPreview } from './live/types';
+import type { BulkBatchView, LiveBulkOffers, LiveOfferBuilder, LiveOfferRecord, OfferApiStatus, OfferDraftInput, OfferPreview } from './live/types';
 import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
@@ -731,6 +731,13 @@ function LiveOfferRecordView({ live, defaultTab = 'overview' }: { live: LiveOffe
     }
   };
   const open = ['draft', 'pending_approval', 'approved', 'sent'].includes(o.status);
+  // Answer 336: a sent offer waiting for an answer, or an accepted one with conditions still open.
+  const remindable = o.status === 'sent' || (o.status === 'accepted' && o.conditions.some((c) => c.status === 'open'));
+  const remindButton = remindable && (
+    <Button icon={Send} loading={busy === 'remind'} onClick={() => void run('remind', live.onRemind, (r) => String(r))}>
+      Send reminder
+    </Button>
+  );
   return (
     <HireFrame active="Offers & BGV">
       <RecordLayout
@@ -758,11 +765,17 @@ function LiveOfferRecordView({ live, defaultTab = 'overview' }: { live: LiveOffe
             ]}
             actions={
               o.status === 'accepted' && !o.joiner ? (
-                <Button variant="primary" icon={UserPlus} onClick={() => setDialog('employee')}>
-                  Create employee
-                </Button>
+                <>
+                  {remindButton}
+                  <Button variant="primary" icon={UserPlus} onClick={() => setDialog('employee')}>
+                    Create employee
+                  </Button>
+                </>
+              ) : o.status === 'accepted' ? (
+                remindButton || undefined
               ) : open ? (
                 <>
+                  {remindButton}
                   {o.canSeePay && (
                     <Button variant={o.status === 'sent' ? 'primary' : undefined} onClick={live.onRevise}>
                       Revise offer
@@ -894,40 +907,158 @@ export interface BulkOfferRow {
   planOk: boolean;
 }
 
+/** A row of the sent batch: what happened to each candidate's offer (HIR-28, one bad row never blocks the others). */
+export interface BulkResultRow {
+  id: string;
+  name: string;
+  ctc: number | null;
+  result: 'Sent' | 'Waiting for extra approval' | 'Waiting for approval' | 'Approved, not emailed' | 'Held: no plan line' | 'Skipped: has an offer' | 'Not sent';
+  reason: string | null;
+  offerId: string | null;
+}
+const RESULT_TONE: Record<BulkResultRow['result'], BadgeTone> = { Sent: 'success', 'Waiting for extra approval': 'warning', 'Waiting for approval': 'info', 'Approved, not emailed': 'warning', 'Held: no plan line': 'danger', 'Skipped: has an offer': 'neutral', 'Not sent': 'danger' };
+const SAMPLE_RESULTS = (rows: BulkOfferRow[], band: Band): BulkResultRow[] =>
+  rows.map((r) => ({ id: r.id, name: r.name, ctc: r.ctc, result: !r.planOk ? 'Held: no plan line' : bandCheck(r.ctc, band).extraApproval ? 'Waiting for extra approval' : 'Sent', reason: !r.planOk ? 'No free place on the headcount-plan line. Held until the plan is revised.' : null, offerId: null }));
+
+const resultOf = (r: BulkBatchView['rows'][number]): BulkResultRow['result'] =>
+  r.status === 'sent' ? 'Sent' : r.status === 'pending_approval' ? (r.band?.startsWith('Above') ? 'Waiting for extra approval' : 'Waiting for approval') : r.status === 'approved' ? 'Approved, not emailed' : r.status === 'held' ? 'Held: no plan line' : r.status === 'skipped' ? 'Skipped: has an offer' : 'Not sent';
+
 // HIR-28
-export function BulkOfferScreen({ rows, band, defaultStep = 'values', sent = false }: { rows: BulkOfferRow[]; band: Band; defaultStep?: string; sent?: boolean }) {
-  const [selected, setSelected] = useState<string[]>(rows.map((r) => r.id));
-  const outOfBand = rows.filter((r) => bandCheck(r.ctc, band).extraApproval);
-  const noPlan = rows.filter((r) => !r.planOk);
+export function BulkOfferScreen({ rows: sampleRows = [], band: sampleBand = { min: 0, max: 0 }, defaultStep = 'values', sent = false, live }: { rows?: BulkOfferRow[]; band?: Band; defaultStep?: string; sent?: boolean; live?: LiveBulkOffers }) {
+  if (live && (live.state !== 'ready' || !(live.setup || live.batch)))
+    return (
+      <HireFrame active="Offers & BGV">
+        {live.state === 'loading' ? (
+          <div className="yx-hire-stack" aria-busy="true" aria-label="Loading the bulk offers">
+            <Skeleton height={64} />
+            <Skeleton height={320} />
+          </div>
+        ) : live.state === 'error' ? (
+          <ErrorState title="The bulk offers could not be loaded." onRetry={live.onRetry} />
+        ) : live.state === 'denied' ? (
+          <NoAccessState grantedBy="your admin (the offer-pay key)" what="bulk offers" />
+        ) : (
+          <EmptyState title="Not found" description="This job or batch doesn't exist in your company." />
+        )}
+      </HireFrame>
+    );
+  if (live?.batch || sent) return <BulkOfferSent rows={sampleRows} band={sampleBand} live={live} />;
+  return <BulkOfferBuilder rows={sampleRows} band={sampleBand} defaultStep={defaultStep} live={live} />;
+}
+
+function BulkOfferSent({ rows, band, live }: { rows: BulkOfferRow[]; band: Band; live?: LiveBulkOffers }) {
+  const b = live?.batch ?? null;
+  const results: BulkResultRow[] = b ? b.rows.map((r) => ({ id: r.entryId, name: r.name, ctc: r.annualCtc, result: resultOf(r), reason: r.reason, offerId: r.offerId })) : SAMPLE_RESULTS(rows, band);
+  const count = (res: BulkResultRow['result']) => results.filter((r) => r.result === res).length;
+  const failed = count('Not sent') + count('Approved, not emailed');
+  const cols: TableColumn<BulkResultRow>[] = [
+    { key: 'name', header: 'Candidate', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name }) },
+    ...(b && !b.canSeePay ? [] : [{ key: 'ctc', header: 'Fixed CTC', type: 'money' as const, value: (r: BulkResultRow) => r.ctc ?? 0 }]),
+    { key: 'result', header: 'Result', type: 'status', value: (r) => r.result, statusTone: (v) => RESULT_TONE[v as BulkResultRow['result']] ?? 'neutral' },
+    { key: 'reason', header: 'Why', type: 'text', value: (r) => r.reason ?? '' },
+  ];
+  return (
+    <HireFrame active="Offers & BGV">
+      <PageHeader title={b ? `Bulk offers · ${b.job.title}` : 'Bulk offers · GET 2027'} status={<Badge tone={failed ? 'warning' : 'success'}>{b?.status === 'running' ? 'Sending' : 'Sent'}</Badge>} />
+      <SummaryTiles
+        label="Batch status"
+        tiles={[
+          { label: 'Offers sent', value: count('Sent') },
+          { label: 'Waiting for extra approval', value: count('Waiting for extra approval') + count('Waiting for approval'), tone: count('Waiting for extra approval') ? 'warning' : 'default' },
+          { label: 'Held: no plan line', value: count('Held: no plan line'), tone: count('Held: no plan line') ? 'danger' : 'default' },
+          { label: b ? 'Not sent' : 'E-sign envelopes', value: b ? failed + count('Skipped: has an offer') : count('Sent'), tone: b && failed ? 'danger' : 'default', sub: b ? 'see each row' : 'one per candidate' },
+        ]}
+      />
+      <DataTable
+        label="Each candidate's result"
+        columns={cols}
+        rows={results}
+        getRowId={(r) => r.id}
+        rowButtons={(r) => (r.offerId ? <Button size="sm" onClick={() => live?.onOpenOffer(r.offerId!)}>Open offer</Button> : null)}
+      />
+    </HireFrame>
+  );
+}
+
+function BulkOfferBuilder({ rows: sampleRows, band: sampleBand, defaultStep, live }: { rows: BulkOfferRow[]; band: Band; defaultStep: string; live?: LiveBulkOffers }) {
+  const setup = live?.setup ?? null;
+  const toast = useToastIfAny();
+  const band = setup ? setup.band : sampleBand;
+  const [ctcs, setCtcs] = useState<Record<string, number>>({});
+  const [start, setStart] = useState<Date | null>(setup ? null : new Date(2027, 6, 5));
+  const [kind, setKind] = useState<string>('loi');
+  const [tpl, setTpl] = useState<string | null>(setup ? (setup.structures[0]?.value ?? null) : 'get');
+  const [letter, setLetter] = useState<string | null>(setup ? (setup.letters[0]?.value ?? null) : 't1');
+  const [place, setPlace] = useState<string | null>(setup ? (setup.job.locationId ?? setup.locations[0]?.value ?? null) : 'hsr');
+  const [step, setStep] = useState(defaultStep);
+  const [tried, setTried] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const base: BulkOfferRow[] = setup ? setup.candidates.map((c) => ({ id: c.entryId, name: c.name, college: c.email, ctc: ctcs[c.entryId] ?? 0, joining: start ?? new Date(), planOk: true })) : sampleRows;
+  const [selected, setSelected] = useState<string[]>(base.map((r) => r.id));
+  // Live: rows beyond the free places on the plan line are held, in the order they are listed.
+  const free = setup?.plan.check === 'hold' ? setup.plan.free : null;
+  const rows = setup ? base.map((r) => ({ ...r, planOk: free === null || !selected.includes(r.id) || selected.filter((s) => base.findIndex((x) => x.id === s) <= base.findIndex((x) => x.id === r.id)).length <= free })) : base;
+  const chosen = rows.filter((r) => selected.includes(r.id));
+  const outOfBand = chosen.filter((r) => band && bandCheck(r.ctc, band).extraApproval);
+  const noPlan = (setup ? chosen : rows).filter((r) => !r.planOk);
+  const chosenLetter = setup?.letters.find((l) => l.value === letter) ?? null;
   const cols: TableColumn<BulkOfferRow>[] = [
     { key: 'name', header: 'Candidate', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: r.college }) },
     { key: 'ctc', header: 'Fixed CTC', type: 'money', value: (r) => r.ctc, editable: 'money', total: 'sum' },
     { key: 'joining', header: 'Joining', type: 'date', value: (r) => r.joining },
-    { key: 'band', header: 'Grade range', type: 'status', value: (r) => (bandCheck(r.ctc, band).extraApproval ? 'Out of range' : 'Within range'), statusTone: (v) => (v === 'Within range' ? 'success' : 'warning') },
-    { key: 'plan', header: 'Plan check', type: 'status', value: (r) => (r.planOk ? 'Plan line free' : 'No plan line'), statusTone: (v) => (v === 'Plan line free' ? 'success' : 'danger') },
+    { key: 'band', header: 'Grade range', type: 'status', value: (r) => (!band ? 'No range set' : bandCheck(r.ctc, band).extraApproval ? 'Out of range' : 'Within range'), statusTone: (v) => (v === 'Within range' ? 'success' : v === 'No range set' ? 'neutral' : 'warning') },
+    { key: 'plan', header: 'Plan check', type: 'status', value: (r) => (setup && free === null ? 'Not checked' : r.planOk ? 'Plan line free' : 'No plan line'), statusTone: (v) => (v === 'Plan line free' ? 'success' : v === 'Not checked' ? 'neutral' : 'danger') },
   ];
-  if (sent)
-    return (
-      <HireFrame active="Offers & BGV">
-        <PageHeader title="Bulk offers · GET 2027" status={<Badge tone="success">Sent</Badge>} />
-        <SummaryTiles
-          label="Batch status"
-          tiles={[
-            { label: 'Offers sent', value: rows.length - noPlan.length },
-            { label: 'Waiting for extra approval', value: outOfBand.length, tone: outOfBand.length ? 'warning' : 'default' },
-            { label: 'Held: no plan line', value: noPlan.length, tone: noPlan.length ? 'danger' : 'default' },
-            { label: 'E-sign envelopes', value: rows.length - noPlan.length, sub: 'one per candidate' },
-          ]}
-        />
-      </HireFrame>
-    );
+  const errs: Record<string, string | null> = {
+    'bo-tpl': setup && !tpl ? 'Choose the salary structure.' : null,
+    'bo-start': !start ? 'Choose the joining date.' : null,
+    'bo-place': setup && !place ? 'Choose the work location.' : null,
+    'bo-letter': setup && !letter ? 'Choose the offer letter.' : null,
+    'bo-rows': !chosen.length ? 'Choose at least one candidate.' : chosen.some((r) => !(r.ctc > 0)) ? `Enter the fixed CTC for ${chosen.filter((r) => !(r.ctc > 0)).map((r) => r.name).join(', ')}.` : null,
+  };
+  const STEP: Record<string, string[]> = { template: ['bo-tpl', 'bo-start', 'bo-place', 'bo-letter'], values: ['bo-rows'] };
+  const err = (id: string) => ([...tried].some((s) => STEP[s]?.includes(id)) ? errs[id] : null);
+  const check = (ids: string[]) => {
+    setTried((t) => new Set([...t, ...ids]));
+    const bad = ids.find((s) => STEP[s]?.some((f) => errs[f]));
+    if (!bad) return true;
+    setStep(bad);
+    const f = STEP[bad]!.find((x) => errs[x])!;
+    setTimeout(() => (document.getElementById(f) as HTMLElement | null)?.focus(), 50);
+    return false;
+  };
+  const sendable = chosen.filter((r) => r.planOk);
+  const first = chosen[0] ?? rows[0];
+  const finish = async () => {
+    if (!live || !check(['template', 'values'])) return;
+    setBusy(true);
+    setFailed(null);
+    try {
+      await live.onSend({ templateVersionId: tpl!, templateId: letter && letter !== 'default' ? letter : null, letterKind: kind as 'offer' | 'loi', startDate: dayKey(start!), locationId: place!, addConditions: true, rows: chosen.map((r) => ({ entryId: r.id, annualCtc: r.ctc })) });
+      toast?.toast({ tone: 'success', title: 'Batch sent', description: 'Each candidate’s result is on the next page.' });
+    } catch (e) {
+      setFailed(failure(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const route = setup?.route;
   return (
     <HireFrame active="Offers & BGV">
-      <PageHeader title="Bulk offers · GET 2027 · Hosur campus" description={`One template, values per candidate. Each offer still gets its own headcount-plan check and its own e-sign envelope. Grade G3 range ${formatINR(band.min)} – ${formatINR(band.max)}.`} />
+      <PageHeader
+        title={setup ? `Bulk offers · ${setup.job.title}` : 'Bulk offers · GET 2027 · Hosur campus'}
+        description={`One template, values per candidate. Each offer still gets its own headcount-plan check and its own e-sign envelope.${band ? ` Grade ${setup ? (setup.grade ?? '') : 'G3'} range ${formatINR(band.min)} – ${formatINR(band.max)}.` : ' No grade pay range is set for this job.'}`}
+      />
+      {failed && <InlineAlert tone="danger" title="Not sent">{failed}</InlineAlert>}
       <Stepper
         title="Bulk offers"
-        defaultCurrent={defaultStep}
-        finishLabel={`Send ${selected.length - noPlan.filter((r) => selected.includes(r.id)).length} offers`}
+        current={step}
+        onCurrentChange={setStep}
+        onContinue={(id) => (live ? check([id]) : undefined)}
+        finishLabel={`Send ${sendable.length} offers`}
+        finishing={busy}
+        onFinish={live ? () => void finish() : undefined}
         steps={[
           {
             id: 'template',
@@ -935,17 +1066,23 @@ export function BulkOfferScreen({ rows, band, defaultStep = 'values', sent = fal
             content: (
               <div className="yx-hire-sheet__form">
                 <FormField label="Letter" required>
-                  <RadioGroup aria-label="Letter" defaultValue="loi" options={[{ value: 'loi', label: 'Letter of intent (offer later)' }, { value: 'offer', label: 'Offer letter' }]} />
+                  <RadioGroup aria-label="Letter" value={kind} onChange={setKind} options={[{ value: 'loi', label: 'Letter of intent (offer later)' }, { value: 'offer', label: 'Offer letter' }]} />
                 </FormField>
-                <FormField label="CTC template" required>
-                  <Select value="get" onChange={() => {}} options={[{ value: 'get', label: 'Graduate engineer trainee CTC' }]} />
+                <FormField id="bo-tpl" label="CTC template" required error={err('bo-tpl')}>
+                  {setup ? <Select aria-label="CTC template" value={tpl} onChange={setTpl} options={setup.structures} placeholder="Choose the salary structure" /> : <Select value="get" onChange={() => {}} options={[{ value: 'get', label: 'Graduate engineer trainee CTC' }]} />}
                 </FormField>
-                <FormField label="Joining batch" required helper="Moving the batch date moves everyone in it">
-                  <Select value="b1" onChange={() => {}} options={[{ value: 'b1', label: 'GET batch 1 · joins 5 Jul 2027' }]} />
+                <FormField id="bo-start" label="Joining date" required helper="Everyone in this batch joins on this day" error={err('bo-start')}>
+                  <DatePicker id="bo-start" aria-label="Joining date" value={start} onChange={setup ? setStart : () => {}} min={live?.now} />
+                </FormField>
+                <FormField id="bo-place" label="Work location" required error={err('bo-place')}>
+                  {setup ? <Select aria-label="Work location" value={place} onChange={setPlace} options={setup.locations} placeholder="Choose the work location" /> : <Select value="hsr" onChange={() => {}} options={[{ value: 'hsr', label: 'Hosur plant' }]} />}
+                </FormField>
+                <FormField id="bo-letter" label="Letter template" required error={err('bo-letter')} helper={chosenLetter ? (chosenLetter.esign ? 'Each candidate signs with a one-time code (e-sign is on for this letter).' : 'Each candidate accepts by the link in the email.') : 'One e-sign envelope per candidate.'}>
+                  {setup ? <Select aria-label="Letter template" value={letter} onChange={setLetter} options={setup.letters.map((l) => ({ value: l.value, label: l.label }))} /> : <Select value="t1" onChange={() => {}} options={[{ value: 't1', label: 'Campus letter of intent' }]} />}
                 </FormField>
               </div>
             ),
-            summary: <Text>Letter of intent · GET CTC · batch 1, 5 Jul 2027</Text>,
+            summary: <Text>{kind === 'loi' ? 'Letter of intent' : 'Offer letter'} · {setup ? (setup.structures.find((s) => s.value === tpl)?.label ?? '') : 'GET CTC'} · joining {start ? formatDate(start) : 'not chosen'}</Text>,
           },
           {
             id: 'values',
@@ -953,24 +1090,43 @@ export function BulkOfferScreen({ rows, band, defaultStep = 'values', sent = fal
             description: `${rows.length} candidates`,
             content: (
               <div className="yx-hire-stack">
-                {outOfBand.length > 0 && <InlineAlert tone="warning" title={`${outOfBand.length} out of the grade range`}>They go to the CFO for extra approval; the rest go straight to HR.</InlineAlert>}
+                {err('bo-rows') && <InlineAlert tone="danger" title="Check the candidates">{err('bo-rows')}</InlineAlert>}
+                {outOfBand.length > 0 && <InlineAlert tone="warning" title={`${outOfBand.length} out of the grade range`}>{route ? `They also go to ${route.bandStep.approvers.join(', ') || 'the extra approver'} (${route.bandStep.name}); the rest follow the company's offer route.` : 'They go to the CFO for extra approval; the rest go straight to HR.'}</InlineAlert>}
                 {noPlan.length > 0 && <InlineAlert tone="danger" title={`${noPlan.length} without a free plan line`}>These offers are held until the plan is revised: {noPlan.map((r) => r.name).join(', ')}.</InlineAlert>}
-                <DataTable label="Offer values" columns={cols} rows={rows} getRowId={(r) => r.id} selectable selectedIds={selected} onSelectedChange={setSelected} onCellEdit={() => {}} />
+                {setup && !setup.candidates.length ? (
+                  <EmptyState title="No candidates to offer" description="Everyone on this job already has an offer, was hired or was rejected." />
+                ) : (
+                  <div id="bo-rows" tabIndex={-1}>
+                    <DataTable label="Offer values" columns={cols} rows={rows} getRowId={(r) => r.id} selectable selectedIds={selected} onSelectedChange={setSelected} onCellEdit={(r, key, v) => key === 'ctc' && setCtcs((m) => ({ ...m, [r.id]: Number(v) || 0 }))} />
+                  </div>
+                )}
               </div>
             ),
-            summary: <Text>{selected.length} selected · {outOfBand.length} need extra approval · {noPlan.length} held</Text>,
+            summary: <Text>{chosen.length} selected · {outOfBand.length} need extra approval · {noPlan.length} held</Text>,
           },
           {
             id: 'preview',
             title: 'Preview',
             content: (
               <div className="yx-hire-letter" role="document" aria-label="Letter preview for the first candidate">
-                <Text as="p" weight="semibold">
-                  Dear {rows[0]?.name},
-                </Text>
-                <Text as="p">
-                  Following your selection at the {rows[0]?.college} campus drive, Kaveri Foods Pvt Ltd intends to offer you the role of Graduate Engineer Trainee at our Hosur plant with an annual CTC of {formatINR(rows[0]?.ctc ?? 0)}, joining on 5 Jul 2027.
-                </Text>
+                {chosenLetter && first ? (
+                  fillLetter(chosenLetter.body, { candidateName: first.name, jobTitle: setup!.job.title, orgName: setup!.company, recruiterName: '', compensation: `a fixed CTC of ${formatINR(first.ctc)} a year`, startDate: start ? formatDate(start) : 'the joining date', offerExpiry: `${setup!.expiryDays} days after it is sent`, offerLink: '(the link comes with the email)' })
+                    .split(/\n{2,}/)
+                    .map((para, i) => (
+                      <Text key={i} as="p" weight={i === 0 ? 'semibold' : undefined}>
+                        {para}
+                      </Text>
+                    ))
+                ) : (
+                  <>
+                    <Text as="p" weight="semibold">
+                      Dear {first?.name},
+                    </Text>
+                    <Text as="p">
+                      Following your selection at the {first?.college} campus drive, Kaveri Foods Pvt Ltd intends to offer you the role of Graduate Engineer Trainee at our Hosur plant with an annual CTC of {formatINR(first?.ctc ?? 0)}, joining on 5 Jul 2027.
+                    </Text>
+                  </>
+                )}
               </div>
             ),
             summary: <Text>Letter checked for the first candidate</Text>,
@@ -981,9 +1137,10 @@ export function BulkOfferScreen({ rows, band, defaultStep = 'values', sent = fal
             content: (
               <DescriptionList
                 items={[
-                  { label: 'Approval', value: 'Per offer: HR, plus CFO for out-of-range offers' },
-                  { label: 'E-sign', value: 'One envelope per candidate, OTP accept' },
+                  { label: 'Approval', value: route ? `Per offer: ${route.steps.map((s) => s.name).join(', ') || 'no route in the range (sent at once)'}${outOfBand.length ? `, plus ${route.bandStep.name} for out-of-range offers` : ''}` : 'Per offer: HR, plus CFO for out-of-range offers' },
+                  { label: 'E-sign', value: chosenLetter ? (chosenLetter.esign ? 'One envelope per candidate, signed with a one-time code' : 'Accepted by the link in each email') : 'One envelope per candidate, OTP accept' },
                   { label: 'Held', value: noPlan.length ? noPlan.map((r) => r.name).join(', ') : 'None' },
+                  ...(setup ? [{ label: 'Expires', value: `${setup.expiryDays} days after it is sent, never after joining` }] : []),
                 ]}
               />
             ),

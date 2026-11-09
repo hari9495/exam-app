@@ -1,3 +1,4 @@
+import { OffersModule } from '../offers/offers.module';
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { CryptoModule } from '@exam-platform/shared';
@@ -36,7 +37,7 @@ import { PreboardingPortalService } from './portal.service';
 // reviews, resignations, company exits, clearance, exit interviews and assets (6c).
 @Module({
   // The alumni login shows the pay documents portal's payslips and Form 16 (PayDocumentsService).
-  imports: [WorkflowModule, NotificationsModule, RulesEngineModule, ServiceDeskModule, DocumentsModule, AuthModule, CryptoModule, EmailModule, EmployeeHistoryModule, PeopleModule, PipelineModule, PayrollModule],
+  imports: [OffersModule, WorkflowModule, NotificationsModule, RulesEngineModule, ServiceDeskModule, DocumentsModule, AuthModule, CryptoModule, EmailModule, EmployeeHistoryModule, PeopleModule, PipelineModule, PayrollModule],
   controllers: [LifecycleController, PreboardingPortalController, ExitsController, AlumniPortalController, SpecialCasesController, PeopleRegistersController],
   providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, LifecycleJourneysService, JoinersService, JoiningService, PreboardingPortalService, LifecycleJobs, ExitsService, OffboardingService, LastDayService, AlumniPortalService, OnboardingExtrasService, ExitExtrasService, LifeEventsService, PeopleRegistersService],
   // M06 PM8 opens a company exit from an improvement plan through M01's own checks.

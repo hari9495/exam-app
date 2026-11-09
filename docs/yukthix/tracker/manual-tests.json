@@ -17425,5 +17425,147 @@
       "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring · default recruiter no longer qualifies"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-09-08",
+    "area": "Hiring · HIR-09 Offer builder and HIR-29 offer conditions (11 Nov 2026)",
+    "screen": "Settings 6.1 · offer approver, clawback, e-signed letters (answers 332, 334, 337)",
+    "url": "http://localhost:3000/yx/settings/hiring",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin: has the offer-pay key). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open Settings › Hiring & Assessments › Hiring; find Offers and hand-off.",
+      "Set \"Who approves an offer above the grade pay range\" to a named person and save.",
+      "Choose a person who cannot see offer pay (if the list shows one, ask the lead to give the key and remove it) and save.",
+      "Set the clawback to \"The part for the months not served\"; tick one offer letter under \"Offer letters the candidate signs electronically\"; save."
+    ],
+    "expected": "Step 1: the three fields show with the company's values. Step 2: toast \"Hiring settings saved\"; an above-range offer sent for approval now waits on that person. Step 3: refused: \"That person cannot see offer pay, so cannot approve it.\" Step 4: toast; a new offer using that letter shows \"The candidate signs with a one-time code\" on its Letter step.",
+    "stories": [
+      "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-09-09",
+    "area": "Hiring · HIR-09 Offer builder and HIR-29 offer conditions (11 Nov 2026)",
+    "screen": "Joining bonus to Pay and the clawback (answer 334)",
+    "url": "http://localhost:3000/yx/hiring/offers/<offer id>",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin: has the offer-pay key). Browser window 1278 x 635, sidebar open. Then payroll-tester@demo-org.test.",
+    "steps": [
+      "Make an offer with a joining bonus of 1,00,000 and 12 months clawback; accept it, add the joiner and mark them joined.",
+      "As payroll-tester, open Pay › One-time pay for the joining month.",
+      "Exit that person within 12 months and open their final settlement.",
+      "Repeat with HR's clawback setting on pro rata."
+    ],
+    "expected": "Step 1: the offer's activity says the joining bonus goes to Pay in that month. Step 2: one Joining bonus line of ₹1,00,000, linked to the offer; marking joined again never adds a second. Step 3: if a run already paid the bonus, the settlement shows \"Joining bonus repaid: left within 12 months of joining\" for ₹1,00,000; if not paid yet, the bonus is not paid at all. Step 4: only the part for the months not served.",
+    "stories": [
+      "Screens/Hiring/HIR-09 · Offer builder · HR · employer costs, joining bonus with clawback"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-09-10",
+    "area": "Hiring · HIR-09 Offer builder and HIR-29 offer conditions (11 Nov 2026)",
+    "screen": "Send reminder (answer 336)",
+    "url": "http://localhost:3000/yx/hiring/offers/<offer id>",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin: has the offer-pay key). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open a sent offer the candidate has not answered and press Send reminder.",
+      "Press Send reminder again.",
+      "Open an accepted offer with an open condition and press Send reminder.",
+      "Open a draft offer."
+    ],
+    "expected": "Step 1: toast \"Reminder sent: answer the offer\"; mailpit has the company's \"Your offer is waiting\" email with the link; the activity logs it. Step 2: refused: a reminder already went in the last day. Step 3: toast \"Reminder sent: what is still due\"; the email lists the open conditions. Step 4: no Send reminder button. Nothing is ever sent without the button.",
+    "stories": [
+      "Screens/Hiring/HIR-29 · Offer conditions tab · Overdue condition · lapse reminder"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-09-11",
+    "area": "Hiring · HIR-09 Offer builder and HIR-29 offer conditions (11 Nov 2026)",
+    "screen": "Candidate signs the offer (answer 337)",
+    "url": "http://localhost:3000/yx/offer/<token>",
+    "account": "The candidate's emailed link (no sign-in), for an offer sent with a letter that has e-sign on. Phone width too.",
+    "steps": [
+      "Open the link; press Sign and accept straight away.",
+      "Press Email me a code without ticking the agreement.",
+      "Tick the agreement, press Email me a code, enter a wrong code, then the right one from mailpit."
+    ],
+    "expected": "Step 1: \"Agree to sign electronically first.\" with the focus on the agreement. Step 2: nothing sent; the same message. Step 3: toast \"Code sent to …\"; the wrong code is refused with the reason; the right one shows \"You accepted this offer\" and the offer record says the candidate signed and accepted.",
+    "stories": [
+      "Screens/Portals/T9-09 · Careers site · Offer · sign with a code (e-sign on)"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-29-03",
+    "area": "Hiring · HIR-09 Offer builder and HIR-29 offer conditions (11 Nov 2026)",
+    "screen": "Joining-day notice (answer 335)",
+    "url": "http://localhost:3000/yx/hiring/offers/<offer id>",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin: has the offer-pay key). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Leave one condition open on an accepted offer whose joining day is today; wait for the hourly job (or ask the lead to run it).",
+      "Check the bell and the email of the joiner's HR owner.",
+      "Open the offer's Conditions tab."
+    ],
+    "expected": "Step 2: one notice \"<name> joins today with 1 offer condition still open: …\", only once. Step 3: the condition is still open (nothing lapses); HR marks it met or waives it with a reason.",
+    "stories": [
+      "Screens/Hiring/HIR-29 · Offer conditions tab · Lapsed · pre-boarding unwound"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-28-01",
+    "area": "Hiring · HIR-28 Bulk offers (12 Nov 2026)",
+    "screen": "Bulk offers · template and values",
+    "url": "http://localhost:3000/yx/hiring/jobs/<job id>",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin: has the offer-pay key). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open a demo job with several candidates; menu (three dots) › Make bulk offers; compare with the stories \"Template step\" and \"Per-candidate values · checks\".",
+      "On Template press Continue with no joining date.",
+      "Choose the joining date; on Candidates and values press Continue with no CTC typed.",
+      "Type a CTC in each row (one above the grade range); untick one candidate.",
+      "Read the Preview and the Approve and send steps."
+    ],
+    "expected": "Step 1: same layout; no page scroll at 1278 x 635 (the table scrolls inside). Step 2: \"Choose the joining date.\" with focus; nothing sent. Step 3: \"Enter the fixed CTC for …\" naming the candidates. Step 4: the above-range row shows Out of range and the warning names the extra approver; rows beyond the plan line's free places show No plan line and the held warning; the finish button counts only the offers that go. Step 5: the letter filled for the first selected candidate; the route and e-sign as the company has them.",
+    "stories": [
+      "Screens/Hiring/HIR-28 · Bulk offer screen · Template step",
+      "Screens/Hiring/HIR-28 · Bulk offer screen · Per-candidate values · checks",
+      "Screens/Hiring/HIR-28 · Bulk offer screen · Preview step"
+    ],
+    "note": "Positive and negative (pressed too early)."
+  },
+  {
+    "id": "MT-HIR-28-02",
+    "area": "Hiring · HIR-28 Bulk offers (12 Nov 2026)",
+    "screen": "Bulk offers · sent batch",
+    "url": "http://localhost:3000/yx/hiring/offer-batches/<batch id>",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin: has the offer-pay key). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Press Send N offers.",
+      "Check mailpit and open one candidate's offer from the result table.",
+      "Press the browser Back and send again (refresh the page and press Send with the same rows)."
+    ],
+    "expected": "Step 1: toast \"Batch sent\"; the batch page shows the counts and each candidate's result: Sent, Waiting for extra approval, Held: no plan line, Skipped: has an offer, Not sent with its reason. Step 2: one email per sent candidate; the offer record opens. Step 3: a fresh page is a new batch: candidates who now have offers are not offered again (Skipped).",
+    "stories": [
+      "Screens/Hiring/HIR-28 · Bulk offer screen · Sent · batch status"
+    ],
+    "note": "Positive and negative (no double offers)."
+  },
+  {
+    "id": "MT-HIR-28-03",
+    "area": "Hiring · HIR-28 Bulk offers (12 Nov 2026)",
+    "screen": "Bulk offers · refusals",
+    "url": "http://localhost:3000/yx/hiring/jobs/<job id>/bulk-offers",
+    "account": "A recruiter without the offer-pay key; then admin-tester@demo-org.test acting for hr-tester.",
+    "steps": [
+      "Without the offer-pay key, open the job menu, then the bulk offers address.",
+      "Acting for hr-tester, open the page and press Send."
+    ],
+    "expected": "Step 1: no Make bulk offers item; the page says it needs the offer-pay key. Step 2: refused: \"Not available while acting for someone else\"; nothing is made.",
+    "stories": [
+      "Screens/Hiring/HIR-28 · Bulk offer screen · Per-candidate values · checks"
+    ],
+    "note": "Negative."
   }
 ]

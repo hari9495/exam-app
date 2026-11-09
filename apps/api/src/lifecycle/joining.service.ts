@@ -10,6 +10,7 @@ import { DocumentsService } from '../documents/documents.service';
 import { LettersService } from '../documents/letters/letters.service';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { PayStructuresService } from '../payroll/structures.service';
+import { PayrollIntakeService } from '../payroll/intake.service';
 import type { CompensationChangeDto } from '../payroll/dto-5b';
 import { JourneysService as DeskJourneysService } from '../service-desk/journeys.service';
 import { joinerInScope, ownOf } from '../documents/person-access';
@@ -57,6 +58,7 @@ export class JoiningService {
     private readonly letters: LettersService,
     private readonly pipeline: PipelineService,
     private readonly structures: PayStructuresService,
+    private readonly intake: PayrollIntakeService,
   ) {}
 
   private viewer(user: ScopeUser) {
@@ -195,7 +197,8 @@ export class JoiningService {
    * HIR-09: a joiner from an offer with CTC lines gets that pay as their first salary in Pay: the offer's salary structure
    * and fixed CTC, worked out again with the employee's own facts, as a pay change someone else approves (as any other).
    * Never blocks joining: when it cannot be raised (no right to set pay, a structure problem) the reason is returned and
-   * audited, and payroll sets the salary as before. Variable pay and the joining bonus are not carried (question 334).
+   * audited, and payroll sets the salary as before. Founder answer 334: the joining bonus is paid as one-time pay in the
+   * first run after joining (payroll's own intake hook, linked to the offer; never a second time).
    */
   private async payFromOffer(ctx: TenantContext, user: ScopeUser, offerId: string, employeeId: string, joinedOn: string) {
     const v = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
@@ -203,16 +206,42 @@ export class JoiningService {
       return o?.currentVersion ? tx.offerVersion.findFirst({ where: { organizationId: c.organizationId, offerId, version: o.currentVersion } }) : null;
     });
     if (!v) return null;
+    const bonus = v.joiningBonus.gt(0) ? await this.bonusFromOffer(ctx, user, offerId, employeeId, joinedOn, v) : null;
     try {
       const r = await this.structures.change(ctx, user, { employeeId, effectiveDate: joinedOn, templateVersionId: v.salaryTemplateVersionId, entryMode: 'ctc', annualCtc: v.annualCtc.toFixed(2), reason: `Pay from the accepted offer (version ${v.version})` } as CompensationChangeDto);
       await inCompany(this.tenantPrisma, ctx, (tx, c) => audit(tx, c, 'ats.offer.pay_handed_off', 'offer', offerId, { employeeId, version: v.version, changeId: r.changeId }));
-      return { status: 'sent' as const, changeId: r.changeId, offerVersion: v.version };
+      return { status: 'sent' as const, changeId: r.changeId, offerVersion: v.version, bonus };
     } catch (e) {
       const status = (e as { status?: number }).status;
       const reason = status === 403 || status === 404 ? 'You cannot set pay for this person. Payroll sets the first salary from the offer.' : ((e as Error).message || 'The pay could not be worked out.');
       await inCompany(this.tenantPrisma, ctx, (tx, c) => audit(tx, c, 'ats.offer.pay_handoff_failed', 'offer', offerId, { employeeId, version: v.version, reason: reason.slice(0, 300) }));
-      return { status: 'not_sent' as const, reason, offerVersion: v.version };
+      return { status: 'not_sent' as const, reason, offerVersion: v.version, bonus };
     }
+  }
+
+  /** The joining bonus as one-time pay in the joining month's run (the next month when that one is locked). */
+  private async bonusFromOffer(ctx: TenantContext, user: ScopeUser, offerId: string, employeeId: string, joinedOn: string, v: { version: number; joiningBonus: { toFixed: (n: number) => string } }) {
+    const next = (m: string) => (Number(m.slice(5)) === 12 ? `${Number(m.slice(0, 4)) + 1}-01` : `${m.slice(0, 4)}-${String(Number(m.slice(5)) + 1).padStart(2, '0')}`);
+    let month = joinedOn.slice(0, 7);
+    for (let tries = 0; tries < 2; tries++) {
+      try {
+        const row = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+          const r = await this.intake.oneTime(tx, c, { source: 'm10', sourceRef: `offer:${offerId}:joining`, employeeId, componentCode: 'joining_bonus', amount: v.joiningBonus.toFixed(2), month, reason: `Joining bonus from the accepted offer (version ${v.version})`, by: user.userId! });
+          if (!r.existing) await audit(tx, c, 'ats.offer.joining_bonus_queued', 'offer', offerId, { employeeId, month, oneTimePayId: r.id });
+          return r;
+        });
+        return { status: 'queued' as const, month, oneTimePayId: row.id };
+      } catch (e) {
+        if ((e as { response?: { code?: string } }).response?.code === 'PERIOD_LOCKED' && tries === 0) {
+          month = next(month);
+          continue;
+        }
+        const reason = (e as Error).message || 'The joining bonus could not be queued.';
+        await inCompany(this.tenantPrisma, ctx, (tx, c) => audit(tx, c, 'ats.offer.joining_bonus_failed', 'offer', offerId, { employeeId, reason: reason.slice(0, 300) }));
+        return { status: 'not_queued' as const, reason };
+      }
+    }
+    return { status: 'not_queued' as const, reason: 'Both pay months are locked. Payroll adds the joining bonus by hand.' };
   }
 
   /** YX-LC-12: did not join / reneged / offer withdrawn, in one audited action; nothing is deleted. */

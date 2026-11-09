@@ -1,3 +1,4 @@
+import { Throttle } from '@nestjs/throttler';
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { TenantContext } from '@exam-platform/shared';
@@ -57,6 +58,16 @@ export class OfferBuilderController {
   submit(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     assertOwnSession(req);
     return this.offers.submit(ctx, (req.user as ScopeUser).userId!, id);
+  }
+
+  /** Answer 336: the recruiter's Send reminder (the offer, or what is still due); never automatic. */
+  @Post(':id/remind')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @RequireAnyPermission('ats.offer.manage', 'pipeline:manage')
+  remind(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    assertOwnSession(req);
+    return this.offers.remind(ctx, id);
   }
 
   @Post(':id/conditions')

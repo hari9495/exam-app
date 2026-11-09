@@ -11,6 +11,7 @@ import { PreboardingPortalService } from './portal.service';
 import { LastDayService } from './last-day.service';
 import { ExitExtrasService } from './exit-extras.service';
 import { LifeEventsService } from './life-events.service';
+import { OfferBuilderService } from '../offers/offer-builder.service';
 
 const QUEUE = 'lifecycle-jobs';
 
@@ -32,6 +33,7 @@ export class LifecycleJobs implements OnModuleInit, OnModuleDestroy {
     private readonly lastDay: LastDayService,
     private readonly extras: ExitExtrasService,
     private readonly lifeEvents: LifeEventsService,
+    private readonly offers: OfferBuilderService,
   ) {
     this.queue = logBullErrors(new Queue(QUEUE, bullOpts(connection)), QUEUE);
   }
@@ -58,6 +60,8 @@ export class LifecycleJobs implements OnModuleInit, OnModuleDestroy {
         await this.lastDay.sweep();
         // Lifecycle 6f: life-event journeys start (and close when the leave or transfer is called off).
         await this.lifeEvents.sweep();
+        // HIR-09 answer 335: on the joining day, HR is told once about offer conditions still open.
+        await this.offers.joiningDaySweep();
       }
       if (name === 'daily') {
         await this.documents.expirySweep();

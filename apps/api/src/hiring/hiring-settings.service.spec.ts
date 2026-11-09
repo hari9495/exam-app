@@ -33,6 +33,6 @@ describe('HiringSettingsService.save', () => {
 
   it('page keys are registry keys with defaults, the seven of answer 341 included', () => {
     expect(HIRING_SETTING_KEYS).toEqual(expect.arrayContaining(['hiring.requisition.default_recruiter', 'ats.headcount_plan', 'ats.headcount_plan.manager_view', 'ats.referral.self_apply_days', 'hiring.pay_range.show', 'hiring.pay_history.ask', 'hiring.rediscovery.ai', 'hiring.rehire_flag.blocks_screening', 'hiring.bgv.decider_other_person']));
-    expect(HIRING_SETTING_KEYS).toHaveLength(13);
+    expect(HIRING_SETTING_KEYS).toHaveLength(15);
   });
 });

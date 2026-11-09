@@ -19,6 +19,10 @@ export interface HiringSettingsData {
   lastChange: { by: string; at: string; what: string } | null;
   pipelines: { id: string; name: string; isDefault: boolean; jobs: number; stages: { id: string; name: string; category: string; daysTarget: number | null; limit: number | null }[] }[];
   scorecards: ScorecardTemplateView[];
+  /** HIR-09 answer 332: people who may approve an offer above the range (they hold the offer-pay key). */
+  offerApprovers?: { id: string; name: string }[];
+  /** HIR-09 answer 337: each offer letter template and its e-sign switch. */
+  offerLetters?: { id: string; name: string; esign: boolean }[];
 }
 
 /** Designed field → company setting. */
@@ -26,6 +30,8 @@ const KEY = {
   'hire.default_recruiter': 'hiring.requisition.default_recruiter',
   'hire.retention_months': 'ats.retention_months',
   'hire.not_selected_notice': 'hiring.reject.email_candidate',
+  'hire.band_approver': 'hiring.offer.band_approver',
+  'hire.clawback_basis': 'hiring.offer.clawback_basis',
   'hire.headcount_plan': 'ats.headcount_plan',
   'hire.plan_manager_view': 'ats.headcount_plan.manager_view',
   'hire.pay_range_show': 'hiring.pay_range.show',
@@ -45,10 +51,11 @@ const TOGGLE: Partial<Record<keyof typeof KEY, [on: string, off: string]>> = {
   'hire.rehire_blocks_screening': ['on', 'off'],
   'hire.bgv_decider_other_person': ['on', 'off'],
 };
+const BASIS: Record<string, string> = { full: 'All of it', pro_rata: 'The part for the months not served' };
 const BONUS = 'ats.referral.bonus_inr';
 const DAYS = 'ats.referral.qualify_days';
 /** The designed fields that are live; everything else on the designed page is left out. */
-const LIVE_FIELDS = new Set(['hire.pipelines', 'hire.scorecards', 'hire.referral_rules', ...Object.keys(KEY)]);
+const LIVE_FIELDS = new Set(['hire.pipelines', 'hire.scorecards', 'hire.referral_rules', 'hire.offer_esign', ...Object.keys(KEY)]);
 
 const bonusLabel = (v: string) => formatINR(Number(v));
 const daysLabel = (v: string) => `${v} days`;
@@ -125,6 +132,22 @@ export function hiringSettingsPage(design: SettingsPageDef, data: HiringSettings
         const k = KEY[d.key];
         return { ...base, value: v[k] === TOGGLE[d.key]![0], starter: v[k] === data.defaults[k], helper: 'On: rejecting a candidate on the pipeline board emails them after 24 hours (the Rejected stage’s email), and the rejection can be undone until then. Off: the candidate is told nothing.' };
       }
+      case 'hire.band_approver': {
+        const k = KEY[d.key];
+        const approvers = (data.offerApprovers ?? []).map((p) => ({ value: p.id, label: p.name }));
+        const options = ['hr_head', 'hiring_manager', ...approvers.map((p) => p.value)];
+        const value = options.includes(v[k]!) ? v[k]! : 'hr_head';
+        return { ...base, kind: 'select', options, optionLabels: { hr_head: 'HR head', hiring_manager: 'Hiring manager', ...Object.fromEntries(approvers.map((p) => [p.value, p.label])) }, value, starter: value === data.defaults[k] };
+      }
+      case 'hire.clawback_basis': {
+        const k = KEY[d.key];
+        return { ...base, options: ['full', 'pro_rata'], optionLabels: BASIS, value: v[k] ?? 'full', starter: v[k] === data.defaults[k] };
+      }
+      case 'hire.offer_esign': {
+        const letters = data.offerLetters ?? [];
+        if (!letters.length) return null;
+        return { ...base, options: letters.map((l) => l.id), optionLabels: Object.fromEntries(letters.map((l) => [l.id, l.name])), value: letters.filter((l) => l.esign).map((l) => l.id), starter: letters.every((l) => !l.esign) };
+      }
       case 'hire.referral_rules':
         return {
           ...base,
@@ -141,7 +164,7 @@ export function hiringSettingsPage(design: SettingsPageDef, data: HiringSettings
   };
   return {
     ...design,
-    summary: 'Pipeline and scorecard templates with stage targets, the default recruiter, the headcount plan, pay transparency, rehire, background-check and candidate data rules, AI notes on past candidates, telling candidates who are not selected, and referral bonuses.',
+    summary: 'Pipeline and scorecard templates with stage targets, the default recruiter, the headcount plan, pay transparency, rehire, background-check and candidate data rules, AI notes on past candidates, telling candidates who are not selected, offers (the approver above the pay range, joining bonus clawback, e-signed letters) and referral bonuses.',
     related: undefined,
     scopes: undefined,
     sections: design.sections.map((sec) => ({ ...sec, settings: sec.settings.map(fill).filter((x): x is SettingDef => x !== null) })).filter((sec) => sec.settings.length > 0),
@@ -155,8 +178,13 @@ export function hiringSettingsChanges(values: Record<string, SettingValue>, rows
     const key = KEY[field as keyof typeof KEY];
     if (!key) continue;
     const toggle = TOGGLE[field as keyof typeof KEY];
-    out.push({ key, value: toggle ? toggle[value === true ? 0 : 1] : String(value ?? 'none') });
+    const empty = field === 'hire.clawback_basis' ? 'full' : field === 'hire.band_approver' ? 'hr_head' : 'none';
+    out.push({ key, value: toggle ? toggle[value === true ? 0 : 1] : String(value ?? empty) });
   }
+  // HIR-09 answer 337: each offer letter whose e-sign switch changed ('offer_template.esign' = '<id>:on|off').
+  const chosen = values['hire.offer_esign'];
+  if (Array.isArray(chosen))
+    for (const l of data.offerLetters ?? []) if (chosen.includes(l.id) !== l.esign) out.push({ key: 'offer_template.esign', value: `${l.id}:${chosen.includes(l.id) ? 'on' : 'off'}` });
   const rule = rows['hire.referral_rules']?.[0];
   if (rule) {
     const bonus = (data.choices[BONUS] ?? []).find((c) => bonusLabel(c) === rule[1]);
@@ -166,3 +194,4 @@ export function hiringSettingsChanges(values: Record<string, SettingValue>, rows
   }
   return out;
 }
+

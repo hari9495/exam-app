@@ -8,8 +8,8 @@ import { Badge, type BadgeTone } from '../../components/display';
 import { Card } from '../../components/shell';
 import { EmptyState, InlineAlert, Skeleton } from '../../components/feedback';
 import { FormField } from '../../components/field';
-import { TextArea, TextField, MaskedField } from '../../components/inputs';
-import { RadioGroup } from '../../components/choice';
+import { CodeField, TextArea, TextField, MaskedField } from '../../components/inputs';
+import { Checkbox, RadioGroup } from '../../components/choice';
 import { ConfirmDialog } from '../../components/overlay';
 import { FileUpload } from '../../components/upload';
 import { Icon } from '../../components/foundations';
@@ -368,12 +368,20 @@ export interface OfferView {
   /** sent, accepted, declined, expired or withdrawn. */
   status: string;
   pdfUrl: string | null;
+  /** HIR-09 answer 337: the company's letter asks for an electronic signature (a one-time code by email). */
+  esign?: boolean;
 }
 
 export interface LiveOfferAccept {
-  onRespond: (action: 'accept' | 'decline') => Promise<unknown>;
+  /** With e-sign, accepting carries the emailed code and the disclosure the candidate agreed to. */
+  onRespond: (action: 'accept' | 'decline', sign?: { code: string; disclosureAccepted: boolean }) => Promise<unknown>;
+  /** E-sign: emails the one-time code; resolves with the masked address it went to. */
+  onSendCode?: () => Promise<{ to: string }>;
   today: Date;
 }
+
+/** What electronic signing means, shown before the candidate agrees (IT Act 2000 s.10A: a contract by electronic means). */
+const ESIGN_DISCLOSURE = 'I agree to sign this offer electronically. My one-time code, the time, my device and a fingerprint of the letter are kept as the record of my signature, and I get a copy of the letter.';
 
 /** The offer the company sent, accepted or declined by its link (accept stays the default; e-sign is a template choice). */
 export function OfferAcceptScreen({ brand, state, offer, live }: { brand: CandidateBrand; state: CandidatePageState; offer: OfferView | null; live?: LiveOfferAccept }) {
@@ -382,13 +390,40 @@ export function OfferAcceptScreen({ brand, state, offer, live }: { brand: Candid
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [declining, setDeclining] = useState(false);
+  const [agreed, setAgreed] = useState(false);
+  const [code, setCode] = useState('');
+  const [codeTo, setCodeTo] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const [tried, setTried] = useState(false);
   const today = live?.today ?? new Date();
+  const esign = Boolean(offer?.esign);
+
+  const sendCode = async () => {
+    setTried(false);
+    if (!agreed) return (setTried(true), void setTimeout(() => document.getElementById('of-agree')?.focus(), 0));
+    setSending(true);
+    setError(null);
+    try {
+      const r = await live?.onSendCode?.();
+      setCodeTo(r?.to ?? 'your email');
+      toast?.toast({ tone: 'success', title: `Code sent to ${r?.to ?? 'your email'}` });
+    } catch (e) {
+      setError((e as Error).message || 'The code was not sent. Try again.');
+    } finally {
+      setSending(false);
+    }
+  };
 
   const respond = async (action: 'accept' | 'decline') => {
+    if (action === 'accept' && esign) {
+      setTried(true);
+      if (!agreed) return void setTimeout(() => document.getElementById('of-agree')?.focus(), 0);
+      if (!/^\d{6}$/.test(code)) return void setTimeout(() => document.getElementById('of-code')?.focus(), 0);
+    }
     setBusy(true);
     setError(null);
     try {
-      await live?.onRespond(action);
+      await (action === 'accept' && esign ? live?.onRespond(action, { code, disclosureAccepted: agreed }) : live?.onRespond(action));
       setDone(action === 'accept' ? 'accepted' : 'declined');
       toast?.toast({ tone: 'success', title: action === 'accept' ? 'Offer accepted' : 'Offer declined' });
     } catch (e) {
@@ -430,9 +465,25 @@ export function OfferAcceptScreen({ brand, state, offer, live }: { brand: Candid
         <Card title="Your answer">
           {error && <InlineAlert tone="danger">{error}</InlineAlert>}
           <p className="yx-ps-muted">Accepting tells {brand.tenant} you will join on the start date. They will send the next steps.</p>
+          {esign && (
+            <>
+              <p className="yx-ps-muted">{brand.tenant} asks you to sign this offer electronically: agree below, get a code by email, and enter it.</p>
+              <FormField id="of-agree" label="Electronic signature" required hideLabel error={tried && !agreed ? 'Agree to sign electronically first.' : null}>
+                <Checkbox label={ESIGN_DISCLOSURE} checked={agreed} onChange={setAgreed} />
+              </FormField>
+              <div className="yx-ps-row">
+                <Button loading={sending} onClick={() => void sendCode()}>
+                  {codeTo ? 'Send a new code' : 'Email me a code'}
+                </Button>
+              </div>
+              <FormField id="of-code" label="Code from the email" required helper={codeTo ? `Sent to ${codeTo}. It works once, for a few minutes.` : undefined} error={tried && agreed && !/^\d{6}$/.test(code) ? 'Enter the 6-digit code from the email.' : null}>
+                <CodeField value={code} onChange={setCode} />
+              </FormField>
+            </>
+          )}
           <div className="yx-ps-row">
             <Button variant="approve" loading={busy} onClick={() => void respond('accept')}>
-              Accept offer
+              {esign ? 'Sign and accept' : 'Accept offer'}
             </Button>
             <Button onClick={() => setDeclining(true)}>Decline</Button>
           </div>

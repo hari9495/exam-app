@@ -1709,12 +1709,17 @@ model Offer {
   esign           Boolean       @default(false)
   esignEvidence   Json?         @map("esign_evidence")
   createdBy       String?       @map("created_by") @db.Uuid
+  /// Answer 335: when HR was told on the joining day about conditions still open (once).
+  conditionsNoticeAt DateTime?  @map("conditions_notice_at") @db.Timestamptz(3)
+  /// HIR-28: the bulk batch this offer was made in (null for a single offer).
+  batchId         String?       @map("batch_id") @db.Uuid
   pipelineEntry   PipelineEntry @relation(fields: [pipelineEntryId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   versions        OfferVersion[]
   conditions      OfferCondition[]
 
   @@index([organizationId, pipelineEntryId])
   @@index([organizationId, candidateId])
+  @@index([organizationId, batchId], map: "offers_org_batch_idx")
   @@map("offers")
 }
 
@@ -1751,6 +1756,24 @@ model OfferVersion {
   @@unique([offerId, version], map: "offer_versions_offer_version_key")
   @@index([organizationId, offerId], map: "offer_versions_org_offer_idx")
   @@map("offer_versions")
+}
+
+// HIR-28: one batch of bulk offers for one job; each offer in it is an ordinary HIR-09 offer.
+model OfferBatch {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  jobId          String    @map("job_id") @db.Uuid
+  batchKey       String    @map("batch_key") @db.Uuid
+  choices        Json
+  results        Json      @default("[]")
+  status         String    @default("running") @db.VarChar(12)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  finishedAt     DateTime? @map("finished_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, batchKey], map: "offer_batches_org_key_key")
+  @@index([organizationId, jobId], map: "offer_batches_org_job_idx")
+  @@map("offer_batches")
 }
 
 // HIR-29: an offer's conditions, open until met or waived (a waiver always has its reason).

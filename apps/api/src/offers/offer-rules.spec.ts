@@ -59,3 +59,30 @@ describe('HIR-09 offer rules', () => {
     expect(conditionNames('')).toEqual([]);
   });
 });
+
+describe('HIR-09 answer 334: joining bonus clawback at the last day', () => {
+  it('all of it within the period; nothing on or after its end; nothing without a bonus or period', () => {
+    const { clawbackDue } = jest.requireActual('./offer-rules') as typeof import('./offer-rules');
+    expect(clawbackDue('100000', '2026-01-01', '2026-06-30', 12, 'full').toString()).toBe('100000');
+    expect(clawbackDue('100000', '2026-01-01', '2027-01-01', 12, 'full').toString()).toBe('0');
+    expect(clawbackDue('100000', '2026-01-01', '2026-12-31', 12, 'full').toString()).toBe('100000');
+    expect(clawbackDue('0', '2026-01-01', '2026-02-01', 12, 'full').toString()).toBe('0');
+    expect(clawbackDue('100000', '2026-01-01', '2026-02-01', null, 'full').toString()).toBe('0');
+  });
+
+  it('pro rata: the part for the days not served', () => {
+    const { clawbackDue } = jest.requireActual('./offer-rules') as typeof import('./offer-rules');
+    // 365-day period, last day 1 Jul 2026 = day 182 served, 183 days not served.
+    expect(clawbackDue('365000', '2026-01-01', '2026-07-01', 12, 'pro_rata').toString()).toBe('183000');
+    expect(clawbackDue('365000', '2026-01-01', '2026-12-31', 12, 'pro_rata').toString()).toBe('0');
+  });
+});
+
+describe('HIR-28 plan check', () => {
+  it('holds the rows beyond the free places; no plan line (or the check off) holds none', () => {
+    const { planHolds } = jest.requireActual('./offer-rules') as typeof import('./offer-rules');
+    expect([0, 1, 2].map((i) => planHolds(i, 2))).toEqual([false, false, true]);
+    expect(planHolds(0, 0)).toBe(true);
+    expect(planHolds(99, null)).toBe(false);
+  });
+});

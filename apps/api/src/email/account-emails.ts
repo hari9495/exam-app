@@ -244,10 +244,13 @@ export const VARIABLE_LABELS: Record<string, string> = {
   device: 'Device, such as "Chrome on Windows"',
   change: 'What changed (sentence)',
   changeShort: 'What changed (short)',
+  jobTitle: 'The job offered',
+  answerBy: 'The day to answer by',
+  documents: 'What is still due (list)',
 };
 const COMMON = ['firstName', 'companyName'];
 
-export type EmailGroup = 'Sign-in codes' | 'Your account' | 'Security alerts' | 'Alerts to System Admins';
+export type EmailGroup = 'Sign-in codes' | 'Your account' | 'Security alerts' | 'Alerts to System Admins' | 'Candidates';
 
 export interface EmailTypeDef {
   group: EmailGroup;
@@ -295,6 +298,9 @@ export const EMAIL_TYPES = {
   sso_changed: def('Alerts to System Admins', 'Single sign-on changed', 'Single sign-on settings change.', [], { subject: 'Single sign-on settings changed in your YukthiX organisation', heading: 'Single sign-on settings changed', buttonLabel: 'Open security settings' }, ADMIN_LOCKED),
   domain_lapsed: def('Alerts to System Admins', 'Verified domain lapsed', 'The proof that you own an email domain disappears.', [], { subject: 'A verified email domain lapsed in your YukthiX organisation', heading: 'A verified domain lapsed', buttonLabel: 'Open security settings' }, ADMIN_LOCKED),
   support_requested: def('Alerts to System Admins', 'Support access request', 'YukthiX support asks to look at your company.', [], { subject: 'YukthiX support asks to see your company data', heading: 'A support session needs your approval', buttonLabel: 'Review the request' }, ["Who asks, why and for how long", "What support can and can't see", 'Where the button goes']),
+  // HIR-09 founder answer 336: two reminders to a candidate, sent only when the recruiter presses Send reminder.
+  offer_reminder: def('Candidates', 'Offer reminder', 'A recruiter reminds a candidate to answer an offer.', ['jobTitle', 'answerBy'], { subject: 'Your offer from {{companyName}} is waiting for your answer', heading: 'Your offer is waiting', intro: 'Hi {{firstName}}, this is a reminder about the offer for {{jobTitle}} at {{companyName}}. Please accept or decline it by {{answerBy}}.', buttonLabel: 'Open your offer' }, ['The offer link', 'The day to answer by']),
+  offer_documents_reminder: def('Candidates', 'Documents still due', 'A recruiter reminds a candidate about what is still due for their offer.', ['jobTitle', 'documents'], { subject: 'Still due for your {{companyName}} offer', heading: 'A few things are still due', intro: 'Hi {{firstName}}, to complete your offer for {{jobTitle}} at {{companyName}}, these are still due: {{documents}}.', buttonLabel: 'Open your offer' }, ['The list of what is due', 'The offer link']),
   sms_limit_reached: def('Alerts to System Admins', 'SMS limit reached', 'Your company reaches its monthly text message limit.', [], { subject: 'Your organisation has reached its monthly SMS limit', heading: 'Monthly SMS limit reached' }, ['The limit and what happens now']),
 } satisfies Record<string, EmailTypeDef>;
 export type EmailType = keyof typeof EMAIL_TYPES;
@@ -407,6 +413,15 @@ export function passwordResetEmail(i: Personal & { link: string; minutes: number
     values: { minutes: String(i.minutes) },
     preheader: `This link expires in ${i.minutes} minutes.`,
     facts: [text(`The link works once and expires in ${i.minutes} minutes.`), action(i.link), text("Didn't ask for this? Ignore this email; your password stays the same."), pasteLink(i.link)],
+  });
+}
+
+/** HIR-09 answer 336: a candidate's offer reminder (answer it) or documents reminder (what is still due), with the offer link. */
+export function offerReminderEmail(i: Personal & { kind: 'offer' | 'documents'; link: string; jobTitle: string; answerBy: string; due: string[] }): Promise<RenderedEmail> {
+  return companyEmail(i.kind === 'offer' ? 'offer_reminder' : 'offer_documents_reminder', {
+    ...i,
+    values: { jobTitle: i.jobTitle, answerBy: i.answerBy, documents: i.due.join(', ') },
+    facts: [...(i.kind === 'documents' ? i.due.map((d) => text(`• ${d}`)) : [text(`Answer by ${i.answerBy}.`)]), action(i.link), pasteLink(i.link)],
   });
 }
 

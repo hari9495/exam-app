@@ -11,6 +11,7 @@ import { EmailService } from '../src/email/email.service';
 import { LOGIN_PROTECTION_REDIS } from '../src/auth/login-protection.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
+import { OfferBuilderService } from '../src/offers/offer-builder.service';
 
 // HIR-09 offer builder and HIR-29 conditions end to end against the real database (forced RLS, the app role). A recruiter
 // with the offer-pay key drafts an offer from the company's salary structure (Pay's own breakup), sends it for approval
@@ -28,8 +29,9 @@ describe('HIR-09 offer builder and HIR-29 conditions', () => {
   const SUPER: TenantContext = { organizationId: null, isSuperAdmin: true };
   const server = () => app.getHttpServer();
   let planId: string;
+  let builder: OfferBuilderService;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'adminA' | 'adminB' | 'rec' | 'rec2' | 'noPay' | 'hrHead' | 'mgr' | 'hr' | 'pay' | 'emp' | 'recB' | 'actee' | 'acting';
+  type Who = 'adminA' | 'adminB' | 'rec' | 'rec2' | 'noPay' | 'hrHead' | 'mgr' | 'hr' | 'pay' | 'emp' | 'recB' | 'actee' | 'cfo' | 'acting';
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
@@ -79,6 +81,7 @@ describe('HIR-09 offer builder and HIR-29 conditions', () => {
     await app.init();
     prisma = moduleRef.get(PrismaService);
     tenantPrisma = moduleRef.get(TenantPrismaService);
+    builder = moduleRef.get(OfferBuilderService);
     const redis = moduleRef.get<Redis>(LOGIN_PROTECTION_REDIS);
     const ipKeys = await redis.keys('auth:otp:ip:*');
     if (ipKeys.length) await redis.del(...ipKeys);
@@ -103,6 +106,8 @@ describe('HIR-09 offer builder and HIR-29 conditions', () => {
       ['pay', 'A', 'panel', tpl('payroll_admin')],
       ['emp', 'A', 'panel', []],
       ['recB', 'B', 'panel', [...tpl('recruiter'), PAYKEY]],
+      // Answer 332: a named band approver (holds the offer-pay key, nothing else).
+      ['cfo', 'A', 'panel', [PAYKEY]],
       // Acted for: a recruiter whose role (the company's override) holds every key used here, so only the acting rule can
       // refuse (an impersonation token carries the role's keys, not a permission profile).
       ['actee', 'A', 'recruiter', null],
@@ -219,6 +224,25 @@ describe('HIR-09 offer builder and HIR-29 conditions', () => {
     await setting('hiring.offer.band_approver', null);
   });
 
+  it('answer 332: the band approver can be a named person who sees offer pay; others are refused', async () => {
+    const page = (await api('adminA', 'get', '/hiring/settings').expect(200)).body;
+    expect(page.offerApprovers.map((p: { id: string }) => p.id)).toEqual(expect.arrayContaining([users.cfo, users.rec, users.hrHead]));
+    expect(page.offerApprovers.map((p: { id: string }) => p.id)).not.toContain(users.noPay);
+    expect(page.values['hiring.offer.band_approver']).toBe('hr_head');
+    expect((await api('adminA', 'put', '/hiring/settings').send({ changes: [{ key: 'hiring.offer.band_approver', value: users.noPay }] }).expect(400)).body.message).toMatch(/cannot see offer pay/);
+    await api('adminA', 'put', '/hiring/settings').send({ changes: [{ key: 'hiring.offer.band_approver', value: users.recB }] }).expect(404);
+    await api('adminA', 'put', '/hiring/settings').send({ changes: [{ key: 'hiring.offer.band_approver', value: 'cfo' }] }).expect(404);
+    await api('rec', 'put', '/hiring/settings').send({ changes: [{ key: 'hiring.offer.band_approver', value: users.cfo }] }).expect(403);
+    await api('adminA', 'put', '/hiring/settings').send({ changes: [{ key: 'hiring.offer.band_approver', value: users.cfo }] }).expect(200);
+    const id = (await api('rec', 'post', '/hiring/offers').send(draft(ids.other, { annualCtc: '2100000' })).expect(201)).body.id;
+    await api('rec', 'post', `/hiring/offers/${id}/submit`).expect(200);
+    const steps = (await request$(id)).steps as unknown as { name: string; approverIds: string[] }[];
+    expect(steps[1]).toMatchObject({ name: `Above the pay range (cfo ${run})`, approverIds: [users.cfo] });
+    await api('rec', 'post', `/offers/${id}/approval/cancel`).expect(201);
+    await inA((tx) => tx.offer.update({ where: { id }, data: { status: 'withdrawn' } }));
+    await api('adminA', 'put', '/hiring/settings').send({ changes: [{ key: 'hiring.offer.band_approver', value: 'hr_head' }] }).expect(200);
+  });
+
   it('versions: each change is a new version with its history; the old letter stops working; unchanged pay needs no new approval', async () => {
     const oldToken = await tokenOf(ids.o1);
     await pub('get', `/offers/${oldToken}`).expect(200);
@@ -232,12 +256,12 @@ describe('HIR-09 offer builder and HIR-29 conditions', () => {
     await api('rec', 'post', `/hiring/offers/${ids.o1}/submit`).expect(200);
     await decide(ids.o1, 'rec2');
     // Same CTC and grade (only the variable changed): stays approved, no new route.
-    const v3 = (await api('rec', 'post', `/hiring/offers/${ids.o1}/versions`).send(revision(ids.joseph, { startDate: today, expiresAt: endOfToday, annualCtc: '1700000', variablePay: '200000' }, 2)).expect(201)).body;
+    const v3 = (await api('rec', 'post', `/hiring/offers/${ids.o1}/versions`).send(revision(ids.joseph, { startDate: today, expiresAt: endOfToday, annualCtc: '1700000', variablePay: '200000', joiningBonus: '100000', clawbackMonths: 12 }, 2)).expect(201)).body;
     expect(v3).toMatchObject({ version: 3, status: 'approved', needsApproval: false });
     const r = await record('rec', ids.o1);
     expect(r.versions.map((x: { version: number; current: boolean }) => [x.version, x.current])).toEqual([[3, true], [2, false], [1, false]]);
     expect(r.versions.map((x: { annualCtc: number }) => x.annualCtc)).toEqual([1_700_000, 1_700_000, 1_600_000]);
-    expect(r.current).toMatchObject({ version: 3, annualCtc: 1_700_000, variablePay: 200_000, bandPosition: 'within' });
+    expect(r.current).toMatchObject({ version: 3, annualCtc: 1_700_000, variablePay: 200_000, joiningBonus: 100_000, clawbackMonths: 12, bandPosition: 'within' });
     expect(r.activity.map((a: { action: string }) => a.action)).toEqual(expect.arrayContaining(['created offer version 1', 'revised the offer to version 2 (needs approval again)', 'revised the offer to version 3', 'sent the offer to the candidate']));
     // No amounts in the audit log.
     const logs = await inA((tx) => tx.auditLog.findMany({ where: { entityType: 'offer', entityId: ids.o1 } }));
@@ -293,7 +317,7 @@ describe('HIR-09 offer builder and HIR-29 conditions', () => {
     expect((await record('rec', ids.o1)).joiner).toMatchObject({ id: joiner.id, status: 'invited' });
     const pb = (await api('hr', 'get', `/lifecycle/joiners/${joiner.id}`).expect(200)).body;
     const joined = (await api('hr', 'post', `/lifecycle/joiners/${joiner.id}/join`).send({ identityAttested: true, status: 'probation', version: pb.version }).expect(200)).body;
-    expect(joined.payHandoff).toMatchObject({ status: 'sent', offerVersion: 3 });
+    expect(joined.payHandoff).toMatchObject({ status: 'sent', offerVersion: 3, bonus: { status: 'queued', month: today.slice(0, 7) } });
     // Pay rows sit behind the pay guard: open it to the entity, as payroll's own reads do.
     const pay = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => inA(async (tx) => (await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`, fn(tx)));
     const pkg = await pay((tx) => tx.compensationPackage.findFirstOrThrow({ where: { changeId: joined.payHandoff.changeId } }));
@@ -301,8 +325,38 @@ describe('HIR-09 offer builder and HIR-29 conditions', () => {
     expect(Number(pkg.annualCtc)).toBe(1_700_000);
     const lines = await pay((tx) => tx.compensationLine.findMany({ where: { packageId: pkg.id } }));
     expect(lines.length).toBeGreaterThan(2);
+    // Answer 334: the joining bonus is one-time pay for the first run, linked to the offer, queued once.
+    const bonus = await pay((tx) => tx.oneTimePay.findMany({ where: { sourceRef: `offer:${ids.o1}:joining` } }));
+    expect(bonus).toEqual([expect.objectContaining({ source: 'm10', componentCode: 'joining_bonus', status: 'approved', employeeId: joined.employeeId })]);
+    expect(Number(bonus[0]!.amount)).toBe(100_000);
     // A pay change is approved by someone else, as any other.
     expect((await inA((tx) => tx.employeeChange.findFirstOrThrow({ where: { id: joined.payHandoff.changeId } }))).status).toBe('pending');
+  });
+
+  it('answers 335 and 336: HR is told once on the joining day about open conditions; reminders only by the button', async () => {
+    // An open condition on the accepted (and joined) offer o1, due today.
+    await api('rec', 'post', `/hiring/offers/${ids.o1}/conditions`).send({ name: 'Medical report', dueOn: today }).expect(201);
+    expect(await builder.joiningDaySweep()).toBeGreaterThanOrEqual(1);
+    const told = await inA((tx) => tx.userNotification.findMany({ where: { type: 'ats.offer.conditions_open', entityId: ids.o1 } }));
+    expect(told.map((n) => n.recipientUserId)).toEqual(expect.arrayContaining([users.hr]));
+    expect(told[0]!.contextText).toMatch(/Medical report/);
+    await builder.joiningDaySweep();
+    expect(await inA((tx) => tx.userNotification.count({ where: { type: 'ats.offer.conditions_open', entityId: ids.o1 } }))).toBe(told.length);
+    // Nothing lapses or is withdrawn by itself.
+    expect((await record('rec', ids.o1)).conditions.find((c: { name: string }) => c.name === 'Medical report').status).toBe('open');
+
+    // Reminders: never automatic (the sweep sent none), only the button; the documents one for an accepted offer with open conditions.
+    email.send.mockClear();
+    expect((await api('rec', 'post', `/hiring/offers/${ids.o1}/remind`).expect(200)).body).toEqual({ sent: true, kind: 'documents' });
+    const m = email.send.mock.calls.find(([x]) => x.to === `joseph-${run}@mail.test`)![0] as unknown as { subject: string; html: string };
+    expect(m.subject).toMatch(/Still due/);
+    expect(m.html).toContain('Medical report');
+    await api('rec', 'post', `/hiring/offers/${ids.o1}/remind`).expect(409);
+    expect((await record('rec', ids.o1)).activity.map((a: { action: string }) => a.action)).toContain('reminded the candidate about what is still due');
+    // A draft offer has nothing to remind about; refusals as everywhere.
+    await api('rec', 'post', `/hiring/offers/${ids.o3}/remind`).expect(409);
+    await api('emp', 'post', `/hiring/offers/${ids.o1}/remind`).expect(403);
+    await api('recB', 'post', `/hiring/offers/${ids.o1}/remind`).expect(404);
   });
 
   it('e-sign only when the template switches it on: then the emailed code and the disclosure are needed', async () => {
@@ -312,6 +366,12 @@ describe('HIR-09 offer builder and HIR-29 conditions', () => {
     await api('rec', 'post', `/hiring/offers/${ids.o5}/submit`).expect(200);
     await decide(ids.o5, 'rec2');
     expect((await api('rec', 'post', `/offers/${ids.o5}/send`).expect(201)).body.esign).toBe(true);
+    // Answer 336: the offer reminder for a sent offer not answered yet, from the company's template.
+    email.send.mockClear();
+    expect((await api('rec', 'post', `/hiring/offers/${ids.o5}/remind`).expect(200)).body.kind).toBe('offer');
+    expect(email.send.mock.calls.find(([x]) => x.to === `esign-${run}@mail.test`)![0].subject).toMatch(/waiting for your answer/);
+    // Answer 337: the settings page lists each offer letter with its e-sign switch.
+    expect((await api('adminA', 'get', '/hiring/settings').expect(200)).body.offerLetters).toEqual(expect.arrayContaining([expect.objectContaining({ id: tplE.id, esign: true })]));
     const t = await tokenOf(ids.o5);
     expect((await pub('get', `/offers/${t}`).expect(200)).body.esign).toBe(true);
     expect((await pub('post', `/offers/${t}/respond`).send({ action: 'accept' }).expect(400)).body.code).toBe('ESIGN_DISCLOSURE');
@@ -354,6 +414,7 @@ describe('HIR-09 offer builder and HIR-29 conditions', () => {
     await api('acting', 'post', `/hiring/offers/${ids.o3}/submit`).expect(403);
     await api('acting', 'post', `/hiring/offers/${ids.o2}/conditions`).send({ name: 'X check', dueOn: today }).expect(403);
     await api('acting', 'post', `/offers/${ids.o2}/send`).expect(403);
+    await api('acting', 'post', `/hiring/offers/${ids.o2}/remind`).expect(403);
     await api('acting', 'get', `/hiring/offers/${ids.o1}`).expect(200);
 
     for (const bad of [

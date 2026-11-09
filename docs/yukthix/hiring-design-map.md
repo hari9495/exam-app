@@ -54,15 +54,21 @@ built**.
 |---|---|---|---|---|---|---|---|
 | A. Plans, requisitions, jobs and costs | 4 | 36 | 1 | 0 | 0 | 0 | 37 |
 | B. Candidates, pipeline and interviews | 8 | 46 | 0 | 0 | 13 | 1 | 60 |
-| C. Offers, BGV and joining | 4 | 17 | 6 | 0 | 5 | 0 | 28 |
+| C. Offers, BGV and joining | 4 | 23 | 4 | 0 | 1 | 0 | 28 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 20 | 0 | 0 | 7 | 4 | 31 |
 | E. Staffing agency | 8 | 0 | 0 | 4 | 44 | 0 | 48 |
 | F. Compliance and fairness | 5 | 4 | 1 | 0 | 20 | 0 | 25 |
-| G. Careers site, portals and settings | 4 | 53 | 4 | 2 | 11 | 0 | 70 |
-| **All Hiring design groups (A–G)** | **37** | **176** | **12** | **6** | **100** | **5** | **299** |
+| G. Careers site, portals and settings | 4 | 54 | 4 | 2 | 11 | 0 | 71 |
+| **All Hiring design groups (A–G)** | **37** | **183** | **10** | **6** | **96** | **5** | **300** |
 | H. Kit and "Live ·" groups (not designs; own line) | 3 | 5 | 0 | 5 | 5 | 0 | 15 |
+Recounted by script 12 Nov 2026 on `feat/yukthix-hir-28` after HIR-28 went live (all 4 stories).
+
+Recounted by script 12 Nov 2026 on `feat/yukthix-hir-09` after merging the Settings 6.1 follow-ups with answers 332 and 334-337: A–G 179 live, 10 gap, 6 wire, 100 not built, 5 phone, of 300.
+
 Recounted by script on `test/yukthix-main` after merging the Settings 6.1 follow-ups with HIR-10/20: A–G 176 live, 12 gap, 6 wire, 100 not built, 5 phone, of 299 (H: the old scorecard-templates group left with its page).
 Recounted by script 12 Nov 2026 on `feat/yukthix-hiring-settings-2` after the Settings 6.1 follow-ups (answers 341, 345, 348): 5 new 6.1 stories drawn and live (edit, add, used and view-only scorecard; default recruiter no longer qualifies); the "Live · Job workspace and interviews" group's last stand-in story (Scorecards) was deleted with the /yx/hiring/scorecards page.
+Recounted by script 11 Nov 2026 on `feat/yukthix-hir-09` after founder answers 332 and 334-337: HIR-09 HrEmployerCost and HIR-29 Reminder became live; a new T9-09 story (OfferSign, the e-sign accept page) is live.
+
 Recounted by script 11 Nov 2026 on `feat/yukthix-hir-09` (merged with HIR-06/07 and Settings 6.1) after HIR-09 / HIR-29 went live: HIR-09 7 live and 3 live (gap), HIR-29 2 live and 2 live (gap); the HIR-05 Application offer story now opens the offer record (answer 301); the kit's CTC breakup table is live.
 Recounted by script 11 Nov 2026 on `feat/yukthix-careers` after the careers site went live (decisions 8 and 10): T9-09 8 stories wire design → live (2 with a gap) plus 17 new (the pay question, on hold, and the drawn candidate pages: status 4, candidate page 3, offer 4, interview 4); Surfaces/Careers 18 → live (2 with a gap) plus 6 new (site settings, company pages, notices 2, company switch and assistant, full apply form); the 2 "Live · Careers site" stand-in stories were deleted with the stand-in.
 Recounted by script 12 Nov 2026 on `feat/yukthix-hir-10-20` after HIR-10 (manual BGV) and HIR-20 (pools, postings) went live and answer 322 (scorecard comments) was built: HIR-10 6 wire design → live plus 3 new stories (RecordResult, Decide, AddCheck); HIR-20 3 → live plus 2 new (PoolMembers, NewPool); HIR-07 1 new (SubmittedComments, live); the "Live · Candidates" stand-in group (Pools, 1 story) deleted with `TalentPoolsScreen`.
@@ -409,7 +415,7 @@ refused while acting for someone else); sending, the letter, withdraw and accept
 | story (sub-page) | verdict | note |
 |---|---|---|
 | WithinRange · Recruiter · within range, CTC breakup preview | live | CTC lines from the company's salary structure (Pay's own breakup for the work location, only lines inside the CTC); live, only holders of the offer-pay key reach the builder, so they see employer costs too (question 331) |
-| HrEmployerCost · HR · employer costs, joining bonus with clawback | live (gap) | employer costs and the joining bonus with its clawback months are kept on the version and in the letter; the clawback is not yet recovered in the final settlement and the bonus is not paid through Pay (question 334) |
+| HrEmployerCost · HR · employer costs, joining bonus with clawback | live | employer costs and the joining bonus with its clawback months are kept on the version and in the letter; answer 334: at joining the bonus is one-time pay in the first run (payroll's intake, linked to the offer), and a joiner who leaves within the months repays it in the final settlement (all of it, or pro rata: `hiring.offer.clawback_basis`) |
 | AboveRange · Above range · extra approval | live | above the grade range adds one P03 step; who approves is `hiring.offer.band_approver` (default the HR head = head of the department coded HR, else the people with the offer-pay key); the sender never approves |
 | Revision · Revision v2 · re-approval because CTC changed | live | `POST hiring/offers/:id/versions`; a changed CTC or grade goes back through approval, the earlier letter's link stops working; unchanged pay stays approved |
 | Letter · Letter step | live | the company's offer templates; e-sign only when the template switches it on (one-time code by email and the disclosure, evidence kept); accept by link otherwise |
@@ -449,14 +455,22 @@ clears an earlier decision. Columns show "Not added" for a check type the joiner
 
 #### HIR-28 · Bulk offer screen
 
-No live page. Designed: `BulkOfferScreen`.
+Live 12 Nov 2026 (branch `feat/yukthix-hir-28`): the job workspace's menu "Make bulk offers" (people with the offer-pay
+key) opens /yx/hiring/jobs/[id]/bulk-offers, the designed `BulkOfferScreen` with `live`; sending opens
+/yx/hiring/offer-batches/[id], the same screen's sent state. API: `GET hiring/offer-batches/setup?jobId=`,
+`POST hiring/offer-batches` (rate-limited; refused while acting for someone else), `GET hiring/offer-batches/:id`
+(`ats.offer.manage` or `pipeline:manage`; pay and making offers need `ats.offer.compensation.view`). Every row is an
+ordinary HIR-09 offer made by the single-offer service: the band check and its extra step, the company's route (the
+sender never approves), the company's conditions, the letter's e-sign, and an idempotent send. One bad row fails alone with
+its reason; an application that already has an offer is skipped; the same batch key never sends twice. Settings:
+`hiring.bulk_offer.plan_check` (hold, the starter, or off) and `hiring.offer.expiry_days` (7).
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Values · Per-candidate values · checks | design only, feature not built | no batch offers |
-| Template · Template step | design only, feature not built | same |
-| Preview · Preview step | design only, feature not built | same |
-| Sent · Sent · batch status | design only, feature not built | same |
+| Values · Per-candidate values · checks | live | the job's candidates without an open offer; CTC per row (inline edit); the grade range per row; rows beyond the free places on the job's plan line are held (in list order); pressed too early it names the candidates with no CTC |
+| Template · Template step | live | letter kind, the company's salary structure, one joining date (drawn 12 Nov 2026 in place of "joining batch", question 401), work location and letter template (drawn, for e-sign) |
+| Preview · Preview step | live | the chosen letter filled for the first selected candidate |
+| Sent · Sent · batch status | live | the counts and each candidate's result with its reason and Open offer (drawn 12 Nov 2026: the results table); pay column only with the key |
 
 #### HIR-29 · Offer conditions tab
 
@@ -467,8 +481,8 @@ optional note) or waive with a reason (refused without one, never twice).
 | story (sub-page) | verdict | note |
 |---|---|---|
 | OnTrack · Open conditions · on track | live | due by the joining day |
-| Reminder · Overdue condition · lapse reminder | live (gap) | the warning shows; no reminder goes to the candidate yet (question 336) |
-| Lapsed · Lapsed · pre-boarding unwound | live (gap) | the alert says to decide; nothing lapses or unwinds by itself yet (question 335) |
+| Reminder · Overdue condition · lapse reminder | live | answers 335 and 336: HR is told on the joining day (once) about conditions still open; Send reminder emails the candidate the company's "Documents still due" template (only by the button, at most once a day) |
+| Lapsed · Lapsed · pre-boarding unwound | live (gap) | founder answer 335: HR decides (nothing lapses or unwinds by itself); the alert says to decide, the design's automatic unwinding stays unbuilt by choice |
 | AllMet · All met or waived | live | |
 
 ### D. Referrals, internal jobs, CRM and rediscovery
@@ -744,6 +758,7 @@ Google for Jobs JSON-LD and /yx/careers/[org]/sitemap.xml), /yx/apply/[token], a
 | PortalEmpty · Candidate page · no applications, full form to apply | live | one click only with a resume, no consent and no required questions |
 | Offer · Offer to accept | live | /yx/offer/[token]: the existing accept-by-link; answers once, refuses expired |
 | OfferPhone · Offer to accept · phone | live | same page at phone width |
+| OfferSign · Offer · sign with a code (e-sign on) | live | drawn 11 Nov 2026 (answer 337): when the company's offer letter has e-sign on, the candidate agrees to sign electronically, gets a one-time code by email (`POST public/offers/:token/esign-code`) and enters it; Sign and accept sends the code and the agreement (evidence kept on the offer); pressed too early it names what is missing |
 | OfferAccepted · Offer · accepted | live | after accept, or opened again later |
 | OfferExpired · Offer · expired | live | past the answer-by date |
 | Interview · Interview · choose a proposed time | live | /yx/interview/[token]: confirm, ask for another time, decline |
@@ -810,7 +825,7 @@ stand-in is gone. Approval routes, careers and job boards stay on their stand-in
 |---|---|---|
 | Overview · Group 6 · Hiring & Assessments | wire design | the group's landing in Settings |
 | OverviewLoading · Group 6 · loading | wire design | same, loading |
-| P6_1 · 6.1 Hiring | live | /yx/settings/hiring (Settings › Hiring & Assessments › Hiring) renders `SettingsPageScreen` with `live`: pipeline templates (read-only list, Stage targets per row), scorecard templates (skills with per cent weights, scale, pass bar; Add and Edit with the pipelines key, answer 345), default recruiter for new requisitions (only people with the recruiter key, answer 348), headcount plan mode (`ats.headcount_plan`, the joined Segment: Not used / Advisory / Required) and the hiring manager's view (`ats.headcount_plan.manager_view`), show the pay range and ask pay history on new jobs (`hiring.pay_range.show`, `hiring.pay_history.ask`, company value), “not eligible for rehire” stops at the first stage (`hiring.rehire_flag.blocks_screening`), a BGV discrepancy is decided by someone other than who recorded it (`hiring.bgv.decider_other_person`, default on, answer 362), candidate retention (`ats.retention_months`), AI notes on past candidates (`hiring.rediscovery.ai`), tell candidates not selected (`hiring.reject.email_candidate`), the referral rule (`ats.referral.bonus_inr`, `ats.referral.qualify_days`, one fixed row) and the self-apply days (`ats.referral.self_apply_days`) — all with their defaults (answer 341); the referral settings are on 6.1 only (answer 384, removed from Company rules). A default recruiter who goes stale is told once to the hiring settings holders (answer 385). `GET/PUT hiring/settings`: read by `pipeline:manage`, `pipelines:configure`, `ats.headcount.manage`, `ats.referral.manage` or the settings keys; changed by `ats.settings.manage` or `org.settings.manage` held company-wide, never while acting; every key and value checked before any write; audited `org.setting.changed`; toast. Gap: the designed fields with no setting yet (plan approvers, extra approver, replacement link, offer expiry, clawback, range check, offer template, hand-off, BGV packages and timing, consent renewal, minors, AI interview and languages, careers colour and heading, cost categories) are left out, not shown with sample data (answer 342); pay range and pay history values for one legal entity or location are not shown on 6.1 (question 382) |
+| P6_1 · 6.1 Hiring | live | /yx/settings/hiring (Settings › Hiring & Assessments › Hiring) renders `SettingsPageScreen` with `live`: pipeline templates (read-only list, Stage targets per row), scorecard templates (skills with per cent weights, scale, pass bar; Add and Edit with the pipelines key, answer 345), default recruiter for new requisitions (only people with the recruiter key, answer 348), headcount plan mode (`ats.headcount_plan`, the joined Segment: Not used / Advisory / Required) and the hiring manager's view (`ats.headcount_plan.manager_view`), show the pay range and ask pay history on new jobs (`hiring.pay_range.show`, `hiring.pay_history.ask`, company value), “not eligible for rehire” stops at the first stage (`hiring.rehire_flag.blocks_screening`), a BGV discrepancy is decided by someone other than who recorded it (`hiring.bgv.decider_other_person`, default on, answer 362), candidate retention (`ats.retention_months`), AI notes on past candidates (`hiring.rediscovery.ai`), tell candidates not selected (`hiring.reject.email_candidate`), the referral rule (`ats.referral.bonus_inr`, `ats.referral.qualify_days`, one fixed row) and the self-apply days (`ats.referral.self_apply_days`) — all with their defaults (answer 341); HIR-09 (drawn 11 Nov 2026): who approves an offer above the pay range (`hiring.offer.band_approver`: HR head, hiring manager or a named person with the offer-pay key, answer 332), joining bonus clawback basis (`hiring.offer.clawback_basis`, answer 334), offer letters signed electronically (each offer template's e-sign switch, answer 337); the referral settings are on 6.1 only (answer 384, removed from Company rules). A default recruiter who goes stale is told once to the hiring settings holders (answer 385). `GET/PUT hiring/settings`: read by `pipeline:manage`, `pipelines:configure`, `ats.headcount.manage`, `ats.referral.manage` or the settings keys; changed by `ats.settings.manage` or `org.settings.manage` held company-wide, never while acting; every key and value checked before any write; audited `org.setting.changed`; toast. Gap: the designed fields with no setting yet (plan approvers, extra approver, replacement link, offer expiry, clawback, range check, offer template, hand-off, BGV packages and timing, consent renewal, minors, AI interview and languages, careers colour and heading, cost categories) are left out, not shown with sample data (answer 342); pay range and pay history values for one legal entity or location are not shown on 6.1 (question 382) |
 | P6_1_ReadOnly · 6.1 Hiring · read-only | live | without the edit keys (or while acting): every value as text, no save, no edit buttons; the Request access button is not shown in live (no request flow, answer 349). With the pipelines key (not acting) Add scorecard and Edit still show on the scorecard list |
 | P6_1_StageTargets · 6.1 Hiring · stage targets | live | answer 302: Stage targets on a pipeline row opens `StageTargetsSheet`; `PATCH pipelines/stages/:id` (`pipelines:configure`, never while acting; audited); values checked and focused before saving; read-only without the key. The job's Settings tab shows them read-only with "Change in Settings" |
 | P6_1_ScorecardEdit · 6.1 Hiring · edit scorecard | live | answer 345: Edit on a scorecard row opens `ScorecardTemplateSheet`; `PUT hiring/scorecard-templates/:id` (`pipelines:configure`, never while acting; audited `ats.scorecard_template.updated`); name, scale 3-10, pass bar 1 to the scale, skills with whole per cent weights adding to 100 (total shown live), what good looks like, from the competency library; pressed too early: field errors and focus; toast. Older 1-10 weights open as per cent |
@@ -1445,3 +1460,38 @@ Founder approved, 9 Nov 2026 (questions 391-395, all as suggested): (391) keep: 
 at joining while a "before confirmation" check is open, HR decides; (392) also show the open check on the Probation page;
 (393) keep: reported once; (394) add the "Referral bonuses moved to Settings › Hiring" line to the design only if HR asks;
 (395) keep ratings, recommendation and score on erased scorecards.
+## Founder questions from the HIR-09 answers 332, 334-337 build (11 Nov 2026)
+Each has a safe default already built; the suggestion is the answer we propose.
+371. **Joining bonus month.** Built: the joining month's run; if that month is locked, the next one; if both are locked,
+     nothing is queued and the offer's activity says so for payroll. *Suggested: keep.*
+372. **Clawback of a bonus not paid yet.** Built: when the person leaves within the months before any run paid the bonus,
+     it is simply not paid (cancelled), nothing is recovered. *Suggested: keep.*
+373. **Clawback basis.** Built: company setting, default all of it; pro rata counts the days of the period not served.
+     Taxes on a repaid bonus are left to payroll's usual F&F recovery line. *Suggested: keep; counsel checks the clause
+     wording in the offer letter template.*
+374. **Who is told on the joining day.** Built: the joiner's HR owner in People, plus whoever made and sent the offer, in
+     the bell and by email, once per offer. *Suggested: keep.*
+375. **Reminder limit.** Built: one reminder of each kind per offer a day (the button says why when refused).
+     *Suggested: keep.*
+376. **A named band approver who loses the offer-pay key later.** Built: refused at save; if the key goes later, the step
+     falls back to the company admins (the P03 rule for a step with nobody). *Suggested: keep; tell HR on the settings
+     page when the named person can no longer approve.*
+377. **E-signed letter copy.** Built: the evidence (time, address, device, the letter's fingerprint) is kept on the offer;
+     no sealed PDF copy is made for the candidate as letters do. *Suggested: add the sealed copy with the letters' signer
+     when the offer letter moves to People letter templates (PPL-29).*
+## Founder questions from the HIR-28 bulk offers build (12 Nov 2026)
+401. **Joining batch.** The design chose a "joining batch"; offers have no batches (People's joiner batches come after
+     acceptance). Built: one joining date for the whole batch, drawn in its place. *Suggested: keep; link the accepted
+     offers to a People joiner batch when HR adds the joiners.*
+402. **Where bulk offers start.** Built: "Make bulk offers" in the job workspace's menu (drawn), for people with the
+     offer-pay key; the batch page is reached from there and from each offer. *Suggested: also add it to the pipeline
+     board's Bulk actions sheet for selected candidates.*
+403. **Plan check order.** Rows beyond the free places on the job's plan line are held in the order listed (free = the
+     line's count less hires and offers in play on its jobs); a job with no plan line is not checked. *Suggested: keep.*
+404. **Expiry.** Built: `hiring.offer.expiry_days` (7) after sending, never after the joining day (single offers keep
+     their own chosen expiry). *Suggested: show it on Settings 6.1 "Offer expires after" (drawn there) and use it as the
+     single builder's default too.*
+405. **Batch size and speed.** Built: at most 100 candidates; rows are made one after another in the request (about a
+     second each). *Suggested: keep for campus batches; move to a background job with progress if batches grow.*
+406. **Same CTC for everyone.** Each row's CTC is typed; there is no "apply to all". *Suggested: add "Set the same CTC
+     for the selected" in the kit table's bulk edit later.*

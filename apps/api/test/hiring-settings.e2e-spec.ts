@@ -161,6 +161,8 @@ describe('Settings 6.1 Hiring', () => {
       'hiring.pay_history.ask': 'on',
       'hiring.rediscovery.ai': 'on',
       'hiring.rehire_flag.blocks_screening': 'on',
+      'hiring.offer.band_approver': 'hr_head',
+      'hiring.offer.clawback_basis': 'full',
       'hiring.bgv.decider_other_person': 'off',
     });
     // Answer 362: the BGV tracker reads the same company setting.
