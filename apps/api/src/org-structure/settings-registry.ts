@@ -213,6 +213,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // HIR-05 founder answer 272: an ex-employee HR marked not eligible for rehire cannot move past the first stage (into
   // Screening or later) until HR clears the flag with a reason. Off by default: the banner only tells.
   'hiring.rehire_flag.blocks_screening': { label: 'Hiring: "not eligible for rehire" stops an ex-employee at the first stage', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
+  // HIR-06: an interviewer's scorecard shows as overdue this many hours after the interview ended (reminders still go
+  // at 24 and 48 hours).
+  'hiring.scorecard.overdue_hours': { label: 'Hiring: a scorecard is overdue this many hours after the interview', scopes: ['tenant'], dated: false, values: ['12', '24', '48', '72'], default: '24' },
   'home.pay_on_employee_home': { label: 'Show net pay on the employee home', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // P02 §4.5 fraud guard: a new bank account is used for payouts only after this cooling period (starter, D17).
   'employee.bank_change.cooling_hours': { label: 'New bank accounts are used for pay after (hours)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '24', '48', '72'], default: '48', guard: 'access.role.manage' },

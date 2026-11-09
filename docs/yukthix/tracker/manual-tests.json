@@ -16555,5 +16555,130 @@
       "Screens/Hiring/HIR-05 · Candidate data retention · Data request · person found"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-06-01",
+    "area": "Hiring · HIR-06 Interview calendar (11 Nov 2026)",
+    "screen": "HIR-05 record · Schedule interview (answer 274)",
+    "url": "http://localhost:3000/yx/hiring/candidates",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open Hiring › Candidates and open a demo candidate with an open application; compare the header with the story \"HIR-05 · Recruiter · default\" (Email, Schedule interview, Move to next stage).",
+      "Press Schedule interview; without filling anything press Schedule.",
+      "Fill Option 1 date (tomorrow), from 11:00, to 12:00; pick Divya (panel@) in Panel; Where \"Video call\"; leave the time zone Asia/Kolkata; press Schedule.",
+      "Open the Scores tab."
+    ],
+    "expected": "Step 1: the buttons look like the design. Step 2: the Schedule button is not greyed; \"Choose a date.\" shows under Option 1 date with the cursor in it; nothing saved. Step 3: toast \"Interview scheduled\" for 5 s. Step 4: the interview shows with tomorrow's date, \"11:00 am IST\", and an \"Open scorecards\" button.",
+    "stories": [
+      "Screens/Hiring/HIR-05 · Candidate record · Recruiter · default"
+    ],
+    "note": "Positive and negative (pressed too early)."
+  },
+  {
+    "id": "MT-HIR-06-02",
+    "area": "Hiring · HIR-06 Interview calendar (11 Nov 2026)",
+    "screen": "HIR-05 record · Move to next stage (answer 274)",
+    "url": "http://localhost:3000/yx/hiring/candidates",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "On the same candidate press Move to next stage.",
+      "Open the job's pipeline from the Applications tab (Open job) and find the card.",
+      "Sign in as admin-tester@, act for hr-tester (Act as) and open the same candidate."
+    ],
+    "expected": "Step 1: toast \"Moved to <next stage>\" with the job title. Step 2: the card is in that stage. Step 3: no Schedule interview or Move to next stage buttons (Open in pipeline instead); the API also refuses (403) if called.",
+    "stories": [
+      "Screens/Hiring/HIR-05 · Candidate record · Recruiter · default"
+    ],
+    "note": "Positive and negative (acting for someone else)."
+  },
+  {
+    "id": "MT-HIR-06-03",
+    "area": "Hiring · HIR-06 Interview calendar (11 Nov 2026)",
+    "screen": "Interviews · Recruiter week",
+    "url": "http://localhost:3000/yx/hiring/interviews",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open Hiring › Interviews; compare with the story \"HIR-06 · Recruiter · week\" element by element.",
+      "Move to next week with the calendar arrow, then back to this week.",
+      "Press the interview scheduled in MT-HIR-06-01."
+    ],
+    "expected": "Step 1: title \"Interviews\", week view, India times, no page scroll bar at 1278 x 635; no \"Find a slot\" button (the slot finder is not built, question 323). Step 2: the week changes; interviews of that week appear. Step 3: the HIR-07 page of that interview opens.",
+    "stories": [
+      "Screens/Hiring/HIR-06 · Interview calendar · Recruiter · week"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HIR-06-04",
+    "area": "Hiring · HIR-06 Interview calendar (11 Nov 2026)",
+    "screen": "Interviews · Interviewer and empty",
+    "url": "http://localhost:3000/yx/hiring/interviews",
+    "account": "panel@demo-org.test (Divya, as an interviewer). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open Hiring › Interviews (or the link in the menu); compare with the story \"HIR-06 · Interviewer · my interviews and scorecards\".",
+      "Press Fill scorecard on the interview from MT-HIR-06-01.",
+      "Sign in as arjun@demo-org.test and open http://localhost:3000/yx/hiring/interviews."
+    ],
+    "expected": "Step 1: title \"My interviews\"; the Scorecards card lists only interviews Divya is on, overdue first, with \"Scorecard due\" for the new one; the agenda shows them in IST. Step 2: the scorecard page opens. Step 3: \"No access\" (403), nothing listed.",
+    "stories": [
+      "Screens/Hiring/HIR-06 · Interview calendar · Interviewer · my interviews and scorecards",
+      "Screens/Hiring/HIR-06 · Interview calendar · Empty · interviewer with nothing assigned"
+    ],
+    "note": "Positive and negative (another user, an employee)."
+  },
+  {
+    "id": "MT-HIR-07-01",
+    "area": "Hiring · HIR-07 Scorecard form (11 Nov 2026)",
+    "screen": "Scorecard · interviewer fills and saves a draft",
+    "url": "http://localhost:3000/yx/hiring/interviews",
+    "account": "panel@demo-org.test (Divya, as an interviewer). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open the interview from MT-HIR-06-01; compare with the story \"HIR-07 · Interviewer · blank\" (needs the job to have a scorecard; if it says \"No scorecard for this interview\", hr-tester picks one on the job's Settings tab first).",
+      "Press Submit scorecard with nothing rated.",
+      "Rate the first skill, type evidence, press Save draft.",
+      "Sign in as hr-tester@ and open the same interview."
+    ],
+    "expected": "Step 1: same layout; the date shows \"… IST\". Step 2: the button is not greyed; \"Rate <first skill>.\" shows and focus moves to that rating; nothing sent. Step 3: toast \"Draft saved\" (only you can see it). Step 4: hr-tester sees no scorecard from Divya yet (a draft is private) and \"No scorecards submitted yet.\"",
+    "stories": [
+      "Screens/Hiring/HIR-07 · Scorecard form · Interviewer · blank",
+      "Screens/Hiring/HIR-07 · Scorecard form · Complete · below the bar on 2 skills"
+    ],
+    "note": "Positive and negative (pressed too early; privacy of a draft)."
+  },
+  {
+    "id": "MT-HIR-07-02",
+    "area": "Hiring · HIR-07 Scorecard form (11 Nov 2026)",
+    "screen": "Scorecard · submit, read-only",
+    "url": "http://localhost:3000/yx/hiring/interviews",
+    "account": "panel@demo-org.test (Divya, as an interviewer). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Rate every skill and press Submit scorecard without a recommendation.",
+      "Choose Yes; press Submit scorecard; confirm.",
+      "Reload the page."
+    ],
+    "expected": "Step 1: \"Choose your recommendation.\" with focus on it. Step 2: toast \"Scorecard submitted\"; the weighted score and the next-step prompt match the ratings. Step 3: \"Scorecard submitted\" note, the fields are read-only, no Save or Submit buttons, no \"Add comment\" (question 322).",
+    "stories": [
+      "Screens/Hiring/HIR-07 · Scorecard form · Complete · meets the bar, next-step prompt",
+      "Screens/Hiring/HIR-07 · Scorecard form · Submitted · read only"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-07-03",
+    "area": "Hiring · HIR-07 Scorecard form (11 Nov 2026)",
+    "screen": "Scorecard · recruiter and hiring manager read; resend and cancel",
+    "url": "http://localhost:3000/yx/hiring/interviews",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Open the same interview; compare with the story \"HIR-07 · Recruiter or hiring manager · submitted scorecards, resend and cancel\".",
+      "Press Send to candidate again.",
+      "Press Cancel interview, then \"Keep it\"; press Cancel interview again and confirm.",
+      "As admin-tester@ acting for hr-tester, open the interview."
+    ],
+    "expected": "Step 1: Divya's scorecard shows with her ratings and recommendation; \"Scorecards 1 of 1\" or the result against the bar. Step 2: toast \"Sent to the candidate again\". Step 3: the first time nothing changes; then toast \"Interview cancelled\", a Cancelled badge, and it leaves the week as \"Cancelled ·\". Step 4: no Send again / Cancel buttons; a save or submit is refused.",
+    "stories": [
+      "Screens/Hiring/HIR-07 · Scorecard form · Recruiter or hiring manager · submitted scorecards, resend and cancel"
+    ],
+    "note": "Positive and negative (acting for someone else)."
   }
 ]

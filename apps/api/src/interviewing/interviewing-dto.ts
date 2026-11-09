@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsISO8601, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { RECOMMENDATIONS } from './scorecard-rules';
 
 // Recruitment batch AT5 request bodies (M10-BUILD-DESIGN §18.1).
@@ -167,4 +167,13 @@ export class SendOnStageDto {
   @IsOptional()
   @IsUUID()
   stageId!: string | null;
+}
+
+/** HIR-06: the interview calendar's range; the service refuses more than 62 days at once. */
+export class InterviewRangeDto {
+  @IsISO8601({ strict: true })
+  from!: string;
+
+  @IsISO8601({ strict: true })
+  to!: string;
 }

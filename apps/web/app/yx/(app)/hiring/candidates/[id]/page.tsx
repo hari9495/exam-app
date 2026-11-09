@@ -12,7 +12,7 @@ import { useMessageTemplates } from '../../../../../../lib/hooks/useCandidateMes
 import { useOrgSenderAddresses } from '../../../../../../lib/hooks/useOrgSenderAddresses';
 import { templateChoices } from '../../../../../../lib/yx-candidates';
 import { saveBlob } from '../../../../../../lib/yx-pay';
-import { useApplicationDrawer } from '../../../../../../lib/yx-application';
+import { useApplicationDrawer, useRecordPipeline } from '../../../../../../lib/yx-application';
 
 type Answer = CandidateProfileView | { mergedIntoId: string };
 
@@ -45,6 +45,8 @@ export default function YxHiringCandidatePage() {
   const entryJob = view?.applications.find((a) => a.id === entry)?.jobId ?? null;
   const here = `/yx/hiring/candidates/${encodeURIComponent(id)}`;
   const application = useApplicationDrawer(entryJob ? entry : null, entryJob, () => router.replace(here));
+  // Answer 274: Schedule interview and Move to next stage on the record (the open application).
+  const pipeline = useRecordPipeline(view, entry);
   const status = (profile.error as { status?: number } | null)?.status;
   const state: LiveCandidateRecord['state'] = profile.isError ? (status === 403 ? 'denied' : status === 404 || status === 400 ? 'not-found' : 'error') : view ? 'ready' : 'loading';
   const get = <T,>(path: string) => apiFetch(path, {}, accessToken ?? undefined) as Promise<T>;
@@ -69,6 +71,8 @@ export default function YxHiringCandidatePage() {
         },
         application,
         onOpenApplication: (entryId) => router.replace(`${here}?entry=${encodeURIComponent(entryId)}`),
+        pipeline,
+        onOpenInterview: (ivId) => router.push(`/yx/hiring/interviews/${encodeURIComponent(ivId)}`),
         onBack: () => router.push('/yx/hiring/candidates'),
         onOpenJob: (jobId) => router.push(`/yx/hiring/jobs/${encodeURIComponent(jobId)}/pipeline`),
         onResume: async () => {
