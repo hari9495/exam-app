@@ -919,3 +919,10 @@ Founder approved, 9 Nov 2026 (questions 201-207, 211-216, 221-229, all as sugges
      of an Indian entity may still use a free-text place abroad. *Suggested: also require a master location whenever the
      job's place is outside India, once locations carry a country for every company.*
 
+Founder approved, 10 Nov 2026 (questions 231-234, 241-244, all as suggested): (231) marking a referral bonus paid also
+creates the payroll one-time pay line (referral component, linked to the referral); the cost follows that line: posted when
+the run is approved, removed if the line is cancelled; (232) keep: only careers-site applications count as applied on
+their own; (233) post assessment costs once assessment pricing exists; (234) keep: only an accepted exit cancels the
+bonus, and show "Bonus on hold" while a resignation is pending; (241) the kit table can offer CSV only, and Jobs does;
+(242) keep the on-hold apply message; (243) keep the numbering of older jobs; (244) a job whose place is abroad needs a
+master location even under an Indian legal entity.
