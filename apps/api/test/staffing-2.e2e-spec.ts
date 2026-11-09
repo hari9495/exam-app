@@ -34,7 +34,7 @@ describe('Staffing desk slice 2', () => {
   const token: Partial<Record<Who, string>> = {};
   const users: Partial<Record<Who, string>> = {};
   const ids: Record<string, string> = {};
-  const api = (who: Who, method: 'get' | 'post' | 'put' | 'delete', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+  const api = (who: Who, method: 'get' | 'post' | 'put' | 'delete' | 'patch', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const portal = (t: string, method: 'get' | 'post', path = '') => request(server())[method](`/api/v1/public/agency-portal/${t}${path}`);
   type Tx = Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0];
   const inA = <T>(fn: (tx: Tx) => Promise<T>) => tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false }, fn);
@@ -356,6 +356,24 @@ describe('Staffing desk slice 2', () => {
     await api('am', 'post', `/staffing/placements/${id}/end`).send({ endOn: today, reason: 'performance', version: 1 }).expect(want(201));
     expect((await api('am', 'get', '/staffing/bench').expect(200)).body.rows).toEqual([]);
     expect((await api('vm', 'get', '/staffing/vendors').expect(200)).body.find((x: { id: string }) => x.id === ids.v1)).toMatchObject({ submissions: 2, placements: 1, sharedJobs: 1 });
+  });
+
+  it('one vendor model: the older agency routes cannot bypass the client-job terms; link and sharing managed here', async () => {
+    await api('admin', 'patch', `/agencies/${ids.v2}`).send({ jobIds: [ids.job] }).expect(400);
+    const dupId = (await api('vm', 'get', '/staffing/vendor-submissions').expect(200)).body.find((x: { vendor: string }) => x.vendor === `Second Source ${run}`).id;
+    await api('am', 'post', `/agency-submissions/${dupId}/accept`).expect(409);
+    const before = (await inA((tx) => tx.agency.findUniqueOrThrow({ where: { id: ids.v3 } }))).portalToken;
+    await api('rec', 'post', `/staffing/vendors/${ids.v3}/new-link`).expect(403);
+    await api('acting', 'post', `/staffing/vendors/${ids.v3}/new-link`).expect(403);
+    await api('adminB', 'post', `/staffing/vendors/${ids.v3}/new-link`).expect(404);
+    const after = (await api('vm', 'post', `/staffing/vendors/${ids.v3}/new-link`).expect(want(201))).body.portalToken;
+    expect(after).not.toBe(before);
+    await portal(before, 'get').expect(404);
+    expect((await api('vm', 'get', '/staffing/vendors').expect(200)).body.find((x: { id: string }) => x.id === ids.v3)).toMatchObject({ portalToken: after, jobs: [expect.objectContaining({ id: ids.job, title: 'Java Developer' })] });
+    await api('adminB', 'delete', `/staffing/vendors/${ids.v3}/jobs/${ids.job}`).expect(404);
+    await api('vm', 'delete', `/staffing/vendors/${ids.v3}/jobs/${ids.job}`).expect(want(200));
+    await api('vm', 'delete', `/staffing/vendors/${ids.v3}/jobs/${ids.job}`).expect(404);
+    expect((await portal(after, 'get').expect(200)).body.jobs).toEqual([]);
   });
 
   it('row-level security: company B sees none of the new rows even querying the tables directly', async () => {

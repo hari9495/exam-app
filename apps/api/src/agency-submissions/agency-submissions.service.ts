@@ -51,6 +51,12 @@ export class AgencySubmissionsService {
     return submission;
   }
 
+  /** Staffing slice 2: a vendor's submission for a client job goes through Forward to client (cap, duplicate, consent checks). */
+  async assertNotClientJob(context: TenantContext, id: string) {
+    const clientJob = await this.tenantPrisma.forTenant(context, (tx) => tx.agencySubmission.findFirst({ where: { id, job: { staffingLineId: { not: null } } }, select: { id: true } }));
+    if (clientJob) throw new ConflictException('This is a client job: forward it to the client from Hiring › Vendors.');
+  }
+
   async accept(context: TenantContext, id: string, userId: string) {
     const organizationId = context.organizationId as string;
     const candidateId = await this.tenantPrisma.forTenant(context, async (tx) => {

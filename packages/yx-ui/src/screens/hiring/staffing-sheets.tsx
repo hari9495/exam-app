@@ -14,7 +14,7 @@ import { CurrencyField, NumberField, TextArea, TextField } from '../../component
 import { useToastIfAny } from '../../components/notify';
 import { Segment } from '../../components/segment';
 import { MultiSelect, Select } from '../../components/select';
-import { formatINR } from '../../lib/format';
+import { formatDate, formatINR } from '../../lib/format';
 import { Text } from '../../components/foundations';
 import type { Choice } from './live/types';
 import './hiring.css';
@@ -571,8 +571,18 @@ export interface VendorInput {
 const PAN = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** Changing a vendor: its portal link and the jobs shared with it (what the older agencies page did). */
+export interface VendorLinks {
+  link: string;
+  jobs: { id: string; title: string; expiresOn: string | null }[];
+  onNewLink: () => Promise<unknown>;
+  onUnshare: (jobId: string) => Promise<unknown>;
+}
+
 /** HIR-21 Add or change a vendor: the documents that make it complete for client jobs. */
-export function VendorSheet({ open, onOpenChange, initial, onSave }: { open: boolean; onOpenChange: (o: boolean) => void; initial: VendorInput | null; onSave: (input: VendorInput) => Promise<unknown> }) {
+export function VendorSheet({ open, onOpenChange, initial, links, onSave }: { open: boolean; onOpenChange: (o: boolean) => void; initial: VendorInput | null; links?: VendorLinks; onSave: (input: VendorInput) => Promise<unknown> }) {
+  const toast = useToastIfAny();
+  const [linkBusy, setLinkBusy] = useState(false);
   const [f, setF] = useState<VendorInput>(initial ?? { name: '', contactEmail: null, pan: null, gstin: null, tdsSection: null, tier: null, agreementSignedOn: null, bankVerified: false, active: true });
   const [tried, setTried] = useState(false);
   const s = useSave(() => onOpenChange(false));
@@ -622,6 +632,50 @@ export function VendorSheet({ open, onOpenChange, initial, onSave }: { open: boo
         </FormField>
         <Checkbox label="Bank account verified (penny drop or cancelled cheque)" checked={f.bankVerified} onChange={(v) => set({ bankVerified: v })} />
         {initial && <Checkbox label="Active" description="An inactive vendor gets no new jobs; its portal link stops working." checked={f.active} onChange={(v) => set({ active: v })} />}
+        {links && (
+          <>
+            <FormField id="vd-link" label="Portal link" helper="Send it to the vendor. A new link stops the old one at once.">
+              <TextField value={links.link} onChange={() => {}} readOnly />
+            </FormField>
+            <div className="yx-hire-actions">
+              <Button size="sm" onClick={() => void navigator.clipboard?.writeText(links.link).then(() => toast?.toast({ tone: 'success', title: 'Link copied' }))}>
+                Copy link
+              </Button>
+              <Button
+                size="sm"
+                loading={linkBusy}
+                onClick={() => {
+                  setLinkBusy(true);
+                  void links
+                    .onNewLink()
+                    .then(() => toast?.toast({ tone: 'success', title: 'New link made; the old one no longer works' }))
+                    .catch((e: unknown) => s.setFailed(e instanceof Error ? e.message : 'That did not save.'))
+                    .finally(() => setLinkBusy(false));
+                }}
+              >
+                New link
+              </Button>
+            </div>
+            <Text weight="semibold">Shared jobs</Text>
+            {links.jobs.length === 0 ? (
+              <Text size="sm" tone="secondary">No jobs shared yet. Use Share a job.</Text>
+            ) : (
+              <ul className="yx-hire-plainlist" aria-label="Shared jobs">
+                {links.jobs.map((j) => (
+                  <li key={j.id} className="yx-hire-actions">
+                    <Text size="sm">
+                      {j.title}
+                      {j.expiresOn ? ` · until ${formatDate(new Date(`${j.expiresOn}T00:00:00`))}` : ''}
+                    </Text>
+                    <Button size="sm" onClick={() => void links.onUnshare(j.id).then(() => toast?.toast({ tone: 'success', title: `Stopped sharing ${j.title}` }), (e: unknown) => s.setFailed(e instanceof Error ? e.message : 'That did not save.'))}>
+                      Stop sharing {j.title}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
       </div>
     </Drawer>
   );
@@ -718,6 +772,62 @@ export function ShareJobSheet({ open, onOpenChange, jobs, vendors, today, loadOp
             <li>Never: bill rate, margin, other vendors, or who holds a duplicate</li>
           </ul>
         </aside>
+      </div>
+    </Drawer>
+  );
+}
+
+export interface ClientJobInput {
+  clientId: string;
+  lineId: string;
+  title: string | null;
+  headcount: number;
+}
+
+/** HIR-16 New client job: an ordinary job on a client's rate-card line (pipeline, approvals and sharing as any job). */
+export function ClientJobSheet({ open, onOpenChange, clients, loadLines, onSave }: { open: boolean; onOpenChange: (o: boolean) => void; clients: Choice[]; loadLines: (clientId: string) => Promise<Choice[]>; onSave: (input: ClientJobInput) => Promise<unknown> }) {
+  const [client, setClient] = useState<string | null>(clients.length === 1 ? clients[0]!.value : null);
+  const [lines, setLines] = useState<Choice[] | null>(null);
+  const [line, setLine] = useState<string | null>(null);
+  const [title, setTitle] = useState('');
+  const [count, setCount] = useState<number | null>(1);
+  const [tried, setTried] = useState(false);
+  const s = useSave(() => onOpenChange(false));
+  useEffect(() => {
+    if (!client) return;
+    let on = true;
+    setLines(null);
+    setLine(null);
+    void loadLines(client).then((l) => on && (setLines(l), l.length === 1 && setLine(l[0]!.value)));
+    return () => {
+      on = false;
+    };
+  }, [client, loadLines]);
+  const save = () => {
+    setTried(true);
+    if (!client) return focus('cj-client');
+    if (!line) return focus('cj-line');
+    if (count == null || count < 1 || count > 500) return focus('cj-count');
+    void s.run(() => onSave({ clientId: client, lineId: line, title: title.trim() || null, headcount: count }), 'Client job opened');
+  };
+  return (
+    <Drawer open={open} onOpenChange={onOpenChange} title="New client job" subtitle="Submissions" dirty footer={<><Button onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" loading={s.busy} onClick={save}>Open job</Button></>}>
+      <div className="yx-hire-stack">
+        {s.failed && <InlineAlert tone="danger" title={s.failed} />}
+        <FormField id="cj-client" label="Client" required error={tried && !client ? 'Choose the client.' : null}>
+          <Select value={client} onChange={setClient} options={clients} placeholder="Choose a client" />
+        </FormField>
+        <FormField id="cj-line" label="Rate-card role" required helper="The job's bill rate comes from this line of the rate card." error={tried && !line ? (lines && !lines.length ? 'This client has no rate card yet. Add a role first.' : 'Choose the role.') : null}>
+          <Select value={line} onChange={setLine} options={lines ?? []} placeholder={client ? (lines ? 'Choose a role' : 'Loading…') : 'Choose a client first'} />
+        </FormField>
+        <FieldRow>
+          <FormField id="cj-title" label="Job title" optional helper="Empty: the role's name.">
+            <TextField value={title} onChange={setTitle} maxLength={200} />
+          </FormField>
+          <FormField id="cj-count" label="People needed" required error={tried && (count == null || count < 1 || count > 500) ? 'Enter 1 to 500.' : null}>
+            <NumberField value={count} onChange={setCount} min={1} max={500} />
+          </FormField>
+        </FieldRow>
       </div>
     </Drawer>
   );

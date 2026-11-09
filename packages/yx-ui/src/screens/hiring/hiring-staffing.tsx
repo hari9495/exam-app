@@ -1676,6 +1676,8 @@ export interface LiveSubmissions {
   onRetry: () => void;
   rows: SubmissionRowView[];
   onSubmit: () => void;
+  /** Account managers open a client job on a rate-card line. */
+  onNewJob?: () => void;
   /** A move; the board refreshes from the server after it (a refused move snaps back with the reason). */
   onMove: (id: string, stage: SubmissionStage, reason?: string) => void;
 }
@@ -1710,7 +1712,7 @@ function LiveSubmissionsView({ live }: { live: LiveSubmissions }) {
   const submit = live.state === 'ready' ? <Button variant="primary" icon={Send} onClick={live.onSubmit}>Submit to client</Button> : undefined;
   return (
     <HireFrame active="Submissions">
-      <PageHeader title="Submissions" description="People sent to client contacts by email. Move a card as the client replies; a rejection needs the client's reason." actions={submit} />
+      <PageHeader title="Submissions" description="People sent to client contacts by email. Move a card as the client replies; a rejection needs the client's reason." actions={submit && <>{live.onNewJob && <Button icon={Plus} onClick={live.onNewJob}>New client job</Button>}{submit}</>} />
       {live.state !== 'ready' ? (
         <DeskState state={live.state} what="submissions" title="Submissions" onRetry={live.onRetry} />
       ) : live.rows.length === 0 ? (
@@ -2074,6 +2076,8 @@ export interface VendorRowView {
   submissions: number;
   duplicateRate: number;
   placements: number;
+  portalToken: string;
+  jobs: { id: string; title: string; expiresOn: string | null }[];
 }
 /** GET /staffing/vendor-submissions row: quote, cap and over-by only for account and vendor managers. */
 export interface VendorSubmissionView {
@@ -2110,8 +2114,12 @@ export interface LiveVendors {
   onException: (id: string, reason: string) => Promise<unknown>;
   loadContacts: (jobId: string) => Promise<{ value: string; label: string }[]>;
   onForward: (id: string, contactId: string) => Promise<unknown>;
-  /** Not a client job: the existing review accepts it into the pipeline. */
-  onReview: () => void;
+  /** Recruiters (pipeline key) accept or reject a submission for an ordinary job into its pipeline. */
+  canReview: boolean;
+  onAccept: (id: string) => Promise<unknown>;
+  onReject: (id: string) => Promise<unknown>;
+  /** False when the viewer reviews submissions but does not manage vendors: no register or scorecards. */
+  showRegister?: boolean;
 }
 const TIER: Record<string, string> = { preferred: 'Preferred', standard: 'Standard', probation: 'Probation' };
 const V_STATUS: Record<VendorRowView['status'], string> = { active: 'Active', pending: 'Pending documents', inactive: 'Inactive' };
@@ -2134,6 +2142,15 @@ function LiveVendorsView({ live }: { live: LiveVendors }) {
     { key: 'subs', header: 'Submissions', type: 'number', value: (r) => r.submissions, total: 'sum' },
   ];
   const subs = live.submissions ?? [];
+  const register = live.showRegister !== false;
+  const review = async (fn: () => Promise<unknown>, title: string) => {
+    try {
+      await fn();
+      toast?.toast({ tone: 'success', title });
+    } catch (e) {
+      toast?.toast({ tone: 'error', title: e instanceof Error && e.message ? e.message : 'That did not save. Try again.' });
+    }
+  };
   const openFwd = (s: VendorSubmissionView) => {
     setFwd(s);
     setContact(null);
@@ -2159,15 +2176,17 @@ function LiveVendorsView({ live }: { live: LiveVendors }) {
       {live.state !== 'ready' ? (
         live.state === 'denied' ? <NoAccessState grantedBy="your admin (vendor manager)" what="vendors" /> : <DeskState state={live.state} what="vendors" title="Vendors" onRetry={live.onRetry} />
       ) : (
-        <Tabs defaultValue={live.defaultTab ?? 'register'}>
+        <Tabs defaultValue={register ? (live.defaultTab ?? 'register') : 'submissions'}>
           <TabsList aria-label="Vendor sections">
-            <TabsTrigger value="register" count={live.vendors.length}>
-              Register
-            </TabsTrigger>
+            {register && (
+              <TabsTrigger value="register" count={live.vendors.length}>
+                Register
+              </TabsTrigger>
+            )}
             <TabsTrigger value="submissions" count={subs.filter((s) => s.status === 'pending').length}>
               Vendor submissions
             </TabsTrigger>
-            <TabsTrigger value="scorecards">Scorecards</TabsTrigger>
+            {register && <TabsTrigger value="scorecards">Scorecards</TabsTrigger>}
           </TabsList>
           <TabsContent value="register">
             <DataTable
@@ -2220,7 +2239,16 @@ function LiveVendorsView({ live }: { live: LiveVendors }) {
                             Forward to client
                           </Button>
                         )}
-                        {s.status === 'pending' && !s.clientJob && <Button size="sm" onClick={live.onReview}>Review</Button>}
+                        {s.status === 'pending' && !s.clientJob && live.canReview && (
+                          <>
+                            <Button size="sm" onClick={() => void review(() => live.onReject(s.id), 'Submission rejected')}>
+                              Reject
+                            </Button>
+                            <Button size="sm" onClick={() => void review(() => live.onAccept(s.id), 'Added to the job’s pipeline')}>
+                              Accept into pipeline
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </li>
                   );

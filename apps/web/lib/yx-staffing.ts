@@ -1,14 +1,22 @@
+import { useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from './api-client';
 import { useAuth } from './auth-context';
 
-// API glue for the staffing desk (/staffing/*, slice 1: clients, contacts, rate cards, Settings 6.2). The API checks
+// API glue for the staffing desk (/staffing/*: clients, contacts, rate cards, Settings 6.2; slice 2: client jobs,
+// submissions, placements, bench, vendors). The API checks
 // every call: the desk switch, the keys, acting for someone else, and the company.
 
 /** One GET under /staffing, cached under ['staffing', path]. */
 export function useStaffing<T>(path: string | null, enabled = true) {
   const { accessToken } = useAuth();
   return useQuery<T>({ queryKey: ['staffing', path], queryFn: () => apiFetch(`/staffing${path}`, {}, accessToken ?? undefined), enabled: Boolean(accessToken && path) && enabled, retry: false });
+}
+
+/** A one-off GET under /staffing (a sheet's choices once a job or client is picked). */
+export function useStaffingGet() {
+  const { accessToken } = useAuth();
+  return useCallback(<T>(path: string): Promise<T> => apiFetch(`/staffing${path}`, {}, accessToken ?? undefined) as Promise<T>, [accessToken]);
 }
 
 /** A write under /staffing; refreshes every staffing view. */

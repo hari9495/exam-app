@@ -45,6 +45,7 @@ export class VendorsService {
       const shares = await tx.agencyJob.groupBy({ by: ['agencyId'], where: { organizationId: org }, _count: { _all: true } });
       const subs = await tx.agencySubmission.groupBy({ by: ['agencyId'], where: { organizationId: org }, _count: { _all: true } });
       const dups = await tx.agencySubmission.groupBy({ by: ['agencyId'], where: { organizationId: org, OR: [{ duplicateOfAgencyId: { not: null } }, { ownerUntil: { not: null }, isDuplicate: true }] }, _count: { _all: true } });
+      const jobs = await tx.agencyJob.findMany({ where: { organizationId: org }, select: { agencyId: true, expiresOn: true, rateCapPaise: true, job: { select: { id: true, title: true } } } });
       const placed = await tx.staffingPlacement.groupBy({ by: ['agencyId'], where: { organizationId: org, agencyId: { not: null } }, _count: { _all: true } });
       const count = (list: { agencyId: string | null; _count: { _all: number } }[], id: string) => list.find((x) => x.agencyId === id)?._count._all ?? 0;
       return rows.map((a) => {
@@ -67,6 +68,8 @@ export class VendorsService {
           submissions,
           duplicateRate: submissions ? Math.round((count(dups, a.id) / submissions) * 100) : 0,
           placements: count(placed, a.id),
+          portalToken: a.portalToken,
+          jobs: jobs.filter((j) => j.agencyId === a.id).map((j) => ({ id: j.job.id, title: j.job.title, expiresOn: iso(j.expiresOn) })),
         };
       });
     });
@@ -107,6 +110,15 @@ export class VendorsService {
         await audit(tx, c, 'staffing.vendor.created', 'agency', vid, { name: dto.name });
       }
       return { id: vid };
+    });
+  }
+
+  /** Open jobs a vendor manager may share (any open job; a client job shows its client). */
+  openJobs(ctx: TenantContext) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const jobs = await tx.job.findMany({ where: { organizationId: c.organizationId, deletedAt: null, status: 'open' }, orderBy: { title: 'asc' }, take: 1000, select: { id: true, title: true, staffingClientId: true } });
+      const clients = new Map((await tx.staffingClient.findMany({ where: { organizationId: c.organizationId, id: { in: jobs.map((j) => j.staffingClientId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } })).map((x) => [x.id, x.name]));
+      return jobs.map((j) => ({ id: j.id, title: j.title, client: j.staffingClientId ? (clients.get(j.staffingClientId) ?? null) : null }));
     });
   }
 
@@ -157,6 +169,27 @@ export class VendorsService {
         });
       await audit(tx, c, 'staffing.vendor.job_shared', 'job', job.id, { agencyIds: dto.agencyIds, cap: cap != null ? toRupees(cap) : null, maxSubmissions: dto.maxSubmissions, expiresOn: dto.expiresOn, maskClient: dto.maskClient });
       return { shared: vendors.length };
+    });
+  }
+
+  /** A new portal link: the old one stops working at once. */
+  async newLink(ctx: TenantContext, id: string) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      if (!(await tx.agency.findFirst({ where: { id, organizationId: c.organizationId }, select: { id: true } }))) throw new NotFoundException('Vendor not found.');
+      const portalToken = randomUUID();
+      await tx.agency.update({ where: { id }, data: { portalToken } });
+      await audit(tx, c, 'staffing.vendor.link_renewed', 'agency', id, {});
+      return { portalToken };
+    });
+  }
+
+  /** Stop sharing a job with a vendor; its submissions stay. */
+  async unshare(ctx: TenantContext, id: string, jobId: string) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const { count } = await tx.agencyJob.deleteMany({ where: { agencyId: id, jobId, organizationId: c.organizationId } });
+      if (!count) throw new NotFoundException('This job is not shared with this vendor.');
+      await audit(tx, c, 'staffing.vendor.job_unshared', 'agency', id, { jobId });
+      return { removed: true };
     });
   }
 

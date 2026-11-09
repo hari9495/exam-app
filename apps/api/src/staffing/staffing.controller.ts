@@ -258,6 +258,26 @@ export class StaffingController {
     return this.vendorsSvc.save(ctx, id, dto);
   }
 
+  @Post('vendors/:id/new-link')
+  @RequireAnyPermission('ats.agency.manage', 'ats.staffing.manage', 'org:manage_settings')
+  newVendorLink(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    assertOwnSession(req);
+    return this.vendorsSvc.newLink(ctx, id);
+  }
+
+  @Delete('vendors/:id/jobs/:jobId')
+  @RequireAnyPermission('ats.agency.manage', 'ats.staffing.manage', 'org:manage_settings')
+  unshare(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('jobId', ParseUUIDPipe) jobId: string) {
+    assertOwnSession(req);
+    return this.vendorsSvc.unshare(ctx, id, jobId);
+  }
+
+  @Get('vendors/jobs')
+  @RequireAnyPermission('ats.agency.manage', 'ats.staffing.manage', 'org:manage_settings')
+  vendorJobs(@CurrentTenant() ctx: TenantContext) {
+    return this.vendorsSvc.openJobs(ctx);
+  }
+
   @Get('vendors/share-options')
   @RequireAnyPermission('ats.agency.manage', 'ats.staffing.manage', 'org:manage_settings')
   shareOptions(@CurrentTenant() ctx: TenantContext, @Query('jobId', ParseUUIDPipe) jobId: string) {

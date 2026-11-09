@@ -51,6 +51,10 @@ describe('hiring pages moved to YukthiX', () => {
     ['/jobs/:jobId', '/yx/hiring/jobs/:jobId'],
     ['/v2/panel/interviews', '/yx/hiring/interviews'],
     ['/interviews', '/yx/hiring/interviews'],
+    ['/v2/settings/agencies', '/yx/hiring/vendors'],
+    ['/settings/agencies', '/yx/hiring/vendors'],
+    ['/v2/agency-submissions', '/yx/hiring/vendors?tab=submissions'],
+    ['/agency-submissions', '/yx/hiring/vendors?tab=submissions'],
   ])('%s goes to %s', (source, destination) => {
     expect(redirects).toContainEqual({ source, destination, permanent: false });
   });

@@ -105,10 +105,10 @@ describe('HIR-17 placements and bench (live)', () => {
 });
 
 describe('HIR-21 vendors (live)', () => {
-  const vendor = { id: 'v1', name: 'Velocity Talent', contactEmail: null, pan: 'ABCDE1234F', gstin: null, tdsSection: '194C' as const, tier: 'preferred' as const, agreementSignedOn: '2026-04-01', bankVerified: true, active: true, status: 'active' as const, missing: [], sharedJobs: 1, submissions: 2, duplicateRate: 50, placements: 1 };
+  const vendor = { portalToken: 't1', jobs: [], id: 'v1', name: 'Velocity Talent', contactEmail: null, pan: 'ABCDE1234F', gstin: null, tdsSection: '194C' as const, tier: 'preferred' as const, agreementSignedOn: '2026-04-01', bankVerified: true, active: true, status: 'active' as const, missing: [], sharedJobs: 1, submissions: 2, duplicateRate: 50, placements: 1 };
   const over: VendorSubmissionView = { id: 'a1', vendor: 'Velocity Talent', candidate: 'Ravi', job: 'Java Developer', jobId: 'j1', clientJob: true, at: '2026-11-09T10:00:00Z', quoted: '950.00', cap: '900.00', overBy: '50.00', overCap: true, exception: null, duplicate: null, rightToRepresent: true, consent: true, status: 'pending' };
   const dup: VendorSubmissionView = { ...over, id: 'a2', vendor: 'Second Source', quoted: '800.00', overBy: null, overCap: false, duplicate: { holder: 'Velocity Talent', until: '2027-02-07' } };
-  const live = (p: Partial<LiveVendors> = {}): LiveVendors => ({ state: 'ready', onRetry: vi.fn(), vendors: [vendor], submissions: [over, dup], canManage: true, canForward: true, defaultTab: 'submissions', onAdd: vi.fn(), onEdit: vi.fn(), onShare: vi.fn(), onException: vi.fn().mockResolvedValue(undefined), loadContacts: vi.fn().mockResolvedValue([{ value: 'k1', label: 'Meera' }]), onForward: vi.fn().mockResolvedValue(undefined), onReview: vi.fn(), ...p });
+  const live = (p: Partial<LiveVendors> = {}): LiveVendors => ({ state: 'ready', onRetry: vi.fn(), vendors: [vendor], submissions: [over, dup], canManage: true, canForward: true, defaultTab: 'submissions', onAdd: vi.fn(), onEdit: vi.fn(), onShare: vi.fn(), onException: vi.fn().mockResolvedValue(undefined), loadContacts: vi.fn().mockResolvedValue([{ value: 'k1', label: 'Meera' }]), onForward: vi.fn().mockResolvedValue(undefined), canReview: false, onAccept: vi.fn(), onReject: vi.fn(), ...p });
   it('over cap: an exception needs a reason; a duplicate names the holder and cannot be forwarded', async () => {
     const l = live();
     wrap(<VendorsScreen live={l} />);

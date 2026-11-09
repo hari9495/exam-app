@@ -283,6 +283,8 @@ export function buildNav(n: NavInput): NavArea[] {
           // follows the bonus (the API lets anyone signed in refer; someone with no record and no keys keeps a bare menu).
           ...when(employee || any('ats.headcount.manage', 'pipeline:manage', 'results:view', 'interview:view_assigned', 'candidate:manage', 'candidate:view'), L('hiring-referrals', 'Referrals', '/yx/hiring/referrals')),
           ...when(has('org:manage_settings'), L('hiring-careers', 'Careers site', '/yx/hiring/careers'), L('hiring-boards', 'Job boards', '/yx/hiring/job-boards')),
+          // HIR-21: recruitment agencies and staffing vendors (one model); recruiters review their submissions here.
+          ...when(any('ats.agency.manage', 'ats.staffing.manage', 'org:manage_settings', 'pipeline:manage'), L('hiring-vendors', 'Vendors', '/yx/hiring/vendors')),
           ...when(has('approvals:configure'), L('hiring-approvals', 'Hiring approvals', '/yx/hiring/approval-routes')),
           ...when(has('candidate:data_rights'), L('hiring-retention', 'Candidate data retention', '/yx/hiring/retention')),
           // HIR-10: HR with the background-check key (Special data; the API checks the joiner's scope).
@@ -291,7 +293,8 @@ export function buildNav(n: NavInput): NavArea[] {
           ...when(has('results:view') && !any('exam:manage', 'question_bank:manage'), L('hiring-results', 'Test results (older screens)', '/v2/panel/reports')),
           ]),
           // Staffing desk slice 1 (HIR-14, HIR-15): its own group, only for a company that turned the desk on.
-          ...sec('Staffing desk', [...when(Boolean(n.staffing) && any('ats.staffing.manage', 'ats.staffing.view'), L('staffing-clients', 'Clients', '/yx/staffing/clients'), L('staffing-rates', 'Rate cards', '/yx/staffing/rate-cards'))]),
+          // Slice 2 (HIR-16, HIR-17): submissions, placements and the bench.
+          ...sec('Staffing desk', [...when(Boolean(n.staffing) && any('ats.staffing.manage', 'ats.staffing.view'), L('staffing-clients', 'Clients', '/yx/staffing/clients'), L('staffing-rates', 'Rate cards', '/yx/staffing/rate-cards'), L('staffing-submissions', 'Submissions', '/yx/staffing/submissions'), L('staffing-placements', 'Placements & bench', '/yx/staffing/placements'))]),
           // HIR-11: the design puts Recruiting costs under "Reports & compliance" (key ats.costs.manage, founder answer 202).
           // HIR-12 All referrals (answer 204): HR with ats.referral.manage, or recruiters who see candidates.
           ...sec('Reports & compliance', [

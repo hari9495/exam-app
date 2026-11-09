@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { SubmissionsBoardScreen } from './hiring-staffing';
 import { SUBMISSIONS } from './hiring-data';
-import { SubmitToClientSheet } from './staffing-sheets';
+import { ClientJobSheet, SubmitToClientSheet } from './staffing-sheets';
 
 const meta: Meta = { title: 'Screens/Hiring/HIR-16 · Submissions board', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -36,3 +36,12 @@ export const SubmitByEmail: S = {
   ),
 };
 export const DeskOff: S = { name: 'Desk off', render: () => <SubmissionsBoardScreen live={{ state: 'off', onRetry: () => {}, rows: [], onSubmit: () => {}, onMove: () => {} }} /> };
+export const NewClientJob: S = {
+  name: 'New client job · on a rate-card line',
+  render: () => (
+    <>
+      <SubmissionsBoardScreen rows={SUBMISSIONS} />
+      <ClientJobSheet open onOpenChange={() => {}} clients={[{ value: 'c1', label: 'Nilgiri Retail Pvt Ltd' }]} loadLines={async () => [{ value: 'l1', label: 'Java Developer · Chennai · ₹1,200 per hour' }]} onSave={async () => {}} />
+    </>
+  ),
+};
