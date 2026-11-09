@@ -1244,6 +1244,9 @@ model Job {
   salaryMax               Int?                  @map("salary_max")
   salaryCurrency          String?               @map("salary_currency") @db.VarChar(10)
   pipelineId              String?               @map("pipeline_id") @db.Uuid
+  /// Staffing slice 2: a client job (a staffing client and its rate-card line).
+  staffingClientId        String?               @map("staffing_client_id") @db.Uuid
+  staffingLineId          String?               @map("staffing_line_id") @db.Uuid
   pipeline                Pipeline?             @relation(fields: [pipelineId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   deletedAt               DateTime?             @map("deleted_at") @db.Timestamptz(3)
   deletedByUserId         String?               @map("deleted_by_user_id") @db.Uuid
@@ -2146,6 +2149,14 @@ model Agency {
   contactEmail   String?            @map("contact_email") @db.VarChar(1000)
   portalToken    String             @unique @map("portal_token") @db.VarChar(1000)
   active         Boolean            @default(true)
+  /// HIR-21 staffing vendor documents (a vendor is complete with an agreement, PAN, a verified bank and a TDS section).
+  pan               String?   @db.VarChar(10)
+  gstin             String?   @db.VarChar(15)
+  tdsSection        String?   @map("tds_section") @db.VarChar(8)
+  tier              String?   @db.VarChar(10)
+  agreementSignedOn DateTime? @map("agreement_signed_on") @db.Date
+  bankVerifiedAt    DateTime? @map("bank_verified_at") @db.Timestamptz(3)
+  bankVerifiedBy    String?   @map("bank_verified_by") @db.Uuid
   createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
   agencyJobs     AgencyJob[]
@@ -2157,10 +2168,15 @@ model Agency {
 }
 
 model AgencyJob {
-  agencyId       String   @map("agency_id") @db.Uuid
-  jobId          String   @map("job_id") @db.Uuid
-  organizationId String   @map("organization_id") @db.Uuid
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  agencyId       String    @map("agency_id") @db.Uuid
+  jobId          String    @map("job_id") @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// HIR-21 share terms: the rate cap (paise per unit), submissions per vendor, the last day, and the client hidden.
+  rateCapPaise   BigInt?   @map("rate_cap_paise")
+  maxSubmissions Int?      @map("max_submissions")
+  expiresOn      DateTime? @map("expires_on") @db.Date
+  maskClient     Boolean   @default(false) @map("mask_client")
   agency         Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   job            Job      @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
@@ -2185,6 +2201,15 @@ model AgencySubmission {
   reviewedByUserId String?   @map("reviewed_by_user_id") @db.Uuid
   reviewedAt       DateTime? @map("reviewed_at") @db.Timestamptz(3)
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// HIR-21: the vendor's quote, right to represent and consent, who holds the candidate, and an approved cap exception.
+  quotedRatePaise     BigInt?   @map("quoted_rate_paise")
+  rightToRepresent    Boolean   @default(false) @map("right_to_represent")
+  consent             Boolean   @default(false)
+  duplicateOfAgencyId String?   @map("duplicate_of_agency_id") @db.Uuid
+  ownerUntil          DateTime? @map("owner_until") @db.Date
+  capExceptionReason  String?   @map("cap_exception_reason") @db.VarChar(500)
+  capExceptionBy      String?   @map("cap_exception_by") @db.Uuid
+  capExceptionAt      DateTime? @map("cap_exception_at") @db.Timestamptz(3)
   agency           Agency    @relation(fields: [agencyId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   job              Job       @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
@@ -12275,4 +12300,71 @@ model StaffingInvoiceSeries {
 
   @@unique([organizationId, gstin, financialYear], map: "staffing_invoice_series_key")
   @@map("staffing_invoice_series")
+}
+
+/// HIR-16: a person sent to a client contact for a client job (no pay rate is ever kept here).
+model StaffingSubmission {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  clientId           String    @map("client_id") @db.Uuid
+  jobId              String    @map("job_id") @db.Uuid
+  lineId             String    @map("line_id") @db.Uuid
+  employeeId         String?   @map("employee_id") @db.Uuid
+  candidateId        String?   @map("candidate_id") @db.Uuid
+  agencySubmissionId String?   @map("agency_submission_id") @db.Uuid
+  contactId          String    @map("contact_id") @db.Uuid
+  billRatePaise      BigInt    @map("bill_rate_paise")
+  masked             Boolean   @default(true)
+  stage              String    @default("submitted") @db.VarChar(14)
+  stageEnteredAt     DateTime  @default(now()) @map("stage_entered_at") @db.Timestamptz(3)
+  feedback           String?   @db.VarChar(500)
+  rejectedReason     String?   @map("rejected_reason") @db.VarChar(500)
+  emailSentAt        DateTime? @map("email_sent_at") @db.Timestamptz(3)
+  submittedBy        String?   @map("submitted_by") @db.Uuid
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, stage], map: "staffing_submissions_org_idx")
+  @@map("staffing_submissions")
+}
+
+/// HIR-17: a placement of a person (own payroll) or a vendor's worker with a client, on a rate-card line.
+model StaffingPlacement {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  clientId        String    @map("client_id") @db.Uuid
+  lineId          String    @map("line_id") @db.Uuid
+  submissionId    String?   @map("submission_id") @db.Uuid
+  supply          String    @db.VarChar(10)
+  employeeId      String?   @map("employee_id") @db.Uuid
+  agencyId        String?   @map("agency_id") @db.Uuid
+  workerName      String    @map("worker_name") @db.VarChar(200)
+  vendorRatePaise BigInt?   @map("vendor_rate_paise")
+  startOn         DateTime  @map("start_on") @db.Date
+  endOn           DateTime  @map("end_on") @db.Date
+  status          String    @default("active") @db.VarChar(8)
+  endedReason     String?   @map("ended_reason") @db.VarChar(20)
+  endNote         String?   @map("end_note") @db.VarChar(500)
+  version         Int       @default(1)
+  createdBy       String?   @map("created_by") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([organizationId, status, endOn], map: "staffing_placements_org_idx")
+  @@map("staffing_placements")
+}
+
+/// HIR-17 bench: an employee or contractor between placements.
+model StaffingBench {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  sinceOn        DateTime  @map("since_on") @db.Date
+  untilOn        DateTime? @map("until_on") @db.Date
+  lastClientId   String?   @map("last_client_id") @db.Uuid
+  note           String?   @db.VarChar(300)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, untilOn], map: "staffing_bench_org_idx")
+  @@map("staffing_bench")
 }

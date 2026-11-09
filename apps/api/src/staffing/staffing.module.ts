@@ -1,15 +1,20 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { OrgStructureModule } from '../org-structure/org-structure.module';
+import { EmailModule } from '../email/email.module';
+import { PipelineModule } from '../pipeline/pipeline.module';
+import { AgencySubmissionsModule } from '../agency-submissions/agency-submissions.module';
+import { StaffingWorkService } from './staffing-work.service';
+import { VendorsService } from './vendors.service';
 import { StaffingController } from './staffing.controller';
 import { StaffingService } from './staffing.service';
 
 // Staffing desk (HIR-14 … 21, 30, 31, Settings 6.2). Slice 1: clients, contacts, rate cards, 6.2 settings and invoice
 // series. Slices 2 (submissions, placements, bench, vendors) and 3 (invoices, receivables, fees, e-invoice) build on it.
 @Module({
-  imports: [AuthModule, OrgStructureModule],
+  imports: [AuthModule, OrgStructureModule, EmailModule, PipelineModule, AgencySubmissionsModule],
   controllers: [StaffingController],
-  providers: [StaffingService],
+  providers: [StaffingService, StaffingWorkService, VendorsService],
   exports: [StaffingService],
 })
 export class StaffingModule {}
