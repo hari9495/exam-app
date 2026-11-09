@@ -37,7 +37,6 @@ export const workspace: JobWorkspaceScreenProps = {
   senders: [],
   onBack: () => undefined,
   onOpenEntry: () => undefined,
-  onMove: ok,
   onReject: ok,
   onUndo: ok,
   onBulkMove: res,
