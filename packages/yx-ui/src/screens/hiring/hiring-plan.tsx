@@ -2060,6 +2060,11 @@ export interface LiveJobWorkspace {
   recruiter: { id: string | null; choices: { value: string; label: string }[]; onChange: (userId: string) => Promise<void> };
   /** Answer 261: the job settings moved here from the old candidates list (tests, scorecard, applying, boards, fit, stage targets). */
   settings?: LiveJobSettings;
+  /**
+   * Answer 226 (HIR-12, HIR-13): the "Referrals & internal" tab. Each switch takes effect at once (job-manage key; the
+   * page shows a toast); `referralNote` is the company's referral bonus rule in words.
+   */
+  sharing?: { internal: boolean; referrals: boolean; referralNote: string; onChange: (patch: { internalOpen?: boolean; referralOpen?: boolean }) => Promise<void> };
 }
 
 export interface JobWorkspaceScreenProps {
@@ -2160,7 +2165,7 @@ export function JobWorkspaceScreen({ job, postings: initial, law, range, activit
           </>
         }
       >
-        <Tabs defaultValue={defaultTab === 'sharing' && live ? 'overview' : defaultTab}>
+        <Tabs defaultValue={defaultTab === 'sharing' && live && !live.sharing ? 'overview' : defaultTab}>
           <TabsList aria-label="Job sections">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="postings" count={postings.length}>
@@ -2168,8 +2173,7 @@ export function JobWorkspaceScreen({ job, postings: initial, law, range, activit
             </TabsTrigger>
             <TabsTrigger value="pay">Pay range</TabsTrigger>
             {(!live || live.settings) && <TabsTrigger value="settings">Settings</TabsTrigger>}
-            {/* Live: internal jobs (HIR-13) and referral settings per job are not built yet (founder question). */}
-            {!live && <TabsTrigger value="sharing">Referrals & internal</TabsTrigger>}
+            {(!live || live.sharing) && <TabsTrigger value="sharing">Referrals & internal</TabsTrigger>}
           </TabsList>
           <TabsContent value="overview">
             <DescriptionList
@@ -2213,11 +2217,20 @@ export function JobWorkspaceScreen({ job, postings: initial, law, range, activit
               <JobSettingsPanel live={live?.settings ?? SAMPLE_JOB_SETTINGS} />
             </TabsContent>
           )}
-          {!live && (
+          {(!live || live.sharing) && (
             <TabsContent value="sharing">
               <div className="yx-hire-stack">
-                <Switch className="yx-hire-switch" label="Show on internal jobs" description="Employees can apply; tests taken are hidden from their current manager." defaultChecked={job.internal} />
-                <Switch className="yx-hire-switch" label="Open for referrals" description="Referral bonus ₹25,000 after the hire completes 90 days." defaultChecked />
+                {live?.sharing ? (
+                  <>
+                    <Switch className="yx-hire-switch" label="Show on internal jobs" description="Employees can apply; tests taken are hidden from their current manager." checked={live.sharing.internal} disabled={!can} onChange={(on) => void live.sharing!.onChange({ internalOpen: on }).catch(() => undefined)} />
+                    <Switch className="yx-hire-switch" label="Open for referrals" description={live.sharing.referralNote} checked={live.sharing.referrals} disabled={!can} onChange={(on) => void live.sharing!.onChange({ referralOpen: on }).catch(() => undefined)} />
+                  </>
+                ) : (
+                  <>
+                    <Switch className="yx-hire-switch" label="Show on internal jobs" description="Employees can apply; tests taken are hidden from their current manager." defaultChecked={job.internal} />
+                    <Switch className="yx-hire-switch" label="Open for referrals" description="Referral bonus ₹25,000 after the hire completes 90 days." defaultChecked />
+                  </>
+                )}
               </div>
             </TabsContent>
           )}
@@ -2291,7 +2304,29 @@ export interface InternalApplication {
   id: string;
   job: string;
   applied: Date;
-  status: 'Applied' | 'Assessment' | 'Interview' | 'Offer' | 'Not selected';
+  /** Live adds Selected (the hired stage). */
+  status: 'Applied' | 'Assessment' | 'Interview' | 'Offer' | 'Selected' | 'Not selected';
+}
+
+/** What Send application sends (live). */
+export interface InternalApplyInput {
+  jobId: string;
+  note: string;
+  /** An optional PDF résumé as base64; the profile is used without one. */
+  resumeBase64: string | null;
+}
+
+/** HIR-13 live: the company's rules for this person (founder decision 6) and the apply action. */
+export interface LiveInternalJobs {
+  state: ListState;
+  onRetry: () => void;
+  companyName: string;
+  /** May this person apply now; when not, the reason in plain words (from the company rules). */
+  eligibility: { eligible: boolean; title?: string; detail?: string };
+  /** The current manager is told (never asked): when the person applies, or when they reach the offer (company setting). */
+  manager: { name: string | null; when: 'on_apply' | 'at_offer' };
+  /** Rejects with an Error whose message says why (already applied, no longer open, not eligible). */
+  onApply: (input: InternalApplyInput) => Promise<void>;
 }
 
 export interface InternalJobsProps {
@@ -2299,6 +2334,7 @@ export interface InternalJobsProps {
   applications: InternalApplication[];
   applyFor?: string | null;
   eligible?: boolean;
+  live?: LiveInternalJobs;
 }
 
 function InternalJobCards({ jobs, onApply }: { jobs: Job[]; onApply: (id: string) => void }) {
@@ -2309,10 +2345,10 @@ function InternalJobCards({ jobs, onApply }: { jobs: Job[]; onApply: (id: string
         <li key={j.id} className="yx-hire-cards__card">
           <Text weight="semibold">{j.title}</Text>
           <Text size="sm" tone="secondary">
-            {j.department} · {j.location} · {j.type}
+            {[j.department, j.location, j.type].filter(Boolean).join(' · ')}
           </Text>
           <Text size="sm">Posted {j.posted ? formatDate(j.posted) : '—'}</Text>
-          <Button size="sm" onClick={() => onApply(j.id)}>
+          <Button size="sm" onClick={() => onApply(j.id)} aria-label={`Apply for ${j.title}`}>
             Apply
           </Button>
         </li>
@@ -2321,72 +2357,132 @@ function InternalJobCards({ jobs, onApply }: { jobs: Job[]; onApply: (id: string
   );
 }
 
-function InternalApplyForm({ job, eligible }: { job: Job; eligible: boolean }) {
+function useInternalApply(job: Job | undefined, live: LiveInternalJobs | undefined, close: () => void) {
+  const [note, setNote] = useState('');
+  const [resume, setResume] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const toaster = useToastIfAny();
+  const early = useTooEarly(!note.trim() ? [{ fieldId: 'ia-note', message: 'Say why you are interested in this job.' }] : []);
+  const send = async () => {
+    if (!live || !job) return;
+    // Never disabled (founder rule): not eligible yet, pressing says why again.
+    if (!live.eligibility.eligible) {
+      setProblem(live.eligibility.title ?? 'You can’t apply for internal jobs yet.');
+      return;
+    }
+    if (early.stop()) return;
+    setBusy(true);
+    setProblem(null);
+    try {
+      await live.onApply({ jobId: job.id, note: note.trim(), resumeBase64: resume });
+      toaster?.toast({ tone: 'success', title: `Applied for ${job.title}`, description: 'You can follow it under My applications.' });
+      early.reset();
+      setNote('');
+      setResume(null);
+      close();
+    } catch (e) {
+      setProblem(e instanceof Error && e.message ? e.message : 'That did not work. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return { note, setNote, setResume, busy, problem, early, send };
+}
+
+const managerTold = (name: string | null, when: 'on_apply' | 'at_offer') =>
+  `${name ? `Your manager, ${name},` : 'Your manager'} is told ${when === 'on_apply' ? 'when you apply' : 'when you reach the offer stage'}. Test results for this job are visible only to its hiring manager and HR, not to your current manager.`;
+
+function InternalApplyForm({ job, eligible, live, form }: { job: Job; eligible: boolean; live?: LiveInternalJobs; form?: ReturnType<typeof useInternalApply> }) {
+  const f = form;
   return (
     <div className="yx-hire-stack">
       {!eligible && (
-        <InlineAlert tone="warning" title="You can apply after 12 months in your current role">
-          You moved roles on 1 Jan 2026. Internal applications open for you on 1 Jan 2027 (company rule).
+        <InlineAlert tone="warning" title={live?.eligibility.title ?? 'You can apply after 12 months in your current role'}>
+          {live ? live.eligibility.detail : 'You moved roles on 1 Jan 2026. Internal applications open for you on 1 Jan 2027 (company rule).'}
         </InlineAlert>
       )}
       <InlineAlert tone="info">
-        Your manager, Karthik Subramanian, is told when you reach the offer stage. Test results for this job are visible only to its hiring manager and HR, not to your current manager.
+        {live ? managerTold(live.manager.name, live.manager.when) : 'Your manager, Karthik Subramanian, is told when you reach the offer stage. Test results for this job are visible only to its hiring manager and HR, not to your current manager.'}
       </InlineAlert>
-      <FormField label="Why are you interested?" required>
-        <TextArea rows={4} placeholder={`What you would bring to ${job.title}`} />
+      <FormField id="ia-note" label="Why are you interested?" required error={f?.early.errorOf('ia-note')}>
+        {f ? <TextArea rows={4} value={f.note} onChange={f.setNote} maxLength={2000} placeholder={`What you would bring to ${job.title}`} /> : <TextArea rows={4} placeholder={`What you would bring to ${job.title}`} />}
       </FormField>
-      <FormField label="Updated résumé" optional helper="Your profile is used if you don't add one.">
-        <FileUpload upload={async () => {}} accept={['.pdf', '.docx']} multiple={false} />
+      <FormField label="Updated résumé" optional helper={f ? 'A PDF, up to 5 MB. Your profile is used if you don’t add one.' : "Your profile is used if you don't add one."}>
+        <FileUpload
+          upload={f ? async (file) => f.setResume(await asBase64(file)) : async () => {}}
+          onItemsChange={f ? (items) => void (items.length === 0 && f.setResume(null)) : undefined}
+          accept={f ? ['.pdf'] : ['.pdf', '.docx']}
+          maxSize={f ? 5 * 1024 * 1024 : undefined}
+          multiple={false}
+        />
       </FormField>
+      {f?.problem && <InlineAlert tone="danger" title={f.problem} />}
     </div>
   );
 }
 
-const APP_TONE: Record<InternalApplication['status'], BadgeTone> = { Applied: 'neutral', Assessment: 'info', Interview: 'info', Offer: 'success', 'Not selected': 'neutral' };
+const APP_TONE: Record<InternalApplication['status'], BadgeTone> = { Applied: 'neutral', Assessment: 'info', Interview: 'info', Offer: 'success', Selected: 'success', 'Not selected': 'neutral' };
 
 // HIR-13
-export function InternalJobsScreen({ jobs, applications, applyFor = null, eligible = true }: InternalJobsProps) {
+export function InternalJobsScreen({ jobs, applications, applyFor = null, eligible = true, live }: InternalJobsProps) {
   const [apply, setApply] = useState<string | null>(applyFor);
   const job = jobs.find((j) => j.id === apply);
+  const form = useInternalApply(job, live, () => setApply(null));
+  const canApply = live ? live.eligibility.eligible : eligible;
+  const state = live?.state ?? 'ready';
   return (
     <HireFrame active="Jobs & requisitions">
-      <PageHeader title="Internal jobs" description="Openings at Kaveri Foods you can apply for. Applying doesn't affect your current role." />
-      <InternalJobCards jobs={jobs} onApply={setApply} />
-      <Card title="My applications">
-        {applications.length === 0 ? (
-          <EmptyState compact title="You haven't applied to any internal job yet." />
-        ) : (
-          <ul className="yx-hire-list">
-            {applications.map((a) => (
-              <li key={a.id} className="yx-hire-list__item">
-                <div className="yx-hire-list__main">
-                  <Text weight="medium">{a.job}</Text>
-                  <Text size="sm" tone="secondary">
-                    Applied {formatDate(a.applied)}
-                  </Text>
-                </div>
-                <Badge tone={APP_TONE[a.status]}>{a.status}</Badge>
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+      <PageHeader title="Internal jobs" description={`Openings at ${live?.companyName ?? 'Kaveri Foods'} you can apply for. Applying doesn't affect your current role.`} />
+      {state === 'loading' ? (
+        <div className="yx-hire-stack" aria-busy="true" aria-label="Loading internal jobs">
+          <Skeleton height={120} />
+          <Skeleton height={120} />
+        </div>
+      ) : state === 'error' ? (
+        <ErrorState title="Couldn't load internal jobs" description="Check your connection and try again." onRetry={live?.onRetry} />
+      ) : (
+        <>
+          <InternalJobCards jobs={jobs} onApply={setApply} />
+          <Card title="My applications">
+            {applications.length === 0 ? (
+              <EmptyState compact title="You haven't applied to any internal job yet." />
+            ) : (
+              <ul className="yx-hire-list">
+                {applications.map((a) => (
+                  <li key={a.id} className="yx-hire-list__item">
+                    <div className="yx-hire-list__main">
+                      <Text weight="medium">{a.job}</Text>
+                      <Text size="sm" tone="secondary">
+                        Applied {formatDate(a.applied)}
+                      </Text>
+                    </div>
+                    <Badge tone={APP_TONE[a.status]}>{a.status}</Badge>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        </>
+      )}
       {job && (
         <Drawer
           open
           onOpenChange={(o) => !o && setApply(null)}
           title={`Apply for ${job.title}`}
-          subtitle={`${job.department} · ${job.location}`}
+          subtitle={[job.department, job.location].filter(Boolean).join(' · ')}
+          dirty={live ? Boolean(form.note.trim()) : undefined}
           footer={
             <>
               <Button onClick={() => setApply(null)}>Cancel</Button>
-              <Button variant="primary" disabled={!eligible}>
+              {/* Live: never disabled; pressed too early or while not yet eligible, it says why (founder rule). */}
+              <Button variant="primary" disabled={!live && !eligible} loading={form.busy} onClick={live ? () => void form.send() : undefined}>
                 Send application
               </Button>
             </>
           }
         >
-          <InternalApplyForm job={job} eligible={eligible} />
+          <InternalApplyForm job={job} eligible={canApply} live={live} form={live ? form : undefined} />
         </Drawer>
       )}
     </HireFrame>

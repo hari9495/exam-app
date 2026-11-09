@@ -280,6 +280,8 @@ export function buildNav(n: NavInput): NavArea[] {
           // HIR-12 (design: under Hiring): an employee, or anyone already in Hiring, refers a friend to an open job and
           // follows the bonus (the API lets anyone signed in refer; someone with no record and no keys keeps a bare menu).
           ...when(employee || any('ats.headcount.manage', 'pipeline:manage', 'results:view', 'interview:view_assigned', 'candidate:manage', 'candidate:view'), L('hiring-referrals', 'Referrals', '/yx/hiring/referrals')),
+          // HIR-13: internal jobs are for people with an employee record (the API checks the company rules).
+          ...when(employee, L('hiring-internal-jobs', 'Internal jobs', '/yx/hiring/internal-jobs')),
           ...when(has('org:manage_settings'), L('hiring-careers', 'Careers site', '/yx/hiring/careers'), L('hiring-boards', 'Job boards', '/yx/hiring/job-boards')),
           ...when(has('approvals:configure'), L('hiring-approvals', 'Hiring approvals', '/yx/hiring/approval-routes')),
           ...when(has('candidate:data_rights'), L('hiring-retention', 'Candidate data retention', '/yx/hiring/retention')),

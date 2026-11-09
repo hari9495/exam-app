@@ -31,6 +31,9 @@ export interface ApiJob {
   salaryPeriod?: 'year' | 'month' | 'hour';
   showSalary?: boolean;
   askPayHistory?: boolean;
+  /** HIR-13 answer 226: shows on Internal jobs; open for referrals. */
+  internalOpen?: boolean;
+  referralOpen?: boolean;
   legalEntityId?: string | null;
   departmentId?: string | null;
   designationId?: string | null;
@@ -44,7 +47,7 @@ export interface ApiJob {
   stageCounts?: StageCounts;
 }
 
-const TYPE: Record<string, string> = { FULL_TIME: 'Full time', PART_TIME: 'Part time', CONTRACTOR: 'Contract', TEMPORARY: 'Temporary', INTERN: 'Internship', VOLUNTEER: 'Volunteer', PER_DIEM: 'Per day', OTHER: 'Other' };
+export const TYPE: Record<string, string> = { FULL_TIME: 'Full time', PART_TIME: 'Part time', CONTRACTOR: 'Contract', TEMPORARY: 'Temporary', INTERN: 'Internship', VOLUNTEER: 'Volunteer', PER_DIEM: 'Per day', OTHER: 'Other' };
 const STATUS: Record<JobStatus, HiringJobRow['status']> = { open: 'Open', on_hold: 'On hold', draft: 'Draft', pending_approval: 'Waiting for approval', closed: 'Closed' };
 
 /** JOB-0001 (more digits past 9999). */

@@ -41,6 +41,8 @@ export { InterviewCalendarScreen, ScorecardScreen, type LiveInterviewCalendar, t
 export { ScorecardTemplateSheet, asPerCent, type ScorecardTemplateSheetProps } from '../scorecard-template-sheet';
 // HIR-11 and HIR-12: the designed screens themselves (hiring-plan.tsx), made live with their `live` prop.
 export { AllReferralsScreen, RecruitingCostsScreen, ReferralsScreen, type AllReferral, type LiveAllReferrals, type CostEntry, type CostInput, type LiveRecruitingCosts, type LiveReferrals, type ReferInput, type ReferJob, type Referral } from '../hiring-plan';
+// HIR-13: the designed internal jobs page (hiring-plan.tsx), live with its `live` prop (the phone view stays a story).
+export { InternalJobsScreen, type InternalApplication, type InternalApplyInput, type LiveInternalJobs } from '../hiring-plan';
 // HIR-02 and HIR-26: the designed requisitions list and rediscovery panel (hiring-plan.tsx), made live with `live`.
 export { RediscoveryPanel, RequisitionsScreen, type LiveRediscovery, type LiveRequisitionRow, type LiveRequisitions, type RediscoveryMatch } from '../hiring-plan';
 // HIR-04: the designed pipeline board itself, live with its `live` prop (the stand-in board is gone).
