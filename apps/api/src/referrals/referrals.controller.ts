@@ -1,4 +1,6 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
+import { assertOwnSession } from '../service-desk/desk-access';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
@@ -21,8 +23,16 @@ export class ReferralsController {
     return this.referrals.referableJobs(tenant);
   }
 
+  /** HIR-12: the company's bonus and qualifying days (settings with defaults), for the Refer page. */
+  @Get('policy')
+  policy(@CurrentTenant() tenant: TenantContext) {
+    return this.referrals.policy(tenant);
+  }
+
+  // Referring is the person's own act (the bonus is theirs), so it is refused while acting for someone else.
   @Post()
-  submit(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: SubmitReferralDto) {
+  submit(@Req() req: Request, @CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: SubmitReferralDto) {
+    assertOwnSession(req);
     return this.referrals.submit(tenant, userId, dto);
   }
 
@@ -39,7 +49,8 @@ export class ReferralsController {
 
   @Patch(':id/reward')
   @RequirePermissions('pipeline:manage')
-  setReward(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string, @Body() dto: SetRewardStatusDto) {
+  setReward(@Req() req: Request, @CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SetRewardStatusDto) {
+    assertOwnSession(req);
     return this.referrals.setReward(tenant, userId, id, dto);
   }
 }

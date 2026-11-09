@@ -144,6 +144,10 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'ats.headcount_plan': { label: 'Hiring: requisitions and the headcount plan', scopes: ['tenant'], dated: false, values: ['off', 'advisory', 'required'], default: 'advisory' },
   // M10 AT4 (Q6, YX-ATS-53): months without activity before a non-hired candidate is anonymised.
   'ats.retention_months': { label: 'Hiring: keep candidate details for (months without activity)', scopes: ['tenant'], dated: false, values: ['6', '9', '12', '18', '24', '36'], default: '12' },
+  // HIR-12 referrals (YX-ATS-12): the bonus for a hire someone referred, and the days the hire must complete before it is
+  // due. The amount is kept on each referral when it is made, so a later change never alters a promise already made.
+  'ats.referral.bonus_inr': { label: 'Hiring: referral bonus (₹) for a referred hire', scopes: ['tenant'], dated: false, values: ['0', '5000', '10000', '15000', '20000', '25000', '50000', '100000'], default: '25000' },
+  'ats.referral.qualify_days': { label: 'Hiring: days a referred hire must complete before the bonus is due', scopes: ['tenant'], dated: false, values: ['30', '60', '90', '180'], default: '90' },
   'perf.goal.checkin_days': { label: 'Performance: remind about goal check-ins after (days)', scopes: ['tenant'], dated: false, values: ['14', '30', '90'], default: '30' },
   'alumni.access_years': { label: 'Alumni can read their documents for (years after leaving)', scopes: ['tenant'], dated: false, values: ['3', '5', '7', '10'], default: '7' },
   // M01 YX-LC-18 (lifecycle 6e): the rehire policy. Starter template "fresh start, same record, code and UAN"; HR may

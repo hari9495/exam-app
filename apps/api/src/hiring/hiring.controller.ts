@@ -1,4 +1,6 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
+import { assertOwnSession } from '../service-desk/desk-access';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
@@ -87,9 +89,31 @@ export class HiringController {
     return this.careers.costs(ctx);
   }
 
+  @Get('costs/overview')
+  @RequirePermissions('org:manage_settings')
+  costsOverview(@CurrentTenant() ctx: TenantContext) {
+    return this.careers.costsOverview(ctx);
+  }
+
+  // HIR-11: entering a cost is the person's own act, so it is refused while acting for someone else.
   @Post('costs')
   @RequirePermissions('org:manage_settings')
-  addCost(@CurrentTenant() ctx: TenantContext, @Body() dto: RecruitingCostDto) {
+  addCost(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: RecruitingCostDto) {
+    assertOwnSession(req);
     return this.careers.addCost(ctx, dto);
+  }
+
+  @Put('costs/:id')
+  @RequirePermissions('org:manage_settings')
+  updateCost(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RecruitingCostDto) {
+    assertOwnSession(req);
+    return this.careers.updateCost(ctx, id, dto);
+  }
+
+  @Delete('costs/:id')
+  @RequirePermissions('org:manage_settings')
+  removeCost(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    assertOwnSession(req);
+    return this.careers.removeCost(ctx, id);
   }
 }

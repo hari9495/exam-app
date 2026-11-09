@@ -5,6 +5,8 @@ import { JobsService } from '../jobs/jobs.service';
 import { recomputeGlobalStage } from '../candidates/recompute-global-stage';
 import { validatePdfUpload } from '../public-applications/pdf-validation';
 import { SubmitReferralDto, SetRewardStatusDto } from './dto/referral.dto';
+import { inCompany, type CompanyContext, type Tx } from '../org-structure/org-structure.service';
+import { settingFor } from '../people/probation';
 
 export interface ReferralRow {
   id: string;
@@ -17,6 +19,18 @@ export interface ReferralRow {
   note: string | null;
   referrerName?: string;
   createdAt: Date;
+  /** HIR-12: Applied (still in the first stage), In process, Hired or Not selected (rejected or archived). */
+  stage: 'Applied' | 'In process' | 'Hired' | 'Not selected';
+  /** Start date of the accepted offer (YYYY-MM-DD), the day the qualifying days count from. */
+  joinedOn: string | null;
+  /** The bonus promised, whole rupees (0 when the reward was turned down). */
+  bonusInr: number;
+}
+
+/** HIR-12 company policy: the bonus and the days a referred hire must complete (settings with defaults). */
+export interface ReferralPolicy {
+  bonusInr: number;
+  qualifyDays: number;
 }
 
 @Injectable()
@@ -29,6 +43,10 @@ export class ReferralsService {
     private readonly jobsService: JobsService,
     private readonly audit: AuditService,
   ) {}
+
+  async policy(context: TenantContext): Promise<ReferralPolicy> {
+    return inCompany(this.tenantPrisma, context, (tx, c) => readPolicy(tx, c));
+  }
 
   // Open jobs a staffer can refer someone to (link-only roles included -- referral is internal, so
   // publicApplyEnabled/listOnCareers are not required, unlike the public careers list).
@@ -101,8 +119,9 @@ export class ReferralsService {
       const existingReferral = await tx.referral.findUnique({ where: { entryId: entry.id } });
       if (existingReferral) throw new ConflictException('This person has already been referred for this role');
 
+      const { bonusInr } = await readPolicy(tx, { ...context, organizationId: orgId });
       const referral = await tx.referral.create({
-        data: { organizationId: orgId, referrerUserId, jobId: job.id, candidateId: candidate.id, entryId: entry.id, note: dto.note ?? null },
+        data: { organizationId: orgId, referrerUserId, jobId: job.id, candidateId: candidate.id, entryId: entry.id, note: dto.note ?? null, bonusInr },
       });
       await recomputeGlobalStage(tx, orgId, candidate.id);
       return { referral, candidateId: candidate.id, isNew: !existing };
@@ -112,7 +131,7 @@ export class ReferralsService {
     if (resumePath) {
       await this.jobsService.enqueue(context, 'resume_parse', JSON.stringify({ candidateId }), referrerUserId).catch((e) => this.logger.warn(`resume_parse enqueue failed: ${e instanceof Error ? e.message : e}`));
     }
-    await this.audit.record(context, { actorUserId: referrerUserId, action: 'referral.submitted', entityType: 'referral', entityId: referral.id, metadata: { jobId: dto.jobId, isNewCandidate: isNew } });
+    await this.audit.record(context, { actorUserId: referrerUserId, action: 'referral.submitted', entityType: 'referral', entityId: referral.id, metadata: { jobId: dto.jobId, isNewCandidate: isNew, consentGiven: dto.consentGiven === true } });
     return { id: referral.id };
   }
 
@@ -144,7 +163,7 @@ export class ReferralsService {
   // referral rows -- Referral stores plain ids, so joins are manual (matches the getBoard pattern).
   private async buildRows(
     tx: any,
-    referrals: { id: string; candidateId: string; jobId: string; entryId: string; referrerUserId: string; note: string | null; rewardStatus: string; rewardNote: string | null; createdAt: Date }[],
+    referrals: { id: string; candidateId: string; jobId: string; entryId: string; referrerUserId: string; note: string | null; rewardStatus: string; rewardNote: string | null; bonusInr: number | null; createdAt: Date; organizationId: string }[],
     includeReferrer: boolean,
   ): Promise<ReferralRow[]> {
     if (referrals.length === 0) return [];
@@ -152,8 +171,17 @@ export class ReferralsService {
     const jobs = (await tx.job.findMany({ where: { id: { in: referrals.map((r) => r.jobId) } }, select: { id: true, title: true } })) as { id: string; title: string }[];
     const entries = (await tx.pipelineEntry.findMany({
       where: { id: { in: referrals.map((r) => r.entryId) } },
-      select: { id: true, rejected: true, archivedAt: true, status: { select: { name: true, stage: { select: { name: true } } } } },
-    })) as { id: string; rejected: boolean; archivedAt: Date | null; status: { name: string; stage: { name: string } | null } | null }[];
+      select: { id: true, rejected: true, archivedAt: true, job: { select: { pipelineId: true } }, status: { select: { name: true, stage: { select: { name: true, category: true, position: true } } } } },
+    })) as { id: string; rejected: boolean; archivedAt: Date | null; job: { pipelineId: string | null }; status: { name: string; stage: { name: string; category: string; position: number } | null } | null }[];
+    // The first active stage of each pipeline: a referral still there shows as "Applied".
+    const pipelineIds = [...new Set(entries.map((e) => e.job.pipelineId).filter((x): x is string => !!x))];
+    const firstActive = new Map<string, number>();
+    for (const st of (await tx.pipelineStage.findMany({ where: { pipelineId: { in: pipelineIds }, category: 'active' }, select: { pipelineId: true, position: true } })) as { pipelineId: string; position: number }[])
+      firstActive.set(st.pipelineId, Math.min(st.position, firstActive.get(st.pipelineId) ?? Infinity));
+    const offers = (await tx.offer.findMany({ where: { pipelineEntryId: { in: referrals.map((r) => r.entryId) }, status: 'accepted' }, orderBy: { respondedAt: 'desc' }, select: { pipelineEntryId: true, startDate: true } })) as { pipelineEntryId: string; startDate: Date }[];
+    const joinedByEntry = new Map<string, string>();
+    for (const o of offers) if (!joinedByEntry.has(o.pipelineEntryId)) joinedByEntry.set(o.pipelineEntryId, istDay(o.startDate));
+    const policy = await readPolicy(tx, { organizationId: referrals[0]!.organizationId, isSuperAdmin: false });
     const referrers = includeReferrer
       ? ((await tx.user.findMany({ where: { id: { in: referrals.map((r) => r.referrerUserId) } }, select: { id: true, name: true } })) as { id: string; name: string }[])
       : [];
@@ -165,7 +193,13 @@ export class ReferralsService {
     return referrals.map((r) => {
       const entry = entryById.get(r.entryId);
       const status = entry?.rejected ? 'Rejected' : entry?.archivedAt ? 'Archived' : entry?.status?.stage?.name ?? entry?.status?.name ?? 'In pipeline';
+      const st = entry?.status?.stage;
+      const stage: ReferralRow['stage'] =
+        !entry || entry.rejected || entry.archivedAt || st?.category === 'rejected' ? 'Not selected' : st?.category === 'hired' ? 'Hired' : st && st.category === 'active' && entry.job.pipelineId && st.position === firstActive.get(entry.job.pipelineId) ? 'Applied' : 'In process';
       return {
+        stage,
+        joinedOn: stage === 'Hired' ? joinedByEntry.get(r.entryId) ?? null : null,
+        bonusInr: r.rewardStatus === 'rejected' ? 0 : r.bonusInr ?? policy.bonusInr,
         id: r.id,
         candidateName: candidateById.get(r.candidateId)?.name ?? '(unknown)',
         candidateEmail: candidateById.get(r.candidateId)?.email ?? '',
@@ -180,3 +214,12 @@ export class ReferralsService {
     });
   }
 }
+
+async function readPolicy(tx: Tx, c: CompanyContext): Promise<ReferralPolicy> {
+  return {
+    bonusInr: Number(await settingFor(tx, c, 'ats.referral.bonus_inr', { legalEntityId: '' })),
+    qualifyDays: Number(await settingFor(tx, c, 'ats.referral.qualify_days', { legalEntityId: '' })),
+  };
+}
+
+const istDay = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);

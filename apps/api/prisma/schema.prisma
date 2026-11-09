@@ -1335,6 +1335,8 @@ model Referral {
   note           String?  @db.Text
   rewardStatus   String   @default("pending") @map("reward_status") @db.VarChar(1000) // 'pending' | 'approved' | 'paid' | 'rejected'
   rewardNote     String?  @map("reward_note") @db.Text
+  /// HIR-12: the bonus (whole rupees) promised when the referral was made; NULL = made before, read the current setting.
+  bonusInr       Int?     @map("bonus_inr")
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
