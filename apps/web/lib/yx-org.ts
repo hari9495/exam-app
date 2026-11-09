@@ -187,6 +187,8 @@ export const YX_KEYS = [
   'ats.requisition.raise',
   // HIR-11 / HIR-12: recruiting costs and All referrals in the Hiring menu.
   'ats.costs.manage',
+  // HIR-28: bulk offers (and offer pay) need the offer-pay key.
+  'ats.offer.compensation.view',
   'ats.referral.manage',
   // Settings 6.1 Hiring.
   'ats.settings.manage',
