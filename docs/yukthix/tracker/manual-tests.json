@@ -17534,5 +17534,121 @@
       "Screens/People/PPL-16 · Probation reviews queue · HR · decide · background check still open"
     ],
     "note": "Positive and negative."
+  },
+  {
+    "id": "MT-STAFF-01",
+    "area": "Hiring · Staffing desk slice 1: HIR-14 clients, HIR-15 rate cards, Settings 6.2 (14 Nov 2026)",
+    "screen": "Turn the staffing desk on (6.2)",
+    "url": "http://localhost:3000/yx/settings/staffing",
+    "account": "admin-tester@demo-org.test (System Admin). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Look at the Hiring menu: no Staffing desk group.",
+      "2. Open http://localhost:3000/yx/staffing/clients.",
+      "3. Open Settings › Hiring & Assessments › Staffing desk; tick \"Turn on the staffing desk\" and press Save changes.",
+      "4. Look at the Hiring menu again."
+    ],
+    "expected": "Step 2: \"The staffing desk is off.\" (not an error). Step 3: toast \"Staffing desk settings saved\"; defaults shown: OT 1.5×, holiday 2×, payment terms 30 days, rate change \"Today or later\". Step 4: a Staffing desk group with Clients and Rate cards.",
+    "stories": [
+      "Screens/Settings/Group 6 · Hiring & Assessments · 6.2 Staffing desk",
+      "Screens/Hiring/HIR-14 · Clients · Staffing desk turned off"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-STAFF-02",
+    "area": "Hiring · Staffing desk slice 1: HIR-14 clients, HIR-15 rate cards, Settings 6.2 (14 Nov 2026)",
+    "screen": "Add a client (HIR-14)",
+    "url": "http://localhost:3000/yx/staffing/clients",
+    "account": "admin-tester@demo-org.test (System Admin). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Press Add client, then Add client in the sheet at once.",
+      "2. Name \"Nilgiri Retail – test\", GSTIN 29AABCC7788M1Z6 (a Karnataka number), billing state Tamil Nadu, an address; press Add client.",
+      "3. Change the billing state to Karnataka; press Add client.",
+      "4. Add another client with the same name."
+    ],
+    "expected": "Step 1: errors under the name, billing state and address; nothing saved. Step 2: refused: the GSTIN is registered in Karnataka but the billing state is Tamil Nadu. Step 3: toast \"Client added\"; the client opens. Step 4: refused: a client with this name already exists.",
+    "stories": [
+      "Screens/Hiring/HIR-14 · Clients · Add client",
+      "Screens/Hiring/HIR-14 · Clients · Account manager · clients list"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-STAFF-03",
+    "area": "Hiring · Staffing desk slice 1: HIR-14 clients, HIR-15 rate cards, Settings 6.2 (14 Nov 2026)",
+    "screen": "Client workspace and contacts (HIR-14)",
+    "url": "http://localhost:3000/yx/staffing/clients",
+    "account": "admin-tester@demo-org.test (System Admin). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open the client from MT-STAFF-02. Check Overview, Contracts and SLAs.",
+      "2. Contacts › Add contact: an accounts person with \"Billing contact\" ticked.",
+      "3. Add a second contact with the same email.",
+      "4. Remove the first contact and confirm.",
+      "5. Change client: set status On hold and payment terms 45; save."
+    ],
+    "expected": "Step 1: payment terms say \"(company default)\"; empty contract and SLA values say Not set / Not agreed (no sample data). Step 2: toast \"Contact added\"; Billing contact badge. Step 3: refused (one email per client). Step 4: toast \"Contact removed\". Step 5: toast \"Client saved\"; header shows On hold and 45 days.",
+    "stories": [
+      "Screens/Hiring/HIR-14 · Clients · Client workspace · overview",
+      "Screens/Hiring/HIR-14 · Clients · Client workspace · contacts and portal access",
+      "Screens/Hiring/HIR-14 · Clients · Client workspace · add contact"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-STAFF-04",
+    "area": "Hiring · Staffing desk slice 1: HIR-14 clients, HIR-15 rate cards, Settings 6.2 (14 Nov 2026)",
+    "screen": "Rate card and a dated change (HIR-15)",
+    "url": "http://localhost:3000/yx/staffing/rate-cards",
+    "account": "admin-tester@demo-org.test (System Admin). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. On the client press Rate card, then Add role: Java Developer, Java, Chennai, per hour, bill 1200, pay 1300; press Add role.",
+      "2. Change pay to 800 and press Add role.",
+      "3. Press Change rate: effective tomorrow, bill 1300, pay 850, a reason; save.",
+      "4. Tick Show expired rates.",
+      "5. Try Change rate again on the new line with an effective day before it starts."
+    ],
+    "expected": "Step 1: \"The pay rate is above the bill rate.\" Step 2: toast; margin 33.3%; OT 1.5× and holiday 2× from 6.2. Step 3: toast \"Rate changed\"; Step 4: the old rate ends today, the new one starts tomorrow. Step 5: refused: the new rate must start after the current one.",
+    "stories": [
+      "Screens/Hiring/HIR-15 · Rate cards · Add role",
+      "Screens/Hiring/HIR-15 · Rate cards · Account manager · current rates with margin",
+      "Screens/Hiring/HIR-15 · Rate cards · Dated rate change",
+      "Screens/Hiring/HIR-15 · Rate cards · Dated history shown"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-STAFF-05",
+    "area": "Hiring · Staffing desk slice 1: HIR-14 clients, HIR-15 rate cards, Settings 6.2 (14 Nov 2026)",
+    "screen": "Recruiters see bill rates only",
+    "url": "http://localhost:3000/yx/staffing/rate-cards",
+    "account": "A recruiter given ats.staffing.view only (Roles & access), then an admin acting for them.",
+    "steps": [
+      "1. As the recruiter open Clients and a client.",
+      "2. Open its rate card.",
+      "3. As the admin acting for the account manager, open a client."
+    ],
+    "expected": "Step 1: clients show, with no Add client, Change client or contact buttons. Step 2: bill rates only; \"Pay rates and margins are visible to account managers.\" Step 3: view only; nothing can be changed.",
+    "stories": [
+      "Screens/Hiring/HIR-15 · Rate cards · Recruiter · no pay rates or margins"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-STAFF-06",
+    "area": "Hiring · Staffing desk slice 1: HIR-14 clients, HIR-15 rate cards, Settings 6.2 (14 Nov 2026)",
+    "screen": "Invoice numbering (6.2)",
+    "url": "http://localhost:3000/yx/settings/staffing",
+    "account": "admin-tester@demo-org.test (System Admin). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Press Add invoice series; choose the legal entity and its GSTIN, 2026-27, series \"KF/INV/26-27/\", next number 1; Add series.",
+      "2. Add the same GSTIN and year again.",
+      "3. Change the series and set the next number to 0.",
+      "4. Set it to 50 and save."
+    ],
+    "expected": "Step 1: toast \"Invoice series added\"; the row shows. Step 2: refused (one series per GSTIN per year). Step 3: \"It cannot go below 1.\" Step 4: toast; the row shows 50.",
+    "stories": [
+      "Screens/Settings/Group 6 · Hiring & Assessments · 6.2 Staffing desk · add invoice series"
+    ],
+    "note": "Positive and negative."
   }
 ]
