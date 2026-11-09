@@ -12,6 +12,7 @@ import { holdersOf } from '../time/time-core';
 import { addRole, checkLoginLink, personForEmployee } from '../people/persons';
 import { settingFor, startProbation } from '../people/probation';
 import { noticeLabel } from '../lifecycle/exit-rules';
+import { assertClearForConfirmation } from '../lifecycle/bgv-gate';
 import { factsOn as timeFactsOn } from '../time/time-core';
 import { ScheduleBook } from '../time/schedule';
 import { serviceDates as datesFor, Spell } from './service-dates';
@@ -1131,6 +1132,8 @@ export class EmployeeHistoryService implements OnModuleInit {
       await this.checkReach(tx, c, v, e, date, ch.overrideReason);
     }
     await this.checkRefs(tx, c, e, payload);
+    // Answer 364: no confirmation while a "must be clear before confirmation" background check is open (a preview still shows).
+    if (ch.changeType === 'confirmation' && !opts.simulate) await assertClearForConfirmation(tx, c.organizationId, e.id);
     const today = todayIst();
     const status = 'scheduled';
     await tx.employeeChange.update({ where: { id: ch.id }, data: { status, decidedBy: c.userId, decidedAt: new Date(), decisionNote: opts.note?.trim() || null } });

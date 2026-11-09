@@ -20,6 +20,7 @@ import { IdentityProvidersService } from '../auth/identity-providers.service';
 import { CandidateRetentionService } from '../talent/retention.service';
 import { HiringBoardService } from '../interviewing/hiring-board.service';
 import { ScorecardsService } from '../interviewing/scorecards.service';
+import { HiringSettingsService } from '../hiring/hiring-settings.service';
 
 function msg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -54,6 +55,7 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
     scorecards: ScorecardsService,
     importDrafts: EmployeeImportDraftsService,
     erasure: ErasureService,
+    hiringSettings: HiringSettingsService,
   ) {
     // Keys MUST match SWEEP_SCHEDULE ids.
     this.handlers = {
@@ -77,6 +79,8 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
       'import-drafts-retention': () => importDrafts.prune(),
       // People follow-up 12: Special data past privacy.retention.special_years, companies that turned it on.
       'privacy-erasure': () => erasure.sweep(),
+      // Founder answer 385: tell the hiring settings holders once when the default recruiter goes stale.
+      'hiring-default-recruiter': () => hiringSettings.staleRecruiterSweep(),
     };
     this.worker = logBullErrors(new Worker(SCHEDULED_SWEEPS_QUEUE_NAME, (job) => this.dispatch(job), bullOpts(this.connection)), SCHEDULED_SWEEPS_QUEUE_NAME);
     this.worker.on('failed', (job, err) => this.logger.error(`Sweep "${job?.name}" failed: ${msg(err)}`));

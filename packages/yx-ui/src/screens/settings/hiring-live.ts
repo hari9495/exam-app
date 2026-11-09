@@ -33,6 +33,7 @@ const KEY = {
   'hire.rediscovery_ai': 'hiring.rediscovery.ai',
   'hire.rehire_blocks_screening': 'hiring.rehire_flag.blocks_screening',
   'hire.referral_self_apply_days': 'ats.referral.self_apply_days',
+  'hire.bgv_decider_other_person': 'hiring.bgv.decider_other_person',
 } as const;
 /** On/off fields: the stored value for on and for off. */
 const TOGGLE: Partial<Record<keyof typeof KEY, [on: string, off: string]>> = {
@@ -42,6 +43,7 @@ const TOGGLE: Partial<Record<keyof typeof KEY, [on: string, off: string]>> = {
   'hire.pay_history_ask': ['on', 'off'],
   'hire.rediscovery_ai': ['on', 'off'],
   'hire.rehire_blocks_screening': ['on', 'off'],
+  'hire.bgv_decider_other_person': ['on', 'off'],
 };
 const BONUS = 'ats.referral.bonus_inr';
 const DAYS = 'ats.referral.qualify_days';
@@ -98,7 +100,8 @@ export function hiringSettingsPage(design: SettingsPageDef, data: HiringSettings
       case 'hire.pay_range_show':
       case 'hire.pay_history_ask':
       case 'hire.rediscovery_ai':
-      case 'hire.rehire_blocks_screening': {
+      case 'hire.rehire_blocks_screening':
+      case 'hire.bgv_decider_other_person': {
         const k = KEY[d.key];
         return { ...base, value: v[k] === TOGGLE[d.key]![0], starter: v[k] === data.defaults[k] };
       }
@@ -138,7 +141,7 @@ export function hiringSettingsPage(design: SettingsPageDef, data: HiringSettings
   };
   return {
     ...design,
-    summary: 'Pipeline and scorecard templates with stage targets, the default recruiter, the headcount plan, pay transparency, rehire and candidate data rules, AI notes on past candidates, telling candidates who are not selected, and referral bonuses.',
+    summary: 'Pipeline and scorecard templates with stage targets, the default recruiter, the headcount plan, pay transparency, rehire, background-check and candidate data rules, AI notes on past candidates, telling candidates who are not selected, and referral bonuses.',
     related: undefined,
     scopes: undefined,
     sections: design.sections.map((sec) => ({ ...sec, settings: sec.settings.map(fill).filter((x): x is SettingDef => x !== null) })).filter((sec) => sec.settings.length > 0),
