@@ -1226,3 +1226,16 @@ suggestion is the answer we propose.
      request flow when that is built.*
 350. **Existing requisitions where the manager is their own recruiter (291):** 0 in the test app's demo-org (1 requisition
      there); none changed. *Suggested: leave them; recruiting uses Assign recruiter.*
+
+Founder approved, 10 Nov 2026 (questions 331-339, 341-350, all as suggested):
+- Offers: (331) keep: building an offer needs the offer-pay key, give it to recruiters who make offers; (332) the band
+  approver setting can name a person; (333) keep: below the band shows but adds no step; (334) the joining bonus is paid as
+  one-time pay in the first run and the clawback recovered in the final settlement; (335) keep HR deciding conditions, tell
+  HR on the joining day; (336) two reminder email templates, sent only when the recruiter presses the button; (337) the
+  e-sign switch goes into the offer template editor and the accept-and-sign page is drawn (T9-09 portal style); (338) keep
+  the fixed CTC in the approvers' inbox summary; (339) retire the old free-text offer route later.
+- Settings 6.1: (341) draw the seven settings into the matching 6.1 sections; (342) keep fields without a feature out;
+  (343) keep who changes hiring settings; (344) keep undo while the cost quarter is open; (345) draw template editing into
+  6.1, then remove the old scorecard templates page; (346) keep the retention choices; (347) referral rules by role only if
+  a customer asks; (348) the default recruiter must hold the recruiter key; (349) Request access when that flow exists;
+  (350) nothing to change.
