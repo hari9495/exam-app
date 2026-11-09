@@ -19,9 +19,9 @@ describe('hiringHome (recruiter Home)', () => {
     );
     expect(actions.map((a) => [a.title, a.href])).toEqual([
       ['Write your scorecard · Quality Analyst', '/yx/hiring/interviews/iv1'],
-      ['Approve the offer · Plant Engineer', '/yx/hiring/jobs/j1?entry=e1'],
-      ['Send the offer · Plant Engineer', '/yx/hiring/jobs/j1?entry=e2'],
-      ['12 days in Screened · Sales', '/yx/hiring/jobs/j2?entry=e3'],
+      ['Approve the offer · Plant Engineer', '/yx/hiring/jobs/j1/pipeline?entry=e1'],
+      ['Send the offer · Plant Engineer', '/yx/hiring/jobs/j1/pipeline?entry=e2'],
+      ['12 days in Screened · Sales', '/yx/hiring/jobs/j2/pipeline?entry=e3'],
     ]);
     expect(actions[2].note).toBe('Approved, not sent yet');
   });

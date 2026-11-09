@@ -3,21 +3,21 @@
 import { useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { ApplicationPanel, JobWorkspaceScreen, type ApplicationView, type BoardRowView, type BoardStageView, type CandidateProfileView, type EmailTemplateChoice, type ScorecardSummary } from '@yukthix/ui/hiring';
-import { loadState, useYxPermissions } from '../../../../../../lib/yx-org';
-import { apiFetch, apiFetchBlob } from '../../../../../../lib/api-client';
-import { useAuth } from '../../../../../../lib/auth-context';
-import { useApi, useApiWrite, useHiring } from '../../../../../../lib/yx-hiring';
-import { templateChoices } from '../../../../../../lib/yx-candidates';
-import { saveBlob } from '../../../../../../lib/yx-pay';
-import { collectChecklistItems } from '../../../../../../lib/blueprintChecklist';
-import { useJob } from '../../../../../../lib/hooks/usePipeline';
-import { useExams } from '../../../../../../lib/hooks/useExams';
-import { useJobBoards } from '../../../../../../lib/hooks/useJobBoards';
-import { useCandidates } from '../../../../../../lib/hooks/useCandidates';
-import { useMessageTemplates } from '../../../../../../lib/hooks/useCandidateMessages';
-import { useOrgSenderAddresses } from '../../../../../../lib/hooks/useOrgSenderAddresses';
-import { useTeammates } from '../../../../../../lib/hooks/useUserDirectory';
-import type { BoardEntryRow, CandidateEmail, CandidateSms, CandidateWhatsappMessage, FeedbackRow, Interview, Offer, OfferTemplate, PipelineStageConfig, SurveyDefinition } from '../../../../../../lib/types';
+import { loadState, useYxPermissions } from '../../../../../../../lib/yx-org';
+import { apiFetch, apiFetchBlob } from '../../../../../../../lib/api-client';
+import { useAuth } from '../../../../../../../lib/auth-context';
+import { useApi, useApiWrite, useHiring } from '../../../../../../../lib/yx-hiring';
+import { templateChoices } from '../../../../../../../lib/yx-candidates';
+import { saveBlob } from '../../../../../../../lib/yx-pay';
+import { collectChecklistItems } from '../../../../../../../lib/blueprintChecklist';
+import { useJob } from '../../../../../../../lib/hooks/usePipeline';
+import { useExams } from '../../../../../../../lib/hooks/useExams';
+import { useJobBoards } from '../../../../../../../lib/hooks/useJobBoards';
+import { useCandidates } from '../../../../../../../lib/hooks/useCandidates';
+import { useMessageTemplates } from '../../../../../../../lib/hooks/useCandidateMessages';
+import { useOrgSenderAddresses } from '../../../../../../../lib/hooks/useOrgSenderAddresses';
+import { useTeammates } from '../../../../../../../lib/hooks/useUserDirectory';
+import type { BoardEntryRow, CandidateEmail, CandidateSms, CandidateWhatsappMessage, FeedbackRow, Interview, Offer, OfferTemplate, PipelineStageConfig, SurveyDefinition } from '../../../../../../../lib/types';
 
 type Row = BoardEntryRow & { stageEnteredAt: string; scorecards: (ScorecardSummary & { interviewId: string }) | null; nextInterviewAt: string | null; rejectionPendingUntil: string | null };
 type Board = { pipeline: { id: string; name: string; stages: PipelineStageConfig[] }; columns: Record<string, Row[]> };
@@ -26,8 +26,9 @@ type Choice = { value: string; label: string };
 const days = (iso: string) => Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 86_400_000));
 const test = (r: BoardEntryRow) => r.examResults.map((e) => `${e.examTitle}${e.score != null ? ` ${e.score}%` : ''}${e.passFail ? ` · ${e.passFail === 'pass' ? 'passed' : 'not passed'}` : ''}`).join(', ') || null;
 
-// Hiring › Jobs › one job (M10 batch AT5): the YukthiX job workspace on the existing hiring API. Replaces /v2/jobs/:id,
-// which now redirects here.
+// Hiring › Jobs › one job › Pipeline (M10 batch AT5): the board, applications and job settings on the existing hiring API.
+// Moved here from /yx/hiring/jobs/[id] when the designed HIR-03 workspace went live there (HIR-04 replaces this board).
+// /v2/jobs/:id redirects to the workspace.
 export default function YxHiringJobPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -86,7 +87,7 @@ export default function YxHiringJobPage() {
         onCandidateSearch={setQ}
         templates={tpl}
         senders={sendersChoices}
-        onBack={() => router.push('/yx/hiring/jobs')}
+        onBack={() => router.push(`/yx/hiring/jobs/${encodeURIComponent(id)}`)}
         onOpenEntry={setOpen}
         onMove={(entryId, statusId) => write('POST', `/hiring/entries/${entryId}/move`, { statusId })}
         onReject={async (ids, input) => {
