@@ -780,6 +780,12 @@ export class CandidatesService {
         where: { candidateId, organizationId: context.organizationId as string },
         data: { interviewToken: null, location: 'Redacted', recruiterNote: null, candidateReschedNote: null },
       });
+      // HIR-07 answer 322: scorecard comments are free text about the candidate; the append-only table allows only this.
+      const erasedInterviews = await tx.interview.findMany({ where: { candidateId, organizationId: context.organizationId as string }, select: { id: true } });
+      await tx.scorecardComment.updateMany({
+        where: { organizationId: context.organizationId as string, interviewId: { in: erasedInterviews.map((i) => i.id) }, redactedAt: null },
+        data: { body: 'Redacted', redactedAt: now },
+      });
       await tx.candidateRefreshToken.deleteMany({ where: { invitationId: { in: invitationIds } } });
       await tx.invitation.updateMany({
         where: { id: { in: invitationIds }, status: 'invited' },

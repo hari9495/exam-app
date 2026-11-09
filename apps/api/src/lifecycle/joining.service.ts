@@ -12,6 +12,7 @@ import { JourneysService as DeskJourneysService } from '../service-desk/journeys
 import { joinerInScope, ownOf } from '../documents/person-access';
 import { PreboardingPortalService, nomineesOf } from './portal.service';
 import { OnboardingExtrasService } from './onboarding-extras.service';
+import { SETTINGS } from '../org-structure/settings-registry';
 
 // LIFE-2.03 / 2.08 / 2.09 HR's side of a joiner (M01 §3.5, D3; YX-LC-03 / 12 / 31; design §8.4):
 //   joining   "Mark joined" on or after the joining day, with HR's identity check (YX-LC-31): the employee record is made
@@ -122,7 +123,8 @@ export class JoiningService {
       if (pb.status !== 'invited' || pb.version !== dto.version) throw new ConflictException('This joiner changed meanwhile. Reload it.');
       if (iso(pb.joiningOn) > todayIst()) throw new BadRequestException(`${iso(pb.joiningOn)} is the joining day. Mark them joined on or after it, or change the joining day.`);
       if (!pb.departmentId || !pb.designationId || !pb.employmentTypeId) throw new BadRequestException('Add the department, designation and employment type to the joiner first.');
-      const gated = await tx.bgvCheck.findFirst({ where: { organizationId: org, preboardingId: id, gate: 'before_joining', status: { notIn: ['clear', 'cancelled'] } } });
+      // HIR-10: a discrepancy a person decided to proceed with no longer blocks joining (founder decision 3).
+      const gated = await tx.bgvCheck.findFirst({ where: { organizationId: org, preboardingId: id, gate: 'before_joining', status: { notIn: ['clear', 'cancelled'] }, NOT: { status: 'discrepancy', decision: 'proceed' } } });
       if (gated) throw new ConflictException('A background check must be clear before joining. HR can change that check’s gate if the company decides so.');
       const p = await tx.person.findFirstOrThrow({ where: { organizationId: org, id: pb.personId } });
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`preboarding:${id}`}))`;
@@ -295,29 +297,142 @@ export class JoiningService {
   }
 
   /** A result: clear / discrepancy / unable, with the report as a Special document. A discrepancy only flags HR. */
-  async updateCheck(ctx: TenantContext, user: ScopeUser, checkId: string, dto: { status: string; note?: string; gate?: string; version: number }, file: { originalname: string; buffer: Buffer } | undefined) {
+  async updateCheck(ctx: TenantContext, user: ScopeUser, checkId: string, dto: { status: string; note?: string; gate?: string; checkedOn?: string; version: number }, file: { originalname: string; buffer: Buffer } | undefined) {
     const v = await this.viewer(user);
     const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const k = await tx.bgvCheck.findFirst({ where: { organizationId: c.organizationId, id: checkId } });
       if (!k) throw new NotFoundException('No such check.');
       const pb = await this.joiner(tx, c, v, k.preboardingId, 'lifecycle.bgv.manage');
+      if ((await ownOf(tx, c, v)).personId === pb.personId) throw new ForbiddenException('You cannot check yourself.');
       if (k.status === 'cancelled') throw new ConflictException('This check was stopped.');
       const consent = await tx.consentRecord.findFirst({ where: { organizationId: c.organizationId, id: k.consentId } });
       if (consent?.withdrawnAt) throw new ConflictException('The joiner withdrew consent, so this check stopped.');
+      // HIR-10: the day the check was done (IST), never in the future and never before the check was added.
+      const checkedOn = dto.checkedOn ?? todayIst();
+      if (checkedOn > todayIst()) throw new BadRequestException('The day the check was done cannot be in the future.');
+      if (checkedOn < iso(new Date(k.createdAt.getTime() + 330 * 60_000))) throw new BadRequestException('The day the check was done cannot be before the check was added.');
       let docId: string | null = k.resultDocumentId;
+      let resultVersion: number | null = k.resultVersion;
       let fileId: string | null = null;
       if (file) {
         const r = await this.documents.storeReport(tx, c, pb.personId, file);
         docId = r.d.id;
         fileId = r.fileId;
+        resultVersion = (await tx.documentVersion.findFirstOrThrow({ where: { organizationId: c.organizationId, id: r.d.currentVersionId! }, select: { version: true } })).version;
       }
-      const n = await tx.bgvCheck.updateMany({ where: { organizationId: c.organizationId, id: checkId, version: dto.version }, data: { status: dto.status, note: dto.note?.trim().slice(0, 1000) ?? k.note, gate: dto.gate ?? k.gate, resultDocumentId: docId, version: { increment: 1 } } });
+      // A changed result clears an earlier decision: it goes back to a person.
+      const reset = dto.status !== k.status ? { decision: null, decisionNote: null, decidedBy: null, decidedAt: null } : {};
+      const n = await tx.bgvCheck.updateMany({ where: { organizationId: c.organizationId, id: checkId, version: dto.version }, data: { status: dto.status, note: dto.note?.trim().slice(0, 1000) ?? k.note, gate: dto.gate ?? k.gate, resultDocumentId: docId, resultVersion, checkedBy: c.userId ?? null, checkedOn: asDate(checkedOn), ...reset, version: { increment: 1 } } });
       if (!n.count) throw new ConflictException('Someone else changed this check. Reload it.');
-      await audit(tx, c, 'bgv.check.updated', 'preboarding', pb.id, { checkId, status: dto.status, report: Boolean(file) });
+      await audit(tx, c, 'bgv.check.updated', 'preboarding', pb.id, { checkId, status: dto.status, report: Boolean(file), checkedOn });
       return { org: c.organizationId, fileId };
     });
     if (out.fileId) await this.documents.scanUpload(out.org, out.fileId);
     return { ok: true };
+  }
+
+  /**
+   * HIR-10 founder decision 3: a discrepancy goes to a person, who decides to proceed or not, with the reason. Nothing
+   * is withdrawn automatically: "stop" only records the decision (HR then cancels the joining on its own page). With the
+   * company setting hiring.bgv.decider_other_person (default on) the decider is not whoever recorded the discrepancy.
+   */
+  async decideCheck(ctx: TenantContext, user: ScopeUser, checkId: string, dto: { decision: 'proceed' | 'stop'; note: string; version: number }) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const k = await tx.bgvCheck.findFirst({ where: { organizationId: c.organizationId, id: checkId } });
+      if (!k) throw new NotFoundException('No such check.');
+      const pb = await this.joiner(tx, c, v, k.preboardingId, 'lifecycle.bgv.manage');
+      if ((await ownOf(tx, c, v)).personId === pb.personId) throw new ForbiddenException('You cannot decide your own background check.');
+      if (k.status !== 'discrepancy') throw new ConflictException('Only a check with a discrepancy needs a decision.');
+      if (k.decision) throw new ConflictException('This discrepancy is already decided. A new result for the check sends it back for a decision.');
+      if ((await this.deciderOtherPerson(tx, c.organizationId)) && (k.checkedBy ?? k.createdBy) === c.userId) throw new ForbiddenException('Someone other than the person who recorded this discrepancy must decide it (company setting).');
+      const n = await tx.bgvCheck.updateMany({ where: { organizationId: c.organizationId, id: checkId, version: dto.version, decision: null }, data: { decision: dto.decision, decisionNote: dto.note.trim(), decidedBy: c.userId ?? null, decidedAt: new Date(), version: { increment: 1 } } });
+      if (!n.count) throw new ConflictException('Someone else changed this check. Reload it.');
+      await audit(tx, c, 'bgv.discrepancy.decided', 'preboarding', pb.id, { checkId, decision: dto.decision });
+      return { ok: true };
+    });
+  }
+
+  private async deciderOtherPerson(tx: Tx, org: string) {
+    const row = await tx.setting.findFirst({ where: { organizationId: org, key: 'hiring.bgv.decider_other_person', scopeType: 'tenant' }, select: { value: true } });
+    return (row?.value ?? SETTINGS['hiring.bgv.decider_other_person'].default) === 'on';
+  }
+
+  /**
+   * HIR-10 tracker: every joiner in the viewer's BGV scope whose checks were asked for or added, with consent, each
+   * check's result, who checked it and when, its evidence (report version and virus-scan state) and any decision.
+   * Special data: the key's scope applies per joiner, nothing while acting for someone else, and each look is audited.
+   */
+  async bgvTracker(ctx: TenantContext, user: ScopeUser) {
+    const v = await this.viewer(user);
+    if (v.actingForOther) throw new ForbiddenException('Background checks are not shown while acting for someone else. Sign in as yourself.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const checks = await tx.bgvCheck.findMany({ where: { organizationId: org }, orderBy: { createdAt: 'asc' } });
+      const pbs = await tx.preboarding.findMany({
+        where: { organizationId: org, status: { in: ['invited', 'joined'] }, OR: [{ id: { in: [...new Set(checks.map((k) => k.preboardingId))] } }, { sections: { path: ['bgv_requested'], equals: 'yes' } }] },
+        orderBy: { joiningOn: 'desc' },
+        take: 1000,
+      });
+      const shown: typeof pbs = [];
+      for (const pb of pbs) if (await joinerInScope(tx, c, v, 'lifecycle.bgv.manage', pb)) shown.push(pb);
+      const personIds = shown.map((p) => p.personId);
+      const [people, consents, desigs, journeys] = await Promise.all([
+        tx.person.findMany({ where: { organizationId: org, id: { in: personIds } }, select: { id: true, givenName: true, familyName: true, preferredName: true } }),
+        tx.consentRecord.findMany({ where: { organizationId: org, personId: { in: personIds }, purpose: 'bgv' }, orderBy: { givenAt: 'desc' } }),
+        tx.designation.findMany({ where: { organizationId: org, id: { in: shown.map((p) => p.designationId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } }),
+        tx.journey.findMany({ where: { organizationId: org, subjectType: 'preboarding', subjectId: { in: shown.map((p) => p.id) }, kind: 'onboarding' }, select: { id: true, subjectId: true } }),
+      ]);
+      const mine = checks.filter((k) => shown.some((p) => p.id === k.preboardingId));
+      const userIds = [...new Set(mine.flatMap((k) => [k.checkedBy, k.decidedBy, k.createdBy]).filter((x): x is string => Boolean(x)))];
+      const users = userIds.length ? await tx.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true, email: true } }) : [];
+      const who = (id: string | null) => (id ? (users.find((u) => u.id === id)?.name ?? users.find((u) => u.id === id)?.email ?? 'Someone') : null);
+      const docIds = [...new Set(mine.map((k) => k.resultDocumentId).filter((x): x is string => Boolean(x)))];
+      const versions = docIds.length ? await tx.documentVersion.findMany({ where: { organizationId: org, documentId: { in: docIds } }, select: { documentId: true, version: true, fileId: true } }) : [];
+      const files = versions.length ? await tx.file.findMany({ where: { organizationId: org, id: { in: versions.map((x) => x.fileId) } }, select: { id: true, scanStatus: true, fileName: true } }) : [];
+      const evidence = (k: (typeof mine)[number]) => {
+        if (!k.resultDocumentId) return null;
+        // Older checks have no version: their evidence is the report's latest one.
+        const ver = k.resultVersion != null ? versions.find((x) => x.documentId === k.resultDocumentId && x.version === k.resultVersion) : versions.filter((x) => x.documentId === k.resultDocumentId).sort((a, b) => b.version - a.version)[0];
+        const f = ver ? files.find((x) => x.id === ver.fileId) : null;
+        return ver ? { documentId: k.resultDocumentId, version: ver.version, fileName: f?.fileName ?? 'report', scan: f?.scanStatus === 'clean' ? 'clean' : f?.scanStatus === 'infected' ? 'infected' : 'pending' } : null;
+      };
+      const rows = shown.map((pb) => {
+        const p = people.find((x) => x.id === pb.personId);
+        const consent = consents.find((x) => x.personId === pb.personId);
+        const sections = pb.sections as Record<string, string>;
+        return {
+          id: pb.id,
+          journeyId: journeys.find((j) => j.subjectId === pb.id)?.id ?? null,
+          name: p ? [p.preferredName || p.givenName, p.familyName].filter(Boolean).join(' ') : 'Joiner',
+          designation: desigs.find((d) => d.id === pb.designationId)?.name ?? null,
+          joiningOn: iso(pb.joiningOn),
+          status: pb.status,
+          consent: !consent ? (sections.bgv_requested === 'yes' ? 'pending' : 'not_asked') : consent.withdrawnAt ? 'withdrawn' : 'given',
+          consentAt: consent ? (consent.withdrawnAt ?? consent.givenAt).toISOString() : null,
+          checks: mine
+            .filter((k) => k.preboardingId === pb.id)
+            .map((k) => ({
+              id: k.id,
+              checkType: k.checkType,
+              status: k.status,
+              gate: k.gate,
+              note: k.note,
+              addedAt: k.createdAt.toISOString(),
+              addedBy: who(k.createdBy),
+              checkedBy: who(k.checkedBy),
+              checkedById: k.checkedBy ?? k.createdBy,
+              checkedOn: k.checkedOn ? iso(k.checkedOn) : null,
+              evidence: evidence(k),
+              decision: k.decision ? { decision: k.decision, note: k.decisionNote, by: who(k.decidedBy), at: k.decidedAt?.toISOString() ?? null } : null,
+              version: k.version,
+            })),
+        };
+      });
+      await audit(tx, c, 'bgv.tracker.viewed', 'organization', org, { joiners: rows.length });
+      // No BGV partner is connected yet (founder decision 3: manual tracking until a vendor contract).
+      return { partner: null, today: todayIst(), viewerId: c.userId ?? null, deciderOtherPerson: await this.deciderOtherPerson(tx, org), joiners: rows };
+    });
   }
 
   // ------------------------------------------------------------------------------------------ ATS hand-off (LIFE-2.09)

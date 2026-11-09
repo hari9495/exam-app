@@ -13,6 +13,8 @@ export type Viewer = { userId: string; role: string; organizationId?: string | n
 // panellist reads colleagues' scorecards only after submitting their own; recruiters and the hiring manager read
 // every submitted one). When every panellist has submitted, the result against the pass bar is shown. Missing
 // scorecards are chased at 24 h and 48 h after the interview.
+const commentView = (m: { id: string; authorUserId: string; body: string; createdAt: Date; redactedAt: Date | null }, author: string) => ({ id: m.id, authorUserId: m.authorUserId, author, body: m.body, at: m.createdAt, redacted: Boolean(m.redactedAt) });
+
 @Injectable()
 export class ScorecardsService {
   private readonly logger = new Logger(ScorecardsService.name);
@@ -52,7 +54,9 @@ export class ScorecardsService {
       const who = await this.access(iv, v);
       const cards = await tx.scorecard.findMany({ where: { interviewId, organizationId: c.organizationId }, include: { ratings: true } });
       const shown = visibleScorecards(cards, { userId: v.userId, ...who });
-      const users = await tx.user.findMany({ where: { id: { in: iv.panelists.map((p) => p.userId) } }, select: { id: true, name: true, email: true } });
+      // Answer 322: comments under a submitted scorecard, shown to whoever may read that scorecard (never on drafts).
+      const comments = await tx.scorecardComment.findMany({ where: { organizationId: c.organizationId, scorecardId: { in: shown.filter((x) => x.status === 'submitted').map((x) => x.id) } }, orderBy: { createdAt: 'asc' } });
+      const users = await tx.user.findMany({ where: { id: { in: [...new Set([...iv.panelists.map((p) => p.userId), ...comments.map((x) => x.authorUserId)])] } }, select: { id: true, name: true, email: true } });
       const profile = await tx.candidateProfile.findUnique({ where: { candidateId: iv.pipelineEntry.candidateId }, select: { parsedTitle: true, parsedSummary: true, parsedSkills: true, resumePath: true, resumeScan: true } });
       // Earlier rounds for the same application, under the same rule (only what this viewer may read).
       const earlier = await tx.interview.findMany({ where: { pipelineEntryId: iv.pipelineEntryId, id: { not: interviewId }, createdAt: { lt: iv.createdAt } }, select: { id: true, createdAt: true } });
@@ -66,12 +70,43 @@ export class ScorecardsService {
         resume: profile ? { title: profile.parsedTitle, summary: profile.parsedSummary, skills: profile.parsedSkills, hasFile: Boolean(profile.resumePath) && profile.resumeScan === 'clean' } : null,
         template: template ? { id: template.id, name: template.name, scaleMax: template.scaleMax, passBar: Number(template.passBar), items: template.items.map((i) => ({ id: i.id, label: i.label, guidance: i.guidance, weight: i.weight })) } : null,
         viewer: { isPanelist: who.isPanelist, isOverseer: who.isOverseer },
-        scorecards: shown.map((x) => ({ id: x.id, panelistUserId: x.panelistUserId, panelistName: name(x.panelistUserId), mine: x.panelistUserId === v.userId, status: x.status, recommendation: x.recommendation, summary: x.summary, weightedScore: x.weightedScore == null ? null : Number(x.weightedScore), passes: x.passes, submittedAt: x.submittedAt, ratings: x.ratings.map((r) => ({ itemId: r.itemId, rating: r.rating, notes: r.notes })) })),
+        scorecards: shown.map((x) => ({ id: x.id, panelistUserId: x.panelistUserId, panelistName: name(x.panelistUserId), mine: x.panelistUserId === v.userId, status: x.status, recommendation: x.recommendation, summary: x.summary, weightedScore: x.weightedScore == null ? null : Number(x.weightedScore), passes: x.passes, submittedAt: x.submittedAt, ratings: x.ratings.map((r) => ({ itemId: r.itemId, rating: r.rating, notes: r.notes })), comments: comments.filter((m) => m.scorecardId === x.id).map((m) => commentView(m, name(m.authorUserId))) })),
         // The result is shown only to someone who may read every submitted scorecard.
         result: template && (who.isOverseer || cards.find((x) => x.panelistUserId === v.userId)?.status === 'submitted') ? interviewResult(iv.panelists.length, submitted, Number(template.passBar)) : null,
         earlier: earlierCards.map((x) => ({ interviewId: x.interviewId, panelistName: name(x.panelistUserId), recommendation: x.recommendation, weightedScore: Number(x.weightedScore), passes: x.passes, summary: x.summary })),
       };
     });
+  }
+
+  /**
+   * Answer 322: adds a comment under a submitted scorecard. Append-only (no edit or delete; the table refuses changes),
+   * audited without the text, and allowed to whoever may read that scorecard under D7. A draft never takes comments.
+   * The client's requestId makes a retry or double click return the same comment.
+   */
+  comment(ctx: TenantContext, interviewId: string, scorecardId: string, v: Viewer, dto: { body: string; requestId?: string }) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const { iv } = await this.load(tx, c, interviewId);
+      const who = await this.access(iv, v);
+      const cards = await tx.scorecard.findMany({ where: { interviewId, organizationId: c.organizationId }, include: { ratings: true } });
+      const card = visibleScorecards(cards, { userId: v.userId, ...who }).find((x) => x.id === scorecardId);
+      if (!card) throw new NotFoundException('Scorecard not found.');
+      if (card.status !== 'submitted') throw new ConflictException('Comments go under a submitted scorecard. Change your draft instead.');
+      if (dto.requestId) {
+        const same = await tx.scorecardComment.findFirst({ where: { organizationId: c.organizationId, authorUserId: v.userId, requestId: dto.requestId } });
+        if (same) {
+          if (same.scorecardId !== scorecardId) throw new ConflictException('This request was already used for another comment.');
+          return commentView(same, await this.userName(tx, v.userId));
+        }
+      }
+      const row = await tx.scorecardComment.create({ data: { organizationId: c.organizationId, scorecardId, interviewId, authorUserId: v.userId, body: dto.body, requestId: dto.requestId ?? null } });
+      await audit(tx, c, 'ats.scorecard.commented', 'scorecard', scorecardId, { interviewId, commentId: row.id });
+      return commentView(row, await this.userName(tx, v.userId));
+    });
+  }
+
+  private async userName(tx: Tx, id: string) {
+    const u = await tx.user.findFirst({ where: { id }, select: { name: true, email: true } });
+    return u?.name ?? u?.email ?? 'Someone';
   }
 
   /**

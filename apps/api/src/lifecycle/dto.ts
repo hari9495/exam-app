@@ -322,7 +322,26 @@ export class BgvUpdateDto {
   @IsIn(['none', 'before_joining', 'before_confirmation'])
   gate?: string;
 
+  /** HIR-10: the day the check was done (IST, not in the future); defaults to today. */
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'Give the day the check was done as YYYY-MM-DD.' })
+  checkedOn?: string;
+
   @Transform(({ value }) => (typeof value === 'string' ? Number(value) : value))
+  @IsInt()
+  version!: number;
+}
+
+/** HIR-10: a person decides a discrepancy (founder decision 3: never automatic). */
+export class BgvDecisionDto {
+  @IsIn(['proceed', 'stop'])
+  decision!: 'proceed' | 'stop';
+
+  @trim()
+  @IsString()
+  @Length(3, 1000, { message: 'Give the reason for the decision (3 to 1000 characters).' })
+  note!: string;
+
   @IsInt()
   version!: number;
 }

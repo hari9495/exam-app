@@ -6547,6 +6547,15 @@ model BgvCheck {
   resultDocumentId String?  @map("result_document_id") @db.Uuid
   note             String?  @db.VarChar(1000)
   createdBy        String?  @map("created_by") @db.Uuid
+  /// HIR-10: who recorded the result, the day the check was done, and the report document version that is its evidence.
+  checkedBy        String?   @map("checked_by") @db.Uuid
+  checkedOn        DateTime? @map("checked_on") @db.Date
+  resultVersion    Int?      @map("result_version")
+  /// HIR-10: a discrepancy goes to a person: proceed / stop, with the reason (never automatic).
+  decision         String?   @db.VarChar(12)
+  decisionNote     String?   @map("decision_note") @db.VarChar(1000)
+  decidedBy        String?   @map("decided_by") @db.Uuid
+  decidedAt        DateTime? @map("decided_at") @db.Timestamptz(3)
   version          Int      @default(1)
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -10974,9 +10983,28 @@ model Scorecard {
   createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
   ratings        ScorecardRating[]
+  comments       ScorecardComment[]
 
   @@unique([interviewId, panelistUserId], map: "scorecards_interview_panelist_key")
   @@map("scorecards")
+}
+
+/// HIR-07 founder answer 322: append-only comments under a submitted scorecard (a trigger allows only the erase redaction).
+model ScorecardComment {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  scorecardId    String    @map("scorecard_id") @db.Uuid
+  interviewId    String    @map("interview_id") @db.Uuid
+  authorUserId   String    @map("author_user_id") @db.Uuid
+  body           String    @db.VarChar(2000)
+  requestId      String?   @map("request_id") @db.Uuid
+  redactedAt     DateTime? @map("redacted_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  scorecard      Scorecard @relation(fields: [scorecardId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, scorecardId, createdAt], map: "scorecard_comments_scorecard_idx")
+  @@index([organizationId, interviewId], map: "scorecard_comments_interview_idx")
+  @@map("scorecard_comments")
 }
 
 model ScorecardRating {
