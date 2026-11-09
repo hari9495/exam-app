@@ -951,3 +951,17 @@ Each has a safe default already built; the suggestion is the answer we propose.
      that lists the candidates waiting for the manager's view.*
 265. **Moving out of Rejected.** Built: allowed for the job-manage key; it cancels a waiting rejection email. *Suggested:
      keep.*
+
+Founder approved, 10 Nov 2026 (questions 251-259, 261-265, all as suggested):
+- Requisitions and rediscovery: (251) AI notes off by default, HR turns them on per company; (252) a hiring manager edits
+  and resends their own sent-back requisition (not while acting for someone else); (253) Assign recruiter (the job's
+  recruiter field), Duplicate (opens the request sheet filled in), Cancel requisition (with a reason); saved views later;
+  (254) Contact opens the candidate email only when the person opted in; (255) Suggest to recruiter is a bell notice to
+  the recruiter, audited; (256) keep New requisition for raise-requisition holders, recruiters use Jobs - Create job;
+  (257) Approve / Send back inside the drawer, kit story first; (258) keep REQ numbers following JOB numbers; (259) keep
+  talent-pool consent as a fixed rule.
+- Pipeline: (261) draw Bulk actions and Add candidate sheets in HIR-04, move job settings into the HIR-03 workspace,
+  replace the application panel with HIR-05 and HIR-09, then delete /pipeline/list; (262) keep the rejection email off by
+  default, a template choice later; (263) an optional days target and limit per stage in pipeline settings, empty means
+  none; (264) keep Share feedback pointing to a candidate, a feedback sheet only if managers ask; (265) keep moving out of
+  Rejected with the job-manage key, cancelling a waiting rejection email.
