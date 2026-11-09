@@ -56,12 +56,13 @@ built**.
 | B. Candidates, pipeline and interviews | 8 | 52 | 1 | 0 | 9 | 1 | 63 |
 | C. Offers, BGV and joining | 4 | 17 | 6 | 0 | 5 | 0 | 28 |
 | D. Referrals, internal jobs, CRM and rediscovery | 4 | 20 | 0 | 0 | 7 | 4 | 31 |
-| E. Staffing agency | 8 | 11 | 6 | 4 | 31 | 0 | 52 |
+| E. Staffing agency | 8 | 32 | 12 | 0 | 16 | 0 | 60 |
 | F. Compliance and fairness | 5 | 4 | 1 | 0 | 20 | 0 | 25 |
 | G. Careers site, portals and settings | 4 | 55 | 5 | 2 | 9 | 0 | 71 |
-| **All Hiring design groups (A–G)** | **37** | **195** | **20** | **6** | **81** | **5** | **307** |
+| **All Hiring design groups (A–G)** | **37** | **216** | **26** | **2** | **66** | **5** | **315** |
 | H. Kit and "Live ·" groups (not designs; own line) | 3 | 5 | 0 | 5 | 5 | 0 | 15 |
 Recounted by script on `test/yukthix-main` after merging the Settings 6.1 follow-ups with HIR-10/20: A–G 176 live, 12 gap, 6 wire, 100 not built, 5 phone, of 299 (H: the old scorecard-templates group left with its page).
+Recounted by script 10 Nov 2026 on `feat/yukthix-staffing-2` after staffing slice 2: HIR-16 6 and HIR-17 8 stories design only → live (4 with a gap) plus 6 new drawn stories (submit by email, desk off, new client job, new placement, add to bench, recruiter view); HIR-21 4 wire design and Scorecards → live (1 with a gap) plus 2 new (add vendor, share client job); Invoices stays design only (slice 3); Settings 6.2 gains the slice-2 policies.
 Recounted by script 14 Nov 2026 on `feat/yukthix-staffing-1` after staffing slice 1: HIR-14 8 stories and HIR-15 5 stories design only → live (6 with a gap) plus 4 new drawn stories (add client, add contact, desk off, add role); Settings 6.2 P6_2 and P6_2_ReadOnly → live plus the new invoice series story.
 Recounted by script 14 Nov 2026 on `feat/yukthix-hir-27` after HIR-27 went live: its 4 stories design only → live (1 with a gap) plus 3 new drawn stories (some not sent, plan sheet, no days yet).
 Recounted by script 12 Nov 2026 on `feat/yukthix-hiring-settings-2` after the Settings 6.1 follow-ups (answers 341, 345, 348): 5 new 6.1 stories drawn and live (edit, add, used and view-only scorecard; default recruiter no longer qualifies); the "Live · Job workspace and interviews" group's last stand-in story (Scorecards) was deleted with the /yx/hiring/scorecards page.
@@ -587,6 +588,18 @@ HIR-21 overlaps with the recruitment-agency feature that exists (Agency, AgencyJ
 agency token page, adding the staffing parts (sub-vendor rate caps, duplicate checks) to them, never a second vendor
 model. Scope: question 1.
 
+Staffing desk slice 2 (10 Nov 2026, branch `feat/yukthix-staffing-2`): HIR-16 submissions, HIR-17 placements and bench
+and HIR-21 vendors are live, with the slice-2 policies on Settings 6.2. Migration `202617o0000004_staffing_2`: three new
+tables with forced RLS (`staffing_submissions`, `staffing_placements`, `staffing_bench`); client jobs are ordinary jobs
+pointing at a client and its rate-card line (`jobs.staffing_client_id`, `staffing_line_id`); vendor documents, share
+terms and the vendor's quote, consent and ownership are columns on the existing `agencies`, `agency_jobs` and
+`agency_submissions` (one vendor model). A placement points at the client and the rate-card line; its bill rate is the
+line's rate on the day, so a dated rate change flows through. Pay rates, vendor quotes, caps and margins go only to
+account managers (vendor quotes and caps also to vendor managers, `ats.agency.manage`); recruiters never see them.
+Vendors (Hiring › Vendors) work without the desk, for any company using recruitment agencies; only Forward to client
+needs it. The older v2 /settings/agencies and /agency-submissions redirect to /yx/hiring/vendors (pages removed), and the
+older allow-list and accept routes refuse a client job (it goes through the cap, duplicate and consent checks).
+
 #### HIR-14 · Clients
 
 | story (sub-page) | verdict | note |
@@ -618,25 +631,31 @@ model. Scope: question 1.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Board · Account manager · board | design only, feature not built | no submissions to client companies |
-| Submit · Submit to client (bulk) | design only, feature not built | same |
-| Recruiter · Recruiter · submit sheet | design only, feature not built | same |
-| Empty · Empty | design only, feature not built | same |
-| Loading · Loading | design only, feature not built | same |
-| Error · Error | design only, feature not built | same |
+| Board · Account manager · board | live | /yx/staffing/submissions: Submitted, Client review (the client's feedback SLA flags a late card), Interview, Selected, Rejected by client (a reason is required); each card shows the job, client, bill rate and source (Bench, Pipeline, Vendor: name); a move audited; a placed card cannot go back (409); a rejected card cannot come back once the person is submitted again (409) |
+| Submit · Submit to client (bulk) | live (gap) | `SubmitToClientSheet`: a client job, people (bench first, then the job's pipeline), a contact, the bill rate from the rate card; one email to the contact; someone already submitted is reported, never sent twice. Gap: the client portal (question 453); email is the only way |
+| Recruiter · Recruiter · submit sheet | live | `ats.staffing.view` submits and moves cards; the board never carries a pay rate |
+| Empty · Empty | live | |
+| Loading · Loading | live | |
+| Error · Error | live | |
+| SubmitByEmail · Submit to client · by email | live | new story (drawn): the live sheet; masked by default (`staffing.submission.mask_contact`, default on): the email names the people only |
+| DeskOff · Desk off | live | new story (drawn) |
+| NewClientJob · New client job · on a rate-card line | live | new story (drawn): `ClientJobSheet`: account managers open an ordinary job (pipeline, approvals, sharing) on a client's current rate-card line |
 
 #### HIR-17 · Placements and bench board
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| List · Placements list with margin | design only, feature not built | no placements |
-| Record · Placement record · ending soon | design only, feature not built | same |
-| Extend · Extend (dated change) | design only, feature not built | same |
-| EndEarly · End early · confirmation | design only, feature not built | same |
-| VendorSupplied · Vendor-supplied placement | design only, feature not built | same |
-| Bench · Bench board · policy days | design only, feature not built | same |
-| BenchEmpty · Bench · empty | design only, feature not built | same |
-| Loading · Loading | design only, feature not built | same |
+| List · Placements list with margin | live (gap) | /yx/staffing/placements: person, client, supply, dates, bill rate, margin per unit (account managers only), status (ending soon within `staffing.placement.ending_soon_days`, default 30). Gap: approved hours (slice 3), saved views and export |
+| Record · Placement record · ending soon | live (gap) | /yx/staffing/placements/[id]: bill rate on the day, pay or vendor rate, statutory cost (`staffing.statutory_cost_pct`, default 0) and margin for account managers. Gap: hours, billed, timesheet approver, commission and client notice (slice 3) |
+| Extend · Extend (dated change) | live (gap) | a later last day and a reason, with the version (stale 409). Gap: rates change on the rate card (a dated rate change), not in this sheet |
+| EndEarly · End early · confirmation | live | last day within the placement and a reason (client, performance, resigned); own payroll moves to the bench from the next day |
+| VendorSupplied · Vendor-supplied placement | live | cost is the vendor's quote; no bench |
+| Bench · Bench board · policy days | live (gap) | /yx/staffing/bench: days on the bench against `staffing.bench.max_days` (default 30), bench pay `staffing.bench.pay_pct` (default 50) and what follows `staffing.bench.after` (default redeploy or exit review); take off the bench. Gap: bench pay in payroll and the exit review (question 482) |
+| BenchEmpty · Bench · empty | live | |
+| Loading · Loading | live | |
+| NewPlacement · New placement · from a selected submission | live | new story (drawn): `PlacementSheet`: a selected submission, once; a rate on the first day; a pipeline candidate joins as an employee first (question 481); placing takes the person off the bench the day before |
+| AddToBench · Add to bench | live | new story (drawn): `BenchSheet`: active employees not placed and not on the bench |
+| RecruiterView · Recruiter · no pay rates or margins | live | new story (drawn) |
 
 #### HIR-18 · Invoices
 
@@ -664,12 +683,14 @@ model. Scope: question 1.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Register · Register · one vendor pending documents | wire design | agencies exist (older v2 /settings/agencies); API: no vendor documents |
-| ShareJob · Share job · rate cap and masked client | wire design | `AgencyJob` shares a job; API: no rate cap or masked client |
-| Submissions · Vendor submissions · duplicate and over cap | wire design | `AgencySubmission` with `isDuplicate` (v2 /agency-submissions); API: no rate cap |
-| Invoices · Vendor invoices · proposed from hours | design only, feature not built | no vendor invoices or hours |
-| Scorecards · Scorecards | design only, feature not built | no vendor scorecards |
-| Empty · Empty register | wire design | no agencies |
+| Register · Register · one vendor pending documents | live | /yx/hiring/vendors: the existing agencies with PAN, GSTIN (must carry the PAN), TDS section, tier, agreement date and bank verified; status pending until every document is in; portal link, new link, stop sharing (what the older page did) |
+| ShareJob · Share job · rate cap and masked client | live | `ShareJobSheet`: rate cap suggested as the bill rate less `staffing.vendor.target_margin_pct` (default 25), never above the bill rate; most submissions per vendor; last day; hide the client; a client job only to complete vendors; an ordinary job without a cap |
+| Submissions · Vendor submissions · duplicate and over cap | live | the vendor's quote (exact paise), right to represent and consent; the first vendor holds a person for a job for `staffing.vendor.ownership_days` (default 90); a later vendor's submission, or one for someone already in the job's pipeline, is a duplicate (the vendor sees only "duplicate"); over the cap needs an exception with a reason; Forward to client (account managers, desk on) accepts into the pipeline and makes a client submission; ordinary jobs: Accept or Reject (recruiters) |
+| Invoices · Vendor invoices · proposed from hours | design only, feature not built | no hours yet (slice 3); hidden in live |
+| Scorecards · Scorecards | live (gap) | submissions, duplicate rate, placements and tier. Gap: time to first submission |
+| Empty · Empty register | live | |
+| AddVendor · Add vendor · documents | live | new story (drawn): `VendorSheet` |
+| ShareClientJob · Share client job · cap suggested, incomplete vendor blocked | live | new story (drawn) |
 
 #### HIR-30 · Placement fee and replacement guarantee
 
@@ -844,7 +865,7 @@ stand-in is gone. Approval routes, careers and job boards stay on their stand-in
 | P6_1_ScorecardUsed · 6.1 Hiring · used scorecard (saved as a copy) | live | a template already used by a scorecard is never changed: “Save as a copy” posts a new template named “(copy)”; the API refuses a change with 409 |
 | P6_1_ScorecardView · 6.1 Hiring · scorecard, view only | live | the view-only sheet (skills with per cent, scale, pass bar) is drawn; live shows the list rows read-only without the pipelines key instead of opening it. Archive scorecard (danger, after a confirmation): `DELETE hiring/scorecard-templates/:id`, jobs using it go back to no scorecard, filled scorecards keep it |
 | P6_1_StaleRecruiter · 6.1 Hiring · default recruiter no longer qualifies | live | answer 348: a stored default who left or no longer holds the recruiter key reads as None with a warning naming them; new requisitions start with no recruiter (`defaultRecruiter`); the API refuses anyone else as default with 400, on both `PUT hiring/settings` and `PUT org/settings` |
-| P6_2 · 6.2 Staffing desk | live (gap) | /yx/settings/staffing: turn on the staffing desk (`staffing.desk.enabled`, default off, drawn), the rate-change backdating (`staffing.rate_change.backdate_days`, default 0, drawn), OT and holiday multipliers (1.5 and 2), default payment terms (30 days), invoice numbering (one series per GSTIN per financial year; the next number only goes up) and the r.46(b) law row. Changed by `ats.staffing.manage` or `org.settings.manage` company-wide, never while acting; audited. Gap: collections, dunning, bench, client-portal times and e-invoicing (slices 2 and 3) are left out |
+| P6_2 · 6.2 Staffing desk | live (gap) | /yx/settings/staffing: turn on the staffing desk (`staffing.desk.enabled`, default off, drawn), the rate-change backdating (`staffing.rate_change.backdate_days`, default 0, drawn), OT and holiday multipliers (1.5 and 2), default payment terms (30 days), invoice numbering (one series per GSTIN per financial year; the next number only goes up) and the r.46(b) law row. Changed by `ats.staffing.manage` or `org.settings.manage` company-wide, never while acting; audited. Slice 2 (drawn, live): submissions and placements (mask contact details, ending soon days, statutory cost %), vendors (target margin for the rate cap, ownership days) and the bench policy (bench pay, maximum days, then review or unpaid; a Segment). Gap: collections, dunning, client-portal times and e-invoicing (slice 3) are left out |
 | P6_2_ReadOnly · 6.2 Staffing desk · read-only | live | recruiters (`ats.staffing.view`) read it |
 | P6_2_InvoiceSeries · 6.2 Staffing desk · add invoice series | live | new story (drawn): `InvoiceSeriesSheet`: the GSTIN must be one of the entity's registrations; a duplicate year and GSTIN 409; the number cannot go back |
 
@@ -1508,3 +1529,31 @@ at joining while a "before confirmation" check is open, HR decides; (392) also s
      slice warns when a client has none.*
 456. **The desk switch and existing data.** Turning the desk off hides the menu and closes the pages (403); the data stays
      and returns when it is turned on. *Suggested: keep.*
+## Staffing desk slice 2 built (10 Nov 2026, branch `feat/yukthix-staffing-2`)
+- HIR-16, HIR-17, HIR-21 and the Settings 6.2 additions: see their rows above. New company settings with defaults:
+  `staffing.vendor.target_margin_pct` (25), `staffing.vendor.ownership_days` (90), `staffing.submission.mask_contact`
+  (on), `staffing.placement.ending_soon_days` (30), `staffing.statutory_cost_pct` (0), `staffing.bench.pay_pct` (50),
+  `staffing.bench.max_days` (30), `staffing.bench.after` (review).
+- Slice 3 still to build: hours and timesheets, client invoices (HIR-18), collections (HIR-19), vendor invoices, fees
+  (HIR-30), e-invoicing (HIR-31), the client portal.
+## Founder questions from the staffing desk slice 2 (10 Nov 2026)
+481. **A pipeline candidate placed on own payroll.** Refused until they join as an employee (People › Onboarding); then
+     they are submitted from the bench. *Suggested: keep; later, a "selected" candidate can start onboarding from the card.*
+482. **Bench pay and the exit review.** The bench board shows days against the policy and what follows, but bench pay is
+     not sent to payroll and no exit review starts. *Suggested: bench pay as a payroll input in slice 3; the exit review
+     stays a manual HR step.*
+483. **A placement that simply reaches its last day.** It shows Ended; the person is not put on the bench by itself (only
+     End early does that). *Suggested: a nightly job puts own-payroll people on the bench the day after the last day.*
+484. **Statutory cost.** One company percentage of the pay rate (default 0%, so margins show bill − pay). *Suggested: set
+     13% (employer PF and ESI) for companies with those registrations; a per-rule calculation with payroll later.*
+485. **Vendors without the desk.** Hiring › Vendors works for any company with recruitment agencies; only client jobs
+     (with a cap) and Forward to client need the desk. *Suggested: keep.*
+486. **Who sees vendor quotes.** Account managers and vendor managers (`ats.agency.manage`); recruiters with only the
+     pipeline key see "over / within the cap", never the amounts. *Suggested: keep.*
+487. **Submitting to a client is by email only.** The contact gets one email; if it fails the submission stays and the page
+     says so. *Suggested: keep until the client portal (question 453).*
+488. **Ownership window.** Counted per job from the first submission (or the person joining the job's own pipeline); the
+     same vendor sending the same person twice is refused. *Suggested: keep 90 days as the default.*
+489. **Duplicate disputes.** The design's "Review dispute" is not built: a duplicate cannot be forwarded and has no override.
+     *Suggested: add an override with a reason (audited) for an account manager.*
+490. **Vendor invoices.** The Vendor invoices tab stays hidden until hours exist (slice 3). *Suggested: keep.*
