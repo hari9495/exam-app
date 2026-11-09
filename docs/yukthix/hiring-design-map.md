@@ -12,7 +12,8 @@ was built.
 - **Few Hiring designs are live yet.** The "Request a hire" sheet (HIR-02 NewRequisition) on People › My team; HIR-01,
   the headcount plan board (all 10 stories); and HIR-03 Jobs list, Create job sheet and job workspace on /yx/hiring/jobs and
   /yx/hiring/jobs/[id], with the HIR-24 pay range by location law (one story live with a gap: the apply form has no
-  pay-history question). Counts in the table below.
+  pay-history question). Since 9 Nov 2026 also HIR-04, the pipeline board (all 7 stories) on /yx/hiring/jobs/[id]/pipeline.
+  Counts in the table below.
 - **Few of the Hiring designs are live.** Of 228 design stories (HIR-01 … 31, the careers site, candidate
   identity check and the hiring settings), 23 are live with their design. First the "Request a hire" sheet (HIR-02
   NewRequisition), which People › My team (/yx/people/team) renders with `live` and sends to `POST jobs/requisitions`. Since 9 Nov 2026 (branch `feat/yukthix-hir-01`) HIR-01, the headcount plan board, is live too: all 10 of
@@ -101,7 +102,8 @@ the web page.
 | /yx/hiring/plans | `HeadcountPlanScreen` with `live` (designed) | HIR-01 | `GET hiring/plans` (`ats.headcount.manage` or `ats.requisition.raise`), `POST/PUT hiring/plans`, `POST hiring/plans/:id/submit` (`ats.headcount.manage`), `GET hiring/plan-lines` | live |
 | /yx/hiring/jobs | `JobsScreen` with `live` (designed, 9 Nov 2026): jobs and requisitions in one list, Create job sheet with pay range | HIR-02, HIR-03 list, HIR-24 | `GET/POST jobs`, `GET jobs/pay-settings`, `PATCH/DELETE jobs/:id`, `POST jobs/:id/submit`, `/approval/cancel` (`pipeline:manage`; refused while acting for someone else) | live |
 | /yx/hiring/jobs/[id] | `JobWorkspaceScreen` with `live` (designed, 9 Nov 2026): overview, postings, pay range | HIR-03 workspace, HIR-24 | `GET jobs/:id` (`results:view`), `PATCH jobs/:id` (`pipeline:manage`) | live |
-| /yx/hiring/jobs/[id]/pipeline | `JobWorkspaceScreen` + `ApplicationPanel` (stand-ins, moved from /jobs/[id]): board, application, interviews, offers, feedback, job settings | HIR-04, HIR-09 | `GET hiring/jobs/:id/board` (`results:view`), `POST hiring/entries/:id/move`, `/reject`, `/reject/undo`, `hiring/entries/bulk`, `PUT hiring/jobs/:id/scorecard` (`pipeline:manage`), `POST/GET pipeline/entries/:id/offers`, `/interviews`, `offers/:id/send`, `/submit`, `/withdraw` (`pipeline:manage`) | wire design |
+| /yx/hiring/jobs/[id]/pipeline | `PipelineBoardScreen` with `live` (designed, 9 Nov 2026) + `ApplicationPanel` (stand-in) on a card | HIR-04 | `GET hiring/jobs/:id/board` (`results:view`), `POST hiring/entries/:id/move` (with `fromStatusId`), `/reject` (reason required), `/reject/undo` (`pipeline:manage`; refused while acting for someone else) | live |
+| /yx/hiring/jobs/[id]/pipeline/list | `JobWorkspaceScreen` (stand-in, board removed): candidates list with bulk move / test / email / reject, Add candidate, Export, job settings; `ApplicationPanel`: interviews, offers, feedback | HIR-09 (application), none for the list and settings (question 261) | `hiring/entries/bulk`, `PUT hiring/jobs/:id/scorecard`, `POST jobs/:id/entries` (`pipeline:manage`), `POST/GET pipeline/entries/:id/offers`, `/interviews`, `offers/:id/send`, `/submit`, `/withdraw` (`pipeline:manage`) | wire design |
 | /yx/hiring/candidates | `HiringCandidatesScreen` (stand-in) | none (section 2) | `GET candidates`, `POST candidates`, CSV, email | no design |
 | /yx/hiring/candidates/[id] | `CandidateProfileScreen` (stand-in) | HIR-05 | `GET hiring/candidates/:id`, `PUT …/legal-hold` (`candidate:data_rights`), `POST …/consents/withdraw` | wire design |
 | /yx/hiring/duplicates | `DuplicatesScreen` (stand-in) | HIR-05 Merge | `GET hiring/duplicates`, `POST hiring/candidates/:id/merge` (`candidate:manage`) | wire design |
@@ -245,17 +247,20 @@ posts a read-only Referral bonus row (answer 203); assessments have no cost anyw
 
 #### HIR-04 · Pipeline board
 
-Live page: /yx/hiring/jobs/[id] (board tab of the stand-in `JobWorkspaceScreen`). Designed: `PipelineBoardScreen`.
+Live page: /yx/hiring/jobs/[id]/pipeline ("Open pipeline" on the job), since 9 Nov 2026 (branch `feat/yukthix-hir-04`): the
+designed `PipelineBoardScreen` with `live`. The old stand-in board is gone; the old workspace's list, bulk actions, Add
+candidate, Export and job settings are on /pipeline/list ("Bulk actions"; "Add candidate" opens it with the dialog open),
+and a card opens the application (stand-in `ApplicationPanel`: interviews, offers, messages, notes) until HIR-05 / HIR-09.
 
 | story (sub-page) | verdict | note |
 |---|---|---|
-| Recruiter · Recruiter · rich cards | wire design | `GET hiring/jobs/:id/board` (`results:view`): stages, cards, scores, fit |
-| HiringManager · Hiring manager | wire design | read with `results:view`; moves need `pipeline:manage` |
-| MoveMenu · Move to menu (keyboard alternative) | wire design | `POST hiring/entries/:id/move` |
-| RejectReason · Reject asks for a reason | wire design | `POST hiring/entries/:id/reject` with `reason`; undo route exists |
-| Empty · Empty | wire design | job with no applicants |
-| Loading · Loading | wire design | while loading |
-| Error · Error | wire design | API fails |
+| Recruiter · Recruiter · rich cards | live | `GET hiring/jobs/:id/board` (`results:view`): one column per stage (archived hidden, Hired collapsed), cards with email · source, Test / AI fit (advisory) / Panel chips, next step in India time, days in stage; the job picker lists open and on-hold jobs. No SLA days or WIP limits in live (question 263) |
+| HiringManager · Hiring manager | live | `results:view` without `pipeline:manage` (or acting for someone else): read-only, no drag and no Move menu, Share feedback; the API refuses moves (403) |
+| MoveMenu · Move to menu (keyboard alternative) | live | `POST hiring/entries/:id/move` with `fromStatusId`: a repeat ("Already moved") and an out-of-date card are 409, exactly one of two moves at once lands; stage rules, audit `entry.stage_changed`; toast 5 s; a refused move goes back with an error toast |
+| RejectReason · Reject asks for a reason | live | `POST hiring/entries/:id/reject` (reason required, 400 without), audit `entry.rejected`, toast with Undo; no candidate email unless `hiring.reject.email_candidate` is on (default off; then the Rejected template waits 24 h). Moving to Rejected through move is refused ("Use Reject") |
+| Empty · Empty | live | job with no applicants; Add candidate opens the list with the dialog |
+| Loading · Loading | live | while loading |
+| Error · Error | live | board or job fails to load; Retry |
 
 #### HIR-05 · Candidate record
 
@@ -748,7 +753,7 @@ a design, BUILD-STANDARD rule 1). Each "Live ·" story is deleted with its stand
 | job | design 1 | design 2 | suggestion |
 |---|---|---|---|
 | Public careers site and apply | T9-09 (`portals/t9-candidate.tsx`, 8 stories) | Surfaces/Careers (`components/careers.tsx`, 18 stories, with the page builder and apply form) | keep T9-09 for the public pages, Surfaces/Careers' page builder for the admin page; drop the other half (question 8) |
-| Job workspace | `JobWorkspaceScreen` in `hiring-plan.tsx` (HIR-03, live at /yx/hiring/jobs/[id]) | `JobWorkspaceScreen` in `live/job-workspace.tsx` (stand-in, now /yx/hiring/jobs/[id]/pipeline) | same name, two files: rename nothing; delete the stand-in when HIR-04 is wired |
+| Job workspace | `JobWorkspaceScreen` in `hiring-plan.tsx` (HIR-03, live at /yx/hiring/jobs/[id]) | `JobWorkspaceScreen` in `live/job-workspace.tsx` (stand-in, now /yx/hiring/jobs/[id]/pipeline) | same name, two files: rename nothing; since HIR-04 the stand-in has no board and serves only /pipeline/list (candidates list and job settings, question 261); delete it when those have designs |
 | Pools and postings | HIR-20 Talent CRM tabs | HIR-03 Postings tab | both read the same publications; one source of truth (the API), two views is fine |
 
 ## 6. Questions for the founder (before building)
@@ -805,7 +810,7 @@ stand-in it replaces with its "Live ·" stories.
 | 3 | HIR-01 headcount plan | wire `HeadcountPlanScreen`; then plan revisions (API) for FinanceRevision | M |
 | 4 | HIR-02 requisitions list (+ HIR-26 rediscovery panel, AI off = text search) | wire `RequisitionsScreen`; hiring manager's own list | M |
 | 5 | HIR-03 jobs list and workspace, HIR-24 company-setting pay range | wire `JobsScreen`, `JobWorkspaceScreen`, `JobPayRangePanel` | M |
-| 6 | HIR-04 pipeline board | wire `PipelineBoardScreen` on /yx/hiring/jobs/[id] | M |
+| 6 | HIR-04 pipeline board | done 9 Nov 2026: `PipelineBoardScreen` live on /yx/hiring/jobs/[id]/pipeline (questions 261-265) | M |
 | 7 | HIR-05 candidate record (+ ex-employee match, merge) | wire `CandidateRecordScreen`, `MergeDrawer`; ex-employee lookup in the API | M |
 | 8 | HIR-06 interviewer list, HIR-07 scorecard | wire `InterviewCalendarScreen` (interviewer part), `ScorecardScreen`; company-wide week list in the API | M |
 | 9 | Settings 6.1 Hiring | wire the settings page; retire /yx/hiring/scorecards and /approval-routes stand-ins | S |
@@ -964,3 +969,45 @@ Each has a safe default already built; the suggestion is the answer we propose.
 258. **Requisition code.** Built: REQ-0007 uses the job's number (the same requisition is JOB-0007 on Jobs). *Suggested: keep.*
 259. **Who can be rediscovered.** Built: only candidates with talent-pool consent (not withdrawn), in their retention
      period, not on legal hold, not hired. *Suggested: keep (consent law); no company setting, as it is not a choice.*
+
+Founder approved, 10 Nov 2026 (questions 231-234, 241-244, all as suggested): (231) marking a referral bonus paid also
+creates the payroll one-time pay line (referral component, linked to the referral); the cost follows that line: posted when
+the run is approved, removed if the line is cancelled; (232) keep: only careers-site applications count as applied on
+their own; (233) post assessment costs once assessment pricing exists; (234) keep: only an accepted exit cancels the
+bonus, and show "Bonus on hold" while a resignation is pending; (241) the kit table can offer CSV only, and Jobs does;
+(242) keep the on-hold apply message; (243) keep the numbering of older jobs; (244) a job whose place is abroad needs a
+master location even under an Indian legal entity.
+## Founder questions from the HIR-04 build (9 Nov 2026)
+Each has a safe default already built; the suggestion is the answer we propose.
+261. **Where the old workspace went.** The design has no candidates list, bulk dialog or job settings. Built: "Bulk actions"
+     opens the candidates list (/pipeline/list: select several to move, send a test, email or reject; Export CSV; Job
+     settings tab: tests, scorecard, public applying, boards, fit criteria) and "Add candidate" opens it with the Add dialog;
+     a card opens the old application panel (interviews, offers, messages, notes, checklist). *Suggested: draw a Bulk
+     actions sheet and an Add candidate sheet in HIR-04, move the job settings into the HIR-03 workspace, and replace the
+     application panel with HIR-05 / HIR-09; delete /pipeline/list then.*
+262. **Telling the candidate on rejection.** Built: company setting `hiring.reject.email_candidate`, default **off**: a
+     board rejection saves the reason and tells the candidate nothing; on, the Rejected stage's template (or the built-in
+     "Not moving forward") goes after 24 hours, undoable until then. The bulk Reject on the list still lets the recruiter
+     write a message by hand. *Suggested: keep off by default; let HR pick the template in the setting later.*
+263. **Stage time targets and limits.** The design flags cards over a stage's days target (Applied 3, Screening 5, Panel 7)
+     and a Panel limit of 6. Built: none in live (no such pipeline setting). *Suggested: add "days target" and "limit" per
+     stage in pipeline settings (empty = none).*
+264. **Share feedback for a hiring manager.** The design shows the button with no target. Built: it says "Open a candidate
+     to share feedback"; a name opens the application where the note is added. *Suggested: keep; or draw a feedback sheet
+     that lists the candidates waiting for the manager's view.*
+265. **Moving out of Rejected.** Built: allowed for the job-manage key; it cancels a waiting rejection email. *Suggested:
+     keep.*
+
+Founder approved, 10 Nov 2026 (questions 251-259, 261-265, all as suggested):
+- Requisitions and rediscovery: (251) AI notes off by default, HR turns them on per company; (252) a hiring manager edits
+  and resends their own sent-back requisition (not while acting for someone else); (253) Assign recruiter (the job's
+  recruiter field), Duplicate (opens the request sheet filled in), Cancel requisition (with a reason); saved views later;
+  (254) Contact opens the candidate email only when the person opted in; (255) Suggest to recruiter is a bell notice to
+  the recruiter, audited; (256) keep New requisition for raise-requisition holders, recruiters use Jobs - Create job;
+  (257) Approve / Send back inside the drawer, kit story first; (258) keep REQ numbers following JOB numbers; (259) keep
+  talent-pool consent as a fixed rule.
+- Pipeline: (261) draw Bulk actions and Add candidate sheets in HIR-04, move job settings into the HIR-03 workspace,
+  replace the application panel with HIR-05 and HIR-09, then delete /pipeline/list; (262) keep the rejection email off by
+  default, a template choice later; (263) an optional days target and limit per stage in pipeline settings, empty means
+  none; (264) keep Share feedback pointing to a candidate, a feedback sheet only if managers ask; (265) keep moving out of
+  Rejected with the job-manage key, cancelling a waiting rejection email.

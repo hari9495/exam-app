@@ -207,6 +207,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'hiring.pay_history.ask': { label: 'Hiring: ask applicants about their current or past pay on new jobs', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['off', 'on'], default: 'off' },
   // HIR-26 (founder decision 2): the company's AI writes a short advisory note per suggested past candidate; off = plain text search.
   'hiring.rediscovery.ai': { label: 'Hiring: AI notes on past candidates suggested for a requisition', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
+  // HIR-04: rejecting on the pipeline board tells the candidate nothing unless the company switches this on; then the
+  // Rejected stage's email template goes after 24 hours (the rejection can be undone until then).
+  'hiring.reject.email_candidate': { label: 'Hiring: email the candidate when they are rejected on the board', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   'home.pay_on_employee_home': { label: 'Show net pay on the employee home', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // P02 §4.5 fraud guard: a new bank account is used for payouts only after this cooling period (starter, D17).
   'employee.bank_change.cooling_hours': { label: 'New bank accounts are used for pay after (hours)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '24', '48', '72'], default: '48', guard: 'access.role.manage' },

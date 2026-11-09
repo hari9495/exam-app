@@ -2578,7 +2578,7 @@ export function RecruitingCostsScreen({ rows, hires, state = 'ready', addOpen = 
         tiles={[
           { label: 'Total spend', value: formatINR(total) },
           { label: 'Hires this quarter', value: hires },
-          { label: 'Cost per hire', value: hires ? formatINR(Math.round(total / hires)) : '—', sub: 'metric recruitment.cost_per_hire' },
+          { label: 'Cost per hire', value: hires ? formatINR(Math.round(total / hires)) : '—', sub: 'Total spend ÷ hires this quarter' },
         ]}
       />
       <DataTable

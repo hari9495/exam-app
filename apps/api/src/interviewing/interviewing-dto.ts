@@ -124,6 +124,18 @@ export class RejectDto {
 export class MoveDto {
   @IsUUID()
   statusId!: string;
+
+  /** HIR-04: the status the card showed; a different one now means the card was out of date (409). */
+  @IsOptional()
+  @IsUUID()
+  fromStatusId?: string;
+}
+
+/** One rejection from the board (HIR-04): the card's status guards against a stale card. */
+export class BoardRejectDto extends RejectDto {
+  @IsOptional()
+  @IsUUID()
+  fromStatusId?: string;
 }
 
 export class BulkBoardDto extends RejectDto {

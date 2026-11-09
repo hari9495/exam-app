@@ -11,7 +11,7 @@ import { interview, mine, panel, templates, workspace } from './job-workspace.st
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 
 describe('Job workspace (AT5)', () => {
-  it('shows the board with scorecard results, and undoes a waiting rejection', async () => {
+  it('lists the candidates with scorecard results (the board is HIR-04), and undoes a waiting rejection', async () => {
     const onUndo = vi.fn(async () => ({}));
     render(<JobWorkspaceScreen {...workspace} onUndo={onUndo} />);
     expect(screen.getByText('Passes the bar (3.1)')).toBeInTheDocument();
@@ -23,7 +23,6 @@ describe('Job workspace (AT5)', () => {
   it('rejecting asks for a reason and the message, which waits 24 hours by default', async () => {
     const onReject = vi.fn(async () => ({}));
     render(<JobWorkspaceScreen {...workspace} onReject={onReject} />);
-    await ue.click(screen.getByRole('radio', { name: 'List' }));
     await ue.click(screen.getByRole('checkbox', { name: /Arun Kumar/ }));
     await ue.click(screen.getByRole('button', { name: 'Reject' }));
     const d = screen.getByRole('dialog');
