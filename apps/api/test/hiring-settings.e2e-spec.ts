@@ -11,6 +11,7 @@ import { EmailService } from '../src/email/email.service';
 import { LOGIN_PROTECTION_REDIS } from '../src/auth/login-protection.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { HiringRequisitionsService } from '../src/hiring/requisitions.service';
+import { HiringSettingsService, STALE_NOTICE } from '../src/hiring/hiring-settings.service';
 
 // Settings 6.1 Hiring end to end against the real database (forced RLS, the app role): recruiting and hiring admins
 // read it; the hiring settings key (or HR's settings key) for the whole company changes it; a grant for one legal entity
@@ -22,6 +23,7 @@ describe('Settings 6.1 Hiring', () => {
   let prisma: PrismaService;
   let tenantPrisma: TenantPrismaService;
   let moduleRequisitions: () => HiringRequisitionsService;
+  let moduleSettings: () => HiringSettingsService;
   const PASSWORD = 'Corr3ct-Horse-Battery';
   const run = randomUUID().slice(0, 8);
   const SUPER: TenantContext = { organizationId: null, isSuperAdmin: true };
@@ -49,6 +51,7 @@ describe('Settings 6.1 Hiring', () => {
     prisma = moduleRef.get(PrismaService);
     tenantPrisma = moduleRef.get(TenantPrismaService);
     moduleRequisitions = () => moduleRef.get(HiringRequisitionsService);
+    moduleSettings = () => moduleRef.get(HiringSettingsService);
     const redis = moduleRef.get<Redis>(LOGIN_PROTECTION_REDIS);
     const ipKeys = await redis.keys('auth:otp:ip:*');
     if (ipKeys.length) await redis.del(...ipKeys);
@@ -112,6 +115,7 @@ describe('Settings 6.1 Hiring', () => {
     'hiring.pay_history.ask': 'off',
     'hiring.rediscovery.ai': 'off',
     'hiring.rehire_flag.blocks_screening': 'off',
+    'hiring.bgv.decider_other_person': 'on',
   };
 
   it('reads: recruiting and hiring admins see the defaults; only the settings keys may edit; employees and managers are refused', async () => {
@@ -142,6 +146,7 @@ describe('Settings 6.1 Hiring', () => {
       { key: 'hiring.pay_history.ask', value: 'on' },
       { key: 'hiring.rediscovery.ai', value: 'on' },
       { key: 'hiring.rehire_flag.blocks_screening', value: 'on' },
+      { key: 'hiring.bgv.decider_other_person', value: 'off' },
     ]).expect(200)).body as Settings;
     expect(after.values).toEqual({
       'ats.retention_months': '18',
@@ -158,12 +163,15 @@ describe('Settings 6.1 Hiring', () => {
       'hiring.rehire_flag.blocks_screening': 'on',
       'hiring.offer.band_approver': 'hr_head',
       'hiring.offer.clawback_basis': 'full',
+      'hiring.bgv.decider_other_person': 'off',
     });
+    // Answer 362: the BGV tracker reads the same company setting.
+    expect(await inA((tx) => tx.setting.findFirstOrThrow({ where: { organizationId: org.A.id, key: 'hiring.bgv.decider_other_person' } }))).toMatchObject({ value: 'off' });
     expect(after.lastChange).toMatchObject({ by: `hra ${run}` });
     // The other screens read the same company settings.
     expect((await api('rec', 'get', '/referrals/policy').expect(200)).body).toMatchObject({ bonusInr: 50000, qualifyDays: 60 });
     const audits = await inA((tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, action: 'org.setting.changed' }, orderBy: { createdAt: 'asc' } }));
-    expect(audits.map((a) => JSON.parse(a.metadataJson!))).toEqual(expect.arrayContaining([expect.objectContaining({ key: 'ats.retention_months', from: null, to: '18' }), expect.objectContaining({ key: 'hiring.requisition.default_recruiter', from: null, to: users.rec }), expect.objectContaining({ key: 'hiring.rehire_flag.blocks_screening', from: null, to: 'on' }), expect.objectContaining({ key: 'ats.headcount_plan', from: null, to: 'required' })]));
+    expect(audits.map((a) => JSON.parse(a.metadataJson!))).toEqual(expect.arrayContaining([expect.objectContaining({ key: 'ats.retention_months', from: null, to: '18' }), expect.objectContaining({ key: 'hiring.requisition.default_recruiter', from: null, to: users.rec }), expect.objectContaining({ key: 'hiring.rehire_flag.blocks_screening', from: null, to: 'on' }), expect.objectContaining({ key: 'ats.headcount_plan', from: null, to: 'required' }), expect.objectContaining({ key: 'hiring.bgv.decider_other_person', from: null, to: 'off' })]));
     expect(audits.every((a) => a.actorUserId === users.hra)).toBe(true);
     // A second change records the value before.
     await save('adminA', [{ key: 'ats.retention_months', value: '24' }]).expect(200);
@@ -190,6 +198,7 @@ describe('Settings 6.1 Hiring', () => {
       [{ key: 'ats.referral.self_apply_days', value: '45' }],
       [{ key: 'hiring.pay_range.show', value: 'true' }],
       [{ key: 'hiring.rehire_flag.blocks_screening', value: 'yes' }],
+      [{ key: 'hiring.bgv.decider_other_person', value: 'true' }],
       [{ key: 'hiring.rediscovery.ai', value: 'on' }, { key: 'hiring.requisition.default_recruiter', value: 'not-a-person' }],
       [{ key: 'not.a.setting', value: 'x' }],
       [{ key: 'ats.retention_months', value: '6' }, { key: 'ats.retention_months', value: '9' }],
@@ -242,6 +251,38 @@ describe('Settings 6.1 Hiring', () => {
     await inA((tx) => tx.user.update({ where: { id: users.rec2 }, data: { status: 'inactive' } }));
     expect(await read('hra')).toMatchObject({ staleRecruiter: `rec2 ${run}`, values: { 'hiring.requisition.default_recruiter': 'none' } });
     expect(await reqs.defaultRecruiter(ctxA, users.mgr)).toBeNull();
+  });
+
+  it('answer 385: a stale default recruiter is told once to the hiring settings holders; again only after a new save', async () => {
+    const notices = (o: string) => tenantPrisma.forTenant({ organizationId: o, isSuperAdmin: false }, (tx) => tx.userNotification.findMany({ where: { organizationId: o, type: 'hiring.default_recruiter.stale' }, orderBy: { createdAt: 'asc' } }));
+    // rec2 (the stored default) has left: the holders of the hiring settings key for the whole company are told.
+    await moduleSettings().staleRecruiterSweep();
+    let got = await notices(org.A.id);
+    expect(got.map((n) => n.recipientUserId).sort()).toEqual([users.adminA, users.hra].sort());
+    expect(got[0]).toMatchObject({ linkPath: '/yx/settings/hiring', actorUserId: users.rec2, contextText: expect.stringMatching(new RegExp(`^rec2 ${run} has left the company, so new requisitions start with no recruiter`)) });
+    // Never the recruiter, a manager, an employee, one-legal-entity HR or another company.
+    for (const who of ['rec', 'mgr', 'emp', 'hrEntity'] as const) expect(got.map((n) => n.recipientUserId)).not.toContain(users[who]);
+    expect(await notices(org.B.id)).toEqual([]);
+    // Once per change: the next runs send nothing more.
+    await moduleSettings().staleRecruiterSweep();
+    await moduleSettings().staleRecruiterSweep();
+    expect(await notices(org.A.id)).toHaveLength(2);
+    expect(await inA((tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: STALE_NOTICE } }))).toBe(1);
+    // A default who qualifies is never reported.
+    await save('hra', [{ key: 'hiring.requisition.default_recruiter', value: users.rec }]).expect(200);
+    await moduleSettings().staleRecruiterSweep();
+    expect(await notices(org.A.id)).toHaveLength(2);
+    // The new default loses the key: told again (a new saved value), with that reason.
+    const rec = await inA((tx) => tx.user.findUniqueOrThrow({ where: { id: users.rec } }));
+    const keys = (await inA((tx) => tx.permissionProfile.findUniqueOrThrow({ where: { id: rec.permissionProfileId! } }))).permissionsJson;
+    await inA((tx) => tx.permissionProfile.update({ where: { id: rec.permissionProfileId! }, data: { permissionsJson: JSON.stringify(['ats.candidate.view']) } }));
+    await moduleSettings().staleRecruiterSweep();
+    got = await notices(org.A.id);
+    expect(got).toHaveLength(4);
+    expect(got[3]!.contextText).toMatch(new RegExp(`^rec ${run} no longer holds the recruiter key`));
+    await moduleSettings().staleRecruiterSweep();
+    expect(await notices(org.A.id)).toHaveLength(4);
+    await inA((tx) => tx.permissionProfile.update({ where: { id: rec.permissionProfileId! }, data: { permissionsJson: keys } }));
   });
 
   it('scorecard templates on 6.1 (answer 345): listed with weights and pass bar; per cent adding to 100; archive; refused while acting', async () => {
