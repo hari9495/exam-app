@@ -10,6 +10,7 @@ import { ErrorState, InlineAlert, Skeleton } from '../../components/feedback';
 import { ErrorSummary, FormField, StickySaveBar, useUnsavedChangesGuard, useSaveErrors } from '../../components/field';
 import { Breadcrumbs, Card, PageHeader } from '../../components/shell';
 import { Select } from '../../components/select';
+import { useToastIfAny } from '../../components/notify';
 import { formatDate } from '../../lib/format';
 import { DesktopFrame, type PanelSection } from '../_kit/frames';
 import { AuditLine, LawTable, SearchResults, SettingField, SettingsSearchBox, type HistoryEntry } from './settings-kit';
@@ -27,7 +28,7 @@ import {
   validateDraft,
   type Draft,
 } from './settings-logic';
-import type { SettingDef, SettingsGroupDef, SettingsPageDef } from './settings-types';
+import type { LastChange, SettingDef, SettingValue, SettingsGroupDef, SettingsPageDef } from './settings-types';
 import './settings.css';
 
 export type LoadState = 'ready' | 'loading' | 'error';
@@ -223,6 +224,28 @@ export function SettingsGroupScreen({ groups, groupId, state = 'ready', onOpen }
 
 export type SaveOutcome = 'ok' | 'fail';
 
+/**
+ * A settings page with real data (Settings 6.1 Hiring first). The page is the designed page with the company's values
+ * (fields with no setting behind them yet are left out by the caller). Saving is the API's; done is a toast (5 s), a
+ * refusal stays on the page with its reason.
+ */
+export interface LiveSettingsPage {
+  page: SettingsPageDef;
+  /** The viewer holds the page's key: otherwise every value is read-only. */
+  canEdit: boolean;
+  /** Who changed the page last (none yet: not shown). */
+  lastChange: LastChange | null;
+  state?: LoadState;
+  onRetry?: () => void;
+  /** The changed values (by setting key) and the edited lists (rows by key). Rejects with a plain message. */
+  onSave: (values: Record<string, SettingValue>, rows: Record<string, string[][]>) => Promise<void>;
+  /** list kind: a row's extra button (`rowAction`), e.g. Stage targets of a pipeline. */
+  onRowAction?: (key: string, rowIndex: number) => void;
+  onOpenScreen?: (screenId: string) => void;
+  /** Title of the success toast. */
+  savedTitle?: string;
+}
+
 export interface SettingsPageScreenProps {
   groups: SettingsGroupDef[];
   pageId: string;
@@ -241,6 +264,7 @@ export interface SettingsPageScreenProps {
   /** Show the validation summary immediately (invalid story). */
   defaultShowErrors?: boolean;
   onOpenScreen?: (screenId: string) => void;
+  live?: LiveSettingsPage;
 }
 
 export function SettingsPageScreen({
@@ -255,23 +279,33 @@ export function SettingsPageScreen({
   saveOutcome = 'ok',
   defaultShowErrors,
   onOpenScreen,
+  live,
 }: SettingsPageScreenProps) {
-  const { group, page } = findPage(groups, pageId);
+  const found = findPage(groups, pageId);
+  const group = found.group;
+  const page = live?.page ?? found.page;
+  if (live) {
+    readOnly = !live.canEdit;
+    state = live.state ?? 'ready';
+    onOpenScreen = live.onOpenScreen;
+  }
+  const lastChange = live ? live.lastChange : page.lastChange;
   return (
     <Frame groups={groups} pageId={pageId}>
       <PageHeader
-        breadcrumbs={<Breadcrumbs items={[{ label: 'Settings', href: '#settings' }, { label: group.title, href: `#settings/group/${group.id}` }, { label: page.title }]} />}
+        breadcrumbs={live ? undefined : <Breadcrumbs items={[{ label: 'Settings', href: '#settings' }, { label: group.title, href: `#settings/group/${group.id}` }, { label: page.title }]} />}
         title={page.title}
         description={page.summary}
         status={readOnly ? <Badge tone="neutral">View only</Badge> : undefined}
-        facts={page.lastChange ? <AuditLine compact change={page.lastChange} history={history} /> : undefined}
+        facts={lastChange ? <AuditLine compact change={lastChange} history={history} /> : undefined}
       />
       {state === 'loading' && <SettingsSkeleton />}
       {state === 'error' && (
-        <ErrorState title={`We couldn't load ${page.title}.`} description="Retry in a moment. Nothing has changed on this page." onRetry={() => {}} reference="SET-P3E77" />
+        <ErrorState title={`We couldn't load ${page.title}.`} description="Retry in a moment. Nothing has changed on this page." onRetry={live?.onRetry ?? (() => {})} reference="SET-P3E77" />
       )}
       {state === 'ready' && (
         <SettingsForm
+          live={live}
           key={page.id}
           page={page}
           readOnly={readOnly}
@@ -312,7 +346,7 @@ function runs(defs: SettingDef[]): SettingDef[][] {
   return out;
 }
 
-type SaveStatus = { kind: 'idle' } | { kind: 'saving' } | { kind: 'saved'; approval: boolean } | { kind: 'failed' };
+type SaveStatus = { kind: 'idle' } | { kind: 'saving' } | { kind: 'saved'; approval: boolean } | { kind: 'failed'; message?: string };
 
 function SettingsForm({
   page,
@@ -324,7 +358,9 @@ function SettingsForm({
   saveOutcome,
   defaultShowErrors,
   onOpenScreen,
+  live,
 }: Omit<SettingsPageScreenProps, 'groups' | 'pageId' | 'state'> & { page: SettingsPageDef }) {
+  const toaster = useToastIfAny();
   const base = useMemo(() => initialDraft(page), [page]);
   const [draft, setDraft] = useState<Draft>({ ...base, ...defaultDraft });
   const defsAll = allSettings(page);
@@ -357,6 +393,17 @@ function SettingsForm({
 
   const doSave = async () => {
     setStatus({ kind: 'saving' });
+    if (live) {
+      try {
+        await live.onSave(Object.fromEntries(changed.map((k) => [k, draft[k] ?? null])), rows);
+        setRows({});
+        setStatus({ kind: 'idle' });
+        toaster?.toast({ tone: 'success', title: live.savedTitle ?? 'Settings saved', description: 'Recorded in the audit log with before and after values.' });
+      } catch (e) {
+        setStatus({ kind: 'failed', message: e instanceof Error && e.message ? e.message : undefined });
+      }
+      return;
+    }
     await Promise.resolve();
     setStatus(saveOutcome === 'fail' ? { kind: 'failed' } : { kind: 'saved', approval });
   };
@@ -422,6 +469,7 @@ function SettingsForm({
       rows={rows[d.key]}
       onRowsChange={(r) => setRows((x) => ({ ...x, [d.key]: r }))}
       onOpenLink={onOpenScreen}
+      onRowAction={live?.onRowAction ? (i) => live.onRowAction!(d.key, i) : undefined}
     />
     );
   };
@@ -435,9 +483,11 @@ function SettingsForm({
           tone="info"
           title="You can view these settings but not change them"
           actions={
-            <Button size="sm" icon={KeyRound} disabled={requested} onClick={() => setRequested(true)}>
-              {requested ? 'Access requested' : 'Request access'}
-            </Button>
+            live ? undefined : (
+              <Button size="sm" icon={KeyRound} disabled={requested} onClick={() => setRequested(true)}>
+                {requested ? 'Access requested' : 'Request access'}
+              </Button>
+            )
           }
         >
           Only the {page.permissionHolder} can change this page.
@@ -467,7 +517,7 @@ function SettingsForm({
       )}
       {status.kind === 'failed' && (
         <InlineAlert tone="danger" title="We couldn't save your changes" actions={<Button size="sm" onClick={() => void doSave()}>Retry</Button>}>
-          Your edits are kept on this page. Retry, or copy reference SET-S91B2 for support.
+          {status.message ? `${status.message} Your edits are kept on this page.` : 'Your edits are kept on this page. Retry, or copy reference SET-S91B2 for support.'}
         </InlineAlert>
       )}
 
@@ -567,7 +617,7 @@ function SettingsForm({
       {showBar && (
         <StickySaveBar dirty={dirty} ref={barRef}>
           <span className="yx-set-impact">
-            {changed.length + listChanged} change{changed.length + listChanged === 1 ? '' : 's'} · affects {affected} employees
+            {changed.length + listChanged} change{changed.length + listChanged === 1 ? '' : 's'}{live ? '' : ` · affects ${affected} employees`}
           </span>
           <Button onClick={discard} disabled={!dirty || status.kind === 'saving'}>
             Discard changes

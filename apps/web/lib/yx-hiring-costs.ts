@@ -29,6 +29,9 @@ export interface ApiReferral {
   eligibleOn: string | null;
   bonusDue: AllReferral['bonus'];
   referrerName?: string;
+  /** Answer 285. */
+  paidVia?: 'payroll' | 'outside' | null;
+  referrerIsEmployee?: boolean;
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -38,7 +41,7 @@ const monthLabel = (ym: string) => `${MONTHS[Number(ym.slice(5, 7)) - 1]} ${ym.s
 export const dayToDate = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
 
 const TYPE: Record<string, CostEntry['type']> = { job_board: 'Job board', posting: 'Job board', agency_fee: 'Agency fee', referral_bonus: 'Referral bonus', assessment: 'Assessment', event: 'Event' };
-const ORIGIN: Record<string, CostEntry['origin']> = { manual: 'Manual', payroll: 'Payroll one-time pay', assessment: 'Assessment cost' };
+const ORIGIN: Record<string, CostEntry['origin']> = { manual: 'Manual', payroll: 'Payroll one-time pay', assessment: 'Assessment cost', outside_payroll: 'Paid outside payroll' };
 
 export function costRow(c: ApiCost): CostEntry {
   // A cost recorded before months were asked for counts in the month it was entered (India time).
@@ -104,6 +107,8 @@ export function allReferralRow(r: ApiReferral): AllReferral {
     bonus: r.bonusDue,
     dueOn: r.eligibleOn ? dayToDate(r.eligibleOn) : null,
     amount: r.bonusInr,
+    paidVia: r.paidVia ?? null,
+    ...(r.referrerIsEmployee === false ? { referrerIsEmployee: false } : {}),
   };
 }
 

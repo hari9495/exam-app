@@ -1105,6 +1105,8 @@ export function LiveComponentLibraryScreen({ live: p }: { live: LiveComponentLib
           defaultGroupBy="type"
           defaultColumnState={{ hidden: ['type'] }}
           empty={<EmptyState title="No components yet" description="Start from the India starter set and edit it." action={<Button variant="primary" loading={busy === 'starter'} onClick={starter}>Add the India starter set</Button>} />}
+          // Answers 241/286: the file is CSV, so the menu offers CSV only.
+          exportFormats={['csv']}
           onExport={() => {
             const url = URL.createObjectURL(new Blob([tableToCsv(rows, exportCols)], { type: 'text/csv' }));
             const a = document.createElement('a');

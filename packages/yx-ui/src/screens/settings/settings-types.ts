@@ -79,6 +79,8 @@ export interface SettingDef {
   readOnlyList?: boolean;
   /** list kind: an extra button per row, e.g. "View on map". */
   rowAction?: string;
+  /** list kind: the rows are fixed (each can be edited, none added), e.g. one company-wide referral rule. */
+  fixedRows?: boolean;
   /** Verification state (domain, email sender), with an optional action. */
   status?: { tone: 'success' | 'warning'; text: string; action?: string };
   /** Action shown next to a locked value, e.g. Request a region move. */

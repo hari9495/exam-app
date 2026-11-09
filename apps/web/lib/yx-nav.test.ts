@@ -185,7 +185,11 @@ describe('buildNav: Settings', () => {
   });
 
   it('the settings admin gets company rules, Countries and Translations; set-up pages follow their keys', () => {
-    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['Legal entities', 'Locations', 'Structure', 'Company rules', 'Countries', 'Translations', 'Access and privacy', 'Custom fields', 'Payroll rules']);
+    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['Legal entities', 'Locations', 'Structure', 'Company rules', 'Countries', 'Translations', 'Access and privacy', 'Custom fields', 'Payroll rules', 'Hiring']);
+    // Settings 6.1 Hiring: recruiting, hiring admins and HR read it (the API decides who changes it).
+    expect(labels(nav(['ats.settings.manage']), 'settings')).toEqual(['Hiring']);
+    expect(labels(nav(['pipeline:manage']), 'settings')).toEqual(['Hiring']);
+    expect(labels(nav(['ats.requisition.raise']), 'settings')).not.toContain('Hiring');
     // Founder 30 Oct 2026 (last 10, item 5): Payroll rules for HR (org.settings.manage) or payroll set-up, never for others.
     expect(labels(nav(['payroll.run.view']), 'settings')).not.toContain('Payroll rules');
     expect(labels(nav(['perf.setup.manage']), 'settings')).toEqual(['Performance']);

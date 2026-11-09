@@ -64,7 +64,7 @@ export function jobRow(j: ApiJob, names: (userId: string | null) => string, orig
     department: j.department ?? '',
     location: j.location ?? '',
     type: j.employmentType ? (TYPE[j.employmentType] ?? j.employmentType) : 'Not set',
-    recruiter: names(j.recruiterUserId ?? j.createdById),
+    recruiter: names(j.recruiterUserId ?? null),
     hiringManager: names(j.hiringManagerId),
     status: STATUS[j.status] ?? 'Draft',
     applicants: c ? c.active + c.offer + c.hired + c.rejected + c.archived : 0,

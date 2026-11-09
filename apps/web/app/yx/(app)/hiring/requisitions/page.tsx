@@ -146,10 +146,15 @@ export default function YxRequisitionsPage() {
               () => void toast({ tone: 'success', title: decision === 'approve' ? `Approved: ${r.title}` : `Sent back: ${r.title}`, description: 'The hiring manager is told by email and in their bell.' }),
               failed(`Could not decide ${r.title}`),
             ),
-          ...(manage
+          // 253 recruiting; 293 a hiring manager their own waiting requisition (the screen offers it only then; the API checks).
+          ...(manage || canRaise
             ? {
                 onCancel: (r: LiveRequisitionRow, reason: string) =>
                   write('POST', `/hiring/requisitions/${id(r.id)}/cancel`, { reason }).then(() => void toast({ tone: 'success', title: `${r.title} cancelled` }), failed(`Could not cancel ${r.title}`)),
+              }
+            : {}),
+          ...(manage
+            ? {
                 assign: {
                   recruiters: (teammates.data ?? []).map((t) => ({ value: t.id, label: t.name ?? t.email })),
                   onAssign: async (rows: LiveRequisitionRow[], userId: string) => {
