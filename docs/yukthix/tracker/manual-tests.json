@@ -17228,6 +17228,118 @@
     "note": "Positive and negative (no time chosen, repeat accept, expired)."
   },
   {
+    "id": "MT-HIR-SET-08",
+    "area": "Hiring · Settings 6.1 follow-ups, answers 341, 345, 348 (12 Nov 2026)",
+    "screen": "Settings › Hiring: the seven settings (341)",
+    "url": "http://localhost:3000/yx/settings/hiring",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Settings › Hiring & Assessments › Hiring.",
+      "2. Check: under Pipelines, scorecards and approvals, \"Requisitions and the headcount plan\" (Not used / Advisory / Required, Advisory chosen) and \"Hiring managers see their department’s headcount plan\" (ticked); under Offers and hand-off, \"Show the pay range on new jobs\" and \"Ask applicants about their current or past pay\" (both unticked); under Background checks and candidate data, \"“Not eligible for rehire” stops an ex-employee at the first stage\" (unticked); under AI interview and careers site, \"AI notes on past candidates\" (unticked); under Referrals, \"No referral credit if the person applied themselves within\" (90 days).",
+      "3. Choose Required, untick the manager view, tick show pay range, set self-apply to 30 days; press Save changes.",
+      "4. Reload. Then open Hiring › Requisitions › Request a hire as panel@demo-org.test (Divya).",
+      "5. As hr-tester put everything back (Advisory, ticked, unticked, 90 days) and save."
+    ],
+    "expected": "Step 2: the values shown are the defaults; plan mode is one joined control, not chips. Step 3: toast \"Hiring settings saved\" (5 s). Step 4: values stay; Divya can only request from an approved plan line and no longer sees the Headcount plan page. Step 5: saved again; nothing else changed.",
+    "stories": [
+      "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HIR-SET-09",
+    "area": "Hiring · Settings 6.1 follow-ups, answers 341, 345, 348 (12 Nov 2026)",
+    "screen": "Settings › Hiring: the seven settings, who may change them (341)",
+    "url": "http://localhost:3000/yx/settings/hiring",
+    "account": "recruiter@demo-org.test (Recruiter only), then hr-tester while an admin acts as them.",
+    "steps": [
+      "1. As the recruiter open Settings › Hiring.",
+      "2. Try to change \"Requisitions and the headcount plan\".",
+      "3. As an admin, act as hr-tester and open the page."
+    ],
+    "expected": "Step 1: \"You can view these settings but not change them\"; the seven settings show as text. Step 2: no control to change it, no Save. Step 3: view only.",
+    "stories": [
+      "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring · read-only"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-HIR-SET-10",
+    "area": "Hiring · Settings 6.1 follow-ups, answers 341, 345, 348 (12 Nov 2026)",
+    "screen": "Settings › Hiring: scorecard templates, add and edit (345)",
+    "url": "http://localhost:3000/yx/settings/hiring",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Settings › Hiring. In Scorecard templates press Add scorecard.",
+      "2. Press Save scorecard at once.",
+      "3. Name \"Plant technician – test\"; skill 1 \"Machine safety\" 60 %; Add a skill: \"Teamwork\" 30 %. Press Save scorecard.",
+      "4. Change Teamwork to 40 %; Save scorecard.",
+      "5. Press the pencil (Edit) on the new row; set Pass bar to 3; Save scorecard.",
+      "6. Open the old address http://localhost:3000/yx/hiring/scorecards and check the Hiring menu."
+    ],
+    "expected": "Step 1: a side sheet \"Add scorecard\" opens; Save is never greyed out. Step 2: \"Enter the name.\" under Name, focus there; nothing saved. Step 3: the total shows \"Weights add up to 90 %, need 100 %\" and saving says \"The weights must add up to 100 per cent (now 90).\" Step 4: toast \"Scorecard saved\"; the row shows \"Machine safety 60 %, Teamwork 40 %\", 1–4, 2.5. Step 5: the row shows pass bar 3. Step 6: it opens Settings › Hiring; there is no Scorecards item in the Hiring menu.",
+    "stories": [
+      "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring · add scorecard",
+      "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring · edit scorecard"
+    ],
+    "note": "Positive and negative."
+  },
+  {
+    "id": "MT-HIR-SET-11",
+    "area": "Hiring · Settings 6.1 follow-ups, answers 341, 345, 348 (12 Nov 2026)",
+    "screen": "Settings › Hiring: used scorecard and archive (345)",
+    "url": "http://localhost:3000/yx/settings/hiring",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Edit a scorecard already used by an interview (one with a submitted scorecard in demo-org; see Hiring › Interviews).",
+      "2. Press Save as a copy.",
+      "3. Edit \"Plant technician – test\" (from MT-HIR-SET-10) and press Archive scorecard, then Archive scorecard in the confirmation.",
+      "4. Open a job › Settings › Interview scorecard."
+    ],
+    "expected": "Step 1: a note says the scorecard has been used, so changes are saved as a new copy. Step 2: a new row \"(copy)\" appears; the used one is unchanged. Step 3: toast \"Scorecard archived\"; the row is gone. Step 4: the archived scorecard is not offered.",
+    "stories": [
+      "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring · used scorecard (saved as a copy)",
+      "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring · scorecard, view only"
+    ],
+    "note": "Positive."
+  },
+  {
+    "id": "MT-HIR-SET-12",
+    "area": "Hiring · Settings 6.1 follow-ups, answers 341, 345, 348 (12 Nov 2026)",
+    "screen": "Settings › Hiring: scorecards without the key (345)",
+    "url": "http://localhost:3000/yx/settings/hiring",
+    "account": "A Hiring admin without the Recruiter role (no pipelines key), then an admin acting for hr-tester.",
+    "steps": [
+      "1. Open Settings › Hiring and look at Scorecard templates.",
+      "2. As the admin acting for hr-tester, open the page."
+    ],
+    "expected": "Step 1: the list shows skills, scale and pass bar; no Add scorecard, no pencil. Step 2: the same; nothing can be changed.",
+    "stories": [
+      "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring · read-only"
+    ],
+    "note": "Negative."
+  },
+  {
+    "id": "MT-HIR-SET-13",
+    "area": "Hiring · Settings 6.1 follow-ups, answers 341, 345, 348 (12 Nov 2026)",
+    "screen": "Settings › Hiring: default recruiter holds the recruiter key (348)",
+    "url": "http://localhost:3000/yx/settings/hiring",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Open Default recruiter for new requisitions.",
+      "2. Choose recruiter@demo-org.test and save.",
+      "3. In Settings › Roles & access, remove the Recruiter role from that person (or deactivate them); reload Settings › Hiring.",
+      "4. As panel@demo-org.test (Divya) raise a requisition (Request a hire).",
+      "5. Give the role back, choose None and save."
+    ],
+    "expected": "Step 1: only people who hold the recruiter key are listed (System Admins and recruiters), plus None; HR-only, payroll and employees are not. Step 2: toast \"Hiring settings saved\". Step 3: the field shows None and a warning: \"<name> no longer holds the recruiter key or has left, so new requisitions start with no recruiter.\" Step 4: the requisition has no recruiter. Step 5: saved; no warning.",
+    "stories": [
+      "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring",
+      "Screens/Settings/Group 6 · Hiring & Assessments · 6.1 Hiring · default recruiter no longer qualifies"
+    ],
+    "note": "Positive and negative."
+  },
+  {
     "id": "MT-HIR-09-08",
     "area": "Hiring · HIR-09 Offer builder and HIR-29 offer conditions (11 Nov 2026)",
     "screen": "Settings 6.1 · offer approver, clawback, e-signed letters (answers 332, 334, 337)",

@@ -359,18 +359,18 @@ describe('HIR-02 requisitions and HIR-26 rediscovery', () => {
     const a = (await raise('mgr')).body.id;
     expect(await recruiterOf(a)).toBe(users.rec);
     expect((await list('mgr')).rows.find((r) => r.id === a)!.recruiter).toBe(`rec ${run}`);
-    // A manager set as the default recruiter: their own request starts with none; another manager's starts with them.
-    await api('hra', 'put', '/hiring/settings').send({ changes: [{ key: 'hiring.requisition.default_recruiter', value: users.mgr }] }).expect(200);
-    expect(await recruiterOf((await raise('mgr')).body.id)).toBeNull();
-    expect(await recruiterOf((await raise('mgr2')).body.id)).toBe(users.mgr);
+    // Answer 348: a hiring manager without the recruiter key cannot be the default (400); the default stays. (Never the
+    // manager themselves is covered in hiring-settings.e2e-spec.ts with someone who holds both.)
+    await api('hra', 'put', '/hiring/settings').send({ changes: [{ key: 'hiring.requisition.default_recruiter', value: users.mgr }] }).expect(400);
+    expect(await recruiterOf((await raise('mgr2')).body.id)).toBe(users.rec);
     // None again: no recruiter.
     await api('hra', 'put', '/hiring/settings').send({ changes: [{ key: 'hiring.requisition.default_recruiter', value: 'none' }] }).expect(200);
     expect(await recruiterOf((await raise('mgr')).body.id)).toBeNull();
     // Recruiting creating a job is still its own recruiter (unchanged).
     const job = (await api('rec', 'post', '/jobs').send({ title: 'Support Engineer', location: 'Pune' }).expect(201)).body.id;
     expect(await recruiterOf(job)).toBe(users.rec);
-    // Another company's person is not found; a manager may not change the setting.
-    await api('hra', 'put', '/hiring/settings').send({ changes: [{ key: 'hiring.requisition.default_recruiter', value: users.adminB }] }).expect(404);
+    // Another company's person is refused like anyone without the key (400); a manager may not change the setting.
+    await api('hra', 'put', '/hiring/settings').send({ changes: [{ key: 'hiring.requisition.default_recruiter', value: users.adminB }] }).expect(400);
     await api('mgr', 'put', '/hiring/settings').send({ changes: [{ key: 'hiring.requisition.default_recruiter', value: users.rec }] }).expect(403);
   });
 

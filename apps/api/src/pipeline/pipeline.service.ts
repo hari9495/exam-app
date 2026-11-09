@@ -840,15 +840,8 @@ export class PipelineService {
           return { legalEntityId: plan.legalEntityId, departmentId: plan.departmentId, designationId: line.designationId, gradeId: line.gradeId, locationId: line.locationId };
         })
       : {};
-    // Answer 291: the request starts with the company's default recruiter, or none, never the manager themselves.
-    const recruiterUserId = await this.tenantPrisma.forTenant(context, async (tx) => {
-      const org = context.organizationId as string;
-      const row = await tx.setting.findFirst({ where: { organizationId: org, key: 'hiring.requisition.default_recruiter', scopeType: 'tenant', scopeId: org } });
-      const id = row ? String(row.value) : 'none';
-      if (id === 'none' || id === actorUserId) return null;
-      // A default recruiter who has since left the company is skipped.
-      return (await tx.user.findFirst({ where: { organizationId: org, id, status: 'active' }, select: { id: true } })) ? id : null;
-    });
+    // Answers 291 and 348: the company's default recruiter (with the recruiter key), or none, never the manager themselves.
+    const recruiterUserId = await this.hiring.defaultRecruiter(context, actorUserId);
     const job = await this.createJob(context, actorUserId, { ...dto, ...place, hiringManagerId: actorUserId, recruiterUserId }, true);
     const sent = await this.hiring.submit(context, actorUserId, job.id, true);
     return { id: job.id, title: job.title, ...sent };

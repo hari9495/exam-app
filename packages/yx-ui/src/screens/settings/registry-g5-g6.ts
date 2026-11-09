@@ -736,18 +736,24 @@ const hiring: SettingsPageDef = {
           key: 'hire.scorecards',
           label: 'Scorecard templates',
           kind: 'list',
-          columns: ['Scorecard', 'Skills rated', 'Scale'],
+          // Founder answer 345: add, edit and archive here (the scorecard template sheet); weights in whole per cent.
+          columns: ['Scorecard', 'Skills rated', 'Scale', 'Pass bar'],
           rows: [
-            ['Plant technician', 'Machine safety, Food hygiene, Teamwork', '1–4'],
-            ['Sales executive', 'Communication, Negotiation, Territory knowledge', '1–4'],
-            ['Engineering', 'Problem solving, Code quality, Collaboration', '1–5'],
+            ['Plant technician', 'Machine safety 50 %, Food hygiene 30 %, Teamwork 20 %', '1–4', '2.5'],
+            ['Sales executive', 'Communication 40 %, Negotiation 40 %, Territory knowledge 20 %', '1–4', '3'],
+            ['Engineering', 'Problem solving 40 %, Code quality 40 %, Collaboration 20 %', '1–5', '3.5'],
           ],
           addLabel: 'Add scorecard',
+          helper: 'The skills a panel rates, each with a weight in per cent (adding up to 100), and the pass bar. A scorecard already used is copied when changed, so past interviews keep theirs.',
           starter: true,
           synonyms: ['interview feedback', 'rating form'],
         },
         // Founder answer 291: a hiring manager's request starts with this recruiter, or none; never the manager themselves.
-        { key: 'hire.default_recruiter', label: 'Default recruiter for new requisitions', kind: 'select', value: 'None', options: ['None', 'Neha Joshi', 'Arjun Kulkarni'], helper: 'A hiring manager’s request starts with this recruiter. None: it waits until recruiting assigns one. It is never the manager themselves.', starter: true, scope: 'Company', synonyms: ['recruiter', 'requisition', 'request a hire'] },
+        // Founder answer 348: only people who hold the recruiter key are offered.
+        { key: 'hire.default_recruiter', label: 'Default recruiter for new requisitions', kind: 'select', value: 'None', options: ['None', 'Neha Joshi', 'Arjun Kulkarni'], helper: 'A hiring manager’s request starts with this recruiter. Only people with the recruiter key are listed. None: it waits until recruiting assigns one. It is never the manager themselves.', starter: true, scope: 'Company', synonyms: ['recruiter', 'requisition', 'request a hire'] },
+        // Founder answer 341: requisitions and the headcount plan, and the hiring manager's view of it.
+        { key: 'hire.headcount_plan', label: 'Requisitions and the headcount plan', kind: 'segment', value: 'advisory', options: ['off', 'advisory', 'required'], optionLabels: { off: 'Not used', advisory: 'Advisory', required: 'Required' }, helper: 'Advisory: a requisition outside the plan needs the extra approver. Required: every requisition takes a place from an approved plan. Not used: the plan is not checked.', starter: true, scope: 'Company', synonyms: ['manpower plan', 'outside plan', 'budget'] },
+        { key: 'hire.plan_manager_view', label: 'Hiring managers see their department’s headcount plan', kind: 'toggle', value: true, helper: 'Read-only, their own department only. Off: only HR and hiring admins see the plan.', starter: true, scope: 'Company', synonyms: ['manpower plan', 'manager'] },
         { key: 'hire.plan_approvers', label: 'Headcount plan approvers', kind: 'multiselect', value: ['HR head', 'Finance head'], options: ['HR head', 'Finance head', 'CEO', 'Department head'], starter: true, scope: 'Company', synonyms: ['manpower plan', 'budget approval'] },
         { key: 'hire.outside_plan_approver', label: 'Extra approver for outside-plan or over-budget hiring', kind: 'select', value: 'Chief Financial Officer', options: ['Chief Financial Officer', 'Chief Executive Officer', 'Managing Director', 'HR head'], starter: true, scope: 'Company' },
         { key: 'hire.replacement_link', label: 'Replacement hires use the leaver’s plan line', kind: 'toggle', value: true, starter: true, scope: INHERITED },
@@ -764,6 +770,9 @@ const hiring: SettingsPageDef = {
         { key: 'hire.clawback_basis', label: 'Joining bonus repaid by someone who leaves within the clawback months', kind: 'radio', value: 'All of it', options: ['All of it', 'The part for the months not served'], helper: 'Recovered in the final settlement. A bonus not paid yet is simply not paid.', starter: true, scope: 'Company', synonyms: ['clawback', 'joining bonus recovery'] },
         { key: 'hire.offer_esign', label: 'Offer letters the candidate signs electronically', kind: 'multiselect', value: [], options: ['Offer letter · Engineering', 'Offer letter · Plant'], helper: 'Signed with a one-time code sent to the candidate’s email. Every other letter is accepted by the link in the email.', starter: true, scope: 'Company', synonyms: ['e-sign', 'esign', 'otp', 'accept offer'] },
         { key: 'hire.offer_template', label: 'Offer letter template', kind: 'link', linkScreenId: 'PPL-29', linkLabel: 'Edit offer letter templates' },
+        // Founder answer 341: pay transparency choices for new jobs (where no law decides).
+        { key: 'hire.pay_range_show', label: 'Show the pay range on new jobs', kind: 'toggle', value: false, helper: 'On the careers page and job boards. Each job can still change it. Where a law requires it, the range always shows.', starter: true, scope: 'Company', synonyms: ['salary range', 'pay transparency', 'ctc'] },
+        { key: 'hire.pay_history_ask', label: 'Ask applicants about their current or past pay', kind: 'toggle', value: false, helper: 'On new jobs. Never asked where the location’s law bans it.', starter: true, scope: 'Company', synonyms: ['salary history', 'current ctc'] },
         { key: 'hire.handoff_mode', label: 'Hand-off to onboarding', kind: 'radio', value: 'Automatic', options: ['Automatic', 'Manual'], helper: 'Automatic creates the pre-boarding employee on acceptance. Manual puts the offer in HR’s Ready to onboard queue.', overrides: [{ scope: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', value: 'Manual' }], synonyms: ['create employee', 'pre-boarding'] },
       ],
     },
@@ -787,6 +796,8 @@ const hiring: SettingsPageDef = {
         { key: 'hire.bgv_timing', label: 'Start background checks', kind: 'radio', value: 'After offer acceptance', options: ['After offer acceptance', 'Before the offer'], starter: true, scope: 'Company' },
         { key: 'hire.retention_months', label: 'Keep non-hired candidates for', kind: 'number', value: 12, unit: 'months after last activity', min: 6, max: 36, helper: 'A consent-renewal email goes before expiry. Otherwise the candidate is anonymised; funnel counts are kept. The law (DPDP Act, 2023 s.8(7)) says to erase data once its purpose is served; YukthiX caps this at 36 months.', starter: true, scope: 'Company', synonyms: ['candidate retention', 'talent pool', 'gdpr', 'dpdp'] },
         { key: 'hire.renewal_days', label: 'Send consent renewal before expiry', kind: 'number', value: 30, unit: 'days', min: 7, max: 90, starter: true, scope: INHERITED },
+        // Founder answer 341 (HIR-05 answer 272).
+        { key: 'hire.rehire_blocks_screening', label: '“Not eligible for rehire” stops an ex-employee at the first stage', kind: 'toggle', value: false, helper: 'On: they cannot move to Screening or later until HR clears the flag with a reason. Off: a banner only tells the recruiter.', starter: true, scope: 'Company', synonyms: ['rehire', 'ex-employee', 'blacklist'] },
         { key: 'hire.minors', label: 'Candidates under 18', kind: 'law', value: 'Guardian consent; no AI interview or profiling', law: 'Digital Personal Data Protection Act, 2023 s.9' },
       ],
     },
@@ -794,6 +805,8 @@ const hiring: SettingsPageDef = {
       title: 'AI interview and careers site',
       settings: [
         { key: 'hire.ai_interview', label: 'AI interview', kind: 'toggle', value: true, helper: 'A person reviews every result. Candidates are never rejected automatically.', scope: 'Company', synonyms: ['video interview', 'async interview'] },
+        // Founder answer 341 (HIR-26 rediscovery).
+        { key: 'hire.rediscovery_ai', label: 'AI notes on past candidates', kind: 'toggle', value: false, helper: 'A short note on why each past candidate suggested for a requisition may fit. A person decides. Off: plain text search only.', starter: true, scope: 'Company', synonyms: ['rediscovery', 'talent pool', 'past applicants'] },
         { key: 'hire.ai_languages', label: 'AI interview languages', kind: 'multiselect', value: ['English', 'Hindi'], options: ['English', 'Hindi'], starter: true, scope: 'Company' },
         { key: 'hire.brand_colour', label: 'Careers site colour', kind: 'colour', value: '#1F5FA8', scope: 'Company', synonyms: ['careers page', 'branding'] },
         { key: 'hire.careers_heading', label: 'Careers site heading', kind: 'text', value: 'Grow with Kaveri Foods', scope: 'Company' },
@@ -817,6 +830,8 @@ const hiring: SettingsPageDef = {
           dated: { validFrom: '2026-04-01' },
           synonyms: ['employee referral', 'referral bonus'],
         },
+        // Founder answer 341: no referral credit when the person applied on their own shortly before.
+        { key: 'hire.referral_self_apply_days', label: 'No referral credit if the person applied themselves within', kind: 'select', value: '90', options: ['0', '30', '60', '90', '180'], optionLabels: { '0': 'Always credit', '30': '30 days', '60': '60 days', '90': '90 days', '180': '180 days' }, starter: true, scope: 'Company', synonyms: ['referral', 'self applied'] },
         { key: 'hire.cost_categories', label: 'Recruiting cost categories', kind: 'multiselect', value: ['Job boards', 'Agency fees', 'Referral bonuses', 'Assessments', 'Campus events', 'Other'], options: ['Job boards', 'Agency fees', 'Referral bonuses', 'Assessments', 'Campus events', 'Other'], helper: 'Used for cost per hire. Recruiter time is not counted.', contributedBy: 'P09', scope: 'Company', synonyms: ['cost per hire'] },
       ],
     },

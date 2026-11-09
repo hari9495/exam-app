@@ -39,6 +39,15 @@ describe('buildNav: areas', () => {
   });
 });
 
+describe('buildNav: scorecard templates (answer 345)', () => {
+  it('live on Settings › Hiring; no Scorecards menu item and nothing points at the old page', () => {
+    const all = nav(['pipelines:configure']).flatMap((a) => a.sections.flatMap((s) => s.items));
+    expect(all.map((l) => l.href)).toContain('/yx/settings/hiring');
+    for (const keys of [['pipelines:configure'], ['pipeline:manage', 'pipelines:configure', 'ats.settings.manage']])
+      expect(nav(keys).flatMap((a) => a.sections.flatMap((s) => s.items)).filter((l) => /scorecards$/.test(l.href) || l.label === 'Scorecards')).toEqual([]);
+  });
+});
+
 describe('buildNav: People', () => {
   it('payroll does no HR work: no Probation, Change action, Bulk changes or Import (founder 21 Oct 2026)', () => {
     const n = nav(['employee.profile.view', 'employee.change.approve', 'employee.salary.manage', 'payroll.fnf.manage']);
