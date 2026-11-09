@@ -1,6 +1,6 @@
 // Hiring › Pipeline, candidate record, identity strip, interviews, scorecards, notetaker, AI review, bulk interview day.
 // HIR-04, HIR-05, HIR-22, HIR-06, HIR-07, HIR-25, HIR-08, HIR-27 (M10 §7, YX-ATS-03 / 04 / 05 / 19 / 24 / 32 / 33 / 35 / 37 / 40).
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { CalendarPlus, Merge, Mic, MicOff, Send, Shuffle, UserRound } from 'lucide-react';
 import { Button } from '../../components/button';
 import { AiBadge, Badge, PersonLabel } from '../../components/display';
@@ -17,6 +17,7 @@ import { Calendar, type CalendarEvent } from '../../components/calendar';
 import { Timeline, type TimelineItem } from '../../components/timeline';
 import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { Text } from '../../components/foundations';
+import { useToastIfAny } from '../../components/notify';
 import { formatDate, formatINR, formatPhone } from '../../lib/format';
 import { PhoneFrame } from '../_kit/frames';
 import { assignInterviewDay, findSlots, identityFlags, minutesToLabel, scorecardResult, type IdCheckpoint, type Panelist, type ScoreItem, type SlotRules } from './hiring-logic';
@@ -46,8 +47,57 @@ export interface PipelineBoardProps {
   defaultReasonFor?: { cardId: string; to: string };
 }
 
+/** One card on the live board (HIR-04): an application in a stage of the job's pipeline. */
+export interface LivePipelineCard {
+  /** The application (pipeline entry). */
+  id: string;
+  stageId: string;
+  name: string;
+  /** First fact line, e.g. "priya@example.com · Careers site". */
+  line: string;
+  scores: Score[];
+  next: string;
+  flags: string[];
+  daysInStage: number;
+}
+
+export interface LivePipelineStage {
+  id: string;
+  title: string;
+  /** Moving here is a rejection: it asks for a reason (the Rejected stage). */
+  rejected: boolean;
+  /** Shown collapsed at first, like Hired in the design. */
+  collapsed?: boolean;
+}
+
+/** The live board (HIR-04): the job's stages and applications from GET hiring/jobs/:id/board; the API checks every move. */
+export interface LivePipelineBoard {
+  state: ListState;
+  onRetry: () => void;
+  job: string;
+  jobId: string;
+  jobs: { value: string; label: string }[];
+  onJob: (jobId: string) => void;
+  /** pipeline:manage and signed in as themselves; otherwise the board is read-only (decision 11). */
+  canMove: boolean;
+  /** Why the board is read-only, shown in the header. */
+  readOnlyNote?: string;
+  stages: LivePipelineStage[];
+  cards: LivePipelineCard[];
+  onMove: (cardId: string, toStageId: string) => Promise<void>;
+  /** Resolves with the toast text and, while the candidate has not been told, an undo. */
+  onReject: (cardId: string, reason: string) => Promise<{ description: string; undo: (() => Promise<void>) | null }>;
+  onOpen: (cardId: string) => void;
+  onBulk: () => void;
+  onAdd: () => void;
+}
+
 // HIR-04
-export function PipelineBoardScreen({ job, candidates, stages, persona, state = 'ready', defaultMoveMenuFor, defaultReasonFor }: PipelineBoardProps) {
+export function PipelineBoardScreen(props: PipelineBoardProps | { live: LivePipelineBoard }) {
+  return 'live' in props ? <LivePipelineBoardView live={props.live} /> : <SamplePipelineBoard {...props} />;
+}
+
+function SamplePipelineBoard({ job, candidates, stages, persona, state = 'ready', defaultMoveMenuFor, defaultReasonFor }: PipelineBoardProps) {
   const [announce, setAnnounce] = useState('');
   const columns: KanbanColumn[] = useMemo(
     () =>
@@ -76,33 +126,15 @@ export function PipelineBoardScreen({ job, candidates, stages, persona, state = 
     [candidates, stages, persona],
   );
   return (
-    <HireFrame active="Pipeline">
-      <PageHeader
-        title="Pipeline"
-        description={`${job} · ${candidates.length} candidates. AI scores are advisory; people decide every move.`}
-        facts={<Select aria-label="Job" value="j1" onChange={() => {}} options={[{ value: 'j1', label: 'Senior QA Engineer · JOB-0311' }, { value: 'j3', label: 'Accountant · JOB-0305' }]} />}
-        actions={
-          persona === 'recruiter' ? (
-            <>
-              <Button>Bulk actions</Button>
-              <Button variant="primary">Add candidate</Button>
-            </>
-          ) : (
-            <Button>Share feedback</Button>
-          )
-        }
-      />
-      {state === 'loading' ? (
-        <div className="yx-hire-board" aria-busy="true">
-          {[0, 1, 2, 3].map((i) => (
-            <Skeleton key={i} height={320} />
-          ))}
-        </div>
-      ) : state === 'error' ? (
-        <ErrorState title="Couldn't load the pipeline" description="Check your connection and try again. No candidate was moved." onRetry={() => {}} reference="PIPE-3302" />
-      ) : candidates.length === 0 ? (
-        <EmptyState title="No candidates in this pipeline yet." description="Publish the job, share it with referrals, or add past candidates from rediscovery." action={persona === 'recruiter' ? <Button variant="primary">Add candidate</Button> : undefined} />
-      ) : (
+    <PipelineBoardLayout
+      job={job}
+      count={candidates.length}
+      jobPicker={<Select aria-label="Job" value="j1" onChange={() => {}} options={[{ value: 'j1', label: 'Senior QA Engineer · JOB-0311' }, { value: 'j3', label: 'Accountant · JOB-0305' }]} />}
+      persona={persona}
+      state={state}
+      onRetry={() => {}}
+      onAdd={() => {}}
+      board={
         <>
           <KanbanBoard
             aria-label={`Hiring pipeline, ${job}`}
@@ -115,13 +147,154 @@ export function PipelineBoardScreen({ job, candidates, stages, persona, state = 
             defaultMoveMenuFor={defaultMoveMenuFor}
             defaultReasonFor={defaultReasonFor}
             defaultCollapsed={['Hired']}
+            readOnly={persona === 'hm'}
           />
           <span className="yx-visually-hidden" aria-live="polite">
             {announce}
           </span>
         </>
+      }
+    />
+  );
+}
+
+/** The header, the states and the board: the same for the design stories and the live page. */
+function PipelineBoardLayout({ job, count, jobPicker, persona, state, onRetry, onAdd, onBulk, onShareFeedback, readOnlyNote, board }: {
+  job: string;
+  count: number;
+  jobPicker: ReactNode;
+  persona: 'recruiter' | 'hm';
+  state: ListState;
+  onRetry: () => void;
+  onAdd: () => void;
+  onBulk?: () => void;
+  onShareFeedback?: () => void;
+  readOnlyNote?: string;
+  board: ReactNode;
+}) {
+  return (
+    <HireFrame active="Pipeline">
+      <PageHeader
+        title="Pipeline"
+        description={`${job} · ${count} candidate${count === 1 ? '' : 's'}. AI scores are advisory; people decide every move.${readOnlyNote ? ` ${readOnlyNote}` : ''}`}
+        facts={jobPicker}
+        actions={
+          persona === 'recruiter' ? (
+            <>
+              <Button onClick={onBulk}>Bulk actions</Button>
+              <Button variant="primary" onClick={onAdd}>
+                Add candidate
+              </Button>
+            </>
+          ) : (
+            <Button onClick={onShareFeedback}>Share feedback</Button>
+          )
+        }
+      />
+      {state === 'loading' ? (
+        <div className="yx-hire-board" aria-busy="true">
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} height={320} />
+          ))}
+        </div>
+      ) : state === 'error' ? (
+        <ErrorState title="Couldn't load the pipeline" description="Check your connection and try again. No candidate was moved." onRetry={onRetry} reference="PIPE-3302" />
+      ) : count === 0 ? (
+        <EmptyState
+          title="No candidates in this pipeline yet."
+          description="Publish the job, share it with referrals, or add past candidates from rediscovery."
+          action={
+            persona === 'recruiter' ? (
+              <Button variant="primary" onClick={onAdd}>
+                Add candidate
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : (
+        board
       )}
     </HireFrame>
+  );
+}
+
+function LivePipelineBoardView({ live }: { live: LivePipelineBoard }) {
+  const toaster = useToastIfAny();
+  const shown = useMemo<KanbanColumn[]>(
+    () =>
+      live.stages.map((st, i) => ({
+        id: st.id,
+        title: st.title,
+        requiresReason: st.rejected,
+        addable: i === 0 && live.canMove,
+        cards: live.cards
+          .filter((c) => c.stageId === st.id)
+          .map((c) => ({ id: c.id, name: c.name, daysInStage: c.daysInStage, facts: [c.line, <PipelineFacts key="f" scores={c.scores} next={c.next} flags={c.flags} />] as [ReactNode, ReactNode] })),
+      })),
+    [live.stages, live.cards, live.canMove],
+  );
+  // The card moves at once; a refused move puts it back (the page reloads the board after every answer).
+  const [cols, setCols] = useState(shown);
+  useEffect(() => setCols(shown), [shown]);
+  const nameOf = (id: string) => live.cards.find((c) => c.id === id)?.name ?? 'The candidate';
+  const titleOf = (id: string) => live.stages.find((s) => s.id === id)?.title ?? 'that stage';
+  const refused = (title: string, e: unknown) => {
+    setCols(shown);
+    toaster?.toast({ tone: 'error', title, description: (e as Error).message });
+  };
+  const move = async (id: string, from: string, to: string, reason?: string) => {
+    if (from === to) return;
+    const name = nameOf(id);
+    if (live.stages.find((s) => s.id === to)?.rejected) {
+      try {
+        const { description, undo } = await live.onReject(id, reason ?? '');
+        const onUndo = undo
+          ? () =>
+              void undo().then(
+                () => toaster?.toast({ tone: 'success', title: `${name} is back where they were` }),
+                (e) => refused(`Could not undo for ${name}`, e),
+              )
+          : undefined;
+        toaster?.toast({ tone: 'success', title: `${name} rejected`, description, ...(onUndo ? { onUndo } : {}) });
+      } catch (e) {
+        refused(`Could not reject ${name}`, e);
+      }
+      return;
+    }
+    try {
+      await live.onMove(id, to);
+      toaster?.toast({ tone: 'success', title: `${name} moved to ${titleOf(to)}` });
+    } catch (e) {
+      refused(`Could not move ${name}`, e);
+    }
+  };
+  return (
+    <PipelineBoardLayout
+      job={live.job}
+      count={live.cards.length}
+      jobPicker={<Select aria-label="Job" value={live.jobId} onChange={(v) => v && v !== live.jobId && live.onJob(v)} options={live.jobs} />}
+      persona={live.canMove ? 'recruiter' : 'hm'}
+      state={live.state}
+      onRetry={live.onRetry}
+      onAdd={live.onAdd}
+      onBulk={live.onBulk}
+      onShareFeedback={() => toaster?.toast({ tone: 'default', title: 'Open a candidate to share feedback', description: 'Choose a name on the board; your note goes on their application.' })}
+      readOnlyNote={live.readOnlyNote}
+      board={
+        <KanbanBoard
+          aria-label={`Hiring pipeline, ${live.job}`}
+          columns={cols}
+          onColumnsChange={setCols}
+          noun="candidate"
+          addCardLabel="Add candidate"
+          onAddCard={live.onAdd}
+          onOpenCard={live.onOpen}
+          onMove={(id, from, to, reason) => void move(id, from, to, reason)}
+          defaultCollapsed={live.stages.filter((s) => s.collapsed).map((s) => s.id)}
+          readOnly={!live.canMove}
+        />
+      }
+    />
   );
 }
 

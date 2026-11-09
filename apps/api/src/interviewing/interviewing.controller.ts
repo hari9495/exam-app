@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -10,12 +10,18 @@ import { CurrentUserRole } from '../auth/current-user-role.decorator';
 import { HiringBoardService } from './hiring-board.service';
 import { ScorecardTemplatesService } from './scorecard-templates.service';
 import { ScorecardsService, type Viewer } from './scorecards.service';
-import { BulkBoardDto, JobScorecardDto, MoveDto, RejectDto, ScorecardDto, ScorecardTemplateDto, SendOnStageDto } from './interviewing-dto';
+import { BoardRejectDto, BulkBoardDto, JobScorecardDto, MoveDto, ScorecardDto, ScorecardTemplateDto, SendOnStageDto } from './interviewing-dto';
 
 const viewer = (req: Request): Viewer => {
   const u = req.user as { userId: string; role: string; organizationId?: string | null; permissionProfileId?: string | null };
   return { userId: u.userId, role: u.role, organizationId: u.organizationId, permissionProfileId: u.permissionProfileId };
 };
+
+/** HIR-04: moving and rejecting candidates is the person's own act, never done while acting for someone else. */
+function notActing(req: Request): void {
+  const u = req.user as { impersonatorUserId?: string; actingSuperAdmin?: boolean } | undefined;
+  if (u?.impersonatorUserId || u?.actingSuperAdmin) throw new ForbiddenException('Candidates cannot be moved or rejected while acting for someone else. Sign in as yourself.');
+}
 
 // Recruitment batch AT5 (M10-BUILD-DESIGN §18.1): the pipeline board, rejection with undo, job interview settings,
 // scorecard templates, and panellist scorecards (D7).
@@ -55,28 +61,32 @@ export class InterviewingController {
   @Post('entries/:id/move')
   @HttpCode(200)
   @RequirePermissions('pipeline:manage')
-  move(@CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: MoveDto) {
-    return this.board.move(ctx, userId, id, dto.statusId);
+  move(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: MoveDto) {
+    notActing(req);
+    return this.board.move(ctx, userId, id, dto.statusId, dto.fromStatusId);
   }
 
   @Post('entries/:id/reject')
   @HttpCode(200)
   @RequirePermissions('pipeline:manage')
-  reject(@CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RejectDto) {
+  reject(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: BoardRejectDto) {
+    notActing(req);
     return this.board.reject(ctx, userId, id, dto);
   }
 
   @Post('entries/:id/reject/undo')
   @HttpCode(200)
   @RequirePermissions('pipeline:manage')
-  undo(@CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
+  undo(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
+    notActing(req);
     return this.board.undo(ctx, userId, id);
   }
 
   @Post('entries/bulk')
   @HttpCode(200)
   @RequirePermissions('pipeline:manage')
-  bulk(@CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Body() dto: BulkBoardDto) {
+  bulk(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Body() dto: BulkBoardDto) {
+    notActing(req);
     return this.board.bulk(ctx, userId, dto);
   }
 

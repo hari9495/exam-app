@@ -406,13 +406,17 @@ function ReasonForm({ name, to, value, error, onChange, onCancel, onConfirm }: {
   onConfirm: () => void;
 }) {
   const id = useId();
+  const formRef = useRef<HTMLFormElement>(null);
   return (
     <form
+      ref={formRef}
       className="yx-kanban__rform"
       aria-labelledby={id}
       onSubmit={(e) => {
         e.preventDefault();
         onConfirm();
+        // Pressed too early: the error shows and the reason field gets the focus back.
+        if (!value.trim()) formRef.current?.querySelector('textarea')?.focus();
       }}
     >
       <p className="yx-kanban__rtitle" id={id}>

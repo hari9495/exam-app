@@ -7,7 +7,6 @@ import { EmptyState, InlineAlert } from '../../../components/feedback';
 import { FormField } from '../../../components/field';
 import { Text } from '../../../components/foundations';
 import { NumberField, TextArea, TextField } from '../../../components/inputs';
-import { KanbanBoard, type KanbanColumn } from '../../../components/kanban';
 import { MenuItem } from '../../../components/menu';
 import { ConfirmDialog } from '../../../components/overlay';
 import { Segment } from '../../../components/segment';
@@ -19,10 +18,10 @@ import { LivePage } from '../../time/live/kit';
 import { EmailDialog } from './candidates';
 import type { BoardRowView, BoardStageView, Choice, EmailCompose, EmailTemplateChoice, JobSettingsView, JobView, LoadState, RejectInput } from './types';
 
-// Recruitment batch AT5, wired (M10-BUILD-DESIGN §8.1, §9): one job — its pipeline as a board or a list, and its
+// Recruitment batch AT5, wired (M10-BUILD-DESIGN §8.1, §9): one job — its candidates as a list with bulk actions, and its
 // settings (tests and the stage that sends each, the interview scorecard, public applying, job boards, fit criteria).
-// Replaces the older /v2/jobs/:id page. Moving a card to Rejected asks for a reason and the message; the message waits
-// 24 hours by default so the rejection can be undone.
+// The board itself is the designed HIR-04 PipelineBoardScreen (its "Bulk actions" and "Add candidate" open this list).
+// Rejecting asks for a reason and the message; the message waits 24 hours by default so the rejection can be undone.
 
 const STATUS_LABEL: Record<JobView['status'], string> = { draft: 'Draft requisition', pending_approval: 'Waiting for approval', open: 'Open', on_hold: 'On hold', closed: 'Closed' };
 const when = (iso: string) => new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
@@ -50,7 +49,8 @@ export interface JobWorkspaceScreenProps {
   senders: Choice[];
   onBack: () => void;
   onOpenEntry: (entryId: string) => void;
-  onMove: (entryId: string, statusId: string) => Promise<unknown>;
+  /** Opens the Add candidate dialog at once (the board's "Add candidate"). */
+  startAdding?: boolean;
   onReject: (entryIds: string[], input: RejectInput) => Promise<unknown>;
   onUndo: (entryId: string) => Promise<unknown>;
   onBulkMove: (entryIds: string[], statusId: string) => Promise<{ succeeded: number; skipped: unknown[] }>;
@@ -77,7 +77,7 @@ export function JobWorkspaceScreen(p: JobWorkspaceScreenProps) {
       onRetry={p.onRetry}
       what="this job"
       grantedBy="your admin"
-      actions={<Button onClick={p.onBack}>All jobs</Button>}
+      actions={<Button onClick={p.onBack}>Pipeline board</Button>}
     >
       {j && (
         <>
@@ -104,36 +104,17 @@ export function JobWorkspaceScreen(p: JobWorkspaceScreenProps) {
 }
 
 function PipelineView(p: JobWorkspaceScreenProps) {
-  const [view, setView] = useState<'board' | 'list'>('board');
   const [selected, setSelected] = useState<string[]>([]);
   const [rejecting, setRejecting] = useState<string[] | null>(null);
   const [moving, setMoving] = useState<string[] | null>(null);
   const [testing, setTesting] = useState<string[] | null>(null);
   const [emailing, setEmailing] = useState<string[] | null>(null);
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState(Boolean(p.startAdding));
   const [notice, setNotice] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null);
   const { error, run } = useRun();
   const done = (text: string) => { setNotice({ tone: 'success', text }); setSelected([]); };
-  const firstStatus = (stageId: string) => p.stages.find((s) => s.id === stageId)?.statuses[0]?.id;
   const statusChoices = p.stages.flatMap((s) => s.statuses.map((st) => ({ value: st.id, label: s.statuses.length > 1 ? `${s.name} · ${st.name}` : s.name })));
   const pending = p.rows.filter((r) => r.rejectionPendingUntil);
-
-  const columns: KanbanColumn[] = p.stages
-    .filter((s) => s.category !== 'archived')
-    .map((s) => ({
-      id: s.id,
-      title: s.name,
-      emptyText: 'Nobody here yet',
-      cards: p.rows
-        .filter((r) => r.stageId === s.id)
-        .map((r) => ({
-          id: r.entryId,
-          name: r.name,
-          facts: [r.testSummary ?? r.statusName, scorecardText(r.scorecards) ?? (r.fitScore != null ? `Fit ${r.fitScore}` : undefined)],
-          daysInStage: r.daysInStage,
-          next: r.rejectionPendingUntil ? { text: `Rejection message at ${when(r.rejectionPendingUntil)}` } : r.nextInterviewAt ? { text: `Interview ${when(r.nextInterviewAt)}` } : r.scorecards && !r.scorecards.complete ? { text: 'Waiting for scorecards', overdue: true } : undefined,
-        })),
-    }));
 
   const listCols: TableColumn<BoardRowView>[] = [
     { key: 'n', header: 'Candidate', value: (r) => r.name, width: 200, hideable: false },
@@ -158,24 +139,9 @@ function PipelineView(p: JobWorkspaceScreenProps) {
         </InlineAlert>
       ))}
       <div className="yx-tim-row">
-        <Segment label="Show as" value={view} onChange={setView} options={[{ value: 'board', label: 'Board' }, { value: 'list', label: 'List' }]} />
         {p.canManage && <Button icon={Plus} onClick={() => setAdding(true)}>Add candidate</Button>}
         <Button onClick={() => void run('export', p.onExport)}>Export CSV</Button>
       </div>
-      {view === 'board' ? (
-        <KanbanBoard
-          aria-label="Hiring pipeline"
-          noun="candidate"
-          columns={columns}
-          onOpenCard={p.onOpenEntry}
-          onMove={(cardId, _from, to) => {
-            const stage = p.stages.find((s) => s.id === to);
-            if (!p.canManage || !stage) return;
-            if (stage.category === 'rejected') setRejecting([cardId]);
-            else void run('move', () => p.onMove(cardId, firstStatus(to)!));
-          }}
-        />
-      ) : (
         <DataTable
           label="Candidates in this job"
           columns={listCols}
@@ -198,7 +164,6 @@ function PipelineView(p: JobWorkspaceScreenProps) {
             </>
           )}
         />
-      )}
       {rejecting && <RejectDialog count={rejecting.length} templates={p.templates} onClose={() => setRejecting(null)} onReject={async (input) => { await p.onReject(rejecting, input); done(input.delayHours ? 'Rejected. You can undo until the message goes.' : 'Rejected.'); }} />}
       {moving && <PickDialog title={`Move ${moving.length}`} label="Move to" options={statusChoices} confirm="Move" onClose={() => setMoving(null)} onConfirm={async (v) => { const r = await p.onBulkMove(moving, v); done(`Moved ${r.succeeded}.${r.skipped.length ? ` ${r.skipped.length} not moved.` : ''}`); }} />}
       {testing && <PickDialog title={`Send a test to ${testing.length}`} label="Test" options={p.exams} confirm="Send test" onClose={() => setTesting(null)} onConfirm={async (v) => { const r = await p.onBulkTest(testing, v); done(`Sent to ${r.succeeded}.${r.skipped.length ? ` ${r.skipped.length} already had it.` : ''}`); }} />}

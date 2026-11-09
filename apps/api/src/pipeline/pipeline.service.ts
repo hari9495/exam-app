@@ -163,6 +163,9 @@ export interface PatchEntryResult {
 
 // Selects exactly the columns upsertCustomFieldValues/serializeCustomFieldValues need -- shared
 // by createJob/updateJob/getJob so the definition query stays identical everywhere.
+/** HIR-04: the card the person acted on no longer matches the entry (someone else moved it first). */
+export const STALE_CARD = 'This card was out of date: someone else moved this candidate first. The board now shows where they are.';
+
 const JOB_DEFINITION_SELECT = {
   id: true,
   key: true,
@@ -1080,7 +1083,7 @@ export class PipelineService {
   }
 
   /** opts.skipComms: the caller sends the candidate message itself (M10 AT5 delayed rejection). */
-  async patchEntry(context: TenantContext, actorUserId: string, entryId: string, dto: PatchEntryDto, opts: { skipComms?: boolean } = {}): Promise<PatchEntryResult> {
+  async patchEntry(context: TenantContext, actorUserId: string, entryId: string, dto: PatchEntryDto, opts: { skipComms?: boolean; expectStatusId?: string } = {}): Promise<PatchEntryResult> {
     let didHire = false;
     // The stage a template's triggerStageId is matched against for the post-commit comms hook.
     let commsStageId: string | null = null;
@@ -1091,6 +1094,11 @@ export class PipelineService {
         include: { job: { select: { pipelineId: true } }, status: { include: { stage: true } } },
       });
       if (!existing) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
+      // HIR-04: the board sends the status its card showed; a repeat or an out-of-date card is refused, never applied twice.
+      if (opts.expectStatusId !== undefined) {
+        if (dto.statusId !== undefined && existing.statusId === dto.statusId) throw new ConflictException('Already moved: this candidate is in that stage now.');
+        if (existing.statusId !== opts.expectStatusId) throw new ConflictException(STALE_CARD);
+      }
       const previousCategory = existing.status?.stage.category;
 
       let data: { statusId?: string; rejected: boolean; rejectedReason: string | null; rejectedAt: Date | null; archivedAt: Date | null; stageEnteredAt?: Date };
@@ -1176,7 +1184,9 @@ export class PipelineService {
         throw new BadRequestException('patchEntry requires a statusId or a rejected flag');
       }
 
-      const updated = await tx.pipelineEntry.update({ where: { id: entryId }, data });
+      // With expectStatusId the write only lands if nobody moved the entry since it was read (two people at once).
+      if (opts.expectStatusId !== undefined && !(await tx.pipelineEntry.updateMany({ where: { id: entryId, statusId: opts.expectStatusId }, data })).count) throw new ConflictException(STALE_CARD);
+      const updated = opts.expectStatusId !== undefined ? await tx.pipelineEntry.findUniqueOrThrow({ where: { id: entryId } }) : await tx.pipelineEntry.update({ where: { id: entryId }, data });
       await this.audit.record(context, { actorUserId, action, entityType: 'pipeline_entry', entityId: entryId, metadata: { ...dto } });
 
       // Auto-archive siblings on hire (org toggle, defaults on): hiring a candidate for one job

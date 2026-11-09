@@ -15856,5 +15856,136 @@
       "Screens/Hiring/HIR-12 · Referrals · All referrals (HR)"
     ],
     "note": "Answer 205: the exit date comes from People."
+  },
+  {
+    "id": "MT-HIR-04-01",
+    "screen": "Pipeline board · Recruiter · rich cards",
+    "url": "http://localhost:3000/yx/hiring/jobs/<job id>/pipeline",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin: pipeline:manage). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "Before: open an open job (Hiring › Jobs › a job › Open pipeline). If it has fewer than three candidates, press Add candidate and add three new ones (e.g. Priya Raman, Arun Kumar, Meena Iyer with test emails).",
+      "1. Compare the page with the story \"Recruiter · rich cards\" element by element: title Pipeline, the job line with the candidate count, the Job picker, Bulk actions and Add candidate, one column per stage with its count, Hired collapsed.",
+      "2. Read one card: name, email · source, the score chips (Test, AI fit (advisory), Panel when there are any), \"Next: …\", days in stage.",
+      "3. Check the page itself has no scroll bar at 1278 x 635; columns scroll inside the board when they hold many cards.",
+      "4. Open the Job picker and choose another open job."
+    ],
+    "expected": "Step 1: same layout as the design. Step 2: an interview shows as \"Next: interview 12 Nov 2026, 11:00 am\" in India time; a card with nothing due says \"Next: nothing scheduled\". Step 3: no page scroll bar. Step 4: that job's board opens. Negative: an archived stage is never a column.",
+    "stories": [
+      "Screens/Hiring/HIR-04 · Pipeline board · Recruiter · rich cards"
+    ],
+    "note": "Positive and negative: layout, India time, no page scroll.",
+    "area": "Hiring · HIR-04 Pipeline board (9 Nov 2026, designed screen live)"
+  },
+  {
+    "id": "MT-HIR-04-02",
+    "screen": "Pipeline board · Move to menu (keyboard alternative)",
+    "url": "http://localhost:3000/yx/hiring/jobs/<job id>/pipeline",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin: pipeline:manage). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Press Tab until the \"…\" (Move Priya Raman) button on a card is focused; press Enter.",
+      "2. With the arrow keys choose the next stage; press Enter.",
+      "3. Drag another card with the mouse to the next column.",
+      "4. Open the \"…\" menu of the card you just moved and choose the stage it is already in (it is not offered); press Escape."
+    ],
+    "expected": "Step 1: the \"Move to\" menu opens, listing every other stage (compare with the story \"Move to menu\"). Step 2: the card moves; toast \"Priya Raman moved to …\" for 5 s. Step 3: same toast. Step 4: the current stage is not in the list; nothing changes.",
+    "stories": [
+      "Screens/Hiring/HIR-04 · Pipeline board · Move to menu (keyboard alternative)"
+    ],
+    "note": "Positive: keyboard and drag. Negative: no move to the same stage.",
+    "area": "Hiring · HIR-04 Pipeline board (9 Nov 2026, designed screen live)"
+  },
+  {
+    "id": "MT-HIR-04-03",
+    "screen": "Pipeline board · Reject asks for a reason",
+    "url": "http://localhost:3000/yx/hiring/jobs/<job id>/pipeline",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin: pipeline:manage). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. On a card open \"…\" and choose Rejected.",
+      "2. Press \"Move to Rejected\" with the reason empty.",
+      "3. Type \"Needs night-shift experience\" and press \"Move to Rejected\".",
+      "4. In the toast press Undo.",
+      "5. Reject the same candidate again; then check Hiring settings: \"Hiring: email the candidate when they are rejected on the board\" is Off (default)."
+    ],
+    "expected": "Step 1: a small form \"Move … to Rejected?\" with Reason (compare with the story \"Reject asks for a reason\"). Step 2: \"Enter a reason. It is saved on the record.\" and the cursor goes back into Reason; nothing is rejected. Step 3: the card moves to Rejected; toast \"… rejected · You can undo until <date, time India>. The candidate is not emailed.\" Step 4: the card returns to its stage; toast \"… is back where they were\". Step 5: no email goes to the candidate (Candidate › Messages stays empty). Negative: with the setting On, the toast says \"The candidate is emailed then\" and the email waits 24 hours.",
+    "stories": [
+      "Screens/Hiring/HIR-04 · Pipeline board · Reject asks for a reason"
+    ],
+    "note": "Positive and negative: reason required, undo, no email by default.",
+    "area": "Hiring · HIR-04 Pipeline board (9 Nov 2026, designed screen live)"
+  },
+  {
+    "id": "MT-HIR-04-04",
+    "screen": "Pipeline board · someone else moved first",
+    "url": "http://localhost:3000/yx/hiring/jobs/<job id>/pipeline",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin: pipeline:manage). Browser window 1278 x 635, sidebar open. Two browser windows on the same board (second one: a private window signed in as the same user).",
+    "steps": [
+      "1. In window A move Arun Kumar to the next stage.",
+      "2. In window B (not refreshed) move Arun Kumar from his old place to any stage.",
+      "3. In window B try to reject Meena Iyer twice quickly (double click Move to Rejected)."
+    ],
+    "expected": "Step 1: moved, toast. Step 2: error toast \"Could not move Arun Kumar · This card was out of date: someone else moved this candidate first. The board now shows where they are.\"; the board in window B shows Arun where window A put him. Step 3: one rejection only; a second press shows \"This application is already rejected.\" Negative only: nothing is moved twice.",
+    "stories": [
+      "Screens/Hiring/HIR-04 · Pipeline board · Recruiter · rich cards"
+    ],
+    "note": "Negative: stale card and repeat refused (409).",
+    "area": "Hiring · HIR-04 Pipeline board (9 Nov 2026, designed screen live)"
+  },
+  {
+    "id": "MT-HIR-04-05",
+    "screen": "Pipeline board · Hiring manager",
+    "url": "http://localhost:3000/yx/hiring/jobs/<job id>/pipeline",
+    "account": "panel@demo-org.test (Divya, hiring manager: results:view only). Browser window 1278 x 635.",
+    "steps": [
+      "1. Open the job's pipeline (Hiring › Jobs › the job › Open pipeline).",
+      "2. Compare with the story \"Hiring manager\".",
+      "3. Try to drag a card to another column; look for the \"…\" button on cards.",
+      "4. Press Share feedback.",
+      "5. Click a candidate's name; add a note on the application."
+    ],
+    "expected": "Step 1: the board shows, with \"Read-only: moving candidates needs the job-manage key.\" in the header line. Step 2: Share feedback instead of Bulk actions and Add candidate. Step 3: cards do not drag; no \"…\" Move menu. Step 4: toast \"Open a candidate to share feedback\". Step 5: the application opens; the note is saved. Negative: no move or reject is possible.",
+    "stories": [
+      "Screens/Hiring/HIR-04 · Pipeline board · Hiring manager"
+    ],
+    "note": "Positive (read, feedback) and negative (no moves): decision 11.",
+    "area": "Hiring · HIR-04 Pipeline board (9 Nov 2026, designed screen live)"
+  },
+  {
+    "id": "MT-HIR-04-06",
+    "screen": "Pipeline board · everything the old workspace did",
+    "url": "http://localhost:3000/yx/hiring/jobs/<job id>/pipeline",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin: pipeline:manage). Browser window 1278 x 635, sidebar open.",
+    "steps": [
+      "1. Press Bulk actions.",
+      "2. Tick two candidates; press Move and choose a stage; then Send a test, Email selected and Reject (reason empty first) on one candidate each.",
+      "3. Open the Job settings tab; change the interview scorecard; link a test.",
+      "4. Press Pipeline board (top right) to go back; press Add candidate.",
+      "5. Click a card name; check the application's Interviews, Offers, Messages and Notes tabs."
+    ],
+    "expected": "Step 1: the Candidates list opens (/pipeline/list) with Candidates and Job settings tabs. Step 2: each bulk action works; Reject with no reason shows \"Enter a reason.\"; choosing Rejected in bulk Move is refused per candidate (\"Use Reject …\"). Step 3: saved. Step 4: back on the board; Add candidate opens the list with the Add a candidate dialog open. Step 5: all tabs as before.",
+    "stories": [
+      "Screens/Hiring/HIR-04 · Pipeline board · Recruiter · rich cards"
+    ],
+    "note": "Founder question 261: list and settings reached through Bulk actions until HIR-05/HIR-09 designs cover them.",
+    "area": "Hiring · HIR-04 Pipeline board (9 Nov 2026, designed screen live)"
+  },
+  {
+    "id": "MT-HIR-04-07",
+    "screen": "Pipeline board · Empty, Loading, Error and acting for someone",
+    "url": "http://localhost:3000/yx/hiring/jobs/<job id>/pipeline",
+    "account": "hr-tester@demo-org.test (Recruiter and Hiring admin: pipeline:manage). Browser window 1278 x 635, sidebar open. Also an HR admin who can \"Act as\" a recruiter.",
+    "steps": [
+      "1. Create a new job with no candidates; Open pipeline.",
+      "2. Reload the board on a slow network (DevTools › Network › Slow 4G).",
+      "3. With the API stopped, reload the board; start the API and press Retry.",
+      "4. As HR, act as the recruiter and open the same board."
+    ],
+    "expected": "Step 1: \"No candidates in this pipeline yet.\" with Add candidate (story Empty). Step 2: grey column placeholders (story Loading). Step 3: \"Couldn't load the pipeline\" with Retry (story Error); Retry loads the board. Step 4: \"Read-only while acting for someone else.\"; no move controls; the API refuses moves (403) as well.",
+    "stories": [
+      "Screens/Hiring/HIR-04 · Pipeline board · Empty",
+      "Screens/Hiring/HIR-04 · Pipeline board · Loading",
+      "Screens/Hiring/HIR-04 · Pipeline board · Error"
+    ],
+    "note": "Positive and negative: states; no writes while acting.",
+    "area": "Hiring · HIR-04 Pipeline board (9 Nov 2026, designed screen live)"
   }
 ]
