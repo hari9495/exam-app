@@ -50,6 +50,7 @@ export const PortalPhone: S = { name: 'Candidate page · phone', globals: phone,
 export const PortalEmpty: S = { name: 'Candidate page · no applications, full form to apply', render: () => <CandidatePortalScreen brand={CAND_BRAND} state="ready" portal={{ ...CAND_PORTAL, hasResume: false, oneClick: false, applications: [] }} /> };
 export const Offer: S = { name: 'Offer to accept', render: () => <OfferAcceptScreen brand={CAND_BRAND} state="ready" offer={OFFER} /> };
 export const OfferPhone: S = { name: 'Offer to accept · phone', globals: phone, render: () => <OfferAcceptScreen brand={CAND_BRAND} state="ready" offer={OFFER} /> };
+export const OfferSign: S = { name: 'Offer · sign with a code (e-sign on)', render: () => <OfferAcceptScreen brand={CAND_BRAND} state="ready" offer={{ ...OFFER, esign: true }} live={{ today: new Date(2026, 10, 9), onRespond: async () => undefined, onSendCode: async () => ({ to: 'j•••@gmail.com' }) }} /> };
 export const OfferAccepted: S = { name: 'Offer · accepted', render: () => <OfferAcceptScreen brand={CAND_BRAND} state="ready" offer={{ ...OFFER, status: 'accepted' }} /> };
 export const OfferExpired: S = { name: 'Offer · expired', render: () => <OfferAcceptScreen brand={CAND_BRAND} state="ready" offer={{ ...OFFER, expiresAt: new Date(2026, 9, 1) }} /> };
 export const Interview: S = { name: 'Interview · choose a proposed time', render: () => <InterviewBookingScreen brand={CAND_BRAND} state="ready" interview={INTERVIEW} /> };

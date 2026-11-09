@@ -731,6 +731,13 @@ function LiveOfferRecordView({ live, defaultTab = 'overview' }: { live: LiveOffe
     }
   };
   const open = ['draft', 'pending_approval', 'approved', 'sent'].includes(o.status);
+  // Answer 336: a sent offer waiting for an answer, or an accepted one with conditions still open.
+  const remindable = o.status === 'sent' || (o.status === 'accepted' && o.conditions.some((c) => c.status === 'open'));
+  const remindButton = remindable && (
+    <Button icon={Send} loading={busy === 'remind'} onClick={() => void run('remind', live.onRemind, (r) => String(r))}>
+      Send reminder
+    </Button>
+  );
   return (
     <HireFrame active="Offers & BGV">
       <RecordLayout
@@ -758,11 +765,17 @@ function LiveOfferRecordView({ live, defaultTab = 'overview' }: { live: LiveOffe
             ]}
             actions={
               o.status === 'accepted' && !o.joiner ? (
-                <Button variant="primary" icon={UserPlus} onClick={() => setDialog('employee')}>
-                  Create employee
-                </Button>
+                <>
+                  {remindButton}
+                  <Button variant="primary" icon={UserPlus} onClick={() => setDialog('employee')}>
+                    Create employee
+                  </Button>
+                </>
+              ) : o.status === 'accepted' ? (
+                remindButton || undefined
               ) : open ? (
                 <>
+                  {remindButton}
                   {o.canSeePay && (
                     <Button variant={o.status === 'sent' ? 'primary' : undefined} onClick={live.onRevise}>
                       Revise offer

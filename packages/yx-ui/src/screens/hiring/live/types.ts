@@ -525,6 +525,8 @@ export interface LiveOfferRecord {
   onWithdraw: () => Promise<void>;
   onCancelApproval: () => Promise<void>;
   onLetter: () => Promise<void>;
+  /** Answer 336: the company's reminder email (answer the offer, or what is still due); resolves with the toast text. */
+  onRemind: () => Promise<string>;
   /** People › Ready to onboard, where HR adds the joiner from the accepted offer (PPL-12, unchanged). */
   onCreateEmployee: () => void;
   onAddCondition: (name: string, dueOn: string) => Promise<void>;
