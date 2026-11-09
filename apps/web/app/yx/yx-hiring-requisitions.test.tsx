@@ -18,7 +18,7 @@ const push = jest.fn();
 
 const ROW = (o: object = {}) => ({
   id: 'j1', jobNumber: 7, title: 'QA Engineer', department: 'Engineering', location: 'Chennai office', grade: 'G4', hiringManager: 'Divya', recruiter: 'Neha',
-  replacementFor: null, outsidePlan: false, outsidePlanReason: null, budgetAmount: 900000, positions: 1, status: 'Approved', raised: '2026-11-02T05:00:00Z',
+  replacementFor: null, outsidePlan: false, outsidePlanReason: null, budgetAmount: 900000, positions: 1, status: 'Approved', raised: '2026-11-02T05:00:00Z', mine: false, cancelReason: null, request: { requisitionReason: 'new', headcountPlanLineId: 'l1', replacementOfEmployeeId: null, targetStart: null },
   line: { id: 'l1', designation: 'QA Engineer', grade: '', location: '', approved: 3, open: 1, filled: 0, budget: null, committedBudget: 0 },
   approval: { status: 'approved', reason: null, submittedAt: '2026-11-02T05:00:00Z', submittedBy: 'Divya', steps: [{ name: 'Recruiting', state: 'approved', approvers: ['Neha'], at: '2026-11-03T05:00:00Z' }], waitingOn: null },
   ...o,
@@ -112,5 +112,80 @@ describe('Hiring › Requisitions (HIR-02 + HIR-26)', () => {
     });
     wrap(<YxRequisitionsPage />);
     expect(await screen.findByRole('button', { name: /Retry/ })).toBeInTheDocument();
+  });
+});
+
+describe('Hiring › Requisitions follow-ups (answers 252-257)', () => {
+  const pending = (o: object = {}) => ROW({ id: 'j3', jobNumber: 9, title: 'Data Analyst', status: 'Pending approval', mine: false, approval: { status: 'pending', reason: null, submittedAt: null, submittedBy: 'Divya', steps: [{ name: 'Recruiting', state: 'waiting', approvers: ['Neha'], at: null }], waitingOn: 'Recruiting', myTaskId: 't7' }, ...o });
+  const serveRows = (keys: string[], viewer: 'all' | 'own', rows: unknown[], writes: { path: string; body: unknown }[]) =>
+    api.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path.startsWith('/rbac/me/permissions')) return keys;
+      if (path === '/hiring/requisitions') return { viewer, rows };
+      if (path.endsWith('/rediscovery')) return { mode: 'text', ai: 'off', matches: [MATCH, { ...MATCH, id: 'c2', name: 'Deepa Ghosh', consent: { email: 'opted-out', whatsapp: 'none' } }] };
+      if (path === '/hiring/plan-lines') return [];
+      if (path === '/people/team') return { members: [] };
+      if (init?.method) return (writes.push({ path, body: init.body ? JSON.parse(String(init.body)) : null }), { status: 'pending_approval' });
+      return [];
+    });
+
+  it('257: the approver approves in the drawer through the approvals engine', async () => {
+    const writes: { path: string; body: unknown }[] = [];
+    serveRows(['pipeline:manage'], 'all', [pending()], writes);
+    wrap(<YxRequisitionsPage />);
+    await userEvent.click(await screen.findByText('Data Analyst'));
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(writes).toEqual([{ path: '/workflow/approvals/tasks/t7/decide', body: { decision: 'approve' } }]));
+  });
+
+  it('252: the hiring manager changes their own sent-back requisition and sends it again (PUT)', async () => {
+    const writes: { path: string; body: unknown }[] = [];
+    serveRows(['ats.requisition.raise'], 'own', [ROW({ id: 'j2', jobNumber: 8, title: 'Release Manager', status: 'Sent back', mine: true, line: null, outsidePlan: true, outsidePlanReason: 'Client go-live', request: { requisitionReason: 'new', headcountPlanLineId: null, replacementOfEmployeeId: null, targetStart: null }, approval: { status: 'rejected', reason: 'Lower the pay', submittedAt: null, submittedBy: null, steps: [], waitingOn: null, myTaskId: null } })], writes);
+    wrap(<YxRequisitionsPage />);
+    await userEvent.click(await screen.findByText('Release Manager'));
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Edit and resubmit' }));
+    const sheet = await screen.findByRole('dialog', { name: /Change and send again/ });
+    expect(within(sheet).getByDisplayValue('Release Manager')).toBeInTheDocument();
+    await userEvent.click(within(sheet).getByRole('button', { name: /Send for approval/ }));
+    await waitFor(() => expect(writes.map((w) => w.path)).toEqual(['/jobs/requisitions/j2']));
+    expect(writes[0].body).toMatchObject({ title: 'Release Manager', outsidePlan: true, outsidePlanReason: 'Client go-live', budgetAmount: 900000 });
+  });
+
+  it('253: recruiting cancels with a reason', async () => {
+    const writes: { path: string; body: unknown }[] = [];
+    serveRows(['pipeline:manage'], 'all', [pending({ approval: null })], writes);
+    wrap(<YxRequisitionsPage />);
+    await screen.findByText('Data Analyst');
+    await userEvent.click(screen.getByRole('button', { name: /More actions|Actions/ }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Cancel requisition' }));
+    const ask = (await screen.findAllByRole('dialog')).at(-1)!;
+    await userEvent.type(within(ask).getByRole('textbox', { name: /Reason/ }), 'Client deal fell through');
+    await userEvent.click(within(ask).getByRole('button', { name: 'Cancel requisition' }));
+    await waitFor(() => expect(writes).toEqual([{ path: '/hiring/requisitions/j3/cancel', body: { reason: 'Client deal fell through' } }]));
+  });
+
+  it('255: a hiring manager suggests a past candidate to the recruiter; 254: no Contact for them', async () => {
+    const writes: { path: string; body: unknown }[] = [];
+    serveRows(['ats.requisition.raise', 'candidate:view'], 'own', [ROW({ mine: true })], writes);
+    wrap(<YxRequisitionsPage />);
+    await userEvent.click(await screen.findByText('QA Engineer'));
+    const d = await screen.findByRole('dialog');
+    await within(d).findByText('Sana Nizami');
+    expect(within(d).queryByRole('button', { name: 'Contact' })).toBeNull();
+    await userEvent.click(within(d).getAllByRole('button', { name: 'Suggest to recruiter' })[0]);
+    await waitFor(() => expect(writes.map((w) => w.path)).toEqual(['/hiring/requisitions/j1/rediscovery/c1/suggest']));
+  });
+
+  it('254: recruiting contacts an opted-in candidate through the candidate email; an opted-out one gets the reason', async () => {
+    const writes: { path: string; body: unknown }[] = [];
+    serveRows(['pipeline:manage', 'candidate:view'], 'all', [ROW()], writes);
+    wrap(<YxRequisitionsPage />);
+    await userEvent.click(await screen.findByText('QA Engineer'));
+    const d = await screen.findByRole('dialog');
+    await within(d).findByText('Deepa Ghosh');
+    const [ok, no] = within(d).getAllByRole('button', { name: 'Contact' });
+    await userEvent.click(no);
+    expect(within(d).getByText(/Deepa Ghosh has not agreed to email from us/)).toBeInTheDocument();
+    await userEvent.click(ok);
+    expect(await screen.findByText('Email the candidate')).toBeInTheDocument();
   });
 });
