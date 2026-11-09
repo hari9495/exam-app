@@ -803,6 +803,8 @@ const hiring: SettingsPageDef = {
         { key: 'hire.bgv_decider_other_person', label: 'A discrepancy is decided by someone other than who recorded it', kind: 'toggle', value: true, helper: 'Anyone with the background-check key decides “proceed” or “do not proceed”, with a reason. On: never the person who recorded the result. Nothing is withdrawn automatically.', starter: true, scope: 'Company', synonyms: ['bgv', 'discrepancy', 'four eyes', 'background verification'] },
         // Founder answer 341 (HIR-05 answer 272).
         { key: 'hire.rehire_blocks_screening', label: '“Not eligible for rehire” stops an ex-employee at the first stage', kind: 'toggle', value: false, helper: 'On: they cannot move to Screening or later until HR clears the flag with a reason. Off: a banner only tells the recruiter.', starter: true, scope: 'Company', synonyms: ['rehire', 'ex-employee', 'blacklist'] },
+        // Careers answer 443 (352): tell an applicant whose résumé file was quarantined.
+        { key: 'hire.resume_quarantine_notice', label: 'Tell an applicant when their résumé file is blocked', kind: 'toggle', value: true, helper: 'On: an applicant whose résumé fails the virus check gets an email with a link to their candidate page to upload another file. Off: the file is blocked and nobody is told.', starter: true, scope: 'Company', synonyms: ['virus', 'quarantine', 'resume', 'infected'] },
         { key: 'hire.minors', label: 'Candidates under 18', kind: 'law', value: 'Guardian consent; no AI interview or profiling', law: 'Digital Personal Data Protection Act, 2023 s.9' },
       ],
     },

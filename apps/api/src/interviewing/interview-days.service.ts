@@ -153,6 +153,28 @@ export class InterviewDaysService {
   }
 
   /**
+   * Offers answer 423: removes one slot from the day (for example a lunch break). Rows placed there and not yet sent go
+   * back to unassigned (Auto-assign places them again, skipping the removed slot). Refused when an invite was already
+   * sent for that slot, when it is the day's last slot, or while invites are being sent.
+   */
+  async removeSlot(ctx: TenantContext, id: string, start: number) {
+    await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`interview_day:${id}`}))`;
+      const day = await tx.interviewDay.findFirst({ where: { id, organizationId: org }, include: { rows: true } });
+      if (!day) throw new NotFoundException('Interview day not found.');
+      if (day.sendingAt && Date.now() - day.sendingAt.getTime() < SEND_CLAIM_MS) throw new ConflictException('Invites are being sent for this day. Wait a moment and reload.');
+      if (!day.slots.includes(start)) throw new NotFoundException('That slot is not on this day. Reload the page.');
+      if (day.slots.length === 1) throw new BadRequestException('A day needs at least one slot. Keep this one, or plan the day again.');
+      if (day.rows.some((r) => r.slotStart === start && r.interviewId)) throw new ConflictException('An invite was already sent for this slot. Cancel or move that interview first.');
+      const moved = await tx.interviewDayRow.updateMany({ where: { organizationId: org, dayId: id, slotStart: start, interviewId: null }, data: { panelId: null, slotStart: null, status: 'unassigned' } });
+      await tx.interviewDay.update({ where: { id }, data: { slots: day.slots.filter((s) => s !== start) } });
+      await audit(tx, c, 'ats.interview_day.slot_removed', 'interview_day', id, { start, unassigned: moved.count });
+    });
+    return this.get(ctx, id);
+  }
+
+  /**
    * Sends the invites of every placed row not yet sent, each on its own. The day is claimed first (a double click or a
    * second person gets 409, never a second send). Each row: still in the hiring process, then its interview is made
    * once (kept on the row before the email, so a retry never makes a second interview) and sent through the HIR-06 send.

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, ParseIntPipe, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { assertOwnSession } from '../service-desk/desk-access';
 import { TenantContext } from '@exam-platform/shared';
@@ -75,6 +75,14 @@ export class InterviewingController {
   assignDay(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     notActing(req, DAYS);
     return this.days.assign(ctx, id);
+  }
+
+  /** Offers answer 423: the planner removes one slot (a lunch break); Auto-assign never uses it again. */
+  @Delete('interview-days/:id/slots/:start')
+  @RequirePermissions('pipeline:manage')
+  removeDaySlot(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('start', ParseIntPipe) start: number) {
+    notActing(req, DAYS);
+    return this.days.removeSlot(ctx, id, start);
   }
 
   @Post('interview-days/:id/send')

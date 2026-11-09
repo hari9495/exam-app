@@ -41,3 +41,14 @@ export const NoDays: S = {
   name: 'No interview days yet',
   render: () => <BulkInterviewDayScreen live={{ state: 'ready', onRetry: () => {}, days: [], day: null, canManage: true, onPickDay: () => {}, onPlan: () => {}, onAssign: async () => {}, onSend: async () => ({ sent: 0, failed: 0 }) }} />,
 };
+// Answer 423: the planner removes single slots (a lunch break); Auto-assign skips them.
+const LIVE_DAY = {
+  id: 'd1', name: drive, jobTitle: 'Graduate Engineer Trainee', stageName: 'Shortlisted', day: '2026-11-14', slotMinutes: 45, status: 'draft' as const, sending: false,
+  slots: SLOTS.filter((s) => s !== 730),
+  panels: PANELS,
+  rows: CANDS.slice(0, 9).map((c, i) => ({ entryId: `e${i}`, candidate: c, panelId: PANELS[i % 3]!.id, start: SLOTS.filter((s) => s !== 730)[Math.floor(i / 3)]!, status: 'assigned' as const, error: null })),
+};
+export const RemoveSlot: S = {
+  name: 'Remove a slot · lunch break',
+  render: () => <BulkInterviewDayScreen live={{ state: 'ready', onRetry: () => {}, days: [{ value: 'd1', label: drive }], day: LIVE_DAY, canManage: true, onPickDay: () => {}, onPlan: () => {}, onAssign: async () => {}, onSend: async () => ({ sent: 0, failed: 0 }), onRemoveSlot: async () => {} }} />,
+};

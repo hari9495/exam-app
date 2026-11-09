@@ -143,6 +143,8 @@ export default function YxHiringPipelinePage() {
             const { blob, filename } = await apiFetchBlob(`/jobs/${enc(id)}/candidates.csv`, {}, accessToken ?? undefined);
             saveBlob(blob, filename ?? 'candidates.csv');
           },
+          // Offers answer 402: the ticked candidates go to Make bulk offers (offer-pay key only).
+          onBulkOffers: perms.has('ats.offer.compensation.view') ? (ids) => router.push(`/yx/hiring/jobs/${enc(id)}/bulk-offers?entries=${ids.map(enc).join(',')}`) : undefined,
         },
         add: {
           candidates: (candidates.data?.data ?? []).map((c) => ({ value: c.id, label: `${c.name} · ${c.email ?? ''}` })),

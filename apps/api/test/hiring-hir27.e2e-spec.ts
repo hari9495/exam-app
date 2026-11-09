@@ -34,7 +34,7 @@ describe('Hiring HIR-27 bulk interview day', () => {
   const ids: Record<string, string> = {};
   const entries: Record<string, string> = {};
   const sent: string[] = [];
-  const api = (who: Who, method: 'get' | 'post' | 'put', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+  const api = (who: Who, method: 'get' | 'post' | 'put' | 'delete', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const inA = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false }, fn);
   const want = (status: number) => (r: request.Response) => {
     if (r.status !== status) throw new Error(`${r.status}: ${JSON.stringify(r.body)}`);
@@ -252,5 +252,26 @@ describe('Hiring HIR-27 bulk interview day', () => {
     await api('recruiter', 'post', `/hiring/interview-days/${randomUUID()}/send`).expect(404);
     await api('recruiter', 'get', '/hiring/interview-days/not-a-uuid').expect(400);
     await setting('hiring.interview_day.slot_minutes', '45');
+  });
+
+  it('answer 423: the planner removes single slots (a lunch break); Auto-assign skips them; a sent slot, the last slot and other companies are refused', async () => {
+    // A day planned with a gap (no 11:15 slot) is accepted.
+    const id = (await api('recruiter', 'post', '/hiring/interview-days').send(body({ name: 'Lunch day', slots: [600, 645, 780], panels: [{ name: 'Panel D', room: 'Room 4', memberUserIds: [users.int3] }] })).expect(want(201))).body.id as string;
+    let d = (await api('recruiter', 'post', `/hiring/interview-days/${id}/assign`).expect(want(200))).body as Day & { slots: number[] };
+    expect(d.rows.some((r) => r.start === 645)).toBe(true);
+    await api('acting', 'delete', `/hiring/interview-days/${id}/slots/645`).expect(403);
+    await api('adminB', 'delete', `/hiring/interview-days/${id}/slots/645`).expect(404);
+    await api('recruiter', 'delete', `/hiring/interview-days/${id}/slots/700`).expect(404);
+    await api('recruiter', 'delete', `/hiring/interview-days/${id}/slots/noon`).expect(400);
+    d = (await api('recruiter', 'delete', `/hiring/interview-days/${id}/slots/645`).expect(want(200))).body;
+    expect(d.slots).toEqual([600, 780]);
+    expect(d.rows.some((r) => r.start === 645)).toBe(false);
+    expect(await inA((tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'ats.interview_day.slot_removed', entityId: id } }))).toBe(1);
+    d = (await api('recruiter', 'post', `/hiring/interview-days/${id}/assign`).expect(want(200))).body;
+    expect(d.rows.filter((r) => r.start != null).map((r) => r.start).sort()).toEqual([600, 780]);
+    await api('recruiter', 'delete', `/hiring/interview-days/${id}/slots/780`).expect(200);
+    expect((await api('recruiter', 'delete', `/hiring/interview-days/${id}/slots/600`).expect(400)).body.message).toMatch(/at least one slot/);
+    // The first day's 10:00 interviews were sent: that slot stays.
+    expect((await api('recruiter', 'delete', `/hiring/interview-days/${ids.day}/slots/600`).expect(409)).body.message).toMatch(/already sent/);
   });
 });

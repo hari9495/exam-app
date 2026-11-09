@@ -166,6 +166,11 @@ describe('HIR-09 offer builder and HIR-29 conditions', () => {
     expect(s).toMatchObject({ candidate: { name: 'Cand joseph' }, job: { title: 'Senior QA Engineer' }, grade: { name: 'G6' }, band: { min: 1_200_000, max: 1_800_000 } });
     expect(s.structures.map((x: { value: string }) => x.value)).toContain(ids.tv);
     expect(s.locations).toEqual([{ value: ids.blr, label: 'Bengaluru' }]);
+    // Answer 404: the builder's default expiry is the one company setting (7 by default), changed on 6.1.
+    expect(s.expiryDays).toBe(7);
+    await setting('hiring.offer.expiry_days', '14');
+    expect((await api('rec', 'get', `/hiring/offers/setup?entryId=${ids.joseph}`).expect(200)).body.expiryDays).toBe(14);
+    await setting('hiring.offer.expiry_days', null);
     expect(s.defaultConditions).toEqual(['Background check clear', 'Degree certificate uploaded', 'Relieving letter from current employer']);
     // The sender is never an approver: rec is taken out of the chain step.
     expect(s.route.steps).toEqual([{ name: 'Hiring head', approvers: [`rec2 ${run}`] }]);

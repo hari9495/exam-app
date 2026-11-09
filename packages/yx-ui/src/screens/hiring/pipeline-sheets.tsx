@@ -61,6 +61,8 @@ export interface BulkActionsSheetProps {
   onReject: (ids: string[], input: RejectInput) => Promise<unknown>;
   onUndo: (entryId: string) => Promise<unknown>;
   onExport: () => Promise<unknown>;
+  /** Offers answer 402: opens Make bulk offers for the ticked candidates (offer-pay key holders only; left out otherwise). */
+  onBulkOffers?: (ids: string[]) => void;
   /** Story: rows already ticked. */
   defaultSelected?: string[];
 }
@@ -133,6 +135,7 @@ export function BulkActionsSheet(p: BulkActionsSheetProps) {
             <>
               <Button size="sm" onClick={() => setDialog({ kind: 'move', ids })}>Move</Button>
               <Button size="sm" onClick={() => setDialog({ kind: 'test', ids })}>Send a test</Button>
+              {p.onBulkOffers && <Button size="sm" onClick={() => p.onBulkOffers!(ids)}>Make bulk offers</Button>}
               <Button size="sm" icon={Mail} onClick={() => setDialog({ kind: 'email', ids })}>Email selected</Button>
               <Button size="sm" variant="danger" onClick={() => setDialog({ kind: 'reject', ids })}>Reject</Button>
             </>

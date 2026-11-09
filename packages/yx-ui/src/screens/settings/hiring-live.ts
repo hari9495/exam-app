@@ -21,6 +21,8 @@ export interface HiringSettingsData {
   scorecards: ScorecardTemplateView[];
   /** HIR-09 answer 332: people who may approve an offer above the range (they hold the offer-pay key). */
   offerApprovers?: { id: string; name: string }[];
+  /** Offers answer 376: the named band approver who left or lost the offer-pay key: their name (the step goes to the company admins). */
+  staleBandApprover?: { id: string; name: string } | null;
   /** HIR-09 answer 337: each offer letter template and its e-sign switch. */
   offerLetters?: { id: string; name: string; esign: boolean }[];
 }
@@ -50,6 +52,8 @@ const KEY = {
   'hire.bgv_decider_other_person': 'hiring.bgv.decider_other_person',
   'hire.interview_day_minutes': 'hiring.interview_day.slot_minutes',
   'hire.interview_day_assign': 'hiring.interview_day.assign',
+  'hire.offer_expiry': 'hiring.offer.expiry_days',
+  'hire.resume_quarantine_notice': 'hiring.resume_quarantine.tell_applicant',
 } as const;
 /** On/off fields: the stored value for on and for off. */
 const TOGGLE: Partial<Record<keyof typeof KEY, [on: string, off: string]>> = {
@@ -63,6 +67,7 @@ const TOGGLE: Partial<Record<keyof typeof KEY, [on: string, off: string]>> = {
   'hire.notetaker_enabled': ['on', 'off'],
   'hire.notetaker_ai_draft': ['on', 'off'],
   'hire.bgv_decider_other_person': ['on', 'off'],
+  'hire.resume_quarantine_notice': ['on', 'off'],
 };
 const BASIS: Record<string, string> = { full: 'All of it', pro_rata: 'The part for the months not served' };
 const BONUS = 'ats.referral.bonus_inr';
@@ -129,7 +134,8 @@ export function hiringSettingsPage(design: SettingsPageDef, data: HiringSettings
       case 'hire.internal_after_probation':
       case 'hire.notetaker_enabled':
       case 'hire.notetaker_ai_draft':
-      case 'hire.bgv_decider_other_person': {
+      case 'hire.bgv_decider_other_person':
+      case 'hire.resume_quarantine_notice': {
         const k = KEY[d.key];
         return { ...base, value: v[k] === TOGGLE[d.key]![0], starter: v[k] === data.defaults[k] };
       }
@@ -157,8 +163,18 @@ export function hiringSettingsPage(design: SettingsPageDef, data: HiringSettings
         const k = KEY[d.key];
         const approvers = (data.offerApprovers ?? []).map((p) => ({ value: p.id, label: p.name }));
         const options = ['hr_head', 'hiring_manager', ...approvers.map((p) => p.value)];
+        // Answer 376: a named approver who left or lost the offer-pay key stays shown, named, with a warning (like the default recruiter).
+        const stale = data.staleBandApprover ?? null;
+        if (stale) options.push(stale.id);
         const value = options.includes(v[k]!) ? v[k]! : 'hr_head';
-        return { ...base, kind: 'select', options, optionLabels: { hr_head: 'HR head', hiring_manager: 'Hiring manager', ...Object.fromEntries(approvers.map((p) => [p.value, p.label])) }, value, starter: value === data.defaults[k] };
+        const warning = stale ? `${stale.name} can no longer see offer pay or has left, so offers above the range go to the company admins instead. Choose someone else.` : undefined;
+        return { ...base, kind: 'select', options, optionLabels: { hr_head: 'HR head', hiring_manager: 'Hiring manager', ...Object.fromEntries(approvers.map((p) => [p.value, p.label])), ...(stale ? { [stale.id]: `${stale.name} (cannot approve)` } : {}) }, value, warning, starter: value === data.defaults[k] && !warning };
+      }
+      case 'hire.offer_expiry': {
+        // Answer 404: one expiry for single and bulk offers.
+        const k = KEY[d.key];
+        const options = data.choices[k] ?? [];
+        return { ...base, kind: 'select', options, optionLabels: Object.fromEntries(options.map((o) => [o, `${o} days`])), unit: undefined, min: undefined, max: undefined, value: v[k]!, starter: v[k] === data.defaults[k], helper: 'A new offer, single or bulk, expires this many days after it is made (never after the joining day). The recruiter can change it on a single offer.' };
       }
       case 'hire.clawback_basis': {
         const k = KEY[d.key];

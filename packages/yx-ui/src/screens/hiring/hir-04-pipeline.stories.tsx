@@ -47,5 +47,7 @@ export const sampleBulk: BulkActionsSheetProps = {
   onExport: async () => undefined,
 };
 export const BulkActions: S = { name: 'Bulk actions · tick candidates, then move, test, email or reject', render: () => <BulkActionsSheet {...sampleBulk} defaultSelected={['e1', 'e2']} /> };
+// Offers answer 402: with the offer-pay key, the ticked candidates go to Make bulk offers.
+export const BulkActionsOffers: S = { name: 'Bulk actions · make bulk offers (offer-pay key)', render: () => <BulkActionsSheet {...sampleBulk} defaultSelected={['e1', 'e2']} onBulkOffers={() => {}} /> };
 export const AddCandidate: S = { name: 'Add candidate · existing candidate', render: () => <AddCandidateSheet open onOpenChange={() => {}} job={JOB} candidates={[{ value: 'c9', label: 'Divya S · divya@example.com' }]} onAdd={async () => undefined} /> };
 export const AddCandidateNew: S = { name: 'Add candidate · new candidate', render: () => <AddCandidateSheet open onOpenChange={() => {}} job={JOB} candidates={[]} onAdd={async () => undefined} defaultMode="new" /> };
